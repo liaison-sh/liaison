@@ -6,12 +6,37 @@
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-const host = vi.hoisted(() => ({
-  fetch: vi.fn(),
-  fetchBlob: vi.fn(),
-  openFile: vi.fn(),
-  hostLocale: vi.fn(() => "en"),
-}))
+const host = vi.hoisted(() => {
+  const fetch = vi.fn()
+  // The bound `app` calls as the SDK runs them on a host without the typed calls
+  // (in the page): straight to the kernel routes, for the app that bundles this
+  // control ("shop" here).
+  const app = {
+    listDocumentTemplates: (entity: string) =>
+      fetch(`/api/documents/templates?app=shop&entity=${encodeURIComponent(entity)}`),
+    printDocuments: (r: { entity: string; id: string; templateIds: string[]; merge?: boolean }) =>
+      fetch("/api/documents/print", {
+        method: "POST",
+        body: JSON.stringify({
+          app: "shop",
+          entity: r.entity,
+          recordId: r.id,
+          templateIds: r.templateIds,
+          ...(r.merge ? { merge: true } : {}),
+        }),
+      }),
+    // Framed or not, as a test sets it; `opened` records what the host was asked to open.
+    framed: false,
+    opened: [] as Array<[string, string]>,
+    openFile: async (fileId: string, name: string) => {
+      if (!app.framed) return false
+      app.opened.push([fileId, name])
+      return true
+    },
+    opensFiles: () => app.framed,
+  }
+  return { fetch, app, fetchBlob: vi.fn(), openFile: vi.fn(), hostLocale: vi.fn(() => "en") }
+})
 vi.mock("@liaison/host", () => host)
 
 import { PrintDocuments } from "./print-documents"
@@ -28,6 +53,10 @@ function stubTemplates(list: unknown[] = TEMPLATES): void {
     if (path.startsWith("/api/documents/templates")) return list
     throw new Error(`unexpected ${path}`)
   })
+}
+
+async function openPanel(): Promise<void> {
+  await open()
 }
 
 async function open(): Promise<void> {
@@ -205,5 +234,36 @@ describe("PrintDocuments", () => {
     expect((await screen.findByTestId("print-documents-empty")).textContent).toContain(
       "Aucun modèle",
     )
+  })
+})
+
+describe("PrintDocuments in a frame", () => {
+  it("lets the host open the printed file by id: no tab of its own, no bytes fetched", async () => {
+    host.app.framed = true
+    host.app.opened = []
+    const open = vi.spyOn(window, "open")
+    host.fetch.mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/documents/templates")) return TEMPLATES
+      if (path === "/api/documents/print") {
+        return {
+          files: [{ fileId: "file-1", filename: "invoice.pdf", templateId: T1, blanks: [] }],
+          merged: null,
+        }
+      }
+      throw new Error(`unexpected ${path}`)
+    })
+    try {
+      render(() => (
+        <PrintDocuments app="shop" entity="shipment" recordId="rec-1" neededTemplateIds={[T1]} />
+      ))
+      await openPanel()
+      await screen.findByTestId(`print-documents-row-${T1}`)
+      fireEvent.click(screen.getByTestId("print-documents-print"))
+      await waitFor(() => expect(host.app.opened).toEqual([["file-1", "invoice.pdf"]]))
+      expect(open).not.toHaveBeenCalled()
+      expect(host.fetchBlob).not.toHaveBeenCalled()
+    } finally {
+      host.app.framed = false
+    }
   })
 })

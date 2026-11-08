@@ -70,6 +70,19 @@ describe("Ready-to-ship document retrieval (Queues.tsx)", () => {
   it("does not gate document retrieval on the stale has_label cache", () => {
     expect(queuesSrc).not.toContain("disabled={!row.has_label}")
   })
+
+  it("asks before unticking in the app's own dialog: a framed screen has no window.confirm", () => {
+    expect(queuesSrc).not.toContain("window.confirm")
+    expect(queuesSrc).toContain('testid="boxtal-unpack-confirm"')
+    expect(queuesSrc).toContain("void togglePacked(ask.row, true)")
+  })
+
+  it("the shipment tab opens its label through the host, never a dead in-app link", () => {
+    const tabSrc = readFileSync(join(import.meta.dir, "BoxtalShipmentTab.tsx"), "utf-8")
+    expect(tabSrc).not.toContain("/boxtal/documents/")
+    expect(tabSrc).toContain('"import_label_document"')
+    expect(tabSrc).toContain('await loadFileInto(res.label_file_id, win, "label")')
+  })
 })
 
 describe("orderStatusBadge", () => {

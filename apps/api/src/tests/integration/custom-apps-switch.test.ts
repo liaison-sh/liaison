@@ -88,6 +88,7 @@ describe("LIAISON_CUSTOM_APPS", () => {
         grantedConnections: [],
         grantedCapabilities: [],
         grantedCrossAppCalls: [],
+        grantedDomains: [],
         sourceUrl: "builder:draft/x/1",
       }).then(
         () => "installed",

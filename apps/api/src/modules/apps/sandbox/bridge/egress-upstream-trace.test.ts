@@ -24,7 +24,7 @@ function bridgeCtx(trace: UpstreamTrace): BridgeContext {
     userId: "00000000-0000-0000-0000-000000000001",
     appName: "erp",
     actorType: "user",
-    allowedDomains: [HOST],
+    egress: async () => ({ allowedDomains: [HOST], manifest: { name: "erp" } }),
     callerScopes: [],
     inheritedActor: { actorType: "user" as const },
     manifest: { name: "erp" },

@@ -20,6 +20,10 @@
 //    not mailboxes, so connecting one is never refused there;
 //  - storage: the bytes of the org's files (files/service.ts enforces it);
 //  - jobs per hour: infra/jobs/org-job-cap.ts (delays, never refuses);
+//  - app runs, app bridge calls and app CPU ms per UTC day: counted per org in
+//    Redis day counters (modules/apps/usage/app-usage.ts) and enforced per entry
+//    point (modules/apps/usage/app-day-cap.ts): a tool is refused, background
+//    work waits for the next UTC day;
 //  - custom apps: the org's own private apps (`countCustomApps`), refused at
 //    the cap under the org lock like a seat (`assertCustomAppRoom`);
 //  - audit days: how long audit rows are kept. In the managed edition the
@@ -92,7 +96,22 @@ const CAP_LIMIT_CODES = {
   mailboxes: "MAILBOX_LIMIT_REACHED",
   customApps: "CUSTOM_APP_LIMIT_REACHED",
   auditDays: "AUDIT_DAYS_LIMIT_REACHED",
+  appRunsPerDay: "APP_RUNS_LIMIT_REACHED",
+  appBridgeCallsPerDay: "APP_BRIDGE_CALLS_LIMIT_REACHED",
+  appCpuMsPerDay: "APP_CPU_LIMIT_REACHED",
 } as const
+
+/** The per-UTC-day app caps (modules/apps/usage/). */
+export const APP_DAY_CAP_KINDS = [
+  "appRunsPerDay",
+  "appBridgeCallsPerDay",
+  "appCpuMsPerDay",
+] as const
+export type AppDayCapKind = (typeof APP_DAY_CAP_KINDS)[number]
+
+export function isAppDayCapKind(kind: string): kind is AppDayCapKind {
+  return (APP_DAY_CAP_KINDS as readonly string[]).includes(kind)
+}
 
 function capLimitMessage(kind: keyof typeof CAP_LIMIT_CODES, limit: number): string {
   switch (kind) {
@@ -110,16 +129,30 @@ function capLimitMessage(kind: keyof typeof CAP_LIMIT_CODES, limit: number): str
         : `This organization uses all of its ${limit} custom apps. Remove one first, or whoever runs the server can raise the limit.`
     case "auditDays":
       return `This organization's plan keeps the audit log for up to ${limit} days. Choose ${limit} days or fewer.`
+    case "appRunsPerDay":
+    case "appBridgeCallsPerDay":
+    case "appCpuMsPerDay": {
+      const what =
+        kind === "appRunsPerDay"
+          ? `${limit} app runs`
+          : kind === "appBridgeCallsPerDay"
+            ? `${limit} app calls`
+            : `${limit} ms of app CPU time`
+      return isManagedEdition()
+        ? `This organization used its ${what} for today (UTC). Apps run again after midnight UTC, or move to a plan with more in Billing.`
+        : `This organization used its ${what} for today (UTC). Apps run again after midnight UTC, or whoever runs the server can raise the limit.`
+    }
   }
 }
 
 /**
  * A seat, mailbox or custom app refused at its cap, or an audit retention
  * chosen above it (`used` is then the days asked for). Surfaces as 409 with
- * `{limit, used}`.
+ * `{limit, used}`. An app run refused at a per-day app cap is a 429 (it
+ * clears by itself at midnight UTC), same `{limit, used}`.
  */
 export class CapLimitError extends Error {
-  readonly status = 409
+  readonly status: 409 | 429
   readonly code: (typeof CAP_LIMIT_CODES)[keyof typeof CAP_LIMIT_CODES]
   readonly details: { limit: number; used: number }
   constructor(
@@ -129,6 +162,7 @@ export class CapLimitError extends Error {
   ) {
     super(capLimitMessage(kind, limit))
     this.name = "CapLimitError"
+    this.status = isAppDayCapKind(kind) ? 429 : 409
     this.code = CAP_LIMIT_CODES[kind]
     this.details = { limit, used }
   }
@@ -445,12 +479,13 @@ export async function storageEstimateOf(orgId: string): Promise<StorageEstimate 
 /** The usage block's numbers: each cap as used / limit (null = unlimited). */
 export async function getOrgUsage(orgId: string): Promise<OrgUsage> {
   const caps = await readOrgCaps(orgId)
-  const [seats, mailboxes, bytes, jobs, estimate] = await Promise.all([
+  const [seats, mailboxes, bytes, jobs, estimate, appDay] = await Promise.all([
     withSystemDb("org-caps-usage-seats", (db) => countSeats(db, orgId)),
     mailboxAddresses(orgId).then((s) => s.size),
     storageBytes(orgId),
     jobsThisHour(orgId),
     storageEstimateOf(orgId),
+    appDayCounts(orgId),
   ])
   const storageGb = gbUp(bytes)
   return {
@@ -458,6 +493,12 @@ export async function getOrgUsage(orgId: string): Promise<OrgUsage> {
     mailboxes: { used: mailboxes, limit: capOf(caps, "mailboxes") },
     storageGb: { used: storageGb, limit: capOf(caps, "storageGb") },
     jobsThisHour: { used: jobs, limit: capOf(caps, "jobsPerHour") },
+    appRunsToday: { used: appDay.appRunsPerDay, limit: capOf(caps, "appRunsPerDay") },
+    appBridgeCallsToday: {
+      used: appDay.appBridgeCallsPerDay,
+      limit: capOf(caps, "appBridgeCallsPerDay"),
+    },
+    appCpuMsToday: { used: appDay.appCpuMsPerDay, limit: capOf(caps, "appCpuMsPerDay") },
     storageEstimate: estimate
       ? {
           usedGb: gbUp(estimate.bytes),
@@ -499,6 +540,49 @@ export async function jobsThisHour(orgId: string, now = Date.now()): Promise<num
   }
 }
 
+// --- App day counters (shared with modules/apps/usage/) ----------------------
+
+/** The UTC day a timestamp falls in, `YYYY-MM-DD`. */
+export function utcDay(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10)
+}
+
+/** Milliseconds from `now` to the next midnight UTC. */
+export function msUntilNextUtcDay(now: number): number {
+  const d = new Date(now)
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1) - now
+}
+
+/** Redis key of one org's day counter of one app cap kind. */
+export function appDayKey(kind: AppDayCapKind, orgId: string, day: string): string {
+  return `orgcap:${kind}:${orgId}:${day}`
+}
+
+/**
+ * Today's app counters of the org (0 when unread). Runs and bridge calls are
+ * counted as runs settle; CPU is the loader's total from its last pull.
+ */
+export async function appDayCounts(
+  orgId: string,
+  now = Date.now(),
+): Promise<Record<AppDayCapKind, number>> {
+  const day = utcDay(now)
+  const out: Record<AppDayCapKind, number> = {
+    appRunsPerDay: 0,
+    appBridgeCallsPerDay: 0,
+    appCpuMsPerDay: 0,
+  }
+  try {
+    const values = await redis.mget(...APP_DAY_CAP_KINDS.map((k) => appDayKey(k, orgId, day)))
+    APP_DAY_CAP_KINDS.forEach((k, i) => {
+      out[k] = Number(values[i] ?? 0) || 0
+    })
+  } catch (err) {
+    log.warn({ err, orgId }, "org caps: could not read today's app counters")
+  }
+  return out
+}
+
 // --- Threshold notices -------------------------------------------------------
 
 export const CAP_THRESHOLDS = [80, 100] as const
@@ -523,6 +607,9 @@ const CAP_LABEL_KEY: Record<OrgCapKind, string> = {
   jobsPerHour: "kernel.orgUsage.jobs",
   customApps: "kernel.orgUsage.customApps",
   auditDays: "kernel.orgUsage.auditDays",
+  appRunsPerDay: "kernel.orgUsage.appRuns",
+  appBridgeCallsPerDay: "kernel.orgUsage.appBridgeCalls",
+  appCpuMsPerDay: "kernel.orgUsage.appCpuMs",
 }
 
 export function uuidFrom(text: string): string {
@@ -556,19 +643,25 @@ export function noticeSummary(
   const tail =
     kind === "jobsPerHour"
       ? t("kernel.orgUsage.noticeTailJobs")
-      : kind === "storageGb"
-        ? level >= 100
-          ? t(
-              managed
-                ? "kernel.orgUsage.noticeTailStorageFullManaged"
-                : "kernel.orgUsage.noticeTailStorageFull",
-            )
+      : isAppDayCapKind(kind)
+        ? t("kernel.orgUsage.noticeTailAppDay")
+        : kind === "storageGb"
+          ? level >= 100
+            ? t(
+                managed
+                  ? "kernel.orgUsage.noticeTailStorageFullManaged"
+                  : "kernel.orgUsage.noticeTailStorageFull",
+              )
+            : t(
+                managed
+                  ? "kernel.orgUsage.noticeTailStorageNearManaged"
+                  : "kernel.orgUsage.noticeTailStorageNear",
+              )
           : t(
               managed
-                ? "kernel.orgUsage.noticeTailStorageNearManaged"
-                : "kernel.orgUsage.noticeTailStorageNear",
+                ? "kernel.orgUsage.noticeTailOtherManaged"
+                : "kernel.orgUsage.noticeTailOther",
             )
-        : t(managed ? "kernel.orgUsage.noticeTailOtherManaged" : "kernel.orgUsage.noticeTailOther")
   return `${head} ${tail}`
 }
 
@@ -634,7 +727,7 @@ export async function emitCapNotice(
  */
 export async function evaluateCapLevel(
   orgId: string,
-  kind: Exclude<OrgCapKind, "jobsPerHour">,
+  kind: Exclude<OrgCapKind, "jobsPerHour" | AppDayCapKind>,
   used: number,
   limit: number,
 ): Promise<void> {
@@ -673,7 +766,7 @@ const levelScope = new AsyncResource("org-cap-level")
 let levelChain: Promise<void> = Promise.resolve()
 export function noteCapLevel(
   orgId: string,
-  kind: Exclude<OrgCapKind, "jobsPerHour">,
+  kind: Exclude<OrgCapKind, "jobsPerHour" | AppDayCapKind>,
   used: number,
   limit: number,
 ): void {
@@ -685,6 +778,40 @@ export function noteCapLevel(
 /** Waits for the queued level evaluations (tests). */
 export function capLevelsSettled(): Promise<void> {
   return levelChain
+}
+
+const appDayNoticeKey = (orgId: string, kind: AppDayCapKind, level: 80 | 100, day: string) =>
+  `orgcap:appnotice:${orgId}:${kind}:${level}:${day}`
+
+/**
+ * An app day cap's notice: once per UTC day per kind and threshold, when the
+ * day's count reaches 80 % or 100 % of the cap. Never throws.
+ */
+export async function noteAppDayCount(
+  orgId: string,
+  kind: AppDayCapKind,
+  count: number,
+  limit: number,
+  now = Date.now(),
+): Promise<void> {
+  const level = capLevel(count, limit)
+  if (level === 0) return
+  const day = utcDay(now)
+  try {
+    const first = await redis.set(
+      appDayNoticeKey(orgId, kind, level, day),
+      "1",
+      "EX",
+      2 * 86_400,
+      "NX",
+    )
+    if (first !== "OK") return
+    if (!(await emitCapNotice(orgId, kind, level, count, limit, day))) {
+      await redis.del(appDayNoticeKey(orgId, kind, level, day))
+    }
+  } catch (err) {
+    log.warn({ err, orgId, kind }, "org caps: could not record the app day notice")
+  }
 }
 
 const jobNoticeKey = (orgId: string, level: 80 | 100, day: string) =>

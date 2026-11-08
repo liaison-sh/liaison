@@ -8,7 +8,7 @@
 // (`currentPath`, re-read on `popstate`), and the settings page is a custom
 // component of the app's. Framed, each of these is a message to the
 // page (app-frame/protocol.ts), which is what the scenario proves.
-import { app, currentPath, hostLocale, navigate } from "@liaison/host"
+import { app, currentPath, getContext, hostLocale, navigate } from "@liaison/host"
 import { type Component, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 
 interface Metric {
@@ -20,6 +20,16 @@ interface Metric {
 interface Registry {
   formulaVersion?: string
   metrics?: Metric[]
+  reportFileId?: string
+}
+
+/** Ask the host to open a file by id (host API 1.3); the frame gets no bytes, only the outcome. */
+async function openFileOutcome(fileId: string): Promise<string> {
+  try {
+    return (await app.openFile(fileId, "report.pdf")) ? "opened" : "not-framed"
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err)
+  }
 }
 
 async function readRegistry(): Promise<Registry | { error: string }> {
@@ -64,7 +74,12 @@ const REVENUE_ROUTE = "/metrics-fixture/revenue.monthly"
 export const MetricsExplorer: Component = () => {
   const [registry] = app.createResource(readRegistry)
   const [probe, setProbe] = createSignal<string | null>(null)
+  const [fileOutcome, setFileOutcome] = createSignal<string | null>(null)
   const path = usePagePath()
+  const reportFileId = () => {
+    const value = registry()
+    return value && "reportFileId" in value ? (value.reportFileId ?? "") : ""
+  }
   const metrics = () => {
     const value = registry()
     return value && "metrics" in value ? (value.metrics ?? []) : []
@@ -107,6 +122,24 @@ export const MetricsExplorer: Component = () => {
       </button>
       <Show when={probe()}>
         <p data-testid="metrics-fixture-probe-result">{probe()}</p>
+      </Show>
+      <p data-testid="metrics-fixture-context-org">{getContext()?.orgId ?? ""}</p>
+      <button
+        type="button"
+        data-testid="metrics-fixture-open-report"
+        onClick={() => void openFileOutcome(reportFileId()).then(setFileOutcome)}
+      >
+        Open report
+      </button>
+      <button
+        type="button"
+        data-testid="metrics-fixture-open-foreign"
+        onClick={() => void openFileOutcome("someone-elses-file-0001").then(setFileOutcome)}
+      >
+        Open another file
+      </button>
+      <Show when={fileOutcome()}>
+        <p data-testid="metrics-fixture-file-outcome">{fileOutcome()}</p>
       </Show>
     </div>
   )

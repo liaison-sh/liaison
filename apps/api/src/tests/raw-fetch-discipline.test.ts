@@ -122,6 +122,14 @@ describe("raw fetch discipline", () => {
     // (LIAISON_APP_LOADER_URL + "/run"), a fixed deployment endpoint that may sit on
     // a private address beside the server; no app, org or user input reaches the URL.
     "modules/apps/workers/executor.ts",
+    // The hourly CPU pull from the same app loader (LIAISON_APP_LOADER_URL +
+    // "/usage?day=<YYYY-MM-DD>", the day validated): the same fixed deployment
+    // endpoint, signed with the cell key; no app, org or user input reaches the URL.
+    "modules/apps/usage/loader-usage.ts",
+    // A bridge call forwarded to the process that owns the run: the owner's
+    // internal URL comes from this cell's own instance registry (a private
+    // address by design), never from the request, and the body is signed.
+    "modules/apps/workers/bridge-forward.ts",
     // APNs and FCM. `fetch` under Bun speaks HTTP/2, which APNs REQUIRES; the
     // pinned-host helper dials undici's fetch by resolved IP, which drops to
     // HTTP/1.1 and would break push outright. Fixed provider hosts, URLs built

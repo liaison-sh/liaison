@@ -23,6 +23,12 @@ import {
 import { createRunLogSink, UNKNOWN_TAINT_TAGS } from "~/modules/app-builder/logs"
 import { isCustomAppName } from "~/modules/apps/custom-app-name"
 import {
+  currentDomainGrant,
+  type DomainGrant,
+  grantedSubset,
+  withDomainGrant,
+} from "~/modules/apps/egress-grants"
+import {
   type AppManifestForBridge,
   BASE_ENTITY_FIELDS,
   coerceJson,
@@ -69,7 +75,14 @@ export function jsonObject(value: unknown): Record<string, any> | null {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, any>) : null
 }
 
-function collectAllowedDomains(manifest: AppManifestForBridge): string[] {
+/**
+ * The hosts a run may reach: what the manifest declares (network and every
+ * connection) AND the install row granted (egress-grants.ts). The one place
+ * the grant applies: `ctx.egress()` hands this list, and the manifest narrowed
+ * the same way, to ctx.fetch, the credential injection (fetch-auth.ts), the
+ * file download from a URL and the bulk download.
+ */
+function collectAllowedDomains(manifest: AppManifestForBridge, grant: DomainGrant): string[] {
   const domains: string[] = []
   if (manifest.network?.allowedDomains) domains.push(...manifest.network.allowedDomains)
   if (manifest.connections) {
@@ -77,7 +90,14 @@ function collectAllowedDomains(manifest: AppManifestForBridge): string[] {
       if (conn.allowedDomains) domains.push(...conn.allowedDomains)
     }
   }
-  return domains
+  return grantedSubset(domains, grant)
+}
+
+/** What a run may reach, with the grant applied (see `collectAllowedDomains`). */
+export interface EgressView {
+  allowedDomains: string[]
+  /** The bridge manifest with every connection's domains narrowed to the grant. */
+  manifest: AppManifestForBridge
 }
 
 /** What a guarded-write account resolver may answer: one account, a set of
@@ -486,7 +506,21 @@ export function createBridgeContext(
   }
   const schemaName = schemaRef(`app_${appName.replace(/-/g, "_")}`)
   const declaredEmits = new Set(manifest.events?.emits ?? [])
-  const allowedDomains = collectAllowedDomains(manifest)
+  // Read once per bridge, on the first egress; a failed read is not kept (and refuses that egress).
+  let egressView: Promise<EgressView> | null = null
+  const egress = (): Promise<EgressView> => {
+    if (!egressView) {
+      const pending = currentDomainGrant(appName).then((grant) => ({
+        allowedDomains: collectAllowedDomains(manifest, grant),
+        manifest: withDomainGrant(manifest, grant),
+      }))
+      pending.catch(() => {
+        if (egressView === pending) egressView = null
+      })
+      egressView = pending
+    }
+    return egressView
+  }
   const declaredCapabilities = new Set(manifest.capabilities ?? [])
   // Per-bridge iterator-cursor map for `bulk.fetch` (Phase 16 Task A7). Each
   // open blob has at most one async-iterator instance, lazily started on the
@@ -1338,7 +1372,7 @@ export function createBridgeContext(
     knowledgeWriteRequiredScopes,
     schemaName,
     declaredEmits,
-    allowedDomains,
+    egress,
     declaredCapabilities,
     bulkIteratorCursors,
     requireCapability,

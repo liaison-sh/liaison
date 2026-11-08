@@ -68,6 +68,7 @@ import { openTab } from "~/modules/shell/tab-store"
 import { addToast } from "~/modules/shell/toast-store"
 import {
   appFrameUrl,
+  type FrameContext,
   type FrameToHost,
   frameProps,
   type HostToFrame,
@@ -83,6 +84,24 @@ export const MOBILE_APP_FRAME_PATH = "/app-frame.html"
 
 /** Exactly the sandbox an isolated app gets: scripts and forms, nothing else. */
 export const ISOLATED_APP_SANDBOX = "allow-scripts allow-forms"
+
+/**
+ * The sandbox of a frame served on the app's own origin: the same, plus that
+ * origin (its storage). Never for any other frame: on the page's origin or a
+ * shell's, `allow-same-origin` would give the app the page.
+ */
+export const ORIGIN_BOUND_APP_SANDBOX = `${ISOLATED_APP_SANDBOX} allow-same-origin`
+
+/** The origin of a frame URL served on an app's own origin, or null when it is not one. */
+export function originBoundFrameOrigin(frameUrl: string, pageOrigin: string): string | null {
+  try {
+    const url = new URL(frameUrl)
+    if (!/^https?:$/.test(url.protocol) || url.origin === pageOrigin) return null
+    return url.origin
+  } catch {
+    return null
+  }
+}
 
 /** The host services the frame's calls are answered with. */
 export interface IsolatedHost {
@@ -104,6 +123,61 @@ export interface IsolatedHost {
     cb: (events: unknown[]) => void,
     opts?: { debounceMs?: number },
   ) => () => void
+  // Host API 1.3 (framework/host-app-calls.ts).
+  context?: () => FrameContext | null
+  openFileById?: (app: string, fileId: string, filename: string) => Promise<void>
+  listDocumentTemplates?: (app: string, entity: string) => Promise<unknown>
+  printDocuments?: (
+    app: string,
+    request: { entity: string; id: string; templateIds: string[]; merge?: boolean },
+  ) => Promise<unknown>
+  listMyApprovals?: (app: string) => Promise<unknown[]>
+  decideApproval?: (
+    app: string,
+    id: string,
+    decision: "approve" | "deny",
+    payloadHash?: string,
+  ) => Promise<unknown>
+  openExternal?: (app: string, url: string) => Promise<void>
+  openRecord?: (caller: string, app: string, entity: string, id: string) => void
+  openApprovals?: () => void
+}
+
+/**
+ * What the page knows about one frame, for the limits of its typed calls: the
+ * file ids its own tool results and prints showed it (the only files it may ask
+ * the host to open, besides files attached to its own records), and its
+ * manifest's record types.
+ */
+export interface FrameCallState {
+  seenFiles: Set<string>
+  entities: ReadonlySet<string>
+  /** Reads a file's metadata (`/api/files/<id>/metadata`): its owning app. Seam for tests. */
+  fileApp?: (fileId: string) => Promise<string | null>
+}
+
+/** A fresh state for one frame. */
+export function frameCallState(entities: Iterable<string> = []): FrameCallState {
+  return { seenFiles: new Set(), entities: new Set(entities) }
+}
+
+const MAX_SEEN_FILES = 2_000
+const FILE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{7,127}$/
+
+/** Remember every id-shaped string of a result (bounded), as files this frame was shown. */
+export function noteSeenIds(state: FrameCallState, value: unknown, depth = 0): void {
+  if (depth > 8 || state.seenFiles.size >= MAX_SEEN_FILES) return
+  if (typeof value === "string") {
+    if (FILE_ID.test(value)) state.seenFiles.add(value)
+    return
+  }
+  if (Array.isArray(value)) {
+    for (const item of value.slice(0, 500)) noteSeenIds(state, item, depth + 1)
+    return
+  }
+  if (typeof value === "object" && value !== null) {
+    for (const item of Object.values(value).slice(0, 200)) noteSeenIds(state, item, depth + 1)
+  }
 }
 
 function kernelHost(): IsolatedHost | null {
@@ -246,6 +320,18 @@ export function frameVisiblePath(app: string, path: string): string {
 /** An entity name as manifests spell them. */
 const ENTITY_NAME = /^[a-zA-Z][\w-]*$/
 
+/** The app a file is attached to, read with the person's session; null when unreadable. */
+function fileAppFrom(host: IsolatedHost): (fileId: string) => Promise<string | null> {
+  return async (fileId) => {
+    try {
+      const meta = asRecord(await host.fetch(`/api/files/${encodeURIComponent(fileId)}/metadata`))
+      return typeof meta.app === "string" ? meta.app : null
+    } catch {
+      return null
+    }
+  }
+}
+
 export async function answerFrameCall(
   app: string,
   method: string,
@@ -253,6 +339,8 @@ export async function answerFrameCall(
   host: IsolatedHost,
   /** The tab this frame sits in, the one its page's open record belongs to. */
   tabId?: string,
+  /** This frame's limits for the typed calls; a fresh, empty one when absent. */
+  state: FrameCallState = frameCallState(),
 ): Promise<unknown> {
   switch (method) {
     case "setOpenRecord": {
@@ -281,7 +369,106 @@ export async function answerFrameCall(
     case "invokeTool": {
       const [tool, toolArgs] = args
       if (typeof tool !== "string") throw new Error("invokeTool: a tool name is required")
-      return host.invokeTool(app, tool, asRecord(toolArgs))
+      const result = await host.invokeTool(app, tool, asRecord(toolArgs))
+      noteSeenIds(state, result)
+      return result
+    }
+    case "openFile": {
+      const [fileId, filename] = args
+      if (typeof fileId !== "string" || !FILE_ID.test(fileId) || !host.openFileById) {
+        throw new Error("openFile: a file id is required")
+      }
+      // Only a file this frame was shown, or one attached to this app's own records.
+      if (!state.seenFiles.has(fileId)) {
+        const owner = await (state.fileApp ?? fileAppFrom(host))(fileId)
+        if (owner !== app) throw new Error("openFile: not a file of this app")
+      }
+      await host.openFileById(app, fileId, typeof filename === "string" ? filename : "document")
+      return null
+    }
+    case "listDocumentTemplates": {
+      const [entity] = args
+      if (
+        typeof entity !== "string" ||
+        !state.entities.has(entity) ||
+        !host.listDocumentTemplates
+      ) {
+        throw new Error("listDocumentTemplates: one of this app's record types is required")
+      }
+      return host.listDocumentTemplates(app, entity)
+    }
+    case "printDocuments": {
+      const request = asRecord(args[0])
+      const { entity, id, templateIds, merge } = request
+      if (
+        typeof entity !== "string" ||
+        !state.entities.has(entity) ||
+        typeof id !== "string" ||
+        !Array.isArray(templateIds) ||
+        !templateIds.every((t) => typeof t === "string") ||
+        !host.printDocuments
+      ) {
+        throw new Error("printDocuments: one of this app's records and template ids are required")
+      }
+      const result = await host.printDocuments(app, {
+        entity,
+        id,
+        templateIds: templateIds as string[],
+        ...(merge === true ? { merge: true } : {}),
+      })
+      // The printed files are this frame's to open.
+      noteSeenIds(state, result)
+      return result
+    }
+    case "listMyApprovals": {
+      if (!host.listMyApprovals) throw new Error("listMyApprovals unavailable")
+      const rows = await host.listMyApprovals(app)
+      return rows.filter(
+        (row) =>
+          typeof (row as { toolName?: unknown })?.toolName === "string" &&
+          (row as { toolName: string }).toolName.startsWith(`${app}:`),
+      )
+    }
+    case "decideApproval": {
+      const [id, decision, payloadHash] = args
+      if (
+        typeof id !== "string" ||
+        (decision !== "approve" && decision !== "deny") ||
+        !host.decideApproval
+      ) {
+        throw new Error("decideApproval: an approval id and approve or deny are required")
+      }
+      // The host checks the approval is this app's and asks the person itself.
+      return host.decideApproval(
+        app,
+        id,
+        decision,
+        typeof payloadHash === "string" ? payloadHash : undefined,
+      )
+    }
+    case "openExternal": {
+      const [url] = args
+      if (typeof url !== "string" || !host.openExternal)
+        throw new Error("openExternal: a URL is required")
+      await host.openExternal(app, url)
+      return null
+    }
+    case "openRecord": {
+      const [target, entity, id] = args
+      if (
+        typeof target !== "string" ||
+        typeof entity !== "string" ||
+        typeof id !== "string" ||
+        !host.openRecord
+      ) {
+        throw new Error("openRecord: an app, an entity and a record id are required")
+      }
+      host.openRecord(app, target, entity, id)
+      return null
+    }
+    case "openApprovals": {
+      host.openApprovals?.()
+      return null
     }
     case "openConnect": {
       const options = asRecord(args[0])
@@ -352,6 +539,14 @@ export interface IsolatedViewOptions {
   /** The shell's frame document (`appFrameUrl()`). */
   frameUrl: string
   /**
+   * The frame is served on the app's own origin (LIAISON_APP_FRAME_ORIGIN_TEMPLATE):
+   * the iframe keeps that origin (`allow-same-origin`, emitted only then), the page
+   * posts to exactly that origin and hears only it.
+   */
+  originBound?: boolean
+  /** The app manifest's record types, for its typed calls' limits. */
+  entities?: readonly string[]
+  /**
    * Fresh bundle and frame URLs (new tokens, from a new app list), asked for at
    * mount when the bundle URL's token is about to expire: the URLs are fixed
    * when the app registers, and a tab opened an hour later would 404.
@@ -405,9 +600,18 @@ export function isolatedView(options: IsolatedViewOptions) {
     const tabId = useTabId()
     let frame: HTMLIFrameElement | undefined
     const subscriptions = new Map<number, () => void>()
+    const callState = frameCallState(options.entities ?? [])
+    // A frame on the app's own origin: that exact origin, both ways.
+    const boundOrigin = options.originBound
+      ? originBoundFrameOrigin(options.frameUrl, window.location.origin)
+      : null
     const given = { bundleUrl: options.bundleUrl, frameUrl: options.frameUrl }
     // The URLs as registered, or fresh ones when their token is about to expire.
-    const stale = options.freshUrls !== undefined && bundleTokenExpiresSoon(options.bundleUrl)
+    // (A frame on the app's own origin carries a token of its own, which counts too.)
+    const stale =
+      options.freshUrls !== undefined &&
+      (bundleTokenExpiresSoon(options.bundleUrl) ||
+        (options.originBound === true && bundleTokenExpiresSoon(options.frameUrl)))
     const [urls, setUrls] = createSignal<{ bundleUrl: string; frameUrl: string } | null>(
       stale ? null : given,
     )
@@ -423,10 +627,11 @@ export function isolatedView(options: IsolatedViewOptions) {
 
     const post = (message: HostToFrame) => {
       if (stopped()) return
-      // The frame's origin is opaque ("null"), so no target origin can name
-      // it; what it receives is its own app's data, and only on its own calls,
-      // and only while the frame still holds the document it was given (below).
-      frame?.contentWindow?.postMessage(message, "*")
+      // A frame on the app's own origin gets exactly that origin. An opaque
+      // frame's origin ("null") cannot be named; what it receives is its own
+      // app's data, and only on its own calls, and only while the frame still
+      // holds the document it was given (below).
+      frame?.contentWindow?.postMessage(message, boundOrigin ?? "*")
     }
 
     // The frame's first load is its own document. A second one means the app
@@ -450,13 +655,19 @@ export function isolatedView(options: IsolatedViewOptions) {
       // Only this frame's own window is heard: another frame, the page itself
       // or a window this one opened is not this app.
       if (stopped() || !frame || event.source !== frame.contentWindow) return
+      if (boundOrigin !== null && event.origin !== boundOrigin) return
       const services = host()
       const bridged = parseAppUiBridgeMessage(event.data)
       if (bridged) {
         if (services) {
-          answerFrameCall(options.app, bridged.method, bridged.args, services, tabId).catch(
-            () => {},
-          )
+          answerFrameCall(
+            options.app,
+            bridged.method,
+            bridged.args,
+            services,
+            tabId,
+            callState,
+          ).catch(() => {})
         }
         return
       }
@@ -477,6 +688,7 @@ export function isolatedView(options: IsolatedViewOptions) {
                 css: pageCss(),
                 hostOrigin: window.location.origin,
                 path: frameVisiblePath(options.app, pagePath()),
+                context: services?.context?.() ?? null,
               }),
             (error: unknown) =>
               console.warn(`Isolated app "${options.app}": its UI bundle did not load`, error),
@@ -497,7 +709,14 @@ export function isolatedView(options: IsolatedViewOptions) {
             post({ kind: "result", id, ok: false, error: "no host services" })
             return
           }
-          answerFrameCall(options.app, message.method, message.args, services, tabId).then(
+          answerFrameCall(
+            options.app,
+            message.method,
+            message.args,
+            services,
+            tabId,
+            callState,
+          ).then(
             (value) => post({ kind: "result", id, ok: true, value }),
             (error: unknown) =>
               post({
@@ -572,7 +791,7 @@ export function isolatedView(options: IsolatedViewOptions) {
               data-app={options.app}
               title={options.app}
               src={current().frameUrl}
-              sandbox={ISOLATED_APP_SANDBOX}
+              sandbox={boundOrigin !== null ? ORIGIN_BOUND_APP_SANDBOX : ISOLATED_APP_SANDBOX}
               referrerpolicy="no-referrer"
               onLoad={onLoad}
               style={{

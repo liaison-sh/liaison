@@ -254,7 +254,9 @@ export function classifyReply(
           // A usage report has no answer but `ok`: any other final answer means the
           // control plane did not record it, which must show as refused (with its
           // code), never as delivered.
-          if (!data.ok && row.type === "usage.report") {
+          // The app usage report (apps.usage) likewise: a Control that predates
+          // it refuses the type, which shows as refused and touches nothing else.
+          if (!data.ok && (row.type === "usage.report" || row.type === "apps.usage")) {
             const why = typeof data.code === "string" ? data.code.slice(0, 200) : "refused"
             if (
               USAGE_REPORT_RETRIED_CODES.has(why) &&

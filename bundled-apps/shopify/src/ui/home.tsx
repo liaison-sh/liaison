@@ -24,6 +24,7 @@ import { adminResourceId } from "./panels/url-template"
 import { formatHoursHuman, formatShopifyMoney, statusLabel } from "./list-helpers"
 import { CardTable } from "@liaison/app-ui/card-table"
 import { Chip, Empty, For, Section, Show, StatusPill } from "./primitives"
+import { onOutsideLinkClick, openOutside } from "./external-link"
 
 interface ConnectionSnapshot {
   shopDomain: string | null
@@ -135,7 +136,8 @@ function AttentionRow(props: {
         ? "bg-warning"
         : "bg-border-strong"
   // Absolute hrefs (the Shopify admin — orders have no in-app detail view)
-  // open in a new browser tab; app-relative ones stay in-app.
+  // open in a new browser tab through the host (a framed screen has no popups);
+  // app-relative ones stay in-app.
   const isExternal = () => Boolean(props.href?.startsWith("http"))
   return (
     <a
@@ -145,6 +147,7 @@ function AttentionRow(props: {
       class="group grid grid-cols-[2px_1fr_auto] items-center gap-3 rounded-md border border-border-subtle bg-surface px-3 py-2 transition-colors hover:border-border hover:bg-surface-hover"
       onClick={(e) => {
         if (!props.href) e.preventDefault()
+        else if (isExternal()) onOutsideLinkClick(e, props.href)
       }}
     >
       <span class={`h-full min-h-[1.5rem] w-[2px] rounded-full ${bar}`} aria-hidden="true" />
@@ -212,6 +215,7 @@ function RecentOrdersTable(props: { orders: RecentOrderRow[]; shopDomain: string
               href={href()}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={(e) => onOutsideLinkClick(e, href())}
               data-testid="home-open-shopify-orders"
               class="rounded-sm px-1.5 py-0.5 text-[11px] text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text"
             >
@@ -288,7 +292,7 @@ function RecentOrdersTable(props: { orders: RecentOrderRow[]; shopDomain: string
           ]}
           onRowClick={(o) => {
             const href = openOrderUrl(o.id)
-            if (href) window.open(href, "_blank", "noopener,noreferrer")
+            openOutside(href)
           }}
         />
       </Show>
@@ -343,6 +347,7 @@ export const ShopifyHome: Component = () => {
               href={href()}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={(e) => onOutsideLinkClick(e, href())}
               data-testid="home-open-shopify-admin"
               class="rounded-md border border-border bg-surface px-2.5 py-1 text-[11px] text-text-secondary transition-colors hover:border-accent-border hover:bg-accent-subtle hover:text-accent"
             >

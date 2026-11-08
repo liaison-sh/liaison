@@ -380,6 +380,7 @@ export const CELL_BILLING_MESSAGE_TYPES = [
   "billing.auto_topup_settings",
   "billing.auto_topup_request",
   "usage.report",
+  "apps.usage",
   "storage.estimate",
   "mail.domain_add",
   "mail.domain_status",
@@ -490,6 +491,38 @@ export const cellBillingDataSchemas = {
     })
     .strict(),
   /**
+   * One org's app usage of a UTC day on this cell, per (app, executor): runs,
+   * bridge calls, wall and CPU milliseconds (`cpuMs` null when the executor
+   * cannot measure it: QuickJS, or a Workers day not pulled from the loader
+   * yet). Separate from `usage.report`, so a Control that refuses it (one that
+   * predates it) never loses the billing report. `capsVersion` is the caps
+   * version the cell accepts (`CAPS_CONTRACT_VERSION`, c2c.ts): Control sends
+   * the app cap kinds only to a cell that reported 2 or more. Sent daily for
+   * every org of a managed cell, `rows` empty when nothing ran.
+   */
+  "apps.usage": z
+    .object({
+      ...requestFields,
+      day: daySchema,
+      capsVersion: z.number().int().min(1).max(1000),
+      rows: z
+        .array(
+          z
+            .object({
+              app: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,127}$/),
+              executor: z.enum(["workers", "quickjs", "inprocess"]),
+              runs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+              bridgeCalls: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+              wallMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+              cpuMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable(),
+            })
+            .strict(),
+        )
+        .max(1000),
+      computedAt: z.iso.datetime().optional(),
+    })
+    .strict(),
+  /**
    * The org's nightly storage estimate crossed its plan's cap, up (`over`) or back down. Sent on a
    * crossing only, so Control gets nothing about an org under its cap. Information only.
    */
@@ -545,6 +578,7 @@ export const cellBillingMessageSchemas = {
   "billing.auto_topup_settings": cellBillingEnvelope("billing.auto_topup_settings"),
   "billing.auto_topup_request": cellBillingEnvelope("billing.auto_topup_request"),
   "usage.report": cellBillingEnvelope("usage.report"),
+  "apps.usage": cellBillingEnvelope("apps.usage"),
   "storage.estimate": cellBillingEnvelope("storage.estimate"),
   "mail.domain_add": cellBillingEnvelope("mail.domain_add"),
   "mail.domain_status": cellBillingEnvelope("mail.domain_status"),
@@ -567,6 +601,7 @@ export const cellBillingMessageSchema = z.discriminatedUnion("type", [
   cellBillingMessageSchemas["billing.auto_topup_settings"],
   cellBillingMessageSchemas["billing.auto_topup_request"],
   cellBillingMessageSchemas["usage.report"],
+  cellBillingMessageSchemas["apps.usage"],
   cellBillingMessageSchemas["storage.estimate"],
   cellBillingMessageSchemas["mail.domain_add"],
   cellBillingMessageSchemas["mail.domain_status"],
@@ -844,6 +879,7 @@ export const cellBillingOkReplySchemas = {
     .object({ ok: z.literal(true), invoiceId: providerIdSchema, credits: wholeCreditsSchema })
     .strict(),
   "usage.report": okOnly,
+  "apps.usage": okOnly,
   "storage.estimate": okOnly,
   "mail.domain_add": mailDomainReplySchema,
   "mail.domain_status": z

@@ -57,13 +57,16 @@ import {
   installShutdownSignals,
   isShuttingDown,
   markBootFinished,
+  registerShutdownPhase,
   shutdownBudgets,
 } from "~/lib/shutdown"
 import { registerProcessShutdownPhases } from "~/lib/shutdown-phases"
 import { startInternalListener } from "~/modules/agent/mailbox-plaintext/mailbox-forward"
 import { registerConnectionTeardownSweep } from "~/modules/apps/connections/revoke"
 import { awaitOrgApps, getDefaultApps } from "~/modules/apps/init"
+import { startAppUsageRecorder, stopAppUsageRecorder } from "~/modules/apps/usage/app-usage"
 import { startVersionsInUseHeartbeat } from "~/modules/apps/versions-in-use"
+import { internalAppBridgeRoute } from "~/modules/apps/workers/bridge-forward"
 import { consumeWsTicket } from "~/modules/auth/ws-ticket"
 import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
 import { healthzRoutes } from "~/modules/healthz"
@@ -128,6 +131,25 @@ rootLogger.info({ role, instanceId: INSTANCE_ID }, "Process role")
 const legacyControlPlane = legacyControlPlaneBootProblem()
 if (legacyControlPlane) rootLogger.warn(legacyControlPlane)
 
+// App screens on origins of their own (lib/app-frame-host.ts): a frame template on
+// the app's own site, or one that can name an org host, is refused on a managed
+// cell; a self-hosted server boots and says why it should not share the site.
+{
+  const { appFrameTemplateProblems } = await import("~/lib/app-frame-host")
+  const { registrableDomain } = await import("~/modules/demo/demo-email")
+  const frame = appFrameTemplateProblems(process.env, registrableDomain)
+  for (const warning of frame.warn) rootLogger.warn(warning)
+  if (frame.refuse.length > 0) {
+    rootLogger.fatal(
+      { problems: frame.refuse },
+      `LIAISON_APP_FRAME_ORIGIN_TEMPLATE cannot be used:\n- ${frame.refuse.join("\n- ")}`,
+    )
+    rootLogger.flush()
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    process.exit(1)
+  }
+}
+
 // The managed edition refuses to boot without its operator org, org host
 // template, control plane endpoint and installed identity (lib/managed-boot.ts).
 if (managedBootRequired()) {
@@ -159,9 +181,10 @@ initEventBus()
 // Instance liveness (infra/instance-registry.ts): every role writes its heartbeat
 // record; entries this process owns in Redis are ignored once it lapses.
 // The internal listener (every role: api and worker turns both mint mailbox
-// requests) is where another process forwards a mailbox answer this one minted.
+// requests and dispatch app runs) is where another process forwards a mailbox
+// answer this one minted, or a bridge call of an app run this one dispatched.
 // Its address rides the heartbeat record; it is never the public PORT.
-const internalListener = await startInternalListener()
+const internalListener = await startInternalListener({ extraRoutes: [internalAppBridgeRoute()] })
 await startInstanceHeartbeat({ role, pid: process.pid, internalUrl: internalListener.url })
 // The app versions this process loads, so a prune never deletes one under it
 // while two releases overlap (modules/apps/versions-in-use.ts).
@@ -221,6 +244,15 @@ registerAppCronFanout()
 await registerKernelJobs()
 await registerKnowledgeJobs()
 initWebhookWorker()
+// Per-org app usage (modules/apps/usage/app-usage.ts): counted as runs settle,
+// written in batches; what is pending is written at shutdown.
+startAppUsageRecorder()
+registerShutdownPhase({
+  name: "app-usage-flush",
+  at: "after-drain",
+  deadlineMs: 3_000,
+  run: () => stopAppUsageRecorder(),
+})
 // The load harness's synthetic job, only on a box with the harness key.
 if (loadHarnessEnabled()) registerLoadSyntheticWorker()
 

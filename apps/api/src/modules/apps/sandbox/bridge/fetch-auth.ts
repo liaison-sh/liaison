@@ -191,7 +191,10 @@ export function matchesConnectionHost(
   connection: string,
   url: string | URL,
 ): boolean {
-  const domains = manifest.connections?.[connection]?.allowedDomains ?? []
+  const declaration = manifest.connections?.[connection]
+  const domains = declaration?.allowedDomains ?? []
+  // Hosts declared but none granted (egress-grants.ts): the credential goes nowhere.
+  if (declaration?.noGrantedHost) return false
   if (domains.length === 0) return customAppNameKey(manifest.name) === null
   return matchesDomain(url, domains)
 }

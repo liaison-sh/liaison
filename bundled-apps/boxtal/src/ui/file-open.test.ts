@@ -83,3 +83,42 @@ describe("loadFileInto", () => {
     expect(win.location.href).toBe("blob:http://tauri.localhost/1")
   })
 })
+
+// Framed (the screen on its own origin or in a shell's frame): no network, no popup. The app names
+// the file and the host fetches and opens it; no tab of the app's, no bytes in the frame.
+describe("loadFileInto in a frame", () => {
+  it("asks the host to open the file by id, fetches nothing itself and opens no tab", async () => {
+    const openFileById = mock(async (_app: string, _id: string, _name: string) => {})
+    const fetchBlob = mock(async () => new Blob(["x"]))
+    g.__LIAISON_TEST_APP_NAME = "boxtal"
+    g.__liaisonHost = { framed: true, openFileById, fetchBlob, openFile: async () => false }
+    try {
+      const { openPreparingTab } = await import("./file-open")
+      expect(openPreparingTab()).toBeNull()
+      await loadFileInto("0123456789abcdef", null, "label")
+      expect(openFileById).toHaveBeenCalledWith("boxtal", "0123456789abcdef", "label-01234567.pdf")
+      expect(fetchBlob).not.toHaveBeenCalled()
+      expect(createObjectURL).not.toHaveBeenCalled()
+    } finally {
+      delete g.__LIAISON_TEST_APP_NAME
+    }
+  })
+
+  it("in the page keeps its own path even when the host has the typed call", async () => {
+    const openFileById = mock(async () => {})
+    g.__LIAISON_TEST_APP_NAME = "boxtal"
+    g.__liaisonHost = {
+      openFileById,
+      fetchBlob: async () => new Blob(["%PDF"], { type: "application/pdf" }),
+      openFile: async () => false,
+    }
+    try {
+      const win = fakeWin()
+      await loadFileInto("0123456789abcdef", win as unknown as Window, "label")
+      expect(openFileById).not.toHaveBeenCalled()
+      expect(win.location.href).toBe("blob:http://tauri.localhost/1")
+    } finally {
+      delete g.__LIAISON_TEST_APP_NAME
+    }
+  })
+})

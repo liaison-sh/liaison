@@ -20,7 +20,8 @@
       "!apps/desktop/sidecar/vendor/**",
       "!apps/mobile/ios/**",
       "!apps/mobile/android/**",
-      "!**/__fixtures__/**/*.html"
+      "!**/__fixtures__/**/*.html",
+      "!apps/api/src/modules/apps/workers/__fixtures__/bridge-reply.ts"
     ]
   },
   "assist": {

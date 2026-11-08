@@ -10,9 +10,14 @@
 // - `org`: the host matches the template with a slug that can be an org's.
 // - `non-org`: anything else (the cell's own `cell-<n>` names, a tunnel host,
 //   loopback, a bare IP, no host at all). It serves only NON_ORG_HOST_PATHS.
+// - `app-frame`: a host the app frame template names (`<app>--<org>`,
+//   lib/app-frame-host.ts), resolved FIRST and whatever the org template says.
+//   It serves the frame document of that app for that org and nothing else, and
+//   no credential is ever accepted on it.
 
 import type { Context } from "hono"
 import { HTTPException } from "hono/http-exception"
+import { appFrameHostOf } from "~/lib/app-frame-host"
 import { env } from "~/lib/env"
 import { effectiveRequest, effectiveRequestFromRaw } from "~/lib/request-context"
 
@@ -20,6 +25,7 @@ export type HostBinding =
   | { kind: "unbound" }
   | { kind: "org"; slug: string; origin: string }
   | { kind: "non-org" }
+  | { kind: "app-frame"; app: string; slug: string; host: string }
 
 const SLUG_LABEL = "[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
 /** Labels a cell answers to for itself (its own name, its origin name): never an org. */
@@ -52,6 +58,8 @@ export function hostBindingEnabled(): boolean {
 
 /** What a host (as the edge reported it) is under the template. */
 export function hostBindingOf(host: string | null): HostBinding {
+  const frame = appFrameHostOf(host)
+  if (frame && host) return { kind: "app-frame", ...frame, host: host.toLowerCase() }
   const matcher = templateMatcher()
   if (!matcher) return { kind: "unbound" }
   if (!host) return { kind: "non-org" }
@@ -116,7 +124,7 @@ export function forgetOrgHostCache(): void {
 /** Whether a credential of `orgId` may be used under this binding. */
 export async function bindingAllowsOrg(binding: HostBinding, orgId: string): Promise<boolean> {
   if (binding.kind === "unbound") return true
-  if (binding.kind === "non-org") return false
+  if (binding.kind !== "org") return false
   return (await orgIdForSlug(binding.slug)) === orgId
 }
 
@@ -140,7 +148,7 @@ export async function assertHostAllowsOrg(c: Context, orgId: string): Promise<vo
 export function signInOrgSlug(c: Context, bodySlug: string | undefined): string | undefined {
   const binding = requestHostBinding(c)
   if (binding.kind === "unbound") return bodySlug
-  if (binding.kind === "non-org") throw new HTTPException(404, { message: "Not found" })
+  if (binding.kind !== "org") throw new HTTPException(404, { message: "Not found" })
   if (bodySlug !== undefined && bodySlug !== "" && bodySlug.toLowerCase() !== binding.slug) {
     throw new HTTPException(400, { message: "This workspace is served on its own address" })
   }
@@ -185,7 +193,7 @@ export function boundCorsOrigin(c: Context, origin: string, extra: string[]): st
 export function refreshOriginAllowed(c: Context, extra: string[]): boolean {
   const binding = requestHostBinding(c)
   if (binding.kind === "unbound") return true
-  if (binding.kind === "non-org") return false
+  if (binding.kind !== "org") return false
   const origin = c.req.header("origin")
   if (origin === undefined) return true
   return origin === binding.origin || extra.includes(origin)

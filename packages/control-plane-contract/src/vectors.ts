@@ -265,6 +265,29 @@ export const moneyVectors = {
         rawCostUsd: "3.14159265",
         rows: 42,
       }),
+      "apps.usage": cellMessage("apps.usage", {
+        day: "2026-11-01",
+        capsVersion: 2,
+        rows: [
+          {
+            app: "shopify",
+            executor: "workers",
+            runs: 1200,
+            bridgeCalls: 5400,
+            wallMs: 98_000,
+            cpuMs: 4100,
+          },
+          {
+            app: "shopify",
+            executor: "quickjs",
+            runs: 3,
+            bridgeCalls: 0,
+            wallMs: 210,
+            cpuMs: null,
+          },
+        ],
+        computedAt: "2026-11-02T00:20:00.000Z",
+      }),
       "storage.estimate": cellMessage("storage.estimate", {
         day: "2026-11-01",
         estimatedBytes: 12_884_901_888,
@@ -326,6 +349,16 @@ export const moneyVectors = {
       "usage.report": {
         message: cellMessage("usage.report", { day: "2026-11-01", rawCostUsd: "-1", rows: 1 }),
         path: ["data", "rawCostUsd"],
+      },
+      "apps.usage": {
+        message: cellMessage("apps.usage", {
+          day: "2026-11-01",
+          capsVersion: 2,
+          rows: [
+            { app: "shopify", executor: "edge", runs: 1, bridgeCalls: 0, wallMs: 1, cpuMs: null },
+          ],
+        }),
+        path: ["data", "rows", "0", "executor"],
       },
       "storage.estimate": {
         message: cellMessage("storage.estimate", {
@@ -454,6 +487,7 @@ export const moneyVectors = {
       "billing.auto_topup_settings": [{ ok: true, autoTopUp }],
       "billing.auto_topup_request": [{ ok: true, invoiceId: INVOICE_ID, credits: 25 }],
       "usage.report": [{ ok: true }],
+      "apps.usage": [{ ok: true }],
       "storage.estimate": [{ ok: true }],
       "mail.domain_add": [{ ok: true, domain: mailDomain }],
       "mail.domain_status": [

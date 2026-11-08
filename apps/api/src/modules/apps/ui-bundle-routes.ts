@@ -52,10 +52,23 @@ async function orgPrivateBundleRefused(
   name: string,
   version: string,
 ): Promise<boolean> {
+  const binding = requestHostBinding(c)
+  const hostOrg = binding.kind === "org" ? await orgIdForSlug(binding.slug) : null
+  return orgPrivateBundleRefusedFor(hostOrg, name, version)
+}
+
+/**
+ * `orgPrivateBundleRefused` for a known serving org (the org whose host, or whose
+ * app frame host, the request came to; null when it names none).
+ */
+export async function orgPrivateBundleRefusedFor(
+  servingOrg: string | null,
+  name: string,
+  version: string,
+): Promise<boolean> {
   const owner = await appOwnerOrg(name)
   if (owner === null) return customAppNameKey(name) !== null
-  const binding = requestHostBinding(c)
-  if (binding.kind !== "org" || (await orgIdForSlug(binding.slug)) !== owner) return true
+  if (servingOrg === null || servingOrg !== owner) return true
   if (await orgSuspendedOrClosed(owner)) return true
   const [approval] = await withSystemDb("ui-bundle-owner-approval", (db) =>
     db

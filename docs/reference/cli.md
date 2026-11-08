@@ -639,10 +639,10 @@ liaison org transfer agent --role target | agent --role source <org id> --transf
 
 ## org caps
 
-Show or set an organization's caps: seats (active people), mailboxes (connected Gmail or IMAP addresses), storage in GB, and background jobs per hour. Without a change flag it prints the caps and the usage; a change keeps the caps it does not name. A missing cap is unlimited, which is how every org starts. Each cap is a whole number of at least 1: 0 is refused, and `--unset` makes a cap unlimited. Only the operator sets caps: org admins see them read only in Settings → Organization. A cap below current usage removes nothing; new seats and mailboxes are refused until usage drops, and background jobs over the hourly cap wait for the next hour.
+Show or set an organization's caps: seats (active people), mailboxes (connected Gmail or IMAP addresses), storage in GB, background jobs per hour, custom apps, audit days, and the org's app runs, app calls and app CPU milliseconds per UTC day. Without a change flag it prints the caps and the usage; a change keeps the caps it does not name. A missing cap is unlimited, which is how every org starts. Each cap is a whole number of at least 1: 0 is refused, and `--unset` makes a cap unlimited. Only the operator sets caps: org admins see them read only in Settings → Organization. A cap below current usage removes nothing; new seats and mailboxes are refused until usage drops, background jobs over the hourly cap wait for the next hour, and past an app day cap tools are refused while webhooks, events and app jobs wait for the next UTC day.
 
 ```
-liaison org caps <org slug or id> [--seats <n>] [--mailboxes <n>] [--storage-gb <n>] [--jobs-per-hour <n>] [--custom-apps <n>] [--audit-days <n>] [--unset <cap>]
+liaison org caps <org slug or id> [--seats <n>] [--mailboxes <n>] [--storage-gb <n>] [--jobs-per-hour <n>] [--custom-apps <n>] [--audit-days <n>] [--app-runs-per-day <n>] [--app-bridge-calls-per-day <n>] [--app-cpu-ms-per-day <n>] [--unset <cap>]
 ```
 
 | Flag | Required | Description |
@@ -654,7 +654,10 @@ liaison org caps <org slug or id> [--seats <n>] [--mailboxes <n>] [--storage-gb 
 | `--jobs-per-hour <n>` | no | Most background jobs started per clock hour; the rest wait for the next hour. |
 | `--custom-apps <n>` | no | Most custom apps installed for the org. |
 | `--audit-days <n>` | no | Most days of audit log the org keeps. |
-| `--unset <seats\|mailboxes\|storage-gb\|jobs-per-hour\|custom-apps\|audit-days>` | no | Make that cap unlimited again. Repeatable. |
+| `--app-runs-per-day <n>` | no | Most app runs per UTC day (tools, webhooks, events, jobs, polls, searches). |
+| `--app-bridge-calls-per-day <n>` | no | Most calls apps running on Workers make back to the server per UTC day. |
+| `--app-cpu-ms-per-day <n>` | no | Most CPU milliseconds of apps running on Workers per UTC day, as the loader measures it (pulled hourly). |
+| `--unset <seats\|mailboxes\|storage-gb\|jobs-per-hour\|custom-apps\|audit-days\|app-runs-per-day\|app-bridge-calls-per-day\|app-cpu-ms-per-day>` | no | Make that cap unlimited again. Repeatable. |
 
 ## mailbox purge
 

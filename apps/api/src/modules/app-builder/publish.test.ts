@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // The approval card's delta of a publish against the active version (pure).
 import { describe, expect, test } from "bun:test"
+import { declaredDomains } from "~/modules/apps/egress-grants"
 import { grantsOf, manifestDelta, pinTypecheck, readPin, typecheckLine } from "./publish"
 
 const v1 = {
@@ -46,6 +47,7 @@ describe("manifestDelta", () => {
       connections: [],
       capabilities: [],
       crossAppCalls: ["knowledge:search"],
+      domains: declaredDomains(v1),
     })
     expect(readPin({ draftId: "d", n: 1, appName: "a", appVersion: "0.1.0" })).toBeNull()
     expect(

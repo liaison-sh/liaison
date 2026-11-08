@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// Settings → Organization → Usage and limits: four read-only rows (seats,
+// Settings → Organization → Usage and limits: read-only rows (seats,
 // mailboxes, storage, background jobs this hour; plans do not limit mailboxes,
-// so no mailbox row in the managed edition), each "used of limit" or
+// so no mailbox row in the managed edition; then app runs, app calls and app
+// CPU today, shown once the org has a cap on them or used them), each "used of limit" or
 // "used · unlimited" (`GET /api/org/usage`), and one line saying the limits are
 // set by whoever runs the server. Calm on purpose: no edit control and no alarm
 // colour; a cap at or past its limit gets one neutral emphasis (stronger text
@@ -14,8 +15,11 @@ import { useApi } from "~/modules/shell/ApiContext"
 import { billingMode } from "./BillingState"
 
 type Row = {
-  id: "seats" | "mailboxes" | "storage" | "jobs"
-  entry: (u: OrgUsage) => OrgUsageEntry
+  id: "seats" | "mailboxes" | "storage" | "jobs" | "appRuns" | "appBridgeCalls" | "appCpuMs"
+  /** Undefined: a server that does not report it. */
+  entry: (u: OrgUsage) => OrgUsageEntry | undefined
+  /** Shown only with a cap or some use (the app rows). */
+  quiet?: boolean
   label: string
   help: string
   gb?: boolean
@@ -47,7 +51,35 @@ const ROWS: Row[] = [
     label: "kernel.orgUsage.jobs",
     help: "kernel.orgUsage.jobsHelp",
   },
+  {
+    id: "appRuns",
+    entry: (u) => u.appRunsToday,
+    label: "kernel.orgUsage.appRuns",
+    help: "kernel.orgUsage.appRunsHelp",
+    quiet: true,
+  },
+  {
+    id: "appBridgeCalls",
+    entry: (u) => u.appBridgeCallsToday,
+    label: "kernel.orgUsage.appBridgeCalls",
+    help: "kernel.orgUsage.appBridgeCallsHelp",
+    quiet: true,
+  },
+  {
+    id: "appCpuMs",
+    entry: (u) => u.appCpuMsToday,
+    label: "kernel.orgUsage.appCpuMs",
+    help: "kernel.orgUsage.appCpuMsHelp",
+    quiet: true,
+  },
 ]
+
+/** Whether a row is shown for this usage. */
+export function rowShown(row: Pick<Row, "entry" | "quiet">, u: OrgUsage): boolean {
+  const e = row.entry(u)
+  if (!e) return false
+  return !row.quiet || e.limit !== null || e.used > 0
+}
 
 /**
  * At or past the limit. An unlimited cap (null) never is; a cap is a whole
@@ -94,9 +126,13 @@ const OrgUsageSection: Component = () => {
       <Show when={!usage.error && usage()}>
         {(u) => (
           <ul data-testid="org-usage-list" class="flex flex-col divide-y divide-border-subtle">
-            <For each={ROWS.filter((r) => billingMode() !== "managed" || r.id !== "mailboxes")}>
+            <For
+              each={ROWS.filter(
+                (r) => (billingMode() !== "managed" || r.id !== "mailboxes") && rowShown(r, u()),
+              )}
+            >
               {(row) => {
-                const e = () => row.entry(u())
+                const e = () => row.entry(u()) as OrgUsageEntry
                 const reached = () => atLimit(e())
                 return (
                   <li

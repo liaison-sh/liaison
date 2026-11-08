@@ -8,14 +8,27 @@
 //   kind "run"   one app run through runApp of an app listed in
 //                LIAISON_WORKERS_APPS, on whichever executor ran it (run-app.ts):
 //                {kind, runId?, app, entry, executor, nested, parentApp?, ms, at,
-//                 ok, loader?, sleepMs?, sleepExact?}
+//                 ok, loader?, sleepMs?, sleepExact?, fallback?, attempts?, errorKind?,
+//                 faultClass?}
 //                `loader` is the loader's own timings (Workers only); `sleepMs`
 //                the time the app's code waited in its own timers inside the
 //                isolate (worker-core.ts; Workers only, QuickJS has no timers).
+//                `fallback` ("breaker" | "app") marks a run meant for Workers that ran
+//                on QuickJS (workers/fallback.ts); `attempts` is 2 when it was retried.
+//
+// The run records are one subscriber of runApp's run-settled event
+// (run-settled.ts).
 
 import { appendFile } from "node:fs/promises"
 import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
+import { isCustomAppName } from "~/modules/apps/custom-app-name"
+import {
+  onRunSettled,
+  type RunSettledInfo,
+  type WorkersFallback,
+  type WorkersFaultClass,
+} from "./run-settled"
 
 const log = rootLogger.child({ module: "app-bridge-timings" })
 
@@ -61,6 +74,10 @@ export interface RunTiming {
   sleepMs?: number
   /** False when another run shared the isolate's timers meanwhile (sleepMs is then an upper bound). */
   sleepExact?: boolean
+  fallback?: WorkersFallback
+  attempts?: number
+  errorKind?: string
+  faultClass?: WorkersFaultClass
 }
 
 export type TimingRecord = BridgeTiming | RunTiming
@@ -106,3 +123,56 @@ export function clearBridgeTimings(): void {
   ring.length = 0
   runRing.length = 0
 }
+
+/**
+ * Whether an app's runs write a timing record: listed in LIAISON_WORKERS_APPS
+ * (whatever else is set), or a custom app while LIAISON_WORKERS_CUSTOM_APPS is on.
+ */
+export function isTimedApp(appName: string): boolean {
+  if (timedApps().has(appName)) return true
+  const flag = (env.LIAISON_WORKERS_CUSTOM_APPS ?? "").trim().toLowerCase()
+  return (flag === "1" || flag === "true") && isCustomAppName(appName)
+}
+
+/** The apps LIAISON_WORKERS_APPS lists. */
+function timedApps(): ReadonlySet<string> {
+  const raw = env.LIAISON_WORKERS_APPS ?? ""
+  if (raw === timedAppsRaw) return timedAppsSet
+  timedAppsRaw = raw
+  timedAppsSet = new Set(
+    raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  )
+  return timedAppsSet
+}
+let timedAppsRaw = ""
+let timedAppsSet: ReadonlySet<string> = new Set()
+
+/** A settled run -> its run record. */
+export function runTimingOf(info: RunSettledInfo): RunTiming {
+  return {
+    kind: "run",
+    ...(info.runId ? { runId: info.runId } : {}),
+    app: info.app,
+    entry: info.entry,
+    executor: info.executor,
+    nested: info.nested,
+    ...(info.parentApp ? { parentApp: info.parentApp } : {}),
+    ms: info.ms,
+    ok: info.ok,
+    at: info.at,
+    ...(info.loader ? { loader: info.loader } : {}),
+    ...(info.sleepMs !== undefined ? { sleepMs: info.sleepMs } : {}),
+    ...(info.sleepExact !== undefined ? { sleepExact: info.sleepExact } : {}),
+    ...(info.fallback ? { fallback: info.fallback } : {}),
+    ...(info.attempts !== undefined && info.attempts > 1 ? { attempts: info.attempts } : {}),
+    ...(info.errorKind ? { errorKind: info.errorKind } : {}),
+    ...(info.faultClass ? { faultClass: info.faultClass } : {}),
+  }
+}
+
+onRunSettled((info) => {
+  if (isTimedApp(info.app)) recordRunTiming(runTimingOf(info))
+})

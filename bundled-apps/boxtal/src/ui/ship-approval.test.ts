@@ -101,9 +101,14 @@ describe("deciding from the grid", () => {
     expect(decideBody(approval({ payloadHash: "abc" }), "deny")).toEqual({ decision: "deny" })
   })
 
-  it("the grid sends that body, never a bare decision", () => {
+  it("the grid decides through the host with that body's fingerprint, never a raw kernel route", () => {
     const grid = readFileSync(new URL("./PrepGrid.tsx", import.meta.url), "utf8")
-    expect(grid).toContain("JSON.stringify(decideBody(approval, decision))")
-    expect(grid).not.toContain("JSON.stringify({ decision })")
+    expect(grid).toContain("const body = decideBody(approval, decision)")
+    expect(grid).toContain("app.decideApproval(approval.id, decision, body.payloadHash)")
+    expect(grid).toContain("app.listMyApprovals()")
+    // A framed screen reaches no kernel route: no approvals fetch, no org from a token alone.
+    expect(grid).not.toContain("hostFetch")
+    expect(grid).not.toContain('navigate("/approvals")')
+    expect(grid).toContain("getContext()?.orgId")
   })
 })

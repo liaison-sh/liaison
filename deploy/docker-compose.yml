@@ -650,6 +650,11 @@ services:
       # self-hosted server, every link on BASE_URL, provider redirects on BASE_URL.
       LIAISON_EDITION: ${LIAISON_EDITION:-}
       LIAISON_ORG_HOST_TEMPLATE: ${LIAISON_ORG_HOST_TEMPLATE:-}
+      # App screens on origins of their own: https://{app}--{org}.<a domain of its own>
+      # (docs/app-sandbox.md). Unset, outside apps run in the opaque frame.
+      LIAISON_APP_FRAME_ORIGIN_TEMPLATE: ${LIAISON_APP_FRAME_ORIGIN_TEMPLATE:-}
+      # First-party apps framed on their own origin too (e.g. shopify,boxtal).
+      LIAISON_FRAMED_APPS: ${LIAISON_FRAMED_APPS:-}
       LIAISON_OAUTH_REDIRECT_BASE: ${LIAISON_OAUTH_REDIRECT_BASE:-}
       LIAISON_EDGE_MODE: ${LIAISON_EDGE_MODE:-}
       LIAISON_EDGE_SECRET: ${LIAISON_EDGE_SECRET:-}

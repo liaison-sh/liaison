@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { ManifestHandlerRef } from "~/modules/apps/app-registries"
 import { resolveToolTimeoutMs } from "~/modules/apps/sandbox/executor"
-import { runApp } from "~/modules/apps/sandbox/run-app"
+import { runApp, type WorkersPlan } from "~/modules/apps/sandbox/run-app"
 
 /**
  * What a declared budget leaves for waiting on a pinned slot and answering. The
@@ -50,6 +50,8 @@ interface ExecuteManifestWebhookOptions {
   extraArgs?: unknown[]
   /** `webhook` (the delivery, default) or `webhook-verify`, for the run timing record. */
   entryKind?: "webhook" | "webhook-verify"
+  /** The executor decision taken before the bridge was built (planWorkersRun). */
+  workersPlan?: WorkersPlan
 }
 
 export async function executeManifestWebhook({
@@ -63,6 +65,7 @@ export async function executeManifestWebhook({
   extraArgs,
   timeoutMs,
   entryKind,
+  workersPlan,
 }: ExecuteManifestWebhookOptions): Promise<unknown> {
   return runApp({
     trusted: handlerRef.trusted === true,
@@ -77,6 +80,7 @@ export async function executeManifestWebhook({
     extraArgs,
     holdsTx,
     ...(timeoutMs ? { timeoutMs } : {}),
+    ...(workersPlan ? { workersPlan } : {}),
     // Webhook handlers are external-triggered background
     // work; they must not starve foreground (user/agent) tool calls under load
     // (worker-pool reserves capacity for interactive execs).

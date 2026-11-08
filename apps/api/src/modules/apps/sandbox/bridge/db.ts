@@ -33,7 +33,6 @@ const MAILBOX_CONTENT_ENTITIES: ReadonlySet<string> = new Set([
 
 export function createDbMethods(ctx: BridgeContext): Record<string, any> {
   const {
-    allowedDomains,
     appName,
     assertMailboxNotResetMidRun,
     assertNoMailboxPlaintext,
@@ -446,7 +445,9 @@ export function createDbMethods(ctx: BridgeContext): Record<string, any> {
         const { bulkBlobScope, fetchToBlob } = await import("~/modules/apps/sandbox/bulk-blob")
         const allowPrivateHostsInTest = manifest.network?.allowPrivateHostsInTest ?? false
         // Reuse the sandbox URL validator so quota+fetch share the same allowlist
-        // and private-net protection as `ctx.fetch`.
+        // (declared AND granted, context.ts collectAllowedDomains) and private-net
+        // protection as `ctx.fetch`.
+        const { allowedDomains } = await ctx.egress()
         await validateSandboxFetchUrl(url, allowedDomains, allowPrivateHostsInTest, appName)
         // Same demo posture as `ctx.fetch`: a demo org's bulk download is
         // refused before the stream opens. Unlike `ctx.fetch` there is no

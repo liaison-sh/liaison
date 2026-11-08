@@ -2,8 +2,10 @@
 import { createHash } from "node:crypto"
 import type { MiddlewareHandler } from "hono"
 import { browserStorageOrigin } from "~/infra/storage/delivery"
+import { appFrameHostOf, appFrameSource } from "~/lib/app-frame-host"
 import { isManagedEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
+import { effectiveRequest } from "~/lib/request-context"
 import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
 
 /** Cloudflare Turnstile's script and challenge frame origin (demo forms only). */
@@ -60,7 +62,10 @@ export function contentSecurityPolicy(options: ContentSecurityPolicyOptions = {}
     shell && (options.turnstile ?? (isDemoModeEnabled() && Boolean(env.TURNSTILE_SITE_KEY)))
   const turnstileSource = turnstile ? ` ${TURNSTILE_ORIGIN}` : ""
   const payFrame = shell ? payFrameOrigin(options.payFrameOrigin) : null
-  const frameSources = `${turnstileSource}${payFrame ? ` ${payFrame}` : ""}`
+  // App screens on origins of their own (LIAISON_APP_FRAME_ORIGIN_TEMPLATE): the page frames
+  // `<app>--<org>` hosts of that one domain (lib/app-frame-host.ts).
+  const appFrames = shell ? appFrameSource() : null
+  const frameSources = `${turnstileSource}${payFrame ? ` ${payFrame}` : ""}${appFrames ? ` ${appFrames}` : ""}`
   return [
     "default-src 'self'",
     // The web shell compiles one WebAssembly module: the Argon2id that opens a
@@ -161,7 +166,13 @@ export function securityHeaders(options: SecurityHeadersOptions = {}): Middlewar
     // framing rule is kept too: the app frame document (modules/apps/app-frame.ts)
     // is framed by this origin's pages, and pins that in its policy.
     const own = c.res.headers
-    if (!own.has("X-Frame-Options"))
+    // The frame document on an app frame host is framed by its org's page on another
+    // origin: its policy's `frame-ancestors` names exactly that page, and an
+    // X-Frame-Options (which cannot name another origin) would forbid it.
+    const frameDocument =
+      own.get("Content-Security-Policy")?.includes("frame-ancestors http") === true &&
+      appFrameHostOf(effectiveRequest(c).host) !== null
+    if (!own.has("X-Frame-Options") && !frameDocument)
       c.header("X-Frame-Options", BASE_SECURITY_HEADERS["X-Frame-Options"] as string)
     if (!own.has("Referrer-Policy"))
       c.header("Referrer-Policy", BASE_SECURITY_HEADERS["Referrer-Policy"] as string)

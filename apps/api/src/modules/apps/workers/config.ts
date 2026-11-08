@@ -6,12 +6,15 @@
 // Workers is selected only when the loader variables (LIAISON_APP_LOADER_URL,
 // _CELL_ID, _KEY) are set and valid, at least one way of choosing apps is set
 // (LIAISON_WORKERS_APPS with LIAISON_WORKERS_BUNDLES for listed apps,
-// LIAISON_WORKERS_CUSTOM_APPS=1 for every custom app of the cell), AND the
-// process role is `all`: the run registry behind /api/app-bridge is in memory,
-// so the process that dispatches a run must be the one that answers its bridge
-// calls. Anything else is QuickJS, and the bridge routes answer 404. Read on
-// every call, so a test (or an operator reload) sees the configuration as it
-// is now.
+// LIAISON_WORKERS_CUSTOM_APPS=1 for every custom app of the cell). Every role
+// may use it: the run registry behind /api/app-bridge is in memory, but a run
+// id names the process that dispatched it, and a bridge call landing on
+// another process is forwarded there (bridge-forward.ts). So a `worker`
+// process (jobs, crons, webhooks) runs apps on Workers too, while its
+// isolates call back on the public API's address (LIAISON_APP_BRIDGE_BASE_URL,
+// else BASE_URL). Anything else is QuickJS, and the bridge routes answer 404.
+// Read on every call, so a test (or an operator reload) sees the configuration
+// as it is now.
 //
 // Listed apps take their Worker module's sha from the static
 // LIAISON_WORKERS_BUNDLES map. Custom apps (LIAISON_WORKERS_CUSTOM_APPS=1) take
@@ -21,7 +24,6 @@
 
 import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
-import { currentRole } from "~/lib/process-role"
 import { isCustomAppName } from "~/modules/apps/custom-app-name"
 
 const log = rootLogger.child({ module: "apps-workers-config" })
@@ -89,7 +91,7 @@ function parseCustomApps(raw: string | undefined): boolean | string {
   return 'LIAISON_WORKERS_CUSTOM_APPS must be "1" or "0"'
 }
 
-/** The selection as configured right now (env + role). */
+/** The selection as configured right now. */
 export function readWorkersSelection(): WorkersSelection {
   const customApps = parseCustomApps(env.LIAISON_WORKERS_CUSTOM_APPS)
   const loader = [
@@ -109,11 +111,6 @@ export function readWorkersSelection(): WorkersSelection {
   if (typeof customApps === "string") return { kind: "invalid", reason: customApps }
   const missing = required.filter(([, v]) => blank(v)).map(([n]) => n)
   if (missing.length > 0) return { kind: "invalid", reason: `missing ${missing.join(", ")}` }
-
-  const role = currentRole()
-  if (role !== "all") {
-    return { kind: "invalid", reason: `LIAISON_ROLE is "${role}"; Workers needs "all"` }
-  }
 
   const apps = new Set(
     (env.LIAISON_WORKERS_APPS ?? "")

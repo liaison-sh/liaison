@@ -33,6 +33,11 @@ const SUBSCRIPTION_BASE =
  */
 const ALLOWLIST: Record<string, { reads: number; reason: string }> = {
   "lib/env.ts": { reads: 2, reason: "the variable's own boot checks" },
+  "lib/app-frame-host.ts": {
+    reads: 2,
+    reason:
+      "boot check of the app frame origin: refuses a frame domain that shares BASE_URL's host or registrable domain, builds no link",
+  },
   "app.ts": {
     reads: 3,
     reason:

@@ -19,6 +19,7 @@
 import { type Component, createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
 import { app, currentPath } from "@liaison/host"
 import { CardTable, type CardTableColumn } from "@liaison/app-ui/card-table"
+import { ConfirmDialog } from "@liaison/app-ui/kit"
 import { PrintDocuments } from "@liaison/app-ui/print-documents"
 import {
   Button,
@@ -274,10 +275,16 @@ export const ReadyToShip: Component<{
    * box unticked and puts the reason on the row. Unticking a fulfilled row asks first, then
    * cancels the Shopify fulfillment; a refused cancellation leaves the row ticked.
    */
-  const togglePacked = async (row: ReadyRow) => {
+  // Unticking a fulfilled row asks in the app's own dialog (a framed screen has no
+  // browser confirm: the sandbox gives it no modal dialogs).
+  const [unpackAsk, setUnpackAsk] = createSignal<{ row: ReadyRow; message: string } | null>(null)
+  const togglePacked = async (row: ReadyRow, confirmed = false) => {
     if (packedBusy()[row.id] === true) return
     const action = packedToggleAction(row)
-    if (action.kind === "confirm_unpack" && !window.confirm(action.message)) return
+    if (action.kind === "confirm_unpack" && !confirmed) {
+      setUnpackAsk({ row, message: action.message })
+      return
+    }
     setPackedBusy((m) => ({ ...m, [row.id]: true }))
     setPackStatus((m) => ({ ...m, [row.id]: "" }))
     try {
@@ -413,6 +420,21 @@ export const ReadyToShip: Component<{
 
   return (
     <div data-testid="boxtal-ready-to-ship" class="flex h-full min-h-0 flex-col">
+      <ConfirmDialog
+        open={unpackAsk() !== null}
+        title="Untick this order?"
+        body={unpackAsk()?.message ?? ""}
+        confirmLabel="Untick"
+        danger
+        testid="boxtal-unpack-confirm"
+        cancelTestid="boxtal-unpack-cancel"
+        onCancel={() => setUnpackAsk(null)}
+        onConfirm={() => {
+          const ask = unpackAsk()
+          setUnpackAsk(null)
+          if (ask) void togglePacked(ask.row, true)
+        }}
+      />
       <PageHeader
         title="Ready to ship"
         count={list().length}

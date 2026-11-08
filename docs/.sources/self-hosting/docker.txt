@@ -180,6 +180,9 @@ LIAISON_INTERNAL_HOST unset: hostname, 127.0.0.1 if it does not resolve -> apps/
 LIAISON_INTERNAL_BIND unset: the advertised name's address here, never every interface -> apps/api/src/lib/env.ts:805-809 ; apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:341-377 ; apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:388-394
 Advertised address not local: bind fails at start, set LIAISON_INTERNAL_BIND=0.0.0.0 and firewall -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:396-403
 At most 2 MiB per call, signature checked before the content is read -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:50-57 ; apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:249-265
+A Workers run's calls reach any API process; the process that started it holds it, others forward -> apps/api/src/modules/apps/workers/bridge-forward.ts:1-40 ; apps/api/src/modules/apps/workers/config.ts:1-20
+Internal listener serves two routes, mailbox answers and app calls -> apps/api/src/index.ts:166 ; apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:233-254 ; apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:319
+App calls: at most 8 MiB plus 64 KiB, forwarded only with a valid run token, 2,000 per client address per 10 s per process -> apps/api/src/modules/apps/workers/bridge-forward.ts:61 ; apps/api/src/modules/apps/workers/bridge-forward.ts:71 ; apps/api/src/modules/apps/workers/bridge-forward.ts:243
 Owner unreachable: 409 WRONG_INSTANCE -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-forward.ts:117-134 ; apps/api/src/modules/agent/routes.ts:1030-1031
 One api process still advised: client network-drop recovery not yet shipped -> apps/api/CLAUDE.md:59
 Several API processes: clients notice a dropped connection within about 10 s -> apps/web/src/primitives/createWebSocket.ts:95
@@ -280,3 +283,4 @@ LIAISON_ALLOW_OLDER_IMAGE behaviour -> apps/api/src/db/schema-guard.ts:30
 quickstart --channel -> deploy/quickstart.sh:20
 LIAISON_WORKERS_CUSTOM_APPS=1 runs every custom app on the loader; the loader fetches its Worker module from /api/app-bridge/bundles/<sha256>, signed -> apps/api/src/lib/env.ts:1133 ; apps/api/src/modules/apps/workers/config.ts:1-30 ; apps/api/src/modules/apps/workers/bundle-route.ts:1-24
 LIAISON_CUSTOM_APPS on: org custom apps and the app builder; unset off when self-hosted, on when managed; instance installs and installed apps unaffected -> apps/api/src/lib/env.ts:1061 ; apps/api/src/lib/edition.ts:53 ; apps/api/src/modules/apps/install-routes.ts:265
+LIAISON_APP_FRAME_ORIGIN_TEMPLATE frames outside apps (and LIAISON_FRAMED_APPS first-party apps) on <app>--<org> of their own domain; empty = opaque frame; passed by compose -> apps/api/src/lib/env.ts:175 ; apps/api/src/lib/env.ts:188 ; deploy/docker-compose.yml:655 ; deploy/docker-compose.yml:657

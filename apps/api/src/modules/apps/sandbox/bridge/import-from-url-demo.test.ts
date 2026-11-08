@@ -35,7 +35,10 @@ function files(orgId: string, txDb: unknown) {
     orgId,
     userId: "system",
     appName: "boxtal",
-    allowedDomains: [HOST],
+    egress: async () => ({
+      allowedDomains: [HOST],
+      manifest: { name: "boxtal", network: { allowPrivateHostsInTest: false } },
+    }),
     manifest: { name: "boxtal", network: { allowPrivateHostsInTest: false } },
     bridgeOptions: {},
     schemaName: "app_boxtal",

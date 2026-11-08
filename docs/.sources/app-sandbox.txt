@@ -71,3 +71,33 @@ A custom app's connection must name its allowedDomains; credentials only to the 
 Workers selection: listed apps with a bundle entry, custom apps with LIAISON_WORKERS_CUSTOM_APPS=1 -> apps/api/src/modules/apps/workers/config.ts:170 ; apps/api/src/modules/apps/sandbox/run-app.ts:156
 The bundle route signs per direction and path and serves only an installed, enabled custom app's module -> apps/api/src/modules/apps/workers/bundle-route.ts:1-24 ; apps/api/src/modules/apps/workers/sign.ts:1-30 ; apps/api/src/modules/apps/sandbox/run-app.ts:462
 resolveContact on a read-only run only looks up (unchanged or null); clear is refused -> apps/api/src/modules/apps/sandbox/bridge/db.ts:546 ; apps/api/src/modules/apps/sandbox/bridge/db.ts:595 ; apps/api/src/modules/contacts/service.ts:97
+Every role uses the Workers executor; isolates call back on LIAISON_APP_BRIDGE_BASE_URL, else BASE_URL -> apps/api/src/modules/apps/workers/config.ts:1-20 ; apps/api/src/modules/apps/workers/config.ts:130
+The run id names the process that started the run -> apps/api/src/modules/apps/workers/run-registry.ts:127 ; apps/api/src/infra/instance-id.ts:17-24
+A call for another process's run: token checked first, then forwarded over the internal listener, answered as on the owner -> apps/api/src/modules/apps/workers/bridge-route.ts:65 ; apps/api/src/modules/apps/workers/bridge-forward.ts:243 ; apps/api/src/modules/apps/workers/bridge-forward.ts:372 ; apps/api/src/modules/apps/workers/run-token.ts:50-62
+Owner gone: 410 run_owner_gone -> apps/api/src/modules/apps/workers/bridge-forward.ts:266
+Egress needs declared AND granted; one place for fetch, import from URL, bulk and credentials -> apps/api/src/modules/apps/sandbox/bridge/context.ts:85 ; apps/api/src/modules/apps/sandbox/bridge/context.ts:511 ; apps/api/src/modules/apps/egress-grants.ts:183
+Install consents to every declared domain; upgrade to newDomains, apply takes grantedDomains -> apps/api/src/modules/apps/egress-grants.ts:109 ; apps/api/src/modules/apps/install-routes.ts:479 ; apps/api/src/modules/apps/install-service.ts:1135
+Catalog artifacts and trusted-publisher packages granted every declared domain -> apps/api/src/modules/apps/install-service.ts:871 ; apps/api/src/modules/apps/install-service.ts:1235
+Installed before the column: every declared domain (NULL) -> apps/api/src/modules/apps/egress-grants.ts:58 ; apps/api/src/db/migrations/0281_apps_installed_granted_domains.sql:17
+A connection with every host revoked sends its credential nowhere -> apps/api/src/modules/apps/sandbox/bridge/fetch-auth.ts:197
+POST /api/apps/<app>/outbound grant/revoke, operator or owning org admin; next run, few seconds elsewhere -> apps/api/src/modules/apps/install-routes.ts:673 ; apps/api/src/modules/apps/install-routes.ts:717 ; apps/api/src/modules/apps/install-trust.ts:43
+App screens on an origin of their own: LIAISON_APP_FRAME_ORIGIN_TEMPLATE, one {app}--{org} label -> apps/api/src/lib/env.ts:76 ; apps/api/src/lib/env.ts:175
+Frame host resolved before the org template -> apps/api/src/lib/org-host.ts:58 ; apps/api/src/app.ts:390
+Boot refusals and warnings (registrable domain, org template, overlap, label first) -> apps/api/src/lib/app-frame-host.ts:154 ; apps/api/src/index.ts:132
+Frame host serves GET /frame/<version>?t= only; everything else 404, no socket or web app -> apps/api/src/lib/app-frame-host.ts:122 ; apps/api/src/modules/apps/app-frame-host-route.ts:209 ; apps/api/src/lib/server.ts:515
+Token minted by the app list for the request's org, host/app/version/page origin checked -> apps/api/src/modules/apps/app-frame-host-route.ts:120 ; apps/api/src/modules/apps/routes.ts:320
+frame-ancestors the org page, no X-Frame-Options, sandbox with allow-same-origin -> apps/api/src/modules/apps/app-frame-host-route.ts:254 ; apps/api/src/middleware/security-headers.ts:150
+allow-same-origin only on the own-origin iframe; exact postMessage origins both ways -> apps/web/src/framework/isolated-app.tsx:93 ; apps/web/src/app-frame/runtime.ts:72
+network.imageHosts and network.linkHosts -> apps/api/src/modules/apps/manifest-schema.ts:1608 ; apps/api/src/modules/apps/app-frame-host-route.ts:170
+App names never hold --; slug with -- or label over 63 keeps the opaque frame -> apps/api/src/modules/apps/manifest-schema.ts:8 ; apps/api/src/lib/app-frame-host.ts:62
+LIAISON_FRAMED_APPS frames listed first-party apps -> apps/api/src/lib/app-frame-host.ts:109 ; apps/web/src/framework/bootstrap.ts:1661
+Host API 1.3 calls and their limits -> packages/host-sdk/src/index.ts:209 ; apps/web/src/framework/host-app-calls.ts:93 ; apps/web/src/framework/isolated-app.tsx:395
+decideApproval: host confirm dialog, the app's own tool, payloadHash kept -> apps/web/src/framework/host-app-calls.ts:217 ; apps/web/src/modules/shell/app-approval-confirm.tsx:52
+Workers faults: loader-level (no kind, network, auth, loader_internal), app-level (load, bundle_missing, bundle_fetch_failed), final (limit, handler, timeout) -> apps/api/src/modules/apps/workers/faults.ts:32-45
+Retry once with jitter: zero bridge calls and twice the attempt's time left of the deadline -> apps/api/src/modules/apps/workers/executor.ts:262-290
+Breaker 5 faults / 60 s, open 60 s, one probe; app fallback per org:app@version for 10 minutes -> apps/api/src/modules/apps/workers/fallback.ts:29-33 ; apps/api/src/modules/apps/workers/fallback.ts:63-110
+Decided once before the bridge is built, recorded in the run line -> apps/api/src/modules/apps/sandbox/run-app.ts:211-226 ; apps/api/src/modules/apps/sandbox/run-app.ts:274
+Workers console capture: 200 lines / 64 KiB per run, 4 KiB per line, shared lines -> apps/api/src/modules/apps/workers/worker-core.ts:131-133 ; apps/api/src/modules/apps/workers/worker-core.ts:222
+Process log 600 lines per minute, 512 bytes; custom app logs marked source console; shared lines not filed -> apps/api/src/modules/apps/workers/worker-logs.ts:38-39 ; apps/api/src/modules/apps/workers/worker-logs.ts:165 ; apps/api/src/modules/apps/workers/worker-logs.ts:185
+QuickJS console shim over log_* marked source console -> apps/api/src/modules/apps/sandbox/ctx-shim.ts:124 ; apps/api/src/modules/apps/sandbox/bridge/identity.ts:45
+Usage per org, app, day, executor; CPU pulled hourly from the loader; daily caps per entry point; apps.usage to Control -> apps/api/src/modules/apps/usage/app-usage.ts:1 ; apps/api/src/modules/apps/usage/loader-usage.ts:1 ; apps/api/src/modules/apps/usage/app-day-cap.ts:8 ; apps/api/src/modules/cloud/apps-usage-report.ts:1

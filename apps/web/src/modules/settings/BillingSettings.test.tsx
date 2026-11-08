@@ -310,6 +310,7 @@ describe("BillingSettings", () => {
                       customApps: 57,
                       auditDays: 367,
                       jobsPerHour: 601,
+                      appRunsPerDay: 20000,
                     }),
                   },
                 ],
@@ -329,6 +330,8 @@ describe("BillingSettings", () => {
     expect(cells("billing-compare-customApps")).toEqual(["7", "57"])
     expect(cells("billing-compare-auditDays")).toEqual(["91 days", "367 days"])
     expect(cells("billing-compare-jobsPerHour")).toEqual(["Unlimited", "601"])
+    expect(cells("billing-compare-appRunsPerDay")).toEqual(["Unlimited", "20000"])
+    expect(cells("billing-compare-appCpuMsPerDay")).toEqual(["Unlimited", "Unlimited"])
     expect(compare.textContent?.toLowerCase()).not.toContain("mailbox")
     const site = screen.getByTestId("billing-compare-site") as HTMLAnchorElement
     expect(site.href).toBe("https://plans.example.test/compare")

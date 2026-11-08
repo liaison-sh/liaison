@@ -218,3 +218,80 @@ describe("the isolated app's frame runtime", () => {
     expect(host.currentPath()).toBe("/acme/orders?status=open")
   })
 })
+
+// A frame served on the app's own origin (LIAISON_APP_FRAME_ORIGIN_TEMPLATE).
+describe("the frame runtime on the app's own origin", () => {
+  const PAGE = "https://acme.liaison.test"
+
+  function withParentOrigin(origin: string) {
+    const meta = document.createElement("meta")
+    meta.name = "liaison-parent-origin"
+    meta.content = origin
+    document.head.appendChild(meta)
+    return () => meta.remove()
+  }
+
+  it("posts to the baked parent origin only, and drops messages from any other origin", async () => {
+    if (!URL.createObjectURL) URL.createObjectURL = () => "blob:shim"
+    const cleanup = withParentOrigin(PAGE)
+    try {
+      const targets: unknown[] = []
+      const { win, posted } = frameWindow()
+      const parent = win.parent as unknown as { postMessage: (m: unknown, t: unknown) => void }
+      parent.postMessage = (message: unknown, target: unknown) => {
+        posted.push(message)
+        targets.push(target)
+      }
+      const listeners: Array<(e: MessageEvent) => void> = []
+      const add = win.addEventListener
+      ;(win as unknown as { addEventListener: unknown }).addEventListener = (
+        type: string,
+        listener: (event: Event) => void,
+      ) => {
+        if (type === "message") listeners.push(listener as (e: MessageEvent) => void)
+        add(type, listener)
+      }
+      startFrameRuntime(win)
+      expect(targets).toEqual([PAGE])
+      const host = (
+        win as unknown as { __liaisonHost: Record<string, (...a: unknown[]) => unknown> }
+      ).__liaisonHost
+      const answer = host.invokeTool("acme", "list", {}) as Promise<unknown>
+      const call = posted.at(-1) as { id: number }
+      const result = { kind: "result", id: call.id, ok: true, value: "forged" }
+      for (const l of listeners)
+        l({ data: result, source: win.parent, origin: "https://evil.test" } as MessageEvent)
+      for (const l of listeners) {
+        l({ data: { ...result, value: "real" }, source: win.parent, origin: PAGE } as MessageEvent)
+      }
+      expect(await answer).toBe("real")
+      expect(targets.every((t) => t === PAGE)).toBe(true)
+    } finally {
+      cleanup()
+    }
+  })
+
+  it("exposes the init context (no token) and forwards the typed calls", async () => {
+    if (!URL.createObjectURL) URL.createObjectURL = () => "blob:shim"
+    const { win, posted } = frameWindow()
+    startFrameRuntime(win)
+    const host = (win as unknown as { __liaisonHost: Record<string, (...a: unknown[]) => unknown> })
+      .__liaisonHost
+    expect(host.context()).toBeNull()
+    void host.openFileById("acme", "file-1", "a.pdf")
+    expect(posted.at(-1)).toMatchObject({ method: "openFile", args: ["file-1", "a.pdf"] })
+    void host.decideApproval("acme", "ap-1", "approve", "h")
+    expect(posted.at(-1)).toMatchObject({
+      method: "decideApproval",
+      args: ["ap-1", "approve", "h"],
+    })
+    void host.openExternal("acme", "https://x.test")
+    expect(posted.at(-1)).toMatchObject({ method: "openExternal", args: ["https://x.test"] })
+    host.openRecord("acme", "invoicing", "document", "d1")
+    expect(posted.at(-1)).toMatchObject({
+      method: "openRecord",
+      args: ["invoicing", "document", "d1"],
+    })
+    expect(host.accessToken()).toBeNull()
+  })
+})

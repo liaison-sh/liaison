@@ -5,7 +5,7 @@
 // kernel scope whose action is `admin` is on it.
 import { describe, expect, it } from "bun:test"
 import { KERNEL_SCOPES } from "~/modules/permissions/scope-catalog"
-import { KERNEL_ADMIN_SCOPES } from "./admin-second-factor"
+import { KERNEL_ADMIN_SCOPES } from "./admin-scopes"
 
 describe("the second factor's kernel administrative scopes", () => {
   it("lists every kernel scope whose action is admin, the portal's included", () => {

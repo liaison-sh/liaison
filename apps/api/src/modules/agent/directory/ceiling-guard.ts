@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { AgentKind } from "~/db/schema/kernel/agents"
+import { isKernelAdminEntry } from "~/modules/auth/admin-scopes"
 import { hasScope } from "~/modules/permissions/permissions"
 import { isDeclaredScope, unknownScopes } from "~/modules/permissions/scope-registry"
 
@@ -49,38 +50,16 @@ export class RoleAgentInvalidScopeError extends Error {
 const SCOPE_GRAMMAR = /^(?:\*|[a-z0-9_-]+(?::[a-z0-9_-]+)*(?::\*)?)$/
 
 /**
- * The organization-administration scopes, per
- * apps/api/src/modules/permissions/scope-catalog.ts (the authoritative kernel
- * scope catalog) and roster.md's "roles, scopes, policies, invites" admin-only
- * list:
- *  - kernel:roles:admin          role CRUD (create_role/edit_role/delete_role)
- *  - kernel:scope_requests:admin deciding scope-access requests
- *  - kernel:policies:admin       approval-tightening policy config
- *  - kernel:portal:admin         clients' portal accounts (see, invite, lock)
- *  - kernel:users:admin          users/invites/role-assignment/per-user scope
- *                                grants (invite_user, assign_role,
- *                                remove_user_from_role, grant_user_scope,
- *                                grant_dimension_value; its catalog description
- *                                is literally "Manage users, roles, and
- *                                invitations")
- * Plain reads in the same families (`kernel:users:read`,
- * `kernel:policies:read`) are not org-administration authority.
- */
-const ADMIN_SCOPES = [
-  "kernel:roles:admin",
-  "kernel:scope_requests:admin",
-  "kernel:policies:admin",
-  "kernel:users:admin",
-  "kernel:portal:admin",
-] as const
-
-/**
- * A ceiling entry is an admin entry when it grants any admin scope, directly
- * or through a wildcard (`*`, `kernel:*`, `kernel:users:*`), judged by the same
- * wildcard-aware `hasScope` that resolves grants everywhere else.
+ * A ceiling entry is an admin entry when it holds any scope that needs a second
+ * factor for a person (auth/admin-scopes.ts, the list the second-factor rule
+ * reads): `*`, a scope whose action is `admin`, or a wildcard or parent over a
+ * kernel administrative scope (`kernel:*`, `kernel:users:*`). Deriving it from
+ * that list keeps a new administrative scope out of role agents the day it is
+ * added there. Plain reads (`kernel:users:read`) and app family wildcards
+ * (`tickets:*`) are not refused here.
  */
 function isAdminScope(entry: string): boolean {
-  return ADMIN_SCOPES.some((adminScope) => hasScope(adminScope, [entry]))
+  return isKernelAdminEntry(entry)
 }
 
 /**
@@ -145,8 +124,8 @@ export class CeilingUnknownScopeError extends Error {
  * `tickets:categories:admin`, the three app level admin surfaces F5 narrowed
  * `tickets:*` away from, and it does it with no wildcard for a reader to
  * notice. The grammar accepted it, `unknownScopes` accepted it (it matches real
- * scopes) and `ADMIN_SCOPES` never saw it (those are the four kernel admin
- * scopes only), so the narrowing was data held by no guard.
+ * scopes) and the admin check never saw it (it names no admin scope itself),
+ * so the narrowing was data held by no guard.
  *
  * The rule: an entry is either a scope something DECLARES, exactly, or an
  * explicit family wildcard (`tickets:*`, or `*` which the admin check refuses

@@ -30,6 +30,15 @@ on:
         required: true
         default: origin/main
         type: string
+      update_snapshots:
+        # Makes the visual baselines of the runners' platform (linux): only the
+        # Playwright lane runs, with PW_UPDATE_SNAPSHOTS=missing, and each shard
+        # keeps the images it wrote as its linux-goldens-<shard> artifact, to
+        # review and commit (docs/testing.md, Visual baselines).
+        description: Write the missing linux visual baselines (Playwright lane only)
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -67,10 +76,15 @@ jobs:
         id: plan
         env:
           BASE: ${{ inputs.base }}
+          UPDATE_SNAPSHOTS: ${{ inputs.update_snapshots }}
         run: |
           set -euo pipefail
           git rev-parse --verify --quiet "$BASE^{commit}" >/dev/null || { echo "base $BASE is not a revision of this clone"; exit 1; }
           bun run scripts/test-gate.ts --base "$BASE" --dry-run --matrix-json gate-matrix.json | tee gate-plan.txt
+          if [ "$UPDATE_SNAPSHOTS" = "true" ]; then
+            jq '{include: [.include[] | select(.suite == "playwright")]}' gate-matrix.json > gate-matrix.pw.json
+            mv gate-matrix.pw.json gate-matrix.json
+          fi
           {
             echo "sha=$(git rev-parse HEAD)"
             echo "count=$(jq '.include | length' gate-matrix.json)"
@@ -99,6 +113,7 @@ jobs:
       LIAISON_TEST_SLOTS: "1"
       SUITE: ${{ matrix.suite }}
       SHARD: ${{ matrix.shard }}/${{ matrix.of }}
+      UPDATE_SNAPSHOTS: ${{ inputs.update_snapshots }}
       FILES: ${{ toJSON(matrix.files) }}
     steps:
       - name: Start the clock
@@ -158,6 +173,8 @@ jobs:
           while IFS= read -r f; do
             [ -n "$f" ] && args+=(--file "$f")
           done < <(jq -r '.[]' <<<"$FILES")
+          # Otherwise unset: on CI a missing baseline fails (playwright.config.ts).
+          if [ "$UPDATE_SNAPSHOTS" = "true" ]; then export PW_UPDATE_SNAPSHOTS=missing; fi
           bun run scripts/test-run.ts "$SUITE" --shard "$SHARD" "${args[@]}"
       - name: Record the shard's result
         if: always()
@@ -179,6 +196,14 @@ jobs:
           name: gate-result-${{ matrix.suite }}-${{ matrix.shard }}
           path: gate-result/
           retention-days: 14
+      - name: Keep the linux baselines this shard wrote
+        if: always() && inputs.update_snapshots && matrix.suite == 'playwright'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-goldens-${{ matrix.shard }}
+          path: apps/web/src/tests/e2e/**/*-linux.png
+          retention-days: 14
+          if-no-files-found: ignore
       - name: Keep the failing shard's reports
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

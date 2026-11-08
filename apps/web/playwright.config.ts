@@ -164,7 +164,12 @@ export default defineConfig({
   // Env-gated baseline refresh so the Strobe MCP runner (which passes env, not
   // a CLI flag) can regenerate visual goldens after a deliberate UI change.
   // PW_UPDATE_SNAPSHOTS=all|missing|none → Playwright's updateSnapshots option.
-  updateSnapshots: (process.env.PW_UPDATE_SNAPSHOTS as "all" | "missing" | "none") ?? "missing",
+  // On CI a missing baseline is a failure, never a fresh image written beside
+  // the run: "none" there (the gate workflow's update_snapshots input sets
+  // PW_UPDATE_SNAPSHOTS=missing to create a platform's baselines on purpose).
+  updateSnapshots:
+    (process.env.PW_UPDATE_SNAPSHOTS as "all" | "missing" | "none" | undefined) ||
+    (process.env.CI ? "none" : "missing"),
   // Snapshot path is deterministic: <test-file>-snapshots/<name>-<platform>.png.
   // Project name is intentionally NOT in the template — we run a single project
   // (`chromium`), so embedding it adds noise and causes inconsistent filenames

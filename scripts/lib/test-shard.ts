@@ -38,6 +38,70 @@ export function pickShard(files: string[], shard: Shard): string[] {
   })
 }
 
+/**
+ * The files of shard `index` of `total`, dealt by measured duration rather than
+ * by count: longest first, each to the shard with the least time so far (ties
+ * to the lower shard), so every shard of a lane takes about the same time. A
+ * file the table does not know counts as the table's median. Deterministic: the
+ * same files and table give the same shards on every runner. The shard keeps
+ * the order `files` gives.
+ */
+export function pickShardByTime(
+  files: string[],
+  shard: Shard,
+  seconds: Record<string, number>,
+): string[] {
+  const unique = [...new Set(files)]
+  const known = Object.values(seconds)
+    .filter((v) => Number.isFinite(v) && v > 0)
+    .sort((a, b) => a - b)
+  const fallback = known.length > 0 ? (known[Math.floor(known.length / 2)] as number) : 1
+  const cost = (f: string) => {
+    const v = seconds[f]
+    return v !== undefined && Number.isFinite(v) && v > 0 ? v : fallback
+  }
+  const byCost = [...unique].sort((a, b) => cost(b) - cost(a) || (a < b ? -1 : a > b ? 1 : 0))
+  const load = Array.from({ length: shard.total }, () => 0)
+  const mine = new Set<string>()
+  for (const f of byCost) {
+    let target = 0
+    for (let i = 1; i < load.length; i++)
+      if ((load[i] as number) < (load[target] as number)) target = i
+    load[target] = (load[target] as number) + cost(f)
+    if (target === shard.index - 1) mine.add(f)
+  }
+  const seen = new Set<string>()
+  return files.filter((f) => {
+    if (!mine.has(f) || seen.has(f)) return false
+    seen.add(f)
+    return true
+  })
+}
+
+/**
+ * The Playwright scenario files a default run picks up (apps/web's chromium and
+ * iphone projects), relative to `cwd`, sorted. The desktop-webview scenarios
+ * belong to an opt-in project and are left out.
+ */
+export function playwrightScenarioFiles(e2eDir: string, cwd: string): string[] {
+  const out: string[] = []
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === "node_modules") continue
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) walk(full)
+      else if (
+        entry.isFile() &&
+        entry.name.endsWith(".scenario.test.ts") &&
+        !entry.name.endsWith(".desktop-webview.scenario.test.ts")
+      )
+        out.push(path.relative(cwd, full).split(path.sep).join("/"))
+    }
+  }
+  walk(e2eDir)
+  return out.sort()
+}
+
 /** What `bun test` treats as a test file. */
 const BUN_TEST_FILE = /[._](test|spec)\.[cm]?[jt]sx?$/
 

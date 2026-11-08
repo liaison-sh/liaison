@@ -31,10 +31,18 @@ import { apiE2eScenarioFiles, apiE2eTestFiles } from "./lib/api-e2e-files"
 import { computeMemBudget, formatMemBudget } from "./lib/mem-budget"
 import { formatMemGuard, killProcessTreeNow, startMemGuard } from "./lib/mem-guard"
 import { namedTestFiles, pendingSuiteReason } from "./lib/pending-suites"
+import playwrightSeconds from "./lib/playwright-timings.json"
 import { installRunDeathLogging, shouldContinueFullRun } from "./lib/run-death"
 import { acquireNamespaceLock, acquireTestLock, leasePortBlock, slotCount } from "./lib/test-lock"
 import { sweepRedisPrefix } from "./lib/test-redis-flush"
-import { parseShard, pickShard, type Shard, shardBunTestCmd } from "./lib/test-shard"
+import {
+  parseShard,
+  pickShard,
+  pickShardByTime,
+  playwrightScenarioFiles,
+  type Shard,
+  shardBunTestCmd,
+} from "./lib/test-shard"
 import {
   CLEAN_SUBSTRATE_SUITES,
   collectOldTemplates,
@@ -2190,11 +2198,29 @@ if (!config) {
   process.exit(1)
 }
 
-// --shard: playwright and vitest split natively; a `bun test` suite and the
+// --shard: vitest splits natively; playwright, a `bun test` suite and the
 // e2e-parallel lane get their share of the files. Nothing else splits.
+// Playwright's own --shard deals files by test count, so one shard drew the
+// long serial files and took twice the others: its files are dealt by the
+// measured seconds in scripts/lib/playwright-timings.json instead
+// (`bun run scripts/playwright-timings.ts` refreshes it from a run's reports).
+// A named project (PLAYWRIGHT_PROJECT) still uses Playwright's own.
 if (shardArg) {
   const spec = `${shardArg.index}/${shardArg.total}`
-  if (suite === "playwright" || suite === "web-unit") {
+  if (suite === "playwright" && !process.env.PLAYWRIGHT_PROJECT?.trim()) {
+    const e2eDir = path.join(config.cwd, "src/tests/e2e")
+    const named = fileArg.length > 0 ? fileArg : playwrightScenarioFiles(e2eDir, config.cwd)
+    const seconds: Record<string, number> = {}
+    for (const f of named) {
+      const v = (playwrightSeconds as Record<string, number>)[
+        path.relative(e2eDir, path.resolve(config.cwd, f))
+      ]
+      if (v !== undefined) seconds[f] = v
+    }
+    const mine = pickShardByTime(named, shardArg, seconds)
+    config.cmd = [...config.cmd.filter((a) => !named.includes(a)), ...mine]
+    if (mine.length === 0) config.cmd = []
+  } else if (suite === "playwright" || suite === "web-unit") {
     config.cmd.push(`--shard=${spec}`)
   } else if (suite === "e2e-parallel") {
     const named =

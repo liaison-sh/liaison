@@ -81,6 +81,10 @@ export const USER_FK_DISPOSITION: Record<string, ReferenceDisposition> = {
   // A private contact is the person's: it moves to them (ON DELETE RESTRICT
   // would otherwise refuse the placeholder's delete).
   "kernel.contacts.owner_user_id": repoint,
+  // A company's account manager: a label that routes approvals, the person
+  // holds it now. (Its created_by is a soft column, not a foreign key: the
+  // merge re-points it beside the other soft columns, merge-placeholder.ts.)
+  "kernel.companies.owner_user_id": repoint,
   "kernel.invitations.invited_by": repoint,
   "kernel.credit_transactions.user_id": repoint,
   "kernel.agent_memory.user_id": repoint,

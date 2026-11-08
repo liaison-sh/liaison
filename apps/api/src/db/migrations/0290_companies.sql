@@ -282,6 +282,10 @@ $fn$;
 -- Scope seed: whoever reads or writes contacts reads or writes companies, so
 -- nobody loses reach. Wildcards that already cover kernel:companies:* need
 -- nothing; kernel:contacts:* gets kernel:companies:*.
+-- Run as liaison_admin (BYPASSRLS): the grant tables force row security, so a
+-- migration login that is no superuser would read no row and seed nothing.
+SET LOCAL ROLE liaison_admin;
+--> statement-breakpoint
 WITH pairs (old_scope, new_scope) AS (
   VALUES ('kernel:contacts:read', 'kernel:companies:read'),
          ('kernel:contacts:write', 'kernel:companies:write'),
@@ -303,6 +307,8 @@ SELECT gen_random_uuid(), g.user_id, g.org_id, p.new_scope
   FROM kernel.user_scope_grants g
   JOIN pairs p ON p.old_scope = g.scope
 ON CONFLICT (user_id, org_id, scope) DO NOTHING;
+--> statement-breakpoint
+RESET ROLE;
 --> statement-breakpoint
 
 -- The two P0 columns that name a company get their foreign keys. No row

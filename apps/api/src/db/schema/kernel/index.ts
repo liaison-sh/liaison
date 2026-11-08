@@ -274,6 +274,7 @@ export type {
   NewAgentRun,
 } from "./sub-agent-runs"
 export { agentRuns } from "./sub-agent-runs"
+export { type Suppression, suppressionLinks, suppressions } from "./suppressions"
 export { systemConfig } from "./system-config"
 export type {
   BriefRowKind,

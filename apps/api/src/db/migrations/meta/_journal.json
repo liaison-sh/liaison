@@ -2045,6 +2045,27 @@
       "when": 1900003374000,
       "tag": "0290_companies",
       "breakpoints": true
+    },
+    {
+      "idx": 292,
+      "version": "7",
+      "when": 1900003375000,
+      "tag": "0291_suppressions",
+      "breakpoints": true
+    },
+    {
+      "idx": 293,
+      "version": "7",
+      "when": 1900003376000,
+      "tag": "0292_project_kind_and_deals",
+      "breakpoints": true
+    },
+    {
+      "idx": 294,
+      "version": "7",
+      "when": 1900003377000,
+      "tag": "0293_contact_company_and_lawful_basis",
+      "breakpoints": true
     }
   ]
 }

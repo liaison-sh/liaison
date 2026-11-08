@@ -141,7 +141,9 @@
   "schema": {
     "projects": {
       "migrationOwnedColumns": [
-        "nextTaskNumber"
+        "nextTaskNumber",
+        "kind",
+        "companyId"
       ],
       "fields": {
         "name": "string",
@@ -178,6 +180,9 @@
     },
     "project_statuses": {
       "rlsGovernedByMigration": true,
+      "migrationOwnedColumns": [
+        "dealOutcome"
+      ],
       "fields": {
         "projectId": {
           "type": "uuid",
@@ -201,6 +206,76 @@
           "order"
         ]
       ]
+    },
+    "deals": {
+      "rlsGovernedByMigration": true,
+      "fields": {
+        "taskId": {
+          "type": "uuid",
+          "references": {
+            "table": "tasks",
+            "column": "id",
+            "onDelete": "cascade"
+          }
+        },
+        "companyId": "uuid?",
+        "contactId": "uuid?",
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "open",
+            "won",
+            "lost"
+          ],
+          "default": "open"
+        },
+        "nextStep": "string?",
+        "lostReason": "string?",
+        "reopenStatusId": {
+          "type": "uuid",
+          "required": false,
+          "references": {
+            "table": "project_statuses",
+            "column": "id",
+            "onDelete": "set null"
+          }
+        },
+        "closedAt": "date?",
+        "closedBy": "uuid?"
+      },
+      "indexes": []
+    },
+    "deal_values": {
+      "rlsGovernedByMigration": true,
+      "fields": {
+        "taskId": {
+          "type": "uuid",
+          "references": {
+            "table": "deals",
+            "column": "task_id",
+            "onDelete": "cascade"
+          }
+        },
+        "amountMinor": {
+          "type": "bigint",
+          "required": false
+        },
+        "currency": "string?",
+        "amountPeriod": {
+          "type": "string",
+          "enum": [
+            "once",
+            "month",
+            "year"
+          ],
+          "default": "once"
+        },
+        "probability": {
+          "type": "smallint",
+          "required": false
+        }
+      },
+      "indexes": []
     },
     "tasks": {
       "fields": {

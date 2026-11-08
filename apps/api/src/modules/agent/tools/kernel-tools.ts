@@ -237,7 +237,7 @@ import {
   handleWebSearchForTurn,
   webFetchPolicyRefusal,
 } from "~/modules/agent/tools/web-tools"
-import { registerAppBuilderTools } from "~/modules/app-builder/tools"
+import { applyCustomAppsSwitch, defineAppBuilderTools } from "~/modules/app-builder/tools"
 import {
   agentInstructionsRegistry,
   approvalEditableFieldsRegistry,
@@ -515,6 +515,9 @@ export async function registerKernelAgentTools(orgId: string): Promise<void> {
     throw err
   })
   replayRegistrationTemplate(await kernelToolsTemplate, orgId)
+  // The app builder tools follow the custom apps switch as it is now, not as it
+  // was when the template was built (app-builder/tools.ts, applyCustomAppsSwitch).
+  applyCustomAppsSwitch(orgId)
   // `web_search` is advertised ONLY when a search key (Exa, else OpenRouter) is
   // actually resolvable for this org (env-level key OR org BYOK key): a dead
   // tool that errors on every call is worse than no tool at all for a weak
@@ -533,7 +536,10 @@ export const KernelToolsTestAccess = {
     kernelToolsTemplate = null
   },
   /** Build the kernel tools for one org the old way, no template (then refresh its web_search). */
-  buildWithoutTemplate: buildKernelAgentTools,
+  async buildWithoutTemplate(orgId: string): Promise<void> {
+    await buildKernelAgentTools(orgId)
+    applyCustomAppsSwitch(orgId)
+  },
 }
 
 /**
@@ -3666,7 +3672,8 @@ When to use: When an admin asks to set up a reusable role they will spawn repeat
   // The data store and dashboard tools (their own modules).
   registerDataStoreTools(orgId)
   registerDashboardTools(orgId)
-  registerAppBuilderTools(orgId)
+  // Written whatever the custom apps switch; registerKernelAgentTools decides per org.
+  defineAppBuilderTools(orgId)
 
   // Skills + routines tools (read-only set; gated authoring lands in Tasks 3.2 + 3.3).
   await registerSkillRoutineTools(orgId)

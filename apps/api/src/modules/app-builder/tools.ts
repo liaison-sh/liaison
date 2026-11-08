@@ -206,10 +206,27 @@ export const APP_BUILDER_TOOL_NAMES = [
  * customAppsEnabled): off, none is in the catalog.
  */
 export function registerAppBuilderTools(orgId: string): void {
-  if (!customAppsEnabled()) {
-    for (const name of APP_BUILDER_TOOL_NAMES) toolRegistry.delete([orgId, "kernel", name])
-    return
-  }
+  defineAppBuilderTools(orgId)
+  applyCustomAppsSwitch(orgId)
+}
+
+/**
+ * Drops the app builder tools of `orgId` while organisations' own apps are off.
+ * The switch is read here, at each org's registration, never inside the kernel
+ * tools template: the template is built once per process and replayed for every
+ * org, so a decision taken while building it would hold for every later org even
+ * after the switch changed (kernel-tools.ts, registerKernelAgentTools).
+ */
+export function applyCustomAppsSwitch(orgId: string): void {
+  if (customAppsEnabled()) return
+  for (const name of APP_BUILDER_TOOL_NAMES) toolRegistry.delete([orgId, "kernel", name])
+}
+
+/**
+ * Writes the app builder tools for `orgId` whatever the switch: the org-independent
+ * part, captured in the kernel tools template. `applyCustomAppsSwitch` decides per org.
+ */
+export function defineAppBuilderTools(orgId: string): void {
   toolRegistry.set([orgId, "kernel", "apps_build_create"], {
     appName: "kernel",
     name: "apps_build_create",

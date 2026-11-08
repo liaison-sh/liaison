@@ -3,7 +3,7 @@ import { afterAll, describe, expect, it } from "bun:test"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { parseShard, pickShard, shardBunTestCmd } from "./test-shard"
+import { parseShard, pickShard, pickShardByTime, shardBunTestCmd } from "./test-shard"
 
 describe("parseShard", () => {
   it("reads i/n and refuses anything else", () => {
@@ -66,5 +66,57 @@ describe("shardBunTestCmd", () => {
       "src/tests/security/b.test.ts",
       "src/tests/security/deep/c.test.ts",
     ])
+  })
+})
+
+describe("pickShardByTime", () => {
+  const seconds: Record<string, number> = {
+    "a.ts": 560,
+    "b.ts": 300,
+    "c.ts": 200,
+    "d.ts": 180,
+    "e.ts": 90,
+    "f.ts": 60,
+    "g.ts": 30,
+    "h.ts": 10,
+  }
+  const files = [...Object.keys(seconds), "new.ts"]
+  const time = (s: string[]) => s.reduce((sum, f) => sum + (seconds[f] ?? 180), 0)
+
+  it("covers every file once and balances measured time, not file count", () => {
+    for (const total of [1, 2, 3, 6]) {
+      const all = Array.from({ length: total }, (_, i) =>
+        pickShardByTime(files, { index: i + 1, total }, seconds),
+      )
+      expect(all.flat().sort()).toEqual([...files].sort())
+    }
+    const two = [1, 2].map((index) => pickShardByTime(files, { index, total: 2 }, seconds))
+    // new.ts counts as the median (180): 560 + 180 + 60 + 10 against 300 + 200 + 180 + 90 + 30.
+    expect(two[0]).toContain("a.ts")
+    expect(two[1]).toContain("b.ts")
+    expect(Math.abs(time(two[0] as string[]) - time(two[1] as string[]))).toBeLessThanOrEqual(90)
+  })
+
+  it("with several workers a shard ends no sooner than its longest file", () => {
+    // Four workers: a 560 s file alone ends at 560 whatever runs beside it, so
+    // the short files go where they end soonest, the other shard.
+    const two = [1, 2].map((index) =>
+      pickShardByTime(["a.ts", "b.ts", "c.ts", "d.ts"], { index, total: 2 }, seconds, 4),
+    )
+    expect(two).toEqual([["a.ts"], ["b.ts", "c.ts", "d.ts"]])
+  })
+
+  it("is deterministic and keeps the given order", () => {
+    const one = pickShardByTime(files, { index: 2, total: 3 }, seconds)
+    expect(pickShardByTime(files, { index: 2, total: 3 }, seconds)).toEqual(one)
+    expect([...one].sort((x, y) => files.indexOf(x) - files.indexOf(y))).toEqual(one)
+  })
+
+  it("counts a file the table does not know as the median", () => {
+    const shards = [1, 2].map((index) =>
+      pickShardByTime(["x.ts", "y.ts", "z.ts"], { index, total: 2 }, { "x.ts": 100 }),
+    )
+    // x (100) first, then y and z at the median (100): y to shard 2, z back to 1.
+    expect(shards).toEqual([["x.ts", "z.ts"], ["y.ts"]])
   })
 })

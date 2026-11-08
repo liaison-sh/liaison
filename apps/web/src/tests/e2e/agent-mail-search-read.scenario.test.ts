@@ -59,7 +59,17 @@ test("agent mail.search and mail.read return real backend results in the convers
   await scriptAgentTurn(env, {
     threadId,
     steps: [
-      { toolCalls: [{ name: "kernel__tool_search", args: { query: "search and read mail" } }] },
+      // Loaded by name, the way the search's own note tells a model to load a
+      // tool it knows: a keyword search LOADS only the tools that satisfy every
+      // term and tie the best score (tool-rank.ts strongMatches), and for "read
+      // mail" that is the kernel's mail_attachment_read (two name parts), not
+      // mail__read. A call to a tool not loaded is rewritten into a load rather
+      // than run, so the turn would never read the conversation.
+      {
+        toolCalls: [
+          { name: "kernel__tool_search", args: { query: "select:mail__search,mail__read" } },
+        ],
+      },
       { toolCalls: [{ name: "mail__search", args: { query: "Q3 Budget" } }] },
       { toolCalls: [{ name: "mail__read", args: { conversationId: convA.id } }] },
       { text: ANSWER },

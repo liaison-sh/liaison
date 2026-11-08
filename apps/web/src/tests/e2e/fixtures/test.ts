@@ -574,7 +574,10 @@ export const test = resetBeforeAll(baseTest)
 // this platform has no baseline for the screenshot, the test is SKIPPED with
 // the reason, after every assertion before the screenshot has run. A platform
 // that has its baselines (or a run that sets PW_UPDATE_SNAPSHOTS to create
-// them, docs/testing.md) compares as before.
+// them, docs/testing.md) compares as before. On CI (the `CI` variable every
+// hosted runner sets) nothing is skipped: the baselines of the platform CI
+// runs on are committed, so a missing one is a failure (playwright.config.ts
+// sets updateSnapshots "none" there), never a test that quietly did not run.
 
 function baselineExists(testInfo: TestInfo, name: string | string[] | undefined): boolean {
   const platform = process.platform
@@ -594,7 +597,7 @@ function baselineExists(testInfo: TestInfo, name: string | string[] | undefined)
 }
 
 function skipWithoutBaseline(name: string | string[] | undefined): void {
-  if (process.env.PW_UPDATE_SNAPSHOTS) return
+  if (process.env.PW_UPDATE_SNAPSHOTS || process.env.CI) return
   const testInfo = test.info()
   if (baselineExists(testInfo, name)) return
   const label = Array.isArray(name) ? name.join("/") : (name ?? "(unnamed)")

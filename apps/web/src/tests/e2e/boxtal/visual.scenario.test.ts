@@ -14,7 +14,7 @@
 // combined tool name on the first colon, so the interceptor key is
 // `boxtal:<toolName>` (underscore-named tools, `.`↔`_` normalized).
 //
-// Pixel goldens are darwin-only (`*-darwin.png`). FUNCTIONAL assertions (panel +
+// Pixel goldens are per platform (`*-darwin.png`, `*-linux.png`, helpers/pixel-baselines.ts). FUNCTIONAL assertions (panel +
 // sidebar mount, content testids visible, expected text) run EVERYWHERE.
 // Re-bake after an intentional UI change with:
 //   bunx --bun playwright test --update-snapshots=all -g "Phase 18 — Boxtal — visual"
@@ -23,12 +23,12 @@ import { existsSync } from "node:fs"
 import { api } from "@liaison/test-helpers"
 import { forceDarkMode } from "../agent-bootstrap"
 import { loginAs } from "../fixtures/test"
+import { PIXEL_BASELINES } from "../helpers/pixel-baselines"
 import { volatileShellMasks } from "../helpers/visual-masks"
 import { assertBoxtalBundle, BOXTAL_BUNDLE, expect, test } from "./_boxtal-fixtures"
 import { installBoxtalApp } from "./helpers/install-boxtal-app"
 
 const SHOT = { maxDiffPixelRatio: 0.02 } as const
-const PIXEL_BASELINES = process.platform === "darwin"
 
 test.setTimeout(120_000)
 

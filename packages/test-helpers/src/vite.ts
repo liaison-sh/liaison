@@ -67,15 +67,17 @@ export async function spawnViteServer(opts: {
    * The caller is responsible for having built `dist/` first.
    */
   mode?: "dev" | "preview"
+  /** The build `preview` serves, when it is not the config's own `dist/`. */
+  outDir?: string
 }): Promise<ViteServer> {
-  const { port, cwd, env: extraEnv, timeoutMs = 30_000, mode = "dev" } = opts
+  const { port, cwd, env: extraEnv, timeoutMs = 30_000, mode = "dev", outDir } = opts
   // --host 127.0.0.1 forces IPv4 binding. Without it, Vite v8 binds only to
   // IPv6 [::1] on macOS, which Bun's fetch to 127.0.0.1 cannot reach (and
   // "localhost" DNS resolution under heavy parallel load is flaky too).
   // Orphan handling (process group + death pipe) lives in viteSupervisorScript.
   const viteArgs =
     mode === "preview"
-      ? `preview --port ${port} --strictPort --host 127.0.0.1`
+      ? `preview --port ${port} --strictPort --host 127.0.0.1${outDir ? ` --outDir ${outDir}` : ""}`
       : `--port ${port} --strictPort --host 127.0.0.1`
   const supervisor = viteSupervisorScript(`bunx vite ${viteArgs}`)
   const proc = Bun.spawn({

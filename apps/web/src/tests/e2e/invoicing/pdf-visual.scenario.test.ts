@@ -5,7 +5,7 @@
 // Unlike the UI-surface visual scenario (which mocks the host), these issue REAL
 // documents through the kernel (install → invoice/proforma tool → K2 PDF render),
 // fetch the PDF bytes, rasterise the first page to PNG (pdf-to-png-converter →
-// pdfjs), and pixel-compare against a darwin baseline. The PDF text layer is
+// pdfjs), and pixel-compare against the platform's baseline. The PDF text layer is
 // asserted separately by S4 (`customs-pdf.scenario.test.ts`); this tier catches
 // layout regressions (table columns, customs row, totals block, legal mention).
 //
@@ -18,13 +18,13 @@ import { resolve } from "node:path"
 import { api } from "@liaison/test-helpers"
 import { pdfToPng } from "pdf-to-png-converter"
 import { callToolAsAgent, decideApproval, listPendingApprovals } from "../helpers/approvals"
+import { PIXEL_BASELINES } from "../helpers/pixel-baselines"
 import { expect, test } from "./_invoicing-fixtures"
 import { installInvoicingApp } from "./helpers/install-invoicing-app"
 import { INVOICING_BUNDLE as resolvedInvoicingBundle } from "./helpers/invoicing-bundle"
 
 const LIAISON_ROOT = resolve(__dirname, "..", "..", "..", "..", "..", "..")
 const INVOICING_BUNDLE = resolvedInvoicingBundle
-const PIXEL_BASELINES = process.platform === "darwin"
 const SHOT = { maxDiffPixelRatio: 0.02 } as const
 
 function unwrap(body: unknown): Record<string, unknown> {

@@ -10,18 +10,18 @@
 // + real cross-app mount, so the screenshot captures the genuine rendered
 // subtree (charcoal theme parity inside invoicing's CSS scope).
 //
-// Pixel goldens are darwin-only (`*-darwin.png`). FUNCTIONAL assertions (the
+// Pixel goldens are per platform (`*-darwin.png`, `*-linux.png`, helpers/pixel-baselines.ts). FUNCTIONAL assertions (the
 // real Boxtal body / empty-state visible) run EVERYWHERE.
 // Re-bake after an intentional UI change with:
 //   bunx --bun playwright test --update-snapshots=all -g "cross-app slot"
 import { existsSync } from "node:fs"
 import { forceDarkMode } from "../agent-bootstrap"
 import { loginAs } from "../fixtures/test"
+import { PIXEL_BASELINES } from "../helpers/pixel-baselines"
 import { assertBoxtalBundle, expect, INVOICING_BUNDLE, test } from "./_boxtal-fixtures"
 import { seedCreatedShipment, seedIssuedInvoice } from "./helpers/seed-shipment"
 
 const SHOT = { maxDiffPixelRatio: 0.01 } as const
-const PIXEL_BASELINES = process.platform === "darwin"
 
 test.setTimeout(120_000)
 

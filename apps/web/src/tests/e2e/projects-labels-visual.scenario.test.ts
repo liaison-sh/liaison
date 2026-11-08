@@ -6,6 +6,7 @@
 // DOM assertions run first, so a wrong baseline cannot pass on its own.
 import { api, type WorkerEnv } from "@liaison/test-helpers"
 import { expect, loginAs, test } from "./fixtures/test"
+import { PIXEL_BASELINES } from "./helpers/pixel-baselines"
 import {
   clearAllLabels,
   clearAllProjects,
@@ -14,7 +15,6 @@ import {
 } from "./helpers/projects-seed"
 
 const SHOT = { maxDiffPixelRatio: 0.02 } as const
-const PIXEL_BASELINES = process.platform === "darwin"
 
 // The admin's theme preference is `system` after the lane reset: a light OS
 // scheme resolves it to light.

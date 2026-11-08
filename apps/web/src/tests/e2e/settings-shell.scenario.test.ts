@@ -16,6 +16,7 @@
 import { api } from "@liaison/test-helpers"
 import type { Page } from "@playwright/test"
 import { expect, loginAs, test } from "./fixtures/test"
+import { PIXEL_BASELINES } from "./helpers/pixel-baselines"
 import { assignRoleToUser, seedRoleWithScopes } from "./helpers/seed"
 import { grantSupportAgent } from "./helpers/settings-roles"
 import { installInvoicingApp } from "./invoicing/helpers/install-invoicing-app"
@@ -23,7 +24,6 @@ import { INVOICING_BUNDLE } from "./invoicing/helpers/invoicing-bundle"
 
 const QA_PASSWORD = "QaPass1!"
 const SHOT = { maxDiffPixelRatio: 0.02 } as const
-const PIXEL_BASELINES = process.platform === "darwin"
 const ADMIN_ROWS = [
   "settings-link-kernel:users",
   "settings-link-kernel:roles",

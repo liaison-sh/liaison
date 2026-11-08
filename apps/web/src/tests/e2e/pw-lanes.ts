@@ -105,6 +105,15 @@ export function viteMode(): "dev" | "preview" {
   return process.env.E2E_WEB_PREVIEW === "1" ? "preview" : "dev"
 }
 
+/**
+ * The build a `vite preview` serves: the shared lanes' build when global-setup
+ * made one (the lane registry is up), else the config's own `dist/`, which
+ * global-setup builds for per-worker stacks under E2E_WEB_PREVIEW=1.
+ */
+export function previewBuildDir(): string | undefined {
+  return process.env[PW_LANE_REGISTRY_ENV] ? PW_WEB_BUILD_DIR : undefined
+}
+
 export interface PwLaneInfo {
   lane: LaneInfo
 }

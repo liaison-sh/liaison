@@ -12,6 +12,7 @@ import {
   type WorkerEnv,
 } from "@liaison/test-helpers"
 import { test as base, type Page } from "@playwright/test"
+import { previewBuildDir, viteMode } from "../pw-lanes"
 import { loginAs } from "./test"
 import { PROFILE_WORKER_SLOTS } from "./worker-slots"
 
@@ -196,9 +197,16 @@ export function createProfiledE2ETest(profile: ProfiledFixtureProfile) {
             portCount: profile.portCount,
             serverEnv: beforeResult.env,
           })
+          // The production build global-setup made, through `vite preview`,
+          // as the shared lanes serve it: a dev server compiled the whole app
+          // on demand for every profiled worker, and on a small CI runner
+          // (four vCPUs shared with the lanes' servers and browsers) the shell
+          // after sign-in took longer to compile than the tests wait for it.
           vite = await spawnViteServer({
             port: env.ports[1],
             cwd: WEB_DIR,
+            mode: viteMode(),
+            outDir: previewBuildDir(),
             env: {
               VITE_API_TARGET: env.serverUrl,
               VITE_TEST_MODE: "true",

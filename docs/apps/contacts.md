@@ -43,6 +43,10 @@ Deleting a group keeps its contacts.
 
 A contact becomes the organization's only when it is shared.
 
+## When an account manager changes
+
+When a company is given to someone else, its previous account manager gets one row on **Home** naming who gave which companies to whom. When an account manager is deactivated, the admin who does it says who takes their companies over (see [Deactivate a user](../admin/users.md#deactivate-a-user)).
+
 ## Merge duplicates
 
 1. Open one of the contacts and click **Merge with...**.

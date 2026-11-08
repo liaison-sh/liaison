@@ -245,6 +245,9 @@ describe("db import enforcement", () => {
     // and a delete clears the company from deals and pipelines: both run
     // elevated in the caller's transaction (withElevatableRlsFrom + asAdmin).
     "modules/contacts/companies.ts",
+    // After a company's manager changed or its manager came back (an event, no request
+    // context): the previous manager's Home row and the admins' unowned rows, by org id.
+    "modules/contacts/company-unowned.ts",
     // A contact's team references are counted privileged (privilegedFrom): the
     // actor cannot read every referencing table, and the answer is a count.
     "modules/contacts/references.ts",

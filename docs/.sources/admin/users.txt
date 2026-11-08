@@ -86,3 +86,8 @@ deactivation stops push to registered phones and browsers -> apps/api/src/module
 step-up for a full-access MCP connection (OAuth consent or device approval, no agent binding), emailed code only, sent when the page opens -> apps/api/src/modules/mcp/full-access-step-up.ts:52 ; apps/api/src/modules/auth/step-up.ts:99 ; apps/api/src/modules/auth/device-flow-routes.ts:353 ; apps/api/src/modules/mcp/oauth-server-routes.ts:584 ; apps/api/src/modules/mcp/oauth-server-routes.ts:411
 Deactivation deletes the person's away ranges -> apps/api/src/modules/users/away.ts:1052 ; apps/api/src/modules/users/service.ts
 Deactivation deletes calendar-derived away ranges too (one table, every source) -> apps/api/src/modules/users/away.ts:1057
+Deactivate asks who takes over a manager's companies -> apps/web/src/modules/settings/AdminUsers.tsx:488 ; packages/shared/src/i18n/locales/en/kernel.json:2760-2763
+Without accountsTo the tool refuses with the count and changes nothing -> apps/api/src/modules/apps/kernel-bulk.ts:157
+A company the new manager cannot see stays without one -> apps/api/src/modules/contacts/company-unowned.ts:144-160
+One unowned row per person left, for kernel:users:admin and kernel:companies:write holders -> apps/api/src/modules/contacts/company-unowned.ts:42 ; apps/api/src/modules/contacts/company-unowned.ts:233
+The row goes at zero or on reactivation -> apps/api/src/modules/contacts/company-unowned.ts:307

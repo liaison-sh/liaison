@@ -13,6 +13,8 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { randomUUID } from "node:crypto"
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { type AttentionItem, countBadge } from "@liaison/shared"
+import { createPipeline } from "~/apps/projects/service/create-project"
+import { createTask } from "~/apps/projects/service/tasks"
 import { sql } from "~/db/connection"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
@@ -31,6 +33,7 @@ import { attentionItemsRegistry } from "~/modules/apps/app-registries"
 import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { handOverCompanies } from "~/modules/contacts/company-unowned"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
@@ -70,6 +73,8 @@ interface RowSpec {
   bundlePosition?: number | null
   title: string
   routePersonId?: string | null
+  /** The company the request is about (its account manager routes it). */
+  routeCompanyId?: string | null
   links?: unknown[]
   /** The stored payload; by default `{ title }`. */
   payload?: Record<string, unknown>
@@ -99,6 +104,25 @@ export async function insertRow(spec: RowSpec): Promise<string> {
       bundle_position: spec.bundlePosition ?? null,
       approving_started_at: wedged ? { raw: "now() - INTERVAL '2 hours'" } : null,
       route_person_id: spec.routePersonId ?? null,
+      route_company_id: spec.routeCompanyId ?? null,
+    }),
+  )
+  return id
+}
+
+export async function insertCompany(
+  orgId: string,
+  name: string,
+  ownerUserId: string | null,
+): Promise<string> {
+  const id = randomUUID()
+  await sql.unsafe(
+    insertSql("kernel.companies", {
+      id,
+      org_id: orgId,
+      handle: `co-${id.slice(0, 8)}`,
+      name,
+      owner_user_id: ownerUserId,
     }),
   )
   return id
@@ -240,6 +264,24 @@ describe("home routing: who a pending approval is for", () => {
     }
     expect(existsSync(SNAPSHOT_PATH)).toBe(true)
     expect(world).toEqual(JSON.parse(readFileSync(SNAPSHOT_PATH, "utf8")))
+  })
+
+  it("with no manager the feed equals the snapshot taken before", async () => {
+    // Every fixture row is about a company nobody manages: nothing moves.
+    const company = await insertCompany(ORG, "Nobody's company", null)
+    await sql`UPDATE kernel.approval_requests SET route_company_id = ${company} WHERE org_id = ${ORG}`
+    try {
+      expect(await readWorld()).toEqual(JSON.parse(readFileSync(SNAPSHOT_PATH, "utf8")))
+    } finally {
+      await sql`UPDATE kernel.approval_requests SET route_company_id = NULL WHERE org_id = ${ORG}`
+    }
+  })
+
+  it("an org with no manager has the same approvals and Home rows as before", async () => {
+    // Companies exist, none has a manager, and no request names one (as a migrated org has).
+    await insertCompany(ORG, "Unmanaged one", null)
+    await insertCompany(ORG, "Unmanaged two", null)
+    expect(await readWorld()).toEqual(JSON.parse(readFileSync(SNAPSHOT_PATH, "utf8")))
   })
 
   /** The row as this viewer's feed has it, or null when it is not in their feed. */
@@ -1075,5 +1117,254 @@ describe("home routing: back from away, and who is away in lists of people", () 
     const listed = await handleUsersList({}, { orgId: ORG, userId: p.elodie as string } as never)
     const [{ today }] = (await sql`SELECT current_date::text AS today`) as Array<{ today: string }>
     expect(listed.users.find((u) => u.id === lea)?.away).toEqual({ until: today })
+  })
+})
+
+describe("home routing: a company's account manager", () => {
+  const p: Record<string, string> = {}
+  let ARLON = ""
+  let admin: UserContext
+
+  beforeAll(async () => {
+    await acquireTestLock()
+    ORG = (await createTestOrg()).id
+    for (const name of ["elodie", "elise", "sara", "tom", "ines", "noright"]) {
+      p[name] = (await minimal.person(ORG, { name: `Fixture ${name}` })).id
+    }
+    for (const name of ["elodie", "elise", "sara", "tom", "ines"]) {
+      await minimal.grantScope(p[name] as string, "projects:approve")
+    }
+    THREAD = await minimal.thread(ORG, p.elise as string, { title: "Manager fixtures" })
+    ARLON = await insertCompany(ORG, "Maison Arlon", p.elodie as string)
+    await ensureAppsForOrg(ORG)
+    admin = await ctxOf((await minimal.orgAdmin(ORG)).id)
+  }, 180_000)
+
+  afterAll(async () => {
+    await releaseTestLock()
+  })
+
+  async function feed(userId: string) {
+    const ctx = await ctxOf(userId)
+    return withRlsContext(ctx, (tx) => computeApprovalAttentionItems(tx, ORG, userId))
+  }
+
+  async function at(viewer: string, rowId: string) {
+    const item = (await feed(p[viewer] as string)).find((i) => i.entityId === rowId)
+    if (!item) return null
+    const meta = item.metadata as Record<string, unknown>
+    return {
+      placement: meta.placement,
+      route: meta.route as Record<string, unknown>,
+      routeLine: meta.routeLine as Record<string, unknown> | undefined,
+    }
+  }
+
+  async function badge(viewer: string, rowId: string): Promise<number> {
+    const ctx = await ctxOf(p[viewer] as string)
+    const items = (
+      await withRlsContext(ctx, (tx) =>
+        computeApprovalBadgeItems(tx, ORG, p[viewer] as string, 200),
+      )
+    ).filter((i) => i.entityId === rowId)
+    return countBadge({ threads: [], items, viewer: { canGrantAccess: false } })
+  }
+
+  const deciders = () => [p.elodie, p.elise, p.sara, p.tom, p.ines] as string[]
+
+  /** A routine's reminder about Maison Arlon: nobody asked, nobody is on the item. */
+  function routineReminder(title: string, extra: Partial<RowSpec> = {}): Promise<string> {
+    return insertRow({
+      requestedBy: p.elise as string,
+      notify: deciders(),
+      metadata: { originRoutineId: randomUUID() },
+      routeCompanyId: ARLON,
+      title,
+      ...extra,
+    })
+  }
+
+  async function requestColumns(): Promise<unknown[]> {
+    return [
+      ...(await sql`SELECT * FROM kernel.approval_requests WHERE org_id = ${ORG} ORDER BY id`),
+    ]
+  }
+
+  it("a routine's reminder about the company is the manager's and the others see it under for others", async () => {
+    const id = await routineReminder("Remind Maison Arlon")
+    const elodie = await at("elodie", id)
+    expect(elodie?.placement).toBe("mine")
+    expect(elodie?.route).toMatchObject({ to: "person", userId: p.elodie, why: "manager" })
+    for (const other of ["elise", "sara"]) {
+      expect((await at(other, id))?.placement).toBe("others")
+    }
+    expect(await badge("elodie", id)).toBe(1)
+    expect(await badge("elise", id)).toBe(0)
+  })
+
+  it("a manager-routed row carries its why line", async () => {
+    const id = await routineReminder("Why line")
+    expect((await at("sara", id))?.routeLine).toEqual({ forName: "Fixture elodie" })
+    // Her own row says it is hers by its route, without her name.
+    expect((await at("elodie", id))?.route).toMatchObject({ why: "manager" })
+    expect((await at("elodie", id))?.routeLine?.forName).toBeUndefined()
+  })
+
+  it("a manager without the approve right does not see it and nobody is named", async () => {
+    const company = await insertCompany(ORG, "Maison Sans Droit", p.noright as string)
+    const id = await insertRow({
+      requestedBy: p.elise as string,
+      notify: [...deciders(), p.noright as string],
+      metadata: { originRoutineId: randomUUID() },
+      routeCompanyId: company,
+      title: "Manager without the right",
+    })
+    expect(await at("noright", id)).toBeNull()
+    for (const decider of ["elise", "sara"]) {
+      const row = await at(decider, id)
+      expect(row?.placement).toBe("mine")
+      expect(row?.route).toEqual({ to: "usual" })
+      expect(row?.routeLine).toBeUndefined()
+    }
+  })
+
+  it("a ticket reply is for the assignee, a deal item for its owner, an agent's request for its person", async () => {
+    // The ticket's assignee comes before the company's manager.
+    const reply = await routineReminder("Ticket reply on a Maison Arlon ticket", {
+      tool: "projects:reply",
+      routePersonId: p.ines as string,
+    })
+    expect((await at("ines", reply))?.route).toMatchObject({ userId: p.ines, why: "on_item" })
+    expect((await at("elodie", reply))?.placement).toBe("others")
+
+    // A deal's item: the owner from projects, the company from the deal, at proposal time.
+    const pipeline = await withRlsContext(admin, (tx) =>
+      createPipeline({ tx, orgId: ORG, actor: admin, input: { name: "Manager routing pipeline" } }),
+    )
+    const task = await withRlsContext(admin, (tx) =>
+      createTask({
+        tx,
+        orgId: ORG,
+        actor: admin,
+        input: { projectId: pipeline.id, title: "Maison Arlon renewal" },
+      }),
+    )
+    await sql`UPDATE app_projects.deals SET company_id = ${ARLON} WHERE task_id = ${task.id}`
+    await sql`UPDATE app_projects.tasks SET assignee_id = ${p.tom} WHERE id = ${task.id}`
+    const route = await resolveProposeRoute({
+      orgId: ORG,
+      toolName: "projects:update",
+      summary: {
+        links: [{ label: "Deal", app: "projects", entityType: "task", entityId: task.id }],
+      },
+      requestedBy: admin.userId as string,
+      budgetMs: 5_000,
+    })
+    expect(route).toEqual({ routePersonId: p.tom, routeCompanyId: ARLON })
+    const dealItem = await routineReminder("Deal item", { routePersonId: p.tom as string })
+    expect((await at("tom", dealItem))?.route).toMatchObject({ userId: p.tom, why: "on_item" })
+
+    // Tom's agent asked and Tom can decide: it is Tom's, in Élodie's for others.
+    const asked = await insertRow({
+      requestedBy: p.tom as string,
+      notify: deciders(),
+      routeCompanyId: ARLON,
+      title: "Tom's agent asks",
+    })
+    expect((await at("tom", asked))?.route).toMatchObject({ userId: p.tom, why: "asked" })
+    expect((await at("elodie", asked))?.placement).toBe("others")
+  })
+
+  it("going away rewrites no approval row and the stand-in counts it", async () => {
+    const id = await routineReminder("Away manager")
+    const before = await requestColumns()
+    const [range] = (await sql.unsafe(
+      insertSql(
+        "kernel.away_ranges",
+        {
+          org_id: ORG,
+          user_id: p.elodie as string,
+          starts_on: { raw: "current_date - 1" },
+          ends_on: { raw: "current_date + 2" },
+          next_in_line_id: p.tom as string,
+          source: "said",
+        },
+        { returning: "id" },
+      ),
+    )) as Array<{ id: string }>
+    try {
+      expect(await requestColumns()).toEqual(before)
+      const tom = await at("tom", id)
+      expect(tom?.placement).toBe("standing_in")
+      expect(tom?.route).toMatchObject({ userId: p.elodie, why: "manager", standIn: p.tom })
+      expect(await badge("tom", id)).toBe(1)
+      expect((await at("elise", id))?.placement).toBe("others")
+    } finally {
+      await sql`DELETE FROM kernel.away_ranges WHERE id = ${range!.id}`
+    }
+    expect((await at("tom", id))?.placement).toBe("others")
+    expect((await at("elodie", id))?.placement).toBe("mine")
+    expect(await requestColumns()).toEqual(before)
+  })
+
+  it("handing companies over moves waiting items with approval rows byte-identical", async () => {
+    const company = await insertCompany(ORG, "Maison Relais", p.sara as string)
+    const id = await insertRow({
+      requestedBy: p.elise as string,
+      notify: deciders(),
+      metadata: { originRoutineId: randomUUID() },
+      routeCompanyId: company,
+      title: "Waiting through a hand-over",
+    })
+    expect((await at("sara", id))?.placement).toBe("mine")
+    const before = await requestColumns()
+    const moved = await withPrivilegedDb(ORG, "home-routing-hand-over", (tx) =>
+      handOverCompanies(tx, {
+        orgId: ORG,
+        actorId: admin.userId as string,
+        fromUserId: p.sara as string,
+        accountsTo: p.ines as string,
+      }),
+    )
+    expect(moved.moved.map((c) => c.id)).toEqual([company])
+    expect(await requestColumns()).toEqual(before)
+    expect((await at("ines", id))?.route).toMatchObject({ userId: p.ines, why: "manager" })
+    expect((await at("sara", id))?.placement).toBe("others")
+  })
+
+  it("a batch across companies has no company route", async () => {
+    const other = await insertCompany(ORG, "Maison Batch", p.sara as string)
+    const companyLink = (id: string) => ({
+      label: "Company",
+      app: "kernel",
+      entityType: "company",
+      entityId: id,
+    })
+    const one = await resolveProposeRoute({
+      orgId: ORG,
+      toolName: "kernel:companies_write",
+      summary: { links: [companyLink(ARLON)] },
+      requestedBy: admin.userId as string,
+    })
+    expect(one).toEqual({ routeCompanyId: ARLON })
+    const batch = await resolveProposeRoute({
+      orgId: ORG,
+      toolName: "kernel:companies_write",
+      summary: { links: [companyLink(ARLON), companyLink(other)] },
+      requestedBy: admin.userId as string,
+    })
+    expect(batch).toEqual({})
+    // A contact stands for its company; with the same company beside it, still one company.
+    const buyer = await minimal.contact(ORG, `buyer-${randomUUID().slice(0, 8)}@arlon.example`)
+    await sql`UPDATE kernel.contacts SET company_id = ${ARLON} WHERE id = ${buyer}`
+    const contactLink = { label: "Contact", app: "kernel", entityType: "contact", entityId: buyer }
+    expect(
+      await resolveProposeRoute({
+        orgId: ORG,
+        toolName: "mail:compose",
+        summary: { links: [contactLink, companyLink(ARLON)] },
+        requestedBy: admin.userId as string,
+      }),
+    ).toEqual({ routeCompanyId: ARLON })
   })
 })

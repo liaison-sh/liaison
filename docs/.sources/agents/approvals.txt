@@ -241,3 +241,6 @@ A set-aside item comes back when the moment passes -> apps/api/src/modules/atten
 Ask agent to draft posts to the Personal agent conversation -> apps/web/src/modules/shell/AttentionRowExtras.tsx:145
 A failed source is named with Retry -> packages/shared/src/i18n/locales/en/kernel.json:6482
 Decision older than 15 minutes is dropped at the next start, row says not sent -> apps/web/src/modules/approvals/decision-queue.ts:51 ; packages/shared/src/i18n/locales/en/kernel.json:5737
+A request about a company records the company (company or contact link, deal via its task); several companies record none -> apps/api/src/modules/approvals/route-world.ts:591 ; apps/api/src/apps/projects/handlers.ts:110
+The manager is read at each feed read, after asked and on-item -> apps/api/src/modules/approvals/route-world.ts:302 ; apps/api/src/modules/approvals/route-world.ts:406 ; packages/shared/src/approvals/authority.ts:367-371
+A manager without the deciding scope is skipped, usual approvers -> packages/shared/src/approvals/authority.ts:373

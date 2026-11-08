@@ -39,6 +39,14 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `call_tool` | Call a loaded tool that is not in your tool list (one a "tools just loaded" note describes). |  | `kernel:threads:read` |
 | `capture_business_knowledge` | Capture a piece of company knowledge (a policy, a process, a shared fact) as an ORGANIZATION scoped Knowledge document every member can find, auto-enabling the Knowledge app if needed. | yes | `knowledge:documents:create` |
 | `clone_repo_on_my_computer` | Clone a git repository onto the person's own computer, into its Liaison folder (&lt;node root&gt;/repos/&lt;name&gt;), and share it with Liaison so kernel__run_on_my_computer can work in it later. | yes | `kernel:threads:write` |
+| `companies_find_duplicates` | Find pairs of companies that look like one (same domain, same name, or both), skipping pairs marked not the same. |  | `kernel:companies:read` |
+| `companies_link_batch` | Create several companies and link their people in one approval, from kernel__companies_propose_from_contacts groups. | yes | `kernel:companies:write` |
+| `companies_link_contacts` | Link people to a company (their company name becomes the company's), or unlink them with unlink: true. | yes | `kernel:companies:write` |
+| `companies_mark_not_same` | Mark two companies as not the same, so they are no longer suggested as duplicates; undo: true reverts it. |  | `kernel:companies:write` |
+| `companies_propose_from_contacts` | Propose companies from people who have none, grouped by their company text and business mail domain. |  | `kernel:companies:read` |
+| `companies_read` | Read a company: its account manager (with away until and who is next in line), its people with the main contact and their last mail, and its newest open deal. |  | `kernel:companies:read` |
+| `companies_search` | Search companies by name or domain, with each one's account manager and people count. |  | `kernel:companies:read` |
+| `companies_write` | Create or change a company (omit companyId to create), or set its account manager with ownerUserId (null clears). | yes | `kernel:companies:write` |
 | `computer_session_answer` | Answer what one of the person's sessions is waiting on, as its card does, with the person's own answer (never decide for them): a permission (`allow`, and `scope` "session" only when they say for the rest of the session), a plan (`allow` true approves it, false keeps it planning), or a question (`answers`: each question's `number` from the read, or its text, to the option label they chose, or their own words). |  | `kernel:threads:write` |
 | `computer_session_import` | Bring one of the person's Claude Code sessions into Liaison: `follow` shows it live while it runs elsewhere; `take_over` imports it so the person can continue it from Liaison. | yes | `kernel:threads:write` |
 | `computer_session_import_list` | List the Claude Code sessions recorded in the folders the person shares from their own computer (VS Code or terminal sessions), so they can bring one into Liaison. |  | `kernel:threads:read` |
@@ -79,7 +87,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `contacts_read` | Read a contact with recent mail backlinks and timeline entries. |  | `kernel:contacts:read` |
 | `contacts_search` | Search the contact registry by name, email or company. |  | `kernel:contacts:read` |
 | `contacts_share` | Change who a contact is shared with — the ONLY way a contact becomes the organisation's. | yes | `kernel:contacts:write` |
-| `contacts_write` | Create or update a contact in Liaison's own contact list; omit contactId to create. | yes | `kernel:contacts:write` |
+| `contacts_write` | Create or update a person in Liaison's contacts; omit contactId to create, and search with kernel__contacts_search first so you update instead of making a duplicate. | yes | `kernel:contacts:write` |
 | `create_pinned_thread` | Create an org-wide pinned thread visible in every member's sidebar (e.g. |  | `kernel:threads:admin` |
 | `create_role` | Create an org role with scope grants. | yes | `kernel:roles:admin` |
 | `create_routine` | Author a routine: an agent task that runs unattended on one of three triggers, recurring (cron), scheduled (a one-off runAt) or event (an in-tree app:entity:action event). | yes | `kernel:routines:write` |

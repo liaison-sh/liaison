@@ -4905,6 +4905,12 @@ export const FR: Record<string, string> = {
   "To stop commercial messages from {{name}}: {{url}} or reply stop.":
     "Pour ne plus recevoir de messages commerciaux de {{name}} : {{url}} ou répondez stop.",
   "(opt-out link)": "(lien de désinscription)",
+  "{{name}} received your address from a third party and uses it only for professional messages like this one. You can object at any time with the link below.":
+    "{{name}} a reçu votre adresse d'un tiers et ne l'utilise que pour des messages professionnels comme celui-ci. Vous pouvez vous y opposer à tout moment avec le lien ci-dessous.",
+  "{{name}} found your address in a public business source and uses it only for professional messages like this one. You can object at any time with the link below.":
+    "{{name}} a trouvé votre adresse dans une source professionnelle publique et ne l'utilise que pour des messages professionnels comme celui-ci. Vous pouvez vous y opposer à tout moment avec le lien ci-dessous.",
+  "If you did not give us your address yourself, {{name}} obtained it from another source and uses it only for professional messages like this one. You can object at any time with the link below.":
+    "Si vous ne nous avez pas donné votre adresse vous-même, {{name}} l'a obtenue d'une autre source et ne l'utilise que pour des messages professionnels comme celui-ci. Vous pouvez vous y opposer à tout moment avec le lien ci-dessous.",
   "This mail goes to a prospect, so these lines are added when it is sent, in their language. They cannot be removed.":
     "Ce message va à un prospect : ces lignes y sont ajoutées à l'envoi, dans sa langue. Elles ne peuvent pas être retirées.",
   "Could not check whether this mail is commercial. It is checked again when you send.":

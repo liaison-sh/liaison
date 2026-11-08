@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
+import { createHash } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, type RlsClient } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
 import { withReleasedSavepoint } from "~/db/savepoint"
 import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
@@ -9,6 +11,8 @@ import { quoteIdent } from "~/lib/sql-utils"
 import { currentRunContext } from "~/modules/agent/runtime/run-context"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import { snakeCase } from "~/modules/apps/sandbox/bridge/shared"
+import { writeAuditLog } from "~/modules/audit/service"
+import { art14NoticeDue, markArt14NoticeSent } from "~/modules/mail/commercial-footer"
 import {
   type BuildSendGuardInput,
   buildSendGuard,
@@ -25,6 +29,7 @@ import {
   requestFacts,
   stopCode,
 } from "~/modules/mail/send-guard"
+import { hashEmail, lawfulBasisFacts } from "~/modules/mail/suppressions"
 
 const K = () => drizzleSql.raw(schemaRef("kernel"))
 
@@ -114,6 +119,68 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
       ),
     )
     return rows.map((row) => row.id)
+  }
+
+  /**
+   * The record of a commercial send, written just before it leaves: who approved
+   * it, a hash of the text that goes (footer included), the basis it goes under,
+   * its class and the opt-out check it passed. When the recipient is owed the
+   * notice of where their address came from, the footer carries it, and their
+   * contact records it now. Throws when either write fails: the mail then stays.
+   */
+  const recordCommercialSend = async (args: {
+    toolName: string
+    recipient: string
+    footer: { textBody?: string; htmlBody?: string }
+    textBody: unknown
+    htmlBody: unknown
+    mode: string | null
+    approvedBy: "person" | "approver" | "policy"
+  }): Promise<{ notice: boolean }> => {
+    const sha = (v: unknown) =>
+      typeof v === "string" ? createHash("sha256").update(v).digest("hex") : null
+    const text = args.footer.textBody ?? args.textBody
+    const html = args.footer.htmlBody ?? args.htmlBody
+    const approverId =
+      args.approvedBy === "approver"
+        ? (approvalContext?.approvalDeciderId ?? null)
+        : args.approvedBy === "person"
+          ? userId
+          : null
+    return withPrivilegedDb(orgId, "mail-commercial-send-record", async (tx) => {
+      const facts = (await lawfulBasisFacts(orgId, [args.recipient], tx)).recipients[0]
+      const due = await art14NoticeDue(orgId, args.recipient, tx)
+      await writeAuditLog(
+        tx,
+        {
+          orgId,
+          actorId: userId,
+          actorType: actorType === "agent" ? "agent" : "user",
+          app: "mail",
+          entityType: "contact",
+          ...(facts?.contactIds[0] ? { entityId: facts.contactIds[0] } : {}),
+          action: "mail.commercial_send",
+          metadata: {
+            toolName: args.toolName,
+            approvedBy: args.approvedBy,
+            approverId,
+            ...(approvalContext ? { approvalRequestId: approvalContext.approvalRequestId } : {}),
+            recipientHash: hashEmail(orgId, args.recipient),
+            contactIds: facts?.contactIds ?? [],
+            textSha256: sha(text),
+            htmlSha256: sha(html),
+            lawfulBasis: facts?.basis ?? null,
+            classification: "marketing",
+            mode: args.mode,
+            suppressionCheck: "not_opted_out",
+            art14Notice: due !== null,
+          },
+        },
+        { required: true },
+      )
+      if (due) await markArt14NoticeSent(orgId, args.recipient, tx)
+      return { notice: due !== null }
+    })
   }
 
   /**
@@ -643,6 +710,30 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
             guard: { state: "refused", reason: message, classification: "marketing" },
           })
         }
+        try {
+          await recordCommercialSend({
+            toolName: params.toolName,
+            recipient: own.recipient,
+            footer,
+            textBody: params.textBody,
+            htmlBody: params.htmlBody,
+            mode: null,
+            approvedBy: "person",
+          })
+        } catch (err) {
+          rootLogger.error({ err, orgId }, "commercial send record failed, not sending")
+          const message =
+            "Nothing was sent. The record a commercial mail needs could not be written. Next: try again shortly."
+          return JSON.stringify({
+            applies: true,
+            state: "refused",
+            final: false,
+            code: "commercial_record_unavailable",
+            message,
+            approved: false,
+            guard: { state: "refused", reason: message, classification: "marketing" },
+          })
+        }
         return JSON.stringify({
           applies: true,
           state: "clear",
@@ -694,6 +785,37 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
               classification: guard.classification,
             },
           })
+        }
+        if (commercial && footer && first) {
+          try {
+            await recordCommercialSend({
+              toolName: params.toolName ?? "mail:compose",
+              recipient: first,
+              footer,
+              textBody: params.textBody,
+              htmlBody: params.htmlBody,
+              mode: guard.mode,
+              approvedBy: approvalContext ? "approver" : "policy",
+            })
+          } catch (err) {
+            rootLogger.error({ err, orgId }, "commercial send record failed, not sending")
+            const message =
+              "The mail was not sent. The record a commercial mail needs could not be written. Next: try again shortly."
+            return JSON.stringify({
+              applies: true,
+              state: "unavailable",
+              final: false,
+              code: "commercial_record_unavailable",
+              message,
+              approved: approvalContext !== undefined,
+              guard: {
+                state: "unavailable",
+                reason: message,
+                mode: guard.mode,
+                classification: guard.classification,
+              },
+            })
+          }
         }
         return JSON.stringify({
           applies: true,

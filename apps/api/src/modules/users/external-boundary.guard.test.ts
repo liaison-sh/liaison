@@ -299,6 +299,25 @@ describe("privileged readers of kernel.users", () => {
     expect(unfiltered).toEqual([])
   })
 
+  it("no product file creates an external user while a walks-org reader has no member filter", () => {
+    const walksOrg = Object.entries(TREATED)
+      .filter(([, [treatment]]) => treatment === "walks-org")
+      .map(([file]) => file)
+    const callers = sourceFiles(SRC)
+      .map((path) => relative(SRC, path))
+      .filter((file) => file !== "modules/users/external-user.ts")
+      .filter((file) =>
+        /\bcreateExternalUser\b|["'][^"']*\/external-user["']/.test(
+          withoutComments(readFileSync(join(SRC, file), "utf8")),
+        ),
+      )
+      .map(
+        (file) =>
+          `${file} creates an external user, but these readers still walk the org without filtering external rows: ${walksOrg.join(", ")}`,
+      )
+    expect(walksOrg.length === 0 ? [] : callers).toEqual([])
+  })
+
   it("every treatment gives its reason", () => {
     expect(Object.entries(TREATED).filter(([, [, reason]]) => reason.trim() === "")).toEqual([])
   })

@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+import { mkdirSync, writeFileSync } from "node:fs"
+import path from "node:path"
+
 export interface ViteServer {
   kill(): Promise<void>
 }
@@ -48,6 +51,28 @@ catpid=$!
 wait $catpid
 cleanup
 `
+}
+
+/**
+ * Where a spawned Vite server's output goes when it stops: the run's log
+ * directory, beside the API server's `worker-<id>-*.log` (worker-env.ts), as
+ * `vite-<port>-stdout.log` / `vite-<port>-stderr.log`. Vite's proxy answers a
+ * request it could not forward with a bare 502 and prints why (`http proxy
+ * error: <path>` and the socket error) only on its own output, so without
+ * this file a 502 in a test names nothing.
+ */
+export function writeViteLogs(
+  logDir: string,
+  port: number,
+  out: { stdout: string; stderr: string },
+): void {
+  try {
+    mkdirSync(logDir, { recursive: true })
+    if (out.stdout) writeFileSync(path.join(logDir, `vite-${port}-stdout.log`), out.stdout)
+    if (out.stderr) writeFileSync(path.join(logDir, `vite-${port}-stderr.log`), out.stderr)
+  } catch {
+    /* best effort, like the API server's logs */
+  }
 }
 
 /**
@@ -104,8 +129,7 @@ export async function spawnViteServer(opts: {
       }
     } catch {}
   }
-  drain(proc.stdout, "out")
-  drain(proc.stderr, "err")
+  const drained = Promise.all([drain(proc.stdout, "out"), drain(proc.stderr, "err")])
 
   const url = `http://127.0.0.1:${port}`
   const deadline = Date.now() + timeoutMs
@@ -124,7 +148,10 @@ export async function spawnViteServer(opts: {
     await Bun.sleep(100)
   }
 
+  // The same directory worker-env.ts writes the API server's logs to.
+  const logDir = process.env.LOG_DIR ?? `${process.cwd()}/../../logs`
   if (!ready) {
+    writeViteLogs(logDir, port, { stdout: stdoutBuf, stderr: stderrBuf })
     proc.kill("SIGTERM")
     throw new Error(
       `Vite dev server failed to start on port ${port} within ${timeoutMs}ms.\nstdout: ${stdoutBuf.slice(-2000)}\nstderr: ${stderrBuf.slice(-2000)}`,
@@ -146,6 +173,9 @@ export async function spawnViteServer(opts: {
       } finally {
         clearTimeout(timer)
       }
+      // The streams close with the process; bounded in case a grandchild holds them open.
+      await Promise.race([drained, Bun.sleep(1_000)])
+      writeViteLogs(logDir, port, { stdout: stdoutBuf, stderr: stderrBuf })
     },
   }
 }

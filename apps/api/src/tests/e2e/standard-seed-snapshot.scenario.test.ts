@@ -3,8 +3,8 @@
 // boots a lane of its own (createE2eLane) and reads its schemas back.
 //
 // The `standard` tier's output, pinned. A Playwright lane is booted the way
-// pw-lanes.ts boots one (org, admin, the standard world, outbox drained, search
-// idle), then every table of the lane's schemas is read back, normalised for
+// pw-lanes.ts boots one (org, admin, the standard world, outbox drained, the
+// minute materializer and burst summaries run, search idle), then every table of the lane's schemas is read back, normalised for
 // what legitimately differs between two runs (ids, write-time clocks, salted
 // hashes and ciphertexts, login sessions) and compared with
 // `standard-seed-snapshot.expected.json`: the row count and a content digest
@@ -73,6 +73,11 @@ const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
 const ID_PREFIX_IN_ADDRESS = /\+[0-9a-f]{8}@/g
 /** The QA roles' names carry the instant they were made. */
 const QA_ROLE_NAME = /^e2e-role-\d+-[a-z0-9]+$/
+/**
+ * An epoch-millisecond stamp inside an id (`burst:<org>:<ms>`, a burst
+ * summary's notify id carries the instant it was sent).
+ */
+const EPOCH_MS_IN_ID = /(?<=:)\d{13}(?=$|:)/g
 const ISO_TS = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}(:?\d{2})?)?$/
 
 interface TableSnapshot {
@@ -105,7 +110,13 @@ function normalise(value: unknown, column: string, clock: Clock): unknown {
       return `now${steps >= 0 ? "+" : ""}${steps * 5}m`
     }
     if (QA_ROLE_NAME.test(value)) return "e2e-role-<n>"
-    return value.replace(UUID, "<uuid>").replace(ID_PREFIX_IN_ADDRESS, "+<id>@")
+    return value
+      .replace(UUID, "<uuid>")
+      .replace(ID_PREFIX_IN_ADDRESS, "+<id>@")
+      .replace(EPOCH_MS_IN_ID, (ms) => {
+        const t = Number(ms)
+        return t >= clock.from && t <= clock.to ? "<written>" : ms
+      })
   }
   if (Array.isArray(value)) {
     return value

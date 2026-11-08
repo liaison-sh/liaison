@@ -109,6 +109,21 @@ export async function createE2eLane(
   // before the snapshot, or the first file would find them half processed and
   // the rest never.
   await waitForOutboxDrained(sql, env.schemaPrefix)
+  // What the seed left pending (approvals, connected accounts) reaches its
+  // people's attention through the state materializer, a once-a-minute job,
+  // and a burst of posts is summarized by a job delayed past the burst. A
+  // snapshot taken before them held none of their rows, one taken after held
+  // them all, so the lane's world depended on the minute it was built in and
+  // on how long it took. The lane waits for the tick and for every such job,
+  // twice over the outbox (what one sends can queue the other).
+  if (options.seed) {
+    const cron = `${bullPrefix}kernel-cron`
+    await waitForSchedulerTick(redis, bullPrefix, "kernel-cron", STATE_MATERIALIZER_SCHEDULER)
+    for (let round = 0; round < 2; round++) {
+      await waitForJobsDone(redis, cron, SETTLING_JOBS)
+      await waitForOutboxDrained(sql, env.schemaPrefix)
+    }
+  }
   // The drained outbox has only QUEUED the search work: the flusher's jobs (a
   // second's debounce) and the boot rebuild (kernel-bulk, started when the
   // index was missing) still have to run. A snapshot taken before them held a
@@ -439,6 +454,89 @@ async function waitForSearchIdle(
     if ((body.results ?? []).length === 0) return
     await Bun.sleep(50)
   }
+}
+
+/**
+ * The state materializer's minute tick (`STATE_MATERIALIZER_JOB` in
+ * apps/api/src/modules/attention/state-materializer.ts, scheduled as
+ * `<job>-scheduler` by `registerScheduledJob`).
+ */
+const STATE_MATERIALIZER_SCHEDULER = "attention-state-email-materialize-scheduler"
+/**
+ * The kernel-cron jobs a seeded world sets going and the lane waits out: the
+ * materializer's tick and its per-org run (`STATE_MATERIALIZER_ORG_JOB`), and a
+ * notification burst's summary, sent by a job delayed until the burst has been
+ * quiet for ten seconds (`BURST_FLUSH_JOB`, apps/api/src/modules/notifications/burst.ts).
+ */
+const SETTLING_JOBS: ReadonlySet<string> = new Set([
+  "attention-state-email-materialize",
+  "attention-state-email-materialize-org",
+  "notify-burst-flush",
+])
+
+/**
+ * Waits until the job scheduler `schedulerId` has fired once from now on: a
+ * BullMQ scheduler keeps its next fire time as its score in `<queue>:repeat`
+ * and moves it forward when that fire's job is taken. Gives up after
+ * `timeoutMs` (more than one period of a minute cron) with a warning.
+ */
+async function waitForSchedulerTick(
+  redis: Redis,
+  bullPrefix: string,
+  queue: string,
+  schedulerId: string,
+  timeoutMs = 90_000,
+): Promise<void> {
+  const key = `${bullPrefix}${queue}:repeat`
+  const next = async () => Number((await redis.zscore(key, schedulerId)) ?? Number.NaN)
+  const deadline = Date.now() + timeoutMs
+  const first = await next()
+  while (Date.now() < deadline) {
+    const now = await next()
+    if (Number.isFinite(first) && Number.isFinite(now) && now > first) return
+    await Bun.sleep(250)
+  }
+  process.stderr.write(
+    `[e2e-lane] scheduler ${schedulerId} did not fire within ${timeoutMs / 1000}s; snapshotting anyway\n`,
+  )
+}
+
+/**
+ * Waits until no job named in `names` is waiting, running or due in the BullMQ
+ * queue `queueKey` (a job's name is the `name` field of its hash). The
+ * schedulers' own next fires (`repeat:` ids in the delayed set) are not work.
+ */
+async function waitForJobsDone(
+  redis: Redis,
+  queueKey: string,
+  names: ReadonlySet<string>,
+  timeoutMs = 90_000,
+): Promise<void> {
+  const busy = async (): Promise<boolean> => {
+    const ids = [
+      ...(await redis.lrange(`${queueKey}:wait`, 0, -1)),
+      ...(await redis.lrange(`${queueKey}:active`, 0, -1)),
+      ...(await redis.zrange(`${queueKey}:prioritized`, 0, "-1")),
+      ...(await redis.zrange(`${queueKey}:delayed`, 0, "-1")).filter(
+        (id) => !id.startsWith("repeat:"),
+      ),
+    ]
+    for (const id of ids) {
+      const name = await redis.hget(`${queueKey}:${id}`, "name")
+      if (name !== null && names.has(name)) return true
+    }
+    return false
+  }
+  const deadline = Date.now() + timeoutMs
+  let idleReads = 0
+  while (Date.now() < deadline) {
+    idleReads = (await busy()) ? 0 : idleReads + 1
+    if (idleReads >= 2) return
+    await Bun.sleep(200)
+  }
+  process.stderr.write(
+    `[e2e-lane] ${[...names].join(", ")} still busy after ${timeoutMs / 1000}s; snapshotting anyway\n`,
+  )
 }
 
 /** BullMQ queues whose jobs write the search index. */

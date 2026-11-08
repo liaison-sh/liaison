@@ -140,6 +140,10 @@ Open the contact. Under **Addresses** each address shows its role (**Billing**, 
 
 If you can see a contact but not edit it, you see its addresses without these buttons.
 
+## Review prospects who have gone quiet
+
+Once a day, contacts recorded under professional interest that have sent no mail or ticket and had no deal for three years are listed on one Home item, for each person who is an admin and can edit contacts. Liaison deletes nothing: open the list and decide whom to keep. Not now hides the item until next week; once read, it comes back only when the list changes. Which contacts may get commercial mail at all is in [Mail](../apps/mail.md).
+
 ## Scopes
 
 | Scope | What it allows |

@@ -391,7 +391,7 @@ const AttentionFeedView: Component<AttentionFeedViewProps> = (props) => {
             </span>
           </Show>
         </p>
-        <StandingInLine />
+        <StandingInLine onShow={setHomeFilter} />
         <Show when={isPhone()}>
           <HomeSectionChips sections={sections()} />
         </Show>

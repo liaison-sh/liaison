@@ -13,7 +13,6 @@ import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { DismissButton } from "~/modules/shell/AttentionRowExtras"
 import { attentionStore } from "~/modules/shell/attention-store"
-import { setHomeFilter } from "~/modules/shell/home-filter"
 import { addToast } from "~/modules/shell/toast-store"
 
 type T = (key: string, vars?: Record<string, string | number>) => string
@@ -253,7 +252,9 @@ export function standingInText(p: StandingInFor, t: T, locale: string, today?: s
   })
 }
 
-export const StandingInLine: Component = () => {
+/** `onShow` narrows Home to what the reader covers for that colleague (Home owns its filter:
+ *  importing home-filter here would build Home's sections, and read the session, at import). */
+export const StandingInLine: Component<{ onShow: (filter: string) => void }> = (props) => {
   const i18n = useI18n()
   const api = useApi()
   // Unreadable means no line: Home never waits on it, nor shows an error for it.
@@ -278,7 +279,7 @@ export const StandingInLine: Component = () => {
                 type="button"
                 data-testid="home-standing-in-show"
                 class="text-accent hover:underline"
-                onClick={() => setHomeFilter(`${COVERING_PREFIX}${p.id}`)}
+                onClick={() => props.onShow(`${COVERING_PREFIX}${p.id}`)}
               >
                 {i18n.t("kernel.homeRouting.showCovering")}
               </button>

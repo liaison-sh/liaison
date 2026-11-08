@@ -179,7 +179,7 @@ describe("a card template is checked when the manifest is registered", () => {
       }))
     expect(judge({ ...ENTITY, rows: rows(8) })).toBe("")
     expect(judge({ ...ENTITY, rows: rows(9) })).toContain("has 9 entries, at most 8")
-    const ask = { kind: "ask", label: { label: "Ask" }, prompt: "Look at {{result.name}}" }
+    const ask = { kind: "ask", label: { label: "Ask" }, prompt: "Look at this one" }
     expect(judge({ ...ENTITY, actions: [ask, ask, ask] })).toBe("")
     expect(judge({ ...ENTITY, actions: [ask, ask, ask, ask] })).toContain(
       "has 4 entries, at most 3",
@@ -219,6 +219,19 @@ describe("a card template is checked when the manifest is registered", () => {
 describe("what a card action can reach", () => {
   const act = (action: unknown) => judge({ ...ENTITY, actions: [action] })
 
+  it("an ask posts fixed text as the person's own words, never a value from the result", () => {
+    // A result field can hold text someone outside the org wrote (a subject, a mail body).
+    expect(act({ kind: "ask", label: { label: "Ask" }, prompt: "Why {{result.name}}?" })).toContain(
+      "must be fixed text",
+    )
+    expect(
+      act({ kind: "ask", label: { label: "Ask" }, prompt: "Why {{result.name|result.status}}?" }),
+    ).toContain("must be fixed text")
+    expect(act({ kind: "ask", label: { label: "Ask" }, prompt: "Why <b>this</b>?" })).toContain(
+      "plain text",
+    )
+  })
+
   it("opens a page, calls a tool of the same app, asks the agent or opens a literal https host", () => {
     expect(act({ kind: "open", label: { label: "Open" }, view: "item", idPath: "result.id" })).toBe(
       "",
@@ -231,7 +244,7 @@ describe("what a card action can reach", () => {
         params: { id: "result.id" },
       }),
     ).toBe("")
-    expect(act({ kind: "ask", label: { label: "Ask" }, prompt: "Why {{result.name}}?" })).toBe("")
+    expect(act({ kind: "ask", label: { label: "Ask" }, prompt: "Why is this one late?" })).toBe("")
     expect(
       act({
         kind: "external",
@@ -360,6 +373,21 @@ describe("the groups card", () => {
     expect(judge(groupsCard({ edit: edit({ fields }) }))).toContain(
       "edit.fields[0].param: 'colour' is not a parameter of the tool",
     )
+  })
+
+  it("a row's ask takes neither a value of the row in its prompt nor a label from the data", () => {
+    const card = groupsCard() as { groups: { rows: Record<string, unknown> } }
+    card.groups.rows.act = { kind: "ask", label: { label: "Why" }, prompt: "Why is it late?" }
+    expect(judge(card)).toBe("")
+    card.groups.rows.act = { kind: "ask", label: { label: "Why" }, prompt: "Why {{row.name}}?" }
+    expect(judge(card)).toContain("groups.rows.act.prompt: must be fixed text")
+    card.groups.rows.act = {
+      kind: "ask",
+      label: { label: "Why" },
+      prompt: "Why is it late?",
+      labelPath: "row.name",
+    }
+    expect(judge(card)).toContain("labelPath")
   })
 
   it("refuses a row action on a gated tool without a confirm", () => {

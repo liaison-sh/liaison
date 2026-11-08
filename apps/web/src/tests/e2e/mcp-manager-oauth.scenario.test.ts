@@ -26,6 +26,7 @@
 
 import path from "node:path"
 import { api } from "@liaison/test-helpers"
+import { tokenAfterOrgAccessChange } from "./fixtures/org-access-change"
 import { expect, test } from "./fixtures/test"
 
 const SHOTS_DIR = path.resolve(__dirname, "../../../logs/playwright-diagnostics/mcp-oauth")
@@ -69,6 +70,13 @@ test("admin completes the OAuth (DCR) handshake for an MCP connection", async ({
   const connectionId = createdBody.id ?? createdBody.data?.id
   expect(connectionId).toBeTruthy()
 
+  // Adding an org server makes every member's older token stale (the server's
+  // `mcp:<slug>` comes with the next one): continue with a fresh admin token.
+  const adminToken = await tokenAfterOrgAccessChange(env, qa.admin.token, {
+    email: "admin@test.com",
+    password: "12345678",
+  })
+
   // 3. Kick off the OAuth flow. The route returns the authorization URL
   //    constructed against the fixture issuer (per discovery in step 1).
   //    Started from the BROWSER's request context: the start binds the flow
@@ -76,7 +84,7 @@ test("admin completes the OAuth (DCR) handshake for an MCP connection", async ({
   //    browser that does not carry it (oauth-routes.ts, browser_mismatch).
   const startRes = await page.request.post(
     `${env.serverUrl}/api/apps/mcp-manager/connections/${connectionId}/oauth/start`,
-    { headers: { authorization: `Bearer ${qa.admin.token}` } },
+    { headers: { authorization: `Bearer ${adminToken}` } },
   )
   expect(startRes.status()).toBe(200)
   const startBody = (await startRes.json()) as {
@@ -117,7 +125,7 @@ test("admin completes the OAuth (DCR) handshake for an MCP connection", async ({
   // authorizationEndpoint / tokenEndpoint we resolved through discovery.
   const conn = await api(env.serverUrl, `/api/apps/mcp-manager/connections/${connectionId}`, {
     method: "GET",
-    token: qa.admin.token,
+    token: adminToken,
   })
   expect(conn.status).toBe(200)
   // The connection row exists and has metadata populated; the

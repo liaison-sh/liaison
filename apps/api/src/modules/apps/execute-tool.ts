@@ -99,6 +99,7 @@ import {
   SandboxTenantBusyError,
 } from "~/modules/apps/sandbox/worker-pool"
 import { APP_TOOL_ERROR_STATUS } from "~/modules/apps/tool-error-status"
+import { assertAppRunRoom } from "~/modules/apps/usage/app-day-cap"
 import {
   addressGroundingRefusal,
   legalIdentityRefusal,
@@ -3066,6 +3067,14 @@ export async function executeToolHandler(
           : {}),
         ...(originRun !== undefined ? { originRun } : {}),
       })
+    // A top-level run of an org at an app day cap is refused, typed (429,
+    // APP_*_LIMIT_REACHED, modules/apps/usage/app-day-cap.ts); a nested run (a
+    // hop of a run already admitted) is counted, never refused.
+    await assertAppRunRoom({
+      orgId,
+      trusted: handlerRef.trusted === true,
+      nested: bridgeOptions?.nested === true || (bridgeOptions?.callChain?.length ?? 0) > 1,
+    })
     const bundleSource = await loadBundle(handlerRef.bundlePath)
     // This execution's own identity, handed to the bridge so every cross-app
     // hop it opens is keyed on THIS execution and not on the tool names that

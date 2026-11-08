@@ -14,6 +14,7 @@
 //      (`{ results: [...], nextCursor? }`),
 //   3. normalizes each result row to `ExternalSearchHit` and propagates the
 //      opaque `nextCursor` so the fanout layer can paginate per-source.
+import { CapLimitError } from "~/modules/org/caps"
 import type {
   ExternalSearchHandler,
   ExternalSearchHit,
@@ -47,16 +48,26 @@ export function makeSandboxSearchHandler(args: SandboxSearchHandlerArgs): Extern
     // marketContext }. orgId/userId are the host's tenant context and are NOT
     // forwarded into the bundle (the bundle's `ctx` already carries identity);
     // they are passed separately so the runtime can scope the privileged DB.
-    const raw = await args.dispatch(
-      args.handlerName,
-      {
-        query: params.query,
-        limit: params.limit,
-        cursor: params.cursor ?? null,
-        marketContext: params.marketContext ?? null,
-      },
-      { orgId: params.orgId, userId: params.userId },
-    )
+    let raw: unknown
+    try {
+      raw = await args.dispatch(
+        args.handlerName,
+        {
+          query: params.query,
+          limit: params.limit,
+          cursor: params.cursor ?? null,
+          marketContext: params.marketContext ?? null,
+        },
+        { orgId: params.orgId, userId: params.userId },
+      )
+    } catch (err) {
+      // The org reached an app day cap (modules/apps/usage/app-day-cap.ts): no
+      // hits, and the reason, typed.
+      if (err instanceof CapLimitError) {
+        return { hits: [], nextCursor: null, refused: { code: err.code, message: err.message } }
+      }
+      throw err
+    }
     if (!raw || typeof raw !== "object") return { hits: [], nextCursor: null }
     const results = (raw as { results?: unknown[] }).results
     if (!Array.isArray(results)) return { hits: [], nextCursor: null }

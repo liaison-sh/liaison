@@ -123,7 +123,7 @@ const defaultExecutor: HookExecutor = async ({
   })
 }
 
-let executor: HookExecutor = defaultExecutor
+let hookExecutor: HookExecutor = defaultExecutor
 
 async function runHookForRow(
   orgId: string,
@@ -142,7 +142,7 @@ async function runHookForRow(
     reason,
   }
   try {
-    await executor({
+    await hookExecutor({
       bundlePath: hook.bundlePath,
       exportName: hook.exportName,
       orgId,
@@ -232,6 +232,6 @@ export async function runBeforeDisconnectForOrg(
 
 export const BeforeDisconnectTestAccess = {
   setExecutor: (fn: HookExecutor | null) => {
-    executor = fn ?? defaultExecutor
+    hookExecutor = fn ?? defaultExecutor
   },
 }

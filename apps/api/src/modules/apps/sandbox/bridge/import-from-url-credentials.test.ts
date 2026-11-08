@@ -53,7 +53,10 @@ function files(
     orgId: ORG,
     userId: "system",
     appName: "provider",
-    allowedDomains: opts.allowedDomains ?? [FIRST, SECOND],
+    egress: async () => ({
+      allowedDomains: opts.allowedDomains ?? [FIRST, SECOND],
+      manifest: { name: "provider" },
+    }),
     manifest: {
       name: "provider",
       network: { allowPrivateHostsInTest: opts.allowPrivate ?? false },

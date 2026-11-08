@@ -28,7 +28,7 @@ import * as solidStore from "solid-js/store"
 import { createStore, reconcile } from "solid-js/store"
 import * as solidWeb from "solid-js/web"
 import { render } from "solid-js/web"
-import type { FrameMethod, FrameProp, FrameToHost, HostToFrame } from "./protocol"
+import type { FrameContext, FrameMethod, FrameProp, FrameToHost, HostToFrame } from "./protocol"
 
 type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void }
 
@@ -65,9 +65,27 @@ function pageLinkOf(event: MouseEvent): string | null {
   return null
 }
 
+/**
+ * The page's origin a frame served on an app's own origin was given by its server
+ * (`<meta name="liaison-parent-origin">`), or null for an opaque or shell frame.
+ */
+export function bakedParentOrigin(doc: Document): string | null {
+  const content = doc.querySelector('meta[name="liaison-parent-origin"]')?.getAttribute("content")
+  if (!content) return null
+  try {
+    const url = new URL(content)
+    return /^https?:$/.test(url.protocol) && url.origin === content ? content : null
+  } catch {
+    return null
+  }
+}
+
 export function startFrameRuntime(win: Window & typeof globalThis = window): void {
   const parent = win.parent
-  const send = (message: FrameToHost) => parent.postMessage(message, "*")
+  // On its own origin the frame speaks to its org's page only: posts carry that
+  // exact target, and a message from any other origin is dropped.
+  const parentOrigin = bakedParentOrigin(win.document)
+  const send = (message: FrameToHost) => parent.postMessage(message, parentOrigin ?? "*")
   const pending = new Map<number, Pending>()
   const changeListeners = new Map<number, (events: unknown[]) => void>()
   let nextId = 1
@@ -75,6 +93,7 @@ export function startFrameRuntime(win: Window & typeof globalThis = window): voi
   // The page's path and query, which the page sends on init and on each route change.
   const [path, setPath] = createSignal("")
   const [props, setProps] = createStore<Record<string, FrameProp>>({})
+  let context: FrameContext | null = null
 
   const call = (method: FrameMethod, args: unknown[]): Promise<unknown> =>
     new Promise((resolve, reject) => {
@@ -123,6 +142,28 @@ export function startFrameRuntime(win: Window & typeof globalThis = window): voi
     mountSlot: () => ({ resolved: false, dispose: () => {} }),
     // A browser path, not the shell's: an isolated app opens no file natively.
     openFile: async () => false,
+    // Host API 1.3: answered by the page for this app only (host-app-calls.ts).
+    framed: true,
+    context: () => context,
+    openFileById: async (_app: string, fileId: string, filename: string) => {
+      await call("openFile", [fileId, filename])
+    },
+    listDocumentTemplates: (_app: string, entity: string) =>
+      call("listDocumentTemplates", [entity]),
+    printDocuments: (_app: string, request: Record<string, unknown>) =>
+      call("printDocuments", [request]),
+    listMyApprovals: (_app: string) => call("listMyApprovals", []),
+    decideApproval: (_app: string, id: string, decision: string, payloadHash?: string) =>
+      call("decideApproval", [id, decision, payloadHash ?? null]),
+    openExternal: async (_app: string, url: string) => {
+      await call("openExternal", [url])
+    },
+    openRecord: (_app: string, app: string, entity: string, id: string) => {
+      void call("openRecord", [app, entity, id]).catch(() => {})
+    },
+    openApprovals: () => {
+      void call("openApprovals", []).catch(() => {})
+    },
     onEntityChange: (
       _app: string,
       keys: string | string[],
@@ -206,6 +247,7 @@ export function startFrameRuntime(win: Window & typeof globalThis = window): voi
     if (started) return
     started = true
     g.__LIAISON_HOST_ORIGIN__ = message.hostOrigin
+    context = message.context ?? null
     setLocale(message.locale)
     if (typeof message.path === "string") setPath(message.path)
     setProps(reconcile(message.props))
@@ -232,8 +274,9 @@ export function startFrameRuntime(win: Window & typeof globalThis = window): voi
   }
 
   win.addEventListener("message", (event: MessageEvent) => {
-    // Only the page that holds this frame speaks to it.
+    // Only the page that holds this frame speaks to it, from the origin it was given.
     if (event.source !== parent) return
+    if (parentOrigin !== null && event.origin !== parentOrigin) return
     const message = event.data as HostToFrame | null
     if (!message || typeof message !== "object" || typeof message.kind !== "string") return
     switch (message.kind) {

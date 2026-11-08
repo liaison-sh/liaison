@@ -903,9 +903,9 @@ export const COMMANDS = [
   {
     name: "org caps",
     usage:
-      "liaison org caps <org slug or id> [--seats <n>] [--mailboxes <n>] [--storage-gb <n>] [--jobs-per-hour <n>] [--custom-apps <n>] [--audit-days <n>] [--unset <cap>]",
+      "liaison org caps <org slug or id> [--seats <n>] [--mailboxes <n>] [--storage-gb <n>] [--jobs-per-hour <n>] [--custom-apps <n>] [--audit-days <n>] [--app-runs-per-day <n>] [--app-bridge-calls-per-day <n>] [--app-cpu-ms-per-day <n>] [--unset <cap>]",
     summary:
-      "Show or set an organization's caps: seats (active people), mailboxes (connected Gmail or IMAP addresses), storage in GB, and background jobs per hour. Without a change flag it prints the caps and the usage; a change keeps the caps it does not name. A missing cap is unlimited, which is how every org starts. Each cap is a whole number of at least 1: 0 is refused, and `--unset` makes a cap unlimited. Only the operator sets caps: org admins see them read only in Settings → Organization. A cap below current usage removes nothing; new seats and mailboxes are refused until usage drops, and background jobs over the hourly cap wait for the next hour.",
+      "Show or set an organization's caps: seats (active people), mailboxes (connected Gmail or IMAP addresses), storage in GB, background jobs per hour, custom apps, audit days, and the org's app runs, app calls and app CPU milliseconds per UTC day. Without a change flag it prints the caps and the usage; a change keeps the caps it does not name. A missing cap is unlimited, which is how every org starts. Each cap is a whole number of at least 1: 0 is refused, and `--unset` makes a cap unlimited. Only the operator sets caps: org admins see them read only in Settings → Organization. A cap below current usage removes nothing; new seats and mailboxes are refused until usage drops, background jobs over the hourly cap wait for the next hour, and past an app day cap tools are refused while webhooks, events and app jobs wait for the next UTC day.",
     flags: [
       { name: "<org slug or id>", summary: "The org.", required: true },
       { name: "--seats", arg: "<n>", summary: "Most active people in the org." },
@@ -923,8 +923,24 @@ export const COMMANDS = [
       { name: "--custom-apps", arg: "<n>", summary: "Most custom apps installed for the org." },
       { name: "--audit-days", arg: "<n>", summary: "Most days of audit log the org keeps." },
       {
+        name: "--app-runs-per-day",
+        arg: "<n>",
+        summary: "Most app runs per UTC day (tools, webhooks, events, jobs, polls, searches).",
+      },
+      {
+        name: "--app-bridge-calls-per-day",
+        arg: "<n>",
+        summary: "Most calls apps running on Workers make back to the server per UTC day.",
+      },
+      {
+        name: "--app-cpu-ms-per-day",
+        arg: "<n>",
+        summary:
+          "Most CPU milliseconds of apps running on Workers per UTC day, as the loader measures it (pulled hourly).",
+      },
+      {
         name: "--unset",
-        arg: "<seats|mailboxes|storage-gb|jobs-per-hour|custom-apps|audit-days>",
+        arg: "<seats|mailboxes|storage-gb|jobs-per-hour|custom-apps|audit-days|app-runs-per-day|app-bridge-calls-per-day|app-cpu-ms-per-day>",
         summary: "Make that cap unlimited again. Repeatable.",
       },
     ],

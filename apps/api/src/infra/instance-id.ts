@@ -14,9 +14,13 @@
 // and would be exactly wrong.
 export const INSTANCE_ID = crypto.randomUUID()
 
-/** `<instanceId>:<uuid>`. The responder splits on the FIRST colon. */
-export function mintInstanceScopedId(): string {
-  return `${INSTANCE_ID}:${crypto.randomUUID()}`
+/**
+ * `<instanceId>:<uuid>`. The responder splits on the FIRST colon. `instanceId`
+ * is this process's unless a caller stands in for another one (a test running
+ * two instances in one process).
+ */
+export function mintInstanceScopedId(instanceId: string = INSTANCE_ID): string {
+  return `${instanceId}:${crypto.randomUUID()}`
 }
 
 /** True when `id` was minted by this process on this boot. */

@@ -37,6 +37,8 @@ export interface AppManifestPreview {
   listing?: AppListing
   /** SPDX licence of the package. */
   license?: string
+  /** The hosts its code may reach (network + connections); installing consents to them. */
+  outboundDomains?: string[]
 }
 
 export interface UpgradePreview {
@@ -46,6 +48,8 @@ export interface UpgradePreview {
   previouslyGranted: string[]
   newCapabilities?: string[]
   newCrossAppCalls?: string[]
+  /** Outbound domains the running version was not granted: the upgrade consents to them. */
+  newDomains?: string[]
 }
 
 export interface InstallAppDialogProps {
@@ -62,6 +66,7 @@ export interface InstallAppDialogProps {
     grantedScopes: string[]
     grantedCapabilities: string[]
     grantedCrossAppCalls: string[]
+    grantedDomains: string[]
     approveUiFullAccess: boolean
   }) => Promise<unknown>
   onClose: () => void
@@ -90,6 +95,11 @@ export const InstallAppDialog: Component<InstallAppDialogProps> = (props) => {
     for (const t of m?.dependencies?.tools ?? []) if (!out.has(t)) out.set(t, undefined)
     return [...out].map(([target, reason]) => ({ target, reason }))
   })
+  // The hosts this install or upgrade consents to: every declared one on an
+  // install, the new ones on an upgrade (the running version's grant carries over).
+  const consentDomains = createMemo(() =>
+    isUpgrade() ? (props.preview?.newDomains ?? []) : (manifest()?.outboundDomains ?? []),
+  )
   const [approveUi, setApproveUi] = createSignal(false)
   // The interface of an unsigned package runs in this page with the admin's session.
   const needsUiApproval = createMemo(
@@ -145,6 +155,7 @@ export const InstallAppDialog: Component<InstallAppDialogProps> = (props) => {
         // Installing grants exactly what the manifest declares and the dialog lists.
         grantedCapabilities: manifest()?.capabilities ?? [],
         grantedCrossAppCalls: crossAppCalls().map((c) => c.target),
+        grantedDomains: consentDomains(),
         approveUiFullAccess: needsUiApproval() && approveUi(),
       })
       props.onClose()
@@ -271,6 +282,26 @@ export const InstallAppDialog: Component<InstallAppDialogProps> = (props) => {
                       <Show when={call.reason}>
                         <span class="text-text-secondary">{` (${call.reason})`}</span>
                       </Show>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </Show>
+
+            <Show when={consentDomains().length > 0}>
+              <div class="flex flex-col gap-1" data-testid="install-app-outbound-domains">
+                <p class="text-xs font-medium text-text-secondary">
+                  {isUpgrade()
+                    ? i18n.t("kernel.settingsUi.newOutboundDomains")
+                    : i18n.t("kernel.settingsUi.requestedOutboundDomains")}
+                </p>
+                <For each={consentDomains()}>
+                  {(domain) => (
+                    <div
+                      class="font-mono text-sm text-text"
+                      data-testid={`install-app-outbound-domain-${domain}`}
+                    >
+                      {domain}
                     </div>
                   )}
                 </For>

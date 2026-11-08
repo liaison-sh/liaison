@@ -1,0 +1,152 @@
+{
+  "$comment": "App bridge call vectors (bridge-reply.ts, version 1). Literals on purpose. The loader and any stand-in for it (a test fake loader) run the same cases against the same module, copied byte for byte.",
+  "version": 1,
+  "props": {
+    "bridgeUrl": "https://cell.example.test/api/app-bridge/inst:run-1",
+    "runToken": "tok-0123456789abcdef0123",
+    "execNonce": "bm9uY2Utbm9uY2Utbm9uYw",
+    "bridgeMethods": ["db.query", "emit"]
+  },
+  "request": {
+    "callId": "call-1",
+    "method": "db.query",
+    "args": [{ "sql": "select 1" }],
+    "url": "https://cell.example.test/api/app-bridge/inst:run-1",
+    "init": {
+      "method": "POST",
+      "headers": {
+        "authorization": "Bearer tok-0123456789abcdef0123",
+        "x-exec-nonce": "bm9uY2Utbm9uY2Utbm9uYw",
+        "content-type": "application/json"
+      },
+      "body": "{\"callId\":\"call-1\",\"method\":\"db.query\",\"args\":[{\"sql\":\"select 1\"}]}"
+    }
+  },
+  "unknownMethod": [
+    {
+      "method": "secrets.get",
+      "reply": {
+        "error": "Unknown bridge method: secrets.get",
+        "errorStatus": 404,
+        "errorCode": "unknown_method"
+      }
+    },
+    {
+      "method": "constructor",
+      "reply": {
+        "error": "Unknown bridge method: constructor",
+        "errorStatus": 404,
+        "errorCode": "unknown_method"
+      }
+    }
+  ],
+  "replies": [
+    {
+      "case": "data",
+      "status": 200,
+      "body": "{\"data\":{\"rows\":[1]}}",
+      "reply": { "data": { "rows": [1] } }
+    },
+    { "case": "data-null", "status": 200, "body": "{\"data\":null}", "reply": { "data": null } },
+    {
+      "case": "undefined-result",
+      "status": 200,
+      "body": "{}",
+      "reply": { "data": null },
+      "replyHasData": true,
+      "dataUndefined": true
+    },
+    {
+      "case": "error-envelope-200",
+      "status": 200,
+      "body": "{\"error\":\"nope\",\"errorStatus\":400,\"errorCode\":\"bad_input\"}",
+      "reply": { "error": "nope", "errorStatus": 400, "errorCode": "bad_input" }
+    },
+    {
+      "case": "error-no-status",
+      "status": 422,
+      "body": "{\"error\":\"invalid\"}",
+      "reply": { "error": "invalid", "errorStatus": 422 }
+    },
+    {
+      "case": "error-reason-as-code",
+      "status": 403,
+      "body": "{\"error\":\"Token belongs to another run\",\"reason\":\"wrong_run\"}",
+      "reply": {
+        "error": "Token belongs to another run",
+        "errorStatus": 403,
+        "errorCode": "wrong_run"
+      }
+    },
+    {
+      "case": "reason-only",
+      "status": 401,
+      "body": "{\"reason\":\"expired\"}",
+      "reply": { "error": "expired", "errorStatus": 401, "errorCode": "expired" }
+    },
+    {
+      "case": "settled-410",
+      "status": 410,
+      "body": "{\"error\":\"Run settled\",\"reason\":\"settled\"}",
+      "reply": { "error": "Run settled", "errorStatus": 410, "errorCode": "settled" }
+    },
+    {
+      "case": "non-json-5xx",
+      "status": 502,
+      "body": "gateway",
+      "reply": {
+        "error": "Bridge returned 502",
+        "errorStatus": 502,
+        "errorCode": "bridge_bad_response"
+      }
+    },
+    {
+      "case": "non-json-200",
+      "status": 200,
+      "body": "ok",
+      "reply": {
+        "error": "Bridge returned 200",
+        "errorStatus": 502,
+        "errorCode": "bridge_bad_response"
+      }
+    },
+    {
+      "case": "array-200",
+      "status": 200,
+      "body": "[1]",
+      "reply": {
+        "error": "Bridge returned 200",
+        "errorStatus": 502,
+        "errorCode": "bridge_bad_response"
+      }
+    },
+    {
+      "case": "object-without-data-404",
+      "status": 404,
+      "body": "{}",
+      "reply": {
+        "error": "Bridge returned 404",
+        "errorStatus": 404,
+        "errorCode": "bridge_bad_response"
+      }
+    },
+    {
+      "case": "data-on-500-ignored",
+      "status": 500,
+      "body": "{\"data\":1}",
+      "reply": {
+        "error": "Bridge returned 500",
+        "errorStatus": 500,
+        "errorCode": "bridge_bad_response"
+      }
+    }
+  ],
+  "unreachable": {
+    "throw": "connect ECONNREFUSED",
+    "reply": {
+      "error": "Bridge unreachable: connect ECONNREFUSED",
+      "errorStatus": 502,
+      "errorCode": "bridge_unreachable"
+    }
+  }
+}

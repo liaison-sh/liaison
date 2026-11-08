@@ -178,7 +178,6 @@ async function fileSentCopy(
 export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
   const {
     actorType,
-    allowedDomains,
     appName,
     callerScopes,
     inheritedActor,
@@ -228,6 +227,10 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
     fetch: async (url: string, optsJson: string) => {
       const opts = JSON.parse(optsJson || "{}")
       const method = opts.method ?? "GET"
+      // The declared hosts the install row granted, and the manifest narrowed the
+      // same way for the credential rules (context.ts collectAllowedDomains).
+      const { allowedDomains, manifest: granted } = await ctx.egress()
+      const grantedAuthDeps: FetchAuthDeps = { ...authDeps, manifest: granted }
       const auth = parseFetchAuth(opts.auth)
       const configSecrets = parseConfigSecrets(opts.configSecrets)
       // A multipart body is assembled HERE from the parts the app names: text fields as given,
@@ -308,7 +311,13 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
       // and test answerers, which recognise their fixture credential).
       let injected: InjectedAuth = { secrets: [] }
       if (auth) {
-        injected = await injectFetchAuth(url, headersWithActor, auth, authDeps, fetchTimeoutMs)
+        injected = await injectFetchAuth(
+          url,
+          headersWithActor,
+          auth,
+          grantedAuthDeps,
+          fetchTimeoutMs,
+        )
         if (injected.failed) {
           // The token exchange failed: the app sees the token endpoint's answer.
           const failed = injected.failed
@@ -329,7 +338,7 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
         const placed = await placeConfigSecrets(
           { url, headers: headersWithActor, body },
           configSecrets,
-          authDeps,
+          grantedAuthDeps,
         )
         wireUrl = placed.url
         body = placed.body
@@ -433,7 +442,7 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
                       appName,
                     )
                     // An injected credential follows a redirect only to its own connection's hosts.
-                    if (injectedFor && !matchesConnectionHost(manifest, injectedFor, next)) {
+                    if (injectedFor && !matchesConnectionHost(granted, injectedFor, next)) {
                       throw new Error(
                         `Redirect to ${new URL(next).hostname} refused: not a host of connection "${injectedFor}"`,
                       )

@@ -13,8 +13,9 @@
 // pixel-for-pixel. The pure status/document mappers are kept as named exports
 // (Shipments.tsx + the bun:test suite import them) and are now thin adapters
 // over the kit's single-source-of-truth meta helpers.
-import { type Component, createResource, For, type JSX, Show } from "solid-js"
+import { type Component, createResource, createSignal, For, type JSX, Show } from "solid-js"
 import { app } from "@liaison/host"
+import { loadFileInto, openPreparingTab } from "./file-open"
 import {
   Badge,
   Button,
@@ -132,6 +133,33 @@ const DetailRow: Component<{ label: string; children: JSX.Element }> = (props) =
 
 export const BoxtalShipmentTab: Component<TabProps> = (props) => {
   const [linked] = createResource(() => props.entityId, fetchLinked)
+  // The label opens through the host: imported into the file store, then shown (a framed
+  // screen holds no session, so a plain link could never fetch it).
+  const [opening, setOpening] = createSignal(false)
+  const [openError, setOpenError] = createSignal<string | null>(null)
+  const openLabel = async (boxtalOrderId: string): Promise<void> => {
+    if (!boxtalOrderId || opening()) return
+    const win = openPreparingTab()
+    setOpening(true)
+    setOpenError(null)
+    try {
+      const res = await app.invokeTool<{ label_file_id?: string | null; error?: { message?: string } }>(
+        "import_label_document",
+        { id: boxtalOrderId },
+      )
+      if (!res.label_file_id) {
+        win?.close()
+        setOpenError(res.error?.message ?? "The label is not ready yet. Try again in a minute.")
+        return
+      }
+      await loadFileInto(res.label_file_id, win, "label")
+    } catch (err) {
+      win?.close()
+      setOpenError(err instanceof Error ? err.message : "The label could not be opened.")
+    } finally {
+      setOpening(false)
+    }
+  }
 
   const createHref = () => `/boxtal/create/${encodeURIComponent(props.entityId)}`
   const createDraft = () => {
@@ -205,17 +233,23 @@ export const BoxtalShipmentTab: Component<TabProps> = (props) => {
                     <div class="flex flex-col gap-1.5" data-testid="boxtal-tab-documents">
                       <For each={s().documents}>
                         {(doc) => (
-                          <a
-                            href={`/boxtal/documents/${encodeURIComponent(s().boxtal_order_id ?? "")}/${encodeURIComponent(doc.type)}`}
-                            class="contents"
+                          <Button
+                            variant="secondary"
+                            class="w-full justify-between"
+                            testid={`boxtal-tab-document-${doc.type}`}
+                            disabled={doc.type !== "LABEL" || !s().boxtal_order_id || opening()}
+                            onClick={() => void openLabel(s().boxtal_order_id ?? "")}
                           >
-                            <Button variant="secondary" class="w-full justify-between">
-                              <span class="text-text">{documentTypeLabel(doc.type)}</span>
-                              <Badge tone="muted">{doc.format || "Download"}</Badge>
-                            </Button>
-                          </a>
+                            <span class="text-text">{documentTypeLabel(doc.type)}</span>
+                            <Badge tone="muted">{doc.format || "PDF"}</Badge>
+                          </Button>
                         )}
                       </For>
+                      <Show when={openError()}>
+                        <p class="text-[12px] text-danger" data-testid="boxtal-tab-document-error">
+                          {openError()}
+                        </p>
+                      </Show>
                     </div>
                   </div>
                 </Show>

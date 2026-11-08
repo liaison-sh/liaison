@@ -9,14 +9,16 @@
 //     forced BEFORE the build, check.ts) or reuses that build, and returns the
 //     PIN: {draftId, n, appName, appVersion, baseVersion, packageSha256,
 //     workerSha256?, grants: {scopes, connections, capabilities,
-//     crossAppCalls}}. The approval stores it (a pinned param: the caller's
+//     crossAppCalls, domains}}. The approval stores it (a pinned param: the caller's
 //     value is dropped, `approval_update_payload` refuses every edit of this
 //     tool), and its card shows the sha and the delta against the active
 //     version (`manifestDelta`).
 //  2. `executePublish`: re-reads the stored package bytes by the pinned sha
 //     (re-hashed: missing or altered bytes refuse, `pin_mismatch`), refuses
 //     when the app moved since the pin (`publish_stale`), and installs exactly
-//     those bytes with exactly the pinned grants (install-service.ts
+//     those bytes with exactly the pinned grants, the outbound domains
+//     included: a package declaring other domains than the pinned ones is
+//     refused (`pin_mismatch`; install-service.ts
 //     installAppFromBytes: the /custom/install path, the org as owner, the
 //     health gate, never a session-trusted interface), and the pinned Workers
 //     module (re-hashed the same way) on the install row. Then the draft is
@@ -50,6 +52,7 @@ import {
   hasPublishedAudit,
   writePublishedAudit,
 } from "~/modules/app-builder/installed"
+import { DomainPinMismatchError, declaredDomains } from "~/modules/apps/egress-grants"
 import {
   declaredCapabilities,
   declaredCrossAppCalls,
@@ -61,6 +64,8 @@ export interface PublishGrants {
   connections: string[]
   capabilities: string[]
   crossAppCalls: string[]
+  /** The outbound domains (network + connections) the approval consents to (egress-grants.ts). */
+  domains: string[]
 }
 
 /** What an approval pins and a publish installs. */
@@ -107,6 +112,7 @@ export function grantsOf(manifest: Record<string, unknown>): PublishGrants {
     connections: Object.keys(record(manifest.connections)),
     capabilities: declaredCapabilities(manifest as never),
     crossAppCalls: declaredCrossAppCalls(manifest as never),
+    domains: declaredDomains(manifest),
   }
 }
 
@@ -270,6 +276,9 @@ export function readPin(value: unknown): PublishPin | null {
       connections: strings(g.connections),
       capabilities: strings(g.capabilities),
       crossAppCalls: strings(g.crossAppCalls),
+      // A pin from before domains were pinned carries none: a package that
+      // declares any is then refused at install (request the publish again).
+      domains: strings(g.domains),
     },
   }
 }
@@ -355,17 +364,26 @@ export async function executePublish(
   if (verified.done) {
     installed = { name: verified.active.name, version: verified.active.version }
   } else {
-    installed = await installAppFromBytes({
-      bytes: verified.bytes,
-      ownerOrgId: caller.orgId,
-      installedBy: caller.installedBy,
-      grantedScopes: pin.grants.scopes,
-      grantedConnections: pin.grants.connections,
-      grantedCapabilities: pin.grants.capabilities,
-      grantedCrossAppCalls: pin.grants.crossAppCalls,
-      sourceUrl: builderSourceUrl(pin.draftId, pin.n),
-      ...(verified.workerModule ? { workerModule: verified.workerModule } : {}),
-    })
+    try {
+      installed = await installAppFromBytes({
+        bytes: verified.bytes,
+        ownerOrgId: caller.orgId,
+        installedBy: caller.installedBy,
+        grantedScopes: pin.grants.scopes,
+        grantedConnections: pin.grants.connections,
+        grantedCapabilities: pin.grants.capabilities,
+        grantedCrossAppCalls: pin.grants.crossAppCalls,
+        // Written on the install row in the install's transaction, exactly the pinned ones.
+        grantedDomains: pin.grants.domains,
+        sourceUrl: builderSourceUrl(pin.draftId, pin.n),
+        ...(verified.workerModule ? { workerModule: verified.workerModule } : {}),
+      })
+    } catch (err) {
+      if (err instanceof DomainPinMismatchError) {
+        throw new DraftError("pin_mismatch", `${err.message}: request the publish again`)
+      }
+      throw err
+    }
   }
   await db.run((tx) => markDraftPublished(tx, caller, pin.draftId))
   if (
@@ -528,10 +546,20 @@ export async function summarizePin(
   const next = packagedManifest(version.files, pin) ?? {}
   const active = await activeCustomApp(orgId, pin.appName)
   const delta = manifestDelta(active?.manifest ?? null, next, active?.version ?? null)
+  // The outbound domains this approval consents to that the running version was
+  // not granted: always shown, first of the delta's lines.
+  const newDomains = pin.grants.domains.filter((d) => !(active?.grantedDomains ?? []).includes(d))
+  const consent = newDomains.length ? [`Outbound domains to approve: ${list(newDomains, 4)}.`] : []
+  const rest = consent.length ? delta.filter((l) => !l.startsWith("Allowed domains ")) : delta
   // A card has 8 lines: the version, the sha, the type check, what data its writers
-  // had read, at most 3 of the delta, the frame note.
-  const shown =
-    delta.length > 3 ? [...delta.slice(0, 2), `And ${delta.length - 2} more changes.`] : delta
+  // had read, at most 3 of the delta (the domains to approve first), the frame note.
+  const room = 3 - consent.length
+  const shown = [
+    ...consent,
+    ...(rest.length > room
+      ? [...rest.slice(0, room - 1), `And ${rest.length - room + 1} more changes.`]
+      : rest),
+  ]
   const lines = [
     pin.baseVersion
       ? `Updates ${pin.appName} from ${pin.baseVersion} to ${pin.appVersion} (draft version ${pin.n}).`

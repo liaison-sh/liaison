@@ -38,7 +38,7 @@ import {
   restoreDraftVersion,
   updateDraftFiles,
 } from "~/modules/app-builder/drafts"
-import { pruneDraftStoreNamespaces } from "~/modules/app-builder/installed"
+import { activeCustomApp, pruneDraftStoreNamespaces } from "~/modules/app-builder/installed"
 import { createRunLogSink } from "~/modules/app-builder/logs"
 import { PreviewTestAccess, previewDraft, previewManifest } from "~/modules/app-builder/preview"
 import {
@@ -566,6 +566,7 @@ export default defineHandlers({ probe_db, probe_fetch, probe_config, probe_store
       grantedConnections: [],
       grantedCapabilities: ["messages.post"],
       grantedCrossAppCalls: ["knowledge:search"],
+      grantedDomains: ["api.example.com"],
       manifest: { network: { allowedDomains: ["api.example.com"] } },
     })
     expect((active.network as { allowedDomains: string[] }).allowedDomains).toEqual([
@@ -786,9 +787,22 @@ describe("publish", () => {
     const other = await newDraft("sha-other")
     const foreign = { ...prepared.pin, draftId: other.draftId }
     expect(await code(executePublish(adminDb(), install, foreign))).toBe("pin_mismatch")
+    // Outbound domains other than the package's (egress-grants.ts): refused, nothing installed.
+    const widened = {
+      ...prepared.pin,
+      grants: {
+        ...prepared.pin.grants,
+        domains: [...prepared.pin.grants.domains, "evil.example.net"],
+      },
+    }
+    expect(await code(executePublish(adminDb(), install, widened))).toBe("pin_mismatch")
     // The genuine pin installs.
     const ok = await executePublish(adminDb(), install, prepared.pin)
     expect(ok).toMatchObject({ appName, appVersion: "0.1.0" })
+    // The install row holds exactly the pinned domains.
+    expect((await activeCustomApp(orgId, appName))?.grantedDomains).toEqual(
+      prepared.pin.grants.domains,
+    )
     // A second publish is the next patch, over the active version.
     const next = await preparePublish(adminDb(), caller(), { draftId })
     expect(next.pin).toMatchObject({ appVersion: "0.1.1", baseVersion: "0.1.0" })
@@ -852,6 +866,7 @@ describe("publish", () => {
         grantedConnections: prepared.pin.grants.connections,
         grantedCapabilities: prepared.pin.grants.capabilities,
         grantedCrossAppCalls: prepared.pin.grants.crossAppCalls,
+        grantedDomains: prepared.pin.grants.domains,
         sourceUrl: builderSourceUrl(draftId, prepared.pin.n),
       })
       return prepared

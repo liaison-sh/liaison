@@ -104,6 +104,15 @@ export interface OrgUsage {
   storageGb: OrgUsageEntry
   jobsThisHour: OrgUsageEntry
   /**
+   * The org's app runs, their bridge calls and their CPU milliseconds today
+   * (UTC), against the `appRunsPerDay` / `appBridgeCallsPerDay` /
+   * `appCpuMsPerDay` caps. CPU is measured on Workers only and arrives with the
+   * hourly pull from the loader, so it lags. Absent from an older server.
+   */
+  appRunsToday?: OrgUsageEntry
+  appBridgeCallsToday?: OrgUsageEntry
+  appCpuMsToday?: OrgUsageEntry
+  /**
    * The nightly estimate of everything the org occupies (managed edition),
    * null before its first measure and on a self-hosted server. Warns, never blocks.
    */

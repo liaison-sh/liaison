@@ -2867,7 +2867,9 @@
     "mergeImportedDone": "{{placeholder}} is now linked to {{name}}",
     "mergeImportedFailed": "Could not link this imported user",
     "connectionsIntro": "The AI clients connected to Liaison, and the MCP servers you connect for yourself.",
-    "connectionsClients": "Clients connected to Liaison"
+    "connectionsClients": "Clients connected to Liaison",
+    "requestedOutboundDomains": "Hosts this app can reach (granted by installing)",
+    "newOutboundDomains": "New hosts this version can reach (granted by upgrading)"
   },
   "settingsPage": {
     "unsupported": "This setting needs a newer version of Liaison. Update Liaison to change it.",
@@ -5907,6 +5909,12 @@
     "storageHelp": "Stored files",
     "jobs": "Background jobs this hour",
     "jobsHelp": "Work past the limit waits for the next hour",
+    "appRuns": "App runs today",
+    "appRunsHelp": "Runs of the organization's apps since midnight UTC",
+    "appBridgeCalls": "App calls today",
+    "appBridgeCallsHelp": "Calls the apps made back to Liaison since midnight UTC",
+    "appCpuMs": "App CPU today (ms)",
+    "appCpuMsHelp": "Processor time of the apps since midnight UTC, measured about every hour",
     "customApps": "Custom apps",
     "auditDays": "Audit log days",
     "unlimited": "{{used}} · unlimited",
@@ -5919,6 +5927,7 @@
     "noticeReached": "{{label}}: the limit is reached ({{shown}}).",
     "noticeNear": "{{label}}: {{shown}} used, 80 % of the limit.",
     "noticeTailJobs": "Background work past the limit waits for the next hour.",
+    "noticeTailAppDay": "Past the limit, new app runs wait until midnight UTC: tools answer that the limit is reached, and webhooks, events and background work run after midnight.",
     "noticeTailStorageFull": "New files from people and agents are refused until you upgrade your plan or free space (ask whoever runs the server to raise the limit).",
     "noticeTailStorageNear": "Upgrade your plan or free space (ask whoever runs the server to raise the limit), otherwise new files will be refused once storage is full.",
     "noticeTailOther": "Limits are set by whoever runs the server.",
@@ -6024,7 +6033,16 @@
     "failedManifestInvalid": "Its manifest is invalid.",
     "failedRegistration": "The server could not load it.",
     "loadFailed": "The workspace's apps could not be loaded.",
-    "retry": "Try again"
+    "retry": "Try again",
+    "outboundAccess": "Outbound access",
+    "outboundAccessHint": "The hosts this app's code may reach. A host waiting for approval stays blocked until an admin allows it.",
+    "outboundAllHosts": "Every host it declares (installed before hosts were approved one by one).",
+    "outboundNone": "This app reaches no outside host.",
+    "outboundGranted": "Allowed",
+    "outboundPending": "Waiting for approval",
+    "outboundRevoke": "Revoke",
+    "outboundAllow": "Allow",
+    "outboundChangeFailed": "The change was not saved: {{message}}"
   },
   "appManagement": {
     "management": "{{name}} management",

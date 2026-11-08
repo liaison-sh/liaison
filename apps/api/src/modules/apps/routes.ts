@@ -7,6 +7,7 @@ import type { AppEnv } from "~/app"
 import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
+import { appFrameOriginsEnabled } from "~/lib/app-frame-host"
 import { extractRlsContext } from "~/lib/request-rls"
 import { success } from "~/lib/response"
 import { quoteIdent } from "~/lib/sql-utils"
@@ -18,6 +19,11 @@ import {
   readAppConfig,
   writeAppConfigKey,
 } from "~/modules/apps/app-config"
+import {
+  framesOnOwnOrigin,
+  grantedDeclaredHosts,
+  mintAppFrameUrl,
+} from "~/modules/apps/app-frame-host-route"
 import { appVisibleToOrg } from "~/modules/apps/app-org-scope"
 import {
   dimensionDefRegistry,
@@ -278,6 +284,8 @@ appRoutes.get("/manifests", async (c) => {
     signed?: true
     manifest: Record<string, any>
     uiBundleUrl: string | null
+    /** The app's frame on an origin of its own (LIAISON_APP_FRAME_ORIGIN_TEMPLATE), when it has one. */
+    frameUrl?: string
   }> = []
   for (const [, entry] of manifestRegistry.entriesOf(orgId)) {
     if (entry.name === "kernel") continue // kernel is not a manifest app; its data is hardcoded on the frontend
@@ -304,6 +312,20 @@ appRoutes.get("/manifests", async (c) => {
           const t = await signUiBundleToken(entry.name, version, boundHost(c))
           uiBundleUrl = `${uiBundleUrl}?t=${encodeURIComponent(t)}`
         }
+      }
+    }
+    // App screens on origins of their own: every framed app, and each first-party app
+    // named in LIAISON_FRAMED_APPS, gets its frame URL on `<app>--<org>`, minted for
+    // THIS request's org (app-frame-host-route.ts). A framed first-party app is then
+    // not first-party for the page or a shell: both frame it.
+    let frameUrl: string | null = null
+    const servedVersion = uiBundleUrl
+      ? /\/([^/]+)\/ui\.js(?:\?|$)/.exec(uiBundleUrl)?.[1]
+      : undefined
+    if (uiBundleUrl && servedVersion && appFrameOriginsEnabled()) {
+      if (framesOnOwnOrigin(entry.name, firstParty)) {
+        frameUrl = await mintAppFrameUrl(orgId, entry.name, servedVersion)
+        if (frameUrl) firstParty = false
       }
     }
     // A first-party app built from the signed release artifact: its statement is
@@ -342,6 +364,10 @@ appRoutes.get("/manifests", async (c) => {
         iconName: entry.iconName,
       },
       uiBundleUrl,
+      ...(frameUrl ? { frameUrl } : {}),
+      ...(uiBundleUrl && servedVersion
+        ? { externalHosts: (await grantedDeclaredHosts(entry.name, servedVersion)).linkHosts }
+        : {}),
     })
   }
   return c.json({ data, unavailableApps: unavailableAppsFor(orgId, userId) })

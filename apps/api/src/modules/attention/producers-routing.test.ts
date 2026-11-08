@@ -25,7 +25,8 @@ function prefs(over: Partial<UserPrefsSnapshot> = {}): UserPrefsSnapshot {
     digestCadence: "daily",
     workHoursStart: "00:00",
     workHoursEnd: "00:00",
-    workDays: [0, 1, 2, 3, 4, 5, 6],
+    // ISO weekdays (1 = Monday … 7 = Sunday): every day, so no run falls outside them.
+    workDays: [1, 2, 3, 4, 5, 6, 7],
     timezone: "UTC",
     ...over,
   }

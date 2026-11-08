@@ -76,7 +76,7 @@ liaison slack import --export-dir <path> --user-map <path.json> [--org <slug>] [
 liaison search reindex
 liaison export --full --output <path>
 liaison org export <org slug or id> [--wait] [--timeout <seconds>]
-liaison org caps <org slug or id> [--seats <n>] [--mailboxes <n>] [--storage-gb <n>] [--jobs-per-hour <n>] [--custom-apps <n>] [--audit-days <n>] [--unset <cap>]
+liaison org caps <org slug or id> [--seats <n>] [--mailboxes <n>] [--storage-gb <n>] [--jobs-per-hour <n>] [--custom-apps <n>] [--audit-days <n>] [--app-runs-per-day <n>] [--app-bridge-calls-per-day <n>] [--app-cpu-ms-per-day <n>] [--unset <cap>]
 liaison org delete <org slug or id> [--dry-run] [--yes <slug>] [--export-to <path>] [--no-legal-archive] [--abort]
 liaison mailbox verify-attachment --file-id <kernel.files id>
 liaison mailbox purge --user <uuid> --org <uuid> [--execute --confirm <same user uuid>]
@@ -851,6 +851,9 @@ limits:
   jobsPerHour: 5000  # background jobs per clock hour
   customApps: 5      # custom apps installed for the org
   auditDays: 365     # days of audit log kept
+  appRunsPerDay: 20000         # app runs per UTC day
+  appBridgeCallsPerDay: 200000 # calls apps on Workers make back, per UTC day
+  appCpuMsPerDay: 3600000      # CPU ms of apps on Workers, per UTC day
 ```
 
 ### `liaisonTeam`
@@ -1016,7 +1019,7 @@ transform from a shipped example and previews it before anything is written
 
 ## Limit an organization
 
-Every organization starts with no limits. Whoever runs the server can cap four
+Every organization starts with no limits. Whoever runs the server can cap these
 things per organization, with `liaison org caps` or the `limits` section above:
 
 - **Seats**: people whose account is active. Agents, deactivated people and
@@ -1038,6 +1041,27 @@ things per organization, with `liaison org caps` or the `limits` section above:
   with room, up to a day; nothing is dropped. Work a person started and waits
   on (agent replies, approvals, sending mail, a routine's Run now, imports,
   exports, thumbnails and link previews of an upload) is never held back.
+- **App runs, app calls and app CPU per day**: the organization's app runs
+  (`appRunsPerDay`), the calls apps running on Workers make back to the
+  server (`appBridgeCallsPerDay`) and their CPU milliseconds
+  (`appCpuMsPerDay`), per UTC day. Only runs on Workers make counted calls:
+  a run on the local sandbox (an app not on Workers, or one the server moved
+  back to it after loader failures) counts 0 calls, so `appBridgeCallsPerDay`
+  does not limit it; `appRunsPerDay` does. Runs and calls are counted as each run
+  ends; CPU is what the Workers loader measured, pulled every hour, so that
+  cap applies from the first run after the pull that shows it reached. Past
+  a limit, until midnight UTC:
+  - a tool answers `APP_RUNS_LIMIT_REACHED`, `APP_BRIDGE_CALLS_LIMIT_REACHED`
+    or `APP_CPU_LIMIT_REACHED` (429) with the limit and the count;
+  - a webhook is still verified and answered 2xx; its handler runs after
+    midnight, with the same payload;
+  - an event an app subscribes to, and an app's own job, run after midnight; a
+    scheduled app job skips its ticks until then;
+  - a poll of an awaited output answers "not ready" and asks again later;
+  - an app's search returns no results, with the reason;
+  - a run started from inside another app's run is counted but never refused,
+    and the platform's own built-in code is never limited.
+  The daily totals per app are in `kernel.app_usage_daily`.
 
 ```bash
 liaison org caps acme --seats 25 --storage-gb 100

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // `liaison org caps <org> [--seats N] [--mailboxes N] [--storage-gb N]
-//                         [--jobs-per-hour N] [--unset <cap>]...`
+//                         [--jobs-per-hour N] [--custom-apps N] [--audit-days N]
+//                         [--app-runs-per-day N] [--app-bridge-calls-per-day N]
+//                         [--app-cpu-ms-per-day N] [--unset <cap>]...`
 //
 // The operator's per-org caps (modules/org/caps.ts). Without a change flag it
 // prints the org's caps and usage; with one it changes the named caps and
@@ -18,7 +20,7 @@ import { organizations } from "~/db/schema/kernel"
 import { getOrgUsage, readOrgCaps, setOrgCaps } from "~/modules/org/caps"
 
 export const ORG_CAPS_USAGE =
-  "usage: liaison org caps <org slug or id> [--seats <n>] [--mailboxes <n>] [--storage-gb <n>] [--jobs-per-hour <n>] [--custom-apps <n>] [--audit-days <n>] [--unset <seats|mailboxes|storage-gb|jobs-per-hour|custom-apps|audit-days>]..."
+  "usage: liaison org caps <org slug or id> [--seats <n>] [--mailboxes <n>] [--storage-gb <n>] [--jobs-per-hour <n>] [--custom-apps <n>] [--audit-days <n>] [--app-runs-per-day <n>] [--app-bridge-calls-per-day <n>] [--app-cpu-ms-per-day <n>] [--unset <seats|mailboxes|storage-gb|jobs-per-hour|custom-apps|audit-days|app-runs-per-day|app-bridge-calls-per-day|app-cpu-ms-per-day>]..."
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -30,6 +32,9 @@ const FLAG_OF: Record<OrgCapKind, string> = {
   jobsPerHour: "--jobs-per-hour",
   customApps: "--custom-apps",
   auditDays: "--audit-days",
+  appRunsPerDay: "--app-runs-per-day",
+  appBridgeCallsPerDay: "--app-bridge-calls-per-day",
+  appCpuMsPerDay: "--app-cpu-ms-per-day",
 }
 const KIND_OF_FLAG = new Map(ORG_CAP_KINDS.map((k) => [FLAG_OF[k], k] as const))
 const KIND_OF_NAME = new Map(ORG_CAP_KINDS.map((k) => [FLAG_OF[k].slice(2), k] as const))

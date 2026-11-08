@@ -33,6 +33,7 @@ import {
   StatusPill,
   useShopDomain,
 } from "../primitives"
+import { onOutsideLinkClick } from "../external-link"
 
 interface BasePanelProps {
   // `shop` is an optional fallback supplied by the host (DetailTab). The host
@@ -93,6 +94,7 @@ function ExternalLink(props: {
             href={h()}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={(e) => onOutsideLinkClick(e, h())}
           >
             {props.label ?? "Open in Shopify"}
             <span aria-hidden="true">↗</span>

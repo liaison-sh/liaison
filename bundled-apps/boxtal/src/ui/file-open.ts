@@ -16,13 +16,19 @@
 // button did nothing. There the host opens the file itself (`openFile`: the shell saves the bytes
 // and opens them in the default PDF viewer) and the pre-opened tab, if any, is closed.
 //
+// In a frame (the screen on its own origin, or a shell's frame) the app has no network and no
+// popup: it names the file and the HOST fetches and opens it (`app.openFile`), so no tab is
+// pre-opened there.
+//
 // Shared by ReadyToShip (print pack) and PrepGrid (invoice download, label).
 
-import { fetchBlob, openFile } from "@liaison/host"
+import { app, fetchBlob, openFile } from "@liaison/host"
 
 /** Pre-open a tab inside the click gesture (popup safe) with a placeholder, so the operator sees
  *  "preparing" rather than a bare about:blank while the tool call runs. */
 export function openPreparingTab(): Window | null {
+  // The host opens the file itself (framed): no tab of the app's.
+  if (app.opensFiles()) return null
   const win = window.open("", "_blank")
   try {
     win?.document.write(
@@ -38,6 +44,11 @@ export function openPreparingTab(): Window | null {
  *  them to the host when it opens files itself (desktop). One call per document: the label and the
  *  invoice each get their own tab. `baseName` names the file the desktop saves ("label", "invoice"). */
 export async function loadFileInto(fileId: string, win: Window | null, baseName = "document"): Promise<void> {
+  // Framed: the host fetches and shows it; no bytes reach this screen.
+  if (await app.openFile(fileId, `${baseName}-${fileId.slice(0, 8)}.pdf`)) {
+    win?.close()
+    return
+  }
   // Through the host (bound server + bearer): a page-relative fetch lands on
   // the desktop or mobile shell's own index.html, a web page labelled PDF.
   let blob: Blob

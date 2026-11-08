@@ -35,7 +35,7 @@ function bridgeCtx(orgId: string, appName: string): BridgeContext {
     userId: "00000000-0000-0000-0000-000000000001",
     appName,
     actorType: "user",
-    allowedDomains: [...HOSTS],
+    egress: async () => ({ allowedDomains: [...HOSTS], manifest: { name: appName } }),
     callerScopes: [],
     inheritedActor: { actorType: "user" as const },
     manifest: { name: appName },

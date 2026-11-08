@@ -53,6 +53,11 @@ export interface ExternalSearchResult {
   hits: ExternalSearchHit[]
   /** Opaque next-page cursor, or `null` when this source is exhausted. */
   nextCursor?: string | null
+  /**
+   * Set when the source refused to search (no hits then): the org reached an
+   * app day cap (`APP_RUNS_LIMIT_REACHED`, ...), with the message to show.
+   */
+  refused?: { code: string; message: string }
 }
 
 export type ExternalSearchHandler = (params: ExternalSearchParams) => Promise<ExternalSearchResult>
@@ -145,6 +150,8 @@ export interface FanoutResult {
    * `args.cursors` on the next-page request.
    */
   cursors: Record<string, string | null>
+  /** Sources that refused to search, keyed by app (an app day cap reached); absent when none. */
+  refused?: Record<string, { code: string; message: string }>
 }
 
 export async function fanoutExternal(args: {
@@ -175,6 +182,7 @@ export async function fanoutExternal(args: {
   const timedOut: string[] = []
   const tagged: ExternalSearchHit[] = []
   const cursors: Record<string, string | null> = {}
+  const refused: Record<string, { code: string; message: string }> = {}
   const settled = await Promise.allSettled(
     entries.map(async ({ app, handler, timeoutMs }): Promise<ExternalSearchResult> => {
       let timerId: ReturnType<typeof setTimeout> | undefined
@@ -195,6 +203,7 @@ export async function fanoutExternal(args: {
         return {
           hits: result.hits.map((r) => normalizeHit(r, app)),
           nextCursor: result.nextCursor ?? null,
+          ...(result.refused ? { refused: result.refused } : {}),
         }
       } finally {
         // Always clear the timeout timer so it doesn't leak after the race
@@ -209,6 +218,7 @@ export async function fanoutExternal(args: {
     if (s.status === "fulfilled") {
       tagged.push(...s.value.hits)
       cursors[app] = s.value.nextCursor ?? null
+      if (s.value.refused) refused[app] = s.value.refused
     } else {
       const reason = s.reason as { message?: string } | undefined
       if (reason?.message === "__timeout__") {
@@ -219,7 +229,12 @@ export async function fanoutExternal(args: {
       }
     }
   }
-  return { hits: tagged, timedOut, cursors }
+  return {
+    hits: tagged,
+    timedOut,
+    cursors,
+    ...(Object.keys(refused).length > 0 ? { refused } : {}),
+  }
 }
 
 /**

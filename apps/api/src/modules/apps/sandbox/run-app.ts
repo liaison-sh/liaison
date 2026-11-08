@@ -16,9 +16,10 @@
 //   pool       everything else, on the out-of-process worker pool
 //
 // A listed app that cannot run on Workers (no bundle for its installed
-// version) runs on the pool with a warning per run. Every run of a listed app
-// writes one timing record tagged with the executor that ran it
-// (workers/timings.ts, kind "run").
+// version) runs on the pool with a warning per run. Every run raises one
+// run-settled event (workers/run-settled.ts) once it has settled, tagged with
+// the executor that ran it; the run timing records (workers/timings.ts, kind
+// "run", listed and custom apps) are one of its subscribers.
 //
 // A new executor is one more arm of `selectExecutor` and of the switch in
 // `runApp`; no call site changes. The sandboxes that do not run app handlers
@@ -30,7 +31,6 @@ import { dirname } from "node:path"
 import { and, eq, isNotNull, isNull, or } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-installed"
-import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
 import { flushRunLogs } from "~/modules/app-builder/logs"
 import { isCustomAppName } from "~/modules/apps/custom-app-name"
@@ -55,7 +55,11 @@ import {
   workersSelectsApp,
 } from "~/modules/apps/workers/config"
 import { executeOnWorkers, type WorkersRunInfo } from "~/modules/apps/workers/executor"
-import { recordRunTiming } from "~/modules/apps/workers/timings"
+import { AppFallbacks, appFallbacks, loaderBreaker } from "~/modules/apps/workers/fallback"
+import { emitRunSettled, type WorkersFallback } from "~/modules/apps/workers/run-settled"
+import { deliverRunLogs } from "~/modules/apps/workers/worker-logs"
+// The run timing records subscribe to the run-settled event (timings.ts).
+import "~/modules/apps/workers/timings"
 
 const log = rootLogger.child({ module: "run-app" })
 
@@ -113,6 +117,12 @@ export interface RunAppOptions {
    * parent app.
    */
   executionToken?: string
+  /**
+   * The executor decision a site took before building its bridge
+   * (`planWorkersRun`): passed on so the run goes where its bridge was built
+   * for. Omitted: runApp plans itself.
+   */
+  workersPlan?: WorkersPlan
   /**
    * The bridge holds an ambient database transaction open across the whole run
    * (atomic tools, primary webhook delivery, ambient jobs, event handlers, polls).
@@ -183,95 +193,98 @@ export async function resolveWorkersTarget(
   return { config, version: identity.version, sha256: sha }
 }
 
-/** Whether this run would go to Workers (a site that builds a bridge per executor asks). */
-export async function appRunsOnWorkers(
-  opts: Pick<RunAppOptions, "trusted" | "appName" | "orgId" | "installed" | "bundlePath">,
-): Promise<boolean> {
-  return (await resolveWorkersTarget(opts)) !== null
-}
-
 /**
- * Whether this app's runs write a timing record: listed in LIAISON_WORKERS_APPS
- * (whatever else is set), or a custom app while LIAISON_WORKERS_CUSTOM_APPS is on.
+ * Where this run goes, decided once, before the run's bridge is built: the
+ * Workers target, or none with the reason it falls back (workers/fallback.ts):
+ * `app` while this org's app@version is under an app-level fallback,
+ * `breaker` while the loader breaker is open (or another run holds the
+ * half-open probe). `probe` marks the run the half-open breaker lets through.
+ * A site that builds a bridge per executor passes the plan to runApp
+ * (`workersPlan`), so the decision is not taken twice.
  */
-function isTimedApp(appName: string): boolean {
-  if (timedApps().has(appName)) return true
-  const flag = (env.LIAISON_WORKERS_CUSTOM_APPS ?? "").trim().toLowerCase()
-  return (flag === "1" || flag === "true") && isCustomAppName(appName)
+export interface WorkersPlan {
+  target: WorkersTarget | null
+  fallback?: WorkersFallback
+  probe?: boolean
 }
 
-/** The apps LIAISON_WORKERS_APPS lists. */
-function timedApps(): ReadonlySet<string> {
-  const raw = env.LIAISON_WORKERS_APPS ?? ""
-  if (raw === timedAppsRaw) return timedAppsSet
-  timedAppsRaw = raw
-  timedAppsSet = new Set(
-    raw
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean),
-  )
-  return timedAppsSet
+export async function planWorkersRun(
+  opts: Pick<RunAppOptions, "trusted" | "appName" | "orgId" | "installed" | "bundlePath">,
+): Promise<WorkersPlan> {
+  const target = await resolveWorkersTarget(opts)
+  if (!target) return { target: null }
+  if (appFallbacks.active(AppFallbacks.key(opts.orgId, opts.appName, target.version))) {
+    return { target: null, fallback: "app" }
+  }
+  const admission = loaderBreaker.admit()
+  if (!admission.allow) return { target: null, fallback: "breaker" }
+  return admission.probe ? { target, probe: true } : { target }
 }
-let timedAppsRaw = ""
-let timedAppsSet: ReadonlySet<string> = new Set()
 
 /** Running executions by token -> app, so a nested run's record names its parent app. */
 const runningExecutions = new Map<string, string>()
 
 export async function runApp(opts: RunAppOptions): Promise<unknown> {
-  const timed = isTimedApp(opts.appName)
   const started = Date.now()
   if (opts.executionToken) runningExecutions.set(opts.executionToken, opts.appName)
-  const workersTarget = await resolveWorkersTarget(opts)
-  const executor = selectExecutor({
-    trusted: opts.trusted,
-    workersBundleSha: workersTarget?.sha256,
-  })
   let info: WorkersRunInfo = {}
   let ok = false
+  let executor: AppExecutor = opts.trusted ? "inprocess" : "pool"
+  let plan: WorkersPlan = { target: null }
   try {
-    const result = await runOnExecutor(opts, executor, workersTarget, (i) => {
+    plan = opts.workersPlan ?? (await planWorkersRun(opts))
+    executor = selectExecutor({ trusted: opts.trusted, workersBundleSha: plan.target?.sha256 })
+    const result = await runOnExecutor(opts, executor, plan, (i) => {
       info = i
     })
     ok = true
     return result
   } finally {
     if (opts.executionToken) runningExecutions.delete(opts.executionToken)
+    if (info.logs || info.logsDropped) {
+      deliverRunLogs({
+        bridge: opts.bridge,
+        app: opts.appName,
+        orgId: opts.orgId,
+        ...(info.runId ? { runId: info.runId } : {}),
+        logs: info.logs ?? [],
+        ...(info.logsDropped ? { dropped: info.logsDropped } : {}),
+      })
+    }
     // A custom app's (or draft preview's) log lines: written in the background,
     // never the run's failure (modules/app-builder/logs.ts).
     void flushRunLogs(opts.bridge)
-    if (timed) {
-      const parentApp =
-        opts.nested && opts.nestedParentKey
-          ? runningExecutions.get(opts.nestedParentKey)
-          : undefined
-      recordRunTiming({
-        kind: "run",
-        ...(info.runId ? { runId: info.runId } : {}),
-        app: opts.appName,
-        entry:
-          opts.entry ?? (opts.toolName ? `tool:${opts.toolName}` : `handler:${opts.exportName}`),
-        executor: executor === "pool" ? "quickjs" : executor,
-        nested: opts.nested === true,
-        ...(parentApp ? { parentApp } : {}),
-        ms: Date.now() - started,
-        ok,
-        at: started,
-        ...(info.loader ? { loader: info.loader } : {}),
-        ...(info.sleepMs !== undefined ? { sleepMs: info.sleepMs } : {}),
-        ...(info.sleepExact !== undefined ? { sleepExact: info.sleepExact } : {}),
-      })
-    }
+    const parentApp =
+      opts.nested && opts.nestedParentKey ? runningExecutions.get(opts.nestedParentKey) : undefined
+    emitRunSettled({
+      ...(info.runId ? { runId: info.runId } : {}),
+      app: opts.appName,
+      orgId: opts.orgId,
+      entry: opts.entry ?? (opts.toolName ? `tool:${opts.toolName}` : `handler:${opts.exportName}`),
+      executor: executor === "pool" ? "quickjs" : executor,
+      nested: opts.nested === true,
+      ...(parentApp ? { parentApp } : {}),
+      ms: Date.now() - started,
+      ok,
+      at: started,
+      ...(info.bridgeCalls !== undefined ? { bridgeCalls: info.bridgeCalls } : {}),
+      ...(info.loader ? { loader: info.loader } : {}),
+      ...(info.sleepMs !== undefined ? { sleepMs: info.sleepMs } : {}),
+      ...(info.sleepExact !== undefined ? { sleepExact: info.sleepExact } : {}),
+      ...(plan.fallback ? { fallback: plan.fallback } : {}),
+      ...(info.attempts !== undefined ? { attempts: info.attempts } : {}),
+      ...(info.fault ? { errorKind: info.fault.kind, faultClass: info.fault.class } : {}),
+    })
   }
 }
 
 async function runOnExecutor(
   opts: RunAppOptions,
   executor: AppExecutor,
-  workersTarget: WorkersTarget | null,
+  plan: WorkersPlan,
   onInfo: (info: WorkersRunInfo) => void,
 ): Promise<unknown> {
+  const workersTarget = plan.target
   // A custom app's code never holds a secret, on any executor. Its bridge
   // is built secret-free (rpc-bridge.ts); one built elsewhere is marked here,
   // before any call.
@@ -308,6 +321,7 @@ async function runOnExecutor(
         holdsTx: opts.holdsTx,
         nested: opts.nested === true,
         ...(opts.nestedParentKey !== undefined ? { nestedParentKey: opts.nestedParentKey } : {}),
+        ...(plan.probe ? { probe: true } : {}),
       },
       onInfo,
     )

@@ -99,7 +99,7 @@ function egress(
     userId: USER,
     appName: "carrier",
     actorType: "user",
-    allowedDomains: ALLOWED,
+    egress: async () => ({ allowedDomains: ALLOWED, manifest: MANIFEST }),
     callerScopes: [],
     inheritedActor: { actorType: "user" as const },
     manifest: MANIFEST,

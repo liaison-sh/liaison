@@ -23,6 +23,7 @@ import {
   AppActivationError,
   isNewerVersion as isVersionNewer,
   listAppVersionStates,
+  readInstalledManifest,
   rollbackApp,
 } from "~/modules/apps/activation"
 import {
@@ -40,6 +41,12 @@ import {
   listMergedCatalog,
 } from "~/modules/apps/catalog-sources"
 import { discoverInTreeApps, getInstallRoot } from "~/modules/apps/discover-apps"
+import {
+  declaredDomains,
+  grantedSubset,
+  normalizeDomain,
+  pendingDomains,
+} from "~/modules/apps/egress-grants"
 import {
   applyUpgrade,
   installAppFromTarball,
@@ -212,6 +219,11 @@ async function writeDownload(
   return { path, signaturePath, dir }
 }
 
+/** A request's `grantedDomains`: strings only (anything else consents to nothing). */
+function strictDomains(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((d): d is string => typeof d === "string") : []
+}
+
 // POST /install — install from a URL with admin-granted scopes.
 installRoutes.post(
   "/install",
@@ -224,6 +236,7 @@ installRoutes.post(
       grantedConnections?: string[]
       grantedCapabilities?: string[]
       grantedCrossAppCalls?: string[]
+      grantedDomains?: string[]
       approveUiFullAccess?: boolean
       allowDowngrade?: boolean
     }
@@ -243,6 +256,8 @@ installRoutes.post(
         // Explicit list from the admin dialog: a missing field grants nothing.
         grantedCapabilities: body.grantedCapabilities ?? [],
         grantedCrossAppCalls: body.grantedCrossAppCalls ?? [],
+        // The outbound domains consented to: a missing field consents to none.
+        grantedDomains: strictDomains(body.grantedDomains),
         approveUiFullAccess: body.approveUiFullAccess === true,
         allowDowngrade: body.allowDowngrade === true,
         requireSignature: sig.requireSignature,
@@ -299,6 +314,7 @@ installRoutes.post(
       grantedConnections?: string[]
       grantedCapabilities?: string[]
       grantedCrossAppCalls?: string[]
+      grantedDomains?: string[]
       approveUiFullAccess?: boolean
     }
     if (!body.url) throw new HTTPException(400, { message: "url is required" })
@@ -313,6 +329,8 @@ installRoutes.post(
         grantedConnections: body.grantedConnections ?? [],
         grantedCapabilities: body.grantedCapabilities ?? [],
         grantedCrossAppCalls: body.grantedCrossAppCalls ?? [],
+        // The outbound domains consented to: a missing field consents to none.
+        grantedDomains: strictDomains(body.grantedDomains),
         // The interface runs only on this org's own host, approved by this org's admin.
         approveUiFullAccess: body.approveUiFullAccess === true,
         requireSignature: false,
@@ -396,6 +414,10 @@ installRoutes.post(
           // What the admin dialog needs to ask for "interface runs with your session".
           hasUiBundle: existsSync(join(verified.stagingDir, "ui.js")),
           signatureVerified: !!verified.signatureBundle,
+          // The hosts the install asks consent for (network + connections, egress-grants.ts).
+          outboundDomains: declaredDomains(
+            JSON.parse(readFileSync(join(verified.stagingDir, "app.manifest.json"), "utf8")),
+          ),
         })
       } finally {
         rmSync(verified.stagingDir, { recursive: true, force: true })
@@ -454,6 +476,7 @@ installRoutes.post(
         newScopes: preview.newScopes,
         newCapabilities: preview.newCapabilities,
         newCrossAppCalls: preview.newCrossAppCalls,
+        newDomains: preview.newDomains,
         removedScopes: preview.removedScopes,
         previouslyGranted: preview.previouslyGranted,
       })
@@ -475,6 +498,7 @@ installRoutes.post(
       grantedConnections?: string[]
       grantedCapabilities?: string[]
       grantedCrossAppCalls?: string[]
+      grantedDomains?: string[]
       approveUiFullAccess?: boolean
       allowDowngrade?: boolean
     }
@@ -502,6 +526,8 @@ installRoutes.post(
         grantedConnections: body.grantedConnections ?? [],
         grantedCapabilities: body.grantedCapabilities ?? [],
         grantedCrossAppCalls: body.grantedCrossAppCalls ?? [],
+        // The outbound domains consented to: a missing field consents to none.
+        grantedDomains: strictDomains(body.grantedDomains),
         approveUiFullAccess: body.approveUiFullAccess === true,
         allowDowngrade: body.allowDowngrade === true,
         requireSignature: sig.requireSignature,
@@ -600,6 +626,104 @@ installRoutes.post(
     resetInstallTrustCache(name)
     log.info({ app: name, version, approved: body.approved, by: userId }, "App UI approval changed")
     return success(c, { name, version, uiFullAccessApproved: body.approved })
+  },
+)
+
+/** The outbound access of an installed app's active version (egress-grants.ts). */
+async function outboundAccess(name: string) {
+  const trust = await getInstallTrust(name)
+  if (!trust.installed || !trust.version) return null
+  const manifest = readInstalledManifest(name, trust.version) ?? {}
+  const declared = declaredDomains(manifest)
+  return {
+    name,
+    version: trust.version,
+    declared,
+    /** null = grandfathered: every declared domain. */
+    granted: trust.grantedDomains === null ? null : grantedSubset(declared, trust.grantedDomains),
+    pending: pendingDomains(manifest, trust.grantedDomains),
+  }
+}
+
+// GET /:name/outbound — the hosts an installed app may reach: what its active
+// version declares, what is granted, and what still waits for consent. Any admin
+// of an org that sees the app may read it; `canManage` says whether this caller
+// may change it (the instance operator for an instance app, the owning org's
+// admin for a custom app).
+installRoutes.get("/:name/outbound", requireScope("kernel:apps:admin"), async (c) => {
+  const name = assertValidAppName(c.req.param("name"))
+  const orgId = c.get("orgId")
+  const custom = await isOrgPrivateApp(name)
+  if (custom && (await appOwnerOrg(name)) !== orgId) {
+    throw new HTTPException(404, { message: `App '${name}' is not installed` })
+  }
+  const access = await outboundAccess(name)
+  if (!access) throw new HTTPException(404, { message: `App '${name}' is not installed` })
+  return success(c, {
+    ...access,
+    canManage: custom ? true : await canManageInstanceApps(orgId),
+  })
+})
+
+// POST /:name/outbound — grant pending domains or revoke granted ones on the
+// active version's install row: { grant?: string[], revoke?: string[] }. Only
+// declared domains can be granted. Takes effect on the app's next run (this
+// process at once, the others within the install-trust cache's few seconds).
+installRoutes.post(
+  "/:name/outbound",
+  requireScope("kernel:apps:admin"),
+  requireAppManager,
+  async (c) => {
+    const name = assertValidAppName(c.req.param("name"))
+    const body = (await c.req.json().catch(() => ({}))) as { grant?: unknown; revoke?: unknown }
+    const grant = strictDomains(body.grant).map(normalizeDomain)
+    const revoke = new Set(strictDomains(body.revoke).map(normalizeDomain))
+    if (grant.length === 0 && revoke.size === 0) {
+      throw new HTTPException(400, { message: "grant or revoke (domain lists) is required" })
+    }
+    const access = await outboundAccess(name)
+    if (!access) throw new HTTPException(404, { message: `App '${name}' is not installed` })
+    const undeclared = grant.filter((d) => !access.declared.includes(d))
+    if (undeclared.length > 0) {
+      throw new HTTPException(400, {
+        message: `Not declared by ${name} ${access.version}: ${undeclared.join(", ")}`,
+      })
+    }
+    const before = access.granted ?? access.declared
+    const next = access.declared.filter(
+      (d) => (before.includes(d) || grant.includes(d)) && !revoke.has(d),
+    )
+    const userId = c.get("userId")
+    const orgId = c.get("orgId")
+    await withSystemDb("app-outbound-grant", async (db) => {
+      await db
+        .update(appsInstalled)
+        .set({ grantedDomains: next })
+        .where(and(eq(appsInstalled.name, name), eq(appsInstalled.version, access.version)))
+      await writeAuditLog(db, {
+        orgId,
+        actorId: userId,
+        actorType: "user",
+        app: name,
+        entityType: "app_install",
+        action: "app.outbound_domains.changed",
+        metadata: {
+          version: access.version,
+          granted: next.filter((d) => !before.includes(d)),
+          revoked: before.filter((d) => !next.includes(d)),
+        },
+      })
+    })
+    resetInstallTrustCache(name)
+    log.info(
+      { app: name, version: access.version, granted: next, by: userId },
+      "App outbound domains changed",
+    )
+    return success(c, {
+      ...access,
+      granted: next,
+      pending: access.declared.filter((d) => !next.includes(d)),
+    })
   },
 )
 

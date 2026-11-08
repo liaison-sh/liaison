@@ -17,6 +17,7 @@ import {
   enqueueAppJobForServer,
   JobsTestAccess,
   jobsDroppedOrgMissingCount,
+  jobsHeldAppDayCapCount,
   jobWorkerCount,
   listOrgQueuedJobs,
   OrgUnderMaintenanceJobError,
@@ -33,6 +34,7 @@ import { jobsLogger } from "~/lib/logger"
 import { armOrgMaintenance, disarmOrgMaintenance } from "~/middleware/org-maintenance"
 import { NoConnectedAccountError } from "~/modules/apps/connections/no-connected-account"
 import { forgetOrgApps, rememberOrgAppStates } from "~/modules/apps/org-apps"
+import { AppDayCapHeldJobError } from "~/modules/apps/usage/app-day-cap"
 import { waitFor } from "~/tests/helpers/wait-for"
 
 describe("job dispatch", () => {
@@ -196,6 +198,35 @@ describe("job that asks to run later", () => {
     } finally {
       warn.mockRestore()
       error.mockRestore()
+    }
+  })
+})
+
+// An app job of an org at an app day cap (modules/apps/usage/app-day-cap.ts):
+// back on its queue as delayed until the next UTC day, its data kept and no
+// attempt spent, so the cap never turns into a failed or dropped job.
+describe("job held by an app day cap", () => {
+  it("is moved to delayed with its data, no attempt spent", async () => {
+    let runs = 0
+    registerJobWorker("jobtest-capheld", "capped", async () => {
+      runs++
+      throw new AppDayCapHeldJobError("org-at-cap", 600_000, "appRunsPerDay")
+    })
+    const heldBefore = jobsHeldAppDayCapCount()
+    const jobId = await enqueueAppJob("jobtest-capheld", "capped", { marker: "m-1" })
+    await waitFor(() => runs > 0 && jobsHeldAppDayCapCount() > heldBefore, {
+      label: "the capped job to be held",
+    })
+    const job = await JobsTestAccess.findJob("jobtest-capheld", "capped", jobId)
+    try {
+      expect(await job?.getState()).toBe("delayed")
+      expect(job?.data).toMatchObject({ marker: "m-1" })
+      expect(job?.attemptsMade ?? -1).toBe(0)
+      // Held until the error's delay, not BullMQ's retry backoff.
+      expect((job?.timestamp ?? 0) + (job?.delay ?? 0)).toBeGreaterThan(Date.now() + 500_000)
+      expect(runs).toBe(1)
+    } finally {
+      await job?.remove()
     }
   })
 })

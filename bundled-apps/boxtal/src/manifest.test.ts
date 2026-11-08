@@ -594,7 +594,8 @@ describe("Boxtal app.manifest.json", () => {
     // 0.23.15: shipment_draft_create is declared a write (it stores the draft), still ungated.
     // 0.23.16: API keys and the webhook secret stay host-side (ctx.fetch auth, configSecrets, by-key HMAC).
     // 0.23.18: the webhook secret may go only into the subscription body's webhookSecret, on Boxtal's API hosts (secrets).
-    expect(m.version).toBe("0.23.19")
+    // 0.23.20: an opened approval card (and the phone's column fold) stays open when its row is re-read.
+    expect(m.version).toBe("0.23.20")
     expect(m.packageFormat).toBe(1)
   })
 

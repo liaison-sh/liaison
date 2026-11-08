@@ -216,6 +216,7 @@ jobs:
           name: gate-logs-${{ matrix.suite }}-${{ matrix.shard }}
           path: |
             logs/
+            apps/web/logs/playwright-diagnostics/
             apps/web/test-results/
             apps/web/playwright-report/
             apps/web/junit*.xml

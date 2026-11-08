@@ -169,3 +169,22 @@ export function reconcileExitingRows(
 export function rowIsInteractive(exiting: boolean): boolean {
   return !exiting
 }
+
+// ── Per-row UI state that survives a row re-read ─────────────────────────────
+
+/**
+ * Flip one row's open/closed flag in a set keyed by `order_key`.
+ *
+ * Why the grid keeps a row's folds HERE, keyed by order key, and not in a signal created inside
+ * the row: `<For>` keys rows by object reference, and every read of a row (the background refresh
+ * that follows a cache-first paint, a poll tick, a mutation's own re-read) hands back a NEW
+ * object for it. The row's DOM is then rebuilt and any signal created inside it starts over: a
+ * fold the person had just opened snapped shut under their pointer when the refresh landed.
+ */
+export function toggleRowKey(keys: ReadonlySet<string>, orderKey: string, open?: boolean): Set<string> {
+  const next = new Set(keys)
+  const want = open ?? !next.has(orderKey)
+  if (want) next.add(orderKey)
+  else next.delete(orderKey)
+  return next
+}

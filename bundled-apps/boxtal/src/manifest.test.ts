@@ -619,7 +619,10 @@ describe("Boxtal app.manifest.json", () => {
     // 0.23.25: above the 0.23.19 main took meanwhile; no change of its own.
     // 0.23.20 (main): the sandbox's label documents (document.boxtal.build) may be imported, like production's.
     // 0.23.26: both of the above, merged.
-    expect(m.version).toBe("0.23.26")
+    // 0.23.21 (main): an opened approval card (and the phone's column fold) stays open when its row is re-read.
+    // 0.23.22 (main): the shipment detail's label Download opens the label (it had no handler).
+    // 0.23.27: above the 0.23.22 main took meanwhile; no change of its own.
+    expect(m.version).toBe("0.23.27")
     expect(m.packageFormat).toBe(1)
   })
 

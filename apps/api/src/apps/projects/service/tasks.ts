@@ -11,6 +11,7 @@ import {
 import { updateItemRoutePerson } from "~/modules/approvals/route-world"
 import { appendChecklistOnMerge, readItems, readProjectLevels } from "./checklist"
 import { type ChecklistStatus, checklistStatus } from "./checklist-status"
+import { explainClosingStages, mergeDealRows, syncDealOutcome } from "./deals"
 import { dueBucketSql } from "./due-status"
 import {
   computeNextCompletedAt,
@@ -180,7 +181,12 @@ export async function createTask(args: CreateTaskArgs): Promise<TaskDetail> {
   return tx.transaction(async (innerTx) => {
     await ensureProjectMutableForTasks(innerTx, orgId, input.projectId)
     const release = normalizeRelease(input.release) ?? null
-    const statusId = await resolveStatusId(innerTx as RlsClient, orgId, input.projectId, input)
+    const statusId = await resolveStatusId(
+      innerTx as RlsClient,
+      orgId,
+      input.projectId,
+      input,
+    ).catch((err) => explainClosingStages(innerTx, orgId, input.projectId, err))
     assertTaskPriority(input.priority)
     const labelAssignments = await resolveLabelInput(innerTx as RlsClient, orgId, input.labels)
 
@@ -380,6 +386,9 @@ export async function createTask(args: CreateTaskArgs): Promise<TaskDetail> {
     `)
 
     await applyTaskLabels(innerTx as RlsClient, orgId, taskId, labelAssignments)
+    // A root task of a pipeline is a deal: its rows, and its outcome when it
+    // is created straight into a closing stage.
+    await syncDealOutcome(innerTx, orgId, actor, [taskId])
 
     // The event carries the full row as written (key, number, position,
     // resolved status) so a live client can render it without a refetch.
@@ -673,6 +682,7 @@ export async function updateTask(args: UpdateTaskArgs): Promise<TaskDetail> {
   const { detail: updated, assigned } = await tx.transaction(async (innerTx) => {
     // The assignee this update set, if it set one: pending requests about the task follow it.
     let assigned: { personId: string | null } | null = null
+    let statusChanged = false
     const projectClause = projectId ? drizzleSql`AND project_id = ${projectId}::uuid` : drizzleSql``
     const taskRows = extractRows<{
       project_id: string
@@ -702,7 +712,8 @@ export async function updateTask(args: UpdateTaskArgs): Promise<TaskDetail> {
         orgId,
         existing.project_id,
         input,
-      )
+      ).catch((err) => explainClosingStages(innerTx, orgId, existing.project_id, err))
+      statusChanged = nextStatusId !== existing.status_id
       sets.push(drizzleSql`status_id = ${nextStatusId}::uuid`)
       const completedAt = await computeNextCompletedAt(innerTx, orgId, {
         previousStatusId: existing.status_id,
@@ -748,6 +759,12 @@ export async function updateTask(args: UpdateTaskArgs): Promise<TaskDetail> {
       WHERE id = ${taskId}::uuid AND org_id = ${orgId}::uuid ${projectClause}
     `)
     await applyTaskLabels(innerTx as RlsClient, orgId, taskId, labelAssignments)
+    // The deal's outcome follows its new stage, in this transaction.
+    if (statusChanged) {
+      await syncDealOutcome(innerTx, orgId, actor, [taskId], {
+        fromStatusIds: { [taskId]: existing.status_id },
+      })
+    }
 
     // The event carries the full row AFTER the write (a `statusLabel` input
     // yields the resolved `statusId`, the key, completedAt...), plus the names
@@ -1431,6 +1448,9 @@ export async function mergeTasks(args: MergeTasksArgs): Promise<void> {
   if (exists.length < 2) {
     throw new ProjectsServiceError(404, "not_found", "source or target task not found")
   }
+  // Two deals naming different companies are refused before anything is
+  // written; otherwise the survivor keeps its deal rows and the source's go.
+  await mergeDealRows(tx, orgId, sourceId, targetId)
   // Append the source's checklist after the target's own (S11). First, so a
   // refusal (over the per-task limit) writes nothing.
   await appendChecklistOnMerge(tx, orgId, args.actor.userId, sourceId, targetId)

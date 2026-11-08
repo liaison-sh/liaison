@@ -2431,7 +2431,9 @@
       "label:updated",
       "label:archived",
       "label:restored",
-      "label:reordered"
+      "label:reordered",
+      "deal:closed",
+      "deal:reopened"
     ]
   },
   "kind": "app",

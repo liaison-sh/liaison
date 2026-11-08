@@ -1306,7 +1306,7 @@
     },
     "kernel__deactivateUser": {
       "desc": 85,
-      "schema": 10
+      "schema": 36
     },
     "kernel__delete_role": {
       "desc": 1265,

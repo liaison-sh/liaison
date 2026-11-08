@@ -158,6 +158,8 @@ beforeAll(async () => {
       FOR r IN SELECT nspname FROM pg_namespace
                 WHERE nspname = 'kernel' OR nspname = 'drizzle' OR nspname LIKE 'app\\_%' LOOP
         EXECUTE format('ALTER SCHEMA %I OWNER TO "${login}"', r.nspname);
+        -- A table the login creates later is handed to liaison_admin, which needs CREATE on the schema.
+        EXECUTE format('GRANT CREATE ON SCHEMA %I TO liaison_admin', r.nspname);
       END LOOP;
       FOR r IN SELECT n.nspname, c.relname FROM pg_class c
                  JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -178,6 +180,17 @@ beforeAll(async () => {
   const upToFix = folderUpTo(FIX_TAG, -1)
   folders.push(upToFix)
   await runMigrations(freshAsSuperuser.toString(), { migrationsFolder: upToFix })
+  // A later migration hands the portal role to the request login. Roles are cluster wide and
+  // the replay above took the request login's extra memberships back, so the login needs the
+  // ADMIN option on the portal role to give it again, as the owner of a role has; the role
+  // itself is created here when the cluster has none yet, since the login cannot create roles.
+  await admin.unsafe(`DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'liaison_portal') THEN
+        CREATE ROLE liaison_portal NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
+      END IF;
+    END $$`)
+  await admin.unsafe(`GRANT liaison_portal TO "${login}" WITH ADMIN OPTION`)
   // 0283 and anything after it, by the login again.
   const all = folderUpTo(FIX_TAG, Number.MAX_SAFE_INTEGER)
   folders.push(all)
@@ -200,6 +213,16 @@ afterAll(async () => {
       await admin.unsafe(`REVOKE "${m.role}" FROM "${m.member}" GRANTED BY "${m.grantor}" CASCADE`)
     }
     await admin.unsafe(`DROP ROLE IF EXISTS "${login}"`)
+    // The cascade above also took back the portal role the login gave the request login:
+    // other suites on this server rely on that membership, so it is given back.
+    await admin.unsafe(`DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'liaison_portal')
+           AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'liaison_request')
+           AND NOT pg_has_role('liaison_request', 'liaison_portal', 'MEMBER') THEN
+          GRANT liaison_portal TO liaison_request;
+        END IF;
+      END $$`)
     await admin.end()
   }
   for (const dir of folders) rmSync(dir, { recursive: true, force: true })
@@ -220,6 +243,8 @@ describe("0283: seeds re-applied as liaison_admin, by a non-superuser migration 
 
   test("a member role gains the products (0254) and mcp-manager (0133, 0134) scopes", async () => {
     expect(await scopesOf(MEMBER_ROLE)).toEqual([
+      "kernel:companies:read",
+      "kernel:companies:write",
       "kernel:contacts:read",
       "kernel:contacts:write",
       "kernel:products:read",
@@ -231,8 +256,9 @@ describe("0283: seeds re-applied as liaison_admin, by a non-superuser migration 
   })
 
   test("a scope an admin revoked is not given back, and an app role gets nothing", async () => {
-    expect(await scopesOf(REVOKED_ROLE)).toEqual(["kernel:contacts:read"])
-    expect(await scopesOf(APP_ROLE)).toEqual(["kernel:contacts:read"])
+    // The companies scopes follow the contacts scopes a role holds (the companies migration).
+    expect(await scopesOf(REVOKED_ROLE)).toEqual(["kernel:companies:read", "kernel:contacts:read"])
+    expect(await scopesOf(APP_ROLE)).toEqual(["kernel:companies:read", "kernel:contacts:read"])
   })
 
   test("its users' sessions are told to refresh", async () => {

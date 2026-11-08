@@ -50,6 +50,9 @@ describe("db import enforcement", () => {
     // Provisioning CLI: the connection's stored credentials are read in a privileged
     // transaction of the org being provisioned, after the plan's org-less precheck.
     "cli/provisioners/connector.ts",
+    // Deal board: the org's time zone (the organizations table is closed to row-level readers)
+    // is read in a privileged transaction of the org the caller passes, one column, no person.
+    "apps/projects/service/deals.ts",
     // Knowledge sync of a connected database run by a job (no request transaction):
     // the org-owned connection's credentials are read in a short privileged
     // transaction of the source's own org; the database read itself holds no slot.

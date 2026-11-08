@@ -62,6 +62,11 @@ const READ_ONLY: Record<string, string[]> = {
     "checklist_get",
     "labels.list", // taxonomy read, no write
     "labels.tree", // the settings page's tree read (rows + version), no write
+    // The deal tools that only read: each answers from the deal rows the caller's own grants reach.
+    "deals_search",
+    "deals_rollup",
+    "deals_followup_candidates",
+    "deal_send_state",
   ],
   knowledge: ["search", "review_queue", "get", "find_by_title", "synced_sources.list"],
   mail: ["listAccounts", "getAccount", "getSyncStatus", "search", "read", "providers.get"],

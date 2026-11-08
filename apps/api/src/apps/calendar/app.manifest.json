@@ -330,6 +330,11 @@
           },
           "timeMax": {
             "type": "string"
+          },
+          "attendee": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Attendee emails, at most 50."
           }
         },
         "required": ["timeMin", "timeMax"]

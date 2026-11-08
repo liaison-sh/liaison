@@ -134,7 +134,7 @@ Month and week calendar that syncs both ways with Google Calendar.
 | `calendar:accounts:read` | role member |  |
 | `calendar:approve` | approver scope | Decide (approve, edit, or deny) calendar approvals raised by its gated tools |
 | `calendar:calendars:read` | role member |  |
-| `calendar:events:read` | entity event; role member; tools list_accounts, list_calendars, list_events, search_events |  |
+| `calendar:events:read` | entity event; role member; tools activity_read, list_accounts, list_calendars, list_events, search_events |  |
 | `calendar:events:write` | role member; tools create_event, delete_event, retry_import, set_selected, update_event |  |
 
 ## calls
@@ -190,7 +190,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `invoicing:approve` | approver scope | Decide (approve, edit, or deny) invoicing approvals raised by its gated tools |
 | `invoicing:contacts:read` | manifest scopes; tools contact_relationships_get, counterparty_identity_get, counterparty_identity_lookup, vat_lookup, vat_validate |  |
 | `invoicing:contacts:write` | manifest scopes; tools contact_relationships_set, counterparty_identity_set, counterparty_territory_set, einvoicing_backfill_identities |  |
-| `invoicing:documents:read` | manifest scopes; entity document; tools customer_history, deferred_list, documents_download_pdf, documents_for_orders, documents_get, documents_preview_pdf and 11 more |  |
+| `invoicing:documents:read` | manifest scopes; entity document; tools activity_read, customer_history, deferred_list, documents_download_pdf, documents_for_orders, documents_get and 12 more |  |
 | `invoicing:documents:write` | manifest scopes; tools credit_note_create_and_issue, credit_note_issue, deferred_tax_override, documents_convert_to_invoice, documents_mark_paid, documents_record_refund and 21 more |  |
 | `invoicing:internal` | manifest scopes |  |
 | `invoicing:issuer:admin` | manifest scopes |  |
@@ -232,7 +232,7 @@ Read, write and reply to email from Gmail or any IMAP/SMTP mailbox.
 | `mail:accounts:read` | tools getAccount, getSyncStatus, listAccounts, providers.get |  |
 | `mail:accounts:write` | tool disconnectAccount |  |
 | `mail:approve` | approver scope | Decide (approve, edit, or deny) mail approvals raised by its gated tools |
-| `mail:conversations:read` | entities conversation, message; tools export_conversations, read, search, suppression_check |  |
+| `mail:conversations:read` | entities conversation, message; tools activity_read, export_conversations, read, search, suppression_check |  |
 | `mail:conversations:write` | tools appendInboundMessage, archive, compose, composeForApp, convertToTicket, createFromTicket and 4 more |  |
 | `mail:drafts:read` | entity draft |  |
 | `mail:suppressions:read` | role member |  |
@@ -292,7 +292,7 @@ Projects and tasks with owners, statuses, due dates and discussions.
 | `projects:projects:read` | entities project, task; role member; tools deal_send_state, deals_followup_candidates, deals_search, get, labels.list, labels.tree and 1 more |  |
 | `projects:projects:write` | role lead; tools createProject, deals_pipeline_create, instantiate_template, status_add, status_delete, status_update and 1 more |  |
 | `projects:settings:admin` | role admin; settings section ci; tool webhook_info |  |
-| `projects:tasks:read` | role member; tools approval_route_read, attentionItems, checklist_get, comments, portfolio_rollup, tasks_byAssignee and 1 more |  |
+| `projects:tasks:read` | role member; tools activity_read, approval_route_read, attentionItems, checklist_get, comments, portfolio_rollup and 2 more |  |
 | `projects:tasks:write` | role member; tools add_dependency, checklist_add_items, checklist_remove_item, checklist_set_validation, checklist_update_item, comment and 6 more |  |
 
 ## shopify
@@ -360,6 +360,6 @@ Track customer requests, returns and warranty cases to resolution.
 | `tickets:inboxes:read` | role support; tool inboxes.list |  |
 | `tickets:settings:admin` | role admin; settings sections api-keys, id-segments, response-times; tools apiKeys.create, apiKeys.list, apiKeys.revoke, approveFromHome.get, approveFromHome.set, idSegment.get and 1 more |  |
 | `tickets:tickets:close` | role support_lead; tool close |  |
-| `tickets:tickets:read` | entities message, ticket; role support; tools approval_route_read, backlogHealth, categories.list, categories.tree, csat.list, csat.summary and 10 more |  |
+| `tickets:tickets:read` | entities message, ticket; role support; tools activity_read, approval_route_read, backlogHealth, categories.list, categories.tree, csat.list and 11 more |  |
 | `tickets:tickets:reply` | role support; tools nudge, reply |  |
 | `tickets:tickets:write` | role support; tools addNote, assign, clearFollowup, convertToMail, create, createFromMail and 20 more |  |

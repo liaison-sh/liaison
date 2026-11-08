@@ -360,7 +360,9 @@ contacts.get(
       orgId: c.get("orgId"),
       actor: extractRlsContext(c),
       target: { contactId: c.req.valid("param").id },
-      ...query,
+      before: query.before,
+      limit: query.limit,
+      source: query.source,
     })
     if (!result) throw new HTTPException(404, { message: "Contact not found" })
     return success(c, result)

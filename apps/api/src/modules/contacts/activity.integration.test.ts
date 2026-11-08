@@ -5,9 +5,12 @@
 // with one deadline for all; the rows merge newest first and page by (time, id).
 
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
+import { listEventsForCaller } from "~/apps/calendar/tools"
 import { sql } from "~/db/connection"
-import type { UserContext } from "~/db/rls"
+import { type UserContext, withRlsContext } from "~/db/rls"
+import { estimateToolSchemaTokens } from "~/modules/agent/context/context"
 import { handleCompanyTimeline } from "~/modules/agent/tools/company-tools"
+import { providerInputSchemaOf } from "~/modules/agent/tools/tool-bridge"
 import {
   agentInstructionsRegistry,
   initializedOrgRuntimes,
@@ -509,6 +512,27 @@ describe("a company's timeline", () => {
     for (const id of ids) expect(id.startsWith(`calendar:${master}@`)).toBe(true)
   }, 60_000)
 
+  it("list events filters by one attendee or a list of 50", async () => {
+    const gina = await contact(null, "Gina Attendee")
+    const hugo = await contact(null, "Hugo Attendee")
+    const g = await meeting(gina.email, ago(3))
+    const h = await meeting(hugo.email, ago(3))
+    const window = { timeMin: ago(5).toISOString(), timeMax: ago(1).toISOString() }
+    const ids = async (attendee: string | string[]) =>
+      (
+        await withRlsContext(admin, (tx) =>
+          listEventsForCaller(tx as never, ORG, { ...window, attendee }),
+        )
+      ).map((e) => e.eventId)
+    expect(await ids([gina.email.toUpperCase()])).toEqual([g])
+    const fifty = [
+      ...Array.from({ length: 48 }, (_, i) => `nobody${i}@else.example`),
+      gina.email,
+      hugo.email,
+    ]
+    expect(new Set(await ids(fifty))).toEqual(new Set([g, h]))
+  }, 60_000)
+
   it("an unknown source is ignored", async () => {
     const page = await readActivity({
       orgId: ORG,
@@ -544,6 +568,17 @@ describe("a company's timeline", () => {
     expect(tool.unavailable).toEqual(route?.unavailable ?? [])
     expect(toolRegistry.get([ORG, "kernel", "company_timeline"])?.taintSource).toBe(true)
   }, 60_000)
+
+  it("the timeline tool's schema the model reads stays within 220 tokens", () => {
+    const def = toolRegistry.get([ORG, "kernel", "company_timeline"])
+    if (!def) throw new Error("no company_timeline")
+    const tokens = estimateToolSchemaTokens("kernel__company_timeline", {
+      description: def.description,
+      inputSchema: providerInputSchemaOf(def.params),
+    })
+    console.log(`company_timeline schema: ${tokens} tokens`)
+    expect(tokens).toBeLessThanOrEqual(220)
+  })
 
   it("ten calls change no row count in the org", async () => {
     const counts = async () =>

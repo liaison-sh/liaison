@@ -1513,8 +1513,8 @@ describe("invoicing manifest", () => {
     // 0.20.59: its core tools load on a hard focus of its entity, the others by name.
     // 0.20.52 (main): the package carries the app SDK's manifest `secrets` field; no change of its own.
     // 0.20.60: both of the above, merged.
-    // 0.20.61: above the 0.20.53 main took meanwhile; no change of its own.
-    expect(m.version).toBe("0.20.61")
+    // 0.20.62: the timeline source.
+    expect(m.version).toBe("0.20.62")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

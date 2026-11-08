@@ -8,6 +8,7 @@
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, type RlsClient } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
+import { quoteIdent } from "~/lib/sql-utils"
 import {
   type ActivitySourceAnswer,
   newestFirst,
@@ -15,7 +16,8 @@ import {
   parseSourceInput,
 } from "~/modules/contacts/activity"
 
-const T = (schema: string, name: string) => drizzleSql.raw(`"${schemaRef(schema)}"."${name}"`)
+const tableRef = (schema: string, name: string) =>
+  drizzleSql.raw(`${quoteIdent(schemaRef(schema))}.${quoteIdent(name)}`)
 const AT = drizzleSql.raw("s.at")
 const NID = drizzleSql.raw("s.nid")
 
@@ -45,9 +47,9 @@ export async function mailActivityRows(
                (m.subject IS NULL AND m.subject_ciphertext IS NOT NULL) AS sealed,
                cv.contact_id::text AS contact_id, m.conversation_id::text AS conversation_id,
                ct.name AS who
-          FROM ${T("app_mail", "messages")} m
-          JOIN ${T("app_mail", "conversations")} cv ON cv.id = m.conversation_id AND cv.org_id = m.org_id
-          LEFT JOIN ${T("kernel", "contacts")} ct ON ct.id = cv.contact_id AND ct.org_id = cv.org_id
+          FROM ${tableRef("app_mail", "messages")} m
+          JOIN ${tableRef("app_mail", "conversations")} cv ON cv.id = m.conversation_id AND cv.org_id = m.org_id
+          LEFT JOIN ${tableRef("kernel", "contacts")} ct ON ct.id = cv.contact_id AND ct.org_id = cv.org_id
          WHERE m.org_id = ${orgId}::uuid AND cv.contact_id = ANY(${ids}::uuid[])
            AND COALESCE(m.sent_at, m.synced_at) IS NOT NULL
       ) s

@@ -104,7 +104,9 @@ companyRoutes.get(
       orgId: c.get("orgId"),
       actor: extractRlsContext(c),
       target: { companyId: c.req.param("id") },
-      ...query,
+      before: query.before,
+      limit: query.limit,
+      source: query.source,
     })
     if (!result) throw new HTTPException(404, { message: "Company not found" })
     return success(c, result)

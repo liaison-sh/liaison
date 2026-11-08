@@ -22,6 +22,7 @@ import { extractRows, type RlsClient } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
+import { quoteIdent } from "~/lib/sql-utils"
 import { UUID_RE } from "~/lib/uuid"
 import { runContextStore } from "~/modules/agent/runtime/run-context"
 import { appBridgeManifestRegistry, toolRegistry } from "~/modules/apps/app-registries"
@@ -118,7 +119,8 @@ interface Subject {
   truncatedContacts: number
 }
 
-const T = (schema: string, name: string) => drizzleSql.raw(`"${schemaRef(schema)}"."${name}"`)
+const tableRef = (schema: string, name: string) =>
+  drizzleSql.raw(`${quoteIdent(schemaRef(schema))}.${quoteIdent(name)}`)
 
 async function tableExists(tx: RlsClient, schema: string, name: string): Promise<boolean> {
   const rows = extractRows<{ present: boolean }>(
@@ -140,14 +142,14 @@ async function readSubject(
     if (!UUID_RE.test(target.contactId)) return null
     const seen = extractRows<{ id: string }>(
       await tx.execute(drizzleSql`
-        SELECT id::text AS id FROM ${T("kernel", "contacts")}
+        SELECT id::text AS id FROM ${tableRef("kernel", "contacts")}
          WHERE org_id = ${orgId}::uuid AND id = ${target.contactId}::uuid`),
     )
     if (seen.length === 0) return null
     const deals = hasDeals
       ? extractRows<{ id: string }>(
           await tx.execute(drizzleSql`
-            SELECT task_id::text AS id FROM ${T("app_projects", "deals")}
+            SELECT task_id::text AS id FROM ${tableRef("app_projects", "deals")}
              WHERE org_id = ${orgId}::uuid AND contact_id = ${target.contactId}::uuid`),
         )
       : []
@@ -161,13 +163,13 @@ async function readSubject(
   if (!(await getCompany(tx, { orgId, companyId: target.companyId }))) return null
   // Most recently active first: the newest mail that reached us from them, else the record's own date.
   const lastInbound = hasMail
-    ? drizzleSql`(SELECT max(cv.last_message_at) FROM ${T("app_mail", "conversations")} cv
+    ? drizzleSql`(SELECT max(cv.last_message_at) FROM ${tableRef("app_mail", "conversations")} cv
                    WHERE cv.org_id = c.org_id AND cv.contact_id = c.id)`
     : drizzleSql`NULL::timestamptz`
   const people = extractRows<{ id: string; total: number }>(
     await tx.execute(drizzleSql`
       SELECT c.id::text AS id, count(*) OVER ()::int AS total
-        FROM ${T("kernel", "contacts")} c
+        FROM ${tableRef("kernel", "contacts")} c
        WHERE c.org_id = ${orgId}::uuid AND c.company_id = ${target.companyId}::uuid
        ORDER BY GREATEST(COALESCE(${lastInbound}, '-infinity'::timestamptz), c.updated_at) DESC, c.id
        LIMIT ${ACTIVITY_CONTACT_CAP}`),
@@ -175,7 +177,7 @@ async function readSubject(
   const deals = hasDeals
     ? extractRows<{ id: string }>(
         await tx.execute(drizzleSql`
-          SELECT task_id::text AS id FROM ${T("app_projects", "deals")}
+          SELECT task_id::text AS id FROM ${tableRef("app_projects", "deals")}
            WHERE org_id = ${orgId}::uuid AND company_id = ${target.companyId}::uuid`),
       )
     : []

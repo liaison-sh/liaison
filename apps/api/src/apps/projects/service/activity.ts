@@ -8,6 +8,7 @@
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, type RlsClient } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
+import { quoteIdent } from "~/lib/sql-utils"
 import {
   type ActivitySourceAnswer,
   newestFirst,
@@ -15,7 +16,8 @@ import {
   parseSourceInput,
 } from "~/modules/contacts/activity"
 
-const T = (name: string) => drizzleSql.raw(`"${schemaRef("app_projects")}"."${name}"`)
+const tableRef = (name: string) =>
+  drizzleSql.raw(`${quoteIdent(schemaRef("app_projects"))}.${quoteIdent(name)}`)
 const AT = drizzleSql.raw("s.at")
 const NID = drizzleSql.raw("s.nid")
 
@@ -44,29 +46,29 @@ export async function projectActivityRows(
         SELECT t.id::text || ':opened' AS nid, date_trunc('milliseconds', t.created_at) AS at,
                'opened' AS kind, p.key, t.number, t.title, NULL::text AS outcome,
                t.id::text AS task_id, d.contact_id::text AS contact_id
-          FROM ${T("deals")} d
-          JOIN ${T("tasks")} t ON t.id = d.task_id AND t.org_id = d.org_id
-          JOIN ${T("projects")} p ON p.id = t.project_id
+          FROM ${tableRef("deals")} d
+          JOIN ${tableRef("tasks")} t ON t.id = d.task_id AND t.org_id = d.org_id
+          JOIN ${tableRef("projects")} p ON p.id = t.project_id
          WHERE d.org_id = ${orgId}::uuid AND d.task_id = ANY(${deals}::uuid[]) AND t.archived_at IS NULL
         UNION ALL
         SELECT t.id::text || ':closed', date_trunc('milliseconds', d.closed_at), 'closed', p.key,
                t.number, t.title, d.outcome, t.id::text, d.contact_id::text
-          FROM ${T("deals")} d
-          JOIN ${T("tasks")} t ON t.id = d.task_id AND t.org_id = d.org_id
-          JOIN ${T("projects")} p ON p.id = t.project_id
+          FROM ${tableRef("deals")} d
+          JOIN ${tableRef("tasks")} t ON t.id = d.task_id AND t.org_id = d.org_id
+          JOIN ${tableRef("projects")} p ON p.id = t.project_id
          WHERE d.org_id = ${orgId}::uuid AND d.task_id = ANY(${deals}::uuid[]) AND d.closed_at IS NOT NULL
            AND t.archived_at IS NULL
         UNION ALL
         SELECT s.id::text, date_trunc('milliseconds', s.created_at), 'subtask', p.key, s.number,
                s.title, NULL, s.id::text, NULL
-          FROM ${T("tasks")} s
-          JOIN ${T("projects")} p ON p.id = s.project_id
+          FROM ${tableRef("tasks")} s
+          JOIN ${tableRef("projects")} p ON p.id = s.project_id
          WHERE s.org_id = ${orgId}::uuid AND s.parent_task_id = ANY(${deals}::uuid[]) AND s.archived_at IS NULL
         UNION ALL
         SELECT t.id::text, date_trunc('milliseconds', t.created_at), 'task', p.key, t.number,
                t.title, NULL, t.id::text, NULL
-          FROM ${T("tasks")} t
-          JOIN ${T("projects")} p ON p.id = t.project_id
+          FROM ${tableRef("tasks")} t
+          JOIN ${tableRef("projects")} p ON p.id = t.project_id
          WHERE t.org_id = ${orgId}::uuid AND ${company}::uuid IS NOT NULL
            AND p.company_id = ${company}::uuid AND t.archived_at IS NULL
            AND NOT (t.id = ANY(${deals}::uuid[]))

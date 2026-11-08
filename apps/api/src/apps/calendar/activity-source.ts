@@ -11,6 +11,7 @@ import { sql as drizzleSql } from "drizzle-orm"
 import { expandRecurringEvent, type RawEventRow } from "~/apps/calendar/tools"
 import { extractRows, type RlsClient } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
+import { quoteIdent } from "~/lib/sql-utils"
 import {
   type ActivitySourceAnswer,
   compareActivity,
@@ -19,7 +20,8 @@ import {
 
 export const CALENDAR_ACTIVITY_WINDOW_DAYS = 90
 
-const T = (schema: string, name: string) => drizzleSql.raw(`"${schemaRef(schema)}"."${name}"`)
+const tableRef = (schema: string, name: string) =>
+  drizzleSql.raw(`${quoteIdent(schemaRef(schema))}.${quoteIdent(name)}`)
 const COLUMNS =
   drizzleSql.raw(`e.id, e.calendar_id, e.google_event_id, e.title, e.start, e."end", e.all_day,
   e.recurrence, e.recurring_event_id, e.original_start_time, e.status, e.attendees`)
@@ -37,7 +39,7 @@ export async function calendarActivityRows(
   if (input.contactIds.length === 0) return { rows: [] }
   const people = extractRows<{ id: string; email: string; name: string | null }>(
     await db.execute(drizzleSql`
-      SELECT id::text AS id, lower(email) AS email, name FROM ${T("kernel", "contacts")}
+      SELECT id::text AS id, lower(email) AS email, name FROM ${tableRef("kernel", "contacts")}
        WHERE org_id = ${orgId}::uuid AND id = ANY(${`{${input.contactIds.join(",")}}`}::uuid[])
          AND email IS NOT NULL`),
   )
@@ -55,18 +57,18 @@ export async function calendarActivityRows(
   const recurring = drizzleSql`COALESCE(jsonb_typeof(e.recurrence) = 'array' AND jsonb_array_length(e.recurrence) > 0, false)`
   const plain = extractRows<RawEventRow>(
     await db.execute(drizzleSql`
-      SELECT ${COLUMNS} FROM ${T("app_calendar", "events")} e
+      SELECT ${COLUMNS} FROM ${tableRef("app_calendar", "events")} e
        WHERE ${live} AND NOT (${recurring})
          AND ${START} > ${start.toISOString()}::timestamptz AND ${START} <= ${end.toISOString()}::timestamptz`),
   )
   const masters = extractRows<RawEventRow>(
     await db.execute(drizzleSql`
-      SELECT ${COLUMNS} FROM ${T("app_calendar", "events")} e
+      SELECT ${COLUMNS} FROM ${tableRef("app_calendar", "events")} e
        WHERE ${live} AND ${recurring} AND ${START} <= ${end.toISOString()}::timestamptz`),
   )
   const older = extractRows<{ any: boolean }>(
     await db.execute(drizzleSql`
-      SELECT EXISTS (SELECT 1 FROM ${T("app_calendar", "events")} e
+      SELECT EXISTS (SELECT 1 FROM ${tableRef("app_calendar", "events")} e
                       WHERE ${live} AND ${START} <= ${start.toISOString()}::timestamptz) AS any`),
   )[0]?.any
 

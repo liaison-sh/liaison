@@ -22,7 +22,12 @@
 //   4. Mock-Drive `requestLog` shows only the matching fan-out (no retries /
 //      no requests for unrelated file ids).
 
-import { loginAsAdmin, openAgentConversation, sendInConversation } from "./agent-bootstrap"
+import {
+  expandToolRollups,
+  loginAsAdmin,
+  openAgentConversation,
+  sendInConversation,
+} from "./agent-bootstrap"
 import { agentDmThreadId, scriptAgentTurn, turnToolCalls, waitForTurnEnd } from "./agent-turn"
 import { expect, test } from "./fixtures/test"
 import { seedModelPricingAndCredits } from "./helpers/agent-seed"
@@ -120,6 +125,7 @@ test("agent cross-source citation", async ({ page, env, qa, world }) => {
     .filter({ hasText: DRIVE_SENTINEL })
     .last()
   await expect(turnRow).toBeVisible({ timeout: 30_000 })
+  await expandToolRollups(turnRow)
   await expect(turnRow.locator('[data-tool-name="knowledge__search"]').first()).toBeVisible({
     timeout: 20_000,
   })

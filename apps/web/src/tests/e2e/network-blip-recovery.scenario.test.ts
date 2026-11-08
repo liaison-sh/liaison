@@ -271,7 +271,16 @@ test.describe("Network blip recovery", () => {
     // Catch-up: the note shows within 5 s of the reconnect, through a NEW load.
     await expect(page.getByTestId(`tickets-message-${noteId}`)).toBeVisible({ timeout: 5_000 })
     const tVisible = Date.now()
-    expect(loadsAfterHold).toBeGreaterThan(0)
+    // The reconnect's own resync starts that new load (loadTicket restart,
+    // ticket-detail-store.ts) a beat after the transition, while the server's
+    // replay of the missed note event can paint the note first: wait for the
+    // load instead of reading the count at once.
+    await expect
+      .poll(() => loadsAfterHold, {
+        timeout: 5_000,
+        message: "no new ticket load started after the reconnect",
+      })
+      .toBeGreaterThan(0)
 
     console.log(
       `[S26 case 1] detection ${tDetect - tBlackhole} ms after blackhole; note row ` +

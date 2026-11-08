@@ -13,6 +13,7 @@ import { requireScope } from "~/middleware/require-scope"
 import { type MailCategory, parseMailCategory } from "~/modules/mail/category"
 import { enqueueGmailWriteBack } from "~/modules/mail/gmail-write-back"
 import * as providerSettings from "~/modules/mail/provider-settings"
+import { checkPersonCompose, recipientsOf } from "~/modules/mail/send-guard"
 import * as mailService from "~/modules/mail/service"
 import { withAway } from "~/modules/users/away-today"
 
@@ -488,6 +489,39 @@ mailRoutes.post(
       }),
     )
     return success(c, result)
+  },
+)
+
+const composeCheckBody = z.object({
+  to: z.array(z.string().max(320)).max(MAX_RECIPIENTS).default([]),
+  cc: z.array(z.string().max(320)).max(MAX_RECIPIENTS).default([]),
+  bcc: z.array(z.string().max(320)).max(MAX_RECIPIENTS).default([]),
+})
+
+/**
+ * What a new message to these recipients will carry, for the composer: the
+ * commercial footer when the data marks a recipient as a prospect (fixed, added
+ * at send), or why it cannot go, or the opted-out line of a person's own mail.
+ */
+mailRoutes.post(
+  "/compose-check",
+  requireScope("mail:conversations:write"),
+  zValidator("json", composeCheckBody),
+  async (c) => {
+    const body = c.req.valid("json")
+    const own = await checkPersonCompose(c.get("orgId"), recipientsOf(body.to, body.cc, body.bcc))
+    if (!own.commercial) {
+      return success(c, { commercial: false, footerLines: null, refusal: null, line: own.line })
+    }
+    if ("refused" in own) {
+      return success(c, {
+        commercial: true,
+        footerLines: null,
+        refusal: own.refused.message,
+        line: null,
+      })
+    }
+    return success(c, { commercial: true, footerLines: own.footerLines, refusal: null, line: null })
   },
 )
 

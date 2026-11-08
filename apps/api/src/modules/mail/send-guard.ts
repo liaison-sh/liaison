@@ -14,6 +14,7 @@ import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
 import { appBridgeManifestRegistry, toolRegistry } from "~/modules/apps/app-registries"
+import { serverT } from "~/modules/i18n/server-i18n"
 import {
   classifyInbound,
   type InboundKind,
@@ -24,9 +25,11 @@ import {
   applyCommercialFooter,
   COMMERCIAL_IDENTITY_SETTING,
   commercialIdentityMissing,
+  footerLines,
   mintOptOutLink,
   optOutHeaders,
   readCommercialIdentity,
+  recipientLocale,
 } from "~/modules/mail/commercial-footer"
 import { parseReturnDate } from "~/modules/mail/parse-return-date"
 import { lawfulBasisProblem, listSuppressions, suppressedAmong } from "~/modules/mail/suppressions"
@@ -1208,7 +1211,7 @@ export const COMMERCIAL_IDENTITY_MISSING_MESSAGE = `This organization has not se
 /**
  * Everything a commercial mail carries when it leaves: one opt-out link for its
  * one outside recipient, in the text, the HTML and the unsubscribe headers
- * alike. Never reaches the payload an approver saw. Null when the identity is
+ * alike, in that recipient's language. Never reaches the payload an approver saw. Null when the identity is
  * unset: the mail must not leave.
  */
 export async function commercialFooterFor(
@@ -1220,18 +1223,81 @@ export async function commercialFooterFor(
   const identity = await readCommercialIdentity(orgId)
   if (!identity) return null
   const link = await mintOptOutLink(orgId, recipient)
+  const locale = await recipientLocale(orgId, recipient)
   const out: { textBody?: string; htmlBody?: string } = {}
   if (typeof textBody === "string") {
     out.textBody = (
-      await applyCommercialFooter(orgId, textBody, { kind: "text", link }, identity)
+      await applyCommercialFooter(orgId, textBody, { kind: "text", link, locale }, identity)
     ).body
   }
   if (typeof htmlBody === "string" && htmlBody !== "") {
     out.htmlBody = (
-      await applyCommercialFooter(orgId, htmlBody, { kind: "html", link }, identity)
+      await applyCommercialFooter(orgId, htmlBody, { kind: "html", link, locale }, identity)
     ).body
   }
   return { ...out, headers: optOutHeaders(link) }
+}
+
+/** What a person's own new message gets, decided by its recipients' data, never by a choice of theirs. */
+export type PersonComposeCheck =
+  | { commercial: false; line: string | null }
+  | { commercial: true; refused: { code: string; message: string } }
+  | { commercial: true; recipient: string; footerLines: string[] }
+
+/**
+ * A person's own new message (the composer, or their own call): no approval and
+ * no reply check, but the company's commercial rules. When the data marks a
+ * recipient as a prospect, it goes to one outside person, never to someone who
+ * opted out, never without the legal name and address, and it carries the
+ * footer the composer shows (with the link as a label: the link itself is made
+ * at send). Otherwise it is the person's own mail, with the opted-out line
+ * when it applies.
+ */
+export async function checkPersonCompose(
+  orgId: string,
+  recipients: readonly string[],
+): Promise<PersonComposeCheck> {
+  const outside = await outsideRecipients(orgId, recipients)
+  if (!(await commercialByData(orgId, outside))) {
+    return { commercial: false, line: await optedOutLine(orgId, recipients) }
+  }
+  if (outside.length > 1) {
+    return {
+      commercial: true,
+      refused: {
+        code: "commercial_one_recipient",
+        message: `Nothing was sent. This is a commercial mail, which goes to one person outside the organization, and it names ${outside.length}: ${outside.join(", ")}. Next: send one message per person; each gets their own opt-out link. Colleagues may stay on copy.`,
+      },
+    }
+  }
+  const hits = await listSuppressions(orgId, recipients)
+  if (hits.length > 0) {
+    const who = hits.map((h) => `${h.email} opted out on ${day10(h.createdAt)}`).join("; ")
+    return {
+      commercial: true,
+      refused: {
+        code: "suppressed_new_message",
+        message: `Nothing was sent. ${who}, and this is a commercial mail. Next: remove them from this mail, or reply in their own thread.`,
+      },
+    }
+  }
+  const identity = await readCommercialIdentity(orgId)
+  if (!identity) {
+    return {
+      commercial: true,
+      refused: {
+        code: "commercial_identity_missing",
+        message: `Nothing was sent. ${COMMERCIAL_IDENTITY_MISSING_MESSAGE}`,
+      },
+    }
+  }
+  const recipient = outside[0] as string
+  const locale = await recipientLocale(orgId, recipient)
+  return {
+    commercial: true,
+    recipient,
+    footerLines: footerLines(identity, serverT(locale, "mail.commercialFooter.linkLabel"), locale),
+  }
 }
 
 /** The one outside recipient a commercial mail's link is minted for (the first when none is outside). */

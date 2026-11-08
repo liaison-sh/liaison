@@ -4893,6 +4893,22 @@ export const FR: Record<string, string> = {
   "Drop-down list": "Liste déroulante",
   Signature: "Signature",
   Button: "Bouton",
+  // Commercial mail: the identity it states and the footer it ends with.
+  "Commercial identity": "Identité commerciale",
+  'Every commercial mail (a follow-up or offer to a prospect) ends with this legal name and postal address, an opt-out link and "or reply stop". Until both are set, Liaison sends no commercial mail.':
+    "Chaque message commercial (une relance ou une offre à un prospect) se termine par cette raison sociale et cette adresse postale, un lien de désinscription et « ou répondez stop ». Tant que les deux ne sont pas renseignées, Liaison n'envoie aucun message commercial.",
+  "Legal name": "Raison sociale",
+  "Postal address": "Adresse postale",
+  "Commercial identity saved.": "Identité commerciale enregistrée.",
+  "The commercial identity could not be saved.":
+    "L'identité commerciale n'a pas pu être enregistrée.",
+  "To stop commercial messages from {{name}}: {{url}} or reply stop.":
+    "Pour ne plus recevoir de messages commerciaux de {{name}} : {{url}} ou répondez stop.",
+  "(opt-out link)": "(lien de désinscription)",
+  "This mail goes to a prospect, so these lines are added when it is sent, in their language. They cannot be removed.":
+    "Ce message va à un prospect : ces lignes y sont ajoutées à l'envoi, dans sa langue. Elles ne peuvent pas être retirées.",
+  "Could not check whether this mail is commercial. It is checked again when you send.":
+    "Impossible de vérifier si ce message est commercial. La vérification est refaite à l'envoi.",
 }
 
 /**

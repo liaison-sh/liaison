@@ -16,13 +16,19 @@
  * three years are pruned daily.
  */
 import { createHash, randomBytes } from "node:crypto"
-import { type CommercialIdentity, commercialIdentitySchema } from "@liaison/shared"
+import {
+  type CommercialIdentity,
+  commercialIdentitySchema,
+  resolveLocale,
+  type ShippedLocale,
+} from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, type PrivilegedDb } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { escapeHtml } from "~/lib/html-page"
 import { orgPublicBaseUrl } from "~/lib/org-public-url"
+import { serverT } from "~/modules/i18n/server-i18n"
 import { hashEmail } from "~/modules/mail/suppressions"
 
 const K = () => drizzleSql.raw(schemaRef("kernel"))
@@ -132,29 +138,59 @@ export function optOutHeaders(link: OptOutLink): Record<string, string> {
   }
 }
 
-function footerLines(identity: CommercialIdentity, link: OptOutLink, notice?: string): string[] {
+/**
+ * The language a recipient reads the footer in: their contact's recorded
+ * language (`metadata.language`, else `metadata.locale`, as contacts keep
+ * fields with no column of their own), else the organization's language,
+ * else English.
+ */
+export async function recipientLocale(orgId: string, recipient: string): Promise<ShippedLocale> {
+  const rows = await withPrivilegedDb(orgId, "commercial-footer-locale", async (tx) =>
+    extractRows<{ contact: string | null; org: string | null }>(
+      await tx.execute(drizzleSql`
+        SELECT (SELECT COALESCE(c.metadata ->> 'language', c.metadata ->> 'locale')
+                  FROM ${K()}.contacts c
+                 WHERE c.org_id = o.id AND lower(c.email) = ${recipient.trim().toLowerCase()}
+                   AND jsonb_typeof(c.metadata) = 'object'
+                   AND COALESCE(c.metadata ->> 'language', c.metadata ->> 'locale') IS NOT NULL
+                 ORDER BY c.updated_at DESC LIMIT 1) AS contact,
+               o.default_locale AS org
+          FROM ${K()}.organizations o WHERE o.id = ${orgId}::uuid`),
+    ),
+  )
+  return resolveLocale(rows[0]?.contact, rows[0]?.org)
+}
+
+/** The footer's lines, in the recipient's language. */
+export function footerLines(
+  identity: CommercialIdentity,
+  url: string,
+  locale: ShippedLocale = "en",
+  notice?: string,
+): string[] {
   return [
     `${identity.legalName}, ${identity.postalAddress}`,
     ...(notice ? [notice] : []),
-    `To stop commercial messages from ${identity.legalName}: ${link.url} or reply stop.`,
+    serverT(locale, "mail.commercialFooter.optOut", { name: identity.legalName, url }),
   ]
 }
 
 /**
  * The body with the commercial footer: plain lines after a text body, an
  * escaped block before `</body>` of an HTML body (or at its end). `notice` is
- * an extra line (where the recipient's address came from) when one applies.
+ * an extra line (where the recipient's address came from) when one applies;
+ * `locale` is the recipient's language (`recipientLocale`).
  * Throws when the identity is unset: a commercial mail never leaves without it.
  */
 export async function applyCommercialFooter(
   orgId: string,
   body: string,
-  opts: { kind: "text" | "html"; link: OptOutLink; notice?: string },
+  opts: { kind: "text" | "html"; link: OptOutLink; notice?: string; locale?: ShippedLocale },
   identity?: CommercialIdentity,
 ): Promise<CommercialFooter> {
   const id = identity ?? (await readCommercialIdentity(orgId))
   if (!id) throw new Error("commercial_identity_missing")
-  const lines = footerLines(id, opts.link, opts.notice)
+  const lines = footerLines(id, opts.link.url, opts.locale ?? "en", opts.notice)
   const headers = optOutHeaders(opts.link)
   if (opts.kind === "text") {
     return { body: `${body.replace(/\s+$/, "")}\n\n--\n${lines.join("\n")}\n`, headers }

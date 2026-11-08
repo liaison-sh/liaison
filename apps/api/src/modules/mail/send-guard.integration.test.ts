@@ -46,11 +46,13 @@ import {
 import * as footerModule from "~/modules/mail/commercial-footer"
 import { writeMailPage } from "~/modules/mail/page-write"
 import {
+  checkPersonCompose,
   evaluateSendGuard,
   type PinnedSendGuard,
   plainGuardSince,
   stopCode,
 } from "~/modules/mail/send-guard"
+import * as mailService from "~/modules/mail/service"
 import * as suppressionsModule from "~/modules/mail/suppressions"
 import { TestKeyring } from "~/modules/mailbox-keys/__fixtures__/keyring"
 import { enrollKeyring } from "~/modules/mailbox-keys/service"
@@ -2315,6 +2317,146 @@ describe("a new message is commercial by its recipient's data", () => {
       expect(staged.error.code).toBe("SEND_GUARD_OPTED_OUT")
     }
     expect(sent.length).toBe(before + 1)
+  }, 60_000)
+
+  /** A person's own call from the UI: no agent, no approval. */
+  const ownCompose = (to: string) =>
+    executeToolCore({
+      toolName: "mail:compose",
+      orgId,
+      actor: admin,
+      params: composeParams(to),
+      threadId,
+      origin: "human-ui",
+    })
+
+  const requestCount = async () =>
+    Number(
+      (
+        await sql<Array<{ n: number }>>`
+          SELECT count(*)::int AS n FROM kernel.approval_requests WHERE org_id = ${orgId}`
+      )[0]?.n,
+    )
+
+  /** A person's own new message written in the composer and sent from its draft. */
+  async function sendFromComposer(to: string) {
+    return withRlsContext(admin, async (tx) => {
+      const draft = await mailService.createDraft(tx as never, {
+        orgId,
+        userId,
+        accountId: oldAccount,
+        to: [{ email: to }],
+        subject: "Our offer",
+      })
+      return mailService.sendDraft(tx as never, {
+        orgId,
+        userId,
+        draftId: (draft as { id: string }).id,
+        to: [{ email: to }],
+        subject: "Our offer",
+        textBody: "Here is our offer.",
+        htmlBody: "<p>Here is our offer.</p>",
+      })
+    })
+  }
+
+  const setContactLanguage = (email: string, language: string) =>
+    sql`UPDATE kernel.contacts SET metadata = ${JSON.stringify({ language })}::jsonb
+         WHERE org_id = ${orgId} AND lower(email) = ${email}`
+
+  it("a person's own new message to a prospect carries the footer, opt-out link and headers, adds no approval, and is refused when they opted out", async () => {
+    const to = unique("own-prospect")
+    await contactOnOpenDeal(to)
+    const requests = await requestCount()
+    const before = sent.length
+    const result = await ownCompose(to)
+    expect("blocked" in result || "error" in result).toBe(false)
+    expect(sent.length).toBe(before + 1)
+    const text = String(sent.at(-1)?.textBody)
+    expect(text).toContain("Org Test SAS, 1 rue de Test, 75001 Paris")
+    expect(text).toMatch(/\/public\/opt-out\/[A-Za-z0-9_-]{43} or reply stop\./)
+    const headers = sent.at(-1)?.headers as Record<string, string>
+    expect(headers?.["List-Unsubscribe"]).toMatch(/^<.+\/public\/opt-out\/[A-Za-z0-9_-]{43}>$/)
+    expect(headers?.["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click")
+    expect(await requestCount()).toBe(requests)
+
+    await suppressionsModule.addSuppression(null, { orgId, email: to, reason: "person" })
+    const refused = await ownCompose(to)
+    if (!("error" in refused)) throw new Error(`not refused: ${JSON.stringify(refused)}`)
+    expect(refused.error.code).toBe("suppressed_new_message")
+    expect(String(refused.error.message)).toContain(`${to} opted out on `)
+    expect(sent.length).toBe(before + 1)
+    expect(await requestCount()).toBe(requests)
+  }, 60_000)
+
+  it("a prospect's mail from the composer shows its footer as fixed lines and leaves with it in the recipient's language, else the organization's", async () => {
+    const [org] = await sql<Array<{ default_locale: string | null }>>`
+      SELECT default_locale FROM kernel.organizations WHERE id = ${orgId}`
+    const french = unique("own-fr")
+    await contactOnOpenDeal(french)
+    await setContactLanguage(french, "fr")
+    const check = await checkPersonCompose(orgId, [french])
+    if (!("footerLines" in check)) throw new Error(`no footer: ${JSON.stringify(check)}`)
+    expect(check.footerLines).toEqual([
+      "Org Test SAS, 1 rue de Test, 75001 Paris",
+      "Pour ne plus recevoir de messages commerciaux de Org Test SAS : (lien de désinscription) ou répondez stop.",
+    ])
+    const before = sent.length
+    await sendFromComposer(french)
+    expect(sent.length).toBe(before + 1)
+    expect(String(sent.at(-1)?.textBody)).toMatch(
+      /Pour ne plus recevoir de messages commerciaux de Org Test SAS : \S+\/public\/opt-out\/[A-Za-z0-9_-]{43} ou répondez stop\./,
+    )
+    expect(String(sent.at(-1)?.htmlBody)).toContain("ou répondez stop.")
+    expect((sent.at(-1)?.headers as Record<string, string>)?.["List-Unsubscribe-Post"]).toBe(
+      "List-Unsubscribe=One-Click",
+    )
+
+    const noLanguage = unique("own-org-language")
+    await contactOnOpenDeal(noLanguage)
+    const english = await checkPersonCompose(orgId, [noLanguage])
+    if (!("footerLines" in english)) throw new Error("no footer")
+    expect(english.footerLines.at(-1)).toBe(
+      "To stop commercial messages from Org Test SAS: (opt-out link) or reply stop.",
+    )
+    try {
+      await sql`UPDATE kernel.organizations SET default_locale = 'fr' WHERE id = ${orgId}`
+      const orgFrench = await checkPersonCompose(orgId, [noLanguage])
+      if (!("footerLines" in orgFrench)) throw new Error("no footer")
+      expect(orgFrench.footerLines.at(-1)).toContain("ou répondez stop.")
+    } finally {
+      await sql`UPDATE kernel.organizations SET default_locale = ${org?.default_locale ?? null}
+                 WHERE id = ${orgId}`
+    }
+
+    await suppressionsModule.addSuppression(null, { orgId, email: french, reason: "link" })
+    const refusal = await checkPersonCompose(orgId, [french])
+    expect("refused" in refusal && refusal.refused.message).toContain(`${french} opted out on `)
+    await expect(sendFromComposer(french)).rejects.toThrow(`${french} opted out on `)
+    expect(sent.length).toBe(before + 1)
+  }, 60_000)
+
+  it("a person's own new message to an opted-out supplier sends with the line", async () => {
+    const to = unique("own-supplier")
+    await insert("kernel.contacts", {
+      id: crypto.randomUUID(),
+      org_id: orgId,
+      handle: `@supplier-${counter}`,
+      email: to,
+      name: "Supplier",
+      org_access: "editor",
+      created_by: userId,
+    })
+    await suppressionsModule.addSuppression(null, { orgId, email: to, reason: "person" })
+    expect(await checkPersonCompose(orgId, [to])).toEqual({
+      commercial: false,
+      line: `${to} opted out. Send only if this is not commercial.`,
+    })
+    const before = sent.length
+    const result = await ownCompose(to)
+    expect("error" in result || "blocked" in result).toBe(false)
+    expect(sent.length).toBe(before + 1)
+    expect(String(sent.at(-1)?.textBody)).not.toContain("/public/opt-out/")
   }, 60_000)
 
   it("a new message to someone with no deal, basis or outside source stays plain", async () => {

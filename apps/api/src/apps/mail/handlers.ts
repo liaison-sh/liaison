@@ -6823,6 +6823,7 @@ async function checkSendGuard(
   const result = JSON.parse(
     await ctx.mail_checkSendGuard(
       JSON.stringify({
+        toolName,
         sendGuard: params.sendGuard,
         to: payload.to,
         cc: payload.cc,

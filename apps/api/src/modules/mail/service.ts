@@ -17,6 +17,12 @@ import { type MailCategory, mailCategoryCondition } from "~/modules/mail/categor
 import { enqueueGmailWriteBack } from "~/modules/mail/gmail-write-back"
 import { markConversationReadThrough } from "~/modules/mail/page-write"
 import {
+  COMMERCIAL_IDENTITY_MISSING_MESSAGE,
+  checkPersonCompose,
+  commercialFooterFor,
+  recipientsOf,
+} from "~/modules/mail/send-guard"
+import {
   isMailAccountSuppressed,
   stripMailContentFromPayload,
 } from "~/modules/mailbox-crypto/content-suppression"
@@ -1195,6 +1201,8 @@ export async function sendCompose(
     subject: string
     htmlBody: string
     textBody: string
+    /** Extra headers (a commercial mail's unsubscribe headers). */
+    headers?: Record<string, string>
     attachments?: OutboundMimeAttachment[]
   },
 ) {
@@ -1223,6 +1231,7 @@ export async function sendCompose(
     subject: params.subject,
     htmlBody: params.htmlBody,
     textBody: params.textBody,
+    ...(params.headers ? { headers: params.headers } : {}),
     attachments: params.attachments ?? [],
   })) as { messageId: string; externalThreadId?: string }
 
@@ -1716,6 +1725,43 @@ export async function deleteDraft(
   `)
 }
 
+/**
+ * The bodies and headers a person's own new message leaves with. A recipient
+ * the data marks as a prospect makes it commercial: the footer and opt-out
+ * link are added (the composer showed them), and a refusal (opted out, more
+ * than one outside person, no legal identity) stops it with its reason.
+ */
+async function personComposeBodies(
+  orgId: string,
+  mail: {
+    to: Array<{ email: string }>
+    cc: Array<{ email: string }>
+    bcc: Array<{ email: string }>
+    htmlBody: string
+    textBody: string
+  },
+): Promise<{ htmlBody: string; textBody: string; headers?: Record<string, string> }> {
+  const recipients = recipientsOf(
+    mail.to.map((a) => a.email),
+    mail.cc.map((a) => a.email),
+    mail.bcc.map((a) => a.email),
+  )
+  const own = await checkPersonCompose(orgId, recipients)
+  if (!own.commercial) return { htmlBody: mail.htmlBody, textBody: mail.textBody }
+  if ("refused" in own) throw new HTTPException(422, { message: own.refused.message })
+  const footer = await commercialFooterFor(orgId, own.recipient, mail.textBody, mail.htmlBody)
+  if (!footer) {
+    throw new HTTPException(422, {
+      message: `Nothing was sent. ${COMMERCIAL_IDENTITY_MISSING_MESSAGE}`,
+    })
+  }
+  return {
+    htmlBody: footer.htmlBody ?? mail.htmlBody,
+    textBody: footer.textBody ?? mail.textBody,
+    headers: footer.headers,
+  }
+}
+
 export async function sendDraft(
   db: RlsClient,
   params: {
@@ -1783,8 +1829,13 @@ export async function sendDraft(
         cc: ccAddresses.map((a: any) => a.email),
         bcc: bccAddresses.map((a: any) => a.email),
         subject,
-        htmlBody: params.htmlBody,
-        textBody: params.textBody,
+        ...(await personComposeBodies(params.orgId, {
+          to: toAddresses,
+          cc: ccAddresses,
+          bcc: bccAddresses,
+          htmlBody: params.htmlBody,
+          textBody: params.textBody,
+        })),
         attachments,
       })
 

@@ -260,5 +260,11 @@
     "postalAddress": "Postal address",
     "saved": "Commercial identity saved.",
     "saveFailed": "The commercial identity could not be saved."
+  },
+  "commercialFooter": {
+    "optOut": "To stop commercial messages from {{name}}: {{url}} or reply stop.",
+    "linkLabel": "(opt-out link)",
+    "composerNote": "This mail goes to a prospect, so these lines are added when it is sent, in their language. They cannot be removed.",
+    "checkFailed": "Could not check whether this mail is commercial. It is checked again when you send."
   }
 }

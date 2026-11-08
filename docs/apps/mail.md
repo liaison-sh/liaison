@@ -172,6 +172,10 @@ Every commercial mail ends with that legal name and address, a link to stop comm
 
 A commercial mail goes to one person outside the organization, so each one gets their own link; colleagues may stay on copy. An agent's new message to someone who opted out is refused, commercial or not: it can still reply in that person's own conversation.
 
+The same rules hold for a mail you write yourself. When a recipient of your new message is a prospect, the composer shows the lines that will be added below your text; you cannot remove them, and they leave with the mail with its own opt-out link and headers. Your mail still needs no approval. If that prospect opted out, or the mail names more than one outside person, the composer says so and the mail is not sent. A new message to someone who opted out but is not a prospect, such as a supplier, goes, and the composer shows that they opted out.
+
+The footer is written in the recipient's language: the language recorded on their contact (`language` in its details), else the organization's language. English and French are available.
+
 The link opens a page that asks once and records the opt-out with one button. Opening the page changes nothing (mail scanners open links), and pressing again changes nothing more. The page shows the organization's legal name and address, never the recipient's address, in English or French. Links older than three years stop working.
 
 ## Scopes

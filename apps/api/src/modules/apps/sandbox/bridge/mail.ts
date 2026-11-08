@@ -13,6 +13,7 @@ import {
   type BuildSendGuardInput,
   buildSendGuard,
   COMMERCIAL_IDENTITY_MISSING_MESSAGE,
+  checkPersonCompose,
   commercialFooterFor,
   commercialRecipient,
   describeStop,
@@ -580,8 +581,8 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
      */
     mail_checkSendGuard: async (paramsJson: string): Promise<string> => {
       requireApp("mail", "mail_checkSendGuard")
-      if (directHumanCall()) return JSON.stringify({ applies: false })
       const params = JSON.parse(paramsJson) as {
+        toolName?: string
         sendGuard?: unknown
         to?: unknown
         cc?: unknown
@@ -591,6 +592,47 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
         htmlBody?: unknown
       }
       const recipients = recipientsOf(params.to, params.cc, params.bcc)
+      if (directHumanCall()) {
+        // A person's own new message to a prospect keeps the company's rules.
+        if (params.toolName !== "mail:compose") return JSON.stringify({ applies: false })
+        const own = await checkPersonCompose(orgId, recipients)
+        if (!own.commercial) return JSON.stringify({ applies: false })
+        if ("refused" in own) {
+          return JSON.stringify({
+            applies: true,
+            state: "refused",
+            final: true,
+            code: own.refused.code,
+            message: own.refused.message,
+            approved: false,
+            guard: { state: "refused", reason: own.refused.message, classification: "marketing" },
+          })
+        }
+        const footer = await commercialFooterFor(
+          orgId,
+          own.recipient,
+          params.textBody,
+          params.htmlBody,
+        )
+        if (!footer) {
+          const message = `Nothing was sent. ${COMMERCIAL_IDENTITY_MISSING_MESSAGE}`
+          return JSON.stringify({
+            applies: true,
+            state: "refused",
+            final: true,
+            code: "commercial_identity_missing",
+            message,
+            approved: false,
+            guard: { state: "refused", reason: message, classification: "marketing" },
+          })
+        }
+        return JSON.stringify({
+          applies: true,
+          state: "clear",
+          record: { guard: { state: "clear", classification: "marketing", footer: "commercial" } },
+          footer,
+        })
+      }
       const request = approvalContext
         ? await requestFacts(orgId, approvalContext.approvalRequestId)
         : null

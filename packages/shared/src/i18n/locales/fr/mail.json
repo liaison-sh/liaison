@@ -259,5 +259,11 @@
     "postalAddress": "Adresse postale",
     "saved": "Identité commerciale enregistrée.",
     "saveFailed": "L'identité commerciale n'a pas pu être enregistrée."
+  },
+  "commercialFooter": {
+    "optOut": "Pour ne plus recevoir de messages commerciaux de {{name}} : {{url}} ou répondez stop.",
+    "linkLabel": "(lien de désinscription)",
+    "composerNote": "Ce message va à un prospect : ces lignes y sont ajoutées à l'envoi, dans sa langue. Elles ne peuvent pas être retirées.",
+    "checkFailed": "Impossible de vérifier si ce message est commercial. La vérification est refaite à l'envoi."
   }
 }

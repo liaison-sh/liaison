@@ -114,10 +114,13 @@ beforeAll(async () => {
     ]),
   )
   await sql.unsafe(insertSql("kernel.roles", { id: ROLE, org_id: ORG_ID, name: "company-worker" }))
-  for (const scope of ALL_SCOPES) {
-    await sql`INSERT INTO kernel.role_scope_grants (role_id, scope) VALUES (${ROLE}, ${scope})`
-  }
-  await sql`INSERT INTO kernel.user_roles (user_id, role_id, org_id) VALUES (${ANNA}, ${ROLE}, ${ORG_ID})`
+  await sql.unsafe(
+    insertSql(
+      "kernel.role_scope_grants",
+      ALL_SCOPES.map((scope) => ({ role_id: ROLE, scope })),
+    ),
+  )
+  await sql.unsafe(insertSql("kernel.user_roles", { user_id: ANNA, role_id: ROLE, org_id: ORG_ID }))
   const [versions] = await sql<{ auth_version: number; permission_version: number }[]>`
     SELECT auth_version, permission_version FROM kernel.users WHERE id = ${ANNA}`
   token = await signAccessToken(

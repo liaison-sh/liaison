@@ -18,6 +18,7 @@ import { deleteTask, mergeTasks, restoreTask } from "~/apps/projects/service/tas
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { withRlsContext } from "~/db/rls"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
   type DealWorld,
@@ -351,9 +352,19 @@ describe("pipelines and their stages", () => {
   it("a stage that stops being terminal stops closing deals and its deals reopen", async () => {
     const p = await makePipeline(w, "Second won stage")
     // A second won stage, so the first may stop closing.
-    await db.execute(drizzleSql`
-      INSERT INTO app_projects.project_statuses (org_id, project_id, label, "order", terminal, deal_outcome)
-      VALUES (${w.orgId}::uuid, ${p.projectId}::uuid, 'Won (renewal)', 9, true, 'won')`)
+    await db.execute(
+      drizzleSql.raw(
+        insertSql("app_projects.project_statuses", {
+          org_id: w.orgId,
+          project_id: p.projectId,
+          label: "Won (renewal)",
+          // A reserved word, quoted as a column name.
+          '"order"': 9,
+          terminal: true,
+          deal_outcome: "won",
+        }),
+      ),
+    )
     const taskId = await makeTask(w, p.projectId, "Renewal", { statusId: p.stage.Demo })
     await move(taskId, p.stage.Won!)
     await run((tx) =>

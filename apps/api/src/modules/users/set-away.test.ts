@@ -319,6 +319,36 @@ describe("set_away", () => {
     ).toEqual([])
   })
 
+  it("standing in: a colleague whose name sorts after 500 others is still read", async () => {
+    const from = futureMonday()
+    const to = addDays(from, 2)
+    const fillers = Array.from({ length: 501 }, () => crypto.randomUUID())
+    await sql.unsafe(
+      insertSql(
+        "kernel.users",
+        fillers.map((id, i) => ({
+          id,
+          org_id: orgId,
+          email: `filler-${id.slice(0, 8)}@org.test`,
+          name: `Aaa filler ${String(i).padStart(3, "0")}`,
+        })),
+      ),
+    )
+    try {
+      await sql`UPDATE kernel.users SET name = 'Zoë Last' WHERE id = ${sara.userId}`
+      await setAwayAs(sara, OWN_SCOPES, { from, to, nextInLineId: tom.userId })
+      const during = new Date(`${addDays(from, 1)}T12:00:00Z`)
+      expect(await standingInForNames(orgId, tom.userId, during)).toContainEqual({
+        id: sara.userId,
+        name: "Zoë Last",
+        until: to,
+      })
+    } finally {
+      await sql`DELETE FROM kernel.users WHERE id = ANY(${fillers}::uuid[])`
+      await sql`UPDATE kernel.users SET name = 'Sara Benali' WHERE id = ${sara.userId}`
+    }
+  })
+
   it("tainted own parks to the requester", async () => {
     await sql`UPDATE kernel.threads SET tainted = true WHERE id = ${threadId}`
     const res = await setAwayAs(elodie, OWN_SCOPES, { on: futureMonday() })

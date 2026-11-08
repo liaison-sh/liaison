@@ -1150,7 +1150,22 @@ export async function standingInForNames(
   viewerId: string,
   now: Date = new Date(),
 ): Promise<Array<{ id: string; name: string; until: string }>> {
-  const members = await nextInLineMembers(orgId, viewerId)
+  // Only the colleagues who name the viewer somewhere (a range or their default) can, so the
+  // read is by that, whatever the org's size; today's range then decides.
+  const members = await withPrivilegedDb(orgId, "away-standing-in", async (tx) =>
+    extractRows<{ id: string; name: string }>(
+      await tx.execute(drizzleSql`
+        SELECT u.id, u.name FROM ${K}.users u
+        WHERE u.org_id = ${orgId}::uuid AND u.status = 'active' AND u.user_type <> 'external'
+          AND u.id <> ${viewerId}::uuid
+          AND (EXISTS (SELECT 1 FROM ${K}.away_ranges r
+                        WHERE r.org_id = u.org_id AND r.user_id = u.id AND r.status = 'active'
+                          AND r.next_in_line_id = ${viewerId}::uuid)
+               OR EXISTS (SELECT 1 FROM ${K}.user_preferences p
+                           WHERE p.user_id = u.id AND p.next_in_line_id = ${viewerId}::uuid))
+        ORDER BY u.name`),
+    ),
+  )
   const away = await readAwayToday(
     orgId,
     members.map((m) => m.id),

@@ -6,7 +6,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { app } from "~/app"
 import { sql } from "~/db"
-import { withPrivilegedDb } from "~/db/privileged"
+import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
+import { companies, userScopeGrants } from "~/db/schema/kernel"
 import { DurableConsumersTestAccess } from "~/infra/events/durable-consumers"
 import { initEventBus, resetEventBus } from "~/infra/events/event-bus"
 import { registerEventSubscribers } from "~/infra/events/event-subscribers"
@@ -17,6 +18,7 @@ import { registerKernelBulkApp } from "~/modules/apps/kernel-bulk"
 import { signAccessToken } from "~/modules/auth/jwt"
 import { HANDOVER_KIND, UNOWNED_KIND } from "~/modules/contacts/company-unowned"
 import { everyMemberScopeGrants } from "~/modules/permissions/permissions"
+import { seedOrgRow, seedUserRow } from "~/seed/factories/org/rows"
 import { drainOutbox } from "~/tests/helpers/outbox"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -37,12 +39,23 @@ beforeAll(async () => {
   await sql`DELETE FROM kernel.user_scope_grants WHERE org_id = ${ORG}`
   await sql`DELETE FROM kernel.users WHERE org_id = ${ORG}`
   await sql`DELETE FROM kernel.organizations WHERE id = ${ORG}`
-  await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${ORG}, 'Ownership Events Org', 'ownership-events-org')`
-  await sql`INSERT INTO kernel.users (id, org_id, email, name, status)
-            VALUES (${ADMIN}, ${ORG}, 'oe-admin@test.com', 'Nadia Admin', 'active')`
-  for (const scope of ["kernel:users:admin", "kernel:companies:write"]) {
-    await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope) VALUES (${ADMIN}, ${ORG}, ${scope})`
-  }
+  await seedOrgRow({ id: ORG, name: "Ownership Events Org", slug: "ownership-events-org" })
+  await seedUserRow({
+    id: ADMIN,
+    orgId: ORG,
+    email: "oe-admin@test.com",
+    name: "Nadia Admin",
+    status: "active",
+  })
+  await withSystemDb("ownership-events-test-grants", (db) =>
+    db.insert(userScopeGrants).values(
+      ["kernel:users:admin", "kernel:companies:write"].map((scope) => ({
+        userId: ADMIN,
+        orgId: ORG,
+        scope,
+      })),
+    ),
+  )
   await awaitOrgApps(ORG)
   const everyMember = await withPrivilegedDb(ORG, "ownership-events-test-scopes", (tx) =>
     everyMemberScopeGrants(tx, ADMIN, ORG),
@@ -85,18 +98,30 @@ afterAll(async () => {
 })
 
 async function person(seed: number, name: string): Promise<string> {
-  const id = uuid(seed)
-  await sql`INSERT INTO kernel.users (id, org_id, email, name, status)
-            VALUES (${id}, ${ORG}, ${`oe-${seed}@test.com`}, ${name}, 'active')`
-  return id
+  return seedUserRow({
+    id: uuid(seed),
+    orgId: ORG,
+    email: `oe-${seed}@test.com`,
+    name,
+    status: "active",
+  })
 }
 
 async function company(name: string, owner: string | null): Promise<string> {
-  const [row] = await sql`
-    INSERT INTO kernel.companies (org_id, handle, name, owner_user_id, org_access, created_by)
-    VALUES (${ORG}, ${`co-${crypto.randomUUID().slice(0, 8)}`}, ${name}, ${owner}, 'editor', ${ADMIN})
-    RETURNING id`
-  return row.id as string
+  const [row] = await withSystemDb("ownership-events-test-company", (db) =>
+    db
+      .insert(companies)
+      .values({
+        orgId: ORG,
+        handle: `co-${crypto.randomUUID().slice(0, 8)}`,
+        name,
+        ownerUserId: owner,
+        orgAccess: "editor",
+        createdBy: ADMIN,
+      })
+      .returning({ id: companies.id }),
+  )
+  return (row as { id: string }).id
 }
 
 async function post(path: string, body: unknown) {

@@ -26,8 +26,8 @@ import { and, eq } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
 import { createRlsSession } from "~/db/rls"
 import { connectedAccounts } from "~/db/schema/kernel"
-import { env } from "~/lib/env"
 import { appsLogger as log } from "~/lib/logger"
+import { orgPublicBaseUrl } from "~/lib/org-public-url"
 import {
   appBridgeManifestRegistry,
   connectionBeforeDisconnectRegistry,
@@ -155,7 +155,7 @@ async function runHookForRow(
         ownerType: row.ownerType,
         ownerId: row.ownerId,
         identifier: row.identifier,
-        kernelPublicBaseUrl: env.BASE_URL,
+        kernelPublicBaseUrl: await orgPublicBaseUrl(orgId),
         reason,
       },
     })

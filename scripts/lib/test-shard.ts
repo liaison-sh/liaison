@@ -38,6 +38,83 @@ export function pickShard(files: string[], shard: Shard): string[] {
   })
 }
 
+/**
+ * The files of shard `index` of `total`, dealt by measured duration rather than
+ * by count, for a runner that keeps `workers` files going at once (it may be
+ * fractional: the share of its workers a shard keeps busy) and each file on
+ * one worker (Playwright without fullyParallel). Longest first, each file goes
+ * to the shard where it ends soonest: a shard ends at the larger of its time
+ * spread over its workers and its longest file, which no worker count shortens
+ * (ties: the shard with less time, then the lower one). A file the table does
+ * not know counts as the table's median. Deterministic: the same files and
+ * table give the same shards on every runner. The shard keeps the order
+ * `files` gives.
+ */
+export function pickShardByTime(
+  files: string[],
+  shard: Shard,
+  seconds: Record<string, number>,
+  workers = 1,
+): string[] {
+  const unique = [...new Set(files)]
+  const known = Object.values(seconds)
+    .filter((v) => Number.isFinite(v) && v > 0)
+    .sort((a, b) => a - b)
+  const fallback = known.length > 0 ? (known[Math.floor(known.length / 2)] as number) : 1
+  const cost = (f: string) => {
+    const v = seconds[f]
+    return v !== undefined && Number.isFinite(v) && v > 0 ? v : fallback
+  }
+  const byCost = [...unique].sort((a, b) => cost(b) - cost(a) || (a < b ? -1 : a > b ? 1 : 0))
+  const per = Math.max(1, workers)
+  const sum = Array.from({ length: shard.total }, () => 0)
+  const longest = Array.from({ length: shard.total }, () => 0)
+  const end = (i: number, add: number) =>
+    Math.max((sum[i] as number) / per + add / per, longest[i] as number, add)
+  const mine = new Set<string>()
+  for (const f of byCost) {
+    const c = cost(f)
+    let target = 0
+    for (let i = 1; i < sum.length; i++) {
+      const d = end(i, c) - end(target, c)
+      if (d < 0 || (d === 0 && (sum[i] as number) < (sum[target] as number))) target = i
+    }
+    sum[target] = (sum[target] as number) + c
+    longest[target] = Math.max(longest[target] as number, c)
+    if (target === shard.index - 1) mine.add(f)
+  }
+  const seen = new Set<string>()
+  return files.filter((f) => {
+    if (!mine.has(f) || seen.has(f)) return false
+    seen.add(f)
+    return true
+  })
+}
+
+/**
+ * The Playwright scenario files a default run picks up (apps/web's chromium and
+ * iphone projects), relative to `cwd`, sorted. The desktop-webview scenarios
+ * belong to an opt-in project and are left out.
+ */
+export function playwrightScenarioFiles(e2eDir: string, cwd: string): string[] {
+  const out: string[] = []
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === "node_modules") continue
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) walk(full)
+      else if (
+        entry.isFile() &&
+        entry.name.endsWith(".scenario.test.ts") &&
+        !entry.name.endsWith(".desktop-webview.scenario.test.ts")
+      )
+        out.push(path.relative(cwd, full).split(path.sep).join("/"))
+    }
+  }
+  walk(e2eDir)
+  return out.sort()
+}
+
 /** What `bun test` treats as a test file. */
 const BUN_TEST_FILE = /[._](test|spec)\.[cm]?[jt]sx?$/
 

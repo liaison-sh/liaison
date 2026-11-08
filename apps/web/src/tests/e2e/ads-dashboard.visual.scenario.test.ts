@@ -6,7 +6,7 @@
 // interceptor returns canned tool shapes so every panel renders with fixed,
 // representative data — no live round-trips, deterministic pixels.
 //
-// Pixel goldens are darwin-only (`*-darwin.png`); FUNCTIONAL assertions (panel +
+// Pixel goldens are per platform (`*-darwin.png`, `*-linux.png`, helpers/pixel-baselines.ts); FUNCTIONAL assertions (panel +
 // sidebar mount, content testids, expected text, both-directions / count-0
 // anti-rubber-stamp checks) run EVERYWHERE. Re-bake after an intentional UI
 // change with:
@@ -49,10 +49,10 @@ import {
 import { forceDarkMode } from "./agent-bootstrap"
 import { bundledAppTarball } from "./bundled-app-tarball"
 import { expect, loginAs, test } from "./fixtures/test"
+import { PIXEL_BASELINES } from "./helpers/pixel-baselines"
 import { volatileShellMasks } from "./helpers/visual-masks"
 
 const SHOT = { maxDiffPixelRatio: 0.02 } as const
-const PIXEL_BASELINES = process.platform === "darwin"
 
 test.setTimeout(120_000)
 

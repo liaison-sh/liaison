@@ -28,6 +28,7 @@ import { resolve } from "node:path"
 import { forceDarkMode } from "../agent-bootstrap"
 import { bundledAppTarball } from "../bundled-app-tarball"
 import { loginAs } from "../fixtures/test"
+import { PIXEL_BASELINES } from "../helpers/pixel-baselines"
 import { volatileShellMasks } from "../helpers/visual-masks"
 import { expect, test } from "./_shopify-fixtures"
 import { installShopifyApp } from "./helpers/install-shopify-app"
@@ -37,14 +38,11 @@ const SHOPIFY_BUNDLE = bundledAppTarball(LIAISON_ROOT, "shopify")
 
 const SHOT = { maxDiffPixelRatio: 0.02 } as const
 
-// Pixel baselines are captured on darwin (`*-darwin.png`). Cross-platform
-// pixel diffs (CI runs ubuntu/linux) are unreliable — font hinting + subpixel
-// rendering differ — so the `toHaveScreenshot` calls only run on darwin. The
-// FUNCTIONAL assertions (panel mounts, content testids visible, settings
-// affordances) run on every platform, so the C5 panel-content rendering — the
-// thing deep-review flagged as having zero CI coverage — is now exercised in
-// credential-less CI; the pixel goldens stay a local/darwin concern.
-const PIXEL_BASELINES = process.platform === "darwin"
+// Pixel baselines are per platform: darwin, and linux made on the gate's pinned
+// runner image (helpers/pixel-baselines.ts), since font hinting and subpixel
+// rendering differ between the two. The FUNCTIONAL assertions (panel mounts,
+// content testids visible, settings affordances) run on every platform, so the
+// C5 panel-content rendering is exercised in credential-less CI too.
 
 // Mock responses keyed by `<appName>:<toolName>`. Returns are the
 // drizzle-shape unknown objects the panel code reads (camelCase).

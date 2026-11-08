@@ -10,16 +10,17 @@
 // combined names like `invoicing:documents.search`; the host splits on the first
 // colon, so the toolName the host sees keeps the dot).
 //
-// Pixel goldens are darwin-only (`*-darwin.png`): cross-platform font hinting /
-// subpixel rendering makes CI pixel diffs unreliable, so `toHaveScreenshot`
-// runs only on darwin. The FUNCTIONAL assertions (panel mounts, content testids
-// visible) run everywhere. Re-bake after an intentional UI change with
+// Pixel goldens are per platform (`*-darwin.png`, `*-linux.png`,
+// helpers/pixel-baselines.ts): font hinting and subpixel rendering differ, so
+// each platform compares against its own. The FUNCTIONAL assertions (panel
+// mounts, content testids visible) run everywhere. Re-bake after an intentional UI change with
 // `bunx --bun playwright test --update-snapshots=all -g "Invoicing — visual"`.
 import { existsSync } from "node:fs"
 import { resolve } from "node:path"
 import { forceDarkMode } from "../agent-bootstrap"
 import { loginAs } from "../fixtures/test"
 import { resolveContact } from "../helpers/contacts-seed"
+import { PIXEL_BASELINES } from "../helpers/pixel-baselines"
 import { volatileShellMasks } from "../helpers/visual-masks"
 import { expect, test } from "./_invoicing-fixtures"
 import { installInvoicingApp } from "./helpers/install-invoicing-app"
@@ -29,7 +30,6 @@ const LIAISON_ROOT = resolve(__dirname, "..", "..", "..", "..", "..", "..")
 const INVOICING_BUNDLE = resolvedInvoicingBundle
 
 const SHOT = { maxDiffPixelRatio: 0.02 } as const
-const PIXEL_BASELINES = process.platform === "darwin"
 
 test.setTimeout(120_000)
 
@@ -479,7 +479,7 @@ test.describe("Invoicing: visual baselines", () => {
       "documents-list-all.png",
     )
     // FUNCTIONAL assertion, deliberately NOT left to the pixel golden and NOT
-    // darwin-gated. The store order reference is the whole point of the Order
+    // platform-gated. The store order reference is the whole point of the Order
     // column, and the golden cannot be trusted to notice it: at
     // maxDiffPixelRatio 0.02 this baseline silently absorbed a new toolbar
     // search box, a footer wording change, AND this entire column before

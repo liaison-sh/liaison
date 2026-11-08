@@ -47,7 +47,7 @@ Route tests take `acquireTestLock` / `releaseTestLock` from `src/tests/route-tes
 
 ### The `gate` workflow: heavy lanes on hosted runners
 
-`.github/workflows/gate.yml` runs the heavy lanes of a change on GitHub-hosted runners, started by hand: `gh workflow run gate.yml --ref main -f ref=<commit> -f base=<base>`. Its `plan` job takes the paths changed between the merge base of `base` and `ref` through the same planner as `test:gate` (`--dry-run --matrix-json <file>`) and keeps the lanes in `GATE_LANES` (`scripts/test-gate.ts`): integration, integration-extra, integration-mocked, security, e2e-parallel, demo-seed and Playwright. Each lane is split over runners with `scripts/test-run.ts <suite> --shard <i>/<n>`, which deals the suite's files round robin over their sorted list (Playwright and vitest split natively). No lane needs a provider key. The job timeouts add up to 60 minutes; the `report` job writes one table (lane, shard, result, minutes) as the run's summary, and a failing shard keeps its logs and Playwright reports as an artifact.
+`.github/workflows/gate.yml` runs the heavy lanes of a change on GitHub-hosted runners, started by hand: `gh workflow run gate.yml --ref main -f ref=<commit> -f base=<base>`. Its `plan` job takes the paths changed between the merge base of `base` and `ref` through the same planner as `test:gate` (`--dry-run --matrix-json <file>`) and keeps the lanes in `GATE_LANES` (`scripts/test-gate.ts`): integration, integration-extra, integration-mocked, security, e2e-parallel, demo-seed and Playwright. Each lane is split over runners with `scripts/test-run.ts <suite> --shard <i>/<n>`, which deals the suite's files round robin over their sorted list (vitest splits natively). Playwright's files are dealt by measured time instead, longest first to the shard with the least so far, from the per-file seconds in `scripts/lib/playwright-timings.json` (a file it does not know counts as the median); refresh the table from a run's reports with `bun run scripts/playwright-timings.ts <junit.xml|output.log>...` when the shards drift apart. No lane needs a provider key. The job timeouts add up to 60 minutes; the `report` job writes one table (lane, shard, result, minutes) as the run's summary, and a failing shard keeps its logs and Playwright reports as an artifact.
 
 ### Soak tests (`*.soak.test.ts`)
 
@@ -223,15 +223,22 @@ The Playwright suite shares its stacks the same way (`apps/web/src/tests/e2e/pw-
 
 ### Visual baselines
 
-Screenshot baselines are per platform: `<spec>-snapshots/<name>-<platform>.png` (`snapshotPathTemplate` in `playwright.config.ts`), and the committed ones are `darwin` only. A screenshot assertion with no baseline for the current platform skips its test with the reason (`expect` in `fixtures/test.ts`), after every assertion before it has run, instead of writing an actual image and failing. A platform that has its baselines compares as before.
+Screenshot baselines are per platform: `<spec>-snapshots/<name>-<platform>.png` (`snapshotPathTemplate` in `playwright.config.ts`). Two sets are committed: `darwin` (a Mac) and `linux` (the gate workflow's runner image, ubuntu-24.04, pinned in `gate.yml`). Off CI, a screenshot assertion with no baseline for the current platform skips its test with the reason (`expect` in `fixtures/test.ts`), after every assertion before it has run. On CI (`CI` set) nothing is skipped and `updateSnapshots` is `none`: a missing baseline fails the test, so the gate never passes a screenshot it did not compare.
 
-To create the baselines of another platform (linux, say), on that platform and from `apps/web/`, one visual spec at a time, and review every image before committing it:
+The `linux` set is made on the CI runners themselves, by the gate workflow with `update_snapshots` on. It runs only the Playwright lane, with `PW_UPDATE_SNAPSHOTS=missing`, and keeps every new image as the `linux-goldens-<shard>` artifact of the run:
+
+```
+gh workflow run gate.yml --ref <branch> -f ref=<branch> -f base=<root commit> -f update_snapshots=true
+gh run download <run id> -p 'linux-goldens-*' -D <dir>   # then copy into apps/web/src/tests/e2e, review, commit
+```
+
+The darwin set is made on a Mac, from `apps/web/`, one visual spec at a time; review every image before committing it:
 
 ```
 PW_UPDATE_SNAPSHOTS=missing bun run ../../scripts/with-test-lock.ts -- bunx --bun playwright test <spec>
 ```
 
-`missing` writes only the images that do not exist yet and never touches the darwin ones; `all` rewrites every baseline of the spec and belongs only to a deliberate UI change, on the platform whose baselines it changes.
+`missing` writes only the images that do not exist yet and never touches the other platform's; `all` rewrites every baseline of the spec and belongs only to a deliberate UI change, which then needs both sets: the darwin images on a Mac and the linux ones from a gate run.
 
 ## LLM Guide
 

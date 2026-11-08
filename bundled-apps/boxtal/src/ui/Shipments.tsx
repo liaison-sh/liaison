@@ -23,6 +23,7 @@ import {
   TrackingStatusBadge,
 } from "./kit"
 import { createDebouncedSearch } from "./debounced-search"
+import { loadFileInto, openPreparingTab } from "./file-open"
 import { usePathname } from "./sidebar"
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -449,6 +450,29 @@ export const ShipmentDetailPanel: Component<{ shipment: ShipmentRow }> = (props)
   // resolved reads the value without suspending; while the next shipment's
   // documents load, its panel says so instead of showing the previous ones.
   const docList = (): ShipmentDocument[] => (docs.state === "ready" ? (docs.latest ?? []) : [])
+  // The label opens as the To prepare queue opens it: print_pack's upright label file, shown by
+  // the host when the screen is framed, else in a tab opened inside the click.
+  const [docError, setDocError] = createSignal<string | null>(null)
+  const openLabel = (): void => {
+    setDocError(null)
+    const win = openPreparingTab()
+    void (async () => {
+      try {
+        const res = await app.invokeTool<{ label?: { file_id: string } | null; label_error?: string }>(
+          "print_pack",
+          { shipment_id: props.shipment.id },
+        )
+        if (res?.label?.file_id) await loadFileInto(res.label.file_id, win, "label")
+        else {
+          win?.close()
+          setDocError(res?.label_error ?? "The label is not available yet.")
+        }
+      } catch (err) {
+        win?.close()
+        setDocError(err instanceof Error ? err.message : String(err))
+      }
+    })()
+  }
 
   return (
     <div data-testid="boxtal-shipment-detail" class="flex min-h-0 flex-col">
@@ -570,13 +594,20 @@ export const ShipmentDetailPanel: Component<{ shipment: ShipmentRow }> = (props)
                 {(doc) => (
                   <li class="flex items-center justify-between gap-3 px-3 py-2">
                     <span class="text-[12.5px] text-text">{documentTypeLabel(doc.type)}</span>
-                    <Button variant="ghost" testid={`boxtal-doc-${doc.type}`}>
-                      Download
-                    </Button>
+                    <Show when={doc.type === "LABEL"}>
+                      <Button variant="ghost" testid={`boxtal-doc-${doc.type}`} onClick={openLabel}>
+                        Download
+                      </Button>
+                    </Show>
                   </li>
                 )}
               </For>
             </ul>
+            <Show when={docError()}>
+              <p class="text-[12px] text-warning" data-testid="boxtal-detail-doc-open-error">
+                {docError()}
+              </p>
+            </Show>
           </Show>
           </Show>
         </section>

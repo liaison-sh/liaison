@@ -105,7 +105,7 @@ When a document rule matches a parcel (by SKU, destination country or carrier), 
 
 ## Follow shipments and returns
 
-- **In transit**, **Delivered** and **All shipments** in the sidebar list shipments by state.
+- **In transit**, **Delivered** and **All shipments** in the sidebar list shipments by state. A shipment's detail shows its tracking and documents; **Download** next to **Shipping label** opens the label upright, as the print pack does.
 - **Returns** lists inbound return parcels, with **Download return label** and the number of the document each return is linked to (**Document**). Return labels are created by an agent with `create_shipment` and `is_return: true`, which waits for approval.
 - **Packages & products** (the **Catalog**) shows **Product shipping profiles**, **Packs (compound)** and **Local products**. Agents edit them with `product_profile_upsert`, `pack_upsert`, `pack_delete` and `local_product_upsert`.
 

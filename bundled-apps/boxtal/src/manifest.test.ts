@@ -596,7 +596,8 @@ describe("Boxtal app.manifest.json", () => {
     // 0.23.18: the webhook secret may go only into the subscription body's webhookSecret, on Boxtal's API hosts (secrets).
     // 0.23.20: the sandbox's label documents (document.boxtal.build) may be imported, like production's.
     // 0.23.21: an opened approval card (and the phone's column fold) stays open when its row is re-read.
-    expect(m.version).toBe("0.23.21")
+    // 0.23.22: the shipment detail's label Download opens the label (it had no handler).
+    expect(m.version).toBe("0.23.22")
     expect(m.packageFormat).toBe(1)
   })
 

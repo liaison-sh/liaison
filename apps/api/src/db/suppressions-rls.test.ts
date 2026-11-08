@@ -126,7 +126,11 @@ describe("kernel.suppressions", () => {
 
   it("an opt-out is added and removed with the write scope and never edited", async () => {
     const fresh = hash(ORG_ID, "noe@example.com")
-    const add = `INSERT INTO kernel.suppressions (org_id, email_hash, reason) VALUES ('${ORG_ID}', '${fresh}', 'person')`
+    const add = insertSql("kernel.suppressions", {
+      org_id: ORG_ID,
+      email_hash: fresh,
+      reason: "person",
+    })
     const outcome = await withRlsContext(
       person(["mail:suppressions:read", "mail:suppressions:write"]),
       async (tx) => ({

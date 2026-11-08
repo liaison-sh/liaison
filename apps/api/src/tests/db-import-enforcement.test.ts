@@ -591,6 +591,8 @@ describe("db import enforcement", () => {
     "cli/export-full.ts",
     "cli/keys-rotate.ts", // operator key rotation: re-encrypts every org's stored secrets in one system transaction
     "tests/helpers/org.ts",
+    // A client company for the tests that create a portal account.
+    "tests/helpers/company.ts",
     "tests/helpers/agent-ctx.ts",
     "tests/helpers/import-files.ts",
     // The relation suite's worlds: an admin's deactivation, a permission read, as the product does.

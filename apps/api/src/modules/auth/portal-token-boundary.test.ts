@@ -27,6 +27,7 @@ import { signAccessToken, signPortalToken, verifyAccessToken } from "~/modules/a
 import { cleanupSeededOrg, seedOrgWithUser } from "~/modules/mcp/test-helpers"
 import { createExternalUser } from "~/modules/users/external-user"
 import { insertSql } from "~/seed/factories/org/test-rows"
+import { createTestCompany } from "~/tests/helpers/company"
 
 let orgId: string
 let memberId: string
@@ -35,10 +36,11 @@ let portalToken: string
 let memberToken: string
 
 async function newExternal(label: string): Promise<string> {
+  const companyId = await createTestCompany(orgId)
   const result = await withPrivilegedDb(orgId, "portal-token-test-external", (tx) =>
     createExternalUser(tx, {
       orgId,
-      companyId: crypto.randomUUID(),
+      companyId,
       email: `${label}-${crypto.randomUUID().slice(0, 8)}@client.example`,
       name: "Client",
     }),

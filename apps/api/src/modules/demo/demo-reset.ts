@@ -383,6 +383,10 @@ export const KERNEL_RESET_RULES: Record<string, KernelResetRule> = {
   app_logs: "clear",
   contact_segments: "clear",
   contacts: "clear",
+  // A visitor's companies (0290) and opt-outs with their links (0291) are their content.
+  companies: "clear",
+  suppressions: "clear",
+  suppression_links: "clear",
   // Staff-marked trusted sender addresses and domains: a visitor's marks go.
   trusted_senders: "clear",
   device_flow_requests: "clear",

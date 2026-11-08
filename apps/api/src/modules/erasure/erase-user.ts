@@ -621,6 +621,21 @@ export const KERNEL_USER_COLUMN_DISPOSITION: Record<string, KernelColumnDisposit
     kind: "retain",
     reason: "RETAIN: org-owned CRM data; creator attribution survives (org asset, not the user's).",
   },
+  "companies.created_by": {
+    kind: "retain",
+    reason:
+      "RETAIN: org-owned company; once its creator is inactive, contacts admins decide its sharing (kernel.can_manage_company_sharing).",
+  },
+  "companies.owner_user_id": {
+    kind: "retain",
+    reason:
+      "RETAIN: org-owned company; the account manager id points at the tombstone, which holds no personal data, until someone names another.",
+  },
+  "suppressions.created_by": {
+    kind: "retain",
+    reason:
+      "RETAIN: who recorded an opt-out is part of that consent record, kept for the address's sake.",
+  },
   "contact_segments.created_by": {
     kind: "retain",
     reason: "RETAIN: org-owned segment definitions; creator attribution survives.",

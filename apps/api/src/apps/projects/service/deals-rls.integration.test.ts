@@ -124,10 +124,18 @@ beforeAll(async () => {
     [OTHER_OPEN, OTHER_PIPELINE, OTHER_ORG_ID, "Qualified", false],
   ]
   for (const [id, projectId, org, label, terminal] of statuses) {
-    await sql`
-      INSERT INTO app_projects.project_statuses
-        (id, org_id, project_id, label, "order", terminal, created_at, updated_at)
-      VALUES (${id}, ${org}, ${projectId}, ${label}, ${terminal ? 2 : 1}, ${terminal}, ${AT}, ${AT})`
+    await sql.unsafe(
+      insertSql("app_projects.project_statuses", {
+        id,
+        org_id: org,
+        project_id: projectId,
+        label,
+        '"order"': terminal ? 2 : 1,
+        terminal,
+        created_at: AT,
+        updated_at: AT,
+      }),
+    )
   }
   const task = (
     id: string,

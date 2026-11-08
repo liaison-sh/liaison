@@ -27,6 +27,7 @@ import {
 import { createExternalUser } from "~/modules/users/external-user"
 import { insertAppRow } from "~/seed/factories/app-tables"
 import * as minimal from "~/seed/tiers/minimal"
+import { createTestCompany } from "~/tests/helpers/company"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -225,10 +226,11 @@ describe("entity discussions", () => {
     const { threadId } = opened
     const email = `client-${crypto.randomUUID().slice(0, 8)}@client.example`
     const ks = drizzleSql.raw(`"${schemaRef("kernel")}"`)
+    const companyId = await createTestCompany(orgId)
     const clientId = await withPrivilegedDb(orgId, "test-portal-account", async (tx) => {
       const created = await createExternalUser(tx, {
         orgId,
-        companyId: crypto.randomUUID(),
+        companyId,
         email,
         name: "Client Item",
       })
@@ -250,10 +252,11 @@ describe("entity discussions", () => {
   test("a client's portal account opening a discussion is not seated and nothing is made", async () => {
     const itemId = await item(orgId, "Opened by a client")
     const ks = drizzleSql.raw(`"${schemaRef("kernel")}"`)
+    const companyId = await createTestCompany(orgId)
     const clientId = await withPrivilegedDb(orgId, "test-portal-opener", async (tx) => {
       const created = await createExternalUser(tx, {
         orgId,
-        companyId: crypto.randomUUID(),
+        companyId,
         email: `opener-${crypto.randomUUID().slice(0, 8)}@client.example`,
         name: "Client Opener",
       })

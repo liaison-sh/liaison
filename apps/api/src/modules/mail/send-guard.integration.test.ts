@@ -60,6 +60,7 @@ import { insertSql } from "~/seed/factories/org/test-rows"
 import { actorFor, asUser } from "~/seed/factories/people/actors"
 import * as minimal from "~/seed/tiers/minimal"
 import { bootstrapAdminCtx } from "~/tests/helpers/agent-ctx"
+import { createTestCompany } from "~/tests/helpers/company"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
   appendMailMessages,
@@ -1602,7 +1603,7 @@ describe("a colleague is not a client", () => {
 
   it("a reply from an external user's address stops", async () => {
     const email = unique("portal-client")
-    const companyId = crypto.randomUUID()
+    const companyId = await createTestCompany(orgId)
     await privileged.withSystemDb("send-guard-test-external", (tx) =>
       tx.execute(
         drizzleSql.raw(

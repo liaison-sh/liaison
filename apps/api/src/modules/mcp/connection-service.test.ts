@@ -28,6 +28,7 @@ import {
 } from "~/modules/mcp/test-helpers"
 import { KERNEL_EVERY_MEMBER_SCOPES } from "~/modules/permissions/every-member-scopes"
 import { createExternalUser } from "~/modules/users/external-user"
+import { createTestCompany } from "~/tests/helpers/company"
 
 describe("mcp connection service", () => {
   const orgs: string[] = []
@@ -38,10 +39,11 @@ describe("mcp connection service", () => {
   it("an external row's connection mints no token, on first mint or on refresh", async () => {
     const { orgId } = await seedOrgWithUser()
     orgs.push(orgId)
+    const companyId = await createTestCompany(orgId)
     const created = await withPrivilegedDb(orgId, "mcp-external-test", (tx) =>
       createExternalUser(tx, {
         orgId,
-        companyId: crypto.randomUUID(),
+        companyId,
         email: `client-${crypto.randomUUID().slice(0, 8)}@client.example`,
         name: "Client",
       }),

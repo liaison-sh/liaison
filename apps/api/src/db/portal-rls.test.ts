@@ -27,6 +27,14 @@ beforeAll(async () => {
     )
   }
   await sql.unsafe(
+    insertSql("kernel.companies", {
+      id: COMPANY_ID,
+      org_id: ORG_ID,
+      handle: "client-co",
+      name: "Client Co",
+    }),
+  )
+  await sql.unsafe(
     insertSql("kernel.users", [
       {
         id: EXTERNAL_ID,

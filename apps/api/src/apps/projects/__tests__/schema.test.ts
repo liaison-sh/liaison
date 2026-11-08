@@ -39,6 +39,8 @@ describe("projects.schema", () => {
   it("projects.schema.tables-exist", async () => {
     const tables = await listTables("app_projects")
     expect(tables.sort()).toEqual([
+      "deal_values",
+      "deals",
       "labels",
       "project_statuses",
       "project_templates",

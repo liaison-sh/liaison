@@ -52,6 +52,7 @@ import { createExternalUser } from "~/modules/users/external-user"
 import { createInvitation } from "~/modules/users/invites"
 import { reactivateUser } from "~/modules/users/service"
 import * as minimal from "~/seed/tiers/minimal"
+import { createTestCompany } from "~/tests/helpers/company"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -151,8 +152,9 @@ describe("seats", () => {
     const used = await activeSeats(orgId)
     await setCaps(orgId, { seats: used })
     const email = `client-${crypto.randomUUID().slice(0, 8)}@caps.test`
+    const companyId = await createTestCompany(orgId)
     const created = await withPrivilegedDb(orgId, "caps-test-portal-account", (tx) =>
-      createExternalUser(tx, { orgId, companyId: crypto.randomUUID(), email, name: "Client" }),
+      createExternalUser(tx, { orgId, companyId, email, name: "Client" }),
     )
     if (!created.ok) throw new Error(created.code)
     await sql`UPDATE kernel.users SET status = 'active' WHERE id = ${created.userId}`

@@ -30,6 +30,7 @@ import {
 import { deactivateUser } from "~/modules/users/service"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
+import { createTestCompany } from "~/tests/helpers/company"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -244,7 +245,7 @@ describe("set_away", () => {
       email: `client-${external.slice(0, 8)}@example.com`,
       name: "Client",
       user_type: "external",
-      company_id: crypto.randomUUID(),
+      company_id: await createTestCompany(orgId),
     })
     await sql`UPDATE kernel.users SET name = 'Élodie Renard' WHERE id = ${elodie.userId}`
     await sql`UPDATE kernel.users SET name = 'Tom Reyes' WHERE id = ${tom.userId}`

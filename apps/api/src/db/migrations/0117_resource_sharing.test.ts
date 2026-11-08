@@ -95,7 +95,11 @@ describe("0117 resource sharing", () => {
         ])
         const types = await tx`
           SELECT resource_type FROM kernel.shareable_resource_types ORDER BY 1`
-        expect(types.map((t) => t.resource_type)).toEqual(["kernel.contact", "knowledge.document"])
+        expect(types.map((t) => t.resource_type)).toEqual([
+          "kernel.company",
+          "kernel.contact",
+          "knowledge.document",
+        ])
         checked = true
         throw new Rollback()
       })

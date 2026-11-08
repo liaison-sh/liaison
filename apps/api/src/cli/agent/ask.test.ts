@@ -14,6 +14,7 @@ import { createSession } from "~/modules/auth/auth"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { ensureUser } from "~/modules/provisioning/ensure-user"
 import { createExternalUser } from "~/modules/users/external-user"
+import { createTestCompany } from "~/tests/helpers/company"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 beforeAll(acquireTestLock)
@@ -248,8 +249,9 @@ describe("liaison agent ask", () => {
   test("an external row is refused before any token or request, and leaves no audit row", async () => {
     const { slug, orgId } = await freshOrg()
     const email = `client-${crypto.randomUUID().slice(0, 8)}@client.example`
+    const companyId = await createTestCompany(orgId)
     const created = await withPrivilegedDb(orgId, "cli-ask-external-test", (tx) =>
-      createExternalUser(tx, { orgId, companyId: crypto.randomUUID(), email, name: "Client" }),
+      createExternalUser(tx, { orgId, companyId, email, name: "Client" }),
     )
     if (!created.ok) throw new Error(created.code)
     const calls: string[] = []

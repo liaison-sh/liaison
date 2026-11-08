@@ -29,6 +29,9 @@ The roles themselves are defined in **Settings › Roles & access**. See [Set up
 
 1. In the users list, click **Deactivate** in the person's row.
 2. Confirm in the **Deactivate user** dialog.
+3. If the person is the account manager of companies, the dialog asks who takes them over. Pick a person, or **Leave them without an account manager**, then confirm again.
+
+A company the new manager cannot see stays without one: share it with them, then give it to them. Companies left without a manager show on **Home** for people who hold both `kernel:users:admin` and `kernel:companies:write`, as one row per person who left ("6 companies have no account manager since Léa Fontaine left"). The row goes once every one of them has a manager, or when the person is reactivated.
 
 A deactivated user cannot sign in, and their open sessions end at once: the access tokens they hold are refused within seconds and their open real-time connections close. Their phones and browsers stop receiving push notifications. Their routines pause with the reason (**Paused: missing access**) and do not run while the account is deactivated; when you reactivate them, each routine runs again at its next scheduled run or event (see [Routines](../agents/routines.md#fix-a-paused-routine)). Nothing they own is deleted, except the days they had said they would be away (or that their own calendar showed), and you can reactivate them later.
 
@@ -39,7 +42,7 @@ You cannot deactivate:
 
 To deactivate several people at once, tick their checkboxes and use the bulk action **Deactivate users**.
 
-When an agent tries to deactivate a user (tool `kernel:deactivateUser`, or `bulkDeactivateUsers`), the action waits for a person to approve it. See [Approve what agents do](../agents/approvals.md).
+When an agent tries to deactivate a user (tool `kernel:deactivateUser`, or `bulkDeactivateUsers`), the action waits for a person to approve it. For someone who manages companies the tool needs `accountsTo` (a person's id, or `null`); without it nothing changes and the agent is told how many companies they manage. See [Approve what agents do](../agents/approvals.md).
 
 ## Reactivate a user
 

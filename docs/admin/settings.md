@@ -49,7 +49,7 @@ See [Choose models](../agents/models.md) and [Approve what agents do](../agents/
 | **Organization** | **Details**: **Organization name**, **Timezone**, **Default locale**. **Usage and limits**: seats, mailboxes, storage and background jobs this hour, each used of its limit or unlimited (read only). **Export your data**: a copy of the organization's data. **Export organization**: the whole organization as one archive. **Imports**: the import runs and **Undo** | `kernel:org:admin` (export your data: `kernel:users:admin`; imports: `kernel:imports:read`, undo: `kernel:imports:undo`) |
 | **Billing** | The plan and next invoice, **Change plan**, the payment card, **Invoices** (PDF), **Buy credits**, **Automatic top-up** and **Cancel subscription**, on a managed instance only | `kernel:org:admin` |
 | **Documents** | The organization's document templates: rich text templates and uploaded PDF forms, their fields, and a preview | `kernel:org:admin` |
-| **Users** | Invitations, roles per person, deactivation | `kernel:users:admin` |
+| **Users** | Invitations, roles per person, deactivation (with who takes over the companies a person manages) | `kernel:users:admin` |
 | **Roles & access** | **Roles**, **Access requests**, **Data access** | `kernel:users:admin` |
 | **App store** | Install apps and read each app's listing | `kernel:apps:admin` |
 | **System** | Version and health, **Dependencies**, migration head, **Update checks** | `kernel:org:admin` |

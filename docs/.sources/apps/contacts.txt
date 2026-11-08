@@ -52,3 +52,5 @@ threads_reply with contactId posts in a contact's discussion, no approval -> app
 Auto-approve policy turns either gate off -> apps/api/src/tests/integration/contacts-write-gate.test.ts:132
 Addresses section in the contact page -> apps/web/src/modules/contacts/ContactDetail.tsx:370
 threads_create createdFrom a contact posts in its one discussion -> apps/api/src/modules/threads/entity-discussion.ts:107-117 ; apps/api/src/modules/contacts/discussion.ts:51-63
+The previous manager gets one Home row naming who gave which companies to whom -> apps/api/src/modules/contacts/company-unowned.ts:350 ; apps/api/src/modules/contacts/company-unowned.ts:394-396
+Deactivating a manager asks who takes their companies -> apps/api/src/modules/apps/kernel-bulk.ts:157

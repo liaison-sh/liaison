@@ -360,7 +360,9 @@ describe("ActivityBar overflow", () => {
     // The drop lands with the pointer over the rail.
     const rail = screen.getByTestId("activity-bar")
     const matches = rail.matches.bind(rail)
-    rail.matches = (selector: string) => selector === ":hover" || matches(selector)
+    Object.defineProperty(rail, "matches", {
+      value: (selector: string) => selector === ":hover" || matches(selector),
+    })
     fireEvent.dragStart(screen.getByTestId("activity-hotel"))
     fireEvent.dragOver(screen.getByTestId("activity-bravo"))
     fireEvent.drop(screen.getByTestId("activity-bravo"))

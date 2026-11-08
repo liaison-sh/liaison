@@ -180,3 +180,8 @@ org IMAP mailbox polled on schedule with nobody online; a personal one waits -> 
 mailbox address matches its row in any case; another address is another mailbox -> apps/api/src/modules/apps/connections/service.ts:1394
 A held draft leaves Home and a stopped one is uncounted -> apps/api/src/modules/approvals/attention.ts:635
 Provider pill on a mail row -> apps/api/src/modules/mail/send-guard.ts:395
+Record an opt-out: mail:suppression_add, scope mail:conversations:write, fingerprint only -> apps/api/src/apps/mail/app.manifest.json:1292 ; apps/api/src/modules/mail/suppressions.ts:43 ; apps/api/src/db/migrations/0292_suppressions.sql:77
+Waiting commercial drafts withdrawn at once; the check refuses new ones; service messages still go -> apps/api/src/modules/mail/suppressions.ts:159
+336 ; apps/api/src/modules/approvals/withdraw-on-events.ts:43 ; apps/api/src/modules/mail/send-guard.ts:647
+Check up to 50 addresses; when and how only with mail:suppressions:read -> apps/api/src/modules/mail/suppressions.ts:252 ; apps/api/src/modules/mail/suppressions.ts:313
+Lifting an opt-out is gated for mail:suppressions:write holders, card says who, when and how -> apps/api/src/apps/mail/app.manifest.json:1314 ; apps/api/src/modules/mail/suppressions.ts:422

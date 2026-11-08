@@ -416,3 +416,14 @@ export async function summarizeMailCompose(
     lines,
   }
 }
+
+/** A request to lift an opt-out: who opted out, when and how, for the mail admin who decides. */
+export async function summarizeSuppressionRemove(
+  params: { email?: unknown },
+  ctx: { tx: RlsClient; orgId: string; userId: string },
+): Promise<ApprovalSummary> {
+  const email = typeof params.email === "string" ? params.email.trim() : ""
+  const { suppressionRemoveCard } = await import("~/modules/mail/suppressions")
+  const card = await suppressionRemoveCard(ctx.orgId, email)
+  return { kind: "mail.suppression_remove", title: card.title, lines: card.lines }
+}

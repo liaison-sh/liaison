@@ -1499,6 +1499,11 @@ describe("db import enforcement", () => {
     // The send check reads other mailboxes' envelopes on purpose: a reply in a
     // colleague's mailbox still stops a send. Reads only, and it names no text.
     "modules/mail/send-guard.ts",
+    // The opt-out list is read for whoever sends (a fingerprint lookup, no address kept), and an
+    // opt-out recorded by the system (a link, a reply) has no person to act as.
+    "modules/mail/suppressions.ts",
+    // Waiting drafts to an address that opted out are cancelled, whoever staged them.
+    "modules/approvals/withdraw-on-events.ts",
     // The new-mail producer off the outbox (no actor): the account, the
     // recipient's locale (kernel.organizations) and the replay check.
     "modules/notifications/mail-producer.ts",

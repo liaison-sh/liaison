@@ -396,6 +396,18 @@ export const MEMBER_SECTIONS: MemberSection[] = [
       )
     },
   },
+  {
+    key: "suppressionsAdded",
+    note: "Opt-outs the member recorded: when and how. The address is not kept, only a fingerprint of it, so none is listed.",
+    via: "subject",
+    read: async (db, ctx, limit) => {
+      const { suppressionsAddedBy } = await import("~/modules/mail/suppressions")
+      return (await suppressionsAddedBy(db, ctx.orgId, ctx.subjectUserId, limit)).map((r) => ({
+        reason: r.reason,
+        created_at: iso(r.created_at),
+      }))
+    },
+  },
 ]
 
 /** Reads every section: the `caller` ones on `callerDb`, the `subject` ones in one privileged transaction. */

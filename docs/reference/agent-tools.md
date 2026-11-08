@@ -570,6 +570,9 @@ Read, write and reply to email from Gmail or any IMAP/SMTP mailbox.
 | `reply` | Reply to an existing mail conversation. | yes | `mail:conversations:write` |
 | `search` | Search the synced mail database for conversations matching filters. |  | `mail:conversations:read` |
 | `setLabels` | Apply labels to one or more mail conversations (e.g. |  | `mail:conversations:write` |
+| `suppression_add` | Record that someone asked to receive no more commercial mail. |  | `mail:conversations:write` |
+| `suppression_check` | Whether addresses opted out of commercial mail (up to 50). |  | `mail:conversations:read` |
+| `suppression_remove` | Let an opted-out address receive commercial mail again. | yes | `mail:suppressions:write` |
 
 ## mcp-manager
 

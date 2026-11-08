@@ -268,6 +268,8 @@ export interface DataSubjectExportBundle {
       dataSource: string | null
       art14NoticeAt: string | null
     }
+    /** "Opted out on <date>, by <how>." when the person's address is on the opt-out list. */
+    optedOut: { at: string; by: string; line: string } | null
   }
   records: {
     tickets: Array<{
@@ -573,6 +575,17 @@ export async function buildDataSubjectBundle(
   // (4) Memory leg — what this subject's own agent remembers (P4m-T32).
   const memory = await buildMemorySection({ email: contact.email }, ctx)
 
+  // (5) The opt-out list keeps a fingerprint of the address, never the address: matched here.
+  const { listSuppressions, optedOutLine } = await import("~/modules/mail/suppressions")
+  const [suppression] = contact.email ? await listSuppressions(ctx.orgId, [contact.email]) : []
+  const optedOut = suppression
+    ? {
+        at: suppression.createdAt,
+        by: suppression.reason,
+        line: await optedOutLine(ctx.orgId, suppression),
+      }
+    : null
+
   return {
     kind: "gdpr_data_subject_export",
     schemaVersion: 1,
@@ -598,6 +611,7 @@ export async function buildDataSubjectBundle(
         dataSource: contact.data_source,
         art14NoticeAt: toIso(contact.art14_notice_at),
       },
+      optedOut,
     },
     records: {
       memory,

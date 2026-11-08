@@ -154,6 +154,14 @@ The check can only see mail Liaison has already imported. A reply that reached t
 
 The check applies to drafts written by agents only. A message you write yourself in the composer is sent as you send it, and is never held or stopped by it.
 
+### Record an opt-out
+
+When someone asks to receive no more commercial mail, ask your agent to note it (tool `mail:suppression_add`). Anyone who can write mail can record one. Liaison keeps only a fingerprint of the address, never the address itself. Drafts of commercial mail already waiting for that address are withdrawn at once, and the check before sending refuses any new one. A service message, such as an invoice or an order update, still goes.
+
+An agent can check up to 50 addresses at a time (`mail:suppression_check`). With `mail:suppressions:read` it also says when and how each person opted out.
+
+Lifting an opt-out (`mail:suppression_remove`) waits for a mail admin's approval. The card says who opted out, when and how.
+
 ## Scopes
 
 | Scope | What it allows |
@@ -166,9 +174,9 @@ The check applies to drafts written by agents only. A message you write yourself
 | `mail:drafts:read` | Read mail drafts |
 | `mail:approve` | Approve, edit or deny the mail drafts agents propose |
 | `mail:suppressions:read` | See who has opted out of mail |
-| `mail:suppressions:write` | Add or remove an opt-out by hand |
+| `mail:suppressions:write` | Lift an opt-out |
 
-Mail's `member` role holds `mail:suppressions:read`, so everyone with the Full Member role sees who has opted out before writing to them. Adding or removing an opt-out by hand stays with mail admins.
+Mail's `member` role holds `mail:suppressions:read`, so everyone with the Full Member role sees who has opted out before writing to them. Anyone who holds `mail:conversations:write` can record an opt-out; lifting one stays with mail admins.
 
 See the [scope reference](../reference/scopes.md) and [roles](../admin/roles.md).
 

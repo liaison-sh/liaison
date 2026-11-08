@@ -21,7 +21,7 @@
   },
   "app_boxtal.pack": {
     "rows": 4,
-    "digest": "4e3b94c6a94addf6"
+    "digest": "bc32f6a61956d55f"
   },
   "app_boxtal.pack_component": {
     "rows": 6,
@@ -33,7 +33,7 @@
   },
   "app_boxtal.product_profile": {
     "rows": 11,
-    "digest": "ec59a20460e4899d"
+    "digest": "f28457c1e7f5050b"
   },
   "app_boxtal.product_profile_link": {
     "rows": 11,
@@ -45,7 +45,7 @@
   },
   "app_boxtal.shipping_profile": {
     "rows": 11,
-    "digest": "532987c4c8d96323"
+    "digest": "8bac5bf5d3cbf6f6"
   },
   "app_calendar.accounts": {
     "rows": 1,
@@ -93,7 +93,7 @@
   },
   "app_knowledge.documents": {
     "rows": 32,
-    "digest": "ff92dd2131a9948d"
+    "digest": "4aa53eca62e974c9"
   },
   "app_knowledge.source_identities": {
     "rows": 4,
@@ -185,7 +185,7 @@
   },
   "app_tickets.inboxes": {
     "rows": 3,
-    "digest": "7c6ef055bb5bfeec"
+    "digest": "f2a05ce9df12a43d"
   },
   "app_tickets.messages": {
     "rows": 16,
@@ -217,7 +217,7 @@
   },
   "kernel.agents": {
     "rows": 12,
-    "digest": "cd7cd5a6cd1cfc16"
+    "digest": "4d9a4fce7f6e7ca8"
   },
   "kernel.app_seeded_assets": {
     "rows": 9,
@@ -265,7 +265,7 @@
   },
   "kernel.pending_events": {
     "rows": 281,
-    "digest": "8d725daab9da7e3d"
+    "digest": "4092f485b4dc17d7"
   },
   "kernel.resource_grants": {
     "rows": 7,
@@ -309,7 +309,7 @@
   },
   "kernel.user_thread_state": {
     "rows": 60,
-    "digest": "fb66ee5f4bf9cc9f"
+    "digest": "e6e2471891b52ad8"
   },
   "kernel.users": {
     "rows": 8,

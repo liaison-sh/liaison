@@ -1399,56 +1399,81 @@ describe("Threads Scenario", () => {
   it(
     "B12 — replays stored events on reconnect with lastEventId",
     async () => {
+      const isB12Message = (m: any) =>
+        m.type === "event" &&
+        m.payload?.entity === "message" &&
+        m.payload?.action === "create" &&
+        m.payload?.data?.threadId === b12ThreadId
+
+      // A real cursor: the eventId of an event this socket actually received.
+      // A cursor of 0 means a fresh connection, which the server never replays
+      // to (the client hydrates over REST), so the test must not rely on one.
       const wsA = await connectWs(url, b12UserA.token)
-      const lastSeen =
-        wsA.messages
-          .filter((m: any) => m.type === "event" && m.eventId)
-          .map((m: any) => m.eventId)
-          .sort((a: number, b: number) => b - a)[0] ?? 0
-
+      await api(url, `/api/threads/${b12ThreadId}/messages`, {
+        token: b12UserB.token,
+        body: { content: "replay-cursor" },
+      })
+      const cursorEvent = await wsA.waitFor(
+        "event",
+        (m: any) => isB12Message(m) && typeof m.eventId === "number",
+        10_000,
+      )
+      const lastSeen: number = cursorEvent.eventId
+      expect(lastSeen).toBeGreaterThan(0)
       wsA.close()
-      await new Promise((r) => setTimeout(r, 300))
 
-      for (let i = 1; i <= 3; i++) {
-        await api(url, `/api/threads/${b12ThreadId}/messages`, {
-          token: b12UserB.token,
-          body: { content: `replay-msg-${i}` },
-        })
+      // B's own socket proves all three were published (and so buffered)
+      // before A reconnects: what A then gets can only come from the replay,
+      // never from live delivery racing the reconnect.
+      const wsB = await connectWs(url, b12UserB.token)
+      const sentIds: string[] = []
+      try {
+        for (let i = 1; i <= 3; i++) {
+          const res = await api(url, `/api/threads/${b12ThreadId}/messages`, {
+            token: b12UserB.token,
+            body: { content: `replay-msg-${i}` },
+          })
+          expect(res.status).toBe(200)
+          sentIds.push(res.body.data.id)
+        }
+        const deadline = Date.now() + 10_000
+        const published = () =>
+          new Set(
+            wsB.messages
+              .filter((m: any) => isB12Message(m) && sentIds.includes(m.payload?.data?.id))
+              .map((m: any) => m.payload.data.id),
+          ).size
+        while (published() < 3 && Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 10))
+        }
+        expect(published()).toBe(3)
+      } finally {
+        wsB.close()
       }
 
       const wsA2 = await connectWs(url, b12UserA.token, lastSeen)
 
       try {
-        // Wait for the replay of all three, rather than a fixed second.
         const deadline = Date.now() + 10_000
         const replayed = () =>
-          wsA2.messages.filter(
-            (m: any) =>
-              m.type === "event" &&
-              m.payload?.entity === "message" &&
-              m.payload?.action === "create" &&
-              m.payload?.data?.threadId === b12ThreadId,
-          ).length
-        while (replayed() < 3 && Date.now() < deadline) {
+          wsA2.messages.filter((m: any) => isB12Message(m) && sentIds.includes(m.payload?.data?.id))
+        while (replayed().length < 3 && Date.now() < deadline) {
           await new Promise((r) => setTimeout(r, 10))
         }
 
-        const replayedMsgs = wsA2.messages.filter(
-          (m: any) =>
-            m.type === "event" &&
-            m.payload?.entity === "message" &&
-            m.payload?.action === "create" &&
-            m.payload?.data?.threadId === b12ThreadId,
-        )
-        expect(replayedMsgs.length).toBeGreaterThanOrEqual(3)
+        const replayedMsgs = replayed()
+        expect(new Set(replayedMsgs.map((m: any) => m.payload.data.id)).size).toBe(3)
 
         const eventIds = [...new Set(replayedMsgs.map((m: any) => m.eventId))].sort(
           (a: number, b: number) => a - b,
         )
-        expect(eventIds.length).toBeGreaterThanOrEqual(3)
+        expect(eventIds.length).toBe(3)
+        expect(eventIds[0]).toBeGreaterThan(lastSeen)
         for (let i = 1; i < eventIds.length; i++) {
           expect(eventIds[i]).toBeGreaterThan(eventIds[i - 1])
         }
+        // Nothing at or before the cursor is replayed.
+        expect(wsA2.messages.some((m: any) => isB12Message(m) && m.eventId <= lastSeen)).toBe(false)
       } finally {
         wsA2.close()
       }

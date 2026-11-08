@@ -38,7 +38,8 @@ function productionFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
     const path = join(dir, entry)
     if (statSync(path).isDirectory()) {
-      if (!["node_modules", "__fixtures__", "migrations"].includes(entry)) productionFiles(path, out)
+      if (!["node_modules", "__fixtures__", "migrations"].includes(entry))
+        productionFiles(path, out)
     } else if (
       entry.endsWith(".ts") &&
       !entry.endsWith(".test.ts") &&

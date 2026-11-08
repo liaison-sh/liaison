@@ -996,8 +996,11 @@ describe("home decisions", () => {
               title: `Refund ${n}`,
               outcome: "approved",
               decidedByName: "Tom Reyes",
+              decidedAs: "next_in_line",
+              decidedOn: `${new Date().getFullYear()}-11-10`,
             })),
             more: 2,
+            forName: "Tester",
           },
         },
       })
@@ -1038,11 +1041,8 @@ describe("home decisions", () => {
     const card = screen.getByTestId("home-source-failed-billing")
     expect(card.textContent).toContain("Could not load what Billing has for you")
     expect(card.textContent).toContain("Anything waiting there is safe and still waiting.")
-              decidedAs: "next_in_line",
-              decidedOn: `${new Date().getFullYear()}-11-10`,
     expect(screen.getByTestId(row(approval("ap-1")))).toBeTruthy()
     apiGetEnvelope.mockClear()
-            forName: "Tester",
     fireEvent.click(screen.getByTestId("home-source-failed-billing-retry"))
     expect(apiGetEnvelope).toHaveBeenCalledWith("/attention-items")
   })

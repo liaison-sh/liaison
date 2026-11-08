@@ -45,13 +45,40 @@ test("env-bootstrapped MCP connection surfaces as managed-by-env in UI", async (
   })
 
   // 2. DB cross-check — the env-bootstrap path upserted the row with
-  //    managed_by='env'. We list via the kernel API (admin token).
-  const listRes = await api(env.serverUrl, "/api/apps/mcp-manager/connections", {
-    method: "GET",
-    token: qa.admin.token,
-  })
-  expect(listRes.status).toBe(200)
-  const rows = (listRes.body as { data: Array<{ slug: string; managedBy: string }> }).data
+  //    managed_by='env'. We list via the kernel API (admin token). The
+  //    bootstrap runs on the leader's lease acquire (mcp-client/index.ts),
+  //    asynchronously to the boot's ready line, so the row lands shortly after
+  //    the restart returns: poll for it. Adding the org server also makes every
+  //    member's older token stale (afterOrgAccessChange): a 401 means sign in
+  //    again for a fresh admin token, then keep listing.
+  let adminToken = qa.admin.token
+  let rows: Array<{ slug: string; managedBy: string }> = []
+  await expect
+    .poll(
+      async () => {
+        const listRes = await api(env.serverUrl, "/api/apps/mcp-manager/connections", {
+          method: "GET",
+          token: adminToken,
+        })
+        if (listRes.status === 401) {
+          const login = await api(env.serverUrl, "/api/auth/login", {
+            method: "POST",
+            body: { email: "admin@test.com", password: "12345678" },
+          })
+          expect(login.status).toBe(200)
+          const fresh = (login.body as { data?: { accessToken?: string } }).data?.accessToken
+          if (!fresh)
+            throw new Error(`login returned no access token: ${JSON.stringify(login.body)}`)
+          adminToken = fresh
+          return "token refreshed"
+        }
+        expect(listRes.status).toBe(200)
+        rows = (listRes.body as { data: Array<{ slug: string; managedBy: string }> }).data
+        return rows.map((r) => r.slug).join(", ")
+      },
+      { timeout: 20_000, message: "e2efix row not found in connections list" },
+    )
+    .toContain("e2efix")
   const envRow = rows.find((r) => r.slug === "e2efix")
   expect(
     envRow,

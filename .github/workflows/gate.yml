@@ -1,0 +1,229 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# The heavy test lanes of a change, sharded over GitHub-hosted runners, started
+# by hand: integration (with integration-extra, integration-mocked, security),
+# e2e-parallel, demo-seed and Playwright (headless). The `plan` job takes the
+# paths changed between `base` and `ref` through the repo's own test map
+# (scripts/test-gate.ts, the planner `bun run test:gate` uses) and keeps the
+# lanes it names; each lane is split over runners with scripts/test-run.ts
+# --shard (the shard counts are GATE_LANES in scripts/test-gate.ts). No lane
+# here needs a model provider key, and no secret is used.
+#
+# Start it with:
+#   gh workflow run gate.yml --ref main -f ref=<commit> -f base=<base>
+# `ref` must be on GitHub (any branch or commit). `base` is any revision the
+# clone knows (origin/main, a tag, a sha); the root commit selects every lane.
+#
+# The job timeouts add up to 60 minutes (plan 10, shard 45, report 5), so a run
+# cannot take longer than an hour once its runners have started.
+name: gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit, branch or tag to gate
+        required: true
+        type: string
+      base:
+        description: Diff base (its merge base with ref is used), e.g. origin/main or a tag
+        required: true
+        default: origin/main
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: gate-${{ inputs.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      count: ${{ steps.plan.outputs.count }}
+      sha: ${{ steps.plan.outputs.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+          # The plan diffs ref against the merge base with `base`.
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+      - name: Install dependencies
+        # A package postinstall that cannot reach its CDN (ffmpeg-static fetches its
+        # binary from a GitHub release) must not fail the job: no CI test spawns a
+        # real ffmpeg, only the live, keyed media scenario. Same fallback as
+        # apps/api/Dockerfile.
+        run: bun install --frozen-lockfile || { echo "install scripts failed (CDN outage?), retrying with --ignore-scripts"; bun install --frozen-lockfile --ignore-scripts; }
+      - name: Plan the lanes from the diff
+        id: plan
+        env:
+          BASE: ${{ inputs.base }}
+        run: |
+          set -euo pipefail
+          git rev-parse --verify --quiet "$BASE^{commit}" >/dev/null || { echo "base $BASE is not a revision of this clone"; exit 1; }
+          bun run scripts/test-gate.ts --base "$BASE" --dry-run --matrix-json gate-matrix.json | tee gate-plan.txt
+          {
+            echo "sha=$(git rev-parse HEAD)"
+            echo "count=$(jq '.include | length' gate-matrix.json)"
+            echo "matrix=$(jq -c '.' gate-matrix.json)"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Gate plan: $(git rev-parse --short HEAD) against $BASE"
+            echo
+            echo '```'
+            grep -E '^(test:gate|  (run|skip|gate lanes|! ))' gate-plan.txt || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  lane:
+    name: ${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.of }}
+    needs: plan
+    if: needs.plan.outputs.count != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      # The defaults share a machine with other work; this runner runs nothing else.
+      TEST_MEM_RESERVE_MB: "2048"
+      LIAISON_TEST_SLOTS: "1"
+      SUITE: ${{ matrix.suite }}
+      SHARD: ${{ matrix.shard }}/${{ matrix.of }}
+      FILES: ${{ toJSON(matrix.files) }}
+    steps:
+      - name: Start the clock
+        run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+      - name: Install dependencies
+        # A package postinstall that cannot reach its CDN (ffmpeg-static fetches its
+        # binary from a GitHub release) must not fail the job: no CI test spawns a
+        # real ffmpeg, only the live, keyed media scenario. Same fallback as
+        # apps/api/Dockerfile.
+        run: bun install --frozen-lockfile || { echo "install scripts failed (CDN outage?), retrying with --ignore-scripts"; bun install --frozen-lockfile --ignore-scripts; }
+      - name: Install postgres/redis CLIs and xmllint
+        # The client's major matches docker-compose's postgres: pg_dump refuses a
+        # newer server, and the security suite's export test runs it.
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y --no-install-recommends postgresql-client-17 redis-tools libxml2-utils
+          # pg_wrapper in /usr/bin picks the runner's own older cluster, not the newest client.
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
+      - name: Test env with throwaway secrets
+        # .env.test is gitignored; the run namespace pins the database, Redis
+        # and MeiliSearch coordinates, so only the secrets need values here.
+        run: |
+          set -euo pipefail
+          cp .env.test.example .env.test
+          sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|; s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=$(openssl rand -hex 32)|" .env.test
+      - name: Bring up test infra (Postgres, Redis, MeiliSearch, SeaweedFS)
+        run: bun run infra:up
+      - name: Build the apps the api suites install
+        # demo-shopify-runtime.test.ts and the demo seeders install these from
+        # their frozen tarballs. Playwright's global setup builds its own.
+        if: matrix.suite != 'playwright'
+        run: |
+          for app in shopify boxtal invoicing; do
+            bash scripts/build-bundled-app.sh "$app" --skip-sign --skip-typecheck
+          done
+      - name: Install Chromium
+        if: matrix.suite == 'playwright'
+        working-directory: apps/web
+        run: bunx --bun playwright install --with-deps chromium
+      - name: Run ${{ matrix.suite }} shard ${{ matrix.shard }} of ${{ matrix.of }}
+        id: run
+        timeout-minutes: 35
+        run: |
+          set -euo pipefail
+          echo "TEST_START=$(date +%s)" >> "$GITHUB_ENV"
+          args=()
+          while IFS= read -r f; do
+            [ -n "$f" ] && args+=(--file "$f")
+          done < <(jq -r '.[]' <<<"$FILES")
+          bun run scripts/test-run.ts "$SUITE" --shard "$SHARD" "${args[@]}"
+      - name: Record the shard's result
+        if: always()
+        env:
+          OUTCOME: ${{ steps.run.outcome }}
+          SHARD_NO: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          now=$(date +%s)
+          mkdir -p gate-result
+          jq -n --arg suite "$SUITE" --arg shard "$SHARD" --arg outcome "$OUTCOME" \
+            --argjson job "$(( now - JOB_START ))" --argjson test "$(( now - ${TEST_START:-$now} ))" \
+            '{suite: $suite, shard: $shard, outcome: $outcome, job_s: $job, test_s: $test}' \
+            > "gate-result/$SUITE-$SHARD_NO.json"
+      - name: Keep the result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gate-result-${{ matrix.suite }}-${{ matrix.shard }}
+          path: gate-result/
+          retention-days: 14
+      - name: Keep the failing shard's reports
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gate-logs-${{ matrix.suite }}-${{ matrix.shard }}
+          path: |
+            logs/
+            apps/web/test-results/
+            apps/web/playwright-report/
+            apps/web/junit*.xml
+          retention-days: 14
+          if-no-files-found: ignore
+
+  report:
+    needs: [plan, lane]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: gate-result-*
+          path: gate-result
+          merge-multiple: true
+      - name: Summary
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          LANES: ${{ needs.lane.result }}
+        run: |
+          set -euo pipefail
+          started=$(gh api "repos/$GH_REPO/actions/runs/$RUN_ID" --jq .run_started_at)
+          total=$(( ($(date +%s) - $(date -d "$started" +%s)) / 60 ))
+          {
+            echo "### Gate result: ${LANES} in ${total} min"
+            echo
+            echo "| lane | shard | result | tests (min) | job (min) |"
+            echo "|---|---|---|---|---|"
+            if compgen -G "gate-result/*.json" >/dev/null; then
+              jq -rs 'sort_by(.suite, .shard)[] | "| \(.suite) | \(.shard) | \(.outcome) | \(.test_s / 60 * 10 | floor / 10) | \(.job_s / 60 * 10 | floor / 10) |"' gate-result/*.json
+            fi
+          } | tee gate-summary.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gate-summary
+          path: gate-summary.md
+          retention-days: 30

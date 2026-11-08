@@ -3,7 +3,15 @@
 // suites a change runs, narrowed to which files, and what it skips and why.
 
 import { describe, expect, it } from "bun:test"
-import { BROAD_SUITES, colocatedTests, laneOrder, planGate, type SuiteInfo } from "./test-gate"
+import {
+  BROAD_SUITES,
+  colocatedTests,
+  GATE_LANES,
+  gateMatrix,
+  laneOrder,
+  planGate,
+  type SuiteInfo,
+} from "./test-gate"
 
 const MAP: Array<{ re: RegExp; suites: string[] }> = [
   { re: /^apps\/api\/src\/tests\/e2e\//, suites: ["e2e-parallel"] },
@@ -133,5 +141,33 @@ describe("laneOrder", () => {
       "playwright",
     ])
     expect(light.map((r) => r.suite)).toEqual(["root", "web-unit"])
+  })
+})
+
+describe("gateMatrix", () => {
+  it("shards each heavy lane the plan names, and only those", () => {
+    const plan = planGate(
+      ["apps/api/src/modules/foo/other.ts", "scripts/lib/x.ts"],
+      INFO,
+      listDir,
+      mapFor,
+    )
+    const m = gateMatrix(plan, INFO)
+    expect(m.filter((e) => e.suite === "integration").map((e) => `${e.shard}/${e.of}`)).toEqual(
+      Array.from(
+        { length: GATE_LANES.integration ?? 0 },
+        (_, i) => `${i + 1}/${GATE_LANES.integration}`,
+      ),
+    )
+    expect(m.every((e) => e.files.length === 0)).toBe(true)
+    expect(new Set(m.map((e) => e.suite))).toEqual(new Set(["integration"]))
+  })
+
+  it("hands a narrowed lane its files, cwd-relative, with no more shards than files", () => {
+    const plan = planGate(["apps/api/src/tests/contacts.test.ts"], INFO, listDir, mapFor)
+    const m = gateMatrix(plan, INFO).filter((e) => e.suite === "integration")
+    expect(m).toEqual([
+      { suite: "integration", shard: 1, of: 1, files: ["src/tests/contacts.test.ts"] },
+    ])
   })
 })

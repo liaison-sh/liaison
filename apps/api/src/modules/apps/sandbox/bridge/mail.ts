@@ -144,6 +144,23 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
   }
 
   return {
+    /** Rows for a company's or a contact's timeline, read under the caller's row security. */
+    mail_activityRead: async (paramsJson: string): Promise<string> => {
+      if (ctx.appName !== "mail")
+        throw new Error("mail_activityRead is only available to the mail app")
+      const { hasScope } = await import("~/modules/permissions/permissions")
+      if (!hasScope("mail:conversations:read", ctx.callerScopes ?? [])) {
+        throw new Error("forbidden: missing scope mail:conversations:read")
+      }
+      const { mailActivityRows } = await import("~/modules/mail/activity-source")
+      const { withReadOnlySource } = await import("~/modules/contacts/activity")
+      const params = JSON.parse(paramsJson)
+      return JSON.stringify(
+        await withReadOnlySource(ctx.txDb as never, (tx) =>
+          mailActivityRows(tx, ctx.orgId, params),
+        ),
+      )
+    },
     // ── Mailbox sealing (spec section 5.2) ──────────────────────────────────
     //
     // The bridge can SEAL. There is deliberately no counterpart that unseals,

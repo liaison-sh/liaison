@@ -186,6 +186,10 @@ export const documentsExportHandler = (
   ctx: Parameters<typeof exportDocuments>[0],
 ) => exportDocuments(ctx, params)
 
+// --- Timeline source (kernel activitySources; not agent-visible) ---
+export const activityReadHandler = (params: unknown, ctx: Parameters<typeof activityRead>[0]) =>
+  activityRead(ctx, params)
+
 // --- Read tools (agent-visible, ungated) ---
 export const documentsSearchHandler = (
   params: Parameters<typeof documentsSearchTool>[1],
@@ -568,6 +572,7 @@ import {
   einvoicingSettingsGet,
   einvoicingSettingsValues,
 } from "./einvoicing/transmission-read"
+import { activityRead } from "./activity"
 import { ingestOrQueue, receivedCatchUp } from "./received/ingest"
 import {
   receivedActionRequest,

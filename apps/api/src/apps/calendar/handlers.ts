@@ -17,6 +17,7 @@
 import type {} from "node:buffer"
 
 interface CalendarCtx {
+  calendar_activityRead(paramsJson: string): Promise<string>
   getUserId(): string
   getOrgId(): string
   db_findMany(entity: string, optsJson: string): Promise<string>
@@ -1340,4 +1341,9 @@ async function exportCalendar(params: unknown, ctx: CalendarCtx): Promise<unknow
     status: r.sync_status,
     createdAt: r.created_at,
   }))
+}
+
+/** Timeline rows for the kernel's activity read (activitySources), host-side. */
+async function activityRead(params: unknown, ctx: CalendarCtx): Promise<unknown> {
+  return JSON.parse(await ctx.calendar_activityRead(JSON.stringify(params ?? {})))
 }

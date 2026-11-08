@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.20.61",
+  "version": "0.20.62",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1592,7 +1592,9 @@
     }
   },
   "outsideTextFields": ["buyer", "supplier", "counterparty_name", "counterparty_address", "counterparty_shipping_name", "counterparty_shipping_address", "counterparty_email", "po_number", "customer_reference", "notes", "description", "customs_description", "billing_line1", "billing_line2", "billing_city", "customer", "email", "supplier_name", "invoice_number", "status_reason", "history", "filename", "lifecycle_reason", "lifecycle_log", "last_error", "registry_name", "registry_line1", "registry_city", "contact_name", "vies_name", "vies_address", "buyer_legal_name", "legal_name", "name", "address", "sigle", "enseignes", "line1", "city", "summary", "blocked_on", "label", "refusal", "buyer_refusal"],
+  "activitySources": [{"tool": "activity_read", "scope": "invoicing:documents:read", "label": "Invoices", "filterKey": "invoicing"}],
   "tools": {
+    "activity_read": {"description": "A company's or a contact's documents issued, paid and credited, newest first, for their timeline. Never drafts. Read by the kernel.", "readOnly": true, "agentVisible": false, "timeoutMs": 2000, "requiredScopes": ["invoicing:documents:read"], "handler": "activityReadHandler", "params": {"type": "object", "properties": {"contactIds": {"type": "array", "items": {"type": "string"}}, "companyId": {"type": ["string", "null"]}, "dealIds": {"type": "array", "items": {"type": "string"}}, "before": {"type": ["object", "null"]}, "limit": {"type": "integer"}, "prefix": {"type": "string"}}}},
     "einvoicing_settings_values": {
       "description": "The settings page's own read of the four e-invoicing fields (platform, cut-over date, send and booking switches), in the shape einvoicing_settings_set takes back. Not for agents (einvoicing_settings_get is).",
       "requiredScopes": [
@@ -2003,6 +2005,10 @@
           },
           "contact_id": {
             "type": "string"
+          },
+          "company_id": {
+            "type": "string",
+            "description": "Company's people only."
           },
           "treatment": {
             "type": "string"
@@ -6039,6 +6045,10 @@
     {
       "target": "shopify:variants_get",
       "reason": "issue-time customs fetch (HS code / country of origin / goods description) for a Shopify order line's variant when the overlay is empty"
+    },
+    {
+      "target": "kernel:companies_read",
+      "reason": "documents_search by company_id lists the documents made out to the company's people"
     },
     {
       "target": "kernel:contacts_read",

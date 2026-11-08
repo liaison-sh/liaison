@@ -2468,5 +2468,21 @@
     "say": "fusionne ces deux sociétés, c'est le même client",
     "typed": ["fusionner sociétés", "doublon société", "même entreprise"],
     "any": ["kernel__companies_merge"]
+  },
+  {
+    "id": "C62",
+    "set": "seed",
+    "lang": "en",
+    "say": "what have we said to Lumen lately",
+    "typed": ["company timeline", "history with client", "customer history", "activity company"],
+    "any": ["kernel__company_timeline"]
+  },
+  {
+    "id": "C63",
+    "set": "seed",
+    "lang": "fr",
+    "say": "historique avec le client Lumen",
+    "typed": ["historique client", "historique société", "fil d'activité"],
+    "any": ["kernel__company_timeline"]
   }
 ]

@@ -67,7 +67,7 @@
       }
     ]
   },
-  "version": "1.12.0",
+  "version": "1.13.0",
   "description": "Email integration: Gmail and IMAP/SMTP",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -623,7 +623,9 @@
     }
   },
   "outsideTextFields": ["from", "subject", "snippet", "body", "attachments"],
+  "activitySources": [{"tool": "activity_read", "scope": "mail:conversations:read", "label": "Mail", "filterKey": "mail"}],
   "tools": {
+    "activity_read": {"description": "A company's or a contact's mail, one row per message, newest first, for their timeline. Read by the kernel.", "readOnly": true, "agentVisible": false, "timeoutMs": 2000, "requiredScopes": ["mail:conversations:read"], "trustBoundary": "user", "handler": "activityRead", "params": {"type": "object", "properties": {"contactIds": {"type": "array", "items": {"type": "string"}}, "companyId": {"type": ["string", "null"]}, "dealIds": {"type": "array", "items": {"type": "string"}}, "before": {"type": ["object", "null"]}, "limit": {"type": "integer"}, "prefix": {"type": "string"}}}},
     "listAccounts": {
       "description": "List the mailboxes this person can use, each with its sync status, last sync error and next retry. Disconnected ones are hidden unless includeDisconnected=true. A mailbox is connected by calling kernel__config_mail, then kernel__request_secret; to the person, say you will connect the mailbox, never a tool name.",
       "searchKeywords": ["compte", "comptes", "boîte", "boîtes", "account", "accounts", "gmail", "imap", "synchronisation", "sync"],

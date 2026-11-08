@@ -48,6 +48,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `companies_read` | Read a company: its account manager (with away until and who is next in line), its people with the main contact and their last mail, and its newest open deal. |  | `kernel:companies:read` |
 | `companies_search` | Search companies by name or domain, with each one's account manager and people count. |  | `kernel:companies:read` |
 | `companies_write` | Create or change a company (omit companyId to create), or set its account manager with ownerUserId (null clears). | yes | `kernel:companies:write` |
+| `company_timeline` | A company's or a contact's timeline, newest first: mail, tickets, invoices, meetings and deals, from each app you can read. |  | `kernel:companies:read` |
 | `computer_session_answer` | Answer what one of the person's sessions is waiting on, as its card does, with the person's own answer (never decide for them): a permission (`allow`, and `scope` "session" only when they say for the rest of the session), a plan (`allow` true approves it, false keeps it planning), or a question (`answers`: each question's `number` from the read, or its text, to the option label they chose, or their own words). |  | `kernel:threads:write` |
 | `computer_session_import` | Bring one of the person's Claude Code sessions into Liaison: `follow` shows it live while it runs elsewhere; `take_over` imports it so the person can continue it from Liaison. | yes | `kernel:threads:write` |
 | `computer_session_import_list` | List the Claude Code sessions recorded in the folders the person shares from their own computer (VS Code or terminal sessions), so they can bring one into Liaison. |  | `kernel:threads:read` |
@@ -376,6 +377,7 @@ Month and week calendar that syncs both ways with Google Calendar.
 
 | Tool | Description | Approval-gated | Required scopes |
 | --- | --- | --- | --- |
+| `activity_read` | The meetings a company's or a contact's people attend, in the 90 days before the cursor, newest first, for their timeline. |  | `calendar:events:read` |
 | `create_event` | Create a new event or meeting on a writable calendar. |  | `calendar:events:write` |
 | `delete_event` | Delete an event or meeting. |  | `calendar:events:write` |
 | `list_accounts` | List connected Google Calendar accounts visible to the caller (their own personal connections plus every org-wide connection) — the generic kernel connections list deliberately excludes org-owned non-kernel connections, so Settings uses this app-specific tool instead (mirrors mail's listAccounts). |  | `calendar:events:read` |
@@ -448,6 +450,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 
 | Tool | Description | Approval-gated | Required scopes |
 | --- | --- | --- | --- |
+| `activity_read` | A company's or a contact's documents issued, paid and credited, newest first, for their timeline. |  | `invoicing:documents:read` |
 | `contact_relationships_get` | Get a contact's invoicing relationship classification (customer/vendor). |  | `invoicing:contacts:read` |
 | `contact_relationships_set` | Set a contact's relationship classification (customer/vendor/both/other). |  | `invoicing:contacts:write` |
 | `counterparty_identity_get` | The e-invoicing identity of a counterparty: customer kind, SIREN / SIRET and whether the SIREN is confirmed against the business registry, registry name and head office, territory treatment. |  | `invoicing:contacts:read` |
@@ -553,6 +556,7 @@ Read, write and reply to email from Gmail or any IMAP/SMTP mailbox.
 
 | Tool | Description | Approval-gated | Required scopes |
 | --- | --- | --- | --- |
+| `activity_read` | A company's or a contact's mail, one row per message, newest first, for their timeline. |  | `mail:conversations:read` |
 | `appendInboundMessage` | Append an inbound mail message to a conversation, deduping by externalMessageId. |  | `mail:conversations:write` |
 | `archive` | Archive one or more mail conversations (inbox hygiene — moves them out of the active inbox by setting status='archived'). |  | `mail:conversations:write` |
 | `compose` | Compose a new mail message. | yes | `mail:conversations:write` |
@@ -635,6 +639,7 @@ Projects and tasks with owners, statuses, due dates and discussions.
 
 | Tool | Description | Approval-gated | Required scopes |
 | --- | --- | --- | --- |
+| `activity_read` | A company's deals opened and closed, their subtasks, and the tasks of its projects, newest first, for its timeline. |  | `projects:tasks:read` |
 | `add_dependency` | Add a dependency between two tasks. |  | `projects:tasks:write` |
 | `approval_route_read` | Who a pending approval about a task is for: its assignee, as personId (null when nobody holds it). |  | `projects:tasks:read` |
 | `attentionItems` | YOUR own work that needs attention right now — the calling user's OVERDUE, DUE-THIS-WEEK, and BLOCKED non-terminal tasks across ALL projects, each carrying its project name + due date. |  | `projects:tasks:read` |
@@ -791,6 +796,7 @@ Track customer requests, returns and warranty cases to resolution.
 
 | Tool | Description | Approval-gated | Required scopes |
 | --- | --- | --- | --- |
+| `activity_read` | A company's or a contact's tickets opened, notes and closings, newest first, for their timeline. |  | `tickets:tickets:read` |
 | `addNote` | Append an INTERNAL note to a Liaison ticket (seen by teammates on that ticket), never a note on a record in an external system such as a CRM company, contact or deal: that is api-connector connector_write. |  | `tickets:tickets:write` |
 | `apiKeys.create` | Create an API key | yes | `tickets:settings:admin` |
 | `apiKeys.list` | List the API keys that still work (a revoked key is left out) |  | `tickets:settings:admin` |

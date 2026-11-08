@@ -9,11 +9,12 @@ import { Hono } from "hono"
 import { HTTPException } from "hono/http-exception"
 import { z } from "zod"
 import type { AppEnv } from "~/app"
-import { withRequestRls } from "~/lib/request-rls"
+import { extractRlsContext, withRequestRls } from "~/lib/request-rls"
 import { paginated, success } from "~/lib/response"
 import { zValidator } from "~/lib/validate"
 import { idParam } from "~/lib/validators"
 import { requireScope } from "~/middleware/require-scope"
+import { activityQuerySchema, readActivity } from "~/modules/contacts/activity"
 import {
   COMPANY_LINK_BATCH_MAX,
   COMPANY_NAME_MAX,
@@ -91,6 +92,26 @@ companyRoutes.post("/", zValidator("json", createSchema), async (c) => {
   )
   return success(c, company, notice ? { notice } : undefined, 201)
 })
+
+/** A company's timeline page: its people's mail, tickets, invoices, meetings and deals, read from each app. */
+companyRoutes.get(
+  "/:id/activity",
+  zValidator("param", idParam),
+  zValidator("query", activityQuerySchema),
+  async (c) => {
+    const query = c.req.valid("query")
+    const result = await readActivity({
+      orgId: c.get("orgId"),
+      actor: extractRlsContext(c),
+      target: { companyId: c.req.param("id") },
+      before: query.before,
+      limit: query.limit,
+      source: query.source,
+    })
+    if (!result) throw new HTTPException(404, { message: "Company not found" })
+    return success(c, result)
+  },
+)
 
 companyRoutes.get("/:id", zValidator("param", idParam), async (c) => {
   const orgId = c.get("orgId")

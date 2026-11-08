@@ -47,7 +47,7 @@ describe("tickets manifest", () => {
     expect(tools.get?.runningLabelKey).toBe("tickets.card.runningGet")
     expect(tools.backlogHealth?.runningLabelKey).toBe("tickets.card.runningBacklog")
     // 1.2.11: ticket and backlog results draw as cards.
-    expect(ticketsManifest.version).toBe("1.2.11")
+    expect(ticketsManifest.version).toBe("1.3.0")
     expect(validateAppManifest(ticketsManifest).success).toBe(true)
   })
 

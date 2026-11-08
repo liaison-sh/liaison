@@ -534,7 +534,7 @@
     },
     "calendar__list_events": {
       "desc": 136,
-      "schema": 38
+      "schema": 63
     },
     "calendar__retry_import": {
       "desc": 361,
@@ -746,7 +746,7 @@
     },
     "invoicing__documents_search": {
       "desc": 729,
-      "schema": 455
+      "schema": 472
     },
     "invoicing__documents_send_to_customer": {
       "desc": 496,
@@ -2897,11 +2897,18 @@
     "C56|schedule recurring task": "15tl",
     "C57|invoce search": "15tl",
     "C57|invocie": "",
-    "C60|comapny": "5tl",
-    "C60|compnay": "5tl",
+    "C60|comapny": "5t",
+    "C60|compnay": "5t",
     "C61|company merge": "",
     "C61|duplicate companies": "15tl",
     "C61|merge companies": "",
+    "C62|activity company": "15tl",
+    "C62|company timeline": "15tl",
+    "C62|customer history": "",
+    "C62|history with client": "5t",
+    "C63|fil d'activité": "15t",
+    "C63|historique client": "5",
+    "C63|historique société": "",
     "H001|modifier un rôle": "15tl",
     "H002|créer un rôle": "15tl",
     "H003|supprimer un rôle": "15tl",
@@ -3086,7 +3093,7 @@
     "K01|link contacts to company": "15tl",
     "K02|créer sociétés": "",
     "K02|regrouper contacts par société": "15t",
-    "K02|sociétés depuis contacts": "5",
+    "K02|sociétés depuis contacts": "",
     "K03|different companies": "5",
     "K03|not a duplicate": "5t",
     "K03|not the same company": "15tl",

@@ -34,6 +34,7 @@ import { flushEventHandlers } from "~/infra/events/event-bus"
 import { processOutboxBatch } from "~/infra/events/outbox-worker"
 import { dispatchAppJobWithContext } from "~/infra/jobs/job-context"
 import { JobsTestAccess } from "~/infra/jobs/jobs"
+import { ObjectStorageTestAccess } from "~/infra/storage/object-storage"
 import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { env } from "~/lib/env"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
@@ -320,6 +321,9 @@ describe("shopify -> invoicing PO number seam (real webhook -> real outbox -> re
 
     afterEach(async () => {
       setSystemTime()
+      // The S3 client learned a clock offset from the fake clock (it corrects skew from the
+      // server's Date header); drop it, or the next file's first upload is signed months off.
+      ObjectStorageTestAccess.resetClient()
       await setIssuerZone("UTC")
     })
 

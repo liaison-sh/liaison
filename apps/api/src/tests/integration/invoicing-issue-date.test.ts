@@ -13,6 +13,7 @@ import { sql } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { approvalPolicies } from "~/db/schema/kernel"
+import { ObjectStorageTestAccess } from "~/infra/storage/object-storage"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { registerApps } from "~/modules/apps/runtime"
@@ -209,6 +210,9 @@ describe("issue date and number year (real Postgres, sandbox, bridge)", () => {
 
   afterEach(async () => {
     setSystemTime()
+    // The S3 client learned a clock offset from the fake clock (it corrects skew from the
+    // server's Date header); drop it, or the next file's first upload is signed months off.
+    ObjectStorageTestAccess.resetClient()
     if (ORG) await setOrgZone("UTC")
   })
 

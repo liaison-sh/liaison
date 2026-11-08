@@ -7,6 +7,7 @@ import { extractRows, type RlsClient } from "~/db"
 import type { UserContext } from "~/db/rls"
 import { describeDbError } from "~/lib/transient-db-error"
 import { parseStoredLevels, type ValidationLevel } from "./checklist-status"
+import { PIPELINE_CLOSING_STAGES, PIPELINE_OPEN_STAGES } from "./deals"
 import {
   deriveProjectKey,
   formatTaskKey,
@@ -584,7 +585,13 @@ export function normalizeExplicitProjectKey(key: string): string {
  *  unique index is violated (mirrors migration 0043's backfill collision handling). */
 async function insertProjectWithKey(
   tx: RlsClient,
-  args: { projectId: string; orgId: string; input: CreateProjectInput; ownerId: string },
+  args: {
+    projectId: string
+    orgId: string
+    input: CreateProjectInput
+    ownerId: string
+    kind?: "work" | "pipeline"
+  },
 ): Promise<string> {
   const baseKey = args.input.key
     ? normalizeExplicitProjectKey(args.input.key)
@@ -599,7 +606,7 @@ async function insertProjectWithKey(
       await tx.transaction(async (savepointTx) => {
         await savepointTx.execute(drizzleSql`
           INSERT INTO ${projectsRel("projects")}
-            (id, org_id, name, description, icon, color, key, "group", owner_id, checklist_on_cards)
+            (id, org_id, name, description, icon, color, key, "group", owner_id, checklist_on_cards, kind)
           VALUES (
             ${args.projectId}::uuid,
             ${args.orgId}::uuid,
@@ -610,7 +617,8 @@ async function insertProjectWithKey(
             ${candidate},
             ${args.input.group ?? null},
             ${args.ownerId}::uuid,
-            ${args.input.checklistOnCards ?? true}
+            ${args.input.checklistOnCards ?? true},
+            ${args.kind ?? "work"}
           )
         `)
       })
@@ -632,6 +640,88 @@ async function insertProjectWithKey(
 }
 
 export async function createProject(args: CreateProjectArgs): Promise<ProjectDetail> {
+  return insertProject(args, "work", (input) =>
+    normalizeStatusSeeds(input.statuses).map(([label, order, terminal, color]) => ({
+      label,
+      order,
+      terminal,
+      color,
+      dealOutcome: null,
+    })),
+  )
+}
+
+export interface CreatePipelineInput {
+  name: string
+  description?: string
+  key?: string
+  group?: string | null
+  /** The open stages, in board order. Omit for Lead, Qualified, Demo,
+   *  Proposal. Won and Lost always follow and close a deal. */
+  stages?: string[]
+}
+
+export interface CreatePipelineArgs {
+  tx: RlsClient
+  orgId: string
+  actor: UserContext
+  input: CreatePipelineInput
+}
+
+/**
+ * A sales pipeline: a project whose root tasks are deals. Its stages are the
+ * open ones (by default Lead, Qualified, Demo, Proposal), then Won and Lost,
+ * both terminal, which set a deal's outcome. The key is derived from the name
+ * unless one is given.
+ */
+export async function createPipeline(args: CreatePipelineArgs): Promise<ProjectDetail> {
+  const { stages, ...rest } = args.input
+  const open: Array<{ label: string; color: string | null }> =
+    stages && stages.length > 0
+      ? normalizeStatusSeeds(stages.map((label) => ({ label }))).map(([label]) => ({
+          label,
+          color: null,
+        }))
+      : PIPELINE_OPEN_STAGES.map(([label, color]) => ({ label, color }))
+  const taken = new Set(open.map((s) => s.label.toLowerCase()))
+  for (const [label] of PIPELINE_CLOSING_STAGES) {
+    if (taken.has(label.toLowerCase())) {
+      throw new Error(
+        `invalid_statuses: ${JSON.stringify(label)} is added by the pipeline itself; list only the open stages`,
+      )
+    }
+  }
+  if (open.length + PIPELINE_CLOSING_STAGES.length > MAX_STATUS_SEEDS) {
+    throw new Error(
+      `invalid_statuses: at most ${MAX_STATUS_SEEDS - PIPELINE_CLOSING_STAGES.length} open stages`,
+    )
+  }
+  const seeds: StatusInsert[] = [
+    ...open.map((s, order) => ({ ...s, order, terminal: false, dealOutcome: null })),
+    ...PIPELINE_CLOSING_STAGES.map(([label, color, outcome], i) => ({
+      label,
+      color,
+      order: open.length + i,
+      terminal: true,
+      dealOutcome: outcome,
+    })),
+  ]
+  return insertProject({ ...args, input: rest }, "pipeline", () => seeds)
+}
+
+interface StatusInsert {
+  label: string
+  order: number
+  terminal: boolean
+  color: string | null
+  dealOutcome: "won" | "lost" | null
+}
+
+async function insertProject(
+  args: CreateProjectArgs,
+  kind: "work" | "pipeline",
+  statusSeeds: (input: CreateProjectInput) => StatusInsert[],
+): Promise<ProjectDetail> {
   return args.tx.transaction(async (tx) => {
     const projectId = randomUUID()
     // Checked before anything is written: a too-long group creates nothing.
@@ -641,15 +731,16 @@ export async function createProject(args: CreateProjectArgs): Promise<ProjectDet
       orgId: args.orgId,
       input: { ...args.input, group },
       ownerId: args.actor.userId,
+      kind,
     })
     // Inside the same transaction: an invalid column list rolls the project
     // row back too, so a rejected create never leaves an empty board behind.
-    const seeds = normalizeStatusSeeds(args.input.statuses)
-    for (const [label, order, terminal, color] of seeds) {
+    const seeds = statusSeeds(args.input)
+    for (const { label, order, terminal, color, dealOutcome } of seeds) {
       const sId = randomUUID()
       await tx.execute(drizzleSql`
         INSERT INTO ${projectsRel("project_statuses")}
-          (id, org_id, project_id, label, color, "order", terminal)
+          (id, org_id, project_id, label, color, "order", terminal, deal_outcome)
         VALUES (
           ${sId}::uuid,
           ${args.orgId}::uuid,
@@ -657,7 +748,8 @@ export async function createProject(args: CreateProjectArgs): Promise<ProjectDet
           ${label},
           ${color},
           ${order},
-          ${terminal}
+          ${terminal},
+          ${dealOutcome}
         )
       `)
     }
@@ -666,7 +758,7 @@ export async function createProject(args: CreateProjectArgs): Promise<ProjectDet
       entity: "project",
       action: "created",
       entityId: projectId,
-      data: { id: projectId, name: args.input.name },
+      data: { id: projectId, name: args.input.name, ...(kind === "pipeline" ? { kind } : {}) },
       actorId: args.actor.userId,
       actorType: args.actor.actorType,
       orgId: args.orgId,

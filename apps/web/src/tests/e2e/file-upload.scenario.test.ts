@@ -733,7 +733,25 @@ test("[Attachments] mail outbound message renders sent attachment chips", async 
   qa,
   world,
 }) => {
-  const accountEmail = `mail-outbound-${Date.now()}@e2e.test`
+  // The screenshot is of the message alone, but every mailbox still waiting
+  // for setup draws a banner above it. Those banners have half-pixel heights,
+  // so a mailbox an earlier test of this file left behind moved the message
+  // by a fraction of a pixel: its text rasterised differently and the image
+  // came out 259 or 260 pixels tall. Start from the seeded mailboxes only,
+  // and seed fixed values (address, subject, dates) so the header reads the
+  // same on every run.
+  const mailSchema = env.schemaPrefix ? `"${env.schemaPrefix}app_mail"` : "app_mail"
+  await env.db.sql.unsafe(
+    `WITH gone AS (
+       DELETE FROM ${mailSchema}.accounts
+        WHERE org_id = $1 AND email_address LIKE '%@e2e.test'
+       RETURNING id
+     )
+     DELETE FROM ${mailSchema}.conversations WHERE account_id IN (SELECT id FROM gone)`,
+    [world.org.id],
+  )
+  const accountEmail = "mail-outbound@e2e.test"
+  const sentAt = "2026-03-02T09:30:00.000Z"
   const { accountId } = await seedMailAccount(env, world.org.id, {
     userId: qa.admin.id,
     email: accountEmail,
@@ -743,9 +761,9 @@ test("[Attachments] mail outbound message renders sent attachment chips", async 
     messageIds: [sentMessageId],
   } = await seedMailConversation(env, world.org.id, {
     accountId,
-    subject: `Outbound attachments ${Date.now()}`,
+    subject: "Outbound attachments",
     isRead: true,
-    lastMessageAt: new Date().toISOString(),
+    lastMessageAt: sentAt,
     messages: [
       {
         direction: "outbound",
@@ -753,7 +771,7 @@ test("[Attachments] mail outbound message renders sent attachment chips", async 
         htmlBody: "<p>see attached files</p>",
         from: { email: accountEmail, name: "Elodie" },
         to: [{ email: "customer@external.test" }],
-        sentAt: new Date(Date.now() - 60_000).toISOString(),
+        sentAt,
         isRead: true,
         sentByUserId: qa.admin.id,
       },

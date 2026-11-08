@@ -144,6 +144,8 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
 
   // Getting started
   { glob: "apps/api/src/modules/demo/**", pages: ["getting-started/demo"] },
+  // The Playwright suite's config: snapshot update mode, baselines per platform.
+  { glob: "apps/web/playwright.config.ts", pages: ["testing"] },
   // Seed tiers before the catch-all below (the first matching entry wins).
   { glob: "apps/api/src/seed/tiers/standard/**", pages: ["testing", "provisioning-cli"] },
   { glob: "apps/api/src/seed/tiers/minimal.ts", pages: ["testing"] },

@@ -607,7 +607,11 @@ describe("runAgentChat run frame carries the effective scope", () => {
   test("an empty effective scope yields only what every member may do and never falls back to the actor scopes", async () => {
     const actor = await actorFor(await userWith([ALPHA, SHARED]))
 
-    expect(Object.keys(catalogForFrame(actor, []))).toEqual(["kernel__report_bug"])
+    // Every member may report a bug and export their own personal data.
+    expect(Object.keys(catalogForFrame(actor, [])).sort()).toEqual([
+      "kernel__data_subject_export",
+      "kernel__report_bug",
+    ])
     // Same actor without an effective scope on the frame: its own scopes apply.
     expect(escTools(catalogForFrame(actor, undefined))).toEqual([
       "esc__alphaTool",

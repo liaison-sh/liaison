@@ -105,3 +105,4 @@ Loader fault before any ctx.* call after the retry: the run runs once on the loc
 A Workers run gets a secret-free copy of the bridge, the local sandbox the original -> apps/api/src/modules/apps/sandbox/run-app.ts:343
 load also covers a module without the export the run named (worker-core codes) -> apps/api/src/modules/apps/workers/worker-core.ts:326 ; apps/api/src/modules/apps/workers/faults.ts:56
 A tool refused at an app day cap answers 429 with its code and {limit, used} in error.details -> apps/api/src/modules/apps/execute-tool.ts:5619
+Webhook base is the org's host with org hosts, else BASE_URL -> apps/api/src/modules/apps/connections/service.ts:1623 ; apps/api/src/modules/apps/connections/service.ts:3510 ; apps/api/src/modules/apps/connections/before-disconnect.ts:158 ; apps/api/src/lib/org-public-url.ts:36

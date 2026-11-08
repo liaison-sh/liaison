@@ -1618,8 +1618,9 @@ export async function createCredentialConnection(
       // Public origin where the kernel webhook routes are reachable from
       // third-party APIs — credentials-connection apps (e.g. Boxtal) need this
       // to register webhook subscriptions pointing at /webhooks/<orgId>/<app>/...
-      // Mirrors the OAuth path; empty in local/dev → the app degrades cleanly.
-      kernelPublicBaseUrl: env.BASE_URL,
+      // Mirrors the OAuth path. With org hosts it is the org's own host, so
+      // deliveries pass through the edge (and its hold while the org moves cell).
+      kernelPublicBaseUrl: await orgPublicBaseUrl(orgId),
     },
     ...connectionEventActor(userId),
     orgId,
@@ -1818,7 +1819,9 @@ export async function reconcileConnection(
   // re-mint metadata/webhooks for an account the operator deliberately severed.
   if (row.status !== "active") return { status: "not_active", connectionStatus: row.status }
 
-  await tx.queueEvent(buildConnectedAccountCreateEvent(row, orgId, userId, env.BASE_URL))
+  await tx.queueEvent(
+    buildConnectedAccountCreateEvent(row, orgId, userId, await orgPublicBaseUrl(orgId)),
+  )
 
   return {
     status: "reconciled",
@@ -1846,6 +1849,7 @@ export async function reconcileAppConnections(
   connectionName: string,
 ): Promise<{ reconciled: Array<{ id: string; identifier: string }> }> {
   const result = await withPrivilegedDb(orgId, "reconcile-app-connections", async (tx) => {
+    const webhookBase = await orgPublicBaseUrl(orgId)
     const rows = await tx
       .select({
         id: connectedAccounts.id,
@@ -1867,7 +1871,7 @@ export async function reconcileAppConnections(
       )
 
     for (const row of rows) {
-      await tx.queueEvent(buildConnectedAccountCreateEvent(row, orgId, userId, env.BASE_URL))
+      await tx.queueEvent(buildConnectedAccountCreateEvent(row, orgId, userId, webhookBase))
     }
     return { reconciled: rows.map((r) => ({ id: r.id, identifier: r.identifier })) }
   })
@@ -3482,7 +3486,8 @@ async function persistOAuthGrant(
 
     // Emit connected_account:create event via transactional outbox.
     // `kernelPublicBaseUrl` is the public origin where the kernel webhook
-    // routes are reachable from third-party APIs; subscribed app handlers
+    // routes are reachable from third-party APIs (the org's own host when orgs
+    // have hosts, so deliveries follow the org through a cell move); subscribed app handlers
     // (e.g. Shopify's `onConnectionEstablished`) need this to register
     // webhook subscriptions with the upstream provider pointing back at
     // /webhooks/<orgId>/<appName>/<endpoint> (the kernel mounts webhookRoutes
@@ -3502,7 +3507,7 @@ async function persistOAuthGrant(
         providerType: "oauth2",
         identifier,
         status: "active",
-        kernelPublicBaseUrl: env.BASE_URL,
+        kernelPublicBaseUrl: await orgPublicBaseUrl(orgId),
         grantedOAuthScopes,
       },
       actorId: userId,

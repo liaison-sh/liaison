@@ -2376,7 +2376,7 @@
     "lang": "en",
     "say": "put these three people under Lumen",
     "typed": ["link contacts to company", "add people to company", "contacts company"],
-    "any": ["kernel__companies_link_contacts", "kernel__companies_link_batch"],
+    "any": ["kernel__companies_link_contacts"],
     "modelRun": true
   },
   {
@@ -2385,7 +2385,7 @@
     "lang": "fr",
     "say": "crée les sociétés de ces contacts",
     "typed": ["créer sociétés", "sociétés depuis contacts", "regrouper contacts par société"],
-    "any": ["kernel__companies_propose_from_contacts", "kernel__companies_link_batch"],
+    "any": ["kernel__companies_propose_from_contacts"],
     "modelRun": true
   },
   {
@@ -2631,5 +2631,14 @@
     "say": "what is the forecast for this quarter",
     "typed": ["forecast", "pipeline forecast", "sales forecast"],
     "any": ["projects__deals_rollup", "projects__deals_search"]
+  },
+  {
+    "id": "K24",
+    "set": "seed",
+    "lang": "en",
+    "say": "create these twelve companies and put their people under them",
+    "typed": ["create companies", "put people in companies", "group contacts under companies"],
+    "any": ["kernel__companies_link_batch"],
+    "modelRun": true
   }
 ]

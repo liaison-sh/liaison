@@ -130,6 +130,7 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   mcp_listConnections: "read",
   projects_attentionItems: "read",
   projects_checklistGet: "read",
+  projects_companyProjects: "read",
   projects_dealSendState: "read",
   projects_dealsFollowupCandidates: "read",
   projects_dealsRollup: "read",

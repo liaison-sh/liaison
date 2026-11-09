@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.20.62",
+  "version": "0.20.63",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -6112,6 +6112,18 @@
     }
   ],
   "slots": {
+    "company_detail": {
+      "panels": [
+        {
+          "id": "invoicing-money",
+          "label": "Money",
+          "component": "CompanyMoneyPanel",
+          "group": "money",
+          "order": 10,
+          "visibility_scope": "invoicing:documents:read"
+        }
+      ]
+    },
     "contact_detail": {
       "panels": [
         {

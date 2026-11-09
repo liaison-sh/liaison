@@ -31,6 +31,7 @@ interface ProjectsSandboxCtx {
   projects_dealsRollup: (paramsJson: string) => Promise<string>
   projects_dealsFollowupCandidates: (paramsJson: string) => Promise<string>
   projects_dealSendState: (paramsJson: string) => Promise<string>
+  projects_companyProjects: (paramsJson: string) => Promise<string>
   projects_deleteTask: (paramsJson: string) => Promise<string>
   projects_addComment: (paramsJson: string) => Promise<string>
   projects_listComments: (paramsJson: string) => Promise<string>
@@ -708,6 +709,104 @@ async function dealSendState(
   return JSON.parse(await ctx.projects_dealSendState(JSON.stringify(params ?? {})))
 }
 
+// company_context — the agent's few lines about the company in view (a company
+// tab or its discussion): its open deals by stage, amounts only under deal
+// access (the deal read leaves them out otherwise).
+const COMPANY_CONTEXT_KINDS = new Set(["kernel:company", "contacts:company-detail"])
+const COMPANY_CONTEXT_STAGE_LINES = 4
+
+interface CompanyContextDeal {
+  task?: { key?: string; stage?: string | null }
+  values?: { amountMinor?: number | null; currency?: string | null; amountPeriod?: string }
+}
+
+function formatMinor(minor: number): string {
+  return minor % 100 === 0 ? String(minor / 100) : (minor / 100).toFixed(2)
+}
+
+async function companyContext(
+  params: Record<string, unknown> | undefined,
+  ctx: ProjectsSandboxCtx,
+): Promise<unknown> {
+  const subject = (params?.subject ?? {}) as {
+    app?: string
+    entityType?: string
+    entityId?: string
+  }
+  const companyId = String(subject.entityId ?? "")
+  if (
+    !COMPANY_CONTEXT_KINDS.has(`${subject.app}:${subject.entityType}`) ||
+    !projectsPreflightIsUuid(companyId)
+  ) {
+    return { lines: [] }
+  }
+  const read = JSON.parse(
+    await ctx.projects_dealsSearch(JSON.stringify({ companyId, outcome: "open", limit: 100 })),
+  ) as { items?: CompanyContextDeal[] }
+  const deals = Array.isArray(read?.items) ? read.items : []
+  if (deals.length === 0) return { lines: [] }
+  const withAmounts = deals.some((d) => d.values)
+  const stages = new Map<string, CompanyContextDeal[]>()
+  for (const d of deals) {
+    const stage = d.task?.stage ?? "No stage"
+    stages.set(stage, [...(stages.get(stage) ?? []), d])
+  }
+  const stageLine = (stage: string, list: CompanyContextDeal[]): string => {
+    const keys = list.map((d) => d.task?.key).filter((k): k is string => !!k)
+    const shown = keys.slice(0, 3).join(", ") + (keys.length > 3 ? ` +${keys.length - 3}` : "")
+    const sums = new Map<string, number>()
+    for (const d of list) {
+      const v = d.values
+      if (!v?.currency || typeof v.amountMinor !== "number") continue
+      const unit = `${v.currency}${v.amountPeriod && v.amountPeriod !== "once" ? `/${v.amountPeriod}` : ""}`
+      sums.set(unit, (sums.get(unit) ?? 0) + v.amountMinor)
+    }
+    const money = [...sums.entries()]
+      .map(([unit, minor]) => {
+        const [currency, period] = unit.split("/")
+        return `${currency} ${formatMinor(minor)}${period ? `/${period}` : ""}`
+      })
+      .join(", ")
+    return `${stage}: ${shown}${money ? `, ${money}` : ""}`
+  }
+  const ordered = [...stages.entries()].sort((a, b) => b[1].length - a[1].length)
+  const lines = [
+    `${deals.length} open deal${deals.length === 1 ? "" : "s"}${withAmounts ? "" : ", amounts need deal access"}.`,
+    ...ordered.slice(0, COMPANY_CONTEXT_STAGE_LINES).map(([stage, list]) => stageLine(stage, list)),
+  ]
+  const rest = ordered.slice(COMPANY_CONTEXT_STAGE_LINES)
+  if (rest.length > 0) {
+    const n = rest.reduce((sum, [, list]) => sum + list.length, 0)
+    lines.push(`${n} more in ${rest.length} other stage${rest.length === 1 ? "" : "s"}.`)
+  }
+  return { lines, source: { label: "Deals" } }
+}
+
+// company_work — the Work section of a company's page: the projects whose client
+// is the company, and its deals (amounts only under deal access).
+async function companyWork(
+  params: Record<string, unknown> | undefined,
+  ctx: ProjectsSandboxCtx,
+): Promise<unknown> {
+  const companyId = String(params?.companyId ?? "")
+  if (!projectsPreflightIsUuid(companyId)) {
+    return { projects: [], deals: [], message: "companyId is not a company id. Nothing was read." }
+  }
+  const listed = JSON.parse(await ctx.projects_companyProjects(JSON.stringify({ companyId }))) as {
+    items?: Array<{ id: string; name: string; key: string | null }>
+  }
+  const projects = Array.isArray(listed?.items) ? listed.items : []
+  const read = JSON.parse(
+    await ctx.projects_dealsSearch(JSON.stringify({ companyId, limit: 50 })),
+  ) as { items?: unknown[] }
+  const deals = Array.isArray(read?.items) ? read.items : []
+  return {
+    projects,
+    deals,
+    message: `${projects.length} project${projects.length === 1 ? "" : "s"} and ${deals.length} deal${deals.length === 1 ? "" : "s"} for this company.`,
+  }
+}
+
 // comment / comments — the task's own discussion thread. There was no comment
 // verb on a task at all, and its thread was unreachable: kernel threads are
 // participant-gated, so the threadId in a task listing answered "not a
@@ -1085,6 +1184,8 @@ void [
   dealsRollup,
   dealsFollowupCandidates,
   dealSendState,
+  companyContext,
+  companyWork,
   deleteTask,
   addComment,
   listComments,

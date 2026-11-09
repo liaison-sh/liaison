@@ -122,7 +122,7 @@
       }
     ]
   },
-  "version": "1.12.0",
+  "version": "1.13.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -519,8 +519,11 @@
   },
   "approvalRoute": { "task": "approval_route_read" },
   "activitySources": [{"tool": "activity_read", "scope": "projects:tasks:read", "label": "Deals and projects", "filterKey": "projects"}],
+  "contextProviders": [{"on": ["kernel:company", "contacts:company-detail"], "tool": "company_context", "scope": "projects:projects:read"}],
   "tools": {
     "activity_read": {"description": "A company's deals opened and closed, their subtasks, and the tasks of its projects, newest first, for its timeline. Read by the kernel.", "readOnly": true, "agentVisible": false, "timeoutMs": 2000, "requiredScopes": ["projects:tasks:read"], "trustBoundary": "user", "handler": "activityRead", "params": {"type": "object", "properties": {"contactIds": {"type": "array", "items": {"type": "string"}}, "companyId": {"type": ["string", "null"]}, "dealIds": {"type": "array", "items": {"type": "string"}}, "before": {"type": ["object", "null"]}, "limit": {"type": "integer"}, "prefix": {"type": "string"}}}},
+    "company_context": {"description": "The open deals of the company in view, by stage, with amounts only under deal access, for the agent's context. Read by the kernel.", "readOnly": true, "agentVisible": false, "timeoutMs": 2000, "requiredScopes": ["projects:projects:read"], "trustBoundary": "user", "handler": "companyContext", "readsFromTable": "app_projects.deals", "params": {"type": "object", "properties": {"subject": {"type": "object", "properties": {"app": {"type": "string"}, "entityType": {"type": "string"}, "entityId": {"type": "string"}}, "required": ["app", "entityType", "entityId"]}}, "required": ["subject"]}},
+    "company_work": {"description": "A company's projects and deals, for the Work section of its page. Read by the page.", "readOnly": true, "agentVisible": false, "timeoutMs": 2000, "requiredScopes": ["projects:projects:read"], "trustBoundary": "user", "handler": "companyWork", "readsFromTable": "app_projects.projects", "params": {"type": "object", "properties": {"companyId": {"type": "string"}}, "required": ["companyId"]}},
     "approval_route_read": {
       "description": "Who a pending approval about a task is for: its assignee, as personId (null when nobody holds it). Read by the kernel when an approval is proposed.",
       "readOnly": true,
@@ -2910,6 +2913,18 @@
     }
   },
   "slots": {
+    "company_detail": {
+      "panels": [
+        {
+          "id": "projects-work",
+          "label": "Work",
+          "component": "CompanyWorkPanel",
+          "group": "work",
+          "order": 30,
+          "visibility_scope": "projects:projects:read"
+        }
+      ]
+    },
     "project:task:tabs": {
       "position": "tabs"
     },

@@ -288,10 +288,10 @@ Tool search adds a meaning score to its word ranking -> apps/api/src/modules/age
 No meaning until tool vectors are ready, or when the model fails or is slow -> apps/api/src/modules/agent/tools/tool-meaning.ts:165
 Model arctic-embed-m-v2.0 pinned revision and per-file sha256 -> apps/api/src/modules/agent/tools/local-embedder.ts:23
 Files fetched at the revision, checked, renamed into the cache dir; read locally only -> apps/api/src/modules/agent/tools/local-embedder.ts:56-92
-One embedding process per host, asked over a Unix socket, no port, socket mode 0600 -> apps/api/src/modules/agent/tools/embedder-socket.ts:136 ; apps/api/src/modules/agent/tools/embedder-socket.ts:220 ; apps/api/src/modules/agent/tools/tool-meaning.ts:246
+One embedding process per host, asked over a Unix socket, no port, socket mode 0600 -> apps/api/src/modules/agent/tools/embedder-socket.ts:136 ; apps/api/src/modules/agent/tools/embedder-socket.ts:224 ; apps/api/src/modules/agent/tools/tool-meaning.ts:246
 Socket opens once the model is loaded (warm-up query first) -> apps/api/src/modules/agent/tools/embedder-main.ts:27-33
 A second embedding process on a live socket refuses to start -> apps/api/src/modules/agent/tools/embedder-socket.ts:148
-Down, loading or slower than the deadline: words only; one log line per outage and one when back -> apps/api/src/modules/agent/tools/embedder-socket.ts:252 ; apps/api/src/modules/agent/tools/embedder-socket.ts:287-316 ; apps/api/src/modules/agent/tools/tool-meaning.ts:167
+Down, loading or slower than the deadline: words only; one log line per outage and one when back -> apps/api/src/modules/agent/tools/embedder-socket.ts:257 ; apps/api/src/modules/agent/tools/embedder-socket.ts:300-334 ; apps/api/src/modules/agent/tools/tool-meaning.ts:167
 About 1.1 GB for the embedding process (1.4 GB while loading), other processes about 0 -> measured on 2026-11-09 with a client process and the embedding process (bench catalog, 640 tools, 120 searches)
 About 330 MB of files, 15-45 s to embed the tools -> measured with apps/api/src/modules/agent/tools/tool-bench/meaning.ts:1
 LIAISON_TOOL_MEANING, LIAISON_MODEL_CACHE_DIR, LIAISON_EMBEDDER_SOCKET, LIAISON_EMBEDDER_DEADLINE_MS -> apps/api/src/lib/env.ts:1290-1315

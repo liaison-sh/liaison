@@ -2544,3 +2544,247 @@ describe("a new message is commercial by its recipient's data", () => {
     expect(guard.classification).toBe("none")
   }, 60_000)
 })
+
+describe("the client's company is the other side", () => {
+  /** A company holding `domain`, as the companies tools store one. */
+  async function companyAt(domain: string | null, name = "Client Co"): Promise<string> {
+    const id = await createTestCompany(orgId, name)
+    await privileged.withSystemDb("send-guard-test-company-domain", (tx) =>
+      tx.execute(drizzleSql`UPDATE kernel.companies SET domain = ${domain} WHERE id = ${id}::uuid`),
+    )
+    return id
+  }
+
+  async function joinCompany(contactId: string, companyId: string): Promise<void> {
+    await privileged.withSystemDb("send-guard-test-contact-company", (tx) =>
+      tx.execute(
+        drizzleSql`UPDATE kernel.contacts SET company_id = ${companyId}::uuid WHERE id = ${contactId}::uuid`,
+      ),
+    )
+  }
+
+  async function companyOf(email: string): Promise<string | null> {
+    const [row] = await sql<Array<{ company_id: string | null }>>`
+      SELECT company_id::text AS company_id FROM kernel.contacts
+       WHERE org_id = ${orgId} AND lower(email) = ${email.toLowerCase()}`
+    if (!row) throw new Error(`no contact for ${email}`)
+    return row.company_id
+  }
+
+  /** One inbound mail written as the sync writes it, in a thread of its own. */
+  async function ingest(from: string, body = "Thanks, that works for me.") {
+    await onPageTx(async (tx) => {
+      const id = `<${++counter}@client.test>`
+      await writeMailPage(
+        {
+          tx: tx as never,
+          schemaName: schemaRef("app_mail"),
+          orgId,
+          actorId: userId,
+          queueEvents: async () => {},
+        } as never,
+        {
+          accountId: oldAccount,
+          origin: "incremental",
+          messages: [
+            {
+              from: { email: from },
+              to: [{ email: "sales@org.test" }],
+              externalMessageId: id,
+              externalThreadId: id,
+              externalProviderId: id,
+              subject: "About the order",
+              textBody: body,
+              htmlBody: "",
+              snippet: body.slice(0, 40),
+              cc: [],
+              bcc: [],
+              isRead: false,
+              isStarred: false,
+              labels: [],
+              references: [],
+              inReplyTo: null,
+              direction: "inbound",
+              sentAt: new Date().toISOString(),
+              headers: {},
+            },
+          ],
+        },
+      )
+    })
+  }
+
+  it("a colleague at the same company who becomes a contact after staging and replies stops the send", async () => {
+    // Mutation caught: the contact set kept to the pinned list (no company expansion).
+    const companyId = await companyAt(null)
+    const to = unique("buyer")
+    await joinCompany(await minimal.contact(orgId, to), companyId)
+    const id = await stageCompose(to)
+    const colleague = unique("colleague")
+    const colleagueId = await minimal.contact(orgId, colleague)
+    await joinCompany(colleagueId, companyId)
+    await seedInbound(colleague, { contactId: colleagueId })
+    const before = sent.length
+    await approveSettled(id)
+    expect(sent.length).toBe(before)
+    expect((await executionRow(id))?.error?.code).toBe("send_guard_replied")
+  }, 60_000)
+
+  it("a colleague's mail in a thread linked to nobody stops the send too", async () => {
+    const companyId = await companyAt(null)
+    const to = unique("buyer-b")
+    await joinCompany(await minimal.contact(orgId, to), companyId)
+    const id = await stageCompose(to)
+    const colleague = unique("colleague-b")
+    await joinCompany(await minimal.contact(orgId, colleague), companyId)
+    await seedInbound(colleague)
+    await approveSettled(id)
+    expect((await executionRow(id))?.error?.code).toBe("send_guard_replied")
+  }, 60_000)
+
+  it("a contact at another company replying does not stop the send", async () => {
+    const to = unique("buyer-c")
+    await joinCompany(await minimal.contact(orgId, to), await companyAt(null))
+    const id = await stageCompose(to)
+    const other = unique("elsewhere")
+    const otherId = await minimal.contact(orgId, other)
+    await joinCompany(otherId, await companyAt(null, "Other Co"))
+    await seedInbound(other, { contactId: otherId })
+    const before = sent.length
+    await approve(id)
+    expect(sent.length).toBe(before + 1)
+  }, 60_000)
+
+  it("a new sender at the company's domain is linked and stops the send at the next check", async () => {
+    // Mutation caught: a new sender contact left without its company.
+    const domain = `acme-${++counter}.example`
+    const companyId = await companyAt(domain)
+    const to = `buyer@${domain}`
+    await joinCompany(await minimal.contact(orgId, to), companyId)
+    const id = await stageCompose(to)
+    const stranger = `new.person@${domain.toUpperCase()}`
+    await ingest(stranger)
+    expect(await companyOf(stranger)).toBe(companyId)
+    await approveSettled(id)
+    expect((await executionRow(id))?.error?.code).toBe("send_guard_replied")
+  }, 60_000)
+
+  it("two companies on one domain link nobody", async () => {
+    const domain = `group-${++counter}.example`
+    await companyAt(domain, "Group North")
+    await companyAt(domain, "Group South")
+    const stranger = `someone@${domain}`
+    await ingest(stranger)
+    expect(await companyOf(stranger)).toBeNull()
+  }, 60_000)
+
+  it("a sender at a consumer mail domain joins no company", async () => {
+    await companyAt("gmail.com", "Misfiled Co")
+    const stranger = `someone.${++counter}@gmail.com`
+    await ingest(stranger)
+    expect(await companyOf(stranger)).toBeNull()
+  }, 60_000)
+})
+
+describe("a reply asking to stop", () => {
+  const extractRowsOf = <T>(result: unknown): T[] =>
+    (Array.isArray(result) ? result : ((result as { rows?: T[] }).rows ?? [])) as T[]
+  async function ingestFrom(from: string, body: string, headers: Record<string, string> = {}) {
+    await onPageTx(async (tx) => {
+      const id = `<${++counter}@client.test>`
+      await writeMailPage(
+        {
+          tx: tx as never,
+          schemaName: schemaRef("app_mail"),
+          orgId,
+          actorId: userId,
+          queueEvents: async () => {},
+        } as never,
+        {
+          accountId: oldAccount,
+          origin: "incremental",
+          messages: [
+            {
+              from: { email: from },
+              to: [{ email: "sales@org.test" }],
+              externalMessageId: id,
+              externalThreadId: id,
+              externalProviderId: id,
+              subject: "Re: our offer",
+              textBody: body,
+              htmlBody: "",
+              snippet: body.slice(0, 40),
+              cc: [],
+              bcc: [],
+              isRead: false,
+              isStarred: false,
+              labels: [],
+              references: [],
+              inReplyTo: null,
+              direction: "inbound",
+              sentAt: new Date().toISOString(),
+              headers,
+            },
+          ],
+        },
+      )
+    })
+  }
+
+  async function proposals(email: string) {
+    return sql<Array<{ id: string; status: string; tool_params: Record<string, unknown> }>>`
+      SELECT id::text AS id, status, tool_params FROM kernel.approval_requests
+       WHERE org_id = ${orgId} AND tool_name = 'mail:suppression_add'
+         AND lower(tool_params->>'email') = ${email.toLowerCase()}`
+  }
+
+  it("each opt-out phrase proposes once per sender and never suppresses by itself", async () => {
+    // Mutation caught: no dedupe by sender (a second card), or a suppression written at ingest.
+    const email = unique("stop-asker")
+    await ingestFrom(email, "Please unsubscribe me from these emails.")
+    await ingestFrom(email, "STOP")
+    const rows = await proposals(email)
+    expect(rows.length).toBe(1)
+    expect(rows[0]?.status).toBe("pending")
+    expect(rows[0]?.tool_params).toMatchObject({ email, reason: "reply" })
+    const [message] = extractRowsOf<{ id: string }>(
+      await db.execute(drizzleSql`
+        SELECT id::text AS id FROM ${MAIL}.messages
+         WHERE org_id = ${orgId}::uuid AND lower(from_address->>'email') = ${email}
+         ORDER BY synced_at ASC LIMIT 1`),
+    )
+    expect(rows[0]?.tool_params.source).toBe(message?.id)
+    expect(await suppressionsModule.suppressedAmong(orgId, [email])).toEqual([])
+    for (const ask of ["Merci de me désinscrire", "Bitte abmelden", "Quiero darme de baja"]) {
+      const other = unique("asker")
+      await ingestFrom(other, ask)
+      expect((await proposals(other)).length).toBe(1)
+    }
+  }, 90_000)
+
+  it("a long reply quoting stop proposes nothing", async () => {
+    const email = unique("long-reply")
+    const words = Array.from({ length: 70 }, () => "fine").join(" ")
+    await ingestFrom(email, `${words} we will not stop the project ${words}`)
+    await ingestFrom(email, "Sounds good.\n\nOn Monday, Sales wrote:\n> Reply STOP to unsubscribe.")
+    expect((await proposals(email)).length).toBe(0)
+  }, 60_000)
+
+  it("a newsletter saying unsubscribe proposes nothing", async () => {
+    const email = unique("newsletter")
+    await ingestFrom(email, "Unsubscribe", { "List-Unsubscribe": "<https://news.example/u>" })
+    expect((await proposals(email)).length).toBe(0)
+  }, 60_000)
+
+  it("approving the proposal a reply raised records the opt-out", async () => {
+    const email = unique("approve-asker")
+    await ingestFrom(email, "Ne plus recevoir, merci.")
+    const [row] = await proposals(email)
+    if (!row) throw new Error("no proposal")
+    await approve(row.id)
+    expect(await suppressionsModule.suppressedAmong(orgId, [email])).toEqual([email])
+    // An address that already opted out raises no new card.
+    await ingestFrom(email, "stop")
+    expect((await proposals(email)).length).toBe(1)
+  }, 90_000)
+})

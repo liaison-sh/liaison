@@ -15,6 +15,7 @@
 //   6. the roll-up of every conversation the page touched
 //   7. the events: one per conversation, one per message (search indexing and
 //      the new-mail notifier consume them)
+//   8. a new reply asking to stop becomes an opt-out proposal (optout-wording.ts)
 //
 // WHY HOST SIDE AND ONE TRANSACTION. Each bridge call is its own transaction,
 // so a page split across calls could be interrupted after its messages were
@@ -49,6 +50,7 @@ import { sanitizeCustomerHtml } from "~/lib/email/sanitize"
 import { evaluateAuthenticationResults, trustedAuthservIdsFor } from "~/lib/email/sender-auth"
 import { rootLogger } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
+import { type OptOutCandidate, optOutPhraseIn, proposeOptOuts } from "~/modules/mail/optout-wording"
 import { resolveSenderContacts } from "~/modules/mail/sender-contacts"
 import {
   applyMailSealToRow,
@@ -794,8 +796,38 @@ export async function writeMailPage(
   // Conversation events first: a consumer of a message event may look up its
   // conversation.
   await deps.queueEvents([...conversationEvents, ...messageEvents])
+
+  // 8. A reply asking to stop: a proposal for a person, never an opt-out by itself. Plaintext
+  //    mail of a person only (a sealed body is unreadable, a list or a machine is not a person),
+  //    and only mail arriving now: a backfill of old history raises nothing.
+  if (!sealing && origin !== "initial" && origin !== "reset") {
+    const asked: OptOutCandidate[] = []
+    for (const thread of writable) {
+      for (const { message, id } of thread.inserted) {
+        if (!isInbound(message) || isBulkMessage(message) || !message.from?.email) continue
+        const sent = Date.parse(message.sentAt ?? "")
+        if (Number.isFinite(sent) && sent < Date.now() - OPT_OUT_RECENT_MS) continue
+        try {
+          if (optOutPhraseIn(message.textBody))
+            asked.push({ email: message.from.email, messageId: id })
+        } catch (err) {
+          log.error({ err, orgId, accountId }, "opt-out reply: the text could not be read")
+        }
+      }
+    }
+    if (asked.length > 0) {
+      await proposeOptOuts(
+        orgId,
+        { id: accountId, ownerType: account.ownerType, ownerId: account.ownerId },
+        asked,
+      )
+    }
+  }
   return { entries }
 }
+
+/** A reply older than this, synced late, raises no opt-out proposal: it is history. */
+const OPT_OUT_RECENT_MS = 30 * 24 * 60 * 60 * 1000
 
 /**
  * A reply the user sent reads the conversation up to it: they obviously saw

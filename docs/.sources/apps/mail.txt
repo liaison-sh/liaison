@@ -197,3 +197,7 @@ A person's own mail to a prospect with no recorded basis: calm line in the compo
 Notice of where the address came from, first commercial mail only, recorded on the contact -> apps/api/src/modules/mail/commercial-footer.ts:110 ; apps/api/src/modules/mail/commercial-footer.ts:123 ; packages/shared/src/i18n/locales/en/mail.json:264
 Every commercial send recorded in the audit log with approver, text fingerprint, basis, class and opt-out check, no address -> apps/api/src/modules/apps/sandbox/bridge/mail.ts:162
 Daily Home item listing professional-interest contacts silent for three years, for admins who can edit contacts; nothing deleted -> apps/api/src/modules/contacts/prospect-retention.ts:37 ; apps/api/src/modules/contacts/prospect-retention.ts:42 ; apps/api/src/infra/jobs/kernel-jobs.ts:918
+Reply from a colleague at the same company stops the draft, read at each check -> apps/api/src/modules/mail/send-guard.ts:263
+Opt-out request from a reply: phrases in five languages, short text or own line, quoted text ignored, never recorded until approved, one per person -> apps/api/src/modules/mail/optout-wording.ts:31 ; apps/api/src/modules/mail/optout-wording.ts:157
+No request for newsletters, sealed mail, or the first import's history -> apps/api/src/modules/mail/page-write.ts:803
+New sender linked to the one company holding its domain -> apps/api/src/modules/mail/sender-contacts.ts:157

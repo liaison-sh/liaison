@@ -246,18 +246,66 @@ async function ownAddresses(orgId: string, db?: PrivilegedDb): Promise<string[]>
   return rows.flatMap((row) => (row.email ? [row.email] : []))
 }
 
+/** Who counts as the other side of one draft at this evaluation. */
+interface GuardContactSet {
+  contactIds: string[]
+  /** The addresses of the contacts the company adds: their mail counts wherever it lands. */
+  colleagueAddresses: string[]
+}
+
 /**
- * Who counts as the other side at this evaluation. Read each time rather than
- * at stage, so a wider set reaches every draft already waiting. For now it is
- * the list pinned at stage.
+ * Who counts as the other side at this evaluation, for several drafts at once. Read each time
+ * rather than at stage, so a wider set reaches every draft already waiting: the contacts pinned
+ * at stage, plus every contact who shares a company with one of them, such as a colleague at the
+ * client who became a contact after the draft was staged. Read privileged, like the inbound rows:
+ * who wrote is a fact about the client, whoever staged the draft.
  */
-async function guardContactSet(_orgId: string, pinned: readonly string[]): Promise<string[]> {
-  return [...pinned]
+async function guardContactSets(
+  orgId: string,
+  pinnedLists: readonly (readonly string[])[],
+  db?: PrivilegedDb,
+): Promise<GuardContactSet[]> {
+  const pinned = [...new Set(pinnedLists.flat())]
+  const colleagues = new Map<string, Array<{ id: string; email: string | null }>>()
+  if (pinned.length > 0) {
+    const rows = await onPrivileged(db, orgId, "send-guard-contact-set", async (tx) =>
+      extractRows<{ pinned: string; id: string; email: string | null }>(
+        await tx.execute(drizzleSql`
+          SELECT p.id::text AS pinned, c.id::text AS id, lower(c.email) AS email
+            FROM ${table("kernel", "contacts")} p
+            JOIN ${table("kernel", "contacts")} c
+              ON c.org_id = p.org_id AND c.company_id = p.company_id
+           WHERE p.org_id = ${orgId}::uuid AND p.company_id IS NOT NULL
+             AND p.id = ANY(${uuidSet(pinned)})`),
+      ),
+    )
+    for (const row of rows) {
+      const list = colleagues.get(row.pinned)
+      if (list) list.push(row)
+      else colleagues.set(row.pinned, [row])
+    }
+  }
+  return pinnedLists.map((list) => {
+    const pinnedHere = new Set(list)
+    const ids = new Set(list)
+    const addresses = new Set<string>()
+    for (const id of list) {
+      for (const colleague of colleagues.get(id) ?? []) {
+        // A pinned contact's own addresses are the draft's already.
+        if (pinnedHere.has(colleague.id)) continue
+        ids.add(colleague.id)
+        if (colleague.email) addresses.add(colleague.email)
+      }
+    }
+    return { contactIds: [...ids], colleagueAddresses: [...addresses] }
+  })
 }
 /** What one draft's inbound read is about. */
 interface InboundQuery {
   contactIds: string[]
   addresses: string[]
+  /** Senders whose mail counts as the other side's, and nothing more (never a bounce's subject). */
+  senders: string[]
   conversationId?: string
   since: string
 }
@@ -329,6 +377,7 @@ function openDrafts(
       conv: q.conversationId ?? null,
       contacts: q.contactIds,
       addrs: q.addresses,
+      senders: q.senders,
       addr_res: q.addresses.map(addressInText),
       cur_ord: cursor?.ord ?? null,
       cur_id: cursor?.id ?? null,
@@ -338,10 +387,11 @@ function openDrafts(
     SELECT x.k, x.since::timestamptz AS since, x.conv::uuid AS conv,
            ARRAY(SELECT jsonb_array_elements_text(x.contacts)::uuid) AS contacts,
            ARRAY(SELECT jsonb_array_elements_text(x.addrs)) AS addrs,
+           ARRAY(SELECT jsonb_array_elements_text(x.senders)) AS senders,
            ARRAY(SELECT jsonb_array_elements_text(x.addr_res)) AS addr_res,
            x.cur_ord::timestamptz AS cur_ord, x.cur_id::uuid AS cur_id
       FROM jsonb_to_recordset(${JSON.stringify(spec)}::jsonb)
-        AS x(k text, since text, conv text, contacts jsonb, addrs jsonb, addr_res jsonb, cur_ord text, cur_id text)`
+        AS x(k text, since text, conv text, contacts jsonb, addrs jsonb, senders jsonb, addr_res jsonb, cur_ord text, cur_id text)`
 }
 
 /**
@@ -420,6 +470,7 @@ async function readMailInbound(
                    AND (c.contact_id = ANY(d.contacts)
                         OR c.id = d.conv
                         OR lower(m.from_address->>'email') = ANY(d.addrs)
+                        OR lower(m.from_address->>'email') = ANY(d.senders)
                         -- A delivery report comes from the server, in a thread of its own:
                         -- it may be about an address its text names, or the mail it answers.
                         -- Which address failed is read in code (reportConcerns).
@@ -517,6 +568,7 @@ async function readTicketInbound(
                   LEFT JOIN ${table("app_tickets", "inboxes")} i ON i.id = t.source_inbox_id
                  WHERE m.org_id = ${orgId}::uuid AND m.kind = 'inbound'
                    AND (lower(m.from_email) = ANY(d.addrs)
+                        OR lower(m.from_email) = ANY(d.senders)
                         OR t.contact_id = ANY(d.contacts))
                    AND lower(m.from_email) <> ALL(${textSet(own)})
                    AND (COALESCE(m.sent_at, m.received_at) > d.since
@@ -768,11 +820,18 @@ async function inboundVerdicts(
 ): Promise<SendGuardVerdict[]> {
   if (checks.length === 0) return []
   const queries = new Map<string, InboundQuery>()
+  const sets = await guardContactSets(
+    orgId,
+    checks.map((check) => check.guard.contactIds),
+    db,
+  )
   for (const [i, check] of checks.entries()) {
     const { guard } = check
+    const set = sets[i] as GuardContactSet
     queries.set(String(i), {
-      contactIds: await guardContactSet(orgId, guard.contactIds),
+      contactIds: set.contactIds,
       addresses: [...new Set([...guard.addresses, ...check.recipients])],
+      senders: set.colleagueAddresses,
       since: guard.since,
       ...(guard.conversationId ? { conversationId: guard.conversationId } : {}),
     })

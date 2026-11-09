@@ -380,7 +380,8 @@ async function assertRecordVisible(
     await caller.withRls((tx) => assertParentVisible(tx, parent, recordId))
   } catch (err) {
     if (err instanceof FileServiceError) {
-      if (declaration.parentMadeOnPrint === true && hasScope(parent.readScope, caller.scopes)) return
+      if (declaration.parentMadeOnPrint === true && hasScope(parent.readScope, caller.scopes))
+        return
       throw new PrintError("record_not_found", "The record was not found or is not visible to you")
     }
     throw err

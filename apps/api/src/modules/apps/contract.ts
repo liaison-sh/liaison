@@ -627,11 +627,15 @@ function parentMadeOnPrintErrors(
     return fail("the fileParent must be a table of this app's own schema")
   }
   if (table.dimensions || table.personalScope || table.rlsGovernedByMigration === true) {
-    return fail(`table "${tableName}" restricts rows beyond its scope (dimensions, personal or migration policies)`)
+    return fail(
+      `table "${tableName}" restricts rows beyond its scope (dimensions, personal or migration policies)`,
+    )
   }
   const rlsEntity = typeof table.rlsScope === "string" ? table.rlsScope : tableName
   if (parent.readScope !== `${appName}:${rlsEntity}:read`) {
-    return fail(`the fileParent readScope must be the table's own read scope "${appName}:${rlsEntity}:read"`)
+    return fail(
+      `the fileParent readScope must be the table's own read scope "${appName}:${rlsEntity}:read"`,
+    )
   }
   return []
 }
@@ -652,7 +656,8 @@ export function printDeclarationErrors(app: unknown): string[] {
         `print_record_tool_invalid: ${where}: a printable entity must declare a fileParent (the printed files are stored on it)`,
       )
     }
-    if (print.parentMadeOnPrint === true) errors.push(...parentMadeOnPrintErrors(root, entity, where))
+    if (print.parentMadeOnPrint === true)
+      errors.push(...parentMadeOnPrintErrors(root, entity, where))
     const toolName = typeof print.recordTool === "string" ? print.recordTool : ""
     const tool = asRecord(tools[toolName])
     if (!tool) {

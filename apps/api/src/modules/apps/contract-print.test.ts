@@ -193,10 +193,16 @@ describe("entities.<e>.print.parentMadeOnPrint", () => {
 
   it("refuses a parent whose rows RLS restricts beyond the scope, or another schema, or another scope", () => {
     for (const result of [
-      withFlag({ rlsScope: "shipments", dimensions: { region: { type: "value", column: "reference" } } }),
+      withFlag({
+        rlsScope: "shipments",
+        dimensions: { region: { type: "value", column: "reference" } },
+      }),
       withFlag({ rlsScope: "shipments", personalScope: {} }),
       withFlag({ rlsScope: "shipments", rlsGovernedByMigration: true }),
-      withFlag({ rlsScope: "shipments" }, { ...FILE_PARENT, schemaRef: "kernel", tableName: "contacts" }),
+      withFlag(
+        { rlsScope: "shipments" },
+        { ...FILE_PARENT, schemaRef: "kernel", tableName: "contacts" },
+      ),
       withFlag({}), // generated read scope is shipper:shipment:read, the parent says shipments
     ]) {
       expect(result.success).toBe(false)

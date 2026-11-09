@@ -103,6 +103,21 @@ export const BugReportDraftCard: Component<{ draftId: string }> = (props) => {
   const [sending, setSending] = createSignal(false)
   const [sentRef, setSentRef] = createSignal<string | null>(null)
   const [error, setError] = createSignal<string | null>(null)
+  const [discarded, setDiscarded] = createSignal(false)
+
+  async function discard(d: BugReportDraft): Promise<void> {
+    if (sending()) return
+    setSending(true)
+    setError(null)
+    try {
+      await api.delete(`/bug-reports/drafts/${encodeURIComponent(d.draftId)}`)
+      setDiscarded(true)
+    } catch {
+      setError(i18n.t("kernel.bugReport.draftDiscardFailed"))
+    } finally {
+      setSending(false)
+    }
+  }
 
   async function send(d: BugReportDraft): Promise<void> {
     if (sending()) return
@@ -131,7 +146,7 @@ export const BugReportDraftCard: Component<{ draftId: string }> = (props) => {
   const reference = () => sentRef() ?? draft()?.sentMessageId ?? null
 
   return (
-    <Show when={!draft.loading}>
+    <Show when={!draft.loading && !discarded()}>
       <div
         class="my-2 rounded-lg border border-border bg-elevated p-3 text-[13px]"
         data-testid="bug-report-draft-card"
@@ -245,7 +260,16 @@ export const BugReportDraftCard: Component<{ draftId: string }> = (props) => {
                   </p>
                 )}
               </Show>
-              <div class="mt-2 flex justify-end">
+              <div class="mt-2 flex justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  data-testid="bug-report-draft-discard"
+                  disabled={sending()}
+                  onClick={() => discard(d())}
+                >
+                  {i18n.t("kernel.bugReport.draftDiscard")}
+                </Button>
                 <Button
                   size="sm"
                   data-testid="bug-report-draft-send"

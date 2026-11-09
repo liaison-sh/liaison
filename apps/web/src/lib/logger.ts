@@ -13,7 +13,7 @@ const MAX_ENTRY_CHARS = 2_000
 const buffer: string[] = []
 
 function pushLogLine(line: string): void {
-  buffer.push(line.length > MAX_ENTRY_CHARS ? `${line.slice(0, MAX_ENTRY_CHARS)}…` : line)
+  buffer.push(line.length > MAX_ENTRY_CHARS ? `${line.slice(0, MAX_ENTRY_CHARS - 1)}…` : line)
   if (buffer.length > MAX_BUFFER_ENTRIES) buffer.shift()
 }
 

@@ -339,7 +339,12 @@ export const BugReportDialog: Component<BugReportDialogProps> = (props) => {
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <Dialog.Content class="max-w-lg">
+      {/* Capped at the viewport and scrolling: a long report or a stack of agent drafts once
+          pushed Send below the screen with no way to reach it. */}
+      <Dialog.Content
+        class="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto"
+        data-testid="bug-report-dialog"
+      >
         <Dialog.Title>{i18n.t("kernel.bugReport.title")}</Dialog.Title>
         <Dialog.Description>{i18n.t("kernel.bugReport.description")}</Dialog.Description>
         <Show when={teamOnly() && (drafts() ?? []).length > 0}>

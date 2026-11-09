@@ -78,7 +78,20 @@ const forwardSchema = z.object({
 
 const reportFields = {
   description: z.string().trim().min(1).max(20_000),
-  clientLogs: z.array(z.string().max(MAX_LOG_ENTRY_CHARS)).max(MAX_LOG_ENTRIES).optional(),
+  // Trimmed, never refused: a log line one character over the cap (the web
+  // logger's own cut plus its ellipsis) once failed every preview with a 400,
+  // which left the team-only Send button dead. Logs are evidence, not input to
+  // validate: the newest MAX_LOG_ENTRIES lines are kept, each cut to its cap.
+  clientLogs: z
+    .array(z.string())
+    .transform((lines) =>
+      lines
+        .slice(-MAX_LOG_ENTRIES)
+        .map((line) =>
+          line.length > MAX_LOG_ENTRY_CHARS ? `${line.slice(0, MAX_LOG_ENTRY_CHARS - 1)}…` : line,
+        ),
+    )
+    .optional(),
   context: z
     .object({
       url: z.string().max(2_000).optional(),

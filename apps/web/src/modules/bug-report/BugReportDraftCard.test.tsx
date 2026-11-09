@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
   draft: null as Record<string, unknown> | null,
   sendError: null as unknown,
   posts: [] as Array<{ path: string; body: unknown }>,
+  deletes: [] as string[],
 }))
 
 vi.mock("~/modules/shell/ApiContext", () => ({
@@ -19,6 +20,10 @@ vi.mock("~/modules/shell/ApiContext", () => ({
       state.posts.push({ path, body })
       if (state.sendError) throw state.sendError
       return { forwarded: "queued", messageId: "msg-42" }
+    }),
+    delete: vi.fn(async (path: string) => {
+      state.deletes.push(path)
+      return { discarded: true }
     }),
   }),
 }))
@@ -38,6 +43,15 @@ describe("BugReportDraftCard", () => {
     }
     state.sendError = null
     state.posts = []
+    state.deletes = []
+  })
+
+  it("Discard drops the draft without sending it, and the card leaves the list", async () => {
+    render(() => <BugReportDraftCard draftId="d-1" />)
+    fireEvent.click(await screen.findByTestId("bug-report-draft-discard"))
+    await waitFor(() => expect(screen.queryByTestId("bug-report-draft-card")).toBeNull())
+    expect(state.deletes).toEqual(["/bug-reports/drafts/d-1"])
+    expect(state.posts).toHaveLength(0)
   })
 
   it("shows the exact payload and sends it with its digest only on the click", async () => {

@@ -20,8 +20,14 @@
  * - Tool vectors are computed once per tool text and kept; only the query is
  *   embedded per search. Without an embedder, or past the query's time budget,
  *   the search is the keyword search alone.
+ * - The model runs once per host, in the embedding process (embedder-main.ts),
+ *   asked over a local socket (embedder-socket.ts). While it is down or slow,
+ *   searches rank by keywords and the tool vectors wait; they fill again once
+ *   it answers.
  */
 import { toolMeaningEnabled } from "~/lib/edition"
+import { env } from "~/lib/env"
+import { defaultEmbedderSocketPath, EmbedderUnavailable, socketEmbedder } from "./embedder-socket"
 
 /** Weight of one standard deviation of meaning above the floor, in keyword-score points. */
 export const MEANING_WEIGHT = 4
@@ -98,6 +104,10 @@ export interface TextEmbedder {
 export const QUERY_BUDGET_MS = 150
 /** Tool texts embedded per call while the vectors fill. */
 const DOCUMENT_BATCH = 4
+/** How long one batch of tool texts may take on the embedding process. */
+export const DOCUMENT_DEADLINE_MS = 30_000
+/** After the embedding process failed to answer, how long the vectors wait before trying again. */
+export const RETRY_AFTER_MS = 5_000
 
 /**
  * Tool vectors, one per tool text, filled in the background the first time a
@@ -109,8 +119,17 @@ export class ToolMeaningIndex {
   private readonly pending = new Set<string>()
   private filling: Promise<void> | null = null
   private failed = false
+  private retryAt = 0
+  private readonly queryBudgetMs: number
+  private readonly retryMs: number
 
-  constructor(private readonly embedder: TextEmbedder) {}
+  constructor(
+    private readonly embedder: TextEmbedder,
+    opts: { queryBudgetMs?: number; retryMs?: number } = {},
+  ) {
+    this.queryBudgetMs = opts.queryBudgetMs ?? QUERY_BUDGET_MS
+    this.retryMs = opts.retryMs ?? RETRY_AFTER_MS
+  }
 
   /** Queue the catalog's tools whose text has no vector yet. Never waits. */
   prepare(catalog: ReadonlyArray<{ appName: string; toolName: string; description: string }>) {
@@ -119,7 +138,8 @@ export class ToolMeaningIndex {
       const text = toolMeaningText(t)
       if (!this.vectors.has(text)) this.pending.add(text)
     }
-    if (!this.filling && this.pending.size > 0) this.filling = this.fill()
+    if (!this.filling && this.pending.size > 0 && Date.now() >= this.retryAt)
+      this.filling = this.fill()
   }
 
   /** Resolves when every queued text has its vector (tests and warm-up). */
@@ -141,6 +161,12 @@ export class ToolMeaningIndex {
         await new Promise((r) => setTimeout(r, 0))
       }
     } catch (err) {
+      if (err instanceof EmbedderUnavailable) {
+        // The embedding process is down or slow (its client logged it once):
+        // the queued texts wait, and a search after the pause tries again.
+        this.retryAt = Date.now() + this.retryMs
+        return
+      }
       // A model that cannot run leaves the search on keywords; it is not retried.
       this.failed = true
       this.pending.clear()
@@ -168,7 +194,7 @@ export class ToolMeaningIndex {
   >(
     query: string,
     catalog: readonly T[],
-    budgetMs: number = QUERY_BUDGET_MS,
+    budgetMs: number = this.queryBudgetMs,
   ): Promise<ToolMeaning | null> {
     this.prepare(catalog)
     const byName = new Map<string, Vector>()
@@ -201,9 +227,10 @@ let index: ToolMeaningIndex | null | undefined
 /**
  * The embedder tool search uses, chosen once per process: with meaning off
  * (lib/edition.ts toolMeaningEnabled: `LIAISON_TOOL_MEANING`, unset follows
- * the edition) the search ranks by words; on, the local model
- * (local-embedder.ts) runs in this process when it can load, and the search
- * stays on keywords when it cannot. A test sets its own with setToolEmbedder.
+ * the edition) the search ranks by words; on, it asks the host's embedding
+ * process over its socket (`LIAISON_EMBEDDER_SOCKET`, within
+ * `LIAISON_EMBEDDER_DEADLINE_MS` per query), and stays on keywords while that
+ * process does not answer. A test sets its own with setToolEmbedder.
  */
 export function toolMeaningIndex(): ToolMeaningIndex | null {
   if (index !== undefined) return index
@@ -214,26 +241,22 @@ export function toolMeaningIndex(): ToolMeaningIndex | null {
     index = null
     return index
   }
-  index = new ToolMeaningIndex(lazyLocalEmbedder())
+  const deadline = env.LIAISON_EMBEDDER_DEADLINE_MS
+  index = new ToolMeaningIndex(
+    socketEmbedder({
+      socketPath: defaultEmbedderSocketPath({
+        LIAISON_EMBEDDER_SOCKET: env.LIAISON_EMBEDDER_SOCKET,
+        XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR,
+      }),
+      queryDeadlineMs: deadline,
+      documentDeadlineMs: DOCUMENT_DEADLINE_MS,
+    }),
+    { queryBudgetMs: deadline },
+  )
   return index
 }
 
 /** Tests: the embedder tool search uses (null for none); undefined restores the default. */
 export function setToolEmbedder(embedder: TextEmbedder | null | undefined): void {
   index = embedder === undefined ? undefined : embedder ? new ToolMeaningIndex(embedder) : null
-}
-
-/** The local model, loaded on first use so a process that never searches pays nothing. */
-function lazyLocalEmbedder(): TextEmbedder {
-  let loaded: Promise<TextEmbedder> | null = null
-  const load = () => {
-    loaded ??= import("./local-embedder").then((m) => m.loadLocalEmbedder())
-    return loaded
-  }
-  return {
-    id: "local",
-    async embed(texts, kind) {
-      return (await load()).embed(texts, kind)
-    },
-  }
 }

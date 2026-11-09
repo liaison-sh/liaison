@@ -185,8 +185,10 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `LIVE_INSTANCE_TTL_MS` | `number` | `30000` | no | Instance liveness (infra/instance-registry.ts): every process writes a heartbeat record that lives this long without renewal. Entries a process owns in Redis (sockets, stream slots, live turns) are ignored once its record is gone, so a killed process drops out within about this long. |
 | `LIVE_INSTANCE_HEARTBEAT_MS` | `number` | `10000` | no | How often each process renews its heartbeat record. Keep it well under the TTL. |
 | `LIVE_SWEEP_INTERVAL_MS` | `number` | `10000` | no | How often the leader removes the entries of processes whose heartbeat is gone. |
-| `LIAISON_TOOL_MEANING` | `"on" \| "off"` |  | no | Tool search ranks by meaning as well as by words, with a small embedding model run in this process (modules/agent/tools/tool-meaning.ts), about 1.1 GB of memory per API process. "on" \| "off"; unset, it follows the edition (on when managed, off when self-hosted; lib/edition.ts toolMeaningEnabled). Off, or when the model cannot load, the search ranks by words. |
+| `LIAISON_TOOL_MEANING` | `"on" \| "off"` |  | no | Tool search ranks by meaning as well as by words, with a small embedding model run once per host by the embedding process (`embedder`, modules/agent/tools/embedder-main.ts; about 1.1 GB of memory), which every API and worker process asks over a local socket. "on" \| "off"; unset, it follows the edition (on when managed, off when self-hosted; lib/edition.ts toolMeaningEnabled). Off, or while that process does not answer, the search ranks by words. |
 | `LIAISON_MODEL_CACHE_DIR` | `string` |  | no | Where tool search's model files are fetched, checked against their pinned hashes and read from. Unset: ~/.cache/liaison/models (the compose file sets /var/lib/liaison/models, on the data volume). Point it at a persistent volume, or at files shipped with the image for an install with no outside network. |
+| `LIAISON_EMBEDDER_SOCKET` | `string` |  | no | The embedding process's Unix socket (no network port): it listens there, and the API and worker processes of the host ask it there. Unset: liaison/embedder.sock under XDG_RUNTIME_DIR, else under the temporary folder (the compose file sets /var/lib/liaison/run/embedder.sock, on the data volume every container of the host mounts). |
+| `LIAISON_EMBEDDER_DEADLINE_MS` | `number` | `150` | no | How long a tool search waits for its query's vector from the embedding process, in ms, before it ranks by words alone for that search. |
 | `LIAISON_INTERNAL_PORT` | `number` | `0` | no | The internal listener every process starts, separate from PORT and never published: another process forwards a mailbox answer here when this one minted the request. 0 (default) takes any free port. It must be reachable from the other processes of the deployment (same host or compose network). |
 | `LIAISON_INTERNAL_HOST` | `string` |  | no | The name the other processes reach this one by on that port. Unset: the hostname (inside compose, the container's, which the network resolves); a hostname that does not resolve locally falls back to 127.0.0.1. |
 | `LIAISON_INTERNAL_BIND` | `string` |  | no | The address the internal listener binds. Unset: the address LIAISON_INTERNAL_HOST (or the hostname) resolves to here, so the listener is never on every interface by default. Set 0.0.0.0 only when the advertised address is not on this machine (NAT), with the port firewalled. |
@@ -298,7 +300,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_DB_ALLOW_PLAINTEXT_LOCAL` | `apps/api/src/apps/database/bridge.ts:374`, `apps/api/src/apps/database/bridge.ts:394` |
 | `LIAISON_DB_ALLOW_PRIVILEGED_SESSION` | `apps/api/src/apps/database/bridge.ts:383` |
 | `LIAISON_DEBUG_GEMINI_REQ` | `apps/api/src/modules/agent/providers/provider.ts:154` |
-| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1682` |
+| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1695` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
 | `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:504`, `apps/api/src/modules/apps/app-frame.ts:35` |
 | `LIAISON_SANDBOX_FETCH_TIMEOUT_MS` | `apps/api/src/modules/apps/sandbox/bridge/egress.ts:63` |
@@ -345,3 +347,4 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `WEBHOOK_PROBE_STALE_SEC` | `apps/api/src/modules/webhooks/ingest-health.ts:157` |
 | `WEBHOOK_REJECT_SPAN_SEC` | `apps/api/src/modules/webhooks/ingest-health.ts:150` |
 | `WEBHOOK_REJECT_WARMUP_SEC` | `apps/api/src/modules/webhooks/ingest-health.ts:141` |
+| `XDG_RUNTIME_DIR` | `apps/api/src/modules/agent/tools/embedder-main.ts:22`, `apps/api/src/modules/agent/tools/tool-meaning.ts:249` |

@@ -490,9 +490,17 @@ services:
       LIAISON_WEB_READS_CONSECUTIVE: ${LIAISON_WEB_READS_CONSECUTIVE:-}
       LIAISON_WEB_FETCH_HOSTS_PER_TURN: ${LIAISON_WEB_FETCH_HOSTS_PER_TURN:-}
       LIAISON_WEB_READS_PER_THREAD_HOUR: ${LIAISON_WEB_READS_PER_THREAD_HOUR:-}
+      # Tool search by meaning: on|off. Empty = on in the managed edition, off on
+      # a self-hosted server. On, also start the `embedder` service below
+      # (COMPOSE_PROFILES=meaning in deploy/.env): it holds the model once for
+      # the whole host, and every app/api/worker process asks it over a socket.
       LIAISON_TOOL_MEANING: ${LIAISON_TOOL_MEANING:-}
       # Tool search's embedding model files, on the data volume (host ./data/models).
       LIAISON_MODEL_CACHE_DIR: ${LIAISON_MODEL_CACHE_DIR:-/var/lib/liaison/models}
+      # The embedding process's Unix socket, on the data volume every container
+      # here mounts (host ./data/run). No network port.
+      LIAISON_EMBEDDER_SOCKET: ${LIAISON_EMBEDDER_SOCKET:-/var/lib/liaison/run/embedder.sock}
+      LIAISON_EMBEDDER_DEADLINE_MS: ${LIAISON_EMBEDDER_DEADLINE_MS:-150}
       LIAISON_DEMO_CODE_ATTEMPTS: ${LIAISON_DEMO_CODE_ATTEMPTS:-}
       LIAISON_DEMO_EDGE_OVERWRITES_XFF: ${LIAISON_DEMO_EDGE_OVERWRITES_XFF:-}
       LIAISON_DEMO_BOOKING_URL: ${LIAISON_DEMO_BOOKING_URL:-}
@@ -791,6 +799,44 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # Tool search's embedding process (profile `meaning`): one per host, whatever
+  # the number of app/api/worker processes. It loads the model (about 1.1 GB)
+  # once and answers on LIAISON_EMBEDDER_SOCKET; it has no port. Start it only
+  # with LIAISON_TOOL_MEANING=on: COMPOSE_PROFILES=meaning in deploy/.env makes
+  # `docker compose up -d` start it. While it is down or loading, tool search
+  # ranks by words. A deploy never needs to restart it (the socket's protocol
+  # stays the same across releases).
+  embedder:
+    <<: *liaison-app
+    profiles: ["meaning"]
+    command: ["embedder"]
+    depends_on:
+      data-init: { condition: service_completed_successfully }
+    ports: []
+    stop_grace_period: 10s
+    mem_limit: 2g
+    mem_reservation: 1g
+    cpus: 2.0
+    healthcheck:
+      # Ready = the socket answers an empty request.
+      test:
+        - CMD
+        - bun
+        - --eval
+        - |
+          const s = require('node:net').createConnection(process.env.LIAISON_EMBEDDER_SOCKET)
+          let b = ''
+          s.on('connect', () => s.write('{"kind":"query","texts":[]}\n'))
+          s.on('data', (c) => { b += c })
+          s.on('end', () => process.exit(b.startsWith('{"ok":true') ? 0 : 1))
+          s.on('error', () => process.exit(1))
+          setTimeout(() => process.exit(1), 3000)
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 300s
 
   # ---------------------------------------------------------------------------
   # Rolling deploys (profile `rolling`): the same image as `app`, split into an

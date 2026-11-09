@@ -353,3 +353,4 @@ The search reads other forms of a word, misspellings of 5+ letters, French words
 Search ranks by meaning as well as words -> apps/api/src/modules/agent/tools/tool-rank.ts:523
 Meaning on by default when managed, off when self-hosted -> apps/api/src/lib/edition.ts:67
 Meaning ranks only the reachable catalog -> apps/api/src/modules/agent/tools/tool-search.ts:565
+One embedding process per server; not running or slow means words alone -> apps/api/src/modules/agent/tools/tool-meaning.ts:246 ; apps/api/src/modules/agent/tools/tool-meaning.ts:167 ; apps/api/src/modules/agent/tools/embedder-socket.ts:257

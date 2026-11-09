@@ -122,7 +122,8 @@ describe("RichEditor: markdown in and out", () => {
 describe("RichEditor: shortcuts and typed markdown", () => {
   it("Mod-B, Mod-I, Mod-U toggle marks on the selection", () => {
     const { field, editor, onChange } = mount({ value: "mot" })
-    editor.commands.selectAll()
+    // The whole text selected, as a select-all leaves it once typing starts.
+    editor.commands.setTextSelection({ from: 1, to: editor.state.doc.content.size - 1 })
     key(field, "b")
     key(field, "i")
     key(field, "u")
@@ -769,5 +770,22 @@ describe("RichEditor: pasted Liaison links", () => {
     pasteText(field, "https://elsewhere.example/projects/tasks/t-1")
     expect(field.querySelector("[data-mention-ref]")).toBeNull()
     expect(onChange).toHaveBeenLastCalledWith("https://elsewhere.example/projects/tasks/t-1")
+  })
+})
+
+// An edit field opens focused at the end of its text. tiptap applied that
+// focus a task later (a setTimeout after mount), so a selection made in
+// between (select all, then type: what Playwright's fill does, and a quick
+// hand) was collapsed to the end before the typing landed: "Original text for
+// cancelModified text" instead of "Modified text" (gate run 42608484651,
+// messages-send-receive Flow E). The field is focused at the end as it
+// mounts, so nothing later moves a selection the person made.
+describe("RichEditor: autofocus", () => {
+  it("a selection made right after the field opens is kept for the typing", async () => {
+    const { field, editor } = mount({ value: "Original text", autofocus: true, preset: "minimal" })
+    editor.commands.selectAll()
+    await new Promise((r) => setTimeout(r, 20))
+    editor.commands.insertContent("Modified")
+    expect(field.textContent).toBe("Modified")
   })
 })

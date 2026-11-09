@@ -57,7 +57,9 @@ test.describe("Flow B: Update Profile Settings", () => {
     })
     expect(meRes.body.data.name).toBe("Elodie Updated")
 
-    // Restore original name
+    // Restore original name, once the first toast has gone (it stays 5 s), so
+    // the toast checked below is the restore's own.
+    await expect(authenticatedPage.getByText("Profile updated")).toBeHidden({ timeout: 10000 })
     await nameInput.clear()
     await nameInput.fill("Elodie Vasseur")
     await authenticatedPage.getByRole("button", { name: /save changes/i }).click()

@@ -186,6 +186,7 @@
     "title": "Companies",
     "people": "People",
     "newCompany": "New company",
+    "newCompanyDomain": "Website domain",
     "search": "Search companies...",
     "countLine": "{{count}} companies, latest activity first",
     "emptyTitle": "No companies yet",

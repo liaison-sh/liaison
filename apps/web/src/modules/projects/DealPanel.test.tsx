@@ -63,7 +63,7 @@ interface Routes {
 }
 
 function makeApi(routes: Routes) {
-  const post = vi.fn(async (path: string, body: { toolName?: string }) => {
+  const post = vi.fn().mockImplementation(async (path: string, body: { toolName?: string }) => {
     if (path === "/apps/run-tool" && body.toolName === "projects:deals_search") {
       if (routes.deal instanceof Error) throw routes.deal
       return { items: routes.deal ? [routes.deal] : [], count: routes.deal ? 1 : 0 }
@@ -71,7 +71,7 @@ function makeApi(routes: Routes) {
     if (path === "/apps/run-tool" && body.toolName === "projects:deals_update") return {}
     throw new ApiError("Not found", 404)
   })
-  const get = vi.fn(async (path: string) => {
+  const get = vi.fn().mockImplementation(async (path: string) => {
     if (path === "/contacts/k-claire") return { id: "k-claire", name: "Claire Vidal" }
     if (path.startsWith("/agent/routines")) {
       return path.includes("shared") ? [] : (routes.routines ?? [])

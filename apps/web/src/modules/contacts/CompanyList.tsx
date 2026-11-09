@@ -158,7 +158,7 @@ export const CompanyList: Component<CompanyListProps> = () => {
               data-testid="company-list.new-domain"
               type="text"
               maxLength={300}
-              aria-label="domain"
+              aria-label={i18n.t("contacts.companies.newCompanyDomain")}
               placeholder="example.com"
               class="w-48 rounded-md border border-border-subtle bg-bg px-2.5 py-1.5 font-mono text-[12.5px] text-text outline-none focus:border-border"
               value={newDomain()}

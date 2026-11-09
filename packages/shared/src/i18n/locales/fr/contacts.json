@@ -186,6 +186,7 @@
     "title": "Entreprises",
     "people": "Personnes",
     "newCompany": "Nouvelle entreprise",
+    "newCompanyDomain": "Domaine du site",
     "search": "Rechercher des entreprises...",
     "countLine": "{{count}} entreprises, activité la plus récente d'abord",
     "emptyTitle": "Aucune entreprise pour l'instant",

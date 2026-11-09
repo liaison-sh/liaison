@@ -4933,10 +4933,14 @@ export const FR: Record<string, string> = {
  * and "Désactivée" for a cadence. Keyed `namespace.key.path`.
  */
 export const FR_BY_KEY: Record<string, string> = {
-  "projects.deals.subline": "{{count}} affaires en cours, {{amount}}. Les affaires calmes viennent en premier dans chaque colonne.",
-  "projects.deals.sublineOne": "1 affaire en cours, {{amount}}. Les affaires calmes viennent en premier dans chaque colonne.",
-  "projects.deals.sublineNoAmount": "{{count}} affaires en cours. Les affaires calmes viennent en premier dans chaque colonne.",
-  "projects.deals.sublineNoAmountOne": "1 affaire en cours. Les affaires calmes viennent en premier dans chaque colonne.",
+  "projects.deals.subline":
+    "{{count}} affaires en cours, {{amount}}. Les affaires calmes viennent en premier dans chaque colonne.",
+  "projects.deals.sublineOne":
+    "1 affaire en cours, {{amount}}. Les affaires calmes viennent en premier dans chaque colonne.",
+  "projects.deals.sublineNoAmount":
+    "{{count}} affaires en cours. Les affaires calmes viennent en premier dans chaque colonne.",
+  "projects.deals.sublineNoAmountOne":
+    "1 affaire en cours. Les affaires calmes viennent en premier dans chaque colonne.",
   "projects.deals.newDeal": "Nouvelle affaire",
   "projects.deals.needsDealAccess": "Accès aux affaires requis",
   "projects.deals.noAmount": "Aucun montant",
@@ -4968,10 +4972,13 @@ export const FR_BY_KEY: Record<string, string> = {
   "projects.deals.none": "Aucun",
   "projects.deals.perMonth": "{{amount}} par mois",
   "projects.deals.perYear": "{{amount}} par an",
-  "projects.deals.readFailed": "Impossible de lire l'affaire. La tâche ci-dessous n'est pas affectée.",
+  "projects.deals.readFailed":
+    "Impossible de lire l'affaire. La tâche ci-dessous n'est pas affectée.",
   "projects.deals.updateFailed": "Impossible de modifier l'affaire. Rien n'a changé.",
-  "projects.deals.routineLine": "La routine {{name}} rédige les relances des affaires calmes ici, et {{owner}} approuve chacune avant son envoi.",
-  "projects.deals.routineLineNoOwner": "La routine {{name}} rédige les relances des affaires calmes ici, et rien ne part avant qu'une personne l'approuve.",
+  "projects.deals.routineLine":
+    "La routine {{name}} rédige les relances des affaires calmes ici, et {{owner}} approuve chacune avant son envoi.",
+  "projects.deals.routineLineNoOwner":
+    "La routine {{name}} rédige les relances des affaires calmes ici, et rien ne part avant qu'une personne l'approuve.",
   "projects.deals.client": "Client (facultatif)",
   "projects.deals.clientSearch": "Rechercher des entreprises",
   "projects.deals.clientNone": "Aucun client",
@@ -4980,6 +4987,7 @@ export const FR_BY_KEY: Record<string, string> = {
   "projects.deals.clientUnavailable": "Une entreprise que vous ne voyez pas",
   "contacts.companies.title": "Entreprises",
   "contacts.companies.newCompany": "Nouvelle entreprise",
+  "contacts.companies.newCompanyDomain": "Domaine du site",
   "contacts.companies.search": "Rechercher des entreprises...",
   "contacts.companies.countLine": "{{count}} entreprises, activité la plus récente d'abord",
   "contacts.companies.emptyTitle": "Aucune entreprise pour l'instant",

@@ -2545,11 +2545,14 @@ describe("a new message is commercial by its recipient's data", () => {
   }, 60_000)
 
   /** The commercial-send records written for `email`. */
-  const commercialRecords = (email: string) =>
-    sql<Array<{ metadata: Record<string, unknown> }>>`
+  const commercialRecords = async (
+    email: string,
+  ): Promise<Array<{ metadata: Record<string, unknown> }>> => [
+    ...(await sql<Array<{ metadata: Record<string, unknown> }>>`
       SELECT metadata FROM kernel.audit_log
        WHERE org_id = ${orgId} AND action = 'mail.commercial_send'
-         AND metadata ->> 'recipientHash' = ${suppressionsModule.hashEmail(orgId, email)}`
+         AND metadata ->> 'recipientHash' = ${suppressionsModule.hashEmail(orgId, email)}`),
+  ]
   const noticeAt = async (email: string) =>
     (
       await sql<Array<{ at: string | null }>>`

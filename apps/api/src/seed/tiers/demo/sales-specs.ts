@@ -101,8 +101,8 @@ export const SALES_PIPELINE: PipelineSpec = {
       currency: "EUR",
     },
     {
-      key: "atelier-preamps",
-      title: "Atelier Sonore field preamp batch",
+      key: "lyon-preamps",
+      title: "Lyon dealer field preamp batch",
       stage: "Won",
       companyKey: "dealer:fr-lyo",
       contactKey: "dealer:fr-lyo",

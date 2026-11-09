@@ -16,7 +16,14 @@ Pickup points section, Exclude relay and pickup point services -> bundled-apps/b
 Labels section, Label format -> bundled-apps/boxtal/app.manifest.json:401
 label format applies to shipments created after the change -> bundled-apps/boxtal/app.manifest.json:2491
 one row per open unfulfilled Shopify order; leaves when fulfilled or excluded -> bundled-apps/boxtal/README.md:30
-To prepare sidebar row -> bundled-apps/boxtal/src/ui/sidebar.tsx:407
+Shipping worklist sidebar row, badge to prepare plus ready, warn while to prepare -> bundled-apps/boxtal/src/ui/sidebar.tsx:419
+worklist filters All / To prepare / Ready to ship / To pack / Packed with counts -> bundled-apps/boxtal/src/ui/worklist-logic.ts:74
+background refresh on focus and once a minute -> bundled-apps/boxtal/src/ui/Queues.tsx:260
+refresh after a reconnection or a stale tab coming back -> apps/web/src/primitives/createStaleResource.ts:52
+rows update in place on refresh (unchanged rows keep their objects) -> bundled-apps/boxtal/src/ui/prep-row-logic.ts:630
+no refreshing banner once read live this mount -> bundled-apps/boxtal/src/ui/PrepGrid.tsx:1575
+Paid: what the customer paid for shipping, blue, under the offer, stays across offers -> bundled-apps/boxtal/src/ui/PrepGrid.tsx:667
+paid shipping from the order's shipping line, order currency, null when no line -> bundled-apps/boxtal/src/orders.ts:325
 Pull orders button -> bundled-apps/boxtal/src/ui/PrepGrid.tsx:1957
 Refresh stale re-quotes stale rows -> bundled-apps/boxtal/src/ui/PrepGrid.tsx:1937
 status options To prepare / Validated / On hold -> bundled-apps/boxtal/src/ui/prep-row-logic.ts:483

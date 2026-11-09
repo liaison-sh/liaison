@@ -46,4 +46,6 @@ export const FR: Record<string, string> = {
     "L'adresse de la commande et l'adresse vérifiée du client diffèrent. Choisissez celle où part ce colis.",
   "Verified {{date}}": "Vérifiée le {{date}}",
   "Verified {{date}} by {{who}}": "Vérifiée le {{date}} par {{who}}",
+  "Shipping the customer paid on the order": "Frais de port payés par le client sur la commande",
+  "Paid {{amount}}": "Payé {{amount}}",
 }

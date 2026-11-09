@@ -36,7 +36,8 @@ describe("social manifest (B1)", () => {
     // 0.6.60: the shared host package gained the discussion panel hooks; no change of its own.
     // 0.6.59 (main): above the 0.6.58 that main took meanwhile; no change of its own.
     // 0.6.63: both of the above, merged.
-    expect(manifest.version).toBe("0.6.63")
+    // 0.6.64: two parses of one delivery from a new person no longer fail on the unique key.
+    expect(manifest.version).toBe("0.6.64")
     expect(manifest.packageFormat).toBe(1)
   })
 

@@ -220,19 +220,33 @@ export async function upsertDmMessage(
       return { created: false, inbound }
     }
   }
-  await ctx.db.insert("dm_message", {
-    conversation_id: conversationId,
-    external_id: m.externalId ?? null,
-    direction: m.direction,
-    // Graph API omits `message` on attachment/sticker-only messages (empty
-    // string, not absent) — stored as-is (null-coalesced), NOT collapsed to
-    // "no content" here; `dmSnippet`/the UI's thread rendering are what
-    // decide how an empty body READS (§B: "[attachment]", not a blank bubble
-    // or "No message yet" on a thread that has real content).
-    body: m.body ?? null,
-    occurred_at: m.occurredAt ?? new Date().toISOString(),
-    delivery_status: inbound ? "received" : "sent",
-  })
+  try {
+    await ctx.db.insert("dm_message", {
+      conversation_id: conversationId,
+      external_id: m.externalId ?? null,
+      direction: m.direction,
+      // Graph API omits `message` on attachment/sticker-only messages (empty
+      // string, not absent) — stored as-is (null-coalesced), NOT collapsed to
+      // "no content" here; `dmSnippet`/the UI's thread rendering are what
+      // decide how an empty body READS (§B: "[attachment]", not a blank bubble
+      // or "No message yet" on a thread that has real content).
+      body: m.body ?? null,
+      occurred_at: m.occurredAt ?? new Date().toISOString(),
+      delivery_status: inbound ? "received" : "sent",
+    })
+  } catch (err) {
+    // Two parses of the same delivery (a Meta redelivery, or the webhook and
+    // the poller) both saw no row: the one that lost the unique-key race has
+    // nothing left to write.
+    if (m.externalId && isUniqueViolation(err)) {
+      const reread = await ctx.db.findMany("dm_message", {
+        where: { conversation_id: conversationId, external_id: m.externalId },
+        limit: 1,
+      })
+      if (reread[0]) return { created: false, inbound }
+    }
+    throw err
+  }
   return { created: true, inbound }
 }
 
@@ -544,16 +558,33 @@ async function findOrCreateConversation(
   if (existing) return existing
   // §5/§6: link the DM participant to a kernel contact.
   const contactId = await resolveAuthorContact(ctx, participantExternalId)
-  const inserted = await ctx.db.insert("dm_conversation", {
-    platform,
-    // Placeholder key until the poller sees the thread and stores its id.
-    external_id: participantExternalId,
-    participant_external_id: participantExternalId,
-    contact_id: contactId,
-    status: "open",
-    // A Facebook delivery names the Page it was sent to: send_dm needs it to
-    // pick that Page's token (the poller stores the same `{ pageId }`).
-    metadata: platform === "facebook" && ownerExternalId ? { pageId: ownerExternalId } : {},
-  })
-  return { id: inserted.id }
+  try {
+    const inserted = await ctx.db.insert("dm_conversation", {
+      platform,
+      // Placeholder key until the poller sees the thread and stores its id.
+      external_id: participantExternalId,
+      participant_external_id: participantExternalId,
+      contact_id: contactId,
+      status: "open",
+      // A Facebook delivery names the Page it was sent to: send_dm needs it to
+      // pick that Page's token (the poller stores the same `{ pageId }`).
+      metadata: platform === "facebook" && ownerExternalId ? { pageId: ownerExternalId } : {},
+    })
+    return { id: inserted.id }
+  } catch (err) {
+    // Two deliveries from the same new person parsed at once both saw no
+    // conversation: the loser of the unique-key race uses the winner's row.
+    if (isUniqueViolation(err)) {
+      const reread = await findConversationRow(ctx, platform, { participantExternalId })
+      if (reread) return reread
+    }
+    throw err
+  }
+}
+
+/** A postgres unique-key (23505) violation as the db bridge surfaces it (the pg code and text in
+ *  the message). */
+function isUniqueViolation(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err)
+  return /\b23505\b/.test(msg) || /duplicate key value violates unique constraint/i.test(msg)
 }

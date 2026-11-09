@@ -245,6 +245,11 @@ const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, 
     REASONS.ACTIVITY,
   ],
   [
+    "apps/api/src/modules/contacts/activity.ts",
+    "hasScope(COMPANY_SOURCE.scope, actor.scopes ?? [])",
+    REASONS.ACTIVITY,
+  ],
+  [
     "apps/api/src/modules/agent/context/context-providers.ts",
     "...new Set([decl.scope, ...resolveRequiredScopes(tool)]),",
     REASONS.PROVIDER,

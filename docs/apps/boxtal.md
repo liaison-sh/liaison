@@ -38,7 +38,7 @@ A new label format applies to shipments created after the change.
 
 ## Prepare and ship orders
 
-Orders are prepared and shipped from one page, the **Shipping worklist** in the sidebar. Its filters at the top are **All**, **To prepare**, **Ready to ship**, **To pack** and **Packed**, each with its count. The sidebar badge counts the orders still to prepare plus the labels ready to ship, tinted while some orders still need a label.
+Orders are prepared and shipped from one page, the **Shipping worklist**: the **Boxtal** icon opens it, and so does **Shipping worklist** in the sidebar (the shipped history stays under **All shipments**). It is one table: every order still to prepare and every bought label, each row with its **State** (**To prepare**, **Label bought**, **Packed**, **Packed, fulfilled**, **Fulfilled, not packed**, **Fulfillment awaiting approval**, **Fulfillment failed**). The orders to prepare come first, then the bought labels, oldest request first. Its filters at the top are **All**, **To prepare**, **Ready to ship**, **To pack** and **Packed**, each with its count, and they filter that one table. The search, **All countries** and product filters and the column sorts apply to it too (a bought label has no order tags, so a tag filter hides the bought labels; **Country** is the one sort the bought labels follow). The sidebar badge counts the orders still to prepare plus the labels ready to ship, tinted while some orders still need a label.
 
 The worklist refreshes in the background (when you come back to it, once a minute, after a reconnection). Rows update in place: nothing blanks and the page keeps its scroll.
 
@@ -83,13 +83,13 @@ Once the customer has a verified address, the label's approval card says which a
 
 ## Print and pack
 
-**Ready to ship** lists shipments whose label is bought, oldest first.
+A bought label is a row of the worklist (filter **Ready to ship** to see only those), oldest request first. Its own actions are at the end of the row.
 
 1. Click **Print pack** on a row. The label and the invoice print as two separate jobs. **Label** and **Invoice** open each one alone. An issued invoice whose PDF was never rendered is rendered then. A draft invoice is not printed: issue it in Invoicing first. If the render fails, open the invoice and use its retry action, then print again.
 2. Select several rows and click **Print N packs** to get every label in one PDF and every invoice in another. A shipment of several parcels prints one label per parcel, all in its label PDF.
 3. Tick the row as packed when the parcel is boxed. This fulfils the Shopify order with the tracking number and its carrier. Whether Shopify emails the customer is the Shopify app's **Shipping emails** setting (see [Shopify](store.md)).
 
-The **Country** column, its **Country** sort and the **All countries** filter work as in To prepare.
+The **Country** column, its **Country** sort and the **All countries** filter are the worklist's own, so they cover the bought labels too. **Select all** above the table selects the bought labels on screen.
 
 **Tracking numbers.** Boxtal's own number is used when it gives one at purchase. A carrier that issues its number only at the first scan prints it on the label, so the app reads it there once the label exists: FedEx from the label text, UPS and DHL Express from the label text, or from the label image through the workspace's media analysis. A number read from a label is kept only when it has the carrier's format and check digit and the label shows the recipient's postcode. Ticking the row then fulfils the order with it; a number read from a label never fulfils an order by itself. When no number can be confirmed (media analysis off, no model key, no recipient postcode on file to check the read against, or the read did not pass the checks), the row says **Tracking to confirm** until the carrier's first scan brings the number. A read that fails for a passing reason (a timeout, a model or storage error) is tried again on the next pass, up to three times. On a FedEx label the number is the one printed in groups of four next to **TRK#**; other digit runs on the label (the recipient's phone, account numbers) are not taken for it. When ticking a row is refused with "No tracking number yet", or the row says **Tracking to confirm**, the row offers a field for the number printed on the label: **Pack with this number** checks it has the carrier's format and fulfils the order with it. A typed number never replaces one the row already has, and the carrier's own number replaces it at the first scan.
 

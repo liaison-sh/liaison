@@ -655,14 +655,14 @@ test.describe("Boxtal: visual baselines", () => {
     await expect(page.locator('[data-testid="boxtal-prep-refresh-quote-tp2"]')).toHaveCount(0)
   })
 
-  test("ready-to-ship — operator print station", async ({ page, env, qa }) => {
+  test("ready-to-ship — operator print station", async ({ page, env, qa }, testInfo) => {
     await installHostMockInterceptor(page)
     await loginAs(page, env, qa.admin.email, "12345678")
     await shotPage(
       page,
       env,
       "/boxtal/queue/ready",
-      '[data-testid="boxtal-ready-to-ship"]',
+      '[data-testid="boxtal-worklist"]',
       "queue-ready.png",
     )
     await expect(page.locator('[data-testid="boxtal-print-r1"]')).toBeVisible()
@@ -671,6 +671,30 @@ test.describe("Boxtal: visual baselines", () => {
     await expect(page.getByTestId("boxtal-worklist-filter")).toBeVisible()
     await expect(page.getByTestId("boxtal-ready-state-r1")).toHaveText("Label bought")
     await expect(page.getByTestId("boxtal-ready-state-r2")).toHaveText("Packed, fulfilled")
+    // All: ONE table, the orders to prepare first, then the bought labels, each with its State.
+    await page.getByTestId("boxtal-worklist-filter-all").click()
+    await expect(page.getByTestId("boxtal-worklist-filter-all")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+    await expect(page.getByTestId("boxtal-worklist-filter-ready")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    )
+    const worklist = page.getByTestId("boxtal-worklist")
+    await expect(worklist.locator("table")).toHaveCount(1)
+    const table = page.getByTestId("boxtal-prep-grid-table")
+    await expect(table.getByTestId("boxtal-ready-row-r1")).toBeVisible()
+    await expect(
+      table.locator('[data-testid^="boxtal-prep-row-"][data-state]').first(),
+    ).toBeVisible()
+    await expect(table.locator('[data-testid^="boxtal-prep-state-"]').first()).toHaveText(
+      "To prepare",
+    )
+    const shot = testInfo.outputPath("worklist-all.png")
+    await page.waitForTimeout(350) // the filter buttons' colour transition
+    await page.screenshot({ path: shot })
+    await testInfo.attach("worklist-all", { path: shot, contentType: "image/png" })
   })
 
   test("shipments — master/detail (rows + selected detail)", async ({ page, env, qa }) => {

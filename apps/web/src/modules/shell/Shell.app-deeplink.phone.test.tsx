@@ -10,7 +10,7 @@
 //
 // It is driven off the REAL bundled manifests rather than a fixture, so an app
 // whose default page happens to own the bare pattern (shopify: `/shopify`) and
-// one that names a deeper default page (boxtal: `/boxtal/shipments`) are both
+// one that names a deeper default page (boxtal: `/boxtal/queue/worklist`) are both
 // covered, which is the exact pair that behaved differently.
 import { Route, Router } from "@solidjs/router"
 import { render, waitFor } from "@solidjs/testing-library"

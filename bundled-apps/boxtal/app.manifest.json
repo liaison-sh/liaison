@@ -194,7 +194,7 @@
       }
     ]
   },
-  "version": "0.23.25",
+  "version": "0.23.26",
   "iconName": "box",
   "description": "Boxtal shipping integration: carrier quotes, tracking, shipments, customs documents",
   "listing": {
@@ -483,9 +483,9 @@
       "label": "Boxtal",
       "order": 70,
       "tabAction": {
-        "type": "home",
-        "entityId": "shipments",
-        "label": "Shipments"
+        "type": "queue",
+        "entityId": "worklist",
+        "label": "Shipping worklist"
       }
     },
     "tabTypes": {

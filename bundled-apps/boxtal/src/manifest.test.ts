@@ -622,7 +622,10 @@ describe("Boxtal app.manifest.json", () => {
     // 0.23.21 (main): an opened approval card (and the phone's column fold) stays open when its row is re-read.
     // 0.23.22 (main): the shipment detail's label Download opens the label (it had no handler).
     // 0.23.27: above the 0.23.22 main took meanwhile; no change of its own.
-    expect(m.version).toBe("0.23.27")
+    // 0.23.23 (main): the label reservation and its finalize commit at once (ctx.db.insertNow / updateNow),
+    // so a sandbox kill after the paid POST no longer rolls the only record of the label back.
+    // 0.23.28: above the 0.23.23 main took meanwhile; no change of its own.
+    expect(m.version).toBe("0.23.28")
     expect(m.packageFormat).toBe(1)
   })
 

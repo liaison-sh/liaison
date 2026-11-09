@@ -498,21 +498,34 @@ describe("redactImportEvent", () => {
 
 // ---- pathological timing (A59) ----
 
+// Bun and Node 23.9+ have `process.threadCpuUsage`; the installed typings do not
+// name it yet.
+declare global {
+  namespace NodeJS {
+    interface Process {
+      threadCpuUsage(previous?: CpuUsage): CpuUsage
+    }
+  }
+}
+
 const KIB = 1024
 const fill = (unit: string, bytes: number) =>
   unit.repeat(Math.ceil(bytes / unit.length)).slice(0, bytes)
 
 /**
- * The CPU time `fn(input)` costs this process, in ms. Wall time is what a busy
- * machine inflates: with every suite of a gate running at once, a 50 ms pass
- * read as 5 s of wall time and failed a linear rule. The redaction is
- * synchronous on this thread, so its CPU time is its own cost, and a quadratic
- * rule still burns minutes of it on 1 MiB.
+ * The CPU time `fn(input)` costs the calling thread, in ms. Wall time is what a
+ * busy machine inflates: with every suite of a gate running at once, a 50 ms
+ * pass read as 5 s of wall time and failed a linear rule. Process CPU time is
+ * wrong too: it adds every thread's work, and the runtime's parallel GC
+ * helpers mark a 1 MiB parse's garbage on other threads, so a linear 20 ms
+ * pass read as 8x its 256 KiB time on a Linux runner. The redaction is
+ * synchronous on this thread, so this thread's CPU time is its own cost, and a
+ * quadratic rule still burns minutes of it on 1 MiB.
  */
 function cpuMs(fn: (s: string) => unknown, input: string): number {
-  const start = process.cpuUsage()
+  const start = process.threadCpuUsage()
   fn(input)
-  const spent = process.cpuUsage(start)
+  const spent = process.threadCpuUsage(start)
   return (spent.user + spent.system) / 1000
 }
 

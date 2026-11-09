@@ -46,13 +46,12 @@ import {
   threadAnchorMessageRoute,
   threadAnchorTitle,
 } from "@liaison/shared"
-import { and, count, eq, inArray, lt } from "drizzle-orm"
+import { and, eq, inArray, lt } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
 import {
   organizations,
   pushTokens,
   threadParticipants,
-  threadReferences,
   threads,
   userPreferences,
   users,
@@ -390,7 +389,6 @@ interface ThreadShape {
   title: string | null
   isPinned: boolean
   createdFrom: unknown
-  referenceCount: number
 }
 
 async function loadThread(orgId: string, threadId: string): Promise<ThreadShape | null> {
@@ -405,12 +403,7 @@ async function loadThread(orgId: string, threadId: string): Promise<ThreadShape 
       .from(threads)
       .where(and(eq(threads.id, threadId), eq(threads.orgId, orgId)))
       .limit(1)
-    if (!row) return null
-    const [refs] = await tx
-      .select({ value: count() })
-      .from(threadReferences)
-      .where(and(eq(threadReferences.threadId, threadId), eq(threadReferences.orgId, orgId)))
-    return { ...row, referenceCount: Number(refs?.value ?? 0) }
+    return row ?? null
   })
 }
 
@@ -656,7 +649,6 @@ function isDirectRoom(
     title: thread.title,
     isPinned: thread.isPinned,
     createdFrom: thread.createdFrom,
-    referenceCount: thread.referenceCount,
     humanCount: humanMemberCount,
     agentCount: agentMemberCount,
   }

@@ -335,6 +335,14 @@
 //         Skills are not one's own resource in this sense: a personal skill is still decided by
 //         `kernel:skills:approve` (a governance decision), narrowed by 13a.
 
+// A BUG REPORT ABOUT LIAISON IS NEVER JUDGED (2026-11-09, owner ruling: no friction on internal
+// actions; gate only outbound data, money and customer sends). `kernel:report_bug` files into
+// the org's own Bug Reports inbox, or, where reports go only to the Liaison team, prepares a
+// draft that leaves only on its reporter's own click on the exact payload. Neither is judged
+// here (`taintUnjudgedWrite`), and the tool declares no outward effect, so neither the scope
+// taint nor the outside-content hold (taint.ts) parks it: a member's agent filed two reports
+// after reading Boxtal documents and both waited for an admin's approval.
+
 // Sink identifiers are the real table, schema-qualified, with the UNPREFIXED base schema name:
 //   kernel.messages          (db/schema/kernel/threads.ts)
 //   kernel.agent_memory      (db/schema/kernel/agent-memory.ts)
@@ -838,6 +846,9 @@ export type ToolTaintDeclaration = {
    *  of the turn and taint does not judge it. Declare it only on a write whose every other
    *  parameter is an id or enum naming a row the caller alone may change. */
   contentParams?: readonly string[]
+  /** Never judged by the scope taint (kernel code only): a write the product never gates, a
+   *  bug report about Liaison itself (see the header). */
+  taintUnjudgedWrite?: boolean
 }
 
 /**
@@ -1002,6 +1013,7 @@ export function checkToolScopeTaint(
 ): ScopeTaintBlockedError | null {
   if (accumulatedRequiredScopes.length === 0) return null
   if (carriesNoTurnContent(toolDef, call?.args)) return null
+  if (toolDef.taintUnjudgedWrite === true) return null
   let target: string | null
   if (typeof toolDef.writesToTable === "string") {
     target = checkScopeTaint(accumulatedRequiredScopes, toolDef.writesToTable, {

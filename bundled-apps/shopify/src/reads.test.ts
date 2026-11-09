@@ -1076,6 +1076,47 @@ describe("orders_get", () => {
     expect(out.customerAddress?.zip).toBe("37203")
   })
 
+  // red: drop customAttributes / billingAddress from ORDERS_GET_QUERY's projection -> buyerTaxId and
+  // the billing company come back null, and a re-driven invoice loses a VAT number added after checkout.
+  it("returns the buyer VAT number from the order's current custom attributes and the billing company", async () => {
+    const { ctx, calls } = makeCtx({
+      fetchResponses: [
+        {
+          data: {
+            order: {
+              id: "gid://shopify/Order/3001",
+              name: "#3001",
+              displayFinancialStatus: "PAID",
+              currentTotalPriceSet: { presentmentMoney: { amount: "360.00", currencyCode: "EUR" } },
+              shippingAddress: null,
+              billingAddress: {
+                name: "Gina Rossi",
+                company: "Rossi Strumenti SRL",
+                address1: "Via Roma 1",
+                city: "Torino",
+                zip: "10100",
+                country: "Italy",
+                countryCode: "IT",
+              },
+              customAttributes: [
+                { key: "gift", value: "no" },
+                { key: "VAT number", value: " IT01234567890 " },
+              ],
+              customer: null,
+            },
+          },
+        },
+      ],
+    })
+    const out = await orders_get({ id: "gid://shopify/Order/3001" }, ctx)
+    expect(out.buyerTaxId).toBe("IT01234567890")
+    expect(out.billingAddress?.company).toBe("Rossi Strumenti SRL")
+    expect(out.billingAddress?.countryCode).toBe("IT")
+    const query = String(calls[0]?.body ?? "")
+    expect(query).toContain("customAttributes { key value }")
+    expect(query).toContain("billingAddress { name company")
+  })
+
   it("enriches the order-detail shape the OrderPanel renders (fulfillments/refunds/returns + panel fields)", async () => {
     // Regression: OrderPanel reads top-level name/fulfillmentStatus/customer.snake/
     // totalPrice/lineItems.priceSet/fulfillments/refunds/returns — orders_get used to

@@ -606,6 +606,9 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // Received supplier e-invoices through the same contract: arrival webhook → mirror,
             // first-hop-only file downloads, unlisted-hop refusal, gated refusal never auto-approved.
             "src/tests/integration/einvoicing-receive.test.ts",
+            // An approved call's ctx.db.insertNow row outlives the sandbox kill (Boxtal from
+            // source, fake Boxtal behind the egress override), and stuck_list names it.
+            "src/tests/integration/approved-intent-row-survives-kill.test.ts",
             "src/tests/integration/invoicing-einvoice-gate-sites.test.ts",
             "src/tests/integration/invoicing-identity-tools.test.ts",
             "src/tests/integration/invoicing-identity-backfill.test.ts",
@@ -1277,6 +1280,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/mutations.test.ts",
             // Pinned export set of the mutations index over src/mutations/ (pure, no I/O).
             "src/mutations.export-set.test.ts",
+            "src/mutations/invoiceability.test.ts",
             // Partial-fulfillment planning read (fulfillment_orders_get) — mock-driven fetch stub,
             // no Postgres/shop creds, same class as mutations.test.ts.
             "src/fulfillment-orders.test.ts",
@@ -1369,6 +1373,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/issue-date.test.ts",
             "src/state.test.ts",
             "src/tax.test.ts",
+            // What the order-created auto-flow would park, asked before a draft order is staged (pure).
+            "src/order-invoiceability.test.ts",
             // E-invoicing pure core (territory, identity, regime classifier, operation type).
             "src/einvoicing/territory.test.ts",
             // E-invoicing transmission and booking through the bound PA provider (the Pennylane

@@ -107,3 +107,10 @@ A Workers run gets a secret-free copy of the bridge, the local sandbox the origi
 load also covers a module without the export the run named (worker-core codes) -> apps/api/src/modules/apps/workers/worker-core.ts:326 ; apps/api/src/modules/apps/workers/faults.ts:56
 A tool refused at an app day cap answers 429 with its code and {limit, used} in error.details -> apps/api/src/modules/apps/execute-tool.ts:5619
 Webhook base is the org's host with org hosts, else BASE_URL -> apps/api/src/modules/apps/connections/service.ts:1623 ; apps/api/src/modules/apps/connections/service.ts:3510 ; apps/api/src/modules/apps/connections/before-disconnect.ts:158 ; apps/api/src/lib/org-public-url.ts:36
+ctx.db.insertNow / updateNow make the insert / update write in a new transaction committed at once, with the same checks -> apps/api/src/modules/apps/sandbox/bridge/db.ts:46 ; apps/api/src/modules/apps/sandbox/bridge/db.ts:382 ; apps/api/src/modules/apps/sandbox/bridge/db.ts:385
+An approved gated call shares one transaction for claim, handler and approved mark -> apps/api/src/modules/apps/run-approved-handler.ts:282
+The commit-now transaction is a fresh RLS transaction under the run's actor (session run, or the run's actor) -> apps/api/src/modules/apps/execute-tool.ts:3103 ; apps/api/src/modules/apps/sandbox/rpc-bridge.ts:540
+Refused on a read-only run and in a run with no commit-now channel (webhook, job) -> apps/api/src/modules/apps/sandbox/bridge/db.ts:56 ; apps/api/src/modules/apps/sandbox/bridge/db.ts:61
+A commit-now write waits at most 5 s for a row lock -> apps/api/src/modules/apps/sandbox/bridge/db.ts:39
+Boxtal's label reservation and finalize commit at once -> bundled-apps/boxtal/src/link-store.ts:131 ; bundled-apps/boxtal/src/link-store.ts:182
+The effect ledger claim commits on its own connection -> apps/api/src/lib/effect-once.ts:1

@@ -231,6 +231,27 @@ describe("runAutoplay", () => {
     expect(pressed).toEqual(["api-connector:connector_write"])
   })
 
+  // The composer shows a stand-in while the rich editor's code loads
+  // (editor/index.tsx): the field carrying the testid is on screen before
+  // anything in it can take text. A typing step waits for the editable inside
+  // it, where it used to stop at once ("I could not find what this step needs
+  // on screen"; gate run 42594553493, demo-tailored support at 1280).
+  it("a typing step waits for the editor to load inside a field already on screen", async () => {
+    const wrap = add(document.createElement("div"), "editor")
+    const standIn = document.createElement("div")
+    standIn.setAttribute("aria-busy", "true")
+    wrap.append(standIn)
+    const editable = document.createElement("div")
+    editable.setAttribute("contenteditable", "true")
+    setTimeout(() => standIn.replaceWith(editable), 30)
+    const result = await runAutoplay(
+      [{ waitFor: "editor" }, { type: { testid: "editor", text: "ok" } }],
+      { cursor, signal: new AbortController().signal, ...fast, findTimeoutMs: 500 },
+    )
+    expect(result.status).toBe("done")
+    expect(editable.textContent).toBe("ok")
+  })
+
   it("clicks, waits for an element that appears later, and stops at waitEvent", async () => {
     const btn = add(document.createElement("button"), "open")
     const clicked = vi.fn()

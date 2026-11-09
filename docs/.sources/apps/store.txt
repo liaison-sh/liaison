@@ -180,3 +180,9 @@ one email per fulfillment with its first tracking number; no tracking, or a late
 the result says whether Shopify emailed the customer (customerNotification) -> bundled-apps/shopify/src/mutations/fulfillments.ts:345
 approval card wording (retail order, B2B order, no tracking yet, already tracked, decided at execution) -> bundled-apps/shopify/src/summarizers.ts:650
 Shopify admin links open in a new tab through the host; invoice number opens the Invoicing tab -> bundled-apps/shopify/src/ui/panels/index.tsx:97 ; bundled-apps/shopify/src/ui/lists.tsx:586
+draft order create and complete refuse an order Invoicing could not invoice, before the approval (NOT_INVOICEABLE) -> bundled-apps/shopify/src/mutations/draft-orders.ts:137 ; bundled-apps/shopify/src/mutations/invoiceability.ts:218
+customer record email required, a draft email is not used when a customer is linked -> bundled-apps/invoicing/src/order-invoiceability.ts:110 ; bundled-apps/shopify/src/mutations/invoiceability.ts:144
+no postal address refused -> bundled-apps/invoicing/src/order-invoiceability.ts:143
+intra-EU buyer charged no VAT without a VAT number refused; VAT number custom attribute -> bundled-apps/invoicing/src/order-invoiceability.ts:165
+reverse charge or export charged VAT refused at complete (taxExempt) -> bundled-apps/invoicing/src/order-invoiceability.ts:179
+unchanged without Invoicing mapped to the shop -> bundled-apps/invoicing/src/order-invoiceability.ts:199

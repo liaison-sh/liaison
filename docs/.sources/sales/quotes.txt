@@ -31,3 +31,5 @@ customer_reference param -> bundled-apps/invoicing/app.manifest.json:3096
 quote outputs number and pdf_file_id for a later step -> bundled-apps/invoicing/app.manifest.json:3115
 Contact search and pick, linked contact shown by name, Unlink -> bundled-apps/invoicing/src/ui/ContactPicker.tsx:25-60
 Contact field in the editor -> bundled-apps/invoicing/src/ui/Editor.tsx:1420-1427
+convert refused when the order would not be invoiced (draft order complete preflight) -> bundled-apps/shopify/src/mutations/draft-orders.ts:137 ; bundled-apps/invoicing/src/order-invoiceability.ts:110
+quote VAT number sent as a VAT number custom attribute on the draft order -> bundled-apps/invoicing/src/mutations/shopify-quote.ts:233

@@ -71,7 +71,7 @@ import {
   seedThreads as seedThreadRooms,
   threadIdsByTitle,
 } from "~/seed/factories/threads/threads"
-import { DEMO_TEAM } from "~/seed/world/fiction"
+import { DEMO_QUOTE_DEALER, DEMO_TEAM } from "~/seed/world/fiction"
 import { assertTicketApprovalsResolve } from "./approval-payload"
 import { APPROVAL_SPECS, type ApprovalRefs, type ApprovalSpec } from "./approval-specs"
 import { commerceDemoId } from "./commerce-ids"
@@ -421,6 +421,31 @@ async function seedSupportCustomerContact(ctx: SeedContext, actor: UserContext):
     },
   ])
   ctx.log(`contacts: the support scenario's customer ${SUPPORT_WORLD_CUSTOMER.name} is ready`)
+}
+
+/**
+ * The school the seeded dealer quote is for, as a contact linked to its demo
+ * store customer: the quote's draft order is then made for that customer, whose
+ * record carries the email Invoicing needs. Only a contact, like the support
+ * customer above: adding the school to the world's dealers would reshuffle the
+ * store's generated orders.
+ */
+async function seedQuoteDealerContact(ctx: SeedContext, actor: UserContext): Promise<void> {
+  await resolveContacts(ctx, actor, [
+    {
+      key: "quote-dealer",
+      email: DEMO_QUOTE_DEALER.email,
+      name: DEMO_QUOTE_DEALER.name,
+      company: DEMO_QUOTE_DEALER.name,
+      externalId: {
+        demo: `dealer:${DEMO_QUOTE_DEALER.key}`,
+        shopify: `gid://shopify/Customer/${DEMO_QUOTE_DEALER.shopifyCustomerId}`,
+      },
+      tags: ["dealer"],
+      metadata: { country: DEMO_QUOTE_DEALER.country, relationship: "dealer" },
+    },
+  ])
+  ctx.log(`contacts: the dealer quote's customer ${DEMO_QUOTE_DEALER.name} is ready`)
 }
 
 /** An approval whose tool belongs to an app the tailored seed installed. */
@@ -790,6 +815,7 @@ export async function seedDemoSupport(
     : { accountIds: [], conversationIds: [] }
   if (tailored?.parts.has("prospect-routine")) await seedProspectContact(ctx, adminActor)
   await seedSupportCustomerContact(ctx, adminActor)
+  await seedQuoteDealerContact(ctx, adminActor)
   const threads = await seedThreads(ctx, org, actors)
   const dmThreadIds = await seedAgentDms(ctx, org)
   // A visitor's workspace opens with nothing waiting on them: a scenario's

@@ -16,6 +16,16 @@
 // later at finalize). The MockDb cannot enforce a partial unique, so the helper
 // queries for a live row first and only inserts when absent — mirroring (and
 // defending in depth of) the real DB constraint.
+//
+// The reservation and its finalize are COMMITTED AT ONCE (`ctx.db.insertNow` /
+// `updateNow`), not with the run. An approved create_shipment runs in ONE
+// transaction (claim, handler, mark approved), so a sandbox kill after Boxtal sold
+// the label ("App execution timed out") rolled a plain-insert reservation back with
+// everything else, and the paid label was left with no local record at all. Boxtal
+// has no order list to find it again, so the committed reservation is the only
+// trace: the orphan sweep (reconcile-tracking.ts) and stuck_list read it.
+
+import { isUniqueViolation } from "./db-errors"
 
 export interface LinkStoreDb {
   findMany(
@@ -24,6 +34,25 @@ export interface LinkStoreDb {
   ): Promise<unknown[]>
   insert(entity: string, data: Record<string, unknown>): Promise<{ id: string }>
   update(entity: string, id: string, data: Record<string, unknown>): Promise<void>
+  /** Committed in its own transaction at once (SDK `DbClient.insertNow`). */
+  insertNow?(entity: string, data: Record<string, unknown>): Promise<{ id: string }>
+  /** Committed in its own transaction at once (SDK `DbClient.updateNow`). */
+  updateNow?(entity: string, id: string, data: Record<string, unknown>): Promise<void>
+}
+
+/** The host's commit-now write, or a loud refusal: a reservation that rolls back with the run
+ *  is exactly the lost-paid-label bug, so there is no silent fallback to a plain write. */
+function committedNow<K extends "insertNow" | "updateNow">(
+  ctx: LinkStoreCtx,
+  method: K,
+): NonNullable<LinkStoreDb[K]> {
+  const fn = ctx.db[method]
+  if (typeof fn !== "function") {
+    throw new Error(
+      `ctx.db.${method} is missing: this Liaison host cannot commit a label reservation ahead of the purchase, so no label is bought. Update Liaison.`,
+    )
+  }
+  return fn.bind(ctx.db) as NonNullable<LinkStoreDb[K]>
 }
 
 export interface LinkStoreCtx {
@@ -99,8 +128,9 @@ export async function reserveCreate(
     keyHolders.length === 0
       ? 1
       : Math.max(...existing.map((r) => Number(r.batch_seq ?? 1))) + 1
+  const insertNow = committedNow(ctx, "insertNow")
   try {
-    const { id } = await ctx.db.insert("shipment", {
+    const { id } = await insertNow("shipment", {
       document_ref: input.document_ref,
       external_id: input.external_id ?? null,
       contact_ref: input.contact_ref ?? null,
@@ -123,11 +153,13 @@ export async function reserveCreate(
       documents: [],
     })
     return { ok: true, id }
-  } catch {
+  } catch (err) {
     // The `document_ref` partial-unique index rejected the insert — a concurrent
     // reservation won the race (the check-then-insert is not atomic, but the DB
-    // constraint is). This is the durable no-double-create backstop firing.
-    return { ok: false, reason: "duplicate" }
+    // constraint is). This is the durable no-double-create backstop firing. Any
+    // other failure is not a duplicate and propagates: nothing was bought yet.
+    if (isUniqueViolation(err)) return { ok: false, reason: "duplicate" }
+    throw err
   }
 }
 
@@ -145,7 +177,9 @@ export async function finalizeCreated(
     queue_facts?: unknown
   },
 ): Promise<void> {
-  await ctx.db.update("shipment", rowId, {
+  // Committed at once too: the Boxtal order id of a PAID label must survive a kill of the
+  // rest of the run (label import, proforma), so the row never falls back to an orphan.
+  await committedNow(ctx, "updateNow")("shipment", rowId, {
     link_state: "created",
     order_status: "PENDING",
     boxtal_order_id: data.boxtal_order_id,
@@ -161,12 +195,14 @@ export async function finalizeCreated(
  * it is treated as ORPHANED and swept.
  *
  * WHY there is a hole to close: `create_shipment` is not atomic. The sandbox
- * worker pool kills a handler at 62s with NO rollback, so a kill landing between
+ * kills a handler at its budget ("App execution timed out") and the run's
+ * transaction ROLLS BACK; only the reservation survives, because it was
+ * committed on its own before the POST (`insertNow`). A kill landing between
  * `client.v3.createShippingOrder` returning (the label is PAID) and
- * `finalizeCreated` writing the order id leaves a row with
+ * `finalizeCreated` committing the order id leaves a row with
  * `link_state: 'create_in_flight'` and `boxtal_order_id: null`. It has no
- * `tracking_status`, so the tracking-based queues classify it as nothing at all
- * and a paid label is invisible to every operator.
+ * `tracking_status`, so the tracking-based queues classify it as nothing at all;
+ * the orphan sweep and stuck_list (family `create_orphan`) are what surface it.
  *
  * The age gate is what keeps the sweep safe: a create that is legitimately
  * running right now is at most one tool budget old (60s), so 15 minutes is more

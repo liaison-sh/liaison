@@ -166,10 +166,11 @@ async function resolveShopifyCustomerId(
 ): Promise<string | null> {
   if (!contactId) return null
   try {
-    const envelope = await ctx.executeTool("kernel:contacts_read", { id: contactId })
+    // kernel:contacts_read takes `contactId` and answers `{ contact: { externalIds } }`.
+    const envelope = await ctx.executeTool("kernel:contacts_read", { contactId })
     if (envelope.status !== "completed") return null
-    const contact = envelope.result as { external_ids?: Record<string, unknown> } | null
-    const raw = contact?.external_ids?.shopify
+    const result = envelope.result as { contact?: { externalIds?: Record<string, unknown> | null } } | null
+    const raw = result?.contact?.externalIds?.shopify
     if (typeof raw !== "string" || raw.trim() === "") return null
     return raw.startsWith("gid://") ? raw : `gid://shopify/Customer/${raw.trim()}`
   } catch {
@@ -228,6 +229,9 @@ export async function quoteCreateViaShopifyDraftOrder(
     // The sync copies the draft order's PO number onto the quote, so this is how the tool's
     // po_number reaches a quote made as a draft order.
     ...(rawInput.po_number?.trim() ? { poNumber: rawInput.po_number.trim() } : {}),
+    // The order-created auto-flow reads the buyer's VAT number only from the order's custom
+    // attributes (a draft's carry over to its order), so a business quote keeps its reverse charge.
+    ...(cp.vat_id?.trim() ? { customAttributes: [{ key: "VAT number", value: cp.vat_id.trim() }] } : {}),
     note: `Quote for ${cp.legal_name ?? cp.email ?? "customer"}`,
     tags: ["liaison-quote"],
   } })

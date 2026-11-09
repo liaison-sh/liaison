@@ -925,7 +925,12 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.10 (main): the home's attention rows open the admin through the host too; framed, a
     // Cmd/Ctrl-click opens a row in place.
     // 0.4.13: both of the above, merged.
-    expect(m.version).toBe("0.4.13")
+    // 0.4.11 (main): draft order create and complete refuse an order Invoicing would not invoice
+    // (invoicing:orders_invoiceability_check), with a stage-time preflight on complete.
+    // 0.4.12 (main): orders_get returns the order's billing address (with its company) and the buyer's
+    // VAT number from its current custom attributes.
+    // 0.4.14: above the 0.4.12 main took meanwhile, merged.
+    expect(m.version).toBe("0.4.14")
   })
 
   it("read_all_orders is a protected scope behind the org's full-order-history toggle", () => {

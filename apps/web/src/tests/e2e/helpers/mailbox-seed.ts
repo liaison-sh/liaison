@@ -727,13 +727,32 @@ export async function openMail(
   env: WorkerEnv,
   options: { landingPrompt?: "dismiss" | "keep" } = {},
 ): Promise<void> {
-  // Registered before the navigation, so the read the mail home makes cannot
-  // be missed. Its body says whether a prompt is coming at all.
+  await openMailAt(page, webUrl(env, "/"), options)
+}
+
+/** `openMail` against an explicit web root (the helper's own regression test serves one). */
+export async function openMailAt(
+  page: Page,
+  root: string,
+  options: { landingPrompt?: "dismiss" | "keep" } = {},
+): Promise<void> {
+  await page.goto(root)
+  // Registered AFTER the navigation has finished and before the click, so the
+  // response is one this document made: the mail home reads the keyring on
+  // mount (MailInbox `loadMailboxKeyring`), so the read cannot be missed. Its
+  // body says whether a prompt is coming at all.
+  //
+  // Never before the `goto`: the previous document (the shell `loginAs` left
+  // open) reads the same keyring at startup. When that read had its headers
+  // but not its body as the navigation tore the document down, the waiter
+  // matched it, and Playwright's `response.text()` on a response whose
+  // document is gone never settles (neither resolves nor rejects, so the
+  // `.catch` below never ran). The helper then hung with the landing prompt
+  // open until the test's own timeout (CI: 300 s and 600 s).
   const keyring = page
     .waitForResponse((r) => r.url().includes("/api/mailbox-keys/me"), { timeout: 60_000 })
     .then((r) => r.text())
     .catch(() => "")
-  await page.goto(webUrl(env, "/"))
   await page.getByRole("button", { name: "Mail", exact: true }).click()
   await page.getByTestId("mail-inbox").waitFor({ state: "visible", timeout: 60_000 })
   const enrolled = /"status"\s*:\s*"active"/.test(await keyring)

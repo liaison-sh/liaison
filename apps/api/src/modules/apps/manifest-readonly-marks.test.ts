@@ -208,6 +208,9 @@ const READ_ONLY: Record<string, string[]> = {
     "documents_search",
     "documents_get",
     "documents_for_orders",
+    // What the order-created auto-flow would park (issuer mapping lookup only), asked by the Shopify
+    // app before a draft order create or complete; writes nothing.
+    "orders_invoiceability_check",
     "hs_codes_lookup",
     "pending_approvals_list",
     "vat_validate",

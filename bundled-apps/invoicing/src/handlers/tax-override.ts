@@ -4,8 +4,10 @@
 //
 // The order handler parks an order instead of issuing when its tax cannot be trusted as is: our
 // computed tax disagrees with Shopify's reported amount (shopify_tax_mismatch), seller tax sits on
-// an exempt treatment (tax_on_exempt_treatment), or a line would take the OSS placeholder rate
-// (tax_rate_placeholder). Those facts never change on their own, so the retry cron leaves the park
+// an exempt treatment (tax_on_exempt_treatment), a line would take the OSS placeholder rate
+// (tax_rate_placeholder), or an order to another member state is charged no VAT and carries no
+// VAT number (buyer_vat_missing: once the number is on the Shopify order, shopify_reported re-reads
+// it and issues the reverse charge). Those facts never change on their own, so the retry cron leaves the park
 // alone (deferred.ts HUMAN_REVIEW_KINDS) and a person decides here, through a GATED call:
 //   - `shopify_reported`: issue with the tax Shopify reported on each line,
 //   - `as_computed`: issue with the tax treatment's own rate on every line.

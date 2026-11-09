@@ -4,10 +4,12 @@
 // (no role grants it any memory or tickets authority; its role agent's ceiling
 // names neither) finds the tool, prepares the report, and the member's click
 // sends it to the Liaison team, where reports go only there; with that switch
-// off the same call files the local ticket. A tainted turn's team-only report
-// is judged by its reporter alone, so it never waits in an approval sized for
-// the local inbox's readers; a call held before team-only went on ends in the
-// reporter's card when approved, and one that can no longer run is closed.
+// off the same call files the local ticket. A report never waits in an
+// approval, whatever its turn read (scoped data some inbox readers cannot see,
+// outside text): filing it is an internal action. A call held anyway (by an
+// older build, or by an org's own tightening policy) ends in the reporter's
+// card when approved once team-only is on, and one that can no longer run is
+// closed.
 //
 // Through the real chat path: runAgentChat with a scripted model (tool_search
 // then the tool, through the tool bridge, executeTool and the approval gate),
@@ -50,7 +52,7 @@ const { decideApproval } = await import("~/modules/approvals/decide")
 const { createOrGetAgentDm } = await import("~/modules/threads/thread")
 const { asUser } = await import("~/seed/factories/people/actors")
 const { upsertRoleAgent } = await import("~/seed/factories/agent/agents")
-const { creditBalances, modelPricing } = await import("~/db/schema/kernel")
+const { approvalPolicies, creditBalances, modelPricing } = await import("~/db/schema/kernel")
 
 type Fake = Awaited<ReturnType<typeof startFakeControlPlane>>
 type Session = Awaited<ReturnType<typeof minimal.session>>
@@ -103,6 +105,20 @@ function call(s: Session, path: string, body?: unknown): Promise<Response> {
     }),
   )
 }
+
+/** An org's own tightening policy on the tool: the one way a report is still held. */
+const holdByPolicy = () =>
+  withSystemDb("test-hold-policy", (tx) =>
+    tx.insert(approvalPolicies).values({
+      orgId,
+      toolName: "kernel:report_bug",
+      enabled: true,
+      conditions: [],
+      requireApproval: true,
+      minApprovers: 1,
+      createdBy: admin.userId,
+    }),
+  )
 
 const teamOnly = async (on: boolean) => {
   await setSharing({ register: true }, { userId: null }, now)
@@ -339,6 +355,7 @@ beforeEach(async () => {
   await sql`DELETE FROM kernel.instance_settings WHERE key LIKE 'liaison_team.%'`
   await sql`DELETE FROM kernel.approved_handler_executions WHERE org_id = ${orgId}::uuid AND tool_name = 'kernel:report_bug'`
   await sql`DELETE FROM kernel.approval_requests WHERE org_id = ${orgId}::uuid AND tool_name = 'kernel:report_bug'`
+  await sql`DELETE FROM kernel.approval_policies WHERE org_id = ${orgId}::uuid AND tool_name = 'kernel:report_bug'`
   fake = await startFakeControlPlane(0)
   now = new Date(Math.floor(Date.now() / 1000) * 1000)
   fake.control.setClock(() => now)
@@ -399,8 +416,19 @@ describe("a tainted turn's report", () => {
     expect(await outbox()).toHaveLength(0)
   })
 
+  it("team-only off: a turn that read what some tickets readers cannot see files the ticket, no approval", async () => {
+    await teamOnly(false)
+    const tickets = await ticketCount()
+    const result = await adminReports(adminTurn([ADMIN_READ]), "After an admin read (local)")
+    expect(result.status).not.toBe("pending_approval")
+    expect(result.filed).toBe(true)
+    expect(await ticketCount()).toBe(tickets + 1)
+    expect(await reportApprovals()).toHaveLength(0)
+  })
+
   it("held before team-only went on: approving it prepares the reporter's card, nothing is sent", async () => {
     await teamOnly(false)
+    await holdByPolicy()
     const held = await adminReports(adminTurn([ADMIN_READ]), "Held, then team-only")
     expect(held.status).toBe("pending_approval")
     const [row] = await reportApprovals()
@@ -418,6 +446,7 @@ describe("a tainted turn's report", () => {
 
   it("a routine's report held before team-only went on: approving it closes the request with the reason", async () => {
     await teamOnly(false)
+    await holdByPolicy()
     const held = await adminReports(
       adminTurn([ADMIN_READ], crypto.randomUUID()),
       "Routine held, then team-only",
@@ -453,6 +482,7 @@ describe("a tainted turn's report", () => {
   for (const kind of ["background", "coordinated"] as const) {
     it(`a ${kind} turn's report held before team-only went on: approving it closes the request, no card`, async () => {
       await teamOnly(false)
+      await holdByPolicy()
       const held = await adminReports(
         adminTurn([ADMIN_READ], undefined, { [kind]: true, humanTurn: undefined }),
         `Held from a ${kind} turn`,
@@ -475,6 +505,7 @@ describe("a tainted turn's report", () => {
 
   it("a typed turn's held call records that a person was behind it", async () => {
     await teamOnly(false)
+    await holdByPolicy()
     const held = await adminReports(adminTurn([ADMIN_READ]), "Typed, held")
     expect(held.status).toBe("pending_approval")
     const [row] = await reportApprovals()
@@ -483,15 +514,26 @@ describe("a tainted turn's report", () => {
     expect(meta?.metadata.originHasPerson).toBe(true)
   })
 
-  it("after outside text, the report parks for a person even though the tool reads nothing (taintFree)", async () => {
+  it("after outside text, the report is filed with no approval", async () => {
     await teamOnly(false)
     const tickets = await ticketCount()
     const threadId = await minimal.thread(orgId, admin.userId)
     await setTaintFlag(threadId, orgId)
     const result = await adminReports(adminTurn([]), "After outside text", threadId)
-    expect(result.status).toBe("pending_approval")
-    expect(result.filed).not.toBe(true)
-    expect(await ticketCount()).toBe(tickets)
-    expect(await reportApprovals()).toHaveLength(1)
+    expect(result.status).not.toBe("pending_approval")
+    expect(result.filed).toBe(true)
+    expect(await ticketCount()).toBe(tickets + 1)
+    expect(await reportApprovals()).toHaveLength(0)
+  })
+
+  it("team-only, after outside text: prepared for the reporter's click, no approval, nothing sent", async () => {
+    await teamOnly(true)
+    const threadId = await minimal.thread(orgId, admin.userId)
+    await setTaintFlag(threadId, orgId)
+    const result = await adminReports(adminTurn([]), "After outside text (team-only)", threadId)
+    expect(result.status).not.toBe("pending_approval")
+    expect(result.awaitingConfirmation).toBe(true)
+    expect(await reportApprovals()).toHaveLength(0)
+    expect(await outbox()).toHaveLength(0)
   })
 })

@@ -6,6 +6,7 @@ import type { AppEnv } from "~/app"
 import { success } from "~/lib/response"
 import { zValidator } from "~/lib/validate"
 import {
+  discardAgentDraft,
   listPendingAgentDrafts,
   readAgentDraft,
   sendAgentDraft,
@@ -53,6 +54,18 @@ bugReports
     )
     if (!draft) throw new HTTPException(404, { message: "This report has expired" })
     return success(c, draft)
+  })
+  // The reporter drops a prepared report instead of sending it. The draft is
+  // looked up under the caller's own org and user key, so another member's
+  // draft (or one already gone) is a 404, the same answer as reading it.
+  .delete("/drafts/:draftId", zValidator("param", draftParam), async (c) => {
+    const result = await discardAgentDraft(
+      c.get("orgId"),
+      c.get("userId"),
+      c.req.valid("param").draftId,
+    )
+    if (!result.discarded) throw new HTTPException(404, { message: "This report has expired" })
+    return success(c, result)
   })
   .post(
     "/drafts/:draftId/send",

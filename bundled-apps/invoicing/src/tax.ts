@@ -150,6 +150,19 @@ export const EU_STANDARD_RATE_BP: Readonly<Record<string, number>> = {
   MT: 1800, NL: 2100, PL: 2300, PT: 2300, RO: 2100, SK: 2300, SI: 2200, ES: 2100, SE: 2500,
 }
 
+/**
+ * A sale to a buyer in ANOTHER EU member state that carries no VAT number and is charged no VAT
+ * (tax exempt, or a zero tax). It is neither invoice: a consumer there owes that country's VAT
+ * (OSS), and a business needs the reverse charge, which takes its VAT number. Shared by the
+ * order auto-flow (which parks it for review) and the invoiceability check (which predicts that).
+ */
+export function isUntaxedIntraEuSaleWithoutVat(
+  treatment: TaxTreatment | string,
+  chargesNoTax: boolean,
+): boolean {
+  return treatment === "eu_b2c_oss" && chargesNoTax
+}
+
 /** True for an EU member-state code (case-insensitive). */
 export function isEuCountry(code: string | null | undefined): boolean {
   return EU_COUNTRIES.has((code ?? "").trim().toUpperCase())

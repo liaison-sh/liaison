@@ -88,10 +88,10 @@ import {
   MailApprovalFulfilmentError,
   type MailboxFulfilmentBody,
   mailAttachmentDisclosure,
-  outboundAttachmentFileIds,
   readSealedDraft,
   sealedDraftEditFields,
   sealedDraftPreviewPayload,
+  sendAttachmentFileIds,
 } from "~/modules/mailbox/approval-mail-fulfilment"
 import type { OpenedApprovalDraft } from "~/modules/mailbox/crypto-protocol"
 import { MailboxLockedPanel } from "~/modules/mailbox/MailboxLockedPanel"
@@ -1473,8 +1473,8 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
     }
     const [
       { mailboxCryptoClient },
-      { loadMessages, sealedMessageById },
-      { buildMailboxFulfilment, outboundAttachmentFileIds },
+      { attachmentIdsOfLoadedMessage, loadMessages, sealedMessageById },
+      { buildMailboxFulfilment },
       { createAttachmentOpener },
     ] = await Promise.all([
       import("~/modules/mailbox/mailbox-store"),
@@ -1490,11 +1490,26 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
       )
     }
     const quoted = row.currentPayload.mailboxQuoteMessageIds
+    const conversationId = row.currentPayload.conversationId
+    // A forward re-attaches the original's own files, which its payload does
+    // not name: they are read off the forwarded message, so it has to be loaded
+    // here even when the conversation was never opened in this browser.
+    if (
+      row.toolName === "mail:forward" &&
+      Array.isArray(quoted) &&
+      quoted.some((id) => typeof id === "string" && !attachmentIdsOfLoadedMessage(id)) &&
+      typeof conversationId === "string"
+    ) {
+      await loadMessages(api, conversationId)
+    }
     // Task 9.9. The files this send re-attaches are stored as ciphertext the
     // server cannot open, so their readable bytes have to come from here. The
     // opener fetches each file's envelope and its stored object, decrypts in the
     // crypto worker, and throws rather than returning a short or empty file.
-    const attachmentIds = outboundAttachmentFileIds(row.currentPayload)
+    const attachmentIds = sendAttachmentFileIds(
+      { toolName: row.toolName, payload: row.currentPayload },
+      attachmentIdsOfLoadedMessage,
+    )
     const openAttachments = createAttachmentOpener({
       client,
       // Kernel relative: the api client prefixes `/api` itself.
@@ -1513,7 +1528,6 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
           // the conversations this browser has opened. Approving from Home or a
           // chat, before the conversation was ever opened here, loads it first
           // instead of refusing the approval.
-          const conversationId = row.currentPayload.conversationId
           if (ids.some((id) => !sealedMessageById(id)) && typeof conversationId === "string") {
             await loadMessages(api, conversationId)
           }
@@ -1733,11 +1747,25 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
    * before they click, not after: a person must never discover that approving
    * released something they were not shown.
    */
+  // The mail store, loaded only for a sealed forward, so the notice can count
+  // the original's attachments the forward carries.
+  const [mailStoreModule, setMailStoreModule] =
+    createSignal<typeof import("~/modules/mail/mail-message-store")>()
+  createEffect(() => {
+    const c = current()
+    if (c?.toolName !== "mail:forward" || mailStoreModule()) return
+    if (!isSealedMailApproval({ toolName: c.toolName, payload: c.currentPayload })) return
+    void import("~/modules/mail/mail-message-store").then((m) => setMailStoreModule(() => m))
+  })
   const mailboxAttachmentNotice = () => {
     const c = current()
     if (!c || !isPending()) return null
     if (!isSealedMailApproval({ toolName: c.toolName, payload: c.currentPayload })) return null
-    return mailAttachmentDisclosure(outboundAttachmentFileIds(c.currentPayload).length, i18n.t)
+    const ofMessage = mailStoreModule()?.attachmentIdsOfLoadedMessage ?? (() => undefined)
+    return mailAttachmentDisclosure(
+      sendAttachmentFileIds({ toolName: c.toolName, payload: c.currentPayload }, ofMessage).length,
+      i18n.t,
+    )
   }
   // An eligible approver may REJECT (deny), not only the requester — mirrors the
   // backend decide authz (decide.ts: deny allowed for in-audience approver OR

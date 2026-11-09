@@ -267,6 +267,48 @@ describe("thread service", () => {
     expect(refs[0].entity_id).toBe("item-42")
   })
 
+  // References are context the conversation carries, not an anchor: an
+  // untitled create with references between people who already have a DM
+  // lands in that DM, posts there and attaches the references to it.
+  it("an untitled create with references lands in the existing DM and attaches them", async () => {
+    const dm = await createThread(rlsDb, {
+      orgId: TEST_ORG_ID,
+      userId: TEST_USER_ID,
+      participantIds: [TEST_USER2_ID],
+    })
+    const withRefs = await createThread(rlsDb, {
+      orgId: TEST_ORG_ID,
+      userId: TEST_USER_ID,
+      participantIds: [TEST_USER2_ID],
+      initialMessage: { content: "About order 1042", requiredScopes: [] },
+      references: [
+        { app: "shopify", entityType: "order", entityId: "o-1042" },
+        { app: "tickets", entityType: "ticket", entityId: "t-7" },
+      ],
+    })
+    expect(withRefs.id).toBe(dm.id)
+    expect(withRefs.deduplicated).toBe(true)
+    // The other side asking again, with one reference already attached, is the same room too.
+    const again = await createThread(rlsDb, {
+      orgId: TEST_ORG_ID,
+      userId: TEST_USER2_ID,
+      participantIds: [TEST_USER_ID],
+      references: [{ app: "shopify", entityType: "order", entityId: "o-1042" }],
+    })
+    expect(again.id).toBe(dm.id)
+    const refs = await sql`
+      SELECT app, entity_id FROM kernel.thread_references WHERE thread_id = ${dm.id} ORDER BY entity_id`
+    expect(refs.map((r) => `${r.app}:${r.entity_id}`)).toEqual(["shopify:o-1042", "tickets:t-7"])
+    const posted = await sql`SELECT content FROM kernel.messages WHERE thread_id = ${dm.id}`
+    expect(posted.map((m) => m.content)).toContain("About order 1042")
+    const rooms = await sql`
+      SELECT t.id FROM kernel.threads t
+      WHERE t.org_id = ${TEST_ORG_ID} AND t.type = 'thread' AND t.title IS NULL
+        AND t.created_from IS NULL AND t.is_pinned = false
+        AND (SELECT COUNT(*) FROM kernel.thread_participants tp WHERE tp.thread_id = t.id) = 2`
+    expect(rooms.length).toBe(1)
+  })
+
   it("does not collapse a self-DM into an existing single-user agent_chat", async () => {
     // An agent_chat with a single participant and no title/createdFrom/pin
     // otherwise matches the DM dedup shape. The dedup must constrain on

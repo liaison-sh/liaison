@@ -42,7 +42,33 @@ vi.mock("~/modules/shell/entity-opener", () => ({
 }))
 vi.mock("~/modules/shell/tab-store", () => ({ openTab: vi.fn() }))
 
-const { openApprovalDraft } = vi.hoisted(() => ({ openApprovalDraft: vi.fn() }))
+const { openApprovalDraft, openMessage } = vi.hoisted(() => ({
+  openApprovalDraft: vi.fn(),
+  openMessage: vi.fn(),
+}))
+
+// The mail message store as the card reads it: a forward's source message, its
+// stored attachments known only once the conversation is loaded.
+const mailStore = vi.hoisted(() => ({
+  loaded: new Map<string, string[]>(),
+  onLoad: new Map<string, Map<string, string[]>>(),
+  openedFileIds: [] as string[][],
+}))
+vi.mock("~/modules/mail/mail-message-store", () => ({
+  attachmentIdsOfLoadedMessage: (id: string) => mailStore.loaded.get(id),
+  loadMessages: vi.fn(async (_api: unknown, conversationId: string) => {
+    for (const [id, files] of mailStore.onLoad.get(conversationId) ?? []) {
+      mailStore.loaded.set(id, files)
+    }
+  }),
+  sealedMessageById: (id: string) => (mailStore.loaded.has(id) ? { id } : undefined),
+}))
+vi.mock("~/modules/mailbox/attachment-opener", () => ({
+  createAttachmentOpener: () => async (fileIds: string[]) => {
+    mailStore.openedFileIds.push(fileIds)
+    return fileIds.map((fileId) => ({ fileId, bytesBase64: `PLAIN-${fileId}` }))
+  },
+}))
 
 vi.mock("~/modules/mailbox/mailbox-store", async () => {
   const { createStore } = await import("solid-js/store")
@@ -50,7 +76,7 @@ vi.mock("~/modules/mailbox/mailbox-store", async () => {
   return {
     mailboxStore,
     setMailboxStatusForTest,
-    mailboxCryptoClient: () => ({ isUnlocked: () => true, openApprovalDraft }),
+    mailboxCryptoClient: () => ({ isUnlocked: () => true, openApprovalDraft, openMessage }),
   }
 })
 
@@ -257,6 +283,59 @@ describe("ApprovalCard: sealed mail draft", () => {
     })
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(apiMocks.post).toHaveBeenCalledTimes(1)
+  })
+  // A forward carries the original's attachments without naming them: its
+  // payload has no `attachments`, and the handler adds the source message's own
+  // files at execution. The card must supply their readable bytes anyway, or
+  // the send refuses with nothing sent.
+  it("approving a sealed forward supplies the forwarded message's own attachments", async () => {
+    apiMocks.post.mockReset().mockResolvedValue({ status: "approved" })
+    mailStore.loaded.clear()
+    mailStore.openedFileIds.length = 0
+    mailStore.onLoad.set("c-1", new Map([["m-1", ["file-1"]]]))
+    openApprovalDraft.mockResolvedValue({
+      approvalRequestId: "ar-sealed",
+      subject: null,
+      textBody: null,
+      htmlBody: null,
+      note: "FYI",
+    })
+    openMessage.mockReset().mockResolvedValue({
+      id: "m-1",
+      subject: "Your label",
+      textBody: "label attached",
+    })
+    await setMailboxState("status", "unlocked")
+    handleWsCreate(
+      {
+        ...sealedRow(),
+        toolName: "mail:forward",
+        currentPayload: {
+          conversationId: "c-1",
+          messageId: "m-1",
+          to: ["someone@example.com"],
+          mailboxSealed: true,
+          mailboxQuoteMessageIds: ["m-1"],
+          encVersion: 1,
+          encKeyId: 1,
+          contentKeyWrapped: "WRAPPED-KEY-BLOB",
+          contentKeyEpk: "MFkwEwYHKoZIzj0CAQ-EPK",
+          noteCiphertext: "NOTE-CIPHERTEXT",
+        },
+      },
+      "u-owner",
+    )
+    render(() => <ApprovalCard requestId="ar-sealed" approveOnOpen />)
+    await waitFor(() => expect(apiMocks.post).toHaveBeenCalledTimes(1))
+    const [, body] = apiMocks.post.mock.calls[0] as [string, Record<string, unknown>]
+    expect(mailStore.openedFileIds).toEqual([["file-1"]])
+    expect(body).toMatchObject({
+      decision: "approve",
+      mailboxFulfilment: {
+        quote: { "m-1": { quotedBody: "label attached", resolvedSubject: "Your label" } },
+        attachments: { "file-1": "PLAIN-file-1" },
+      },
+    })
   })
   // Prod, 2026-11-04: Edit on a sealed reply opened an EMPTY editor. The payload
   // holds only ciphertext, and the editor prefilled from its (absent) textBody

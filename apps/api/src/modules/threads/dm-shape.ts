@@ -20,10 +20,13 @@ export interface PlainThreadFacts {
   type: string
   /** Pinned threads are workspace furniture, never a conversation. */
   isPinned: boolean
-  /** Anchored to an entity (a ticket, an approval, a mail conversation). */
+  /**
+   * Anchored to an entity (a ticket, an approval, a mail conversation). Only
+   * this anchors a thread. Entity REFERENCES do not: they are context a
+   * conversation carries, so a DM that mentions an order is still the one DM
+   * between those people, deduped into on create and notified as a DM.
+   */
   createdFrom: unknown
-  /** Entity references the thread carries. Any of them anchors it. */
-  referenceCount: number
   /** The HUMAN parties. An agent seat is a member, never a party. */
   humanCount: number
 }
@@ -46,7 +49,6 @@ export interface DmShapeFacts extends PlainThreadFacts {
 export function isPlainThreadShape(facts: PlainThreadFacts): boolean {
   if (facts.type === "agent_chat" || facts.type === "approval") return false
   if (facts.humanCount < 1) return false
-  if (facts.referenceCount > 0) return false
   if (facts.isPinned) return false
   return !facts.createdFrom
 }

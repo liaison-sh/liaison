@@ -282,7 +282,7 @@
       }
     ]
   },
-  "version": "0.4.13",
+  "version": "0.4.14",
   "network": {
     "imageHosts": ["cdn.shopify.com"],
     "linkHosts": ["admin.shopify.com"]
@@ -2038,7 +2038,7 @@
       ]
     },
     "draft_orders_create": {
-      "description": "Create a Shopify draft order. To apply a dealer / volume / tier discount you MUST set an appliedDiscount on the line item (lineItems[].appliedDiscount) or order-level — { value: <number>, valueType: 'PERCENTAGE' (or 'FIXED_AMOUNT'), description: '<reason>' }. Stating the discount only in your reply WITHOUT setting appliedDiscount creates the draft at FULL price (a fabricated discount — the rubric fails). Resolve the customer with shopify customers_search and set purchasingEntity.customerId to its Shopify Customer GID (gid://shopify/Customer/…) — do NOT pass a kernel contact id (a bare UUID from kernel contacts_search; Shopify rejects it: 'Invalid global id'). If you pass an email instead of customerId, it must be a real deliverable address (a kernel contact's `.example` TLD is rejected: 'Email contains an invalid domain name') — so prefer the Shopify customerId. Pass each line as lineItems[] = { variantId, quantity, appliedDiscount? }. QUOTES: when the Invoicing app is installed and its issuer profile is mapped to this shop, a draft order IS the customer's quote: creating it makes a numbered quote PDF appear in Invoicing automatically (linked by the draft order id), so never also create a quote there. Set the customer (purchasingEntity.customerId) and a shipping address so the quote has a complete recipient; without them the quote waits until the draft order is updated with them. Prices on custom lines are tax inclusive when the shop prices tax inclusive. A `poNumber` on the draft is the customer's purchase order reference: it travels to the numbered quote and on to the invoice, so put a PO there rather than in a tag or a note.",
+      "description": "Create a Shopify draft order. To apply a dealer / volume / tier discount you MUST set an appliedDiscount on the line item (lineItems[].appliedDiscount) or order-level — { value: <number>, valueType: 'PERCENTAGE' (or 'FIXED_AMOUNT'), description: '<reason>' }. Stating the discount only in your reply WITHOUT setting appliedDiscount creates the draft at FULL price (a fabricated discount — the rubric fails). Resolve the customer with shopify customers_search and set purchasingEntity.customerId to its Shopify Customer GID (gid://shopify/Customer/…) — do NOT pass a kernel contact id (a bare UUID from kernel contacts_search; Shopify rejects it: 'Invalid global id'). If you pass an email instead of customerId, it must be a real deliverable address (a kernel contact's `.example` TLD is rejected: 'Email contains an invalid domain name') — so prefer the Shopify customerId. Pass each line as lineItems[] = { variantId, quantity, appliedDiscount? }. QUOTES: when the Invoicing app is installed and its issuer profile is mapped to this shop, a draft order IS the customer's quote: creating it makes a numbered quote PDF appear in Invoicing automatically (linked by the draft order id), so never also create a quote there. Set the customer (purchasingEntity.customerId) and a shipping address so the quote has a complete recipient; without them the quote waits until the draft order is updated with them. Prices on custom lines are tax inclusive when the shop prices tax inclusive. A `poNumber` on the draft is the customer's purchase order reference: it travels to the numbered quote and on to the invoice, so put a PO there rather than in a tag or a note. INVOICEABILITY: when Invoicing is mapped to this shop, the create is REFUSED (NOT_INVOICEABLE) when the order could not be invoiced later: the linked customer's own record has no email (an email on the draft is not used when a customer is linked: add it first with customers_update), the order has no postal address, or the buyer is in another EU member state and the order charges no VAT (tax exempt) without the buyer's VAT number (pass it as customAttributes: [{key: 'VAT number', value: '<number>'}]). Check the customer with customers_get before creating.",
       "searchKeywords": ["brouillon", "commande"],
       "requiredScopes": ["shopify:draft-orders:write"],
       "handler": "draft_orders_create",
@@ -2060,7 +2060,7 @@
             "type": "object",
             "additionalProperties": true,
             "minProperties": 1,
-            "description": "Shopify DraftOrderInput (API 2026-01). Link the customer via purchasingEntity.customerId (or email) — there is NO `customer` field. Apply an order discount via appliedDiscount — there is NO `lineItemsDiscount` field. BUYER IDENTITY IS REQUIRED: an order with DIGITAL goods (a license/download) must carry a usable buyer email AND a name (via a linked customer, or email + billingAddress firstName/lastName) — otherwise no license can be issued and the create is rejected; an order with PHYSICAL goods must carry a shippingAddress (or useCustomerDefaultAddress) — otherwise the create is rejected.",
+            "description": "Shopify DraftOrderInput (API 2026-01). Link the customer via purchasingEntity.customerId (or email) — there is NO `customer` field. With Invoicing mapped to this shop the order must be invoiceable: the linked customer needs an email on its own record, the order a postal address, and a tax exempt buyer in another EU member state its VAT number in customAttributes ({key: 'VAT number', value}). Apply an order discount via appliedDiscount — there is NO `lineItemsDiscount` field. BUYER IDENTITY IS REQUIRED: an order with DIGITAL goods (a license/download) must carry a usable buyer email AND a name (via a linked customer, or email + billingAddress firstName/lastName) — otherwise no license can be issued and the create is rejected; an order with PHYSICAL goods must carry a shippingAddress (or useCustomerDefaultAddress) — otherwise the create is rejected.",
             "properties": {
               "purchasingEntity": {
                 "type": "object",
@@ -2182,10 +2182,11 @@
       }
     },
     "draft_orders_complete": {
-      "description": "Complete a Shopify draft order: it becomes a real order. paymentPending defaults to false, which MARKS THE ORDER PAID; for a B2B customer who pays by wire against the invoice pass paymentPending: true so the order stays pending and no customer email goes out. QUOTES: when Invoicing is installed the linked quote turns 'invoiced' and the invoice is issued automatically by the order-created auto-flow; do NOT also call invoicing__invoice_create_and_issue. The Invoicing side does the same thing through documents_convert_to_invoice on the quote, which is what the Convert to invoice button uses.",
+      "description": "Complete a Shopify draft order: it becomes a real order. paymentPending defaults to false, which MARKS THE ORDER PAID; for a B2B customer who pays by wire against the invoice pass paymentPending: true so the order stays pending and no customer email goes out. QUOTES: when Invoicing is installed the linked quote turns 'invoiced' and the invoice is issued automatically by the order-created auto-flow; do NOT also call invoicing__invoice_create_and_issue. The Invoicing side does the same thing through documents_convert_to_invoice on the quote, which is what the Convert to invoice button uses. INVOICEABILITY: when Invoicing is mapped to this shop, completing is REFUSED (NOT_INVOICEABLE), whoever made the draft, when the order would not be invoiced: the draft's customer has no email (customers_update), the draft has no postal address, an intra-EU buyer is charged no VAT without its VAT number (draft_orders_update customAttributes [{key: 'VAT number', value: '<number>'}]), or a reverse charge or export sale is charged VAT (draft_orders_update taxExempt: true). The error names each fix: make it, then complete again.",
       "searchKeywords": ["brouillon", "finaliser"],
       "requiredScopes": ["shopify:draft-orders:write"],
       "handler": "draft_orders_complete",
+      "preflight": "draft_orders_complete_preflight",
       "summarizer": "summarizeDraftOrdersComplete",
       "summarizerContext": {
         "tool": "draft_orders_get",
@@ -4061,6 +4062,10 @@
     {
       "target": "invoicing:documents_for_orders",
       "reason": "resolve the invoicing documents linked to the visible Shopify orders for the order list's linked-invoices affordance"
+    },
+    {
+      "target": "invoicing:orders_invoiceability_check",
+      "reason": "before a draft order is created or completed, ask Invoicing whether the resulting order would be invoiced, and refuse it when it would be parked instead (no customer email, no address, missing buyer VAT number)"
     },
     {
       "target": "kernel:product_attributes_list",

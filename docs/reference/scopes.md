@@ -190,7 +190,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `invoicing:approve` | approver scope | Decide (approve, edit, or deny) invoicing approvals raised by its gated tools |
 | `invoicing:contacts:read` | manifest scopes; tools contact_relationships_get, counterparty_identity_get, counterparty_identity_lookup, vat_lookup, vat_validate |  |
 | `invoicing:contacts:write` | manifest scopes; tools contact_relationships_set, counterparty_identity_set, counterparty_territory_set, einvoicing_backfill_identities |  |
-| `invoicing:documents:read` | manifest scopes; entity document; tools activity_read, customer_history, deferred_list, documents_download_pdf, documents_for_orders, documents_get and 12 more |  |
+| `invoicing:documents:read` | manifest scopes; entity document; tools activity_read, customer_history, deferred_list, documents_download_pdf, documents_for_orders, documents_get and 13 more |  |
 | `invoicing:documents:write` | manifest scopes; tools credit_note_create_and_issue, credit_note_issue, deferred_tax_override, documents_convert_to_invoice, documents_mark_paid, documents_record_refund and 21 more |  |
 | `invoicing:internal` | manifest scopes |  |
 | `invoicing:issuer:admin` | manifest scopes |  |

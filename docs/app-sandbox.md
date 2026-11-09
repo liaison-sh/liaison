@@ -90,7 +90,7 @@ The bridge surface is large and grows as apps need new host capabilities. Core c
 | Category | Methods |
 |----------|---------|
 | Identity | `getUserId()`, `getOrgId()` |
-| Database | `db_findMany` (equality `where`, plus `{ col: { in: [...] } }` for a set lookup, up to 1000 values), `db_findOne`, `db_insert`, `db_update`, `db_updateMany`, `db_delete`, `db_count` |
+| Database | `db_findMany` (equality `where`, plus `{ col: { in: [...] } }` for a set lookup, up to 1000 values), `db_findOne`, `db_insert`, `db_update`, `db_updateMany`, `db_delete`, `db_count`, and `db_insertNow` / `db_updateNow` (committed at once, see "Commit an intent row before an outside call") |
 | Events | `emit(event)` — declared emits only |
 | Jobs | `enqueueJob(name, payload)` |
 | Contacts | `resolveContact(params)` (not the mail app: its host page write `mail_writePage` resolves senders under the mailbox's ownership, see `modules/mail/page-write.ts` and `sender-contacts.ts`; on a read-only run it only looks a contact up, returning it unchanged or null, and `clear` is refused) |
@@ -411,7 +411,7 @@ export const { listItems, createItem } = defineHandlers({
 |----------|------|-------------|
 | `userId` | `string` | Current actor |
 | `orgId` | `string` | Current organization |
-| `db` | `DbClient` | `findMany`, `findOne`, `insert`, `update`, `updateMany`, `delete`, `count` |
+| `db` | `DbClient` | `findMany`, `findOne`, `insert`, `update`, `updateMany`, `delete`, `count`, `insertNow`, `updateNow` |
 | `emit(event)` | `Promise<void>` | Emit declared event |
 | `enqueueJob(name, payload)` | `Promise<void>` | Dispatch async job |
 | `resolveContact(params)` | `Promise<unknown>` | Contact lookup |
@@ -461,6 +461,25 @@ To let anything else read a collection (the agent's data tools, dashboard blocks
 ```
 
 `readScope` must be one of the app's own scopes (in `scopes` or a tool's `requiredScopes`); a reader needs it. `agentReadable` defaults to `false`. A collection that is not declared stays reachable by its own app only.
+
+### Commit an intent row before an outside call (`ctx.db.insertNow`)
+
+Some runs share one transaction from start to end: an approved gated call (the approval claim, the handler and the "approved" mark), and a tool declared `atomic: true`. If the sandbox stops such a handler ("App execution timed out"), every write it made rolls back. A row written with `ctx.db.insert` just before a call you cannot undo (buying a label, charging a card) is lost with it, and the outside effect has no local record.
+
+`ctx.db.insertNow(entity, data)` and `ctx.db.updateNow(entity, id, data)` make the same write as `insert` and `update`, in a new transaction of their own that commits before they return:
+
+```typescript
+const intent = await ctx.db.insertNow("purchases", { order_ref: ref, state: "in_flight" })
+const bought = await provider.buy(ref)                  // cannot be undone
+await ctx.db.updateNow("purchases", intent.id, { state: "done", provider_id: bought.id })
+```
+
+- The checks are the ones `insert` and `update` make: only the app's own declared tables and fields (no other app's tables, no kernel table, no `org_id`), the run's organization and RLS actor.
+- They are refused on a read-only run, and in a run that has no transaction of its own to commit in (a webhook or job handler); use `insert` and `update` there.
+- In a run whose bridge calls each commit on their own already (an ordinary tool call), they behave like `insert` and `update`.
+- The run's own transaction sees the committed row and can keep updating it. Do not commit-now a row the run already changed with a plain write: the second transaction waits for the run's lock, and gives up after 5 seconds with a lock timeout error.
+- Give the intent row a state that says the outside call has started, and a sweep that finds rows still in that state after a while and settles them: ask the provider what happened, or show them to a person with what to check. Boxtal's label reservation works this way (`bundled-apps/boxtal/src/link-store.ts`, `reconcile-tracking.ts`).
+- The effect ledger (`ctx.effects`, `@liaison/app-sdk/effects`) also commits its claim at once, and is the tool for "do this outside call once". An intent row is for a record the app itself has to list and act on later.
 
 ---
 

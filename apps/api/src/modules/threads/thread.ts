@@ -30,6 +30,7 @@ import {
   sendMessage as sendMsg,
 } from "~/modules/threads/message"
 import { AGENT_GUEST_SEAT_ROLE, addAgentParticipant } from "~/modules/threads/participant"
+import { addReference } from "~/modules/threads/reference"
 import { notStatusLine } from "~/modules/threads/status-line-sql"
 import { allocateThreadHandle, handleForRetitle } from "~/modules/threads/thread-handle"
 import { messageVisibilityFacts } from "~/services/security/visibility"
@@ -528,15 +529,15 @@ export async function createThread(db: RlsClient, params: CreateThreadParams) {
   )
 
   // A PLAIN thread: one between people, not anchored to an entity. Entity-anchored
-  // threads (createdFrom / references — ticket, approval, mail conversations) are
-  // legitimately one-per-entity and are never deduped or guarded. The predicate
-  // itself lives in dm-shape.ts because the push fanout has to read the same
-  // shape off a stored row.
+  // threads (createdFrom: ticket, approval, mail conversations) are legitimately
+  // one-per-entity and are never deduped or guarded. References do not anchor:
+  // an untitled create that carries them is still the DM between these people.
+  // The predicate itself lives in dm-shape.ts because the push fanout has to
+  // read the same shape off a stored row.
   const isPlainThread = isPlainThreadShape({
     type: params.type ?? "thread",
     isPinned: isPinned === true,
     createdFrom: createdFrom ?? null,
-    referenceCount: references?.length ?? 0,
     humanCount: participantIds.length,
   })
 
@@ -546,8 +547,9 @@ export async function createThread(db: RlsClient, params: CreateThreadParams) {
 
   // TITLED plain thread → the same participants already having a thread is a
   // mistake, not a new conversation: refuse it and point at the existing one.
-  // `forceCreate` is the deliberate override.
-  if (isPlainThread && title && !params.forceCreate) {
+  // `forceCreate` is the deliberate override. A titled room about entities
+  // (references) is a topic room and stays allowed beside the DM.
+  if (isPlainThread && title && (references?.length ?? 0) === 0 && !params.forceCreate) {
     const existing = await findPlainThreadForParticipants(db, {
       orgId,
       userId,
@@ -663,6 +665,7 @@ export async function createThread(db: RlsClient, params: CreateThreadParams) {
         title: title ?? null,
         isPinned: false,
         createdFrom: null,
+        references,
         initialMessage,
         type: params.type,
       })
@@ -676,8 +679,20 @@ export async function createThread(db: RlsClient, params: CreateThreadParams) {
       }
     })
 
-    // Deduplicated path — forward message and return early
+    // Deduplicated path — attach the references, forward the message, return early
     if (txResult.deduplicated) {
+      // Idempotent per (thread, entity): a reference the DM already carries is
+      // only revisited.
+      for (const ref of references ?? []) {
+        await addReference(db, {
+          orgId,
+          userId,
+          threadId: txResult.existingThread.id,
+          app: ref.app,
+          entityType: ref.entityType,
+          entityId: ref.entityId,
+        })
+      }
       if (initialMessage?.content) {
         await sendMsg(db, {
           orgId,

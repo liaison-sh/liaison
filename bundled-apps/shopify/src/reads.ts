@@ -30,6 +30,7 @@ import {
   readShippingEmailPolicy,
 } from "./lib/b2b"
 import { getShopifyClient, resolveInstallMetadata } from "./lib/get-client"
+import { buyerTaxIdFromNoteAttributes } from "./webhooks"
 
 const DEFAULT_LIMIT = 25
 const MAX_LIMIT = 100
@@ -378,6 +379,8 @@ const ORDERS_GET_QUERY = `
       taxExempt
       purchasingEntity { ... on PurchasingCompany { company { name } location { taxSettings { taxRegistrationId } } } }
       shippingAddress { name address1 address2 city province provinceCode zip country countryCode phone }
+      billingAddress { name company address1 address2 city province provinceCode zip country countryCode phone }
+      customAttributes { key value }
       poNumber
       customer {
         id email firstName lastName phone taxExempt
@@ -407,6 +410,8 @@ interface OrderLineItemNode {
   }
 }
 interface OrderDetailNode extends OrderNode {
+  billingAddress?: (ShopifyAddress & { company?: string | null }) | null
+  customAttributes?: Array<{ key?: string | null; value?: string | null }> | null
   lineItems?: { edges?: Array<{ node: OrderLineItemNode }> }
   shippingLine?: {
     title?: string | null
@@ -454,6 +459,11 @@ export interface OrderDetail extends NormalizedHit {
   /** The customer's CANONICAL postal address (their record's defaultAddress). The reliable source
    *  for an address backfill when the order itself has no shippingAddress. Null if none on file. */
   customerAddress: Record<string, string | null> | null
+  /** The order's billing address with its company, as it reads NOW (null when the order has none). */
+  billingAddress: Record<string, string | null> | null
+  /** The buyer's VAT / tax number from the order's CURRENT custom attributes (the keys the
+   *  order:created event reads), so a later read sees a number added after checkout. Null if none. */
+  buyerTaxId: string | null
   totalPrice?: { amount: string; currencyCode: string }
   // Buyer's PO reference, cross-app contract with invoicing: nullable string,
   // ABSENT (not `""`) when there is none. This order's OWN Shopify field only
@@ -729,6 +739,12 @@ export async function orders_get(params: Record<string, unknown>, ctx: AppContex
     // a separate customers_get drill-down it tends to skip when the order itself has no address.
     shippingAddress: normalizeAddress(order.shippingAddress),
     customerAddress: normalizeAddress(order.customer?.defaultAddress),
+    billingAddress: order.billingAddress
+      ? { ...normalizeAddress(order.billingAddress), company: order.billingAddress.company ?? null }
+      : null,
+    buyerTaxId: buyerTaxIdFromNoteAttributes(
+      (order.customAttributes ?? []).map((a) => ({ name: a?.key ?? null, value: a?.value ?? null })),
+    ),
     totalPrice: money ? { amount: money.amount, currencyCode: money.currencyCode } : undefined,
     ...(po_number !== undefined ? { po_number } : {}),
     ...(b2bOrder ? { b2bOrder } : {}),

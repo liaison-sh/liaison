@@ -330,7 +330,7 @@ A change that changes nothing (an app that is already on, a setting already at t
 | `notification_rules_set` | Silence an app or keep only some notification kinds. | `kernel:agent:memory` | No |
 | `thread_mute_set` | Mute or unmute a conversation. | `kernel:agent:memory` | No |
 | `set_away` | Record the days someone is away (never why), end them, or name their standing next in line. The result states the dates with weekdays, who is next in line and what they cannot approve. Someone else's days need `kernel:users:admin` or `projects:capacity:write`. | `kernel:threads:read` | Only when the turn read outside text, or a routine or an MCP client asks: then it waits for the person who asked |
-| `report_bug` | File a bug report about Liaison itself. Where bug reports go only to the Liaison team, it prepares the report and you send it from its card. | `kernel:bug_reports:file` (every member holds it) | No |
+| `report_bug` | File a bug report about Liaison itself. It never waits for an approval, whatever the conversation read before. Where bug reports go only to the Liaison team, it prepares the report and you send it from its card. | `kernel:bug_reports:file` (every member holds it) | No |
 
 ### Sub-agents
 

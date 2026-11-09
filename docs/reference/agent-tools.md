@@ -461,7 +461,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `credit_note_issue` | Issue a credit note from a draft (drafts_create with type='credit_note'). |  | `invoicing:documents:write` |
 | `customer_history` | A customer's past sales with each line's unit price, the latest sale of a product (last_sale) and their Shopify orders. |  | `invoicing:documents:read` |
 | `deferred_list` | List parked/deferred auto-flow events for the org: Shopify orders whose invoice did not issue automatically. |  | `invoicing:documents:read` |
-| `deferred_tax_override` | Resolve a TAX REVIEW park (deferred_list items whose reason is shopify_tax_mismatch, tax_on_exempt_treatment or tax_rate_placeholder; they carry resolution_options) by issuing the order with an explicit tax decision. | yes | `invoicing:documents:write` |
+| `deferred_tax_override` | Resolve a TAX REVIEW park (deferred_list items whose reason is shopify_tax_mismatch, tax_on_exempt_treatment, tax_rate_placeholder or buyer_vat_missing; they carry resolution_options) by issuing the order with an explicit tax decision. | yes | `invoicing:documents:write` |
 | `documents_convert_to_invoice` | Convert a quote or proforma into an invoice. | yes | `invoicing:documents:write` |
 | `documents_download_pdf` | Resolve a document's rendered-PDF file id + URL for download. |  | `invoicing:documents:read` |
 | `documents_for_orders` | Resolve the invoicing documents linked to a set of Shopify order ids. |  | `invoicing:documents:read` |
@@ -501,6 +501,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `invoice_issue` | Issue an invoice from a draft. | yes | `invoicing:documents:write` |
 | `legal_originals_verify` | Check that the stored legal originals (the exact file of each issued invoice and credit note's first render, the Factur-X for an e-invoice, and imported legacy originals) are intact: recomputes each file's fingerprint and compares it with the one recorded when it was fixed. |  | `invoicing:documents:read` |
 | `order_reissue_apply` | Reissue an invoice after a Shopify order edit changed the LINE SET or the AMOUNTS (an order edit that only touches address, notes, tags, or fulfilment does NOT call this). | yes | `invoicing:documents:write` |
+| `orders_invoiceability_check` | Would the order-created auto-flow invoice this Shopify order, or park it (no invoice)? |  | `invoicing:documents:read` |
 | `pending_approvals_list` | List the caller's pending approvals originating from invoicing-app tools (credit notes, refunds, dealer invoices), each with its summary, requester, and amount. |  | `invoicing:documents:read` |
 | `po_create_and_issue` | Create a draft purchase order and issue it in one call. |  | `invoicing:documents:write` |
 | `po_issue` | Issue a purchase order from a draft. |  | `invoicing:documents:write` |

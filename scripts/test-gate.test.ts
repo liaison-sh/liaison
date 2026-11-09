@@ -3,12 +3,17 @@
 // suites a change runs, narrowed to which files, and what it skips and why.
 
 import { describe, expect, it } from "bun:test"
+import { readFileSync } from "node:fs"
+import path from "node:path"
+import { TEST_MAP } from "../.claude/test-map"
 import {
   BROAD_SUITES,
   colocatedTests,
   GATE_LANES,
   gateMatrix,
   laneOrder,
+  NOT_HOSTED_SUITES,
+  PR_CI_SUITES,
   planGate,
   type SuiteInfo,
 } from "./test-gate"
@@ -169,5 +174,54 @@ describe("gateMatrix", () => {
     expect(m).toEqual([
       { suite: "integration", shard: 1, of: 1, files: ["src/tests/contacts.test.ts"] },
     ])
+  })
+})
+
+describe("the gate workflow's lanes", () => {
+  const named = new Set([...TEST_MAP.flatMap((e) => e.suites), ...BROAD_SUITES])
+
+  it("runs every suite the test map names, except the ones per-PR CI runs", () => {
+    const missing = [...named].filter(
+      (s) => !(s in GATE_LANES) && !PR_CI_SUITES.includes(s) && !(s in NOT_HOSTED_SUITES),
+    )
+    expect(missing).toEqual([])
+  })
+
+  it("leaves no suite both to per-PR CI and to a gate lane", () => {
+    expect(PR_CI_SUITES.filter((s) => s in GATE_LANES)).toEqual([])
+  })
+
+  it("gives every suite it cannot host a reason, and none of them a lane", () => {
+    expect(Object.keys(NOT_HOSTED_SUITES).filter((s) => s in GATE_LANES)).toEqual([])
+    expect(Object.values(NOT_HOSTED_SUITES).every((why) => why.length > 20)).toBe(true)
+  })
+
+  it("names only suites test-run.ts knows, and shards only the ones it can shard", () => {
+    for (const [suite, shards] of Object.entries(GATE_LANES)) {
+      const r = Bun.spawnSync({
+        cmd: [
+          "bun",
+          "scripts/test-run.ts",
+          suite,
+          ...(shards > 1 ? ["--shard", `1/${shards}`] : []),
+        ],
+        cwd: path.resolve(import.meta.dir, ".."),
+        env: { ...process.env, LIAISON_TEST_DRY_RUN: "1" },
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      expect({ suite, exit: r.exitCode, err: r.stderr.toString().slice(0, 200) }).toEqual({
+        suite,
+        exit: 0,
+        err: "",
+      })
+    }
+  })
+
+  it("derives its lanes from the planner, with no suite list of its own", () => {
+    const yml = readFileSync(path.resolve(import.meta.dir, "../.github/workflows/gate.yml"), "utf8")
+    expect(yml).toContain("scripts/test-gate.ts --base")
+    expect(yml).toContain("--matrix-json")
+    expect(yml).not.toMatch(/suite:\s*\[/)
   })
 })

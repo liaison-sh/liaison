@@ -4729,6 +4729,7 @@ export const FR: Record<string, string> = {
   "Exactly what the Liaison team receives, with your email. Nothing is sent until you click Send, and only you see this.":
     "Exactement ce que reçoit l'équipe Liaison, avec votre e-mail. Rien n'est envoyé avant que vous cliquiez sur Envoyer, et vous seul le voyez.",
   "Send to the Liaison team": "Envoyer à l'équipe Liaison",
+  "Could not discard the report. Try again.": "Impossible de supprimer le signalement. Réessayez.",
   "Sent to the Liaison team (reference {{reference}})":
     "Envoyé à l'équipe Liaison (référence {{reference}})",
   "This report was sent or has expired.": "Ce signalement a été envoyé ou a expiré.",

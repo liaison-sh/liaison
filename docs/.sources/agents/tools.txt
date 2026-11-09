@@ -112,7 +112,7 @@ notifications_get tool: scope and approval flag -> apps/api/src/modules/agent/to
 notifications_set tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1733
 notification_rules_set tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1744
 thread_mute_set tool: scope and approval flag -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1755
-report_bug tool: scope (every member holds it) and approval flag -> apps/api/src/modules/bug-reports/tool.ts:258 ; apps/api/src/modules/permissions/every-member-scopes.ts:23
+report_bug tool: scope (every member holds it), approval flag, never waits for an approval -> apps/api/src/modules/bug-reports/tool.ts:258-268 ; apps/api/src/modules/permissions/every-member-scopes.ts:23
 spawn_agent tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2485
 subagent_list tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2626
 subagent_get tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:2654

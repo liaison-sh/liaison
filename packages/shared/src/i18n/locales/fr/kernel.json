@@ -569,6 +569,8 @@
     "draftLogsTruncated": "lignes les plus anciennes omises",
     "draftHelp": "Exactement ce que reçoit l'équipe Liaison, avec votre e-mail. Rien n'est envoyé avant que vous cliquiez sur Envoyer, et vous seul le voyez.",
     "draftSend": "Envoyer à l'équipe Liaison",
+    "draftDiscard": "Abandonner",
+    "draftDiscardFailed": "Impossible de supprimer le signalement. Réessayez.",
     "draftSent": "Envoyé à l'équipe Liaison (référence {{reference}})",
     "draftGone": "Ce signalement a été envoyé ou a expiré.",
     "draftFailed": "Impossible d'envoyer le signalement. Réessayez.",

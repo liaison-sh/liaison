@@ -298,7 +298,11 @@ export async function loadConversations(
     setConversationStore({ byId, ids })
     void openSealedRows(ids, requestId)
   } finally {
-    setLoading(false)
+    // Only the latest request ends the loading state. A stale answer (an
+    // earlier view's, or a reload superseded by a newer one) landing while
+    // the current request is still out would otherwise show the list the
+    // view switch emptied as "No conversations" until the real answer came.
+    if (requestId === activeLoadRequestId) setLoading(false)
   }
 }
 
@@ -717,7 +721,8 @@ export function resetMailConversationStore(): void {
   setLoading(false)
   setLoadingMore(false)
   setHasMore(false)
-  activeLoadRequestId = 0
+  // Never back to an id a request still in flight holds: its answer must stay stale.
+  activeLoadRequestId++
   pendingLiveIds.clear()
   if (liveFetchTimer) clearTimeout(liveFetchTimer)
   liveFetchTimer = null

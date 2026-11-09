@@ -645,6 +645,29 @@ describe("push fanout consumer", () => {
     expect(sender.calls[0].payload.type).toBe("dm")
   })
 
+  // References are context, not an anchor: createThread lands a referencing
+  // create in the existing DM, so the DM that carries them must still notify.
+  it("a DM carrying an entity reference still pushes the other human with no mention", async () => {
+    await sql`INSERT INTO kernel.thread_references (thread_id, org_id, app, entity_type, entity_id, added_by)
+      VALUES (${dmThreadId}, ${ORG}, 'shopify', 'order', 'o-1042', ${ALICE})`
+    try {
+      const sender = spy()
+      await handlePushFanout(
+        {
+          eventId: "evt-dm-with-ref",
+          event: messageEvent({
+            data: { threadId: dmThreadId, mentions: null, participantIds: [ALICE, BOB] },
+          }),
+        },
+        { send: sender.send },
+      )
+      expect(sender.calls.map((c) => c.token.token)).toEqual([`token-${BOB}`])
+      expect(sender.calls[0].payload.type).toBe("dm")
+    } finally {
+      await sql`DELETE FROM kernel.thread_references WHERE thread_id = ${dmThreadId}`
+    }
+  })
+
   // A demo seed writes its conversations through sendMessage, so each seeded
   // DM was a live message event and buzzed the phones of everyone in it on
   // every reseed (walk 2026-10-19, #17). A seed's message says so in its

@@ -305,6 +305,15 @@ export type RpcBridgeOptions = {
    * files) without holding a connection across its network I/O.
    */
   withShortTx?: <T>(fn: (tx: RlsClient) => Promise<T>) => Promise<T>
+  /**
+   * A NEW RLS transaction under the run's own actor, independent of the run's
+   * transaction and committed as soon as `fn` returns: what `ctx.db.insertNow` /
+   * `ctx.db.updateNow` write through (bridge/db.ts). A run whose handler shares
+   * one transaction (an approved gated call, an atomic tool) would otherwise
+   * roll back an intent row written before an outside call when the sandbox is
+   * killed after that call. Absent: the commit-now writes are refused.
+   */
+  commitNowTx?: <T>(fn: (tx: RlsClient) => Promise<T>) => Promise<T>
   attachmentBytesLedger?: {
     importAttachment: { cumulative: number }
     getAttachmentBytes: { cumulative: number }

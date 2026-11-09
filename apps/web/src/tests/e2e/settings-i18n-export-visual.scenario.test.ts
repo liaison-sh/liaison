@@ -14,6 +14,8 @@
 
 import { login } from "@liaison/test-helpers"
 import type { Page } from "@playwright/test"
+import type { TabTrailEntry } from "../../modules/shell/tab-teardown-trail"
+import { formatTabTrail } from "../../modules/shell/tab-teardown-trail"
 import { expect, loginAs, test } from "./fixtures/test"
 import { enableAppForOrg } from "./helpers/org-export"
 import { grantTicketsScopes, seedTicket } from "./helpers/seed"
@@ -33,7 +35,33 @@ async function switchLanguage(page: Page, language: "en" | "fr"): Promise<void> 
   expect((await saved).ok()).toBe(true)
   await expect(page.locator("html")).toHaveAttribute("lang", language)
 }
-test("visual: Settings language EN vs FR (visual i18n end-to-end)", async ({ page, env }) => {
+test("visual: Settings language EN vs FR (visual i18n end-to-end)", async ({
+  page,
+  env,
+}, testInfo) => {
+  // The shell's test-only trail of every rebuild of a tab's content (what, which
+  // tab, when). A rare failure here is a Settings/Home body rebuilt shortly after
+  // load; on failure the trail is attached so the next occurrence names its cause.
+  await page.addInitScript(() => {
+    ;(window as unknown as { __LIAISON_TAB_TRAIL__: unknown[] }).__LIAISON_TAB_TRAIL__ = []
+  })
+  try {
+    await settingsLanguageWalk(page, env)
+  } catch (err) {
+    const trail = await page
+      .evaluate(
+        () => (window as unknown as { __LIAISON_TAB_TRAIL__?: unknown[] }).__LIAISON_TAB_TRAIL__,
+      )
+      .catch(() => undefined)
+    await testInfo.attach("tab-teardown-trail", {
+      body: trail ? formatTabTrail(trail as TabTrailEntry[]) || "(empty)" : "(page gone)",
+      contentType: "text/plain",
+    })
+    throw err
+  }
+})
+
+async function settingsLanguageWalk(page: Page, env: Parameters<typeof loginAs>[1]): Promise<void> {
   await loginAs(page, env, "admin@test.com", "12345678")
   await page.goto(`http://localhost:${env.ports[1]}/settings`)
   await page.waitForURL(/\/settings/)
@@ -65,7 +93,7 @@ test("visual: Settings language EN vs FR (visual i18n end-to-end)", async ({ pag
   await expect(page.getByTestId("settings-content").locator("h1").first()).toHaveText("Profile", {
     timeout: 10000,
   })
-})
+}
 
 test("visual: Admin Data Export empty vs done vs partial-skip (calm)", async ({
   authenticatedPage,

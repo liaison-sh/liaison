@@ -352,7 +352,10 @@ class TaskPipeline {
 }
 
 const EXTEND_LOCK_LUA = `
-if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('PEXPIRE', KEYS[1], ARGV[2]) end
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  redis.call('PEXPIRE', KEYS[2], ARGV[2])
+  return redis.call('PEXPIRE', KEYS[1], ARGV[2])
+end
 return 0`
 
 /**
@@ -381,7 +384,14 @@ class RebuildLock {
 
   private async extend(): Promise<void> {
     try {
-      const ok = await redis.eval(EXTEND_LOCK_LUA, 1, REBUILD_KEYS.lock, this.token, LOCK_TTL_MS)
+      const ok = await redis.eval(
+        EXTEND_LOCK_LUA,
+        2,
+        REBUILD_KEYS.lock,
+        REBUILD_KEYS.shadow,
+        this.token,
+        LOCK_TTL_MS,
+      )
       if (ok !== 1) this.lost = true
     } catch (err) {
       log.warn({ err }, "Could not extend the search rebuild lock")
@@ -399,7 +409,11 @@ class RebuildLock {
     if (RebuildLock.held === this) RebuildLock.held = null
     const held = await redis.get(REBUILD_KEYS.lock).catch(() => null)
     if (held !== this.token) return
-    const keys = opts.keepTouched ? [REBUILD_KEYS.lock] : [REBUILD_KEYS.lock, REBUILD_KEYS.touched]
+    // The shadow note goes with the lock: after the swap its name is the old
+    // index, dropped once the writers' cache window has passed.
+    const keys = opts.keepTouched
+      ? [REBUILD_KEYS.lock, REBUILD_KEYS.shadow]
+      : [REBUILD_KEYS.lock, REBUILD_KEYS.shadow, REBUILD_KEYS.touched]
     await redis.del(...keys).catch(() => 0)
   }
 }
@@ -581,7 +595,7 @@ export async function runReindex(): Promise<RebuildResult & { pruned: number }> 
   const live = meili.index(liveName)
   const shadow = meili.index(shadowName)
   try {
-    await redis.del(REBUILD_KEYS.touched)
+    await redis.del(REBUILD_KEYS.touched, REBUILD_KEYS.shadow)
     // No writer may still believe no rebuild runs once the first page is read.
     await new Promise((r) => setTimeout(r, 2 * rebuildStateCacheWindowMs() + 100))
 
@@ -620,6 +634,18 @@ export async function runReindex(): Promise<RebuildResult & { pruned: number }> 
       ...(Object.keys(embedders).length > 0 ? { embedders } : {}),
     } as never)
     await waitForMeiliTask(meili, (settingsTask as { taskUid?: number }).taskUid)
+
+    // From here on every live write is also sent to the shadow (index-writer
+    // sendIndexWrite), so the index swapped in holds every write made up to the
+    // swap: the replay after the swap is only a safety net. A live write that
+    // a page streamed later overwrites with an older copy of its row is noted
+    // too, and the replay before the swap re-reads it. Published once the
+    // shadow exists with its settings: a write reaching a missing index would
+    // create it without them. No wait here (a longer rebuild is one a restart
+    // interrupts more often): a writer still trusting its older answer for up
+    // to the cache window only notes its write, and the replays cover it as
+    // before; the stream nearly always outlasts that window anyway.
+    await redis.set(REBUILD_KEYS.shadow, shadowName, "PX", LOCK_TTL_MS)
 
     // Stream everything into the shadow.
     const pipeline = new TaskPipeline()

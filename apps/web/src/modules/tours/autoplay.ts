@@ -126,11 +126,17 @@ function isActive(el: HTMLElement): boolean {
   )
 }
 
-async function find(target: Target, opts: RunOptions) {
+/**
+ * The target on screen, waited for up to the find timeout. `ready` narrows it
+ * to one that can be acted on: a typing step's field may be on screen before
+ * the editor inside it has loaded (the composer's stand-in, editor/index.tsx),
+ * and typing waits for that editor instead of giving up.
+ */
+async function find(target: Target, opts: RunOptions, ready?: (el: HTMLElement) => boolean) {
   const deadline = Date.now() + opts.findTimeoutMs
   for (;;) {
     const el = visible(target)
-    if (el) return el
+    if (el && (!ready || ready(el))) return el
     if (Date.now() >= deadline) return null
     await sleep(FIND_POLL_MS, opts.signal)
   }
@@ -285,7 +291,8 @@ export async function runAutoplay(
           ? { testid: pinned.testid, where: step.prefer }
           : null
       const target = preferred && visible(preferred) ? preferred : pinned
-      let el = await find(target, opts)
+      const ready = "type" in step ? (e: HTMLElement) => editableTarget(e) !== null : undefined
+      let el = await find(target, opts, ready)
       if (!el) return { status: "failed", missing: target.testid }
       if ("waitFor" in step) continue
       if ("require" in step) {
@@ -300,7 +307,7 @@ export async function runAutoplay(
       // refetch rebuilds its cards): a press on the detached one reaches no
       // handler, where a hand always presses what is on screen. Find it again.
       for (let tries = 0; tries < REFIND_TRIES && !visible(target)?.isSameNode(el); tries++) {
-        const fresh = await find(target, opts)
+        const fresh = await find(target, opts, ready)
         if (!fresh) return { status: "failed", missing: target.testid }
         el = fresh
         await options.cursor.moveTo(el, opts.signal)

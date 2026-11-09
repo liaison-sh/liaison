@@ -481,6 +481,7 @@ boxtalTestInstallRoutes.post(
 const mockModeSchema = z.object({
   cotationFixture: z.enum(["multi", "empty", "error", "dev"]).optional(),
   createMode: z.enum(["pending", "phone_422", "server_5xx"]).optional(),
+  createLatencyMs: z.number().int().min(0).max(10_000).optional(),
   confirmOrderId: z.string().optional(),
   dispatchOrderId: z.string().optional(),
   cancelOrderId: z.string().optional(),

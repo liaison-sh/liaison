@@ -81,6 +81,9 @@ interface BoxtalMockState {
    *  REACHED_DELIVERY_PICKUP_POINT parcel; the endpoint emits it on the tracking
    *  package so `track` can surface the authoritative deadline. */
   pickupDeadlineByOrder: Map<string, string>
+  /** How long a successful create takes to answer, in ms, after it is recorded: a slow
+   *  carrier, so a test can see the purchase while the buying call is still running. */
+  createLatencyMs: number
 }
 
 const state: BoxtalMockState = {
@@ -92,6 +95,7 @@ const state: BoxtalMockState = {
   trackingStatusByOrder: new Map(),
   trackingMessageByOrder: new Map(),
   pickupDeadlineByOrder: new Map(),
+  createLatencyMs: 0,
 }
 
 export function setBoxtalMockMode(patch: {
@@ -101,8 +105,10 @@ export function setBoxtalMockMode(patch: {
   dispatchOrderId?: string
   cancelOrderId?: string
   trackingStatus?: { orderId: string; status: string; message?: string; pickupDeadline?: string }
+  createLatencyMs?: number
 }): void {
   if (patch.cotationFixture) state.cotationFixture = patch.cotationFixture
+  if (patch.createLatencyMs !== undefined) state.createLatencyMs = patch.createLatencyMs
   if (patch.createMode) state.createMode = patch.createMode
   if (patch.confirmOrderId) state.confirmedOrderIds.add(patch.confirmOrderId)
   if (patch.dispatchOrderId) state.dispatchedOrderIds.add(patch.dispatchOrderId)
@@ -130,6 +136,7 @@ export function resetBoxtalMockMode(): void {
   state.trackingStatusByOrder.clear()
   state.trackingMessageByOrder.clear()
   state.pickupDeadlineByOrder.clear()
+  state.createLatencyMs = 0
 }
 
 /**
@@ -406,6 +413,7 @@ export function makeBoxtalMockFetch(realFetch: typeof fetch = fetch): typeof fet
         )
       }
       const id = orderIdFromBody(body)
+      if (state.createLatencyMs > 0) await Bun.sleep(state.createLatencyMs)
       return v3Envelope({
         id,
         status: "PENDING",

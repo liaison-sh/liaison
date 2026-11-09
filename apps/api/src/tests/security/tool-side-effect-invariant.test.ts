@@ -37,7 +37,9 @@ import { readManifests } from "../../../test-support/security/enumerate"
 /** Bridge methods that check the read-only mark themselves, naming their real write target. */
 const SELF_GUARDING = new Set([
   "db_insert",
+  "db_insertNow",
   "db_update",
+  "db_updateNow",
   "db_updateMany",
   "db_delete",
   "messages_post",
@@ -224,7 +226,7 @@ describe("S3f-1: a read-only run refuses every bridge write", () => {
 
   it("a self-guarding write refuses on a read-only run", async () => {
     const ro = bridgeFor(true)
-    for (const name of ["db_insert", "db_update", "db_delete"]) {
+    for (const name of ["db_insert", "db_insertNow", "db_update", "db_updateNow", "db_delete"]) {
       let msg = ""
       try {
         await ro[name](JSON.stringify({ entity: "items", data: { a: 1 }, where: { id: "x" } }))
@@ -525,8 +527,6 @@ const REVIEWED_UNGATED_OUTWARD: Record<string, string> = {
   "kernel:files_upload_confirm": "internal",
   "kernel:files_upload_url": "internal upload slot for the person",
   "kernel:notify_user": "internal notification to an org member; scope-taint sinkReadersSelf",
-  "kernel:report_bug":
-    "externalEffect: parks after outside text; team-only it only prepares a draft the reporter sends from their own card (bug-reports/tool.ts)",
   "kernel:run_on_my_computer":
     "requiresHumanTurn: parks unless a typed, unmarked turn (execute-tool.ts); replayed outside text keeps the mark (untrusted-text-across-turns.test.ts)",
   "kernel:set_away":

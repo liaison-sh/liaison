@@ -569,6 +569,8 @@
     "draftLogsTruncated": "oldest lines left out",
     "draftHelp": "Exactly what the Liaison team receives, with your email. Nothing is sent until you click Send, and only you see this.",
     "draftSend": "Send to the Liaison team",
+    "draftDiscard": "Discard",
+    "draftDiscardFailed": "Could not discard the report. Try again.",
     "draftSent": "Sent to the Liaison team (reference {{reference}})",
     "draftGone": "This report was sent or has expired.",
     "draftFailed": "Could not send the report. Try again.",

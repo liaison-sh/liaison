@@ -3507,8 +3507,12 @@ describe("quote.create_and_issue via Shopify draft order", () => {
           )
         if (name === "shopify:draft_orders_get")
           return { status: "completed", result: { draftOrder: draftOrderFixture() } }
+        // The kernel's own contacts_read: `{ contactId }` in, `{ contact: { externalIds } }` out.
         if (name === "kernel:contacts_read")
-          return { status: "completed", result: { external_ids: { shopify: "42" } } }
+          return {
+            status: "completed",
+            result: { contact: { id: defaultCounterparty.contact_id, externalIds: { shopify: "42" } } },
+          }
         return { status: "completed", result: {} }
       },
     })
@@ -3541,12 +3545,49 @@ describe("quote.create_and_issue via Shopify draft order", () => {
     expect(args.lineItems).toEqual([{ variantId: "gid://shopify/ProductVariant/9", quantity: 2 }])
     expect(args.email).toBe("ap@buyersarl.example")
     expect(args.purchasingEntity).toEqual({ customerId: "gid://shopify/Customer/42" })
+    const read = extras.executeToolCalls.find((c) => c.name === "kernel:contacts_read")!
+    expect(read.args).toEqual({ contactId: defaultCounterparty.contact_id })
     expect(args.tags).toEqual(["liaison-quote"])
     // Exactly one quote, carrying the link, and never a second one for the same draft order.
     const quotes = db.__all("documents").filter((d) => d.type === "quote")
     expect(quotes).toHaveLength(1)
     expect(quotes[0]!.shopify_draft_order_id).toBe("gid://shopify/DraftOrder/77")
     expect(quotes[0]!.status).toBe("sent")
+  })
+
+  test("a business buyer's VAT number rides on the draft order as a custom attribute, a consumer's draft has none", async () => {
+    // The order-created auto-flow reads the buyer VAT number only from the order's custom
+    // attributes: without it a reverse charge quote turns into an order invoicing parks.
+    const item = {
+      position: 1,
+      description: "Widget",
+      quantity: "1",
+      unit_price_minor: 5_000n,
+      product_source: "shopify",
+      external_id: "gid://shopify/ProductVariant/9",
+    }
+    const b2b = shopifyCtx()
+    await quoteCreateAndIssue(b2b.ctx, {
+      counterparty: { ...defaultCounterparty, vat_id: " IT01234567890 " },
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: [item],
+    })
+    const b2bInput = (b2b.extras.executeToolCalls.find((c) => c.name === "shopify:draft_orders_create")!.args as {
+      input: Record<string, unknown>
+    }).input
+    expect(b2bInput.customAttributes).toEqual([{ key: "VAT number", value: "IT01234567890" }])
+    const b2c = shopifyCtx()
+    await quoteCreateAndIssue(b2c.ctx, {
+      counterparty: { ...defaultCounterparty, vat_id: null },
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: [item],
+    })
+    const b2cInput = (b2c.extras.executeToolCalls.find((c) => c.name === "shopify:draft_orders_create")!.args as {
+      input: Record<string, unknown>
+    }).input
+    expect(b2cInput.customAttributes).toBeUndefined()
   })
 
   test("a non-catalog line goes to Shopify as a custom line at the quote's price", async () => {

@@ -395,7 +395,10 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
         ...(props.maxLength ? [CharacterCount.configure({ limit: props.maxLength })] : []),
       ],
       editable: !props.disabled,
-      autofocus: props.autofocus ? "end" : false,
+      // Focused below, as it mounts: tiptap's own autofocus runs a task later
+      // and moved the caret to the end over a selection made meanwhile (select
+      // all, then type, ended up appending).
+      autofocus: false,
       editorProps: {
         attributes: {
           class: cn("prose-thread min-w-0 outline-none", props.editorClass),
@@ -472,6 +475,7 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
       ed,
       untrack(() => props.value),
     )
+    if (untrack(() => props.autofocus)) ed.commands.focus("end")
     ed.on("transaction", ({ transaction }) => {
       if (transaction.docChanged) {
         for (const held of anchors) mapHeldPlace(held, transaction.mapping.maps)

@@ -31,7 +31,7 @@ describe("kernel report_bug tool", () => {
     orgId = u.orgId
     userId = u.id
     email = u.email
-    // report_bug parks after outside text, so a call needs the connection's thread.
+    // An MCP call runs on the connection: report_bug is called through it below.
     connectionId = (
       await createMcpConnection({ orgId, userId, clientId: "claude-code", label: "Claude Code" })
     ).connection.id

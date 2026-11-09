@@ -129,12 +129,17 @@ describe("the content security policy", () => {
     // `toContain("script-src 'self'")` said nothing once the directive grew a
     // second source: it matches just as happily with a wildcard appended. So
     // the source LIST is pinned instead, in order, and adding or removing one
-    // fails here. D11: the web build's own script policy and nothing more. No
-    // installed app's bundle runs in the page any longer: a first-party
-    // bundled app is compiled into the build, any other app runs in the
-    // shell's sandboxed frame (src-tauri/src/app_frame.rs).
+    // fails here. The web build's own script policy plus the one scheme the
+    // shell serves a verified app's bytes on, by hash (`liaison-app:`, and its
+    // Windows form `http://liaison-app.localhost`; verified_apps.rs,
+    // src/csp-pin.test.ts pins the whole policy).
     const script = /script-src ([^;]+)/.exec(csp ?? "")?.[1] ?? ""
-    expect(script.split(/\s+/).filter(Boolean)).toEqual(["'self'", "'wasm-unsafe-eval'"])
+    expect(script.split(/\s+/).filter(Boolean)).toEqual([
+      "'self'",
+      "'wasm-unsafe-eval'",
+      "liaison-app:",
+      "http://liaison-app.localhost",
+    ])
     expect(csp).not.toContain("default-src *")
   })
 

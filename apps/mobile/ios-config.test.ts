@@ -22,8 +22,14 @@ const ENTITLEMENTS = path.join(APP_DIR, "App", "App.entitlements")
 const PRIVACY = path.join(APP_DIR, "App", "PrivacyInfo.xcprivacy")
 const PBXPROJ = path.join(APP_DIR, "App.xcodeproj", "project.pbxproj")
 
+// plutil on a Mac; libplist's plistutil elsewhere (the gate's Linux runners install it).
+const PLIST_TO_JSON =
+  process.platform === "darwin"
+    ? (file: string) => ["plutil", "-convert", "json", "-o", "-", file]
+    : (file: string) => ["plistutil", "-i", file, "-f", "json"]
+
 function plistJson<T>(file: string): T {
-  const result = Bun.spawnSync(["plutil", "-convert", "json", "-o", "-", file], {
+  const result = Bun.spawnSync(PLIST_TO_JSON(file), {
     stdout: "pipe",
     stderr: "pipe",
   })

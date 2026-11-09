@@ -124,6 +124,10 @@ Sign-in is passwordless, so people cannot sign in without working mail.
 
 Send from an address on a domain you own, and authorize your mail provider for that domain with SPF, DKIM and DMARC records (your provider gives the exact records). Mail from a domain that is not yours, or not authenticated, is rejected or lands in spam, and then nobody can sign in.
 
+### Commercial mail and the opt-out link
+
+A commercial mail that an agent drafts or you write to a prospect carries a link to stop commercial messages and the `List-Unsubscribe` headers (see [Opt-outs](../sales/opt-outs.md)). The link is built on `BASE_URL`, so the address must be reachable from the recipient's side: a recipient who cannot open it cannot opt out. Both mailbox paths carry the headers, with `List-Unsubscribe-Post: List-Unsubscribe=One-Click`: a Gmail mailbox and an IMAP/SMTP mailbox. No mailbox path sends a commercial mail without them. Set the organization's legal name and postal address in **Settings > Organization > Commercial identity** first: until both are set, no commercial mail goes.
+
 ### Mail encryption
 
 How personal mailboxes are encrypted at rest. See [Mail encryption](../security.md#mail-encryption). Set these in `deploy/.env`; compose passes both to the app.

@@ -1,0 +1,16 @@
+Imports are runs with a transform, a preview, Start import and Undo -> docs/admin/settings.md:124-148
+Company kind: externalId, name, domain, description, tags; scope kernel:companies:write -> apps/api/src/apps/contacts/app.manifest.json:141-190
+Contact kind: companyName, companyDomain; scope kernel:contacts:write -> apps/api/src/apps/contacts/app.manifest.json:27-110
+Deal kind fields -> apps/api/src/apps/projects/import-deal-kind.ts:56-84
+Deal kind scopes: tasks write, deals write for amounts -> apps/api/src/apps/projects/app.manifest.json:2766-2768 ; apps/api/src/apps/projects/import-deal-kind.ts:23-26
+Domain normalised; personal mail domain not saved, with a notice -> apps/api/src/apps/contacts/import-kind.ts:93-101
+A company is found by domain, else name, else created; preview counts what it would create -> apps/api/src/apps/contacts/import-kind.ts:85-140
+A company the importer cannot write is not created -> apps/api/src/apps/projects/import-deal-kind.ts:23-26
+Dedup on externalId (externalRef for deals), skipped and unchanged -> apps/api/src/apps/projects/app.manifest.json:2755 ; apps/api/src/apps/contacts/app.manifest.json:87 ; apps/api/src/apps/projects/import-deal-kind.ts:16-18
+Pipeline found by exact name, created with the default stages; a non-pipeline refuses -> apps/api/src/apps/projects/import-deal-kind.ts:16-21
+Stage by label, unknown refuses and names the stages, none gives the first -> apps/api/src/apps/projects/import-deal-kind.ts:19-21
+Lost reason kept on a lost stage -> apps/api/src/apps/projects/import-deal-kind.ts:79-80
+Contact found by email, unknown reported, deal still imported -> apps/api/src/apps/projects/import-deal-kind.ts:22-25
+Amount in minor units with a currency, period once, month or year, needs deal write access -> apps/api/src/apps/projects/import-deal-kind.ts:68-93
+Preview runs the same checks -> docs/admin/settings.md:132
+Undo removes the deal with its task, thread and amount, and the company only when nothing else uses it -> apps/api/src/apps/projects/import-deal-kind.ts:26-29

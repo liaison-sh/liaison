@@ -181,6 +181,7 @@ Each file is matched to its task by `externalRef`, backdated, and kept under its
 | `merge` | Merge one task into another | Yes |
 | `add_dependency` | Make one task block another | No |
 | `tasks_byAssignee`, `tasks_byProject`, `attentionItems`, `portfolio_rollup` | Task lists per person or project, your overdue and blocked work, a cross-project rollup | No |
+| `deals_pipeline_create`, `deals_search`, `deals_update`, `deals_rollup`, `deals_followup_candidates` | Create a sales pipeline, find and change deals, and sum them per stage, owner or month. See [Track deals on a pipeline](../sales/deals.md) | No |
 | `comment`, `comments` | Write and read a task's discussion | No |
 | `status_add`, `status_update` | Add or change a status column | No |
 | `status_delete` | Delete an empty status column | Yes |

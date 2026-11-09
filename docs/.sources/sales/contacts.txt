@@ -100,3 +100,5 @@ Mark verified, note, file from the contact's files -> apps/web/src/modules/conta
 Edit, Mark stale, Archive -> packages/shared/src/i18n/locales/en/contacts.json:137
 Read-only rows for a reader who cannot edit (meta.canEdit) -> apps/api/src/modules/contacts/routes.ts:213
 Review prospects who have gone quiet: daily Home item, professional interest, no mail, ticket or deal for three years, admins who can edit contacts, nothing deleted, Not now, back when the list changes -> apps/api/src/modules/contacts/prospect-retention.ts:37 ; apps/api/src/modules/contacts/prospect-retention.ts:42 ; apps/api/src/infra/jobs/kernel-jobs.ts:918 ; apps/api/src/modules/attention/set-aside.ts:3
+A person belongs to a company, linked by companyId -> apps/api/src/db/schema/kernel/contacts.ts:48
+Activity timeline, Follow-ups block and company link on the person's page -> apps/web/src/modules/contacts/ContactDetail.tsx:436-492

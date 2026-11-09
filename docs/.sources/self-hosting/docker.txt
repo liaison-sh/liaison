@@ -292,3 +292,6 @@ About 330 MB of files, about 1.1 GB more resident memory, 15-45 s to embed the t
 LIAISON_TOOL_MEANING, LIAISON_MODEL_CACHE_DIR -> apps/api/src/lib/env.ts:1290-1302
 LIAISON_TOOL_MEANING unset: on when managed, off when self-hosted; off loads no model -> apps/api/src/lib/edition.ts:67 ; apps/api/src/modules/agent/tools/tool-meaning.ts:213
 Compose keeps model files on the data volume -> deploy/docker-compose.yml:495
+Opt-out link is built on BASE_URL -> apps/api/src/lib/org-public-url.ts:44-45 ; apps/api/src/modules/mail/commercial-footer.ts:92-100
+List-Unsubscribe and One-Click headers on a Gmail send and on an SMTP send -> apps/api/src/modules/mail/commercial-footer.ts:192-196 ; apps/api/src/apps/mail/handlers.ts:630 ; apps/api/src/modules/apps/sandbox/smtp-bridge.ts:61
+Commercial identity must be set first -> apps/api/src/modules/mail/commercial-footer.ts:37 ; apps/web/src/modules/settings/AdminOrgSettings.tsx:157

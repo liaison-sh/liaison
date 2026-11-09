@@ -1,0 +1,36 @@
+Companies in the Contacts sidebar with their count -> apps/web/src/modules/contacts/ContactsSidebar.tsx:352-400
+Search companies..., count line, latest activity first -> packages/shared/src/i18n/locales/en/contacts.json:190-191
+Search matches name and domain -> apps/web/src/modules/contacts/CompanyList.tsx:4-6
+Row line: domain, newest open deal or No deal, people count; Possible duplicate -> packages/shared/src/i18n/locales/en/contacts.json:198-202 ; apps/web/src/modules/contacts/company-visuals.ts:41-48
+New company, Website domain -> packages/shared/src/i18n/locales/en/contacts.json:188-189 ; apps/web/src/modules/contacts/CompanyList.tsx:133-161
+Empty list proposes creating the companies the contacts name -> packages/shared/src/i18n/locales/en/contacts.json:194
+Visible to the whole team, Shared with some people, Only you see this company -> apps/web/src/modules/contacts/CompanyDetail.tsx:896-908
+No access page -> packages/shared/src/i18n/locales/en/contacts.json:241-242
+Account manager, away until, Relationship ended -> apps/web/src/modules/contacts/CompanyDetail.tsx:864-880 ; apps/web/src/modules/contacts/CompanyDetail.tsx:909-912
+Change the account manager, pending approval line -> packages/shared/src/i18n/locales/en/contacts.json:245-247 ; apps/web/src/modules/contacts/CompanyDetail.tsx:122
+Buttons need kernel:companies:write and a company the reader may change -> apps/web/src/modules/contacts/CompanyDetail.tsx:131-135
+Waiting: Home's approval rows for approvals linked to the company -> apps/web/src/modules/contacts/CompanyDetail.tsx:204-214 ; apps/api/src/modules/contacts/company-routes.ts:117-123
+People, Main contact, eight shown, Show all -> apps/web/src/modules/contacts/CompanyDetail.tsx:69 ; apps/web/src/modules/contacts/CompanyDetail.tsx:543-652
+Ask the agent to find people here, Link past mail from this domain -> packages/shared/src/i18n/locales/en/contacts.json:248-252
+Deals section: newest open deal, No open deal. -> apps/web/src/modules/contacts/CompanyDetail.tsx:660-689
+Money, Support and Work sections, order -> apps/web/src/modules/contacts/CompanyDetail.tsx:75 ; apps/web/src/modules/contacts/CompanyDetail.tsx:233-238
+Money panel needs invoicing:documents:read -> bundled-apps/invoicing/src/ui/CompanyMoneyPanel.tsx:3-6
+Support panel only for readers of tickets -> apps/web/src/modules/tickets/CompanySupportPanel.tsx:2-5
+Work panel lists projects whose client is the company and their open tasks -> apps/web/src/modules/projects/CompanyWorkPanel.tsx:2-6
+Timeline and Discussion, agent reads the page first -> packages/shared/src/i18n/locales/en/contacts.json:234-236
+Phone tabs Overview, Timeline, Discussion -> apps/web/src/modules/contacts/CompanyDetail.tsx:435-460
+Timeline sources Mail, Tickets, Invoicing, Calendar, Deals; filter lists only sources with rows; All activity -> packages/shared/src/i18n/locales/en/contacts.json:272-291 ; apps/web/src/modules/contacts/ActivityPanel.tsx:177-181
+A source that did not answer is named; truncated people and deals; Show older activity -> packages/shared/src/i18n/locales/en/contacts.json:279-282
+company_timeline tool -> docs/reference/agent-tools.md:company_timeline
+Add person -> packages/shared/src/i18n/locales/en/contacts.json:205-209 ; apps/web/src/modules/contacts/CompanyDetail.tsx:956
+Share -> apps/web/src/modules/contacts/CompanyShareDialog.tsx:1-82
+Merge with..., Merge into, confirmation, merges in a few seconds, Undo -> packages/shared/src/i18n/locales/en/contacts.json:211-217 ; packages/shared/src/i18n/locales/en/contacts.json:260-262
+Duplicate suggestion text and Keep them separate -> packages/shared/src/i18n/locales/en/contacts.json:253-259
+More actions then Delete -> apps/web/src/modules/contacts/CompanyDetail.tsx:366-386
+Person's page links to the company and shows its line -> apps/web/src/modules/contacts/ContactDetail.tsx:436-448
+Person's Activity is the timeline limited to the person, with the scope note -> apps/web/src/modules/contacts/ContactDetail.tsx:476-492 ; packages/shared/src/i18n/locales/en/contacts.json:293-294
+No timeline without kernel:companies:read; the scope note only with a company -> apps/web/src/modules/contacts/ContactDetail.tsx:65 ; apps/web/src/modules/contacts/ContactDetail.tsx:478-486
+Follow-ups block states -> apps/web/src/modules/contacts/ContactDetail.tsx:70-106 ; packages/shared/src/i18n/locales/en/contacts.json:297-317
+Invoices and account messages always go out -> packages/shared/src/i18n/locales/en/contacts.json:310
+Company tools and approvals -> docs/reference/agent-tools.md:companies_search ; apps/api/src/modules/agent/tools/company-tools.ts
+Delete: discussion goes, people keep the name as text and lose the link, deals and pipelines stop naming it, refused with portal accounts -> apps/api/src/modules/contacts/companies.ts:726-731 ; apps/api/src/modules/contacts/companies.ts:753

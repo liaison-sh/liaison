@@ -232,6 +232,24 @@ describe("an announced action with no tool call gets one nudge", () => {
     expect(reply.metadata.falseApprovalCorrected).toBeUndefined()
   })
 
+  test("a plan that ends on its own next step, whatever the verb, gets the nudge", async () => {
+    // Measured: the plan ended "Let's do the scope lookup first." with no call.
+    const threadId = await seedChat()
+    executed.length = 0
+    const plan =
+      "The user wants a weekly Monday digest of open tickets. Cron 0 8 * * 1.\n\nLet's do the scope lookup first."
+    const { reply, calls } = await turn(threadId, [
+      answer(plan),
+      realToolThenAnswer("kernel__tool_search", { query: "create routine" }, FOLLOW_UP),
+    ])
+
+    expect(calls.length).toBe(2)
+    expect(calls[1][calls[1].length - 1]).toEqual({ role: "user", content: ANNOUNCED_ACTION_NOTE })
+    expect(executed).toEqual(["kernel__tool_search"])
+    expect(reply.content).toBe(FOLLOW_UP)
+    expect(reply.metadata.announcedActionCorrected).toBe(true)
+  })
+
   test("a plan written out as the answer, ending on a tool call it never made, gets the nudge", async () => {
     // Measured: asked for a weekly digest, a weak model wrote its plan as the
     // answer and ended the turn on "Let me call routine_tool_scopes." with no call.

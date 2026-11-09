@@ -18,7 +18,7 @@
 import type { ApprovalSummary } from "@liaison/shared"
 import { z } from "zod"
 import type { RlsClient } from "~/db"
-import type { UserContext } from "~/db/rls"
+import { type ActorContext, type UserContext, withRlsContext } from "~/db/rls"
 import { pdfLogger as log } from "~/lib/logger"
 import {
   previewTemplate,
@@ -56,6 +56,8 @@ export interface DocumentToolContext {
   scopes?: string[]
   dimensionGrants?: Record<string, string[]>
   actingAgentId?: string | null
+  /** The app that dispatched the call app-to-app (execute-tool sets it), else undefined. */
+  callerApp?: string
 }
 
 export interface DocumentToolError {
@@ -71,7 +73,30 @@ function templateCaller(ctx: DocumentToolContext): TemplateCaller {
   }
 }
 
+/**
+ * An app's own call with no person behind it (a scheduled pass printing the papers of the app's
+ * records): execute-tool hands a non-person actor the user id "system" and names the dispatching
+ * app. It prints as that app, the way its job runs (`<app>:*`, infra/jobs/jobs.ts), so it can
+ * store files only on that app's own records (the parent's write scope is the app's), and the
+ * files have no uploader.
+ */
+function appSystemPrintCaller(ctx: DocumentToolContext): PrintCaller | null {
+  if (ctx.userId !== "system" || !ctx.callerApp || ctx.callerApp === "kernel") return null
+  const scopes = [`${ctx.callerApp}:*`]
+  const actor: ActorContext = { actorType: "system", orgId: ctx.orgId, purpose: "job", scopes }
+  return {
+    orgId: ctx.orgId,
+    userId: ctx.userId,
+    scopes,
+    withRls: (fn) => withRlsContext(actor, fn),
+    actor,
+    actingAgentId: null,
+  }
+}
+
 function printCaller(ctx: DocumentToolContext): PrintCaller {
+  const asApp = appSystemPrintCaller(ctx)
+  if (asApp) return asApp
   const actor: UserContext = {
     actorType: "user",
     userId: ctx.userId,

@@ -28,6 +28,7 @@ import { runContextStore } from "~/modules/agent/runtime/run-context"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { ALL_DEFERRED_TOOLS_UNLOCKED, buildToolSet } from "~/modules/agent/tools/tool-bridge"
 import {
+  appCrossAppCallsRegistry,
   entityRegistry,
   initializedOrgRuntimes,
   manifestFileParentRegistry,
@@ -35,6 +36,7 @@ import {
   toolRegistry,
 } from "~/modules/apps/app-registries"
 import { CatalogDerivationsTestAccess } from "~/modules/apps/catalog-derivations"
+import { executeToolCore } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { extractPdfText } from "~/modules/pdf/pdf-text"
 import * as minimal from "~/seed/tiers/minimal"
@@ -44,6 +46,8 @@ import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 const APP = "papersfixture"
 const ENTITY = "order"
 const RECORD_TYPE = `${APP}:${ENTITY}`
+// The app's own record type for its scheduled pass: a parent whose write scope is the app's.
+const OWN = "parcel"
 
 const DECLARATION: PrintDeclaration = {
   recordTool: "order_record_get",
@@ -172,6 +176,19 @@ describe("shipping papers by configuration: attribute rule -> template -> PDF on
       readScope: "kernel:contacts:read",
       writeScope: "kernel:org:admin",
     })
+    // The app's own record: its parent row stands in as the org's admin user row (visible by org).
+    entityRegistry.set([ORG, APP, OWN], {
+      labelField: "label",
+      handlePrefix: "",
+      print: DECLARATION,
+    })
+    manifestFileParentRegistry.set([ORG, APP, OWN], {
+      schemaRef: "kernel",
+      tableName: "users",
+      joinOn: "id",
+      readScope: `${APP}:orders:read`,
+      writeScope: `${APP}:orders:write`,
+    })
     toolRegistry.set([ORG, APP, "order_record_get"], {
       appName: APP,
       name: "order_record_get",
@@ -195,6 +212,9 @@ describe("shipping papers by configuration: attribute rule -> template -> PDF on
     toolRegistry.deleteByPrefix([ORG])
     entityRegistry.delete([ORG, APP, ENTITY])
     manifestFileParentRegistry.delete([ORG, APP, ENTITY])
+    entityRegistry.delete([ORG, APP, OWN])
+    manifestFileParentRegistry.delete([ORG, APP, OWN])
+    appCrossAppCallsRegistry.delete([ORG, APP])
     initializedOrgRuntimes.delete(ORG)
     await rebuildFilesSelectPolicy()
     await releaseTestLock()
@@ -293,5 +313,46 @@ describe("shipping papers by configuration: attribute rule -> template -> PDF on
     const ids = onRecord.map((r) => r.id)
     expect(ids).toContain(first.files[0]!.fileId)
     expect(ids).toContain(second.files[0]!.fileId)
+  })
+
+  it("the app's scheduled pass (a system actor, no person) prints onto its own record, never another's", async () => {
+    const created = (await agentCall("kernel__document_template_create", {
+      name: "Parcel certificate",
+      recordType: `${APP}:${OWN}`,
+      body: { blocks: [{ type: "paragraph", text: "Certificate for {{invoice.number}}." }] },
+    })) as { template?: { id: string } }
+    const templateId = created.template!.id
+    record = { ...record, label: "INV-S-1", invoice: { number: "INV-S-1" } }
+    appCrossAppCallsRegistry.set([ORG, APP], { targets: ["kernel:documents_print"] })
+    // What the app's job bridge dispatches: a system actor holding no scopes of its own.
+    const asJob = (entity: string, recordId: string) =>
+      executeToolCore({
+        toolName: "kernel:documents_print",
+        orgId: ORG,
+        actor: { actorType: "system", orgId: ORG, purpose: "job", scopes: [] },
+        params: { app: APP, entity, recordId, templateIds: [templateId] },
+        origin: "system",
+        internalCall: { callerApp: APP },
+      })
+
+    const printed = await asJob(OWN, ADMIN)
+    expect("error" in printed ? printed.error.message : "").toBe("")
+    const files = (printed as { data: { files: Array<{ fileId: string }> } }).data.files
+    expect(files).toHaveLength(1)
+    expect(await fileText(files[0]!.fileId)).toContain("Certificate for INV-S-1")
+    const [row] = await sql<Array<{ entity_id: string; uploaded_by: string | null }>>`
+      SELECT entity_id, uploaded_by::text FROM kernel.files WHERE id = ${files[0]!.fileId}`
+    expect(row).toEqual({ entity_id: ADMIN, uploaded_by: null })
+
+    // A record whose parent another authority writes (here kernel:org:admin) stays refused.
+    const other = (await executeToolCore({
+      toolName: "kernel:documents_print",
+      orgId: ORG,
+      actor: { actorType: "system", orgId: ORG, purpose: "job", scopes: [] },
+      params: { app: APP, entity: ENTITY, recordId: RECORD, templateIds: [templateId] },
+      origin: "system",
+      internalCall: { callerApp: APP },
+    })) as { error?: { code: string; message: string } }
+    expect(other.error?.message ?? JSON.stringify(other)).toContain("permission")
   })
 })

@@ -1263,6 +1263,7 @@ export type FollowupSkip =
   | "country_needs_consent"
   | "draft_waiting"
   | "mail_not_visible"
+  | "no_sender"
 
 export interface FollowupCandidate {
   taskId: string
@@ -1271,10 +1272,15 @@ export interface FollowupCandidate {
   ownerId: string | null
   companyId: string | null
   contactId: string | null
+  /** The contact's name and address: who the follow-up is written to. */
+  contactName: string | null
+  address: string | null
   contactIds: string[]
   lastInboundAt: string | null
   lastOutboundAt: string | null
   quietDays: number | null
+  /** The deal owner's mailbox the caller can send from: the `accountId` to draft from. */
+  accountId: string | null
   skip: FollowupSkip | null
 }
 
@@ -1307,18 +1313,70 @@ async function dealsWithWaitingDraft(
   return new Set((rows ?? []).map((r) => r.id))
 }
 
+/** The oldest connected mailbox of each owner among the rows `db` can read. */
+function senderMailboxQuery(orgId: string, ownerIds: readonly string[]): SQL {
+  return drizzleSql`
+    SELECT DISTINCT ON (a.owner_id) a.id::text AS id, a.owner_id::text AS owner_id
+    FROM ${drizzleSql.raw(`${schemaRef("app_mail")}.accounts`)} a
+    WHERE a.org_id = ${orgId}::uuid AND a.owner_type = 'user'
+      AND a.owner_id = ANY(${`{${ownerIds.join(",")}}`}::uuid[])
+      AND a.disconnected_at IS NULL
+      AND COALESCE(a.sync_status, '') <> 'disconnected'
+    ORDER BY a.owner_id, a.created_at, a.id
+  `
+}
+
+/**
+ * For each deal owner, the mailbox of theirs a follow-up may go from: the
+ * caller's own mailbox for the caller's own deals, and for another owner's
+ * deals one of that owner's mailboxes the caller can see under row-level
+ * security (shared with them). A personal mailbox of someone else is never
+ * visible, so a deal it would have to go from has no sender. Never another
+ * mailbox in its place: a follow-up signed by the deal's owner leaves from the
+ * owner's mailbox or not at all.
+ *
+ * The caller's own mailbox is read by owner, outside row-level security, so a
+ * person who sends from their mailbox without the mailbox-listing scope is not
+ * told they have none; it names only the caller's own mailbox.
+ */
+async function senderMailboxes(
+  tx: SqlClient,
+  orgId: string,
+  callerUserId: string | null,
+  ownerIds: readonly string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  const others = ownerIds.filter((id) => id !== callerUserId)
+  if (callerUserId && ownerIds.includes(callerUserId)) {
+    const { withPrivilegedDb } = await import("~/db/privileged")
+    const own = await withPrivilegedDb(orgId, "deal-followup-own-mailbox", async (db) =>
+      extractRows<{ id: string; owner_id: string }>(
+        await db.execute(senderMailboxQuery(orgId, [callerUserId])),
+      ),
+    ).catch(() => [])
+    for (const r of own) out.set(r.owner_id, r.id)
+  }
+  if (others.length > 0) {
+    const rows =
+      (await rowsOrNull<{ id: string; owner_id: string }>(tx, senderMailboxQuery(orgId, others))) ??
+      []
+    for (const r of rows) out.set(r.owner_id, r.id)
+  }
+  return out
+}
+
 /**
  * The open deals of the pipelines the caller reads, each with whether a
  * follow-up may be drafted now (`skip` null) or why not, decided here and not
  * by a model: the mail is not readable, the deal has no person, it is not
- * quiet enough, the person opted out or may not be written to, or a draft is
- * already waiting.
+ * quiet enough, the person opted out or may not be written to, the caller
+ * cannot send from the deal owner's mailbox, or a draft is already waiting.
  */
 export async function followupCandidates(
   tx: SqlClient,
   orgId: string,
   scopes: readonly string[],
-  args: { quietDays: number; projectId?: string },
+  args: { quietDays: number; projectId?: string; callerUserId?: string | null },
   now: Date = new Date(),
 ): Promise<FollowupCandidate[]> {
   const deals = await listDeals(tx, orgId, {
@@ -1333,16 +1391,23 @@ export async function followupCandidates(
     deals.map((d) => d.taskId),
   )
   const emails = new Map<string, string>()
+  const names = new Map<string, string>()
   const allContactIds = [...new Set(deals.flatMap((d) => quiet?.get(d.taskId)?.contactIds ?? []))]
   if (allContactIds.length > 0) {
     const rows =
-      (await rowsOrNull<{ id: string; email: string | null }>(
+      (await rowsOrNull<{ id: string; email: string | null; name: string | null }>(
         tx,
-        drizzleSql`SELECT id::text AS id, lower(email) AS email FROM ${kernelRel("contacts")}
+        drizzleSql`SELECT id::text AS id, lower(email) AS email, name FROM ${kernelRel("contacts")}
           WHERE org_id = ${orgId}::uuid AND id = ANY(${`{${allContactIds.join(",")}}`}::uuid[])`,
       )) ?? []
-    for (const r of rows) if (r.email) emails.set(r.id, r.email)
+    for (const r of rows) {
+      if (r.email) emails.set(r.id, r.email)
+      if (r.name) names.set(r.id, r.name)
+    }
   }
+  const senders = await senderMailboxes(tx, orgId, args.callerUserId ?? null, [
+    ...new Set(deals.map((d) => d.assigneeId).filter((x): x is string => !!x)),
+  ])
   const out: FollowupCandidate[] = []
   for (const d of deals) {
     const q = quiet?.get(d.taskId) ?? null
@@ -1363,7 +1428,8 @@ export async function followupCandidates(
           skip = BASIS_SKIPS.has(problem.code as FollowupSkip)
             ? (problem.code as FollowupSkip)
             : "no_basis"
-        } else if (waiting.has(d.taskId)) skip = "draft_waiting"
+        } else if (!d.assigneeId || !senders.has(d.assigneeId)) skip = "no_sender"
+        else if (waiting.has(d.taskId)) skip = "draft_waiting"
       }
     }
     out.push({
@@ -1373,10 +1439,13 @@ export async function followupCandidates(
       ownerId: d.assigneeId,
       companyId: d.companyId,
       contactId: recipient,
+      contactName: recipient ? (names.get(recipient) ?? null) : null,
+      address: recipient ? (emails.get(recipient) ?? null) : null,
       contactIds,
       lastInboundAt: q?.lastInboundAt ?? null,
       lastOutboundAt: q?.lastOutboundAt ?? null,
       quietDays: q?.quietDays ?? null,
+      accountId: d.assigneeId ? (senders.get(d.assigneeId) ?? null) : null,
       skip,
     })
   }

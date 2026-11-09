@@ -61,6 +61,7 @@ import { isMentionableAgent } from "~/modules/agent/directory/listing"
 import { getOrCreatePersonalAgentId } from "~/modules/agent/directory/personal-agent"
 import {
   cronAtTime,
+  DEAL_FOLLOWUPS_TEMPLATE_KEY,
   isAppRunRoutine,
   KERNEL_TEMPLATE_APP,
   registerKernelRoutineTemplates,
@@ -78,6 +79,7 @@ import { listDeferredTools, sdkToolName } from "~/modules/agent/tools/tool-bridg
 import { decidingScopeForToolDef } from "~/modules/approvals/authority"
 import { routineOwnerMayApprove } from "~/modules/approvals/resource-owner"
 import {
+  type ApprovalSummarizer,
   approvalEditableFieldsRegistry,
   approvalResourceOwnerRegistry,
   dimensionDefRegistry,
@@ -4287,6 +4289,55 @@ interface EnableRoutineTemplateParams {
   timezone?: string
   /** "HH:MM": when a recurring template fires, in the routine's timezone. */
   time?: string
+  /** Deal follow-ups only: days with nothing from the client before a follow-up. */
+  quietDays?: number
+  /** Deal follow-ups only: the one pipeline it covers; absent, every pipeline. */
+  pipelineId?: string
+}
+
+/** Whether the call names any template option. */
+function hasTemplateOptions(params: EnableRoutineTemplateParams): boolean {
+  return params.quietDays !== undefined || params.pipelineId !== undefined
+}
+
+/**
+ * The prompt a template's routine gets for the options chosen: the template's
+ * own when it takes none. A wrong option, or an option given to a template
+ * that takes none, is an error the caller can fix.
+ */
+async function renderTemplatePrompt(
+  orgId: string,
+  tpl: NonNullable<ReturnType<typeof routineTemplateRegistry.get>>,
+  params: EnableRoutineTemplateParams,
+): Promise<{ prompt: string } | { error: { code: string; message: string } }> {
+  if (!tpl.renderPrompt) {
+    if (hasTemplateOptions(params)) {
+      return {
+        error: {
+          code: "invalid_option",
+          message: `quietDays and pipelineId apply to the kernel template '${DEAL_FOLLOWUPS_TEMPLATE_KEY}' only.`,
+        },
+      }
+    }
+    return { prompt: tpl.promptTemplate }
+  }
+  const rendered = tpl.renderPrompt({ quietDays: params.quietDays, pipelineId: params.pipelineId })
+  if ("error" in rendered) return { error: { code: "invalid_option", message: rendered.error } }
+  if (params.pipelineId !== undefined) {
+    const { projectKind } = await import("~/apps/projects/service/deals")
+    const kind = await withPrivilegedDb(orgId, "routine-template-pipeline", (tx) =>
+      projectKind(tx as never, orgId, params.pipelineId!),
+    ).catch(() => null)
+    if (kind !== "pipeline") {
+      return {
+        error: {
+          code: "invalid_option",
+          message: `${params.pipelineId} is not a pipeline of this organization. deals_pipeline_create makes one; the board's pipelines are listed by the projects search.`,
+        },
+      }
+    }
+  }
+  return rendered
 }
 
 /** Shared template lookup for enable_routine_template: called by BOTH the stage-time
@@ -4329,9 +4380,12 @@ export async function enableRoutineTemplatePreflight(
   params: EnableRoutineTemplateParams,
   ctx: AppContext,
 ): Promise<unknown> {
-  if (!resolveRoutineTemplate(ctx.orgId, params)) {
+  const tpl = resolveRoutineTemplate(ctx.orgId, params)
+  if (!tpl) {
     return { error: { code: "template_not_found", message: "Routine template not found" } }
   }
+  const rendered = await renderTemplatePrompt(ctx.orgId, tpl, params)
+  if ("error" in rendered) return rendered
   return { ok: true }
 }
 
@@ -4362,6 +4416,8 @@ export async function handleEnableRoutineTemplate(
       error: { code: "scope_escalation", message: "Template scopes exceed your effective scopes" },
     }
   }
+  const rendered = await renderTemplatePrompt(ctx.orgId, tpl, params)
+  if ("error" in rendered) return rendered
   const ownerUserId = ctx.approverUserId ?? ctx.userId
   let cron = tpl.cron ?? null
   if (params.time !== undefined) {
@@ -4400,7 +4456,7 @@ export async function handleEnableRoutineTemplate(
         timezone: tpl.kind === "recurring" ? tz : null,
         runAt: tpl.kind === "scheduled" && tpl.runAt ? new Date(tpl.runAt) : null,
         event: tpl.kind === "event" ? (tpl.event ?? null) : null,
-        prompt: tpl.promptTemplate,
+        prompt: rendered.prompt,
         scopes: templateScopes,
         visibility: tpl.visibility ?? "personal",
         followUp: tpl.followUp === true,
@@ -4540,13 +4596,18 @@ export async function handleResetRoutineToTemplate(
     tpl.kind === "recurring"
       ? ((priorTime && tpl.cron ? cronAtTime(tpl.cron, priorTime) : null) ?? tpl.cron ?? null)
       : null
+  // A template with options keeps the ones the routine was made with.
+  const keptOptions = tpl.optionsOf?.(prior.prompt)
+  const reRendered = keptOptions && tpl.renderPrompt ? tpl.renderPrompt(keptOptions) : null
+  const resetPrompt =
+    reRendered && !("error" in reRendered) ? reRendered.prompt : tpl.promptTemplate
   const row = await withPrivilegedDb(ctx.orgId, "routine-template-reset", async (tx) => {
     const [updated] = await tx
       .update(routinesTbl)
       .set({
         description: tpl.description,
         kind: tpl.kind,
-        prompt: tpl.promptTemplate,
+        prompt: resetPrompt,
         followUp: tpl.followUp === true,
         cron: resetCron,
         timezone: tpl.kind === "recurring" ? tz : null,
@@ -4581,8 +4642,17 @@ export async function handleResetRoutineToTemplate(
   return { routine: row }
 }
 
-export async function summarizeEnableRoutineTemplate(params: unknown): Promise<unknown> {
+export async function summarizeEnableRoutineTemplate(
+  params: unknown,
+  ctx?: Parameters<ApprovalSummarizer>[1],
+): Promise<unknown> {
   const p = params as Partial<EnableRoutineTemplateParams>
+  if (p.appName === KERNEL_TEMPLATE_APP && p.templateKey === DEAL_FOLLOWUPS_TEMPLATE_KEY && ctx) {
+    const { summarizeDealFollowupsSetup } = await import(
+      "~/modules/agent/routines/deal-followups-card"
+    )
+    return summarizeDealFollowupsSetup(p, ctx)
+  }
   return {
     kind: "enable_routine_template",
     title: `Enable ${p.appName ?? ""} routine "${p.templateKey ?? ""}"`,
@@ -5755,7 +5825,7 @@ function registerAuthoringTools(orgId: string): void {
     name: "enable_routine_template",
     deferLoading: true,
     description:
-      "Instantiate a routine template as one of your routines (runs with your scopes). Templates come from apps, and from the platform itself under appName 'kernel' (templateKey 'morning-brief': a weekday morning brief of overnight mail, drafts waiting for approval and tasks due, pushed to the person's phone).",
+      "Instantiate a routine template as one of your routines (runs with your scopes). Templates come from apps, and from the platform itself under appName 'kernel' (templateKey 'morning-brief': a weekday morning brief of overnight mail, drafts waiting for approval and tasks due, pushed to the person's phone; 'deal-followups': weekday follow-up drafts for open deals gone quiet, each approved by the deal's owner).",
     searchKeywords: ["modèle", "activer"],
     requiredScopes: ["kernel:routines:write"],
     approveScope: "kernel:approve",
@@ -5774,6 +5844,12 @@ function registerAuthoringTools(orgId: string): void {
         .regex(TEMPLATE_TIME_PATTERN, "HH:MM, 24-hour clock")
         .optional()
         .describe("Recurring templates only: the time it fires, HH:MM in that timezone."),
+      quietDays: z
+        .number()
+        .int()
+        .optional()
+        .describe("deal-followups: days with nothing from the client (default 7)."),
+      pipelineId: z.string().optional().describe("deal-followups: one pipeline only."),
     }),
     handler: handleEnableRoutineTemplate as unknown as (p: unknown, c: any) => Promise<unknown>,
     // STAGE-TIME: a gated call must not be parked for a human when the data it needs is

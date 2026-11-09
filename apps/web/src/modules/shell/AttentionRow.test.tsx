@@ -516,6 +516,52 @@ describe("AttentionRow", () => {
     expect(getByTestId("attention-row-kernel-approval_request-m1-expanded")).toBeTruthy()
   })
 
+  // Field report (2026-11-09): a whole approval row folded on any click, with a
+  // hand cursor everywhere, so nobody could select a request's text to copy it.
+  it("an approval row: a click that ends a text selection does not fold it; the chevron and a plain click do", async () => {
+    const item: AttentionItem = {
+      id: "kernel:approval_pending:sel1",
+      app: "kernel",
+      entity: "approval_request",
+      entityId: "sel1",
+      kind: "approval_pending",
+      summary: "Reply to customer about the delayed parcel",
+      urgency: 60,
+      occurredAt: "2026-05-06T00:00:00Z",
+      action: { type: "decide_approval", approvalId: "sel1" },
+      metadata: { requestHandle: "request-8" },
+    }
+    const api = makeApi(vi.fn())
+    api.get.mockResolvedValue(undefined)
+    const { getByTestId } = render(() => (
+      <ApiContext.Provider value={api}>
+        <AttentionRow item={item} />
+      </ApiContext.Provider>
+    ))
+    const tid = "attention-row-kernel-approval_request-sel1"
+    const row = getByTestId(tid)
+    const details = getByTestId(`${tid}-details`)
+    // Text, not a hand: the row is not one big button.
+    expect(row.classList.contains("cursor-pointer")).toBe(false)
+
+    // The person selects the title's text and lets go: the row stays as it was.
+    const title = getByTestId(`${tid}-title`)
+    const range = document.createRange()
+    range.selectNodeContents(title)
+    window.getSelection()?.removeAllRanges()
+    window.getSelection()?.addRange(range)
+    expect(window.getSelection()?.toString()).toContain("delayed parcel")
+    fireEvent.click(title)
+    expect(details.getAttribute("aria-expanded")).toBe("false")
+
+    // Nothing selected: a plain click on the row still unfolds it, the chevron folds it back.
+    window.getSelection()?.removeAllRanges()
+    fireEvent.click(title)
+    expect(details.getAttribute("aria-expanded")).toBe("true")
+    fireEvent.click(details)
+    expect(details.getAttribute("aria-expanded")).toBe("false")
+  })
+
   // Regression (prod, 2026-08-04): decide() had a bare `catch {}`, so a rejected
   // approve reset the button and reported NOTHING. Boxtal was refusing shipment
   // creation with InvalidPaymentException, the kernel returned that reason in

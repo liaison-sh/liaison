@@ -31,7 +31,12 @@ import { deleteContact } from "~/modules/contacts/service"
 import { buildDataSubjectBundle } from "~/modules/export/data-subject-export-tool"
 import { readMemberSections } from "~/modules/export/member-data-subject-bundle"
 import { footerLines } from "~/modules/mail/commercial-footer"
-import { hashEmail, suppressedAmong } from "~/modules/mail/suppressions"
+import {
+  addSuppression,
+  addSuppressionHash,
+  hashEmail,
+  suppressedAmong,
+} from "~/modules/mail/suppressions"
 import { seedContext } from "~/seed/context"
 import { seedApprovalRequests } from "~/seed/factories/approvals/requests"
 import { resolveContacts } from "~/seed/factories/people/contacts"
@@ -220,7 +225,7 @@ describe("opt-outs", () => {
     const to = unique("event")
     const commercial = await stageCompose(to)
     // The request's own withdrawal is lost: the subscriber does it once the event is out.
-    const spy = spyOn(withdrawModule, "withdrawCommercialDraftsTo").mockImplementationOnce(
+    const spy = spyOn(withdrawModule, "withdrawCommercialDraftsOn").mockImplementationOnce(
       async () => [],
     )
     try {
@@ -235,6 +240,35 @@ describe("opt-outs", () => {
       reason: OPTED_OUT_REASON,
     })
   }, 90_000)
+
+  it("two opt-outs of one address at once record it once, with one event", async () => {
+    const to = unique("twice")
+    const emailHash = hashEmail(orgId, to)
+    const outcomes = await Promise.all(
+      [0, 1].map(() => addSuppressionHash(null, { orgId, emailHash, reason: "link" })),
+    )
+    expect(outcomes.filter((o) => o.added)).toHaveLength(1)
+    const [events] = await sql<Array<{ n: number }>>`
+      SELECT count(*)::int AS n FROM kernel.pending_events
+       WHERE org_id = ${orgId} AND payload->>'entity' = 'suppression'
+         AND payload->>'entityId' = ${emailHash}`
+    expect(events?.n).toBe(1)
+  })
+
+  it("an opt-out whose caller's transaction rolls back withdraws no draft", async () => {
+    const to = unique("rolled-back")
+    const commercial = await stageCompose(to)
+    await expect(
+      withRlsContext(admin, async (tx) => {
+        await addSuppression(tx as never, { orgId, email: to, reason: "person", createdBy: userId })
+        throw new Error("the caller failed after recording it")
+      }),
+    ).rejects.toThrow("the caller failed after recording it")
+    // Where the login cannot step into the admin role the opt-out commits on its own, with
+    // its withdrawal; either way a draft is never withdrawn without the opt-out.
+    const optedOut = (await suppressedAmong(orgId, [to])).length > 0
+    expect((await requestRow(commercial)).status).toBe(optedOut ? "cancelled" : "pending")
+  })
 
   it("a suppression survives the contact's erasure and a new contact with that address is suppressed", async () => {
     const email = unique("erased")
@@ -284,7 +318,7 @@ describe("opt-outs", () => {
     const ids: string[] = []
     for (const to of people) ids.push(await stageCompose(to))
     // The opt-out lands with its withdrawal lost, so the check at send is what stops it.
-    const spy = spyOn(withdrawModule, "withdrawCommercialDraftsTo").mockImplementation(
+    const spy = spyOn(withdrawModule, "withdrawCommercialDraftsOn").mockImplementation(
       async () => [],
     )
     try {

@@ -213,6 +213,25 @@ describe("deactivating someone who manages companies", () => {
     expect(await ownerOf(b)).toBe(people.leaver)
   })
 
+  it("someone with more authority than the actor is refused before any of their companies is named", async () => {
+    const senior = uuid(0xa09)
+    await sql`INSERT INTO kernel.users (id, org_id, email, name, status)
+              VALUES (${senior}, ${ORG}, 'kb-senior@test.com', 'Person senior', 'active')`
+    await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope) VALUES (${senior}, ${ORG}, '*')`
+    const held = await company("Holding Secrète", senior, { orgAccess: "none" })
+    try {
+      const res = await deactivate({ userId: senior })
+      expect(res.body.error.code).toBe("forbidden")
+      expect(JSON.stringify(res.body)).not.toContain("Holding Secrète")
+      expect(await statusOf(senior)).toBe("active")
+    } finally {
+      // A second administrator would join every later test's audience.
+      await sql`DELETE FROM kernel.companies WHERE id = ${held}`
+      await sql`DELETE FROM kernel.user_scope_grants WHERE user_id = ${senior}`
+      await sql`DELETE FROM kernel.users WHERE id = ${senior}`
+    }
+  })
+
   it("a person id moves them under the same checks", async () => {
     // Someone who is not an active member cannot take them: refused, nothing changes.
     const refused = await deactivate({ userId: people.leaver, accountsTo: people.gone })

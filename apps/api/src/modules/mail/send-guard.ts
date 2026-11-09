@@ -35,9 +35,11 @@ import {
 } from "~/modules/mail/commercial-footer"
 import { parseReturnDate } from "~/modules/mail/parse-return-date"
 import {
+  isColleague,
   lawfulBasisFacts,
   lawfulBasisProblem,
   listSuppressions,
+  readColleagues,
   suppressedAmong,
 } from "~/modules/mail/suppressions"
 
@@ -177,6 +179,8 @@ export interface SendGuardVerdict {
   record?: GuardRecord
   /** Where the message came in when the caller cannot open it: a ticket is named as one. */
   source?: GuardRecord["kind"]
+  /** The class the draft was checked under, from its recipients as they stand. */
+  classification?: PinnedSendGuard["classification"]
 }
 
 // ── Recipients ──────────────────────────────────────────────────────────────
@@ -692,6 +696,8 @@ export interface EvaluateSendGuardInput {
   guard: PinnedSendGuard
   /** The current payload's To, Cc and Bcc, so an approver's edit is checked. */
   recipients: readonly string[]
+  /** The staged tool: a new message (`mail:compose`) is decided commercial again from its recipients. */
+  toolName?: string
   /** Providers do not run at a card read. A kind with no provider refuses at stage and passes at send. */
   at: "stage" | "card" | "send"
   now?: Date
@@ -712,7 +718,31 @@ function unavailable(reason: string, code?: string): SendGuardVerdict {
  * `unavailable`, which never sends: it fails closed.
  */
 export async function evaluateSendGuard(input: EvaluateSendGuardInput): Promise<SendGuardVerdict> {
-  const { orgId, guard, recipients, at } = input
+  let now: Awaited<ReturnType<typeof classificationNow>>
+  try {
+    now = await classificationNow(
+      input.orgId,
+      input.guard,
+      input.recipients,
+      input.toolName,
+      input.db,
+    )
+  } catch (err) {
+    rootLogger.error({ err, orgId: input.orgId }, "send guard: the recipients could not be read")
+    return unavailable("the recipients could not be read")
+  }
+  // 0. A commercial mail's one opt-out link is its one outside recipient's.
+  const tooMany = now.classification === "marketing" ? moreThanOneOutside(now.outside) : null
+  if (tooMany) return oneRecipientStop(tooMany)
+  const verdict = await evaluateAs(input, { ...input.guard, classification: now.classification })
+  return { ...verdict, classification: now.classification }
+}
+
+async function evaluateAs(
+  input: EvaluateSendGuardInput,
+  guard: PinnedSendGuard,
+): Promise<SendGuardVerdict> {
+  const { orgId, recipients, at } = input
 
   // 1. Stays on whatever the operator switch says: an opt-out is the law, not our design.
   if (guard.classification === "marketing") {
@@ -763,7 +793,7 @@ export async function evaluateSendGuard(input: EvaluateSendGuardInput): Promise<
     }
 
     // 4 to 6.
-    const [verdict] = await inboundVerdicts(orgId, [input], input.db)
+    const [verdict] = await inboundVerdicts(orgId, [{ ...input, guard }], input.db)
     return verdict ?? unavailable("the mail and tickets could not be read")
   } catch (err) {
     rootLogger.error({ err, orgId }, "send guard: a read failed, not sending")
@@ -857,6 +887,7 @@ export interface CardSendGuardCheck {
   guard: PinnedSendGuard
   /** The current payload's To, Cc and Bcc. */
   recipients: readonly string[]
+  toolName?: string
   locale?: string | null
   timeZone?: string | null
 }
@@ -869,13 +900,61 @@ export interface CardSendGuardCheck {
  */
 export async function evaluateSendGuardsAtCard(
   orgId: string,
-  checks: readonly CardSendGuardCheck[],
+  asked: readonly CardSendGuardCheck[],
   now: Date = new Date(),
 ): Promise<SendGuardVerdict[]> {
+  let checks: readonly CardSendGuardCheck[] = asked
   const out: Array<SendGuardVerdict | undefined> = checks.map(() => undefined)
 
+  // 0. Each draft's class from its recipients as they stand, in shared reads: who is a
+  // colleague once, and which outside addresses the data marks commercial once.
+  let colleagues: Awaited<ReturnType<typeof readColleagues>>
+  let commercial: Set<string>
+  try {
+    colleagues = await withPrivilegedDb(orgId, "send-guard-colleagues", (tx) =>
+      readColleagues(tx, orgId),
+    )
+    const outsideOf = (c: CardSendGuardCheck) =>
+      c.recipients.filter((a) => !isColleague(colleagues, a))
+    const asked = checks.filter(
+      (c) =>
+        c.guard.classification === "none" &&
+        c.guard.mode === "plain" &&
+        c.toolName === "mail:compose",
+    )
+    commercial = await commercialAmong(orgId, [...new Set(asked.flatMap(outsideOf))])
+  } catch (err) {
+    rootLogger.error({ err, orgId }, "send guard: the recipients could not be read")
+    return checks.map(() => unavailable("the recipients could not be read"))
+  }
+  const classes = checks.map((c) => {
+    const outside = c.recipients.filter((a) => !isColleague(colleagues, a))
+    const classification =
+      c.guard.classification !== "none"
+        ? c.guard.classification
+        : classifyBy(orgId, {
+            toolName: c.toolName,
+            mode: c.guard.mode,
+            refs: c.guard.refs,
+            saidService: false,
+            outside,
+            commercial,
+          })
+    return { classification, outside }
+  })
+  for (const [i, k] of classes.entries()) {
+    const tooMany = k.classification === "marketing" ? moreThanOneOutside(k.outside) : null
+    if (tooMany) out[i] = oneRecipientStop(tooMany)
+  }
+  checks = checks.map((c, i) => ({
+    ...c,
+    guard: { ...c.guard, classification: (classes[i] as (typeof classes)[number]).classification },
+  }))
+
   // 1. Stays on whatever the operator switch says.
-  const marketing = checks.flatMap((c, i) => (c.guard.classification === "marketing" ? [i] : []))
+  const marketing = checks.flatMap((c, i) =>
+    c.guard.classification === "marketing" && !out[i] ? [i] : [],
+  )
   if (marketing.length > 0) {
     const all = [
       ...new Set(marketing.flatMap((i) => [...(checks[i] as CardSendGuardCheck).recipients])),
@@ -899,7 +978,11 @@ export async function evaluateSendGuardsAtCard(
       if (optedOut.length > 0) out[i] = { state: "opted_out", final: true, optedOut }
     }
   }
-  if (!env.MAIL_SEND_GUARD_ENFORCE) return out.map((v) => v ?? CLEAR)
+  const withClass = (v: SendGuardVerdict, i: number): SendGuardVerdict => ({
+    ...v,
+    classification: (classes[i] as (typeof classes)[number]).classification,
+  })
+  if (!env.MAIL_SEND_GUARD_ENFORCE) return out.map((v, i) => withClass(v ?? CLEAR, i))
 
   // 2. Typed slot, a final stop with its label on the card. 3. Providers do not run at a card.
   for (const i of marketing) {
@@ -934,7 +1017,7 @@ export async function evaluateSendGuardsAtCard(
     rootLogger.error({ err, orgId }, "send guard: a read failed, not sending")
     for (const r of rest) out[r.i] = unavailable("the mail and tickets could not be read")
   }
-  return out.map((v) => v ?? unavailable("the mail and tickets could not be read"))
+  return out.map((v, i) => withClass(v ?? unavailable("the mail and tickets could not be read"), i))
 }
 
 /** Each person's zone and language, in one read. */
@@ -1052,24 +1135,17 @@ async function optedOutLine(orgId: string, recipients: readonly string[]): Promi
   }
 }
 
-/**
- * The recipients outside the organization: an address whose domain is not one
- * of the org's own people's (portal accounts excluded).
- */
-async function outsideRecipients(orgId: string, recipients: readonly string[]): Promise<string[]> {
+/** The recipients outside the organization: anyone who is not a colleague (`readColleagues`). */
+async function outsideRecipients(
+  orgId: string,
+  recipients: readonly string[],
+  db?: PrivilegedDb,
+): Promise<string[]> {
   if (recipients.length === 0) return []
-  const rows = await withPrivilegedDb(orgId, "send-guard-org-domains", async (tx) =>
-    extractRows<{ domain: string }>(
-      await tx.execute(drizzleSql`
-        SELECT DISTINCT lower(split_part(email, '@', 2)) AS domain FROM ${table("kernel", "users")}
-         WHERE org_id = ${orgId}::uuid AND user_type <> 'external' AND email LIKE '%@%'`),
-    ),
+  const colleagues = await onPrivileged(db, orgId, "send-guard-colleagues", (tx) =>
+    readColleagues(tx, orgId),
   )
-  const own = new Set(rows.map((r) => r.domain))
-  return recipients.filter((address) => {
-    const domain = address.trim().toLowerCase().split("@")[1] ?? ""
-    return !own.has(domain)
-  })
+  return recipients.filter((address) => !isColleague(colleagues, address))
 }
 
 /**
@@ -1078,10 +1154,23 @@ async function outsideRecipients(orgId: string, recipients: readonly string[]): 
  * its company), or was recorded under professional interest, or came from a
  * third party or an enrichment. Read fresh, privileged, for whoever stages.
  */
-async function commercialByData(orgId: string, recipients: readonly string[]): Promise<boolean> {
-  if (recipients.length === 0) return false
+async function commercialByData(
+  orgId: string,
+  recipients: readonly string[],
+  db?: PrivilegedDb,
+): Promise<boolean> {
+  return (await commercialAmong(orgId, recipients, db)).size > 0
+}
+
+/** The addresses among `recipients` the data marks as commercial (`commercialByData`), in one read. */
+async function commercialAmong(
+  orgId: string,
+  recipients: readonly string[],
+  db?: PrivilegedDb,
+): Promise<Set<string>> {
+  if (recipients.length === 0) return new Set()
   const addresses = textSet(recipients.map((r) => r.trim().toLowerCase()))
-  const rows = await withPrivilegedDb(orgId, "send-guard-commercial-by-data", async (tx) => {
+  const rows = await onPrivileged(db, orgId, "send-guard-commercial-by-data", async (tx) => {
     const projects = extractRows<{ present: boolean }>(
       await tx.execute(
         drizzleSql`SELECT to_regclass(${`${schemaRef("app_projects")}.deals`}) IS NOT NULL AS present`,
@@ -1094,17 +1183,94 @@ async function commercialByData(orgId: string, recipients: readonly string[]): P
            WHERE d.org_id = c.org_id AND d.outcome = 'open' AND t.archived_at IS NULL
              AND (d.contact_id = c.id OR (c.company_id IS NOT NULL AND d.company_id = c.company_id)))`
       : drizzleSql``
-    return extractRows<{ id: string }>(
+    return extractRows<{ email: string }>(
       await tx.execute(drizzleSql`
-        SELECT c.id::text AS id FROM ${table("kernel", "contacts")} c
+        SELECT DISTINCT lower(c.email) AS email FROM ${table("kernel", "contacts")} c
          WHERE c.org_id = ${orgId}::uuid AND lower(c.email) = ANY(${addresses})
            AND (c.lawful_basis = 'professional_interest'
                 OR c.data_source IN ('third_party', 'enrichment')
-                ${onDeal})
-         LIMIT 1`),
+                ${onDeal})`),
     )
   })
-  return rows.length > 0
+  return new Set(rows.map((row) => row.email))
+}
+
+/**
+ * The commercial decision, one rule wherever it is taken: a follow-up is marketing unless it
+ * said service and a record backs that; a new message is marketing when the data marks one of
+ * its outside recipients as a prospect; anything else is not commercial.
+ */
+function classifyBy(
+  orgId: string,
+  facts: {
+    toolName: string | undefined
+    mode: PinnedSendGuard["mode"]
+    refs: readonly SendGuardRef[]
+    saidService: boolean
+    outside: readonly string[]
+    commercial: ReadonlySet<string>
+  },
+): PinnedSendGuard["classification"] {
+  if (facts.mode === "followup") {
+    const backed = facts.refs.some((ref) => findProvider(orgId, ref.kind)?.serviceMessage === true)
+    return facts.saidService && backed ? "service" : "marketing"
+  }
+  if (facts.toolName === "mail:compose" && facts.outside.some((a) => facts.commercial.has(a))) {
+    return "marketing"
+  }
+  return "none"
+}
+
+/** A commercial mail names more than one outside person: why it cannot go, or null. */
+function moreThanOneOutside(outside: readonly string[]): string | null {
+  return outside.length > 1
+    ? `A commercial mail goes to one person outside the organization, and this one names ${outside.length}: ${outside.join(", ")}.`
+    : null
+}
+
+const ONE_PER_PERSON_NEXT =
+  "Next: send one message per person; each gets their own opt-out link. Colleagues may stay on copy."
+
+/**
+ * The class a waiting draft is checked under now, from its recipients as they stand (an edit may
+ * have changed them since stage), with its outside recipients. A class pinned at stage never
+ * drops; one pinned as not commercial is decided again by the rule that decided it at stage.
+ */
+async function classificationNow(
+  orgId: string,
+  guard: PinnedSendGuard,
+  recipients: readonly string[],
+  toolName: string | undefined,
+  db?: PrivilegedDb,
+): Promise<{ classification: PinnedSendGuard["classification"]; outside: string[] }> {
+  const outside = await outsideRecipients(orgId, recipients, db)
+  if (guard.classification !== "none") return { classification: guard.classification, outside }
+  const commercial =
+    guard.mode === "plain" && toolName === "mail:compose"
+      ? await commercialAmong(orgId, outside, db)
+      : new Set<string>()
+  return {
+    classification: classifyBy(orgId, {
+      toolName,
+      mode: guard.mode,
+      refs: guard.refs,
+      saidService: false,
+      outside,
+      commercial,
+    }),
+    outside,
+  }
+}
+
+/** The stop for a commercial mail that names more than one outside person, at a later check. */
+function oneRecipientStop(label: string): SendGuardVerdict {
+  return {
+    state: "ref_stop",
+    final: true,
+    code: "commercial_one_recipient",
+    label,
+    classification: "marketing",
+  }
 }
 
 function day10(iso: string): string {
@@ -1126,21 +1292,25 @@ export async function buildSendGuard(input: BuildSendGuardInput): Promise<BuildS
   const contactIds = [...input.contactIds]
   const outside = await outsideRecipients(input.orgId, addresses)
 
-  let classification: PinnedSendGuard["classification"] = "none"
-  if (mode === "followup") {
-    const saidService = input.followUp?.classification === "service"
-    const backed = refs.some((ref) => findProvider(input.orgId, ref.kind)?.serviceMessage === true)
-    classification = saidService && backed ? "service" : "marketing"
-  } else if (input.toolName === "mail:compose" && (await commercialByData(input.orgId, outside))) {
-    classification = "marketing"
-  }
+  const classification = classifyBy(input.orgId, {
+    toolName: input.toolName,
+    mode,
+    refs,
+    saidService: input.followUp?.classification === "service",
+    outside,
+    commercial:
+      mode === "plain" && input.toolName === "mail:compose"
+        ? await commercialAmong(input.orgId, outside)
+        : new Set<string>(),
+  })
 
   // Each commercial mail's opt-out link is its one outside recipient's.
-  if (classification === "marketing" && outside.length > 1) {
+  const tooMany = classification === "marketing" ? moreThanOneOutside(outside) : null
+  if (tooMany) {
     return {
       refused: {
         code: "commercial_one_recipient",
-        message: `Nothing was sent and no draft was staged. A commercial mail goes to one person outside the organization, and this one names ${outside.length}: ${outside.join(", ")}. Next: send one message per person; each gets their own opt-out link. Colleagues may stay on copy.`,
+        message: `Nothing was sent and no draft was staged. ${tooMany} ${ONE_PER_PERSON_NEXT}`,
       },
     }
   }
@@ -1193,6 +1363,7 @@ export async function buildSendGuard(input: BuildSendGuardInput): Promise<BuildS
       orgId: input.orgId,
       guard: sendGuard,
       recipients: addresses,
+      toolName: input.toolName,
       at: "stage",
       now,
       locale: input.locale ?? null,
@@ -1453,6 +1624,8 @@ export function describeStop(
     case "opted_out":
       return `${notDone} ${(verdict.optedOut ?? []).join(", ")} opted out of commercial mail. Next: remove them from the recipients, or leave this mail unsent.`
     case "ref_stop":
+      if (verdict.code === "commercial_one_recipient")
+        return `${notDone} ${verdict.label ?? ""} ${ONE_PER_PERSON_NEXT}`
       return `${notDone} ${verdict.label ?? "The record this mail is about says not to send it."} Next: check that record before writing again.`
     case "held": {
       const until = verdict.holdUntil ? day(verdict.holdUntil) : ""

@@ -14,6 +14,10 @@ import { quoteIdent } from "~/lib/sql-utils"
 import { ConnectionCredentialsMissingError } from "~/modules/apps/connections/credentials-missing"
 import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { type MailCategory, mailCategoryCondition } from "~/modules/mail/category"
+import {
+  type CommercialSend,
+  recordCommercialSendAfterSend,
+} from "~/modules/mail/commercial-send-record"
 import { enqueueGmailWriteBack } from "~/modules/mail/gmail-write-back"
 import { markConversationReadThrough } from "~/modules/mail/page-write"
 import {
@@ -1733,6 +1737,7 @@ export async function deleteDraft(
  */
 async function personComposeBodies(
   orgId: string,
+  userId: string,
   mail: {
     to: Array<{ email: string }>
     cc: Array<{ email: string }>
@@ -1740,7 +1745,13 @@ async function personComposeBodies(
     htmlBody: string
     textBody: string
   },
-): Promise<{ htmlBody: string; textBody: string; headers?: Record<string, string> }> {
+): Promise<{
+  htmlBody: string
+  textBody: string
+  headers?: Record<string, string>
+  /** The commercial send's record, written once the mail left. */
+  record?: CommercialSend
+}> {
   const recipients = recipientsOf(
     mail.to.map((a) => a.email),
     mail.cc.map((a) => a.email),
@@ -1755,10 +1766,24 @@ async function personComposeBodies(
       message: `Nothing was sent. ${COMMERCIAL_IDENTITY_MISSING_MESSAGE}`,
     })
   }
+  const htmlBody = footer.htmlBody ?? mail.htmlBody
+  const textBody = footer.textBody ?? mail.textBody
   return {
-    htmlBody: footer.htmlBody ?? mail.htmlBody,
-    textBody: footer.textBody ?? mail.textBody,
+    htmlBody,
+    textBody,
     headers: footer.headers,
+    record: {
+      orgId,
+      actorId: userId,
+      actorType: "user",
+      toolName: "mail:compose",
+      recipient: own.recipient,
+      textBody,
+      htmlBody,
+      mode: null,
+      approvedBy: "person",
+      approverId: userId,
+    },
   }
 }
 
@@ -1806,16 +1831,15 @@ export async function sendDraft(
   const attachments = await loadDraftAttachmentParts(db, params.orgId, params.draftId)
 
   // A new message's bodies as they leave: a prospect's mail gains its footer here.
-  const outgoing: { htmlBody: string; textBody: string; headers?: Record<string, string> } =
-    draft.conversation_id
-      ? { htmlBody: params.htmlBody, textBody: params.textBody }
-      : await personComposeBodies(params.orgId, {
-          to: toAddresses,
-          cc: ccAddresses,
-          bcc: bccAddresses,
-          htmlBody: params.htmlBody,
-          textBody: params.textBody,
-        })
+  const outgoing: Awaited<ReturnType<typeof personComposeBodies>> = draft.conversation_id
+    ? { htmlBody: params.htmlBody, textBody: params.textBody }
+    : await personComposeBodies(params.orgId, params.userId, {
+        to: toAddresses,
+        cc: ccAddresses,
+        bcc: bccAddresses,
+        htmlBody: params.htmlBody,
+        textBody: params.textBody,
+      })
 
   const result = draft.conversation_id
     ? {
@@ -1846,6 +1870,8 @@ export async function sendDraft(
         headers: outgoing.headers,
         attachments,
       })
+  // Only once it left: a send that failed writes no record and leaves the notice owed.
+  if (outgoing.record) await recordCommercialSendAfterSend(outgoing.record)
 
   // Reparent any draft-staged attachments onto the new mail message before
   // deleting the draft (otherwise the file rows would lose their parent).

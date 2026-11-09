@@ -39,6 +39,7 @@ import {
 } from "~/modules/apps/sandbox/bridge/shared"
 import type { UpstreamTrace } from "~/modules/apps/sandbox/upstream-trace"
 import type { ExecPriority } from "~/modules/apps/sandbox/worker-pool"
+import type { CommercialSend } from "~/modules/mail/commercial-send-record"
 import {
   isMailboxGuardedEntity,
   MailboxPlaintextForbiddenError,
@@ -315,6 +316,11 @@ export type RpcBridgeOptions = {
    * `assertMailboxNotResetMidRun`.
    */
   mailboxSnapshot?: { value: string | null }
+  /**
+   * The commercial send the mail check at send cleared in this HANDLER RUN, recorded once the
+   * provider accepted it (`mail_commercialSent`), shared across per-call bridge rebuilds.
+   */
+  commercialSend?: { value: CommercialSend | null }
   /**
    * The handler run's upstream trace (the connection it read, its last fetch
    * answer), shared across per-call bridge rebuilds like the ledger above. The

@@ -1519,6 +1519,9 @@ describe("db import enforcement", () => {
     // opt-out page, which has no person and learns the org from the link's row (a fingerprint,
     // no address kept); the org's commercial identity is read for whoever sends.
     "modules/mail/commercial-footer.ts",
+    // A commercial send's record, written once the provider accepted it, for whoever sent it
+    // (an agent's approved mail or a person's own): the audit row and the notice mark.
+    "modules/mail/commercial-send-record.ts",
     // Waiting drafts to an address that opted out are cancelled, whoever staged them.
     "modules/approvals/withdraw-on-events.ts",
     // The new-mail producer off the outbox (no actor): the account, the

@@ -14,10 +14,15 @@
  */
 import { createHash } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
+import { isConsumerMailDomain } from "~/apps/api-connector/consumer-domains"
 import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
-import { withPrivilegedDb, withSystemReadReusingHeld } from "~/db/privileged"
+import { withElevatableRlsFrom, withPrivilegedDb, withSystemReadReusingHeld } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
-import { withdrawCommercialDraftsTo } from "~/modules/approvals/withdraw-on-events"
+import {
+  continueRoutinesAfterWithdrawal,
+  withdrawCommercialDraftsOn,
+} from "~/modules/approvals/withdraw-on-events"
+import { asAdmin } from "~/modules/sharing/service"
 
 const K = () => drizzleSql.raw(schemaRef("kernel"))
 
@@ -193,6 +198,13 @@ export async function addSuppression(
   return { added: out.added, record: record as SuppressionRecord, withdrawn: out.withdrawn }
 }
 
+/** How many rows an INSERT wrote, from the driver's result. */
+function insertedCount(result: unknown): number {
+  const counted = result as { count?: unknown; rowCount?: unknown } | null
+  const n = Number(counted?.count ?? counted?.rowCount ?? 0)
+  return Number.isFinite(n) ? n : 0
+}
+
 /**
  * `addSuppression` for a caller that holds only the address's fingerprint (an opt-out link keeps
  * no address). Same rules: the first record stays, drafts are withdrawn, one event. With `db`
@@ -231,14 +243,21 @@ export async function addSuppressionHash(
     actorId: args.createdBy ?? null,
     actorType: args.actorType ?? (args.createdBy ? "user" : "system"),
   } as const
-  const write = async (tx: RlsClient | PrivilegedDb) => {
+  // One transaction: the row, its one event and the withdrawal of the drafts it stops commit or
+  // roll back together. Only the request that inserted the row (a concurrent one finds it there
+  // and inserts nothing) queues the event and withdraws.
+  const record = async (
+    tx: RlsClient | PrivilegedDb,
+    elevated: (fn: () => Promise<string[]>) => Promise<string[]>,
+  ): Promise<string[] | null> => {
     // Inserted on the caller's client, so its row security decides; no RETURNING, which would
-    // also ask for the read right.
-    await tx.execute(drizzleSql`
+    // also ask for the read right. The row count says whether this request inserted it.
+    const result = await tx.execute(drizzleSql`
       INSERT INTO ${K()}.suppressions (org_id, email_hash, reason, source, created_by)
       VALUES (${orgId}::uuid, ${emailHash}, ${args.reason}, ${args.source ?? null},
               ${args.createdBy ?? null})
       ON CONFLICT (org_id, email_hash) DO NOTHING`)
+    if (insertedCount(result) === 0) return null
     await tx.queueEvent({
       app: "mail",
       entity: "suppression",
@@ -249,10 +268,26 @@ export async function addSuppressionHash(
       entityId: emailHash,
       data: { emailHash },
     })
+    return elevated(() => withdrawCommercialDraftsOn(tx, orgId, emailHash, actor))
   }
-  if (db) await write(db)
-  else await withPrivilegedDb(orgId, "suppressions-add-system", write)
-  const withdrawn = await withdrawCommercialDraftsTo(orgId, emailHash, actor)
+  const withdrawn = db
+    ? await withElevatableRlsFrom(db, "suppressions-add", (tx) =>
+        record(tx, (fn) => asAdmin(tx, fn)),
+      )
+    : await withPrivilegedDb(orgId, "suppressions-add-system", (tx) => record(tx, (fn) => fn()))
+  if (withdrawn === null) {
+    // Recorded meanwhile by another request: the first record stays.
+    const [first] = await withPrivilegedDb(orgId, "suppressions-add-read", (tx) =>
+      rowsFor(tx, orgId, [emailHash]),
+    )
+    return {
+      added: false,
+      before: first ?? null,
+      createdAt: first ? new Date(first.created_at).toISOString() : new Date().toISOString(),
+      withdrawn: [],
+    }
+  }
+  await continueRoutinesAfterWithdrawal(orgId, withdrawn)
   return { added: true, before: null, createdAt: new Date().toISOString(), withdrawn }
 }
 
@@ -508,14 +543,37 @@ export interface RecipientBasis {
   name: string | null
 }
 
-/** The org's own domains: an address there is a colleague, never a recipient of the rules. */
-async function ownDomains(tx: PrivilegedDb, orgId: string): Promise<Set<string>> {
-  const rows = extractRows<{ domain: string }>(
+/**
+ * Who is a colleague, never a recipient of the commercial rules: an address of one of the org's
+ * own people (portal accounts excluded), or any address at their domain, unless that domain is a
+ * shared mail provider (gmail.com and the like), where it says nothing of who the address is.
+ */
+export interface Colleagues {
+  addresses: ReadonlySet<string>
+  domains: ReadonlySet<string>
+}
+
+export async function readColleagues(
+  tx: Pick<PrivilegedDb, "execute">,
+  orgId: string,
+): Promise<Colleagues> {
+  const rows = extractRows<{ email: string }>(
     await tx.execute(drizzleSql`
-      SELECT DISTINCT lower(split_part(email, '@', 2)) AS domain FROM ${K()}.users
+      SELECT DISTINCT lower(trim(email)) AS email FROM ${K()}.users
        WHERE org_id = ${orgId}::uuid AND user_type <> 'external' AND email LIKE '%@%'`),
   )
-  return new Set(rows.map((r) => r.domain))
+  const addresses = new Set(rows.map((r) => r.email))
+  const domains = new Set(
+    [...addresses]
+      .map((a) => a.split("@")[1] ?? "")
+      .filter((d) => d !== "" && !isConsumerMailDomain(d)),
+  )
+  return { addresses, domains }
+}
+
+export function isColleague(colleagues: Colleagues, address: string): boolean {
+  const a = address.trim().toLowerCase()
+  return colleagues.addresses.has(a) || colleagues.domains.has(a.split("@")[1] ?? "")
 }
 
 /**
@@ -529,13 +587,13 @@ export async function lawfulBasisFacts(
   db?: PrivilegedDb,
 ): Promise<{ recipients: RecipientBasis[]; countryPolicy: Record<string, "optout" | "consent"> }> {
   const read = async (tx: PrivilegedDb) => {
-    const own = await ownDomains(tx, orgId)
+    const colleagues = await readColleagues(tx, orgId)
     const outside = [
       ...new Set(
         addresses
           .filter((a) => typeof a === "string" && a.includes("@"))
           .map((a) => a.trim().toLowerCase())
-          .filter((a) => !own.has(a.split("@")[1] ?? "")),
+          .filter((a) => !isColleague(colleagues, a)),
       ),
     ]
     const contacts =

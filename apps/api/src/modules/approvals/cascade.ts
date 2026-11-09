@@ -100,6 +100,7 @@ async function lockedSendGuardOverride(
     db: tx,
     guard,
     recipients: recipientsOf(payload.to, payload.cc, payload.bcc),
+    toolName: args.toolName,
     at: "card",
   })
   if (verdict.state !== "held") return { held: false, state: verdict.state }

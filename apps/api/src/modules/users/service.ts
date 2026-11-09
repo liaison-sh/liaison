@@ -355,6 +355,25 @@ async function activeAdminIds(db: PrivilegedDb, orgId: string): Promise<string[]
   return rows.map((r) => r.id)
 }
 
+/**
+ * Whether the actor may deactivate the target at all: their authority covers the target's, and
+ * the target is not the last administrator. Throws `UserAuthorityError`. A caller that reads
+ * anything about the target first (the companies they manage) runs this before that read.
+ */
+export async function assertMayDeactivate(
+  db: PrivilegedDb,
+  params: { targetId: string; orgId: string; actorScopes: readonly string[] },
+): Promise<void> {
+  const { targetId, orgId } = params
+  await assertActorOutranksTarget(db, params)
+  // The last active holder of the wildcard scope cannot be deactivated: nobody
+  // would be left who can administer the organisation.
+  const admins = await activeAdminIds(db, orgId)
+  if (admins.includes(targetId) && admins.every((id) => id === targetId)) {
+    throw new UserAuthorityError("LAST_ADMIN", "Cannot deactivate the last administrator")
+  }
+}
+
 export async function deactivateUser(
   db: PrivilegedDb,
   params: { targetId: string; actorId: string; orgId: string; actorScopes: readonly string[] },
@@ -366,14 +385,7 @@ export async function deactivateUser(
     throw new Error("Cannot deactivate own account")
   }
 
-  await assertActorOutranksTarget(db, { targetId, orgId, actorScopes })
-
-  // The last active holder of the wildcard scope cannot be deactivated: nobody
-  // would be left who can administer the organisation.
-  const admins = await activeAdminIds(db, orgId)
-  if (admins.includes(targetId) && admins.every((id) => id === targetId)) {
-    throw new UserAuthorityError("LAST_ADMIN", "Cannot deactivate the last administrator")
-  }
+  await assertMayDeactivate(db, { targetId, orgId, actorScopes })
 
   const [result] = await db
     .update(users)

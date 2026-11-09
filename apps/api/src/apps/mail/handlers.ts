@@ -29,6 +29,8 @@ interface MailCtx {
   mail_buildSendGuard(paramsJson: string): Promise<string>
   /** The send check on the payload as it stands, before anything leaves. */
   mail_checkSendGuard(paramsJson: string): Promise<string>
+  /** After the provider accepted it: a commercial send's record and notice mark. */
+  mail_commercialSent(): Promise<string>
   /** Clear `ingest_pending` on messages whose post-commit work is done. */
   mail_completeIngest(paramsJson: string): Promise<string>
   /** Delete a disconnected mailbox's imported content (modules/mail/purge-account.ts). */
@@ -6749,6 +6751,7 @@ async function agentMailReply(params: any, ctx: MailCtx): Promise<any> {
     })
     const sentRef = sentMessageRef(sendParams.provider, result)
     await recordSendLanded(ctx, "mail:reply", sentRef)
+    const unrecorded = await recordCommercialSent(ctx)
     await persistSentMessage(ctx, account, sendParams, result, {
       inReplyTo: sendParams.inReplyTo,
       references: sendParams.references,
@@ -6769,7 +6772,7 @@ async function agentMailReply(params: any, ctx: MailCtx): Promise<any> {
     return {
       ...result,
       ...(guardCheck.record ?? {}),
-      note: `Sent to ${sendParams.to.map(sentToLabel).join(", ")} from ${account.email_address}, in conversation ${params.conversationId}.`,
+      note: `Sent to ${sendParams.to.map(sentToLabel).join(", ")} from ${account.email_address}, in conversation ${params.conversationId}.${unrecorded}`,
     }
   } catch (err: any) {
     if (classified) throw err
@@ -6929,6 +6932,21 @@ async function recordSendLanded(
 ): Promise<void> {
   if (!ctx.approval_recordEffectLanded) return
   await ctx.approval_recordEffectLanded(toolName, JSON.stringify(ref))
+}
+
+/**
+ * Once the provider accepted the mail: the commercial send's record (a send that failed writes
+ * none). The text the result adds when it could not be written, else "".
+ */
+async function recordCommercialSent(ctx: MailCtx): Promise<string> {
+  if (!ctx.mail_commercialSent) return ""
+  const out = JSON.parse(await ctx.mail_commercialSent()) as {
+    recorded: boolean
+    commercial: boolean
+  }
+  return out.commercial && !out.recorded
+    ? " Its commercial send record could not be written; the error is logged."
+    : ""
 }
 
 function isProviderRejection(err: any): boolean {
@@ -7141,6 +7159,7 @@ async function _doCompose(
     })
     const sentRef = sentMessageRef(sendParams.provider, result)
     await recordSendLanded(ctx, auditToolName, sentRef)
+    const unrecorded = await recordCommercialSent(ctx)
     await persistSentMessage(ctx, account, sendParams, result)
     if (stagedFileIds.length > 0) {
       try {
@@ -7159,7 +7178,7 @@ async function _doCompose(
     return {
       ...result,
       ...(guardRecord ?? {}),
-      note: `Sent to ${(Array.isArray(params.to) ? params.to : [params.to]).map(sentToLabel).join(", ")} from ${account.email_address}.`,
+      note: `Sent to ${(Array.isArray(params.to) ? params.to : [params.to]).map(sentToLabel).join(", ")} from ${account.email_address}.${unrecorded}`,
     }
   } catch (err: any) {
     if (classified) throw err

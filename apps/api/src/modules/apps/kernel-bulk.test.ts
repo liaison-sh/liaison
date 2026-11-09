@@ -364,8 +364,9 @@ describe("deactivating someone who manages companies", () => {
         },
         timestamp: new Date().toISOString(),
       }) as never
-    await handleCompanyOwnershipEvent(event(a, "Handed Alpha", ADMIN))
+    // Handled in the other order than the names read: the line still names them by name.
     await handleCompanyOwnershipEvent(event(b, "Handed Beta", ADMIN))
+    await handleCompanyOwnershipEvent(event(a, "Handed Alpha", ADMIN))
     const told = await sql`
       SELECT summary, metadata FROM kernel.attention_events
       WHERE org_id = ${ORG} AND user_id = ${people.taker} AND kind = ${HANDOVER_KIND}

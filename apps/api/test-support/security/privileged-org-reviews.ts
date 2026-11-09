@@ -91,6 +91,10 @@ export const REVIEWED_DISPATCH: Record<string, string> = {
  * follow to a trusted source, could not be traced, or is a literal: `file#enclosing` → why.
  */
 export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
+  "apps/api/src/modules/mail/commercial-send-record.ts#recordCommercialSend":
+    "the record of a commercial send after the provider accepted it: the org of the CommercialSend its two callers build themselves, the mail bridge from its own context org (commercialSendOf, kept in the bridge and never handed to the sandbox) and the composer send from the session org of the person sending (mail/service.ts); it writes one audit row and marks the notice for that org and that recipient only",
+  "apps/api/src/modules/mail/commercial-footer.ts#markArt14NoticeSent":
+    "marks the notice on the contacts of one recipient in the org it is given, inside recordCommercialSend's transaction for the org of its CommercialSend (the bridge's context org or the composer's session org); nothing of another org is read or written",
   "apps/api/src/modules/contacts/prospect-retention.ts#runProspectRetention":
     "the daily retention sweep: each org id comes from its own system read of the orgs that hold professional-interest contacts or an unread retention item (orgs being moved left out), and each org's row is refreshed in its own privileged transaction for that org only",
   "apps/api/src/apps/projects/service/deals.ts#orgTimeZone":

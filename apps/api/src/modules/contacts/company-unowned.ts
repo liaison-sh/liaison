@@ -394,7 +394,10 @@ export async function tellPreviousManagers(
           (c) => typeof c?.id === "string" && typeof c?.name === "string",
         )
       : []
-    const all = [...new Map([...earlier, ...refs].map((c) => [c.id, c])).values()]
+    // By name, so the line reads the same whichever company's event was handled first.
+    const all = [...new Map([...earlier, ...refs].map((c) => [c.id, c])).values()].sort((x, y) =>
+      x.name.localeCompare(y.name),
+    )
     const what = namesLine(all.map((r) => r.name))
     const summary = toName
       ? `${actorName} gave ${what} to ${toName}`

@@ -21,7 +21,7 @@ phase=before
 [ -f "$S/up_done" ] && phase=after
 if [ "$1" = compose ]; then
   shift
-  [ "$1" = --profile ] && shift 2
+  while [ "$1" = --profile ]; do shift 2; done
   case "$1" in
     ps)
       svc=""; for a in "$@"; do svc="$a"; done
@@ -155,6 +155,49 @@ describe("rolling-deploy.sh", () => {
     expect(code).toBe(0)
     expect(calls.find((c) => c.startsWith("compose --profile rolling up"))).toContain("--scale api=4")
     expect(readFileSync(path.join(state, "replicas.log"), "utf8").trim().split("\n")).not.toContain("3 1")
+  })
+
+  it("COMPOSE_PROFILES=meaning in deploy/.env adds its profile and brings the embedder up, never recreated", () => {
+    standardWorld()
+    const composeFile = path.join(dir, "docker-compose.yml")
+    writeFileSync(composeFile, "services: {}\n")
+    writeFileSync(path.join(dir, ".env"), "LIAISON_TOOL_MEANING=on\nCOMPOSE_PROFILES=meaning\n")
+    const { code, calls, stderr } = run(["--wait-drain"], { COMPOSE_FILE: composeFile })
+    expect(stderr).toContain("deploy done")
+    expect(code).toBe(0)
+    const compose = calls.filter((c) => c.startsWith("compose "))
+    for (const c of compose) expect(c.startsWith("compose --profile rolling --profile meaning ")).toBe(true)
+    const embedder = indexOf(calls, (c) => c.endsWith(" up -d --no-recreate --no-deps embedder"))
+    const migrate = indexOf(calls, (c) => c.includes(" run --rm --no-deps migrate"))
+    const scale = indexOf(calls, (c) => c.includes(" up ") && c.includes("--scale"))
+    expect(embedder).toBeGreaterThan(migrate)
+    expect(scale).toBeGreaterThan(embedder)
+    expect(calls.filter((c) => c.includes("embedder"))).toHaveLength(1)
+  })
+
+  it("COMPOSE_PROFILES in the environment wins over deploy/.env; several profiles each pass, rolling once", () => {
+    standardWorld()
+    const composeFile = path.join(dir, "docker-compose.yml")
+    writeFileSync(composeFile, "services: {}\n")
+    writeFileSync(path.join(dir, ".env"), "COMPOSE_PROFILES=other\n")
+    const { code, calls } = run(["--wait-drain"], {
+      COMPOSE_FILE: composeFile,
+      COMPOSE_PROFILES: "rolling, meaning,extra",
+    })
+    expect(code).toBe(0)
+    const compose = calls.filter((c) => c.startsWith("compose "))
+    for (const c of compose) {
+      expect(c.startsWith("compose --profile rolling --profile meaning --profile extra ")).toBe(true)
+      expect(c).not.toContain("other")
+    }
+    expect(calls.some((c) => c.endsWith(" up -d --no-recreate --no-deps embedder"))).toBe(true)
+  })
+
+  it("without the meaning profile the embedder is never started", () => {
+    standardWorld()
+    const { code, calls } = run()
+    expect(code).toBe(0)
+    expect(calls.some((c) => c.includes("embedder"))).toBe(false)
   })
 
   it("the order is migrate → scale up → readyz wait on the new ids → stop old ids", () => {

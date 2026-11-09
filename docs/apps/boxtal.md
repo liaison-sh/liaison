@@ -82,7 +82,7 @@ Once the customer has a verified address, the label's approval card says which a
 **Ready to ship** lists shipments whose label is bought, oldest first.
 
 1. Click **Print pack** on a row. The label and the invoice print as two separate jobs. **Label** and **Invoice** open each one alone. An issued invoice whose PDF was never rendered is rendered then. A draft invoice is not printed: issue it in Invoicing first. If the render fails, open the invoice and use its retry action, then print again.
-2. Select several rows and click **Print N packs** to get every label in one PDF and every invoice in another.
+2. Select several rows and click **Print N packs** to get every label in one PDF and every invoice in another. A shipment of several parcels prints one label per parcel, all in its label PDF.
 3. Tick the row as packed when the parcel is boxed. This fulfils the Shopify order with the tracking number and its carrier. Whether Shopify emails the customer is the Shopify app's **Shipping emails** setting (see [Shopify](store.md)).
 
 The **Country** column, its **Country** sort and the **All countries** filter work as in To prepare.

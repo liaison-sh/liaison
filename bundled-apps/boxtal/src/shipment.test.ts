@@ -2017,6 +2017,35 @@ describe("create_shipment — label import into kernel.files (label_file_id)", (
       expect(importCalls[0]).toMatchObject({ targetEntityType: "shipment", targetEntityId: rowId })
     })
 
+    it("imports every parcel's LABEL of a multi-parcel order and returns them merged", async () => {
+      let n = 0
+      const merges: Array<Record<string, unknown>> = []
+      const { ctx, db, importCalls } = makeCtx({
+        documentsBody: JSON.stringify({
+          status: 200,
+          timestamp: "t",
+          content: [
+            { url: "https://document.boxtal.com/shipping-label/REF_bordereau_1.pdf", type: "LABEL", format: "PDF_A4" },
+            { url: "https://document.boxtal.com/shipping-label/REF_bordereau_2.pdf", type: "LABEL", format: "PDF_A4" },
+          ],
+        }),
+        filesImportFromUrl: async () => JSON.stringify({ id: `file-${++n}` }),
+        executeTool: async (target: string, args: Record<string, unknown>) => {
+          if (target === "kernel:files_merge_pdfs") {
+            merges.push(args)
+            return { status: "completed", result: { fileId: "file-merged" } }
+          }
+          return { status: "error", error: { code: "unmocked", message: target } }
+        },
+      })
+      await db.insert("shipment", { document_ref: "doc-1", boxtal_order_id: "ord-1", link_state: "created", order_status: "PENDING" })
+      const res = await importLabelDocument(ctx, { id: "ord-1" })
+      expect(importCalls).toHaveLength(2)
+      expect(merges[0]?.file_ids).toEqual(["file-1", "file-2"])
+      expect(res.label_file_id).toBe("file-merged")
+      expect(res.label_file_ids).toEqual(["file-1", "file-2"])
+    })
+
     it("returns label_not_ready when Boxtal serves no LABEL yet", async () => {
       const { ctx, db } = makeCtx({
         filesImportFromUrl: async () => JSON.stringify({ id: "never" }),

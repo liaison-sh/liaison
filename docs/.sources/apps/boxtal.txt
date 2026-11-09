@@ -182,3 +182,4 @@ an order_key naming nothing, or two keys naming different rows, is refused -> bu
 Unticking a fulfilled row asks first (Untick this order?); Boxtal tab Label opens the label PDF -> bundled-apps/boxtal/src/ui/Queues.tsx:425 ; bundled-apps/boxtal/src/ui/BoxtalShipmentTab.tsx:147
 FedEx AWB: the grouped number next to TRK#, bare digit runs (phone) not taken -> bundled-apps/boxtal/src/label-tracking.ts:326
 Pack with this number: typed tracking number, carrier format, never replaces one -> bundled-apps/boxtal/src/ui/Queues.tsx:907 ; bundled-apps/boxtal/src/packed.ts:137
+a multi-parcel shipment prints one label per parcel, all in its label PDF -> bundled-apps/boxtal/src/shipment.ts:2966 ; bundled-apps/boxtal/src/print-pack.ts:107

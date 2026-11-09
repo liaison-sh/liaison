@@ -92,6 +92,7 @@ export const ActivityPanel: Component<ActivityPanelProps> = (props) => {
   const [loadingMore, setLoadingMore] = createSignal(false)
   const [retrying, setRetrying] = createSignal<string | null>(null)
   const [filter, setFilter] = createSignal<string | null>(null)
+  const [filterMenuOpen, setFilterMenuOpen] = createSignal(false)
   let seq = 0
 
   const tid = (part?: string) => (part ? `${props.testId}.${part}` : props.testId)
@@ -209,7 +210,7 @@ export const ActivityPanel: Component<ActivityPanelProps> = (props) => {
           {props.title}
         </h2>
         <Show when={sources().length > 0}>
-          <PopupMenu>
+          <PopupMenu open={filterMenuOpen()} onOpenChange={setFilterMenuOpen}>
             <PopupMenu.Trigger
               aria-label={i18n.t("contacts.activity.filter")}
               class="flex min-h-8 items-center gap-1 rounded-md px-1.5 text-[12px] text-text-secondary hover:bg-surface-hover hover:text-text"

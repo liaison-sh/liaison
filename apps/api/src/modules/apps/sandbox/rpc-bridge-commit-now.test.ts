@@ -9,7 +9,6 @@
 // then killed by the sandbox ("App execution timed out") loses that row with the
 // rollback, and the purchase has no local record. Real Postgres throughout.
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
-import { sql as drizzleSql } from "drizzle-orm"
 import { type RlsClient, sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { createRlsSession, withRlsContext } from "~/db/rls"
@@ -19,6 +18,8 @@ import {
   createSessionRpcBridge,
 } from "~/modules/apps/sandbox/rpc-bridge"
 import { generateRlsPolicySql } from "~/modules/permissions/rls-generator"
+import { insertAppRow } from "~/seed/factories/app-tables"
+import { seedOrgRow, seedUserRows } from "~/seed/factories/org/rows"
 
 const SCHEMA = "app_commitnowtest"
 const APP_NAME = "commitnowtest"
@@ -101,13 +102,35 @@ async function errorOf(p: Promise<unknown>): Promise<string> {
 beforeAll(async () => {
   await createSchema(SCHEMA, APP_NAME)
   await createSchema(OTHER_SCHEMA, "commitnowother")
-  await sql`INSERT INTO kernel.organizations (id, name, slug)
-    VALUES (${ORG_A}, 'Commit Now Org A', 'commitnow-org-a'), (${ORG_B}, 'Commit Now Org B', 'commitnow-org-b')
-    ON CONFLICT (id) DO NOTHING`
-  await sql`INSERT INTO kernel.users (id, org_id, email, name, status, auth_version)
-    VALUES (${USER_A}, ${ORG_A}, 'commitnow-a@test.com', 'Commit Now A', 'active', 1),
-           (${USER_B}, ${ORG_B}, 'commitnow-b@test.com', 'Commit Now B', 'active', 1)
-    ON CONFLICT (id) DO NOTHING`
+  await seedOrgRow(
+    { id: ORG_A, name: "Commit Now Org A", slug: "commitnow-org-a" },
+    { onConflict: "skip" },
+  )
+  await seedOrgRow(
+    { id: ORG_B, name: "Commit Now Org B", slug: "commitnow-org-b" },
+    { onConflict: "skip" },
+  )
+  await seedUserRows(
+    [
+      {
+        id: USER_A,
+        orgId: ORG_A,
+        email: "commitnow-a@test.com",
+        name: "Commit Now A",
+        status: "active",
+        authVersion: 1,
+      },
+      {
+        id: USER_B,
+        orgId: ORG_B,
+        email: "commitnow-b@test.com",
+        name: "Commit Now B",
+        status: "active",
+        authVersion: 1,
+      },
+    ],
+    { onConflict: "skip" },
+  )
 })
 
 afterAll(async () => {
@@ -280,14 +303,16 @@ describe("ctx.db.insertNow: the same walls as every app write", () => {
   })
 
   it("updateNow cannot change another org's row", async () => {
-    let idB = ""
-    await withPrivilegedDb(ORG_B, "commitnow-seed-b", async (tx) => {
-      const r = (await tx.execute(
-        drizzleSql`INSERT INTO ${drizzleSql.raw(table())} (org_id, title, state)
-          VALUES (${ORG_B}::uuid, 'org-b', 'intent') RETURNING id::text AS id`,
-      )) as unknown as Array<{ id: string }>
-      idB = r[0]!.id
-    })
+    await withPrivilegedDb(ORG_B, "commitnow-seed-b", (tx) =>
+      insertAppRow(tx, "commitnowtest", "intents", {
+        org_id: ORG_B,
+        title: "org-b",
+        state: "intent",
+      }),
+    )
+    const [{ id: idB }] = (await sql.unsafe(
+      `SELECT id::text AS id FROM ${table()} WHERE org_id = '${ORG_B}'`,
+    )) as unknown as [{ id: string }]
     await sharedTxRun(
       async (bridge) => {
         await bridge.db_updateNow("intents", idB, JSON.stringify({ state: "hijacked" }))

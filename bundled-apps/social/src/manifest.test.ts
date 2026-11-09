@@ -34,7 +34,8 @@ describe("social manifest (B1)", () => {
     // 0.6.57: the same number (0.6.56) carried different content on two lines of work; this one has both.
     // 0.6.58: above both lines of work, which each changed it under the number before; no change of its own.
     // 0.6.59: above the 0.6.58 that main took meanwhile; no change of its own.
-    expect(manifest.version).toBe("0.6.60")
+    // 0.6.61: two parses of one delivery from a new person no longer fail on the unique key.
+    expect(manifest.version).toBe("0.6.61")
     expect(manifest.packageFormat).toBe(1)
   })
 

@@ -240,3 +240,106 @@ describe("upsertDmMessage — repair-on-resync", () => {
     expect(rows[0]?.direction).toBe("outbound")
   })
 })
+
+describe("two parses of one delivery racing on a new person", () => {
+  const uniqueViolation = (table: string) =>
+    new Error(
+      `Failed query on ${table} — pg: duplicate key value violates unique constraint "${table}_key" (23505)`,
+    )
+
+  test("the parse that loses the conversation insert lands its message in the winner's conversation", async () => {
+    const db = createMockDb()
+    const winner = await db.insert("dm_conversation", {
+      platform: "facebook",
+      external_id: "psid-race",
+      participant_external_id: "psid-race",
+      status: "open",
+    })
+    // This parse read before the other one committed: it sees no conversation, then its insert
+    // hits the unique key the other parse just took.
+    let stale = true
+    const racing = {
+      ...db,
+      findMany: async (entity: string, opts: unknown) =>
+        entity === "dm_conversation" && stale ? [] : db.findMany(entity, opts as never),
+      insert: async (entity: string, data: Record<string, unknown>) => {
+        if (entity === "dm_conversation" && stale) {
+          stale = false
+          throw uniqueViolation("dm_conversation")
+        }
+        return db.insert(entity, data)
+      },
+    }
+    const ctx = ctxWith(racing as never)
+    const body = {
+      object: "page",
+      entry: [
+        {
+          id: "page-1",
+          messaging: [
+            {
+              sender: { id: "psid-race" },
+              recipient: { id: "page-1" },
+              timestamp: Date.UTC(2026, 0, 15, 9, 30, 0),
+              message: { mid: "m_race", text: "Is it in stock?" },
+            },
+          ],
+        },
+      ],
+    }
+    await parseWebhookJob(ctx, { platform: "facebook", body })
+    expect(await db.count("dm_conversation", { where: { participant_external_id: "psid-race" } })).toBe(1)
+    const msgs = (await db.findMany("dm_message", { where: { external_id: "m_race" } })) as Array<{
+      conversation_id: string
+    }>
+    expect(msgs.map((m) => m.conversation_id)).toEqual([winner.id])
+  })
+
+  test("the parse that loses the message insert reports it as already there", async () => {
+    const db = createMockDb()
+    const conv = await db.insert("dm_conversation", { platform: "facebook", external_id: "psid-2", status: "open" })
+    let stale = true
+    const racing = {
+      ...db,
+      findMany: async (entity: string, opts: unknown) =>
+        entity === "dm_message" && stale ? [] : db.findMany(entity, opts as never),
+      insert: async (entity: string, data: Record<string, unknown>) => {
+        if (entity === "dm_message" && stale) {
+          stale = false
+          await db.insert(entity, data)
+          throw uniqueViolation("dm_message")
+        }
+        return db.insert(entity, data)
+      },
+    }
+    const res = await upsertDmMessage(ctxWith(racing as never), conv.id, {
+      conversationExternalId: "psid-2",
+      externalId: "m2",
+      direction: "inbound",
+      body: "hello",
+      occurredAt: "2026-07-02T10:00:00Z",
+    })
+    expect(res).toEqual({ created: false, inbound: true })
+    expect(await db.count("dm_message", { where: { external_id: "m2" } })).toBe(1)
+  })
+
+  test("any other insert error still fails the parse", async () => {
+    const db = createMockDb()
+    const failing = {
+      ...db,
+      insert: async (entity: string, data: Record<string, unknown>) => {
+        if (entity === "dm_message") throw new Error("pg: permission denied for table dm_message (42501)")
+        return db.insert(entity, data)
+      },
+    }
+    const conv = await db.insert("dm_conversation", { platform: "facebook", external_id: "psid-3", status: "open" })
+    await expect(
+      upsertDmMessage(ctxWith(failing as never), conv.id, {
+        conversationExternalId: "psid-3",
+        externalId: "m3",
+        direction: "inbound",
+        body: "hello",
+      }),
+    ).rejects.toThrow("42501")
+  })
+})

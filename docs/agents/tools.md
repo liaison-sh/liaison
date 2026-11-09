@@ -327,7 +327,7 @@ A change that changes nothing (an app that is already on, a setting already at t
 | `notifications_set` | Change your notification settings, including how often your agent reminds you of your requests waiting for approval (daily, every 3 days, weekly or off). | `kernel:agent:memory` | No |
 | `notification_rules_set` | Silence an app or keep only some notification kinds. | `kernel:agent:memory` | No |
 | `thread_mute_set` | Mute or unmute a conversation. | `kernel:agent:memory` | No |
-| `report_bug` | File a bug report about Liaison itself. It never waits for an approval, whatever the conversation read before. Where bug reports go only to the Liaison team, it prepares the report and you send it from its card. | `kernel:bug_reports:file` (every member holds it) | No |
+| `report_bug` | File a bug report about Liaison itself. It never waits for an approval, whatever the conversation read before. Where bug reports go only to the Liaison team, it prepares the report and you send it from its card. It can attach up to 5 of your files (`attachments`, file ids you can open). | `kernel:bug_reports:file` (every member holds it) | No |
 
 ### Sub-agents
 

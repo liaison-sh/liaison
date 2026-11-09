@@ -244,3 +244,5 @@ Decision older than 15 minutes is dropped at the next start, row says not sent -
 A request about a company records the company (company or contact link, deal via its task); several companies record none -> apps/api/src/modules/approvals/route-world.ts:591 ; apps/api/src/apps/projects/handlers.ts:110
 The manager is read at each feed read, after asked and on-item -> apps/api/src/modules/approvals/route-world.ts:302 ; apps/api/src/modules/approvals/route-world.ts:406 ; packages/shared/src/approvals/authority.ts:367-371
 A manager without the deciding scope is skipped, usual approvers -> packages/shared/src/approvals/authority.ts:373
+mail draft about a closed record is cancelled -> apps/api/src/modules/approvals/withdraw-on-events.ts:130-200
+mail draft about a record of a switched-off app is cancelled -> apps/api/src/modules/approvals/cancel.ts:262-290

@@ -139,21 +139,29 @@
     "rows": 1,
     "digest": "7d8ea4b5a34b0f08"
   },
+  "app_projects.deal_values": {
+    "rows": 9,
+    "digest": "5e1182d122d45062"
+  },
+  "app_projects.deals": {
+    "rows": 9,
+    "digest": "d569cf6b2989eef6"
+  },
   "app_projects.project_statuses": {
-    "rows": 20,
-    "digest": "ffb278b25e200653"
+    "rows": 26,
+    "digest": "1c8f6ccd7c1fc66e"
   },
   "app_projects.projects": {
-    "rows": 4,
-    "digest": "eadc8f811fc889af"
+    "rows": 5,
+    "digest": "0ae0ebeb3b27721a"
   },
   "app_projects.task_dependencies": {
     "rows": 10,
     "digest": "c62f734ea4ddbf71"
   },
   "app_projects.tasks": {
-    "rows": 27,
-    "digest": "b2327a8876e77683"
+    "rows": 36,
+    "digest": "efeaff08663ba06a"
   },
   "app_social.dm_conversation": {
     "rows": 3,
@@ -239,6 +247,10 @@
     "rows": 35,
     "digest": "332154ef00bdad96"
   },
+  "kernel.companies": {
+    "rows": 13,
+    "digest": "2dd28ed49278fdd8"
+  },
   "kernel.config_applied_fields": {
     "rows": 8,
     "digest": "a1ac404aad12146f"
@@ -249,7 +261,7 @@
   },
   "kernel.contacts": {
     "rows": 40,
-    "digest": "fd76c18fc3a4b070"
+    "digest": "027c07c6c4cf2b6f"
   },
   "kernel.credit_balances": {
     "rows": 1,
@@ -264,8 +276,8 @@
     "digest": "80cdbe01c0fdd51d"
   },
   "kernel.pending_events": {
-    "rows": 284,
-    "digest": "6ee193b8b7395a60"
+    "rows": 323,
+    "digest": "5dc9b44778a71983"
   },
   "kernel.resource_grants": {
     "rows": 7,
@@ -292,12 +304,12 @@
     "digest": "7eb2edec8666f96a"
   },
   "kernel.thread_participants": {
-    "rows": 91,
-    "digest": "8edb1b8e517277a7"
+    "rows": 109,
+    "digest": "38a499b350f49df8"
   },
   "kernel.threads": {
-    "rows": 37,
-    "digest": "7183737ad92d02e3"
+    "rows": 46,
+    "digest": "083f4459e13ff13b"
   },
   "kernel.user_dimension_grants": {
     "rows": 8,
@@ -308,8 +320,8 @@
     "digest": "5450128f5005cd9a"
   },
   "kernel.user_thread_state": {
-    "rows": 60,
-    "digest": "e6e2471891b52ad8"
+    "rows": 69,
+    "digest": "2a56c4add15fa033"
   },
   "kernel.users": {
     "rows": 8,

@@ -138,6 +138,39 @@ describe("the lively tier", () => {
     }
   })
 
+  it("a seeded lively org has companies with people and deals on a pipeline", async () => {
+    const orgId = first.world.orgId
+    const rows = (q: ReturnType<typeof sql>) =>
+      withSystemDb("lively-test-crm", async (tx) =>
+        typedRows<Record<string, unknown>>(await tx.execute(q)),
+      )
+    const [companies] = await rows(
+      sql`SELECT count(*)::int AS n,
+                 count(*) FILTER (WHERE EXISTS (
+                   SELECT 1 FROM kernel.contacts c WHERE c.company_id = k.id))::int AS with_people
+          FROM kernel.companies k WHERE k.org_id = ${orgId}::uuid`,
+    )
+    expect(Number(companies?.n)).toBeGreaterThanOrEqual(10)
+    expect(Number(companies?.with_people)).toBe(Number(companies?.n))
+    const stages = await rows(
+      sql`SELECT s.label AS stage, count(*)::int AS n
+          FROM app_projects.deals d
+          JOIN app_projects.tasks t ON t.id = d.task_id
+          JOIN app_projects.project_statuses s ON s.id = t.status_id
+          JOIN app_projects.projects p ON p.id = t.project_id AND p.kind = 'pipeline'
+          WHERE d.org_id = ${orgId}::uuid AND d.company_id IS NOT NULL
+          GROUP BY s.label`,
+    )
+    expect(stages.map((r) => r.stage).sort()).toEqual(
+      ["Demo", "Lead", "Lost", "Proposal", "Qualified", "Won"].sort(),
+    )
+    const [amounts] = await rows(
+      sql`SELECT count(*)::int AS n FROM app_projects.deal_values
+          WHERE org_id = ${orgId}::uuid AND amount_minor > 0 AND currency IS NOT NULL`,
+    )
+    expect(Number(amounts?.n)).toBe(9)
+  })
+
   it("leaves each person a few unread attention items and reads the rest", async () => {
     const [row] = rowsOf(
       await withSystemDb("lively-test-unread", (tx) =>

@@ -122,7 +122,7 @@
       }
     ]
   },
-  "version": "1.12.0",
+  "version": "1.13.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -2677,6 +2677,92 @@
         ],
         "rollupTables": [
           "app_projects.tasks"
+        ]
+      },
+      "deal": {
+        "label": "Deals",
+        "schema": {
+          "type": "object",
+          "required": ["externalRef", "pipeline", "title"],
+          "additionalProperties": false,
+          "properties": {
+            "externalRef": {
+              "type": "string",
+              "minLength": 1
+            },
+            "pipeline": {
+              "type": "string",
+              "description": "The pipeline's name: found, or created with the default stages (Lead, Qualified, Demo, Proposal, Won, Lost)."
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1
+            },
+            "stage": {
+              "type": ["string", "null"],
+              "description": "The stage's label in that pipeline; none puts the deal in the first stage."
+            },
+            "description": {
+              "type": ["string", "null"]
+            },
+            "companyName": {
+              "type": ["string", "null"],
+              "description": "The company: found by domain, else by name, else created."
+            },
+            "companyDomain": {
+              "type": ["string", "null"]
+            },
+            "contactEmail": {
+              "type": ["string", "null"],
+              "description": "An existing contact, by email; an unknown one is reported and the deal is still imported."
+            },
+            "ownerEmail": {
+              "type": ["string", "null"],
+              "description": "The deal owner, by email of an active member."
+            },
+            "amountMinor": {
+              "type": ["integer", "null"],
+              "description": "Whole minor units (cents), with currency. Needs deal access."
+            },
+            "currency": {
+              "type": ["string", "null"],
+              "description": "Three-letter code such as EUR."
+            },
+            "amountPeriod": {
+              "type": "string",
+              "enum": ["once", "month", "year"]
+            },
+            "probability": {
+              "type": ["integer", "null"],
+              "description": "Whole percent from 0 to 100."
+            },
+            "nextStep": {
+              "type": ["string", "null"]
+            },
+            "lostReason": {
+              "type": ["string", "null"],
+              "description": "Kept when the stage is a lost one."
+            },
+            "createdAt": {
+              "type": ["string", "null"]
+            }
+          }
+        },
+        "handler": "importDeals",
+        "dedupKey": "externalRef",
+        "tables": [
+          "app_projects.tasks",
+          "app_projects.projects",
+          "app_projects.project_statuses",
+          "app_projects.deals",
+          "app_projects.deal_values",
+          "kernel.threads",
+          "kernel.thread_participants",
+          "kernel.companies"
+        ],
+        "writeScopes": [
+          "projects:tasks:write",
+          "projects:projects:write"
         ]
       },
       "template": {

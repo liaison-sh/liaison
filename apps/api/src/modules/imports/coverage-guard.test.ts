@@ -91,10 +91,7 @@ describe("import coverage guard", () => {
     expect(deferred).toEqual([
       "app_ads.manual_spend",
       "app_invoicing.product_customs_overlay",
-      "app_projects.deal_values",
-      "app_projects.deals",
       "app_projects.task_labels",
-      "kernel.companies",
       "kernel.contact_addresses",
       "kernel.contact_group_members",
     ])

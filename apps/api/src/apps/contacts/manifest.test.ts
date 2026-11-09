@@ -19,7 +19,7 @@ describe("contacts manifest", () => {
   })
 
   it("is version 0.1.3 (the companies list and the company page)", () => {
-    expect(contactsManifest.version).toBe("0.1.3")
+    expect(contactsManifest.version).toBe("0.2.0")
   })
 
   it("declares the companies list and the company page, labelled by the company's name", () => {

@@ -55,8 +55,10 @@ import { seedKnowledgeArticles } from "~/seed/factories/knowledge/articles"
 import { insertUnarmedMail, type MailConversationSpec } from "~/seed/factories/mail/conversations"
 import { orgSlugOf } from "~/seed/factories/org/org"
 import { actorFor } from "~/seed/factories/people/actors"
+import { seedCompanies } from "~/seed/factories/people/companies"
 import { resolveContacts } from "~/seed/factories/people/contacts"
 import { orgUserIdsByEmail } from "~/seed/factories/people/people"
+import { seedPipeline } from "~/seed/factories/projects/deals"
 import { isOverdue, seedProject, seedProjectTask } from "~/seed/factories/projects/projects"
 import { ensureTicketCategories, ensureTicketInboxes } from "~/seed/factories/support/inboxes"
 import {
@@ -74,6 +76,7 @@ import { assertTicketApprovalsResolve } from "./approval-payload"
 import { APPROVAL_SPECS, type ApprovalRefs, type ApprovalSpec } from "./approval-specs"
 import { commerceDemoId } from "./commerce-ids"
 import { COMMERCE_LAYER_APPS } from "./demo-apps"
+import { COMPANY_SPECS, dealRef, SALES_PIPELINE } from "./sales-specs"
 import { seedKnowledgeSources } from "./seed-knowledge-sources"
 import { demoPersonEmail, type SeedDemoOrgResult } from "./seed-org"
 import {
@@ -731,6 +734,18 @@ export async function seedDemoSupport(
   const tailored = opts.tailored
   const wants = (part: DemoSeedPart) => !tailored || tailored.parts.has(part)
   const contacts = await seedContacts(ctx, org, adminActor)
+  // Companies come after the address book they group; their deals need the
+  // projects app, so a tailored seed without it keeps the companies only.
+  const companyIds = await seedCompanies(ctx, adminActor, COMPANY_SPECS, contacts.byKey)
+  if (wants("projects")) {
+    await seedPipeline(ctx, adminActor, {
+      people: org.peopleByKey,
+      companyIds,
+      contactIds: contacts.byKey,
+      spec: SALES_PIPELINE,
+      externalRefOf: dealRef,
+    })
+  }
   // Several needs picked: each app seeds a short backlog, not its whole history.
   const short = tailored?.shortBacklog === true ? approvalReferences() : null
   const tickets = wants("tickets")

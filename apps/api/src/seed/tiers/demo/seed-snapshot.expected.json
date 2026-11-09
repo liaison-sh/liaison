@@ -260,8 +260,8 @@
     "digest": "b5f2e309647617bf"
   },
   "kernel.contacts": {
-    "rows": 40,
-    "digest": "027c07c6c4cf2b6f"
+    "rows": 41,
+    "digest": "823df40ffde049bd"
   },
   "kernel.credit_balances": {
     "rows": 1,
@@ -276,8 +276,8 @@
     "digest": "80cdbe01c0fdd51d"
   },
   "kernel.pending_events": {
-    "rows": 323,
-    "digest": "d6eebdc3e6b3fd7c"
+    "rows": 324,
+    "digest": "50cd115f1ca4f3d4"
   },
   "kernel.resource_grants": {
     "rows": 7,

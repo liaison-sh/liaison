@@ -59,14 +59,17 @@ const CATALOG_DEMO_APPS = ["invoicing", "social", "pennylane", "boxtal", "shopif
  * transactions (cold 5 872 in 544, 5 858 on a Linux runner), 323 outbox events:
  * the tier now seeds companies and a deals pipeline, each company and deal
  * written through its product path with its event.
+ * Re-measured 2026-11-09 after main's dealer-quote contact (+1 contact create
+ * event) merged in: 5 867 round trips in 545 transactions (cold 5 881), 324
+ * outbox events; the Linux figure is set 5 above the warm local one, as before.
  */
 const BASELINE = {
-  outboxEvents: 323,
+  outboxEvents: 324,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 5_858,
-  transactions: 543,
+  statements: 5_872,
+  transactions: 545,
 }
 /**
  * Round trips are deterministic up to a few cache reads (5 251-5 262 across

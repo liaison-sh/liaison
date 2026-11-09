@@ -161,6 +161,10 @@ const LISTED = new Map<string, string>([
   ["invoicing:settings_tax_regime_list", `org settings: ${NONE}`],
   ["invoicing:settings_hs_code_list", `the org's code library: ${NONE}`],
   ["invoicing:settings_shop_mapping_list", `org settings: ${NONE}`],
+  [
+    "invoicing:orders_invoiceability_check",
+    `the caller's own order fields checked against the shop's issuer mapping: ${NONE}`,
+  ],
   ["invoicing:documents_download_pdf", `a file id and a link: ${NONE}`],
   ["invoicing:legal_originals_verify", `checksums of stored files: ${NONE}`],
   ["social:connections_status", `connection states: ${NONE}`],

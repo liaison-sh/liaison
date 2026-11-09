@@ -701,11 +701,11 @@
       "schema": 131
     },
     "invoicing__deferred_list": {
-      "desc": 874,
+      "desc": 1031,
       "schema": 15
     },
     "invoicing__deferred_tax_override": {
-      "desc": 529,
+      "desc": 548,
       "schema": 91
     },
     "invoicing__documents_convert_to_invoice": {
@@ -863,6 +863,10 @@
     "invoicing__order_reissue_apply": {
       "desc": 1371,
       "schema": 484
+    },
+    "invoicing__orders_invoiceability_check": {
+      "desc": 439,
+      "schema": 230
     },
     "invoicing__pending_approvals_list": {
       "desc": 760,
@@ -2185,12 +2189,12 @@
       "schema": 254
     },
     "shopify__draft_orders_complete": {
-      "desc": 595,
+      "desc": 1125,
       "schema": 28
     },
     "shopify__draft_orders_create": {
-      "desc": 1655,
-      "schema": 868
+      "desc": 2216,
+      "schema": 933
     },
     "shopify__draft_orders_delete": {
       "desc": 155,

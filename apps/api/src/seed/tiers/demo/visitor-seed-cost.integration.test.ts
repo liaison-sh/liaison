@@ -55,14 +55,18 @@ const CATALOG_DEMO_APPS = ["invoicing", "social", "pennylane", "boxtal", "shopif
  * transactions (cold 5 457 in 542), 281 outbox events: the org's switched-on
  * features are read in a transaction of their own on each app-state reload, so
  * a failed feature read cannot abort the app state read (about one per reload).
+ * Re-measured 2026-11-09 on the foundation branch: 5 853 round trips in 543
+ * transactions (cold 5 872 in 544, 5 858 on a Linux runner), 323 outbox events:
+ * the tier now seeds companies and a deals pipeline, each company and deal
+ * written through its product path with its event.
  */
 const BASELINE = {
-  outboxEvents: 281,
+  outboxEvents: 323,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 5_452,
-  transactions: 541,
+  statements: 5_858,
+  transactions: 543,
 }
 /**
  * Round trips are deterministic up to a few cache reads (5 251-5 262 across

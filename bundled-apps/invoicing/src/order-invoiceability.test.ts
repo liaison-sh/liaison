@@ -41,7 +41,7 @@ const reasons = (facts: ProspectiveOrderFacts, issuer = FR_ISSUER): string[] =>
 describe("invoiceabilityProblems: what the order-created auto-flow would park", () => {
   it("a linked customer with no email and a tax exempt EU buyer with no VAT number: both are named", () => {
     const problems = invoiceabilityProblems(italianB2b({ email: null, vat_id: null }), FR_ISSUER)
-    expect(problems.map((p) => p.reason)).toEqual(["customer_email_missing", "tax_rate_placeholder"])
+    expect(problems.map((p) => p.reason)).toEqual(["customer_email_missing", "buyer_vat_missing"])
     expect(problems[0]!.message).toContain("customers_update")
     expect(problems[0]!.message).toContain("gid://shopify/Customer/1")
     expect(problems[1]!.message).toContain("VAT number")
@@ -67,7 +67,7 @@ describe("invoiceabilityProblems: what the order-created auto-flow would park", 
   it("an intra-EU consumer charged VAT by Shopify is invoiceable (OSS); charged none it is not", () => {
     const consumer = italianB2b({ vat_id: null, tax_exempt: false, stage: "complete", total_price: "122.00" })
     expect(reasons({ ...consumer, total_tax: "22.00" })).toEqual([])
-    expect(reasons({ ...consumer, total_tax: "0.00" })).toEqual(["tax_rate_placeholder"])
+    expect(reasons({ ...consumer, total_tax: "0.00" })).toEqual(["buyer_vat_missing"])
     // At create the tax is not computed yet: an untaxed outcome is only known when exempt.
     expect(reasons({ ...consumer, stage: "create", total_price: null, total_tax: null })).toEqual([])
   })
@@ -103,7 +103,7 @@ describe("ordersInvoiceabilityCheck: applies only when an issuer profile is mapp
     const out = await ordersInvoiceabilityCheck({ db: db([issuer]) }, italianB2b({ email: null, vat_id: null }))
     expect(out.applies).toBe(true)
     expect(out.issuer_profile_id).toBe("iss-1")
-    expect(out.problems.map((p) => p.reason)).toEqual(["customer_email_missing", "tax_rate_placeholder"])
+    expect(out.problems.map((p) => p.reason)).toEqual(["customer_email_missing", "buyer_vat_missing"])
     expect(out.message).toContain("customers_update")
     expect(out.message).toContain("VAT number")
   })

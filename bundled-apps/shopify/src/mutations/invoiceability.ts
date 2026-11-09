@@ -227,8 +227,12 @@ export async function assertDraftOrderInvoiceable(
   let facts: InvoiceabilityFacts | null
   try {
     facts = await buildFacts()
-  } catch {
-    // A failed Shopify read is not a verdict: the mutation itself reports a real problem.
+  } catch (err) {
+    // A failed Shopify read is not a verdict: the mutation itself reports a real problem. Said in
+    // the log, so a guard that stopped reading is seen.
+    ctx.logger?.warn?.(
+      `[shopify] invoiceability check skipped: ${err instanceof Error ? err.message : String(err)}`,
+    )
     return
   }
   if (!facts) return

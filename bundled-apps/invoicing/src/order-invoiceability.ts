@@ -157,9 +157,12 @@ export function invoiceabilityProblems(
   })
   const tax = amount(facts.total_tax)
   const chargesNoTax = facts.tax_exempt === true || (tax != null && tax === 0 && total !== 0)
+  // The auto-flow classifies this as a consumer sale (OSS) with no tax: it parks it
+  // (tax_rate_placeholder) or, when Shopify reported a zero rate, issues a consumer invoice at 0%.
+  // Neither is the reverse charge invoice a business buyer needs.
   if (classification.treatment === "eu_b2c_oss" && chargesNoTax) {
     problems.push({
-      reason: "tax_rate_placeholder",
+      reason: "buyer_vat_missing",
       field: "vat_id",
       message:
         `the buyer is in ${counterpartyCountry}, another EU member state, and the order charges no VAT` +

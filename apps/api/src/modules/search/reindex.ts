@@ -635,6 +635,18 @@ export async function runReindex(): Promise<RebuildResult & { pruned: number }> 
     } as never)
     await waitForMeiliTask(meili, (settingsTask as { taskUid?: number }).taskUid)
 
+    // From here on every live write is also sent to the shadow (index-writer
+    // sendIndexWrite), so the index swapped in holds every write made up to the
+    // swap: the replay after the swap is only a safety net. A live write that
+    // a page streamed later overwrites with an older copy of its row is noted
+    // too, and the replay before the swap re-reads it. Published once the
+    // shadow exists with its settings: a write reaching a missing index would
+    // create it without them. No wait here (a longer rebuild is one a restart
+    // interrupts more often): a writer still trusting its older answer for up
+    // to the cache window only notes its write, and the replays cover it as
+    // before; the stream nearly always outlasts that window anyway.
+    await redis.set(REBUILD_KEYS.shadow, shadowName, "PX", LOCK_TTL_MS)
+
     // Stream everything into the shadow.
     const pipeline = new TaskPipeline()
     const transcriptIds = new Set<string>()
@@ -688,15 +700,7 @@ export async function runReindex(): Promise<RebuildResult & { pruned: number }> 
         : 0
     transcriptIds.clear()
 
-    // From here on every live write is also sent to the shadow (index-writer
-    // sendIndexWrite), so the index swapped in holds every write made up to the
-    // swap. Published only now: a live write sent while pages still streamed
-    // could be overwritten by an older copy of its row. Once no writer can
-    // still hold the previous answer, the replay below covers everything
-    // written before, and the replay after the swap stays a safety net.
     await lock.assertHeld()
-    await redis.set(REBUILD_KEYS.shadow, shadowName, "PX", LOCK_TTL_MS)
-    await new Promise((r) => setTimeout(r, 2 * rebuildStateCacheWindowMs() + 100))
     let replayed = await replayTouched(shadowName)
     await writeIndexAndWait(
       { docs: [indexMetaDocument(fingerprint, catalog.versions)] },

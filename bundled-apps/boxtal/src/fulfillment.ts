@@ -224,7 +224,7 @@ export async function fulfillShipment(
         ctx,
         row,
         "no_tracking",
-        "No tracking number yet: the label is not generated or its number could not be read. The order was not fulfilled.",
+        "No tracking number yet: the label is not generated or its number could not be read. The order was not fulfilled. Type the number printed on the label to fulfil with it, or wait for the carrier's first scan.",
       )
     }
     const shopifyOrderId = await shopifyOrderIdForShipment(ctx, row)

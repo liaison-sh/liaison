@@ -128,7 +128,8 @@ function makeCtx(opts: MakeOpts = {}) {
     executeTool,
     files_importFromUrl: async (json: string) => {
       importCalls.push(json)
-      return JSON.stringify({ id: "f-label-raw" })
+      // One stored file per imported label: the first keeps the historical id.
+      return JSON.stringify({ id: importCalls.length === 1 ? "f-label-raw" : `f-label-raw-${importCalls.length}` })
     },
     connections: {
       boxtal: {
@@ -159,6 +160,41 @@ describe("print_pack — two separate jobs, never merged together", () => {
     expect(res.invoice.file_id).toBe("f-invoice")
     expect(res.invoice.file_id).not.toBe(res.label!.file_id)
     expect(res.invoice).toMatchObject({ copies: 3, reason: "export_non_eu" })
+  })
+
+  // Prod, 2026-11-09: a 2-parcel FedEx shipment; Boxtal served _bordereau_1.pdf and
+  // _bordereau_2.pdf, and the print gave the first parcel's label only.
+  it("a multi-parcel shipment prints every parcel's label, in order, in one document", async () => {
+    const { ctx, crossCalls, importCalls } = makeCtx({
+      labelDocs: [
+        { url: "https://document.boxtal.com/shipping-label/REF_bordereau_1.pdf", type: "LABEL", format: "PDF_A4" },
+        { url: "https://document.boxtal.com/shipping-label/REF_bordereau_2.pdf", type: "LABEL", format: "PDF_A4" },
+      ],
+    })
+    const res = await printPack(ctx, { shipment_id: ROW_1 })
+    expect(res.error).toBeUndefined()
+    expect(importCalls.map((c) => (JSON.parse(c) as { url: string }).url)).toEqual([
+      "https://document.boxtal.com/shipping-label/REF_bordereau_1.pdf",
+      "https://document.boxtal.com/shipping-label/REF_bordereau_2.pdf",
+    ])
+    const merges = crossCalls.filter((c) => c.target === "kernel:files_merge_pdfs")
+    // ONE merge: it normalizes the orientation and combines the parcels in the same pass.
+    expect(merges).toHaveLength(1)
+    expect((merges[0]!.args as { file_ids: string[] }).file_ids).toEqual(["f-label-raw", "f-label-raw-2"])
+    expect(res.label).toMatchObject({ file_id: "f-normalized" })
+    expect(res.label_error).toBeUndefined()
+  })
+
+  it("parcel labels that cannot be combined say so, never print one parcel short in silence", async () => {
+    const { ctx } = makeCtx({
+      mergeFails: true,
+      labelDocs: [
+        { url: "https://document.boxtal.com/shipping-label/REF_bordereau_1.pdf", type: "LABEL", format: "PDF_A4" },
+        { url: "https://document.boxtal.com/shipping-label/REF_bordereau_2.pdf", type: "LABEL", format: "PDF_A4" },
+      ],
+    })
+    const res = await printPack(ctx, { shipment_id: ROW_1 })
+    expect(res.label_error).toMatch(/2 parcel labels/)
   })
 
   it("intra-EU route: invoice copies = 1", async () => {

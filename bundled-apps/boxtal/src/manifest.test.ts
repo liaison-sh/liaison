@@ -599,7 +599,9 @@ describe("Boxtal app.manifest.json", () => {
     // 0.23.22: the shipment detail's label Download opens the label (it had no handler).
     // 0.23.23: the label reservation and its finalize commit at once (ctx.db.insertNow / updateNow),
     // so a sandbox kill after the paid POST no longer rolls the only record of the label back.
-    expect(m.version).toBe("0.23.23")
+    // 0.23.24: FedEx label reader skips the recipient's phone; a typed tracking number unblocks
+    // the packed tick; every parcel's label is printed; Boxtal-safe addresses and its own refusals.
+    expect(m.version).toBe("0.23.24")
     expect(m.packageFormat).toBe(1)
   })
 

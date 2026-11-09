@@ -43,6 +43,30 @@ export type BoxtalFetch = (
   },
 ) => Promise<{ status: number; headers: Record<string, string>; body: string }>
 
+/** ": <Boxtal's reason>" from a v3 error body (its `messages[].text`, `errors[]` or `message`),
+ *  or "" when it names none. */
+export function describeV3Error(body: string): string {
+  if (!body || !body.trim()) return ""
+  let text = ""
+  try {
+    const parsed = JSON.parse(body) as {
+      messages?: Array<{ text?: unknown }>
+      errors?: Array<{ code?: unknown; message?: unknown }>
+      message?: unknown
+    }
+    const parts = [
+      ...(parsed.messages ?? []).map((m) => m?.text),
+      ...(parsed.errors ?? []).map((e) => e?.message ?? e?.code),
+    ].filter((t): t is string => typeof t === "string" && t !== "")
+    text = parts.length > 0 ? parts.join("; ") : typeof parsed.message === "string" ? parsed.message : ""
+  } catch {
+    text = body.replace(/<[^>]*>/g, " ")
+  }
+  text = text.replace(/\s+/g, " ").trim()
+  if (!text) return ""
+  return `: ${text.length > 300 ? `${text.slice(0, 300)}...` : text}`
+}
+
 export class BoxtalApiError extends Error {
   readonly status: number
   readonly body: string
@@ -185,8 +209,10 @@ export class BoxtalV3Client {
         continue
       }
       if (res.status >= 400) {
+        // Boxtal's own reason in the MESSAGE (the body alone is lost when the sandbox worker
+        // flattens the error to its message), as the v1 cotation does.
         throw new BoxtalApiError(
-          `Boxtal v3 ${method} ${path} failed (${res.status})`,
+          `Boxtal v3 ${method} ${path} failed (${res.status})${describeV3Error(res.body)}`,
           res.status,
           res.body,
         )

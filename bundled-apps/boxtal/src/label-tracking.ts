@@ -318,23 +318,39 @@ export function pdfTextStrings(pdf: string): string[] {
   return out
 }
 
-/** A FedEx AWB as printed on the label: 12 digits (or 15), usually in groups of four. */
-const AWB = /^\s*(\d{4}\s?\d{4}\s?\d{4}(?:\s?\d{3})?)\s*$/
+/**
+ * A FedEx AWB as the label prints it: 12 digits (or 15) in groups of four, optionally after the
+ * "TRK#" marker and before the 4-digit form code ("TRK# 3845 3157 8060 0430" when one run carries
+ * all of it; the form code is not part of the number).
+ */
+const AWB_GROUPED = /^\s*(?:TRK#\s*)?(\d{4}\s\d{4}\s\d{4}(?:\s\d{3})?)(?:\s+\d{4})?\s*$/i
+/** The same number printed without its groups. A bare digit run is weaker evidence: an
+ *  international label also prints the recipient's phone as one (a UK mobile is 12 digits). */
+const AWB_BARE = /^\s*(?:TRK#\s*)?(\d{12}|\d{15})\s*$/i
 
 /**
  * The tracking number printed on a carrier label, or null.
  *
  * Only a label that carries the "TRK#" marker is read (the FedEx label layout), and only an
- * unambiguous number is returned: if the page draws two different AWB-shaped numbers, which one
- * is the parcel's cannot be told from the text alone, so nothing is returned.
+ * unambiguous number is returned. The grouped spelling is how FedEx prints the AWB, so when the
+ * page draws one, bare digit runs (phone numbers, account numbers) are not candidates; if it draws
+ * two different numbers of the same kind, which one is the parcel's cannot be told from the text
+ * alone, so nothing is returned.
  */
 export function trackingNumberFromLabelText(strings: string[]): string | null {
-  if (!strings.some((s) => s.replace(/\s+/g, "").toUpperCase() === "TRK#")) return null
-  const found = new Set<string>()
+  if (!strings.some((s) => s.replace(/\s+/g, "").toUpperCase().startsWith("TRK#"))) return null
+  const grouped = new Set<string>()
+  const bare = new Set<string>()
   for (const s of strings) {
-    const m = AWB.exec(s)
-    if (m) found.add(m[1]!.replace(/\s+/g, ""))
+    const g = AWB_GROUPED.exec(s)
+    if (g) {
+      grouped.add(g[1]!.replace(/\s+/g, ""))
+      continue
+    }
+    const b = AWB_BARE.exec(s)
+    if (b) bare.add(b[1]!)
   }
+  const found = grouped.size > 0 ? grouped : bare
   if (found.size !== 1) return null
   return [...found][0]!
 }

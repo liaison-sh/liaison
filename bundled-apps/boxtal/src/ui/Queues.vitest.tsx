@@ -54,6 +54,8 @@ Object.assign(ROWS[0]!, {
   },
 })
 
+const toolCalls: Array<{ name: string; args: Record<string, unknown> }> = []
+
 const hostFetch = vi.fn((url: string) =>
   url.startsWith("/api/documents/templates")
     ? Promise.resolve([
@@ -79,8 +81,19 @@ vi.mock("@liaison/host", () => ({
     printDocuments: () => Promise.reject(new Error("no print")),
     opensFiles: () => false,
     openFile: async () => false,
-    invokeTool: (name: string) => {
+    invokeTool: (name: string, args: Record<string, unknown> = {}) => {
+      toolCalls.push({ name, args })
       if (name === "ready_list") return Promise.resolve({ rows: ROWS })
+      if (name === "ready_set_packed") {
+        return Promise.resolve({
+          shipment_id: args.shipment_id,
+          packed: true,
+          packed_at: "2026-11-09T10:00:00.000Z",
+          fulfillment_state: "fulfilled",
+          fulfillment_error: null,
+          tracking_number: args.tracking_number ?? null,
+        })
+      }
       return Promise.reject(new Error(`no ${name}`))
     },
   },
@@ -136,6 +149,24 @@ describe("Ready to ship Country column", () => {
     await mount()
     expect(screen.getByTestId("boxtal-ready-tracking-to-confirm-2").textContent).toContain("Tracking to confirm")
     expect(screen.queryByTestId("boxtal-ready-tracking-to-confirm-1")).toBeNull()
+  })
+
+  it("a row with no tracking number to fulfil with offers to pack it with the number on the label", async () => {
+    toolCalls.length = 0
+    await mount()
+    expect(screen.queryByTestId("boxtal-ready-typed-tracking-1")).toBeNull()
+    const input = screen.getByTestId("boxtal-ready-typed-tracking-input-2") as HTMLInputElement
+    fireEvent.input(input, { target: { value: "8777 4092 5574" } })
+    fireEvent.click(screen.getByTestId("boxtal-ready-typed-tracking-submit-2"))
+    await flush()
+    await flush()
+    expect(toolCalls.find((c) => c.name === "ready_set_packed")?.args).toEqual({
+      shipment_id: "2",
+      packed: true,
+      tracking_number: "8777 4092 5574",
+    })
+    // Packed with its number: the field is gone.
+    expect(screen.queryByTestId("boxtal-ready-typed-tracking-2")).toBeNull()
   })
 
   it("a filter with no match keeps the filters on screen and offers to clear them", async () => {

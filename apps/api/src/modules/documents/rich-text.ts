@@ -508,7 +508,7 @@ function conditionValues(
   return valuesAt(record, segments)
 }
 
-function holds(
+function conditionHolds(
   record: Record<string, unknown>,
   base: string | null,
   c: RichTextCondition,
@@ -541,7 +541,7 @@ export function conditionsHold(
 ): boolean {
   if (conditions === undefined) return true
   const list = Array.isArray(conditions) ? conditions : [conditions]
-  return list.every((c) => holds(record, base, c))
+  return list.every((c) => conditionHolds(record, base, c))
 }
 
 /** A placeholder that printed grey: `path` is the full record path. */
@@ -744,7 +744,7 @@ function numeric(value: unknown): number | null {
 /** A computed value, or the full path of the operand that was missing (null: no path, e.g. x / 0). */
 type Computed = { ok: true; value: number } | { ok: false; missing: string | null }
 
-function evaluate(expr: Expr, record: Record<string, unknown>, base: string | null): Computed {
+function evaluateExpr(expr: Expr, record: Record<string, unknown>, base: string | null): Computed {
   switch (expr.kind) {
     case "num":
       return { ok: true, value: expr.value }
@@ -754,13 +754,13 @@ function evaluate(expr: Expr, record: Record<string, unknown>, base: string | nu
       return n === null ? { ok: false, missing: full } : { ok: true, value: n }
     }
     case "neg": {
-      const v = evaluate(expr.arg, record, base)
+      const v = evaluateExpr(expr.arg, record, base)
       return v.ok ? { ok: true, value: -v.value } : v
     }
     case "bin": {
-      const l = evaluate(expr.left, record, base)
+      const l = evaluateExpr(expr.left, record, base)
       if (!l.ok) return l
-      const r = evaluate(expr.right, record, base)
+      const r = evaluateExpr(expr.right, record, base)
       if (!r.ok) return r
       const value =
         expr.op === "+"
@@ -783,7 +783,7 @@ function evaluate(expr: Expr, record: Record<string, unknown>, base: string | nu
       if (rows === null) return { ok: false, missing: scopedPath(record, base, expr.from) }
       let total = 0
       for (const row of rows) {
-        const v = evaluate(expr.expr, record, row)
+        const v = evaluateExpr(expr.expr, record, row)
         if (!v.ok) return v
         total += v.value
       }
@@ -894,7 +894,7 @@ class Layout {
       if (index > last) out.push({ text: text.slice(last, index), bold })
       const placeholder = placeholderOf(match)
       const fallback = placeholder?.fallback
-      const { value, path } = this.resolve(placeholder, base)
+      const { value, path } = this.resolvePlaceholder(placeholder, base)
       if (value !== null) {
         out.push({ text: value, bold })
       } else if (fallback === undefined) {
@@ -913,7 +913,7 @@ class Layout {
   }
 
   /** A placeholder's printed value, or null and the path to report as the blank. */
-  private resolve(
+  private resolvePlaceholder(
     p: Placeholder | null,
     base: string | null,
   ): { value: string | null; path: string } {
@@ -927,7 +927,7 @@ class Layout {
       return { value: n === null ? null : formatNumber(n, p.fixed), path }
     }
     if (!p.expr) return { value: null, path: "" }
-    const computed = evaluate(p.expr, this.record, base)
+    const computed = evaluateExpr(p.expr, this.record, base)
     if (computed.ok) return { value: formatNumber(computed.value, p.fixed), path: "" }
     // A division by zero names no operand: the blank is the computation as written.
     return { value: null, path: computed.missing ?? p.source }

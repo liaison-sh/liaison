@@ -80,24 +80,17 @@ function templateCaller(ctx: DocumentToolContext): TemplateCaller {
  * store files only on that app's own records (the parent's write scope is the app's), and the
  * files have no uploader.
  */
-function appSystemPrintCaller(ctx: DocumentToolContext): PrintCaller | null {
+function appSystemPrintScopes(ctx: DocumentToolContext): string[] | null {
   if (ctx.userId !== "system" || !ctx.callerApp || ctx.callerApp === "kernel") return null
-  const scopes = [`${ctx.callerApp}:*`]
-  const actor: ActorContext = { actorType: "system", orgId: ctx.orgId, purpose: "job", scopes }
-  return {
-    orgId: ctx.orgId,
-    userId: ctx.userId,
-    scopes,
-    withRls: (fn) => withRlsContext(actor, fn),
-    actor,
-    actingAgentId: null,
-  }
+  return [`${ctx.callerApp}:*`]
 }
 
 function printCaller(ctx: DocumentToolContext): PrintCaller {
-  const asApp = appSystemPrintCaller(ctx)
-  if (asApp) return asApp
-  const actor: UserContext = {
+  const appScopes = appSystemPrintScopes(ctx)
+  const asApp: ActorContext | null = appScopes
+    ? { actorType: "system", orgId: ctx.orgId, purpose: "job", scopes: appScopes }
+    : null
+  const userActor: UserContext = {
     actorType: "user",
     userId: ctx.userId,
     orgId: ctx.orgId,
@@ -107,10 +100,10 @@ function printCaller(ctx: DocumentToolContext): PrintCaller {
   return {
     orgId: ctx.orgId,
     userId: ctx.userId,
-    scopes: ctx.scopes ?? [],
-    withRls: (fn) => fn(ctx.db),
-    actor,
-    actingAgentId: ctx.actingAgentId ?? null,
+    scopes: appScopes ?? ctx.scopes ?? [],
+    withRls: asApp ? (fn) => withRlsContext(asApp, fn) : (fn) => fn(ctx.db),
+    actor: asApp ?? userActor,
+    actingAgentId: asApp ? null : (ctx.actingAgentId ?? null),
   }
 }
 

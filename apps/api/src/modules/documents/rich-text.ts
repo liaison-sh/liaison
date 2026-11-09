@@ -7,14 +7,30 @@
 // nothing else.
 //
 //   body = { page?: { size?, margins?, fontSize? }, blocks: Block[] }
-//   Block = heading { text, level? } | paragraph { text }
-//         | list { from, line }       one line per row of the list `from`;
+//   Block = heading { text, level? } | paragraph { text, size? }
+//         | list { from, line, where? }   one line per row of the list `from`;
 //                                     `line` placeholders are relative to the row
+//         | table { columns, from?, where?, rows? }   one table row per row of
+//                                     `from` (cells relative to the row), or the
+//                                     fixed `rows` given (cells are texts)
+//         | repeat { from, where?, blocks }   the inner blocks once per row
 //         | image { fileId, width?, align? }   a PNG or JPEG of this template
 //         | spacer { height }
+//   Every block may carry `when`: it prints only when its conditions hold.
+//   A condition is { path, is?: present|absent, equals?, in? } (a list of them
+//   is an AND); a `*` segment in its path means "any row" (lines.*.sku). Rows
+//   of a list, table or repeat are kept by `where`, the same conditions read
+//   relative to the row.
+//
+// Inside a row (list line, table cell, repeat block), a path reads the row
+// first and the record when the row has no such field, so a repeated block can
+// still print {{invoice.number}}.
 //
 // A value that is missing or empty prints as a grey "[<field label>]" run and
 // is reported as a blank; it never prints a default, "null" or "undefined".
+// {{path ?? words}} prints the words, grey, instead of the label (still a
+// blank: "not confirmed by the supplier"); {{path ??}} prints nothing and is
+// not a blank (an optional field such as a phone number nobody gave).
 // Paths read own properties only (no prototype walk). A list with more rows
 // than RICH_TEXT_MAX_LIST_ROWS, or a document past the replayer's page or
 // command bounds, is refused whole: a document is never truncated (D32).
@@ -51,6 +67,8 @@ const DEFAULT_MARGIN = 56
 const DEFAULT_FONT_SIZE = 10
 const HEADING_SCALE = { 1: 1.6, 2: 1.3, 3: 1.1 } as const
 const PLACEHOLDER_GREY = { r: 0.55, g: 0.55, b: 0.55 }
+const TABLE_HEADER_FILL = { r: 0.93, g: 0.93, b: 0.93 }
+const TABLE_BORDER = { r: 0.7, g: 0.7, b: 0.7 }
 const FONT_REGULAR = "body"
 const FONT_BOLD = "bold"
 
@@ -59,8 +77,13 @@ const FONT_BOLD = "bold"
 // ---------------------------------------------------------------------------
 
 const PATH_SOURCE = "[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)*"
-const PLACEHOLDER_RE = new RegExp(`\\{\\{\\s*(${PATH_SOURCE})\\s*\\}\\}`, "g")
+/** `{{path}}`, or `{{path ?? words printed grey when the value is missing}}`. */
+const PLACEHOLDER_RE = new RegExp(`\\{\\{\\s*(${PATH_SOURCE})\\s*(?:\\?\\?([^{}]*))?\\}\\}`, "g")
 const PATH_RE = new RegExp(`^${PATH_SOURCE}$`)
+/** A condition path: a dot path whose segments may be `*` (any row of a list). */
+const CONDITION_PATH_RE = /^(?:[A-Za-z0-9_]+|\*)(?:\.(?:[A-Za-z0-9_]+|\*))*$/
+/** Characters of a placeholder's fallback words. */
+const FALLBACK_MAX = 200
 /** Segments that never resolve, even as an own property of a parsed record. */
 const FORBIDDEN_SEGMENTS = new Set(["__proto__", "constructor", "prototype"])
 
@@ -75,7 +98,11 @@ const templateText = z
   .max(RICH_TEXT_MAX_TEXT)
   .refine(
     (t) => !malformedPlaceholder(t),
-    "a placeholder is {{path}} with a dot path such as {{order.lines.0.sku}}",
+    "a placeholder is {{path}} with a dot path such as {{order.lines.0.sku}}, or {{path ?? words shown when it is missing}}",
+  )
+  .refine(
+    (t) => [...t.matchAll(PLACEHOLDER_RE)].every((m) => (m[2] ?? "").length <= FALLBACK_MAX),
+    `the words after ?? in a placeholder are at most ${FALLBACK_MAX} characters`,
   )
 
 // ---------------------------------------------------------------------------
@@ -100,23 +127,96 @@ const pageSchema = z
   })
   .strict()
 
+const conditionSchema = z
+  .object({
+    path: z
+      .string()
+      .max(500)
+      .regex(CONDITION_PATH_RE, "a dot path, where * stands for any row: lines.*.sku"),
+    is: z.enum(["present", "absent"]).optional(),
+    equals: z.string().max(500).optional(),
+    in: z.array(z.string().max(500)).min(1).max(100).optional(),
+  })
+  .strict()
+  .refine(
+    (c) => [c.is, c.equals, c.in].filter((v) => v !== undefined).length <= 1,
+    "a condition takes one of is, equals or in",
+  )
+
+/** Conditions that must all hold: one condition or a list of them. */
+const conditionsSchema = z.union([conditionSchema, z.array(conditionSchema).min(1).max(20)])
+export type RichTextCondition = z.infer<typeof conditionSchema>
+
+const when = { when: conditionsSchema.optional() }
+const listPath = z.string().max(500).regex(PATH_RE, "a dot path to a list, such as lines")
+const fontSize = z.number().finite().min(6).max(24)
+
 const headingBlock = z
   .object({
     type: z.literal("heading"),
     text: templateText,
     level: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+    ...when,
   })
   .strict()
 
-const paragraphBlock = z.object({ type: z.literal("paragraph"), text: templateText }).strict()
+const paragraphBlock = z
+  .object({
+    type: z.literal("paragraph"),
+    text: templateText,
+    size: fontSize.optional(),
+    ...when,
+  })
+  .strict()
 
 const listBlock = z
   .object({
     type: z.literal("list"),
-    from: z.string().max(500).regex(PATH_RE, "a dot path to a list, such as lines"),
+    from: listPath,
     line: templateText,
+    where: conditionsSchema.optional(),
+    ...when,
   })
   .strict()
+
+const columnSchema = z
+  .object({
+    header: templateText.optional(),
+    /** The cell's text for a row of `from` (relative to the row); unused with `rows`. */
+    text: templateText.optional(),
+    /** Relative width (the columns share the page width by these weights). */
+    width: z.number().finite().min(1).max(100).optional(),
+    bold: z.boolean().optional(),
+  })
+  .strict()
+
+/** Cells of a fixed table row: texts, read relative to the row being repeated, if any. */
+const fixedRow = z.array(templateText).min(1).max(12)
+
+const tableBlock = z
+  .object({
+    type: z.literal("table"),
+    columns: z.array(columnSchema).min(1).max(12),
+    from: listPath.optional(),
+    where: conditionsSchema.optional(),
+    rows: z
+      .array(z.union([fixedRow, z.object({ cells: fixedRow, ...when }).strict()]))
+      .max(200)
+      .optional(),
+    size: fontSize.optional(),
+    ...when,
+  })
+  .strict()
+
+/** A table's shape rules (kept out of the object so the block union stays discriminated). */
+function tableProblem(t: z.infer<typeof tableBlock>): string | null {
+  if ((t.from === undefined) === (t.rows === undefined)) return "a table takes from or rows"
+  if (t.from !== undefined && !t.columns.every((c) => c.text !== undefined))
+    return "every column of a table over `from` needs its text"
+  if (!(t.rows ?? []).every((r) => (Array.isArray(r) ? r : r.cells).length === t.columns.length))
+    return "every fixed row has one cell per column"
+  return null
+}
 
 const imageBlock = z
   .object({
@@ -125,20 +225,48 @@ const imageBlock = z
     /** Width in points; the height follows the image. */
     width: z.number().finite().min(8).max(600).optional(),
     align: z.enum(["left", "center", "right"]).optional(),
+    ...when,
   })
   .strict()
 
 const spacerBlock = z
-  .object({ type: z.literal("spacer"), height: z.number().finite().min(1).max(400) })
+  .object({ type: z.literal("spacer"), height: z.number().finite().min(1).max(400), ...when })
+  .strict()
+
+const leafBlock = z.discriminatedUnion("type", [
+  headingBlock,
+  paragraphBlock,
+  listBlock,
+  tableBlock,
+  imageBlock,
+  spacerBlock,
+])
+
+const repeatBlock = z
+  .object({
+    type: z.literal("repeat"),
+    from: listPath,
+    where: conditionsSchema.optional(),
+    blocks: z.array(leafBlock).min(1).max(RICH_TEXT_MAX_BLOCKS),
+    ...when,
+  })
   .strict()
 
 const blockSchema = z.discriminatedUnion("type", [
   headingBlock,
   paragraphBlock,
   listBlock,
+  tableBlock,
   imageBlock,
   spacerBlock,
+  repeatBlock,
 ])
+
+type AnyBlock = z.infer<typeof blockSchema>
+
+function everyBlock(blocks: readonly AnyBlock[]): AnyBlock[] {
+  return blocks.flatMap((b) => (b.type === "repeat" ? [b, ...b.blocks] : [b]))
+}
 
 export const richTextBodySchema = z
   .object({
@@ -148,13 +276,30 @@ export const richTextBodySchema = z
   .strict()
   .refine(
     (b) =>
-      new Set(b.blocks.flatMap((x) => (x.type === "image" ? [x.fileId] : []))).size <=
+      new Set(everyBlock(b.blocks).flatMap((x) => (x.type === "image" ? [x.fileId] : []))).size <=
       MAX_EMBED_IMAGES,
     `a template shows at most ${MAX_EMBED_IMAGES} different images`,
   )
+  .superRefine((b, ctx) => {
+    b.blocks.forEach((block, i) => {
+      const inner = block.type === "repeat" ? block.blocks : [block]
+      inner.forEach((x, j) => {
+        if (x.type !== "table") return
+        const problem = tableProblem(x)
+        if (problem)
+          ctx.addIssue({
+            code: "custom",
+            message: problem,
+            path: block.type === "repeat" ? ["blocks", i, "blocks", j] : ["blocks", i],
+          })
+      })
+    })
+  })
 
 export type RichTextBody = z.infer<typeof richTextBodySchema>
 export type RichTextBlock = RichTextBody["blocks"][number]
+type LeafBlock = z.infer<typeof leafBlock>
+type Conditions = z.infer<typeof conditionsSchema>
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -197,18 +342,52 @@ export function parseRichTextBody(body: unknown): RichTextBody {
  */
 export function richTextPlaceholderPaths(body: RichTextBody): string[] {
   const out = new Set<string>()
-  const each = (text: string, prefix: string | null) => {
+  const each = (text: string | undefined, prefix: string | null) => {
+    if (!text) return
     for (const m of text.matchAll(PLACEHOLDER_RE)) {
       const path = m[1]
       if (path) out.add(prefix ? `${prefix}.${path}` : path)
     }
   }
-  for (const block of body.blocks) {
-    if (block.type === "heading" || block.type === "paragraph") each(block.text, null)
-    else if (block.type === "list") {
-      out.add(block.from)
-      each(block.line, block.from)
+  const conditions = (c: Conditions | undefined, prefix: string | null) => {
+    for (const one of c === undefined ? [] : Array.isArray(c) ? c : [c]) {
+      const path = one.path
+        .split(".")
+        .filter((s) => s !== "*")
+        .join(".")
+      if (path) out.add(prefix ? `${prefix}.${path}` : path)
     }
+  }
+  const leaf = (block: LeafBlock, prefix: string | null) => {
+    conditions(block.when, prefix)
+    if (block.type === "heading" || block.type === "paragraph") each(block.text, prefix)
+    else if (block.type === "list") {
+      const from = prefix ? `${prefix}.${block.from}` : block.from
+      out.add(from)
+      conditions(block.where, from)
+      each(block.line, from)
+    } else if (block.type === "table") {
+      for (const c of block.columns) each(c.header, prefix)
+      if (block.from !== undefined) {
+        const from = prefix ? `${prefix}.${block.from}` : block.from
+        out.add(from)
+        conditions(block.where, from)
+        for (const c of block.columns) each(c.text, from)
+      }
+      for (const row of block.rows ?? []) {
+        const cells = Array.isArray(row) ? row : row.cells
+        if (!Array.isArray(row)) conditions(row.when, prefix)
+        for (const cell of cells) each(cell, prefix)
+      }
+    }
+  }
+  for (const block of body.blocks) {
+    if (block.type === "repeat") {
+      conditions(block.when, null)
+      out.add(block.from)
+      conditions(block.where, block.from)
+      for (const inner of block.blocks) leaf(inner, block.from)
+    } else leaf(block, null)
   }
   return [...out]
 }
@@ -241,6 +420,77 @@ function printable(value: unknown): string | null {
   if (typeof value === "bigint") return String(value)
   if (typeof value === "boolean") return value ? "Yes" : "No"
   return null
+}
+
+/**
+ * Where a path inside a row reads: the row (`<base>.<path>`) when the row holds
+ * the path's first field, else the record root when IT holds it, else the row.
+ * Outside a row, the root.
+ */
+function scopedPath(record: Record<string, unknown>, base: string | null, rel: string): string {
+  if (base === null) return rel
+  const row = readPath(record, base)
+  const first = rel.split(".")[0] ?? ""
+  if (row !== null && typeof row === "object" && !Array.isArray(row) && Object.hasOwn(row, first))
+    return `${base}.${rel}`
+  // Neither holds it: the row's field is the one missing (one blank per field, not per root).
+  return Object.hasOwn(record, first) ? rel : `${base}.${rel}`
+}
+
+/** Every value a condition path reaches, `*` expanding to each row of a list. */
+function valuesAt(root: unknown, segments: readonly string[]): unknown[] {
+  if (segments.length === 0) return [root]
+  const [head, ...rest] = segments
+  if (head === "*") {
+    return Array.isArray(root) ? root.flatMap((row) => valuesAt(row, rest)) : []
+  }
+  const next = readPath(root, head ?? "")
+  return next === undefined ? [] : valuesAt(next, rest)
+}
+
+function conditionValues(
+  record: Record<string, unknown>,
+  base: string | null,
+  path: string,
+): unknown[] {
+  const segments = path.split(".")
+  const head = segments[0] ?? ""
+  if (base !== null) {
+    const row = readPath(record, base)
+    const rowHolds =
+      row !== null && typeof row === "object" && !Array.isArray(row) && Object.hasOwn(row, head)
+    if (head === "*" || rowHolds) return valuesAt(row, segments)
+  }
+  return valuesAt(record, segments)
+}
+
+function holds(
+  record: Record<string, unknown>,
+  base: string | null,
+  c: RichTextCondition,
+): boolean {
+  const printed = conditionValues(record, base, c.path).flatMap((v) => {
+    if (Array.isArray(v)) return v.length > 0 ? ["list"] : []
+    const p = printable(v)
+    return p === null ? [] : [p.trim().toLowerCase()]
+  })
+  if (c.equals !== undefined) return printed.includes(c.equals.trim().toLowerCase())
+  if (c.in !== undefined) {
+    const wanted = new Set(c.in.map((v) => v.trim().toLowerCase()))
+    return printed.some((v) => wanted.has(v))
+  }
+  return c.is === "absent" ? printed.length === 0 : printed.length > 0
+}
+
+/** Whether every condition holds (no conditions: always). */
+export function conditionsHold(
+  record: Record<string, unknown>,
+  base: string | null,
+  conditions: Conditions | undefined,
+): boolean {
+  if (conditions === undefined) return true
+  const list = Array.isArray(conditions) ? conditions : [conditions]
+  return list.every((c) => holds(record, base, c))
 }
 
 /** A placeholder that printed grey: `path` is the full record path. */
@@ -369,14 +619,19 @@ class Layout {
       const index = match.index ?? 0
       if (index > last) out.push({ text: text.slice(last, index), bold })
       const rel = match[1] ?? ""
-      const path = base === null ? rel : `${base}.${rel}`
+      const fallback = match[2]
+      const path = scopedPath(this.record, base, rel)
       const value = printable(readPath(this.record, path))
       if (value !== null) {
         out.push({ text: value, bold })
-      } else {
+      } else if (fallback === undefined) {
         const label = this.labelOf(path)
         out.push({ text: `[${label}]`, color: "placeholder", bold })
         this.noteBlank(path, label)
+      } else if (fallback.trim() !== "") {
+        // The template's own words for a missing value, grey: still a blank to fill.
+        out.push({ text: fallback.trim(), color: "placeholder", bold })
+        this.noteBlank(path, this.labelOf(path))
       }
       last = index + match[0].length
     }
@@ -433,6 +688,71 @@ class Layout {
     this.y -= lineHeight
   }
 
+  /**
+   * A table: a bold header row on a light fill when any column has a header,
+   * then one row per entry of `rows` (each a list of cell runs). A row that
+   * does not fit starts a new page; a row taller than a page is laid out
+   * anyway and runs past the bottom margin rather than being cut.
+   */
+  table(
+    columns: ReadonlyArray<{ width?: number | undefined; bold?: boolean | undefined }>,
+    header: TextRun[][] | null,
+    rows: TextRun[][][],
+    size: number,
+  ): void {
+    const pad = 3
+    const lineHeight = size * 1.3
+    const total = columns.reduce((n, c) => n + (c.width ?? 1), 0)
+    const widths = columns.map((c) => (this.contentWidth * (c.width ?? 1)) / total)
+    const drawRow = (cells: TextRun[][], fill: boolean) => {
+      const wrapped = cells.map((runs, i) =>
+        wrapRuns(runs, Math.max(8, (widths[i] ?? 0) - pad * 2), size),
+      )
+      const lines = Math.max(1, ...wrapped.map((w) => w.length))
+      const height = lines * lineHeight + pad * 2
+      if (this.y - height < this.bottom && !this.atPageTop()) this.newPage()
+      const top = this.y
+      let x = this.left
+      for (const [i, w] of widths.entries()) {
+        this.push({
+          op: "drawRectangle",
+          page: this.page,
+          x,
+          y: top - height,
+          width: w,
+          height,
+          ...(fill ? { color: TABLE_HEADER_FILL } : {}),
+          borderColor: TABLE_BORDER,
+          borderWidth: 0.5,
+        })
+        let lineY = top - pad - size
+        for (const pieces of wrapped[i] ?? []) {
+          let px = x + pad
+          for (const piece of pieces) {
+            if (piece.text !== "") {
+              this.push({
+                op: "drawText",
+                page: this.page,
+                text: piece.text,
+                x: px,
+                y: lineY,
+                size,
+                font: piece.bold ? FONT_BOLD : FONT_REGULAR,
+                ...(piece.color === "placeholder" ? { color: PLACEHOLDER_GREY } : {}),
+              })
+            }
+            px += widthOf(piece, size)
+          }
+          lineY -= lineHeight
+        }
+        x += w
+      }
+      this.y = top - height
+    }
+    if (header) drawRow(header, true)
+    for (const cells of rows) drawRow(cells, false)
+  }
+
   gap(height: number): void {
     if (this.atPageTop()) return
     this.y -= height
@@ -486,6 +806,24 @@ function listRows(record: Record<string, unknown>, from: string): unknown[] | nu
   return rows
 }
 
+/** The full paths of the rows of `from` (read in `base`) that `where` keeps; null when not a list. */
+function keptRows(
+  record: Record<string, unknown>,
+  base: string | null,
+  from: string,
+  where: Conditions | undefined,
+): string[] | null {
+  const path = scopedPath(record, base, from)
+  const rows = listRows(record, path)
+  if (rows === null) return null
+  const out: string[] = []
+  for (let i = 0; i < rows.length; i++) {
+    const rowPath = `${path}.${i}`
+    if (conditionsHold(record, rowPath, where)) out.push(rowPath)
+  }
+  return out
+}
+
 /** Lay a body out into draw commands (pure: images already resolved). */
 export function layoutRichText(
   body: RichTextBody,
@@ -494,37 +832,67 @@ export function layoutRichText(
   images: ReadonlyMap<string, ImageInfo> = new Map(),
   title?: string,
 ): { commands: DrawCommand[]; blanks: RichTextBlank[]; pageCount: number } {
-  // Every list is checked before any layout work.
-  for (const block of body.blocks) if (block.type === "list") listRows(record, block.from)
+  // Every top-level list is checked before any layout work.
+  for (const block of body.blocks) {
+    if ((block.type === "list" || block.type === "repeat") && block.from)
+      listRows(record, block.from)
+    if (block.type === "table" && block.from) listRows(record, block.from)
+  }
 
   const layout = new Layout(body, record, labelOf, images, title)
   const size = layout.fontSize
-  for (const block of body.blocks) {
+
+  const leaf = (block: LeafBlock, base: string | null) => {
+    if (!conditionsHold(record, base, block.when)) return
     switch (block.type) {
       case "heading": {
         const hs = size * HEADING_SCALE[block.level ?? 1]
         layout.gap(size * 0.6)
-        layout.text(layout.runs(block.text, null, true), hs, hs * 1.25)
+        layout.text(layout.runs(block.text, base, true), hs, hs * 1.25)
         layout.gap(size * 0.4)
         break
       }
       case "paragraph": {
-        layout.text(layout.runs(block.text, null, false), size, size * 1.4)
+        const ps = block.size ?? size
+        layout.text(layout.runs(block.text, base, false), ps, ps * 1.4)
         layout.gap(size * 0.6)
         break
       }
       case "list": {
-        const rows = listRows(record, block.from)
+        const rows = keptRows(record, base, block.from, block.where)
         if (rows === null) {
-          const label = labelOf(block.from)
-          layout.noteBlank(block.from, label)
+          const path = scopedPath(record, base, block.from)
+          const label = labelOf(path)
+          layout.noteBlank(path, label)
           layout.text([{ text: `[${label}]`, color: "placeholder" }], size, size * 1.4)
         } else {
-          for (let i = 0; i < rows.length; i++) {
-            layout.text(layout.runs(block.line, `${block.from}.${i}`, false), size, size * 1.4)
-          }
+          for (const row of rows) layout.text(layout.runs(block.line, row, false), size, size * 1.4)
         }
         layout.gap(size * 0.6)
+        break
+      }
+      case "table": {
+        const ts = block.size ?? size * 0.9
+        const header = block.columns.some((c) => c.header !== undefined)
+          ? block.columns.map((c) => layout.runs(c.header ?? "", base, true))
+          : null
+        let rows: TextRun[][][]
+        if (block.from !== undefined) {
+          const kept = keptRows(record, base, block.from, block.where) ?? []
+          rows = kept.map((row) =>
+            block.columns.map((c) => layout.runs(c.text ?? "", row, c.bold === true)),
+          )
+        } else {
+          rows = (block.rows ?? []).flatMap((r) => {
+            const cells = Array.isArray(r) ? r : r.cells
+            if (!Array.isArray(r) && !conditionsHold(record, base, r.when)) return []
+            return [
+              cells.map((cell, i) => layout.runs(cell, base, block.columns[i]?.bold === true)),
+            ]
+          })
+        }
+        if (rows.length > 0 || header) layout.table(block.columns, header, rows, ts)
+        layout.gap(size * 0.8)
         break
       }
       case "image": {
@@ -537,6 +905,15 @@ export function layoutRichText(
         break
       }
     }
+  }
+
+  for (const block of body.blocks) {
+    if (block.type === "repeat") {
+      if (!conditionsHold(record, null, block.when)) continue
+      for (const row of keptRows(record, null, block.from, block.where) ?? []) {
+        for (const inner of block.blocks) leaf(inner, row)
+      }
+    } else leaf(block, null)
   }
   return { commands: layout.commands, blanks: layout.blanks, pageCount: layout.pageCount }
 }
@@ -562,7 +939,7 @@ async function imageInfo(image: ResolvedImage): Promise<ImageInfo | null> {
 export async function renderRichText(input: RichTextRenderInput): Promise<RichTextRendered> {
   const body = parseRichTextBody(input.body)
   const images = new Map<string, ImageInfo>()
-  for (const block of body.blocks) {
+  for (const block of everyBlock(body.blocks)) {
     if (block.type !== "image" || images.has(block.fileId)) continue
     const resolved = await input.resolveImage(block.fileId).catch(() => null)
     const info = resolved ? await imageInfo(resolved) : null

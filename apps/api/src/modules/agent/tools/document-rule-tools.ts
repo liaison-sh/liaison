@@ -217,7 +217,7 @@ export async function documentRulesDeletePreflight(
 // Approval cards
 // ---------------------------------------------------------------------------
 
-const WHEN_LABEL: Record<keyof RuleWhen, string> = {
+const WHEN_LABEL: Record<Exclude<keyof RuleWhen, "attribute">, string> = {
   sku: "Product SKU is",
   countryIso2: "Destination country is",
   carrier: "Carrier is",
@@ -228,7 +228,7 @@ export function describeWhen(when: unknown): string[] {
   if (!when || typeof when !== "object") return []
   const source = when as Record<string, unknown>
   const lines: string[] = []
-  for (const key of Object.keys(WHEN_LABEL) as (keyof RuleWhen)[]) {
+  for (const key of Object.keys(WHEN_LABEL) as (keyof typeof WHEN_LABEL)[]) {
     const values = source[key]
     if (!Array.isArray(values) || values.length === 0) continue
     const norm = (v: unknown) =>
@@ -240,6 +240,15 @@ export function describeWhen(when: unknown): string[] {
     const shown = values.slice(0, 10).map(norm)
     const more = values.length > shown.length ? ` (and ${values.length - shown.length} more)` : ""
     lines.push(`${WHEN_LABEL[key]} ${shown.join(" or ")}${more}`)
+  }
+  const attr = source.attribute
+  if (attr && typeof attr === "object" && !Array.isArray(attr)) {
+    for (const [k, values] of Object.entries(attr as Record<string, unknown>)) {
+      if (!Array.isArray(values) || values.length === 0) continue
+      const shown = values.slice(0, 10).map((v) => (v === "*" ? "any value" : String(v)))
+      const more = values.length > shown.length ? ` (and ${values.length - shown.length} more)` : ""
+      lines.push(`A product has attribute ${k} = ${shown.join(" or ")}${more}`)
+    }
   }
   return lines
 }

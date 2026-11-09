@@ -10,6 +10,10 @@
 //  - countryIso2: the record's destination country is listed (ISO 3166-1
 //    alpha-2, compared upper case);
 //  - carrier: the record's carrier family is listed (compared lower case).
+//  - attribute: { <product attribute key>: [values] }: ANY of the record's
+//    SKUs holds the attribute with one of the values (compared lower case;
+//    "*" means any non-empty value). Several keys must all hold. The record
+//    carries its SKUs' attributes (`attributes`, looked up by the store).
 // Conditions combine with AND; the values inside one condition with OR. A
 // `when` with no condition never matches (a rule that marks every record is
 // almost certainly a mistake, the same rule as the Boxtal attention rules).
@@ -18,12 +22,18 @@
 // condition never matches. A rule only names templates that can print: a
 // template that is missing, disabled or archived is dropped from the result.
 
-/** The condition keys a rule's `when` may hold. */
+/** The list condition keys a rule's `when` may hold (beside `attribute`). */
 export const RULE_WHEN_KEYS = ["sku", "countryIso2", "carrier"] as const
 export type RuleWhenKey = (typeof RULE_WHEN_KEYS)[number]
+/** The product-attribute condition key. */
+export const RULE_ATTRIBUTE_KEY = "attribute"
+/** The value meaning "any non-empty value" in an attribute condition. */
+export const ANY_ATTRIBUTE_VALUE = "*"
 
 /** A rule's conditions: every present key must hold, any listed value satisfies its key. */
-export type RuleWhen = Partial<Record<RuleWhenKey, string[]>>
+export type RuleWhen = Partial<Record<RuleWhenKey, string[]>> & {
+  attribute?: Record<string, string[]>
+}
 
 /** The facts of one record a rule is checked against. */
 export interface RuleRecord {
@@ -31,6 +41,8 @@ export interface RuleRecord {
   skus?: readonly string[] | null
   countryIso2?: string | null
   carrier_family?: string | null
+  /** The product attributes of the record's SKUs: attribute key -> the values its SKUs hold. */
+  attributes?: Readonly<Record<string, readonly string[]>> | null
 }
 
 /** A rule as the matcher needs it (`when` as stored: it is read defensively). */
@@ -56,7 +68,7 @@ export interface RecordMatch {
   templateIds: string[]
 }
 
-type Normalized = { [K in RuleWhenKey]?: Set<string> }
+type Normalized = { [K in RuleWhenKey]?: Set<string> } & { attribute?: Map<string, Set<string>> }
 
 const NORMALIZE: Record<RuleWhenKey, (value: string) => string> = {
   sku: (v) => v.trim().toLowerCase(),
@@ -88,6 +100,25 @@ function normalizeWhen(when: unknown): Normalized | null {
     out[key] = values
     present += 1
   }
+  if (Object.hasOwn(source, RULE_ATTRIBUTE_KEY)) {
+    const raw = source[RULE_ATTRIBUTE_KEY]
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null
+    const attrs = new Map<string, Set<string>>()
+    for (const [k, list] of Object.entries(raw as Record<string, unknown>)) {
+      if (!Array.isArray(list) || list.length === 0) return null
+      const values = new Set<string>()
+      for (const v of list) {
+        if (typeof v !== "string") return null
+        const n = v.trim().toLowerCase()
+        if (n !== "") values.add(n)
+      }
+      if (values.size === 0) return null
+      attrs.set(k.trim().toLowerCase(), values)
+    }
+    if (attrs.size === 0) return null
+    out.attribute = attrs
+    present += 1
+  }
   return present > 0 ? out : null
 }
 
@@ -107,6 +138,23 @@ export function whenMatches(when: unknown, record: RuleRecord): boolean {
   if (conditions.carrier) {
     const carrier = record.carrier_family ? NORMALIZE.carrier(record.carrier_family) : ""
     if (!conditions.carrier.has(carrier)) return false
+  }
+  if (conditions.attribute) {
+    const held = new Map<string, string[]>()
+    for (const [k, values] of Object.entries(record.attributes ?? {})) {
+      if (!Array.isArray(values)) continue
+      held.set(
+        k.trim().toLowerCase(),
+        values.filter((v): v is string => typeof v === "string").map((v) => v.trim().toLowerCase()),
+      )
+    }
+    for (const [key, wanted] of conditions.attribute) {
+      const values = (held.get(key) ?? []).filter((v) => v !== "")
+      const ok = wanted.has(ANY_ATTRIBUTE_VALUE)
+        ? values.length > 0
+        : values.some((v) => wanted.has(v))
+      if (!ok) return false
+    }
   }
   return true
 }

@@ -277,3 +277,129 @@ describe("output", () => {
     expect(hash(a.bytes)).toBe(hash(b.bytes))
   })
 })
+
+describe("conditions, tables, repeats and missing-value words", () => {
+  const record = {
+    invoice: { number: "INV-1" },
+    phone: null,
+    lines: [
+      { sku: "A-1", name: "Alpha", qty: 2, attributes: { metal: "aluminium", smelt: "Atlantis" } },
+      { sku: "B-2", name: "Beta", qty: 1, attributes: { metal: "steel", smelt: "" } },
+      { sku: "C-3", name: "Gamma", qty: 1, attributes: {} },
+    ],
+  }
+
+  it("prints a block only when its conditions hold, * reading any row", () => {
+    const body = parseRichTextBody({
+      blocks: [
+        {
+          type: "paragraph",
+          text: "has steel",
+          when: { path: "lines.*.attributes.metal", equals: "steel" },
+        },
+        {
+          type: "paragraph",
+          text: "has copper",
+          when: { path: "lines.*.attributes.metal", equals: "copper" },
+        },
+        { type: "paragraph", text: "no phone", when: { path: "phone", is: "absent" } },
+        {
+          type: "paragraph",
+          text: "both",
+          when: [{ path: "invoice.number" }, { path: "lines.*.sku", in: ["b-2", "z"] }],
+        },
+      ],
+    })
+    const drawn = texts(layoutRichText(body, record, labelOf).commands).map((c) => c.text.trim())
+    expect(drawn).toEqual(["has steel", "no phone", "both"])
+  })
+
+  it("{{path ?? words}} prints the words grey and lists the blank; {{path ??}} prints nothing", () => {
+    const body = parseRichTextBody({
+      blocks: [
+        { type: "paragraph", text: "Phone: {{phone ??}}." },
+        {
+          type: "list",
+          from: "lines",
+          where: { path: "attributes.metal" },
+          line: "{{name}} smelt: {{attributes.smelt ?? not confirmed by the supplier}} ({{invoice.number}})",
+        },
+      ],
+    })
+    const { commands, blanks } = layoutRichText(body, record, labelOf)
+    const drawn = texts(commands)
+    const all = drawn.map((c) => c.text).join("|")
+    expect(all).toContain("Phone: ")
+    expect(all).toContain("Atlantis")
+    expect(all).not.toContain("Gamma")
+    const grey = drawn.filter((c) => c.color?.r === 0.55).map((c) => c.text.trim())
+    expect(grey.join(" ")).toBe("not confirmed by the supplier")
+    expect(blanks.map((b) => b.path)).toEqual(["lines.1.attributes.smelt"])
+    // A row's path falls back to the record root: the invoice number prints on every row.
+    expect(drawn.filter((c) => c.text.includes("INV-1")).length).toBe(2)
+  })
+
+  it("lays out a table over a list and a fixed table inside a repeat", async () => {
+    const body = parseRichTextBody({
+      blocks: [
+        {
+          type: "table",
+          from: "lines",
+          columns: [
+            { header: "SKU", text: "{{sku}}", width: 1 },
+            { header: "Article", text: "{{name}}", width: 3 },
+            { header: "Qty", text: "{{qty}}", width: 1 },
+          ],
+        },
+        {
+          type: "repeat",
+          from: "lines",
+          where: { path: "attributes.metal" },
+          blocks: [
+            { type: "heading", level: 3, text: "{{name}}" },
+            {
+              type: "table",
+              columns: [{ width: 2, bold: true }, { width: 3 }],
+              rows: [
+                ["Metal", "{{attributes.metal}}"],
+                ["Country of smelt", "{{attributes.smelt ?? not confirmed}}"],
+                {
+                  cells: ["Steel only", "yes"],
+                  when: { path: "attributes.metal", equals: "steel" },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    })
+    const { commands } = layoutRichText(body, record, labelOf)
+    expect(commands.some((c) => c.op === "drawRectangle")).toBe(true)
+    const drawn = texts(commands).map((c) => c.text)
+    expect(drawn.filter((t) => t === "Steel only").length).toBe(1)
+    expect(drawn.filter((t) => t === "Metal").length).toBe(2)
+    const out = await renderRichText({ body, record, labelOf, resolveImage: noImages })
+    const text = await extractPdfText(out.bytes)
+    for (const want of ["SKU", "Alpha", "Gamma", "Country of smelt", "Atlantis", "not confirmed"]) {
+      expect(text).toContain(want)
+    }
+  })
+
+  it("refuses a table with both or neither of from and rows, and a malformed condition", () => {
+    const bad: unknown[] = [
+      { blocks: [{ type: "table", columns: [{ text: "x" }] }] },
+      { blocks: [{ type: "table", columns: [{ text: "x" }], from: "lines", rows: [["x"]] }] },
+      { blocks: [{ type: "table", columns: [{}, {}], rows: [["only one"]] }] },
+      { blocks: [{ type: "paragraph", text: "x", when: { path: "a..b" } }] },
+      {
+        blocks: [{ type: "paragraph", text: "x", when: { path: "a", is: "present", equals: "b" } }],
+      },
+      {
+        blocks: [
+          { type: "repeat", from: "lines", blocks: [{ type: "repeat", from: "x", blocks: [] }] },
+        ],
+      },
+    ]
+    for (const body of bad) expect(() => parseRichTextBody(body)).toThrow(RichTextError)
+  })
+})

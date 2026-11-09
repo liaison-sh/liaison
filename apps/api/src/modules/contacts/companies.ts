@@ -457,6 +457,53 @@ export async function listCompanies(
   }
 }
 
+/** Pending approvals at most one company page lists in its Waiting section. */
+export const COMPANY_WAITING_MAX = 50
+
+/**
+ * The pending approvals the caller sees whose summary links name this
+ * company, one of its people or one of its deals, newest first. Null when the
+ * company is not visible to the caller (the page answers 404).
+ */
+export async function companyWaitingApprovalIds(
+  tx: RlsClient,
+  params: { orgId: string; companyId: string },
+): Promise<string[] | null> {
+  const { orgId, companyId } = params
+  if (!UUID_RE.test(companyId)) return null
+  const [visible] = await tx
+    .select({ id: companies.id })
+    .from(companies)
+    .where(and(eq(companies.id, companyId), eq(companies.orgId, orgId)))
+    .limit(1)
+  if (!visible) return null
+  const people = await tx
+    .select({ id: contacts.id })
+    .from(contacts)
+    .where(and(eq(contacts.orgId, orgId), eq(contacts.companyId, companyId)))
+  const deals = (await dealTablesExist(tx))
+    ? extractRows<{ task_id: string }>(
+        await tx.execute(drizzleSql`
+          SELECT task_id::text AS task_id FROM ${ps()}.deals
+           WHERE org_id = ${orgId}::uuid AND company_id = ${companyId}::uuid`),
+      )
+    : []
+  const ids = [companyId, ...people.map((p) => p.id), ...deals.map((d) => d.task_id)]
+  const rows = extractRows<{ id: string }>(
+    await tx.execute(drizzleSql`
+      SELECT a.id::text AS id
+        FROM ${ks()}.approval_requests a
+       WHERE a.org_id = ${orgId}::uuid AND a.status = 'pending'
+         AND jsonb_typeof(a.summary -> 'links') = 'array'
+         AND EXISTS (
+           SELECT 1 FROM jsonb_array_elements(a.summary -> 'links') l
+            WHERE l ->> 'entityId' = ANY(${`{${ids.join(",")}}`}::text[]))
+       ORDER BY a.created_at DESC, a.id
+       LIMIT ${COMPANY_WAITING_MAX}`),
+  )
+  return rows.map((r) => r.id)
+}
+
 export interface SimilarCompany {
   id: string
   name: string

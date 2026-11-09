@@ -18,6 +18,7 @@ import { activityQuerySchema, readActivity } from "~/modules/contacts/activity"
 import {
   COMPANY_LINK_BATCH_MAX,
   COMPANY_NAME_MAX,
+  companyWaitingApprovalIds,
   createCompany,
   deleteCompany,
   getCompany,
@@ -112,6 +113,18 @@ companyRoutes.get(
     return success(c, result)
   },
 )
+
+// The company page's Waiting section: ids of the pending approvals the caller
+// sees that link this company, one of its people or one of its deals. The page
+// shows them as Home's own cards, from the caller's Home feed.
+companyRoutes.get("/:id/waiting", zValidator("param", idParam), async (c) => {
+  const orgId = c.get("orgId")
+  const ids = await withRequestRls(c, (tx) =>
+    companyWaitingApprovalIds(tx, { orgId, companyId: c.req.param("id") }),
+  )
+  if (!ids) throw new HTTPException(404, { message: "Company not found" })
+  return success(c, { approvalIds: ids })
+})
 
 companyRoutes.get("/:id", zValidator("param", idParam), async (c) => {
   const orgId = c.get("orgId")

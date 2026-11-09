@@ -90,6 +90,8 @@ const ANY_MEMBER: Record<string, string> = {
     "whether the deployment offers forwarding a bug report, the same for every member",
   "GET /api/bug-reports/drafts":
     "the caller's own bug report drafts (keyed by org and user), as open to every member as filing a report",
+  "DELETE /api/bug-reports/drafts/:draftId":
+    "drops one of the caller's own prepared bug reports (key scoped to org and user): another member's id discards nothing",
   "GET /api/connections": "the caller's own connections (RLS), empty for a scopeless member",
   "GET /api/connections/:appName":
     "the caller's own connections (RLS), empty for a scopeless member",

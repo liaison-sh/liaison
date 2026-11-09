@@ -64,6 +64,21 @@ interface CompanyState {
   /** Ids of the pending approvals linked to the company, its people or its deals. */
   waiting: Record<string, string[]>
   discussions: Record<string, string>
+  /** The companies that look like this one, as the duplicate finder pairs them. */
+  duplicates: Record<string, CompanyDuplicate[]>
+}
+
+export interface CompanyDuplicate {
+  /** The other company of the pair. */
+  id: string
+  name: string
+  signal: "same_domain" | "same_name" | "same_name_and_domain"
+}
+
+interface DuplicateCluster {
+  ids: string[]
+  names: string[]
+  signal: CompanyDuplicate["signal"]
 }
 
 const [companyStore, setCompanyStore] = createStore<CompanyState>({
@@ -72,6 +87,7 @@ const [companyStore, setCompanyStore] = createStore<CompanyState>({
   managers: {},
   waiting: {},
   discussions: {},
+  duplicates: {},
 })
 
 export { companyStore }
@@ -161,6 +177,102 @@ export async function openCompanyDiscussion(api: CompanyApi, id: string): Promis
   return opened.threadId
 }
 
+/**
+ * Set the company's account manager (null: none). The person's click is the
+ * decision; a policy may still hold it for approval, which the answer says.
+ */
+export async function setCompanyManager(
+  api: CompanyApi,
+  id: string,
+  ownerUserId: string | null,
+): Promise<"changed" | "pending" | "skipped"> {
+  const res = await runKernelTool<{
+    blocked?: unknown
+    accountManager?: CompanyManager | null
+    moved?: unknown[]
+  }>(api, "companies_write", { companyId: id, ownerUserId })
+  if (res?.blocked) return "pending"
+  if (!res?.moved || res.moved.length === 0) return "skipped"
+  // Replace the manager, never merge into the previous one (a store merge
+  // would write the new name into the old manager's object).
+  setCompanyStore("managers", { [id]: res.accountManager ?? null })
+  return "changed"
+}
+
+function applyDuplicateClusters(clusters: DuplicateCluster[]): void {
+  setDuplicateIds(new Set(clusters.flatMap((c) => c.ids)))
+  const byCompany: Record<string, CompanyDuplicate[]> = {}
+  for (const c of clusters) {
+    const [a, b] = c.ids
+    const [an, bn] = c.names
+    if (!a || !b) continue
+    byCompany[a] = [...(byCompany[a] ?? []), { id: b, name: bn ?? "", signal: c.signal }]
+    byCompany[b] = [...(byCompany[b] ?? []), { id: a, name: an ?? "", signal: c.signal }]
+  }
+  setCompanyStore("duplicates", byCompany)
+}
+
+/** The pairs that look like one company; the list's badges and the page's panel follow them. */
+export async function loadCompanyDuplicates(api: CompanyApi): Promise<void> {
+  const res = await runKernelTool<{ clusters?: DuplicateCluster[] }>(
+    api,
+    "companies_find_duplicates",
+    {},
+  )
+  applyDuplicateClusters(res?.clusters ?? [])
+}
+
+/** Drop one pair from what the page and the list show (after "Keep them separate" or a merge). */
+function forgetPair(a: string, b: string): void {
+  const without = (id: string, other: string) =>
+    (companyStore.duplicates[id] ?? []).filter((d) => d.id !== other)
+  setCompanyStore("duplicates", a, without(a, b))
+  setCompanyStore("duplicates", b, without(b, a))
+  const still = new Set<string>()
+  for (const [id, list] of Object.entries(companyStore.duplicates)) {
+    if (list.length > 0) {
+      still.add(id)
+      for (const d of list) still.add(d.id)
+    }
+  }
+  setDuplicateIds(still)
+}
+
+/** "Keep them separate": the pair is no longer suggested; `undo` takes it back. */
+export async function markCompaniesNotSame(
+  api: CompanyApi,
+  a: CompanyDuplicate & { self: string },
+  undo = false,
+): Promise<void> {
+  await runKernelTool(api, "companies_mark_not_same", { aId: a.self, bId: a.id, undo })
+  if (!undo) {
+    forgetPair(a.self, a.id)
+    return
+  }
+  const back = (id: string, other: CompanyDuplicate) => [
+    ...(companyStore.duplicates[id] ?? []).filter((d) => d.id !== other.id),
+    other,
+  ]
+  const selfName = companyStore.companies[a.self]?.name ?? ""
+  setCompanyStore("duplicates", a.self, back(a.self, { id: a.id, name: a.name, signal: a.signal }))
+  setCompanyStore("duplicates", a.id, back(a.id, { id: a.self, name: selfName, signal: a.signal }))
+  setDuplicateIds(new Set([...duplicateIds(), a.self, a.id]))
+}
+
+/** Merge `sourceId` into `targetId` (the page's company): the source is deleted. */
+export async function mergeCompanyInto(
+  api: CompanyApi,
+  sourceId: string,
+  targetId: string,
+): Promise<void> {
+  const res = await runKernelTool<{ blocked?: unknown }>(api, "companies_merge", {
+    sourceId,
+    targetId,
+  })
+  if (res?.blocked) throw new Error("the merge was held for approval")
+  forgetPair(sourceId, targetId)
+}
+
 // ── The list ─────────────────────────────────────────────────────────────
 
 const LIST_LIMIT = 50
@@ -238,12 +350,7 @@ export async function loadCompanyHints(api: CompanyApi): Promise<void> {
     setProposalCount(0)
   }
   try {
-    const dupes = await runKernelTool<{ clusters?: Array<{ ids: string[] }> }>(
-      api,
-      "companies_find_duplicates",
-      {},
-    )
-    setDuplicateIds(new Set((dupes?.clusters ?? []).flatMap((c) => c.ids)))
+    await loadCompanyDuplicates(api)
   } catch {
     setDuplicateIds(new Set<string>())
   }
@@ -272,7 +379,14 @@ export function handleCompanyEvent(action: string, data: Partial<Company> & { id
 /** Clears every company state, and drops any list read still in flight. */
 export function resetCompanyStores(): void {
   listRequest += 1
-  setCompanyStore({ companies: {}, people: {}, managers: {}, waiting: {}, discussions: {} })
+  setCompanyStore({
+    companies: {},
+    people: {},
+    managers: {},
+    waiting: {},
+    discussions: {},
+    duplicates: {},
+  })
   setCompanyListStore({ byId: {}, ids: [] })
   setListQuery("")
   setListTotal(0)

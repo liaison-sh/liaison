@@ -3,11 +3,14 @@
 // reader has approvals linked to the company, no access for a company not
 // shared with them, no actions for a reader who cannot write, Add person
 // linking through the company route, and the tab labelled by the company.
+// Then its states: the duplicate panel (keep apart with Undo, a merge held 8
+// seconds), the timeline's notices and lines, and the account manager changed
+// in place.
 import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ApiError } from "~/lib/api-error"
 import { CompanyDetail } from "./CompanyDetail"
-import { loadCompany, resetCompanyStores } from "./company-store"
+import { duplicateIds, loadCompany, resetCompanyStores } from "./company-store"
 import { resolveCompanyTabLabel } from "./exports"
 
 const mocks = vi.hoisted(() => ({
@@ -76,8 +79,33 @@ vi.mock("~/modules/shell/SlotPanels", () => ({
     <div data-testid={`slot-entry-${props.entry.panel.id}`} />
   ),
 }))
+vi.mock("~/modules/shell/entity-opener", () => ({ openEntity: vi.fn() }))
+// Flatten PopupMenu: trigger and content inline, open from the start, so a
+// menu's items are clicked as plain elements.
+vi.mock("~/ui/PopupMenu", () => {
+  const Root = (props: any) => {
+    props.onOpenChange?.(true)
+    return <>{props.children}</>
+  }
+  const Trigger = (props: any) => <>{props.children}</>
+  const Content = (props: any) => <div role="menu">{props.children}</div>
+  const Item = (props: any) => (
+    <button
+      type="button"
+      role="menuitem"
+      data-testid={props["data-testid"]}
+      onClick={() => props.onSelect?.()}
+    >
+      {props.children}
+    </button>
+  )
+  const Separator = () => <hr />
+  return { PopupMenu: Object.assign(Root, { Trigger, Content, Item, Separator }) }
+})
 vi.mock("~/modules/threads/EntityDiscussion", () => ({
-  default: () => <div data-testid="company-discussion-thread" />,
+  default: (props: { prefill?: { text: string } | null }) => (
+    <div data-testid="company-discussion-thread" data-prefill={props.prefill?.text ?? ""} />
+  ),
 }))
 
 const CO = "co-1"
@@ -280,5 +308,226 @@ describe("company tab label", () => {
     mocks.routes["/contacts/companies/co-hidden"] = new ApiError("Company not found", 404)
     await loadCompany(api as never, "co-hidden")
     expect(resolveCompanyTabLabel("co-hidden")).toBe("No access")
+  })
+})
+
+const ACTIVITY = `/contacts/companies/${CO}/activity`
+const row = (id: string, source: string, at: string, title: string) => ({
+  id: `${source}:${id}`,
+  at,
+  source,
+  title,
+  who: null,
+  contactId: null,
+  href: null,
+})
+
+function postsTo(tool: string): unknown[] {
+  return mocks.posts
+    .filter(
+      (p) => p.path === "/apps/run-tool" && (p.body as { toolName: string }).toolName === tool,
+    )
+    .map((p) => (p.body as { params: unknown }).params)
+}
+
+function seedDuplicate(): void {
+  mocks.postResult["kernel:companies_find_duplicates"] = {
+    clusters: [
+      {
+        ids: [CO, "co-2"],
+        names: ["Maison Arlon", "MAISON ARLON SAS"],
+        signal: "same_domain",
+        confidence: "needs_confirmation",
+      },
+    ],
+  }
+  mocks.routes["/contacts/companies/co-2"] = company({
+    id: "co-2",
+    name: "MAISON ARLON SAS",
+    peopleCount: 1,
+    openDeal: null,
+  })
+}
+
+describe("CompanyDetail states", () => {
+  it("Not the same removes the duplicate badge, and Undo brings it back", async () => {
+    seedDuplicate()
+    render(() => <CompanyDetail entityId={CO} />)
+    await screen.findByTestId("company-detail.duplicate")
+    expect([...duplicateIds()].sort()).toEqual([CO, "co-2"])
+
+    fireEvent.click(screen.getByTestId("company-detail.duplicate-keep"))
+    await screen.findByTestId("company-detail.kept-apart")
+    expect(postsTo("kernel:companies_mark_not_same")).toEqual([
+      { aId: CO, bId: "co-2", undo: false },
+    ])
+    expect(screen.queryByTestId("company-detail.duplicate")).toBeNull()
+    expect(duplicateIds().size).toBe(0)
+
+    fireEvent.click(screen.getByTestId("company-detail.kept-apart-undo"))
+    await screen.findByTestId("company-detail.duplicate")
+    expect(postsTo("kernel:companies_mark_not_same")[1]).toEqual({
+      aId: CO,
+      bId: "co-2",
+      undo: true,
+    })
+    expect([...duplicateIds()].sort()).toEqual([CO, "co-2"])
+  })
+
+  it("closing the page inside the 8 seconds merges nothing", async () => {
+    seedDuplicate()
+    const { unmount } = render(() => <CompanyDetail entityId={CO} />)
+    await screen.findByTestId("company-detail.duplicate-merge")
+    vi.useFakeTimers()
+    try {
+      fireEvent.click(screen.getByTestId("company-detail.duplicate-merge"))
+      expect(screen.getByTestId("company-detail.duplicate-holding")).toBeTruthy()
+      await vi.advanceTimersByTimeAsync(7999)
+      expect(postsTo("kernel:companies_merge")).toEqual([])
+      unmount()
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(postsTo("kernel:companies_merge")).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("Undo inside the 8 seconds merges nothing; left alone, the other company is merged into this one", async () => {
+    seedDuplicate()
+    render(() => <CompanyDetail entityId={CO} />)
+    await screen.findByTestId("company-detail.duplicate-merge")
+    vi.useFakeTimers()
+    try {
+      fireEvent.click(screen.getByTestId("company-detail.duplicate-merge"))
+      fireEvent.click(screen.getByTestId("company-detail.duplicate-undo"))
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(postsTo("kernel:companies_merge")).toEqual([])
+
+      fireEvent.click(screen.getByTestId("company-detail.duplicate-merge"))
+      await vi.advanceTimersByTimeAsync(8000)
+      expect(postsTo("kernel:companies_merge")).toEqual([{ sourceId: "co-2", targetId: CO }])
+    } finally {
+      vi.useRealTimers()
+    }
+    expect((await screen.findByTestId("company-detail.duplicate-note")).textContent).toBe(
+      "MAISON ARLON SAS is merged into Maison Arlon.",
+    )
+  })
+
+  it("one source failing shows one notice with Retry and the rest", async () => {
+    mocks.routes[ACTIVITY] = {
+      items: [
+        row("m1", "mail", "2026-11-06T09:00:00Z", "Can we go live before spring?"),
+        row("t1", "tickets", "2026-11-04T09:00:00Z", "TICK-412 opened"),
+      ],
+      unavailable: [{ source: "invoicing", label: "Invoicing", reason: "timeout" }],
+      nextBefore: null,
+    }
+    render(() => <CompanyDetail entityId={CO} />)
+    const notice = await screen.findByTestId("company-activity.unavailable-invoicing")
+    expect(notice.textContent).toContain("Invoicing did not answer")
+    expect(screen.getAllByTestId(/^company-activity\.unavailable-/)).toHaveLength(1)
+    expect(screen.getByTestId("company-activity.row-mail:m1")).toBeTruthy()
+    expect(screen.getByTestId("company-activity.row-tickets:t1")).toBeTruthy()
+    // The filter offers only the sources that returned rows.
+    expect(screen.getByTestId("company-activity.filter-mail")).toBeTruthy()
+    expect(screen.getByTestId("company-activity.filter-tickets")).toBeTruthy()
+    expect(screen.queryByTestId("company-activity.filter-invoicing")).toBeNull()
+
+    mocks.routes[ACTIVITY] = {
+      items: [row("i1", "invoicing", "2026-11-03T09:00:00Z", "F-2026-0418 issued")],
+      unavailable: [],
+      nextBefore: null,
+    }
+    fireEvent.click(screen.getByTestId("company-activity.retry-invoicing"))
+    await screen.findByTestId("company-activity.row-invoicing:i1")
+    expect(api.get).toHaveBeenCalledWith(`${ACTIVITY}?limit=30&source=invoicing`)
+    expect(screen.queryByTestId("company-activity.unavailable-invoicing")).toBeNull()
+    const order = screen.getAllByTestId(/^company-activity\.row-/).map((el) => el.dataset.testid)
+    expect(order).toEqual([
+      "company-activity.row-mail:m1",
+      "company-activity.row-tickets:t1",
+      "company-activity.row-invoicing:i1",
+    ])
+
+    fireEvent.click(screen.getByTestId("company-activity.filter-tickets"))
+    expect(screen.getAllByTestId(/^company-activity\.row-/)).toHaveLength(1)
+  })
+
+  it("the timeline says it shows the 50 most recently active people when more are linked", async () => {
+    mocks.routes[ACTIVITY] = {
+      items: [row("m1", "mail", "2026-11-06T09:00:00Z", "Hello")],
+      unavailable: [],
+      nextBefore: null,
+      truncatedContacts: 10,
+    }
+    render(() => <CompanyDetail entityId={CO} />)
+    expect((await screen.findByTestId("company-activity.truncated-people")).textContent).toBe(
+      "Showing activity for the 50 most recently active people",
+    )
+    cleanup()
+    mocks.routes[ACTIVITY] = { items: [], unavailable: [], nextBefore: null }
+    render(() => <CompanyDetail entityId={CO} />)
+    await screen.findByTestId("company-activity.empty")
+    expect(screen.queryByTestId("company-activity.truncated-people")).toBeNull()
+  })
+
+  it("a writer changes the manager in place; a reader sees the name only; the picker shows away dates", async () => {
+    mocks.routes[ACTIVITY] = { items: [], unavailable: [], nextBefore: null }
+    mocks.routes["/mentions/members"] = {
+      data: [
+        { id: "u-tom", name: "Tom Reyes", email: "tom@x.example", away: null },
+        {
+          id: "u-ines",
+          name: "Ines Caron",
+          email: "ines@x.example",
+          away: { until: "2099-12-20" },
+        },
+      ],
+      meta: { total: 2 },
+    }
+    mocks.postResult["kernel:companies_write"] = {
+      accountManager: { id: "u-tom", name: "Tom Reyes", away: null },
+      moved: [{ id: CO, name: "Maison Arlon" }],
+      skipped: [],
+    }
+    render(() => <CompanyDetail entityId={CO} />)
+    await waitFor(() =>
+      expect(screen.getByTestId("company-manager.trigger").textContent).toContain("Elodie Renard"),
+    )
+    expect(screen.getByTestId("company-manager.none").textContent).toBe("No account manager")
+    expect((await screen.findByTestId("company-manager.away-u-ines")).textContent).toContain("Dec")
+    expect(screen.queryByTestId("company-manager.away-u-tom")).toBeNull()
+    const timelineReads = () =>
+      api.get.mock.calls.filter(([p]) => String(p).startsWith(ACTIVITY)).length
+    const before = timelineReads()
+
+    fireEvent.click(screen.getByTestId("company-manager.option-u-tom"))
+    await waitFor(() =>
+      expect(screen.getByTestId("company-manager.trigger").textContent).toContain("Tom Reyes"),
+    )
+    expect(postsTo("kernel:companies_write")).toEqual([{ companyId: CO, ownerUserId: "u-tom" }])
+    // No dialog, no Save: the pick saved, and the timeline was read again.
+    expect(screen.queryByRole("dialog")).toBeNull()
+    await waitFor(() => expect(timelineReads()).toBe(before + 1))
+
+    cleanup()
+    resetCompanyStores()
+    mocks.scopes = ["kernel:contacts:read", "kernel:companies:read"]
+    render(() => <CompanyDetail entityId={CO} />)
+    await waitFor(() =>
+      expect(screen.getByTestId("company-detail.manager").textContent).toContain("Elodie Renard"),
+    )
+    expect(screen.queryByTestId("company-manager.trigger")).toBeNull()
+  })
+
+  it("a new company with nobody linked offers the two agent prompts, which fill the discussion box", async () => {
+    mocks.postResult["kernel:companies_read"] = { people: [], accountManager: null }
+    render(() => <CompanyDetail entityId={CO} />)
+    fireEvent.click(await screen.findByTestId("company-detail.ask-link-mail"))
+    expect(screen.getByTestId("company-detail.ask-find-people")).toBeTruthy()
+    expect(
+      (await screen.findByTestId("company-discussion-thread")).getAttribute("data-prefill"),
+    ).toBe("Link the people who wrote to us from maison-arlon.example to Maison Arlon.")
   })
 })

@@ -194,7 +194,7 @@
       }
     ]
   },
-  "version": "0.24.1",
+  "version": "0.24.2",
   "iconName": "box",
   "description": "Boxtal shipping integration: carrier quotes, tracking, shipments, customs documents",
   "listing": {
@@ -3702,7 +3702,7 @@
     },
     {
       "target": "shopify:variants_brief",
-      "reason": "look up the SKU of a Shopify variant a shipping profile is linked to (cached), to key its short code by SKU in the product attributes"
+      "reason": "look up the SKU of a Shopify variant a shipping profile is linked to (cached), to key its short code by SKU in the product attributes; and the SKU of an order line keyed by its variant id, so the order's papers print the SKU and match the document rules and product attributes by it"
     }
   ],
   "skills": {

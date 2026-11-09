@@ -127,9 +127,10 @@ function turnFrame(): RunContext {
 async function agentCall(
   sdkName: string,
   args: Record<string, unknown>,
+  as: UserContext = actor,
 ): Promise<Record<string, unknown>> {
   const frame = turnFrame()
-  const tools = buildToolSet(ORG, actor, DM, ALL_DEFERRED_TOOLS_UNLOCKED, "agent", frame)
+  const tools = buildToolSet(ORG, as, DM, ALL_DEFERRED_TOOLS_UNLOCKED, "agent", frame)
   const t = tools[sdkName]
   if (!t) throw new Error(`${sdkName} is not in the catalog`)
   return (await runContextStore.run(frame, () =>
@@ -313,6 +314,36 @@ describe("shipping papers by configuration: attribute rule -> template -> PDF on
     const ids = onRecord.map((r) => r.id)
     expect(ids).toContain(first.files[0]!.fileId)
     expect(ids).toContain(second.files[0]!.fileId)
+  })
+
+  it("previews a real record whose file-parent row does not exist yet (made by its first print)", async () => {
+    const created = (await agentCall("kernel__document_template_create", {
+      name: "Order summary",
+      recordType: RECORD_TYPE,
+      body: { blocks: [{ type: "paragraph", text: "Summary for {{invoice.number}}." }] },
+    })) as { template?: { id: string } }
+    const templateId = created.template!.id
+    record = { ...record, label: "INV-P-1", invoice: { number: "INV-P-1" } }
+    // OTHER has no parent row: the order exists, its row is made when a paper is first stored.
+    const preview = (await agentCall("kernel__document_template_preview", {
+      templateId,
+      recordId: OTHER,
+    })) as { sample?: boolean; fileId?: string; error?: unknown }
+    expect(preview.error ?? null).toBeNull()
+    expect(preview.sample).toBe(false)
+    expect(await fileText(preview.fileId!)).toContain("Summary for INV-P-1")
+
+    // Without the parent's read scope and with no row to prove it, the record stays unread.
+    const narrow: UserContext = {
+      ...actor,
+      scopes: ["kernel:files:read", `${APP}:orders:read`],
+    }
+    const refused = (await agentCall(
+      "kernel__document_template_preview",
+      { templateId, recordId: OTHER },
+      narrow,
+    )) as { error?: unknown }
+    expect(JSON.stringify(refused.error ?? null)).toContain("record_not_found")
   })
 
   it("the app's scheduled pass (a system actor, no person) prints onto its own record, never another's", async () => {

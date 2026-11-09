@@ -39,6 +39,7 @@ import {
   wouldExceedOrgQuota,
 } from "~/modules/files/service"
 import { PdfReplayError } from "~/modules/pdf/replay"
+import { hasScope } from "~/modules/permissions/permissions"
 import { PdfFormError } from "./pdf-form"
 import {
   assertRowsFit,
@@ -356,6 +357,15 @@ function splitRecordType(recordType: string): { app: string; entity: string } {
   return { app, entity }
 }
 
+/**
+ * The caller may read the record for a preview. Its file-parent row proves it when the row
+ * exists. But an app may create that row only when it first stores a file on the record (an
+ * order's row is made by its first print), so a record whose parent row does not exist YET is
+ * not invisible: holding the parent's read scope then suffices. The record itself is read through
+ * the app's record tool under the caller's own scopes and RLS (executeTool refuses a caller
+ * without the tool's scopes), exactly as the caller could call that tool, and a preview stores
+ * nothing on the record. A print still needs the row (print.ts authorizeParent).
+ */
 async function assertRecordVisible(
   caller: PrintCaller,
   app: string,
@@ -368,6 +378,7 @@ async function assertRecordVisible(
     await caller.withRls((tx) => assertParentVisible(tx, parent, recordId))
   } catch (err) {
     if (err instanceof FileServiceError) {
+      if (hasScope(parent.readScope, caller.scopes)) return
       throw new PrintError("record_not_found", "The record was not found or is not visible to you")
     }
     throw err

@@ -63,13 +63,42 @@ interface Harness {
   matches: Array<Record<string, unknown>>
 }
 
-function harness(opts: { shipments?: Array<Record<string, unknown>>; needs?: boolean } = {}): Harness {
+const VARIANT = "gid://shopify/ProductVariant/111"
+
+function harness(
+  opts: {
+    shipments?: Array<Record<string, unknown>>
+    needs?: boolean
+    /** Store variant id -> its SKU, as `shopify:variants_brief` answers; null = the call fails. */
+    variants?: Record<string, string> | null
+  } = {},
+): Harness & { briefs: Array<Record<string, unknown>> } {
   const prints: Array<Record<string, unknown>> = []
   const matches: Array<Record<string, unknown>> = []
+  const briefs: Array<Record<string, unknown>> = []
   let n = 0
   const executeTool = async (target: string, params: Record<string, unknown>): Promise<CrossAppEnvelope> => {
-    if (target === "kernel:product_attributes_list")
-      return { status: "completed", result: { attributes: [{ sku: "SKU-WIDGET", key: "metal", value: "aluminium" }] } }
+    if (target === "kernel:product_attributes_list") {
+      const asked = new Set((params.skus as string[]) ?? [])
+      return {
+        status: "completed",
+        result: {
+          attributes: [
+            { sku: "SKU-WIDGET", key: "metal", value: "aluminium" },
+            { sku: "SKU-A", key: "metal", value: "steel" },
+          ].filter((a) => asked.has(a.sku)),
+        },
+      }
+    }
+    if (target === "shopify:variants_brief") {
+      briefs.push(params)
+      if (opts.variants === null) return { status: "error", error: { code: "unavailable", message: "store down" } }
+      const known = opts.variants ?? {}
+      return {
+        status: "completed",
+        result: { variants: ((params.ids as string[]) ?? []).flatMap((id) => (known[id] ? [{ id, sku: known[id] }] : [])) },
+      }
+    }
     if (target === "invoicing:documents_get")
       return {
         status: "completed",
@@ -112,7 +141,7 @@ function harness(opts: { shipments?: Array<Record<string, unknown>>; needs?: boo
     config: { get: async () => null, has: async () => false },
     executeTool: executeTool as BoxtalToolCtx["executeTool"],
   }
-  return { ctx, prints, matches }
+  return { ctx, prints, matches, briefs }
 }
 
 const readDraft = async () => DRAFT
@@ -142,11 +171,53 @@ describe("order print record", () => {
       sku: "SKU-WIDGET",
       unit_value_text: "USD 123.45",
       value_text: "USD 246.90",
-      origin_name: "France (FR)",
+      origin_name: "France",
       attributes: { metal: "aluminium" },
     })
     expect(rec.totals).toEqual({ value: 246.9, value_text: "USD 246.90", units: 2, articles: 1 })
     expect(rec.issued_on).toBe("9 November 2026")
+    expect(rec.destination).toEqual({ iso2: "US", name: "United States" })
+  })
+
+  it("names countries without Intl (the app sandbox has none)", async () => {
+    const original = Intl.DisplayNames
+    ;(Intl as { DisplayNames: unknown }).DisplayNames = class {
+      constructor() {
+        throw new Error("no Intl in the sandbox")
+      }
+    }
+    try {
+      const { ctx } = harness()
+      const rec = await orderPrintRecordGet(ctx, { document_ref: REF }, { today: "2026-11-09", readDraft })
+      if ("error" in rec) throw new Error(rec.error.message)
+      expect(rec.destination).toEqual({ iso2: "US", name: "United States" })
+      expect(rec.lines[0]?.origin_name).toBe("France")
+      expect(rec.order.address_lines.at(-1)).toBe("United States")
+    } finally {
+      ;(Intl as { DisplayNames: unknown }).DisplayNames = original
+    }
+  })
+
+  it("a line keyed by a store variant id prints the variant's SKU and its product attributes", async () => {
+    const h = harness({ variants: { [VARIANT]: "SKU-A" } })
+    const draft = { ...DRAFT, lineSummaries: DRAFT.lineSummaries?.map((l) => (l.line_id === "l1" ? { ...l, external_id: VARIANT } : l)) }
+    const rec = await orderPrintRecordGet(h.ctx, { document_ref: REF }, { today: "2026-11-09", readDraft: async () => draft })
+    if ("error" in rec) throw new Error(rec.error.message)
+    expect(h.briefs).toEqual([{ ids: [VARIANT] }]) // one call for every line
+    expect(rec.lines[0]).toMatchObject({ sku: "SKU-A", attributes: { metal: "steel" } })
+
+    // The rules match on the same SKU, so SKU and product-attribute rules find the order.
+    const [r] = await generateOrderDocuments(h.ctx, [REF], { readDraft: async () => draft })
+    expect(r?.error).toBeUndefined()
+    expect((h.matches[0]?.records as Array<Record<string, unknown>>)[0]).toMatchObject({ skus: ["SKU-A"] })
+  })
+
+  it("a variant whose SKU cannot be read keeps its id and the record still reads", async () => {
+    const h = harness({ variants: null })
+    const draft = { ...DRAFT, lineSummaries: DRAFT.lineSummaries?.map((l) => (l.line_id === "l1" ? { ...l, external_id: VARIANT } : l)) }
+    const rec = await orderPrintRecordGet(h.ctx, { document_ref: REF }, { today: "2026-11-09", readDraft: async () => draft })
+    if ("error" in rec) throw new Error(rec.error.message)
+    expect(rec.lines[0]).toMatchObject({ sku: VARIANT, attributes: {} })
   })
 
   it("the issue date does not make a record stale; a tracking number does", () => {

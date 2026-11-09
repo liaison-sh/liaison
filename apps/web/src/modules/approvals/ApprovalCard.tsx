@@ -1237,7 +1237,12 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
     const byId = new Map(
       (c ? [c, ...bundleSteps()] : []).map((s) => [
         s.id.toLowerCase(),
-        { step: (s.bundlePosition ?? 0) + 1, toolName: s.toolName, payload: s.currentPayload },
+        {
+          step: (s.bundlePosition ?? 0) + 1,
+          toolName: s.toolName,
+          payload: s.currentPayload,
+          handle: s.handle ?? null,
+        },
       ]),
     )
     return (id) => byId.get(id.toLowerCase())

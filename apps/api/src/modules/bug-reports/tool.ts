@@ -22,18 +22,35 @@
 // where data leaves the org, team-only, already waits for the reporter's own
 // click on the exact payload: that click is the consent, not an approval.
 //
+// Files (`attachments`, kernel.files ids) must be readable by the caller, under
+// their own RLS context: an id they cannot open refuses the call. Team-only they
+// go with the prepared report and are sent on the reporter's click, like the
+// form's ticked files; otherwise they join the local ticket the form's way. A
+// readable file that cannot go along is listed as not sent (agent-files.ts).
+//
 // A call held for approval by an older build ends in the same card when
 // approved: approving it prepares the draft, and only the reporter's click
 // sends it. A held call that can no longer run (a routine's, once reports go
 // only to the Liaison team) is refused as final, so its approval closes instead
 // of returning to pending.
 import { z } from "zod"
+import type { RlsClient } from "~/db"
 import { currentRunContext, runHasPerson } from "~/modules/agent/runtime/run-context"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { AgentDraftError, createAgentDraft } from "~/modules/bug-reports/agent-drafts"
 import {
+  type FileNotSent,
+  localReportFiles,
+  MAX_REPORT_FILES,
+  prepareDraftFiles,
+  type ReportFile,
+  readableReportFiles,
+  UnreadableFilesError,
+} from "~/modules/bug-reports/agent-files"
+import {
   approvalOriginHadPerson,
   fileBugReport,
+  MAX_ATTACHMENT_BYTES,
   reporterEmailOf,
   serverSnapshotFor,
 } from "~/modules/bug-reports/service"
@@ -68,6 +85,13 @@ export const reportBugParams = z.object({
     .describe(
       "Anything else useful: the tool call that failed and its error, the ids involved (ticket-123, request-45).",
     ),
+  attachments: z
+    .array(z.uuid())
+    .max(MAX_REPORT_FILES)
+    .optional()
+    .describe(
+      "Files to attach (up to 5): kernel.files ids the user can read, from files_list or an upload (files_upload_url then files_upload_confirm). Never upload the file anywhere else to share it. An id the user cannot read refuses the call. A file that cannot go along (over the size cap: 7 MB to the Liaison team, 10 MB otherwise; an executable type; end-to-end encrypted) is listed as not sent and the report still goes.",
+    ),
 })
 
 export type ReportBugParams = z.infer<typeof reportBugParams>
@@ -80,6 +104,8 @@ interface ReportBugContext {
   approvalRequestId?: string
   /** The routine a held call came from, when it came from one. */
   originRoutineId?: string
+  /** The caller's RLS client: attached files are looked up under it. */
+  db?: RlsClient
 }
 
 const VIA: Record<ReportBugContext["actorType"], string> = {
@@ -93,6 +119,10 @@ export interface ReportBugFiled {
   filed: true
   ticketId: string
   ticketHandle: string | null
+  /** Attached files stored on the ticket. */
+  attachmentsPersisted: number
+  /** Attached files that are not on the ticket, with why. */
+  attachmentsNotSent: FileNotSent[]
   message: string
 }
 
@@ -109,16 +139,26 @@ export interface ReportBugAwaitingConfirmation {
    * may be shared. The card fetches it for the reporter alone
    * (GET /api/bug-reports/drafts/:id).
    */
-  summary: { title: string; descriptionChars: number; payloadBytes: number }
+  summary: {
+    title: string
+    descriptionChars: number
+    payloadBytes: number
+    /** The attached files that go with the report on Send. */
+    attachments: Array<{ filename: string; sizeBytes: number }>
+    /** The attached files that will not be sent, with why. */
+    attachmentsNotSent: FileNotSent[]
+  }
   message: string
 }
 
 export interface ReportBugRefused {
   error: {
-    code: "REPORTER_CONFIRMATION_REQUIRED" | "DRAFT_LIMIT_REACHED"
+    code: "REPORTER_CONFIRMATION_REQUIRED" | "DRAFT_LIMIT_REACHED" | "ATTACHMENT_NOT_READABLE"
     message: string
     /** No approval of the same call can pass: a held one is closed, not re-pended. */
     final?: true
+    /** A caller mistake (an attachment id), answered as such rather than as a server failure. */
+    status?: 400
   }
 }
 
@@ -170,6 +210,24 @@ export async function handleReportBug(
   params: ReportBugParams,
   ctx: ReportBugContext,
 ): Promise<ReportBugResult> {
+  let files: ReportFile[] = []
+  if (params.attachments && params.attachments.length > 0) {
+    if (!ctx.db) throw new Error("report_bug: attachments need the caller's database context")
+    try {
+      files = await readableReportFiles(ctx.db, ctx.orgId, params.attachments)
+    } catch (err) {
+      if (err instanceof UnreadableFilesError) {
+        return {
+          error: {
+            code: "ATTACHMENT_NOT_READABLE",
+            message: `NOT SENT: ${err.message}`,
+            status: 400,
+          },
+        }
+      }
+      throw err
+    }
+  }
   const sections = [params.title, params.description]
   if (params.context) sections.push(`Additional context:\n${params.context}`)
   const form = {
@@ -181,12 +239,15 @@ export async function handleReportBug(
   }
   if (await isBugReportTeamOnlyFor(ctx.orgId)) {
     if (!(await reporterCanConfirm(ctx))) return noPersonRefusal()
+    const prepared = await prepareDraftFiles(ctx.orgId, files)
     let draft: Awaited<ReturnType<typeof createAgentDraft>>
     try {
       draft = await createAgentDraft(ctx.orgId, ctx.userId, {
         form,
         snapshot: await serverSnapshotFor(ctx.orgId),
         reporterEmail: await reporterEmailOf(ctx.orgId, ctx.userId),
+        files: prepared.chosen,
+        notSent: prepared.notSent,
       })
     } catch (err) {
       if (err instanceof AgentDraftError && err.code === "DRAFT_LIMIT_REACHED") {
@@ -206,11 +267,17 @@ export async function handleReportBug(
         title: params.title,
         descriptionChars: form.description.length,
         payloadBytes: Buffer.byteLength(JSON.stringify(draft.data)),
+        attachments: prepared.chosen.map((f) => ({ filename: f.filename, sizeBytes: f.sizeBytes })),
+        attachmentsNotSent: prepared.notSent,
       },
       message: AWAITING_CONFIRMATION,
     }
   }
-  const filed = await fileBugReport(ctx.orgId, ctx.userId, form)
+  const local = await localReportFiles(files, MAX_ATTACHMENT_BYTES)
+  const filed = await fileBugReport(ctx.orgId, ctx.userId, {
+    ...form,
+    ...(local.attachments.length > 0 ? { attachments: local.attachments } : {}),
+  })
   if (!filed.ticketId) {
     // Team-only went on between the check above and the filing: nothing was filed.
     return {
@@ -226,6 +293,8 @@ export async function handleReportBug(
     filed: true,
     ticketId: filed.ticketId,
     ticketHandle: filed.ticketHandle ?? null,
+    attachmentsPersisted: filed.attachmentsPersisted,
+    attachmentsNotSent: [...local.notSent, ...filed.attachmentsSkipped],
     message: `Bug report filed${filed.ticketHandle ? ` as ${filed.ticketHandle}` : ""} in the Bug Reports inbox, under the user's name.`,
   }
 }
@@ -251,7 +320,7 @@ export function registerReportBugTool(orgId: string): void {
     name: "report_bug",
     deferLoading: true,
     description:
-      "File a bug report about Liaison itself (something broken, wrong or confusing in the product) for the signed-in user, exactly like the app's Report a bug form: it lands in the Bug Reports inbox under the user's name. Where the server sends bug reports only to the Liaison team, it prepares the report for the Liaison team instead, and the user sends it with one click after checking it. Use when the user asks to report or file a Liaison bug, or asks for a change to a skill or toolkit. Not for a customer's problem with the org's own products: that is a ticket.",
+      "File a bug report about Liaison itself (something broken, wrong or confusing in the product) for the signed-in user, exactly like the app's Report a bug form: it lands in the Bug Reports inbox under the user's name. Where the server sends bug reports only to the Liaison team, it prepares the report for the Liaison team instead, and the user sends it with one click after checking it. To include files (screenshots, logs, a ZIP of examples), pass their kernel.files ids in `attachments`: never upload them to another service to share them. Use when the user asks to report or file a Liaison bug, or asks for a change to a skill or toolkit. Not for a customer's problem with the org's own products: that is a ticket.",
     searchKeywords: ["bug", "signaler", "problème", "anomalie"],
     // Every active member holds it, as the web form is open to every member
     // (every-member-scopes.ts): most reporters hold no tickets scope at all.

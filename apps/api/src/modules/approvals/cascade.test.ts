@@ -176,6 +176,24 @@ describe("bundle cascade — deterministic path", () => {
     expect(await readDecidedResult(ORG, a2)).toEqual({ sent: "label-123" })
   })
 
+  it("once step 1 ran, step 2's card reads the value it returned, not that it comes later", async () => {
+    const a1 = await gated("step1", { kind: "x" })
+    const a2 = await gated("step2", { note: `@ref:${a1}:value` })
+    const summaryOf = async (id: string) => {
+      const [r] = await sql<{ summary: { lines: string[] } }[]>`
+        SELECT summary FROM kernel.approval_requests WHERE id = ${id}`
+      return (r?.summary.lines ?? []).join("\n")
+    }
+    // Before: step 1 has not run, so the value is announced, never shown as a bracketed stand-in.
+    expect(await summaryOf(a2)).toContain("filled in when that step runs")
+    expect(await summaryOf(a2)).not.toContain("[")
+    await decideApproval({ orgId: ORG, requestId: a1, actor, decision: "approve" })
+    expect(await statusOf(a2)).toBe("approved")
+    const after = await summaryOf(a2)
+    expect(after).toContain("label-123")
+    expect(after).not.toContain("filled in when that step runs")
+  })
+
   it("a deferred step cannot be approved directly", async () => {
     const a1 = await gated("step1", { kind: "x" })
     const a2 = await gated("step2", { note: `@ref:${a1}:value` })

@@ -64,6 +64,10 @@ const { runContextStore } = await import("~/modules/agent/runtime/run-context")
 const { ensureAppsForOrg } = await import("~/modules/apps/init")
 const { isBugReportTeamOnlyFor } = await import("~/modules/liaison-team/bug-report-payload")
 const { redis } = await import("~/lib/redis")
+const { handleToolCall } = await import("~/modules/mcp/tool-call")
+const { seedMcpConnection } = await import("~/modules/mcp/test-helpers")
+const { ensureConnectionThread } = await import("~/modules/mcp/connection-thread")
+const { withRlsContext } = await import("~/db/rls")
 
 type Fake = Awaited<ReturnType<typeof startFakeControlPlane>>
 type Session = Awaited<ReturnType<typeof minimal.session>>
@@ -546,6 +550,156 @@ describe("kernel:report_bug, team-only", () => {
     const sent = await call(fresh, `/drafts/${r.draftId}/send`, { digest: shown.digest })
     expect(sent.status).toBe(200)
     expect(((await sent.json()) as { data: { forwarded: string } }).data.forwarded).toBe("queued")
+  })
+
+  it("over the reporter's own MCP client, on a connection thread holding outside text: a card, never an approval", async () => {
+    const fresh = await minimal.session(reporter.orgId)
+    const conn = await seedMcpConnection({
+      orgId: fresh.orgId,
+      userId: fresh.userId,
+      clientId: "claude-code",
+      label: "Claude Code",
+    })
+    // The connection's thread read outside text earlier (a mail, a web page).
+    const threadId = await ensureConnectionThread(conn.id, fresh.orgId, fresh.userId)
+    await sql`UPDATE kernel.threads SET tainted = true WHERE id = ${threadId}::uuid`
+    const res = await handleToolCall(
+      {
+        orgId: fresh.orgId,
+        actor: {
+          actorType: "user",
+          userId: fresh.userId,
+          orgId: fresh.orgId,
+          scopes: ["kernel:bug_reports:file"],
+          dimensionGrants: {},
+        },
+        connectionId: conn.id,
+        ownerUserId: fresh.userId,
+        connectionThreadId: threadId,
+        discovered: new Set(),
+      },
+      "kernel__report_bug",
+      params,
+    )
+    const out = res.structuredContent as Record<string, any>
+    expect(out.blocked).toBeUndefined()
+    expect(out.awaitingConfirmation).toBe(true)
+    const [held] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM kernel.approval_requests
+       WHERE org_id = ${fresh.orgId}::uuid AND tool_name = 'kernel:report_bug'
+         AND requested_by = ${fresh.userId}::uuid`
+    expect(held?.n).toBe(0)
+    const sent = await call(fresh, `/drafts/${out.draftId}/send`, { digest: out.digest })
+    expect(sent.status).toBe(200)
+  })
+
+  describe("attachments", () => {
+    /** A file only `userId` can read (an uploader-only kind), its bytes in storage. */
+    async function ownFile(
+      userId: string,
+      filename: string,
+      bytes: Buffer,
+      opts: { sizeBytes?: number } = {},
+    ): Promise<string> {
+      const id = crypto.randomUUID()
+      const key = `orgs/${reporter.orgId}/test/${id}/${filename}`
+      await sql`
+        INSERT INTO kernel.files (id, org_id, app, entity_type, entity_id, filename, mime_type,
+                                  size_bytes, storage_key, uploaded_by, disposition, ordinal)
+        VALUES (${id}::uuid, ${reporter.orgId}::uuid, 'kernel', 'data_subject_export', ${id},
+                ${filename}, 'application/zip', ${opts.sizeBytes ?? bytes.byteLength}, ${key},
+                ${userId}::uuid, 'attachment', 0)`
+      objects.set(key, bytes)
+      return id
+    }
+    const prepareAs = (s: Session, attachments: string[]) =>
+      runContextStore.run(humanTurn(), () =>
+        withRlsContext(
+          {
+            actorType: "user",
+            userId: s.userId,
+            orgId: s.orgId,
+            scopes: ["kernel:bug_reports:file"],
+            dimensionGrants: {},
+          },
+          (db) =>
+            handleReportBug(
+              { ...params, attachments },
+              { orgId: s.orgId, userId: s.userId, actorType: "agent", db },
+            ),
+        ),
+      ) as Promise<Record<string, any>>
+
+    it("a readable file goes with the prepared report and is forwarded on Send", async () => {
+      const fresh = await minimal.session(reporter.orgId)
+      const bytes = Buffer.from("PK\u0003\u0004 templates and spec")
+      const fileId = await ownFile(fresh.userId, "kit.zip", bytes)
+      const r = await prepareAs(fresh, [fileId])
+      expect(r.awaitingConfirmation).toBe(true)
+      expect(r.summary.attachments).toEqual([{ filename: "kit.zip", sizeBytes: bytes.byteLength }])
+      expect(r.summary.attachmentsNotSent).toEqual([])
+      const card = (await (await call(fresh, `/drafts/${r.draftId}`)).json()) as {
+        data: { digest: string; data: any; attachmentsNotSent: unknown[] }
+      }
+      const sha256 = new Bun.CryptoHasher("sha256").update(bytes).digest("hex")
+      expect(card.data.data.report.attachments).toEqual([
+        {
+          index: 0,
+          filename: "kit.zip",
+          mimeType: "application/zip",
+          sizeBytes: bytes.byteLength,
+          sha256,
+        },
+      ])
+      expect(card.data.digest).toBe(r.digest)
+      expect(await outbox()).toHaveLength(0)
+
+      const sent = await call(fresh, `/drafts/${r.draftId}/send`, { digest: r.digest })
+      expect(sent.status).toBe(200)
+      const rows = await outbox()
+      expect(rows.map((o) => o.type)).toEqual(["bug-report", "bug-report-attachment"])
+      expect(rows[1]?.data).toMatchObject({ filename: "kit.zip", sha256, index: 0 })
+      // Forwarded from a staged copy no user can read, never the reporter's own file.
+      const staged = await stagedFiles()
+      expect(staged.map((f) => f.id)).toEqual([rows[1]?.data.fileId])
+      expect(rows[1]?.data.fileId).not.toBe(fileId)
+      await drain()
+      await drain()
+      expect((await outbox()).map((o) => o.status)).toEqual(["delivered", "delivered"])
+    })
+
+    it("a file id the user cannot read refuses the call and prepares nothing", async () => {
+      const fresh = await minimal.session(reporter.orgId)
+      const other = await minimal.session(reporter.orgId)
+      const theirs = await ownFile(other.userId, "private.zip", Buffer.from("not yours"))
+      const r = await prepareAs(fresh, [theirs])
+      expect(r.error?.code).toBe("ATTACHMENT_NOT_READABLE")
+      expect(r.error?.message).toContain(theirs)
+      expect(r.draftId).toBeUndefined()
+      const listed = (await (await call(fresh, "/drafts")).json()) as { data: unknown[] }
+      expect(listed.data).toHaveLength(0)
+    })
+
+    it("a file over the size cap is listed as not sent; the report still goes", async () => {
+      const fresh = await minimal.session(reporter.orgId)
+      const big = await ownFile(fresh.userId, "huge.zip", Buffer.from("x"), {
+        sizeBytes: 8 * 1024 * 1024,
+      })
+      const r = await prepareAs(fresh, [big])
+      expect(r.awaitingConfirmation).toBe(true)
+      expect(r.summary.attachments).toEqual([])
+      expect(r.summary.attachmentsNotSent).toEqual([
+        { filename: "huge.zip", reason: expect.stringContaining("too large") },
+      ])
+      const card = (await (await call(fresh, `/drafts/${r.draftId}`)).json()) as {
+        data: { data: any; attachmentsNotSent: Array<{ filename: string }> }
+      }
+      expect(card.data.data.report.attachments).toEqual([])
+      expect(card.data.attachmentsNotSent.map((f) => f.filename)).toEqual(["huge.zip"])
+      const sent = await call(fresh, `/drafts/${r.draftId}/send`, { digest: r.digest })
+      expect(sent.status).toBe(200)
+      expect((await outbox()).map((o) => o.type)).toEqual(["bug-report"])
+    })
   })
 })
 

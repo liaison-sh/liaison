@@ -12,6 +12,7 @@ import {
   GATE_LANES,
   gateMatrix,
   laneOrder,
+  NOT_HOSTED_SUITES,
   PR_CI_SUITES,
   planGate,
   type SuiteInfo,
@@ -180,12 +181,19 @@ describe("the gate workflow's lanes", () => {
   const named = new Set([...TEST_MAP.flatMap((e) => e.suites), ...BROAD_SUITES])
 
   it("runs every suite the test map names, except the ones per-PR CI runs", () => {
-    const missing = [...named].filter((s) => !(s in GATE_LANES) && !PR_CI_SUITES.includes(s))
+    const missing = [...named].filter(
+      (s) => !(s in GATE_LANES) && !PR_CI_SUITES.includes(s) && !(s in NOT_HOSTED_SUITES),
+    )
     expect(missing).toEqual([])
   })
 
   it("leaves no suite both to per-PR CI and to a gate lane", () => {
     expect(PR_CI_SUITES.filter((s) => s in GATE_LANES)).toEqual([])
+  })
+
+  it("gives every suite it cannot host a reason, and none of them a lane", () => {
+    expect(Object.keys(NOT_HOSTED_SUITES).filter((s) => s in GATE_LANES)).toEqual([])
+    expect(Object.values(NOT_HOSTED_SUITES).every((why) => why.length > 20)).toBe(true)
   })
 
   it("names only suites test-run.ts knows, and shards only the ones it can shard", () => {

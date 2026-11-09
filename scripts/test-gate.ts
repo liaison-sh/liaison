@@ -91,7 +91,6 @@ export const GATE_LANES: Record<string, number> = {
   "bundled-boxtal-ui": 1,
   "bundled-monitoring-ui": 1,
   "bundled-social-ui": 1,
-  desktop: 1,
   "desktop-ui": 1,
   mobile: 1,
 }
@@ -102,6 +101,15 @@ export const GATE_LANES: Record<string, number> = {
  * map names must be a {@link GATE_LANES} key, or the gate would plan it and
  * never run it (scripts/test-gate.test.ts pins that).
  */
+/**
+ * Suites a hosted Linux runner cannot run, with why: the plan lists them as
+ * not run so the owner runs them on a Mac (`bun run test:desktop`).
+ */
+export const NOT_HOSTED_SUITES: Record<string, string> = {
+  desktop:
+    "its session-broker tests drive the Mac shell's zsh shims, sockets and signed app bundle; they hang on a Linux runner",
+}
+
 export const PR_CI_SUITES = ["unit", "web-unit", "root", "guards"]
 
 export interface GateShard {
@@ -408,6 +416,10 @@ async function main(): Promise<number> {
     writeFileSync(matrixFile, `${JSON.stringify({ include })}\n`)
     const lanes = [...new Set(include.map((m) => `${m.suite} x${m.of}`))]
     console.log(`  gate lanes: ${lanes.length > 0 ? lanes.join(", ") : "none"}`)
+    for (const r of plan.run) {
+      const why = NOT_HOSTED_SUITES[r.suite]
+      if (why) console.log(`  ! not run on hosted runners, run it on a Mac: ${r.suite} (${why})`)
+    }
   }
   if (plan.run.length === 0) {
     console.log("nothing to run.")

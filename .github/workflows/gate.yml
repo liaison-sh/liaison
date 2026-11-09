@@ -5,7 +5,9 @@
 # per-PR `ci` workflow runs (PR_CI_SUITES in scripts/test-gate.ts): integration
 # (with integration-extra, integration-mocked, security), e2e-parallel,
 # demo-seed, Playwright (headless), cell, api-guards, shared, the workspace
-# packages, the bundled apps (suites and UIs), desktop and mobile. The `plan` job takes the
+# packages, the bundled apps (suites and UIs), desktop-ui and mobile. The desktop
+# shell's own suite needs a Mac (NOT_HOSTED_SUITES in scripts/test-gate.ts): the
+# plan prints it as not run here. The `plan` job takes the
 # paths changed between `base` and `ref` through the repo's own test map
 # (scripts/test-gate.ts, the planner `bun run test:gate` uses) and keeps the
 # lanes it names; each lane is split over runners with scripts/test-run.ts
@@ -119,6 +121,9 @@ jobs:
       LIAISON_TEST_SLOTS: "1"
       SUITE: ${{ matrix.suite }}
       SHARD: ${{ matrix.shard }}/${{ matrix.of }}
+      # The cell latency bounds are set for a dedicated machine; a hosted runner
+      # gets the allowance (boot-flat.scenario.test.ts), the flatness checks stay exact.
+      BOOT_FLAT_LATENCY_FACTOR: "3"
       UPDATE_SNAPSHOTS: ${{ inputs.update_snapshots }}
       FILES: ${{ toJSON(matrix.files) }}
     steps:
@@ -171,16 +176,14 @@ jobs:
         if: matrix.suite == 'playwright'
         working-directory: apps/web
         run: bunx --bun playwright install --with-deps chromium
-      - name: Install the desktop shell's Linux build libraries and zsh
-        # scaffold.test.ts runs `cargo check` on the Tauri crate; the session
-        # shims run under zsh.
-        if: matrix.suite == 'desktop'
-        run: |
-          sudo apt-get install -y --no-install-recommends zsh libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
       - name: Install plistutil
         # apps/mobile/ios-config.test.ts reads the committed plists with it.
         if: matrix.suite == 'mobile'
         run: sudo apt-get install -y --no-install-recommends libplist-utils
+      - name: Build the web bundle the mobile tests measure
+        if: matrix.suite == 'mobile'
+        working-directory: apps/mobile
+        run: bun run build:mobile
       - name: Run ${{ matrix.suite }} shard ${{ matrix.shard }} of ${{ matrix.of }}
         id: run
         timeout-minutes: 35

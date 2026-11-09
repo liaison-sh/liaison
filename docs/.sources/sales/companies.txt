@@ -1,7 +1,7 @@
 Companies in the Contacts sidebar with their count -> apps/web/src/modules/contacts/ContactsSidebar.tsx:352-400
 Search companies..., count line, latest activity first -> packages/shared/src/i18n/locales/en/contacts.json:190-191
 Search matches name and domain -> apps/web/src/modules/contacts/CompanyList.tsx:4-6
-Row line: domain, newest open deal, No deal; Possible duplicate -> packages/shared/src/i18n/locales/en/contacts.json:198-202 ; apps/web/src/modules/contacts/ContactDetail.tsx:60-64
+Row line: domain, newest open deal or No deal, people count; Possible duplicate -> packages/shared/src/i18n/locales/en/contacts.json:198-202 ; apps/web/src/modules/contacts/company-visuals.ts:41-48
 New company, Website domain -> packages/shared/src/i18n/locales/en/contacts.json:188-189 ; apps/web/src/modules/contacts/CompanyList.tsx:133-161
 Empty list proposes creating the companies the contacts name -> packages/shared/src/i18n/locales/en/contacts.json:194
 Visible to the whole team, Shared with some people, Only you see this company -> apps/web/src/modules/contacts/CompanyDetail.tsx:896-908
@@ -29,7 +29,7 @@ Duplicate suggestion text and Keep them separate -> packages/shared/src/i18n/loc
 More actions then Delete -> apps/web/src/modules/contacts/CompanyDetail.tsx:366-386
 Person's page links to the company and shows its line -> apps/web/src/modules/contacts/ContactDetail.tsx:436-448
 Person's Activity is the timeline limited to the person, with the scope note -> apps/web/src/modules/contacts/ContactDetail.tsx:476-492 ; packages/shared/src/i18n/locales/en/contacts.json:293-294
-No timeline without kernel:companies:read -> apps/web/src/modules/contacts/ContactDetail.tsx:57-66
+No timeline without kernel:companies:read; the scope note only with a company -> apps/web/src/modules/contacts/ContactDetail.tsx:65 ; apps/web/src/modules/contacts/ContactDetail.tsx:478-486
 Follow-ups block states -> apps/web/src/modules/contacts/ContactDetail.tsx:70-106 ; packages/shared/src/i18n/locales/en/contacts.json:297-317
 Invoices and account messages always go out -> packages/shared/src/i18n/locales/en/contacts.json:310
 Company tools and approvals -> docs/reference/agent-tools.md:companies_search ; apps/api/src/modules/agent/tools/company-tools.ts

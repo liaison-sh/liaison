@@ -11,7 +11,7 @@ A company groups the people you work with there. Its page shows what is going on
 2. In the sidebar, click **Companies**. The number beside it counts the companies you can see.
 3. Type in **Search companies...**. Search matches the name and the website domain. The list shows the latest activity first.
 
-Each row says what the company is to you in one line: its domain, or its newest open deal with its stage and amount, or **No deal**. A row marked **Possible duplicate** is explained on the company's page (see [Merge two companies](#merge-two-companies)).
+Each row says what the company is to you in one line: its domain, its newest open deal with its stage and amount (or **No deal**), and how many people work there. A row marked **Possible duplicate** is explained on the company's page (see [Merge two companies](#merge-two-companies)).
 
 Click **New company**, type its name, add its **Website domain** if you know it, and save. When your contacts already name companies that do not exist yet, the empty list says how many and offers to ask the agent to create them.
 
@@ -56,7 +56,7 @@ The page says it merges in a few seconds and offers **Undo** until then. A page 
 
 ## The person's own page
 
-Open a person from the company, or from **Contacts**. Their page links to their company and shows its line (its domain or its open deal). Below, **Activity** is the same timeline limited to what involves this person, with the note "Only what involves <name>. Everything at the company is on <company>." A person without a company, or a reader without `kernel:companies:read`, sees no timeline.
+Open a person from the company, or from **Contacts**. Their page links to their company and shows its line (its domain or its open deal). Below, **Activity** is the same timeline limited to what involves this person, with the note "Only what involves <name>. Everything at the company is on <company>." A reader without `kernel:companies:read` sees no timeline. For a person without a company, the note is left out.
 
 **Follow-ups** says what commercial mail to this person rests on:
 

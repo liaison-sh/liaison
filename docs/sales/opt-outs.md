@@ -32,7 +32,7 @@ Everyone with the Full Member role holds `mail:suppressions:read`, so they see w
 
 ## Allow them again
 
-Ask the agent to lift it (`suppression_remove`). It waits for a mail admin, who holds `mail:suppressions:write`, and the approval card says who opted out, when and how. Do it only when the person asked you to write to them again.
+Ask the agent to lift it (`suppression_remove`). It waits for approval by someone who holds `mail:suppressions:write` (an admin), and the approval card says who opted out, when and how. Do it only when the person asked you to write to them again.
 
 ## Before any commercial mail goes
 

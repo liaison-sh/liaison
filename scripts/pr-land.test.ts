@@ -3,8 +3,11 @@ import { describe, expect, test } from "bun:test"
 import {
   type CheckEntry,
   type CiRun,
+  decideCiKick,
   decideMainGate,
   judgePrChecks,
+  KICK_AFTER_MS,
+  MAX_KICKS,
   parseFixesCi,
   runIdFromUrl,
 } from "./pr-land"
@@ -145,5 +148,26 @@ describe("parsing", () => {
       "38977868410",
     )
     expect(runIdFromUrl("https://example.invalid/status")).toBeNull()
+  })
+})
+
+describe("decideCiKick", () => {
+  const t0 = 1_000_000
+  test("a head with no check at all past the delay is re-triggered", () => {
+    expect(decideCiKick([], t0, 0, t0 + KICK_AFTER_MS)).toBe("kick")
+  })
+
+  test("a head with no check yet, inside the delay, waits", () => {
+    expect(decideCiKick([], t0, 0, t0 + KICK_AFTER_MS - 1)).toBe("wait")
+  })
+
+  test("a head whose checks are running is never re-triggered", () => {
+    expect(decideCiKick([check("checks", "", "IN_PROGRESS")], t0, 0, t0 + 10 * KICK_AFTER_MS)).toBe(
+      "wait",
+    )
+  })
+
+  test("once the re-triggers are spent it gives up instead of waiting out the deadline", () => {
+    expect(decideCiKick([], t0, MAX_KICKS, t0 + KICK_AFTER_MS)).toBe("give_up")
   })
 })

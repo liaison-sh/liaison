@@ -8148,4 +8148,25 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.settingsUi.accountsToGiveTo": "Les confier à",
   "kernel.settingsUi.accountsToChoose": "Choisir une personne",
   "kernel.settingsUi.accountsToNobody": "Les laisser sans responsable de compte",
+  "contacts.activity.emptyContact": "Rien ne s'est encore passé avec cette personne.",
+  "contacts.activity.onlyThisPerson":
+    "Uniquement ce qui concerne {{name}}. Tout ce qui touche l'entreprise est sur {{company}}.",
+  "contacts.followUps.optedOut": "Désinscrit des messages commerciaux.",
+  "contacts.followUps.since": "Depuis le {{date}}.",
+  "contacts.followUps.sinceBy": "Depuis le {{date}}, par {{by}}.",
+  "contacts.followUps.by.link": "le lien d'un message précédent",
+  "contacts.followUps.by.reply": "une réponse demandant l'arrêt",
+  "contacts.followUps.by.person": "une personne de cette organisation",
+  "contacts.followUps.by.import": "une liste importée",
+  "contacts.followUps.noBasis":
+    "Aucune base enregistrée. Les relances commerciales ignorent cette personne.",
+  "contacts.followUps.unknown":
+    "Le statut de désinscription n'a pas pu être lu. Les relances commerciales l'attendent.",
+  "contacts.followUps.allowed": "Relances commerciales autorisées : {{basis}}.",
+  "contacts.followUps.recorded":
+    "Enregistré le {{date}}. Les factures et messages de compte partent toujours.",
+  "contacts.followUps.basis.consent": "ils y ont consenti",
+  "contacts.followUps.basis.customer": "client existant",
+  "contacts.followUps.basis.professional_interest": "intérêt professionnel",
+  "contacts.followUps.basis.generic_address": "adresse professionnelle générique",
 }

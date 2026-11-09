@@ -58,11 +58,14 @@ export function customAppsEnabled(): boolean {
 }
 
 /**
- * Whether tool search ranks by meaning as well as by words, with a local
- * embedding model of about 1.1 GB per API process. `LIAISON_TOOL_MEANING`
+ * Whether tool search ranks by meaning as well as by words. The local
+ * embedding model runs in one shared embedding process per host (about
+ * 1.1 GB loaded, 1.4 GB at peak), which the API processes ask over a Unix
+ * socket; it adds nothing to each API process. `LIAISON_TOOL_MEANING`
  * (`on` | `off`) decides; unset, it follows the edition (on when managed, off
- * when self-hosted), so a small self-hosted server never loads the model
- * unless its operator turns it on. Keyword ranking is the fallback either way.
+ * when self-hosted), so a small self-hosted server never runs the embedding
+ * process unless its operator turns it on. Keyword ranking is the fallback
+ * either way, and while the embedding process is down or slow.
  */
 export function toolMeaningEnabled(): boolean {
   const v = env.LIAISON_TOOL_MEANING

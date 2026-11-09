@@ -3,8 +3,8 @@
 // rich_text document templates: an organisation's blocks of text with
 // {{path}} placeholders, laid out on the host into the shared DrawCommand
 // list and rendered by the existing replayer (pdf/replay.ts). No browser, no
-// sandbox, no expressions: a placeholder is a dot path into the record and
-// nothing else.
+// sandbox, no eval: a placeholder is a dot path into the record, or a small
+// computation over such paths (see "Computed values" below).
 //
 //   body = { page?: { size?, margins?, fontSize? }, blocks: Block[] }
 //   Block = heading { text, level? } | paragraph { text, size? }
@@ -17,8 +17,8 @@
 //         | image { fileId, width?, align? }   a PNG or JPEG of this template
 //         | spacer { height }
 //   Every block may carry `when`: it prints only when its conditions hold.
-//   A condition is { path, is?: present|absent, equals?, in? } (a list of them
-//   is an AND); a `*` segment in its path means "any row" (lines.*.sku). Rows
+//   A condition is { path, is?: present|absent, equals?, in?, atLeast?, atMost? }
+//   (a list of them is an AND; atLeast/atMost compare a number); a `*` segment in its path means "any row" (lines.*.sku). Rows
 //   of a list, table or repeat are kept by `where`, the same conditions read
 //   relative to the row.
 //
@@ -31,6 +31,10 @@
 // {{path ?? words}} prints the words, grey, instead of the label (still a
 // blank: "not confirmed by the supplier"); {{path ??}} prints nothing and is
 // not a blank (an optional field such as a phone number nobody gave).
+// {{quantity * attributes.weight_kg | fixed:3}} computes: + - * / and
+// parentheses over numbers and paths, sum(<list>, <expression>[, <path> =
+// "<text>"]) over a list's rows, and `| fixed:N` for N decimals. An operand
+// that is missing or not a number is a missing value, as above.
 // Paths read own properties only (no prototype walk). A list with more rows
 // than RICH_TEXT_MAX_LIST_ROWS, or a document past the replayer's page or
 // command bounds, is refused whole: a document is never truncated (D32).
@@ -77,9 +81,17 @@ const FONT_BOLD = "bold"
 // ---------------------------------------------------------------------------
 
 const PATH_SOURCE = "[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)*"
-/** `{{path}}`, or `{{path ?? words printed grey when the value is missing}}`. */
-const PLACEHOLDER_RE = new RegExp(`\\{\\{\\s*(${PATH_SOURCE})\\s*(?:\\?\\?([^{}]*))?\\}\\}`, "g")
+/**
+ * `{{value}}`, `{{value | fixed:N}}`, each with an optional `?? words printed
+ * grey when the value is missing`. The value is a dot path or an expression
+ * (computedPlaceholder checks it). Groups: 1 value, 2 filter, 3 filter
+ * argument, 4 the words after ??.
+ */
+const PLACEHOLDER_RE =
+  /\{\{([^{}?|]*?)\s*(?:\|\s*([A-Za-z]+)\s*(?::\s*(\d+))?\s*)?(?:\?\?([^{}]*))?\}\}/g
 const PATH_RE = new RegExp(`^${PATH_SOURCE}$`)
+/** Decimals `| fixed:N` takes. */
+const FIXED_MAX = 6
 /** A condition path: a dot path whose segments may be `*` (any row of a list). */
 const CONDITION_PATH_RE = /^(?:[A-Za-z0-9_]+|\*)(?:\.(?:[A-Za-z0-9_]+|\*))*$/
 /** Characters of a placeholder's fallback words. */
@@ -87,8 +99,36 @@ const FALLBACK_MAX = 200
 /** Segments that never resolve, even as an own property of a parsed record. */
 const FORBIDDEN_SEGMENTS = new Set(["__proto__", "constructor", "prototype"])
 
+/** One placeholder as written: a plain path, or a parsed expression; null when malformed. */
+interface Placeholder {
+  /** The value as written, trimmed. */
+  source: string
+  /** The plain path, when the value is one (no computation). */
+  path: string | null
+  expr: Expr | null
+  fixed: number | undefined
+  /** The words after ??, untrimmed; undefined without ??. */
+  fallback: string | undefined
+}
+
+function placeholderOf(match: RegExpMatchArray): Placeholder | null {
+  const source = (match[1] ?? "").trim()
+  const filter = match[2]
+  const arg = match[3]
+  let fixed: number | undefined
+  if (filter !== undefined) {
+    if (filter !== "fixed" || arg === undefined || Number(arg) > FIXED_MAX) return null
+    fixed = Number(arg)
+  }
+  const fallback = match[4]
+  if (PATH_RE.test(source)) return { source, path: source, expr: null, fixed, fallback }
+  const expr = parseExpression(source)
+  return expr ? { source, path: null, expr, fixed, fallback } : null
+}
+
 /** The text with every well-formed placeholder removed; a "{{" or "}}" left is malformed. */
 function malformedPlaceholder(text: string): boolean {
+  for (const m of text.matchAll(PLACEHOLDER_RE)) if (!placeholderOf(m)) return true
   const rest = text.replace(PLACEHOLDER_RE, "")
   return rest.includes("{{") || rest.includes("}}")
 }
@@ -98,10 +138,10 @@ const templateText = z
   .max(RICH_TEXT_MAX_TEXT)
   .refine(
     (t) => !malformedPlaceholder(t),
-    "a placeholder is {{path}} with a dot path such as {{order.lines.0.sku}}, or {{path ?? words shown when it is missing}}",
+    `a placeholder is {{path}} with a dot path such as {{order.lines.0.sku}}, {{path ?? words shown when it is missing}}, or a computation such as {{quantity * attributes.weight_kg | fixed:3}} (+ - * / and parentheses over numbers and paths, sum(list, expression[, path = "text"]), | fixed:0-${FIXED_MAX})`,
   )
   .refine(
-    (t) => [...t.matchAll(PLACEHOLDER_RE)].every((m) => (m[2] ?? "").length <= FALLBACK_MAX),
+    (t) => [...t.matchAll(PLACEHOLDER_RE)].every((m) => (m[4] ?? "").length <= FALLBACK_MAX),
     `the words after ?? in a placeholder are at most ${FALLBACK_MAX} characters`,
   )
 
@@ -136,11 +176,14 @@ const conditionSchema = z
     is: z.enum(["present", "absent"]).optional(),
     equals: z.string().max(500).optional(),
     in: z.array(z.string().max(500)).min(1).max(100).optional(),
+    /** The value is a number at least this (a text that is only a number counts). */
+    atLeast: z.number().finite().optional(),
+    atMost: z.number().finite().optional(),
   })
   .strict()
   .refine(
-    (c) => [c.is, c.equals, c.in].filter((v) => v !== undefined).length <= 1,
-    "a condition takes one of is, equals or in",
+    (c) => [c.is, c.equals, c.in, c.atLeast, c.atMost].filter((v) => v !== undefined).length <= 1,
+    "a condition takes one of is, equals, in, atLeast or atMost",
   )
 
 /** Conditions that must all hold: one condition or a list of them. */
@@ -345,8 +388,9 @@ export function richTextPlaceholderPaths(body: RichTextBody): string[] {
   const each = (text: string | undefined, prefix: string | null) => {
     if (!text) return
     for (const m of text.matchAll(PLACEHOLDER_RE)) {
-      const path = m[1]
-      if (path) out.add(prefix ? `${prefix}.${path}` : path)
+      const p = placeholderOf(m)
+      if (p?.path) out.add(prefix ? `${prefix}.${p.path}` : p.path)
+      else if (p?.expr) expressionPaths(p.expr, prefix, out)
     }
   }
   const conditions = (c: Conditions | undefined, prefix: string | null) => {
@@ -469,6 +513,13 @@ function holds(
   base: string | null,
   c: RichTextCondition,
 ): boolean {
+  if (c.atLeast !== undefined || c.atMost !== undefined) {
+    return conditionValues(record, base, c.path).some((v) => {
+      const n = numeric(v)
+      if (n === null) return false
+      return c.atLeast !== undefined ? n >= c.atLeast : n <= (c.atMost ?? n)
+    })
+  }
   const printed = conditionValues(record, base, c.path).flatMap((v) => {
     if (Array.isArray(v)) return v.length > 0 ? ["list"] : []
     const p = printable(v)
@@ -522,6 +573,229 @@ interface ImageInfo {
   image: ResolvedImage
   width: number
   height: number
+}
+
+// ---------------------------------------------------------------------------
+// Computed values
+// ---------------------------------------------------------------------------
+//
+// A placeholder may compute: + - * / and parentheses over number literals and
+// dot paths, plus sum(<list>, <expression> [, <path> = "<text>"]) over the rows
+// of a list (the expression and the condition read relative to the row; only
+// rows whose path equals the text, case-insensitively, count). A tiny parser,
+// no eval. An operand that is missing or not a number (a text such as
+// "0.820 kg" is not) makes the whole value missing, as does a division by
+// zero: the placeholder then prints its grey label or its ?? words, and the
+// operand is listed as a blank.
+
+type Expr =
+  | { kind: "num"; value: number }
+  | { kind: "path"; path: string }
+  | { kind: "neg"; arg: Expr }
+  | { kind: "bin"; op: "+" | "-" | "*" | "/"; left: Expr; right: Expr }
+  | { kind: "sum"; from: string; expr: Expr; where: { path: string; equals: string } | null }
+
+const EXPR_MAX_TOKENS = 200
+const EXPR_MAX_DEPTH = 20
+const NUMBER_RE = /^\d+(?:\.\d+)?$/
+const TOKEN_RE = /\s*(?:([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)|("[^"{}]*")|([-+*/(),=]))/y
+
+type Token = { word: string } | { text: string } | { op: string }
+
+function tokenize(source: string): Token[] | null {
+  const out: Token[] = []
+  TOKEN_RE.lastIndex = 0
+  while (TOKEN_RE.lastIndex < source.length) {
+    if (source.slice(TOKEN_RE.lastIndex).trim() === "") break
+    const m = TOKEN_RE.exec(source)
+    if (!m) return null
+    if (m[1] !== undefined) out.push({ word: m[1] })
+    else if (m[2] !== undefined) out.push({ text: m[2].slice(1, -1) })
+    else out.push({ op: m[3] ?? "" })
+    if (out.length > EXPR_MAX_TOKENS) return null
+  }
+  return out
+}
+
+/** Parse a computed placeholder; null when it is not a well-formed expression. */
+function parseExpression(source: string): Expr | null {
+  const tokens = tokenize(source)
+  if (!tokens || tokens.length === 0) return null
+  let i = 0
+  const peekOp = (op: string) => {
+    const t = tokens[i]
+    return t !== undefined && "op" in t && t.op === op
+  }
+  const expectOp = (op: string) => {
+    if (!peekOp(op)) throw new Error(op)
+    i += 1
+  }
+  const path = (): string => {
+    const t = tokens[i]
+    if (t === undefined || !("word" in t) || NUMBER_RE.test(t.word)) throw new Error("path")
+    i += 1
+    return t.word
+  }
+  const sum = (depth: number, inSum: boolean): Expr => {
+    if (inSum) throw new Error("nested sum")
+    expectOp("(")
+    const from = path()
+    expectOp(",")
+    const expr = additive(depth + 1, true)
+    let where: { path: string; equals: string } | null = null
+    if (peekOp(",")) {
+      i += 1
+      const p = path()
+      expectOp("=")
+      const t = tokens[i]
+      if (t === undefined || !("text" in t)) throw new Error("text")
+      i += 1
+      where = { path: p, equals: t.text }
+    }
+    expectOp(")")
+    return { kind: "sum", from, expr, where }
+  }
+  const factor = (depth: number, inSum: boolean): Expr => {
+    if (depth > EXPR_MAX_DEPTH) throw new Error("depth")
+    const t = tokens[i]
+    if (t === undefined) throw new Error("end")
+    if ("op" in t && t.op === "-") {
+      i += 1
+      return { kind: "neg", arg: factor(depth + 1, inSum) }
+    }
+    if ("op" in t && t.op === "(") {
+      i += 1
+      const inner = additive(depth + 1, inSum)
+      expectOp(")")
+      return inner
+    }
+    if ("word" in t) {
+      i += 1
+      if (NUMBER_RE.test(t.word)) return { kind: "num", value: Number(t.word) }
+      if (peekOp("(")) {
+        if (t.word !== "sum") throw new Error("function")
+        return sum(depth, inSum)
+      }
+      if (t.word.split(".").some((s) => FORBIDDEN_SEGMENTS.has(s))) throw new Error("segment")
+      return { kind: "path", path: t.word }
+    }
+    throw new Error("token")
+  }
+  const term = (depth: number, inSum: boolean): Expr => {
+    let left = factor(depth, inSum)
+    while (peekOp("*") || peekOp("/")) {
+      const op = (tokens[i] as { op: "*" | "/" }).op
+      i += 1
+      left = { kind: "bin", op, left, right: factor(depth, inSum) }
+    }
+    return left
+  }
+  const additive = (depth: number, inSum: boolean): Expr => {
+    let left = term(depth, inSum)
+    while (peekOp("+") || peekOp("-")) {
+      const op = (tokens[i] as { op: "+" | "-" }).op
+      i += 1
+      left = { kind: "bin", op, left, right: term(depth, inSum) }
+    }
+    return left
+  }
+  try {
+    const expr = additive(0, false)
+    return i === tokens.length ? expr : null
+  } catch {
+    return null
+  }
+}
+
+/** The record paths an expression reads, `prefix`-relative (a sum's rows under its list). */
+function expressionPaths(expr: Expr, prefix: string | null, out: Set<string>): void {
+  const at = (p: string, pre: string | null) => (pre ? `${pre}.${p}` : p)
+  switch (expr.kind) {
+    case "num":
+      return
+    case "path":
+      out.add(at(expr.path, prefix))
+      return
+    case "neg":
+      expressionPaths(expr.arg, prefix, out)
+      return
+    case "bin":
+      expressionPaths(expr.left, prefix, out)
+      expressionPaths(expr.right, prefix, out)
+      return
+    case "sum": {
+      const from = at(expr.from, prefix)
+      out.add(from)
+      expressionPaths(expr.expr, from, out)
+      if (expr.where) out.add(`${from}.${expr.where.path}`)
+      return
+    }
+  }
+}
+
+/** A record value as a number: a finite number, or a text that is only a number ("1.95"). */
+function numeric(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null
+  if (typeof value === "bigint") return Number(value)
+  if (typeof value === "string" && /^\s*-?\d+(?:\.\d+)?\s*$/.test(value)) return Number(value)
+  return null
+}
+
+/** A computed value, or the full path of the operand that was missing (null: no path, e.g. x / 0). */
+type Computed = { ok: true; value: number } | { ok: false; missing: string | null }
+
+function evaluate(expr: Expr, record: Record<string, unknown>, base: string | null): Computed {
+  switch (expr.kind) {
+    case "num":
+      return { ok: true, value: expr.value }
+    case "path": {
+      const full = scopedPath(record, base, expr.path)
+      const n = numeric(readPath(record, full))
+      return n === null ? { ok: false, missing: full } : { ok: true, value: n }
+    }
+    case "neg": {
+      const v = evaluate(expr.arg, record, base)
+      return v.ok ? { ok: true, value: -v.value } : v
+    }
+    case "bin": {
+      const l = evaluate(expr.left, record, base)
+      if (!l.ok) return l
+      const r = evaluate(expr.right, record, base)
+      if (!r.ok) return r
+      const value =
+        expr.op === "+"
+          ? l.value + r.value
+          : expr.op === "-"
+            ? l.value - r.value
+            : expr.op === "*"
+              ? l.value * r.value
+              : l.value / r.value
+      return Number.isFinite(value) ? { ok: true, value } : { ok: false, missing: null }
+    }
+    case "sum": {
+      const where = expr.where
+      const rows = keptRows(
+        record,
+        base,
+        expr.from,
+        where ? { path: where.path, equals: where.equals } : undefined,
+      )
+      if (rows === null) return { ok: false, missing: scopedPath(record, base, expr.from) }
+      let total = 0
+      for (const row of rows) {
+        const v = evaluate(expr.expr, record, row)
+        if (!v.ok) return v
+        total += v.value
+      }
+      return { ok: true, value: total }
+    }
+  }
+}
+
+/** A computed number as text: `fixed` decimals, else at most 6 with trailing zeros cut. */
+function formatNumber(value: number, fixed: number | undefined): string {
+  const text = fixed !== undefined ? value.toFixed(fixed) : String(Number(value.toFixed(6)))
+  return /^-0(?:\.0*)?$/.test(text) ? text.slice(1) : text
 }
 
 // ---------------------------------------------------------------------------
@@ -618,10 +892,9 @@ class Layout {
     for (const match of text.matchAll(PLACEHOLDER_RE)) {
       const index = match.index ?? 0
       if (index > last) out.push({ text: text.slice(last, index), bold })
-      const rel = match[1] ?? ""
-      const fallback = match[2]
-      const path = scopedPath(this.record, base, rel)
-      const value = printable(readPath(this.record, path))
+      const placeholder = placeholderOf(match)
+      const fallback = placeholder?.fallback
+      const { value, path } = this.resolve(placeholder, base)
       if (value !== null) {
         out.push({ text: value, bold })
       } else if (fallback === undefined) {
@@ -637,6 +910,27 @@ class Layout {
     }
     if (last < text.length) out.push({ text: text.slice(last), bold })
     return out
+  }
+
+  /** A placeholder's printed value, or null and the path to report as the blank. */
+  private resolve(
+    p: Placeholder | null,
+    base: string | null,
+  ): { value: string | null; path: string } {
+    // The schema refuses a malformed placeholder; this is only for the type.
+    if (!p) return { value: null, path: "" }
+    if (p.path !== null) {
+      const path = scopedPath(this.record, base, p.path)
+      const raw = readPath(this.record, path)
+      if (p.fixed === undefined) return { value: printable(raw), path }
+      const n = numeric(raw)
+      return { value: n === null ? null : formatNumber(n, p.fixed), path }
+    }
+    if (!p.expr) return { value: null, path: "" }
+    const computed = evaluate(p.expr, this.record, base)
+    if (computed.ok) return { value: formatNumber(computed.value, p.fixed), path: "" }
+    // A division by zero names no operand: the blank is the computation as written.
+    return { value: null, path: computed.missing ?? p.source }
   }
 
   noteBlank(path: string, label: string): void {

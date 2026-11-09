@@ -31,8 +31,11 @@ Create the template with `kernel__document_template_create`, record type `boxtal
 A body is a list of blocks: `heading`, `paragraph`, `list`, `table`, `repeat`, `image` and `spacer`.
 
 - `{{path}}` prints a value. A missing value prints grey as `[label]` and is listed as a blank.
+- A placeholder can compute: `+`, `-`, `*`, `/` and parentheses over numbers and paths, and `| fixed:3` prints 3 decimals. `{{quantity * attributes.steel_weight_kg | fixed:3}} kg` prints a line's total weight from a fact stored per unit. Store such a fact as a plain number (`1.950`, not `1.950 kg`).
+- `sum(list, expression)` adds up the expression over the lines, and `sum(list, expression, path = "text")` only over the lines where the path has that value: `{{sum(lines, value, attributes.material = "steel") / totals.value * 100 | fixed:1}} percent` prints the steel products' share of the order value.
+- A computed value with a missing or non-numeric operand, or a division by zero, counts as missing: it prints grey and is listed as a blank, and `??` words apply to it too.
 - `{{path ?? words}}` prints the words, grey, when the value is missing (still a blank to fill). `{{path ??}}` prints nothing (an optional field, such as a phone number nobody gave).
-- `when` on any block prints it only when its conditions hold. A condition is `{ "path": ..., "is": "present" | "absent" }`, `{ "path": ..., "equals": ... }` or `{ "path": ..., "in": [...] }`; a list of conditions must all hold. A `*` in the path means any line: `lines.*.attributes.material` equals `steel` holds when any line is made of steel.
+- `when` on any block prints it only when its conditions hold. A condition is `{ "path": ..., "is": "present" | "absent" }`, `{ "path": ..., "equals": ... }`, `{ "path": ..., "in": [...] }`, or `{ "path": ..., "atLeast": 2 }` / `{ "path": ..., "atMost": 10 }` for a number; a list of conditions must all hold. A `*` in the path means any line: `lines.*.attributes.material` equals `steel` holds when any line is made of steel.
 - `table` prints a header and one row per line of `from` (keep some lines with `where`), or the fixed `rows` you write. A fixed row can carry its own `when`.
 - `repeat` prints its blocks once per kept line of `from`: a section per product.
 - Inside a row, a path reads the line first and the order when the line has no such field, so `{{invoice.number}}` still works there.

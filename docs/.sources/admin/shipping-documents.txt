@@ -7,11 +7,14 @@ Printed only when the record changed (fingerprint) -> bundled-apps/boxtal/src/cu
 Prints through documents_print onto the order -> bundled-apps/boxtal/src/customs-documents.ts:528
 Ready to ship row lists the papers -> bundled-apps/boxtal/src/queues.ts:505
 Print pack returns the papers -> bundled-apps/boxtal/src/print-pack.ts:170
-Placeholder with missing-value words -> apps/api/src/modules/documents/rich-text.ts:81
-Missing-value words are a blank -> apps/api/src/modules/documents/rich-text.ts:634
-Conditions (when, where, *) -> apps/api/src/modules/documents/rich-text.ts:130
-Table block -> apps/api/src/modules/documents/rich-text.ts:196
-Repeat block -> apps/api/src/modules/documents/rich-text.ts:245
-Row paths fall back to the record -> apps/api/src/modules/documents/rich-text.ts:430
+Placeholder with missing-value words -> apps/api/src/modules/documents/rich-text.ts:90
+Missing-value words are a blank -> apps/api/src/modules/documents/rich-text.ts:909
+Conditions (when, where, *) -> apps/api/src/modules/documents/rich-text.ts:170
+Table block -> apps/api/src/modules/documents/rich-text.ts:239
+Repeat block -> apps/api/src/modules/documents/rich-text.ts:288
+Row paths fall back to the record -> apps/api/src/modules/documents/rich-text.ts:474
+Computed placeholders: + - * / ( ), sum(list, expr, path = "text"), | fixed:N -> apps/api/src/modules/documents/rich-text.ts:621 ; apps/api/src/modules/documents/rich-text.ts:800
+Operand missing, non-numeric or division by zero is a missing value -> apps/api/src/modules/documents/rich-text.ts:747 ; apps/api/src/modules/documents/rich-text.ts:737
+atLeast / atMost conditions -> apps/api/src/modules/documents/rich-text.ts:516
 Rule attribute condition -> apps/api/src/modules/documents/rules-store.ts:99
 Attribute matching, * any value -> apps/api/src/modules/documents/rules.ts:142

@@ -161,7 +161,7 @@ const templateIdParam = z
 const bodyParam = z
   .record(z.string(), z.unknown())
   .describe(
-    'The rich_text body: { page?: { size?: "A4"|"Letter", fontSize?: 8-14, margins? }, blocks: [...] }. Blocks: { type: "heading", text, level?: 1|2|3 }, { type: "paragraph", text }, { type: "list", from: "<list path>", line: "<text with {{field}} of one row>" }, { type: "image", fileId, width?, align? }, { type: "spacer", height }. Text takes {{path}} placeholders from the record type\'s fields.',
+    'The rich_text body: { page?: { size?: "A4"|"Letter", fontSize?: 8-14, margins? }, blocks: [...] }. Blocks: { type: "heading", text, level?: 1|2|3 }, { type: "paragraph", text }, { type: "list", from: "<list path>", line: "<text with {{field}} of one row>" }, { type: "image", fileId, width?, align? }, { type: "spacer", height }. Text takes {{path}} placeholders from the record type\'s fields; {{path ?? words}} prints the words when the value is missing. A placeholder can compute: + - * / and parentheses over numbers and paths, sum(list, expression[, path = "text"]) over a list\'s rows, and | fixed:N for N decimals, e.g. {{quantity * attributes.weight_kg | fixed:3}}; a missing or non-numeric operand makes the value missing.',
   )
 
 const recordTypesParams = z.object({ recordType: recordTypeParam.optional() }).strict()

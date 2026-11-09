@@ -916,7 +916,8 @@ describe("Shopify app.manifest.json", () => {
     // (invoicing:orders_invoiceability_check), with a stage-time preflight on complete.
     // 0.4.12: orders_get returns the order's billing address (with its company) and the buyer's
     // VAT number from its current custom attributes.
-    expect(m.version).toBe("0.4.12")
+    // 0.4.13: orders_search hits carry the shipping the customer paid (shippingAmount, shippingCurrency).
+    expect(m.version).toBe("0.4.13")
   })
 
   it("read_all_orders is a protected scope behind the org's full-order-history toggle", () => {

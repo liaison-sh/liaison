@@ -153,6 +153,11 @@ interface OrderNode {
     defaultAddress?: ShopifyAddress | null
   } | null
   shippingAddress?: ShopifyAddress | null
+  /** The shipping line the customer was charged, after shipping discounts (null: no shipping line). */
+  shippingLine?: {
+    title?: string | null
+    discountedPriceSet?: { presentmentMoney?: { amount: string; currencyCode: string } }
+  } | null
   /** True when the order has shipping lines or a line that requires shipping (any line, not only the fetched ones). */
   requiresShipping?: boolean | null
   /** The order's current item count (removed items excluded), across every line. */
@@ -285,6 +290,11 @@ function normalizeOrder(node: OrderNode): NormalizedHit {
       // "no FR orders" in carrier-reroute/triage flows (BL-242).
       shippingCountryCode: shipCountryCode,
       shippingCountry: shipCountry,
+      // What the customer paid for shipping (the order's shipping line after shipping discounts, in
+      // the buyer-facing currency), so a shipping worklist can set it beside a carrier quote from the
+      // search hit alone. Null when the order has no shipping line.
+      shippingAmount: node.shippingLine?.discountedPriceSet?.presentmentMoney?.amount ?? null,
+      shippingCurrency: node.shippingLine?.discountedPriceSet?.presentmentMoney?.currencyCode ?? null,
       // SERVER-COMPUTED EU-customs-union membership of the ship-to country — so a fulfillment/customs
       // routine tick filters "the EU orders" on a FACT, not in-context geography it gets wrong (a
       // flash-lite tick mis-classified Germany/DE as non-EU and skipped all the DE orders). True iff the
@@ -354,6 +364,7 @@ const ORDERS_SEARCH_QUERY = `
         taxExempt
         purchasingEntity { ... on PurchasingCompany { company { name } location { taxSettings { taxRegistrationId } } } }
         shippingAddress { address1 city zip country countryCode }
+        shippingLine { discountedPriceSet { presentmentMoney { amount currencyCode } } }
         customer { id email firstName lastName taxExempt defaultAddress { address1 city zip country countryCode } }
         requiresShipping currentSubtotalLineItemsQuantity
         lineItems(first: 10) { pageInfo { hasNextPage } edges { node { title quantity currentQuantity requiresShipping variant { sku } } } }
@@ -413,10 +424,6 @@ interface OrderDetailNode extends OrderNode {
   billingAddress?: (ShopifyAddress & { company?: string | null }) | null
   customAttributes?: Array<{ key?: string | null; value?: string | null }> | null
   lineItems?: { edges?: Array<{ node: OrderLineItemNode }> }
-  shippingLine?: {
-    title?: string | null
-    discountedPriceSet?: { presentmentMoney?: { amount: string; currencyCode: string } }
-  } | null
   fulfillments?: Array<{
     id: string
     status?: string | null

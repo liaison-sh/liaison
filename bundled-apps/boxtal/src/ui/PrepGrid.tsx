@@ -26,9 +26,11 @@ import {
   Index,
   onCleanup,
   Show,
+  untrack,
 } from "solid-js"
 import { accessToken, app, getContext } from "@liaison/host"
 import { AddShipmentPanel } from "./AddShipmentPanel"
+import { tr } from "./i18n"
 import { AddressDiffersChip, AddressDiffersFold } from "./AddressDiffers"
 import {
   type ApprovalRow,
@@ -68,6 +70,7 @@ import {
   invoiceControlState,
   LABEL_LABELS,
   labelState,
+  keepUnchangedRows,
   mergeRows,
   type PrepCategory,
   type PrepInvoiceState,
@@ -660,6 +663,23 @@ const ShippingEstimateCell: Component<{
             </Show>
           </div>
         )}
+      </Show>
+      {/* What the customer paid for shipping on the order, beside the quote and outside the
+          offer it shows, so it stays in view whichever offer is picked. Blue only to tell it
+          apart from the carrier's price. */}
+      <Show when={props.row.customer_shipping_minor != null}>
+        <span
+          class="whitespace-nowrap font-mono text-[11px] tabular-nums text-blue-500"
+          data-testid={`${props.testid}-paid`}
+          title={tr("Shipping the customer paid on the order")}
+        >
+          {tr("Paid {{amount}}", {
+            amount: formatMoneyMinor(
+              props.row.customer_shipping_minor ?? null,
+              props.row.customer_shipping_currency ?? props.row.currency,
+            ),
+          })}
+        </span>
       </Show>
       {/* No quote yet, but offers exist (a stale set with neither a chosen nor a
           cheapest offer): keep the picker reachable as a plain select. */}
@@ -1361,6 +1381,17 @@ export const PrepGrid: Component = () => {
   // worklist back on screen once a newer one has landed.
   const [refreshing, setRefreshing] = createSignal(false)
   const [refreshFailed, setRefreshFailed] = createSignal(false)
+  // Whether a live read has landed in this mount. Until then the rows on screen may be an old
+  // cache (the refreshing banner says how old); after it, a refresh updates rows in place with no
+  // banner: one appearing and leaving on every background refresh pushed the table down and back.
+  const [liveLoaded, setLiveLoaded] = createSignal(false)
+  // A fresh whole-list read keeps every unchanged row's object (keepUnchangedRows), so a refresh
+  // rebuilds only the rows that changed instead of every row of the worklist.
+  const reconcileFresh = (fresh: PrepListResult): PrepListResult => {
+    const prev = untrack(() => latestResult()?.rows)
+    const rows = keepUnchangedRows(prev, fresh.rows, (r) => r.order_key)
+    return rows === fresh.rows ? fresh : { ...fresh, rows }
+  }
   let applyFresh: (v: PrepListResult) => void = () => {}
   let served = false
   let generation = 0
@@ -1399,8 +1430,11 @@ export const PrepGrid: Component = () => {
     setRefreshFailed(false)
     return fetchPrepList({ includeExcluded: includeExcluded() }, cacheCtx)
       .then((v) => {
-        if (gen === generation) setRefreshing(false)
-        return v
+        if (gen === generation) {
+          setRefreshing(false)
+          setLiveLoaded(true)
+        }
+        return reconcileFresh(v)
       })
       .catch((err) => {
         if (gen === generation) {
@@ -1410,7 +1444,10 @@ export const PrepGrid: Component = () => {
         throw err
       })
   })
-  applyFresh = (v) => (mutate as (v: PrepListResult) => void)(v)
+  applyFresh = (v) => {
+    ;(mutate as (v: PrepListResult) => void)(reconcileFresh(v))
+    setLiveLoaded(true)
+  }
   // `.latest` (not the accessor call) so a failed refresh keeps serving the last known rows
   // instead of throwing: calling `result()` re-throws once `result.error` is set, which is exactly
   // the "wipe the table on any failure" bug this rework removes. Cast: HostResource's TS shape
@@ -1534,7 +1571,8 @@ export const PrepGrid: Component = () => {
   const viewState = createMemo(() =>
     gridViewState({
       hasRows: fetchedRows().length > 0,
-      refreshing: refreshing(),
+      // A refresh of rows already read live this mount is silent (see liveLoaded).
+      refreshing: refreshing() && !liveLoaded(),
       failed: loadFailed(),
       lastSyncAt: lastSyncAt(),
     }),

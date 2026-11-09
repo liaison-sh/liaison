@@ -187,6 +187,10 @@ export interface PrepRow {
   products: string
   grand_total_minor: number | null
   currency: string | null
+  /** What the customer paid for shipping on the Shopify order, in minor units of
+   *  `customer_shipping_currency` (the order's currency). Null when not known. */
+  customer_shipping_minor: number | null
+  customer_shipping_currency: string | null
   parcels: Parcel[]
   package_count: number
   category: PrepCategory
@@ -536,6 +540,8 @@ export function buildRow(args: {
     ),
     grand_total_minor: cached?.grand_total_minor ?? c.order_total_minor,
     currency: cached?.currency ?? c.currency,
+    customer_shipping_minor: c.customer_shipping_minor,
+    customer_shipping_currency: c.customer_shipping_currency,
     parcels,
     package_count: parcels.length,
     category: c.category,

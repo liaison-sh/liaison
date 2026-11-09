@@ -16,6 +16,7 @@ import {
   LABEL_LABELS,
   LABEL_WAIT_MS,
   labelState,
+  keepUnchangedRows,
   mergeRows,
   mutationPlan,
   NO_INVOICE_TOOLTIP,
@@ -716,6 +717,28 @@ describe("rowTintClass: the WHOLE row carries the status, not one cell", () => {
     expect(rowTintClass("validated", true)).not.toContain("bg-success/5")
     // The packed argument is optional: every pre-existing caller keeps its old answer.
     expect(rowTintClass("validated")).toBe(rowTintClass("validated", false))
+  })
+})
+
+describe("keepUnchangedRows: a background refresh keeps unchanged rows by identity", () => {
+  it("reuses the previous object for a row whose data did not change, takes the fresh one otherwise", () => {
+    const a = shippableRow({ order_key: "so:1" })
+    const b = shippableRow({ order_key: "so:2" })
+    // A refresh returns NEW objects for every row, one of them changed.
+    const freshA = structuredClone(a)
+    const freshB = { ...structuredClone(b), status: "on_hold" as const }
+    const freshC = shippableRow({ order_key: "so:3" })
+    const out = keepUnchangedRows([a, b], [freshC, freshA, freshB], (r) => r.order_key)
+    expect(out.map((r) => r.order_key)).toEqual(["so:3", "so:1", "so:2"])
+    expect(out[1]).toBe(a)
+    expect(out[2]).toBe(freshB)
+    expect(out[0]).toBe(freshC)
+  })
+
+  it("a row re-read with nothing changed keeps its object through mergeRows too", () => {
+    const a = shippableRow({ order_key: "so:1" })
+    const out = mergeRows([a], [structuredClone(a)], ["so:1"])
+    expect(out[0]).toBe(a)
   })
 })
 

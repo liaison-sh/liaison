@@ -38,13 +38,17 @@ A new label format applies to shipments created after the change.
 
 ## Prepare and ship orders
 
+Orders are prepared and shipped from one page, the **Shipping worklist** in the sidebar. Its filters at the top are **All**, **To prepare**, **Ready to ship**, **To pack** and **Packed**, each with its count. The sidebar badge counts the orders still to prepare plus the labels ready to ship, tinted while some orders still need a label.
+
+The worklist refreshes in the background (when you come back to it, once a minute, after a reconnection). Rows update in place: nothing blanks and the page keeps its scroll.
+
 **To prepare** has one row per open, unfulfilled Shopify order. A row leaves the queue when Shopify reports the order fulfilled or when you exclude it.
 
-1. Open **Boxtal** and click **To prepare** in the sidebar.
+1. Open **Boxtal**, click **Shipping worklist** in the sidebar and pick **To prepare**.
 2. Click **Pull orders** to fetch new orders and refresh quotes. **Refresh stale** re-quotes only the rows whose estimate is out of date.
 3. On each row, set the status: **To prepare**, **Validated** or **On hold** (waiting on stock, a customer or a repair). An agent's call names the row by its `order_key` or its invoice's `document_ref`: one that names no row, order or document is refused and writes nothing, and so are two that name different rows.
 4. Set the category, which decides the shipping document: **Sale** ships on the order's issued invoice. **Repair** and **Sample** ship on a proforma the app issues through [Invoicing](invoicing.md). That proforma may wait for approval, and the category is locked until it is decided.
-5. Pick the carrier offer if you do not want the cheapest one.
+5. Pick the carrier offer if you do not want the cheapest one. Under the offer's price, **Paid** shows in blue what the customer paid for shipping on the Shopify order, in the order's currency, so you can compare the two. It stays when you pick another offer, and is left out when the order has no shipping line.
 6. Click **Ship**. A label purchase waits for approval. Someone who can approve sees **Approve and buy** and **Decline** on the row.
 
 The **Country** column shows the destination's two-letter code (hover it for the country's name). Click its header to sort by country, and use **All countries** to show one country only.

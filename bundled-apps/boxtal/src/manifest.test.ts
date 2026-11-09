@@ -601,7 +601,10 @@ describe("Boxtal app.manifest.json", () => {
     // so a sandbox kill after the paid POST no longer rolls the only record of the label back.
     // 0.23.24: FedEx label reader skips the recipient's phone; a typed tracking number unblocks
     // the packed tick; every parcel's label is printed; Boxtal-safe addresses and its own refusals.
-    expect(m.version).toBe("0.23.24")
+    // 0.23.25: To prepare rows show the shipping the customer paid; a background refresh updates
+    // the worklist in place (no suspended tab, no banner, unchanged rows keep their DOM); the
+    // sidebar names the one shipping worklist once.
+    expect(m.version).toBe("0.23.25")
     expect(m.packageFormat).toBe(1)
   })
 

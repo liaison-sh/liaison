@@ -16,7 +16,7 @@
 //
 // Both surfaces compose ONLY the shared Boxtal kit (kit.tsx) and style with the
 // kernel's charcoal theme tokens, so they read pixel-for-pixel like invoicing.
-import { type Component, createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
+import { type Component, createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, untrack } from "solid-js"
 import { app, currentPath } from "@liaison/host"
 import { CardTable, type CardTableColumn } from "@liaison/app-ui/card-table"
 import { ConfirmDialog } from "@liaison/app-ui/kit"
@@ -36,7 +36,7 @@ import {
 } from "./kit"
 import { loadFileInto, openPreparingTab } from "./file-open"
 import { PrepGrid } from "./PrepGrid"
-import { rowTintClass } from "./prep-row-logic"
+import { keepUnchangedRows, rowTintClass } from "./prep-row-logic"
 import { usePathname } from "./sidebar"
 import { countryName, countryOptions, matchesCountry, nextCountrySort, sortByCountry } from "./country"
 import {
@@ -223,8 +223,26 @@ export const ReadyToShip: Component<{
   /** Reset the worklist filter (the "clear filters" action of an empty filtered list). */
   onClearFilter?: () => void
 }> = (props) => {
-  const [rows, { mutate, refetch }] = app.createResource(fetchReady)
-  const all = (): ReadyRow[] => rows() ?? []
+  // A refresh (window focus, the minute timer, the host's resync) keeps every unchanged row's
+  // object, so the table updates in place instead of rebuilding every row.
+  // The previous rows are read after the await: the first call runs inside createResource itself.
+  const [rows, { mutate, refetch }] = app.createResource(async () => {
+    const fresh = await fetchReady()
+    return keepUnchangedRows(latestRows(), fresh, (r) => r.id)
+  })
+  // `.latest`, never `rows()`: the accessor re-suspends the tab's <Suspense> on every refetch, so
+  // each background refresh blanked the whole worklist (both halves) and dropped its scroll.
+  // HostResource's TS shape omits `.latest`; the runtime object is a Solid resource (PrepGrid
+  // reads it the same way). A failed plain resource throws from `.latest`: read as no rows.
+  const readLatest = (): ReadyRow[] | undefined => {
+    try {
+      return (rows as unknown as { latest?: ReadyRow[] }).latest
+    } catch {
+      return undefined
+    }
+  }
+  const latestRows = (): ReadyRow[] | undefined => untrack(readLatest)
+  const all = (): ReadyRow[] => readLatest() ?? []
   // Country filter and sort: the queue's own order (oldest request first) until the operator
   // sorts by country; ties keep that order.
   const [country, setCountry] = createSignal("")
@@ -264,7 +282,7 @@ export const ReadyToShip: Component<{
    * table under the operator's hand for what is a one-field toggle.
    */
   const patchReadyRow = (id: string, patch: Partial<ReadyRow>): void => {
-    const current = rows()
+    const current = latestRows()
     if (!current) return
     mutate(current.map((r) => (r.id === id ? { ...r, ...patch } : r)))
   }

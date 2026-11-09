@@ -45,8 +45,8 @@ async function login(): Promise<string> {
   return cookieOf(res)
 }
 
-function refresh(cookie: string): Promise<Response> {
-  return app.request("/api/auth/refresh", {
+async function refresh(cookie: string): Promise<Response> {
+  return await app.request("/api/auth/refresh", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

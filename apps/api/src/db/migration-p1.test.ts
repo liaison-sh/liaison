@@ -22,6 +22,8 @@ import { insertSql } from "~/seed/factories/org/test-rows"
 const MIGRATIONS = join(import.meta.dir, "migrations")
 const FIRST_NEW_TAG = "0291_companies"
 const LAST_NEW_TAG = "0294_contact_company_and_lawful_basis"
+/** Run after the others, on rows written since: a role, a direct grant and routines. */
+const SCOPE_TAG = "0296_suppressions_read_for_conversation_readers"
 
 function superuserUrl(): string {
   if (process.env.MIGRATION_DATABASE_URL) return process.env.MIGRATION_DATABASE_URL
@@ -277,6 +279,94 @@ describe("the company, suppression, deal and lawful-basis migrations on a live d
       SELECT permission_version AS v FROM kernel.users WHERE id = ${ANNA}`
     expect(anna?.v).toBe(versionBefore + 1)
   })
+
+  test("a role, a direct grant or a routine that reads mail conversations since gets the opt-out list read too, its editor unchanged", async () => {
+    // Mutation caught: the scope swap left later custom roles and stored routine scopes without
+    // mail:suppressions:read, so their opt-out check refuses.
+    const late = crypto.randomUUID()
+    const bob = crypto.randomUUID()
+    await fresh.unsafe(
+      insertSql("kernel.users", {
+        id: bob,
+        org_id: ORG_ID,
+        email: "bob@example.com",
+        name: "Bob",
+        status: "active",
+      }),
+    )
+    await fresh.unsafe(
+      insertSql("kernel.roles", { id: late, org_id: ORG_ID, name: "late readers" }),
+    )
+    await fresh.unsafe(
+      insertSql("kernel.role_scope_grants", { role_id: late, scope: "mail:conversations:read" }),
+    )
+    await fresh.unsafe(
+      insertSql("kernel.user_roles", { user_id: bob, role_id: late, org_id: ORG_ID }),
+    )
+    await fresh.unsafe(
+      insertSql("kernel.user_scope_grants", {
+        user_id: ANNA,
+        org_id: ORG_ID,
+        scope: "mail:conversations",
+      }),
+    )
+    const reads = crypto.randomUUID()
+    const other = crypto.randomUUID()
+    const edited = new Date("2026-01-02T03:04:05.678Z")
+    for (const [id, scopes, editedAt] of [
+      [reads, ["mail:conversations:read", "kernel:contacts:read"], null],
+      [other, ["tickets:tickets:read"], edited],
+    ] as const) {
+      await fresh`
+        INSERT INTO kernel.routines (id, org_id, owner_user_id, name, description, prompt, cron, timezone,
+                                     scopes, inferred_scopes, created_by_user_id, created_by_actor_type,
+                                     edited_at)
+        VALUES (${id}, ${ORG_ID}, ${ANNA}, ${`r-${id.slice(0, 6)}`}, 'd', 'p', '0 8 * * 1-5', 'UTC',
+                ${scopes as unknown as string[]},
+                ${scopes as unknown as string[]}, ${ANNA}, 'user', ${editedAt})`
+    }
+    const [before] = await fresh<{ v: number }[]>`
+      SELECT permission_version AS v FROM kernel.users WHERE id = ${bob}`
+
+    const all = folderUpTo(SCOPE_TAG, 0)
+    folders.push(all)
+    await runMigrations(freshAsLogin.toString(), { migrationsFolder: all })
+
+    const role = await fresh<{ scope: string }[]>`
+      SELECT scope FROM kernel.role_scope_grants WHERE role_id = ${late} ORDER BY scope`
+    expect(role.map((r) => r.scope)).toEqual(["mail:conversations:read", "mail:suppressions:read"])
+    const direct = await fresh<{ scope: string }[]>`
+      SELECT scope FROM kernel.user_scope_grants
+       WHERE user_id = ${ANNA} AND scope LIKE 'mail:%' ORDER BY scope`
+    expect(direct.map((r) => r.scope)).toEqual(["mail:conversations", "mail:suppressions:read"])
+    const routines = await fresh<
+      {
+        id: string
+        scopes: string[]
+        inferred_scopes: string[]
+        edited_at: Date | null
+        edited_by_user_id: string | null
+      }[]
+    >`
+      SELECT id, scopes, inferred_scopes, edited_at, edited_by_user_id FROM kernel.routines
+       WHERE id IN (${reads}, ${other})`
+    const r = routines.find((x) => x.id === reads)
+    expect(r?.scopes).toEqual([
+      "mail:conversations:read",
+      "kernel:contacts:read",
+      "mail:suppressions:read",
+    ])
+    expect(r?.inferred_scopes).toContain("mail:suppressions:read")
+    // Still nobody's edit: the creator stays its last editor.
+    expect(r?.edited_at).toBeNull()
+    expect(r?.edited_by_user_id).toBeNull()
+    const o = routines.find((x) => x.id === other)
+    expect(o?.scopes).toEqual(["tickets:tickets:read"])
+    expect(o?.edited_at?.toISOString()).toBe(edited.toISOString())
+    const [after] = await fresh<{ v: number }[]>`
+      SELECT permission_version AS v FROM kernel.users WHERE id = ${bob}`
+    expect(after?.v).toBe((before?.v ?? 0) + 1)
+  }, 60_000)
 
   test("users company foreign key refuses deleting a company an external user points at", async () => {
     const company = crypto.randomUUID()

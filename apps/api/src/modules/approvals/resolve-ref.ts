@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { and, eq, gte, inArray, or, sql } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
-import { approvalRequests } from "~/db/schema/kernel"
+import { approvalRequests, users } from "~/db/schema/kernel"
 
 export interface ApprovalRef {
   /** Human-facing label (`request-N`) — the ONLY identifier the approval card
@@ -12,7 +12,13 @@ export interface ApprovalRef {
   /** A send from an end-to-end encrypted mailbox: only a window holding that
    *  mailbox's key, unlocked, can approve it into an actual send. */
   mailboxSealed: boolean
+  /** The names of the people the request was routed to for a decision, the
+   *  requester excluded, in routing order: who the request waits on. */
+  deciders: string[]
 }
+
+/** At most this many decider names are handed to the agent. */
+const MAX_DECIDERS = 5
 
 /**
  * Resolve the human-facing reference of an approval from its uuid.
@@ -30,23 +36,39 @@ export async function resolveApprovalRef(
   orgId: string,
   approvalRequestId: string,
 ): Promise<ApprovalRef | null> {
-  const [row] = await withPrivilegedDb(orgId, "approval-ref", (tx) =>
-    tx
+  return withPrivilegedDb(orgId, "approval-ref", async (tx) => {
+    const [row] = await tx
       .select({
         handle: approvalRequests.handle,
         threadId: approvalRequests.threadId,
         mailboxSealed: sql<boolean>`coalesce((${approvalRequests.currentPayload} ->> 'mailboxSealed')::boolean, false)`,
+        notifyUserIds: approvalRequests.notifyUserIds,
+        requestedBy: approvalRequests.requestedBy,
       })
       .from(approvalRequests)
-      .where(eq(approvalRequests.id, approvalRequestId)),
-  )
-  return row
-    ? {
-        handle: row.handle,
-        threadId: row.threadId ?? null,
-        mailboxSealed: row.mailboxSealed === true,
-      }
-    : null
+      .where(eq(approvalRequests.id, approvalRequestId))
+    if (!row) return null
+    const deciderIds = (row.notifyUserIds ?? [])
+      .filter((id) => id !== row.requestedBy)
+      .slice(0, MAX_DECIDERS)
+    const named =
+      deciderIds.length > 0
+        ? await tx
+            .select({ id: users.id, name: users.name })
+            .from(users)
+            .where(and(eq(users.orgId, orgId), inArray(users.id, deciderIds)))
+        : []
+    const nameOf = new Map(named.map((u) => [u.id, u.name]))
+    return {
+      handle: row.handle,
+      threadId: row.threadId ?? null,
+      mailboxSealed: row.mailboxSealed === true,
+      deciders: deciderIds.flatMap((id) => {
+        const name = nameOf.get(id)
+        return name ? [name] : []
+      }),
+    }
+  })
 }
 
 /**

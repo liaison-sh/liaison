@@ -30,10 +30,14 @@
 export function approvalActionRequiredClause(
   requesterCanApprove: boolean,
   canListApprovals = true,
+  deciders: readonly string[] = [],
 ): string {
+  const named = deciders.length > 0 ? deciders.join(", ") : null
   const who = requesterCanApprove
     ? "WHO MUST ACT: the user you are talking to IS an eligible approver. They can decide it themselves on the approval card. Tell them plainly, in your own words and without hedging, that the action runs ONLY once they approve it, and that leaving it in the queue means it never happens at all."
-    : "WHO MUST ACT: the user you are talking to is NOT an eligible approver for this action, so they CANNOT unblock it themselves. Do not tell them to approve it. Tell them plainly that it is waiting on whoever holds the approve scope for it, that nothing happens until that person decides, and that chasing that approver is the next step."
+    : named
+      ? `WHO MUST ACT: the user you are talking to is NOT an eligible approver for this action, so they CANNOT unblock it themselves. It was sent for a decision to ${named}. Do not tell the user to approve it. Tell them plainly that it waits on ${named}, that nothing happens until a decision is made, and that chasing ${named} is the next step.`
+      : "WHO MUST ACT: the user you are talking to is NOT an eligible approver for this action, so they CANNOT unblock it themselves. Do not tell them to approve it. Tell them plainly that it is waiting on whoever holds the approve scope for it, that nothing happens until that person decides, and that chasing that approver is the next step."
   return `${who} NEVER leave the user with only "it is pending" and no idea that a human decision is the thing standing between this request and a real effect. If the user LATER says this never happened, did not arrive, or that "it is not working", do NOT redo the work and do NOT stage it again: ${
     canListApprovals
       ? "call kernel__approvals_list first — the request is almost certainly still sitting there undecided, and saying so IS the answer."

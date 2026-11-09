@@ -184,7 +184,11 @@ export function worldOrderPayload(order: DemoOrder): Record<string, unknown> {
       // A consumer in Germany pays German VAT (OSS), included in the price: an order to another
       // member state charged no VAT and carrying no VAT number is held for review, never invoiced.
       tax_lines: [
-        { title: "DE MwSt", rate: DE_VAT_RATE, price: money(includedTaxMinor(li.unitMinor * li.quantity)) },
+        {
+          title: "DE MwSt",
+          rate: DE_VAT_RATE,
+          price: money(includedTaxMinor(li.unitMinor * li.quantity)),
+        },
       ],
     })),
     shipping_lines: [],

@@ -1385,8 +1385,8 @@
       "schema": 9
     },
     "kernel__enable_routine_template": {
-      "desc": 304,
-      "schema": 110
+      "desc": 409,
+      "schema": 171
     },
     "kernel__export": {
       "desc": 797,

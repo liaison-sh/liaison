@@ -67,7 +67,7 @@
       }
     ]
   },
-  "version": "1.13.0",
+  "version": "1.13.1",
   "description": "Email integration: Gmail and IMAP/SMTP",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -1281,7 +1281,7 @@
       "description": "Whether addresses opted out of commercial mail (up to 50). Says when and how only to holders of mail:suppressions:read.",
       "searchKeywords": ["désinscrit", "désabonné", "opt-out", "unsubscribed", "désinscription"],
       "readOnly": true,
-      "requiredScopes": ["mail:conversations:read"],
+      "requiredScopes": ["mail:suppressions:read"],
       "handler": "suppressionCheck",
       "params": {
         "type": "object",

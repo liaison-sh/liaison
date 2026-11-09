@@ -2549,7 +2549,11 @@
     "set": "seed",
     "lang": "en",
     "say": "build companies from the people in my contacts",
-    "typed": ["create companies from contacts", "group contacts by company", "companies from contacts"],
+    "typed": [
+      "create companies from contacts",
+      "group contacts by company",
+      "companies from contacts"
+    ],
     "any": ["kernel__companies_propose_from_contacts", "kernel__companies_link_batch"]
   },
   {

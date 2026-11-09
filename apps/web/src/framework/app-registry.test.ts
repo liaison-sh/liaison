@@ -791,7 +791,7 @@ describe("WS dispatch widening — app:entity compound keys", () => {
 //
 // `/monitoring` resolved only because that app happens to give its default tab
 // the bare `/monitoring` urlPattern. Every other app names its default page in
-// the pattern (`/boxtal/shipments`, `/ads/dashboard`), so the bare route and
+// the pattern (`/boxtal/queue/worklist`, `/ads/dashboard`), so the bare route and
 // any alias the app declares matched nothing and the shell kept Home. The bare
 // route names the APP, not one of its pages, so it resolves through the
 // manifest's `routes` next to the activity-bar entry that already carries the
@@ -827,10 +827,10 @@ describe("urlToTabInfo - an app's bare route resolves to its default page", () =
     return urlToTabInfo
   }
 
-  it("resolves /boxtal, the app's name and rail label, to the shipments page", async () => {
+  it("resolves /boxtal, the app's name and rail label, to the shipping worklist", async () => {
     const urlToTabInfo = await coldLoad("boxtal")
-    const canonical = urlToTabInfo("/boxtal/shipments")
-    expect(canonical?.type).toBe("boxtal:shipments")
+    const canonical = urlToTabInfo("/boxtal/queue/worklist")
+    expect(canonical?.type).toBe("boxtal:queue")
     expect(urlToTabInfo("/boxtal")).toEqual(canonical)
   })
 

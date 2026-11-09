@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The shipping worklist, rendered: a background refresh updates rows in place (same DOM nodes, no
+// The shipping worklist, rendered: ONE table of every state, a background refresh updates rows in place (same DOM nodes, no
 // loading state, no suspended tab), and a To prepare row shows the shipping the customer paid
 // beside the carrier quote. Synthetic data only.
 import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library"
@@ -172,22 +172,25 @@ beforeEach(() => {
 })
 afterEach(() => cleanup())
 
-describe("Ready to ship background refresh", () => {
+describe("Bought labels background refresh", () => {
   it("keeps the row DOM nodes and never suspends the tab while it refreshes", async () => {
     // Every read returns NEW objects with the same data, as the real tool does.
     readyRows = () => [readyRow("1"), readyRow("2")]
-    const { ReadyToShip } = await import("./Queues")
+    prepRows = () => []
+    const { ShippingWorklist } = await import("./Queues")
     render(() => (
       <Suspense fallback={<div data-testid="tab-suspended" />}>
-        <ReadyToShip />
+        <ShippingWorklist initialFilter="all" />
       </Suspense>
     ))
     await flush()
     const before = screen.getByTestId("boxtal-ready-country-1")
+    const beforeRow = screen.getByTestId("boxtal-ready-row-1")
     expect(screen.queryByTestId("tab-suspended")).toBeNull()
 
     gate = deferred()
-    void refetchers.at(-1)!() // the host's resync / the minute timer / window focus
+    // The bought labels' read is the worklist's first resource (created before the table's).
+    void refetchers[0]!() // the host's resync / the minute timer / window focus
     await flush()
     // Mid-refresh: the rows are still on screen, nothing suspended, nothing blanked.
     expect(screen.queryByTestId("tab-suspended")).toBeNull()
@@ -198,6 +201,7 @@ describe("Ready to ship background refresh", () => {
     await flush()
     // Landed: unchanged rows are the very same elements.
     expect(screen.getByTestId("boxtal-ready-country-1")).toBe(before)
+    expect(screen.getByTestId("boxtal-ready-row-1")).toBe(beforeRow)
   })
 })
 
@@ -261,5 +265,60 @@ describe("To prepare: what the customer paid for shipping", () => {
     expect(invoked.some((c) => c.name === "prep_select_offer")).toBe(true)
     expect(screen.getByTestId("boxtal-prep-estimate-2001").textContent).toContain("98.36 EUR")
     expect(screen.getByTestId("boxtal-prep-estimate-2001-paid").textContent).toBe("Paid 45.50 USD")
+  })
+})
+
+describe("One shipping worklist", () => {
+  const packedRow = () => ({ ...readyRow("32"), packed: true, fulfillment_state: "fulfilled" })
+
+  it("All renders ONE table holding the rows of every state, each with a State cell", async () => {
+    prepRows = () => [prepRow("3001")]
+    readyRows = () => [readyRow("31"), packedRow()]
+    const { ShippingWorklist } = await import("./Queues")
+    render(() => <ShippingWorklist initialFilter="all" />)
+    await flush(8)
+
+    const tables = screen.getAllByRole("table")
+    expect(tables).toHaveLength(1)
+    const table = tables[0]!
+    // No second list with its own header.
+    expect(screen.queryByTestId("boxtal-ready-to-ship")).toBeNull()
+    const prep = screen.getByTestId("boxtal-prep-row-3001")
+    const ready = screen.getByTestId("boxtal-ready-row-31")
+    expect(table.contains(prep)).toBe(true)
+    expect(table.contains(ready)).toBe(true)
+    expect(table.contains(screen.getByTestId("boxtal-ready-row-32"))).toBe(true)
+    expect(screen.getByTestId("boxtal-prep-state-3001").textContent).toBe("To prepare")
+    expect(screen.getByTestId("boxtal-ready-state-31").textContent).toBe("Label bought")
+    expect(screen.getByTestId("boxtal-ready-state-32").textContent).toBe("Packed, fulfilled")
+    // States in workflow order: the order to prepare comes before the bought labels.
+    expect(prep.compareDocumentPosition(ready) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // Each row keeps its own actions: the quote picking on the To prepare row, the packed tick on
+    // the bought label.
+    expect(screen.getByTestId("boxtal-prep-estimate-3001")).toBeTruthy()
+    expect(screen.getByTestId("boxtal-ready-packed-31")).toBeTruthy()
+  })
+
+  it("the state filters narrow that one table", async () => {
+    prepRows = () => [prepRow("3001")]
+    readyRows = () => [readyRow("31"), packedRow()]
+    const { ShippingWorklist } = await import("./Queues")
+    render(() => <ShippingWorklist initialFilter="all" />)
+    await flush(8)
+
+    fireEvent.click(screen.getByTestId("boxtal-worklist-filter-packed"))
+    await flush()
+    expect(screen.getAllByRole("table")).toHaveLength(1)
+    expect(screen.queryByTestId("boxtal-prep-row-3001")).toBeNull()
+    expect(screen.queryByTestId("boxtal-ready-row-31")).toBeNull()
+    expect(screen.getByTestId("boxtal-ready-row-32")).toBeTruthy()
+
+    fireEvent.click(screen.getByTestId("boxtal-worklist-filter-to_prepare"))
+    await flush()
+    expect(screen.getByTestId("boxtal-prep-row-3001")).toBeTruthy()
+    expect(screen.queryByTestId("boxtal-ready-row-31")).toBeNull()
+    expect(screen.queryByTestId("boxtal-ready-row-32")).toBeNull()
+    // The counts still come from every bought label, whatever the filter.
+    expect(screen.getByTestId("boxtal-worklist-filter-ready").textContent).toContain("2")
   })
 })

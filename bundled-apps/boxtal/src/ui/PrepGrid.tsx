@@ -6,6 +6,11 @@
 // made an un-invoiced order structurally invisible). Every action the row needs is on the row:
 // status, category, the shipping document, packages, quote, ship, label, exclude.
 //
+// It is also the ONE table of the shipping worklist (Queues.tsx): given the worklist's bought
+// labels (`ready`), it renders them as rows of this same table, after the orders to prepare, each
+// with its State and its own print station actions (ReadyRows.tsx), and the worklist's state
+// filter decides which rows it shows.
+//
 // Two costs the rework removes, both of which read to the operator as "the page reloads when I
 // tick a box":
 //   * the list read resolved one shipment draft PER ROW. It now resolves none: the grid renders
@@ -20,6 +25,7 @@
 import {
   type Component,
   createEffect,
+  type JSX,
   createMemo,
   createSignal,
   For,
@@ -44,7 +50,15 @@ import {
 import { CaretIcon, CarrierLogo, PrinterIcon } from "./icon"
 import { loadFileInto, openPreparingTab } from "./file-open"
 import { productChipLabel, resolveProductCodes, shortProductCode } from "./product-codes"
-import { compareCountry, countryName, countryOptions } from "./country"
+import { compareCountry, countryName, countryOptions, sortByCountry } from "./country"
+import { type ReadyRow, ReadyRowView, ReadySelectionBar, type ReadyWorklist } from "./ReadyRows"
+import {
+  readyRowMatchesView,
+  showsToPrepare,
+  WORKLIST_TO_PREPARE_LABEL,
+  type WorklistFilter,
+  worklistEmptyKind,
+} from "./worklist-logic"
 import {
   decodeOrgIdFromToken,
   evictShippedRowFromCache,
@@ -1029,7 +1043,11 @@ export interface PrepGridColumn {
 }
 
 export const PREP_GRID_COLUMNS: PrepGridColumn[] = [
-  { key: "status", header: "Status" },
+  // Where the row is in the worklist. An order to prepare says To prepare over its status select
+  // (To prepare, Validated, On hold); a bought label says Label bought, Packed... It is the
+  // old Status column, so the worklist gained its State without a column more: the table has no
+  // width left for one (see the Packages pin in PrepGrid.test.ts).
+  { key: "status", header: "State" },
   { key: "order", header: "Order", survivesPhone: true },
   { key: "client", header: "Client", survivesPhone: true },
   { key: "country", header: "Country" },
@@ -1318,7 +1336,16 @@ const LabelCell: Component<{
 }
 
 // ── The grid ─────────────────────────────────────────────────────────────
-export const PrepGrid: Component = () => {
+export const PrepGrid: Component<{
+  /** The worklist's bought labels: rendered as rows of this table, after the orders to prepare. */
+  ready?: ReadyWorklist
+  /** The worklist's state filter (all rows when absent). */
+  filter?: WorklistFilter
+  /** The worklist's filter bar, under the header (the action row stays at the top). */
+  filterBar?: JSX.Element
+  /** Reset the worklist's state filter (the "Clear filters" action of an empty filtered table). */
+  onClearFilter?: () => void
+}> = (props) => {
   const [search, setSearch] = createSignal("")
   const [country, setCountry] = createSignal("")
   const [tag, setTag] = createSignal("")
@@ -1565,6 +1592,40 @@ export const PrepGrid: Component = () => {
 
   const productChips = createMemo(() => productsSummaryList(fetchedRows()))
 
+  // ── The one worklist table: which rows of each kind it shows ──────────────────
+  const worklistFilter = (): WorklistFilter => props.filter ?? "all"
+  const prepShown = (): boolean => showsToPrepare(worklistFilter())
+  // The bought labels, through the same filters as the orders above them. They keep their queue
+  // order (oldest request first) unless the table is sorted by country, the one sort key they
+  // carry. Same row objects, new array: an unchanged row keeps its DOM.
+  const readyVisible = createMemo((): ReadyRow[] => {
+    const ready = props.ready
+    if (!ready) return []
+    const n = { search: search(), country: country(), tag: tag(), product: product() }
+    const kept = ready.all().filter((r) => readyRowMatchesView(r, worklistFilter(), n))
+    const s = sort()
+    return sortByCountry(kept, (r) => r.destination, s?.key === "country" ? s.dir : null)
+  })
+  const prepVisibleCount = (): number => (prepShown() ? rows().length : 0)
+  const anyVisible = (): boolean => prepVisibleCount() > 0 || readyVisible().length > 0
+  const narrowed = (): boolean => Boolean(search() || country() || tag() || product())
+  const emptyKind = () =>
+    worklistEmptyKind({
+      filter: worklistFilter(),
+      prepTotal: fetchedRows().length,
+      readyTotal: props.ready?.all().length ?? 0,
+      narrowed: narrowed(),
+    })
+  const clearFilters = (): void => {
+    setSearch("")
+    setCountry("")
+    setTag("")
+    setProduct("")
+    props.onClearFilter?.()
+  }
+  // The prep read's own load states only blank the table when nothing else is there to show.
+  const prepBlocksTable = (): boolean => prepShown() && readyVisible().length === 0
+
   // The refresh banner + empty-state decision: fetchedRows() (unfiltered -- whether the cache/live
   // read has ANY row at all) rather than rows() (post client-side filter), because a filter that
   // hides every row is not the same situation as a refresh that has not landed yet.
@@ -1666,6 +1727,7 @@ export const PrepGrid: Component = () => {
   // a row count change is the cheapest signal that it did.
   createEffect(() => {
     rows().length
+    readyVisible().length
     queueMicrotask(measureSticky)
   })
 
@@ -1994,8 +2056,8 @@ export const PrepGrid: Component = () => {
   return (
     <div data-testid="boxtal-prep-grid" class="flex h-full min-h-0 flex-col">
       <PageHeader
-        title="To prepare"
-        count={rows().length}
+        title={props.ready ? "Shipping worklist" : "To prepare"}
+        count={prepVisibleCount() + readyVisible().length}
         subtitle={lastSyncLabel(lastSyncAt())}
         testid="boxtal-prep-grid-header"
         actions={
@@ -2030,6 +2092,8 @@ export const PrepGrid: Component = () => {
           </>
         }
       />
+
+      {props.filterBar}
 
       {/* What this list is NOT showing, said out loud rather than left to be discovered. */}
       <Show when={latestResult()?.last_sync_error || latestResult()?.truncated || latestResult()?.invoicing_available === false}>
@@ -2095,7 +2159,12 @@ export const PrepGrid: Component = () => {
             onChange={(e) => setCountry(e.currentTarget.value)}
           >
             <option value="">All countries</option>
-            <For each={countryOptions(fetchedRows().map((r) => r.destination))}>
+            <For
+              each={countryOptions([
+                ...fetchedRows().map((r) => r.destination),
+                ...(props.ready?.all() ?? []).map((r) => r.destination),
+              ])}
+            >
               {(c) => (
                 <option value={c} title={countryName(c)}>
                   {c}
@@ -2142,8 +2211,24 @@ export const PrepGrid: Component = () => {
        * The decision itself is gridViewState (prep-view-state.ts), pure and unit-tested; this is
        * only the render of its answer.
        */}
+      <Show when={props.ready?.error()}>
+        <div
+          class="mx-4 mt-3 rounded-sm border border-warning-border bg-warning-glow/40 px-3 py-2 text-[12px] text-text"
+          data-testid="boxtal-ready-error"
+        >
+          {`Couldn't load the bought labels: ${String((props.ready?.error() as Error | undefined)?.message ?? props.ready?.error() ?? "Unknown error")}`}
+        </div>
+      </Show>
+      <Show when={viewState().empty === "load_error" && !prepBlocksTable() && prepShown()}>
+        <div
+          class="mx-4 mt-3 rounded-sm border border-warning-border bg-warning-glow/40 px-3 py-2 text-[12px] text-text"
+          data-testid="boxtal-prep-grid-error"
+        >
+          {`Couldn't load the orders to prepare: ${String(result.error?.message ?? result.error ?? "Unknown error")}`}
+        </div>
+      </Show>
       <Show
-        when={viewState().empty !== "load_error"}
+        when={viewState().empty !== "load_error" || !prepBlocksTable()}
         fallback={
           <EmptyState icon={<InboxIcon />} title="Couldn't load queue" testid="boxtal-prep-grid-error">
             {String(result.error?.message ?? result.error ?? "Unknown error")}
@@ -2171,7 +2256,7 @@ export const PrepGrid: Component = () => {
           )}
         </Show>
         <Show
-          when={viewState().empty !== "loading"}
+          when={viewState().empty !== "loading" || !prepBlocksTable()}
           fallback={
             <EmptyState icon={<InboxIcon />} title="Loading the queue" testid="boxtal-prep-grid-loading">
               Nothing is cached yet. The queue is loading.
@@ -2179,13 +2264,36 @@ export const PrepGrid: Component = () => {
           }
         >
         <Show
-          when={rows().length > 0}
+          when={anyVisible()}
           fallback={
-            <EmptyState icon={<InboxIcon />} title="Nothing to prepare" testid="boxtal-prep-grid-empty">
-              Every open order is shipped or excluded.
-            </EmptyState>
+            <Show
+              when={emptyKind() !== "no_match"}
+              fallback={
+                <EmptyState icon={<InboxIcon />} title="No rows match these filters" testid="boxtal-worklist-no-match">
+                  <Button variant="ghost" testid="boxtal-worklist-clear-filters" onClick={clearFilters}>
+                    Clear filters
+                  </Button>
+                </EmptyState>
+              }
+            >
+              <Show
+                when={emptyKind() === "nothing_ready"}
+                fallback={
+                  <EmptyState icon={<InboxIcon />} title="Nothing to prepare" testid="boxtal-prep-grid-empty">
+                    Every open order is shipped or excluded.
+                  </EmptyState>
+                }
+              >
+                <EmptyState icon={<InboxIcon />} title="Nothing ready" testid="boxtal-ready-empty">
+                  Shipments with a bought label will appear here, ready for the print station.
+                </EmptyState>
+              </Show>
+            </Show>
           }
         >
+          <Show when={props.ready && readyVisible().length > 0}>
+            <ReadySelectionBar ready={props.ready!} visible={readyVisible()} />
+          </Show>
           {/* The horizontal scroller. Its own width -- not the window's -- decides
               whether the Actions column stays pinned (see actionsSticky above), and
               `data-sticky-actions` publishes that decision so the e2e can pin the rule
@@ -2208,7 +2316,7 @@ export const PrepGrid: Component = () => {
                     pad="tight"
                     class="sticky top-0 z-10 hidden border-b border-border bg-bg md:table-cell"
                   >
-                    Status
+                    State
                   </Th>
                   <SortTh label="Order" sortKey="order" active={sort()} onSort={onSort} />
                   <SortTh label="Client" sortKey="client" active={sort()} onSort={onSort} />
@@ -2261,7 +2369,7 @@ export const PrepGrid: Component = () => {
                 </tr>
               </thead>
               <tbody class="divide-y divide-border-subtle">
-                <For each={displayRows()}>
+                <For each={prepShown() ? displayRows() : []}>
                   {(row) => {
                     // A row mid-exit-transition (held on screen by reconcileExitingRows after a
                     // refresh dropped it) is busy in every sense that matters here: no action on
@@ -2304,6 +2412,14 @@ export const PrepGrid: Component = () => {
                         )}
                       >
                         <td class={cx(cellClass, phoneCell("status"))} data-phone-column="status">
+                          {/* Where the order is in the worklist: no label yet. Its status
+                              (To prepare, Validated, On hold) is the select under it. */}
+                          <span
+                            class="mb-0.5 block whitespace-nowrap text-[11px] font-medium leading-[1.3] text-text-secondary"
+                            data-testid={`boxtal-prep-state-${row.order_key}`}
+                          >
+                            {WORKLIST_TO_PREPARE_LABEL}
+                          </span>
                           <select
                             class={cx(inputClass, "!w-[96px] px-1 py-0.5 text-[11px]")}
                             data-testid={`boxtal-prep-status-${row.order_key}`}
@@ -2648,6 +2764,19 @@ export const PrepGrid: Component = () => {
                       </>
                     )
                   }}
+                </For>
+                {/* The bought labels, after the orders to prepare (workflow order), in the same
+                    table and the same columns. Keyed by row object: a refresh keeps their DOM. */}
+                <For each={readyVisible()}>
+                  {(row) => (
+                    <ReadyRowView
+                      ready={props.ready!}
+                      row={row}
+                      cellClass="border-b border-border-subtle px-1.5 py-1 align-middle"
+                      survivesPhone={(key) => PREP_GRID_COLUMNS.find((c) => c.key === key)?.survivesPhone === true}
+                      actionsSticky={actionsSticky()}
+                    />
+                  )}
                 </For>
               </tbody>
             </table>

@@ -604,7 +604,9 @@ describe("Boxtal app.manifest.json", () => {
     // 0.23.25: To prepare rows show the shipping the customer paid; a background refresh updates
     // the worklist in place (no suspended tab, no banner, unchanged rows keep their DOM); the
     // sidebar names the one shipping worklist once.
-    expect(m.version).toBe("0.23.25")
+    // 0.23.26: the worklist is ONE table (every state in it, a State column, the filters over it),
+    // and the Boxtal icon opens it.
+    expect(m.version).toBe("0.23.26")
     expect(m.packageFormat).toBe(1)
   })
 

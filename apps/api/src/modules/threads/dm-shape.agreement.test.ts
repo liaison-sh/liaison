@@ -40,7 +40,6 @@ function plainShape(over: Partial<DmShapeFacts>): DmShapeFacts {
     type: "thread",
     isPinned: false,
     createdFrom: null,
-    referenceCount: 0,
     humanCount: 2,
     agentCount: 0,
     title: null,

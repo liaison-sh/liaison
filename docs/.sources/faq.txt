@@ -35,3 +35,4 @@ include steps, version, impact -> SECURITY.md:27
 no public issues -> SECURITY.md:20
 build app with SDK, sandbox, install path -> README.md:120
 config apply provisions org admin members keys mailboxes inboxes apps knowledge -> README.md:212
+Companies, deals, quiet-deal follow-ups and opt-outs exist -> docs/sales/companies.md ; docs/sales/deals.md ; docs/sales/opt-outs.md

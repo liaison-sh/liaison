@@ -193,3 +193,4 @@ deal-followups card: who approves, skips today, added at send -> apps/api/src/mo
 deal closed cancels waiting drafts about it -> apps/api/src/modules/approvals/withdraw-on-events.ts:130-200
 app switched off cancels drafts whose send check names its records -> apps/api/src/modules/approvals/cancel.ts:262-290
 pausing keeps waiting drafts: a disabled routine's tick is skipped -> apps/api/src/modules/agent/routines/routine-worker.ts:1143-1149
+Link to the follow-ups page -> docs/sales/follow-ups.md

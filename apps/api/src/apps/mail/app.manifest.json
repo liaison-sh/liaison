@@ -1278,7 +1278,7 @@
       }
     },
     "suppression_check": {
-      "description": "Whether addresses opted out of commercial mail (up to 50). Says when and how only to holders of mail:suppressions:read.",
+      "description": "Whether addresses opted out of commercial mail (up to 50), with when and how.",
       "searchKeywords": ["désinscrit", "désabonné", "opt-out", "unsubscribed", "désinscription"],
       "readOnly": true,
       "requiredScopes": ["mail:suppressions:read"],

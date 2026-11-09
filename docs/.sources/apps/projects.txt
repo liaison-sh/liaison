@@ -215,3 +215,4 @@ Deal panel fields and buttons, buttons need projects:deals:write -> apps/web/src
 Deal panel error line -> apps/web/src/modules/projects/DealPanel.tsx:158
 Client field in Edit project -> apps/web/src/modules/projects/ProjectEditForm.tsx:46
 deal-followups drafts from the deal owner's mailbox, skips no_sender -> apps/api/src/apps/projects/service/deals.ts:1311-1349
+Deal tools in the agent table -> apps/api/src/apps/projects/app.manifest.json:1190 ; apps/api/src/apps/projects/app.manifest.json:1231 ; apps/api/src/apps/projects/app.manifest.json:1324 ; apps/api/src/apps/projects/app.manifest.json:1397 ; apps/api/src/apps/projects/app.manifest.json:1461

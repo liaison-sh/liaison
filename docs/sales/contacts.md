@@ -3,7 +3,7 @@ title: Keep customers and prospects in Contacts
 description: "Find the people you deal with in Contacts, edit their details, sort them into groups and share them with your team."
 ---
 
-Contacts is Liaison's own directory of the people and companies you deal with. This page shows how contacts get there, how to find and edit them, how to group and share them, and what agents can do with them. Contacts is not a CRM: it has no deals, stages or pipeline. To read deals from your own CRM, see [Connect your own CRM or ERP](connect-your-crm.md).
+Contacts is Liaison's own directory of the people and companies you deal with. This page shows how contacts get there, how to find and edit them, how to group and share them, and what agents can do with them. Each person can belong to a [company](companies.md), which has its own page with a timeline, and deals are kept in [Projects](deals.md). To read deals from your own CRM instead, see [Connect your own CRM or ERP](connect-your-crm.md).
 
 ## What a contact holds
 
@@ -39,7 +39,7 @@ If a search under **People** finds nothing, click **Search all senders instead**
 
 1. Open the contact.
 2. Under **Identity**, click **Name**, **Phone** or **Company** to edit it in place, then confirm. The email is shown but cannot be edited here.
-3. The **Activity** section lists the contact's mail conversations, and **Tickets** lists their tickets.
+3. The **Activity** section is the person's timeline: their mail, tickets, invoices, meetings and deals, newest first. **Follow-ups** says whether commercial mail to them is allowed. Their **Company** links to the company's page. See [Companies](companies.md#the-persons-own-page).
 
 To delete a contact, click **More actions**, then **Delete contact**, then confirm **Delete this contact permanently?**.
 

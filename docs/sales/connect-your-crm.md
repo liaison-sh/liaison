@@ -3,7 +3,7 @@ title: Connect your own CRM or ERP
 description: "Connect your CRM, ERP or any HTTPS API with an adapter, so agents read your customers, orders and deals and a customer card shows on mail and tickets."
 ---
 
-Liaison has no deals or pipeline of its own. If your customers, orders, invoices or deals live in a CRM or ERP, connect it with the **API connector**. Agents then read it, and a **Customer** card shows on mail conversations and tickets. This page shows how to add a connection, enter its credentials, test it and see what agents and your team get.
+Liaison keeps its own companies and deals (see [Companies](companies.md) and [Track deals on a pipeline](deals.md)). If your customers, orders, invoices or deals live in a CRM or ERP instead, connect it with the **API connector**. Agents then read it, and a **Customer** card shows on mail conversations and tickets. This page shows how to add a connection, enter its credentials, test it and see what agents and your team get.
 
 ## What you need
 

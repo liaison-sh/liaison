@@ -333,13 +333,27 @@ function git(args: string[]): string {
   return r.stdout.toString()
 }
 
-function changedPaths(base: string): string[] {
+/**
+ * The files the gate workflow's plan step writes into the checkout while this
+ * planner runs (`tee gate-plan.txt` opens its file first): untracked, so they
+ * would read as unmapped changes and widen every narrow plan to the broad set.
+ */
+export const GATE_OUTPUT_FILES = ["gate-plan.txt", "gate-matrix.json", "gate-matrix.pw.json"]
+
+/** The changed paths without the planner's own outputs (and `--matrix-json`'s file). */
+export function withoutGateOutputs(paths: readonly string[], matrixFile?: string): string[] {
+  const own = new Set(GATE_OUTPUT_FILES)
+  if (matrixFile) own.add(path.relative(ROOT, path.resolve(matrixFile)))
+  return paths.filter((p) => !own.has(p))
+}
+
+function changedPaths(base: string, matrixFile?: string): string[] {
   const mergeBase = git(["merge-base", base, "HEAD"]).trim()
   const lines = [
     ...git(["diff", "--name-only", mergeBase]).split("\n"),
     ...git(["ls-files", "--others", "--exclude-standard"]).split("\n"),
   ]
-  return [...new Set(lines.map((l) => l.trim()).filter(Boolean))]
+  return withoutGateOutputs([...new Set(lines.map((l) => l.trim()).filter(Boolean))], matrixFile)
 }
 
 /** A suite's cwd and what it selects, read from test-run.ts's own dry run. */
@@ -381,7 +395,7 @@ async function main(): Promise<number> {
   const matrixAt = argv.indexOf("--matrix-json")
   const matrixFile = matrixAt === -1 ? undefined : argv[matrixAt + 1]
 
-  const changed = changedPaths(base)
+  const changed = changedPaths(base, matrixFile)
   const mapped = new Set<string>(BROAD_SUITES)
   for (const f of changed) for (const s of suitesFor(f) ?? []) mapped.add(s)
   const infos: Record<string, SuiteInfo> = {}

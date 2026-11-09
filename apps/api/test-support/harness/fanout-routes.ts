@@ -37,6 +37,8 @@ const APP = "fanout-probe"
 const JOB = "tick"
 const RUNS_KEY = "fanout:probe:runs"
 const STARTS_KEY = "fanout:probe:starts"
+/** Armed: the next probe run, on whichever host takes it, exits its process before it counts. */
+const EXIT_IN_RUN_KEY = "fanout:probe:exit-in-run"
 const DESCRIPTOR = { name: APP, jobs: { [JOB]: { schedule: "* * * * *" } } }
 
 let registered = false
@@ -49,6 +51,9 @@ function registerProbe(): void {
   registerJobWorker<{ orgId: string; _fanout?: { epoch?: number } }>(APP, JOB, async (p) => {
     const epoch = p._fanout?.epoch
     if (typeof epoch !== "number") throw new Error("fanout-probe: a run without its epoch")
+    // A host killed while it holds a run (a SIGKILL after the fetch): the job
+    // stays active under this process's lock until the stalled check hands it on.
+    if ((await redis.getdel(EXIT_IN_RUN_KEY)) !== null) process.exit(137)
     await redis
       .multi()
       .hincrby(RUNS_KEY, `${p.orgId}:${epoch}`, 1)
@@ -101,6 +106,11 @@ fanoutTestRoutes.post("/arm-exit", async (c) => {
   return success(c, { armed: true })
 })
 
+fanoutTestRoutes.post("/arm-exit-in-run", async (c) => {
+  await redis.set(EXIT_IN_RUN_KEY, "1")
+  return success(c, { armed: true })
+})
+
 fanoutTestRoutes.post(
   "/id-mode",
   zValidator("json", z.object({ mode: z.enum(["job-id", "deduplication"]) })),
@@ -111,13 +121,14 @@ fanoutTestRoutes.post(
 )
 
 fanoutTestRoutes.post("/reset", async (c) => {
-  await redis.del(RUNS_KEY, STARTS_KEY)
+  await redis.del(RUNS_KEY, STARTS_KEY, EXIT_IN_RUN_KEY)
   return success(c, { reset: true })
 })
 
 /**
  * GET /state — runs per `<org>:<epoch>`, start offsets, the job counters, the
- * `kernel-cron` scheduler ids, and how many probe ticks are not finished.
+ * `kernel-cron` scheduler ids, and how many probe ticks and per-org runs are
+ * not finished.
  */
 fanoutTestRoutes.get("/state", async (c) => {
   const runs = await redis.hgetall(RUNS_KEY)
@@ -135,6 +146,17 @@ fanoutTestRoutes.get("/state", async (c) => {
   const ticksInFlight = ticks.filter(
     (j) => j?.name === APP_CRON_FANOUT_JOB && (j.data as { app?: unknown })?.app === APP,
   ).length
+  // The per-org runs not finished: a run held by a killed process stays active
+  // until its own queue's stalled check hands it on, which can come well after
+  // the tick's (another queue, another check).
+  const orgRuns = await getPhysicalQueue(`app-${APP}`).getJobs(
+    ["active", "wait", "prioritized", "delayed"],
+    0,
+    -1,
+  )
+  const runsInFlight = orgRuns.filter(
+    (j) => (j?.data as { _fanout?: { app?: unknown } })?._fanout?.app === APP,
+  ).length
   return success(c, {
     runs: Object.fromEntries(Object.entries(runs).map(([k, v]) => [k, Number(v)])),
     starts,
@@ -142,6 +164,7 @@ fanoutTestRoutes.get("/state", async (c) => {
     schedulers,
     fanoutSchedulers: schedulers.filter((k) => k.startsWith(`${APP_CRON_FANOUT_JOB}:`)).length,
     ticksInFlight,
+    runsInFlight,
     exitArmed: (await redis.exists(fanoutExitAfterAddKey(APP))) === 1,
   })
 })

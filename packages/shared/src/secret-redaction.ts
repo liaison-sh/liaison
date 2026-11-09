@@ -742,6 +742,10 @@ export function redactImportText(text: string): string {
 function redactText(text: string, depth: number): string {
   const out = redactTextOnly(text)
   if (depth >= JSON_DEPTH_MAX || out.length > JSON_TEXT_MAX || !looksLikeJson(out)) return out
+  // A text whose brackets never close cannot parse, and JSON.parse would build
+  // every nested array of it before saying so: 1 MiB of `[` is a million
+  // arrays of garbage, whose collection costs more than the scan that skips it.
+  if (!bracketsBalance(out)) return out
   let parsed: unknown
   try {
     parsed = JSON.parse(out)
@@ -764,6 +768,28 @@ function looksLikeJson(text: string): boolean {
     return c === 123 || c === 91
   }
   return false
+}
+
+/**
+ * Its brackets, strings skipped, close exactly: never below zero, zero at the
+ * end, every string closed. True of every JSON text, so false means JSON.parse
+ * would fail.
+ */
+function bracketsBalance(text: string): boolean {
+  let depth = 0
+  for (let p = 0; p < text.length; p++) {
+    const c = text.charCodeAt(p)
+    if (c === 34) {
+      for (p++; p < text.length; p++) {
+        const d = text.charCodeAt(p)
+        if (d === 92) p++
+        else if (d === 34) break
+      }
+      if (p >= text.length) return false
+    } else if (c === 91 || c === 123) depth++
+    else if ((c === 93 || c === 125) && --depth < 0) return false
+  }
+  return depth === 0
 }
 
 function redactValueDeep(value: unknown, depth: number): unknown {

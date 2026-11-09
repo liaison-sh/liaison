@@ -487,6 +487,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `invoice_issue` | Issue an invoice from a draft. | yes | `invoicing:documents:write` |
 | `legal_originals_verify` | Check that the stored legal originals (the exact file of each issued invoice and credit note's first render, the Factur-X for an e-invoice, and imported legacy originals) are intact: recomputes each file's fingerprint and compares it with the one recorded when it was fixed. |  | `invoicing:documents:read` |
 | `order_reissue_apply` | Reissue an invoice after a Shopify order edit changed the LINE SET or the AMOUNTS (an order edit that only touches address, notes, tags, or fulfilment does NOT call this). | yes | `invoicing:documents:write` |
+| `orders_invoiceability_check` | Would the order-created auto-flow invoice this Shopify order, or park it (no invoice)? |  | `invoicing:documents:read` |
 | `pending_approvals_list` | List the caller's pending approvals originating from invoicing-app tools (credit notes, refunds, dealer invoices), each with its summary, requester, and amount. |  | `invoicing:documents:read` |
 | `po_create_and_issue` | Create a draft purchase order and issue it in one call. |  | `invoicing:documents:write` |
 | `po_issue` | Issue a purchase order from a draft. |  | `invoicing:documents:write` |

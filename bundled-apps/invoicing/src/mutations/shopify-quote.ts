@@ -228,6 +228,9 @@ export async function quoteCreateViaShopifyDraftOrder(
     // The sync copies the draft order's PO number onto the quote, so this is how the tool's
     // po_number reaches a quote made as a draft order.
     ...(rawInput.po_number?.trim() ? { poNumber: rawInput.po_number.trim() } : {}),
+    // The order-created auto-flow reads the buyer's VAT number only from the order's custom
+    // attributes (a draft's carry over to its order), so a business quote keeps its reverse charge.
+    ...(cp.vat_id?.trim() ? { customAttributes: [{ key: "VAT number", value: cp.vat_id.trim() }] } : {}),
     note: `Quote for ${cp.legal_name ?? cp.email ?? "customer"}`,
     tags: ["liaison-quote"],
   } })

@@ -27,6 +27,7 @@
 // the kernel-expected `(payload, ctx)` shape and are re-exported unchanged.
 
 import { documentsIssuePreview } from "./buyer-vat"
+import { ordersInvoiceabilityCheck } from "./order-invoiceability"
 import { customerHistory } from "./customer-history"
 import { vatLookup } from "./vat-lookup"
 import {
@@ -199,6 +200,11 @@ export const documentsGetHandler = (
   params: Parameters<typeof documentsGet>[1],
   ctx: Parameters<typeof documentsGet>[0],
 ) => documentsGet(ctx, params)
+// The Shopify app's draft order create / complete preflights ask this before staging (cross-app).
+export const ordersInvoiceabilityCheckHandler = (
+  params: Parameters<typeof ordersInvoiceabilityCheck>[1],
+  ctx: Parameters<typeof ordersInvoiceabilityCheck>[0],
+) => ordersInvoiceabilityCheck(ctx, params)
 export const documentsForOrdersHandler = (
   params: Parameters<typeof documentsForOrders>[1],
   ctx: Parameters<typeof documentsForOrders>[0],

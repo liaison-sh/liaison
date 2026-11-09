@@ -816,7 +816,6 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
           emails: list,
           given: Array.isArray(emails) ? emails.length : 0,
           db: txDb,
-          canReadDetails: hasScope("mail:suppressions:read", callerScopes ?? []),
         }),
       )
     },

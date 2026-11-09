@@ -383,7 +383,7 @@ describe("opt-outs", () => {
     expect(refused.message).toContain("Nothing was checked")
   }, 90_000)
 
-  it("the check gives no reason to an agent without the scope", async () => {
+  it("the check refuses an agent without the opt-out list's scope and names it", async () => {
     const email = unique("reason")
     resultOf(await call("mail:suppression_add", { email, reason: "reply", source: "msg-9" }))
     const full = resultOf(await call("mail:suppression_check", { emails: [email] }))
@@ -393,8 +393,9 @@ describe("opt-outs", () => {
       ...admin,
       scopes: ["mail:conversations:read", "mail:conversations:write"],
     }
-    const bare = resultOf(await call("mail:suppression_check", { emails: [email] }, limited))
-    expect(bare.results[0]).toEqual({ email, optedOut: true })
+    const refused = await call("mail:suppression_check", { emails: [email] }, limited)
+    expect("data" in refused).toBe(false)
+    expect(refusalOf(refused).message).toContain("mail:suppressions:read")
   }, 90_000)
 
   it("approving a reply's proposal adds the suppression, by a seeded admin with no fixture grant", async () => {

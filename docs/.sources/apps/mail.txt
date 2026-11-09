@@ -183,7 +183,7 @@ Provider pill on a mail row -> apps/api/src/modules/mail/send-guard.ts:395
 Record an opt-out: mail:suppression_add, scope mail:conversations:write, fingerprint only -> apps/api/src/apps/mail/app.manifest.json:1292 ; apps/api/src/modules/mail/suppressions.ts:43 ; apps/api/src/db/migrations/0292_suppressions.sql:77
 Waiting commercial drafts withdrawn at once; the check refuses new ones; service messages still go -> apps/api/src/modules/mail/suppressions.ts:159
 336 ; apps/api/src/modules/approvals/withdraw-on-events.ts:43 ; apps/api/src/modules/mail/send-guard.ts:647
-Check up to 50 addresses; when and how only with mail:suppressions:read -> apps/api/src/modules/mail/suppressions.ts:252 ; apps/api/src/modules/mail/suppressions.ts:313
+Check up to 50 addresses, scope mail:suppressions:read, with when and how -> apps/api/src/apps/mail/app.manifest.json:1284 ; apps/api/src/modules/apps/sandbox/bridge/mail.ts:805 ; apps/api/src/modules/mail/suppressions.ts:391
 Lifting an opt-out is gated for mail:suppressions:write holders, card says who, when and how -> apps/api/src/apps/mail/app.manifest.json:1314 ; apps/api/src/modules/mail/suppressions.ts:422
 Commercial by data, not the model: open deal, professional interest, third party or enrichment; replies never -> apps/api/src/modules/mail/send-guard.ts:1015 ; apps/api/src/modules/mail/send-guard.ts:1054
 Commercial identity required, setting named, Settings page and config email.commercialIdentity -> apps/api/src/modules/mail/commercial-footer.ts:37 ; apps/api/src/modules/org/routes.ts:252 ; apps/api/src/cli/config/schema.ts:128 ; apps/web/src/modules/settings/AdminOrgSettings.tsx:157

@@ -232,10 +232,10 @@ Read, write and reply to email from Gmail or any IMAP/SMTP mailbox.
 | `mail:accounts:read` | tools getAccount, getSyncStatus, listAccounts, providers.get |  |
 | `mail:accounts:write` | tool disconnectAccount |  |
 | `mail:approve` | approver scope | Decide (approve, edit, or deny) mail approvals raised by its gated tools |
-| `mail:conversations:read` | entities conversation, message; tools activity_read, export_conversations, read, search, suppression_check |  |
+| `mail:conversations:read` | entities conversation, message; tools activity_read, export_conversations, read, search |  |
 | `mail:conversations:write` | tools appendInboundMessage, archive, compose, composeForApp, convertToTicket, createFromTicket and 4 more |  |
 | `mail:drafts:read` | entity draft |  |
-| `mail:suppressions:read` | role member |  |
+| `mail:suppressions:read` | role member; tool suppression_check |  |
 | `mail:suppressions:write` | tool suppression_remove |  |
 
 ## mcp-manager

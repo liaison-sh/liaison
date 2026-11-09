@@ -162,7 +162,7 @@ When someone answers a mail asking to stop ("unsubscribe", "stop", "ne plus rece
 
 A new sender whose address is at a company's domain is linked to that company, when exactly one company holds the domain.
 
-An agent can check up to 50 addresses at a time (`mail:suppression_check`). With `mail:suppressions:read` it also says when and how each person opted out.
+An agent can check up to 50 addresses at a time (`mail:suppression_check`, scope `mail:suppressions:read`). It says when and how each person opted out.
 
 Lifting an opt-out (`mail:suppression_remove`) waits for a mail admin's approval. The card says who opted out, when and how.
 

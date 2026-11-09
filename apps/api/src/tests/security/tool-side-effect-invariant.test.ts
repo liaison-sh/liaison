@@ -509,8 +509,6 @@ const REVIEWED_UNGATED_OUTWARD: Record<string, string> = {
   "kernel:files_upload_confirm": "internal",
   "kernel:files_upload_url": "internal upload slot for the person",
   "kernel:notify_user": "internal notification to an org member; scope-taint sinkReadersSelf",
-  "kernel:report_bug":
-    "externalEffect: parks after outside text; team-only it only prepares a draft the reporter sends from their own card (bug-reports/tool.ts)",
   "kernel:run_on_my_computer":
     "requiresHumanTurn: parks unless a typed, unmarked turn (execute-tool.ts); replayed outside text keeps the mark (untrusted-text-across-turns.test.ts)",
   "kernel:threads_reply": "internal thread post; scope-taint judged on the room's readers",

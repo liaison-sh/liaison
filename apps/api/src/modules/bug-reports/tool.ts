@@ -16,18 +16,17 @@
 // active member holds whatever their roles, and an agent acting for them keeps
 // it whatever its ceiling (every-member-scopes.ts).
 //
-// Taint (scope-taint.ts): where the report goes decides who can read it. In the
-// local inbox (rule 6a) its tickets are read under `tickets:tickets:read`, so a
-// tainted turn's report runs when every reader of tickets holds what the turn
-// read, and otherwise the refusal or approval names who can decide. Team-only,
-// the draft is read by its reporter alone (rule 6d, `taintSinkFor`) and leaves
-// only on their own click, so it is judged by the reporter's grants.
+// Never an approval: filing into the org's own Bug Reports inbox is an internal
+// action, so neither the scope taint (`taintUnjudgedWrite`) nor the outside-text
+// hold (no `externalEffect`) parks it, whatever the turn read. The one case
+// where data leaves the org, team-only, already waits for the reporter's own
+// click on the exact payload: that click is the consent, not an approval.
 //
-// A call that was held for approval anyway (made before team-only went on, or
-// parked by another gate) ends in the same card: approving it prepares the
-// draft, and only the reporter's click sends it. A held call that can no longer
-// run (a routine's, once reports go only to the Liaison team) is refused as
-// final, so its approval closes instead of returning to pending.
+// A call held for approval by an older build ends in the same card when
+// approved: approving it prepares the draft, and only the reporter's click
+// sends it. A held call that can no longer run (a routine's, once reports go
+// only to the Liaison team) is refused as final, so its approval closes instead
+// of returning to pending.
 import { z } from "zod"
 import { currentRunContext, runHasPerson } from "~/modules/agent/runtime/run-context"
 import { toolRegistry } from "~/modules/apps/app-registries"
@@ -231,17 +230,6 @@ export async function handleReportBug(
   }
 }
 
-/** Where reports prepared for the Liaison team wait: per reporter, read by them alone. */
-export const TEAM_ONLY_DRAFT_SINK = "bug_reports.agent_drafts"
-
-export async function reportBugTaintSink(ctx: {
-  orgId: string
-}): Promise<{ writesToTable: string; sinkReadersSelf: true } | null> {
-  return (await isBugReportTeamOnlyFor(ctx.orgId))
-    ? { writesToTable: TEAM_ONLY_DRAFT_SINK, sinkReadersSelf: true }
-    : null
-}
-
 /**
  * Before any gate: team-only, a call from a turn no person started is refused
  * here, so it never waits in an approval nobody could turn into a sent report.
@@ -271,16 +259,10 @@ export function registerReportBugTool(orgId: string): void {
     params: reportBugParams,
     handler: handleReportBug as unknown as (p: unknown, c: unknown) => Promise<unknown>,
     writesToTable: "app_tickets.tickets",
-    // The Bug Reports inbox's readers (scope-taint.ts rule 6a): a tainted turn
-    // runs when every one of them holds what it read.
-    sinkReadScope: "tickets:tickets:read",
-    // Team-only: no ticket, a draft only its reporter reads (rule 6d).
-    taintSinkFor: reportBugTaintSink,
-    // It sends a report out of the turn (a ticket others read, or the Liaison
-    // team after the reporter's click), so after a turn read outside text it
-    // parks for a person like every outward tool (taint.ts checkTaintEscalation).
-    // `taintFree` below only keeps its scope out of the turn's taint.
-    externalEffect: true,
+    // A bug report about Liaison never parks (see the header): the scope taint does not judge
+    // it, and it declares no outward effect, so outside text read earlier in the turn does
+    // not hold it either. Team-only, the reporter's click on the draft is what sends it.
+    taintUnjudgedWrite: true,
     // Its answer is the report's own ticket or draft id, no org record: its
     // scope is not a read and never enters the turn's taint.
     taintFree: true,

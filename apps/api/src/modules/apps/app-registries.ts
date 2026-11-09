@@ -236,16 +236,10 @@ export const toolRegistry = createTypedRegistry<
      *  judged by that one reader (scope-taint.ts, rule 6d): it runs when the user's own
      *  grants hold every scope the turn read, and is refused otherwise. */
     sinkReadersSelf?: boolean
-    /** Kernel code only. Where this call writes, when that depends on the org's live state
-     *  rather than on the tool: resolved by the dispatch before the scope-taint judgement, and
-     *  a non-null answer replaces `writesToTable`, `sinkReadScope` and `sinkReadersSelf` for
-     *  that one call. `kernel:report_bug` files into the Bug Reports inbox (its readers), or,
-     *  where reports go only to the Liaison team, prepares a draft read by the reporter alone. */
-    taintSinkFor?: (ctx: { orgId: string }) => Promise<{
-      writesToTable: string
-      sinkReadScope?: string
-      sinkReadersSelf?: boolean
-    } | null>
+    /** Kernel code only. Never judged by the scope taint (scope-taint.ts): a write the
+     *  product never gates, `kernel:report_bug` filing a bug report about Liaison itself into
+     *  the org's own inbox, or preparing one that leaves only on its reporter's click. */
+    taintUnjudgedWrite?: boolean
     /** The ONLY readers of what this tool writes are the requester and the participants of
      *  the conversation the call runs in (request_secret: the secret_requests RLS policy).
      *  On a tainted turn the write is judged by them (scope-taint.ts, rule 6e): it runs when

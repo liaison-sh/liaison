@@ -219,7 +219,7 @@ export async function items_create(
 
 | Surface | Use |
 |---|---|
-| `ctx.db` | Read/write your app's entity rows, scoped to the org |
+| `ctx.db` | Read/write your app's entity rows, scoped to the org. `insertNow` / `updateNow` commit at once, for a record written before an outside call you cannot undo ([Sandboxing](app-sandbox.md#commit-an-intent-row-before-an-outside-call-ctxdbinsertnow)) |
 | `ctx.emit` | Emit a domain event other apps can subscribe to |
 | `ctx.enqueueJob` | Enqueue a background job |
 | `ctx.connections` | Per-connection OAuth/credential tokens |

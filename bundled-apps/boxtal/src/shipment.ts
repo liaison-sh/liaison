@@ -87,9 +87,11 @@ import {
 } from "./draft-store"
 import {
   assembleAddress,
+  boxtalText,
   normalizeRegion,
   partyFromConfig,
   type PostalParty,
+  postalCodeRequired,
   validateParty,
   validateRecipientPhone,
 } from "./address"
@@ -123,10 +125,29 @@ export function summarizeBoxtalError(body: string): string {
   try {
     const parsed = JSON.parse(body) as {
       messages?: Array<{ text?: string }>
+      errors?: Array<{ code?: string; message?: string; parameters?: unknown }>
       message?: string
     }
     const texts = (parsed.messages ?? []).map((m) => m.text).filter((t): t is string => !!t)
     if (texts.length > 0) return texts.join("; ")
+    // The v3 `errors[]` envelope: each error's own field + message when it names them (its
+    // `parameters`), else its code.
+    const errs: string[] = []
+    for (const e of parsed.errors ?? []) {
+      const params = Array.isArray(e?.parameters) ? (e.parameters as Array<Record<string, unknown>>) : []
+      const named = params
+        .map((p) => {
+          const field = [p?.propertyPath, p?.field, p?.path].find((v) => typeof v === "string" && v)
+          const msg = [p?.message, p?.text, p?.detail].find((v) => typeof v === "string" && v)
+          if (msg) return field ? `${field}: ${msg}` : String(msg)
+          return null
+        })
+        .filter((t): t is string => !!t)
+      if (named.length > 0) errs.push(...named)
+      else if (typeof e?.message === "string" && e.message) errs.push(e.message)
+      else if (typeof e?.code === "string" && e.code) errs.push(e.code)
+    }
+    if (errs.length > 0) return errs.join("; ")
     if (parsed.message) return parsed.message
   } catch {
     // non-JSON body — fall through to the raw slice
@@ -377,8 +398,9 @@ async function enrichCotation(ctx: ShipmentCtx, input: CotationInput): Promise<C
     },
     to: {
       country: to.country ?? "",
-      postalCode: to.postalCode ?? "",
-      city: to.city ?? "",
+      // Boxtal's set: accents transliterated; no postal code where the country has none.
+      postalCode: postalCodeRequired(to.country) ? (to.postalCode ?? "") : "",
+      city: boxtalText(to.city),
       type: cotationPartyType(to.type, "particulier"),
       ...(to.state ? { state: to.state } : {}),
     },
@@ -1879,6 +1901,9 @@ export function normalizePostalCode(
   countryIsoCode: string | null,
 ): string | null {
   if (!postal) return postal
+  // A country with no postal codes (UAE, Qatar, Hong Kong...): what a parse took for one is a PO
+  // box or a building number, and Boxtal prices the route without one.
+  if (!postalCodeRequired(countryIsoCode)) return null
   if ((countryIsoCode ?? "").trim().toUpperCase() === "US") {
     const v = postal.trim()
     const m = v.match(/^(\d{5})(?:-\d{4})?$/)
@@ -2043,7 +2068,9 @@ export async function importLabelDocument(
    *  passes nothing (production defaults); tests drive the backoff with a fake
    *  clock so no suite ever waits for wall-clock time. */
   deps: LabelImportDeps = {},
-): Promise<{ label_file_id?: string; error?: { code: string; message: string } }> {
+  /** print_pack merges the parcels itself (its orientation pass), so it asks for them unmerged. */
+  opts: { mergeParcels?: boolean } = {},
+): Promise<{ label_file_id?: string; label_file_ids?: string[]; error?: { code: string; message: string } }> {
   const client = await getClientOrError(ctx)
   if ("error" in client) return { error: client.error }
   const ref = String(input.id ?? "").trim()
@@ -2066,8 +2093,8 @@ export async function importLabelDocument(
   // Was 8 (8 x the sandbox-wide 10s fetch cap = 80s inside a 60s tool budget:
   // this is the call site print_pack reaches the loop through). The bounded
   // default carries the arithmetic documented on importLabelFile.
-  const fileId = await importLabelFile(ctx, client, boxtalOrderId, String(row.id), LABEL_IMPORT_ATTEMPTS, deps)
-  if (!fileId) {
+  const fileIds = await importLabelFiles(ctx, client, boxtalOrderId, String(row.id), LABEL_IMPORT_ATTEMPTS, deps)
+  if (fileIds.length === 0) {
     return {
       error: {
         code: "label_not_ready",
@@ -2076,7 +2103,18 @@ export async function importLabelDocument(
       },
     }
   }
-  return { label_file_id: fileId }
+  if (opts.mergeParcels === false || fileIds.length === 1) return { label_file_id: fileIds[0]!, label_file_ids: fileIds }
+  const merged = await mergeParcelLabels(ctx, fileIds, boxtalOrderId)
+  if ("error" in merged) {
+    return {
+      label_file_ids: fileIds,
+      error: {
+        code: "label_merge_failed",
+        message: `The ${fileIds.length} parcel labels could not be combined into one PDF (${merged.error}). Retry in a minute.`,
+      },
+    }
+  }
+  return { label_file_id: merged.file_id, label_file_ids: fileIds }
 }
 
 /**
@@ -2685,7 +2723,8 @@ export async function createShipment(
         // corrected retry can proceed cleanly (spec §C.5 reserves
         // create_uncertain for INDETERMINATE 5xx only).
         await releaseReservation(ctx, reserve.id)
-        return { error: { code: "validation", message: "recipient phone invalid" } }
+        const detail = summarizeBoxtalError(err.body)
+        return { error: { code: "validation", message: detail ? `recipient phone invalid: ${detail}` : "recipient phone invalid" } }
       }
       if (err.status === 422 && err.body.includes("InvalidPaymentException")) {
         // NOT a problem with this shipment. Boxtal refuses the ORDER when the
@@ -2924,15 +2963,15 @@ export interface LabelImportDeps {
  *
  *  A label that is genuinely not generated yet still returns null, so callers
  *  degrade (print_pack reports "Label not available yet"); this never throws. */
-export async function importLabelFile(
+export async function importLabelFiles(
   ctx: ShipmentCtx,
   client: { v3: { getDocuments(id: string): Promise<Array<{ url?: string; type: string; format: string }>> } },
   boxtalOrderId: string,
   shipmentRowId: string,
   attempts = LABEL_IMPORT_ATTEMPTS,
   deps: LabelImportDeps = {},
-): Promise<string | null> {
-  if (!ctx.files_importFromUrl) return null
+): Promise<string[]> {
+  if (!ctx.files_importFromUrl) return []
   const sleep = deps.sleep ?? defaultSleep
   const random = deps.random ?? Math.random
   const now = deps.now ?? (() => Date.now())
@@ -2945,45 +2984,90 @@ export async function importLabelFile(
       await sleep(retryDelayMs(attempt - 1, random))
     }
     if (now() >= deadlineAt) break
-    let label: { url?: string } | undefined
+    let labels: Array<{ url?: string }>
     try {
       const docs = await client.v3.getDocuments(boxtalOrderId)
-      label = docs.find((d) => d.type === "LABEL" && d.url)
+      // EVERY parcel's label: a multi-parcel order is served one LABEL document per parcel
+      // (…_bordereau_1.pdf, …_bordereau_2.pdf), and taking the first printed one parcel short.
+      labels = docs.filter((d) => d.type === "LABEL" && d.url)
     } catch {
       continue // transient read failure — try again after the backoff
     }
-    if (!label?.url) continue // documents not generated yet
-    try {
-      const res = JSON.parse(
-        await ctx.files_importFromUrl(
-          JSON.stringify({
-            targetApp: "boxtal",
-            targetEntityType: "shipment",
-            targetEntityId: shipmentRowId,
-            url: label.url,
-            filename: `label-${boxtalOrderId}.pdf`,
-            mimeType: "application/pdf",
-            // Boxtal stamps a spurious /Rotate on label pages (content is
-            // authored upright) — every viewer/printer then renders the label
-            // sideways. Ask the host import to clear the flag so the stored
-            // label prints upright.
-            pdfStripRotation: true,
-          }),
-        ),
-      ) as { id?: string }
-      return typeof res.id === "string" && res.id ? res.id : null
-    } catch (err) {
-      // Import failure (e.g. the signed-URL host is not in the app's egress
-      // allowlist) is not retryable within this call — surface it in the logs
-      // with the reason so the allowlist gets extended knowingly, and fall
-      // back to null. The order itself is created and intact.
-      ctx.logger?.warn?.("label import failed", {
-        boxtal_order_id: boxtalOrderId,
-        reason: err instanceof Error ? err.message : String(err),
-      })
-      return null
+    if (labels.length === 0) continue // documents not generated yet
+    const ids: string[] = []
+    for (const [i, label] of labels.entries()) {
+      try {
+        const res = JSON.parse(
+          await ctx.files_importFromUrl(
+            JSON.stringify({
+              targetApp: "boxtal",
+              targetEntityType: "shipment",
+              targetEntityId: shipmentRowId,
+              url: label.url,
+              filename: labels.length > 1 ? `label-${boxtalOrderId}-${i + 1}.pdf` : `label-${boxtalOrderId}.pdf`,
+              mimeType: "application/pdf",
+              // Boxtal stamps a spurious /Rotate on label pages (content is
+              // authored upright) — every viewer/printer then renders the label
+              // sideways. Ask the host import to clear the flag so the stored
+              // label prints upright.
+              pdfStripRotation: true,
+            }),
+          ),
+        ) as { id?: string }
+        if (typeof res.id !== "string" || !res.id) return []
+        ids.push(res.id)
+      } catch (err) {
+        // Import failure (e.g. the signed-URL host is not in the app's egress
+        // allowlist) is not retryable within this call — surface it in the logs
+        // with the reason so the allowlist gets extended knowingly, and fall
+        // back to none: a partial set would print the shipment a parcel short.
+        // The order itself is created and intact.
+        ctx.logger?.warn?.("label import failed", {
+          boxtal_order_id: boxtalOrderId,
+          reason: err instanceof Error ? err.message : String(err),
+        })
+        return []
+      }
     }
+    return ids
   }
+  return []
+}
+
+/** Combine a multi-parcel order's labels into ONE PDF, in parcel order (a single label is
+ *  returned as it is). Null when the kernel PDF pipeline refused: never one parcel's label alone. */
+export async function mergeParcelLabels(
+  ctx: ShipmentCtx,
+  ids: string[],
+  boxtalOrderId: string,
+): Promise<{ file_id: string } | { error: string }> {
+  if (ids.length === 1) return { file_id: ids[0]! }
+  try {
+    const env = (await ctx.executeTool("kernel:files_merge_pdfs", {
+      file_ids: ids,
+      title: `label-${boxtalOrderId}.pdf`,
+    })) as { status?: string; result?: { fileId?: string } | null; error?: { message?: string } }
+    if (env.status === "completed" && env.result?.fileId) return { file_id: env.result.fileId }
+    return { error: env.error?.message ?? "pdf pipeline unavailable" }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+/** The order's label as ONE kernel file id (every parcel's label merged), or null. */
+export async function importLabelFile(
+  ctx: ShipmentCtx,
+  client: { v3: { getDocuments(id: string): Promise<Array<{ url?: string; type: string; format: string }>> } },
+  boxtalOrderId: string,
+  shipmentRowId: string,
+  attempts = LABEL_IMPORT_ATTEMPTS,
+  deps: LabelImportDeps = {},
+): Promise<string | null> {
+  const ids = await importLabelFiles(ctx, client, boxtalOrderId, shipmentRowId, attempts, deps)
+  if (ids.length === 0) return null
+  const merged = await mergeParcelLabels(ctx, ids, boxtalOrderId)
+  if ("file_id" in merged) return merged.file_id
+  ctx.logger?.warn?.("parcel labels not merged", { boxtal_order_id: boxtalOrderId, parcels: ids.length, reason: merged.error })
   return null
 }
 

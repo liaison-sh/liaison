@@ -194,7 +194,7 @@
       }
     ]
   },
-  "version": "0.23.23",
+  "version": "0.23.27",
   "iconName": "box",
   "description": "Boxtal shipping integration: carrier quotes, tracking, shipments, customs documents",
   "listing": {
@@ -483,9 +483,9 @@
       "label": "Boxtal",
       "order": 70,
       "tabAction": {
-        "type": "home",
-        "entityId": "shipments",
-        "label": "Shipments"
+        "type": "queue",
+        "entityId": "worklist",
+        "label": "Shipping worklist"
       }
     },
     "tabTypes": {
@@ -2676,7 +2676,7 @@
       "timeoutMs": 60000
     },
     "print_pack": {
-      "description": "Print a shipment's labels and shipping papers: prepare the print-station documents for ONE ready-to-ship shipment as TWO SEPARATE print jobs, never merged into one PDF: (1) the shipping LABEL alone, orientation-normalized server-side (Boxtal labels carry a Letter-landscape /Rotate 270 flag that label printers ignore; the rotation is baked into the page content) for the self-adhesive label printer, and (2) the INVOICE PDF for the A4 printer with the route's required copy count: 1 copy for an EU/domestic route, 3 copies for an export outside the EU. Returns kernel file ids to download each job separately.",
+      "description": "Print a shipment's labels and shipping papers: prepare the print-station documents for ONE ready-to-ship shipment as TWO SEPARATE print jobs, never merged into one PDF: (1) the shipping LABEL alone (every parcel's label of a multi-parcel shipment, in one PDF), orientation-normalized server-side (Boxtal labels carry a Letter-landscape /Rotate 270 flag that label printers ignore; the rotation is baked into the page content) for the self-adhesive label printer, and (2) the INVOICE PDF for the A4 printer with the route's required copy count: 1 copy for an EU/domestic route, 3 copies for an export outside the EU. Returns kernel file ids to download each job separately.",
       "searchKeywords": ["imprimer", "étiquette", "étiquettes", "label", "labels", "lot"],
       "requiredScopes": ["boxtal:shipments:read"],
       "handler": "printPackHandler",
@@ -2881,7 +2881,7 @@
       "timeoutMs": 60000
     },
     "import_label_document": {
-      "description": "Backfill-import a created shipment's LABEL PDF into Liaison's file store and return its `label_file_id` (a kernel file id attachable to a tickets__reply / mail message). Boxtal generates the label ASYNCHRONOUSLY after the order, so create_shipment can return label_file_id null — call THIS tool with the boxtal_order_id (or the local shipment row id) to import it once it exists. Retries a few reads internally; returns label_not_ready when Boxtal has not served the LABEL yet (retry in a minute, never fabricate a file id). Also usable as the MIDDLE step of a one-approval sequence: create_shipment -> import_label_document with id = the @ref boxtal_order_id token -> tickets__reply with attachments = [the @ref label_file_id token]. Each call imports a fresh copy; reuse the returned id instead of re-calling.",
+      "description": "Backfill-import a created shipment's LABEL PDF into Liaison's file store and return its `label_file_id` (a kernel file id attachable to a tickets__reply / mail message). Boxtal generates the label ASYNCHRONOUSLY after the order, so create_shipment can return label_file_id null — call THIS tool with the boxtal_order_id (or the local shipment row id) to import it once it exists. Retries a few reads internally; returns label_not_ready when Boxtal has not served the LABEL yet (retry in a minute, never fabricate a file id). Also usable as the MIDDLE step of a one-approval sequence: create_shipment -> import_label_document with id = the @ref boxtal_order_id token -> tickets__reply with attachments = [the @ref label_file_id token]. A multi-parcel shipment has one LABEL per parcel: every one is imported, `label_file_id` is them all merged into one PDF in parcel order, and `label_file_ids` lists each parcel's own file (label_merge_failed when they could not be combined). Each call imports a fresh copy; reuse the returned id instead of re-calling.",
       "requiredScopes": ["boxtal:shipments:write"],
       "handler": "importLabelDocumentHandler",
       "referenceableOutputs": [
@@ -3489,7 +3489,7 @@
       }
     },
     "ready_set_packed": {
-      "description": "Tick ONE Ready-to-ship row as PACKED (boxed, taped, waiting for the carrier pickup), which FULFILS its Shopify order with the parcel's tracking number, or untick it. packed:true calls shopify__fulfillments_create for the linked order; the row is only marked packed when the fulfillment succeeds, otherwise `error` says why (no tracking number yet, Shopify refused) and the row stays unpacked. A parcel with no linked Shopify order is marked packed with a `notice` and nothing is fulfilled. packed:false on a fulfilled row CANCELS the Shopify fulfillment and requires confirm_unfulfill:true (without it the call returns error.code confirm_required and changes nothing). From an agent the Shopify calls are gated: the result is error.code pending_approval and the row is NOT packed until a human approves; report it as pending, never as fulfilled.",
+      "description": "Tick ONE Ready-to-ship row as PACKED (boxed, taped, waiting for the carrier pickup), which FULFILS its Shopify order with the parcel's tracking number, or untick it. When the label's number could not be read (error.code no_tracking), the number the person reads off the label goes in tracking_number. packed:true calls shopify__fulfillments_create for the linked order; the row is only marked packed when the fulfillment succeeds, otherwise `error` says why (no tracking number yet, Shopify refused) and the row stays unpacked. A parcel with no linked Shopify order is marked packed with a `notice` and nothing is fulfilled. packed:false on a fulfilled row CANCELS the Shopify fulfillment and requires confirm_unfulfill:true (without it the call returns error.code confirm_required and changes nothing). From an agent the Shopify calls are gated: the result is error.code pending_approval and the row is NOT packed until a human approves; report it as pending, never as fulfilled.",
       "searchKeywords": ["emballé", "emballer"],
       "requiredScopes": ["boxtal:shipments:write"],
       "handler": "readySetPackedHandler",
@@ -3509,6 +3509,10 @@
           "confirm_unfulfill": {
             "type": "boolean",
             "description": "Required with packed:false on a fulfilled row: the operator confirmed cancelling the Shopify fulfillment."
+          },
+          "tracking_number": {
+            "type": "string",
+            "description": "Optional, with packed:true on a row that has NO tracking number (error.code no_tracking): the tracking number the person read off the printed label. It must have the carrier's format (error.code invalid_tracking_number otherwise) and never replaces a number the row already has (error.code tracking_already_set). Only pass a number a person gave you; never guess one."
           }
         },
         "required": [

@@ -86,7 +86,7 @@ On a computer, a ticket longer than about two and a half screens shows a thread 
 
 On a phone, tap **Open thread map** in the top bar (shown from 3 messages), or the position pill that appears while you scroll. **This conversation** lists every message and note; tap one to jump to it.
 
-Your signature is set per person in **Settings › Apps › Tickets**, section **Your reply signature**.
+Your signature is set per person in **Settings › Apps › Tickets**, section **Your reply signature**. The reply box starts with it below an empty line; if you start typing before the ticket has loaded, it is added once, after what you typed.
 
 ## Triage and close
 

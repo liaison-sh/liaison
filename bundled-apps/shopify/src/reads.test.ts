@@ -503,6 +503,40 @@ describe("orders_search", () => {
     expect(sentQuery.query).toContain("defaultAddress { address1 city zip country countryCode }")
   })
 
+  // A shipping worklist sets what the customer paid for shipping beside the carrier quote, from the
+  // search hit alone (no orders_get per row).
+  it("carries the shipping the customer paid on the search hit", async () => {
+    const { ctx, calls } = makeCtx({
+      fetchResponses: [
+        {
+          data: {
+            orders: {
+              edges: [
+                {
+                  node: {
+                    id: "gid://shopify/Order/2001",
+                    name: "#2001",
+                    tags: [],
+                    currentTotalPriceSet: { presentmentMoney: { amount: "120.00", currencyCode: "USD" } },
+                    shippingLine: { discountedPriceSet: { presentmentMoney: { amount: "45.50", currencyCode: "USD" } } },
+                  },
+                },
+                { node: { id: "gid://shopify/Order/2002", name: "#2002", tags: [], shippingLine: null } },
+              ],
+              pageInfo: { endCursor: null, hasNextPage: false },
+            },
+          },
+        },
+      ],
+    })
+    const out = await orders_search({}, ctx)
+    expect(out.results[0]!.attributes.shippingAmount).toBe("45.50")
+    expect(out.results[0]!.attributes.shippingCurrency).toBe("USD")
+    expect(out.results[1]!.attributes.shippingAmount).toBeNull()
+    const sentQuery = JSON.parse(calls[0]!.body) as { query: string }
+    expect(sentQuery.query).toContain("shippingLine { discountedPriceSet { presentmentMoney { amount currencyCode } } }")
+  })
+
   it("euDestination is FALSE for a non-EU ship-to (GB post-Brexit) and null when no country is visible", async () => {
     const { ctx } = makeCtx({
       fetchResponses: [

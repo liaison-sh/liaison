@@ -7,13 +7,14 @@ import {
   packedToggleAction,
   readyRowClass,
   readyRowMatches,
+  readyRowMatchesView,
   readyRowState,
-  showsReady,
   showsToPrepare,
   type WorklistReadyRow,
+  type WorklistReadySearchRow,
+  worklistEmptyKind,
   worklistFilterCounts,
   worklistFilterForRoute,
-  worklistSections,
 } from "./worklist-logic"
 
 const row = (over: Partial<WorklistReadyRow> = {}): WorklistReadyRow => ({
@@ -66,12 +67,46 @@ describe("the packed toggle", () => {
 })
 
 describe("one worklist, one filter", () => {
-  it("All shows both halves; To prepare hides the bought labels; the others hide the orders", () => {
-    expect(showsToPrepare("all") && showsReady("all")).toBe(true)
+  it("All shows every row; To prepare keeps no bought label; the others keep no order", () => {
+    expect(showsToPrepare("all")).toBe(true)
     expect(showsToPrepare("to_prepare")).toBe(true)
-    expect(showsReady("to_prepare")).toBe(false)
+    expect(readyRowMatches(row(), "to_prepare")).toBe(false)
+    expect(readyRowMatches(row(), "all")).toBe(true)
     expect(showsToPrepare("ready")).toBe(false)
     expect(showsToPrepare("packed")).toBe(false)
+  })
+
+  it("a bought label goes through the same search and order filters as the orders", () => {
+    const label: WorklistReadySearchRow = {
+      ...row({ order_name: "#1042" }),
+      recipient: "Dana Example",
+      destination: "DE",
+      invoice_ref: "INV-77",
+      tracking_number: "1Z999",
+      shipment_ref: "BXT-1",
+      products: "2xAA",
+    }
+    const none = { search: "", country: "", tag: "", product: "" }
+    expect(readyRowMatchesView(label, "all", none)).toBe(true)
+    expect(readyRowMatchesView(label, "to_prepare", none)).toBe(false)
+    expect(readyRowMatchesView(label, "all", { ...none, country: "de" })).toBe(true)
+    expect(readyRowMatchesView(label, "all", { ...none, country: "FR" })).toBe(false)
+    for (const q of ["dana", "#1042", "inv-77", "1z999", "bxt-1"]) {
+      expect(readyRowMatchesView(label, "all", { ...none, search: q })).toBe(true)
+    }
+    expect(readyRowMatchesView(label, "all", { ...none, search: "nobody" })).toBe(false)
+    expect(readyRowMatchesView(label, "all", { ...none, product: "aa" })).toBe(true)
+    // A bought label has no Shopify tags: a tag filter keeps none.
+    expect(readyRowMatchesView(label, "all", { ...none, tag: "vip" })).toBe(false)
+  })
+
+  it("an empty table says the true thing", () => {
+    const base = { prepTotal: 0, readyTotal: 0, narrowed: false }
+    expect(worklistEmptyKind({ ...base, filter: "all" })).toBe("nothing_to_prepare")
+    expect(worklistEmptyKind({ ...base, filter: "packed" })).toBe("nothing_ready")
+    expect(worklistEmptyKind({ ...base, filter: "packed", readyTotal: 2 })).toBe("no_match")
+    expect(worklistEmptyKind({ ...base, filter: "to_prepare", readyTotal: 2 })).toBe("nothing_to_prepare")
+    expect(worklistEmptyKind({ ...base, filter: "all", prepTotal: 3, narrowed: true })).toBe("no_match")
   })
 
   it("To pack and Packed split the bought labels by the tick", () => {
@@ -92,17 +127,9 @@ describe("one worklist, one filter", () => {
 })
 
 // Prod walk 2026-10-05: opened from /boxtal/queue/to-prepare, the filter bar read "Ready to ship 0,
-// Packed 0" while the same page opened from /boxtal/queue/ready read 1 and 1. The labels are only
-// loaded by the Ready to ship half, which the To prepare filter used to unmount.
+// Packed 0" while the same page opened from /boxtal/queue/ready read 1 and 1. The labels are now
+// loaded by the worklist page itself, alive under every filter (Queues.tsx ShippingWorklist).
 describe("filter counts do not depend on the route that opened the page", () => {
-  it("the Ready to ship half stays mounted (hidden) under every filter", () => {
-    for (const f of ["all", "to_prepare", "ready", "to_pack", "packed"] as const) {
-      expect(worklistSections(f).ready.mounted).toBe(true)
-    }
-    expect(worklistSections("to_prepare").ready.visible).toBe(false)
-    expect(worklistSections(worklistFilterForRoute("to-prepare", "")).ready.mounted).toBe(true)
-  })
-
   it("counts come from the loaded rows alone", () => {
     const rows = [row({ packed: true, fulfillment_state: "fulfilled" })]
     expect(worklistFilterCounts(rows)).toEqual({ ready: 1, to_pack: 0, packed: 1 })

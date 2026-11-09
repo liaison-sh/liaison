@@ -98,6 +98,10 @@ export interface PrepRow {
   products: string
   grand_total_minor: number | null
   currency: string | null
+  /** What the customer paid for shipping on the Shopify order, in the order's currency. Optional:
+   *  a row cached by an older build has neither field. */
+  customer_shipping_minor?: number | null
+  customer_shipping_currency?: string | null
   parcels: PrepParcel[]
   package_count: number
   category: PrepCategory
@@ -593,7 +597,8 @@ export function mergeRows(current: PrepRow[], fresh: PrepRow[], requestedKeys?: 
   for (const row of current) {
     const next = byKey.get(row.order_key)
     if (next) {
-      out.push(next)
+      // A re-read that changed nothing keeps the row's object, so its DOM stays put.
+      out.push(sameRowData(row, next) ? row : next)
       byKey.delete(row.order_key)
       continue
     }
@@ -603,6 +608,38 @@ export function mergeRows(current: PrepRow[], fresh: PrepRow[], requestedKeys?: 
   // A key that was not in the list at all (a brand new row, e.g. Add shipment) joins at the top.
   for (const added of byKey.values()) out.unshift(added)
   return out
+}
+
+/** Whether two reads of one row carry the same data. Rows are plain JSON from the same tool, so
+ *  their serialisations compare equal exactly when nothing on the row changed. */
+export function sameRowData(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  try {
+    return JSON.stringify(a) === JSON.stringify(b)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * A fresh read of a whole list, reconciled against the list on screen: every row whose data did
+ * not change keeps its previous object, so a keyed `<For>` keeps its DOM node (no rebuild, no
+ * flash, hover and open folds intact). Order, additions and removals follow the fresh read. A
+ * background refresh that replaced every object rebuilt every row of the worklist on each tick.
+ */
+export function keepUnchangedRows<T>(prev: readonly T[] | undefined, next: T[], key: (row: T) => string): T[] {
+  if (!prev || prev.length === 0) return next
+  const byKey = new Map(prev.map((r) => [key(r), r]))
+  let reused = 0
+  const out = next.map((row) => {
+    const old = byKey.get(key(row))
+    if (old !== undefined && sameRowData(old, row)) {
+      reused++
+      return old
+    }
+    return row
+  })
+  return reused === 0 ? next : out
 }
 
 // ── Polling ──────────────────────────────────────────────────────────────────

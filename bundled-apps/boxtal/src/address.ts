@@ -140,11 +140,76 @@ function blank(v: unknown): boolean {
   return v == null || (typeof v === "string" && v.trim() === "")
 }
 
-/** Return the names of required-but-empty fields on a party (empty → valid). */
+/**
+ * Countries with no postal code system (the address formats of Google's libaddressinput data,
+ * which carry no postal code field for them). A recipient there has no postal code to give, and
+ * Boxtal prices the route with it empty (live cotation to AE, 2026-11-09: offers returned with no
+ * postal code). Anything a free-text parse took for one there (a PO box, a building number) is not
+ * a postal code.
+ */
+const NO_POSTAL_CODE_COUNTRIES = new Set([
+  "AE", "AG", "AO", "AW", "BF", "BI", "BJ", "BS", "BW", "BZ", "CD", "CF", "CG", "CI", "CK", "CM",
+  "DJ", "DM", "ER", "FJ", "GA", "GD", "GH", "GM", "GQ", "GY", "HK", "KI", "KM", "KN", "KP", "LY",
+  "ML", "MO", "MR", "MW", "NR", "NU", "QA", "RW", "SB", "SC", "SL", "SR", "ST", "SY", "TG", "TK",
+  "TL", "TO", "TV", "UG", "VU", "YE", "ZW",
+])
+
+/** Whether an address in this country has a postal code (unknown country: yes). */
+export function postalCodeRequired(countryIsoCode: string | null | undefined): boolean {
+  return !NO_POSTAL_CODE_COUNTRIES.has((countryIsoCode ?? "").trim().toUpperCase())
+}
+
+/** Letters Unicode decomposition does not split into a base letter and an accent. */
+const LATIN_FOLDS: Array<[RegExp, string]> = [
+  [/ß/g, "ss"],
+  [/ẞ/g, "SS"],
+  [/ł/g, "l"],
+  [/Ł/g, "L"],
+  [/ø/g, "o"],
+  [/Ø/g, "O"],
+  [/æ/g, "ae"],
+  [/Æ/g, "AE"],
+  [/œ/g, "oe"],
+  [/Œ/g, "OE"],
+  [/đ/g, "d"],
+  [/Đ/g, "D"],
+  [/ð/g, "d"],
+  [/Ð/g, "D"],
+  [/þ/g, "th"],
+  [/Þ/g, "Th"],
+  [/ı/g, "i"],
+  [/[‘’‚‛ʼ´`]/g, "'"],
+  [/[‐‑‒–—―−]/g, "-"],
+  [/[“”„‟«»‹›"]/g, ""],
+]
+
+/**
+ * A name or address field in the character set Boxtal's carriers accept: accents transliterated
+ * ("Zoë" -> "Zoe", "Straße" -> "Strasse"), typographic quotes and dashes made ASCII, and what has
+ * no Latin form (another script, emoji, control or zero-width characters) dropped, spaces
+ * collapsed. Labels refused for a name or street character are the failure this prevents.
+ */
+export function boxtalText(value: string | null | undefined): string {
+  let v = String(value ?? "")
+  for (const [re, to] of LATIN_FOLDS) v = v.replace(re, to)
+  return v
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7e]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+/** Return the names of required-but-empty fields on a party (empty → valid). A text field whose
+ *  Boxtal-safe form is empty (a name in another script only) is as missing as a blank one. */
 export function validateParty(party: PostalParty): string[] {
-  const missing = REQUIRED_FIELDS.filter((f) => blank(party[f])) as string[]
+  const missing = REQUIRED_FIELDS.filter((f) => {
+    if (f === "postalCode" && !postalCodeRequired(party.countryIsoCode)) return false
+    if (f === "street" || f === "city" || f === "postalCode") return boxtalText(party[f]) === ""
+    return blank(party[f])
+  }) as string[]
   // A name OR a company is required so the label carries an addressee.
-  if (blank(party.name) && blank(party.company)) missing.push("name")
+  if (boxtalText(party.name) === "" && boxtalText(party.company) === "") missing.push("name")
   // US/CA labels require a state/province code — without it Boxtal's
   // shipping-order rejects with an opaque 400, so fail precisely here instead.
   if (stateRequired(party.countryIsoCode) && blank(party.state)) missing.push("state")
@@ -173,20 +238,24 @@ function splitName(name: string | null | undefined, company: string | null | und
  * not invent values; it maps what is present.
  */
 export function assembleAddress(party: PostalParty): BoxtalAddress {
-  const { firstName, lastName } = splitName(party.name, party.company)
+  // Names and the address go out in Boxtal's character set (boxtalText); email and phone are
+  // left as they are (their own formats are validated elsewhere).
+  const company = boxtalText(party.company)
+  const { firstName, lastName } = splitName(boxtalText(party.name), company)
   return {
     type: party.type ?? "BUSINESS",
     contact: {
       email: (party.email ?? "").trim(),
       phone: (party.phone ?? "").trim(),
-      ...(party.company && party.company.trim() ? { company: party.company.trim() } : {}),
+      ...(company ? { company } : {}),
       firstName,
       lastName,
     },
     location: {
-      city: (party.city ?? "").trim(),
-      street: (party.street ?? "").trim(),
-      postalCode: (party.postalCode ?? "").trim(),
+      city: boxtalText(party.city),
+      street: boxtalText(party.street),
+      // A country with no postal codes gets none, whatever a parse put there.
+      postalCode: postalCodeRequired(party.countryIsoCode) ? boxtalText(party.postalCode) : "",
       countryIsoCode: (party.countryIsoCode ?? "").trim().toUpperCase(),
       ...(party.state && party.state.trim() !== "" ? { state: party.state.trim() } : {}),
     },

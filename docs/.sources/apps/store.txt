@@ -186,3 +186,4 @@ no postal address refused -> bundled-apps/invoicing/src/order-invoiceability.ts:
 intra-EU buyer charged no VAT without a VAT number refused; VAT number custom attribute -> bundled-apps/invoicing/src/order-invoiceability.ts:165
 reverse charge or export charged VAT refused at complete (taxExempt) -> bundled-apps/invoicing/src/order-invoiceability.ts:179
 unchanged without Invoicing mapped to the shop -> bundled-apps/invoicing/src/order-invoiceability.ts:199
+orders_search hit carries shippingAmount / shippingCurrency (shipping line after discounts) -> bundled-apps/shopify/src/reads.ts:296

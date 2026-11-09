@@ -43,6 +43,9 @@ export interface RichEditorHandle {
   insert: (text: string) => void
   /** Insert markdown where the caret was (a reply template). */
   insertMarkdown: (markdown: string) => void
+  /** Add markdown as new blocks after the last one, leaving the caret, the
+   *  selection and the focus where they are (a signature that arrived late). */
+  appendMarkdown: (markdown: string) => void
   /** Put a mention chip in place of the `@name` being typed, then a space. */
   mention: (chip: { label: string; ref: string }) => void
   /** Hold the caret or selection as it is now; edits made around it move it along. */
@@ -525,6 +528,14 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
       },
       insertMarkdown: (markdown) =>
         ed.chain().focus().insertContent(markdown, { contentType: "markdown" }).run(),
+      appendMarkdown: (markdown) =>
+        ed
+          .chain()
+          .insertContentAt(ed.state.doc.content.size, markdown, {
+            contentType: "markdown",
+            updateSelection: false,
+          })
+          .run(),
       anchor: () => {
         const { from, to } = ed.state.selection
         const held: HeldPlace = { from, to, selection: from !== to }

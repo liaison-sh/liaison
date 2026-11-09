@@ -5,8 +5,9 @@
 // (declared on every `views.tabTypes.<type>.sidebar` entry of the manifest).
 //
 // Structure mirrors InvoicingSidebar exactly:
-//   ─── Shipments ─── (To prepare [badge], Ready to ship [badge], In transit,
-//        Delivered, All shipments) — the operational queues + the full list.
+//   ─── Shipments ─── (Shipping worklist [badge], In transit, Delivered, All
+//        shipments) — the one worklist (To prepare and Ready to ship together,
+//        filtered on the page) + the full list.
 //   ─── Returns ─── (Returns [badge]) — inbound parcels needing handling.
 //   ─── Catalog ─── (Packages & products) — the box/product reference data.
 //   ─── Admin ─── (Settings)
@@ -134,6 +135,16 @@ interface NavLink {
 // is a sub-path, or — for query-scoped links — when the full path+search
 // starts with the href (so /boxtal/shipments?status=in-transit lights up
 // without also lighting "All shipments").
+/** The one shipping worklist's href. The retired /boxtal/queue/to-prepare and /boxtal/queue/ready
+ *  routes still open it with a filter preset (worklist-logic.ts worklistFilterForRoute). */
+export const WORKLIST_HREF = "/boxtal/queue/worklist"
+
+/** The worklist row is the active one on every queue route, retired ones included. */
+export function isWorklistActive(pathname: string): boolean {
+  const bare = pathname.split("?")[0] ?? ""
+  return bare === "/boxtal/queue" || bare.startsWith("/boxtal/queue/")
+}
+
 export function isActive(pathname: string, href: string): boolean {
   if (href.includes("?")) return pathname === href || pathname.startsWith(href)
   // Bare path links must NOT match when a query string is present — the query
@@ -305,8 +316,10 @@ function Row(p: {
   pathname: string
   badge?: number
   warn?: boolean
+  /** Overrides the href match (the worklist row lights on every queue route). */
+  isActive?: (pathname: string) => boolean
 }) {
-  const active = () => isActive(p.pathname, p.href)
+  const active = () => (p.isActive ?? ((path: string) => isActive(path, p.href)))(p.pathname)
   const showBadge = () => typeof p.badge === "number" && p.badge > 0
   return (
     <li>
@@ -400,22 +413,17 @@ export const BoxtalSidebar: Component = () => {
       <div class="flex-1 overflow-y-auto px-2 pb-3">
         <SectionHeader label="Shipments" icon={TruckIcon} />
         <ul class="flex flex-col gap-0.5">
-          {/* Both rows open the ONE shipping worklist (Queues.tsx), with its filter preset to
-              that half: an order goes from To prepare to Ready to ship on the same page. */}
+          {/* ONE row for the ONE shipping worklist (Queues.tsx): To prepare and Ready to ship are
+              its filters, on the page, not two sidebar entries. Its badge is the work waiting in
+              both, tinted while orders still need a label. */}
           <Row
-            href="/boxtal/queue/to-prepare"
-            label="To prepare"
-            slug="to-prepare"
+            href={WORKLIST_HREF}
+            label="Shipping worklist"
+            slug="worklist"
             pathname={pathname()}
-            badge={toPrepareCount()}
+            isActive={isWorklistActive}
+            badge={toPrepareCount() + readyCount()}
             warn={toPrepareCount() > 0}
-          />
-          <Row
-            href="/boxtal/queue/ready"
-            label="Ready to ship"
-            slug="ready"
-            pathname={pathname()}
-            badge={readyCount()}
           />
           <Row
             href="/boxtal/shipments?status=in-transit"

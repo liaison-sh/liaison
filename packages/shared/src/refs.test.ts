@@ -89,24 +89,62 @@ describe("humanizeRefTokens: tokens read as the step they come from", () => {
         ? { step: 2, toolName: "invoicing:quote_create_and_issue" }
         : undefined
 
-  it("names a whole value 'the <thing> from step N' and one in a sentence in brackets", () => {
+  it("names the step a value comes from, its request and that it is filled in later: never a bracketed stand-in", () => {
     expect(humanizeRefTokens(buildRefToken(QUOTE, "pdf_file_id"), sources)).toBe(
-      "the quote PDF from step 2",
+      "the quote PDF from step 2 (filled in when that step runs)",
     )
     expect(humanizeRefTokens(`Customer ref: ${buildRefToken(CRM, "record_id")}`, sources)).toBe(
-      "Customer ref: [CRM record from step 1]",
+      "Customer ref: the CRM record from step 1 (filled in when that step runs)",
     )
     expect(humanizeRefTokens(`Our quote ${buildRefToken(QUOTE, "number")} attached`, sources)).toBe(
-      "Our quote [quote number from step 2] attached",
+      "Our quote the quote number from step 2 (filled in when that step runs) attached",
     )
   })
 
-  it("keeps the bare key words for a step it cannot place, and with no lookup", () => {
+  it("a step not run yet: the tracking line names step 1 and its request", () => {
+    const SHIP = "44444444-4444-4444-8444-444444444444"
+    const line = humanizeRefTokens(
+      `Tracking: FedEx ${buildRefToken(SHIP, "tracking_number")}`,
+      (id) =>
+        id === SHIP
+          ? { step: 1, toolName: "boxtal:create_shipment", handle: "request-12" }
+          : undefined,
+    )
+    expect(line).toBe(
+      "Tracking: FedEx the shipment tracking number from step 1 (request-12, filled in when that step runs)",
+    )
+    expect(line).not.toContain("[")
+  })
+
+  it("a step that already ran: the token reads as the value it returned", () => {
+    const SHIP = "44444444-4444-4444-8444-444444444444"
+    const ran = (id: string) =>
+      id === SHIP
+        ? {
+            step: 1,
+            toolName: "boxtal:create_shipment",
+            handle: "request-12",
+            result: { tracking_number: "7781 2345 6789" },
+          }
+        : undefined
+    expect(
+      humanizeRefTokens(`Tracking: FedEx ${buildRefToken(SHIP, "tracking_number")}`, ran),
+    ).toBe("Tracking: FedEx 7781 2345 6789")
+    expect(humanizeRefTokens(buildRefToken(SHIP, "tracking_number"), ran)).toBe("7781 2345 6789")
+    // A key the result does not carry is still announced, not invented.
+    expect(humanizeRefTokens(buildRefToken(SHIP, "label_url"), ran)).toBe(
+      "the shipment label URL from step 1 (request-12, filled in when that step runs)",
+    )
+  })
+
+  it("a step it cannot place, and no lookup: the key's words from an earlier step", () => {
     const unknown = "33333333-3333-4333-8333-333333333333"
     expect(humanizeRefTokens(buildRefToken(unknown, "tracking_number"), sources)).toBe(
-      "[tracking number]",
+      "the tracking number from an earlier step (filled in when that step runs)",
     )
-    expect(humanizeRefTokens(`x ${buildRefToken(QUOTE, "pdf_file_id")}`)).toBe("x [pdf file id]")
+    expect(humanizeRefTokens(`x ${buildRefToken(QUOTE, "pdf_file_id")}`)).toBe(
+      "x the pdf file id from an earlier step (filled in when that step runs)",
+    )
   })
 
   it("words an output no table names from its key", () => {

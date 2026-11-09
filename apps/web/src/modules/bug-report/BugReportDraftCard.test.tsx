@@ -143,6 +143,16 @@ describe("BugReportDraftCard", () => {
     )
   })
 
+  it("lists the attached files that will not be sent, with why", async () => {
+    state.draft = {
+      ...(state.draft ?? {}),
+      attachmentsNotSent: [{ filename: "huge.zip", reason: "too large to send" }],
+    }
+    render(() => <BugReportDraftCard draftId="d-1" />)
+    const list = await screen.findByTestId("bug-report-draft-attachments-not-sent")
+    expect(list).toHaveTextContent("huge.zip: too large to send")
+  })
+
   it("a payload of an unknown shape is still shown whole, uncapped", async () => {
     state.draft = { ...(state.draft ?? {}), data: { surprise: "x".repeat(50), other: 1 } }
     render(() => <BugReportDraftCard draftId="d-1" />)

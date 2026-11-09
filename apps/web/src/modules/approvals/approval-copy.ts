@@ -20,7 +20,7 @@
  * English readers keep the server's own words byte for byte, except a time
  * the server wrote in UTC, which every reader gets in their own time zone.
  */
-import { englishDictionaries, REF_OUTPUT_WORDS } from "@liaison/shared"
+import { englishDictionaries, REF_FILLED_LATER, REF_OUTPUT_WORDS } from "@liaison/shared"
 import { formatDateTime } from "~/lib/relative-time"
 import type { Translate } from "~/modules/i18n/i18n-context"
 
@@ -264,9 +264,11 @@ function localizeRoleChanges(changes: string, t: Translate): string {
     .join(", ")
 }
 
-/** "the quote PDF from step 2" (a value that IS the earlier step's output) and
- *  "[quote number from step 2]" (one inside a sentence): packages/shared refs.ts. */
+/** "the quote PDF from step 2" (refs.ts), and "[quote number from step 2]" as
+ *  summaries stored before the bracket was dropped still carry. */
 const REF_PHRASE = /\[([^\]]+?) from step (\d+)\]|\bthe ([^,.;:()[\]]+?) from step (\d+)\b/g
+/** "the tracking number from an earlier step": a token whose step was not known. */
+const REF_EARLIER = /\bthe ([^,.;:()[\]]+?) from an earlier step\b/g
 
 /** The output key whose English words end `what` ("quote PDF" -> pdf_file_id). */
 function refOutputKey(what: string): string | null {
@@ -290,18 +292,25 @@ function refOutputKey(what: string): string | null {
  * English readers get the text as written.
  */
 export function localizeRefPhrases(text: string, ctx: ApprovalCopyContext): string {
-  if (ctx.locale === "en" || !text.includes(" from step ")) return text
-  return text.replace(
+  if (ctx.locale === "en") return text
+  const outputWords = (what: string) => {
+    const key = refOutputKey(what)
+    return key && catalogHas(["approvalsUi", "refOutput", key])
+      ? ctx.t(`kernel.approvalsUi.refOutput.${key}`)
+      : `« ${what} »`
+  }
+  const out = text
+    .replace(REF_EARLIER, (_m, what: string) =>
+      ctx.t("kernel.approvalsUi.refFromEarlierStep", { what: outputWords(what.trim()) }),
+    )
+    .split(REF_FILLED_LATER)
+    .join(ctx.t("kernel.approvalsUi.refFilledLater"))
+  if (!out.includes(" from step ")) return out
+  return out.replace(
     REF_PHRASE,
     (_m, inWhat?: string, inStep?: string, wholeWhat?: string, wholeStep?: string) => {
-      const what = (inWhat ?? wholeWhat ?? "").trim()
-      const key = refOutputKey(what)
-      const output =
-        key && catalogHas(["approvalsUi", "refOutput", key])
-          ? ctx.t(`kernel.approvalsUi.refOutput.${key}`)
-          : `« ${what} »`
       const phrase = ctx.t("kernel.approvalsUi.refFromStep", {
-        what: output,
+        what: outputWords((inWhat ?? wholeWhat ?? "").trim()),
         n: inStep ?? wholeStep ?? "",
       })
       return inWhat !== undefined ? `[${phrase}]` : phrase

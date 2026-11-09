@@ -219,6 +219,19 @@ describe("BoxtalV3Client business methods", () => {
     })
   })
 
+  // The sandbox worker flattens a thrown error to its message, so a reason left only in the body
+  // never reaches the operator: Boxtal's own words go in the message.
+  it("a refused call carries Boxtal's own reason in the error message", async () => {
+    const { client } = clientWithBiz(
+      422,
+      JSON.stringify({ messages: [{ severity: "ERROR", text: "shipment.toAddress.contact.lastName: invalid value" }] }),
+    )
+    const err = await client.createShippingOrder(sampleDraft).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(BoxtalApiError)
+    expect((err as Error).message).toContain("(422)")
+    expect((err as Error).message).toContain("shipment.toAddress.contact.lastName: invalid value")
+  })
+
   it("createShippingOrder reads a carrier tracking number the order response carries", async () => {
     const { client } = clientWithBiz(
       200,

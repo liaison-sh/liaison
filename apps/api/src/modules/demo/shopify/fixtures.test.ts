@@ -133,7 +133,7 @@ describe("the demo store's book", () => {
       expect(emails.has(order.email ?? "")).toBe(true)
     }
     expect(current.customers.length).toBe(
-      DEMO_WORLD.customers.length + DEMO_WORLD.dealers.length + 1,
+      DEMO_WORLD.customers.length + DEMO_WORLD.dealers.length + 2,
     )
   })
 

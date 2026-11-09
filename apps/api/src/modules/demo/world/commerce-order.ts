@@ -121,6 +121,13 @@ function numericOf(gid: string): string {
   return gid.match(/(\d+)\s*$/)?.[1] ?? gid
 }
 
+const DE_VAT_RATE = 0.19
+
+/** The VAT included in a gross amount at the German standard rate, in minor units. */
+function includedTaxMinor(grossMinor: number): number {
+  return grossMinor - Math.round((grossMinor * 10000) / 11900)
+}
+
 /** The `orders/create` webhook body Shopify would send for `order` (REST shape). */
 export function worldOrderPayload(order: DemoOrder): Record<string, unknown> {
   const book = demoShopifyBook(Date.parse(order.createdAt))
@@ -148,6 +155,9 @@ export function worldOrderPayload(order: DemoOrder): Record<string, unknown> {
     total_price: money(order.totalMinor),
     subtotal_price: money(order.subtotalMinor),
     taxes_included: true,
+    total_tax: money(
+      order.lineItems.reduce((sum, li) => sum + includedTaxMinor(li.unitMinor * li.quantity), 0),
+    ),
     financial_status: "paid",
     fulfillment_status: null,
     tags: order.tags.join(", "),
@@ -171,7 +181,11 @@ export function worldOrderPayload(order: DemoOrder): Record<string, unknown> {
       quantity: li.quantity,
       price: money(li.unitMinor),
       requires_shipping: true,
-      tax_lines: [],
+      // A consumer in Germany pays German VAT (OSS), included in the price: an order to another
+      // member state charged no VAT and carrying no VAT number is held for review, never invoiced.
+      tax_lines: [
+        { title: "DE MwSt", rate: DE_VAT_RATE, price: money(includedTaxMinor(li.unitMinor * li.quantity)) },
+      ],
     })),
     shipping_lines: [],
   }

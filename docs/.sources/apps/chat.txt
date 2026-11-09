@@ -92,3 +92,5 @@ Notify me of every message switch in the channel menu -> apps/web/src/modules/th
 Notify me of every message label -> packages/shared/src/i18n/locales/en/kernel.json:2124
 A linked dashboard shows as a chip with its title -> apps/api/src/modules/threads/reference-display.ts:333
 Home's Dashboards sidebar section -> apps/web/src/modules/threads/sidebar-sections.ts:45
+The agent's turn shows as soon as the server takes it on -> apps/api/src/modules/agent/runtime/agent-service.ts:4967, apps/web/src/modules/threads/message-store.ts:2540
+A newer request while the agent still answers shows both turns -> apps/web/src/modules/threads/message-store.ts:2661

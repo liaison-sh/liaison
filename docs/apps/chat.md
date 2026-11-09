@@ -55,6 +55,7 @@ A channel notifies you on your phone and computer only when a post mentions you 
 
 - Message an agent directly: pick it under **Agents** in **New message**. It answers every message.
 - Bring an agent into a group or channel: @-mention it. The agent replies in that conversation.
+- The agent's turn shows under your message as soon as the server takes it on, before its first words. Ask it something new while it still answers and both turns show, each with its own progress, until each answer lands.
 - In a new workspace, the first administrator's conversation with their agent opens with a **Set up your space** card: what is set up, what is left, and a link to the demo. See [Set up a new workspace with your agent](../agents/how-agents-work.md#set-up-a-new-workspace-with-your-agent).
 - When the agent runs on one of your computers and needs your OK for a step, the request shows above the message box with **Allow** and **Deny**; Home shows **{agent} needs your OK in the chat**. After you answer, a muted line says **You allowed: {tool}** or **You denied: {tool}**. While the turn runs on your computer, its steps show live, as a cloud turn's do. See [Guardrails](../computers/guardrails.md) and [Run a conversation on your computer](../computers/run-work.md#run-a-conversation-on-your-computer).
 - Each agent's picture or bolt sits on its own color, the same in the chats list, in messages and on its page. The agents of a workspace get different colors; change one in the agent's **Settings** under **Color**.

@@ -143,7 +143,11 @@ export const SCRIPT_TTL_S = 60 * 60
  * - `next`: the first step no turn has played yet;
  * - `t:<turn>`: the step a turn started at (its base). A turn's FIRST call
  *   fixes its base at `next`; every later call of that turn, on any process,
- *   finds the same base.
+ *   finds the same base. `<turn>` is the turn's id (the message it answers,
+ *   when the caller names it) with the prompt's identity: two turns of one
+ *   agent asked moments apart read the same history (the newer ask is in the
+ *   older turn's prompt too), and keyed on the prompt alone they took one base
+ *   and both played the first step.
  * The step a call plays is its turn's base plus the number of assistant steps
  * the turn already has in the call's prompt (`scriptedStepPosition`), never a
  * cursor: a resumed turn re-issues its cut step and plays that same step.
@@ -396,6 +400,7 @@ export function scriptedStreamDrop(): APICallError {
 /** Whether this play of a `streamFailure` step is one that breaks off. */
 async function playBreaksOff(
   threadId: string | null | undefined,
+  turnId: string | null | undefined,
   options: unknown,
   step: ScriptedStep,
   index: number,
@@ -405,14 +410,20 @@ async function playBreaksOff(
   const { turn } = scriptedStepPosition(options)
   const plays = await redis.hincrby(
     scriptRedisKey(threadId ?? NO_THREAD_KEY),
-    `fail:${turn}:${index}`,
+    `fail:${turnField(turnId, turn)}:${index}`,
     1,
   )
   return plays <= failure.times
 }
 
+/** The script hash field naming one turn: its id when known, with its prompt identity. */
+function turnField(turnId: string | null | undefined, turn: string): string {
+  return turnId ? `${turnId}:${turn}` : turn
+}
+
 async function nextStep(
   threadId: string | null | undefined,
+  turnId: string | null | undefined,
   options: unknown,
 ): Promise<{ step: ScriptedStep; index: number }> {
   const { stepsSoFar, turn } = scriptedStepPosition(options)
@@ -420,7 +431,7 @@ async function nextStep(
     PICK_STEP_LUA,
     1,
     scriptRedisKey(threadId ?? NO_THREAD_KEY),
-    `t:${turn}`,
+    `t:${turnField(turnId, turn)}`,
     String(stepsSoFar),
   )
   if (!Array.isArray(res)) return { step: { text: UNSCRIPTED_REPLY }, index: -1 }
@@ -509,9 +520,13 @@ let turnSeq = 0
 /**
  * Build the scripted model for one turn. `threadId` selects which script the
  * turn replays; a model built without one (auto-title, compaction) always gets
- * the unscripted line.
+ * the unscripted line. `turnId` (the message the turn answers) tells apart two
+ * turns whose prompts are the same.
  */
-export function createScriptedModel(threadId?: string | null): ScriptedLanguageModel {
+export function createScriptedModel(
+  threadId?: string | null,
+  turnId?: string | null,
+): ScriptedLanguageModel {
   const modelId = "scripted-e2e"
   return {
     specificationVersion: "v3",
@@ -520,7 +535,7 @@ export function createScriptedModel(threadId?: string | null): ScriptedLanguageM
     supportedUrls: {},
 
     async doGenerate(options: unknown) {
-      const { step, index } = await nextStep(threadId, options)
+      const { step, index } = await nextStep(threadId, turnId, options)
       const seq = turnSeq++
       const text = resolveStepText(step, options)
       if (step.delayMs) await Bun.sleep(step.delayMs)
@@ -537,9 +552,9 @@ export function createScriptedModel(threadId?: string | null): ScriptedLanguageM
     },
 
     async doStream(options: unknown) {
-      const { step, index } = await nextStep(threadId, options)
+      const { step, index } = await nextStep(threadId, turnId, options)
       const seq = turnSeq++
-      const breaksOff = await playBreaksOff(threadId, options, step, index)
+      const breaksOff = await playBreaksOff(threadId, turnId, options, step, index)
       const text = breaksOff ? step.streamFailure?.partial : resolveStepText(step, options)
       log.info(
         {

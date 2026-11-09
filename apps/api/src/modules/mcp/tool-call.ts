@@ -960,7 +960,8 @@ export async function handleToolCall(
       // ride on the result, and their relay order on the message.
       const agentNotes = result.blocked.agentNotes
       const actionRequired =
-        approvalActionRequiredClause(selfApproveEligible) + gatedNotesRelay(agentNotes)
+        approvalActionRequiredClause(selfApproveEligible, true, approvalRef?.deciders ?? []) +
+        gatedNotesRelay(agentNotes)
       // Sequencing parity with the in-app agent (execute-tool's BlockedEnvelope):
       // when this gated tool declares referenceableOutputs, executeTool minted
       // `@ref:<approvalId>:<key>` tokens in `blocked.outputs` + a self-teaching

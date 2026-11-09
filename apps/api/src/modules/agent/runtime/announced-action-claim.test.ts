@@ -33,6 +33,17 @@ const ANNOUNCEMENTS: Array<[string, string]> = [
   ["en", "Keep the prompt generic: use the analytics query for revenue.\n\nLet's call it."],
   ["en", "I'll use tickets__search with a status filter."],
   ["fr", "Je vais appeler l'outil de recherche des tickets."],
+  // A final first-person announcement of the agent's own next step is unfinished
+  // whatever its verb: the turn stops on a step it never takes.
+  ["en", "Scopes needed: tickets:tickets:read.\n\nLet's do the scope lookup first."],
+  ["en", "Let's call it."],
+  ["en", "The cron is 0 8 * * 1. Now let me think about the prompt."],
+  ["en", "OK, let's tackle the scopes first."],
+  ["en", "Next, I'll figure out which team owns the digest."],
+  ["en", "I'm going to go with a weekly schedule."],
+  ["fr", "Le cron est 0 8 * * 1. Je vais m'atteler à la consigne."],
+  ["fr", "Laisse-moi jeter un œil aux tickets ouverts."],
+  ["fr", "Bon, on va s'attaquer aux droits d'abord."],
 ]
 
 const NOT_ANNOUNCEMENTS: Array<[string, string]> = [
@@ -78,6 +89,31 @@ const NOT_ANNOUNCEMENTS: Array<[string, string]> = [
   ["fr", "Donnez-moi les serveurs et je vais mettre à jour la boîte."],
   ["fr", "Envoyez-moi le fichier et je vais l'importer."],
   ["fr", "Dites-moi quel transporteur vous préférez, et je vais réserver l'envoi."],
+  // Requests to the person and questions are not the agent's next step.
+  ["en", "The digest is ready to set up. Let me know if you want it on another day."],
+  ["en", "Let me know which team the digest should cover."],
+  ["en", "Let us know if anything looks off."],
+  ["en", "Which team should the digest cover, and at what time?"],
+  ["en", "Let's pick the day first: Monday or Friday?"],
+  ["en", "I'll wait for your go-ahead."],
+  ["en", "I'll be here if you need anything else."],
+  ["fr", "Dites-moi si vous voulez changer l'heure."],
+  ["fr", "Laissez-moi savoir si cela vous convient."],
+  ["fr", "Faites-moi savoir quelle équipe doit recevoir le résumé."],
+  ["fr", "Je reste à votre disposition."],
+  // A finished answer that mentions its plan.
+  [
+    "en",
+    'The routine "Monday digest" is set up: every Monday at 08:00 it lists the open tickets. The plan was to group them by team, and it does.',
+  ],
+  [
+    "en",
+    "Here is the plan I followed: scope lookup first, then the routine. Everything is in place.",
+  ],
+  [
+    "fr",
+    "La routine est créée. Le plan : chaque lundi à 8 h, la liste des tickets ouverts par équipe.",
+  ],
 ]
 
 describe("announcesImminentAction", () => {

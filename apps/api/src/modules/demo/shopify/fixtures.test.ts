@@ -4,7 +4,7 @@
 // add up, the statuses have to be the ones an operator triages, and two reads
 // have to agree or a page walk tears.
 import { describe, expect, it } from "bun:test"
-import { DEMO_WORLD } from "~/seed/world/fiction"
+import { DEMO_FIXED_CUSTOMER, DEMO_FIXED_ORDER, DEMO_WORLD } from "~/seed/world/fiction"
 import { DEMO_ORDER_COUNT, DemoShopifyFixturesTestAccess, demoShopifyBook, money } from "./fixtures"
 
 const NOW = Date.UTC(2026, 8, 16, 11, 30)
@@ -34,7 +34,8 @@ describe("the demo store's book", () => {
 
   it("carries a showroom sized order book, newest first", () => {
     const orders = book().orders
-    expect(orders).toHaveLength(DEMO_ORDER_COUNT)
+    // The generated orders plus the one fixed order.
+    expect(orders).toHaveLength(DEMO_ORDER_COUNT + 1)
     expect(orders.length).toBeGreaterThanOrEqual(60)
     expect(orders.length).toBeLessThanOrEqual(120)
     for (let i = 1; i < orders.length; i++) {
@@ -124,13 +125,83 @@ describe("the demo store's book", () => {
     const current = book()
     const emails = new Set([
       ...DEMO_WORLD.customers.map((c) => c.email),
+      DEMO_FIXED_CUSTOMER.email,
       ...current.customers.filter((c) => c.kind === "dealer").map((c) => c.email),
     ])
     for (const order of current.orders) {
       expect(current.customersById.has(order.customerId)).toBe(true)
       expect(emails.has(order.email ?? "")).toBe(true)
     }
-    expect(current.customers.length).toBe(DEMO_WORLD.customers.length + DEMO_WORLD.dealers.length)
+    expect(current.customers.length).toBe(
+      DEMO_WORLD.customers.length + DEMO_WORLD.dealers.length + 1,
+    )
+  })
+
+  // Which customer each generated order belongs to, by order number 6100001 upward.
+  // Scenario lines name some of these orders (6100057, 6100058), so a customer
+  // added to the store must never shift them.
+  const ASSIGNMENT = [
+    21, 11, 18, 12, 3, 0, 25, 19, 26, 5, 1, 5, 19, 6, 4, 14, 10, 4, 2, 0, 4, 11, 26, 3, 22, 3, 8,
+    10, 3, 15, 12, 13, 12, 8, 9, 16, 19, 3, 3, 26, 25, 9, 1, 4, 10, 8, 19, 2, 1, 23, 22, 17, 6, 24,
+    10, 18, 6, 12, 10, 22, 21, 12, 2, 14, 4, 6, 13, 14, 15, 0, 11, 22, 19, 21, 12, 5, 0, 20, 20, 22,
+    6, 1, 2, 21, 20, 8, 24, 4, 8, 0, 15, 3, 3, 10, 20, 3,
+  ]
+
+  it("keeps every generated order with its customer when the fixed customer is added", () => {
+    const current = book()
+    const generated = current.orders
+      .filter((o) => o.numericId > 6_100_000 && o.numericId <= 6_100_000 + DEMO_ORDER_COUNT)
+      .sort((a, b) => a.numericId - b.numericId)
+    expect(generated.map((o) => Number(o.customerId.split("/").pop()) - 7_100_000)).toEqual(
+      ASSIGNMENT,
+    )
+    expect(current.ordersById.get("gid://shopify/Order/6100057")?.email).toBe(
+      "claudine.moreau@studiotone.example",
+    )
+    expect(current.ordersById.get("gid://shopify/Order/6100058")?.email).toBe(
+      "pierre.caron@atelier9.example",
+    )
+    // The quotes keep their customers and linked orders too.
+    expect(
+      current.draftOrders.map((d) => `${d.customerId.slice(-3)}:${(d.orderId ?? "").slice(-3)}`),
+    ).toEqual([
+      "001:",
+      "012:",
+      "004:",
+      "022:",
+      "003:",
+      "009:",
+      "002:",
+      "017:",
+      "004:",
+      "008:033",
+      "003:026",
+      "009:019",
+      "003:012",
+      "021:005",
+    ])
+  })
+
+  it("carries one fixed customer with one fixed, paid and shipped order of her own", () => {
+    const current = book()
+    const customer = current.customers.find((c) => c.email === DEMO_FIXED_CUSTOMER.email)
+    expect(customer?.displayName).toBe(DEMO_FIXED_CUSTOMER.name)
+    expect(customer?.firstName).toBe("Élodie")
+    expect(customer?.kind).toBe("person")
+    const mine = current.orders.filter((o) => o.customerId === customer?.id)
+    expect(mine).toHaveLength(1)
+    const order = mine[0]!
+    expect(order.numericId).toBe(DEMO_FIXED_ORDER.numericId)
+    expect(current.ordersById.get(order.id)).toBe(order)
+    expect(order.email).toBe(DEMO_FIXED_CUSTOMER.email)
+    expect(order.financialStatus).toBe("PAID")
+    expect(order.fulfillmentStatus).toBe("FULFILLED")
+    expect(order.refunds).toEqual([])
+    expect(order.lineItems.map((li) => li.sku)).toEqual([DEMO_FIXED_ORDER.sku])
+    // Its number is outside the generated orders and the live scenario's orders.
+    expect(order.numericId).toBeGreaterThan(6_100_000 + DEMO_ORDER_COUNT + 1_000)
+    // No quote is turned into it.
+    expect(current.draftOrders.some((d) => d.orderId === order.id)).toBe(false)
   })
 
   it("has quotes, some still open and some already turned into orders", () => {

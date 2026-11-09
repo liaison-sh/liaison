@@ -517,6 +517,33 @@ export const DEMO_CUSTOMERS: DemoCustomer[] = [
   },
 ]
 
+/**
+ * One end customer with one order of her own, both FIXED: the demo store
+ * places them outside its seeded random assignment, so adding them moved no
+ * other order's customer. A request that names a customer by first name
+ * ("refund Élodie on her Shopify order") has exactly one person and one order
+ * to find. Not in `DEMO_CUSTOMERS`, so the seeded contacts, tickets and
+ * conversations drawn from that list are unchanged.
+ */
+export const DEMO_FIXED_CUSTOMER: DemoCustomer = {
+  key: "elodie-marchand",
+  name: "Élodie Marchand",
+  email: "elodie.marchand@lumiere-sonore.example",
+  country: "FR",
+  isVip: false,
+}
+
+/** Her order: paid, shipped, nothing refunded yet. */
+export const DEMO_FIXED_ORDER = {
+  /** Above the generated orders and the live scenario's orders, so no number clashes. */
+  numericId: 6_102_001,
+  name: "#3001",
+  sku: "RAL-FLAG-02",
+  quantity: 1,
+  /** Placed this many days before the store's day anchor. */
+  daysAgo: 12,
+} as const
+
 /** The whole world in one value, so a seeder takes a single argument. */
 export interface DemoWorld {
   company: typeof DEMO_COMPANY

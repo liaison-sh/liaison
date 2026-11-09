@@ -566,15 +566,6 @@ async function executeWrapper(
       // did NOT execute and will run only on human approval — so it must not claim success, must not
       // retry, and may either pause-and-ask or chain a dependent call via the approvalRequestId/@ref.
       const reason = result.blocked.reason
-      // WHO has to act, appended to every gated variant. Without it the agent
-      // reports "pending" and stops, the approver is never told to decide, and
-      // the user reads the resulting silence as a broken platform (the 2026-09-11
-      // Elevator Sound session). `requesterCanApprove` comes from executeTool so
-      // this seam and the MCP one can never disagree about who is being asked.
-      const actionRequired = approvalActionRequiredClause(
-        result.blocked.requesterCanApprove,
-        turnHoldsScope(actor, "kernel:approvals:read"),
-      )
       const baseMessage =
         reason === "gated"
           ? "✅ Your tool call was ACCEPTED and is well-formed, BUT this action is GATED (it requires a human's approval before it runs), so IT HAS NOT EXECUTED. Nothing was created, placed, sent, issued, or changed; the entity does NOT exist yet. It is recorded as a PENDING approval request (approvalRequestId) and will run ONLY if a human approves it. So: (1) tell the user it is PENDING THEIR APPROVAL, referring to it by `approvalHandle` (the request-N label shown on the approval card; keep the uuid for tool calls), do NOT say it was done/created/placed/sent/issued/initiated/submitted/completed, and do NOT contradict yourself; (2) do NOT call this tool again for the same action, that only creates duplicate pending requests; (3) you may now either pause and ask the user to approve, OR, if a later step depends on this action's result, chain that next call now with the @ref token from `outputs` (when this result has `outputs`; see the steps below), you do NOT need to wait for the approval to resolve. To fix a mistake in THIS pending request: if only its CONTENT is wrong, edit it with kernel__approval_update_payload; if the request should not exist at all, withdraw it with kernel__approval_withdraw and then create the corrected request; never retry the original call to try to fix it. If `summary` carries an IRREVERSIBLE or destructive warning (a merge, a delete, a permanent removal), relay it to the user with what would be lost: they are the approver."
@@ -587,14 +578,24 @@ async function executeWrapper(
       const routinePause = runContextStore.getStore()?.routineId
         ? ` ${ROUTINE_RUN_PAUSE_CLAUSE}`
         : ""
-      const recipe = sequencingRecipe(result.blocked.outputs)
-      const message = `${baseMessage} ${actionRequired}${gatedNotesRelay(agentNotes)}${routinePause}${recipe ? ` ${recipe}` : ""}`
       // The `request-N` label the approval card and feed print. Handed to the
       // agent alongside the uuid so its reply cites a reference the reviewer
       // can actually see and search (the uuid is hover-only in the UI).
       const approvalRef = result.blocked.approvalRequestId
         ? await resolveApprovalRef(orgId, result.blocked.approvalRequestId)
         : null
+      // WHO has to act, appended to every gated variant. Without it the agent
+      // reports "pending" and stops, the approver is never told to decide, and
+      // the user reads the resulting silence as a broken platform (the 2026-09-11
+      // Elevator Sound session). `requesterCanApprove` comes from executeTool so
+      // this seam and the MCP one can never disagree about who is being asked.
+      const actionRequired = approvalActionRequiredClause(
+        result.blocked.requesterCanApprove,
+        turnHoldsScope(actor, "kernel:approvals:read"),
+        approvalRef?.deciders ?? [],
+      )
+      const recipe = sequencingRecipe(result.blocked.outputs)
+      const message = `${baseMessage} ${actionRequired}${gatedNotesRelay(agentNotes)}${routinePause}${recipe ? ` ${recipe}` : ""}`
       return {
         blocked: true,
         status: "pending_approval",

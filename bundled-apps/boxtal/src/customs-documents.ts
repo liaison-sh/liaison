@@ -39,6 +39,7 @@ import {
   trackingLabelOf,
 } from "./print-record"
 import { CARRIER_BRANDS } from "./carriers"
+import { refKey, resolveVariantSkus, SHOPIFY_VARIANT_GID } from "./product-attributes"
 import { worklistCandidates } from "./queues"
 import { shipmentDraftCreate } from "./shipment"
 
@@ -83,12 +84,11 @@ export function moneyText(value: number | null | undefined, currency: string | n
   return `${currency} ${value < 0 ? "-" : ""}${grouped}${frac ? `.${frac}` : ""}`
 }
 
-/** "FR" -> "France (FR)"; the code alone when the runtime cannot name it; null when none. */
-export function countryWithCode(iso2: string | null | undefined): string | null {
+/** "FR" -> "France", as paperwork names a country; the code alone when it cannot be named; null when none. */
+export function countryName(iso2: string | null | undefined): string | null {
   const code = (iso2 ?? "").trim().toUpperCase()
   if (!code) return null
-  const name = countryNameEn(code)
-  return name ? `${name} (${code})` : code
+  return countryNameEn(code) ?? code
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +179,35 @@ async function invoiceFor(ctx: BoxtalToolCtx, documentRef: string): Promise<Invo
   }
 }
 
+/**
+ * The merchant SKU of every line keyed by a store variant id. An invoice line made from a store
+ * order carries the variant's id (`gid://shopify/ProductVariant/...`) where the SKU would be, and
+ * the product attributes and the document rules are keyed by the merchant's SKU: read through the
+ * variant SKU cache, then one `shopify:variants_brief` call for the rest. A variant whose SKU
+ * cannot be read keeps its id (logged), never failing the record. `cache` writes what the store
+ * answered into the cache (a read-only caller passes false).
+ */
+async function merchantSkusOf(ctx: BoxtalToolCtx, ids: string[], cache: boolean): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  const refs = [...new Set(ids.filter((id) => id.startsWith(SHOPIFY_VARIANT_GID)))].map((id) => ({
+    product_source: "shopify",
+    product_id: id,
+  }))
+  if (refs.length === 0) return out
+  try {
+    const found = await resolveVariantSkus(ctx, refs, { cache })
+    for (const r of refs) {
+      const sku = found.get(refKey(r))
+      if (sku) out.set(r.product_id, sku)
+    }
+  } catch (err) {
+    ctx.logger?.warn?.("order print record: variant SKU lookup failed", { err: String(err) })
+  }
+  const unresolved = refs.filter((r) => !out.has(r.product_id)).map((r) => r.product_id)
+  if (unresolved.length > 0) ctx.logger?.warn?.("order print record: no SKU for these store variants", { variants: unresolved })
+  return out
+}
+
 /** Product attributes by SKU (kernel), one call for the record's SKUs; empty on any failure. */
 async function attributesBySku(ctx: BoxtalToolCtx, skus: string[]): Promise<Map<string, Record<string, string>>> {
   const out = new Map<string, Record<string, string>>()
@@ -231,7 +260,7 @@ export function composeOrderRecord(args: {
     ...l,
     unit_value_text: moneyText(l.unit_value, l.currency ?? currency),
     value_text: moneyText(l.value, l.currency ?? currency),
-    origin_name: countryWithCode(l.origin),
+    origin_name: countryName(l.origin),
     attributes: (l.sku ? args.attributes.get(l.sku) : undefined) ?? {},
   }))
   const values = lines.map((l) => l.value)
@@ -297,6 +326,8 @@ export interface RecordOptions {
   /** The day printed as the issue date (ISO); now when unset. */
   today?: string
   readDraft?: DraftReader
+  /** Cache the variant SKUs read from the store (the generation pass; never the read-only tool). */
+  cacheVariantSkus?: boolean
 }
 
 export async function orderPrintRecordGet(
@@ -348,6 +379,15 @@ export async function orderPrintRecordGet(
         },
       }
     }
+  }
+  // A line keyed by a store variant id prints, and matches the rules, as the merchant's SKU.
+  const merchant = await merchantSkusOf(
+    ctx,
+    snapshot.lines.flatMap((l) => (l.sku ? [l.sku] : [])),
+    opts.cacheVariantSkus === true,
+  )
+  if (merchant.size > 0) {
+    snapshot = { ...snapshot, lines: snapshot.lines.map((l) => (l.sku && merchant.has(l.sku) ? { ...l, sku: merchant.get(l.sku)! } : l)) }
   }
   const skus = [...new Set(snapshot.lines.map((l) => l.sku).filter((s): s is string => s != null))]
   const [invoice, attributes] = await Promise.all([invoiceFor(ctx, ref), attributesBySku(ctx, skus)])
@@ -475,7 +515,7 @@ export async function generateOrderDocuments(
   const results = new Map<string, GenerateResult>()
   for (const ref of refs) {
     try {
-      const rec = await orderPrintRecordGet(ctx, { document_ref: ref }, { ...opts, today })
+      const rec = await orderPrintRecordGet(ctx, { document_ref: ref }, { cacheVariantSkus: true, ...opts, today })
       if ("error" in rec) results.set(ref, { document_ref: ref, needed: [], printed: [], unchanged: [], error: rec.error.message })
       else records.set(ref, rec)
     } catch (err) {

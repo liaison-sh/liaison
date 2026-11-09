@@ -49,7 +49,7 @@ const BRIEF_BATCH = 50
 const ATTRIBUTE_BATCH = 500
 /** Ids per `in` lookup on this app's own tables. */
 const LOOKUP_BATCH = 200
-const SHOPIFY_VARIANT_GID = "gid://shopify/ProductVariant/"
+export const SHOPIFY_VARIANT_GID = "gid://shopify/ProductVariant/"
 
 export interface ProductAttributeCtx {
   db: ProfileDb
@@ -64,7 +64,8 @@ interface VariantSkuRow {
   sku: string
 }
 
-function refKey(r: VariantRef): string {
+/** The key `knownVariantSkus` / `resolveVariantSkus` answer by: "<product_source>:<product_id>". */
+export function refKey(r: VariantRef): string {
   return `${r.product_source}:${r.product_id}`
 }
 
@@ -203,10 +204,15 @@ export async function codeSyncByProfile(
 
 /**
  * Every variant's SKU: the known ones, plus the Shopify variants not cached yet, read through
- * `shopify:variants_brief` and cached. A variant whose SKU cannot be found (no store app, an
- * empty SKU, another source) is simply absent.
+ * `shopify:variants_brief` and cached (`cache: false` for a read-only caller: read, never write).
+ * A variant whose SKU cannot be found (no store app, an empty SKU, another source) is simply
+ * absent. Keyed by `refKey`.
  */
-export async function resolveVariantSkus(ctx: ProductAttributeCtx, refs: VariantRef[]): Promise<Map<string, string>> {
+export async function resolveVariantSkus(
+  ctx: ProductAttributeCtx,
+  refs: VariantRef[],
+  opts: { cache?: boolean } = {},
+): Promise<Map<string, string>> {
   const out = await knownVariantSkus(ctx.db, refs)
   const missing = new Map<string, VariantRef>()
   for (const r of refs) {
@@ -230,7 +236,7 @@ export async function resolveVariantSkus(ctx: ProductAttributeCtx, refs: Variant
       if (!ref) continue
       const sku = v.sku.trim()
       out.set(refKey(ref), sku)
-      await cacheVariantSku(ctx.db, ref, sku)
+      if (opts.cache !== false) await cacheVariantSku(ctx.db, ref, sku)
     }
   }
   return out

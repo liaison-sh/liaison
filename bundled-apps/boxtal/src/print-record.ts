@@ -22,6 +22,7 @@
 // A row bought before the snapshot existed therefore prints its invoice,
 // customer and lines as blanks, which is the safe failure.
 import { CARRIER_BRANDS, carrierBrandOf } from "./carriers"
+import { countryEnglishName } from "./country-names"
 import type { BoxtalToolCtx } from "./ctx"
 import { currencyExponent } from "./money"
 
@@ -247,6 +248,10 @@ export function readPrintSnapshot(queueFacts: unknown): PrintSnapshot | null {
 /** "US" -> "United States", in English (paperwork language); null when the runtime cannot name it. */
 export function countryNameEn(iso2: string | null): string | null {
   if (!iso2 || !/^[A-Z]{2}$/.test(iso2)) return null
+  // The static table first: the app's sandbox has no `Intl`, so in production `Intl.DisplayNames`
+  // throws and every country printed as its bare code. `Intl` only names a code the table lacks.
+  const listed = countryEnglishName(iso2)
+  if (listed) return listed
   try {
     // Some ICU builds name CN "China mainland"; paperwork names the country.
     const name = new Intl.DisplayNames(["en"], { type: "region" }).of(iso2)?.replace(/ mainland$/, "")

@@ -39,6 +39,7 @@ import {
   wouldExceedOrgQuota,
 } from "~/modules/files/service"
 import { PdfReplayError } from "~/modules/pdf/replay"
+import { hasScope } from "~/modules/permissions/permissions"
 import { PdfFormError } from "./pdf-form"
 import {
   assertRowsFit,
@@ -356,11 +357,22 @@ function splitRecordType(recordType: string): { app: string; entity: string } {
   return { app, entity }
 }
 
+/**
+ * The caller may read the record for a preview: its file-parent row proves it. One exception: a
+ * record type declaring `parentMadeOnPrint` makes that row only on its first print (an order's
+ * row is written when its first paper is stored), so a record with no row yet is not invisible.
+ * There, a caller holding the parent's read scope who sees no row reads the record through the
+ * app's record tool under their own scopes and RLS. The manifest contract allows the flag only on
+ * a parent whose rows are visible to every holder of that scope (contract.ts
+ * parentMadeOnPrintErrors), so "no row seen" by a holder means no row: a row RLS hides is still
+ * refused here, with the same 404. A print still needs the row (print.ts authorizeParent).
+ */
 async function assertRecordVisible(
   caller: PrintCaller,
   app: string,
   entity: string,
   recordId: string,
+  declaration: PrintDeclaration,
 ): Promise<void> {
   const parent = resolveParent(caller.orgId, app, entity)
   if (!parent) return
@@ -368,6 +380,8 @@ async function assertRecordVisible(
     await caller.withRls((tx) => assertParentVisible(tx, parent, recordId))
   } catch (err) {
     if (err instanceof FileServiceError) {
+      if (declaration.parentMadeOnPrint === true && hasScope(parent.readScope, caller.scopes))
+        return
       throw new PrintError("record_not_found", "The record was not found or is not visible to you")
     }
     throw err
@@ -429,7 +443,7 @@ export async function renderPreview(
     declaration = resolved.declaration
     known = declaration
     if (recordId) {
-      await assertRecordVisible(caller, app, entity, recordId)
+      await assertRecordVisible(caller, app, entity, recordId, declaration)
       record = await readRecord(caller, resolved, recordId)
       recordLabel = recordLabelOf(record, resolved.labelField, recordId)
     }

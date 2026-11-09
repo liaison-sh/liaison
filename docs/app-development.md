@@ -750,6 +750,15 @@ cutting it. The REST API: `GET /api/documents/record-types`,
 `GET /api/documents/templates?app=&entity=`, and `POST /api/documents/print`
 with `{ app, entity, recordId, templateIds, merge? }`.
 
+A preview of a real record needs the record's fileParent row. When your app
+writes that row only once a first file is stored on it, declare
+`"parentMadeOnPrint": true` in `print`: a person holding the fileParent's
+`readScope` can then preview a record that has no row yet. It is accepted only
+when the fileParent is a table of your own schema whose rows every holder of
+that scope sees (no `dimensions`, `personalScope` or `rlsGovernedByMigration`,
+and `readScope` is the table's own `<app>:<rlsScope or table>:read`); otherwise
+the manifest is refused with `print_record_tool_invalid`.
+
 In your app UI, drop the shared control on a record instead of building your own:
 `import { PrintDocuments } from "@liaison/app-ui/print-documents"` and render
 `<PrintDocuments app entity recordId neededTemplateIds? />`. It opens as an inline

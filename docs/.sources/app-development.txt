@@ -37,6 +37,7 @@ fileParent deleteScope: uploader or scope holder may delete -> apps/api/src/modu
 A dimension a manifest names (tool returns.dimensions, export dimensions, import kind dimension) must be declared under schema.<table>.dimensions as <app>:<dimension>; otherwise validation fails -> apps/api/src/modules/apps/contract.ts:516-566 ; apps/api/src/modules/apps/contract.ts:829
 An entity with a fileParent may declare print: recordTool, idParam, label, fields (path, label, type, repeat) -> apps/api/src/modules/apps/manifest-schema.ts:1104
 The record tool must be the app's own readOnly, ungated tool and the entity must declare a fileParent, else print_record_tool_invalid -> apps/api/src/modules/apps/contract.ts:597 ; apps/api/src/modules/apps/contract.ts:627
+print.parentMadeOnPrint lets a preview read a record with no fileParent row yet, for a holder of the parent readScope; only on a parent in the app's own table whose rows that scope shows in full -> apps/api/src/modules/apps/contract.ts:616 ; apps/api/src/modules/documents/preview.ts:370
 The kernel calls the record tool with the record id under the printing person's authorization -> apps/api/src/modules/documents/print.ts:567
 Printing needs the fileParent's writeScope and stores one PDF per template on the record -> apps/api/src/modules/documents/print.ts:475 ; apps/api/src/modules/documents/print.ts:632
 A repeating field's rows map as <list>.<n>.<field>; more rows than slots refuses with too_many_rows -> apps/api/src/modules/documents/print.ts:203 ; apps/api/src/modules/documents/print.ts:247

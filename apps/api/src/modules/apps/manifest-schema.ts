@@ -1212,6 +1212,13 @@ export const appManifestJsonSchema = {
             type: "object",
             properties: {
               recordTool: { type: "string", minLength: 1 },
+              // The fileParent row is made by the record's first print (an order
+              // keyed by its invoice, its row written when a paper is stored):
+              // a preview of a record with no row yet reads it through the record
+              // tool when the caller holds the parent's read scope. Only for a
+              // parent in this app's own table whose visibility is that scope
+              // alone, so "no row seen" means "no row" (contract.ts).
+              parentMadeOnPrint: { type: "boolean" },
               idParam: { type: "string", pattern: "^[A-Za-z_][A-Za-z0-9_]*$" },
               label: { type: "string", minLength: 1, maxLength: 200 },
               fields: {

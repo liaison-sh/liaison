@@ -238,3 +238,10 @@ export function namesCountry(text: string, iso: string | null): boolean {
   if (key === code.toLowerCase()) return true
   return BY_KEY.get(key) === code
 }
+
+/** The English name of an ISO-2 code ("US" -> "United States"), or null when the table does not
+ *  list it. The table's first name per code is its English one. */
+export function countryEnglishName(iso: string | null | undefined): string | null {
+  const code = (iso ?? "").trim().toUpperCase()
+  return NAMES[code]?.[0] ?? null
+}

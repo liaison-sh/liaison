@@ -12,6 +12,7 @@ import type { SourceItem } from "~/modules/imports/source"
 import { undoImportRun } from "~/modules/imports/undo"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { ensureUser } from "~/modules/provisioning/ensure-user"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 let orgId = ""
@@ -248,8 +249,17 @@ describe("company and deal kinds", () => {
       })
     ).userId
     const hidden = crypto.randomUUID()
-    await sql`INSERT INTO kernel.companies (id, org_id, handle, name, domain, created_by, org_access)
-              VALUES (${hidden}, ${orgId}, ${`@co-${label}`}, ${secretName}, ${domain}, ${other}, 'none')`
+    await sql.unsafe(
+      insertSql("kernel.companies", {
+        id: hidden,
+        org_id: orgId,
+        handle: `@co-${label}`,
+        name: secretName,
+        domain,
+        created_by: other,
+        org_access: "none",
+      }),
+    )
     const records = [{ externalId: "S-1", name: secretName, domain }]
     const companyRun = await run(["contacts.company"], records, label, false)
     expect(companyRun.counts["contacts.company"]).toEqual({ created: 1, skipped: 0, failed: 0 })

@@ -317,13 +317,24 @@ describe("the company, suppression, deal and lawful-basis migrations on a live d
       [reads, ["mail:conversations:read", "kernel:contacts:read"], null],
       [other, ["tickets:tickets:read"], edited],
     ] as const) {
-      await fresh`
-        INSERT INTO kernel.routines (id, org_id, owner_user_id, name, description, prompt, cron, timezone,
-                                     scopes, inferred_scopes, created_by_user_id, created_by_actor_type,
-                                     edited_at)
-        VALUES (${id}, ${ORG_ID}, ${ANNA}, ${`r-${id.slice(0, 6)}`}, 'd', 'p', '0 8 * * 1-5', 'UTC',
-                ${scopes as unknown as string[]},
-                ${scopes as unknown as string[]}, ${ANNA}, 'user', ${editedAt})`
+      const scopeArray = { raw: `ARRAY[${scopes.map((s) => `'${s}'`).join(", ")}]::text[]` }
+      await fresh.unsafe(
+        insertSql("kernel.routines", {
+          id,
+          org_id: ORG_ID,
+          owner_user_id: ANNA,
+          name: `r-${id.slice(0, 6)}`,
+          description: "d",
+          prompt: "p",
+          cron: "0 8 * * 1-5",
+          timezone: "UTC",
+          scopes: scopeArray,
+          inferred_scopes: scopeArray,
+          created_by_user_id: ANNA,
+          created_by_actor_type: "user",
+          edited_at: editedAt ? editedAt.toISOString() : null,
+        }),
+      )
     }
     const [before] = await fresh<{ v: number }[]>`
       SELECT permission_version AS v FROM kernel.users WHERE id = ${bob}`

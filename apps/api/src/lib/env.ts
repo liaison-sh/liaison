@@ -1288,11 +1288,12 @@ export const envSchema = z
     // How often the leader removes the entries of processes whose heartbeat is gone.
     LIVE_SWEEP_INTERVAL_MS: z.coerce.number().int().positive().default(10_000),
     // Tool search ranks by meaning as well as by words, with a small embedding
-    // model run in this process (modules/agent/tools/tool-meaning.ts), about
-    // 1.1 GB of memory per API process. "on" | "off"; unset, it follows the
-    // edition (on when managed, off when self-hosted; lib/edition.ts
-    // toolMeaningEnabled). Off, or when the model cannot load, the search ranks
-    // by words.
+    // model run once per host by the embedding process (`embedder`,
+    // modules/agent/tools/embedder-main.ts; about 1.1 GB of memory), which every
+    // API and worker process asks over a local socket. "on" | "off"; unset, it
+    // follows the edition (on when managed, off when self-hosted; lib/edition.ts
+    // toolMeaningEnabled). Off, or while that process does not answer, the
+    // search ranks by words.
     LIAISON_TOOL_MEANING: z.preprocess(unsetIfEmpty, z.enum(["on", "off"]).optional()),
     // Where tool search's model files are fetched, checked against their pinned
     // hashes and read from. Unset: ~/.cache/liaison/models (the compose file
@@ -1300,6 +1301,18 @@ export const envSchema = z
     // Point it at a persistent volume, or at files shipped with the image for an
     // install with no outside network.
     LIAISON_MODEL_CACHE_DIR: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+    // The embedding process's Unix socket (no network port): it listens there,
+    // and the API and worker processes of the host ask it there. Unset:
+    // liaison/embedder.sock under XDG_RUNTIME_DIR, else under the temporary
+    // folder (the compose file sets /var/lib/liaison/run/embedder.sock, on the
+    // data volume every container of the host mounts).
+    LIAISON_EMBEDDER_SOCKET: z.preprocess(
+      (v) => (v === "" ? undefined : v),
+      z.string().startsWith("/", "must be an absolute path").optional(),
+    ),
+    // How long a tool search waits for its query's vector from the embedding
+    // process, in ms, before it ranks by words alone for that search.
+    LIAISON_EMBEDDER_DEADLINE_MS: z.coerce.number().int().positive().max(5_000).default(150),
     // The internal listener every process starts, separate from PORT and never
     // published: another process forwards a mailbox answer here when this one
     // minted the request. 0 (default) takes any free port. It must be reachable

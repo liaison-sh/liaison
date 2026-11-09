@@ -46,7 +46,7 @@ import { checkEinvoiceGate } from "../einvoicing/issue-gate"
 import { formatMoneyMinor, lineSubtotal, lineTax, majorDecimalToMinor, netOfTax } from "../money"
 import { civilDateOf, type IssueDateParts, issueDateParts } from "../issue-date"
 import { isFullyCredited } from "../mutations"
-import { classify, EXEMPT_TREATMENTS } from "../tax"
+import { classify, EXEMPT_TREATMENTS, isUntaxedIntraEuSaleWithoutVat } from "../tax"
 
 export interface OrderPaidPayload {
   id: string // Shopify order ID (external_id)
@@ -775,6 +775,31 @@ export async function onShopifyOrderPaid(
         treatment: classification.treatment,
         counterparty_country: counterpartyCountry,
         lines: placeholderLines.map((li) => li.description),
+      },
+    })
+  }
+  // (4) An order to another member state on which Shopify charged NO tax at all (a tax exempt
+  // order, or one at 0%) and that carries no VAT number would issue as a consumer invoice at 0%,
+  // which no one can owe: a consumer there owes that country's VAT, a business the reverse
+  // charge with its VAT number. A person decides; a lone 0% line next to taxed ones is not this.
+  const chargesNoTax =
+    payload.line_items.length > 0 && payload.line_items.every((li) => li.tax_rate_bp === 0)
+  if (!payload.tax_override && isUntaxedIntraEuSaleWithoutVat(classification.treatment, chargesNoTax)) {
+    return parkForTaxReview(ctx, parkPayload, orderNumber, {
+      status: "awaiting_data",
+      reason: "buyer_vat_missing",
+      blocked_on: {
+        kind: "tax_rate",
+        treatment: classification.treatment,
+        counterparty_country: counterpartyCountry,
+        lines: payload.line_items.map((li) => li.description),
+        detail:
+          `the buyer is in ${counterpartyCountry}, another EU member state, the order charges no VAT ` +
+          "and carries no VAT number, so it is neither a consumer invoice nor a reverse charge. For a " +
+          "business buyer, add its VAT number to the Shopify order as a custom attribute " +
+          '(shopify order_update customAttributes [{key: "VAT number", value: "<number>"}]), then ' +
+          "deferred_tax_override mode shopify_reported: it re-reads the order and issues the reverse " +
+          `charge invoice. For a consumer, deferred_tax_override mode as_computed charges ${counterpartyCountry} VAT.`,
       },
     })
   }
@@ -1773,6 +1798,11 @@ interface ShopifyOrderFetch {
   } | null
   shippingAddress?: ShopifyFetchedAddress | null
   customerAddress?: ShopifyFetchedAddress | null
+  /** The order's billing address as it reads now, with its company. */
+  billingAddress?: (ShopifyFetchedAddress & { company?: string | null }) | null
+  /** The buyer's VAT number from the order's CURRENT custom attributes (same keys as the
+   *  order:created event), so a number added after checkout reaches a re-drive. */
+  buyerTaxId?: string | null
 }
 
 function formatFetchedAddress(a: ShopifyFetchedAddress | null | undefined): string | null {
@@ -1809,6 +1839,20 @@ export function mergeCustomer(
   const fetchedName =
     [fetched?.first_name, fetched?.last_name].filter(Boolean).join(" ") || undefined
   const fetchedAddress = fromFetch.shippingAddress ?? fromFetch.customerAddress ?? null
+  // A re-drive replays the payload stored when the order was parked: a VAT number or a billing
+  // company added to the order since then is only on the live order.
+  const vatId = addrStr(fromWebhook?.vat_id) ?? addrStr(fromFetch.buyerTaxId) ?? null
+  const company =
+    addrStr(fromWebhook?.billing?.company) ?? addrStr(fromFetch.billingAddress?.company) ?? null
+  const webhookBilling = fromWebhook?.billing ?? null
+  const billing: OrderAddress | null = webhookBilling
+    ? { ...webhookBilling, company }
+    : fetchedStructured(fromFetch.billingAddress ?? fetchedAddress, company)
+  const personName = fromWebhook?.legal_name ?? fetchedName
+  // A buyer with a VAT number is the business: the invoice names the company, not the person
+  // who checked out (whose name the event's legal_name carries).
+  const legalName = vatId && company ? company : personName
+  const address = fromWebhook?.address ?? formatFetchedAddress(fromFetch.billingAddress ?? fetchedAddress)
   return {
     id: fromWebhook?.id ?? null,
     email: fromWebhook?.email ?? fetched?.email ?? null,
@@ -1822,9 +1866,9 @@ export function mergeCustomer(
       (fromWebhook?.country == null
         ? (fromFetch.shippingAddress?.countryCode?.toUpperCase() ?? undefined)
         : undefined),
-    legal_name: fromWebhook?.legal_name ?? fetchedName,
-    vat_id: fromWebhook?.vat_id ?? null,
-    address: fromWebhook?.address ?? formatFetchedAddress(fetchedAddress),
+    legal_name: legalName,
+    vat_id: vatId,
+    address: legalName === company ? withoutLeadingLine(address, company) : address,
     // This path used the SHIPPING address AS the billing address and kept no ship to of its own.
     // Keep the billing fallback exactly as it was, and carry the ship to separately so a
     // different consignee survives enrichment instead of being swallowed.
@@ -1833,7 +1877,7 @@ export function mergeCustomer(
     shipping_name:
       fromWebhook?.shipping_name ?? fromFetch.shippingAddress?.name ?? null,
     // Structured addresses: the webhook's, else the fetched ones (same fallback as `address`).
-    billing: fromWebhook?.billing ?? fetchedStructured(fetchedAddress),
+    billing,
     delivery:
       fromWebhook?.delivery ??
       (fromFetch.shippingAddress
@@ -1852,10 +1896,22 @@ export function mergeCustomer(
   }
 }
 
-function fetchedStructured(a: ShopifyFetchedAddress | null | undefined): OrderAddress | null {
+/** The Bill-to block prints the legal name on its own line: drop the same name heading the address. */
+function withoutLeadingLine(address: string | null, line: string | null): string | null {
+  if (!address || !line) return address
+  const lines = address.split("\n")
+  if (lines[0]?.trim().toLowerCase() !== line.trim().toLowerCase()) return address
+  const rest = lines.slice(1).join("\n")
+  return rest.trim() !== "" ? rest : address
+}
+
+function fetchedStructured(
+  a: ShopifyFetchedAddress | null | undefined,
+  company: string | null = null,
+): OrderAddress | null {
   if (!a) return null
   return {
-    company: null,
+    company,
     line1: addrStr(a.address1),
     line2: addrStr(a.address2),
     postcode: addrStr(a.zip),

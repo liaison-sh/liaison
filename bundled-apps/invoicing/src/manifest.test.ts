@@ -1494,7 +1494,9 @@ describe("invoicing manifest", () => {
     // 0.20.52: the package carries the app SDK's manifest `secrets` field; no change of its own.
     // 0.20.54: orders_invoiceability_check, the read the Shopify app asks before it stages a draft order
     //   create or complete; a quote made as a draft order carries the buyer VAT number to the order.
-    expect(m.version).toBe("0.20.54")
+    // 0.20.55: a re-driven order reads the buyer VAT number and billing company the live order
+    //   carries now; an untaxed order to another member state without a VAT number parks for review.
+    expect(m.version).toBe("0.20.55")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

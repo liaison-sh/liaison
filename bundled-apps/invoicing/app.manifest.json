@@ -224,7 +224,7 @@
       }
     ]
   },
-  "version": "0.20.54",
+  "version": "0.20.55",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -2152,7 +2152,7 @@
       "readOnly": true
     },
     "deferred_tax_override": {
-      "description": "Resolve a TAX REVIEW park (deferred_list items whose reason is shopify_tax_mismatch, tax_on_exempt_treatment or tax_rate_placeholder; they carry resolution_options) by issuing the order with an explicit tax decision. mode shopify_reported issues each line with the tax Shopify reported for it; mode as_computed issues every line at the tax treatment's own rate (Shopify's rates ignored: an export or reverse charge then carries no tax). These parks never clear on their own. GATED: report it as a pending approval, never as done.",
+      "description": "Resolve a TAX REVIEW park (deferred_list items whose reason is shopify_tax_mismatch, tax_on_exempt_treatment, tax_rate_placeholder or buyer_vat_missing; they carry resolution_options) by issuing the order with an explicit tax decision. mode shopify_reported issues each line with the tax Shopify reported for it; mode as_computed issues every line at the tax treatment's own rate (Shopify's rates ignored: an export or reverse charge then carries no tax). These parks never clear on their own. GATED: report it as a pending approval, never as done.",
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "deferredTaxOverrideHandler",
       "preflight": "deferredTaxOverridePreflightHandler",
@@ -2176,7 +2176,7 @@
       "approvalCard": { "summary": "Issue the parked Shopify order {{params.deferred_id}} with tax: {{params.mode}}" }
     },
     "deferred_list": {
-      "description": "List parked/deferred auto-flow events for the org: Shopify orders whose invoice did not issue automatically. Each item names its order (order_number, order_id), why it is parked (reason, e.g. customer_email_missing when the Shopify order and customer carry no email, which an issued invoice requires) and what it waits on (blocked_on). It retries on its own once the blocker is fixed at the source, EXCEPT a tax review (reason shopify_tax_mismatch, tax_on_exempt_treatment or tax_rate_placeholder, with resolution_options): those wait for a person to choose a tax source with deferred_tax_override. A park with reason email_outcome_unknown is an automatic invoice mail that may or may not have gone and is never resent on its own: a person checks the mailbox's sent folder and, when it is not there, sends the document with documents_send_to_customer, which closes the park.",
+      "description": "List parked/deferred auto-flow events for the org: Shopify orders whose invoice did not issue automatically. Each item names its order (order_number, order_id), why it is parked (reason, e.g. customer_email_missing when the Shopify order and customer carry no email, which an issued invoice requires) and what it waits on (blocked_on). It retries on its own once the blocker is fixed at the source, EXCEPT a tax review (reason shopify_tax_mismatch, tax_on_exempt_treatment, tax_rate_placeholder or buyer_vat_missing, with resolution_options; buyer_vat_missing is an order to another EU member state charged no VAT and carrying no VAT number: blocked_on.detail says how to fix it): those wait for a person to choose a tax source with deferred_tax_override. A park with reason email_outcome_unknown is an automatic invoice mail that may or may not have gone and is never resent on its own: a person checks the mailbox's sent folder and, when it is not there, sends the document with documents_send_to_customer, which closes the park.",
       "requiredScopes": ["invoicing:documents:read"],
       "handler": "deferredListHandler",
       "params": {

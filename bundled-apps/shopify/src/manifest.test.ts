@@ -914,7 +914,9 @@ describe("Shopify app.manifest.json", () => {
     // Cmd/Ctrl-click opens a row in place.
     // 0.4.11: draft order create and complete refuse an order Invoicing would not invoice
     // (invoicing:orders_invoiceability_check), with a stage-time preflight on complete.
-    expect(m.version).toBe("0.4.11")
+    // 0.4.12: orders_get returns the order's billing address (with its company) and the buyer's
+    // VAT number from its current custom attributes.
+    expect(m.version).toBe("0.4.12")
   })
 
   it("read_all_orders is a protected scope behind the org's full-order-history toggle", () => {

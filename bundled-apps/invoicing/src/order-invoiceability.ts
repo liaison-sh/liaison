@@ -22,7 +22,7 @@ import {
   formatEventAddress,
 } from "./handlers/shopify-order-paid"
 import { counterpartyCompletenessError } from "./issue"
-import { EXEMPT_TREATMENTS, classify } from "./tax"
+import { EXEMPT_TREATMENTS, classify, isUntaxedIntraEuSaleWithoutVat } from "./tax"
 
 /** A postal address as the Shopify app reports it (snake_case country code). */
 export interface ProspectiveOrderAddress {
@@ -157,10 +157,10 @@ export function invoiceabilityProblems(
   })
   const tax = amount(facts.total_tax)
   const chargesNoTax = facts.tax_exempt === true || (tax != null && tax === 0 && total !== 0)
-  // The auto-flow classifies this as a consumer sale (OSS) with no tax: it parks it
-  // (tax_rate_placeholder) or, when Shopify reported a zero rate, issues a consumer invoice at 0%.
-  // Neither is the reverse charge invoice a business buyer needs.
-  if (classification.treatment === "eu_b2c_oss" && chargesNoTax) {
+  // The auto-flow classifies this as a consumer sale (OSS) with no tax and parks it for review
+  // (buyer_vat_missing, or tax_rate_placeholder when Shopify reported no rate): neither is the
+  // reverse charge invoice a business buyer needs.
+  if (isUntaxedIntraEuSaleWithoutVat(classification.treatment, chargesNoTax)) {
     problems.push({
       reason: "buyer_vat_missing",
       field: "vat_id",
@@ -170,7 +170,8 @@ export function invoiceabilityProblems(
         "reverse charge only with the buyer's VAT number, otherwise it parks the order. For a " +
         "business buyer add its VAT number to the draft order as a custom attribute, " +
         'customAttributes: [{key: "VAT number", value: "<number>"}] (draft_orders_update for an ' +
-        "existing draft; check it with invoicing vat_validate). For a consumer, remove the tax " +
+        "existing draft, order_update customAttributes once it is an order; check it with invoicing " +
+        "vat_validate). For a consumer, remove the tax " +
         `exemption so Shopify charges ${counterpartyCountry} VAT`,
     })
   }

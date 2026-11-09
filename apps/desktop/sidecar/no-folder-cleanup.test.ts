@@ -33,6 +33,7 @@ const KNOWN_REMOVALS = new Set([
   "job-workspace.ts: file", // writeNoFollow: a node-owned file in the session dir, replaced
   "mcp-token.ts: file", // <mcp config>.turn: the local turn's credential file, rewritten
   "mcp-token.ts: temporary", // the token file's temp twin
+  "outside-text.ts: file", // <dataDir>/outside-text/<id>.json: a session's verdict file, in the module's own dir
   "repo-content.ts: args.pluginDir", // <sessionDir>/repo-plugin
   "session-config.ts: at", // clear(): an entry of the mirror, never followed
   "session-credentials.ts: dir", // the broker's socket dir

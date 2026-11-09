@@ -911,12 +911,13 @@ describe("the truncation notice names the newest-first scan order, not its oppos
 // ticket 16bcb76a: a plugin navigation must go through the host `navigate` primitive. A hard
 // window.location navigation tears down the SPA and drops out of the tab system. The prep grid's
 // document control no longer NAVIGATES to the invoice (it downloads the PDF through the bearer file
-// fetch), but the Approvals link is a navigation and the rule still binds the whole file.
+// fetch), but the Approvals link is a navigation (the host's `app.openApprovals()`) and the rule
+// still binds the whole file.
 describe("in-app navigation", () => {
   const src = readFileSync(new URL("./PrepGrid.tsx", import.meta.url), "utf8")
 
   it("navigates through the host primitive", () => {
-    expect(src).toContain('navigate("/approvals")')
+    expect(src).toContain("app.openApprovals()")
   })
 
   it("never hard-navigates via window.location", () => {

@@ -1,5 +1,13 @@
 // Prevents an extra console window on Windows in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// Some native paths (notification permission, the downloaded-file quarantine
+// flag, the identifier migration) are macOS-only, so their helpers are unused
+// on the other targets; the Mac build still reports real dead code, and
+// scaffold.test.ts demands a warning-free `cargo check` wherever it runs.
+#![cfg_attr(
+    not(target_os = "macos"),
+    allow(dead_code, unused_imports, unused_variables)
+)]
 
 /// The commands that move the window between servers, and the two native
 /// questions (removing a server, signing out of Claude). No menu.

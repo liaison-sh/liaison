@@ -171,11 +171,16 @@ jobs:
         if: matrix.suite == 'playwright'
         working-directory: apps/web
         run: bunx --bun playwright install --with-deps chromium
-      - name: Install the desktop shell's Linux build libraries
-        # scaffold.test.ts runs `cargo check` on the Tauri crate.
+      - name: Install the desktop shell's Linux build libraries and zsh
+        # scaffold.test.ts runs `cargo check` on the Tauri crate; the session
+        # shims run under zsh.
         if: matrix.suite == 'desktop'
         run: |
-          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+          sudo apt-get install -y --no-install-recommends zsh libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - name: Install plistutil
+        # apps/mobile/ios-config.test.ts reads the committed plists with it.
+        if: matrix.suite == 'mobile'
+        run: sudo apt-get install -y --no-install-recommends libplist-utils
       - name: Run ${{ matrix.suite }} shard ${{ matrix.shard }} of ${{ matrix.of }}
         id: run
         timeout-minutes: 35

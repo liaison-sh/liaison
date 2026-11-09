@@ -21,6 +21,7 @@
 import {
   DEMO_FIXED_CUSTOMER,
   DEMO_FIXED_ORDER,
+  DEMO_QUOTE_DEALER,
   DEMO_SHOPIFY_VARIANT_BASE,
   DEMO_WORLD,
   type DemoCustomer,
@@ -913,6 +914,28 @@ function buildFixedCustomer(anchorMs: number): DemoShopifyCustomer {
   }
 }
 
+/**
+ * `DEMO_QUOTE_DEALER`, as the store lists it: a dealer account with no orders yet,
+ * built apart from `buildCustomers` like the fixed customer, so it moves nothing.
+ */
+function buildQuoteDealer(anchorMs: number): DemoShopifyCustomer {
+  const dealer = DEMO_QUOTE_DEALER
+  return {
+    id: `gid://shopify/Customer/${dealer.shopifyCustomerId}`,
+    numericId: dealer.shopifyCustomerId,
+    email: dealer.email,
+    firstName: null,
+    lastName: dealer.name,
+    displayName: dealer.name,
+    phone: null,
+    tags: ["dealer", "standard"],
+    createdAt: isoAt(anchorMs, 30, 11, 20),
+    address: addressFor(dealer.country, dealer.name, dealer.name, 12, 290002),
+    kind: "dealer",
+    countryCode: dealer.country,
+  }
+}
+
 /** `DEMO_FIXED_ORDER`: paid and shipped, nothing refunded. */
 function buildFixedOrder(
   anchorMs: number,
@@ -1002,10 +1025,10 @@ export function demoShopifyBook(now: number = Date.now()): DemoShopifyBook {
   const generatedCustomers = buildCustomers(anchorMs)
   const generatedOrders = buildOrders(anchorMs, products, generatedCustomers, locations)
   const draftOrders = buildDraftOrders(anchorMs, products, generatedCustomers, generatedOrders)
-  // The fixed customer and her order join after the seeded generators ran, so
-  // they move no generated order or quote.
+  // The fixed customer, her order and the quote dealer join after the seeded
+  // generators ran, so they move no generated order or quote.
   const fixedCustomer = buildFixedCustomer(anchorMs)
-  const customers = [...generatedCustomers, fixedCustomer]
+  const customers = [...generatedCustomers, fixedCustomer, buildQuoteDealer(anchorMs)]
   const orders = [
     ...generatedOrders,
     buildFixedOrder(anchorMs, products, fixedCustomer, locations),

@@ -1496,7 +1496,9 @@ describe("invoicing manifest", () => {
     //   create or complete; a quote made as a draft order carries the buyer VAT number to the order.
     // 0.20.55: a re-driven order reads the buyer VAT number and billing company the live order
     //   carries now; an untaxed order to another member state without a VAT number parks for review.
-    expect(m.version).toBe("0.20.55")
+    // 0.20.56: a quote made as a draft order links the contact's Shopify customer (the contact read
+    //   asked with the wrong argument and shape, so the link was never made).
+    expect(m.version).toBe("0.20.56")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

@@ -52,7 +52,7 @@ const { decideApproval } = await import("~/modules/approvals/decide")
 const { createOrGetAgentDm } = await import("~/modules/threads/thread")
 const { asUser } = await import("~/seed/factories/people/actors")
 const { upsertRoleAgent } = await import("~/seed/factories/agent/agents")
-const { creditBalances, modelPricing } = await import("~/db/schema/kernel")
+const { approvalPolicies, creditBalances, modelPricing } = await import("~/db/schema/kernel")
 
 type Fake = Awaited<ReturnType<typeof startFakeControlPlane>>
 type Session = Awaited<ReturnType<typeof minimal.session>>
@@ -107,12 +107,18 @@ function call(s: Session, path: string, body?: unknown): Promise<Response> {
 }
 
 /** An org's own tightening policy on the tool: the one way a report is still held. */
-const holdByPolicy = async () => {
-  await sql`
-    INSERT INTO kernel.approval_policies
-      (org_id, tool_name, enabled, conditions, require_approval, min_approvers, created_by)
-    VALUES (${orgId}::uuid, 'kernel:report_bug', true, '[]'::jsonb, true, 1, ${admin.userId}::uuid)`
-}
+const holdByPolicy = () =>
+  withSystemDb("test-hold-policy", (tx) =>
+    tx.insert(approvalPolicies).values({
+      orgId,
+      toolName: "kernel:report_bug",
+      enabled: true,
+      conditions: [],
+      requireApproval: true,
+      minApprovers: 1,
+      createdBy: admin.userId,
+    }),
+  )
 
 const teamOnly = async (on: boolean) => {
   await setSharing({ register: true }, { userId: null }, now)

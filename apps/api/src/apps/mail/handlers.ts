@@ -7181,6 +7181,11 @@ async function agentMailForward(params: any, ctx: MailCtx): Promise<any> {
         subject,
         textBody,
         attachments: forwardAttachmentIds(attachmentIds, params.attachments),
+        // The approving browser's readable copies of sealed attachments, keyed
+        // by source file id. The originals carried over here are sealed exactly
+        // like caller-supplied files, so dropping this map refuses every
+        // forward of a sealed attachment.
+        __mailboxAttachments: (params as any).__mailboxAttachments ?? null,
       },
       ctx,
     )

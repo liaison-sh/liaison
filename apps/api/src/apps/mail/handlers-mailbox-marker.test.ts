@@ -649,6 +649,42 @@ describe("re-attaching a stored attachment from a sealed personal mailbox", () =
     expect(sent).not.toContain(SEALED_BYTES)
   })
 
+  // A forward carries the original's attachments itself; the caller names none.
+  // The approving browser's readable copies have to reach the send all the same.
+  it("forwards a sealed original attachment with the client-supplied plaintext bytes", async () => {
+    const sends: unknown[] = []
+    const bridge = attachmentBridge(SEALED_ACCOUNT, sends, {
+      encVersion: 1,
+      bytesBase64: SEALED_BYTES,
+    })
+    bridge.files_listAttachments = async () =>
+      JSON.stringify([
+        {
+          id: FILE_ID,
+          filename: "spec.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 21,
+          disposition: "attachment",
+        },
+      ])
+    const result = await run(
+      "agentMailForward",
+      {
+        conversationId: CONVERSATION_ID,
+        to: ["someone@example.com"],
+        __mailboxQuote: {
+          "msg-1": { quotedBody: "CLIENT SUPPLIED BODY", resolvedSubject: "Invoice 42" },
+        },
+        __mailboxAttachments: { [FILE_ID]: PLAINTEXT_BYTES },
+      },
+      bridge,
+    ).catch((err: unknown) => ({ threw: String(err) }))
+    expect((result as any)?.needsPlaintext).toBeUndefined()
+    const sent = wire(result, sends)
+    expect(sent).toContain(PLAINTEXT_BYTES)
+    expect(sent).not.toContain(SEALED_BYTES)
+  })
+
   it("refuses, and sends nothing, when the supplied bytes are empty", async () => {
     const sends: unknown[] = []
     const result = await run(

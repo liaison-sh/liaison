@@ -9,6 +9,7 @@ import {
   MailApprovalFulfilmentError,
   mailAttachmentDisclosure,
   outboundAttachmentFileIds,
+  sendAttachmentFileIds,
 } from "~/modules/mailbox/approval-mail-fulfilment"
 
 const APPROVAL_ID = "22222222-2222-4222-8222-222222222222"
@@ -147,6 +148,28 @@ describe("buildMailboxFulfilment", () => {
     // Junk is dropped rather than passed to the opener as a file id.
     expect(outboundAttachmentFileIds({ attachments: ["file-1", 7, null, ""] })).toEqual(["file-1"])
     expect(outboundAttachmentFileIds({ attachments: "file-1" })).toEqual([])
+  })
+
+  it("a forward re-attaches the forwarded message's own files, then the payload's", () => {
+    const files: Record<string, string[]> = { "m-1": ["orig-1", "orig-2"] }
+    const ofMessage = (id: string) => files[id]
+    const forward = (payload: Record<string, unknown>) =>
+      sendAttachmentFileIds({ toolName: "mail:forward", payload }, ofMessage)
+    expect(forward({ mailboxQuoteMessageIds: ["m-1"] })).toEqual(["orig-1", "orig-2"])
+    expect(forward({ mailboxQuoteMessageIds: ["m-1"], attachments: ["extra", "orig-1"] })).toEqual([
+      "orig-1",
+      "orig-2",
+      "extra",
+    ])
+    // A reply quotes its source but never carries the source's attachments.
+    expect(
+      sendAttachmentFileIds(
+        { toolName: "mail:reply", payload: { mailboxQuoteMessageIds: ["m-1"] } },
+        ofMessage,
+      ),
+    ).toEqual([])
+    // A source the browser has not loaded contributes nothing here.
+    expect(forward({ mailboxQuoteMessageIds: ["m-2"] })).toEqual([])
   })
 
   it("states in plain words what approving is about to release", () => {

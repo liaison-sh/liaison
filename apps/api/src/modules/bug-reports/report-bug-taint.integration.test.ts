@@ -15,6 +15,7 @@ import type { RunContext } from "~/modules/agent/runtime/run-context"
 import { runContextStore } from "~/modules/agent/runtime/run-context"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { ALL_DEFERRED_TOOLS_UNLOCKED, buildToolSet } from "~/modules/agent/tools/tool-bridge"
+import { seedFileRow } from "~/seed/factories/files/file-row"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -103,11 +104,20 @@ describe("kernel:report_bug on a tainted turn", () => {
     const own = crypto.randomUUID()
     const key = `orgs/${orgId}/test/${own}/kit.zip`
     await putObject({ key, body: Buffer.from("PK templates"), contentType: "application/zip" })
-    await sql`
-      INSERT INTO kernel.files (id, org_id, app, entity_type, entity_id, filename, mime_type,
-                                size_bytes, storage_key, uploaded_by, disposition, ordinal)
-      VALUES (${own}::uuid, ${orgId}::uuid, 'kernel', 'data_subject_export', ${own}, 'kit.zip',
-              'application/zip', 12, ${key}, ${actor.userId}::uuid, 'attachment', 0)`
+    await seedFileRow({
+      id: own,
+      orgId: orgId,
+      app: "kernel",
+      entityType: "data_subject_export",
+      entityId: own,
+      filename: "kit.zip",
+      mimeType: "application/zip",
+      sizeBytes: 12,
+      storageKey: key,
+      uploadedBy: actor.userId,
+      disposition: "attachment",
+      ordinal: 0,
+    })
     const filed = await reportBug(turnFrame([]), "With a kit", [own])
     expect(filed.filed).toBe(true)
     expect(filed.attachmentsPersisted).toBe(1)
@@ -119,12 +129,20 @@ describe("kernel:report_bug on a tainted turn", () => {
     // Another member's file: not readable by this user, so nothing is filed.
     const other = await minimal.person(orgId)
     const theirs = crypto.randomUUID()
-    await sql`
-      INSERT INTO kernel.files (id, org_id, app, entity_type, entity_id, filename, mime_type,
-                                size_bytes, storage_key, uploaded_by, disposition, ordinal)
-      VALUES (${theirs}::uuid, ${orgId}::uuid, 'kernel', 'data_subject_export', ${theirs},
-              'theirs.zip', 'application/zip', 3, ${`${key}.theirs`}, ${other.id}::uuid,
-              'attachment', 0)`
+    await seedFileRow({
+      id: theirs,
+      orgId: orgId,
+      app: "kernel",
+      entityType: "data_subject_export",
+      entityId: theirs,
+      filename: "theirs.zip",
+      mimeType: "application/zip",
+      sizeBytes: 3,
+      storageKey: `${key}.theirs`,
+      uploadedBy: other.id,
+      disposition: "attachment",
+      ordinal: 0,
+    })
     const refused = await reportBug(turnFrame([]), "With their file", [theirs])
     expect(refused.filed).not.toBe(true)
     expect(JSON.stringify(refused)).toContain("not files this user can read")

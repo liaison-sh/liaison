@@ -48,6 +48,7 @@ mock.module("~/modules/liaison-team/bug-report-payload", () => ({
 }))
 
 const { app } = await import("~/app")
+const { seedFileRow } = await import("~/seed/factories/files/file-row")
 const { sql } = await import("~/db")
 const { env } = await import("~/lib/env")
 const { _setEdition } = await import("~/lib/edition")
@@ -603,12 +604,20 @@ describe("kernel:report_bug, team-only", () => {
     ): Promise<string> {
       const id = crypto.randomUUID()
       const key = `orgs/${reporter.orgId}/test/${id}/${filename}`
-      await sql`
-        INSERT INTO kernel.files (id, org_id, app, entity_type, entity_id, filename, mime_type,
-                                  size_bytes, storage_key, uploaded_by, disposition, ordinal)
-        VALUES (${id}::uuid, ${reporter.orgId}::uuid, 'kernel', 'data_subject_export', ${id},
-                ${filename}, 'application/zip', ${opts.sizeBytes ?? bytes.byteLength}, ${key},
-                ${userId}::uuid, 'attachment', 0)`
+      await seedFileRow({
+        id: id,
+        orgId: reporter.orgId,
+        app: "kernel",
+        entityType: "data_subject_export",
+        entityId: id,
+        filename: filename,
+        mimeType: "application/zip",
+        sizeBytes: opts.sizeBytes ?? bytes.byteLength,
+        storageKey: key,
+        uploadedBy: userId,
+        disposition: "attachment",
+        ordinal: 0,
+      })
       objects.set(key, bytes)
       return id
     }

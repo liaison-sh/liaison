@@ -727,7 +727,7 @@ async function refreshSessionUnder(
   // session never changes org), never under it.
   const [gated] = await withSystemDb("refresh-session-org", (tx) =>
     tx
-      .select({ orgId: sessions.orgId })
+      .select({ orgId: sessions.orgId, userId: sessions.userId })
       .from(sessions)
       .where(eq(sessions.refreshTokenHash, tokenHash))
       .limit(1),
@@ -736,13 +736,25 @@ async function refreshSessionUnder(
 
   const decision = await withSystemDb("refresh-session", async (tx): Promise<RefreshDecision> => {
     const now = new Date()
+    // LOCK ORDER: THE USER ROW, THEN THE SESSION ROWS, as createSession and
+    // deactivation take them. This used to lock the session first and the
+    // user second (to check the user is still active), so a refresh and a
+    // sign-in of the same user at the same moment each held the lock the
+    // other waited on: Postgres broke the deadlock by failing one of them, a
+    // 500 on the sign-in or the refresh. The user row is locked first here,
+    // so whichever comes second waits instead.
+    const [lockedUser] = gated
+      ? await tx.execute(
+          sql`SELECT id, status FROM ${K}.users WHERE id = ${gated.userId} FOR UPDATE`,
+        )
+      : []
     const [session] = await tx
       .select()
       .from(sessions)
       .where(eq(sessions.refreshTokenHash, tokenHash))
       .for("update")
     // Not there, or not the row the gate was asked about: never rotated ungated.
-    if (!session || session.orgId !== gated?.orgId) {
+    if (!session || session.orgId !== gated?.orgId || session.userId !== gated.userId) {
       return { kind: "invalid", reason: "unknown token" }
     }
     // Presented on another org's host: refused, and nothing about the session
@@ -756,14 +768,9 @@ async function refreshSessionUnder(
     }
     const familyId = session.familyId ?? session.id
 
-    const userIsActive = async () => {
-      // Lock the user row so a concurrent deactivateUser cannot slip between
-      // this check and the issue.
-      const [user] = await tx.execute(
-        sql`SELECT id, status FROM ${K}.users WHERE id = ${session.userId} FOR UPDATE`,
-      )
-      return !!user && (user as { status?: string }).status === "active"
-    }
+    // Read under the user row's lock taken above, so a concurrent
+    // deactivateUser cannot slip between this check and the issue.
+    const userActive = !!lockedUser && (lockedUser as { status?: string }).status === "active"
     // THE SCOPE IS THE FAMILY, NEVER THE USER. A spent token comes back far
     // more often from the user's own device (an app relaunched with a stale
     // store, a restored backup) than from a thief, so ending it may sign out
@@ -793,7 +800,7 @@ async function refreshSessionUnder(
     }
 
     if (!session.isGrace) {
-      if (!(await userIsActive())) {
+      if (!userActive) {
         await tx.delete(sessions).where(eq(sessions.id, session.id))
         endedIds.push(session.id)
         return { kind: "invalid", reason: "user not active" }
@@ -865,7 +872,7 @@ async function refreshSessionUnder(
       )
     }
     if (session.rotatedUaHash !== uaHash) return revokeFamily("different client")
-    if (!(await userIsActive())) return { kind: "invalid", reason: "user not active" }
+    if (!userActive) return { kind: "invalid", reason: "user not active" }
 
     await tx.update(sessions).set({ successorIssuedAt: now }).where(eq(sessions.id, session.id))
     log.info(

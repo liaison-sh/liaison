@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
   sendError: null as unknown,
   posts: [] as Array<{ path: string; body: unknown }>,
   deletes: [] as string[],
+  deleteError: null as unknown,
 }))
 
 vi.mock("~/modules/shell/ApiContext", () => ({
@@ -23,6 +24,7 @@ vi.mock("~/modules/shell/ApiContext", () => ({
     }),
     delete: vi.fn(async (path: string) => {
       state.deletes.push(path)
+      if (state.deleteError) throw state.deleteError
       return { discarded: true }
     }),
   }),
@@ -44,6 +46,7 @@ describe("BugReportDraftCard", () => {
     state.sendError = null
     state.posts = []
     state.deletes = []
+    state.deleteError = null
   })
 
   it("Discard drops the draft without sending it, and the card leaves the list", async () => {
@@ -52,6 +55,14 @@ describe("BugReportDraftCard", () => {
     await waitFor(() => expect(screen.queryByTestId("bug-report-draft-card")).toBeNull())
     expect(state.deletes).toEqual(["/bug-reports/drafts/d-1"])
     expect(state.posts).toHaveLength(0)
+  })
+
+  it("Discard of a report the server no longer has (404) still takes the card away", async () => {
+    state.deleteError = new ApiError("This report has expired", 404)
+    render(() => <BugReportDraftCard draftId="d-1" />)
+    fireEvent.click(await screen.findByTestId("bug-report-draft-discard"))
+    await waitFor(() => expect(screen.queryByTestId("bug-report-draft-card")).toBeNull())
+    expect(state.deletes).toEqual(["/bug-reports/drafts/d-1"])
   })
 
   it("shows the exact payload and sends it with its digest only on the click", async () => {

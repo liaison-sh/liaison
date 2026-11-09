@@ -533,6 +533,25 @@ export const DEMO_FIXED_CUSTOMER: DemoCustomer = {
   isVip: false,
 }
 
+/**
+ * The school the seeded dealer quote approval is for (`dealer-quote-conservatoire`),
+ * FIXED like `DEMO_FIXED_CUSTOMER`: the demo store lists it as a customer outside
+ * its seeded random assignment (so no generated order or quote changes customer),
+ * and its kernel contact carries that Shopify customer id. Approving the quote then
+ * makes a draft order linked to a store customer with an email on record, which is
+ * what Invoicing needs to invoice the order once it is paid (the draft's own email
+ * is on a reserved domain, which Shopify drops).
+ */
+export const DEMO_QUOTE_DEALER = {
+  key: "conservatoire-belmont",
+  name: "Conservatoire de Belmont",
+  email: "achats@conservatoire-belmont.example",
+  country: "FR",
+  address: "12 rue des Ateliers\n69007 Lyon\nFrance",
+  /** Above the generated customers (7100000 upward) and the fixed customer. */
+  shopifyCustomerId: 7_190_002,
+} as const
+
 /** Her order: paid, shipped, nothing refunded yet. */
 export const DEMO_FIXED_ORDER = {
   /** Above the generated orders and the live scenario's orders, so no number clashes. */

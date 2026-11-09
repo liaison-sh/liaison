@@ -3507,8 +3507,12 @@ describe("quote.create_and_issue via Shopify draft order", () => {
           )
         if (name === "shopify:draft_orders_get")
           return { status: "completed", result: { draftOrder: draftOrderFixture() } }
+        // The kernel's own contacts_read: `{ contactId }` in, `{ contact: { externalIds } }` out.
         if (name === "kernel:contacts_read")
-          return { status: "completed", result: { external_ids: { shopify: "42" } } }
+          return {
+            status: "completed",
+            result: { contact: { id: defaultCounterparty.contact_id, externalIds: { shopify: "42" } } },
+          }
         return { status: "completed", result: {} }
       },
     })
@@ -3541,6 +3545,8 @@ describe("quote.create_and_issue via Shopify draft order", () => {
     expect(args.lineItems).toEqual([{ variantId: "gid://shopify/ProductVariant/9", quantity: 2 }])
     expect(args.email).toBe("ap@buyersarl.example")
     expect(args.purchasingEntity).toEqual({ customerId: "gid://shopify/Customer/42" })
+    const read = extras.executeToolCalls.find((c) => c.name === "kernel:contacts_read")!
+    expect(read.args).toEqual({ contactId: defaultCounterparty.contact_id })
     expect(args.tags).toEqual(["liaison-quote"])
     // Exactly one quote, carrying the link, and never a second one for the same draft order.
     const quotes = db.__all("documents").filter((d) => d.type === "quote")

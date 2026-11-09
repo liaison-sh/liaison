@@ -166,10 +166,11 @@ async function resolveShopifyCustomerId(
 ): Promise<string | null> {
   if (!contactId) return null
   try {
-    const envelope = await ctx.executeTool("kernel:contacts_read", { id: contactId })
+    // kernel:contacts_read takes `contactId` and answers `{ contact: { externalIds } }`.
+    const envelope = await ctx.executeTool("kernel:contacts_read", { contactId })
     if (envelope.status !== "completed") return null
-    const contact = envelope.result as { external_ids?: Record<string, unknown> } | null
-    const raw = contact?.external_ids?.shopify
+    const result = envelope.result as { contact?: { externalIds?: Record<string, unknown> | null } } | null
+    const raw = result?.contact?.externalIds?.shopify
     if (typeof raw !== "string" || raw.trim() === "") return null
     return raw.startsWith("gid://") ? raw : `gid://shopify/Customer/${raw.trim()}`
   } catch {

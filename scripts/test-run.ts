@@ -604,6 +604,9 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // Received supplier e-invoices through the same contract: arrival webhook → mirror,
             // first-hop-only file downloads, unlisted-hop refusal, gated refusal never auto-approved.
             "src/tests/integration/einvoicing-receive.test.ts",
+            // An approved call's ctx.db.insertNow row outlives the sandbox kill (Boxtal from
+            // source, fake Boxtal behind the egress override), and stuck_list names it.
+            "src/tests/integration/approved-intent-row-survives-kill.test.ts",
             "src/tests/integration/invoicing-einvoice-gate-sites.test.ts",
             "src/tests/integration/invoicing-identity-tools.test.ts",
             "src/tests/integration/invoicing-identity-backfill.test.ts",

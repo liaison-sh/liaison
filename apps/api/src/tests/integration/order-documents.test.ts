@@ -48,6 +48,8 @@ const ENTITY = "order"
 const RECORD_TYPE = `${APP}:${ENTITY}`
 // The app's own record type for its scheduled pass: a parent whose write scope is the app's.
 const OWN = "parcel"
+// A record type whose file-parent row is made by its first print (print.parentMadeOnPrint).
+const LAZY = "lazyorder"
 
 const DECLARATION: PrintDeclaration = {
   recordTool: "order_record_get",
@@ -190,6 +192,18 @@ describe("shipping papers by configuration: attribute rule -> template -> PDF on
       readScope: `${APP}:orders:read`,
       writeScope: `${APP}:orders:write`,
     })
+    entityRegistry.set([ORG, APP, LAZY], {
+      labelField: "label",
+      handlePrefix: "",
+      print: { ...DECLARATION, parentMadeOnPrint: true },
+    })
+    manifestFileParentRegistry.set([ORG, APP, LAZY], {
+      schemaRef: "kernel",
+      tableName: "contacts",
+      joinOn: "id",
+      readScope: "kernel:contacts:read",
+      writeScope: "kernel:org:admin",
+    })
     toolRegistry.set([ORG, APP, "order_record_get"], {
       appName: APP,
       name: "order_record_get",
@@ -215,6 +229,8 @@ describe("shipping papers by configuration: attribute rule -> template -> PDF on
     manifestFileParentRegistry.delete([ORG, APP, ENTITY])
     entityRegistry.delete([ORG, APP, OWN])
     manifestFileParentRegistry.delete([ORG, APP, OWN])
+    entityRegistry.delete([ORG, APP, LAZY])
+    manifestFileParentRegistry.delete([ORG, APP, LAZY])
     appCrossAppCallsRegistry.delete([ORG, APP])
     initializedOrgRuntimes.delete(ORG)
     await rebuildFilesSelectPolicy()
@@ -316,15 +332,15 @@ describe("shipping papers by configuration: attribute rule -> template -> PDF on
     expect(ids).toContain(second.files[0]!.fileId)
   })
 
-  it("previews a real record whose file-parent row does not exist yet (made by its first print)", async () => {
+  it("previews a record whose file-parent row its first print makes, only on that declaration", async () => {
     const created = (await agentCall("kernel__document_template_create", {
       name: "Order summary",
-      recordType: RECORD_TYPE,
+      recordType: `${APP}:${LAZY}`,
       body: { blocks: [{ type: "paragraph", text: "Summary for {{invoice.number}}." }] },
     })) as { template?: { id: string } }
     const templateId = created.template!.id
     record = { ...record, label: "INV-P-1", invoice: { number: "INV-P-1" } }
-    // OTHER has no parent row: the order exists, its row is made when a paper is first stored.
+    // OTHER has no parent row yet: the record type declares its row is made by the first print.
     const preview = (await agentCall("kernel__document_template_preview", {
       templateId,
       recordId: OTHER,
@@ -333,17 +349,26 @@ describe("shipping papers by configuration: attribute rule -> template -> PDF on
     expect(preview.sample).toBe(false)
     expect(await fileText(preview.fileId!)).toContain("Summary for INV-P-1")
 
-    // Without the parent's read scope and with no row to prove it, the record stays unread.
-    const narrow: UserContext = {
-      ...actor,
-      scopes: ["kernel:files:read", `${APP}:orders:read`],
-    }
+    // Without the parent's read scope, no row proves the record: refused.
+    const narrow: UserContext = { ...actor, scopes: ["kernel:files:read", `${APP}:orders:read`] }
     const refused = (await agentCall(
       "kernel__document_template_preview",
       { templateId, recordId: OTHER },
       narrow,
     )) as { error?: unknown }
     expect(JSON.stringify(refused.error ?? null)).toContain("record_not_found")
+
+    // A record type without the declaration still needs its row.
+    const plain = (await agentCall("kernel__document_template_create", {
+      name: "Order summary (row needed)",
+      recordType: RECORD_TYPE,
+      body: { blocks: [{ type: "paragraph", text: "Summary for {{invoice.number}}." }] },
+    })) as { template?: { id: string } }
+    const noRow = (await agentCall("kernel__document_template_preview", {
+      templateId: plain.template!.id,
+      recordId: OTHER,
+    })) as { error?: unknown }
+    expect(JSON.stringify(noRow.error ?? null)).toContain("record_not_found")
   })
 
   it("the app's scheduled pass (a system actor, no person) prints onto its own record, never another's", async () => {

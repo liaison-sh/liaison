@@ -606,6 +606,36 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
  * shape (no numeric index, each once); a repeating field sits inside its list
  * (`print_field_invalid`). Runs on the raw manifest or descriptor.
  */
+/**
+ * `print.parentMadeOnPrint` lets a preview read a record whose fileParent row does not exist
+ * yet, on the caller holding the parent's read scope. That is safe only when holding the scope
+ * means seeing every row: so the parent must be this app's own table, its read scope the table's
+ * generated RLS read scope, with no dimension, personal or migration-owned visibility. Then "no
+ * row seen" by a holder means no row, never a row RLS hides.
+ */
+function parentMadeOnPrintErrors(
+  root: Record<string, unknown> | undefined,
+  entity: Record<string, unknown>,
+  where: string,
+): string[] {
+  const parent = asRecord(entity.fileParent)
+  const appName = typeof root?.name === "string" ? root.name : ""
+  const tableName = typeof parent?.tableName === "string" ? parent.tableName : ""
+  const table = asRecord(asRecord(root?.schema)?.[tableName])
+  const fail = (why: string) => [`print_record_tool_invalid: ${where}.parentMadeOnPrint: ${why}`]
+  if (!parent || parent.schemaRef !== `app_${appName}` || !table) {
+    return fail("the fileParent must be a table of this app's own schema")
+  }
+  if (table.dimensions || table.personalScope || table.rlsGovernedByMigration === true) {
+    return fail(`table "${tableName}" restricts rows beyond its scope (dimensions, personal or migration policies)`)
+  }
+  const rlsEntity = typeof table.rlsScope === "string" ? table.rlsScope : tableName
+  if (parent.readScope !== `${appName}:${rlsEntity}:read`) {
+    return fail(`the fileParent readScope must be the table's own read scope "${appName}:${rlsEntity}:read"`)
+  }
+  return []
+}
+
 export function printDeclarationErrors(app: unknown): string[] {
   const root = asRecord(app)
   const entities = asRecord(root?.entities)
@@ -622,6 +652,7 @@ export function printDeclarationErrors(app: unknown): string[] {
         `print_record_tool_invalid: ${where}: a printable entity must declare a fileParent (the printed files are stored on it)`,
       )
     }
+    if (print.parentMadeOnPrint === true) errors.push(...parentMadeOnPrintErrors(root, entity, where))
     const toolName = typeof print.recordTool === "string" ? print.recordTool : ""
     const tool = asRecord(tools[toolName])
     if (!tool) {

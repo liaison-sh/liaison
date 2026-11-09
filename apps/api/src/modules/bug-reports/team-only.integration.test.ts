@@ -64,6 +64,9 @@ const { runContextStore } = await import("~/modules/agent/runtime/run-context")
 const { ensureAppsForOrg } = await import("~/modules/apps/init")
 const { isBugReportTeamOnlyFor } = await import("~/modules/liaison-team/bug-report-payload")
 const { redis } = await import("~/lib/redis")
+const { handleToolCall } = await import("~/modules/mcp/tool-call")
+const { seedMcpConnection } = await import("~/modules/mcp/test-helpers")
+const { ensureConnectionThread } = await import("~/modules/mcp/connection-thread")
 
 type Fake = Awaited<ReturnType<typeof startFakeControlPlane>>
 type Session = Awaited<ReturnType<typeof minimal.session>>
@@ -546,6 +549,47 @@ describe("kernel:report_bug, team-only", () => {
     const sent = await call(fresh, `/drafts/${r.draftId}/send`, { digest: shown.digest })
     expect(sent.status).toBe(200)
     expect(((await sent.json()) as { data: { forwarded: string } }).data.forwarded).toBe("queued")
+  })
+
+  it("over the reporter's own MCP client, on a connection thread holding outside text: a card, never an approval", async () => {
+    const fresh = await minimal.session(reporter.orgId)
+    const conn = await seedMcpConnection({
+      orgId: fresh.orgId,
+      userId: fresh.userId,
+      clientId: "claude-code",
+      label: "Claude Code",
+    })
+    // The connection's thread read outside text earlier (a mail, a web page).
+    const threadId = await ensureConnectionThread(conn.id, fresh.orgId, fresh.userId)
+    await sql`UPDATE kernel.threads SET tainted = true WHERE id = ${threadId}::uuid`
+    const res = await handleToolCall(
+      {
+        orgId: fresh.orgId,
+        actor: {
+          actorType: "user",
+          userId: fresh.userId,
+          orgId: fresh.orgId,
+          scopes: ["kernel:bug_reports:file"],
+          dimensionGrants: {},
+        },
+        connectionId: conn.id,
+        ownerUserId: fresh.userId,
+        connectionThreadId: threadId,
+        discovered: new Set(),
+      },
+      "kernel__report_bug",
+      params,
+    )
+    const out = res.structuredContent as Record<string, any>
+    expect(out.blocked).toBeUndefined()
+    expect(out.awaitingConfirmation).toBe(true)
+    const [held] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM kernel.approval_requests
+       WHERE org_id = ${fresh.orgId}::uuid AND tool_name = 'kernel:report_bug'
+         AND requested_by = ${fresh.userId}::uuid`
+    expect(held?.n).toBe(0)
+    const sent = await call(fresh, `/drafts/${out.draftId}/send`, { digest: out.digest })
+    expect(sent.status).toBe(200)
   })
 })
 

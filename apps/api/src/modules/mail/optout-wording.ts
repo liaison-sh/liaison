@@ -22,6 +22,7 @@ import { schemaRef } from "~/db/schema-ref"
 import { QUOTE_TRIMMED_MARKER, stripQuotedHistory } from "~/lib/email/strip-quoted"
 import { rootLogger } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
+import { effectiveVisibility } from "~/modules/approvals/resource-owner"
 import { isMachineAddress } from "~/modules/mail/sender-contacts"
 import { hashEmail, isSuppressedHash } from "~/modules/mail/suppressions"
 
@@ -150,9 +151,10 @@ export interface OptOutMailbox {
 /**
  * Raise one pending `mail:suppression_add` per sender that asked to stop and has neither opted
  * out already nor a proposal waiting (one per sender, keyed by the address's hash). The request is
- * raised for the mailbox's owner (a shared mailbox: whoever connected it) and decided like any
- * opt-out the mail app records. Nothing is suppressed here. Never throws: a failure is logged and
- * the sync goes on.
+ * raised for the mailbox's owner (a shared mailbox: whoever connected it). A personal mailbox's
+ * proposal is decided by its owner alone, as any approval about a personal mailbox is (the reply
+ * is theirs, and so is who wrote it); a shared mailbox's goes to the mail approvers. Nothing is
+ * suppressed here. Never throws: a failure is logged and the sync goes on.
  */
 export async function proposeOptOuts(
   orgId: string,
@@ -191,9 +193,13 @@ export async function proposeOptOuts(
       ).map((r) => r.email)
       // The person the request is raised for: the mailbox's owner, or whoever connected a shared
       // mailbox, while they are an active member.
-      const requester = extractRows<{ id: string }>(
+      const found = extractRows<{
+        id: string
+        owner_type: string | null
+        visibility: string | null
+      }>(
         await tx.execute(drizzleSql`
-          SELECT u.id::text AS id
+          SELECT u.id::text AS id, a.owner_type, a.visibility
             FROM ${M}.accounts a
             LEFT JOIN ${K}.connected_accounts ca
               ON ca.org_id = a.org_id AND ca.id = a.connected_account_id
@@ -202,8 +208,14 @@ export async function proposeOptOuts(
              AND u.id = CASE WHEN a.owner_type = 'user' THEN a.owner_id ELSE ca.created_by END
            WHERE a.org_id = ${orgId}::uuid AND a.id = ${mailbox.id}::uuid
              AND u.status = 'active' AND u.user_type = 'member'`),
-      )[0]?.id
-      return { own: new Set(own), waiting: new Set(waiting), requester: requester ?? null }
+      )[0]
+      return {
+        own: new Set(own),
+        waiting: new Set(waiting),
+        requester: found?.id ?? null,
+        personal:
+          !!found && effectiveVisibility(found) === "personal" && found.owner_type === "user",
+      }
     })
     if (!facts.requester) {
       log.warn(
@@ -230,6 +242,7 @@ export async function proposeOptOuts(
           actorScopes: scopes,
           defaultAppName: "mail",
           origin: "system",
+          ...(facts.personal ? { ownerOfResource: facts.requester } : {}),
           input: {
             tool_name: "mail:suppression_add",
             summary: `${email} asked to stop receiving mail`,

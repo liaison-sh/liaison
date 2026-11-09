@@ -179,6 +179,12 @@ export interface SendGuardVerdict {
   record?: GuardRecord
   /** Where the message came in when the caller cannot open it: a ticket is named as one. */
   source?: GuardRecord["kind"]
+  /**
+   * Set when the message is from someone other than the draft's own people (a colleague of
+   * theirs at the same company), with that company's name. A reader who cannot open the record
+   * learns only "someone at <company>": see `withoutThirdParty`.
+   */
+  thirdParty?: { company: string | null }
   /** The class the draft was checked under, from its recipients as they stand. */
   classification?: PinnedSendGuard["classification"]
 }
@@ -255,6 +261,9 @@ interface GuardContactSet {
   contactIds: string[]
   /** The addresses of the contacts the company adds: their mail counts wherever it lands. */
   colleagueAddresses: string[]
+  /** The company of each address the company adds, and of the pinned contacts (first one). */
+  companyOf: ReadonlyMap<string, string>
+  company: string | null
 }
 
 /**
@@ -270,15 +279,18 @@ async function guardContactSets(
   db?: PrivilegedDb,
 ): Promise<GuardContactSet[]> {
   const pinned = [...new Set(pinnedLists.flat())]
-  const colleagues = new Map<string, Array<{ id: string; email: string | null }>>()
+  const colleagues = new Map<string, Array<{ id: string; email: string | null; company: string }>>()
   if (pinned.length > 0) {
     const rows = await onPrivileged(db, orgId, "send-guard-contact-set", async (tx) =>
-      extractRows<{ pinned: string; id: string; email: string | null }>(
+      extractRows<{ pinned: string; id: string; email: string | null; company: string }>(
         await tx.execute(drizzleSql`
-          SELECT p.id::text AS pinned, c.id::text AS id, lower(c.email) AS email
+          SELECT p.id::text AS pinned, c.id::text AS id, lower(c.email) AS email,
+                 co.name AS company
             FROM ${table("kernel", "contacts")} p
             JOIN ${table("kernel", "contacts")} c
               ON c.org_id = p.org_id AND c.company_id = p.company_id
+            JOIN ${table("kernel", "companies")} co
+              ON co.org_id = p.org_id AND co.id = p.company_id
            WHERE p.org_id = ${orgId}::uuid AND p.company_id IS NOT NULL
              AND p.id = ANY(${uuidSet(pinned)})`),
       ),
@@ -293,15 +305,21 @@ async function guardContactSets(
     const pinnedHere = new Set(list)
     const ids = new Set(list)
     const addresses = new Set<string>()
+    const companyOf = new Map<string, string>()
+    let company: string | null = null
     for (const id of list) {
       for (const colleague of colleagues.get(id) ?? []) {
+        company ??= colleague.company
         // A pinned contact's own addresses are the draft's already.
         if (pinnedHere.has(colleague.id)) continue
         ids.add(colleague.id)
-        if (colleague.email) addresses.add(colleague.email)
+        if (colleague.email) {
+          addresses.add(colleague.email)
+          if (!companyOf.has(colleague.email)) companyOf.set(colleague.email, colleague.company)
+        }
       }
     }
-    return { contactIds: [...ids], colleagueAddresses: [...addresses] }
+    return { contactIds: [...ids], colleagueAddresses: [...addresses], companyOf, company }
   })
 }
 /** What one draft's inbound read is about. */
@@ -809,8 +827,12 @@ interface InboundCheck {
   timeZone?: string | null
 }
 
-/** What the inbound rows say about one draft. */
-function inboundVerdict(inbound: readonly GuardInbound[], check: InboundCheck): SendGuardVerdict {
+/** What the inbound rows say about one draft; `set` and `addresses` say who its own people are. */
+function inboundVerdict(
+  inbound: readonly GuardInbound[],
+  check: InboundCheck,
+  side: { set: GuardContactSet; addresses: readonly string[] },
+): SendGuardVerdict {
   const { guard } = check
   const decision = decideSendGuard({
     inbound,
@@ -821,10 +843,21 @@ function inboundVerdict(inbound: readonly GuardInbound[], check: InboundCheck): 
   })
   if (decision.state === "clear") return CLEAR
   const record = inbound.find((item) => item.id === decision.messageId)?.record
+  // Someone other than the draft's own people, outside its own conversation: a colleague of
+  // theirs the company brought in, who may have written to a mailbox the reader cannot open.
+  const sender = decision.who?.trim().toLowerCase() ?? null
+  const ownPerson = sender !== null && side.addresses.includes(sender)
+  const ownConversation =
+    record?.kind === "conversation" && !!guard.conversationId && record.id === guard.conversationId
+  const thirdParty =
+    ownPerson || ownConversation
+      ? null
+      : { company: (sender ? side.set.companyOf.get(sender) : undefined) ?? side.set.company }
   const named = {
     who: decision.who,
     at: decision.at.toISOString(),
     ...(record ? { record } : {}),
+    ...(thirdParty ? { thirdParty } : {}),
   }
   if (decision.state === "held") {
     return {
@@ -860,7 +893,9 @@ async function inboundVerdicts(
     const set = sets[i] as GuardContactSet
     queries.set(String(i), {
       contactIds: set.contactIds,
-      addresses: [...new Set([...guard.addresses, ...check.recipients])],
+      addresses: [
+        ...new Set([...guard.addresses, ...check.recipients].map((a) => a.toLowerCase())),
+      ],
       senders: set.colleagueAddresses,
       since: guard.since,
       ...(guard.conversationId ? { conversationId: guard.conversationId } : {}),
@@ -879,7 +914,10 @@ async function inboundVerdicts(
       )
       return unavailable("the mail and tickets could not be read")
     }
-    return inboundVerdict([...fromMail, ...fromTickets], check)
+    return inboundVerdict([...fromMail, ...fromTickets], check, {
+      set: sets[i] as GuardContactSet,
+      addresses: queries.get(String(i))?.addresses ?? [],
+    })
   })
 }
 
@@ -1629,16 +1667,34 @@ export function describeStop(
       return `${notDone} ${verdict.label ?? "The record this mail is about says not to send it."} Next: check that record before writing again.`
     case "held": {
       const until = verdict.holdUntil ? day(verdict.holdUntil) : ""
-      const source = verdict.returnDate
-        ? `their message gives ${verdict.returnDate} as the return date`
-        : "their message gives no return date, so the default of 7 days applies"
-      return `${notDone} ${who} sent an automatic reply${at}; ${source}. It reads as held until ${until} UTC. ${whereItCameIn(verdict)} Next: a person can choose Send now on the card, or it clears by itself after that time.`
+      // No return date at all: withheld from a reader who cannot open the message.
+      const source =
+        verdict.returnDate === undefined
+          ? ""
+          : verdict.returnDate
+            ? `; their message gives ${verdict.returnDate} as the return date`
+            : "; their message gives no return date, so the default of 7 days applies"
+      return `${notDone} ${who} sent an automatic reply${at}${source}. It reads as held until ${until} UTC. ${whereItCameIn(verdict)} Next: a person can choose Send now on the card, or it clears by itself after that time.`
     }
     case "unavailable":
       return `${notDone} The check before sending could not run: ${verdict.reason ?? "a read failed"}. Next: try again shortly.`
     case "clear":
       return ""
   }
+}
+
+/**
+ * A stop as told to a reader who cannot open the message that caused it: a third person (a
+ * colleague of the draft's own people) is named only by their company, and their automatic
+ * reply's return date is left out. The draft's own people stay named.
+ */
+export function withoutThirdParty<T extends SendGuardVerdict>(verdict: T): T {
+  if (!verdict.thirdParty) return verdict
+  const { thirdParty, returnDate: _withheld, ...rest } = verdict
+  return {
+    ...rest,
+    who: thirdParty.company ? `Someone at ${thirdParty.company}` : null,
+  } as T
 }
 
 /** The code of a stop: a provider's or a check's own, else one per state. */

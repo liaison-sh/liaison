@@ -674,6 +674,12 @@ interface CreateApprovalRequestOpts {
   threadId: string
   toolName: string
   toolParams: unknown
+  /**
+   * Set only by host code that knows the request is about a personal resource of this person
+   * (a reply that came into their own mailbox): they alone decide it, as a declared
+   * `resourceOwner` routes it. Never set from a sandbox. Absent: the usual routing answer.
+   */
+  ownerOfResource?: string
   /** A47b: the payload paths the manifest's schema supplied, marked on the card. The agent's
    *  own arguments are this payload minus these paths, which is how the row keeps them. */
   defaultedParams?: string[]
@@ -1543,17 +1549,19 @@ async function createApprovalRequest(opts: CreateApprovalRequestOpts): Promise<s
   // default deciding-scope audience applies.
   // A personal MCP connection's tool (S16): its owner alone decides, like any
   // other personal resource; the org's approvers never see its calls.
-  const resourceOwnerId = await resolveApprovalOwnerRouting({
-    orgId,
-    appName,
-    toolShortName,
-    toolParams,
-    requestedBy,
-    approveScope,
-    dimensionConstraint,
-    mustHold: audienceMustHold,
-    actingAgentId,
-  })
+  const resourceOwnerId =
+    opts.ownerOfResource ??
+    (await resolveApprovalOwnerRouting({
+      orgId,
+      appName,
+      toolShortName,
+      toolParams,
+      requestedBy,
+      approveScope,
+      dimensionConstraint,
+      mustHold: audienceMustHold,
+      actingAgentId,
+    }))
   // An N-eyes floor the audience can never meet is refused here, never parked
   // (every caller also checks earlier, before creating any thread).
   await assertApproversAvailable({
@@ -2660,6 +2668,8 @@ export async function createHandlerApprovalRequest(args: {
   personToolRequiredScopes?: readonly string[]
   /** The proposing agent run, captured across the sandbox hop (see CreateApprovalRequestOpts). */
   originRun?: OriginRun | null
+  /** Host callers only: see CreateApprovalRequestOpts. The sandbox paths never pass it. */
+  ownerOfResource?: string
 }): Promise<HandlerApprovalResult> {
   const { input } = args
   const colonIdx = input.tool_name.indexOf(":")
@@ -2824,16 +2834,18 @@ export async function createHandlerApprovalRequest(args: {
         orgId: args.orgId,
         toolName: input.tool_name,
         minApprovers: tighten.minApprovers,
-        resourceOwnerId: await resolveApprovalOwnerRouting({
-          orgId: args.orgId,
-          appName,
-          toolShortName,
-          toolParams: input.current_payload,
-          requestedBy: args.requestedBy,
-          approveScope,
-          dimensionConstraint,
-          mustHold: [],
-        }),
+        resourceOwnerId:
+          args.ownerOfResource ??
+          (await resolveApprovalOwnerRouting({
+            orgId: args.orgId,
+            appName,
+            toolShortName,
+            toolParams: input.current_payload,
+            requestedBy: args.requestedBy,
+            approveScope,
+            dimensionConstraint,
+            mustHold: [],
+          })),
         approveScope,
         dimensionConstraint,
         mustHold: [],
@@ -2916,6 +2928,7 @@ export async function createHandlerApprovalRequest(args: {
     actingAgentId: args.actingAgentId,
     ...(tighten ? { tighten } : {}),
     ...(args.originRun !== undefined ? { originRun: args.originRun } : {}),
+    ...(args.ownerOfResource ? { ownerOfResource: args.ownerOfResource } : {}),
   })
   return { approval_id: approvalRequestId }
 }

@@ -799,12 +799,19 @@ export async function writeMailPage(
 
   // 8. A reply asking to stop: a proposal for a person, never an opt-out by itself. Plaintext
   //    mail of a person only (a sealed body is unreadable, a list or a machine is not a person),
-  //    and only mail arriving now: a backfill of old history raises nothing.
+  //    whose sender the receiving provider did not find forged, and only mail arriving now: a
+  //    backfill of old history raises nothing.
   if (!sealing && origin !== "initial" && origin !== "reset") {
     const asked: OptOutCandidate[] = []
     for (const thread of writable) {
       for (const { message, id } of thread.inserted) {
         if (!isInbound(message) || isBulkMessage(message) || !message.from?.email) continue
+        const auth = evaluateAuthenticationResults(
+          message.authenticationResults,
+          message.from.email,
+          trustedAuthservIdsFor(message),
+        )
+        if (auth === "fail") continue
         const sent = Date.parse(message.sentAt ?? "")
         if (Number.isFinite(sent) && sent < Date.now() - OPT_OUT_RECENT_MS) continue
         try {

@@ -54,6 +54,7 @@ import { writeMailPage } from "~/modules/mail/page-write"
 import { mailRoutes } from "~/modules/mail/routes"
 import {
   checkPersonCompose,
+  commercialRecipient,
   evaluateSendGuard,
   type PinnedSendGuard,
   plainGuardSince,
@@ -1657,6 +1658,45 @@ describe("a colleague is not a client", () => {
     await seedInbound(email)
     expect((await check(email, since)).state).toBe("replied")
   }, 60_000)
+
+  it("an import placeholder or a former member counts by their exact address only, never their domain", async () => {
+    // Mutation caught: every non-portal user's domain counted as the org's own, whatever its status.
+    const domain = `prospect-${++counter}.example`
+    await privileged.withSystemDb("send-guard-test-placeholder", (tx) =>
+      tx.execute(
+        drizzleSql.raw(
+          insertSql("kernel.users", {
+            org_id: orgId,
+            email: `jane@${domain}`,
+            name: "Jane (imported)",
+            user_type: "member",
+            status: "deactivated",
+          }),
+        ),
+      ),
+    )
+    const buyer = `buyer@${domain}`
+    expect(await commercialRecipient(orgId, [`jane@${domain}`, buyer])).toBe(buyer)
+  }, 60_000)
+
+  it("an active member's domain stays the org's own", async () => {
+    const domain = `ourteam-${++counter}.example`
+    await privileged.withSystemDb("send-guard-test-active-member", (tx) =>
+      tx.execute(
+        drizzleSql.raw(
+          insertSql("kernel.users", {
+            org_id: orgId,
+            email: `lead@${domain}`,
+            name: "Team Lead",
+            user_type: "member",
+            status: "active",
+          }),
+        ),
+      ),
+    )
+    const outsider = unique("outsider")
+    expect(await commercialRecipient(orgId, [`someone.else@${domain}`, outsider])).toBe(outsider)
+  }, 60_000)
 })
 
 /**
@@ -2817,12 +2857,88 @@ describe("the client's company is the other side", () => {
     await ingest(stranger)
     expect(await companyOf(stranger)).toBeNull()
   }, 60_000)
+
+  /** A member's own mailbox, which the admin running these calls cannot read. */
+  async function someoneElsesMailbox(): Promise<string> {
+    const ctx = seedContext({ orgId, now: new Date() })
+    const holder = await minimal.person(orgId, { name: "Mailbox Holder" })
+    return (
+      await ensureMailAccount(ctx, {
+        ownerType: "user",
+        userId: holder.id,
+        email: `holder-${++counter}@org.test`,
+        provider: "imap",
+      })
+    ).accountId
+  }
+
+  it("a colleague at the client who wrote to a mailbox the caller cannot read is named only by their company", async () => {
+    // Mutation caught: the stop names the colleague's address, read from someone else's mailbox.
+    const companyId = await companyAt(null, "Hidden Client Co")
+    const to = unique("buyer-m")
+    await joinCompany(await minimal.contact(orgId, to), companyId)
+    const colleague = unique("cfo")
+    await joinCompany(await minimal.contact(orgId, colleague), companyId)
+    await seedOutbound(to)
+    await seedInbound(colleague, { account: await someoneElsesMailbox() })
+    const staged = await agentCall("mail:compose", composeParams(to, { followUp: {} }))
+    if (!("error" in staged)) throw new Error(`not refused: ${JSON.stringify(staged)}`)
+    expect(staged.error.code).toBe("SEND_GUARD_REPLIED")
+    expect(staged.error.message).toContain("Someone at Hidden Client Co replied on ")
+    expect(staged.error.message).toContain("a mailbox you cannot read")
+    expect(JSON.stringify(staged.error)).not.toContain(colleague)
+  }, 60_000)
+
+  it("a colleague's automatic reply in a mailbox the caller cannot read gives neither their address nor their return date", async () => {
+    // Mutation caught: the held stop and the card name the colleague and the date their reply gives.
+    const companyId = await companyAt(null, "Away Client Co")
+    const to = unique("buyer-h")
+    await joinCompany(await minimal.contact(orgId, to), companyId)
+    const id = await stageCompose(to)
+    const colleague = unique("away-cfo")
+    await joinCompany(await minimal.contact(orgId, colleague), companyId)
+    await seedInbound(colleague, {
+      account: await someoneElsesMailbox(),
+      rawHeaders: { "auto-submitted": "auto-replied" },
+      subject: "Automatic reply",
+      body: "I am out of the office until 28 December.",
+    })
+    await approveSettled(id)
+    const error = (await executionRow(id))?.error
+    expect(error?.code).toBe("send_guard_held")
+    const message = String(error?.message)
+    expect(message).toContain("Someone at Away Client Co sent an automatic reply")
+    expect(message).not.toContain("return date")
+    expect(JSON.stringify(error)).not.toContain(colleague)
+    const card = await withRlsContext(admin, (tx) =>
+      getApproval(tx as never, { orgId, userId: admin.userId, requestId: id, sendGuards: true }),
+    )
+    expect(card?.sendGuard?.state).toBe("held")
+    expect(card?.sendGuard?.who).toBe("Someone at Away Client Co")
+    expect(JSON.stringify(card?.sendGuard)).not.toContain(colleague)
+  }, 60_000)
+
+  it("the draft's own recipient is still named when their reply is in a mailbox the caller cannot read", async () => {
+    const companyId = await companyAt(null, "Named Client Co")
+    const to = unique("buyer-n")
+    await joinCompany(await minimal.contact(orgId, to), companyId)
+    await seedOutbound(to)
+    await seedInbound(to, { account: await someoneElsesMailbox() })
+    const staged = await agentCall("mail:compose", composeParams(to, { followUp: {} }))
+    if (!("error" in staged)) throw new Error(`not refused: ${JSON.stringify(staged)}`)
+    expect(staged.error.message).toContain(`${to} replied on `)
+  }, 60_000)
 })
 
 describe("a reply asking to stop", () => {
   const extractRowsOf = <T>(result: unknown): T[] =>
     (Array.isArray(result) ? result : ((result as { rows?: T[] }).rows ?? [])) as T[]
-  async function ingestFrom(from: string, body: string, headers: Record<string, string> = {}) {
+  async function ingestFrom(
+    from: string,
+    body: string,
+    headers: Record<string, string> = {},
+    into: { accountId?: string; message?: Record<string, unknown> } = {},
+  ) {
     await onPageTx(async (tx) => {
       const id = `<${++counter}@client.test>`
       await writeMailPage(
@@ -2834,7 +2950,7 @@ describe("a reply asking to stop", () => {
           queueEvents: async () => {},
         } as never,
         {
-          accountId: oldAccount,
+          accountId: into.accountId ?? oldAccount,
           origin: "incremental",
           messages: [
             {
@@ -2857,6 +2973,7 @@ describe("a reply asking to stop", () => {
               direction: "inbound",
               sentAt: new Date().toISOString(),
               headers,
+              ...into.message,
             },
           ],
         },
@@ -2919,5 +3036,51 @@ describe("a reply asking to stop", () => {
     // An address that already opted out raises no new card.
     await ingestFrom(email, "stop")
     expect((await proposals(email)).length).toBe(1)
+  }, 90_000)
+
+  async function ownerOf(requestId: string): Promise<string | null> {
+    const [row] = await sql<Array<{ owner: string | null }>>`
+      SELECT resource_owner_id::text AS owner FROM kernel.approval_requests WHERE id = ${requestId}`
+    return row?.owner ?? null
+  }
+
+  it("a stop asked in a person's own mailbox goes to that person, one asked in a shared mailbox to the mail approvers", async () => {
+    // Mutation caught: every proposal routed to the org's mail approvers, naming who wrote to whom.
+    const ctx = seedContext({ orgId, now: new Date() })
+    const holder = await minimal.person(orgId, { name: "Own Mailbox" })
+    const own = await ensureMailAccount(ctx, {
+      ownerType: "user",
+      userId: holder.id,
+      email: `own-box-${++counter}@org.test`,
+      provider: "imap",
+    })
+    const personal = unique("personal-stop")
+    await ingestFrom(personal, "Please unsubscribe me.", {}, { accountId: own.accountId })
+    const [mine] = await proposals(personal)
+    if (!mine) throw new Error("no proposal from the personal mailbox")
+    expect(await ownerOf(mine.id)).toBe(holder.id)
+    const shared = unique("shared-stop")
+    await ingestFrom(shared, "Please unsubscribe me.")
+    const [theirs] = await proposals(shared)
+    if (!theirs) throw new Error("no proposal from the shared mailbox")
+    expect(await ownerOf(theirs.id)).toBeNull()
+  }, 90_000)
+
+  it("a stop from a sender whose authentication failed proposes nothing", async () => {
+    // Mutation caught: a forged From proposed like a real one.
+    const forged = unique("forged")
+    const fail = {
+      receivedVia: "gmail_api",
+      authenticationResults: ["mx.google.com; dmarc=fail header.from=client.test"],
+    }
+    await ingestFrom(forged, "Please unsubscribe me.", {}, { message: fail })
+    expect((await proposals(forged)).length).toBe(0)
+    const real = unique("authentic")
+    const pass = {
+      receivedVia: "gmail_api",
+      authenticationResults: ["mx.google.com; dmarc=pass header.from=client.test"],
+    }
+    await ingestFrom(real, "Please unsubscribe me.", {}, { message: pass })
+    expect((await proposals(real)).length).toBe(1)
   }, 90_000)
 })

@@ -27,7 +27,9 @@ import {
   plainGuardSince,
   recipientsOf,
   requestFacts,
+  type SendGuardVerdict,
   stopCode,
+  withoutThirdParty,
 } from "~/modules/mail/send-guard"
 
 const K = () => drizzleSql.raw(schemaRef("kernel"))
@@ -155,15 +157,12 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
 
   /**
    * A stop names the record only if the caller can open it: a colleague's mailbox stays unnamed.
-   * Its kind stays as `source`, so a reply on a ticket still reads as a ticket.
+   * Its kind stays as `source`, so a reply on a ticket still reads as a ticket. Unreadable, a
+   * third person in it is named only by their company (`withoutThirdParty`).
    */
-  const withReadableRecord = async <
-    T extends { record?: { kind: "conversation" | "ticket"; id: string }; source?: string },
-  >(
-    verdict: T,
-  ): Promise<T> => {
+  const withReadableRecord = async <T extends SendGuardVerdict>(verdict: T): Promise<T> => {
     const record = verdict.record
-    if (!record) return verdict
+    if (!record) return withoutThirdParty(verdict)
     const target =
       record.kind === "ticket"
         ? drizzleSql.raw(`${quoteIdent(schemaRef("app_tickets"))}.tickets`)
@@ -177,7 +176,7 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
       // Not readable by this caller, by any means: the stop stays, unnamed.
     }
     const { record: _unnamed, ...rest } = verdict
-    return { ...rest, source: record.kind } as T
+    return withoutThirdParty({ ...rest, source: record.kind } as T)
   }
 
   return {

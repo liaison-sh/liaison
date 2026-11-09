@@ -7,7 +7,9 @@ screenshotAlt: "The Contacts list showing people with their email addresses and 
 
 Contacts is the list of people your organization deals with. It fills itself: contacts appear as you exchange mail or when an agent mentions someone. You edit, group, share and merge them here, and agents read and update them for you.
 
-For sales workflows built on Contacts, see [Keep customers and prospects in Contacts](../sales/contacts.md) and [Find and merge duplicate contacts](../sales/duplicates.md).
+For sales workflows built on Contacts, see [Keep customers and prospects in Contacts](../sales/contacts.md), [Keep companies and see everything about one](../sales/companies.md) and [Find and merge duplicate contacts](../sales/duplicates.md).
+
+Companies are the second list of Contacts: click **Companies** in the sidebar.
 
 ## Find a contact
 
@@ -25,7 +27,7 @@ From a row you can start an **Email** or a **Call**.
 
 Under **Addresses** you add, edit, verify, mark stale or archive the contact's postal addresses. See [Keep verified postal addresses](../sales/contacts.md#keep-verified-postal-addresses).
 
-Under **Activity** you see the contact's mail conversations and **Tickets**.
+Under **Activity** you see the person's timeline: mail, tickets, invoices, meetings and deals. **Follow-ups** says whether commercial mail to them is allowed. Click their company to open its page. See [Companies](../sales/companies.md).
 
 To delete a contact, open **More actions** and click **Delete contact**.
 

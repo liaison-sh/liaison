@@ -56,3 +56,4 @@ Every save keeps the replaced adapter, last 20 -> apps/api/src/apps/api-connecto
 History button and panel -> apps/web/src/modules/api-connector/ApiConnectorAdapters.tsx:221-256
 History, Restore, warning and Restore and delete credentials labels -> packages/shared/src/i18n/locales/en/api-connector.json:97-111
 Replace warns before deleting credentials, Save and delete credentials -> apps/web/src/modules/api-connector/AdapterForm.tsx:140-163
+Liaison has its own companies and deals -> apps/api/src/modules/contacts/companies.ts:1-20 ; apps/api/src/apps/projects/service/deals.ts:1-34

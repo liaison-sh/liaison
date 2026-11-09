@@ -673,6 +673,14 @@ test.describe("Boxtal: visual baselines", () => {
     await expect(page.getByTestId("boxtal-ready-state-r2")).toHaveText("Packed, fulfilled")
     // All: ONE table, the orders to prepare first, then the bought labels, each with its State.
     await page.getByTestId("boxtal-worklist-filter-all").click()
+    await expect(page.getByTestId("boxtal-worklist-filter-all")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+    await expect(page.getByTestId("boxtal-worklist-filter-ready")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    )
     const worklist = page.getByTestId("boxtal-worklist")
     await expect(worklist.locator("table")).toHaveCount(1)
     const table = page.getByTestId("boxtal-prep-grid-table")
@@ -683,10 +691,10 @@ test.describe("Boxtal: visual baselines", () => {
     await expect(table.locator('[data-testid^="boxtal-prep-state-"]').first()).toHaveText(
       "To prepare",
     )
-    await testInfo.attach("worklist-all", {
-      body: await page.screenshot(),
-      contentType: "image/png",
-    })
+    const shot = testInfo.outputPath("worklist-all.png")
+    await page.waitForTimeout(350) // the filter buttons' colour transition
+    await page.screenshot({ path: shot })
+    await testInfo.attach("worklist-all", { path: shot, contentType: "image/png" })
   })
 
   test("shipments — master/detail (rows + selected detail)", async ({ page, env, qa }) => {

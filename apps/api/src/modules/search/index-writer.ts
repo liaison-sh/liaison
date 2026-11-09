@@ -102,6 +102,19 @@ export async function sendIndexWrite(
   if (!opts.indexName && opts.replay && opts.replay.length > 0) {
     await noteIndexWrites(opts.replay)
   }
+  const uids = await sendTo(indexName, write)
+  // A rebuild about to swap its shadow in gets every live write too, so the
+  // index it swaps in already holds what was written up to the swap (the
+  // replay after the swap would otherwise be the first to bring it, and a
+  // search in between would not find it).
+  if (!opts.indexName) {
+    const shadow = await rebuildShadowIndex()
+    if (shadow && shadow !== indexName) uids.push(...(await sendTo(shadow, write)))
+  }
+  return uids
+}
+
+async function sendTo(indexName: string, write: IndexWrite): Promise<number[]> {
   const index = getMeili().index(indexName)
   const uids: number[] = []
   const ids = [...new Set(write.deleteIds ?? [])]
@@ -176,6 +189,11 @@ export const REBUILD_KEYS = {
   lock: "search:rebuild:lock",
   /** Requests written to the live index while the rebuild runs, by document key. */
   touched: "search:rebuild:touched",
+  /**
+   * The shadow index's name, set once the shadow is fully streamed and before
+   * its first replay: from then on every live write is also sent there.
+   */
+  shadow: "search:rebuild:shadow",
 }
 
 /**
@@ -195,14 +213,32 @@ export function rebuildStateCacheWindowMs(): number {
   return rebuildStateCacheMs
 }
 
-let cachedActive: { value: boolean; at: number } | null = null
+let cachedActive: { value: boolean; shadow: string | null; at: number } | null = null
+
+async function rebuildState(): Promise<{ value: boolean; shadow: string | null }> {
+  const now = Date.now()
+  if (cachedActive && now - cachedActive.at < rebuildStateCacheMs) return cachedActive
+  const [lock, shadow] = await redis.mget(REBUILD_KEYS.lock, REBUILD_KEYS.shadow)
+  cachedActive = { value: lock !== null, shadow: lock !== null ? (shadow ?? null) : null, at: now }
+  return cachedActive
+}
 
 async function rebuildActive(): Promise<boolean> {
-  const now = Date.now()
-  if (cachedActive && now - cachedActive.at < rebuildStateCacheMs) return cachedActive.value
-  const value = (await redis.exists(REBUILD_KEYS.lock)) === 1
-  cachedActive = { value, at: now }
-  return value
+  return (await rebuildState()).value
+}
+
+/**
+ * The shadow a running rebuild is about to swap in, or null. A failed read
+ * answers null: the write still lands in the live index and is noted, and the
+ * replay after the swap brings it there, as before.
+ */
+async function rebuildShadowIndex(): Promise<string | null> {
+  try {
+    return (await rebuildState()).shadow
+  } catch (err) {
+    log.warn({ err }, "Could not read the running search rebuild's shadow index")
+    return null
+  }
 }
 
 /**

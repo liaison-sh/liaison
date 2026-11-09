@@ -352,7 +352,10 @@ class TaskPipeline {
 }
 
 const EXTEND_LOCK_LUA = `
-if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('PEXPIRE', KEYS[1], ARGV[2]) end
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  redis.call('PEXPIRE', KEYS[2], ARGV[2])
+  return redis.call('PEXPIRE', KEYS[1], ARGV[2])
+end
 return 0`
 
 /**
@@ -381,7 +384,14 @@ class RebuildLock {
 
   private async extend(): Promise<void> {
     try {
-      const ok = await redis.eval(EXTEND_LOCK_LUA, 1, REBUILD_KEYS.lock, this.token, LOCK_TTL_MS)
+      const ok = await redis.eval(
+        EXTEND_LOCK_LUA,
+        2,
+        REBUILD_KEYS.lock,
+        REBUILD_KEYS.shadow,
+        this.token,
+        LOCK_TTL_MS,
+      )
       if (ok !== 1) this.lost = true
     } catch (err) {
       log.warn({ err }, "Could not extend the search rebuild lock")
@@ -399,7 +409,11 @@ class RebuildLock {
     if (RebuildLock.held === this) RebuildLock.held = null
     const held = await redis.get(REBUILD_KEYS.lock).catch(() => null)
     if (held !== this.token) return
-    const keys = opts.keepTouched ? [REBUILD_KEYS.lock] : [REBUILD_KEYS.lock, REBUILD_KEYS.touched]
+    // The shadow note goes with the lock: after the swap its name is the old
+    // index, dropped once the writers' cache window has passed.
+    const keys = opts.keepTouched
+      ? [REBUILD_KEYS.lock, REBUILD_KEYS.shadow]
+      : [REBUILD_KEYS.lock, REBUILD_KEYS.shadow, REBUILD_KEYS.touched]
     await redis.del(...keys).catch(() => 0)
   }
 }
@@ -581,7 +595,7 @@ export async function runReindex(): Promise<RebuildResult & { pruned: number }> 
   const live = meili.index(liveName)
   const shadow = meili.index(shadowName)
   try {
-    await redis.del(REBUILD_KEYS.touched)
+    await redis.del(REBUILD_KEYS.touched, REBUILD_KEYS.shadow)
     // No writer may still believe no rebuild runs once the first page is read.
     await new Promise((r) => setTimeout(r, 2 * rebuildStateCacheWindowMs() + 100))
 
@@ -674,7 +688,15 @@ export async function runReindex(): Promise<RebuildResult & { pruned: number }> 
         : 0
     transcriptIds.clear()
 
+    // From here on every live write is also sent to the shadow (index-writer
+    // sendIndexWrite), so the index swapped in holds every write made up to the
+    // swap. Published only now: a live write sent while pages still streamed
+    // could be overwritten by an older copy of its row. Once no writer can
+    // still hold the previous answer, the replay below covers everything
+    // written before, and the replay after the swap stays a safety net.
     await lock.assertHeld()
+    await redis.set(REBUILD_KEYS.shadow, shadowName, "PX", LOCK_TTL_MS)
+    await new Promise((r) => setTimeout(r, 2 * rebuildStateCacheWindowMs() + 100))
     let replayed = await replayTouched(shadowName)
     await writeIndexAndWait(
       { docs: [indexMetaDocument(fingerprint, catalog.versions)] },

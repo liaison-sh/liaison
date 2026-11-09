@@ -70,7 +70,12 @@ beforeAll(async () => {
     ),
   )
   spies.push(spyOn(jobsModule, "enqueueAppJob").mockImplementation((async () => "job") as never))
-  await redis.del("search:rebuild:lock", "search:rebuild:touched", "search:rebuild:embedder-dims")
+  await redis.del(
+    "search:rebuild:lock",
+    "search:rebuild:touched",
+    "search:rebuild:shadow",
+    "search:rebuild:embedder-dims",
+  )
   IndexWriterTestAccess.resetRebuildCache()
   // Writers trust "is a rebuild running" for this long, and every rebuild waits
   // twice the window before reading and before dropping the old index. 100 ms
@@ -471,6 +476,46 @@ describe("full rebuild: nothing noted is lost, the lock outlives a long org", ()
     expect(await redis.get("search:rebuild:lock")).toBeNull()
     // Nothing left held, so a second call is a no-op.
     await releaseRebuildLockForShutdown()
+  }, 180_000)
+
+  // A write that lands in the old live index after the first replay and
+  // before the swap used to be missing from the swapped-in index until the
+  // replay after the swap ran: a search in between did not find it (a ticket
+  // written in that instant answered no hit, gate run 42594553493). The
+  // shadow now receives every live write from before the first replay on, so
+  // the index swapped in already holds it.
+  it("a write landing just before the swap is in the swapped-in index the moment it goes live", async () => {
+    const { runReindex } = await import("./reindex")
+    let late = ""
+    let liveRightAfterSwap: { title?: string } | null = null
+    const realSwap = meili.swapIndexes.bind(meili)
+    const swapSpy = spyOn(meili, "swapIndexes").mockImplementation((async (args: never) => {
+      // A row the rebuild never streamed, indexed into the old live index.
+      late = await insert("capybara line late says okapi")
+      await processMessageIndexerJob({ action: "upsert", orgId: ORG, messageId: late })
+      // Its writes are queued tasks: let every one of them land first.
+      for (const t of (await meili.tasks.getTasks({ statuses: ["enqueued", "processing"] }))
+        .results) {
+        await meili.tasks.waitForTask(t.uid)
+      }
+      const task = await realSwap(args)
+      await meili.tasks.waitForTask((task as { taskUid: number }).taskUid)
+      // Read before the rebuild goes on to its replay after the swap.
+      liveRightAfterSwap = (await meili
+        .index(LIVE)
+        .getDocument(docId(late))
+        .catch(() => null)) as { title?: string } | null
+      return task
+    }) as never)
+    try {
+      expect((await runReindex()).swapped).toBe(true)
+    } finally {
+      swapSpy.mockRestore()
+    }
+    expect(liveRightAfterSwap).not.toBeNull()
+    expect((liveRightAfterSwap as { title?: string } | null)?.title).toBe(
+      "capybara line late says okapi",
+    )
   }, 180_000)
 
   it("a rebuild job that finds the lock held fails and is retried, never completes as done", async () => {

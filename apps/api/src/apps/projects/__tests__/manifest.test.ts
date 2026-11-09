@@ -88,7 +88,8 @@ describe("projects.manifest", () => {
     // 1.10.8: search draws its result as a list card.
     // 1.10.9: the sales role, and deal amounts for sales and leads.
     // 1.11.0: deal tools, the deal board and the deal send check; a project's client.
-    expect(projectsManifest.version).toBe("1.13.0")
+    // 1.14.0: the deal import kind.
+    expect(projectsManifest.version).toBe("1.14.0")
   })
 
   it("the member role holds no deal scope and sales and lead do", () => {

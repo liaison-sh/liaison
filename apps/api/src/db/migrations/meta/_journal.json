@@ -2073,6 +2073,13 @@
       "when": 1900003378000,
       "tag": "0294_contact_company_and_lawful_basis",
       "breakpoints": true
+    },
+    {
+      "idx": 296,
+      "version": "7",
+      "when": 1900003379000,
+      "tag": "0295_deal_value_for_imports",
+      "breakpoints": true
     }
   ]
 }

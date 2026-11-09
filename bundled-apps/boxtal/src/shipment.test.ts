@@ -22,6 +22,8 @@ import {
 import { createMockDb } from "./test-db"
 import { deriveDraftFacts } from "./draft-cache"
 import { BOXTAL_CALL_BUDGET_MS } from "./lib/http-budget"
+import { stuckList } from "./queues"
+import { boxtalOrderProbe, type OrphanRow, reconcileOrphanedCreates } from "./reconcile-tracking"
 
 const CREDS = { v1Key: "k1", v1Secret: "s1", v3Key: "k3", v3Secret: "s3", environment: "sandbox" }
 
@@ -1573,7 +1575,9 @@ describe("create_shipment (gated body)", () => {
         const live = db
           .__all("shipment")
           .some((r) => r.document_ref === data.document_ref && r.order_status !== "CANCELLED")
-        if (live) throw new Error("duplicate document_ref (partial-unique)")
+        // The bridge's real wording for the partial-unique index firing (23505): only a unique
+        // violation is a duplicate; any other insert failure propagates.
+        if (live) throw new Error('db_insert failed - pg: duplicate key value violates unique constraint "shipment_document_ref_live" (23505)')
       }
       return realInsert(entity, data)
     }
@@ -2888,5 +2892,156 @@ describe("shippable lines: the worklist and staging agree", () => {
     expect(draft.customsArticles.find((a) => a.line_id === "f2")).toMatchObject({ blocked: true, reason: "missing_weight" })
     expect(facts.needs_fix_reason).not.toBeNull()
     expect(stagingRefuses).toBe(true)
+  })
+})
+
+// D120. An approved create_shipment runs in ONE transaction (claim, handler, mark approved). A
+// sandbox kill after Boxtal sold the label ("App execution timed out") rolls that transaction back,
+// so a reservation written with a plain insert vanished with it and the PAID label had no local
+// record (Boxtal has no order list to find it again). The reservation is committed on its own
+// (ctx.db.insertNow) before the POST, so it outlives the rollback and the orphan sweep surfaces it.
+describe("create_shipment: a kill after the paid POST keeps the reservation (D120)", () => {
+  /** The run's transaction around a mock db: plain writes are undone when the run throws,
+   *  commit-now writes go straight through. `killAfterPost` throws on the first write after the
+   *  /shipping-order POST, as the sandbox's kill would cut the handler off right there. */
+  function inRunTransaction(db: ReturnType<typeof createMockDb>, fetchCalls: Array<{ url: string; method: string }>) {
+    const undo: Array<() => Promise<void>> = []
+    let killAfterPost = false
+    const posted = () => fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")
+    const guard = () => {
+      if (killAfterPost && posted()) throw new Error("App execution timed out")
+    }
+    const prior = (entity: string, id: string) => ({ ...(db.__all(entity).find((r) => String(r.id) === id) ?? {}) })
+    const runDb = {
+      ...db,
+      findMany: db.findMany.bind(db),
+      findOne: db.findOne.bind(db),
+      count: db.count.bind(db),
+      async insert(entity: string, data: Record<string, unknown>) {
+        guard()
+        const row = await db.insert(entity, data)
+        undo.push(() => db.delete(entity, String(row.id)))
+        return row
+      },
+      async update(entity: string, id: string, data: Record<string, unknown>) {
+        guard()
+        const before = prior(entity, id)
+        await db.update(entity, id, data)
+        const cleared = Object.fromEntries(Object.keys(data).map((k) => [k, undefined]))
+        undo.push(() => db.update(entity, id, { ...cleared, ...before }))
+      },
+      async updateMany(entity: string, opts: { where: Record<string, unknown>; data: Record<string, unknown> }) {
+        guard()
+        return db.updateMany(entity, opts)
+      },
+      async delete(entity: string, id: string) {
+        guard()
+        const before = prior(entity, id)
+        await db.delete(entity, id)
+        undo.push(async () => {
+          await db.insert(entity, before)
+        })
+      },
+      async insertNow(entity: string, data: Record<string, unknown>) {
+        guard()
+        return db.insertNow(entity, data)
+      },
+      async updateNow(entity: string, id: string, data: Record<string, unknown>) {
+        guard()
+        return db.updateNow(entity, id, data)
+      },
+    }
+    return {
+      runDb,
+      kill: () => {
+        killAfterPost = true
+      },
+      async run<T>(fn: () => Promise<T>): Promise<T | Error> {
+        try {
+          return await fn()
+        } catch (err) {
+          for (const step of undo.reverse()) await step()
+          return err as Error
+        }
+      },
+    }
+  }
+
+  it("the reservation is committed: it survives the rolled-back run, and stuck_list names the next step", async () => {
+    const { ctx, db, fetchCalls } = makeCtx()
+    db.insert("prep_meta", { document_ref: "doc-1", order_name: "#3320" })
+    const tx = inRunTransaction(db, fetchCalls)
+    tx.kill()
+    const outcome = await tx.run(() => createShipment({ ...ctx, db: tx.runDb }, CREATE_INPUT))
+    expect(String(outcome)).toContain("App execution timed out")
+    // The label WAS bought (one POST), and the reservation is still there to say so.
+    expect(fetchCalls.filter((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toHaveLength(1)
+    const rows = db.__all("shipment")
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ document_ref: "doc-1", external_id: "#3320", link_state: "create_in_flight", boxtal_order_id: null })
+
+    // Fifteen minutes on, it is an orphan: stuck_list surfaces it with what happened and what to do.
+    const requestedAt = new Date(Date.now() - 20 * 60 * 1000).toISOString()
+    await db.update("shipment", String(rows[0]!.id), { created_at: requestedAt })
+    const stuck = (await stuckList(ctx)).rows
+    expect(stuck).toHaveLength(1)
+    expect(stuck[0]).toMatchObject({ id: String(rows[0]!.id), family: "create_orphan", order_ref: "#3320" })
+    expect(stuck[0]!.reason).toContain("paid label may exist at Boxtal")
+    expect(stuck[0]!.reason).toContain("settle_orphan_create")
+
+    // The sweep asks Boxtal by the merchant reference and, when nothing answers, reports it (and
+    // writes nothing that spends or frees money).
+    const nothing = await reconcileOrphanedCreates(ctx, db.__all("shipment") as unknown as OrphanRow[], async () => null)
+    expect(nothing).toMatchObject({ candidates: 1, resolved: 0, unresolved: 1 })
+    expect(db.__all("shipment")[0]).toMatchObject({ link_state: "create_in_flight" })
+    expect(db.__all("shipment")[0]!.orphan_reported_at).toBeTruthy()
+
+    // When Boxtal does find the order by that reference, the sweep adopts it.
+    const found = await reconcileOrphanedCreates(
+      ctx,
+      db.__all("shipment") as unknown as OrphanRow[],
+      boxtalOrderProbe({
+        v3: {
+          getShippingOrder: async () => {
+            throw new Error("no order id held")
+          },
+          findShippingOrderByExternalId: async (ext: string) =>
+            ext === "#3320" ? ({ id: "ord-1", order_status: "PENDING" } as never) : null,
+        },
+      } as never),
+    )
+    expect(found).toMatchObject({ resolved: 1 })
+    expect(db.__all("shipment")[0]).toMatchObject({ link_state: "created", boxtal_order_id: "ord-1" })
+  })
+
+  it("an uninterrupted run inside the same transaction finishes exactly as before", async () => {
+    const { ctx, db, fetchCalls } = makeCtx()
+    const tx = inRunTransaction(db, fetchCalls)
+    const res = await tx.run(() => createShipment({ ...ctx, db: tx.runDb }, CREATE_INPUT))
+    expect(res).toMatchObject({ boxtal_order_id: "ord-1", order_status: "PENDING" })
+    const rows = db.__all("shipment")
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ link_state: "created", boxtal_order_id: "ord-1", tracking_number: "TRK1" })
+  })
+
+  it("a reservation insert that fails for any reason other than a duplicate buys nothing and says why", async () => {
+    const { ctx, db, fetchCalls } = makeCtx()
+    const runDb = {
+      ...db,
+      findMany: db.findMany.bind(db),
+      findOne: db.findOne.bind(db),
+      count: db.count.bind(db),
+      insert: db.insert.bind(db),
+      update: db.update.bind(db),
+      updateMany: db.updateMany.bind(db),
+      delete: db.delete.bind(db),
+      insertNow: async () => {
+        throw new Error("canceling statement due to lock timeout")
+      },
+      updateNow: db.updateNow.bind(db),
+    }
+    const outcome = await createShipment({ ...ctx, db: runDb }, CREATE_INPUT).catch((err: unknown) => err as Error)
+    expect(String(outcome)).toContain("lock timeout")
+    expect(fetchCalls.filter((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toHaveLength(0)
   })
 })

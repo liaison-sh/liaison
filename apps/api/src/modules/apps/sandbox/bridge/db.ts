@@ -31,7 +31,43 @@ const MAILBOX_CONTENT_ENTITIES: ReadonlySet<string> = new Set([
   "drafts",
 ])
 
+/**
+ * How long a commit-now write waits for a row lock. It runs on a second
+ * connection beside the run's own transaction, so a row the run itself already
+ * locked would otherwise wait on its own caller until the statement timeout.
+ */
+const COMMIT_NOW_LOCK_TIMEOUT = "5s"
+
 export function createDbMethods(ctx: BridgeContext): Record<string, any> {
+  /**
+   * `ctx.db.insertNow` / `ctx.db.updateNow`: the same write as `insert` /
+   * `update`, with every check they make (the app's own declared tables only,
+   * declared fields, `org_id` forced to the bridge's org, the run's RLS actor,
+   * refused on a read-only run), committed in its own transaction at once. An
+   * app writes its intent row this way before an outside call it cannot undo
+   * (a paid label), so the row survives the run's rollback when the sandbox is
+   * killed after the call.
+   */
+  async function commitNow(
+    what: "ctx.db.insertNow" | "ctx.db.updateNow",
+    entity: string,
+    write: (methods: Record<string, any>) => Promise<unknown>,
+  ): Promise<unknown> {
+    ctx.refuseWriteOnReadOnlyRun(ctx.writeTarget(entity), what)
+    ctx.validateEntity(entity)
+    const commitNowTx = ctx.bridgeOptions?.commitNowTx
+    if (!commitNowTx) {
+      throw new Error(
+        `${what}: this run has no transaction of its own to commit ahead in (only tool runs do). ` +
+          `Use ${what === "ctx.db.insertNow" ? "ctx.db.insert" : "ctx.db.update"}, which commits with the run.`,
+      )
+    }
+    return commitNowTx(async (tx) => {
+      await tx.execute(drizzleSql.raw(`SET LOCAL lock_timeout = '${COMMIT_NOW_LOCK_TIMEOUT}'`))
+      return write(createDbMethods({ ...ctx, txDb: tx }))
+    })
+  }
+
   const {
     appName,
     assertMailboxNotResetMidRun,
@@ -342,6 +378,12 @@ export function createDbMethods(ctx: BridgeContext): Record<string, any> {
         throw withPgCause(err, "db_update failed")
       }
     },
+
+    db_insertNow: async (entity: string, dataJson: string) =>
+      commitNow("ctx.db.insertNow", entity, (m) => m.db_insert(entity, dataJson)),
+
+    db_updateNow: async (entity: string, id: string, dataJson: string) =>
+      commitNow("ctx.db.updateNow", entity, (m) => m.db_update(entity, id, dataJson)),
 
     db_updateMany: async (entity: string, optsJson: string) => {
       refuseWriteOnReadOnlyRun(writeTarget(entity), "ctx.db.updateMany")

@@ -11,7 +11,7 @@ import {
 } from "@liaison/shared"
 import type { SchemaObject } from "ajv"
 import { and, sql as drizzleSql, eq } from "drizzle-orm"
-import { extractRows, type PrivilegedDb } from "~/db"
+import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { ActorContext, RlsSession } from "~/db/rls"
 import { createRlsSession, withRlsContext } from "~/db/rls"
@@ -3086,6 +3086,7 @@ export async function executeToolHandler(
     // What this run asks of the outside world, for the tool error of a crash
     // that follows an upstream error answer (upstream-trace.ts).
     const upstreamTrace: UpstreamTrace = {}
+    const commitNowActor = bridgeOptions?.actor
     const handlerBridgeOptions = {
       ...bridgeOptions,
       // A tool whose read-only claim counts only because the run enforces it (a custom
@@ -3096,6 +3097,14 @@ export async function executeToolHandler(
       requestApprovalImpl,
       parentExecutionToken: executionToken,
       upstreamTrace,
+      // `ctx.db.insertNow` / `updateNow`: a fresh transaction under the run's
+      // actor, committed at once, beside the one an approved or atomic run
+      // shares (bridge/db.ts). Same RLS context as the run's own writes.
+      commitNowTx: session
+        ? <T>(fn: (tx: RlsClient) => Promise<T>) => session.run(fn)
+        : commitNowActor
+          ? <T>(fn: (tx: RlsClient) => Promise<T>) => withRlsContext(commitNowActor, fn)
+          : undefined,
     }
 
     // Per-tool sandbox execution budget from the manifest (toolSchema.timeoutMs):

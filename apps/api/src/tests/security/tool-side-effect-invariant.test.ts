@@ -37,7 +37,9 @@ import { readManifests } from "../../../test-support/security/enumerate"
 /** Bridge methods that check the read-only mark themselves, naming their real write target. */
 const SELF_GUARDING = new Set([
   "db_insert",
+  "db_insertNow",
   "db_update",
+  "db_updateNow",
   "db_updateMany",
   "db_delete",
   "messages_post",
@@ -208,7 +210,7 @@ describe("S3f-1: a read-only run refuses every bridge write", () => {
 
   it("a self-guarding write refuses on a read-only run", async () => {
     const ro = bridgeFor(true)
-    for (const name of ["db_insert", "db_update", "db_delete"]) {
+    for (const name of ["db_insert", "db_insertNow", "db_update", "db_updateNow", "db_delete"]) {
       let msg = ""
       try {
         await ro[name](JSON.stringify({ entity: "items", data: { a: 1 }, where: { id: "x" } }))

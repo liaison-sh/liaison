@@ -128,7 +128,7 @@ Profiles created before this existed are converted automatically, one profile pe
 
 ### Settle an unfinished label purchase
 
-A label purchase can be cut off after Boxtal took the order but before Liaison saved its id. After 15 minutes such a row shows in `stuck_list` as `create_orphan`, and the invoice cannot get another label while it is there. Liaison never buys, cancels or retries anything for it on its own.
+A label purchase can be cut off after Boxtal took the order but before Liaison saved its id. Liaison records the purchase before it calls Boxtal, in a save of its own, so a cut-off purchase always leaves this row behind. After 15 minutes such a row shows in `stuck_list` as `create_orphan`, and the invoice cannot get another label while it is there. Liaison never buys, cancels or retries anything for it on its own.
 
 Look the invoice up in the Boxtal dashboard, then settle the row with `settle_orphan_create`:
 

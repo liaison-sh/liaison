@@ -86,6 +86,9 @@ export interface MockDb {
   findOne(entity: string, id: string): Promise<unknown | null>
   insert(entity: string, data: Record<string, unknown>): Promise<{ id: string }>
   update(entity: string, id: string, data: Record<string, unknown>): Promise<void>
+  /** The bridge's commit-now writes. A mock has no transaction, so they are `insert` / `update`. */
+  insertNow(entity: string, data: Record<string, unknown>): Promise<{ id: string }>
+  updateNow(entity: string, id: string, data: Record<string, unknown>): Promise<void>
   updateMany(
     entity: string,
     opts: { where: Record<string, unknown>; data: Record<string, unknown> },
@@ -257,6 +260,12 @@ export function createMockDb(opts: MockDbOptions = {}, behavior: MockDbBehavior 
       const existing = t.get(id)
       if (!existing) throw new Error(`update: ${entity}#${id} not found`)
       t.set(id, { ...existing, ...patch, id })
+    },
+    async insertNow(entity, data) {
+      return this.insert(entity, data)
+    },
+    async updateNow(entity, id, patch) {
+      return this.update(entity, id, patch)
     },
     async updateMany(entity, opts) {
       assertNoWhereId("updateMany", opts.where)

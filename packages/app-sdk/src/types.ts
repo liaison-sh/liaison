@@ -13,6 +13,19 @@ export interface DbClient {
   findOne(entity: string, id: string): Promise<unknown | null>
   insert(entity: string, data: Record<string, unknown>): Promise<{ id: string }>
   update(entity: string, id: string, data: Record<string, unknown>): Promise<void>
+  /**
+   * `insert`, committed at once in its own transaction instead of with the run.
+   * For an intent row written BEFORE an outside call that cannot be undone (a
+   * purchase): when the run's transaction rolls back (a timeout after the call),
+   * the row stays, so a sweep can find the call that never finished. Same checks
+   * as `insert` (the app's own declared tables, declared fields, the caller's
+   * org and RLS); rejects on a read-only run, and in a run that has no
+   * transaction of its own (a webhook or job handler). Never write a row the run
+   * itself already changed this way: it would wait on the run's own lock.
+   */
+  insertNow?(entity: string, data: Record<string, unknown>): Promise<{ id: string }>
+  /** `update`, committed at once: the intent row's next step (see `insertNow`). */
+  updateNow?(entity: string, id: string, data: Record<string, unknown>): Promise<void>
   updateMany(
     entity: string,
     opts: { where: Record<string, unknown>; data: Record<string, unknown> },

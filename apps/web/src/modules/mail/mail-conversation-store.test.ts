@@ -378,6 +378,65 @@ describe("mail-conversation-store", () => {
     expect(conversationStore.ids).toEqual(["fresh"])
   })
 
+  // A stale answer that lands while the current view's request is still out
+  // must leave the list loading: clearing the flag showed the emptied list as
+  // "No conversations" (the Trash view in mail-conversations Scenario 3)
+  // until the real answer came.
+  it("a stale answer landing first keeps the list loading until the current one lands", async () => {
+    const resolvers: Array<(value: { data: any[]; meta: { nextCursor: null } }) => void> = []
+    const api = {
+      getEnvelope: vi
+        .fn()
+        .mockImplementation(
+          () =>
+            new Promise((resolve) =>
+              resolvers.push(
+                resolve as (value: { data: any[]; meta: { nextCursor: null } }) => void,
+              ),
+            ),
+        ),
+    }
+    const { conversationStore, loadConversations, loading, setView } = await import(
+      "~/modules/mail/mail-conversation-store"
+    )
+
+    const firstLoad = loadConversations(api)
+    setView("trash")
+    const secondLoad = loadConversations(api)
+    expect(loading()).toBe(true)
+
+    resolvers[0]!({ data: [], meta: { nextCursor: null } })
+    await firstLoad
+    expect(conversationStore.ids).toEqual([])
+    expect(loading()).toBe(true)
+
+    resolvers[1]!({
+      data: [
+        {
+          id: "trashed",
+          accountId: "mail-1",
+          subject: "Trashed",
+          snippet: "trashed",
+          isRead: true,
+          isStarred: false,
+          status: "open",
+          lastMessageAt: "2026-01-02T00:00:00.000Z",
+          messageCount: 1,
+          assignedTo: null,
+          contactId: null,
+          internalThreadId: null,
+          labels: [],
+          senderName: "Alice",
+          senderEmail: "alice@example.com",
+        },
+      ],
+      meta: { nextCursor: null },
+    })
+    await secondLoad
+    expect(loading()).toBe(false)
+    expect(conversationStore.ids).toEqual(["trashed"])
+  })
+
   it("resetMailConversationStore clears state", async () => {
     const { conversationStore, handleConversationEvent, resetMailConversationStore } = await import(
       "~/modules/mail/mail-conversation-store"

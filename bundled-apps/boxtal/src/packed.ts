@@ -28,6 +28,7 @@ import {
   unfulfillShipment,
   type FulfillmentShipmentRow,
 } from "./fulfillment"
+import { isValidCarrierTracking, labelCarrierOf } from "./label-tracking"
 import { readQueueFacts } from "./queue-facts"
 import { findShipmentByRef } from "./shipment-lookup"
 
@@ -40,6 +41,9 @@ export interface ReadySetPackedInput {
   packed: boolean
   /** Required to untick a row whose order is fulfilled: the operator confirmed the cancellation. */
   confirm_unfulfill?: boolean
+  /** With packed:true on a row that has no tracking number: the number the operator read off the
+   *  label, for when the app could not read it (the way out of "No tracking number yet"). */
+  tracking_number?: string
 }
 
 export interface ReadySetPackedResult {
@@ -83,6 +87,19 @@ async function loadRow(ctx: Ctx, ref: string): Promise<ShipmentRowView | null> {
   return findShipmentByRef<ShipmentRowView>(ctx, ref)
 }
 
+/** A number typed by the operator: no spaces, uppercase. */
+function normaliseTypedTracking(raw: string): string {
+  return raw.replace(/\s+/g, "").toUpperCase()
+}
+
+/** The carrier's own format (and check digit where it has one) when we know the carrier; any
+ *  other carrier, a plausible tracking number. */
+function typedTrackingIsValid(offerCode: string | null | undefined, n: string): boolean {
+  const carrier = labelCarrierOf(offerCode)
+  if (carrier) return isValidCarrierTracking(carrier, n)
+  return /^[A-Z0-9]{8,40}$/.test(n)
+}
+
 function isFulfilled(row: ShipmentRowView): boolean {
   return row.fulfillment_state === "fulfilled" || (row.fulfillment_synced === true && row.fulfillment_state !== "cancelled")
 }
@@ -112,6 +129,32 @@ export async function readySetPacked(ctx: Ctx, input: ReadySetPackedInput): Prom
   const id = String(row.id)
 
   if (input.packed === true) {
+    const typed = typeof input.tracking_number === "string" ? normaliseTypedTracking(input.tracking_number) : ""
+    if (typed) {
+      if (row.tracking_number && row.tracking_number !== typed) {
+        return view(row, {
+          error: {
+            code: "tracking_already_set",
+            message: `This parcel already has tracking number ${row.tracking_number}; a typed number never replaces it.`,
+          },
+        })
+      }
+      if (!typedTrackingIsValid(row.offer_code, typed)) {
+        return view(row, {
+          error: {
+            code: "invalid_tracking_number",
+            message: `"${typed}" is not a tracking number for this carrier. Type the number printed next to TRK# (or the carrier's tracking number) on the label.`,
+          },
+        })
+      }
+      if (!row.tracking_number) {
+        // Not a carrier event: flagged like a number read off the label, so the carrier's own number
+        // replaces it at its first scan, and it never triggers the automatic fulfillment.
+        await ctx.db.update("shipment", id, { tracking_number: typed, tracking_from_label: true, tracking_to_confirm: false })
+        row.tracking_number = typed
+        row.tracking_from_label = true
+      }
+    }
     // A parcel with no Shopify order behind it (a repair return, a manual shipment) has nothing to
     // fulfil: it can still be packed, and the result says why no fulfillment happened.
     if (!(await shopifyOrderIdForShipment(ctx, row))) {

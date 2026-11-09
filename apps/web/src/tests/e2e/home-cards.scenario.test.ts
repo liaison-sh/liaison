@@ -166,6 +166,27 @@ test("home-cards.reorder-collapse-persist-scroll", async ({ page, env, qa, world
     expect(order.indexOf("messages")).toBeLessThan(order.indexOf("approvals"))
   }).toPass({ timeout: 5_000 })
 
+  // Text in a card body is selectable with a real mouse drag, and letting go
+  // neither unfolds the row nor starts a card drag (only the header drags).
+  const firstTitle = approvalsBody
+    .locator('[data-testid^="attention-row-"][data-testid$="-title"]')
+    .first()
+  const titleRow = approvalsBody
+    .locator('[data-testid^="attention-row-"][data-testid$="-details"]')
+    .first()
+  await expect(titleRow).toHaveAttribute("aria-expanded", "false")
+  const box = await firstTitle.boundingBox()
+  if (!box) throw new Error("approval row title has no box")
+  const orderBeforeSelect = await cardOrderInDom(page)
+  await page.mouse.move(box.x + 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width - 2, box.y + box.height / 2, { steps: 8 })
+  await page.mouse.up()
+  expect((await page.evaluate(() => window.getSelection()?.toString() ?? "")).trim()).not.toBe("")
+  await expect(titleRow).toHaveAttribute("aria-expanded", "false")
+  expect(await cardOrderInDom(page)).toEqual(orderBeforeSelect)
+  await page.evaluate(() => window.getSelection()?.removeAllRanges())
+
   // Collapse the approvals card.
   await page.getByTestId("home-card-collapse-approvals").click()
   await expect(page.getByTestId("home-card-body-approvals")).toHaveCount(0, { timeout: 5_000 })

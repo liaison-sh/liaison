@@ -6,7 +6,8 @@
 import { describe, expect, it } from "bun:test"
 import { Catalog, profileHasWeight } from "./Catalog"
 import { canSubmit, CreateDraft, recipientAddressComplete } from "./CreateDraft"
-import { printPackSummary, resolveQueueId } from "./Queues"
+import { resolveQueueId } from "./Queues"
+import { printPackSummary } from "./ReadyRows"
 import { formatQueueDate, formatQueueParcels, formatQueueTimestamp } from "./kit"
 import {
   matchesStatusFilter,

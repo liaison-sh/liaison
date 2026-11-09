@@ -12,6 +12,7 @@
 import { describe, expect, it } from "bun:test"
 import type { BoxtalToolCtx, CrossAppEnvelope } from "./ctx"
 import {
+  customerShippingFromHit,
   lookupOrderForPrefill,
   openOrdersScan,
   OPEN_ORDERS_QUERY,
@@ -461,5 +462,23 @@ describe("order-number prefill lookup", () => {
     // A near miss must NOT silently prefill a different customer's address and items.
     const { ctx: ctx2 } = makeCtx({ orders: [{ order_id: "5001", name: "#1042" }] })
     expect(await lookupOrderForPrefill(ctx2, "9999")).toBeNull()
+  })
+})
+
+describe("customerShippingFromHit: what the customer paid for shipping", () => {
+  it("reads the order's shipping line in its own currency, exponent-aware", () => {
+    expect(
+      customerShippingFromHit({ currency: "USD", attributes: { shippingAmount: "45.50", shippingCurrency: "USD" } }),
+    ).toEqual({ customer_shipping_minor: 4550, customer_shipping_currency: "USD" })
+    expect(customerShippingFromHit({ currency: "JPY", attributes: { shippingAmount: "1200" } })).toEqual({
+      customer_shipping_minor: 1200,
+      customer_shipping_currency: "JPY",
+    })
+  })
+
+  it("an order with no shipping line, or no hit at all, is unknown, never free", () => {
+    const unknown = { customer_shipping_minor: null, customer_shipping_currency: null }
+    expect(customerShippingFromHit({ currency: "EUR", attributes: { shippingAmount: null } })).toEqual(unknown)
+    expect(customerShippingFromHit(undefined)).toEqual(unknown)
   })
 })

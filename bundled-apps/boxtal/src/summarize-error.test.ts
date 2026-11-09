@@ -19,6 +19,22 @@ describe("summarizeBoxtalError", () => {
     )
   })
 
+  it("reads a v3 errors[] body: each error's field and message, else its code", () => {
+    const body = JSON.stringify({
+      status: 422,
+      errors: [
+        {
+          code: "RequestValidationException",
+          parameters: [{ propertyPath: "shipment.toAddress.location.postalCode", message: "This value should not be blank." }],
+        },
+        { code: "InvalidPaymentException", parameters: null },
+      ],
+    })
+    expect(summarizeBoxtalError(body)).toBe(
+      "shipment.toAddress.location.postalCode: This value should not be blank.; InvalidPaymentException",
+    )
+  })
+
   it("falls back to a single `message` field", () => {
     expect(summarizeBoxtalError(JSON.stringify({ message: "no offer found" }))).toBe("no offer found")
   })

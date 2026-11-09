@@ -170,3 +170,5 @@ A turn names the record open on the page, and that record wins for "this" -> app
 A pane, drawer or expanded row reports its record -> apps/web/src/modules/shell/open-record.ts:42
 a call with wrong arguments answers what to fix, not a fault -> apps/api/src/modules/agent/tools/call-tool.ts:39
 A record is open once you opened it -> apps/web/src/modules/shell/open-record.ts:11
+The agent's turn shows as soon as the server takes it on -> apps/api/src/modules/agent/runtime/agent-service.ts:4967, apps/web/src/modules/threads/message-store.ts:2540
+A newer request while the agent still answers shows both turns -> apps/web/src/modules/threads/message-store.ts:2661

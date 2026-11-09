@@ -293,7 +293,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_DATABASE_ALLOWED_HOSTS` | `apps/api/src/apps/database/bridge.ts:338` |
 | `LIAISON_DB_ALLOW_PLAINTEXT_LOCAL` | `apps/api/src/apps/database/bridge.ts:374`, `apps/api/src/apps/database/bridge.ts:394` |
 | `LIAISON_DB_ALLOW_PRIVILEGED_SESSION` | `apps/api/src/apps/database/bridge.ts:383` |
-| `LIAISON_DEBUG_GEMINI_REQ` | `apps/api/src/modules/agent/providers/provider.ts:154` |
+| `LIAISON_DEBUG_GEMINI_REQ` | `apps/api/src/modules/agent/providers/provider.ts:157` |
 | `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1666` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
 | `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:504`, `apps/api/src/modules/apps/app-frame.ts:35` |

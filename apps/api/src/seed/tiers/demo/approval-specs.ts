@@ -17,6 +17,7 @@
  * form opened empty. Each payload is built here from a resolver the seed backs
  * with the ids it actually wrote.
  */
+import { DEMO_QUOTE_DEALER } from "~/seed/world/fiction"
 import type { ResolvableApproval } from "./approval-payload"
 
 /** The row ids and times a payload may name, resolved by the seed at write time. */
@@ -101,12 +102,15 @@ export const APPROVAL_SPECS: ApprovalSpec[] = [
     payload: (ref) => ({
       issuer_profile_id: ref.commerce("issuer_profile", "primary"),
       currency: "EUR",
+      // Linked to the school's demo store customer (DEMO_QUOTE_DEALER): its
+      // record carries the buyer email Invoicing needs to invoice the order.
+      // The draft's own email is on a reserved domain, which Shopify drops.
       counterparty: {
-        contact_id: null,
-        legal_name: "Conservatoire de Belmont",
-        country: "FR",
-        address: "12 rue des Ateliers\n69007 Lyon\nFrance",
-        email: "achats@conservatoire-belmont.example",
+        contact_id: ref.contact(DEMO_QUOTE_DEALER.email),
+        legal_name: DEMO_QUOTE_DEALER.name,
+        country: DEMO_QUOTE_DEALER.country,
+        address: DEMO_QUOTE_DEALER.address,
+        email: DEMO_QUOTE_DEALER.email,
       },
       items: [
         { description: "Kestrel Pocket Recorder", quantity: 10, unit_price_minor: 54900 },

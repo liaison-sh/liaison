@@ -20,6 +20,8 @@ export interface BugReportDraft {
   digest: string
   createdAt: string
   sentMessageId: string | null
+  /** Files the agent attached that do not go with the report, with why (absent from older servers). */
+  attachmentsNotSent?: Array<{ filename: string; reason: string }>
 }
 
 /** The parts of a prepared report the card writes out as text; anything else falls back to the raw payload. */
@@ -112,8 +114,10 @@ export const BugReportDraftCard: Component<{ draftId: string }> = (props) => {
     try {
       await api.delete(`/bug-reports/drafts/${encodeURIComponent(d.draftId)}`)
       setDiscarded(true)
-    } catch {
-      setError(i18n.t("kernel.bugReport.draftDiscardFailed"))
+    } catch (err) {
+      // 404: the report already expired or was dropped, so it is gone either way.
+      if (err instanceof ApiError && err.status === 404) setDiscarded(true)
+      else setError(i18n.t("kernel.bugReport.draftDiscardFailed"))
     } finally {
       setSending(false)
     }
@@ -215,6 +219,18 @@ export const BugReportDraftCard: Component<{ draftId: string }> = (props) => {
                             <li>
                               {a.filename} ({a.mimeType}
                               {a.sizeBytes === null ? "" : `, ${a.sizeBytes} B`})
+                            </li>
+                          )}
+                        </For>
+                      </ul>
+                    </Show>
+                    <Show when={(d().attachmentsNotSent ?? []).length > 0}>
+                      <p class={FIELD}>{i18n.t("kernel.bugReport.draftFieldNotSent")}</p>
+                      <ul data-testid="bug-report-draft-attachments-not-sent" class={TEXT}>
+                        <For each={d().attachmentsNotSent ?? []}>
+                          {(a) => (
+                            <li>
+                              {a.filename}: {a.reason}
                             </li>
                           )}
                         </For>

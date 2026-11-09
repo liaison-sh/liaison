@@ -767,13 +767,14 @@ export class LiveTurnRegistry {
    * from this registry. The entry carries no content, and its scopes are
    * unknown (`null`), so the replay route serves it to the turn's requester
    * alone until `start`, under the same key, replaces it. `withdraw` removes it
-   * for a turn that ends before `start`, and never touches a started run.
+   * for a turn that ends before `start`, and never touches a started run: it
+   * says whether it removed the entry.
    */
   async accept(
     threadId: string,
     orgId: string,
     turn: { agentId: string | null; turnId: string; askId?: string; requesterId: string },
-  ): Promise<{ withdraw: () => Promise<void> }> {
+  ): Promise<{ accepted: boolean; withdraw: () => Promise<boolean> }> {
     const visibility: AgentStreamVisibility = {
       agentId: turn.agentId,
       turnId: turn.turnId,
@@ -788,14 +789,16 @@ export class LiveTurnRegistry {
       this.tell({ threadId, orgId, requesterId: turn.requesterId, running: true })
       return true
     })
-    if (!accepted) return { withdraw: async () => {} }
+    if (!accepted) return { accepted: false, withdraw: async () => false }
     return {
+      accepted: true,
       withdraw: () =>
         this.enqueue(k, async () => {
           const r = await this.runRecord(k, threadId, orgId, "withdraw", {}, visibility)
-          if (!r.changed) return
+          if (!r.changed) return false
           this.owned.delete(k)
           this.tell({ threadId, orgId, requesterId: r.requesterId, running: false })
+          return true
         }),
     }
   }
@@ -1155,7 +1158,7 @@ export function recordAgentTurnAccepted(
   threadId: string,
   orgId: string,
   turn: { agentId: string | null; turnId: string; askId?: string; requesterId: string },
-): Promise<{ withdraw: () => Promise<void> }> {
+): Promise<{ accepted: boolean; withdraw: () => Promise<boolean> }> {
   return processTurns.accept(threadId, orgId, turn)
 }
 

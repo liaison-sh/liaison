@@ -22,7 +22,7 @@ import {
   trackingNumberFromLabelPdf,
   trackingNumberFromLabelText,
 } from "./label-tracking"
-import { buildLabelPdf, FEDEX_LABEL_LINES } from "./__fixtures__/label-pdf"
+import { buildLabelPdf, FEDEX_INTL_LABEL_LINES, FEDEX_LABEL_LINES } from "./__fixtures__/label-pdf"
 import { createMockDb } from "./test-db"
 
 describe("inflate", () => {
@@ -62,6 +62,24 @@ describe("tracking number from the label", () => {
     expect(trackingNumberFromLabelText(["TRK#", "8777 4092 5574", "8777 4092 5575"])).toBeNull()
     // The same number drawn twice is still one number.
     expect(trackingNumberFromLabelText(["TRK#", "8777 4092 5574", "877740925574"])).toBe("877740925574")
+  })
+
+  // Prod, 2026-11-09: ticking a FedEx Regional Economy parcel to a UK recipient failed "No tracking
+  // number yet" although the label prints "TRK# 3845 3157 8060 0430". The recipient's phone, a
+  // bare 12-digit run, was taken for a second AWB, and two candidates read as "ambiguous".
+  it("reads the grouped AWB on an international label that also prints a 12-digit phone", () => {
+    const pdf = buildLabelPdf(FEDEX_INTL_LABEL_LINES)
+    expect(pdfTextStrings(pdf)).toContain("447700900123")
+    expect(trackingNumberFromLabelPdf(pdf)).toBe("877740925574")
+  })
+
+  it("reads the AWB when TRK#, the number and the form code are drawn as one run", () => {
+    expect(trackingNumberFromLabelText(["TRK# 8777 4092 5574 0430", "447700900123"])).toBe("877740925574")
+    expect(trackingNumberFromLabelText(["TRK#", "8777 4092 5574 0430"])).toBe("877740925574")
+  })
+
+  it("still reads an AWB printed without groups when it is the only candidate", () => {
+    expect(trackingNumberFromLabelText(["TRK#", "877740925574"])).toBe("877740925574")
   })
 
   it("returns null on a body that is not a PDF", () => {

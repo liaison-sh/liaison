@@ -131,6 +131,10 @@ export interface OrderCandidate {
   line_items: OrderLineItemFact[]
   order_total_minor: number | null
   currency: string | null
+  /** What the customer paid for shipping on the order (its shipping line, after shipping discounts),
+   *  in minor units of `customer_shipping_currency`. Null when unknown (no live hit) or no line. */
+  customer_shipping_minor: number | null
+  customer_shipping_currency: string | null
   recipient: PrepRecipient | null
   documents: OrderDocumentLink[]
   /** The issued GOODS invoice for the order, whatever the row's category is. */
@@ -208,6 +212,9 @@ interface ShopifyOrderHit {
     createdAt?: string | null
     cancelledAt?: string | null
     totalAmount?: string | number | null
+    /** The order's shipping line price after shipping discounts (buyer-facing currency). */
+    shippingAmount?: string | number | null
+    shippingCurrency?: string | null
     shippingCountryCode?: string | null
     shippingCountry?: string | null
     shippingAddress1?: string | null
@@ -311,6 +318,21 @@ function totalMinorFromHit(hit: ShopifyOrderHit): number | null {
   // Exponent-aware, never a hardcoded *100: the render path divides by `currencyExponent`, so
   // scaling a zero-decimal currency (JPY, KRW) by 100 here prints the total 100x too large.
   return Math.round(n * 10 ** currencyExponent(hit.currency ?? "EUR"))
+}
+
+/** The shipping the customer paid on the order, from the hit's shipping line. Absent hit or line
+ *  reads as unknown (null), never as free. Exported as a test seam. */
+export function customerShippingFromHit(
+  hit: ShopifyOrderHit | null | undefined,
+): { customer_shipping_minor: number | null; customer_shipping_currency: string | null } {
+  const raw = hit?.attributes?.shippingAmount
+  const n = raw == null ? Number.NaN : typeof raw === "number" ? raw : Number.parseFloat(raw)
+  if (!Number.isFinite(n)) return { customer_shipping_minor: null, customer_shipping_currency: null }
+  const currency = hit?.attributes?.shippingCurrency ?? hit?.currency ?? null
+  return {
+    customer_shipping_minor: Math.round(n * 10 ** currencyExponent(currency ?? "EUR")),
+    customer_shipping_currency: currency,
+  }
 }
 
 // ── document join ────────────────────────────────────────────────────────────
@@ -583,6 +605,7 @@ function buildCandidate(args: {
     line_items: hit ? lineItemsFromHit(hit) : [],
     order_total_minor: hit ? totalMinorFromHit(hit) : null,
     currency: hit?.currency ?? null,
+    ...customerShippingFromHit(hit),
     recipient: (hit ? recipientFromHit(hit) : null) ?? state?.recipient ?? null,
     documents,
     goods_invoice: goodsInvoice,

@@ -345,4 +345,5 @@ dashboards_create tool: gated for org, decided by kernel:dashboards:admin -> app
 dashboards_update tool: gated for an org dashboard or a switch to org -> apps/api/src/modules/dashboards/tools.ts:317
 dashboards_delete tool: gated for an org dashboard -> apps/api/src/modules/dashboards/tools.ts:356
 build-dashboard kernel skill -> apps/api/src/modules/agent/prompts/kernel/build-dashboard.md:2
+report_bug attachments param (up to 5 readable file ids) -> apps/api/src/modules/bug-reports/tool.ts:88-96
 Document tools: rules by attribute, writes wait for approval -> apps/api/src/modules/agent/tools/kernel-tools.ts:2580

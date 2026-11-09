@@ -10,12 +10,14 @@ import {
   BROAD_SUITES,
   colocatedTests,
   GATE_LANES,
+  GATE_OUTPUT_FILES,
   gateMatrix,
   laneOrder,
   NOT_HOSTED_SUITES,
   PR_CI_SUITES,
   planGate,
   type SuiteInfo,
+  withoutGateOutputs,
 } from "./test-gate"
 
 const MAP: Array<{ re: RegExp; suites: string[] }> = [
@@ -223,5 +225,20 @@ describe("the gate workflow's lanes", () => {
     expect(yml).toContain("scripts/test-gate.ts --base")
     expect(yml).toContain("--matrix-json")
     expect(yml).not.toMatch(/suite:\s*\[/)
+  })
+
+  it("does not count the files its own plan step writes as changed paths", () => {
+    const yml = readFileSync(path.resolve(import.meta.dir, "../.github/workflows/gate.yml"), "utf8")
+    const plan = yml.slice(yml.indexOf("name: Plan the lanes"), yml.indexOf("\n  lane:"))
+    const written = [...new Set(plan.match(/\bgate-[\w.-]+\.(?:txt|json)\b/g) ?? [])]
+    expect(written.length).toBeGreaterThan(0)
+    for (const f of written) expect(GATE_OUTPUT_FILES).toContain(f)
+    const changed = ["apps/api/src/modules/foo/service.ts", ...written, "out/m.json"]
+    expect(withoutGateOutputs(changed, path.resolve(import.meta.dir, "../out/m.json"))).toEqual([
+      "apps/api/src/modules/foo/service.ts",
+    ])
+    // Narrow with them in the list: the changed source alone, not the broad set.
+    const narrow = planGate(withoutGateOutputs(changed.slice(0, -1)), INFO, listDir, mapFor)
+    expect(narrow.broad).toEqual([])
   })
 })

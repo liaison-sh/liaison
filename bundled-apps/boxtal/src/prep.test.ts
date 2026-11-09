@@ -2070,6 +2070,11 @@ describe("missingRecipientFields", () => {
     expect(missingRecipientFields({ ...FULL, email: null, phone: null })).toEqual(["email", "phone"])
   })
 
+  it("a UAE recipient needs no postal code (the country has none)", () => {
+    expect(missingRecipientFields({ ...FULL, countryIsoCode: "AE", city: "Dubai", postalCode: null })).toEqual([])
+    expect(missingRecipientFields({ ...FULL, postalCode: null })).toEqual(["postal code"])
+  })
+
   it("names the state or province for a US destination missing one", () => {
     expect(missingRecipientFields({ ...FULL, countryIsoCode: "US", state: null })).toEqual([
       "state or province",

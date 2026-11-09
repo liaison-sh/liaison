@@ -8,7 +8,7 @@
 import { markdownToEmail } from "@liaison/shared"
 import { MessageSquareText } from "lucide-solid"
 import type { Component } from "solid-js"
-import { batch, createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { batch, createEffect, createSignal, For, onCleanup, onMount, Show, untrack } from "solid-js"
 import { ApiError } from "~/lib/api-error"
 import { cn } from "~/lib/cn"
 import { connectionErrorKey } from "~/lib/connection-errors"
@@ -130,12 +130,39 @@ export const TicketComposer: Component<Props> = (props) => {
   }
 
   // Prefill the signature once it arrives (tickets:get resolves after mount),
-  // but never clobber a saved draft or anything the user typed.
+  // but never clobber a saved draft or anything the user typed. Keys typed
+  // before it arrived keep their place: the signature then goes after them,
+  // in its own paragraph as on an empty box, once.
+  let signatureSettled = false
+  let signaturePending = false
+  let appendingSignature = false
+  function appendSignature(): void {
+    const sig = props.signatureText?.trim()
+    // Typed in the stand-in while the editor chunk loads: added once it mounts.
+    if (!editor) {
+      signaturePending = true
+      return
+    }
+    signaturePending = false
+    if (!sig || mode() !== "reply" || body().includes(sig)) return
+    appendingSignature = true
+    try {
+      editor.appendMarkdown(sig)
+    } finally {
+      appendingSignature = false
+    }
+  }
   createEffect(() => {
     const prefill = replyPrefill()
-    if (!prefill || touched() || mode() !== "reply") return
-    if (body().trim()) return
-    setBody(prefill)
+    if (!prefill || mode() !== "reply") return
+    if (!touched()) {
+      signatureSettled = true
+      if (!body().trim()) setBody(prefill)
+      return
+    }
+    if (signatureSettled) return
+    signatureSettled = true
+    untrack(appendSignature)
   })
   // Cc recipients of the reply. Seeded from the customer's latest email once
   // it is known, until the person edits the list themselves.
@@ -323,8 +350,9 @@ export const TicketComposer: Component<Props> = (props) => {
   }
 
   function handleInput(value: string): void {
-    // An edit makes it a different message than the one queued.
-    uploadHold.cancel()
+    // An edit makes it a different message than the one queued; the late
+    // signature is not the person's edit.
+    if (!appendingSignature) uploadHold.cancel()
     setTouched(true)
     setBody(value)
     scheduleDraftSave()
@@ -671,6 +699,7 @@ export const TicketComposer: Component<Props> = (props) => {
                   onSubmit={m === "note" ? () => void submit() : undefined}
                   ref={(handle) => {
                     editor = handle
+                    if (signaturePending) appendSignature()
                   }}
                   placeholder={
                     m === "note"

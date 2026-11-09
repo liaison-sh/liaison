@@ -57,6 +57,7 @@ beforeAll(async () => {
   } as any)
 })
 afterEach(async () => {
+  await sql`DELETE FROM kernel.approved_handler_executions WHERE org_id = ${ORG}`
   await sql`DELETE FROM kernel.approval_requests WHERE org_id = ${ORG}`
 })
 afterAll(async () => {
@@ -137,6 +138,11 @@ describe("bundle API surface", () => {
     const text = JSON.stringify(row?.summary)
     expect(text).not.toContain("@ref:")
     expect(text).toContain("value from step 1")
+    // Not run yet: said so, with the request a person can find; never a bracketed stand-in.
+    const [h] = await sql<{ handle: string }[]>`
+      SELECT handle FROM kernel.approval_requests WHERE id = ${a1}`
+    expect(text).toContain(`(${h?.handle}, filled in when that step runs)`)
+    expect(row?.summary.lines.join("\n")).not.toMatch(/\[[^\]]*from step/)
   })
 
   it("a single request keeps its own title", async () => {

@@ -171,7 +171,9 @@ describe("ApprovalCard — bundle", () => {
     const step = await screen.findByTestId("approval-bundle-step-1")
     expect(step.textContent).not.toContain("@ref:")
     // Named after the step it comes from, not a bare key.
-    expect(step.textContent).toContain("label PDF from step 1]")
+    expect(step.textContent).toContain("label PDF from step 1 (")
+    expect(step.textContent).toContain("filled in when that step runs")
+    expect(step.textContent).not.toContain("from step 1]")
   })
 
   it("edits a deferred step's payload and posts to that step's own route", async () => {
@@ -352,7 +354,7 @@ describe("ApprovalCard — bundle", () => {
       "📎 [quote PDF from step 2] (attached once that step has run)",
     )
     expect(screen.getByTestId("approval-bundle-step-2-message-body")).toHaveTextContent(
-      "Please find our quote [quote number from step 2] attached.",
+      "Please find our quote the quote number from step 2 (request-5, filled in when that step runs) attached.",
     )
     expect(screen.getByTestId("approval-bundle-step-2-links")).toHaveTextContent(
       "Open conversation",

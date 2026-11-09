@@ -386,11 +386,13 @@ test.describe("Boxtal: the To prepare grid (rendered screen)", () => {
     await expect(rowD).toBeVisible()
     const visibleRows = await page.locator('[data-testid^="boxtal-prep-row-"][data-state]').count()
     expect(visibleRows).toBe(3)
+    // The worklist is one table: its header counts the bought labels shown beside these orders.
+    const visibleLabels = await page.locator('[data-testid^="boxtal-ready-row-"]').count()
     const headerCount = await page
       .locator('[data-testid="boxtal-prep-grid-header"] span.font-mono')
       .first()
       .innerText()
-    expect(headerCount.trim()).toBe(String(visibleRows))
+    expect(headerCount.trim()).toBe(String(visibleRows + visibleLabels))
     await capture(page, testInfo, "01-worklist")
 
     // 2. The un-invoiced order says what it is missing rather than looking ready.

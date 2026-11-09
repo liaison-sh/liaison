@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// Pure rules of the shipping worklist (Queues.tsx): one page where an order goes from To prepare,
-// to Label bought, to Packed and fulfilled, with its state on every row and a filter on top.
+// Pure rules of the shipping worklist (Queues.tsx): one page, ONE table, where an order goes from
+// To prepare, to Label bought, to Packed and fulfilled, with its state on every row and a filter on
+// top.
 // Kept free of Solid and of the host so every rule is unit tested.
 
 /** What a Ready-to-ship row needs for its state, tint and packed toggle. */
@@ -71,9 +72,12 @@ export function packedToggleAction(row: WorklistReadyRow): PackedToggleAction {
 
 export type WorklistFilter = "all" | "to_prepare" | "ready" | "to_pack" | "packed"
 
+/** The State cell of an order that has no label yet (the worklist's first state). */
+export const WORKLIST_TO_PREPARE_LABEL = "To prepare"
+
 export const WORKLIST_FILTERS: Array<{ id: WorklistFilter; label: string }> = [
   { id: "all", label: "All" },
-  { id: "to_prepare", label: "To prepare" },
+  { id: "to_prepare", label: WORKLIST_TO_PREPARE_LABEL },
   { id: "ready", label: "Ready to ship" },
   { id: "to_pack", label: "To pack" },
   { id: "packed", label: "Packed" },
@@ -83,7 +87,8 @@ export function parseWorklistFilter(v: string | null | undefined): WorklistFilte
   return v === "to_prepare" || v === "ready" || v === "to_pack" || v === "packed" ? v : "all"
 }
 
-/** Which Ready-to-ship rows the filter keeps. "To prepare" keeps none: those are the orders above. */
+/** Which bought-label rows the filter keeps. "To prepare" keeps none: those are the orders without
+ *  a label yet. */
 export function readyRowMatches(row: WorklistReadyRow, filter: WorklistFilter): boolean {
   if (filter === "all" || filter === "ready") return true
   if (filter === "to_prepare") return false
@@ -94,24 +99,62 @@ export function showsToPrepare(filter: WorklistFilter): boolean {
   return filter === "all" || filter === "to_prepare"
 }
 
-export function showsReady(filter: WorklistFilter): boolean {
-  return filter !== "to_prepare"
+/** What else narrows the worklist table: the search box and the order filters above it. */
+export interface WorklistNarrowing {
+  search: string
+  country: string
+  tag: string
+  product: string
+}
+
+/** The fields of a bought-label row the table's search, country and product filters read. */
+export interface WorklistReadySearchRow extends WorklistReadyRow {
+  recipient: string
+  destination: string | null
+  invoice_ref: string | null
+  tracking_number: string | null
+  shipment_ref: string | null
+  products: string | null
 }
 
 /**
- * How each half of the worklist is rendered for a filter. The Ready to ship half stays MOUNTED
- * under every filter, only hidden: it is what loads the bought labels, and the filter bar counts
- * (Ready to ship, To pack, Packed) are computed from them. Unmounting it on "To prepare" left
- * those counts at 0 when the page was opened from the To prepare route.
+ * Whether a bought-label row passes the table's filters, the same ones the orders to prepare go
+ * through (matchesPrepFilter): the state filter, the country, the product and the search (order,
+ * invoice, customer, country, and the tracking number or Boxtal reference). A bought label carries
+ * no Shopify tags, so a tag filter keeps none of them.
  */
-export function worklistSections(filter: WorklistFilter): {
-  toPrepare: { mounted: boolean; visible: boolean }
-  ready: { mounted: boolean; visible: boolean }
-} {
-  return {
-    toPrepare: { mounted: showsToPrepare(filter), visible: showsToPrepare(filter) },
-    ready: { mounted: true, visible: showsReady(filter) },
+export function readyRowMatchesView(row: WorklistReadySearchRow, filter: WorklistFilter, n: WorklistNarrowing): boolean {
+  if (!readyRowMatches(row, filter)) return false
+  if (n.country && (row.destination ?? "").trim().toUpperCase() !== n.country.trim().toUpperCase()) return false
+  if (n.tag) return false
+  if (n.product && !(row.products ?? "").toLowerCase().includes(n.product.toLowerCase())) return false
+  if (n.search) {
+    const q = n.search.toLowerCase()
+    const haystack = [row.invoice_ref, row.order_name, row.recipient, row.destination, row.tracking_number, row.shipment_ref]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+    if (!haystack.includes(q)) return false
   }
+  return true
+}
+
+/** Why the worklist table is empty, so it says the true thing. */
+export type WorklistEmptyKind = "nothing_to_prepare" | "nothing_ready" | "no_match"
+
+export function worklistEmptyKind(input: {
+  filter: WorklistFilter
+  /** Orders to prepare read (before the table's filters). */
+  prepTotal: number
+  /** Bought labels read (before the table's filters). */
+  readyTotal: number
+  /** A search or order filter is set. */
+  narrowed: boolean
+}): WorklistEmptyKind {
+  if (input.narrowed) return "no_match"
+  if (input.filter === "to_prepare") return input.prepTotal === 0 ? "nothing_to_prepare" : "no_match"
+  if (input.filter !== "all") return input.readyTotal === 0 ? "nothing_ready" : "no_match"
+  return input.prepTotal === 0 && input.readyTotal === 0 ? "nothing_to_prepare" : "no_match"
 }
 
 /** The filter bar counts. Depend on the loaded rows only, never on the filter that is active. */

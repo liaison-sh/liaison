@@ -58,6 +58,7 @@ vi.mock("~/ui/PopupMenu", () => {
   return { PopupMenu }
 })
 
+import { createSignal } from "solid-js"
 import { ApiError } from "~/lib/api-error"
 import { installAudioContext, installMic, removeMic } from "~/modules/assist/dictation-fakes"
 import { editorOf, setMarkdown, typeInto } from "~/modules/editor/test-helpers"
@@ -798,6 +799,31 @@ describe("TicketComposer signature prefill", () => {
     await waitFor(() => expect(box.textContent).toContain("Fabrikam Support"))
     expect(editorOf(box).getJSON().content?.[0]).toEqual({ type: "paragraph" })
     expect(paragraphs(box)).toHaveLength(2)
+  })
+
+  it("a signature that arrives after the first keys goes after them, once, caret kept", async () => {
+    const [sig, setSig] = createSignal<string | null>(null)
+    render(() => <TicketComposer ticketId="t1" signatureText={sig()} />)
+    const box = await replyBox()
+    const ed = editorOf(box)
+    ed.commands.focus("start")
+    typeInto(ed, "Typed while loading.")
+    const caret = ed.state.selection.from
+    setSig("Best,\nFabrikam Support")
+    await waitFor(() => expect(box.textContent).toContain("Fabrikam Support"))
+    // Typed text first, then the signature in its own paragraph, as on an empty box.
+    expect(ed.getMarkdown().trim()).toMatch(
+      /^Typed while loading\.\n\nBest,\s*\n\s*Fabrikam Support$/,
+    )
+    expect(paragraphs(box)[0]).toBe("Typed while loading.")
+    expect(paragraphs(box)).toHaveLength(2)
+    expect(ed.state.selection.from).toBe(caret)
+    // Keys typed after it land at the caret, before the signature; never a second copy.
+    typeInto(ed, " More")
+    setSig("Best,\nFabrikam Support ")
+    await nextTask()
+    expect(paragraphs(box)[0]).toBe("Typed while loading. More")
+    expect(box.textContent?.split("Fabrikam Support")).toHaveLength(2)
   })
 
   it("does not clobber a saved draft with the signature prefill", async () => {

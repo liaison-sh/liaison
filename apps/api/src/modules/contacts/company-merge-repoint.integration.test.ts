@@ -416,8 +416,8 @@ describe("company merge", () => {
       SELECT company_id::text FROM kernel.contacts WHERE id = ${person}`
     expect(row?.company_id).toBe(deal)
 
-    const viewOnly = await company("Atelier Vue", null)
-    const editable = await company("Vue Atelier", null)
+    const viewOnly = await company("Studio Vue", null)
+    const editable = await company("Vue Studio", null)
     await sql`UPDATE kernel.companies SET org_access = 'viewer' WHERE id = ${viewOnly}`
     expect(await merge(viewOnly, editable)).toMatchObject({
       error: { code: "merge_widens_access" },

@@ -5079,14 +5079,9 @@ export const FR_BY_KEY: Record<string, string> = {
   "contacts.companies.work": "Travail",
   "tickets.companySupport.empty": "Aucun ticket ouvert par les personnes de cette entreprise.",
   "tickets.companySupport.error": "Impossible de lire les tickets de cette entreprise.",
-  "projects.companyWork.empty":
-    "Aucun projet ni aucune affaire pour cette entreprise pour l'instant.",
-  "projects.companyWork.error":
-    "Impossible de lire les projets et les affaires de cette entreprise.",
-  "projects.companyWork.needsDealAccess": "Accès aux affaires requis",
-  "projects.companyWork.noAmount": "Sans montant",
-  "projects.companyWork.won": "Gagnée",
-  "projects.companyWork.lost": "Perdue",
+  "projects.companyWork.empty": "Aucun projet pour cette entreprise pour l'instant.",
+  "projects.companyWork.error": "Impossible de lire les projets de cette entreprise.",
+  "projects.companyWork.openTasks": "Ouvertes : {{count}}",
   "contacts.activity.allActivity": "Toute l'activité",
   "contacts.activity.filter": "Filtrer l'historique",
   "contacts.activity.empty": "Rien ne s'est encore passé avec cette entreprise.",

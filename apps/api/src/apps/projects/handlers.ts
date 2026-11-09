@@ -782,28 +782,33 @@ async function companyContext(
   return { lines, source: { label: "Deals" } }
 }
 
-// company_work — the Work section of a company's page: the projects whose client
-// is the company, and its deals (amounts only under deal access).
+// company_work — the Work section of a company's page: the work projects whose
+// client is the company and their open tasks. Deals are not work: the page's
+// Deals section shows them, so pipelines and their deals stay out of this read.
+interface CompanyWorkProject {
+  id: string
+  name: string
+  key: string | null
+  openTasks: number
+  tasks: Array<{ id: string; key: string | null; title: string; status: string | null }>
+}
+
 async function companyWork(
   params: Record<string, unknown> | undefined,
   ctx: ProjectsSandboxCtx,
 ): Promise<unknown> {
   const companyId = String(params?.companyId ?? "")
   if (!projectsPreflightIsUuid(companyId)) {
-    return { projects: [], deals: [], message: "companyId is not a company id. Nothing was read." }
+    return { projects: [], message: "companyId is not a company id. Nothing was read." }
   }
   const listed = JSON.parse(await ctx.projects_companyProjects(JSON.stringify({ companyId }))) as {
-    items?: Array<{ id: string; name: string; key: string | null }>
+    items?: CompanyWorkProject[]
   }
   const projects = Array.isArray(listed?.items) ? listed.items : []
-  const read = JSON.parse(
-    await ctx.projects_dealsSearch(JSON.stringify({ companyId, limit: 50 })),
-  ) as { items?: unknown[] }
-  const deals = Array.isArray(read?.items) ? read.items : []
+  const open = projects.reduce((sum, p) => sum + (p.openTasks ?? 0), 0)
   return {
     projects,
-    deals,
-    message: `${projects.length} project${projects.length === 1 ? "" : "s"} and ${deals.length} deal${deals.length === 1 ? "" : "s"} for this company.`,
+    message: `${projects.length} project${projects.length === 1 ? "" : "s"} with ${open} open task${open === 1 ? "" : "s"} for this company.`,
   }
 }
 

@@ -1291,8 +1291,9 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         })
       })
     },
-    // The projects whose client is a company, for the Work section of its page,
-    // read under the caller's row security.
+    // The work projects whose client is a company, with their open tasks, for
+    // the Work section of its page, read under the caller's row security.
+    // Pipelines are left out: their deals are the page's Deals section.
     projects_companyProjects: async (paramsJson: string): Promise<string> => {
       if (appName !== "projects") {
         throw new Error("projects_companyProjects is only available to the projects app")
@@ -1302,16 +1303,48 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(companyId)) {
         return envelopeError("invalid_params", "companyId is a company id. Nothing was read.")
       }
-      const rows = extractRows<{ id: string; name: string; key: string | null }>(
+      const schema = drizzleSql.raw(`"${schemaRef("app_projects")}"`)
+      const rows = extractRows<{
+        id: string
+        name: string
+        key: string | null
+        open_tasks: number
+        tasks: Array<{ id: string; key: string | null; title: string; status: string | null }>
+      }>(
         await txDb.execute(drizzleSql`
-          SELECT p.id::text AS id, p.name, p.key
-            FROM ${drizzleSql.raw(`"${schemaRef("app_projects")}"`)}.projects p
+          SELECT p.id::text AS id, p.name, p.key,
+                 (SELECT count(*)::int FROM ${schema}.tasks t
+                    JOIN ${schema}.project_statuses s ON s.id = t.status_id
+                   WHERE t.project_id = p.id AND t.archived_at IS NULL AND NOT s.terminal) AS open_tasks,
+                 COALESCE((
+                   SELECT json_agg(json_build_object(
+                            'id', o.id::text,
+                            'key', CASE WHEN p.key IS NOT NULL AND o.number IS NOT NULL
+                                        THEN p.key || '-' || o.number END,
+                            'title', o.title,
+                            'status', o.label) ORDER BY o.position, o.id)
+                     FROM (SELECT t.id, t.number, t.title, t.position, s.label
+                             FROM ${schema}.tasks t
+                             JOIN ${schema}.project_statuses s ON s.id = t.status_id
+                            WHERE t.project_id = p.id AND t.archived_at IS NULL AND NOT s.terminal
+                            ORDER BY t.position, t.id
+                            LIMIT 10) o
+                 ), '[]'::json) AS tasks
+            FROM ${schema}.projects p
            WHERE p.org_id = ${orgId}::uuid AND p.company_id = ${companyId}::uuid
-             AND p.archived_at IS NULL
+             AND p.kind = 'work' AND p.archived_at IS NULL
            ORDER BY p.updated_at DESC, p.id
            LIMIT 50`),
       )
-      return JSON.stringify({ items: rows })
+      return JSON.stringify({
+        items: rows.map((r) => ({
+          id: r.id,
+          name: r.name,
+          key: r.key,
+          openTasks: r.open_tasks,
+          tasks: r.tasks,
+        })),
+      })
     },
     projects_dealSendState: async (paramsJson: string): Promise<string> => {
       if (appName !== "projects") {

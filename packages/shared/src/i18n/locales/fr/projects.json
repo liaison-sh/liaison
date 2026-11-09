@@ -345,11 +345,8 @@
     "clientUnavailable": "Une entreprise que vous ne voyez pas"
   },
   "companyWork": {
-    "empty": "Aucun projet ni aucune affaire pour cette entreprise pour l'instant.",
-    "error": "Impossible de lire les projets et les affaires de cette entreprise.",
-    "needsDealAccess": "Accès aux affaires requis",
-    "noAmount": "Sans montant",
-    "won": "Gagnée",
-    "lost": "Perdue"
+    "empty": "Aucun projet pour cette entreprise pour l'instant.",
+    "error": "Impossible de lire les projets de cette entreprise.",
+    "openTasks": "Ouvertes : {{count}}"
   }
 }

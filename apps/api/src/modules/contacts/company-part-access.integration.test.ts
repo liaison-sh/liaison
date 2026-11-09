@@ -233,7 +233,7 @@ describe("a company page's parts by the reader's access", () => {
     )
   })
 
-  it("the Support and Work sections read only this company's open tickets, projects and deals", async () => {
+  it("the Support and Work sections read only this company's open tickets, and its projects with their open tasks, deals left out", async () => {
     const ana = await contact(lumen, "Ana Buyer")
     const elsewhere = await contact(quiet, "Quiet Buyer")
     const open = await ticket(ana, "open", "Lamp flickers")
@@ -256,13 +256,20 @@ describe("a company page's parts by the reader's access", () => {
       const { createProject } = await import("~/apps/projects/service/create-project")
       return createProject({ tx, orgId: w.orgId, actor: w.actor, input: { name: "Unrelated" } })
     })
-    const work = await call("projects:company_work", DEALS_READ, { companyId: lumen })
-    expect((work.projects as Array<{ id: string }>).map((p) => p.id)).toEqual([project.id])
-    const deals = work.deals as Array<{ values?: unknown }>
-    expect(deals).toHaveLength(3)
-    expect(deals.every((d) => d.values === undefined)).toBe(true)
-    const withAccess = await call("projects:company_work", DEAL_ACCESS, { companyId: lumen })
-    expect((withAccess.deals as Array<{ values?: unknown }>).every((d) => d.values)).toBe(true)
+    const openTask = await makeTask(w, project.id, "Install the lamps")
+    const done = project.statuses.find((s) => s.terminal)?.id as string
+    await makeTask(w, project.id, "Kick-off call", { statusId: done })
+    // A pipeline whose Client field names the company is still deals, not work.
+    const sales = await makePipeline(w, "Lumen sales")
+    await db.execute(drizzleSql`
+      UPDATE app_projects.projects SET company_id = ${lumen}::uuid WHERE id = ${sales.projectId}::uuid`)
+    await deal(sales.projectId, sales.stage.Proposal as string, lumen, 90_000)
+    const work = await call("projects:company_work", DEAL_ACCESS, { companyId: lumen })
+    const projects = work.projects as Array<{ id: string; tasks: Array<{ id: string }> }>
+    expect(projects.map((p) => p.id)).toEqual([project.id])
+    expect(projects[0]?.tasks.map((t) => t.id)).toEqual([openTask])
+    expect(work.deals).toBeUndefined()
+    expect(work.message).toBe("1 project with 1 open task for this company.")
   })
 
   it("a provider's failure leaves the page's other panels", async () => {

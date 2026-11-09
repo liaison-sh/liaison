@@ -345,11 +345,8 @@
     "clientUnavailable": "A company you cannot see"
   },
   "companyWork": {
-    "empty": "No project or deal for this company yet.",
-    "error": "Could not read this company's projects and deals.",
-    "needsDealAccess": "Needs deal access",
-    "noAmount": "No amount",
-    "won": "Won",
-    "lost": "Lost"
+    "empty": "No project for this company yet.",
+    "error": "Could not read this company's projects.",
+    "openTasks": "Open: {{count}}"
   }
 }

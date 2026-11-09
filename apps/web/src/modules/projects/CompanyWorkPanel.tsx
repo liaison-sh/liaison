@@ -1,23 +1,36 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * The Work section of a company's page (`slots.company_detail`, group
- * `work`): the projects whose client is the company and its deals, read as
- * the viewer through `projects:company_work`. A deal's amount shows only with
- * deal access; without it the deal still shows, with "Needs deal access".
+ * `work`): the work projects whose client is the company and their open
+ * tasks, read as the viewer through `projects:company_work`. Deals are not
+ * listed here: the page's Deals section shows them.
  */
 import { type Component, createResource, For, Show } from "solid-js"
 import type { ApiClient } from "~/lib/api-client"
 import { useI18n } from "~/modules/i18n/i18n-context"
-import type { DealRead } from "~/modules/projects/deal-api"
 import { useApi } from "~/modules/shell/ApiContext"
 import { openEntity } from "~/modules/shell/entity-opener"
 
-export interface CompanyWork {
-  projects: Array<{ id: string; name: string; key: string | null }>
-  deals: DealRead[]
+export interface CompanyWorkTask {
+  id: string
+  key: string | null
+  title: string
+  status: string | null
 }
 
-/** The company's projects and deals. Throws when the read fails. */
+export interface CompanyWorkProject {
+  id: string
+  name: string
+  key: string | null
+  openTasks: number
+  tasks: CompanyWorkTask[]
+}
+
+export interface CompanyWork {
+  projects: CompanyWorkProject[]
+}
+
+/** The company's work projects and their open tasks. Throws when the read fails. */
 export async function loadCompanyWork(
   api: Pick<ApiClient, "post">,
   companyId: string,
@@ -31,10 +44,16 @@ export async function loadCompanyWork(
       ? (res as { data: unknown }).data
       : res
   ) as Partial<CompanyWork> & { error?: unknown }
-  if (!body || body.error || !Array.isArray(body.projects) || !Array.isArray(body.deals)) {
+  if (!body || body.error || !Array.isArray(body.projects)) {
     throw new Error("company_work_failed")
   }
-  return { projects: body.projects, deals: body.deals }
+  return {
+    projects: body.projects.map((p) => ({
+      ...p,
+      openTasks: typeof p.openTasks === "number" ? p.openTasks : 0,
+      tasks: Array.isArray(p.tasks) ? p.tasks : [],
+    })),
+  }
 }
 
 export const CompanyWorkPanel: Component<{ entityId?: string }> = (props) => {
@@ -44,14 +63,7 @@ export const CompanyWorkPanel: Component<{ entityId?: string }> = (props) => {
     () => props.entityId || undefined,
     (id) => loadCompanyWork(api, id),
   )
-  const amount = (d: DealRead): string => {
-    const v = d.values
-    if (!v) return i18n.t("projects.companyWork.needsDealAccess")
-    if (v.amountMinor === null || !v.currency) return i18n.t("projects.companyWork.noAmount")
-    return i18n.fmtCurrency(v.amountMinor / 100, v.currency)
-  }
-  const empty = () =>
-    !!work.latest && work.latest.projects.length === 0 && work.latest.deals.length === 0
+  const empty = () => !!work.latest && work.latest.projects.length === 0
   return (
     <div data-testid="company-work-panel" class="space-y-3 text-[13px]">
       <Show
@@ -67,50 +79,11 @@ export const CompanyWorkPanel: Component<{ entityId?: string }> = (props) => {
             {i18n.t("projects.companyWork.empty")}
           </p>
         </Show>
-        <Show when={(work.latest?.deals.length ?? 0) > 0}>
-          <ul class="divide-y divide-border-subtle" data-testid="company-work-panel.deals">
-            <For each={work.latest?.deals}>
-              {(d) => (
-                <li>
-                  <button
-                    type="button"
-                    data-testid={`company-work-panel.deal-${d.task.id}`}
-                    class="flex min-h-[44px] w-full items-center gap-3 py-2 text-left hover:bg-surface-hover"
-                    onClick={() =>
-                      void openEntity(
-                        api,
-                        "projects",
-                        "task",
-                        d.task.id,
-                        `${d.task.key} ${d.task.title}`,
-                      )
-                    }
-                  >
-                    <span class="min-w-0 flex-1 truncate text-text">
-                      {d.task.key} {d.task.title}
-                    </span>
-                    <span class="shrink-0 text-[12px] text-text-tertiary">
-                      {d.deal.outcome === "open"
-                        ? d.task.stage
-                        : i18n.t(`projects.companyWork.${d.deal.outcome}`)}
-                    </span>
-                    <span
-                      class="shrink-0 text-[12px] text-text-secondary"
-                      data-testid={`company-work-panel.deal-${d.task.id}.amount`}
-                    >
-                      {amount(d)}
-                    </span>
-                  </button>
-                </li>
-              )}
-            </For>
-          </ul>
-        </Show>
         <Show when={(work.latest?.projects.length ?? 0) > 0}>
           <ul class="divide-y divide-border-subtle" data-testid="company-work-panel.projects">
             <For each={work.latest?.projects}>
               {(p) => (
-                <li>
+                <li class="py-1">
                   <button
                     type="button"
                     data-testid={`company-work-panel.project-${p.id}`}
@@ -121,7 +94,51 @@ export const CompanyWorkPanel: Component<{ entityId?: string }> = (props) => {
                     <Show when={p.key}>
                       <span class="shrink-0 font-mono text-[12px] text-text-tertiary">{p.key}</span>
                     </Show>
+                    <span
+                      class="shrink-0 text-[12px] text-text-secondary"
+                      data-testid={`company-work-panel.project-${p.id}.open`}
+                    >
+                      {i18n.t("projects.companyWork.openTasks", { count: p.openTasks })}
+                    </span>
                   </button>
+                  <Show when={p.tasks.length > 0}>
+                    <ul class="pl-3" data-testid={`company-work-panel.project-${p.id}.tasks`}>
+                      <For each={p.tasks}>
+                        {(t) => (
+                          <li>
+                            <button
+                              type="button"
+                              data-testid={`company-work-panel.task-${t.id}`}
+                              class="flex min-h-[44px] w-full items-center gap-3 py-1 text-left hover:bg-surface-hover"
+                              onClick={() =>
+                                void openEntity(
+                                  api,
+                                  "projects",
+                                  "task",
+                                  t.id,
+                                  t.key ? `${t.key} ${t.title}` : t.title,
+                                )
+                              }
+                            >
+                              <span class="min-w-0 flex-1 truncate text-text-secondary">
+                                <Show when={t.key}>
+                                  <span class="font-mono text-[12px] text-text-tertiary">
+                                    {t.key}{" "}
+                                  </span>
+                                </Show>
+                                {t.title}
+                              </span>
+                              <Show when={t.status}>
+                                <span class="shrink-0 text-[12px] text-text-tertiary">
+                                  {t.status}
+                                </span>
+                              </Show>
+                            </button>
+                          </li>
+                        )}
+                      </For>
+                    </ul>
+                  </Show>
                 </li>
               )}
             </For>

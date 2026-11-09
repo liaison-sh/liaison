@@ -125,6 +125,10 @@ const TREATED: Record<string, [Treatment, string]> = {
   "modules/approvals/prompt-materialize.ts": ["stored-ids", "an approval's notify list"],
   "modules/approvals/reminders.ts": ["stored-ids", "an approval's notify list"],
   "modules/approvals/routed-reminders.ts": ["stored-ids", "an approval's notify list"],
+  "modules/approvals/resolve-ref.ts": [
+    "stored-ids",
+    "the names of the people an approval waits on",
+  ],
   "modules/approvals/route-world.ts": [
     "member-filter",
     "who on an approval's route is an active member; next in line by stored ids",
@@ -181,6 +185,10 @@ const TREATED: Record<string, [Treatment, string]> = {
   "modules/imports/kernel-kinds/chat.ts": ["stored-ids", "the rows a run records for its undo"],
   "modules/imports/undo.ts": ["stored-ids", "the rows a run recorded"],
   "modules/liaison-team/payloads.ts": ["walks-org", "reports the instance's people"],
+  "modules/mail/optout-wording.ts": [
+    "member-filter",
+    "the org's own members' addresses and the mailbox's active member owner",
+  ],
   "modules/mailbox-crypto/attachment-derivatives.ts": ["one-row", "the mailbox's own user"],
   "modules/mailbox-keys/encryption-mode-routes.ts": ["one-row", "the caller's own row"],
   "modules/mcp-client/env-bootstrapper.ts": ["walks-org", "any one row as a fallback owner"],

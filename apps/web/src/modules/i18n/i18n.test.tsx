@@ -425,6 +425,9 @@ describe("no hardcoded English in the surfaces a customer works in", () => {
     "src/modules/auth/Register.tsx::Liaison",
     // The contacts tab's stored fallback; the tab strip names it from the catalog.
     "src/modules/contacts/ContactsSidebar.tsx::Contacts",
+    // The company list and contact list tabs' stored fallbacks; the manifest's labelKey names them.
+    "src/modules/contacts/company-visuals.ts::Companies",
+    "src/modules/contacts/company-visuals.ts::Contacts",
     // Fixture data of the browser-baseline test helper; never mounted by the app.
     "src/modules/desktop/baseline-render.tsx::Baseline thread",
     // The `label` stored on a new mailbox wrap row (data, like the enrollment's

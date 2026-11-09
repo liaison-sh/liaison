@@ -21,6 +21,7 @@ import { listGatewayTools } from "~/modules/agent/tools/tool-bridge"
 import { createDraft, draftAppName } from "~/modules/app-builder/drafts"
 import { templateFiles } from "~/modules/app-builder/templates"
 import { toolRegistry } from "~/modules/apps/app-registries"
+import { createCompany } from "~/modules/contacts/companies"
 import { createDashboard } from "~/modules/dashboards/service"
 import { seedContext } from "~/seed/context"
 import { seedBaseAgent } from "~/seed/factories/agent/agents"
@@ -163,6 +164,11 @@ async function seed(): Promise<void> {
   const contactId = await minimal.contact(orgId, `ada-${tag()}@example.com`, { name: "Ada Lane" })
   put("contacts:contact-detail", contactId, "Ada Lane")
 
+  const { company } = await withRlsContext(everything(viewer), (tx) =>
+    createCompany(tx, { orgId, userId: viewer, input: { name: HOSTILE } }),
+  )
+  put("contacts:company-detail", company.id, HOSTILE)
+
   const ticket = await createOneTicket(ctx, {
     key: `open-any-tab-${tag()}`,
     adminUserId: viewer,
@@ -292,6 +298,7 @@ describe("open_app under real row security", () => {
     "kernel:dashboard",
     "kernel:app-builder",
     "contacts:contact-detail",
+    "contacts:company-detail",
     "tickets:ticket",
     "projects:project",
     "projects:task",

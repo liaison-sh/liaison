@@ -1294,6 +1294,10 @@ export function bootstrapKernelApps(): void {
     tabType: "contacts:contact-detail",
     entityId: id,
   }))
+  registerEntityOpener("kernel", "company", (_api, id) => ({
+    tabType: "contacts:company-detail",
+    entityId: id,
+  }))
   // Connection-health attention items ("reconnect X") deep-link into Settings.
   // The tab type MUST be fully qualified: bare "settings" is an ambiguous alias
   // (the invoicing app registers its own local `settings` type), so it resolves

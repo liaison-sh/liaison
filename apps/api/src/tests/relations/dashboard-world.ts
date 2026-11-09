@@ -15,6 +15,7 @@ import { withRlsContext } from "~/db/rls"
 import { appDocuments, files } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
 import { getObjectBuffer } from "~/infra/storage/object-storage"
+import { createDraft, getDraft } from "~/modules/app-builder/drafts"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { createDashboard, getDashboard } from "~/modules/dashboards/service"
 import { AGENT_STORE_APP, getDocument, setDocument } from "~/modules/data-store/service"
@@ -30,7 +31,8 @@ export const SHARE_SCOPE = "kernel:dashboards:share"
 const READERS = ["owner", "admin", "colleague", "outsider"] as const
 type Reader = (typeof READERS)[number]
 /** Which column of the made thing the link is. */
-export type MadeLink = "dashboardOwner" | "dashboardAuthor" | "documentAuthor"
+export type MadeLink = "dashboardOwner" | "dashboardAuthor" | "documentAuthor" | "draftAuthor"
+export const BUILD_SCOPE = "kernel:apps:build"
 const COLLECTION = "notes"
 
 let other: Promise<{ orgId: string; adminUserId: string }> | null = null
@@ -46,6 +48,7 @@ export class MadeCase {
   otherOrgId = ""
   dashboardId = ""
   docId = ""
+  draftId = ""
   /** The export file the member's data export wrote, once it ran. */
   exportFileId: string | null = null
   exported: string[] = []
@@ -69,7 +72,27 @@ export class MadeCase {
     this.otherOrgId = other.orgId
     await minimal.grantScope(this.people.owner, SHARE_SCOPE)
     const owner = await ctxOf(this.orgId, this.people.owner)
-    if (this.link === "documentAuthor") {
+    if (this.link === "draftAuthor") {
+      // Drafts are read by holders of the build scope only.
+      for (const who of ["owner", "colleague", "admin"] as const)
+        await minimal.grantScope(this.people[who], BUILD_SCOPE)
+      const builder = await ctxOf(this.orgId, this.people.owner)
+      const made = await withRlsContext(builder, (tx) =>
+        createDraft(
+          tx,
+          { orgId: this.orgId, userId: this.people.owner },
+          {
+            baseName: `tracker${tag}`,
+            title: `Tracker ${tag}`,
+            files: {
+              "app.manifest.json": JSON.stringify({ name: "x", version: "0.1.0" }),
+              "handlers.ts": "export const ping = () => 'pong'\n",
+            },
+          },
+        ),
+      )
+      this.draftId = made.draft.id
+    } else if (this.link === "documentAuthor") {
       this.docId = `note-${tag}`
       await withRlsContext(owner, (tx) =>
         setDocument(
@@ -135,7 +158,12 @@ export class MadeCase {
     const bundle = JSON.parse((await getObjectBuffer(row.key)).toString("utf-8")) as {
       records: Record<string, { rows?: Array<Record<string, unknown>> }>
     }
-    const key = this.link === "documentAuthor" ? "storeDocuments" : "dashboards"
+    const key =
+      this.link === "documentAuthor"
+        ? "storeDocuments"
+        : this.link === "draftAuthor"
+          ? "appDrafts"
+          : "dashboards"
     const field = this.link === "documentAuthor" ? "doc_id" : "id"
     this.exported = (bundle.records[key]?.rows ?? []).map((r) => String(r[field]))
   }
@@ -164,6 +192,7 @@ export class MadeCase {
 
   /** The id of the link's own row, as the export names it. */
   get rowId(): string {
+    if (this.link === "draftAuthor") return this.draftId
     return this.link === "documentAuthor" ? this.docId : this.dashboardId
   }
 
@@ -184,6 +213,19 @@ export class MadeCase {
   private async sightOf(who: Reader): Promise<Sight> {
     const orgId = who === "outsider" ? this.otherOrgId : this.orgId
     const ctx = await ctxOf(orgId, this.people[who])
+    if (this.link === "draftAuthor") {
+      try {
+        const d = await withRlsContext(ctx, (tx) => getDraft(tx, this.draftId))
+        return {
+          visible: true,
+          label: d.draft.title,
+          points: `${this.roleOf(d.draft.createdBy)}/${this.roleOf(d.draft.updatedBy)}/${this.roleOf(d.version.createdBy)}`,
+        }
+      } catch (err) {
+        if ((err as { code?: string }).code === "not_found") return { visible: false }
+        throw err
+      }
+    }
     if (this.link === "documentAuthor") {
       const caller = { orgId, app: AGENT_STORE_APP, userId: this.people[who] }
       const found = await withRlsContext(ctx, async (tx) => {

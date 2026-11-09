@@ -504,20 +504,27 @@ describe("company search", () => {
     // The boot-time indexer consumer turns that event into this job; a bare
     // test process drives the same job directly, on index settings the boot
     // path would have applied.
-    // Boot registers the org's apps before it applies index settings; a job in
-    // this process may register them later, which would leave the query
-    // filtering on a dimension the settings never made filterable.
+    // Boot registers the org's apps, then makes their fields filterable. The
+    // index may already exist here (an earlier file in this process made it
+    // with fewer fields), and on an existing index the drift check only queues
+    // a rebuild no worker runs in a test: apply the settings and wait, so the
+    // query's dimension filters are filterable.
     const { ensureAppsForOrg } = await import("~/modules/apps/init")
     await ensureAppsForOrg(ORG_ID)
-    const { detectDrift } = await import("~/modules/search/drift")
+    const { detectDrift, expectedSettings } = await import("~/modules/search/drift")
     const { collectSearchableRegistrations } = await import("~/modules/search/searchable-entities")
     const regs = collectSearchableRegistrations(ORG_ID)
     expect(regs.entities.some((e) => e.app === "kernel" && e.entityType === "company")).toBe(true)
-    await detectDrift({
+    const inputs = {
       registeredReadScopes: regs.registeredReadScopes,
       dimensionFields: regs.dimensionFields,
       aclFieldNames: regs.aclFieldNames,
-    })
+    }
+    await detectDrift(inputs)
+    const { getMeili, effectiveIndexName } = await import("~/infra/search/client")
+    const meili = getMeili()
+    const applied = await meili.index(effectiveIndexName()).updateSettings(expectedSettings(inputs))
+    await meili.tasks.waitForTask(applied.taskUid)
     const { processIndexerJob } = await import("~/modules/search/indexer")
     await processIndexerJob({
       action: "upsert",

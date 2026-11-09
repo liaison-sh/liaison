@@ -541,8 +541,10 @@ export interface RecipientBasis {
 
 /**
  * Who is a colleague, never a recipient of the commercial rules: an address of one of the org's
- * own people (portal accounts excluded), or any address at their domain, unless that domain is a
- * shared mail provider (gmail.com and the like), where it says nothing of who the address is.
+ * own people (portal accounts excluded), or any address at an active member's domain, unless that
+ * domain is a shared mail provider (gmail.com and the like), where it says nothing of who the
+ * address is. Anyone else on the org's user list (an import placeholder, a former member) counts
+ * by their exact address only: an imported client address never makes the client's domain own.
  */
 export interface Colleagues {
   addresses: ReadonlySet<string>
@@ -553,15 +555,18 @@ export async function readColleagues(
   tx: Pick<PrivilegedDb, "execute">,
   orgId: string,
 ): Promise<Colleagues> {
-  const rows = extractRows<{ email: string }>(
+  const rows = extractRows<{ email: string; active: boolean }>(
     await tx.execute(drizzleSql`
-      SELECT DISTINCT lower(trim(email)) AS email FROM ${K()}.users
-       WHERE org_id = ${orgId}::uuid AND user_type <> 'external' AND email LIKE '%@%'`),
+      SELECT lower(trim(email)) AS email, bool_or(status = 'active' AND user_type = 'member') AS active
+        FROM ${K()}.users
+       WHERE org_id = ${orgId}::uuid AND user_type <> 'external' AND email LIKE '%@%'
+       GROUP BY 1`),
   )
   const addresses = new Set(rows.map((r) => r.email))
   const domains = new Set(
-    [...addresses]
-      .map((a) => a.split("@")[1] ?? "")
+    rows
+      .filter((r) => r.active)
+      .map((r) => r.email.split("@")[1] ?? "")
       .filter((d) => d !== "" && !isConsumerMailDomain(d)),
   )
   return { addresses, domains }

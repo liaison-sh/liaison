@@ -394,6 +394,45 @@ describe("company merge", () => {
     expect(row?.company_id).toBe(source)
   }, 60_000)
 
+  it("a restricted company is not merged into one shared with other people, nor a view-only one into an editable one", async () => {
+    // Mutation caught: only the restricted-into-org-wide case was refused.
+    const merge = (sourceId: string, targetId: string) =>
+      asAnna((tx) =>
+        handleCompaniesMerge({ sourceId, targetId }, { orgId: ORG_ID, userId: ANNA, db: tx }),
+      )
+    const deal = await company("Acme (acquisition)", null)
+    const acme = await company("Acme", null)
+    const person = await contact(deal, "Acme (acquisition)")
+    await sql`UPDATE kernel.companies SET org_access = 'none', acl_user_ids = ${JSON.stringify([MIA])}::jsonb
+               WHERE id = ${deal}`
+    await sql`UPDATE kernel.companies SET org_access = 'none', acl_user_ids = ${JSON.stringify([MIA, LEO])}::jsonb
+               WHERE id = ${acme}`
+    const wider = await merge(deal, acme)
+    expect(wider).toMatchObject({ error: { code: "merge_widens_access" } })
+    const message = String((wider as { error: { message: string } }).error.message)
+    expect(message).toContain("Nothing was merged.")
+    expect(message).toContain("Next: widen Acme (acquisition)'s sharing first")
+    const [row] = await sql<{ company_id: string | null }[]>`
+      SELECT company_id::text FROM kernel.contacts WHERE id = ${person}`
+    expect(row?.company_id).toBe(deal)
+
+    const viewOnly = await company("Atelier Vue", null)
+    const editable = await company("Vue Atelier", null)
+    await sql`UPDATE kernel.companies SET org_access = 'viewer' WHERE id = ${viewOnly}`
+    expect(await merge(viewOnly, editable)).toMatchObject({
+      error: { code: "merge_widens_access" },
+    })
+
+    // A survivor seen by no one the source was not shared with merges.
+    const wide = await company("Bois Dormant", null)
+    const narrow = await company("Dormant Bois", null)
+    await sql`UPDATE kernel.companies SET org_access = 'none', acl_user_ids = ${JSON.stringify([MIA, LEO])}::jsonb
+               WHERE id = ${wide}`
+    await sql`UPDATE kernel.companies SET org_access = 'none', acl_user_ids = ${JSON.stringify([MIA])}::jsonb
+               WHERE id = ${narrow}`
+    expect(await merge(wide, narrow)).not.toMatchObject({ error: expect.anything() })
+  }, 60_000)
+
   it("the merge tool is gated and its whole schema stays within its budget", () => {
     const def = toolRegistry.get([ORG_ID, "kernel", "companies_merge"])!
     expect(def.gated).toBe(true)

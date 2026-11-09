@@ -1390,12 +1390,42 @@ export async function companyMergedInto(
   return survivor ?? null
 }
 
+const ORG_ACCESS_RANK: Record<string, number> = { none: 0, viewer: 1, editor: 2 }
+
+/**
+ * Whether merging `source` into `target` would let someone reach the source's people and
+ * discussion who cannot today: the target's organisation level is above the source's, or the
+ * source is restricted and the target is shared with a person (its creator included) or a role
+ * the source is not.
+ */
+function widensAudience(
+  source: Pick<Company, "orgAccess" | "createdBy" | "aclUserIds" | "aclRoleIds">,
+  target: Pick<Company, "orgAccess" | "createdBy" | "aclUserIds" | "aclRoleIds">,
+): boolean {
+  if ((ORG_ACCESS_RANK[target.orgAccess] ?? 2) > (ORG_ACCESS_RANK[source.orgAccess] ?? 2))
+    return true
+  if (source.orgAccess !== "none") return false
+  const users = new Set([
+    ...(source.aclUserIds ?? []),
+    ...(source.createdBy ? [source.createdBy] : []),
+  ])
+  const roles = new Set(source.aclRoleIds ?? [])
+  const targetUsers = [
+    ...(target.aclUserIds ?? []),
+    ...(target.createdBy ? [target.createdBy] : []),
+  ]
+  return (
+    targetUsers.some((u) => !users.has(u)) || (target.aclRoleIds ?? []).some((r) => !roles.has(r))
+  )
+}
+
 /**
  * Fold `sourceId` into `targetId`, in one transaction, and delete the source.
  *
  * Under the caller's RLS: both must be visible, the target editable and the
  * source deletable, and a company the organisation sees is never folded into a
- * restricted one (its people and history would vanish for everyone else). The
+ * restricted one (its people and history would vanish for everyone else), nor
+ * one into a target shared more widely than it (`widensAudience`). The
  * survivor keeps its own manager, or takes the source's when it has none; its
  * sharing does not change, so nobody, a portal account included, sees more
  * than before.
@@ -1432,6 +1462,16 @@ export async function mergeCompanies(
         422,
         "merge_widens_access",
         `Nothing was merged. ${source.name} is restricted and ${target.name} is seen by the organisation: merging would show ${source.name}'s people and discussion to everyone who sees ${target.name}. Next: widen ${source.name}'s sharing first, then merge.`,
+      )
+    }
+    // Any other way the survivor reaches more people than the source: a wider organisation
+    // level (view only into editable), or, for a restricted source, someone or a role the
+    // target is shared with and the source is not.
+    if (widensAudience(source, target)) {
+      throw new CompanyRequestError(
+        422,
+        "merge_widens_access",
+        `Nothing was merged. ${target.name} is shared more widely than ${source.name}: merging would show ${source.name}'s people and discussion to people who cannot see it today. Next: widen ${source.name}'s sharing first, then merge.`,
       )
     }
     // The survivor keeps its manager; with none it takes the source's, when that

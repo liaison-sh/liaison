@@ -3,7 +3,7 @@ title: Follow up on quiet deals
 description: "Turn on the routine that drafts a follow-up for each quiet deal from the deal owner's mailbox, and see what stops a draft before it goes out."
 ---
 
-The routine `deal-followups` writes the follow-ups you would otherwise forget. It only drafts: nothing goes out until the deal's owner approves it. This page shows how to turn it on, who it writes to and what stops it.
+The routine `deal-followups` writes the follow-ups you would otherwise forget. It only drafts: nothing goes out until it is approved, by the deal's owner when it sends from their own mailbox, by the people who approve mail when it sends from a shared one. This page shows how to turn it on, who it writes to and what stops it.
 
 ## Turn it on
 
@@ -16,7 +16,7 @@ Every weekday at 08:00, in the owner's timezone, it drafts one mail for each ope
 ## What a draft is
 
 - It goes from the **deal owner's own mailbox**, signed by them. A deal whose owner's mailbox you cannot send from is skipped, and the run says so. It never goes from another mailbox instead.
-- It waits on **Home** for the deal's owner to approve (see [Approve what agents do](../agents/approvals.md)).
+- It waits on **Home** for the deal's owner to approve (the mail approvers, for a shared mailbox) (see [Approve what agents do](../agents/approvals.md)).
 - It is a commercial mail: the footer with your legal name and address, the link to stop and one recipient. See [Opt-outs](opt-outs.md) and [Mail](../apps/mail.md#commercial-mail-identity-opt-out-link-and-one-recipient).
 
 ## Who it skips

@@ -231,4 +231,49 @@ describe("company and deal kinds", () => {
       await sql`SELECT 1 FROM kernel.companies WHERE org_id = ${orgId} AND domain = ${domain}`,
     ).toHaveLength(0)
   }, 120_000)
+
+  it("a company the importer cannot see is never matched, named or linked into", async () => {
+    // Mutation caught: imports found companies with no visibility check, so a guessed domain
+    // read back a restricted company's name and id, and linked rows into it.
+    const label = `rs${tag()}`
+    const domain = `secret-${label}.example`
+    const secretName = `Confidential Target ${label}`
+    const other = (
+      await ensureUser({
+        orgId,
+        email: `other-${tag()}@fabrikam.example`,
+        name: "Other",
+        password: "pw-import-2!",
+        role: "member",
+      })
+    ).userId
+    const hidden = crypto.randomUUID()
+    await sql`INSERT INTO kernel.companies (id, org_id, handle, name, domain, created_by, org_access)
+              VALUES (${hidden}, ${orgId}, ${`@co-${label}`}, ${secretName}, ${domain}, ${other}, 'none')`
+    const records = [{ externalId: "S-1", name: secretName, domain }]
+    const companyRun = await run(["contacts.company"], records, label, false)
+    expect(companyRun.counts["contacts.company"]).toEqual({ created: 1, skipped: 0, failed: 0 })
+    const contactRun = await run(
+      ["contacts.contact"],
+      [
+        {
+          externalId: "S-2",
+          name: "Sid Two",
+          email: `sid@${domain}`,
+          companyName: secretName,
+          companyDomain: domain,
+        },
+      ],
+      label,
+      false,
+    )
+    expect(contactRun.counts["contacts.contact"]).toEqual({ created: 1, skipped: 0, failed: 0 })
+    expect(JSON.stringify([companyRun, contactRun])).not.toContain(hidden)
+    const [linked] = await sql<{ company_id: string | null }[]>`
+      SELECT company_id::text AS company_id FROM kernel.contacts
+       WHERE org_id = ${orgId} AND email = ${`sid@${domain}`}`
+    expect(linked?.company_id).not.toBe(hidden)
+    const people = await sql`SELECT 1 FROM kernel.contacts WHERE company_id = ${hidden}`
+    expect(people).toHaveLength(0)
+  }, 120_000)
 })

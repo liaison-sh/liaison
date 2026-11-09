@@ -34,6 +34,7 @@ import {
   personZones,
   recipientsOf,
   type SendGuardVerdict,
+  withoutThirdParty,
 } from "~/modules/mail/send-guard"
 import { revealManagedApprovalSummaries } from "~/modules/mailbox-crypto/managed-approval"
 
@@ -437,8 +438,10 @@ async function readableQuote(
   }
 }
 
-async function cardGuard(db: RlsClient, verdict: SendGuardVerdict): Promise<ApprovalSendGuard> {
-  const { readable, quote } = await readableQuote(db, verdict)
+async function cardGuard(db: RlsClient, found: SendGuardVerdict): Promise<ApprovalSendGuard> {
+  const { readable, quote } = await readableQuote(db, found)
+  // A viewer who cannot open the message reads a third person only as "someone at <company>".
+  const verdict = readable ? found : withoutThirdParty(found)
   return {
     state: verdict.state,
     ...(verdict.who !== undefined ? { who: verdict.who } : {}),

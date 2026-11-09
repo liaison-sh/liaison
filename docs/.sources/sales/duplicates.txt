@@ -36,3 +36,4 @@ Kept company keeps its manager, else takes the source's -> apps/api/src/modules/
 Org-wide company not merged into a restricted one -> apps/api/src/modules/contacts/companies.ts:1421-1427
 Restricted company not merged into an org-wide one, widen its sharing first -> apps/api/src/modules/contacts/companies.ts:1430-1436
 Change to a merged company answers "This company was merged into" -> apps/api/src/modules/contacts/companies.ts:297-310
+No merge into a company shared more widely (org level, people, roles) -> apps/api/src/modules/contacts/companies.ts:1470

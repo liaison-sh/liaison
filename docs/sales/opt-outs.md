@@ -8,7 +8,7 @@ When someone asks to receive no more commercial mail, Liaison records it once an
 ## How an opt-out is recorded
 
 - **They click the link.** Every commercial mail ends with a link to stop, and the same link serves the mail client's own unsubscribe button. The page asks once and records it with one button. Opening it changes nothing, since mail scanners open links. It shows your legal name and address, never the person's address, in English or French.
-- **They reply "stop".** Liaison raises an opt-out request for the mailbox's owner to approve. A short reply counts; in a longer one the phrase must be on a line of its own, and quoted text never counts. Nothing is recorded until someone approves it, and each person gets one request. A mail in a **Private** mailbox cannot be read by the server, so no request is raised for it: a person records the opt-out.
+- **They reply "stop".** Liaison raises an opt-out request. A reply that came into a person's own mailbox goes to that person alone; one that came into a shared mailbox goes to the people who approve mail. A reply whose sender the receiving mail provider found forged raises none. A short reply counts; in a longer one the phrase must be on a line of its own, and quoted text never counts. Nothing is recorded until someone approves it, and each person gets one request. A mail in a **Private** mailbox cannot be read by the server, so no request is raised for it: a person records the opt-out.
 - **You record it.** Tell the agent: "Alex asked to stop receiving our mail." It uses `suppression_add`, which anyone who can write mail may use.
 
 Liaison keeps only a fingerprint of the address, never the address.

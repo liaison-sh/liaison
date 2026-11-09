@@ -74,6 +74,49 @@ export interface ImportedCompany {
 const COMPANY_WRITE_SCOPE = "kernel:companies:write"
 
 /**
+ * The companies among `found` the importer can see, as their own reads would: org-wide, made by
+ * them (this run's own new ones included), or shared with them (their RLS). An unseen company
+ * reads as no company, so an import never names, matches or links into one.
+ */
+async function seenByImporter<T extends { id: string }>(
+  tx: PrivilegedDb,
+  ctx: HostImportContext,
+  found: T[],
+): Promise<T[]> {
+  if (found.length === 0) return found
+  const K = drizzleSql.raw(schemaRef("kernel"))
+  const ids = drizzleSql.join(
+    found.map((c) => drizzleSql`${c.id}::uuid`),
+    drizzleSql`, `,
+  )
+  const actor = UUID_RE.test(ctx.actorUserId) ? ctx.actorUserId : null
+  const seen = new Set(
+    extractRows<{ id: string }>(
+      await tx.execute(drizzleSql`
+        SELECT id::text AS id FROM ${K}.companies
+        WHERE org_id = ${ctx.orgId}::uuid AND id IN (${ids})
+          AND (org_access <> 'none' ${actor ? drizzleSql`OR created_by = ${actor}::uuid` : drizzleSql``})
+      `),
+    ).map((r) => r.id),
+  )
+  const rest = found.filter((c) => !seen.has(c.id))
+  if (rest.length > 0) {
+    const restIds = drizzleSql.join(
+      rest.map((c) => drizzleSql`${c.id}::uuid`),
+      drizzleSql`, `,
+    )
+    const shared = await ctx.withActorRls(async (rls) =>
+      extractRows<{ id: string }>(
+        await rls.execute(drizzleSql`
+          SELECT id::text AS id FROM ${K}.companies WHERE id IN (${restIds})`),
+      ),
+    )
+    for (const r of shared) seen.add(r.id)
+  }
+  return found.filter((c) => seen.has(c.id))
+}
+
+/**
  * The company a record names, as the import links it: by domain when one is
  * given (several sharing it: the one whose name matches, else the oldest),
  * else by name (ignoring legal-form words), else created, which needs a name
@@ -103,13 +146,17 @@ export async function resolveImportCompany(
   const K = drizzleSql.raw(schemaRef("kernel"))
   const key = companyNameKey(name)
   if (domain) {
-    const byDomain = extractRows<{ id: string; name: string }>(
-      await tx.execute(drizzleSql`
-        SELECT id::text AS id, name FROM ${K}.companies
-        WHERE org_id = ${ctx.orgId}::uuid AND lower(domain) = ${domain}
-        ORDER BY created_at, id
-        LIMIT 20
-      `),
+    const byDomain = await seenByImporter(
+      tx,
+      ctx,
+      extractRows<{ id: string; name: string }>(
+        await tx.execute(drizzleSql`
+          SELECT id::text AS id, name FROM ${K}.companies
+          WHERE org_id = ${ctx.orgId}::uuid AND lower(domain) = ${domain}
+          ORDER BY created_at, id
+          LIMIT 20
+        `),
+      ),
     )
     const hit = byDomain.find((c) => key && companyNameKey(c.name) === key) ?? byDomain[0]
     if (hit) return { ...hit, created: false, ...(notice ? { notice } : {}) }
@@ -124,8 +171,8 @@ export async function resolveImportCompany(
         ORDER BY created_at, id
         LIMIT 200
       `),
-    )
-    const hit = byName.find((c) => companyNameKey(c.name) === key)
+    ).filter((c) => companyNameKey(c.name) === key)
+    const hit = (await seenByImporter(tx, ctx, byName))[0]
     if (hit) return { ...hit, created: false, ...(notice ? { notice } : {}) }
   }
   // A preview writes nothing: companies its earlier records would create count as there.
@@ -285,25 +332,38 @@ async function existingCompany(
 ): Promise<{ id: string; name: string; by: "source id" | "name" | "domain" } | null> {
   const K = drizzleSql.raw(schemaRef("kernel"))
   const byId = JSON.stringify({ [contactSourceKey(ctx.sourceLabel)]: record.externalId })
-  const hit = extractRows<{ id: string; name: string }>(
-    await tx.execute(drizzleSql`
-      SELECT id::text AS id, name FROM ${K}.companies
-      WHERE org_id = ${ctx.orgId}::uuid AND metadata->'externalIds' @> ${byId}::jsonb
-      LIMIT 1
-    `),
+  const hit = (
+    await seenByImporter(
+      tx,
+      ctx,
+      extractRows<{ id: string; name: string }>(
+        await tx.execute(drizzleSql`
+          SELECT id::text AS id, name FROM ${K}.companies
+          WHERE org_id = ${ctx.orgId}::uuid AND metadata->'externalIds' @> ${byId}::jsonb
+          LIMIT 1
+        `),
+      ),
+    )
   )[0]
   if (hit) return { ...hit, by: "source id" }
   const key = companyNameKey(record.name)
   const firstWord = key.split(" ")[0] ?? ""
   const like = `%${firstWord.replace(/[\\%_]/g, (m) => `\\${m}`)}%`
-  const candidates = extractRows<{ id: string; name: string; domain: string | null }>(
-    await tx.execute(drizzleSql`
-      SELECT id::text AS id, name, domain FROM ${K}.companies
-      WHERE org_id = ${ctx.orgId}::uuid
-        AND (name ILIKE ${like} ${domain ? drizzleSql`OR lower(domain) = ${domain}` : drizzleSql``})
-      ORDER BY created_at, id
-      LIMIT 500
-    `),
+  const candidates = await seenByImporter(
+    tx,
+    ctx,
+    extractRows<{ id: string; name: string; domain: string | null }>(
+      await tx.execute(drizzleSql`
+        SELECT id::text AS id, name, domain FROM ${K}.companies
+        WHERE org_id = ${ctx.orgId}::uuid
+          AND (name ILIKE ${like} ${domain ? drizzleSql`OR lower(domain) = ${domain}` : drizzleSql``})
+        ORDER BY created_at, id
+        LIMIT 500
+      `),
+    ).filter(
+      (c) =>
+        (key && companyNameKey(c.name) === key) || (!!domain && c.domain?.toLowerCase() === domain),
+    ),
   )
   const byName = candidates.find((c) => key && companyNameKey(c.name) === key)
   if (byName) return { id: byName.id, name: byName.name, by: "name" }

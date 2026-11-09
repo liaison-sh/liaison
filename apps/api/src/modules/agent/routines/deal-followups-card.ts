@@ -102,13 +102,13 @@ export async function summarizeDealFollowupsSetup(
   return {
     kind: "enable_routine_template",
     title: "Create routine: Deal follow-ups",
-    subtitle: "It only drafts. Each follow-up comes to the deal's owner as an approval.",
+    subtitle: "It only drafts. Each follow-up waits as an approval before it is sent.",
     lines: [
       `Runs: every weekday at ${at}${p.timezone ? ` (${p.timezone})` : ", in the owner's timezone"}`,
       `Looks for: open deals in ${where} with nothing from the client for ${plural(quietDays, "day", "days")}`,
       "Stops when: anyone at the company replies, someone opts out, or the deal closes",
       skipsLine(counts),
-      "Who approves: the deal's owner, in Home and in this thread",
+      "Who approves: the deal's owner when it sends from their own mailbox, the mail approvers when it sends from a shared one; in Home and in this thread",
       example
         ? `Example draft: a short check-in on "${example.title}"${example.contactName ? ` to ${example.contactName}` : ""}, in the language of their last message, signed by the deal's owner`
         : "Example draft: a short check-in on the deal to its contact, in the language of their last message, signed by the deal's owner",

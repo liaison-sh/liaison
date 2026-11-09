@@ -285,7 +285,7 @@ describe("data subject export of a member", () => {
     expect(text).not.toContain(`${ALICE_MARK}-payload@example.com`)
   })
 
-  it("a member's app drafts and the log lines of their own runs are in their bundle, without code or log text, as far as the member can read them", async () => {
+  it("a member's app drafts and the runs their actions started are in their bundle, without code or log text", async () => {
     const saved = await exportAs(alice, { userId: "me" })
     const text = await bundleText(saved.fileId)
     const records = JSON.parse(text).records as Record<
@@ -303,18 +303,13 @@ describe("data subject export of a member", () => {
         versions_made: [1],
       }),
     ])
+    // Both runs are hers, the one tagged with a scope she lacks too: listed by counts and times only.
     expect(records.appLogs?.rows).toEqual([
-      expect.objectContaining({
-        run_id: mine.seen,
-        draft_id: mine.draftId,
-        lines: 2,
-        errors: 1,
-      }),
+      expect.objectContaining({ run_id: mine.seen, draft_id: mine.draftId, lines: 2, errors: 1 }),
+      expect.objectContaining({ run_id: mine.unseen, draft_id: mine.draftId, lines: 2, errors: 1 }),
     ])
     expect(saved.counts.appDrafts).toBe(1)
-    expect(saved.counts.appLogs).toBe(1)
-    // The run tagged with a scope Alice lacks is out, as it is from her own log reader.
-    expect(text).not.toContain(mine.unseen)
+    expect(saved.counts.appLogs).toBe(2)
     // Listed, never copied: the draft's code and what the app wrote stay out.
     expect(text).not.toContain(`${ALICE_MARK} handler code`)
     expect(text).not.toContain(`${ALICE_MARK} log text`)
@@ -322,18 +317,24 @@ describe("data subject export of a member", () => {
     expect(text).not.toContain(BOB_MARK)
   })
 
-  it("an export of another member reads their drafts and run logs under that member's own access", async () => {
+  it("a member who lost the app permissions still finds the drafts they made and the runs they started in their export", async () => {
+    // Mutation caught: the two sections read under the member's current access (a member
+    // without kernel:apps:build reads no draft, and no run tagged with a scope they lack).
     const theirs = runs[BOB_MARK]
     if (!theirs) throw new Error("Bob's runs were not seeded")
+    await minimal.revokeScope(bob.userId, "kernel:apps:build")
     const saved = await exportAs(officer, { userId: bob.userId })
-    const records = JSON.parse(await bundleText(saved.fileId)).records as Record<
+    const text = await bundleText(saved.fileId)
+    const records = JSON.parse(text).records as Record<
       string,
       { rows: Array<Record<string, unknown>> }
     >
-    // The officer holds neither the build nor the logs scope: what is in it is Bob's reach, not theirs.
     expect(officer.scopes).not.toContain("kernel:apps:build")
     expect(records.appDrafts?.rows.map((r) => r.id)).toEqual([theirs.draftId])
-    expect(records.appLogs?.rows.map((r) => r.run_id)).toEqual([theirs.seen])
+    expect(records.appLogs?.rows.map((r) => r.run_id)).toEqual([theirs.seen, theirs.unseen])
+    expect(text).not.toContain(`${BOB_MARK} handler code`)
+    expect(text).not.toContain(`${BOB_MARK} log text`)
+    expect(text).not.toContain(ALICE_MARK)
   })
 
   it("never writes a token, a credential, a password hash or a secret-named setting", async () => {

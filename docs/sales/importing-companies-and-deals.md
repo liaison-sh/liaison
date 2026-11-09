@@ -17,7 +17,7 @@ For the steps of a run (the transform, the preview, **Start import** and **Undo*
 
 ## How a company is found
 
-A company's domain is the website domain without `www`; a personal mail domain such as gmail.com is not saved and the record carries a notice. A contact or a deal that names a company is linked to the one with that domain, else the one with that name. When there is none, the import creates it, and the preview counts it. A company you cannot write is never created.
+A company's domain is the website domain without `www`; a personal mail domain such as gmail.com is not saved and the record carries a notice. A contact or a deal that names a company is linked to the one with that domain, else the one with that name, among the companies you can see: a restricted company you cannot see is never matched, named or linked into. When there is none, the import creates it, and the preview counts it. A company you cannot write is never created.
 
 A record that was imported before, by its `externalId` (`externalRef` for a deal), is skipped and left unchanged. Importing again does not duplicate.
 

@@ -14,3 +14,4 @@ Full Member holds mail:suppressions:read -> apps/api/src/apps/mail/app.manifest.
 suppression_check, up to 50, when and how, needs mail:suppressions:read -> apps/api/src/apps/mail/app.manifest.json:1281-1284 ; apps/api/src/modules/mail/suppressions.ts:391-401
 suppression_remove gated, mail:suppressions:write, card says who, when and how -> apps/api/src/apps/mail/app.manifest.json:1316-1319 ; apps/api/src/modules/mail/suppressions.ts:422
 Commercial identity setting -> apps/web/src/modules/settings/AdminOrgSettings.tsx:157 ; apps/api/src/modules/mail/commercial-footer.ts:37
+A personal mailbox's opt-out request goes to its owner alone, a shared one's to the mail approvers; a forged sender raises none -> apps/api/src/modules/mail/optout-wording.ts:245 ; apps/api/src/modules/mail/page-write.ts:814

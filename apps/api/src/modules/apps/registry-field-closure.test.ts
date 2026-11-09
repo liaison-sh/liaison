@@ -80,9 +80,8 @@ const HOST_ONLY_FIELDS: Record<string, string> = {
   taintPostAudience: KERNEL_TOOLS,
   // Whether a routine create/update grants scopes: such a call is never auto-approved.
   grantsScopes: SKILL_TOOLS,
-  // Where a call writes when that depends on the org's state: a function, so it
-  // cannot cross the package boundary.
-  taintSinkFor: REPORT_BUG_TOOL,
+  // A bug report about Liaison itself is never judged by the scope taint.
+  taintUnjudgedWrite: REPORT_BUG_TOOL,
   // A personal MCP connection's tools belong to the person who connected it.
   ownerUserId: MCP_PROJECTOR,
   // An inbound MCP tool's own tools/list annotations, set when the tool is projected.

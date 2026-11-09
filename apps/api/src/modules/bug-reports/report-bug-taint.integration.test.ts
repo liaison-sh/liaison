@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// `kernel:report_bug` on a tainted turn (scope-taint.ts rule 6a). The report
-// lands in the Bug Reports inbox, so the tool declares that inbox's readers
-// (`sinkReadScope: tickets:tickets:read`): it runs when every reader of tickets
-// holds what the turn read, with no approval row, and otherwise is held or
-// refused naming who can decide. Before the declaration a report filed after a
-// memory read sat in an approval nobody was named to decide.
+// `kernel:report_bug` on a tainted turn. Filing a bug report about Liaison into
+// the org's own Bug Reports inbox is an internal action: the scope taint never
+// judges it (`taintUnjudgedWrite`), so it runs with no approval row whatever
+// the turn read, even when some reader of tickets lacks it.
 //
 // Driven through the real chat seam (buildToolSet's execute closure).
 
@@ -81,22 +79,14 @@ describe("kernel:report_bug on a tainted turn", () => {
     expect(await approvals()).toBe(0)
   })
 
-  it("a reader of tickets lacking the turn's scope: parked for a holder, never filed inline", async () => {
+  it("a reader of tickets lacking the turn's scope: still filed inline, no approval", async () => {
     // A tickets reader who does not hold what the turn read.
     const reader = await minimal.person(orgId)
     await minimal.grantScope(reader.id, "tickets:tickets:read")
     const result = await reportBug(turnFrame(["kernel:org:admin"]), "After an admin read")
-    expect(result.filed).not.toBe(true)
-    expect(await tickets("After an admin read")).toBe(0)
-    // The requester holds the scope, so it parks (rule 8): the approval is
-    // narrowed to holders of what the turn read, who alone can decide it.
-    expect(result.blocked).toBe(true)
-    expect(result.status).toBe("pending_approval")
-    const rows = await sql<{ metadata: Record<string, unknown> | null }[]>`
-      SELECT metadata FROM kernel.approval_requests
-       WHERE org_id = ${orgId}::uuid AND tool_name = 'kernel:report_bug'`
-    expect(rows).toHaveLength(1)
-    expect(rows[0]?.metadata?.taintAudienceMustHold).toEqual(["kernel:org:admin"])
-    expect(rows[0]?.metadata?.taintDisclosedToReaders).toBe(true)
+    expect(result.blocked).not.toBe(true)
+    expect(result.filed).toBe(true)
+    expect(await tickets("After an admin read")).toBe(1)
+    expect(await approvals()).toBe(0)
   })
 })

@@ -3634,20 +3634,6 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
       },
     }
   }
-  // Where THIS call writes, when that depends on the org's state (`taintSinkFor`): the
-  // scope-taint judgement below reads the sink of this call, never a stale static one.
-  if (tool.taintSinkFor) {
-    const sink = await tool.taintSinkFor({ orgId: opts.orgId })
-    if (sink) {
-      tool = {
-        ...tool,
-        writesToTable: sink.writesToTable,
-        sinkReadScope: sink.sinkReadScope,
-        sinkReadersSelf: sink.sinkReadersSelf,
-      }
-    }
-  }
-
   // A personal MCP connection's tools belong to its owner alone (S16), whoever
   // asks: an admin's `*` covers every mcp:<slug> scope, so without this another
   // user could stage (and an approver run) a call on the owner's account. The
@@ -3868,6 +3854,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
     !isWebRead &&
     !approvalExecutingNestedCall &&
     !carriesNoTurnContent(tool, opts.params) &&
+    tool.taintUnjudgedWrite !== true &&
     !returnsToOwnMcpServer(opts.toolName, turnTaintScopes) &&
     tool.taintEditsPendingApproval !== true
   ) {

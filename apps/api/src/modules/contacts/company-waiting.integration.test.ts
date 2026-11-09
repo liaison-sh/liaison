@@ -49,17 +49,24 @@ async function approval(opts: {
     title: `Waiting item ${seq}`,
     ...(opts.links === undefined ? {} : { links: opts.links }),
   })
-  await sql`
-    INSERT INTO kernel.approval_requests (
-      id, org_id, handle, status, tool_name, tool_params, summary, current_payload,
-      thread_id, originating_thread_id, requested_by, notify_user_ids, expires_at, created_at
-    ) VALUES (
-      ${id}, ${ORG_ID}, ${`waiting-${id.slice(0, 8)}`}, ${opts.status ?? "pending"},
-      'kernel:companies_write', '{}'::jsonb, ${summary}::jsonb, '{}'::jsonb,
-      ${THREAD}, ${THREAD}, ${opts.requestedBy ?? ANNA}, ${sql.array([ANNA], 2950)},
-      ${new Date(Date.now() + 86_400_000).toISOString()}::timestamptz,
-      ${new Date(Date.now() + seq * 1000).toISOString()}::timestamptz
-    )`
+  await sql.unsafe(
+    insertSql("kernel.approval_requests", {
+      id,
+      org_id: ORG_ID,
+      handle: `waiting-${id.slice(0, 8)}`,
+      status: opts.status ?? "pending",
+      tool_name: "kernel:companies_write",
+      tool_params: { raw: "'{}'::jsonb" },
+      summary: { raw: `'${summary.replaceAll("'", "''")}'::jsonb` },
+      current_payload: { raw: "'{}'::jsonb" },
+      thread_id: THREAD,
+      originating_thread_id: THREAD,
+      requested_by: opts.requestedBy ?? ANNA,
+      notify_user_ids: { raw: `ARRAY['${ANNA}']::uuid[]` },
+      expires_at: { raw: `'${new Date(Date.now() + 86_400_000).toISOString()}'::timestamptz` },
+      created_at: { raw: `'${new Date(Date.now() + seq * 1000).toISOString()}'::timestamptz` },
+    }),
+  )
   return id
 }
 

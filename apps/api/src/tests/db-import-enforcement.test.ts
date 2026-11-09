@@ -1509,6 +1509,9 @@ describe("db import enforcement", () => {
     // The send check reads other mailboxes' envelopes on purpose: a reply in a
     // colleague's mailbox still stops a send. Reads only, and it names no text.
     "modules/mail/send-guard.ts",
+    // A reply asking to stop arrives in mail sync (no actor): it reads the org's own addresses and
+    // the opt-out requests already waiting, then raises one for the mailbox's owner to decide.
+    "modules/mail/optout-wording.ts",
     // The opt-out list is read for whoever sends (a fingerprint lookup, no address kept), and an
     // opt-out recorded by the system (a link, a reply) has no person to act as.
     "modules/mail/suppressions.ts",

@@ -25,7 +25,7 @@ import { type Agent, agents } from "~/db/schema/kernel/agents"
 import { auditLog } from "~/db/schema/kernel/audit-log"
 import { routines } from "~/db/schema/kernel/routines"
 import { skills } from "~/db/schema/kernel/skills"
-import { messages, threadParticipants, threadReferences, threads } from "~/db/schema/kernel/threads"
+import { messages, threadParticipants, threads } from "~/db/schema/kernel/threads"
 import { users } from "~/db/schema/kernel/users"
 import { deleteObject, putObject } from "~/infra/storage/object-storage"
 import { success } from "~/lib/response"
@@ -208,16 +208,6 @@ async function readAgentChannels(
     if (row.agentId) cur.agentCount += 1
     seatsByThread.set(row.threadId, cur)
   }
-  const refRows = await withSystemDb("agent-page-channel-refs", (tx) =>
-    tx
-      .select({ threadId: threadReferences.threadId, n: count() })
-      .from(threadReferences)
-      .where(
-        and(eq(threadReferences.orgId, actor.orgId), inArray(threadReferences.threadId, threadIds)),
-      )
-      .groupBy(threadReferences.threadId),
-  )
-  const refsByThread = new Map(refRows.map((r) => [r.threadId, Number(r.n)]))
 
   for (const c of candidates.values()) {
     const seats = seatsByThread.get(c.id) ?? { humanCount: 0, agentCount: 0 }
@@ -226,7 +216,6 @@ async function readAgentChannels(
       title: c.title,
       isPinned: c.isPinned,
       createdFrom: c.createdFrom,
-      referenceCount: refsByThread.get(c.id) ?? 0,
       humanCount: seats.humanCount,
       agentCount: seats.agentCount,
     })

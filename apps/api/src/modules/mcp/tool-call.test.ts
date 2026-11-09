@@ -237,11 +237,10 @@ describe("mcp tools/call", () => {
     expect(sc.executed).toBe(false)
     expect(sc.selfApproveEligible).toBe(false)
     // Same seam, opposite audience: telling THIS user to "approve it" is a dead
-    // end, so the message must say they cannot unblock it and that it waits on
-    // whoever holds the approve scope.
+    // end, so the message must say they cannot unblock it and name who it waits on.
     expect(sc.message).toContain("WHO MUST ACT")
     expect(sc.message).toContain("NOT an eligible approver")
-    expect(sc.message).toContain("approve scope")
+    expect(sc.message).toContain("It was sent for a decision to MCP Approver.")
     expect(sc.approvalRequestId).toBeTruthy()
 
     // Approvals never create a separate thread per request: the approval

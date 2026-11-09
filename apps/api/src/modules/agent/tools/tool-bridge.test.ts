@@ -451,12 +451,17 @@ describe("tool bridge — threadId and approvalRequestId passthrough", () => {
   const BRIDGE_ORG = "00000000-0000-0000-0000-000000d40001"
   const BRIDGE_USER = "00000000-0000-0000-0000-000000d40002"
   const BRIDGE_THREAD = "00000000-0000-0000-0000-000000d40003"
+  const BRIDGE_APPROVER = "00000000-0000-0000-0000-000000d40004"
 
   beforeAll(async () => {
     await sql`INSERT INTO kernel.organizations (id, name, slug, settings)
       VALUES (${BRIDGE_ORG}, 'BridgeOrg', 'bridge-org', '{"webContentProtection":"hardened"}') ON CONFLICT DO NOTHING`
     await sql`INSERT INTO kernel.users (id, org_id, email, name, password_hash)
       VALUES (${BRIDGE_USER}, ${BRIDGE_ORG}, 'br@test.com', 'Bridge User', 'x') ON CONFLICT DO NOTHING`
+    await sql`INSERT INTO kernel.users (id, org_id, email, name, password_hash)
+      VALUES (${BRIDGE_APPROVER}, ${BRIDGE_ORG}, 'ada@test.com', 'Ada Approver', 'x') ON CONFLICT DO NOTHING`
+    await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
+      VALUES (${BRIDGE_APPROVER}, ${BRIDGE_ORG}, 'test_br:approve') ON CONFLICT DO NOTHING`
     await sql`INSERT INTO kernel.threads (id, org_id, handle, type, created_by, tainted)
       VALUES (${BRIDGE_THREAD}, ${BRIDGE_ORG}, 'bridge-tainted', 'agent_chat', ${BRIDGE_USER}, true) ON CONFLICT DO NOTHING`
     await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id)
@@ -503,6 +508,7 @@ describe("tool bridge — threadId and approvalRequestId passthrough", () => {
     await sql`DELETE FROM kernel.approval_requests WHERE org_id = ${BRIDGE_ORG}`
     await sql`DELETE FROM kernel.thread_participants WHERE org_id = ${BRIDGE_ORG}`
     await sql`DELETE FROM kernel.threads WHERE org_id = ${BRIDGE_ORG}`
+    await sql`DELETE FROM kernel.user_scope_grants WHERE org_id = ${BRIDGE_ORG}`
     await sql`DELETE FROM kernel.users WHERE org_id = ${BRIDGE_ORG}`
     await sql`DELETE FROM kernel.organizations WHERE id = ${BRIDGE_ORG}`
   })
@@ -601,6 +607,28 @@ describe("tool bridge — threadId and approvalRequestId passthrough", () => {
     expect(msg).toContain("WHO MUST ACT")
     expect(msg).not.toContain("kernel__approvals_list")
     expect(msg).toContain("approvals queue")
+  }, 15_000)
+
+  it("a user who cannot decide is told by name who the request waits on", async () => {
+    const narrowActor = { ...actor, scopes: ["test_br:trust"] }
+    const tools = buildToolSet(BRIDGE_ORG, narrowActor, BRIDGE_THREAD, ALL_DEFERRED_TOOLS_UNLOCKED)
+    const result = await (tools.test_br__trust_tool as any).execute({})
+    expect(result).toHaveProperty("blocked", true)
+    expect(result.selfApproveEligible).toBe(false)
+    const msg = String(result.message)
+    expect(msg).toContain("is NOT an eligible approver")
+    expect(msg).toContain("It was sent for a decision to Ada Approver.")
+    expect(msg).toContain("it waits on Ada Approver")
+    // The requester is never named as the one who decides.
+    expect(msg).not.toContain("Bridge User")
+  }, 15_000)
+
+  it("an eligible approver is not pointed at someone else", async () => {
+    const tools = buildToolSet(BRIDGE_ORG, actor, BRIDGE_THREAD, ALL_DEFERRED_TOOLS_UNLOCKED)
+    const result = await (tools.test_br__trust_tool as any).execute({})
+    const msg = String(result.message)
+    expect(msg).toContain("IS an eligible approver")
+    expect(msg).not.toContain("It was sent for a decision to")
   }, 15_000)
 })
 

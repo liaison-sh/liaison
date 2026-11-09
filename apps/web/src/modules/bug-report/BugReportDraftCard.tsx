@@ -112,8 +112,10 @@ export const BugReportDraftCard: Component<{ draftId: string }> = (props) => {
     try {
       await api.delete(`/bug-reports/drafts/${encodeURIComponent(d.draftId)}`)
       setDiscarded(true)
-    } catch {
-      setError(i18n.t("kernel.bugReport.draftDiscardFailed"))
+    } catch (err) {
+      // 404: the report already expired or was dropped, so it is gone either way.
+      if (err instanceof ApiError && err.status === 404) setDiscarded(true)
+      else setError(i18n.t("kernel.bugReport.draftDiscardFailed"))
     } finally {
       setSending(false)
     }

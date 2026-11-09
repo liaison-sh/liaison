@@ -102,3 +102,76 @@ describe("two turns of one agent in one conversation", () => {
     expect(getLiveAgentStreams(threadId)).toHaveLength(0)
   })
 })
+
+/**
+ * The server tells the requester's open views of a turn it took on before the
+ * turn's `start`: setting a turn up can take seconds, and an older turn of the
+ * same agent can answer in that window. Drawn from `start` alone, the newer
+ * turn appeared only once the older reply had landed, so the conversation never
+ * showed both turns at once (agent-overlapping-turns, gate run 42647816287).
+ */
+describe("a turn the server took on shows before its start", () => {
+  beforeEach(() => {
+    resetMessageStore()
+    loadMessagesIntoStore(threadId, [])
+  })
+
+  it("the newer turn shows beside the older one while the older still answers", () => {
+    frame("start", "ask-1", { seq: 1 })
+    frame("reasoning", "ask-1", { delta: "Looking it up", seq: 2 })
+    frame("accepted", "ask-2")
+    expect(getLiveAgentStreams(threadId)).toHaveLength(2)
+    expect(getChannelAgentStream(threadId).turnId).toBe("ask-2")
+
+    // The older reply lands before the newer turn's setup is done.
+    agentReply("reply-1", "ask-1", "The answer.")
+    frame("done", "ask-1", { seq: 3 })
+    expect(getLiveAgentStreams(threadId).map((r) => r.stream.turnId)).toEqual(["ask-2"])
+
+    // Its start takes the block over: still one block, now drawing frames.
+    frame("start", "ask-2", { seq: 1 })
+    frame("delta", "ask-2", { delta: "Created it.", seq: 2 })
+    const live = getLiveAgentStreams(threadId)
+    expect(live).toHaveLength(1)
+    expect(live[0]?.stream.content).toBe("Created it.")
+  })
+
+  it("two turns accepted before either starts stay two blocks, never three", () => {
+    frame("accepted", "ask-1")
+    frame("accepted", "ask-2")
+    expect(getLiveAgentStreams(threadId)).toHaveLength(2)
+    // The older start lands after the newer turn was accepted.
+    frame("start", "ask-1", { seq: 1 })
+    frame("delta", "ask-1", { delta: "older", seq: 2 })
+    expect(getLiveAgentStreams(threadId)).toHaveLength(2)
+    frame("start", "ask-2", { seq: 1 })
+    frame("delta", "ask-2", { delta: "newer", seq: 2 })
+    const live = getLiveAgentStreams(threadId)
+    expect(live.map((r) => r.stream.content).sort()).toEqual(["newer", "older"])
+    expect(getChannelAgentStream(threadId).turnId).toBe("ask-2")
+  })
+
+  it("an accepted frame that arrives after its start redraws nothing", () => {
+    frame("start", "ask-1", { seq: 1 })
+    frame("delta", "ask-1", { delta: "drawn", seq: 2 })
+    frame("accepted", "ask-1")
+    const live = getLiveAgentStreams(threadId)
+    expect(live).toHaveLength(1)
+    expect(live[0]?.stream.content).toBe("drawn")
+  })
+
+  it("an accepted frame of a turn already answered opens no block", () => {
+    agentReply("reply-1", "ask-1", "The answer.")
+    frame("accepted", "ask-1")
+    expect(getLiveAgentStreams(threadId)).toHaveLength(0)
+  })
+
+  it("a withdrawn turn's empty block goes; a started one stays", () => {
+    frame("start", "ask-1", { seq: 1 })
+    frame("accepted", "ask-2")
+    frame("withdrawn", "ask-2")
+    expect(getLiveAgentStreams(threadId).map((r) => r.stream.turnId)).toEqual(["ask-1"])
+    frame("withdrawn", "ask-1")
+    expect(getLiveAgentStreams(threadId).map((r) => r.stream.turnId)).toEqual(["ask-1"])
+  })
+})

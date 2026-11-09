@@ -14,6 +14,10 @@
 // - Discriminator: with deduplication ids in place of job ids (the seam), the
 //   same cut runs at least one (org, epoch) twice: the re-run tick finds the
 //   first runs finished and their deduplication ids free.
+// - A host killed in a per-org run it took (before the run counts): the run
+//   stays active under the dead host's lock until its queue's stalled check
+//   hands it on, which can come up to a check interval after the tick's, so
+//   the settle waits for the runs as well as the ticks.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { api, createRoleCell, type RoleCell, type RoleProcess } from "@liaison/test-helpers"
 
@@ -39,6 +43,7 @@ interface ProbeState {
   metrics: Record<string, number>
   schedulers: string[]
   ticksInFlight: number
+  runsInFlight: number
   exitArmed: boolean
 }
 
@@ -122,27 +127,37 @@ describe("S15/S16: the cron fan-out runs each org once per epoch across a killed
   /** When the last probe run scheduled and unscheduled its scheduler. */
   const probeWindow = { t0: 0, tStop: 0 }
 
-  /** Run the probe for `epochs` epochs, cutting the tick of the `cutAt`-th; the settled state. */
-  async function runProbe(epochs: number, cutAt: number): Promise<ProbeState> {
+  /**
+   * Run the probe for `epochs` epochs, cutting a host near the `cutAt`-th: its
+   * tick right after the add (`/arm-exit`), or the next per-org run it takes
+   * (`/arm-exit-in-run`); the settled state.
+   */
+  async function runProbe(
+    epochs: number,
+    cutAt: number,
+    arm: "/arm-exit" | "/arm-exit-in-run" = "/arm-exit",
+  ): Promise<ProbeState> {
     await call("/reset", {})
     await call("/schedule", { everyMs: EVERY_MS })
     const t0 = Date.now()
     probeWindow.t0 = t0
     await Bun.sleep(cutAt * EVERY_MS - EVERY_MS / 2)
     const running = live()
-    await call("/arm-exit", {})
-    // The next probe tick's host exits right after its add.
+    await call(arm, {})
+    // The next probe tick's host exits right after its add (or the next run's host, before it counts).
     const exited = await Promise.race(running.map((h) => h.proc.exited.then(() => h)))
     expect(exited.proc.exitCode).toBe(137)
     await Bun.sleep(Math.max(0, t0 + epochs * EVERY_MS - Date.now()))
     await call("/unschedule", {})
     probeWindow.tStop = Date.now()
-    // The cut tick re-run (the stalled check hands it back) and every epoch's runs done.
-    const settled = await until(
-      async () => ((await state()).ticksInFlight === 0 ? true : undefined),
-      RECOVERY_MS,
-    )
-    if (!settled) throw new Error(`the cut tick never re-ran: ${JSON.stringify(await state())}`)
+    // The cut tick re-run (the stalled check hands it back) and every epoch's
+    // runs done, a run the killed host held included: that one is handed on by
+    // its own queue's stalled check, up to a check interval after the tick's.
+    const settled = await until(async () => {
+      const s = await state()
+      return s.ticksInFlight === 0 && s.runsInFlight === 0 ? true : undefined
+    }, RECOVERY_MS)
+    if (!settled) throw new Error(`the cut never recovered: ${JSON.stringify(await state())}`)
     await Bun.sleep(WINDOW_MS + 2_000)
     return state()
   }
@@ -228,6 +243,24 @@ describe("S15/S16: the cron fan-out runs each org once per epoch across a killed
       const s = await runProbe(6, 2)
       const doubled = Object.entries(s.runs).filter(([, n]) => n > 1)
       expect(doubled.length).toBeGreaterThan(0)
+    },
+    6 * EVERY_MS + RECOVERY_MS + 120_000,
+  )
+
+  it(
+    "a host killed in a per-org run it took: that (org, epoch) still runs once, every other once",
+    async () => {
+      hosts.push(await cell.spawn("all"))
+      await onEvery("/register", {})
+      await warm()
+      await onEvery("/id-mode", { mode: "job-id" })
+      const s = await runProbe(6, 3, "/arm-exit-in-run")
+      const eligible = orgs.filter((o) => o !== offOrg)
+      for (const [epoch, perOrg] of byEpoch(s.runs)) {
+        const missed = eligible.filter((o) => !perOrg.has(o))
+        const doubled = [...perOrg].filter(([, n]) => n !== 1)
+        expect({ epoch, missed, doubled }).toEqual({ epoch, missed: [], doubled: [] })
+      }
     },
     6 * EVERY_MS + RECOVERY_MS + 120_000,
   )

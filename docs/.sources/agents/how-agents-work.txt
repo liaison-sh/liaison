@@ -175,3 +175,5 @@ A button sends its own words as your message -> apps/web/src/modules/agent/Sugge
 A button opens the tab it names -> apps/web/src/modules/agent/SuggestionChips.tsx:76
 Buttons only under the newest message -> apps/web/src/modules/agent/SuggestionChips.tsx:67
 None in a conversation holding outside text -> apps/api/src/modules/agent/tools/suggest-steps-tool.ts:144
+The agent's turn shows as soon as the server takes it on -> apps/api/src/modules/agent/runtime/agent-service.ts:5017, apps/web/src/modules/threads/message-store.ts:2637
+A newer request while the agent still answers shows both turns -> apps/web/src/modules/threads/message-store.ts:2758

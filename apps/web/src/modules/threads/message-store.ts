@@ -2568,6 +2568,14 @@ export function handleWsAgentStreamEvent(action: string, data: any): void {
   const seq = frameSeq(data)
   const { agentId, turnId } = frameTurn(data)
   const key = pendingKey(threadId, agentId, turnId)
+  if (action === "accepted") {
+    applyAcceptedTurn(threadId, agentId, turnId, data)
+    return
+  }
+  if (action === "withdrawn") {
+    withdrawAcceptedTurn(threadId, agentId, turnId)
+    return
+  }
   if (action === "start" && seq !== null) {
     // A `start` this block already drew past (a late copy) restarts nothing.
     if (turnId) {
@@ -2616,6 +2624,53 @@ export function handleWsAgentStreamEvent(action: string, data: any): void {
   }
   pending.frames.set(seq, { action, data })
   armGapTimer(key, AGENT_STREAM_GAP_WAIT_MS)
+}
+
+/**
+ * THE SERVER TOOK A TURN ON (the requester's own views only): it runs from now,
+ * though setting it up can take seconds before its `start`. Its block shows at
+ * once, as a `start` would draw it, so a newer turn asked while an older one of
+ * the same agent still answers is on screen beside it, not only after the older
+ * reply landed. A turn already drawn (its `start` overtook this) or already
+ * over is left as it is; its `start` takes the block over (no frame drawn yet).
+ */
+function applyAcceptedTurn(
+  threadId: string,
+  agentId: string | null,
+  turnId: string | null,
+  data: any,
+): void {
+  if (!turnId) return
+  if (endedTurns.has(replacedTurnKey(threadId, agentId, turnId))) return
+  if (replyLoadedForTurn(messageStore, threadId, agentId, turnId)) return
+  const current = messageStore.agentStreams[agentStreamKey(threadId, agentId)]
+  if (current && current.state !== "idle" && current.turnId === turnId) return
+  if (messageStore.agentStreams[replacedTurnKey(threadId, agentId, turnId)]) return
+  applyAgentStreamFrame("start", { ...data, seq: undefined })
+}
+
+/**
+ * A turn the server took on ended before its `start` (its setup failed), or its
+ * `start` named another agent: the block it showed, with nothing drawn, goes.
+ */
+function withdrawAcceptedTurn(
+  threadId: string,
+  agentId: string | null,
+  turnId: string | null,
+): void {
+  if (!turnId) return
+  setMessageStore(
+    produce((s) => {
+      const currentKey = agentStreamKey(threadId, agentId)
+      const current = s.agentStreams[currentKey]
+      if (current?.turnId === turnId && current.state !== "idle" && !(current.lastSeq ?? 0)) {
+        s.agentStreams[currentKey] = createIdleAgentStream()
+      }
+      const replacedKey = replacedTurnKey(threadId, agentId, turnId)
+      const replaced = s.agentStreams[replacedKey]
+      if (replaced && !(replaced.lastSeq ?? 0)) delete s.agentStreams[replacedKey]
+    }),
+  )
 }
 
 /**
@@ -2703,6 +2758,9 @@ function applyAgentStreamFrame(action: string, data: any): void {
           // The running turn keeps its block under its own key until its reply lands.
           s.agentStreams[replacedTurnKey(threadId, streamAgentId, current.turnId)] = current
         }
+        // This turn's own block shown before its `start` (accepted, then
+        // replaced by a newer turn's): the `start` draws it as the current one.
+        if (turnId) delete s.agentStreams[replacedTurnKey(threadId, streamAgentId, turnId)]
       } else if (turnId && current?.turnId !== turnId) {
         const replacedKey = replacedTurnKey(threadId, streamAgentId, turnId)
         if (s.agentStreams[replacedKey]) {

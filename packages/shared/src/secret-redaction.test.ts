@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { describe, expect, it } from "bun:test"
+import { describe, expect, it, spyOn } from "bun:test"
 import { readFileSync } from "node:fs"
 import path from "node:path"
 import type { NodeSessionEventIn } from "./node-session-protocol"
@@ -361,6 +361,22 @@ describe("redactImportText: JSON inside a string (D49 F3)", () => {
     // Not JSON, or JSON with nothing to strike: the text is left as it was.
     for (const same of ["{not json: 1", '{ "a": 1,\n  "b": [2] }', "[1, 2]"]) {
       expect(redactImportText(same)).toBe(same)
+    }
+  })
+
+  it("A59: a text whose brackets never close is not parsed: 1 MiB of `[` builds no million arrays", () => {
+    const parse = spyOn(JSON, "parse")
+    try {
+      for (const text of ["[".repeat(1024 * 1024), '{"a":"x"', '{"a":"}"', "[1]]", '["]"']) {
+        expect(redactImportText(text)).toBe(text)
+      }
+      expect(parse).not.toHaveBeenCalled()
+      // Brackets inside strings do not count; escaped quotes do not close them.
+      const struck = redactImportText(JSON.stringify({ k: '\\"[{', password: PW }))
+      expect(struck).not.toContain(PW)
+      expect(parse).toHaveBeenCalled()
+    } finally {
+      parse.mockRestore()
     }
   })
 })

@@ -375,4 +375,31 @@ describe("scripted model provider", () => {
       { query: "x" },
     ])
   })
+
+  // Two turns of one agent asked moments apart read the same history: the
+  // newer ask is already in the older turn's prompt when it is assembled. Keyed
+  // on the prompt alone they took one base and both played the first step
+  // (agent-overlapping-turns, once its follow-up was sent at once).
+  it("two turns whose prompts are the same take steps of their own", async () => {
+    const threadId = `thread-same-prompt-${crypto.randomUUID()}`
+    await setScriptedTurn(threadId, [{ text: "first answer" }, { text: "second answer" }])
+    const prompt = [
+      { role: "system", content: "sys" },
+      { role: "user", content: [{ type: "text", text: "research it" }] },
+      { role: "user", content: [{ type: "text", text: "now make a task" }] },
+    ]
+    const play = async (turnId: string) => {
+      const { stream } = await createScriptedModel(threadId, turnId).doStream({ prompt })
+      const parts: Array<Record<string, unknown>> = []
+      for await (const part of stream) parts.push(part)
+      return parts
+        .filter((p) => p.type === "text-delta")
+        .map((p) => p.delta)
+        .join("")
+    }
+    expect(await play("ask-1")).toBe("first answer")
+    expect(await play("ask-2")).toBe("second answer")
+    // The same turn calling again (a resume) keeps its base.
+    expect(await play("ask-1")).toBe("first answer")
+  })
 })

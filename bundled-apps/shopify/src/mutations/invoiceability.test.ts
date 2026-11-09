@@ -112,7 +112,7 @@ const createParams = (input: Record<string, unknown> = {}) => ({
   input: {
     purchasingEntity: { customerId: CUSTOMER },
     shippingAddress: { firstName: "Giulia", lastName: "Rossi", address1: "Via Roma 1", city: "Milano", zip: "20100", countryCode: "IT" },
-    lineItems: [{ title: "Studio Controller", quantity: 1, originalUnitPriceWithCurrency: { amount: "500.00", currencyCode: "EUR" }, requiresShipping: false }],
+    lineItems: [{ title: "Kestrel Field Preamp", quantity: 1, originalUnitPriceWithCurrency: { amount: "500.00", currencyCode: "EUR" }, requiresShipping: false }],
     ...input,
   },
 })

@@ -91,6 +91,8 @@ export const REVIEWED_DISPATCH: Record<string, string> = {
  * follow to a trusted source, could not be traced, or is a literal: `file#enclosing` → why.
  */
 export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
+  "apps/api/src/modules/contacts/prospect-retention.ts#runProspectRetention":
+    "the daily retention sweep: each org id comes from its own system read of the orgs that hold professional-interest contacts or an unread retention item (orgs being moved left out), and each org's row is refreshed in its own privileged transaction for that org only",
   "apps/api/src/apps/projects/service/deals.ts#orgTimeZone":
     "reads only the timezone column of the org it is given (organizations is closed to row-level readers); its callers, the deal board route and the projects bridge, pass the org of their own caller's RLS transaction",
   "apps/api/src/modules/contacts/companies.ts#companyIdsUnknownTo":

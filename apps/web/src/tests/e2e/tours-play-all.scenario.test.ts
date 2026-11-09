@@ -45,6 +45,7 @@ import { seedMailAccount, seedMailConversation } from "./helpers/mail-fixtures"
 import { grantProjectScopes } from "./helpers/projects-seed"
 import { grantTicketsScopes, seedFactory, seedTicket } from "./helpers/seed"
 import { pressTourMenu } from "./helpers/tour-menu"
+import { attributeNow, watchShown } from "./helpers/tour-play"
 
 let gmail: GmailHttpFixture
 let crm: FixtureCrm
@@ -528,27 +529,34 @@ async function playTour(ctx: Ctx, tour: Tour, plan: TourPlan) {
   const panel = page.getByTestId("tour-panel")
   await expect(panel).toHaveAttribute("data-tour-id", tour.id, { timeout: 30_000 })
   await pressTourMenu(page, "tour-play-all")
+  // The completion card replaces the panel and goes away by itself after a few
+  // seconds; the loop can be busy longer than that (a person's step, a menu
+  // press), so the card is watched in the page from now on, not only polled.
+  const completed = page.getByTestId("tour-completed")
+  const card = watchShown(completed, 250_000)
 
   const seen: string[] = []
   const handled = new Set<string>()
   const agentFailures = new Set<string>()
   const deadline = Date.now() + 240_000
   while (Date.now() < deadline) {
-    if (await page.getByTestId("tour-completed").isVisible()) break
+    if (card.shown() || (await completed.isVisible())) break
     // A guard that refused (Do it for me stopped before acting) fails at once.
     const refused = page.getByTestId("tour-autoplay-refused")
     if (await refused.isVisible()) {
       throw new Error(
-        `${tour.id}: autoplay refused on beat ${await panel.getAttribute("data-beat-id")} at ${await refused.getAttribute("data-missing")} (beats so far ${seen.join(" > ")})`,
+        `${tour.id}: autoplay refused on beat ${await attributeNow(panel, "data-beat-id")} at ${await refused.getAttribute("data-missing")} (beats so far ${seen.join(" > ")})`,
       )
     }
     const failed = page.getByTestId("tour-autoplay-failed")
     if (await failed.isVisible()) {
       throw new Error(
-        `${tour.id}: autoplay failed on beat ${await panel.getAttribute("data-beat-id")}, missing ${await failed.getAttribute("data-missing")} (beats so far ${seen.join(" > ")})`,
+        `${tour.id}: autoplay failed on beat ${await attributeNow(panel, "data-beat-id")}, missing ${await failed.getAttribute("data-missing")} (beats so far ${seen.join(" > ")})`,
       )
     }
-    const beatId = await panel.getAttribute("data-beat-id").catch(() => null)
+    // Read now: the panel leaves the screen the moment the tour completes, and
+    // a read that waits for it (10 s) outlasts the completion card.
+    const beatId = (await attributeNow(panel, "data-beat-id")) ?? null
     if (beatId && seen.at(-1) !== beatId) {
       seen.push(beatId)
       trail.push(`${at()} panel on beat ${beatId}`)
@@ -580,19 +588,26 @@ async function playTour(ctx: Ctx, tour: Tour, plan: TourPlan) {
     }
     // The person's own clicks hand over; the scenario plays on when asked again.
     // (Play whole scenario is in the card's menu; the card says whether it plays.)
-    if ((await panel.isVisible()) && (await panel.getAttribute("data-play-all")) === null) {
-      await pressTourMenu(page, "tour-play-all")
+    if ((await panel.isVisible()) && (await attributeNow(panel, "data-play-all")) === null) {
+      // The tour can complete under the press (its panel and menu go): the
+      // next turn of the loop says so, a press that found nothing is noted.
+      await pressTourMenu(page, "tour-play-all").catch((err: unknown) => {
+        trail.push(`${at()} play-all press missed: ${String(err).split("\n")[0]}`)
+      })
     }
     await page.waitForTimeout(400)
   }
-  if (!(await page.getByTestId("tour-completed").isVisible())) {
+  if (!card.shown() && !(await completed.isVisible())) {
     const visibility = await page.evaluate(() => document.visibilityState).catch(() => "unknown")
     trail.push(`${at()} gave up: panel ${await panel.isVisible()}, page ${visibility}`)
   }
-  await expect(
-    page.getByTestId("tour-completed"),
-    `${tour.id} did not complete (beats ${seen.join(" > ")}, at ${page.url()})\n${trail.join("\n")}`,
-  ).toBeVisible({ timeout: 5_000 })
+  // Shown at some point: it may have gone away by itself since.
+  await expect
+    .poll(async () => card.shown() || (await completed.isVisible()), {
+      timeout: 5_000,
+      message: `${tour.id} did not complete (beats ${seen.join(" > ")}, at ${page.url()})\n${trail.join("\n")}`,
+    })
+    .toBe(true)
   const [row] = await env.db.sql.unsafe<
     { status: string; beat_states: Record<string, TourBeatState> }[]
   >(

@@ -14,3 +14,4 @@ Contact found by email, unknown reported, deal still imported -> apps/api/src/ap
 Amount in minor units with a currency, period once, month or year, needs deal write access -> apps/api/src/apps/projects/import-deal-kind.ts:68-93
 Preview runs the same checks -> docs/admin/settings.md:132
 Undo removes the deal with its task, thread and amount, and the company only when nothing else uses it -> apps/api/src/apps/projects/import-deal-kind.ts:26-29
+A company the importer cannot see is never matched, named or linked into -> apps/api/src/apps/contacts/import-kind.ts:81

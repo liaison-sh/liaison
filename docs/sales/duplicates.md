@@ -44,7 +44,7 @@ Ask your agent, for example: "Arlon Studio and Maison Arlon are the same client,
 
 When it runs, everything that named the deleted company names the kept one: its people (their company name follows), portal accounts, deals, pipelines and the approvals waiting on it, which then go to the kept company's account manager. The kept company keeps its own account manager; without one it takes the other's. Its discussion joins the kept company's. The merge is all or nothing, and it cannot be undone.
 
-A company the organization sees cannot be merged into a restricted one: merge the other way round. A restricted company cannot be merged into one the organization sees either: widen its sharing first, then merge. Someone still editing the deleted company is told **This company was merged into** the kept one.
+A company the organization sees cannot be merged into a restricted one: merge the other way round. A restricted company cannot be merged into one the organization sees either, nor into a company shared with someone it is not shared with, and a view-only company cannot be merged into an editable one: widen its sharing first, then merge. Someone still editing the deleted company is told **This company was merged into** the kept one.
 
 | Tool | Scope | Approval |
 | --- | --- | --- |

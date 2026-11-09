@@ -248,7 +248,8 @@ export function readPrintSnapshot(queueFacts: unknown): PrintSnapshot | null {
 export function countryNameEn(iso2: string | null): string | null {
   if (!iso2 || !/^[A-Z]{2}$/.test(iso2)) return null
   try {
-    const name = new Intl.DisplayNames(["en"], { type: "region" }).of(iso2)
+    // Some ICU builds name CN "China mainland"; paperwork names the country.
+    const name = new Intl.DisplayNames(["en"], { type: "region" }).of(iso2)?.replace(/ mainland$/, "")
     return name && name !== iso2 ? name : null
   } catch {
     return null

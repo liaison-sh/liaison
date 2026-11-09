@@ -599,7 +599,9 @@ describe("Boxtal app.manifest.json", () => {
     // 0.23.22: the shipment detail's label Download opens the label (it had no handler).
     // 0.23.23: the label reservation and its finalize commit at once (ctx.db.insertNow / updateNow),
     // so a sandbox kill after the paid POST no longer rolls the only record of the label back.
-    expect(m.version).toBe("0.23.23")
+    // 0.24.0: the order's papers (document rules, record type boxtal:order) are generated at To
+    // prepare and again after the label buy, kept on the order and printed with the pack.
+    expect(m.version).toBe("0.24.0")
     expect(m.packageFormat).toBe(1)
   })
 

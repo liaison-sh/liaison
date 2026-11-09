@@ -652,16 +652,7 @@ class Layout {
 
   /** Lay out runs as wrapped lines, each hard line break starting a new line. */
   text(runs: TextRun[], size: number, lineHeight: number): void {
-    // Split the runs on "\n" so a typed line break is kept.
-    const hardLines: TextRun[][] = [[]]
-    for (const run of runs) {
-      const parts = run.text.split("\n")
-      for (const [i, part] of parts.entries()) {
-        if (i > 0) hardLines.push([])
-        if (part !== "") hardLines[hardLines.length - 1]?.push({ ...run, text: part })
-      }
-    }
-    for (const hard of hardLines) {
+    for (const hard of splitHardLines(runs)) {
       for (const line of wrapRuns(hard, this.contentWidth, size)) this.line(line, size, lineHeight)
     }
   }
@@ -706,7 +697,9 @@ class Layout {
     const widths = columns.map((c) => (this.contentWidth * (c.width ?? 1)) / total)
     const drawRow = (cells: TextRun[][], fill: boolean) => {
       const wrapped = cells.map((runs, i) =>
-        wrapRuns(runs, Math.max(8, (widths[i] ?? 0) - pad * 2), size),
+        splitHardLines(runs).flatMap((line) =>
+          line.length === 0 ? [] : wrapRuns(line, Math.max(8, (widths[i] ?? 0) - pad * 2), size),
+        ),
       )
       const lines = Math.max(1, ...wrapped.map((w) => w.length))
       const height = lines * lineHeight + pad * 2
@@ -787,6 +780,19 @@ class Layout {
     this.push({ op: "drawImage", page: this.page, ref, x, y: this.y, maxWidth: w, maxHeight: h })
     this.y -= h
   }
+}
+
+/** The runs split on "\n", so a typed line break is kept (an empty line stays an empty list). */
+function splitHardLines(runs: readonly TextRun[]): TextRun[][] {
+  const hardLines: TextRun[][] = [[]]
+  for (const run of runs) {
+    const parts = run.text.split("\n")
+    for (const [i, part] of parts.entries()) {
+      if (i > 0) hardLines.push([])
+      if (part !== "") hardLines[hardLines.length - 1]?.push({ ...run, text: part })
+    }
+  }
+  return hardLines
 }
 
 function widthOf(piece: LinePiece, size: number): number {

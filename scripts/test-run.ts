@@ -1595,6 +1595,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // print-record: the shipment's print record for the document templates (buy-time
             // snapshot, live tracking number, nothing the sources do not hold).
             "src/print-record.test.ts",
+            "src/customs-documents.test.ts",
             // attention / attention-store: the boxtal attention-feed rule evaluator
             // (condition/rule matching over parcel facts) and the persisted rule
             // CRUD (upsert/list/load) it reads from.

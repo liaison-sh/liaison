@@ -371,9 +371,9 @@ describe("company merge", () => {
   })
 
   it("a restricted company is not merged into one the organisation sees: nothing moves, and the result says to widen its sharing first", async () => {
-    const source = await company("Atelier Privé", null)
-    const target = await company("Atelier Prive SAS", null)
-    const person = await contact(source, "Atelier Privé")
+    const source = await company("Maison Privée", null)
+    const target = await company("Maison Privee SAS", null)
+    const person = await contact(source, "Maison Privée")
     await sql`UPDATE kernel.companies SET org_access = 'none' WHERE id = ${source}`
     const result = await asAnna((tx) =>
       handleCompaniesMerge(
@@ -384,8 +384,8 @@ describe("company merge", () => {
     expect(result).toMatchObject({ error: { code: "merge_widens_access" } })
     const message = String((result as { error: { message: string } }).error.message)
     expect(message).toContain("Nothing was merged.")
-    expect(message).toContain("Atelier Privé is restricted")
-    expect(message).toContain("Next: widen Atelier Privé's sharing first")
+    expect(message).toContain("Maison Privée is restricted")
+    expect(message).toContain("Next: widen Maison Privée's sharing first")
     const [kept] = await sql<{ n: number }[]>`
       SELECT count(*)::int AS n FROM kernel.companies WHERE id = ${source}`
     expect(kept?.n).toBe(1)

@@ -912,7 +912,9 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.9: screens work framed on their own origin (outside links through the host).
     // 0.4.10: the home's attention rows open the admin through the host too; framed, a
     // Cmd/Ctrl-click opens a row in place.
-    expect(m.version).toBe("0.4.10")
+    // 0.4.11: draft order create and complete refuse an order Invoicing would not invoice
+    // (invoicing:orders_invoiceability_check), with a stage-time preflight on complete.
+    expect(m.version).toBe("0.4.11")
   })
 
   it("read_all_orders is a protected scope behind the org's full-order-history toggle", () => {

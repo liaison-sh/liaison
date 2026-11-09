@@ -1252,6 +1252,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/mutations.test.ts",
             // Pinned export set of the mutations index over src/mutations/ (pure, no I/O).
             "src/mutations.export-set.test.ts",
+            "src/mutations/invoiceability.test.ts",
             // Partial-fulfillment planning read (fulfillment_orders_get) — mock-driven fetch stub,
             // no Postgres/shop creds, same class as mutations.test.ts.
             "src/fulfillment-orders.test.ts",
@@ -1342,6 +1343,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/issue-date.test.ts",
             "src/state.test.ts",
             "src/tax.test.ts",
+            // What the order-created auto-flow would park, asked before a draft order is staged (pure).
+            "src/order-invoiceability.test.ts",
             // E-invoicing pure core (territory, identity, regime classifier, operation type).
             "src/einvoicing/territory.test.ts",
             // E-invoicing transmission and booking through the bound PA provider (the Pennylane

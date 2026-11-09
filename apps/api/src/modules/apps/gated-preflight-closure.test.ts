@@ -94,7 +94,6 @@ const NO_PREFLIGHT_NEEDED: Record<string, string> = {
 
   // Only genuine races: the state can legitimately change between staging and
   // the approval decision, so the handler guard is the right and only place.
-  "shopify:draft_orders_complete": "only genuine races",
   "shopify:draft_orders_send": "only genuine races",
   "shopify:apply_seed_suggestion": "only genuine races",
 

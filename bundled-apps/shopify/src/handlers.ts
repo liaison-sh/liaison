@@ -198,6 +198,9 @@ export const products_unpublish_preflight = withShopifyConnectionEnvelope(
 //   refusal used to land in the APPROVER's hands rather than the agent's.
 export const products_delete_preflight = withShopifyConnectionEnvelope(mutationHandlers.products_delete_preflight)
 export const order_cancel_preflight = withShopifyConnectionEnvelope(mutationHandlers.order_cancel_preflight)
+export const draft_orders_complete_preflight = withShopifyConnectionEnvelope(
+  mutationHandlers.draft_orders_complete_preflight,
+)
 export const draft_orders_delete_preflight = withShopifyConnectionEnvelope(
   mutationHandlers.draft_orders_delete_preflight,
 )

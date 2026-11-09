@@ -224,7 +224,7 @@
       }
     ]
   },
-  "version": "0.20.53",
+  "version": "0.20.54",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1991,6 +1991,32 @@
         "required": [
           "id"
         ]
+      },
+      "readOnly": true
+    },
+    "orders_invoiceability_check": {
+      "description": "Would the order-created auto-flow invoice this Shopify order, or park it (no invoice)? Pass what the order will carry (shop_id, email of the customer record, addresses, vat_id, tax_exempt, total_price, total_tax). Returns applies (false when no issuer profile is mapped to the shop) and problems [{reason, field, message}], each message naming the fix. The Shopify app calls it before it stages a draft order create or complete. Read only.",
+      "requiredScopes": ["invoicing:documents:read"],
+      "handler": "ordersInvoiceabilityCheckHandler",
+      "params": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "shop_id": { "type": "string", "description": "The shop domain (issuer_profiles.shopify_shop_id)." },
+          "stage": { "type": "string", "description": "create or complete." },
+          "draft_order_id": { "type": ["string", "null"] },
+          "customer_id": { "type": ["string", "null"], "description": "The linked Shopify customer gid." },
+          "email": { "type": ["string", "null"], "description": "The email the order's customer record will carry." },
+          "legal_name": { "type": ["string", "null"] },
+          "billing_address": { "type": ["object", "null"], "additionalProperties": true },
+          "shipping_address": { "type": ["object", "null"], "additionalProperties": true },
+          "customer_default_address": { "type": ["object", "null"], "additionalProperties": true },
+          "vat_id": { "type": ["string", "null"] },
+          "tax_exempt": { "type": ["boolean", "null"] },
+          "total_price": { "type": ["string", "number", "null"] },
+          "total_tax": { "type": ["string", "number", "null"] }
+        },
+        "required": ["shop_id"]
       },
       "readOnly": true
     },

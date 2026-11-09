@@ -47,6 +47,8 @@ Create each offer once, here or in Shopify, never in both. Without a shop mappin
 
 For a quote linked to a Shopify draft order, this completes the draft order in Shopify with payment pending. Shopify creates the order, the quote becomes `invoiced`, and the invoice is issued from the order moments later. Do not issue a second invoice by hand. A quote without a draft order is converted into an invoice at once.
 
+Convert to invoice is refused when the order would not be invoiced: the Shopify customer has no email, the draft order has no address, a buyer in another EU country is charged no VAT without its VAT number, or a reverse charge sale is charged VAT. The message says what to fix. A quote with the buyer's VAT number creates its draft order with that number as a `VAT number` custom attribute, so the order keeps the reverse charge.
+
 When you click the button yourself, the confirmation is the approval. An agent's convert (`documents_convert_to_invoice`) files an approval first. The quote's customer purchase order number (`po_number`) is carried onto the invoice.
 
 ## Quote statuses

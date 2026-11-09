@@ -7,6 +7,11 @@ import { resolveOrderPoNumber } from "../lib/draft-order"
 import { getShopifyClient } from "../lib/get-client"
 import { normalizeDraftOrderInput, isUsableEmail, normalizeEmailInput } from "./draft-order-input"
 import {
+  assertDraftOrderInvoiceable,
+  invoiceabilityFactsForCreate,
+  invoiceabilityFactsForDraft,
+} from "./invoiceability"
+import {
   type PreflightResult,
   type ShopClient,
   resolveMutationInput,
@@ -63,10 +68,11 @@ export async function draft_orders_create_preflight(
   ctx: AppContext,
 ): Promise<PreflightResult> {
   try {
-    await normalizeDraftOrderInput(resolveMutationInput(params), ctx, {
+    const input = await normalizeDraftOrderInput(resolveMutationInput(params), ctx, {
       promoteWholeOrderDiscount: true,
       enforceBuyerIdentity: true,
     })
+    await assertDraftOrderInvoiceable(ctx, () => invoiceabilityFactsForCreate(input, ctx))
   } catch (err) {
     return preflightRefusal(err, "BAD_PARAM")
   }
@@ -78,6 +84,8 @@ export async function draft_orders_create(params: Record<string, unknown>, ctx: 
     promoteWholeOrderDiscount: true,
     enforceBuyerIdentity: true,
   })
+  // Same Invoicing check as the preflight: the customer record can change before the approve.
+  await assertDraftOrderInvoiceable(ctx, () => invoiceabilityFactsForCreate(input, ctx))
   // The raw draftOrderCreate response already carries `draftOrder.poNumber` (camelCase, once
   // selected in DRAFT_ORDER_CREATE below) exactly as invoicing's draft-order sync expects on
   // this event -- no transform needed, unlike the tool-result shapes in reads.ts which use the
@@ -119,8 +127,30 @@ const DRAFT_ORDER_COMPLETE = `
   }
 `
 
+/**
+ * STAGE-TIME preflight for the gated `draft_orders_complete` (manifest `preflight`). With Invoicing
+ * mapped to this shop, the completed order is invoiced by its order-created auto-flow; a draft that
+ * flow would park (no customer email, no address, an intra-EU business sale without the buyer's
+ * VAT number, VAT charged on an exempt sale) is refused here, whoever made the draft (an agent, or
+ * staff in the Shopify admin), instead of becoming an order nobody invoices.
+ */
+export async function draft_orders_complete_preflight(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<PreflightResult> {
+  try {
+    if (!params.id) throw makeMutationError("BAD_PARAM", "id is required")
+    await assertDraftOrderInvoiceable(ctx, () => invoiceabilityFactsForDraft(String(params.id), ctx))
+  } catch (err) {
+    return preflightRefusal(err, "BAD_PARAM")
+  }
+  return { ok: true }
+}
+
 export async function draft_orders_complete(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
   if (!params.id) throw makeMutationError("BAD_PARAM", "id is required")
+  // Re-checked at execution: the draft or its customer can change between staging and the approve.
+  await assertDraftOrderInvoiceable(ctx, () => invoiceabilityFactsForDraft(String(params.id), ctx))
   return runMutation(ctx, {
     query: DRAFT_ORDER_COMPLETE,
     variables: { id: params.id, paymentPending: params.paymentPending ?? false },

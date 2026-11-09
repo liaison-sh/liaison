@@ -115,6 +115,36 @@ export function outboundAttachmentFileIds(payload: Record<string, unknown> | nul
 }
 
 /**
+ * Every stored file a gated send re-attaches, including the ones the payload
+ * does not name.
+ *
+ * A forward carries the original message's own attachments, and the handler
+ * adds them at execution time: the agent names none, so `payload.attachments`
+ * omits them. Each one is sealed like any other stored file and needs its
+ * readable bytes from this browser, so they come from the forwarded message
+ * itself (`mailboxQuoteMessageIds`), originals first, then the payload's extra
+ * files, each once, the same order the handler attaches them in.
+ */
+export function sendAttachmentFileIds(
+  approval: { toolName: string; payload: Record<string, unknown> | null },
+  attachmentIdsOfMessage: (messageId: string) => readonly string[] | undefined,
+): string[] {
+  const extra = outboundAttachmentFileIds(approval.payload)
+  if (approval.toolName !== "mail:forward") return extra
+  const quoted = approval.payload?.mailboxQuoteMessageIds
+  const carried: string[] = []
+  if (Array.isArray(quoted)) {
+    for (const messageId of quoted) {
+      if (typeof messageId !== "string" || messageId.length === 0) continue
+      for (const id of attachmentIdsOfMessage(messageId) ?? []) {
+        if (typeof id === "string" && id.length > 0) carried.push(id)
+      }
+    }
+  }
+  return [...new Set([...carried, ...extra])]
+}
+
+/**
  * What the approver is told BEFORE they approve, when this send carries stored
  * attachments from an encrypted mailbox.
  *

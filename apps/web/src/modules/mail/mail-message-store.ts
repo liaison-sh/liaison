@@ -273,6 +273,18 @@ const _inFlightAborts: Record<string, AbortController> = {}
  * been swallowed by the blip, so joining it could show nothing of the gap: it
  * is aborted (it settles quietly, its write-back dropped) and a new one starts.
  */
+/**
+ * The stored attachment ids of one loaded message, or undefined when the
+ * message is not loaded. A forward's approval re-attaches exactly these.
+ */
+export function attachmentIdsOfLoadedMessage(messageId: string): string[] | undefined {
+  for (const conversationId of Object.keys(messages)) {
+    const message = messages[conversationId]?.byId[messageId]
+    if (message) return (message.attachments ?? []).map((attachment) => attachment.id)
+  }
+  return undefined
+}
+
 export function loadMessages(
   api: MailApi,
   conversationId: string,

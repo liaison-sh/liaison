@@ -5,9 +5,9 @@ import {
   type CiRun,
   decideCiKick,
   decideMainGate,
+  judgePrChecks,
   KICK_AFTER_MS,
   MAX_KICKS,
-  judgePrChecks,
   parseFixesCi,
   runIdFromUrl,
 } from "./pr-land"

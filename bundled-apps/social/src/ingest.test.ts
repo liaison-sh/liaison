@@ -244,7 +244,7 @@ describe("upsertDmMessage — repair-on-resync", () => {
 describe("two parses of one delivery racing on a new person", () => {
   const uniqueViolation = (table: string) =>
     new Error(
-      `Failed query: INSERT INTO "app_social"."${table}" — pg: duplicate key value violates unique constraint "${table}_key" (23505)`,
+      `Failed query on ${table} — pg: duplicate key value violates unique constraint "${table}_key" (23505)`,
     )
 
   test("the parse that loses the conversation insert lands its message in the winner's conversation", async () => {

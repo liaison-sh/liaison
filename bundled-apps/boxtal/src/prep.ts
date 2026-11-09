@@ -36,7 +36,7 @@ import type { Parcel } from "./resolver"
 import { resolvePrepCategory, type PrepCategory } from "./customs"
 import { toMinor } from "./money"
 import { businessDaysBetween } from "./quote-batch"
-import { stateRequired, validateRecipientPhone } from "./address"
+import { postalCodeRequired, stateRequired, validateRecipientPhone } from "./address"
 import { isPickupPointOffer } from "./carriers"
 import { pickSelectedOffer } from "./prep-selection"
 import { EMPTY_PRODUCT_CODE_CONFIG, orderProductsSummary, type ProductCodeConfig, shortProductCode } from "./product-codes"
@@ -357,7 +357,8 @@ export function missingRecipientFields(r: PrepRecipient | null | undefined): str
   if (blankField(r.name)) missing.push("name")
   if (blankField(r.street)) missing.push("street")
   if (blankField(r.city)) missing.push("city")
-  if (blankField(r.postalCode)) missing.push("postal code")
+  // A country with no postal codes (UAE, Qatar, Hong Kong...) has none to give.
+  if (blankField(r.postalCode) && postalCodeRequired(r.countryIsoCode)) missing.push("postal code")
   if (blankField(r.countryIsoCode)) missing.push("country")
   if (blankField(r.email)) missing.push("email")
   if (blankField(r.phone)) missing.push("phone")
@@ -1394,7 +1395,9 @@ export async function prepAddShipment(
 
   const recipient = mergeRecipient(prefillRecipient, input.recipient)
   const missing = REQUIRED_RECIPIENT_FIELDS.filter(
-    ([field]) => !String(recipient[field] ?? "").trim(),
+    ([field]) =>
+      !String(recipient[field] ?? "").trim() &&
+      !(field === "postalCode" && !postalCodeRequired(recipient.countryIsoCode)),
   ).map(([, label]) => label)
   if (missing.length > 0) {
     throw new ToolError(`The recipient is missing its ${missing.join(", ")}.`, {

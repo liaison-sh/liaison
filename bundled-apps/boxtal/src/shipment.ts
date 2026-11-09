@@ -87,9 +87,11 @@ import {
 } from "./draft-store"
 import {
   assembleAddress,
+  boxtalText,
   normalizeRegion,
   partyFromConfig,
   type PostalParty,
+  postalCodeRequired,
   validateParty,
   validateRecipientPhone,
 } from "./address"
@@ -123,10 +125,29 @@ export function summarizeBoxtalError(body: string): string {
   try {
     const parsed = JSON.parse(body) as {
       messages?: Array<{ text?: string }>
+      errors?: Array<{ code?: string; message?: string; parameters?: unknown }>
       message?: string
     }
     const texts = (parsed.messages ?? []).map((m) => m.text).filter((t): t is string => !!t)
     if (texts.length > 0) return texts.join("; ")
+    // The v3 `errors[]` envelope: each error's own field + message when it names them (its
+    // `parameters`), else its code.
+    const errs: string[] = []
+    for (const e of parsed.errors ?? []) {
+      const params = Array.isArray(e?.parameters) ? (e.parameters as Array<Record<string, unknown>>) : []
+      const named = params
+        .map((p) => {
+          const field = [p?.propertyPath, p?.field, p?.path].find((v) => typeof v === "string" && v)
+          const msg = [p?.message, p?.text, p?.detail].find((v) => typeof v === "string" && v)
+          if (msg) return field ? `${field}: ${msg}` : String(msg)
+          return null
+        })
+        .filter((t): t is string => !!t)
+      if (named.length > 0) errs.push(...named)
+      else if (typeof e?.message === "string" && e.message) errs.push(e.message)
+      else if (typeof e?.code === "string" && e.code) errs.push(e.code)
+    }
+    if (errs.length > 0) return errs.join("; ")
     if (parsed.message) return parsed.message
   } catch {
     // non-JSON body — fall through to the raw slice
@@ -377,8 +398,9 @@ async function enrichCotation(ctx: ShipmentCtx, input: CotationInput): Promise<C
     },
     to: {
       country: to.country ?? "",
-      postalCode: to.postalCode ?? "",
-      city: to.city ?? "",
+      // Boxtal's set: accents transliterated; no postal code where the country has none.
+      postalCode: postalCodeRequired(to.country) ? (to.postalCode ?? "") : "",
+      city: boxtalText(to.city),
       type: cotationPartyType(to.type, "particulier"),
       ...(to.state ? { state: to.state } : {}),
     },
@@ -1879,6 +1901,9 @@ export function normalizePostalCode(
   countryIsoCode: string | null,
 ): string | null {
   if (!postal) return postal
+  // A country with no postal codes (UAE, Qatar, Hong Kong...): what a parse took for one is a PO
+  // box or a building number, and Boxtal prices the route without one.
+  if (!postalCodeRequired(countryIsoCode)) return null
   if ((countryIsoCode ?? "").trim().toUpperCase() === "US") {
     const v = postal.trim()
     const m = v.match(/^(\d{5})(?:-\d{4})?$/)
@@ -2698,7 +2723,8 @@ export async function createShipment(
         // corrected retry can proceed cleanly (spec §C.5 reserves
         // create_uncertain for INDETERMINATE 5xx only).
         await releaseReservation(ctx, reserve.id)
-        return { error: { code: "validation", message: "recipient phone invalid" } }
+        const detail = summarizeBoxtalError(err.body)
+        return { error: { code: "validation", message: detail ? `recipient phone invalid: ${detail}` : "recipient phone invalid" } }
       }
       if (err.status === 422 && err.body.includes("InvalidPaymentException")) {
         // NOT a problem with this shipment. Boxtal refuses the ORDER when the

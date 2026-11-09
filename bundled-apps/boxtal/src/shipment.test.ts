@@ -185,6 +185,10 @@ describe("normalizePostalCode", () => {
     expect(normalizePostalCode("250", "US")).toBeNull()
     expect(normalizePostalCode("W 57th", "US")).toBeNull()
   })
+  it("drops a postal code parsed for a country that has none (UAE): Boxtal takes it empty", () => {
+    expect(normalizePostalCode("12345", "AE")).toBeNull()
+    expect(normalizePostalCode("PO Box 1", "QA")).toBeNull()
+  })
   it("leaves non-US codes untouched", () => {
     expect(normalizePostalCode("75018", "FR")).toBe("75018")
     expect(normalizePostalCode("SW1A 1AA", "GB")).toBe("SW1A 1AA")
@@ -1600,6 +1604,8 @@ describe("create_shipment (gated body)", () => {
     const { ctx, db } = makeCtx({ v3Status: 422, v3Body: JSON.stringify({ code: "ValidationException.Phone", message: "invalid phone" }) })
     const res = await createShipment(ctx, CREATE_INPUT)
     expect(res.error?.message).toMatch(/recipient phone invalid/i)
+    // Boxtal's own reason, not only ours: the operator sees what the carrier refused.
+    expect(res.error?.message).toContain("invalid phone")
     // A deterministic 422 releases the reservation so a corrected retry can proceed.
     expect(db.__all("shipment")).toHaveLength(0)
   })

@@ -21,6 +21,7 @@
 // folded, and house numbers must be identical. The city counts because several communes share
 // one postal code and the same street names ("Grande Rue" in two villages of one canton).
 // Anything it cannot decide counts as a difference.
+import { postalCodeRequired } from "./address"
 import type { RecipientAddressInput } from "./shipment"
 
 export type AddressSourceKind =
@@ -326,7 +327,8 @@ function hasLocation(a: RecipientAddressInput | null | undefined): a is Recipien
 
 /** Does a stored address hold everything a label buy needs (street, city, postal code, phone)? */
 export function hasLabelAddress(a: RecipientAddressInput | null): boolean {
-  return Boolean(a?.street && a.city && a.postalCode && a.phone)
+  // A country with no postal codes (UAE, Qatar...) has none to hold.
+  return Boolean(a?.street && a.city && (a.postalCode || !postalCodeRequired(a.countryIsoCode)) && a.phone)
 }
 
 interface Candidate {

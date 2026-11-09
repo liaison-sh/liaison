@@ -201,7 +201,7 @@ Tools marked "Always" file an approval and nothing happens until a person approv
 
 `prep_sync` also copies an order's ship-to onto the recipient's contact, under its shipping address, when the contact has none (or lacks its state, phone or email). It never overwrites a filled field. This is the app's own write, so it runs without the approval an agent's contact edit waits for.
 
-When Boxtal refuses a row's quote or returns no offer, the row has no estimate and says why, for example "Quote failed: no offers returned". `prep_sync` lists the failed rows (how many, and the first three with their reason) in its result.
+When Boxtal refuses a row's quote or returns no offer, the row has no estimate and says why, for example "Quote failed: no offers returned". The reason is Boxtal's own message, and a refused label says which field Boxtal refused. A destination with no postal codes (the United Arab Emirates, Qatar, Hong Kong and the like) needs none: the row is not held for one, and whatever an address parse took for one there is not sent. Names and addresses are sent in the characters Boxtal accepts: accents are transliterated ("Zoë" becomes "Zoe"), typographic quotes and dashes become plain ones, and characters with no Latin form are left out; a name written only in another script reads as missing. `prep_sync` lists the failed rows (how many, and the first three with their reason) in its result.
 
 `settings_sender_form_get`, `settings_form_get` and `settings_form_set` back the settings page and are not offered to agents.
 

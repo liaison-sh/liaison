@@ -1424,6 +1424,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // The editor links a contact by name (search + pick), never by raw id.
             "src/ui/ContactPicker.test.tsx",
             "src/ui/ContactDocumentsPanel.test.tsx",
+            // The company page's Money section reads only that company's documents.
+            "src/ui/CompanyMoneyPanel.test.tsx",
             "src/ui/DocumentDetail.test.tsx",
             // The Deferred tab: open parks, tax reviews first, gated override outcome.
             "src/ui/DeferredList.test.tsx",

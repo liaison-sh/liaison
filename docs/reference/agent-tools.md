@@ -650,6 +650,8 @@ Projects and tasks with owners, statuses, due dates and discussions.
 | `checklist_update_item` | Edit one checklist item: its title, its details, or its position (place it before or after a sibling item of the same task). |  | `projects:tasks:write` |
 | `comment` | Write a comment on a task — the task's own discussion thread, the same one the task detail pane shows. |  | `projects:tasks:write` |
 | `comments` | Read a task's discussion — the comments on its own thread, newest last. |  | `projects:tasks:read` |
+| `company_context` | The open deals of the company in view, by stage, with amounts only under deal access, for the agent's context. |  | `projects:projects:read` |
+| `company_work` | A company's projects and deals, for the Work section of its page. |  | `projects:projects:read` |
 | `create` | Create a TASK inside an existing project (NOT a project — use `createProject` for that). |  | `projects:tasks:write` |
 | `createProject` | Create a PROJECT (the container/board) TOGETHER WITH ITS TASKS: pass the tasks you plan (up to 20, each with a title, and optionally a description and an assignee) in `tasks`, in this ONE call. |  | `projects:projects:write` |
 | `deal_send_state` | Whether a mail about a deal may still be sent: stops a closed or deleted deal. |  | `projects:projects:read` |
@@ -814,6 +816,7 @@ Track customer requests, returns and warranty cases to resolution.
 | `categories.update` | Update a category |  | `tickets:categories:admin` |
 | `clearFollowup` | Clear scheduled follow-up |  | `tickets:tickets:write` |
 | `close` | Close a ticket. | yes | `tickets:tickets:close` |
+| `company_tickets` | The open tickets of a company's people, newest first, for the Support section of its page. |  | `tickets:tickets:read` |
 | `convertToMail` | Convert a ticket back to a Mail conversation (de-escalate / hand a mis-filed ticket back to email); closes the ticket as converted_to_mail and copies non-note messages. |  | `tickets:tickets:write` |
 | `create` | Create a ticket. |  | `tickets:tickets:write` |
 | `createFromMail` | Create a ticket from an escalated mail conversation. |  | `tickets:tickets:write` |

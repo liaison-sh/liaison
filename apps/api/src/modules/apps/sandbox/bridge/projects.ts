@@ -1291,6 +1291,28 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         })
       })
     },
+    // The projects whose client is a company, for the Work section of its page,
+    // read under the caller's row security.
+    projects_companyProjects: async (paramsJson: string): Promise<string> => {
+      if (appName !== "projects") {
+        throw new Error("projects_companyProjects is only available to the projects app")
+      }
+      const params = JSON.parse(paramsJson || "{}") as { companyId?: string }
+      const companyId = String(params.companyId ?? "")
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(companyId)) {
+        return envelopeError("invalid_params", "companyId is a company id. Nothing was read.")
+      }
+      const rows = extractRows<{ id: string; name: string; key: string | null }>(
+        await txDb.execute(drizzleSql`
+          SELECT p.id::text AS id, p.name, p.key
+            FROM ${drizzleSql.raw(`"${schemaRef("app_projects")}"`)}.projects p
+           WHERE p.org_id = ${orgId}::uuid AND p.company_id = ${companyId}::uuid
+             AND p.archived_at IS NULL
+           ORDER BY p.updated_at DESC, p.id
+           LIMIT 50`),
+      )
+      return JSON.stringify({ items: rows })
+    },
     projects_dealSendState: async (paramsJson: string): Promise<string> => {
       if (appName !== "projects") {
         throw new Error("projects_dealSendState is only available to the projects app")

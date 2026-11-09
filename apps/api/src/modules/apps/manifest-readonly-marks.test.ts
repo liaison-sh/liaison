@@ -47,6 +47,7 @@ const READ_ONLY: Record<string, string[]> = {
     "apiKeys.list",
     "idSegment.get",
     "approveFromHome.get",
+    "company_tickets", // the company page's Support read: the company's people, then one findMany
   ],
   projects: [
     "activity_read", // a timeline read the kernel makes, in a read-only savepoint
@@ -69,6 +70,9 @@ const READ_ONLY: Record<string, string[]> = {
     "deals_rollup",
     "deals_followup_candidates",
     "deal_send_state",
+    // The company page: the open deals for the agent's context, and the Work section's read.
+    "company_context",
+    "company_work",
   ],
   knowledge: ["search", "review_queue", "get", "find_by_title", "synced_sources.list"],
   mail: [

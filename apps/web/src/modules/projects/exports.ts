@@ -23,6 +23,10 @@ export const ProjectWorkspace = lazy(() =>
 export const TaskDetail = lazy(() =>
   import("~/modules/projects/TaskDetail").then((m) => ({ default: m.TaskDetail })),
 )
+// The Work section of a company's page — registered via manifest `slots.company_detail`.
+export const CompanyWorkPanel = lazy(() =>
+  import("~/modules/projects/CompanyWorkPanel").then((m) => ({ default: m.CompanyWorkPanel })),
+)
 export const ProjectsSidebar = lazy(() =>
   import("~/modules/projects/ProjectsSidebar").then((m) => ({ default: m.ProjectsSidebar })),
 )

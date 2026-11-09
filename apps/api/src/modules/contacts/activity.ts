@@ -15,6 +15,10 @@
  *
  * A source the caller has no scope for, or whose app is off, is never asked and
  * never named. One that fails or misses the deadline is named as unavailable.
+ *
+ * The kernel answers one source itself (`company`): a company's account
+ * manager changes, read from the audit log under the caller's row security,
+ * for a company the caller can see, with the same cursor as the others.
  */
 import { sql as drizzleSql } from "drizzle-orm"
 import { z } from "zod"
@@ -27,7 +31,7 @@ import { UUID_RE } from "~/lib/uuid"
 import { runContextStore } from "~/modules/agent/runtime/run-context"
 import { appBridgeManifestRegistry, toolRegistry } from "~/modules/apps/app-registries"
 import { isAppUnavailableFor } from "~/modules/apps/org-apps"
-import { getCompany } from "~/modules/contacts/companies"
+import { getCompany, memberNames } from "~/modules/contacts/companies"
 import { hasScope } from "~/modules/permissions/permissions"
 
 const log = rootLogger.child({ module: "activity" })
@@ -210,9 +214,30 @@ interface SourceDecl {
   filterKey: string
 }
 
+/** The kernel's own source, answered in process: a company's account manager changes. */
+const COMPANY_SOURCE: SourceDecl = {
+  app: "kernel",
+  tool: "",
+  scope: "kernel:companies:read",
+  label: "Company",
+  filterKey: "company",
+}
+
 /** The sources this caller may read, in a fixed order; an unknown `only` matches none. */
-function sourcesFor(orgId: string, actor: UserContext, only?: string | null): SourceDecl[] {
+function sourcesFor(
+  orgId: string,
+  actor: UserContext,
+  only: string | null | undefined,
+  subject: Subject,
+): SourceDecl[] {
   const out: SourceDecl[] = []
+  if (
+    subject.companyId &&
+    (!only || only === COMPANY_SOURCE.filterKey) &&
+    hasScope(COMPANY_SOURCE.scope, actor.scopes ?? [])
+  ) {
+    out.push(COMPANY_SOURCE)
+  }
   for (const [[, app], manifest] of appBridgeManifestRegistry.entriesOf(orgId)) {
     for (const decl of manifest.activitySources ?? []) {
       if (only && decl.filterKey !== only) continue
@@ -257,6 +282,89 @@ function readAnswer(data: unknown): ActivitySourceAnswer | null {
   return { rows, windowStart }
 }
 
+const AUDIT_AT = drizzleSql.raw("a.at")
+const AUDIT_NID = drizzleSql.raw("a.nid")
+
+/**
+ * A company's account manager changes, newest first: each audit row of a
+ * `company.update` that names the previous manager, read as the caller (the
+ * audit log reads within the caller's organisation), for a company the caller
+ * was just shown. The row says who it went from and to, and `who` is the
+ * person who changed it.
+ */
+export async function companyManagerRows(
+  actor: UserContext,
+  orgId: string,
+  companyId: string,
+  input: Pick<ActivitySourceInput, "before" | "limit" | "prefix">,
+): Promise<ActivitySourceAnswer> {
+  const rows = await withRlsContext(actor, async (tx) =>
+    extractRows<{
+      nid: string
+      at: string | Date
+      actor_id: string | null
+      owner: string | null
+      previous: string | null
+    }>(
+      await tx.execute(drizzleSql`
+        SELECT * FROM (
+          SELECT l.id::text AS nid, date_trunc('milliseconds', l.timestamp) AS at,
+                 l.actor_id::text AS actor_id,
+                 l.changes->>'ownerUserId' AS owner, l.changes->>'previousOwnerUserId' AS previous
+            FROM ${tableRef("kernel", "audit_log")} l
+           WHERE l.org_id = ${orgId}::uuid AND l.entity_type = 'company'
+             AND l.entity_id = ${companyId} AND l.action = 'company.update'
+             AND l.changes ? 'previousOwnerUserId'
+             AND (l.changes->>'ownerUserId') IS DISTINCT FROM (l.changes->>'previousOwnerUserId')
+        ) a
+        WHERE ${olderThanCursor(AUDIT_AT, AUDIT_NID, input)}
+        ${newestFirst(AUDIT_AT, AUDIT_NID, input)}`),
+    ),
+  )
+  const names = await memberNames(
+    orgId,
+    rows.flatMap((r) => [r.actor_id, r.owner, r.previous].filter((v): v is string => !!v)),
+  )
+  const nameOf = (id: string) => names.get(id) ?? "a former member"
+  return {
+    rows: rows.map((r) => ({
+      id: r.nid,
+      at: new Date(r.at).toISOString(),
+      title: !r.owner
+        ? `Account manager removed (was ${nameOf(r.previous as string)})`
+        : r.previous
+          ? `Account manager changed from ${nameOf(r.previous)} to ${nameOf(r.owner)}`
+          : `Account manager set to ${nameOf(r.owner)}`,
+      who: r.actor_id ? (names.get(r.actor_id) ?? null) : null,
+      contactId: null,
+      href: null,
+    })),
+  }
+}
+
+async function askKernel(
+  orgId: string,
+  actor: UserContext,
+  decl: SourceDecl,
+  input: Omit<ActivitySourceInput, "prefix">,
+  deadline: Promise<"timeout">,
+): Promise<Asked> {
+  try {
+    const answer = await Promise.race([
+      companyManagerRows(actor, orgId, input.companyId as string, {
+        ...input,
+        prefix: `${decl.filterKey}:`,
+      }),
+      deadline,
+    ])
+    if (answer === "timeout") return { ok: false, decl, reason: "timeout" }
+    return { ok: true, decl, answer }
+  } catch (err) {
+    log.info({ err, source: decl.filterKey }, "activity source failed")
+    return { ok: false, decl, reason: "error" }
+  }
+}
+
 async function ask(
   orgId: string,
   actor: UserContext,
@@ -265,6 +373,7 @@ async function ask(
   signal: AbortSignal,
   deadline: Promise<"timeout">,
 ): Promise<Asked> {
+  if (decl === COMPANY_SOURCE) return askKernel(orgId, actor, decl, input, deadline)
   const { executeToolCore } = await import("~/modules/apps/execute-tool")
   const outer = runContextStore.getStore()
   const runId = crypto.randomUUID()
@@ -328,7 +437,7 @@ export async function readActivity(input: ReadActivityInput): Promise<ActivityRe
     Math.max(1, Math.floor(input.limit ?? ACTIVITY_LIMIT_DEFAULT)),
   )
   const before = decodeActivityCursor(input.before)
-  const sources = sourcesFor(orgId, actor, input.source)
+  const sources = sourcesFor(orgId, actor, input.source, subject)
   const controller = new AbortController()
   let timer: ReturnType<typeof setTimeout> | undefined
   const deadline = new Promise<"timeout">((resolve) => {

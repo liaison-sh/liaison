@@ -1196,3 +1196,65 @@ async function ticketsOnGmailPush(
 async function activityRead(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
   return JSON.parse(await ctx.tickets_activityRead(JSON.stringify(params ?? {})))
 }
+
+const COMPANY_TICKETS_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const COMPANY_TICKETS_LIMIT = 20
+
+/**
+ * The open tickets of a company's people, newest first, for the Support
+ * section of its page: the people the caller can see (`kernel:companies_read`),
+ * then their tickets under the caller's row security.
+ */
+async function companyTickets(params: unknown, ctx: TicketsSandboxCtx): Promise<unknown> {
+  const companyId = String((params as { companyId?: unknown } | null)?.companyId ?? "")
+  if (!COMPANY_TICKETS_UUID_RE.test(companyId)) {
+    return { items: [], message: "companyId is not a company id. Nothing was read." }
+  }
+  const read = JSON.parse(
+    await ctx.executeTool("kernel:companies_read", JSON.stringify({ companyId })),
+  ) as { data?: { people?: Array<{ id?: unknown; name?: unknown }> }; error?: unknown }
+  const people = (read?.data?.people ?? []).filter(
+    (p): p is { id: string; name?: unknown } =>
+      typeof p?.id === "string" && COMPANY_TICKETS_UUID_RE.test(p.id),
+  )
+  if (people.length === 0)
+    return { items: [], message: "No open ticket from this company's people." }
+  const names = new Map(people.map((p) => [p.id, typeof p.name === "string" ? p.name : null]))
+  const rows = JSON.parse(
+    await ctx.db_findMany(
+      "tickets",
+      JSON.stringify({
+        where: {
+          contactId: { in: people.map((p) => p.id) },
+          status: { in: ["open", "awaiting_customer", "awaiting_followup"] },
+        },
+        orderBy: { updatedAt: "desc" },
+        limit: COMPANY_TICKETS_LIMIT + 1,
+      }),
+    ),
+  ) as Array<{
+    id: string
+    handle?: string | null
+    subject?: string | null
+    status: string
+    contactId?: string | null
+    updatedAt?: string
+  }>
+  const items = rows.slice(0, COMPANY_TICKETS_LIMIT).map((t) => ({
+    id: t.id,
+    handle: t.handle ?? null,
+    subject: t.subject ?? null,
+    status: t.status,
+    contactId: t.contactId ?? null,
+    contactName: t.contactId ? (names.get(t.contactId) ?? null) : null,
+    updatedAt: t.updatedAt ?? null,
+  }))
+  const more = rows.length > COMPANY_TICKETS_LIMIT
+  return {
+    items,
+    message:
+      items.length === 0
+        ? "No open ticket from this company's people."
+        : `${items.length}${more ? "+" : ""} open ticket${items.length === 1 ? "" : "s"} from this company's people.`,
+  }
+}

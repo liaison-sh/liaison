@@ -289,7 +289,7 @@ Projects and tasks with owners, statuses, due dates and discussions.
 | `projects:deals:read` | roles lead, sales; tool deals_rollup |  |
 | `projects:deals:write` | roles lead, sales |  |
 | `projects:labels:admin` | role admin; settings section labels; tools labels.archive, labels.create, labels.reorder, labels.update |  |
-| `projects:projects:read` | entities project, task; role member; tools deal_send_state, deals_followup_candidates, deals_search, get, labels.list, labels.tree and 1 more |  |
+| `projects:projects:read` | entities project, task; role member; tools company_context, company_work, deal_send_state, deals_followup_candidates, deals_search, get and 3 more |  |
 | `projects:projects:write` | role lead; tools createProject, deals_pipeline_create, instantiate_template, status_add, status_delete, status_update and 1 more |  |
 | `projects:settings:admin` | role admin; settings section ci; tool webhook_info |  |
 | `projects:tasks:read` | role member; tools activity_read, approval_route_read, attentionItems, checklist_get, comments, portfolio_rollup and 2 more |  |
@@ -360,6 +360,6 @@ Track customer requests, returns and warranty cases to resolution.
 | `tickets:inboxes:read` | role support; tool inboxes.list |  |
 | `tickets:settings:admin` | role admin; settings sections api-keys, id-segments, response-times; tools apiKeys.create, apiKeys.list, apiKeys.revoke, approveFromHome.get, approveFromHome.set, idSegment.get and 1 more |  |
 | `tickets:tickets:close` | role support_lead; tool close |  |
-| `tickets:tickets:read` | entities message, ticket; role support; tools activity_read, approval_route_read, backlogHealth, categories.list, categories.tree, csat.list and 11 more |  |
+| `tickets:tickets:read` | entities message, ticket; role support; tools activity_read, approval_route_read, backlogHealth, categories.list, categories.tree, company_tickets and 12 more |  |
 | `tickets:tickets:reply` | role support; tools nudge, reply |  |
 | `tickets:tickets:write` | role support; tools addNote, assign, clearFollowup, convertToMail, create, createFromMail and 20 more |  |

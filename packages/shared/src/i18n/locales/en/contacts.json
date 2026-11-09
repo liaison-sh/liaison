@@ -264,7 +264,10 @@
     "phoneOverview": "Overview",
     "phoneTimeline": "Timeline",
     "phoneDiscussion": "Discussion",
-    "askBox": "Ask the agent about {{name}}"
+    "askBox": "Ask the agent about {{name}}",
+    "money": "Money",
+    "support": "Support",
+    "work": "Work"
   },
   "activity": {
     "reading": "Reading your apps",
@@ -284,7 +287,8 @@
       "tickets": "Tickets",
       "invoicing": "Invoicing",
       "calendar": "Calendar",
-      "projects": "Deals"
+      "projects": "Deals",
+      "company": "Company"
     }
   }
 }

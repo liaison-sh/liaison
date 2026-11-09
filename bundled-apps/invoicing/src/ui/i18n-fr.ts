@@ -154,6 +154,7 @@ export const FR: Record<string, string> = {
   "No documents to group by customer.": "Aucun document à regrouper par client.",
   "No documents to group by market.": "Aucun document à regrouper par marché.",
   "No documents yet for this contact.": "Aucun document pour ce contact pour l'instant.",
+  "No invoices or quotes for this company yet.": "Aucune facture ni aucun devis pour cette entreprise pour l'instant.",
   "No issuer profiles yet.": "Aucun profil émetteur pour l'instant.",
   "No lifecycle events yet.": "Aucun événement pour l'instant.",
   "No lines.": "Aucune ligne.",

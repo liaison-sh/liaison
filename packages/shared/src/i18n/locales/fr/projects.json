@@ -343,5 +343,13 @@
     "clientClear": "Retirer le client",
     "clientNoMatch": "Aucune entreprise ne correspond.",
     "clientUnavailable": "Une entreprise que vous ne voyez pas"
+  },
+  "companyWork": {
+    "empty": "Aucun projet ni aucune affaire pour cette entreprise pour l'instant.",
+    "error": "Impossible de lire les projets et les affaires de cette entreprise.",
+    "needsDealAccess": "Accès aux affaires requis",
+    "noAmount": "Sans montant",
+    "won": "Gagnée",
+    "lost": "Perdue"
   }
 }

@@ -192,6 +192,7 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["projects_checklistRemoveItem", "async"],
   ["projects_checklistSetValidation", "async"],
   ["projects_checklistUpdateItem", "async"],
+  ["projects_companyProjects", "async"],
   ["projects_createProject", "async"],
   ["projects_createTask", "async"],
   ["projects_dealSendState", "async"],

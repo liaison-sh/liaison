@@ -403,5 +403,9 @@
     "backlogHow": "Counted by the server over every open ticket you can see, not over a page of results",
     "runningGet": "Reading the ticket",
     "runningBacklog": "Counting open tickets"
+  },
+  "companySupport": {
+    "empty": "No open ticket from this company's people.",
+    "error": "Could not read this company's tickets."
   }
 }

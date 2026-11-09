@@ -264,7 +264,10 @@
     "phoneOverview": "Aperçu",
     "phoneTimeline": "Historique",
     "phoneDiscussion": "Discussion",
-    "askBox": "Demander à l'agent à propos de {{name}}"
+    "askBox": "Demander à l'agent à propos de {{name}}",
+    "money": "Finances",
+    "support": "Support",
+    "work": "Travail"
   },
   "activity": {
     "reading": "Lecture de vos applications",
@@ -284,7 +287,8 @@
       "tickets": "Tickets",
       "invoicing": "Facturation",
       "calendar": "Agenda",
-      "projects": "Affaires"
+      "projects": "Affaires",
+      "company": "Entreprise"
     }
   }
 }

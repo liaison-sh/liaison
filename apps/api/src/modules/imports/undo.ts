@@ -387,7 +387,7 @@ async function companyInUse(
     const hit = extractRows(
       await tx.execute(drizzleSql`
         SELECT 1 FROM ${tableRel(table)}
-        WHERE ${drizzleSql.raw(column)} = ${e.id}::uuid AND org_id = ${orgId}::uuid LIMIT 1
+        WHERE ${drizzleSql.identifier(column)} = ${e.id}::uuid AND org_id = ${orgId}::uuid LIMIT 1
       `),
     )
     if (hit.length > 0) return true

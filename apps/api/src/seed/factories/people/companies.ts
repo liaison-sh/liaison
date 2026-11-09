@@ -7,6 +7,7 @@
 // adding a twin. No privileged write.
 import { sql } from "drizzle-orm"
 import type { UserContext } from "~/db/rls"
+import { schemaRef } from "~/db/schema-ref"
 import { createCompany, linkContactsToCompany } from "~/modules/contacts/companies"
 import type { SeedContext } from "~/seed/context"
 import { asUser, rowsOf } from "./actors"
@@ -35,7 +36,7 @@ export async function seedCompanies(
     for (const spec of specs) {
       const found = rowsOf<{ id: string }>(
         await (tx as ExecTx).execute(
-          sql`SELECT id FROM kernel.companies
+          sql`SELECT id FROM ${sql.raw(schemaRef("kernel"))}.companies
               WHERE org_id = ${ctx.orgId} AND lower(name) = ${spec.name.toLowerCase()} LIMIT 1`,
         ),
       )[0]

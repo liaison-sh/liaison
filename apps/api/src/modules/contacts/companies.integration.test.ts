@@ -504,6 +504,11 @@ describe("company search", () => {
     // The boot-time indexer consumer turns that event into this job; a bare
     // test process drives the same job directly, on index settings the boot
     // path would have applied.
+    // Boot registers the org's apps before it applies index settings; a job in
+    // this process may register them later, which would leave the query
+    // filtering on a dimension the settings never made filterable.
+    const { ensureAppsForOrg } = await import("~/modules/apps/init")
+    await ensureAppsForOrg(ORG_ID)
     const { detectDrift } = await import("~/modules/search/drift")
     const { collectSearchableRegistrations } = await import("~/modules/search/searchable-entities")
     const regs = collectSearchableRegistrations(ORG_ID)

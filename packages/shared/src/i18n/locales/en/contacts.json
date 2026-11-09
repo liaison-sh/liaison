@@ -289,6 +289,30 @@
       "calendar": "Calendar",
       "projects": "Deals",
       "company": "Company"
+    },
+    "emptyContact": "Nothing has happened with this person yet.",
+    "onlyThisPerson": "Only what involves {{name}}. Everything at the company is on {{company}}."
+  },
+  "followUps": {
+    "label": "Follow-ups",
+    "optedOut": "Opted out of commercial mail.",
+    "since": "Since {{date}}.",
+    "sinceBy": "Since {{date}}, by {{by}}.",
+    "by": {
+      "link": "the link in an earlier message",
+      "reply": "a reply asking to stop",
+      "person": "a person in this organization",
+      "import": "an imported list"
+    },
+    "noBasis": "No recorded basis. Commercial follow-ups skip this person.",
+    "unknown": "Opt-out status could not be read. Commercial follow-ups wait for it.",
+    "allowed": "Sales follow-ups allowed: {{basis}}.",
+    "recorded": "Recorded {{date}}. Invoices and account messages always go out.",
+    "basis": {
+      "consent": "they agreed to them",
+      "customer": "existing customer",
+      "professional_interest": "professional interest",
+      "generic_address": "generic business address"
     }
   }
 }

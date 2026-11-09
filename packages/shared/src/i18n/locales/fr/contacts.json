@@ -289,6 +289,30 @@
       "calendar": "Agenda",
       "projects": "Affaires",
       "company": "Entreprise"
+    },
+    "emptyContact": "Rien ne s'est encore passé avec cette personne.",
+    "onlyThisPerson": "Uniquement ce qui concerne {{name}}. Tout ce qui touche l'entreprise est sur {{company}}."
+  },
+  "followUps": {
+    "label": "Relances",
+    "optedOut": "Désinscrit des messages commerciaux.",
+    "since": "Depuis le {{date}}.",
+    "sinceBy": "Depuis le {{date}}, par {{by}}.",
+    "by": {
+      "link": "le lien d'un message précédent",
+      "reply": "une réponse demandant l'arrêt",
+      "person": "une personne de cette organisation",
+      "import": "une liste importée"
+    },
+    "noBasis": "Aucune base enregistrée. Les relances commerciales ignorent cette personne.",
+    "unknown": "Le statut de désinscription n'a pas pu être lu. Les relances commerciales l'attendent.",
+    "allowed": "Relances commerciales autorisées : {{basis}}.",
+    "recorded": "Enregistré le {{date}}. Les factures et messages de compte partent toujours.",
+    "basis": {
+      "consent": "ils y ont consenti",
+      "customer": "client existant",
+      "professional_interest": "intérêt professionnel",
+      "generic_address": "adresse professionnelle générique"
     }
   }
 }

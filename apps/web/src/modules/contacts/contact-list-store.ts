@@ -27,6 +27,10 @@ export interface Contact {
   ownerUserId?: string | null
   /** What commercial mail to them rests on, when recorded. */
   lawfulBasis?: "consent" | "customer" | "professional_interest" | "generic_address" | null
+  /** When the basis was recorded. */
+  lawfulBasisAt?: string | null
+  /** The company the contact belongs to, when it has one. */
+  companyId?: string | null
 }
 
 interface ContactListState {

@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
-import { createHash } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, type RlsClient } from "~/db"
-import { withPrivilegedDb } from "~/db/privileged"
 import { withReleasedSavepoint } from "~/db/savepoint"
 import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
@@ -11,8 +9,10 @@ import { quoteIdent } from "~/lib/sql-utils"
 import { currentRunContext } from "~/modules/agent/runtime/run-context"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import { snakeCase } from "~/modules/apps/sandbox/bridge/shared"
-import { writeAuditLog } from "~/modules/audit/service"
-import { art14NoticeDue, markArt14NoticeSent } from "~/modules/mail/commercial-footer"
+import {
+  type CommercialSend,
+  recordCommercialSendAfterSend,
+} from "~/modules/mail/commercial-send-record"
 import {
   type BuildSendGuardInput,
   buildSendGuard,
@@ -29,7 +29,6 @@ import {
   requestFacts,
   stopCode,
 } from "~/modules/mail/send-guard"
-import { hashEmail, lawfulBasisFacts } from "~/modules/mail/suppressions"
 
 const K = () => drizzleSql.raw(schemaRef("kernel"))
 
@@ -122,13 +121,12 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
   }
 
   /**
-   * The record of a commercial send, written just before it leaves: who approved
-   * it, a hash of the text that goes (footer included), the basis it goes under,
-   * its class and the opt-out check it passed. When the recipient is owed the
-   * notice of where their address came from, the footer carries it, and their
-   * contact records it now. Throws when either write fails: the mail then stays.
+   * The record of this handler run's commercial send, set by the check at send and written by
+   * `mail_commercialSent` once the provider accepted the mail (modules/mail/commercial-send-record.ts).
+   * Kept here, never handed to the sandbox: what is recorded is what the check decided.
    */
-  const recordCommercialSend = async (args: {
+  const pendingCommercialSend = bridgeOptions?.commercialSend ?? { value: null }
+  const commercialSendOf = (args: {
     toolName: string
     recipient: string
     footer: { textBody?: string; htmlBody?: string }
@@ -136,52 +134,24 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
     htmlBody: unknown
     mode: string | null
     approvedBy: "person" | "approver" | "policy"
-  }): Promise<{ notice: boolean }> => {
-    const sha = (v: unknown) =>
-      typeof v === "string" ? createHash("sha256").update(v).digest("hex") : null
-    const text = args.footer.textBody ?? args.textBody
-    const html = args.footer.htmlBody ?? args.htmlBody
-    const approverId =
+  }): CommercialSend => ({
+    orgId,
+    actorId: userId,
+    actorType: actorType === "agent" ? "agent" : "user",
+    toolName: args.toolName,
+    recipient: args.recipient,
+    textBody: args.footer.textBody ?? args.textBody,
+    htmlBody: args.footer.htmlBody ?? args.htmlBody,
+    mode: args.mode,
+    approvedBy: args.approvedBy,
+    approverId:
       args.approvedBy === "approver"
         ? (approvalContext?.approvalDeciderId ?? null)
         : args.approvedBy === "person"
           ? userId
-          : null
-    return withPrivilegedDb(orgId, "mail-commercial-send-record", async (tx) => {
-      const facts = (await lawfulBasisFacts(orgId, [args.recipient], tx)).recipients[0]
-      const due = await art14NoticeDue(orgId, args.recipient, tx)
-      await writeAuditLog(
-        tx,
-        {
-          orgId,
-          actorId: userId,
-          actorType: actorType === "agent" ? "agent" : "user",
-          app: "mail",
-          entityType: "contact",
-          ...(facts?.contactIds[0] ? { entityId: facts.contactIds[0] } : {}),
-          action: "mail.commercial_send",
-          metadata: {
-            toolName: args.toolName,
-            approvedBy: args.approvedBy,
-            approverId,
-            ...(approvalContext ? { approvalRequestId: approvalContext.approvalRequestId } : {}),
-            recipientHash: hashEmail(orgId, args.recipient),
-            contactIds: facts?.contactIds ?? [],
-            textSha256: sha(text),
-            htmlSha256: sha(html),
-            lawfulBasis: facts?.basis ?? null,
-            classification: "marketing",
-            mode: args.mode,
-            suppressionCheck: "not_opted_out",
-            art14Notice: due !== null,
-          },
-        },
-        { required: true },
-      )
-      if (due) await markArt14NoticeSent(orgId, args.recipient, tx)
-      return { notice: due !== null }
-    })
-  }
+          : null,
+    ...(approvalContext ? { approvalRequestId: approvalContext.approvalRequestId } : {}),
+  })
 
   /**
    * A stop names the record only if the caller can open it: a colleague's mailbox stays unnamed.
@@ -710,30 +680,15 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
             guard: { state: "refused", reason: message, classification: "marketing" },
           })
         }
-        try {
-          await recordCommercialSend({
-            toolName: params.toolName,
-            recipient: own.recipient,
-            footer,
-            textBody: params.textBody,
-            htmlBody: params.htmlBody,
-            mode: null,
-            approvedBy: "person",
-          })
-        } catch (err) {
-          rootLogger.error({ err, orgId }, "commercial send record failed, not sending")
-          const message =
-            "Nothing was sent. The record a commercial mail needs could not be written. Next: try again shortly."
-          return JSON.stringify({
-            applies: true,
-            state: "refused",
-            final: false,
-            code: "commercial_record_unavailable",
-            message,
-            approved: false,
-            guard: { state: "refused", reason: message, classification: "marketing" },
-          })
-        }
+        pendingCommercialSend.value = commercialSendOf({
+          toolName: params.toolName,
+          recipient: own.recipient,
+          footer,
+          textBody: params.textBody,
+          htmlBody: params.htmlBody,
+          mode: null,
+          approvedBy: "person",
+        })
         return JSON.stringify({
           applies: true,
           state: "clear",
@@ -758,12 +713,15 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
         orgId,
         guard,
         recipients,
+        ...(params.toolName ? { toolName: params.toolName } : {}),
         at: "send",
       })
+      // The class it was checked under now: an edit of the recipients may have made it commercial.
+      const classification = checked.classification ?? guard.classification
       if (checked.state === "clear") {
         // A commercial mail gets its footer here, and the send's record says so, so
         // what left can be checked against the classification it was sent under.
-        const commercial = guard.classification === "marketing"
+        const commercial = classification === "marketing"
         const first = commercial ? await commercialRecipient(orgId, recipients) : null
         const footer = first
           ? await commercialFooterFor(orgId, first, params.textBody, params.htmlBody)
@@ -782,40 +740,20 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
               state: "unavailable",
               reason: message,
               mode: guard.mode,
-              classification: guard.classification,
+              classification,
             },
           })
         }
         if (commercial && footer && first) {
-          try {
-            await recordCommercialSend({
-              toolName: params.toolName ?? "mail:compose",
-              recipient: first,
-              footer,
-              textBody: params.textBody,
-              htmlBody: params.htmlBody,
-              mode: guard.mode,
-              approvedBy: approvalContext ? "approver" : "policy",
-            })
-          } catch (err) {
-            rootLogger.error({ err, orgId }, "commercial send record failed, not sending")
-            const message =
-              "The mail was not sent. The record a commercial mail needs could not be written. Next: try again shortly."
-            return JSON.stringify({
-              applies: true,
-              state: "unavailable",
-              final: false,
-              code: "commercial_record_unavailable",
-              message,
-              approved: approvalContext !== undefined,
-              guard: {
-                state: "unavailable",
-                reason: message,
-                mode: guard.mode,
-                classification: guard.classification,
-              },
-            })
-          }
+          pendingCommercialSend.value = commercialSendOf({
+            toolName: params.toolName ?? "mail:compose",
+            recipient: first,
+            footer,
+            textBody: params.textBody,
+            htmlBody: params.htmlBody,
+            mode: guard.mode,
+            approvedBy: approvalContext ? "approver" : "policy",
+          })
         }
         return JSON.stringify({
           applies: true,
@@ -824,7 +762,7 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
             guard: {
               state: "clear",
               mode: guard.mode,
-              classification: guard.classification,
+              classification,
               ...(footer ? { footer: "commercial" } : {}),
             },
           },
@@ -839,7 +777,23 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
         code: stopCode(verdict),
         message: describeStop(verdict, approvalContext ? "approved" : "auto"),
         approved: approvalContext !== undefined,
-        guard: { ...verdict, mode: guard.mode, classification: guard.classification },
+        guard: { ...verdict, mode: guard.mode, classification },
+      })
+    },
+
+    /**
+     * After the provider accepted a mail the check at send cleared as commercial: its record
+     * and the notice mark (modules/mail/commercial-send-record.ts). Nothing when the check set
+     * none. The mail is already gone, so a record that cannot be written is logged, not refused.
+     */
+    mail_commercialSent: async (): Promise<string> => {
+      requireApp("mail", "mail_commercialSent")
+      const send = pendingCommercialSend.value
+      pendingCommercialSend.value = null
+      if (!send) return JSON.stringify({ recorded: false, commercial: false })
+      return JSON.stringify({
+        recorded: await recordCommercialSendAfterSend(send),
+        commercial: true,
       })
     },
 

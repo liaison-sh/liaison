@@ -36,6 +36,8 @@ const log = rootLogger.child({ module: "activity" })
 export const ACTIVITY_DEADLINE_MS = 800
 /** The people of a company each source is asked about, most recently active first. */
 export const ACTIVITY_CONTACT_CAP = 50
+/** The deals of a company each source is asked about, most recently active first. */
+export const ACTIVITY_DEAL_CAP = 200
 export const ACTIVITY_LIMIT_DEFAULT = 30
 export const ACTIVITY_LIMIT_MAX = 100
 
@@ -82,6 +84,8 @@ export interface ActivityResult {
   unavailable: ActivityUnavailable[]
   nextBefore: string | null
   truncatedContacts?: number
+  /** The company's deals past `ACTIVITY_DEAL_CAP` that no source was asked about. */
+  truncatedDeals?: number
 }
 
 export function encodeActivityCursor(cursor: ActivityCursor): string {
@@ -117,6 +121,7 @@ interface Subject {
   companyId: string | null
   dealIds: string[]
   truncatedContacts: number
+  truncatedDeals: number
 }
 
 const tableRef = (schema: string, name: string) =>
@@ -158,6 +163,7 @@ async function readSubject(
       companyId: null,
       dealIds: deals.map((d) => d.id),
       truncatedContacts: 0,
+      truncatedDeals: 0,
     }
   }
   if (!(await getCompany(tx, { orgId, companyId: target.companyId }))) return null
@@ -175,18 +181,24 @@ async function readSubject(
        LIMIT ${ACTIVITY_CONTACT_CAP}`),
   )
   const deals = hasDeals
-    ? extractRows<{ id: string }>(
+    ? extractRows<{ id: string; total: number }>(
         await tx.execute(drizzleSql`
-          SELECT task_id::text AS id FROM ${tableRef("app_projects", "deals")}
-           WHERE org_id = ${orgId}::uuid AND company_id = ${target.companyId}::uuid`),
+          SELECT d.task_id::text AS id, count(*) OVER ()::int AS total
+            FROM ${tableRef("app_projects", "deals")} d
+            JOIN ${tableRef("app_projects", "tasks")} t ON t.id = d.task_id AND t.org_id = d.org_id
+           WHERE d.org_id = ${orgId}::uuid AND d.company_id = ${target.companyId}::uuid
+           ORDER BY t.updated_at DESC, d.task_id
+           LIMIT ${ACTIVITY_DEAL_CAP}`),
       )
     : []
   const total = people[0]?.total ?? 0
+  const dealTotal = deals[0]?.total ?? 0
   return {
     contactIds: people.map((p) => p.id),
     companyId: target.companyId,
     dealIds: deals.map((d) => d.id),
     truncatedContacts: Math.max(0, total - people.length),
+    truncatedDeals: Math.max(0, dealTotal - deals.length),
   }
 }
 
@@ -380,6 +392,7 @@ export async function readActivity(input: ReadActivityInput): Promise<ActivityRe
     unavailable,
     nextBefore,
     ...(subject.truncatedContacts > 0 ? { truncatedContacts: subject.truncatedContacts } : {}),
+    ...(subject.truncatedDeals > 0 ? { truncatedDeals: subject.truncatedDeals } : {}),
   }
 }
 
@@ -411,7 +424,7 @@ export function parseSourceInput(raw: unknown): ActivitySourceInput {
     contactIds: ids(value.contactIds).slice(0, ACTIVITY_CONTACT_CAP),
     companyId:
       typeof value.companyId === "string" && UUID_RE.test(value.companyId) ? value.companyId : null,
-    dealIds: ids(value.dealIds),
+    dealIds: ids(value.dealIds).slice(0, ACTIVITY_DEAL_CAP),
     before:
       before && typeof before.at === "string" && typeof before.id === "string"
         ? { at: new Date(before.at).toISOString(), id: before.id }

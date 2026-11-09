@@ -64,6 +64,11 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   bulk_iterateJsonl_next: "read",
   calendar_findCalendarsForPollFallback: "read",
   mail_providersGet: "read",
+  // A timeline source's rows, inside a read-only savepoint that is rolled back (contacts/activity.ts).
+  mail_activityRead: "read (withReadOnlySource)",
+  calendar_activityRead: "read (withReadOnlySource)",
+  projects_activityRead: "read (withReadOnlySource)",
+  tickets_activityRead: "read (withReadOnlySource)",
   mail_suppressionCheck: "read",
   calendar_findCalendarsForWatchRenewal: "read",
   calendar_findStalePendingPushes: "read",

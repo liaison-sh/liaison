@@ -1425,6 +1425,15 @@ export async function mergeCompanies(
         `${target.name} is restricted and ${source.name} is seen by the organisation: merging would hide ${source.name}'s people and history from everyone else. Merge ${target.name} into ${source.name} instead.`,
       )
     }
+    // The other direction is refused too: the survivor's sharing decides who reads the
+    // source's people and discussion, so widening is an act of its own on the source.
+    if (source.orgAccess === "none" && target.orgAccess !== "none") {
+      throw new CompanyRequestError(
+        422,
+        "merge_widens_access",
+        `Nothing was merged. ${source.name} is restricted and ${target.name} is seen by the organisation: merging would show ${source.name}'s people and discussion to everyone who sees ${target.name}. Next: widen ${source.name}'s sharing first, then merge.`,
+      )
+    }
     // The survivor keeps its manager; with none it takes the source's, when that
     // person can still manage accounts (active, a member, not blind to companies).
     const inherited =

@@ -370,6 +370,30 @@ describe("company merge", () => {
     ])
   })
 
+  it("a restricted company is not merged into one the organisation sees: nothing moves, and the result says to widen its sharing first", async () => {
+    const source = await company("Atelier Privé", null)
+    const target = await company("Atelier Prive SAS", null)
+    const person = await contact(source, "Atelier Privé")
+    await sql`UPDATE kernel.companies SET org_access = 'none' WHERE id = ${source}`
+    const result = await asAnna((tx) =>
+      handleCompaniesMerge(
+        { sourceId: source, targetId: target },
+        { orgId: ORG_ID, userId: ANNA, db: tx },
+      ),
+    )
+    expect(result).toMatchObject({ error: { code: "merge_widens_access" } })
+    const message = String((result as { error: { message: string } }).error.message)
+    expect(message).toContain("Nothing was merged.")
+    expect(message).toContain("Atelier Privé is restricted")
+    expect(message).toContain("Next: widen Atelier Privé's sharing first")
+    const [kept] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM kernel.companies WHERE id = ${source}`
+    expect(kept?.n).toBe(1)
+    const [row] = await sql<{ company_id: string | null }[]>`
+      SELECT company_id::text FROM kernel.contacts WHERE id = ${person}`
+    expect(row?.company_id).toBe(source)
+  }, 60_000)
+
   it("the merge tool is gated and its whole schema stays within its budget", () => {
     const def = toolRegistry.get([ORG_ID, "kernel", "companies_merge"])!
     expect(def.gated).toBe(true)

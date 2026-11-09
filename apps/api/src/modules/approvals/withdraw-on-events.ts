@@ -12,7 +12,7 @@
 
 import { createHash } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
-import { extractRows } from "~/db"
+import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import type { AppEvent } from "~/infra/events/event-bus"
@@ -45,7 +45,33 @@ export async function withdrawCommercialDraftsTo(
   emailHash: string,
   actor: WithdrawActor,
 ): Promise<string[]> {
-  const cancelled = await withPrivilegedDb(orgId, "approvals-withdraw-opted-out", async (tx) => {
+  const cancelled = await withPrivilegedDb(orgId, "approvals-withdraw-opted-out", (tx) =>
+    withdrawCommercialDraftsOn(tx, orgId, emailHash, actor),
+  )
+  await continueRoutinesAfterWithdrawal(orgId, cancelled)
+  return cancelled
+}
+
+/** A routine run waiting on one of these carries on with the cancellation. After the commit. */
+export async function continueRoutinesAfterWithdrawal(
+  orgId: string,
+  cancelled: readonly string[],
+): Promise<void> {
+  for (const id of cancelled) await enqueueRoutineDecisionTurn(orgId, id)
+}
+
+/**
+ * The withdrawal on the caller's privileged transaction (or an RLS one stepped into the admin
+ * role), so it commits or rolls back with the
+ * opt-out that caused it. The caller runs `continueRoutinesAfterWithdrawal` once it committed.
+ */
+export async function withdrawCommercialDraftsOn(
+  tx: PrivilegedDb | RlsClient,
+  orgId: string,
+  emailHash: string,
+  actor: WithdrawActor,
+): Promise<string[]> {
+  {
     const candidates = extractRows<{ id: string; addresses: unknown }>(
       await tx.execute(drizzleSql`
         SELECT id::text AS id, current_payload->'sendGuard'->'addresses' AS addresses
@@ -85,10 +111,7 @@ export async function withdrawCommercialDraftsTo(
       })
     }
     return rows
-  })
-  // A routine run waiting on one of these carries on with the cancellation.
-  for (const id of cancelled) await enqueueRoutineDecisionTurn(orgId, id)
-  return cancelled
+  }
 }
 
 /**

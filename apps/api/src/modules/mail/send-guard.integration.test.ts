@@ -1080,11 +1080,11 @@ describe("classification and marketing", () => {
 
   it("predicate asked for every To, Cc, Bcc after an edit, marketing only", async () => {
     const to = unique("edit-to")
-    const added = unique("edit-cc")
-    const bcc = unique("edit-bcc")
+    // Colleagues on copy (the admin's own domain): a commercial mail names one outside person.
+    const added = `edit-cc-${++counter}@t.co`
+    const bcc = `edit-bcc-${++counter}@t.co`
     const marketing = await stageCompose(to, { followUp: {} })
     const plain = await stageCompose(unique("edit-plain"))
-    await ensureRecordedBasis(orgId, [added, bcc])
     await updatePayload({
       orgId,
       requestId: marketing,
@@ -2543,6 +2543,136 @@ describe("a new message is commercial by its recipient's data", () => {
     const guard = (await requestRow(id)).current_payload.sendGuard as PinnedSendGuard
     expect(guard.classification).toBe("none")
   }, 60_000)
+
+  /** The commercial-send records written for `email`. */
+  const commercialRecords = (email: string) =>
+    sql<Array<{ metadata: Record<string, unknown> }>>`
+      SELECT metadata FROM kernel.audit_log
+       WHERE org_id = ${orgId} AND action = 'mail.commercial_send'
+         AND metadata ->> 'recipientHash' = ${suppressionsModule.hashEmail(orgId, email)}`
+  const noticeAt = async (email: string) =>
+    (
+      await sql<Array<{ at: string | null }>>`
+        SELECT art14_notice_at::text AS at FROM kernel.contacts
+         WHERE org_id = ${orgId} AND lower(email) = ${email}`
+    )[0]?.at ?? null
+  const pushSend = async (_c: unknown, _i: unknown, message: unknown) => {
+    sent.push(message as Record<string, unknown>)
+    return { messageId: `<sent-${sent.length}@org.test>`, deliveryState: "delivered" as const }
+  }
+  /** Runs `fn` with every send failing at the provider. */
+  async function withFailingSend(fn: () => Promise<unknown>): Promise<void> {
+    SandboxBridgeTestAccess.setSmtpSend(async () => {
+      throw Object.assign(new Error("550 mailbox unavailable"), { providerRejected: true })
+    })
+    try {
+      await fn()
+    } catch {
+      // The outcome is read from the rows.
+    } finally {
+      SandboxBridgeTestAccess.setSmtpSend(pushSend as never)
+    }
+  }
+
+  it("a plain draft whose recipient is edited to a prospect leaves with the footer and its record; edited to someone who opted out, it does not leave", async () => {
+    const prospect = unique("edited-to-prospect")
+    await contactOnOpenDeal(prospect)
+    const id = await stageCompose(unique("edited-from-plain"))
+    expect(
+      ((await requestRow(id)).current_payload.sendGuard as PinnedSendGuard).classification,
+    ).toBe("none")
+    await updatePayload({ orgId, requestId: id, actor: admin, fields: { to: [prospect] } } as never)
+    const before = sent.length
+    await approve(id)
+    expect(sent.length).toBe(before + 1)
+    expect(String(sent.at(-1)?.textBody)).toMatch(
+      /\/public\/opt-out\/[A-Za-z0-9_-]{43} or reply stop\./,
+    )
+    expect((await commercialRecords(prospect)).length).toBe(1)
+
+    const optedOut = unique("edited-to-opted-out")
+    await contactOnOpenDeal(optedOut)
+    await suppressionsModule.addSuppression(null, { orgId, email: optedOut, reason: "person" })
+    const second = await stageCompose(unique("edited-from-plain-2"))
+    await updatePayload({
+      orgId,
+      requestId: second,
+      actor: admin,
+      fields: { to: [optedOut] },
+    } as never)
+    const sentBefore = sent.length
+    await approveSettled(second)
+    expect(sent.length).toBe(sentBefore)
+    expect((await executionRow(second))?.error?.code).toBe("send_guard_opted_out")
+  }, 90_000)
+
+  it("a commercial draft edited to name two people outside the organization does not leave, and says why", async () => {
+    const first = unique("one-of-two")
+    const other = unique("two-of-two")
+    await contactOnOpenDeal(first)
+    await contactOnOpenDeal(other)
+    const id = await stageCompose(first)
+    expect(
+      ((await requestRow(id)).current_payload.sendGuard as PinnedSendGuard).classification,
+    ).toBe("marketing")
+    await updatePayload({ orgId, requestId: id, actor: admin, fields: { cc: [other] } } as never)
+    const before = sent.length
+    await approveSettled(id)
+    expect(sent.length).toBe(before)
+    const error = (await executionRow(id))?.error
+    expect(error?.code).toBe("commercial_one_recipient")
+    expect(String(error?.message)).toContain(`${first}, ${other}`)
+    expect(String(error?.message)).toContain("one message per person")
+  }, 90_000)
+
+  it("an organization whose member writes from a shared mail provider still treats a prospect there as outside", async () => {
+    const member = `owner-${counter}@gmail.com`
+    const prospect = `prospect-${++counter}@gmail.com`
+    const second = `prospect-${++counter}@gmail.com`
+    await privileged.withSystemDb("send-guard-test-gmail-member", (tx) =>
+      tx.execute(
+        drizzleSql.raw(
+          insertSql("kernel.users", { org_id: orgId, email: member, name: "Gmail Owner" }),
+        ),
+      ),
+    )
+    try {
+      await contactOnOpenDeal(prospect)
+      await contactOnOpenDeal(second)
+      const one = await checkPersonCompose(orgId, [member, prospect])
+      expect("recipient" in one && one.recipient).toBe(prospect)
+      const two = await checkPersonCompose(orgId, [prospect, second])
+      expect("refused" in two && two.refused.code).toBe("commercial_one_recipient")
+    } finally {
+      await sql`DELETE FROM kernel.users WHERE org_id = ${orgId} AND email = ${member}`
+    }
+  }, 60_000)
+
+  it("a person's own commercial mail from the composer writes its send record and marks the notice, only once it left", async () => {
+    const failed = unique("composer-failed")
+    await contactOnOpenDeal(failed)
+    await withFailingSend(() => sendFromComposer(failed))
+    expect(await commercialRecords(failed)).toEqual([])
+    expect(await noticeAt(failed)).toBeNull()
+
+    const to = unique("composer-recorded")
+    await contactOnOpenDeal(to)
+    await sendFromComposer(to)
+    const records = await commercialRecords(to)
+    expect(records).toHaveLength(1)
+    expect(records[0]?.metadata.approvedBy).toBe("person")
+    expect(records[0]?.metadata.art14Notice).toBe(true)
+    expect(await noticeAt(to)).not.toBeNull()
+  }, 90_000)
+
+  it("an agent's commercial mail that fails at the provider writes no send record and leaves the notice owed", async () => {
+    const to = unique("agent-failed")
+    await contactOnOpenDeal(to)
+    const id = await stageCompose(to)
+    await withFailingSend(() => approve(id))
+    expect(await commercialRecords(to)).toEqual([])
+    expect(await noticeAt(to)).toBeNull()
+  }, 90_000)
 })
 
 describe("the client's company is the other side", () => {

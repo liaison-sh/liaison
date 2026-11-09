@@ -328,6 +328,7 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   "calendar_restoreRefusedDelete",
   // Mail
   "mail_writePage",
+  "mail_commercialSent",
   "mail_completeIngest",
   "mail_purgeDisconnectedAccount",
   "mail_releaseForeignAccount",
@@ -553,6 +554,7 @@ export function createSessionRpcBridge(
       bridgeOptions?.bulkCursorStore ??
       new Map<string, { iterator: AsyncIterator<unknown[]> | null; done: boolean }>(),
     mailboxSnapshot: bridgeOptions?.mailboxSnapshot ?? { value: null },
+    commercialSend: bridgeOptions?.commercialSend ?? { value: null },
     attachmentBytesLedger: bridgeOptions?.attachmentBytesLedger ?? {
       importAttachment: { cumulative: 0 },
       getAttachmentBytes: { cumulative: 0 },

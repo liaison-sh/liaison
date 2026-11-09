@@ -15,7 +15,7 @@ import {
   handOverRefusal,
   raiseUnownedRows,
 } from "~/modules/contacts/company-unowned"
-import { deactivateUser, UserAuthorityError } from "~/modules/users/service"
+import { assertMayDeactivate, deactivateUser, UserAuthorityError } from "~/modules/users/service"
 
 const KERNEL_BULK: Record<string, any> = {
   deactivateUsers: {
@@ -151,6 +151,8 @@ export async function deactivateWithCompanies(args: {
         .where(and(eq(users.id, userId), eq(users.orgId, orgId)))
         .limit(1)
       const name = target?.name || target?.email || "This person"
+      // Authority first: someone who may not deactivate them learns nothing of their companies.
+      await assertMayDeactivate(tx, { targetId: userId, orgId, actorScopes })
       // Nothing changes until the question of their companies is answered.
       const managed = await companiesManagedBy(tx, orgId, userId)
       if (managed.length > 0 && accountsTo === undefined) {

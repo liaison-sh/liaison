@@ -551,6 +551,7 @@ async function readSendGuardVerdicts(
       ...(zones.get(r.requested_by) ?? { locale: null, timeZone: null }),
       guard: payload.sendGuard as PinnedSendGuard,
       recipients: recipientsOf(payload.to, payload.cc, payload.bcc),
+      toolName: r.tool_name,
     }
   })
   // One draft at a send asks the providers too; a list of drafts reads in shared queries.

@@ -19,7 +19,12 @@ import {
 } from "~/modules/apps/app-registries"
 import * as executeToolModule from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
-import { type ActivityResult, compareActivity, readActivity } from "~/modules/contacts/activity"
+import {
+  ACTIVITY_DEAL_CAP,
+  type ActivityResult,
+  compareActivity,
+  readActivity,
+} from "~/modules/contacts/activity"
 import * as mailSourceModule from "~/modules/mail/activity-source"
 import { seedContext } from "~/seed/context"
 import { insertSql, type RowValue } from "~/seed/factories/org/test-rows"
@@ -446,6 +451,27 @@ describe("a company's timeline", () => {
       SELECT name FROM kernel.contacts WHERE id = ${alice.id}`
     expect(row?.name).toBe("Alice Martin")
   }, 60_000)
+
+  it("with more deals than a source is asked about, each source gets the most recent and the answer says how many were left out", async () => {
+    const big = await company("Many Deals Dealer")
+    const buyer = await contact(big, "Buyer")
+    const deals: string[] = []
+    for (let i = 0; i < ACTIVITY_DEAL_CAP + 5; i++) deals.push(await deal(big, buyer.id, ago(i)))
+    const seen: Array<string[]> = []
+    const spy = spyOn(executeToolModule, "executeToolCore")
+    spy.mockImplementation(async (opts) => {
+      seen.push((opts.params as { dealIds: string[] }).dealIds)
+      return realExecute(opts)
+    })
+    try {
+      const page = await readActivity({ orgId: ORG, actor: admin, target: { companyId: big } })
+      expect(page?.truncatedDeals).toBe(5)
+      expect(seen.length).toBeGreaterThan(0)
+      for (const ids of seen) expect(ids).toEqual(deals.slice(0, ACTIVITY_DEAL_CAP))
+    } finally {
+      spy.mockRestore()
+    }
+  }, 180_000)
 
   it("with 60 people each source gets the 50 most recently active and the answer says 10 were left out", async () => {
     const big = await company("Big Dealer")

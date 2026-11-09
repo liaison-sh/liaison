@@ -514,7 +514,7 @@ describe("kernel:report_bug, team-only", () => {
       method: "DELETE",
       headers: { Authorization: `Bearer ${other.bearer}` },
     })
-    expect(((await foreign.json()) as { data: { discarded: boolean } }).data.discarded).toBe(false)
+    expect(foreign.status).toBe(404)
     const res = await app.request(`/api/bug-reports/drafts/${r.draftId}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${fresh.bearer}` },
@@ -526,6 +526,12 @@ describe("kernel:report_bug, team-only", () => {
     }
     expect(listed.data.map((d) => d.draftId)).not.toContain(r.draftId)
     expect((await call(fresh, `/drafts/${r.draftId}/send`, { digest: r.digest })).status).toBe(404)
+    // A second discard finds nothing of the caller's: 404, not a 200.
+    const again = await app.request(`/api/bug-reports/drafts/${r.draftId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${fresh.bearer}` },
+    })
+    expect(again.status).toBe(404)
   })
 
   it("a draft an older release stored without its payload sends with the digest its card shows", async () => {

@@ -27,7 +27,13 @@ import { join } from "node:path"
 import { sql } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
-import { connectedAccounts } from "~/db/schema/kernel"
+import {
+  connectedAccounts,
+  threadParticipants,
+  threads,
+  userScopeGrants,
+  userThreadState,
+} from "~/db/schema/kernel"
 import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { env } from "~/lib/env"
 import { decideApproval } from "~/modules/approvals/decide"
@@ -39,6 +45,8 @@ import { registerApps } from "~/modules/apps/runtime"
 import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { insertAppRow, jsonCell } from "~/seed/factories/app-tables"
+import { seedOrgRow, seedUserRow } from "~/seed/factories/org/rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..")
@@ -144,16 +152,32 @@ describe("an approved call's commit-now row survives the sandbox kill (real appr
     await acquireTestLock()
     process.env.LIAISON_BUNDLED_APPS_FROM_SOURCE = "1"
     process.env.LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS = String(KILL_AFTER_MS)
-    await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${ORG}, 'Intent Row Org', ${`intent-row-${ORG.slice(0, 8)}`})`
-    await sql`INSERT INTO kernel.users (id, org_id, email, password_hash, name, status)
-      VALUES (${USER}, ${ORG}, ${`intent-${USER.slice(0, 8)}@test.com`}, 'hash', 'Shipper', 'active')`
-    await sql`INSERT INTO kernel.threads (id, org_id, handle, type, created_by)
-      VALUES (${THREAD}, ${ORG}, ${`intent-thread-${THREAD.slice(0, 8)}`}, 'agent_chat', ${USER})`
-    await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id, role) VALUES (${THREAD}, ${USER}, ${ORG}, 'admin')`
-    await sql`INSERT INTO kernel.user_thread_state (user_id, thread_id, org_id) VALUES (${USER}, ${THREAD}, ${ORG})`
-    for (const scope of SCOPES) {
-      await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope) VALUES (${USER}, ${ORG}, ${scope}) ON CONFLICT DO NOTHING`
-    }
+    await seedOrgRow({ id: ORG, name: "Intent Row Org", slug: `intent-row-${ORG.slice(0, 8)}` })
+    await seedUserRow({
+      id: USER,
+      orgId: ORG,
+      email: `intent-${USER.slice(0, 8)}@test.com`,
+      passwordHash: "hash",
+      name: "Shipper",
+      status: "active",
+    })
+    await withSystemDb("intent-row-test-thread", async (db) => {
+      await db.insert(threads).values({
+        id: THREAD,
+        orgId: ORG,
+        handle: `intent-thread-${THREAD.slice(0, 8)}`,
+        type: "agent_chat",
+        createdBy: USER,
+      })
+      await db
+        .insert(threadParticipants)
+        .values({ threadId: THREAD, userId: USER, orgId: ORG, role: "admin" })
+      await db.insert(userThreadState).values({ userId: USER, threadId: THREAD, orgId: ORG })
+      await db
+        .insert(userScopeGrants)
+        .values(SCOPES.map((scope) => ({ userId: USER, orgId: ORG, scope })))
+        .onConflictDoNothing()
+    })
     await initSandboxPool()
     await initWorkerPool()
     await ensureAppsForOrg(ORG)
@@ -197,8 +221,15 @@ describe("an approved call's commit-now row survives the sandbox kill (real appr
     // What Boxtal ships from: the invoice it ships, the sender, the product's parcel, the order.
     // An issuer profile is a gated configuration change, so the fixture writes the row.
     const issuerProfileId = randomUUID()
-    await sql`INSERT INTO app_invoicing.issuer_profiles (id, org_id, legal_name, country, default_currency)
-      VALUES (${issuerProfileId}, ${ORG}, 'Fabrikam SAS', 'FR', 'EUR')`
+    await withSystemDb("intent-row-test-issuer", (db) =>
+      insertAppRow(db, "invoicing", "issuer_profiles", {
+        id: issuerProfileId,
+        org_id: ORG,
+        legal_name: "Fabrikam SAS",
+        country: "FR",
+        default_currency: "EUR",
+      }),
+    )
     const created = await executeTool({
       toolName: "invoicing:drafts_create",
       orgId: ORG,
@@ -227,13 +258,28 @@ describe("an approved call's commit-now row survives the sandbox kill (real appr
     const draft = (created as { data?: { id?: string; document?: { id?: string } } }).data
     documentId = draft?.id ?? draft?.document?.id ?? ""
     if (!documentId) throw new Error(`drafts_create gave no document: ${JSON.stringify(created)}`)
-    await sql`INSERT INTO app_boxtal.app_config (org_id, key, value)
-      VALUES (${ORG}, 'sender_address', ${JSON.stringify(SENDER)}::jsonb)`
-    await sql`INSERT INTO app_boxtal.shipping_profile
-      (org_id, product_source, product_id, unit_weight, solo_length, solo_width, solo_height, content_category)
-      VALUES (${ORG}, 'shopify', 'V1', 0.5, 30, 20, 10, 'content:v1:10120')`
-    await sql`INSERT INTO app_boxtal.prep_meta (org_id, document_ref, order_name)
-      VALUES (${ORG}, ${documentId}, ${ORDER_NAME})`
+    await withSystemDb("intent-row-test-boxtal", async (db) => {
+      await insertAppRow(db, "boxtal", "app_config", {
+        org_id: ORG,
+        key: "sender_address",
+        value: jsonCell(SENDER),
+      })
+      await insertAppRow(db, "boxtal", "shipping_profile", {
+        org_id: ORG,
+        product_source: "shopify",
+        product_id: "V1",
+        unit_weight: 0.5,
+        solo_length: 30,
+        solo_width: 20,
+        solo_height: 10,
+        content_category: "content:v1:10120",
+      })
+      await insertAppRow(db, "boxtal", "prep_meta", {
+        org_id: ORG,
+        document_ref: documentId,
+        order_name: ORDER_NAME,
+      })
+    })
   }, 180_000)
 
   afterAll(async () => {

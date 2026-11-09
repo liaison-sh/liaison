@@ -10,6 +10,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "~/db"
 import type { UserContext } from "~/db/rls"
+import { putObject } from "~/infra/storage/object-storage"
 import type { RunContext } from "~/modules/agent/runtime/run-context"
 import { runContextStore } from "~/modules/agent/runtime/run-context"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
@@ -35,13 +36,21 @@ function turnFrame(injected: string[]): RunContext {
   }
 }
 
-async function reportBug(frame: RunContext, title: string): Promise<Record<string, unknown>> {
+async function reportBug(
+  frame: RunContext,
+  title: string,
+  attachments?: string[],
+): Promise<Record<string, unknown>> {
   const tools = buildToolSet(orgId, actor, undefined, ALL_DEFERRED_TOOLS_UNLOCKED, "agent", frame)
   const t = tools.kernel__report_bug
   if (!t) throw new Error("kernel__report_bug is not in the catalog")
   return (await runContextStore.run(frame, () =>
     (t as unknown as { execute: (a: unknown, o: unknown) => Promise<unknown> }).execute(
-      { title, description: "The save button spins forever." },
+      {
+        title,
+        description: "The save button spins forever.",
+        ...(attachments ? { attachments } : {}),
+      },
       {},
     ),
   )) as Record<string, unknown>
@@ -88,5 +97,37 @@ describe("kernel:report_bug on a tainted turn", () => {
     expect(result.filed).toBe(true)
     expect(await tickets("After an admin read")).toBe(1)
     expect(await approvals()).toBe(0)
+  })
+
+  it("attachments: a file the user can read lands on the local ticket; one they cannot refuses the call", async () => {
+    const own = crypto.randomUUID()
+    const key = `orgs/${orgId}/test/${own}/kit.zip`
+    await putObject({ key, body: Buffer.from("PK templates"), contentType: "application/zip" })
+    await sql`
+      INSERT INTO kernel.files (id, org_id, app, entity_type, entity_id, filename, mime_type,
+                                size_bytes, storage_key, uploaded_by, disposition, ordinal)
+      VALUES (${own}::uuid, ${orgId}::uuid, 'kernel', 'data_subject_export', ${own}, 'kit.zip',
+              'application/zip', 12, ${key}, ${actor.userId}::uuid, 'attachment', 0)`
+    const filed = await reportBug(turnFrame([]), "With a kit", [own])
+    expect(filed.filed).toBe(true)
+    expect(filed.attachmentsPersisted).toBe(1)
+    const [copy] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM kernel.files
+       WHERE org_id = ${orgId}::uuid AND filename = 'kit.zip' AND id <> ${own}::uuid`
+    expect(copy?.n).toBe(1)
+
+    // Another member's file: not readable by this user, so nothing is filed.
+    const other = await minimal.person(orgId)
+    const theirs = crypto.randomUUID()
+    await sql`
+      INSERT INTO kernel.files (id, org_id, app, entity_type, entity_id, filename, mime_type,
+                                size_bytes, storage_key, uploaded_by, disposition, ordinal)
+      VALUES (${theirs}::uuid, ${orgId}::uuid, 'kernel', 'data_subject_export', ${theirs},
+              'theirs.zip', 'application/zip', 3, ${`${key}.theirs`}, ${other.id}::uuid,
+              'attachment', 0)`
+    const refused = await reportBug(turnFrame([]), "With their file", [theirs])
+    expect(refused.filed).not.toBe(true)
+    expect(JSON.stringify(refused)).toContain("not files this user can read")
+    expect(await tickets("With their file")).toBe(0)
   })
 })

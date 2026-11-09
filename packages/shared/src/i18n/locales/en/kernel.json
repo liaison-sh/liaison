@@ -563,6 +563,7 @@
     "draftFieldSentFrom": "Filed through",
     "draftFieldReporter": "Your email, so the team can reply",
     "draftFieldAttachments": "Attachments",
+    "draftFieldNotSent": "Attached but not sent",
     "draftFieldServerErrors": "Recent server errors",
     "draftFieldLogs": "Recent app logs",
     "draftLogsTruncated": "oldest lines left out",

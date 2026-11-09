@@ -4266,6 +4266,7 @@ export const FR: Record<string, string> = {
   "Refresh failed": "Échec de l'actualisation",
   "Refreshed just now": "Actualisé à l'instant",
   Attachments: "Pièces jointes",
+  "Attached but not sent": "Joints mais non envoyés",
   "Create knowledge from…": "Ajouter des connaissances à partir de…",
   "Needs review": "À revoir",
   "· showing": "· affichage de",

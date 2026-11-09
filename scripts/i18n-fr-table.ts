@@ -4900,6 +4900,8 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.youGroupAdmin": "Administration",
   // Sequenced approvals: a step's text names the earlier step an output comes from.
   "kernel.approvalsUi.refFromStep": "{{what}} de l'étape {{n}}",
+  "kernel.approvalsUi.refFromEarlierStep": "{{what}} d'une étape précédente",
+  "kernel.approvalsUi.refFilledLater": "renseigné quand cette étape s'exécute",
   "kernel.approvalsUi.refOutput.pdf_file_id": "le PDF",
   "kernel.approvalsUi.refOutput.file_id": "le fichier",
   "kernel.approvalsUi.refOutput.record_id": "la fiche",

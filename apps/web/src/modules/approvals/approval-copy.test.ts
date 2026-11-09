@@ -113,5 +113,20 @@ describe("a sequenced step's earlier-step phrases in the reader's language", () 
       "[« shipment tracking code » de l'étape 3]",
     )
     expect(localizeRefPhrases("the quote PDF from step 2", en)).toBe("the quote PDF from step 2")
+    // A step not run yet: named, with its request and "filled in later", in the reader's language.
+    expect(
+      localizeRefPhrases(
+        "Tracking: FedEx the shipment tracking number from step 1 (request-12, filled in when that step runs)",
+        fr,
+      ),
+    ).toBe(
+      "Tracking: FedEx le numéro de l'étape 1 (request-12, renseigné quand cette étape s'exécute)",
+    )
+    expect(
+      localizeRefPhrases(
+        "x the quote PDF from an earlier step (filled in when that step runs)",
+        fr,
+      ),
+    ).toBe("x le PDF d'une étape précédente (renseigné quand cette étape s'exécute)")
   })
 })

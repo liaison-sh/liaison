@@ -2493,6 +2493,8 @@
       "agentWantsToAdd": "{{caller}} wants to add {{agent}} to this discussion"
     },
     "refFromStep": "the {{what}} from step {{n}}",
+    "refFromEarlierStep": "the {{what}} from an earlier step",
+    "refFilledLater": "filled in when that step runs",
     "refOutput": {
       "pdf_file_id": "PDF",
       "file_id": "file",

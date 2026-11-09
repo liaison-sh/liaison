@@ -2490,6 +2490,8 @@
       "agentWantsToAdd": "{{caller}} souhaite ajouter {{agent}} à cette discussion"
     },
     "refFromStep": "{{what}} de l'étape {{n}}",
+    "refFromEarlierStep": "{{what}} d'une étape précédente",
+    "refFilledLater": "renseigné quand cette étape s'exécute",
     "refOutput": {
       "pdf_file_id": "le PDF",
       "file_id": "le fichier",

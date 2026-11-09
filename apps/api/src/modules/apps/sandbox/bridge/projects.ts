@@ -1105,7 +1105,7 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         reason?: string | null
       }
       return typedServiceCall(async () => {
-        const { listDeals, setDealOutcome, writeDealFields } = await import(
+        const { listDeals, setDealOutcome, setLostReason, writeDealFields } = await import(
           "~/apps/projects/service/deals"
         )
         const { ProjectsServiceError } = await import("~/apps/projects/service/statuses")
@@ -1133,6 +1133,11 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
           })
           outcomeChanged = r.changed
         }
+        // Already lost: the reason given now is saved on its own.
+        let reasonSaved = false
+        if (outcome === "lost" && !outcomeChanged && reason !== undefined) {
+          reasonSaved = await setLostReason(txDb as never, orgId, taskId, reason)
+        }
         const after = (await listDeals(txDb as never, orgId, { taskId }))[0]!
         const name = `${after.companyName ? `${after.companyName}, ` : ""}${after.title} (${after.key})`
         const changed = Object.keys(fields)
@@ -1140,6 +1145,13 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         if (outcome && outcomeChanged) lines.push(`${name} moved to ${after.statusLabel}.`)
         else if (outcome)
           lines.push(`${name} was already ${after.outcome}; its stage did not change.`)
+        if (reasonSaved) {
+          lines.push(
+            after.lostReason
+              ? `The reason it was lost is now: ${after.lostReason}.`
+              : "The reason it was lost was cleared.",
+          )
+        }
         if (changed.length > 0) lines.push(`Changed on ${name}: ${changed.join(", ")}.`)
         if (reason && outcome !== "lost") {
           lines.push("The reason was not saved: it is kept only with outcome lost.")

@@ -640,6 +640,44 @@ describe("closing a deal", () => {
   })
 })
 
+describe("the reason of a lost deal", () => {
+  it("a reason given after the move to Lost is saved, changed and cleared without moving the deal again", async () => {
+    const p = await makePipeline(w, "Reason after the move")
+    const taskId = await makeTask(w, p.projectId, "Quarry renewal", { statusId: p.stage.Proposal })
+    await move(taskId, p.stage.Lost!)
+    expect(await dealState(taskId)).toMatchObject({ outcome: "lost", lost_reason: null })
+    const saved = await call<{ message: string; error?: unknown }>("projects_dealsUpdate", {
+      taskId,
+      outcome: "lost",
+      reason: "  Went with a cheaper rota tool ",
+    })
+    expect(saved.error).toBeUndefined()
+    expect(saved.message).toContain("The reason it was lost is now: Went with a cheaper rota tool.")
+    expect(await dealState(taskId)).toMatchObject({
+      outcome: "lost",
+      status_id: p.stage.Lost,
+      lost_reason: "Went with a cheaper rota tool",
+    })
+    await call("projects_dealsUpdate", { taskId, outcome: "lost", reason: null })
+    expect(await dealState(taskId)).toMatchObject({ outcome: "lost", lost_reason: null })
+    // One close, no reopen: the reason never moved the deal.
+    expect(await dealEvents(w, taskId)).toEqual(["closed:lost"])
+  })
+
+  it("a reason for a deal that is not lost is not saved", async () => {
+    const p = await makePipeline(w, "Reason on a won deal")
+    const taskId = await makeTask(w, p.projectId, "Slate renewal", { statusId: p.stage.Proposal })
+    await move(taskId, p.stage.Won!)
+    const res = await call<{ message: string }>("projects_dealsUpdate", {
+      taskId,
+      outcome: "won",
+      reason: "Should not stick",
+    })
+    expect(res.message).toContain("The reason was not saved")
+    expect(await dealState(taskId)).toMatchObject({ outcome: "won", lost_reason: null })
+  })
+})
+
 describe("deal rollup", () => {
   it("the rollup sums per currency and is absent without deal access", async () => {
     const p = await makePipeline(w, "Rollup")

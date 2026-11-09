@@ -687,6 +687,28 @@ export async function setDealOutcome(args: SetDealOutcomeArgs): Promise<SetDealO
   })
 }
 
+/**
+ * Save, change or clear the reason of a deal that is already lost (the note
+ * bar after a drag to Lost, typed once the move is done). Nothing else of the
+ * deal changes, and a deal that is not lost keeps no reason: false then.
+ */
+export async function setLostReason(
+  tx: SqlClient,
+  orgId: string,
+  taskId: string,
+  reason: string | null,
+): Promise<boolean> {
+  const rows = extractRows<{ task_id: string }>(
+    await tx.execute(drizzleSql`
+      UPDATE ${projectsRel("deals")}
+      SET lost_reason = ${reason?.trim() || null}, updated_at = now()
+      WHERE task_id = ${taskId}::uuid AND org_id = ${orgId}::uuid AND outcome = 'lost'
+      RETURNING task_id
+    `),
+  )
+  return rows.length > 0
+}
+
 // ---------------------------------------------------------------------------
 // Deal fields written with a task (company, contact, amount)
 // ---------------------------------------------------------------------------

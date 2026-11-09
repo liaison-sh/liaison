@@ -120,12 +120,12 @@ With Invoicing mapped to the shop, `draft_orders_create` and `draft_orders_compl
 
 - The customer has no email. Invoicing sends the invoice to the email on the Shopify customer record, so an email on the draft order alone is not enough. Add it with `customers_update`.
 - The order has no postal address. Set a billing or shipping address on the draft order.
-- The buyer is in another EU country and the order charges no VAT, with no VAT number. Add the buyer's VAT number to the draft order as a custom attribute named `VAT number`. For a consumer, remove the tax exemption instead.
+- The buyer is in another EU country and the order charges no VAT, with no VAT number. Add the buyer's VAT number to the draft order as a custom attribute named `VAT number` (on an order that already exists, with `order_update`). For a consumer, remove the tax exemption instead.
 - A reverse charge or export sale is charged VAT (checked when completing). Set `taxExempt` on the draft order.
 
 A draft order made in the Shopify admin is checked too when it is completed through Liaison. Without Invoicing, or with Invoicing mapped to another shop, nothing changes.
 
-An order read shows the tax it charged, whether it was tax exempt and the B2B company that bought it, and a customer read shows whether the customer is tax exempt and the companies they buy for. Invoicing reads these to tell a business customer in another EU country from a consumer. `orders_search` and `customers_search` take an optional `timeout_ms` (500 to 10000): a caller on a time budget, such as that check, gets an error at once when Shopify is slow or rate limits it, instead of waiting.
+An order read shows the tax it charged, whether it was tax exempt, the B2B company that bought it, its billing address with the company, and the buyer's VAT number from its custom attributes as they are now, and a customer read shows whether the customer is tax exempt and the companies they buy for. Invoicing reads these to tell a business customer in another EU country from a consumer. `orders_search` and `customers_search` take an optional `timeout_ms` (500 to 10000): a caller on a time budget, such as that check, gets an error at once when Shopify is slow or rate limits it, instead of waiting.
 
 ## Scopes
 

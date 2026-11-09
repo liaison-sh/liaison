@@ -2729,6 +2729,134 @@ describe("tax review parks: attention once, resolved by an explicit override", (
 })
 
 
+// An order to a buyer in another member state, tax exempt in Shopify (every line at 0%), parked
+// first on a missing email. Its VAT number and company reach the order only afterwards.
+describe("intra-EU order without VAT charged: late VAT number, or a review park", () => {
+  const italianBuyer = (): OrderPaidPayload =>
+    basePayload({
+      id: "order-it",
+      order_number: "#3001",
+      total_price_minor: 36000n,
+      customer: {
+        id: "c-it",
+        email: null,
+        contact_id: "contact-it",
+        country: "IT",
+        legal_name: "Gina Rossi",
+        vat_id: null,
+        address: "Via Roma 1\n10100 Torino",
+        billing: {
+          company: null,
+          line1: "Via Roma 1",
+          line2: null,
+          postcode: "10100",
+          city: "Torino",
+          country_code: "IT",
+        },
+      },
+      line_items: [
+        { id: "prod-it", description: "Instrument", quantity: "1", unit_price_minor: 36000n, tax_rate_bp: 0 },
+      ],
+    })
+  function setup(order: Record<string, unknown>) {
+    const byName: Record<string, CrossAppEnvelope> = {
+      "shopify:orders_get": { status: "completed", result: order },
+    }
+    const made = makeCtx({
+      issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
+      executeToolByName: byName,
+      noDefaultIdentity: true,
+    })
+    const cronCtx = {
+      ...made.ctx,
+      db: made.db,
+      emit: async () => {},
+      decideApproval: async () => ({ status: "ok" as const }),
+    }
+    return { ...made, byName, cronCtx }
+  }
+  const liveOrder = (extra: Record<string, unknown>) => ({
+    name: "#3001",
+    customer: { email: "gina@example.com", first_name: "Gina", last_name: "Rossi" },
+    billingAddress: {
+      name: "Gina Rossi",
+      company: "Rossi Strumenti SRL",
+      address1: "Via Roma 1",
+      city: "Torino",
+      zip: "10100",
+      countryCode: "IT",
+    },
+    ...extra,
+  })
+
+  // red: mergeCustomer takes vat_id from the stored payload only (or legal_name ignores the
+  // company) -> the retry issues eu_b2c_oss at 0% to the person, the invoice this fix exists for.
+  test("a VAT number added to the order before the retry issues the reverse charge to the company", async () => {
+    const { ctx, db, byName, cronCtx } = setup({ name: "#3001", customer: { email: null } })
+    const first = await onShopifyOrderPaid(italianBuyer(), ctx)
+    expect(first).toMatchObject({ status: "deferred", reason: "awaiting_data" })
+    expect((db.__all("deferred_events")[0] as Record<string, unknown>).reason).toBe("customer_email_missing")
+
+    // The operator adds the email and the "VAT number" custom attribute on the Shopify order.
+    byName["shopify:orders_get"] = {
+      status: "completed",
+      result: liveOrder({ buyerTaxId: "IT01234567890" }),
+    }
+    const swept = await deferredRetryJobHandler(undefined, cronCtx, { now: new Date("2030-01-01T00:00:00Z") })
+    expect(swept.succeeded).toBe(1)
+    const docs = db.__all("documents") as Array<Record<string, unknown>>
+    expect(docs).toHaveLength(1)
+    expect(docs[0]).toMatchObject({
+      tax_treatment: "eu_reverse_charge",
+      counterparty_vat_id: "IT01234567890",
+      counterparty_name: "Rossi Strumenti SRL",
+    })
+  })
+
+  // red: delete guard (4) in onShopifyOrderPaid -> the order issues as eu_b2c_oss at 0%.
+  test("with no VAT number it parks for review instead of issuing a 0% consumer invoice", async () => {
+    const { ctx, db } = setup(liveOrder({ buyerTaxId: null }))
+    const result = await onShopifyOrderPaid(italianBuyer(), ctx)
+    expect(result).toMatchObject({ status: "deferred", reason: "awaiting_data" })
+    expect(db.__all("documents")).toHaveLength(0)
+    const park = db.__all("deferred_events")[0] as Record<string, unknown>
+    expect(park.reason).toBe("buyer_vat_missing")
+    const blockedOn = park.blocked_on as Record<string, unknown>
+    expect(blockedOn).toMatchObject({ kind: "tax_rate", treatment: "eu_b2c_oss", counterparty_country: "IT" })
+    expect(String(blockedOn.detail)).toContain("VAT number")
+    const listed = await deferredList({ db } as never, {})
+    expect(listed.items[0]?.resolution_options).toEqual(["shopify_reported", "as_computed"])
+  })
+
+  test("once the VAT number is on the order, the override issues the reverse charge", async () => {
+    const { ctx, db, byName } = setup(liveOrder({ buyerTaxId: null }))
+    const parked = await onShopifyOrderPaid(italianBuyer(), ctx)
+    byName["shopify:orders_get"] = { status: "completed", result: liveOrder({ buyerTaxId: "IT01234567890" }) }
+    const res = await deferredTaxOverride(ctx, {
+      deferred_id: (parked as { deferred_id: string }).deferred_id,
+      mode: "shopify_reported",
+    })
+    expect(res.status).toBe("completed")
+    expect(db.__all("documents")[0]).toMatchObject({
+      tax_treatment: "eu_reverse_charge",
+      counterparty_vat_id: "IT01234567890",
+    })
+  })
+
+  test("an order that charged the destination's VAT on some line still issues", async () => {
+    const { ctx, db } = setup(liveOrder({ buyerTaxId: null }))
+    const p = italianBuyer()
+    p.customer = { ...p.customer!, email: "gina@example.com" }
+    p.line_items = [
+      { ...p.line_items[0]!, tax_rate_bp: 2200 },
+      { id: "", description: "Shipping", quantity: "1", unit_price_minor: 1000n, tax_rate_bp: 0, line_kind: "shipping" },
+    ]
+    const result = await onShopifyOrderPaid(p, ctx)
+    expect(result.status).toBe("ok")
+    expect(db.__all("deferred_events")).toHaveLength(0)
+  })
+})
+
 // E-invoicing on the order-paid path: the kind is derived at creation from the checkout signals,
 // the structured billing is captured, a French business buyer whose identity is incomplete parks
 // the order (enforce) with one attention item per contact, and warn mode issues with a warning.

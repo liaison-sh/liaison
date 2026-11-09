@@ -71,7 +71,38 @@ export const GATE_LANES: Record<string, number> = {
   "e2e-parallel": 2,
   "demo-seed": 1,
   playwright: 6,
+  // The multi-process scenarios: about 17 minutes in one process.
+  cell: 3,
+  "api-guards": 1,
+  shared: 1,
+  "workspace-packages": 1,
+  "worker-env": 1,
+  "unsplit-logins": 1,
+  "bundled-freeze": 1,
+  "bundled-ads": 1,
+  "bundled-shopify": 1,
+  "bundled-invoicing": 2,
+  "bundled-boxtal": 2,
+  "bundled-monitoring": 1,
+  "bundled-pennylane": 1,
+  "bundled-calls": 1,
+  "bundled-social": 1,
+  // The vitest suites do not take --shard: one runner each.
+  "bundled-boxtal-ui": 1,
+  "bundled-monitoring-ui": 1,
+  "bundled-social-ui": 1,
+  desktop: 1,
+  "desktop-ui": 1,
+  mobile: 1,
 }
+
+/**
+ * The suites the per-PR `ci` workflow already runs on every pull request (root,
+ * guards, unit, web-unit): the gate leaves them out. Every other suite the test
+ * map names must be a {@link GATE_LANES} key, or the gate would plan it and
+ * never run it (scripts/test-gate.test.ts pins that).
+ */
+export const PR_CI_SUITES = ["unit", "web-unit", "root", "guards"]
 
 export interface GateShard {
   suite: string

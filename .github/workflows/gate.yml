@@ -1,8 +1,11 @@
 # SPDX-License-Identifier: FSL-1.1-ALv2
 #
-# The heavy test lanes of a change, sharded over GitHub-hosted runners, started
-# by hand: integration (with integration-extra, integration-mocked, security),
-# e2e-parallel, demo-seed and Playwright (headless). The `plan` job takes the
+# The test lanes of a change, sharded over GitHub-hosted runners, started by
+# hand: every suite the test map names for the changed paths except the four the
+# per-PR `ci` workflow runs (PR_CI_SUITES in scripts/test-gate.ts): integration
+# (with integration-extra, integration-mocked, security), e2e-parallel,
+# demo-seed, Playwright (headless), cell, api-guards, shared, the workspace
+# packages, the bundled apps (suites and UIs), desktop and mobile. The `plan` job takes the
 # paths changed between `base` and `ref` through the repo's own test map
 # (scripts/test-gate.ts, the planner `bun run test:gate` uses) and keeps the
 # lanes it names; each lane is split over runners with scripts/test-run.ts
@@ -168,6 +171,11 @@ jobs:
         if: matrix.suite == 'playwright'
         working-directory: apps/web
         run: bunx --bun playwright install --with-deps chromium
+      - name: Install the desktop shell's Linux build libraries
+        # scaffold.test.ts runs `cargo check` on the Tauri crate.
+        if: matrix.suite == 'desktop'
+        run: |
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
       - name: Run ${{ matrix.suite }} shard ${{ matrix.shard }} of ${{ matrix.of }}
         id: run
         timeout-minutes: 35
@@ -180,7 +188,10 @@ jobs:
           done < <(jq -r '.[]' <<<"$FILES")
           # Otherwise unset: on CI a missing baseline fails (playwright.config.ts).
           if [ "$UPDATE_SNAPSHOTS" = "true" ]; then export PW_UPDATE_SNAPSHOTS=missing; fi
-          bun run scripts/test-run.ts "$SUITE" --shard "$SHARD" "${args[@]}"
+          # A one-shard lane runs whole: the vitest suites take no --shard.
+          shard=()
+          if [ "${SHARD#*/}" != "1" ]; then shard=(--shard "$SHARD"); fi
+          bun run scripts/test-run.ts "$SUITE" "${shard[@]}" "${args[@]}"
       - name: Record the shard's result
         if: always()
         env:

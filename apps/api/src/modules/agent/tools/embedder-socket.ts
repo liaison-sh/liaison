@@ -48,9 +48,10 @@ const MAX_ANSWER_BYTES = 16 << 20
  * The socket's path: `LIAISON_EMBEDDER_SOCKET`, else `liaison/embedder.sock`
  * under the runtime folder (`XDG_RUNTIME_DIR`, else the temporary folder).
  */
-export function defaultEmbedderSocketPath(
-  e: { LIAISON_EMBEDDER_SOCKET?: string; XDG_RUNTIME_DIR?: string },
-): string {
+export function defaultEmbedderSocketPath(e: {
+  LIAISON_EMBEDDER_SOCKET?: string
+  XDG_RUNTIME_DIR?: string
+}): string {
   if (e.LIAISON_EMBEDDER_SOCKET) return e.LIAISON_EMBEDDER_SOCKET
   return path.join(e.XDG_RUNTIME_DIR || tmpdir(), "liaison", "embedder.sock")
 }

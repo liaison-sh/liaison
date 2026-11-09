@@ -186,7 +186,9 @@ describe("tool search when the embedding process does not answer", () => {
     expect(await index.meaningFor("q", CATALOG)).toBeNull()
     expect(lines).toHaveLength(1)
     expect(lines[0]?.level).toBe("warn")
-    expect((lines[0]?.obj as { reason?: string } | undefined)?.reason).toBe(`no socket at ${socketPath}`)
+    expect((lines[0]?.obj as { reason?: string } | undefined)?.reason).toBe(
+      `no socket at ${socketPath}`,
+    )
 
     // The process starts: after the pause the tool vectors fill and meaning is back.
     await start(socketPath, stubModel())
@@ -213,7 +215,9 @@ describe("tool search when the embedding process does not answer", () => {
     expect(Date.now() - t0).toBeLessThan(250)
     expect(await index.meaningFor("q", CATALOG)).toBeNull()
     expect(lines).toHaveLength(1)
-    expect((lines[0]?.obj as { reason?: string } | undefined)?.reason).toBe("no answer within 40 ms")
+    expect((lines[0]?.obj as { reason?: string } | undefined)?.reason).toBe(
+      "no answer within 40 ms",
+    )
   })
 
   it("ranks by keywords when the process answers an error, with one log line", async () => {

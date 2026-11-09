@@ -165,6 +165,8 @@ const READ_ONLY: Record<string, string[]> = {
     "prep_order_prefill",
     // A shipment's print record, the data document templates fill.
     "print_record_get",
+    // An order's print record: the same data, for the papers an order needs before a label.
+    "order_print_record_get",
     // Write back only Boxtal's or the invoicing app's own state (the shipment snapshot, a settled
     // proforma, the resolved-draft cache), best effort: a failed write never fails the read.
     "track",

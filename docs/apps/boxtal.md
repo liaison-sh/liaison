@@ -105,7 +105,7 @@ Each row also has **Print documents**: the organisation's document templates for
 
 The invoice, customer, address, carrier and lines come from the moment the label was bought, so a later change to the invoice does not change them. The tracking number is the row's current one, and stays blank until the carrier issues it. For FedEx it is labelled AWB. Labels bought before this existed print those fields as blanks.
 
-When a document rule matches a parcel (by SKU, destination country or carrier), the row's **Paperwork** mark lists the templates it asks for, and **Print documents** opens with them ticked and marked **Needed**. Document rules are kept under the workspace's document templates.
+When a document rule matches a parcel (by SKU, destination country or carrier), the row's **Paperwork** mark lists the templates it asks for, and **Print documents** opens with them ticked and marked **Needed**. Document rules are kept under the workspace's document templates. Rules for the record type `boxtal:order` go further: their papers are generated on their own when the order enters **To prepare**, printed again with the tracking number after the label buy, and returned by **Print pack** with the invoice ([Generate shipping papers automatically](../admin/shipping-documents.md)).
 
 ## Follow shipments and returns
 
@@ -189,7 +189,8 @@ Tools marked "Always" file an approval and nothing happens until a person approv
 | `prep_set_status`, `prep_set_category`, `prep_select_offer`, `prep_set_note`, `prep_exclude`, `prep_restore`, `prep_add_shipment` | Work queue rows. A row given by `document_ref` must name an existing invoicing document (id or number), else the call is refused as `document_not_found` | No |
 | `prep_set_address_choice` | Pick the order's address or the verified one when they differ | Always for an agent |
 | `ready_set_packed` | Tick a parcel packed, which fulfils the Shopify order | No |
-| `print_pack`, `print_pack_batch` | Prepare print documents | No |
+| `print_pack`, `print_pack_batch` | Prepare print documents (label, invoice and the order's generated papers) | No |
+| `order_print_record_get` | Read an order as the record its paper templates fill | No |
 | `print_record_get` | Read a shipment as the data its document templates fill | No |
 | `import_shipments`, `import_label_document` | Import existing Boxtal orders and labels | No |
 | `attention_rules_list`, `attention_rule_upsert`, `attention_rule_delete` | Rules that flag shipments needing extra paperwork | No |

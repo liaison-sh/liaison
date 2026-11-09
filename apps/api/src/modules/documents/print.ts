@@ -25,7 +25,7 @@
 import { MAX_IMAGE_BYTES } from "@liaison/shared"
 import { and, eq } from "drizzle-orm"
 import type { RlsClient } from "~/db"
-import type { UserContext } from "~/db/rls"
+import type { ActorContext } from "~/db/rls"
 import type { DocumentTemplateKind } from "~/db/schema/kernel"
 import { files } from "~/db/schema/kernel"
 import { pdfLogger as log } from "~/lib/logger"
@@ -123,8 +123,8 @@ export interface PrintCaller {
   orgId: string
   userId: string
   scopes: string[]
-  /** The caller's actor: the record tool runs under it. */
-  actor: UserContext
+  /** The caller's actor: the record tool runs under it (a system actor for an app's own pass). */
+  actor: ActorContext
   /** The agent acting for the person, when one is (decides the quota exemption). */
   actingAgentId: string | null
   withRls: <T>(fn: (tx: RlsClient) => Promise<T>) => Promise<T>
@@ -743,7 +743,8 @@ export async function printDocuments(caller: PrintCaller, input: PrintInput): Pr
         filename,
         bytes: out.bytes,
         actor: { actorType: "user", actingAgentId: caller.actingAgentId },
-        uploadedBy: caller.userId,
+        // An app's own pass has no person behind it: the file has no uploader.
+        uploadedBy: caller.actor.actorType === "user" ? caller.userId : null,
       })
       printed.push({
         templateId: template.id,

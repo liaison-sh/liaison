@@ -41,6 +41,7 @@ import {
 import { readQueueFacts, type QueueFacts } from "./queue-facts"
 import { evaluateAttention, mergeTemplateNeed, type AttentionMark } from "./attention"
 import { loadTemplateNeeds } from "./needed-documents"
+import { ORDER_RECORD_TYPE, orderDocumentsByRef, type OrderDocument } from "./customs-documents"
 import { carrierFamilyOf } from "./print-record"
 import { loadAttentionRules } from "./attention-store"
 import { loadProductCodeConfig } from "./settings"
@@ -79,6 +80,10 @@ export interface ReadyRow extends QueueFacts {
   /** The kernel document templates this parcel needs (document rules), for the Print documents
    *  control: pre-ticked and badged. Empty when none. */
   needed_template_ids: string[]
+  /** The papers the organisation's document rules asked for on this parcel's ORDER, generated
+   *  on their own (customs-documents.ts): one PDF per template, newest print. They go into the
+   *  print pack with the invoice and the label. Empty when none. */
+  documents: OrderDocument[]
   /** The operator's status on the underlying order (to_prepare / validated / on_hold), so the
    *  row tint is the same rule on every Boxtal screen. Null when the order carries no state row. */
   status: PrepStatus | null
@@ -417,9 +422,35 @@ export async function readyList(ctx: BoxtalToolCtx): Promise<{ rows: ReadyRow[] 
       carrier_family: facts.carrier_family ?? carrierFamilyOf(r.offer_code),
     })),
   )
+  // The ORDER's document rules (record type boxtal:order: the papers generated at To prepare and
+  // again after the buy), folded into the same mark, and the papers already generated.
+  const orderNeeds = await loadTemplateNeeds(
+    ctx,
+    live
+      .filter(({ r }) => typeof r.document_ref === "string" && r.document_ref !== "")
+      .map(({ r, facts }) => ({
+        id: String(r.document_ref),
+        skus: facts.skus,
+        countryIso2: shipToCountry(r.queue_facts) ?? facts.destination,
+        carrier_family: facts.carrier_family ?? carrierFamilyOf(r.offer_code),
+      })),
+    ORDER_RECORD_TYPE,
+  )
+  const orderDocs = await orderDocumentsByRef(
+    ctx,
+    live.map(({ r }) => r.document_ref ?? "").filter((d) => d !== ""),
+  ).catch(() => new Map<string, OrderDocument[]>())
   const out = live
     .map(({ r, facts }) => {
-      const need = needs.get(String(r.id))
+      const shipmentNeed = needs.get(String(r.id))
+      const orderNeed = r.document_ref ? orderNeeds.get(r.document_ref) : undefined
+      const need =
+        shipmentNeed || orderNeed
+          ? {
+              rules: [...(shipmentNeed?.rules ?? []), ...(orderNeed?.rules ?? [])],
+              templates: [...(shipmentNeed?.templates ?? []), ...(orderNeed?.templates ?? [])],
+            }
+          : undefined
       return {
       // The buy-time snapshot first, so a row's own fields still win where the names meet.
       ...facts,
@@ -470,7 +501,8 @@ export async function readyList(ctx: BoxtalToolCtx): Promise<{ rows: ReadyRow[] 
         need,
       ),
       // The templates to pre-tick and badge in the row's Print documents control.
-      needed_template_ids: need?.templates.map((t) => t.id) ?? [],
+      needed_template_ids: shipmentNeed?.templates.map((t) => t.id) ?? [],
+      documents: (r.document_ref ? orderDocs.get(r.document_ref) : undefined) ?? [],
       }
     })
     // Oldest REQUEST first: the print station works the queue top-down, and this is the column

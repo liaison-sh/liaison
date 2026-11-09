@@ -7,8 +7,10 @@
 // Every function runs inside the caller's RLS transaction (FORCE RLS, org
 // scoped); who may write is the route's scope check, or the agent tool's
 // required scope and approval (kernel:org:admin). A saved `when` holds only the
-// known keys (sku, countryIso2, carrier), each a non-empty list: any other key
-// is refused by the schema. A rule's templates must be live templates of the
+// known keys (sku, countryIso2, carrier, each a non-empty list; attribute, a map
+// of product attribute keys to non-empty lists): any other key is refused by
+// the schema. Matching looks the records' SKUs up in kernel.product_attributes
+// (one read for the whole batch) when a rule asks for an attribute. A rule's templates must be live templates of the
 // org whose record type is the rule's (or unset).
 
 import { and, asc, eq, inArray } from "drizzle-orm"
@@ -18,6 +20,7 @@ import {
   type DocumentTemplateRuleRow,
   documentTemplateRules,
   documentTemplates,
+  productAttributes,
 } from "~/db/schema/kernel"
 import {
   type MatchableTemplate,
@@ -93,11 +96,31 @@ export const ruleWhenSchema = z
     carrier: valueList(z.string().trim().min(1).max(64))
       .optional()
       .describe('Carrier families (e.g. "ups", "dhl"), compared without case.'),
+    attribute: z
+      .record(
+        z
+          .string()
+          .trim()
+          .regex(/^[a-z][a-z0-9_]{0,63}$/, "a product attribute key (lower case, a-z 0-9 _)"),
+        valueList(z.string().trim().min(1).max(2000)),
+      )
+      .refine(
+        (r) => Object.keys(r).length > 0 && Object.keys(r).length <= 20,
+        "1 to 20 attribute keys",
+      )
+      .optional()
+      .describe(
+        'Product attributes: { "<key>": ["value", ...] } holds when ANY SKU of the record has the attribute with one of the values (case-insensitive); "*" means any non-empty value. Several keys must all hold.',
+      ),
   })
   .strict()
   .refine(
-    (w) => w.sku !== undefined || w.countryIso2 !== undefined || w.carrier !== undefined,
-    "a rule needs at least one condition (sku, countryIso2 or carrier)",
+    (w) =>
+      w.sku !== undefined ||
+      w.countryIso2 !== undefined ||
+      w.carrier !== undefined ||
+      w.attribute !== undefined,
+    "a rule needs at least one condition (sku, countryIso2, carrier or attribute)",
   )
 
 const ruleNameSchema = z.string().trim().min(1).max(200)
@@ -180,6 +203,11 @@ export function normalizeWhen(when: z.infer<typeof ruleWhenSchema>): RuleWhen {
   if (when.sku) out.sku = uniq(when.sku.map((v) => v.trim()))
   if (when.countryIso2) out.countryIso2 = uniq(when.countryIso2.map((v) => v.trim().toUpperCase()))
   if (when.carrier) out.carrier = uniq(when.carrier.map((v) => v.trim().toLowerCase()))
+  if (when.attribute) {
+    out.attribute = Object.fromEntries(
+      Object.entries(when.attribute).map(([k, v]) => [k.trim(), uniq(v.map((x) => x.trim()))]),
+    )
+  }
   return out
 }
 
@@ -360,6 +388,63 @@ async function loadMatchInputs(tx: RlsClient, recordType: string) {
  * the templates they name, then the pure matcher. A template that is gone,
  * disabled or archived never comes back.
  */
+/**
+ * The records with their SKUs' product attributes, read in one query, only when
+ * some rule asks for an attribute (the records' own `attributes` are ignored:
+ * the store, not the caller, says what a product holds).
+ */
+async function withAttributes(
+  tx: RlsClient,
+  rules: ReadonlyArray<{ when: unknown; enabled: boolean }>,
+  records: readonly RuleRecord[],
+): Promise<RuleRecord[]> {
+  const keys = new Set<string>()
+  for (const r of rules) {
+    if (!r.enabled) continue
+    const attr = (r.when as Record<string, unknown> | null)?.attribute
+    if (attr && typeof attr === "object" && !Array.isArray(attr))
+      for (const k of Object.keys(attr)) keys.add(k.trim().toLowerCase())
+  }
+  if (keys.size === 0) return records.map(({ attributes: _a, ...r }) => r)
+  const skus = [
+    ...new Set(
+      records.flatMap((r) => r.skus ?? []).filter((s) => typeof s === "string" && s !== ""),
+    ),
+  ]
+  const bySku = new Map<string, Record<string, string[]>>()
+  for (let i = 0; i < skus.length; i += 1000) {
+    const rows = await tx
+      .select({
+        sku: productAttributes.sku,
+        key: productAttributes.key,
+        value: productAttributes.value,
+      })
+      .from(productAttributes)
+      .where(
+        and(
+          inArray(productAttributes.sku, skus.slice(i, i + 1000)),
+          inArray(productAttributes.key, [...keys]),
+        ),
+      )
+    for (const row of rows) {
+      const attrs = bySku.get(row.sku.toLowerCase()) ?? {}
+      const list = attrs[row.key] ?? []
+      list.push(row.value)
+      attrs[row.key] = list
+      bySku.set(row.sku.toLowerCase(), attrs)
+    }
+  }
+  return records.map(({ attributes: _a, ...r }) => {
+    const merged: Record<string, string[]> = {}
+    for (const sku of r.skus ?? []) {
+      for (const [k, v] of Object.entries(bySku.get(String(sku).toLowerCase()) ?? {})) {
+        merged[k] = [...(merged[k] ?? []), ...v]
+      }
+    }
+    return { ...r, attributes: merged }
+  })
+}
+
 export async function matchRecordsForType(
   tx: RlsClient,
   recordType: string,
@@ -367,6 +452,7 @@ export async function matchRecordsForType(
 ): Promise<RecordMatch[]> {
   if (records.length === 0) return []
   const { rules, templates } = await loadMatchInputs(tx, recordType)
+  records = await withAttributes(tx, rules, records)
   return matchRecords(
     rules.map((r) => ({
       id: r.id,
@@ -400,6 +486,7 @@ export async function matchRecordsNamed(
 ): Promise<NamedRecordMatch[]> {
   if (records.length === 0) return []
   const { rules, templates } = await loadMatchInputs(tx, recordType)
+  records = await withAttributes(tx, rules, records)
   const ruleNames = new Map(rules.map((r) => [r.id, r.name]))
   const matches = matchRecords(
     rules.map((r) => ({

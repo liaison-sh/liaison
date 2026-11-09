@@ -13,6 +13,7 @@
 // only tool here that talks to a live Shopify / Boxtal API.
 
 import { isUniqueViolation } from "./db-errors"
+import { generateOrderDocuments } from "./customs-documents"
 import { shipmentDraftCreate } from "./shipment"
 import { quote } from "./shipment"
 import {
@@ -950,6 +951,20 @@ export async function prepSync(ctx: BoxtalToolCtx, input: PrepSyncInput = {}): P
 
   const lastSyncAt = new Date().toISOString()
   await setLastSyncAt(ctx, lastSyncAt)
+
+  // The papers the document rules ask for, generated as the orders enter To prepare (and brought
+  // up to date when their facts change). The worklist refresh only: a row-scoped sync (the grid's
+  // Quote button, an edit) stays as cheap as it was, and the scheduled pass covers the rest. Best
+  // effort: never fails the sync.
+  const rowScoped = (input.document_refs?.length ?? 0) > 0 || (input.order_keys?.length ?? 0) > 0
+  if (!rowScoped) try {
+    await generateOrderDocuments(
+      ctx,
+      rows.flatMap((r) => (r.error || !r.document_ref ? [] : [r.document_ref])),
+    )
+  } catch (err) {
+    ctx.logger?.warn?.("prep_sync: order documents failed", { err: String(err) })
+  }
 
   const failed = rows.filter((r) => r.error)
   const errors = {

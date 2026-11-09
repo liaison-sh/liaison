@@ -608,7 +608,10 @@ describe("Boxtal app.manifest.json", () => {
     // and the Boxtal icon opens it.
     // 0.23.27: a Ready row's actions sit on two lines that never wrap and long refs are cut, so
     //   the actions stay inside the grid at 1440 px.
-    expect(m.version).toBe("0.23.27")
+    // 0.24.0: the order's papers (document rules, record type boxtal:order) are generated at To
+    // prepare and again after the label buy, kept on the order and printed with the pack.
+    // 0.24.1: merged with 0.23.24-0.23.27 above.
+    expect(m.version).toBe("0.24.1")
     expect(m.packageFormat).toBe(1)
   })
 

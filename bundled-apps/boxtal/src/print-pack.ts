@@ -17,6 +17,7 @@
 //      into a repeated-page PDF, so the operator prints N copies on A4.
 
 import { EU_MEMBERS } from "./customs"
+import { generateOrderDocuments, orderDocumentsByRef } from "./customs-documents"
 import { importLabelDocument } from "./shipment"
 import { findShipmentByRef } from "./shipment-lookup"
 import type { BoxtalToolCtx } from "./ctx"
@@ -61,6 +62,10 @@ export interface PrintPackResult {
     reason: "eu_or_domestic" | "export_non_eu"
   }
   invoice_error?: string
+  /** The order's generated papers (A4, with the invoice), in the rules' order. Empty when the
+   *  rules ask for none. */
+  documents: Array<{ file_id: string; filename: string; template_name: string; blanks: string[] }>
+  documents_error?: string
   error?: { code: string; message: string }
 }
 
@@ -79,6 +84,7 @@ export async function printPack(ctx: Ctx, input: PrintPackInput): Promise<PrintP
     return {
       label: null,
       invoice: { file_id: null, copies: 3, reason: "export_non_eu" },
+      documents: [],
       error: { code: "invalid_params", message: "shipment_id is required (a ready_list row id)." },
     }
   }
@@ -87,6 +93,7 @@ export async function printPack(ctx: Ctx, input: PrintPackInput): Promise<PrintP
     return {
       label: null,
       invoice: { file_id: null, copies: 3, reason: "export_non_eu" },
+      documents: [],
       error: { code: "not_found", message: `No shipment row matches "${ref}".` },
     }
   }
@@ -162,11 +169,28 @@ export async function printPack(ctx: Ctx, input: PrintPackInput): Promise<PrintP
   const senderCountry = await senderCountryFromConfig(ctx)
   const { copies, reason } = invoiceCopiesFor(senderCountry, destinationCountry)
 
+  // — Job 3: the order's papers, brought up to date (the tracking number) —
+  let documents: PrintPackResult["documents"] = []
+  let documentsError: string | undefined
+  if (documentRef) {
+    const [gen] = await generateOrderDocuments(ctx, [documentRef])
+    if (gen?.error) documentsError = `The order's documents could not be brought up to date: ${gen.error}`
+    const docs = (await orderDocumentsByRef(ctx, [documentRef])).get(documentRef) ?? []
+    documents = docs.map((d) => ({
+      file_id: d.file_id,
+      filename: d.filename,
+      template_name: d.template_name,
+      blanks: d.blanks,
+    }))
+  }
+
   return {
     label,
     ...(labelError ? { label_error: labelError } : {}),
     invoice: { file_id: invoiceFileId, copies, reason },
     ...(invoiceError ? { invoice_error: invoiceError } : {}),
+    documents,
+    ...(documentsError ? { documents_error: documentsError } : {}),
   }
 }
 

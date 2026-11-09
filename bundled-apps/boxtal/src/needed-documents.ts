@@ -34,6 +34,7 @@ interface MatchResult {
 export async function loadTemplateNeeds(
   ctx: BoxtalToolCtx,
   records: NeedRecord[],
+  recordType: string = SHIPMENT_RECORD_TYPE,
 ): Promise<Map<string, TemplateNeed>> {
   const out = new Map<string, TemplateNeed>()
   for (let i = 0; i < records.length; i += MATCH_BATCH) {
@@ -45,7 +46,7 @@ export async function loadTemplateNeeds(
     }))
     try {
       const env = await ctx.executeTool("kernel:document_rules_match", {
-        recordType: SHIPMENT_RECORD_TYPE,
+        recordType,
         records: batch,
       })
       if (env.status !== "completed") {

@@ -490,6 +490,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // search, and the audience of a self-resource approval.
             "src/tests/integration/self-resource-approval-audience.test.ts",
             "src/tests/integration/document-agent-tools.test.ts",
+            // Document rules print an order's papers from its product facts.
+            "src/tests/integration/order-documents.test.ts",
             "src/tests/integration/contact-addresses-agent-tools.test.ts",
             "src/tests/integration/mail-conversation-search.test.ts",
             // A contact's discussion: the write gate on contacts and the agent's post there.
@@ -1598,6 +1600,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // print-record: the shipment's print record for the document templates (buy-time
             // snapshot, live tracking number, nothing the sources do not hold).
             "src/print-record.test.ts",
+            "src/customs-documents.test.ts",
             // attention / attention-store: the boxtal attention-feed rule evaluator
             // (condition/rule matching over parcel facts) and the persisted rule
             // CRUD (upsert/list/load) it reads from.

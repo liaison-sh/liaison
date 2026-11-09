@@ -67,6 +67,7 @@ import {
 import { numericOrderId, orderKeyForShopifyOrder } from "./order-state"
 import { buildQueueFacts } from "./queue-facts"
 import { buildPrintSnapshot, carrierFamilyOf } from "./print-record"
+import { generateOrderDocuments } from "./customs-documents"
 import { summarizeProducts } from "./draft-cache"
 import {
   unshippableMessage,
@@ -2812,6 +2813,17 @@ export async function createShipment(
   })
   // Overrides have been baked into the created order — drop them.
   await clearDraftOverride(ctx, draft.document_ref)
+
+  // The order's papers again, now with the carrier and (when Boxtal already gave it) the tracking
+  // number (customs-documents.ts). One that arrives later is picked up by the scheduled pass.
+  // Best effort: the label is bought whatever happens here.
+  if (!input.is_return) {
+    try {
+      await generateOrderDocuments(ctx, [draft.document_ref])
+    } catch (err) {
+      ctx.logger?.warn?.("create_shipment: order documents failed", { err: String(err) })
+    }
+  }
 
   // PARTIAL batch on a customs route: issue the batch's own PROFORMA covering
   // exactly the shipped subset (the legal invoice is never split — French

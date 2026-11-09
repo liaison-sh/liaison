@@ -283,3 +283,28 @@ describe("print_pack — an issued invoice with no PDF yet", () => {
     expect(crossCalls.some((c) => c.target === "invoicing:documents_retry_pdf")).toBe(false)
   })
 })
+
+describe("print_pack — the order's generated papers ride with the invoice", () => {
+  it("returns the papers kept on the order, in their order, beside the label and the invoice", async () => {
+    const { ctx, db } = makeCtx({ destinationCountry: "US" })
+    await db.insert("prep_state", {
+      document_ref: "doc-1",
+      category: "sale",
+      excluded: false,
+      documents: [
+        { template_id: "t1", template_name: "Declaration A", file_id: "f-a", filename: "Declaration A.pdf", fingerprint: "x", tracking_number: "TRK123", generated_at: "2026-11-09T00:00:00Z", blanks: [] },
+        { template_id: "t2", template_name: "Certificate B", file_id: "f-b", filename: "Certificate B.pdf", fingerprint: "x", tracking_number: "TRK123", generated_at: "2026-11-09T00:00:00Z", blanks: ["Delivery phone"] },
+      ],
+    })
+    const res = await printPack(ctx, { shipment_id: ROW_1 })
+    expect(res.documents.map((d) => d.file_id)).toEqual(["f-a", "f-b"])
+    expect(res.documents[1]).toMatchObject({ template_name: "Certificate B", blanks: ["Delivery phone"] })
+    expect(res.invoice.file_id).toBe("f-invoice")
+  })
+
+  it("an order with no papers prints the label and the invoice only", async () => {
+    const { ctx } = makeCtx({ destinationCountry: "US" })
+    const res = await printPack(ctx, { shipment_id: ROW_1 })
+    expect(res.documents).toEqual([])
+  })
+})

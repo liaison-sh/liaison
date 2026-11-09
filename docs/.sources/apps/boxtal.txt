@@ -200,3 +200,5 @@ a multi-parcel shipment prints one label per parcel, all in its label PDF -> bun
 no postal code needed where the country has none; parsed one not sent -> bundled-apps/boxtal/src/address.ts:150 ; bundled-apps/boxtal/src/shipment.ts:1906
 names and addresses in Boxtal's character set, transliterated -> bundled-apps/boxtal/src/address.ts:192
 refusals carry Boxtal's own message -> bundled-apps/boxtal/src/lib/boxtal-v3-client.ts:48 ; bundled-apps/boxtal/src/shipment.ts:2727
+boxtal:order papers generated at To prepare, after the buy, in the pack -> bundled-apps/boxtal/src/customs-documents.ts:466
+order_print_record_get tool -> bundled-apps/boxtal/app.manifest.json:2602

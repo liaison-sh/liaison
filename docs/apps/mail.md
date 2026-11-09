@@ -142,7 +142,7 @@ If the agent's turn is refused because the server restarts, the mail app sends i
 
 When you approve an agent's draft, Liaison looks at the conversation once more before it sends:
 
-- **A reply came in** after the draft was written: the draft is not sent, and the row says who replied.
+- **A reply came in** after the draft was written: the draft is not sent, and the row says who replied. A reply from a colleague of the recipient counts too: anyone whose contact is at the same company, including someone who became a contact after the draft was written.
 - **A delivery failure came back** for the address: not sent.
 - **An automatic reply came in** (an out-of-office, for example): the draft is held until the return date the message states, or for a default wait when it states none, then it comes back to **Home** by itself. The card offers **Send now** in place of **Approve**. **Send now** sends anyway; Liaison checks again first, and a reply or a failure that arrived since still stops it.
 - **A recipient opted out of commercial mail**: not sent, and the card asks you to remove them from the recipients or leave the draft unsent.
@@ -157,6 +157,10 @@ The check applies to drafts written by agents only. A message you write yourself
 ### Record an opt-out
 
 When someone asks to receive no more commercial mail, ask your agent to note it (tool `mail:suppression_add`). Anyone who can write mail can record one. Liaison keeps only a fingerprint of the address, never the address itself. Drafts of commercial mail already waiting for that address are withdrawn at once, and the check before sending refuses any new one. A service message, such as an invoice or an order update, still goes.
+
+When someone answers a mail asking to stop ("unsubscribe", "stop", "ne plus recevoir", "abmelden", "darme de baja", "cancellami" and other phrases in English, French, German, Spanish and Italian), Liaison raises an opt-out request for approval in the name of the mailbox's owner (for a shared mailbox, the person who connected it). Nothing is recorded until someone approves it, and each person gets one request however often they ask. A short reply counts; in a longer one the phrase must stand on a line of its own, and text quoted from an earlier mail never counts. Newsletters, automatic mail and the history imported when a mailbox is first connected raise no request. A sealed mailbox's mail cannot be read, so its replies raise no request: its reply still stops the draft it answers, and the opt-out is then for a person to record.
+
+A new sender whose address is at a company's domain is linked to that company, when exactly one company holds the domain.
 
 An agent can check up to 50 addresses at a time (`mail:suppression_check`). With `mail:suppressions:read` it also says when and how each person opted out.
 

@@ -77,7 +77,7 @@ export interface DealFollowupOptions {
 }
 
 /**
- * Deal follow-ups (C-07): every weekday, a draft per open deal gone quiet, for
+ * Deal follow-ups: every weekday, a draft per open deal gone quiet, for
  * the deal's owner to approve. What may be drafted is decided by the server
  * (`deals_followup_candidates`: quiet, opted out, basis, sender mailbox, a
  * draft already waiting) and checked again at send by the send guard, so the

@@ -26,9 +26,6 @@ interface SetupParams {
   pipelineId?: string
 }
 
-/** The skip reasons the card counts (DC-P1-11 and the sender rule): the ones a person can fix. */
-export const CARD_COUNTED_SKIPS = ["no_basis", "consumer_unknown", "no_sender"] as const
-
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`
 }

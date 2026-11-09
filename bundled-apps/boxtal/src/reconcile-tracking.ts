@@ -145,10 +145,12 @@ export function byStalestFirst(a: ReconcileRow, b: ReconcileRow): number {
 
 // ── orphaned-reservation sweep ───────────────────────────────────────────────
 //
-// `create_shipment` is NOT atomic and the sandbox worker pool kills a handler at
-// 62s with no rollback. A kill landing between `createShippingOrder` returning
-// (the label is PAID) and `finalizeCreated` writing the order id leaves a row in
-// `create_in_flight` with `boxtal_order_id: null`. Such a row has no
+// `create_shipment` is NOT atomic: the sandbox kills a handler at its budget and
+// the run's transaction rolls back. The reservation is committed on its own before
+// the POST (`insertNow`, link-store.ts), so it survives; a kill landing between
+// `createShippingOrder` returning (the label is PAID) and `finalizeCreated`
+// committing the order id leaves that row in `create_in_flight` with
+// `boxtal_order_id: null`. Such a row has no
 // `tracking_status`, so every tracking-based queue classifies it as nothing and a
 // PAID label is invisible to every operator. Prod is clean today (78 rows, all
 // `created`): this closes the hole before it costs money.

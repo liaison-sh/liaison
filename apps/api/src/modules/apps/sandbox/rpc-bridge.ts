@@ -534,6 +534,12 @@ export function createSessionRpcBridge(
     // Captured HERE, in the caller's frame: the per-call rebuild below runs
     // outside it, so a read-only run would otherwise rebuild as a writable one.
     readOnlyRunOverride: bridgeOptions?.readOnlyRunOverride ?? captureReadOnlyRun(),
+    // Per-call transactions (not serial): one `session.run` is already its own
+    // committed transaction, the same actor as every other call. Serial calls
+    // share one transaction, so only a caller-given channel commits ahead.
+    commitNowTx:
+      bridgeOptions?.commitNowTx ??
+      (perCall?.serial ? undefined : <T>(fn: (tx: RlsClient) => Promise<T>) => session.run(fn)),
     spawnParentFrameOverride:
       bridgeOptions?.spawnParentFrameOverride !== undefined
         ? bridgeOptions.spawnParentFrameOverride

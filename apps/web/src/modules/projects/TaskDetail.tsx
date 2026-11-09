@@ -49,6 +49,7 @@ import { useI18n } from "~/modules/i18n/i18n-context"
 import { AssigneeListStatus, AssigneeSearchField } from "~/modules/members/AssigneeSearch"
 import { createAssignableMembers } from "~/modules/members/assignable-members"
 import { Checklist } from "~/modules/projects/Checklist"
+import { DealPanel } from "~/modules/projects/DealPanel"
 import { TaskLabelChips, taskLabelGroupIds } from "~/modules/projects/LabelChip"
 import { LinkedDocuments } from "~/modules/projects/LinkedDocuments"
 import { ensureLabelCatalog } from "~/modules/projects/label-catalog-store"
@@ -605,6 +606,18 @@ export const TaskDetail: Component<TaskDetailProps> = (props) => {
                   {/* Actions other apps add to the task. */}
                   <SlotPanels slot="project:task:actions" entityId={t().id} position="actions" />
                 </div>
+
+                {/* A deal (a top-level task of a sales pipeline): its own panel,
+                    which fails on its own without touching the task page. */}
+                <Show when={project()?.kind === "pipeline" && !t().parentTaskId}>
+                  <DealPanel
+                    api={api}
+                    taskId={t().id}
+                    ownerName={t().assignee?.name ?? null}
+                    disabled={isArchived()}
+                    onChanged={() => void refetch()}
+                  />
+                </Show>
 
                 {/* Description — inline editable */}
                 <EditableDescription

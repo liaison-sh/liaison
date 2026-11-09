@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // "Edit project", inline in the workspace header (no modal): name, key, icon,
-// colour, description and group (the sidebar heading it sits under; the
+// colour, description, client (a company the editor can read; cleared to
+// none) and group (the sidebar heading it sits under; the
 // org's existing groups are offered as suggestions). The key is read-only once the project has tasks
 // (the server refuses it then: every task key and link is built on it).
 
-import { type Component, createSignal, createUniqueId, For, Show } from "solid-js"
+import { type Component, createResource, createSignal, createUniqueId, For, Show } from "solid-js"
 import type { ApiClient } from "~/lib/api-client"
 import { ApiError } from "~/lib/api-error"
 import { useI18n } from "~/modules/i18n/i18n-context"
@@ -18,6 +19,139 @@ import { Input } from "~/ui/Input"
 
 const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
 
+interface CompanyOption {
+  id: string
+  name: string
+  domain?: string | null
+}
+
+type ClientApi = Partial<Pick<ApiClient, "get" | "getEnvelope">>
+
+/** The client's name; null when the editor cannot see that company. */
+async function clientName(api: ClientApi, id: string): Promise<string | null> {
+  if (!api.get) return null
+  try {
+    const res = await api.get<CompanyOption | { data: CompanyOption }>(`/contacts/companies/${id}`)
+    const company = res && "data" in (res as object) ? (res as { data: CompanyOption }).data : res
+    return (company as CompanyOption | null)?.name ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The project's client: the chosen company with Clear, or a search over the
+ * companies the editor can read. Choosing or clearing is saved with the form.
+ */
+const ClientField: Component<{
+  api: ClientApi
+  value: string | null
+  onChange: (id: string | null) => void
+}> = (props) => {
+  const i18n = useI18n()
+  const [query, setQuery] = createSignal("")
+  const [picked, setPicked] = createSignal<Record<string, string>>({})
+  const [name] = createResource(
+    () => (props.value && !picked()[props.value] ? props.value : false),
+    (id) => clientName(props.api, id),
+  )
+  const [results] = createResource(
+    () => query().trim() || false,
+    async (q): Promise<CompanyOption[]> => {
+      if (!props.api.getEnvelope) return []
+      const params = new URLSearchParams({ query: q, limit: "8" })
+      const res = await props.api.getEnvelope<CompanyOption[]>(
+        `/contacts/companies?${params.toString()}`,
+      )
+      return Array.isArray(res?.data) ? res.data : []
+    },
+  )
+  const shownName = () => {
+    const id = props.value
+    if (!id) return null
+    return (
+      picked()[id] ??
+      name.latest ??
+      (name.loading ? "" : i18n.t("projects.deals.clientUnavailable"))
+    )
+  }
+  return (
+    <div class="flex flex-col gap-1" data-testid="project-edit.client">
+      <span class="text-[12px] font-medium text-text-secondary">
+        {i18n.t("projects.deals.client")}
+      </span>
+      <Show
+        when={props.value}
+        fallback={
+          <>
+            <input
+              data-testid="project-edit.client-search"
+              type="text"
+              autocomplete="off"
+              placeholder={i18n.t("projects.deals.clientSearch")}
+              aria-label={i18n.t("projects.deals.clientSearch")}
+              value={query()}
+              onInput={(e) => setQuery(e.currentTarget.value)}
+              class="rounded-sm border border-border bg-bg px-3 py-[7px] text-[13px] text-text outline-none transition-colors focus:border-accent-muted"
+            />
+            <Show when={query().trim() && !results.loading && !results.error}>
+              <Show
+                when={(results.latest ?? []).length > 0}
+                fallback={
+                  <span
+                    data-testid="project-edit.client-no-match"
+                    class="text-[11.5px] text-text-tertiary"
+                  >
+                    {i18n.t("projects.deals.clientNoMatch")}
+                  </span>
+                }
+              >
+                <ul class="flex flex-col rounded-sm border border-border-subtle">
+                  <For each={results.latest ?? []}>
+                    {(c) => (
+                      <li>
+                        <button
+                          type="button"
+                          data-testid={`project-edit.client-option-${c.id}`}
+                          class="w-full px-3 py-1.5 text-left text-[13px] text-text hover:bg-surface-hover"
+                          onClick={() => {
+                            setPicked((m) => ({ ...m, [c.id]: c.name }))
+                            setQuery("")
+                            props.onChange(c.id)
+                          }}
+                        >
+                          {c.name}
+                          <Show when={c.domain}>
+                            <span class="ml-2 text-[11.5px] text-text-tertiary">{c.domain}</span>
+                          </Show>
+                        </button>
+                      </li>
+                    )}
+                  </For>
+                </ul>
+              </Show>
+            </Show>
+          </>
+        }
+      >
+        <div class="flex items-center gap-2">
+          <span data-testid="project-edit.client-name" class="text-[13px] text-text">
+            {shownName()}
+          </span>
+          <button
+            type="button"
+            data-testid="project-edit.client-clear"
+            class="rounded-sm px-1.5 py-0.5 text-[12px] text-text-tertiary hover:bg-surface-hover hover:text-text"
+            onClick={() => props.onChange(null)}
+          >
+            {i18n.t("projects.deals.clientClear")}
+          </button>
+        </div>
+      </Show>
+    </div>
+  )
+}
+
 export const ProjectEditForm: Component<{
   api: ApiClient
   project: ProjectDetail
@@ -30,6 +164,7 @@ export const ProjectEditForm: Component<{
   const [icon, setIcon] = createSignal<string | null>(props.project.icon ?? null)
   const [color, setColor] = createSignal<string | null>(props.project.color ?? null)
   const [group, setGroup] = createSignal(props.project.group ?? "")
+  const [client, setClient] = createSignal<string | null>(props.project.companyId ?? null)
   const groupListId = `project-edit-groups-${createUniqueId()}`
   const groupSuggestions = () =>
     groupNames([...projectsStore.items, ...projectsStore.archivedItems])
@@ -65,6 +200,7 @@ export const ProjectEditForm: Component<{
       }
       patch.group = nextGroup
     }
+    if (client() !== (props.project.companyId ?? null)) patch.companyId = client()
     if (Object.keys(patch).length === 0) {
       props.onDone()
       return
@@ -146,6 +282,7 @@ export const ProjectEditForm: Component<{
           class="min-h-[4.5rem] rounded-sm border border-border bg-bg px-3 py-2 text-[13px] text-text outline-none transition-colors focus:border-accent-muted"
         />
       </label>
+      <ClientField api={props.api} value={client()} onChange={setClient} />
       <label class="flex flex-col gap-1">
         <span class="text-[12px] font-medium text-text-secondary">
           {i18n.t("projects.groupOptional")}

@@ -924,3 +924,59 @@ describe("TaskDetail copy link", () => {
     )
   })
 })
+
+describe("TaskDetail on a sales pipeline", () => {
+  it("the task page renders when the deal read fails", async () => {
+    projectStore._setForTest({
+      projectId: "p1",
+      current: { ...project(), kind: "pipeline" },
+      tasks: [],
+    })
+    const api = {
+      post: vi.fn(async (path: string, body?: { toolName?: string }) => {
+        if (path === "/apps/run-tool" && body?.toolName === "projects:deals_search") {
+          throw new Error("deals are down")
+        }
+        return task()
+      }),
+      get: vi.fn().mockResolvedValue({ id: "thread-1", hiddenFromList: true }),
+      patch: vi.fn(),
+      delete: vi.fn(),
+      getEnvelope: vi.fn(),
+    } as any
+    const { findByTestId, getByTestId } = render(() => (
+      <ApiContext.Provider value={api}>
+        <TaskDetail entityId="t1" />
+      </ApiContext.Provider>
+    ))
+    expect((await findByTestId("deal-panel.error")).textContent).toBe(
+      "Could not read the deal. The task below is not affected.",
+    )
+    expect(getByTestId("task-detail.description-section")).toBeTruthy()
+    expect(getByTestId("task-detail.meta-row")).toBeTruthy()
+  })
+
+  it("a subtask of a pipeline shows no deal panel", async () => {
+    projectStore._setForTest({
+      projectId: "p1",
+      current: { ...project(), kind: "pipeline" },
+      tasks: [],
+    })
+    const api = {
+      post: vi.fn(async () => ({ ...task(), parentTaskId: "t0" })),
+      get: vi.fn().mockResolvedValue({ id: "thread-1", hiddenFromList: true }),
+      patch: vi.fn(),
+      delete: vi.fn(),
+      getEnvelope: vi.fn(),
+    } as any
+    const { findByTestId, queryByTestId } = render(() => (
+      <ApiContext.Provider value={api}>
+        <TaskDetail entityId="t1" />
+      </ApiContext.Provider>
+    ))
+    await findByTestId("task-detail.description-section")
+    expect(queryByTestId("deal-panel")).toBeNull()
+    expect(queryByTestId("deal-panel.loading")).toBeNull()
+    expect(api.post).not.toHaveBeenCalledWith("/apps/run-tool", expect.anything())
+  })
+})

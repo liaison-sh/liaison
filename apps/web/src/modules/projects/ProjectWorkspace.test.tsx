@@ -254,6 +254,54 @@ describe("ProjectWorkspace", () => {
     ]
   })
 
+  describe("on a sales pipeline", () => {
+    afterEach(() => {
+      delete (state.project as { kind?: string }).kind
+    })
+
+    it("the header says how many deals are open and their sum per currency, and the action is New deal", async () => {
+      ;(state.project as { kind?: string }).kind = "pipeline"
+      state.api.get.mockImplementation(async (path: string) => {
+        if (path === "/projects/p1/deals/board") {
+          return {
+            projectId: "p1",
+            timeZone: "UTC",
+            closedMonth: "2026-11",
+            columns: [
+              {
+                statusId: "s1",
+                label: "todo",
+                dealOutcome: null,
+                count: 2,
+                sums: [{ currency: "EUR", sum_minor: 6_866_000 }],
+                deals: [],
+              },
+              {
+                statusId: "s2",
+                label: "doing",
+                dealOutcome: "won",
+                count: 1,
+                sums: [{ currency: "EUR", sum_minor: 588_000 }],
+                deals: [],
+              },
+            ],
+          }
+        }
+        return {}
+      })
+      render(() => (
+        <ApiContext.Provider value={state.api}>
+          <ProjectWorkspace entityId="p1" />
+        </ApiContext.Provider>
+      ))
+      // Closed columns are not counted as open.
+      expect((await screen.findByTestId("project-workspace.deal-subline")).textContent).toBe(
+        "2 open deals, €68,660.00. Quiet deals come first in each column.",
+      )
+      expect(screen.getByTestId("project-workspace.new-task").textContent).toBe("New deal")
+    })
+  })
+
   describe("Edit project (inline, no modal)", () => {
     const renderWorkspace = () =>
       render(() => (

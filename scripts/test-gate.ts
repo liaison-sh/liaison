@@ -98,7 +98,8 @@ export const GATE_LANES: Record<string, number> = {
 
 /**
  * The suites the per-PR `ci` workflow already runs on every pull request (root,
- * guards, unit, web-unit): the gate leaves them out. Every other suite the test
+ * guards, unit, web-unit, and the relation cells in its `relations` job): the
+ * gate leaves them out. Every other suite the test
  * map names must be a {@link GATE_LANES} key, or the gate would plan it and
  * never run it (scripts/test-gate.test.ts pins that).
  */
@@ -111,7 +112,7 @@ export const NOT_HOSTED_SUITES: Record<string, string> = {
     "its session-broker tests drive the Mac shell's zsh shims, sockets and signed app bundle; they hang on a Linux runner",
 }
 
-export const PR_CI_SUITES = ["unit", "web-unit", "root", "guards"]
+export const PR_CI_SUITES = ["unit", "web-unit", "root", "guards", "relations"]
 
 export interface GateShard {
   suite: string

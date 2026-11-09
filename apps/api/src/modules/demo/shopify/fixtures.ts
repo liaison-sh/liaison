@@ -19,6 +19,8 @@
 // demo instance it is never imported, so neither it nor `apps/api/src/seed/world/fiction.ts`
 // costs anything at boot.
 import {
+  DEMO_FIXED_CUSTOMER,
+  DEMO_FIXED_ORDER,
   DEMO_SHOPIFY_VARIANT_BASE,
   DEMO_WORLD,
   type DemoCustomer,
@@ -884,6 +886,100 @@ function buildDraftOrders(
   return drafts
 }
 
+// ── the fixed customer and her order ─────────────────────────────────────────
+
+/**
+ * `DEMO_FIXED_CUSTOMER`, as the store lists her. Built apart from
+ * `buildCustomers` and never handed to the seeded generators, so every
+ * generated order and quote keeps the customer it had.
+ */
+function buildFixedCustomer(anchorMs: number): DemoShopifyCustomer {
+  const person = DEMO_FIXED_CUSTOMER
+  const numericId = 7_190_001
+  const { first, last } = splitName(person.name)
+  return {
+    id: `gid://shopify/Customer/${numericId}`,
+    numericId,
+    email: person.email,
+    firstName: first,
+    lastName: last,
+    displayName: person.name,
+    phone: null,
+    tags: person.isVip ? ["vip"] : [],
+    createdAt: isoAt(anchorMs, 240, 9, 45),
+    address: addressFor(person.country, person.name, null, 27, 290001),
+    kind: "person",
+    countryCode: person.country,
+  }
+}
+
+/** `DEMO_FIXED_ORDER`: paid and shipped, nothing refunded. */
+function buildFixedOrder(
+  anchorMs: number,
+  products: DemoProduct[],
+  customer: DemoShopifyCustomer,
+  locations: DemoLocation[],
+): DemoOrder {
+  const spec = DEMO_FIXED_ORDER
+  const id = `gid://shopify/Order/${spec.numericId}`
+  const product = products.find((p) => p.variants.some((v) => v.sku === spec.sku))
+  const variant = product?.variants.find((v) => v.sku === spec.sku)
+  const location = locations[0]
+  if (!product || !variant || !location) {
+    throw new Error(`demo store: the fixed order's SKU ${spec.sku} or a location is missing`)
+  }
+  const lineItems: DemoLineItem[] = [
+    {
+      id: `${id}/LineItem/1`,
+      title: product.title,
+      sku: variant.sku,
+      quantity: spec.quantity,
+      unitMinor: variant.priceMinor,
+      variantId: variant.id,
+      productId: product.id,
+    },
+  ]
+  const shippingMinor = 1_490
+  const { subtotalMinor, totalMinor } = priceOrder(lineItems, shippingMinor)
+  const createdAt = isoAt(anchorMs, spec.daysAgo, 10, 40)
+  return {
+    id,
+    numericId: spec.numericId,
+    name: spec.name,
+    email: customer.email,
+    customerId: customer.id,
+    createdAt,
+    processedAt: createdAt,
+    tags: [],
+    note: null,
+    financialStatus: "PAID",
+    fulfillmentStatus: "FULFILLED",
+    cancelledAt: null,
+    cancelReason: null,
+    closed: false,
+    lineItems,
+    shippingTitle: "Standard shipping",
+    shippingMinor,
+    subtotalMinor,
+    totalMinor,
+    shippingAddress: { ...customer.address, name: customer.displayName, company: null },
+    fulfillments: [
+      {
+        id: `${id}/Fulfillment/1`,
+        status: "SUCCESS",
+        createdAt: isoAt(anchorMs, spec.daysAgo - 1, 16, 20),
+        carrier: "Colissimo",
+        trackingNumber: `RA${String(spec.numericId).slice(-7)}1FR`,
+        trackingUrl: `https://tracking.${DEMO_SHOP_DOMAIN}/${spec.numericId}`,
+        lineItemIds: lineItems.map((li) => li.id),
+      },
+    ],
+    refunds: [],
+    returns: [],
+    locationId: location.id,
+  }
+}
+
 // ── assembly + cache ─────────────────────────────────────────────────────────
 
 let cached: DemoShopifyBook | null = null
@@ -903,9 +999,17 @@ export function demoShopifyBook(now: number = Date.now()): DemoShopifyBook {
 
   const locations = buildLocations()
   const products = buildProducts(anchorMs, DEMO_WORLD.catalog)
-  const customers = buildCustomers(anchorMs)
-  const orders = buildOrders(anchorMs, products, customers, locations)
-  const draftOrders = buildDraftOrders(anchorMs, products, customers, orders)
+  const generatedCustomers = buildCustomers(anchorMs)
+  const generatedOrders = buildOrders(anchorMs, products, generatedCustomers, locations)
+  const draftOrders = buildDraftOrders(anchorMs, products, generatedCustomers, generatedOrders)
+  // The fixed customer and her order join after the seeded generators ran, so
+  // they move no generated order or quote.
+  const fixedCustomer = buildFixedCustomer(anchorMs)
+  const customers = [...generatedCustomers, fixedCustomer]
+  const orders = [
+    ...generatedOrders,
+    buildFixedOrder(anchorMs, products, fixedCustomer, locations),
+  ].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
 
   const variantsById = new Map<string, DemoVariant>()
   const variantsByInventoryItem = new Map<string, DemoVariant>()
@@ -934,7 +1038,10 @@ export function demoShopifyBook(now: number = Date.now()): DemoShopifyBook {
   return cached
 }
 
-/** How many orders a demo store carries. Asserted by the fixture test. */
+/**
+ * How many orders the store's seeded generator makes (6100001 upward). The
+ * fixed order (`DEMO_FIXED_ORDER`) comes on top. Asserted by the fixture test.
+ */
 export const DEMO_ORDER_COUNT = TOTAL_ORDERS
 
 /** Drop the cached book. Used by the tests that move the clock. */

@@ -35,7 +35,7 @@ import {
 } from "./_boxtal-fixtures"
 import { dispatchBoxtalWebhook } from "./helpers/dispatch-boxtal-webhook"
 import { installBoxtalApp } from "./helpers/install-boxtal-app"
-import { getRequests, resetMock, v3CreatePosts } from "./helpers/mock-boxtal"
+import { getRequests, resetMock, setMockMode, v3CreatePosts } from "./helpers/mock-boxtal"
 import {
   numericOrderId,
   SENDER,
@@ -355,18 +355,33 @@ test.describe("Boxtal: a label purchase from the To prepare grid", () => {
       const card = page.getByTestId(`boxtal-prep-ship-approval-card-${ariKey}`)
       await expect(card).toBeVisible()
       await expect(card).toContainText("Grenoble")
+      // A slow carrier answer (as Boxtal's is under load) holds the approved call open after its
+      // purchase is recorded, so the reads below must wait for the call, not for the purchase.
+      await setMockMode({ serverUrl: s, token, createLatencyMs: 2_000 })
       await page.getByTestId(`boxtal-prep-ship-approve-${ariKey}`).click()
       await expect
         .poll(async () => v3CreatePosts(await getRequests(s, token)).length, { timeout: 60_000 })
         .toBe(1)
+      // The POST is seen mid-execution: the approved handler runs in ONE transaction (claim
+      // pending -> approving, handler, then approved), so its shipment row is committed only once
+      // the request reads approved. Reading it on the POST alone raced that commit.
+      await expect
+        .poll(
+          async () =>
+            (await approvalsSince(env, orgId, clickedAt)).map((x) => [x.toolName, x.status]),
+          { timeout: 30_000 },
+        )
+        .toEqual([["boxtal:create_shipment", "approved"]])
+      await setMockMode({ serverUrl: s, token, createLatencyMs: 0 })
 
       const shipments = (await env.db.sql.unsafe(
-        `SELECT boxtal_order_id AS "orderId"
+        `SELECT boxtal_order_id AS "orderId", link_state AS "linkState"
            FROM ${boxtalSchema(env)}.shipment
           WHERE org_id = $1 AND kind = 'outbound' AND created_at >= $2`,
         [orgId, clickedAt],
-      )) as Array<{ orderId: string | null }>
+      )) as Array<{ orderId: string | null; linkState: string | null }>
       expect(shipments).toHaveLength(1)
+      expect(shipments[0]!.linkState).toBe("created")
       const boxtalOrderId = shipments[0]!.orderId
       expect(boxtalOrderId).toBeTruthy()
 

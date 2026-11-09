@@ -38,6 +38,7 @@ export const QA_MEMBER_SCOPES: readonly string[] = [
   "kernel:products:write",
   "mail:accounts:read",
   "mail:conversations:read",
+  "mail:suppressions:read",
   "mail:conversations:write",
   "mail:messages:read",
   "mail:messages:write",

@@ -360,15 +360,14 @@ export async function optedOutLine(orgId: string, record: SuppressionRecord): Pr
 }
 
 /**
- * Which of `emails` opted out. Every caller learns yes or no (anyone who writes to people must
- * know); when and how only with `mail:suppressions:read`, read under the caller's row security.
+ * Which of `emails` opted out, and when and how, read under the caller's row security. The tool
+ * requires `mail:suppressions:read`, so every caller may read the details.
  */
 export async function checkSuppressions(args: {
   orgId: string
   emails: string[]
   given: number
   db: Pick<RlsClient, "execute">
-  canReadDetails: boolean
 }): Promise<unknown> {
   const { orgId, emails } = args
   if (args.given > SUPPRESSION_CHECK_MAX) {
@@ -389,10 +388,7 @@ export async function checkSuppressions(args: {
   }
   const optedOut = await suppressedAmong(orgId, emails)
   const out = new Set(optedOut.map((e) => e.toLowerCase()))
-  const details =
-    args.canReadDetails && optedOut.length > 0
-      ? await listSuppressions(orgId, optedOut, args.db)
-      : []
+  const details = optedOut.length > 0 ? await listSuppressions(orgId, optedOut, args.db) : []
   const results = []
   for (const email of emails) {
     const suppressed = out.has(email.toLowerCase())

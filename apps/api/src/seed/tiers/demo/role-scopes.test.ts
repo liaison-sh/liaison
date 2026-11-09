@@ -5,6 +5,7 @@
 // role holding the matching contacts scope; the seed lists did not follow, so a
 // re-seed of a migrated demo box found five roles "changed on the server since
 // the last apply" and the config pass refused (exit 3) without writing anything.
+// Migration 0292 does the same for the opt-out list's scopes.
 import { describe, expect, it } from "bun:test"
 import type { DemoRole } from "~/seed/world/fiction"
 import { QA_MEMBER_SCOPES } from "~/seed/world/qa"
@@ -14,6 +15,8 @@ import { demoScopesForRole } from "./role-scopes"
 const BACKFILLED_PAIRS: ReadonlyArray<readonly [have: string, add: string]> = [
   ["kernel:contacts:read", "kernel:products:read"],
   ["kernel:contacts:write", "kernel:products:write"],
+  ["mail:conversations:read", "mail:suppressions:read"],
+  ["mail:accounts:admin", "mail:suppressions:write"],
 ]
 
 const ROLES: readonly DemoRole[] = ["ops_lead", "support", "fulfillment", "finance", "sales"]

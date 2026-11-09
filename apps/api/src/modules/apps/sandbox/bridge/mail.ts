@@ -802,8 +802,8 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
     mail_suppressionCheck: async (paramsJson: string): Promise<string> => {
       requireApp("mail", "mail_suppressionCheck")
       const { hasScope } = await import("~/modules/permissions/permissions")
-      if (!hasScope("mail:conversations:read", callerScopes ?? [])) {
-        throw new Error("forbidden: missing scope mail:conversations:read")
+      if (!hasScope("mail:suppressions:read", callerScopes ?? [])) {
+        throw new Error("forbidden: missing scope mail:suppressions:read")
       }
       const { emails } = JSON.parse(paramsJson) as { emails?: unknown }
       const list = Array.isArray(emails)
@@ -816,7 +816,6 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
           emails: list,
           given: Array.isArray(emails) ? emails.length : 0,
           db: txDb,
-          canReadDetails: hasScope("mail:suppressions:read", callerScopes ?? []),
         }),
       )
     },

@@ -1007,7 +1007,7 @@ function fnv1a32(str: string): number {
   return hash >>> 1 // Convert to non-negative int (pg advisory lock needs int8, but 32-bit is fine)
 }
 
-function flattenRoleScopes(
+export function flattenRoleScopes(
   roles: Record<string, { extends?: string; scopes: string[] }>,
   name: string,
   visited = new Set<string>(),
@@ -1122,7 +1122,7 @@ export async function seedManifestRoles(
  * always excluded. Apps can make this explicit simply by naming their base
  * write role `member`.
  */
-function baselineMemberScopes(
+export function baselineMemberScopes(
   roles: Record<string, { extends?: string; scopes: string[] }>,
 ): string[] {
   if (roles.member) return flattenRoleScopes(roles, "member")

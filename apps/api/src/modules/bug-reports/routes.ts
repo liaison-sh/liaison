@@ -6,6 +6,7 @@ import type { AppEnv } from "~/app"
 import { success } from "~/lib/response"
 import { zValidator } from "~/lib/validate"
 import {
+  discardAgentDraft,
   listPendingAgentDrafts,
   readAgentDraft,
   sendAgentDraft,
@@ -54,6 +55,13 @@ bugReports
     if (!draft) throw new HTTPException(404, { message: "This report has expired" })
     return success(c, draft)
   })
+  // The reporter drops a prepared report instead of sending it.
+  .delete("/drafts/:draftId", zValidator("param", draftParam), async (c) =>
+    success(
+      c,
+      await discardAgentDraft(c.get("orgId"), c.get("userId"), c.req.valid("param").draftId),
+    ),
+  )
   .post(
     "/drafts/:draftId/send",
     zValidator("param", draftParam),

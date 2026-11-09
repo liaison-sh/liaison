@@ -12,8 +12,11 @@
 // in Report a bug for a call from another client) and only their click, a
 // signed-in request, queues it. This is not an approval: nobody else decides.
 //
-// A send is refused when the payload no longer matches the digest the card
-// showed, when the team-only switch went off, or after 5 sends an hour by the
+// The payload is built once, when the agent prepares the report, and stored as
+// built: the card shows it and a send queues it byte for byte. Rebuilding it at
+// send time made every draft unsendable after a deploy, since the payload
+// carries the server version. A send is refused when the digest the card
+// showed is not the stored one, when the team-only switch went off, or after 5 sends an hour by the
 // same reporter (a send that could not be queued does not count). One reporter
 // has at most 10 drafts waiting and prepares at most 20 an hour, so a looping
 // agent cannot fill Redis.
@@ -42,6 +45,8 @@ interface StoredDraft {
   form: ForwardForm
   snapshot: ForwardSnapshot
   reporterEmail: string
+  /** The payload as built at creation. Absent on drafts stored before it was kept. */
+  data?: BugReportForwardData
   digest: string
   createdAt: string
   sentMessageId?: string
@@ -120,12 +125,23 @@ async function readStored(
   }
 }
 
-function view(draftId: string, draft: StoredDraft): AgentBugReportDraft {
+/**
+ * The payload a draft sends and its digest. A draft stored without its payload
+ * (older release) is rebuilt with the running version: it was unsendable
+ * otherwise, and the reporter still sees and sends exactly what is shown.
+ */
+function payloadOf(draft: StoredDraft): { data: BugReportForwardData; digest: string } {
+  if (draft.data) return { data: draft.data, digest: draft.digest }
   const built = build(draft)
+  return { data: built.data, digest: built.digest }
+}
+
+function view(draftId: string, draft: StoredDraft): AgentBugReportDraft {
+  const payload = payloadOf(draft)
   return {
     draftId,
-    data: built.data,
-    digest: built.digest,
+    data: payload.data,
+    digest: payload.digest,
     createdAt: draft.createdAt,
     sentMessageId: draft.sentMessageId ?? null,
   }
@@ -162,7 +178,9 @@ export async function createAgentDraft(
     digest: "",
     createdAt: new Date().toISOString(),
   }
-  stored.digest = build(stored).digest
+  const built = build(stored)
+  stored.data = built.data
+  stored.digest = built.digest
   await redis.set(draftKey(orgId, userId, draftId), JSON.stringify(stored), "EX", TTL_SECONDS)
   await redis.sadd(indexKey(orgId, userId), draftId)
   await redis.expire(indexKey(orgId, userId), TTL_SECONDS)
@@ -197,6 +215,20 @@ export async function listPendingAgentDrafts(
   return out.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
+/**
+ * The reporter drops a prepared report they will not send: it leaves the list
+ * at once instead of waiting out its 24 hours. Only their own key is touched.
+ */
+export async function discardAgentDraft(
+  orgId: string,
+  userId: string,
+  draftId: string,
+): Promise<{ discarded: boolean }> {
+  const removed = await redis.del(draftKey(orgId, userId, draftId))
+  await redis.srem(indexKey(orgId, userId), draftId)
+  return { discarded: removed > 0 }
+}
+
 export class AgentDraftError extends Error {
   constructor(
     message: string,
@@ -229,8 +261,8 @@ export async function sendAgentDraft(
   if (stored.sentMessageId) {
     throw new AgentDraftError("This report was already sent", 409, "DRAFT_ALREADY_SENT")
   }
-  const built = build(stored)
-  if (built.digest !== digest || built.digest !== stored.digest) {
+  const payload = payloadOf(stored)
+  if (payload.digest !== digest) {
     throw new BugReportForwardError(
       "The report changed since it was shown: check it and send again",
       409,
@@ -255,7 +287,7 @@ export async function sendAgentDraft(
   }
   let queued: Awaited<ReturnType<typeof enqueueBugReportForward>>
   try {
-    queued = await enqueueBugReportForward(built.data, [], new Date(), { teamOnly: { orgId } })
+    queued = await enqueueBugReportForward(payload.data, [], new Date(), { teamOnly: { orgId } })
   } catch (err) {
     await redis.del(sentKey(orgId, userId, draftId))
     await releasePlace(forwardsKey(orgId, userId), place)

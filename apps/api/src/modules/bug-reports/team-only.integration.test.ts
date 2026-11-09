@@ -248,6 +248,22 @@ describe("the form, team-only", () => {
     expect(objects.size).toBe(0)
   })
 
+  it("a log line over the cap is trimmed, never a 400 that leaves Send dead", async () => {
+    const long = `2026-11-09T12:00:00.000Z [info] ${"x".repeat(2_100)}`
+    const pre = await call(reporter, "/forward-preview", {
+      ...form(),
+      clientLogs: [long, "short line"],
+      includeEmail: true,
+      attachmentIndexes: [],
+    })
+    expect(pre.status).toBe(200)
+    const logs = ((await pre.json()) as { data: { data: { report: { logs: string[] } } } }).data
+      .data.report.logs
+    expect(logs).toHaveLength(2)
+    expect(logs[0]?.length).toBeLessThanOrEqual(2_000)
+    expect(logs[0]?.endsWith("…")).toBe(true)
+  })
+
   it("a submit without the previewed payload is 409 FORWARD_REQUIRED and nothing is filed", async () => {
     const before = await ticketCount(reporter.orgId)
     const res = await call(reporter, "", { description: "plain report" })
@@ -461,6 +477,75 @@ describe("kernel:report_bug, team-only", () => {
     }
     expect(statuses).toEqual([200, 200, 200, 200, 200, 429])
     expect(await outbox()).toHaveLength(5)
+  })
+
+  it("a draft prepared before a deploy still sends, exactly as prepared", async () => {
+    const fresh = await minimal.session(reporter.orgId)
+    const before = mutableEnv.LIAISON_VERSION
+    mutableEnv.LIAISON_VERSION = "release-a"
+    try {
+      const r = (await runContextStore.run(humanTurn(), () =>
+        handleReportBug(params, { orgId: fresh.orgId, userId: fresh.userId, actorType: "agent" }),
+      )) as Record<string, any>
+      // A deploy: the running version moves on while the draft waits for its click.
+      mutableEnv.LIAISON_VERSION = "release-b"
+      const card = await call(fresh, `/drafts/${r.draftId}`)
+      const shown = ((await card.json()) as { data: { digest: string; data: any } }).data
+      expect(shown.digest).toBe(r.digest)
+      expect(shown.data.version).toBe("release-a")
+      const sent = await call(fresh, `/drafts/${r.draftId}/send`, { digest: r.digest })
+      expect(sent.status).toBe(200)
+      const { messageId } = ((await sent.json()) as { data: { messageId: string } }).data
+      const row = (await outbox()).find((o) => o.message_id === messageId)
+      expect(row?.data.version).toBe("release-a")
+    } finally {
+      mutableEnv.LIAISON_VERSION = before
+    }
+  })
+
+  it("the reporter discards a prepared report: it leaves the list and can no longer be sent", async () => {
+    const fresh = await minimal.session(reporter.orgId)
+    const r = (await runContextStore.run(humanTurn(), () =>
+      handleReportBug(params, { orgId: fresh.orgId, userId: fresh.userId, actorType: "agent" }),
+    )) as Record<string, any>
+    // Nobody else can drop it.
+    const other = await minimal.session(reporter.orgId)
+    const foreign = await app.request(`/api/bug-reports/drafts/${r.draftId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${other.bearer}` },
+    })
+    expect(((await foreign.json()) as { data: { discarded: boolean } }).data.discarded).toBe(false)
+    const res = await app.request(`/api/bug-reports/drafts/${r.draftId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${fresh.bearer}` },
+    })
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { data: { discarded: boolean } }).data.discarded).toBe(true)
+    const listed = (await (await call(fresh, "/drafts")).json()) as {
+      data: Array<{ draftId: string }>
+    }
+    expect(listed.data.map((d) => d.draftId)).not.toContain(r.draftId)
+    expect((await call(fresh, `/drafts/${r.draftId}/send`, { digest: r.digest })).status).toBe(404)
+  })
+
+  it("a draft an older release stored without its payload sends with the digest its card shows", async () => {
+    const fresh = await minimal.session(reporter.orgId)
+    const r = (await runContextStore.run(humanTurn(), () =>
+      handleReportBug(params, { orgId: fresh.orgId, userId: fresh.userId, actorType: "agent" }),
+    )) as Record<string, any>
+    // What the previous release stored: no payload, and a digest of a version no longer running.
+    const key = `bug-report:draft:${fresh.orgId}:${fresh.userId}:${r.draftId}`
+    const stored = JSON.parse((await redis.get(key)) ?? "{}")
+    delete stored.data
+    stored.digest = "a".repeat(64)
+    await redis.set(key, JSON.stringify(stored), "KEEPTTL")
+
+    const card = await call(fresh, `/drafts/${r.draftId}`)
+    const shown = ((await card.json()) as { data: { digest: string } }).data
+    expect(shown.digest).toMatch(/^[0-9a-f]{64}$/)
+    const sent = await call(fresh, `/drafts/${r.draftId}/send`, { digest: shown.digest })
+    expect(sent.status).toBe(200)
+    expect(((await sent.json()) as { data: { forwarded: string } }).data.forwarded).toBe("queued")
   })
 })
 

@@ -24,6 +24,13 @@ describe("logger", () => {
     expect(hit).toContain('{"detail":42}')
   })
 
+  it("cuts a long line to at most 2000 characters, the ellipsis included (the server's cap)", () => {
+    log.info(`long line probe ${"x".repeat(5_000)}`)
+    const hit = getRecentLogs().find((l) => l.includes("long line probe"))
+    expect(hit?.length).toBeLessThanOrEqual(2_000)
+    expect(hit?.endsWith("…")).toBe(true)
+  })
+
   it("captures window error events into the buffer", () => {
     window.dispatchEvent(new ErrorEvent("error", { message: "boom from window" }))
     expect(getRecentLogs().some((l) => l.includes("boom from window"))).toBe(true)

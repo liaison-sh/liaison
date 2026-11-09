@@ -552,7 +552,15 @@ export const ReadyRowView: Component<{
       </td>
       <td class={props.cellClass}>
         <span class="flex flex-col leading-[1.3]">
-          <span class="whitespace-nowrap font-mono text-text">{row.order_name ?? row.invoice_ref ?? "-"}</span>
+          {/* Long references (a document id standing in for the order, a Boxtal shipment ref)
+              are cut with the whole value on hover: unbroken, they widened the one worklist
+              table past the grid and pushed the row's actions out of view. */}
+          <span
+            class="block max-w-[120px] truncate whitespace-nowrap font-mono text-text"
+            title={row.order_name ?? row.invoice_ref ?? undefined}
+          >
+            {row.order_name ?? row.invoice_ref ?? "-"}
+          </span>
           <Show when={row.order_created_at}>
             <span class="whitespace-nowrap font-mono text-[10.5px] tabular-nums text-text-tertiary">
               {formatQueueDate(row.order_created_at)}
@@ -611,7 +619,10 @@ export const ReadyRowView: Component<{
               only issues its number once it acknowledges the parcel, which can be hours after the
               label prints; an empty cell in that window looks like a broken sync and leaves the
               operator unable to match the row to Boxtal's list. */}
-          <span class="whitespace-nowrap text-[11px]">
+          <span
+            class="block max-w-[180px] truncate whitespace-nowrap text-[11px]"
+            title={props.row.tracking_number || props.row.shipment_ref || undefined}
+          >
             <Show
               when={props.row.tracking_number}
               fallback={
@@ -659,7 +670,12 @@ export const ReadyRowView: Component<{
       <td class={cx(props.cellClass, phoneCell("document"))} data-phone-column="document">
         <span class="flex flex-col items-start gap-0.5 leading-[1.3]">
           <OrderStatusBadge status={props.row.order_status} testid={`boxtal-ready-status-${row.id}`} />
-          <span class="whitespace-nowrap font-mono text-text">{props.row.invoice_ref || "-"}</span>
+          <span
+            class="block max-w-[120px] truncate whitespace-nowrap font-mono text-text"
+            title={props.row.invoice_ref || undefined}
+          >
+            {props.row.invoice_ref || "-"}
+          </span>
           <Show when={props.row.requested_at}>
             <span class="whitespace-nowrap text-[10.5px] text-text-tertiary" title="Requested">
               {formatQueueTimestamp(props.row.requested_at)}
@@ -673,8 +689,12 @@ export const ReadyRowView: Component<{
           props.actionsSticky ? "sticky right-0 z-10 bg-bg group-hover:bg-surface-hover" : "",
         )}
       >
+        {/* Two short lines that never wrap: the print station's main moves (Print pack, the
+            packed mark), then the single documents. One wrapping row stacked every button on
+            its own line (a 225 px tall row) once the table ran out of width, and pushed the
+            cell past the grid's right edge at 1440 px. */}
         <div class="flex flex-col items-end gap-1">
-          <div class="flex flex-wrap items-center justify-end gap-1">
+          <div class="flex flex-nowrap items-center justify-end gap-1 whitespace-nowrap">
             <button
               type="button"
               class="min-h-11 min-w-11 rounded-md text-text-secondary md:hidden"
@@ -694,32 +714,6 @@ export const ReadyRowView: Component<{
             >
               <PrinterIcon />
               <span>{r.packBusy()[row.id] ? "Preparing" : "Print pack"}</span>
-            </Button>
-            <Button
-              variant="ghost"
-              testid={`boxtal-download-label-${row.id}`}
-              disabled={r.packBusy()[row.id] === true}
-              title="Open the shipping label in a new tab"
-              onClick={() => void r.retrieveDoc(props.row, "label")}
-            >
-              Label
-            </Button>
-            <Button
-              variant="ghost"
-              testid={`boxtal-download-invoice-${row.id}`}
-              disabled={r.packBusy()[row.id] === true}
-              title="Open the invoice in a new tab"
-              onClick={() => void r.retrieveDoc(props.row, "invoice")}
-            >
-              Invoice
-            </Button>
-            <Button
-              variant="ghost"
-              testid={`boxtal-attach-ticket-${row.id}`}
-              title="Attach to a ticket reply"
-              ariaLabel="Attach to a ticket reply"
-            >
-              <PaperclipIcon />
             </Button>
             {/* The packed mark closes the row: everything before it is work to do on the parcel,
                 this says the parcel is done and on the pickup pallet. A raw button rather than
@@ -753,6 +747,34 @@ export const ReadyRowView: Component<{
                 <PackedOnIcon />
               </Show>
             </button>
+          </div>
+          <div class="flex flex-nowrap items-center justify-end gap-1 whitespace-nowrap">
+            <Button
+              variant="ghost"
+              testid={`boxtal-download-label-${row.id}`}
+              disabled={r.packBusy()[row.id] === true}
+              title="Open the shipping label in a new tab"
+              onClick={() => void r.retrieveDoc(props.row, "label")}
+            >
+              Label
+            </Button>
+            <Button
+              variant="ghost"
+              testid={`boxtal-download-invoice-${row.id}`}
+              disabled={r.packBusy()[row.id] === true}
+              title="Open the invoice in a new tab"
+              onClick={() => void r.retrieveDoc(props.row, "invoice")}
+            >
+              Invoice
+            </Button>
+            <Button
+              variant="ghost"
+              testid={`boxtal-attach-ticket-${row.id}`}
+              title="Attach to a ticket reply"
+              ariaLabel="Attach to a ticket reply"
+            >
+              <PaperclipIcon />
+            </Button>
           </div>
           {/* The org's own documents for this parcel (customs declarations, certificates, a
               thank-you letter), printed from its document templates. Those the document rules ask

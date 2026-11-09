@@ -697,6 +697,121 @@ test.describe("Boxtal: visual baselines", () => {
     await testInfo.attach("worklist-all", { path: shot, contentType: "image/png" })
   })
 
+  // Field report: at 1440 px a Ready row's action cell ran past the grid's right edge, its
+  // buttons stacked into a 225 px tall cell and "Print documents" was cut ("Print docu…").
+  // Long values from a real worklist (a document id as the invoice ref, a Boxtal shipment ref
+  // in place of tracking) are what widened the table. Every action of every Ready row has to be
+  // inside the grid and rendered whole: at rest at 1440, and once scrolled at the narrowest
+  // desktop width, where the table scrolls by design.
+  test("ready rows — every action is fully visible at 1440 and at the narrowest desktop width", async ({
+    page,
+    env,
+    qa,
+  }) => {
+    const long = (id: string, name: string, ref: string, doc: string) => ({
+      ...READY.rows[0],
+      id,
+      recipient: name,
+      carrier: "UPSE-Standard",
+      tracking_number: "",
+      shipment_ref: ref,
+      invoice_ref: doc,
+      order_name: id === "w1" ? "#1074" : null,
+      destination: "PL",
+      products: "1xLMI, 1xSTAND",
+      items: 2,
+      category: "sale",
+      requested_at: "2026-11-04T02:30:00.000Z",
+      packed: false,
+    })
+    await installHostMockInterceptor(page, {
+      "boxtal:ready_list": {
+        rows: [
+          long(
+            "w1",
+            "Marta Nowak",
+            "DEMO-SHP-ship-cust-marta",
+            "3816048a-301e-4a5b-9bfd-e82463bce87d",
+          ),
+          long(
+            "w2",
+            "Helena Ritter",
+            "DEMO-SHP-ship-cust-helena",
+            "655766b5-38a6-4b2e-ae9a-96d7611fd669",
+          ),
+        ],
+      },
+    })
+    await loginAs(page, env, qa.admin.email, "12345678")
+    const viteUrl = `http://localhost:${env.ports[1]}`
+    await page.goto(`${viteUrl}/boxtal/queue/ready`)
+    await page.waitForLoadState("networkidle")
+    await expect(page.getByTestId("boxtal-ready-row-w1")).toBeVisible({ timeout: 20_000 })
+
+    const probe = () =>
+      page.evaluate(() => {
+        const scroller = document.querySelector(
+          '[data-testid="boxtal-prep-grid-scroller"]',
+        ) as HTMLElement
+        const view = scroller.getBoundingClientRect()
+        const rows = [...document.querySelectorAll('[data-testid^="boxtal-ready-row-w"]')]
+        return {
+          view: { left: view.left, right: view.right },
+          overflows: scroller.scrollWidth > scroller.clientWidth,
+          rows: rows.map((row) => {
+            const tds = row.querySelectorAll(":scope > td")
+            const cell = tds[tds.length - 1] as HTMLElement
+            const controls = [...cell.querySelectorAll("button")].filter(
+              (b) => getComputedStyle(b).display !== "none",
+            )
+            return {
+              id: row.getAttribute("data-testid"),
+              height: (row as HTMLElement).getBoundingClientRect().height,
+              controls: controls.map((b) => {
+                const r = b.getBoundingClientRect()
+                return {
+                  id: b.getAttribute("data-testid") ?? (b.textContent ?? "").trim(),
+                  left: r.left,
+                  right: r.right,
+                  clipped: b.scrollWidth > b.clientWidth + 1,
+                }
+              }),
+            }
+          }),
+        }
+      })
+    const assertWhole = (g: Awaited<ReturnType<typeof probe>>, label: string) => {
+      for (const row of g.rows) {
+        expect(row.controls.length, `${label} ${row.id}: actions rendered`).toBeGreaterThan(0)
+        for (const c of row.controls) {
+          expect(c.left, `${label} ${row.id} ${c.id}: left edge in view`).toBeGreaterThanOrEqual(
+            g.view.left - 0.5,
+          )
+          expect(c.right, `${label} ${row.id} ${c.id}: right edge in view`).toBeLessThanOrEqual(
+            g.view.right + 0.5,
+          )
+          expect(c.clipped, `${label} ${row.id} ${c.id}: text cut`).toBe(false)
+        }
+      }
+    }
+
+    // 1440: the Ready rows fit the grid, so the actions sit at rest at its right edge.
+    const wide = await probe()
+    expect(wide.overflows, "1440: the Ready rows fit the grid").toBe(false)
+    assertWhole(wide, "1440")
+    for (const row of wide.rows) expect(row.height, `${row.id} height`).toBeLessThan(140)
+
+    // The narrowest desktop width (prep-grid.scenario's narrow geometry): scrolled to its end,
+    // every action is inside the grid and whole.
+    await page.setViewportSize({ width: 1120, height: 900 })
+    await page.waitForTimeout(300)
+    await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="boxtal-prep-grid-scroller"]') as HTMLElement
+      el.scrollLeft = el.scrollWidth
+    })
+    assertWhole(await probe(), "1120 scrolled")
+  })
+
   test("shipments — master/detail (rows + selected detail)", async ({ page, env, qa }) => {
     await installHostMockInterceptor(page)
     await loginAs(page, env, qa.admin.email, "12345678")

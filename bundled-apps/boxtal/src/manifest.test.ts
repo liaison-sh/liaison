@@ -606,7 +606,9 @@ describe("Boxtal app.manifest.json", () => {
     // sidebar names the one shipping worklist once.
     // 0.23.26: the worklist is ONE table (every state in it, a State column, the filters over it),
     // and the Boxtal icon opens it.
-    expect(m.version).toBe("0.23.26")
+    // 0.23.27: a Ready row's actions sit on two lines that never wrap and long refs are cut, so
+    //   the actions stay inside the grid at 1440 px.
+    expect(m.version).toBe("0.23.27")
     expect(m.packageFormat).toBe(1)
   })
 

@@ -32,6 +32,8 @@ export interface SetMockModeOptions {
   dispatchOrderId?: string
   cancelOrderId?: string
   trackingStatus?: { orderId: string; status: string }
+  /** A slow carrier: the create is recorded, then answers after this many ms. */
+  createLatencyMs?: number
 }
 
 export async function setMockMode(opts: SetMockModeOptions): Promise<void> {

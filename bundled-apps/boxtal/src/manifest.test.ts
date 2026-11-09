@@ -597,7 +597,9 @@ describe("Boxtal app.manifest.json", () => {
     // 0.23.20: the sandbox's label documents (document.boxtal.build) may be imported, like production's.
     // 0.23.21: an opened approval card (and the phone's column fold) stays open when its row is re-read.
     // 0.23.22: the shipment detail's label Download opens the label (it had no handler).
-    expect(m.version).toBe("0.23.22")
+    // 0.23.23: FedEx label reader skips the recipient's phone; a typed tracking number unblocks
+    // the packed tick; every parcel's label is printed; Boxtal-safe addresses and its own refusals.
+    expect(m.version).toBe("0.23.23")
     expect(m.packageFormat).toBe(1)
   })
 

@@ -194,7 +194,7 @@
       }
     ]
   },
-  "version": "0.23.22",
+  "version": "0.23.23",
   "iconName": "box",
   "description": "Boxtal shipping integration: carrier quotes, tracking, shipments, customs documents",
   "listing": {
@@ -3489,7 +3489,7 @@
       }
     },
     "ready_set_packed": {
-      "description": "Tick ONE Ready-to-ship row as PACKED (boxed, taped, waiting for the carrier pickup), which FULFILS its Shopify order with the parcel's tracking number, or untick it. packed:true calls shopify__fulfillments_create for the linked order; the row is only marked packed when the fulfillment succeeds, otherwise `error` says why (no tracking number yet, Shopify refused) and the row stays unpacked. A parcel with no linked Shopify order is marked packed with a `notice` and nothing is fulfilled. packed:false on a fulfilled row CANCELS the Shopify fulfillment and requires confirm_unfulfill:true (without it the call returns error.code confirm_required and changes nothing). From an agent the Shopify calls are gated: the result is error.code pending_approval and the row is NOT packed until a human approves; report it as pending, never as fulfilled.",
+      "description": "Tick ONE Ready-to-ship row as PACKED (boxed, taped, waiting for the carrier pickup), which FULFILS its Shopify order with the parcel's tracking number, or untick it. When the label's number could not be read (error.code no_tracking), the number the person reads off the label goes in tracking_number. packed:true calls shopify__fulfillments_create for the linked order; the row is only marked packed when the fulfillment succeeds, otherwise `error` says why (no tracking number yet, Shopify refused) and the row stays unpacked. A parcel with no linked Shopify order is marked packed with a `notice` and nothing is fulfilled. packed:false on a fulfilled row CANCELS the Shopify fulfillment and requires confirm_unfulfill:true (without it the call returns error.code confirm_required and changes nothing). From an agent the Shopify calls are gated: the result is error.code pending_approval and the row is NOT packed until a human approves; report it as pending, never as fulfilled.",
       "searchKeywords": ["emballé", "emballer"],
       "requiredScopes": ["boxtal:shipments:write"],
       "handler": "readySetPackedHandler",
@@ -3509,6 +3509,10 @@
           "confirm_unfulfill": {
             "type": "boolean",
             "description": "Required with packed:false on a fulfilled row: the operator confirmed cancelling the Shopify fulfillment."
+          },
+          "tracking_number": {
+            "type": "string",
+            "description": "Optional, with packed:true on a row that has NO tracking number (error.code no_tracking): the tracking number the person read off the printed label. It must have the carrier's format (error.code invalid_tracking_number otherwise) and never replaces a number the row already has (error.code tracking_already_set). Only pass a number a person gave you; never guess one."
           }
         },
         "required": [

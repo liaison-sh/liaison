@@ -278,7 +278,11 @@ export const ReadyToShip: Component<{
   // Unticking a fulfilled row asks in the app's own dialog (a framed screen has no
   // browser confirm: the sandbox gives it no modal dialogs).
   const [unpackAsk, setUnpackAsk] = createSignal<{ row: ReadyRow; message: string } | null>(null)
-  const togglePacked = async (row: ReadyRow, confirmed = false) => {
+  // Rows whose tick was refused for want of a tracking number: they offer a field for the number
+  // printed on the label, so an unreadable label is never a dead end.
+  const [trackingAsk, setTrackingAsk] = createSignal<Record<string, boolean>>({})
+  const [typedTracking, setTypedTracking] = createSignal<Record<string, string>>({})
+  const togglePacked = async (row: ReadyRow, confirmed = false, typed?: string) => {
     if (packedBusy()[row.id] === true) return
     const action = packedToggleAction(row)
     if (action.kind === "confirm_unpack" && !confirmed) {
@@ -301,6 +305,7 @@ export const ReadyToShip: Component<{
         shipment_id: row.id,
         packed: action.kind === "pack",
         ...(action.kind === "confirm_unpack" ? { confirm_unfulfill: true } : {}),
+        ...(action.kind === "pack" && typed ? { tracking_number: typed } : {}),
       })
       // Land the server's state whatever happened: on a refusal it is the unchanged row plus the
       // reason, so the box shows what is true, never what was clicked.
@@ -312,6 +317,8 @@ export const ReadyToShip: Component<{
         ...(res.tracking_number ? { tracking_number: res.tracking_number } : {}),
       })
       if (res.notice) setPackStatus((m) => ({ ...m, [row.id]: res.notice as string }))
+      const askNumber = res.error?.code === "no_tracking" || res.error?.code === "invalid_tracking_number"
+      setTrackingAsk((m) => ({ ...m, [row.id]: askNumber }))
     } catch (err) {
       patchReadyRow(row.id, {
         fulfillment_error: `Not saved: ${err instanceof Error ? err.message : String(err)}`,
@@ -862,6 +869,44 @@ export const ReadyToShip: Component<{
               <div data-testid={`boxtal-ready-fulfillment-error-${row.id}`} role="alert" class="text-[11px] font-medium text-error">
                 {row.fulfillment_error}
               </div>
+            </Show>
+            {/* No tracking number to fulfil with (the label could not be read, or its read was not
+                confirmed): the operator types the number printed on the label. */}
+            <Show when={!row.packed && !row.tracking_number && (trackingAsk()[row.id] === true || row.tracking_to_confirm === true)}>
+              <form
+                data-testid={`boxtal-ready-typed-tracking-${row.id}`}
+                class="flex items-center gap-1.5"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  const typed = (typedTracking()[row.id] ?? "").trim()
+                  if (typed) void togglePacked(row, false, typed)
+                }}
+              >
+                <input
+                  data-testid={`boxtal-ready-typed-tracking-input-${row.id}`}
+                  type="text"
+                  inputmode="text"
+                  autocomplete="off"
+                  aria-label="Tracking number printed on the label"
+                  placeholder="Tracking number on the label"
+                  value={typedTracking()[row.id] ?? ""}
+                  onInput={(e) => {
+                    const v = e.currentTarget.value
+                    setTypedTracking((m) => ({ ...m, [row.id]: v }))
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  class="h-7 w-44 rounded-md border border-border-subtle bg-surface px-2 font-mono text-[11.5px] text-text placeholder:text-text-tertiary focus:border-accent focus:outline-none"
+                />
+                <button
+                  data-testid={`boxtal-ready-typed-tracking-submit-${row.id}`}
+                  type="submit"
+                  disabled={packedBusy()[row.id] === true || !(typedTracking()[row.id] ?? "").trim()}
+                  onClick={(e) => e.stopPropagation()}
+                  class="h-7 rounded-md px-2 text-[11.5px] font-medium hover:bg-surface-active disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Pack with this number
+                </button>
+              </form>
             </Show>
           </div>
         ),

@@ -9,7 +9,7 @@ import { trackingChangedHandler } from "./webhooks"
 import { readyList, stuckList } from "./queues"
 import type { BoxtalToolCtx, CrossAppEnvelope } from "./ctx"
 import { createMockDb } from "./test-db"
-import { buildLabelPdf, FEDEX_LABEL_LINES } from "./__fixtures__/label-pdf"
+import { buildLabelPdf, FEDEX_INTL_LABEL_LINES, FEDEX_LABEL_LINES } from "./__fixtures__/label-pdf"
 
 /** Shipment row ids are UUIDs: only a UUID-shaped ref is looked up by row id. */
 const S1 = "5a1e0000-0000-4000-8000-000000000001"
@@ -196,6 +196,52 @@ describe("ready_set_packed: ticking fulfils the Shopify order", () => {
     const res = await readySetPacked(ctx, { shipment_id: S1, packed: true })
     expect(res.error?.code).toBe("no_tracking")
     expect(res.packed).toBe(false)
+    expect(calls.some((c) => c.target === "shopify:fulfillments_create")).toBe(false)
+  })
+
+  // Prod, 2026-11-09: a FedEx parcel to the UK, label printing "TRK# .... .... .... 0430" and the
+  // recipient's 12-digit phone; the tick failed "No tracking number yet".
+  it("an international FedEx label that also prints a 12-digit phone fulfils with the AWB", async () => {
+    const { ctx, calls, row } = makeCtx({
+      shipment: { tracking_number: null, offer_code: "FEDX-FedexRegionalEconomy" },
+      labelBody: buildLabelPdf(FEDEX_INTL_LABEL_LINES),
+    })
+    const res = await readySetPacked(ctx, { shipment_id: S1, packed: true })
+    expect(res.error).toBeUndefined()
+    expect(res.packed).toBe(true)
+    const create = calls.find((c) => c.target === "shopify:fulfillments_create")!
+    expect((create.args.fulfillment as { trackingInfo: { number: string } }).trackingInfo.number).toBe("877740925574")
+    expect(row().tracking_number).toBe("877740925574")
+  })
+
+  it("an unreadable label is not a dead end: the number typed off the label fulfils the order", async () => {
+    const { ctx, calls, row } = makeCtx({ shipment: { tracking_number: null, offer_code: "FEDX-FedexRegionalEconomy" } })
+    const refused = await readySetPacked(ctx, { shipment_id: S1, packed: true })
+    expect(refused.error?.code).toBe("no_tracking")
+    const res = await readySetPacked(ctx, { shipment_id: S1, packed: true, tracking_number: " 8777 4092 5574 " })
+    expect(res.error).toBeUndefined()
+    expect(res.packed).toBe(true)
+    expect(res.tracking_number).toBe("877740925574")
+    const create = calls.find((c) => c.target === "shopify:fulfillments_create")!
+    expect((create.args.fulfillment as { trackingInfo: { number: string } }).trackingInfo.number).toBe("877740925574")
+    // Not a carrier event: kept flagged so the carrier's own number replaces it when it comes.
+    expect(row().tracking_from_label).toBe(true)
+    expect(row().tracking_to_confirm).toBe(false)
+  })
+
+  it("a typed number that is not the carrier's format is refused, nothing fulfilled", async () => {
+    const { ctx, calls, row } = makeCtx({ shipment: { tracking_number: null, offer_code: "FEDX-FedexRegionalEconomy" } })
+    const res = await readySetPacked(ctx, { shipment_id: S1, packed: true, tracking_number: "1234" })
+    expect(res.error?.code).toBe("invalid_tracking_number")
+    expect(res.packed).toBe(false)
+    expect(row().tracking_number ?? null).toBeNull()
+    expect(calls.some((c) => c.target === "shopify:fulfillments_create")).toBe(false)
+  })
+
+  it("a typed number never replaces the one the row already has", async () => {
+    const { ctx, calls } = makeCtx({})
+    const res = await readySetPacked(ctx, { shipment_id: S1, packed: true, tracking_number: "877740925574" })
+    expect(res.error?.code).toBe("tracking_already_set")
     expect(calls.some((c) => c.target === "shopify:fulfillments_create")).toBe(false)
   })
 

@@ -42,7 +42,9 @@ export function buildLabelPdf(lines: string[]): string {
     "3 0 obj\n<< /Type /Pages /Count 1 /Kids [18 0 R] >>\nendobj",
     "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /MacRomanEncoding >>\nendobj",
     `12 0 obj\n<< /Type /XObject /Subtype /Image /Width 8 /Height 8 /Filter [/ASCII85Decode /FlateDecode] >>\nstream\n${image}\nendstream\nendobj`,
-    "18 0 obj\n<< /Type /Page /Parent 3 0 R /MediaBox [0 0 288 432] /Contents 19 0 R >>\nendobj",
+    // The real labels' resource dictionary names each FedEx logo XObject twice ("Multiple
+    // definitions in dictionary" to a strict parser); kept so the reader is proven against it.
+    "18 0 obj\n<< /Type /Page /Parent 3 0 R /MediaBox [0 0 288 432] /Resources << /XObject << /FedExExpress 12 0 R\n/ExpressE 12 0 R\n/FedExExpress 12 0 R\n/ExpressE 12 0 R >> >> /Contents 19 0 R >>\nendobj",
     `19 0 obj\n<< /Length ${body.length}\n/Filter [/ASCII85Decode /FlateDecode] \n>>\nstream\n${body}\nendstream\nendobj`,
     "trailer\n<< /Root 1 0 R >>\n%%EOF",
   ].join("\n")
@@ -66,4 +68,41 @@ export const FEDEX_LABEL_LINES = [
   "8777 4092 5574",
   "   RGNL ECONOMY CLR",
   "J261026012002uv",
+]
+
+/**
+ * A FedEx international label as Boxtal returns it for a UK recipient (2026-11): the recipient's
+ * phone is printed as a bare 12-digit run, the AWB in groups of four with the 4-digit form code as
+ * its own run after it, and the page drawn twice (label + AWB copy). Placeholder data only: the
+ * phone is in the UK's reserved drama range.
+ */
+export const FEDEX_INTL_LABEL_LINES = [
+  "SHIP DATE: 09NOV26",
+  "TO",
+  "(GB)",
+  "TRK#",
+  "",
+  "ACTWGT: 4.00 KG",
+  "DIMS: 59x38x8 CM",
+  "0430",
+  "ORIGIN ID:TEST ",
+  "33100000000",
+  "TEST SENDER",
+  "1 TEST STREET",
+  "CAD: 260849939/FAPI2208",
+  "TEST RECIPIENT",
+  "1 TEST ROAD",
+  "LONDON LO SE1 1AA",
+  "447700900123",
+  "58KJ7/80FA/484B",
+  "8777 4092 5574",
+  "       RGNL ECONOMY",
+  "J262026101502uv",
+  "TRK#",
+  "Form",
+  "447700900123",
+  "AWB",
+  "8777 4092 5574",
+  "0430",
+  "FEDEX AWB COPY - PLEASE PLACE IN POUCH",
 ]

@@ -180,3 +180,5 @@ print pack refuses a draft invoice: issue it first -> bundled-apps/boxtal/src/pr
 failed render names the retry action -> bundled-apps/boxtal/src/print-pack.ts:172
 an order_key naming nothing, or two keys naming different rows, is refused -> bundled-apps/boxtal/src/order-state.ts:434
 Unticking a fulfilled row asks first (Untick this order?); Boxtal tab Label opens the label PDF -> bundled-apps/boxtal/src/ui/Queues.tsx:425 ; bundled-apps/boxtal/src/ui/BoxtalShipmentTab.tsx:147
+FedEx AWB: the grouped number next to TRK#, bare digit runs (phone) not taken -> bundled-apps/boxtal/src/label-tracking.ts:326
+Pack with this number: typed tracking number, carrier format, never replaces one -> bundled-apps/boxtal/src/ui/Queues.tsx:907 ; bundled-apps/boxtal/src/packed.ts:137

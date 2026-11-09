@@ -4938,8 +4938,10 @@ export const FR_BY_KEY: Record<string, string> = {
   "contacts.companies.search": "Rechercher des entreprises...",
   "contacts.companies.countLine": "{{count}} entreprises, activité la plus récente d'abord",
   "contacts.companies.emptyTitle": "Aucune entreprise pour l'instant",
-  "contacts.companies.emptyHint": "Une entreprise regroupe les personnes avec qui vous y travaillez.",
-  "contacts.companies.emptyProposal": "Vos contacts nomment déjà {{count}} entreprises. Demandez à l'agent de les créer.",
+  "contacts.companies.emptyHint":
+    "Une entreprise regroupe les personnes avec qui vous y travaillez.",
+  "contacts.companies.emptyProposal":
+    "Vos contacts nomment déjà {{count}} entreprises. Demandez à l'agent de les créer.",
   "contacts.companies.loadError": "Impossible de charger les entreprises.",
   "contacts.companies.noMatch": "Aucune entreprise ne correspond à « {{query}} ».",
   "contacts.companies.possibleDuplicate": "Doublon possible",
@@ -4956,7 +4958,8 @@ export const FR_BY_KEY: Record<string, string> = {
   "contacts.companies.addPersonDone": "{{name}} travaille maintenant chez {{company}}.",
   "contacts.companies.mergeSearch": "Rechercher l'entreprise à garder",
   "contacts.companies.mergeInto": "Fusionner dans {{name}}",
-  "contacts.companies.mergeConfirm": "{{source}} rejoint {{target}} : ses personnes, affaires et sa discussion y passent, et {{source}} est supprimée. C'est définitif.",
+  "contacts.companies.mergeConfirm":
+    "{{source}} rejoint {{target}} : ses personnes, affaires et sa discussion y passent, et {{source}} est supprimée. C'est définitif.",
   "contacts.companies.mergeFailed": "La fusion n'a pas eu lieu. Rien n'a changé.",
   "contacts.companies.accountManager": "Responsable du compte",
   "contacts.companies.noAccountManager": "Aucun responsable du compte",
@@ -4974,12 +4977,17 @@ export const FR_BY_KEY: Record<string, string> = {
   "contacts.companies.openTheBoard": "Ouvrir le tableau des affaires",
   "contacts.companies.noOpenDeal": "Aucune affaire en cours.",
   "contacts.companies.timeline": "Historique",
-  "contacts.companies.timelineSoon": "Les mails, tickets, rendez-vous et affaires de cette entreprise s'affichent ici.",
-  "contacts.companies.discussionHint": "Parlez de {{name}} ici. Un agent que vous mentionnez lit d'abord cette page.",
-  "contacts.companies.discussionPlaceholder": "Demandez à l'agent à propos de {{name}}, ou mentionnez une personne avec @",
-  "contacts.companies.discussionUnavailable": "La discussion n'a pas pu être ouverte. Le reste de la page n'est pas affecté.",
+  "contacts.companies.timelineSoon":
+    "Les mails, tickets, rendez-vous et affaires de cette entreprise s'affichent ici.",
+  "contacts.companies.discussionHint":
+    "Parlez de {{name}} ici. Un agent que vous mentionnez lit d'abord cette page.",
+  "contacts.companies.discussionPlaceholder":
+    "Demandez à l'agent à propos de {{name}}, ou mentionnez une personne avec @",
+  "contacts.companies.discussionUnavailable":
+    "La discussion n'a pas pu être ouverte. Le reste de la page n'est pas affecté.",
   "contacts.companies.noAccess": "Pas d'accès",
-  "contacts.companies.noAccessHint": "Cette entreprise ne vous est pas partagée, ou elle n'existe plus.",
+  "contacts.companies.noAccessHint":
+    "Cette entreprise ne vous est pas partagée, ou elle n'existe plus.",
   "contacts.companies.loading": "Chargement de l'entreprise",
   "contacts.companies.shareTitle": "Partager {{name}}",
   "contacts.addresses.role.other": "Autre",

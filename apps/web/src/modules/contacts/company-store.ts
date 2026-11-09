@@ -6,6 +6,7 @@
 import { createSignal } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { ApiError } from "~/lib/api-error"
+import { onSessionTeardown } from "~/lib/session-lifecycle"
 
 export interface CompanyApi {
   get: <T>(path: string) => Promise<T>
@@ -268,8 +269,9 @@ export function handleCompanyEvent(action: string, data: Partial<Company> & { id
   if (open) setCompanyStore("companies", data.id, { ...open, ...data })
 }
 
-/** Test seam: reset every company state. */
-export function _resetCompanyStoresForTest(): void {
+/** Clears every company state, and drops any list read still in flight. */
+export function resetCompanyStores(): void {
+  listRequest += 1
   setCompanyStore({ companies: {}, people: {}, managers: {}, waiting: {}, discussions: {} })
   setCompanyListStore({ byId: {}, ids: [] })
   setListQuery("")
@@ -280,3 +282,6 @@ export function _resetCompanyStoresForTest(): void {
   setProposalCount(0)
   setDuplicateIds(new Set<string>())
 }
+
+// A sign-out, or another person signing in, never sees the last person's companies.
+onSessionTeardown(resetCompanyStores)

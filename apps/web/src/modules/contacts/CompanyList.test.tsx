@@ -5,7 +5,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { CompanyList } from "./CompanyList"
-import { _resetCompanyStoresForTest } from "./company-store"
+import { resetCompanyStores } from "./company-store"
 
 const mocks = vi.hoisted(() => ({
   list: [] as unknown[],
@@ -67,7 +67,7 @@ const kora = {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  _resetCompanyStoresForTest()
+  resetCompanyStores()
   mocks.list = [arlon, kora]
   mocks.listError = false
   mocks.pending = null
@@ -139,7 +139,7 @@ describe("CompanyList", () => {
     expect(screen.queryByTestId("company-list.empty-proposal")).toBeNull()
     cleanup()
 
-    _resetCompanyStoresForTest()
+    resetCompanyStores()
     mocks.proposalGroups = [
       { name: "Maison Arlon", existingCompanyId: null },
       { name: "Hotel Ondine", existingCompanyId: null },

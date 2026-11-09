@@ -7,7 +7,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ApiError } from "~/lib/api-error"
 import { CompanyDetail } from "./CompanyDetail"
-import { _resetCompanyStoresForTest, loadCompany } from "./company-store"
+import { loadCompany, resetCompanyStores } from "./company-store"
 import { resolveCompanyTabLabel } from "./exports"
 
 const mocks = vi.hoisted(() => ({
@@ -159,7 +159,7 @@ function seedWorld(): void {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  _resetCompanyStoresForTest()
+  resetCompanyStores()
   mocks.posts = []
   mocks.scopes = ["*"]
   seedWorld()
@@ -208,7 +208,7 @@ describe("CompanyDetail", () => {
     expect(screen.getByTestId(`company-deal-deal-1`).textContent).toContain("Proposal")
 
     cleanup()
-    _resetCompanyStoresForTest()
+    resetCompanyStores()
     mocks.routes[`/contacts/companies/${CO}/waiting`] = { approvalIds: [] }
     render(() => <CompanyDetail entityId={CO} />)
     await screen.findByTestId("company-person-p-1")

@@ -1293,7 +1293,7 @@
     },
     "suppression_add": {
       "description": "Record that someone asked to receive no more commercial mail. Withdraws waiting commercial drafts to them.",
-      "searchKeywords": ["désinscrire", "désabonner", "unsubscribe", "opt-out", "stop"],
+      "searchKeywords": ["désinscrire", "désabonner", "unsubscribe", "opt-out", "optout", "opposition", "stop"],
       "requiredScopes": ["mail:conversations:write"],
       "trustBoundary": "user",
       "externalEffect": true,
@@ -1315,7 +1315,7 @@
     },
     "suppression_remove": {
       "description": "Let an opted-out address receive commercial mail again. GATED: a mail admin approves.",
-      "searchKeywords": ["réinscrire", "resubscribe", "opt-in"],
+      "searchKeywords": ["réinscrire", "réabonner", "resubscribe", "opt-in"],
       "requiredScopes": ["mail:suppressions:write"],
       "handler": "suppressionRemove",
       "preflight": "suppressionRemovePreflight",

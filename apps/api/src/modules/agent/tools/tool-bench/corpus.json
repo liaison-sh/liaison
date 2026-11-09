@@ -2326,7 +2326,8 @@
     "lang": "en",
     "say": "who looks after Arlon",
     "typed": ["account manager", "company account manager", "who handles company", "company owner"],
-    "any": ["kernel__companies_read", "kernel__companies_search"]
+    "any": ["kernel__companies_read", "kernel__companies_search"],
+    "modelRun": true
   },
   {
     "id": "C08",
@@ -2334,7 +2335,8 @@
     "lang": "fr",
     "say": "mets Élodie account manager de Maison Arlon",
     "typed": ["account manager", "set account manager", "company owner", "modifier société"],
-    "any": ["kernel__companies_write"]
+    "any": ["kernel__companies_write"],
+    "modelRun": true
   },
   {
     "id": "C09",
@@ -2347,7 +2349,8 @@
       "transfer companies",
       "bulk change account manager"
     ],
-    "any": ["kernel__companies_write"]
+    "any": ["kernel__companies_write"],
+    "modelRun": true
   },
   {
     "id": "C60",
@@ -2355,7 +2358,8 @@
     "lang": "en",
     "say": "typo: compnay Arlon",
     "typed": ["compnay", "comapny"],
-    "any": ["kernel__companies_search"]
+    "any": ["kernel__companies_search"],
+    "modelRun": true
   },
   {
     "id": "C61",
@@ -2363,7 +2367,8 @@
     "lang": "en",
     "say": "merge Arlon and Maison Arlon",
     "typed": ["merge companies", "duplicate companies", "company merge"],
-    "any": ["kernel__companies_find_duplicates"]
+    "any": ["kernel__companies_merge", "kernel__companies_find_duplicates"],
+    "modelRun": true
   },
   {
     "id": "K01",
@@ -2371,7 +2376,8 @@
     "lang": "en",
     "say": "put these three people under Lumen",
     "typed": ["link contacts to company", "add people to company", "contacts company"],
-    "any": ["kernel__companies_link_contacts", "kernel__companies_link_batch"]
+    "any": ["kernel__companies_link_contacts", "kernel__companies_link_batch"],
+    "modelRun": true
   },
   {
     "id": "K02",
@@ -2379,7 +2385,8 @@
     "lang": "fr",
     "say": "crée les sociétés de ces contacts",
     "typed": ["créer sociétés", "sociétés depuis contacts", "regrouper contacts par société"],
-    "any": ["kernel__companies_propose_from_contacts", "kernel__companies_link_batch"]
+    "any": ["kernel__companies_propose_from_contacts", "kernel__companies_link_batch"],
+    "modelRun": true
   },
   {
     "id": "K03",
@@ -2387,7 +2394,8 @@
     "lang": "en",
     "say": "Arlon and Arlon Group are not the same company",
     "typed": ["not the same company", "not a duplicate", "different companies"],
-    "any": ["kernel__companies_mark_not_same"]
+    "any": ["kernel__companies_mark_not_same"],
+    "modelRun": true
   },
   {
     "id": "C20",
@@ -2395,7 +2403,8 @@
     "lang": "fr",
     "say": "ouvre un deal pour Lumen à 12k",
     "typed": ["create deal", "nouvelle opportunité", "affaire", "new deal"],
-    "any": ["projects__create"]
+    "any": ["projects__create"],
+    "modelRun": true
   },
   {
     "id": "C21",
@@ -2403,7 +2412,8 @@
     "lang": "en",
     "say": "we won Lumen",
     "typed": ["deal won", "close deal", "mark won"],
-    "any": ["projects__deals_update"]
+    "any": ["projects__deals_update"],
+    "modelRun": true
   },
   {
     "id": "C22",
@@ -2411,7 +2421,8 @@
     "lang": "en",
     "say": "how is the pipeline",
     "typed": ["pipeline", "deals by stage", "sales forecast"],
-    "any": ["projects__deals_rollup", "projects__deals_search"]
+    "any": ["projects__deals_rollup", "projects__deals_search"],
+    "modelRun": true
   },
   {
     "id": "C23",
@@ -2419,7 +2430,8 @@
     "lang": "fr",
     "say": "qui dois-je relancer",
     "typed": ["relance", "follow up", "quiet deals", "relancer prospects"],
-    "any": ["projects__deals_followup_candidates"]
+    "any": ["projects__deals_followup_candidates"],
+    "modelRun": true
   },
   {
     "id": "K04",
@@ -2427,7 +2439,8 @@
     "lang": "en",
     "say": "set up a sales pipeline for the new market",
     "typed": ["sales pipeline", "new pipeline", "create pipeline"],
-    "any": ["projects__deals_pipeline_create"]
+    "any": ["projects__deals_pipeline_create"],
+    "modelRun": true
   },
   {
     "id": "K05",
@@ -2443,7 +2456,8 @@
     "lang": "en",
     "say": "did any of these people unsubscribe",
     "typed": ["unsubscribed", "opted out", "check opt-out"],
-    "any": ["mail__suppression_check"]
+    "any": ["mail__suppression_check"],
+    "modelRun": true
   },
   {
     "id": "K07",
@@ -2451,7 +2465,8 @@
     "lang": "en",
     "say": "she asked to get our offers again",
     "typed": ["resubscribe", "opt back in", "remove opt-out"],
-    "any": ["mail__suppression_remove"]
+    "any": ["mail__suppression_remove"],
+    "modelRun": true
   },
   {
     "id": "K08",
@@ -2475,7 +2490,8 @@
     "lang": "en",
     "say": "what have we said to Lumen lately",
     "typed": ["company timeline", "history with client", "customer history", "activity company"],
-    "any": ["kernel__company_timeline"]
+    "any": ["kernel__company_timeline"],
+    "modelRun": true
   },
   {
     "id": "C63",
@@ -2483,6 +2499,137 @@
     "lang": "fr",
     "say": "historique avec le client Lumen",
     "typed": ["historique client", "historique société", "fil d'activité"],
-    "any": ["kernel__company_timeline"]
+    "any": ["kernel__company_timeline"],
+    "modelRun": true
+  },
+  {
+    "id": "C24",
+    "set": "seed",
+    "lang": "en",
+    "say": "stop emailing bob@example",
+    "typed": ["unsubscribe", "opt out", "suppress email", "do not contact"],
+    "any": ["mail__suppression_add"],
+    "modelRun": true
+  },
+  {
+    "id": "C25",
+    "set": "seed",
+    "lang": "fr",
+    "say": "ne lui envoie plus de mails",
+    "typed": ["désinscrire", "désabonner", "opposition"],
+    "any": ["mail__suppression_add"],
+    "modelRun": true
+  },
+  {
+    "id": "K10",
+    "set": "seed",
+    "lang": "en",
+    "say": "are any of these companies the same one twice",
+    "typed": ["duplicate companies", "find duplicates", "same company twice"],
+    "any": ["kernel__companies_find_duplicates"]
+  },
+  {
+    "id": "K11",
+    "set": "seed",
+    "lang": "fr",
+    "say": "rattache Claire à Lumen",
+    "typed": ["rattacher contact société", "lier contact entreprise", "ajouter à la société"],
+    "any": ["kernel__companies_link_contacts", "kernel__companies_link_batch"]
+  },
+  {
+    "id": "K12",
+    "set": "seed",
+    "lang": "fr",
+    "say": "ce ne sont pas la même société",
+    "typed": ["pas un doublon", "pas la même société", "société différente"],
+    "any": ["kernel__companies_mark_not_same"]
+  },
+  {
+    "id": "K13",
+    "set": "seed",
+    "lang": "en",
+    "say": "build companies from the people in my contacts",
+    "typed": ["create companies from contacts", "group contacts by company", "companies from contacts"],
+    "any": ["kernel__companies_propose_from_contacts", "kernel__companies_link_batch"]
+  },
+  {
+    "id": "K14",
+    "set": "seed",
+    "lang": "fr",
+    "say": "montre-moi la fiche de la société Lumen",
+    "typed": ["fiche société", "détail société", "société"],
+    "any": ["kernel__companies_read", "kernel__companies_search"]
+  },
+  {
+    "id": "K15",
+    "set": "seed",
+    "lang": "fr",
+    "say": "est-ce qu'elle s'est désinscrite",
+    "typed": ["désinscrit", "vérifier désinscription", "opposition"],
+    "any": ["mail__suppression_check"]
+  },
+  {
+    "id": "K16",
+    "set": "seed",
+    "lang": "fr",
+    "say": "elle veut recevoir à nouveau nos mails",
+    "typed": ["réinscrire", "lever opposition", "réabonner"],
+    "any": ["mail__suppression_remove"]
+  },
+  {
+    "id": "K17",
+    "set": "seed",
+    "lang": "en",
+    "say": "who has gone quiet on us",
+    "typed": ["quiet deals", "follow up", "no reply deals", "chase"],
+    "any": ["projects__deals_followup_candidates"]
+  },
+  {
+    "id": "K18",
+    "set": "seed",
+    "lang": "fr",
+    "say": "crée un nouveau pipeline pour le marché allemand",
+    "typed": ["nouveau pipeline", "créer pipeline", "pipeline ventes"],
+    "any": ["projects__deals_pipeline_create"]
+  },
+  {
+    "id": "K19",
+    "set": "seed",
+    "lang": "fr",
+    "say": "quel est le total des affaires en cours",
+    "typed": ["prévision ventes", "total affaires", "pipeline"],
+    "any": ["projects__deals_rollup", "projects__deals_search"]
+  },
+  {
+    "id": "K20",
+    "set": "seed",
+    "lang": "fr",
+    "say": "montre-moi les affaires de Lumen",
+    "typed": ["affaires", "deals société", "chercher affaire"],
+    "any": ["projects__deals_search"]
+  },
+  {
+    "id": "K21",
+    "set": "seed",
+    "lang": "fr",
+    "say": "on a perdu l'affaire Lumen",
+    "typed": ["affaire perdue", "deal lost", "perdu"],
+    "any": ["projects__deals_update"]
+  },
+  {
+    "id": "K22",
+    "set": "seed",
+    "lang": "en",
+    "say": "show me all open deals over 10k",
+    "typed": ["open deals", "list deals", "search deals"],
+    "any": ["projects__deals_search"]
+  },
+  {
+    "id": "K23",
+    "set": "seed",
+    "lang": "en",
+    "say": "what is the forecast for this quarter",
+    "typed": ["forecast", "pipeline forecast", "sales forecast"],
+    "any": ["projects__deals_rollup", "projects__deals_search"]
   }
 ]

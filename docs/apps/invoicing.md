@@ -42,6 +42,10 @@ Invoicing issues the invoice of a Shopify order as soon as the order is paid. Yo
 
 When an order cannot be invoiced automatically, it appears under **Deferred** in the Invoicing sidebar (the row shows only when something is waiting). An order whose tax needs a decision offers **Issue with Shopify's tax** and **Issue as computed**. Both file an approval.
 
+A retried order reads the Shopify order as it is now: a VAT number added as a custom attribute named `VAT number`, or a billing company, after the order was parked is used, and a customer with a VAT number is invoiced under the billing company's name.
+
+An order to a customer in another EU country that Shopify charged no VAT (tax exempt, or 0%) and that carries no VAT number is not invoiced: it would be neither a reverse charge nor a consumer invoice. It waits under **Deferred** for a tax decision. For a business, add its VAT number to the Shopify order (custom attribute `VAT number`), then choose **Issue with Shopify's tax**: the invoice is a reverse charge. For a consumer, **Issue as computed** charges the VAT of the customer's country.
+
 ## Create a quote, proforma or purchase order
 
 Only quotes, proformas and purchase orders are started by hand. Invoices come from paid orders or from converting a quote or proforma.

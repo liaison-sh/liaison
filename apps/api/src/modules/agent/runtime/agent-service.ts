@@ -2184,6 +2184,7 @@ async function runAgentChatTurn(
     // Inert for every real provider; the e2e scripted provider uses it to pick
     // which thread's (or routine's) script this turn replays.
     threadId,
+    scriptTurnId: userMsgId,
     ...(params.routineId ? { routineId: params.routineId } : {}),
     onUnreportedGeneration: (id) => unreportedGenerations.push(id),
     // The cold resume's idle compaction keeps this turn's requests (context/warm-compaction.ts),
@@ -4917,8 +4918,9 @@ async function runThreadTurn(
   // The live entry of a resumed turn is the first attempt's, taken over by
   // the resume (stream-registry takeOverLiveTurn): no new "accepted".
   const liveTurnId = resume ? (resume.turn.resumeInput.liveTurnKey ?? undefined) : messageId
+  const notAccepted = { accepted: false, withdraw: async () => false }
   const acceptedTurn = resume
-    ? { withdraw: async () => {} }
+    ? notAccepted
     : await recordAgentTurnAccepted(threadId, orgId, {
         agentId: acceptedAgentId,
         turnId: messageId,
@@ -4926,11 +4928,47 @@ async function runThreadTurn(
         requesterId: actor.userId,
       }).catch((err: unknown) => {
         log.warn({ err, threadId }, "Could not record the accepted turn in the live registry")
-        return { withdraw: async () => {} }
+        return notAccepted
       })
+  // THE VIEWS ALREADY OPEN learn of the accepted turn too, not only a view
+  // loaded later: an open conversation drew a turn from its `start` alone, so
+  // for the whole setup it showed nothing, and a newer turn of the same agent
+  // asked while an older one still answered appeared only after that one's
+  // reply had landed (two turns on screen, never at once). The frame carries no
+  // content and no scopes, so the fan-out sends it to the requester's own
+  // connections, as the replay route serves the accepted entry. Its `start`
+  // (same agent, same turn) takes the block over; `withdrawn` removes it when
+  // the turn ends before `start` or `start` names another agent.
+  const acceptedFrame = (action: "accepted" | "withdrawn", replyRootId: string | null) =>
+    broadcastEphemeral({
+      app: "kernel",
+      entity: "agent_stream",
+      action,
+      entityId: threadId,
+      orgId,
+      actorId: actor.userId,
+      actorType: "agent",
+      data: {
+        threadId,
+        agentId: acceptedAgentId,
+        turnId: messageId,
+        askId: turnContext?.askId ?? messageId,
+        replyRootId,
+      },
+    }).catch((err: unknown) =>
+      log.warn({ err, threadId, action }, "Could not tell the open views of the accepted turn"),
+    )
+  // The reply thread it answers in, so a view draws it where `start` will.
+  const acceptedReplyRootId = acceptedTurn.accepted
+    ? turnContext?.replyRootId !== undefined
+      ? turnContext.replyRootId
+      : await triggerReplyRootId(orgId, messageId)
+    : null
+  if (acceptedTurn.accepted) await acceptedFrame("accepted", acceptedReplyRootId)
   const withdrawAccepted = () =>
     acceptedTurn
       .withdraw()
+      .then((removed) => (removed ? acceptedFrame("withdrawn", acceptedReplyRootId) : undefined))
       .catch((err: unknown) =>
         log.warn({ err, threadId }, "Could not withdraw the accepted turn from the live registry"),
       )

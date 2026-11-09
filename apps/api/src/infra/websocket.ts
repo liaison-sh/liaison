@@ -86,12 +86,17 @@ function unindexSocket(index: SocketIndex, key: string, ws: WsLike): void {
 /**
  * The `agent_stream` actions for the requester's own connections only: asking a
  * client to decrypt or search their mailbox, and opening a tab on their screen
- * (its title is a record's own name, which nobody else in the room was shown).
+ * (its title is a record's own name, which nobody else in the room was shown),
+ * and the turn the server took on before its `start` (`accepted`, `withdrawn`:
+ * its scopes are not known yet, so only the requester sees it, as the replay
+ * route serves it).
  */
 const REQUESTER_ONLY_ACTIONS = new Set([
   "mailbox_decrypt_request",
   "mailbox_search_request",
   "open_tab",
+  "accepted",
+  "withdrawn",
 ])
 
 // Entities that require thread participant membership filtering

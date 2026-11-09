@@ -66,12 +66,28 @@ function asStreamFrame(f: CellFrame): StreamFrame | null {
   return { action: p.action, data }
 }
 
-/** Every `agent_stream` frame of `threadId` the socket received so far, in order. */
+/** The frames that tell a view of a turn before its `start`: no frame of the turn's stream, no seq. */
+const ACCEPTED_ACTIONS = new Set(["accepted", "withdrawn"])
+
+/**
+ * Every recorded `agent_stream` frame of `threadId` the socket received so far,
+ * in order (the `accepted` notice before `start` is not one: `acceptedFrames`).
+ */
 function streamFrames(s: CellSocket, threadId: string): StreamFrame[] {
   const out: StreamFrame[] = []
   for (const f of s.frames) {
     const sf = asStreamFrame(f)
-    if (sf && sf.data.threadId === threadId) out.push(sf)
+    if (sf && sf.data.threadId === threadId && !ACCEPTED_ACTIONS.has(sf.action)) out.push(sf)
+  }
+  return out
+}
+
+/** The `accepted` / `withdrawn` notices of `threadId` the socket received, in order. */
+function acceptedFrames(s: CellSocket, threadId: string): StreamFrame[] {
+  const out: StreamFrame[] = []
+  for (const f of s.frames) {
+    const sf = asStreamFrame(f)
+    if (sf && sf.data.threadId === threadId && ACCEPTED_ACTIONS.has(sf.action)) out.push(sf)
   }
   return out
 }
@@ -237,6 +253,9 @@ describe("S6 + S7 + A27: live turns across 2 api + 1 worker", () => {
         expect(seqs[i]).toBeGreaterThan(seqs[i - 1] ?? Number.POSITIVE_INFINITY)
       }
       expect(onBFrames.map(key)).toEqual(onAFrames.map(key))
+      // Both replicas told the requester's sockets of the turn before its start.
+      expect(acceptedFrames(onA, threadId).map((f) => f.action)).toEqual(["accepted"])
+      expect(acceptedFrames(onB, threadId).map((f) => f.action)).toEqual(["accepted"])
       // An item id names one item: one kind, and a tool call's result shares its call's id.
       const kindOf = new Map<string, string>()
       for (const f of onBFrames) {

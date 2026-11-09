@@ -42,6 +42,9 @@ interface ResolveModelParams {
    * just before the provider's prompt cache runs out (context/warm-compaction.ts).
    */
   idleCompaction?: IdleCompactionTurn | null
+  /** The message the turn answers; only the e2e scripted provider reads it, to
+   *  tell apart two turns of one thread whose prompts are the same. */
+  scriptTurnId?: string | null
   /** The routine whose run this turn is; only the e2e scripted provider reads
    *  it, to replay a routine-keyed script (`setScriptedRoutine`). */
   routineId?: string | null
@@ -159,8 +162,8 @@ const providerFactories: Record<string, (apiKey: string) => (modelId: string) =>
 }
 
 /** The scripted model at the SDK's `LanguageModel` seam (its shapes are structural). */
-function scriptedModel(key: string): LanguageModel {
-  return createScriptedModel(key) as unknown as LanguageModel
+function scriptedModel(key: string, turnId?: string | null): LanguageModel {
+  return createScriptedModel(key, turnId) as unknown as LanguageModel
 }
 
 export async function resolveModel(params: ResolveModelParams): Promise<LanguageModel> {
@@ -174,7 +177,7 @@ export async function resolveModel(params: ResolveModelParams): Promise<Language
   const scriptKey = scriptedModelEnabled()
     ? await scriptKeyFor(params.threadId, params.routineId)
     : null
-  if (scriptKey) return scriptedModel(scriptKey)
+  if (scriptKey) return scriptedModel(scriptKey, params.scriptTurnId)
 
   if (provider === "custom") {
     if (!baseURL) {
@@ -239,6 +242,8 @@ export async function resolveModelFromCredit(
     /** See ResolveModelParams.idleCompaction. */
     idleCompaction?: IdleCompactionTurn | null
     routineId?: string | null
+    /** See ResolveModelParams.scriptTurnId. */
+    scriptTurnId?: string | null
     onUnreportedGeneration?: (generationId: string) => void
   } = {},
 ): Promise<LanguageModel> {
@@ -256,6 +261,7 @@ export async function resolveModelFromCredit(
     ...(opts.providerThreadId ? { providerThreadId: opts.providerThreadId } : {}),
     ...(opts.idleCompaction ? { idleCompaction: opts.idleCompaction } : {}),
     ...(opts.routineId ? { routineId: opts.routineId } : {}),
+    ...(opts.scriptTurnId ? { scriptTurnId: opts.scriptTurnId } : {}),
     ...(opts.onUnreportedGeneration ? { onUnreportedGeneration: opts.onUnreportedGeneration } : {}),
     ...(credit.orgId ? { orgId: credit.orgId } : {}),
   })

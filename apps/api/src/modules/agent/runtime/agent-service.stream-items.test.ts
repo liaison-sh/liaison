@@ -74,7 +74,11 @@ describe("agent_stream frames carry seq and the fold's item ids", () => {
     } finally {
       spy.mockRestore()
     }
-    const stream = frames.filter((f) => f.entity === "agent_stream")
+    // The turn's recorded frames: `accepted` (the requester's views told of the
+    // turn before its setup returned) is no frame of its stream and has no seq.
+    const stream = frames.filter(
+      (f) => f.entity === "agent_stream" && f.action !== "accepted" && f.action !== "withdrawn",
+    )
     const seqs = stream.map((f) => Number(f.data?.seq))
     // Strictly increasing, one per frame, in the order the frames left.
     for (let i = 1; i < seqs.length; i++) expect(seqs[i]).toBe((seqs[i - 1] ?? 0) + 1)

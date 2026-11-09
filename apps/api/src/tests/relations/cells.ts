@@ -18,6 +18,7 @@ import {
 } from "./approval-world"
 import { CalendarCase } from "./calendar-world"
 import type { EventFacts, Reading } from "./classes"
+import { companyCells } from "./company-cells"
 import { MadeCase, type MadeLink, SHARE_SCOPE } from "./dashboard-world"
 import type { EventCode } from "./matrix"
 import { RoutineCase } from "./routine-world"
@@ -120,6 +121,7 @@ const MADE_LINKS: Record<string, MadeLink> = {
   "dashboard-owner": "dashboardOwner",
   "dashboard-author": "dashboardAuthor",
   "store-document-author": "documentAuthor",
+  "app-draft-author": "draftAuthor",
 }
 const MADE_SEE = ["owner", "admin", "colleague"]
 
@@ -737,4 +739,5 @@ export const CELLS: CellImpl[] = [
 
   // ── what a person makes: dashboard-owner, dashboard-author, store-document-author ──
   ...madeCells(),
+  ...companyCells(),
 ]

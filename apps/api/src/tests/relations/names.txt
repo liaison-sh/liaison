@@ -97,3 +97,42 @@ store-document-author: the person who made it deactivated, the link holds
 store-document-author: the person who made it deactivated, the link holds (fails with the event replaced by a no-op)
 store-document-author: the person who made it exporting their own data, the export carries it
 store-document-author: the person who made it exporting their own data, the export carries it (fails with the event replaced by a no-op)
+contact-company: its company renamed, the link holds
+contact-company: its company renamed, the link holds (fails with the event replaced by a no-op)
+contact-company: its company merged into another, the link moves to the survivor
+contact-company: its company merged into another, the link moves to the survivor (fails with the event replaced by a no-op)
+contact-company: the person's data subject export, the export carries it
+contact-company: the person's data subject export, the export carries it (fails with the event replaced by a no-op)
+company-account-manager: the account manager deactivated, their companies left unowned, the link closes with a visible state
+company-account-manager: the account manager deactivated, their companies left unowned, the link closes with a visible state (fails with the event replaced by a no-op)
+company-account-manager: the account manager exporting their own data, the export carries it
+company-account-manager: the account manager exporting their own data, the export carries it (fails with the event replaced by a no-op)
+company-main-contact: its person merged into another, the link moves to the survivor
+company-main-contact: its person merged into another, the link moves to the survivor (fails with the event replaced by a no-op)
+company-main-contact: its person deleted, the link closes with a visible state
+company-main-contact: its person deleted, the link closes with a visible state (fails with the event replaced by a no-op)
+deal-company: its company merged into another, the link moves to the survivor
+deal-company: its company merged into another, the link moves to the survivor (fails with the event replaced by a no-op)
+deal-company: its company deleted, the link closes with a visible state
+deal-company: its company deleted, the link closes with a visible state (fails with the event replaced by a no-op)
+deal-contact: its person merged into another, the link moves to the survivor
+deal-contact: its person merged into another, the link moves to the survivor (fails with the event replaced by a no-op)
+deal-contact: its person deleted, the link closes with a visible state
+deal-contact: its person deleted, the link closes with a visible state (fails with the event replaced by a no-op)
+deal-contact: the person's data subject export, the export carries it
+deal-contact: the person's data subject export, the export carries it (fails with the event replaced by a no-op)
+deal-owner: the owner exporting their own data, the export carries it
+deal-owner: the owner exporting their own data, the export carries it (fails with the event replaced by a no-op)
+deal-pipeline-project: the deal moved to a work project, the event is refused while the link is live
+deal-pipeline-project: the deal moved to a work project, the event is refused while the link is live (fails with the event replaced by a no-op)
+project-company: its company merged into another, the link moves to the survivor
+project-company: its company merged into another, the link moves to the survivor (fails with the event replaced by a no-op)
+project-company: its company deleted, the link closes with a visible state
+project-company: its company deleted, the link closes with a visible state (fails with the event replaced by a no-op)
+suppression-contact: the person deleted after opting out, the link holds
+suppression-contact: the person deleted after opting out, the link holds (fails with the event replaced by a no-op)
+suppression-contact: the person's data subject export, the export carries it
+suppression-contact: the person's data subject export, the export carries it (fails with the event replaced by a no-op)
+app-draft-author: the person who made it deactivated, the link holds
+app-draft-author: the person who made it deactivated, the link holds (fails with the event replaced by a no-op)
+app-draft-author: the person who made it exporting their own data, the export carries it

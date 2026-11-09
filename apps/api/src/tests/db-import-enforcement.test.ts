@@ -39,6 +39,7 @@ describe("db import enforcement", () => {
     "apps/projects/service/__tests__/deal-world.ts",
     "tests/relations/approval-world.ts",
     "tests/relations/calendar-world.ts",
+    "tests/relations/company-world.ts",
     "tests/relations/dashboard-world.ts",
     "tests/relations/cells.ts",
     "tests/relations/routine-world.ts",
@@ -617,6 +618,7 @@ describe("db import enforcement", () => {
     // The relation suite's worlds: an admin's deactivation, a permission read, as the product does.
     "tests/relations/approval-world.ts",
     "tests/relations/calendar-world.ts",
+    "tests/relations/company-world.ts",
     "tests/relations/dashboard-world.ts",
     "tests/relations/routine-world.ts",
     // The security suite's seeds: the few rows no product path writes (a file on

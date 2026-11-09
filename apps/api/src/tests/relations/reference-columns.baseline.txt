@@ -71,15 +71,11 @@ app_mcp_manager.mcp_resource_subscription.connection_id
 app_mcp_manager.mcp_resource_subscription.subscriber_actor_id
 app_mcp_manager.mcp_resource_subscription.thread_id
 app_mcp_manager.mcp_tool_policy.connection_id
-app_projects.deal_values.task_id
-app_projects.deals.company_id
-app_projects.deals.contact_id
 app_projects.deals.reopen_status_id
 app_projects.deals.task_id
 app_projects.labels.parent_id
 app_projects.project_statuses.project_id
 app_projects.project_templates.created_by
-app_projects.projects.company_id
 app_projects.projects.owner_id
 app_projects.task_checklist_items.created_by
 app_projects.task_checklist_items.task_id
@@ -107,7 +103,6 @@ app_tickets.ticket_reads.last_read_message_id
 app_tickets.ticket_reads.ticket_id
 app_tickets.ticket_reads.user_id
 app_tickets.tickets.category_id
-app_tickets.tickets.contact_id
 app_tickets.tickets.converted_to_mail_conversation_id
 app_tickets.tickets.internal_thread_id
 app_tickets.tickets.merged_into_ticket_id
@@ -150,14 +145,6 @@ kernel.agent_turns.thread_id
 kernel.agent_turns.user_message_id
 kernel.agents.owner_user_id
 kernel.app_activation_events.actor_id
-kernel.app_build_artifacts.draft_id
-kernel.app_draft_versions.created_by
-kernel.app_draft_versions.draft_id
-kernel.app_drafts.created_by
-kernel.app_drafts.updated_by
-kernel.app_logs.actor_user_id
-kernel.app_logs.draft_id
-kernel.app_logs.run_id
 kernel.app_scope_grant_audit.target_user_id
 kernel.app_sequences.app_id
 kernel.approval_policies.created_by
@@ -186,8 +173,6 @@ kernel.browser_push_subscriptions.device_id
 kernel.browser_push_subscriptions.user_id
 kernel.companies.acl_role_ids
 kernel.companies.acl_user_ids
-kernel.companies.main_contact_id
-kernel.companies.owner_user_id
 kernel.connected_accounts.created_by
 kernel.connected_accounts.oauth_client_id
 kernel.connected_accounts.owner_id
@@ -205,7 +190,6 @@ kernel.contact_group_members.segment_id
 kernel.contact_segments.created_by
 kernel.contacts.acl_role_ids
 kernel.contacts.acl_user_ids
-kernel.contacts.company_id
 kernel.contacts.external_ids
 kernel.contacts.owner_user_id
 kernel.control_plane_outbox.message_id

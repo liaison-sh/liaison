@@ -181,3 +181,5 @@ failed render names the retry action -> bundled-apps/boxtal/src/print-pack.ts:17
 an order_key naming nothing, or two keys naming different rows, is refused -> bundled-apps/boxtal/src/order-state.ts:434
 Unticking a fulfilled row asks first (Untick this order?); Boxtal tab Label opens the label PDF -> bundled-apps/boxtal/src/ui/Queues.tsx:425 ; bundled-apps/boxtal/src/ui/BoxtalShipmentTab.tsx:147
 Liaison records the label purchase in a save of its own before it calls Boxtal -> bundled-apps/boxtal/src/link-store.ts:131 ; bundled-apps/boxtal/src/shipment.ts:2625
+boxtal:order papers generated at To prepare, after the buy, in the pack -> bundled-apps/boxtal/src/customs-documents.ts:466
+order_print_record_get tool -> bundled-apps/boxtal/app.manifest.json:2602

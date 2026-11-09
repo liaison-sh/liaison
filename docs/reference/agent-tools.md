@@ -304,6 +304,7 @@ Boxtal: ship orders with Boxtal carriers, with quotes, shipments, tracking and c
 | `import_shipments` | Import existing Boxtal orders into the local shipment list by their Boxtal order id (fetches live order + tracking + document descriptors per id; local-only writes, creates nothing at Boxtal). |  | `boxtal:shipments:write` |
 | `list_content_categories` | List Boxtal content categories (customs classification). |  | `boxtal:quotes:read` |
 | `local_product_upsert` | Create or update a local (non-Shopify) product by SKU. |  | `boxtal:catalog:write` |
+| `order_print_record_get` | Read ONE order as its print record: the data the organisation's document templates fill for the order's paperwork (customs declarations, certifications), from the moment it enters To prepare. |  | `boxtal:shipments:read` |
 | `pack_delete` | Delete a pack and its components. |  | `boxtal:catalog:write` |
 | `pack_upsert` | Create or update ONE named pack (carton) with its box dimensions, gross weight, AND its component bill of materials (the `components` array — the list of SKUs the carton holds). |  | `boxtal:catalog:write` |
 | `packages_list` | List Boxtal shipping profiles, packs, and local products. |  | `boxtal:catalog:read` |

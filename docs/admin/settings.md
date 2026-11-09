@@ -184,7 +184,7 @@ Below the switches, **State** reads Off, Registering, Registered, Leaving or Err
 
 ### Which documents a record needs
 
-Document rules say which templates a record needs, by SKU, destination country or carrier. Apps and agents can ask which templates a whole list of records needs in one call; the answer names the matching rules and templates, and only says what is needed, never that a document was printed. Anyone who can read files can ask; listing the rules themselves needs an organization admin.
+Document rules say which templates a record needs, by SKU, destination country, carrier or product attribute ([Generate shipping papers automatically](shipping-documents.md)). Apps and agents can ask which templates a whole list of records needs in one call; the answer names the matching rules and templates, and only says what is needed, never that a document was printed. Anyone who can read files can ask; listing the rules themselves needs an organization admin.
 
 ## Configure an app (Apps)
 

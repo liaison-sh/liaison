@@ -641,6 +641,16 @@ export const routineTemplateRegistry = createTypedRegistry<
     enabledByDefault: boolean
     /** Copied to the routine when the template is enabled: its runs stage drafts and end. */
     followUp?: boolean
+    /**
+     * Kernel templates with options (`enable_routine_template`'s `quietDays`,
+     * `pipelineId`): the prompt for the options chosen, or a plain error.
+     */
+    renderPrompt?: (options: {
+      quietDays?: unknown
+      pipelineId?: unknown
+    }) => { prompt: string } | { error: string }
+    /** The options a routine's prompt was rendered with, so a reset keeps them. */
+    optionsOf?: (prompt: string) => { quietDays?: unknown; pipelineId?: unknown } | undefined
     /** Pinned output visibility; absent = personal. */
     visibility?: "personal" | "shared"
     /**

@@ -732,10 +732,16 @@ describe("deal rollup", () => {
 describe("follow-up candidates", () => {
   it("follow-up candidates give the exact skip reason for each case without calling a model", async () => {
     const p = await makePipeline(w, "Follow-ups")
-    const deal = async (title: string, inboundDaysAgo: number | null, withPerson = true) => {
+    const deal = async (
+      title: string,
+      inboundDaysAgo: number | null,
+      withPerson = true,
+      owner: string | null = w.userId,
+    ) => {
       const id = await makeTask(w, p.projectId, title, { statusId: p.stage.Proposal })
       await db.execute(drizzleSql`
-        UPDATE app_projects.tasks SET created_at = now() - interval '60 days' WHERE id = ${id}::uuid`)
+        UPDATE app_projects.tasks SET created_at = now() - interval '60 days',
+               assignee_id = ${owner}::uuid WHERE id = ${id}::uuid`)
       if (!withPerson) return { id, email: "" }
       const co = await newCompany(`Company ${title}`)
       const person = await newContact(co)
@@ -749,6 +755,7 @@ describe("follow-up candidates", () => {
     const noContact = await deal("Nobody named", null, false)
     const optedOut = await deal("Opted out", 12)
     const drafted = await deal("Draft waiting", 15)
+    const noOwner = await deal("Nobody owns it", 11, true, null)
     const basis: Record<string, string> = {}
     for (const code of ["no_basis", "consumer", "consumer_unknown", "country_needs_consent"]) {
       const d = await deal(`Basis ${code}`, 20)
@@ -788,7 +795,13 @@ describe("follow-up candidates", () => {
     )
     try {
       const r = await call<{
-        items: Array<{ taskId: string; skip: string | null; quietDays: number | null }>
+        items: Array<{
+          taskId: string
+          skip: string | null
+          quietDays: number | null
+          accountId: string | null
+          address: string | null
+        }>
       }>("projects_dealsFollowupCandidates", { quietDays: 7, projectId: p.projectId })
       const skip = (id: string) => r.items.find((i) => i.taskId === id)?.skip
       expect(skip(ready.id)).toBeNull()
@@ -797,6 +810,12 @@ describe("follow-up candidates", () => {
       expect(skip(noContact.id)).toBe("no_contact")
       expect(skip(optedOut.id)).toBe("opted_out")
       expect(skip(drafted.id)).toBe("draft_waiting")
+      // Drafted from the deal owner's own mailbox, or not at all.
+      expect(r.items.find((i) => i.taskId === ready.id)).toMatchObject({
+        accountId: mailAccount,
+        address: ready.email,
+      })
+      expect(skip(noOwner.id)).toBe("no_sender")
       for (const [id, code] of Object.entries(basis)) {
         if (r.items.some((i) => i.taskId === id)) expect(skip(id)).toBe(code)
       }

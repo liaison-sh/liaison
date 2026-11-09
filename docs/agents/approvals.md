@@ -56,7 +56,7 @@ The card also shows how long is left (**N min left**). A request that nobody dec
 
 Each workspace numbers its requests on its own: **request-1**, **request-2**, and so on.
 
-Once decided, the conversation gets a line that says who decided. You can see the final state on the card: **Approved**, **Denied**, **Expired**, **Withdrawn** or **Cancelled**. A pending request is cancelled, and leaves **Home**, when what it would act on goes away: the task it would change is deleted (taking the task back out of the bin makes the request pending again), or the app its tool belongs to is switched off or removed (switching the app back on does not reopen it; ask again). The card says why, and the request stays in the history.
+Once decided, the conversation gets a line that says who decided. You can see the final state on the card: **Approved**, **Denied**, **Expired**, **Withdrawn** or **Cancelled**. A pending request is cancelled, and leaves **Home**, when what it would act on goes away: the task it would change is deleted (taking the task back out of the bin makes the request pending again), or the app its tool belongs to is switched off or removed (switching the app back on does not reopen it; ask again). A mail draft about a record of an app, such as a follow-up about a deal, is cancelled when that record closes (the deal is won or lost) and when that app is switched off or removed. The card says why, and the request stays in the history.
 
 ### Reminders for requests you forget
 

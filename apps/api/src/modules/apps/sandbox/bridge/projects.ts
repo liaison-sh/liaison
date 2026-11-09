@@ -1277,6 +1277,7 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         const { followupCandidates } = await import("~/apps/projects/service/deals")
         const items = await followupCandidates(txDb as never, orgId, callerScopes ?? [], {
           quietDays,
+          callerUserId: userId,
           ...(params.projectId ? { projectId: params.projectId } : {}),
         })
         const ready = items.filter((i) => i.skip === null).length
@@ -1286,7 +1287,7 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         return JSON.stringify({
           items,
           ready,
-          message: `${ready} of ${items.length} open deal${items.length === 1 ? "" : "s"} can get a follow-up now (skip null).${skipped ? ` Skipped: ${skipped}.` : ""}`,
+          message: `${ready} of ${items.length} open deal${items.length === 1 ? "" : "s"} can get a follow-up now (skip null)${ready > 0 ? ", each drafted to its address from its accountId" : ""}.${skipped ? ` Skipped: ${skipped}.` : ""}`,
         })
       })
     },

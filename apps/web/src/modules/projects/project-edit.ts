@@ -15,6 +15,8 @@ export interface ProjectEditPatch {
   icon?: string | null
   color?: string | null
   group?: string | null
+  /** The client company; null clears it. */
+  companyId?: string | null
 }
 
 export async function updateProjectFields(
@@ -22,7 +24,9 @@ export async function updateProjectFields(
   projectId: string,
   patch: ProjectEditPatch,
 ): Promise<ProjectDetail> {
-  const detail = await api.patch<ProjectDetail>(`/projects/${projectId}`, patch)
+  const saved = await api.patch<ProjectDetail>(`/projects/${projectId}`, patch)
+  // The server leaves out a cleared client; say so, or the merge keeps the old one.
+  const detail = "companyId" in patch && !saved.companyId ? { ...saved, companyId: null } : saved
   projectStore.handleProjectEvent("updated", detail)
   const summary = summaryFrom(detail, projectId)
   if (summary) projectsStore.upsert(summary)

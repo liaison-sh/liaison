@@ -28,6 +28,7 @@ import {
   type Component,
   createEffect,
   createMemo,
+  createResource,
   createSignal,
   For,
   on,
@@ -38,6 +39,8 @@ import {
 import { formatDay } from "~/lib/relative-time"
 import { userFromToken } from "~/modules/auth/auth-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
+import { fetchAssignableMembers } from "~/modules/members/assignable-members"
+import { formatSums, loadDealBoard, openTotals } from "~/modules/projects/deal-api"
 import { computeDropPosition, dndState } from "~/modules/projects/dnd-state"
 import { dueBucket, dueChipColorClass } from "~/modules/projects/due-status"
 import { fetchInvolvedTasks, type Involvement, involvementLine } from "~/modules/projects/involved"
@@ -133,6 +136,42 @@ export const ProjectWorkspace: Component<ProjectWorkspaceProps> = (props) => {
 
   const project = () => projectStore.project(props.entityId)
   const tasks = () => projectStore.tasksFor(props.entityId)
+
+  // A sales pipeline's board reads the deal board: read again whenever a task
+  // of the project changes (realtime events) or after a move on the board.
+  const isPipeline = () => project()?.kind === "pipeline"
+  const tasksSignature = createMemo(() =>
+    tasks()
+      .map((t) => `${t.id}:${t.statusId}:${t.updatedAt}`)
+      .join("|"),
+  )
+  const [dealBoard, { refetch: refetchDealBoard }] = createResource(
+    () => (isPipeline() ? { id: props.entityId, sig: tasksSignature() } : false),
+    (key) => loadDealBoard(api, key.id),
+  )
+  // Reading an errored resource throws; the board then shows its error state.
+  const board = () => (dealBoard.error ? undefined : dealBoard.latest)
+  const [members] = createResource(
+    () => isPipeline(),
+    async () => {
+      const { items } = await fetchAssignableMembers(api, "")
+      return new Map(items.map((m) => [m.id, m.name]))
+    },
+  )
+  const dealSubline = () => {
+    const current = board()
+    if (!current) return null
+    const { count, sums } = openTotals(current)
+    if (!sums || sums.length === 0) {
+      return count === 1
+        ? i18n.t("projects.deals.sublineNoAmountOne")
+        : i18n.t("projects.deals.sublineNoAmount", { count })
+    }
+    const amount = formatSums(sums, i18n.fmtCurrency)
+    return count === 1
+      ? i18n.t("projects.deals.sublineOne", { amount })
+      : i18n.t("projects.deals.subline", { count, amount })
+  }
   const isSelected = (taskId: string) => selectedIds().includes(taskId)
   const isArchived = () => !!project()?.archivedAt
   const [newTaskOpen, setNewTaskOpen] = createSignal(false)
@@ -515,6 +554,14 @@ export const ProjectWorkspace: Component<ProjectWorkspaceProps> = (props) => {
               class="mt-1 line-clamp-1 [&_.prose-thread]:text-[12.5px]! [&_.prose-thread]:text-text-tertiary!"
               data-testid="project-workspace.description"
             />
+            <Show when={isPipeline() && dealSubline()}>
+              <p
+                data-testid="project-workspace.deal-subline"
+                class="mt-1 text-[12.5px] text-text-secondary"
+              >
+                {dealSubline()}
+              </p>
+            </Show>
             <Show when={projectsFilterStore.isActive}>
               <p
                 data-testid="project-workspace.showing-count"
@@ -620,7 +667,9 @@ export const ProjectWorkspace: Component<ProjectWorkspaceProps> = (props) => {
               disabled={isArchived()}
               onClick={() => setNewTaskOpen(true)}
             >
-              <span data-testid="project-workspace.new-task">{i18n.t("projects.newTask")}</span>
+              <span data-testid="project-workspace.new-task">
+                {isPipeline() ? i18n.t("projects.deals.newDeal") : i18n.t("projects.newTask")}
+              </span>
             </Button>
             {/* Project level actions live in their own menu, apart from the
                 view controls: a bare "Archive" beside "Trash" read as "view
@@ -746,15 +795,57 @@ export const ProjectWorkspace: Component<ProjectWorkspaceProps> = (props) => {
           <Show
             when={view() === "list"}
             fallback={
-              <ProjectKanbanView
-                statuses={statusesForKanban()}
-                tasks={tasksForKanban()}
-                workspaceWidth={workspaceWidth()}
-                projectId={props.entityId}
-                api={api}
-                disabled={isArchived()}
-                onTaskClick={openTask}
-              />
+              <Show
+                when={!isPipeline() || !dealBoard.error}
+                fallback={
+                  <div
+                    data-testid="deal-board.error"
+                    class="flex flex-col items-center gap-3 p-8 text-center text-[12.5px] text-text-secondary"
+                  >
+                    {i18n.t("projects.deals.boardFailed")}
+                    <Button variant="outline" size="sm" onClick={() => void refetchDealBoard()}>
+                      {i18n.t("kernel.common.retry2")}
+                    </Button>
+                  </div>
+                }
+              >
+                <Show
+                  when={!isPipeline() || board()}
+                  fallback={
+                    <div
+                      data-testid="deal-board.loading"
+                      class="flex gap-2 px-4 py-4"
+                      aria-busy="true"
+                    >
+                      <For each={[0, 1, 2, 3]}>
+                        {() => <div class="h-40 w-[240px] rounded-md bg-surface" />}
+                      </For>
+                    </div>
+                  }
+                >
+                  <ProjectKanbanView
+                    statuses={statusesForKanban()}
+                    tasks={tasksForKanban()}
+                    workspaceWidth={workspaceWidth()}
+                    projectId={props.entityId}
+                    api={api}
+                    disabled={isArchived()}
+                    onTaskClick={openTask}
+                    pipeline={
+                      isPipeline() && board()
+                        ? {
+                            board: board()!,
+                            memberName: (id) =>
+                              (members.error ? null : members.latest?.get(id)) ?? null,
+                            onChanged: async () => {
+                              await refetchDealBoard()
+                            },
+                          }
+                        : undefined
+                    }
+                  />
+                </Show>
+              </Show>
             }
           >
             <BulkActionToolbar app="projects" viewId="project" />

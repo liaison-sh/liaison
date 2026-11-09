@@ -63,6 +63,10 @@ export interface ProjectDetail {
   checklistOnCards?: boolean
   /** The key no longer changes: the project holds a task (server rule). */
   keyLocked?: boolean
+  /** A sales pipeline: its board shows deals. Absent on an ordinary project. */
+  kind?: "pipeline"
+  /** The project's client company; absent when none is set. */
+  companyId?: string | null
 }
 
 type ProjectState = {

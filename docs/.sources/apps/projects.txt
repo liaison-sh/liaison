@@ -202,3 +202,15 @@ Task not found -> packages/shared/src/i18n/locales/en/projects.json:294
 Record name shown only to people who can see the record -> apps/api/src/modules/threads/thread-anchor.ts:143
 New message in a thread -> packages/shared/src/i18n/locales/en/kernel.json:6275
 Approval thread named after the approval -> apps/api/src/modules/threads/reference-display.ts:198
+Pipeline header line counts open deals and their sums -> apps/web/src/modules/projects/ProjectWorkspace.tsx:161
+Open totals exclude the Won and Lost columns -> apps/web/src/modules/projects/deal-api.ts:126
+New deal label on a pipeline -> packages/shared/src/i18n/locales/en/projects.json:305
+Column sums per currency, hidden without deal access -> apps/web/src/modules/projects/ProjectKanbanView.tsx:242
+Won this month and Lost this month column labels -> apps/web/src/modules/projects/ProjectKanbanView.tsx:237
+Board order and sums from the deal board read model -> apps/api/src/apps/projects/service/deals.ts:1071
+Card shows Needs deal access, No amount, owner initials, Next, Quiet for N days -> apps/web/src/modules/projects/ProjectKanbanView.tsx:258
+Move note with Undo and the lost reason saved on blur -> apps/web/src/modules/projects/ProjectKanbanView.tsx:220
+A failed move puts the card back with a toast -> apps/web/src/modules/projects/ProjectKanbanView.tsx:169
+Deal panel fields and buttons, buttons need projects:deals:write -> apps/web/src/modules/projects/DealPanel.tsx:97
+Deal panel error line -> apps/web/src/modules/projects/DealPanel.tsx:158
+Client field in Edit project -> apps/web/src/modules/projects/ProjectEditForm.tsx:46

@@ -10,10 +10,14 @@ import { schemaRef } from "~/db/schema-ref"
  * already been authorized (the member themself, or a holder of the data-subject
  * authority), see `data-subject-export-tool.ts`.
  *
- * Two kinds of section:
+ * Three kinds of section:
  *  - `caller`: rows that sit inside conversations and records other people
  *    share (messages, threads, uploaded files). Read under the CALLER's RLS, so
  *    the bundle never carries a conversation the caller could not open.
+ *  - `member`: rows the member reaches through their own permissions (app
+ *    drafts, the log lines of their runs). Read under the MEMBER's RLS, built
+ *    from their current grants, whoever asked: the bundle holds what the member
+ *    could read themself, never more because an officer ran it.
  *  - `subject`: rows that are about the member alone (preferences, routines,
  *    approvals, audit entries, connected accounts). Read privileged and filtered
  *    strictly on the member's id; RLS would hide most of them from the member
@@ -41,8 +45,8 @@ export interface MemberSection {
   key: string
   /** One plain sentence saying what the section holds, written into the bundle. */
   note: string
-  via: "caller" | "subject"
-  /** Reads at most `limit` rows. `db` is the caller's RLS client or a privileged tx, per `via`. */
+  via: "caller" | "member" | "subject"
+  /** Reads at most `limit` rows. `db` is the caller's or the member's RLS client, or a privileged tx, per `via`. */
   read: (
     db: RlsClient | PrivilegedDb,
     ctx: MemberSectionCtx,
@@ -408,9 +412,77 @@ export const MEMBER_SECTIONS: MemberSection[] = [
       }))
     },
   },
+  {
+    key: "appDrafts",
+    note: "App drafts the member made or last changed, as far as the member can open drafts: name, title, status, the published app if any, which versions they saved, and when. The draft's code is not included.",
+    via: "member",
+    read: (db, ctx, limit) =>
+      rows(
+        db,
+        drizzleSql`
+        SELECT d.id::text AS id, d.base_name, d.title, d.status, d.published_app_name,
+               d.latest_version,
+               COALESCE(d.created_by = ${ctx.subjectUserId}::uuid, false) AS made,
+               COALESCE(d.updated_by = ${ctx.subjectUserId}::uuid, false) AS last_changed,
+               COALESCE((SELECT array_agg(v.n ORDER BY v.n) FROM ${K()}.app_draft_versions v
+                          WHERE v.draft_id = d.id AND v.org_id = d.org_id
+                            AND v.created_by = ${ctx.subjectUserId}::uuid), '{}') AS versions_made,
+               d.created_at, d.updated_at
+        FROM ${K()}.app_drafts d
+        WHERE d.org_id = ${ctx.orgId}
+          AND (d.created_by = ${ctx.subjectUserId}::uuid OR d.updated_by = ${ctx.subjectUserId}::uuid
+               OR EXISTS (SELECT 1 FROM ${K()}.app_draft_versions v
+                           WHERE v.draft_id = d.id AND v.org_id = d.org_id
+                             AND v.created_by = ${ctx.subjectUserId}::uuid))
+        ORDER BY d.created_at, d.id
+        LIMIT ${limit}`,
+      ),
+  },
+  {
+    key: "appLogs",
+    note: "App runs started by the member's actions that left log lines the member can read, one row per run: the app or draft, how many lines, how many warnings and errors, and when. What the app wrote is not included, as it is written by app code and often about other people.",
+    via: "member",
+    read: async (db, ctx, limit) =>
+      (
+        await rows(
+          db,
+          drizzleSql`
+          SELECT run_id::text AS run_id, app, draft_id::text AS draft_id,
+                 count(*)::int AS lines,
+                 (count(*) FILTER (WHERE level = 'warn'))::int AS warnings,
+                 (count(*) FILTER (WHERE level = 'error'))::int AS errors,
+                 min(at) AS first_at, max(at) AS last_at
+          FROM ${K()}.app_logs
+          WHERE org_id = ${ctx.orgId} AND actor_user_id = ${ctx.subjectUserId}::uuid
+          GROUP BY run_id, app, draft_id
+          ORDER BY min(at), run_id
+          LIMIT ${limit}`,
+        )
+      ).map((r) => ({ ...r, first_at: iso(r.first_at), last_at: iso(r.last_at) })),
+  },
 ]
 
-/** Reads every section: the `caller` ones on `callerDb`, the `subject` ones in one privileged transaction. */
+/**
+ * The member's own RLS context, from their current grants: what the `member`
+ * sections read under, whoever asked for the export.
+ */
+async function memberContext(tx: PrivilegedDb, ctx: MemberSectionCtx) {
+  const { loadEffectivePermissions } = await import("~/modules/permissions/permissions")
+  const perms = await loadEffectivePermissions(tx, ctx.subjectUserId, ctx.orgId)
+  return {
+    actorType: "user" as const,
+    userId: ctx.subjectUserId,
+    orgId: ctx.orgId,
+    scopes: perms.scopes,
+    dimensionGrants: perms.dimensionGrants,
+    roles: perms.roles,
+  }
+}
+
+/**
+ * Reads every section: the `caller` ones on `callerDb`, the `subject` ones in one privileged
+ * transaction, the `member` ones in one transaction under the member's own RLS context.
+ */
 export async function readMemberSections(
   callerDb: RlsClient,
   ctx: MemberSectionCtx,
@@ -427,11 +499,23 @@ export async function readMemberSections(
   }
   for (const s of sections) if (s.via === "caller") await take(s, callerDb)
   const subjectSections = sections.filter((s) => s.via === "subject")
-  if (subjectSections.length > 0) {
+  const memberSections = sections.filter((s) => s.via === "member")
+  if (subjectSections.length > 0 || memberSections.length > 0) {
     const { withPrivilegedDb } = await import("~/db/privileged")
-    await withPrivilegedDb(ctx.orgId, "data_subject_export member sections", async (tx) => {
-      for (const s of subjectSections) await take(s, tx)
-    })
+    const member = await withPrivilegedDb(
+      ctx.orgId,
+      "data_subject_export member sections",
+      async (tx) => {
+        for (const s of subjectSections) await take(s, tx)
+        return memberSections.length > 0 ? memberContext(tx, ctx) : null
+      },
+    )
+    if (member) {
+      const { withRlsContext } = await import("~/db/rls")
+      await withRlsContext(member, async (tx) => {
+        for (const s of memberSections) await take(s, tx)
+      })
+    }
   }
   // Keep the declared order in the file, whatever order they were read in.
   return Object.fromEntries(sections.map((s) => [s.key, out[s.key] as MemberSectionResult]))

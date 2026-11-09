@@ -136,3 +136,4 @@ suppression-contact: the person's data subject export, the export carries it (fa
 app-draft-author: the person who made it deactivated, the link holds
 app-draft-author: the person who made it deactivated, the link holds (fails with the event replaced by a no-op)
 app-draft-author: the person who made it exporting their own data, the export carries it
+app-draft-author: the person who made it exporting their own data, the export carries it (fails with the event replaced by a no-op)

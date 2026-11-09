@@ -552,8 +552,6 @@ links:
     open:
       Mg: only an import placeholder merges, and a placeholder never builds an app; the merge moves the author columns to the person (merge-references.ts)
       Dl: what a draft shows once the person who made it deleted their account is not defined; erasure clears the author columns
-    broken:
-      Ex: the member data export has no app drafts section (modules/export/member-data-subject-bundle.ts)
 
   - name: app-draft-part
     what: an app draft's versions, build artifacts and logs to the draft they belong to
@@ -584,7 +582,7 @@ links:
       Dl: erasure deletes the person's draft log lines and clears the actor on the others; no reader of a deleted person's log lines is defined
       Dx: no log world (an app run writing lines as a person) is built in this file yet
       Pm: a draft's log lines are read by their actor, the rest under kernel:apps:logs; no log world is built in this file yet
-      Ex: the member data export has no app logs section; app-draft-author's export cell records the same gap
+      Ex: no log world is built in this file yet; the member export's run logs section is tested in modules/export/member-data-subject-export.integration.test.ts
 
   - name: app-log-run
     what: app log lines to the run that wrote them

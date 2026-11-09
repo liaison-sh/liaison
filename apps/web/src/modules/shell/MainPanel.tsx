@@ -40,6 +40,7 @@ import { TabBar } from "~/modules/shell/TabBar"
 import { TabVisibilityProvider } from "~/modules/shell/TabVisibilityContext"
 import { TabLoadingBar, TabSuspenseFallback } from "~/modules/shell/tab-loading"
 import { hasTabBeenActive, promoteActiveTab, tabStore } from "~/modules/shell/tab-store"
+import { traceTabScope, traceTabSource } from "~/modules/shell/tab-teardown-trail"
 import { createPushNav } from "~/primitives/createPushNav"
 
 /**
@@ -260,6 +261,20 @@ export const MainPanel: ParentComponent<MainPanelProps> = (props) => {
             // only appears once `hasTabBeenActive` latches, so N-1 hidden tabs
             // cost zero network/CPU at boot instead of mounting eagerly.
             const everActive = () => hasTabBeenActive(tab.id)
+            // Test-only trail of what rebuilds this tab's content (a no-op
+            // unless a test installed it): this item, the gate, the keyed Show.
+            traceTabScope(tab.id, "for-item", `type=${tab.type}`)
+            traceTabSource(tab.id, "active-gate", everActive)
+            traceTabSource(
+              tab.id,
+              "keyed-show",
+              () => {
+                tabTypeRegistryVersion()
+                return getTabType(tab.type)?.component
+              },
+              (component) =>
+                typeof component === "function" ? component.name || "anonymous" : "none",
+            )
             return (
               <div
                 class="absolute inset-0 flex flex-col"
@@ -267,6 +282,7 @@ export const MainPanel: ParentComponent<MainPanelProps> = (props) => {
                 style={{ display: isActive() ? "flex" : "none" }}
               >
                 <Show when={everActive()}>
+                  {traceTabScope(tab.id, "active-gate")}
                   <TabVisibilityProvider value={isActive} tabId={tab.id}>
                     <ErrorBoundary
                       fallback={(err, reset) => {
@@ -351,25 +367,27 @@ export const MainPanel: ParentComponent<MainPanelProps> = (props) => {
                           }
                           keyed
                         >
-                          {(component) => (
-                            <Show
-                              when={getTabType(tab.type)?.appId}
-                              fallback={<Dynamic component={component} entityId={tab.entityId} />}
-                            >
-                              {/* App-supplied pages get a default scroll container: the shell is
+                          {(component) => {
+                            traceTabScope(tab.id, "keyed-show", component.name || "anonymous")
+                            return (
+                              <Show
+                                when={getTabType(tab.type)?.appId}
+                                fallback={<Dynamic component={component} entityId={tab.entityId} />}
+                              >
+                                {/* App-supplied pages get a default scroll container: the shell is
                                   overflow-hidden all the way down, and unlike kernel pages (which
                                   each own their scroll, see Home.tsx) plugin pages routinely render
                                   taller-than-viewport content with no overflow handling, leaving the
                                   tab unscrollable. Pages that size themselves h-full and scroll
                                   internally still fill this container and never overflow it, so
                                   their own scroll regions keep working. */}
-                              {/* Block (NOT flex): as a flex column, the page root became a
+                                {/* Block (NOT flex): as a flex column, the page root became a
                                   shrinkable flex item and compressed to the viewport instead of
                                   overflowing — the exact squash this wrapper exists to fix. In a
                                   block container the root's height is content-driven; h-full /
                                   min-h-full pages still resolve against the wrapper's definite
                                   (flex-1) height. */}
-                              {/* The bottom reserve: an app page cannot know what the shell floats
+                                {/* The bottom reserve: an app page cannot know what the shell floats
                                   over the panel's bottom right corner (the round Chats opener at
                                   tablet), so its footer actions (an invoice's Download PDF) ended
                                   under it. The wrapper keeps that band clear
@@ -379,24 +397,25 @@ export const MainPanel: ParentComponent<MainPanelProps> = (props) => {
                                   is reserved HERE, once: data-dock-reserved zeroes the clearance
                                   for the page (index.css), so a composer that pads itself by it
                                   (the chat's, a session's) does not stack a second band on top. */}
-                              <div
-                                class="min-h-0 flex-1 overflow-y-auto"
-                                style={{ "padding-bottom": "var(--shell-dock-clearance, 0px)" }}
-                                data-dock-reserved=""
-                                data-testid="app-tab-scroll"
-                              >
-                                {/* An app Off or restricted away (S19, S20) keeps its routes so a
+                                <div
+                                  class="min-h-0 flex-1 overflow-y-auto"
+                                  style={{ "padding-bottom": "var(--shell-dock-clearance, 0px)" }}
+                                  data-dock-reserved=""
+                                  data-testid="app-tab-scroll"
+                                >
+                                  {/* An app Off or restricted away (S19, S20) keeps its routes so a
                                     deep link lands somewhere that says why, rather than
                                     on its page or on "unknown tab type". */}
-                                <Show
-                                  when={!isAppUnavailable(getTabType(tab.type)?.appId)}
-                                  fallback={<AppUnavailableNotice />}
-                                >
-                                  <Dynamic component={component} entityId={tab.entityId} />
-                                </Show>
-                              </div>
-                            </Show>
-                          )}
+                                  <Show
+                                    when={!isAppUnavailable(getTabType(tab.type)?.appId)}
+                                    fallback={<AppUnavailableNotice />}
+                                  >
+                                    <Dynamic component={component} entityId={tab.entityId} />
+                                  </Show>
+                                </div>
+                              </Show>
+                            )
+                          }}
                         </Show>
                       </Suspense>
                     </ErrorBoundary>

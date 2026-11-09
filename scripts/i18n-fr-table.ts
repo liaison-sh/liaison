@@ -5023,15 +5023,12 @@ export const FR_BY_KEY: Record<string, string> = {
   "contacts.companies.relationshipEnded": "Relation terminée",
   "contacts.companies.waiting": "En attente",
   "contacts.companies.showAll": "Tout afficher ({{count}})",
-  "contacts.companies.noPeople": "Personne n'est encore lié à cette entreprise.",
   "contacts.companies.peopleUnavailable": "Impossible de lire les personnes de cette entreprise.",
   "contacts.companies.mainContact": "Contact principal",
   "contacts.companies.deals": "Affaires",
   "contacts.companies.openTheBoard": "Ouvrir le tableau des affaires",
   "contacts.companies.noOpenDeal": "Aucune affaire en cours.",
   "contacts.companies.timeline": "Historique",
-  "contacts.companies.timelineSoon":
-    "Les mails, tickets, rendez-vous et affaires de cette entreprise s'affichent ici.",
   "contacts.companies.discussionHint":
     "Parlez de {{name}} ici. Un agent que vous mentionnez lit d'abord cette page.",
   "contacts.companies.discussionPlaceholder":
@@ -5043,6 +5040,58 @@ export const FR_BY_KEY: Record<string, string> = {
     "Cette entreprise ne vous est pas partagée, ou elle n'existe plus.",
   "contacts.companies.loading": "Chargement de l'entreprise",
   "contacts.companies.shareTitle": "Partager {{name}}",
+  "contacts.companies.managerChange": "Changer le responsable du compte",
+  "contacts.companies.managerFailed": "Le responsable du compte n'a pas changé.",
+  "contacts.companies.managerPending":
+    "Envoyé pour approbation. Le responsable du compte change une fois la demande approuvée.",
+  "contacts.companies.noPeopleNew":
+    "Personne pour l'instant. Les mails, tickets, factures et affaires s'affichent ici dès qu'une personne de cette entreprise y est liée.",
+  "contacts.companies.askFindPeople": "Demander à l'agent de trouver les personnes",
+  "contacts.companies.askFindPeoplePrompt":
+    "Trouve les personnes qui travaillent chez {{name}} parmi mes contacts et mes mails, et lie-les à l'entreprise.",
+  "contacts.companies.askLinkMail": "Lier les anciens mails de ce domaine",
+  "contacts.companies.askLinkMailPrompt":
+    "Lie à {{name}} les personnes qui nous ont écrit depuis {{domain}}.",
+  "contacts.companies.duplicateTitle": "Ressemble à la même entreprise que {{name}}",
+  "contacts.companies.duplicateSameDomain":
+    "Même domaine web. Rien n'est fusionné sans votre accord.",
+  "contacts.companies.duplicateSameName":
+    "Le nom est écrit de deux façons. Rien n'est fusionné sans votre accord.",
+  "contacts.companies.duplicateBoth":
+    "Même domaine web, et le nom est écrit de deux façons. Rien n'est fusionné sans votre accord.",
+  "contacts.companies.keepSeparate": "Les garder séparées",
+  "contacts.companies.keptSeparate":
+    "Gardées séparées : {{name}} n'est plus proposée comme la même entreprise.",
+  "contacts.companies.notSameFailed": "Impossible d'enregistrer. Rien n'a changé.",
+  "contacts.companies.mergeHolding":
+    "{{source}} est fusionnée dans {{target}} dans quelques secondes.",
+  "contacts.companies.mergeDone": "{{source}} est fusionnée dans {{target}}.",
+  "contacts.companies.undo": "Annuler",
+  "contacts.companies.phoneTabs": "Sections de l'entreprise",
+  "contacts.companies.phoneOverview": "Aperçu",
+  "contacts.companies.phoneTimeline": "Historique",
+  "contacts.companies.phoneDiscussion": "Discussion",
+  "contacts.companies.askBox": "Demander à l'agent à propos de {{name}}",
+  "contacts.activity.reading": "Lecture de vos applications",
+  "contacts.activity.allActivity": "Toute l'activité",
+  "contacts.activity.filter": "Filtrer l'historique",
+  "contacts.activity.empty": "Rien ne s'est encore passé avec cette entreprise.",
+  "contacts.activity.error": "Impossible de lire l'historique.",
+  "contacts.activity.retry": "Réessayer",
+  "contacts.activity.unavailable":
+    "{{source}} n'a pas répondu, son activité manque donc ici. Le reste est à jour.",
+  "contacts.activity.truncatedContacts":
+    "Activité des {{count}} personnes les plus récemment actives",
+  "contacts.activity.truncatedDeals":
+    "{{count}} affaires plus anciennes ne sont pas dans cet historique.",
+  "contacts.activity.showOlder": "Afficher l'activité plus ancienne",
+  "contacts.activity.today": "Aujourd'hui",
+  "contacts.activity.earlierThisMonth": "Plus tôt ce mois-ci",
+  "contacts.activity.sources.mail": "Mail",
+  "contacts.activity.sources.tickets": "Tickets",
+  "contacts.activity.sources.invoicing": "Facturation",
+  "contacts.activity.sources.calendar": "Agenda",
+  "contacts.activity.sources.projects": "Affaires",
   "contacts.addresses.role.other": "Autre",
   "contacts.addresses.sourceOption.other": "Autre",
   // The main panel's answer to an address no page owns.

@@ -4,9 +4,20 @@
 // action row at the top, Waiting (only when something waits), People, Deals,
 // then the sections other apps contribute (Money, Support, Work), the
 // Timeline, and the company's discussion in the right rail. Every section is
-// read from its own app as the reader: one that fails costs only itself.
+// read from its own app as the reader: one that fails costs only itself. On a
+// phone the page is three tabs (Overview, Timeline, Discussion) with an ask box
+// at the bottom that leads into the discussion.
 
-import { Lock, MoreHorizontal, Share2, Trash2, UserPlus, Users } from "lucide-solid"
+import {
+  ArrowUp,
+  GitMerge,
+  Lock,
+  MoreHorizontal,
+  Share2,
+  Trash2,
+  UserPlus,
+  Users,
+} from "lucide-solid"
 import {
   type Component,
   createEffect,
@@ -15,6 +26,7 @@ import {
   createSignal,
   For,
   lazy,
+  onCleanup,
   onMount,
   Show,
   Suspense,
@@ -31,16 +43,23 @@ import { openTab } from "~/modules/shell/tab-store"
 import { DISCUSSION_RAIL_BOTTOM_PAD } from "~/modules/threads/discussion-rail"
 import { Button } from "~/ui/Button"
 import { Skeleton } from "~/ui/Skeleton"
+import { ActivityPanel } from "./ActivityPanel"
+import { CompanyManagerPicker } from "./CompanyManagerPicker"
 import { CompanyShareDialog } from "./CompanyShareDialog"
 import { ContactAvatar } from "./ContactAvatar"
 import {
   type Company,
+  type CompanyDuplicate,
   companyStore,
   linkCompanyPeople,
   loadCompany,
+  loadCompanyDuplicates,
   loadCompanyPeople,
   loadCompanyWaiting,
+  markCompaniesNotSame,
+  mergeCompanyInto,
   openCompanyDiscussion,
+  setCompanyManager,
 } from "./company-store"
 import { dealText, openCompanyList, openCompanyTab } from "./company-visuals"
 
@@ -48,6 +67,9 @@ const EntityDiscussion = lazy(() => import("~/modules/threads/EntityDiscussion")
 
 /** People shown before "Show all". */
 export const PEOPLE_SHOWN = 8
+
+/** How long "Merge into" waits, with Undo, before it merges. */
+export const MERGE_HOLD_MS = 8000
 
 /** Contributed sections: money, support, work, then any other group. */
 const SECTION_ORDER = ["money", "support", "work"]
@@ -80,6 +102,30 @@ export const CompanyDetail: Component<CompanyDetailProps> = (props) => {
   const [confirmingDelete, setConfirmingDelete] = createSignal(false)
   const [shareOpen, setShareOpen] = createSignal(false)
   const [panel, setPanel] = createSignal<"add" | "merge" | null>(null)
+  const [phoneTab, setPhoneTab] = createSignal<"overview" | "timeline" | "discussion">("overview")
+  // A suggested question put in the discussion box (the chips, the phone's ask box).
+  const [prefill, setPrefill] = createSignal<{ text: string; n: number } | null>(null)
+  const [managerNote, setManagerNote] = createSignal<string | null>(null)
+  const [keptApart, setKeptApart] = createSignal<CompanyDuplicate | null>(null)
+  const [duplicateNote, setDuplicateNote] = createSignal<string | null>(null)
+  let reloadTimeline: (() => void) | undefined
+
+  function ask(text: string): void {
+    setPrefill({ text, n: (prefill()?.n ?? 0) + 1 })
+    if (phone()) setPhoneTab("discussion")
+  }
+
+  async function pickManager(userId: string | null): Promise<void> {
+    setManagerNote(null)
+    try {
+      const outcome = await setCompanyManager(api as never, props.entityId, userId)
+      if (outcome === "pending") setManagerNote(i18n.t("contacts.companies.managerPending"))
+      else if (outcome === "skipped") setManagerNote(i18n.t("contacts.companies.managerFailed"))
+      else reloadTimeline?.()
+    } catch {
+      setManagerNote(i18n.t("contacts.companies.managerFailed"))
+    }
+  }
 
   // Writing: the scope, and a company the reader may change (an editor share,
   // or their own). RLS still decides; this only hides buttons that would fail.
@@ -106,6 +152,7 @@ export const CompanyDetail: Component<CompanyDetailProps> = (props) => {
         if (!c) return
         void refreshPeople()
         void loadCompanyWaiting(api as never, props.entityId)
+        loadCompanyDuplicates(api as never).catch(() => {})
       })
       .catch(() => {})
   })
@@ -254,6 +301,22 @@ export const CompanyDetail: Component<CompanyDetailProps> = (props) => {
                     company={c()}
                     managerName={manager()?.name ?? null}
                     managerAway={manager()?.away?.until ?? null}
+                    managerControl={
+                      canWrite() ? (
+                        <CompanyManagerPicker
+                          managerName={manager()?.name ?? null}
+                          awayText={
+                            manager()?.away?.until
+                              ? i18n.t("contacts.companies.awayUntil", {
+                                  date: awayDay(manager()?.away?.until ?? "", i18n.locale()),
+                                })
+                              : null
+                          }
+                          onPick={pickManager}
+                        />
+                      ) : null
+                    }
+                    managerNote={managerNote()}
                     visibility={visibility()}
                     phone={phone()}
                     actions={
@@ -266,6 +329,7 @@ export const CompanyDetail: Component<CompanyDetailProps> = (props) => {
                             type="button"
                             variant="outline"
                             size="sm"
+                            class={phone() ? "min-h-11" : undefined}
                             data-testid="company-detail.add-person"
                             aria-expanded={panel() === "add" ? "true" : "false"}
                             onClick={() => setPanel((p) => (p === "add" ? null : "add"))}
@@ -277,6 +341,7 @@ export const CompanyDetail: Component<CompanyDetailProps> = (props) => {
                             type="button"
                             variant="outline"
                             size="sm"
+                            class={phone() ? "min-h-11" : undefined}
                             data-testid="company-detail.share"
                             onClick={() => setShareOpen(true)}
                           >
@@ -287,6 +352,7 @@ export const CompanyDetail: Component<CompanyDetailProps> = (props) => {
                             type="button"
                             variant="outline"
                             size="sm"
+                            class={phone() ? "min-h-11" : undefined}
                             data-testid="company-detail.merge"
                             aria-expanded={panel() === "merge" ? "true" : "false"}
                             onClick={() => setPanel((p) => (p === "merge" ? null : "merge"))}
@@ -300,7 +366,7 @@ export const CompanyDetail: Component<CompanyDetailProps> = (props) => {
                               aria-label={i18n.t("contacts.companies.moreActions")}
                               title={i18n.t("contacts.companies.moreActions")}
                               aria-expanded={overflowOpen() ? "true" : "false"}
-                              class="rounded-md p-1.5 text-text-tertiary hover:bg-surface-hover hover:text-text"
+                              class={`rounded-md p-1.5 text-text-tertiary hover:bg-surface-hover hover:text-text ${phone() ? "flex min-h-11 min-w-11 items-center justify-center" : ""}`}
                               onClick={() => setOverflowOpen((v) => !v)}
                             >
                               <MoreHorizontal size={16} />
@@ -363,196 +429,383 @@ export const CompanyDetail: Component<CompanyDetailProps> = (props) => {
                     <MergeStrip company={c()} onClose={() => setPanel(null)} />
                   </Show>
 
-                  <Show when={waitingRows().length > 0}>
-                    <section class="mt-10" data-testid="company-detail.waiting">
-                      <SectionHeading eyebrow={i18n.t("contacts.companies.waiting")} />
-                      <div class="mt-2 space-y-1">
-                        <For each={waitingRows()}>{(item) => <AttentionRow item={item} />}</For>
-                      </div>
+                  <Show when={phone()}>
+                    <div
+                      role="tablist"
+                      aria-label={i18n.t("contacts.companies.phoneTabs")}
+                      data-testid="company-detail.phone-tabs"
+                      class="mt-5 grid grid-cols-3 gap-2"
+                    >
+                      <For each={["overview", "timeline", "discussion"] as const}>
+                        {(tab) => (
+                          <button
+                            type="button"
+                            role="tab"
+                            data-testid={`company-detail.tab-${tab}`}
+                            aria-selected={phoneTab() === tab ? "true" : "false"}
+                            class={`min-h-11 rounded-full border px-3 text-[13px] ${
+                              phoneTab() === tab
+                                ? "border-border bg-surface-hover text-text"
+                                : "border-border-subtle text-text-secondary"
+                            }`}
+                            onClick={() => setPhoneTab(tab)}
+                          >
+                            {i18n.t(
+                              tab === "overview"
+                                ? "contacts.companies.phoneOverview"
+                                : tab === "timeline"
+                                  ? "contacts.companies.phoneTimeline"
+                                  : "contacts.companies.phoneDiscussion",
+                            )}
+                          </button>
+                        )}
+                      </For>
+                    </div>
+                  </Show>
+
+                  <Show when={!phone() || phoneTab() === "overview"}>
+                    <Show when={waitingRows().length > 0}>
+                      <section class="mt-10" data-testid="company-detail.waiting">
+                        <SectionHeading eyebrow={i18n.t("contacts.companies.waiting")} />
+                        <div class="mt-2 space-y-1">
+                          <For each={waitingRows()}>{(item) => <AttentionRow item={item} />}</For>
+                        </div>
+                      </section>
+                    </Show>
+
+                    <For each={(companyStore.duplicates[props.entityId] ?? []).slice(0, 1)}>
+                      {(dup) => (
+                        <DuplicatePanel
+                          company={c()}
+                          duplicate={dup}
+                          canWrite={canWrite()}
+                          onKept={(d) => {
+                            setDuplicateNote(null)
+                            setKeptApart(d)
+                          }}
+                          onMerged={() => {
+                            setKeptApart(null)
+                            setDuplicateNote(
+                              i18n.t("contacts.companies.mergeDone", {
+                                source: dup.name,
+                                target: c().name,
+                              }),
+                            )
+                            void loadCompany(api as never, props.entityId).catch(() => {})
+                            void refreshPeople()
+                            reloadTimeline?.()
+                          }}
+                        />
+                      )}
+                    </For>
+
+                    <Show when={keptApart()}>
+                      {(k) => (
+                        <p
+                          data-testid="company-detail.kept-apart"
+                          class="mt-8 flex flex-wrap items-center gap-2 text-[12.5px] text-text-secondary"
+                        >
+                          {i18n.t("contacts.companies.keptSeparate", { name: k().name })}
+                          <button
+                            type="button"
+                            data-testid="company-detail.kept-apart-undo"
+                            class="min-h-8 rounded-md border border-border px-2.5 text-text-secondary hover:bg-surface-hover hover:text-text"
+                            onClick={() =>
+                              void markCompaniesNotSame(
+                                api as never,
+                                { ...k(), self: props.entityId },
+                                true,
+                              )
+                                .then(() => setKeptApart(null))
+                                .catch(() =>
+                                  setDuplicateNote(i18n.t("contacts.companies.notSameFailed")),
+                                )
+                            }
+                          >
+                            {i18n.t("contacts.companies.undo")}
+                          </button>
+                        </p>
+                      )}
+                    </Show>
+                    <Show when={duplicateNote()}>
+                      {(note) => (
+                        <p
+                          data-testid="company-detail.duplicate-note"
+                          class="mt-8 text-[12.5px] text-text-secondary"
+                        >
+                          {note()}
+                        </p>
+                      )}
+                    </Show>
+
+                    <section class="mt-10" data-testid="company-detail.people">
+                      <SectionHeading
+                        eyebrow={i18n.t("contacts.companies.peopleSection")}
+                        count={c().peopleCount}
+                      />
+                      <Show
+                        when={!peopleFailed()}
+                        fallback={
+                          <p
+                            data-testid="company-detail.people-unavailable"
+                            class="py-3 text-[12.5px] text-text-tertiary"
+                          >
+                            {i18n.t("contacts.companies.peopleUnavailable")}
+                          </p>
+                        }
+                      >
+                        <Show
+                          when={people().length > 0}
+                          fallback={
+                            <Show when={peopleLoaded()}>
+                              <div data-testid="company-detail.people-empty" class="mt-3">
+                                <p class="rounded-md border border-dashed border-border-subtle px-4 py-4 text-center text-[12.5px] text-text-tertiary">
+                                  {i18n.t("contacts.companies.noPeopleNew")}
+                                </p>
+                                <div class="mt-3 flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    data-testid="company-detail.ask-find-people"
+                                    class="min-h-9 rounded-full border border-border px-3 text-[12.5px] text-text-secondary hover:bg-surface-hover hover:text-text"
+                                    onClick={() =>
+                                      ask(
+                                        i18n.t("contacts.companies.askFindPeoplePrompt", {
+                                          name: c().name,
+                                        }),
+                                      )
+                                    }
+                                  >
+                                    {i18n.t("contacts.companies.askFindPeople")}
+                                  </button>
+                                  <Show when={c().domain}>
+                                    {(domain) => (
+                                      <button
+                                        type="button"
+                                        data-testid="company-detail.ask-link-mail"
+                                        class="min-h-9 rounded-full border border-border px-3 text-[12.5px] text-text-secondary hover:bg-surface-hover hover:text-text"
+                                        onClick={() =>
+                                          ask(
+                                            i18n.t("contacts.companies.askLinkMailPrompt", {
+                                              name: c().name,
+                                              domain: domain(),
+                                            }),
+                                          )
+                                        }
+                                      >
+                                        {i18n.t("contacts.companies.askLinkMail")}
+                                      </button>
+                                    )}
+                                  </Show>
+                                </div>
+                              </div>
+                            </Show>
+                          }
+                        >
+                          <ul class="divide-y divide-border-subtle">
+                            <For each={shownPeople()}>
+                              {(p) => (
+                                <li>
+                                  <button
+                                    type="button"
+                                    data-testid={`company-person-${p.id}`}
+                                    class="flex w-full items-center gap-3 py-2 text-left text-[13px] hover:bg-surface-hover"
+                                    onClick={() =>
+                                      openTab({
+                                        type: "contact-detail",
+                                        entityId: p.id,
+                                        label: p.name ?? p.email ?? "",
+                                      })
+                                    }
+                                  >
+                                    <ContactAvatar
+                                      id={p.id}
+                                      name={p.name}
+                                      email={p.email}
+                                      size="sm"
+                                    />
+                                    <span class="truncate text-text">{p.name ?? p.email}</span>
+                                    <Show when={p.role}>
+                                      <span class="truncate text-text-tertiary">{p.role}</span>
+                                    </Show>
+                                    <Show when={p.isMain}>
+                                      <span class="rounded-full border border-border-subtle px-2 py-0.5 text-[11px] text-text-secondary">
+                                        {i18n.t("contacts.companies.mainContact")}
+                                      </span>
+                                    </Show>
+                                    <span class="ml-auto truncate font-mono text-[12px] text-text-tertiary">
+                                      {p.email}
+                                    </span>
+                                  </button>
+                                </li>
+                              )}
+                            </For>
+                          </ul>
+                          <Show when={people().length > PEOPLE_SHOWN}>
+                            <button
+                              type="button"
+                              data-testid="company-detail.people-show-all"
+                              class="mt-2 text-[12px] text-text-secondary hover:text-text"
+                              onClick={() => setShowAllPeople((v) => !v)}
+                            >
+                              {showAllPeople()
+                                ? i18n.t("contacts.companies.showFewer")
+                                : i18n.t("contacts.companies.showAll", { count: people().length })}
+                            </button>
+                          </Show>
+                        </Show>
+                      </Show>
+                    </section>
+
+                    <section class="mt-10" data-testid="company-detail.deals">
+                      <SectionHeading eyebrow={i18n.t("contacts.companies.deals")} />
+                      <Show
+                        when={c().openDeal}
+                        fallback={
+                          <p class="py-3 text-[12.5px] text-text-tertiary">
+                            {i18n.t("contacts.companies.noOpenDeal")}
+                          </p>
+                        }
+                      >
+                        {(deal) => (
+                          <button
+                            type="button"
+                            data-testid={`company-deal-${deal().taskId}`}
+                            class="flex w-full items-center py-2 text-left text-[13px] text-text hover:bg-surface-hover"
+                            onClick={() =>
+                              openTab({
+                                type: "projects:task",
+                                entityId: deal().taskId,
+                                label: dealText(deal(), i18n),
+                              })
+                            }
+                          >
+                            {dealText(deal(), i18n)}
+                          </button>
+                        )}
+                      </Show>
+                    </section>
+
+                    <For each={sections()}>
+                      {(section) => (
+                        <section
+                          class="mt-10"
+                          data-testid={`company-detail.section-${section.key}`}
+                        >
+                          <SectionHeading eyebrow={sectionTitle(section.key, section.entries)} />
+                          <div class="mt-2 space-y-3">
+                            <For each={section.entries}>
+                              {(entry) => <SlotEntryView entry={entry} entityId={props.entityId} />}
+                            </For>
+                          </div>
+                        </section>
+                      )}
+                    </For>
+                  </Show>
+
+                  <Show when={!phone() || phoneTab() === "timeline"}>
+                    <section
+                      class={phone() ? "mt-6" : "mt-10"}
+                      data-testid="company-detail.timeline"
+                    >
+                      <ActivityPanel
+                        path={`/contacts/companies/${props.entityId}/activity`}
+                        testId="company-activity"
+                        title={i18n.t("contacts.companies.timeline")}
+                        emptyText={i18n.t("contacts.activity.empty")}
+                        ref={(reload) => {
+                          reloadTimeline = reload
+                        }}
+                      />
                     </section>
                   </Show>
 
-                  <section class="mt-10" data-testid="company-detail.people">
-                    <SectionHeading
-                      eyebrow={i18n.t("contacts.companies.peopleSection")}
-                      count={c().peopleCount}
-                    />
-                    <Show
-                      when={!peopleFailed()}
-                      fallback={
-                        <p
-                          data-testid="company-detail.people-unavailable"
-                          class="py-3 text-[12.5px] text-text-tertiary"
-                        >
-                          {i18n.t("contacts.companies.peopleUnavailable")}
-                        </p>
-                      }
+                  <Show when={phone() && phoneTab() !== "discussion"}>
+                    <form
+                      data-testid="company-detail.ask-box"
+                      class="sticky bottom-0 mt-6 flex items-center gap-2 bg-bg py-2"
+                      onSubmit={(e) => {
+                        e.preventDefault()
+                        const field = e.currentTarget.elements.namedItem(
+                          "ask",
+                        ) as HTMLInputElement | null
+                        const text = field?.value.trim() ?? ""
+                        if (field) field.value = ""
+                        ask(text)
+                      }}
                     >
-                      <Show
-                        when={people().length > 0}
-                        fallback={
-                          <Show when={peopleLoaded()}>
-                            <p
-                              data-testid="company-detail.people-empty"
-                              class="py-3 text-[12.5px] text-text-tertiary"
-                            >
-                              {i18n.t("contacts.companies.noPeople")}
-                            </p>
-                          </Show>
-                        }
+                      <input
+                        name="ask"
+                        type="text"
+                        data-testid="company-detail.ask-input"
+                        aria-label={i18n.t("contacts.companies.askBox", { name: c().name })}
+                        placeholder={i18n.t("contacts.companies.askBox", { name: c().name })}
+                        class="min-h-11 min-w-0 flex-1 rounded-full border border-border bg-surface px-4 text-[14px] text-text outline-none placeholder:text-text-tertiary"
+                      />
+                      <button
+                        type="submit"
+                        data-testid="company-detail.ask-send"
+                        aria-label={i18n.t("contacts.companies.discussionSend")}
+                        class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface-hover text-text-secondary"
                       >
-                        <ul class="divide-y divide-border-subtle">
-                          <For each={shownPeople()}>
-                            {(p) => (
-                              <li>
-                                <button
-                                  type="button"
-                                  data-testid={`company-person-${p.id}`}
-                                  class="flex w-full items-center gap-3 py-2 text-left text-[13px] hover:bg-surface-hover"
-                                  onClick={() =>
-                                    openTab({
-                                      type: "contact-detail",
-                                      entityId: p.id,
-                                      label: p.name ?? p.email ?? "",
-                                    })
-                                  }
-                                >
-                                  <ContactAvatar
-                                    id={p.id}
-                                    name={p.name}
-                                    email={p.email}
-                                    size="sm"
-                                  />
-                                  <span class="truncate text-text">{p.name ?? p.email}</span>
-                                  <Show when={p.role}>
-                                    <span class="truncate text-text-tertiary">{p.role}</span>
-                                  </Show>
-                                  <Show when={p.isMain}>
-                                    <span class="rounded-full border border-border-subtle px-2 py-0.5 text-[11px] text-text-secondary">
-                                      {i18n.t("contacts.companies.mainContact")}
-                                    </span>
-                                  </Show>
-                                  <span class="ml-auto truncate font-mono text-[12px] text-text-tertiary">
-                                    {p.email}
-                                  </span>
-                                </button>
-                              </li>
-                            )}
-                          </For>
-                        </ul>
-                        <Show when={people().length > PEOPLE_SHOWN}>
-                          <button
-                            type="button"
-                            data-testid="company-detail.people-show-all"
-                            class="mt-2 text-[12px] text-text-secondary hover:text-text"
-                            onClick={() => setShowAllPeople((v) => !v)}
-                          >
-                            {showAllPeople()
-                              ? i18n.t("contacts.companies.showFewer")
-                              : i18n.t("contacts.companies.showAll", { count: people().length })}
-                          </button>
-                        </Show>
-                      </Show>
-                    </Show>
-                  </section>
-
-                  <section class="mt-10" data-testid="company-detail.deals">
-                    <SectionHeading eyebrow={i18n.t("contacts.companies.deals")} />
-                    <Show
-                      when={c().openDeal}
-                      fallback={
-                        <p class="py-3 text-[12.5px] text-text-tertiary">
-                          {i18n.t("contacts.companies.noOpenDeal")}
-                        </p>
-                      }
-                    >
-                      {(deal) => (
-                        <button
-                          type="button"
-                          data-testid={`company-deal-${deal().taskId}`}
-                          class="flex w-full items-center py-2 text-left text-[13px] text-text hover:bg-surface-hover"
-                          onClick={() =>
-                            openTab({
-                              type: "projects:task",
-                              entityId: deal().taskId,
-                              label: dealText(deal(), i18n),
-                            })
-                          }
-                        >
-                          {dealText(deal(), i18n)}
-                        </button>
-                      )}
-                    </Show>
-                  </section>
-
-                  <For each={sections()}>
-                    {(section) => (
-                      <section class="mt-10" data-testid={`company-detail.section-${section.key}`}>
-                        <SectionHeading eyebrow={sectionTitle(section.key, section.entries)} />
-                        <div class="mt-2 space-y-3">
-                          <For each={section.entries}>
-                            {(entry) => <SlotEntryView entry={entry} entityId={props.entityId} />}
-                          </For>
-                        </div>
-                      </section>
-                    )}
-                  </For>
-
-                  <section class="mt-10" data-testid="company-detail.timeline">
-                    <SectionHeading eyebrow={i18n.t("contacts.companies.timeline")} />
-                    <p class="py-3 text-[12.5px] text-text-tertiary">
-                      {i18n.t("contacts.companies.timelineSoon")}
-                    </p>
-                  </section>
+                        <ArrowUp size={16} />
+                      </button>
+                    </form>
+                  </Show>
                 </div>
               </div>
 
-              <aside
-                data-testid="company-detail.discussion-pane"
-                style={{ "padding-bottom": DISCUSSION_RAIL_BOTTOM_PAD }}
-                class="border-t border-border-subtle bg-surface/30 px-4 pt-6 @[600px]:px-5 @[860px]:flex @[860px]:min-h-0 @[860px]:w-[380px] @[860px]:flex-col @[860px]:overflow-hidden @[860px]:border-t-0 @[860px]:border-l"
-              >
-                <section
-                  data-testid="company-detail.discussion"
-                  class="flex min-h-0 flex-col gap-3 @[860px]:flex-1"
+              <Show when={!phone() || phoneTab() === "discussion"}>
+                <aside
+                  data-testid="company-detail.discussion-pane"
+                  style={{ "padding-bottom": DISCUSSION_RAIL_BOTTOM_PAD }}
+                  class="border-t border-border-subtle bg-surface/30 px-4 pt-6 @[600px]:px-5 @[860px]:flex @[860px]:min-h-0 @[860px]:w-[380px] @[860px]:flex-col @[860px]:overflow-hidden @[860px]:border-t-0 @[860px]:border-l"
                 >
-                  <h3 class="text-[11px] uppercase tracking-[0.04em] text-text-tertiary">
-                    {i18n.t("contacts.companies.discussion")}
-                  </h3>
-                  <p class="text-[12px] text-text-tertiary">
-                    {i18n.t("contacts.companies.discussionHint", { name: c().name })}
-                  </p>
-                  <Show
-                    when={discussionId()}
-                    fallback={
-                      <Show when={discussionFailed()}>
-                        <p
-                          data-testid="company-discussion.unavailable"
-                          class="py-2 text-[12.5px] text-text-tertiary"
-                        >
-                          {i18n.t("contacts.companies.discussionUnavailable")}
-                        </p>
-                      </Show>
-                    }
+                  <section
+                    data-testid="company-detail.discussion"
+                    class="flex min-h-0 flex-col gap-3 @[860px]:flex-1"
                   >
-                    {(threadId) => (
-                      <div data-testid="company-detail.thread" class="flex min-h-0 flex-1 flex-col">
-                        <Suspense>
-                          <EntityDiscussion
-                            threadId={threadId()}
-                            testId="company-discussion"
-                            emptyText={i18n.t("contacts.companies.discussionEmpty")}
-                            placeholder={i18n.t("contacts.companies.discussionPlaceholder", {
-                              name: c().name,
-                            })}
-                            sendLabel={i18n.t("contacts.companies.discussionSend")}
-                          />
-                        </Suspense>
-                      </div>
-                    )}
-                  </Show>
-                </section>
-              </aside>
+                    <h3 class="text-[11px] uppercase tracking-[0.04em] text-text-tertiary">
+                      {i18n.t("contacts.companies.discussion")}
+                    </h3>
+                    <p class="text-[12px] text-text-tertiary">
+                      {i18n.t("contacts.companies.discussionHint", { name: c().name })}
+                    </p>
+                    <Show
+                      when={discussionId()}
+                      fallback={
+                        <Show when={discussionFailed()}>
+                          <p
+                            data-testid="company-discussion.unavailable"
+                            class="py-2 text-[12.5px] text-text-tertiary"
+                          >
+                            {i18n.t("contacts.companies.discussionUnavailable")}
+                          </p>
+                        </Show>
+                      }
+                    >
+                      {(threadId) => (
+                        <div
+                          data-testid="company-detail.thread"
+                          class="flex min-h-0 flex-1 flex-col"
+                        >
+                          <Suspense>
+                            <EntityDiscussion
+                              threadId={threadId()}
+                              testId="company-discussion"
+                              emptyText={i18n.t("contacts.companies.discussionEmpty")}
+                              placeholder={i18n.t("contacts.companies.discussionPlaceholder", {
+                                name: c().name,
+                              })}
+                              sendLabel={i18n.t("contacts.companies.discussionSend")}
+                              prefill={prefill()}
+                            />
+                          </Suspense>
+                        </div>
+                      )}
+                    </Show>
+                  </section>
+                </aside>
+              </Show>
 
               <CompanyShareDialog
                 companyId={props.entityId}
@@ -574,6 +827,9 @@ const Header: Component<{
   company: Company
   managerName: string | null
   managerAway: string | null
+  /** The in-place picker, for a reader who may change the company. */
+  managerControl: unknown
+  managerNote: string | null
   visibility: "team" | "some" | "only-you"
   phone: boolean
   actions: unknown
@@ -606,23 +862,35 @@ const Header: Component<{
           </p>
           <p data-testid="company-detail.manager" class="mt-2 text-[12.5px] text-text-secondary">
             <span class="text-text-tertiary">{i18n.t("contacts.companies.accountManager")}</span>{" "}
-            <Show
-              when={props.managerName}
-              fallback={<span>{i18n.t("contacts.companies.noAccountManager")}</span>}
-            >
-              <span class="text-text">{props.managerName}</span>
-              <Show when={props.managerAway}>
-                {(until) => (
-                  <span class="text-text-tertiary">
-                    {" · "}
-                    {i18n.t("contacts.companies.awayUntil", {
-                      date: awayDay(until(), i18n.locale()),
-                    })}
-                  </span>
-                )}
+            <Show when={!props.managerControl} fallback={props.managerControl as never}>
+              <Show
+                when={props.managerName}
+                fallback={<span>{i18n.t("contacts.companies.noAccountManager")}</span>}
+              >
+                <span class="text-text">{props.managerName}</span>
+                <Show when={props.managerAway}>
+                  {(until) => (
+                    <span class="text-text-tertiary">
+                      {" · "}
+                      {i18n.t("contacts.companies.awayUntil", {
+                        date: awayDay(until(), i18n.locale()),
+                      })}
+                    </span>
+                  )}
+                </Show>
               </Show>
             </Show>
           </p>
+          <Show when={props.managerNote}>
+            {(note) => (
+              <p
+                data-testid="company-detail.manager-note"
+                class="mt-1 text-[12px] text-text-tertiary"
+              >
+                {note()}
+              </p>
+            )}
+          </Show>
           <p class="mt-2 flex flex-wrap gap-1.5 text-[11px]">
             <span
               data-testid="company-detail.visibility"
@@ -867,6 +1135,163 @@ const MergeStrip: Component<{ company: Company; onClose: () => void }> = (props)
         )}
       </Show>
     </div>
+  )
+}
+
+// ── Duplicate: merge the other one into this company, or keep them apart ──
+
+const DuplicatePanel: Component<{
+  company: Company
+  duplicate: CompanyDuplicate
+  canWrite: boolean
+  onMerged: () => void
+  onKept: (duplicate: CompanyDuplicate) => void
+}> = (props) => {
+  const i18n = useI18n()
+  const api = useApi()
+  const [other] = createResource(
+    () => props.duplicate.id,
+    async (id) => {
+      try {
+        const res = await api.get<Company | { data: Company }>(`/contacts/companies/${id}`)
+        return res && "data" in (res as object) ? (res as { data: Company }).data : (res as Company)
+      } catch {
+        return null
+      }
+    },
+  )
+  // "Merge into": held 8 s with Undo. Closing the page in that time merges nothing.
+  const [holding, setHolding] = createSignal(false)
+  const [failed, setFailed] = createSignal<string | null>(null)
+  let timer: ReturnType<typeof setTimeout> | undefined
+  onCleanup(() => {
+    if (timer) clearTimeout(timer)
+  })
+
+  function startMerge(): void {
+    setFailed(null)
+    setHolding(true)
+    timer = setTimeout(() => {
+      timer = undefined
+      mergeCompanyInto(api as never, props.duplicate.id, props.company.id)
+        .then(() => props.onMerged())
+        .catch(() => setFailed(i18n.t("contacts.companies.mergeFailed")))
+        .finally(() => setHolding(false))
+    }, MERGE_HOLD_MS)
+  }
+
+  function undoMerge(): void {
+    if (timer) clearTimeout(timer)
+    timer = undefined
+    setHolding(false)
+  }
+
+  async function keepSeparate(): Promise<void> {
+    setFailed(null)
+    const pair = { ...props.duplicate, self: props.company.id }
+    try {
+      await markCompaniesNotSame(api as never, pair)
+      props.onKept(props.duplicate)
+    } catch {
+      setFailed(i18n.t("contacts.companies.notSameFailed"))
+    }
+  }
+
+  const reason = () =>
+    props.duplicate.signal === "same_domain"
+      ? i18n.t("contacts.companies.duplicateSameDomain")
+      : props.duplicate.signal === "same_name"
+        ? i18n.t("contacts.companies.duplicateSameName")
+        : i18n.t("contacts.companies.duplicateBoth")
+
+  const otherLine = () => {
+    // Read only once ready: a pending read must never suspend the page.
+    const o = other.state === "ready" ? other() : null
+    if (!o) return null
+    const people =
+      o.peopleCount === 1
+        ? i18n.t("contacts.companies.personOne")
+        : i18n.t("contacts.companies.personMany", { count: o.peopleCount })
+    const deal = o.openDeal ? dealText(o.openDeal, i18n) : i18n.t("contacts.companies.noDeal")
+    return `${people} · ${deal}`
+  }
+
+  return (
+    <section
+      data-testid="company-detail.duplicate"
+      class="mt-8 rounded-md border border-border-subtle bg-surface/40 px-4 py-3"
+    >
+      <p class="flex items-center gap-2 text-[13.5px] text-text">
+        <GitMerge size={14} class="text-text-tertiary" />
+        {i18n.t("contacts.companies.duplicateTitle", { name: props.duplicate.name })}
+      </p>
+      <p class="mt-1 text-[12.5px] text-text-secondary">{reason()}</p>
+      <Show when={otherLine()}>
+        {(line) => (
+          <p
+            data-testid="company-detail.duplicate-other"
+            class="mt-1 text-[12px] text-text-tertiary"
+          >
+            {props.duplicate.name}: {line()}
+          </p>
+        )}
+      </Show>
+      <Show when={props.canWrite}>
+        <Show
+          when={holding()}
+          fallback={
+            <div class="mt-3 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                data-testid="company-detail.duplicate-merge"
+                onClick={startMerge}
+              >
+                {i18n.t("contacts.companies.mergeInto", { name: props.company.name })}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                data-testid="company-detail.duplicate-keep"
+                onClick={() => void keepSeparate()}
+              >
+                {i18n.t("contacts.companies.keepSeparate")}
+              </Button>
+            </div>
+          }
+        >
+          <div
+            data-testid="company-detail.duplicate-holding"
+            class="mt-3 flex items-center justify-between gap-3 text-[12.5px] text-text-secondary"
+          >
+            <span>
+              {i18n.t("contacts.companies.mergeHolding", {
+                source: props.duplicate.name,
+                target: props.company.name,
+              })}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              data-testid="company-detail.duplicate-undo"
+              onClick={undoMerge}
+            >
+              {i18n.t("contacts.companies.undo")}
+            </Button>
+          </div>
+        </Show>
+      </Show>
+      <Show when={failed()}>
+        {(f) => (
+          <p data-testid="company-detail.duplicate-failed" class="mt-2 text-[12px] text-danger">
+            {f()}
+          </p>
+        )}
+      </Show>
+    </section>
   )
 }
 

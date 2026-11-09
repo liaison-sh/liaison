@@ -95,7 +95,8 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     const full = join(dir, name)
     if (statSync(full).isDirectory()) {
-      if (["node_modules", "tests", "__fixtures__", "test-helpers"].includes(name)) continue
+      if (["node_modules", "tests", "__tests__", "__fixtures__", "test-helpers"].includes(name))
+        continue
       sourceFiles(full, out)
     } else if (/\.tsx?$/.test(name) && !/\.test\.tsx?$|test-fixtures|test-helpers/.test(name)) {
       out.push(full)

@@ -583,9 +583,7 @@ export interface RunAgentStreamParams {
    * provider each step, while the full `tools` set stays executable (deferred
    * tools unlocked mid-run by tool_search are callable on the next step).
    */
-  prepareStep?: (
-    options: unknown,
-  ) =>
+  prepareStep?: (options: unknown) =>
     | {
         activeTools?: string[]
         toolChoice?: "none" | "required"

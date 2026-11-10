@@ -280,7 +280,8 @@ describe("an announced action with no tool call gets one nudge", () => {
     executed.length = 0
     const plan =
       "The user wants a weekly Monday digest of open tickets.\n\nLet's do the scope lookup and then create."
-    const again = "Let me call routine_tool_scopes for tickets__search. Then create_routine. Let me do that."
+    const again =
+      "Let me call routine_tool_scopes for tickets__search. Then create_routine. Let me do that."
     const { reply, calls, firstToolChoice } = await turn(threadId, [
       answer(plan),
       answer(again),

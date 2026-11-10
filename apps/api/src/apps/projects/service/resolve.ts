@@ -416,7 +416,13 @@ export async function searchProjectsForTool(
   const projectItems = projectsResult.items.map((p) => ({ type: "project" as const, ...p }))
   const q = (input.query ?? "").trim()
   const taskItems = q
-    ? await searchTasksByTitle(tx as never, orgId, q, input.limit ?? 25, input.archived ?? "exclude")
+    ? await searchTasksByTitle(
+        tx as never,
+        orgId,
+        q,
+        input.limit ?? 25,
+        input.archived ?? "exclude",
+      )
     : []
   // `search` is a relevance FINDER (cursor-paginated by PROJECTS, with task-title
   // matches appended); totalCount is the count of matching PROJECTS — the

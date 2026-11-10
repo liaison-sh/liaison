@@ -612,6 +612,12 @@ describe("kernel tool registration", () => {
     expect(typeof entry!.handler).toBe("function")
   })
 
+  it("registers approval_withdraw under the approvals read scope: a requester who decides nothing can retract their own", () => {
+    const entry = toolRegistry.get([ORG_ID, "kernel", "approval_withdraw"])
+    expect(entry).toBeDefined()
+    expect(entry!.requiredScopes).toEqual(["kernel:approvals:read"])
+  })
+
   it("exactly the catalog, capability and navigation tools are taint-free: their output holds no org record", () => {
     const taintFree = Array.from(toolRegistry.entries())
       .filter(([[org, app], def]) => org === ORG_ID && app === "kernel" && def.taintFree === true)

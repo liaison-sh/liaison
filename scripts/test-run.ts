@@ -1360,6 +1360,9 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
         ? fileArg
         : [
             "src/mutations.test.ts",
+            // The month-end run: drafts, flags, the card, approve and undo, the legal dates (pure store).
+            "src/recurring/draft-job.test.ts",
+            "src/recurring/run-card.test.ts",
             // Timeline rows (issued, paid, credited), paged past the app database's page size (pure store).
             "src/activity.test.ts",
             // The invoicing.document import kind (bundle export, create-only).

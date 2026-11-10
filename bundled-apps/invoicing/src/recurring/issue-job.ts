@@ -1,0 +1,202 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+//
+// The issue job of a month-end run, and the one-item issue it calls.
+//
+// From 08:00 in the issuer's time zone on the run's issue day, and until its last issue day, the
+// job issues the approved items in order, each through `recurring_item_issue`, its own atomic
+// tool call: a failed item rolls back alone (its number is never taken) and the others keep
+// theirs. A run past its last issue day issues nothing: it is late, and a person decides.
+//
+// The issued document is a new row (issuing a draft writes a document and deletes the draft), so
+// the item follows it: the item is claimed inside the item's transaction (a conditional update
+// that only one transaction can win), the draft's `external_ref` moves to the issued document with
+// its change log, and the item points at the issued document.
+import { issueRunDraft } from "../mutations/invoice-issue"
+import type { ErrorEnvelope } from "../mutations/shared"
+import { dayOf, draftLines, itemContentHash, jsonOf, type Row, type RunCtx, runItems, stageRunCard, workingDayFrom } from "./run-card"
+
+/** Items a tick starts at most. */
+export const ITEMS_PER_TICK = 25
+/** The item tool's own timeout (manifest `recurring_item_issue.timeoutMs`). */
+export const ITEM_TIMEOUT_MS = 20_000
+/** The job's timeout (manifest `recurring-issue.timeoutMs`): 25 items at their full timeout fit. */
+export const ISSUE_JOB_TIMEOUT_MS = 600_000
+/** The hour, in the issuer's zone, from which a run's issue day issues. */
+export const ISSUE_HOUR = 8
+
+const fail = (code: string, message: string): ErrorEnvelope => ({ status: "error", error: { code, message } })
+
+/** Issue one approved item of a run. The kernel runs it in one transaction (`atomic: true`). */
+export async function recurringItemIssue(
+  ctx: RunCtx,
+  input: { item_id: string },
+): Promise<{ status: "completed"; item_id: string; document_id: string; number: string; message: string } | ErrorEnvelope> {
+  // The claim: the item row is locked first (a write that changes nothing, held until this
+  // transaction ends), then read again. A second transaction waits on that lock, then reads the
+  // item issued and stops here, before any number is taken.
+  const before = (await ctx.db.findOne("recurring_run_items", input.item_id)) as Row | null
+  if (!before) return fail("item_not_found", `No month-end run item ${input.item_id}.`)
+  await ctx.db.update("recurring_run_items", input.item_id, { run_id: before.run_id })
+  const item = (await ctx.db.findOne("recurring_run_items", input.item_id)) as Row
+  if (item.state !== "approved") {
+    return fail(
+      item.state === "issued" ? "already_issued" : "item_not_approved",
+      item.state === "issued"
+        ? `Item ${input.item_id} is already issued as ${String(item.issued_number ?? item.document_id)}; nothing was issued again.`
+        : `Item ${input.item_id} is ${String(item.state)}, not approved, so nothing was issued and no number was used.`,
+    )
+  }
+  await ctx.db.update("recurring_run_items", input.item_id, { state: "issued" })
+  const run = (await ctx.db.findOne("recurring_runs", String(item.run_id))) as Row | null
+  if (!run || (run.status !== "issuing" && run.status !== "approved")) {
+    throw new Error(`run_not_issuing: the run of item ${input.item_id} is not issuing; nothing was issued`)
+  }
+  const draftId = String(item.document_id)
+  const draft = (await ctx.db.findOne("documents", draftId)) as Row | null
+  if (!draft || draft.status !== "draft") throw new Error(`draft_missing: draft ${draftId} of item ${input.item_id} is gone; nothing was issued`)
+  // The backstop: a draft changed since its approval stays a draft and asks again.
+  const hash = itemContentHash({ ...item, state: "approved" }, draft, await draftLines(ctx, draftId))
+  if (hash !== item.approved_hash) {
+    await ctx.db.update("recurring_run_items", input.item_id, { state: "waiting_reapproval", approved_hash: null })
+    return fail(
+      "changed_since_approval",
+      `Draft ${draftId} changed after its approval, so it was not issued and no number was used. It waits for a new approval.`,
+    )
+  }
+  const externalRef = String(draft.external_ref ?? "")
+  // The issued document takes the period's key; the draft gives it up first (the key is unique).
+  await ctx.db.update("documents", draftId, { external_ref: null })
+  const carried = jsonOf<Array<Record<string, unknown>>>(draft.lifecycle_log, [])
+  const issued = await issueRunDraft(ctx, { draft_id: draftId, external_ref: externalRef, lifecycle_log: carried })
+  if (issued.status !== "completed") {
+    // Thrown, so the transaction rolls back whole: the claim, the cleared key, any number.
+    const why = issued.status === "error" ? `${issued.error.code}: ${issued.error.message}` : "not_issued: the issue asked for an approval"
+    throw new Error(why)
+  }
+  await ctx.db.update("recurring_run_items", input.item_id, { document_id: issued.document_id, issued_number: issued.number, failure: null })
+  if (item.schedule_id) await ctx.db.update("recurring_schedules", String(item.schedule_id), { last_document_id: issued.document_id })
+  return {
+    status: "completed",
+    item_id: input.item_id,
+    document_id: issued.document_id,
+    number: issued.number,
+    message: `Issued ${issued.number} (document ${issued.document_id}) from draft ${draftId}.`,
+  }
+}
+
+interface RunWindow {
+  /** Before 08:00 on the issue day. */
+  early: boolean
+  /** After the last issue day. */
+  late: boolean
+  today: string
+  hour: number
+}
+
+async function windowOf(ctx: RunCtx, run: Row): Promise<RunWindow | null> {
+  const issuer = (await ctx.db.findOne("issuer_profiles", String(run.issuer_profile_id))) as Row | null
+  if (!issuer) return null
+  const now = await ctx.time.civil({ timezone: String(issuer.timezone || "UTC") })
+  const issueOn = dayOf(run.issue_on) as string
+  const lastDay = dayOf(run.latest_issue_on) as string
+  return {
+    early: now.date < issueOn || (now.date === issueOn && now.hour < ISSUE_HOUR),
+    late: now.date > lastDay,
+    today: now.date,
+    hour: now.hour,
+  }
+}
+
+async function issueRun(ctx: RunCtx, run: Row, started: number): Promise<{ issued: number; failed: number; more: boolean }> {
+  const runId = String(run.id)
+  if (run.status === "approved") {
+    await ctx.db.updateMany("recurring_runs", { where: { issuer_profile_id: run.issuer_profile_id, issue_on: dayOf(run.issue_on), status: "approved" }, data: { status: "issuing" } })
+  }
+  let issued = 0
+  let failed = 0
+  let started_items = 0
+  const pending = (await runItems(ctx, runId)).filter((i) => i.state === "approved")
+  for (const item of pending) {
+    if (started_items >= ITEMS_PER_TICK) break
+    // Start an item only while its full timeout still fits in the job's.
+    if (Date.now() - started + ITEM_TIMEOUT_MS > ISSUE_JOB_TIMEOUT_MS - 5_000) break
+    started_items += 1
+    const env = await ctx.executeTool("invoicing:recurring_item_issue", { item_id: String(item.id) })
+    const result = env.status === "completed" ? (env.result as { status?: string; error?: { code: string; message: string } }) : null
+    if (result?.status === "completed") {
+      issued += 1
+      continue
+    }
+    const error = env.status === "error" ? env.error : (result?.error ?? { code: "not_issued", message: "the item was not issued" })
+    if (error.code === "already_issued") continue
+    failed += 1
+    const now = (await ctx.db.findOne("recurring_run_items", String(item.id))) as Row | null
+    if (now?.state === "approved") {
+      await ctx.db.update("recurring_run_items", String(item.id), { state: "failed", failure: { code: error.code, message: error.message } })
+    }
+    if (ctx.emit) {
+      await ctx.emit({
+        entity: "recurring_run",
+        action: "partial",
+        entityId: runId,
+        data: { run_id: runId, item_id: String(item.id), document_id: String(item.document_id), code: error.code, reason: error.message, resolved: false },
+      })
+    }
+  }
+  const items = await runItems(ctx, runId)
+  const left = items.filter((i) => i.state === "approved").length
+  const stuck = items.filter((i) => i.state === "failed" || i.state === "waiting_reapproval").length
+  if (left === 0) {
+    const status = stuck > 0 ? "partial" : "issued"
+    await ctx.db.update("recurring_runs", runId, { status })
+    if (status === "issued" && ctx.emit) {
+      await ctx.emit({ entity: "recurring_run", action: "issued", entityId: runId, data: { run_id: runId, issue_on: dayOf(run.issue_on), resolved: true } })
+    }
+  }
+  return { issued, failed, more: left > 0 }
+}
+
+/** The run of a rejected card asks again on the issue day from 08:00, or the next working day. */
+async function restageRejected(ctx: RunCtx, run: Row, w: RunWindow): Promise<boolean> {
+  const issueOn = dayOf(run.issue_on) as string
+  const askOn = workingDayFrom(issueOn)
+  if (w.today < askOn || (w.today === askOn && w.hour < ISSUE_HOUR)) return false
+  const claim = await ctx.db.updateMany("recurring_runs", {
+    where: { issuer_profile_id: run.issuer_profile_id, issue_on: dayOf(run.issue_on), status: "rejected" },
+    data: { status: "drafted", approval_request_id: null },
+  })
+  if (claim.count !== 1) return false
+  await stageRunCard(ctx, String(run.id))
+  return true
+}
+
+export async function recurringIssueJob(ctx: RunCtx): Promise<{ status: "ok"; issued: number; failed: number; message: string }> {
+  const started = Date.now()
+  const runs = (await ctx.db.findMany("recurring_runs", {
+    where: { status: { in: ["approved", "issuing", "rejected"] } },
+    orderBy: { issue_on: "asc" },
+    limit: 50,
+  })) as Row[]
+  let issued = 0
+  let failed = 0
+  for (const run of runs) {
+    const w = await windowOf(ctx, run)
+    if (!w) continue
+    if (w.late) continue // the legal-date job marks it late; nothing issues after the last day
+    if (run.status === "rejected") {
+      await restageRejected(ctx, run, w)
+      continue
+    }
+    if (w.early) continue
+    const r = await issueRun(ctx, run, started)
+    issued += r.issued
+    failed += r.failed
+    if (r.more) break // the next tick resumes where this one stopped
+  }
+  return {
+    status: "ok",
+    issued,
+    failed,
+    message: issued + failed === 0 ? "Nothing to issue now." : `Issued ${issued} invoice${issued === 1 ? "" : "s"}; ${failed} stayed drafts.`,
+  }
+}

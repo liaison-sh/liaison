@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.20.66",
+  "version": "0.20.67",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1687,6 +1687,10 @@
   "outsideTextFields": ["buyer", "supplier", "counterparty_name", "counterparty_address", "counterparty_shipping_name", "counterparty_shipping_address", "counterparty_email", "po_number", "customer_reference", "notes", "description", "customs_description", "billing_line1", "billing_line2", "billing_city", "customer", "email", "supplier_name", "invoice_number", "status_reason", "history", "filename", "lifecycle_reason", "lifecycle_log", "last_error", "registry_name", "registry_line1", "registry_city", "contact_name", "vies_name", "vies_address", "buyer_legal_name", "legal_name", "name", "address", "sigle", "enseignes", "line1", "city", "summary", "blocked_on", "label", "refusal", "buyer_refusal"],
   "activitySources": [{"tool": "activity_read", "scope": "invoicing:documents:read", "label": "Invoices", "filterKey": "invoicing"}],
   "tools": {
+    "recurring_run_get": {"description": "Read a month-end run: its state, issue and last days, and each row with its draft_id, amounts, account manager, latest change and flags. Omit run_id for the latest run.", "searchKeywords": ["mensuel", "récurrent", "month-end"], "requiredScopes": ["invoicing:documents:read"], "handler": "recurringRunGetHandler", "readOnly": true, "params": {"type": "object", "properties": {"run_id": {"type": "string"}}}},
+    "recurring_run_issue": {"summarizer": "summarizeRecurringRunIssue", "description": "Approve a month-end run's card: records each row as approved and takes no number; the invoices issue on the issue day from 08:00. Always waits for a person.", "searchKeywords": ["mensuel", "approuver", "récurrent", "month-end"], "requiredScopes": ["invoicing:documents:write"], "handler": "recurringRunIssueHandler", "preflight": "recurringRunIssuePreflightHandler", "timeoutMs": 30000, "gated": true, "noAutoApprove": true, "approvalImpact": "external", "approvalDedupeKeyParam": "run_id", "editableFields": [], "editWith": ["drafts_update", "drafts_create", "drafts_discard"], "writesToTable": "app_invoicing.recurring_runs", "params": {"type": "object", "properties": {"run_id": {"type": "string"}, "items": {"type": "array", "items": {"type": "object", "properties": {"item_id": {"type": "string"}, "document_id": {"type": "string"}, "content_hash": {"type": "string"}, "total_minor": {"type": "string"}}, "required": ["item_id", "document_id", "content_hash", "total_minor"]}}}, "required": ["run_id"]}, "approvalCard": {"summary": "Issue the month-end run {{params.run_id}}"}},
+    "recurring_run_unapprove": {"summarizer": "summarizeRecurringRunUnapprove", "description": "Undo a month-end run's approval before its first number: the run returns to drafted, edits are kept, and a new card asks again.", "searchKeywords": ["annuler", "mensuel", "récurrent", "undo"], "requiredScopes": ["invoicing:documents:write"], "handler": "recurringRunUnapproveHandler", "timeoutMs": 30000, "conditionalGate": true, "externalEffect": true, "approvalImpact": "external", "writesToTable": "app_invoicing.recurring_runs", "params": {"type": "object", "properties": {"run_id": {"type": "string"}}, "required": ["run_id"]}, "approvalCard": {"summary": "Undo the approval of month-end run {{params.run_id}}"}},
+    "recurring_item_issue": {"description": "Issue one approved row of a month-end run. Called by the run's issue job only.", "requiredScopes": ["invoicing:documents:write"], "handler": "recurringItemIssueHandler", "agentVisible": false, "atomic": true, "timeoutMs": 20000, "writesToTable": "app_invoicing.documents", "params": {"type": "object", "properties": {"item_id": {"type": "string"}}, "required": ["item_id"], "additionalProperties": false}},
     "activity_read": {"description": "A company's or a contact's documents issued, paid and credited, newest first, for their timeline. Never drafts. Read by the kernel.", "readOnly": true, "agentVisible": false, "timeoutMs": 2000, "requiredScopes": ["invoicing:documents:read"], "handler": "activityReadHandler", "params": {"type": "object", "properties": {"contactIds": {"type": "array", "items": {"type": "string"}}, "companyId": {"type": ["string", "null"]}, "dealIds": {"type": "array", "items": {"type": "string"}}, "before": {"type": ["object", "null"]}, "limit": {"type": "integer"}, "prefix": {"type": "string"}}}},
     "einvoicing_settings_values": {
       "description": "The settings page's own read of the four e-invoicing fields (platform, cut-over date, send and booking switches), in the shape einvoicing_settings_set takes back. Not for agents (einvoicing_settings_get is).",
@@ -5910,6 +5914,11 @@
       "shopify/draft_order:deleted": "onShopifyDraftOrderDeleted"
     },
     "emits": [
+      "recurring_run:drafted",
+      "recurring_run:issued",
+      "recurring_run:partial",
+      "recurring_run:due",
+      "recurring_run:late",
       "einvoicing:transmission_refused",
       "einvoicing:transmission_failed",
       "einvoicing:not_in_directory",
@@ -5967,6 +5976,9 @@
   "attention": {
     "groupLabel": { "label": "Invoicing", "labelKey": "kernel.homeGroupInvoicing" },
     "translations": [
+      {"event": "recurring_run:partial", "kind": "invoicing:recurring_run.partial", "urgency": 70, "summary": "Draft {{data.document_id}} of the month-end run was not issued ({{data.code}}): {{data.reason}} It stays a draft and used no number.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
+      {"event": "recurring_run:due", "kind": "invoicing:recurring_run.due", "urgency": 85, "summary": "The month-end run for {{data.period}} waits for approval. {{data.when}}: invoices must issue by {{data.latest_issue_on}}.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
+      {"event": "recurring_run:late", "kind": "invoicing:recurring_run.late", "urgency": 95, "summary": "The month-end run for {{data.period}} is late: its last issue day {{data.latest_issue_on}} has passed and nothing was issued by itself. Decide what to issue.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {
         "event": "einvoicing:transmission_refused",
         "kind": "invoicing:einvoicing.transmission_refused",
@@ -6246,6 +6258,9 @@
     ]
   },
   "jobs": {
+    "recurring-draft": {"handler": "recurringDraftJobHandler", "atomic": false, "runsFor": {"rows": {"entity": "recurring_schedules", "where": {"status": {"in": ["active", "paused"]}}}}, "schedule": "0 * * * *", "timeoutMs": 120000},
+    "recurring-issue": {"handler": "recurringIssueJobHandler", "atomic": false, "runsFor": {"rows": {"entity": "recurring_runs", "where": {"status": {"in": ["approved", "issuing", "rejected"]}}}}, "schedule": "*/5 * * * *", "timeoutMs": 600000},
+    "recurring-legal-date": {"handler": "recurringLegalDateJobHandler", "atomic": false, "runsFor": {"rows": {"entity": "recurring_runs", "where": {"status": {"in": ["drafted", "rejected", "approved", "issuing", "late"]}}}}, "schedule": "0 6 * * *", "timeoutMs": 120000},
     "einvoicing-transmit": {
       "handler": "einvoicingTransmitJobHandler",
       "atomic": false,

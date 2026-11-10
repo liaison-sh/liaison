@@ -38,6 +38,11 @@ import {
   recurringScheduleCreate,
   recurringScheduleUpdate,
 } from "./recurring/tools"
+import { recurringDraftJob } from "./recurring/draft-job"
+import { recurringIssueJob, recurringItemIssue } from "./recurring/issue-job"
+import { recurringLegalDateJob } from "./recurring/legal-date-job"
+import { type RunCtx, recurringRunIssue, recurringRunIssuePreflight, recurringRunUnapprove } from "./recurring/run-card"
+import { recurringRunGet } from "./recurring/run-get"
 import {
   contactRelationshipsGet,
   deferredList,
@@ -664,3 +669,16 @@ export const recurringListHandler = (
   params: Parameters<typeof recurringList>[1],
   ctx: Parameters<typeof recurringList>[0],
 ) => recurringList(ctx, params)
+
+// --- The month-end run (draft, card, approve, issue, legal date; see recurring/*-job.ts) ---
+export const recurringDraftJobHandler = (_payload: unknown, ctx: RunCtx) => recurringDraftJob(ctx)
+export const recurringIssueJobHandler = (_payload: unknown, ctx: RunCtx) => recurringIssueJob(ctx)
+export const recurringLegalDateJobHandler = (_payload: unknown, ctx: RunCtx) => recurringLegalDateJob(ctx)
+export const recurringRunIssueHandler = (params: Parameters<typeof recurringRunIssue>[1], ctx: RunCtx) =>
+  recurringRunIssue(ctx, params)
+export const recurringRunUnapproveHandler = (params: Parameters<typeof recurringRunUnapprove>[1], ctx: RunCtx) =>
+  recurringRunUnapprove(ctx, params)
+export const recurringItemIssueHandler = (params: Parameters<typeof recurringItemIssue>[1], ctx: RunCtx) =>
+  recurringItemIssue(ctx, params)
+export const recurringRunGetHandler = (params: Parameters<typeof recurringRunGet>[1], ctx: RunCtx) => recurringRunGet(ctx, params)
+export const recurringRunIssuePreflightHandler = (params: { run_id: string }, ctx: RunCtx) => recurringRunIssuePreflight(ctx, params)

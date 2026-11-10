@@ -2,6 +2,7 @@
 //
 // Invoicing mutations: drafts (create, update, discard).
 
+import { runItemDraftRefusal } from "../recurring/run-card"
 import type { DraftLine, DraftLineInput } from "../issue"
 import { type BuyerVatFacts, checkBuyerVat, consumerDeclaredAgainstEvidence } from "../buyer-vat"
 import { asHandlerSummary } from "../approval-cards"
@@ -565,6 +566,10 @@ export async function draftsDiscard(
   ctx: MutationsCtx,
   input: { draft_id: string },
 ): Promise<{ ok: true }> {
+  // A month-end run's draft is taken out through its run, never deleted under it.
+  const draft = (await ctx.db.findOne("documents", input.draft_id)) as Record<string, unknown> | null
+  const runRefusal = await runItemDraftRefusal(ctx, draft, "drafts_discard")
+  if (runRefusal) throw new Error(`${runRefusal.error.code}: ${runRefusal.error.message}`)
   await deleteDraftRow(ctx.db, input.draft_id)
   return { ok: true }
 }

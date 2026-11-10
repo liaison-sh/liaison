@@ -1996,6 +1996,13 @@
       "when": 1900003367000,
       "tag": "0283_reapply_seeds_as_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 285,
+      "version": "7",
+      "when": 1900003368000,
+      "tag": "0284_kernel_member_tier_dashboards",
+      "breakpoints": true
     }
   ]
 }

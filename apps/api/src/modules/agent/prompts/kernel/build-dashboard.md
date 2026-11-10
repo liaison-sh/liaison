@@ -1,8 +1,16 @@
 ---
 name: build-dashboard
 type: skill
-description: Build a dashboard, chart, KPI or report from the org's data (sales by day, orders, top products).
+description: Show, open or build a dashboard, chart, KPI or report from the org's data (sales by day, orders, top products). Dashboards are built into Liaison; read this before saying there is none.
 ---
+
+### When someone asks to see a dashboard
+
+Dashboards are built into Liaison (Home, **Dashboards** in the sidebar), not an app: never answer that there is no dashboard app or feature, and never send a text report instead without saying so.
+
+- `kernel__dashboards_list` lists theirs and the org's. Open the one they mean with `kernel__open_app` (below).
+- None yet: say so, and offer to build one now from what they want to follow.
+- No dashboard tool in your catalog (`kernel__tool_search` "dashboard" finds none, or reports them locked): say dashboards exist and that the access `kernel:dashboards:write` is missing. If the person lacks it, offer `kernel__request_scope` for it. If they hold it and you do not, it is missing from your own scopes as an agent: an administrator adds it to your scopes, or their personal agent can build the dashboard.
 
 ### Building a dashboard
 
@@ -30,27 +38,27 @@ To change one: `kernel__dashboards_get` (note its `version`), then `kernel__dash
 - Fields may be dotted paths (`billing.country`). Numbers sent as text (`"12.50"`) are read as numbers.
 - `source.rowsPath` names where the rows are when the result is not a list and has more than one list field.
 - At most 2,000 source rows are read per block. A source that answers a `nextCursor` is read page by page up to that.
-- `width` is 1, 2 or 3 columns; `refreshSec` (60 to 86400) is how long the data is kept before it is read again.
+- `width` is 1, 2 or 3 columns; `refreshSec` (60 to 86400) is how long the data is kept before it is read again, at most 15 minutes whatever the value.
 
 ### One worked block per chart type
 
-The source below is a connector read of a shop's orders; use the tool and params `kernel__dashboards_sources` gave you.
+The source below is a connector read of a shop's orders; use the tool and params `kernel__dashboards_sources` gave you. Params are saved as written: a date in them stays that date on every refresh, so never title a block "last 30 days" over a fixed date; name the range it really covers.
 
 ```
 { "v": 1, "blocks": [
-  { "id": "revenue", "type": "metric", "title": "Revenue, last 30 days", "width": 1,
+  { "id": "revenue", "type": "metric", "title": "Revenue", "width": 1,
     "source": { "kind": "tool", "tool": "api-connector:connector_read",
-                "params": { "connection": "shop", "operation": "orders_list", "params": { "after": "2026-10-08T00:00:00" } } },
+                "params": { "connection": "shop", "operation": "orders_list" } },
     "map": { "value": "total", "agg": "sum", "format": "currency", "currency": "EUR" } },
 
   { "id": "orders", "type": "metric", "title": "Orders", "width": 1,
     "source": { "kind": "tool", "tool": "api-connector:connector_read",
-                "params": { "connection": "shop", "operation": "orders_list", "params": { "after": "2026-10-08T00:00:00" } } },
+                "params": { "connection": "shop", "operation": "orders_list" } },
     "map": { "agg": "count" } },
 
   { "id": "by-day", "type": "line", "title": "Revenue by day", "width": 2,
     "source": { "kind": "tool", "tool": "api-connector:connector_read",
-                "params": { "connection": "shop", "operation": "orders_list", "params": { "after": "2026-10-08T00:00:00" } } },
+                "params": { "connection": "shop", "operation": "orders_list" } },
     "map": { "groupBy": { "field": "date_created", "bucket": "day" }, "y": "total", "agg": "sum", "format": "currency", "currency": "EUR" } },
 
   { "id": "top", "type": "bar", "title": "Top products", "width": 2,

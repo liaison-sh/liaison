@@ -34,15 +34,26 @@ export function dashboardTitle(id: string): string | undefined {
   return titles[id]
 }
 
-/** One dashboard read by its page: its title names the tab, and the list carries it. */
+/**
+ * One dashboard read by its page: its title names the tab, and the list carries it, added when
+ * the list does not have it yet (one the agent just made and opened), so the Home sidebar shows
+ * it without a reload.
+ */
 export function rememberDashboard(d: DashboardSummary): void {
   setTitles(d.id, d.title)
+  const summary: DashboardSummary = {
+    id: d.id,
+    title: d.title,
+    visibility: d.visibility,
+    ownerUserId: d.ownerUserId,
+    ...(d.updatedAt ? { updatedAt: d.updatedAt } : {}),
+  }
   setList((rows) =>
-    rows.some((r) => r.id === d.id)
-      ? sortDashboards(
-          rows.map((r) => (r.id === d.id ? { ...r, title: d.title, visibility: d.visibility } : r)),
-        )
-      : rows,
+    sortDashboards(
+      rows.some((r) => r.id === d.id)
+        ? rows.map((r) => (r.id === d.id ? { ...r, title: d.title, visibility: d.visibility } : r))
+        : [...rows, summary],
+    ),
   )
 }
 

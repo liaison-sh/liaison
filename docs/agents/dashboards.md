@@ -42,8 +42,12 @@ A block that cannot draw says why, and the rest of the dashboard still shows:
 | Scope | What it allows |
 | --- | --- |
 | `kernel:dashboards:write` | Make, change and delete your own personal dashboards. |
-| `kernel:dashboards:share` | Also share your own dashboard with the org, and change or delete your own org dashboards. Members have it by default. |
+| `kernel:dashboards:share` | Also share your own dashboard with the org, and change or delete your own org dashboards. |
 | `kernel:dashboards:admin` | Change or delete any org dashboard, and decide the agent's requests about org dashboards. |
+
+Every member can make dashboards: the **member** role and the **Full Member** role both hold `kernel:dashboards:write` and `kernel:dashboards:share` ([Set up roles](../admin/roles.md)). Only administrators hold `kernel:dashboards:admin` by default; give it to another role to let its people decide the agent's org dashboards.
+
+Your personal agent builds dashboards with your access. A named agent, such as a team's sales or support agent, builds them only when `kernel:dashboards:write` is in its scopes (`agents[].scopes` in the config file, see [Create an agent](create-an-agent.md)), and still only with the access of the person it works for. A named agent can never hold `kernel:dashboards:admin`. Asked for a dashboard without that access, the agent says which access is missing instead of saying dashboards do not exist.
 
 Nobody else sees a personal dashboard, administrators included. Your own changes are never held for approval: your scopes decide. When the **agent** creates an org dashboard, makes one org-visible, or changes or deletes an org dashboard, the change waits for a person who holds `kernel:dashboards:admin`. The approval card lists the title and each block with the tool or collection it reads. A personal dashboard the agent makes for you saves at once.
 
@@ -60,7 +64,7 @@ A block reads at most 2,000 rows from its source, and shows at most 100 rows, ba
 
 ## How long figures are kept
 
-A block's figures are kept for a minute, or for the block's own interval, set by whoever built it (at most 15 minutes, whatever the interval). They are kept per person and per set of access rights, so a change to your access is never answered with figures read under the old one. A block runs at most four sources at once for one person; the rest wait their turn. One refresh per block per person every 30 seconds.
+A block's figures are kept for a minute, or for the block's own interval, set by whoever built it (at most 15 minutes, whatever the interval). They are kept per person and per set of access rights (scopes, dimension grants and roles), so a change to your access is never answered with figures read under the old one. A block runs at most four sources at once for one person; the rest wait their turn. One refresh per block per person every 30 seconds.
 
 ## The dashboards API
 

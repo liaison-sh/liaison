@@ -75,14 +75,22 @@ export interface CacheViewer {
   userId: string
   scopes: string[]
   dimensionGrants: Record<string, string[]>
+  /** The viewer's role ids: row policies read them (a record shared with a role). */
+  roles?: string[]
 }
 
-/** A short, order-independent hash of what the viewer may read. */
-export function permissionHash(viewer: Pick<CacheViewer, "scopes" | "dimensionGrants">): string {
+/** A short, order-independent hash of what the viewer may read: scopes, dimension grants, roles. */
+export function permissionHash(
+  viewer: Pick<CacheViewer, "scopes" | "dimensionGrants" | "roles">,
+): string {
   const grants = Object.keys(viewer.dimensionGrants)
     .sort()
     .map((k) => [k, [...(viewer.dimensionGrants[k] ?? [])].sort()])
-  const material = JSON.stringify([[...new Set(viewer.scopes)].sort(), grants])
+  const material = JSON.stringify([
+    [...new Set(viewer.scopes)].sort(),
+    grants,
+    [...new Set(viewer.roles ?? [])].sort(),
+  ])
   return createHash("sha256").update(material).digest("hex").slice(0, 20)
 }
 

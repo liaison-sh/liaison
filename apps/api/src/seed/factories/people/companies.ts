@@ -24,12 +24,17 @@ export interface CompanySpec {
 
 type ExecTx = { execute: (q: unknown) => Promise<unknown> }
 
-/** Seed every company and link its people; returns each company's id by key. */
+/**
+ * Seed every company and link its people; returns each company's id by key.
+ * `onlyExisting`: link people to the companies already there, create none
+ * (a later layer adding people to the companies an earlier one wrote).
+ */
 export async function seedCompanies(
   ctx: SeedContext,
   actor: UserContext,
   specs: readonly CompanySpec[],
   contactIds: Readonly<Record<string, string>>,
+  opts: { onlyExisting?: boolean } = {},
 ): Promise<Record<string, string>> {
   const out: Record<string, string> = {}
   await asUser(actor, async (tx) => {
@@ -41,6 +46,7 @@ export async function seedCompanies(
         ),
       )[0]
       let id = found?.id
+      if (!id && opts.onlyExisting) continue
       if (!id) {
         const { company } = await createCompany(tx as never, {
           orgId: ctx.orgId,

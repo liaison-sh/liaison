@@ -877,6 +877,7 @@
   "connectedAccounts": "Connected accounts",
   "connections": "Connections",
   "connectionCredentialsMissing": "This mailbox has no saved credentials, so nothing was sent. Reconnect this mailbox in Settings → Connections.",
+  "connectionNotConnected": "This mailbox is no longer connected, so nothing was sent. Reconnect it in Settings → Connections, or send from another mailbox.",
   "contactsActionCall": "Call",
   "contactsActionEmail": "Email",
   "contactsActionMessage": "Message",

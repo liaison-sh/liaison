@@ -171,6 +171,37 @@ describe("the lively tier", () => {
     expect(Number(amounts?.n)).toBe(9)
   })
 
+  it("puts each dealer's sales address on its dealer's company", async () => {
+    const orgId = first.world.orgId
+    const dealers = await withSystemDb("lively-test-dealer-contacts", async (tx) =>
+      typedRows<{ company: string; on_company: number; sales: number }>(
+        await tx.execute(
+          sql`SELECT k.name AS company,
+                     count(c.id) FILTER (WHERE c.company_id = k.id)::int AS on_company,
+                     count(c.id)::int AS sales
+              FROM kernel.companies k
+              JOIN kernel.contacts c ON c.org_id = k.org_id AND c.email LIKE 'sales@%' AND c.name = k.name
+              WHERE k.org_id = ${orgId}::uuid AND 'dealer' = ANY(k.tags)
+              GROUP BY k.name`,
+        ),
+      ),
+    )
+    expect(dealers.length).toBeGreaterThan(0)
+    expect(dealers.filter((d) => d.on_company !== d.sales)).toEqual([])
+  })
+
+  it("seeds no API connection on a box that does not answer its fixture origin", async () => {
+    const [row] = await withSystemDb("lively-test-api-connector", async (tx) =>
+      typedRows<{ n: number }>(
+        await tx.execute(
+          sql`SELECT count(*)::int AS n FROM kernel.connected_accounts
+              WHERE org_id = ${first.world.orgId}::uuid AND app_name = 'api-connector'`,
+        ),
+      ),
+    )
+    expect(Number(row?.n)).toBe(0)
+  })
+
   it("leaves each person a few unread attention items and reads the rest", async () => {
     const [row] = rowsOf(
       await withSystemDb("lively-test-unread", (tx) =>

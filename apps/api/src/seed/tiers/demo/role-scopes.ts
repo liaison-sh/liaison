@@ -7,6 +7,9 @@
 // exactly what it grants is worth more than one that has to be evaluated to be
 // reviewed. `founder_admin` is the org's `admin` default role and holds `*`.
 //
+// The sales and operations desks own the world's deals, so both read and edit
+// deal amounts (the projects app's `sales` tier).
+//
 // Every desk handles tickets or mail, so every desk reads the API connector
 // (the customer card, `connector_read`) and may propose a write
 // (`connector_write`, approval-gated). Only `founder_admin` manages
@@ -52,6 +55,8 @@ const DEMO_ROLE_SCOPES: Record<DemoRole, readonly string[]> = {
     "projects:projects:write",
     "projects:tasks:read",
     "projects:tasks:write",
+    "projects:deals:read",
+    "projects:deals:write",
     "invoicing:documents:read",
     "invoicing:documents:write",
     "invoicing:contacts:read",
@@ -291,6 +296,8 @@ const DEMO_ROLE_SCOPES: Record<DemoRole, readonly string[]> = {
     "tickets:tickets:write",
     "projects:projects:write",
     "projects:tasks:write",
+    "projects:deals:read",
+    "projects:deals:write",
     "knowledge:documents:create",
     "knowledge:documents:read",
     "knowledge:links:create",

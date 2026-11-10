@@ -29,6 +29,7 @@ import { schemaRef } from "~/db/schema-ref"
 import { escapeHtml } from "~/lib/html-page"
 import { orgPublicBaseUrl } from "~/lib/org-public-url"
 import { serverT } from "~/modules/i18n/server-i18n"
+import { OPT_OUT_PATH } from "~/modules/mail/opt-out-path"
 import { type DataSource, DEFAULT_COUNTRY_POLICY, hashEmail } from "~/modules/mail/suppressions"
 import { sweepSkippingMoving } from "~/modules/org/transfer-state/skip-moving"
 
@@ -97,7 +98,7 @@ export async function mintOptOutLink(orgId: string, recipient: string): Promise<
       VALUES (${tokenHash(token)}, ${orgId}::uuid, ${hashEmail(orgId, recipient)})`),
   )
   const base = (await orgPublicBaseUrl(orgId)).replace(/\/$/, "")
-  return { url: `${base}/public/opt-out/${token}`, recipient }
+  return { url: `${base}${OPT_OUT_PATH}/${token}`, recipient }
 }
 
 /**

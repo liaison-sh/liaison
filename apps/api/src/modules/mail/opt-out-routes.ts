@@ -25,7 +25,7 @@ import { addSuppressionHash, isSuppressedHash } from "~/modules/mail/suppression
 
 const log = rootLogger.child({ module: "opt-out" })
 
-export const OPT_OUT_PATH = "/public/opt-out"
+export { OPT_OUT_PATH } from "~/modules/mail/opt-out-path"
 
 function langOf(header: string | undefined): "en" | "fr" {
   return localeFromAcceptLanguage(header).startsWith("fr") ? "fr" : "en"

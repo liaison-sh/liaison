@@ -755,13 +755,13 @@
           ]
         },
         "turned_on_by": { "type": "uuid", "userRef": true, "onErase": "anonymize", "required": false },
-        "turned_on_at": "timestamptz?",
+        "turned_on_at": "date?",
         "grant_ref": "text?",
         "until": "date?",
-        "ended_at": "timestamptz?",
+        "ended_at": "date?",
         "ended_by": { "type": "uuid", "userRef": true, "onErase": "anonymize", "required": false },
         "ended_reason": "text?",
-        "renewal_requested_at": "timestamptz?"
+        "renewal_requested_at": "date?"
       },
       "constraints": {
         "unique": [["issuer_profile_id", "stream"]]

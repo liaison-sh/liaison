@@ -47,15 +47,16 @@ export function documentStreamRef(doc: Row): string | null {
   return issuer && stream ? streamRef(issuer, stream) : null
 }
 
-/** A stored `until` day as `YYYY-MM-DD`, whether the store hands text or a Date. */
-export function untilDay(row: Row): string {
-  const v = row.until instanceof Date ? row.until.toISOString() : String(row.until ?? "")
-  return v.slice(0, 10)
+/** When a standing authorization ends (its grant's expiry, an instant), as epoch ms. */
+function untilOf(row: Row): number {
+  const t = row.until instanceof Date ? row.until.getTime() : Date.parse(String(row.until ?? ""))
+  return Number.isFinite(t) ? t : 0
 }
 
-function untilOf(row: Row): number {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(untilDay(row))
-  return m ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : 0
+/** The day a standing authorization ends, `YYYY-MM-DD` (UTC). */
+export function untilDay(row: Row): string {
+  const t = untilOf(row)
+  return t > 0 ? new Date(t).toISOString().slice(0, 10) : ""
 }
 
 /** The live standing authorization of a stream, or null when it is off, revoked or lapsed. */
@@ -81,7 +82,8 @@ export async function standingOn(ctx: EinvCtx, issuerProfileId: string, stream: 
   }
   const by = await deciderOf(ctx)
   const now = new Date()
-  const until = new Date(now.getTime() + STANDING_DAYS * DAY_MS).toISOString().slice(0, 10)
+  // A little before the grant itself expires, so a send never meets an expired grant.
+  const until = new Date(now.getTime() + STANDING_DAYS * DAY_MS - 3600_000).toISOString()
   const data: Row = {
     turned_on_by: by,
     turned_on_at: now.toISOString(),
@@ -94,7 +96,7 @@ export async function standingOn(ctx: EinvCtx, issuerProfileId: string, stream: 
   const existing = ((await ctx.db.findMany(ENTITY, { where: { issuer_profile_id: issuerProfileId, stream }, limit: 1 })) as Row[])[0]
   if (existing) await ctx.db.update(ENTITY, String(existing.id), data)
   else await ctx.db.insert(ENTITY, { issuer_profile_id: issuerProfileId, stream, ...data })
-  return { ok: true as const, until, by }
+  return { ok: true as const, until: until.slice(0, 10), by }
 }
 
 /**

@@ -72,6 +72,8 @@ data export now lists their dashboards and data store documents. See
   agent is for.
 - The common agent base now reaches every existing role agent automatically when the
   server starts. No configuration apply is needed after an upgrade.
+- An agent asks you before it opens a new conversation with people, rather than starting
+  a group thread nobody asked for.
 - An agent opens any tab you could open yourself, and opens a record by its number.
 - Tools can be found by describing the job, in French as well as English.
 - An agent that ends a turn announcing its next step without taking it is nudged to
@@ -153,7 +155,8 @@ before.
   once it is back. Whoever may read a routine may read its runs.
 - A merged ticket's conversation moves to the ticket it was merged into.
 - Shopify draft orders refuse an order Invoicing would not invoice, and product status
-  filters now match.
+  filters now match. Draft orders for a B2B company are placed for its location and
+  priced by the company's catalog.
 - The Discover list is in name order, and unsaved settings edits survive a refresh.
 - Bug reports can be discarded and send after an update; long log lines no longer break
   the form.

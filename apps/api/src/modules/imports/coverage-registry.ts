@@ -126,6 +126,10 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
   "app_invoicing.received_einvoices": { exempt: "sync", reason: "e-invoicing and FX sync state" },
   "app_invoicing.received_retry": { exempt: "sync", reason: "e-invoicing and FX sync state" },
   "app_invoicing.received_sync_state": { exempt: "sync", reason: "e-invoicing and FX sync state" },
+  "app_invoicing.stripe_streams": {
+    exempt: "config",
+    reason: "which issuer bills a connected payments stream, decided and approved in the UI",
+  },
   "app_invoicing.tax_regimes": {
     exempt: "config",
     reason: "invoicing configuration, set by config apply",

@@ -534,6 +534,8 @@ describe("writesToTable annotations on kernel tools", () => {
         "contacts_find_duplicates",
         "contacts_group_members",
         "contacts_groups_list",
+        // A contact's identifiers (id, email, company id) for an app's own check: one select.
+        "contacts_identity",
         "contacts_read",
         "contacts_search",
         // Dashboards and the app data store: reads of saved dashboards, the eligible sources,

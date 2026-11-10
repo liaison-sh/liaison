@@ -83,8 +83,10 @@ function ingestCtx(tx: unknown, fetch: Fetch): IngestCtx {
 let invoiceTotal = 2
 const failNext: number[] = []
 let stripeCalls = 0
+const stripePaths: string[] = []
 const stripe: Fetch = async (url) => {
   stripeCalls++
+  stripePaths.push(new URL(url).pathname)
   const forced = failNext.shift()
   if (forced)
     return { status: forced, headers: {}, body: JSON.stringify({ error: { message: "down" } }) }
@@ -216,6 +218,7 @@ beforeEach(async () => {
   register()
   handlerRuns = 0
   stripeCalls = 0
+  stripePaths.length = 0
   invoiceTotal = 2
   failNext.length = 0
 })
@@ -332,7 +335,9 @@ describe("stripe deliveries through the webhook route", () => {
       "200 Event evt_same was already handled; nothing changed.",
       "200 applied",
     ])
-    expect(stripeCalls).toBe(1)
+    // One application's fetches only: the invoice re-fetch, then its customer for the
+    // invoicing payload. The run that found it handled fetched nothing.
+    expect(stripePaths).toEqual(["/v1/invoices/in_R1", "/v1/customers/cus_R1"])
     expect(await count("stripe_invoices")).toBe(1)
     expect(await deliveries()).toEqual([
       { event_id: "evt_same", status: "processed", failure_count: 0 },

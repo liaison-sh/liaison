@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.20.79",
+  "version": "0.20.80",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -336,7 +336,7 @@
   },
   "packageFormat": 1,
   "license": "FSL-1.1-ALv2",
-  "host": "^1",
+  "host": "^1.4",
   "capabilities": [
     "contacts.addToOrganisation",
     "messages.post",

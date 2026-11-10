@@ -835,12 +835,13 @@ Stripe: customers, subscriptions, invoices and payments from your Stripe account
 | `customers_search` | Search Stripe customers in Liaison's mirror by name, email or id (cus_), or list those not linked, past due, on trial or cancelled. |  | `stripe:customers:read` |
 | `disputes_list` | Stripe disputes from the mirror by customer or status, with reason and evidence due date. |  | `stripe:payments:read` |
 | `home_load` | The Stripe page's load: the connection and its state, the import's progress per resource, rows per table and the counts that need a person. |  | `stripe:customers:read` |
-| `invoice_document_link` | Record the Liaison document a Stripe invoice became. |  | `stripe:internal` |
+| `invoice_document_link` | Record the Liaison document a Stripe invoice became, or that Stripe's own invoice stands. |  | `stripe:internal` |
 | `invoice_send_state` | Whether a payment reminder about a Stripe invoice may still go out, read from Stripe at send time: stops on paid, void or uncollectible; waits when Stripe cannot be asked. |  | `stripe:invoices:read` |
 | `invoices_search` | Stripe invoices from the mirror by customer or status, with number, amounts due and paid, next retry, and the Liaison document it became. |  | `stripe:invoices:read` |
 | `mrr_query` | Stripe MRR from the mirror, per currency: now, past due, plan split, movements since the month start. |  | `stripe:subscriptions:read` |
 | `payments_search` | Stripe charges from the mirror by customer, invoice or status, card as brand and last 4; unmatched: charges no Stripe invoice explains. |  | `stripe:payments:read` |
 | `reconcile_candidates` | Stripe invoices with no Liaison document, recently paid invoices, and succeeded refunds with no credit note, for invoicing's safety job. |  | `stripe:internal` |
+| `refund_document_link` | Record the credit note a Stripe refund became, or that none follows it. |  | `stripe:internal` |
 | `refunds_create` | Refund a Stripe charge, in full or in part (amountMinor in cents). | yes | `stripe:refunds:write` |
 | `refunds_for_charge` | Every refund of one Stripe charge, by id, read from Stripe, with the charge's invoice. |  | `stripe:internal` |
 | `settings_load` | The Stripe settings page's load: the connection state and the key's permissions from the last check. |  | `stripe:admin:connection` |

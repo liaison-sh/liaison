@@ -1,6 +1,6 @@
 {
   "name": "stripe",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "kind": "app",
   "iconName": "credit-card",
   "description": "Stripe connector: a read mirror of customers, subscriptions, invoices, payments, refunds and disputes, kept current by a signed webhook.",
@@ -13,7 +13,7 @@
   },
   "packageFormat": 1,
   "license": "FSL-1.1-ALv2",
-  "host": "^1",
+  "host": "^1.4",
   "capabilities": [
     "bulk.fetch",
     "contacts.addToOrganisation"

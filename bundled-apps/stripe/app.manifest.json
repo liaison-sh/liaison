@@ -1,0 +1,530 @@
+{
+  "name": "stripe",
+  "version": "0.1.0",
+  "kind": "connector",
+  "iconName": "credit-card",
+  "description": "Stripe connector: a read mirror of customers, subscriptions, invoices, payments, refunds and disputes, kept current by a signed webhook.",
+  "listing": {
+    "publisher": "Liaison",
+    "category": "Finance",
+    "icon": "credit-card",
+    "summary": "Stripe: customers, subscriptions, invoices and payments from your Stripe account, read through a restricted key.",
+    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/bundled-apps/stripe"
+  },
+  "packageFormat": 1,
+  "license": "FSL-1.1-ALv2",
+  "host": "^1",
+  "capabilities": [
+    "bulk.fetch",
+    "contacts.addToOrganisation"
+  ],
+  "dependencies": {
+    "optional": [
+      "invoicing",
+      "tickets",
+      "projects"
+    ]
+  },
+  "scopes": [
+    "stripe:customers:read",
+    "stripe:customers:write",
+    "stripe:subscriptions:read",
+    "stripe:subscriptions:write",
+    "stripe:invoices:read",
+    "stripe:payments:read",
+    "stripe:refunds:write",
+    "stripe:admin:connection",
+    "stripe:internal"
+  ],
+  "roles": {
+    "member": {
+      "description": "Stripe reader: customers, subscriptions, invoices, payments, refunds and disputes",
+      "scopes": [
+        "stripe:customers:read",
+        "stripe:subscriptions:read",
+        "stripe:invoices:read",
+        "stripe:payments:read"
+      ]
+    },
+    "billing": {
+      "description": "Stripe billing: link customers to companies and contacts, request refunds and cancellations through approvals",
+      "extends": "member",
+      "scopes": [
+        "stripe:customers:write",
+        "stripe:refunds:write",
+        "stripe:subscriptions:write"
+      ]
+    },
+    "admin": {
+      "description": "Stripe administrator: connect the account and manage its key and webhook",
+      "extends": "billing",
+      "scopes": [
+        "stripe:admin:connection"
+      ]
+    }
+  },
+  "connections": {
+    "stripe": {
+      "type": "credentials",
+      "adminScope": "stripe:admin:connection",
+      "allowedDomains": [
+        "api.stripe.com"
+      ],
+      "credentialFields": [
+        {
+          "name": "restrictedKey",
+          "type": "password",
+          "label": "Restricted key"
+        }
+      ],
+      "appSecretConfigKeys": [
+        "webhookSigningSecret",
+        "webhookSigningSecretPrevious"
+      ],
+      "setupGuide": {
+        "summary": "Stripe connects with a restricted key that reads customers, subscriptions, invoices, charges, disputes, payment methods, products, prices and events, and writes refunds, plus a webhook to this workspace.",
+        "steps": [
+          {
+            "who": "human",
+            "minutes": 3,
+            "text": "In the Stripe Dashboard, open **Developers → API keys → Create restricted key**. Give **Read** to Customers, Subscriptions, Invoices, Charges, Disputes, Payment methods, Products, Prices and Events, and **Write** to Refunds. Leave everything else at None.",
+            "url": "https://dashboard.stripe.com/apikeys"
+          },
+          {
+            "who": "human",
+            "minutes": 1,
+            "text": "Paste the restricted key (it starts with `rk_`) into **Restricted key**. Never paste the secret key (`sk_`)."
+          },
+          {
+            "who": "human",
+            "minutes": 3,
+            "text": "In **Developers → Webhooks**, add an endpoint at the webhook address Liaison shows, selecting the Customer, Invoice and Charge events, then give Liaison its signing secret.",
+            "url": "https://dashboard.stripe.com/webhooks"
+          }
+        ]
+      }
+    }
+  },
+  "webhooks": {
+    "events": {
+      "handler": "eventsHandler",
+      "verify": "stripeWebhookVerifier",
+      "bodyLimitBytes": 5242880
+    }
+  },
+  "webhookHealth": {
+    "probe": "probe-webhook-upstream"
+  },
+  "jobs": {
+    "probe-webhook-upstream": {
+      "handler": "probeWebhookUpstreamJob",
+      "runsFor": {
+        "connection": "stripe"
+      },
+      "schedule": "*/15 * * * *"
+    }
+  },
+  "events": {
+    "emits": [
+      "customer:updated",
+      "subscription:created",
+      "subscription:updated",
+      "subscription:canceled",
+      "trial:ending_soon",
+      "invoice:finalized",
+      "invoice:paid",
+      "invoice:payment_failed",
+      "invoice:voided",
+      "invoice:uncollectible",
+      "refund:created",
+      "dispute:opened",
+      "dispute:closed",
+      "payment:unmatched",
+      "connection:state_changed"
+    ]
+  },
+  "schema": {
+    "stripe_customers": {
+      "rlsScope": "customers",
+      "fields": {
+        "stripe_id": "string",
+        "email": "text?",
+        "name": "text?",
+        "currency": "text?",
+        "delinquent": {
+          "type": "boolean",
+          "default": false
+        },
+        "address": "json?",
+        "tax_ids": "json?",
+        "company_id": "uuid?",
+        "contact_id": "uuid?",
+        "match_method": {
+          "type": "string",
+          "enum": [
+            "email",
+            "contact_company",
+            "external_id",
+            "person"
+          ],
+          "required": false
+        },
+        "match_by": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "deleted_at": "date?",
+        "stripe_updated": "date",
+        "created_at_stripe": "date"
+      },
+      "constraints": {
+        "unique": [
+          [
+            "stripe_id"
+          ]
+        ]
+      },
+      "indexes": [
+        [
+          "company_id"
+        ],
+        [
+          "contact_id"
+        ],
+        [
+          "email"
+        ]
+      ]
+    },
+    "stripe_subscriptions": {
+      "rlsScope": "subscriptions",
+      "fields": {
+        "stripe_id": "string",
+        "customer_id": "string",
+        "status": {
+          "type": "string",
+          "enum": [
+            "trialing",
+            "active",
+            "past_due",
+            "unpaid",
+            "canceled",
+            "incomplete",
+            "incomplete_expired",
+            "paused"
+          ]
+        },
+        "plan_name": "string",
+        "items": "json",
+        "discount_percent": "numeric?",
+        "discount_amount_minor": "bigint?",
+        "mrr_minor": "bigint",
+        "currency": "string",
+        "current_period_start": "date",
+        "current_period_end": "date",
+        "trial_end": "date?",
+        "cancel_at": "date?",
+        "canceled_at": "date?",
+        "card_brand": "text?",
+        "card_last4": "text?",
+        "card_exp": "text?",
+        "past_due_since": "date?",
+        "stripe_updated": "date"
+      },
+      "constraints": {
+        "unique": [
+          [
+            "stripe_id"
+          ]
+        ]
+      },
+      "indexes": [
+        [
+          "customer_id"
+        ],
+        [
+          "status",
+          "current_period_end"
+        ],
+        [
+          "status",
+          "trial_end"
+        ]
+      ]
+    },
+    "stripe_invoices": {
+      "rlsScope": "invoices",
+      "fields": {
+        "stripe_id": "string",
+        "customer_id": "string",
+        "subscription_id": "text?",
+        "number": "text?",
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "open",
+            "paid",
+            "uncollectible",
+            "void"
+          ]
+        },
+        "total_minor": "bigint",
+        "tax_minor": "bigint",
+        "amount_paid_minor": "bigint",
+        "amount_due_minor": "bigint",
+        "currency": "string",
+        "period_start": "date?",
+        "period_end": "date?",
+        "billing_reason": "text?",
+        "hosted_invoice_url": "text?",
+        "next_payment_attempt": "date?",
+        "finalized_at": "date?",
+        "paid_at": "date?",
+        "issuer": {
+          "type": "string",
+          "enum": [
+            "liaison",
+            "stripe",
+            "before_connection",
+            "undecided"
+          ],
+          "default": "undecided"
+        },
+        "liaison_document_id": "uuid?",
+        "stripe_updated": "date"
+      },
+      "constraints": {
+        "unique": [
+          [
+            "stripe_id"
+          ]
+        ]
+      },
+      "indexes": [
+        [
+          "customer_id"
+        ],
+        [
+          "subscription_id"
+        ]
+      ]
+    },
+    "stripe_payments": {
+      "rlsScope": "payments",
+      "fields": {
+        "stripe_id": "string",
+        "payment_intent": "text?",
+        "invoice_id": "text?",
+        "customer_id": "text?",
+        "amount_minor": "bigint",
+        "refunded_minor": {
+          "type": "bigint",
+          "default": 0
+        },
+        "currency": "string",
+        "status": {
+          "type": "string",
+          "enum": [
+            "succeeded",
+            "failed",
+            "pending"
+          ]
+        },
+        "failure_code": "text?",
+        "failure_message": "text?",
+        "card_brand": "text?",
+        "card_last4": "text?",
+        "card_exp": "text?",
+        "created_at_stripe": "date",
+        "disputed": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "constraints": {
+        "unique": [
+          [
+            "stripe_id"
+          ]
+        ]
+      },
+      "indexes": [
+        [
+          "invoice_id"
+        ],
+        [
+          "customer_id"
+        ]
+      ]
+    },
+    "stripe_refunds": {
+      "rlsScope": "payments",
+      "fields": {
+        "stripe_id": "string",
+        "payment_id": "string",
+        "amount_minor": "bigint",
+        "currency": "string",
+        "status": "string",
+        "reason": "text?",
+        "liaison_document_id": "uuid?",
+        "created_at_stripe": "date"
+      },
+      "constraints": {
+        "unique": [
+          [
+            "stripe_id"
+          ]
+        ]
+      },
+      "indexes": [
+        [
+          "payment_id"
+        ]
+      ]
+    },
+    "stripe_disputes": {
+      "rlsScope": "payments",
+      "fields": {
+        "stripe_id": "string",
+        "payment_id": "string",
+        "amount_minor": "bigint",
+        "currency": "string",
+        "reason": "string",
+        "status": "string",
+        "evidence_due_by": "date?",
+        "funds_withdrawn_at": "date?",
+        "created_at_stripe": "date"
+      },
+      "constraints": {
+        "unique": [
+          [
+            "stripe_id"
+          ]
+        ]
+      },
+      "indexes": [
+        [
+          "payment_id"
+        ]
+      ]
+    },
+    "stripe_mrr_events": {
+      "rlsScope": "subscriptions",
+      "fields": {
+        "stripe_event_id": "string",
+        "subscription_id": "string",
+        "customer_id": "string",
+        "at": "date",
+        "kind": {
+          "type": "string",
+          "enum": [
+            "new",
+            "upgrade",
+            "downgrade",
+            "cancelled"
+          ]
+        },
+        "delta_minor": "bigint",
+        "before_minor": "bigint",
+        "after_minor": "bigint",
+        "currency": "string",
+        "source": {
+          "type": "string",
+          "enum": [
+            "webhook",
+            "reconcile"
+          ]
+        }
+      },
+      "constraints": {
+        "unique": [
+          [
+            "stripe_event_id"
+          ]
+        ]
+      },
+      "indexes": [
+        [
+          "currency",
+          "at"
+        ]
+      ]
+    },
+    "sync_state": {
+      "rlsScope": "internal",
+      "fields": {
+        "resource": "string",
+        "cursor": "text?",
+        "done_count": {
+          "type": "integer",
+          "default": 0
+        },
+        "total_count": "integer?",
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "running",
+            "done",
+            "failed"
+          ],
+          "default": "pending"
+        },
+        "catchup_due": {
+          "type": "boolean",
+          "default": false
+        },
+        "last_error_code": "text?",
+        "updated": "date"
+      },
+      "constraints": {
+        "unique": [
+          [
+            "resource"
+          ]
+        ]
+      }
+    },
+    "install_metadata": {
+      "rlsScope": "internal",
+      "fields": {
+        "account_id": "text?",
+        "account_name": "text?",
+        "livemode": {
+          "type": "boolean",
+          "default": false
+        },
+        "permissions": "json",
+        "state": "string",
+        "last_event_at": "date?",
+        "last_event_type": "text?",
+        "connected_at": "date",
+        "webhook_confirmed_at": "date?"
+      }
+    },
+    "webhook_deliveries": {
+      "rlsScope": "internal",
+      "fields": {
+        "event_id": "string",
+        "topic": "string",
+        "status": "string",
+        "failure_count": {
+          "type": "integer",
+          "default": 0
+        },
+        "received_at": "date",
+        "processed_at": "date?"
+      },
+      "constraints": {
+        "unique": [
+          [
+            "event_id"
+          ]
+        ]
+      }
+    }
+  }
+}

@@ -76,6 +76,7 @@ export const NAV: NavSection[] = [
       { id: "apps/boxtal", url: "apps/boxtal" },
       { id: "apps/store", url: "apps/store" },
       { id: "apps/pennylane", url: "apps/pennylane" },
+      { id: "apps/stripe", url: "apps/stripe" },
       { id: "apps/social", url: "apps/social" },
       { id: "apps/ads", url: "apps/ads" },
       { id: "apps/calls", url: "apps/calls" },

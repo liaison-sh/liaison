@@ -610,6 +610,7 @@
       "mcp-manager": "Connected services",
       "monitoring": "Monitoring",
       "pennylane": "Pennylane",
+      "stripe": "Stripe",
       "projects": "Projects",
       "shopify": "Shopify",
       "social": "Social",
@@ -1878,6 +1879,7 @@
       "gitlab": "GitLab",
       "google-drive": "Google Drive",
       "pennylane": "Pennylane",
+      "stripe": "Stripe",
       "api-connector": "API connector",
       "calls": "Calls"
     },
@@ -3776,6 +3778,9 @@
     "projects__member": "Project contributor: read projects, read and write tasks",
     "projects__lead": "Project lead: create and edit projects in addition to member rights",
     "projects__admin": "Projects app administrator: full settings control",
+    "stripe__member": "Stripe reader: customers, subscriptions, invoices, payments, refunds and disputes",
+    "stripe__billing": "Stripe billing: link customers to companies and contacts, request refunds and cancellations through approvals",
+    "stripe__admin": "Stripe administrator: connect the account and manage its key and webhook",
     "tickets__support": "Standard support agent",
     "tickets__support_lead": "Team lead: manages inboxes, categories, accounts; can close tickets",
     "tickets__admin": "Tickets app administrator: full settings and account control",
@@ -3789,6 +3794,7 @@
     "kpi": "MCP surface over the deployment's deterministic KPI service: versioned formula registry, provisional gate badging, full lineage on every number, and human-approved (gated) definition edits with server-side dry-run validation and non-destructive version history",
     "monitoring": "Production-alert ingestion: a signed webhook turns external monitoring alerts into deduplicated incidents with attention-feed surfacing and an ack/resolve triage lifecycle",
     "pennylane": "Pennylane accounting connector: supplier/customer invoices, trial balance, derived P&L, cash position, transactions, spend-by-category, runway",
+    "stripe": "Stripe connector: a read mirror of customers, subscriptions, invoices, payments, refunds and disputes, kept current by a signed webhook.",
     "shopify": "Shopify integration: orders, customers, products, markets, draft orders, refunds, fulfillments, returns",
     "social": "Social 'Ground Control': monitors Facebook, Instagram and YouTube for brand-relevant activity, drafts human-approved replies, and manages DMs.",
     "calendar": "Calendar app: month/week UI backed by a bidirectional Google Calendar connector for org-wide and personal calendars.",
@@ -4673,6 +4679,9 @@
     },
     "pennylane": {
       "pennylane": "Pennylane account"
+    },
+    "stripe": {
+      "stripe": "Stripe account"
     },
     "shopify": {
       "shop": "Shopify store"

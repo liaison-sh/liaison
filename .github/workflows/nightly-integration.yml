@@ -202,6 +202,9 @@ jobs:
       - name: bundled-pennylane
         if: "!cancelled() && steps.changed.outputs.run == 'true'"
         run: bun run scripts/test-run.ts bundled-pennylane
+      - name: bundled-stripe
+        if: "!cancelled() && steps.changed.outputs.run == 'true'"
+        run: bun run scripts/test-run.ts bundled-stripe
       - name: bundled-calls
         if: "!cancelled() && steps.changed.outputs.run == 'true'"
         run: bun run scripts/test-run.ts bundled-calls

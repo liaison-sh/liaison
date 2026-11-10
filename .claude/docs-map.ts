@@ -133,6 +133,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "bundled-apps/ads/**", pages: ["apps/ads"] },
   { glob: "bundled-apps/calls/**", pages: ["apps/calls", "sales/sales-data"] },
   { glob: "bundled-apps/monitoring/**", pages: ["apps/monitoring"] },
+  { glob: "bundled-apps/stripe/**", pages: ["apps/stripe"] },
 
   // Admin
   { glob: "apps/api/src/modules/users/**", pages: ["admin/users"] },

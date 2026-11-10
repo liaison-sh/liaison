@@ -75,6 +75,7 @@ export const SETUP_FEATURES: readonly SetupFeature[] = [
   { id: "gitlab", label: "GitLab", steps: [{ refs: ["gitlab/gitlab"] }] },
   { id: "boxtal", label: "Boxtal shipping", steps: [{ refs: ["boxtal/boxtal"] }] },
   { id: "pennylane", label: "Pennylane accounting", steps: [{ refs: ["pennylane/pennylane"] }] },
+  { id: "stripe", label: "Stripe payments", steps: [{ refs: ["stripe/stripe"] }] },
   {
     id: "database",
     label: "A database of your own",

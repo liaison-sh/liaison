@@ -50,3 +50,30 @@ describe("seeded desks that own deals can work them", () => {
     })
   }
 })
+
+describe("seeded desks and the payments connector", () => {
+  const writes = [
+    "stripe:refunds:write",
+    "stripe:subscriptions:write",
+    "stripe:admin:connection",
+    "stripe:customers:write",
+  ]
+  for (const role of ["support", "finance"] as const) {
+    it(`${role} reads customers, subscriptions, invoices and payments and holds no payments write`, () => {
+      const scopes = demoScopesForRole(role)
+      for (const s of [
+        "stripe:customers:read",
+        "stripe:subscriptions:read",
+        "stripe:invoices:read",
+        "stripe:payments:read",
+      ]) {
+        expect(scopes).toContain(s)
+      }
+      for (const s of writes) expect(scopes).not.toContain(s)
+    })
+  }
+  it("no desk holds a payments write scope", () => {
+    for (const role of ROLES)
+      for (const s of writes) expect(demoScopesForRole(role)).not.toContain(s)
+  })
+})

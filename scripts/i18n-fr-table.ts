@@ -1035,6 +1035,15 @@ export const FR: Record<string, string> = {
   "KPI service": "Service KPI",
   "Alert webhook": "Webhook des alertes",
   "Pennylane account": "Compte Pennylane",
+  "Stripe account": "Compte Stripe",
+  "Stripe connector: a read mirror of customers, subscriptions, invoices, payments, refunds and disputes, kept current by a signed webhook.":
+    "Connecteur Stripe : une copie en lecture des clients, abonnements, factures, paiements, remboursements et litiges, tenue à jour par un webhook signé.",
+  "Stripe reader: customers, subscriptions, invoices, payments, refunds and disputes":
+    "Lecture Stripe : clients, abonnements, factures, paiements, remboursements et litiges",
+  "Stripe billing: link customers to companies and contacts, request refunds and cancellations through approvals":
+    "Facturation Stripe : relier les clients aux entreprises et aux contacts, demander des remboursements et des résiliations par approbation",
+  "Stripe administrator: connect the account and manage its key and webhook":
+    "Administrateur Stripe : connecter le compte, gérer sa clé et son webhook",
   "Shopify store": "Boutique Shopify",
   "Instagram account": "Compte Instagram",
   "Instagram account (Unified login, preview)": "Compte Instagram (connexion unifiée, aperçu)",
@@ -4445,6 +4454,7 @@ export const FR: Record<string, string> = {
   public: "public",
   Administration: "Administration",
   Pennylane: "Pennylane",
+  Stripe: "Stripe",
   Attention: "Attention",
   MCP: "MCP",
   Public: "Public",

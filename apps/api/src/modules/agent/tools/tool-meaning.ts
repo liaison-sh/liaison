@@ -89,17 +89,27 @@ export function meaningPoints(
   return points
 }
 
-/** The text a tool is embedded from: its app, its name as words, its description's opening. */
-export function toolMeaningText(t: {
+/** What a tool's embedded text is made of. */
+export interface MeaningTextTool {
   appName: string
   toolName: string
   description: string
-}): string {
+  keywords?: readonly string[]
+}
+
+/**
+ * The text a tool is embedded from: its app, its name as words, its
+ * description's opening, then its search keywords. The keywords are the words
+ * people use for the tool (often French, where the name and description are
+ * English), so they place it nearer the requests that use them.
+ */
+export function toolMeaningText(t: MeaningTextTool): string {
   const name = t.toolName
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/[_.]+/g, " ")
     .toLowerCase()
-  return `${t.appName} ${name}: ${t.description.slice(0, 400)}`
+  const keywords = t.keywords?.length ? ` (${t.keywords.join(", ")})` : ""
+  return `${t.appName} ${name}: ${t.description.slice(0, 400)}${keywords}`
 }
 
 // ── The embedder and the tool vectors ────────────────────────────────────
@@ -142,7 +152,7 @@ export class ToolMeaningIndex {
   }
 
   /** Queue the catalog's tools whose text has no vector yet. Never waits. */
-  prepare(catalog: ReadonlyArray<{ appName: string; toolName: string; description: string }>) {
+  prepare(catalog: ReadonlyArray<MeaningTextTool>) {
     if (this.failed) return
     for (const t of catalog) {
       const text = toolMeaningText(t)
@@ -199,9 +209,7 @@ export class ToolMeaningIndex {
    * add: no tool vectors yet, the query embedding failed, or it took longer
    * than the budget.
    */
-  async meaningFor<
-    T extends { sdkName: string; appName: string; toolName: string; description: string },
-  >(
+  async meaningFor<T extends MeaningTextTool & { sdkName: string }>(
     query: string,
     catalog: readonly T[],
     budgetMs: number = this.queryBudgetMs,

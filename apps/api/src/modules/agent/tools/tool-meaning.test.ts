@@ -241,3 +241,20 @@ describe("tool vectors", () => {
     expect(meaning?.vectorOf(DEACTIVATE.sdkName)).toBeDefined()
   })
 })
+
+describe("the text a tool is embedded from", () => {
+  const close = { appName: "tickets", toolName: "close", description: "Close a ticket." }
+
+  it("carries the tool's search keywords after its description's opening", () => {
+    const text = toolMeaningText({ ...close, keywords: ["fermer", "resolve"] })
+    expect(text.startsWith(toolMeaningText(close))).toBe(true)
+    expect(text).toContain("fermer")
+    expect(text).toContain("resolve")
+  })
+
+  it("is a new text when a keyword changes, so the tool gets a new vector", () => {
+    expect(toolMeaningText({ ...close, keywords: ["fermer"] })).not.toBe(
+      toolMeaningText({ ...close, keywords: ["clore"] }),
+    )
+  })
+})

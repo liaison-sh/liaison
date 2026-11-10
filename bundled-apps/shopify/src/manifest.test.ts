@@ -917,12 +917,13 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.12: orders_get returns the order's billing address (with its company) and the buyer's
     // VAT number from its current custom attributes.
     // 0.4.13: orders_search hits carry the shipping the customer paid (shippingAmount, shippingCurrency).
-    // 0.4.14: orders_search takes total_min/total_max; variants_search takes product_status/min_quantity
+    // 0.4.15: variants_search sends product_status in lower case (Shopify matches no other)
     // and returns productStatus; both reject an unknown parameter.
     // 0.4.15: draft_orders_get and orders_get return the B2B buyer (purchasingCompany: company name,
     // location addresses, tax registration id, tax exemption, contact email), orders_get the order's
     // taxesIncluded, and draft lines their priceOverride.
-    expect(m.version).toBe("0.4.15")
+    // 0.4.16: variants_search sends product_status in lower case (Shopify matches no other).
+    expect(m.version).toBe("0.4.16")
   })
 
   it("orders_search and variants_search declare their filters and close their params", () => {

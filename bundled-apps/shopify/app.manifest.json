@@ -274,7 +274,7 @@
       }
     ]
   },
-  "version": "0.4.15",
+  "version": "0.4.16",
   "network": {
     "imageHosts": ["cdn.shopify.com"],
     "linkHosts": ["admin.shopify.com"]
@@ -1597,7 +1597,7 @@
         "properties": {
           "query": {
             "type": "string",
-            "description": "Shopify product-variant search syntax (space-separated terms are ANDed; OR and a leading - for NOT work; range operators :>, :>=, :<, :<=). Supported filters include: free text, sku:<sku>, barcode:<code>, title:<variant title>, vendor:<vendor>, product_type:<type>, product_id:<id>, tag:<tag>, tag_not:<tag>, collection:<id>, location_id:<id>, gift_card:true|false, option1:<value>, product_status:ACTIVE,DRAFT, inventory_quantity:>=1. Prefer the product_status and min_quantity params for status and stock."
+            "description": "Shopify product-variant search syntax (space-separated terms are ANDed; OR and a leading - for NOT work; range operators :>, :>=, :<, :<=). Supported filters include: free text, sku:<sku>, barcode:<code>, title:<variant title>, vendor:<vendor>, product_type:<type>, product_id:<id>, tag:<tag>, tag_not:<tag>, collection:<id>, location_id:<id>, gift_card:true|false, option1:<value>, product_status:active,draft (lower case), inventory_quantity:>=1. Prefer the product_status and min_quantity params for status and stock."
           },
           "product_status": {
             "type": "array",

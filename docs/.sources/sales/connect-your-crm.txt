@@ -28,7 +28,7 @@ Writes cannot be tested -> apps/api/src/apps/api-connector/README.md:42-44
 liaison api-connector validate / test (reads only) -> apps/api/src/apps/api-connector/README.md:83-85
 Six fixed roles with params -> packages/api-connector-core/src/schema.ts:91-125
 Customer card on tickets and mail -> apps/api/src/apps/api-connector/app.manifest.json:348-357
-Lookup by email, phone, then company domain; skips consumer and own domains -> apps/api/src/apps/api-connector/customer.ts:5-15
+Lookup by email, phone, then company domain; skips consumer and own domains -> apps/api/src/apps/api-connector/customer.ts:5-15 ; apps/api/src/apps/api-connector/consumer-domains.ts:14
 Matched by company domain -> apps/web/src/modules/api-connector/CustomerCard.tsx:264
 Several matches picker -> apps/web/src/modules/api-connector/CustomerCard.tsx:238
 Recent orders, Invoices, Deals, Open in -> packages/shared/src/i18n/locales/en/api-connector.json:10-15

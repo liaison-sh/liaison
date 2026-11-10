@@ -89,7 +89,7 @@ An operation can declare one of six fixed roles. The customer card and the agent
 
 On a mail conversation and on a ticket, the **Customer** card shows who the person is in your system.
 
-- Liaison looks the person up by email, then by phone, then by their company's domain. It skips free mail domains and your own domains. A record found by domain says **Matched by company domain**: it is the company, not the person.
+- Liaison looks the person up by email, then by phone, then by their company's domain. It skips free mail domains (gmail.com, hotmail.fr, t-online.de and the other common national providers) and your own domains. A record found by domain says **Matched by company domain**: it is the company, not the person.
 - When several records match, the card says so and lets you pick one.
 - The card lists **Recent orders**, **Invoices** and **Deals** when the adapter fills those roles, and offers **Open in** your system.
 - The card is hidden when no connection fills `customer.lookup`, when you lack `api-connector:read`, or when there is no email to look up.

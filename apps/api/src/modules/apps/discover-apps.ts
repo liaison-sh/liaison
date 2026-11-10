@@ -137,7 +137,9 @@ export async function discoverInTreeApps(opts?: {
 
 function discoverAppsUnder(root: string): DiscoveredApp[] {
   const out: DiscoveredApp[] = []
-  for (const name of readdirSync(root)) {
+  // Sorted: readdir order is the filesystem's (alphabetical on APFS, hash order on ext4), and
+  // registration follows this order, so an org's role grant events must not depend on it.
+  for (const name of readdirSync(root).sort()) {
     const dir = join(root, name)
     if (!statSync(dir).isDirectory()) continue
     if (shouldSkipForEnv(name)) continue
@@ -173,10 +175,11 @@ export async function discoverInstalledApps(opts?: {
   const root = opts?.rootOverride ?? getInstallRoot()
   if (!existsSync(root)) return []
   const out: DiscoveredApp[] = []
-  for (const name of readdirSync(root)) {
+  // Sorted for the same reason as `discoverAppsUnder`: one order on every filesystem.
+  for (const name of readdirSync(root).sort()) {
     const appDir = join(root, name)
     if (!statSync(appDir).isDirectory()) continue
-    for (const version of readdirSync(appDir)) {
+    for (const version of readdirSync(appDir).sort()) {
       // An unpack in progress (`.tmp-<uuid>`, modules/apps/version-dir.ts) is no version.
       if (version.startsWith(".")) continue
       const verDir = join(appDir, version)

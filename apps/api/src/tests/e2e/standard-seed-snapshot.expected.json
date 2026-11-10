@@ -69,7 +69,7 @@
   },
   "kernel.audit_log": {
     "rows": 234,
-    "digest": "f4dc4587165230d9"
+    "digest": "33ef32b989660fef"
   },
   "kernel.connected_accounts": {
     "rows": 5,
@@ -113,7 +113,7 @@
   },
   "kernel.pending_events": {
     "rows": 229,
-    "digest": "6ffcf7354b0f61fe"
+    "digest": "41a64d2de4f8852c"
   },
   "kernel.role_dimension_grants": {
     "rows": 1,

@@ -67,6 +67,7 @@ export const CAPABILITY_LABELS: Record<string, string> = {
   projects: "projects and tasks",
   shopify: "the online store",
   social: "social accounts",
+  stripe: "payment data",
   tickets: "support tickets",
 }
 

@@ -16,6 +16,10 @@
 // connections, and in a demo org even that stays read-only: the adapter and
 // credential doors refuse demo orgs.
 //
+// Support and finance read the payments mirror (customers, subscriptions,
+// invoices, payments). Refunds, cancellations and the connection stay with the
+// admin: no desk holds a payments write scope.
+//
 // The lists are validated at seed time, not here: `seedDemoOrg` runs every
 // scope through the registry (`unknownScopes`) and the role ceiling guard
 // (`assertNoAdminScopesInRoleCeiling`), so a typo or an over-grant fails the
@@ -148,6 +152,10 @@ const DEMO_ROLE_SCOPES: Record<DemoRole, readonly string[]> = {
     "google-drive:accounts:read",
     "api-connector:read",
     "api-connector:write",
+    "stripe:customers:read",
+    "stripe:subscriptions:read",
+    "stripe:invoices:read",
+    "stripe:payments:read",
   ],
   fulfillment: [
     "database:reads:read",
@@ -254,6 +262,11 @@ const DEMO_ROLE_SCOPES: Record<DemoRole, readonly string[]> = {
     "pennylane:invoices:write",
     "api-connector:read",
     "api-connector:write",
+
+    "stripe:customers:read",
+    "stripe:subscriptions:read",
+    "stripe:invoices:read",
+    "stripe:payments:read",
   ],
   sales: [
     "database:reads:read",

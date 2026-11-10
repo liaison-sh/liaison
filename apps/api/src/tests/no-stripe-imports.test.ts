@@ -283,6 +283,19 @@ const CONNECTOR_PATHS = [
   "**/i18n/**",
   "**/*i18n*",
   "apps/api/src/modules/agent/tools/tool-bench/corpus.json",
+  // The connector's registrations (D129: "its registrations may name the
+  // vendor"): its setup label and timing, its tables' import coverage and
+  // export redaction, its settings alias, its scope alias and capability
+  // label, and the test server's mock and install-route wiring.
+  "apps/api/src/modules/connection-guides/setup-features.ts",
+  "apps/api/src/modules/connection-guides/setup-timings.ts",
+  "apps/api/src/modules/imports/coverage-registry.ts",
+  "apps/api/src/modules/export/org-archive/redaction.ts",
+  "apps/api/src/modules/apps/runtime-helpers.ts",
+  "apps/web/src/modules/settings/settings-aliases.ts",
+  "packages/shared/src/capability-categories.ts",
+  "apps/api/test-support/index.e2e.ts",
+  "apps/api/test-support/qa-seed-routes.ts",
 ].map((g) => g.replace(/@@/g, FORBIDDEN))
 
 /** A path glob (`*` within a segment, `**` across segments) as a RegExp. */

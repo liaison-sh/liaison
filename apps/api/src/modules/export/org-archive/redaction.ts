@@ -110,6 +110,7 @@ export const KEPT_COLUMNS: Readonly<Record<string, string>> = {
   "kernel.oauth_providers.userinfo_endpoint": "a public URL",
   "app_boxtal.app_config.key": NOT_SECRET_KEY,
   "app_pennylane.app_config.key": NOT_SECRET_KEY,
+  "app_stripe.install_metadata.state": STATUS,
   "app_projects.projects.key": NOT_SECRET_KEY,
   "kernel.product_attributes.key": NOT_SECRET_KEY,
   "app_test_bridge_a.audit.key": NOT_SECRET_KEY,

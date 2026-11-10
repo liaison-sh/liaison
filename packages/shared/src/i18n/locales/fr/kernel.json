@@ -610,6 +610,7 @@
       "mcp-manager": "Services connectés",
       "monitoring": "Supervision",
       "pennylane": "Pennylane",
+      "stripe": "Stripe",
       "projects": "Projets",
       "shopify": "Shopify",
       "social": "Réseaux sociaux",
@@ -1875,6 +1876,7 @@
       "gitlab": "GitLab",
       "google-drive": "Google Drive",
       "pennylane": "Pennylane",
+      "stripe": "Stripe",
       "api-connector": "Connecteur API",
       "calls": "Appels"
     },
@@ -3773,6 +3775,9 @@
     "projects__member": "Contributeur aux projets : lire les projets, lire et modifier les tâches",
     "projects__lead": "Responsable de projet : créer et modifier des projets en plus des droits de membre",
     "projects__admin": "Administrateur des projets : contrôle complet des réglages",
+    "stripe__member": "Lecture Stripe : clients, abonnements, factures, paiements, remboursements et litiges",
+    "stripe__billing": "Facturation Stripe : relier les clients aux entreprises et aux contacts, demander des remboursements et des résiliations par approbation",
+    "stripe__admin": "Administrateur Stripe : connecter le compte, gérer sa clé et son webhook",
     "tickets__support": "Agent de support",
     "tickets__support_lead": "Chef d'équipe : gère les boîtes de réception, les catégories et les comptes, peut clôturer les tickets",
     "tickets__admin": "Administrateur des tickets : contrôle complet des réglages et des comptes",
@@ -3786,6 +3791,7 @@
     "kpi": "Accès au service d'indicateurs du déploiement : registre de formules versionné, provenance complète de chaque chiffre, et modifications de définitions approuvées par une personne, avec essai à blanc et historique des versions",
     "monitoring": "Réception des alertes de production : un webhook signé transforme les alertes externes en incidents dédoublonnés, signalés dans le fil d'attention, avec prise en compte et résolution",
     "pennylane": "Connecteur comptable Pennylane : factures fournisseurs et clients, balance, compte de résultat, trésorerie, transactions, dépenses par catégorie, autonomie financière",
+    "stripe": "Connecteur Stripe : une copie en lecture des clients, abonnements, factures, paiements, remboursements et litiges, tenue à jour par un webhook signé.",
     "shopify": "Intégration Shopify : commandes, clients, produits, marchés, brouillons de commande, remboursements, expéditions, retours",
     "social": "Réseaux sociaux : surveille Facebook, Instagram et YouTube pour repérer ce qui concerne la marque, prépare des réponses soumises à approbation et gère les messages privés.",
     "calendar": "Agenda : vues mois et semaine synchronisées dans les deux sens avec Google Agenda, pour les agendas de l'organisation et personnels.",
@@ -4670,6 +4676,9 @@
     },
     "pennylane": {
       "pennylane": "Compte Pennylane"
+    },
+    "stripe": {
+      "stripe": "Compte Stripe"
     },
     "shopify": {
       "shop": "Boutique Shopify"

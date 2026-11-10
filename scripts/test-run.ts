@@ -1821,6 +1821,20 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
     ],
     cwd: path.join(ROOT, "bundled-apps/pennylane"),
   },
+  // Stripe connector oracles: manifest, schema allow-list and the HTTP door.
+  // Mock-driven, no Postgres or credentials.
+  "bundled-stripe": {
+    cmd: [
+      "bun",
+      "test",
+      ...bailBun,
+      ...bunTestFlags,
+      ...(fileFilter
+        ? fileArg
+        : ["src/manifest.test.ts", "src/schema-guard.test.ts", "src/http.test.ts"]),
+    ],
+    cwd: path.join(ROOT, "bundled-apps/stripe"),
+  },
   // Calls bundled-app oracles -- same orphan class. The DB-backed webhook
   // counterpart under apps/api stays in the `integration` suite, which is where
   // it is listed by name; these are the mock-driven unit halves, no
@@ -2169,6 +2183,7 @@ if (suite === "full") {
     "bundled-boxtal",
     "bundled-monitoring",
     "bundled-pennylane",
+    "bundled-stripe",
     "bundled-calls",
     "bundled-social",
     "bundled-freeze",

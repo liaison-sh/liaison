@@ -414,7 +414,9 @@ describe("a Stripe refund becomes a credit note, end to end", () => {
     const docs = await sql<Row[]>`
       SELECT external_ref, grand_total_minor::text AS total, counterparty_name AS buyer
       FROM app_invoicing.documents WHERE org_id = ${ORG} AND type = 'invoice'`
-    expect(docs).toEqual([{ external_ref: "stripe:in_E1", total: "12000", buyer: "Lumen Studio" }])
+    expect([...docs]).toEqual([
+      { external_ref: "stripe:in_E1", total: "12000", buyer: "Lumen Studio" },
+    ])
     // A charge its invoice explains is not an unmatched payment.
     const unmatched =
       await sql`SELECT 1 FROM app_invoicing.deferred_events WHERE org_id = ${ORG} AND reason = 'stripe_payment_unmatched'`
@@ -445,7 +447,7 @@ describe("a Stripe refund becomes a credit note, end to end", () => {
     const failed = await sql<Row[]>`
       SELECT reason FROM app_invoicing.deferred_events
       WHERE org_id = ${ORG} AND event_id = 'stripe:re_E3:failed'`
-    expect(failed).toEqual([{ reason: "refund_failed" }])
+    expect([...failed]).toEqual([{ reason: "refund_failed" }])
   }, 60_000)
 
   it("a refund made while invoicing was off gets its credit note from the safety job once invoicing is on", async () => {

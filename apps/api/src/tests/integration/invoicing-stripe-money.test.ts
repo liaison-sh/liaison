@@ -96,7 +96,7 @@ type Row = Record<string, unknown>
 async function tool(
   name: string,
   params: Row,
-  origin: "human-ui" | "agent" = "human-ui",
+  origin: "human-ui" | "in-app-agent" = "human-ui",
 ): Promise<{ data?: Row; blocked?: unknown; error?: string }> {
   try {
     const res = await executeTool<Row>({
@@ -311,7 +311,7 @@ describe("card payments on Stripe, on Postgres", () => {
     const rows = await sql<
       Row[]
     >`SELECT status, reason FROM app_invoicing.deferred_events WHERE org_id = ${ORG} AND event_id = 'stripe:ch_u1'`
-    expect(rows).toEqual([{ status: "awaiting_data", reason: "stripe_payment_unmatched" }])
+    expect([...rows]).toEqual([{ status: "awaiting_data", reason: "stripe_payment_unmatched" }])
   }, 60_000)
 
   it("an agent's request to invoice a Stripe payment waits for a person and issues nothing", async () => {
@@ -328,7 +328,7 @@ describe("card payments on Stripe, on Postgres", () => {
     const r = await tool(
       "invoice_from_stripe_payment",
       { chargeId: "ch_u2", vatRateBp: 2000 },
-      "agent",
+      "in-app-agent",
     )
     expect(r.error ?? r.blocked ?? r.data?.status).toBeTruthy()
     expect(r.data?.document_id).toBeUndefined()

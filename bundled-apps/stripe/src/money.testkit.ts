@@ -40,7 +40,11 @@ export function connectedDb(state = "connected"): MemDb {
 }
 
 /** A ctx for one approval (`approvalId`), or for staging when it is null. */
-export function moneyCtx(db: MemDb, approvalId: string | null): MoneyCtx & { rec: Recorded } {
+export function moneyCtx(
+  db: MemDb,
+  approvalId: string | null,
+  opts: { cardIssuer?: string | null } = {},
+): MoneyCtx & { rec: Recorded } {
   const rec: Recorded = { started: 0, succeeded: [], noEffect: [], ambiguous: [], calls: [], logs: [] }
   const tool = "stripe:refunds_create"
   return {
@@ -50,6 +54,8 @@ export function moneyCtx(db: MemDb, approvalId: string | null): MoneyCtx & { rec
     executeTool: async (t, params) => {
       rec.calls.push({ tool: t, params })
       if (t === "projects:deals_search") return { status: "completed", result: { items: [{ id: "d1", title: "Renewal 2027" }] } }
+      // Who issues card payments' invoices, as invoicing's "Who issues what" records it.
+      if (t === "invoicing:card_stream_issuer") return { status: "completed", result: { issuer: opts.cardIssuer ?? null } }
       return { status: "completed", result: { ok: true } }
     },
     logger: {

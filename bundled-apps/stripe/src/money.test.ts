@@ -53,8 +53,8 @@ describe("refunds_create before approval", () => {
     expect((await refundsCreatePreflight({ chargeId: "ch_small", amountMinor: 1000 }, ctx)) as Obj).toMatchObject({ ok: true })
 
     // When Liaison issues the invoices, a charge with no Liaison invoice behind it is a person's call.
-    db.seed("stripe_invoices", [{ stripe_id: "in_mine", issuer: "liaison", liaison_document_id: "00000000-0000-4000-8000-000000000001" }])
-    const old = await refundsCreatePreflight({ chargeId: "ch_old" }, ctx)
+    expect((await refundsCreatePreflight({ chargeId: "ch_old" }, ctx)) as Obj).toMatchObject({ ok: true })
+    const old = await refundsCreatePreflight({ chargeId: "ch_old" }, moneyCtx(db, null, { cardIssuer: "liaison" }))
     expect(codeOf(old)).toBe("no_invoice_for_refund")
     expect((old as Obj).error.message).toContain("which invoice")
     expect(refundPosts()).toHaveLength(0)

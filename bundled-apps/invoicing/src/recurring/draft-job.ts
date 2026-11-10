@@ -31,7 +31,7 @@ import {
   stageRunCard,
 } from "./run-card"
 import { addDays, datesFrom, daysInMonth, latestIssueOn, periodKey, periodStart, type Repeats } from "./schedule"
-import { runItemState } from "./item-state"
+import { rowIssuerHold, runItemState } from "./item-state"
 import { draftCandidates, type ScheduleLineInput, type ScheduleRow } from "./tools"
 
 export interface DraftJobResult {
@@ -254,7 +254,7 @@ async function draftSchedule(ctx: RunCtx, s: ScheduleRow): Promise<{ runId: stri
   const current: CurrentDraft = { net_minor: totals.net, lines_signature: linesSignature(lines) }
   const flags = runItemFlags(await previousInvoice(ctx, s), current)
   // One rule for whether a row is ready (customer, address, total), the same the edits apply.
-  const rowState = runItemState(draftRow ?? docRow, lines)
+  const rowState = runItemState(draftRow ?? docRow, lines, await rowIssuerHold(ctx, draftRow ?? docRow, s as unknown as Row))
   const missing = rowState.state === "needs_fix"
   const position = (await runItems(ctx, runId)).length + 1
   const item = await insertOnce(

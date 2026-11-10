@@ -22,6 +22,7 @@ import {
 import type { DraftLine, DraftLineInput } from "../issue"
 import { type BuyerVatFacts, checkBuyerVat, consumerDeclaredAgainstEvidence } from "../buyer-vat"
 import { asHandlerSummary } from "../approval-cards"
+import { checkIssuerGuard, type GuardCtx } from "../issuer-guard"
 import { assertNoLiveInvoiceForOrder } from "./credit-coverage"
 import {
   resolveIssuerProfileOrError,
@@ -80,6 +81,8 @@ type DraftEinvoiceInput = Pick<
 
 export interface DraftsCreateInput extends DraftEinvoiceInput {
   type: DocumentType
+  /** What this invoice bills when the customer also pays a live Stripe subscription (a person's statement). */
+  billsOtherThanStripe?: string | null
   counterparty_contact_id: string | null
   /** Counterparty snapshot fields shown in the editor's "Customer" section — persisted onto the
    *  draft `documents` row and carried through to the issued document. */
@@ -204,6 +207,41 @@ async function parkConsumerDeclaration(
     current_payload: payload,
   })
   return approval.auto_approved ? null : { status: "pending_approval", approval_id: approval.approval_id }
+}
+
+/**
+ * One customer, one issuer (issuer-guard.ts): an invoice draft for a customer a live Stripe
+ * subscription bills is refused, in the preflight and in the handler alike. An agent's statement
+ * of what else it bills waits for a person (the card shows it); a person's own call goes on.
+ */
+async function guardDraftIssuer(
+  ctx: MutationsCtx,
+  toolName: "invoicing:drafts_create" | "invoicing:drafts_update",
+  buyer: { contactId: string | null; email: string | null },
+  billsOther: string | null | undefined,
+  mode: DraftRunMode,
+  payload: unknown,
+): Promise<DraftParked | null> {
+  const guard = await checkIssuerGuard(ctx as GuardCtx, {
+    contactId: buyer.contactId,
+    emails: [buyer.email],
+    billsOtherThanStripe: billsOther,
+    stage: mode === "preflight" ? "preflight" : "handler",
+  })
+  if (guard.ok) return null
+  if (guard.needsPerson && mode === "tool") {
+    const approval = await ctx.requestApproval({
+      tool_name: toolName,
+      summary: `${toolName.endsWith("create") ? "Create" : "Change"} an invoice draft for a customer Stripe already bills`,
+      summary_detail: {
+        subtitle: "The agent says this bills something other than the Stripe subscription",
+        lines: [`What it bills: ${String(billsOther ?? "").slice(0, 200)}`, "Approve only if this is not what the Stripe subscription already invoices."],
+      },
+      current_payload: payload,
+    })
+    return approval.auto_approved ? null : { status: "pending_approval", approval_id: approval.approval_id }
+  }
+  throw new Error(`${guard.error.error.code}: ${guard.error.error.message}`)
 }
 
 type DraftCreated = { draft_id: string } & ReturnType<typeof serializeDraftRow> & { run_row?: RunRowResult; message?: string }
@@ -370,6 +408,17 @@ async function createDraft(
       "already_in_run",
       `Month-end run ${String(joining.id)} already bills this customer these lines (draft ${inRun.duplicateOf}), so nothing was added. Change that draft with drafts_update, or pass allow_duplicate if the customer is really billed twice.`,
     )
+  }
+  if (input.type === "invoice" && !input.shopify_order_id) {
+    const held = await guardDraftIssuer(
+      ctx,
+      "invoicing:drafts_create",
+      { contactId: input.counterparty_contact_id ?? null, email: input.counterparty_email ?? null },
+      input.billsOtherThanStripe,
+      mode,
+      input,
+    )
+    if (held) return held
   }
   if (mode === "preflight") return { preflight: "passed", buyer: guarded.facts }
   if (joining && mode === "tool") {
@@ -545,6 +594,8 @@ export interface DraftsUpdateInput {
   applies?: "this_month" | "from_now_on"
   put_back?: boolean
   if_unchanged_since?: string
+  /** What this invoice bills when the new buyer also pays a live Stripe subscription (a person's statement). */
+  billsOtherThanStripe?: string | null
 }
 
 /** Update a draft, for in-app callers that hold no approval to park (the tool runs draftsUpdateTool). */
@@ -757,6 +808,25 @@ async function updateDraft(
   input: DraftsUpdateInput,
   mode: DraftRunMode,
 ): Promise<DraftUpdated | DraftParked | PreflightPassed | RunUpdated | RunParked> {
+  // A new buyer on an invoice draft meets the issuer guard, as a new draft does.
+  const p = input.patch ?? {}
+  if ("counterparty_contact_id" in p || "counterparty_email" in p) {
+    const current = await getDraft(ctx.db, input.draft_id)
+    if (current && current.type === "invoice" && !current.shopify_order_id && !current.external_refs?.shopify_order_id) {
+      const held = await guardDraftIssuer(
+        ctx,
+        "invoicing:drafts_update",
+        {
+          contactId: ("counterparty_contact_id" in p ? p.counterparty_contact_id : current.counterparty_contact_id) ?? null,
+          email: ("counterparty_email" in p ? p.counterparty_email : current.counterparty_email) ?? null,
+        },
+        input.billsOtherThanStripe,
+        mode,
+        input,
+      )
+      if (held) return held
+    }
+  }
   const rd = await runDraftOf(ctx, input.draft_id)
   if (rd) return updateRunDraft(ctx, input, mode, rd)
   return updatePlainDraft(ctx, { draft_id: input.draft_id, patch: input.patch ?? {} }, mode)

@@ -31,7 +31,17 @@ import { ordersInvoiceabilityCheck } from "./order-invoiceability"
 import { customerHistory } from "./customer-history"
 import { vatLookup } from "./vat-lookup"
 import {
+  cardStreamIssuer,
+  issuerEmailsConfirm,
+  issuerEmailsConfirmPreflight,
+  issuerStreamGet,
+  issuerStreamSet,
+  issuerStreamSetPreflight,
+  onStripeConnectionChanged,
+} from "./streams"
+import {
   checkScheduleInput,
+  checkScheduleCreate,
   checkScheduleUpdate,
   recurringList,
   recurringSchedulePause,
@@ -657,9 +667,10 @@ export const recurringScheduleCreateHandler = (
   ctx: Parameters<typeof recurringScheduleCreate>[0],
 ) => recurringScheduleCreate(ctx, params)
 export const recurringScheduleCreatePreflightHandler = async (
-  params: Parameters<typeof checkScheduleInput>[0],
+  params: Parameters<typeof checkScheduleCreate>[1],
+  ctx: Parameters<typeof checkScheduleCreate>[0],
 ) => {
-  const refused = checkScheduleInput(params)
+  const refused = await checkScheduleCreate(ctx, params)
   return refused ? { error: refused.error } : { ok: true }
 }
 export const recurringScheduleUpdateHandler = (
@@ -670,7 +681,7 @@ export const recurringScheduleUpdatePreflightHandler = async (
   params: Parameters<typeof checkScheduleUpdate>[1],
   ctx: Parameters<typeof checkScheduleUpdate>[0],
 ) => {
-  const refused = await checkScheduleUpdate(ctx, params)
+  const refused = await checkScheduleUpdate(ctx, params, "preflight")
   return refused ? { error: refused.error } : { ok: true }
 }
 export const recurringSchedulePauseHandler = (
@@ -707,3 +718,36 @@ export const recurringRunUnapprovePreflightHandler = (params: { run_id: string }
   recurringRunUnapprovePreflight(ctx, params)
 export const approvalRouteReadHandler = (params: { entityType: string; entityId: string }, ctx: RunCtx) =>
   approvalRouteRead(ctx, params)
+
+// --- Who issues what: the card stream's issuer and Stripe's own emails (see streams.ts) ---
+export const issuerStreamGetHandler = (
+  params: Parameters<typeof issuerStreamGet>[1],
+  ctx: Parameters<typeof issuerStreamGet>[0],
+) => issuerStreamGet(ctx, params ?? {})
+export const issuerStreamSetHandler = (
+  params: Parameters<typeof issuerStreamSet>[1],
+  ctx: Parameters<typeof issuerStreamSet>[0],
+) => issuerStreamSet(ctx, params)
+export const issuerStreamSetPreflightHandler = async (
+  params: Parameters<typeof issuerStreamSetPreflight>[1],
+  ctx: Parameters<typeof issuerStreamSetPreflight>[0],
+) => {
+  const r = await issuerStreamSetPreflight(ctx, params)
+  return "status" in r ? { error: r.error } : r
+}
+export const issuerEmailsConfirmPreflightHandler = async (
+  params: Parameters<typeof issuerEmailsConfirmPreflight>[1],
+  ctx: Parameters<typeof issuerEmailsConfirmPreflight>[0],
+) => {
+  const r = await issuerEmailsConfirmPreflight(ctx, params)
+  return "status" in r ? { error: r.error } : r
+}
+export const issuerEmailsConfirmHandler = (
+  params: Parameters<typeof issuerEmailsConfirm>[1],
+  ctx: Parameters<typeof issuerEmailsConfirm>[0],
+) => issuerEmailsConfirm(ctx, params)
+export const cardStreamIssuerHandler = (_params: unknown, ctx: Parameters<typeof cardStreamIssuer>[0]) => cardStreamIssuer(ctx)
+export const onStripeConnectionStateChanged = (
+  event: Parameters<typeof onStripeConnectionChanged>[1],
+  ctx: Parameters<typeof onStripeConnectionChanged>[0],
+) => onStripeConnectionChanged(ctx, event)

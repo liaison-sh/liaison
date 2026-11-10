@@ -120,7 +120,8 @@ A refund or a cancellation always waits for a person's approval: no policy appro
 | `already_refunded` | The payment is already refunded in full |
 | `charge_disputed` | The payment is disputed: answer the dispute in Stripe instead |
 | `amount_over_refundable` | The amount is above what is left to refund |
-| `no_invoice_for_refund` | Liaison issues your invoices and no Liaison invoice is behind this payment: say which invoice its credit note goes against |
+| `no_invoice_for_refund` | Liaison issues your card subscriptions' invoices (invoicing's **Who issues what**) and no Liaison invoice is behind this payment: say which invoice its credit note goes against |
+| `issuer_unknown` | Liaison could not read who issues your card subscriptions' invoices: try again in a minute |
 | `card_number_refused` | The reason holds a card number. Liaison never takes card numbers |
 
 - The approval card shows the payment, the card (brand and last 4 digits) and the amount, which the approver can change.

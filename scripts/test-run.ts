@@ -1371,6 +1371,9 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
         ? fileArg
         : [
             "src/mutations.test.ts",
+            // Who issues what, and the issuer guard on every path that invoices a named customer.
+            "src/issuer-guard.test.ts",
+            "src/streams.test.ts",
             // The month-end run: drafts, flags, the card, approve and undo, the legal dates (pure store).
             "src/recurring/draft-job.test.ts",
             "src/recurring/run-card.test.ts",
@@ -1461,6 +1464,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/ui/DocumentDetail.test.tsx",
             // The Deferred tab: open parks, tax reviews first, gated override outcome.
             "src/ui/DeferredList.test.tsx",
+            // Who issues what, in the issuer settings: the streams, and Checked only after a person's click.
+            "src/ui/IssuerStreams.test.tsx",
             // E-invoicing surfaces: the calm regime line, the customer identity tab (lookup never
             // picks a candidate) and the readiness tab (one action per blocker).
             "src/ui/einvoicing/RegimeLine.test.tsx",

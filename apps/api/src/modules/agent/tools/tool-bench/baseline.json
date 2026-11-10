@@ -770,7 +770,7 @@
     },
     "invoicing__drafts_create": {
       "desc": 290,
-      "schema": 1520
+      "schema": 1523
     },
     "invoicing__drafts_discard": {
       "desc": 179,
@@ -778,7 +778,7 @@
     },
     "invoicing__drafts_update": {
       "desc": 93,
-      "schema": 1375
+      "schema": 1362
     },
     "invoicing__einvoice_book_batch": {
       "desc": 269,
@@ -854,11 +854,11 @@
     },
     "invoicing__invoice_create_and_issue": {
       "desc": 477,
-      "schema": 1076
+      "schema": 1090
     },
     "invoicing__invoice_issue": {
       "desc": 777,
-      "schema": 102
+      "schema": 116
     },
     "invoicing__legal_originals_verify": {
       "desc": 460,
@@ -3253,6 +3253,12 @@
     "N03|retenir": "15tl",
     "N03|se souvenir": "15tl",
     "N03|souviens-toi": "15tl",
+    "WI1|invoice issuer Stripe or Liaison": "5tl",
+    "WI1|who issues card subscription invoices": "15tl",
+    "WI2|changer l'émetteur des abonnements carte": "15t",
+    "WI2|Stripe émet les factures": "5tl",
+    "WI3|confirm Stripe customer emails off": "15tl",
+    "WI3|Stripe emails are off": "15tl",
     "Y01|check the Stripe key": "15tl",
     "Y01|vérifier la clé Stripe": "15tl",
     "Y02|clients Stripe non liés": "5t",
@@ -3263,7 +3269,7 @@
     "Y04|link Stripe customer to company": "15tl",
     "Y05|abonnements en retard": "",
     "Y05|past due subscriptions": "15t",
-    "Y06|factures Stripe ouvertes": "15t",
+    "Y06|factures Stripe ouvertes": "5t",
     "Y06|open Stripe invoices": "15t",
     "Y07|failed payments": "5t",
     "Y07|paiements échoués": "5tl",

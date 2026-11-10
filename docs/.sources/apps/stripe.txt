@@ -91,3 +91,4 @@ cancel card MRR effect, invoice effect, open deals -> bundled-apps/stripe/src/to
 card_update_link ladder, effect sentences, 30 days re-read, never stored -> bundled-apps/stripe/src/tools/links.ts:1
 reminder guard reads Stripe at send time, stops on paid/void/uncollectible, waits when unreachable -> bundled-apps/stripe/src/tools/send-state.ts:1
 sendGuardProviders service message, failed-payments routine 07:00 off by default -> bundled-apps/stripe/app.manifest.json:1
+refund credit note follows only when Liaison issues card invoices; issuer_unknown -> bundled-apps/stripe/src/tools/refunds.ts:146

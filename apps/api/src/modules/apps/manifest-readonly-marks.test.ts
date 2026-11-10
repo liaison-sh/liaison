@@ -240,6 +240,8 @@ const READ_ONLY: Record<string, string[]> = {
     "einvoicing_readiness",
     "legal_originals_verify",
     "einvoice_transmission_get",
+    // The payment reminder guard: reads one document's paid, credited or voided state.
+    "document_send_state",
     "einvoicing_settings_get",
     // The settings page's own reads of the same settings and of the installed platforms.
     "einvoicing_settings_values",

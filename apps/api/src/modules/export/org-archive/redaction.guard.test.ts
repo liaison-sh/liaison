@@ -71,7 +71,10 @@ describe("export redaction guard", () => {
   })
 
   it("leaves out the dispatch grants that let an e-invoice go out without a new approval", () => {
-    for (const key of ["app_invoicing.recurring_run_items.send_grant", "app_invoicing.einvoice_standing.grant_ref"]) {
+    for (const key of [
+      "app_invoicing.recurring_run_items.send_grant",
+      "app_invoicing.einvoice_standing.grant_ref",
+    ]) {
       expect(decideColumn(key).action, key).toBe("redact")
     }
   })

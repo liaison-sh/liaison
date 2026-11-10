@@ -47,9 +47,15 @@ export function documentStreamRef(doc: Row): string | null {
   return issuer && stream ? streamRef(issuer, stream) : null
 }
 
+/** A stored `until` day as `YYYY-MM-DD`, whether the store hands text or a Date. */
+export function untilDay(row: Row): string {
+  const v = row.until instanceof Date ? row.until.toISOString() : String(row.until ?? "")
+  return v.slice(0, 10)
+}
+
 function untilOf(row: Row): number {
-  const t = Date.parse(`${String(row.until ?? "").slice(0, 10)}T00:00:00Z`)
-  return Number.isFinite(t) ? t : 0
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(untilDay(row))
+  return m ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : 0
 }
 
 /** The live standing authorization of a stream, or null when it is off, revoked or lapsed. */
@@ -188,7 +194,7 @@ export async function einvoiceStandingDailyJob(ctx: EinvCtx): Promise<{ status: 
           entity: "einvoicing",
           action: "standing_lapsed",
           entityId: String(row.id),
-          data: { issuer_profile_id: row.issuer_profile_id, stream, until: String(row.until ?? "").slice(0, 10), resolved: false },
+          data: { issuer_profile_id: row.issuer_profile_id, stream, until: untilDay(row), resolved: false },
         })
       }
       continue
@@ -198,7 +204,7 @@ export async function einvoiceStandingDailyJob(ctx: EinvCtx): Promise<{ status: 
       tool_name: "invoicing:issuer_stream_set",
       summary: `Renew the standing e-invoice authorization of the ${stream === "card" ? "card subscriptions" : "recurring by transfer"} stream`,
       summary_detail: {
-        subtitle: `It ends on ${String(row.until ?? "").slice(0, 10)}. Renewed, e-invoices issued with no person on this stream keep being sent at issue for 90 more days; otherwise they wait for the daily send card.`,
+        subtitle: `It ends on ${untilDay(row)}. Renewed, e-invoices issued with no person on this stream keep being sent at issue for 90 more days; otherwise they wait for the daily send card.`,
       },
       current_payload: { issuerProfileId: String(row.issuer_profile_id), stream, einvoiceStanding: true },
       editable_fields: [],

@@ -228,6 +228,17 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   einvoice_send_disabled: 409,
   einvoice_before_cutover: 409,
   einvoice_retry_not_allowed: 409,
+  // A send prepared under a stream's standing grant or a month-end row's grant whose document is no
+  // longer that stream's or that row's; a standing authorization asked for a stream that has none;
+  // a collection the platform did not take.
+  stream_mismatch: 409,
+  run_item_mismatch: 409,
+  stream_not_authorizable: 400,
+  not_reported: 502,
+  // A payment reminder about an invoice already settled: the send guard's stop codes.
+  invoice_paid: 409,
+  invoice_credited: 409,
+  invoice_voided: 409,
   not_transmitted: 409,
   approval_unavailable: 409,
   booking_disabled: 409,

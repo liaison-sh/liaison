@@ -14,7 +14,7 @@
 // Stripe's own emails to customers (finalized invoices, credit notes, receipts) cannot be read
 // through Stripe's API, so Liaison never says they are off: it asks, until a person states they
 // checked, and keeps who and when (`issuer_emails_confirm`).
-import { einvoiceStandingOff, standingOf, standingOn } from "./einvoicing/standing"
+import { einvoiceStandingOff, standingOf, standingOn, untilDay } from "./einvoicing/standing"
 import type { EinvCtx } from "./einvoicing/transmit"
 import type { ErrorEnvelope, MutationsCtx } from "./mutations/shared"
 
@@ -329,7 +329,7 @@ export async function issuerStreamSet(
 /** The card stream's standing e-invoice authorization, as issuer_stream_set reports it. */
 async function cardStanding(ctx: StreamsCtx, issuerProfileId: string): Promise<{ einvoiceStanding: boolean; standingUntil: string | null }> {
   const live = await standingOf(ctx as unknown as EinvCtx, issuerProfileId, "card")
-  return { einvoiceStanding: live !== null, standingUntil: live ? String(live.until).slice(0, 10) : null }
+  return { einvoiceStanding: live !== null, standingUntil: live ? untilDay(live) : null }
 }
 
 /**

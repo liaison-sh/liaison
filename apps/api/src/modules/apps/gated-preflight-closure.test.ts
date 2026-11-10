@@ -120,6 +120,8 @@ const NO_PREFLIGHT_NEEDED: Record<string, string> = {
   "invoicing:einvoice_send": "staged by einvoice_send_request after its checks; only genuine races",
   "invoicing:einvoice_book_batch":
     "staged by the booking job for a batch it built; only genuine races",
+  "invoicing:einvoice_send_batch":
+    "staged by the daily send job for a batch of sendable documents it built; only genuine races",
   // conditionalGate: checksum, SIRET-of-SIREN and registry checks run in the
   // handler before it calls requestApproval.
   "invoicing:counterparty_identity_set": "validates before parking",

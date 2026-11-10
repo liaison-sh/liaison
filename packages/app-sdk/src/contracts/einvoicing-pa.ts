@@ -116,7 +116,10 @@ export const einvoicingPaV1: ContractSpec = {
      * amounts by VAT rate (`[{rate_bp, net_minor, vat_minor}]`, negative for a refund) of the
      * document at `provider_ref`. A fact, not an issuing act: no dispatch grant. `{state}`.
      */
-    report_collection: { required: false, params: ["provider_ref", "date", "amounts_by_vat_rate", "idempotency_key"] },
+    report_collection: {
+      required: false,
+      params: ["provider_ref", "date", "amounts_by_vat_rate", "idempotency_key"],
+    },
     /**
      * Reception (optional in v1). Supplier e-invoices received through the PA, newest after
      * `cursor` (the catch-up; webhook arrivals come through `list_status_changes` with kind

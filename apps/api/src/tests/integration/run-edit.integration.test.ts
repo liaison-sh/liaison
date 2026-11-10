@@ -11,7 +11,11 @@ import { ObjectStorageTestAccess } from "~/infra/storage/object-storage"
 import { decideApproval } from "~/modules/approvals/decide"
 import { updatePayload } from "~/modules/approvals/edit"
 import { approvalPayloadHash } from "~/modules/approvals/payload-hash"
-import { resetAppRegistries, toolRegistry } from "~/modules/apps/app-registries"
+import {
+  approvalEditableFieldsRegistry,
+  resetAppRegistries,
+  toolRegistry,
+} from "~/modules/apps/app-registries"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { registerTemplate } from "~/modules/pdf/registry"
@@ -134,7 +138,9 @@ describe("editing a month-end run on the real kernel", () => {
     expect(names).toContain("drafts_update")
     expect(names.some((n) => n.startsWith("recurring_run_item_"))).toBe(false)
     const card = toolRegistry.get([world.org, "invoicing", "recurring_run_issue"])
-    expect(card?.editableFields ?? []).toEqual([])
+    expect(
+      approvalEditableFieldsRegistry.get([world.org, "invoicing", "recurring_run_issue"]) ?? [],
+    ).toEqual([])
     expect(card?.editWith).toEqual(["drafts_update", "drafts_create", "drafts_discard"])
     const fx = await drafted(1)
     const before = await cardHash(fx.card)
@@ -258,7 +264,7 @@ describe("editing a month-end run on the real kernel", () => {
     expect(String((await itemsOf(fx.runId))[0]?.note)).toContain("Last invoice")
   }, 120_000)
 
-  it("ending names what it does not stop and writes nothing to Stripe or an agreement", async () => {
+  it("ending names what it does not stop and writes nothing to the payment connector or an agreement", async () => {
     const fx = await drafted(1, { paidBy: "card_link", numbered: true })
     const [item] = await itemsOf(fx.runId)
     const pendingBefore = (await pendingApprovals()).length
@@ -272,12 +278,13 @@ describe("editing a month-end run on the real kernel", () => {
     expect(notes.join(" ")).toContain("https://pay.example.test/l/abc")
     expect(notes.join(" ")).toContain("F-2026-0411 stays as issued")
     expect(notes.join(" ")).toContain("Nothing else changes")
-    // No other request was staged, and no Stripe table exists to write to in this org.
+    // No other request was staged, and the payment connector's subscriptions,
+    // when its table exists, hold no row for this org.
     expect((await pendingApprovals()).length).toBe(pendingBefore)
-    const [stripe] = await sql<
-      Array<{ n: number }>
-    >`SELECT count(*)::int AS n FROM information_schema.schemata WHERE schema_name = 'app_stripe'`
-    if (stripe?.n) {
+    const [connector] = await sql<
+      Array<{ present: boolean }>
+    >`SELECT to_regclass('app_stripe.stripe_subscriptions') IS NOT NULL AS present`
+    if (connector?.present) {
       const [writes] = await sql<
         Array<{ n: number }>
       >`SELECT count(*)::int AS n FROM app_stripe.stripe_subscriptions WHERE org_id = ${world.org}`

@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { sql } from "~/db"
 import type { UserContext } from "~/db/rls"
+import { schemaRef } from "~/db/schema-ref"
 import { dispatchAppJobWithContext } from "~/infra/jobs/job-context"
 import { JobsTestAccess } from "~/infra/jobs/jobs"
 import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-context"
@@ -17,6 +18,9 @@ import { decideApproval } from "~/modules/approvals/decide"
 import { registerApps } from "~/modules/apps/runtime"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
+
+/** The kernel schema under the run namespace's prefix. */
+const KERNEL = () => sql(schemaRef("kernel"))
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..")
 
@@ -253,12 +257,12 @@ export async function scheduleOf(id: string): Promise<Row> {
 export async function pendingApprovals(): Promise<Row[]> {
   return sql<Row[]>`
     SELECT id::text, tool_name, status, current_payload
-    FROM kernel.approval_requests WHERE org_id = ${world.org} AND status = 'pending' ORDER BY created_at`
+    FROM ${KERNEL()}.approval_requests WHERE org_id = ${world.org} AND status = 'pending' ORDER BY created_at`
 }
 
 export async function approvalOf(id: string): Promise<Row> {
   const [a] = await sql<Row[]>`
-    SELECT id::text, tool_name, status, current_payload FROM kernel.approval_requests WHERE id = ${id}`
+    SELECT id::text, tool_name, status, current_payload FROM ${KERNEL()}.approval_requests WHERE id = ${id}`
   if (!a) throw new Error(`no approval ${id}`)
   return a
 }
@@ -289,7 +293,7 @@ export async function reject(approvalId: string): Promise<void> {
     orgId: world.org,
     requestId: approvalId,
     actor: world.actor,
-    decision: "reject",
+    decision: "deny",
   })
 }
 

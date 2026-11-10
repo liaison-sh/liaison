@@ -157,10 +157,17 @@ describe("the money tools the agent reads", () => {
     let total = 0
     const each: Record<string, number> = {}
     for (const name of ["refunds_create", "subscription_cancel", "card_update_link"]) {
-      const t = MANIFEST.tools[name] as { description: string; params: unknown; deferLoading?: boolean }
+      const t = MANIFEST.tools[name] as {
+        description: string
+        params: unknown
+        deferLoading?: boolean
+      }
       expect({ name, deferred: t.deferLoading }).toEqual({ name, deferred: true })
       expect(t.description.length).toBeLessThanOrEqual(280)
-      each[name] = estimateToolSchemaTokens(`stripe__${name}`, { description: t.description, inputSchema: t.params })
+      each[name] = estimateToolSchemaTokens(`stripe__${name}`, {
+        description: t.description,
+        inputSchema: t.params,
+      })
       total += each[name]
     }
     console.info("money tool schema tokens", JSON.stringify({ ...each, total }))

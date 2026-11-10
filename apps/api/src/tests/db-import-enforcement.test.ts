@@ -1591,6 +1591,11 @@ describe("db import enforcement", () => {
     // thread with replies before any API exists to seed through. Not loaded by
     // a production build.
     "modules/threads/__fixtures__/reply-thread-fixture.ts",
+    // Test fixture, the same category: it seeds a month-end run's org, schedules
+    // and drafts, then reads back run rows and pending approvals across the
+    // invoicing app schema and the kernel to assert what each edit wrote. Not
+    // loaded by a production build.
+    "tests/integration/run-edit-fixture.ts",
   ])
 
   // Allowlist: only these files may reference _publishEventInternal

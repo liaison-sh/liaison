@@ -14,6 +14,10 @@
 import type { AppContext } from "@liaison/app-sdk"
 import {
   normalizeDraftOrderNode,
+  normalizePurchasingCompany,
+  PURCHASING_COMPANY_SELECTION,
+  type NormalizedPurchasingCompany,
+  type ShopifyPurchasingCompanyGraphQL,
   resolveOrderPoNumber,
   toPoNumber,
   type NormalizedDraftOrder,
@@ -388,7 +392,8 @@ const ORDERS_GET_QUERY = `
       originalTotalPriceSet { presentmentMoney { amount currencyCode } shopMoney { amount currencyCode } }
       totalTaxSet { presentmentMoney { amount } }
       taxExempt
-      purchasingEntity { ... on PurchasingCompany { company { name } location { taxSettings { taxRegistrationId } } } }
+      taxesIncluded
+      ${PURCHASING_COMPANY_SELECTION}
       shippingAddress { name address1 address2 city province provinceCode zip country countryCode phone }
       billingAddress { name company address1 address2 city province provinceCode zip country countryCode phone }
       customAttributes { key value }
@@ -421,6 +426,8 @@ interface OrderLineItemNode {
   }
 }
 interface OrderDetailNode extends OrderNode {
+  taxesIncluded?: boolean | null
+  purchasingEntity?: ShopifyPurchasingCompanyGraphQL | null
   billingAddress?: (ShopifyAddress & { company?: string | null }) | null
   customAttributes?: Array<{ key?: string | null; value?: string | null }> | null
   lineItems?: { edges?: Array<{ node: OrderLineItemNode }> }
@@ -471,6 +478,12 @@ export interface OrderDetail extends NormalizedHit {
   /** The buyer's VAT / tax number from the order's CURRENT custom attributes (the keys the
    *  order:created event reads), so a later read sees a number added after checkout. Null if none. */
   buyerTaxId: string | null
+  /** True when the order's prices include tax (a B2B catalog order on a tax-inclusive shop is
+   *  often net). Absent when Shopify did not say. */
+  taxesIncluded?: boolean
+  /** The B2B company buying (name, location addresses, tax registration id, tax exemption,
+   *  contact email), or null for a consumer order. */
+  purchasingCompany: NormalizedPurchasingCompany | null
   totalPrice?: { amount: string; currencyCode: string }
   // Buyer's PO reference, cross-app contract with invoicing: nullable string,
   // ABSENT (not `""`) when there is none. This order's OWN Shopify field only
@@ -788,6 +801,8 @@ export async function orders_get(params: Record<string, unknown>, ctx: AppContex
     buyerTaxId: buyerTaxIdFromNoteAttributes(
       (order.customAttributes ?? []).map((a) => ({ name: a?.key ?? null, value: a?.value ?? null })),
     ),
+    ...(typeof order.taxesIncluded === "boolean" ? { taxesIncluded: order.taxesIncluded } : {}),
+    purchasingCompany: normalizePurchasingCompany(order.purchasingEntity),
     totalPrice: money ? { amount: money.amount, currencyCode: money.currencyCode } : undefined,
     ...(po_number !== undefined ? { po_number } : {}),
     ...(b2bOrder ? { b2bOrder } : {}),
@@ -1030,12 +1045,14 @@ const DRAFT_ORDER_GET_QUERY = `
       billingAddress { name company address1 address2 zip city province countryCodeV2 phone }
       shippingAddress { name company address1 address2 zip city province countryCodeV2 phone }
       customer { id email firstName lastName defaultAddress { company } }
+      ${PURCHASING_COMPANY_SELECTION}
       lineItems(first: 100) {
         edges {
           node {
             id name title sku custom taxable requiresShipping quantity
             variant { id product { id } }
             originalUnitPriceSet { presentmentMoney { amount currencyCode } }
+            priceOverride { amount currencyCode }
             discountedTotalSet { presentmentMoney { amount } }
             appliedDiscount {
               valueType value

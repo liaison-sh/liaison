@@ -39,6 +39,29 @@ export interface NormalizedDraftOrderLineItem {
   taxable: boolean
   requiresShipping: boolean
   custom: boolean
+  /** The line's price override (a staff-set unit price), when it has one. `unitPrice` already
+   *  carries it: an overridden line is invoiced at that price, never as a discount off the
+   *  variant's list price. Absent on the webhook path. */
+  priceOverride?: string | null
+}
+
+/**
+ * The B2B buyer of a draft order or order placed for a company (`purchasingEntity` is a
+ * PurchasingCompany). The document's counterparty is the COMPANY: its name, the location's billing
+ * address (shipping as fallback), the location's tax registration id, and the contact's email.
+ * Such a draft frequently carries no draft-level address of its own.
+ */
+export interface NormalizedPurchasingCompany {
+  companyName: string | null
+  locationName: string | null
+  /** The company location's tax registration id (the buyer's VAT number). */
+  taxRegistrationId: string | null
+  /** True when the company location is tax exempt. */
+  taxExempt: boolean
+  /** The company contact's email (the person ordering for the company). */
+  contactEmail: string | null
+  billingAddress: NormalizedAddress | null
+  shippingAddress: NormalizedAddress | null
 }
 
 export interface NormalizedDraftOrderDiscount {
@@ -100,6 +123,10 @@ export interface NormalizedDraftOrder {
   // reach the quote through this field via `draft_orders/create` and `draft_orders/update`,
   // since invoicing's draft-order sync learns of the draft ONLY from these events.
   poNumber: string | null
+  /** The B2B company buying, or null for a consumer draft. Set by `draft_orders_get` only; the
+   *  webhook path leaves it absent (`undefined`), which tells a consumer to re-fetch when it needs
+   *  the buyer's company. */
+  purchasingCompany?: NormalizedPurchasingCompany | null
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -407,6 +434,7 @@ export interface ShopifyDraftOrderGraphQLLineItemNode {
   quantity?: number
   variant?: { id?: string | null; product?: { id?: string | null } | null } | null
   originalUnitPriceSet?: MoneyBag | null
+  priceOverride?: { amount?: string | null; currencyCode?: string | null } | null
   discountedTotalSet?: MoneyBag | null
   appliedDiscount?: {
     valueType?: string | null
@@ -455,6 +483,79 @@ export interface ShopifyDraftOrderGraphQLNode {
     defaultAddress?: { company?: string | null } | null
   } | null
   lineItems?: { edges?: Array<{ node: ShopifyDraftOrderGraphQLLineItemNode }> } | null
+  /** PurchasingCompany arm of the union; `{}` when the buyer is a plain Customer. */
+  purchasingEntity?: ShopifyPurchasingCompanyGraphQL | null
+}
+
+export interface ShopifyCompanyAddressGraphQL {
+  recipient?: string | null
+  companyName?: string | null
+  address1?: string | null
+  address2?: string | null
+  zip?: string | null
+  city?: string | null
+  province?: string | null
+  countryCode?: string | null
+  phone?: string | null
+}
+
+export interface ShopifyPurchasingCompanyGraphQL {
+  company?: { name?: string | null } | null
+  contact?: { customer?: { email?: string | null } | null } | null
+  location?: {
+    name?: string | null
+    billingAddress?: ShopifyCompanyAddressGraphQL | null
+    shippingAddress?: ShopifyCompanyAddressGraphQL | null
+    taxSettings?: { taxRegistrationId?: string | null; taxExempt?: boolean | null } | null
+  } | null
+}
+
+/** The GraphQL selection that fills `ShopifyPurchasingCompanyGraphQL` (draft order or order). */
+export const PURCHASING_COMPANY_SELECTION = `purchasingEntity { ... on PurchasingCompany {
+        company { name }
+        contact { customer { email } }
+        location {
+          name
+          taxSettings { taxRegistrationId taxExempt }
+          billingAddress { recipient companyName address1 address2 zip city province countryCode phone }
+          shippingAddress { recipient companyName address1 address2 zip city province countryCode phone }
+        }
+      } }`
+
+function normalizeCompanyAddress(
+  a: ShopifyCompanyAddressGraphQL | null | undefined,
+): NormalizedAddress | null {
+  if (!a) return null
+  const out: NormalizedAddress = {
+    name: a.recipient ?? null,
+    company: a.companyName ?? null,
+    address1: a.address1 ?? null,
+    address2: a.address2 ?? null,
+    zip: a.zip ?? null,
+    city: a.city ?? null,
+    province: a.province ?? null,
+    countryCode: a.countryCode ? a.countryCode.toUpperCase() : null,
+    phone: a.phone ?? null,
+  }
+  return Object.values(out).some((v) => v !== null && v !== "") ? out : null
+}
+
+/** The B2B company behind a draft order or order, or null when the buyer is a plain customer. */
+export function normalizePurchasingCompany(
+  entity: ShopifyPurchasingCompanyGraphQL | null | undefined,
+): NormalizedPurchasingCompany | null {
+  if (!entity?.company && !entity?.location) return null
+  const blank = (v: string | null | undefined): string | null =>
+    typeof v === "string" && v.trim() !== "" ? v.trim() : null
+  return {
+    companyName: blank(entity.company?.name),
+    locationName: blank(entity.location?.name),
+    taxRegistrationId: blank(entity.location?.taxSettings?.taxRegistrationId),
+    taxExempt: entity.location?.taxSettings?.taxExempt === true,
+    contactEmail: blank(entity.contact?.customer?.email),
+    billingAddress: normalizeCompanyAddress(entity.location?.billingAddress),
+    shippingAddress: normalizeCompanyAddress(entity.location?.shippingAddress),
+  }
 }
 
 function moneyAmount(bag: MoneyBag | null | undefined): string | null {
@@ -503,7 +604,10 @@ function normalizeGraphQLLineItem(node: ShopifyDraftOrderGraphQLLineItemNode): N
     variantId: node.variant?.id ?? null,
     productId: node.variant?.product?.id ?? null,
     quantity: node.quantity ?? 1,
-    unitPrice: moneyAmount(node.originalUnitPriceSet) ?? "0.00",
+    // A price override IS the line's unit price (a B2B catalog price arrives the same way, as
+    // the original unit price): never a discount off the variant's list price.
+    unitPrice: node.priceOverride?.amount ?? moneyAmount(node.originalUnitPriceSet) ?? "0.00",
+    priceOverride: node.priceOverride?.amount ?? null,
     discountedTotal: moneyAmount(node.discountedTotalSet),
     appliedDiscount: node.appliedDiscount
       ? {
@@ -581,5 +685,6 @@ export function normalizeDraftOrderNode(
       price: moneyAmount(t.priceSet),
     })),
     lineItems: lineItemNodes.map(normalizeGraphQLLineItem),
+    purchasingCompany: normalizePurchasingCompany(node.purchasingEntity),
   }
 }

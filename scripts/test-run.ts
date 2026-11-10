@@ -618,11 +618,16 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/invoicing-identity-tools.test.ts",
             "src/tests/integration/invoicing-identity-backfill.test.ts",
             "src/tests/integration/invoicing-imported-original.test.ts",
+            // The month-end run on the real kernel and sandbox: drafted, approved without a
+            // number, issued one transaction per draft on Monday morning in Paris.
+            "src/tests/integration/invoicing-month-end-run.test.ts",
             "src/tests/integration/shopify-invoicing-po-number-seam.test.ts",
             "src/tests/integration/shopify-invoicing-refund-seam.test.ts",
             "src/tests/integration/shopify-oauth-callback.test.ts",
             // An instance-provided Shopify app: OAuth and webhook HMAC with its client.
             "src/tests/integration/shopify-instance-client.test.ts",
+            // Rolling a payments app's webhook signing secret: the old one verifies for 24 hours.
+            "src/tests/integration/stripe-webhook-signing-secret-roll.integration.test.ts",
             // Accounts keep the OAuth client that minted them (refresh, webhooks, reconnect).
             "src/tests/integration/oauth-minting-client.test.ts",
             // A protected (opt-in) OAuth scope is requested only when the org opted in.

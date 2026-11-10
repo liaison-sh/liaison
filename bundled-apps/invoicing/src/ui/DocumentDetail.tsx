@@ -854,8 +854,10 @@ function PdfBody(p: {
     () => (p.doc.pdf_file_id ? { id: p.doc.id, fileId: p.doc.pdf_file_id } : null),
     (key) => fetchPdfBlobUrl(key.id),
   )
+  // Read only once settled: a pending read would hold back the PDF tab's own status and buttons.
+  const embedUrl = () => (embed.state === "ready" ? embed() : undefined)
   createEffect(() => {
-    const url = embed()
+    const url = embedUrl()
     onCleanup(() => {
       if (url) URL.revokeObjectURL(url)
     })
@@ -905,7 +907,7 @@ function PdfBody(p: {
           {tr("Long-term archival metadata absent (PDF/A-3 normalization skipped).")}
         </div>
       </Show>
-      <Show when={embed()}>
+      <Show when={embedUrl()}>
         {(url) => (
           <Show
             when={hasPdfViewer()}
@@ -966,10 +968,15 @@ function LifecycleBody(p: { doc: DocumentSummary }): JSX.Element {
 export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
   const [activeTab, setActiveTab] = createSignal<string>("overview")
   const [data, { refetch }] = createResource(() => props.documentId, loadDocument)
+  // The document once it has loaded, kept on screen while a refetch runs. Everything outside the
+  // detail's own <Suspense> reads it through this, never through `data()`: a pending read there
+  // would suspend the host's tab boundary instead, leaving a blank pane (no "Loading…") on a cold
+  // open and blanking the whole detail, tab strip included, on every refetch.
+  const loaded = () => (data.state === "ready" || data.state === "refreshing" ? data.latest : undefined)
 
-  const tabs = createMemo(() => mergeTabs(data()?.externalTabs ?? []))
+  const tabs = createMemo(() => mergeTabs(loaded()?.externalTabs ?? []))
   const affordance = createMemo(() =>
-    pdfStatusAffordance(data()?.document?.pdf_status ?? undefined),
+    pdfStatusAffordance(loaded()?.document?.pdf_status ?? undefined),
   )
   // The active external (non-built-in) tab, if any. Carries the contributing
   // `app` needed to resolve the cross-app body via the host bridge.
@@ -1104,8 +1111,10 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
 
   return (
     <Suspense fallback={<div data-testid="document-detail-loading" class="p-4 text-text-tertiary">{tr("Loading…")}</div>}>
+      {/* `data()` is read here, under the detail's own boundary, for the first load only; a
+          refetch keeps the loaded document on screen (`loaded()`) instead of going back to it. */}
       <Show
-        when={data()}
+        when={loaded() ?? data()}
         fallback={
           <Show when={data.state === "ready"}>
             <div data-testid="document-detail-not-found" class="p-6 text-[13px] text-text-secondary">
@@ -1142,7 +1151,10 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                     <Show when={doc().type !== "credit_note" && doc().payment_status}>
                       {(paymentStatus) => <PaymentBadge paymentStatus={paymentStatus()} />}
                     </Show>
-                    <MoneyChips documentId={doc().id} status={doc().status} type={doc().type} />
+                    {/* Its own boundary: a secondary read can only hold back these chips. */}
+                    <Suspense>
+                      <MoneyChips documentId={doc().id} status={doc().status} type={doc().type} />
+                    </Suspense>
                   </div>
                   {/* Actions — spec §12. Pinned to the top of the panel: the chat dock
                       floats over the panel's bottom-right corner, so a bottom action row
@@ -1343,8 +1355,11 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                 </For>
               </nav>
 
-              {/* Tab body */}
+              {/* Tab body, under its own boundary: a panel's pending read (the PDF preview, the
+                  regime line, the e-invoice panel, a contributed tab) can only hold back the body,
+                  never the header and tab strip above it. */}
               <div class="flex-1 overflow-y-auto">
+                <Suspense fallback={<div data-testid="document-detail-body-loading" class="p-4 text-text-tertiary">{tr("Loading…")}</div>}>
                 <Show when={activeTab() === "overview"}>
                   <OverviewBody doc={doc()} lines={lines()} />
                 </Show>
@@ -1398,6 +1413,7 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                     )
                   }}
                 </Show>
+                </Suspense>
               </div>
 
               <ConfirmDialog

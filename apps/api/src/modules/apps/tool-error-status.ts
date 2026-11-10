@@ -288,6 +288,13 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   item_not_approved: 409,
   already_issued: 409,
   changed_since_approval: 409,
+  // A row asked to issue outside its run's issue window, and a run draft written without its key.
+  outside_issue_window: 409,
+  not_a_run_draft: 422,
+  // A Shopify-linked quote sent to the local convert (it converts by completing its draft order).
+  shopify_linked: 409,
+  // The local convert step failed; the quote is unchanged and no number was used.
+  convert_failed: 502,
   // Upstream (mail, Shopify, the PDF renderer, another app) failed.
   send_dispatch_failed: 502,
   send_failed: 502,

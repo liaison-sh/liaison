@@ -42,7 +42,18 @@ To change one: `kernel__dashboards_get` (note its `version`), then `kernel__dash
 
 ### One worked block per chart type
 
-The source below is a connector read of a shop's orders; use the tool and params `kernel__dashboards_sources` gave you. Params are saved as written: a date in them stays that date on every refresh, so never title a block "last 30 days" over a fixed date; name the range it really covers.
+The source below is a connector read of a shop's orders; use the tool and params `kernel__dashboards_sources` gave you.
+
+### Rolling dates
+
+For a range that should move with the calendar ("this month", "last 30 days"), write a date token in the params, never today's date. Each token becomes a `YYYY-MM-DD` date in the org's timezone every time the block runs. A literal date stays that date forever.
+
+- Anchors: `{{today}}`, `{{startOfWeek}}` (Monday), `{{startOfMonth}}`, `{{startOfYear}}`.
+- One optional offset: `+` or `-`, a number, a unit `d` days, `w` weeks, `M` months (capital M), `y` years.
+- Last 30 days: `{ "since": "{{today-30d}}", "until": "{{today}}" }`. This month: `{{startOfMonth}}` to `{{today}}`. Last month: `{{startOfMonth-1M}}` to `{{startOfMonth-1d}}`. This year: `{{startOfYear}}` to `{{today}}`.
+- Tokens work inside a text too: `"query": "... WHERE segments.date BETWEEN '{{today-29d}}' AND '{{today}}'"`.
+- Nothing else goes between `{{` and `}}` (no `{{yesterday}}`, no spaces): the preview refuses it and names the allowed forms.
+- Title the block for the range it covers ("Revenue, last 30 days"); with a literal date, name that date.
 
 ```
 { "v": 1, "blocks": [

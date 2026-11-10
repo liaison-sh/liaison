@@ -10,7 +10,8 @@
 // (create one, switch one to org, edit or delete an org one) is gated with
 // kernel:dashboards:admin, and its card lists the title and each block with
 // its source. A personal dashboard is a plain write. A person's own REST call
-// is never gated: their scopes decide (service.ts).
+// is never gated: their scopes decide (service.ts). A block whose params carry date
+// tokens ({{today-30d}}) shows them as written and the date each one is today.
 
 import { and, eq } from "drizzle-orm"
 import { z } from "zod"
@@ -20,7 +21,13 @@ import type { UserContext } from "~/db/rls"
 import { dashboards, userRoles } from "~/db/schema/kernel"
 import { type ApprovalSummarizer, toolRegistry } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
-import { computeBlock } from "~/modules/dashboards/execute"
+import { computeBlock, orgTimezone } from "~/modules/dashboards/execute"
+import {
+  DateTokenError,
+  dateTokensIn,
+  hasDateTokens,
+  resolveDateTokens,
+} from "~/modules/dashboards/relative-dates"
 import {
   createDashboard,
   DashboardError,
@@ -126,8 +133,30 @@ const specParam = z
     "The dashboard spec: {v:1, blocks:[{id, type, title, width, source, map, refreshSec?}]}, at most 24 blocks. kernel__skill_read build-dashboard for one worked block per chart type.",
   )
 
+/** A block's date tokens with what each is today: `{{today-30d}} = 2026-10-11`. */
+function tokenDates(source: Record<string, unknown>, timeZone: string): string {
+  const value = source.kind === "store" ? source.query : source.params
+  const now = new Date()
+  return dateTokensIn(value)
+    .slice(0, 4)
+    .map((token) => {
+      try {
+        return `${token} = ${resolveDateTokens(token, { timeZone, now })}`
+      } catch (err) {
+        if (err instanceof DateTokenError) return `${token} (not a date token)`
+        throw err
+      }
+    })
+    .join(", ")
+}
+
+/** The zone a card's token dates are shown in: the org's, looked up only when a block has tokens. */
+async function cardTimezone(spec: unknown, orgId: string): Promise<string> {
+  return hasDateTokens((spec as { blocks?: unknown } | null)?.blocks) ? orgTimezone(orgId) : "UTC"
+}
+
 /** One block's lines for an approval card: what it draws and from where. */
-function blockLines(spec: unknown, max = 6): string[] {
+function blockLines(spec: unknown, timeZone: string, max = 6): string[] {
   const blocks = Array.isArray((spec as { blocks?: unknown })?.blocks)
     ? ((spec as { blocks: unknown[] }).blocks as Record<string, unknown>[])
     : []
@@ -137,7 +166,8 @@ function blockLines(spec: unknown, max = 6): string[] {
       source.kind === "store"
         ? `store ${String(source.app)}/${String(source.collection)}`
         : String(source.tool ?? "(no source)")
-    return `${String(b.type ?? "block")} "${String(b.title ?? b.id ?? "")}" from ${from}`
+    const dates = tokenDates(source, timeZone)
+    return `${String(b.type ?? "block")} "${String(b.title ?? b.id ?? "")}" from ${from}${dates ? `, dates ${dates} (today, rolling)` : ""}`
   })
   if (blocks.length > max) lines.push(`and ${blocks.length - max} more blocks`)
   if (blocks.length === 0) lines.push("No blocks.")
@@ -146,13 +176,14 @@ function blockLines(spec: unknown, max = 6): string[] {
 
 // A create parks for an org dashboard, and also for a personal one when the turn's taint parks it
 // (scope-taint rule 8b): the card says which, from the visibility the call carries.
-const summarizeCreate: ApprovalSummarizer = async (raw) => {
+const summarizeCreate: ApprovalSummarizer = async (raw, ctx) => {
   const p = (raw ?? {}) as { title?: string; spec?: unknown; visibility?: string }
+  const tz = await cardTimezone(p.spec, ctx.orgId)
   if (p.visibility !== "org") {
     return {
       kind: "dashboard_create",
       title: `Save the personal dashboard "${p.title ?? ""}"`,
-      lines: ["Only its author will see it.", ...blockLines(p.spec)],
+      lines: ["Only its author will see it.", ...blockLines(p.spec, tz)],
     }
   }
   return {
@@ -160,7 +191,7 @@ const summarizeCreate: ApprovalSummarizer = async (raw) => {
     title: `Share the dashboard "${p.title ?? ""}" with the organisation`,
     lines: [
       "Everyone in the organisation will see it, each with their own access.",
-      ...blockLines(p.spec),
+      ...blockLines(p.spec, tz),
     ],
   }
 }
@@ -192,7 +223,13 @@ const summarizeUpdate: ApprovalSummarizer = async (raw, ctx) => {
   }
   if (p.title && current && p.title !== current.title)
     lines.push(`Title: "${current.title}" → "${p.title}".`)
-  lines.push(...blockLines(p.spec ?? current?.spec, 5))
+  lines.push(
+    ...blockLines(
+      p.spec ?? current?.spec,
+      await cardTimezone(p.spec ?? current?.spec, ctx.orgId),
+      5,
+    ),
+  )
   return {
     kind: "dashboard_update",
     title: `Change the org dashboard "${title}"`,
@@ -213,7 +250,10 @@ const summarizeDelete: ApprovalSummarizer = async (raw, ctx) => {
   return {
     kind: "dashboard_delete",
     title: `Delete the org dashboard "${current?.title ?? id ?? ""}"`,
-    lines: ["Nobody in the organisation will see it any more.", ...blockLines(current?.spec, 5)],
+    lines: [
+      "Nobody in the organisation will see it any more.",
+      ...blockLines(current?.spec, await cardTimezone(current?.spec, ctx.orgId), 5),
+    ],
   }
 }
 

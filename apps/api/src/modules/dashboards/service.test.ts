@@ -47,6 +47,8 @@ let other = ""
 let alphaCalls = 0
 let pagedCalls = 0
 let brokenCalls = 0
+/** The params each run of the dated tool received. */
+const datedParams: Record<string, unknown>[] = []
 /** What the lying tool's bridge write answered, per run. */
 const lieAttempts: string[] = []
 
@@ -121,6 +123,19 @@ function registerTestTools() {
       return (p as { cursor?: string }).cursor
         ? { status: "done" }
         : { items: ORDERS, nextCursor: "p2" }
+    },
+  })
+  // A source whose params carry date tokens: it records what it was called with.
+  toolRegistry.set([orgId, APP, "dated_read"], {
+    appName: APP,
+    name: "dated_read",
+    description: "Read orders over a date range",
+    requiredScopes: [ALPHA],
+    readOnly: true,
+    params: z.object({ period: z.object({ since: z.string() }), query: z.string() }),
+    handler: async (p: unknown) => {
+      datedParams.push(p as Record<string, unknown>)
+      return { items: ORDERS }
     },
   })
   // A source that always fails, counted, for the failure cache.
@@ -550,6 +565,70 @@ describe("the block cache", () => {
     expect(out).toMatchObject({ ok: false, error: "source_failed" })
     expect(pagedCalls).toBe(0)
     expect(data.size).toBe(0)
+  })
+
+  it("date tokens resolve at each run, and the cache key moves with the dates", async () => {
+    const { store, data } = fakeStore()
+    BlockCacheTestAccess.setStore(store)
+    const viewer = as(owner, [WRITE, ALPHA])
+    const params = {
+      period: { since: "{{today-30d}}" },
+      query: "WHERE date BETWEEN '{{startOfMonth}}' AND '{{today}}'",
+    }
+    const d = await createDashboard(viewer, {
+      title: "Rolling",
+      visibility: "personal",
+      spec: spec(
+        toolBlock("rolling", `${APP}:dated_read`, {
+          source: { kind: "tool", tool: `${APP}:dated_read`, params },
+        }),
+      ),
+    })
+    // The saved spec keeps the tokens as written.
+    expect((await getDashboard(viewer, d.id)).spec.blocks[0]!.source).toMatchObject({ params })
+
+    datedParams.length = 0
+    const day1 = new Date("2026-11-10T12:00:00Z")
+    const day2 = new Date("2026-11-11T12:00:00Z")
+    expect(await getBlockData(viewer, d.id, "rolling", { now: day1 })).toMatchObject({
+      ok: true,
+      cached: false,
+    })
+    expect(await getBlockData(viewer, d.id, "rolling", { now: day1 })).toMatchObject({
+      ok: true,
+      cached: true,
+    })
+    expect(await getBlockData(viewer, d.id, "rolling", { now: day2 })).toMatchObject({
+      ok: true,
+      cached: false,
+    })
+    expect(datedParams).toEqual([
+      {
+        period: { since: "2026-10-11" },
+        query: "WHERE date BETWEEN '2026-11-01' AND '2026-11-10'",
+      },
+      {
+        period: { since: "2026-10-12" },
+        query: "WHERE date BETWEEN '2026-11-01' AND '2026-11-11'",
+      },
+    ])
+    expect([...data.keys()].filter((k) => k.includes(`:${d.id}:`)).length).toBe(2)
+  })
+
+  it("refuses an unknown date token at save", async () => {
+    const viewer = as(owner, [WRITE, ALPHA])
+    const err = await createDashboard(viewer, {
+      title: "Bad token",
+      visibility: "personal",
+      spec: spec(
+        toolBlock("bad", `${APP}:dated_read`, {
+          source: { kind: "tool", tool: `${APP}:dated_read`, params: { since: "{{yesterday}}" } },
+        }),
+      ),
+    }).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(DashboardError)
+    expect((err as DashboardError).code).toBe("INVALID_SPEC")
+    expect((err as DashboardError).problems.join(" ")).toContain("unknown date token {{yesterday}}")
   })
 
   it("at most MAX_IN_FLIGHT block runs at once", async () => {

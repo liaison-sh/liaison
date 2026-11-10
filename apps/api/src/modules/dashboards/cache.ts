@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // A dashboard block's data, cached per VIEWER: the key carries the org, the
-// dashboard and its version, the block, the viewer and a hash of the viewer's
-// scopes and dimension grants, so a revoked scope or grant is a new key and
-// never serves what the viewer could read before. TTL: the block's refreshSec
+// dashboard and its version, the block, a hash of its source as run (date tokens
+// resolved, so a rolling range is a new key the day its dates move), the viewer
+// and a hash of the viewer's scopes and dimension grants, so a revoked scope or
+// grant is a new key and never serves what the viewer could read before. TTL: the block's refreshSec
 // (spec.blockTtlSec, at most 900 s for any source).
 //
 // Bounds, per viewer: at most MAX_IN_FLIGHT block runs at once (the rest wait
@@ -94,11 +95,28 @@ export function permissionHash(
   return createHash("sha256").update(material).digest("hex").slice(0, 20)
 }
 
+/** JSON with object keys sorted, so the same source hashes the same whatever its key order. */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(",")}}`
+  }
+  return JSON.stringify(value) ?? "null"
+}
+
+/** A short hash of a block's source as it runs: its date tokens already resolved. */
+export function sourceHash(source: unknown): string {
+  return createHash("sha256").update(canonicalJson(source)).digest("hex").slice(0, 16)
+}
+
 export function blockCacheKey(
   viewer: CacheViewer,
-  block: { dashboardId: string; version: number; blockId: string },
+  block: { dashboardId: string; version: number; blockId: string; resolvedSource: unknown },
 ): string {
-  return `dash:block:${viewer.orgId}:${block.dashboardId}:${block.version}:${block.blockId}:${viewer.userId}:${permissionHash(viewer)}`
+  return `dash:block:${viewer.orgId}:${block.dashboardId}:${block.version}:${block.blockId}:${sourceHash(block.resolvedSource)}:${viewer.userId}:${permissionHash(viewer)}`
 }
 
 /**

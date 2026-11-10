@@ -11,13 +11,13 @@ import { recurringLegalDateJob, urgencyOf } from "./legal-date-job"
 import { cardItems, recurringRunIssue, recurringRunUnapprove } from "./run-card"
 import { recurringRunGet } from "./run-get"
 
-const S1 = "33333333-3333-4333-8333-333333333331"
-const S2 = "33333333-3333-4333-8333-333333333332"
+const SCHED_ONE = "33333333-3333-4333-8333-333333333331"
+const SCHED_TWO = "33333333-3333-4333-8333-333333333332"
 
 async function drafted(today = "2026-11-27", extra: Parameters<typeof harness>[1] = {}) {
   const prev = previousDoc("44444444-4444-4444-8444-444444444441", true)
   const h = harness(today, {
-    schedules: [schedule(S1, { last_document_id: prev.id }), schedule(S2, { last_document_id: prev.id, created_by: "user-am-2" })],
+    schedules: [schedule(SCHED_ONE, { last_document_id: prev.id }), schedule(SCHED_TWO, { last_document_id: prev.id, created_by: "user-am-2" })],
     docs: [prev],
     ...extra,
   })
@@ -131,7 +131,7 @@ describe("the month-end run card", () => {
     for (const [threshold, card] of [[180001, false], [180000, false], [179999, true]] as const) {
       const prev = previousDoc("44444444-4444-4444-8444-444444444441", true)
       const h = harness("2026-11-27", {
-        schedules: [schedule(S1, { issue_mode: "auto", auto_enabled_by: "user-boss", last_document_id: prev.id })],
+        schedules: [schedule(SCHED_ONE, { issue_mode: "auto", auto_enabled_by: "user-boss", last_document_id: prev.id })],
         docs: [prev],
         threshold,
       })

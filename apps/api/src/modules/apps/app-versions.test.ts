@@ -886,6 +886,29 @@ describe("P2-fix10: the gate loads the handler bundle the way a tool call does",
     expect((await pointer())?.version).toBe("1.0.0")
     expect(tool("list_items")?.description).toBe("v1 list")
   }, 60_000)
+
+  it("a version whose bundle carries an import attribute is switched back before the host parses it, so a macro in it never runs", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "versions-macro-"))
+    try {
+      const marker = join(dir, "ran")
+      const macro = join(dir, "macro.ts")
+      writeFileSync(
+        macro,
+        `import { writeFileSync } from "node:fs"\nexport function mark() { writeFileSync(${JSON.stringify(marker)}, "ran"); return 1 }\n`,
+      )
+      await install("1.0.0", { tools: { list_items: "v1 list" } })
+      await expect(
+        upgrade("2.0.0", {
+          tools: { list_items: "v2 list" },
+          bundle: `import { mark } from ${JSON.stringify(macro)} with { type: "macro" };\nvar seen = mark();\nexport async function list_items() { return seen }\n`,
+        }),
+      ).rejects.toMatchObject({ code: "module_invalid" })
+      expect(existsSync(marker)).toBe(false)
+      expect((await pointer())?.version).toBe("1.0.0")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }, 60_000)
 })
 
 describe("the gate's other outcomes", () => {

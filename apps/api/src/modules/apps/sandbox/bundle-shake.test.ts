@@ -1,18 +1,32 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test"
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { esmExportsToGlobalThis, loadBundle } from "~/modules/apps/sandbox/bundle-loader"
+import {
+  esmExportsToGlobalThis,
+  loadBundle,
+  unwrapGlobalThisExports,
+} from "~/modules/apps/sandbox/bundle-loader"
 import {
   buildExportOnlyBundle,
   clearExportOnlyBundleCache,
-  exportOnlyBundle,
+  exportOnlyBundleCacheBytes,
   exportOnlyBundleCacheSize,
+  exportOnlyBundle as exportOnlyBundleOf,
+  hasImportAttribute,
   useFullBundle,
+  watchBridgeCalls,
 } from "~/modules/apps/sandbox/bundle-shake"
 import { executeInSandbox } from "~/modules/apps/sandbox/executor"
 import { createSandboxPool, type SandboxPool } from "~/modules/apps/sandbox/pool"
 
 const APPS_DIR = join(import.meta.dir, "..", "..", "..", "apps")
+const BUNDLED_APPS_DIR = join(import.meta.dir, "..", "..", "..", "..", "..", "..", "bundled-apps")
+
+/** A first-party bundle's trim (the platform vouches for the code). */
+const exportOnlyBundle = (source: string, exportName: string) =>
+  exportOnlyBundleOf(source, exportName, { firstParty: true })
 
 /** Settle the background build `exportOnlyBundle` started. */
 async function settled(source: string, exportName: string): Promise<string> {
@@ -44,7 +58,7 @@ function recordingBridge(source: string, calls: Array<[string, unknown[]]>) {
 const SCRIPT = `
 var calls = 0;
 function helper(x) { calls++; return "helped:" + x; }
-function unused() { return "never" + Math.random(); }
+function unused() { return "never called by the handler, so the trim drops it" + Math.random(); }
 async function handler(params, ctx) { return { out: helper(params.x), calls: calls, side: globalThis.sideEffect }; }
 async function other(params, ctx) { return unused(); }
 globalThis.sideEffect = "kept";
@@ -135,9 +149,155 @@ describe("export-only bundles", () => {
   })
 
   it("is bounded whatever the number of bundles", () => {
-    for (let i = 0; i < 200; i++) exportOnlyBundle(`function handler() { return ${i} }`, "handler")
-    expect(exportOnlyBundleCacheSize()).toBeLessThanOrEqual(64)
+    for (let i = 0; i < 5000; i++) useFullBundle(`function handler() { return ${i} }`, "handler")
+    expect(exportOnlyBundleCacheSize()).toBeLessThanOrEqual(2048)
   })
+
+  it("never trims, nor builds over, code the platform does not vouch for: a third-party or custom app's bundle", async () => {
+    for (const provenance of [{}, { trusted: false, firstParty: false }, { trusted: false }]) {
+      for (let i = 0; i < 5; i++) {
+        expect(exportOnlyBundleOf(SCRIPT, "handler", provenance)).toBe(SCRIPT)
+        await Bun.sleep(20)
+      }
+    }
+    expect(exportOnlyBundleCacheSize()).toBe(0)
+    expect(await settled(SCRIPT, "handler")).not.toBe(SCRIPT)
+  })
+
+  describe("a bundle with an import attribute", () => {
+    let dir = ""
+    beforeAll(() => {
+      dir = mkdtempSync(join(tmpdir(), "liaison-shake-macro-"))
+    })
+    afterAll(() => {
+      if (dir) rmSync(dir, { recursive: true, force: true })
+    })
+
+    const macroBundle = (marker: string, attribute: string) => {
+      const macro = join(dir, `macro-${crypto.randomUUID()}.ts`)
+      writeFileSync(
+        macro,
+        `import { writeFileSync } from "node:fs"\nexport function mark() { writeFileSync(${JSON.stringify(marker)}, "ran"); return 1 }\n`,
+      )
+      return esmExportsToGlobalThis(
+        `import { mark } from ${JSON.stringify(macro)} ${attribute};\nvar seen = mark();\nasync function handler(p, ctx) { return seen }\nexport { handler };`,
+      )
+    }
+
+    for (const attribute of [
+      'with { type: "macro" }',
+      'assert { type: "macro" }',
+      'with /* note */ { type: "macro" }',
+      'with // note\n { type: "macro" }',
+    ]) {
+      it(`is refused before any build, and its macro never runs on the host (${attribute.replace("\n", " ")})`, async () => {
+        const marker = join(dir, `ran-${crypto.randomUUID()}`)
+        const bundle = macroBundle(marker, attribute)
+        expect(hasImportAttribute(bundle)).toBe(true)
+        expect(await buildExportOnlyBundle(bundle, "handler")).toBeNull()
+        for (let i = 0; i < 10; i++) {
+          expect(exportOnlyBundle(bundle, "handler")).toBe(bundle)
+          await Bun.sleep(20)
+        }
+        expect(existsSync(marker)).toBe(false)
+      })
+    }
+
+    it("a bundle with no attribute is not taken for one", () => {
+      expect(hasImportAttribute(SCRIPT)).toBe(false)
+      expect(hasImportAttribute("var o = { with: 1 }; function assertOk() { return {} }")).toBe(
+        false,
+      )
+    })
+  })
+
+  it("keeps a body's own trailing global assignment, which is no export", async () => {
+    const installed = esmExportsToGlobalThis(
+      `var cfg = { mode: "x" };\nasync function handler(p, ctx) { return { flag: globalThis.flag } }\nfunction unused() { return "never" }\nglobalThis.flag = cfg;\nexport { handler };`,
+    )
+    expect(unwrapGlobalThisExports(installed)?.exports).toEqual(new Map([["handler", "handler"]]))
+    const shaken = await buildExportOnlyBundle(installed, "handler")
+    expect(shaken).not.toBeNull()
+    expect(shaken).not.toContain("never")
+    expect(await run(shaken!, "handler", {})).toEqual({ flag: { mode: "x" } })
+    expect(await run(shaken!, "handler", {})).toEqual(await run(installed, "handler", {}))
+  })
+
+  it("does not trim a scoped bundle whose exports it cannot tell from its body", async () => {
+    const unmarked =
+      "(function () {\nvar cfg = 1;\nasync function handler() { return 1 }\nglobalThis.flag = cfg;\nglobalThis.handler = handler;\n})();\n"
+    expect(unwrapGlobalThisExports(unmarked)).toBeNull()
+    expect(await buildExportOnlyBundle(unmarked, "handler")).toBeNull()
+  })
+
+  it("notes a bridge call, keeping each method's kind and the bridge's hidden marks", async () => {
+    const mark = Symbol("mark")
+    const bridge: Record<string | symbol, any> = {
+      read: async (x: number) => x + 1,
+      digest: (x: string) => `d:${x}`,
+      value: 3,
+    }
+    Object.defineProperty(bridge, mark, { value: "kept", enumerable: false })
+    const watched = watchBridgeCalls(bridge as Record<string, any>)
+    expect(watched.called()).toBe(false)
+    expect(watched.bridge.value).toBe(3)
+    expect((watched.bridge as Record<symbol, unknown>)[mark]).toBe("kept")
+    expect(watched.bridge.digest.constructor.name).not.toBe("AsyncFunction")
+    expect(watched.bridge.read.constructor.name).toBe("AsyncFunction")
+    expect(watched.bridge.digest("a")).toBe("d:a")
+    expect(watched.called()).toBe(true)
+    expect(await watchBridgeCalls(bridge as Record<string, any>).bridge.read(1)).toBe(2)
+  })
+
+  it("holds every first-party read-only tool's trimmed bundle at once, within its byte bound", async () => {
+    process.env.LIAISON_BUNDLED_APPS_FROM_SOURCE = "1"
+    type Manifest = {
+      version: string
+      tools?: Record<string, { readOnly?: boolean; handler?: string }>
+    }
+    const tools: Array<{ app: string; bundle: string; handler: string }> = []
+    for (const [dir, inTree] of [
+      [APPS_DIR, true],
+      [BUNDLED_APPS_DIR, false],
+    ] as const) {
+      for (const app of readdirSync(dir)) {
+        if (!existsSync(join(dir, app, "app.manifest.json"))) continue
+        const manifest = JSON.parse(
+          readFileSync(join(dir, app, "app.manifest.json"), "utf8"),
+        ) as Manifest
+        const reads = Object.values(manifest.tools ?? {}).filter(
+          (t) => t.readOnly === true && typeof t.handler === "string",
+        )
+        if (reads.length === 0) continue
+        const bundle = await loadBundle(
+          inTree ? join(dir, app, "handlers.ts") : join(dir, app, manifest.version, "bundle.js"),
+        )
+        for (const handler of new Set(reads.map((t) => t.handler as string))) {
+          tools.push({ app, bundle, handler })
+        }
+      }
+    }
+    expect(tools.length).toBeGreaterThan(50)
+    let bytes = 0
+    let trimmed = 0
+    for (const t of tools) {
+      const s = await buildExportOnlyBundle(t.bundle, t.handler)
+      if (s) {
+        bytes += s.length
+        trimmed++
+      }
+    }
+    for (const t of tools) {
+      for (let i = 0; i < 400 && exportOnlyBundle(t.bundle, t.handler) === t.bundle; i++) {
+        await Bun.sleep(10)
+      }
+    }
+    console.log(
+      `first-party read-only handlers: ${tools.length}, trimmed ${trimmed}, cache ${exportOnlyBundleCacheBytes()} bytes in ${exportOnlyBundleCacheSize()} entries (sum ${bytes})`,
+    )
+    expect(trimmed).toBeGreaterThan(tools.length / 2)
+    expect(exportOnlyBundleCacheBytes()).toBe(bytes)
+  }, 600_000)
 
   for (const app of ["tickets", "knowledge", "projects"]) {
     it(`${app}: the export-only attention provider behaves like the full bundle`, async () => {

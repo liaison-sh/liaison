@@ -22,7 +22,13 @@ import type { WebhookVerificationResult } from "~/modules/webhooks/verification"
 /** Who reads an agent post: an existing thread's participants, or a new thread's people. */
 export type TaintPostAudience = { threadId: string } | { participantIds: string[] }
 
-export type ManifestHandlerRef = { bundlePath: string; exportName: string; trusted?: boolean }
+export type ManifestHandlerRef = {
+  bundlePath: string
+  exportName: string
+  trusted?: boolean
+  /** In-tree, or the image's own catalog artifact (`_firstParty`, set by init.ts). */
+  firstParty?: boolean
+}
 export type ToolHandler = ((params: unknown, ctx: any) => Promise<unknown>) | ManifestHandlerRef
 
 export interface OAuthClientConfig {

@@ -253,8 +253,15 @@ export function esmExportsToGlobalThis(source: string): string {
   // wraps) would overwrite the original `foo` that other bundle code still calls: the wrapper
   // then called itself until the sandbox stack overflowed. With the body scoped, the export
   // globals are the only globals the bundle defines and its internal references stay lexical.
-  return `(function () {\n${body}\n${assignments}\n})();\n`
+  return `(function () {\n${body}\n${EXPORTS_MARK}\n${assignments}\n})();\n`
 }
+
+/**
+ * The line between a scoped bundle's body and its export assignments, so the
+ * inverse below never takes a body's own trailing `globalThis.x = y;` for an
+ * export.
+ */
+const EXPORTS_MARK = "// liaison:exports"
 
 /** Clear the bundle cache (for tests). */
 export function clearBundleCache(): void {
@@ -268,20 +275,22 @@ const EXPORT_LINE = /^globalThis\.([A-Za-z_$][\w$]*) = ([A-Za-z_$][\w$]*);$/
 
 /**
  * The inverse of `esmExportsToGlobalThis`: the bundle body and its exports
- * (exported name -> local name), or null when `source` is not in that shape.
+ * (exported name -> local name), or null when `source` is not in that shape:
+ * no export mark, or a line after it that is not an export assignment.
  */
 export function unwrapGlobalThisExports(
   source: string,
 ): { body: string; exports: Map<string, string> } | null {
   if (!source.startsWith(WRAP_HEAD) || !source.endsWith(WRAP_TAIL)) return null
-  const lines = source.slice(WRAP_HEAD.length, source.length - WRAP_TAIL.length).split("\n")
+  const inner = source.slice(WRAP_HEAD.length, source.length - WRAP_TAIL.length)
+  const mark = inner.lastIndexOf(`\n${EXPORTS_MARK}\n`)
+  if (mark < 0) return null
   const exports = new Map<string, string>()
-  while (lines.length > 0) {
-    const m = EXPORT_LINE.exec(lines[lines.length - 1] as string)
-    if (!m) break
+  for (const line of inner.slice(mark + EXPORTS_MARK.length + 2).split("\n")) {
+    const m = EXPORT_LINE.exec(line)
+    if (!m) return null
     exports.set(m[1] as string, m[2] as string)
-    lines.pop()
   }
   if (exports.size === 0) return null
-  return { body: lines.join("\n"), exports }
+  return { body: inner.slice(0, mark), exports }
 }

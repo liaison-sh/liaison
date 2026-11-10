@@ -463,15 +463,17 @@
       "fullOrderHistory": "Historique complet des commandes",
       "fullOrderHistoryHelp": "Désactivé, Shopify ne montre à Liaison que les 60 derniers jours de commandes. Activez-le une fois que Shopify a approuvé votre application pour « Read all orders », puis ajoutez read_all_orders à la configuration de l'app Shopify (téléchargez à nouveau shopify.app.toml depuis le guide de configuration), lancez shopify app deploy et reconnectez la boutique.",
       "shippingEmails": "E-mails d'expédition",
-      "shippingEmailsHelp": "Qui reçoit l'e-mail d'expédition de Shopify, avec le suivi, quand une commande est traitée depuis Liaison (un agent, la case Emballé de Boxtal ou un scan du transporteur). Une commande est B2B quand son acheteur est une entreprise B2B Shopify, ou quand le SKU d'un article se termine par l'un des suffixes de SKU B2B.",
+      "shippingEmailsHelp": "Qui reçoit l'e-mail d'expédition de Shopify, avec le suivi, quand une commande est traitée depuis Liaison (un agent, la case Emballé de Boxtal ou un scan du transporteur). Une commande est B2B quand elle est passée pour une entreprise B2B Shopify, ou quand elle porte l'une des étiquettes de commande B2B ; pour les commandes plus anciennes, aussi quand le SKU d'un article se termine par l'un des suffixes de SKU B2B.",
       "customerShippingEmail": "Envoyer l'e-mail d'expédition de Shopify à",
       "customerShippingEmailHelp": "Commandes particuliers uniquement : les clients particuliers le reçoivent, les acheteurs B2B jamais ; quand Liaison ne peut pas trancher, aucun e-mail n'est envoyé. Particuliers uniquement et Toutes les commandes envoient un seul e-mail par expédition, avec son premier numéro de suivi : une expédition sans suivi attend son numéro, et un changement de suivi ultérieur ne renvoie jamais d'e-mail.",
       "shippingEmailCaller": "Selon chaque expédition",
       "shippingEmailRetailOnly": "Commandes particuliers uniquement (jamais B2B)",
       "shippingEmailAll": "Toutes les commandes",
       "shippingEmailNone": "Aucune commande",
+      "b2bOrderTags": "Étiquettes de commande B2B",
+      "b2bOrderTagsHelp": "Séparées par des virgules, sans tenir compte de la casse. Une commande portant l'une de ces étiquettes est B2B. Par défaut : B2B.",
       "b2bSkuSuffixes": "Suffixes de SKU B2B",
-      "b2bSkuSuffixesHelp": "Séparés par des virgules, sans tenir compte de la casse, par exemple -B2B. Laissez vide si seules des entreprises B2B Shopify achètent en gros."
+      "b2bSkuSuffixesHelp": "Pour les commandes plus anciennes : séparés par des virgules, sans tenir compte de la casse, par exemple -B2B. Laissez vide si les commandes B2B n'ont jamais utilisé de SKU distinct."
     },
     "social": {
       "connections": "Connexions",

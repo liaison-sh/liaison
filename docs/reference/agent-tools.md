@@ -233,7 +233,7 @@ Manage Meta and Google ad campaigns, with every spending change approved by a pe
 | `create_custom_audience` | Create a custom audience. | yes | `ads:audiences:write` |
 | `create_lookalike_audience` | Create a lookalike audience from an existing source audience. | yes | `ads:audiences:write` |
 | `creative_get` | Resolve a creative's thumbnail URL and metadata for a given creative_id or ad_id. |  | `ads:campaigns:read` |
-| `dealer_profile_upsert` | Create or update a dealer profile (wholesale/dealer relationship metadata) used to inform dealer-sell-in sensing and SKU-class attribution (doctrine block E: B2B revenue must be split out before drawing DTC conclusions). | yes | `ads:internal` |
+| `dealer_profile_upsert` | Create or update a dealer profile (wholesale/dealer relationship metadata) used to inform dealer-sell-in sensing and B2B attribution (doctrine block E: B2B revenue must be split out before drawing DTC conclusions; a B2B order is recognised by the order itself: placed for a B2B company, tagged with the store's B2B order tag, or on older orders a B2B sku suffix). | yes | `ads:internal` |
 | `dealer_profiles_list` | List dealer profiles, optionally filtered by dealer_name. |  | `ads:internal` |
 | `experiment_close` | Close an experiment: sets status=decided and records verdict + learnings. |  | `ads:internal` |
 | `experiment_list` | List experiments — open and recent — for the consult-before-proposing flow (doctrine block G: never re-run something already in flight or just concluded). |  | `ads:internal` |

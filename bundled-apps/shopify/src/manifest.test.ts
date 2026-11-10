@@ -927,7 +927,7 @@ describe("Shopify app.manifest.json", () => {
     // on draft_orders_create / update, priceOverride + priceException, the B2B catalog-price guard.
     // 0.4.18: B2B catalogs that reach a location through a B2B market (every plan) count, as well
     // as those assigned to it directly (Plus); companies_* mark each catalog's source.
-    expect(m.version).toBe("0.4.19")
+    expect(m.version).toBe("0.4.20")
   })
 
   it("orders_search and variants_search declare their filters and close their params", () => {
@@ -1024,14 +1024,16 @@ describe("Shopify app.manifest.json", () => {
     }
     expect(m.views.settings).toBeUndefined()
     expect(m.settings.sections.map((s) => s.id)).toEqual(["connection", "diagnostics", "shipping-emails"])
-    // The shipping email policy and the B2B sku suffixes live in declared config keys
-    // (ctx.config.get), edited on the settings page.
+    // The shipping email policy, the B2B order tags and the (legacy) B2B sku suffixes live in
+    // declared config keys (ctx.config.get), edited on the settings page.
     expect(m.settings.sections[2]?.blocks).toEqual([
       expect.objectContaining({ block: "field", key: "customerShippingEmail", type: "select", source: "config" }),
+      expect.objectContaining({ block: "field", key: "b2bOrderTags", type: "text", source: "config" }),
       expect.objectContaining({ block: "field", key: "b2bSkuSuffixes", type: "text", source: "config" }),
     ])
     const keys = (loadManifest() as { configKeys?: Array<{ key: string; type: string }> }).configKeys
     expect(keys).toContainEqual(expect.objectContaining({ key: "customerShippingEmail", type: "string" }))
+    expect(keys).toContainEqual(expect.objectContaining({ key: "b2bOrderTags", type: "string" }))
     expect(keys).toContainEqual(expect.objectContaining({ key: "b2bSkuSuffixes", type: "string" }))
     expect(m.settings.sections[0]?.blocks.map((b) => b.block)).toEqual(["connections", "field"])
     expect(m.settings.sections[0]?.blocks[0]).toEqual({ block: "connections", names: ["shop"] })

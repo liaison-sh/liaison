@@ -6,7 +6,8 @@
 // number. Sources:
 //   - Shopify net revenue: shopify:orders_search (cursor-paginated over the
 //     placed-date window; current totals are refund-adjusted, so net revenue
-//     needs no separate refunds read).
+//     needs no separate refunds read), split into DTC and B2B orders by the
+//     order-level B2B rule (sku-classing.ts `orderHitIsB2b`).
 //   - manual_spend total: this app's own `manual_spend` table (ctx.db).
 //   - platform spend: Meta insights_query + Google google_insights_query.
 //   - hub-DB attribution rows: database:db_read (preferred, curated) with a
@@ -20,6 +21,13 @@
 // `lineage.unavailable` signal degraded input to the registry — formulas
 // must still compute (possibly with a `null`/partial result) rather than
 // throw, per the spec's graceful-degradation requirement.
+
+import {
+  DEFAULT_SKU_CLASSING_CONFIG,
+  orderHitIsB2b,
+  shopifyOrderKey,
+  type SkuClassingConfig,
+} from "./sku-classing"
 
 export interface SourceLineage {
   source: string
@@ -66,8 +74,14 @@ export interface Period {
 // carries the order's CURRENT total (Shopify currentTotalPriceSet) — already
 // refund-adjusted, so summing it yields net revenue without a per-refund read.
 interface OrderHit {
+  id?: string | null
   currency?: string | null
   attributes?: {
+    /** The shopify app's verdict on the order (company order, B2B tag, legacy B2B sku suffix). */
+    b2bOrder?: { b2b?: unknown } | null
+    b2bCompany?: unknown
+    tags?: unknown
+    lineItems?: unknown
     totalAmount?: string | null
     /** Store-currency total (shopMoney) — uniform across orders. */
     totalAmountShop?: string | null
@@ -202,42 +216,66 @@ async function fetchOrdersWindow(
   return { ok: true, hits, totalCount, truncated: true }
 }
 
+/** Net Shopify revenue for a period, split by the order-level B2B rule. */
+export interface ShopifyRevenueSplit {
+  /** Net revenue of the non-B2B (DTC) orders. */
+  dtc: GatheredValue<number | null>
+  /** Net revenue of the B2B orders (recognised by the order itself, sku-classing.ts). */
+  b2b: GatheredValue<number | null>
+  /** Numeric ids of the B2B orders in the window (sku-classing.ts `shopifyOrderKey`). */
+  b2bOrderIds: GatheredValue<string[]>
+}
+
 /**
- * Gather net Shopify revenue for a period. Sums each order's CURRENT total
- * (Shopify currentTotalPriceSet, surfaced by orders_search as
- * attributes.totalAmount) — that figure is already refund-adjusted, so net
- * revenue needs no separate refunds read (shopify:refunds_get is a
- * fetch-one-by-id tool, not a period listing). A currency mismatch across
- * returned order rows degrades the value to `null` (unavailable) rather
- * than returning a confidently-quoted number summed across incompatible
- * currencies — a MIXED-currency sum is not a real amount in any single
- * unit, so formulas that require a number must degrade
+ * Gather net Shopify revenue for a period, split into DTC and B2B orders.
+ * Sums each order's CURRENT total (Shopify currentTotalPriceSet, surfaced by
+ * orders_search as attributes.totalAmount) — that figure is already
+ * refund-adjusted, so net revenue needs no separate refunds read
+ * (shopify:refunds_get is a fetch-one-by-id tool, not a period listing). An
+ * order is B2B as a whole when the order says so (`orderHitIsB2b`: the shopify
+ * app's verdict, i.e. a company order, a B2B order tag, or a legacy B2B sku
+ * suffix). A currency mismatch across returned order rows degrades both sums
+ * to `null` (unavailable) rather than returning a confidently-quoted number
+ * summed across incompatible currencies — a MIXED-currency sum is not a real
+ * amount in any single unit, so formulas that require a number must degrade
  * (`unavailable`/`degraded:true`) rather than silently present a
  * currency-corrupted figure as trustworthy. `lineage.note` explains why.
  */
-export async function gatherShopifyNetRevenue(
+export async function gatherShopifyRevenueSplit(
   ctx: MetricsInputCtx,
   period: Period,
-): Promise<GatheredValue<number | null>> {
+  config: SkuClassingConfig = DEFAULT_SKU_CLASSING_CONFIG,
+): Promise<ShopifyRevenueSplit> {
   const calls = [
     `shopify:orders_search(created_at_min:${period.start}, created_at_max:${period.end}, cursor-paginated)`,
   ]
+  const both = (lineage: SourceLineage, dtc: number | null, b2b: number | null, ids: string[]): ShopifyRevenueSplit => ({
+    dtc: { value: dtc, lineage },
+    b2b: { value: b2b, lineage },
+    b2bOrderIds: { value: ids, lineage },
+  })
 
   const ordersResp = await fetchOrdersWindow(ctx, period)
   if (!ordersResp.ok) {
-    return {
-      value: null,
-      lineage: { source: "shopify:orders_search", calls, period, unavailable: true, note: ordersResp.note },
-    }
+    return both(
+      { source: "shopify:orders_search", calls, period, unavailable: true, note: ordersResp.note },
+      null,
+      null,
+      [],
+    )
   }
 
-  const orders = sumOrderTotals(ordersResp.hits)
-  const net = orders.sum
+  const dtcHits: OrderHit[] = []
+  const b2bHits: OrderHit[] = []
+  for (const hit of ordersResp.hits) (orderHitIsB2b(hit, config) ? b2bHits : dtcHits).push(hit)
+  const b2bOrderIds = b2bHits.map((h) => shopifyOrderKey(h.id)).filter((k): k is string => k !== null).sort()
+  const dtc = sumOrderTotals(dtcHits)
+  const b2b = sumOrderTotals(b2bHits)
+  const all = sumOrderTotals(ordersResp.hits)
 
-  if (orders.currency === "MIXED") {
-    return {
-      value: null,
-      lineage: {
+  if (all.currency === "MIXED") {
+    return both(
+      {
         source: "shopify:orders_search",
         calls,
         period,
@@ -245,31 +283,47 @@ export async function gatherShopifyNetRevenue(
         note:
           "Order rows spanned more than one currency. A MIXED-currency sum is not a real amount, so this input degrades to unavailable rather than quoting a currency-corrupted figure; verify currency alignment before re-running.",
       },
-    }
+      null,
+      null,
+      b2bOrderIds,
+    )
   }
 
+  const split = `${b2bHits.length} of ${ordersResp.hits.length} order(s) are B2B by the order itself (a company order, a B2B order tag, or a legacy B2B sku suffix) and are counted as B2B, never as DTC.`
   if (ordersResp.truncated) {
-    return {
-      value: net,
-      lineage: {
+    return both(
+      {
         source: "shopify:orders_search",
         calls,
         period,
         stale: true,
-        note: `Pagination stopped at ${ORDERS_MAX_PAGES * ORDERS_PAGE_SIZE} orders but the window holds ${ordersResp.totalCount}, so the sum covers only the paged subset (partial).`,
+        note: `Pagination stopped at ${ORDERS_MAX_PAGES * ORDERS_PAGE_SIZE} orders but the window holds ${ordersResp.totalCount}, so the sum covers only the paged subset (partial). ${split}`,
       },
-    }
+      dtc.sum,
+      b2b.sum,
+      b2bOrderIds,
+    )
   }
 
-  return {
-    value: net,
-    lineage: {
+  return both(
+    {
       source: "shopify:orders_search",
       calls,
       period,
-      note: "Order totals are Shopify current totals (refund-adjusted), so refunds against these orders are already netted out.",
+      note: `Order totals are Shopify current totals (refund-adjusted), so refunds against these orders are already netted out. ${split}`,
     },
-  }
+    dtc.sum,
+    b2b.sum,
+    b2bOrderIds,
+  )
+}
+
+/** Net revenue of the period's DTC (non-B2B) orders; see `gatherShopifyRevenueSplit`. */
+export async function gatherShopifyNetRevenue(
+  ctx: MetricsInputCtx,
+  period: Period,
+): Promise<GatheredValue<number | null>> {
+  return (await gatherShopifyRevenueSplit(ctx, period)).dtc
 }
 
 // ─── manual_spend total ─────────────────────────────────────────────────────
@@ -540,7 +594,12 @@ export async function gatherAttributionRows(
 }
 
 export interface MetricsInputs {
+  /** Net revenue of the DTC orders (B2B orders, recognised by the order itself, excluded). */
   shopifyNetRevenue: GatheredValue<number | null>
+  /** Net revenue of the B2B orders. */
+  shopifyB2bNetRevenue: GatheredValue<number | null>
+  /** Numeric ids of the window's B2B orders, to class attribution rows by order. */
+  b2bOrderIds: GatheredValue<string[]>
   manualSpendTotal: GatheredValue<number>
   metaSpend: GatheredValue<number | null>
   googleSpend: GatheredValue<number | null>
@@ -549,15 +608,17 @@ export interface MetricsInputs {
 
 /** Gather every input a registry formula might need, for one period, in one call. */
 export async function gatherAllInputs(ctx: MetricsInputCtx, period: Period): Promise<MetricsInputs> {
-  const [shopifyNetRevenue, manualSpendTotal, platformSpend, attribution] = await Promise.all([
-    gatherShopifyNetRevenue(ctx, period),
+  const [shopify, manualSpendTotal, platformSpend, attribution] = await Promise.all([
+    gatherShopifyRevenueSplit(ctx, period),
     gatherManualSpendTotal(ctx, period),
     gatherPlatformSpend(ctx, period),
     gatherAttributionRows(ctx, period),
   ])
 
   return {
-    shopifyNetRevenue,
+    shopifyNetRevenue: shopify.dtc,
+    shopifyB2bNetRevenue: shopify.b2b,
+    b2bOrderIds: shopify.b2bOrderIds,
     manualSpendTotal,
     metaSpend: platformSpend.meta,
     googleSpend: platformSpend.google,

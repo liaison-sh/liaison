@@ -15,6 +15,8 @@
 // These are pure (no DB / no fetch) so they are safe to run synchronously at gate time.
 
 import {
+  B2B_REASONS,
+  type B2bReason,
   type B2bVerdict,
   type CustomerNotificationReason,
   type TrackingFacts,
@@ -697,6 +699,7 @@ export function summarizeDraftOrdersComplete(
 // staging (fail closed at execution) reads as decided at execution, never as a promise.
 const CARD_NOTICE: Record<CustomerNotificationReason, string> = {
   b2b_company_buyer: "Customer will not be notified: B2B order",
+  b2b_order_tag: "Customer will not be notified: B2B order",
   b2b_sku_suffix: "Customer will not be notified: B2B order",
   retail_order: "Customer will be notified: retail order",
   policy_all: "Customer will be notified (policy: every order)",
@@ -715,8 +718,8 @@ function fulfilmentNotifySubtitle(callerNotify: boolean, source: unknown, tracki
   if (policy === null) return CARD_NOTICE.undecided_fail_closed
   const v = isRec(rec.b2bOrder) ? rec.b2bOrder : null
   const verdict: B2bVerdict | null =
-    v?.b2b === true && (v.reason === "b2b_company_buyer" || v.reason === "b2b_sku_suffix")
-      ? { b2b: true, reason: v.reason }
+    v?.b2b === true && (B2B_REASONS as readonly unknown[]).includes(v.reason)
+      ? { b2b: true, reason: v.reason as B2bReason }
       : v?.b2b === false
         ? { b2b: false, reason: null }
         : null

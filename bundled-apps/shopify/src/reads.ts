@@ -24,13 +24,15 @@ import {
   type ShopifyDraftOrderGraphQLNode,
 } from "./lib/draft-order"
 import {
-  B2B_SKU_SUFFIXES_CONFIG_KEY,
+  type B2bRecognition,
   type B2bVerdict,
   ORDER_B2B_SIGNALS_SELECTION,
   type OrderB2bSignals,
   SHIPPING_EMAIL_POLICY_CONFIG_KEY,
   type ShippingEmailPolicy,
   b2bVerdict,
+  b2bVerdictFor,
+  readB2bRecognition,
   readShippingEmailPolicy,
 } from "./lib/b2b"
 import { getShopifyClient, resolveInstallMetadata } from "./lib/get-client"
@@ -236,6 +238,23 @@ function normalizeB2bCompany(
     name: entity.company?.name ?? null,
     taxRegistrationId: entity.location?.taxSettings?.taxRegistrationId ?? null,
   }
+}
+
+/**
+ * Add the order's B2B verdict to a search hit (`attributes.b2bOrder`: `{ b2b, reason }`, or null
+ * when the org's B2B settings could not be read and the order is not a company order). The hit
+ * carries the order's first 10 line items, which is enough for the legacy sku-suffix signal.
+ */
+function withB2bOrder(hit: NormalizedHit, node: OrderNode, recognition: B2bRecognition | null): NormalizedHit {
+  const verdict = b2bVerdictFor(
+    {
+      tags: node.tags ?? [],
+      purchasingEntity: node.purchasingEntity,
+      lineItems: { nodes: (node.lineItems?.edges ?? []).map((e) => ({ sku: e.node.variant?.sku ?? null })) },
+    },
+    recognition,
+  )
+  return { ...hit, attributes: { ...hit.attributes, b2bOrder: verdict } }
 }
 
 function normalizeOrder(node: OrderNode): NormalizedHit {
@@ -630,6 +649,9 @@ export async function orders_search(
     orders?: { edges?: Array<{ node: OrderNode }>; pageInfo?: { endCursor?: string | null } }
   }>(ORDERS_SEARCH_QUERY, { query: effectiveQuery, first: limit, after: params.cursor ?? null })
   const edges = data.orders?.edges ?? []
+  // Each hit says whether the order is B2B (`attributes.b2bOrder`), judged by the order itself:
+  // one read of the org's B2B tag and suffix settings serves the whole page.
+  const recognition = edges.length > 0 ? await readB2bRecognition((key) => ctx.config.get(key)) : null
   // Surface the no-date-filter bound whenever the caller is taking a RECENCY/DATE-shaped slice — i.e. they
   // passed a date term, OR they passed NO query / a non-narrowing query (the "give me yesterday's orders"
   // pattern where the agent just pulls the recent page with limit/cursor and no facet). The notice is the
@@ -662,7 +684,7 @@ export async function orders_search(
     ? "DATE WINDOW BASIS: created_at_min/created_at_max filter on each order's processedAt (its placed date, attributes.processedAt), NOT on createdAt; results are sorted newest createdAt first. The two differ for an imported or backdated order, so an order can be missing from this window although its number falls between two orders shown here. Never say an order is 'immediately before' or 'the previous' one from a window search: order numbers are sequential, so look the neighbouring number up with orders_get (e.g. '#1234') before saying so."
     : undefined
   return {
-    results: edges.map((e) => normalizeOrder(e.node)),
+    results: edges.map((e) => withB2bOrder(normalizeOrder(e.node), e.node, recognition)),
     nextCursor: data.orders?.pageInfo?.endCursor ?? null,
     // Server-side COUNT over the SAME (effective) filter as the page — the orders sibling of
     // customers_search's `customersCount`. It lets a routine/agent GROUND an honest bounded-coverage
@@ -768,8 +790,12 @@ export async function orders_get(params: Record<string, unknown>, ctx: AppContex
     : null
   const po_number = toPoNumber(order.poNumber)
   const b2bOrder = await b2bVerdict(
-    { purchasingEntity: order.purchasingEntity, lineItems: { nodes: (order.lineItems?.edges ?? []).map((e) => ({ sku: e.node.sku ?? null })) } },
-    () => ctx.config.get(B2B_SKU_SUFFIXES_CONFIG_KEY),
+    {
+      tags: order.tags ?? [],
+      purchasingEntity: order.purchasingEntity,
+      lineItems: { nodes: (order.lineItems?.edges ?? []).map((e) => ({ sku: e.node.sku ?? null })) },
+    },
+    (key) => ctx.config.get(key),
   )
   const shippingEmailPolicy = await readShippingEmailPolicy(() => ctx.config.get(SHIPPING_EMAIL_POLICY_CONFIG_KEY))
   // Enrich ADDITIVELY: keep the normalized hit (entity/title/market/currency/
@@ -2198,7 +2224,7 @@ const FULFILLMENTS_GET_QUERY = `
     fulfillment(id: $id) {
       id status createdAt
       trackingInfo { company number url }
-      order { id name tags ${ORDER_B2B_SIGNALS_SELECTION} }
+      order { id name ${ORDER_B2B_SIGNALS_SELECTION} }
       fulfillmentLineItems(first: 100) { edges { node { id quantity } } }
     }
   }
@@ -2224,7 +2250,7 @@ export async function fulfillments_get(
   if (fullOrder) {
     const { purchasingEntity, lineItems, ...rest } = fullOrder
     order = rest
-    b2bOrder = await b2bVerdict({ purchasingEntity, lineItems }, () => ctx.config.get(B2B_SKU_SUFFIXES_CONFIG_KEY))
+    b2bOrder = await b2bVerdict({ tags: rest.tags, purchasingEntity, lineItems }, (key) => ctx.config.get(key))
   }
   const shippingEmailPolicy = await readShippingEmailPolicy(() => ctx.config.get(SHIPPING_EMAIL_POLICY_CONFIG_KEY))
   const hit = normalizeFulfillment({ ...data.fulfillment, order })

@@ -1793,7 +1793,8 @@ const PRODUCT_STATUSES = ["ACTIVE", "ARCHIVED", "DRAFT", "UNLISTED"] as const
 /** The `productVariants(query:)` string: the caller's query plus the explicit filters, composed
  *  server-side in Shopify's search syntax
  *  (https://shopify.dev/docs/api/admin-graphql/latest/queries/productVariants) so `limit` and the
- *  cursor stay exact. `product_status` becomes `product_status:ACTIVE,DRAFT`; `min_quantity` becomes
+ *  cursor stay exact. `product_status` becomes `product_status:active,draft` (Shopify matches the
+ *  status values in lower case only: `product_status:ACTIVE` returns nothing); `min_quantity` becomes
  *  `inventory_quantity:>=N` (the total across all locations). Invalid values throw BAD_PARAM.
  *  Exported for tests. */
 export function variantsSearchQuery(params: Record<string, unknown>): string | null {
@@ -1811,7 +1812,7 @@ export function variantsSearchQuery(params: Record<string, unknown>): string | n
         `product_status must list one or more of ${PRODUCT_STATUSES.join(", ")}; got ${JSON.stringify(rawStatus)}`,
       )
     }
-    terms.push(`product_status:${[...new Set(list)].join(",")}`)
+    terms.push(`product_status:${[...new Set(list)].map((v) => String(v).toLowerCase()).join(",")}`)
   }
   const rawMin = params.min_quantity
   if (rawMin !== undefined && rawMin !== null && rawMin !== "") {

@@ -103,15 +103,15 @@ describe("threads_create: an agent asks before opening a new conversation", () =
       title: "Launch plan",
       initialMessage: "Let's plan the launch",
     })
-    expect("blocked" in res).toBe(true)
-    if (!("blocked" in res)) return
-    const summary = res.blocked.summary as { title?: string } | undefined
+    const blocked = "blocked" in res ? res.blocked : undefined
+    expect(blocked).toBeDefined()
+    const summary = blocked?.summary as { title?: string } | undefined
     expect(summary?.title).toBe('Create new conversation "Launch plan" with Carol Gate, Bob Gate')
     expect(await threadsTitled("Launch plan")).toHaveLength(0)
 
     await decideApproval({
       orgId: admin.orgId,
-      requestId: res.blocked.approvalRequestId as string,
+      requestId: blocked?.approvalRequestId as string,
       actor: actor(),
       decision: "approve",
     })

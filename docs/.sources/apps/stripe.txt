@@ -1,7 +1,6 @@
 connector keeps a read mirror of customers, subscriptions, invoices, payments, refunds, disputes -> bundled-apps/stripe/README.md:3
 Stripe is kind connector, no views -> bundled-apps/stripe/app.manifest.json:4
 a connector is a card on the Connectors page -> apps/web/src/framework/define-app.ts:816
-no webhook event is taken yet: the verifier refuses every delivery -> bundled-apps/stripe/src/handlers.ts:27
 restricted key, never the secret key -> bundled-apps/stripe/app.manifest.json:103
 key permissions: read 9, write refunds -> bundled-apps/stripe/app.manifest.json:97
 Developers > API keys > Create restricted key -> bundled-apps/stripe/app.manifest.json:97
@@ -41,3 +40,15 @@ connecting needs stripe:admin:connection -> bundled-apps/stripe/app.manifest.jso
 key checked before it is stored; a refused key replaces nothing -> bundled-apps/stripe/app.manifest.json:86
 the check before storage records nothing -> bundled-apps/stripe/src/connection.ts:298
 the route runs the check before the save -> apps/api/src/modules/apps/connections/routes.ts:456
+webhook verified on the server with the org's own secret -> bundled-apps/stripe/src/verify.ts:11
+no secret saved: refused -> bundled-apps/stripe/src/verify.ts:132
+5 minutes either way -> bundled-apps/stripe/src/verify.ts:34
+previous secret at most 24 hours -> bundled-apps/stripe/src/verify.ts:36
+a redelivered event changes nothing -> bundled-apps/stripe/src/webhooks.ts:8
+each object read again, the event's copy never used -> bundled-apps/stripe/src/dispatch.ts:12
+the first event moves to connected and names it -> bundled-apps/stripe/src/dispatch.ts:19
+key refused: acknowledged, catch-up, key_invalid or partial -> bundled-apps/stripe/src/dispatch.ts:22
+404 without the same account: nothing changed, different_account -> bundled-apps/stripe/src/dispatch.ts:24
+card numbers hidden before storage -> bundled-apps/stripe/src/mirror.ts:9
+one Home item for the connection's admins -> bundled-apps/stripe/app.manifest.json:235
+other mode acknowledged, nothing changed -> bundled-apps/stripe/src/dispatch.ts:7

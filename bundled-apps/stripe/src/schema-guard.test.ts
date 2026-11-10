@@ -34,15 +34,15 @@ const ALLOWED: Record<string, string[]> = {
   stripe_payments: [
     "stripe_id", "payment_intent", "invoice_id", "customer_id", "amount_minor", "refunded_minor",
     "currency", "status", "failure_code", "failure_message", "card_brand", "card_last4", "card_exp",
-    "created_at_stripe", "disputed",
+    "created_at_stripe", "disputed", "stripe_updated",
   ],
   stripe_refunds: [
     "stripe_id", "payment_id", "amount_minor", "currency", "status", "reason", "liaison_document_id",
-    "created_at_stripe",
+    "created_at_stripe", "stripe_updated",
   ],
   stripe_disputes: [
     "stripe_id", "payment_id", "amount_minor", "currency", "reason", "status", "evidence_due_by",
-    "funds_withdrawn_at", "created_at_stripe",
+    "funds_withdrawn_at", "created_at_stripe", "stripe_updated",
   ],
   stripe_mrr_events: [
     "stripe_event_id", "subscription_id", "customer_id", "at", "kind", "delta_minor", "before_minor",

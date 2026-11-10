@@ -1195,13 +1195,42 @@ const DuplicatePanel: Component<{
     if (timer) clearTimeout(timer)
   })
 
+  // The merge keeps the established company: the one with an open deal, else
+  // more people, else the older one. On a minute-old copy's page that is the
+  // other company, never the copy.
+  const survivor = (): { id: string; name: string } => {
+    const o = other.state === "ready" ? other() : null
+    const here = { id: props.company.id, name: props.company.name }
+    if (!o) return here
+    const weight = (c: Company) => [c.openDeal ? 1 : 0, c.peopleCount] as const
+    const [od, op] = weight(o)
+    const [hd, hp] = weight(props.company)
+    const otherWins =
+      od !== hd
+        ? od > hd
+        : op !== hp
+          ? op > hp
+          : !!o.createdAt && !!props.company.createdAt && o.createdAt < props.company.createdAt
+    return otherWins ? { id: o.id, name: o.name } : here
+  }
+  const mergedAway = () =>
+    survivor().id === props.company.id
+      ? { id: props.duplicate.id, name: props.duplicate.name }
+      : { id: props.company.id, name: props.company.name }
+
   function startMerge(): void {
     setFailed(null)
     setHolding(true)
+    const target = survivor()
+    const source = mergedAway()
     timer = setTimeout(() => {
       timer = undefined
-      mergeCompanyInto(api as never, props.duplicate.id, props.company.id)
-        .then(() => props.onMerged())
+      mergeCompanyInto(api as never, source.id, target.id)
+        .then(() =>
+          target.id === props.company.id
+            ? props.onMerged()
+            : openCompanyTab(target.id, target.name),
+        )
         .catch(() => setFailed(i18n.t("contacts.companies.mergeFailed")))
         .finally(() => setHolding(false))
     }, MERGE_HOLD_MS)
@@ -1275,7 +1304,7 @@ const DuplicatePanel: Component<{
                 data-testid="company-detail.duplicate-merge"
                 onClick={startMerge}
               >
-                {i18n.t("contacts.companies.mergeInto", { name: props.company.name })}
+                {i18n.t("contacts.companies.mergeInto", { name: survivor().name })}
               </Button>
               <Button
                 type="button"
@@ -1295,8 +1324,8 @@ const DuplicatePanel: Component<{
           >
             <span>
               {i18n.t("contacts.companies.mergeHolding", {
-                source: props.duplicate.name,
-                target: props.company.name,
+                source: mergedAway().name,
+                target: survivor().name,
               })}
             </span>
             <Button

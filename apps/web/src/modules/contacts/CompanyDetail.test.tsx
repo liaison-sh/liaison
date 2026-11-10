@@ -398,7 +398,10 @@ describe("CompanyDetail states", () => {
         <ActivityPanel path={ACTIVITY} testId="a2" title="B" emptyText="none" />
       </>
     ))
-    release({ items: [row("t1", "tickets", "2026-11-05T10:00:00Z", "Ticket opened")], unavailable: [] })
+    release({
+      items: [row("t1", "tickets", "2026-11-05T10:00:00Z", "Ticket opened")],
+      unavailable: [],
+    })
     await screen.findAllByText("Ticket opened")
     expect(api.get.mock.calls.filter(([p]) => p.startsWith(ACTIVITY)).length).toBe(1)
     expect(screen.getAllByText("Ticket opened")).toHaveLength(2)
@@ -466,6 +469,34 @@ describe("CompanyDetail states", () => {
     expect((await screen.findByTestId("company-detail.duplicate-note")).textContent).toBe(
       "MAISON ARLON SAS is merged into Maison Arlon.",
     )
+  })
+
+  it("on a new copy's page, Merge keeps the established company and merges the copy into it", async () => {
+    // The minute-old copy has nobody and no deal; the other one has both.
+    seedDuplicate()
+    mocks.routes[`/contacts/companies/${CO}`] = company({ peopleCount: 0, openDeal: null })
+    mocks.routes["/contacts/companies/co-2"] = company({
+      id: "co-2",
+      name: "MAISON ARLON SAS",
+      peopleCount: 3,
+    })
+    render(() => <CompanyDetail entityId={CO} />)
+    await waitFor(() =>
+      expect(screen.getByTestId("company-detail.duplicate-merge").textContent).toContain(
+        "MAISON ARLON SAS",
+      ),
+    )
+    vi.useFakeTimers()
+    try {
+      fireEvent.click(screen.getByTestId("company-detail.duplicate-merge"))
+      expect(screen.getByTestId("company-detail.duplicate-holding").textContent).toContain(
+        "Maison Arlon merges into MAISON ARLON SAS",
+      )
+      await vi.advanceTimersByTimeAsync(8000)
+      expect(postsTo("kernel:companies_merge")).toEqual([{ sourceId: CO, targetId: "co-2" }])
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("one source failing shows one notice with Retry and the rest", async () => {

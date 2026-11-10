@@ -837,6 +837,7 @@ export const CompanyDetail: Component<CompanyDetailProps> = (props) => {
                 companyName={c().name}
                 open={shareOpen()}
                 onOpenChange={setShareOpen}
+                onSaved={() => void loadCompany(api as never, props.entityId).catch(() => {})}
               />
             </div>
           )}

@@ -5,6 +5,8 @@
 // as a contact id. Reading needs kernel:companies:read, every change
 // kernel:companies:write (on top of the contacts mount's own check). A company
 // the caller cannot see answers 404, never 403.
+
+import { resourceSharingSchema } from "@liaison/shared"
 import { Hono } from "hono"
 import { HTTPException } from "hono/http-exception"
 import { z } from "zod"
@@ -25,6 +27,7 @@ import {
   getCompanySharing,
   linkContactsToCompany,
   listCompanies,
+  setCompanySharing,
   similarCompanies,
   unlinkContactsFromCompany,
   updateCompany,
@@ -221,3 +224,25 @@ companyRoutes.get("/:id/sharing", zValidator("param", idParam), async (c) => {
   )
   return success(c, sharing)
 })
+
+// Change the company's sharing: general access and grants. Only whoever may
+// manage it (its creator, or a contacts admin for a company whose creator is
+// gone); anyone else gets 403 and nothing changes.
+companyRoutes.put(
+  "/:id/sharing",
+  zValidator("param", idParam),
+  zValidator("json", resourceSharingSchema),
+  async (c) => {
+    const orgId = c.get("orgId")
+    const userId = c.get("userId")
+    const sharing = await withRequestRls(c, (tx) =>
+      setCompanySharing(tx, {
+        orgId,
+        userId,
+        companyId: c.req.param("id"),
+        sharing: c.req.valid("json"),
+      }),
+    )
+    return success(c, sharing)
+  },
+)

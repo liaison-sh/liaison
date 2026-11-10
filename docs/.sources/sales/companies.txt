@@ -34,3 +34,7 @@ Follow-ups block states -> apps/web/src/modules/contacts/ContactDetail.tsx:70-10
 Invoices and account messages always go out -> packages/shared/src/i18n/locales/en/contacts.json:310
 Company tools and approvals -> docs/reference/agent-tools.md:companies_search ; apps/api/src/modules/agent/tools/company-tools.ts
 Delete: discussion goes, people keep the name as text and lose the link, deals and pipelines stop naming it, refused with portal accounts -> apps/api/src/modules/contacts/companies.ts:726-731 ; apps/api/src/modules/contacts/companies.ts:753
+Share a company: Add people…, Viewer or Editor, general access Private / org can view / org can edit, Save -> packages/shared/src/i18n/locales/en/kernel.json:4709-4717 ; packages/shared/src/i18n/locales/en/contacts.json:80-84 ; apps/web/src/modules/contacts/CompanyShareDialog.tsx:67-88
+Only the creator changes sharing; a contacts admin when the creator is inactive or absent; account manager grants nothing -> apps/api/src/db/migrations/0291_companies.sql:84-101 ; apps/api/src/modules/contacts/companies.ts:1932-1942
+Others see the dialog read only -> apps/web/src/modules/sharing/ShareDialog.tsx:593-597
+A company nobody created stays visible to the organisation -> apps/api/src/modules/contacts/companies.ts:1944-1949 ; apps/api/src/db/migrations/0291_companies.sql:51

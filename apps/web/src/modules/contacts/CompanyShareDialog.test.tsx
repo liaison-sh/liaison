@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { fireEvent, render, screen } from "@solidjs/testing-library"
+import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { describe, expect, it, vi } from "vitest"
 import { ApiContext } from "~/modules/shell/ApiContext"
 import { CompanyShareDialog } from "./CompanyShareDialog"
@@ -18,25 +18,60 @@ function makeApi(sharing: () => Promise<unknown>) {
   }
 }
 
-function renderDialog(api: ReturnType<typeof makeApi>) {
+function renderDialog(api: ReturnType<typeof makeApi>, onSaved = vi.fn()) {
+  const onOpenChange = vi.fn()
   render(() => (
     <ApiContext.Provider value={api as never}>
-      <CompanyShareDialog companyId="co1" companyName="Studio Bleu" open onOpenChange={vi.fn()} />
+      <CompanyShareDialog
+        companyId="co1"
+        companyName="Studio Bleu"
+        open
+        onOpenChange={onOpenChange}
+        onSaved={onSaved}
+      />
     </ApiContext.Provider>
   ))
+  return { onOpenChange, onSaved }
 }
 
 describe("CompanyShareDialog", () => {
-  it("shows who sees the company and offers no Save, since nothing here can change it", async () => {
-    renderDialog(
-      makeApi(async () => ({
-        orgAccess: "editor",
-        canManage: true,
-        users: [],
+  it("whoever manages the company restricts it and shares it with one person: Save sends the change", async () => {
+    const api = makeApi(async () => ({
+      orgAccess: "editor",
+      canManage: true,
+      users: [],
+      roles: [],
+      dimensions: [],
+    }))
+    const { onOpenChange, onSaved } = renderDialog(api)
+
+    fireEvent.click(await screen.findByTestId("company-share-access-none"))
+    const add = screen.getByTestId("company-share-add-person")
+    fireEvent.focus(add)
+    fireEvent.click(await screen.findByTestId("company-share-add-option-u-bob"))
+    fireEvent.click(screen.getByTestId("company-share-save"))
+
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith("/contacts/companies/co1/sharing", {
+        orgAccess: "none",
+        users: [{ userId: "u-bob", role: "viewer" }],
         roles: [],
         dimensions: [],
-      })),
+      }),
     )
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+    expect(onSaved).toHaveBeenCalled()
+  })
+
+  it("someone who may not manage the company's sharing sees it read only, with no Save", async () => {
+    const api = makeApi(async () => ({
+      orgAccess: "editor",
+      canManage: false,
+      users: [],
+      roles: [],
+      dimensions: [],
+    }))
+    renderDialog(api)
 
     expect(await screen.findByTestId("company-share-read-only")).toBeInTheDocument()
     expect(screen.queryByTestId("company-share-save")).toBeNull()
@@ -45,6 +80,7 @@ describe("CompanyShareDialog", () => {
     expect(view).toBeDisabled()
     fireEvent.click(view)
     expect(view.getAttribute("aria-pressed") ?? view.getAttribute("aria-checked")).not.toBe("true")
+    expect(api.put).not.toHaveBeenCalled()
   })
 
   it("shows the company's real general access, not Private, once the sharing read answers", async () => {

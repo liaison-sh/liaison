@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // Who a company is shared with: the generic ShareDialog over
-// GET /contacts/companies/:id/sharing. Read only here: changing a company's
-// sharing is not offered on the page yet, so the dialog shows who sees it.
+// GET and PUT /contacts/companies/:id/sharing. Whoever may manage the
+// company's sharing (its creator, or a contacts admin for a company whose
+// creator is gone) changes it here; anyone else sees it read only.
 
 import type { Component } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
@@ -22,6 +23,7 @@ interface CompanySharingResponse {
   users: UserShare[]
   roles: RoleShare[]
   dimensions?: DimensionShare[]
+  canManage: boolean
 }
 
 const GENERAL_ACCESS_OPTIONS: GeneralAccessOption[] = [
@@ -50,6 +52,8 @@ export const CompanyShareDialog: Component<{
   companyName: string
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Called after a successful save, e.g. to reload the company. */
+  onSaved?: () => void
 }> = (props) => {
   const i18n = useI18n()
   const api = useApi()
@@ -70,10 +74,18 @@ export const CompanyShareDialog: Component<{
           users: s.users ?? [],
           roles: s.roles ?? [],
           dimensions: s.dimensions ?? [],
-          canManage: false,
+          canManage: s.canManage === true,
         }
       }}
-      save={async () => {}}
+      save={async (state) => {
+        await api.put(`/contacts/companies/${props.companyId}/sharing`, {
+          orgAccess: state.orgAccess,
+          users: state.users,
+          roles: state.roles,
+          dimensions: state.dimensions,
+        })
+        props.onSaved?.()
+      }}
       listMembers={async () => await api.get<ShareMember[]>("/sharing/members")}
       listRoles={async () => await api.get<ShareRoleTarget[]>("/sharing/roles")}
       describeDimension={(share) => `${share.key} = ${share.value}`}

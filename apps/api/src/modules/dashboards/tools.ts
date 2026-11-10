@@ -21,7 +21,7 @@ import type { UserContext } from "~/db/rls"
 import { dashboards, userRoles } from "~/db/schema/kernel"
 import { type ApprovalSummarizer, toolRegistry } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
-import { computeBlock, orgTimezone } from "~/modules/dashboards/execute"
+import { computeBlock, dashboardTimezone } from "~/modules/dashboards/execute"
 import {
   DateTokenError,
   dateTokensIn,
@@ -152,7 +152,9 @@ function tokenDates(source: Record<string, unknown>, timeZone: string): string {
 
 /** The zone a card's token dates are shown in: the org's, looked up only when a block has tokens. */
 async function cardTimezone(spec: unknown, orgId: string): Promise<string> {
-  return hasDateTokens((spec as { blocks?: unknown } | null)?.blocks) ? orgTimezone(orgId) : "UTC"
+  return hasDateTokens((spec as { blocks?: unknown } | null)?.blocks)
+    ? dashboardTimezone(orgId)
+    : "UTC"
 }
 
 /** One block's lines for an approval card: what it draws and from where. */

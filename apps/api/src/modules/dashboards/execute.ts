@@ -244,12 +244,12 @@ async function auditRun(ctx: BlockRunContext, block: DashboardBlock, outcome: Bl
 
 /** How long an org's timezone is kept in this process: a changed zone applies within a minute. */
 const ORG_TIMEZONE_TTL_MS = 60_000
-const orgTimezones = new Map<string, { tz: string; until: number }>()
+const dashboardTimezones = new Map<string, { tz: string; until: number }>()
 
 /** The zone a block's date tokens resolve in: the org's, else UTC. */
-export async function orgTimezone(orgId: string): Promise<string> {
+export async function dashboardTimezone(orgId: string): Promise<string> {
   const now = Date.now()
-  const hit = orgTimezones.get(orgId)
+  const hit = dashboardTimezones.get(orgId)
   if (hit && hit.until > now) return hit.tz
   const [row] = await withPrivilegedDb(orgId, "dashboard-org-timezone", (tx) =>
     tx
@@ -259,7 +259,7 @@ export async function orgTimezone(orgId: string): Promise<string> {
       .limit(1),
   )
   const tz = isValidTimezone(row?.timezone) ? row.timezone : "UTC"
-  orgTimezones.set(orgId, { tz, until: now + ORG_TIMEZONE_TTL_MS })
+  dashboardTimezones.set(orgId, { tz, until: now + ORG_TIMEZONE_TTL_MS })
   return tz
 }
 
@@ -276,7 +276,7 @@ export async function resolveBlockDates<B extends DashboardBlock>(
   const source = block.source
   const value = source.kind === "tool" ? source.params : source.query
   if (!hasDateTokens(value)) return block
-  const resolved = resolveDateTokens(value, { timeZone: await orgTimezone(orgId), now })
+  const resolved = resolveDateTokens(value, { timeZone: await dashboardTimezone(orgId), now })
   return {
     ...block,
     source:

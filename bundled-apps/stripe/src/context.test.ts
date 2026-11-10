@@ -18,8 +18,8 @@ function world() {
   db.seed("stripe_customers", [
     {
       stripe_id: "cus_A",
-      email: "ana@atelier.example",
-      name: "Atelier Lune",
+      email: "ana@maison.example",
+      name: "Maison Lune",
       contact_id: ANA,
       company_id: CO,
       address: { line1: "12 rue des Lilas" },
@@ -74,7 +74,7 @@ describe("the Stripe context lines", () => {
     expect(text).toContain("49.00 EUR")
     expect(text).not.toContain("LUNE-0041")
     // Masked: no email, no address, no name, no expiry, no run of more than 4 digits.
-    for (const leak of ["ana@atelier.example", "rue des Lilas", "04/27"]) expect(text).not.toContain(leak)
+    for (const leak of ["ana@maison.example", "rue des Lilas", "04/27"]) expect(text).not.toContain(leak)
     expect(text).not.toMatch(/\d{5,}/)
     expect(out.lines.length).toBeLessThanOrEqual(CONTEXT_MAX_LINES)
     expect(text.length).toBeLessThanOrEqual(BUDGET_CHARS)

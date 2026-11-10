@@ -18,7 +18,7 @@ const ANA = "33333333-3333-4333-8333-333333333333"
 function setup() {
   const db = new MemDb()
   db.seed("stripe_customers", [
-    { stripe_id: "cus_A", email: "ana@atelier.example", name: "Atelier Lune", company_id: CO_A, contact_id: null, match_method: "email" },
+    { stripe_id: "cus_A", email: "ana@maison.example", name: "Maison Lune", company_id: CO_A, contact_id: null, match_method: "email" },
   ])
   const fetches: string[] = []
   const reads: string[] = []
@@ -91,8 +91,8 @@ describe("linking a Stripe customer", () => {
   it("an automatic match never replaces a person's link and never unlinks", async () => {
     const db = new MemDb()
     db.seed("stripe_customers", [
-      { stripe_id: "cus_P", email: "p@atelier.example", company_id: CO_A, contact_id: ANA, match_method: "person" },
-      { stripe_id: "cus_Q", email: "q@atelier.example", company_id: CO_A, contact_id: ANA, match_method: "email" },
+      { stripe_id: "cus_P", email: "p@maison.example", company_id: CO_A, contact_id: ANA, match_method: "person" },
+      { stripe_id: "cus_Q", email: "q@maison.example", company_id: CO_A, contact_id: ANA, match_method: "email" },
     ])
     const calls: unknown[] = []
     const ctx = {

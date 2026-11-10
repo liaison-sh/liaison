@@ -11,7 +11,7 @@ const CO = "11111111-1111-4111-8111-111111111111"
 describe("the Stripe timeline rows", () => {
   it("a company timeline gets failed payment, retry failed, started, cancelled, refund and dispute rows", async () => {
     const db = new MemDb()
-    db.seed("stripe_customers", [{ stripe_id: "cus_A", name: "Atelier Lune", company_id: CO }])
+    db.seed("stripe_customers", [{ stripe_id: "cus_A", name: "Maison Lune", company_id: CO }])
     db.seed("stripe_customers", [{ stripe_id: "cus_X", name: "Elsewhere", company_id: null }])
     db.seed("stripe_subscriptions", [
       {
@@ -41,7 +41,7 @@ describe("the Stripe timeline rows", () => {
       "Refund, 10.00 EUR",
       "Studio Pro started",
     ])
-    expect(rows.every((r) => r.who === "Atelier Lune")).toBe(true)
+    expect(rows.every((r) => r.who === "Maison Lune")).toBe(true)
     expect(rows[0]?.href).toEqual({ app: "stripe", entityType: "customer", entityId: "cus_A" })
 
     const older = await activityRead(

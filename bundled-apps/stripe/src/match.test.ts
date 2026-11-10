@@ -39,46 +39,46 @@ describe("matching a Stripe customer", () => {
   it("matching runs email, then the contact's company, then the external id; a domain only suggests; a free-mail address never matches", async () => {
     // 1. Exact email: the contact, and its company.
     const one = deps({
-      byEmail: { "ana@atelier.example": { id: ANA, companyId: CO } },
+      byEmail: { "ana@maison.example": { id: ANA, companyId: CO } },
       byExternal: { cus_1: { id: BEN, companyId: OTHER_CO } },
     })
-    expect(await matchCustomer({ stripe_id: "cus_1", email: "ana@atelier.example" }, one.d)).toEqual({
+    expect(await matchCustomer({ stripe_id: "cus_1", email: "ana@maison.example" }, one.d)).toEqual({
       contactId: ANA,
       companyId: CO,
       method: "contact_company",
       suggestion: null,
     })
-    expect(one.calls).toEqual(["email:ana@atelier.example"])
+    expect(one.calls).toEqual(["email:ana@maison.example"])
 
     // 2. Email names a contact without a company: the contact only, the domain suggests.
     const two = deps({
-      byEmail: { "ana@atelier.example": { id: ANA, companyId: null } },
-      byDomain: { "atelier.example": { id: CO, name: "Atelier" } },
+      byEmail: { "ana@maison.example": { id: ANA, companyId: null } },
+      byDomain: { "maison.example": { id: CO, name: "Maison" } },
     })
-    expect(await matchCustomer({ stripe_id: "cus_2", email: "ana@atelier.example" }, two.d)).toEqual({
+    expect(await matchCustomer({ stripe_id: "cus_2", email: "ana@maison.example" }, two.d)).toEqual({
       contactId: ANA,
       companyId: null,
       method: "email",
-      suggestion: { companyId: CO, name: "Atelier", domain: "atelier.example" },
+      suggestion: { companyId: CO, name: "Maison", domain: "maison.example" },
     })
 
     // 3. No email match: the contact carrying the customer id.
     const three = deps({ byExternal: { cus_3: { id: BEN, companyId: OTHER_CO } } })
-    expect(await matchCustomer({ stripe_id: "cus_3", email: "nobody@atelier.example" }, three.d)).toEqual({
+    expect(await matchCustomer({ stripe_id: "cus_3", email: "nobody@maison.example" }, three.d)).toEqual({
       contactId: BEN,
       companyId: OTHER_CO,
       method: "external_id",
       suggestion: null,
     })
-    expect(three.calls).toEqual(["email:nobody@atelier.example", "external:cus_3"])
+    expect(three.calls).toEqual(["email:nobody@maison.example", "external:cus_3"])
 
     // 4. Only the domain: a suggestion, no link.
-    const four = deps({ byDomain: { "atelier.example": { id: CO, name: "Atelier" } } })
-    expect(await matchCustomer({ stripe_id: "cus_4", email: "new@atelier.example" }, four.d)).toEqual({
+    const four = deps({ byDomain: { "maison.example": { id: CO, name: "Maison" } } })
+    expect(await matchCustomer({ stripe_id: "cus_4", email: "new@maison.example" }, four.d)).toEqual({
       contactId: null,
       companyId: null,
       method: null,
-      suggestion: { companyId: CO, name: "Atelier", domain: "atelier.example" },
+      suggestion: { companyId: CO, name: "Maison", domain: "maison.example" },
     })
 
     // 5. Free mail: no company and no suggestion, even when a company carries the domain.

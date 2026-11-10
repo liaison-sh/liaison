@@ -2665,7 +2665,7 @@
     "id": "Y03",
     "set": "seed",
     "lang": "en",
-    "say": "show me the Stripe customer for Atelier Lune",
+    "say": "show me the Stripe customer for Maison Lune",
     "typed": ["Stripe customer", "customer subscriptions"],
     "any": ["stripe__customers_get"]
   },
@@ -2673,7 +2673,7 @@
     "id": "Y04",
     "set": "seed",
     "lang": "fr",
-    "say": "rattache ce client Stripe à l'entreprise Atelier Lune",
+    "say": "rattache ce client Stripe à l'entreprise Maison Lune",
     "typed": ["lier un client Stripe", "link Stripe customer to company"],
     "any": ["stripe__customer_link"]
   },
@@ -2762,7 +2762,7 @@
     "id": "M06",
     "set": "seed",
     "lang": "en",
-    "say": "stop billing Atelier Nord until March, they paused the contract",
+    "say": "stop billing Maison Nord until March, they paused the contract",
     "typed": ["pause billing", "suspend monthly invoice", "stop invoicing for now"],
     "any": ["invoicing__recurring_schedule_pause"],
     "modelRun": true

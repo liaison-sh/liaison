@@ -93,7 +93,7 @@ async function contact(companyId: string | null): Promise<string> {
     id,
     org_id: ORG_ID,
     handle: `@spm-${id.slice(0, 8)}`,
-    email: `client-${seq}-${id.slice(0, 6)}@atelier.example`,
+    email: `client-${seq}-${id.slice(0, 6)}@maison.example`,
     name: `Client ${seq}`,
     org_access: "editor",
     created_by: ANNA,
@@ -112,7 +112,7 @@ async function linked(
   await insert("app_stripe.stripe_customers", {
     org_id: ORG_ID,
     stripe_id: customer,
-    email: "billing@atelier.example",
+    email: "billing@maison.example",
     company_id: companyId,
     contact_id: contactId,
     match_method: "email",
@@ -198,8 +198,8 @@ afterAll(async () => {
 describe("merges carry Stripe customers and recurring schedules", () => {
   it("after a company or contact merge every linked Stripe customer and recurring schedule names the target, with the app off during the merge as well", async () => {
     // A company merge.
-    const source = await company("Atelier Lune")
-    const target = await company("Lune Atelier")
+    const source = await company("Maison Lune")
+    const target = await company("Lune Maison")
     const person = await contact(source)
     const byCompany = await linked(source, person)
     await asAnna((tx) =>

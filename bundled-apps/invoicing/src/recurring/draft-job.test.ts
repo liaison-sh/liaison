@@ -37,7 +37,7 @@ export function previousDoc(id: string, paid: boolean): Record<string, unknown> 
     status: "issued",
     number: "F-2026-0040",
     counterparty_contact_id: CONTACT,
-    counterparty_name: "Atelier Sauvan",
+    counterparty_name: "Maison Sauvan",
     counterparty_address: "3 rue des Lilas, 69001 Lyon",
     counterparty_country: "FR",
     issuer_profile_id: ISSUER,
@@ -124,7 +124,7 @@ describe("the month-end draft job", () => {
       number: null,
       type: "invoice",
       external_ref: "recurring:33333333-3333-4333-8333-333333333331:2026-11",
-      counterparty_name: "Atelier Sauvan",
+      counterparty_name: "Maison Sauvan",
       due_at: "2026-12-30",
     })
     const lines = h.db.__all("document_lines").filter((l) => l.document_id === drafts[0]?.id)

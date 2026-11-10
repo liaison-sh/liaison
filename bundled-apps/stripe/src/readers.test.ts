@@ -15,7 +15,7 @@ const AT = "2026-11-09T10:00:00.000Z"
 function world() {
   const db = new MemDb()
   db.seed("stripe_customers", [
-    { stripe_id: "cus_A", email: "ana@atelier.example", name: "Atelier Lune", address: { line1: "12 rue des Lilas" }, tax_ids: [{ value: "FR123" }], stripe_updated: AT },
+    { stripe_id: "cus_A", email: "ana@maison.example", name: "Aube Lune", address: { line1: "12 rue des Lilas" }, tax_ids: [{ value: "FR123" }], stripe_updated: AT },
     { stripe_id: "cus_B", email: "bo@gmail.com", name: "Bo Durand", company_id: null, contact_id: null, stripe_updated: "2026-11-01T00:00:00.000Z" },
   ])
   db.seed("stripe_subscriptions", [
@@ -31,7 +31,7 @@ describe("the Stripe mirror readers", () => {
   it("a reader's result names its record and says when the mirror was last synced", async () => {
     const ctx = world()
     const reads: Array<[string, Record<string, unknown>]> = [
-      ["cus_A", (await customersSearch({ query: "atelier" }, ctx)) as Record<string, unknown>],
+      ["cus_A", (await customersSearch({ query: "aube" }, ctx)) as Record<string, unknown>],
       ["sub_1", (await subscriptionsSearch({ id: "sub_1" }, ctx)) as Record<string, unknown>],
       ["in_1", (await invoicesSearch({ customerId: "cus_A" }, ctx)) as Record<string, unknown>],
       ["ch_1", (await paymentsSearch({ unmatched: true }, ctx)) as Record<string, unknown>],
@@ -43,7 +43,7 @@ describe("the Stripe mirror readers", () => {
       expect(String(out.summary)).toContain(`last synced ${AT}`)
     }
     const one = (await customersGet({ id: "cus_A" }, ctx)) as Record<string, unknown>
-    expect(String(one.summary)).toContain("Stripe customer cus_A (Atelier Lune)")
+    expect(String(one.summary)).toContain("Stripe customer cus_A (Aube Lune)")
     expect(one.syncedAt).toBe(AT)
     const none = (await customersSearch({ query: "nobody@x.example" }, ctx)) as Record<string, unknown>
     expect(none.items).toEqual([])

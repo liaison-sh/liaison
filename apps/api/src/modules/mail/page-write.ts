@@ -43,6 +43,7 @@
 // and 140M sequentially scanned tuples to a few calls per page on the
 // (org_id, account_id, external_*) indexes of migration 0116.
 
+import { maskHtmlWithNote, maskPaymentSecrets, maskWithNote } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import type { RlsClient } from "~/db"
 import { extractRows } from "~/db"
@@ -179,6 +180,14 @@ export function isBulkMessage(message: PageMessage): boolean {
   const autoSubmitted = (headerOf(message, "auto-submitted") ?? "").trim().toLowerCase()
   if (autoSubmitted !== "" && autoSubmitted !== "no") return true
   return (message.labels ?? []).some((label) => BULK_GMAIL_CATEGORIES.includes(label))
+}
+
+/** A message's subject, bodies and snippet, masked in place, the bodies noted. */
+function maskPageMessage(m: PageMessage): void {
+  if (m.subject) m.subject = maskPaymentSecrets(m.subject).text
+  if (m.textBody) m.textBody = maskWithNote(m.textBody).text
+  if (m.htmlBody) m.htmlBody = maskHtmlWithNote(m.htmlBody).text
+  if (m.snippet) m.snippet = maskPaymentSecrets(m.snippet).text
 }
 
 function sentAtMs(message: PageMessage): number {
@@ -553,6 +562,13 @@ export async function writeMailPage(
   )
   const fresh = candidates.filter((m) => !stored.has(m.externalMessageId))
   if (fresh.length === 0) return { entries }
+
+  // Card numbers and payment keys are masked in the page itself, before the
+  // rows, the conversation rollup, the index and the triggered jobs read it. A
+  // sealed mailbox is the documented exception: the server never stores its
+  // plaintext, and its text is masked where the agent reads it instead
+  // (agent/mailbox-plaintext).
+  if (!sealing) for (const m of fresh) maskPageMessage(m)
 
   // 2. The page's threads.
   const threads = new Map<string, ThreadWrite>()

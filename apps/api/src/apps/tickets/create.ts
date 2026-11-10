@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
-import { displayTicketHandle } from "@liaison/shared"
+import {
+  displayTicketHandle,
+  maskHtmlWithNote,
+  maskPaymentSecrets,
+  maskWithNote,
+} from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { ACKNOWLEDGE_AFTER_COMMIT_METADATA } from "~/apps/tickets/ack-after-commit"
 import { loadSegmentConfig } from "~/apps/tickets/display-handle"
@@ -786,7 +791,7 @@ export async function createTicket(
             sla_target_seconds, sla_deadline, sla_active_started_at, sla_elapsed_seconds,
             message_count, created_at, updated_at
           ) VALUES (
-            gen_random_uuid(), ${orgId}::uuid, ${handle}, ${params.subject}, ${status}, ${priority}, ${channel},
+            gen_random_uuid(), ${orgId}::uuid, ${handle}, ${maskPaymentSecrets(params.subject).text}, ${status}, ${priority}, ${channel},
             ${team}, ${audience}, ${params.language ?? null}, ${sensitivity},
             ${params.categoryId ?? null}::uuid, ${params.contactId ?? null}::uuid, ${params.assignedTo ?? null}::uuid,
             ${replyToken}, ${params.sourceInboxId ?? null}::uuid, ${sourceAccountId}::uuid, ${params.externalRef ?? null},
@@ -815,6 +820,8 @@ export async function createTicket(
             m.fromEmail = params.contactEmail.trim().toLowerCase()
             m.fromName = m.fromName ?? params.contactName ?? null
           }
+          // Card numbers and payment keys are masked in the values below, before
+          // the row is written (and so before any reader or index meets them).
           const messageInsert = await sp.execute(drizzleSql`
             INSERT INTO ${ticketsRel("messages")} (
               id, org_id, ticket_id, kind,
@@ -826,7 +833,10 @@ export async function createTicket(
               gen_random_uuid(), ${orgId}, ${ticketId}, ${m.kind ?? "note"},
               ${m.fromEmail ?? null}, ${m.fromName ?? null},
               ${JSON.stringify(m.toEmails ?? [])}::jsonb, ${JSON.stringify(m.ccEmails ?? [])}::jsonb,
-              ${m.subject ?? null}, ${m.htmlBody ?? null}, ${m.textBody ?? null}, ${m.snippet ?? null},
+              ${m.subject ? maskPaymentSecrets(m.subject).text : null},
+              ${m.htmlBody ? maskHtmlWithNote(m.htmlBody).text : null},
+              ${m.textBody ? maskWithNote(m.textBody).text : null},
+              ${m.snippet ? maskPaymentSecrets(m.snippet).text : null},
               ${m.externalMessageId ?? null}, ${m.inReplyTo ?? null},
               ${JSON.stringify(m.headerReferences ?? [])}::jsonb,
               ${sentAt}, ${userId}, now(), now(), ${params.senderAuth ?? null}
@@ -914,7 +924,7 @@ export async function createTicket(
           data: {
             ticketId,
             handle: displayHandle,
-            subject: params.subject,
+            subject: maskPaymentSecrets(params.subject).text,
             priority,
             channel,
             // The ticket's dimension values, so the WS frame filter keeps its

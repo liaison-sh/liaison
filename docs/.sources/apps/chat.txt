@@ -96,3 +96,6 @@ A linked dashboard shows as a chip with its title -> apps/api/src/modules/thread
 Home's Dashboards sidebar section -> apps/web/src/modules/threads/sidebar-sections.ts:45
 The agent's turn shows as soon as the server takes it on -> apps/api/src/modules/agent/runtime/agent-service.ts:5017, apps/web/src/modules/threads/message-store.ts:2637
 A newer request while the agent still answers shows both turns -> apps/web/src/modules/threads/message-store.ts:2758
+A message holding a key is not sent, and the box says why -> apps/web/src/modules/threads/ComposeBar.tsx:243, packages/shared/src/i18n/locales/en/kernel.json:875
+Key shapes: rk_/sk_ with live_/test_, whsec_, 10 or more characters -> packages/shared/src/pan-scan.ts:187
+A key or card number reaching the server is stored masked with a note -> apps/api/src/modules/threads/message.ts:506, packages/shared/src/pan-scan.ts:227

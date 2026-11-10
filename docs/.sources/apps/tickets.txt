@@ -198,3 +198,8 @@ History, old mail and our own first mail raise nothing -> apps/api/src/apps/tick
 The person who opens the ticket is not told -> apps/api/src/apps/tickets/app.manifest.json:3245
 The item leaves the feed once someone replied, snoozed or closed -> apps/api/src/apps/tickets/app.manifest.json:3252
 CLI flag --notify-new-ticket -> apps/api/src/cli/tickets/inbox.ts:26
+Card numbers in mail and ticket messages are masked before storage -> apps/api/src/apps/tickets/inbound.ts:419, apps/api/src/modules/mail/page-write.ts:571
+Only Luhn-valid numbers with a card network prefix are hidden -> packages/shared/src/pan-scan.ts:71
+A nearby security code is hidden -> packages/shared/src/pan-scan.ts:144
+Notes are masked the same way -> apps/api/src/apps/tickets/admin.ts:328
+An encrypted mailbox is masked where the agent reads it -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:765

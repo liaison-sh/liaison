@@ -2101,6 +2101,8 @@ export const FR: Record<string, string> = {
   "This one cannot be shared here.": "Celle-ci ne peut pas être partagée ici.",
   "Share anyway": "Partager quand même",
   "Write a message... (@ people, # threads)": "Écrire un message… (@ personnes, # discussions)",
+  "That looks like a Stripe key, so it was not sent.":
+    "Cela ressemble à une clé Stripe, le message n’a donc pas été envoyé.",
   "Best on a larger screen": "Préférable sur un écran plus grand",
   "Continue anyway": "Continuer quand même",
   "Could not save the Face ID setting": "Impossible d'enregistrer le réglage Face ID",

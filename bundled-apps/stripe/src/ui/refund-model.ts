@@ -45,6 +45,10 @@ export interface RefundCardView {
   remainder: string
   remainderMinor: number
   amount: string
+  /** The amount this approval refunds, in minor units (the payload's, else all that is left). */
+  amountMinor: number
+  /** What "Try again" asks for: the refused refund's amount, capped at what is still refundable. */
+  retryMinor: number
   to: string
   note: string
   canApprove: boolean
@@ -55,6 +59,66 @@ const amountOf = (a: RefundApproval, p: PaymentItem): number => {
   const raw = payloadOf(a)?.amountMinor
   const n = raw === undefined || raw === null ? NaN : Number(raw)
   return Number.isFinite(n) && n > 0 ? n : Math.max(0, (p.amountMinor ?? 0) - (p.refundedMinor ?? 0))
+}
+
+/** Digits after the decimal point of `currency`'s minor unit (2 for EUR, 0 for JPY). */
+function minorDigits(currency: string): number {
+  try {
+    return new Intl.NumberFormat("en", { style: "currency", currency: (currency || "eur").toUpperCase() }).resolvedOptions().maximumFractionDigits ?? 2
+  } catch {
+    return 2
+  }
+}
+
+/** The amount field's text for `minor` (89.40 for 8940 EUR). */
+export function amountText(minor: number, currency: string): string {
+  const d = minorDigits(currency)
+  return (minor / 10 ** d).toFixed(d)
+}
+
+/**
+ * The edited amount, in minor units, from what a person typed ("89.40" or "89,40"), or why
+ * not: it must be more than zero and at most what is still refundable.
+ */
+export function editedAmount(text: string, currency: string, leftMinor: number): { minor: number } | { error: string } {
+  const d = minorDigits(currency)
+  const t = text.trim().replace(",", ".")
+  const m = /^(\d+)(?:\.(\d*))?$/.exec(t)
+  if (!m || (m[2] ?? "").length > d) return { error: tr("Type an amount such as {{example}}.", { example: amountText(8940, currency) }) }
+  const minor = Number(m[1]) * 10 ** d + Number((m[2] ?? "").padEnd(d, "0") || "0")
+  if (!Number.isSafeInteger(minor) || minor <= 0) return { error: tr("The amount must be more than zero.") }
+  if (minor > leftMinor) return { error: tr("At most {{left}} is still refundable.", { left: amountText(leftMinor, currency) }) }
+  return { minor }
+}
+
+/** The host calls a refund card decides through (`app` from `@liaison/host`). */
+export interface RefundDecider {
+  editApproval(id: string, fields: Record<string, unknown>): Promise<{ payloadHash?: string } | null | undefined>
+  decideApproval(id: string, decision: "approve" | "deny", payloadHash?: string): Promise<unknown>
+}
+
+/**
+ * Decide a refund card. "Save and approve" passes the typed amount: it is saved on the approval
+ * first (when it differs), and the approve is bound to that saved version, so what runs is the
+ * amount the person typed. Answers the amount's error without deciding anything.
+ */
+export async function decideRefund(
+  host: RefundDecider,
+  a: RefundApproval,
+  decision: "approve" | "deny",
+  edit: { text: string; currency: string; leftMinor: number; currentMinor: number } | null,
+): Promise<{ error: string } | null> {
+  let payloadHash = a.payloadHash
+  if (decision === "approve" && edit) {
+    const parsed = editedAmount(edit.text, edit.currency, edit.leftMinor)
+    if ("error" in parsed) return parsed
+    if (parsed.minor !== edit.currentMinor) {
+      const saved = await host.editApproval(a.id, { amountMinor: String(parsed.minor) })
+      payloadHash = saved?.payloadHash ?? payloadHash
+    }
+  }
+  await host.decideApproval(a.id, decision, payloadHash)
+  return null
 }
 
 /** The sentence a "Try again" or "Issue the credit note" asks before it does anything. */
@@ -71,8 +135,9 @@ export function refundCardView(a: RefundApproval, p: PaymentItem, locale: string
   const left = Math.max(0, (p.amountMinor ?? 0) - (p.refundedMinor ?? 0))
   const asked = amountOf(a, p)
   const amount = formatMoney(asked, cur, locale)
+  const retryMinor = Math.min(asked, left)
   const card = maskedCard(p.card)
-  const base = { state, remainderMinor: left, remainder: formatMoney(left, cur, locale), amount, to: card }
+  const base = { state, remainderMinor: left, remainder: formatMoney(left, cur, locale), amount, amountMinor: asked, retryMinor, to: card }
   if (state === "already_refunded") {
     return {
       ...base,
@@ -92,7 +157,7 @@ export function refundCardView(a: RefundApproval, p: PaymentItem, locale: string
       note: a.error ?? tr("No credit note was issued, so Stripe and your books still agree. Nothing is lost."),
       canApprove: false,
       actions: [
-        { id: "retry", label: tr("Try again"), confirm: retryConfirm(amount, card) },
+        { id: "retry", label: tr("Try again"), confirm: retryConfirm(formatMoney(retryMinor, cur, locale), card) },
         { id: "open_stripe", label: tr("Open in Stripe") },
       ],
     }

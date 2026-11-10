@@ -5,7 +5,7 @@
 import { describe, expect, it } from "bun:test"
 import type { PaymentItem } from "./customers-model"
 import { RefundCard } from "./RefundCards"
-import { type RefundApproval, refundCardView, refundsOf, retryConfirm } from "./refund-model"
+import { amountText, decideRefund, editedAmount, type RefundApproval, refundCardView, refundsOf, retryConfirm } from "./refund-model"
 
 const payment = (over: Partial<PaymentItem> = {}): PaymentItem => ({
   id: "ch_3QOmbre1014",
@@ -35,6 +35,54 @@ describe("refund cards", () => {
     // A refused refund names no credit note and says nothing was lost.
     expect(v.note).toContain("Stripe balance")
     expect(typeof RefundCard).toBe("function")
+  })
+
+  it('"Try again" asks for the refused amount, capped at what is left, and its confirm names that figure', () => {
+    // A refused partial refund of 20.00 on a 178.80 charge.
+    const v = refundCardView(approval({ payload: { chargeId: "ch_3QOmbre1014", amountMinor: "2000" }, error: "Refused." }), payment(), "en")
+    expect(v.retryMinor).toBe(2000)
+    expect(v.actions.find((a) => a.id === "retry")?.confirm).toBe(retryConfirm("€20.00", "Mastercard 5108, 07/27"))
+    // More than is left by now: capped, and the confirm says the capped figure.
+    const capped = refundCardView(approval({ payload: { chargeId: "ch_3QOmbre1014", amountMinor: "9000" }, error: "Refused." }), payment({ refundedMinor: 17880 - 5000 }), "en")
+    expect(capped.retryMinor).toBe(5000)
+    expect(capped.actions.find((a) => a.id === "retry")?.confirm).toContain("€50.00")
+  })
+
+  it('"Save and approve" saves the typed amount on the approval and approves that saved version', async () => {
+    const calls: unknown[][] = []
+    const host = {
+      editApproval: async (id: string, fields: Record<string, unknown>) => {
+        calls.push(["edit", id, fields])
+        return { payloadHash: "h-edited" }
+      },
+      decideApproval: async (id: string, decision: string, hash?: string) => {
+        calls.push(["decide", id, decision, hash])
+      },
+    }
+    const a = approval({ payloadHash: "h-agent" })
+    const edit = { text: "89.40", currency: "eur", leftMinor: 17880, currentMinor: 17880 }
+    expect(await decideRefund(host, a, "approve", edit)).toBeNull()
+    expect(calls).toEqual([
+      ["edit", "ap1", { amountMinor: "8940" }],
+      ["decide", "ap1", "approve", "h-edited"],
+    ])
+    // An amount above what is left decides nothing.
+    calls.length = 0
+    expect(await decideRefund(host, a, "approve", { ...edit, text: "500" })).toHaveProperty("error")
+    expect(calls).toEqual([])
+    // Unchanged: the agent's version is approved as it stands.
+    expect(await decideRefund(host, a, "approve", { ...edit, text: "178.80" })).toBeNull()
+    expect(calls).toEqual([["decide", "ap1", "approve", "h-agent"]])
+  })
+
+  it("the edited amount is read from what a person types, and must fit what is left", () => {
+    expect(amountText(8940, "eur")).toBe("89.40")
+    expect(editedAmount("89,40", "eur", 17880)).toEqual({ minor: 8940 })
+    expect(editedAmount(" 12 ", "eur", 17880)).toEqual({ minor: 1200 })
+    expect(editedAmount("0", "eur", 17880)).toHaveProperty("error")
+    expect(editedAmount("12.345", "eur", 17880)).toHaveProperty("error")
+    expect(editedAmount("abc", "eur", 17880)).toHaveProperty("error")
+    expect((editedAmount("200", "eur", 17880) as { error: string }).error).toContain("178.80")
   })
 
   it("shows the pending approval and what is still refundable", () => {

@@ -204,6 +204,20 @@ describe("typed host calls (1.3)", () => {
     expect(decideApproval).toHaveBeenCalledWith("test-app", "a1", "deny", undefined)
   })
 
+  it("editApproval posts the fields to the approvals route, or uses the host's call in a frame", async () => {
+    const editApproval = mock(async () => ({ payloadHash: "h2" }))
+    mockHost.editApproval = editApproval
+    await app.editApproval("a1", { amountMinor: "500" })
+    expect(editApproval).not.toHaveBeenCalled()
+    expect(mockHost.fetch).toHaveBeenCalledWith("/api/approvals/a1/payload", {
+      method: "POST",
+      body: JSON.stringify({ fields: { amountMinor: "500" } }),
+    })
+    mockHost.framed = true
+    await app.editApproval("a1", { amountMinor: "400" })
+    expect(editApproval).toHaveBeenCalledWith("test-app", "a1", { amountMinor: "400" })
+  })
+
   it("print, templates, approvals list and records fall back to the kernel routes on an older host", async () => {
     await app.listDocumentTemplates("shipment")
     expect(mockHost.fetch).toHaveBeenCalledWith(

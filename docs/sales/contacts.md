@@ -41,7 +41,7 @@ If a search under **People** finds nothing, click **Search all senders instead**
 2. Under **Identity**, click **Name**, **Phone** or **Company** to edit it in place, then confirm. The email is shown but cannot be edited here.
 3. The **Activity** section is the person's timeline: their mail, tickets, invoices, meetings and deals, newest first. **Follow-ups** says whether commercial mail to them is allowed. Their **Company** links to the company's page. See [Companies](companies.md#the-persons-own-page).
 
-To delete a contact, click **More actions**, then **Delete contact**, then confirm **Delete this contact permanently?**.
+To delete a contact, click **More actions**, then **Delete contact**, then confirm **Delete this contact permanently?**. A contact that a recurring invoice schedule still bills cannot be deleted until that schedule ends or bills another person. Linked Stripe customers lose the link to the person.
 
 ## Discuss a contact with your team and agents
 

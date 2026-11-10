@@ -29,7 +29,11 @@ import {
   mergeCompanies,
   updateCompany,
 } from "~/modules/contacts/companies"
-import { mergeContactsWithMailReferences, updateContact } from "~/modules/contacts/service"
+import {
+  deleteContact,
+  mergeContactsWithMailReferences,
+  updateContact,
+} from "~/modules/contacts/service"
 import * as minimal from "~/seed/tiers/minimal"
 import { type ApprovalOrg, approvalOrg, ctxOf } from "./approval-world"
 import type { CellImpl, CellWorld } from "./cells"
@@ -65,8 +69,10 @@ const CLERK_SCOPES = [
 export type MoneyLink =
   | "invoiceParty"
   | "scheduleParty"
+  | "scheduleContact"
   | "runItem"
   | "stripeCustomer"
+  | "stripeCustomerContact"
   | "stripeInvoice"
   | "stripeRefund"
 
@@ -93,6 +99,12 @@ const LINK_READS: Record<MoneyLink, LinkRead> = {
     column: "company_id",
     scope: "invoicing:documents:read",
   },
+  scheduleContact: {
+    table: () => inv("recurring_schedules"),
+    key: (w) => ({ column: "id", value: w.inv.scheduleId }),
+    column: "contact_id",
+    scope: "invoicing:documents:read",
+  },
   runItem: {
     table: () => inv("recurring_run_items"),
     key: (w) => ({ column: "id", value: w.inv.runItemId }),
@@ -103,6 +115,12 @@ const LINK_READS: Record<MoneyLink, LinkRead> = {
     table: () => pay("stripe_customers"),
     key: (w) => ({ column: "stripe_id", value: w.customerId }),
     column: "company_id",
+    scope: "stripe:customers:read",
+  },
+  stripeCustomerContact: {
+    table: () => pay("stripe_customers"),
+    key: (w) => ({ column: "stripe_id", value: w.customerId }),
+    column: "contact_id",
     scope: "stripe:customers:read",
   },
   stripeInvoice: {
@@ -232,6 +250,10 @@ export class MoneyCase implements CellWorld {
       contactName: this.contactName,
       // A schedule naming the company holds it (its delete is refused), so only its own cells have one.
       scheduleBillsCompany: this.link !== "stripeCustomer",
+      // A live schedule billing the person holds them (their delete is refused), so the payments
+      // customer's person cells bill the other person.
+      scheduleContactId:
+        this.link === "stripeCustomerContact" ? this.otherContactId : this.contactId,
     })
 
     // The payments mirror, as the connector's sync writes it.
@@ -388,6 +410,21 @@ export class MoneyCase implements CellWorld {
     }
   }
 
+  /** Delete the person through the product; a refusal is kept as its sentence. */
+  async deleteContact(): Promise<void> {
+    try {
+      await withRlsContext(this.org.admin, (tx) =>
+        deleteContact(tx, {
+          orgId: this.orgId,
+          userId: this.org.adminId,
+          contactId: this.contactId,
+        }),
+      )
+    } catch (err) {
+      this.refusal = err instanceof Error ? err.message : String(err)
+    }
+  }
+
   async companyExists(): Promise<boolean> {
     return (await this.companyName_()) !== null
   }
@@ -528,6 +565,21 @@ const permissionBack = (name: string, link: MoneyLink): CellImpl =>
     facts: async (w) => ({ rowsAfter: await w.rows(), rowsBefore: 1 }),
   })
 
+/** The person's data subject export carries the link's row (`id` anywhere in the bundle). */
+const exported = (name: string, link: MoneyLink, rowId: (w: MoneyCase) => string): CellImpl =>
+  cell({
+    link: name,
+    event: "Ex",
+    says: "the person's data subject export",
+    build: money_(link),
+    mustSee: SEE,
+    act: async (w) => {
+      w.exported = valuesAt(await w.exportContact(), "id")
+    },
+    took: async (w) => expect(w.exportFileId).not.toBeNull(),
+    facts: (w) => ({ exported: w.exported, linkRowId: rowId(w) }),
+  })
+
 export function moneyCells(): CellImpl[] {
   return [
     // ── invoice-party ─────────────────────────────────────────────────────────
@@ -603,6 +655,32 @@ export function moneyCells(): CellImpl[] {
     permissionLost("schedule-party", "scheduleParty"),
     permissionBack("schedule-party", "scheduleParty"),
 
+    // ── schedule-contact ──────────────────────────────────────────────────────
+    cell({
+      link: "schedule-contact",
+      event: "Mg",
+      says: "its person merged into another",
+      build: money_("scheduleContact"),
+      mustSee: SEE,
+      act: (w) => w.mergeContact(),
+      took: async (w) => expect(await w.contactExists()).toBe(false),
+      facts: (w) => ({ survivor: w.otherContactId, goneId: w.contactId }),
+    }),
+    cell({
+      link: "schedule-contact",
+      event: "Dl",
+      says: "its person deleted while the schedule bills them",
+      build: money_("scheduleContact"),
+      mustSee: SEE,
+      act: (w) => w.deleteContact(),
+      took: async (w) => {
+        expect(w.refusal).not.toBeNull()
+        expect(await w.contactExists()).toBe(true)
+      },
+      facts: (w) => ({ refusal: w.refusal }),
+    }),
+    exported("schedule-contact", "scheduleContact", (w) => w.inv.scheduleId),
+
     // ── run-item-schedule-draft ───────────────────────────────────────────────
     permissionLost("run-item-schedule-draft", "runItem"),
     permissionBack("run-item-schedule-draft", "runItem"),
@@ -643,6 +721,32 @@ export function moneyCells(): CellImpl[] {
     }),
     permissionLost("stripe-customer-party", "stripeCustomer"),
     paymentsBack("stripe-customer-party", "stripeCustomer"),
+
+    // ── stripe-customer-contact ───────────────────────────────────────────────
+    cell({
+      link: "stripe-customer-contact",
+      event: "Mg",
+      says: "its person merged into another",
+      build: money_("stripeCustomerContact"),
+      mustSee: SEE,
+      act: (w) => w.mergeContact(),
+      took: async (w) => expect(await w.contactExists()).toBe(false),
+      facts: (w) => ({ survivor: w.otherContactId, goneId: w.contactId }),
+    }),
+    cell({
+      link: "stripe-customer-contact",
+      event: "Dl",
+      says: "its person deleted",
+      build: money_("stripeCustomerContact"),
+      mustSee: SEE,
+      act: (w) => w.deleteContact(),
+      took: async (w) => {
+        if (w.refusal) throw new Error(`person delete refused: ${w.refusal}`)
+        expect(await w.contactExists()).toBe(false)
+      },
+      facts: (w) => ({ goneId: w.contactId }),
+    }),
+    exported("stripe-customer-contact", "stripeCustomerContact", (w) => w.customerId),
 
     // ── stripe-invoice-document ───────────────────────────────────────────────
     permissionLost("stripe-invoice-document", "stripeInvoice"),

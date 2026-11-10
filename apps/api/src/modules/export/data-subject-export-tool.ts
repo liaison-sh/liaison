@@ -236,6 +236,81 @@ function toIso(v: string | Date | null): string | null {
   return v instanceof Date ? v.toISOString() : new Date(v).toISOString()
 }
 
+/** A day column as `YYYY-MM-DD`, whatever the driver hands back. */
+function toDay(v: string | Date | null): string | null {
+  if (v == null) return null
+  return v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10)
+}
+
+type Row = Record<string, unknown>
+const text = (v: unknown): string | null => (v == null ? null : String(v))
+const minor = (v: unknown): number | null => (v == null ? null : Number(v))
+
+/** A recurring invoice schedule billing the subject, as the bundle carries it. */
+export function scheduleRecord(
+  r: Row,
+): DataSubjectExportBundle["records"]["recurringSchedules"][number] {
+  return {
+    id: String(r.id),
+    status: String(r.status),
+    repeats: String(r.repeats),
+    billingDay: text(r.billing_day),
+    endsOn: toDay(r.ends_on as string | Date | null),
+    covers: text(r.covers),
+    issueMode: text(r.issue_mode),
+    paidBy: text(r.paid_by),
+    dueRule: text(r.due_rule),
+    dueDays: r.due_days == null ? null : Number(r.due_days),
+    language: text(r.language),
+    lines: r.lines ?? [],
+    notes: text(r.notes),
+    pausedUntil: toDay(r.paused_until as string | Date | null),
+    nextIssueOn: toDay(r.next_issue_on as string | Date | null),
+    companyId: text(r.company_id),
+    createdAt: toIso(r.created_at as string | Date | null),
+  }
+}
+
+/**
+ * A payments customer linked to the subject, with its subscriptions, as the bundle carries it.
+ * Card data follows the payments mirror's own rule: brand, last 4 digits and expiry at most.
+ */
+export function billingCustomerRecord(
+  c: Row,
+  subscriptions: readonly Row[],
+): DataSubjectExportBundle["records"]["payments"]["customers"][number] {
+  return {
+    id: String(c.stripe_id),
+    email: text(c.email),
+    name: text(c.name),
+    currency: text(c.currency),
+    delinquent: Boolean(c.delinquent),
+    address: c.address ?? null,
+    taxIds: c.tax_ids ?? null,
+    companyId: text(c.company_id),
+    createdAt: toIso(c.created_at_stripe as string | Date | null),
+    deletedAt: toIso(c.deleted_at as string | Date | null),
+    subscriptions: subscriptions
+      .filter((s) => s.customer_id === c.stripe_id)
+      .map((s) => ({
+        id: String(s.stripe_id),
+        status: String(s.status),
+        planName: text(s.plan_name),
+        mrrMinor: minor(s.mrr_minor),
+        currency: text(s.currency),
+        currentPeriodStart: toIso(s.current_period_start as string | Date | null),
+        currentPeriodEnd: toIso(s.current_period_end as string | Date | null),
+        trialEnd: toIso(s.trial_end as string | Date | null),
+        cancelAt: toIso(s.cancel_at as string | Date | null),
+        canceledAt: toIso(s.canceled_at as string | Date | null),
+        card:
+          s.card_brand || s.card_last4 || s.card_exp
+            ? { brand: text(s.card_brand), last4: text(s.card_last4), exp: text(s.card_exp) }
+            : null,
+      })),
+  }
+}
+
 /**
  * The export bundle shape — a stable, self-describing GDPR DSR package: subject
  * identity + one section per data-holding app (real records or an honest
@@ -333,6 +408,56 @@ export interface DataSubjectExportBundle {
         createdAt: string | null
       }>
     }
+    /** Recurring invoice schedules billing the person, ended ones included. */
+    recurringSchedules: Array<{
+      id: string
+      status: string
+      repeats: string
+      billingDay: string | null
+      endsOn: string | null
+      covers: string | null
+      issueMode: string | null
+      paidBy: string | null
+      dueRule: string | null
+      dueDays: number | null
+      language: string | null
+      lines: unknown
+      notes: string | null
+      pausedUntil: string | null
+      nextIssueOn: string | null
+      companyId: string | null
+      createdAt: string | null
+    }>
+    /** The payments customers mirrored from the payment connector and linked to the person. */
+    payments: {
+      customers: Array<{
+        /** The payment provider's customer id. */
+        id: string
+        email: string | null
+        name: string | null
+        currency: string | null
+        delinquent: boolean
+        address: unknown
+        taxIds: unknown
+        companyId: string | null
+        createdAt: string | null
+        deletedAt: string | null
+        subscriptions: Array<{
+          id: string
+          status: string
+          planName: string | null
+          mrrMinor: number | null
+          currency: string | null
+          currentPeriodStart: string | null
+          currentPeriodEnd: string | null
+          trialEnd: string | null
+          cancelAt: string | null
+          canceledAt: string | null
+          /** Brand, last 4 digits and expiry, never more. */
+          card: { brand: string | null; last4: string | null; exp: string | null } | null
+        }>
+      }>
+    }
     /** Deals naming the person as their contact; amounts only for an exporter with deal access. */
     deals: Array<{
       taskId: string
@@ -357,6 +482,8 @@ export interface DataSubjectExportBundle {
   counts: {
     tickets: number
     invoices: number
+    recurringSchedules: number
+    billingCustomers: number
     shopifyOrders: number
     memoryFiles: number
     memoryEpisodes: number
@@ -572,6 +699,65 @@ export async function buildDataSubjectBundle(
       )
     : []
 
+  // Recurring schedules billing the person and the payments customers linked to them, read under
+  // the caller's row security (an invoicing- or payments-blind caller gets an empty leg). An org
+  // without either app has no table, which is an empty leg too.
+  const schedulesTable = `${schemaRef("app_invoicing")}.recurring_schedules`
+  const customersTable = `${schemaRef("app_stripe")}.stripe_customers`
+  const subscriptionsTable = `${schemaRef("app_stripe")}.stripe_subscriptions`
+  const billing = extractRows<{
+    schedules: string | null
+    customers: string | null
+    subscriptions: string | null
+  }>(
+    await ctx.db.execute(
+      drizzleSql`SELECT to_regclass(${schedulesTable})::text AS schedules, to_regclass(${customersTable})::text AS customers, to_regclass(${subscriptionsTable})::text AS subscriptions`,
+    ),
+  )[0]
+  const scheduleRows = billing?.schedules
+    ? extractRows<Row>(
+        await ctx.db.execute(drizzleSql`
+          SELECT id::text AS id, status, repeats, billing_day, ends_on, covers, issue_mode,
+                 paid_by, due_rule, due_days, language, lines, notes, paused_until,
+                 next_issue_on, company_id::text AS company_id, created_at
+          FROM ${drizzleSql.raw(schedulesTable)}
+          WHERE org_id = ${ctx.orgId} AND contact_id = ${contactId}
+          ORDER BY created_at
+          LIMIT 100
+        `),
+      )
+    : []
+  const customerRows = billing?.customers
+    ? extractRows<Row>(
+        await ctx.db.execute(drizzleSql`
+          SELECT stripe_id, email, name, currency, delinquent, address, tax_ids,
+                 company_id::text AS company_id, created_at_stripe, deleted_at
+          FROM ${drizzleSql.raw(customersTable)}
+          WHERE org_id = ${ctx.orgId} AND contact_id = ${contactId}
+          ORDER BY created_at_stripe
+          LIMIT 100
+        `),
+      )
+    : []
+  const customerIds = customerRows.map((c) => String(c.stripe_id))
+  const subscriptionRows =
+    billing?.subscriptions && customerIds.length > 0
+      ? extractRows<Row>(
+          await ctx.db.execute(drizzleSql`
+            SELECT stripe_id, customer_id, status, plan_name, mrr_minor::text AS mrr_minor,
+                   currency, current_period_start, current_period_end, trial_end, cancel_at,
+                   canceled_at, card_brand, card_last4, card_exp
+            FROM ${drizzleSql.raw(subscriptionsTable)}
+            WHERE org_id = ${ctx.orgId} AND customer_id IN (${drizzleSql.join(
+              customerIds.map((id) => drizzleSql`${id}`),
+              drizzleSql`, `,
+            )})
+            ORDER BY current_period_start
+            LIMIT 500
+          `),
+        )
+      : []
+
   // (4) Memory leg — what this subject's own agent remembers (P4m-T32).
   const memory = await buildMemorySection({ email: contact.email }, ctx)
 
@@ -643,6 +829,10 @@ export async function buildDataSubjectBundle(
         issuedAt: toIso(r.issued_at),
         dueAt: toIso(r.due_at),
       })),
+      recurringSchedules: scheduleRows.map(scheduleRecord),
+      payments: {
+        customers: customerRows.map((c) => billingCustomerRecord(c, subscriptionRows)),
+      },
       deals: dealRows.map((r) => ({
         taskId: r.task_id,
         title: r.title,
@@ -674,6 +864,8 @@ export async function buildDataSubjectBundle(
     counts: {
       tickets: tickets.length,
       invoices: invoiceRows.length,
+      recurringSchedules: scheduleRows.length,
+      billingCustomers: customerRows.length,
       shopifyOrders: shopifyOrders?.length ?? 0,
       memoryFiles: memory.tree.length,
       memoryEpisodes: memory.episodes.length,

@@ -60,17 +60,18 @@ export async function firstOrgAdmin(
 }
 
 /**
- * A deleted or erased contact stops being a company's main contact and a
- * deal's contact (both soft references), in the transaction that removes it.
- * Privileged: the remover may not see every company or deal naming the
- * person. The deal half is skipped where the projects app has no tables.
+ * A deleted or erased contact stops being a company's main contact, a deal's
+ * contact and a billing customer's person (mirrored from the payment connector,
+ * which keeps its own record), in the transaction that removes it. Privileged:
+ * the remover may not see every company, deal or customer naming the person.
+ * An app half is skipped where that app has no tables.
  */
 export async function clearContactSoftReferences(
   tx: Pick<PrivilegedDb, "execute">,
   orgId: string,
   contactIds: string[],
-): Promise<{ companies: number; deals: number }> {
-  if (contactIds.length === 0) return { companies: 0, deals: 0 }
+): Promise<{ companies: number; deals: number; billingCustomers: number }> {
+  if (contactIds.length === 0) return { companies: 0, deals: 0, billingCustomers: 0 }
   const ids = `{${contactIds.join(",")}}`
   const companies = extractRows(
     await tx.execute(drizzleSql`
@@ -90,7 +91,19 @@ export async function clearContactSoftReferences(
           RETURNING task_id`),
       ).length
     : 0
-  return { companies, deals }
+  const customersTable = rel("app_stripe", "stripe_customers")
+  const [mirror] = extractRows<{ t: string | null }>(
+    await tx.execute(drizzleSql`SELECT to_regclass(${customersTable})::text AS t`),
+  )
+  const billingCustomers = mirror?.t
+    ? extractRows(
+        await tx.execute(drizzleSql`
+          UPDATE ${drizzleSql.raw(customersTable)} SET contact_id = NULL, updated_at = now()
+           WHERE org_id = ${orgId}::uuid AND contact_id = ANY(${ids}::uuid[])
+          RETURNING stripe_id`),
+      ).length
+    : 0
+  return { companies, deals, billingCustomers }
 }
 
 export async function releaseErasedUserContacts(

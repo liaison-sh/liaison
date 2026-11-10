@@ -2167,9 +2167,9 @@ describe("variants_search filters", () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [variantsPage] })
     await variants_search({ query: "sku:W-*", product_status: ["ACTIVE", "draft"], min_quantity: 1 }, ctx)
     const body = JSON.parse(calls[0]!.body) as { variables?: { query?: string } }
-    expect(body.variables?.query).toBe("sku:W-* product_status:ACTIVE,DRAFT inventory_quantity:>=1")
+    expect(body.variables?.query).toBe("sku:W-* product_status:active,draft inventory_quantity:>=1")
     expect(variantsSearchQuery({})).toBeNull()
-    expect(variantsSearchQuery({ product_status: "ACTIVE" })).toBe("product_status:ACTIVE")
+    expect(variantsSearchQuery({ product_status: "ACTIVE" })).toBe("product_status:active")
     expect(variantsSearchQuery({ min_quantity: "5" })).toBe("inventory_quantity:>=5")
   })
 

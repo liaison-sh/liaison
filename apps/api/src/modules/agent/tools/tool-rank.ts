@@ -650,7 +650,14 @@ function addMeaning<T extends ScorableDeferredTool & { sdkName: string; locked?:
   meaning: ToolMeaning,
 ): RankedTools<T> {
   if (byWords.wholeApp) return byWords
-  const points = meaningPoints(catalog, meaning)
+  // A tool some but not all of the query's words matched (the refund tools for
+  // "politique remboursement") meets the higher partial floor (tool-meaning.ts).
+  const partial = new Set(
+    byWords.all
+      .filter((s) => s.termsMatched > 0 && s.termsMatched < s.termCount)
+      .map((s) => s.tool.sdkName),
+  )
+  const points = meaningPoints(catalog, meaning, partial)
   if (points.size === 0) return byWords
   const scored = new Set(byWords.all.map((s) => s.tool))
   const joined = catalog

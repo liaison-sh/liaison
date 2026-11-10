@@ -23,6 +23,10 @@ export interface RunRow {
   latest_change: Record<string, unknown> | null
   flags: string[]
   failure: unknown
+  /** Where the issued invoice stands with the e-invoicing platform, its collection report and payment. */
+  einvoice_state: string | null
+  collection_state: string | null
+  payment_status: string | null
 }
 
 /**
@@ -71,6 +75,9 @@ export async function recurringRunGet(
       latest_change: log.length > 0 ? (log[log.length - 1] ?? null) : null,
       flags: [...(typeof item.note === "string" && item.note ? item.note.split(" · ") : []), ...scheduleMoved(item, schedule)],
       failure: item.failure ?? null,
+      einvoice_state: (doc?.einvoice_state as string | null) ?? null,
+      collection_state: (doc?.collection_state as string | null) ?? null,
+      payment_status: (doc?.payment_status as string | null) ?? null,
     })
   }
   const runOut: Row = {
@@ -80,6 +87,7 @@ export async function recurringRunGet(
     latest_issue_on: dayOf(run.latest_issue_on),
     period: run.period_label,
     approved_by: run.approved_by ?? null,
+    approved_at: run.approved_at ?? null,
     auto: run.auto === true,
     approval_request_id: run.approval_request_id ?? null,
   }

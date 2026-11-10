@@ -2751,6 +2751,7 @@
           "billing_day": { "type": "string", "description": "last, a day 1-28, or MM-DD for a year." },
           "ends_on": { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
           "covers": { "type": "string", "enum": ["period_ended", "period_ahead"] },
+          "card_link_url": { "type": ["string", "null"], "description": "Card link a customer pays by (paid_by card_link)." },
           "paid_by": { "type": "string", "enum": ["transfer", "card_link"] },
           "due_rule": { "type": "string", "enum": ["days_30", "on_issue", "days_n"] },
           "due_days": { "type": ["integer", "null"] },
@@ -2801,6 +2802,7 @@
           "billing_day": { "type": "string", "description": "last, a day 1-28, or MM-DD for a year." },
           "ends_on": { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
           "covers": { "type": "string", "enum": ["period_ended", "period_ahead"] },
+          "card_link_url": { "type": ["string", "null"], "description": "Card link a customer pays by (paid_by card_link)." },
           "paid_by": { "type": "string", "enum": ["transfer", "card_link"] },
           "due_rule": { "type": "string", "enum": ["days_30", "on_issue", "days_n"] },
           "due_days": { "type": ["integer", "null"] },
@@ -7281,6 +7283,33 @@
         "label": "E-invoicing readiness",
         "singleton": true,
         "urlPattern": "/invoicing/readiness",
+        "referenceable": false
+      },
+      "recurring": {
+        "component": "InvoicingRecurringList",
+        "sidebar": "InvoicingSidebar",
+        "icon": "InvoicingAppIcon",
+        "label": "Recurring schedules",
+        "singleton": true,
+        "urlPattern": "/invoicing/recurring",
+        "referenceable": false
+      },
+      "schedule": {
+        "component": "InvoicingScheduleEditor",
+        "sidebar": "InvoicingSidebar",
+        "icon": "InvoicingAppIcon",
+        "label": "Recurring schedule",
+        "singleton": false,
+        "urlPattern": "/invoicing/schedule/:scheduleId",
+        "referenceable": false
+      },
+      "run": {
+        "component": "InvoicingRunDetail",
+        "sidebar": "InvoicingSidebar",
+        "icon": "InvoicingAppIcon",
+        "label": "Month-end run",
+        "singleton": false,
+        "urlPattern": "/invoicing/run/:runId",
         "referenceable": false
       }
     }

@@ -144,4 +144,19 @@ describe("InvoicingSidebar (Phase 17 F1)", () => {
     expect(sidebarSource).toContain('href="/invoicing/readiness"')
     expect(sidebarSource).toContain('tr("E-invoicing readiness")')
   })
+
+  it("puts a Recurring group with Schedules and its count before Views, and the three recurring tabs exist", () => {
+    const recurring = sidebarSource.indexOf('label={tr("Recurring")}')
+    const views = sidebarSource.indexOf('label={tr("Views")}')
+    expect(recurring).toBeGreaterThan(-1)
+    expect(recurring).toBeLessThan(views)
+    expect(sidebarSource).toContain('{ href: "/invoicing/recurring", label: "Schedules" }')
+    expect(sidebarSource).toContain("badge={scheduleCount()}")
+    // The count is the app's own list, the same the agent reads.
+    expect(sidebarSource).toContain('"recurring_list"')
+    const tabs = (manifest as any).views.tabTypes
+    expect(tabs.recurring).toMatchObject({ component: "InvoicingRecurringList", urlPattern: "/invoicing/recurring", singleton: true })
+    expect(tabs.schedule).toMatchObject({ component: "InvoicingScheduleEditor", urlPattern: "/invoicing/schedule/:scheduleId" })
+    expect(tabs.run).toMatchObject({ component: "InvoicingRunDetail", urlPattern: "/invoicing/run/:runId" })
+  })
 })

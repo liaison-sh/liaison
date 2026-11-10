@@ -32,6 +32,8 @@ import {
   toLoadedDocument,
 } from "./DocumentDetail"
 import manifest from "../../app.manifest.json"
+import { moneyChips } from "./DocumentDetail"
+import { einvoiceStatusWord } from "./RecurringStates"
 import { FR as fr } from "./i18n-fr"
 
 const source = readFileSync(join(import.meta.dir, "DocumentDetail.tsx"), "utf-8")
@@ -646,5 +648,26 @@ describe("toLoadedDocument: an id that resolves to nothing", () => {
 
   it("renders a not-found state when the resource resolves to nothing", () => {
     expect(source).toContain('data-testid="document-detail-not-found"')
+  })
+})
+
+describe("an invoice issued by Liaison and collected elsewhere", () => {
+  const base = { status: "issued", type: "invoice", stream: "card" as const, payment_status: "unpaid", einvoice_state: "sent", collection_state: null }
+
+  it("Collected shows only after an accepted report", () => {
+    // Paid, but nothing reported yet, or the report failed: never Collected.
+    expect(einvoiceStatusWord({ ...base, payment_status: "paid" })).not.toBe("Collected")
+    expect(einvoiceStatusWord({ ...base, payment_status: "paid", collection_state: "failed" })).not.toBe("Collected")
+    expect(einvoiceStatusWord({ ...base, payment_status: "paid", collection_state: "reported" })).toBe("Collected")
+  })
+
+  it("chips say who issued and who took the payment, and the payment only once it is in", () => {
+    expect(moneyChips(base)).toEqual(["Issued by Liaison"])
+    expect(moneyChips({ ...base, payment_status: "paid" })).toEqual(["Issued by Liaison", "Collected by Stripe"])
+    expect(moneyChips({ ...base, stream: "transfer", payment_status: "paid" })).toEqual(["Issued by Liaison"])
+    // A draft, a quote, or a document from no stream gets no chip.
+    expect(moneyChips({ ...base, status: "draft" })).toEqual([])
+    expect(moneyChips({ ...base, type: "quote" })).toEqual([])
+    expect(moneyChips({ ...base, stream: null })).toEqual([])
   })
 })

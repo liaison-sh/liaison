@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // Tool answers for the recurring invoicing screens: a list of schedules (one billed besides a
-// Stripe subscription, one paused, one with a long customer line), an issued month-end run, and
+// card processor's subscription, one paused, one with a long customer line), an issued month-end run, and
 // shared checks that nothing on a screen scrolls sideways and every control is big enough to tap.
 import type { Page } from "@playwright/test"
 import { expect } from "../fixtures/test"

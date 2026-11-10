@@ -54,8 +54,14 @@ const READERS = ["admin", "clerk", "outsider"] as const
 type Reader = (typeof READERS)[number]
 const SEE = ["admin", "clerk"]
 
-/** `<app schema as the run names it>.<table>`. */
-const pay = (table: string) => `${schemaRef("app_stripe")}.${table}`
+/** The payments connector's app name: its mirror's schema, tables and columns carry it. */
+const PAYMENTS_APP = "stripe"
+/** `<the connector's schema as the run names it>.<app>_<table>`, a payments mirror table. */
+const pay = (table: string) => `${schemaRef(`app_${PAYMENTS_APP}`)}.${PAYMENTS_APP}_${table}`
+/** A mirror column named after the app: its row id, its upstream update and creation times. */
+const MIRROR_ID = `${PAYMENTS_APP}_id`
+const UPSTREAM_UPDATED = `${PAYMENTS_APP}_updated`
+const UPSTREAM_CREATED = `created_at_${PAYMENTS_APP}`
 
 const CLERK_SCOPES = [
   "kernel:contacts:read",
@@ -72,10 +78,10 @@ export type MoneyLink =
   | "scheduleParty"
   | "scheduleContact"
   | "runItem"
-  | "stripeCustomer"
-  | "stripeCustomerContact"
-  | "stripeInvoice"
-  | "stripeRefund"
+  | "paymentsCustomer"
+  | "paymentsCustomerContact"
+  | "paymentsInvoice"
+  | "paymentsRefund"
 
 interface LinkRead {
   table: () => string
@@ -112,27 +118,27 @@ const LINK_READS: Record<MoneyLink, LinkRead> = {
     column: "schedule_id",
     scope: "invoicing:documents:read",
   },
-  stripeCustomer: {
-    table: () => pay("stripe_customers"),
-    key: (w) => ({ column: "stripe_id", value: w.customerId }),
+  paymentsCustomer: {
+    table: () => pay("customers"),
+    key: (w) => ({ column: MIRROR_ID, value: w.customerId }),
     column: "company_id",
     scope: "stripe:customers:read",
   },
-  stripeCustomerContact: {
-    table: () => pay("stripe_customers"),
-    key: (w) => ({ column: "stripe_id", value: w.customerId }),
+  paymentsCustomerContact: {
+    table: () => pay("customers"),
+    key: (w) => ({ column: MIRROR_ID, value: w.customerId }),
     column: "contact_id",
     scope: "stripe:customers:read",
   },
-  stripeInvoice: {
-    table: () => pay("stripe_invoices"),
-    key: (w) => ({ column: "stripe_id", value: w.stripeInvoiceId }),
+  paymentsInvoice: {
+    table: () => pay("invoices"),
+    key: (w) => ({ column: MIRROR_ID, value: w.upstreamInvoiceId }),
     column: "liaison_document_id",
     scope: "stripe:invoices:read",
   },
-  stripeRefund: {
-    table: () => pay("stripe_refunds"),
-    key: (w) => ({ column: "stripe_id", value: w.refundId }),
+  paymentsRefund: {
+    table: () => pay("refunds"),
+    key: (w) => ({ column: MIRROR_ID, value: w.refundId }),
     column: "payment_id",
     scope: "stripe:payments:read",
   },
@@ -189,7 +195,7 @@ export class MoneyCase implements CellWorld {
   otherContactId = ""
   inv = {} as InvoicingRows
   customerId = ""
-  stripeInvoiceId = ""
+  upstreamInvoiceId = ""
   paymentId = ""
   refundId = ""
   exported: string[] = []
@@ -251,31 +257,31 @@ export class MoneyCase implements CellWorld {
       contactId: this.contactId,
       contactName: this.contactName,
       // A schedule naming the company holds it (its delete is refused), so only its own cells have one.
-      scheduleBillsCompany: this.link !== "stripeCustomer",
+      scheduleBillsCompany: this.link !== "paymentsCustomer",
       // A live schedule billing the person holds them (their delete is refused), so the payments
       // customer's person cells bill the other person.
       scheduleContactId:
-        this.link === "stripeCustomerContact" ? this.otherContactId : this.contactId,
+        this.link === "paymentsCustomerContact" ? this.otherContactId : this.contactId,
     })
 
     // The payments mirror, as the connector's sync writes it.
     const now = new Date().toISOString()
     this.customerId = `cus_${tag}${randomUUID().slice(0, 6)}`
-    await insertRow(pay("stripe_customers"), {
+    await insertRow(pay("customers"), {
       org_id: this.orgId,
-      stripe_id: this.customerId,
+      [MIRROR_ID]: this.customerId,
       email: `buyer-${tag}@maison-${tag}.example`,
       name: this.companyName,
       company_id: this.companyId,
       contact_id: this.contactId,
       match_method: "email",
-      stripe_updated: now,
-      created_at_stripe: now,
+      [UPSTREAM_UPDATED]: now,
+      [UPSTREAM_CREATED]: now,
     })
-    this.stripeInvoiceId = `in_${tag}${randomUUID().slice(0, 6)}`
-    await insertRow(pay("stripe_invoices"), {
+    this.upstreamInvoiceId = `in_${tag}${randomUUID().slice(0, 6)}`
+    await insertRow(pay("invoices"), {
       org_id: this.orgId,
-      stripe_id: this.stripeInvoiceId,
+      [MIRROR_ID]: this.upstreamInvoiceId,
       customer_id: this.customerId,
       status: "paid",
       total_minor: 120000,
@@ -285,28 +291,28 @@ export class MoneyCase implements CellWorld {
       currency: "eur",
       issuer: "liaison",
       liaison_document_id: this.inv.documentId,
-      stripe_updated: now,
+      [UPSTREAM_UPDATED]: now,
     })
     this.paymentId = `ch_${tag}${randomUUID().slice(0, 6)}`
-    await insertRow(pay("stripe_payments"), {
+    await insertRow(pay("payments"), {
       org_id: this.orgId,
-      stripe_id: this.paymentId,
-      invoice_id: this.stripeInvoiceId,
+      [MIRROR_ID]: this.paymentId,
+      invoice_id: this.upstreamInvoiceId,
       customer_id: this.customerId,
       amount_minor: 120000,
       currency: "eur",
       status: "succeeded",
-      created_at_stripe: now,
+      [UPSTREAM_CREATED]: now,
     })
     this.refundId = `re_${tag}${randomUUID().slice(0, 6)}`
-    await insertRow(pay("stripe_refunds"), {
+    await insertRow(pay("refunds"), {
       org_id: this.orgId,
-      stripe_id: this.refundId,
+      [MIRROR_ID]: this.refundId,
       payment_id: this.paymentId,
       amount_minor: 20000,
       currency: "eur",
       status: "succeeded",
-      created_at_stripe: now,
+      [UPSTREAM_CREATED]: now,
     })
     return this
   }
@@ -689,32 +695,32 @@ export function moneyCells(): CellImpl[] {
     permissionLost("run-item-schedule-draft", "runItem"),
     permissionBack("run-item-schedule-draft", "runItem"),
 
-    // ── stripe-customer-party ─────────────────────────────────────────────────
+    // ── payments-customer-party ─────────────────────────────────────────────────
     cell({
-      link: "stripe-customer-party",
+      link: "payments-customer-party",
       event: "Rn",
       says: "its company renamed",
-      build: money_("stripeCustomer"),
+      build: money_("paymentsCustomer"),
       mustSee: SEE,
       act: (w) => w.renameCompany(),
       took: async (w) => expect(await w.companyName_()).toBe(`${w.companyName} renamed`),
       facts: (w) => ({ newName: `${w.companyName} renamed`, oldName: w.companyName }),
     }),
     cell({
-      link: "stripe-customer-party",
+      link: "payments-customer-party",
       event: "Mg",
       says: "its company merged into another",
-      build: money_("stripeCustomer"),
+      build: money_("paymentsCustomer"),
       mustSee: SEE,
       act: (w) => w.mergeCompany(),
       took: async (w) => expect(await w.companyExists()).toBe(false),
       facts: (w) => ({ survivor: w.otherCompanyId, goneId: w.companyId }),
     }),
     cell({
-      link: "stripe-customer-party",
+      link: "payments-customer-party",
       event: "Dl",
       says: "its company deleted",
-      build: money_("stripeCustomer"),
+      build: money_("paymentsCustomer"),
       mustSee: SEE,
       act: (w) => w.deleteCompany(),
       took: async (w) => {
@@ -723,25 +729,25 @@ export function moneyCells(): CellImpl[] {
       },
       facts: (w) => ({ goneId: w.companyId }),
     }),
-    permissionLost("stripe-customer-party", "stripeCustomer"),
-    paymentsBack("stripe-customer-party", "stripeCustomer"),
+    permissionLost("payments-customer-party", "paymentsCustomer"),
+    paymentsBack("payments-customer-party", "paymentsCustomer"),
 
-    // ── stripe-customer-contact ───────────────────────────────────────────────
+    // ── payments-customer-contact ───────────────────────────────────────────────
     cell({
-      link: "stripe-customer-contact",
+      link: "payments-customer-contact",
       event: "Mg",
       says: "its person merged into another",
-      build: money_("stripeCustomerContact"),
+      build: money_("paymentsCustomerContact"),
       mustSee: SEE,
       act: (w) => w.mergeContact(),
       took: async (w) => expect(await w.contactExists()).toBe(false),
       facts: (w) => ({ survivor: w.otherContactId, goneId: w.contactId }),
     }),
     cell({
-      link: "stripe-customer-contact",
+      link: "payments-customer-contact",
       event: "Dl",
       says: "its person deleted",
-      build: money_("stripeCustomerContact"),
+      build: money_("paymentsCustomerContact"),
       mustSee: SEE,
       act: (w) => w.deleteContact(),
       took: async (w) => {
@@ -750,14 +756,14 @@ export function moneyCells(): CellImpl[] {
       },
       facts: (w) => ({ goneId: w.contactId }),
     }),
-    exported("stripe-customer-contact", "stripeCustomerContact", (w) => w.customerId),
+    exported("payments-customer-contact", "paymentsCustomerContact", (w) => w.customerId),
 
-    // ── stripe-invoice-document ───────────────────────────────────────────────
-    permissionLost("stripe-invoice-document", "stripeInvoice"),
-    paymentsBack("stripe-invoice-document", "stripeInvoice"),
+    // ── payments-invoice-document ───────────────────────────────────────────────
+    permissionLost("payments-invoice-document", "paymentsInvoice"),
+    paymentsBack("payments-invoice-document", "paymentsInvoice"),
 
-    // ── stripe-refund-charge ──────────────────────────────────────────────────
-    permissionLost("stripe-refund-charge", "stripeRefund"),
-    paymentsBack("stripe-refund-charge", "stripeRefund"),
+    // ── payments-refund-charge ──────────────────────────────────────────────────
+    permissionLost("payments-refund-charge", "paymentsRefund"),
+    paymentsBack("payments-refund-charge", "paymentsRefund"),
   ]
 }

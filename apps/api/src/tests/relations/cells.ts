@@ -21,8 +21,8 @@ import type { EventFacts, Reading } from "./classes"
 import { companyCells } from "./company-cells"
 import { MadeCase, type MadeLink, SHARE_SCOPE } from "./dashboard-world"
 import type { EventCode } from "./matrix"
+import { moneyCells } from "./payments-world"
 import { RoutineCase } from "./routine-world"
-import { moneyCells } from "./stripe-world"
 import { ThreadCase, type ThreadOrg } from "./thread-world"
 
 /** The kernel schema as the run names it (a test namespace prefixes it). */

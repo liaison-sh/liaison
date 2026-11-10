@@ -30,6 +30,9 @@ import {
 } from "~/modules/contacts/references"
 import { recomputeSearchAcl } from "~/modules/sharing/service"
 
+/** The payments connector's app name: its mirror's schema, tables and id columns carry it. */
+const PAYMENTS_APP = "stripe"
+
 export interface ErasedContactsResult {
   deleted: number
   handedOver: number
@@ -91,7 +94,8 @@ export async function clearContactSoftReferences(
           RETURNING task_id`),
       ).length
     : 0
-  const customersTable = rel("app_stripe", "stripe_customers")
+  // The payments connector's mirror: its schema, table and id column are named after the app.
+  const customersTable = rel(`app_${PAYMENTS_APP}`, `${PAYMENTS_APP}_customers`)
   const [mirror] = extractRows<{ t: string | null }>(
     await tx.execute(drizzleSql`SELECT to_regclass(${customersTable})::text AS t`),
   )
@@ -100,7 +104,7 @@ export async function clearContactSoftReferences(
         await tx.execute(drizzleSql`
           UPDATE ${drizzleSql.raw(customersTable)} SET contact_id = NULL, updated_at = now()
            WHERE org_id = ${orgId}::uuid AND contact_id = ANY(${ids}::uuid[])
-          RETURNING stripe_id`),
+          RETURNING ${drizzleSql.raw(`${PAYMENTS_APP}_id`)}`),
       ).length
     : 0
   return { companies, deals, billingCustomers }

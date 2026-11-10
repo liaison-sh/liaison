@@ -291,7 +291,7 @@ describe("handleDataSubjectExport — param guard [BL-261]", () => {
 describe("buildDataSubjectBundle — recurring schedules and payments customers", () => {
   it("a payments customer carries its subscriptions with brand, last 4 and expiry of the card, never more", () => {
     const customer = {
-      stripe_id: "cus_maison1",
+      mirror_id: "cus_maison1",
       email: "buyer@maison.example",
       name: "Maison Buyer",
       currency: "eur",
@@ -299,12 +299,12 @@ describe("buildDataSubjectBundle — recurring schedules and payments customers"
       address: { city: "Lyon" },
       tax_ids: null,
       company_id: null,
-      created_at_stripe: "2026-03-01T00:00:00.000Z",
+      created_upstream_at: "2026-03-01T00:00:00.000Z",
       deleted_at: null,
       metadata: { internal: "never exported" },
     }
     const subscription = {
-      stripe_id: "sub_maison1",
+      mirror_id: "sub_maison1",
       customer_id: "cus_maison1",
       status: "active",
       plan_name: "Studio",
@@ -321,7 +321,7 @@ describe("buildDataSubjectBundle — recurring schedules and payments customers"
       card_fingerprint: "never exported",
       items: [{ price: "never exported" }],
     }
-    const other = { ...subscription, stripe_id: "sub_other", customer_id: "cus_other" }
+    const other = { ...subscription, mirror_id: "sub_other", customer_id: "cus_other" }
     const record = billingCustomerRecord(customer, [subscription, other])
     expect(record).toEqual({
       id: "cus_maison1",

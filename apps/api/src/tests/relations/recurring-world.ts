@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The invoicing half of the money world (stripe-world.ts builds the case): an issuer profile, an
+// The invoicing half of the money world (payments-world.ts builds the case): an issuer profile, an
 // issued invoice whose party is a person (with the person's name copied onto it), a monthly
 // schedule billing a company and that person, and a month-end run whose item names the schedule
 // and the draft it made. Rows are written as the invoicing app's own jobs write them; each link

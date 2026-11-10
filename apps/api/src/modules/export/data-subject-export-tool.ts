@@ -14,6 +14,9 @@ import {
 } from "~/modules/export/member-data-subject-bundle"
 import { hasScope } from "~/modules/permissions/permissions"
 
+/** The payments connector's app name: its mirror's schema, tables and id columns carry it. */
+const PAYMENTS_APP = "stripe"
+
 /**
  * `kernel.data_subject_export` agent-tool handler (BL-261).
  *
@@ -280,7 +283,7 @@ export function billingCustomerRecord(
   subscriptions: readonly Row[],
 ): DataSubjectExportBundle["records"]["payments"]["customers"][number] {
   return {
-    id: String(c.stripe_id),
+    id: String(c.mirror_id),
     email: text(c.email),
     name: text(c.name),
     currency: text(c.currency),
@@ -288,12 +291,12 @@ export function billingCustomerRecord(
     address: c.address ?? null,
     taxIds: c.tax_ids ?? null,
     companyId: text(c.company_id),
-    createdAt: toIso(c.created_at_stripe as string | Date | null),
+    createdAt: toIso(c.created_upstream_at as string | Date | null),
     deletedAt: toIso(c.deleted_at as string | Date | null),
     subscriptions: subscriptions
-      .filter((s) => s.customer_id === c.stripe_id)
+      .filter((s) => s.customer_id === c.mirror_id)
       .map((s) => ({
-        id: String(s.stripe_id),
+        id: String(s.mirror_id),
         status: String(s.status),
         planName: text(s.plan_name),
         mrrMinor: minor(s.mrr_minor),
@@ -703,8 +706,12 @@ export async function buildDataSubjectBundle(
   // the caller's row security (an invoicing- or payments-blind caller gets an empty leg). An org
   // without either app has no table, which is an empty leg too.
   const schedulesTable = `${schemaRef("app_invoicing")}.recurring_schedules`
-  const customersTable = `${schemaRef("app_stripe")}.stripe_customers`
-  const subscriptionsTable = `${schemaRef("app_stripe")}.stripe_subscriptions`
+  // The payments connector's mirror names its schema, tables and id columns after the app; each
+  // read below aliases them to the neutral names billingCustomerRecord reads.
+  const customersTable = `${schemaRef(`app_${PAYMENTS_APP}`)}.${PAYMENTS_APP}_customers`
+  const subscriptionsTable = `${schemaRef(`app_${PAYMENTS_APP}`)}.${PAYMENTS_APP}_subscriptions`
+  const mirrorId = drizzleSql.raw(`${PAYMENTS_APP}_id`)
+  const createdUpstream = drizzleSql.raw(`created_at_${PAYMENTS_APP}`)
   const billing = extractRows<{
     schedules: string | null
     customers: string | null
@@ -730,21 +737,22 @@ export async function buildDataSubjectBundle(
   const customerRows = billing?.customers
     ? extractRows<Row>(
         await ctx.db.execute(drizzleSql`
-          SELECT stripe_id, email, name, currency, delinquent, address, tax_ids,
-                 company_id::text AS company_id, created_at_stripe, deleted_at
+          SELECT ${mirrorId} AS mirror_id, email, name, currency, delinquent, address, tax_ids,
+                 company_id::text AS company_id, ${createdUpstream} AS created_upstream_at,
+                 deleted_at
           FROM ${drizzleSql.raw(customersTable)}
           WHERE org_id = ${ctx.orgId} AND contact_id = ${contactId}
-          ORDER BY created_at_stripe
+          ORDER BY ${createdUpstream}
           LIMIT 100
         `),
       )
     : []
-  const customerIds = customerRows.map((c) => String(c.stripe_id))
+  const customerIds = customerRows.map((c) => String(c.mirror_id))
   const subscriptionRows =
     billing?.subscriptions && customerIds.length > 0
       ? extractRows<Row>(
           await ctx.db.execute(drizzleSql`
-            SELECT stripe_id, customer_id, status, plan_name, mrr_minor::text AS mrr_minor,
+            SELECT ${mirrorId} AS mirror_id, customer_id, status, plan_name, mrr_minor::text AS mrr_minor,
                    currency, current_period_start, current_period_end, trial_end, cancel_at,
                    canceled_at, card_brand, card_last4, card_exp
             FROM ${drizzleSql.raw(subscriptionsTable)}

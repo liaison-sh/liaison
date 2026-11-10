@@ -6,7 +6,9 @@
 //   not_connected -> key_stored -> waiting_first_event -> importing -> connected
 // with an overlay that can sit on any of them: `partial` (some permission is
 // missing, the rest works), `key_invalid` (Stripe refuses the key), `stalled`
-// (no event for too long). The text column holds `<base>` or `<base>+<overlay>`.
+// (no event for too long), `different_account` (Stripe answered 404 for a known
+// object and the same account could not be confirmed: nothing is written until a
+// person checks the key). The text column holds `<base>` or `<base>+<overlay>`.
 //
 // THE CHECK. One read per permission of the default key, in a fixed order, and
 // a refund probe on a charge that cannot exist (`ch_liaison_probe`): Stripe
@@ -31,7 +33,7 @@ export const BASE_STATES = [
 ] as const
 export type BaseState = (typeof BASE_STATES)[number]
 
-export const OVERLAYS = ["partial", "key_invalid", "stalled"] as const
+export const OVERLAYS = ["partial", "key_invalid", "stalled", "different_account"] as const
 export type Overlay = (typeof OVERLAYS)[number]
 
 export interface ConnectionState {
@@ -55,6 +57,8 @@ export function decodeState(text: unknown): ConnectionState {
 export type ConnectionEvent =
   | { kind: "key_checked"; missing: number }
   | { kind: "key_refused" }
+  | { kind: "permission_refused" }
+  | { kind: "account_unconfirmed" }
   | { kind: "webhook_secret_stored" }
   | { kind: "first_event" }
   | { kind: "import_done" }
@@ -78,6 +82,10 @@ export function transition(s: ConnectionState, event: ConnectionEvent): Connecti
       return { base: forward("key_stored"), overlay: event.missing > 0 ? "partial" : null }
     case "key_refused":
       return { base: s.base, overlay: "key_invalid" }
+    case "permission_refused":
+      return s.overlay === "key_invalid" || s.overlay === "different_account" ? s : { base: s.base, overlay: "partial" }
+    case "account_unconfirmed":
+      return { base: s.base, overlay: "different_account" }
     case "webhook_secret_stored":
       return { base: forward("waiting_first_event"), overlay: s.overlay }
     case "first_event":

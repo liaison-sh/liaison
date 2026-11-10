@@ -7,7 +7,7 @@ The Stripe connector links your Stripe account to Liaison. Liaison keeps a read 
 
 Stripe is a connector: it has no screen of its own yet. It appears as a card on **Settings › Connectors**.
 
-This page grows as the connector does. Today the connector stores its tables, its connection and the result of its key check; it does not yet take webhook events.
+This page grows as the connector does. Today the connector stores its connection, checks its key, and keeps its mirror current from Stripe's webhook events.
 
 ## Create a restricted key
 
@@ -50,6 +50,19 @@ Liaison also runs this check on a new key before it keeps it. The check refuses,
 | `mode_changed` | The key is a live-mode key and Liaison holds test-mode data, or the other way round | Save a key of the same mode, or disconnect Stripe fully first |
 
 Stripe does not let a restricted key show the account name, so the check does not name the account.
+
+## Receive Stripe's events
+
+Stripe tells Liaison about changes through a webhook. In **Developers → Webhooks**, add an endpoint at the address Liaison shows, select the Customer, Invoice and Charge events, and give Liaison the endpoint's signing secret (it starts with `whsec_`).
+
+- **Signed deliveries only.** Each delivery's signature is checked against your workspace's own signing secret, on the server. A delivery signed with another secret, with no secret saved yet, or signed more than 5 minutes before or after it arrives, is refused.
+- **Rolling the secret.** While you roll the secret in Stripe, the previous one keeps working for at most 24 hours.
+- **Once per event.** A redelivered event changes nothing. Events that arrive out of order still end in Stripe's current state: Liaison reads each object from Stripe again, and never uses the event's own copy.
+- **The first event** moves the connection to **connected** and records that event's name and time.
+- **When the key stops working**, an event is acknowledged and kept for the catch-up, and the connection reads `key_invalid` (or `partial` for one missing permission).
+- **When Stripe says an object does not exist** and Liaison cannot confirm it is still the same account, nothing is changed and the connection reads `different_account`.
+- **Card numbers.** A card number written in a customer's description or name, an invoice memo or line, a payment failure message or a dispute reason is hidden before anything is stored, and the connection's admins get one item on Home saying so.
+- **Live and test.** An event of the other mode (a live event on a test connection) is acknowledged and changes nothing.
 
 ## What Liaison stores
 

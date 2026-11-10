@@ -55,6 +55,30 @@ describe("invoicing manifest", () => {
     expect(attention?.groupLabel).toEqual({ label: "Invoicing", labelKey: "kernel.homeGroupInvoicing" })
   })
 
+  it("the draft tools say a draft with a source is a visible pending draft and invoice_issue issues it", () => {
+    const tools = (manifest as unknown as { tools: Record<string, { description: string }> }).tools
+    // red: put the "LEGACY, internal" opening back and the draft tools read as dead again.
+    for (const name of ["drafts_create", "drafts_update", "drafts_discard"]) {
+      const text = tools[name]!.description
+      expect(text).not.toMatch(/legacy|no user facing draft/i)
+      expect(text.toLowerCase()).toContain("unissued draft")
+    }
+    expect(tools.drafts_create!.description.toLowerCase()).toContain("a draft with a source")
+    expect(tools.drafts_create!.description).toContain("visible pending draft")
+    expect(tools.drafts_create!.description).toContain("invoice_issue {draft_id}")
+    expect(tools.drafts_update!.description).toContain("one from a source")
+    // Behaviour is unchanged: the agent's free invoice draft is still steered to the paid-order and
+    // conversion paths, and a quote to its own tool.
+    expect(tools.drafts_create!.description).toContain("quote_create_and_issue")
+  })
+
+  it("line_kind accepts service beside goods, software and shipping", () => {
+    const lineKind = (manifest as unknown as { schema: { document_lines: { fields: { line_kind: { enum: string[]; default: string } } } } })
+      .schema.document_lines.fields.line_kind
+    expect(lineKind.enum).toEqual(["goods", "software", "service", "shipping"])
+    expect(lineKind.default).toBe("goods")
+  })
+
   it("validates against packageManifestSchema", () => {
     const r = packageManifestSchema.safeParse(manifest)
     if (!r.success) {
@@ -1520,7 +1544,9 @@ describe("invoicing manifest", () => {
     //   carries now; an untaxed order to another member state without a VAT number parks for review.
     // 0.20.56 (main): a quote made as a draft order links the contact's Shopify customer.
     // 0.20.64: above the 0.20.56 main took meanwhile, merged.
-    expect(m.version).toBe("0.20.64")
+    // 0.20.65: a consulting line is a service line; the draft tools say a draft from a source is a visible
+    //   pending draft that invoice_issue issues; the first issue on a profile with no time zone asks for one.
+    expect(m.version).toBe("0.20.65")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

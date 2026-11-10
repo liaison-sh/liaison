@@ -1374,6 +1374,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/numbering.test.ts",
             // The one door of the issue date and number year, with its guard over the issue paths.
             "src/issue-date.test.ts",
+            // The issuer time zone is asked once, at the first issue on a profile nobody gave one.
+            "src/issue-timezone-ask.test.ts",
             "src/state.test.ts",
             "src/tax.test.ts",
             // What the order-created auto-flow would park, asked before a draft order is staged (pure).

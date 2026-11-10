@@ -477,9 +477,9 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `documents_update` | Edit a document. | yes | `invoicing:documents:write` |
 | `documents_update_preview` | The document plus the VAT status a documents_update would give its buyer (evidence when the agent declares a private consumer). |  | `invoicing:documents:read` |
 | `draft_issue_preview` | What an approval card reads for a saved draft: the document and the total issuing it would write. |  | `invoicing:documents:read` |
-| `drafts_create` | LEGACY, internal: create an unnumbered draft row. |  | `invoicing:documents:write` |
-| `drafts_discard` | LEGACY, internal: discard an unnumbered draft row (never consumes a number). |  | `invoicing:documents:write` |
-| `drafts_update` | LEGACY, internal: update an unnumbered draft row before it is issued. |  | `invoicing:documents:write` |
+| `drafts_create` | Create an unissued draft. |  | `invoicing:documents:write` |
+| `drafts_discard` | Discard an unissued draft; no number is used. |  | `invoicing:documents:write` |
+| `drafts_update` | Update an unissued draft, including one from a source. |  | `invoicing:documents:write` |
 | `einvoice_book_batch` | Book one day's batch of reported sales (consumers, exports, EU customers, internal cancellations) in the e-invoicing platform's ledger: ledger entries only, nothing is transmitted to any customer. | yes | `invoicing:documents:write` |
 | `einvoice_send` | Send one issued e-invoice through the e-invoicing platform (PA). | yes | `invoicing:documents:write` |
 | `einvoice_send_request` | Ask for the approval to send ONE issued e-invoice (or credit note) through the e-invoicing platform (PA). |  | `invoicing:documents:write` |

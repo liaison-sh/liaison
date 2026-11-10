@@ -204,3 +204,5 @@ positive line allowed against a larger negative one -> bundled-apps/invoicing/sr
 minor-unit amount is a whole number, refusal says what to send -> packages/app-sdk/src/minor-amount.ts:15
 card that meets an unreadable amount says refused, prints no total -> bundled-apps/invoicing/src/approval-cards.ts:159
 imported credit note keeps its source's sign -> bundled-apps/invoicing/src/import-kind.ts:238
+The time zone is asked once, at the first issue on a profile with no zone chosen, in an organization with none -> bundled-apps/invoicing/src/issue.ts:970-980; bundled-apps/invoicing/app.manifest.json:5894-5911
+A service line counts as a service in the operation type, as a software line does -> bundled-apps/invoicing/src/einvoicing/classify-operation.ts:23; bundled-apps/invoicing/src/einvoicing/booking.ts:289

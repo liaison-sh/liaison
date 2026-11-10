@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.20.64",
+  "version": "0.20.65",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1087,6 +1087,7 @@
           "enum": [
             "goods",
             "software",
+            "service",
             "shipping"
           ],
           "default": "goods"
@@ -2479,7 +2480,7 @@
     },
     "drafts_create": {
       "summarizer": "summarizeDraftCreate",
-      "description": "LEGACY, internal: create an unnumbered draft row. There is NO user facing draft document category any more. Do not use this to start an invoice (invoices come from paid orders or from converting a quote or proforma) or a quote (use quote_create_and_issue, which makes the Shopify draft order). Only a proforma or purchase order may still be prepared this way before proforma_issue / po_issue; prefer their create_and_issue tools.",
+      "description": "Create an unissued draft. A draft with a source (a recurring run) is a visible pending draft that invoice_issue {draft_id} issues. Invoices come from paid orders or a converted quote or proforma, quotes from quote_create_and_issue; only proforma and purchase order drafts are prepared here.",
       "searchKeywords": ["brouillon", "préparer", "nouvelle", "invoice", "document"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "draftsCreateHandler",
@@ -2750,7 +2751,7 @@
       "focusCore": "document",
       "summarizer": "summarizeDraftUpdate",
       "summarizerContext": { "tool": "documents_get", "params": { "id": "draft_id" } },
-      "description": "LEGACY, internal: update an unnumbered draft row before it is issued. Issued documents are edited with documents_update. There is no user facing draft document category.",
+      "description": "Update an unissued draft, including one from a source. Issued documents use documents_update.",
       "searchKeywords": ["brouillon", "modifier", "edit", "corriger"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "draftsUpdateHandler",
@@ -3010,7 +3011,7 @@
       }
     },
     "drafts_discard": {
-      "description": "LEGACY, internal: discard an unnumbered draft row (never consumes a number). Issued documents are never deleted; a quote linked to a Shopify draft order is rejected by deleting the draft order in Shopify, an invoice is reversed with a credit note.",
+      "description": "Discard an unissued draft; no number is used. Issued documents are never deleted: reverse an invoice with a credit note, reject a Shopify-linked quote by deleting its draft order.",
       "searchKeywords": ["brouillon", "supprimer", "abandonner", "jeter", "enlever", "retirer", "remove", "delete", "annuler"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "draftsDiscardHandler",
@@ -5663,6 +5664,7 @@
       "issuer_profile:created",
       "issuer_profile:updated",
       "issuer_profile:deleted",
+      "issuer_profile:timezone_unset",
       "deferred:tax_review",
       "deferred:credit_note_refused",
       "einvoicing:identity_missing",
@@ -5887,6 +5889,22 @@
         "summary": "Order {{data.order_label}}: its automatic credit note was refused ({{data.code}}) and waits for a fix",
         "recipients": { "kind": "scope_holders", "scope": "invoicing:documents:write" },
         "resolveWhen": { "field": "resolved", "equals": true }
+      },
+      {
+        "event": "issuer_profile:timezone_unset",
+        "kind": "invoicing:issuer_timezone_unset",
+        "urgency": 30,
+        "summary": "Issuer {{data.legal_name}} has no time zone. Invoice dates follow UTC until you set one, for example Europe/Paris; if UTC is right, say so and it is kept.",
+        "recipients": { "kind": "scope_holders", "scope": "invoicing:settings:write" }
+      },
+      {
+        "event": "issuer_profile:updated",
+        "kind": "invoicing:issuer_timezone_unset",
+        "urgency": 30,
+        "summary": "Issuer {{data.legal_name}} has a time zone.",
+        "when": { "op": "exists", "path": "changes.timezone" },
+        "recipients": { "kind": "scope_holders", "scope": "invoicing:settings:write" },
+        "resolveWhen": { "always": true }
       },
       {
         "event": "einvoicing:identity_missing",

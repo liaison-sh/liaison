@@ -29,7 +29,7 @@ import type { CrossAppExecuteTool } from "./cross-app"
 import { documentRollup, lineAmounts } from "./money"
 import { allocateNumber } from "./numbering"
 import { classifyRegime } from "./einvoicing/classify"
-import type { TimeSurface } from "./issue-date"
+import { DEFAULT_ZONE, issuerTimezoneUnset, type TimeSurface } from "./issue-date"
 import type { CustomerKind, Regime } from "./einvoicing/classify"
 import type { OperationCategory, PaymentState } from "./einvoicing/classify-operation"
 import {
@@ -211,9 +211,11 @@ export class CounterpartyIncompleteError extends Error {
  *   - `goods`    (default) physical products; customs enrichment applies on exports.
  *   - `software` digital items (license keys, downloads) — never customs goods,
  *                rendered in their own "Software" group on the PDF.
+ *   - `service`  work done for the buyer (consulting, a retainer): a service in the operation
+ *                category and the tax classification, never customs goods.
  *   - `shipping` carriage lines — never customs goods, rendered last.
  */
-export type LineKind = "goods" | "software" | "shipping"
+export type LineKind = "goods" | "software" | "service" | "shipping"
 
 export interface DraftLineInput {
   position?: number
@@ -956,6 +958,28 @@ export async function enrichLineCustoms(
   return { hs_code, country_of_origin, customs_description, fetchFailure }
 }
 
+/** Documents in these statuses were never issued: a profile holding only them is at its first issue. */
+const NEVER_ISSUED_STATUSES: ReadonlySet<string> = new Set(["draft", "pending_approval"])
+
+/**
+ * True at the first issue on an issuer profile nobody gave a time zone, in an organization that
+ * has none either: the one moment the zone is asked (the line is raised once, after the number is
+ * taken). A profile with a zone, an organization with a zone, or a profile with issued documents
+ * (no backfill) is never asked.
+ */
+async function timezoneAskDue(ctx: IssueCtx, issuer: IssuerProfile): Promise<boolean> {
+  if (!issuerTimezoneUnset(issuer)) return false
+  const org = await ctx.time.civil({ timezone: DEFAULT_ZONE })
+  if (org.zone !== DEFAULT_ZONE) return false
+  
+  const rows = (await ctx.db.findMany("documents", {
+    where: { issuer_profile_id: issuer.id },
+    select: ["id", "status"],
+    limit: 200,
+  })) as Array<{ status?: string | null }>
+  return rows.every((r) => NEVER_ISSUED_STATUSES.has(String(r.status ?? "draft")))
+}
+
 export async function issueDocument(
   ctx: IssueCtx,
   input: IssueInput,
@@ -1109,6 +1133,8 @@ export async function issueDocument(
       ).length > 0,
   })
 
+  const askTimezone = await timezoneAskDue(ctx, issuer)
+
   // 5) Insert document row.
   const nowIso = new Date().toISOString()
   const userId = await ctx.getUserId()
@@ -1248,6 +1274,15 @@ export async function issueDocument(
           paid_at: input.settlement.paid_at,
           payment_status: "paid",
         },
+      })
+    }
+    if (askTimezone) {
+      // One Home line to the holders of the settings scope; a zone set on the profile resolves it.
+      await ctx.emit({
+        entity: "issuer_profile",
+        action: "timezone_unset",
+        entityId: issuer.id,
+        data: { issuer_profile_id: issuer.id, legal_name: issuer.legal_name, document_id: documentId },
       })
     }
     const issuedPoNumber = readRefString(draft.external_refs, "po_number")

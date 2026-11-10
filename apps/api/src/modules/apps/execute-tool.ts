@@ -47,6 +47,7 @@ import {
   CONNECTION_CREDENTIALS_MISSING,
   ConnectionCredentialsMissingError,
 } from "~/modules/apps/connections/credentials-missing"
+import { NoConnectedAccountError } from "~/modules/apps/connections/no-connected-account"
 import { createAppContext } from "~/modules/apps/context"
 import { validateParamsForTool } from "~/modules/apps/execute-tool-params"
 import { mintExecutionToken } from "~/modules/apps/execution-token"
@@ -5642,6 +5643,22 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
           message: missingCredentials.message,
           retryable: false,
           status: missingCredentials.status,
+        },
+      }
+    }
+    // A connection with no active connected account (never connected, or
+    // disconnected): the person connects it. Typed, whichever handler hit it
+    // (a host handler's own typed error keeps its mailbox-specific message).
+    const notConnected =
+      err instanceof NoConnectedAccountError ? err : NoConnectedAccountError.fromMessage(message)
+    if (notConnected) {
+      log.warn({ toolName: opts.toolName }, "Tool needs a connection with a connected account")
+      return {
+        error: {
+          code: notConnected.code,
+          message: notConnected.message,
+          retryable: false,
+          status: notConnected.status,
         },
       }
     }

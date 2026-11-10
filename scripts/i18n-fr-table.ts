@@ -6590,6 +6590,8 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.aiModels.historySaveFailed": "Impossible d'enregistrer le réglage de l'historique.",
   "kernel.connectionCredentialsMissing":
     "Cette boîte mail n'a pas d'identifiants enregistrés, rien n'a été envoyé. Reconnectez-la dans Paramètres → Connexions.",
+  "kernel.connectionNotConnected":
+    "Cette boîte mail n'est plus connectée, rien n'a été envoyé. Reconnectez-la dans Paramètres → Connexions, ou envoyez depuis une autre boîte.",
   "kernel.demo.limitMail":
     "Aucun mail ne quitte cette instance, sauf votre code de vérification. Les réponses aux clients fictifs sont enregistrées comme remises et ne partent nulle part ; tout autre envoi est refusé.",
   "kernel.demo.limitAgents":

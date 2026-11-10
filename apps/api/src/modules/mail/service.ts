@@ -12,6 +12,7 @@ import { contacts } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
 import { quoteIdent } from "~/lib/sql-utils"
 import { ConnectionCredentialsMissingError } from "~/modules/apps/connections/credentials-missing"
+import { NoConnectedAccountError } from "~/modules/apps/connections/no-connected-account"
 import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { type MailCategory, mailCategoryCondition } from "~/modules/mail/category"
 import { enqueueGmailWriteBack } from "~/modules/mail/gmail-write-back"
@@ -898,9 +899,14 @@ async function executeMailSandbox(
     })
   } catch (err) {
     // Only the message crosses the sandbox: a mailbox without stored
-    // credentials comes back typed (a 422 that says to reconnect), not a 500.
+    // credentials, or whose connected account is gone, comes back typed (a 422
+    // that names the mailbox and says to reconnect it), not a 500.
     const message = err instanceof Error ? err.message : String(err)
-    throw ConnectionCredentialsMissingError.fromMessage(message) ?? err
+    throw (
+      ConnectionCredentialsMissingError.fromMessage(message) ??
+      NoConnectedAccountError.fromMessage(message) ??
+      err
+    )
   }
 }
 

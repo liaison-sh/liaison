@@ -5105,7 +5105,9 @@ async function sendViaGmail(
   threadId?: string,
   opts?: { onDispatch?: () => void },
 ): Promise<{ messageId: string; threadId?: string }> {
-  const token = await ctx.connections_getToken("gmail", accountEmail)
+  const token = await ctx.connections_getToken("gmail", accountEmail).catch((err: unknown) => {
+    throw mailboxNotConnected(err, accountEmail)
+  })
   // Encode host-side: the message can carry multi-MB attachments, and the
   // interpreted fallback encoder freezes the whole process for its duration.
   const raw = ctx.codec_base64UrlEncodeUtf8
@@ -5149,8 +5151,33 @@ async function sendViaSmtp(
   opts?: { onDispatch?: () => void },
 ): Promise<{ messageId: string }> {
   opts?.onDispatch?.()
-  const result = JSON.parse(await ctx.smtp_send("imap", accountEmail, JSON.stringify(message)))
+  const sent = await ctx
+    .smtp_send("imap", accountEmail, JSON.stringify(message))
+    .catch((err: unknown) => {
+      throw mailboxNotConnected(err, accountEmail)
+    })
+  const result = JSON.parse(sent)
   return { messageId: result.messageId }
+}
+
+/**
+ * A send whose mailbox has no connected account any more (deleted or
+ * disconnected): nothing left, so it is recorded as failed without effect, and
+ * the message names the mailbox and the next step. It keeps the host error's
+ * `No connected account for connection "<name>"` prefix, from which the host
+ * restores the typed 422 (`NoConnectedAccountError.fromMessage`). Any other
+ * error passes through unchanged.
+ */
+function mailboxNotConnected(err: unknown, accountEmail: string): unknown {
+  const message = String((err as { message?: unknown } | null)?.message ?? err)
+  const match = /No connected account for connection "[^"]*"/.exec(message)
+  if (!match) return err
+  return Object.assign(
+    new Error(
+      `${match[0]}: The mailbox ${accountEmail} is no longer connected, so nothing was sent. Reconnect it in Settings → Connections, or send from another mailbox.`,
+    ),
+    { deliveryState: "not_delivered" },
+  )
 }
 
 function buildSendMessage(

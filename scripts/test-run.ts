@@ -432,6 +432,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/mail-api.test.ts",
             // A send from a mailbox with no stored credentials answers 422, both paths.
             "src/tests/integration/mail-send-credentials-missing.test.ts",
+            "src/tests/integration/mail-send-connection-gone.test.ts",
             "src/tests/integration/mail-encrypted-conversation-state.test.ts",
             "src/tests/integration/mail-agent-search.test.ts",
             "src/tests/integration/mail-conversation-search.test.ts",

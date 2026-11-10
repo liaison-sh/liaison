@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test"
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
+import { esmExportsToGlobalThis, loadBundle } from "~/modules/apps/sandbox/bundle-loader"
 import {
   buildExportOnlyBundle,
   clearExportOnlyBundleCache,
   exportOnlyBundle,
   exportOnlyBundleCacheSize,
+  hasImportAttribute,
   useFullBundle,
 } from "~/modules/apps/sandbox/bundle-shake"
 import { executeInSandbox } from "~/modules/apps/sandbox/executor"
@@ -143,4 +146,47 @@ describe("export-only bundles", () => {
       expect(fullCalls.length).toBeGreaterThan(0)
     })
   }
+})
+
+describe("a bundle with an import attribute", () => {
+  let dir = ""
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "liaison-shake-macro-"))
+  })
+  afterAll(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true })
+  })
+
+  const macroBundle = (marker: string, attribute: string) => {
+    const macro = join(dir, `macro-${crypto.randomUUID()}.ts`)
+    writeFileSync(
+      macro,
+      `import { writeFileSync } from "node:fs"\nexport function mark() { writeFileSync(${JSON.stringify(marker)}, "ran"); return 1 }\n`,
+    )
+    return esmExportsToGlobalThis(
+      `import { mark } from ${JSON.stringify(macro)} ${attribute};\nvar seen = mark();\nasync function handler(p, ctx) { return seen }\nexport { handler };`,
+    )
+  }
+
+  for (const attribute of [
+    'with { type: "macro" }',
+    'assert { type: "macro" }',
+    'with /* note */ { type: "macro" }',
+    'with // note\n { type: "macro" }',
+  ]) {
+    it(`is refused before any build, and its macro never runs on the host (${attribute.replace("\n", " ")})`, async () => {
+      const marker = join(dir, `ran-${crypto.randomUUID()}`)
+      const bundle = macroBundle(marker, attribute)
+      expect(hasImportAttribute(bundle)).toBe(true)
+      expect(await buildExportOnlyBundle(bundle, "handler")).toBeNull()
+      expect(existsSync(marker)).toBe(false)
+    })
+  }
+
+  it("a bundle with no attribute is not taken for one", () => {
+    expect(hasImportAttribute(SCRIPT)).toBe(false)
+    expect(hasImportAttribute("var o = { with: 1 }; function assertOk() { return {} }")).toBe(false)
+    // A line comment after the keyword that only mentions a brace is no attribute.
+    expect(hasImportAttribute("// formats it with\n// `{YYYY}` expanded\nvar x = 1")).toBe(false)
+  })
 })

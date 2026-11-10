@@ -28,6 +28,23 @@ const MAX_ENTRIES = 64
 /** The export names a bundle can be shaken for (they are interpolated). */
 const SAFE_EXPORT_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/
 const ENTRY = "/liaison-export-only-entry.js"
+/**
+ * An import attribute: the keyword then its object, with only blanks or
+ * comments between, as the grammar allows. Matched anywhere (string text
+ * included): a false match only refuses a bundle that names the keyword
+ * right before a brace.
+ */
+const IMPORT_ATTRIBUTE_RE = /\b(?:with|assert)(?:\s|\/\*[\s\S]*?\*\/|\/\/[^\n\r]*[\n\r])*\{/
+
+/**
+ * True when `source` carries an import attribute (a macro import among them).
+ * Bun runs a macro import (`with { type: "macro" }`) while it parses or builds
+ * the text, so a bundle carrying one must never reach `Bun.Transpiler` or
+ * `Bun.build` on the host. No handler bundle needs one: it cannot import.
+ */
+export function hasImportAttribute(source: string): boolean {
+  return IMPORT_ATTRIBUTE_RE.test(source)
+}
 
 type Entry = { state: "building" } | { state: "ready"; source: string } | { state: "full" }
 
@@ -51,13 +68,16 @@ function remember(key: string, entry: Entry): void {
  * Tree-shake `source` (a script-mode bundle whose top-level declarations are
  * its exports) down to `exportName`, returned in the same script shape: an
  * IIFE assigning `globalThis.<exportName>`. Null when the bundle cannot be
- * shaken (an IIFE-wrapped bundle, a syntax the bundler refuses, an import).
+ * shaken (an IIFE-wrapped bundle, a syntax the bundler refuses, an import, an
+ * import attribute).
  */
 export async function buildExportOnlyBundle(
   source: string,
   exportName: string,
 ): Promise<string | null> {
   if (!SAFE_EXPORT_RE.test(exportName)) return null
+  // Refused before the bundler sees it: a macro import runs during the build.
+  if (hasImportAttribute(source)) return null
   const contents = `${source}\nexport { ${exportName} };\n`
   let output: string
   try {

@@ -434,7 +434,9 @@ async function switchAndJudge(
  * dispatch path) and parses as JavaScript. Registration itself never evaluates
  * the bundle (handlers run later, in the sandbox), so without this a version
  * whose bundle is broken passes registration and fails on its first call.
- * Parsing does not run it: no app code executes in the host.
+ * Parsing does not run it: a bundle carrying an import attribute (a macro import
+ * would run during the parse) is refused before it, so no app code executes in
+ * the host.
  */
 async function loadsAsBundle(
   bundlePath: string,
@@ -447,6 +449,17 @@ async function loadsAsBundle(
     return {
       code: "module_missing",
       message: `its handler bundle does not load: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
+  // Refused before the host parses it: Bun runs a macro import (`with { type: "macro" }`)
+  // while it transforms the text, so the parse below would run the app's code here, outside
+  // the sandbox. No sandboxed bundle needs an import attribute (it cannot import at all).
+  const { hasImportAttribute } = await import("~/modules/apps/sandbox/bundle-shake")
+  if (hasImportAttribute(source)) {
+    return {
+      code: "module_invalid",
+      message:
+        "its handler bundle carries an import attribute (`with { ... }` or `assert { ... }`), which no handler bundle may: rebuild it without one",
     }
   }
   try {

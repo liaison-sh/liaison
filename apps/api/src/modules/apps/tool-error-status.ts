@@ -268,6 +268,26 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   // The `code` an attention event carries when it RESOLVES an e-invoicing item (Factur-X built
   // after a failure); never a tool error, classified so the source scan stays exhaustive.
   resolved: 409,
+  // Recurring schedules: a schedule that does not exist, has ended or has not started, a repeat
+  // or end date it cannot take, and issuing by itself asked for at creation (it is set by an update).
+  schedule_not_found: 404,
+  schedule_ended: 409,
+  schedule_not_started: 409,
+  invalid_schedule: 422,
+  invalid_until: 422,
+  auto_needs_update: 422,
+  // The month-end run: a run or row that does not exist, a run not in the state the step needs,
+  // a run's draft reached outside its run, a row not approved or already issued, and a draft
+  // changed after its approval (it waits for a new one). The caller's state to act on.
+  run_not_found: 404,
+  item_not_found: 404,
+  run_not_drafted: 409,
+  run_not_approved: 409,
+  run_already_issuing: 409,
+  run_item_draft: 409,
+  item_not_approved: 409,
+  already_issued: 409,
+  changed_since_approval: 409,
   // Upstream (mail, Shopify, the PDF renderer, another app) failed.
   send_dispatch_failed: 502,
   send_failed: 502,

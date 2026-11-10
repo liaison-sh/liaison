@@ -82,7 +82,7 @@ export function harness(today: string, opts: { schedules?: Array<Record<string, 
     getUserId: async () => "user-person",
     approval: null,
     time: {
-      async civil({ timezone }) {
+      async civil({ timezone }: { timezone: string }) {
         const [y, m, d] = today.split("-").map(Number) as [number, number, number]
         return { date: today, year: y, month: m, day: d, hour: opts.hour ?? 9, minute: 0, weekday: weekdayOf(today), zone: timezone }
       },

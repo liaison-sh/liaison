@@ -249,6 +249,9 @@ const READ_ONLY: Record<string, string[]> = {
     "received_einvoices_get",
     // A customer's earlier sales, lines and Shopify orders (cross-calls only reads).
     "customer_history",
+    // Recurring schedules and a month-end run with its rows, read as stored.
+    "recurring_list",
+    "recurring_run_get",
   ],
   monitoring: ["incidents_list", "incidents_get", "incidents_summary", "webhook_info"],
   pennylane: [

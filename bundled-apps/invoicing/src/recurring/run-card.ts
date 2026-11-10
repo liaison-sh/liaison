@@ -251,23 +251,36 @@ export async function recurringRunIssue(
 }
 
 /** Undo an approval before the first number: the run goes back to drafted and a new card is staged. */
+/** Why a run's approval cannot be undone now, or null: checked at staging and again when it runs. */
+async function unapproveRefusal(ctx: RunCtx, runId: string): Promise<ErrorEnvelope | null> {
+  const run = (await ctx.db.findOne("recurring_runs", runId)) as Row | null
+  if (!run) return fail("run_not_found", `No month-end run ${runId}. Read it with recurring_run_get.`)
+  const issued = (await runItems(ctx, runId)).filter((i) => i.state === "issued").map((i) => String(i.issued_number ?? i.document_id))
+  if (issued.length > 0) {
+    return fail(
+      "run_already_issuing",
+      `Run ${runId} has already issued ${issued.join(", ")}, so its approval cannot be undone. Change what is left through its drafts, or credit an issued invoice with credit_note_create_and_issue.`,
+    )
+  }
+  if (run.status !== "approved") {
+    return fail("run_not_approved", `Run ${runId} is ${String(run.status)}, not approved, so there is nothing to undo.`)
+  }
+  return null
+}
+
+/** Stage-time check of `recurring_run_unapprove`: the same refusals, before anyone is asked. */
+export async function recurringRunUnapprovePreflight(ctx: RunCtx, input: { run_id: string }): Promise<{ ok: true } | { error: { code: string; message: string } }> {
+  const refused = await unapproveRefusal(ctx, input.run_id)
+  return refused ? { error: refused.error } : { ok: true }
+}
+
 export async function recurringRunUnapprove(
   ctx: RunCtx,
   input: { run_id: string },
 ): Promise<{ status: "completed"; run_id: string; approval_id: string | null; message: string } | ErrorEnvelope> {
-  const run = (await ctx.db.findOne("recurring_runs", input.run_id)) as Row | null
-  if (!run) return fail("run_not_found", `No month-end run ${input.run_id}. Read it with recurring_run_get.`)
+  const refused = await unapproveRefusal(ctx, input.run_id)
+  if (refused) return refused
   const items = await runItems(ctx, input.run_id)
-  const issued = items.filter((i) => i.state === "issued").map((i) => String(i.issued_number ?? i.document_id))
-  if (issued.length > 0) {
-    return fail(
-      "run_already_issuing",
-      `Run ${input.run_id} has already issued ${issued.join(", ")}, so its approval cannot be undone. Change what is left through its drafts, or credit an issued invoice with credit_note_create_and_issue.`,
-    )
-  }
-  if (run.status !== "approved") {
-    return fail("run_not_approved", `Run ${input.run_id} is ${String(run.status)}, not approved, so there is nothing to undo.`)
-  }
   for (const item of items) {
     if (item.state === "approved" || item.state === "waiting_reapproval") {
       await ctx.db.update("recurring_run_items", String(item.id), { state: "ready", approved_hash: null })

@@ -41,7 +41,13 @@ import {
 import { recurringDraftJob } from "./recurring/draft-job"
 import { recurringIssueJob, recurringItemIssue } from "./recurring/issue-job"
 import { recurringLegalDateJob } from "./recurring/legal-date-job"
-import { type RunCtx, recurringRunIssue, recurringRunIssuePreflight, recurringRunUnapprove } from "./recurring/run-card"
+import {
+  type RunCtx,
+  recurringRunIssue,
+  recurringRunIssuePreflight,
+  recurringRunUnapprove,
+  recurringRunUnapprovePreflight,
+} from "./recurring/run-card"
 import { recurringRunGet } from "./recurring/run-get"
 import {
   contactRelationshipsGet,
@@ -665,6 +671,13 @@ export const recurringSchedulePauseHandler = (
   params: Parameters<typeof recurringSchedulePause>[1],
   ctx: Parameters<typeof recurringSchedulePause>[0],
 ) => recurringSchedulePause(ctx, params)
+export const recurringSchedulePausePreflightHandler = async (
+  params: Parameters<typeof recurringSchedulePause>[1],
+  ctx: Parameters<typeof recurringSchedulePause>[0],
+) => {
+  const checked = await recurringSchedulePause(ctx, params, true)
+  return checked.status === "error" ? { error: checked.error } : { ok: true }
+}
 export const recurringListHandler = (
   params: Parameters<typeof recurringList>[1],
   ctx: Parameters<typeof recurringList>[0],
@@ -682,3 +695,5 @@ export const recurringItemIssueHandler = (params: Parameters<typeof recurringIte
   recurringItemIssue(ctx, params)
 export const recurringRunGetHandler = (params: Parameters<typeof recurringRunGet>[1], ctx: RunCtx) => recurringRunGet(ctx, params)
 export const recurringRunIssuePreflightHandler = (params: { run_id: string }, ctx: RunCtx) => recurringRunIssuePreflight(ctx, params)
+export const recurringRunUnapprovePreflightHandler = (params: { run_id: string }, ctx: RunCtx) =>
+  recurringRunUnapprovePreflight(ctx, params)

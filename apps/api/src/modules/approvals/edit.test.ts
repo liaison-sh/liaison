@@ -328,6 +328,110 @@ describe("updatePayload", () => {
     await sql`DELETE FROM kernel.organizations WHERE id = ${ORG}`
   })
 
+  // The agent tool `approval_update_payload` asks only kernel:approvals:read and passes its turn's
+  // scopes as `callerScopes`: the requester (the person the turn acts for) edits its own pending
+  // request without any approver scope; editing another's still needs kernel:approvals:write.
+  describe("through the agent tool (callerScopes)", () => {
+    const OWN_REQUEST = "00000000-0000-4000-8000-000000064020"
+    const PLAIN_REQUEST = "00000000-0000-4000-8000-000000064021"
+    const PLAIN_MEMBER = "00000000-0000-4000-8000-000000064022"
+    /** A named role agent's turn: the common agent base, no approver scope. */
+    const ROLE_AGENT_TURN = ["kernel:approvals:read", "kernel:threads:read"]
+    const actorFor = (userId: string, scopes: string[]): UserContext => ({
+      actorType: "user",
+      userId,
+      orgId: ORG,
+      scopes,
+      dimensionGrants: {},
+    })
+
+    beforeAll(async () => {
+      await sql`INSERT INTO kernel.users (id, org_id, email, name, status) VALUES
+        (${PLAIN_MEMBER}, ${ORG}, 'approval-edit-plain@test.local', 'Plain Member', 'active')
+        ON CONFLICT DO NOTHING`
+      await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id, role) VALUES
+        (${THREAD}, ${PLAIN_MEMBER}, ${ORG}, 'member') ON CONFLICT DO NOTHING`
+      await sql`INSERT INTO kernel.approval_requests (
+        id, org_id, handle, thread_id, originating_thread_id, tool_name, tool_params,
+        current_payload, expires_at, notify_user_ids, requested_by, status, reason, summary
+      ) VALUES
+        (${OWN_REQUEST}, ${ORG}, 'request-own-agent', ${THREAD}, ${THREAD}, 'edit_approval:tool', '{"message":"old"}'::jsonb,
+         '{"message":"old"}'::jsonb, now() + interval '1 hour', ARRAY[${REQUESTER}, ${NONPARTICIPANT_APPROVER}]::uuid[], ${REQUESTER}, 'pending', 'gated',
+         '{"kind":"edit","title":"Own Agent Edit","lines":[]}'::jsonb),
+        (${PLAIN_REQUEST}, ${ORG}, 'request-plain-member', ${THREAD}, ${THREAD}, 'edit_approval:tool', '{"message":"old"}'::jsonb,
+         '{"message":"old"}'::jsonb, now() + interval '1 hour', ARRAY[${PLAIN_MEMBER}, ${NONPARTICIPANT_APPROVER}]::uuid[], ${PLAIN_MEMBER}, 'pending', 'gated',
+         '{"kind":"edit","title":"Plain Member Edit","lines":[]}'::jsonb)
+        ON CONFLICT DO NOTHING`
+    })
+
+    it("a role agent edits the request it staged for its person, with no approver scope", async () => {
+      const seenHash = approvalPayloadHash("edit_approval:tool", { message: "old" })
+      const result = await updatePayload({
+        orgId: ORG,
+        requestId: OWN_REQUEST,
+        fields: { message: "fixed by the agent" },
+        actor: actorFor(REQUESTER, ["edit_approval:approve", "kernel:approvals:read"]),
+        callerScopes: ROLE_AGENT_TURN,
+      })
+      expect(result.currentPayload).toEqual({ message: "fixed by the agent" })
+      // What an approver already saw no longer matches: an approve bound to it is refused (409).
+      expect(result.payloadHash).not.toBe(seenHash)
+    })
+
+    it("a role agent cannot edit another person's request, even for an approver", async () => {
+      await expect(
+        updatePayload({
+          orgId: ORG,
+          requestId: OWN_REQUEST,
+          fields: { message: "not mine" },
+          actor: actorFor(NONPARTICIPANT_APPROVER, [
+            "edit_approval:approve",
+            "kernel:approvals:read",
+          ]),
+          callerScopes: [...ROLE_AGENT_TURN, "edit_approval:approve"],
+        }),
+      ).rejects.toMatchObject({ status: 403, code: "forbidden" })
+    })
+
+    it("a plain member edits its own request and is refused on another's", async () => {
+      const own = await updatePayload({
+        orgId: ORG,
+        requestId: PLAIN_REQUEST,
+        fields: { message: "member fix" },
+        actor: actorFor(PLAIN_MEMBER, ["kernel:approvals:read"]),
+        callerScopes: ["kernel:approvals:read"],
+      })
+      expect(own.currentPayload).toEqual({ message: "member fix" })
+      // Not theirs and not in its audience: they cannot even see it (404), and nothing changes.
+      await expect(
+        updatePayload({
+          orgId: ORG,
+          requestId: OWN_REQUEST,
+          fields: { message: "not mine" },
+          actor: actorFor(PLAIN_MEMBER, ["kernel:approvals:read"]),
+          callerScopes: ["kernel:approvals:read"],
+        }),
+      ).rejects.toMatchObject({ status: 404, code: "not_found" })
+      const [row] =
+        await sql`SELECT current_payload FROM kernel.approval_requests WHERE id = ${OWN_REQUEST}`
+      expect(row.current_payload.message).not.toBe("not mine")
+    })
+
+    it("an approver's turn holding kernel:approvals:write still edits as before", async () => {
+      const result = await updatePayload({
+        orgId: ORG,
+        requestId: OWN_REQUEST,
+        fields: { message: "approver fix" },
+        actor: actorFor(NONPARTICIPANT_APPROVER, [
+          "edit_approval:approve",
+          "kernel:approvals:read",
+        ]),
+        callerScopes: ["kernel:approvals:read", "kernel:approvals:write", "edit_approval:approve"],
+      })
+      expect(result.currentPayload).toEqual({ message: "approver fix" })
+    })
+  })
+
   it("returns 403, not 404, for a snapshot approver whose current approve scope was revoked", async () => {
     await expect(
       updatePayload({

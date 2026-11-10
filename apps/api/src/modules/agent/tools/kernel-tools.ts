@@ -2635,8 +2635,11 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     name: "approval_update_payload",
     deferLoading: true,
     description:
-      "Update the editable fields of a pending approval you can see as its requester or an approver. Editable fields are declared per approval tool, so a request may expose none, one or several of them (a ticket or mail reply draft exposes only its plain text body, never the derived HTML). A field that is not editable fails with invalid_edit, whose message spells out exactly which fields you may edit.",
-    requiredScopes: ["kernel:approvals:write"],
+      "Update the editable fields of a pending approval. You may always edit a request you raised (the person you act for is its requester), so fix your own request here instead of withdrawing and staging it again. Editing someone else's request needs the approver capability (kernel:approvals:write) and is refused without it. Every edit invalidates what an approver already saw: they must review the new version before approving. Editable fields are declared per approval tool, so a request may expose none, one or several of them (a ticket or mail reply draft exposes only its plain text body, never the derived HTML). A field that is not editable fails with invalid_edit, whose message spells out exactly which fields you may edit.",
+    // Reading approvals, not deciding them, like approval_withdraw: the requester edits its own
+    // request without any approver scope. Editing anyone else's still needs kernel:approvals:write
+    // in the turn's scopes, checked by the service (edit.ts EDIT_OTHERS_APPROVAL_SCOPE).
+    requiredScopes: ["kernel:approvals:read"],
     trustBoundary: "user",
     params: z.object({
       requestId: z.string().uuid(),

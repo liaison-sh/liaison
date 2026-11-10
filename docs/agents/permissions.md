@@ -27,7 +27,7 @@ Because of this, adding a colleague with fewer permissions to a conversation can
 | --- | --- |
 | Personal agent | Your own permissions. It follows them when they change. |
 | Role agent | Set by an administrator in **Settings** under **Capabilities**. It cannot be wider than what that administrator may grant. See [Create an agent](../agents/create-an-agent.md). |
-| System agent (`@base`) | A common base: skills, conversations, memory, contacts, files, knowledge, projects and dashboards. |
+| System agent (`@base`) | A common base: skills, conversations, memory, contacts, files, knowledge, projects, dashboards and reading approvals. |
 
 Administration scopes are meant for people: every scope that asks a person for a second factor when the organization requires one. That is `*`, any scope whose last part is `admin` (such as `kernel:org:admin`, `kernel:apps:admin`, `kernel:agents:admin` or an app's `tickets:settings:admin`), and a wildcard over a kernel one (`kernel:*`, `kernel:users:*`). Keep them out of a role agent's ceiling: `liaison config apply` refuses a role agent that lists one, and an approved access request never adds one.
 

@@ -18,7 +18,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `analyze_media` | Analyze an image, video or PDF attachment and return a summary for support: a visual diagnostic for media, and for a document a faithful extraction of sender, line items with prices and totals, dates, reference numbers, addresses and payment terms. |  | `kernel:files:analyze` |
 | `approval_policy_get` | List the org's APPROVAL-TIGHTENING policies: which tools require approval or a second approver, and under what conditions. |  | `kernel:policies:read` |
 | `approval_policy_set` | Configure an org APPROVAL-TIGHTENING policy: escalate a non-gated action to gated, and/or require N distinct approvers (minApprovers:2 = a second person must approve). | yes | `kernel:policies:admin` |
-| `approval_update_payload` | Update the editable fields of a pending approval you can see as its requester or an approver. |  | `kernel:approvals:write` |
+| `approval_update_payload` | Update the editable fields of a pending approval. |  | `kernel:approvals:read` |
 | `approval_withdraw` | Retract a PENDING approval request that you raised. |  | `kernel:approvals:read` |
 | `approvals_list` | List the approvals waiting on this user to decide, oldest first, each tagged with its origin app, requester, summary and ageDays. |  | `kernel:approvals:read` |
 | `apps_build_check` | Build a draft version (the latest by default) and type-check it against the app SDK. |  | `kernel:apps:build` |

@@ -35,6 +35,9 @@ export async function handleApprovalUpdatePayload(
     // `updatePayload` takes its agent from ONE place, its own argument, rather
     // than from the argument on one path and the emitter's default on the other.
     actingAgentId: captureActingAgentId(),
+    // The turn's own scopes (agent ceiling within the person's grants): editing a request this
+    // person did not raise needs kernel:approvals:write in them (edit.ts). Absent fails closed.
+    callerScopes: ctx.scopes ?? [],
     // Rule 8g (scope-taint.ts): the dispatch does not judge this edit as a disclosure; the
     // pending row is restaged in place, narrowed to holders of this turn's taint.
     ...(ctx.turnTaintScopes !== undefined ? { turnTaintScopes: ctx.turnTaintScopes } : {}),

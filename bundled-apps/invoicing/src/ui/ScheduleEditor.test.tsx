@@ -164,8 +164,8 @@ describe("the editor speaks in the units a person types", () => {
   })
 
   it("names the series read-only from the issuer, and the title names the customer", () => {
-    const issuers = [{ id: "i1", legal_name: "Atelier Sud", prefix_invoice: "F-{YYYY}-" }] as never
-    expect(seriesOf(issuers, "i1")).toMatch(/^F-\d{4}- then the next number, from Atelier Sud$/)
+    const issuers = [{ id: "i1", legal_name: "Studio Sud", prefix_invoice: "F-{YYYY}-" }] as never
+    expect(seriesOf(issuers, "i1")).toMatch(/^F-\d{4}- then the next number, from Studio Sud$/)
     expect(seriesOf(issuers, null)).toBeNull()
     expect(scheduleTitle("Klangwerk GmbH")).toBe("Recurring: Klangwerk GmbH")
     expect(scheduleTitle(null)).toBe("Recurring schedule")

@@ -667,20 +667,45 @@ export const CompanyDetail: Component<CompanyDetailProps> = (props) => {
                         }
                       >
                         {(deal) => (
-                          <button
-                            type="button"
-                            data-testid={`company-deal-${deal().taskId}`}
-                            class="flex w-full items-center py-2 text-left text-[13px] text-text hover:bg-surface-hover"
-                            onClick={() =>
-                              openTab({
-                                type: "projects:task",
-                                entityId: deal().taskId,
-                                label: dealText(deal(), i18n),
-                              })
-                            }
-                          >
-                            {dealText(deal(), i18n)}
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              data-testid={`company-deal-${deal().taskId}`}
+                              class="flex w-full min-w-0 items-baseline gap-2 py-2 text-left text-[13px] text-text hover:bg-surface-hover"
+                              onClick={() =>
+                                openTab({
+                                  type: "projects:task",
+                                  entityId: deal().taskId,
+                                  label: deal().title ?? dealText(deal(), i18n),
+                                })
+                              }
+                            >
+                              <Show when={deal().title}>
+                                <span class="truncate font-medium">{deal().title}</span>
+                              </Show>
+                              <span class={deal().title ? "shrink-0 text-text-secondary" : ""}>
+                                {dealText(deal(), i18n)}
+                              </span>
+                            </button>
+                            <Show when={deal().projectId}>
+                              {(projectId) => (
+                                <button
+                                  type="button"
+                                  data-testid="company-detail.open-board"
+                                  class="mt-1 text-[12.5px] text-accent hover:underline"
+                                  onClick={() =>
+                                    openTab({
+                                      type: "projects:project",
+                                      entityId: projectId(),
+                                      label: i18n.t("contacts.companies.deals"),
+                                    })
+                                  }
+                                >
+                                  {i18n.t("contacts.companies.openBoard")}
+                                </button>
+                              )}
+                            </Show>
+                          </>
                         )}
                       </Show>
                     </section>

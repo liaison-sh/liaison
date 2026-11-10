@@ -365,6 +365,26 @@ describe("CompanyDetail states", () => {
     expect(api.get.mock.calls.filter(([p]) => p.startsWith(ACTIVITY)).length).toBe(1)
   })
 
+  it("the Deals section names the newest open deal and opens its board", async () => {
+    mocks.routes[`/contacts/companies/${CO}`] = company({
+      openDeal: {
+        taskId: "deal-1",
+        title: "Rooms refit",
+        projectId: "pipe-1",
+        stage: "Proposal",
+        amountMinor: 1740000,
+        currency: "EUR",
+      },
+    })
+    render(() => <CompanyDetail entityId={CO} />)
+    const deal = await screen.findByTestId("company-deal-deal-1")
+    expect(deal.textContent).toContain("Rooms refit")
+    fireEvent.click(screen.getByTestId("company-detail.open-board"))
+    expect(mocks.openTab).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "projects:project", entityId: "pipe-1" }),
+    )
+  })
+
   it("two views of one timeline opened together share one read", async () => {
     // Measured in the browser: every company open read its timeline twice at
     // once, doubling the load on the slow sources until one timed out.

@@ -610,7 +610,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // Rolling a payments app's webhook signing secret: the old secret keeps verifying for 24 hours, then stops.
             "src/tests/integration/stripe-webhook-signing-secret-roll.integration.test.ts",
             // Card payments on Stripe in mode A: typed events into invoicing's subscribers.
-            "src/tests/integration/invoicing-stripe-money.test.ts",
+            "src/tests/integration/stripe-invoicing-money.test.ts",
             // A signed Stripe refund through the webhook route to one credit note, and the safety job.
             "src/tests/integration/stripe-refund-to-credit-note.test.ts",
             // Minor-unit money through the real sandbox: refused before parking, card equals issue.
@@ -639,7 +639,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // Rolling a payments app's webhook signing secret: the old one verifies for 24 hours.
             "src/tests/integration/stripe-webhook-signing-secret-roll.integration.test.ts",
             // Card payments on Stripe in mode A: typed events into invoicing's subscribers.
-            "src/tests/integration/invoicing-stripe-money.test.ts",
+            "src/tests/integration/stripe-invoicing-money.test.ts",
             // A signed Stripe refund through the webhook route to one credit note, and the safety job.
             "src/tests/integration/stripe-refund-to-credit-note.test.ts",
             // Accounts keep the OAuth client that minted them (refresh, webhooks, reconnect).

@@ -137,7 +137,8 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   stream_not_choosable: 400,
   card_stream_not_connected: 409,
   issuer_unknown: 503,
-  // Card payments on Stripe: what waits in the queue, how to name it, the rate a bare charge needs.
+  // Card payments from the payments app: what waits in the queue, how to name it, the rate a
+  // bare charge needs.
   payment_ref_missing: 400,
   nothing_waiting: 404,
   vat_rate_required: 400,

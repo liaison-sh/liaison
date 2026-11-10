@@ -19,6 +19,7 @@
 //   - a `priceException` lands in the line's (or order's) custom attributes, so the approval card
 //     and the resulting order both show why the price differs.
 
+import { readB2bMarketCatalogs } from "../lib/b2b-market-catalogs"
 import { isRec, makeMutationError, type ShopClient } from "./shared"
 
 export const PRICE_EXCEPTION_REASONS = [
@@ -469,19 +470,25 @@ export function priceNotCatalogError(offences: string[]): Error {
 // from the price list's parent adjustment (or the retail price): not a negotiated B2B price. Such a
 // line needs a priceException like any other non-catalog price. A catalog that cannot be read
 // fails closed.
+//
+// The catalogs that apply are the location's direct catalogs (Shopify Plus) PLUS those of every
+// ACTIVE B2B market whose company-locations condition includes the location (every plan with
+// B2B; lib/b2b-market-catalogs.ts). A region or retail market's catalog never counts.
 
 export interface LocationCatalog {
   id: string
   title: string | null
   priceListId: string | null
   priceListName: string | null
+  /** `direct` (assigned to the location) or `market:<market name>`. */
+  source: string
 }
 
 const LOCATION_CATALOGS_QUERY = `
   query B2bLocationCatalogs($id: ID!) {
     companyLocation(id: $id) {
       id
-      catalogs(first: 25) { nodes { id title status priceList { id name currency } } }
+      catalogs(first: 25) { nodes { id title status priceList { id name currency } } pageInfo { hasNextPage } }
     }
   }
 `
@@ -490,12 +497,15 @@ function catalogUnreadable(locationLabel: string, err: unknown): Error {
   return makeMutationError(
     "B2B_CATALOG_UNREADABLE",
     `Could not read the catalogs of the company location ${locationLabel}, so this draft's B2B prices cannot be checked ` +
-      `(${err instanceof Error ? err.message : String(err)}). Retry, or check that the Shopify app can read products and publications.`,
+      `(${err instanceof Error ? err.message : String(err)}). Retry, or check that the Shopify app can read markets, companies and products.`,
     502,
   )
 }
 
-/** The ACTIVE catalogs that apply to a company location. Throws B2B_CATALOG_UNREADABLE on a failed read. */
+/**
+ * The ACTIVE catalogs that apply to a company location: its direct catalogs plus those of the ACTIVE
+ * B2B markets that include it. Throws B2B_CATALOG_UNREADABLE on a failed or truncated read.
+ */
 export async function readLocationCatalogs(
   client: ShopClient,
   locationId: string,
@@ -510,20 +520,38 @@ export async function readLocationCatalogs(
           status?: string | null
           priceList?: { id?: string | null; name?: string | null } | null
         } | null> | null
+        pageInfo?: { hasNextPage?: boolean | null } | null
       } | null
     } | null
   }
+  let market: Awaited<ReturnType<typeof readB2bMarketCatalogs>>
   try {
     data = await client.query(LOCATION_CATALOGS_QUERY, { id: locationId })
+    market = await readB2bMarketCatalogs(client, [locationId])
   } catch (err) {
     throw catalogUnreadable(locationLabel, err)
   }
   if (!data.companyLocation?.catalogs) throw catalogUnreadable(locationLabel, new Error("no catalogs returned"))
-  return (data.companyLocation.catalogs.nodes ?? []).flatMap((n) => {
+  if (data.companyLocation.catalogs.pageInfo?.hasNextPage)
+    throw catalogUnreadable(locationLabel, new Error("more than 25 catalogs assigned to the location"))
+  const out: LocationCatalog[] = (data.companyLocation.catalogs.nodes ?? []).flatMap((n) => {
     const id = str(n?.id)
     if (!id || (n?.status && n.status !== "ACTIVE")) return []
-    return [{ id, title: str(n?.title), priceListId: str(n?.priceList?.id), priceListName: str(n?.priceList?.name) }]
+    return [
+      { id, title: str(n?.title), priceListId: str(n?.priceList?.id), priceListName: str(n?.priceList?.name), source: "direct" },
+    ]
   })
+  for (const c of market.get(locationId) ?? []) {
+    if ((c.status && c.status !== "ACTIVE") || out.some((o) => o.id === c.id)) continue
+    out.push({
+      id: c.id,
+      title: c.title,
+      priceListId: c.priceList?.id ?? null,
+      priceListName: c.priceList?.name ?? null,
+      source: `market:${c.marketName ?? c.marketId}`,
+    })
+  }
+  return out
 }
 
 /** The numeric tail of a gid (`gid://shopify/ProductVariant/123` → `123`), for a search filter. */
@@ -583,7 +611,13 @@ export function noCatalogPriceError(
   locationLabel: string,
 ): Error {
   const checked = catalogs.length
-    ? catalogs.map((c) => `${c.title ?? c.id}${c.priceListName ? ` (price list ${c.priceListName})` : " (no price list)"}`).join(", ")
+    ? catalogs
+        .map(
+          (c) =>
+            `${c.title ?? c.id}${c.priceListName ? ` (price list ${c.priceListName})` : " (no price list)"}` +
+            (c.source.startsWith("market:") ? ` via market ${c.source.slice("market:".length)}` : ""),
+        )
+        .join(", ")
     : `no active catalog applies to ${locationLabel}`
   const lines = missing.map((m) => `line ${m.index + 1}: no B2B price set for ${m.label ?? m.variantId} (${m.variantId}) in ${checked}`)
   return makeMutationError(

@@ -274,7 +274,7 @@
       }
     ]
   },
-  "version": "0.4.17",
+  "version": "0.4.18",
   "network": {
     "imageHosts": ["cdn.shopify.com"],
     "linkHosts": ["admin.shopify.com"]
@@ -1421,7 +1421,7 @@
     },
     "companies_search": {
       "taintSource": true,
-      "description": "Search Shopify B2B companies by name. Each company carries its locations (id, name, shippingAddress, billingAddress, taxExempt, taxRegistrationId, and the catalogs that apply to the location with their price lists, or null when catalogs are not readable) and its contacts (id, customer, and roles: one {locationId, locationName, role} per location the contact may order for). Use the ids for draft_orders_create's purchasingEntity.purchasingCompany {companyId, companyLocationId, companyContactId}: pick a contact that holds a role at that location.",
+      "description": "Search Shopify B2B companies by name. Each company carries its locations (id, name, shippingAddress, billingAddress, taxExempt, taxRegistrationId, and the catalogs that apply to the location with their price lists, each with source 'direct' (assigned to the location) or 'market:<name>' (through a B2B market that includes the location), or null when catalogs are not readable) and its contacts (id, customer, and roles: one {locationId, locationName, role} per location the contact may order for). Use the ids for draft_orders_create's purchasingEntity.purchasingCompany {companyId, companyLocationId, companyContactId}: pick a contact that holds a role at that location.",
       "searchKeywords": [
         "entreprise",
         "société",

@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { sql } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
+import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
 import { COMMON_AGENT_BASE_SCOPES } from "~/modules/agent/directory/common-base-scopes"
 
 const log = rootLogger.child({ service: "agents" })
+const K = sql.raw(schemaRef("kernel"))
 
 /** One statement, bounded: a boot step must never sit on a lock. */
 const STATEMENT_TIMEOUT_MS = 30_000
@@ -55,7 +57,7 @@ export async function reconcileAgentBaseCeilings(): Promise<BaseCeilingReconcile
     await tx.execute(sql.raw(`SET LOCAL statement_timeout = ${STATEMENT_TIMEOUT_MS}`))
     await tx.execute(sql.raw(`SET LOCAL lock_timeout = ${LOCK_TIMEOUT_MS}`))
     return tx.execute<{ id: string }>(sql`
-      UPDATE kernel.agents a
+      UPDATE ${K}.agents a
          SET scope_ceiling = a.scope_ceiling || (
                SELECT jsonb_agg(b.s ORDER BY b.ord)
                  FROM jsonb_array_elements_text(${base}::jsonb) WITH ORDINALITY AS b(s, ord)

@@ -83,4 +83,4 @@ Every-member scopes count for approver eligibility, dropped for a restricted app
 kernel:dashboards:read every member holds, for dashboards_list and dashboards_get -> apps/api/src/modules/permissions/every-member-scopes.ts:38 ; apps/api/src/modules/dashboards/tools.ts:292
 Every-member scopes survive an agent's ceiling -> apps/api/src/modules/agent/scopes/effective-scope.ts:51
 Common base includes dashboards read and write -> apps/api/src/modules/agent/directory/common-base-scopes.ts:61
-Base additions reach @base and role agents at server start -> apps/api/src/modules/agent/directory/reconcile-base-ceilings.ts:65 ; apps/api/src/db/reconcile-catalog-boot.ts:238
+Base additions reach @base and role agents at server start -> apps/api/src/modules/agent/directory/reconcile-base-ceilings.ts:67 ; apps/api/src/db/reconcile-catalog-boot.ts:238

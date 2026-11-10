@@ -1071,6 +1071,8 @@ describe("db import enforcement", () => {
     // run outside any one request's RLS scope.
     "modules/agent/directory/archive.ts",
     "modules/agent/directory/base-agent.ts",
+    // The boot reconcile of stored common-base ceilings: one cross-org UPDATE.
+    "modules/agent/directory/reconcile-base-ceilings.ts",
     "modules/agent/skills/effective-skills.ts",
     "modules/agent/directory/offboard.ts",
     "modules/agent/directory/personal-agent.ts",

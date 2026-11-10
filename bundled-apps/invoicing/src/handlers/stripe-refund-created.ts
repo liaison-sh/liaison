@@ -15,6 +15,8 @@
 //   own arguments, re-issued alone by the retry sweep.
 // Mode B (Stripe issues) and an undecided stream: no credit note.
 import { park, resolveOpenParks } from "../deferred"
+import { reportCollection } from "../einvoicing/collection"
+import type { EinvCtx } from "../einvoicing/transmit"
 import { autoCreditNoteCounterparty } from "../einvoicing/parked-credit-note"
 import type { LineKind } from "../issue"
 import { creditedTotalMinor, creditNoteCreateAndIssue } from "../mutations"
@@ -215,6 +217,7 @@ async function issueFor(ctx: StripeCtx, p: StripeRefundPayload, r: StripeRefund,
   )
   if (res.status === "completed") {
     await resolveOpenParks(ctx, stripeRef(r.id), "issued")
+    await reportRefund(ctx, String(fresh.id), res.document_id, amount, r.id)
     return { refund_id: r.id, outcome: "issued", document_id: res.document_id, number: res.number }
   }
   // Refused (an e-invoicing gate, an incomplete recipient): parked with its arguments, never lost.
@@ -251,6 +254,22 @@ async function issueFor(ctx: StripeCtx, p: StripeRefundPayload, r: StripeRefund,
     })
   }
   return { refund_id: r.id, outcome: "parked" }
+}
+
+/** Where VAT is due on receipt, the money given back is reported against the original invoice
+ *  (a negative collection), dated as its credit note. Idempotent per refund; a failure leaves the
+ *  original's collection marked failed for the document panel. */
+async function reportRefund(ctx: StripeCtx, originalId: string, creditNoteId: string, amount: bigint, refundId: string): Promise<void> {
+  const einv = ctx as unknown as EinvCtx
+  if (!einv.contracts) return
+  const note = (await ctx.db.findOne("documents", creditNoteId)) as Row | null
+  const date = String(note?.issued_at ?? "").slice(0, 10)
+  if (!date) return
+  try {
+    await reportCollection(einv, originalId, { kind: "refund", amount_minor: amount, date, ref: stripeRef(refundId) })
+  } catch {
+    // The credit note stands; the collection shows as not reported and the document panel says so.
+  }
 }
 
 /** The retry sweep's re-drive of a parked Stripe credit note: the same idempotent path. */

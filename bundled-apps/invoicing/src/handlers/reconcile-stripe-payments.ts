@@ -104,7 +104,7 @@ export async function reconcileStripePayments(ctx: StripeCtx): Promise<StripeRec
       if (r.status === "ok") issued += 1
       continue
     }
-    if (inv.status === "paid" && doc.payment_status !== "paid") {
+    if (inv.status === "paid" && (doc.payment_status !== "paid" || doc.collection_state === "failed")) {
       const r = await onStripeInvoicePaid(inv, ctx)
       if (r.status === "ok") paid += 1
     } else if (doc.payment_status === "paid") {

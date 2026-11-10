@@ -616,7 +616,7 @@ describe("enabling and pausing the routine", () => {
       "Who approves: the deal's owner when it sends from their own mailbox, the mail approvers when it sends from a shared one; in Home and in this thread",
     )
     const skips = lines.find((l) => l.startsWith("Skips:"))!
-    expect(skips).toMatch(/Today: 1 deal's person has no recorded basis/)
+    expect(skips).toMatch(/Of the deals quiet today: 1 deal's person has no recorded basis/)
     expect(skips).toMatch(/\d+ deals have no mailbox of their owner to send from/)
     expect(lines.some((l) => l.startsWith("Added at send, and nobody can remove it: "))).toBe(true)
     expect(lines).toHaveLength(8)

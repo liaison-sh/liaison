@@ -255,6 +255,18 @@ const READ_ONLY: Record<string, string[]> = {
     "connection_precheck", // the key check run on a key before it is stored: records nothing
     "settings_load",
     "home_load",
+    // The mirror readers: app-database reads, plus the kernel's own company search for a suggestion.
+    "customers_search",
+    "customers_get",
+    "subscriptions_search",
+    "invoices_search",
+    "payments_search",
+    "disputes_list",
+    "customer_context", // also the tickets app's own get, for the ticket's contact
+    "activity_read",
+    "approval_route_read",
+    "billing_status_for_counterparty",
+    "invoice_send_state",
   ],
   pennylane: [
     "supplier_invoices_list",

@@ -283,6 +283,8 @@ const CONNECTOR_PATHS = [
   "**/i18n/**",
   "**/*i18n*",
   "apps/api/src/modules/agent/tools/tool-bench/corpus.json",
+  // The corpus's typed forms, as the bench last ranked them.
+  "apps/api/src/modules/agent/tools/tool-bench/baseline.json",
   // The connector's registrations (D129: "its registrations may name the
   // vendor"): its setup label and timing, its tables' import coverage and
   // export redaction, its settings alias, its scope alias and capability
@@ -707,6 +709,8 @@ describe("extracted billing surface stays out of the repo", () => {
       `apps/api/src/tests/relations/${FORBIDDEN}-world.ts`,
       "apps/web/src/modules/i18n/fr.ts",
       "apps/api/src/modules/agent/tools/tool-bench/corpus.json",
+      // The corpus's typed forms, as the bench last ranked them.
+      "apps/api/src/modules/agent/tools/tool-bench/baseline.json",
     ]) {
       expect(isConnectorPath(file), file).toBe(true)
       expect(nameViolation(file, `const ${FORBIDDEN}Client = 1`), file).toBe(false)

@@ -53,7 +53,20 @@ let seq = 0
 /** The registration-relevant part of a bundled app's manifest: its tables, scopes and roles. */
 function tablesOf(name: string) {
   const m = JSON.parse(
-    readFileSync(join(import.meta.dir, "..", "..", "..", "..", "..", "bundled-apps", name, "app.manifest.json"), "utf8"),
+    readFileSync(
+      join(
+        import.meta.dir,
+        "..",
+        "..",
+        "..",
+        "..",
+        "..",
+        "bundled-apps",
+        name,
+        "app.manifest.json",
+      ),
+      "utf8",
+    ),
   )
   return {
     name: m.name,
@@ -90,7 +103,10 @@ async function contact(companyId: string | null): Promise<string> {
 }
 
 /** One Stripe customer and one recurring schedule, both naming this company and contact. */
-async function linked(companyId: string, contactId: string): Promise<{ customer: string; schedule: string }> {
+async function linked(
+  companyId: string,
+  contactId: string,
+): Promise<{ customer: string; schedule: string }> {
   const customer = `cus_${crypto.randomUUID().slice(0, 12)}`
   const schedule = crypto.randomUUID()
   await insert("app_stripe.stripe_customers", {
@@ -147,11 +163,18 @@ beforeAll(async () => {
     user_type: "member",
     company_id: null,
   })
-  for (const scope of SCOPES) await insert("kernel.user_scope_grants", { user_id: ANNA, org_id: ORG_ID, scope })
+  for (const scope of SCOPES)
+    await insert("kernel.user_scope_grants", { user_id: ANNA, org_id: ORG_ID, scope })
   await ensureAppsForOrg(ORG_ID)
   await registerApps([tablesOf("stripe") as never, tablesOf("invoicing") as never], ORG_ID)
   for (const name of ["stripe", "invoicing"]) {
-    await sql.unsafe(insertSql("kernel.apps", { org_id: ORG_ID, name, version: "1.0.0" }, { onConflictDoNothing: true }))
+    await sql.unsafe(
+      insertSql(
+        "kernel.apps",
+        { org_id: ORG_ID, name, version: "1.0.0" },
+        { onConflictDoNothing: true },
+      ),
+    )
   }
   await insert("app_invoicing.issuer_profiles", {
     id: ISSUER,
@@ -179,15 +202,25 @@ describe("merges carry Stripe customers and recurring schedules", () => {
     const target = await company("Lune Atelier")
     const person = await contact(source)
     const byCompany = await linked(source, person)
-    await asAnna((tx) => mergeCompanies(tx, { orgId: ORG_ID, userId: ANNA, sourceId: source, targetId: target }))
-    expect(await names(byCompany)).toMatchObject({ customer_company: target, schedule_company: target })
+    await asAnna((tx) =>
+      mergeCompanies(tx, { orgId: ORG_ID, userId: ANNA, sourceId: source, targetId: target }),
+    )
+    expect(await names(byCompany)).toMatchObject({
+      customer_company: target,
+      schedule_company: target,
+    })
 
     // A contact merge.
     const keep = await contact(target)
     const gone = await contact(target)
     const byContact = await linked(target, gone)
     await asAnna((tx) =>
-      mergeContactsWithMailReferences(tx, { orgId: ORG_ID, userId: ANNA, sourceId: gone, targetId: keep }),
+      mergeContactsWithMailReferences(tx, {
+        orgId: ORG_ID,
+        userId: ANNA,
+        sourceId: gone,
+        targetId: keep,
+      }),
     )
     expect(await names(byContact)).toMatchObject({ customer_contact: keep, schedule_contact: keep })
 
@@ -201,10 +234,20 @@ describe("merges carry Stripe customers and recurring schedules", () => {
     await setOrgAppStatus(ORG_ID, "invoicing", "disabled")
     try {
       await asAnna((tx) =>
-        mergeCompanies(tx, { orgId: ORG_ID, userId: ANNA, sourceId: offSource, targetId: offTarget }),
+        mergeCompanies(tx, {
+          orgId: ORG_ID,
+          userId: ANNA,
+          sourceId: offSource,
+          targetId: offTarget,
+        }),
       )
       await asAnna((tx) =>
-        mergeContactsWithMailReferences(tx, { orgId: ORG_ID, userId: ANNA, sourceId: offGone, targetId: offKeep }),
+        mergeContactsWithMailReferences(tx, {
+          orgId: ORG_ID,
+          userId: ANNA,
+          sourceId: offGone,
+          targetId: offKeep,
+        }),
       )
     } finally {
       await setOrgAppStatus(ORG_ID, "stripe", "active")

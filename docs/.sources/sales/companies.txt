@@ -38,3 +38,4 @@ Share a company: Add people…, Viewer or Editor, general access Private / org c
 Only the creator changes sharing; a contacts admin when the creator is inactive or absent; account manager grants nothing -> apps/api/src/db/migrations/0291_companies.sql:84-101 ; apps/api/src/modules/contacts/companies.ts:1932-1942
 Others see the dialog read only -> apps/web/src/modules/sharing/ShareDialog.tsx:593-597
 A company nobody created stays visible to the organisation -> apps/api/src/modules/contacts/companies.ts:1944-1949 ; apps/api/src/db/migrations/0291_companies.sql:51
+merge moves recurring schedules and linked billing customers -> apps/api/src/modules/contacts/companies.ts:273

@@ -544,6 +544,8 @@ const REVIEWED_UNGATED_OUTWARD: Record<string, string> = {
     "externalEffect: parks after outside text, so outside text cannot silence an address; it only stops commercial mail and sends nothing",
   "shopify:webhooks_repair":
     "re-registers the org's own Shopify webhooks; admin identity-map scope",
+  "stripe:customer_link":
+    "links a mirrored customer to a company or contact the person can read, in Liaison only; nothing reaches the provider, and it parks after outside text",
   "tickets:convertToMail": "internal conversion; sending is the gated mail compose",
   "tickets:csat.request": "externalEffect: parks after outside text (owner verdict AGM-2)",
   "tickets:inboxes.disconnect": "admin-scoped, internal",

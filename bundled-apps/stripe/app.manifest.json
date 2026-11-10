@@ -123,6 +123,14 @@
   "webhookHealth": {
     "probe": "probe-webhook-upstream"
   },
+  "outsideTextFields": [
+    "name",
+    "email",
+    "plan",
+    "number",
+    "reason",
+    "failureCode"
+  ],
   "tools": {
     "connection_check": {
       "deferLoading": true,
@@ -282,7 +290,10 @@
           }
         },
         "additionalProperties": false
-      }
+      },
+      "searchKeywords": [
+        "client"
+      ]
     },
     "customer_link": {
       "deferLoading": true,
@@ -413,7 +424,10 @@
           }
         },
         "additionalProperties": false
-      }
+      },
+      "searchKeywords": [
+        "impayé"
+      ]
     },
     "payments_search": {
       "deferLoading": true,

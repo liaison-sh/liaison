@@ -62,3 +62,14 @@ failed events applied again each minute -> bundled-apps/stripe/src/sync/maintena
 key refused: nothing read, waiting requests stay -> bundled-apps/stripe/src/states.ts:15
 missing permission reads partial -> bundled-apps/stripe/src/sync/backfill.ts:21
 disconnect removes the mirror, keeps invoicing documents -> bundled-apps/stripe/src/sync/maintenance.ts:17
+matching order email, contact's company, external id -> bundled-apps/stripe/src/match.ts:3
+domain only suggests, free mail never -> bundled-apps/stripe/src/match.ts:6
+person's link never replaced, never unlinked by a match -> bundled-apps/stripe/src/match.ts:95
+customer_link: readable records only, Liaison only, undo -> bundled-apps/stripe/src/tools/link.ts:3
+merges re-point linked customers -> apps/api/src/modules/contacts/service.ts:1382
+merges re-point linked customers (companies) -> apps/api/src/modules/contacts/companies.ts:273
+readers read the mirror and say when it last synced -> bundled-apps/stripe/src/tools/read-common.ts:3
+masked rows: no address, no tax id, card brand last 4 expiry -> bundled-apps/stripe/src/tools/read-common.ts:97
+readers mark outside text, customer_link external effect -> bundled-apps/stripe/app.manifest.json:1
+context lines on ticket, contact, company -> bundled-apps/stripe/src/tools/context.ts:3
+timeline rows six kinds -> bundled-apps/stripe/src/tools/activity.ts:3

@@ -354,13 +354,13 @@ Stripe: customers, subscriptions, invoices and payments from your Stripe account
 | --- | --- | --- |
 | `stripe:admin:connection` | manifest scopes; role admin; tools connection_check, connection_precheck, settings_load |  |
 | `stripe:approve` | approver scope | Decide (approve, edit, or deny) stripe approvals raised by its gated tools |
-| `stripe:customers:read` | manifest scopes; role member; tool home_load |  |
-| `stripe:customers:write` | manifest scopes; role billing |  |
-| `stripe:internal` | manifest scopes |  |
-| `stripe:invoices:read` | manifest scopes; role member |  |
-| `stripe:payments:read` | manifest scopes; role member |  |
+| `stripe:customers:read` | manifest scopes; role member; tools activity_read, approval_route_read, customers_get, customers_search, home_load |  |
+| `stripe:customers:write` | manifest scopes; role billing; tool customer_link |  |
+| `stripe:internal` | manifest scopes; tools billing_status_for_counterparty, invoice_document_link |  |
+| `stripe:invoices:read` | manifest scopes; role member; tools invoice_send_state, invoices_search |  |
+| `stripe:payments:read` | manifest scopes; role member; tools disputes_list, payments_search |  |
 | `stripe:refunds:write` | manifest scopes; role billing |  |
-| `stripe:subscriptions:read` | manifest scopes; role member |  |
+| `stripe:subscriptions:read` | manifest scopes; role member; tools customer_context, subscriptions_search |  |
 | `stripe:subscriptions:write` | manifest scopes; role billing |  |
 
 ## tickets

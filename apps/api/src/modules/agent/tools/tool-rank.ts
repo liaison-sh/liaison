@@ -402,7 +402,7 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
 
     return { tool: t, score, termsMatched, termCount, per }
   })
-  preferOwnRecords(rows, terms)
+  preferOwnRecords(rows, terms, tools)
   if (terms.length < 2) return rows.map(({ per: _, ...r }) => r)
   // A word many tools answer to tells them apart less than a rare one.
   const n = Math.max(2, tools.length)
@@ -448,6 +448,25 @@ function recordStems(t: ScorableDeferredTool, actions: ReadonlySet<string>): str
 }
 
 /**
+ * Every tool's record stems, worked out once per catalog rather than once per
+ * query: the actions and the stems depend on the catalog alone.
+ */
+const recordStemsCache = new WeakMap<
+  readonly ScorableDeferredTool[],
+  Map<ScorableDeferredTool, string[]>
+>()
+function recordStemsOf(
+  tools: readonly ScorableDeferredTool[],
+): Map<ScorableDeferredTool, string[]> {
+  const cached = recordStemsCache.get(tools)
+  if (cached) return cached
+  const actions = new Set(tools.map((t) => wordStem(scoringWords(t).nameParts.at(-1) ?? "")))
+  const out = new Map(tools.map((t) => [t, recordStems(t, actions)]))
+  recordStemsCache.set(tools, out)
+  return out
+}
+
+/**
  * The kernel's tool comes first on a word it shares with an app's tool of the
  * same record, unless the query names an app (SAME_WORD_APP_SHARE). Each word
  * is weighed apart, so an app tool still leads on a word only it answers to
@@ -456,17 +475,20 @@ function recordStems(t: ScorableDeferredTool, actions: ReadonlySet<string>): str
 function preferOwnRecords(
   rows: Array<{ tool: ScorableDeferredTool; score: number; per: number[] }>,
   terms: readonly string[],
+  tools: readonly ScorableDeferredTool[],
 ): void {
   if (namesAnApp(rows, terms)) return
-  const actions = new Set(rows.map((r) => wordStem(scoringWords(r.tool).nameParts.at(-1) ?? "")))
+  const stems = recordStemsOf(tools)
   const kernel = rows
     .filter((r) => r.tool.appName === "kernel")
-    .map((r) => ({ r, records: recordStems(r.tool, actions) }))
+    .map((r) => ({ r, records: stems.get(r.tool) ?? [] }))
     .filter((k) => k.records.length > 0)
   if (kernel.length === 0) return
   for (const r of rows) {
     if (r.tool.appName === "kernel") continue
-    const records = recordStems(r.tool, actions)
+    // A tool no word matched has nothing to share.
+    if (!r.per.some((v) => v !== 0)) continue
+    const records = stems.get(r.tool) ?? []
     if (records.length === 0) continue
     const same = kernel.filter((k) => k.records.some((stem) => records.includes(stem)))
     for (const i of terms.keys()) {

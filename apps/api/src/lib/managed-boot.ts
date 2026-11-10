@@ -190,9 +190,9 @@ export function managedBootRequired(raw: RawEnv = process.env): boolean {
 /**
  * The legacy control-plane pair (`CONTROL_PLANE_URL` + `CONTROL_PLANE_API_KEY`)
  * set without `LIAISON_EDITION`: it once switched the managed edition on
- * without the checks above. It no longer switches anything, so such a server
- * refuses to boot rather than start in an edition its operator did not choose.
- * The message says what to set; null when there is nothing to refuse.
+ * without the checks above. It no longer switches anything: such a server boots
+ * self-hosted, and index.ts logs this message as a warning saying what to set.
+ * Null when there is nothing to warn about.
  */
 export function legacyControlPlaneBootProblem(raw: RawEnv = process.env): string | null {
   if (raw.LIAISON_EDITION?.trim()) return null

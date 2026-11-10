@@ -445,10 +445,11 @@ describe("the month-end run on the real kernel", () => {
       `CREATE TRIGGER refuse_one_line BEFORE INSERT ON app_invoicing.document_lines FOR EACH ROW EXECUTE FUNCTION app_invoicing.refuse_one_line_fn()`,
     )
     await runJob("recurring-draft")
-    const draftOf = (schedule: string | undefined) =>
-      sql<
+    const draftOf = async (schedule: string | undefined): Promise<Row[]> => [
+      ...(await sql<
         Row[]
-      >`SELECT d.id::text, (SELECT count(*)::int FROM app_invoicing.document_lines l WHERE l.document_id = d.id) AS lines FROM app_invoicing.documents d WHERE d.external_ref = ${`recurring:${schedule}:2026-11`}`
+      >`SELECT d.id::text, (SELECT count(*)::int FROM app_invoicing.document_lines l WHERE l.document_id = d.id) AS lines FROM app_invoicing.documents d WHERE d.external_ref = ${`recurring:${schedule}:2026-11`}`),
+    ]
     expect(await draftOf(fx.schedules[0])).toEqual([{ id: expect.any(String), lines: 1 }])
     expect(await draftOf(fx.schedules[1])).toEqual([])
     const run = await runOf(fx.issuer)

@@ -446,7 +446,8 @@ describe("executeTool", () => {
       scopes: ["test_et:*"],
     }
     const person: UserContext = { ...actor, scopes: ["test_et:items:write", "test_et:approve"] }
-    const call = (o: Partial<Parameters<typeof executeToolCore>[0]>) =>
+    type CoreOptions = Parameters<typeof executeToolCore>[0]
+    const call = (o: Omit<Partial<CoreOptions>, "origin"> & { origin: CoreOptions["origin"] }) =>
       executeToolCore({
         toolName: "test_et:own_internal",
         orgId: TEST_ORG,

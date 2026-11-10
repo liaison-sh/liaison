@@ -29,7 +29,10 @@ export type DeliveryStatus =
 export const DELIVERY_LEASE_MS = 5 * 60_000
 
 export interface LedgerDb {
-  findMany(entity: string, opts?: { where?: Record<string, unknown>; limit?: number }): Promise<unknown[]>
+  findMany(
+    entity: string,
+    opts?: { where?: Record<string, unknown>; limit?: number; orderBy?: Record<string, "asc" | "desc"> },
+  ): Promise<unknown[]>
   insert(entity: string, data: Record<string, unknown>): Promise<{ id: string }>
   update(entity: string, id: string, data: Record<string, unknown>): Promise<void>
   updateMany(entity: string, opts: { where: Record<string, unknown>; data: Record<string, unknown> }): Promise<{ count: number }>

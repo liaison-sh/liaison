@@ -3228,6 +3228,8 @@
     "N03|mémoriser": "15tl",
     "N03|retenir": "15tl",
     "N03|se souvenir": "15tl",
-    "N03|souviens-toi": "15tl"
+    "N03|souviens-toi": "15tl",
+    "S01|check the Stripe key": "15tl",
+    "S01|vérifier la clé Stripe": "15tl"
   }
 }

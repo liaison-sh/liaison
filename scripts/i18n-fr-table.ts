@@ -1816,6 +1816,10 @@ export const FR: Record<string, string> = {
   "missing e-invoicing identity": "identité de facturation électronique manquante",
   "missing e-invoicing identities": "identités de facturation électronique manquantes",
   "missing label": "étiquette manquante",
+  "card number hidden": "numéro de carte masqué",
+  "card numbers hidden": "numéros de carte masqués",
+  "connection problem": "problème de connexion",
+  "connection problems": "problèmes de connexion",
   "missing labels": "étiquettes manquantes",
   // Unsaved work, asked before a reload or closing tabs (lib/unsaved-work.ts).
   "Reload and lose unsaved work?": "Recharger et perdre le travail non enregistré ?",

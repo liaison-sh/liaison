@@ -40,7 +40,7 @@ class MemDb {
     return structuredClone(out.slice(0, opts?.limit ?? out.length))
   }
   async insert(entity: string, data: Record<string, unknown>): Promise<{ id: string }> {
-    if (this.failInsertInto.has(entity)) throw new Error(`insert into ${entity} failed`)
+    if (this.failInsertInto.has(entity)) throw new Error(`${entity}: the insert failed`)
     const key = UNIQUE[entity]
     if (key && this.rows(entity).some((r) => r[key] === data[key])) throw new Error("duplicate key value")
     const id = `row-${++this.seq}`

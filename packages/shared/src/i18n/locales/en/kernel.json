@@ -1598,6 +1598,14 @@
     "missing": {
       "one": "missing label",
       "other": "missing labels"
+    },
+    "masked": {
+      "one": "card number hidden",
+      "other": "card numbers hidden"
+    },
+    "problem": {
+      "one": "connection problem",
+      "other": "connection problems"
     }
   },
   "homeMarkAllRead": "Mark all read",

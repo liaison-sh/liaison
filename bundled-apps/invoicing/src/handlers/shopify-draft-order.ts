@@ -71,6 +71,25 @@ export interface NormalizedDraftOrderLine {
   taxable: boolean
   requiresShipping: boolean
   custom: boolean
+  /** A staff-set price for the line. The producer already put it in `unitPrice`; it is the
+   *  line's price, never a discount off the variant's list price. */
+  priceOverride?: string | null
+}
+
+/**
+ * The B2B company buying (`purchasingEntity` is a PurchasingCompany). Mirrors
+ * `NormalizedPurchasingCompany` in bundled-apps/shopify. A company draft often has no draft-level
+ * address: the buyer is the company, billed at its location.
+ */
+export interface NormalizedPurchasingCompany {
+  companyName: string | null
+  locationName: string | null
+  /** The location's tax registration id: the buyer's VAT number. */
+  taxRegistrationId: string | null
+  taxExempt: boolean
+  contactEmail: string | null
+  billingAddress: NormalizedAddress | null
+  shippingAddress: NormalizedAddress | null
 }
 
 export interface NormalizedDraftOrder {
@@ -90,6 +109,8 @@ export interface NormalizedDraftOrder {
   totalPrice: string | null
   subtotalPrice: string | null
   totalTax: string | null
+  /** Whether THIS draft's prices include tax. A B2B catalog draft is commonly net on a shop whose
+   *  retail prices are gross, so this flag, never the issuer profile, decides the split. */
   taxesIncluded: boolean
   taxExempt: boolean
   email: string | null
@@ -122,6 +143,9 @@ export interface NormalizedDraftOrder {
    *  onto the quote at create AND kept in sync on every later update (Shopify is authoritative
    *  for an order-linked document's PO number, same as shopify_order_number). */
   poNumber?: string | null
+  /** The B2B company buying, null for a consumer draft. Only `draft_orders_get` fills it: absent
+   *  (`undefined`) means the producer did not look, and the sync re-fetches. */
+  purchasingCompany?: NormalizedPurchasingCompany | null
 }
 
 export interface DraftOrderCtx extends MutationsCtx {
@@ -193,10 +217,28 @@ export function majorAmountToMinor(
  * rate it applied on `taxLines`; a draft it charged no tax on (reverse charge, export) is
  * already net whatever the shop setting says.
  */
-export function includedTaxRateBp(draft: NormalizedDraftOrder): number | null {
-  if (!draft.taxesIncluded) return null
+export function includedTaxRateBp(
+  draft: NormalizedDraftOrder,
+  fallbackPricesIncludeTax = false,
+): number | null {
+  if (!draftTaxesIncluded(draft, fallbackPricesIncludeTax)) return null
   const rate = (draft.taxLines ?? []).find((t) => typeof t.rate === "number" && t.rate > 0)?.rate
   return rate != null ? Math.round(rate * 10_000) : null
+}
+
+/** This draft's own tax inclusivity. The issuer profile's `prices_include_tax` is only the
+ *  fallback for a producer that stated none. */
+export function draftTaxesIncluded(
+  draft: Pick<NormalizedDraftOrder, "taxesIncluded">,
+  fallbackPricesIncludeTax = false,
+): boolean {
+  return typeof draft.taxesIncluded === "boolean" ? draft.taxesIncluded : fallbackPricesIncludeTax
+}
+
+/** True when Shopify charges this draft no tax: the draft itself, or its company location, is
+ *  tax exempt. */
+export function draftIsTaxExempt(draft: NormalizedDraftOrder): boolean {
+  return draft.taxExempt === true || draft.purchasingCompany?.taxExempt === true
 }
 
 /** Strip an included tax rate (basis points) off a gross minor amount, rounded half up.
@@ -205,10 +247,17 @@ export function includedTaxRateBp(draft: NormalizedDraftOrder): number | null {
  *  exactly the way this sync does. Re-exported here because this is where it was born. */
 export { netOfIncludedTax } from "../money"
 
-export function draftOrderLinesToItems(draft: NormalizedDraftOrder): DraftLineInput[] {
+export function draftOrderLinesToItems(
+  draft: NormalizedDraftOrder,
+  fallbackPricesIncludeTax = false,
+): DraftLineInput[] {
   const currency = draft.currency ?? "EUR"
   const lines = draft.lineItems ?? []
-  const rateBp = includedTaxRateBp(draft)
+  const rateBp = includedTaxRateBp(draft, fallbackPricesIncludeTax)
+  // An exempt buyer (a tax-exempt company location) is charged no tax by Shopify, so the quote
+  // charges none either, whatever the classifier would default to for its country.
+  const exempt = draftIsTaxExempt(draft)
+  const taxOverride = exempt ? { tax_rate_bp_override: 0 } : {}
   const netUnit = (li: NormalizedDraftOrderLine): bigint =>
     li.taxable === false
       ? majorAmountToMinor(li.unitPrice, currency)
@@ -244,12 +293,16 @@ export function draftOrderLinesToItems(draft: NormalizedDraftOrder): DraftLineIn
     }
   }
 
+  // The unit price is the line's own price as Shopify states it (`originalUnitPrice`: a B2B
+  // catalog price or a price override arrive there), and the discount is ONLY what Shopify
+  // applied. Nothing here compares against the variant's retail price.
   const items: DraftLineInput[] = lines.map((li, idx) => ({
     position: idx + 1,
     description: li.title,
     quantity: String(li.quantity ?? 1),
     unit_price_minor: netUnit(li),
     discount_minor: lineDiscounts[idx]! + orderShare[idx]!,
+    ...taxOverride,
     // A line Shopify says needs no shipping is a digital good: the split-invoice classifier
     // keeps software off the goods (customs) document.
     line_kind: li.requiresShipping === false ? ("software" as const) : ("goods" as const),
@@ -269,6 +322,7 @@ export function draftOrderLinesToItems(draft: NormalizedDraftOrder): DraftLineIn
       quantity: "1",
       unit_price_minor: shippingPrice,
       discount_minor: 0n,
+      ...taxOverride,
       line_kind: "shipping",
       product_source: null,
       external_id: null,
@@ -325,6 +379,70 @@ function fullName(draft: NormalizedDraftOrder): string | null {
     (p): p is string => typeof p === "string" && p.trim() !== "",
   )
   return parts.length > 0 ? parts.join(" ") : null
+}
+
+function sameText(a: string | null | undefined, b: string | null | undefined): boolean {
+  return !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase()
+}
+
+/** A company location address without its company line when that line repeats the legal name
+ *  (the Bill-to prints the legal name on its own line). */
+function withoutRepeatedCompany(
+  a: NormalizedAddress | null | undefined,
+  legalName: string | null,
+): NormalizedAddress | null {
+  if (!a) return null
+  return sameText(a.company, legalName) ? { ...a, company: null } : a
+}
+
+/**
+ * Who the quote is addressed to. A consumer draft names its buyer through its own addresses and
+ * customer. A B2B draft (`purchasingCompany`) names a COMPANY: its name is the legal name, the
+ * location's billing address (else its shipping address) is the Bill-to whenever the draft has
+ * no address of its own, the location's tax registration id is the VAT number, and the company
+ * contact's email reaches the buyer.
+ */
+export function resolveDraftCounterparty(
+  draft: NormalizedDraftOrder,
+  fb: Parameters<typeof syncQuoteFromDraftOrder>[1]["counterpartyFallback"],
+): {
+  billing: NormalizedAddress | null
+  shipping: NormalizedAddress | null
+  email: string | null
+  legalName: string
+  country: string | null
+  vatId: string | null
+} {
+  const pc = draft.purchasingCompany ?? null
+  const companyName = pc?.companyName ?? null
+  const draftBilling = draft.billingAddress ?? draft.shippingAddress ?? null
+  const billing =
+    draftBilling ??
+    withoutRepeatedCompany(pc?.billingAddress ?? pc?.shippingAddress ?? null, companyName)
+  // Captured separately from `billing`, never as a substitute for it.
+  const shipping = draft.shippingAddress ?? pc?.shippingAddress ?? null
+  // `||`, not `??`: Shopify returns an EMPTY string for a buyer email it dropped, and an
+  // empty email must fall through to the customer's, the company contact's, then the caller's.
+  const email = draft.email || draft.customer?.email || pc?.contactEmail || fb?.email || null
+  const name = fullName(draft)
+  const legalName =
+    companyName ??
+    billing?.company ??
+    draft.customer?.company ??
+    name ??
+    billing?.name ??
+    fb?.legal_name ??
+    email ??
+    ""
+  const country =
+    draft.billingAddress?.countryCode ??
+    draft.shippingAddress?.countryCode ??
+    pc?.billingAddress?.countryCode ??
+    pc?.shippingAddress?.countryCode ??
+    fb?.country ??
+    null
+  const vatId = pc?.taxRegistrationId ?? fb?.vat_id ?? null
+  return { billing, shipping, email, legalName, country, vatId }
 }
 
 /** The gid, from the only field both event producers agree on, then the payload fallbacks. */
@@ -517,7 +635,16 @@ export async function syncQuoteFromDraftOrder(
   //    human-created and low-volume, so the extra read is cheap next to issuing a
   //    document in the wrong currency.
   let draft = input.draft ?? null
-  if (!draft || !Array.isArray(draft.lineItems) || draft.currencyIsPresentment !== true) {
+  //
+  //    And re-fetch when the event did not say who the B2B buyer is (`purchasingCompany`
+  //    absent): a company draft names its buyer only on `purchasingEntity`, which the webhook
+  //    payload does not carry, and it often has no draft-level address at all.
+  if (
+    !draft ||
+    !Array.isArray(draft.lineItems) ||
+    draft.currencyIsPresentment !== true ||
+    draft.purchasingCompany === undefined
+  ) {
     const fetched = await fetchDraftOrder(c, draftOrderId)
     if (!fetched.ok) {
       warn(c, `[invoicing] draft order sync: ${fetched.message}`)
@@ -539,18 +666,10 @@ export async function syncQuoteFromDraftOrder(
     return { status: "skipped", reason: "issuer_mapping_missing" }
   }
 
-  // The issuer profile's prices_include_tax is meant to MIRROR the shop's "include tax in
-  // prices" setting. When the two disagree, a price typed on a Liaison quote means something
-  // different from the same price typed in the Shopify admin, so say so loudly. The sync itself
-  // is unaffected: it uses this draft order's OWN taxesIncluded flag, which is authoritative for
-  // this draft whatever the profile says.
-  if (draft.taxesIncluded !== !!issuer.prices_include_tax) {
-    warn(
-      c,
-      `[invoicing] draft order ${draftOrderId}: Shopify prices are tax inclusive but the issuer ` +
-        `profile says net (or the reverse); set prices_include_tax on the issuer profile to match the shop`,
-    )
-  }
+  // Net or gross is decided PER DRAFT: one shop prices retail gross and B2B catalogs net, so no
+  // single issuer setting can be right for both. The draft's own `taxesIncluded` splits net and
+  // tax; the issuer profile's `prices_include_tax` is only the fallback when Shopify stated none.
+  const fallbackPricesIncludeTax = !!issuer.prices_include_tax
 
   const existing = await findQuoteByDraftOrderId(c, draftOrderId)
 
@@ -572,7 +691,7 @@ export async function syncQuoteFromDraftOrder(
     // mark it invoiced, so the settled record is the one the customer was
     // actually charged. Best-effort: a failure here must not block the status
     // transition, which is the part that keeps the quote out of the open pile.
-    await resyncLinesBeforeSettling(c, draft, existing)
+    await resyncLinesBeforeSettling(c, draft, existing, fallbackPricesIncludeTax)
     const orderId = shopifyOrderIdFromGid(draft.orderId)
     const refs = {
       ...((existing.external_refs as Record<string, unknown> | undefined) ?? {}),
@@ -600,20 +719,8 @@ export async function syncQuoteFromDraftOrder(
 
   // 4) Open draft: build the counterparty snapshot the quote prints.
   const fb = input.counterpartyFallback ?? null
-  const billing = draft.billingAddress ?? draft.shippingAddress ?? null
-  // Captured separately from `billing`, never as a substitute for it.
-  const shipping = draft.shippingAddress ?? null
-  // `||`, not `??`: Shopify returns an EMPTY string for a buyer email it dropped, and an
-  // empty email must fall through to the customer's, then the caller's.
-  const email = draft.email || draft.customer?.email || fb?.email || null
-  const name = fullName(draft)
-  const legalName =
-    billing?.company ?? draft.customer?.company ?? name ?? billing?.name ?? fb?.legal_name ?? email ?? ""
-  const country =
-    draft.billingAddress?.countryCode ??
-    draft.shippingAddress?.countryCode ??
-    fb?.country ??
-    null
+  const cp = resolveDraftCounterparty(draft, fb)
+  const { billing, shipping, email, legalName, country, vatId } = cp
   let contactId: string | null = null
   if (email || draft.customer?.id) {
     try {
@@ -631,7 +738,7 @@ export async function syncQuoteFromDraftOrder(
     contact_id: contactId ?? fb?.contact_id ?? null,
     legal_name: legalName,
     country: country ?? "",
-    vat_id: fb?.vat_id ?? null,
+    vat_id: vatId,
     address: formatDraftOrderAddress(billing) ?? fb?.address ?? null,
     // The ship to is kept as its OWN field rather than collapsed into the billing address: a
     // draft order routinely ships somewhere the invoice is not billed to, and the quote has to
@@ -653,7 +760,7 @@ export async function syncQuoteFromDraftOrder(
     return { status: "skipped", reason: "counterparty_incomplete" }
   }
 
-  const items = draftOrderLinesToItems(draft)
+  const items = draftOrderLinesToItems(draft, fallbackPricesIncludeTax)
   const currency = draft.currency ?? "EUR"
   // The customer's PO number, when the draft order carries one -- a salesperson typing it
   // into the Shopify admin is the flow this is FOR, so it must reach the quote whether the
@@ -736,6 +843,8 @@ export async function syncQuoteFromDraftOrder(
     counterparty_shipping_name: counterparty.shipping_name,
     counterparty_email: counterparty.email,
     counterparty_country: counterparty.country,
+    // Only when the draft names one: an update never erases a VAT number recorded another way.
+    ...(counterparty.vat_id ? { counterparty_vat_id: counterparty.vat_id } : {}),
     lines: items,
     // CALLER scoped, not document scoped (see DocumentsUpdateInput's doc comment on
     // lines_are_net): `items` came from draftOrderLinesToItems above, which already netted them
@@ -798,11 +907,12 @@ async function resyncLinesBeforeSettling(
   c: DraftOrderCtx,
   draft: NormalizedDraftOrder,
   existing: Record<string, unknown>,
+  fallbackPricesIncludeTax: boolean,
 ): Promise<void> {
   try {
     const updated = await documentsUpdate(c, {
       id: String(existing.id),
-      lines: draftOrderLinesToItems(draft),
+      lines: draftOrderLinesToItems(draft, fallbackPricesIncludeTax),
       // Same caller-scoped contract as the open-quote path: these items are
       // already netted by draftOrderLinesToItems, so do not net them twice.
       lines_are_net: true,

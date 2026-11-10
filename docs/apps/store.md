@@ -118,6 +118,8 @@ An order is B2B when its buyer is a Shopify B2B company, or when a line item's s
 
 With Invoicing installed and a shop mapped to an issuer profile, a Shopify draft order and an Invoicing quote are the same object, and a paid order issues its invoice automatically. A refund or cancellation in Shopify issues the matching credit note. See [Issue invoices and quotes](invoicing.md).
 
+`draft_orders_get` and `orders_get` return the B2B company behind a draft order or order (`purchasingCompany`: company name, location addresses, tax registration number, tax exemption, contact email), so its quote or invoice is addressed to the company. `orders_get` also returns the order's `taxesIncluded`.
+
 With Invoicing mapped to the shop, `draft_orders_create` and `draft_orders_complete` refuse an order Invoicing could not invoice, before any approval is filed. The error (`NOT_INVOICEABLE`) names each fix:
 
 - The customer has no email. Invoicing sends the invoice to the email on the Shopify customer record, so an email on the draft order alone is not enough. Add it with `customers_update`.

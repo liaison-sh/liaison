@@ -919,7 +919,10 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.13: orders_search hits carry the shipping the customer paid (shippingAmount, shippingCurrency).
     // 0.4.14: orders_search takes total_min/total_max; variants_search takes product_status/min_quantity
     // and returns productStatus; both reject an unknown parameter.
-    expect(m.version).toBe("0.4.14")
+    // 0.4.15: draft_orders_get and orders_get return the B2B buyer (purchasingCompany: company name,
+    // location addresses, tax registration id, tax exemption, contact email), orders_get the order's
+    // taxesIncluded, and draft lines their priceOverride.
+    expect(m.version).toBe("0.4.15")
   })
 
   it("orders_search and variants_search declare their filters and close their params", () => {

@@ -15,6 +15,7 @@ import { creditNoteCreateAndIssue, documentsSendToCustomer, type MutationsCtx } 
 import { deferredRetryJobHandler } from "./deferred-dispatch"
 import {
   adaptShopifyOrderCreatedEvent,
+  mergeCustomer,
   onShopifyOrderCreated,
   onShopifyOrderPaid,
   type IssuerProfileRow,
@@ -3111,5 +3112,107 @@ describe("order-paid e-invoicing gate", () => {
     expect((doc.regime_reasons as Array<Record<string, unknown>>).some((x) => x.code === "gate_warning")).toBe(true)
     expect(db.__all("deferred_events")).toHaveLength(0)
     expect(identityEmits(emits)).toHaveLength(0)
+  })
+})
+
+// ── Orders placed for a B2B company ────────────────────────────────────────
+//
+// The invoice names the company (the order's purchasingEntity), billed at its location, with the
+// location's tax registration id as the VAT number. Net or gross is the ORDER's own flag.
+
+describe("an order placed for a B2B company", () => {
+  const location = {
+    companyName: "Buyer Industries SAS",
+    taxRegistrationId: "FR99887766554",
+    taxExempt: false,
+    contactEmail: "buyer@buyer-industries.example",
+    billingAddress: {
+      name: "Accounts",
+      company: "Buyer Industries SAS",
+      address1: "5 rue Exemple",
+      zip: "69002",
+      city: "Lyon",
+      countryCode: "FR",
+    },
+    shippingAddress: {
+      name: "Warehouse",
+      company: "Buyer Industries SAS",
+      address1: "9 quai Exemple",
+      zip: "69007",
+      city: "Lyon",
+      countryCode: "FR",
+    },
+  }
+
+  test("no order address: the counterparty comes from the company and its location", () => {
+    const merged = mergeCustomer(
+      { id: "c1", email: null, contact_id: null, legal_name: "Pat Contact" } as OrderPaidPayload["customer"],
+      { name: "#1001", purchasingCompany: location },
+    )
+    expect(merged?.legal_name).toBe("Buyer Industries SAS")
+    expect(merged?.vat_id).toBe("FR99887766554")
+    expect(merged?.country).toBe("FR")
+    expect(merged?.email).toBe("buyer@buyer-industries.example")
+    expect(merged?.address).toBe("5 rue Exemple\n69002 Lyon")
+    expect(merged?.billing).toMatchObject({ company: "Buyer Industries SAS", line1: "5 rue Exemple", country_code: "FR" })
+    expect(merged?.shipping_address).toContain("9 quai Exemple")
+  })
+
+  test("a consumer order is merged exactly as before", () => {
+    const merged = mergeCustomer(
+      { id: "c1", email: "a@b.example", contact_id: null, legal_name: "Pat Buyer", country: "FR" } as OrderPaidPayload["customer"],
+      { name: "#1002", purchasingCompany: null },
+    )
+    expect(merged?.legal_name).toBe("Pat Buyer")
+    expect(merged?.vat_id).toBeNull()
+  })
+
+  test("a net catalog order: 629.00 net per unit with no discount; a retail inclusive order is divided out", () => {
+    const net = adaptShopifyOrderCreatedEvent({
+      orderId: "9001",
+      shopDomain: "acme.myshopify.com",
+      taxesIncluded: false,
+      totalPrice: { amount: "754.80", currencyCode: "EUR" },
+      lineItems: [
+        {
+          id: "li-1",
+          title: "Catalog item",
+          quantity: 1,
+          priceSet: { amount: "629.00", currencyCode: "EUR" },
+          taxLines: [{ title: "VAT", rate: 0.2, amount: "125.80" }],
+          variant: { id: "11" },
+        },
+      ],
+    })
+    expect(net.line_items[0]).toMatchObject({ unit_price_minor: "62900", discount_minor: "0", tax_rate_bp: 2000, shopify_tax_minor: "12580" })
+
+    const exempt = adaptShopifyOrderCreatedEvent({
+      orderId: "9002",
+      shopDomain: "acme.myshopify.com",
+      taxesIncluded: false,
+      totalPrice: { amount: "629.00", currencyCode: "EUR" },
+      lineItems: [
+        { id: "li-1", title: "Catalog item", quantity: 1, priceSet: { amount: "629.00", currencyCode: "EUR" }, taxLines: [], variant: { id: "11" } },
+      ],
+    })
+    expect(exempt.line_items[0]).toMatchObject({ unit_price_minor: "62900", discount_minor: "0", tax_rate_bp: 0 })
+
+    const retail = adaptShopifyOrderCreatedEvent({
+      orderId: "9003",
+      shopDomain: "acme.myshopify.com",
+      taxesIncluded: true,
+      totalPrice: { amount: "120.00", currencyCode: "EUR" },
+      lineItems: [
+        {
+          id: "li-1",
+          title: "Retail item",
+          quantity: 1,
+          priceSet: { amount: "120.00", currencyCode: "EUR" },
+          taxLines: [{ title: "VAT", rate: 0.2, amount: "20.00" }],
+          variant: { id: "12" },
+        },
+      ],
+    })
+    expect(retail.line_items[0]).toMatchObject({ unit_price_minor: "10000", discount_minor: "0", tax_rate_bp: 2000 })
   })
 })

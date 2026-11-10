@@ -187,3 +187,5 @@ intra-EU buyer charged no VAT without a VAT number refused; VAT number custom at
 reverse charge or export charged VAT refused at complete (taxExempt) -> bundled-apps/invoicing/src/order-invoiceability.ts:179
 unchanged without Invoicing mapped to the shop -> bundled-apps/invoicing/src/order-invoiceability.ts:199
 orders_search hit carries shippingAmount / shippingCurrency (shipping line after discounts) -> bundled-apps/shopify/src/reads.ts:296
+draft_orders_get / orders_get return purchasingCompany (company, location addresses, tax registration id, tax exemption, contact email) -> bundled-apps/shopify/src/lib/draft-order.ts:514; bundled-apps/shopify/src/reads.ts:805
+orders_get returns taxesIncluded -> bundled-apps/shopify/src/reads.ts:804

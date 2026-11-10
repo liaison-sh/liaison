@@ -204,3 +204,7 @@ positive line allowed against a larger negative one -> bundled-apps/invoicing/sr
 minor-unit amount is a whole number, refusal says what to send -> packages/app-sdk/src/minor-amount.ts:15
 card that meets an unreadable amount says refused, prints no total -> bundled-apps/invoicing/src/approval-cards.ts:159
 imported credit note keeps its source's sign -> bundled-apps/invoicing/src/import-kind.ts:238
+B2B company draft/order names the company, location billing (else shipping) address, tax registration id as VAT -> bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:405; bundled-apps/invoicing/src/handlers/shopify-order-paid.ts:1930
+each draft splits net/tax by its own taxesIncluded, issuer prices_include_tax only as fallback -> bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:231
+tax-exempt company location charged no VAT -> bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:240; bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:260
+catalog price or price override is the unit price, no discount -> bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:298; bundled-apps/shopify/src/lib/draft-order.ts:607

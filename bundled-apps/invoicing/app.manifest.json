@@ -7333,7 +7333,8 @@
         "urlPattern": "/invoicing/schedule/:scheduleId",
         "referenceable": false
       },
-      "run": {
+      "recurring_run": {
+        "entity": "recurring_run",
         "component": "InvoicingRunDetail",
         "sidebar": "InvoicingSidebar",
         "icon": "InvoicingAppIcon",

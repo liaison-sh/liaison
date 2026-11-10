@@ -157,6 +157,6 @@ describe("InvoicingSidebar (Phase 17 F1)", () => {
     const tabs = (manifest as any).views.tabTypes
     expect(tabs.recurring).toMatchObject({ component: "InvoicingRecurringList", urlPattern: "/invoicing/recurring", singleton: true })
     expect(tabs.schedule).toMatchObject({ component: "InvoicingScheduleEditor", urlPattern: "/invoicing/schedule/:scheduleId" })
-    expect(tabs.run).toMatchObject({ component: "InvoicingRunDetail", urlPattern: "/invoicing/run/:runId" })
+    expect(tabs.recurring_run).toMatchObject({ entity: "recurring_run", component: "InvoicingRunDetail", urlPattern: "/invoicing/run/:runId" })
   })
 })

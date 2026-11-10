@@ -27,7 +27,7 @@ import {
 import { buildProvisionContext, type ProvisionContext } from "~/cli/provisioners/types"
 import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
-import { connectionConfigRegistry } from "~/modules/apps/app-registries"
+import { connectionConfigRegistry, toolRegistry } from "~/modules/apps/app-registries"
 import { getCredentialsForConnection } from "~/modules/apps/connections/service"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { ensureUser } from "~/modules/provisioning/ensure-user"
@@ -273,6 +273,58 @@ describe("generic connector (Task 11)", () => {
       }),
     )
     expect(creds.token).toBe("glpat-NEW")
+  })
+
+  test("a key the connection's own check refuses is not stored, and the stored key stays", async () => {
+    const { ctx, orgId } = await freshOrgWithAdmin()
+    const group = `grp-${crypto.randomUUID().slice(0, 8)}`
+    const spec = (token: string) => ({
+      name: "gitlab",
+      identifier: group,
+      ownerType: "org" as const,
+      credentials: { token, group },
+    })
+    await provisionConnection(ctx, "gitlab", spec("glpat-GOOD"))
+    // The connection checks a key before keeping it, as the credentials route does.
+    const config = connectionConfigRegistry.get([orgId, "gitlab", "gitlab"])
+    const checked: string[] = []
+    connectionConfigRegistry.set([orgId, "gitlab", "gitlab"], {
+      ...config,
+      checkBeforeStore: "key_check",
+    } as never)
+    toolRegistry.set([orgId, "gitlab", "key_check"], {
+      appName: "gitlab",
+      name: "key_check",
+      description: "Check a key",
+      requiredScopes: ["gitlab:read"],
+      readOnly: true,
+      handler: async () => {
+        checked.push("ran")
+        throw Object.assign(new Error("GitLab refused the token"), {
+          code: "key_rejected",
+          status: 401,
+        })
+      },
+    } as never)
+    try {
+      const err = await provisionConnection(ctx, "gitlab", spec("glpat-BAD")).catch(
+        (e: unknown) => e,
+      )
+      expect(err).toBeInstanceOf(ConfigError)
+      expect(String(err)).toContain("key_rejected")
+      expect(String(err)).toContain("stored key was kept")
+      expect(checked).toEqual(["ran"])
+      expect(await countActive(orgId, "gitlab", "gitlab", group)).toBe(1)
+      const creds = await withPrivilegedDb(orgId, "t", (tx) =>
+        getCredentialsForConnection(tx, orgId, ctx.actor.userId, "gitlab", "gitlab", group, {
+          actorType: "system",
+        }),
+      )
+      expect(creds.token).toBe("glpat-GOOD")
+    } finally {
+      connectionConfigRegistry.set([orgId, "gitlab", "gitlab"], config as never)
+      toolRegistry.delete([orgId, "gitlab", "key_check"])
+    }
   })
 
   // No explicit identifier and no manifest identifierVar: the account is keyed

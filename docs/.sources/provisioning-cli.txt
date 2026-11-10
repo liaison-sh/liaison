@@ -1,11 +1,11 @@
 Connection drift is reported per field; the app entry lists it under connectionChanges -> apps/api/src/cli/provisioners/apps.ts:366
-A field not marked password shows stored and new values; a secret shows its name only -> apps/api/src/cli/provisioners/connector.ts:118
-Log format: baseUrl "old" -> "new", apiKey (secret) -> apps/api/src/cli/provisioners/connector.ts:138
---dry-run prints the comparison as a plan line for an existing org, without writing -> apps/api/src/cli/provisioners/connector.ts:281
+A field not marked password shows stored and new values; a secret shows its name only -> apps/api/src/cli/provisioners/connector.ts:120
+Log format: baseUrl "old" -> "new", apiKey (secret) -> apps/api/src/cli/provisioners/connector.ts:140
+--dry-run prints the comparison as a plan line for an existing org, without writing -> apps/api/src/cli/provisioners/connector.ts:283
 The apps plan calls it for each connection -> apps/api/src/cli/provisioners/apps.ts:110
-After apply, the app's config verify probe runs against the stored connection -> apps/api/src/cli/provisioners/connector.ts:325
+After apply, the app's config verify probe runs against the stored connection -> apps/api/src/cli/provisioners/connector.ts:327
 config apply uses the config verify probe registry -> apps/api/src/cli/config/apply.ts:73
-An app without a probe is SKIPPED -> apps/api/src/cli/provisioners/connector.ts:335
+An app without a probe is SKIPPED -> apps/api/src/cli/provisioners/connector.ts:337
 A failed health check is a pending item of kind credentials, not an error -> apps/api/src/cli/provisioners/apps.ts:352
 A created role agent gets the org's least-used avatar color, an existing one keeps its own -> apps/api/src/cli/provisioners/agents.ts:260
 Catalog app: install when absent, upgrade only to a newer catalog version, nothing when the active one is newer (logged) -> apps/api/src/modules/apps/catalog.ts:271-278 ; apps/api/src/cli/provisioners/apps.ts:291-305
@@ -81,14 +81,14 @@ seed lively: --replace refused in demo mode and for a non-demo org -> apps/api/s
 Without the admin section, the apply acts as the org's earliest active admin -> apps/api/src/cli/provisioners/admin.ts:42
 Without an admin to act as, a step that needs one fails as a usage error naming the admin block -> apps/api/src/cli/provisioners/admin.ts:64
 A catalog install needs an acting admin -> apps/api/src/cli/provisioners/apps.ts:330
-A connection with no identifier and no manifest identifierVar uses an email or identifier credential, else the owner -> apps/api/src/cli/provisioners/connector.ts:191
-A multi-instance connection always needs an identifier -> apps/api/src/cli/provisioners/connector.ts:186
+A connection with no identifier and no manifest identifierVar uses an email or identifier credential, else the owner -> apps/api/src/cli/provisioners/connector.ts:193
+A multi-instance connection always needs an identifier -> apps/api/src/cli/provisioners/connector.ts:188
 seed lively: --replace refused in demo mode and for a non-demo org -> apps/api/src/seed/tiers/lively/seed-lively.ts:120-155
 seed --tier load: --orgs, --prefix default load-, demo shape, synthetic marker + expiresAt (--ttl-hours default 6) reaped by the demo reaper, load-harness flag when LOAD_HARNESS_KEY -> apps/api/src/seed/tiers/load/seed-load.ts:1-20 ; apps/api/src/seed/tiers/load/seed-load.ts (markLoadOrg, DEFAULT_LOAD_TTL_HOURS, runSeedLoadCli) ; apps/api/src/modules/demo/demo-expiry.ts (listExpiredDemoOrgs)
 seed --tier load --volume: default 1100/5000/3000/1000, per-kind flags, admin read-back under RLS, per-org reindex, --no-reindex, idempotent, result line -> apps/api/src/seed/bulk/volume.ts:1-45 ; apps/api/src/seed/bulk/volume.ts (seedVolume, volumeShortfalls)
 slack import writes the selected channels' history into existing channels, audited -> apps/api/src/cli/slack/import.ts:950 ; apps/api/src/modules/imports/kernel-kinds/chat.ts:296 ; apps/api/src/modules/imports/kernel-kinds/chat.ts:349
 No admin section: the run acts as the org's earliest active admin -> apps/api/src/cli/provisioners/admin.ts:62-92
-No active admin: a connection write (apiConnectors credentials, apps connection, tickets imap, shared mail imap) is refused, add an admin section; unchanged needs none -> apps/api/src/cli/provisioners/types.ts:68-79 ; apps/api/src/cli/provisioners/api-connectors.ts:216 ; apps/api/src/cli/provisioners/connector.ts:443-463 ; apps/api/src/cli/provisioners/ticket-inboxes.ts:311 ; apps/api/src/cli/provisioners/mail-mailboxes.ts:181
+No active admin: a connection write (apiConnectors credentials, apps connection, tickets imap, shared mail imap) is refused, add an admin section; unchanged needs none -> apps/api/src/cli/provisioners/types.ts:68-79 ; apps/api/src/cli/provisioners/api-connectors.ts:216 ; apps/api/src/cli/provisioners/connector.ts:445-465 ; apps/api/src/cli/provisioners/ticket-inboxes.ts:311 ; apps/api/src/cli/provisioners/mail-mailboxes.ts:181
 connect --for stops with exit 1 and the new-link command once the link expires unused; a redeemed link keeps the wait -> apps/api/src/cli/connect/index.ts:471 ; apps/api/src/modules/apps/connections/connect-links.ts:127
 seed lively --admin: an existing org, not made a demo org, settings kept, --replace refused -> apps/api/src/seed/tiers/lively/seed-lively.ts:200-216 ; apps/api/src/seed/tiers/demo/seed-org.ts:589 ; apps/api/src/seed/tiers/demo/seed-org.ts:727-790 ; apps/api/src/seed/tiers/lively/seed-lively.ts:736-761
 seed lively --people: seats, name/email/jobTitle/bio, member keeps password and roles and gets the seat role -> apps/api/src/seed/tiers/lively/seed-lively.ts:58-75 ; apps/api/src/seed/tiers/lively/seed-lively.ts:159-199 ; apps/api/src/seed/tiers/demo/seed-org.ts:262-272 ; apps/api/src/seed/tiers/lively/seed-lively.ts:704-718
@@ -105,3 +105,4 @@ connect --token-env: no client recorded, nothing refreshes the token -> apps/api
 connect --org takes a slug or an id -> apps/api/src/cli/lib/resolve-org-id.ts:20-26
 app run-job: enqueueAppJob with one attempt, params may not set orgId or _ keys, --wait prints {jobId, ok, ms, error}, timeout default 600 -> apps/api/src/cli/app/run-job.ts:59 ; apps/api/src/cli/app/run-job.ts:78-160
 app run-job example: shopify backfill-customers is a declared job -> bundled-apps/shopify/app.manifest.json:1
+config apply runs the connection's check before storing a key; a refused key keeps the stored one -> apps/api/src/cli/provisioners/connector.ts:510

@@ -101,6 +101,19 @@ export function blockCacheKey(
   return `dash:block:${viewer.orgId}:${block.dashboardId}:${block.version}:${block.blockId}:${viewer.userId}:${permissionHash(viewer)}`
 }
 
+/**
+ * Where a block's FAILED outcome is kept, beside its data key: a source that fails (a down
+ * service, a map that no longer fits) is not re-run on every view, only after this short wait
+ * or on a refresh. A separate key, so a release that reads only data entries never mistakes a
+ * failure for data.
+ */
+export function failedBlockCacheKey(dataKey: string): string {
+  return `${dataKey}:failed`
+}
+
+/** How long a failed outcome is kept: a refresh (once per 30 s) reads past it anyway. */
+export const FAILED_BLOCK_TTL_SEC = 30
+
 function refreshKey(viewer: CacheViewer, dashboardId: string, blockId: string): string {
   return `dash:refresh:${viewer.orgId}:${dashboardId}:${blockId}:${viewer.userId}`
 }

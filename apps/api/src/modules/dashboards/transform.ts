@@ -23,6 +23,7 @@ import {
   type BlockType,
   type DateBucket,
   MAX_BLOCK_OUTPUT,
+  MAX_BLOCK_SERIES,
   MAX_SOURCE_ROWS,
 } from "~/modules/dashboards/spec"
 
@@ -340,18 +341,6 @@ export function transformBlock(
   })
 
   const seriesField = type === "pie" ? undefined : map.series
-  const seriesNames: string[] = []
-  if (seriesField) {
-    const seen = new Set<string>()
-    for (const r of rows) {
-      const name = keyOf(readPath(r, seriesField))
-      if (!seen.has(name)) {
-        seen.add(name)
-        seriesNames.push(name)
-      }
-    }
-  }
-
   const totals = new Map(groups.map((g) => [g.key, aggregate(agg, g.rows, aggField) ?? 0]))
   const sorted = [...groups].sort((a, b) => {
     const c =
@@ -364,18 +353,48 @@ export function transformBlock(
   const labels = kept.map((g) => g.key)
 
   const series = seriesField
-    ? seriesNames.map((name) => ({
-        name,
-        values: kept.map(
-          (g) =>
-            aggregate(
-              agg,
-              g.rows.filter((r) => keyOf(readPath(r, seriesField)) === name),
-              aggField,
-            ) ?? 0,
-        ),
-      }))
+    ? splitSeries(rows, kept, seriesField, agg, aggField, meta)
     : [{ name: aggField ?? DEFAULT_SERIES, values: kept.map((g) => totals.get(g.key) ?? 0) }]
 
   return { kind: type, labels, series, meta }
+}
+
+/**
+ * One series per value of `field` over the kept categories, each aggregated per category. At
+ * most MAX_BLOCK_SERIES: the largest by their absolute total, in first-seen order; the rest are
+ * left out and the block says it is truncated.
+ */
+function splitSeries(
+  rows: Row[],
+  kept: Group[],
+  field: string,
+  agg: Aggregation,
+  aggField: string | undefined,
+  meta: BlockMeta,
+): { name: string; values: number[] }[] {
+  const order = [...new Set(rows.map((r) => keyOf(readPath(r, field))))]
+  const perGroup = kept.map((g) => {
+    const byName = new Map<string, Row[]>()
+    for (const r of g.rows) {
+      const name = keyOf(readPath(r, field))
+      const list = byName.get(name)
+      if (list) list.push(r)
+      else byName.set(name, [r])
+    }
+    return byName
+  })
+  const all = order.map((name) => ({
+    name,
+    values: perGroup.map((byName) => aggregate(agg, byName.get(name) ?? [], aggField) ?? 0),
+  }))
+  if (all.length <= MAX_BLOCK_SERIES) return all
+  meta.truncated = true
+  const weight = (s: { values: number[] }) => s.values.reduce((t, v) => t + Math.abs(v), 0)
+  const keep = new Set(
+    [...all]
+      .sort((a, b) => weight(b) - weight(a))
+      .slice(0, MAX_BLOCK_SERIES)
+      .map((s) => s.name),
+  )
+  return all.filter((s) => keep.has(s.name))
 }

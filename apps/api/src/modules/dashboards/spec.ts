@@ -30,6 +30,8 @@ export const MAX_SOURCE_TTL_SEC = 900
 export const MAX_SOURCE_ROWS = 2_000
 /** The most rows, groups or slices a block shows. */
 export const MAX_BLOCK_OUTPUT = 100
+/** Most series (lines or bar groups) one chart draws: the largest by total are kept. */
+export const MAX_BLOCK_SERIES = 20
 export const MAX_TABLE_COLUMNS = 20
 
 /** A field of a source row: a key, or a dotted path into nested objects (`billing.country`). */

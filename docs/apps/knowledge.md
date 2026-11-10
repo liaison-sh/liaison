@@ -29,7 +29,7 @@ If someone else saves the document while you edit it, Liaison tells you and offe
    - **Anyone in the org can view**
    - **Anyone in the org can edit**
    - **C-Level**: everyone in the organization can view, only C-Level can edit
-3. Under **People with access**, click **Add people…** and choose **Viewer** or **Editor** for each person.
+3. Under **People with access**, click **Add people…** (or type a name) and choose **Viewer** or **Editor** for each person. You are not in the list: you already have access.
 4. Under **Roles with access**, click **Add roles…** to share with a whole role.
 5. Click **Save**.
 

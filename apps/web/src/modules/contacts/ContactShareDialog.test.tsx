@@ -4,6 +4,12 @@ import { describe, expect, it, vi } from "vitest"
 import { ApiContext } from "~/modules/shell/ApiContext"
 import { ContactShareDialog } from "./ContactShareDialog"
 
+// The signed-in person is the contact's owner.
+vi.mock("~/modules/auth/auth-store", async (orig) => ({
+  ...(await orig<typeof import("~/modules/auth/auth-store")>()),
+  userFromToken: () => ({ userId: "u-me" }),
+}))
+
 const INBOX = "11111111-1111-4111-8111-111111111111"
 
 function makeApi(sharing: Record<string, unknown>) {
@@ -11,7 +17,10 @@ function makeApi(sharing: Record<string, unknown>) {
     get: vi.fn(async (path: string) => {
       if (path === "/contacts/c1/sharing") return sharing
       if (path === "/sharing/members") {
-        return [{ userId: "u-bob", name: "Bob Builder", email: "bob@corp.test" }]
+        return [
+          { userId: "u-me", name: "Mia Owner", email: "mia@corp.test" },
+          { userId: "u-bob", name: "Bob Builder", email: "bob@corp.test" },
+        ]
       }
       if (path === "/sharing/roles") return []
       if (path === "/mail/accounts") {
@@ -66,6 +75,33 @@ describe("ContactShareDialog", () => {
     )
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
     expect(onSaved).toHaveBeenCalled()
+  })
+
+  it("opens with General access in reach, not covered by the people list, and never offers the person themselves", async () => {
+    // Mutations caught: focusing Add people (as the dialog does when it opens) opened the
+    // list over General access; and the list offered the owner to themselves.
+    const api = makeApi({
+      orgAccess: "none",
+      ownerUserId: "u-me",
+      canManage: true,
+      users: [],
+      roles: [],
+      dimensions: [],
+    })
+    renderDialog(api)
+    const editor = await screen.findByTestId("contact-share-access-editor")
+    const add = screen.getByTestId("contact-share-add-person")
+    fireEvent.focus(add)
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/sharing/members"))
+    expect(screen.queryByTestId("contact-share-add-option-u-bob")).toBeNull()
+    fireEvent.click(editor)
+    expect(editor).toHaveAttribute("aria-pressed", "true")
+
+    fireEvent.click(add)
+    expect(await screen.findByTestId("contact-share-add-option-u-bob")).toBeTruthy()
+    expect(screen.queryByTestId("contact-share-add-option-u-me")).toBeNull()
+    fireEvent.input(add, { target: { value: "mia" } })
+    expect(screen.queryByTestId("contact-share-add-option-u-me")).toBeNull()
   })
 
   it("names a shared mailbox's members and keeps the grant on save", async () => {

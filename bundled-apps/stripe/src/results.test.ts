@@ -129,7 +129,7 @@ function cases(db: MemDb): Record<string, Case | string> {
     approval_route_read: () => approvalRouteRead({ entityType: "subscription", entityId: "sub_1" }, read),
     billing_status_for_counterparty: () => billingStatusForCounterparty({ companyId: CO }, read),
     invoice_document_link: () => invoiceDocumentLink({ stripeInvoiceId: "in_1", documentId: "22222222-2222-4222-8222-222222222222" }, { db }),
-    refunds_for_charge: () => refundsForCharge({ chargeId: "ch_card" }, money),
+    refunds_for_charge: () => refundsForCharge({ chargeId: "ch_card" }, { ...money, db: money.db as never }),
     reconcile_candidates: () => reconcileCandidates({}, { db: db as never, fetch: mockFetch }),
     invoice_send_state: () => invoiceSendState({ ref: { kind: "stripe:invoice", id: "in_FIXTURE0001" } }, { db: db as never, fetch: mockFetch }),
     refunds_create: () => refundsCreatePreflight({ chargeId: "ch_card", amountMinor: 500 }, money),

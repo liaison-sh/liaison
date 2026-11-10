@@ -841,7 +841,9 @@ const Header: Component<{
         props.phone ? "flex flex-col items-start gap-3" : "flex items-start justify-between gap-6"
       }
     >
-      <div class="flex min-w-0 items-start gap-5">
+      {/* max-w-full: in the phone's column (items-start) this block would
+          otherwise grow to its one-line title and run off the screen. */}
+      <div class="flex min-w-0 max-w-full items-start gap-5">
         <ContactAvatar id={props.company.id} name={props.company.name} size="xl" />
         <div class="min-w-0 pt-1">
           <h1

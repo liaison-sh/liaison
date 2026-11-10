@@ -51,3 +51,10 @@ A failed block's answer is kept 30 s; refresh reads past it -> apps/api/src/modu
 Closing the tab cancels its block reads -> apps/web/src/modules/dashboards/DashboardView.tsx:45
 The agent's open and Refresh all re-read the open dashboard -> apps/web/src/framework/bootstrap.ts:1284 ; apps/web/src/modules/dashboards/DashboardView.tsx:102
 Agent previews read with the person's roles -> apps/api/src/modules/dashboards/tools.ts:68
+Rolling date tokens: anchors and one d/w/M/y offset -> apps/api/src/modules/dashboards/relative-dates.ts:22
+Week starts Monday; month offsets clamp to the month's last day -> apps/api/src/modules/dashboards/relative-dates.ts:83 ; apps/api/src/modules/dashboards/relative-dates.ts:65
+Tokens resolve in the org's timezone, UTC when unset -> apps/api/src/modules/dashboards/execute.ts:261
+Tokens resolve at every run, inside longer strings too -> apps/api/src/modules/dashboards/execute.ts:295 ; apps/api/src/modules/dashboards/relative-dates.ts:120
+Unknown tokens refused at preview and save -> apps/api/src/modules/dashboards/spec.ts:178
+Cache key moves with the resolved dates -> apps/api/src/modules/dashboards/service.ts:380 ; apps/api/src/modules/dashboards/cache.ts:119
+Approval card shows each token and today's date -> apps/api/src/modules/dashboards/tools.ts:137

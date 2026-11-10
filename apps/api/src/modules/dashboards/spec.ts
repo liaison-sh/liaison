@@ -8,6 +8,7 @@
 // dashboard at all is sources.ts's question, asked at save and at every run.
 
 import { z } from "zod"
+import { dateTokenProblems } from "~/modules/dashboards/relative-dates"
 
 export const DASHBOARD_SPEC_VERSION = 1
 export const MAX_DASHBOARD_BLOCKS = 24
@@ -167,6 +168,15 @@ export const dashboardBlockSchema = z
   .superRefine((block, ctx) => {
     for (const message of mapProblems(block.type, block.map)) {
       ctx.addIssue({ code: "custom", path: ["map"], message })
+    }
+    // Date tokens ({{today-30d}}) resolve at every run (relative-dates.ts); an unknown one is
+    // refused here, at save and preview, never sent to a tool as written.
+    const [field, value] =
+      block.source.kind === "tool"
+        ? (["params", block.source.params] as const)
+        : (["query", block.source.query] as const)
+    for (const message of dateTokenProblems(value, "")) {
+      ctx.addIssue({ code: "custom", path: ["source", field], message })
     }
   })
 

@@ -15,12 +15,18 @@
 // A store source reads a declared, agent-readable collection under the
 // viewer's RLS, with the declared read scope.
 //
+// Date tokens in a source's params ({{today-30d}}, relative-dates.ts) are resolved first, in
+// the org's timezone (kernel.organizations.timezone; UTC when unset or not a valid zone), so
+// eligibility, the cache key (service.ts) and the tool call all see the dates of this run.
+//
 // Every run writes one audit row (`dashboard.block_run`) naming the dashboard
 // and the block.
 
 import { APP_DISABLED_CODE } from "@liaison/shared"
+import { eq } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
+import { organizations } from "~/db/schema/kernel"
 import { rootLogger } from "~/lib/logger"
 import { READ_ONLY_RUN_BLOCKED_CODE } from "~/modules/agent/runtime/read-only-run"
 import {
@@ -30,6 +36,11 @@ import {
 } from "~/modules/agent/runtime/run-context"
 import { DASHBOARD_NOT_ALLOWED_CODE, executeToolCore } from "~/modules/apps/execute-tool"
 import { writeAuditLog } from "~/modules/audit/service"
+import {
+  DateTokenError,
+  hasDateTokens,
+  resolveDateTokens,
+} from "~/modules/dashboards/relative-dates"
 import {
   checkStoreSource,
   checkToolSource,
@@ -49,6 +60,7 @@ import {
   unfenceSourceResult,
 } from "~/modules/dashboards/transform"
 import { DataStoreError, queryDocuments } from "~/modules/data-store/service"
+import { isValidTimezone } from "~/modules/notifications/quiet-window"
 
 const log = rootLogger.child({ module: "dashboards-execute" })
 
@@ -230,6 +242,48 @@ async function auditRun(ctx: BlockRunContext, block: DashboardBlock, outcome: Bl
   }
 }
 
+/** How long an org's timezone is kept in this process: a changed zone applies within a minute. */
+const ORG_TIMEZONE_TTL_MS = 60_000
+const dashboardTimezones = new Map<string, { tz: string; until: number }>()
+
+/** The zone a block's date tokens resolve in: the org's, else UTC. */
+export async function dashboardTimezone(orgId: string): Promise<string> {
+  const now = Date.now()
+  const hit = dashboardTimezones.get(orgId)
+  if (hit && hit.until > now) return hit.tz
+  const [row] = await withPrivilegedDb(orgId, "dashboard-org-timezone", (tx) =>
+    tx
+      .select({ timezone: organizations.timezone })
+      .from(organizations)
+      .where(eq(organizations.id, orgId))
+      .limit(1),
+  )
+  const tz = isValidTimezone(row?.timezone) ? row.timezone : "UTC"
+  dashboardTimezones.set(orgId, { tz, until: now + ORG_TIMEZONE_TTL_MS })
+  return tz
+}
+
+/**
+ * The block with its source's date tokens replaced by the dates of `now` in the org's
+ * timezone. A block without tokens is returned as it is (no lookup). Throws DateTokenError
+ * on an unknown token.
+ */
+export async function resolveBlockDates<B extends DashboardBlock>(
+  block: B,
+  orgId: string,
+  now: Date = new Date(),
+): Promise<B> {
+  const source = block.source
+  const value = source.kind === "tool" ? source.params : source.query
+  if (!hasDateTokens(value)) return block
+  const resolved = resolveDateTokens(value, { timeZone: await dashboardTimezone(orgId), now })
+  return {
+    ...block,
+    source:
+      source.kind === "tool" ? { ...source, params: resolved } : { ...source, query: resolved },
+  }
+}
+
 /** Runs one block's source as the viewer and maps it into what the chart draws. */
 export async function computeBlock(
   block: DashboardBlock,
@@ -237,20 +291,22 @@ export async function computeBlock(
 ): Promise<BlockOutcome> {
   let outcome: BlockOutcome
   try {
-    const runId = `dashboard:${ctx.dashboardId ?? "preview"}:${block.id}`
+    // A no-op when the caller resolved it already (service.ts, for the cache key).
+    const run = await resolveBlockDates(block, ctx.viewer.orgId)
+    const runId = `dashboard:${ctx.dashboardId ?? "preview"}:${run.id}`
     const read =
-      block.source.kind === "tool"
-        ? await readToolSource(block.source, ctx, runId)
-        : await readStoreSource(block.source, ctx)
+      run.source.kind === "tool"
+        ? await readToolSource(run.source, ctx, runId)
+        : await readStoreSource(run.source, ctx)
     if ("outcome" in read && read.outcome) {
       outcome = read.outcome
     } else {
       const paged = "paged" in read && read.paged === true
-      const rowsPath = block.source.kind === "tool" && !paged ? block.source.rowsPath : undefined
-      outcome = { ok: true, data: transformBlock(block.type, block.map, read.result, { rowsPath }) }
+      const rowsPath = run.source.kind === "tool" && !paged ? run.source.rowsPath : undefined
+      outcome = { ok: true, data: transformBlock(run.type, run.map, read.result, { rowsPath }) }
     }
   } catch (err) {
-    if (err instanceof TransformError) {
+    if (err instanceof TransformError || err instanceof DateTokenError) {
       outcome = fail("invalid_map", err.message)
     } else {
       log.error({ err, dashboardId: ctx.dashboardId, blockId: block.id }, "dashboard block failed")

@@ -29,7 +29,8 @@ import {
   withViewerSlot,
   writeCachedBlock,
 } from "~/modules/dashboards/cache"
-import { type BlockErrorCode, computeBlock } from "~/modules/dashboards/execute"
+import { type BlockErrorCode, computeBlock, resolveBlockDates } from "~/modules/dashboards/execute"
+import { DateTokenError } from "~/modules/dashboards/relative-dates"
 import { checkStoreSource, checkToolSource } from "~/modules/dashboards/sources"
 import {
   blockTtlSec,
@@ -332,19 +333,29 @@ interface CachedFailure {
 
 /**
  * One block's data for `viewer`: from the cache (per viewer, per permissions,
- * per dashboard version), else run as the viewer. `refresh` bypasses the cache,
+ * per dashboard version, per resolved dates), else run as the viewer. `refresh` bypasses the cache,
  * at most once per block per viewer per 30 s (`rate_limited` otherwise).
  */
 export async function getBlockData(
   viewer: DashboardViewer,
   dashboardId: string,
   blockId: string,
-  opts: { refresh?: boolean; signal?: AbortSignal } = {},
+  opts: { refresh?: boolean; signal?: AbortSignal; now?: Date } = {},
 ): Promise<BlockDataResponse> {
   const dashboard = await loadRow(viewer, dashboardId)
   const spec = dashboard.spec as unknown as DashboardSpec
-  const block = spec.blocks?.find((b) => b.id === blockId)
-  if (!block) throw new DashboardError("NOT_FOUND", `no block '${blockId}' on this dashboard`)
+  const saved = spec.blocks?.find((b) => b.id === blockId)
+  if (!saved) throw new DashboardError("NOT_FOUND", `no block '${blockId}' on this dashboard`)
+
+  // Date tokens become today's dates (org timezone) before anything else: the cache key and
+  // the run below both see this run's dates.
+  let block: typeof saved
+  try {
+    block = await resolveBlockDates(saved, viewer.orgId, opts.now ?? new Date())
+  } catch (err) {
+    if (!(err instanceof DateTokenError)) throw err
+    return { blockId, ok: false, error: "invalid_map", message: err.message }
+  }
 
   // Eligibility first, every time: a tool turned gated or an app turned off after the
   // save refuses even while an older answer is still cached.
@@ -362,7 +373,12 @@ export async function getBlockData(
       message: "this block was refreshed less than 30 seconds ago",
     }
   }
-  const key = blockCacheKey(viewer, { dashboardId, version: dashboard.version, blockId })
+  const key = blockCacheKey(viewer, {
+    dashboardId,
+    version: dashboard.version,
+    blockId,
+    resolvedSource: block.source,
+  })
   const failedKey = failedBlockCacheKey(key)
   if (!opts.refresh) {
     const hit = await readCachedBlock<CachedBlock>(key)

@@ -6,6 +6,7 @@
 // written as rows, as the run's integration test does; everything after that is the app's code.
 import { randomUUID } from "node:crypto"
 import { api, type WorkerEnv } from "@liaison/test-helpers"
+import { seedFactory } from "../helpers/seed"
 
 export interface MonthEndRun {
   issuerId: string
@@ -39,17 +40,6 @@ const MONTHS = [
   "November",
   "December",
 ]
-
-function insert(table: string, row: Record<string, unknown>): { text: string; values: unknown[] } {
-  const keys = Object.keys(row)
-  const values = keys.map((k) => row[k])
-  const params = keys.map((k, i) =>
-    k === "lines" || k === "external_refs" || k === "lifecycle_log"
-      ? `$${i + 1}::text::jsonb`
-      : `$${i + 1}`,
-  )
-  return { text: `INSERT INTO ${table} (${keys.join(", ")}) VALUES (${params.join(", ")})`, values }
-}
 
 export async function draftMonthEndRun(
   env: WorkerEnv,
@@ -93,62 +83,20 @@ export async function draftMonthEndRun(
     const contact = randomUUID()
     const prev = randomUUID()
     const price = 49000
-    const docRow = insert(`${inv}.documents`, {
-      id: prev,
-      org_id: opts.orgId,
-      type: "invoice",
-      status: "issued",
-      issuer_profile_id: issuerId,
-      counterparty_contact_id: contact,
-      counterparty_name: name(i),
-      counterparty_address: `${i} rue des Tests, 75011 Paris`,
-      counterparty_country: "FR",
-      customer_kind: "individual",
-      counterparty_email: `client${i}@e2e.test`,
-      currency: "EUR",
-      payment_status: "paid",
-      external_refs: "{}",
-      lifecycle_log: "[]",
+    await seedFactory(env, opts.orgId, "invoicing.monthEndClient", {
+      issuerId,
+      contactId: contact,
+      previousDocumentId: prev,
+      scheduleKey: prev,
+      name: name(i),
+      address: `${i} rue des Tests, 75011 Paris`,
+      email: `client${i}@e2e.test`,
+      priceMinor: price,
+      taxRateBp: 2000,
+      nextIssueOn: monthEnd,
+      nextDraftOn: today,
+      createdBy: opts.accountManagerId,
     })
-    await env.db.sql.unsafe(docRow.text, docRow.values as never[])
-    const lineRow = insert(`${inv}.document_lines`, {
-      org_id: opts.orgId,
-      document_id: prev,
-      position: 1,
-      description: "Team plan",
-      quantity: 1,
-      unit_price_minor: price,
-      discount_minor: 0,
-      line_kind: "service",
-      tax_rate_bp: 2000,
-      subtotal_minor: price,
-      tax_minor: price / 5,
-      total_minor: price + price / 5,
-    })
-    await env.db.sql.unsafe(lineRow.text, lineRow.values as never[])
-    const scheduleRow = insert(`${inv}.recurring_schedules`, {
-      id: randomUUID(),
-      org_id: opts.orgId,
-      issuer_profile_id: issuerId,
-      contact_id: contact,
-      status: "active",
-      repeats: "month",
-      billing_day: "last",
-      lines: JSON.stringify([
-        {
-          description: "Team plan",
-          qty: 1,
-          unit_price_minor: price,
-          vat_bp: 2000,
-          line_kind: "service",
-        },
-      ]),
-      next_issue_on: monthEnd,
-      next_draft_on: today,
-      last_document_id: prev,
-      created_by: opts.accountManagerId,
-    })
-    await env.db.sql.unsafe(scheduleRow.text, scheduleRow.values as never[])
   }
   const ran = await api(env.serverUrl, "/api/_test/apps/invoicing/jobs/recurring-draft/run", {
     method: "POST",

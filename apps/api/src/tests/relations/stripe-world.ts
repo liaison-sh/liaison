@@ -34,6 +34,7 @@ import {
   mergeContactsWithMailReferences,
   updateContact,
 } from "~/modules/contacts/service"
+import { seedAppRow } from "~/seed/factories/org/platform-rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { type ApprovalOrg, approvalOrg, ctxOf } from "./approval-world"
 import type { CellImpl, CellWorld } from "./cells"
@@ -166,10 +167,11 @@ export function moneyOrg(): Promise<ApprovalOrg> {
     const org = await approvalOrg(orgId)
     await registerApps([descriptor("stripe"), descriptor("invoicing")] as never, orgId)
     for (const name of ["stripe", "invoicing"]) {
-      await sql.unsafe(
-        `INSERT INTO ${schemaRef("kernel")}.apps (org_id, name, version) VALUES ($1, $2, '1.0.0') ON CONFLICT DO NOTHING`,
+      const [known] = await sql.unsafe(
+        `SELECT 1 FROM ${schemaRef("kernel")}.apps WHERE org_id = $1 AND name = $2`,
         [orgId, name],
       )
+      if (!known) await seedAppRow({ orgId, name, version: "1.0.0" })
     }
     return { ...org, admin: await ctxOf(orgId, org.adminId) }
   })()

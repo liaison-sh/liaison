@@ -65,6 +65,8 @@ An agent never has more access than the people in the conversation. On every tur
 - Which records it can read follows the person who asked: the documents shared with them, directly or through one of their roles. This holds when you mention an agent in a thread as well as in a DM, so a document shared with the Finance role is readable through any agent a Finance member asks, and through no agent anyone else asks.
 - In a routine run: the routine runs as its owner with the scopes chosen on the routine. If the owner no longer holds one of them, the routine pauses.
 
+An agent never sees a full card number or a Stripe key in what it reads: messages, tickets, notes, emails and the text of an encrypted mailbox reach it with card numbers shown as `•••• •••• •••• 4242` and keys cut to their prefix. Links an agent opens on the web may not carry a card number either.
+
 When a room removes capabilities, the message says **Some capabilities are unavailable here** and offers **Continue in a DM**. See [Agent permissions](../agents/permissions.md).
 
 ## Where an agent runs

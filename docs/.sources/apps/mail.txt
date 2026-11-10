@@ -206,3 +206,5 @@ New sender linked to the one company holding its domain -> apps/api/src/modules/
 Mail you send links its conversation to the first To address's existing contact; sending creates none -> apps/api/src/modules/mail/page-write.ts:641 ; apps/api/src/modules/mail/sender-contacts.ts:123
 A contact with no recorded consumer status counts as a business only when linked to a company on a business (not free mail) domain and its address is on that domain; otherwise a consumer -> apps/api/src/modules/mail/suppressions.ts:594 ; apps/api/src/apps/api-connector/consumer-domains.ts:14
 Composer lists each contact recipient's basis, consumer or business, opt-out -> apps/web/src/modules/mail/MailCompose.tsx:363 ; apps/web/src/modules/mail/RecipientFactsLine.tsx:26
+A card number in an email is hidden before storage, with a note -> apps/api/src/modules/mail/page-write.ts:571, packages/shared/src/pan-scan.ts:227
+An encrypted mailbox is masked where the agent reads it -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:765

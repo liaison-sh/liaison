@@ -35,6 +35,8 @@ Above the list, choose how channels are ordered: **Recent activity**, **Name A-Z
 2. Use **Attach** for files, **Emoji** for emoji, **Fix spelling & grammar** to clean up your text, or **Dictate** to speak.
 3. Press Enter to send.
 
+A message holding a Stripe key (a restricted key `rk_live_` or `rk_test_`, a secret key `sk_live_` or `sk_test_`, or a webhook signing secret `whsec_`) is not sent: the message box keeps it and says "That looks like a Stripe key, so it was not sent." Take the key out and send again. A key or a card number that reaches the server another way is stored masked: a key keeps only its prefix, a card number shows as `•••• •••• •••• 4242`, and the message ends with a note such as "[A card number was hidden.]". Agents only ever see the masked text.
+
 A message is posted once, even when the app sends it again after a network drop. When the network loses the answer to a send, the app sends the same message once more after a second; the server keeps only one copy. While the app is reconnecting, a page that fails to load does not show an error message: it loads again once the connection is back.
 
 Hover a message to **Reply in thread**, **Quote** it, **Copy text**, or **Edit** and **Delete** your own messages. Replies in a thread stay under the original message. Threads you follow are listed under **Followed threads**.

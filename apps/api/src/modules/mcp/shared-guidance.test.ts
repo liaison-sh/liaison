@@ -135,6 +135,11 @@ describe("shared guidance: one source, two surfaces", () => {
       expect(core).toContain(name)
     }
     expect(core).toContain("outside the organization")
+    // Never a new conversation on the agent's own judgement: the shared thread, or ask.
+    expect(core).toContain("ask the user where to post")
+    expect(core).toContain("only when the user asked")
+    expect(core).toContain("never retry `duplicate_thread` with `forceCreate`")
+    expect(core).not.toContain("genuinely separate")
   })
 
   it("says the same on the tool descriptions", async () => {
@@ -143,7 +148,10 @@ describe("shared guidance: one source, two surfaces", () => {
     try {
       const create = toolRegistry.get([orgId, "kernel", "threads_create"])
       const reply = toolRegistry.get([orgId, "kernel", "threads_reply"])
-      expect(create?.description).toContain("how to message a teammate")
+      expect(create?.description).toContain("Message teammates")
+      expect(create?.description).toContain("ASK the user where to post")
+      expect(create?.description).toContain("never retry with forceCreate on your own judgement")
+      expect(create?.description).not.toContain("genuinely separate")
       expect(create?.description).toContain("Never email a teammate with mail__compose")
       expect(reply?.description).toContain("how to message teammates in this organization")
     } finally {

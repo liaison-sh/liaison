@@ -222,6 +222,7 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   "agent_run",
   "agent_spawn",
   "requestApproval",
+  "approvals_restagePayload",
   "sequences_allocate",
   "pdf_render",
   "nextHandle",

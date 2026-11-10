@@ -761,6 +761,12 @@ interface CreateApprovalRequestOpts {
    * any sub-agent it spawns below that run instead of at depth 0.
    */
   originRun?: OriginRun | null
+  /**
+   * Hours until this request expires, set by a handler that knows its own deadline
+   * (`ctx.requestApproval({expiry_hours})`, validated 1 to 720 by `createHandlerApprovalRequest`).
+   * Wins over the tool's `approvalExpiryHours` and the 168-hour default.
+   */
+  expiryHours?: number
 }
 
 /** The proposing agent run of an approval: id, root and nesting depth. */
@@ -1524,7 +1530,9 @@ async function createApprovalRequest(opts: CreateApprovalRequestOpts): Promise<s
   const dependsOnId = opts.dependsOnId ?? null
   const id = opts.id ?? crypto.randomUUID()
   const expiryHours =
-    approvalExpiryRegistry.get([orgId, appName, toolShortName]) ?? APPROVAL_DEFAULT_EXPIRY_HOURS
+    opts.expiryHours ??
+    approvalExpiryRegistry.get([orgId, appName, toolShortName]) ??
+    APPROVAL_DEFAULT_EXPIRY_HOURS
   const now = new Date()
   const expiresAt = new Date(now.getTime() + expiryHours * 3600 * 1000)
   const editableFields = approvalEditableFieldsRegistry.get([orgId, appName, toolShortName]) ?? []
@@ -2601,6 +2609,12 @@ export interface HandlerApprovalInput {
    * agent's request only; a person's own call is still decided by the tool's own required scopes.
    */
   approve_scope?: string
+  /**
+   * Hours until the request expires, for a handler that knows its own deadline (a run that must
+   * issue by a legal date). A whole number from 1 to 720; it wins over the tool's
+   * `approvalExpiryHours` and the 168-hour default. Anything else is refused and nothing is staged.
+   */
+  expiry_hours?: number
 }
 
 export interface HandlerApprovalResult {
@@ -2705,6 +2719,19 @@ export async function createHandlerApprovalRequest(args: {
           `approve_scope_not_own: approve_scope ${JSON.stringify(scope)} is not a scope of '${appName}'; it must be '${appName}' or start with '${appName}:'. No approval was created. Omit approve_scope to use the tool's own deciding scope.`,
         ),
         { code: "approve_scope_not_own", status: 422 },
+      )
+    }
+  }
+  // A handler's own deadline: a whole number of hours, 1 to 720, as the manifest's
+  // `approvalExpiryHours` takes it. Refused before anything is written.
+  if (input.expiry_hours !== undefined) {
+    const hours = input.expiry_hours
+    if (typeof hours !== "number" || !Number.isInteger(hours) || hours < 1 || hours > 720) {
+      throw Object.assign(
+        new Error(
+          `expiry_hours_invalid: expiry_hours ${JSON.stringify(hours)} must be a whole number of hours from 1 to 720. No approval was created. Omit it to use the tool's own expiry.`,
+        ),
+        { code: "expiry_hours_invalid", status: 422 },
       )
     }
   }
@@ -2936,6 +2963,7 @@ export async function createHandlerApprovalRequest(args: {
     ...(tighten ? { tighten } : {}),
     ...(args.originRun !== undefined ? { originRun: args.originRun } : {}),
     ...(args.ownerOfResource ? { ownerOfResource: args.ownerOfResource } : {}),
+    ...(input.expiry_hours !== undefined ? { expiryHours: input.expiry_hours } : {}),
   })
   return { approval_id: approvalRequestId }
 }

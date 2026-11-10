@@ -29,6 +29,7 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["approval_recordStarted", "async"],
   ["approval_recordSucceeded", "async"],
   ["approvals_pendingFor", "async"],
+  ["approvals_restagePayload", "async"],
   ["approvals_statusOf", "async"],
   ["bulk_deleteBlob", "async"],
   ["bulk_fetchToBlob", "async"],
@@ -269,6 +270,7 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["tickets_summary_runJob", "async"],
   ["tickets_validateAndApply", "async"],
   ["time_civil", "async"],
+  ["turn_get", "async"],
 ]
 
 const poisonTx = new Proxy(

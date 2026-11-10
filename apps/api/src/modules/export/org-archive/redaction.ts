@@ -62,6 +62,14 @@ export const REDACTED_COLUMNS: Readonly<Record<string, string>> = {
   "app_tickets.api_keys.key_hash": "API key hash",
   "app_tickets.ticket_csat.survey_token": "survey link token",
   "app_tickets.tickets.reply_token": "reply address token",
+  // Payment card fragments mirrored from the payment provider: the provider keeps them, a
+  // restored mirror reads them again at its next sync, and an archive never carries card data.
+  "app_stripe.stripe_subscriptions.card_brand": "payment card detail",
+  "app_stripe.stripe_subscriptions.card_last4": "payment card detail",
+  "app_stripe.stripe_subscriptions.card_exp": "payment card detail",
+  "app_stripe.stripe_payments.card_brand": "payment card detail",
+  "app_stripe.stripe_payments.card_last4": "payment card detail",
+  "app_stripe.stripe_payments.card_exp": "payment card detail",
 }
 
 /** jsonb paths written as `null` (`*` matches any key). */
@@ -121,6 +129,10 @@ export const KEPT_COLUMNS: Readonly<Record<string, string>> = {
   "app_invoicing.einvoice_book_batches.state": STATUS,
   "app_invoicing.einvoice_transmissions.idempotency_key": CONTENT_HASH,
   "app_invoicing.einvoice_transmissions.state": STATUS,
+  "app_invoicing.recurring_run_items.approved_hash": CONTENT_HASH,
+  "app_invoicing.recurring_run_items.period_key":
+    "the billing period a row is for, not a credential",
+  "app_invoicing.recurring_run_items.state": STATUS,
   "app_mail.accounts.encryption_state": "mailbox encryption status label",
   "app_mail.accounts.encryption_conversion":
     "progress of a mailbox encryption change, holds no key",

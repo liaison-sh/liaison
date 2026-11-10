@@ -51,6 +51,7 @@ files/<file id>/<name> entries -> apps/api/src/modules/export/org-archive/writer
 Encoding base64 / string / ISO UTC -> apps/api/src/modules/export/org-archive/writer.ts:479
 Tables incl. empty ones, catalog-driven -> apps/api/src/modules/export/org-archive/catalog.ts:150
 Left out (null) secrets list -> apps/api/src/modules/export/org-archive/redaction.ts:29
+Left out (null) payment card details mirrored from Stripe -> apps/api/src/modules/export/org-archive/redaction.ts:67
 Encrypted content exported as stored, counted -> apps/api/src/modules/export/org-archive/writer.ts:489
 Not a snapshot -> apps/api/src/modules/export/org-archive/writer.ts:475
 4 GB / 65,000 entries limit -> apps/api/src/modules/export/org-archive/zip-stream.ts:25

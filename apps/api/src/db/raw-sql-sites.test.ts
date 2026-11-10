@@ -266,6 +266,10 @@ const REVIEWED: Record<string, Record<string, string>> = {
   "apps/api/src/modules/contacts/service.ts#repointContactSoftReferences": {
     deals: "quoteIdent(schemaRef()) over code constants (service.ts, repointContactSoftReferences)",
   },
+  "apps/api/src/modules/contacts/companies.ts#repointAppCompanyLinks": {
+    qualified:
+      "quoteIdent(schemaRef()) and quoteIdent over the code constant APP_COMPANY_LINKS (companies.ts), checked with to_regclass first",
+  },
   "apps/api/src/modules/contacts/erasure.ts#clearContactSoftReferences": {
     dealsTable: "rel() over code constants (erasure.ts:81)",
   },

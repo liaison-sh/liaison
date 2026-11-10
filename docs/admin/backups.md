@@ -105,7 +105,7 @@ What is in the archive:
 - `data/<schema>.<table>.ndjson`: one JSON line per row, for every table that holds the organization's data, including empty ones. Binary values are base64, large numbers are strings, times are ISO-8601 in UTC.
 - `files/<file id>/<name>`: every file, byte for byte; `files.ndjson` gives each file's original name.
 
-What is left out: passwords and password hashes, two-step secrets and recovery codes, a recovery phrase's verifier, connection tokens and credentials, mailbox key wraps, API key hashes, browser push subscriptions' keys, pending command line sign-in codes, OAuth client secrets, AI provider keys, and every secret the server encrypted inside app settings and connection details. They are written as `null` and listed in the manifest. Encrypted mail and sealed files are exported as stored, still encrypted, and counted in the manifest.
+What is left out: passwords and password hashes, two-step secrets and recovery codes, a recovery phrase's verifier, connection tokens and credentials, mailbox key wraps, API key hashes, browser push subscriptions' keys, pending command line sign-in codes, OAuth client secrets, AI provider keys, the payment card details mirrored from Stripe (brand, last four digits, expiry), and every secret the server encrypted inside app settings and connection details. They are written as `null` and listed in the manifest. Encrypted mail and sealed files are exported as stored, still encrypted, and counted in the manifest.
 
 The archive is read while the organization keeps working, so it is not a point-in-time snapshot. Without ZIP64, one archive holds at most 4 GB and 65,000 entries: a larger organization's export fails and says so.
 

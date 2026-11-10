@@ -87,7 +87,8 @@ export const RegimeLine: Component<{
 }> = (props) => {
   const [verdict] = createResource(() => props.documentId || null, loadVerdict)
   const view = () => {
-    const v = verdict()
+    // Read only once settled: a pending read would blank the whole document detail (its Suspense).
+    const v = verdict.state === "ready" ? verdict() : undefined
     return v
       ? regimeLineView(v, {
           documentId: props.documentId,

@@ -561,8 +561,10 @@ function MoneyChips(p: { documentId: string; status: string; type: string }): JS
       }
     },
   )
+  // Read only once settled: a pending read here would take the page's Suspense, and with it the
+  // whole detail (tab strip included), back to "Loading…" until the chips' read returns.
   return (
-    <Show when={facts()}>
+    <Show when={facts.state === "ready" ? facts() : undefined}>
       {(f) => (
         <>
           <For each={moneyChips({ status: p.status, type: p.type, stream: f().stream ?? null, payment_status: f().payment_status ?? null })}>

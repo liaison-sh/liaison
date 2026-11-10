@@ -2860,6 +2860,15 @@ describe("the client's company is the other side", () => {
     expect(await companyOf(stranger)).toBeNull()
   }, 60_000)
 
+  for (const domain of ["hotmail.fr", "t-online.de", "outlook.fr", "yahoo.it", "bluewin.ch"]) {
+    it(`a sender at a national free mail domain (${domain}) joins no company, even one recorded on it`, async () => {
+      await companyAt(domain, `Misfiled ${domain}`)
+      const stranger = `someone.${++counter}@${domain}`
+      await ingest(stranger)
+      expect(await companyOf(stranger)).toBeNull()
+    }, 60_000)
+  }
+
   /** A member's own mailbox, which the admin running these calls cannot read. */
   async function someoneElsesMailbox(): Promise<string> {
     const ctx = seedContext({ orgId, now: new Date() })

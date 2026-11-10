@@ -187,7 +187,7 @@ The footer is written in the recipient's language: the language recorded on thei
 An agent's commercial mail goes only to someone whose contact records a lawful basis: consent, existing customer, professional interest, or a generic company address. The check refuses it, and names the person, when:
 
 - no basis is recorded (contacts that existed before these fields have none until someone records one);
-- the person is recorded as a consumer, or nobody recorded whether they are one and their contact is on no company, and the basis is not consent. A contact on a company with nothing recorded counts as a business;
+- the person is recorded as a consumer, or nobody recorded whether they are one, and the basis is not consent. With nothing recorded, a contact counts as a business only when it is linked to a company whose domain is a business one (not a free mail provider such as gmail.com, hotmail.fr or t-online.de) and its own address is on that domain; any other contact with nothing recorded counts as a consumer;
 - their country's rule asks for consent and the basis is something else. The default rule is opt-out for France and consent everywhere else; a contact with no recorded country takes the rule for everywhere else;
 - two contacts at the same address record different bases. A person keeps one, by merging the contacts or correcting one.
 

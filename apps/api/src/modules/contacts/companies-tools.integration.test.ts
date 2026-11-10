@@ -575,6 +575,21 @@ describe("company tools", () => {
     expect(await companyCount()).toBe(before)
   })
 
+  it("proposing from contacts never groups people by a national free mail domain", async () => {
+    const free = ["hotmail.fr", "outlook.fr", "live.fr", "t-online.de", "orange.fr", "yahoo.es"]
+    const ids: string[] = []
+    for (const domain of free) {
+      for (const who of ["p", "q"]) {
+        ids.push(await contact({ company: null, email: `${who}-${tag}@${domain}` }))
+      }
+    }
+    const r = await ownCall<{
+      groups: { name: string; domain: string | null; contactIds: string[]; count: number }[]
+    }>("companies_propose_from_contacts", { limit: 200 })
+    for (const domain of free) expect(r.groups.some((g) => g.domain === domain)).toBe(false)
+    expect(r.groups.some((g) => g.contactIds.some((id) => ids.includes(id)))).toBe(false)
+  })
+
   it("a batch link parks one approval for 200 items, creates and links on approval, and changes nothing on reject", async () => {
     const people = await Promise.all([contact(), contact()])
     const items = Array.from({ length: 200 }, (_, i) => ({

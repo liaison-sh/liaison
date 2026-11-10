@@ -73,6 +73,12 @@ async function loadNames(ids: string[]): Promise<Map<string, string>> {
   return out
 }
 
+/**
+ * The card's rows as each viewer first saw them, by approval. The host may draw the panel again
+ * when the card's payload is rewritten; the first view is kept, so what changed still shows.
+ */
+const firstSeen = new Map<string, CardItem[]>()
+
 export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
   const runId = () => props.payload?.run_id ?? null
   const items = () => props.payload?.items ?? []
@@ -91,7 +97,13 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
   const [adding, setAdding] = createSignal(false)
   const [fixing, setFixing] = createSignal<string | null>(null)
   // The card as first drawn: a later change is listed against it until the person reads it.
-  const [shownItems, setShownItems] = createSignal<CardItem[] | null>(null)
+  const [shownItems, setShownItemsSignal] = createSignal<CardItem[] | null>(
+    props.approvalId ? (firstSeen.get(props.approvalId) ?? null) : null,
+  )
+  const setShownItems = (seen: CardItem[]) => {
+    if (props.approvalId) firstSeen.set(props.approvalId, seen)
+    setShownItemsSignal(seen)
+  }
   let save: ((extra?: Record<string, unknown>) => Promise<boolean>) | null = null
   let saveError: (() => string | null) | null = null
 

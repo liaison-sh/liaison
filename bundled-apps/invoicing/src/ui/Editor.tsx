@@ -1427,8 +1427,9 @@ export const Editor: Component<EditorProps> = (props) => {
       </Show>
 
       <div class="flex min-h-0 flex-1">
-        {/* Left: header + lines */}
-        <div class="flex flex-1 flex-col">
+        {/* Left: header + lines. Compact (inside a card) it may shrink to the card's width: the
+            lines table scrolls on its own instead of widening the page. */}
+        <div class={props.compact ? "flex min-w-0 flex-1 flex-col" : "flex flex-1 flex-col"}>
           <Show when={issuerFailure() === "forbidden"}>
             <div
               data-testid="editor-issuer-forbidden-banner"
@@ -1858,8 +1859,8 @@ export const Editor: Component<EditorProps> = (props) => {
 
           {/* Lines */}
           <div class={props.compact ? "flex-1 overflow-x-auto px-3 py-3" : "flex-1 overflow-y-auto px-5 py-4"}>
-            <table class="w-full text-[12.5px]" data-testid="editor-lines-table">
-              <thead>
+            <table class={cx("w-full text-[12.5px]", props.compact && "max-sm:block")} data-testid="editor-lines-table">
+              <thead class={props.compact ? "max-sm:hidden" : undefined}>
                 <tr class="text-left text-[10.5px] uppercase tracking-wider text-text-tertiary">
                   <th class="px-2 pb-2 font-medium">{tr("Description")}</th>
                   <th class="px-2 pb-2 text-right font-medium">{tr("Qty")}</th>
@@ -1873,7 +1874,7 @@ export const Editor: Component<EditorProps> = (props) => {
                   <th class="px-2 pb-2" />
                 </tr>
               </thead>
-              <tbody>
+              <tbody class={props.compact ? "max-sm:block" : undefined}>
                 <Index each={draft().lines}>
                   {(line, idx) => {
                     const sub = createMemo(() =>
@@ -1926,8 +1927,8 @@ export const Editor: Component<EditorProps> = (props) => {
                       }
                     })
                     return (
-                      <tr data-testid={`editor-line-${idx + 1}`} class="align-top">
-                        <td class="px-2 py-1.5">
+                      <tr data-testid={`editor-line-${idx + 1}`} class={cx("align-top", props.compact && "max-sm:flex max-sm:flex-wrap max-sm:items-center max-sm:border-b max-sm:border-border-subtle max-sm:py-1")}>
+                        <td class={cx("px-2 py-1.5", props.compact && "max-sm:block max-sm:w-full")}>
                           <input
                             data-testid={`editor-line-${idx + 1}-description`}
                             disabled={ro() || frozen()}
@@ -1937,7 +1938,7 @@ export const Editor: Component<EditorProps> = (props) => {
                             class={cx(CELL, "w-full")}
                           />
                         </td>
-                        <td class="px-2 py-1.5">
+                        <td class={cx("px-2 py-1.5", props.compact && "max-sm:block")}>
                           <input
                             data-testid={`editor-line-${idx + 1}-quantity`}
                             disabled={ro() || frozen()}
@@ -1946,7 +1947,7 @@ export const Editor: Component<EditorProps> = (props) => {
                             class={cx(CELL, "w-16 text-right tabular-nums")}
                           />
                         </td>
-                        <td class="px-2 py-1.5">
+                        <td class={cx("px-2 py-1.5", props.compact && "max-sm:block")}>
                           <input
                             data-testid={`editor-line-${idx + 1}-unit-price`}
                             disabled={ro() || frozen()}
@@ -1963,7 +1964,7 @@ export const Editor: Component<EditorProps> = (props) => {
                             class={cx(CELL, "w-24 text-right tabular-nums")}
                           />
                         </td>
-                        <td class="px-2 py-1.5">
+                        <td class={cx("px-2 py-1.5", props.compact && "max-sm:block")}>
                           <input
                             data-testid={`editor-line-${idx + 1}-tax-rate`}
                             disabled={ro() || frozen()}
@@ -1980,7 +1981,7 @@ export const Editor: Component<EditorProps> = (props) => {
                             class={cx(CELL, "w-16 text-right tabular-nums")}
                           />
                         </td>
-                        <td class="px-2 py-1.5">
+                        <td class={cx("px-2 py-1.5", props.compact && "max-sm:block")}>
                           <input
                             data-testid={`editor-line-${idx + 1}-hs`}
                             disabled={ro() || frozen()}
@@ -1990,7 +1991,7 @@ export const Editor: Component<EditorProps> = (props) => {
                             class={cx(CELL, "w-24 font-mono")}
                           />
                         </td>
-                        <td class="px-2 py-1.5">
+                        <td class={cx("px-2 py-1.5", props.compact && "max-sm:block")}>
                           <input
                             data-testid={`editor-line-${idx + 1}-coo`}
                             disabled={ro() || frozen()}
@@ -2002,10 +2003,10 @@ export const Editor: Component<EditorProps> = (props) => {
                             class={cx(CELL, "w-14 font-mono uppercase")}
                           />
                         </td>
-                        <td class="px-2 py-1.5 text-right">
+                        <td class={cx("px-2 py-1.5 text-right", props.compact && "max-sm:block")}>
                           <span class="font-mono tabular-nums text-text">{fmtMoney(total(), draft().currency)}</span>
                         </td>
-                        <td class="px-1 py-1.5 text-center">
+                        <td class={cx("px-1 py-1.5 text-center", props.compact && "max-sm:block")}>
                           <Show when={!ro() && !frozen() && draft().lines.length > 1}>
                             <button
                               type="button"

@@ -201,6 +201,31 @@ describe("the month-end panel", () => {
     await waitFor(() => expect(decided).toEqual([["appr-1", "approve", "hash-2"]]))
   })
 
+  it("drawn again for the same card, the panel still lists what changed since the person first saw it", async () => {
+    const first = [item("a", "h-a", "58800"), item("b", "h-b", "58800")]
+    render(() => (
+      <MonthEndRunPanel approvalId="appr-redraw" status="pending" payload={{ run_id: "run-1", items: first }} payloadHash="hash-1" canDecide viewerScopes={[]} />
+    ))
+    await screen.findByTestId("month-end-row-open-a")
+    cleanup()
+    // The host draws the card again with the rewritten payload.
+    rows = [row("a", "Hôtels Belcour", "78000", { latest_change: { actor_user_id: "u-sara", fields: [] } }), row("b", "Le Comptoir Sud", "58800")]
+    render(() => (
+      <MonthEndRunPanel
+        approvalId="appr-redraw"
+        status="pending"
+        payload={{ run_id: "run-1", items: [item("a", "h-a2", "78000"), item("b", "h-b", "58800")] }}
+        payloadHash="hash-2"
+        canDecide
+        viewerScopes={[]}
+      />
+    ))
+    const box = await screen.findByTestId("month-end-changed")
+    await waitFor(() => expect(within(box).getByTestId("month-end-change-a").textContent).toContain("Changed by Sara Benali"))
+    fireEvent.click(screen.getByTestId("month-end-approve-new"))
+    await waitFor(() => expect(decided).toEqual([["appr-redraw", "approve", "hash-2"]]))
+  })
+
   it("each row shows its account manager or None, and Ask puts a mention in the box without sending", async () => {
     renderPanel()
     await waitFor(() => expect(screen.getByTestId("month-end-row-manager-a").textContent).toContain("Élodie Renard"))

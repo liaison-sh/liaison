@@ -80,7 +80,11 @@ import {
 } from "~/modules/apps/ref-messages"
 import { withAppDimensionAliases } from "~/modules/apps/runtime-helpers"
 import { isBundleLoadError, loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { exportOnlyBundle, useFullBundle } from "~/modules/apps/sandbox/bundle-shake"
+import {
+  exportOnlyBundle,
+  useFullBundle,
+  watchBridgeCalls,
+} from "~/modules/apps/sandbox/bundle-shake"
 import { resolveToolTimeoutMs } from "~/modules/apps/sandbox/executor"
 import {
   createSandboxRpcBridge,
@@ -3139,8 +3143,13 @@ export async function executeToolHandler(
     // bundle until that is built, bundle-shake.ts): every call compiles and
     // runs what it is given in a fresh context, and for a large app that is
     // most of the call (a timeline read, called on every page open).
+    // Only code the platform vouches for (trusted, in-tree or the image's own catalog
+    // tarball) is ever trimmed: the trim is a build on this host, never over a third-party
+    // or custom app's bundle, whatever its tool claims.
     const bundleSource =
-      tool.readOnly === true ? exportOnlyBundle(fullBundle, handlerRef.exportName) : fullBundle
+      tool.readOnly === true
+        ? exportOnlyBundle(fullBundle, handlerRef.exportName, handlerRef)
+        : fullBundle
     // This execution's own identity, handed to the bridge so every cross-app
     // hop it opens is keyed on THIS execution and not on the tool names that
     // led here.
@@ -3182,11 +3191,21 @@ export async function executeToolHandler(
     // from the stored payload and may predate the fill, and because a fill is idempotent:
     // a value that is present is never replaced.
     const handlerParams = withManifestDefaults(tool, validatedParams)
-    const runManifest = (bridge: Record<string, any>, holdsTx: boolean): Promise<unknown> =>
-      runManifestOnce(bridge, holdsTx, bundleSource)
+    const runManifest = (bridge: Record<string, any>, holdsTx: boolean): Promise<unknown> => {
+      if (bundleSource === fullBundle) {
+        return runManifestOnce(bridge, holdsTx, fullBundle).catch((err: unknown) => {
+          attachUpstreamTrace(err, upstreamTrace)
+          throw err
+        })
+      }
+      const watched = watchBridgeCalls(bridge)
+      return runManifestOnce(watched.bridge, holdsTx, bundleSource)
         .catch((err: unknown) => {
-          // The export-only bundle did not load: this read runs the full one, and so does every later call.
-          if (bundleSource === fullBundle || !isBundleLoadError(err)) throw err
+          // The export-only bundle did not load: this read runs the full one, and so does
+          // every later call. Only a failure before the handler reached the host is one:
+          // after a bridge call the error is the handler's (a nested hop's included), and
+          // it surfaces as it is, never rerun.
+          if (watched.called() || !isBundleLoadError(err)) throw err
           useFullBundle(fullBundle, handlerRef.exportName)
           return runManifestOnce(bridge, holdsTx, fullBundle)
         })
@@ -3194,6 +3213,7 @@ export async function executeToolHandler(
           attachUpstreamTrace(err, upstreamTrace)
           throw err
         })
+    }
     const runManifestOnce = (
       bridge: Record<string, any>,
       holdsTx: boolean,

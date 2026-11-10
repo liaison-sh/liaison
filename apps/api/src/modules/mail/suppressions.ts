@@ -580,10 +580,30 @@ export function isColleague(colleagues: Colleagues, address: string): boolean {
 /**
  * What is recorded about each outside address among `addresses` (colleagues are
  * left out), read on the privileged path so a caller who cannot see a contact is
- * still bound by what it records. One reading only: a contact on a company record
- * whose consumer status is unset is a business (mail to professionals), and an
- * unset status on a contact with no company stays unknown.
+ * still bound by what it records. One reading only: a contact whose consumer status
+ * is unset is a business (mail to professionals) only when its company's domain is a
+ * business one (not a free mail provider) and the contact's own address is on it. Any
+ * other unset status stays unknown, which counts as a consumer: a company link made
+ * from a shared mail domain, or an address elsewhere, says nothing of who the person is.
  */
+/**
+ * A contact's consumer status as the send check reads it: the recorded one, else
+ * business only for an address on its company's business domain (or a subdomain of
+ * it), else unknown.
+ */
+export function consumerStatusOf(contact: {
+  email: string
+  is_consumer: boolean | null
+  company_domain: string | null
+}): boolean | null {
+  if (contact.is_consumer !== null) return contact.is_consumer
+  const domain = contact.company_domain?.trim().toLowerCase() ?? ""
+  if (domain === "" || isConsumerMailDomain(domain)) return null
+  const own = (contact.email.split("@")[1] ?? "").trim().toLowerCase()
+  if (own === "" || isConsumerMailDomain(own)) return null
+  return own === domain || own.endsWith(`.${domain}`) ? false : null
+}
+
 export async function lawfulBasisFacts(
   orgId: string,
   addresses: readonly string[],
@@ -608,18 +628,18 @@ export async function lawfulBasisFacts(
             name: string | null
             lawful_basis: LawfulBasis | null
             is_consumer: boolean | null
+            company_domain: string | null
             recipient_country: string | null
           }>(
             await tx.execute(drizzleSql`
-              SELECT id::text AS id, lower(email) AS email, name, lawful_basis,
-                     -- A contact on a company record is a business unless a person recorded a consumer.
-                     COALESCE(is_consumer, CASE WHEN company_id IS NOT NULL THEN false END) AS is_consumer,
-                     recipient_country
-                FROM ${K()}.contacts
-               WHERE org_id = ${orgId}::uuid
-                 AND lower(email) = ANY(ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(outside)}::jsonb)))
-               ORDER BY id`),
-          )
+              SELECT c.id::text AS id, lower(c.email) AS email, c.name, c.lawful_basis,
+                     c.is_consumer, lower(trim(co.domain)) AS company_domain, c.recipient_country
+                FROM ${K()}.contacts c
+                LEFT JOIN ${K()}.companies co ON co.id = c.company_id AND co.org_id = c.org_id
+               WHERE c.org_id = ${orgId}::uuid
+                 AND lower(c.email) = ANY(ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(outside)}::jsonb)))
+               ORDER BY c.id`),
+          ).map((c) => ({ ...c, is_consumer: consumerStatusOf(c) }))
     const settings = extractRows<{ v: unknown }>(
       await tx.execute(drizzleSql`
         SELECT settings -> 'commercialIdentity' -> 'countryPolicy' AS v
@@ -706,7 +726,7 @@ export function basisProblemFor(
       : {
           code: "consumer_unknown",
           who,
-          label: `Whether ${who} is a consumer is not recorded and their contact is on no company, so they count as one: commercial mail needs their recorded consent, or a person links their contact to their company or records that they are a business.`,
+          label: `Whether ${who} is a consumer is not recorded and their address is not on the business domain of a company their contact is linked to, so they count as one: commercial mail needs their recorded consent, or a person records that they are a business.`,
         }
   }
   const countries = r.countries.length > 0 ? r.countries : ["default"]

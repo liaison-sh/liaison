@@ -35,6 +35,7 @@ import {
   addSuppression,
   addSuppressionHash,
   hashEmail,
+  lawfulBasisFacts,
   suppressedAmong,
 } from "~/modules/mail/suppressions"
 import { seedContext } from "~/seed/context"
@@ -486,10 +487,10 @@ describe("lawful basis, notice, record and retention", () => {
     expect(refusal.message).toContain("Nothing was sent")
   })
 
-  it("a contact on a company with no recorded consumer status counts as a business, and the agent's commercial mail to it is staged", async () => {
+  it("a contact at its company's business domain with no recorded consumer status counts as a business, and the agent's commercial mail to it is staged", async () => {
     const to = unique("dealer")
     const contactId = await recordProspect(orgId, to, { lawfulBasis: "customer", isConsumer: null })
-    const companyId = await createTestCompany(orgId, `Dealer ${counter}`)
+    const companyId = await createTestCompany(orgId, `Dealer ${counter}`, "client.test")
     await sql`UPDATE kernel.contacts SET company_id = ${companyId} WHERE id = ${contactId}`
     const staged = await call("mail:compose", {
       accountId: account,
@@ -515,7 +516,55 @@ describe("lawful basis, notice, record and retention", () => {
     )
     expect(refusal.message).toContain("Nothing was sent")
     expect(refusal.message).toContain(`Whether ${to} is a consumer is not recorded`)
-    expect(refusal.message).toContain("links their contact to their company")
+    expect(refusal.message).toContain("records that they are a business")
+  })
+
+  for (const [what, address, companyDomain] of [
+    ["a company with no domain", "client.test", null],
+    ["a company on another domain", "client.test", "other-maker.test"],
+    ["a company recorded on a free mail domain", "hotmail.fr", "hotmail.fr"],
+    ["a company on a business domain, from a free mail address", "gmail.com", "client.test"],
+  ] as const) {
+    it(`a contact with no recorded consumer status linked to ${what} still counts as a consumer, and commercial mail to it is refused`, async () => {
+      const to = `linked-${++counter}-${crypto.randomUUID().slice(0, 6)}@${address}`
+      const contactId = await recordProspect(orgId, to, {
+        lawfulBasis: "customer",
+        isConsumer: null,
+      })
+      const companyId = await createTestCompany(orgId, `Linked ${counter}`, companyDomain)
+      await sql`UPDATE kernel.contacts SET company_id = ${companyId} WHERE id = ${contactId}`
+      const facts = await lawfulBasisFacts(orgId, [to])
+      expect(facts.recipients.map((r) => r.isConsumer)).toEqual([null])
+      const refusal = refusalOf(
+        await call("mail:compose", {
+          accountId: account,
+          to: [to],
+          subject: "New preamp range",
+          textBody: "We make studio monitors you may like.",
+          followUp: {},
+        }),
+      )
+      expect(refusal.message).toContain("Nothing was sent")
+      expect(refusal.message).toContain(`Whether ${to} is a consumer is not recorded`)
+    })
+  }
+
+  it("a recorded consumer status wins over any company link", async () => {
+    const business = unique("recorded-business")
+    const consumer = unique("recorded-consumer")
+    const companyId = await createTestCompany(orgId, `Recorded ${counter}`, "client.test")
+    for (const [to, isConsumer] of [
+      [business, false],
+      [consumer, true],
+    ] as const) {
+      const contactId = await recordProspect(orgId, to, { lawfulBasis: "customer", isConsumer })
+      await sql`UPDATE kernel.contacts SET company_id = ${companyId} WHERE id = ${contactId}`
+    }
+    const facts = await lawfulBasisFacts(orgId, [business, consumer])
+    expect(facts.recipients.map((r) => [r.email, r.isConsumer])).toEqual([
+      [business, false],
+      [consumer, true],
+    ])
   })
 
   it("every commercial send records approver, text hash, basis, classification and check", async () => {

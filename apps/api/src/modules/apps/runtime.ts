@@ -3039,7 +3039,12 @@ async function registerSingleApp(
                   ? { bundlePath, exportName: tool.preflight, trusted: desc.trusted !== false }
                   : tool.preflight,
               handler: isManifestFormat
-                ? { bundlePath, exportName: tool.handler, trusted: desc.trusted !== false }
+                ? {
+                    bundlePath,
+                    exportName: tool.handler,
+                    trusted: desc.trusted !== false,
+                    firstParty: desc._firstParty === true,
+                  }
                 : tool.handler,
               params: tool.params,
               returns: tool.returns,

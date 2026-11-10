@@ -10,7 +10,11 @@ import { ensureAppsForOrg } from "~/modules/apps/init"
 import { isAppOffForOrg, isAppUnavailableFor, primeOrgApps } from "~/modules/apps/org-apps"
 import { withAppDimensionAliases } from "~/modules/apps/runtime-helpers"
 import { isBundleLoadError, loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { exportOnlyBundle, useFullBundle } from "~/modules/apps/sandbox/bundle-shake"
+import {
+  exportOnlyBundle,
+  useFullBundle,
+  watchBridgeCalls,
+} from "~/modules/apps/sandbox/bundle-shake"
 import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { runApp } from "~/modules/apps/sandbox/run-app"
 import { attentionSourceApp } from "~/modules/attention/attention-source-app"
@@ -170,7 +174,9 @@ async function invokeManifestProvider(
   // every evaluation, and the feed calls each provider on every poll. Still a
   // fresh context per call; see bundle-shake.ts.
   const trusted = reg.trusted === true
-  const bundleSource = trusted ? exportOnlyBundle(source, reg.handler) : source
+  const bundleSource = trusted ? exportOnlyBundle(source, reg.handler, { trusted }) : source
+  const watched =
+    bundleSource !== source ? watchBridgeCalls(bridge) : { bridge, called: () => false }
   try {
     return (await runApp({
       trusted,
@@ -181,13 +187,14 @@ async function invokeManifestProvider(
       exportName: reg.handler,
       entry: `attention:${reg.handler}`,
       params: { actor: aliasedActor, ...passOn },
-      bridge,
+      bridge: watched.bridge,
       holdsTx: false,
       appId: appName,
     })) as AttentionItem[]
   } catch (err) {
-    // The export-only bundle failed to load: the next poll runs the full one.
-    if (trusted && bundleSource !== source && isBundleLoadError(err)) {
+    // The export-only bundle failed to load (before the provider reached the host): the
+    // next poll runs the full one.
+    if (trusted && bundleSource !== source && !watched.called() && isBundleLoadError(err)) {
       useFullBundle(source, reg.handler)
     }
     throw err

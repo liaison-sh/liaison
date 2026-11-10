@@ -202,4 +202,4 @@ Opt-out request from a reply: phrases in five languages, short text or own line,
 No request for newsletters, sealed mail, or the first import's history -> apps/api/src/modules/mail/page-write.ts:803
 New sender linked to the one company holding its domain -> apps/api/src/modules/mail/sender-contacts.ts:157
 Mail you send links its conversation to the first To address's existing contact; sending creates none -> apps/api/src/modules/mail/page-write.ts:641 ; apps/api/src/modules/mail/sender-contacts.ts:123
-A contact on a company with no recorded consumer status counts as a business -> apps/api/src/modules/mail/suppressions.ts:616
+A contact with no recorded consumer status counts as a business only when linked to a company on a business (not free mail) domain and its address is on that domain; otherwise a consumer -> apps/api/src/modules/mail/suppressions.ts:594 ; apps/api/src/apps/api-connector/consumer-domains.ts:14

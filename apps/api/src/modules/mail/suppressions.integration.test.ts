@@ -46,6 +46,7 @@ import {
   setTestCommercialIdentity,
   TEST_COMMERCIAL_IDENTITY,
 } from "~/tests/helpers/commercial-identity"
+import { createTestCompany } from "~/tests/helpers/company"
 import { drainOutbox } from "~/tests/helpers/outbox"
 import { recordProspect } from "~/tests/helpers/prospect"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -483,6 +484,38 @@ describe("lawful basis, notice, record and retention", () => {
     )
     expect(refusal.message).toContain(`No lawful basis is recorded for ${to}`)
     expect(refusal.message).toContain("Nothing was sent")
+  })
+
+  it("a contact on a company with no recorded consumer status counts as a business, and the agent's commercial mail to it is staged", async () => {
+    const to = unique("dealer")
+    const contactId = await recordProspect(orgId, to, { lawfulBasis: "customer", isConsumer: null })
+    const companyId = await createTestCompany(orgId, `Dealer ${counter}`)
+    await sql`UPDATE kernel.contacts SET company_id = ${companyId} WHERE id = ${contactId}`
+    const staged = await call("mail:compose", {
+      accountId: account,
+      to: [to],
+      subject: "New preamp range",
+      textBody: "We make studio monitors you may like.",
+      followUp: {},
+    })
+    expect(blockedId(staged)).toBeTruthy()
+  })
+
+  it("a contact on no company with no recorded consumer status still counts as a consumer, and the refusal says how to change that", async () => {
+    const to = unique("unlinked")
+    await recordProspect(orgId, to, { lawfulBasis: "customer", isConsumer: null })
+    const refusal = refusalOf(
+      await call("mail:compose", {
+        accountId: account,
+        to: [to],
+        subject: "New preamp range",
+        textBody: "We make studio monitors you may like.",
+        followUp: {},
+      }),
+    )
+    expect(refusal.message).toContain("Nothing was sent")
+    expect(refusal.message).toContain(`Whether ${to} is a consumer is not recorded`)
+    expect(refusal.message).toContain("links their contact to their company")
   })
 
   it("every commercial send records approver, text hash, basis, classification and check", async () => {

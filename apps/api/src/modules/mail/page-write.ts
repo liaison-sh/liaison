@@ -190,6 +190,21 @@ function isInbound(message: PageMessage): boolean {
   return (message.direction ?? "inbound") === "inbound"
 }
 
+/** The first To address of a message, lowercased: `a@b`, `Name <a@b>` or `{ email }`. */
+function firstRecipient(message: PageMessage): string | null {
+  const first = message.to?.[0]
+  const raw =
+    typeof first === "string"
+      ? first
+      : first &&
+          typeof first === "object" &&
+          typeof (first as { email?: unknown }).email === "string"
+        ? (first as { email: string }).email
+        : ""
+  const email = (/<([^<>]+)>/.exec(raw)?.[1] ?? raw).trim().toLowerCase()
+  return email.includes("@") ? email : null
+}
+
 /**
  * The status a new conversation starts with. A thread the Sent folder import
  * finds with only the mailbox's own mail in it (its inbound half was archived
@@ -239,6 +254,7 @@ export function threadRollup(
     : Number.NaN
   const newer = !current || !Number.isFinite(currentLast) || sentAtMs(latest) >= currentLast
   const inboundByRecency = byRecency.filter((m) => isInbound(m) && m.from?.email)
+  const outboundByRecency = byRecency.filter((m) => !isInbound(m))
   const latestInbound = inboundByRecency[0]
   return {
     newer,
@@ -260,6 +276,7 @@ export function threadRollup(
         ? String(latestInbound.from?.email).toLowerCase()
         : null,
     inboundByRecency,
+    outboundByRecency,
   }
 }
 
@@ -595,9 +612,35 @@ export async function writeMailPage(
           [...senders.values()],
         )
       : {}
-  const contactFor = (messages: PageMessage[]): string | null => {
-    for (const m of messages) {
+  // Mail the mailbox sent links to the contact it was addressed to (its first
+  // To recipient), found the same way and under the same policy as a sender,
+  // but never created: a thread with an inbound sender links to the sender.
+  const recipients = new Set<string>()
+  for (const m of fresh) {
+    const email = isInbound(m) ? null : firstRecipient(m)
+    if (email && !contactByEmail[email]) recipients.add(email)
+  }
+  const contactByRecipient =
+    recipients.size > 0
+      ? await resolveSenderContacts(
+          orgId,
+          actorId,
+          { id: accountId, ownerType: account.ownerType, ownerId: account.ownerId },
+          [...recipients].map((email) => ({ email })),
+          { create: false },
+        )
+      : {}
+  const contactFor = (rollup: {
+    inboundByRecency: PageMessage[]
+    outboundByRecency: PageMessage[]
+  }): string | null => {
+    for (const m of rollup.inboundByRecency) {
       const id = m.from?.email ? contactByEmail[String(m.from.email).toLowerCase()] : undefined
+      if (id) return id
+    }
+    for (const m of rollup.outboundByRecency) {
+      const email = firstRecipient(m)
+      const id = email ? (contactByEmail[email] ?? contactByRecipient[email]) : undefined
       if (id) return id
     }
     return null
@@ -613,7 +656,7 @@ export async function writeMailPage(
       const status = newConversationStatus(thread.messages, origin)
       return drizzleSql`(${orgId}::uuid, ${accountId}::uuid, ${account.ownerType}, ${account.ownerId}::uuid,
         ${thread.threadId}, ${sealing ? null : first.subject || null}, ${sealing ? null : rollup.snippet},
-        ${rollup.fromEmail}, ${contactFor(rollup.inboundByRecency)}::uuid, ${status}, ${jsonb(rollup.labels)},
+        ${rollup.fromEmail}, ${contactFor(rollup)}::uuid, ${status}, ${jsonb(rollup.labels)},
         ${rollup.isRead}, ${rollup.isStarred}, ${rollup.lastMessageAt}::timestamptz, ${thread.messages.length})`
     })
     const created = extractRows<{ id: string; external_thread_id: string }>(
@@ -739,7 +782,7 @@ export async function writeMailPage(
       const current = thread.current as NonNullable<ThreadWrite["current"]>
       const rollup = threadRollup(added, current, sealing)
       const messageCount = Number(current.message_count ?? 0) + added.length
-      const contactId = current.contact_id ? null : contactFor(rollup.inboundByRecency)
+      const contactId = current.contact_id ? null : contactFor(rollup)
       const snippet = rollup.newer ? rollup.snippet : (current.snippet ?? null)
       await tx.execute(drizzleSql`
         UPDATE ${schema}.conversations

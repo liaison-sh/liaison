@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test"
 import { join } from "node:path"
-import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
+import { esmExportsToGlobalThis, loadBundle } from "~/modules/apps/sandbox/bundle-loader"
 import {
   buildExportOnlyBundle,
   clearExportOnlyBundleCache,
@@ -101,8 +101,8 @@ describe("export-only bundles", () => {
   })
 
   it("keeps the full bundle when it cannot be shaken or the export is not a top-level name", async () => {
-    const wrapped =
-      "(function () {\nfunction handler() { return 1 }\nglobalThis.handler = handler;\n})();\n"
+    // Scoped, but the handler is no export of the bundle: not a top-level name.
+    const wrapped = "(function () {\nfunction handler() { return 1 }\n})();\n"
     expect(await buildExportOnlyBundle(wrapped, "handler")).toBeNull()
     expect(await buildExportOnlyBundle("function handler( {", "handler")).toBeNull()
     expect(await buildExportOnlyBundle(SCRIPT, "handler; globalThis.x = 1")).toBeNull()
@@ -115,6 +115,23 @@ describe("export-only bundles", () => {
     await settled(SCRIPT, "handler")
     useFullBundle(SCRIPT, "handler")
     expect(exportOnlyBundle(SCRIPT, "handler")).toBe(SCRIPT)
+  })
+
+  it("shakes an installed bundle, whose body is scoped and whose exports are globals, renamed export included", async () => {
+    const installed = esmExportsToGlobalThis(
+      `${SCRIPT}\nfunction handler2(params, ctx) { return { renamed: helper(params.x) }; }\nexport { handler, other, handler2 as renamed };`,
+    )
+    const shaken = await buildExportOnlyBundle(installed, "renamed")
+    expect(shaken).not.toBeNull()
+    expect(shaken).not.toContain("never")
+    expect(await run(shaken!, "renamed", { x: 2 })).toEqual(
+      await run(installed, "renamed", { x: 2 }),
+    )
+    const handlerOnly = await buildExportOnlyBundle(installed, "handler")
+    expect(await run(handlerOnly!, "handler", { x: 1 })).toEqual(
+      await run(installed, "handler", { x: 1 }),
+    )
+    expect(await buildExportOnlyBundle(installed, "missing")).toBeNull()
   })
 
   it("is bounded whatever the number of bundles", () => {

@@ -201,3 +201,5 @@ Reply from a colleague at the same company stops the draft, read at each check -
 Opt-out request from a reply: phrases in five languages, short text or own line, quoted text ignored, never recorded until approved, one per person -> apps/api/src/modules/mail/optout-wording.ts:31 ; apps/api/src/modules/mail/optout-wording.ts:157
 No request for newsletters, sealed mail, or the first import's history -> apps/api/src/modules/mail/page-write.ts:803
 New sender linked to the one company holding its domain -> apps/api/src/modules/mail/sender-contacts.ts:157
+Mail you send links its conversation to the first To address's existing contact; sending creates none -> apps/api/src/modules/mail/page-write.ts:641 ; apps/api/src/modules/mail/sender-contacts.ts:123
+A contact on a company with no recorded consumer status counts as a business -> apps/api/src/modules/mail/suppressions.ts:616

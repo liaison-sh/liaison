@@ -466,6 +466,70 @@ describe("company routes", () => {
     })
   })
 
+  it("a contacts admin reads the sharing of a team-wide company someone else created", async () => {
+    const admin = crypto.randomUUID()
+    const adminRole = crypto.randomUUID()
+    const adminScopes = [...ALL_SCOPES, "kernel:contacts:admin"]
+    await sql.unsafe(
+      insertSql("kernel.users", {
+        id: admin,
+        org_id: ORG_ID,
+        email: `admin-${admin.slice(0, 8)}@example.com`,
+        name: "Admin",
+        status: "active",
+      }),
+    )
+    await sql.unsafe(insertSql("kernel.roles", { id: adminRole, org_id: ORG_ID, name: "admin" }))
+    await sql.unsafe(
+      insertSql(
+        "kernel.role_scope_grants",
+        adminScopes.map((scope) => ({ role_id: adminRole, scope })),
+      ),
+    )
+    await sql.unsafe(
+      insertSql("kernel.user_roles", { user_id: admin, role_id: adminRole, org_id: ORG_ID }),
+    )
+    const adminToken = await signAccessToken(
+      {
+        userId: admin,
+        orgId: ORG_ID,
+        name: "Admin",
+        authVersion: 1,
+        permissionVersion: 1,
+        scopes: adminScopes,
+        roles: [adminRole],
+        dimensionGrants: {},
+      },
+      env.JWT_SECRET,
+    )
+    // One company by an active colleague, one with no creator (an import).
+    for (const createdBy of [BEN, null]) {
+      const companyId = crypto.randomUUID()
+      await sql.unsafe(
+        insertSql("kernel.companies", {
+          id: companyId,
+          org_id: ORG_ID,
+          name: `Shared ${companyId.slice(0, 6)}`,
+          handle: `@company-shared-${companyId.slice(0, 8)}`,
+          org_access: "editor",
+          created_by: createdBy,
+        }),
+      )
+      const sharing = await request(`/api/contacts/companies/${companyId}/sharing`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      })
+      const body = (await sharing.json()) as {
+        data: { orgAccess: string; createdBy: string | null; canManage: boolean }
+      }
+      expect(sharing.status).toBe(200)
+      expect(body.data).toMatchObject({
+        orgAccess: "editor",
+        createdBy,
+        canManage: createdBy === null,
+      })
+    }
+  })
+
   it("a merged or deleted company answers 404 to a stale tab", async () => {
     const created = await request("/api/contacts/companies", {
       method: "POST",

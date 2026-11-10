@@ -580,7 +580,9 @@ export function isColleague(colleagues: Colleagues, address: string): boolean {
 /**
  * What is recorded about each outside address among `addresses` (colleagues are
  * left out), read on the privileged path so a caller who cannot see a contact is
- * still bound by what it records. Nothing is inferred: an unknown stays unknown.
+ * still bound by what it records. One reading only: a contact on a company record
+ * whose consumer status is unset is a business (mail to professionals), and an
+ * unset status on a contact with no company stays unknown.
  */
 export async function lawfulBasisFacts(
   orgId: string,
@@ -609,7 +611,10 @@ export async function lawfulBasisFacts(
             recipient_country: string | null
           }>(
             await tx.execute(drizzleSql`
-              SELECT id::text AS id, lower(email) AS email, name, lawful_basis, is_consumer, recipient_country
+              SELECT id::text AS id, lower(email) AS email, name, lawful_basis,
+                     -- A contact on a company record is a business unless a person recorded a consumer.
+                     COALESCE(is_consumer, CASE WHEN company_id IS NOT NULL THEN false END) AS is_consumer,
+                     recipient_country
                 FROM ${K()}.contacts
                WHERE org_id = ${orgId}::uuid
                  AND lower(email) = ANY(ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(outside)}::jsonb)))
@@ -701,7 +706,7 @@ export function basisProblemFor(
       : {
           code: "consumer_unknown",
           who,
-          label: `Whether ${who} is a consumer is not recorded, so they count as one: commercial mail needs their recorded consent, or a person records on their contact that they are a business.`,
+          label: `Whether ${who} is a consumer is not recorded and their contact is on no company, so they count as one: commercial mail needs their recorded consent, or a person links their contact to their company or records that they are a business.`,
         }
   }
   const countries = r.countries.length > 0 ? r.countries : ["default"]

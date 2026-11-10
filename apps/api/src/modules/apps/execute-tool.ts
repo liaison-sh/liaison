@@ -79,7 +79,8 @@ import {
   sequencingHint,
 } from "~/modules/apps/ref-messages"
 import { withAppDimensionAliases } from "~/modules/apps/runtime-helpers"
-import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
+import { isBundleLoadError, loadBundle } from "~/modules/apps/sandbox/bundle-loader"
+import { exportOnlyBundle, useFullBundle } from "~/modules/apps/sandbox/bundle-shake"
 import { resolveToolTimeoutMs } from "~/modules/apps/sandbox/executor"
 import {
   createSandboxRpcBridge,
@@ -3133,7 +3134,13 @@ export async function executeToolHandler(
       trusted: handlerRef.trusted === true,
       nested: bridgeOptions?.nested === true || (bridgeOptions?.callChain?.length ?? 0) > 1,
     })
-    const bundleSource = await loadBundle(handlerRef.bundlePath)
+    const fullBundle = await loadBundle(handlerRef.bundlePath)
+    // A read-only tool runs the part of its bundle its handler needs (the whole
+    // bundle until that is built, bundle-shake.ts): every call compiles and
+    // runs what it is given in a fresh context, and for a large app that is
+    // most of the call (a timeline read, called on every page open).
+    const bundleSource =
+      tool.readOnly === true ? exportOnlyBundle(fullBundle, handlerRef.exportName) : fullBundle
     // This execution's own identity, handed to the bridge so every cross-app
     // hop it opens is keyed on THIS execution and not on the tool names that
     // led here.
@@ -3176,11 +3183,22 @@ export async function executeToolHandler(
     // a value that is present is never replaced.
     const handlerParams = withManifestDefaults(tool, validatedParams)
     const runManifest = (bridge: Record<string, any>, holdsTx: boolean): Promise<unknown> =>
-      runManifestOnce(bridge, holdsTx).catch((err: unknown) => {
-        attachUpstreamTrace(err, upstreamTrace)
-        throw err
-      })
-    const runManifestOnce = (bridge: Record<string, any>, holdsTx: boolean): Promise<unknown> =>
+      runManifestOnce(bridge, holdsTx, bundleSource)
+        .catch((err: unknown) => {
+          // The export-only bundle did not load: this read runs the full one, and so does every later call.
+          if (bundleSource === fullBundle || !isBundleLoadError(err)) throw err
+          useFullBundle(fullBundle, handlerRef.exportName)
+          return runManifestOnce(bridge, holdsTx, fullBundle)
+        })
+        .catch((err: unknown) => {
+          attachUpstreamTrace(err, upstreamTrace)
+          throw err
+        })
+    const runManifestOnce = (
+      bridge: Record<string, any>,
+      holdsTx: boolean,
+      bundleSource: string,
+    ): Promise<unknown> =>
       runApp({
         trusted: handlerRef.trusted === true,
         appName: tool.appName,

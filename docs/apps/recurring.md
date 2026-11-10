@@ -11,6 +11,7 @@ Open **Invoicing** and choose **Recurring** in the sidebar, then **Schedules**.
 
 - The first line says when the next drafts come and when they issue, for example "Soonest first. Next: 7 drafts on Fri 27 Nov, to issue on Mon 30 Nov."
 - Filter by **All**, **Active** or **Paused**.
+- The columns are **Customer**, **Bills**, **Repeats**, **Next invoice**, **Excl. VAT** (with its currency), **Paid by** and **Status**.
 - A schedule for a customer who also pays a Stripe subscription shows, in its **Bills** column, what it bills instead.
 
 ## Start a schedule
@@ -20,7 +21,7 @@ Open **Invoicing** and choose **Recurring** in the sidebar, then **Schedules**.
 3. Choose **Paid by**: bank transfer or **Card link**. With **Card link**, give the link's https address. Liaison does not create the link.
 4. Click **Preview next invoice** to see it, then **Start**. **Start** stays off until the schedule has an issuer, a customer and a valid line. **Save** replaces it on an existing schedule.
 
-The side column shows the totals, the next invoices with their draft days, and how the number is taken. No number shows before an invoice issues.
+The side column shows the totals, the next invoices with their draft days, and how the number is taken. No number shows before an invoice issues. **Numbering series** shows, read only, the series of the chosen issuer. **Preview next invoice** fills `{period}` with the period that invoice bills. The editor's title and tab name the customer. After **Pause** or **Save** the editor shows the schedule as it now stands.
 
 A schedule an agent creates with `recurring_schedule_create` is started, or saved as a draft that bills nothing yet. It always issues for review.
 

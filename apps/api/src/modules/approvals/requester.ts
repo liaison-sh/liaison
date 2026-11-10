@@ -37,6 +37,7 @@ export function pickApprovalRequester(
   requestedBy: string,
   routine: { id: string; name: string | null } | null = null,
   origin: string | null = null,
+  toolName: string | null = null,
 ): ApprovalRequester {
   if (agent && agent.kind !== "personal") {
     return { kind: "agent", id: agent.id, name: agent.displayName }
@@ -53,6 +54,16 @@ export function pickApprovalRequester(
   }
   if (origin === "mcp") {
     return { kind: "agent", id: requestedBy, name: `${user?.name ?? "User"}'s agent` }
+  }
+  // An app's scheduled job raised it: the member it is filed under did not ask for it.
+  if (origin === "system") {
+    const app = toolName?.split(":")[0] ?? ""
+    const label = app ? `${app.charAt(0).toUpperCase()}${app.slice(1).replace(/[-_]/g, " ")}` : null
+    return {
+      kind: "agent",
+      id: requestedBy,
+      name: label ? `Scheduled job (${label})` : "Scheduled job",
+    }
   }
   return { kind: "user", id: user?.id ?? requestedBy, name: user?.name ?? "Unknown" }
 }
@@ -86,6 +97,7 @@ export async function readApprovalRequesters(
     routine_name: string | null
     origin_routine_id: string | null
     origin: string | null
+    tool_name: string | null
   }>(
     await db.execute(drizzleSql`
       SELECT ar.id, ar.requested_by,
@@ -94,7 +106,7 @@ export async function readApprovalRequesters(
              r.id AS routine_id, r.name AS routine_name,
              CASE WHEN ar.metadata->>'originRoutineId' ~* ${UUID_PATTERN}
                THEN ar.metadata->>'originRoutineId' END AS origin_routine_id,
-             ar.metadata->>'origin' AS origin
+             ar.metadata->>'origin' AS origin, ar.tool_name
       FROM ${K}.approval_requests ar
       LEFT JOIN ${K}.users u ON u.id = ar.requested_by
       LEFT JOIN ${K}.agents a ON a.id = ar.agent_id AND a.org_id = ar.org_id
@@ -120,6 +132,7 @@ export async function readApprovalRequesters(
             ? { id: r.origin_routine_id, name: null }
             : null,
         r.origin,
+        r.tool_name,
       ),
     ]),
   )

@@ -152,6 +152,20 @@ describe("the standing e-invoice authorization", () => {
     expect(await w.rows("einvoice_standing")).toHaveLength(0)
   })
 
+  it("with no platform bound, the refusal names the setting, never the contract's id", async () => {
+    const noPlatform = {
+      ...(w.approved() as unknown as Row),
+      contracts: {
+        grant: async () =>
+          JSON.stringify({ status: "error", error: { code: "contract_provider_not_configured", message: "No provider is bound for einvoicing-pa@1" } }),
+      },
+    } as unknown as Parameters<typeof issuerStreamSet>[0]
+    const out = await issuerStreamSet(noPlatform, { issuerProfileId: ISSUER, stream: "transfer", einvoiceStanding: true })
+    expect(out).toMatchObject({ status: "error", error: { code: "einvoicing_platform_not_set" } })
+    expect(JSON.stringify(out)).not.toContain("einvoicing-pa@1")
+    expect(await w.rows("einvoice_standing")).toHaveLength(0)
+  })
+
   it("on and recorded: a no-person issue on that stream sends with no card and other streams keep the batch", async () => {
     const on = await issuerStreamSet(w.approved(), { issuerProfileId: ISSUER, stream: "transfer", einvoiceStanding: true })
     expect(on).toMatchObject({ status: "completed", einvoiceStanding: true, standingUntil: "2027-02-01" })

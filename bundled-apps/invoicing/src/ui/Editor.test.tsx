@@ -68,6 +68,9 @@ import {
   issuedAtForIssuer,
   issueDateNotice,
   localCivilDate,
+  bpToPercentInput,
+  percentInputToBp,
+  showCustomsColumns,
 } from "./Editor"
 
 const sourceEditor = readFileSync(join(import.meta.dir, "Editor.tsx"), "utf-8")
@@ -1265,5 +1268,24 @@ describe("issueDateNotice: a date the server will refuse shows before the click"
 
   it("an invoice takes no date, so it never warns", () => {
     expect(issueDateNotice({ ...defaultDraft("invoice"), issued_at: "2026-12-25" }, today, plain)).toBeNull()
+  })
+})
+
+describe("the VAT rate is typed and read as a percent", () => {
+  it("shows 20 for 2000 basis points and reads typed percents back", () => {
+    expect(bpToPercentInput(2000)).toBe("20")
+    expect(bpToPercentInput(550)).toBe("5.5")
+    expect(percentInputToBp("20")).toBe(2000)
+    expect(percentInputToBp("5,5")).toBe(550)
+    expect(percentInputToBp("5.5 %")).toBe(550)
+    expect(percentInputToBp("")).toBe(0)
+    expect(percentInputToBp("abc")).toBeNull()
+  })
+
+  it("hides the customs columns on a domestic services invoice with no customs data", () => {
+    const line = { hs_code: null, country_of_origin: null } as unknown as DraftLine
+    expect(showCustomsColumns([line], "domestic")).toBe(false)
+    expect(showCustomsColumns([line], "eu_export_non_eu")).toBe(true)
+    expect(showCustomsColumns([{ ...line, hs_code: "8518" }], "domestic")).toBe(true)
   })
 })

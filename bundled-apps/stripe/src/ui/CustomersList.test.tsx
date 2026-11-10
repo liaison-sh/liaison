@@ -117,6 +117,13 @@ describe("the list reads the mirror", () => {
     expect(src).not.toMatch(/\.reduce\(/)
   })
 
+  it("before Stripe is connected the page says so and offers the connect form, never counts of 0", () => {
+    const src = readFileSync(join(import.meta.dir, "CustomersList.tsx"), "utf8")
+    expect(src).toContain('pageKind(h) === "not_connected"')
+    expect(src).toContain('data-testid="stripe-customers-not-connected"')
+    expect(src).toContain('navigate("/settings/apps/stripe?open=stripe")')
+  })
+
   it("a personal address gets no company suggestion", () => {
     const suggestion = { companyId: "co1", name: "Mail Provider", domain: "mail.example" }
     for (const email of ["nadia.ferrand@gmail.com", "x@outlook.fr", "y@hotmail.com"]) {

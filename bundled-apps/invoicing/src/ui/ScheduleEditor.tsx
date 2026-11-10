@@ -14,8 +14,9 @@
 // line is not said. No invoice number shows before an invoice issues.
 import { app, navigate } from "@liaison/host"
 import { type Component, createResource, createSignal, For, Show } from "solid-js"
-import { datesFrom, draftOn, type Repeats, validateSchedule } from "../recurring/schedule"
-import { ContactPicker } from "./ContactPicker"
+import { periodLabel } from "../recurring/flags"
+import { datesFrom, draftOn, periodKey, type Repeats, validateSchedule } from "../recurring/schedule"
+import { ContactPicker, contactLabel, loadContact } from "./ContactPicker"
 import { type EditorIssuerProfile, loadIssuerProfiles } from "./Editor"
 import { tr } from "./i18n"
 import { Button, formatMoneyMinor, inputClass } from "./kit"
@@ -88,9 +89,16 @@ function saidOther(d: ScheduleDraft): boolean {
   return (d.billsOtherThanStripe?.trim().length ?? 0) >= BILLS_OTHER_MIN
 }
 
+/** The lines error in the units the editor's fields take (a price, a percent), translated where shown. */
+const LINES_ERROR = "add at least one line with a description, a quantity above zero, a price and a VAT rate from 0 to 100 %"
+
 /** The schedule's own field errors, as the server would refuse them. */
 export function draftErrors(d: ScheduleDraft): string[] {
-  const errors = validateSchedule({ contact_id: d.contact_id ?? "", repeats: d.repeats, billing_day: d.billing_day, lines: d.lines }).map((e) => e.message)
+  // The server speaks to agents in minor units and basis points; the editor's fields take a price
+  // and a percent, so the lines error says it in those.
+  const errors = validateSchedule({ contact_id: d.contact_id ?? "", repeats: d.repeats, billing_day: d.billing_day, lines: d.lines }).map((e) =>
+    e.field === "lines" ? LINES_ERROR : e.message,
+  )
   if (!d.issuer_profile_id) errors.unshift("choose who invoices")
   if (d.paid_by === "card_link" && !/^https:\/\/\S+$/.test(d.card_link_url ?? "")) errors.push("give the card link, an https address")
   return errors
@@ -117,6 +125,17 @@ export function nextInvoices(c: { repeats: Repeats; billing_day: string }, today
     // A billing day that names no date: the errors column says so.
   }
   return out
+}
+
+/** A line as the next invoice prints it: `{period}` becomes the period that invoice bills. */
+export function previewDescription(description: string, repeats: Repeats, issueOn: string | undefined): string {
+  if (!issueOn) return description
+  return description.split("{period}").join(periodLabel(periodKey(repeats, issueOn)))
+}
+
+/** The page and tab title: the customer's name once it is known. */
+export function scheduleTitle(customer: string | null | undefined): string {
+  return customer ? tr("Recurring: {{customer}}", { customer }) : tr("Recurring schedule")
 }
 
 /** The params of recurring_schedule_create (with a status) or recurring_schedule_update. */
@@ -151,6 +170,16 @@ export function changedParams(before: ScheduleDraft, after: ScheduleDraft): Reco
     if (JSON.stringify(a[k]) !== JSON.stringify(v)) out[k] = v
   }
   return out
+}
+
+/** The invoice series an issuer numbers in, as a person reads it (`F-2026-`), or null when unknown. */
+export function seriesOf(issuers: EditorIssuerProfile[], issuerId: string | null): string | null {
+  const issuer = issuers.find((i) => i.id === issuerId) as (EditorIssuerProfile & { prefix_invoice?: string | null }) | undefined
+  if (!issuer) return null
+  const prefix = issuer.prefix_invoice?.replace("{YYYY}", String(new Date().getUTCFullYear())) ?? null
+  return prefix
+    ? tr("{{prefix}} then the next number, from {{issuer}}", { prefix, issuer: issuer.legal_name })
+    : tr("The invoice series of {{issuer}}", { issuer: issuer.legal_name })
 }
 
 function lineTotal(l: ScheduleLineDraft): number {
@@ -254,6 +283,15 @@ const LANG_OPTIONS = [
 
 export const ScheduleEditor: Component<{ initial: ScheduleDraft }> = (props) => {
   const [d, setD] = createSignal<ScheduleDraft>(props.initial)
+  // What the server holds: the base an update is diffed against, read again after each write.
+  const [saved, setSaved] = createSignal<ScheduleDraft>(props.initial)
+  const [contact] = createResource(() => d().contact_id || undefined, (id) => loadContact(id).catch(() => null))
+  const customer = () => {
+    const c = contact()
+    return c ? contactLabel(c) : null
+  }
+  // The tab names the customer, so several open schedules can be told apart.
+  app.tabLabel(() => (customer() ? scheduleTitle(customer()) : null))
   const [conflict, setConflict] = createSignal<Conflict | null>(null)
   const [otherOpen, setOtherOpen] = createSignal(Boolean(props.initial.billsOtherThanStripe))
   const [note, setNote] = createSignal<string | null>(null)
@@ -265,12 +303,22 @@ export const ScheduleEditor: Component<{ initial: ScheduleDraft }> = (props) => 
   const errors = () => draftErrors(d())
   const next = () => nextInvoices(d(), today(), 3)
 
-  const outcome = (r: unknown) => {
+  // After a write the page shows what the server now holds, never the state it had before.
+  const reload = async () => {
+    const id = d().id
+    if (!id) return
+    const fresh = await loadSchedule(id).catch(() => null)
+    if (!fresh) return
+    setSaved(fresh)
+    setD(fresh)
+  }
+
+  const outcome = (r: unknown): boolean => {
     const c = conflictFrom(r)
     if (c) {
       setConflict(c)
       setNote(null)
-      return
+      return false
     }
     const res = r as { status?: string; error?: { message?: string }; id?: string; schedule?: { id?: string } } | null
     if (res?.status === "error") setNote(res.error?.message ?? tr("Nothing was saved."))
@@ -280,14 +328,16 @@ export const ScheduleEditor: Component<{ initial: ScheduleDraft }> = (props) => 
       setNote(tr("Saved."))
       const id = res?.id ?? res?.schedule?.id
       if (isNew() && id) navigate(`/invoicing/schedule/${id}`)
+      return true
     }
+    return false
   }
   const save = async () => {
     setNote(null)
     try {
       if (isNew()) outcome(await app.invokeTool("recurring_schedule_create", scheduleParams(d(), "active")))
       else {
-        outcome(await app.invokeTool("recurring_schedule_update", { id: d().id, ...changedParams(props.initial, d()) }))
+        if (outcome(await app.invokeTool("recurring_schedule_update", { id: d().id, ...changedParams(saved(), d()) }))) await reload()
       }
     } catch (e) {
       setNote(e instanceof Error ? e.message : tr("Nothing was saved."))
@@ -295,7 +345,10 @@ export const ScheduleEditor: Component<{ initial: ScheduleDraft }> = (props) => 
   }
   const pause = async () => {
     try {
-      outcome(await app.invokeTool("recurring_schedule_pause", { id: d().id }))
+      if (outcome(await app.invokeTool("recurring_schedule_pause", { id: d().id }))) {
+        setNote(tr("Paused. Nothing is drafted until it is resumed."))
+        await reload()
+      }
     } catch (e) {
       setNote(e instanceof Error ? e.message : tr("Nothing was saved."))
     }
@@ -307,7 +360,7 @@ export const ScheduleEditor: Component<{ initial: ScheduleDraft }> = (props) => 
     <section data-testid="schedule-editor" class="flex h-full min-h-0 flex-col">
       <header class="flex flex-wrap items-center justify-between gap-2 border-b border-border-subtle px-5 py-3.5">
         <div class="flex flex-col">
-          <h1 class="text-[15px] font-semibold text-text">{tr("Recurring schedule")}</h1>
+          <h1 data-testid="schedule-title" class="text-[15px] font-semibold text-text">{scheduleTitle(customer())}</h1>
           <span data-testid="schedule-status" class="text-[12px] text-text-tertiary">
             {isNew() ? tr("New") : tr(d().status === "paused" ? "Paused" : d().status === "ended" ? "Ended" : "Active")}
           </span>
@@ -335,7 +388,7 @@ export const ScheduleEditor: Component<{ initial: ScheduleDraft }> = (props) => 
               <For each={d().lines}>
                 {(l) => (
                   <div class="flex justify-between gap-3 text-text-secondary">
-                    <span class="min-w-0 break-words">{l.description.replace("{period}", tr("the dates it covers"))}</span>
+                    <span class="min-w-0 break-words">{previewDescription(l.description, d().repeats, next()[0]?.issueOn)}</span>
                     <span class="tabular-nums">{money(lineTotal(l))}</span>
                   </div>
                 )}
@@ -354,13 +407,23 @@ export const ScheduleEditor: Component<{ initial: ScheduleDraft }> = (props) => 
                 disabled={!isNew()}
                 onChange={(e) => patch({ issuer_profile_id: e.currentTarget.value || null })}
               >
-                <option value="">{tr("Choose")}</option>
-                <For each={issuers()?.items ?? ([] as EditorIssuerProfile[])}>{(i) => <option value={i.id}>{i.legal_name}</option>}</For>
+                <option value="" selected={!d().issuer_profile_id}>
+                  {tr("Choose")}
+                </option>
+                {/* `selected` per option: the list loads after the select, so its value alone is lost. */}
+                <For each={issuers()?.items ?? ([] as EditorIssuerProfile[])}>
+                  {(i) => (
+                    <option value={i.id} selected={i.id === d().issuer_profile_id}>
+                      {i.legal_name}
+                    </option>
+                  )}
+                </For>
               </select>
             </label>
             <div class="flex flex-col gap-1.5">
               <span class="text-text-tertiary">{tr("Customer")}</span>
               <ContactPicker
+                required
                 contactId={d().contact_id}
                 onPick={(c) => {
                   patch({ contact_id: c.id })
@@ -408,6 +471,13 @@ export const ScheduleEditor: Component<{ initial: ScheduleDraft }> = (props) => 
                 </div>
               )}
             </Show>
+          </Section>
+
+          <Section title={tr("Numbering series")} testid="schedule-series">
+            <span data-testid="schedule-series-value" class="text-text">
+              {seriesOf(issuers()?.items ?? [], d().issuer_profile_id) ?? tr("The invoice series of the issuer you choose")}
+            </span>
+            <span class="text-text-tertiary">{tr("Read only: set on the issuer, in Settings, Invoicing.")}</span>
           </Section>
 
           <Section title={tr("When")}>

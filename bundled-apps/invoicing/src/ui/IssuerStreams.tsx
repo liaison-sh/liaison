@@ -9,7 +9,7 @@
 // A person's own change runs at once, so it asks a confirm whose text is the panel's warning.
 // Stripe's own emails to customers cannot be read, so the block asks the person to check them
 // until a person says they did; the word Checked appears only after that click.
-import { app, fetch as hostFetch } from "@liaison/host"
+import { app, fetch as hostFetch, onEntityChange } from "@liaison/host"
 import { createResource, createSignal, For, onCleanup, Show, type Component } from "solid-js"
 import { tr } from "./i18n"
 import { Badge, Button } from "./kit"
@@ -36,7 +36,10 @@ export type StandingStream = "card" | "transfer"
 /** How long a person has to take back turning a standing authorization off. */
 export const STANDING_UNDO_MS = 8000
 
-/** Turning it on is a person's approval: the gated stream setting, never auto-approved. */
+/**
+ * Turning it on is a person's decision: the gated stream setting, never auto-approved. A person's
+ * own click after the confirm is that decision, so it turns on at once; an agent's call waits.
+ */
 export function standingOnCall(issuerProfileId: string, stream: StandingStream) {
   return { tool: "issuer_stream_set", params: { issuerProfileId, stream, einvoiceStanding: true } }
 }
@@ -140,6 +143,20 @@ async function personName(id: string | null): Promise<string | null> {
   }
 }
 
+/** What turning it on does, asked before the person's click runs. */
+export const STANDING_ON_CONFIRM =
+  "E-invoices of this stream issued with no person will be sent at issue, with no daily card, for 90 days. A renewal card comes a week before. You can turn it off at any time."
+
+/** Whether an e-invoicing platform is set: with none, there is nothing to send to. */
+async function loadPlatform(): Promise<string | null> {
+  try {
+    const r = await app.invokeTool<{ settings?: { provider_app?: string | null } }>("einvoicing_settings_get", {})
+    return r?.settings?.provider_app ?? null
+  } catch {
+    return null
+  }
+}
+
 const STANDING_LABEL: Record<StandingStream, string> = {
   card: "Send e-invoices of card subscriptions without a daily card",
   transfer: "Send e-invoices of recurring transfers without a daily card",
@@ -150,17 +167,30 @@ const StandingControl: Component<{
   issuerProfileId: string
   stream: StandingStream
   view: StandingView
+  /** An e-invoicing platform is set; with none, turning on is not offered. */
+  hasPlatform: boolean
   run: (tool: string, params: Record<string, unknown>) => Promise<void>
 }> = (p) => {
   const [by] = createResource(() => p.view.turnedOnBy, personName)
   const [waiting, setWaiting] = createSignal(false)
+  // The Undo window counts down, so the person sees how long is left.
+  const [left, setLeft] = createSignal(0)
+  let tick: ReturnType<typeof setInterval> | null = null
+  const stopTick = () => {
+    if (tick !== null) clearInterval(tick)
+    tick = null
+  }
   const off = createStandingOff({
     run: (tool, params) => {
+      stopTick()
       setWaiting(false)
       void p.run(tool, params)
     },
   })
-  onCleanup(() => off.undo())
+  onCleanup(() => {
+    stopTick()
+    off.undo()
+  })
   return (
     <div data-testid={`standing-${p.stream}`} class="flex flex-col gap-2 rounded-lg border border-[var(--color-border)] p-3">
       <span class="text-sm font-medium">{tr(STANDING_LABEL[p.stream])}</span>
@@ -173,16 +203,26 @@ const StandingControl: Component<{
           <Show
             when={p.view.on}
             fallback={
-              <Button
-                class="min-h-11 md:min-h-8"
-                testid={`standing-on-${p.stream}`}
-                onClick={() => {
-                  const c = standingOnCall(p.issuerProfileId, p.stream)
-                  void p.run(c.tool, c.params)
-                }}
+              <Show
+                when={p.hasPlatform}
+                fallback={
+                  <p class="text-xs text-[var(--color-text-secondary)]" data-testid={`standing-needs-platform-${p.stream}`}>
+                    {tr("Choose an e-invoicing platform first, in E-invoicing on this page: with none set, there is nothing to send.")}
+                  </p>
+                }
               >
-                {tr("Turn on, after a person approves")}
-              </Button>
+                <Button
+                  class="min-h-11 md:min-h-8"
+                  testid={`standing-on-${p.stream}`}
+                  onClick={() => {
+                    if (!window.confirm(tr(STANDING_ON_CONFIRM))) return
+                    const c = standingOnCall(p.issuerProfileId, p.stream)
+                    void p.run(c.tool, c.params)
+                  }}
+                >
+                  {tr("Turn on")}
+                </Button>
+              </Show>
             }
           >
             <Button
@@ -191,6 +231,9 @@ const StandingControl: Component<{
               onClick={() => {
                 off.request(p.issuerProfileId, p.stream)
                 setWaiting(true)
+                setLeft(Math.round(STANDING_UNDO_MS / 1000))
+                stopTick()
+                tick = setInterval(() => setLeft(Math.max(0, left() - 1)), 1000)
               }}
             >
               {tr("Turn off")}
@@ -200,13 +243,14 @@ const StandingControl: Component<{
       >
         <div class="flex flex-wrap items-center gap-2">
           <span class="text-xs text-[var(--color-text-secondary)]" data-testid={`standing-pending-${p.stream}`}>
-            {tr("Turning off in 8 seconds.")}
+            {tr("Turning off in {{n}} seconds.", { n: left() })}
           </span>
           <Button
             class="min-h-11 md:min-h-8"
             testid={`standing-undo-${p.stream}`}
             onClick={() => {
               off.undo()
+              stopTick()
               setWaiting(false)
             }}
           >
@@ -220,6 +264,9 @@ const StandingControl: Component<{
 
 export const InvoicingIssuerStreams: Component = () => {
   const [data, { refetch }] = app.createResource(loadStreams)
+  const [platform, platformActions] = app.createResource(loadPlatform)
+  // The platform is saved in another section of this page: follow its change.
+  onCleanup(onEntityChange("invoicing:einvoicing", () => void platformActions.refetch()))
   const [error, setError] = createSignal<string | null>(null)
 
   const run = async (tool: string, params: Record<string, unknown>) => {
@@ -283,6 +330,7 @@ export const InvoicingIssuerStreams: Component = () => {
                     issuerProfileId={issuer.issuerProfileId}
                     stream={s.stream as StandingStream}
                     view={s.standing as StandingView}
+                    hasPlatform={!!platform()}
                     run={run}
                   />
                 )}

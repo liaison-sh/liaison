@@ -41,7 +41,7 @@ export interface RoutableApprovalRow {
   id: string
   tool_name: string
   status: string
-  metadata: { originRoutineId?: string; minApprovers?: number } | null
+  metadata: { originRoutineId?: string; minApprovers?: number; origin?: string } | null
   notify_user_ids: string[] | null
   requested_by: string
   approve_scope: string | null
@@ -409,6 +409,7 @@ async function routesIn(
           peer: {
             requestedById: r.requested_by,
             originRoutineId: r.metadata?.originRoutineId ?? null,
+            raisedBySystem: r.metadata?.origin === "system",
             requesterCanDecide: requesterDecidesOf(r),
           },
         },

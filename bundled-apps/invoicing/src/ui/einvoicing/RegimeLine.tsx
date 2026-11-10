@@ -64,7 +64,11 @@ export function regimeLineView(v: ClassifyVerdict, ctx: BlockerContext): RegimeL
   }
   return {
     label: v.regime ? tr(REGIME_LABEL[v.regime]) : tr("Not classified yet"),
-    reason: main ? reasonText(main) : null,
+    reason: main
+      ? reasonText(main)
+      : v.regime
+        ? null
+        : tr("It is not yet known whether this invoice goes through the e-invoicing platform."),
     note,
     actions,
     tone: "neutral",

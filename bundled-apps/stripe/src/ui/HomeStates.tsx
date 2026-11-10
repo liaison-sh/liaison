@@ -49,7 +49,7 @@ export const HomeStates: Component<{
   const card = () => stateCard(props.load, locale, props.now)
 
   const run = async (id: CardAction["id"]) => {
-    if (id === "settings") return navigate("/settings/apps/stripe")
+    if (id === "settings") return navigate("/settings/apps/stripe?open=stripe")
     if (id !== "check") return
     setBusy(true)
     setNote(null)

@@ -27,7 +27,7 @@ import { canOpenDownloadedFile, openDownloadedFile } from "~/modules/desktop/des
 import { currentLocale } from "~/modules/i18n/i18n-context"
 import { openConnectDialog } from "~/modules/settings/connect-dialog-host"
 import { connectWithOAuth } from "~/modules/settings/oauth-connect"
-import { trackOpenRecord } from "~/modules/shell/open-record"
+import { trackOpenRecord, trackTabLabel } from "~/modules/shell/open-record"
 import { EntityDiscussionPanel } from "~/modules/threads/EntityDiscussionPanel"
 import { createStaleResource } from "~/primitives/createStaleResource"
 
@@ -140,6 +140,8 @@ export function buildHostServices(opts: BuildHostServicesOptions): HostServices 
     // The record this page has open in a pane (shell/open-record.ts). The app is
     // the one the SDK bound the call to, so it can only name its own entities.
     trackOpenRecord,
+    // The tab's label, from the record the page shows (shell/open-record.ts).
+    tabLabel: (_appName: string, label: () => string | null | undefined) => trackTabLabel(label),
 
     navigate: (path: string): void => {
       if (opts.inAppNavigate) {

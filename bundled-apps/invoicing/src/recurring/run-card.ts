@@ -12,6 +12,7 @@ import type { EinvCtx } from "../einvoicing/transmit"
 import { currentItemHash, itemContentHash } from "./item-hash"
 import type { ErrorEnvelope, MutationsCtx } from "../mutations/shared"
 import { addDays, weekdayOf } from "./schedule"
+import { runCardLines } from "../summarizers"
 
 export { currentItemHash, itemContentHash }
 
@@ -35,6 +36,9 @@ export interface CardItem {
   document_id: string
   content_hash: string
   total_minor: string
+  /** For the card's lines only, so a rebuilt summary still names who is billed. */
+  customer?: string
+  currency?: string
 }
 
 const fail = (code: string, message: string): ErrorEnvelope => ({ status: "error", error: { code, message } })
@@ -117,7 +121,7 @@ export async function cardItems(
     const dl = await draftLines(ctx, String(draft.id))
     const t = draftTotals(dl)
     total += t.total
-    items.push({ item_id: String(item.id), document_id: String(draft.id), content_hash: itemContentHash(item, draft, dl, issuer), total_minor: t.total.toString() })
+    items.push({ item_id: String(item.id), document_id: String(draft.id), content_hash: itemContentHash(item, draft, dl, issuer), total_minor: t.total.toString(), customer: String(draft.counterparty_name ?? "Customer"), currency: String(draft.currency ?? "EUR") })
     const cur = String(draft.currency ?? "EUR")
     const note = item.note ? ` · ${String(item.note)}` : ""
     lines.push(
@@ -176,11 +180,11 @@ export async function approvalRouteRead(
 export async function stageRunCard(ctx: RunCtx, runId: string): Promise<{ approval_id: string | null; staged: boolean; owed?: boolean }> {
   const run = (await ctx.db.findOne("recurring_runs", runId)) as Row | null
   if (!run) return { approval_id: null, staged: false }
-  const { items, lines, total, needsFix } = await cardItems(ctx, runId)
+  const { items, needsFix } = await cardItems(ctx, runId)
   const existing = typeof run.approval_request_id === "string" && run.approval_request_id !== "staging" ? run.approval_request_id : null
   // The card still waiting follows its rows, even down to none left to approve.
   if (existing && ctx.approvals?.restagePayload) {
-    const res = (await ctx.approvals.restagePayload(existing, { items }, "The month-end run's rows changed.")) as { ok?: boolean } | null
+    const res = (await ctx.approvals.restagePayload(existing, { items, period: String(run.period_label ?? dayOf(run.issue_on) ?? "") }, "The month-end run's rows changed.")) as { ok?: boolean } | null
     if (res?.ok) return { approval_id: existing, staged: false }
   }
   if (items.length === 0) return { approval_id: null, staged: false }
@@ -205,11 +209,12 @@ export async function stageRunCard(ctx: RunCtx, runId: string): Promise<{ approv
           `Numbers are taken on ${issueOn} from 08:00, never at approval. Last day: ${lastDay}.` +
           (again ? " These rows changed after the run was approved; the others issue as approved." : "") +
           (needsFix > 0 ? ` ${needsFix} row${needsFix === 1 ? " needs" : "s need"} a fix: it stays a draft, uses no number and comes back to you once fixed.` : ""),
-        lines: [...lines.slice(0, 7), ...(lines.length > 7 ? [`and ${lines.length - 7} more; total ${minor(total, "")}`.trim()] : [])],
+        // Who is billed and the total; the panel under the card lists each row with its amounts.
+        lines: runCardLines(items),
         // The run is the record the card is about: the kernel asks `approval_route_read` who it is for.
         links: [{ label: `Month-end run ${String(run.period_label ?? issueOn)}`, app: "invoicing", entityType: "recurring_run", entityId: runId }],
       },
-      current_payload: { run_id: runId, items },
+      current_payload: { run_id: runId, items, period: String(run.period_label ?? issueOn) },
       editable_fields: [],
       expiry_hours: hoursUntilEndOf(now.date, now.hour, lastDay),
     })

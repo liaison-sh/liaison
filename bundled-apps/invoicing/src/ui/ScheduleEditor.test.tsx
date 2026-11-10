@@ -10,10 +10,14 @@ import {
   changedParams,
   conflictFrom,
   defaultSchedule,
+  draftErrors,
   draftFromRow,
   editorActions,
   nextInvoices,
   NUMBER_LINE,
+  previewDescription,
+  scheduleTitle,
+  seriesOf,
   ScheduleEditor,
   scheduleParams,
   type ScheduleDraft,
@@ -142,5 +146,28 @@ describe("the schedule editor", () => {
     expect("card_link_url" in p).toBe(false)
     expect("billsOtherThanStripe" in p).toBe(false)
     expect(scheduleParams(filled({ paid_by: "card_link", card_link_url: "https://pay.example/x" }), "draft").card_link_url).toBe("https://pay.example/x")
+  })
+})
+
+describe("the editor speaks in the units a person types", () => {
+  it("the preview fills {period} with the period the next invoice bills", () => {
+    expect(previewDescription("Maintenance plan, {period}", "month", "2026-11-30")).toBe("Maintenance plan, November 2026")
+    expect(previewDescription("Support, {period}", "quarter", "2026-12-31")).toBe("Support, Q4 2026")
+    expect(previewDescription("No token", "month", undefined)).toBe("No token")
+  })
+
+  it("the lines error names a price and a VAT percent, never minor units or basis points", () => {
+    const errors = draftErrors({ ...defaultSchedule(), issuer_profile_id: "i", contact_id: "c" })
+    const lines = errors.find((e) => e.includes("line"))
+    expect(lines).toContain("a VAT rate from 0 to 100 %")
+    expect(errors.join(" ")).not.toMatch(/minor units|basis points/)
+  })
+
+  it("names the series read-only from the issuer, and the title names the customer", () => {
+    const issuers = [{ id: "i1", legal_name: "Atelier Sud", prefix_invoice: "F-{YYYY}-" }] as never
+    expect(seriesOf(issuers, "i1")).toMatch(/^F-\d{4}- then the next number, from Atelier Sud$/)
+    expect(seriesOf(issuers, null)).toBeNull()
+    expect(scheduleTitle("Klangwerk GmbH")).toBe("Recurring: Klangwerk GmbH")
+    expect(scheduleTitle(null)).toBe("Recurring schedule")
   })
 })

@@ -5,6 +5,7 @@
 import { afterEach, describe, expect, it } from "bun:test"
 import manifest from "../../app.manifest.json"
 import * as bundle from "../../ui"
+import { dotWord } from "./home-model"
 import { dotTone, sidebarRows, StripeSidebar } from "./StripeSidebar"
 
 afterEach(() => {
@@ -26,6 +27,10 @@ describe("the Stripe sidebar", () => {
     expect(dotTone("importing")).toBe("muted")
     expect(dotTone("not_connected")).toBe("muted")
     for (const k of ["revoked", "stalled", "partial", "other_account"] as const) expect(dotTone(k)).toBe("warning")
+    // The dot is never colour alone: a word says the same.
+    expect(dotWord("not_connected")).toBe("Not connected")
+    expect(dotWord("home")).toBe("Connected")
+    expect(dotWord("revoked")).toBe("Needs a look")
   })
 })
 

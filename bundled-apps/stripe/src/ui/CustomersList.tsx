@@ -22,7 +22,7 @@ import {
   statusOf,
   whatHappensNext,
 } from "./customers-model"
-import { type HomeLoad, dashboardUrl, formatMoney, type InvoiceItem, type MrrResult, type SubItem } from "./home-model"
+import { type HomeLoad, dashboardUrl, formatMoney, type InvoiceItem, type MrrResult, pageKind, type SubItem } from "./home-model"
 import { tr, uiLocale } from "./i18n"
 
 interface Page {
@@ -181,6 +181,11 @@ export const StripeCustomersList: Component = () => {
   const rows = () => buildRows(data()?.customers ?? [], data()?.subs ?? {}, chip() === "subscriptions")
   const totals = () => (chip() === "subscriptions" ? planTotals(mrr() ?? null, locale) : [])
   const failed = () => data.error !== undefined
+  // Before Stripe is connected nothing was read: say so, never counts of 0 that look fresh.
+  const notConnected = () => {
+    const h = home()
+    return h != null && pageKind(h) === "not_connected"
+  }
   return (
     <div data-testid="stripe-customers" class="flex min-w-0 flex-col gap-5 px-4 py-6 md:px-8">
       <header class="flex flex-wrap items-center justify-between gap-3">
@@ -191,6 +196,18 @@ export const StripeCustomersList: Component = () => {
           {tr("Open in Stripe")}
         </button>
       </header>
+      <Show
+        when={!notConnected()}
+        fallback={
+          <div data-testid="stripe-customers-not-connected" class="flex flex-col items-start gap-3 rounded-lg border border-border-subtle bg-surface px-4 py-4 text-[12.5px] text-text-secondary">
+            <span class="font-medium text-text">{tr("Stripe is not connected")}</span>
+            <span>{tr("No customer has been read from Stripe yet. They show here once Stripe is connected.")}</span>
+            <button type="button" data-testid="stripe-customers-connect" class={SECONDARY} onClick={() => navigate("/settings/apps/stripe?open=stripe")}>
+              {tr("Connect Stripe")}
+            </button>
+          </div>
+        }
+      >
       <input
         type="search"
         data-testid="stripe-customers-search"
@@ -265,6 +282,7 @@ export const StripeCustomersList: Component = () => {
           <span>{tr("Customers billed outside Stripe are not here. Cards show brand, last 4 and expiry only.")}</span>
         </div>
       </section>
+      </Show>
     </div>
   )
 }

@@ -176,6 +176,8 @@ describe("the check of a key before it is stored", () => {
       { sleep: noSleep, dryRun: true },
     )
     expect(r401).toMatchObject({ status: "error", error: { code: "key_invalid" } })
+    // Nothing was saved, so the refusal never speaks of "the saved key".
+    if ("status" in r401) expect(r401.error.message).not.toContain("the saved key")
     expect(refused.tables).toEqual(before)
   })
 })

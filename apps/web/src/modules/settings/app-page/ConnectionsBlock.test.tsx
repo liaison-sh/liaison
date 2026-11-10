@@ -202,17 +202,98 @@ describe("ConnectionsBlock", () => {
     expect(await within(form).findByTestId("connect-field-token")).toBeTruthy()
   })
 
-  it("reconnects a per-store OAuth account through the form, which asks for the store again", async () => {
+  it("reconnects a per-store OAuth account through the form when its store is not derivable", async () => {
     api.on("get", "/apps/fixture/connections", () => [
       { ...google, name: "shop", purpose: "Store", templateVars: ["shop"] },
     ])
     api.on("get", "/connections/fixture/shop/accounts", () => [
-      account({ id: "acc9", identifier: "acme.myshopify.com", ownerType: "org", status: "error" }),
+      account({
+        id: "acc9",
+        identifier: "example.myshopify.com",
+        ownerType: "org",
+        status: "error",
+      }),
     ])
     renderBlock({ names: ["shop"] })
     fireEvent.click(await screen.findByTestId("connections-reconnect-acc9"))
     expect(await screen.findByTestId("fixture-inline-connect")).toBeTruthy()
     expect(api.post.mock.calls.some((c) => String(c[0]).endsWith("/authorize"))).toBe(false)
+  })
+
+  it("opens the form on the account's store when the store alone cannot start the grant", async () => {
+    api.on("get", "/apps/fixture/connections", () => [
+      {
+        ...google,
+        name: "shop",
+        purpose: "Store",
+        templateVars: ["shop", "region"],
+        identifierVar: "shop",
+      },
+    ])
+    api.on("get", "/connections/fixture/shop/accounts", () => [
+      account({ id: "acc9", identifier: "example.myshopify.com", ownerType: "org" }),
+    ])
+    renderBlock({ names: ["shop"] })
+    fireEvent.click(await screen.findByTestId("connections-reconnect-acc9"))
+    const form = await screen.findByTestId("fixture-inline-connect")
+    const input = (await within(form).findByTestId("oauth-var-shop")) as HTMLInputElement
+    expect(input.value).toBe("example.myshopify.com")
+    expect(api.post.mock.calls.some((c) => String(c[0]).endsWith("/authorize"))).toBe(false)
+  })
+
+  // New scopes on an app need a fresh grant: every account its viewer may manage
+  // offers Reconnect, healthy or not.
+  it("offers Reconnect on a healthy OAuth account, which re-runs the grant for that account", async () => {
+    renderBlock({ names: ["google"] })
+    fireEvent.click(await screen.findByTestId("connections-reconnect-acc1"))
+    await waitFor(() =>
+      expect(
+        api.post.mock.calls.find((c) => c[0] === "/connections/fixture/google/authorize")?.[1],
+      ).toMatchObject({ mode: "personal", accountHint: "lena@example.com" }),
+    )
+    expect(screen.getByTestId("connections-reconnect-acc2").textContent).toContain("Reconnect")
+  })
+
+  it("reconnects an org account in org mode", async () => {
+    renderBlock({ names: ["google"] })
+    fireEvent.click(await screen.findByTestId("connections-reconnect-acc2"))
+    await waitFor(() =>
+      expect(
+        api.post.mock.calls.find((c) => c[0] === "/connections/fixture/google/authorize")?.[1],
+      ).toMatchObject({ mode: "org", accountHint: "123456789" }),
+    )
+  })
+
+  it("does not offer Reconnect on an org account to someone who cannot administer it", async () => {
+    state.scopes = []
+    renderBlock({ names: ["google"] })
+    await screen.findByTestId("connections-account-acc2")
+    expect(screen.getByTestId("connections-reconnect-acc1")).toBeTruthy()
+    expect(screen.queryByTestId("connections-reconnect-acc2")).toBeNull()
+  })
+
+  it("reconnects a store account straight to the provider for that account's store", async () => {
+    api.on("get", "/apps/fixture/connections", () => [
+      {
+        ...google,
+        name: "shop",
+        purpose: "Store",
+        templateVars: ["shop"],
+        identifierVar: "shop",
+      },
+    ])
+    api.on("get", "/connections/fixture/shop/accounts", () => [
+      account({ id: "acc9", identifier: "example.myshopify.com", ownerType: "org" }),
+    ])
+    api.on("post", "/connections/fixture/shop/authorize", () => ({ redirectUrl: null }))
+    renderBlock({ names: ["shop"] })
+    fireEvent.click(await screen.findByTestId("connections-reconnect-acc9"))
+    await waitFor(() =>
+      expect(
+        api.post.mock.calls.find((c) => c[0] === "/connections/fixture/shop/authorize")?.[1],
+      ).toMatchObject({ mode: "org", shop: "example.myshopify.com" }),
+    )
+    expect(screen.queryByTestId("fixture-inline-connect")).toBeNull()
   })
 
   it("opens the form of the connection `?open=` names", async () => {
@@ -491,5 +572,25 @@ describe("ConnectionsBlock multi-instance", () => {
     expect(screen.getByTestId("connections-disconnect-crm")).toBeTruthy()
     expect(screen.queryByTestId("connections-reconnect-crm")).toBeNull()
     expect(screen.queryByTestId("connections-connect-api")).toBeNull()
+  })
+
+  it("offers Reconnect on each account of a multi-instance OAuth connection", async () => {
+    api.on("get", "/apps/fixture/connections", () => [
+      { ...google, name: "sites", multiInstance: true, accounts: { active: 2, error: 0 } },
+    ])
+    api.on("get", "/connections/fixture/sites/accounts", () => [
+      account({ id: "s1", identifier: "one@example.com", ownerType: "org", isMine: false }),
+      account({ id: "s2", identifier: "two@example.com", ownerType: "org", isMine: false }),
+    ])
+    api.on("post", "/connections/fixture/sites/authorize", () => ({ redirectUrl: null }))
+    renderBlock({ names: ["sites"] })
+    fireEvent.click(await screen.findByTestId("connections-reconnect-s2"))
+    expect(screen.getByTestId("connections-reconnect-s1")).toBeTruthy()
+    await waitFor(() =>
+      expect(
+        api.post.mock.calls.find((c) => c[0] === "/connections/fixture/sites/authorize")?.[1],
+      ).toMatchObject({ mode: "org", accountHint: "two@example.com" }),
+    )
+    expect(screen.queryByTestId("connections-connect-sites")).toBeNull()
   })
 })

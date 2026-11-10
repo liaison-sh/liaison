@@ -677,6 +677,34 @@ describe("mail senders and contacts (#6): automated discovery never adds to the 
     expect((await conversation(sharedAccountId, "s-known")).contact_id).toBe(knownContactId)
   }, 60_000)
 
+  it("mail the mailbox sends is linked to the contact it was addressed to, and creates none", async () => {
+    const sent = (thread: string, to: unknown) => ({
+      ...message({
+        thread,
+        from: `support-${suffix}@test.example`,
+        sentAt: "2026-09-12T00:00:00Z",
+      }),
+      to: [to],
+      labels: ["SENT"],
+      direction: "outbound",
+    })
+    const unknown = `nobody-${suffix}@elsewhere.example`
+    await ingest(
+      sharedAccountId,
+      [
+        sent("out-known", `Known Partner <${known().toUpperCase()}>`),
+        sent("out-object", { email: known() }),
+        sent("out-unknown", unknown),
+      ],
+      {},
+      "sent",
+    )
+    expect((await conversation(sharedAccountId, "out-known")).contact_id).toBe(knownContactId)
+    expect((await conversation(sharedAccountId, "out-object")).contact_id).toBe(knownContactId)
+    expect((await conversation(sharedAccountId, "out-unknown")).contact_id).toBeNull()
+    expect(await contactIdsFor(unknown)).toEqual([])
+  }, 60_000)
+
   it("the mail app cannot create a contact through the generic resolveContact", async () => {
     const counter = { db: 0, byMethod: {} as Record<string, number> }
     await expect(

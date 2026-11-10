@@ -49,6 +49,7 @@ import {
   AttentionTranslatorTestAccess,
   registerTranslatorConsumer,
 } from "~/modules/attention/translator"
+import { readActivity } from "~/modules/contacts/activity"
 import * as footerModule from "~/modules/mail/commercial-footer"
 import { writeMailPage } from "~/modules/mail/page-write"
 import { mailRoutes } from "~/modules/mail/routes"
@@ -72,7 +73,7 @@ import * as minimal from "~/seed/tiers/minimal"
 import { bootstrapAdminCtx } from "~/tests/helpers/agent-ctx"
 import { setTestCommercialIdentity } from "~/tests/helpers/commercial-identity"
 import { createTestCompany } from "~/tests/helpers/company"
-import { ensureRecordedBasis } from "~/tests/helpers/prospect"
+import { ensureRecordedBasis, recordProspect } from "~/tests/helpers/prospect"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
   appendMailMessages,
@@ -3094,4 +3095,135 @@ describe("a reply asking to stop", () => {
     await ingestFrom(real, "Please unsubscribe me.", {}, { message: pass })
     expect((await proposals(real)).length).toBe(1)
   }, 90_000)
+})
+
+describe("mail a person sends from the composer", () => {
+  const insert = (table: string, row: Record<string, unknown>) =>
+    sql.unsafe(insertSql(table, row as never))
+
+  it("links the first To address's existing contact, so the mail is on the contact's and the company's timeline, and creates no contact", async () => {
+    // Mutation caught: the composer's send stored its conversation with no contact.
+    const company = await createTestCompany(orgId, "Composer Studio")
+    const contact = crypto.randomUUID()
+    const known = unique("composer-known")
+    await insert("kernel.contacts", {
+      id: contact,
+      org_id: orgId,
+      handle: `@composer-${contact.slice(0, 8)}`,
+      email: known,
+      name: "Daniel Composer",
+      company_id: company,
+      org_access: "editor",
+      created_by: userId,
+    })
+    const unknown = unique("composer-unknown")
+    const app = new Hono<AppEnv>()
+    app.use("*", async (c, next) => {
+      c.set("userId", userId)
+      c.set("orgId", orgId)
+      // The person's own request: their scopes, roles and grants.
+      c.set("scopes", admin.scopes as never)
+      c.set("dimensionGrants", admin.dimensionGrants as never)
+      c.set("roles", admin.roles as never)
+      await next()
+    })
+    app.route("/api/mail", mailRoutes)
+    const send = async (to: string, subject: string) => {
+      const draft = await withRlsContext(admin, (tx) =>
+        mailService.createDraft(tx as never, {
+          orgId,
+          userId,
+          accountId: oldAccount,
+          to: [{ email: to }],
+          subject,
+        }),
+      )
+      const res = await app.request(`/api/mail/drafts/${(draft as { id: string }).id}/send`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          to: [{ email: to.toUpperCase() }],
+          subject,
+          textBody: "It ships on Monday.",
+          htmlBody: "<p>It ships on Monday.</p>",
+        }),
+      })
+      expect(res.status === 200 ? 200 : await res.text()).toBe(200)
+      const [row] = await sql<Array<{ contact_id: string | null }>>`
+        SELECT conversation.contact_id::text AS contact_id
+          FROM app_mail.messages message
+          JOIN app_mail.conversations conversation ON conversation.id = message.conversation_id
+         WHERE message.org_id = ${orgId} AND message.subject = ${subject}`
+      return row?.contact_id ?? null
+    }
+    expect(await send(known, "Your monitor repair: delivery date")).toBe(contact)
+    expect(await send(unknown, "A note to nobody we know")).toBeNull()
+
+    for (const target of [{ contactId: contact }, { companyId: company }]) {
+      const page = await readActivity({ orgId, actor: admin, target })
+      const mail = page?.items.filter((r) => r.source === "mail") ?? []
+      expect(mail.map((r) => r.contactId)).toEqual([contact])
+      expect(mail[0]?.title).toContain("Your monitor repair: delivery date")
+    }
+    const created = await sql<Array<{ n: number }>>`
+      SELECT count(*)::int AS n FROM kernel.contacts WHERE org_id = ${orgId} AND lower(email) = ${unknown}`
+    expect(created[0]?.n).toBe(0)
+  }, 60_000)
+})
+
+describe("the recipient facts on an agent mail's card", () => {
+  it("any agent mail to a contact shows its basis, consumer status and opt-out, whatever it is classified, as the composer reads them", async () => {
+    // Mutation caught: a plain agent mail's card showed no facts about its recipient, so a
+    // sales offer classified as a plain mail was approved blind.
+    const business = unique("facts-business")
+    await recordProspect(orgId, business, { lawfulBasis: "customer", isConsumer: false })
+    const staged = blockedId(await agentCall("mail:compose", composeParams(business)))
+    const read = await withRlsContext(admin, (tx) =>
+      getApproval(tx as never, { orgId, userId, requestId: staged, sendGuards: true }),
+    )
+    const facts = [
+      {
+        email: business,
+        name: "Test Contact",
+        basis: "customer",
+        isConsumer: false,
+        optedOutAt: null,
+      },
+    ]
+    expect(read?.sendGuard?.recipients).toEqual(facts as never)
+    // The composer's own check reads the same facts for the same address.
+    const app = new Hono<AppEnv>()
+    app.use("*", async (c, next) => {
+      c.set("userId", userId)
+      c.set("orgId", orgId)
+      c.set("scopes", ["mail:conversations:write"] as never)
+      c.set("dimensionGrants", {})
+      await next()
+    })
+    app.route("/api/mail", mailRoutes)
+    const res = await app.request("/api/mail/compose-check", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ to: [business] }),
+    })
+    const body = (await res.json()) as { data: { recipients: unknown } }
+    expect(body.data.recipients).toEqual(facts)
+
+    // Opted out: the composer says since when; an address no contact holds has no facts.
+    const optedOut = unique("facts-opted-out")
+    await recordProspect(orgId, optedOut, { lawfulBasis: null, isConsumer: null })
+    await suppressionsModule.addSuppression(null, { orgId, email: optedOut, reason: "person" })
+    const stranger = unique("facts-stranger")
+    const res2 = await app.request("/api/mail/compose-check", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ to: [optedOut, stranger] }),
+    })
+    const body2 = (await res2.json()) as {
+      data: { recipients: Array<{ email: string; optedOutAt: string | null; basis: unknown }> }
+    }
+    expect(body2.data.recipients.map((r) => [r.email, r.basis, typeof r.optedOutAt])).toEqual([
+      [optedOut, null, "string"],
+    ])
+  }, 60_000)
 })

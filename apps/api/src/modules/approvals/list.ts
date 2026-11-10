@@ -32,6 +32,7 @@ import {
   isPinnedSendGuard,
   type PinnedSendGuard,
   personZones,
+  recipientFacts,
   recipientsOf,
   type SendGuardVerdict,
   withoutThirdParty,
@@ -509,6 +510,32 @@ async function readSendGuards(
   const out = new Map<string, ApprovalSendGuard>()
   for (const [id, verdict] of await readSendGuardVerdicts(orgId, rows, at)) {
     out.set(id, await cardGuard(db, verdict))
+  }
+  // A pending draft's recipients who are contacts, with what the composer would show
+  // about them: the approver's send is theirs, whatever the mail is classified.
+  // One read for every draft's recipients, however many drafts.
+  const pending = rows.flatMap((row) => {
+    const guard = out.get(row.id)
+    if (!guard || row.status !== "pending") return []
+    const payload = row.current_payload
+    const addresses = recipientsOf(payload.to, payload.cc, payload.bcc).map((a) =>
+      a.trim().toLowerCase(),
+    )
+    return [{ guard, addresses }]
+  })
+  if (pending.length === 0) return out
+  const facts = new Map(
+    (await recipientFacts(orgId, [...new Set(pending.flatMap((p) => p.addresses))])).map((f) => [
+      f.email,
+      f,
+    ]),
+  )
+  for (const { guard, addresses } of pending) {
+    const recipients = [...new Set(addresses)].flatMap((a) => {
+      const fact = facts.get(a)
+      return fact ? [fact] : []
+    })
+    if (recipients.length > 0) guard.recipients = recipients
   }
   return out
 }

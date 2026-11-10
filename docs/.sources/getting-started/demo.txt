@@ -178,3 +178,4 @@ Continue with other and no picks opens the whole company -> apps/web/src/modules
 A link names a company type (entry) -> apps/web/src/modules/demo/DemoEntry.tsx:113
 Answer on the workspace marker, counted by type in the log -> apps/api/src/modules/demo/routes.ts:1101
 Every answer opens the same example company, said on the company page -> packages/shared/src/i18n/locales/en/kernel.json:931
+Dealer and customer contacts carry their recorded country -> apps/api/src/seed/tiers/demo/seed-support.ts:173 ; apps/api/src/seed/factories/people/contacts.ts:80

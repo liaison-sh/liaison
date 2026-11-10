@@ -79,6 +79,7 @@ import { useFormDictation } from "~/modules/assist/useDictation"
 import { hasScope, userFromToken } from "~/modules/auth/auth-store"
 import { RichEditor, type RichEditorHandle } from "~/modules/editor"
 import { currentLocale, type Translate, tNow, useI18n } from "~/modules/i18n/i18n-context"
+import { RecipientFactsLine } from "~/modules/mail/RecipientFactsLine"
 // The mailbox and mail stores are pulled in DYNAMICALLY below, not imported at
 // module scope. Statically importing the mail message store drags the whole mail
 // conversation store (and its module-scope memos) into every surface that
@@ -2329,6 +2330,17 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
                           </Show>
                         </div>
                       )}
+                    </Show>
+
+                    {/* What is recorded about each recipient who is a contact, as the composer
+                    shows it: approving makes this mail the approver's own send. */}
+                    <Show when={c().status === "pending"}>
+                      <div class="mt-2">
+                        <RecipientFactsLine
+                          facts={sendGuard()?.recipients}
+                          testId="approval-card-recipient-facts"
+                        />
+                      </div>
                     </Show>
 
                     <Show

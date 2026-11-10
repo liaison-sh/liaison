@@ -86,3 +86,4 @@ Org Drive folder sync only in picked shared drives -> apps/api/src/apps/knowledg
 Federated Drive search through the scoped fetchers -> apps/api/src/apps/knowledge/source-registry.ts:65
 org Drive folder hidden / deleted outside picked drives -> apps/api/src/apps/knowledge/knowledge-jobs.ts:280
 org folder via org row, personal folder via owner row, same account -> apps/api/src/apps/knowledge/knowledge-jobs.ts:111 ; apps/api/src/apps/google-drive/drive-access.ts:20
+Add people opens on a click or typing; you are not offered to yourself -> apps/web/src/modules/sharing/ShareDialog.tsx:364 ; apps/web/src/modules/sharing/ShareDialog.tsx:172

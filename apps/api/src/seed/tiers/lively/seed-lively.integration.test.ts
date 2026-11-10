@@ -171,6 +171,23 @@ describe("the lively tier", () => {
     expect(Number(amounts?.n)).toBe(9)
   })
 
+  it("records the country its world gives a contact as that contact's recipient country", async () => {
+    // Mutation caught: no seeded contact had a recipient country, so the send check never knew one.
+    const orgId = first.world.orgId
+    const [row] = await withSystemDb("lively-test-contact-country", async (tx) =>
+      typedRows<{ named: number; recorded: number }>(
+        await tx.execute(
+          sql`SELECT count(*) FILTER (WHERE metadata->>'country' IS NOT NULL)::int AS named,
+                     count(*) FILTER (WHERE metadata->>'country' IS NOT NULL
+                       AND recipient_country = upper(metadata->>'country'))::int AS recorded
+              FROM kernel.contacts WHERE org_id = ${orgId}::uuid`,
+        ),
+      ),
+    )
+    expect(Number(row?.named)).toBeGreaterThanOrEqual(30)
+    expect(Number(row?.recorded)).toBe(Number(row?.named))
+  })
+
   it("puts each dealer's sales address on its dealer's company", async () => {
     const orgId = first.world.orgId
     const dealers = await withSystemDb("lively-test-dealer-contacts", async (tx) =>

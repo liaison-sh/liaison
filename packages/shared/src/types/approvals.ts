@@ -158,6 +158,23 @@ export interface ApprovalSendGuard {
   record?: { kind: "conversation" | "ticket"; id: string }
   /** Where the message came in, without naming it: set when the viewer cannot open it. */
   source?: "conversation" | "ticket"
+  /**
+   * What is recorded about each recipient who is a contact, read as the composer
+   * reads it, whatever the mail is classified: the approver's send is theirs.
+   */
+  recipients?: RecipientFact[]
+}
+
+/** What the organization records about one mail recipient who is a contact. */
+export interface RecipientFact {
+  email: string
+  name: string | null
+  /** The recorded lawful basis for commercial mail, null when none (or two disagree). */
+  basis: "consent" | "customer" | "professional_interest" | "generic_address" | null
+  /** True a consumer, false a business, null not recorded (which counts as a consumer). */
+  isConsumer: boolean | null
+  /** When they opted out of commercial mail (ISO), null when they have not. */
+  optedOutAt: string | null
 }
 
 /** Who asked for an approval (see `ApprovalRequestSummary.requester`). */

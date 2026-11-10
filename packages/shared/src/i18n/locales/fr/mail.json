@@ -260,6 +260,15 @@
     "saved": "Identité commerciale enregistrée.",
     "saveFailed": "L'identité commerciale n'a pas pu être enregistrée."
   },
+  "recipientFacts": {
+    "basis": "Base : {{basis}}",
+    "noBasis": "Aucune base enregistrée",
+    "business": "Professionnel",
+    "consumer": "Consommateur",
+    "consumerUnknown": "Consommateur ou professionnel non enregistré",
+    "optedOut": "Désinscrit le {{date}}",
+    "notOptedOut": "Non désinscrit"
+  },
   "commercialFooter": {
     "optOut": "Pour ne plus recevoir de messages commerciaux de {{name}} : {{url}} ou répondez stop.",
     "linkLabel": "(lien de désinscription)",

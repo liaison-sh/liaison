@@ -1842,7 +1842,9 @@ export async function seedDemoCommerce(
           email: p.email,
           ...(p.kind === "customer" ? {} : { company: p.name }),
           tags: [p.kind],
-          ...(p.kind === "customer" ? {} : { metadata: { country: p.country, kind: p.kind } }),
+          ...(p.kind === "customer"
+            ? {}
+            : { recipientCountry: p.country, metadata: { country: p.country, kind: p.kind } }),
         })),
       )
     ).map(([key, c]) => [key, c.id]),

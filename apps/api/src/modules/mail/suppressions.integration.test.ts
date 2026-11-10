@@ -40,6 +40,7 @@ import {
 } from "~/modules/mail/suppressions"
 import { seedContext } from "~/seed/context"
 import { seedApprovalRequests } from "~/seed/factories/approvals/requests"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import { resolveContacts } from "~/seed/factories/people/contacts"
 import * as minimal from "~/seed/tiers/minimal"
 import { bootstrapAdminCtx } from "~/tests/helpers/agent-ctx"
@@ -564,6 +565,44 @@ describe("lawful basis, notice, record and retention", () => {
     expect(facts.recipients.map((r) => [r.email, r.isConsumer])).toEqual([
       [business, false],
       [consumer, true],
+    ])
+  })
+
+  it("with no recorded country, the contact's first address with a country gives it, and a recorded country wins", async () => {
+    // Mutation caught: the send check read only the recorded country, so no seeded contact had one.
+    const address = async (
+      contactId: string,
+      country: string,
+      extra: Record<string, unknown> = {},
+    ) =>
+      sql.unsafe(
+        insertSql("kernel.contact_addresses", {
+          id: crypto.randomUUID(),
+          org_id: orgId,
+          contact_id: contactId,
+          role: "delivery",
+          city: "Somewhere",
+          country_iso2: country,
+          ...extra,
+        } as never),
+      )
+    const fromAddress = unique("address-country")
+    const first = await recordProspect(orgId, fromAddress, { recipientCountry: null })
+    // An archived or stale address says nothing of where they are now.
+    await address(first, "DE", { archived_at: new Date().toISOString() })
+    await address(first, "IT", { stale_at: new Date().toISOString() })
+    await address(first, "ES", { role: "other" })
+    await address(first, "fr", { role: "billing" })
+    const recorded = unique("recorded-country")
+    const second = await recordProspect(orgId, recorded, { recipientCountry: "BE" })
+    await address(second, "FR")
+    const none = unique("no-country")
+    await recordProspect(orgId, none, { recipientCountry: null })
+    const facts = await lawfulBasisFacts(orgId, [fromAddress, recorded, none])
+    expect(facts.recipients.map((r) => [r.email, r.countries])).toEqual([
+      [fromAddress, ["FR"]],
+      [recorded, ["BE"]],
+      [none, []],
     ])
   })
 

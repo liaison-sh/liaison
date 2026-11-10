@@ -231,6 +231,36 @@ describe("MailCompose — dictation", () => {
 })
 
 describe("MailCompose — a prospect's mail", () => {
+  test("shows what is recorded about a recipient who is a contact, even on a plain mail", async () => {
+    composeCheck.answer = {
+      commercial: false,
+      footerLines: null,
+      refusal: null,
+      line: null,
+      missingBasis: null,
+      recipients: [
+        {
+          email: "lea@dealer.example",
+          name: "Lea Martin",
+          basis: "professional_interest",
+          isConsumer: true,
+          optedOutAt: null,
+        },
+      ],
+    }
+    render(() => <MailCompose entityId="compose-facts" />)
+    fireEvent.input(screen.getByTestId("mail-compose-to"), {
+      target: { value: "lea@dealer.example" },
+    })
+    const facts = await waitFor(() => screen.getByTestId("mail-compose-recipient-facts"), {
+      timeout: 2000,
+    })
+    expect(facts.textContent).toBe(
+      "Lea Martin · Basis: Professional interest · Consumer · Not opted out",
+    )
+    composeCheck.answer = null
+  })
+
   test("shows the footer a prospect's mail carries as fixed text, with no way to remove it", async () => {
     composeCheck.answer = {
       commercial: true,

@@ -1661,6 +1661,42 @@ describe("ApprovalCard: the send check on an agent's mail draft", () => {
   const guarded = (sendGuard: Record<string, unknown>) =>
     baseRow({ toolName: "mail:compose", payloadHash: "seen", sendGuard })
 
+  it("a plain agent mail to a contact shows the recipient facts the composer shows: basis, consumer or business, opted out", async () => {
+    handleWsCreate(
+      guarded({
+        state: "clear",
+        recipients: [
+          {
+            email: "lea@dealer.example",
+            name: "Lea Martin",
+            basis: "customer",
+            isConsumer: false,
+            optedOutAt: null,
+          },
+          {
+            email: "pierre@gmail.com",
+            name: null,
+            basis: null,
+            isConsumer: null,
+            optedOutAt: "2026-10-02T09:00:00.000Z",
+          },
+        ],
+      }),
+      "u-approver",
+    )
+    render(() => <ApprovalCard requestId="ar-1" />)
+    const facts = await screen.findByTestId("approval-card-recipient-facts")
+    const rows = facts.querySelectorAll("[data-testid=approval-card-recipient-facts-row]")
+    expect(rows[0]?.textContent).toBe(
+      "Lea Martin · Basis: Existing customer · Business · Not opted out",
+    )
+    expect(rows[1]?.textContent).toContain(
+      "pierre@gmail.com · No recorded basis · Consumer or business not recorded · Opted out on",
+    )
+    // Facts, not a stop: the person still decides.
+    expect(screen.getAllByTestId("approval-card-action-approve").length).toBeGreaterThan(0)
+  })
+
   it("a stopped card has no Approve", async () => {
     handleWsCreate(
       guarded({

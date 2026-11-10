@@ -68,4 +68,25 @@ describe("lawful basis", () => {
       basisProblemFor(at({ countries: ["FR", "DE"] }), { FR: "optout", default: "consent" })?.code,
     ).toBe("country_needs_consent")
   })
+
+  it("a country refusal names the countries the policy lets mail go to on opt-out, and says when recording a country would help", () => {
+    const unknown = basisProblemFor(at({ countries: [] }), DEFAULT_COUNTRY_POLICY)?.label
+    expect(unknown).toContain("Their country is not recorded")
+    expect(unknown).toContain(
+      "Without recorded consent, the organization's policy allows commercial mail only to FR.",
+    )
+    expect(unknown).toContain("Recording their country helps only if it is FR.")
+    const recorded = basisProblemFor(at({ countries: ["DE"] }), {
+      FR: "optout",
+      BE: "optout",
+      default: "consent",
+    })?.label
+    expect(recorded).toContain("The rule for DE needs recorded consent")
+    expect(recorded).toContain("only to BE and FR.")
+    expect(recorded).not.toContain("Recording their country")
+    const none = basisProblemFor(at({ countries: [] }), { default: "consent" })?.label
+    expect(none).toContain(
+      "The organization's policy allows no commercial mail without recorded consent, so recording their country would not change this.",
+    )
+  })
 })

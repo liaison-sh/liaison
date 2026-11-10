@@ -6,6 +6,7 @@
  * preflight, the card and the handler alike.
  */
 import { createHash } from "node:crypto"
+import type { RecipientFact } from "@liaison/shared"
 import { sql as drizzleSql, type SQL } from "drizzle-orm"
 import { extractRows, type PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -1597,6 +1598,38 @@ export async function checkPersonCompose(
       ),
     ),
   }
+}
+
+/**
+ * What is recorded about each outside recipient who is a contact: their lawful
+ * basis, whether they are a consumer or a business, and since when they opted
+ * out. The composer shows it for a person's own mail, and an agent mail's card
+ * shows the same, whatever the mail is classified. Recipients no contact holds
+ * are left out.
+ */
+export async function recipientFacts(
+  orgId: string,
+  recipients: readonly string[],
+): Promise<RecipientFact[]> {
+  const known = (await lawfulBasisFacts(orgId, recipients)).recipients.filter(
+    (r) => r.contactIds.length > 0,
+  )
+  if (known.length === 0) return []
+  const since = new Map(
+    (
+      await listSuppressions(
+        orgId,
+        known.map((r) => r.email),
+      )
+    ).map((h) => [h.email.toLowerCase(), h.createdAt]),
+  )
+  return known.map((r) => ({
+    email: r.email,
+    name: r.name,
+    basis: r.basis,
+    isConsumer: r.isConsumer,
+    optedOutAt: since.get(r.email) ?? null,
+  }))
 }
 
 /** The one outside recipient a commercial mail's link is minted for (the first when none is outside). */

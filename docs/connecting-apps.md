@@ -714,6 +714,7 @@ accident, and disconnect the one you did not mean to add.
 | "No OAuth client configured" on Connect | env-driven resolver unset **and** no `kernel.oauth_providers` row | Set the app's `*_OAUTH_CLIENT_*` env, **or** `PUT …/oauth-client`. |
 | Env client id set but still not picked up | wrong env var name (e.g. `GOOGLE_OAUTH_*` instead of `GOOGLE_DRIVE_OAUTH_*`), only one of the pair set, or the workspace has its own client (it wins) | Use the exact names in section 3; check `GET /api/connections/:app/:conn/oauth-client` for the source. |
 | Tool returns `not_connected` for some users only | connection is **user-owned**; the caller/agent is a different user | Reconnect **org-owned** (`mode: "org"`, needs `:accounts:admin`). |
+| A call answers `connection_not_connected` (422) | the connection has no active account: never connected, disconnected, or its account was deleted. A tool returns it as its answer, not a failure; a mail send names the mailbox and says nothing was sent | Connect (or reconnect) it in Settings → Connections. |
 | 403 "Admin scope required" on connect/disconnect | org-mode connect without `<app>:accounts:admin` | Grant the scope or connect user-owned. |
 | App silently uninitialised after connecting | post-connect event lost | `POST /api/connections/:appName/:connectionName/reconcile`. |
 | "requires re-authorization" / repeated 401s | refresh token revoked/expired at provider | Disconnect and reconnect. |

@@ -5,6 +5,8 @@
 // the ticket id, and the card draws only the masked card. A viewer the server does not list sees nothing.
 import { Route, Router } from "@solidjs/router"
 import { cleanup, render, screen, waitFor } from "@solidjs/testing-library"
+import { createComponent } from "solid-js"
+import { insert } from "solid-js/web"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { registerContribution, resetRegistry, unregisterContributions } from "~/framework/app-registry"
 import { setTokens } from "~/modules/auth/auth-store"
@@ -34,20 +36,18 @@ function makeJwt(): string {
 }
 
 function renderTicketPanelSlot() {
-  return render(() => (
-    <Router>
-      <Route
-        path="*"
-        component={() => (
-          <ApiProvider>
-            <div data-testid="tickets-detail-panel">
-              <SlotPanels slot="ticket:detail:panel" entityId="t1" panelProps={{ ticketId: "t1" }} />
-            </div>
-          </ApiProvider>
-        )}
-      />
-    </Router>
-  ))
+  const page = () =>
+    createComponent(ApiProvider, {
+      get children() {
+        const panel = document.createElement("div")
+        panel.setAttribute("data-testid", "tickets-detail-panel")
+        insert(panel, createComponent(SlotPanels, { slot: "ticket:detail:panel", entityId: "t1", panelProps: { ticketId: "t1" } }))
+        return panel
+      },
+    })
+  return render(() =>
+    createComponent(Router, { children: createComponent(Route, { path: "*", component: page }) }),
+  )
 }
 
 describe("the ticket page and the Stripe card", () => {

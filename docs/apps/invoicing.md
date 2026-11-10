@@ -136,6 +136,18 @@ Invoices, credit notes and proformas issued in another tool can be imported with
 - The import does not record legal originals. Once you have checked the imported documents, run `einvoicing_backfill_legacy_originals` to record them from the PDFs.
 - Until then, the run can be undone under **Settings › Organization › Imports**. A document that changed since, for example once its legal original is recorded, is kept.
 
+## Recurring invoice schedules
+
+A schedule bills one customer on a fixed cadence: every month, quarter or year, on the last day of the period, on a day from 1 to 28, or on a given date for a year. It names the issuer profile, the customer and the lines. A line may hold `{period}`, filled in with the period it bills. Prices are in minor units and the VAT rate is in basis points (2000 is 20%).
+
+- **Dates.** An invoice issues on its billing day, and the draft is made three days before it. A draft day that falls on a Saturday or Sunday moves back to the Friday; no holiday calendar is held, so a public holiday does not move it. The billing day itself never moves, even on a Saturday. A day past the end of the month, such as 30 February, is that month's last day. All dates are the issuer's civil dates, in the time zone set on its profile.
+- **Starting one.** `recurring_schedule_create` saves a schedule and starts it, or saves it as a draft that bills nothing yet. It refuses a missing customer, billing day or line and says which. A schedule created this way always issues for review: **issue by itself** is off, and only `recurring_schedule_update` turns it on.
+- **Approval.** When an agent asks to save or change a schedule, it files an approval and nothing is saved until a person approves it. Turning **issue by itself** on is never approved by an organization's auto-approve policy, and the schedule records who turned it on and when. When a person saves a schedule in the editor, it is saved at once.
+- **Pausing.** `recurring_schedule_pause` stops the schedule: nothing is drafted while it is paused. With `until`, it resumes on that date and the days inside the pause are not billed afterwards. Pausing a paused schedule changes nothing. A pause asked for by an agent that has read outside text (a customer's email, for example) waits for a person.
+- **Ending.** `recurring_schedule_update` with `status` set to `ended` stops billing for good. A schedule whose end date falls before a period creates nothing for it.
+- **Reading.** `recurring_list` shows the schedules with their next issue day and draft day. Reading and saving need `invoicing:documents:read` and `invoicing:documents:write`; reading the issuer's time zone needs `invoicing:settings:read`, and a member without it is told the issuer cannot be read.
+- **Importing.** Schedules from another tool can be imported as **Recurring invoice schedules** (`recurring-schedule`) records. They arrive as drafts that bill nothing until a person starts them.
+
 ## Settings
 
 | Section | Who can edit | What it holds |
@@ -198,6 +210,9 @@ Invoices, credit notes and proformas issued in another tool can be imported with
 | `documents_update` | Edit a document | Always |
 | `documents_send_to_customer` | Email a document | Always |
 | `documents_mark_paid`, `documents_record_refund` | Record a payment or a refund (payment status only) | Always |
+| `recurring_list` | List recurring invoice schedules with their next issue day | No |
+| `recurring_schedule_create`, `recurring_schedule_update` | Save or change a recurring schedule; turning on issue by itself is never auto-approved | Always |
+| `recurring_schedule_pause` | Pause a schedule, until a date or until resumed | No, unless the turn read outside text |
 | `documents_retry_pdf` | Re-render a failed PDF | No |
 | `order_reissue_apply` | Reissue an invoice after a Shopify order edit changed lines or amounts | Always |
 | `deferred_tax_override` | Issue a parked order with a chosen tax decision | Always |

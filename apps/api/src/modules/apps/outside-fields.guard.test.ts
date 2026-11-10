@@ -158,6 +158,10 @@ const LISTED = new Map<string, string>([
   ["invoicing:hs_codes_lookup", `the org's code library: ${NONE}`],
   ["invoicing:contact_relationships_get", `a classification the org set: ${NONE}`],
   ["invoicing:settings_issuer_profile_list", `the org's own legal entities: ${NONE}`],
+  [
+    "invoicing:recurring_list",
+    `the org's own schedules: cadence, dates and the lines its people wrote, the free-text notes left out: ${NONE}`,
+  ],
   ["invoicing:settings_tax_regime_list", `org settings: ${NONE}`],
   ["invoicing:settings_hs_code_list", `the org's code library: ${NONE}`],
   ["invoicing:settings_shop_mapping_list", `org settings: ${NONE}`],

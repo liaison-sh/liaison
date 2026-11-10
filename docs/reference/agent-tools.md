@@ -515,6 +515,10 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `received_einvoices_get` | One received supplier e-invoice: supplier, number, dates, totals (the platform's, and the original file's own figures when they differ), status with its official code and history, its files (the original as received, the platform's PDF), and the actions possible now with their reasons. |  | `invoicing:received:read` |
 | `received_einvoices_list` | List the supplier e-invoices delivered by the e-invoicing platform (the invoicing app's Received tab): supplier, number, issue and due dates, total with currency, status (received, approved, in_dispute, refused, rejected, partially_collected, collected), received date, newest first. |  | `invoicing:received:read` |
 | `received_einvoices_refresh` | Re-read received supplier e-invoices from the e-invoicing platform now: with received_id, that one; without, everything new since the last check plus the statuses of open ones. |  | `invoicing:received:write` |
+| `recurring_list` | List recurring schedules with their next issue day and draft day. |  | `invoicing:documents:read` |
+| `recurring_schedule_create` | Save a recurring invoice schedule for one customer: cadence, billing day and lines. | yes | `invoicing:documents:write` |
+| `recurring_schedule_pause` | Pause a recurring schedule: it drafts nothing while paused. |  | `invoicing:documents:write` |
+| `recurring_schedule_update` | Change a recurring schedule, resume a paused one (status active), end it (status ended) or turn issue_mode auto on or off. | yes | `invoicing:documents:write` |
 | `settings_hs_code_list` | List the org's HS-code library entries. |  | `invoicing:settings:read` |
 | `settings_issuer_profile_create` | Create an issuer profile. | yes | `invoicing:settings:write` |
 | `settings_issuer_profile_delete` | Delete an issuer profile by id. | yes | `invoicing:settings:write` |

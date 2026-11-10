@@ -601,6 +601,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/invoicing-facturx-issue.test.ts",
             // The issue date and number year at instants set on the host clock, through the sandbox.
             "src/tests/integration/invoicing-issue-date.test.ts",
+            // Recurring schedules on the real kernel: the gate, the policy that cannot turn on issuing, the scopes.
+            "src/tests/integration/invoicing-recurring-tools.test.ts",
             // Minor-unit money through the real sandbox: refused before parking, card equals issue.
             "src/tests/integration/invoicing-minor-amounts.test.ts",
             // E-invoice send through the einvoicing-pa@1 provider contract (Pennylane fake behind
@@ -1376,6 +1378,11 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/issue-date.test.ts",
             // The issuer time zone is asked once, at the first issue on a profile nobody gave one.
             "src/issue-timezone-ask.test.ts",
+            // Recurring schedules: the date rules (pure) and the four tools against the store.
+            "src/recurring/schedule.test.ts",
+            "src/recurring/tools.test.ts",
+            "src/recurring/manifest.test.ts",
+            "src/recurring/import-kind.test.ts",
             "src/state.test.ts",
             "src/tax.test.ts",
             // What the order-created auto-flow would park, asked before a draft order is staged (pure).

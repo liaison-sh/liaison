@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.20.65",
+  "version": "0.20.66",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1226,6 +1226,98 @@
           ]
         ]
       }
+    },
+    "recurring_schedules": {
+      "rlsScope": "documents",
+      "fields": {
+        "issuer_profile_id": {
+          "type": "uuid",
+          "references": { "table": "issuer_profiles", "column": "id", "onDelete": "restrict" }
+        },
+        "company_id": "uuid?",
+        "contact_id": "uuid",
+        "status": { "type": "string", "enum": ["draft", "active", "paused", "ended"], "default": "active" },
+        "repeats": { "type": "string", "enum": ["month", "quarter", "year"] },
+        "billing_day": "text",
+        "ends_on": "day?",
+        "covers": { "type": "string", "enum": ["period_ended", "period_ahead"], "default": "period_ended" },
+        "issue_mode": { "type": "string", "enum": ["review", "auto"], "default": "review" },
+        "auto_enabled_by": "uuid?",
+        "auto_enabled_at": "day?",
+        "paid_by": { "type": "string", "enum": ["transfer", "card_link"], "default": "transfer" },
+        "card_link_url": "text?",
+        "due_rule": { "type": "string", "enum": ["days_30", "on_issue", "days_n"], "default": "days_30" },
+        "due_days": "integer?",
+        "language": { "type": "string", "default": "en" },
+        "lines": { "type": "json", "default": [] },
+        "notes": "text?",
+        "bills_other_than_stripe": "text?",
+        "bills_other_by": "uuid?",
+        "paused_until": "day?",
+        "next_issue_on": "day?",
+        "next_draft_on": "day?",
+        "version": { "type": "integer", "default": 1 },
+        "last_document_id": "uuid?",
+        "created_by": "text",
+        "external_ref": "text?"
+      },
+      "constraints": { "unique": [["external_ref"]] },
+      "indexes": [["status", "next_draft_on"], ["company_id"], ["contact_id"]]
+    },
+    "recurring_runs": {
+      "rlsScope": "documents",
+      "fields": {
+        "issuer_profile_id": {
+          "type": "uuid",
+          "references": { "table": "issuer_profiles", "column": "id", "onDelete": "restrict" }
+        },
+        "issue_on": "day",
+        "latest_issue_on": "day",
+        "status": {
+          "type": "string",
+          "enum": ["drafted", "approved", "issuing", "issued", "partial", "rejected", "late"],
+          "default": "drafted"
+        },
+        "approval_request_id": "text?",
+        "approved_by": "uuid?",
+        "approved_at": "date?",
+        "auto": { "type": "boolean", "default": false },
+        "period_label": "text"
+      },
+      "constraints": { "unique": [["issuer_profile_id", "issue_on"]] },
+      "indexes": [["status", "issue_on"]]
+    },
+    "recurring_run_items": {
+      "rlsScope": "documents",
+      "fields": {
+        "run_id": {
+          "type": "uuid",
+          "references": { "table": "recurring_runs", "column": "id", "onDelete": "cascade" }
+        },
+        "source": { "type": "string", "enum": ["schedule", "added"], "default": "schedule" },
+        "schedule_id": "uuid?",
+        "schedule_version": "integer?",
+        "period_key": "text",
+        "period_start": "day",
+        "period_end": "day",
+        "document_id": "uuid",
+        "position": "integer",
+        "state": {
+          "type": "string",
+          "enum": ["ready", "needs_fix", "left_out", "approved", "issued", "failed", "waiting_reapproval"],
+          "default": "ready"
+        },
+        "note": "text?",
+        "fix_suggestion": { "type": "json", "required": false },
+        "approved_hash": "text?",
+        "send_grant": "text?",
+        "failure": { "type": "json", "required": false },
+        "issued_number": "text?",
+        "schedule_patch": { "type": "json", "required": false },
+        "ends_on_before": "day?"
+      },
+      "constraints": { "unique": [["schedule_id", "period_key"], ["document_id"]] },
+      "indexes": [["run_id", "position"], ["state"]]
     },
     "webhook_deliveries": {
       "rlsScope": "internal",
@@ -2477,6 +2569,140 @@
         "properties": {}
       },
       "readOnly": true
+    },
+    "recurring_schedule_create": {
+      "summarizer": "summarizeRecurringScheduleCreate",
+      "summarizerContext": { "tool": "settings_issuer_profile_list", "params": {} },
+      "description": "Save a recurring invoice schedule for one customer: cadence, billing day and lines. It drafts each period for review and never issues by itself. An agent's call waits for a person's approval.",
+      "searchKeywords": ["récurrent", "abonnement", "facturation", "échéancier", "recurring", "subscription"],
+      "requiredScopes": ["invoicing:documents:write"],
+      "handler": "recurringScheduleCreateHandler",
+      "preflight": "recurringScheduleCreatePreflightHandler",
+      "timeoutMs": 30000,
+      "gated": true,
+      "approvalImpact": "external",
+      "writesToTable": "app_invoicing.recurring_schedules",
+      "params": {
+        "type": "object",
+        "properties": {
+          "issuer_profile_id": { "type": "string" },
+          "status": { "type": "string", "enum": ["draft", "active"], "description": "Default active; draft bills nothing yet." },
+          "issue_mode": { "type": "string", "enum": ["review", "auto"], "description": "review only here; auto is set by recurring_schedule_update." },
+          "company_id": { "type": ["string", "null"] },
+          "contact_id": { "type": "string", "description": "The customer's contact." },
+          "repeats": { "type": "string", "enum": ["month", "quarter", "year"] },
+          "billing_day": { "type": "string", "description": "last, a day 1-28, or MM-DD for a year." },
+          "ends_on": { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+          "covers": { "type": "string", "enum": ["period_ended", "period_ahead"] },
+          "paid_by": { "type": "string", "enum": ["transfer", "card_link"] },
+          "due_rule": { "type": "string", "enum": ["days_30", "on_issue", "days_n"] },
+          "due_days": { "type": ["integer", "null"] },
+          "language": { "type": "string" },
+          "notes": { "type": ["string", "null"] },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "description": { "type": "string", "description": "May hold {period}." },
+                "qty": { "type": "number" },
+                "unit_price_minor": { "type": ["integer", "string"] },
+                "vat_bp": { "type": "integer", "description": "Basis points: 2000 is 20%." },
+                "line_kind": { "type": "string", "enum": ["service", "goods", "software", "shipping"] }
+              },
+              "required": ["description", "qty", "unit_price_minor", "vat_bp"]
+            }
+          }
+        },
+        "required": ["issuer_profile_id", "contact_id", "repeats", "billing_day", "lines"]
+      },
+      "approvalCard": { "summary": "Save a recurring invoice schedule" },
+      "referenceableOutputs": ["id"]
+    },
+    "recurring_schedule_update": {
+      "summarizer": "summarizeRecurringScheduleUpdate",
+      "description": "Change a recurring schedule, resume a paused one (status active), end it (status ended) or turn issue_mode auto on or off. Drafts already made keep their amounts. Always waits for a person's approval.",
+      "searchKeywords": ["récurrent", "abonnement", "modifier", "arrêter", "recurring"],
+      "requiredScopes": ["invoicing:documents:write"],
+      "handler": "recurringScheduleUpdateHandler",
+      "preflight": "recurringScheduleUpdatePreflightHandler",
+      "timeoutMs": 30000,
+      "gated": true,
+      "noAutoApprove": true,
+      "approvalImpact": "external",
+      "editableFields": [],
+      "writesToTable": "app_invoicing.recurring_schedules",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "status": { "type": "string", "enum": ["active", "ended"] },
+          "issue_mode": { "type": "string", "enum": ["review", "auto"], "description": "auto issues without a card; a person turns it on." },
+          "company_id": { "type": ["string", "null"] },
+          "contact_id": { "type": "string" },
+          "repeats": { "type": "string", "enum": ["month", "quarter", "year"] },
+          "billing_day": { "type": "string", "description": "last, a day 1-28, or MM-DD for a year." },
+          "ends_on": { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+          "covers": { "type": "string", "enum": ["period_ended", "period_ahead"] },
+          "paid_by": { "type": "string", "enum": ["transfer", "card_link"] },
+          "due_rule": { "type": "string", "enum": ["days_30", "on_issue", "days_n"] },
+          "due_days": { "type": ["integer", "null"] },
+          "language": { "type": "string" },
+          "notes": { "type": ["string", "null"] },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "description": { "type": "string", "description": "May hold {period}." },
+                "qty": { "type": "number" },
+                "unit_price_minor": { "type": ["integer", "string"] },
+                "vat_bp": { "type": "integer", "description": "Basis points: 2000 is 20%." },
+                "line_kind": { "type": "string", "enum": ["service", "goods", "software", "shipping"] }
+              },
+              "required": ["description", "qty", "unit_price_minor", "vat_bp"]
+            }
+          }
+        },
+        "required": ["id"]
+      },
+      "approvalCard": { "summary": "Change recurring schedule {{params.id}}" }
+    },
+    "recurring_schedule_pause": {
+      "summarizer": "summarizeRecurringSchedulePause",
+      "description": "Pause a recurring schedule: it drafts nothing while paused. With until it resumes on that date and the days inside the pause are not billed afterwards. Pausing a paused schedule changes nothing.",
+      "searchKeywords": ["pause", "suspendre", "récurrent", "abonnement"],
+      "requiredScopes": ["invoicing:documents:write"],
+      "handler": "recurringSchedulePauseHandler",
+      "timeoutMs": 30000,
+      "conditionalGate": true,
+      "externalEffect": true,
+      "approvalImpact": "external",
+      "writesToTable": "app_invoicing.recurring_schedules",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "until": { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "description": "Resume date, after today." }
+        },
+        "required": ["id"]
+      },
+      "approvalCard": { "summary": "Pause recurring schedule {{params.id}}" }
+    },
+    "recurring_list": {
+      "description": "List recurring schedules with their next issue day and draft day. Filter by status; page with cursor.",
+      "searchKeywords": ["récurrent", "abonnements", "échéancier", "recurring"],
+      "requiredScopes": ["invoicing:documents:read"],
+      "handler": "recurringListHandler",
+      "readOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["draft", "active", "paused", "ended"] },
+          "limit": { "type": "integer" },
+          "cursor": { "type": "string" }
+        }
+      }
     },
     "drafts_create": {
       "summarizer": "summarizeDraftCreate",
@@ -5624,6 +5850,49 @@
         "tables": ["app_invoicing.documents", "app_invoicing.document_lines"],
         "writeScopes": ["invoicing:documents:write"],
         "files": ["pdf"]
+      },
+      "recurring-schedule": {
+        "label": "Recurring invoice schedules",
+        "schema": {
+          "type": "object",
+          "required": ["externalRef", "contactId", "repeats", "billingDay", "lines"],
+          "additionalProperties": false,
+          "properties": {
+            "externalRef": { "type": "string", "minLength": 1 },
+            "contactId": { "type": "string", "minLength": 1 },
+            "companyId": { "type": "string" },
+            "issuerProfileId": { "type": "string" },
+            "repeats": { "type": "string", "enum": ["month", "quarter", "year"] },
+            "billingDay": { "type": "string" },
+            "endsOn": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+            "covers": { "type": "string", "enum": ["period_ended", "period_ahead"] },
+            "paidBy": { "type": "string", "enum": ["transfer", "card_link"] },
+            "dueRule": { "type": "string", "enum": ["days_30", "on_issue", "days_n"] },
+            "dueDays": { "type": "integer" },
+            "language": { "type": "string" },
+            "notes": { "type": "string" },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["description", "unitPriceMinor"],
+                "additionalProperties": false,
+                "properties": {
+                  "description": { "type": "string" },
+                  "quantity": { "type": "number" },
+                  "unitPriceMinor": { "type": "integer" },
+                  "taxRateBp": { "type": "integer" },
+                  "lineKind": { "type": "string", "enum": ["service", "goods", "software", "shipping"] }
+                }
+              }
+            }
+          }
+        },
+        "handler": "importSchedules",
+        "check": "checkSchedules",
+        "dedupKey": "externalRef",
+        "tables": ["app_invoicing.recurring_schedules"],
+        "writeScopes": ["invoicing:documents:write"]
       }
     }
   },

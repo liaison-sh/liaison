@@ -46,10 +46,12 @@ import { importAttributeIssue } from "~/modules/apps/sandbox/import-attributes"
 
 /**
  * Export-only bundle text kept, in characters (bytes, for ASCII source). Every
- * first-party read-only handler warm at once, 240 of them, holds 43.3 M
+ * first-party read-only handler warm at once, 268 of them, holds 48.2 M
  * (bundle-shake.test.ts measures it): all of them fit, so the population the
  * image ships never thrashes, and after an upgrade the old version's entries,
- * gone cold, are the ones evicted.
+ * gone cold, are the ones evicted. Most of each trimmed handler is the schema
+ * library the SDK's index pulls in: an app that only refuses (`refuseTool`)
+ * imports it from `@liaison/app-sdk/errors` and leaves the library out.
  */
 const MAX_BYTES = 48 * 1024 * 1024
 /** Entries kept, any state: bounds the keys of bundles that hold no text. */

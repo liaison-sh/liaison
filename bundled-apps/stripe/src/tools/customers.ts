@@ -5,7 +5,7 @@
 // and descriptions are text a paying customer wrote, so both tools declare
 // `taintSource`. The app database answers equality and `in` only: an id or an
 // email is one exact read, a name is matched over at most `SCAN_CAP` rows.
-import { refuseTool } from "@liaison/app-sdk"
+import { refuseTool } from "@liaison/app-sdk/errors"
 import { existingContactByEmail, matchCustomer } from "../match"
 import {
   customerIdsFor,

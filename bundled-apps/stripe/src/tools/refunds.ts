@@ -19,7 +19,7 @@
 //
 // A card number in the reason is refused, and logs carry brand, last 4 and
 // expiry only.
-import { refuseTool, type ToolRefusal } from "@liaison/app-sdk"
+import { refuseTool, type ToolRefusal } from "@liaison/app-sdk/errors"
 import { type StripeHttpCtx, StripeApiError, stripeFetch } from "../http"
 import { chargedAt, invoiceOfCharge, listRefunds, refundItem, stripeDocumentRef } from "../money-events"
 import { maskCardNumbers } from "../pan-scan"

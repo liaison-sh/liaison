@@ -2,7 +2,7 @@
 //
 // `subscriptions_search`: the mirror's subscriptions, masked. `id` returns that
 // one row. Plan names come from Stripe, so the tool declares `taintSource`.
-import { refuseTool, type ToolRefusal } from "@liaison/app-sdk"
+import { refuseTool, type ToolRefusal } from "@liaison/app-sdk/errors"
 import { StripeApiError, stripeFetch } from "../http"
 import { moneyActionHold } from "../states"
 import { type MoneyCtx, money, readRefusal } from "./refunds"

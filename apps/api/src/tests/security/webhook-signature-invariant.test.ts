@@ -57,14 +57,18 @@ function bridge(secretKey: string, ...otherSecretKeys: string[]) {
  * A verifier named by its app's manifest (`webhooks.<name>.verify`), taken from the app's handler
  * module: the exact function the kernel registers for that webhook.
  */
-function manifestVerifier(app: string, webhook: string, handlers: Record<string, unknown>): Verify {
+function manifestVerifier(
+  app: string,
+  webhook: string,
+  handlers: Record<string, unknown>,
+): (req: Req, bridge: ReturnType<typeof buildVerifyBridge>) => Promise<unknown> {
   const manifest = JSON.parse(
     readFileSync(join(REPO, "bundled-apps", app, "app.manifest.json"), "utf8"),
   ) as { webhooks?: Record<string, { verify?: string }> }
   const name = manifest.webhooks?.[webhook]?.verify
   const fn = name ? handlers[name] : undefined
   if (typeof fn !== "function") throw new Error(`${app}/${webhook}: no verifier "${name}" exported`)
-  return fn as Verify
+  return fn as (req: Req, bridge: ReturnType<typeof buildVerifyBridge>) => Promise<unknown>
 }
 /** The payment processor's connector: its app name, and the signature header named after it. */
 const PAYMENTS_APP = "stripe"
@@ -139,7 +143,7 @@ const VERIFIERS: Record<string, VerifierCase> = {
   // the org's secret; the replay key is the event id, so a resend is the same key.
   "stripe/events": {
     verify: (r) =>
-      paymentsVerify(r, bridge("webhookSigningSecret", "webhookSigningSecretPrevious") as never),
+      paymentsVerify(r, bridge("webhookSigningSecret", "webhookSigningSecretPrevious")),
     sign: (body) => {
       const t = Math.floor(Date.now() / 1000)
       return { [PAYMENTS_SIGNATURE_HEADER]: `t=${t},v1=${hex(`${t}.${body}`)}` }

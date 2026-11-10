@@ -16,7 +16,7 @@
 // could not be confirmed (`different_account`), a money action changes nothing
 // and says why. Waiting approvals are left as they are: approving one later,
 // with the key fixed, works; approving it now refuses with this reason.
-import { refuseTool, type ToolRefusal } from "@liaison/app-sdk"
+import { refuseTool, type ToolRefusal } from "@liaison/app-sdk/errors"
 import { type ConnectionEvent, type ConnectionState, decodeState, encodeState, transition } from "./connection"
 
 type Obj = Record<string, unknown>

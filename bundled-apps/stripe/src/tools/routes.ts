@@ -7,7 +7,7 @@
 //   - `billing_status_for_counterparty`: whether a contact or a company pays a
 //     live Stripe subscription (invoicing's guard reads this one narrow tool);
 //   - `invoice_document_link`: the Liaison document a Stripe invoice became;
-import { refuseTool } from "@liaison/app-sdk"
+import { refuseTool } from "@liaison/app-sdk/errors"
 import { decodeState, type InstallRow, storedPermissions } from "../connection"
 import { customerIdsFor, type ReadCtx, SCAN_CAP, UUID } from "./read-common"
 
@@ -41,13 +41,13 @@ const GUARD_RESOURCES = ["customers", "subscriptions"] as const
  * "none" for a customer Stripe bills, so the guard is told it cannot know.
  */
 async function mirrorUnavailable(ctx: ReadCtx): Promise<string | null> {
-  const install = ((await ctx.db.findMany("install_metadata", { limit: 1 })) as Obj[])[0]
+  const install = ((await ctx.db.findMany("install_metadata", { limit: 1 })) as InstallRow[])[0]
   const { base, overlay } = decodeState(install?.state)
   if (base !== "connected") return `the Stripe connection is ${base.replace(/_/g, " ")}, not yet connected`
   if (overlay === "partial") {
     // A missing permission elsewhere (disputes, products) leaves this answer intact; a missing
     // customers or subscriptions read does not.
-    const checks = storedPermissions(install as InstallRow | undefined ?? null)?.checks ?? null
+    const checks = storedPermissions(install ?? null)?.checks ?? null
     const unread = GUARD_RESOURCES.find((r) => !checks?.some((c) => c.resource === r && c.level === "read" && c.state === "ok"))
     if (unread) return `the Stripe key cannot read ${unread}`
   } else if (overlay) return `the Stripe connection is ${overlay.replace(/_/g, " ")}`

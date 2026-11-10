@@ -51,7 +51,7 @@ export async function cardUpdateLink(params: Obj | undefined, ctx: CardLinkCtx) 
     orderBy: { finalized_at: "desc" },
     limit: 1,
   })) as Obj[]
-  let invoice = open[0]
+  let invoice: Obj | undefined = open[0]
   if (invoice) {
     const finalized = Date.parse(String(invoice.finalized_at ?? ""))
     const now = (ctx.now?.() ?? new Date()).getTime()

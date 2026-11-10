@@ -21,7 +21,7 @@
 // (or the other mode): the check refuses with `different_account` and changes
 // nothing, so the mirror is never mixed with a second account's data. The same
 // holds for a key of the other mode (`mode_changed`).
-import { refuseTool, type ToolRefusal } from "@liaison/app-sdk"
+import { refuseTool, type ToolRefusal } from "@liaison/app-sdk/errors"
 import { type StripeHttpCtx, StripeApiError, stripeFetch } from "./http"
 
 export const BASE_STATES = [

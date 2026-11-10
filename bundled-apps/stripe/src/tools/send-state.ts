@@ -6,7 +6,7 @@
 // for good. When Stripe cannot be asked (key refused, connection held, no
 // answer) the answer is `send_guard_unavailable`: the reminder waits, it is
 // never sent blind.
-import { refuseTool } from "@liaison/app-sdk"
+import { refuseTool } from "@liaison/app-sdk/errors"
 import { type StripeHttpCtx, stripeFetch } from "../http"
 import { moneyActionHold, type StateDb } from "../states"
 

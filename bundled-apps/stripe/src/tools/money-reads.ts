@@ -12,7 +12,7 @@
 //                        invoices of the last 3 days that name one (to mark them paid),
 //                        and succeeded refunds of the last 35 days with no credit note.
 //                        Invoicing's own handlers decide; each is idempotent by its key.
-import { refuseTool } from "@liaison/app-sdk"
+import { refuseTool } from "@liaison/app-sdk/errors"
 import { type StripeHttpCtx, stripeFetch } from "../http"
 import { type MirrorDb, newTally } from "../mirror"
 import { chargedAt, invoiceEventPayload, invoiceOfCharge, listRefunds, refundItem, stripeDocumentRef } from "../money-events"

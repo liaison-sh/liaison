@@ -1,6 +1,6 @@
 {
   "name": "stripe",
-  "version": "0.1.19",
+  "version": "0.1.20",
   "kind": "app",
   "iconName": "credit-card",
   "description": "Stripe connector: a read mirror of customers, subscriptions, invoices, payments, refunds and disputes, kept current by a signed webhook.",

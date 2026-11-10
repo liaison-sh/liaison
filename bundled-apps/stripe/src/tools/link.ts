@@ -6,7 +6,7 @@
 // through the kernel's own reads, as the caller, and a record they cannot see
 // refuses the link. Every link keeps the one it replaced (`previous_link`), so
 // `undo: true` puts it back.
-import { refuseTool } from "@liaison/app-sdk"
+import { refuseTool } from "@liaison/app-sdk/errors"
 import { customerItem, type ReadCtx, UUID } from "./read-common"
 import { cardNumberRefusal } from "./refunds"
 

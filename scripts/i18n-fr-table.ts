@@ -3937,7 +3937,6 @@ export const FR: Record<string, string> = {
   "Follow-ups": "Relances",
   "Closed last 30d": "Fermés sur 30 j",
   "All open work": "Tout ce qui est en cours",
-  "Ticket approval: {{handle}}": "Validation du ticket : {{handle}}",
   "Read by {{n}} agents": "Lu par {{n}} membres de l'équipe",
   "(no subject)": "(sans objet)",
   "Re-authorization required": "Nouvelle autorisation requise",

@@ -31,10 +31,15 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import type { TestWorld, WorkerEnv } from "@liaison/test-helpers"
 import { api } from "@liaison/test-helpers"
+import { Queue } from "bullmq"
+import IORedis from "ioredis"
 import { MeiliSearch } from "meilisearch"
 import { setupScenario, teardownScenario } from "./setup"
 
 const USB_TITLE = "USB detection report"
+// The rebuild job's queue and logical id (queue-classes.ts, search/reindex.ts).
+const REBUILD_QUEUE = "kernel-bulk"
+const REBUILD_JOB = "search-reindex-full"
 const POLL_BUDGET_MS = 60_000
 const POLL_TICK_MS = 250
 
@@ -114,6 +119,14 @@ describe("Search drift recovery", () => {
   it("recreates the missing index and reindexes on restart", async () => {
     const indexName = `${env.meiliIndexPrefix}liaison_search`
     const meili = meiliClient()
+    let handedBackJobId: string | undefined
+    const rebuildRedis = new IORedis(process.env.REDIS_URL ?? "redis://localhost:6379", {
+      maxRetriesPerRequest: null,
+    })
+    const rebuildQueue = new Queue(REBUILD_QUEUE, {
+      connection: rebuildRedis,
+      prefix: `${env.redisPrefix}bull`,
+    })
 
     // Restart the spawned server, deleting the Meili index BETWEEN the
     // proc kill and the new spawn so the old indexer pump cannot race the
@@ -126,6 +139,20 @@ describe("Search drift recovery", () => {
         if (deleteTask && deleteTask.taskUid != null) {
           await meili.tasks.waitForTask(deleteTask.taskUid)
         }
+        // A rebuild still running when a process stops is handed back to its
+        // queue (jobs.ts, jobs-hand-back), so the next boot finds it waiting
+        // before it has registered the job's handler. Leave one there, as the
+        // stopped process would have: the boot's own request dedups onto it.
+        const left = await rebuildQueue.add(
+          REBUILD_JOB,
+          { reason: "handed_back" },
+          {
+            deduplication: { id: REBUILD_JOB },
+            attempts: 10,
+            backoff: { type: "exponential", delay: 60_000 },
+          },
+        )
+        handedBackJobId = left.id
       },
     })
 
@@ -154,5 +181,16 @@ describe("Search drift recovery", () => {
     // 4. Server-side: the Meili index now exists again and has documents.
     const stats = await meili.index(indexName).getStats()
     expect(stats.numberOfDocuments).toBeGreaterThanOrEqual(1)
+
+    // 5. The job waiting across the restart ran with its handler: the boot
+    //    holds its workers until every handler is registered, so it never
+    //    failed "No handler registered" into a retry a minute later.
+    expect(handedBackJobId).toBeDefined()
+    const job = await rebuildQueue.getJob(handedBackJobId as string)
+    expect(job).toBeDefined()
+    const runs = [job?.failedReason ?? "", ...(job?.stacktrace ?? [])].join("\n")
+    expect(runs).not.toContain("No handler registered")
+    await rebuildQueue.close()
+    await rebuildRedis.quit()
   }, 180_000)
 })

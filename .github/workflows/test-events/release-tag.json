@@ -8,7 +8,7 @@
   "deleted": false,
   "forced": false,
   "base_ref": null,
-  "compare": "https://github.com/mathieufro/liaison/compare/v0.0.0...v0.1.0",
+  "compare": "https://github.com/liaison-sh/liaison/compare/v0.0.0...v0.1.0",
   "commits": [],
   "head_commit": {
     "id": "1111111111111111111111111111111111111111",
@@ -16,7 +16,7 @@
     "distinct": true,
     "message": "Release v0.1.0",
     "timestamp": "2026-01-01T00:00:00Z",
-    "url": "https://github.com/mathieufro/liaison/commit/1111111111111111111111111111111111111111",
+    "url": "https://github.com/liaison-sh/liaison/commit/1111111111111111111111111111111111111111",
     "author": {
       "name": "release-bot",
       "email": "release-bot@users.noreply.github.com",
@@ -35,7 +35,7 @@
     "id": 1,
     "node_id": "R_kgDOA0000000",
     "name": "liaison",
-    "full_name": "mathieufro/liaison",
+    "full_name": "liaison-sh/liaison",
     "private": false,
     "owner": {
       "name": "mathieufro",

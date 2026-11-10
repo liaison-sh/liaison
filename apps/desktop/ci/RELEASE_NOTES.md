@@ -1,8 +1,8 @@
 ## What's new
 
-- Your agent can read your encrypted mailbox from any of your devices where it is unlocked, so a request typed on your phone works while the app on your computer is open. It can also read email attachments, encrypted ones included.
-- Approving a reply from an encrypted mailbox works from Home, without opening the conversation first.
-- A personal agent signs its posts as your agent, and it saves a memory only when you ask.
-- Unread badge and sound for direct messages and mentions.
-- Long threads fold quoted history, and a thread map shows where you are.
-- Type : in the editor for emoji, copy a link from any tab, and pasted Liaison links become chips.
+- Dashboards have their own place in the left bar. Ask your agent to build one, share it with your team, and it stays up to date: "this month" and "last 30 days" move with the calendar.
+- A dashboard someone creates, changes or removes shows up in your open window right away, without reloading.
+- You decide your own requests: your routines, reminders and connections no longer wait for an administrator.
+- Your agent can correct or withdraw a request it raised for you, instead of leaving a second one in the queue.
+- A request that was approved but could not finish says why, and one whose result was uncertain now settles by itself.
+- Reconnect is available on every connected account in Settings.

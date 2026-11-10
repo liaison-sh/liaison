@@ -69,7 +69,7 @@
     "category": "Knowledge",
     "icon": "book-open",
     "summary": "Your team's shared documents, policies and curated source links.",
-    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/apps/api/src/apps/knowledge"
+    "sourceRepository": "https://github.com/liaison-sh/liaison/tree/main/apps/api/src/apps/knowledge"
   },
   "trusted": true,
   "rlsManagedBy": "migration",

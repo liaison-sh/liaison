@@ -19,7 +19,7 @@ url=$2
 refs=$(cat)
 
 case "$url" in
-  *github.com[:/]mathieufro/liaison | *github.com[:/]mathieufro/liaison.git)
+  *github.com[:/]liaison-sh/liaison | *github.com[:/]liaison-sh/liaison.git | *github.com[:/]mathieufro/liaison | *github.com[:/]mathieufro/liaison.git)
     while read -r local_ref local_sha remote_ref remote_sha; do
       if [ "$remote_ref" = "refs/heads/main" ]; then
         cat >&2 <<'MSG'

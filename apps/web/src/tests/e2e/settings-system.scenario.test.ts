@@ -25,7 +25,7 @@ const test = createProfiledE2ETest({
     const ghPort = ports[2]
     const gh = await startFakeGitHubReleases(ghPort, {
       latest: "v0.1.1",
-      htmlUrl: "https://github.com/mathieufro/liaison/releases/tag/v0.1.1",
+      htmlUrl: "https://github.com/liaison-sh/liaison/releases/tag/v0.1.1",
     })
     sharedFakeGh = gh
     return {
@@ -66,7 +66,7 @@ test.describe("Settings -> System", () => {
     sharedFakeGh.setStatus(200)
     sharedFakeGh.setLatest({
       tag: "v0.1.1",
-      htmlUrl: "https://github.com/mathieufro/liaison/releases/tag/v0.1.1",
+      htmlUrl: "https://github.com/liaison-sh/liaison/releases/tag/v0.1.1",
     })
     await env.redis.redis.del(
       `${env.redisPrefix}versionCheck:latest`,

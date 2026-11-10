@@ -75,7 +75,7 @@
     "category": "Communication",
     "icon": "mail",
     "summary": "Read, write and reply to email from Gmail or any IMAP/SMTP mailbox.",
-    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/apps/api/src/apps/mail"
+    "sourceRepository": "https://github.com/liaison-sh/liaison/tree/main/apps/api/src/apps/mail"
   },
   "dependencies": {
     "optional": [

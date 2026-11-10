@@ -5,7 +5,7 @@ import { Hono } from "hono"
  * Mock GitHub releases server for Phase 14 E2E.
  *
  * Mirrors the inbound contract that production calls via
- *   GET ${GITHUB_API_BASE}/repos/mathieufro/liaison/releases?per_page=30
+ *   GET ${GITHUB_API_BASE}/repos/liaison-sh/liaison/releases?per_page=30
  * with no auth (public endpoint). Used by `apps/api/src/modules/admin/version-check.ts`.
  *
  * Each call records a request entry so tests can assert cache behavior and
@@ -42,7 +42,7 @@ export async function startFakeGitHubReleases(
   opts: { latest?: string; htmlUrl?: string } = {},
 ): Promise<FakeGitHubReleasesHandle> {
   let tag = opts.latest ?? "v0.1.1"
-  let htmlUrl = opts.htmlUrl ?? `https://github.com/mathieufro/liaison/releases/tag/${tag}`
+  let htmlUrl = opts.htmlUrl ?? `https://github.com/liaison-sh/liaison/releases/tag/${tag}`
   let statusCode = 200
   let list: FakeRelease[] | null = null
   const requests: FakeGitHubReleasesRequest[] = []
@@ -56,7 +56,7 @@ export async function startFakeGitHubReleases(
 
   app.get("/__health", (c) => c.json({ ok: true }))
 
-  app.get("/repos/mathieufro/liaison/releases", (c) => {
+  app.get("/repos/liaison-sh/liaison/releases", (c) => {
     if (statusCode >= 400) {
       return c.json({ message: "rate limited" }, statusCode as 400)
     }
@@ -65,7 +65,7 @@ export async function startFakeGitHubReleases(
       releases.map((r) => ({
         tag_name: r.tag,
         name: r.name ?? r.tag,
-        html_url: r.htmlUrl ?? `https://github.com/mathieufro/liaison/releases/tag/${r.tag}`,
+        html_url: r.htmlUrl ?? `https://github.com/liaison-sh/liaison/releases/tag/${r.tag}`,
         draft: r.draft ?? false,
         prerelease: r.prerelease ?? false,
       })),
@@ -98,7 +98,7 @@ export async function startFakeGitHubReleases(
       list = null
       tag = t
       if (u !== undefined) htmlUrl = u
-      else htmlUrl = `https://github.com/mathieufro/liaison/releases/tag/${tag}`
+      else htmlUrl = `https://github.com/liaison-sh/liaison/releases/tag/${tag}`
     },
     setStatus: (status) => {
       statusCode = status

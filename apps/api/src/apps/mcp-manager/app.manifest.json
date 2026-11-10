@@ -9,7 +9,7 @@
     "category": "Developer",
     "icon": "waypoints",
     "summary": "Connect external MCP servers and control which of their tools agents may use.",
-    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/apps/api/src/apps/mcp-manager"
+    "sourceRepository": "https://github.com/liaison-sh/liaison/tree/main/apps/api/src/apps/mcp-manager"
   },
   "trusted": true,
   "dependencies": { "required": ["kernel"] },

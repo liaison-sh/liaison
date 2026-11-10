@@ -10,7 +10,7 @@ import { APP_LISTING_CATEGORIES } from "@liaison/app-sdk"
 import { validateAppManifest } from "~/modules/apps/contract"
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..")
-const PUBLIC_REPO = "https://github.com/mathieufro/liaison/tree/main"
+const PUBLIC_REPO = "https://github.com/liaison-sh/liaison/tree/main"
 
 const LISTING = {
   category: "Support",

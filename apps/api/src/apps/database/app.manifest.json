@@ -8,7 +8,7 @@
     "category": "Developer",
     "icon": "server",
     "summary": "Read-only access to your deployment's own database for troubleshooting and support.",
-    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/apps/api/src/apps/database"
+    "sourceRepository": "https://github.com/liaison-sh/liaison/tree/main/apps/api/src/apps/database"
   },
   "trusted": false,
   "outsideTextFields": ["rows"],

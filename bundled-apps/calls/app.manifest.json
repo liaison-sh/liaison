@@ -10,7 +10,7 @@
     "category": "Communication",
     "icon": "phone",
     "summary": "Turn call transcripts into searchable knowledge linked to contacts and deals.",
-    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/bundled-apps/calls"
+    "sourceRepository": "https://github.com/liaison-sh/liaison/tree/main/bundled-apps/calls"
   },
   "packageFormat": 1,
   "license": "FSL-1.1-ALv2",

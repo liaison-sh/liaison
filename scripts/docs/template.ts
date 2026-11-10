@@ -184,7 +184,7 @@ ${structuredData(p)}
 <header class="hd">
 <a class="brand" href="/">${MARK}Liaison</a><a class="brand-docs" href="${escapeAttr(p.root)}">Docs</a>
 ${searchBox("hd-search")}
-<nav class="hd-links" aria-label="Site"><a href="https://demo.liaison.sh" rel="noopener">Demo</a><a href="/customers/">Customers</a><a href="https://github.com/mathieufro/liaison" rel="noopener">GitHub</a></nav>
+<nav class="hd-links" aria-label="Site"><a href="https://demo.liaison.sh" rel="noopener">Demo</a><a href="/customers/">Customers</a><a href="https://github.com/liaison-sh/liaison" rel="noopener">GitHub</a></nav>
 <button class="menu-btn" type="button" aria-controls="side" aria-expanded="false">Menu</button>
 <a class="btn" href="https://demo.liaison.sh" rel="noopener">Try the demo</a>
 </header>

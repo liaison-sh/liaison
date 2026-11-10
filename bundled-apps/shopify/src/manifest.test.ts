@@ -945,7 +945,8 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.18: B2B catalogs that reach a location through a B2B market (every plan) count, as well
     // as those assigned to it directly (Plus); companies_* mark each catalog's source.
     // 0.4.19: the branch's 0.4.18 merged with main's 0.4.16 to 0.4.18 (B2B drafts and catalogs).
-    expect(m.version).toBe("0.4.19")
+    // 0.4.20: above main's 0.4.19 (references to the new repository), merged.
+    expect(m.version).toBe("0.4.20")
   })
 
   it("orders_search and variants_search declare their filters and close their params", () => {

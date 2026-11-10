@@ -9,7 +9,7 @@
 #   - check for docker, docker compose v2, and openssl;
 #   - create deploy/.env from deploy/.env.example on first run only, filling
 #     in every required secret and the local URLs the app needs to boot;
-#   - pull the published image of the chosen channel (ghcr.io/mathieufro/liaison:latest
+#   - pull the published image of the chosen channel (ghcr.io/liaison-sh/liaison:latest
 #     or :nightly) if it is reachable, otherwise build it locally from
 #     apps/api/Dockerfile;
 #   - bring the stack up and wait for /healthz to report every dependency ok;
@@ -40,7 +40,7 @@ DEPLOY_DIR="${SCRIPT_DIR}"
 COMPOSE_FILE="${DEPLOY_DIR}/docker-compose.yml"
 ENV_FILE="${DEPLOY_DIR}/.env"
 ENV_EXAMPLE="${DEPLOY_DIR}/.env.example"
-IMAGE_REPO="ghcr.io/mathieufro/liaison"
+IMAGE_REPO="ghcr.io/liaison-sh/liaison"
 LOCAL_IMAGE_TAG="liaison:local"
 
 PROJECT_NAME="liaison"

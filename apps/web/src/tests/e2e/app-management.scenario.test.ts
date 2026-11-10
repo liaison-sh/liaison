@@ -275,7 +275,7 @@ test.describe("App management", () => {
     const detail = page.getByTestId("app-store-detail-invoicing")
     await expect(detail).toBeVisible({ timeout: 15_000 })
     await expect(detail.getByTestId("app-store-detail-repo")).toHaveText(
-      "https://github.com/mathieufro/liaison/tree/main/bundled-apps/invoicing",
+      "https://github.com/liaison-sh/liaison/tree/main/bundled-apps/invoicing",
     )
     await expect(detail.getByTestId("app-store-detail-licence")).toContainText("FSL-1.1-ALv2")
     await expect(detail.getByTestId("app-store-detail-publisher")).toContainText("Liaison")

@@ -10,7 +10,7 @@
     "category": "Knowledge",
     "icon": "cloud",
     "summary": "Search, read and import Google Drive files, and upload new reports.",
-    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/apps/api/src/apps/google-drive"
+    "sourceRepository": "https://github.com/liaison-sh/liaison/tree/main/apps/api/src/apps/google-drive"
   },
   "trusted": false,
   "dependencies": { "required": ["kernel", "knowledge"] },

@@ -5,7 +5,7 @@
 # downloaded asset already points at its own version (the nightly pipeline does
 # the same with `nightly-YYYYMMDD`). To target a different tag or a
 # locally-built image, export LIAISON_IMAGE (e.g.
-# `export LIAISON_IMAGE=ghcr.io/mathieufro/liaison:vX.Y.Z`).
+# `export LIAISON_IMAGE=ghcr.io/liaison-sh/liaison:vX.Y.Z`).
 #
 # Every other image is pinned by digest, the tag beside it for the reader
 # (scripts/dockerfile-pins.test.ts): a tag is whatever its publisher points it

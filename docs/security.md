@@ -9,7 +9,7 @@ Liaison runs on your own server, and every person and agent works under the same
 
 Do not report security issues in public GitHub issues.
 
-1. Open the [Security tab](https://github.com/mathieufro/liaison/security) of the repository.
+1. Open the [Security tab](https://github.com/liaison-sh/liaison/security) of the repository.
 2. Click **Report a vulnerability**.
 3. Include the steps to reproduce, the version, and the impact.
 

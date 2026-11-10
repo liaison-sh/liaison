@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: FSL-1.1-ALv2
 #
 # The nightly channel: once a day, build the newest commit of main whose `ci`
-# run is green, publish it as `ghcr.io/mathieufro/liaison:nightly` and
+# run is green, publish it as `ghcr.io/liaison-sh/liaison:nightly` and
 # `:nightly-YYYYMMDD`, sign it, and publish a GitHub pre-release `nightly-YYYYMMDD`
 # carrying the pinned compose file and `.env.example`. A nightly is one per UTC
 # day: its tag never moves. Later on the same day, a newer green commit waits
@@ -37,14 +37,14 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE: ghcr.io/mathieufro/liaison
+  IMAGE: ghcr.io/liaison-sh/liaison
 
 jobs:
   # ----- What to build, if anything -----
   resolve:
     # Not on forks (they cannot push this image), and never from a branch: a
     # signature names the workflow's ref, and only main may publish a nightly.
-    if: github.repository == 'mathieufro/liaison' && github.ref == 'refs/heads/main'
+    if: github.repository == 'liaison-sh/liaison' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

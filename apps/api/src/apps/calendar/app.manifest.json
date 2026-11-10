@@ -9,7 +9,7 @@
     "category": "Productivity",
     "icon": "calendar",
     "summary": "Month and week calendar that syncs both ways with Google Calendar.",
-    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/apps/api/src/apps/calendar"
+    "sourceRepository": "https://github.com/liaison-sh/liaison/tree/main/apps/api/src/apps/calendar"
   },
   "trusted": true,
   "dependencies": {

@@ -515,6 +515,8 @@ const REVIEWED_UNGATED_OUTWARD: Record<string, string> = {
     "gated: parks via the handler's ctx.requestApproval (conditionalGate; execute-tool.ts:2767-2900), person shortcut only for origin human-ui (:2879)",
   "invoicing:quote_create_and_issue":
     "gated: parks via the handler's ctx.requestApproval (conditionalGate; execute-tool.ts:2767-2900), person shortcut only for origin human-ui (:2879)",
+  "invoicing:recurring_run_unapprove":
+    "externalEffect: parks after outside text (execute-tool.ts taint escalation); an undo returns the run to drafted, takes no number, sends nothing, and restages the run's gated card",
   "invoicing:recurring_schedule_pause":
     "externalEffect: parks after outside text (execute-tool.ts taint escalation); a pause only stops drafts, bills nothing and sends nothing",
   "kernel:approval_update_payload":

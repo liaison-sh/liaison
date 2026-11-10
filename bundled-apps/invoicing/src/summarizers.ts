@@ -1087,6 +1087,15 @@ export function summarizeRecurringRunIssue(params: Record<string, unknown>): Pro
   })
 }
 
+export function summarizeRecurringItemIssue(params: Record<string, unknown>): Promise<ApprovalSummaryShape> {
+  return done({
+    kind: "recurring_item_issue",
+    title: "Issue one invoice of an approved month-end run",
+    subtitle: "Takes the next number only if the draft still matches what was approved",
+    lines: [`Run item ${String(params.item_id ?? "")}`],
+  })
+}
+
 export function summarizeRecurringRunUnapprove(params: Record<string, unknown>): Promise<ApprovalSummaryShape> {
   return done({
     kind: "recurring_run_unapprove",

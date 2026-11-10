@@ -109,8 +109,8 @@ describe("the standing e-invoice authorization of a stream", () => {
 
   it("says off, or who turned it on, when and until when", () => {
     expect(standingLine({ on: false, turnedOnBy: null, turnedOnAt: null, until: null }, null)).toBe("Off: e-invoices issued with no person wait for the daily send card.")
-    expect(standingLine({ on: true, turnedOnBy: "u1", turnedOnAt: "2026-11-03T09:30:00.000Z", until: "2027-02-01" }, "Elise Marchand", "en-GB")).toBe(
-      "On: turned on by Elise Marchand on 3 Nov 2026, until 1 Feb 2027.",
+    expect(standingLine({ on: true, turnedOnBy: "u1", turnedOnAt: "2026-11-03T09:30:00.000Z", until: "2027-02-01" }, "Claire Dubois", "en-GB")).toBe(
+      "On: turned on by Claire Dubois on 3 Nov 2026, until 1 Feb 2027.",
     )
   })
 })

@@ -46,9 +46,9 @@ describe("an issued month-end run", () => {
       row({ item_id: "b", document_id: "db", number: "F-2026-0464", einvoice_state: "sent", collection_state: "reported", payment_status: "paid" }),
       row({ item_id: "c", document_id: "dc", number: "F-2026-0465", einvoice_state: "refused" }),
     ]
-    const v = runDetailView(run, rows, "Elise Marchand")
+    const v = runDetailView(run, rows, "Claire Dubois")
     expect(v.issuedOn).toBe("2026-11-30")
-    expect(v.approvedBy).toBe("Elise Marchand")
+    expect(v.approvedBy).toBe("Claire Dubois")
     expect(v.approvedOn).toBe("2026-11-27")
     expect(v.period).toBe("November 2026")
     expect(v.range).toEqual({ first: "F-2026-0463", last: "F-2026-0465", noGaps: true })

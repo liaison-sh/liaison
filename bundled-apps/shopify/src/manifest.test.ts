@@ -925,7 +925,9 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.16: variants_search sends product_status in lower case (Shopify matches no other).
     // 0.4.17: B2B company drafts: companies_search / companies_get (read_companies), purchasingCompany
     // on draft_orders_create / update, priceOverride + priceException, the B2B catalog-price guard.
-    expect(m.version).toBe("0.4.17")
+    // 0.4.18: B2B catalogs that reach a location through a B2B market (every plan) count, as well
+    // as those assigned to it directly (Plus); companies_* mark each catalog's source.
+    expect(m.version).toBe("0.4.18")
   })
 
   it("orders_search and variants_search declare their filters and close their params", () => {

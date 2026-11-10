@@ -7,13 +7,18 @@
 // exactly the ids `draft_orders_create` needs (`purchasingEntity.purchasingCompany { companyId,
 // companyLocationId, companyContactId }`), each location's addresses and tax settings, each
 // contact's roles per location, and the location's catalogs when the app can read them.
+//
+// A location's catalogs are the ones that apply to it, the same set the B2B draft guard checks:
+// those assigned to it directly (`source: "direct"`, Shopify Plus) and those of every ACTIVE B2B
+// market whose company-locations condition includes it (`source: "market:<market name>"`).
 
 import type { AppContext } from "@liaison/app-sdk"
+import { readB2bMarketCatalogs } from "./lib/b2b-market-catalogs"
 import { getShopifyClient } from "./lib/get-client"
 
 const ADDRESS_FIELDS = "address1 address2 city zip province zoneCode countryCode companyName recipient phone"
 
-const CATALOGS_SELECTION = "catalogs(first: 10) { nodes { id title status priceList { id name currency } } }"
+const CATALOGS_SELECTION = "catalogs(first: 25) { nodes { id title status priceList { id name currency } } }"
 
 const companySelection = (withCatalogs: boolean): string => `
   id name externalId note
@@ -62,6 +67,8 @@ export interface CompanyCatalog {
   title: string | null
   status: string | null
   priceList: { id: string; name: string | null; currency: string | null } | null
+  /** `direct` (assigned to the location) or `market:<market name>` (through a B2B market). */
+  source: string
 }
 
 export interface CompanyLocationOut {
@@ -119,6 +126,7 @@ function normalizeCompany(node: Rec, withCatalogs: boolean): CompanyOut {
               title: str(c.title),
               status: str(c.status),
               priceList: pl ? { id: String(pl.id), name: str(pl.name), currency: str(pl.currency) } : null,
+              source: "direct",
             }
           })
         : null,
@@ -172,6 +180,41 @@ async function withCatalogFallback<T>(
   }
 }
 
+type QueryClient = Awaited<ReturnType<typeof getShopifyClient>>
+
+/**
+ * Add each location's market catalogs to its direct ones. When the markets cannot be read in full, no
+ * location's catalog list is complete: every list becomes null and the result says catalogsReadable false.
+ */
+async function withMarketCatalogs(client: QueryClient, companies: CompanyOut[]): Promise<boolean> {
+  const locations = companies.flatMap((c) => c.locations)
+  let byLocation: Awaited<ReturnType<typeof readB2bMarketCatalogs>>
+  try {
+    byLocation = await readB2bMarketCatalogs(
+      client,
+      locations.map((l) => l.id),
+    )
+  } catch {
+    for (const l of locations) l.catalogs = null
+    return false
+  }
+  for (const l of locations) {
+    const list = l.catalogs ?? []
+    for (const c of byLocation.get(l.id) ?? []) {
+      if (list.some((d) => d.id === c.id)) continue
+      list.push({
+        id: c.id,
+        title: c.title,
+        status: c.status,
+        priceList: c.priceList,
+        source: `market:${c.marketName ?? c.marketId}`,
+      })
+    }
+    l.catalogs = list
+  }
+  return true
+}
+
 /**
  * Shopify's company search string. `name` searches the company name (one word: a prefix match); `query` is
  * passed as is (a bare term is Shopify's default text search, `key:value` filters such as
@@ -201,10 +244,11 @@ export async function companies_search(
     ),
   )
   const page = data.companies
+  const results = (page?.nodes ?? []).filter(isRec).map((c) => normalizeCompany(c, catalogsReadable))
   return {
-    results: (page?.nodes ?? []).filter(isRec).map((c) => normalizeCompany(c, catalogsReadable)),
+    results,
     nextCursor: page?.pageInfo?.hasNextPage ? (page.pageInfo.endCursor ?? null) : null,
-    catalogsReadable,
+    catalogsReadable: catalogsReadable && (await withMarketCatalogs(client, results)),
   }
 }
 
@@ -219,5 +263,7 @@ export async function companies_get(
     client.query<{ company?: Rec | null }>(getQuery(withCatalogs), { id }),
   )
   if (!data.company) throw readError("NOT_FOUND", `company ${id} not found`)
-  return { ...normalizeCompany(data.company, catalogsReadable), catalogsReadable }
+  const company = normalizeCompany(data.company, catalogsReadable)
+  const readable = catalogsReadable && (await withMarketCatalogs(client, [company]))
+  return { ...company, catalogsReadable: readable }
 }

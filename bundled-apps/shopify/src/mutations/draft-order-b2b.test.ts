@@ -25,6 +25,8 @@ const CONSUMER = "gid://shopify/Customer/32"
 const VARIANT = "gid://shopify/ProductVariant/41"
 const VARIANT_2 = "gid://shopify/ProductVariant/42"
 const PRICE_LIST = "gid://shopify/PriceList/51"
+const B2B_PRICE_LIST = "gid://shopify/PriceList/52"
+const REGION_PRICE_LIST = "gid://shopify/PriceList/53"
 const PC = { companyId: COMPANY, companyLocationId: LOCATION, companyContactId: CONTACT }
 
 interface Store {
@@ -36,8 +38,79 @@ interface Store {
   fixedPriced?: string[]
   /** Variant list prices (for the consumer lower-price rewrite). */
   listPrices?: Record<string, string>
+  /** Variants with a FIXED price, per price list id (overrides fixedPriced). */
+  fixedByList?: Record<string, string[]>
   catalogsFail?: boolean
+  /** The location's directly assigned catalogs (Plus); default one ACTIVE "Wholesale" catalog. */
+  directCatalogs?: unknown[]
+  /** The store's markets; default none. */
+  markets?: FakeMarket[]
+  /** The markets list says there is another page but gives no cursor (a truncated read). */
+  marketsTruncated?: boolean
   draftBuyer?: unknown
+}
+
+interface FakeMarket {
+  id: string
+  name: string
+  status?: string
+  /** The company-locations condition; null for a region or retail market. */
+  companyLocations: null | { level: "ALL" | "SPECIFIED"; ids: string[] }
+  catalogs: unknown[]
+}
+
+const DIRECT_CATALOG = {
+  id: "gid://shopify/CompanyLocationCatalog/61",
+  title: "Wholesale",
+  status: "ACTIVE",
+  priceList: { id: PRICE_LIST, name: "Wholesale EUR", currency: "EUR" },
+}
+const B2B_MARKET: FakeMarket = {
+  id: "gid://shopify/Market/71",
+  name: "Trade buyers",
+  companyLocations: { level: "SPECIFIED", ids: [LOCATION] },
+  catalogs: [{ id: "gid://shopify/MarketCatalog/81", title: "Trade catalog", status: "ACTIVE", priceList: { id: B2B_PRICE_LIST, name: "Trade EUR", currency: "EUR" } }],
+}
+const REGION_MARKET: FakeMarket = {
+  id: "gid://shopify/Market/72",
+  name: "Europe",
+  companyLocations: null,
+  catalogs: [{ id: "gid://shopify/MarketCatalog/82", title: "Catalog for Europe", status: "ACTIVE", priceList: { id: REGION_PRICE_LIST, name: "Europe EUR", currency: "EUR" } }],
+}
+
+function answerMarkets(store: Store, query: string, variables: Record<string, unknown>): unknown {
+  const markets = store.markets ?? []
+  if (query.includes("B2bMarketsList")) {
+    return {
+      markets: {
+        nodes: markets.map((m) => ({
+          id: m.id,
+          name: m.name,
+          status: m.status ?? "ACTIVE",
+          conditions: { companyLocationsCondition: m.companyLocations ? { applicationLevel: m.companyLocations.level } : null },
+        })),
+        pageInfo: { hasNextPage: store.marketsTruncated === true, endCursor: null },
+      },
+    }
+  }
+  const m = markets.find((x) => x.id === variables.id)
+  if (!m) return { market: null }
+  return {
+    market: {
+      id: m.id,
+      name: m.name,
+      status: m.status ?? "ACTIVE",
+      conditions: {
+        companyLocationsCondition: m.companyLocations
+          ? {
+              applicationLevel: m.companyLocations.level,
+              companyLocations: { nodes: m.companyLocations.ids.map((id) => ({ id })), pageInfo: { hasNextPage: false, endCursor: null } },
+            }
+          : null,
+      },
+      catalogs: { nodes: m.catalogs, pageInfo: { hasNextPage: false } },
+    },
+  }
 }
 
 function makeCtx(store: Store) {
@@ -70,18 +143,25 @@ function makeCtx(store: Store) {
       return {
         companyLocation: {
           id: variables.id,
-          catalogs: { nodes: [{ id: "gid://shopify/CompanyLocationCatalog/61", title: "Wholesale", status: "ACTIVE", priceList: { id: PRICE_LIST, name: "Wholesale EUR", currency: "EUR" } }] },
+          catalogs: { nodes: store.directCatalogs ?? [DIRECT_CATALOG], pageInfo: { hasNextPage: false } },
         },
       }
     }
+    if (query.includes("B2bMarketsList") || query.includes("B2bMarketCatalogs")) return answerMarkets(store, query, variables)
     if (query.includes("B2bFixedCatalogPrices")) {
-      const out: Record<string, unknown> = { id: PRICE_LIST }
-      const re = /(v\d+): prices\(first: 1, originType: FIXED, query: "variant_id:(\d+)"\)/g
-      for (const m of query.matchAll(re)) {
-        const gid = `gid://shopify/ProductVariant/${m[2]}`
-        out[m[1] as string] = { nodes: (store.fixedPriced ?? []).includes(gid) ? [{ variant: { id: gid } }] : [] }
-      }
-      return { pl0: out }
+      const fixed = store.fixedByList ?? { [PRICE_LIST]: store.fixedPriced ?? [] }
+      const data: Record<string, unknown> = {}
+      const lists = [...query.matchAll(/(pl\d+): priceList\(id: "([^"]+)"\)/g)]
+      lists.forEach((l, i) => {
+        const segment = query.slice(l.index, lists[i + 1]?.index ?? query.length)
+        const out: Record<string, unknown> = { id: l[2] }
+        for (const m of segment.matchAll(/(v\d+): prices\(first: 1, originType: FIXED, query: "variant_id:(\d+)"\)/g)) {
+          const gid = `gid://shopify/ProductVariant/${m[2]}`
+          out[m[1] as string] = { nodes: (fixed[l[2] as string] ?? []).includes(gid) ? [{ variant: { id: gid } }] : [] }
+        }
+        data[l[1] as string] = out
+      })
+      return data
     }
     if (query.includes("B2bDraftBuyer")) return { draftOrder: store.draftBuyer ?? null }
     if (query.includes("requiresShipping")) {
@@ -295,6 +375,69 @@ describe("B2B draft orders: company drafts priced by the catalog", () => {
     expect(err.message).not.toContain(`for Studio Monitor (${VARIANT})`)
   })
 
+  describe("catalogs reached through a B2B market (every plan) and assigned directly (Plus)", () => {
+    const plain = () => companyInput([{ variantId: VARIANT, quantity: 1 }])
+
+    it("a catalog of a B2B market that lists the location prices the line", async () => {
+      const { ctx } = makeCtx({ directCatalogs: [], markets: [B2B_MARKET], fixedByList: { [B2B_PRICE_LIST]: [VARIANT] } })
+      const out = await normalizeDraftOrderInput(plain(), ctx)
+      expect((out.lineItems as Array<Record<string, unknown>>)[0]).toMatchObject({ variantId: VARIANT, quantity: 1 })
+    })
+
+    it("a B2B market whose condition applies to ALL company locations counts", async () => {
+      const { ctx } = makeCtx({
+        directCatalogs: [],
+        markets: [{ ...B2B_MARKET, companyLocations: { level: "ALL", ids: [] } }],
+        fixedByList: { [B2B_PRICE_LIST]: [VARIANT] },
+      })
+      await normalizeDraftOrderInput(plain(), ctx)
+    })
+
+    it("a region market's catalog with a fixed price does not count: still refused", async () => {
+      const { ctx } = makeCtx({
+        directCatalogs: [],
+        markets: [REGION_MARKET, { ...B2B_MARKET, companyLocations: { level: "SPECIFIED", ids: [OTHER_LOCATION] } }],
+        fixedByList: { [REGION_PRICE_LIST]: [VARIANT], [B2B_PRICE_LIST]: [VARIANT] },
+      })
+      const err = await refusal(normalizeDraftOrderInput(plain(), ctx))
+      expect(err.code).toBe("B2B_NO_CATALOG_PRICE")
+      expect(err.message).toContain("no active catalog applies to Head office")
+    })
+
+    it("a draft B2B market does not count", async () => {
+      const { ctx } = makeCtx({
+        directCatalogs: [],
+        markets: [{ ...B2B_MARKET, status: "DRAFT" }],
+        fixedByList: { [B2B_PRICE_LIST]: [VARIANT] },
+      })
+      expect((await refusal(normalizeDraftOrderInput(plain(), ctx))).code).toBe("B2B_NO_CATALOG_PRICE")
+    })
+
+    it("a directly assigned catalog prices the line", async () => {
+      const { ctx } = makeCtx({ markets: [REGION_MARKET], fixedByList: { [PRICE_LIST]: [VARIANT] } })
+      await normalizeDraftOrderInput(plain(), ctx)
+    })
+
+    it("no catalog at all is refused", async () => {
+      const { ctx } = makeCtx({ directCatalogs: [], markets: [] })
+      const err = await refusal(normalizeDraftOrderInput(plain(), ctx))
+      expect(err.code).toBe("B2B_NO_CATALOG_PRICE")
+      expect(err.message).toContain("no active catalog applies to Head office")
+    })
+
+    it("a market catalog without the variant's fixed price is refused, naming the market", async () => {
+      const { ctx } = makeCtx({ directCatalogs: [], markets: [B2B_MARKET], fixedByList: {} })
+      const err = await refusal(normalizeDraftOrderInput(plain(), ctx))
+      expect(err.code).toBe("B2B_NO_CATALOG_PRICE")
+      expect(err.message).toContain("Trade catalog (price list Trade EUR) via market Trade buyers")
+    })
+
+    it("a truncated markets list fails closed", async () => {
+      const { ctx } = makeCtx({ markets: [B2B_MARKET], marketsTruncated: true, fixedByList: { [PRICE_LIST]: [VARIANT] } })
+      expect((await refusal(normalizeDraftOrderInput(plain(), ctx))).code).toBe("B2B_CATALOG_UNREADABLE")
+    })
+  })
+
   it("an unreadable catalog fails closed", async () => {
     const { ctx } = makeCtx({ catalogsFail: true })
     const err = await refusal(normalizeDraftOrderInput(companyInput([{ variantId: VARIANT, quantity: 1 }]), ctx))
@@ -451,8 +594,12 @@ describe("companies_search / companies_get", () => {
     const ctx = {
       ...makeCtx({}).ctx,
       fetch: async (_url: string, init?: { body?: string }) => {
-        const body = JSON.parse(init?.body ?? "{}") as { query: string }
+        const body = JSON.parse(init?.body ?? "{}") as { query: string; variables?: Record<string, unknown> }
         queries.push(body.query)
+        if (body.query.includes("B2bMarket")) {
+          const data = answerMarkets({ markets: [B2B_MARKET, REGION_MARKET] }, body.query, body.variables ?? {})
+          return { status: 200, headers: {}, body: JSON.stringify({ data }) }
+        }
         if (failCatalogs && body.query.includes("catalogs(")) {
           return { status: 200, headers: {}, body: JSON.stringify({ errors: [{ message: "Access denied for catalogs" }] }) }
         }
@@ -471,7 +618,17 @@ describe("companies_search / companies_get", () => {
     const out = await companies_search({ name: "Example" }, ctx)
     expect(out.catalogsReadable).toBe(true)
     const c = out.results[0]!
-    expect(c.locations[0]).toMatchObject({ id: LOCATION, taxExempt: true, taxRegistrationId: "XX123", catalogs: [{ title: "Wholesale", priceList: { id: PRICE_LIST, currency: "EUR" } }] })
+    expect(c.locations[0]).toMatchObject({
+      id: LOCATION,
+      taxExempt: true,
+      taxRegistrationId: "XX123",
+      catalogs: [
+        { title: "Wholesale", priceList: { id: PRICE_LIST, currency: "EUR" }, source: "direct" },
+        { title: "Trade catalog", priceList: { id: B2B_PRICE_LIST, currency: "EUR" }, source: "market:Trade buyers" },
+      ],
+    })
+    // A region market's catalog never shows as one that applies to the location.
+    expect(c.locations[0]!.catalogs).toHaveLength(2)
     expect(c.contacts[0]).toMatchObject({ id: CONTACT, customer: { id: CONTACT_CUSTOMER }, roles: [{ locationId: LOCATION, role: "Ordering only" }] })
   })
 
@@ -481,5 +638,25 @@ describe("companies_search / companies_get", () => {
     expect(out.catalogsReadable).toBe(false)
     expect(out.locations[0]!.catalogs).toBeNull()
     expect(queries).toHaveLength(2)
+  })
+
+  it("companies_get shows the market catalogs too, and a failed markets read makes every list null", async () => {
+    const { ctx } = readCtx(false)
+    const out = await companies_get({ id: COMPANY }, ctx)
+    expect(out.catalogsReadable).toBe(true)
+    expect(out.locations[0]!.catalogs?.map((c) => c.source)).toEqual(["direct", "market:Trade buyers"])
+    const broken = {
+      ...ctx,
+      fetch: async (url: string, init?: { body?: string }) => {
+        const body = JSON.parse(init?.body ?? "{}") as { query: string }
+        if (body.query.includes("B2bMarketsList")) {
+          return { status: 200, headers: {}, body: JSON.stringify({ errors: [{ message: "Access denied for markets" }] }) }
+        }
+        return (ctx as unknown as { fetch: (u: string, i?: { body?: string }) => Promise<unknown> }).fetch(url, init)
+      },
+    } as unknown as AppContext
+    const failed = await companies_get({ id: COMPANY }, broken)
+    expect(failed.catalogsReadable).toBe(false)
+    expect(failed.locations[0]!.catalogs).toBeNull()
   })
 })

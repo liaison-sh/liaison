@@ -196,8 +196,11 @@ purchasingCompany passes through; location addresses fill the draft -> bundled-a
 B2B_COMPANY_REQUIRED lists companies and locations -> bundled-apps/shopify/src/mutations/draft-order-b2b.ts:265
 B2B_CONTACT_NO_ROLE -> bundled-apps/shopify/src/mutations/draft-order-b2b.ts:363
 B2B_PRICE_NOT_CATALOG -> bundled-apps/shopify/src/mutations/draft-order-b2b.ts:456
-B2B_CATALOG_UNREADABLE fails closed -> bundled-apps/shopify/src/mutations/draft-order-b2b.ts:491
-B2B_NO_CATALOG_PRICE -> bundled-apps/shopify/src/mutations/draft-order-b2b.ts:590
+B2B_CATALOG_UNREADABLE fails closed -> bundled-apps/shopify/src/mutations/draft-order-b2b.ts:498
+B2B_NO_CATALOG_PRICE -> bundled-apps/shopify/src/mutations/draft-order-b2b.ts:624
+catalogs that apply = direct ones plus those of active B2B markets whose conditions include the location; region markets never count -> bundled-apps/shopify/src/lib/b2b-market-catalogs.ts:79; bundled-apps/shopify/src/lib/b2b-market-catalogs.ts:128
+catalogs or markets not read in full: B2B_CATALOG_UNREADABLE -> bundled-apps/shopify/src/mutations/draft-order-b2b.ts:532
+companies_search / companies_get mark each catalog direct or market:<name> -> bundled-apps/shopify/src/companies.ts:210
 priceException reasons; Price exception attribute -> bundled-apps/shopify/src/mutations/draft-order-b2b.ts:24
 B2B line price never becomes a discount (priceOverride) -> bundled-apps/shopify/src/mutations/draft-order-input.ts:358
 approval card shows company, location, price basis -> bundled-apps/shopify/src/summarizers.ts:457

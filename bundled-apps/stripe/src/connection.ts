@@ -93,7 +93,7 @@ export function transition(s: ConnectionState, event: ConnectionEvent): Connecti
   }
 }
 
-/** The permissions of the default key, in the order the check reads them (D21). */
+/** The permissions of the default key, in the order the check reads them (the restricted-key permission list). */
 export const PERMISSION_READS = [
   { resource: "customers", label: "Customers", path: "/v1/customers" },
   { resource: "subscriptions", label: "Subscriptions", path: "/v1/subscriptions" },

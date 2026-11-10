@@ -69,7 +69,7 @@ function makeCtx(opts?: { orgZone?: string; seed?: Array<Record<string, unknown>
 function issuer(extra: Record<string, unknown> = {}) {
   return {
     id: "issuer-1",
-    legal_name: "Atelier Nord SARL",
+    legal_name: "Maison Nord SARL",
     country: "FR",
     vat_id: "FR12345678901",
     address: "1 rue de Test, 75001 Paris",
@@ -128,7 +128,7 @@ describe("the issuer time zone is asked once", () => {
     expect(asks(unset.emitted)).toHaveLength(1)
     expect(asks(unset.emitted)[0]).toMatchObject({
       entityId: "issuer-1",
-      data: { issuer_profile_id: "issuer-1", legal_name: "Atelier Nord SARL", document_id: expect.any(String) },
+      data: { issuer_profile_id: "issuer-1", legal_name: "Maison Nord SARL", document_id: expect.any(String) },
     })
     // Issuing is not blocked and nothing issued changed: the line comes after the number.
     expect(unset.db.__all("documents")).toHaveLength(1)

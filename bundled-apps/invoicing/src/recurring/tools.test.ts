@@ -30,7 +30,7 @@ function makeCtx(today: string, opts?: { approvalDecider?: string; issuerZone?: 
   const db = createMockDb({
     seed: {
       issuer_profiles: [
-        { id: ISSUER, legal_name: "Atelier Nord SARL", country: "FR", default_currency: "EUR", default_language: "fr", timezone: opts?.issuerZone ?? "Europe/Paris" },
+        { id: ISSUER, legal_name: "Maison Nord SARL", country: "FR", default_currency: "EUR", default_language: "fr", timezone: opts?.issuerZone ?? "Europe/Paris" },
       ],
       ...(opts?.extra ? { recurring_schedules: opts.extra } : {}),
     },

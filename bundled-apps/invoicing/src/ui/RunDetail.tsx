@@ -257,7 +257,7 @@ export const RunDetail: Component<{ runId: string }> = (props) => {
                       {(r) => (
                         <tr data-testid={`run-row-${r.number}`} class="border-t border-border-subtle">
                           <td class="py-2 pr-3 font-mono">
-                            <a class="text-text hover:underline" href={`/invoicing/document/${r.documentId}`} onClick={(e) => { e.preventDefault(); navigate(`/invoicing/document/${r.documentId}`) }}>
+                            <a class={`inline-flex items-center text-text hover:underline ${TAP}`} href={`/invoicing/document/${r.documentId}`} onClick={(e) => { e.preventDefault(); navigate(`/invoicing/document/${r.documentId}`) }}>
                               {r.number}
                             </a>
                           </td>

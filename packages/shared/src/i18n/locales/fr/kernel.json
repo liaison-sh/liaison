@@ -1659,6 +1659,18 @@
     "problem": {
       "one": "problème de connexion",
       "other": "problèmes de connexion"
+    },
+    "send_waiting": {
+      "one": "facture électronique en attente de la carte d'envoi quotidienne",
+      "other": "factures électroniques en attente de la carte d'envoi quotidienne"
+    },
+    "standing_lapsed": {
+      "one": "autorisation permanente d'envoi expirée",
+      "other": "autorisations permanentes d'envoi expirées"
+    },
+    "collection_manual": {
+      "one": "encaissement à déclarer sur votre plateforme",
+      "other": "encaissements à déclarer sur votre plateforme"
     }
   },
   "homeMarkAllRead": "Tout marquer comme lu",

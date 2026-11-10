@@ -35,6 +35,8 @@ describe("the recurring list", () => {
     expect(titleLine(rows, "en-GB")).toBe("Soonest first. Next: 7 drafts on Fri 27 Nov, to issue on Mon 30 Nov.")
     expect(titleLine([row({})], "en-GB")).toBe("Soonest first. Next: 1 draft on Fri 27 Nov, to issue on Mon 30 Nov.")
     expect(titleLine([row({ status: "paused" })], "en-GB")).toBe("Soonest first.")
+    // A US reader gets the same day, month order.
+    expect(titleLine([row({})], "en-US")).toBe("Soonest first. Next: 1 draft on Fri 27 Nov, to issue on Mon 30 Nov.")
   })
 
   it("filters keep active or paused schedules", () => {

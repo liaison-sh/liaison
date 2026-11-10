@@ -249,3 +249,9 @@ Standing send only for a document of that stream -> bundled-apps/invoicing/src/e
 Collections by VAT rate where VAT is due on receipt; Not needed otherwise; To report at your platform -> bundled-apps/invoicing/src/einvoicing/collection.ts:35; bundled-apps/invoicing/src/einvoicing/collection.ts:110; bundled-apps/invoicing/src/mutations/payments.ts:152
 Buyer refusal opens a Home item, no document -> bundled-apps/invoicing/src/einvoicing/transmit.ts:884
 Payment reminder about a paid, credited or voided invoice is not sent -> bundled-apps/invoicing/src/send-state.ts:28; bundled-apps/invoicing/app.manifest.json:1776
+Recurring sidebar group with Schedules and active count before Views -> bundled-apps/invoicing/src/ui/sidebar.tsx:168
+Schedules list first line, filters, Bills shows billsOtherThanStripe -> bundled-apps/invoicing/src/ui/RecurringList.tsx:48; bundled-apps/invoicing/src/ui/RecurringList.tsx:63
+Schedule editor actions at the top, Start disabled during an open conflict or with errors, card link https, number line -> bundled-apps/invoicing/src/ui/ScheduleEditor.tsx:74; bundled-apps/invoicing/src/ui/ScheduleEditor.tsx:95; bundled-apps/invoicing/src/ui/ScheduleEditor.tsx:101
+Run detail: none missing only when consecutive in one series, Fix opens the draft, Download all -> bundled-apps/invoicing/src/ui/RunDetail.tsx:57; bundled-apps/invoicing/src/ui/RunDetail.tsx:70; bundled-apps/invoicing/src/ui/RunDetail.tsx:183
+Standing authorization control: Turn off waits 8 s, Undo calls nothing -> bundled-apps/invoicing/src/ui/IssuerStreams.tsx:37; bundled-apps/invoicing/src/ui/IssuerStreams.tsx:48
+E-invoice status words on an invoice and money chips -> bundled-apps/invoicing/src/ui/RecurringStates.tsx:31; bundled-apps/invoicing/src/ui/RecurringStates.tsx:48; bundled-apps/invoicing/src/ui/DocumentDetail.tsx:545

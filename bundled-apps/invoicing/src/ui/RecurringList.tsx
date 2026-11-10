@@ -52,9 +52,11 @@ export function billsText(r: ListRow): string {
   return first.replace(/,?\s*\{period\}/g, "").trim()
 }
 
+/** "Fri 27 Nov": weekday, day, month, in that order whatever the locale's usual order. */
 function dayLabel(day: string, locale: string): string {
   const d = new Date(`${day}T12:00:00Z`)
-  return d.toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).replace(/,/g, "")
+  const part = (o: Intl.DateTimeFormatOptions) => d.toLocaleDateString(locale, { ...o, timeZone: "UTC" })
+  return `${part({ weekday: "short" })} ${part({ day: "numeric" })} ${part({ month: "short" })}`
 }
 
 /** "Soonest first. Next: 7 drafts on Fri 27 Nov, to issue on Mon 30 Nov." from the active schedules. */

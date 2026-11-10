@@ -7764,6 +7764,14 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.homeCluster.routine_mailbox_wait": "exécutions de routine en attente de votre boîte",
   "kernel.homeKind.routine_mailbox_wait.one": "exécution de routine en attente de votre boîte",
   "kernel.homeKind.routine_mailbox_wait.other": "exécutions de routine en attente de votre boîte",
+  "kernel.homeKind.send_waiting.one":
+    "facture électronique en attente de la carte d'envoi quotidienne",
+  "kernel.homeKind.send_waiting.other":
+    "factures électroniques en attente de la carte d'envoi quotidienne",
+  "kernel.homeKind.standing_lapsed.one": "autorisation permanente d'envoi expirée",
+  "kernel.homeKind.standing_lapsed.other": "autorisations permanentes d'envoi expirées",
+  "kernel.homeKind.collection_manual.one": "encaissement à déclarer sur votre plateforme",
+  "kernel.homeKind.collection_manual.other": "encaissements à déclarer sur votre plateforme",
   "kernel.homeKind.issuer_switched.one": "facturation carte modifiée avec des factures impayées",
   "kernel.homeKind.issuer_switched.other":
     "changements de facturation carte avec des factures impayées",

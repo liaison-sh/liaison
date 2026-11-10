@@ -52,9 +52,9 @@ function substringOk(term: string): boolean {
 const DESCRIPTION_SCORE = 2
 
 interface ScoringWords {
-  /** Stems of the name parts, single-word keywords and description words (see wordStem). */
-  nameStems: Set<string>
-  keywordStems: Set<string>
+  /** The name parts, single-word keywords and description words by stem (see wordStem). */
+  nameStems: Map<string, string[]>
+  keywordStems: Map<string, string[]>
   descStems: Set<string>
   /** Name parts and keywords with their stems, which a misspelling is compared to ("refnud", "refund"). */
   typoNames: string[]
@@ -89,8 +89,8 @@ function scoringWords(t: ScorableDeferredTool): ScoringWords {
   const descWords = foldSearchText(t.description).split(/[^\p{L}\p{N}]+/u)
   const single = (keywords ?? []).filter((k) => !/\s/.test(k))
   const words: ScoringWords = {
-    nameStems: new Set(nameParts.map(wordStem)),
-    keywordStems: new Set(single.map(wordStem)),
+    nameStems: byStem(nameParts),
+    keywordStems: byStem(single),
     descStems: new Set(descWords.map(wordStem)),
     typoNames: [...new Set([...nameParts, ...nameParts.map(wordStem)])],
     typoKeywords: [...new Set([...single, ...single.map(wordStem)])],
@@ -103,6 +103,38 @@ function scoringWords(t: ScorableDeferredTool): ScoringWords {
   }
   scoringWordsCache.set(t, words)
   return words
+}
+
+function byStem(list: readonly string[]): Map<string, string[]> {
+  const out = new Map<string, string[]>()
+  for (const word of list) {
+    const stem = wordStem(word)
+    const words = out.get(stem)
+    if (!words) out.set(stem, [word])
+    else if (!words.includes(word)) words.push(word)
+  }
+  return out
+}
+
+/**
+ * True when `word` is `term` (or its singular) plus "-er": the one who does
+ * it, another word than it. A "dealer" is not a "deal", nor a "sender" a
+ * "send", so neither a stem nor a start of word matches one to the other.
+ */
+function agentNounOf(word: string, term: string): boolean {
+  if (!word.endsWith("er") && !word.endsWith("ers")) return false
+  const bases = term.endsWith("s") ? [term, term.slice(0, -1)] : [term]
+  return bases.some((base) => word === `${base}er` || word === `${base}ers`)
+}
+
+/** True when a word of `stems` shares the term's stem and is not its agent noun. */
+function stemMatches(stems: Map<string, string[]>, stem: string, term: string): boolean {
+  return stems.get(stem)?.some((word) => !agentNounOf(word, term)) ?? false
+}
+
+/** True when a word of `list` starts with the term and is not its agent noun. */
+function startsWord(list: readonly string[], term: string): boolean {
+  return list.some((word) => word.startsWith(term) && !agentNounOf(word, term))
 }
 
 // ── Beyond the exact word ────────────────────────────────────────────────
@@ -125,6 +157,15 @@ const MIN_STEM = 4
  * tools less than its one rare word.
  */
 const RARE_WORD_FLOOR = 0.5
+
+/**
+ * In a query that names no app, a word an app's tool matches no better than a
+ * kernel tool of the same record does counts this share for the app's tool:
+ * the organization's own records (its companies, contacts) come before an
+ * app's records of the same name. A word naming the app ("shopify") lifts its
+ * tools again.
+ */
+const SAME_WORD_APP_SHARE = 0.9
 
 /**
  * Inflection endings, English and French, longest first, compared on folded
@@ -322,17 +363,20 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
       // another form of a name part does not set one of them apart.
       else if (appLower === term) score += 6
       // Another form of a name part or keyword ("invoicing", "facturer").
-      else if (stemOk[i] && words.nameStems.has(termStems[i])) score += STEM_NAME_SCORE
+      else if (stemOk[i] && stemMatches(words.nameStems, termStems[i], term))
+        score += STEM_NAME_SCORE
       // A translation or plain synonym of a name part (tool-lexicon.ts).
       else if (termSynonyms[i].some((x) => nameParts.some((p) => p === x || p === `${x}s`)))
         score += SYNONYM_NAME_SCORE
-      else if (stemOk[i] && words.keywordStems.has(termStems[i])) score += STEM_KEYWORD_SCORE
+      else if (stemOk[i] && stemMatches(words.keywordStems, termStems[i], term))
+        score += STEM_KEYWORD_SCORE
       // Partial name match: the start of a name part ("invoice" in `invoices`),
       // never the middle of one ("done" is not in `abandoned`). The whole name's
       // start counts too ("internalcall" in `internalCallback`).
       else if (
         substringOk(term) &&
-        (nameParts.some((p) => p.startsWith(term)) || nameJoined.startsWith(term))
+        (startsWord(nameParts, term) ||
+          (term.length > nameParts[0].length && nameJoined.startsWith(term)))
       )
         score += 5
       // App name match
@@ -358,6 +402,7 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
 
     return { tool: t, score, termsMatched, termCount, per }
   })
+  preferOwnRecords(rows, terms)
   if (terms.length < 2) return rows.map(({ per: _, ...r }) => r)
   // A word many tools answer to tells them apart less than a rare one.
   const n = Math.max(2, tools.length)
@@ -372,6 +417,65 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
     ...r,
     score: Math.round(per.reduce((sum, v, i) => sum + v * weight[i], 0) * 100) / 100,
   }))
+}
+
+/** True when a query word names an app of the catalog, as the scorer reads app names. */
+function namesAnApp(rows: ReadonlyArray<{ tool: ScorableDeferredTool }>, terms: readonly string[]) {
+  return rows.some(({ tool }) => {
+    if (tool.appName === "kernel") return false
+    const { appLower, appParts } = scoringWords(tool)
+    return terms.some(
+      (term) =>
+        appLower === term ||
+        appLower === `${term}s` ||
+        (substringOk(term) && appParts.some((p) => p.startsWith(term))),
+    )
+  })
+}
+
+/**
+ * The record a tool acts on: the stems of its name before the action, as tools
+ * are named `<record>_<action>` (`companies_search`). A word that ends some
+ * tool's name is an action (`create`, `search`), so `create_role` and
+ * `create_shipment` share no record.
+ */
+function recordStems(t: ScorableDeferredTool, actions: ReadonlySet<string>): string[] {
+  const { nameParts } = scoringWords(t)
+  return nameParts
+    .slice(0, -1)
+    .map(wordStem)
+    .filter((stem) => !actions.has(stem))
+}
+
+/**
+ * The kernel's tool comes first on a word it shares with an app's tool of the
+ * same record, unless the query names an app (SAME_WORD_APP_SHARE). Each word
+ * is weighed apart, so an app tool still leads on a word only it answers to
+ * ("B2B").
+ */
+function preferOwnRecords(
+  rows: Array<{ tool: ScorableDeferredTool; score: number; per: number[] }>,
+  terms: readonly string[],
+): void {
+  if (namesAnApp(rows, terms)) return
+  const actions = new Set(rows.map((r) => wordStem(scoringWords(r.tool).nameParts.at(-1) ?? "")))
+  const kernel = rows
+    .filter((r) => r.tool.appName === "kernel")
+    .map((r) => ({ r, records: recordStems(r.tool, actions) }))
+    .filter((k) => k.records.length > 0)
+  if (kernel.length === 0) return
+  for (const r of rows) {
+    if (r.tool.appName === "kernel") continue
+    const records = recordStems(r.tool, actions)
+    if (records.length === 0) continue
+    const same = kernel.filter((k) => k.records.some((stem) => records.includes(stem)))
+    for (const i of terms.keys()) {
+      const v = r.per[i] ?? 0
+      if (v === 0 || !same.some((k) => (k.r.per[i] ?? 0) >= v)) continue
+      r.per[i] = v * SAME_WORD_APP_SHARE
+      r.score -= v - r.per[i]
+    }
+  }
 }
 
 /**

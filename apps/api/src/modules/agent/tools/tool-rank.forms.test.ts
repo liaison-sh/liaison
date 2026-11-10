@@ -136,3 +136,44 @@ describe("tool search: a word no tool answers to", () => {
     expect(rank("create event with Lumen")[0]).toBe("calendar__create_event")
   })
 })
+
+describe("tool search: the organization's own records and agent nouns", () => {
+  const OWN: Row[] = [
+    row("kernel", "companies_search", "Find the organization's companies.", ["société"]),
+    row("kernel", "create_role", "Create a role."),
+    row("shop", "companies_search", "Find the store's B2B companies.", ["société", "b2b"]),
+    row("ship", "create_shipment", "Create a shipment."),
+    row("ship", "labels_create", "Print a label."),
+    row("deals", "deals_update", "Change a deal."),
+    row("ads", "dealer_list", "Who resells for us."),
+  ]
+  const apps = ["shop", "ship", "deals", "ads"]
+  const score = (q: string, name: string) =>
+    scoreDeferredTools(OWN, q, { appNames: apps }).find((s) => s.tool.sdkName === name)?.score ?? 0
+
+  it("a word the kernel's tool of the same record matches puts it first", () => {
+    expect(score("société", "kernel__companies_search")).toBeGreaterThan(
+      score("société", "shop__companies_search"),
+    )
+  })
+
+  it("a word naming the app, or one only the app answers to, lifts the app's tool", () => {
+    expect(score("shop société", "shop__companies_search")).toBeGreaterThan(
+      score("shop société", "kernel__companies_search"),
+    )
+    expect(score("b2b société", "shop__companies_search")).toBeGreaterThan(
+      score("b2b société", "kernel__companies_search"),
+    )
+  })
+
+  it("a word ending a tool's name is an action, not a shared record ('create')", () => {
+    expect(score("create", "ship__create_shipment")).toBe(score("create", "kernel__create_role"))
+  })
+
+  it("a word plus -er is another word: 'deal' is not 'dealer', 'dealers' still is", () => {
+    expect(score("deal", "ads__dealer_list")).toBe(0)
+    expect(score("deals", "ads__dealer_list")).toBe(0)
+    expect(score("dealers", "ads__dealer_list")).toBeGreaterThan(0)
+    expect(score("deal", "deals__deals_update")).toBeGreaterThan(0)
+  })
+})

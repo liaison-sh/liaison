@@ -156,6 +156,23 @@ describe("writes", () => {
     expect((await listDashboards(as(other, [WRITE]))).length).toBe(before)
   })
 
+  it("the card shows a block's date tokens as written and what they are today", async () => {
+    const block = {
+      ...pieBlock(),
+      source: { kind: "tool", tool: `${APP}:orders_list`, params: { status: "{{startOfMonth}}" } },
+    }
+    const res = await call(owner, [WRITE, SHARE, READ], "dashboards_create", {
+      title: "Rolling orders",
+      visibility: "org",
+      spec: { v: 1, blocks: [block] },
+    })
+    // The test org's timezone is the default, UTC.
+    const month = new Date().toISOString().slice(0, 7)
+    expect(res.blocked?.summary?.lines.join("\n")).toContain(
+      `dates {{startOfMonth}} = ${month}-01 (today, rolling)`,
+    )
+  })
+
   it("an agent's edit or delete of an org dashboard always stages, even for its owner with share", async () => {
     const shared = await createDashboard(as(owner, [WRITE, SHARE, READ]), {
       title: "Shared",

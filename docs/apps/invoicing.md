@@ -67,6 +67,8 @@ A purchase order here is one you send to a supplier. A customer's own purchase o
 
 When the issuer profile is mapped to a Shopify shop, a quote and a Shopify draft order are the same object. Creating a quote creates the draft order in Shopify, and a draft order created in Shopify creates the quote. Editing the draft order in Shopify updates a quote that is still `sent`. Deleting it rejects the quote. Without a mapping, the quote stays local.
 
+A draft order or order placed for a Shopify B2B company is addressed to the company: its name, its location's billing address (else its shipping address) and its location's tax registration number as the VAT number. Each draft order and order splits net and tax by its own Shopify setting, so a net B2B catalog price gets VAT added while a retail price that includes VAT is divided out. **Prices include tax** on the issuer profile applies only when Shopify gives no setting. A tax-exempt company location is charged no VAT. A catalog price or a price override shows as the unit price, with no discount.
+
 ### Customers in another EU country
 
 For an issuer in the EU, a customer in another EU country is either a business or a consumer. A business gives its VAT number: the document charges no VAT (reverse charge). A consumer has none: the document charges the VAT of the customer's country, at that country's standard rate (for example 22% for Italy).

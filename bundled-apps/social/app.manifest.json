@@ -1,6 +1,6 @@
 {
   "name": "social",
-  "version": "0.6.65",
+  "version": "0.6.66",
   "iconName": "message-square",
   "description": "Social 'Ground Control': monitors Facebook, Instagram and YouTube for brand-relevant activity, drafts human-approved replies, and manages DMs.",
   "listing": {
@@ -555,6 +555,7 @@
       "searchKeywords": ["répondre", "commentaire", "mention"],
       "requiredScopes": ["social:findings:write"],
       "handler": "replyToFindingHandler",
+      "reconcileHandler": "reconcileReplyToFindingHandler",
       "timeoutMs": 30000,
       "summarizer": "summarizeReplyToFinding",
       "summarizerContext": { "tool": "findings_get", "params": { "finding_id": "finding_id" } },

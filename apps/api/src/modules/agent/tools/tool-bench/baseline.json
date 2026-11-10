@@ -989,7 +989,7 @@
       "schema": 8
     },
     "kernel__approval_update_payload": {
-      "desc": 397,
+      "desc": 728,
       "schema": 26
     },
     "kernel__approval_withdraw": {
@@ -1329,7 +1329,7 @@
       "schema": 9
     },
     "kernel__describe_user_access": {
-      "desc": 262,
+      "desc": 500,
       "schema": 21
     },
     "kernel__document_record_types_list": {
@@ -2306,7 +2306,7 @@
     },
     "shopify__orders_search": {
       "desc": 1036,
-      "schema": 391
+      "schema": 680
     },
     "shopify__products_create": {
       "desc": 24,
@@ -2417,8 +2417,8 @@
       "schema": 100
     },
     "shopify__variants_search": {
-      "desc": 50,
-      "schema": 38
+      "desc": 405,
+      "schema": 312
     },
     "shopify__variants_update": {
       "desc": 32,

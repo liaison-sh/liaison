@@ -1381,20 +1381,20 @@
   "homeGroupTeam": "Équipe",
   "homeKind": {
     "issuer_switched": {
-      "one": "émetteur des abonnements carte changé, factures impayées",
-      "other": "émetteurs des abonnements carte changés, factures impayées"
+      "one": "facturation carte modifiée avec des factures impayées",
+      "other": "changements de facturation carte avec des factures impayées"
     },
     "issuer_undecided": {
       "one": "facture Stripe en attente du choix de l'émetteur",
       "other": "factures Stripe en attente du choix de l'émetteur"
     },
     "undecided_listed": {
-      "one": "facture Stripe à émettre après le choix",
+      "one": "factures Stripe à émettre après le choix",
       "other": "factures Stripe à émettre après le choix"
     },
     "needs_person": {
-      "one": "facture Stripe à examiner",
-      "other": "factures Stripe à examiner"
+      "one": "facture Stripe à traiter par une personne",
+      "other": "factures Stripe à traiter par une personne"
     },
     "payment_failed": {
       "one": "paiement par carte échoué",

@@ -233,8 +233,8 @@ Rules that say which document templates a record needs (a customs declaration, a
 | Tool | What it does | Scope | Approval |
 | --- | --- | --- | --- |
 | `approvals_list` | List the approvals waiting on you. | `kernel:approvals:read` | No |
-| `approval_update_payload` | Edit the editable fields of a pending approval. | `kernel:approvals:write` | No |
-| `approval_withdraw` | Retract an approval you raised. | `kernel:approvals:write` | No |
+| `approval_update_payload` | Edit the editable fields of a pending approval you raised. Editing someone else's also needs `kernel:approvals:write`, and every edit asks approvers to review the new version. | `kernel:approvals:read` | No |
+| `approval_withdraw` | Retract an approval you raised. | `kernel:approvals:read` | No |
 | `outside_text_sources` | Explain why actions wait because of outside text. | `kernel:threads:read` | No |
 | `outside_text_clear` | Ask the person to lift the outside-text mark. The person can also clear it from the globe beside the conversation name. | `kernel:threads:read` | Yes |
 | `policy_get` | List auto-approve policies. | `kernel:policies:read` | No |
@@ -264,7 +264,7 @@ Rules that say which document templates a record needs (a customs declaration, a
 | `edit_role` | Rename a role or add and remove its scopes. | `kernel:roles:admin` | Yes |
 | `delete_role` | Delete a role. | `kernel:roles:admin` | Yes |
 | `users_list` | List team members and their roles. | `kernel:users:admin` | No |
-| `describe_user_access` | Read one person's resolved access. | `kernel:users:admin` | No |
+| `describe_user_access` | Read one person's resolved access: exactly the scopes their sign-in holds, each with where it comes from. | `kernel:users:admin` | No |
 | `list_scopes` | List every grantable scope. | `kernel:users:admin` | No |
 | `invite_user` | Invite a person by email with a role. | `kernel:users:admin` | Yes |
 | `assign_role` | Assign a person to a role. | `kernel:users:admin` | Yes |

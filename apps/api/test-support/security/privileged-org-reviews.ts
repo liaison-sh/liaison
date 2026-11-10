@@ -492,6 +492,8 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "name collision: invokeAppExport calls an app's export handler (ctx, format, filters), not a tool handler; its ctx is createAppContext(c.get('orgId'))",
   "apps/api/src/modules/apps/runtime.ts#runPoll":
     "app poll job: the poll is scheduled per installed org and runs in that org",
+  "apps/api/src/modules/apps/runtime.ts#runReconcile":
+    "approval outcome reconciler: the approving reaper calls it for an approval row it read, in that row's org (approving-reaper.ts reconcileUnknownOutcome)",
   "apps/api/src/modules/attention/digest-jobs.ts#defaultEmitDigestFailureAlert":
     "digest job: the failing user's row and org",
   "apps/api/src/modules/attention/digest-jobs.ts#runDigestUrgentOnce":

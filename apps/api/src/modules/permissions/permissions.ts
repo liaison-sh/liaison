@@ -77,6 +77,29 @@ export async function loadEffectivePermissions(
   userId: string,
   orgId: string,
 ): Promise<EffectivePermissions> {
+  const { roles, scopes, dimensionGrants } = await resolveEffectivePermissions(tx, userId, orgId)
+  return { roles, scopes, dimensionGrants }
+}
+
+/**
+ * The token's permissions plus where the computed (non-grant-table) scopes came
+ * from: the every-member set, the org MCP servers the person may use, and the
+ * restricted apps whose scopes were dropped. `scopes` is exactly what
+ * `loadEffectivePermissions` puts in a token (it is built on this), so a
+ * diagnosis (admin user detail, `kernel__describe_user_access`) reading it can
+ * never disagree with enforcement.
+ */
+export async function resolveEffectivePermissions(
+  tx: PrivilegedDb,
+  userId: string,
+  orgId: string,
+): Promise<
+  EffectivePermissions & {
+    everyMemberScopes: string[]
+    mcpAccessScopes: string[]
+    deniedApps: string[]
+  }
+> {
   // Load role assignments
   const roleAssignments = await tx
     .select()
@@ -105,13 +128,11 @@ export async function loadEffectivePermissions(
     .from(userDimensionGrants)
     .where(and(eq(userDimensionGrants.userId, userId), eq(userDimensionGrants.orgId, orgId)))
 
+  const everyMember = await everyMemberScopeGrants(tx, userId, orgId)
+  const mcpAccess = await mcpServerAccessGrants(tx, { userId, orgId, roleIds })
   const effective = computeEffectivePermissions({
     roleIds,
-    roleScopeGrants: [
-      ...roleScopes,
-      ...(await everyMemberScopeGrants(tx, userId, orgId)),
-      ...(await mcpServerAccessGrants(tx, { userId, orgId, roleIds })),
-    ],
+    roleScopeGrants: [...roleScopes, ...everyMember, ...mcpAccess],
     userScopeGrants: userScopes,
     roleDimensionGrants: roleDims,
     userDimensionGrants: userDims,
@@ -122,7 +143,13 @@ export async function loadEffectivePermissions(
     roleIds,
     scopes: effective.scopes,
   })
-  return { ...effective, scopes: dropAppScopes(effective.scopes, denied) }
+  return {
+    ...effective,
+    scopes: dropAppScopes(effective.scopes, denied),
+    everyMemberScopes: [...new Set(everyMember.map((g) => g.scope))],
+    mcpAccessScopes: [...new Set(mcpAccess.map((g) => g.scope))],
+    deniedApps: [...denied],
+  }
 }
 
 /**

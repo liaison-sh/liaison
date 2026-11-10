@@ -662,6 +662,15 @@ const toolSchema = {
     // resumes — deferred dependents referencing `@ref` outputs execute with
     // the materialized values instead of failing on a null.
     pollHandler: { type: "string", minLength: 1 },
+    // Outcome reconciler for a GATED tool with an external effect. Names a
+    // bundle export the approving reaper calls when an approved execution's
+    // outcome is unknown (the provider call timed out, the worker died):
+    // `{ approval_request_id, payload, external_ref }` in, `{ outcome:
+    // "executed" | "not_executed" | "unknown", ref?, reason? }` out. It READS
+    // the provider to find out whether the effect happened; it never performs
+    // it. `executed` settles the approval as approved, `not_executed` reverts it
+    // to pending, `unknown` leaves it for a person.
+    reconcileHandler: { type: "string", minLength: 1 },
     // Declarative resource-owner resolution for a GATED tool (privacy routing).
     // Declares that this call targets a row of the app's own `table` (id taken
     // from the tool param named `param`) whose owning account may be PERSONAL

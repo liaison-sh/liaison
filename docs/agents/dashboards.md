@@ -53,7 +53,7 @@ Everyone can list and open the dashboards they see: every active member holds `k
 
 Your personal agent builds dashboards with your access. A named agent, such as a team's sales or support agent, builds them when `kernel:dashboards:write` is in its scopes, and always with the access of the person it works for. An agent declared in the config file gets it with its common base; an agent created before that gets it at the next `liaison config apply` ([Create an agent](create-an-agent.md)). A named agent can never hold `kernel:dashboards:admin`. Asked for a dashboard without that access, the agent says which access is missing instead of saying dashboards do not exist.
 
-Nobody else sees a personal dashboard, administrators included. Your own changes are never held for approval: your scopes decide. When the **agent** creates an org dashboard, makes one org-visible, or changes or deletes an org dashboard, the change waits for a person who holds `kernel:dashboards:admin`. The approval card lists the title and each block with the tool or collection it reads. A personal dashboard the agent makes for you saves at once.
+Nobody else sees a personal dashboard, administrators included. Your own changes are never held for approval: your scopes decide. When the **agent** creates an org dashboard, makes one org-visible, or changes or deletes an org dashboard, the change waits for a person who holds `kernel:dashboards:admin`. The approval card lists the title and each block with the tool or collection it reads, and the rolling dates it uses with the date each one stands for today. A personal dashboard the agent makes for you saves at once.
 
 ## What a block can read
 
@@ -66,9 +66,22 @@ The source is checked when the dashboard is saved, as its author, and again ever
 
 A block reads at most 2,000 rows from its source, and shows at most 100 rows, bars or slices. A dashboard holds at most 24 blocks. Each block's run is recorded in the audit log (`dashboard.block_run`) with the dashboard and the block.
 
+## Rolling date ranges
+
+A block's source settings can hold a rolling date, so "this month" or "the last 30 days" moves with the calendar instead of staying on the day the dashboard was built. Each one is replaced by a date (`YYYY-MM-DD`) every time the block runs, in the organization's timezone (UTC when none is set):
+
+| Written | Stands for |
+| --- | --- |
+| `{{today}}` | Today. |
+| `{{startOfWeek}}` | Monday of this week. |
+| `{{startOfMonth}}` | The 1st of this month. |
+| `{{startOfYear}}` | January 1st of this year. |
+
+Each may carry one offset: `+` or `-`, a number, and `d` (days), `w` (weeks), `M` (months) or `y` (years). For example `{{today-30d}}`, `{{startOfMonth-1M}}` (the 1st of last month) or `{{startOfMonth-1d}}` (the last day of last month). A month or year offset keeps the day, moved back to the month's last day when the month is shorter. A rolling date also works inside a longer text, such as a query's `BETWEEN '{{today-29d}}' AND '{{today}}'`. A date written out in full stays that date. Anything else between `{{` and `}}` is refused when the block is previewed or saved.
+
 ## How long figures are kept
 
-A block's figures are kept for a minute, or for the block's own interval, set by whoever built it (at most 15 minutes, whatever the interval). They are kept per person and per set of access rights (scopes, dimension grants and roles), so a change to your access is never answered with figures read under the old one. A block runs at most four sources at once for one person; the rest wait their turn. One refresh per block per person every 30 seconds. A block whose source failed keeps that answer for 30 seconds too, so opening the dashboard again does not run the failing source again; **Refresh** reads it at once. Closing the tab stops its blocks' reads.
+A block's figures are kept for a minute, or for the block's own interval, set by whoever built it (at most 15 minutes, whatever the interval). They are kept per person and per set of access rights (scopes, dimension grants and roles), so a change to your access is never answered with figures read under the old one. A block with rolling dates reads again as soon as its dates move. A block runs at most four sources at once for one person; the rest wait their turn. One refresh per block per person every 30 seconds. A block whose source failed keeps that answer for 30 seconds too, so opening the dashboard again does not run the failing source again; **Refresh** reads it at once. Closing the tab stops its blocks' reads.
 
 ## The dashboards API
 

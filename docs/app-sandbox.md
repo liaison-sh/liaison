@@ -741,6 +741,37 @@ hidden either: the caller gets `upstream_timeout` (HTTP 504, retryable) with a
 message that the upstream service was slow, that a read can be retried, and that
 a change may already have been applied, so it is checked before a retry.
 
+The default deadline of a `ctx.fetch` is 10 seconds (`LIAISON_SANDBOX_FETCH_TIMEOUT_MS`).
+Its `timeoutMs` option can shorten it for any call. A write (`POST`, `PUT`, `PATCH`,
+`DELETE`) can also ask for up to 30 seconds, because a write that runs past the deadline
+on our side is often still applied upstream. A multipart upload can ask for up to 120
+seconds. The tool's own `timeoutMs` still bounds the whole call
+(`apps/api/src/modules/apps/sandbox/bridge/egress.ts`).
+
+### Unknown outcomes of approved writes
+
+An approved tool with an outside effect records its progress with the approval
+protocol (`approval_recordStarted` before the call, `approval_recordEffectLanded` as
+soon as the provider accepts it, then `approval_recordSucceeded`, or
+`approval_recordFailedNoEffect` when the provider refuses it). When the run ends
+between `started` and an outcome, for example on a timeout, the approval waits at
+`approving` with an unknown outcome.
+
+Declare `reconcileHandler` on the tool in the manifest to settle these cases. It names
+a handler export that reads the provider and answers whether the effect happened. It
+gets `{ approval_request_id, payload, external_ref }` and returns
+`{ outcome: "executed" | "not_executed" | "unknown", ref?, reason? }`. It must never
+perform the effect itself. The approvals reaper calls it a minute after an
+execution is settled as unknown, or after the 10-minute grace window for a run that
+never recorded an outcome:
+
+- `executed`: the approval is approved, with `ref` as its result.
+- `not_executed`: the approval goes back to pending, so a person can approve it again.
+- `unknown`: nothing changes; the approval stays for a person to decide.
+
+(`apps/api/src/modules/approvals/approving-reaper.ts`,
+`apps/api/src/modules/approvals/reconcile-outcome.ts`.)
+
 ### Tiering model (Phase 14+)
 
 With process-level workers, hard resource limits can be enforced per trust tier:

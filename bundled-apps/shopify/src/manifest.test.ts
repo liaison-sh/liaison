@@ -930,9 +930,32 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.12 (main): orders_get returns the order's billing address (with its company) and the buyer's
     // VAT number from its current custom attributes.
     // 0.4.13: orders_search hits carry the shipping the customer paid (shippingAmount, shippingCurrency).
-    // 0.4.14: above the 0.4.12 main took meanwhile, merged.
-    // 0.4.15: 0.4.14 above merged with 0.4.13.
-    expect(m.version).toBe("0.4.15")
+    // 0.4.14: orders_search takes total_min/total_max; variants_search takes product_status/min_quantity
+    // and returns productStatus; both reject an unknown parameter.
+    // 0.4.15: draft_orders_get and orders_get return the B2B buyer (purchasingCompany: company name,
+    // location addresses, tax registration id, tax exemption, contact email), orders_get the order's
+    // taxesIncluded, and draft lines their priceOverride.
+    // 0.4.14 (branch): above the 0.4.12 main took meanwhile, merged; 0.4.15 (branch): merged with 0.4.13.
+    // 0.4.16: the branch's 0.4.15 merged with main's 0.4.14 and 0.4.15.
+    expect(m.version).toBe("0.4.16")
+  })
+
+  it("orders_search and variants_search declare their filters and close their params", () => {
+    const m = loadManifest() as {
+      tools: Record<string, { params: { properties: Record<string, unknown>; additionalProperties?: unknown } }>
+    }
+    const expected: Record<string, string[]> = {
+      orders_search: ["query", "created_at_min", "created_at_max", "total_min", "total_max", "limit", "timeout_ms", "cursor"],
+      variants_search: ["query", "product_status", "min_quantity", "limit", "cursor"],
+    }
+    for (const [tool, keys] of Object.entries(expected)) {
+      const params = m.tools[tool]!.params
+      expect(Object.keys(params.properties).sort(), tool).toEqual([...keys].sort())
+      // A closed shape: the host's param check rejects an unknown parameter (an amount criterion
+      // under a name the tool does not take) with a 400 naming it, instead of running the search
+      // without it; `additionalProperties: true` would opt out of that check.
+      expect(params.additionalProperties, tool).toBe(false)
+    }
   })
 
   it("read_all_orders is a protected scope behind the org's full-order-history toggle", () => {

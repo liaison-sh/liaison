@@ -27,7 +27,7 @@ Because of this, adding a colleague with fewer permissions to a conversation can
 | --- | --- |
 | Personal agent | Your own permissions. It follows them when they change. |
 | Role agent | Set by an administrator in **Settings** under **Capabilities**. It cannot be wider than what that administrator may grant. See [Create an agent](../agents/create-an-agent.md). |
-| System agent (`@base`) | A common base: skills, conversations, memory, contacts, files, knowledge, projects and dashboards. |
+| System agent (`@base`) | A common base: skills, conversations, memory, contacts, files, knowledge, projects, dashboards and reading approvals. |
 
 Administration scopes are meant for people: every scope that asks a person for a second factor when the organization requires one. That is `*`, any scope whose last part is `admin` (such as `kernel:org:admin`, `kernel:apps:admin`, `kernel:agents:admin` or an app's `tickets:settings:admin`), and a wildcard over a kernel one (`kernel:*`, `kernel:users:*`). Keep them out of a role agent's ceiling: `liaison config apply` refuses a role agent that lists one, and an approved access request never adds one.
 
@@ -82,6 +82,8 @@ What approving does:
 - The decision is recorded and announced in the conversation that asked.
 
 An administrator can also use their own agent to read and change access: `describe_user_access`, `list_scopes`, `roles_list`, `get_role`, `users_list`, `list_dimensions` read it; `create_role`, `edit_role`, `delete_role`, `assign_role`, `remove_user_from_role`, `grant_user_scope` and `grant_dimension_value` change it. Every change waits in **Approvals** for a person. These need `kernel:users:admin` or `kernel:roles:admin`.
+
+`describe_user_access` and the user page in **Settings › Users** show exactly the scopes the person's sign-in holds: their roles and direct grants, the scopes every member holds (marked `everyMember`), the shared MCP servers they may use (marked `mcpAccess`), minus the apps restricted against them (listed in `deniedApps`).
 
 ## Scopes that matter for agents
 

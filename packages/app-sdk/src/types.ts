@@ -259,8 +259,8 @@ export interface AppContext {
    * Outbound HTTP to a host the manifest allows. `body` is a string, or `{multipart}`: the host
    * assembles a multipart/form-data body from text fields and files the app may read (by kernel
    * file id; up to 25 MB; a part may pin `expectSha256`), and the answer then carries `upload`
-   * (each part's size and SHA-256). `timeoutMs` may only tighten the default, except for a
-   * multipart upload, which may ask for up to 120 s.
+   * (each part's size and SHA-256). `timeoutMs` may only tighten the default for a read; a
+   * write (POST, PUT, PATCH, DELETE) may ask for up to 30 s, a multipart upload for up to 120 s.
    */
   fetch(
     url: string,

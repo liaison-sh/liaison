@@ -22,6 +22,7 @@ import { appsLogger as log } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
 import { describeDbError } from "~/lib/transient-db-error"
 import { derivedSinkReadScope } from "~/modules/agent/scopes/taint-read-scopes"
+import { normalizeReconcileOutcome } from "~/modules/approvals/reconcile-outcome"
 import {
   appVisibleToOrg,
   filterAppsVisibleToOrg,
@@ -65,6 +66,7 @@ import {
   manifestRegistry,
   oauthClientResolverRegistry,
   orgsRegistering,
+  type ReconcileOutcome,
   registeredApps,
   registeredAppVersions,
   routineTemplateRegistry,
@@ -3394,6 +3396,83 @@ async function registerSingleApp(
                 return r && r.ready === true
                   ? { ready: true, result: (r.result ?? {}) as Record<string, unknown> }
                   : { ready: false }
+              }
+            }
+            // Outcome reconciliation for SANDBOXED manifest tools: `reconcileHandler`
+            // names a bundle export the approving reaper calls for an approved
+            // execution whose outcome is unknown (approving-reaper.ts). Same
+            // execution shape as `pollHandler` above: the worker pool, the
+            // reaper's transaction, as the app.
+            if (
+              isManifestFormat &&
+              typeof tool.reconcileHandler === "string" &&
+              tool.reconcileHandler !== ""
+            ) {
+              const reconcileExport = tool.reconcileHandler as string
+              const reconcileBundlePath = bundlePath
+              const reconcileAppName = desc.name
+              const reconcileManifest = manifestForBridge
+              const reconcilePrivileged = hasPrivilegedBridge(desc)
+              entry.reconcile = async (
+                rCtx: { orgId: string; tx: unknown },
+                input: { approvalRequestId: string; payload: unknown; externalRef: unknown },
+              ): Promise<ReconcileOutcome> => {
+                const { appRunHoldMs } = await import("~/modules/apps/usage/app-day-cap")
+                if ((await appRunHoldMs({ orgId: rCtx.orgId, trusted: false })) !== null) {
+                  return { outcome: "unknown", reason: "app_day_cap" }
+                }
+                const { runApp } = await import("~/modules/apps/sandbox/run-app")
+                const { createSandboxRpcBridge } = await import("~/modules/apps/sandbox/rpc-bridge")
+                const source = await loadBundle(reconcileBundlePath)
+                const runReconcile = async (tx: unknown) => {
+                  const bridge = createSandboxRpcBridge(
+                    reconcileAppName,
+                    `system:${reconcileAppName}:reconcile`,
+                    rCtx.orgId,
+                    tx as never,
+                    reconcileManifest as never,
+                  )
+                  return runApp({
+                    trusted: false,
+                    appName: reconcileAppName,
+                    orgId: rCtx.orgId,
+                    bundlePath: reconcileBundlePath,
+                    bundleSource: source,
+                    exportName: reconcileExport,
+                    entry: `reconcile:${reconcileExport}`,
+                    params: {
+                      approval_request_id: input.approvalRequestId,
+                      payload: input.payload,
+                      external_ref: input.externalRef,
+                    },
+                    bridge,
+                    timeoutMs: 60_000,
+                    priority: "background",
+                    appId: reconcileAppName,
+                    holdsTx: true,
+                  })
+                }
+                const out = reconcilePrivileged
+                  ? await (async () => {
+                      const { setPrivilegedContext } = await import("~/db/privileged")
+                      await setPrivilegedContext(
+                        rCtx.tx as Pick<RlsClient, "execute">,
+                        rCtx.orgId,
+                        { scopes: reconcileManifest?.scopes ?? [] },
+                      )
+                      return runReconcile(rCtx.tx)
+                    })()
+                  : await (await import("~/db/rls")).withRlsContext(
+                      {
+                        actorType: "system",
+                        orgId: rCtx.orgId,
+                        purpose: "job",
+                        scopes: [`${reconcileAppName}:*`],
+                      },
+                      runReconcile,
+                      { pool: "jobs" },
+                    )
+                return normalizeReconcileOutcome(out)
               }
             }
             assertReferenceableOutputs(`${desc.name}:${toolName}`, entry.referenceableOutputs)

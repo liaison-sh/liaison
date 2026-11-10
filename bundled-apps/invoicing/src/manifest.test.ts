@@ -1559,7 +1559,10 @@ describe("invoicing manifest", () => {
     // 0.20.74: card payments on Stripe issue, pay and credit by their own handlers; settled and failed Stripe refunds reach the refund handler
     // 0.20.75: both of the above, merged
     // 0.20.76: the issuer guard reads a contact's identifiers only, so it does not mark the turn
-    expect(m.version).toBe("0.20.76")
+    // 0.20.57 (main): quotes and invoices for a B2B company name the company, billed at its location
+    //   with its tax registration id; each draft's own taxesIncluded splits net and tax.
+    // 0.20.77: above the 0.20.57 main took meanwhile, merged.
+    expect(m.version).toBe("0.20.77")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

@@ -18,7 +18,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `analyze_media` | Analyze an image, video or PDF attachment and return a summary for support: a visual diagnostic for media, and for a document a faithful extraction of sender, line items with prices and totals, dates, reference numbers, addresses and payment terms. |  | `kernel:files:analyze` |
 | `approval_policy_get` | List the org's APPROVAL-TIGHTENING policies: which tools require approval or a second approver, and under what conditions. |  | `kernel:policies:read` |
 | `approval_policy_set` | Configure an org APPROVAL-TIGHTENING policy: escalate a non-gated action to gated, and/or require N distinct approvers (minApprovers:2 = a second person must approve). | yes | `kernel:policies:admin` |
-| `approval_update_payload` | Update the editable fields of a pending approval you can see as its requester or an approver. |  | `kernel:approvals:write` |
+| `approval_update_payload` | Update the editable fields of a pending approval. |  | `kernel:approvals:read` |
 | `approval_withdraw` | Retract a PENDING approval request that you raised. |  | `kernel:approvals:read` |
 | `approvals_list` | List the approvals waiting on this user to decide, oldest first, with origin app, requester, summary and age, plus recentlyDecided (last 24 hours) to check whether a requested action happened. |  | `kernel:approvals:read` |
 | `apps_build_check` | Build a draft version (the latest by default) and type-check it against the app SDK. |  | `kernel:apps:build` |
@@ -113,7 +113,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `delete_role` | PERMANENTLY delete an org role definition by `roleId` — the destructive complement to kernel__create_role. | yes | `kernel:roles:admin` |
 | `delete_routine` | Permanently delete a routine and its scheduler. | yes | `kernel:routines:write` |
 | `delete_skill` | Permanently delete a personal or org-shared skill by id. | yes | `kernel:skills:write` |
-| `describe_user_access` | Read ONE teammate's RESOLVED EFFECTIVE ACCESS by user id — their role memberships, the full set of effective scope STRINGS (each tagged with provenance: `fromRoles` for a scope inherited from a role, `direct:true` for a per-user grant), and any dimension grants. |  | `kernel:users:admin` |
+| `describe_user_access` | Read ONE teammate's RESOLVED EFFECTIVE ACCESS by user id — their role memberships, the full set of effective scope STRINGS (exactly the set their sign-in token holds, each tagged with provenance: `fromRoles` for a scope inherited from a role, `direct:true` for a per-user grant, `everyMember:true` for one every active member holds, `mcpAccess:true` for an org MCP server they may use), `deniedApps` (restricted apps they are kept out of, whose scopes are therefore absent), and any dimension grants. |  | `kernel:users:admin` |
 | `document_record_types_list` | List the record types a document template can print from (a shipment, an order, a contact... |  | `kernel:files:read` |
 | `document_rules_delete` | Delete a document rule (ruleId from kernel__document_rules_list): records it matched no longer ask for its templates. | yes | `kernel:org:admin` |
 | `document_rules_list` | List the organisation's document rules: which document templates a record needs (a customs declaration, a certificate of origin, a steel content statement, a thank-you letter to print with a shipment). |  | `kernel:org:admin` |
@@ -781,7 +781,7 @@ Shopify orders, customers, products, refunds, fulfilments and returns.
 | `variants_delete` | Delete a Shopify product variant | yes | `shopify:products:write` |
 | `variants_get` | Get one Shopify product variant by id |  | `shopify:products:read` |
 | `variants_market_price` | Read the per-market (contextual) price for one product variant — what a buyer in a given country actually sees on that storefront. |  | `shopify:products:read` |
-| `variants_search` | Search Shopify product variants (by sku, title, …) |  | `shopify:products:read` |
+| `variants_search` | Search Shopify product variants (by sku, title, barcode, vendor, product type, tag, …). |  | `shopify:products:read` |
 | `variants_update` | Update a Shopify product variant | yes | `shopify:products:write` |
 | `webhooks_repair` | Re-register every Shopify webhook topic the app declares (idempotent: existing subscriptions are kept, missing ones are created). |  | `shopify:admin:identity-map` |
 

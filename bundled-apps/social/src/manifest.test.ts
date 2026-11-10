@@ -38,7 +38,10 @@ describe("social manifest (B1)", () => {
     // 0.6.63: both of the above, merged.
     // 0.6.64: two parses of one delivery from a new person no longer fail on the unique key.
     // 0.6.65: merged with the 0.6.61 main took meanwhile (the same fix as 0.6.64).
-    expect(manifest.version).toBe("0.6.65")
+    // 0.6.62 (main): our own replies are never findings; reply_to_finding looks before posting and
+    //   declares an outcome reconciler.
+    // 0.6.66: above the 0.6.62 main took meanwhile, merged.
+    expect(manifest.version).toBe("0.6.66")
     expect(manifest.packageFormat).toBe(1)
   })
 

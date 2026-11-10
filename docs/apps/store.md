@@ -74,6 +74,8 @@ When your server provides the Shopify app, its operator requests the access for 
 
 When the agent searches orders in a date window, the window is on each order's placed date (`processedAt`), which differs from its creation date for an imported or backdated order. An order can then be missing from a window although its number falls between two orders shown, so the agent looks a neighbouring order up by its number before calling it the previous one.
 
+Order searches also take an order-total window (`total_min`, `total_max`, in the store currency, on the order's current total after refunds), and product-variant searches take the product's status (`product_status`, for example only `ACTIVE` to leave out archived and draft products) and a minimum stock across locations (`min_quantity`). Shopify applies these filters itself, so a page of results is never thinned out afterwards. Each variant found shows its product's status. A search parameter the tool does not know is refused with an error that names it.
+
 If **Permissions update required** appears in the settings, the connection was approved before the app asked for a newer permission, and Shopify limits what the tools can see (for example order history older than 60 days). Shopify grants only the scopes of your Shopify app's configuration, so **Reconnect** alone cannot add it: first add the missing scopes to the configuration (download the current `shopify.app.toml` from the setup guide, or add them to `[access_scopes] scopes`) and run `shopify app deploy` (in the Dev Dashboard: add them to the **Scopes** and click **Release**), then click **Reconnect** and approve. A store connected before the app asked for the locations permission (`read_locations`) is one: until it reconnects, `locations_list` and the stock-per-location reads are refused.
 
 ## Browse the store
@@ -115,6 +117,8 @@ An order is B2B when its buyer is a Shopify B2B company, or when a line item's s
 ## Quotes and paid orders
 
 With Invoicing installed and a shop mapped to an issuer profile, a Shopify draft order and an Invoicing quote are the same object, and a paid order issues its invoice automatically. A refund or cancellation in Shopify issues the matching credit note. See [Issue invoices and quotes](invoicing.md).
+
+`draft_orders_get` and `orders_get` return the B2B company behind a draft order or order (`purchasingCompany`: company name, location addresses, tax registration number, tax exemption, contact email), so its quote or invoice is addressed to the company. `orders_get` also returns the order's `taxesIncluded`.
 
 With Invoicing mapped to the shop, `draft_orders_create` and `draft_orders_complete` refuse an order Invoicing could not invoice, before any approval is filed. The error (`NOT_INVOICEABLE`) names each fix:
 

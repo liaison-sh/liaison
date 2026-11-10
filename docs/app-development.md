@@ -225,7 +225,7 @@ export async function items_create(
 | `ctx.emit` | Emit a domain event other apps can subscribe to |
 | `ctx.enqueueJob` | Enqueue a background job |
 | `ctx.connections` | Per-connection OAuth/credential tokens |
-| `ctx.fetch` | Call an external API (kernel-mediated, allowlist-checked) |
+| `ctx.fetch` | Call an external API (kernel-mediated, allowlist-checked). `timeoutMs` shortens the 10 s deadline; a write may ask for up to 30 s |
 | `ctx.time.civil` | The date and clock of an instant in a named IANA zone. The sandbox has no `Intl`, so `new Date()` only knows UTC. `UTC`, the column default, follows the organization's zone; `Etc/UTC` is UTC exactly; an unknown zone rejects with `invalid_timezone` |
 | `ctx.resolveContact` | Resolve or create a contact |
 | `ctx.turn.get()` | The turn the handler runs in: `agentId` (null for a job, a webhook or a person's own click) and `hasPerson` (false for a routine, a background turn and a job) |

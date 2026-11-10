@@ -2,6 +2,8 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "~/db"
 import { runApprovingReaper, runDeferredStepReaper } from "~/modules/approvals/approving-reaper"
+import { type ReconcileOutcome, toolRegistry } from "~/modules/apps/app-registries"
+import { awaitOrgApps } from "~/modules/apps/init"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const ORG = "00000000-0000-4000-8000-000000064001"
@@ -175,6 +177,102 @@ describe("approval approving reaper", () => {
     const [row] = await sql`SELECT metadata FROM kernel.approval_requests WHERE id = ${id}`
     expect(row.metadata?.reaperFlaggedAt).toBeTruthy()
     expect(await statusOf(id)).toBe("approving")
+  })
+
+  describe("a tool that declares a reconciler", () => {
+    let answer: ReconcileOutcome = { outcome: "unknown" }
+    const asked: Array<{ approvalRequestId: string; payload: unknown }> = []
+
+    beforeAll(async () => {
+      await awaitOrgApps(ORG)
+      toolRegistry.set([ORG, "reaper", "tool"], {
+        appName: "reaper",
+        name: "tool",
+        description: "A gated external write",
+        requiredScopes: ["reaper:tool:write"],
+        gated: true,
+        approvalImpact: "external",
+        handler: async () => ({ ok: true }),
+        reconcile: async (
+          _ctx: unknown,
+          input: { approvalRequestId: string; payload: unknown },
+        ) => {
+          asked.push(input)
+          return answer
+        },
+      } as never)
+    })
+
+    afterEach(() => {
+      asked.length = 0
+      answer = { outcome: "unknown" }
+    })
+
+    it("an ambiguous execution the provider shows executed settles as approved, before the grace window", async () => {
+      const id = "00000000-0000-4000-8000-000000064111"
+      await seedRequest(id, { stale: false })
+      await seedExecution(id, "ambiguous")
+      // Settled ambiguous more than a minute ago.
+      await sql`UPDATE kernel.approved_handler_executions SET finished_at = now() - interval '2 minutes'
+        WHERE approval_request_id = ${id}`
+      answer = { outcome: "executed", ref: { reply_external_id: "c-1" } }
+      await runApprovingReaper()
+      expect(asked).toEqual([
+        { approvalRequestId: id, payload: { x: 1 }, externalRef: null } as never,
+      ])
+      expect(await statusOf(id)).toBe("approved")
+      const [exec] =
+        await sql`SELECT status, result FROM kernel.approved_handler_executions WHERE approval_request_id = ${id}`
+      expect(exec.status).toBe("succeeded")
+      expect(exec.result).toMatchObject({ reply_external_id: "c-1", reconciled: true })
+      const [msg] = await sql`SELECT content FROM kernel.messages WHERE org_id = ${ORG}`
+      expect(msg.content).toContain("reconciled")
+    })
+
+    it("a stale row with no execution record the provider shows not executed reverts to pending", async () => {
+      const id = "00000000-0000-4000-8000-000000064112"
+      await seedRequest(id)
+      answer = { outcome: "not_executed", reason: "not among the replies" }
+      await runApprovingReaper()
+      expect(await statusOf(id)).toBe("pending")
+      const [exec] =
+        await sql`SELECT status, error FROM kernel.approved_handler_executions WHERE approval_request_id = ${id}`
+      expect(exec.status).toBe("failed_no_effect")
+      expect(exec.error).toMatchObject({ code: "reconciled_not_executed" })
+    })
+
+    it("an answer of unknown leaves the row held and flagged", async () => {
+      const id = "00000000-0000-4000-8000-000000064113"
+      await seedRequest(id)
+      await seedExecution(id, "ambiguous")
+      await runApprovingReaper()
+      expect(asked.length).toBe(1)
+      expect(await statusOf(id)).toBe("approving")
+      const [row] = await sql`SELECT metadata FROM kernel.approval_requests WHERE id = ${id}`
+      expect(row.metadata?.reaperFlaggedAt).toBeTruthy()
+    })
+
+    it("a fresh ambiguous row whose reconciler cannot tell is not flagged before the grace window", async () => {
+      const id = "00000000-0000-4000-8000-000000064114"
+      await seedRequest(id, { stale: false })
+      await seedExecution(id, "ambiguous")
+      await sql`UPDATE kernel.approved_handler_executions SET finished_at = now() - interval '2 minutes'
+        WHERE approval_request_id = ${id}`
+      await runApprovingReaper()
+      expect(asked.length).toBe(1)
+      const [row] = await sql`SELECT metadata FROM kernel.approval_requests WHERE id = ${id}`
+      expect(row.metadata?.reaperFlaggedAt).toBeFalsy()
+    })
+
+    it("a fresh `started` row is not reconciled: its execution may still be running", async () => {
+      const id = "00000000-0000-4000-8000-000000064115"
+      await seedRequest(id, { stale: false })
+      await seedExecution(id, "started")
+      answer = { outcome: "executed" }
+      await runApprovingReaper()
+      expect(asked.length).toBe(0)
+      expect(await statusOf(id)).toBe("approving")
+    })
   })
 
   it("does not touch non-stale approving rows", async () => {

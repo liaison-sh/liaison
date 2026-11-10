@@ -41,6 +41,7 @@ import type {
   NormalizedMessage,
   OutboundRequest,
   OwnRecentObjectsResult,
+  OwnReplyLookup,
   PlatformAdapter,
 } from "./types"
 
@@ -456,6 +457,16 @@ async function fetchListPage<T>(
   return { items: data, next, throttled: usageThrottled(res.headers) }
 }
 
+/** Reply text as compared by `findOwnReply`: the platform trims a comment and
+ *  may fold its whitespace, so neither difference makes it another reply. */
+export function sameReplyText(a: string | null | undefined, b: string | null | undefined): boolean {
+  const norm = (v: string | null | undefined) => (v ?? "").replace(/\s+/g, " ").trim()
+  return norm(a) !== "" && norm(a) === norm(b)
+}
+
+/** Pages of replies `findOwnReply` reads, newest first, before it gives up. */
+const OWN_REPLY_MAX_PAGES = 3
+
 export const facebookAdapter: PlatformAdapter = {
   platform: "facebook",
 
@@ -788,6 +799,31 @@ export const facebookAdapter: PlatformAdapter = {
     return req
   },
 
+  // Our reply on a comment/post, if it is there: `GET {id}/comments` (the
+  // replies, newest first) with the owning Page's token, looking for a comment
+  // written by one of the connected user's Pages with exactly this text.
+  async findOwnReply(target: { externalId: string }, text: string, ctx: AdapterContext): Promise<OwnReplyLookup> {
+    const { pages, error } = await resolveManagedPages(ctx)
+    if (error) return { status: "unknown", reason: error }
+    const page = resolvePageTokenForExternalId(pages, target.externalId)
+    if (!page) return { status: "unknown", reason: "no_managed_page" }
+    const own = new Set(pages.map((p) => p.id))
+    let url: string | null =
+      `${FB_BASE}/${target.externalId}/comments?fields=id,message,from&order=reverse_chronological&limit=100`
+    for (let n = 0; url && n < OWN_REPLY_MAX_PAGES; n++) {
+      const res = await ctx.fetch(url, { headers: { Authorization: `Bearer ${page.access_token}` } })
+      if (res.status < 200 || res.status >= 300) return { status: "unknown", reason: `HTTP ${res.status}` }
+      const body = parseBody(res.body) as { data?: FbComment[]; paging?: { next?: unknown } }
+      if (!Array.isArray(body.data)) return { status: "unknown", reason: "unreadable_replies" }
+      const hit = body.data.find((c) => c.from?.id !== undefined && own.has(c.from.id) && sameReplyText(c.message, text))
+      if (hit) return { status: "found", externalId: hit.id ?? null }
+      url = typeof body.paging?.next === "string" ? body.paging.next : null
+    }
+    // More replies than were read: not seeing ours proves nothing.
+    if (url) return { status: "unknown", reason: "too_many_replies" }
+    return { status: "absent" }
+  },
+
   // FB own-Page comment like → Graph API `{comment_id}/likes`. Same Page-token
   // resolution as `replyRequest` (comment id carries the `<pageId>_` prefix).
   async likeRequest(
@@ -825,13 +861,25 @@ export const facebookAdapter: PlatformAdapter = {
       for (const change of entry.changes ?? []) {
         const v = change.value ?? {}
         if (change.field === "feed" && typeof v.comment_id === "string") {
+          const fromId = typeof v.from === "object" && v.from ? (v.from as { id?: unknown }).id : undefined
+          const authorId = fromId === undefined || fromId === null ? null : String(fromId)
+          const postId = typeof v.post_id === "string" ? v.post_id : null
+          const parentId = typeof v.parent_id === "string" ? v.parent_id : null
           findings.push({
             platform: "facebook",
             externalId: v.comment_id,
             relation: "comment_on_our_content",
             parentExternalId: typeof v.post_id === "string" ? v.post_id : null,
             contentText: typeof v.message === "string" ? v.message : null,
-            authorExternalId: typeof v.from === "object" && v.from ? String((v.from as { id?: string }).id ?? "") : null,
+            authorExternalId: authorId,
+            // The delivery is for this Page's feed (`entry.id`): a comment the
+            // Page wrote is our own reply (posted from Liaison or natively),
+            // which Meta echoes like any other comment. The post id's
+            // `<pageId>_` prefix names the same Page when `entry.id` is absent.
+            authoredByOwner:
+              authorId !== null && (authorId === ownId || (postId !== null && authorId === pageIdPrefix(postId))),
+            // A top-level comment's parent is the post itself.
+            replyToExternalId: parentId,
             // Meta's own time for the comment, never the arrival time (a retried
             // or delayed delivery would otherwise date the comment wrongly).
             occurredAt: metaTimeToIso(v.created_time) ?? metaTimeToIso(entry.time),

@@ -120,7 +120,19 @@ export interface UpdatePayloadArgs {
    * posted for the requester and names the app.
    */
   appRestage?: { appName: string; note?: string }
+  /**
+   * The calling turn's effective scopes (an agent's ceiling intersected with its person's
+   * grants, or an MCP token's), passed by the agent tool. The tool asks only
+   * `kernel:approvals:read`, so the requester (the person the turn acts for, `requested_by`)
+   * can fix the request it staged. Any other edit through the tool, an approver's or a resource
+   * owner's, also needs `kernel:approvals:write` in these scopes, as the tool required before.
+   * Absent (a person's edit through the route) leaves the checks below as they are.
+   */
+  callerScopes?: readonly string[]
 }
+
+/** Editing a request the caller did not raise, through the agent tool: the approver capability. */
+export const EDIT_OTHERS_APPROVAL_SCOPE = "kernel:approvals:write"
 
 export interface UpdatePayloadResult {
   id: string
@@ -224,6 +236,14 @@ export async function updatePayload(input: UpdatePayloadArgs): Promise<UpdatePay
     )
   }
   const isRequester = row.requested_by === args.actor.userId
+  if (
+    !restage &&
+    !isRequester &&
+    args.callerScopes !== undefined &&
+    !hasScope(EDIT_OTHERS_APPROVAL_SCOPE, [...args.callerScopes])
+  ) {
+    throw new UpdatePayloadError(403, "forbidden", "forbidden")
+  }
   if (!restage && !isRequester && !isResourceOwner) {
     const inAudience = sharedSurface || row.notify_user_ids.includes(args.actor.userId)
     if (!inAudience) {

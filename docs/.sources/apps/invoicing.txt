@@ -234,3 +234,7 @@ Mode B makes no credit note -> bundled-apps/invoicing/src/handlers/stripe-refund
 Unmatched payment waits in the queue with attention -> bundled-apps/invoicing/src/handlers/stripe-payment-unmatched.ts:50
 invoice_from_stripe_payment and payment_link_to_invoice always wait for a person -> bundled-apps/invoicing/app.manifest.json:2794
 Safety job every 10 minutes hands missed events to the same handlers -> bundled-apps/invoicing/src/handlers/reconcile-stripe-payments.ts:77
+B2B company draft/order names the company, location billing (else shipping) address, tax registration id as VAT -> bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:405; bundled-apps/invoicing/src/handlers/shopify-order-paid.ts:1930
+each draft splits net/tax by its own taxesIncluded, issuer prices_include_tax only as fallback -> bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:231
+tax-exempt company location charged no VAT -> bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:240; bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:260
+catalog price or price override is the unit price, no discount -> bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:298; bundled-apps/shopify/src/lib/draft-order.ts:607

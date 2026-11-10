@@ -33,7 +33,15 @@ import {
   watchObject,
 } from "./internal"
 import { type SocialWebhookBridge, verifyMetaSignature } from "./lib/hmac"
-import { likeItem, likeItemPreflight, replyToFinding, replyToFindingPreflight, sendDm, sendDmPreflight } from "./post-back"
+import {
+  likeItem,
+  likeItemPreflight,
+  reconcileReplyToFinding,
+  replyToFinding,
+  replyToFindingPreflight,
+  sendDm,
+  sendDmPreflight,
+} from "./post-back"
 import {
   countsRead,
   dmGet,
@@ -137,6 +145,12 @@ export const replyToFindingPreflightHandler = (
   params: Parameters<typeof replyToFindingPreflight>[1],
   ctx: SocialToolCtx,
 ) => replyToFindingPreflight(ctx, params)
+// Outcome reconciler of reply_to_finding (manifest `reconcileHandler`): the
+// approving reaper calls it when an approved reply's outcome is unknown.
+export const reconcileReplyToFindingHandler = (
+  params: Parameters<typeof reconcileReplyToFinding>[1],
+  ctx: SocialToolCtx,
+) => reconcileReplyToFinding(ctx, params)
 export const sendDmHandler = (
   params: Parameters<typeof sendDm>[1],
   ctx: SocialToolCtx,

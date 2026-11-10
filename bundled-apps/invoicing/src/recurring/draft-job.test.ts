@@ -149,6 +149,34 @@ describe("the month-end draft job", () => {
     expect(h.db.__all("recurring_schedules")[0]).toMatchObject({ next_issue_on: "2026-12-31" })
   })
 
+  test("a company buyer's last invoice carries the company, its location address and its VAT number onto the draft", async () => {
+    // The last invoice named a B2B company: its name as legal name, the location's billing
+    // address and the location's tax registration id. The month-end draft bills the same company.
+    const prevId = "44444444-4444-4444-8444-444444444441"
+    const prev = {
+      ...previousDoc(prevId, true),
+      counterparty_name: "Atelier Brume SAS",
+      counterparty_address: "Site Lyon, 12 quai Perrache, 69002 Lyon",
+      counterparty_vat_id: "FR40123456789",
+      counterparty_email: "achats@brume.example",
+      customer_kind: "business",
+    }
+    const h = harness("2026-11-27", {
+      schedules: [schedule("33333333-3333-4333-8333-333333333331", { last_document_id: prevId })],
+      docs: [prev],
+    })
+    await recurringDraftJob(h.ctx)
+    const [draft] = h.db.__all("documents").filter((d) => d.status === "draft")
+    expect(draft).toMatchObject({
+      counterparty_name: "Atelier Brume SAS",
+      counterparty_address: "Site Lyon, 12 quai Perrache, 69002 Lyon",
+      counterparty_vat_id: "FR40123456789",
+      counterparty_country: "FR",
+      counterparty_email: "achats@brume.example",
+      customer_kind: "business",
+    })
+  })
+
   test("a schedule whose draft day has not come drafts nothing", async () => {
     const h = harness("2026-11-26")
     expect((await recurringDraftJob(h.ctx)).drafted).toBe(0)

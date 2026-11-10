@@ -499,12 +499,12 @@ const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, 
   ],
   [
     "apps/api/src/modules/agent/tools/admin-tools.ts",
-    "const covering = detail.effectiveScopes.find((s) => hasScope(required, [s.scope]))",
+    "source = detail.effectiveScopes.find((s) => hasScope(required, [s.scope]))",
     REASONS.GRANT,
   ],
   [
     "apps/api/src/modules/agent/tools/admin-tools.ts",
-    'via = covering?.scope.includes("*") ? "wildcard" : "parent"',
+    'via = source?.scope.includes("*") ? "wildcard" : "parent"',
     REASONS.GRANT,
   ],
   [
@@ -593,6 +593,16 @@ const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, 
   [
     "apps/api/src/modules/permissions/permissions.ts",
     "for (const g of sources.userScopeGrants) scopeSet.add(g.scope)",
+    REASONS.GRANT,
+  ],
+  [
+    "apps/api/src/modules/permissions/permissions.ts",
+    "everyMemberScopes: [...new Set(everyMember.map((g) => g.scope))],",
+    REASONS.GRANT,
+  ],
+  [
+    "apps/api/src/modules/permissions/permissions.ts",
+    "mcpAccessScopes: [...new Set(mcpAccess.map((g) => g.scope))],",
     REASONS.GRANT,
   ],
   [
@@ -785,16 +795,15 @@ const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, 
   ],
   [
     "apps/api/src/modules/users/service.ts",
-    "const entry = scopeMap.get(r.scope) ?? { fromRoles: [], direct: false }",
+    "const names = fromRolesByScope.get(r.scope) ?? []",
     REASONS.GRANT,
   ],
-  ["apps/api/src/modules/users/service.ts", "scopeMap.set(r.scope, entry)", REASONS.GRANT],
+  ["apps/api/src/modules/users/service.ts", "fromRolesByScope.set(r.scope, names)", REASONS.GRANT],
   [
     "apps/api/src/modules/users/service.ts",
-    "const entry = scopeMap.get(r.scope) ?? { fromRoles: [], direct: false }",
+    "const directScopes = new Set(directScopeRows.map((r) => r.scope))",
     REASONS.GRANT,
   ],
-  ["apps/api/src/modules/users/service.ts", "scopeMap.set(r.scope, entry)", REASONS.GRANT],
   [
     "apps/api/src/modules/export/invoke-export.ts",
     "const declaredScope = (entry as unknown as { scope?: string }).scope",
@@ -1166,6 +1175,11 @@ const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, 
     REASONS.DOC,
   ],
   ["bundled-apps/invoicing/src/handlers/shopify-refund-created.ts", "args.doc.scope,", REASONS.DOC],
+  [
+    "bundled-apps/invoicing/src/handlers/stripe-refund-created.ts",
+    "(fresh.scope as string | null) ?? null,",
+    REASONS.DOC,
+  ],
   [
     "bundled-apps/invoicing/src/handlers/shopify-refund-created.ts",
     "scope: (r.scope as string | null) ?? null,",

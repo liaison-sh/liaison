@@ -88,7 +88,12 @@ describe("the block cache on Redis", () => {
     })
     expect(calls).toBe(1)
 
-    const key = blockCacheKey(viewer, { dashboardId, version: 1, blockId: "total" })
+    const key = blockCacheKey(viewer, {
+      dashboardId,
+      version: 1,
+      blockId: "total",
+      resolvedSource: { kind: "tool", tool: `${APP}:rows_list`, params: {} },
+    })
     const ttl = await redis.ttl(key)
     expect(ttl).toBeGreaterThan(800)
     expect(ttl).toBeLessThanOrEqual(900)

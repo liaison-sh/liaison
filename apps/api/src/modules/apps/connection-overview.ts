@@ -41,6 +41,9 @@ export interface AppConnectionView {
   setupGuide?: { summary?: string; steps?: string[]; docsUrl?: string }
   /** Per-store OAuth template variables (keys only, e.g. `["shop"]`). */
   templateVars?: string[]
+  /** The template variable whose value is an account's identifier (e.g. `shop`):
+   *  reconnecting that account fills it from the identifier. */
+  identifierVar?: string
   /** The app works without it (a webhook, an alternative account...). */
   optional: boolean
   /** A few words naming what it connects ("CI release-status webhook"). */
@@ -93,6 +96,9 @@ function declaredConnections(
           }
         : {}),
       ...(templateVarKeys && templateVarKeys.length > 0 ? { templateVars: templateVarKeys } : {}),
+      ...(cfg.identifierVar && templateVarKeys?.includes(cfg.identifierVar)
+        ? { identifierVar: cfg.identifierVar }
+        : {}),
     }
     const list = byApp.get(regApp) ?? []
     list.push(view)

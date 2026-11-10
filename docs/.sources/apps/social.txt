@@ -81,3 +81,7 @@ Facebook comment link built when Graph omits it -> bundled-apps/social/src/adapt
 comment and post fenced as outside text for the agent -> bundled-apps/social/src/summarizers.ts:71
 card shows fenced text as a quote from outside -> apps/web/src/modules/approvals/SummaryLineText.tsx:23
 links only to Facebook, Instagram or YouTube -> bundled-apps/social/src/summarizers.ts:86
+own replies never become findings; the comment they answer is marked handled -> bundled-apps/social/src/ingest.ts:125 ; bundled-apps/social/src/ingest.ts:234 ; bundled-apps/social/src/ingest.ts:267
+checks for the Page's own reply with the same words before posting -> bundled-apps/social/src/post-back.ts:291
+a reply whose confirmation timed out is looked up on the platform about a minute later -> bundled-apps/social/src/post-back.ts:474 ; apps/api/src/modules/approvals/approving-reaper.ts:28
+found: approval recorded as done; not found: back to waiting -> apps/api/src/modules/approvals/reconcile-outcome.ts:60

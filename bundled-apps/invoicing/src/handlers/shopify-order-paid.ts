@@ -1803,6 +1803,28 @@ interface ShopifyOrderFetch {
   /** The buyer's VAT number from the order's CURRENT custom attributes (same keys as the
    *  order:created event), so a number added after checkout reaches a re-drive. */
   buyerTaxId?: string | null
+  /** The B2B company buying (the shopify app's `NormalizedPurchasingCompany`), null for a
+   *  consumer order, absent from an older shopify-app build. */
+  purchasingCompany?: {
+    companyName?: string | null
+    taxRegistrationId?: string | null
+    taxExempt?: boolean
+    contactEmail?: string | null
+    billingAddress?: ShopifyCompanyLocationAddress | null
+    shippingAddress?: ShopifyCompanyLocationAddress | null
+  } | null
+}
+
+/** A company location address as the shopify app normalises it. */
+interface ShopifyCompanyLocationAddress {
+  name?: string | null
+  company?: string | null
+  address1?: string | null
+  address2?: string | null
+  zip?: string | null
+  city?: string | null
+  province?: string | null
+  countryCode?: string | null
 }
 
 function formatFetchedAddress(a: ShopifyFetchedAddress | null | undefined): string | null {
@@ -1835,6 +1857,8 @@ export function mergeCustomer(
   fromFetch: ShopifyOrderFetch | null,
 ): OrderPaidPayload["customer"] | undefined {
   if (!fromFetch) return fromWebhook
+  const pc = fromFetch.purchasingCompany ?? null
+  if (pc && addrStr(pc.companyName)) return mergeCompanyBuyer(fromWebhook, fromFetch, pc)
   const fetched = fromFetch.customer
   const fetchedName =
     [fetched?.first_name, fetched?.last_name].filter(Boolean).join(" ") || undefined
@@ -1892,6 +1916,67 @@ export function mergeCustomer(
               country_code: a.country_code,
             }
           })()
+        : null),
+  }
+}
+
+/**
+ * The counterparty of an order placed for a B2B company (`purchasingEntity` is a company). The
+ * invoice names the COMPANY, not the contact who placed it: its name is the legal name, its
+ * location's tax registration id the VAT number, and its location's billing address (else its
+ * shipping address) the Bill-to when the order carries none of its own. Order-scoped webhook
+ * facts still win field by field.
+ */
+function mergeCompanyBuyer(
+  fromWebhook: OrderPaidPayload["customer"] | undefined,
+  fromFetch: ShopifyOrderFetch,
+  pc: NonNullable<ShopifyOrderFetch["purchasingCompany"]>,
+): OrderPaidPayload["customer"] {
+  const companyName = addrStr(pc.companyName)!
+  const locationBilling = pc.billingAddress ?? pc.shippingAddress ?? null
+  const orderBilling = fromFetch.billingAddress ?? null
+  const billingSource: ShopifyFetchedAddress | null = orderBilling ?? locationBilling
+  const shippingSource: ShopifyFetchedAddress | null =
+    fromFetch.shippingAddress ?? pc.shippingAddress ?? null
+  const vatId =
+    addrStr(fromWebhook?.vat_id) ?? addrStr(pc.taxRegistrationId) ?? addrStr(fromFetch.buyerTaxId) ?? null
+  const fetchedAddress = formatFetchedAddress(billingSource)
+  const address = withoutLeadingLine(fromWebhook?.address ?? fetchedAddress, companyName)
+  const billingCountry =
+    fromWebhook?.country ??
+    addrStr(billingSource?.countryCode)?.toUpperCase() ??
+    addrStr(shippingSource?.countryCode)?.toUpperCase() ??
+    undefined
+  const fetchedShipping = shippingSource ? fetchedStructured(shippingSource) : null
+  return {
+    id: fromWebhook?.id ?? null,
+    email: fromWebhook?.email || fromFetch.customer?.email || addrStr(pc.contactEmail) || null,
+    contact_id: fromWebhook?.contact_id ?? null,
+    country: billingCountry,
+    tax_country:
+      fromWebhook?.tax_country ??
+      addrStr(shippingSource?.countryCode)?.toUpperCase() ??
+      billingCountry,
+    legal_name: companyName,
+    vat_id: vatId,
+    address,
+    shipping_address:
+      fromWebhook?.shipping_address ?? formatFetchedShippingAddress(shippingSource),
+    shipping_name: fromWebhook?.shipping_name ?? addrStr(shippingSource?.name) ?? null,
+    billing: fromWebhook?.billing
+      ? { ...fromWebhook.billing, company: companyName }
+      : fetchedStructured(billingSource, companyName),
+    delivery:
+      fromWebhook?.delivery ??
+      (fetchedShipping
+        ? {
+            name: addrStr(shippingSource?.name),
+            line1: fetchedShipping.line1,
+            line2: fetchedShipping.line2,
+            postcode: fetchedShipping.postcode,
+            city: fetchedShipping.city,
+            country_code: fetchedShipping.country_code,
+          }
         : null),
   }
 }

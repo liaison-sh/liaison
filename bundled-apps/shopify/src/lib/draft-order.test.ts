@@ -372,3 +372,74 @@ describe("normalizeDraftOrderNode", () => {
     expect(norm.customer).toBeNull()
   })
 })
+
+describe("normalizeDraftOrderNode: the B2B buyer", () => {
+  const base = { id: "gid://shopify/DraftOrder/1", taxesIncluded: false, lineItems: { edges: [] } }
+
+  it("reads the company, its location addresses, tax registration id and contact email", () => {
+    const norm = normalizeDraftOrderNode(
+      {
+        ...base,
+        purchasingEntity: {
+          company: { name: "Buyer Industries SAS" },
+          contact: { customer: { email: "buyer@buyer-industries.example" } },
+          location: {
+            name: "Head office",
+            taxSettings: { taxRegistrationId: "FR99887766554", taxExempt: true },
+            billingAddress: { recipient: "Accounts", companyName: "Buyer Industries SAS", address1: "5 rue Exemple", zip: "69002", city: "Lyon", countryCode: "FR" },
+            shippingAddress: null,
+          },
+        },
+      },
+      null,
+    )
+    expect(norm.taxesIncluded).toBe(false)
+    expect(norm.purchasingCompany).toEqual({
+      companyName: "Buyer Industries SAS",
+      locationName: "Head office",
+      taxRegistrationId: "FR99887766554",
+      taxExempt: true,
+      contactEmail: "buyer@buyer-industries.example",
+      billingAddress: {
+        name: "Accounts",
+        company: "Buyer Industries SAS",
+        address1: "5 rue Exemple",
+        address2: null,
+        zip: "69002",
+        city: "Lyon",
+        province: null,
+        countryCode: "FR",
+        phone: null,
+      },
+      shippingAddress: null,
+    })
+  })
+
+  it("a consumer draft (the Customer arm reads as {}) has no company", () => {
+    expect(normalizeDraftOrderNode({ ...base, purchasingEntity: {} }, null).purchasingCompany).toBeNull()
+    expect(normalizeDraftOrderNode(base, null).purchasingCompany).toBeNull()
+  })
+
+  it("a price override is the line's unit price", () => {
+    const norm = normalizeDraftOrderNode(
+      {
+        ...base,
+        lineItems: {
+          edges: [
+            {
+              node: {
+                id: "l1",
+                title: "Item",
+                quantity: 1,
+                originalUnitPriceSet: { presentmentMoney: { amount: "699.00", currencyCode: "EUR" } },
+                priceOverride: { amount: "629.00", currencyCode: "EUR" },
+              },
+            },
+          ],
+        },
+      },
+      null,
+    )
+    expect(norm.lineItems[0]).toMatchObject({ unitPrice: "629.00", priceOverride: "629.00", appliedDiscount: null })
+  })
+})

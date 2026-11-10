@@ -21,7 +21,7 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { users } from "~/db/schema/kernel"
 import { appsLogger } from "~/lib/logger"
 import { type OrgConfigToolCtx, resolveActor } from "~/modules/agent/tools/org-config-tools"
-import { toolRegistry } from "~/modules/apps/app-registries"
+import { approvalResourceOwnerRegistry, toolRegistry } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
 import {
   ConnectLinkError,
@@ -333,6 +333,11 @@ export function registerConnectionTools(orgId: string): void {
       connectLinkSendPreflight(params as ConnectLinkSendParams, ctx),
   })
   registerApprovalSummarizer(orgId, "kernel", "connect_link_send", summarizeConnectLinkSend)
+  // A link to connect the requester's OWN account is theirs to approve; a link to anyone else
+  // keeps the org's deciders.
+  approvalResourceOwnerRegistry.set([orgId, "kernel", "connect_link_send"], {
+    resolveOwner: (params, ctx) => connectLinkSelfApprover(params, ctx),
+  })
 
   toolRegistry.set([orgId, "kernel", "connection_disconnect"], {
     appName: "kernel",
@@ -379,4 +384,36 @@ export function registerConnectionTools(orgId: string): void {
     "connection_disconnect",
     summarizeConnectionDisconnect,
   )
+  // The requester's own personal connection is theirs to approve; an organization connection
+  // keeps the org's deciders.
+  approvalResourceOwnerRegistry.set([orgId, "kernel", "connection_disconnect"], {
+    resolveOwner: (params, ctx) => disconnectSelfApprover(params, ctx),
+  })
+}
+
+/** The requester, when the link connects their own account (their own sign-in address). */
+export async function connectLinkSelfApprover(
+  params: Record<string, unknown>,
+  ctx: { orgId: string; requestedBy: string },
+): Promise<string | null> {
+  if (typeof params.email !== "string") return null
+  const [row] = await withPrivilegedDb(ctx.orgId, "connect-link-self-approver", (tx) =>
+    tx.select({ email: users.email }).from(users).where(eq(users.id, ctx.requestedBy)).limit(1),
+  )
+  return row && row.email.toLowerCase() === params.email.toLowerCase() ? ctx.requestedBy : null
+}
+
+/** The requester, when the ONE connection named is their own personal connection. */
+export async function disconnectSelfApprover(
+  params: Record<string, unknown>,
+  ctx: { orgId: string; requestedBy: string },
+): Promise<string | null> {
+  const { app, connection, account, connectionId } = params
+  if (typeof app !== "string" || typeof connection !== "string") return null
+  const key = typeof connectionId === "string" ? connectionId : account
+  if (typeof key !== "string") return null
+  const targets = await findDisconnectTargets(ctx.orgId, app, connection, key)
+  if (targets.length !== 1) return null
+  const [t] = targets
+  return t?.ownerType === "user" && t.ownerId === ctx.requestedBy ? ctx.requestedBy : null
 }

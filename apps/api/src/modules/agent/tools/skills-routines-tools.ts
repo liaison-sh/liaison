@@ -3466,10 +3466,12 @@ async function loadUserEffectiveScopes(orgId: string, userId: string): Promise<s
  * re-author it (the gated remediation the diagnose-routine-silently-stopped flow
  * proposes). Without this, that gated remediation is APPROVED and then EXECUTED to
  * a `forbidden` "You cannot edit this routine" error — a real authorization gap,
- * not a model failure. Editing stays bounded to SHARED routines (another member's
- * PERSONAL routine is never editable by a non-owner) and the routine's own scope
- * ceiling is still re-capped to the run-as owner's scopes on update, so this grants
- * management rights, never a privilege escalation through the routine.
+ * not a model failure. Two more cases are manageable by others: a routine a delegate
+ * BUILT (created_by_user_id) for a teammate stays editable by that builder, and a
+ * routine run by a role agent (not a personal agent) is editable by a delegate or an
+ * org-admin. Another member's own PERSONAL routine is never editable by a non-owner,
+ * and an added scope is capped at both the editor's and the run-as owner's scopes on
+ * update, so this grants management rights, never a privilege escalation.
  */
 async function loadEditableRoutine(
   orgId: string,
@@ -3489,9 +3491,27 @@ async function loadEditableRoutine(
   })
   if (!row) return { ok: false, code: "routine_not_found" }
   if (row.ownerUserId === callerUserId) return { ok: true, row }
-  if (row.visibility === "shared" && (hasAppsAdmin(scopes) || hasRoutineDelegateAuthority(scopes)))
+  const admin = hasAppsAdmin(scopes)
+  const delegate = hasRoutineDelegateAuthority(scopes)
+  if (row.visibility === "shared" && (admin || delegate)) return { ok: true, row }
+  // A routine a delegate BUILT for someone stays manageable by its builder.
+  if (delegate && row.createdByUserId === callerUserId) return { ok: true, row }
+  // A routine run by a role agent belongs to the team, not to one person's private agent.
+  if ((admin || delegate) && row.ownerAgentId && (await isRoleAgent(orgId, row.ownerAgentId)))
     return { ok: true, row }
   return { ok: false, code: "forbidden" }
+}
+
+/** True when the agent is not a person's own (personal) agent: a role or system agent. */
+async function isRoleAgent(orgId: string, agentId: string): Promise<boolean> {
+  const [agent] = await withPrivilegedDb(orgId, "routines-owner-agent-kind", (tx) =>
+    tx
+      .select({ kind: agentsTbl.kind })
+      .from(agentsTbl)
+      .where(and(eq(agentsTbl.id, agentId), eq(agentsTbl.orgId, orgId)))
+      .limit(1),
+  )
+  return agent !== undefined && agent.kind !== "personal"
 }
 
 /**
@@ -3680,7 +3700,15 @@ export async function handleUpdateRoutine(
       if (stored.includes(scope)) nextScopes.push(scope)
       else added.push(scope)
     }
-    const { granted, omitted } = grantableScopes(added, ctx.scopes)
+    const { granted: editorGranted, omitted } = grantableScopes(added, ctx.scopes)
+    // Edited by someone other than its run-as owner (a delegate, an admin): an added scope must
+    // also be one the owner holds, as the routine runs as them and never above their scopes.
+    let granted = editorGranted
+    if (prior.ownerUserId !== callerUserId) {
+      const ownerScopes = await loadUserEffectiveScopes(ctx.orgId, prior.ownerUserId)
+      granted = editorGranted.filter((scope) => isScopeCovered([scope], ownerScopes))
+      for (const scope of editorGranted) if (!granted.includes(scope)) omitted.push(scope)
+    }
     for (const scope of granted) if (!nextScopes.includes(scope)) nextScopes.push(scope)
     // Keep the order the caller sent, so the stored list reads as it was written.
     const order = params.scopes
@@ -5585,6 +5613,11 @@ function registerAuthoringTools(orgId: string): void {
     preflight: toggleAppSkillPreflight as unknown as (p: unknown, c: any) => Promise<unknown>,
   })
   registerApprovalSummarizer(orgId, "kernel", "toggle_app_skill", summarizeToggleAppSkill as any)
+  // Hiding a skill for oneself (scope "user") is the requester's own setting; for the org it
+  // keeps the org's deciders.
+  approvalResourceOwnerRegistry.set([orgId, "kernel", "toggle_app_skill"], {
+    requester: { param: "scope", equals: "user" },
+  })
 
   // routine_tool_scopes (D20) ------------------------------------------------
   toolRegistry.set([orgId, "kernel", "routine_tool_scopes"], {
@@ -5906,4 +5939,75 @@ function registerAuthoringTools(orgId: string): void {
     "reset_routine_to_template",
     summarizeResetRoutineToTemplate as any,
   )
+
+  // A person's own routine is approved by that person (owner-routed, like any personal
+  // resource): the approval confirms what the agent drafted, and for a routine that runs as
+  // the requester, the requester is that human.
+  approvalResourceOwnerRegistry.set([orgId, "kernel", "create_routine"], {
+    resolveOwner: (params, ctx) => selfOwnedRoutineApprover("create_routine", params, ctx),
+  })
+  for (const tool of [
+    "update_routine",
+    "delete_routine",
+    "run_routine_now",
+    "reset_routine_to_template",
+  ] as const) {
+    approvalResourceOwnerRegistry.set([orgId, "kernel", tool], {
+      resolveOwner: (params, ctx) => selfOwnedRoutineApprover(tool, params, ctx),
+    })
+  }
+  // A template always becomes the requester's own routine, capped at their scopes by the handler.
+  approvalResourceOwnerRegistry.set([orgId, "kernel", "enable_routine_template"], {
+    resolveOwner: (params, ctx) => selfOwnedRoutineApprover("enable_routine_template", params, ctx),
+  })
+}
+
+/**
+ * Who alone decides a routine lifecycle call (approvals/resource-owner.ts): the requester, when
+ * the routine is their own (it runs as them); null (the org's deciders) otherwise.
+ *
+ * Own means: a create with no `ownerUserId` (or the requester's own id), or an existing routine
+ * whose owner is the requester. A routine that runs as ANOTHER person keeps the org's deciders.
+ * A listed scope the requester does not hold changes nothing here: approving could never grant it,
+ * so the handler leaves it out of the routine and files it as a scope request (`omittedScopes`
+ * in the result), whoever decides. An org policy demanding two
+ * approvers for the tool also keeps the org's deciders: a personal resource has one decider, so
+ * owner routing would make that policy unsatisfiable.
+ */
+export async function selfOwnedRoutineApprover(
+  tool:
+    | "create_routine"
+    | "update_routine"
+    | "delete_routine"
+    | "run_routine_now"
+    | "reset_routine_to_template"
+    | "enable_routine_template",
+  params: Record<string, unknown>,
+  ctx: { orgId: string; requestedBy: string },
+): Promise<string | null> {
+  if (tool === "create_routine") {
+    const runAs = params.ownerUserId
+    if (runAs !== undefined && runAs !== null && runAs !== ctx.requestedBy) return null
+  } else if (tool !== "enable_routine_template") {
+    const id = params.id
+    if (typeof id !== "string" || !/^[0-9a-fA-F-]{36}$/.test(id)) return null
+    const row = await withPrivilegedDb(ctx.orgId, "routine-self-approver-owner", async (tx) => {
+      const [r] = await tx
+        .select({ ownerUserId: routinesTbl.ownerUserId })
+        .from(routinesTbl)
+        .where(and(eq(routinesTbl.id, id), eq(routinesTbl.orgId, ctx.orgId)))
+        .limit(1)
+      return r ?? null
+    })
+    if (row?.ownerUserId !== ctx.requestedBy) return null
+  }
+  const { evaluateApprovalPolicy } = await import("~/modules/approvals/approval-policy")
+  const policy = await evaluateApprovalPolicy({
+    orgId: ctx.orgId,
+    toolName: `kernel:${tool}`,
+    appName: "kernel",
+    params,
+  })
+  if (policy.minApprovers >= 2) return null
+  return ctx.requestedBy
 }

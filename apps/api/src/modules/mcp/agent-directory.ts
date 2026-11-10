@@ -73,18 +73,59 @@ function byHandle(rows: readonly RosterRow[]): RosterRow[] {
   return [...rows].sort((a, b) => (a.handle < b.handle ? -1 : a.handle > b.handle ? 1 : 0))
 }
 
-/** The line that opens the instructions: handles and names only. */
+/**
+ * Purpose lengths tried per headline entry, longest first; 0 = names only.
+ * The first that fits MAX_HEADLINE_LIST_CHARS wins.
+ */
+export const HEADLINE_PURPOSE_TIERS = [60, 32, 0] as const
+
+/**
+ * Cap on the agents part of the headline. The shared core rules follow it
+ * inside the 2048 characters a client keeps (shared-guidance.test.ts measures
+ * the worst case), so the headline shortens purposes, then drops them, then
+ * drops agents to fit.
+ */
+export const MAX_HEADLINE_LIST_CHARS = 380
+
+function clip(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text
+}
+
+function headlineEntry(row: RosterRow, purposeChars: number): string {
+  const purpose = purposeChars > 0 ? clip(deriveAgentPurpose(row), purposeChars) : ""
+  return `${row.handle} (${row.displayName})${purpose ? `: ${purpose}` : ""}`
+}
+
+/**
+ * The line that opens the instructions: each agent's handle, name and short
+ * purpose, so a client sees what an agent is for before building something
+ * that does its job (an agent listed by name alone was passed over for a new
+ * thread no agent answered in). Agents past the budget are counted as "more".
+ */
 export function renderMcpAgentHeadline(rows: readonly RosterRow[]): string {
   if (rows.length === 0) return ""
   const ordered = byHandle(rows)
-  const named = ordered
-    .slice(0, MAX_HEADLINE_ENTRIES)
-    .map((row) => `${row.handle} (${row.displayName})`)
-  const more =
-    ordered.length > MAX_HEADLINE_ENTRIES
-      ? `, and ${ordered.length - MAX_HEADLINE_ENTRIES} more`
-      : ""
-  return `NAMED AGENTS of this organization: ${named.join(", ")}${more}. To talk to one, call kernel__agents_ask with its handle; kernel__subagent_list never lists them.`
+  const capped = ordered.slice(0, MAX_HEADLINE_ENTRIES)
+  let entries: string[] = []
+  for (const purposeChars of HEADLINE_PURPOSE_TIERS) {
+    const all = capped.map((row) => headlineEntry(row, purposeChars))
+    if (all.join("; ").length <= MAX_HEADLINE_LIST_CHARS) {
+      entries = all
+      break
+    }
+    if (purposeChars === 0) {
+      for (const entry of all) {
+        if ([...entries, entry].join("; ").length > MAX_HEADLINE_LIST_CHARS) break
+        entries.push(entry)
+      }
+    }
+  }
+  const cut = ordered.length - entries.length
+  const listed =
+    entries.length === 0
+      ? `${cut} agents`
+      : `${entries.join("; ")}${cut > 0 ? `; and ${cut} more` : ""}`
+  return `NAMED AGENTS of this organization: ${listed}. To talk to one, call kernel__agents_ask with its handle; kernel__subagent_list never lists them.`
 }
 
 /** The full list, appended to the agents_ask description on this connection. */
@@ -95,8 +136,7 @@ export function renderMcpAgentDirectory(
   if (rows.length === 0) return ""
   const ordered = byHandle(rows)
   const lines = ordered.slice(0, maxEntries).map((row) => {
-    const raw = deriveAgentPurpose(row)
-    const purpose = raw.length > MAX_PURPOSE_CHARS ? `${raw.slice(0, MAX_PURPOSE_CHARS - 1)}…` : raw
+    const purpose = clip(deriveAgentPurpose(row), MAX_PURPOSE_CHARS)
     return `- ${row.handle} (${row.displayName})${purpose ? `: ${purpose}` : ""}`
   })
   if (ordered.length > maxEntries) {

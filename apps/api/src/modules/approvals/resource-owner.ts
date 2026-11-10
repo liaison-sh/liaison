@@ -63,6 +63,18 @@ export async function resolveApprovalResourceOwner(
       ? (toolParams as Record<string, unknown>)
       : {}
   if ("requesterAlways" in decl) return requestedBy ?? null
+  if ("resolveOwner" in decl) {
+    if (!requestedBy) return null
+    try {
+      return await decl.resolveOwner(params, { orgId, requestedBy })
+    } catch (err) {
+      log.error(
+        { err, app: appName, tool: toolShortName },
+        "resource-owner resolution failed; keeping org-visible approval routing",
+      )
+      return null
+    }
+  }
   if ("requester" in decl) {
     // The call creates a personal resource for the requester (no row exists
     // yet), so the requester IS its owner when the declared param says so.

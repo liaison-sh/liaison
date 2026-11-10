@@ -1568,14 +1568,6 @@
       "one": "émetteur sans fuseau horaire",
       "other": "émetteurs sans fuseau horaire"
     },
-    "masked": {
-      "one": "numéro de carte masqué",
-      "other": "numéros de carte masqués"
-    },
-    "problem": {
-      "one": "problème de connexion",
-      "other": "problèmes de connexion"
-    },
     "transmission_refused": {
       "one": "facture électronique refusée",
       "other": "factures électroniques refusées"

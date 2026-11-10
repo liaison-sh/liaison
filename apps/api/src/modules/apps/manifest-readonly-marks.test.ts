@@ -293,9 +293,6 @@ const READ_ONLY: Record<string, string[]> = {
     "einvoicing_received_list",
     "einvoicing_received_get",
   ],
-  // The key check run before a key is stored (a dry run that records nothing), and the
-  // settings page's read of the last check.
-  stripe: ["connection_precheck", "settings_load"],
   // A missing install_metadata row is derived in memory on the read path, never inserted.
   shopify: [
     "orders_invoice_links",

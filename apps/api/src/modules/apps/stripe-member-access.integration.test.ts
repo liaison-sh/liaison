@@ -13,6 +13,7 @@ import { extractRows, type RlsClient, sql } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
 import { registerApps } from "~/modules/apps/runtime"
+import { KERNEL_MEMBER_SCOPES } from "~/modules/permissions/default-roles"
 import { insertSql } from "~/seed/factories/org/test-rows"
 
 const FULL_MEMBER = "Full Member"
@@ -134,7 +135,10 @@ describe("payments mirror access for a full member", () => {
     }
     // The old org had a Full Member role before the payments app was installed.
     await registerApps([earlierApp()] as never, OLD_ORG)
-    expect(await fullMemberScopes(OLD_ORG)).toEqual(["fmearlier:items:read"])
+    // Full Member carries the kernel's member tier beside each app's member tier.
+    expect((await fullMemberScopes(OLD_ORG)).sort()).toEqual(
+      ["fmearlier:items:read", ...KERNEL_MEMBER_SCOPES].sort(),
+    )
     await registerApps([stripeDescriptor()] as never, OLD_ORG)
     await registerApps([stripeDescriptor()] as never, NEW_ORG)
     for (const id of [OLD_ORG, NEW_ORG]) await seedMirror(id)

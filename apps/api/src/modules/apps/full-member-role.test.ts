@@ -11,6 +11,7 @@ import { withSystemDb } from "~/db/privileged"
 import { WebSocketManager } from "~/infra/websocket"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
 import { extendFullMemberRole, registerApps, seedManifestRoles } from "~/modules/apps/runtime"
+import { KERNEL_MEMBER_SCOPES } from "~/modules/permissions/default-roles"
 
 const TEST_ORG = "00000000-0000-0000-0000-0000000f0001"
 const FULL_MEMBER = "Full Member"
@@ -663,6 +664,9 @@ describe("mail's member tier and the opt-out list", () => {
     await registerMailRoles(UPGRADED_ORG)
 
     const fullMember = await grantsOf(UPGRADED_ORG, FULL_MEMBER)
-    expect(fullMember).toEqual(["mail:suppressions:read", "projects:tasks:write"])
+    // The kernel's member tier joins at the same registration.
+    expect([...fullMember].sort()).toEqual(
+      ["mail:suppressions:read", "projects:tasks:write", ...KERNEL_MEMBER_SCOPES].sort(),
+    )
   })
 })

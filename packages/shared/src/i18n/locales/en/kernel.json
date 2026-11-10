@@ -1571,14 +1571,6 @@
       "one": "issuer without a time zone",
       "other": "issuers without a time zone"
     },
-    "masked": {
-      "one": "card number masked",
-      "other": "card numbers masked"
-    },
-    "problem": {
-      "one": "connection problem",
-      "other": "connection problems"
-    },
     "transmission_refused": {
       "one": "e-invoice refused",
       "other": "e-invoices refused"

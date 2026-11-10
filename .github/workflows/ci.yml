@@ -13,7 +13,7 @@
 #     them; a path the map does not cover, or a package.json, lockfile,
 #     tsconfig or workflow change, runs both. Hosted runners are the scarce
 #     resource, so a pull request runs them in as few jobs as possible: the api
-#     unit suite in one `unit` job, the web unit suite as a step of `static`.
+#     unit suite over two `unit` jobs, the web unit suite as a step of `static`.
 #   - merge_group: everything, split for wall clock (`unit` over three jobs,
 #     `web-unit` over two). The merge queue tests the exact tree main gets.
 #   - push to main: `static` only. The merge group already tested that tree.

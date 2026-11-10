@@ -41,7 +41,8 @@ describe("social manifest (B1)", () => {
     // 0.6.62 (main): our own replies are never findings; reply_to_finding looks before posting and
     //   declares an outcome reconciler.
     // 0.6.66: above the 0.6.62 main took meanwhile, merged.
-    expect(manifest.version).toBe("0.6.66")
+    // 0.6.67: a reply the platform refuses as gone or blocked closes its approval.
+    expect(manifest.version).toBe("0.6.67")
     expect(manifest.packageFormat).toBe(1)
   })
 

@@ -1,6 +1,6 @@
 {
   "name": "stripe",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "kind": "connector",
   "iconName": "credit-card",
   "description": "Stripe connector: a read mirror of customers, subscriptions, invoices, payments, refunds and disputes, kept current by a signed webhook.",
@@ -93,7 +93,8 @@
           {
             "who": "human",
             "minutes": 1,
-            "text": "Paste the restricted key (it starts with `rk_`) into **Restricted key**. Never paste the secret key (`sk_`)."
+            "text": "Paste the restricted key (it starts with `rk_`) into **Restricted key**. Never paste the secret key (`sk_`).",
+            "place": "liaison"
           },
           {
             "who": "human",

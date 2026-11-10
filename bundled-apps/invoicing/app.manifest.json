@@ -6626,6 +6626,11 @@
             "block": "custom",
             "component": "InvoicingIssuerProfiles",
             "reason": "Gated create and edit of a many-field legal record with a logo upload, VAT and IBAN warnings, and delete refused while documents reference the profile."
+          },
+          {
+            "block": "custom",
+            "component": "InvoicingIssuerStreams",
+            "reason": "Who issues what per issuer profile: the card stream's issuer chosen by a person with a confirm, and a person's statement that Stripe's own customer emails are off."
           }
         ]
       },

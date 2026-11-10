@@ -182,6 +182,34 @@ describe("projects cross-project query + delete (J1)", () => {
     ).toBe(true)
   })
 
+  it("search leaves out a deleted (archived) task unless asked to include it, and marks it then", async () => {
+    // A deleted deal kept showing in search as a live Won deal, so the agent
+    // refused to open a new one for the same customer.
+    const p = await makeProject("Archived Search Project")
+    const taskId = await makeTask(p.projectId, p.statusId, { title: "Lumen Studio retired deal" })
+    await withRlsContext(actor, (tx) =>
+      tx.execute(drizzleSql`
+        UPDATE ${projectsRel("tasks")} SET archived_at = now()
+        WHERE id = ${taskId}::uuid AND org_id = ${orgId}::uuid
+      `),
+    )
+    const { searchProjectsForTool } = await import("~/apps/projects/service/resolve")
+    const plain = await withRlsContext(actor, (tx) =>
+      searchProjectsForTool(tx as never, orgId, { query: "Lumen Studio retired" }),
+    )
+    expect((plain.items as Array<{ id?: string }>).some((i) => i.id === taskId)).toBe(false)
+    const included = await withRlsContext(actor, (tx) =>
+      searchProjectsForTool(tx as never, orgId, {
+        query: "Lumen Studio retired",
+        archived: "include",
+      }),
+    )
+    const hit = (included.items as Array<{ id?: string; archived?: boolean }>).find(
+      (i) => i.id === taskId,
+    )
+    expect(hit?.archived).toBe(true)
+  })
+
   it("tasks_byAssignee carries statusLabel + statusTerminal and the terminal:false filter returns ONLY open tasks (bulk-reassign-departing-teammate-tasks)", async () => {
     // The "reassign a departing teammate's OPEN tasks, leave DONE ones untouched" sweep needs to tell
     // open from done from the cross-project list. Before this fix listTasksAcrossProjects returned every

@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.20.83",
+  "version": "0.20.84",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -364,6 +364,12 @@
     "allowPrivateHostsInTest": true
   },
   "entities": {
+    "recurring_schedule": {
+      "labelField": "repeats",
+      "searchable": false,
+      "tableName": "recurring_schedules",
+      "readScope": "invoicing:documents:read"
+    },
     "recurring_run": {
       "labelField": "period_label",
       "searchable": false,
@@ -7327,6 +7333,7 @@
         "referenceable": false
       },
       "schedule": {
+        "entity": "recurring_schedule",
         "component": "InvoicingScheduleEditor",
         "sidebar": "InvoicingSidebar",
         "icon": "InvoicingAppIcon",

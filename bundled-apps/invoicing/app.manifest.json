@@ -2793,7 +2793,7 @@
     },
     "invoice_from_stripe_payment": {
       "description": "Issue the Liaison invoice of a Stripe payment no invoice explains (chargeId, with the VAT rate its amount includes), or of a Stripe invoice that waited for a person (stripeInvoiceId). Takes the next number. Always decided by a person.",
-      "searchKeywords": ["paiement stripe", "facturer", "orphan payment"],
+      "searchKeywords": ["facturer", "paiement", "orphan"],
       "deferLoading": true,
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "invoiceFromStripePaymentHandler",
@@ -2819,7 +2819,7 @@
     },
     "payment_link_to_invoice": {
       "description": "Link a Stripe payment no invoice explains to an invoice already issued, once. Takes no number and changes nothing in Stripe. Always decided by a person.",
-      "searchKeywords": ["rapprocher", "lier paiement", "link payment"],
+      "searchKeywords": ["rapprocher", "lettrer", "reconcile"],
       "deferLoading": true,
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "paymentLinkToInvoiceHandler",
@@ -6183,7 +6183,7 @@
       {"event": "stripe_invoice:payment_failed", "kind": "invoicing:stripe_invoice.payment_failed", "urgency": 50, "summary": "Card payment of {{data.number}} failed and {{data.reason}}. The invoice is unchanged.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "stripe_invoice:voided", "kind": "invoicing:stripe_invoice.voided", "urgency": 40, "summary": "Stripe invoice {{data.number}} was voided in Stripe. No Liaison document changed.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "stripe_invoice:uncollectible", "kind": "invoicing:stripe_invoice.uncollectible", "urgency": 40, "summary": "Stripe invoice {{data.number}} was marked uncollectible in Stripe. No Liaison document changed.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
-      {"event": "stripe_refund:failed", "kind": "invoicing:stripe_refund.failed", "urgency": 60, "summary": "Stripe refund {{data.refund_id}} on {{data.charge_id}} failed. Credit note: {{data.credit_note}}.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
+      {"event": "stripe_refund:failed", "kind": "invoicing:stripe_refund.refund_failed", "urgency": 60, "summary": "Stripe refund {{data.refund_id}} on {{data.charge_id}} failed. Credit note: {{data.credit_note}}.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "stripe_payment:unmatched", "kind": "invoicing:stripe_payment.unmatched", "urgency": 60, "summary": "Stripe payment {{data.charge_id}} of {{data.amount}} from {{data.customer}} has no invoice. Create the invoice or link it to one.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "deferred:stripe_tax_review", "kind": "invoicing:stripe_invoice.tax_review", "urgency": 60, "summary": "Stripe invoice {{data.stripe_invoice_id}} is not invoiced: its tax needs a decision ({{data.reason}}).", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "stripe_stream:switched", "kind": "invoicing:stripe_stream.issuer_switched", "urgency": 60, "summary": "Card subscriptions are now invoiced by {{data.issuer}}. {{data.unpaid}} invoices issued before the change are unpaid: they keep their issuer and numbers. Check the change with your accountant.", "recipients": {"kind": "scope_holders", "scope": "invoicing:settings:write"}},
@@ -6653,7 +6653,8 @@
   "dependencies": {
     "optional": [
       "shopify",
-      "boxtal"
+      "boxtal",
+      "stripe"
     ]
   },
   "pdf_templates": [

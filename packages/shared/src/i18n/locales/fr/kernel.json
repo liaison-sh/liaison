@@ -1384,6 +1384,38 @@
       "one": "émetteur des abonnements carte changé, factures impayées",
       "other": "émetteurs des abonnements carte changés, factures impayées"
     },
+    "issuer_undecided": {
+      "one": "facture Stripe en attente du choix de l'émetteur",
+      "other": "factures Stripe en attente du choix de l'émetteur"
+    },
+    "undecided_listed": {
+      "one": "facture Stripe à émettre après le choix",
+      "other": "factures Stripe à émettre après le choix"
+    },
+    "needs_person": {
+      "one": "facture Stripe à examiner",
+      "other": "factures Stripe à examiner"
+    },
+    "payment_failed": {
+      "one": "paiement par carte échoué",
+      "other": "paiements par carte échoués"
+    },
+    "voided": {
+      "one": "facture Stripe annulée",
+      "other": "factures Stripe annulées"
+    },
+    "uncollectible": {
+      "one": "facture Stripe irrécouvrable",
+      "other": "factures Stripe irrécouvrables"
+    },
+    "refund_failed": {
+      "one": "remboursement Stripe échoué",
+      "other": "remboursements Stripe échoués"
+    },
+    "unmatched": {
+      "one": "paiement Stripe sans facture",
+      "other": "paiements Stripe sans facture"
+    },
     "awaiting_agent": {
       "one": "en attente de réponse",
       "other": "en attente de réponse"

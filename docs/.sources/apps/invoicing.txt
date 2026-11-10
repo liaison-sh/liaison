@@ -222,3 +222,15 @@ stripe_guard_unavailable until imported or while the key cannot read -> bundled-
 Unlinked Stripe customers found by email -> bundled-apps/stripe/src/tools/routes.ts:64
 billsOtherThanStripe at least 5 characters, a person's statement -> bundled-apps/invoicing/src/issuer-guard.ts:27
 A missing card stream row is not trusted: Stripe is asked and the row healed -> bundled-apps/invoicing/src/issuer-guard.ts:82
+A finalized Stripe invoice issues one Liaison invoice keyed by its id, due on the issue date -> bundled-apps/invoicing/src/handlers/stripe-invoice-finalized.ts:257
+Issue date and year from the issuer's zone at issue, never finalized_at -> bundled-apps/invoicing/src/handlers/stripe-invoice-finalized.ts:397
+Zero total makes nothing, negative total waits for a person -> bundled-apps/invoicing/src/handlers/stripe-invoice-finalized.ts:305
+Tax more than 1 minor unit apart on a line parks, no number -> bundled-apps/invoicing/src/handlers/stripe-invoice-finalized.ts:175
+Paid on the charge's date, PDF re-rendered -> bundled-apps/invoicing/src/handlers/stripe-invoice-paid.ts:44
+Failed payment alerts only on no next attempt or an expired card -> bundled-apps/invoicing/src/handlers/stripe-invoice-paid.ts:83
+One credit note per succeeded refund, pending waits, failed alerts -> bundled-apps/invoicing/src/handlers/stripe-refund-created.ts:106
+Credit note split over the invoice's rates with a rounding line -> bundled-apps/invoicing/src/handlers/shopify-refund-created.ts:165
+Mode B makes no credit note -> bundled-apps/invoicing/src/handlers/stripe-refund-created.ts:90
+Unmatched payment waits in the queue with attention -> bundled-apps/invoicing/src/handlers/stripe-payment-unmatched.ts:50
+invoice_from_stripe_payment and payment_link_to_invoice always wait for a person -> bundled-apps/invoicing/app.manifest.json:2794
+Safety job every 10 minutes hands missed events to the same handlers -> bundled-apps/invoicing/src/handlers/reconcile-stripe-payments.ts:77

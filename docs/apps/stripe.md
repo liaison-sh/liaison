@@ -57,7 +57,7 @@ Stripe tells Liaison about changes through a webhook. In **Developers → Webhoo
 
 - **Signed deliveries only.** Each delivery's signature is checked against your workspace's own signing secret, on the server. A delivery signed with another secret, with no secret saved yet, or signed more than 5 minutes before or after it arrives, is refused.
 - **Rolling the secret.** While you roll the secret in Stripe, the previous one keeps working for at most 24 hours.
-- **Once per event.** A redelivered event changes nothing. Events that arrive out of order still end in Stripe's current state: Liaison reads each object from Stripe again, and never uses the event's own copy.
+- **Once per event.** A redelivered event changes nothing. An event whose handling was cut off (a restart mid-delivery) is handled by Stripe's next retry once 5 minutes have passed. Events that arrive out of order still end in Stripe's current state: Liaison reads each object from Stripe again, and never uses the event's own copy.
 - **The first event** moves the connection to **connected** and records that event's name and time.
 - **When the key stops working**, an event is acknowledged and kept for the catch-up, and the connection reads `key_invalid` (or `partial` for one missing permission).
 - **When Stripe says an object does not exist** and Liaison cannot confirm it is still the same account, nothing is changed and the connection reads `different_account`.
@@ -80,8 +80,10 @@ Besides the webhook, Liaison reads Stripe on its own schedule.
 
 Each Stripe customer can name one Liaison company and one contact. Liaison links them by itself when a customer is created or changed in Stripe, in this order:
 
-1. A contact whose email is exactly the customer's email. The customer also takes that contact's company.
-2. Otherwise, a contact that already carries the customer's Stripe id.
+1. A customer whose email names no contact yet gets a new contact with that email, linked to it.
+2. Otherwise, a contact that already carries the customer's Stripe id. The customer also takes that contact's company.
+
+Whoever pays types the email at checkout and Stripe does not check it, so an email never links a customer to a contact that already exists: that contact is shown as a suggestion when you look at the customer (`customers_get`), and nothing is linked until a person confirms it with `customer_link`.
 
 A company whose web domain matches the customer's email domain is only a suggestion: nothing is linked until a person links it. A free-mail address (gmail.com, hotmail.fr, t-online.de and the like) never suggests a company. A link a person made is never replaced by an automatic one, and Liaison never removes a link because a match found nothing.
 

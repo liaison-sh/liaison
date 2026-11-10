@@ -57,7 +57,7 @@ const ALLOWED: Record<string, string[]> = {
     "account_id", "account_name", "livemode", "permissions", "state", "last_event_at", "last_event_type",
     "connected_at", "webhook_confirmed_at",
   ],
-  webhook_deliveries: ["event_id", "topic", "status", "failure_count", "received_at", "processed_at"],
+  webhook_deliveries: ["event_id", "topic", "status", "failure_count", "received_at", "processed_at", "claimed_at"],
 }
 
 /** Column names that could only hold a payload, a card number, a CVC or metadata. */

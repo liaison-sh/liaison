@@ -1,6 +1,6 @@
 {
   "name": "stripe",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "kind": "connector",
   "iconName": "credit-card",
   "description": "Stripe connector: a read mirror of customers, subscriptions, invoices, payments, refunds and disputes, kept current by a signed webhook.",
@@ -1286,7 +1286,8 @@
           "default": 0
         },
         "received_at": "date",
-        "processed_at": "date?"
+        "processed_at": "date?",
+        "claimed_at": "date?"
       },
       "constraints": {
         "unique": [

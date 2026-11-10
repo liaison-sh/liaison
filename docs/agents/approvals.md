@@ -66,6 +66,10 @@ To change how often, open **Settings**, **Notifications**, and under **Approval 
 
 An operator can send one at once from the server, without waiting for the hourly check: `liaison approval-reminders run --user <member email> [--org <slug>]`. Add `--force` to send even if the member was already reminded within their interval, or turned reminders off. Nothing is sent when no request of theirs has waited long enough (a day, or their longer interval).
 
+### Card numbers in a request
+
+A card number or a payment key an agent writes into a request is masked before the request is stored, on the card and in what the approved call sends: a card keeps its last four digits, a key its prefix. Identity values are never masked: a parameter that names a SIRET, SIREN, VAT, tax or registration number, an IBAN or BIC, an IMEI or serial, an order or invoice number, a product code or an id keeps its value, so the approved call runs with it.
+
 ### If the request changes while you read it
 
 Approving is bound to the version you saw. If the request was edited meanwhile, the card says it changed after you first saw it. Tick **I have read the new version**, then decide again. Without this the server refuses with `payload_changed`.

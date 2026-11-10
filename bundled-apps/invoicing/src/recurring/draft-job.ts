@@ -5,10 +5,16 @@
 // rates and terms, with `{period}` filled. No model is asked anything. Each draft joins the run of
 // its issuer and issue day, as one item, and the run gets one card.
 //
+// The draft and its lines are written by one call of `recurring_draft_write`, an atomic tool only
+// the app's own jobs reach: a job that dies between the document and its lines leaves neither. A
+// draft found already written (a run that stopped before this rule, or a person's edit) is checked
+// line by line against its schedule, and a draft that differs needs a fix before it can be ready.
+//
 // Every step is keyed so a second run of the job, or one running at the same time, adds nothing:
 // the draft by `external_ref = recurring:<schedule>:<period_key>` (unique), the run by issuer and
 // issue day (unique), the item by schedule and period (unique), the card by a claim on the run.
 import { civilDateOf } from "../issue-date"
+import type { ErrorEnvelope } from "../mutations/shared"
 import { lineSubtotal } from "../money"
 import { type CurrentDraft, linesSignature, periodLabel, type PreviousInvoice, runItemFlags } from "./flags"
 import {
@@ -136,6 +142,62 @@ function draftLineRows(lines: ScheduleLineInput[], label: string): Row[] {
   })
 }
 
+export interface DraftWriteInput {
+  document: Row
+  lines: Row[]
+}
+
+const fail = (code: string, message: string): ErrorEnvelope => ({ status: "error", error: { code, message } })
+
+/**
+ * Write one run draft and its lines. The kernel runs it in one transaction (`atomic: true`), so a
+ * failure on any line leaves no draft. A draft already written under the same key is returned as
+ * it is, with nothing added.
+ */
+export async function recurringDraftWrite(
+  ctx: RunCtx,
+  input: DraftWriteInput,
+): Promise<{ status: "completed"; document_id: string; created: boolean; message: string } | ErrorEnvelope> {
+  const ref = typeof input.document?.external_ref === "string" ? input.document.external_ref : ""
+  if (!ref.startsWith("recurring:")) {
+    return fail("not_a_run_draft", "The draft has no recurring key (external_ref recurring:<schedule>:<period>), so nothing was written.")
+  }
+  const data: Row = { ...input.document, type: "invoice", status: "draft", number: null, number_int: null, year_of_issue: null, issued_at: null }
+  const draft = await insertOnce(ctx, "documents", { external_ref: ref }, data)
+  const id = String(draft.row.id)
+  if (!draft.created) {
+    return { status: "completed", document_id: id, created: false, message: `Draft ${id} for ${ref} already existed; nothing was written.` }
+  }
+  for (const line of input.lines) await ctx.db.insert("document_lines", { ...line, document_id: id })
+  return { status: "completed", document_id: id, created: true, message: `Wrote draft ${id} for ${ref} with ${input.lines.length} line(s).` }
+}
+
+/** Write the draft through the atomic tool. Null when it was not written (the next tick tries again). */
+async function writeDraft(ctx: RunCtx, input: DraftWriteInput): Promise<{ id: string; created: boolean } | null> {
+  if (!ctx.executeTool) return null
+  const env = await ctx.executeTool("invoicing:recurring_draft_write", input as unknown as Record<string, unknown>)
+  const res = env.status === "completed" ? (env.result as { status?: string; document_id?: string; created?: boolean } | null) : null
+  if (res?.status !== "completed" || typeof res.document_id !== "string") return null
+  return { id: res.document_id, created: res.created === true }
+}
+
+/** Whether a draft's lines are the schedule's lines, one by one. */
+function sameLines(found: Row[], expected: Row[]): boolean {
+  if (found.length !== expected.length) return false
+  const sorted = [...found].sort((a, b) => Number(a.position) - Number(b.position))
+  return expected.every((e, i) => {
+    const f = sorted[i] as Row
+    return (
+      Number(f.position) === Number(e.position) &&
+      String(f.description) === String(e.description) &&
+      Number(f.quantity) === Number(e.quantity) &&
+      String(f.unit_price_minor) === String(e.unit_price_minor) &&
+      Number(f.tax_rate_bp) === Number(e.tax_rate_bp) &&
+      String(f.line_kind ?? "service") === String(e.line_kind)
+    )
+  })
+}
+
 /** Draft one schedule's period. Returns the run it joined, or null when it was already drafted. */
 async function draftSchedule(ctx: RunCtx, s: ScheduleRow): Promise<{ runId: string; drafted: boolean } | null> {
   const issueOn = s.next_issue_on as string
@@ -179,13 +241,14 @@ async function draftSchedule(ctx: RunCtx, s: ScheduleRow): Promise<{ runId: stri
     issued_at: null,
     operation_category: "services",
   }
-  const draft = await insertOnce(ctx, "documents", { external_ref: externalRef }, docRow)
-  const draftId = String(draft.row.id)
-  if (draft.created) {
-    for (const line of draftLineRows(s.lines, label)) await ctx.db.insert("document_lines", { ...line, document_id: draftId })
-  }
+  const expected = draftLineRows(s.lines, label)
+  const written = await writeDraft(ctx, { document: docRow, lines: expected })
+  if (!written) return null
+  const draftId = written.id
+  const draftRow = written.created ? null : ((await ctx.db.findOne("documents", draftId)) as Row | null)
 
   const lines = await draftLines(ctx, draftId)
+  const differs = !written.created && !sameLines(lines, expected)
   const totals = draftTotals(lines)
   const current: CurrentDraft = { net_minor: totals.net, lines_signature: linesSignature(lines) }
   const flags = runItemFlags(await previousInvoice(ctx, s), current)
@@ -205,11 +268,11 @@ async function draftSchedule(ctx: RunCtx, s: ScheduleRow): Promise<{ runId: stri
       period_end: end,
       document_id: draftId,
       position,
-      state: missing ? "needs_fix" : "ready",
-      note: [...flags, ...(missing ? ["No billing address"] : [])].join(" · "),
+      state: missing || differs ? "needs_fix" : "ready",
+      note: [...flags, ...(missing ? ["No billing address"] : []), ...(differs ? ["Lines differ from the schedule"] : [])].join(" · "),
     },
   )
-  const refs = jsonOf<Row>(draft.row.external_refs, {})
+  const refs = jsonOf<Row>(draftRow?.external_refs ?? docRow.external_refs, {})
   if (refs.recurring_run_item_id !== item.row.id) {
     await ctx.db.update("documents", draftId, { external_refs: { ...refs, recurring_run_item_id: String(item.row.id), recurring_run_id: runId } })
   }

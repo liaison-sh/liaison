@@ -38,7 +38,7 @@ import {
   recurringScheduleCreate,
   recurringScheduleUpdate,
 } from "./recurring/tools"
-import { recurringDraftJob } from "./recurring/draft-job"
+import { recurringDraftJob, recurringDraftWrite } from "./recurring/draft-job"
 import { recurringIssueJob, recurringItemIssue } from "./recurring/issue-job"
 import { recurringLegalDateJob } from "./recurring/legal-date-job"
 import {
@@ -77,6 +77,7 @@ import {
   invoiceIssue,
   invoiceCreateAndIssue,
   documentsConvertToInvoice,
+  documentsConvertLocal,
   documentsMarkPaid,
   documentsRecordRefund,
   documentsSendToCustomer,
@@ -317,6 +318,10 @@ export const documentsConvertToInvoiceHandler = (
   params: Parameters<typeof documentsConvertToInvoice>[1],
   ctx: Parameters<typeof documentsConvertToInvoice>[0],
 ) => documentsConvertToInvoice(ctx, params)
+export const documentsConvertLocalHandler = (
+  params: Parameters<typeof documentsConvertLocal>[1],
+  ctx: Parameters<typeof documentsConvertLocal>[0],
+) => documentsConvertLocal(ctx, params)
 export const documentsMarkPaidHandler = (
   params: Parameters<typeof documentsMarkPaid>[1],
   ctx: Parameters<typeof documentsMarkPaid>[0],
@@ -686,6 +691,8 @@ export const recurringListHandler = (
 
 // --- The month-end run (draft, card, approve, issue, legal date; see recurring/*-job.ts) ---
 export const recurringDraftJobHandler = (_payload: unknown, ctx: RunCtx) => recurringDraftJob(ctx)
+export const recurringDraftWriteHandler = (params: Parameters<typeof recurringDraftWrite>[1], ctx: RunCtx) =>
+  recurringDraftWrite(ctx, params)
 export const recurringIssueJobHandler = (_payload: unknown, ctx: RunCtx) => recurringIssueJob(ctx)
 export const recurringLegalDateJobHandler = (_payload: unknown, ctx: RunCtx) => recurringLegalDateJob(ctx)
 export const recurringRunIssueHandler = (params: Parameters<typeof recurringRunIssue>[1], ctx: RunCtx) =>

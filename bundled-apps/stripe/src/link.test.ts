@@ -101,11 +101,61 @@ describe("linking a Stripe customer", () => {
         calls.push(p)
         return null
       },
+      executeTool: async (): Promise<CrossAppEnvelope> => ({ status: "completed", result: { items: [] } }),
     }
     expect(await runCustomerMatch("cus_P", ctx)).toBeNull()
     await runCustomerMatch("cus_Q", ctx)
     expect(db.rows("stripe_customers")[1]).toMatchObject({ company_id: CO_A, contact_id: ANA })
     expect(db.writes).toEqual([])
     expect(calls).toHaveLength(2)
+  })
+
+  // A Stripe customer's email is typed by whoever pays: it proves nothing about who they are.
+  function emailCase(existing: Array<{ id: string; primaryEmail: string }>) {
+    const db = new MemDb()
+    db.seed("stripe_customers", [{ stripe_id: "cus_E", email: "Ana@Maison.example", name: "Payer", company_id: null, contact_id: null, match_method: null }])
+    const resolved: unknown[] = []
+    const ctx = {
+      db,
+      resolveContact: async (p: Record<string, unknown>) => {
+        resolved.push(p)
+        return { id: "66666666-6666-4666-8666-666666666666", companyId: CO_B }
+      },
+      executeTool: async (tool: string, params: Record<string, unknown>): Promise<CrossAppEnvelope> => {
+        expect({ tool, query: params.query }).toEqual({ tool: "kernel:contacts_search", query: "ana@maison.example" })
+        return { status: "completed", result: { items: existing } }
+      },
+    }
+    return { db, ctx, resolved }
+  }
+
+  it("a customer whose email names an existing contact is only a suggestion: nothing is linked or written", async () => {
+    const { db, ctx, resolved } = emailCase([{ id: ANA, primaryEmail: "ana@maison.example" }])
+    const result = await runCustomerMatch("cus_E", ctx)
+    expect(result?.contactSuggestion).toEqual({ contactId: ANA, email: "ana@maison.example" })
+    expect(result?.contactId).toBeNull()
+    expect(resolved).toEqual([])
+    expect(db.writes).toEqual([])
+    expect(db.rows("stripe_customers")[0]).toMatchObject({ contact_id: null, company_id: null })
+  })
+
+  it("a customer whose email names no contact gets a new contact, linked", async () => {
+    const { db, ctx, resolved } = emailCase([{ id: ANA, primaryEmail: "someone-else@maison.example" }])
+    const result = await runCustomerMatch("cus_E", ctx)
+    expect(resolved).toEqual([{ email: "Ana@Maison.example", name: "Payer", externalId: "cus_E" }])
+    expect(result?.contactSuggestion ?? null).toBeNull()
+    expect(db.rows("stripe_customers")[0]).toMatchObject({
+      contact_id: "66666666-6666-4666-8666-666666666666",
+      company_id: CO_B,
+      match_method: "contact_company",
+    })
+  })
+
+  it("when the contacts cannot be searched, nothing is linked or created until the next change", async () => {
+    const { db, ctx, resolved } = emailCase([])
+    ctx.executeTool = async () => ({ status: "error", error: { code: "forbidden", message: "no" } })
+    expect(await runCustomerMatch("cus_E", ctx)).toBeNull()
+    expect(resolved).toEqual([])
+    expect(db.writes).toEqual([])
   })
 })

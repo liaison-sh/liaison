@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
 import {
+  cardNetwork,
   hasVendorKey,
   luhnValid,
   maskCardNumbers,
@@ -102,6 +103,85 @@ describe("maskCardNumbers", () => {
     expect(luhnValid("4242424242424242")).toBe(true)
     expect(luhnValid("4242424242424241")).toBe(false)
     expect(luhnValid("42a2")).toBe(false)
+  })
+})
+
+// Identifiers that are not cards. Each is Luhn-valid where its format has a
+// check digit, and most start with a card network's prefix, so only the length
+// table, the SIRET grouping or the label in front tells them apart from a card.
+const IDENTIFIERS: Array<[string, string]> = [
+  ["SIRET spaced, Visa prefix", "SIRET : 443 061 841 00047"],
+  ["SIRET in a signature, no label, Visa prefix", "Acme SAS - 443 061 841 00047 - Paris"],
+  ["SIRET one run, Visa prefix", "40001234000016"],
+  ["SIRET one run, Mastercard prefix", "51001234700017"],
+  ["SIRET one run, American Express prefix", "37001234600018"],
+  ["SIRET one run, Discover prefix", "65001234700011"],
+  ["SIRET one run, JCB prefix", "35301234700012"],
+  ["SIRET one run, UnionPay prefix", "62001234400011"],
+  ["SIRET grouped, Diners prefix", "360 012 348 00015"],
+  ["SIRET grouped, Diners 38 prefix", "Société 380 012 344 00012"],
+  ["SIRET labelled, Diners prefix", "N° SIRET : 36001234800015"],
+  ["SIRET labelled, Diners 300 prefix", "siret 30101234000016"],
+  ["SIREN", "SIREN 443 061 841"],
+  ["French VAT number", "N° TVA intracommunautaire FR 44 443061841"],
+  ["IMEI", "IMEI 356938035643809"],
+  ["IMEI, other body", "861300000000002"],
+  ["IMEI, labelled, American Express prefix", "IMEI : 371200000000007"],
+  ["IBAN, French", "IBAN FR76 3000 6000 0112 3456 7890 189"],
+  ["invoice number labelled, Luhn-valid, Visa length", "Facture n° 4731000000000008"],
+  ["invoice number with letters", "INV-2026-000123"],
+  ["order number labelled, Luhn-valid", "Order #5273100000000007"],
+  ["order number labelled in French", "Commande no 6011731000000004"],
+  ["marketplace order number", "402-8274615-1234567"],
+  ["EAN-13 barcode, Visa prefix, Luhn-valid", "EAN 4005600000009"],
+  ["serial number labelled", "Serial: 4731000000000008"],
+]
+
+// Published test numbers of every network, with the length each issues.
+const TEST_CARDS: Array<[string, string]> = [
+  ["Visa", "4242424242424242"],
+  ["Visa", "4000 0566 5566 5556"],
+  ["Mastercard", "5555 5555 5555 4444"],
+  ["Mastercard", "2223003122003222"],
+  ["American Express", "3782 822463 10005"],
+  ["American Express", "371449635398431"],
+  ["Discover", "6011 1111 1111 1117"],
+  ["Discover", "6011000990139424"],
+  ["UnionPay", "6200000000000005"],
+  ["JCB", "3566 0020 2036 0505"],
+  ["Diners Club", "3056 9300 0902 0004"],
+  ["Diners Club", "3622 720627 1667"],
+]
+
+describe("identifiers next to card numbers", () => {
+  it("SIRET, SIREN, VAT, IMEI, IBAN, invoice, order, EAN and serial numbers are left untouched", () => {
+    expect(IDENTIFIERS.length).toBe(25)
+    for (const [label, input] of IDENTIFIERS) {
+      expect({ label, out: maskCardNumbers(input) }).toEqual({ label, out: { text: input, masked: 0 } })
+      expect({ label, out: maskHtmlWithNote(`<p>${input}</p>`).text }).toEqual({ label, out: `<p>${input}</p>` })
+    }
+  })
+
+  it("every network's test card is still masked, each recognised by its own network", () => {
+    for (const [network, card] of TEST_CARDS) {
+      const digits = card.replace(/\D/g, "")
+      expect({ card, network: cardNetwork(digits) }).toEqual({ card, network })
+      const out = maskCardNumbers(`paid with ${card}, cvc 123`)
+      expect({ card, out }).toEqual({
+        card,
+        out: { text: `paid with •••• •••• •••• ${digits.slice(-4)}, cvc •••`, masked: 1 },
+      })
+    }
+  })
+
+  it("a card number is matched by its network's length, not by any length from 13 to 19", () => {
+    // Luhn-valid and with a card prefix, but a length the network does not issue.
+    for (const digits of ["4731000000008", "40001234000016", "51001234700017", "352099001761481"])
+      expect({ digits, network: cardNetwork(digits) }).toEqual({ digits, network: null })
+  })
+
+  it("a card after an order number in one run is masked, the order number kept", () => {
+    expect(maskCardNumbers("Order 1234 4242 4242 4242 4242").text).toBe("Order 1234 •••• •••• •••• 4242")
   })
 })
 

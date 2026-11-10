@@ -20,7 +20,7 @@ runway months null when burn non-positive -> bundled-apps/pennylane/app.manifest
 supplier_invoice_upload gated, imports on approval, no OCR, supplier match, reuse, not for received e-invoices -> bundled-apps/pennylane/app.manifest.json:839
 upload answers posted_to_pennylane true (README stage-not-post is stale) -> bundled-apps/pennylane/src/upload.ts:138
 implements einvoicing-pa contract -> bundled-apps/pennylane/app.manifest.json:897
-E-invoicing platform field in invoicing settings -> bundled-apps/invoicing/app.manifest.json:5855
+E-invoicing platform field in invoicing settings -> bundled-apps/invoicing/app.manifest.json:5857
 scopes list -> bundled-apps/pennylane/app.manifest.json:34
 pennylane:approve approver scope -> docs/reference/scopes.md:253
 webhooks_setup gated -> bundled-apps/pennylane/app.manifest.json:224

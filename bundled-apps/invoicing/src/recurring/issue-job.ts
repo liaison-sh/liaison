@@ -36,6 +36,19 @@ export async function recurringItemIssue(
   // item issued and stops here, before any number is taken.
   const before = (await ctx.db.findOne("recurring_run_items", input.item_id)) as Row | null
   if (!before) return fail("item_not_found", `No month-end run item ${input.item_id}.`)
+  // Numbers are taken only inside the run's issue window: from 08:00 on its issue day, until its
+  // last issue day. Checked before the claim, so a refused call changes nothing.
+  const runBefore = (await ctx.db.findOne("recurring_runs", String(before.run_id))) as Row | null
+  const window = runBefore ? await windowOf(ctx, runBefore) : null
+  if (!runBefore || !window || window.early || window.late) {
+    const when = runBefore
+      ? `its issue window runs from ${String(ISSUE_HOUR).padStart(2, "0")}:00 on ${dayOf(runBefore.issue_on)} to ${dayOf(runBefore.latest_issue_on)}`
+      : "its run is gone"
+    return fail(
+      "outside_issue_window",
+      `Item ${input.item_id} was not issued and no number was used: ${when}${window ? `, and it is ${window.today} ${String(window.hour).padStart(2, "0")}h in the issuer's time zone` : ""}.`,
+    )
+  }
   await ctx.db.update("recurring_run_items", input.item_id, { run_id: before.run_id })
   const item = (await ctx.db.findOne("recurring_run_items", input.item_id)) as Row
   if (item.state !== "approved") {

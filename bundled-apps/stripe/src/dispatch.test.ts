@@ -8,6 +8,7 @@
 import { beforeEach, describe, expect, it } from "bun:test"
 import { handleStripeEvent, type IngestCtx } from "./dispatch"
 import { type MirrorDb, writeMirror } from "./mirror"
+import { claimDelivery, DELIVERY_LEASE_MS } from "./webhooks"
 
 const PAN = "4917484589897107"
 type Row = Record<string, unknown> & { id: string }
@@ -340,6 +341,35 @@ describe("stripe event dispatch", () => {
     expect(retry.status).toBe(200)
     expect(db.rows("webhook_deliveries")).toEqual([expect.objectContaining({ status: "processed", failure_count: 1 })])
     expect(db.count("stripe_invoices")).toBe(1)
+  })
+
+  it("a delivery left processing past its lease is taken up again by the retry, and one within it is not", async () => {
+    connect("connected", { webhook_confirmed_at: "2026-11-02T00:00:00.000Z" })
+    api.set("/v1/invoices/in_A1", invoice("paid"))
+    const ev = event("evt_stuck", "invoice.paid", { id: "in_A1" })
+    // A worker died mid-dispatch a minute ago: Stripe's retry is told it was handled.
+    const t = now().getTime()
+    db.rows("webhook_deliveries").push({ id: "d-1", event_id: "evt_stuck", topic: "invoice.paid", status: "processing", failure_count: 0, received_at: new Date(t - 60_000).toISOString(), claimed_at: new Date(t - 60_000).toISOString() })
+    const fresh = await handleStripeEvent(ev, ctx(), { now })
+    expect(fresh.body).toContain("already handled")
+    expect(db.count("stripe_invoices")).toBe(0)
+    // Past the lease, the next retry handles it.
+    clock += DELIVERY_LEASE_MS
+    const late = await handleStripeEvent(ev, ctx(), { now })
+    expect(late.status).toBe(200)
+    expect(db.rows("webhook_deliveries")).toEqual([expect.objectContaining({ id: "d-1", status: "processed" })])
+    expect(db.count("stripe_invoices")).toBe(1)
+  })
+
+  it("two retries of one failed delivery at the same time: only one takes it up", async () => {
+    db.rows("webhook_deliveries").push({ id: "d-2", event_id: "evt_twice", topic: "invoice.paid", status: "failed", failure_count: 1, received_at: now().toISOString(), claimed_at: null })
+    const at = now()
+    const claims = await Promise.all([
+      claimDelivery(db as unknown as IngestCtx["db"], "evt_twice", "invoice.paid", at),
+      claimDelivery(db as unknown as IngestCtx["db"], "evt_twice", "invoice.paid", at),
+    ])
+    expect(claims.map((c) => c.kind).sort()).toEqual(["duplicate", "new"])
+    expect(db.rows("webhook_deliveries")).toEqual([expect.objectContaining({ status: "processing", claimed_at: at.toISOString() })])
   })
 
   it("an event type the app does not handle is acknowledged and recorded as ignored", async () => {

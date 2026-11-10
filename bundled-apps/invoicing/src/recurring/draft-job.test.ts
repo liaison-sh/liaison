@@ -4,7 +4,7 @@
 // from the schedule alone, keyed so a second run adds nothing, with flags read from the data.
 import { describe, expect, test } from "bun:test"
 import { createMockDb, type MockDb } from "../test-db"
-import { recurringDraftJob } from "./draft-job"
+import { recurringDraftJob, recurringDraftWrite } from "./draft-job"
 import type { RunCtx } from "./run-card"
 import { weekdayOf } from "./schedule"
 
@@ -53,6 +53,7 @@ export interface Harness {
   approvals: Array<Record<string, unknown>>
   restaged: Array<Record<string, unknown>>
   agentCalls: number
+  draftWrites: number
 }
 
 export function harness(today: string, opts: { schedules?: Array<Record<string, unknown>>; docs?: Array<Record<string, unknown>>; lines?: Array<Record<string, unknown>>; items?: Array<Record<string, unknown>>; threshold?: number | null; hour?: number } = {}): Harness {
@@ -75,7 +76,7 @@ export function harness(today: string, opts: { schedules?: Array<Record<string, 
       ...(opts.items ? { recurring_run_items: opts.items } : {}),
     },
   })
-  const h: Harness = { ctx: null as never, db, approvals: [], restaged: [], agentCalls: 0 }
+  const h: Harness = { ctx: null as never, db, approvals: [], restaged: [], agentCalls: 0, draftWrites: 0 }
   let n = 0
   h.ctx = {
     db: db as never,
@@ -99,8 +100,12 @@ export function harness(today: string, opts: { schedules?: Array<Record<string, 
       },
     },
     // A stub agent: any model or agent call made while drafting is counted and fails the test.
-    executeTool: async (target: string) => {
+    executeTool: async (target: string, params: Record<string, unknown>) => {
       if (target.startsWith("kernel:agents") || target.includes("agent")) h.agentCalls += 1
+      if (target === "invoicing:recurring_draft_write") {
+        h.draftWrites += 1
+        return { status: "completed", result: await recurringDraftWrite(h.ctx, params as never) }
+      }
       return { status: "error", error: { code: "unavailable", message: "no tool in this test" } }
     },
     emit: async () => {},
@@ -181,5 +186,45 @@ describe("the month-end draft job", () => {
     expect(notes["1"]).toBe("Same as October · October is still unpaid")
     expect(notes["2"]).toBe("Changed since October")
     expect(String(notes["3"])).toContain("First invoice")
+  })
+  test("the draft and its lines are written by one call of the atomic draft tool", async () => {
+    const h = harness("2026-11-27")
+    await recurringDraftJob(h.ctx)
+    expect(h.draftWrites).toBe(1)
+    expect(h.db.__all("document_lines")).toHaveLength(1)
+  })
+
+  test("a reused draft whose lines differ from its schedule needs a fix and is never ready", async () => {
+    const id = "33333333-3333-4333-8333-333333333331"
+    const ref = `recurring:${id}:2026-11`
+    const partial = { ...previousDoc("55555555-5555-4555-8555-555555555551", false), status: "draft", number: null, external_ref: ref, external_refs: {} }
+    const twoLines = [
+      { description: "Retainer {period}", qty: 1, unit_price_minor: 150000, vat_bp: 2000, line_kind: "service" },
+      { description: "Hosting {period}", qty: 2, unit_price_minor: 5000, vat_bp: 2000, line_kind: "service" },
+    ]
+    const h = harness("2026-11-27", {
+      schedules: [schedule(id, { lines: twoLines, issue_mode: "auto" })],
+      docs: [partial],
+      // Only the first line was written before the job stopped.
+      lines: [{ id: "l-1", document_id: partial.id, position: 1, description: "Retainer November 2026", quantity: "1", unit_price_minor: "150000", tax_rate_bp: 2000, line_kind: "service", subtotal_minor: "150000" }],
+    })
+    await recurringDraftJob(h.ctx)
+    const [item] = h.db.__all("recurring_run_items")
+    expect(item).toMatchObject({ document_id: partial.id, state: "needs_fix" })
+    expect(String(item?.note)).toContain("Lines differ from the schedule")
+    // Nothing was approved by itself.
+    expect(h.db.__all("recurring_runs")[0]).toMatchObject({ status: "drafted" })
+  })
+
+  test("a reused draft whose lines match its schedule is ready", async () => {
+    const id = "33333333-3333-4333-8333-333333333331"
+    const ref = `recurring:${id}:2026-11`
+    const whole = { ...previousDoc("55555555-5555-4555-8555-555555555552", false), status: "draft", number: null, external_ref: ref, external_refs: {} }
+    const h = harness("2026-11-27", {
+      docs: [whole],
+      lines: [{ id: "l-1", document_id: whole.id, position: 1, description: "Retainer November 2026", quantity: "1.000", unit_price_minor: "150000", tax_rate_bp: 2000, line_kind: "service", subtotal_minor: "150000" }],
+    })
+    await recurringDraftJob(h.ctx)
+    expect(h.db.__all("recurring_run_items")[0]).toMatchObject({ document_id: whole.id, state: "ready" })
   })
 })

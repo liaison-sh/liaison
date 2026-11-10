@@ -158,7 +158,7 @@ Refusal tells the agent today's date and to write the value or say it will confi
 Mail reply forward compose declare outbound text -> apps/api/src/apps/mail/app.manifest.json:812
 Ticket reply nudge close declare outbound text -> apps/api/src/apps/tickets/app.manifest.json:2439
 Social reply and direct message declare outbound text -> bundled-apps/social/app.manifest.json:371
-Invoicing send to customer declares outbound text -> bundled-apps/invoicing/app.manifest.json:3514
+Invoicing send to customer declares outbound text -> bundled-apps/invoicing/app.manifest.json:3515
 Agent edit of a pending request checked; a person's edit is not -> apps/api/src/modules/approvals/edit.ts:262
 Approved by you for the viewer's own decision -> apps/web/src/modules/approvals/ApprovalCard.tsx:1464
 A required step is stated by Liaison after the untrusted result -> apps/api/src/modules/agent/context/system-event-replay.ts:131
@@ -185,7 +185,7 @@ A failed sequence step cancels the steps after it; the proposer is told the real
 Bundled request named after its last step with the step count -> apps/api/src/modules/approvals/attention.ts:504
 Home row lists a sequence's steps in order -> apps/api/src/modules/approvals/attention.ts:659 ; apps/web/src/modules/shell/AttentionRow.tsx:819
 Each step shows its message in full, its lines, links and exact payload -> apps/web/src/modules/approvals/ApprovalCard.tsx:443,624,682
-Quote step: customer, lines, total, validity, customer reference -> bundled-apps/invoicing/src/approval-cards.ts:278,281 ; bundled-apps/invoicing/app.manifest.json:3109
+Quote step: customer, lines, total, validity, customer reference -> bundled-apps/invoicing/src/approval-cards.ts:278,281 ; bundled-apps/invoicing/app.manifest.json:3110
 Tokens read as the step they come from -> packages/shared/src/refs.ts:162,178 ; apps/api/src/modules/apps/execute-tool.ts:5268 ; apps/api/src/modules/approvals/edit.ts:572
 File from an earlier step attached once that step has run -> apps/api/src/modules/files/attach.ts:624
 Agent invite card: 'X wants to add Y to this discussion', Add / Don't add, never auto-approved -> apps/web/src/modules/approvals/ApprovalCard.tsx:1173-1185 ; apps/web/src/modules/approvals/approval-copy.ts:179 ; apps/api/src/modules/agent/tools/kernel-tools.ts:1500-1502
@@ -258,3 +258,4 @@ Link to connect your own account is routed to you -> apps/api/src/modules/agent/
 Disconnecting your own personal connection is routed to you -> apps/api/src/modules/agent/tools/connection-tools.ts:407
 Owner routing resolved per call -> apps/api/src/modules/approvals/resource-owner.ts:66
 Requester approves a request routed privately to them -> apps/api/src/modules/approvals/decide.ts:235
+Identity parameters keep their value in a request; other card numbers and keys are masked -> apps/api/src/modules/approvals/payload-mask.ts:59

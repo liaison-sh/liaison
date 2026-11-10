@@ -1,7 +1,7 @@
 {
   "name": "stripe",
-  "version": "0.1.11",
-  "kind": "connector",
+  "version": "0.1.12",
+  "kind": "app",
   "iconName": "credit-card",
   "description": "Stripe connector: a read mirror of customers, subscriptions, invoices, payments, refunds and disputes, kept current by a signed webhook.",
   "listing": {
@@ -1537,6 +1537,29 @@
       ],
       "enabledByDefault": false,
       "followUp": true
+    }
+  },
+  "views": {
+    "activityBar": {
+      "icon": "StripeAppIcon",
+      "label": "Stripe",
+      "order": 66,
+      "tabAction": {
+        "type": "home",
+        "entityId": "home",
+        "label": "Stripe"
+      }
+    },
+    "tabTypes": {
+      "home": {
+        "component": "StripeHome",
+        "sidebar": "StripeSidebar",
+        "icon": "StripeAppIcon",
+        "label": "Stripe",
+        "singleton": true,
+        "urlPattern": "/stripe",
+        "referenceable": false
+      }
     }
   }
 }

@@ -21,8 +21,8 @@ function referencedHandlers(m: any): string[] {
 const CARD_PARAM = /[cC]ard_?[nN]umber|[cC][vV][cC]|[cC][vV][vV]|(^|_)([pP]an|PAN)($|_|[A-Z])|Pan($|[A-Z_])|[eE]xpir/
 
 describe("stripe manifest", () => {
-  it("is at version 0.1.11", () => {
-    expect(load().version).toBe("0.1.11")
+  it("is at version 0.1.12", () => {
+    expect(load().version).toBe("0.1.12")
   })
 
   it("parses with the package manifest schema", () => {
@@ -104,6 +104,7 @@ describe("stripe manifest", () => {
 
   it("uses the app SDK only", () => {
     const pkg = JSON.parse(readFileSync(join(import.meta.dir, "..", "package.json"), "utf8"))
-    expect(Object.keys(pkg.dependencies)).toEqual(["@liaison/app-sdk"])
+    // The UI's own libraries sit beside the SDK; nothing from the kernel's apps.
+    expect(Object.keys(pkg.dependencies)).toEqual(["@liaison/app-sdk", "@liaison/app-ui", "@liaison/host", "solid-js"])
   })
 })

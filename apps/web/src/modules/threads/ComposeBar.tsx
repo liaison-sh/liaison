@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
+import { hasVendorKey } from "@liaison/shared"
 import { CaseSensitive, Clock, Mic, Paperclip, Plus, X } from "lucide-solid"
 import {
   type Component,
@@ -125,6 +126,9 @@ const ComposeBar: Component<ComposeBarProps> = (props) => {
   const wsUnstable = () => ws?.unstable() ?? false
   // The message as markdown: exactly what is sent.
   const [text, setText] = createSignal("")
+  // A payment key typed or pasted into the message: the send is stopped here
+  // and the line under the field says why (the server masks one anyway).
+  const [keyBlocked, setKeyBlocked] = createSignal(false)
   const hasContent = () => text().trim() !== ""
   const [mention, setMention] = createSignal<MentionQuery | null>(null)
   // Staged files, the upload session they ride and the send hold: shared
@@ -200,6 +204,7 @@ const ComposeBar: Component<ComposeBarProps> = (props) => {
 
   function handleChange(markdown: string) {
     setText(markdown)
+    if (keyBlocked() && !hasVendorKey(markdown)) setKeyBlocked(false)
     // An edit makes it a different message than the one queued (see
     // createUploadHold): the queued send is dropped.
     uploadHold.cancel()
@@ -235,6 +240,10 @@ const ComposeBar: Component<ComposeBarProps> = (props) => {
     const message = text().trim()
     const files = pendingFiles()
     if (!message && files.length === 0) return
+    if (hasVendorKey(message)) {
+      setKeyBlocked(true)
+      return
+    }
     const s = attachments.session()
     // On a phone the field empties and the message appears a beat later, over
     // a keyboard that covers most of the thread: the tick is what says the
@@ -527,6 +536,15 @@ const ComposeBar: Component<ComposeBarProps> = (props) => {
       onDrop={attachments.onDrop}
       data-testid="compose-dropzone"
     >
+      <Show when={keyBlocked()}>
+        <div
+          data-testid="compose-key-blocked"
+          role="alert"
+          class="mb-1 text-sm text-text-secondary"
+        >
+          {i18n.t("kernel.composerKeyBlocked")}
+        </div>
+      </Show>
       <Show when={isOffline()}>
         <div data-testid="compose-offline-banner" class="mb-1 text-sm text-text-secondary">
           {wsUnstable() ? i18n.t("kernel.reconnectingUnstable") : i18n.t("kernel.reconnecting")}

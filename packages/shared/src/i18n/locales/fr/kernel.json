@@ -872,6 +872,7 @@
   "composeAddAttachment": "Ajouter une pièce jointe",
   "composeAttach": "Joindre",
   "composeEmoji": "Emoji",
+  "composerKeyBlocked": "Cela ressemble à une clé Stripe, le message n’a donc pas été envoyé.",
   "configureOidcProvidersForSingleSign": "Configurez les fournisseurs OIDC pour l'authentification unique.",
   "confirmSetup": "Confirmer la configuration",
   "connect": "Connecter",

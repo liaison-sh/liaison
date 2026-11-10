@@ -872,6 +872,7 @@
   "composeAddAttachment": "Add attachment",
   "composeAttach": "Attach",
   "composeEmoji": "Emoji",
+  "composerKeyBlocked": "That looks like a Stripe key, so it was not sent.",
   "configureOidcProvidersForSingleSign": "Configure OIDC providers for single sign-on.",
   "confirmSetup": "Confirm setup",
   "connect": "Connect",

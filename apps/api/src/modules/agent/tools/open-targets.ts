@@ -107,6 +107,7 @@ export const KERNEL_OPEN_VIEWS: readonly OpenView[] = [
   kernelTab("chats", "Chats"),
   kernelTab("approvals", "Approvals"),
   kernelTab("search", "Search"),
+  kernelTab("dashboards", "Dashboards"),
   kernelTab("sessions", "Sessions"),
   kernelTab("session-import", "Import sessions"),
   kernelTab("settings", "Settings"),

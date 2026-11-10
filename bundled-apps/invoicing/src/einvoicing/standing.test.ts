@@ -197,7 +197,7 @@ describe("the standing e-invoice authorization", () => {
     await einvoiceStandingDailyJob(w.ctx)
     await einvoiceStandingDailyJob(w.ctx)
     expect(w.approvals).toHaveLength(1)
-    expect(w.approvals[0]).toMatchObject({ tool_name: "invoicing:issuer_stream_set", current_payload: { issuerProfileId: ISSUER, stream: "transfer", einvoiceStanding: true }, on_behalf_of: PERSON })
+    expect(w.approvals[0]).toMatchObject({ tool_name: "invoicing:issuer_stream_set", current_payload: { issuerProfileId: ISSUER, stream: "transfer", einvoiceStanding: true }, on_behalf_of: PERSON, approve_scope: "invoicing:settings:write" })
     setSystemTime(new Date(T0 + 89 * DAY))
     expect((await issueWithNoPerson()).einvoice_state).toBe("validation_pending")
     expect(w.refused).toHaveLength(0)

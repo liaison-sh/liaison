@@ -211,6 +211,9 @@ export async function einvoiceStandingDailyJob(ctx: EinvCtx): Promise<{ status: 
       current_payload: { issuerProfileId: String(row.issuer_profile_id), stream, einvoiceStanding: true },
       editable_fields: [],
       on_behalf_of: str(row.turned_on_by) ?? settings.changed_by,
+      // The deciders of the e-invoicing settings, whoever turned it on and whether or not they
+      // are still here: the card is filed under that person, decided by the settings scope.
+      approve_scope: "invoicing:settings:write",
     })
     if (approval.auto_approved) continue
     await ctx.db.update(ENTITY, String(row.id), { renewal_requested_at: new Date().toISOString() })

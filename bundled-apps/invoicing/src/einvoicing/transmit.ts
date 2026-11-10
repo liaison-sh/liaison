@@ -41,6 +41,8 @@ export interface ApprovalInput {
   current_payload: unknown
   editable_fields?: string[]
   on_behalf_of?: string | null
+  /** Who decides the card: the holders of this scope of the app (default: the app's approve scope). */
+  approve_scope?: string
 }
 
 export interface EinvCtx {

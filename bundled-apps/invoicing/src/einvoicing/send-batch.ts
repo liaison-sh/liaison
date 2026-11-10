@@ -138,6 +138,8 @@ export async function einvoiceSendDailyJob(ctx: EinvCtx): Promise<{ status: stri
     current_payload: { batch_id: String(batch.id) },
     editable_fields: [],
     on_behalf_of: settings.changed_by,
+    // Decided by whoever may send the documents, as the batch tool itself requires.
+    approve_scope: "invoicing:documents:write",
   })
   if (approval.auto_approved) {
     // A job's request always parks; were it ever granted outright, nothing is sent from here.

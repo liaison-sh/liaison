@@ -127,7 +127,7 @@ describe("the daily send batch", () => {
     const first = await einvoiceSendDailyJob(w.ctx)
     expect(first).toMatchObject({ status: "batch_requested", documents: 2 })
     expect(w.approvals).toHaveLength(1)
-    expect(w.approvals[0]).toMatchObject({ tool_name: "invoicing:einvoice_send_batch" })
+    expect(w.approvals[0]).toMatchObject({ tool_name: "invoicing:einvoice_send_batch", approve_scope: "invoicing:documents:write" })
     expect(JSON.stringify(w.approvals[0]?.summary_detail)).toContain(String(a.number))
     expect(JSON.stringify(w.approvals[0]?.summary_detail)).toContain(String(b.number))
     expect(await w.rows("einvoice_transmissions")).toHaveLength(0)

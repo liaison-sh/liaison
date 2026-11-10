@@ -653,6 +653,17 @@ export function isClientMessageId(id: string): boolean {
   return id.startsWith("pending-") || id.startsWith("optimistic-")
 }
 
+/** The pending send (not yet claimed by another fetched row) that a fetched
+ *  server row echoes: same author, same text. A page carries no correlationId,
+ *  so this is the same fallback match the socket echo uses without one. */
+function pendingEchoedBy(t: ThreadMessages, m: Message, claimed: Set<string>): string | undefined {
+  return t.ids.find((id) => {
+    if (claimed.has(id) || !isClientMessageId(id)) return false
+    const p = t.byId[id]
+    return !!p?.pending && p.authorId === m.authorId && p.content === m.content
+  })
+}
+
 function ensureThread(s: MessageStoreState, threadId: string): ThreadMessages {
   if (!s.threads[threadId]) {
     s.threads[threadId] = { ids: [], byId: {} }
@@ -1210,10 +1221,18 @@ export async function loadMessages(
         }
         const nextIds: string[] = []
         const seen = new Set<string>()
+        const echoed = new Set<string>()
         for (const m of ordered) {
           const prev = existing.byId[m.id]
           if (prev) assignFetched(prev, m)
-          else existing.byId[m.id] = m
+          else {
+            // A page read after a send reached the server but before its
+            // answer came back already holds the sent message: it echoes the
+            // pending row, which goes, or the list shows the message twice.
+            const echo = pendingEchoedBy(existing, m, echoed)
+            if (echo) echoed.add(echo)
+            existing.byId[m.id] = m
+          }
           // A sub_run card a fetch brings in takes the update that beat it here.
           if (m.metadata?.subRun) applyPendingSubRunUpdateIfMatch(existing.byId[m.id]!)
           nextIds.push(m.id)
@@ -1237,6 +1256,7 @@ export async function loadMessages(
         const tail = existing.ids.filter(
           (id) =>
             !seen.has(id) &&
+            !echoed.has(id) &&
             !keptPrefix.includes(id) &&
             (isClientMessageId(id) || !idsAtRequest.has(id)),
         )
@@ -1909,6 +1929,12 @@ function applyCreate(
   // payload carries that the stored copy lacks (never downgrade).
   if (t.byId[data.id]) {
     const existing = t.byId[data.id]
+    // A page read may have brought the real row in while the send it answers
+    // was still pending: the echo still retires that pending row.
+    if (typeof data.correlationId === "string" && t.byId[data.correlationId]?.pending) {
+      delete t.byId[data.correlationId]
+      t.ids = t.ids.filter((id) => id !== data.correlationId)
+    }
     const incoming = data.metadata as MessageMetadata | null | undefined
     const merged = incoming ? withMissingMetadata(incoming, existing.metadata) : null
     if (merged) existing.metadata = merged

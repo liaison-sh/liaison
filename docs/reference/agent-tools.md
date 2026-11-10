@@ -735,7 +735,7 @@ Shopify orders, customers, products, refunds, fulfilments and returns.
 | `variants_delete` | Delete a Shopify product variant | yes | `shopify:products:write` |
 | `variants_get` | Get one Shopify product variant by id |  | `shopify:products:read` |
 | `variants_market_price` | Read the per-market (contextual) price for one product variant — what a buyer in a given country actually sees on that storefront. |  | `shopify:products:read` |
-| `variants_search` | Search Shopify product variants (by sku, title, …) |  | `shopify:products:read` |
+| `variants_search` | Search Shopify product variants (by sku, title, barcode, vendor, product type, tag, …). |  | `shopify:products:read` |
 | `variants_update` | Update a Shopify product variant | yes | `shopify:products:write` |
 | `webhooks_repair` | Re-register every Shopify webhook topic the app declares (idempotent: existing subscriptions are kept, missing ones are created). |  | `shopify:admin:identity-map` |
 

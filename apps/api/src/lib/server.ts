@@ -8,7 +8,7 @@ import {
   ORG_MOVING_CODE,
   ORG_MOVING_WS_CLOSE,
 } from "@liaison/shared"
-import type { Server, WebSocketHandler } from "bun"
+import type { Server, ServerWebSocket, WebSocketHandler } from "bun"
 import { and, sql as drizzleSql, eq } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -88,6 +88,15 @@ export interface WsData {
   stopNodeWatch?: () => void
   /** Ends the socket's hold on its org's runtime (the org runtime cap), set in `open`. */
   unholdOrgRuntime?: () => void
+  /**
+   * Settles once `open` is done: true when the socket was registered with the
+   * manager, false when `open` refused it. A client sends its `hello` the
+   * moment the socket opens, while `open` may still be awaiting; every frame
+   * waits on this first, or the hello's thread membership is written before
+   * the connection exists, lost, and the socket never receives a
+   * conversation's events.
+   */
+  opened?: Promise<boolean>
 }
 
 // Server-initiated WS heartbeat. Cloudflare drops idle proxied WebSockets at
@@ -619,78 +628,108 @@ async function createApiServer(app: FetchApp, options: ApiServerOptions) {
     return withWebBuildHeader(await app.fetch(req), webBuildId)
   }
 
+  /**
+   * Opens an authorized socket: refuses it (closing it, false) or registers it
+   * with the manager, then marks the user online. `onRegistered` runs as soon
+   * as the manager holds the connection.
+   */
+  async function openSocket(
+    ws: ServerWebSocket<WsData>,
+    onRegistered: () => void,
+  ): Promise<boolean> {
+    const data = ws.data
+    if (!data.authorized) {
+      ws.close(4001, "Unauthorized")
+      return false
+    }
+    // A moving org opens no socket: the client retries every few seconds.
+    if (await orgMovingForSocket(data.orgId)) {
+      data.authorized = false
+      ws.close(ORG_MOVING_WS_CLOSE, ORG_MOVING_CODE)
+      return false
+    }
+    // A ticket minted just before the org's deletion started opens nothing.
+    if (await orgEndedForSocket(data.orgId)) {
+      data.authorized = false
+      ws.close(4010, "session_invalidated")
+      return false
+    }
+    // The session behind the ticket ended (here or on another process):
+    // close at once, as a revalidation failure does.
+    if (data.sid) {
+      let closed = false
+      data.stopSessionWatch = watchSession(data.sid, () => {
+        closed = true
+        try {
+          ws.close(4010, "session_invalidated")
+        } catch {
+          // Already closing.
+        }
+      })
+      if (closed) {
+        // Never added: the close handler must not touch presence for it.
+        data.authorized = false
+        return false
+      }
+    }
+    data.lastHeardAt = Date.now()
+    // An open socket keeps its org set up in this process (the runtime cap).
+    data.unholdOrgRuntime = holdOrgRuntime(data.orgId)
+    // Server-side heartbeat (see WS_HEARTBEAT_INTERVAL_MS above).
+    data.heartbeat = setInterval(() => {
+      try {
+        ws.ping()
+      } catch {
+        // Socket already torn down — close() clears the interval.
+      }
+    }, WS_HEARTBEAT_INTERVAL_MS)
+    // Fetch current event sequence so handleHello can bound replay
+    // requests (bounded; 0, no cursor, when Redis does not answer).
+    const currentSeq = await wsManager.currentEventSeq(data.orgId)
+    // `wasOnline`: the user already had a live socket in the org, on this
+    // replica or another. Only the first socket is an arrival (S5).
+    const { wasOnline } = await wsManager.addConnection(
+      data.userId,
+      ws as any,
+      data.scopes,
+      data.orgId,
+      data.dimensionGrants,
+      currentSeq,
+    )
+    // Registered: frames (the hello first) may be served from here on.
+    onRegistered()
+    // Presence writes and the broadcast are bounded and never reject (P2-3).
+    if (!wasOnline) await wsManager.setPresence(data.orgId, data.userId, "online")
+    await triggerMailSyncOnConnect(data)
+    if (!wasOnline) await wsManager.announcePresence(data.orgId, data.userId, "online")
+    return true
+  }
+
   const websocketHandlers: WebSocketHandler<WsData> = {
     idleTimeout: WS_IDLE_TIMEOUT_S,
     async open(ws) {
       const data = ws.data
-      if (!data.authorized) {
-        ws.close(4001, "Unauthorized")
-        return
+      // Frames wait on this (see `WsData.opened`); every way out settles it.
+      let settleOpen: (registered: boolean) => void = () => {}
+      data.opened = new Promise<boolean>((resolve) => {
+        settleOpen = resolve
+      })
+      try {
+        settleOpen(await openSocket(ws, () => settleOpen(true)))
+      } catch (err) {
+        settleOpen(false)
+        throw err
       }
-      // A moving org opens no socket: the client retries every few seconds.
-      if (await orgMovingForSocket(data.orgId)) {
-        data.authorized = false
-        ws.close(ORG_MOVING_WS_CLOSE, ORG_MOVING_CODE)
-        return
-      }
-      // A ticket minted just before the org's deletion started opens nothing.
-      if (await orgEndedForSocket(data.orgId)) {
-        data.authorized = false
-        ws.close(4010, "session_invalidated")
-        return
-      }
-      // The session behind the ticket ended (here or on another process):
-      // close at once, as a revalidation failure does.
-      if (data.sid) {
-        let closed = false
-        data.stopSessionWatch = watchSession(data.sid, () => {
-          closed = true
-          try {
-            ws.close(4010, "session_invalidated")
-          } catch {
-            // Already closing.
-          }
-        })
-        if (closed) {
-          // Never added: the close handler must not touch presence for it.
-          data.authorized = false
-          return
-        }
-      }
-      data.lastHeardAt = Date.now()
-      // An open socket keeps its org set up in this process (the runtime cap).
-      data.unholdOrgRuntime = holdOrgRuntime(data.orgId)
-      // Server-side heartbeat (see WS_HEARTBEAT_INTERVAL_MS above).
-      data.heartbeat = setInterval(() => {
-        try {
-          ws.ping()
-        } catch {
-          // Socket already torn down — close() clears the interval.
-        }
-      }, WS_HEARTBEAT_INTERVAL_MS)
-      // Fetch current event sequence so handleHello can bound replay
-      // requests (bounded; 0, no cursor, when Redis does not answer).
-      const currentSeq = await wsManager.currentEventSeq(data.orgId)
-      // `wasOnline`: the user already had a live socket in the org, on this
-      // replica or another. Only the first socket is an arrival (S5).
-      const { wasOnline } = await wsManager.addConnection(
-        data.userId,
-        ws as any,
-        data.scopes,
-        data.orgId,
-        data.dimensionGrants,
-        currentSeq,
-      )
-      // Presence writes and the broadcast are bounded and never reject (P2-3).
-      if (!wasOnline) await wsManager.setPresence(data.orgId, data.userId, "online")
-      await triggerMailSyncOnConnect(data)
-      if (!wasOnline) await wsManager.announcePresence(data.orgId, data.userId, "online")
     },
     pong(ws) {
       ws.data.lastHeardAt = Date.now()
     },
     async message(ws, message) {
       ws.data.lastHeardAt = Date.now()
+      if (!ws.data.authorized) return
+      // A frame sent while `open` still awaits is served once the socket is
+      // registered (or dropped when `open` refused it).
+      if (ws.data.opened && !(await ws.data.opened)) return
       if (!ws.data.authorized) return
 
       if (!wsManager.checkMessageRate(ws as any)) {

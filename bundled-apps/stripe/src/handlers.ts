@@ -3,8 +3,9 @@
 // Handler barrel: every handler the manifest names, by exact export name.
 import type { UpstreamProbeResult, WebhookResult } from "@liaison/app-sdk"
 import { handleStripeEvent, type IngestCtx } from "./dispatch"
-import { holdWhileImporting } from "./states"
-import type { SyncCtx } from "./sync/common"
+import { runMrrRebuild } from "./mrr-rebuild"
+import { holdWhileImporting, readInstall } from "./states"
+import { Budget, DEFAULT_BUDGET_MS, pause, type SyncCtx } from "./sync/common"
 import { runBackfill } from "./sync/backfill"
 import { onDisconnect, type PurgeCtx, purgeMirror, runCatchup, runPrune } from "./sync/maintenance"
 import { runProbe } from "./sync/probe"
@@ -21,6 +22,7 @@ export { customersGet, customersSearch } from "./tools/customers"
 export { disputesList } from "./tools/disputes"
 export { invoicesSearch } from "./tools/invoices"
 export { customerLink } from "./tools/link"
+export { mrrQuery } from "./tools/mrr-query"
 export { paymentsSearch } from "./tools/payments"
 export {
   approvalRouteRead,
@@ -71,4 +73,12 @@ export async function onConnectionDisconnected(event: { data?: { appName?: unkno
 /** A customer was created or changed in Stripe: match it to a contact and company (match.ts). */
 export async function matchCustomerOnUpdate(event: { entityId?: unknown } | null, ctx: MatchRunCtx) {
   await runCustomerMatch(event?.entityId, ctx)
+}
+
+/** The movement log rebuilt from the last 30 days of Stripe events, on demand (mrr-rebuild.ts); the nightly reconcile runs it too. */
+export async function mrrRebuildJob(_params: unknown, ctx: SyncCtx) {
+  const install = await readInstall(ctx.db)
+  if (!install) return { appended: 0, complete: false, gapBefore: null }
+  const now = () => new Date()
+  return runMrrRebuild(ctx, install, { now, sleep: pause, budget: new Budget(now, DEFAULT_BUDGET_MS) })
 }

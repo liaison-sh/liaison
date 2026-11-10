@@ -3244,6 +3244,8 @@
     "S07|failed payments": "5t",
     "S07|paiements échoués": "5tl",
     "S08|litiges Stripe": "15tl",
-    "S08|Stripe disputes": "15tl"
+    "S08|Stripe disputes": "15tl",
+    "S09|monthly recurring revenue": "15tl",
+    "S09|revenu récurrent mensuel": "15tl"
   }
 }

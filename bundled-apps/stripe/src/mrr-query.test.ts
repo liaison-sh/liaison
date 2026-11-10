@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+import { describe, expect, it } from "bun:test"
+import { newTally, subscriptionRow } from "./mirror"
+import { civil, MemDb, sub } from "./mrr-fixtures.testkit"
+import { mrrQuery } from "./tools/mrr-query"
+
+describe("mrr_query", () => {
+  it("while importing the query answers partial with no number", async () => {
+    const db = new MemDb()
+    db.rows("sync_state").push({ id: "s1", resource: "subscriptions", status: "running", done_count: 40 })
+    db.rows("stripe_subscriptions").push({ id: "m1", ...subscriptionRow(sub("sub_1", { unit: 4900 }), newTally()) })
+    const out = (await mrrQuery({}, { db, time: { civil } })) as { partial: boolean; lines: unknown[]; summary: string }
+    expect(out.partial).toBe(true)
+    expect(out.lines).toEqual([])
+    expect(JSON.stringify(out)).not.toContain("4900")
+    expect(out.summary).toContain("nothing was changed")
+  })
+})

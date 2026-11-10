@@ -96,7 +96,8 @@ const IMPORTING = new Set(["pending", "running"])
 
 export async function syncProgress(db: StateDb): Promise<SyncProgress> {
   const rows = (await db.findMany("sync_state", { limit: 50 })) as Obj[]
-  const resources: ResourceProgress[] = rows.map((r) => ({
+  // The movement log keeps its place in two rows of its own (`mrr_*`); they are not an import.
+  const resources: ResourceProgress[] = rows.filter((r) => !String(r.resource).startsWith("mrr_")).map((r) => ({
     resource: String(r.resource),
     status: String(r.status),
     done: Number(r.done_count) || 0,

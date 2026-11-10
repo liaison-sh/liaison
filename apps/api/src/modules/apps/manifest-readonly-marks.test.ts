@@ -260,6 +260,7 @@ const READ_ONLY: Record<string, string[]> = {
     "customers_get",
     "subscriptions_search",
     "invoices_search",
+    "mrr_query",
     "payments_search",
     "disputes_list",
     "customer_context", // also the tickets app's own get, for the ticket's contact

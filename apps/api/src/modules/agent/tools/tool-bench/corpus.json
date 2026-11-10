@@ -2708,5 +2708,13 @@
     "say": "y a-t-il des litiges ouverts sur Stripe ?",
     "typed": ["litiges Stripe", "Stripe disputes"],
     "any": ["stripe__disputes_list"]
+  },
+  {
+    "id": "S09",
+    "set": "seed",
+    "lang": "en",
+    "say": "what is our MRR right now?",
+    "typed": ["monthly recurring revenue", "revenu récurrent mensuel"],
+    "any": ["stripe__mrr_query"]
   }
 ]

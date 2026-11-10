@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { bundledApps, classify, docsRelevant, projects } from "./ci-scope"
+import { bundledApps, classify, docsRelevant, projects, testOutputs, testScope } from "./ci-scope"
 
 const m = (path: string) => ({ status: "M", path })
 
@@ -50,6 +50,60 @@ describe("ci-scope classify", () => {
     const s = classify([m("docs/agents/models.md"), m("README.md")], "origin/main")
     expect(s.typescript).toBe(false)
     expect(s.docs).toBe(true)
+  })
+})
+
+describe("ci-scope testScope", () => {
+  const pr = (...paths: string[]) => testScope("pull_request", paths.map(m), "origin/main")
+
+  it("runs every test job on a merge group: it is the full gate", () => {
+    const t = testScope("merge_group", [], undefined)
+    expect(t).toMatchObject({ unit: true, web: true, gate: true })
+    expect(testOutputs(t)).toMatchObject({
+      unit: "true",
+      unit_of: "3",
+      unit_parts: "[1,2,3]",
+      web: "shards",
+      web_parts: "[1,2]",
+    })
+  })
+
+  it("runs a pull request's suites in as few jobs as possible", () => {
+    const t = pr("packages/shared/src/csv.ts")
+    expect(t.gate).toBe(false)
+    expect(testOutputs(t)).toMatchObject({ unit_of: "1", unit_parts: "[1]", web: "inline" })
+    expect(testOutputs(pr("docs/a.md"))).toMatchObject({ unit: "false", web: "none" })
+  })
+
+  it("runs no test job on a push to main: the merge group tested that tree", () => {
+    expect(testScope("push", [], undefined)).toMatchObject({ unit: false, web: false })
+  })
+
+  it("runs only the jobs the test map attributes to the change", () => {
+    expect(pr("apps/web/src/ui/Button.tsx")).toMatchObject({ unit: false, web: true })
+    expect(pr("apps/api/src/modules/threads/service.ts")).toMatchObject({ unit: true, web: false })
+    expect(pr("apps/api/src/tests/e2e/a.scenario.test.ts")).toMatchObject({
+      unit: false,
+      web: false,
+    })
+    expect(pr("packages/shared/src/csv.ts")).toMatchObject({ unit: true, web: true })
+  })
+
+  it("runs nothing for a docs-only change", () => {
+    expect(pr("docs/agents/models.md", "README.md")).toMatchObject({ unit: false, web: false })
+  })
+
+  it.each([
+    "some/unmapped/file.ts",
+    "package.json",
+    "bun.lock",
+    "apps/web/tsconfig.json",
+    ".github/workflows/ci.yml",
+    ".claude/test-map.ts",
+  ])("runs everything when %s changes (fail-safe)", (path) => {
+    const t = pr("docs/a.md", path)
+    expect(t).toMatchObject({ unit: true, web: true })
+    expect(t.reason).toContain(path)
   })
 })
 

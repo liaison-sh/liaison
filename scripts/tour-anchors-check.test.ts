@@ -212,13 +212,13 @@ describe("tour anchor check", () => {
     expect(findMissing(tourCatalogue({ includeTestTours: true }), buildIndex())).toEqual([])
   })
 
-  it("runs on every PR: a step of the CI checks job and the release gate, through the package script", () => {
+  it("runs on every PR: a step of the CI static job and the release gate, through the package script", () => {
     const root = join(import.meta.dir, "..")
     const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"))
     expect(pkg.scripts["check:tour-anchors"]).toBe("bun run scripts/tour-anchors-check.ts")
     const ci = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8")
-    const checks = ci.slice(ci.indexOf("\n  checks:"))
-    expect(checks).toContain("run: bun run check:tour-anchors")
+    const job = ci.slice(ci.indexOf("\n  static:"), ci.indexOf("\n  unit:"))
+    expect(job).toContain("run: bun run check:tour-anchors")
     const release = readFileSync(join(root, ".github/workflows/release.yml"), "utf8")
     expect(release).toContain("run: bun run check:tour-anchors")
   })

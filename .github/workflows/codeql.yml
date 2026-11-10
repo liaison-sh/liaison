@@ -2,13 +2,16 @@
 #
 # Static analysis and secret scanning: CodeQL (javascript-typescript, the
 # security-extended query suite) and gitleaks, on every push to main, every
-# pull request against main and once a week. CodeQL leaves tests and
+# pull request against main, every merge group of the merge queue and once a
+# week. Both are required checks, so both must report on a merge group or the
+# queue waits for them forever. CodeQL leaves tests and
 # developer scripts out (.github/codeql/codeql-config.yml).
 #
 # CodeQL runs only while the repository is public: code scanning needs GitHub
 # Advanced Security on a private repository, and the job-level `if` keeps it
 # from failing there. gitleaks needs no such thing and always runs; its job name
-# is what branch protection and pr:land require, so it stays `gitleaks`.
+# is what branch protection, the merge queue and pr:land require, so it stays
+# `gitleaks`.
 #
 # Least privilege: nothing at the top of the file. CodeQL gets
 # `security-events: write` to upload its results and nothing else; gitleaks
@@ -23,14 +26,18 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  merge_group:
+    types: [checks_requested]
   schedule:
     - cron: "23 4 * * 1"
 
 permissions: {}
 
+# Each merge group has its own ref, so no group cancels another; only a newer
+# push to the same pull request cancels its older run.
 concurrency:
   group: codeql-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   codeql:
@@ -82,6 +89,8 @@ jobs:
           "$RUNNER_TEMP/gitleaks" version
       - name: Scan for secrets
         # Pull request: every commit it adds, one by one, not the merge result.
+        # Merge group: the commits the queue adds on top of main (their messages
+        # are the PR titles and bodies).
         # Push: the commits it pushed (the whole history when the push has no
         # parent to compare with). Schedule: every ref. `git log -p` leaves merge
         # commits out unless told otherwise, so a secret added while resolving a
@@ -92,12 +101,15 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          MG_BASE: ${{ github.event.merge_group.base_sha }}
+          MG_HEAD: ${{ github.event.merge_group.head_sha }}
           PUSH_BEFORE: ${{ github.event.before }}
           PUSH_AFTER: ${{ github.sha }}
         run: |
           set -euo pipefail
           case "$EVENT_NAME" in
             pull_request) LOG_OPTS="${PR_BASE}..${PR_HEAD}" ;;
+            merge_group) LOG_OPTS="${MG_BASE}..${MG_HEAD}" ;;
             push)
               if [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != "0000000000000000000000000000000000000000" ] \
                 && git cat-file -e "${PUSH_BEFORE}^{commit}" 2>/dev/null; then

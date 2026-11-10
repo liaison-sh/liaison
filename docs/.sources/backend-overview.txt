@@ -21,7 +21,7 @@ A dead process's turn is dropped, not resumed -> apps/api/src/modules/agent/runt
 Migrate command / LIAISON_MIGRATE_ON_START; lease row drizzle.liaison_migration_lock 60 s / 10 s / 1 s -> apps/api/scripts/entrypoint.sh:37-76 ; apps/api/src/db/migrate.ts:109 ; apps/api/src/db/migrate.ts:210-212
 Renew/release bounded by renewMs, two failures stop; advisory fence on direct connections, skipped via PgBouncer; signal releases the lease -> apps/api/src/db/migrate.ts:196-202 ; apps/api/src/db/migrate.ts:240-251 ; apps/api/src/db/migrate.ts:264-273 ; apps/api/src/db/migrate.ts:314-322 ; apps/api/src/db/migrate.ts:334-341 ; apps/api/scripts/entrypoint.sh:32-53
 Boot catalog reconcile takes the same lease -> apps/api/src/db/reconcile-catalog-boot.ts:90
-check:migration-safety rules and annotations -> scripts/check-migration-safety.ts:7-54 ; scripts/check-migration-safety.ts:303-307 ; .github/workflows/ci.yml:72
+check:migration-safety rules and annotations -> scripts/check-migration-safety.ts:7-54 ; scripts/check-migration-safety.ts:303-307 ; .github/workflows/ci.yml:126
 Index budget 10 000 ms -> scripts/check-migration-safety.ts:60
 One transaction, CONCURRENTLY refused -> scripts/check-migration-safety.ts:38-41
 Baseline file -> scripts/migration-safety-baseline.json:1

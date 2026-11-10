@@ -997,8 +997,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // The wrapper's own contract: the bun timeout it forwards is published to the
             // run, so a helper that bounds its own wait lands below bun's cap.
             "scripts/with-test-lock.test.ts",
-            // The merge gate (pr:land): which PR checks and which main CI runs
-            // count as red, and which Fixes-CI lines unlock a red main. Pure.
+            // The merge gate (pr:land): which PR checks count as red, and where a
+            // queued PR stands in the merge queue. Pure.
             "scripts/pr-land.test.ts",
             // The secret and address gates in scripts/git-hooks and the vector allowlist.
             "scripts/git-hooks.test.ts",

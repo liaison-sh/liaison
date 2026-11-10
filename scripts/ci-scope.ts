@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// `bun run scripts/ci-scope.ts scope|biome|typecheck|typecheck-apps [--base <ref>] [--all] [--tool tsgo|tsc]`
+// `bun run scripts/ci-scope.ts scope|tests|biome|typecheck|typecheck-apps [--base <ref>] [--all] [--tool tsgo|tsc]`
 //
 // What a pull request has to check, and the checks themselves run on that
 // scope. A pull request (GITHUB_BASE_REF set, or --base given) is scoped to the
@@ -10,6 +10,14 @@
 //
 //   scope      prints the scope; under Actions, writes `docs=true|false` to
 //              $GITHUB_OUTPUT so the docs step can be skipped.
+//   tests      which of the `ci` workflow's test suites run, through the test map
+//              (.claude/test-map.ts): the api unit suite and web-unit. A pull
+//              request runs the ones its changed files map to, each in as few
+//              jobs as possible; a path the map does not cover (and that is not
+//              plain docs) runs both. A merge group, or any run without a base,
+//              runs both split over several runners: it is the full gate before
+//              main. A push to main runs neither, the merge group already tested
+//              that tree. Writes the outputs of `testOutputs` to $GITHUB_OUTPUT.
 //   biome      Biome on the changed files (all files on a full run).
 //   typecheck  every TypeScript project whose program contains a changed file.
 //              The program is the project's own file list (`tsgo --listFilesOnly`),
@@ -31,6 +39,7 @@ import { spawnSync } from "node:child_process"
 import { appendFileSync, existsSync, readdirSync, readFileSync } from "node:fs"
 import { join, relative, resolve } from "node:path"
 import { DOCS_EXEMPT, DOCS_FAILSAFE_ROOTS, DOCS_MAP } from "../.claude/docs-map"
+import { NO_CODE_PATHS, suitesFor } from "../.claude/test-map"
 
 const ROOT = resolve(import.meta.dir, "..")
 
@@ -114,6 +123,83 @@ export function classify(changed: Change[], base?: string): Scope {
     typescript: live.some((c) => TS_LIKE.test(c.path)),
     typescriptAll: changed.some((c) => c.status === "D" && TS_LIKE.test(c.path)),
     docs: changed.some((c) => docsRelevant(c.path)),
+  }
+}
+
+// ── Test jobs ─────────────────────────────────────────────────────────────
+
+/** Changes that run every test job: the full-run triggers, and the map itself. */
+export const TEST_FULL_RUN_GLOBS = [...FULL_RUN_GLOBS, ".claude/test-map.ts"]
+
+export type TestScope = {
+  /** The api unit suite (the `unit` job or jobs). */
+  unit: boolean
+  /** The web unit suite. */
+  web: boolean
+  /**
+   * The full gate (a merge group, or any run that is not a pull request): the
+   * suites split over several runners for wall clock. A pull request runs each
+   * suite in as few jobs as possible instead (runners are the scarce resource):
+   * the api unit suite in one job, the web unit suite inside the static job.
+   */
+  gate: boolean
+  reason: string
+}
+
+/** Runners each suite is split over on the full gate (TEST_UNIT_PART, vitest --shard). */
+export const GATE_PARTS = { unit: 3, web: 2 }
+
+/** The `ci` workflow's view of a {@link TestScope}, written to $GITHUB_OUTPUT. */
+export function testOutputs(t: TestScope): Record<string, string> {
+  const parts = (n: number) => JSON.stringify(Array.from({ length: n }, (_, i) => i + 1))
+  return {
+    unit: String(t.unit),
+    unit_of: String(t.gate ? GATE_PARTS.unit : 1),
+    unit_parts: parts(t.gate ? GATE_PARTS.unit : 1),
+    // `shards`: the web-unit jobs; `inline`: a step of the static job.
+    web: t.web ? (t.gate ? "shards" : "inline") : "none",
+    web_of: String(GATE_PARTS.web),
+    web_parts: parts(GATE_PARTS.web),
+  }
+}
+
+/**
+ * Which test jobs a run needs. `event` is GITHUB_EVENT_NAME; `base` is set only
+ * for a pull request (see {@link resolveBase}).
+ */
+export function testScope(
+  event: string | undefined,
+  changed: Change[],
+  base: string | undefined,
+  mapFor: (file: string) => string[] | null = suitesFor,
+): TestScope {
+  if (event === "push") {
+    return {
+      unit: false,
+      web: false,
+      gate: false,
+      reason: "push: the merge queue tested this tree",
+    }
+  }
+  if (!base) {
+    const reason = event === "merge_group" ? "merge group: full gate" : "not a pull request"
+    return { unit: true, web: true, gate: true, reason }
+  }
+  const all = (reason: string): TestScope => ({ unit: true, web: true, gate: false, reason })
+  const trigger = changed.find((c) => TEST_FULL_RUN_GLOBS.some((g) => match(g, c.path)))
+  if (trigger) return all(`${trigger.path} changed`)
+  const suites = new Set<string>()
+  for (const c of changed) {
+    const mapped = mapFor(c.path)
+    if (mapped) for (const s of mapped) suites.add(s)
+    else if (!NO_CODE_PATHS.some((re) => re.test(c.path)))
+      return all(`${c.path} is not in the test map`)
+  }
+  return {
+    unit: suites.has("unit"),
+    web: suites.has("web-unit"),
+    gate: false,
+    reason: `${changed.length} changed files mapped to ${[...suites].sort().join(", ") || "no suite"}`,
   }
 }
 
@@ -245,6 +331,18 @@ function describe(scope: Scope): string {
 async function main(argv: string[]): Promise<number> {
   const [command] = argv
   const scope = computeScope(argv)
+  if (command === "tests") {
+    const t = testScope(process.env.GITHUB_EVENT_NAME, scope.changed, scope.base)
+    const out = testOutputs(t)
+    console.log(
+      `api unit: ${t.unit ? `runs on ${out.unit_of} runner(s)` : "skipped"}; web unit: ${out.web} (${t.reason})`,
+    )
+    if (process.env.GITHUB_OUTPUT) {
+      const lines = Object.entries(out).map(([k, v]) => `${k}=${v}\n`)
+      appendFileSync(process.env.GITHUB_OUTPUT, lines.join(""))
+    }
+    return 0
+  }
   if (command === "scope") {
     console.log(`scope: ${describe(scope)}`)
     console.log(
@@ -310,7 +408,7 @@ async function main(argv: string[]): Promise<number> {
     return failed === 0 ? 0 : 1
   }
   console.error(
-    "Usage: bun run scripts/ci-scope.ts scope|biome|typecheck|typecheck-apps [--base <ref>] [--all] [--tool tsgo|tsc]",
+    "Usage: bun run scripts/ci-scope.ts scope|tests|biome|typecheck|typecheck-apps [--base <ref>] [--all] [--tool tsgo|tsc]",
   )
   return 2
 }

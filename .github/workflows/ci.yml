@@ -1,12 +1,26 @@
 # SPDX-License-Identifier: FSL-1.1-ALv2
 #
-# Per-PR checks. `checks`: lint, typecheck, the cheap `check:*` guards and the
-# tour suites, none of which needs a database or other service, as ONE job (one
-# checkout and one `bun install` instead of four). Beside it, in parallel: the
-# api `unit` suite split over three jobs (each with its own Postgres, Redis,
-# MeiliSearch and SeaweedFS from docker-compose.yml) and the whole web unit
-# suite split over two jobs. Before they ran here, only a release ran them, and failures sat on
-# main unseen. Integration, e2e and Playwright stay out (see scripts/test-run.ts).
+# Per-PR and merge-queue checks. `static`: lint, typecheck, the cheap `check:*`
+# guards and the tour suites, none of which needs a database or other service,
+# as ONE job (one checkout and one `bun install` instead of four). Beside it:
+# the api `unit` suite (each job with its own Postgres, Redis, MeiliSearch and
+# SeaweedFS from docker-compose.yml) and the web unit suite. Integration, e2e
+# and Playwright stay out (see scripts/test-run.ts).
+#
+# What each event runs (scripts/ci-scope.ts `tests`, in the `scope` job):
+#   - pull_request: `static` always. The api unit suite and the web unit suite
+#     only when the test map (.claude/test-map.ts) attributes a changed file to
+#     them; a path the map does not cover, or a package.json, lockfile,
+#     tsconfig or workflow change, runs both. Hosted runners are the scarce
+#     resource, so a pull request runs them in as few jobs as possible: the api
+#     unit suite in one `unit` job, the web unit suite as a step of `static`.
+#   - merge_group: everything, split for wall clock (`unit` over three jobs,
+#     `web-unit` over two). The merge queue tests the exact tree main gets.
+#   - push to main: `static` only. The merge group already tested that tree.
+#
+# `checks` is the one job branch protection and the merge queue require: it
+# passes only when every job of the run that had to run passed. A skipped test
+# job never leaves a required check pending.
 name: ci
 
 on:
@@ -14,20 +28,51 @@ on:
   # them when the body changes (the docs guard reads its Docs-skip line).
   pull_request:
     types: [opened, synchronize, reopened, edited]
+  merge_group:
+    types: [checks_requested]
   push:
     branches: [main]
 
 permissions:
   contents: read
 
+# Each merge group has its own ref (gh-readonly-queue/main/pr-<n>-<sha>), so no
+# group cancels another. A new push to a PR cancels its older run; a run on main
+# always finishes (the nightly builds the newest green one).
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  checks:
+  # Which test jobs this run needs. No dependency install: the scope script
+  # reads git and the two maps only.
+  scope:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
+    outputs:
+      unit: ${{ steps.tests.outputs.unit }}
+      unit_of: ${{ steps.tests.outputs.unit_of }}
+      unit_parts: ${{ steps.tests.outputs.unit_parts }}
+      web: ${{ steps.tests.outputs.web }}
+      web_of: ${{ steps.tests.outputs.web_of }}
+      web_parts: ${{ steps.tests.outputs.web_parts }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          # The scope diffs the PR against its base branch.
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.x"
+      - name: Test jobs this run needs
+        id: tests
+        run: bun run scripts/ci-scope.ts tests
+
+  static:
+    runs-on: ubuntu-latest
+    # A pull request's web unit suite runs here too (about 11 minutes on one runner).
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -47,10 +92,14 @@ jobs:
       # changed files, the TypeScript projects whose program holds a changed file,
       # the docs guard only when a file it reads changed. A change to a
       # package.json, the lockfile, a tsconfig, the Biome config or this workflow
-      # checks everything, and so does every push to main.
+      # checks everything, and so does every merge group and push to main.
       - name: Scope
         id: scope
         run: bun run scripts/ci-scope.ts scope
+      # Same decision as the `scope` job: whether the web unit suite runs here.
+      - name: Test scope
+        id: tests
+        run: bun run scripts/ci-scope.ts tests
       - name: Biome check
         run: bun run scripts/ci-scope.ts biome
       # tsgo (the native TypeScript compiler). `bun run typecheck` stays the
@@ -82,7 +131,8 @@ jobs:
         run: bun run check:raw-insert
       # A changed bundled app raises its version: an installed version directory
       # is never rewritten, so the same version with other files fails the deploy.
-      # A push to main has no GITHUB_BASE_REF, so the check is skipped there.
+      # A merge group or a push to main has no GITHUB_BASE_REF, so the check is
+      # skipped there; the pull request ran it.
       - name: Bundled-app version raised
         run: bun run check:bundled-app-version
       - name: Runbook sections
@@ -99,7 +149,8 @@ jobs:
       # CLI command, env var, setting and scope documented, and (on a PR) every
       # mapped change paired with its page (.claude/docs-map.ts). The PR body
       # reaches the script only through env, never interpolated into `run:`.
-      # A push to main has no GITHUB_BASE_REF, so the diff rule is skipped.
+      # A merge group or a push to main has no GITHUB_BASE_REF, so the diff rule
+      # is skipped.
       # Skipped on a pull request that changes no file the check reads (Scope).
       - name: Docs up to date
         if: steps.scope.outputs.docs == 'true'
@@ -182,18 +233,27 @@ jobs:
       - name: Web tour engine and card
         working-directory: apps/web
         run: bunx vitest run src/modules/tours
+      # A pull request's web unit suite, whole, in this job rather than its own
+      # runners (a merge group runs it in the `web-unit` jobs).
+      - name: Web unit tests
+        if: steps.tests.outputs.web == 'inline'
+        working-directory: apps/web
+        run: bunx --bun vitest run
 
-  # The api unit suite, split three ways by file (TEST_UNIT_PART in
-  # scripts/test-unit-parallel.ts): one runner took 20 to 27 minutes for it.
-  # `test:unit` would also rerun guards and root, which `checks` already runs.
+  # The api unit suite. A merge group splits it three ways by file
+  # (TEST_UNIT_PART in scripts/test-unit-parallel.ts; one runner takes 20 to 27
+  # minutes for it); a pull request runs it on one runner.
+  # `test:unit` would also rerun guards and root, which `static` already runs.
   unit:
-    name: unit ${{ matrix.part }}/3
+    name: unit ${{ matrix.part }}/${{ needs.scope.outputs.unit_of }}
+    needs: scope
+    if: needs.scope.outputs.unit == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        part: [1, 2, 3]
+        part: ${{ fromJSON(needs.scope.outputs.unit_parts) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -225,13 +285,13 @@ jobs:
           sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|; s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=$(openssl rand -hex 32)|" .env.test
       - name: Bring up test infra (Postgres, Redis, MeiliSearch, SeaweedFS)
         run: bun run infra:up
-      - name: Unit tests (part ${{ matrix.part }} of 3)
+      - name: Unit tests (part ${{ matrix.part }} of ${{ needs.scope.outputs.unit_of }})
         # The default memory reserve doesn't fit a hosted runner, and the runner
         # runs nothing else, so the whole budget is this job's.
         env:
           TEST_MEM_RESERVE_MB: "2048"
           LIAISON_TEST_SLOTS: "1"
-          TEST_UNIT_PART: ${{ matrix.part }}/3
+          TEST_UNIT_PART: ${{ matrix.part }}/${{ needs.scope.outputs.unit_of }}
         run: bun run scripts/test-run.ts unit
       - name: Keep the run's logs
         if: failure()
@@ -243,16 +303,19 @@ jobs:
         if: always()
         run: docker compose down -v
 
-  # The whole web unit suite (vitest, jsdom), split two ways (one runner took
-  # 12 minutes for it): no database or service.
+  # The whole web unit suite (vitest, jsdom) on a merge group, split two ways
+  # (one runner takes 12 minutes for it): no database or service. A pull
+  # request runs it as a step of `static` instead.
   web-unit:
-    name: web unit ${{ matrix.part }}/2
+    name: web unit ${{ matrix.part }}/${{ needs.scope.outputs.web_of }}
+    needs: scope
+    if: needs.scope.outputs.web == 'shards'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        part: [1, 2]
+        part: ${{ fromJSON(needs.scope.outputs.web_parts) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -266,6 +329,42 @@ jobs:
         # real ffmpeg, only the live, keyed media scenario. Same fallback as
         # apps/api/Dockerfile.
         run: bun install --frozen-lockfile || { echo "install scripts failed (CDN outage?), retrying with --ignore-scripts"; bun install --frozen-lockfile --ignore-scripts; }
-      - name: Web unit tests (part ${{ matrix.part }} of 2)
+      - name: Web unit tests (part ${{ matrix.part }} of ${{ needs.scope.outputs.web_of }})
         working-directory: apps/web
-        run: bunx --bun vitest run --shard=${{ matrix.part }}/2
+        run: bunx --bun vitest run --shard=${{ matrix.part }}/${{ needs.scope.outputs.web_of }}
+
+  # The required check. It runs whatever happened above (`always()`), and fails
+  # when a job that ran did not pass, or when a merge group skipped a test job
+  # (a merge group is the full gate, so a skip there is a broken scope).
+  checks:
+    needs: [scope, static, unit, web-unit]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job that had to run passed
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SCOPE: ${{ needs.scope.result }}
+          STATIC: ${{ needs.static.result }}
+          UNIT: ${{ needs.unit.result }}
+          WEB_UNIT: ${{ needs['web-unit'].result }}
+        run: |
+          set -euo pipefail
+          fail=0
+          for job in "scope=$SCOPE" "static=$STATIC"; do
+            echo "$job"
+            [ "${job#*=}" = success ] || fail=1
+          done
+          for job in "unit=$UNIT" "web-unit=$WEB_UNIT"; do
+            echo "$job"
+            case "${job#*=}" in
+              success) ;;
+              skipped) [ "$EVENT_NAME" != merge_group ] || fail=1 ;;
+              *) fail=1 ;;
+            esac
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::a job of this run did not pass (see above)"
+            exit 1
+          fi

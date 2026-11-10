@@ -431,7 +431,9 @@ export class MoneyCase implements CellWorld {
 
   async contactExists(id = this.contactId): Promise<boolean> {
     const [row] = (await sql`
-      SELECT 1 AS one FROM ${sql(schemaRef("kernel"))}.contacts WHERE id = ${id}`) as unknown[]
+      SELECT 1 AS one FROM ${sql(schemaRef("kernel"))}.contacts WHERE id = ${id}`) as Array<{
+      one: number
+    }>
     return Boolean(row)
   }
 

@@ -2739,7 +2739,7 @@
       "summarizer": "summarizeRecurringScheduleCreate",
       "summarizerContext": { "tool": "settings_issuer_profile_list", "params": {} },
       "description": "Save a recurring invoice schedule for one customer: cadence, billing day and lines. It drafts each period for review and never issues by itself. An agent's call waits for a person's approval.",
-      "searchKeywords": ["récurrent", "abonnement", "facturation", "échéancier", "recurring", "subscription"],
+      "searchKeywords": ["récurrent", "abonnement", "facturation", "échéancier", "recurring", "subscription", "retainer"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "recurringScheduleCreateHandler",
       "preflight": "recurringScheduleCreatePreflightHandler",

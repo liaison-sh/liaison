@@ -543,7 +543,8 @@
         "additionalProperties": false
       },
       "searchKeywords": [
-        "litige"
+        "litige",
+        "chargeback"
       ]
     },
     "customer_context": {

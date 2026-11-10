@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.20.73",
+  "version": "0.20.74",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -6101,6 +6101,8 @@
       "stripe/invoice:voided": "onStripeInvoiceVoidedEvent",
       "stripe/invoice:uncollectible": "onStripeInvoiceUncollectibleEvent",
       "stripe/refund:created": "onStripeRefundCreatedEvent",
+      "stripe/refund:settled": "onStripeRefundCreatedEvent",
+      "stripe/refund:failed": "onStripeRefundCreatedEvent",
       "stripe/payment:unmatched": "onStripePaymentUnmatchedEvent"
     },
     "emits": [

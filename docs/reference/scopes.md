@@ -192,7 +192,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `invoicing:contacts:read` | manifest scopes; tools contact_relationships_get, counterparty_identity_get, counterparty_identity_lookup, vat_lookup, vat_validate |  |
 | `invoicing:contacts:write` | manifest scopes; tools contact_relationships_set, counterparty_identity_set, counterparty_territory_set, einvoicing_backfill_identities |  |
 | `invoicing:documents:read` | manifest scopes; entity document; tools activity_read, approval_route_read, customer_history, deferred_list, documents_download_pdf, documents_for_orders and 16 more |  |
-| `invoicing:documents:write` | manifest scopes; tools credit_note_create_and_issue, credit_note_issue, deferred_tax_override, documents_convert_local, documents_convert_to_invoice, documents_mark_paid and 29 more |  |
+| `invoicing:documents:write` | manifest scopes; tools credit_note_create_and_issue, credit_note_issue, deferred_tax_override, documents_convert_local, documents_convert_to_invoice, documents_mark_paid and 31 more |  |
 | `invoicing:internal` | manifest scopes; tool card_stream_issuer |  |
 | `invoicing:issuer:admin` | manifest scopes |  |
 | `invoicing:received:read` | manifest scopes; entity received_einvoice; tools received_einvoices_get, received_einvoices_list |  |
@@ -357,7 +357,7 @@ Stripe: customers, subscriptions, invoices and payments from your Stripe account
 | `stripe:approve` | approver scope | Decide (approve, edit, or deny) stripe approvals raised by its gated tools |
 | `stripe:customers:read` | manifest scopes; role member; tools activity_read, approval_route_read, card_update_link, customers_get, customers_search, home_load |  |
 | `stripe:customers:write` | manifest scopes; role billing; tool customer_link |  |
-| `stripe:internal` | manifest scopes; tools billing_status_for_counterparty, invoice_document_link |  |
+| `stripe:internal` | manifest scopes; tools billing_status_for_counterparty, invoice_document_link, reconcile_candidates, refunds_for_charge |  |
 | `stripe:invoices:read` | manifest scopes; role member; tools invoice_send_state, invoices_search |  |
 | `stripe:payments:read` | manifest scopes; role member; tools disputes_list, payments_search |  |
 | `stripe:refunds:write` | manifest scopes; role billing; tool refunds_create |  |

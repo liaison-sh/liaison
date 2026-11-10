@@ -15,7 +15,9 @@
 //   5. The fetched object goes through the allow-list and the card mask
 //      (mirror.ts), and is written unless the stored row is newer.
 //   6. One attention item when a card number was found in its text.
-//   7. The typed `stripe/*` event, minor units as strings.
+//   7. The typed `stripe/*` event, minor units as strings, and the money events
+//      invoicing reads (money-events.ts): `refund:created|settled|failed` and
+//      `payment:unmatched`.
 //   8. The connection's state: the first verified event moves it on and names
 //      the event; later ones record the last event.
 //
@@ -45,6 +47,7 @@ import {
   subscriptionRow,
   writeMirror,
 } from "./mirror"
+import { customerOf, invoiceEventPayload, invoiceOfCharge, listRefunds, refundEvent, unmatchedPayload } from "./money-events"
 import { recordMovement } from "./mrr-events"
 import { claimDelivery, type LedgerDb, settleDelivery } from "./webhooks"
 
@@ -248,43 +251,64 @@ async function sameAccountConfirmed(ctx: IngestCtx, install: Install, exceptId: 
 }
 
 /** The typed event's payload: ids, statuses and minor units as strings, never the raw object. */
-function typedPayload(route: Route, row: Obj, obj: Obj, tally: MaskTally): Obj {
+async function typedPayload(ctx: IngestCtx, route: Route, row: Obj, obj: Obj, tally: MaskTally, stripeUpdated: string): Promise<Obj> {
   const s = (v: unknown) => (typeof v === "number" ? String(v) : v)
-  if (route === INVOICE) {
-    const lines = (((obj.lines as Obj | undefined)?.data ?? []) as Obj[]).map((l) => {
-      const period = (l.period ?? {}) as Obj
-      return {
-        description: scan(l.description, "invoice line", tally),
-        quantity: typeof l.quantity === "number" ? l.quantity : 1,
-        amount_minor: s(l.amount),
-        period_start: at(period.start),
-        period_end: at(period.end),
-      }
-    })
-    return {
-      stripe_invoice_id: row.stripe_id,
-      customer_id: row.customer_id,
-      subscription_id: row.subscription_id,
-      number: row.number,
-      status: row.status,
-      total_minor: s(row.total_minor),
-      tax_minor: s(row.tax_minor),
-      amount_paid_minor: s(row.amount_paid_minor),
-      currency: row.currency,
-      period_start: row.period_start,
-      period_end: row.period_end,
-      finalized_at: row.finalized_at,
-      paid_at: row.paid_at,
-      billing_reason: row.billing_reason,
-      charge_id: typeof obj.charge === "string" ? obj.charge : null,
-      lines,
-    }
-  }
+  // Each line's net, rate and tax, and the buyer from the mirror: what invoicing issues from.
+  if (route === INVOICE) return invoiceEventPayload(ctx, row, obj, tally, stripeUpdated)
   const out: Obj = { stripe_id: row.stripe_id }
   for (const k of ["customer_id", "payment_id", "status", "currency", "mrr_minor", "amount_minor", "trial_end"]) {
     if (k in row) out[k] = s(row[k])
   }
   return out
+}
+
+/** The charge a refund belongs to, with its invoice: the mirror's payment row, else Stripe. */
+async function chargeOfRefund(ctx: IngestCtx, refund: Obj): Promise<{ id: string; invoice: string | null } | null> {
+  const chargeId = typeof refund.charge === "string" ? refund.charge : ((refund.charge as Obj | null)?.id as string | undefined)
+  if (!chargeId) return null
+  const [row] = (await ctx.db.findMany("stripe_payments", { where: { stripe_id: chargeId }, limit: 1 })) as Obj[]
+  if (row && typeof row.invoice_id === "string" && row.invoice_id) return { id: chargeId, invoice: row.invoice_id }
+  const charge = await stripeFetch<Obj>(ctx, `/v1/charges/${encodeURIComponent(chargeId)}`, {}, { maxRetries: 1 })
+  return { id: chargeId, invoice: await invoiceOfCharge(ctx, charge ?? {}) }
+}
+
+/**
+ * The money events invoicing reads, after the object was written: a charge refunded lists every
+ * refund of the charge; a refund's update says whether it settled or failed; a succeeded charge
+ * no invoice explains is unmatched.
+ */
+async function moneyEvents(
+  ctx: IngestCtx,
+  type: string,
+  obj: Obj,
+  tally: MaskTally,
+  stripeUpdated: string,
+  invoiceId: string | null,
+): Promise<Array<{ entity: string; action: string; entityId: string; data: Obj }>> {
+  if (type === "charge.refunded") {
+    const charge = { id: String(obj.id), invoice: invoiceId }
+    const refunds = await listRefunds(ctx, charge.id)
+    if (refunds.length === 0) return []
+    const data = await refundEvent(ctx, charge, refunds, null, stripeUpdated, tally)
+    return [{ entity: "refund", action: "created", entityId: data.refund_id, data: { ...data } }]
+  }
+  if (type === "charge.refund.updated") {
+    const status = String(obj.status ?? "")
+    const action = status === "succeeded" ? "settled" : status === "failed" || status === "canceled" ? "failed" : null
+    if (!action) return []
+    const charge = await chargeOfRefund(ctx, obj)
+    if (!charge) return []
+    const data = await refundEvent(ctx, charge, [obj], obj, stripeUpdated, tally)
+    return [{ entity: "refund", action, entityId: data.refund_id, data: { ...data } }]
+  }
+  if (type === "charge.succeeded" && obj.status === "succeeded") {
+    if (invoiceId) return []
+    const customerId = typeof obj.customer === "string" ? obj.customer : null
+    const customer = await customerOf(ctx, customerId, stripeUpdated)
+    const data = unmatchedPayload(obj, customer, tally)
+    return [{ entity: "payment", action: "unmatched", entityId: data.charge_id, data: { ...data } }]
+  }
+  return []
 }
 
 export interface DispatchOptions {
@@ -378,6 +402,8 @@ export async function handleStripeEvent(
 
     const tally = newTally()
     const mirrorRow = route.row(obj ?? {}, tally)
+    // A charge's invoice, under the current API too (no `invoice` field on the charge).
+    if (route === CHARGE && !mirrorRow.invoice_id) mirrorRow.invoice_id = await invoiceOfCharge(ctx, obj ?? {})
     const outcome =
       route === CUSTOMER && obj?.deleted === true
         ? await ctx.db
@@ -399,7 +425,9 @@ export async function handleStripeEvent(
 
     // The typed event's payload is built first: its text is masked too.
     const typed = EMITS[event.type]
-    const typedData = typed && outcome !== "stale" ? typedPayload(route, mirrorRow, obj ?? {}, tally) : null
+    const fresh = outcome !== "stale"
+    const typedData = typed && fresh ? await typedPayload(ctx, route, mirrorRow, obj ?? {}, tally, instant(started)) : null
+    const money = fresh ? await moneyEvents(ctx, event.type, obj ?? {}, tally, instant(started), typeof mirrorRow.invoice_id === "string" ? mirrorRow.invoice_id : null) : []
     if (tally.cards > 0) {
       await ctx.emit({
         entity: "card_number",
@@ -411,6 +439,7 @@ export async function handleStripeEvent(
     if (typed && typedData) {
       await ctx.emit({ entity: typed[0], action: typed[1], entityId: String(mirrorRow.stripe_id), data: typedData })
     }
+    for (const e of money) await ctx.emit(e)
 
     // The connection: the first verified event moves it on and names the event.
     const nowIso = now().toISOString()

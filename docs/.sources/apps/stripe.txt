@@ -92,3 +92,13 @@ card_update_link ladder, effect sentences, 30 days re-read, never stored -> bund
 reminder guard reads Stripe at send time, stops on paid/void/uncollectible, waits when unreachable -> bundled-apps/stripe/src/tools/send-state.ts:1
 sendGuardProviders service message, failed-payments routine 07:00 off by default -> bundled-apps/stripe/app.manifest.json:1
 refund credit note follows only when Liaison issues card invoices; issuer_unknown -> bundled-apps/stripe/src/tools/refunds.ts:146
+finalized/paid invoice payload: lines with net, discount, rate, tax; buyer from the mirror, masked -> bundled-apps/stripe/src/money-events.ts:285
+line net before tax, discount, rate, tax charged -> bundled-apps/stripe/src/money-events.ts:217
+buyer fields: name, email, country, address, VAT number, masked -> bundled-apps/stripe/src/money-events.ts:142
+refund:created lists every refund of the charge by id -> bundled-apps/stripe/src/dispatch.ts:288
+refund settled or failed on charge.refund.updated, pending waits -> bundled-apps/stripe/src/dispatch.ts:295
+credit note once per succeeded refund, none for pending or failed -> bundled-apps/invoicing/src/handlers/stripe-refund-created.ts:102
+refund approved in Liaison announced on Stripe's answer -> bundled-apps/stripe/src/tools/refunds.ts:265
+payment with no invoice emits payment:unmatched -> bundled-apps/stripe/src/dispatch.ts:304
+safety job every 10 minutes -> bundled-apps/invoicing/app.manifest.json:6526
+candidates: 35 days invoices without document, 3 days paid, 35 days succeeded refunds -> bundled-apps/stripe/src/tools/money-reads.ts:29

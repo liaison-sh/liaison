@@ -21,6 +21,7 @@
 // expiry only.
 import { refuseTool, type ToolRefusal } from "@liaison/app-sdk"
 import { type StripeHttpCtx, StripeApiError, stripeFetch } from "../http"
+import { invoiceOfCharge, listRefunds, refundItem, stripeDocumentRef } from "../money-events"
 import { maskCardNumbers } from "../pan-scan"
 import { moneyActionHold, type StateDb } from "../states"
 import type { ReadCtx } from "./read-common"
@@ -45,6 +46,8 @@ export interface MoneyCtx extends StripeHttpCtx, ApprovalBridges {
   db: StateDb & ReadCtx["db"]
   executeTool?: ReadCtx["executeTool"]
   logger?: MoneyLogger
+  /** The typed event bus: the refund's `refund:created` goes to invoicing at once. */
+  emit?: (event: { entity: string; action: string; entityId?: string; data?: unknown }) => Promise<void>
 }
 
 interface Charge {
@@ -253,6 +256,47 @@ async function noEffect(ctx: MoneyCtx, refusal: ToolRefusal): Promise<ToolRefusa
   return refusal
 }
 
+/**
+ * `refund:created` for the charge, from the tool's own result: whichever of this and
+ * Stripe's `charge.refunded` reaches invoicing first makes the credit note, once. Every
+ * refund of the charge is listed by id; a failure here never undoes the refund (the
+ * webhook and the safety job still carry it).
+ */
+async function announceRefund(ctx: MoneyCtx, chargeId: string, refund: Refund): Promise<void> {
+  if (!ctx.emit) return
+  try {
+    const [row] = (await ctx.db.findMany("stripe_payments", { where: { stripe_id: chargeId }, limit: 1 })) as Obj[]
+    let invoice = typeof row?.invoice_id === "string" && row.invoice_id ? row.invoice_id : null
+    if (!invoice) invoice = await invoiceOfCharge(ctx, await stripeFetch<Obj>(ctx, `/v1/charges/${encodeURIComponent(chargeId)}`, {}, { maxRetries: 1 }))
+    let refunds: Obj[] = []
+    try {
+      refunds = await listRefunds(ctx, chargeId)
+    } catch {
+      refunds = []
+    }
+    if (!refunds.some((r) => r.id === refund.id)) refunds = [refund as unknown as Obj, ...refunds]
+    const items = refunds.filter((r) => typeof r.id === "string").map(refundItem)
+    const main = refundItem(refund as unknown as Obj)
+    await ctx.emit({
+      entity: "refund",
+      action: "created",
+      entityId: refund.id,
+      data: {
+        refund_id: refund.id,
+        charge_id: chargeId,
+        invoice_id: invoice,
+        document_ref: stripeDocumentRef({ id: chargeId, invoice }),
+        amount_minor: main.amount_minor,
+        currency: main.currency,
+        status: main.status,
+        refunds: items,
+      },
+    })
+  } catch (err) {
+    ctx.logger?.warn("stripe refund not announced", { chargeId, refundId: refund.id, error: err instanceof Error ? err.message : String(err) })
+  }
+}
+
 async function addTicketNote(ctx: MoneyCtx, ticketId: unknown, refund: Refund, charge: Charge): Promise<string | null> {
   if (typeof ticketId !== "string" || !ticketId.trim() || !ctx.executeTool) return null
   const card = charge.card?.last4 ? ` to the ${charge.card.brand ?? "card"} ending ${charge.card.last4}` : ""
@@ -319,6 +363,7 @@ export async function refundsCreate(params: Obj | undefined, ctx: MoneyCtx) {
     const charge = await readCharge(ctx, chargeId)
     if (isRefusal(charge)) return noEffect(ctx, charge)
     await ctx.approval_recordSucceeded?.(approval.toolName, JSON.stringify({ refundId: existing.id }))
+    await announceRefund(ctx, chargeId, existing)
     return result(existing, charge, await addTicketNote(ctx, p.ticketId, existing, charge), true)
   }
 
@@ -368,6 +413,7 @@ export async function refundsCreate(params: Obj | undefined, ctx: MoneyCtx) {
     return refusal
   }
   await ctx.approval_recordSucceeded?.(approval.toolName, JSON.stringify({ refundId: refund.id }))
+  await announceRefund(ctx, charge.id, refund)
   ctx.logger?.info("stripe refund created", {
     refundId: refund.id,
     chargeId: charge.id,

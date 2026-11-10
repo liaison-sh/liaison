@@ -127,7 +127,7 @@ describe("Stripe invoices handled by invoicing", () => {
     expect((invoices(db)[0] as Record<string, unknown>).collection_state).toBe("reported")
 
     await onStripeRefundCreated({ charge_id: "ch_1", invoice_id: "in_1", refunds: [{ id: "re_1", amount_minor: "6000", status: "succeeded" }] }, ctx)
-    const back = reported.at(-1) as { amounts_by_vat_rate: Array<{ net_minor: string; vat_minor: string }> }
+    const back = reported.at(-1) as { amounts_by_vat_rate: Array<{ rate_bp: number; net_minor: string; vat_minor: string }> }
     expect(reported).toHaveLength(2)
     expect(back.amounts_by_vat_rate).toEqual([{ rate_bp: 2000, net_minor: "-5000", vat_minor: "-1000" }])
   })

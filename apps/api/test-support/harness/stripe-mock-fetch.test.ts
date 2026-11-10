@@ -11,7 +11,7 @@ import {
   stripeMockSeed,
 } from "./stripe-mock-fetch"
 
-const passThrough = (async () => new Response("real", { status: 299 })) as unknown as typeof fetch
+const passThrough = async () => new Response("real", { status: 299 })
 const mock = makeStripeMockFetch(passThrough)
 const V = { "Stripe-Version": STRIPE_MOCK_API_VERSION }
 const RESOURCES: StripeMockResource[] = [

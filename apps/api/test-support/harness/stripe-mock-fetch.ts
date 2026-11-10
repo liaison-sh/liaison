@@ -104,8 +104,10 @@ function stripeError(status: number, type: string, message: string, code?: strin
 
 type FetchInput = Parameters<typeof fetch>[0]
 type FetchInit = Parameters<typeof fetch>[1]
+/** What the mock forwards a non-Stripe request to: only the call shape of `fetch`. */
+type ForwardFetch = (input: FetchInput, init?: FetchInit) => Promise<Response>
 
-export function makeStripeMockFetch(realFetch: typeof fetch = fetch): typeof fetch {
+export function makeStripeMockFetch(realFetch: ForwardFetch = fetch): typeof fetch {
   return (async (input: FetchInput, init?: FetchInit): Promise<Response> => {
     const url =
       typeof input === "string"

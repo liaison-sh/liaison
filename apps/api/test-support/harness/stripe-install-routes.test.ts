@@ -25,7 +25,7 @@ const app = new Hono().route("/api/_test/stripe", stripeTestInstallRoutes)
 let installRoot: string
 let orgId: string
 
-function post(path: string, body: unknown = {}): Promise<Response> {
+async function post(path: string, body: unknown = {}): Promise<Response> {
   return app.request(`/api/_test/stripe${path}`, {
     method: "POST",
     headers: { "content-type": "application/json" },

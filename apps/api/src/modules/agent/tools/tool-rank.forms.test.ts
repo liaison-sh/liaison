@@ -177,3 +177,22 @@ describe("tool search: the organization's own records and agent nouns", () => {
     expect(score("deal", "deals__deals_update")).toBeGreaterThan(0)
   })
 })
+
+describe("tool search: punctuation around a word", () => {
+  it("a word followed by a question mark, or in brackets, scores as the word", () => {
+    const refund = "shop__refunds_create"
+    expect(scoreOf("refunds?", refund)).toBe(scoreOf("refunds", refund))
+    expect(scoreOf("(invoice)", "billing__invoice_send")).toBe(
+      scoreOf("invoice", "billing__invoice_send"),
+    )
+    expect(scoreOf("« drafts »", "billing__drafts_create")).toBe(
+      scoreOf("drafts", "billing__drafts_create"),
+    )
+  })
+
+  it("words joined by a plus sign or an ampersand are two words", () => {
+    expect(scoreOf("drafts+invoice", "billing__drafts_create")).toBeGreaterThan(0)
+    expect(scoreOf("drafts+invoice", "billing__invoice_send")).toBeGreaterThan(0)
+    expect(scoreOf("drafts&invoice", "billing__invoice_send")).toBeGreaterThan(0)
+  })
+})

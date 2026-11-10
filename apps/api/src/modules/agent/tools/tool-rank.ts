@@ -317,9 +317,10 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
     vocabularyOf?: readonly ScorableDeferredTool[]
   },
 ): Array<{ tool: T; score: number; termsMatched: number; termCount: number }> {
+  // The separators rankByKeywords splits on, plus `_` and `-`.
   let terms = query
     .toLowerCase()
-    .split(/[\s,:./_'’-]+/)
+    .split(/[\s,:;./_'’+&?!()"«»-]+/)
     .filter(Boolean)
     .map(foldSearchTerm)
   const appTerms = new Set([...(opts?.appNames ?? [])].map((n) => n.toLowerCase()))
@@ -698,9 +699,12 @@ function rankByKeywords<T extends ScorableDeferredTool & { sdkName: string; lock
   // Tokenized on the separators models actually type (`tickets:reply`,
   // `tickets.reply`, `mail/compose`): whitespace-only splitting scored those
   // queries 0 against everything and dumped the agent into the catalog fallback.
+  // Punctuation people type around a word ("refunds?", "(invoice)", "« devis »")
+  // and a plus or ampersand between two ("create+send") split as well, so the
+  // word is read as itself rather than as a misspelling of itself.
   const terms = query
     .toLowerCase()
-    .split(/[\s,:./'’]+/)
+    .split(/[\s,:;./'’+&?!()"«»]+/)
     .filter(Boolean)
     .map(foldSearchTerm)
 

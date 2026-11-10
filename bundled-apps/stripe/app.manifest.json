@@ -1,6 +1,6 @@
 {
   "name": "stripe",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "kind": "connector",
   "iconName": "credit-card",
   "description": "Stripe connector: a read mirror of customers, subscriptions, invoices, payments, refunds and disputes, kept current by a signed webhook.",
@@ -197,15 +197,99 @@
         "properties": {},
         "additionalProperties": false
       }
+    },
+    "home_load": {
+      "readOnly": true,
+      "agentVisible": false,
+      "description": "The Stripe page's load: the connection and its state, the import's progress per resource, rows per table and the counts that need a person. No figure while the import runs.",
+      "requiredScopes": [
+        "stripe:customers:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "homeLoad",
+      "params": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
     }
   },
   "jobs": {
+    "backfill": {
+      "handler": "backfillJob",
+      "schedule": "* * * * *",
+      "timeoutMs": 90000,
+      "runsFor": {
+        "rows": [
+          {
+            "entity": "sync_state",
+            "where": {
+              "status": {
+                "in": [
+                  "pending",
+                  "running"
+                ]
+              }
+            }
+          },
+          {
+            "entity": "install_metadata",
+            "where": {
+              "webhook_confirmed_at": null
+            }
+          },
+          {
+            "entity": "webhook_deliveries",
+            "where": {
+              "status": "held"
+            }
+          }
+        ]
+      }
+    },
+    "reconcile": {
+      "handler": "reconcileJob",
+      "schedule": "0 3 * * *",
+      "timeoutMs": 90000,
+      "runsFor": {
+        "connection": "stripe"
+      }
+    },
     "probe-webhook-upstream": {
       "handler": "probeWebhookUpstreamJob",
       "runsFor": {
         "connection": "stripe"
       },
-      "schedule": "*/15 * * * *"
+      "schedule": "*/15 * * * *",
+      "timeoutMs": 90000
+    },
+    "catchup-retry": {
+      "handler": "catchupRetryJob",
+      "schedule": "* * * * *",
+      "timeoutMs": 90000,
+      "runsFor": {
+        "rows": {
+          "entity": "sync_state",
+          "where": {
+            "catchup_due": true
+          }
+        }
+      }
+    },
+    "prune-webhook-deliveries": {
+      "handler": "pruneWebhookDeliveriesJob",
+      "schedule": "30 3 * * *",
+      "timeoutMs": 90000,
+      "runsFor": {
+        "rows": {
+          "entity": "webhook_deliveries"
+        }
+      }
+    },
+    "purge-mirror": {
+      "handler": "purgeMirrorJob",
+      "onDemand": true,
+      "timeoutMs": 90000
     }
   },
   "events": {
@@ -226,7 +310,10 @@
       "payment:unmatched",
       "connection:state_changed",
       "card_number:masked"
-    ]
+    ],
+    "subscribes": {
+      "kernel/connected_account:disconnect": "onConnectionDisconnected"
+    }
   },
   "attention": {
     "translations": [

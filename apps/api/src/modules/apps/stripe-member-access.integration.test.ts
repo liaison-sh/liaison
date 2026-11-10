@@ -198,8 +198,19 @@ describe("payments mirror access for a full member", () => {
         expect(
           await attempt(
             tx,
-            `INSERT INTO app_stripe.stripe_refunds (org_id, stripe_id, payment_id, amount_minor, currency, status, created_at_stripe)
-             VALUES ('${orgId}', 're_x', 'ch_x', 100, 'eur', 'pending', now()) RETURNING id`,
+            insertSql(
+              "app_stripe.stripe_refunds",
+              {
+                org_id: orgId,
+                stripe_id: "re_x",
+                payment_id: "ch_x",
+                amount_minor: 100,
+                currency: "eur",
+                status: "pending",
+                created_at_stripe: { raw: "now()" },
+              },
+              { returning: "id" },
+            ),
           ),
         ).toBe("42501")
       })

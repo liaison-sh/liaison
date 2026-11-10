@@ -10,6 +10,7 @@ import { registerKernelAgentTools } from "~/modules/agent/tools/kernel-tools"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import {
   loadMcpAgentDirectory,
+  MAX_HEADLINE_LIST_CHARS,
   renderMcpAgentDirectory,
   renderMcpAgentHeadline,
 } from "~/modules/mcp/agent-directory"
@@ -71,6 +72,36 @@ describe("MCP agent directory", () => {
     expect(kept).toContain("kernel__subagent_list never lists them")
     // A directory, not the agent persona roster a plain token must never carry.
     expect(instructionsFor(ROWS)).not.toContain(AGENT_ROSTER_OPEN_TAG)
+  })
+
+  it("carries each agent's short purpose in the headline, so a client sees what it is for", () => {
+    const headline = renderMcpAgentHeadline(ROWS)
+    expect(headline).toContain("@growth (Growth): Runs advertising and social.")
+    expect(headline).toContain("@support (Support): Answers Tessera customers.")
+    expect(headline).not.toContain("More detail.")
+    // No purpose set: the name alone, never a dangling colon.
+    expect(renderMcpAgentHeadline([row("@ops", "Ops", "")])).toContain("@ops (Ops). To talk")
+  })
+
+  it("shortens purposes, then drops them, then cuts agents to fit the headline budget", () => {
+    const long = (n: number) =>
+      Array.from({ length: n }, (_, i) =>
+        row(
+          `@agent-${String(i).padStart(2, "0")}`,
+          `Agent ${i}`,
+          `Handles area ${i} ${"x".repeat(80)}`,
+        ),
+      )
+    const listPart = (h: string) => h.slice(h.indexOf(": ") + 2, h.indexOf(". To talk"))
+    for (const n of [1, 4, 8, 12, 20]) {
+      expect(listPart(renderMcpAgentHeadline(long(n))).length).toBeLessThanOrEqual(
+        MAX_HEADLINE_LIST_CHARS + "; and 99 more".length,
+      )
+    }
+    expect(renderMcpAgentHeadline(long(1))).toContain("@agent-00 (Agent 0): Handles area 0")
+    const many = renderMcpAgentHeadline(long(20))
+    expect(many).toContain("@agent-00 (Agent 0)")
+    expect(many).toMatch(/; and \d+ more\. To talk/)
   })
 
   it("is absent when the connection was handed no directory", () => {

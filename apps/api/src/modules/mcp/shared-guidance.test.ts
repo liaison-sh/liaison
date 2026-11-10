@@ -44,7 +44,7 @@ const LARGE_DIRECTORY: RosterRow[] = Array.from({ length: MAX_HEADLINE_ENTRIES +
   handle: `@department-agent-${String(i).padStart(2, "0")}`,
   kind: "role",
   displayName: `Department Operations Agent ${i}`,
-  systemPrompt: "Handles one department.",
+  systemPrompt: `Handles one department, its requests, reports and recurring work ${i}.`,
   purpose: null,
 }))
 
@@ -99,6 +99,28 @@ describe("shared guidance: one source, two surfaces", () => {
     expect(core).toContain("## Teammates")
     for (const directory of [[], LARGE_DIRECTORY]) {
       expect(instructionsFor(directory).slice(0, KEPT_CHARS)).toContain(core)
+    }
+  })
+
+  it("tells a client, inside the characters it keeps, to name missing access and reuse before creating", () => {
+    const core = renderGuidance(systemGuidanceTemplate(), "mcp-core")
+    expect(core).toContain("## Missing access, and reuse before creating")
+    for (const name of [
+      "kernel__list_locked_capabilities",
+      "kernel__request_scope",
+      "Never build a substitute that imitates it",
+      "kernel__threads_search",
+      "kernel__list_skills",
+      "kernel__list_routines",
+      "kernel__agents_ask",
+      "Agents answer in a thread only when one takes part or is mentioned",
+    ]) {
+      expect(core).toContain(name)
+    }
+    for (const directory of [[], LARGE_DIRECTORY]) {
+      const kept = instructionsFor(directory).slice(0, KEPT_CHARS)
+      expect(kept).toContain("`kernel__request_scope` once they confirm")
+      expect(kept).toContain("say so when you create a thread for people to ask questions in.")
     }
   })
 

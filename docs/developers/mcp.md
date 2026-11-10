@@ -61,8 +61,8 @@ Any other MCP client that supports Streamable HTTP and OAuth works the same way:
 - **Use Liaison's tools.** The tool list is the Liaison catalog for your scopes, with names such as `mail__reply`, `tickets__search` or `kernel__skill_read`. A tool whose scope you lack is absent from the list, and records outside your grants come back empty. Another organization's custom app (managed instances) never appears, and a call to it is refused as an unknown tool.
 - **Find tools.** Two extra tools help with the large catalog: `liaison_tool_search` finds a tool by task keywords, and `liaison_call_tool` runs a tool by name, including one granted after the session started. Called without arguments, it returns the tool's schema.
 - **Follow your org's skills.** The connection's instructions list the skills you can see, so the client reads them before it drafts customer-facing text.
-- **Reach your org's agents** by name, when the connection is allowed to ask them.
-- **Work by the same rules as Liaison's own agents.** The connection's instructions carry the shared core of the in-app agent's guidance, such as messaging a teammate in a Liaison conversation rather than by email, and the first call to an app's tool brings back that app's working guide.
+- **Reach your org's agents** by name, when the connection is allowed to ask them. The connection's instructions list each agent with what it is for, so a request in an agent's area goes to that agent.
+- **Work by the same rules as Liaison's own agents.** The connection's instructions carry the shared core of the in-app agent's guidance, such as messaging a teammate in a Liaison conversation rather than by email, saying plainly when your permissions do not allow a request (and offering to ask an admin for the access), and reusing an existing conversation, skill or routine before creating a new one. The first call to an app's tool brings back that app's working guide.
 
 Everything goes through the same approvals as in Liaison. A gated tool, such as a reply or a send, creates a pending approval and does nothing until a person approves it. See [Approve what agents do](../agents/approvals.md).
 

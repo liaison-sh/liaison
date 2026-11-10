@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.20.69",
+  "version": "0.20.70",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -2723,10 +2723,19 @@
       "conditionalGate": true,
       "approvalImpact": "internal",
       "trustBoundary": "user",
+      "externalEffect": true,
       "writesToTable": "app_invoicing.documents",
       "params": {
         "type": "object",
         "properties": {
+          "run_id": {
+            "type": "string",
+            "description": "Add as a row of this month-end run."
+          },
+          "allow_duplicate": {
+            "type": "boolean",
+            "description": "Add even if the run bills the same."
+          },
           "buyer_is_consumer": {
             "type": "boolean",
             "description": "The approval card shows it."
@@ -2994,6 +3003,7 @@
       "conditionalGate": true,
       "approvalImpact": "internal",
       "trustBoundary": "user",
+      "externalEffect": true,
       "writesToTable": "app_invoicing.documents",
       "params": {
         "type": "object",
@@ -3236,11 +3246,23 @@
                 }
               }
             }
+          },
+          "applies": {
+            "type": "string",
+            "enum": ["this_month", "from_now_on"],
+            "description": "Month-end row: how far."
+          },
+          "put_back": {
+            "type": "boolean",
+            "description": "Put a taken-out row back."
+          },
+          "if_unchanged_since": {
+            "type": "string",
+            "description": "The draft's updated_at as read."
           }
         },
         "required": [
-          "draft_id",
-          "patch"
+          "draft_id"
         ]
       }
     },
@@ -3249,12 +3271,24 @@
       "searchKeywords": ["brouillon", "supprimer", "abandonner", "jeter", "enlever", "retirer", "remove", "delete", "annuler"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "draftsDiscardHandler",
+      "conditionalGate": true,
+      "externalEffect": true,
+      "approvalImpact": "internal",
       "writesToTable": "app_invoicing.documents",
       "params": {
         "type": "object",
         "properties": {
           "draft_id": {
             "type": "string"
+          },
+          "applies": {
+            "type": "string",
+            "enum": ["this_month", "end_schedule"],
+            "description": "Month-end row: how far."
+          },
+          "ends_on": {
+            "type": "string",
+            "description": "With end_schedule: last month billed."
           }
         },
         "required": [
@@ -6266,7 +6300,7 @@
   },
   "jobs": {
     "recurring-draft": {"heldEvent": "recurring_run:held", "handler": "recurringDraftJobHandler", "atomic": false, "runsFor": {"rows": {"entity": "recurring_schedules", "where": {"status": {"in": ["active", "paused"]}}}}, "schedule": "0 * * * *", "timeoutMs": 120000},
-    "recurring-issue": {"heldEvent": "recurring_run:held", "handler": "recurringIssueJobHandler", "atomic": false, "runsFor": {"rows": {"entity": "recurring_runs", "where": {"status": {"in": ["approved", "issuing", "rejected"]}}}}, "schedule": "*/5 * * * *", "timeoutMs": 600000},
+    "recurring-issue": {"heldEvent": "recurring_run:held", "handler": "recurringIssueJobHandler", "atomic": false, "runsFor": {"rows": {"entity": "recurring_runs", "where": {"status": {"in": ["drafted", "approved", "issuing", "partial", "rejected"]}}}}, "schedule": "*/5 * * * *", "timeoutMs": 600000},
     "recurring-legal-date": {"heldEvent": "recurring_run:held", "handler": "recurringLegalDateJobHandler", "atomic": false, "runsFor": {"rows": {"entity": "recurring_runs", "where": {"status": {"in": ["drafted", "rejected", "approved", "issuing", "late"]}}}}, "schedule": "0 6 * * *", "timeoutMs": 120000},
     "einvoicing-transmit": {
       "handler": "einvoicingTransmitJobHandler",
@@ -6388,6 +6422,14 @@
     {
       "target": "kernel:contacts_read",
       "reason": "resolve the counterparty contact's email to address documents.send_to_customer, and to find the documents made out to it in documents_search by contact_id (the invoicing app cannot read kernel.contacts directly)"
+    },
+    {
+      "target": "kernel:contacts_address_upsert",
+      "reason": "a person's billing address on a month-end row is saved on the schedule's contact too"
+    },
+    {
+      "target": "stripe:billing_status_for_counterparty",
+      "reason": "ending a schedule says when the customer's live Stripe subscription keeps billing"
     },
     {
       "target": "kernel:contacts_addresses_list",

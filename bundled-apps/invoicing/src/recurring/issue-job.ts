@@ -13,7 +13,7 @@
 // its change log, and the item points at the issued document.
 import { issueRunDraft } from "../mutations/invoice-issue"
 import type { ErrorEnvelope } from "../mutations/shared"
-import { dayOf, draftLines, endHold, itemContentHash, jsonOf, type Row, type RunCtx, runItems, stageRunCard, workingDayFrom } from "./run-card"
+import { currentItemHash, dayOf, endHold, jsonOf, type Row, type RunCtx, runItems, stageRunCard, workingDayFrom } from "./run-card"
 
 /** Items a tick starts at most. */
 export const ITEMS_PER_TICK = 25
@@ -67,8 +67,9 @@ export async function recurringItemIssue(
   const draftId = String(item.document_id)
   const draft = (await ctx.db.findOne("documents", draftId)) as Row | null
   if (!draft || draft.status !== "draft") throw new Error(`draft_missing: draft ${draftId} of item ${input.item_id} is gone; nothing was issued`)
-  // The backstop: a draft changed since its approval stays a draft and asks again.
-  const hash = itemContentHash({ ...item, state: "approved" }, draft, await draftLines(ctx, draftId))
+  // The backstop: a draft, or its issuer's legal or bank details, changed since its approval: it
+  // stays a draft and asks again.
+  const hash = await currentItemHash(ctx, { ...item, state: "approved" }, draft)
   if (hash !== item.approved_hash) {
     await ctx.db.update("recurring_run_items", input.item_id, { state: "waiting_reapproval", approved_hash: null })
     return fail(
@@ -128,6 +129,7 @@ async function issueRun(ctx: RunCtx, run: Row, started: number): Promise<{ issue
   let issued = 0
   let failed = 0
   let started_items = 0
+  let reask = false
   const pending = (await runItems(ctx, runId)).filter((i) => i.state === "approved")
   for (const item of pending) {
     if (started_items >= ITEMS_PER_TICK) break
@@ -142,6 +144,11 @@ async function issueRun(ctx: RunCtx, run: Row, started: number): Promise<{ issue
     }
     const error = env.status === "error" ? env.error : (result?.error ?? { code: "not_issued", message: "the item was not issued" })
     if (error.code === "already_issued") continue
+    // Changed since its approval: not a failure, the row waits for the new card staged below.
+    if (error.code === "changed_since_approval") {
+      reask = true
+      continue
+    }
     failed += 1
     const now = (await ctx.db.findOne("recurring_run_items", String(item.id))) as Row | null
     if (now?.state === "approved") {
@@ -156,6 +163,8 @@ async function issueRun(ctx: RunCtx, run: Row, started: number): Promise<{ issue
       })
     }
   }
+  // One new card asks for every row that changed since the approval; the others issue on time.
+  if (reask) await stageRunCard(ctx, runId)
   const items = await runItems(ctx, runId)
   const left = items.filter((i) => i.state === "approved").length
   const stuck = items.filter((i) => i.state === "failed" || i.state === "waiting_reapproval").length
@@ -183,8 +192,31 @@ async function restageRejected(ctx: RunCtx, run: Row, w: RunWindow): Promise<boo
   return true
 }
 
+/**
+ * Stage the cards runs owe: a run waiting for its first card, or a decided run with rows waiting
+ * for a new approval whose card a person's own edit could not stage. Idempotent: a card still
+ * waiting is rewritten, never doubled.
+ */
+async function stageOwedCards(ctx: RunCtx): Promise<number> {
+  const runs = (await ctx.db.findMany("recurring_runs", {
+    where: { status: { in: ["drafted", "approved", "issuing", "partial"] } },
+    orderBy: { issue_on: "asc" },
+    limit: 50,
+  })) as Row[]
+  let staged = 0
+  for (const run of runs) {
+    const items = await runItems(ctx, String(run.id))
+    // A card still waiting is rewritten only when its rows changed, so asking again is free.
+    const owed = run.status === "drafted" ? items.some((i) => i.state === "ready") : items.some((i) => i.state === "waiting_reapproval")
+    if (!owed) continue
+    if ((await stageRunCard(ctx, String(run.id))).staged) staged += 1
+  }
+  return staged
+}
+
 export async function recurringIssueJob(ctx: RunCtx): Promise<{ status: "ok"; issued: number; failed: number; message: string }> {
   const started = Date.now()
+  await stageOwedCards(ctx)
   const runs = (await ctx.db.findMany("recurring_runs", {
     where: { status: { in: ["approved", "issuing", "rejected"] } },
     orderBy: { issue_on: "asc" },

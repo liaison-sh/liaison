@@ -66,6 +66,7 @@ describe("the month-end run card", () => {
     const { h, runId } = await drafted()
     const payload = (h.approvals[0] as { current_payload: { run_id: string; items: never[] } }).current_payload
     await recurringRunIssue(h.ctx, payload)
+    h.decided.add("approval-1")
     const undone = await recurringRunUnapprove(h.ctx, { run_id: runId })
     expect(undone).toMatchObject({ status: "completed", approval_id: "approval-2" })
     expect(h.db.__all("recurring_runs")[0]).toMatchObject({ status: "drafted", approved_by: null })

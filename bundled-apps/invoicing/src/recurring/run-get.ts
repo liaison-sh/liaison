@@ -4,6 +4,7 @@
 // draft id, amounts, account manager, latest change and flags, so a change is made on the right
 // draft with the draft tools.
 import type { ErrorEnvelope } from "../mutations/shared"
+import { updatedAtOf } from "./restage"
 import { dayOf, draftLines, draftTotals, jsonOf, type Row, type RunCtx, runItems } from "./run-card"
 
 export interface RunRow {
@@ -22,6 +23,20 @@ export interface RunRow {
   latest_change: Record<string, unknown> | null
   flags: string[]
   failure: unknown
+}
+
+/**
+ * A schedule edited after its row was drafted never moves the row: the row says so, and its own
+ * edit changes this month if someone wants that too. A "from now on" written from this row is not
+ * such a change.
+ */
+function scheduleMoved(item: Row, schedule: Row | null): string[] {
+  if (!schedule || item.schedule_version === null || item.schedule_version === undefined) return []
+  if (item.state === "issued" || item.state === "left_out") return []
+  const patch = jsonOf<Row | null>(item.schedule_patch, null)
+  const own = patch?.written === true ? Number(patch.written_version) : null
+  const now = Number(schedule.version ?? 1)
+  return now > Number(item.schedule_version) && now !== own ? ["The schedule changed after this draft"] : []
 }
 
 export async function recurringRunGet(
@@ -52,9 +67,9 @@ export async function recurringRunGet(
       total_minor: t.total.toString(),
       currency: String(doc?.currency ?? "EUR"),
       number: (item.issued_number as string | null) ?? (doc?.number as string | null) ?? null,
-      updated_at: doc?.updatedAt ? String(doc.updatedAt) : doc?.updated_at ? String(doc.updated_at) : null,
+      updated_at: doc ? updatedAtOf(doc) : null,
       latest_change: log.length > 0 ? (log[log.length - 1] ?? null) : null,
-      flags: typeof item.note === "string" && item.note ? item.note.split(" · ") : [],
+      flags: [...(typeof item.note === "string" && item.note ? item.note.split(" · ") : []), ...scheduleMoved(item, schedule)],
       failure: item.failure ?? null,
     })
   }

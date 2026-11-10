@@ -1552,7 +1552,8 @@ describe("invoicing manifest", () => {
     // notice, and the run card's approval route.
     // 0.20.69: run drafts written whole by an internal tool, run rows issued only by their job
     //   inside the issue window, and a convert that calls Shopify with no transaction open.
-    expect(m.version).toBe("0.20.69")
+    // 0.20.70: month-end rows edited through the draft tools (how far, put back, two writers, added rows)
+    expect(m.version).toBe("0.20.70")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

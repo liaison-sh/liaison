@@ -39,6 +39,7 @@ export function previousDoc(id: string, paid: boolean): Record<string, unknown> 
     counterparty_contact_id: CONTACT,
     counterparty_name: "Maison Sauvan",
     counterparty_address: "3 rue des Lilas, 69001 Lyon",
+    counterparty_email: "compta@sauvan.example",
     counterparty_country: "FR",
     issuer_profile_id: ISSUER,
     currency: "EUR",
@@ -51,6 +52,8 @@ export interface Harness {
   ctx: RunCtx
   db: MockDb
   approvals: Array<Record<string, unknown>>
+  /** Approvals a person decided: the kernel no longer restages them. */
+  decided: Set<string>
   restaged: Array<Record<string, unknown>>
   agentCalls: number
   draftWrites: number
@@ -76,7 +79,7 @@ export function harness(today: string, opts: { schedules?: Array<Record<string, 
       ...(opts.items ? { recurring_run_items: opts.items } : {}),
     },
   })
-  const h: Harness = { ctx: null as never, db, approvals: [], restaged: [], agentCalls: 0, draftWrites: 0 }
+  const h: Harness = { ctx: null as never, db, approvals: [], restaged: [], decided: new Set(), agentCalls: 0, draftWrites: 0 }
   let n = 0
   h.ctx = {
     db: db as never,
@@ -95,6 +98,8 @@ export function harness(today: string, opts: { schedules?: Array<Record<string, 
     },
     approvals: {
       restagePayload: async (id: string, fields: Record<string, unknown>) => {
+        // A decided approval is no longer rewritten: a change after it needs a new card.
+        if (h.decided.has(id)) return { ok: false, code: "not_pending", message: "decided" }
         h.restaged.push({ id, ...fields })
         return { ok: true, approval_id: id, payload_hash: "h", changed: true }
       },
@@ -149,8 +154,13 @@ describe("the month-end draft job", () => {
   })
 
   test("running the job twice makes one run, one item per schedule, one draft each and one approval", async () => {
+    const prev = previousDoc("44444444-4444-4444-8444-444444444441", true)
     const h = harness("2026-11-27", {
-      schedules: [schedule("33333333-3333-4333-8333-333333333331"), schedule("33333333-3333-4333-8333-333333333332")],
+      schedules: [
+        schedule("33333333-3333-4333-8333-333333333331", { last_document_id: prev.id }),
+        schedule("33333333-3333-4333-8333-333333333332", { last_document_id: prev.id }),
+      ],
+      docs: [prev],
     })
     await recurringDraftJob(h.ctx)
     await recurringDraftJob(h.ctx)
@@ -197,7 +207,7 @@ describe("the month-end draft job", () => {
   test("a reused draft whose lines differ from its schedule needs a fix and is never ready", async () => {
     const id = "33333333-3333-4333-8333-333333333331"
     const ref = `recurring:${id}:2026-11`
-    const partial = { ...previousDoc("55555555-5555-4555-8555-555555555551", false), status: "draft", number: null, external_ref: ref, external_refs: {} }
+    const partial: Record<string, unknown> = { ...previousDoc("55555555-5555-4555-8555-555555555551", false), status: "draft", number: null, external_ref: ref, external_refs: {} }
     const twoLines = [
       { description: "Retainer {period}", qty: 1, unit_price_minor: 150000, vat_bp: 2000, line_kind: "service" },
       { description: "Hosting {period}", qty: 2, unit_price_minor: 5000, vat_bp: 2000, line_kind: "service" },
@@ -219,7 +229,7 @@ describe("the month-end draft job", () => {
   test("a reused draft whose lines match its schedule is ready", async () => {
     const id = "33333333-3333-4333-8333-333333333331"
     const ref = `recurring:${id}:2026-11`
-    const whole = { ...previousDoc("55555555-5555-4555-8555-555555555552", false), status: "draft", number: null, external_ref: ref, external_refs: {} }
+    const whole: Record<string, unknown> = { ...previousDoc("55555555-5555-4555-8555-555555555552", false), status: "draft", number: null, external_ref: ref, external_refs: {} }
     const h = harness("2026-11-27", {
       docs: [whole],
       lines: [{ id: "l-1", document_id: whole.id, position: 1, description: "Retainer November 2026", quantity: "1.000", unit_price_minor: "150000", tax_rate_bp: 2000, line_kind: "service", subtotal_minor: "150000" }],

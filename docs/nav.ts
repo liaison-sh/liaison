@@ -73,6 +73,7 @@ export const NAV: NavSection[] = [
       { id: "apps/projects", url: "apps/projects" },
       { id: "apps/files", url: "apps/files" },
       { id: "apps/invoicing", url: "apps/invoicing" },
+      { id: "apps/recurring", url: "apps/recurring" },
       { id: "apps/boxtal", url: "apps/boxtal" },
       { id: "apps/store", url: "apps/store" },
       { id: "apps/pennylane", url: "apps/pennylane" },
@@ -81,6 +82,20 @@ export const NAV: NavSection[] = [
       { id: "apps/ads", url: "apps/ads" },
       { id: "apps/calls", url: "apps/calls" },
       { id: "apps/monitoring", url: "apps/monitoring" },
+    ],
+  },
+  {
+    title: "Money how-to",
+    pages: [
+      { id: "money/connect-stripe-restricted-key", url: "money/connect-stripe-restricted-key" },
+      { id: "money/who-issues-what", url: "money/who-issues-what" },
+      { id: "money/turn-off-stripe-emails", url: "money/turn-off-stripe-emails" },
+      { id: "money/failed-payments-routine", url: "money/failed-payments-routine" },
+      { id: "money/payment-reminders", url: "money/payment-reminders" },
+      { id: "money/refunds-and-credit-notes", url: "money/refunds-and-credit-notes" },
+      { id: "money/disputes-in-stripe", url: "money/disputes-in-stripe" },
+      { id: "money/mrr-rules", url: "money/mrr-rules" },
+      { id: "money/no-card-data", url: "money/no-card-data" },
     ],
   },
   {

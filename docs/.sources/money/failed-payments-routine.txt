@@ -1,0 +1,7 @@
+routine failed-payments, daily 07:00, off by default -> bundled-apps/stripe/app.manifest.json:1566
+cron 0 7 * * * UTC -> bundled-apps/stripe/app.manifest.json:1569
+prompt: no longer retries, no reminder waiting, followUp, card_update_link, open tickets -> bundled-apps/stripe/app.manifest.json:1571
+scopes read-only plus mail write and tickets read -> bundled-apps/stripe/app.manifest.json:1576
+enabledByDefault false -> bundled-apps/stripe/app.manifest.json:1579
+Nothing to do yet line -> bundled-apps/stripe/src/ui/StripeHome.tsx:227
+reminder guard reads Stripe at send time -> bundled-apps/stripe/src/tools/send-state.ts:19

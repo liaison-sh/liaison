@@ -147,6 +147,8 @@ Invoices, credit notes and proformas issued in another tool can be imported with
 
 ## Recurring invoice schedules
 
+The task-first guide is [Recurring invoices](recurring.md). This section is the reference.
+
 A schedule bills one customer on a fixed cadence: every month, quarter or year, on the last day of the period, on a day from 1 to 28, or on a given date for a year. It names the issuer profile, the customer and the lines. A line may hold `{period}`, filled in with the period it bills. Prices are in minor units and the VAT rate is in basis points (2000 is 20%).
 
 - **Dates.** An invoice issues on its billing day, and the draft is made three days before it. A draft day that falls on a Saturday or Sunday moves back to the Friday; no holiday calendar is held, so a public holiday does not move it. The billing day itself never moves, even on a Saturday. A day past the end of the month, such as 30 February, is that month's last day. All dates are the issuer's civil dates, in the time zone set on its profile.

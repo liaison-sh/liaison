@@ -1,0 +1,6 @@
+Home lists disputes with evidence due -> bundled-apps/stripe/src/ui/home-model.ts:70
+evidence due sort -> bundled-apps/stripe/src/ui/home-model.ts:420
+Disputes section on customer page -> bundled-apps/stripe/src/ui/CustomerDetail.tsx:266
+disputes_list read only, answer in Stripe -> bundled-apps/stripe/app.manifest.json:517
+charge_disputed refusal -> bundled-apps/stripe/src/tools/refunds.ts:182
+disputes_list is a taint source -> bundled-apps/stripe/app.manifest.json:227

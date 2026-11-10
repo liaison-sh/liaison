@@ -578,10 +578,13 @@ export interface RunAgentStreamParams {
    * provider each step, while the full `tools` set stays executable (deferred
    * tools unlocked mid-run by tool_search are callable on the next step).
    */
-  prepareStep?: (
-    options: unknown,
-  ) =>
-    | { activeTools?: string[]; toolChoice?: "none"; system?: unknown; messages?: unknown }
+  prepareStep?: (options: unknown) =>
+    | {
+        activeTools?: string[]
+        toolChoice?: "none" | "required"
+        system?: unknown
+        messages?: unknown
+      }
     | undefined
   /**
    * The output limit of each request (`ModelInfo.stepTokenCap`): set for the
@@ -952,6 +955,21 @@ export function isTransientProviderFailure(error: unknown, signal?: AbortSignal)
   if (signal?.aborted) return false
   if (providerStreamFailureReason(error) === "upstream_unavailable") return true
   return isConnectionDrop(innermostProviderError(error))
+}
+
+/**
+ * A step hook whose first step must call a tool (`toolChoice: "required"`),
+ * unless the wrapped hook already turned tools off for it (the step budget).
+ */
+export function firstStepCallsATool(
+  prepareStep: RunAgentStreamParams["prepareStep"],
+): NonNullable<RunAgentStreamParams["prepareStep"]> {
+  return (options: unknown) => {
+    const base = prepareStep?.(options)
+    const stepNumber = (options as { stepNumber?: number } | undefined)?.stepNumber ?? 0
+    if (stepNumber !== 0 || base?.toolChoice === "none") return base
+    return { ...(base ?? {}), toolChoice: "required" }
+  }
 }
 
 export function runAgentStream(params: RunAgentStreamParams): ReturnType<typeof streamText> {
@@ -3809,6 +3827,27 @@ async function runAgentChatTurn(
   // with no tool call in its step and no approval parked did nothing, so the
   // model is told to call the tool or say plainly what it cannot do.
   let falseApprovalRetraction: Retraction | null = null
+  // The announced-action correction's own plan text, cut too when it ended
+  // there again and one more continuation ran (correctAgain below).
+  let secondRetraction: Retraction | null = null
+  // Every correction continuation of this turn is one model call made through
+  // here: its stream is read by the same guard as the turn's own, so each of
+  // its steps reaches the turn's usage, which finalizeReply meters
+  // (`finalizeUsage`) with the rest of the turn. A correction stream built
+  // anywhere else would be a model call outside the turn's meter.
+  const correctionStream = (
+    turnMessages: unknown[],
+    overrides: Pick<RunAgentStreamParams, "prepareStep"> = {},
+  ) =>
+    runAgentStream({
+      ...streamParams,
+      ...overrides,
+      messages: [
+        ...(contextMessages as Array<{ role: string; content: unknown }>),
+        ...(turnMessages as Array<{ role: string; content: unknown }>),
+      ],
+      stopWhen: stopConditions(FALSE_APPROVAL_CORRECTION_MAX_STEPS),
+    })
   let correction:
     | "false_approval"
     | "announced_action"
@@ -3964,27 +4003,64 @@ async function runAgentChatTurn(
             return judgeAnswer(run, lookups)
           },
           continueWith: (responseMessages) =>
-            runAgentStream({
-              ...streamParams,
-              messages: [
-                ...(contextMessages as Array<{ role: string; content: unknown }>),
-                ...(responseMessages as Array<{ role: string; content: unknown }>),
-                {
-                  role: "user",
-                  content:
-                    correction === "announced_action"
-                      ? ANNOUNCED_ACTION_NOTE
-                      : correction === "false_card"
-                        ? FALSE_CARD_NOTE
-                        : correction === "false_connected"
-                          ? FALSE_CONNECTED_NOTE
-                          : FALSE_APPROVAL_NOTE,
-                },
-              ],
-              stopWhen: stopConditions(FALSE_APPROVAL_CORRECTION_MAX_STEPS),
-            }),
+            correctionStream([
+              ...responseMessages,
+              {
+                role: "user",
+                content:
+                  correction === "announced_action"
+                    ? ANNOUNCED_ACTION_NOTE
+                    : correction === "false_card"
+                      ? FALSE_CARD_NOTE
+                      : correction === "false_connected"
+                        ? FALSE_CONNECTED_NOTE
+                        : FALSE_APPROVAL_NOTE,
+              },
+            ]),
           onRetract: (retraction) => {
             falseApprovalRetraction = retraction
+          },
+          // A correction that again ends on its own plan ("Let me call
+          // routine_tool_scopes. Let me do that.") with no tool call in its last
+          // step stopped short a second time: the note is repeated once, and that
+          // continuation's first step must call a tool, so the turn acts instead
+          // of announcing. Its plan text is cut from the stored reply.
+          correctAgain: {
+            shouldCorrect: async (cont) => {
+              if (correction !== "announced_action" || abortController.signal.aborted) return false
+              if (!announcesImminentAction(cont.finalText)) return false
+              const lookups = falseApprovalLookups({
+                orgId,
+                threadId,
+                userId: actor.userId,
+                turnStartedAt,
+              })
+              if ((await lookups.approvalsCreatedSince()).length > 0) return false
+              log.info(
+                {
+                  threadId,
+                  orgId,
+                  agentId: actingAgent?.agentId ?? null,
+                  modelId: creditCheck.model.modelId,
+                  announcedText: cont.finalText.slice(-300),
+                },
+                "Correction ended on an announced action again: one continuation whose first step calls a tool",
+              )
+              return true
+            },
+            continueWith: (firstMessages, correctionMessages) =>
+              correctionStream(
+                [
+                  ...firstMessages,
+                  { role: "user", content: ANNOUNCED_ACTION_NOTE },
+                  ...correctionMessages,
+                  { role: "user", content: ANNOUNCED_ACTION_NOTE },
+                ],
+                { prepareStep: firstStepCallsATool(streamParams.prepareStep) },
+              ),
+          },
+          onRetractAgain: (retraction) => {
+            secondRetraction = retraction
           },
           // An announced-action correction that called no tool did nothing
           // either: one that reports an action as done ("I just re-checked")
@@ -4075,9 +4151,13 @@ async function runAgentChatTurn(
     // chat keeps every line, drawn where it was written.
     // A corrected false approval claim: the correction is the answer, so the
     // stored reply drops the false text (false-approval-guard.ts).
-    const turnOutput = falseApprovalRetraction
-      ? retractTurnOutput(finalParams, falseApprovalRetraction)
+    // The later cut first, so the earlier one's offsets still hold.
+    const withoutSecond = secondRetraction
+      ? retractTurnOutput(finalParams, secondRetraction)
       : finalParams
+    const turnOutput = falseApprovalRetraction
+      ? retractTurnOutput(withoutSecond, falseApprovalRetraction)
+      : withoutSecond
     const answer = replyForAudience({
       shared: context.sharedAudience !== null,
       text: turnOutput.text,

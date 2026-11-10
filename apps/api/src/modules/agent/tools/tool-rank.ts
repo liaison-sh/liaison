@@ -60,12 +60,17 @@ interface ScoringWords {
   typoNames: string[]
   typoKeywords: string[]
   nameParts: string[]
+  /** The name parts and the keywords as sets, for the exact-word lookups of every query word. */
+  namePartSet: Set<string>
+  keywordSet: Set<string>
   /** The name with its separators and case dropped: `internalCallback` is "internalcallback". */
   nameJoined: string
   keywords: string[] | undefined
   appLower: string
   appParts: string[]
   descWords: string[]
+  /** The description's distinct words in code unit order, for the start-of-word lookup. */
+  descSorted: string[]
 }
 
 /**
@@ -95,11 +100,14 @@ function scoringWords(t: ScorableDeferredTool): ScoringWords {
     typoNames: [...new Set([...nameParts, ...nameParts.map(wordStem)])],
     typoKeywords: [...new Set([...single, ...single.map(wordStem)])],
     nameParts,
+    namePartSet: new Set(nameParts),
+    keywordSet: new Set(keywords),
     nameJoined: nameParts.join(""),
     keywords,
     appLower,
     appParts,
     descWords,
+    descSorted: [...new Set(descWords)].sort(),
   }
   scoringWordsCache.set(t, words)
   return words
@@ -135,6 +143,22 @@ function stemMatches(stems: Map<string, string[]>, stem: string, term: string): 
 /** True when a word of `list` starts with the term and is not its agent noun. */
 function startsWord(list: readonly string[], term: string): boolean {
   return list.some((word) => word.startsWith(term) && !agentNounOf(word, term))
+}
+
+/**
+ * True when a word of `sorted` (distinct, in code unit order) starts with the term: the same
+ * answer as a scan, in a binary search. The words that start with the term sort right at or
+ * after it, before any other word past it, so the first word not below the term decides.
+ */
+function sortedStartsWith(sorted: readonly string[], term: string): boolean {
+  let lo = 0
+  let hi = sorted.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (sorted[mid] < term) lo = mid + 1
+    else hi = mid
+  }
+  return lo < sorted.length && sorted[lo].startsWith(term)
 }
 
 // ── Beyond the exact word ────────────────────────────────────────────────
@@ -338,28 +362,40 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
   const termSynonyms = terms.map(
     (term, i) => SYNONYMS_BY_STEM.get(termStems[i]) ?? SYNONYMS_BY_STEM.get(term) ?? [],
   )
+  // The plural of each word, and the word less its final "s", built once rather than per tool.
+  const termPlurals = terms.map((term) => `${term}s`)
+  const termSingulars = terms.map((term) => (term.endsWith("s") ? term.slice(0, -1) : null))
   const rows = tools.map((t) => {
     let score = 0
     let termsMatched = 0
     let termCount = 0
     const words = scoringWords(t)
-    const { nameParts, nameJoined, keywords, appLower, appParts, descWords } = words
+    const { nameParts, namePartSet, keywordSet, nameJoined, appLower, appParts, descSorted } = words
     const isKernel = t.appName === "kernel"
 
     const per: number[] = []
-    for (const [i, term] of terms.entries()) {
+    for (let i = 0; i < terms.length; i++) {
+      const term = terms[i]
+      const plural = termPlurals[i]
+      const singular = termSingulars[i]
       const before = score
       // Exact name part match (high weight); a singular term also names its
       // plural part ("app" names `apps_set_enabled`).
       // The whole name typed as one word ("internalcallback") names it as well.
       if (
-        nameParts.some((p) => p === term || p === `${term}s`) ||
+        namePartSet.has(term) ||
+        namePartSet.has(plural) ||
         nameJoined === term ||
-        nameJoined === `${term}s`
+        nameJoined === plural
       )
         score += 10
       // A keyword the tool declares for this org (singular or plural either way)
-      else if (keywords?.some((k) => k === term || k === `${term}s` || `${k}s` === term)) score += 8
+      else if (
+        keywordSet.has(term) ||
+        keywordSet.has(plural) ||
+        (singular !== null && keywordSet.has(singular))
+      )
+        score += 8
       // The tool's app named exactly: every tool of the app answers alike, so
       // another form of a name part does not set one of them apart.
       else if (appLower === term) score += 6
@@ -367,7 +403,7 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
       else if (stemOk[i] && stemMatches(words.nameStems, termStems[i], term))
         score += STEM_NAME_SCORE
       // A translation or plain synonym of a name part (tool-lexicon.ts).
-      else if (termSynonyms[i].some((x) => nameParts.some((p) => p === x || p === `${x}s`)))
+      else if (termSynonyms[i].some((x) => namePartSet.has(x) || namePartSet.has(`${x}s`)))
         score += SYNONYM_NAME_SCORE
       else if (stemOk[i] && stemMatches(words.keywordStems, termStems[i], term))
         score += STEM_KEYWORD_SCORE
@@ -384,14 +420,13 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
       else if (appLower === term || (substringOk(term) && appParts.some((p) => p.startsWith(term))))
         score += 6
       // A translation or plain synonym of a keyword.
-      else if (termSynonyms[i].some((x) => keywords?.includes(x))) score += SYNONYM_KEYWORD_SCORE
+      else if (termSynonyms[i].some((x) => keywordSet.has(x))) score += SYNONYM_KEYWORD_SCORE
       // A misspelt name part, keyword or app name, for a word the catalog does not hold.
       else if (unknown.has(term) && typoOf(term, words.typoNames)) score += TYPO_NAME_SCORE
       else if (unknown.has(term) && typoOf(term, words.typoKeywords)) score += TYPO_KEYWORD_SCORE
       else if (unknown.has(term) && typoOf(term, appParts)) score += TYPO_APP_SCORE
       // Description match (lower weight), at the start of a word
-      else if (substringOk(term) && descWords.some((w) => w.startsWith(term)))
-        score += DESCRIPTION_SCORE
+      else if (substringOk(term) && sortedStartsWith(descSorted, term)) score += DESCRIPTION_SCORE
       else if (stemOk[i] && words.descStems.has(termStems[i])) score += DESCRIPTION_SCORE
       per[i] = score - before
       if (score > before) termsMatched++
@@ -558,8 +593,19 @@ function loadingTerms(
   appNames: Iterable<string>,
 ): { query: string; outside: string[] } | null {
   const apps = [...appNames].map((a) => a.toLowerCase())
-  const best = (term: string) =>
-    Math.max(0, ...scoreDeferredTools(tools, term, { appNames: apps }).map((s) => s.score))
+  // Each word's best score is one scoring of the whole catalog, so it is worked out once.
+  const bests = new Map<string, number>()
+  const best = (term: string) => {
+    let score = bests.get(term)
+    if (score === undefined) {
+      score = Math.max(
+        0,
+        ...scoreDeferredTools(tools, term, { appNames: apps }).map((s) => s.score),
+      )
+      bests.set(term, score)
+    }
+    return score
+  }
   const kept = terms.filter((term) => !FILLER_WORDS.has(term) && best(term) > 0)
   if (kept.length === 0 || kept.length === terms.length) return null
   const named = kept.every((term) => best(term) >= NAMED_TERM_SCORE || apps.includes(term))

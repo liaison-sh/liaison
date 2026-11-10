@@ -1358,6 +1358,12 @@ export async function mergeContacts(db: RlsClient, params: MergeContactsParams) 
  * caller cannot edit (another person's mailbox, an invoice without invoicing
  * write) is refused rather than done on their behalf.
  */
+/** `{ schema, table }` of a schema-qualified app table name. */
+function appTable(qualified: string): { schema: string; table: string } {
+  const [schema = "", table = ""] = qualified.split(".")
+  return { schema, table }
+}
+
 const MERGE_REFERENCES = [
   { schema: "app_mail", table: "conversations", column: "contact_id", kind: "conversations" },
   {
@@ -1366,6 +1372,14 @@ const MERGE_REFERENCES = [
     column: "counterparty_contact_id",
     kind: "invoicing documents",
   },
+  {
+    schema: "app_invoicing",
+    table: "recurring_schedules",
+    column: "contact_id",
+    kind: "recurring invoice schedules",
+  },
+  // A billing customer mirrored from the payment connector, linked to this contact.
+  { ...appTable("app_stripe.stripe_customers"), column: "contact_id", kind: "billing customers" },
 ] as const
 
 /**

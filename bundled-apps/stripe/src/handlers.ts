@@ -11,8 +11,24 @@ import { runProbe } from "./sync/probe"
 import { runReconcile } from "./sync/reconcile"
 import { type StripeVerifyBridge, type StripeVerifyParams, type StripeVerifyResult, verifyStripeDelivery } from "./verify"
 
+import { type MatchRunCtx, runCustomerMatch } from "./match"
+
 export { homeLoad } from "./sync/home"
+export { activityRead } from "./tools/activity"
 export { connectionCheck, connectionPrecheck, settingsLoad } from "./tools/connection-check"
+export { customerContext } from "./tools/context"
+export { customersGet, customersSearch } from "./tools/customers"
+export { disputesList } from "./tools/disputes"
+export { invoicesSearch } from "./tools/invoices"
+export { customerLink } from "./tools/link"
+export { paymentsSearch } from "./tools/payments"
+export {
+  approvalRouteRead,
+  billingStatusForCounterparty,
+  invoiceDocumentLink,
+  invoiceSendState,
+} from "./tools/routes"
+export { subscriptionsSearch } from "./tools/subscriptions"
 
 /** The kernel's verifier entry: the org's own secret, checked host-side (verify.ts). */
 export async function stripeWebhookVerifier(
@@ -50,4 +66,9 @@ export const purgeMirrorJob = (_params: unknown, ctx: PurgeCtx) => purgeMirror(c
 /** The connection was removed: every mirror row goes, invoicing documents stay. */
 export async function onConnectionDisconnected(event: { data?: { appName?: unknown } | null }, ctx: PurgeCtx) {
   await onDisconnect(event, ctx)
+}
+
+/** A customer was created or changed in Stripe: match it to a contact and company (match.ts). */
+export async function matchCustomerOnUpdate(event: { entityId?: unknown } | null, ctx: MatchRunCtx) {
+  await runCustomerMatch(event?.entityId, ctx)
 }

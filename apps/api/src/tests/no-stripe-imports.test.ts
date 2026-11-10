@@ -320,14 +320,15 @@ const isBillingPath = (file: string) => matchesAny(file, BILLING_PATHS)
 const isConnectorPath = (file: string) => matchesAny(file, CONNECTOR_PATHS)
 
 /**
- * The connector's identifiers: an `<app>:` scope, an `app_<app>.` table, an
+ * The connector's identifiers: an `<app>:` scope, an `app_<app>.<table>` table, an
  * `<app>__` tool name, an `<app>/` event name, the bundled app folder and the
  * app's own name in quotes. Removing them leaves what is NOT an identifier.
  */
 const CONNECTOR_IDENTIFIERS = new RegExp(
   [
     `bundled-apps/${FORBIDDEN}`,
-    `app_${FORBIDDEN}\\.`,
+    // The schema and its table together: app_<app>.<app>_customers is one identifier.
+    `app_${FORBIDDEN}\\.[a-z_]+`,
     `(?<![A-Za-z@/])${FORBIDDEN}__`,
     `(?<![A-Za-z@/])${FORBIDDEN}/`,
     `(?<![A-Za-z])${FORBIDDEN}:`,

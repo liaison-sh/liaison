@@ -265,6 +265,39 @@ async function dealTablesExist(tx: Pick<RlsClient, "execute">): Promise<boolean>
   return !!row?.deals && !!row?.projects
 }
 
+/**
+ * App rows that name a company by `company_id`, re-pointed by a merge in its
+ * transaction. A table the database does not have (its app never installed)
+ * is skipped; an app turned off still has its table, so its rows move too.
+ */
+const APP_COMPANY_LINKS = [
+  "app_invoicing.recurring_schedules",
+  // Billing customers mirrored from the payment connector.
+  "app_stripe.stripe_customers",
+] as const
+
+async function repointAppCompanyLinks(
+  tx: Pick<RlsClient, "execute">,
+  params: { orgId: string; sourceId: string; targetId: string },
+): Promise<number> {
+  let moved = 0
+  for (const link of APP_COMPANY_LINKS) {
+    const [schema = "", table = ""] = link.split(".")
+    const qualified = `${quoteIdent(schemaRef(schema))}.${quoteIdent(table)}`
+    const [reg] = extractRows<{ t: string | null }>(
+      await tx.execute(drizzleSql`SELECT to_regclass(${qualified})::text AS t`),
+    )
+    if (!reg?.t) continue
+    moved += extractRows(
+      await tx.execute(drizzleSql`
+        UPDATE ${drizzleSql.raw(qualified)} SET company_id = ${params.targetId}::uuid, updated_at = now()
+         WHERE org_id = ${params.orgId}::uuid AND company_id = ${params.sourceId}::uuid
+        RETURNING id`),
+    ).length
+  }
+  return moved
+}
+
 /* -------------------------------------------------------------------------- */
 /* Reads                                                                      */
 /* -------------------------------------------------------------------------- */
@@ -1550,6 +1583,7 @@ export async function mergeCompanies(
              WHERE org_id = ${orgId}::uuid AND company_id = ${sourceId}::uuid
             RETURNING id`)
         }
+        await repointAppCompanyLinks(sp, { orgId, sourceId, targetId })
         const discussionMoved = await mergeCompanyDiscussion(sp, {
           orgId,
           sourceId,

@@ -82,6 +82,8 @@ describe("registerApps — manifest format", () => {
       bundlePath: "/apps/manifest-app/handlers.js",
       exportName: "listItems",
       trusted: true,
+      // Not installed from the catalog: the server never trims or parses it on its own (bundle trust).
+      firstParty: false,
     })
     expect(tool!.requiredScopes).toEqual(["manifest-app:items:read"])
 

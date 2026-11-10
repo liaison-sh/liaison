@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
-import { markdownToEmail } from "@liaison/shared"
+import { markdownToEmail, type RecipientFact } from "@liaison/shared"
 import { type Component, createEffect, createSignal, For, on, onCleanup, Show } from "solid-js"
 import { connectionErrorKey } from "~/lib/connection-errors"
 import { ComposerAssist } from "~/modules/assist/ComposerAssist"
@@ -30,6 +30,7 @@ import {
   scheduleDraftSave,
   sendDraft,
 } from "~/modules/mail/mail-draft-store"
+import { RecipientFactsLine } from "~/modules/mail/RecipientFactsLine"
 import { useApi } from "~/modules/shell/ApiContext"
 import { closeTab, makeTabId } from "~/modules/shell/tab-store"
 
@@ -41,6 +42,8 @@ interface ComposeCheck {
   line: string | null
   /** A prospect with no recorded lawful basis: said calmly, and the person may still send. */
   missingBasis?: { contactId: string | null; name: string } | null
+  /** What is recorded about each recipient who is a contact (basis, consumer or business, opted out). */
+  recipients?: RecipientFact[]
 }
 
 type LawfulBasis = "consent" | "customer" | "professional_interest" | "generic_address"
@@ -355,6 +358,10 @@ export const MailCompose: Component<MailComposeProps> = (props) => {
             editorClass="min-h-[240px] text-sm"
           />
         </div>
+        <RecipientFactsLine
+          facts={commercial()?.recipients}
+          testId="mail-compose-recipient-facts"
+        />
         <Show when={commercial()?.footerLines}>
           {(lines) => (
             <div

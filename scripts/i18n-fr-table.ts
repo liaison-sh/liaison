@@ -4920,6 +4920,13 @@ export const FR: Record<string, string> = {
   "Record a basis": "Enregistrer une base",
   Consent: "Consentement",
   "Existing customer": "Client existant",
+  "Basis: {{basis}}": "Base : {{basis}}",
+  "No recorded basis": "Aucune base enregistrée",
+  Business: "Professionnel",
+  Consumer: "Consommateur",
+  "Consumer or business not recorded": "Consommateur ou professionnel non enregistré",
+  "Opted out on {{date}}": "Désinscrit le {{date}}",
+  "Not opted out": "Non désinscrit",
   "Professional interest": "Intérêt professionnel",
   "Generic company address": "Adresse générique d'entreprise",
   "The basis was not recorded. Try again, or record it on their contact.":

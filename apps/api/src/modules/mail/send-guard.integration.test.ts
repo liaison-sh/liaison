@@ -73,7 +73,7 @@ import * as minimal from "~/seed/tiers/minimal"
 import { bootstrapAdminCtx } from "~/tests/helpers/agent-ctx"
 import { setTestCommercialIdentity } from "~/tests/helpers/commercial-identity"
 import { createTestCompany } from "~/tests/helpers/company"
-import { ensureRecordedBasis } from "~/tests/helpers/prospect"
+import { ensureRecordedBasis, recordProspect } from "~/tests/helpers/prospect"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
   appendMailMessages,
@@ -3168,5 +3168,62 @@ describe("mail a person sends from the composer", () => {
     const created = await sql<Array<{ n: number }>>`
       SELECT count(*)::int AS n FROM kernel.contacts WHERE org_id = ${orgId} AND lower(email) = ${unknown}`
     expect(created[0]?.n).toBe(0)
+  }, 60_000)
+})
+
+describe("the recipient facts on an agent mail's card", () => {
+  it("any agent mail to a contact shows its basis, consumer status and opt-out, whatever it is classified, as the composer reads them", async () => {
+    // Mutation caught: a plain agent mail's card showed no facts about its recipient, so a
+    // sales offer classified as a plain mail was approved blind.
+    const business = unique("facts-business")
+    await recordProspect(orgId, business, { lawfulBasis: "customer", isConsumer: false })
+    const staged = blockedId(await agentCall("mail:compose", composeParams(business)))
+    const read = await withRlsContext(admin, (tx) =>
+      getApproval(tx as never, { orgId, userId, requestId: staged, sendGuards: true }),
+    )
+    const facts = [
+      {
+        email: business,
+        name: "Test Contact",
+        basis: "customer",
+        isConsumer: false,
+        optedOutAt: null,
+      },
+    ]
+    expect(read?.sendGuard?.recipients).toEqual(facts as never)
+    // The composer's own check reads the same facts for the same address.
+    const app = new Hono<AppEnv>()
+    app.use("*", async (c, next) => {
+      c.set("userId", userId)
+      c.set("orgId", orgId)
+      c.set("scopes", ["mail:conversations:write"] as never)
+      c.set("dimensionGrants", {})
+      await next()
+    })
+    app.route("/api/mail", mailRoutes)
+    const res = await app.request("/api/mail/compose-check", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ to: [business] }),
+    })
+    const body = (await res.json()) as { data: { recipients: unknown } }
+    expect(body.data.recipients).toEqual(facts)
+
+    // Opted out: the composer says since when; an address no contact holds has no facts.
+    const optedOut = unique("facts-opted-out")
+    await recordProspect(orgId, optedOut, { lawfulBasis: null, isConsumer: null })
+    await suppressionsModule.addSuppression(null, { orgId, email: optedOut, reason: "person" })
+    const stranger = unique("facts-stranger")
+    const res2 = await app.request("/api/mail/compose-check", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ to: [optedOut, stranger] }),
+    })
+    const body2 = (await res2.json()) as {
+      data: { recipients: Array<{ email: string; optedOutAt: string | null; basis: unknown }> }
+    }
+    expect(body2.data.recipients.map((r) => [r.email, r.basis, typeof r.optedOutAt])).toEqual([
+      [optedOut, null, "string"],
+    ])
   }, 60_000)
 })

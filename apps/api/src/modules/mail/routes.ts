@@ -13,7 +13,7 @@ import { requireScope } from "~/middleware/require-scope"
 import { type MailCategory, parseMailCategory } from "~/modules/mail/category"
 import { enqueueGmailWriteBack } from "~/modules/mail/gmail-write-back"
 import * as providerSettings from "~/modules/mail/provider-settings"
-import { checkPersonCompose, recipientsOf } from "~/modules/mail/send-guard"
+import { checkPersonCompose, recipientFacts, recipientsOf } from "~/modules/mail/send-guard"
 import * as mailService from "~/modules/mail/service"
 import { withAway } from "~/modules/users/away-today"
 
@@ -503,7 +503,9 @@ const composeCheckBody = z.object({
  * commercial footer when the data marks a recipient as a prospect (fixed, added
  * at send), or why it cannot go, or the opted-out line of a person's own mail.
  * `missingBasis` names the prospect with no recorded lawful basis: the person
- * is told, and may still send.
+ * is told, and may still send. `recipients` is what is recorded about each
+ * recipient who is a contact (basis, consumer or business, opted out), the
+ * same facts an agent mail's approval card shows.
  */
 mailRoutes.post(
   "/compose-check",
@@ -511,9 +513,14 @@ mailRoutes.post(
   zValidator("json", composeCheckBody),
   async (c) => {
     const body = c.req.valid("json")
-    const own = await checkPersonCompose(c.get("orgId"), recipientsOf(body.to, body.cc, body.bcc))
+    const addresses = recipientsOf(body.to, body.cc, body.bcc)
+    const [own, recipients] = await Promise.all([
+      checkPersonCompose(c.get("orgId"), addresses),
+      recipientFacts(c.get("orgId"), addresses),
+    ])
     if (!own.commercial) {
       return success(c, {
+        recipients,
         commercial: false,
         footerLines: null,
         refusal: null,
@@ -523,6 +530,7 @@ mailRoutes.post(
     }
     if ("refused" in own) {
       return success(c, {
+        recipients,
         commercial: true,
         footerLines: null,
         // Asked before any send: the reason it cannot go, without the send
@@ -533,6 +541,7 @@ mailRoutes.post(
       })
     }
     return success(c, {
+      recipients,
       commercial: true,
       footerLines: own.footerLines,
       refusal: null,

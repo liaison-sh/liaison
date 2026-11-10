@@ -261,6 +261,15 @@
     "saved": "Commercial identity saved.",
     "saveFailed": "The commercial identity could not be saved."
   },
+  "recipientFacts": {
+    "basis": "Basis: {{basis}}",
+    "noBasis": "No recorded basis",
+    "business": "Business",
+    "consumer": "Consumer",
+    "consumerUnknown": "Consumer or business not recorded",
+    "optedOut": "Opted out on {{date}}",
+    "notOptedOut": "Not opted out"
+  },
   "commercialFooter": {
     "optOut": "To stop commercial messages from {{name}}: {{url}} or reply stop.",
     "linkLabel": "(opt-out link)",

@@ -40,6 +40,8 @@ Per-tool policy, tool naming, env bootstrap -> docs/agents/mcp-servers.md:37-104
 Instructions carry the shared core of the in-app guidance -> apps/api/src/modules/mcp/server-factory.ts:55-62
 Sections marked by audience in one source -> apps/api/src/modules/agent/context/shared-guidance.ts:11-24
 Teammates are messaged in a Liaison conversation, not by email -> apps/api/src/modules/agent/prompts/system.md:12-15
+Missing access named, request_scope offered; reuse before creating -> apps/api/src/modules/agent/prompts/system.md:17-22
+Instructions list each agent with its short purpose -> apps/api/src/modules/mcp/agent-directory.ts:99-129
 First call to an app's tool brings back its working guide -> apps/api/src/modules/mcp/app-guide-surfacing.ts:30
 transparent mailbox read at once over MCP; private through the window -> apps/api/src/modules/mcp/mcp-mailbox-plaintext.ts:189
 MCP endpoint and discovery on the org address; token bound to it -> apps/api/src/modules/mcp/mcp-auth-middleware.ts:40 ; apps/api/src/modules/mcp/oauth-server-routes.ts:1

@@ -92,7 +92,7 @@ describe("who issues what", () => {
   })
 
   test("a switch applies to invoices finalized after confirmation and alerts on unpaid ones", async () => {
-    const { db, ctx, events } = world({ streams: [{ issuer_profile_id: FR, issuer: "liaison", stripe_connected: true, decided_by: "p0", decided_at: "2026-10-01T00:00:00.000Z" }] })
+    const { db, ctx, events } = world({ streams: [{ issuer_profile_id: FR, issuer: "liaison", stripe_connected: true, decided_by: "p0", decided_at: "2026-10-01T09:30:00.000Z" }] })
     await db.insert("documents", { type: "invoice", status: "issued", issuer_profile_id: FR, number: "F-2026-0101", payment_status: "unpaid", external_ref: "stripe:in_a" })
     await db.insert("documents", { type: "invoice", status: "issued", issuer_profile_id: FR, number: "F-2026-0102", payment_status: "paid", external_ref: "stripe:in_b" })
     await db.insert("documents", { type: "invoice", status: "issued", issuer_profile_id: FR, number: "F-2026-0103", payment_status: "unpaid", external_ref: null })

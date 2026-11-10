@@ -41,7 +41,7 @@ describe("who issues what, in the issuer settings", () => {
     expect(unknown).not.toMatch(/checked/i)
     // A confirmed state with no time is not a person's statement.
     expect(emailsLine({ state: "confirmed", confirmedBy: "u1", confirmedAt: null })).not.toMatch(/^Checked/)
-    expect(emailsLine({ state: "confirmed", confirmedBy: "u1", confirmedAt: "2026-11-03T10:00:00.000Z" }, "en-GB")).toMatch(/^Checked by a person on 3 Nov 2026/)
+    expect(emailsLine({ state: "confirmed", confirmedBy: "u1", confirmedAt: "2026-11-03T09:30:00.000Z" }, "en-GB")).toMatch(/^Checked by a person on 3 Nov 2026/)
     // No other string of the block says Checked.
     const source = readFileSync(join(import.meta.dir, "IssuerStreams.tsx"), "utf8")
     expect(source.match(/"Checked[^"]*"/g)).toEqual(['"Checked by a person on {{day}}. Liaison cannot read this setting, so check again if someone changes it."'])

@@ -73,6 +73,14 @@ describe("Stripe refunds and credit notes", () => {
     expect(row.event_payload_json).toMatchObject({ kind: "stripe_credit_note", refund_id: "re_4", amount_minor: "1000" })
   })
 
+  test("a refund of a services invoice credits services, never goods", async () => {
+    const { db, ctx } = await issued()
+    await onStripeRefundCreated({ charge_id: "ch_1", invoice_id: "in_1", refunds: [refund("re_9", "6000", "succeeded")] }, ctx)
+    const kinds = net(db, creditNotes(db)[0] as Row).map((l) => l.line_kind)
+    expect(kinds.length).toBeGreaterThan(0)
+    expect(new Set(kinds)).toEqual(new Set(["service"]))
+  })
+
   test("a refund made in Stripe yields the same credit note with no card", async () => {
     const { db, ctx } = await issued()
     let approvals = 0

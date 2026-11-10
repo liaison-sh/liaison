@@ -81,16 +81,7 @@ export const PAGE_SIZE = 100
 /** One run's working time; the jobs' `timeoutMs` leaves room above it. */
 export const DEFAULT_BUDGET_MS = 45_000
 
-type TimerFn = (fn: () => void, ms: number) => unknown
-
-/** Pause when the runtime has a timer; one of the sandbox executors has none (pacing then comes from the round trip). */
-export function pause(ms: number): Promise<void> {
-  const timer = (globalThis as { setTimeout?: TimerFn }).setTimeout
-  if (typeof timer !== "function" || !(ms > 0)) return Promise.resolve()
-  return new Promise<void>((resolve) => {
-    timer(() => resolve(), ms)
-  })
-}
+export { pause } from "../http"
 
 export class Budget {
   private readonly end: number

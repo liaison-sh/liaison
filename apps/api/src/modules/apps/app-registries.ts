@@ -13,6 +13,7 @@ import type { PrivilegedDb, RlsClient } from "~/db"
 import type { AppGuideInput } from "~/modules/agent/context/app-guide"
 import type { BulkToolSchema } from "~/modules/apps/bulk-field-schemas"
 import { bumpCatalogGeneration } from "~/modules/apps/catalog-generation"
+import type { ToolOrigin } from "~/modules/apps/execute-tool"
 import { pinnedOverlap } from "~/modules/apps/pinned-params"
 import { createTypedRegistry, resetRegistrationTemplates } from "~/modules/apps/registries"
 import type { ManifestSettingsEntry } from "~/modules/apps/settings-schema-from-manifest"
@@ -310,8 +311,12 @@ export const toolRegistry = createTypedRegistry<
     /** Gated for THIS call only, decided from its params before it runs (kernel code only):
      *  e.g. subagent_create when the slug names a role that already exists, which the call
      *  would overwrite. True composes like `gated` (a person decides, a person's own click
-     *  runs). A failure to decide counts as gated. */
-    gatedWhen?: (params: unknown, ctx: { orgId: string }) => Promise<boolean>
+     *  runs). A failure to decide counts as gated. `userId` is the caller and `origin`
+     *  where the call came from (threads_create gates only an agent's new conversation). */
+    gatedWhen?: (
+      params: unknown,
+      ctx: { orgId: string; userId: string; origin: ToolOrigin },
+    ) => Promise<boolean>
     /** True when this tool decides its own gating INSIDE the handler (manifest
      *  `conditionalGate`) — it parks an approval only for some params/targets
      *  (e.g. knowledge:create gates an org doc but not a personal note). Such a

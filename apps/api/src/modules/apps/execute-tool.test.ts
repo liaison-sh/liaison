@@ -1977,7 +1977,7 @@ describe("executeTool — thrown-error log severity follows HTTP class", () => {
   })
 
   it("logs a duplicate-thread create at warn, not error", async () => {
-    // Reply in that thread ... Pass forceCreate: true is pure caller guidance —
+    // "Reply in that thread ... otherwise ask the user" is pure caller guidance —
     // paging the watchdog on it is noise. DuplicateThreadError carries status 409
     // so it takes the typed-4xx path instead of the statusless generic path.
     toolRegistry.set([TEST_ORG, "test_et", "throw_item"], {

@@ -1,7 +1,7 @@
 threads_list tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:760
 threads_search tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:900
 threads_read tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:914
-threads_create tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:943
+threads_create tool: scope and approval flag (gated when an agent opens a new conversation) -> apps/api/src/modules/agent/tools/kernel-tools.ts:1162
 threads_reply tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:980
 agents_ask tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1023
 agents_invite tool: scope and approval flag -> apps/api/src/modules/agent/tools/kernel-tools.ts:1453

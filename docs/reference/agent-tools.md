@@ -192,7 +192,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `subagent_get` | Read the full definition for one sub-agent role — system prompt, scope ceiling, allow/deny lists, skills, MCP servers, defaults. |  | `kernel:agents:admin` |
 | `subagent_list` | List sub-agent role definitions registered in this org. |  | `kernel:agents:spawn` |
 | `thread_mute_set` | Mute or unmute one conversation thread for the user: replies there stop notifying (an @mention still does). |  | `kernel:agent:memory` |
-| `threads_create` | Create a new thread with the given participants. |  | `kernel:threads:write` |
+| `threads_create` | Message teammates (people in this organization) by posting into the conversation you already share with them, never by opening a new one. |  | `kernel:threads:write` |
 | `threads_list` | List recent threads the user participates in, with ids, handles, titles, participants, last message metadata, unreadCount and paging. |  | `kernel:threads:read` |
 | `threads_read` | Read a thread's messages in chronological order, with its title and handle. |  | `kernel:threads:read` |
 | `threads_reply` | Post a message into a thread (threadId) or into a Liaison contact's discussion (contactId). |  | `kernel:threads:write` |

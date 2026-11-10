@@ -54,7 +54,8 @@ export function billsText(r: ListRow): string {
 
 /** "Fri 27 Nov": weekday, day, month, in that order whatever the locale's usual order. */
 function dayLabel(day: string, locale: string): string {
-  const d = new Date(`${day}T12:00:00Z`)
+  // A date-only ISO string parses as UTC midnight, shown here in UTC.
+  const d = new Date(day)
   const part = (o: Intl.DateTimeFormatOptions) => d.toLocaleDateString(locale, { ...o, timeZone: "UTC" })
   return `${part({ weekday: "short" })} ${part({ day: "numeric" })} ${part({ month: "short" })}`
 }

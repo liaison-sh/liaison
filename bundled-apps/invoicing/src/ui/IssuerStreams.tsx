@@ -76,8 +76,8 @@ export function createStandingOff(deps: {
 }
 
 function dayOf(iso: string, locale?: string): string {
-  const t = iso.length === 10 ? `${iso}T12:00:00Z` : iso
-  return new Date(t).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })
+  // A date-only ISO string parses as UTC midnight, shown here in UTC.
+  return new Date(iso).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })
 }
 
 /** Off, or who turned it on, when, and until when. */

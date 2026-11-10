@@ -2429,6 +2429,51 @@ describe("documents.mark_paid", () => {
     expect(renderDoc.paid_at).toBe("2026-05-29")
   })
 
+  test("marking a transfer invoice paid reports the collection", async () => {
+    const { ctx, db } = makeCtx()
+    const id = "00000000-0000-4000-8000-000000000131"
+    await db.insert("documents", {
+      id,
+      type: "invoice",
+      status: "issued",
+      number: "INV-2026-31",
+      number_int: 31,
+      year_of_issue: 2026,
+      issuer_profile_id: "iss-1",
+      counterparty_contact_id: "contact-1",
+      currency: "EUR",
+      subtotal_minor: "10000",
+      tax_total_minor: "2000",
+      grand_total_minor: "12000",
+      tax_treatment: "eu_domestic",
+      operation_category: "services",
+      regime: "e_invoice",
+      pa_provider: "fakepa",
+      incoterm: "DAP",
+      issued_at: "2026-11-02",
+      pdf_file_id: "pdf-x",
+      pdf_status: "ready",
+      external_refs: {},
+      lifecycle_log: [],
+    })
+    await db.insert("document_lines", { document_id: id, position: 1, description: "Conseil", quantity: "1", unit_price_minor: "10000", subtotal_minor: "10000", tax_minor: "2000", tax_rate_bp: 2000 })
+    await db.insert("einvoice_transmissions", { document_id: id, action: "send_einvoice", idempotency_key: "k-31", state: "sent", provider_app: "fakepa", provider_ref: "pa-31" })
+    const reported: Array<Record<string, unknown>> = []
+    Object.assign(ctx, {
+      contracts: {
+        call: async (_c: string, op: string, params: Record<string, unknown>) => {
+          reported.push({ op, ...params })
+          return { status: "completed", result: { state: "accepted" } }
+        },
+      },
+    })
+    expect((await documentsMarkPaid(ctx, { document_id: id, paid_date: "2026-11-20", payment_note: "bank transfer" })).status).toBe("completed")
+    expect(reported).toEqual([
+      expect.objectContaining({ op: "report_collection", provider_ref: "pa-31", date: "2026-11-20", amounts_by_vat_rate: [{ rate_bp: 2000, net_minor: "10000", vat_minor: "2000" }] }),
+    ])
+    expect(db.__all("documents").find((d) => d.id === id)).toMatchObject({ collection_state: "reported" })
+  })
+
   test("emits document:paid with paid_at and payment_status", async () => {
     const { ctx, db, extras } = makeCtx()
     await db.insert("documents", {

@@ -1006,6 +1006,11 @@
           "legal_original_sha256": "text?",
           "einvoice_state": "text?",
           "einvoice_state_raw": "text?",
+          "collection_state": "text?",
+          "collection_reports": {
+            "type": "json",
+            "required": false
+          },
           "pa_provider": "text?",
           "tax_point_date": "date?",
           "tax_total_eur_minor": "bigint?",
@@ -6187,6 +6192,7 @@
       "einvoicing:routing_mismatch",
       "einvoicing:booking_failed",
       "einvoicing:send_waiting",
+      "einvoicing:collection_manual",
       "einvoicing:booking_summary",
       "einvoicing:booking_invariant_breach",
       "einvoicing:orphan_event",
@@ -6310,6 +6316,20 @@
         "kind": "invoicing:einvoicing.routing_mismatch",
         "urgency": 50,
         "summary": "The routing address {{data.routing_address}} of {{data.number}} is not one the directory lists for this buyer ({{data.listed}}). Correct the customer's routing address, then request the send again.",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "invoicing:documents:write"
+        },
+        "resolveWhen": {
+          "field": "resolved",
+          "equals": true
+        }
+      },
+      {
+        "event": "einvoicing:collection_manual",
+        "kind": "invoicing:einvoicing.collection_manual",
+        "urgency": 40,
+        "summary": "Enter this collection at your platform: {{data.number}} was paid on {{data.date}}, and the e-invoicing platform does not take collections from Liaison.",
         "recipients": {
           "kind": "scope_holders",
           "scope": "invoicing:documents:write"

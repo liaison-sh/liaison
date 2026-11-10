@@ -105,6 +105,12 @@ export const einvoicingPaV1: ContractSpec = {
       params: ["document_ref", "pdf_file_id", "legal_original_sha256", "data", "idempotency_key"],
     },
     /**
+     * A collection (payment received) where VAT falls due on receipt (optional in v1): the
+     * amounts by VAT rate (`[{rate_bp, net_minor, vat_minor}]`, negative for a refund) of the
+     * document at `provider_ref`. A fact, not an issuing act: no dispatch grant. `{state}`.
+     */
+    report_collection: { required: false, params: ["provider_ref", "date", "amounts_by_vat_rate", "idempotency_key"] },
+    /**
      * Reception (optional in v1). Supplier e-invoices received through the PA, newest after
      * `cursor` (the catch-up; webhook arrivals come through `list_status_changes` with kind
      * `supplier_invoice`): `{items:[{provider_ref, received_at}], cursor, has_more}`.

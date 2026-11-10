@@ -1422,6 +1422,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // adapter over its recorded-shape fake behind a contract-call stub).
             "src/einvoicing/transmit.test.ts",
             "src/einvoicing/send-batch.test.ts",
+            "src/einvoicing/collection.test.ts",
             // Received supplier e-invoices: the safe XML reader (DTD/entity/size/time refusals),
             // the mirror and its refuse/dispute approvals over the same adapter and fake.
             "src/received/xml.test.ts",

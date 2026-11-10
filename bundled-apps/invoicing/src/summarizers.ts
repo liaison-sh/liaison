@@ -877,6 +877,15 @@ export function summarizeEinvoiceBookBatch(): Promise<ApprovalSummaryShape> {
   })
 }
 
+export function summarizeEinvoiceSendBatch(): Promise<ApprovalSummaryShape> {
+  return done({
+    kind: "einvoice_send_batch",
+    title: "Send the day's e-invoices issued with no person",
+    subtitle: "Each document is transmitted to its buyer's e-invoicing platform. This cannot be undone.",
+    lines: ["The documents and the oldest wait are listed on the batch in the E-invoicing tab"],
+  })
+}
+
 const RECEIVED_VERB: Record<string, string> = { refuse: "Refuse", dispute: "Dispute", undispute: "Withdraw the dispute on" }
 
 export function summarizeReceivedSetStatus(

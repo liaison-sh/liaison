@@ -26,6 +26,7 @@ export { InvoicingReadiness } from "./readiness/Readiness"
 export { InvoicingReceived } from "./received/ReceivedList"
 export { InvoicingReceivedDetail } from "./received/ReceivedDetail"
 export { AwaitingPayment } from "./dashboards/AwaitingPayment"
+export { MonthEndRunPanel } from "./MonthEndRunPanel"
 export { resolveDocumentTabLabel } from "./tab-labels"
 
 // The `dashboard` tabType (`/invoicing/dashboards/:dashboardId`) now serves only

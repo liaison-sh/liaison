@@ -339,6 +339,7 @@ export function buildHostServices(opts: BuildHostServicesOptions): HostServices 
             emptyText: descriptor.emptyText,
             placeholder: descriptor.placeholder,
             sendLabel: descriptor.sendLabel,
+            prefill: descriptor.prefill,
           }),
         )
         return disposeRoot

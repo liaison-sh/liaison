@@ -11,7 +11,8 @@ import ticketsManifest from "~/apps/tickets/app.manifest.json"
 import { slotRegistry } from "~/modules/apps/app-registries"
 import { forgetOrgApps, rememberOrgAppStates } from "~/modules/apps/org-apps"
 import type { Scope } from "~/modules/permissions/types"
-import { listSlotPanels, registerAppSlots } from "./registry"
+import invoicingManifest from "../../../../../bundled-apps/invoicing/app.manifest.json"
+import { APPROVAL_DETAIL_PANEL_SLOT, listSlotPanels, registerAppSlots } from "./registry"
 import { slotsRoutes } from "./routes"
 
 const ORG = "org-mounted-slots-1"
@@ -146,5 +147,46 @@ describe("mounted slots", () => {
     expect(
       listSlotPanels({ orgId: ORG, scopes: ["crm-fixture:customers:read"], slot }).map((p) => p.id),
     ).toEqual(["CustomerCard"])
+  })
+
+  test("an approval card mounts the panel contributed for its tool and only for that tool, hidden without the scope", async () => {
+    registerAppSlots(ORG, "billing-fixture", undefined, {
+      [APPROVAL_DETAIL_PANEL_SLOT]: {
+        label: "Run",
+        component: "RunPanel",
+        for_tool: "billing-fixture:run_issue",
+        visibility_scope: "billing-fixture:documents:read",
+      },
+    })
+    rememberOrgAppStates(ORG, [{ app: "billing-fixture", status: "active" }])
+    const reader = ["billing-fixture:documents:read"]
+    const at = (forTool: string | undefined, scopes: string[]) =>
+      listSlotPanels({ orgId: ORG, scopes, slot: APPROVAL_DETAIL_PANEL_SLOT, forTool }).map(
+        (p) => `${p.app}:${p.id}`,
+      )
+    expect(at("billing-fixture:run_issue", reader)).toEqual(["billing-fixture:RunPanel"])
+    // Another tool's card, or a card that names no tool, mounts nothing.
+    expect(at("billing-fixture:other_tool", reader)).toEqual([])
+    expect(at(undefined, reader)).toEqual([])
+    // Without the scope, nothing either.
+    expect(at("billing-fixture:run_issue", [])).toEqual([])
+    // The route takes the tool as a query.
+    const res = await makeApp(reader).request(
+      `/api/v1/slots/${encodeURIComponent(APPROVAL_DETAIL_PANEL_SLOT)}?for_tool=${encodeURIComponent("billing-fixture:run_issue")}`,
+    )
+    const body = (await res.json()) as { data: { panels: Array<{ id: string }> } }
+    expect(body.data.panels.map((p) => p.id)).toEqual(["RunPanel"])
+    expect(await routePanels(reader, APPROVAL_DETAIL_PANEL_SLOT)).toEqual([])
+  })
+
+  test("invoicing contributes its month-end panel to the run's approval card for readers of documents", () => {
+    const contribution = (
+      invoicingManifest as { contributions?: Record<string, Record<string, unknown>> }
+    ).contributions?.[APPROVAL_DETAIL_PANEL_SLOT]
+    expect(contribution).toMatchObject({
+      component: "MonthEndRunPanel",
+      for_tool: "invoicing:recurring_run_issue",
+      visibility_scope: "invoicing:documents:read",
+    })
   })
 })

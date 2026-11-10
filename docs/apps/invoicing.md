@@ -171,6 +171,21 @@ A run where every row comes from a schedule set to **issue by itself**, and none
 
 `recurring_run_get` shows a run: its state, issue and last days, and each row with its draft id, amounts, account manager, latest change and flags.
 
+### Change the run from its card
+
+The run's card on Home shows every row under its summary, with the line **Drafts, no legal numbers yet. Everything here can still change: click a row to open it.** At the top it counts the invoices to approve and their total; a row that waits for a fix says, before any row, that it stays a draft, uses no number and comes back to you once fixed.
+
+- **Open a row.** A click opens the row where it is, with the document editor's own fields: customer, notes, due date and lines. The row's amounts, the total and the count change as you type, and the row says **Not saved yet**. **Save for November only** or **Save from now on** saves it (an added row has one **Save**); **Cancel** puts the saved amounts back. **Open the full editor** opens the draft in its own tab.
+- **Take out.** **Take out of November** leaves the row out this month only; **End the schedule** with **Last month billed** stops the schedule. A taken-out row has **Put back**.
+- **Ask.** Each row names its account manager, or **None**. **Ask** puts a mention of that person and the row's customer in the run's discussion, for you to finish and send.
+- **Rights.** People with `invoicing:documents:write` change rows. Without it, a row opens read-only. Without the right to decide, the card says someone who can approve invoices decides it.
+- **A long run.** Above 20 rows, rows with nothing to look at fold under one line ("280 same as October"); they still count in the total. Search finds any row by customer.
+- **A run that changed.** When a row changes while you have the card open, the card lists what changed, who changed it, and the total you saw against the total now, and offers **Approve N** on what is there now.
+
+### The month-end check routine
+
+The **month-end-check** routine template runs when a month-end run is drafted. It reads the run with `recurring_run_get` and what other records say about its customers (deals, Stripe subscriptions, payments and earlier invoices, where those apps are installed), and says in at most two sentences what may be worth a look, naming what it read. It holds read scopes only, so it never changes a row, and the card is complete without it. It is off until someone turns it on from **Routines**.
+
 ## Who issues what
 
 When Stripe is connected, each issuer profile sells in three streams, and each stream has exactly one issuer. **Settings, Invoicing, Issuer profiles** shows them under **Who issues what**:

@@ -364,6 +364,13 @@
     "allowPrivateHostsInTest": true
   },
   "entities": {
+    "recurring_run": {
+      "labelField": "period_label",
+      "searchable": false,
+      "tableName": "recurring_runs",
+      "readScope": "invoicing:documents:read",
+      "discussion": true
+    },
     "pdf": {
       "labelField": "number",
       "tableName": "documents",
@@ -6923,6 +6930,24 @@
       "document_detail": {
         "tabs": []
       }
+    }
+  },
+  "contributions": {
+    "approval:detail:panel": {
+      "label": "Month-end run",
+      "component": "MonthEndRunPanel",
+      "for_tool": "invoicing:recurring_run_issue",
+      "visibility_scope": "invoicing:documents:read"
+    }
+  },
+  "routines": {
+    "month-end-check": {
+      "description": "When a month-end run is drafted, say what other records show about its customers.",
+      "kind": "event",
+      "event": "invoicing:recurring_run:drafted",
+      "promptTemplate": "A month-end run was just drafted (run_id in the event). Read it with recurring_run_get, then what other records say about its customers, such as deals, subscriptions, payments and earlier invoices. If something there is worth a look before approving, say it in at most two sentences, naming the records you read. Otherwise say nothing stands out. Change nothing.",
+      "scopes": ["invoicing:documents:read", "projects:projects:read", "stripe:customers:read", "stripe:subscriptions:read", "stripe:invoices:read", "stripe:payments:read"],
+      "enabledByDefault": false
     }
   },
   "settings": {

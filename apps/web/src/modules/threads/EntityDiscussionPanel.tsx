@@ -23,6 +23,8 @@ export interface EntityDiscussionPanelProps {
   emptyText?: string
   placeholder?: string
   sendLabel?: string
+  /** Text put in the box once the discussion opens, for the person to finish and send. */
+  prefill?: string
 }
 
 function unwrapData<T>(result: T | { data: T }): T {
@@ -102,6 +104,7 @@ export const EntityDiscussionPanel: Component<EntityDiscussionPanelProps> = (pro
               emptyText={props.emptyText ?? i18n.t("kernel.entityDiscussion.empty")}
               placeholder={props.placeholder ?? i18n.t("kernel.entityDiscussion.placeholder")}
               sendLabel={props.sendLabel ?? i18n.t("kernel.entityDiscussion.send")}
+              prefill={props.prefill ? { text: props.prefill, n: 1 } : null}
             />
           </Suspense>
         )}

@@ -30,6 +30,12 @@ import { type SlotRegistryEntry, slotRegistry } from "~/modules/apps/app-registr
 import { isAppUnavailableFor, isFeatureOffForTool } from "~/modules/apps/org-apps"
 import { hasScope } from "~/modules/permissions/permissions"
 
+/**
+ * Inside a pending approval's card (Home and the approvals screen): a panel an app contributes for
+ * one of its own tools, named by the contribution's `for_tool`. The card asks with its tool's name.
+ */
+export const APPROVAL_DETAIL_PANEL_SLOT = "approval:detail:panel"
+
 export interface SlotPanel {
   id: string
   label: string
@@ -39,6 +45,8 @@ export interface SlotPanel {
   group?: string
   visibility_scope?: string
   feature?: string
+  /** Shown only on a host that names this tool (an approval card of it), and on no other. */
+  for_tool?: string
 }
 
 export interface ResolvedPanel extends SlotPanel {
@@ -52,6 +60,8 @@ export interface ListSlotPanelsOpts {
   slot: string
   /** The caller. Without one, an app restricted to some people shows nobody its panels. */
   userId?: string | null
+  /** The tool the host is about (an approval card's); a panel declaring `for_tool` needs it. */
+  forTool?: string
 }
 
 /**
@@ -88,7 +98,14 @@ export function registerAppSlots(
   for (const [slot, entry] of entries) slotRegistry.set([orgId, app, slot], entry)
 }
 
-function visible(orgId: string, app: string, panel: SlotPanel, scopes: string[]): boolean {
+function visible(
+  orgId: string,
+  app: string,
+  panel: SlotPanel,
+  scopes: string[],
+  forTool?: string,
+): boolean {
+  if (panel.for_tool !== undefined && panel.for_tool !== forTool) return false
   if (panel.visibility_scope && !hasScope(panel.visibility_scope, scopes)) return false
   return !isFeatureOffForTool(orgId, { appName: app, feature: panel.feature })
 }
@@ -130,7 +147,7 @@ export function listSlotPanels(opts: ListSlotPanelsOpts): ResolvedPanel[] {
       )?.[slotId]
       const tabs = nested?.[kind] ?? []
       for (const tab of tabs) {
-        if (!visible(opts.orgId, app, tab, opts.scopes)) continue
+        if (!visible(opts.orgId, app, tab, opts.scopes, opts.forTool)) continue
         out.push({ ...tab, app })
       }
     }
@@ -151,7 +168,7 @@ export function listSlotPanels(opts: ListSlotPanelsOpts): ResolvedPanel[] {
       ...(Array.isArray(slotDef?.actions) ? slotDef.actions : []),
     ]
     for (const panel of entries) {
-      if (!visible(opts.orgId, app, panel, opts.scopes)) continue
+      if (!visible(opts.orgId, app, panel, opts.scopes, opts.forTool)) continue
       out.push({ ...panel, app })
     }
   }

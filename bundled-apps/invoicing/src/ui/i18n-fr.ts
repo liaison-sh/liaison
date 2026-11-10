@@ -2,7 +2,10 @@
 //
 // French for this app's UI, keyed by the English source text (see i18n.ts).
 // Formal "vous", no dash punctuation (the repo's lint:copy rule).
+import { MONTH_END_FR } from "./month-end-fr"
+
 export const FR: Record<string, string> = {
+  ...MONTH_END_FR,
   "+ Add line": "+ Ajouter une ligne",
   "+ Create document": "+ Créer un document",
   "+ New issuer profile": "+ Nouveau profil émetteur",

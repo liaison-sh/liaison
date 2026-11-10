@@ -147,6 +147,8 @@ export interface EntityDiscussionMountDescriptor {
   emptyText?: string
   placeholder?: string
   sendLabel?: string
+  /** Text put in the box when it opens, for the person to finish and send (never sent by itself). */
+  prefill?: string
 }
 
 export type EntityDiscussionMounter = (

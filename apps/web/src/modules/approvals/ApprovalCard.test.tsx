@@ -1935,7 +1935,12 @@ describe("ApprovalCard: the send check on an agent's mail draft", () => {
     render(() => <ApprovalCard requestId="ar-1" />)
     apiMocks.get.mockClear()
     fireEvent.click(await screen.findByTestId("approval-card-action-send-now"))
-    await waitFor(() => expect(apiMocks.get).toHaveBeenCalled())
+    // The card's own reload, not its panel list (`/v1/slots/...`).
+    await waitFor(() =>
+      expect(apiMocks.get.mock.calls.some((c) => !String(c[0]).startsWith("/v1/slots/"))).toBe(
+        true,
+      ),
+    )
     expect(toastMock).toHaveBeenCalledWith(
       expect.objectContaining({ message: expect.stringContaining("no longer held") }),
     )

@@ -54,6 +54,8 @@ class MemDb {
     if (r) Object.assign(r, structuredClone(data))
   }
   async updateMany(entity: string, opts: { where: Record<string, unknown>; data: Record<string, unknown> }) {
+    // As the host does: a bulk update never selects by row id.
+    if ("id" in opts.where) throw new Error("where.id is not allowed here")
     if (this.failUpdateOf.has(entity)) throw new Error(`update of ${entity} failed`)
     let count = 0
     for (const r of this.rows(entity)) {

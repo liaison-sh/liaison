@@ -22,7 +22,7 @@ const CARD_PARAM = /[cC]ard_?[nN]umber|[cC][vV][cC]|[cC][vV][vV]|(^|_)([pP]an|PA
 
 describe("stripe manifest", () => {
   it("is at version 0.1.12", () => {
-    expect(load().version).toBe("0.1.12")
+    expect(load().version).toBe("0.1.13")
   })
 
   it("parses with the package manifest schema", () => {

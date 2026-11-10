@@ -73,7 +73,8 @@ async function reclaim(db: LedgerDb, row: DeliveryRow, now: Date): Promise<Claim
   if (!reclaimable(row, now)) return { kind: "duplicate", row }
   const claimedAt = now.toISOString()
   const won = await db.updateMany("webhook_deliveries", {
-    where: { id: row.id, status: row.status, claimed_at: row.claimed_at ?? null },
+    // The event id is unique per org; the host refuses `id` in a bulk where.
+    where: { event_id: row.event_id, status: row.status, claimed_at: row.claimed_at ?? null },
     data: { status: "processing", claimed_at: claimedAt },
   })
   if (won.count !== 1) return { kind: "duplicate", row }

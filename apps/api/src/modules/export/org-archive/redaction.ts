@@ -62,6 +62,9 @@ export const REDACTED_COLUMNS: Readonly<Record<string, string>> = {
   "app_tickets.api_keys.key_hash": "API key hash",
   "app_tickets.ticket_csat.survey_token": "survey link token",
   "app_tickets.tickets.reply_token": "reply address token",
+  // A dispatch grant is a signed token that sends an e-invoice with no further approval while it lasts.
+  "app_invoicing.recurring_run_items.send_grant": "e-invoice send grant",
+  "app_invoicing.einvoice_standing.grant_ref": "e-invoice send grant",
   // Payment card fragments mirrored from the payment provider: the provider keeps them, a
   // restored mirror reads them again at its next sync, and an archive never carries card data.
   "app_stripe.stripe_subscriptions.card_brand": "payment card detail",

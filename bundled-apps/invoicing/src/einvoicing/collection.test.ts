@@ -10,7 +10,7 @@ import { join } from "node:path"
 import type { ContractEnvelope } from "@liaison/app-sdk/contracts"
 import { createMockDb, type ManifestSchema } from "@liaison/test-helpers/mock-db"
 import { COLLECTION_MANUAL_LABEL, collectionLabel, reportCollection } from "./collection"
-import type { EinvCtx } from "./transmit"
+import { type EinvCtx, refreshStatus } from "./transmit"
 
 const SCHEMA = (JSON.parse(readFileSync(join(import.meta.dir, "..", "..", "app.manifest.json"), "utf8")) as { schema: ManifestSchema }).schema
 type Row = Record<string, unknown>
@@ -110,5 +110,26 @@ describe("reporting a collection", () => {
     const manual = w.events.filter((e) => e.action === "collection_manual")
     expect(manual).toHaveLength(1)
     expect(manual[0]?.data).toMatchObject({ document_id: d.id, number: "FA-2026-0007" })
+  })
+
+  it("a buyer refusal opens a task and creates no document", async () => {
+    // A Liaison invoice of a Stripe payment, sent, then refused by the buyer on their platform.
+    const d = await w.doc({ external_ref: "stripe:in_FIXTURE07" })
+    const ctx: EinvCtx = {
+      ...w.ctx,
+      contracts: {
+        call: async () =>
+          ({ status: "completed", result: { raw: "refusee", mapped: "refused", code: 210, provider_ts: null, reason_text: "Wrong purchase order" }, provider: "fakepa" }) as ContractEnvelope<unknown>,
+      },
+    }
+    const before = ((await w.db.findMany("documents", { limit: 100 })) as Row[]).length
+    const [tx] = (await w.db.findMany("einvoice_transmissions", { where: { document_id: d.id }, limit: 1 })) as Row[]
+    await refreshStatus(ctx, tx as Row, "webhook")
+    const refused = w.events.filter((e) => e.action === "transmission_refused")
+    expect(refused).toHaveLength(1)
+    expect(refused[0]?.data).toMatchObject({ document_id: d.id, state: "refused", reason: "Wrong purchase order" })
+    // No invoice and no credit note is made by itself: a person decides.
+    expect(((await w.db.findMany("documents", { limit: 100 })) as Row[]).length).toBe(before)
+    expect(await w.one(d.id)).toMatchObject({ einvoice_state: "refused" })
   })
 })

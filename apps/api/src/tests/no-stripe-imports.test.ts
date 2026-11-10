@@ -332,6 +332,9 @@ const isConnectorPath = (file: string) => matchesAny(file, CONNECTOR_PATHS)
 const CONNECTOR_IDENTIFIERS = new RegExp(
   [
     `bundled-apps/${FORBIDDEN}`,
+    // A path to a file inside any bundled app: bundled apps are not swept for the
+    // name, so the file names they choose are identifiers here.
+    `bundled-apps/[a-z0-9-]+/[A-Za-z0-9_./-]*${FORBIDDEN}[A-Za-z0-9_.-]*\\.tsx?`,
     // The schema and its table together: app_<app>.<app>_customers is one identifier.
     `app_${FORBIDDEN}\\.[a-z_]+`,
     `(?<![A-Za-z@/])${FORBIDDEN}__`,
@@ -691,6 +694,7 @@ describe("extracted billing surface stays out of the repo", () => {
       `"${FORBIDDEN}__list_invoices"`,
       `emit("${FORBIDDEN}/invoice.paid")`,
       `import { run } from "bundled-apps/${FORBIDDEN}/handlers"`,
+      `"bundled-apps/invoicing/src/handlers/${FORBIDDEN}-refund-created.ts",`,
       `{ name: "${FORBIDDEN}", enabled: true }`,
     ]) {
       expect(nameViolation(other, line), line).toBe(false)
@@ -701,6 +705,7 @@ describe("extracted billing surface stays out of the repo", () => {
       `process.env.${FORBIDDEN_UPPER}_SECRET_KEY`,
       `row.${FORBIDDEN}_customer_id`,
       `import x from "@${FORBIDDEN}/${FORBIDDEN}-js"`,
+      `"apps/api/src/billing/${FORBIDDEN}-refund.ts"`,
     ]) {
       expect(nameViolation(other, line), line).toBe(true)
     }

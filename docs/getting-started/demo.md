@@ -3,7 +3,7 @@ title: Try the demo
 description: Open your own temporary copy of a sample company at demo.liaison.sh and watch its agents work, without installing anything.
 ---
 
-The live demo at [demo.liaison.sh](https://demo.liaison.sh) gives you your own copy of **Resonant Audio Labs**, a fictional company that makes portable field recorders. You sign in as its CEO. The support queue, dealer orders, shipping and books are already filled in, so you can watch agents work without installing anything.
+The live demo at [demo.liaison.sh](https://demo.liaison.sh) gives you your own copy of **Resonant Audio Labs**, a fictional company that makes portable field recorders. You sign in as its CEO. The support queue, dealer orders, shipping and books are already filled in, so you can watch agents work without installing anything. Each dealer and customer contact has its country recorded, which the check on commercial mail reads.
 
 ## Start a demo workspace
 

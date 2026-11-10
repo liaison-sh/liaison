@@ -159,6 +159,8 @@ describe("isDetailRoute - only an entity tail is a detail route", () => {
       // switch, not a detail push.
       "/approvals": false,
       "/contacts": false,
+      // The Dashboards page: the list of the viewer's dashboards.
+      "/dashboards": false,
       // One saved dashboard (kernel:dashboard).
       "/dashboard/:entityId": true,
       "/detail/:entityId+": true,

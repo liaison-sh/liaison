@@ -3869,6 +3869,24 @@ async function runAgentChatTurn(
   // The announced-action correction's own plan text, cut too when it ended
   // there again and one more continuation ran (correctAgain below).
   let secondRetraction: Retraction | null = null
+  // Every correction continuation of this turn is one model call made through
+  // here: its stream is read by the same guard as the turn's own, so each of
+  // its steps reaches the turn's usage, which finalizeReply meters
+  // (`finalizeUsage`) with the rest of the turn. A correction stream built
+  // anywhere else would be a model call outside the turn's meter.
+  const correctionStream = (
+    turnMessages: unknown[],
+    overrides: Pick<RunAgentStreamParams, "prepareStep"> = {},
+  ) =>
+    runAgentStream({
+      ...streamParams,
+      ...overrides,
+      messages: [
+        ...(contextMessages as Array<{ role: string; content: unknown }>),
+        ...(turnMessages as Array<{ role: string; content: unknown }>),
+      ],
+      stopWhen: stopConditions(FALSE_APPROVAL_CORRECTION_MAX_STEPS),
+    })
   let correction:
     | "false_approval"
     | "announced_action"
@@ -4024,25 +4042,20 @@ async function runAgentChatTurn(
             return judgeAnswer(run, lookups)
           },
           continueWith: (responseMessages) =>
-            runAgentStream({
-              ...streamParams,
-              messages: [
-                ...(contextMessages as Array<{ role: string; content: unknown }>),
-                ...(responseMessages as Array<{ role: string; content: unknown }>),
-                {
-                  role: "user",
-                  content:
-                    correction === "announced_action"
-                      ? ANNOUNCED_ACTION_NOTE
-                      : correction === "false_card"
-                        ? FALSE_CARD_NOTE
-                        : correction === "false_connected"
-                          ? FALSE_CONNECTED_NOTE
-                          : FALSE_APPROVAL_NOTE,
-                },
-              ],
-              stopWhen: stopConditions(FALSE_APPROVAL_CORRECTION_MAX_STEPS),
-            }),
+            correctionStream([
+              ...responseMessages,
+              {
+                role: "user",
+                content:
+                  correction === "announced_action"
+                    ? ANNOUNCED_ACTION_NOTE
+                    : correction === "false_card"
+                      ? FALSE_CARD_NOTE
+                      : correction === "false_connected"
+                        ? FALSE_CONNECTED_NOTE
+                        : FALSE_APPROVAL_NOTE,
+              },
+            ]),
           onRetract: (retraction) => {
             falseApprovalRetraction = retraction
           },
@@ -4075,18 +4088,15 @@ async function runAgentChatTurn(
               return true
             },
             continueWith: (firstMessages, correctionMessages) =>
-              runAgentStream({
-                ...streamParams,
-                messages: [
-                  ...(contextMessages as Array<{ role: string; content: unknown }>),
-                  ...(firstMessages as Array<{ role: string; content: unknown }>),
+              correctionStream(
+                [
+                  ...firstMessages,
                   { role: "user", content: ANNOUNCED_ACTION_NOTE },
-                  ...(correctionMessages as Array<{ role: string; content: unknown }>),
+                  ...correctionMessages,
                   { role: "user", content: ANNOUNCED_ACTION_NOTE },
                 ],
-                prepareStep: firstStepCallsATool(streamParams.prepareStep),
-                stopWhen: stopConditions(FALSE_APPROVAL_CORRECTION_MAX_STEPS),
-              }),
+                { prepareStep: firstStepCallsATool(streamParams.prepareStep) },
+              ),
           },
           onRetractAgain: (retraction) => {
             secondRetraction = retraction

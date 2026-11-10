@@ -299,6 +299,34 @@ describe("an announced action with no tool call gets one nudge", () => {
     expect(reply.metadata.announcedActionCorrected).toBe(true)
   })
 
+  test("the extra continuation's model call is metered with the turn", async () => {
+    const threadId = await seedChat()
+    executed.length = 0
+    const metered = async () => {
+      const [row] = await sql<{ input: string | null; output: string | null }[]>`
+        SELECT sum(input_tokens)::text AS input, sum(output_tokens)::text AS output
+        FROM kernel.credit_transactions WHERE org_id = ${orgId} AND model = ${MODEL_ID}`
+      return { input: Number(row?.input ?? 0), output: Number(row?.output ?? 0) }
+    }
+    const before = await metered()
+    const { reply, calls } = await turn(threadId, [
+      answer(ANNOUNCEMENT),
+      answer("Let me call routine_tool_scopes. Let me do that."),
+      realToolThenAnswer("kernel__tool_search", { query: "create routine" }, FOLLOW_UP),
+    ])
+    expect(calls.length).toBe(3)
+    // Four steps over three model calls, 10 input and 1 output token each.
+    const after = await metered()
+    expect({ input: after.input - before.input, output: after.output - before.output }).toEqual({
+      input: 40,
+      output: 4,
+    })
+    expect((reply.metadata as { usage?: unknown }).usage).toMatchObject({
+      inputTokens: 40,
+      outputTokens: 4,
+    })
+  })
+
   test("a correction that calls a tool and then ends on its plan gets one more continuation", async () => {
     const threadId = await seedChat()
     executed.length = 0

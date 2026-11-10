@@ -1746,6 +1746,7 @@
   },
   "outsideTextFields": ["buyer", "supplier", "counterparty_name", "counterparty_address", "counterparty_shipping_name", "counterparty_shipping_address", "counterparty_email", "po_number", "customer_reference", "notes", "description", "customs_description", "billing_line1", "billing_line2", "billing_city", "customer", "email", "supplier_name", "invoice_number", "status_reason", "history", "filename", "lifecycle_reason", "lifecycle_log", "last_error", "registry_name", "registry_line1", "registry_city", "contact_name", "vies_name", "vies_address", "buyer_legal_name", "legal_name", "name", "address", "sigle", "enseignes", "line1", "city", "summary", "blocked_on", "label", "refusal", "buyer_refusal"],
   "approvalRoute": {"recurring_run": "approval_route_read"},
+  "sendGuardProviders": {"invoicing:document": {"tool": "document_send_state", "serviceMessage": true, "pill": {"label": "Invoicing: payment reminder"}}},
   "activitySources": [{"tool": "activity_read", "scope": "invoicing:documents:read", "label": "Invoices", "filterKey": "invoicing"}],
   "tools": {
     "recurring_run_get": {"description": "Read a month-end run: its state, issue and last days, and each row with its draft_id, amounts, account manager, latest change and flags. Omit run_id for the latest run.", "searchKeywords": ["mensuel", "récurrent", "month-end"], "requiredScopes": ["invoicing:documents:read"], "handler": "recurringRunGetHandler", "readOnly": true, "taintSource": true, "params": {"type": "object", "properties": {"run_id": {"type": "string"}}}},
@@ -2085,6 +2086,36 @@
         ],
         "additionalProperties": false
       }
+    },
+    "document_send_state": {
+      "readOnly": true,
+      "agentVisible": false,
+      "description": "Whether a payment reminder about an invoice issued by Liaison may still go out, read from the document at send time: stops on paid, credited or voided.",
+      "requiredScopes": [
+        "invoicing:documents:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "documentSendStateHandler",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": [
+          "ref"
+        ]
+      },
+      "timeoutMs": 2000
     },
     "einvoice_send_batch": {
       "description": "Send one day's batch of e-invoices issued with no person (a month-end run issuing by itself) through the e-invoicing platform. Created by the daily send job; runs once a person approves the batch, preparing each document's send under its own approval.",

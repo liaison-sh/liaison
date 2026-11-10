@@ -600,6 +600,7 @@ export { identityConfirmJobHandler } from "./einvoicing/backfill"
 // — E-invoicing through the bound PA provider (contract einvoicing-pa@1) —
 import { bookDailyJob, bookingInvariantJob, einvoiceBookBatch, stepBook, summariseBatches } from "./einvoicing/booking"
 import { einvoiceSendBatch, einvoiceSendDailyJob } from "./einvoicing/send-batch"
+import { type DocumentSendStateCtx, documentSendState } from "./send-state"
 import {
   type EinvCtx,
   einvoiceSend,
@@ -629,6 +630,7 @@ import {
 export const einvoiceSendRequestHandler = (params: { document_id?: string }, ctx: EinvCtx) => einvoiceSendRequest(ctx, params)
 export const einvoiceSendHandler = (params: Parameters<typeof einvoiceSend>[1], ctx: EinvCtx) => einvoiceSend(ctx, params)
 export const einvoiceBookBatchHandler = (params: { batch_id?: string }, ctx: EinvCtx) => einvoiceBookBatch(ctx, params)
+export const documentSendStateHandler = (params: Record<string, unknown>, ctx: DocumentSendStateCtx) => documentSendState(params, ctx)
 export const einvoiceSendBatchHandler = (params: { batch_id?: string }, ctx: EinvCtx) => einvoiceSendBatch(ctx, params)
 export const einvoicingSendDailyJobHandler = (_payload: unknown, ctx: EinvCtx) => einvoiceSendDailyJob(ctx)
 export const einvoiceStatusRefreshHandler = (params: { document_id?: string }, ctx: EinvCtx) => einvoiceStatusRefresh(ctx, params)

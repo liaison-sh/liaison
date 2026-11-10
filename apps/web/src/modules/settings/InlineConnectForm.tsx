@@ -13,6 +13,8 @@ import { ConnectAppDialog } from "./ConnectAppDialog"
 export const InlineConnectForm: Component<{
   appName: string
   connectionName: string
+  /** Template variables the form starts from (reconnecting a known store). */
+  initialTemplateVars?: Record<string, string>
   /** A connection was saved: the card re-probes. */
   onConnected: () => void
   onClose: () => void
@@ -36,6 +38,7 @@ export const InlineConnectForm: Component<{
             appName={props.appName}
             connectionName={props.connectionName}
             connConfig={conn()}
+            initialTemplateVars={props.initialTemplateVars}
             onClose={() => props.onClose()}
             onSuccess={() => props.onConnected()}
           />

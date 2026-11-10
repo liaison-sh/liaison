@@ -89,6 +89,8 @@ export interface AppConnectionConfig {
   setupGuide?: AppSetupGuide
   /** Per-store OAuth template vars the connect form must collect (e.g. ["shop"]). */
   templateVars?: string[]
+  /** The template variable whose value is an account's identifier (e.g. "shop"). */
+  identifierVar?: string
   /** The app works without it; Settings > Apps offers it as a secondary link. */
   optional?: boolean
   /** A few words naming what it connects (manifest English; catalog may translate). */

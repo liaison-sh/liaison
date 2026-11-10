@@ -325,6 +325,8 @@ const ConnectionCard: Component<{
       loadConnectionAccounts(api, props.app, props.conn.name).catch(() => null),
   )
   const [formOpen, setFormOpen] = createSignal(props.initiallyOpen)
+  // The store a reconnect could not start for by itself: the form opens on it.
+  const [formVars, setFormVars] = createSignal<Record<string, string> | undefined>(undefined)
   const [confirm, setConfirm] = createSignal<ConnectionAccount | null>(null)
   const [busy, setBusy] = createSignal<string | null>(null)
   const isOAuth = () => props.conn.type === "oauth2"
@@ -356,13 +358,17 @@ const ConnectionCard: Component<{
     return parts.join(" · ")
   }
 
-  async function oauth(mode: "personal" | "org", key: string): Promise<void> {
+  async function oauth(
+    mode: "personal" | "org",
+    key: string,
+    extra: Record<string, string> = {},
+  ): Promise<void> {
     setBusy(key)
     try {
       const outcome = await connectWithOAuth(
         api,
         `/connections/${props.app}/${props.conn.name}/authorize`,
-        { mode },
+        { mode, ...extra },
       )
       if (outcome === "connected") {
         void refetch()
@@ -378,8 +384,8 @@ const ConnectionCard: Component<{
     }
   }
 
-  // A per-store OAuth connection (`{shop}` in its URLs) signs in again through
-  // the form, which asks for the store: the authorize call needs it.
+  // A per-store OAuth connection (`{shop}` in its URLs): the authorize call
+  // needs the store, which a new account types into the form.
   const asksForStore = () => (props.conn.templateVars?.length ?? 0) > 0
 
   createEffect(
@@ -394,9 +400,45 @@ const ConnectionCard: Component<{
     ),
   )
 
+  // Reconnect is offered on every account its viewer may manage, as Disconnect
+  // is: their own personal account, or an org account when they administer it.
+  // It re-runs the grant (new scopes, a revoked token) for that very account.
+  const canManage = (a: ConnectionAccount) =>
+    a.ownerType === "org" ? canAdminOrg() : a.isMine === true
+  // A credentials account of a multi-instance connection is named by an
+  // identifier the app defines: the generic form cannot replace it.
+  const canReconnect = (a: ConnectionAccount) => canManage(a) && (isOAuth() || !multi())
+
+  // The template variables of a per-store account, read off its identifier when
+  // the connection says which variable that identifier is. Null: not derivable.
+  function storeVarsOf(a: ConnectionAccount): Record<string, string> | null {
+    const vars = props.conn.templateVars ?? []
+    const key = props.conn.identifierVar
+    if (!key || vars.length !== 1 || vars[0] !== key || !a.identifier) return null
+    return { [key]: a.identifier }
+  }
+
   function reconnect(a: ConnectionAccount): void {
-    if (isOAuth() && !asksForStore()) void oauth(a.ownerType === "org" ? "org" : "personal", a.id)
-    else setFormOpen(true)
+    if (!isOAuth()) {
+      setFormVars(undefined)
+      setFormOpen(true)
+      return
+    }
+    const mode = a.ownerType === "org" ? "org" : "personal"
+    if (!asksForStore()) {
+      void oauth(mode, a.id, { accountHint: a.identifier })
+      return
+    }
+    const vars = storeVarsOf(a)
+    if (vars) {
+      void oauth(mode, a.id, vars)
+      return
+    }
+    // The store cannot be read safely off the account: the form asks for it,
+    // starting from the identifier when the connection names its variable.
+    const key = props.conn.identifierVar
+    setFormVars(key && a.identifier ? { [key]: a.identifier } : undefined)
+    setFormOpen(true)
   }
 
   async function disconnect(a: ConnectionAccount): Promise<void> {
@@ -459,7 +501,10 @@ const ConnectionCard: Component<{
             size="sm"
             variant="outline"
             data-testid={`connections-connect-${props.conn.name}`}
-            onClick={() => setFormOpen(true)}
+            onClick={() => {
+              setFormVars(undefined)
+              setFormOpen(true)
+            }}
           >
             {rows().length > 0 ? i18n.t(`${P}.addAccount`) : i18n.t(`${P}.connect`)}
           </Button>
@@ -537,7 +582,7 @@ const ConnectionCard: Component<{
                         {i18n.t(`${P}.share`)}
                       </Button>
                     </Show>
-                    <Show when={!multi() && (a.status === "error" || !isOAuth())}>
+                    <Show when={canReconnect(a)}>
                       <Button
                         size="sm"
                         variant="outline"
@@ -570,13 +615,18 @@ const ConnectionCard: Component<{
           <InlineConnectForm
             appName={props.app}
             connectionName={props.conn.name}
+            initialTemplateVars={formVars()}
             onConnected={() => {
               setFormOpen(false)
+              setFormVars(undefined)
               void refetch()
               void appsStore.loadConnections(api, props.app)
               props.onChanged()
             }}
-            onClose={() => setFormOpen(false)}
+            onClose={() => {
+              setFormOpen(false)
+              setFormVars(undefined)
+            }}
           />
         </div>
       </Show>

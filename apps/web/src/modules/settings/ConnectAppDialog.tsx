@@ -36,6 +36,8 @@ export interface ConnectAppDialogProps {
   onSuccess?: () => void
   /** Called just before an OAuth sign-in leaves the page for the provider. */
   onRedirect?: () => void
+  /** Template variables to start from (reconnecting a known store). */
+  initialTemplateVars?: Record<string, string>
 }
 
 type ConnectMode = "personal" | "org"
@@ -82,7 +84,9 @@ export const ConnectAppDialog: Component<ConnectAppDialogProps> = (props) => {
   const [clientId, setClientId] = createSignal("")
   const [clientSecret, setClientSecret] = createSignal("")
   const [templateVars, setTemplateVars] = createSignal<Record<string, string>>(
-    Object.fromEntries((props.connConfig.templateVars ?? []).map((k) => [k, ""])),
+    Object.fromEntries(
+      (props.connConfig.templateVars ?? []).map((k) => [k, props.initialTemplateVars?.[k] ?? ""]),
+    ),
   )
 
   // The app supplies (or refuses) its own client: no client fields at all.

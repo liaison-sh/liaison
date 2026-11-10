@@ -112,7 +112,16 @@ export interface StripeFetchOptions {
   sleep?: (ms: number) => Promise<void>
 }
 
-const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+type TimerFn = (fn: () => void, ms: number) => unknown
+
+/** Pause when the runtime has a timer; one of the sandbox executors has none (pacing then comes from the round trip). */
+export function pause(ms: number): Promise<void> {
+  const timer = (globalThis as { setTimeout?: TimerFn }).setTimeout
+  if (typeof timer !== "function" || !(ms > 0)) return Promise.resolve()
+  return new Promise<void>((resolve) => {
+    timer(() => resolve(), ms)
+  })
+}
 
 /**
  * Call the Stripe API and return the parsed JSON body. Throws `StripeApiError`:
@@ -136,7 +145,7 @@ export async function stripeFetch<T = unknown>(
   if (method === "POST" && init.idempotencyKey) headers["Idempotency-Key"] = init.idempotencyKey
   const resource = resourceOf(path)
   const maxRetries = opts.maxRetries ?? 3
-  const sleep = opts.sleep ?? defaultSleep
+  const sleep = opts.sleep ?? pause
 
   for (let attempt = 0; ; attempt++) {
     const res = await ctx.fetch(url, {

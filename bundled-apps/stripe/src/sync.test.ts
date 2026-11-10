@@ -9,7 +9,7 @@ import { handleStripeEvent } from "./dispatch"
 import { eventsHandler } from "./handlers"
 import { HELD, moneyActionHold, syncProgress } from "./states"
 import { runBackfill } from "./sync/backfill"
-import type { SyncCtx } from "./sync/common"
+import { type SyncCtx, advanceState } from "./sync/common"
 import { homeLoad } from "./sync/home"
 import { onDisconnect, runCatchup } from "./sync/maintenance"
 import { runProbe } from "./sync/probe"
@@ -105,6 +105,10 @@ class StripeApi {
   events: Obj[] = []
   forced = new Map<string, number>()
   calls: string[] = []
+  /** A loop under test that asks for more pages than this is a loop that does not end: fail instead of hanging. */
+  maxCalls = 200
+  /** Runs before a request is answered (another run moving in between). */
+  beforeFetch: ((path: string) => void) | null = null
   /** Answer every request with this status (a revoked key). */
   all: number | null = null
   list(path: string, items: Obj[]) {
@@ -116,6 +120,8 @@ class StripeApi {
     const u = new URL(url)
     const path = u.pathname
     this.calls.push(`${path}${u.search}`)
+    if (this.calls.length > this.maxCalls) throw new Error(`more than ${this.maxCalls} Stripe requests: the loop does not end`)
+    this.beforeFetch?.(path)
     if (opts?.headers?.["Stripe-Version"] === undefined) return { status: 400, headers: {}, body: "{}" }
     const status = this.all ?? this.forced.get(path)
     if (status) return { status, headers: {}, body: JSON.stringify({ error: { message: "forced" } }) }
@@ -238,6 +244,33 @@ describe("the first import", () => {
     await runBackfill(ctx(), { now, sleep: noSleep })
     expect(db.rows("stripe_customers").length).toBe(230)
     expect(db.one("sync_state", { resource: "customers" })).toMatchObject({ status: "done", done_count: 230 })
+  })
+
+  it("a run whose place was moved by another run is refused at the cursor and leaves the winner's cursor", async () => {
+    install("waiting_first_event")
+    api.list("/v1/customers", customers(230))
+    emptyLists()
+    // Another run wins the page 1 swap between this run's read and its write.
+    let moved = false
+    api.beforeFetch = (path) => {
+      if (path !== "/v1/customers" || moved) return
+      moved = true
+      Object.assign(db.one("sync_state", { resource: "customers" }) as Row, { cursor: "cus_0099", done_count: 100, status: "running" })
+    }
+    const res = await runBackfill(ctx(), { now, sleep: noSleep })
+    expect(res).toMatchObject({ outcome: "stopped", detail: "another run moved the import on" })
+    expect(db.one("sync_state", { resource: "customers" })).toMatchObject({ cursor: "cus_0099", done_count: 100, status: "running" })
+  })
+
+  it("the cursor swap refuses a write made from a place that has moved on", async () => {
+    install("waiting_first_event")
+    db.rows("sync_state").push({ id: "s1", resource: "customers", status: "running", cursor: "cus_0099", done_count: 100 })
+    const stale = { id: "s1", resource: "customers", status: "running", cursor: null, done_count: 0 } as Parameters<typeof advanceState>[1]
+    expect(await advanceState(ctx().db, stale, { cursor: "cus_0049", done_count: 50 }, now())).toBe(false)
+    expect(db.one("sync_state", { resource: "customers" })).toMatchObject({ cursor: "cus_0099", done_count: 100 })
+    const fresh = { ...stale, cursor: "cus_0099", done_count: 100 }
+    expect(await advanceState(ctx().db, fresh, { cursor: "cus_0199", done_count: 200 }, now())).toBe(true)
+    expect(db.one("sync_state", { resource: "customers" })).toMatchObject({ cursor: "cus_0199", done_count: 200 })
   })
 
   it("an invoice finalized before the connection is mirrored as before_connection and announced to nobody", async () => {

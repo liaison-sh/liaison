@@ -84,4 +84,17 @@ describe("stripeFetch", () => {
     expect(e.code).toBe("rate_limited")
     expect(busy.calls).toHaveLength(3)
   })
+
+  it("a 429 is retried where the runtime has no timer", async () => {
+    const g = globalThis as { setTimeout?: unknown }
+    const saved = g.setTimeout
+    g.setTimeout = undefined
+    try {
+      const ok = fakeCtx([{ status: 429, body: {} }, { status: 200, body: { id: "cus_1" } }])
+      expect(await stripeFetch(ok.ctx, "/v1/customers/cus_1")).toEqual({ id: "cus_1" })
+      expect(ok.calls).toHaveLength(2)
+    } finally {
+      g.setTimeout = saved
+    }
+  })
 })

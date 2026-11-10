@@ -186,6 +186,12 @@ export function decryptConnectionConfigValue(
     return value
   }
 }
+const SIGNING_SECRET_KEY = "webhookSigningSecret"
+const PREVIOUS_SECRET_KEY = "webhookSigningSecretPrevious"
+const PREVIOUS_SECRET_UNTIL_KEY = "webhookSigningSecretPreviousUntil"
+/** How long the old signing secret keeps verifying after a roll. */
+const PREVIOUS_SECRET_WINDOW_MS = 24 * 60 * 60 * 1000
+
 /**
  * App-held secret capability: store a secret the PROVIDER minted (returned once by its API, e.g.
  * a webhook signing secret) into the app's own `kernel.apps.config`, encrypted at rest. Only a
@@ -226,11 +232,24 @@ export async function storeAppHeldSecret(args: {
   const overlayJson = JSON.stringify({
     [args.key]: encryptSecret(args.value, encKey, CryptoContext.appConfigConnectionSecret),
   })
+  // A replaced webhook signing secret is not cut off at once: the provider may still be
+  // delivering with the old one. In the SAME update, the old (already encrypted) value moves
+  // to the "previous" key with a deadline, which the verifier reads.
+  const rolls = args.key === SIGNING_SECRET_KEY && declared.has(PREVIOUS_SECRET_KEY)
+  const untilJson = JSON.stringify(new Date(Date.now() + PREVIOUS_SECRET_WINDOW_MS).toISOString())
+  const rollOver = rolls
+    ? drizzleSql`|| CASE
+        WHEN coalesce(${appsTable.config}->>${SIGNING_SECRET_KEY}, '') <> ''
+        THEN jsonb_build_object(
+          ${PREVIOUS_SECRET_KEY}::text, ${appsTable.config}->${SIGNING_SECRET_KEY},
+          ${PREVIOUS_SECRET_UNTIL_KEY}::text, ${untilJson}::jsonb)
+        ELSE '{}'::jsonb END`
+    : drizzleSql``
   await withPrivilegedDb(args.orgId, "app-held-secret-store", (tx) =>
     tx
       .update(appsTable)
       .set({
-        config: drizzleSql`coalesce(${appsTable.config}, '{}'::jsonb) || ${overlayJson}::jsonb`,
+        config: drizzleSql`coalesce(${appsTable.config}, '{}'::jsonb) || ${overlayJson}::jsonb ${rollOver}`,
         updatedAt: new Date(),
       })
       .where(and(eq(appsTable.orgId, args.orgId), eq(appsTable.name, args.appName))),

@@ -181,6 +181,8 @@ handlers teaches exactly one thing.
   "documents", "column": "document_id" } }` keeps the rows whose parent, in
   another marked table of the app, is kept.
 
+**Every table needs a scope that reaches it.** A table's rows are read with `<app>:<rlsScope or table name>:read`, so a scope your app declares (in `scopes`, a role or a tool) must cover that name. Give a table an `rlsScope` that one of your scopes covers, for example `"rlsScope": "items"` on a table read with `myapp:items:read`. An app with a table no declared scope reaches is refused at registration: on a development or test server registration stops with an error naming the table, and on a production server the app is not loaded and shows as needing attention, with the table named.
+
 ### Frontend (`apps/web/src/modules/<name>/`)
 
 - **`Panel.tsx`** — a SolidJS component, the app's UI surface.

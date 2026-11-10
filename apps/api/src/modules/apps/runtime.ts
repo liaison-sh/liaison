@@ -136,7 +136,8 @@ export class AppRegistrationFatalError extends Error {
       | "missing_tool_dependency"
       | "manifest_invalid"
       | "role_cycle"
-      | "entity_schema_mismatch",
+      | "entity_schema_mismatch"
+      | "rls_unreachable",
     public readonly details: Record<string, unknown>,
     message: string,
   ) {
@@ -552,6 +553,51 @@ const MAX_PROBLEM_MESSAGE = 1000
  * host API range. A refused app is recorded in the errored state with its reason
  * and comes back as the problem; a valid one comes back cleaned for registration.
  */
+/**
+ * The scope-reachability check of a descriptor's schema, judged before any DDL
+ * at every registration (the reuse paths included): a governed table whose
+ * effective scope entity (its `rlsScope`, else its name) no declared grantable
+ * scope covers. Tables whose access migration policies own are judged on the
+ * database during the schema transaction instead (the migration half below).
+ *
+ * Outside production the refusal throws (`rls_unreachable`), so a test, a dev
+ * server or CI fails on it. In production the app is not loaded and the
+ * returned problem marks it in error with the tables named; the others load.
+ */
+function rlsUnreachableRefusal(desc: AppDescriptor): AppProblem | null {
+  if (!desc.schema) return null
+  const grantable = grantableScopesWithAppAliases(desc.name, declaredGrantableScopes(desc as any))
+  const tables = tablesUnreachableByGrantableScopes(
+    desc.name,
+    desc.schema as Record<string, { rlsScope?: unknown }>,
+    grantable,
+    { rlsManagedBy: (desc as { rlsManagedBy?: unknown }).rlsManagedBy },
+  )
+  return rlsRefusal(desc, tables, grantable)
+}
+
+/** Throws outside production; in production logs and returns the app's problem. */
+function rlsRefusal(desc: AppDescriptor, tables: string[], grantable: string[]): AppProblem | null {
+  if (tables.length === 0) return null
+  const message =
+    `${desc.name} ${desc.version ?? ""}: no scope the app declares can reach its table(s) ` +
+    `${tables.join(", ")}, so only administrators could read them. Give each one an ` +
+    "`rlsScope` one of the app's scopes covers, declare a scope for it, or, for a table whose " +
+    "access a migration policy grants, mark it `rlsGovernedByMigration` and make sure that policy exists."
+  if (process.env.NODE_ENV !== "production") {
+    throw new AppRegistrationFatalError(
+      "rls_unreachable",
+      { appName: desc.name, version: desc.version, tables, grantableScopes: grantable },
+      message,
+    )
+  }
+  log.error(
+    { app: desc.name, version: desc.version, tables, grantableScopes: grantable },
+    "App refused: governed tables no grantable scope can reach",
+  )
+  return { code: "manifest_invalid", message }
+}
+
 async function validateForRegistration(
   desc: AppDescriptor,
   orgId: string,
@@ -658,6 +704,14 @@ async function validateForRegistration(
     const problem: AppProblem = { code: "manifest_invalid", message: hostProblem }
     await persistAppErrorState(orgId, desc.name, String(desc.version ?? ""), problem)
     return { ok: false, problem }
+  }
+  // A governed table no declared scope can reach is visible to administrators
+  // only: every least-privilege role reads it as empty. Such an app is refused,
+  // never registered half-working (rlsUnreachableRefusal).
+  const rlsProblem = rlsUnreachableRefusal(desc)
+  if (rlsProblem) {
+    await persistAppErrorState(orgId, desc.name, String(desc.version ?? ""), rlsProblem)
+    return { ok: false, problem: rlsProblem }
   }
   // If skills had lazy body loaders, restore the originals — `result.data`
   // carries the validation placeholder strings, and the skill register
@@ -2305,31 +2359,21 @@ async function registerSingleApp(
                 }
               }
 
-              // Reachability guard: warn if any governed table's effective RLS
-              // scope-entity (its `rlsScope` alias, else the table name) is not matched
-              // by any declared grantable scope. Such a table is unreachable for every
-              // grantable role → least-privilege users fail on it (the invoicing
-              // document_lines/issuer_profiles bug). Non-fatal so 3rd-party installs are
-              // not blocked, but loud so the misconfig surfaces.
-              //
-              // A table whose access the migrations own (app `rlsManagedBy:
-              // "migration"`, or table `rlsGovernedByMigration`) is judged on the
-              // database instead: it is unreachable only when no migration policy on
+              // Reachability guard, migration half: the scope half ran before any DDL
+              // (rlsUnreachableRefusal). A table whose access the migrations own (app
+              // `rlsManagedBy: "migration"`, or table `rlsGovernedByMigration`) is
+              // judged on the database: it is unreachable when no migration policy on
               // it can grant anything (every one is a `USING (false)` deny-default).
+              // Such an app is refused like an unreachable scope: outside production
+              // the registration throws; in production the schema transaction rolls
+              // back and the app is marked in error.
               if (desc.schema) {
-                // Per-app scope aliases widen the RLS context of every handler call
-                // (withAppDimensionAliases), so they count toward reachability.
                 const grantable = grantableScopesWithAppAliases(
                   desc.name,
                   declaredGrantableScopes(desc as any),
                 )
                 const rlsOpts = { rlsManagedBy: (desc as { rlsManagedBy?: unknown }).rlsManagedBy }
-                const unreachable = tablesUnreachableByGrantableScopes(
-                  desc.name,
-                  desc.schema as Record<string, { rlsScope?: unknown }>,
-                  grantable,
-                  rlsOpts,
-                )
+                const unreachable: string[] = []
                 const migrationGoverned = migrationGovernedTables(
                   desc.schema as Record<string, { rlsGovernedByMigration?: unknown }>,
                   rlsOpts,
@@ -2358,12 +2402,8 @@ async function registerSingleApp(
                     log.debug({ err, app: desc.name }, "Migration policy probe failed; skipped")
                   }
                 }
-                if (unreachable.length > 0) {
-                  log.warn(
-                    { app: desc.name, tables: unreachable, grantableScopes: grantable },
-                    "App declares governed tables no grantable scope can reach; least-privilege roles will fail on them. Declare a per-table `rlsScope` alias or add a grantable scope, or, for a table whose access a migration policy grants, mark it `rlsGovernedByMigration` and make sure that policy exists.",
-                  )
-                }
+                const refused = rlsRefusal(desc, unreachable, grantable)
+                if (refused) throw new Error(refused.message)
               }
 
               // Process entity schemas — topologically sort by intra-app FK references so

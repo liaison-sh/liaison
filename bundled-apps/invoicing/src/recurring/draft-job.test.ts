@@ -155,7 +155,7 @@ describe("the month-end draft job", () => {
     const prevId = "44444444-4444-4444-8444-444444444441"
     const prev = {
       ...previousDoc(prevId, true),
-      counterparty_name: "Atelier Brume SAS",
+      counterparty_name: "Maison Brume SAS",
       counterparty_address: "Site Lyon, 12 quai Perrache, 69002 Lyon",
       counterparty_vat_id: "FR40123456789",
       counterparty_email: "achats@brume.example",
@@ -168,7 +168,7 @@ describe("the month-end draft job", () => {
     await recurringDraftJob(h.ctx)
     const [draft] = h.db.__all("documents").filter((d) => d.status === "draft")
     expect(draft).toMatchObject({
-      counterparty_name: "Atelier Brume SAS",
+      counterparty_name: "Maison Brume SAS",
       counterparty_address: "Site Lyon, 12 quai Perrache, 69002 Lyon",
       counterparty_vat_id: "FR40123456789",
       counterparty_country: "FR",

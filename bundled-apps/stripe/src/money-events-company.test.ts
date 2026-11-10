@@ -28,13 +28,13 @@ describe("a Stripe invoice for a business buyer", () => {
 
   it("the buyer carries the company name, its address and its EU VAT id", () => {
     const buyer = buyerOf({
-      name: "Atelier Brume SAS",
+      name: "Maison Brume SAS",
       email: "achats@brume.example",
       address: { line1: "12 quai Perrache", postal_code: "69002", city: "Lyon", country: "FR" },
       tax_ids: [{ type: "eu_vat", value: "FR40123456789" }],
     })
     expect(buyer).toMatchObject({
-      name: "Atelier Brume SAS",
+      name: "Maison Brume SAS",
       country: "FR",
       address: "12 quai Perrache, 69002 Lyon",
       vat_id: "FR40123456789",

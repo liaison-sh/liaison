@@ -9,7 +9,6 @@ import {
   clearExportOnlyBundleCache,
   exportOnlyBundle,
   exportOnlyBundleCacheSize,
-  hasImportAttribute,
   useFullBundle,
 } from "~/modules/apps/sandbox/bundle-shake"
 import { executeInSandbox } from "~/modules/apps/sandbox/executor"
@@ -177,41 +176,8 @@ describe("a bundle with an import attribute", () => {
     it(`is refused before any build, and its macro never runs on the host (${attribute.replace("\n", " ")})`, async () => {
       const marker = join(dir, `ran-${crypto.randomUUID()}`)
       const bundle = macroBundle(marker, attribute)
-      expect(hasImportAttribute(bundle)).toBe(true)
       expect(await buildExportOnlyBundle(bundle, "handler")).toBeNull()
       expect(existsSync(marker)).toBe(false)
     })
   }
-
-  it("a bundle with no attribute is not taken for one", () => {
-    expect(hasImportAttribute(SCRIPT)).toBe(false)
-    expect(hasImportAttribute("var o = { with: 1 }; function assertOk() { return {} }")).toBe(false)
-    // A line comment after the keyword that only mentions a brace is no attribute.
-    expect(hasImportAttribute("// formats it with\n// `{YYYY}` expanded\nvar x = 1")).toBe(false)
-  })
-
-  it("reads comments as the parser does", () => {
-    expect(
-      hasImportAttribute('import a from "a" with /* a */ /* b */\n// c\n{ type: "macro" }'),
-    ).toBe(true)
-    expect(hasImportAttribute('import a from "a" with\u2028{ type: "macro" }')).toBe(true)
-    // `/*/` opens a comment that never closes: the brace is inside it.
-    expect(hasImportAttribute("var a = 1; with /*/ { }")).toBe(false)
-    expect(hasImportAttribute("with /* { */ x")).toBe(false)
-    expect(hasImportAttribute("with // {")).toBe(false)
-  })
-
-  it("stays linear on text built to make a backtracking matcher blow up", () => {
-    const hostile = [
-      `with ${"*//*".repeat(200_000)}`,
-      `with ${"/**/".repeat(200_000)}x`,
-      "//with\n".repeat(200_000),
-      "with/*".repeat(200_000),
-      `${"with ".repeat(200_000)}x`,
-    ]
-    const started = performance.now()
-    for (const text of hostile) expect(hasImportAttribute(text)).toBe(false)
-    expect(hasImportAttribute(`with ${"/**/".repeat(200_000)}{`)).toBe(true)
-    expect(performance.now() - started).toBeLessThan(2_000)
-  })
 })

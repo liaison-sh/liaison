@@ -22,7 +22,10 @@
  * when its output does not define the export as a global) the caller gets the
  * full bundle, exactly what it ran before.
  */
-import { esmExportsToGlobalThis } from "~/modules/apps/sandbox/bundle-loader"
+import {
+  esmExportsToGlobalThis,
+  unwrapGlobalThisExports,
+} from "~/modules/apps/sandbox/bundle-loader"
 
 const MAX_ENTRIES = 64
 /** The export names a bundle can be shaken for (they are interpolated). */
@@ -58,7 +61,14 @@ export async function buildExportOnlyBundle(
   exportName: string,
 ): Promise<string | null> {
   if (!SAFE_EXPORT_RE.test(exportName)) return null
-  const contents = `${source}\nexport { ${exportName} };\n`
+  // An installed bundle comes scoped, its exports assigned to globalThis
+  // (bundle-loader.ts): shake its body, exporting the handler's local name.
+  const scoped = unwrapGlobalThisExports(source)
+  const local = scoped ? scoped.exports.get(exportName) : exportName
+  if (!local) return null
+  const contents = scoped
+    ? `${scoped.body}\nexport { ${local} as ${exportName} };\n`
+    : `${source}\nexport { ${exportName} };\n`
   let output: string
   try {
     const built = await Bun.build({

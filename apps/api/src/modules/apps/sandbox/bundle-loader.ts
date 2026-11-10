@@ -261,3 +261,27 @@ export function clearBundleCache(): void {
   cache.clear()
   fileCache.clear()
 }
+
+const WRAP_HEAD = "(function () {\n"
+const WRAP_TAIL = "\n})();\n"
+const EXPORT_LINE = /^globalThis\.([A-Za-z_$][\w$]*) = ([A-Za-z_$][\w$]*);$/
+
+/**
+ * The inverse of `esmExportsToGlobalThis`: the bundle body and its exports
+ * (exported name -> local name), or null when `source` is not in that shape.
+ */
+export function unwrapGlobalThisExports(
+  source: string,
+): { body: string; exports: Map<string, string> } | null {
+  if (!source.startsWith(WRAP_HEAD) || !source.endsWith(WRAP_TAIL)) return null
+  const lines = source.slice(WRAP_HEAD.length, source.length - WRAP_TAIL.length).split("\n")
+  const exports = new Map<string, string>()
+  while (lines.length > 0) {
+    const m = EXPORT_LINE.exec(lines[lines.length - 1] as string)
+    if (!m) break
+    exports.set(m[1] as string, m[2] as string)
+    lines.pop()
+  }
+  if (exports.size === 0) return null
+  return { body: lines.join("\n"), exports }
+}

@@ -255,3 +255,11 @@ Schedule editor actions at the top, Start disabled during an open conflict or wi
 Run detail: none missing only when consecutive in one series, Fix opens the draft, Download all -> bundled-apps/invoicing/src/ui/RunDetail.tsx:57; bundled-apps/invoicing/src/ui/RunDetail.tsx:70; bundled-apps/invoicing/src/ui/RunDetail.tsx:183
 Standing authorization control: Turn off waits 8 s, Undo calls nothing -> bundled-apps/invoicing/src/ui/IssuerStreams.tsx:37; bundled-apps/invoicing/src/ui/IssuerStreams.tsx:48
 E-invoice status words on an invoice and money chips -> bundled-apps/invoicing/src/ui/RecurringStates.tsx:31; bundled-apps/invoicing/src/ui/RecurringStates.tsx:48; bundled-apps/invoicing/src/ui/DocumentDetail.tsx:545
+Month-end card panel: first line, count and total at the top, waiting rows' sentence before the rows -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:271-300 ; bundled-apps/invoicing/src/ui/month-end.ts:68-90
+A row opens in place with the editor's fields; Save for the month only or from now on; Cancel restores -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:360-375 ; bundled-apps/invoicing/src/ui/Editor.tsx:786-797
+Take out this month or end the schedule with Last month billed; Put back -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:456-500
+Account manager or None; Ask puts a mention in the run's discussion -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:194-197 ; bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:328
+Rights: write edits, otherwise read-only; who decides line -> bundled-apps/invoicing/src/ui/month-end.ts:131-133 ; bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:279
+Above 20 rows, rows with nothing to look at fold; search by customer -> bundled-apps/invoicing/src/ui/month-end.ts:42 ; bundled-apps/invoicing/src/ui/month-end.ts:94-112
+A changed run lists changes, who, old and new totals, and offers Approve N -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:223-268 ; bundled-apps/invoicing/src/ui/month-end.ts:160-190
+month-end-check routine: on recurring_run:drafted, read scopes only, at most two sentences, off by default -> bundled-apps/invoicing/app.manifest.json:6944-6951

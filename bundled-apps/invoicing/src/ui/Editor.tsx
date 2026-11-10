@@ -21,6 +21,7 @@ import {
   For,
   Index,
   Show,
+  untrack,
   type Component,
 } from "solid-js"
 import { app, navigate } from "@liaison/host"
@@ -782,6 +783,16 @@ export interface EditorProps {
    *  the `{type}_issue` tool against the existing draft instead of
    *  `{type}_create_and_issue` (which would create a duplicate). */
   documentId?: string
+  /** Opened inside another view (a month-end row): the customer, notes, due date and lines only,
+   *  with no top bar, no summary and no issue buttons. The host view saves through `onReady`. */
+  compact?: boolean
+  /** Shown, not editable: the viewer may read this draft but not change it. */
+  readOnly?: boolean
+  /** The draft as typed, on every change, before anything is saved. */
+  onChange?: (d: DraftDocument) => void
+  /** The editor's own save of an existing draft, for a host view's buttons: `drafts_update` with
+   *  this editor's patch plus the extra arguments given. Resolves false when it was refused. */
+  onReady?: (api: { save: (extra?: Record<string, unknown>) => Promise<boolean>; error: () => string | null }) => void
 }
 
 /** Today on this computer's calendar: the date shown until the issuer's own date is known. */
@@ -909,7 +920,7 @@ export async function loadIssuerProfiles(): Promise<IssuerProfilesLoad> {
 
 export const Editor: Component<EditorProps> = (props) => {
   const [draft, setDraft] = createSignal<DraftDocument>(props.initial)
-  const ro = createMemo(() => readOnly(draft()))
+  const ro = createMemo(() => props.readOnly === true || readOnly(draft()))
   /** Financial substance locked (an issued invoice or credit note): the line grid,
    *  customer name, VAT id and tax treatment inputs are disabled and left out of the patch. */
   const frozen = createMemo(() => isFinancialSubstanceFrozen(draft()))
@@ -1186,11 +1197,11 @@ export const Editor: Component<EditorProps> = (props) => {
   /** Push the current editor state onto the existing draft (no banner) so a
    *  subsequent issue call issues WHAT THE USER SEES, not the last-saved
    *  state. Returns false (and surfaces the error) when the update failed. */
-  const pushDraftPatch = async (documentId: string): Promise<boolean> => {
+  const pushDraftPatch = async (documentId: string, extra?: Record<string, unknown>): Promise<boolean> => {
     try {
       const result = await app.invokeTool<
         Record<string, unknown> | { status: "error"; error: { code: string; message: string } }
-      >("drafts_update", { draft_id: documentId, patch: draftPatch() })
+      >("drafts_update", { draft_id: documentId, patch: draftPatch(), ...(extra ?? {}) })
       if (result && typeof result === "object" && "status" in result && result.status === "error") {
         const err = (result as { error?: { code?: string; message?: string } }).error
         setLastError(err?.message ?? err?.code ?? tr("The request failed."))
@@ -1202,6 +1213,19 @@ export const Editor: Component<EditorProps> = (props) => {
       return false
     }
   }
+
+  createEffect(() => {
+    const d = draft()
+    // Only the draft is tracked: what the host does with it never re-runs this.
+    untrack(() => props.onChange?.(d))
+  })
+  props.onReady?.({
+    save: (extra) => {
+      setLastError(null)
+      return props.documentId ? pushDraftPatch(props.documentId, extra) : Promise.resolve(false)
+    },
+    error: () => lastError(),
+  })
 
   /** Persist the e-invoicing fields of an existing draft as soon as they change, then re-ask
    *  einvoicing_classify, so what blocks Issue reflects what the operator just chose. */
@@ -1346,6 +1370,7 @@ export const Editor: Component<EditorProps> = (props) => {
     <section data-testid="invoicing-editor" class="flex h-full min-h-0 flex-col">
       {/* Top bar — spans the lines column and the summary. The actions live at the top: the
           chat dock floats over the panel's bottom-right corner, so a bottom bar would sit under it. */}
+      <Show when={!props.compact}>
       <div
         data-testid="editor-top-bar"
         class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border-subtle px-5 py-3"
@@ -1382,6 +1407,7 @@ export const Editor: Component<EditorProps> = (props) => {
           </Show>
         </div>
       </div>
+      </Show>
 
       <Show when={lastError()}>
         <div
@@ -1454,7 +1480,14 @@ export const Editor: Component<EditorProps> = (props) => {
           </Show>
 
           {/* Header strip */}
-          <header class="grid grid-cols-2 gap-x-5 gap-y-4 border-b border-border-subtle px-5 py-4 lg:grid-cols-3">
+          <header
+            class={
+              props.compact
+                ? "grid grid-cols-1 gap-x-5 gap-y-4 border-b border-border-subtle px-3 py-3 sm:grid-cols-2"
+                : "grid grid-cols-2 gap-x-5 gap-y-4 border-b border-border-subtle px-5 py-4 lg:grid-cols-3"
+            }
+          >
+            <Show when={!props.compact}>
             <Field label={tr("Type")}>
               <Select
                 testid="editor-field-type"
@@ -1510,6 +1543,7 @@ export const Editor: Component<EditorProps> = (props) => {
                 )}
               </Show>
             </Field>
+            </Show>
             {/* Credit notes are never payable — no due date, so the field is hidden for this type. */}
             <Show when={draft().type !== "credit_note"}>
               <Field label={tr("Due date")} error={validation().errors.some((er) => er.field === "due_at")}>
@@ -1527,6 +1561,7 @@ export const Editor: Component<EditorProps> = (props) => {
                 />
               </Field>
             </Show>
+            <Show when={!props.compact}>
             <Field label={tr("Language")}>
               <Select
                 testid="editor-field-language"
@@ -1547,12 +1582,17 @@ export const Editor: Component<EditorProps> = (props) => {
                 <For each={INCOTERMS}>{(i) => <option value={i}>{i}</option>}</For>
               </Select>
             </Field>
+            </Show>
           </header>
 
           {/* Customer section */}
           <section
             data-testid="editor-section-customer"
-            class="grid grid-cols-2 gap-x-5 gap-y-4 border-b border-border-subtle px-5 py-4 lg:grid-cols-3"
+            class={
+              props.compact
+                ? "grid grid-cols-1 gap-x-5 gap-y-4 border-b border-border-subtle px-3 py-3 sm:grid-cols-2"
+                : "grid grid-cols-2 gap-x-5 gap-y-4 border-b border-border-subtle px-5 py-4 lg:grid-cols-3"
+            }
           >
             <Field label={tr("Customer name")}>
               <input
@@ -1633,6 +1673,7 @@ export const Editor: Component<EditorProps> = (props) => {
             </Field>
             {/* Ship to: filled only when the parcel goes somewhere other than the billing
                 address. Left empty, the document prints the BILL TO block alone. */}
+            <Show when={!props.compact}>
             <Field label={tr("Shipping address (if different)")} class="col-span-2 lg:col-span-3">
               <textarea
                 data-testid="editor-field-shipping-address"
@@ -1658,6 +1699,7 @@ export const Editor: Component<EditorProps> = (props) => {
                 class={inputClass}
               />
             </Field>
+            </Show>
             {/* Free-text notes printed on the document. Editable on EVERY editable status
                 (documents_update takes notes as non-financial metadata, exactly like po_number),
                 so it is NOT gated on the draft-only read-only flag beyond `ro()`. */}
@@ -1679,7 +1721,7 @@ export const Editor: Component<EditorProps> = (props) => {
             {/* E-invoicing: customer type and operation type (invoices), the structured billing
                 address an e-invoice needs (French buyers), and what still blocks Issue. Each
                 blocker names its field and carries one action; warn mode only notes, calmly. */}
-            <Show when={draft().type === "invoice" || draft().type === "credit_note"}>
+            <Show when={!props.compact && (draft().type === "invoice" || draft().type === "credit_note")}>
               <div
                 data-testid="editor-section-einvoicing"
                 class="col-span-2 grid grid-cols-2 gap-x-5 gap-y-4 lg:col-span-3 lg:grid-cols-3"
@@ -1815,7 +1857,7 @@ export const Editor: Component<EditorProps> = (props) => {
           </section>
 
           {/* Lines */}
-          <div class="flex-1 overflow-y-auto px-5 py-4">
+          <div class={props.compact ? "flex-1 overflow-x-auto px-3 py-3" : "flex-1 overflow-y-auto px-5 py-4"}>
             <table class="w-full text-[12.5px]" data-testid="editor-lines-table">
               <thead>
                 <tr class="text-left text-[10.5px] uppercase tracking-wider text-text-tertiary">
@@ -2000,6 +2042,7 @@ export const Editor: Component<EditorProps> = (props) => {
         </div>
 
         {/* Right: summary */}
+        <Show when={!props.compact}>
         <aside class="w-72 shrink-0 overflow-y-auto border-l border-border-subtle bg-bg">
           <EditorSummary
             draft={draft()}
@@ -2008,6 +2051,7 @@ export const Editor: Component<EditorProps> = (props) => {
             validation={validation()}
           />
         </aside>
+        </Show>
       </div>
     </section>
   )

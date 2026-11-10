@@ -29,6 +29,7 @@ import { ApiError } from "~/lib/api-error"
 import { isPendingSubtitle, readableSummaryLines } from "~/lib/approval-summary-lines"
 import { nativeHaptic } from "~/lib/native-bridge"
 import { relativeTime } from "~/lib/relative-time"
+import { ApprovalDetailPanels } from "~/modules/approvals/ApprovalDetailPanels"
 import {
   approvalKindLabel,
   approvalScopeLabel,
@@ -2392,6 +2393,11 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
                           )}
                         </For>
                       </ul>
+                    </Show>
+
+                    {/* What the request covers, drawn by the app whose tool it is, when it gives one. */}
+                    <Show when={!editing() && !bundleOutcome()}>
+                      <ApprovalDetailPanels request={c()} canDecide={canApprove()} />
                     </Show>
 
                     <Show when={!editing() && sealedDraft() && !openedDraft()}>

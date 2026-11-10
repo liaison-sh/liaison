@@ -1920,6 +1920,8 @@ export const appManifestJsonSchema = {
           order: { type: "integer" },
           group: { type: "string", minLength: 1 },
           feature: { type: "string", minLength: 1 },
+          // On `approval:detail:panel`: the one tool whose approval card shows it.
+          for_tool: { type: "string", pattern: "^[a-z][a-z0-9_-]*:[a-z][a-z0-9_]*$" },
         },
         required: ["label", "component"],
       },

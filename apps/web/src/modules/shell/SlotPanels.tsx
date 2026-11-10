@@ -56,9 +56,11 @@ export type SlotPosition = "panel" | "actions" | "tabs"
 async function fetchSlotPanels(
   api: ReturnType<typeof useApi>,
   slot: string,
+  forTool?: string,
 ): Promise<ServerSlotPanel[]> {
   // Relative to the API base: `/v1/slots/:slot` is `/api/v1/slots/:slot` on the wire.
-  const res = await api.get<{ panels: ServerSlotPanel[] }>(`/v1/slots/${slot}`)
+  const query = forTool ? `?for_tool=${encodeURIComponent(forTool)}` : ""
+  const res = await api.get<{ panels: ServerSlotPanel[] }>(`/v1/slots/${slot}${query}`)
   return Array.isArray(res?.panels) ? res.panels : []
 }
 
@@ -67,11 +69,16 @@ async function fetchSlotPanels(
  * none when the app's UI did not load). Never throws: a failed list reads as
  * empty, so a host can count the entries (the phone's More sheet) safely.
  */
-export function createSlotPanels(slot: Accessor<string>): Accessor<SlotEntry[]> {
+export function createSlotPanels(
+  slot: Accessor<string>,
+  /** The tool the host is about (an approval card's): panels contributed for that tool only. */
+  forTool?: Accessor<string | undefined>,
+): Accessor<SlotEntry[]> {
   const api = useApi()
-  const [panels] = createResource(slot, async (s) => {
+  const key = () => ({ slot: slot(), forTool: forTool?.() })
+  const [panels] = createResource(key, async (k) => {
     try {
-      return await fetchSlotPanels(api, s)
+      return await fetchSlotPanels(api, k.slot, k.forTool)
     } catch {
       return []
     }

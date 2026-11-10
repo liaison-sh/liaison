@@ -395,7 +395,7 @@ Keys on the app:
 | `features` | `{<name>: {adminScope, labelKey, offMessageKey?, offNextKey?}}` | Features an org can switch off. A tool, tab type, slot panel or settings section names one with `feature`; while it is off they are absent, and a call that still names the tool reads `feature_off` with `message` and `next` |
 | `outsideTextFields` | string list | Fields a person outside the org can set. A read-only tool whose `returns` names one must declare `taintSource` or `taintSourceWhen` |
 | `approvalRoute` | `{<entityType>: <tool>}` | The read-only tool that says who an approval for that entity is for |
-| `entities.<type>.discussion` | boolean | One conversation per row, read and written by whoever can read the row; needs a `labelField` and a page (a `views.tabTypes` entry for the type). Open it with `POST /api/threads/entity-discussion`, draw it in a UI bundle with `host.mountEntityDiscussion(node, { entityType, entityId })`, and delete it with the row through the bridge's `threads_deleteEntityDiscussion` |
+| `entities.<type>.discussion` | boolean | One conversation per row, read and written by whoever can read the row; needs a `labelField` and a page (a `views.tabTypes` entry for the type). Open it with `POST /api/threads/entity-discussion`, draw it in a UI bundle with `host.mountEntityDiscussion(node, { entityType, entityId })` (`prefill` puts text in its box, never sent by itself), and delete it with the row through the bridge's `threads_deleteEntityDiscussion` |
 | `attention.groupLabel` | `{label, labelKey?}` | The heading over the app's attention items |
 | `attention.translations[].label`, `labelKey` | string | The words for an item |
 | `attentionItems.passesOn` | boolean | The provider's items may be passed on |
@@ -419,7 +419,13 @@ The slots a page offers today, each giving its panel `entityId` (the record on t
 `GET /api/v1/slots/<key>` is the one list a page reads: a panel the viewer lacks the
 `visibility_scope` for, from an app the org turned off, or naming a feature that is off, is
 not in it. `contributions.<key>` (`label`, `component`, `visibility_scope`, `order`) goes
-through the same list, with its component name as its id. The list is sorted by `order`,
+through the same list, with its component name as its id.
+
+`approval:detail:panel` draws a panel inside the approval card of one of the app's own tools:
+the contribution names the tool with `for_tool` (`<app>:<tool>`), and the card asks
+`GET /api/v1/slots/approval:detail:panel?for_tool=<app>:<tool>`, so the panel shows on that
+tool's cards and no other. It receives `approvalId`, `toolName`, `status`, `payload`,
+`payloadHash`, `threadId`, `canDecide` and `viewerScopes`. The list is sorted by `order`,
 then app name. A panel that throws shows "Panel unavailable" and the page stands; an app
 that runs in a sandboxed frame draws its panel inside its frame.
 

@@ -30,6 +30,7 @@ export { InvoicingRecurringList } from "./RecurringList"
 export { InvoicingScheduleEditor } from "./ScheduleEditor"
 export { InvoicingRunDetail } from "./RunDetail"
 export { RecurringStates } from "./RecurringStates"
+export { MonthEndRunPanel } from "./MonthEndRunPanel"
 export { resolveDocumentTabLabel } from "./tab-labels"
 
 // The `dashboard` tabType (`/invoicing/dashboards/:dashboardId`) now serves only

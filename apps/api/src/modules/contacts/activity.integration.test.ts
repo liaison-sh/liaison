@@ -5,9 +5,12 @@
 // with one deadline for all; the rows merge newest first and page by (time, id).
 
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
+import { sql as drizzleSql } from "drizzle-orm"
 import { listEventsForCaller } from "~/apps/calendar/tools"
-import { sql } from "~/db/connection"
+import { __privileged_db__ as db, sql } from "~/db/connection"
+import { setPrivilegedContext } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
+import { schemaRef } from "~/db/schema-ref"
 import { estimateToolSchemaTokens } from "~/modules/agent/context/context"
 import { handleCompanyTimeline } from "~/modules/agent/tools/company-tools"
 import { providerInputSchemaOf } from "~/modules/agent/tools/tool-bridge"
@@ -26,6 +29,7 @@ import {
   readActivity,
 } from "~/modules/contacts/activity"
 import * as mailSourceModule from "~/modules/mail/activity-source"
+import { writeMailPage } from "~/modules/mail/page-write"
 import { seedContext } from "~/seed/context"
 import { insertSql, type RowValue } from "~/seed/factories/org/test-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -605,6 +609,69 @@ describe("a company's timeline", () => {
     console.log(`company_timeline schema: ${tokens} tokens`)
     expect(tokens).toBeLessThanOrEqual(220)
   })
+
+  it("mail a person sends to a known contact is on that contact's and company's timeline", async () => {
+    const studio = await company("Sent To Studio")
+    const claudine = await contact(studio, "Claudine Sent")
+    const unknown = `nobody-${tag}@elsewhere.example`
+    const sent = (to: string) => {
+      const id = `<sent-${tag}-${next()}@team.example>`
+      return {
+        externalMessageId: id,
+        externalProviderId: id,
+        externalThreadId: id,
+        from: { email: `sales-${tag}@team.example` },
+        to: [to],
+        cc: [],
+        bcc: [],
+        subject: "Preamp pair delivery",
+        textBody: "They ship on Monday.",
+        htmlBody: null,
+        snippet: "They ship on Monday.",
+        isRead: true,
+        isStarred: false,
+        labels: ["SENT"],
+        direction: "outbound",
+        sentAt: ago(0, 60_000).toISOString(),
+        headers: {},
+        sentByUserId: ADMIN,
+      }
+    }
+    const toClaudine = sent(`Claudine Sent <${claudine.email.toUpperCase()}>`)
+    const toNobody = sent(unknown)
+    await db.transaction(async (tx) => {
+      await tx.execute(drizzleSql`SET LOCAL ROLE liaison_admin`)
+      await setPrivilegedContext(tx as never, ORG)
+      await writeMailPage(
+        {
+          tx: tx as never,
+          schemaName: schemaRef("app_mail"),
+          orgId: ORG,
+          actorId: ADMIN,
+          queueEvents: async () => {},
+        } as never,
+        { accountId: orgBox, origin: "sent", messages: [toClaudine, toNobody] },
+      )
+    })
+    const linked = await sql<Array<{ thread: string; contact_id: string | null }>>`
+      SELECT external_thread_id AS thread, contact_id::text AS contact_id FROM app_mail.conversations
+       WHERE org_id = ${ORG} AND external_thread_id IN (${toClaudine.externalThreadId}, ${toNobody.externalThreadId})`
+    expect(Object.fromEntries(linked.map((r) => [r.thread, r.contact_id]))).toEqual({
+      [toClaudine.externalThreadId]: claudine.id,
+      [toNobody.externalThreadId]: null,
+    })
+    for (const target of [{ contactId: claudine.id }, { companyId: studio }]) {
+      const page = await readActivity({ orgId: ORG, actor: admin, target })
+      const mail = page?.items.filter((r) => r.source === "mail") ?? []
+      expect(mail.map((r) => [r.title, r.contactId])).toEqual([
+        ["Preamp pair delivery sent to Claudine Sent", claudine.id],
+      ])
+    }
+    // Sending creates no contact for an address nobody has recorded.
+    const created = await sql<Array<{ n: number }>>`
+      SELECT count(*)::int AS n FROM kernel.contacts WHERE org_id = ${ORG} AND lower(email) = ${unknown}`
+    expect(created[0]?.n).toBe(0)
+  }, 60_000)
 
   it("ten calls change no row count in the org", async () => {
     const counts = async () =>

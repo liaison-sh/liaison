@@ -69,14 +69,17 @@ export function isMachineAddress(email: string): boolean {
  * Resolve a page of inbound senders to contact ids under the mailbox's policy.
  * Returns lowercased email -> contact id for the senders that have (or now
  * have) a contact the mailbox's readers may see. Senders absent from the map
- * stay plain addresses.
+ * stay plain addresses. With `create: false` only existing contacts are found
+ * (the recipients of mail the mailbox sent: sending creates no contact).
  */
 export async function resolveSenderContacts(
   orgId: string,
   actorId: string,
   account: { id: string; ownerType: string; ownerId: string | null },
   senders: SenderInput[],
+  opts: { create?: boolean } = {},
 ): Promise<Record<string, string>> {
+  const create = opts.create !== false
   if (senders.length > SENDER_CONTACTS_MAX) {
     throw new Error(`resolveSenderContacts: at most ${SENDER_CONTACTS_MAX} senders per call`)
   }
@@ -118,6 +121,7 @@ export async function resolveSenderContacts(
     }
 
     const created: Array<{ id: string; email: string }> = []
+    if (!create) return out
     for (const [email, sender] of byEmail) {
       if (out[email] || sender.bulk || isMachineAddress(email)) continue
       // An email flood must not grow the contact list without bound: each

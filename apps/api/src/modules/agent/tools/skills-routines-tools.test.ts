@@ -5207,13 +5207,18 @@ describe("handleUpdateRoutine — edit rights for a teammate's SHARED routine", 
     })
   }
 
-  async function seedRoutine(ownerId: string, visibility: "shared" | "personal"): Promise<string> {
+  async function seedRoutine(
+    ownerId: string,
+    visibility: "shared" | "personal",
+    opts: { createdBy?: string; ownerAgentId?: string } = {},
+  ): Promise<string> {
     return withPrivilegedDb(orgId, "srt-edit-rights-seed", async (tx) => {
       const [r] = await tx
         .insert(routines)
         .values({
           orgId,
           ownerUserId: ownerId,
+          ...(opts.ownerAgentId ? { ownerAgentId: opts.ownerAgentId } : {}),
           name: "EU firmware-triage",
           description: "daily triage",
           cron: "0 8 * * 1-5",
@@ -5222,13 +5227,92 @@ describe("handleUpdateRoutine — edit rights for a teammate's SHARED routine", 
           scopes: ["tickets:tickets:read"],
           visibility,
           status: "paused_scope_mismatch",
-          createdByUserId: ownerId,
+          createdByUserId: opts.createdBy ?? ownerId,
           createdByActorType: "user",
         })
         .returning({ id: routines.id })
       return r.id
     })
   }
+
+  async function seedRoleAgent(): Promise<string> {
+    const [agent] = await withPrivilegedDb(orgId, "srt-edit-rights-role-agent", (tx) =>
+      tx
+        .insert(agents)
+        .values({
+          orgId,
+          kind: "role",
+          handle: `@team-${crypto.randomUUID().slice(0, 8)}`,
+          displayName: "Team",
+          scopeCeiling: ["tickets:tickets:read"],
+          systemPrompt: "",
+        })
+        .returning({ id: agents.id }),
+    )
+    return agent.id
+  }
+
+  const delegateScopes = [
+    "kernel:routines:delegate",
+    "kernel:routines:write",
+    "tickets:tickets:read",
+  ]
+
+  it("lets the delegate who BUILT a teammate's personal routine edit it", async () => {
+    const teammateId = await makeTeammate()
+    const routineId = await seedRoutine(teammateId, "personal", { createdBy: opsLeadId })
+    const updated = (await handleUpdateRoutine(
+      { id: routineId, description: "fixed by its builder" },
+      await routineCtx(orgId, opsLeadId, delegateScopes),
+    )) as { error?: { code?: string }; routine?: { description?: string } }
+    expect(updated.error).toBeUndefined()
+    expect(updated.routine?.description).toBe("fixed by its builder")
+  })
+
+  it("its builder without delegate authority may not edit it", async () => {
+    const teammateId = await makeTeammate()
+    const routineId = await seedRoutine(teammateId, "personal", { createdBy: opsLeadId })
+    const result = (await handleUpdateRoutine(
+      { id: routineId, description: "should not apply" },
+      await routineCtx(orgId, opsLeadId, ["kernel:routines:write", "tickets:tickets:read"]),
+    )) as { error?: { code?: string } }
+    expect(result.error?.code).toBe("forbidden")
+  })
+
+  it("lets a delegate or an admin edit a personal routine run by a ROLE agent", async () => {
+    const teammateId = await makeTeammate()
+    const routineId = await seedRoutine(teammateId, "personal", {
+      ownerAgentId: await seedRoleAgent(),
+    })
+    for (const [scopes, description] of [
+      [delegateScopes, "by a delegate"],
+      [["kernel:apps:admin", "kernel:routines:write", "tickets:tickets:read"], "by an admin"],
+    ] as const) {
+      const updated = (await handleUpdateRoutine(
+        { id: routineId, description },
+        await routineCtx(orgId, opsLeadId, [...scopes]),
+      )) as { error?: { code?: string }; routine?: { description?: string } }
+      expect(updated.error).toBeUndefined()
+      expect(updated.routine?.description).toBe(description)
+    }
+    // A plain member still may not.
+    const result = (await handleUpdateRoutine(
+      { id: routineId, description: "should not apply" },
+      await routineCtx(orgId, opsLeadId, ["kernel:routines:write", "tickets:tickets:read"]),
+    )) as { error?: { code?: string } }
+    expect(result.error?.code).toBe("forbidden")
+  })
+
+  it("an added scope is capped at the run-as owner's scopes when someone else edits", async () => {
+    const teammateId = await makeTeammate()
+    const routineId = await seedRoutine(teammateId, "personal", { createdBy: opsLeadId })
+    const updated = (await handleUpdateRoutine(
+      { id: routineId, scopes: ["tickets:tickets:read", "tickets:tickets:reply"] },
+      await routineCtx(orgId, opsLeadId, [...delegateScopes, "tickets:tickets:reply"]),
+    )) as { error?: { code?: string }; routine?: { scopes?: string[] } }
+    expect(updated.error).toBeUndefined()
+    expect(updated.routine?.scopes).toEqual(["tickets:tickets:read"])
+  })
 
   it("lets a kernel:routines:delegate Ops-lead edit a teammate's SHARED routine", async () => {
     const teammateId = await makeTeammate()

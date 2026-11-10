@@ -83,7 +83,7 @@ An agent sets the conversation with `create_routine` or `update_routine` and the
 11. Optionally set **Who approves its drafts** and the token fields.
 12. Click **Create routine**.
 
-An agent can create routines for you, too, with `create_routine`. That call is itself an approval request, and the card lists the next fire times.
+An agent can create routines for you, too, with `create_routine`. That call is itself an approval request, and the card lists the next fire times. A routine your agent drafts for you (it runs as you) is yours to approve: the request goes to you alone, with no administrator needed, and the same goes for editing, running or deleting it. A scope it lists that you do not hold is left out of the routine and filed as a scope request, since approving could not grant it. A routine that runs as another person goes to the organization's approvers, and its drafts later go to that person.
 
 ### Schedule options
 
@@ -186,7 +186,9 @@ Two routine-only tools let a routine remember across runs. `web_watch` fetches a
 | `kernel:routines:read` | List routines and read their runs (`list_routines`, `list_routine_events`). |
 | `kernel:routines:write` | Create, edit, enable and delete your own routines, and run them now. |
 | `kernel:routines:run` | Run shared routines on demand, with no edit rights. |
-| `kernel:routines:delegate` | Create routines that run as another user, and edit or delete shared routines. |
+| `kernel:routines:delegate` | Create routines that run as another user; edit or delete shared routines, the routines you built for someone else, and routines run by a role agent. |
+
+An administrator who manages apps (`kernel:apps:admin`) can also edit or delete shared routines and routines run by a role agent. Another member's own personal routine stays theirs: nobody else edits it. When someone other than the routine's owner adds a scope, the routine gets it only if its owner holds it too, since it runs as them.
 
 ## Re-run events a routine missed
 

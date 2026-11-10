@@ -23,7 +23,7 @@ describe("/api/admin/version-check end-to-end", () => {
     ;[ghPort] = await allocatePorts(1)
     fakeGh = await startFakeGitHubReleases(ghPort, {
       latest: "v0.1.1",
-      htmlUrl: "https://github.com/mathieufro/liaison/releases/tag/v0.1.1",
+      htmlUrl: "https://github.com/liaison-sh/liaison/releases/tag/v0.1.1",
     })
     const result = await setupScenario({
       seed: 14,
@@ -66,7 +66,7 @@ describe("/api/admin/version-check end-to-end", () => {
     fakeGh.setStatus(200)
     fakeGh.setLatest({
       tag: "v0.1.1",
-      htmlUrl: "https://github.com/mathieufro/liaison/releases/tag/v0.1.1",
+      htmlUrl: "https://github.com/liaison-sh/liaison/releases/tag/v0.1.1",
     })
 
     const first = await api(url, "/api/admin/version-check", { token })
@@ -74,7 +74,7 @@ describe("/api/admin/version-check end-to-end", () => {
     expect(first.body.data.running).toBe("v0.1.0")
     expect(first.body.data.latest).toBe("v0.1.1")
     expect(first.body.data.latestUrl).toBe(
-      "https://github.com/mathieufro/liaison/releases/tag/v0.1.1",
+      "https://github.com/liaison-sh/liaison/releases/tag/v0.1.1",
     )
     expect(first.body.data.updateAvailable).toBe(true)
     expect(first.body.data.stale).toBeUndefined()
@@ -86,7 +86,7 @@ describe("/api/admin/version-check end-to-end", () => {
     expect(second.status).toBe(200)
     expect(second.body.data.latest).toBe("v0.1.1")
     expect(second.body.data.latestUrl).toBe(
-      "https://github.com/mathieufro/liaison/releases/tag/v0.1.1",
+      "https://github.com/liaison-sh/liaison/releases/tag/v0.1.1",
     )
     expect(fakeGh.getRequests()).toHaveLength(1)
 

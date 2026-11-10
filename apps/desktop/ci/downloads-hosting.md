@@ -1,6 +1,6 @@
 # The public downloads host
 
-`mathieufro/liaison` is a PRIVATE repository. Its release assets, and the
+`liaison-sh/liaison` is a PRIVATE repository. Its release assets, and the
 `releases/latest/download/latest.json` path the updater used to read, answer
 404 to every anonymous client. An installed copy asking for its next version
 gets nothing, a customer clicking a download link gets nothing, and there is no
@@ -106,7 +106,7 @@ customers that the gate never saw.
    and a Secret Access Key once: those two are what the mirror signs with, and
    they are the reason this is an R2 token rather than a plain Cloudflare API
    token.
-4. Add three repository secrets to `mathieufro/liaison`:
+4. Add three repository secrets to `liaison-sh/liaison`:
    `LIAISON_DOWNLOADS_CF_ACCOUNT_ID` (the Cloudflare account id),
    `LIAISON_DOWNLOADS_R2_ACCESS_KEY_ID` and
    `LIAISON_DOWNLOADS_R2_SECRET_ACCESS_KEY`. The bucket name is not

@@ -62,7 +62,7 @@ permissions:
   contents: read
 
 env:
-  IMAGE: ghcr.io/mathieufro/liaison
+  IMAGE: ghcr.io/liaison-sh/liaison
 
 jobs:
   # ----- Gate: the same checks as ci.yml's lint/typecheck/guards jobs -----

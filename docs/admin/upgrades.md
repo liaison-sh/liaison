@@ -29,7 +29,7 @@ An instance follows one of two channels. The desktop and phone apps have no chan
 |  | `release` (the default) | `nightly` |
 |---|---|---|
 | What you get | Versions promoted from a nightly that has run on the maintainers' instances | A signed build of the newest `main` commit whose CI is green, once a day. It has had no soak |
-| Image | `ghcr.io/mathieufro/liaison:latest`, or pinned: `:vX.Y.Z` | `ghcr.io/mathieufro/liaison:nightly`, or pinned: `:nightly-YYYYMMDD` |
+| Image | `ghcr.io/liaison-sh/liaison:latest`, or pinned: `:vX.Y.Z` | `ghcr.io/liaison-sh/liaison:nightly`, or pinned: `:nightly-YYYYMMDD` |
 | The version it reports | `vX.Y.Z` | `nightly-YYYYMMDD-<shortsha>`, also an image tag |
 | **Settings › System** compares it with | The newest release | The newest nightly, or a release whose commit is newer |
 
@@ -47,7 +47,7 @@ On a running stack, set both in `deploy/.env`, then follow [Upgrade the stack](#
 
 ```bash
 LIAISON_RELEASE_CHANNEL=nightly
-LIAISON_IMAGE=ghcr.io/mathieufro/liaison:nightly-20270115
+LIAISON_IMAGE=ghcr.io/liaison-sh/liaison:nightly-20270115
 ```
 
 Without `LIAISON_RELEASE_CHANNEL`, an instance is on `release`. Any other value stops it at startup. Pin a dated tag on a server, so a restart never changes the version by surprise.
@@ -57,9 +57,9 @@ The channel's GitHub pre-release, `nightly-YYYYMMDD`, carries the matching `dock
 To check a signature:
 
 ```bash
-cosign verify ghcr.io/mathieufro/liaison:nightly-20270115 \
+cosign verify ghcr.io/liaison-sh/liaison:nightly-20270115 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity https://github.com/mathieufro/liaison/.github/workflows/nightly.yml@refs/heads/main
+  --certificate-identity https://github.com/liaison-sh/liaison/.github/workflows/nightly.yml@refs/heads/main
 ```
 
 ### Migrations only go forward
@@ -95,7 +95,7 @@ Containers that are already running are not stopped by this. During a deploy the
 2. Set the new image tag in `deploy/.env`. The `app` service reads `LIAISON_IMAGE`:
 
    ```bash
-   LIAISON_IMAGE=ghcr.io/mathieufro/liaison:v0.1.1
+   LIAISON_IMAGE=ghcr.io/liaison-sh/liaison:v0.1.1
    ```
 
 3. Pull the image and restart:

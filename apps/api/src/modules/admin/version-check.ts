@@ -13,7 +13,7 @@ const CACHE_LAST_KEY = "versionCheck:latest:last"
 const CACHE_TTL_SECONDS = 6 * 60 * 60
 // Fourteen of these are nightly pre-releases, so the page is wider than the
 // default: a security release must stay in view behind them.
-const RELEASES_PATH = "/repos/mathieufro/liaison/releases?per_page=100"
+const RELEASES_PATH = "/repos/liaison-sh/liaison/releases?per_page=100"
 /** A release whose name carries this marker fixes a security issue; the release
  *  workflow adds it from the tag annotation (`Security: yes`). */
 const SECURITY_MARKER = "[security]"

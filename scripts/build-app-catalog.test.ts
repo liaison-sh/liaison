@@ -36,7 +36,7 @@ function manifest(version: string): string {
       category: "Finance",
       icon: "notebook-pen",
       summary: "Demo app used by the catalog tests.",
-      sourceRepository: "https://github.com/mathieufro/liaison/tree/main/bundled-apps/demoapp",
+      sourceRepository: "https://github.com/liaison-sh/liaison/tree/main/bundled-apps/demoapp",
     },
     scopes: ["demoapp:things:read"],
   })

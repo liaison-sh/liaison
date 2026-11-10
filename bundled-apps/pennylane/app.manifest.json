@@ -17,7 +17,7 @@
       }
     ]
   },
-  "version": "0.1.46",
+  "version": "0.1.47",
   "iconName": "calculator",
   "kind": "connector",
   "description": "Pennylane accounting connector: supplier/customer invoices, trial balance, derived P&L, cash position, transactions, spend-by-category, runway",
@@ -26,7 +26,7 @@
     "category": "Finance",
     "icon": "notebook-pen",
     "summary": "Pennylane: accounting connector for Pennylane, with invoices, balances, cash position and runway.",
-    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/bundled-apps/pennylane"
+    "sourceRepository": "https://github.com/liaison-sh/liaison/tree/main/bundled-apps/pennylane"
   },
   "packageFormat": 1,
   "license": "FSL-1.1-ALv2",

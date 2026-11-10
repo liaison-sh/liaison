@@ -12,7 +12,7 @@ named with its URL, what to click and the exact values to paste. Respect their t
 what you will do and how long it takes, batch your questions, work while they
 answer, and end with a short report.
 
-The user docs cover each step in more depth (`docs/getting-started/install.md`, `docs/self-hosting/docker.md`, `docs/reference/config.md`, `docs/reference/env.md`). When the owner asks how something works, point at the page in the repository: https://github.com/mathieufro/liaison/tree/main/docs (liaison.sh/docs is not published yet). Loading Liaison's own docs as knowledge? Give each page a `source:` link of the form `https://github.com/mathieufro/liaison/blob/main/docs/<page>.md`, never a liaison.sh/docs URL. If you change this skill's steps, update `docs/getting-started/install.md` in the same change (`.claude/docs-map.ts`).
+The user docs cover each step in more depth (`docs/getting-started/install.md`, `docs/self-hosting/docker.md`, `docs/reference/config.md`, `docs/reference/env.md`). When the owner asks how something works, point at the page in the repository: https://github.com/liaison-sh/liaison/tree/main/docs (liaison.sh/docs is not published yet). Loading Liaison's own docs as knowledge? Give each page a `source:` link of the form `https://github.com/liaison-sh/liaison/blob/main/docs/<page>.md`, never a liaison.sh/docs URL. If you change this skill's steps, update `docs/getting-started/install.md` in the same change (`.claude/docs-map.ts`).
 
 Run every command from the root of this repository. Commands below assume the
 defaults: compose project `liaison`, port `3000`. If you change them, change

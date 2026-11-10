@@ -82,7 +82,7 @@ describe("pennylane app.manifest.json", () => {
     // 0.1.43: above 0.1.42, so an instance on either line of work upgrades; no change of its own.
     // 0.1.44: above both lines of work, which each changed it under the number before; no change of its own.
     // 0.1.46: the package carries the app SDK's manifest `secrets` field; no change of its own.
-    expect(m.version).toBe("0.1.46")
+    expect(m.version).toBe("0.1.47")
     expect(m.packageFormat).toBe(1)
   })
 

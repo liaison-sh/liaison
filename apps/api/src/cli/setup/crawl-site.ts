@@ -33,7 +33,7 @@ import { parseArgs } from "node:util"
 import TurndownService from "turndown"
 import { readStreamCapped } from "~/lib/read-capped-body"
 
-const USER_AGENT = "LiaisonSetup/1.0 (+https://github.com/mathieufro/liaison)"
+const USER_AGENT = "LiaisonSetup/1.0 (+https://github.com/liaison-sh/liaison)"
 const SKIP_EXTENSIONS =
   /\.(png|jpe?g|gif|webp|svg|ico|css|js|mjs|json|xml|zip|gz|tgz|mp4|mp3|wav|woff2?|ttf|eot|dmg|exe|pkg)$/i
 const DOC_EXTENSIONS = /\.(pdf|docx?|pptx?|xlsx?)$/i

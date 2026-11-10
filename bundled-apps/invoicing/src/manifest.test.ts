@@ -1500,7 +1500,7 @@ describe("invoicing manifest", () => {
     //   asked with the wrong argument and shape, so the link was never made).
     // 0.20.57: quotes and invoices for a B2B company name the company, billed at its location with
     //   its tax registration id; each draft's own taxesIncluded splits net and tax.
-    expect(m.version).toBe("0.20.57")
+    expect(m.version).toBe("0.20.58")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

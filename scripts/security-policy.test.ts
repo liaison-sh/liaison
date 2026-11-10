@@ -16,7 +16,7 @@ const supported = policy.split(/^## /m).find((s) => s.startsWith("Supported vers
 
 describe("SECURITY.md", () => {
   it("sends reports to this repository's private reporting page, as the issue chooser does", () => {
-    const url = "https://github.com/mathieufro/liaison/security"
+    const url = "https://github.com/liaison-sh/liaison/security"
     expect(policy).toContain(`(${url})`)
     expect(read(".github/ISSUE_TEMPLATE/config.yml")).toContain(`url: ${url}`)
     expect(policy).toMatch(/Report a vulnerability/)
@@ -25,8 +25,8 @@ describe("SECURITY.md", () => {
   it("names the server release line the release workflow publishes", () => {
     const workflow = read(".github/workflows/release.yml")
     expect(workflow).toContain('- "v[0-9]+.[0-9]+.[0-9]+"')
-    expect(workflow).toContain("IMAGE: ghcr.io/mathieufro/liaison")
-    expect(supported).toContain("ghcr.io/mathieufro/liaison")
+    expect(workflow).toContain("IMAGE: ghcr.io/liaison-sh/liaison")
+    expect(supported).toContain("ghcr.io/liaison-sh/liaison")
     expect(supported).toMatch(/`vX\.Y\.Z`/)
     // Fixes land on main first, which is also all there is before a first release.
     expect(supported).toMatch(/`main`/)

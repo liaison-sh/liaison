@@ -181,7 +181,7 @@ describe("the mirror plan", () => {
     const broken = manifest()
     broken.platforms["linux-x86_64"] = {
       signature: "sig-linux",
-      url: `https://github.com/mathieufro/liaison/releases/download/desktop-v${VERSION}/Liaison_${VERSION}_x86_64.AppImage`,
+      url: `https://github.com/liaison-sh/liaison/releases/download/desktop-v${VERSION}/Liaison_${VERSION}_x86_64.AppImage`,
     }
     expect(() => plan({ manifest: broken, verified: broken })).toThrow("github.com")
   })

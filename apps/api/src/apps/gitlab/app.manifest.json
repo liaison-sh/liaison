@@ -8,7 +8,7 @@
     "category": "Developer",
     "icon": "folder-git-2",
     "summary": "Sync GitLab manuals into Knowledge and read projects, merge requests and issues.",
-    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/apps/api/src/apps/gitlab"
+    "sourceRepository": "https://github.com/liaison-sh/liaison/tree/main/apps/api/src/apps/gitlab"
   },
   "trusted": false,
   "license": "FSL-1.1-ALv2",

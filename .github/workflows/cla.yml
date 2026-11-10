@@ -38,6 +38,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           path-to-signatures: "signatures/cla.json"
-          path-to-document: "https://github.com/mathieufro/liaison/blob/main/CLA.md"
+          path-to-document: "https://github.com/liaison-sh/liaison/blob/main/CLA.md"
           branch: "cla-signatures"
           allowlist: mathieufro,dependabot[bot],bot*

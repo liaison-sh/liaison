@@ -246,9 +246,10 @@ describe("pre-push", () => {
         stdin: new TextEncoder().encode(`refs/heads/main ${main} refs/heads/main ${ZERO}\n`),
         stderr: "pipe",
       })
-    const refused = run("git@github.com:mathieufro/liaison.git")
+    const refused = run("git@github.com:liaison-sh/liaison.git")
     expect(refused.exitCode).toBe(1)
     expect(refused.stderr.toString()).toContain("push to main REFUSED")
+    expect(run("git@github.com:mathieufro/liaison.git").exitCode).toBe(1)
     expect(run("git@gitlab.example:someone/liaison.git").exitCode).toBe(0)
   })
 

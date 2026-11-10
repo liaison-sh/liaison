@@ -52,7 +52,7 @@ describe("the updater endpoint", () => {
   })
 
   it("is not a private repository's release asset", () => {
-    // mathieufro/liaison is private. An anonymous GET of any asset on it, and
+    // liaison-sh/liaison is private. An anonymous GET of any asset on it, and
     // of releases/latest/download, answers 404, so an endpoint there is an
     // updater that can never succeed and a download link that can never work.
     expect(endpoints[0]).not.toContain("github.com")

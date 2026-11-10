@@ -28,7 +28,7 @@ import { escapeAttr, escapeHtml, renderLayout, type TemplatePage } from "./templ
 
 export const SITE = "https://liaison.sh"
 export const DOCS_BASE = `${SITE}/docs/`
-const REPO = "https://github.com/mathieufro/liaison"
+const REPO = "https://github.com/liaison-sh/liaison"
 const EDIT_BASE = `${REPO}/edit/main/docs/`
 const BLOB_BASE = `${REPO}/blob/main/`
 const THEME_DIR = join(import.meta.dir, "../../docs/_theme")

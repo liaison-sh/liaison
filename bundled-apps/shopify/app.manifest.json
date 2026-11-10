@@ -274,7 +274,7 @@
       }
     ]
   },
-  "version": "0.4.18",
+  "version": "0.4.19",
   "network": {
     "imageHosts": ["cdn.shopify.com"],
     "linkHosts": ["admin.shopify.com"]
@@ -286,7 +286,7 @@
     "category": "Commerce",
     "icon": "layout-grid",
     "summary": "Shopify orders, customers, products, refunds, fulfilments and returns.",
-    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/bundled-apps/shopify"
+    "sourceRepository": "https://github.com/liaison-sh/liaison/tree/main/bundled-apps/shopify"
   },
   "packageFormat": 1,
   "license": "FSL-1.1-ALv2",

@@ -8,7 +8,7 @@
     "category": "Developer",
     "icon": "link-2",
     "summary": "Connect an ERP, CRM or any HTTP API from an adapter document, with agent tools and a customer card.",
-    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/apps/api/src/apps/api-connector"
+    "sourceRepository": "https://github.com/liaison-sh/liaison/tree/main/apps/api/src/apps/api-connector"
   },
   "trusted": false,
   "license": "FSL-1.1-ALv2",

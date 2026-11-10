@@ -2,6 +2,7 @@
 import { IMPORT_PLACEHOLDER_EMAIL_LIKE, isImportPlaceholderEmail } from "@liaison/shared"
 import { and, eq, inArray, not, sql } from "drizzle-orm"
 import type { PrivilegedDb, RlsClient } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
 import {
   roleDimensionGrants,
   roleScopeGrants,
@@ -17,6 +18,7 @@ import { routineOwnerInactiveReason } from "~/modules/agent/routines/routine-ale
 import { invalidateAuthCache } from "~/modules/auth/auth-state"
 import { revokeSessions } from "~/modules/auth/session-revocation"
 import { assertSeatRoom } from "~/modules/org/caps"
+import { resolveEffectivePermissions } from "~/modules/permissions/permissions"
 import { removeAllPushDeliveryForUser } from "~/modules/push/end-user-push"
 
 /**
@@ -97,7 +99,8 @@ export async function listUsers(db: RlsClient, params: ListUsersParams) {
 
 /**
  * Detailed user data for the admin user-detail page. Combines identity, role
- * assignments, effective scopes (with provenance), and dimension grants.
+ * assignments, effective scopes (exactly the token's set, with provenance), and
+ * dimension grants.
  */
 export async function getUserDetail(db: RlsClient, params: { orgId: string; userId: string }) {
   const { orgId, userId } = params
@@ -148,21 +151,33 @@ export async function getUserDetail(db: RlsClient, params: { orgId: string; user
     .from(userScopeGrants)
     .where(and(eq(userScopeGrants.userId, userId), eq(userScopeGrants.orgId, orgId)))
 
-  const scopeMap = new Map<string, { fromRoles: string[]; direct: boolean }>()
+  // The scope SET is the token's own (resolveEffectivePermissions is what
+  // loadEffectivePermissions builds tokens from): role and direct grants, the
+  // every-member scopes, the org MCP servers the person may use, minus the
+  // scopes of restricted apps they are kept out of. The grant rows above only
+  // annotate where each scope came from, so this view cannot drift from
+  // enforcement. Read privileged like the token path; the RLS read of the
+  // identity above already proved the caller may see this person.
+  const resolved = await withPrivilegedDb(orgId, "user-detail-effective-scopes", (tx) =>
+    resolveEffectivePermissions(tx, userId, orgId),
+  )
+  const fromRolesByScope = new Map<string, string[]>()
   for (const r of roleScopeRows) {
-    const entry = scopeMap.get(r.scope) ?? { fromRoles: [], direct: false }
-    if (!entry.fromRoles.includes(r.roleName)) entry.fromRoles.push(r.roleName)
-    scopeMap.set(r.scope, entry)
+    const names = fromRolesByScope.get(r.scope) ?? []
+    if (!names.includes(r.roleName)) names.push(r.roleName)
+    fromRolesByScope.set(r.scope, names)
   }
-  for (const r of directScopeRows) {
-    const entry = scopeMap.get(r.scope) ?? { fromRoles: [], direct: false }
-    entry.direct = true
-    scopeMap.set(r.scope, entry)
-  }
-  const effectiveScopes = [...scopeMap.entries()].map(([scope, info]) => ({
+  const directScopes = new Set(directScopeRows.map((r) => r.scope))
+  const everyMemberScopes = new Set(resolved.everyMemberScopes)
+  const mcpAccessScopes = new Set(resolved.mcpAccessScopes)
+  const effectiveScopes = resolved.scopes.map((scope) => ({
     scope,
-    fromRoles: info.fromRoles,
-    direct: info.direct,
+    fromRoles: fromRolesByScope.get(scope) ?? [],
+    direct: directScopes.has(scope),
+    /** Held by every active member (kernel or an installed app's every-member scopes). */
+    everyMember: everyMemberScopes.has(scope),
+    /** Held through an org MCP server this person may use. */
+    mcpAccess: mcpAccessScopes.has(scope),
   }))
 
   const inheritedDimRows = roleIds.length
@@ -209,6 +224,8 @@ export async function getUserDetail(db: RlsClient, params: { orgId: string; user
     ...identity,
     roles: userRoleRows,
     effectiveScopes,
+    /** Restricted apps this person is kept out of: none of their scopes are held. */
+    deniedApps: resolved.deniedApps,
     dimensions,
   }
 }

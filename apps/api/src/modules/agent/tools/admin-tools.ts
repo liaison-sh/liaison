@@ -121,6 +121,17 @@ export async function handleUsersList(
 // reads directly instead of scanning the array — closing the "couldn't read the two decision scopes"
 // gap at the source. The full `effectiveScopes` list is still returned (unchanged) for diagnosis; the
 // checks are an additive, deterministic projection over it.
+interface ScopeCheck {
+  held: boolean
+  via: "exact" | "wildcard" | "parent" | null
+  fromRoles: string[]
+  direct: boolean
+  /** Held by every active member (kernel or an installed app's every-member scopes). */
+  everyMember: boolean
+  /** Held through an org MCP server this person may use. */
+  mcpAccess: boolean
+}
+
 export async function handleDescribeUserAccess(
   params: { userId: string; checkScopes?: string[] },
   ctx: OrgConfigToolCtx,
@@ -128,16 +139,15 @@ export async function handleDescribeUserAccess(
   | {
       user: { id: string; name: string; email: string; status: string }
       roles: Array<{ id: string; name: string; description: string | null }>
-      effectiveScopes: Array<{ scope: string; fromRoles: string[]; direct: boolean }>
-      scopeChecks?: Record<
-        string,
-        {
-          held: boolean
-          via: "exact" | "wildcard" | "parent" | null
-          fromRoles: string[]
-          direct: boolean
-        }
-      >
+      effectiveScopes: Array<{
+        scope: string
+        fromRoles: string[]
+        direct: boolean
+        everyMember: boolean
+        mcpAccess: boolean
+      }>
+      scopeChecks?: Record<string, ScopeCheck>
+      deniedApps: string[]
       dimensions: Record<
         string,
         {
@@ -155,17 +165,7 @@ export async function handleDescribeUserAccess(
   if (!detail) return { error: { code: "USER_NOT_FOUND" } }
 
   // DETERMINISTIC per-scope check over the user's full effective scope set (never the truncated view).
-  let scopeChecks:
-    | Record<
-        string,
-        {
-          held: boolean
-          via: "exact" | "wildcard" | "parent" | null
-          fromRoles: string[]
-          direct: boolean
-        }
-      >
-    | undefined
+  let scopeChecks: Record<string, ScopeCheck> | undefined
   if (params.checkScopes && params.checkScopes.length > 0) {
     const grantedStrings = detail.effectiveScopes.map((s) => s.scope)
     scopeChecks = {}
@@ -174,22 +174,25 @@ export async function handleDescribeUserAccess(
       // Classify HOW it is held + its provenance, so the audit can cite a grounded reason (not a guess).
       const exact = detail.effectiveScopes.find((s) => s.scope === required)
       let via: "exact" | "wildcard" | "parent" | null = null
-      let fromRoles: string[] = []
-      let direct = false
+      let source: (typeof detail.effectiveScopes)[number] | undefined
       if (held) {
         if (exact) {
           via = "exact"
-          fromRoles = exact.fromRoles
-          direct = exact.direct
+          source = exact
         } else {
           // Held via a covering grant: find the wildcard/parent entry that satisfies it (for provenance).
-          const covering = detail.effectiveScopes.find((s) => hasScope(required, [s.scope]))
-          via = covering?.scope.includes("*") ? "wildcard" : "parent"
-          fromRoles = covering?.fromRoles ?? []
-          direct = covering?.direct ?? false
+          source = detail.effectiveScopes.find((s) => hasScope(required, [s.scope]))
+          via = source?.scope.includes("*") ? "wildcard" : "parent"
         }
       }
-      scopeChecks[required] = { held, via, fromRoles, direct }
+      scopeChecks[required] = {
+        held,
+        via,
+        fromRoles: source?.fromRoles ?? [],
+        direct: source?.direct ?? false,
+        everyMember: source?.everyMember ?? false,
+        mcpAccess: source?.mcpAccess ?? false,
+      }
     }
   }
 
@@ -198,6 +201,7 @@ export async function handleDescribeUserAccess(
     roles: detail.roles,
     effectiveScopes: detail.effectiveScopes,
     ...(scopeChecks ? { scopeChecks } : {}),
+    deniedApps: detail.deniedApps,
     dimensions: detail.dimensions,
   }
 }

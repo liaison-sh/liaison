@@ -59,3 +59,12 @@ Unknown tokens refused at preview and save -> apps/api/src/modules/dashboards/sp
 Cache key moves with the resolved dates -> apps/api/src/modules/dashboards/service.ts:380 ; apps/api/src/modules/dashboards/cache.ts:119
 Approval card shows each token and today's date -> apps/api/src/modules/dashboards/tools.ts:137
 Agents created before gain dashboards at the next server start -> apps/api/src/modules/agent/directory/reconcile-base-ceilings.ts:67 ; apps/api/src/db/reconcile-catalog-boot.ts:238
+Dashboards entry in the left bar, lit on a dashboard tab -> apps/web/src/framework/bootstrap.ts:1261 ; apps/web/src/framework/bootstrap.ts:1268
+Dashboards entry label -> packages/shared/src/i18n/locales/en/kernel.json:1927
+Phone: Work lists the rail's entries -> apps/web/src/modules/shell/Work.tsx:169
+The Dashboards page (/dashboards) lists every dashboard the viewer sees -> apps/web/src/framework/bootstrap.ts:524 ; apps/web/src/modules/dashboards/DashboardsIndex.tsx:39
+Empty state says what a dashboard is and to ask the agent -> apps/web/src/modules/dashboards/DashboardsIndex.tsx:74 ; packages/shared/src/i18n/locales/en/kernel.json:6457
+Server emits created, updated and deleted events (ids and visibility, no title) -> apps/api/src/modules/dashboards/service.ts:136 ; apps/api/src/modules/dashboards/service.ts:280 ; apps/api/src/modules/dashboards/service.ts:341 ; apps/api/src/modules/dashboards/service.ts:368
+Org dashboard events reach every reader, personal ones only their owner, a switch to personal reaches those who saw it -> apps/api/src/infra/websocket.ts:1559
+Lists re-read on an event; a deleted one leaves at once; an open tab reads again -> apps/web/src/framework/bootstrap.ts:1115 ; apps/web/src/modules/dashboards/dashboards-store.ts:119 ; apps/web/src/modules/dashboards/dashboards-store.ts:126
+Deleted or no longer shared message -> packages/shared/src/i18n/locales/en/kernel.json:6444

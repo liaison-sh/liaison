@@ -203,6 +203,14 @@ export interface SearchIndexFields {
   labelSecondaryFrom?: { tableName: string; foreignKey: string; columns: string[] }
 }
 
+/** What a tool's `reconcile` handler found out about an approved execution
+ *  whose outcome was unknown. `ref` names what the provider holds (e.g. the
+ *  created comment's id); it becomes the decided result. */
+export type ReconcileOutcome =
+  | { outcome: "executed"; ref?: Record<string, unknown> }
+  | { outcome: "not_executed"; reason?: string }
+  | { outcome: "unknown"; reason?: string }
+
 export const toolRegistry = createTypedRegistry<
   [orgId: string, appName: string, toolName: string],
   {
@@ -504,6 +512,17 @@ export const toolRegistry = createTypedRegistry<
       ctx: { orgId: string; userId: string; tx: PrivilegedDb },
       partialResult: unknown,
     ) => Promise<{ ready: true; result: Record<string, unknown> } | { ready: false }>
+    /** Outcome reconciler for a gated tool with an external effect — called by
+     *  the approving reaper (approving-reaper.ts) when an approved execution's
+     *  outcome is unknown (an `ambiguous` or `started` protocol row, or none).
+     *  It asks the provider whether the effect happened: `executed` (with the
+     *  provider's ref) settles the approval as approved, `not_executed` reverts
+     *  it to pending, `unknown` leaves it for a person. Read-only: it never
+     *  performs the effect. Declared in a manifest as `reconcileHandler`. */
+    reconcile?: (
+      ctx: { orgId: string; tx: PrivilegedDb },
+      input: { approvalRequestId: string; payload: unknown; externalRef: unknown },
+    ) => Promise<ReconcileOutcome>
     /** Manifest snapshot attached at registration (manifest-format apps only).
      *  Carries the full `schema` with erasure declarations — the source of
      *  truth for compliance enumeration via {@link appBridgeManifest}. */

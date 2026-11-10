@@ -54,6 +54,7 @@ const READERS: Record<string, string> = {
   "modules/agent/tools/skills-routines-tools.ts": AGENT,
   "modules/agent/tools/tool-bridge.ts": AGENT,
   "modules/agent/tools/tool-search.ts": AGENT,
+  "modules/approvals/approving-reaper.ts": ENSURES,
   "modules/approvals/attention.ts": REQUEST,
   "modules/approvals/authority.ts": REQUEST,
   "modules/approvals/auto-approve.ts": JOB,

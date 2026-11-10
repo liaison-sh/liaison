@@ -35,7 +35,9 @@ describe("social manifest (B1)", () => {
     // 0.6.58: above both lines of work, which each changed it under the number before; no change of its own.
     // 0.6.59: above the 0.6.58 that main took meanwhile; no change of its own.
     // 0.6.61: two parses of one delivery from a new person no longer fail on the unique key.
-    expect(manifest.version).toBe("0.6.61")
+    // 0.6.62: our own replies are never findings; reply_to_finding looks before posting and
+    // declares an outcome reconciler.
+    expect(manifest.version).toBe("0.6.62")
     expect(manifest.packageFormat).toBe(1)
   })
 

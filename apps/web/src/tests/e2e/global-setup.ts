@@ -23,7 +23,15 @@ const buildBundledAppScript = resolve(liaisonRoot, "scripts", "build-bundled-app
 // made the exists-check permanently stale after every app bump.
 // Every bundled app a scenario installs (boxtal and monitoring were missing,
 // so a fresh checkout failed those scenarios on "bundle missing").
-const BUNDLED_APPS: string[] = ["shopify", "invoicing", "ads", "boxtal", "monitoring", "social"]
+const BUNDLED_APPS: string[] = [
+  "shopify",
+  "invoicing",
+  "ads",
+  "boxtal",
+  "monitoring",
+  "social",
+  "stripe",
+]
 
 function buildBundledAppsIfMissing() {
   if (!existsSync(buildBundledAppScript)) return

@@ -40,6 +40,7 @@ import { env } from "~/lib/env"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { registerApps } from "~/modules/apps/runtime"
+import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -47,6 +48,83 @@ import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..")
 const WEBHOOK_SECRET = "shpss_po_seam_test_secret"
 const SHOP_DOMAIN = "po-seam-test-store.myshopify.com"
+
+// The shop over its connection. A draft order webhook does not say who the B2B buyer is, so
+// invoicing re-reads the draft (`draft_orders_get`) before it quotes. This stands in for the
+// shop's Admin GraphQL API: it answers that read with the draft as the last webhook stated it.
+const draftsSeen = new Map<string, Record<string, unknown>>()
+
+function draftOrderNode(body: Record<string, unknown>): Record<string, unknown> {
+  const currency = String(body.presentment_currency ?? body.currency ?? "EUR")
+  const money = (amount: unknown) =>
+    amount == null ? null : { presentmentMoney: { amount: String(amount), currencyCode: currency } }
+  const customer = body.customer as Record<string, unknown> | undefined
+  const billing = body.billing_address as Record<string, unknown> | undefined
+  const lines = (body.line_items as Array<Record<string, unknown>> | undefined) ?? []
+  const total = lines.reduce((sum, l) => sum + Number(l.price) * Number(l.quantity ?? 1), 0)
+  return {
+    id: `gid://shopify/DraftOrder/${body.id}`,
+    name: body.name ?? null,
+    status: String(body.status ?? "open").toUpperCase(),
+    poNumber: body.po_number ?? null,
+    currencyCode: currency,
+    totalPriceSet: money(total.toFixed(2)),
+    subtotalPriceSet: money(total.toFixed(2)),
+    totalTaxSet: money("0.00"),
+    taxesIncluded: false,
+    taxExempt: false,
+    email: body.email ?? null,
+    customer: customer
+      ? {
+          id: `gid://shopify/Customer/${customer.id}`,
+          email: customer.email ?? null,
+          firstName: customer.first_name ?? null,
+          lastName: customer.last_name ?? null,
+        }
+      : null,
+    billingAddress: billing
+      ? {
+          company: billing.company ?? null,
+          address1: billing.address1 ?? null,
+          zip: billing.zip ?? null,
+          city: billing.city ?? null,
+          countryCodeV2: billing.country_code ?? null,
+        }
+      : null,
+    lineItems: {
+      edges: lines.map((l) => ({
+        node: {
+          id: `gid://shopify/DraftOrderLineItem/${l.id}`,
+          title: l.title ?? "",
+          quantity: l.quantity ?? 1,
+          variant: l.variant_id ? { id: `gid://shopify/ProductVariant/${l.variant_id}` } : null,
+          originalUnitPriceSet: money(l.price),
+          discountedTotalSet: money((Number(l.price) * Number(l.quantity ?? 1)).toFixed(2)),
+          taxable: true,
+        },
+      })),
+    },
+    purchasingEntity: null,
+    order: null,
+  }
+}
+
+const shopFake = (async (input: string | URL | Request, init?: RequestInit) => {
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+  const json = (data: unknown, status = 200) =>
+    new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } })
+  if (!url.includes("/graphql.json")) return json({ errors: "not served by this fixture" }, 404)
+  const req = JSON.parse(String(init?.body ?? "{}")) as {
+    query?: string
+    variables?: { id?: string }
+  }
+  const id = req.variables?.id
+  if (!req.query?.includes("draftOrder(") || !id) {
+    return json({ errors: [{ message: "only the draft order read is served by this fixture" }] })
+  }
+  const body = draftsSeen.get(id)
+  return json({ data: { draftOrder: body ? draftOrderNode(body) : null } })
+}) as unknown as typeof fetch
 
 // Read the manifest at call time (moving target -- two other agents are
 // actively editing bundled-apps/shopify and bundled-apps/invoicing).
@@ -174,6 +252,9 @@ async function postWebhook(
   webhookId: string,
 ): Promise<Response> {
   const body = JSON.stringify(payload)
+  if (endpoint.startsWith("draft-orders") && payload.id != null) {
+    draftsSeen.set(`gid://shopify/DraftOrder/${payload.id}`, payload)
+  }
   const res = await app.request(`/webhooks/${ORG}/shopify/${endpoint}`, {
     method: "POST",
     headers: {
@@ -261,14 +342,19 @@ describe("shopify -> invoicing PO number seam (real webhook -> real outbox -> re
         provider_type, identifier, status, created_by, access_token_encrypted
       ) VALUES (
         ${randomUUID()}, ${ORG}, 'shopify', 'shop', 'org', NULL,
-        'oauth2', ${SHOP_DOMAIN}, 'active', ${USER}, 'encrypted-token'
+        'oauth2', ${SHOP_DOMAIN}, 'active', ${USER},
+        ${encryptSecret("shpat_po_seam_token", env.ENCRYPTION_KEY, CryptoContext.connectedAccountAccessToken)}
       )`
+    SandboxBridgeTestAccess.setFetchInterceptsHost((h) => h === SHOP_DOMAIN)
+    SandboxBridgeTestAccess.setFetch(shopFake)
 
     issuerProfileId = await insertIssuerProfile()
     await seedConfirmedBuyers()
   }, 60_000)
 
   afterAll(async () => {
+    SandboxBridgeTestAccess.setFetch(null)
+    SandboxBridgeTestAccess.setFetchInterceptsHost(null)
     await shutdownWorkerPool()
     await shutdownSandboxPool()
     resetAppRegistries()
@@ -687,8 +773,8 @@ describe("shopify -> invoicing PO number seam (real webhook -> real outbox -> re
         // A real draft_orders webhook states the presentment currency
         // alongside the shop currency, and the amounts below are presentment
         // amounts. Without it the consumer cannot know the label matches the
-        // money, so it re-reads the draft over the Shopify connection this
-        // fixture deliberately does not have, and no quote is ever created.
+        // money, so it re-reads the draft over the Shopify connection (the
+        // fixture's fake shop answers that read with these same values).
         presentment_currency: "EUR",
         po_number: "PO-DRAFT-0001",
         email: "quotebuyer@po-seam.example",
@@ -737,8 +823,8 @@ describe("shopify -> invoicing PO number seam (real webhook -> real outbox -> re
         // A real draft_orders webhook states the presentment currency
         // alongside the shop currency, and the amounts below are presentment
         // amounts. Without it the consumer cannot know the label matches the
-        // money, so it re-reads the draft over the Shopify connection this
-        // fixture deliberately does not have, and no quote is ever created.
+        // money, so it re-reads the draft over the Shopify connection (the
+        // fixture's fake shop answers that read with these same values).
         presentment_currency: "EUR",
         po_number: "PO-DRAFT-0002",
         email: "quotebuyer@po-seam.example",

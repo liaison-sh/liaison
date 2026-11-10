@@ -505,7 +505,10 @@ describe("editing a month-end run on the real kernel", () => {
 
   it("undo keeps every edit and the written patches", async () => {
     const fx = await drafted(2)
-    const [a, b] = (await itemsOf(fx.runId)).map((i) => String(i.document_id))
+    const rows = await itemsOf(fx.runId)
+    const [a, b] = rows.map((i) => String(i.document_id))
+    // The schedule behind row b: the run lists its rows in its own order, not the fixture's.
+    const bSchedule = String(rows[1]?.schedule_id)
     expect(
       (await call("drafts_update", { ...(await asRead(a as string)), patch: { notes: "Kept" } }))
         .error,
@@ -522,7 +525,7 @@ describe("editing a month-end run on the real kernel", () => {
     expect((await itemsOf(fx.runId)).map((i) => i.state)).toEqual(["ready", "ready"])
     await approve(fx.card)
     expect((await itemsOf(fx.runId)).map((i) => i.state)).toEqual(["approved", "approved"])
-    expect((await scheduleOf(fx.schedules[1] as string)).version).toBe(2)
+    expect((await scheduleOf(bSchedule)).version).toBe(2)
     const undo = await call("recurring_run_unapprove", { run_id: fx.runId })
     const pending = (await pendingApprovals()).find(
       (p) => p.tool_name === "invoicing:recurring_run_unapprove",
@@ -531,7 +534,7 @@ describe("editing a month-end run on the real kernel", () => {
     expect(undo.error ?? "").not.toContain("refused")
     expect((await runOf(fx.issuer)).status).toBe("drafted")
     expect((await docOf(a as string)).notes).toBe("Kept")
-    expect((await scheduleOf(fx.schedules[1] as string)).version).toBe(2)
+    expect((await scheduleOf(bSchedule)).version).toBe(2)
     const items = await itemsOf(fx.runId)
     expect(items.every((i) => i.state === "ready" && i.approved_hash === null)).toBe(true)
     await runJob("recurring-issue")
@@ -543,7 +546,7 @@ describe("editing a month-end run on the real kernel", () => {
     )
     expect(card).toHaveLength(1)
     await approve(String(card[0]?.id))
-    expect((await scheduleOf(fx.schedules[1] as string)).version).toBe(2)
+    expect((await scheduleOf(bSchedule)).version).toBe(2)
   }, 120_000)
 
   it("a zero total is nothing to bill and a negative total is a credit note, both outside Approve N", async () => {

@@ -13,6 +13,7 @@ import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { sendCompose, sendReply } from "~/modules/mail/service"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const orgId = "00000000-0000-0000-0000-0000005e8201"
@@ -41,46 +42,123 @@ describe("sending from a mailbox whose connection is gone", () => {
   beforeAll(async () => {
     await acquireTestLock()
     await initSandboxPool()
-    await sql`INSERT INTO kernel.organizations (id, name, slug)
-      VALUES (${orgId}, 'Mail Gone Org', 'mail-gone-org') ON CONFLICT (id) DO NOTHING`
-    await sql`INSERT INTO kernel.users (id, org_id, email, name, status, password_hash, auth_version, permission_version)
-      VALUES (${userId}, ${orgId}, 'mail-gone@test.com', 'Gone Conn', 'active', 'hash', 1, 1)
-      ON CONFLICT (id) DO NOTHING`
-    for (const scope of SCOPES) {
-      await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
-        VALUES (${userId}, ${orgId}, ${scope}) ON CONFLICT DO NOTHING`
-    }
-    await sql`INSERT INTO kernel.user_dimension_grants (user_id, org_id, dimension_key, dimension_values)
-      VALUES (${userId}, ${orgId}, 'mail:inbox', ${JSON.stringify([accountId])}::jsonb)
-      ON CONFLICT DO NOTHING`
+    const now = { raw: "now()" }
+    await sql.unsafe(
+      insertSql(
+        "kernel.organizations",
+        { id: orgId, name: "Mail Gone Org", slug: "mail-gone-org" },
+        { onConflictDoNothing: true },
+      ),
+    )
+    await sql.unsafe(
+      insertSql(
+        "kernel.users",
+        {
+          id: userId,
+          org_id: orgId,
+          email: "mail-gone@test.com",
+          name: "Gone Conn",
+          status: "active",
+          password_hash: "hash",
+          auth_version: 1,
+          permission_version: 1,
+        },
+        { onConflictDoNothing: true },
+      ),
+    )
+    await sql.unsafe(
+      insertSql(
+        "kernel.user_scope_grants",
+        SCOPES.map((scope) => ({ user_id: userId, org_id: orgId, scope })),
+        { onConflictDoNothing: true },
+      ),
+    )
+    await sql.unsafe(
+      insertSql(
+        "kernel.user_dimension_grants",
+        {
+          user_id: userId,
+          org_id: orgId,
+          dimension_key: "mail:inbox",
+          dimension_values: JSON.stringify([accountId]),
+        },
+        { onConflictDoNothing: true },
+      ),
+    )
     await ensureAppsForOrg(orgId)
     // The mailbox points at a connected account that no longer exists.
-    await sql`INSERT INTO app_mail.accounts (
-        id, org_id, connected_account_id, owner_type, owner_id, provider,
-        email_address, display_name, sync_status
-      ) VALUES (
-        ${accountId}, ${orgId}, ${connectedAccountId}, 'org', null, 'imap',
-        ${MAILBOX}, 'Support', 'active'
-      ) ON CONFLICT (id) DO NOTHING`
-    await sql`INSERT INTO app_mail.conversations (
-        id, org_id, account_id, owner_type, owner_id, external_thread_id,
-        subject, snippet, status, labels, is_read, is_starred, last_message_at, message_count
-      ) VALUES (
-        ${conversationId}, ${orgId}, ${accountId}, 'org', null, 'imap-thread-1',
-        'Order question', 'When does it ship?', 'open', '["INBOX"]'::jsonb, false, false, now(), 1
-      ) ON CONFLICT (id) DO NOTHING`
-    await sql`INSERT INTO app_mail.messages (
-        id, org_id, conversation_id, account_id, external_message_id, external_provider_id,
-        in_reply_to, message_references, from_address, to_addresses, cc_addresses,
-        bcc_addresses, subject, text_body, html_body, snippet, is_read, is_starred,
-        labels, direction, sent_at, synced_at, raw_headers, owner_type, owner_id
-      ) VALUES (
-        gen_random_uuid(), ${orgId}, ${conversationId}, ${accountId}, '<gone-1@example.com>', 'imap-1',
-        null, '[]'::jsonb, '{"name":"Casey Customer","email":"casey@example.com"}'::jsonb,
-        ${JSON.stringify([{ email: MAILBOX }])}::jsonb, '[]'::jsonb,
-        '[]'::jsonb, 'Order question', 'When does it ship?', null, 'When does it ship?', false, false,
-        '["INBOX"]'::jsonb, 'inbound', now(), now(), '{}'::jsonb, 'org', null
-      ) ON CONFLICT DO NOTHING`
+    await sql.unsafe(
+      insertSql(
+        "app_mail.accounts",
+        {
+          id: accountId,
+          org_id: orgId,
+          connected_account_id: connectedAccountId,
+          owner_type: "org",
+          owner_id: null,
+          provider: "imap",
+          email_address: MAILBOX,
+          display_name: "Support",
+          sync_status: "active",
+        },
+        { onConflictDoNothing: true },
+      ),
+    )
+    await sql.unsafe(
+      insertSql(
+        "app_mail.conversations",
+        {
+          id: conversationId,
+          org_id: orgId,
+          account_id: accountId,
+          owner_type: "org",
+          owner_id: null,
+          external_thread_id: "imap-thread-1",
+          subject: "Order question",
+          snippet: "When does it ship?",
+          status: "open",
+          labels: JSON.stringify(["INBOX"]),
+          is_read: false,
+          is_starred: false,
+          last_message_at: now,
+          message_count: 1,
+        },
+        { onConflictDoNothing: true },
+      ),
+    )
+    await sql.unsafe(
+      insertSql(
+        "app_mail.messages",
+        {
+          id: { raw: "gen_random_uuid()" },
+          org_id: orgId,
+          conversation_id: conversationId,
+          account_id: accountId,
+          external_message_id: "<gone-1@example.com>",
+          external_provider_id: "imap-1",
+          in_reply_to: null,
+          message_references: "[]",
+          from_address: JSON.stringify({ name: "Casey Customer", email: "casey@example.com" }),
+          to_addresses: JSON.stringify([{ email: MAILBOX }]),
+          cc_addresses: "[]",
+          bcc_addresses: "[]",
+          subject: "Order question",
+          text_body: "When does it ship?",
+          html_body: null,
+          snippet: "When does it ship?",
+          is_read: false,
+          is_starred: false,
+          labels: JSON.stringify(["INBOX"]),
+          direction: "inbound",
+          sent_at: now,
+          synced_at: now,
+          raw_headers: "{}",
+          owner_type: "org",
+          owner_id: null,
+        },
+        { onConflictDoNothing: true },
+      ),
+    )
   })
 
   afterAll(async () => {

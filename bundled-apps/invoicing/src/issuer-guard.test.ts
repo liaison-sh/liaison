@@ -90,7 +90,7 @@ function world(opts: WorldOpts = {}) {
     },
     executeTool: async (tool: string, params: Obj) => {
       calls.push({ tool, params })
-      if (tool === "kernel:contacts_read") return { status: "completed", result: { contact: { email: opts.contactEmail ?? null } } }
+      if (tool === "kernel:contacts_identity") return { status: "completed", result: { contact: { email: opts.contactEmail ?? null } } }
       if (tool === "stripe:billing_status_for_counterparty") {
         if (opts.stripeOff) return { status: "error", error: { code: "tool_not_found", message: "tool not registered" } }
         return { status: "completed", result: await billingStatusForCounterparty(params, { db: mirror as never }) }

@@ -135,6 +135,7 @@ import {
   handleContactsGroupRemove,
   handleContactsGroupRename,
   handleContactsGroupsList,
+  handleContactsIdentity,
   handleContactsMerge,
   handleContactsRead,
   handleContactsSearch,
@@ -1855,6 +1856,22 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     readsFromTable: "kernel.contacts",
     targetRowParam: "contactId",
     resultRowPath: "contact.id",
+  })
+
+  toolRegistry.set([orgId, "kernel", "contacts_identity"], {
+    appName: "kernel",
+    name: "contacts_identity",
+    deferLoading: true,
+    // An app's internal check reads a contact's identifiers through this; agents read contacts_read.
+    agentVisible: false,
+    useInstead: "contacts_read",
+    readOnly: true,
+    // Not a taint source: it returns only the id, the email and the company id, never the text
+    // people outside the org wrote, so a guard's lookup does not mark the turn.
+    description: "A contact's identifiers only: id, email and company id.",
+    requiredScopes: ["kernel:contacts:read"],
+    params: z.object({ contactId: z.string().uuid() }),
+    handler: handleContactsIdentity as (params: unknown, ctx: any) => Promise<unknown>,
   })
 
   toolRegistry.set([orgId, "kernel", "contacts_write"], {

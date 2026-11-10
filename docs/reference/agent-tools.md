@@ -85,6 +85,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `contacts_group_remove` | Remove contacts from a contact group (the contacts themselves are kept). |  | `kernel:contacts:write` |
 | `contacts_group_rename` | Rename a contact group. |  | `kernel:contacts:write` |
 | `contacts_groups_list` | List the organisation's contact groups: named groups of hand-picked contacts, with each group's id, name and memberCount (the members you can see). |  | `kernel:contacts:read` |
+| `contacts_identity` | A contact's identifiers only: id, email and company id. |  | `kernel:contacts:read` |
 | `contacts_merge` | Merge two duplicate contacts into one. | yes | `kernel:contacts:write` |
 | `contacts_read` | Read a contact with recent mail backlinks and timeline entries. |  | `kernel:contacts:read` |
 | `contacts_search` | Search the contact registry by name, email or company. |  | `kernel:contacts:read` |

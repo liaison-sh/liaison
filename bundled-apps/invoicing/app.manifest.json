@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.20.75",
+  "version": "0.20.76",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -6604,6 +6604,10 @@
     {
       "target": "kernel:contacts_read",
       "reason": "resolve the counterparty contact's email to address documents.send_to_customer, and to find the documents made out to it in documents_search by contact_id (the invoicing app cannot read kernel.contacts directly)"
+    },
+    {
+      "target": "kernel:contacts_identity",
+      "reason": "the issuer guard reads only a contact's id, email and company id to match it to a card processor's customer, a read that does not mark the turn as having read outside text"
     },
     {
       "target": "kernel:contacts_address_upsert",

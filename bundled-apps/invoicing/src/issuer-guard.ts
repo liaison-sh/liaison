@@ -170,11 +170,11 @@ export async function checkIssuerGuard(ctx: GuardCtx, input: GuardInput): Promis
   }
 }
 
-/** The contact's emails as the kernel knows them (the guard also matches unlinked Stripe customers by email). */
+/** The contact's emails as the kernel knows them, from its identifiers only (the guard also matches unlinked Stripe customers by email): a read that does not mark the turn as having read outside text. */
 export async function contactEmails(ctx: GuardCtx, contactId: string | null | undefined): Promise<string[]> {
   if (!contactId || !UUID.test(contactId) || !ctx.executeTool) return []
   try {
-    const env = await ctx.executeTool("kernel:contacts_read", { contactId })
+    const env = await ctx.executeTool("kernel:contacts_identity", { contactId })
     if (env.status !== "completed") return []
     const e = (env.result as { contact?: { email?: unknown } } | null)?.contact?.email
     return typeof e === "string" && e.includes("@") ? [e] : []

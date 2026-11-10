@@ -1558,7 +1558,8 @@ describe("invoicing manifest", () => {
     // 0.20.73: a parked draft discard names what it does (discard, this month only, end the schedule)
     // 0.20.74: card payments on Stripe issue, pay and credit by their own handlers; settled and failed Stripe refunds reach the refund handler
     // 0.20.75: both of the above, merged
-    expect(m.version).toBe("0.20.75")
+    // 0.20.76: the issuer guard reads a contact's identifiers only, so it does not mark the turn
+    expect(m.version).toBe("0.20.76")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

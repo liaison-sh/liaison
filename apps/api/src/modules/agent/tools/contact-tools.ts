@@ -189,6 +189,36 @@ export async function handleContactsSearch(
   }
 }
 
+/**
+ * A contact's identifiers only (id, email, company id), for an app's own internal check (the
+ * invoicing issuer guard). It returns none of the text people outside the org wrote (mail
+ * subjects, snippets, notes), so unlike contacts_read it does not mark the turn as having read
+ * outside text.
+ */
+export async function handleContactsIdentity(
+  params: { contactId: string },
+  ctx: ContactToolContext,
+) {
+  const [row] = await ctx.db
+    .select({
+      id: contactsTable.id,
+      email: contactsTable.email,
+      companyId: contactsTable.companyId,
+    })
+    .from(contactsTable)
+    .where(and(eq(contactsTable.id, params.contactId), eq(contactsTable.orgId, ctx.orgId)))
+    .limit(1)
+  if (!row) {
+    return {
+      error: {
+        code: "NOT_FOUND",
+        message: `Contact not found: ${params.contactId}. Nothing was read.`,
+      },
+    }
+  }
+  return { contact: { id: row.id, email: row.email ?? null, companyId: row.companyId ?? null } }
+}
+
 export async function handleContactsRead(
   params: {
     contactId: string

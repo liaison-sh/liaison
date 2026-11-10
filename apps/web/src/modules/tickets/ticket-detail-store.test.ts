@@ -20,6 +20,33 @@ describe("ticket-detail-store", () => {
     vi.resetModules()
   })
 
+  it("a create notice (ticketId, no id) never makes a row without an id", async () => {
+    // The server's create event names the ticket `ticketId` and carries no
+    // status or requester. Replayed on a reconnect while the tab loads, it used
+    // to become the row the detail rendered, with `id` undefined: the file
+    // shelf then asked for an upload URL with no entityId (a 400).
+    const post = vi.fn().mockImplementation(async (_path: string, body: any) => {
+      if (body?.toolName === "tickets:get") {
+        return { ticket: { id: "t1", subject: "Hi", status: "open", priority: "normal" } }
+      }
+      return null
+    })
+    const { handleTicketEvent, loadTicket, getTicket, resetTicketDetailStore } = await import(
+      "~/modules/tickets/ticket-detail-store"
+    )
+    resetTicketDetailStore()
+    const notice = { ticketId: "t1", handle: "ticket-1", subject: "Hi", priority: "normal" }
+    handleTicketEvent("create", notice)
+    expect(getTicket("t1")).toBeUndefined()
+    await loadTicket({ post } as any, "t1")
+    expect(getTicket("t1")?.id).toBe("t1")
+    // The same notice landing after the load patches the row and keeps its id.
+    handleTicketEvent("create", { ...notice, subject: "Renamed" })
+    expect(getTicket("t1")?.id).toBe("t1")
+    expect(getTicket("t1")?.subject).toBe("Renamed")
+    expect(getTicket("t1")?.status).toBe("open")
+  })
+
   it("loadTicket fetches via tickets:get and stores the ticket", async () => {
     const post = vi.fn().mockImplementation(async (_path: string, body: any) => {
       if (body?.toolName === "tickets:get") {

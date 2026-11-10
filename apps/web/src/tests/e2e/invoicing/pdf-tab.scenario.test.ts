@@ -77,8 +77,23 @@ test.describe("Invoicing: the document's PDF tab", () => {
     page.on("console", (m) => {
       if (/content security policy/i.test(m.text())) violations.push(m.text())
     })
+    // The reads that start once the document has drawn (header chips, regime line, e-invoice
+    // panel) are held back, as on a slow server: the detail and its tab strip must still be on
+    // screen and usable, never back on "Loading…" until those reads return.
+    const release: Array<() => void> = []
+    await page.route(
+      /\/api\/apps\/invoicing\/tools\/(einvoice_transmission_get|einvoicing_classify)$/,
+      async (route) => {
+        await new Promise<void>((resolve) => release.push(resolve))
+        await route.continue().catch(() => {})
+      },
+    )
     await page.goto(`${viteUrl}/invoicing/document/${id}`)
+    await expect(page.getByTestId("document-detail-tabs")).toBeVisible()
+    await expect(page.getByTestId("document-detail-loading")).toHaveCount(0)
     await page.getByTestId("document-detail-tab-pdf").click()
+    for (const r of release) r()
+    await page.unrouteAll({ behavior: "ignoreErrors" })
     const embed = page.getByTestId("document-detail-pdf-embed")
     await expect(embed).toBeVisible()
     await expect(embed).toHaveJSProperty("tagName", "IFRAME")

@@ -8,13 +8,16 @@
 
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { MeiliSearch } from "meilisearch"
+import pino from "pino"
 import { app } from "~/app"
 import { sql } from "~/db"
 import * as searchClientModule from "~/infra/search/client"
+import { rootLogger } from "~/lib/logger"
 import { assembleContext, resetSystemPromptCache } from "~/modules/agent/context/context"
 import { ExternalSearchHandlersTestAccess } from "~/modules/search/external-handlers"
 import * as minimal from "~/seed/tiers/minimal"
 import { buildUserContext } from "~/tests/helpers/agent-ctx"
+import { drainOutbox } from "~/tests/helpers/outbox"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 // Full-length key shapes, live and test, and a Luhn-valid Visa number.
@@ -55,6 +58,28 @@ async function post(content: string): Promise<{ status: number; data: Record<str
   })
   const body = (await res.json()) as { data: Record<string, unknown> }
   return { status: res.status, data: body.data }
+}
+
+/** Every line any logger of the process writes while `fn` runs (they share one stream). */
+async function captureLogLines(fn: () => Promise<void>): Promise<string[]> {
+  const stream = (rootLogger as unknown as Record<symbol, { write: (line: string) => unknown }>)[
+    pino.symbols.streamSym
+  ]
+  const lines: string[] = []
+  const original = stream.write.bind(stream)
+  const spy = spyOn(stream, "write").mockImplementation((line: string) => {
+    lines.push(String(line))
+    return original(line)
+  })
+  const level = rootLogger.level
+  rootLogger.level = "trace"
+  try {
+    await fn()
+  } finally {
+    rootLogger.level = level
+    spy.mockRestore()
+  }
+  return lines
 }
 
 async function storedContent(messageId: string): Promise<string> {
@@ -175,5 +200,28 @@ describe("thread messages: payment keys and card numbers masked on the server", 
     expect(holdsPan(stored)).toBe(false)
     expect(stored).not.toContain(LIVE_SECRET)
     expect(stored).toContain("[A card number and a key were hidden.]")
+  })
+
+  it("no log line written while a card number and a key are posted, read, indexed and delivered holds either", async () => {
+    let messageId = ""
+    const lines = await captureLogLines(async () => {
+      const { data } = await post(`card ${PAN_SPACED} cvc 737 and key ${LIVE_RESTRICTED}`)
+      messageId = String(data.id)
+      const res = await app.request(`/api/threads/${threadId}/messages`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const listed = JSON.stringify(await res.json())
+      expect(listed).toContain(messageId)
+      expect(holdsPan(listed)).toBe(false)
+      expect(listed).not.toContain(LIVE_RESTRICTED)
+      const { processMessageIndexerJob } = await import("~/modules/search/message-indexer")
+      await processMessageIndexerJob({ action: "upsert", orgId, messageId })
+      await drainOutbox()
+    })
+    // Positive control: the capture saw this request's own log lines.
+    expect(lines.some((l) => l.includes(`/api/threads/${threadId}/messages`))).toBe(true)
+    expect(lines.length).toBeGreaterThan(3)
+    expect(lines.filter((l) => holdsPan(l))).toEqual([])
+    expect(lines.filter((l) => l.includes(LIVE_RESTRICTED))).toEqual([])
   })
 })

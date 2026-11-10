@@ -65,7 +65,9 @@ describe("the Stripe context lines", () => {
     const out = (await customerContext(
       { subject: { app: "tickets", entityType: "ticket", entityId: TICKET } },
       ctx,
-    )) as { lines: string[]; source: { label: string; syncedAt: string } }
+    )) as { lines: string[]; customerIds: string[]; source: { label: string; syncedAt: string } }
+    // The ticket's card finds its customer by these ids, not by reading the lines.
+    expect(out.customerIds.length).toBeGreaterThan(0)
     const text = out.lines.join("\n")
     expect(text).toContain("Studio Pro")
     expect(text).toContain("past_due")

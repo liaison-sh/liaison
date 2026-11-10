@@ -26,6 +26,9 @@ jobs:
   validate-compose:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # The published release the drill boots, as an operator would.
+      DRILL_TAG: v0.2.0
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -59,26 +62,21 @@ jobs:
           set_var OBJECT_STORAGE_ACCESS_KEY "$(openssl rand -hex 16)"
           set_var OBJECT_STORAGE_SECRET_KEY "$(openssl rand -hex 16)"
       - name: Pull or build the release image
-        # v0.1.0 has not been published to GHCR yet (no release has been cut).
-        # Once it has, this pulls it like a real operator would; until then it
-        # builds the same tag locally from the Dockerfile so the drill still
-        # validates the compose file end to end.
+        # Pulls the published release like a real operator would. The local
+        # build is a fallback for a registry outage only; it passes the same
+        # build-arg release.yml does, so /healthz reports the tag and
+        # validate-compose's version check still means something.
         run: |
           set -euo pipefail
-          IMAGE="ghcr.io/mathieufro/liaison:v0.1.0"
+          IMAGE="ghcr.io/liaison-sh/liaison:${DRILL_TAG}"
           if docker pull "$IMAGE"; then
             echo "pulled $IMAGE"
           else
-            echo "$IMAGE not published yet; building locally from apps/api/Dockerfile"
-            # Pass the same build-arg release.yml does, so the local build
-            # reports version v0.1.0 at /healthz like the real release image
-            # would — without it, the image reports the Dockerfile's "dev"
-            # default and validate-compose's version check fails regardless
-            # of whether the stack itself is healthy.
-            docker build -t "$IMAGE" --build-arg LIAISON_VERSION=v0.1.0 -f apps/api/Dockerfile .
+            echo "::warning::$IMAGE could not be pulled; building locally from apps/api/Dockerfile"
+            docker build -t "$IMAGE" --build-arg "LIAISON_VERSION=${DRILL_TAG}" -f apps/api/Dockerfile .
           fi
       - name: Compose drill
-        run: bun run validate-compose --tag v0.1.0
+        run: bun run validate-compose --tag "$DRILL_TAG"
 
   # O5 — release workflow dry run reaches the digest-sign step.
   release-workflow-dry-run:

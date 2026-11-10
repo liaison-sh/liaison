@@ -219,6 +219,17 @@ describe("workflow hardening", () => {
     )
   })
 
+  it("the compose drill pulls from the registry the compose file and validate-compose use", () => {
+    const compose = readFileSync(join(ROOT, "deploy/docker-compose.yml"), "utf8")
+    const fallback = compose.match(/\$\{LIAISON_IMAGE:-([^:}]+):v0\.1\.0\}/)?.[1]
+    const drill = readFileSync(join(WORKFLOW_DIR, "operator-drills.yml"), "utf8")
+    const pulled = drill.match(/IMAGE="([^:"]+):\$\{DRILL_TAG\}"/)?.[1]
+    expect(pulled).toBe(fallback)
+    expect(readFileSync(join(ROOT, "scripts/validate-compose.ts"), "utf8")).toContain(
+      `\`${fallback}:\${tag}\``,
+    )
+  })
+
   it("the compose default image is the registry path both publishing workflows push to", () => {
     // The publishing workflows rewrite only the tag of this default, so its registry path must be
     // the one they push to, or a published compose points at an image that does not exist.

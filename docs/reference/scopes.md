@@ -297,7 +297,7 @@ Shopify orders, customers, products, refunds, fulfilments and returns.
 | `shopify:admin:scope-seed` | manifest scopes; tool apply_seed_suggestion |  |
 | `shopify:analytics:read` | manifest scopes; tool analytics_query |  |
 | `shopify:approve` | approver scope | Decide (approve, edit, or deny) shopify approvals raised by its gated tools |
-| `shopify:customers:read` | manifest scopes; entity customer; tools customers_get, customers_get_by_external_id, customers_search, customers_segment_search, repeat_rate |  |
+| `shopify:customers:read` | manifest scopes; entity customer; tools companies_get, companies_search, customers_get, customers_get_by_external_id, customers_search, customers_segment_search and 1 more |  |
 | `shopify:customers:write` | manifest scopes; tools customers_email_marketing_consent_update, customers_sms_marketing_consent_update, customers_tag, customers_update |  |
 | `shopify:discounts:read` | manifest scopes; tool discounts_search |  |
 | `shopify:discounts:write` | manifest scopes; tools discounts_bulk_create, discounts_create, discounts_delete, discounts_update |  |

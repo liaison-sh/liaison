@@ -422,6 +422,38 @@ function uniformLineDiscount(
  * genuine mix of DIFFERENT per-line discounts is reported per line. The customer and the draft note
  * (e.g. a UK-export customs note) are surfaced too.
  */
+/** A price exception as the card shows it: `<reason>` or `<reason>: <note>`. */
+function priceExceptionText(v: unknown): string | null {
+  if (v == null) return null
+  const reason = isRec(v) ? v.reason : v
+  if (typeof reason !== "string" || reason.trim() === "") return null
+  const note = isRec(v) && typeof v.note === "string" && v.note.trim() !== "" ? v.note.trim() : null
+  return note ? `${reason.trim()}: ${note}` : reason.trim()
+}
+
+/** The price basis of one B2B line: the company catalog, or its exception with the price it sets. */
+function b2bPriceBasis(li: Record<string, unknown>): string {
+  const why = priceExceptionText(li.priceException)
+  if (!why) return "catalog price"
+  const override = li.priceOverride ?? li.price ?? li.unitPrice
+  const amount = isRec(override) ? override.amount : override
+  const parts: string[] = []
+  if (amount != null && amount !== "") parts.push(`unit price ${String(amount)}`)
+  if (isRec(li.appliedDiscount)) parts.push(discountLabel(li.appliedDiscount))
+  if (isRec(li.originalUnitPriceWithCurrency)) parts.push(`custom price ${String(li.originalUnitPriceWithCurrency.amount)}`)
+  return `price exception (${why})${parts.length ? `, ${parts.join(", ")}` : ""}`
+}
+
+/** The company and location a B2B draft is placed for (names from the hydrated context). */
+function companyLines(pc: Record<string, unknown>, hydrated: unknown): string[] {
+  const h = isRec(hydrated) ? hydrated : {}
+  const company = (typeof h.name === "string" && h.name) || (typeof pc.companyId === "string" ? pc.companyId : "?")
+  const location =
+    (typeof h.locationName === "string" && h.locationName) ||
+    (typeof pc.companyLocationId === "string" ? pc.companyLocationId : "?")
+  return [`Company: ${company}`, `Location: ${location} (prices from this location's B2B catalog)`]
+}
+
 export function summarizeDraftOrderCreate(
   params: unknown,
   _ctx?: unknown,
@@ -449,9 +481,17 @@ export function summarizeDraftOrderCreate(
     }
   }
 
+  const pc =
+    isRec(input.purchasingEntity) && isRec(input.purchasingEntity.purchasingCompany)
+      ? input.purchasingEntity.purchasingCompany
+      : null
+  const companyDraft = pc != null
+  if (pc) lines.push(...companyLines(pc, isRec(metaCtx) ? metaCtx.company : null))
+
   // Order-level discount: an explicit one, else a uniform per-line discount promoted to order level.
   const explicitOrderDiscount = isRec(input.appliedDiscount) ? input.appliedDiscount : null
-  const promoted = explicitOrderDiscount == null && lineItems.length >= 2 ? uniformLineDiscount(lineItems) : null
+  const promoted =
+    explicitOrderDiscount == null && lineItems.length >= 2 && !companyDraft ? uniformLineDiscount(lineItems) : null
   const orderDiscount = explicitOrderDiscount ?? promoted
 
   // Deterministic price arithmetic: the approver must see what each discounted
@@ -487,6 +527,13 @@ export function summarizeDraftOrderCreate(
     const listNum = brief?.price ? Number(brief.price) : Number.NaN
     const qtyNum = typeof li.quantity === "number" ? li.quantity : Number(li.quantity)
     let effTag = ""
+    if (companyDraft) {
+      // B2B: Shopify prices the line from the company location's catalog; the card says which
+      // basis each line uses instead of projecting a retail-price total.
+      lines.push(`${qty}× ${ident}${kindTag}: ${b2bPriceBasis(li)}`)
+      totalComplete = false
+      continue
+    }
     if (Number.isFinite(listNum) && Number.isFinite(qtyNum)) {
       const eff = effectiveUnit(listNum, orderDiscount ?? lineDiscount)
       if (eff !== listNum) effTag = ` -> ${money(eff)}/unit`
@@ -498,7 +545,8 @@ export function summarizeDraftOrderCreate(
   }
 
   if (orderDiscount) {
-    lines.push(`Order-level discount (whole order): ${discountLabel(orderDiscount)}`)
+    const why = priceExceptionText(input.priceException)
+    lines.push(`Order-level discount (whole order): ${discountLabel(orderDiscount)}${why ? ` (exception: ${why})` : ""}`)
   }
   if (totalComplete) {
     lines.push(`Projected total before shipping/tax: ${money(projectedTotal)}`)
@@ -848,15 +896,31 @@ export function summarizeDraftOrdersUpdate(params: unknown, _ctx?: unknown, meta
   const input = isRec(p.input) ? p.input : {}
   const lineItems = isArr(input.lineItems) ? (input.lineItems.filter(isRec) as Record<string, unknown>[]) : []
   const lines: string[] = []
-  for (const li of lineItems) {
-    lines.push(`${li.quantity ?? "?"}x ${gidShort(li.variantId)}`)
+  const context = meta?.context
+  // B2B: the company the draft is (or will be) placed for, and each line's price basis.
+  const existing = isRec(context) && isRec(context.purchasingCompany) ? context.purchasingCompany : null
+  const pcInput =
+    isRec(input.purchasingEntity) && isRec(input.purchasingEntity.purchasingCompany)
+      ? input.purchasingEntity.purchasingCompany
+      : null
+  const companyDraft = pcInput != null || existing != null
+  if (pcInput) lines.push(...companyLines(pcInput, null))
+  else if (existing) {
+    const company = isRec(existing.company) && typeof existing.company.name === "string" ? existing.company.name : "?"
+    const location = isRec(existing.location) && typeof existing.location.name === "string" ? existing.location.name : "?"
+    lines.push(`Company: ${company}`, `Location: ${location} (prices from this location's B2B catalog)`)
   }
-  if (isRec(input.appliedDiscount)) lines.push(`Discount: ${discountLabel(input.appliedDiscount)}`)
+  for (const li of lineItems) {
+    lines.push(`${li.quantity ?? "?"}x ${gidShort(li.variantId)}${companyDraft ? `: ${b2bPriceBasis(li)}` : ""}`)
+  }
+  if (isRec(input.appliedDiscount)) {
+    const why = priceExceptionText(input.priceException)
+    lines.push(`Discount: ${discountLabel(input.appliedDiscount)}${why ? ` (exception: ${why})` : ""}`)
+  }
   const note = str(input.note)
   if (note) lines.push(`Note: ${note}`)
   if (lines.length === 0) lines.push("No line-item or discount changes in the payload")
 
-  const context = meta?.context
   const draftName = draftOrderNameFromContext(context)
   const customerName = draftOrderCustomerNameFromContext(context)
 

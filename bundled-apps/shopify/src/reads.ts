@@ -1006,6 +1006,53 @@ const DRAFT_ORDERS_LIST_QUERY = `
 // full quote (addresses, discounts, shipping, tax lines, order linkage) via
 // `normalizeDraftOrderNode`, without breaking the pre-existing `NormalizedHit`
 // fields other callers already rely on.
+const DRAFT_COMPANY_ADDRESS_FIELDS =
+  "address1 address2 city zip province zoneCode countryCode companyName recipient phone"
+
+/**
+ * The B2B buyer of a draft (`purchasingEntity.purchasingCompany`): company, location (addresses and
+ * tax settings) and contact. Null for a consumer draft.
+ */
+export interface DraftPurchasingCompany {
+  company: { id: string | null; name: string | null }
+  location: {
+    id: string | null
+    name: string | null
+    taxExempt: boolean | null
+    taxRegistrationId: string | null
+    shippingAddress: Record<string, unknown> | null
+    billingAddress: Record<string, unknown> | null
+  }
+  contact: { id: string | null; customerId: string | null; email: string | null } | null
+}
+
+function draftPurchasingCompany(pe: unknown): DraftPurchasingCompany | null {
+  if (!pe || typeof pe !== "object") return null
+  const p = pe as Record<string, unknown>
+  if (p.__typename !== "PurchasingCompany" && !p.company) return null
+  const s = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null)
+  const rec = (v: unknown): Record<string, unknown> | null =>
+    v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null
+  const loc = rec(p.location) ?? {}
+  const tax = rec(loc.taxSettings) ?? {}
+  const contact = rec(p.contact)
+  const contactCustomer = rec(contact?.customer)
+  return {
+    company: { id: s(rec(p.company)?.id), name: s(rec(p.company)?.name) },
+    location: {
+      id: s(loc.id),
+      name: s(loc.name),
+      taxExempt: typeof tax.taxExempt === "boolean" ? tax.taxExempt : null,
+      taxRegistrationId: s(tax.taxRegistrationId),
+      shippingAddress: rec(loc.shippingAddress),
+      billingAddress: rec(loc.billingAddress),
+    },
+    contact: contact
+      ? { id: s(contact.id), customerId: s(contactCustomer?.id), email: s(contactCustomer?.email) }
+      : null,
+  }
+}
+
 const DRAFT_ORDER_GET_QUERY = `
   query DraftOrderGet($id: ID!) {
     draftOrder(id: $id) {
@@ -1030,10 +1077,25 @@ const DRAFT_ORDER_GET_QUERY = `
       billingAddress { name company address1 address2 zip city province countryCodeV2 phone }
       shippingAddress { name company address1 address2 zip city province countryCodeV2 phone }
       customer { id email firstName lastName defaultAddress { company } }
+      customAttributes { key value }
+      purchasingEntity {
+        __typename
+        ... on PurchasingCompany {
+          company { id name }
+          location {
+            id name
+            taxSettings { taxExempt taxRegistrationId }
+            shippingAddress { ${DRAFT_COMPANY_ADDRESS_FIELDS} }
+            billingAddress { ${DRAFT_COMPANY_ADDRESS_FIELDS} }
+          }
+          contact { id customer { id email } }
+        }
+      }
       lineItems(first: 100) {
         edges {
           node {
             id name title sku custom taxable requiresShipping quantity
+            customAttributes { key value }
             variant { id product { id } }
             originalUnitPriceSet { presentmentMoney { amount currencyCode } }
             discountedTotalSet { presentmentMoney { amount } }
@@ -1067,14 +1129,30 @@ export async function draft_orders_list(
 export async function draft_orders_get(
   params: Record<string, unknown>,
   ctx: AppContext,
-): Promise<NormalizedHit & { lineItems: unknown[]; draftOrder: NormalizedDraftOrder; po_number?: string }> {
+): Promise<
+  NormalizedHit & {
+    lineItems: unknown[]
+    draftOrder: NormalizedDraftOrder
+    po_number?: string
+    purchasingCompany: DraftPurchasingCompany | null
+    taxesIncluded: boolean | null
+    customAttributes: Array<{ key: string; value: string | null }>
+  }
+> {
   const id = params.id
   if (typeof id !== "string" || id.length === 0) {
     throw makeReadError("BAD_PARAM", "id is required")
   }
   const client = await getShopifyClient(ctx)
   const data = await client.query<{
-    draftOrder?: (DraftOrderNode & ShopifyDraftOrderGraphQLNode & { lineItems?: { edges?: Array<{ node: unknown }> } }) | null
+    draftOrder?:
+      | (DraftOrderNode &
+          ShopifyDraftOrderGraphQLNode & {
+            lineItems?: { edges?: Array<{ node: unknown }> }
+            purchasingEntity?: unknown
+            customAttributes?: Array<{ key: string; value: string | null }> | null
+          })
+      | null
   }>(DRAFT_ORDER_GET_QUERY, { id })
   if (!data.draftOrder) throw makeReadError("NOT_FOUND", `draft order ${id} not found`)
   const lineItems = data.draftOrder.lineItems?.edges?.map((e) => e.node) ?? []
@@ -1095,8 +1173,15 @@ export async function draft_orders_get(
     ...(po_number !== undefined ? { po_number } : {}),
     lineItems,
     draftOrder: normalizeDraftOrderNode(data.draftOrder as ShopifyDraftOrderGraphQLNode, meta?.shopDomain ?? null),
+    // B2B: the company location the draft is placed for (catalog prices, tax settings), or null.
+    purchasingCompany: draftPurchasingCompany(data.draftOrder.purchasingEntity),
+    taxesIncluded: typeof data.draftOrder.taxesIncluded === "boolean" ? data.draftOrder.taxesIncluded : null,
+    // Order custom attributes, e.g. a price exception's reason or a buyer VAT number.
+    customAttributes: data.draftOrder.customAttributes ?? [],
   }
 }
+
+export { companies_search, companies_get } from "./companies"
 
 // — Locations (read) —
 
@@ -1837,7 +1922,10 @@ export async function variants_brief(
   ctx: AppContext,
 ): Promise<{
   variants: Array<{ id: string; title: string; sku: string | null; price: string | null; requiresShipping: boolean | null }>
+  company?: { id: string; name: string | null; locationId: string | null; locationName: string | null } | null
 }> {
+  const company = await briefCompany(params.purchasingCompany, ctx)
+  const withCompany = <T extends object>(out: T): T => (company ? { ...out, company } : out)
   const fromIds = Array.isArray(params.ids) ? params.ids : []
   const fromLines = Array.isArray(params.lines) ? params.lines : []
   const ids = [
@@ -1852,7 +1940,7 @@ export async function variants_brief(
       ].filter((v): v is string => v != null && v.includes("/ProductVariant/")),
     ),
   ].slice(0, 50)
-  if (ids.length === 0) return { variants: [] }
+  if (ids.length === 0) return withCompany({ variants: [] })
   const client = await getShopifyClient(ctx)
   const data = await client.query<{
     nodes?: Array<{
@@ -1882,7 +1970,40 @@ export async function variants_brief(
         requiresShipping: typeof n.inventoryItem?.requiresShipping === "boolean" ? n.inventoryItem.requiresShipping : null,
       }
     })
-  return { variants }
+  return withCompany({ variants })
+}
+
+/**
+ * The company and location names of a draft's `purchasingCompany`, for the approval card
+ * (best effort: an unreadable company leaves the card on the ids).
+ */
+async function briefCompany(
+  pc: unknown,
+  ctx: AppContext,
+): Promise<{ id: string; name: string | null; locationId: string | null; locationName: string | null } | null> {
+  if (!pc || typeof pc !== "object") return null
+  const p = pc as Record<string, unknown>
+  const companyId = typeof p.companyId === "string" ? p.companyId : null
+  const locationId = typeof p.companyLocationId === "string" ? p.companyLocationId : null
+  if (!companyId) return null
+  try {
+    const client = await getShopifyClient(ctx)
+    const data = await client.query<{
+      company?: { name?: string | null } | null
+      companyLocation?: { name?: string | null } | null
+    }>(
+      `query($id: ID!, $loc: ID!, $hasLoc: Boolean!){ company(id: $id){ name } companyLocation(id: $loc) @include(if: $hasLoc){ name } }`,
+      { id: companyId, loc: locationId ?? companyId, hasLoc: locationId != null },
+    )
+    return {
+      id: companyId,
+      name: data.company?.name ?? null,
+      locationId,
+      locationName: data.companyLocation?.name ?? null,
+    }
+  } catch {
+    return { id: companyId, name: null, locationId, locationName: null }
+  }
 }
 
 // — Per-market (contextual) variant pricing —

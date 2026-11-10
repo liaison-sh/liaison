@@ -107,7 +107,10 @@ const customerNode = (over: Record<string, unknown> = {}) => ({
   },
 })
 
-/** A custom line needs no variant lookup, so the only Shopify read is the customer's. */
+/** The B2B guard's first read: is the customer a company contact? (A consumer: no profiles.) */
+const consumerLookup = { data: { customer: { id: CUSTOMER, companyContactProfiles: [] } } }
+
+/** A custom line needs no variant lookup: the reads are the B2B check's and the customer's. */
 const createParams = (input: Record<string, unknown> = {}) => ({
   input: {
     purchasingEntity: { customerId: CUSTOMER },
@@ -119,7 +122,7 @@ const createParams = (input: Record<string, unknown> = {}) => ({
 
 describe("draft_orders_create refuses an order Invoicing would not invoice", () => {
   it("preflight: a customer with no email and a tax exempt EU buyer with no VAT number, both named, nothing sent", async () => {
-    const { ctx, calls, crossApp } = makeCtx({ fetchResponses: [customerNode()], invoicingShop: SHOP })
+    const { ctx, calls, crossApp } = makeCtx({ fetchResponses: [consumerLookup, customerNode()], invoicingShop: SHOP })
     const out = await draft_orders_create_preflight(createParams(), ctx)
     expect("error" in out).toBe(true)
     const err = (out as { error: { code: string; message: string } }).error
@@ -131,13 +134,13 @@ describe("draft_orders_create refuses an order Invoicing would not invoice", () 
   })
 
   it("preflight: an email on the draft does not stand in for the linked customer's missing one", async () => {
-    const { ctx } = makeCtx({ fetchResponses: [customerNode({ taxExempt: false })], invoicingShop: SHOP })
+    const { ctx } = makeCtx({ fetchResponses: [consumerLookup, customerNode({ taxExempt: false })], invoicingShop: SHOP })
     const out = await draft_orders_create_preflight(createParams({ email: "buyer@pretty-face.it" }), ctx)
     expect((out as { error: { code: string } }).error.code).toBe("NOT_INVOICEABLE")
   })
 
   it("preflight: passes once the customer has an email and the VAT number rides as a custom attribute", async () => {
-    const { ctx } = makeCtx({ fetchResponses: [customerNode({ email: "buyer@pretty-face.it" })], invoicingShop: SHOP })
+    const { ctx } = makeCtx({ fetchResponses: [consumerLookup, customerNode({ email: "buyer@pretty-face.it" })], invoicingShop: SHOP })
     const out = await draft_orders_create_preflight(
       createParams({ customAttributes: [{ key: "VAT number", value: "IT01234567890" }] }),
       ctx,
@@ -146,14 +149,14 @@ describe("draft_orders_create refuses an order Invoicing would not invoice", () 
   })
 
   it("the handler refuses too (the customer can change before the approve), with no draftOrderCreate", async () => {
-    const { ctx, calls } = makeCtx({ fetchResponses: [customerNode()], invoicingShop: SHOP })
+    const { ctx, calls } = makeCtx({ fetchResponses: [consumerLookup, customerNode()], invoicingShop: SHOP })
     await expect(draft_orders_create(createParams(), ctx)).rejects.toThrow(/Invoicing would not invoice/)
     expect(mutations(calls)).toHaveLength(0)
   })
 
   it("unchanged without Invoicing: not installed, mapped to another shop, or no cross-app dispatch", async () => {
     for (const opts of [{ invoicingShop: null }, { invoicingShop: "other.myshopify.com" }, { invoicingShop: SHOP, noCrossApp: true }]) {
-      const { ctx } = makeCtx({ fetchResponses: [customerNode()], ...opts })
+      const { ctx } = makeCtx({ fetchResponses: [consumerLookup, customerNode()], ...opts })
       expect(await draft_orders_create_preflight(createParams(), ctx)).toEqual({ ok: true })
     }
   })

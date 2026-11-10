@@ -8,6 +8,24 @@ import type { AppContext } from "@liaison/app-sdk"
 import { getShopifyClient } from "../lib/get-client"
 import { toCountryCode, toProvinceCode } from "../lib/address-aliases"
 import { type ShopClient, isRec, makeMutationError, gidFrom } from "./shared"
+import {
+  type B2bContext,
+  type PriceException,
+  type VerifiedCompanyBuyer,
+  cleanPurchasingCompany,
+  companyAddressToMailingInput,
+  companyRequiredError,
+  noCatalogPriceError,
+  nonCatalogPriceFields,
+  parsePriceException,
+  priceNotCatalogError,
+  readLocationCatalogs,
+  rememberVerifiedBuyer,
+  resolveB2bContext,
+  variantsWithFixedCatalogPrice,
+  verifyPurchasingCompany,
+  withPriceExceptionAttribute,
+} from "./draft-order-b2b"
 
 // The authoritative DraftOrderInput / DraftOrderLineItemInput field sets (Shopify Admin API
 // 2026-01, from schema introspection). A weak model invents fields outside these — `customer`,
@@ -290,13 +308,24 @@ function lineIsPhysical(li: unknown, shipMap: Map<string, boolean>): boolean {
   return true
 }
 
+/** A MoneyInput from an agent's priceOverride: a number/string amount, or {amount, currencyCode}. */
+async function toMoneyInput(v: unknown, getCurrency: () => Promise<string>): Promise<Record<string, unknown> | undefined> {
+  const amountRaw = isRec(v) ? v.amount : v
+  const n = Number(amountRaw)
+  if (amountRaw == null || amountRaw === "" || !Number.isFinite(n) || n < 0) return undefined
+  const currency = isRec(v) && typeof v.currencyCode === "string" && v.currencyCode.trim() !== "" ? v.currencyCode.trim().toUpperCase() : await getCurrency()
+  return { amount: String(amountRaw), currencyCode: currency }
+}
+
 async function normaliseDraftOrderLine(
   li: unknown,
   client: ShopClient,
   getCurrency: () => Promise<string>,
+  pricing: { b2b: boolean; exception: PriceException | undefined } = { b2b: false, exception: undefined },
 ): Promise<unknown> {
   if (!isRec(li)) return li
   const l: Record<string, unknown> = { ...li }
+  delete l.priceException
 
   // `productId` is NOT a DraftOrderLineItemInput field — resolve to a variant gid FIRST (before the
   // price handling below) so a catalog line that also carries a bogus per-unit price keeps its
@@ -325,9 +354,22 @@ async function normaliseDraftOrderLine(
   // `price`/`unitPrice` is NOT a DraftOrderLineItemInput field (API 2026-01).
   const priceRaw = l.price ?? l.unitPrice ?? l.unit_price
   const hasRealPrice = l.originalUnitPriceWithCurrency != null || l.originalUnitPrice != null
-  if (priceRaw != null) {
+  if (priceRaw != null && pricing.b2b && l.variantId != null && l.priceOverride == null) {
+    // B2B: a line price is NEVER turned into a discount. It reached here only with a
+    // priceException (the guard refused it otherwise), so it becomes the line's unit price, with
+    // the variant kept: priceOverride sets the price with no discount on the line.
+    const money = await toMoneyInput(priceRaw, getCurrency)
+    if (!money)
+      throw makeMutationError("BAD_PARAM", `draft order line: price ${JSON.stringify(priceRaw)} is not a valid amount.`)
+    l.priceOverride = money
+    delete l.price
+    delete l.unitPrice
+    delete l.unit_price
+  } else if (priceRaw != null) {
     const priceNum = Number(priceRaw)
-    if (l.appliedDiscount != null) {
+    if (pricing.b2b && l.priceOverride != null) {
+      // an explicit priceOverride wins over a redundant per-unit price
+    } else if (l.appliedDiscount != null) {
       // the agent already expressed the discount correctly — drop the redundant bogus price
     } else if (l.variantId != null && Number.isFinite(priceNum)) {
       // A catalog variant at a custom unit price → express it as a per-line PERCENTAGE appliedDiscount
@@ -368,6 +410,17 @@ async function normaliseDraftOrderLine(
     const d = normaliseAppliedDiscount(l.appliedDiscount)
     if (d) l.appliedDiscount = d
   }
+  if (l.priceOverride != null) {
+    const money = await toMoneyInput(l.priceOverride, getCurrency)
+    if (!money)
+      throw makeMutationError(
+        "BAD_PARAM",
+        `draft order line: priceOverride ${JSON.stringify(l.priceOverride)} is not a valid amount; pass {amount: '120.00', currencyCode: 'EUR'}.`,
+      )
+    l.priceOverride = money
+  }
+  // The reason for a non-catalog price travels with the line: the approval card and the order show it.
+  if (pricing.exception) l.customAttributes = withPriceExceptionAttribute(l.customAttributes, pricing.exception)
   if (l.quantity != null) {
     const q = Math.trunc(Number(l.quantity))
     if (Number.isFinite(q) && q > 0) l.quantity = q
@@ -393,7 +446,12 @@ async function normaliseDraftOrderLine(
 export async function normalizeDraftOrderInput(
   rawInput: Record<string, unknown>,
   ctx: AppContext,
-  opts?: { promoteWholeOrderDiscount?: boolean; enforceBuyerIdentity?: boolean },
+  opts?: {
+    promoteWholeOrderDiscount?: boolean
+    enforceBuyerIdentity?: boolean
+    /** Update path: the draft being changed (its current buyer decides whether it is B2B). */
+    draftId?: string
+  },
 ): Promise<Record<string, unknown>> {
   const input: Record<string, unknown> = { ...rawInput }
 
@@ -416,10 +474,70 @@ export async function normalizeDraftOrderInput(
       gidFrom(pe.customer) ||
       undefined
     const cleaned: Record<string, unknown> = {}
-    if (salvagedId) cleaned.customerId = salvagedId
-    if (pe.purchasingCompany != null) cleaned.purchasingCompany = pe.purchasingCompany
+    const company = cleanPurchasingCompany(pe.purchasingCompany)
+    // PurchasingEntityInput takes a customer OR a company: a company draft's customer is its contact.
+    if (company) cleaned.purchasingCompany = company
+    else if (salvagedId) cleaned.customerId = salvagedId
     if (Object.keys(cleaned).length > 0) input.purchasingEntity = cleaned
     else delete input.purchasingEntity
+  }
+
+  // ── B2B guard (deterministic, before any approval is staged; see draft-order-b2b.ts) ──
+  const purchasingCompany =
+    isRec(input.purchasingEntity) && isRec(input.purchasingEntity.purchasingCompany)
+      ? (input.purchasingEntity.purchasingCompany as ReturnType<typeof cleanPurchasingCompany>)
+      : undefined
+  const buyerCustomerId =
+    isRec(input.purchasingEntity) && typeof input.purchasingEntity.customerId === "string"
+      ? input.purchasingEntity.customerId
+      : undefined
+  const touchesPrices = input.lineItems != null || input.appliedDiscount != null || input.lineItemsDiscount != null
+  let client: ShopClient | undefined
+  let b2b: B2bContext = { b2b: false, existingCompany: null, contactCompanies: [] }
+  let verified: VerifiedCompanyBuyer | undefined
+  if (purchasingCompany || buyerCustomerId || (opts?.draftId && touchesPrices)) {
+    client = await getShopifyClient(ctx)
+    b2b = await resolveB2bContext(client, {
+      purchasingCompany,
+      customerId: buyerCustomerId,
+      draftId: input.purchasingEntity == null ? opts?.draftId : undefined,
+    })
+    if (b2b.b2b && !purchasingCompany && !b2b.existingCompany) throw companyRequiredError(b2b.contactCompanies)
+    if (purchasingCompany) verified = await verifyPurchasingCompany(client, purchasingCompany)
+  }
+  const orderException = parsePriceException(input.priceException, "order")
+  delete input.priceException
+  const rawLines = Array.isArray(input.lineItems) ? input.lineItems : []
+  const lineExceptions = rawLines.map((li, i) =>
+    isRec(li) ? parsePriceException(li.priceException, `line ${i + 1}`) : undefined,
+  )
+  const offences: string[] = []
+  rawLines.forEach((li, i) => {
+    if (!isRec(li) || lineExceptions[i]) return
+    if (b2b.b2b) {
+      const fields = nonCatalogPriceFields(li)
+      if (fields.length > 0) offences.push(`line ${i + 1} (${fields.join(", ")})`)
+    } else if (li.priceOverride != null) {
+      throw makeMutationError(
+        "PRICE_EXCEPTION_REQUIRED",
+        `line ${i + 1}: a priceOverride needs a priceException { reason, note } saying why the price differs.`,
+      )
+    }
+  })
+  if (b2b.b2b && !orderException && (input.appliedDiscount != null || input.lineItemsDiscount != null))
+    offences.push("the order-level appliedDiscount")
+  if (offences.length > 0) throw priceNotCatalogError(offences)
+  if (orderException) input.customAttributes = withPriceExceptionAttribute(input.customAttributes, orderException)
+  // The company location's own addresses are the draft's, unless the caller set them.
+  if (verified && input.useCustomerDefaultAddress !== true) {
+    if (input.shippingAddress == null) {
+      const a = companyAddressToMailingInput(verified.location.shippingAddress)
+      if (a) input.shippingAddress = a
+    }
+    if (input.billingAddress == null) {
+      const a = companyAddressToMailingInput(verified.location.billingAddress ?? verified.location.shippingAddress)
+      if (a) input.billingAddress = a
+    }
   }
 
   if (input.lineItemsDiscount != null && input.appliedDiscount == null) {
@@ -432,21 +550,55 @@ export async function normalizeDraftOrderInput(
     if (d) input.appliedDiscount = d
   }
 
-  let client: ShopClient | undefined
   if (Array.isArray(input.lineItems) && input.lineItems.length > 0) {
-    client = await getShopifyClient(ctx)
+    client ??= await getShopifyClient(ctx)
     const c = client
     let currency: string | undefined
-    const getCurrency = async (): Promise<string> => (currency ??= await shopCurrencyCode(c))
-    input.lineItems = await Promise.all(
-      input.lineItems.map((li) => normaliseDraftOrderLine(li, c, getCurrency)),
+    const presentment =
+      typeof input.presentmentCurrencyCode === "string" && input.presentmentCurrencyCode.trim() !== ""
+        ? input.presentmentCurrencyCode.trim().toUpperCase()
+        : undefined
+    const getCurrency = async (): Promise<string> => (currency ??= presentment ?? (await shopCurrencyCode(c)))
+    const normalisedLines = await Promise.all(
+      input.lineItems.map((li, i) =>
+        normaliseDraftOrderLine(li, c, getCurrency, { b2b: b2b.b2b, exception: lineExceptions[i] }),
+      ),
     )
+    input.lineItems = normalisedLines
+    // B2B: a catalog-priced line (a variant, no exception) must have a FIXED price in a catalog that
+    // applies to the company location; otherwise Shopify falls back to an adjusted retail price.
+    const locationId = verified?.location.id ?? b2b.existingCompany?.locationId ?? null
+    if (b2b.b2b && locationId) {
+      const locationLabel = verified?.location.name ?? b2b.existingCompany?.locationName ?? locationId
+      const catalogLines = normalisedLines.flatMap((li, i) =>
+        isRec(li) && typeof li.variantId === "string" && !lineExceptions[i] && li.priceOverride == null
+          ? [{ index: i, variantId: li.variantId }]
+          : [],
+      )
+      if (catalogLines.length > 0) {
+        const catalogs = await readLocationCatalogs(c, locationId, locationLabel)
+        const fixed = await variantsWithFixedCatalogPrice(
+          c,
+          catalogs,
+          catalogLines.map((l) => l.variantId),
+          locationLabel,
+        )
+        const missing = catalogLines.filter((l) => !fixed.has(l.variantId))
+        if (missing.length > 0) {
+          const labelled = await Promise.all(
+            missing.map(async (m) => ({ ...m, label: (await lookupGidTitle(c, m.variantId)) ?? null })),
+          )
+          throw noCatalogPriceError(labelled, catalogs, locationLabel)
+        }
+      }
+    }
   }
 
   // After per-line normalisation, lift a uniform whole-order discount expressed per-line up to the
   // order level (CREATE path only — see promoteUniformLineDiscountToOrderLevel; BL-04 keeps the
-  // UPDATE path's per-line round-trip intact).
-  if (opts?.promoteWholeOrderDiscount) promoteUniformLineDiscountToOrderLevel(input)
+  // UPDATE path's per-line round-trip intact). Never on a B2B draft: each line's price basis (the
+  // catalog, or its own exception) is what the approver reads.
+  if (opts?.promoteWholeOrderDiscount && !b2b.b2b) promoteUniformLineDiscountToOrderLevel(input)
 
   // Normalise nested MailingAddressInputs (the weak model invents `name`/`street`/…); drop one that
   // has nothing usable left — a draft quote needs no address. Done BEFORE the buyer-identity guard so
@@ -475,8 +627,10 @@ export async function normalizeDraftOrderInput(
     const hasPhysical = physical.some((p) => p === true)
     const hasDigital = physical.some((p) => p === false)
 
+    // A company draft's contact is its customer (name + email on its own record).
     const hasLinkedCustomer =
-      isRec(input.purchasingEntity) && typeof input.purchasingEntity.customerId === "string"
+      isRec(input.purchasingEntity) &&
+      (typeof input.purchasingEntity.customerId === "string" || isRec(input.purchasingEntity.purchasingCompany))
     const nameOn = (a: unknown): boolean =>
       isRec(a) &&
       ((typeof a.firstName === "string" && a.firstName.trim() !== "") ||
@@ -537,11 +691,13 @@ export async function normalizeDraftOrderInput(
   // actually surfaces: `draft_orders_create` retries the mutation ONCE without the email when
   // Shopify rejects its domain, so a bogus address can no longer fail the whole gated create.
   const hasLinkedCustomer =
-    isRec(input.purchasingEntity) && typeof input.purchasingEntity.customerId === "string"
+    isRec(input.purchasingEntity) &&
+    (typeof input.purchasingEntity.customerId === "string" || isRec(input.purchasingEntity.purchasingCompany))
   const keepEmail = !hasLinkedCustomer && isUsableEmail(input.email)
   if (input.email != null && !keepEmail) delete input.email
 
   // Drop any field still outside the real DraftOrderInput (e.g. `currencyCode`, `user_id`).
   stripToAllowlist(input, DRAFT_ORDER_INPUT_FIELDS)
+  if (verified) rememberVerifiedBuyer(input, verified)
   return input
 }

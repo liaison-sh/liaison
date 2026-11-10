@@ -2922,7 +2922,9 @@ describe("draft_orders_create — buyer-identity guard (digital needs name+email
   })
 
   it("creates a DIGITAL order with a LINKED customer and no explicit email (the customer supplies both)", async () => {
-    const { ctx, calls } = makeCtx({ fetchResponses: [digitalNodes(), createOk] })
+    // The B2B guard first reads whether the customer is a company contact (a consumer: no profiles).
+    const consumer = { data: { customer: { id: "gid://shopify/Customer/7", companyContactProfiles: [] } } }
+    const { ctx, calls } = makeCtx({ fetchResponses: [consumer, digitalNodes(), createOk] })
     await draft_orders_create(
       {
         input: {
@@ -2932,7 +2934,7 @@ describe("draft_orders_create — buyer-identity guard (digital needs name+email
       },
       ctx,
     )
-    const sent = JSON.parse(calls[1]!.body) as { variables: { input: Record<string, unknown> } }
+    const sent = JSON.parse(calls[2]!.body) as { variables: { input: Record<string, unknown> } }
     expect(sent.variables.input.purchasingEntity).toMatchObject({ customerId: "gid://shopify/Customer/7" })
   })
 
@@ -3960,6 +3962,8 @@ describe("draft_orders_update — per-line appliedDiscount round-trip (BL-04)", 
   it("sends the line's appliedDiscount in the draftOrderUpdate mutation variables", async () => {
     const { ctx, calls } = makeCtx({
       fetchResponses: [
+        // The B2B guard reads the draft's buyer (a consumer draft with no customer).
+        { data: { draftOrder: { id: "gid://shopify/DraftOrder/1", purchasingEntity: null, customer: null } } },
         {
           data: {
             draftOrderUpdate: {
@@ -3971,7 +3975,7 @@ describe("draft_orders_update — per-line appliedDiscount round-trip (BL-04)", 
       ],
     })
     // A variant line already paired with an appliedDiscount needs NO normalization fetch, so the only
-    // outbound call is the mutation itself.
+    // outbound calls are the B2B guard's buyer read and the mutation itself.
     await draft_orders_update(
       {
         id: "gid://shopify/DraftOrder/1",

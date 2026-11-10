@@ -665,6 +665,8 @@ Shopify orders, customers, products, refunds, fulfilments and returns.
 | `abandoned_checkouts_list` | List abandoned customer checkouts for cart recovery (value, customer name + email, line items, and the recovery URL per checkout), newest first. |  | `shopify:orders:read` |
 | `analytics_query` | Aggregate sales analytics over a period, optionally grouped by SKU or market. |  | `shopify:analytics:read` |
 | `apply_seed_suggestion` | Apply an admin-reviewed scope-seed suggestion (writes Liaison scopes for the named user). | yes | `shopify:admin:scope-seed` |
+| `companies_get` | Get one Shopify B2B company by id, with the same shape as a companies_search result: locations (addresses, tax settings, catalogs) and contacts with their roles per location. |  | `shopify:customers:read` |
+| `companies_search` | Search Shopify B2B companies by name. |  | `shopify:customers:read` |
 | `connection_disconnect` | Disconnect the Shopify connection (flips install_metadata to disconnected; stops background sync). | yes | `shopify:admin:identity-map` |
 | `customers_email_marketing_consent_update` | Set a Shopify customer's email-marketing consent state | yes | `shopify:customers:write` |
 | `customers_get` | Get one Shopify customer by id. |  | `shopify:customers:read` |
@@ -682,7 +684,7 @@ Shopify orders, customers, products, refunds, fulfilments and returns.
 | `draft_orders_complete` | Complete a Shopify draft order: it becomes a real order. | yes | `shopify:draft-orders:write` |
 | `draft_orders_create` | Create a Shopify draft order. | yes | `shopify:draft-orders:write` |
 | `draft_orders_delete` | Delete a Shopify draft order. | yes | `shopify:draft-orders:write` |
-| `draft_orders_get` | Get one Shopify draft order by id (with line items). |  | `shopify:draft-orders:read` |
+| `draft_orders_get` | Get one Shopify draft order by id (with line items and their customAttributes). |  | `shopify:draft-orders:read` |
 | `draft_orders_list` | List Shopify draft orders |  | `shopify:draft-orders:read` |
 | `draft_orders_send` | Send a draft-order invoice to the customer. | yes | `shopify:draft-orders:write` |
 | `draft_orders_update` | Update a Shopify draft order (lines, customer, addresses, discounts, note, tags). | yes | `shopify:draft-orders:write` |

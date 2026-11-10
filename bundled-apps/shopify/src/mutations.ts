@@ -41,6 +41,7 @@ export {
   draft_orders_create,
   draft_orders_complete_preflight,
   draft_orders_complete,
+  draft_orders_update_preflight,
   draft_orders_update,
   draft_orders_delete_preflight,
   draft_orders_delete,

@@ -35,6 +35,7 @@ const FOLLOW_UP = "I searched for a shipping tool: none is connected here, so I 
 type Chunk = Record<string, unknown>
 type ModelOpts = {
   messages: Array<{ role: string; content: unknown }>
+  prepareStep?: (options: unknown) => { toolChoice?: string } | undefined
   tools?: Record<string, { execute?: (input: unknown, o: unknown) => Promise<unknown> }>
 }
 type Run = {
@@ -81,9 +82,12 @@ const realToolThenAnswer = (toolName: string, input: unknown, text: string): Run
 /** Plays one run per model call, and records each call's messages. */
 function scripted(runs: Run[]) {
   const calls: Array<Array<{ role: string; content: unknown }>> = []
+  /** Each call's tool choice for its first step, as its step hook sets it. */
+  const firstToolChoice: Array<string | undefined> = []
   const fn = (opts: ModelOpts) => {
     const run = runs[calls.length]
     calls.push(opts.messages)
+    firstToolChoice.push(opts.prepareStep?.({ stepNumber: 0, steps: [], messages: [] })?.toolChoice)
     if (!run) throw new Error(`unexpected model run #${calls.length}`)
     const chunks = typeof run.chunks === "function" ? run.chunks(opts) : Promise.resolve(run.chunks)
     const text = chunks.then((cs) =>
@@ -104,7 +108,7 @@ function scripted(runs: Run[]) {
       ]),
     }
   }
-  return { fn, calls }
+  return { fn, calls, firstToolChoice }
 }
 
 describe("an announced action with no tool call gets one nudge", () => {
@@ -169,7 +173,7 @@ describe("an announced action with no tool call gets one nudge", () => {
     >`SELECT content, metadata FROM kernel.messages
       WHERE thread_id = ${threadId} AND author_type = 'agent' ORDER BY created_at`
     if (rows.length !== 1) throw new Error(`expected one agent reply, saw ${rows.length}`)
-    return { reply: rows[0], calls: script.calls }
+    return { reply: rows[0], calls: script.calls, firstToolChoice: script.firstToolChoice }
   }
 
   beforeAll(async () => {
@@ -269,13 +273,60 @@ describe("an announced action with no tool call gets one nudge", () => {
     expect(reply.metadata.announcedActionCorrected).toBe(true)
   })
 
-  test("a second announcement after the nudge triggers nothing more", async () => {
+  test("a correction that ends on its own plan again gets one more continuation whose first step calls a tool", async () => {
+    // Measured: the correction answered "Let me call routine_tool_scopes. Then
+    // create_routine. Let me do that." and the turn ended there, so no routine.
+    const threadId = await seedChat()
+    executed.length = 0
+    const plan =
+      "The user wants a weekly Monday digest of open tickets.\n\nLet's do the scope lookup and then create."
+    const again = "Let me call routine_tool_scopes for tickets__search. Then create_routine. Let me do that."
+    const { reply, calls, firstToolChoice } = await turn(threadId, [
+      answer(plan),
+      answer(again),
+      realToolThenAnswer("kernel__tool_search", { query: "create routine" }, FOLLOW_UP),
+    ])
+
+    expect(calls.length).toBe(3)
+    expect(firstToolChoice).toEqual([undefined, undefined, "required"])
+    const third = calls[2]
+    expect(third[third.length - 1]).toEqual({ role: "user", content: ANNOUNCED_ACTION_NOTE })
+    expect(JSON.stringify(third[third.length - 2])).toContain("Let me do that")
+    expect(executed).toEqual(["kernel__tool_search"])
+    // The stored reply is the answer after the tool, without either plan.
+    expect(reply.content).toBe(FOLLOW_UP)
+    expect(reply.metadata.announcedActionCorrected).toBe(true)
+  })
+
+  test("a correction that calls a tool and then ends on its plan gets one more continuation", async () => {
+    const threadId = await seedChat()
+    executed.length = 0
+    const again = "I still need routine_tool_scopes. Let me do that."
+    const { reply, calls, firstToolChoice } = await turn(threadId, [
+      answer(ANNOUNCEMENT),
+      realToolThenAnswer("kernel__tool_search", { query: "routine scopes" }, again),
+      realToolThenAnswer("kernel__tool_search", { query: "create routine" }, FOLLOW_UP),
+    ])
+
+    expect(calls.length).toBe(3)
+    expect(firstToolChoice[2]).toBe("required")
+    expect(executed).toEqual(["kernel__tool_search", "kernel__tool_search"])
+    expect(reply.content).toBe(FOLLOW_UP)
+    expect(reply.content).not.toContain("Let me do that")
+  })
+
+  test("a third announcement triggers nothing more", async () => {
     const threadId = await seedChat()
     const again = "I'll book the shipment now, one moment."
-    const { reply, calls } = await turn(threadId, [answer(ANNOUNCEMENT), answer(again)])
+    const third = "I'll book it right now."
+    const { reply, calls } = await turn(threadId, [
+      answer(ANNOUNCEMENT),
+      answer(again),
+      answer(third),
+    ])
 
-    expect(calls.length).toBe(2)
-    expect(reply.content).toBe(again)
+    expect(calls.length).toBe(3)
+    expect(reply.content).toBe(third)
   })
 
   test("an offer that waits for the person triggers nothing", async () => {

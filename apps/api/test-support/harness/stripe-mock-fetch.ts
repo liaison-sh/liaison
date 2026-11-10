@@ -58,6 +58,14 @@ export interface StripeMockRecord {
 const records: StripeMockRecord[] = []
 const store = new Map<StripeMockResource, Map<string, StripeObject>>()
 const failures = new Map<string, number>()
+/** Paths whose next write is applied and whose answer is then lost on the way back. */
+const lostAnswers = new Set<string>()
+/** Stripe keeps an idempotency key for 24 hours: the first answer, replayed within that window. */
+const IDEMPOTENCY_WINDOW_MS = 24 * 60 * 60 * 1000
+const idempotent = new Map<string, { at: number; status: number; body: unknown }>()
+let clockOffsetMs = 0
+let refundSeq = 0
+const mockNow = () => Date.now() + clockOffsetMs
 
 function freshStore(): void {
   store.clear()
@@ -90,7 +98,29 @@ export function stripeMockRequests(): StripeMockRecord[] {
 export function stripeMockReset(): void {
   records.length = 0
   failures.clear()
+  lostAnswers.clear()
+  idempotent.clear()
+  clockOffsetMs = 0
+  refundSeq = 0
   freshStore()
+}
+
+/** The next write to `path` takes effect in the mock and its answer never arrives (a lost response). */
+export function stripeMockLoseAnswerNext(path: string): void {
+  lostAnswers.add(path)
+}
+
+/** Moves the mock's clock: an idempotency key older than 24 hours is forgotten, as Stripe does. */
+export function stripeMockAdvanceHours(hours: number): void {
+  clockOffsetMs += hours * 60 * 60 * 1000
+}
+
+/** One stored object, as the mock holds it now. */
+export function stripeMockObject(
+  resource: StripeMockResource,
+  id: string,
+): StripeObject | undefined {
+  return store.get(resource)?.get(id)
 }
 
 /** Add or replace an object: the fixture's shape with `overrides` on top. */
@@ -211,7 +241,8 @@ export function makeStripeMockFetch(realFetch: ForwardFetch = fetch): typeof fet
     const live = /^Bearer\s+(rk|sk)_live_/i.test(headers.get("authorization") ?? "")
     if (method === "GET" && !id) {
       const limit = Number(parsed.searchParams.get("limit") ?? 10)
-      const all = [...objects.values()]
+      const charge = parsed.searchParams.get("charge")
+      const all = [...objects.values()].filter((o) => !charge || o.charge === charge)
       return json({
         object: "list",
         data: all.slice(0, limit).map((o) => inMode(o, live)),
@@ -230,6 +261,14 @@ export function makeStripeMockFetch(realFetch: ForwardFetch = fetch): typeof fet
             "resource_missing",
           )
     }
+    if (version === "v1" && method !== "GET") {
+      const answer = writeAnswer(record, resource as StripeMockResource, id, method)
+      if (answer) {
+        if (lostAnswers.delete(parsed.pathname))
+          throw new TypeError("fetch failed: the connection closed")
+        return answer
+      }
+    }
     // Writes the connector makes are added with the tasks that make them.
     return stripeError(
       400,
@@ -237,4 +276,106 @@ export function makeStripeMockFetch(realFetch: ForwardFetch = fetch): typeof fet
       `The mock does not serve ${method} ${parsed.pathname}.`,
     )
   }) as typeof fetch
+}
+
+/** Stripe's form fields, `metadata[k]` included. */
+function formOf(body: string | null): {
+  fields: URLSearchParams
+  metadata: Record<string, string>
+} {
+  const fields = new URLSearchParams(body ?? "")
+  const metadata: Record<string, string> = {}
+  for (const [k, v] of fields) {
+    const m = /^metadata\[(.+)\]$/.exec(k)
+    if (m?.[1]) metadata[m[1]] = v
+  }
+  return { fields, metadata }
+}
+
+/**
+ * The writes the connector makes: a refund (partial or whole, never above what is
+ * left on the charge, replayed for the same idempotency key within 24 hours) and a
+ * subscription's cancellation (at period end, or now).
+ */
+function writeAnswer(
+  record: StripeMockRecord,
+  resource: StripeMockResource,
+  id: string | undefined,
+  method: string,
+): Response | null {
+  const key = record.idempotencyKey ? `${record.path}|${record.idempotencyKey}` : null
+  if (key) {
+    const seen = idempotent.get(key)
+    if (seen && mockNow() - seen.at < IDEMPOTENCY_WINDOW_MS) return json(seen.body, seen.status)
+  }
+  const answer = (status: number, body: unknown): Response => {
+    if (key && status < 500) idempotent.set(key, { at: mockNow(), status, body })
+    return json(body, status)
+  }
+  const { fields, metadata } = formOf(record.body)
+  if (resource === "refunds" && method === "POST" && !id) {
+    const charge = store.get("charges")?.get(fields.get("charge") ?? "")
+    if (!charge) return null
+    const amount = Number(charge.amount ?? 0)
+    const refunded = Number(charge.amount_refunded ?? 0)
+    const left = amount - refunded
+    const wanted = fields.has("amount") ? Number(fields.get("amount")) : left
+    if (left <= 0) {
+      return answer(400, {
+        error: {
+          type: "invalid_request_error",
+          code: "charge_already_refunded",
+          message: `Charge ${charge.id} has already been refunded.`,
+        },
+      })
+    }
+    if (!(wanted > 0) || wanted > left) {
+      return answer(400, {
+        error: {
+          type: "invalid_request_error",
+          code: "amount_too_large",
+          message: `Refund amount (${wanted}) is greater than unrefunded amount on charge (${left})`,
+        },
+      })
+    }
+    charge.amount_refunded = refunded + wanted
+    charge.refunded = refunded + wanted >= amount
+    const refund: StripeObject = {
+      ...stripeFixture("refunds"),
+      id: `re_MOCK${String(++refundSeq).padStart(4, "0")}`,
+      amount: wanted,
+      charge: charge.id,
+      currency: charge.currency,
+      created: Math.floor(mockNow() / 1000),
+      metadata,
+      reason: fields.get("reason"),
+      status: "succeeded",
+    }
+    store.get("refunds")?.set(refund.id, refund)
+    return answer(200, refund)
+  }
+  if (resource === "subscriptions" && id && (method === "POST" || method === "DELETE")) {
+    const sub = store.get("subscriptions")?.get(id)
+    if (!sub) {
+      return answer(404, {
+        error: {
+          type: "invalid_request_error",
+          code: "resource_missing",
+          message: `No such subscription: '${id}'`,
+        },
+      })
+    }
+    if (method === "DELETE") {
+      sub.status = "canceled"
+      sub.canceled_at = Math.floor(mockNow() / 1000)
+      sub.ended_at = sub.canceled_at
+    } else if (fields.get("cancel_at_period_end") === "true") {
+      const items =
+        (sub.items as { data?: Array<{ current_period_end?: number }> } | undefined)?.data ?? []
+      sub.cancel_at_period_end = true
+      sub.cancel_at = items[0]?.current_period_end ?? null
+    }
+    return answer(200, sub)
+  }
+  return null
 }

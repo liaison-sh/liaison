@@ -81,3 +81,13 @@ month start in the organization zone, start = now less movements, partial while 
 rebuild from 30 days of events, "Movements incomplete before" -> bundled-apps/stripe/src/mrr-rebuild.ts:1
 an existing contact with the email is only a suggestion, shown by customers_get -> bundled-apps/stripe/src/match.ts:141 ; bundled-apps/stripe/src/tools/customers.ts:134
 a delivery cut off is retried after 5 minutes -> bundled-apps/stripe/src/webhooks.ts:29
+refunds_create gated, noAutoApprove, dedupe per charge, same requester -> bundled-apps/stripe/app.manifest.json:1
+refund refusals already_refunded, charge_disputed, amount_over_refundable, no_invoice_for_refund -> bundled-apps/stripe/src/tools/refunds.ts:1
+refund re-read after approval, lookup by approval metadata before POST, idempotency key -> bundled-apps/stripe/src/tools/refunds.ts:1
+card number in reason refused -> bundled-apps/stripe/src/tools/refunds.ts:97
+refund with ticket adds internal note, never a reply -> bundled-apps/stripe/src/tools/refunds.ts:233
+subscription_cancel at period end by default, write probe, "This key cannot cancel subscriptions" -> bundled-apps/stripe/src/tools/subscriptions.ts:71
+cancel card MRR effect, invoice effect, open deals -> bundled-apps/stripe/src/tools/subscriptions.ts:183
+card_update_link ladder, effect sentences, 30 days re-read, never stored -> bundled-apps/stripe/src/tools/links.ts:1
+reminder guard reads Stripe at send time, stops on paid/void/uncollectible, waits when unreachable -> bundled-apps/stripe/src/tools/send-state.ts:1
+sendGuardProviders service message, failed-payments routine 07:00 off by default -> bundled-apps/stripe/app.manifest.json:1

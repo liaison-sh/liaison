@@ -3270,6 +3270,12 @@
     "Y08|litiges Stripe": "15tl",
     "Y08|Stripe disputes": "15tl",
     "Y09|monthly recurring revenue": "15tl",
-    "Y09|revenu récurrent mensuel": "5t"
+    "Y09|revenu récurrent mensuel": "5t",
+    "Y10|refund a Stripe charge": "15tl",
+    "Y10|rembourser un paiement Stripe": "5t",
+    "Y11|cancel Stripe subscription": "15tl",
+    "Y11|résilier l'abonnement Stripe": "15tl",
+    "Y12|card update link": "15tl",
+    "Y12|lien pour changer de carte": "15tl"
   }
 }

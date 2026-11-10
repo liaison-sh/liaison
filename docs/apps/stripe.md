@@ -102,12 +102,46 @@ The agent reads the mirror, never Stripe directly. Each answer names its records
 | `subscriptions_search` | Subscriptions by id, plan, status or customer | `stripe:subscriptions:read` |
 | `mrr_query` | Monthly recurring revenue per currency, with the plan split and the month's movements | `stripe:subscriptions:read` |
 | `invoices_search` | Stripe invoices by customer or status | `stripe:invoices:read` |
-| `payments_search` | Payments by customer, invoice or status; `unmatched` for those no invoice explains | `stripe:payments:read` |
+| `payments_search` | Payments by id (`ch_`), customer, invoice or status; `unmatched` for those no invoice explains | `stripe:payments:read` |
 | `disputes_list` | Disputes by customer or status. Read only: answer a dispute in Stripe | `stripe:payments:read` |
 
 Answers are masked: no address and no tax id, and a card shows only its brand, last 4 digits and expiry. Customer names, plans and dispute reasons are written by people outside your company, so a turn that reads them is marked as having read outside text, and a later action that leaves Liaison (including `customer_link`) waits for a person's approval.
 
 On a ticket from a linked contact, and on a linked contact's or company's page, the agent also gets a few lines: the plan and its status, the card's brand and last 4 digits, and the unpaid invoices with the next retry date. A company's and a contact's **Activity** timeline shows Stripe rows: payment failed, retry failed, subscription started, subscription cancelled, refund and dispute.
+
+## Refund, cancel and send a card link
+
+A refund or a cancellation always waits for a person's approval: no policy approves it by itself, and nothing reaches Stripe before someone approves it on Home.
+
+**Refund a payment.** Ask the agent (it uses `refunds_create`, which needs `stripe:refunds:write`). Give the payment's id (`ch_…`) and, for a partial refund, the amount; without an amount it refunds what is left. Before any approval waits, Liaison reads the payment from Stripe and refuses, with nothing to approve, when:
+
+| Answer | Why |
+|---|---|
+| `already_refunded` | The payment is already refunded in full |
+| `charge_disputed` | The payment is disputed: answer the dispute in Stripe instead |
+| `amount_over_refundable` | The amount is above what is left to refund |
+| `no_invoice_for_refund` | Liaison issues your invoices and no Liaison invoice is behind this payment: say which invoice its credit note goes against |
+| `card_number_refused` | The reason holds a card number. Liaison never takes card numbers |
+
+- The approval card shows the payment, the card (brand and last 4 digits) and the amount, which the approver can change.
+- One refund waits per payment. Asking again edits your own waiting refund; someone else's waiting refund is never changed, and the answer names it.
+- When the refund is approved, Liaison reads the payment again and refuses an amount above what is left now, so two refunds approved at once never refund more than the payment holds.
+- If Stripe's answer is lost on the way back, the request is marked as unknown and nothing is sent again by itself. Approving it again first looks in Stripe for the refund this approval made, and sends nothing if it exists, however long ago that was.
+- With a ticket, the refund adds an internal note on that ticket. It never replies to the customer: a reply is its own approval.
+
+**Cancel a subscription.** Ask the agent (it uses `subscription_cancel`, which needs `stripe:subscriptions:write`). It cancels at the end of the current period unless you say now. The card shows how MRR changes, which invoices stop or stay open, and the company's open deals. The default restricted key cannot cancel subscriptions: the agent then says "This key cannot cancel subscriptions" and nothing waits. Give the key **Write** on **Subscriptions** in Stripe, run the key check, then ask again.
+
+**Send a link to change the card.** `card_update_link` (read only, `stripe:customers:read`) gives, first that applies:
+
+1. Your customer portal's login link, when an admin set it: the customer signs in by email on a Stripe page and replaces the card.
+2. The Stripe page of the customer's open invoice: it pays that invoice with a new card, and later renewals may still use the old card. A link more than 30 days old is read again from Stripe first.
+3. No link, with the reason.
+
+The answer carries the sentence that is true for the link it gives, so a reminder says exactly what the link does. The link is never stored.
+
+**Payment reminders.** A reminder about a Stripe invoice is a mail with a follow-up on that invoice. Just before it is sent, Liaison reads the invoice from Stripe: if it is paid, void or uncollectible the reminder is not sent, and if Stripe cannot be reached the reminder waits. It is a service message, so it carries no unsubscribe footer. The **failed-payments** routine (every morning at 07:00, off until you turn it on) drafts these reminders for card payments Stripe no longer retries.
+
+Disputes have no write tool: answer them in Stripe's dashboard.
 
 ## How MRR is computed
 

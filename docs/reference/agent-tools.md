@@ -814,6 +814,7 @@ Stripe: customers, subscriptions, invoices and payments from your Stripe account
 | `activity_read` | A company's or a contact's Stripe rows for their timeline: payment failed, retry failed, subscription started or cancelled, refund, dispute. |  | `stripe:customers:read` |
 | `approval_route_read` | Which company a pending approval about a Stripe customer, subscription or charge is for. |  | `stripe:customers:read` |
 | `billing_status_for_counterparty` | Whether a contact or company pays a live Stripe subscription, with those subscriptions and customer ids. |  | `stripe:internal` |
+| `card_update_link` | A Stripe page where a customer can pay with a new card: the customer portal login link when set, else their open invoice's page. |  | `stripe:customers:read` |
 | `connection_check` | Check the saved Stripe key: one read per permission Liaison uses and a refund probe that creates nothing. |  | `stripe:admin:connection` |
 | `connection_precheck` | The key check run on a key before it is stored: a key Stripe refuses, of another account or of the other mode is not kept. |  | `stripe:admin:connection` |
 | `customer_context` | The linked Stripe customer's plan, status, masked card and unpaid invoices for the ticket, contact or company in view. |  | `stripe:subscriptions:read` |
@@ -823,11 +824,14 @@ Stripe: customers, subscriptions, invoices and payments from your Stripe account
 | `disputes_list` | Stripe disputes from the mirror by customer or status, with reason and evidence due date. |  | `stripe:payments:read` |
 | `home_load` | The Stripe page's load: the connection and its state, the import's progress per resource, rows per table and the counts that need a person. |  | `stripe:customers:read` |
 | `invoice_document_link` | Record the Liaison document a Stripe invoice became. |  | `stripe:internal` |
-| `invoice_send_state` | Whether a reminder about a Stripe invoice should still go: stops when the invoice is paid, void or uncollectible. |  | `stripe:invoices:read` |
+| `invoice_send_state` | Whether a payment reminder about a Stripe invoice may still go out, read from Stripe at send time: stops on paid, void or uncollectible; waits when Stripe cannot be asked. |  | `stripe:invoices:read` |
 | `invoices_search` | Stripe invoices from the mirror by customer or status, with number, amounts due and paid, next retry, and the Liaison document it became. |  | `stripe:invoices:read` |
 | `mrr_query` | Stripe MRR from the mirror, per currency: now, past due, plan split, movements since the month start. |  | `stripe:subscriptions:read` |
 | `payments_search` | Stripe charges from the mirror by customer, invoice or status, card as brand and last 4; unmatched: charges no Stripe invoice explains. |  | `stripe:payments:read` |
+| `refunds_create` | Refund a Stripe charge, in full or in part (amountMinor in cents). | yes | `stripe:refunds:write` |
 | `settings_load` | The Stripe settings page's load: the connection state and the key's permissions from the last check. |  | `stripe:admin:connection` |
+| `subscription_cancel` | Cancel a Stripe subscription, at the end of its period unless atPeriodEnd is false. | yes | `stripe:subscriptions:write` |
+| `subscription_cancel_effect` | What cancelling a subscription changes: MRR, invoices and the company's open deals, for its approval card. |  | `stripe:subscriptions:read` |
 | `subscriptions_search` | Stripe subscriptions from the mirror by id, plan name, status or customer, with plan, MRR, period end, trial end and masked card. |  | `stripe:subscriptions:read` |
 
 ## tickets

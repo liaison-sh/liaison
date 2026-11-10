@@ -6,5 +6,9 @@
   {
     "name": "customers_get",
     "reason": "Two connector apps each keep their own customers; the app prefix tells them apart and each one's description names its source."
+  },
+  {
+    "name": "refunds_create",
+    "reason": "Two commerce apps each refund their own payments (a store order, a card charge); the app prefix tells them apart and each one's description names what it refunds."
   }
 ]

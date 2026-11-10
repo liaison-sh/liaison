@@ -686,6 +686,7 @@
         "lease_until": "text?",
         "dispatch_grant": "text?",
         "stream_ref": "text?",
+        "run_item_ref": "text?",
         "attempt": {
           "type": "integer",
           "required": false

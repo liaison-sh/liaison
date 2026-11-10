@@ -1424,6 +1424,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/einvoicing/send-batch.test.ts",
             "src/einvoicing/collection.test.ts",
             "src/einvoicing/standing.test.ts",
+            "src/einvoicing/run-send.test.ts",
             "src/send-state.test.ts",
             // Received supplier e-invoices: the safe XML reader (DTD/entity/size/time refusals),
             // the mirror and its refuse/dispute approvals over the same adapter and fake.

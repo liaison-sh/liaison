@@ -340,7 +340,7 @@ export interface IssueInput {
   lifecycle_carry?: Array<Record<string, unknown>>
   /** "batch": issued with no person (a month-end run issuing by itself), so an e-invoice waits
    *  for the daily send card instead of its own send approval. */
-  einvoice_send?: "stage" | "batch"
+  einvoice_send?: "stage" | "batch" | "held"
 }
 
 export interface IssueResult {

@@ -417,8 +417,11 @@ export async function stageSendApproval(
 /** After issue: stage the send approval when the document is an e_invoice issued on or after the
  *  cut-over and sending is on. Returns the approval id, or null when nothing was staged.
  *  `send: "batch"`: issued with no person, the document waits for the daily send card instead
- *  (`awaiting_send_batch`), and nothing is staged for it alone. */
-export async function stageSendAfterIssue(ctx: EinvCtx, documentId: string, opts: { send?: "stage" | "batch" } = {}): Promise<string | null> {
+ *  (`awaiting_send_batch`), and nothing is staged for it alone. `send: "held"`: the issue's own
+ *  caller prepares the send under a grant it holds (a person-approved month-end run). */
+export async function stageSendAfterIssue(ctx: EinvCtx, documentId: string, opts: { send?: "stage" | "batch" | "held" } = {}): Promise<string | null> {
+  // A month-end run's row approved by a person holds its own send grant: its issue path prepares it.
+  if (opts.send === "held") return null
   const settings = await readEinvoicingSettings(ctx.db)
   if (!settings.provider_app || !settings.send_enabled) return null
   const doc = ((await ctx.db.findMany("documents", { where: { id: documentId }, limit: 1 })) as Row[])[0]
@@ -698,7 +701,15 @@ async function stepSend(ctx: EinvCtx, row: Row): Promise<StepOutcome> {
   if (rowStream && documentStreamRef(f.doc) !== rowStream) {
     return recordFailure(ctx, row, { code: "stream_mismatch", message: `Document ${String(f.doc.number)} is not in the stream whose standing authorization prepared this send; nothing was sent. Ask for its send on the daily card.` }, f.doc)
   }
-  const streamParam = rowStream ? { stream_ref: rowStream } : {}
+  // A send under a month-end row's grant goes only for the invoice that row names now.
+  const rowItem = str(row.run_item_ref)
+  if (rowItem) {
+    const item = ((await ctx.db.findMany("recurring_run_items", { where: { id: rowItem }, limit: 1 })) as Row[])[0]
+    if (!item || String(item.document_id) !== String(row.document_id)) {
+      return recordFailure(ctx, row, { code: "run_item_mismatch", message: `Document ${String(f.doc.number)} is not the invoice of the month-end row whose approval prepared this send; nothing was sent. Ask for its send again.` }, f.doc)
+    }
+  }
+  const streamParam = { ...(rowStream ? { stream_ref: rowStream } : {}), ...(rowItem ? { run_item_ref: rowItem } : {}) }
   // The switches, right before any provider call: sending switched off since the approval holds
   // the row (it resumes when switched back on); a document before the cut-over never goes.
   const switched = sendSwitchProblem(await readEinvoicingSettings(ctx.db), f.doc)

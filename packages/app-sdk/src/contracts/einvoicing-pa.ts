@@ -57,7 +57,8 @@ export const einvoicingPaV1: ContractSpec = {
      * buyer, re-checks eligibility from the CII, pins the file to `legal_original_sha256`, adopts
      * an existing deposit for the same invoice. `{provider_ref, state}`. `stream_ref` (optional,
      * `<issuer profile>:<stream>`) is set on a send under a stream's standing authorization so the
-     * dispatch grant can bind it; a provider declares it and ignores it.
+     * dispatch grant can bind it, and `run_item_ref` (optional) on a send a person approved with a
+     * month-end run; a provider declares both and ignores them.
      */
     submit_einvoice: {
       required: true,
@@ -73,6 +74,7 @@ export const einvoicingPaV1: ContractSpec = {
         "buyer",
         "idempotency_key",
         "stream_ref",
+        "run_item_ref",
       ],
     },
     /**
@@ -89,6 +91,7 @@ export const einvoicingPaV1: ContractSpec = {
         "document_ref",
         "legal_original_sha256",
         "stream_ref",
+        "run_item_ref",
       ],
     },
     /** Re-read the provider's status: `{raw, mapped, code, provider_ts, reason_text}` */

@@ -273,7 +273,7 @@ export async function invoiceIssue(
  */
 export async function issueRunDraft(
   ctx: MutationsCtx,
-  input: { draft_id: string; external_ref: string; lifecycle_log: Array<Record<string, unknown>>; einvoice_send?: "stage" | "batch" },
+  input: { draft_id: string; external_ref: string; lifecycle_log: Array<Record<string, unknown>>; einvoice_send?: "stage" | "batch" | "held" },
 ): Promise<MutationResult<{ document_id: string; number: string; einvoicing_warning?: EinvoicingWarning }>> {
   const pre = await preflightInvoiceIssueParams(ctx, input, true)
   if (!pre.ok) return pre.error

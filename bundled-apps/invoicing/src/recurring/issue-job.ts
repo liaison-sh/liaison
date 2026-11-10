@@ -11,6 +11,8 @@
 // the item follows it: the item is claimed inside the item's transaction (a conditional update
 // that only one transaction can win), the draft's `external_ref` moves to the issued document with
 // its change log, and the item points at the issued document.
+import { prepareItemSend } from "../einvoicing/run-send"
+import type { EinvCtx } from "../einvoicing/transmit"
 import { issueRunDraft } from "../mutations/invoice-issue"
 import type { ErrorEnvelope } from "../mutations/shared"
 import { BILLED_BY_STRIPE } from "../issuer-guard"
@@ -102,14 +104,18 @@ export async function recurringItemIssue(
   // The issued document takes the period's key; the draft gives it up first (the key is unique).
   await ctx.db.update("documents", draftId, { external_ref: null })
   const carried = jsonOf<Array<Record<string, unknown>>>(draft.lifecycle_log, [])
-  // A run that issued by itself had no person: its e-invoices wait for the daily send card.
-  const issued = await issueRunDraft(ctx, { draft_id: draftId, external_ref: externalRef, lifecycle_log: carried, ...(run.auto === true ? { einvoice_send: "batch" as const } : {}) })
+  // A row a person approved carries its send grant: its e-invoice is prepared under it below. A
+  // run that issued by itself had no person: its e-invoices wait for the daily send card.
+  const held = typeof item.send_grant === "string" && item.send_grant !== ""
+  const send = held ? ("held" as const) : run.auto === true ? ("batch" as const) : undefined
+  const issued = await issueRunDraft(ctx, { draft_id: draftId, external_ref: externalRef, lifecycle_log: carried, ...(send ? { einvoice_send: send } : {}) })
   if (issued.status !== "completed") {
     // Thrown, so the transaction rolls back whole: the claim, the cleared key, any number.
     const why = issued.status === "error" ? `${issued.error.code}: ${issued.error.message}` : "not_issued: the issue asked for an approval"
     throw new Error(why)
   }
   await ctx.db.update("recurring_run_items", input.item_id, { document_id: issued.document_id, issued_number: issued.number, failure: null })
+  if (held) await prepareItemSend(ctx as unknown as EinvCtx, input.item_id)
   if (item.schedule_id) await ctx.db.update("recurring_schedules", String(item.schedule_id), { last_document_id: issued.document_id })
   return {
     status: "completed",

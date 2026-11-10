@@ -25,6 +25,7 @@ function manifest(version: string, fields: Record<string, unknown>) {
     version,
     _format: "manifest" as const,
     _bundlePath: "/apps/nn-drift-app/handlers.js",
+    scopes: [`${APP}:rows:read`],
     schema: { rows: { fields } },
   }
 }

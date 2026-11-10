@@ -1,7 +1,7 @@
 issues invoices, quotes, proformas, purchase orders, credit notes; gap-free numbering, tax from country, PDF -> bundled-apps/invoicing/README.md:3
 app settings page per app at /settings/apps/<app>, in the Apps group -> apps/web/src/framework/define-app.ts:827
 Settings > Invoicing named in the editor -> bundled-apps/invoicing/src/ui/Editor.tsx:273
-Issuer profiles section -> bundled-apps/invoicing/app.manifest.json:5677
+Issuer profiles section -> bundled-apps/invoicing/app.manifest.json:5678
 + New issuer profile button -> bundled-apps/invoicing/src/ui/settings.tsx:357
 Legal name * field -> bundled-apps/invoicing/src/ui/settings.tsx:372
 Country * field -> bundled-apps/invoicing/src/ui/settings.tsx:381
@@ -21,7 +21,7 @@ autoEmail field -> apps/api/src/cli/config/schema.ts:413
 invoiceApprovalThresholdMinor field -> apps/api/src/cli/config/schema.ts:414
 auto-invoice on paid order, threshold-gated, auto-email; not a routine -> bundled-apps/invoicing/README.md:46
 without the shop mapping nothing issues -> bundled-apps/invoicing/README.md:63
-Shopify shop mappings section, Shop URL / Issuer profile columns -> bundled-apps/invoicing/app.manifest.json:5693
+Shopify shop mappings section, Shop URL / Issuer profile columns -> bundled-apps/invoicing/app.manifest.json:5694
 Deferred row only when count > 0 -> bundled-apps/invoicing/src/ui/sidebar.tsx:405
 Issue with Shopify's tax / Issue as computed -> bundled-apps/invoicing/src/ui/DeferredList.tsx:91
 deferred_tax_override is gated -> bundled-apps/invoicing/app.manifest.json:2004
@@ -51,16 +51,16 @@ credit note CN- series -> bundled-apps/invoicing/app.manifest.json:3676
 Shopify refund/cancellation auto issues credit note -> bundled-apps/invoicing/app.manifest.json:3592
 Pending Approval sidebar row -> bundled-apps/invoicing/src/ui/sidebar.tsx:414
 invoicing:approve approver scope -> docs/reference/scopes.md:170
-E-invoicing section needs settings:write -> bundled-apps/invoicing/app.manifest.json:5852
-E-invoicing platform field -> bundled-apps/invoicing/app.manifest.json:5856
-Cut-over date and help -> bundled-apps/invoicing/app.manifest.json:5870
-Send e-invoices toggle -> bundled-apps/invoicing/app.manifest.json:5885
-Book reported sales toggle -> bundled-apps/invoicing/app.manifest.json:5898
+E-invoicing section needs settings:write -> bundled-apps/invoicing/app.manifest.json:5853
+E-invoicing platform field -> bundled-apps/invoicing/app.manifest.json:5857
+Cut-over date and help -> bundled-apps/invoicing/app.manifest.json:5871
+Send e-invoices toggle -> bundled-apps/invoicing/app.manifest.json:5886
+Book reported sales toggle -> bundled-apps/invoicing/app.manifest.json:5899
 non-EUR e-invoice: EUR VAT at the ECB rate fetched at issue, once per currency and day; none within 7 days -> refused before numbering, retryable; Shopify order deferred -> bundled-apps/invoicing/src/mutations/fx-issue.ts:24 ; bundled-apps/invoicing/src/einvoicing/fx.ts:17 ; bundled-apps/invoicing/src/einvoicing/fx.ts:185 ; bundled-apps/invoicing/src/einvoicing/fx.ts:213 ; bundled-apps/invoicing/src/issue.ts:1071-1088 ; bundled-apps/invoicing/src/handlers/shopify-order-paid.ts:1080
 E-invoicing readiness sidebar row -> bundled-apps/invoicing/src/ui/sidebar.tsx:436
 received_einvoice_action_request files approval to refuse/dispute -> bundled-apps/invoicing/app.manifest.json:1566
-Tax regimes section -> bundled-apps/invoicing/app.manifest.json:5551
-HS code library section -> bundled-apps/invoicing/app.manifest.json:5815
+Tax regimes section -> bundled-apps/invoicing/app.manifest.json:5552
+HS code library section -> bundled-apps/invoicing/app.manifest.json:5816
 scopes list incl. invoicing:internal -> bundled-apps/invoicing/app.manifest.json:240
 einvoicing_settings_values -> bundled-apps/invoicing/app.manifest.json:1450
 einvoicing_provider_options -> bundled-apps/invoicing/app.manifest.json:1464
@@ -116,25 +116,25 @@ settings_issuer_profile_create gated -> bundled-apps/invoicing/app.manifest.json
 settings_issuer_profile_update gated -> bundled-apps/invoicing/app.manifest.json:4247
 settings_issuer_profile_delete gated -> bundled-apps/invoicing/app.manifest.json:4299
 documents_update gated -> bundled-apps/invoicing/app.manifest.json:4322
-documents_retry_pdf -> bundled-apps/invoicing/app.manifest.json:4510
-documents_download_pdf -> bundled-apps/invoicing/app.manifest.json:4544
-einvoicing_classify -> bundled-apps/invoicing/app.manifest.json:4561
-counterparty_identity_get -> bundled-apps/invoicing/app.manifest.json:4596
-counterparty_identity_lookup -> bundled-apps/invoicing/app.manifest.json:4621
-counterparty_identity_set -> bundled-apps/invoicing/app.manifest.json:4661
-counterparty_territory_set gated -> bundled-apps/invoicing/app.manifest.json:4778
-einvoicing_settings_set gated -> bundled-apps/invoicing/app.manifest.json:4817
-legal_originals_verify -> bundled-apps/invoicing/app.manifest.json:4852
-einvoicing_readiness -> bundled-apps/invoicing/app.manifest.json:4887
-einvoicing_backfill_identities gated -> bundled-apps/invoicing/app.manifest.json:4914
-einvoicing_backfill_legacy_originals gated -> bundled-apps/invoicing/app.manifest.json:4956
-provider_app "E-invoicing platform" -> bundled-apps/invoicing/app.manifest.json:5856
-cutover_date "Cut-over date" -> bundled-apps/invoicing/app.manifest.json:5870
-send_enabled "Send e-invoices" -> bundled-apps/invoicing/app.manifest.json:5885
-book_enabled "Book reported sales" -> bundled-apps/invoicing/app.manifest.json:5898
-einvoicing_settings_set takes the same names -> bundled-apps/invoicing/app.manifest.json:4845
-Import kind invoicing.document -> bundled-apps/invoicing/app.manifest.json:5006
-Import needs invoicing:documents:write -> bundled-apps/invoicing/app.manifest.json:5072
+documents_retry_pdf -> bundled-apps/invoicing/app.manifest.json:4511
+documents_download_pdf -> bundled-apps/invoicing/app.manifest.json:4545
+einvoicing_classify -> bundled-apps/invoicing/app.manifest.json:4562
+counterparty_identity_get -> bundled-apps/invoicing/app.manifest.json:4597
+counterparty_identity_lookup -> bundled-apps/invoicing/app.manifest.json:4622
+counterparty_identity_set -> bundled-apps/invoicing/app.manifest.json:4662
+counterparty_territory_set gated -> bundled-apps/invoicing/app.manifest.json:4779
+einvoicing_settings_set gated -> bundled-apps/invoicing/app.manifest.json:4818
+legal_originals_verify -> bundled-apps/invoicing/app.manifest.json:4853
+einvoicing_readiness -> bundled-apps/invoicing/app.manifest.json:4888
+einvoicing_backfill_identities gated -> bundled-apps/invoicing/app.manifest.json:4915
+einvoicing_backfill_legacy_originals gated -> bundled-apps/invoicing/app.manifest.json:4957
+provider_app "E-invoicing platform" -> bundled-apps/invoicing/app.manifest.json:5857
+cutover_date "Cut-over date" -> bundled-apps/invoicing/app.manifest.json:5871
+send_enabled "Send e-invoices" -> bundled-apps/invoicing/app.manifest.json:5886
+book_enabled "Book reported sales" -> bundled-apps/invoicing/app.manifest.json:5899
+einvoicing_settings_set takes the same names -> bundled-apps/invoicing/app.manifest.json:4846
+Import kind invoicing.document -> bundled-apps/invoicing/app.manifest.json:5007
+Import needs invoicing:documents:write -> bundled-apps/invoicing/app.manifest.json:5073
 Numbering raised past imported numbers per issuer, type and year -> bundled-apps/invoicing/src/import-kind.ts:276
 Credit note linked to its imported original -> bundled-apps/invoicing/src/import-kind.ts:194
 Several issuer profiles need the record to name one -> bundled-apps/invoicing/src/import-kind.ts:87
@@ -204,9 +204,11 @@ positive line allowed against a larger negative one -> bundled-apps/invoicing/sr
 minor-unit amount is a whole number, refusal says what to send -> packages/app-sdk/src/minor-amount.ts:15
 card that meets an unreadable amount says refused, prints no total -> bundled-apps/invoicing/src/approval-cards.ts:159
 imported credit note keeps its source's sign -> bundled-apps/invoicing/src/import-kind.ts:238
-The time zone is asked once, at the first issue on a profile with no zone chosen, in an organization with none -> bundled-apps/invoicing/src/issue.ts:970-980; bundled-apps/invoicing/app.manifest.json:5895-5912
+The time zone is asked once, at the first issue on a profile with no zone chosen, in an organization with none -> bundled-apps/invoicing/src/issue.ts:970-980; bundled-apps/invoicing/app.manifest.json:5896-5913
 A service line counts as a service in the operation type, as a software line does -> bundled-apps/invoicing/src/einvoicing/classify-operation.ts:23; bundled-apps/invoicing/src/einvoicing/booking.ts:289
 A draft and its lines are written in one transaction -> bundled-apps/invoicing/src/recurring/draft-job.ts:157
 A reused draft whose lines differ from its schedule needs a fix -> bundled-apps/invoicing/src/recurring/draft-job.ts:251
 Rows issue only inside the issue window -> bundled-apps/invoicing/src/recurring/issue-job.ts:48
 recurring_item_issue is internal, only the app's own job calls it -> bundled-apps/invoicing/app.manifest.json:1696 ; apps/api/src/modules/apps/execute-tool.ts:4387
+A local convert runs in one transaction; a failure leaves the quote and uses no number -> bundled-apps/invoicing/src/mutations/convert-to-invoice.ts:179
+194 ; bundled-apps/invoicing/src/mutations/convert-to-invoice.ts:228

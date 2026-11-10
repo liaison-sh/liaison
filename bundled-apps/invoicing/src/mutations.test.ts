@@ -18,6 +18,7 @@ import {
   contactRelationshipsSet,
   creditNoteCreateAndIssue,
   creditNoteIssue,
+  documentsConvertLocal,
   documentsConvertToInvoice,
   documentsMarkPaid,
   documentsRecordRefund,
@@ -279,6 +280,10 @@ function makeCtx(opts?: {
 
   const executeTool: CrossAppExecuteTool = async (name, args) => {
     extras.executeToolCalls.push({ name, args })
+    // The app's own internal tool runs its handler, as the kernel does for the app's own call.
+    if (name === "invoicing:documents_convert_local") {
+      return { status: "completed", result: await documentsConvertLocal(ctx, args as never) }
+    }
     if (opts?.executeToolImpl) return opts.executeToolImpl(name, args)
     return { status: "completed", result: { dispatched: true } }
   }
@@ -2112,6 +2117,24 @@ describe("documents.convert_to_invoice", () => {
     )
   })
 
+  test("a local convert runs as one call of the internal local convert, and its error leaves the quote as it was", async () => {
+    const { ctx, db, extras } = makeCtx()
+    await seedShopifyLinkedQuote(db)
+    // The same quote with no draft order: a local convert.
+    const quote = db.__all("documents").find((d) => d.id === "00000000-0000-4000-8000-00000000010b")!
+    await db.update("documents", String(quote.id), { shopify_draft_order_id: null, external_refs: {} })
+    const r = await documentsConvertToInvoice(ctx, { operation_category: "goods", source_document_id: String(quote.id) })
+    expect(r.status).toBe("completed")
+    expect(extras.executeToolCalls.filter((c) => c.name === "invoicing:documents_convert_local")).toHaveLength(1)
+    const failing = makeCtx()
+    await seedShopifyLinkedQuote(failing.db)
+    await failing.db.update("documents", "00000000-0000-4000-8000-00000000010b", { shopify_draft_order_id: null, external_refs: {} })
+    failing.ctx.executeTool = async () => ({ status: "error", error: { code: "forced", message: "forced failure" } })
+    const refused = await documentsConvertToInvoice(failing.ctx, { operation_category: "goods", source_document_id: "00000000-0000-4000-8000-00000000010b" })
+    expect(refused.status === "error" ? refused.error : refused).toEqual({ code: "forced", message: expect.stringContaining("no number was used") })
+    expect(failing.db.__all("documents").find((d) => d.id === "00000000-0000-4000-8000-00000000010b")?.status).toBe("sent")
+  })
+
   test("missing source document → not_found", async () => {
     const { ctx } = makeCtx()
     const r = await documentsConvertToInvoice(ctx, {
@@ -2311,8 +2334,19 @@ describe("documents.convert_to_invoice", () => {
     expect(quote.shopify_order_number).toBe("#1149")
     const log = quote.lifecycle_log as Array<Record<string, unknown>>
     expect(log.map((e) => e.event)).toContain("draft_order_completed")
-    // No invoice was issued locally.
+    // No invoice was issued locally, and the local convert (one transaction) was never entered.
     expect(db.__all("documents").filter((d) => d.type === "invoice")).toHaveLength(0)
+    expect(extras.executeToolCalls.map((c) => c.name)).toEqual(["shopify:draft_orders_complete", "shopify:draft_orders_get"])
+  })
+
+  test("shopify-linked quote: the local convert refuses it and writes nothing", async () => {
+    const { ctx, db, extras } = makeCtx()
+    await seedShopifyLinkedQuote(db)
+    const r = await documentsConvertLocal(ctx, { operation_category: "goods", source_document_id: "00000000-0000-4000-8000-00000000010b" })
+    expect(r.status === "error" ? r.error.code : r.status).toBe("shopify_linked")
+    expect(extras.executeToolCalls).toHaveLength(0)
+    const quote = db.__all("documents").find((d) => d.id === "00000000-0000-4000-8000-00000000010b")!
+    expect(quote.status).toBe("sent")
   })
 
   test("shopify-linked quote: a pending_approval from Shopify is propagated and the quote untouched", async () => {

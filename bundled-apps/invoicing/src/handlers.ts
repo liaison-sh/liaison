@@ -77,6 +77,7 @@ import {
   invoiceIssue,
   invoiceCreateAndIssue,
   documentsConvertToInvoice,
+  documentsConvertLocal,
   documentsMarkPaid,
   documentsRecordRefund,
   documentsSendToCustomer,
@@ -317,6 +318,10 @@ export const documentsConvertToInvoiceHandler = (
   params: Parameters<typeof documentsConvertToInvoice>[1],
   ctx: Parameters<typeof documentsConvertToInvoice>[0],
 ) => documentsConvertToInvoice(ctx, params)
+export const documentsConvertLocalHandler = (
+  params: Parameters<typeof documentsConvertLocal>[1],
+  ctx: Parameters<typeof documentsConvertLocal>[0],
+) => documentsConvertLocal(ctx, params)
 export const documentsMarkPaidHandler = (
   params: Parameters<typeof documentsMarkPaid>[1],
   ctx: Parameters<typeof documentsMarkPaid>[0],

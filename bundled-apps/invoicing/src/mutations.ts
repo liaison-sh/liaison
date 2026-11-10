@@ -77,6 +77,7 @@ export {
   type ConvertToInvoiceResult,
   documentsConvertToInvoicePreflight,
   documentsConvertToInvoice,
+  documentsConvertLocal,
 } from "./mutations/convert-to-invoice"
 export {
   documentsMarkPaidPreflight,

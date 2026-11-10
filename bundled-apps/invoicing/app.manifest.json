@@ -4385,7 +4385,7 @@
       "timeoutMs": 60000,
       "gated": true,
       "approvalImpact": "external",
-      "atomic": true,
+      "atomic": false,
       "trustBoundary": "user",
       "params": {
         "type": "object",
@@ -4424,6 +4424,7 @@
         "summary": "Convert document {{params.source_document_id}} to invoice"
       }
     },
+    "documents_convert_local": {"description": "Convert a quote or proforma with no Shopify draft order into an invoice, in one transaction. Called by documents_convert_to_invoice only.", "requiredScopes": ["invoicing:documents:write"], "handler": "documentsConvertLocalHandler", "agentVisible": false, "trustBoundary": "internal", "atomic": true, "timeoutMs": 60000, "writesToTable": "app_invoicing.documents", "params": {"type": "object", "properties": {"source_document_id": {"type": "string"}, "operation_category": {"type": ["string", "null"], "enum": ["goods", "services", "mixed", null]}, "notes": {"type": ["string", "null"]}}, "required": ["source_document_id"], "additionalProperties": false}},
     "credit_note_create_and_issue": {
       "focusCore": true,
       "description": "Create a credit note, a legal document, and issue it in one call. A credit note is a first-class legal document — its own gap-free CN-{YYYY}- number series, issued straight to 'issued' status (never a payable document — no due date, no mark_paid). Lines carry NEGATIVE unit_price_minor mirroring what is reversed on the original invoice, and the total must come out negative.",

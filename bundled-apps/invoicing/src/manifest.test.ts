@@ -1550,6 +1550,8 @@ describe("invoicing manifest", () => {
     // 0.20.67: the month-end run: draft, card, approve, issue and legal-date jobs, four run tools.
     // 0.20.68: run rows issue atomically, refusals checked at staging, a held-by-the-day-limit
     // notice, and the run card's approval route.
+    // 0.20.69: run drafts written whole by an internal tool, run rows issued only by their job
+    //   inside the issue window, and a convert that calls Shopify with no transaction open.
     expect(m.version).toBe("0.20.69")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
@@ -1753,6 +1755,21 @@ describe("issuing tool budgets", () => {
       "order_reissue_apply",
     ]) {
       expect({ name, timeoutMs: tools[name]?.timeoutMs ?? 0 }).toEqual({ name, timeoutMs: 60_000 })
+    }
+  })
+})
+
+describe("tools that hold a transaction", () => {
+  const tools = (manifest as unknown as { tools: Record<string, { atomic?: boolean; trustBoundary?: string; agentVisible?: boolean }> }).tools
+  it("the convert holds no transaction across its Shopify calls; its local half and the run steps are internal and atomic", () => {
+    expect(tools.documents_convert_to_invoice?.atomic).toBe(false)
+    for (const name of ["documents_convert_local", "recurring_draft_write", "recurring_item_issue"]) {
+      expect({ name, atomic: tools[name]?.atomic, boundary: tools[name]?.trustBoundary, agent: tools[name]?.agentVisible }).toEqual({
+        name,
+        atomic: true,
+        boundary: "internal",
+        agent: false,
+      })
     }
   })
 })

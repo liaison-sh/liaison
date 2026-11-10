@@ -94,7 +94,7 @@ An amount in minor units is a whole number: 41940 for 419.40. Anything else, suc
 1. Open the quote (once it is sent or accepted) or the proforma (once it is sent).
 2. Click **Convert to invoice** and confirm.
 
-For a quote linked to a Shopify draft order, this completes the draft order in Shopify with payment pending. Shopify creates the order and the invoice is issued from it moments later. Do not issue a second invoice by hand.
+For a quote linked to a Shopify draft order, this completes the draft order in Shopify with payment pending. Shopify creates the order and the invoice is issued from it moments later. Do not issue a second invoice by hand. Any other quote or proforma converts here in one step: if it fails, the quote is left as it was and no number is used.
 
 ## Work with an issued document
 

@@ -71,7 +71,7 @@ describe("ci-scope testScope", () => {
   it("runs a pull request's suites in as few jobs as possible", () => {
     const t = pr("packages/shared/src/csv.ts")
     expect(t.gate).toBe(false)
-    expect(testOutputs(t)).toMatchObject({ unit_of: "1", unit_parts: "[1]", web: "inline" })
+    expect(testOutputs(t)).toMatchObject({ unit_of: "2", unit_parts: "[1,2]", web: "inline" })
     expect(testOutputs(pr("docs/a.md"))).toMatchObject({ unit: "false", web: "none" })
   })
 

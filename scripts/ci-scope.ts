@@ -144,7 +144,8 @@ export type TestScope = {
    * The full gate (a merge group, or any run that is not a pull request): the
    * suites split over several runners for wall clock. A pull request runs each
    * suite in as few jobs as possible instead (runners are the scarce resource):
-   * the api unit suite in one job, the web unit suite inside the static job.
+   * the api unit suite in two jobs (one took ~23 min, the long pole), the web
+   * unit suite inside the static job.
    */
   gate: boolean
   reason: string
@@ -153,14 +154,19 @@ export type TestScope = {
 /** Runners each suite is split over on the full gate (TEST_UNIT_PART, vitest --shard). */
 export const GATE_PARTS = { unit: 3, web: 2 }
 
+/** Runners the api unit suite is split over on a pull request. */
+export const PR_UNIT_PARTS = 2
+
 /** The `ci` workflow's view of a {@link TestScope}, written to $GITHUB_OUTPUT. */
 export function testOutputs(t: TestScope): Record<string, string> {
   const parts = (n: number) => JSON.stringify(Array.from({ length: n }, (_, i) => i + 1))
+  // A run for the relation cells alone needs one unit job, not the suite's split.
+  const unitOf = t.gate ? GATE_PARTS.unit : t.unit ? PR_UNIT_PARTS : 1
   return {
     unit: String(t.unit),
     relations: String(t.relations),
-    unit_of: String(t.gate ? GATE_PARTS.unit : 1),
-    unit_parts: parts(t.gate ? GATE_PARTS.unit : 1),
+    unit_of: String(unitOf),
+    unit_parts: parts(unitOf),
     // `shards`: the web-unit jobs; `inline`: a step of the static job.
     web: t.web ? (t.gate ? "shards" : "inline") : "none",
     web_of: String(GATE_PARTS.web),

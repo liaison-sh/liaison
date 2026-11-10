@@ -13,7 +13,7 @@
 #     them; a path the map does not cover, or a package.json, lockfile,
 #     tsconfig or workflow change, runs both. Hosted runners are the scarce
 #     resource, so a pull request runs them in as few jobs as possible: the api
-#     unit suite in one `unit` job, the web unit suite as a step of `static`.
+#     unit suite over two `unit` jobs, the web unit suite as a step of `static`.
 #     The relation cells (`relations`) run as a step of the first `unit` job
 #     when the map attributes a change to them (that job then runs for them
 #     alone if need be), and on every merge group.

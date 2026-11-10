@@ -1389,6 +1389,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // Card payments on Stripe: invoices, payments, refunds, unmatched payments (pure store).
             "src/handlers/stripe-subscribers.test.ts",
             "src/handlers/stripe-refund-credit-note.test.ts",
+            // A Stripe invoice or refund credit note e-invoices like any no-person issue (pure store).
+            "src/handlers/stripe-einvoice-send.test.ts",
             "src/handlers/orphan-actions.test.ts",
             // The month-end run: drafts, flags, the card, approve and undo, the legal dates (pure store).
             "src/recurring/draft-job.test.ts",
@@ -1488,6 +1490,11 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/ui/DeferredList.test.tsx",
             // Who issues what, in the issuer settings: the streams, and Checked only after a person's click.
             "src/ui/IssuerStreams.test.tsx",
+            // Recurring schedules: the list, its empty and refused states, a run's detail, the editor.
+            "src/ui/RecurringList.test.tsx",
+            "src/ui/RecurringStates.test.tsx",
+            "src/ui/RunDetail.test.tsx",
+            "src/ui/ScheduleEditor.test.tsx",
             // E-invoicing surfaces: the calm regime line, the customer identity tab (lookup never
             // picks a candidate) and the readiness tab (one action per blocker).
             "src/ui/einvoicing/RegimeLine.test.tsx",
@@ -1904,9 +1911,19 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/money-logs.test.ts",
             "src/card-link.test.ts",
             "src/send-state.test.ts",
+            // Every tool answer is masked: no address, tax id, card number or metadata (pure).
+            "src/results.test.ts",
+            // The MRR rules against a real Stripe sandbox: skips without its keys, and fails
+            // with none when LIAISON_STRIPE_ORACLE_REQUIRED=1 (the file's own gate).
+            "src/mrr-oracle.sandbox.test.ts",
             "src/ui/StripeHome.test.tsx",
             "src/ui/HomeStates.test.tsx",
             "src/ui/StripeSidebar.test.tsx",
+            // Customers list and detail, refund cards, the contact and company panels.
+            "src/ui/CustomersList.test.tsx",
+            "src/ui/CustomerDetail.test.tsx",
+            "src/ui/RefundCards.test.tsx",
+            "src/ui/panels.test.tsx",
             "src/ui/i18n.test.ts",
           ]),
     ],

@@ -632,21 +632,32 @@ links:
       Rv: no rendered PDF is built in this file yet
 
   - name: schedule-party
-    what: a recurring invoice schedule to the company and person it bills
-    storedIn: app_invoicing.recurring_schedules.company_id, contact_id
-    columns: [app_invoicing.recurring_schedules.company_id, app_invoicing.recurring_schedules.contact_id]
+    what: a recurring invoice schedule to the company it bills
+    storedIn: app_invoicing.recurring_schedules.company_id
+    columns: [app_invoicing.recurring_schedules.company_id]
     paths:
       - bundled-apps/invoicing/src/recurring/
       - apps/api/src/modules/contacts/companies.ts
-      - apps/api/src/modules/contacts/service.ts
     visibleState: [unlinked]
     whoIsTold: [admin, clerk]
     copiedNameAt: []
-    cells: { Rn: K, Mg: P, Dl: R, Dx: a, Pm: H, Ap: H, Mv: K, Rs: a, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
+    cells: { Rn: K, Mg: P, Dl: R, Dx: a, Pm: H, Ap: H, Mv: K, Rs: a, Dr: e, Ex: c, Mi: a, Rv: V, Aw: a }
     open:
       Ap: with invoicing off its tools and views are gone, but its tables still answer a reader's row security; on which read path an off app's rows must be hidden is not defined yet
       Mv: what moves for this link is not driven in this file yet
-      Ex: the data subject export does not carry the person's schedules yet
+
+  - name: schedule-contact
+    what: a recurring invoice schedule to the person it bills (required, so an ended schedule keeps the id of a person deleted later)
+    storedIn: app_invoicing.recurring_schedules.contact_id
+    columns: [app_invoicing.recurring_schedules.contact_id]
+    paths:
+      - bundled-apps/invoicing/src/recurring/
+      - apps/api/src/modules/contacts/service.ts
+      - apps/api/src/modules/export/data-subject-export-tool.ts
+    visibleState: []
+    whoIsTold: [admin, clerk]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: R, Dx: a, Pm: c, Ap: c, Mv: c, Rs: a, Dr: e, Ex: E, Mi: a, Rv: c, Aw: a }
 
   - name: schedule-issuer-profile
     what: a recurring invoice schedule to the issuer profile it bills from
@@ -678,22 +689,34 @@ links:
       Ex: the org export of run items is not driven in this file yet
 
   - name: stripe-customer-party
-    what: a payments customer (and its subscriptions) to the company and person it was matched to
-    storedIn: app_stripe.stripe_customers.company_id, contact_id
-    columns: [app_stripe.stripe_customers.company_id, app_stripe.stripe_customers.contact_id]
+    what: a payments customer (and its subscriptions) to the company it was matched to
+    storedIn: app_stripe.stripe_customers.company_id
+    columns: [app_stripe.stripe_customers.company_id]
     paths:
       - bundled-apps/stripe/
       - apps/api/src/modules/contacts/companies.ts
-      - apps/api/src/modules/contacts/service.ts
     visibleState: [unlinked]
     whoIsTold: [admin, clerk]
     copiedNameAt: []
-    cells: { Rn: K, Mg: P, Dl: C, Dx: a, Pm: H, Ap: C, Mv: K, Rs: a, Dr: Z, Ex: E, Mi: a, Rv: V, Aw: a }
+    cells: { Rn: K, Mg: P, Dl: C, Dx: a, Pm: H, Ap: C, Mv: K, Rs: a, Dr: Z, Ex: c, Mi: a, Rv: V, Aw: a }
     open:
       Ap: what a customer card shows of its link while the connector is off is not defined yet
       Mv: what moves for this link is not driven in this file yet
       Dr: the payments fixtures after a demo reset are not counted in this file yet
-      Ex: the data subject export does not carry the person's payments customer yet
+
+  - name: stripe-customer-contact
+    what: a payments customer (and its subscriptions) to the person it was matched to
+    storedIn: app_stripe.stripe_customers.contact_id
+    columns: [app_stripe.stripe_customers.contact_id]
+    paths:
+      - bundled-apps/stripe/
+      - apps/api/src/modules/contacts/service.ts
+      - apps/api/src/modules/contacts/erasure.ts
+      - apps/api/src/modules/export/data-subject-export-tool.ts
+    visibleState: [unlinked]
+    whoIsTold: [admin, clerk]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: a, Pm: c, Ap: c, Mv: c, Rs: a, Dr: c, Ex: E, Mi: a, Rv: c, Aw: a }
 
   - name: stripe-invoice-document
     what: a payments invoice to the invoice document Liaison issued for it

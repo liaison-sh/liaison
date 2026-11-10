@@ -45,6 +45,8 @@ export async function writeInvoicing(p: {
   contactName: string
   /** The schedule bills the company too (else the person alone). */
   scheduleBillsCompany: boolean
+  /** The person the schedule bills; the invoices' person when absent. */
+  scheduleContactId?: string
 }): Promise<InvoicingRows> {
   const issuerId = randomUUID()
   await insertRow(inv("issuer_profiles"), {
@@ -74,7 +76,7 @@ export async function writeInvoicing(p: {
     org_id: p.orgId,
     issuer_profile_id: issuerId,
     company_id: p.scheduleBillsCompany ? p.companyId : null,
-    contact_id: p.contactId,
+    contact_id: p.scheduleContactId ?? p.contactId,
     repeats: "month",
     billing_day: "1",
     created_by: p.adminId,

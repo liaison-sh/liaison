@@ -157,6 +157,12 @@ schedule-party: a reader lost the read scope, the reader who lost access sees no
 schedule-party: a reader lost the read scope, the reader who lost access sees nothing (fails with the event replaced by a no-op)
 schedule-party: a reader lost the read scope and got it back, it reads as before
 schedule-party: a reader lost the read scope and got it back, it reads as before (fails with the event replaced by a no-op)
+schedule-contact: its person merged into another, the link moves to the survivor
+schedule-contact: its person merged into another, the link moves to the survivor (fails with the event replaced by a no-op)
+schedule-contact: its person deleted while the schedule bills them, the event is refused while the link is live
+schedule-contact: its person deleted while the schedule bills them, the event is refused while the link is live (fails with the event replaced by a no-op)
+schedule-contact: the person's data subject export, the export carries it
+schedule-contact: the person's data subject export, the export carries it (fails with the event replaced by a no-op)
 run-item-schedule-draft: a reader lost the read scope, the reader who lost access sees nothing
 run-item-schedule-draft: a reader lost the read scope, the reader who lost access sees nothing (fails with the event replaced by a no-op)
 run-item-schedule-draft: a reader lost the read scope and got it back, it reads as before
@@ -171,6 +177,12 @@ stripe-customer-party: a reader lost the read scope, the reader who lost access 
 stripe-customer-party: a reader lost the read scope, the reader who lost access sees nothing (fails with the event replaced by a no-op)
 stripe-customer-party: the payments connector switched off and on again, it reads as before
 stripe-customer-party: the payments connector switched off and on again, it reads as before (fails with the event replaced by a no-op)
+stripe-customer-contact: its person merged into another, the link moves to the survivor
+stripe-customer-contact: its person merged into another, the link moves to the survivor (fails with the event replaced by a no-op)
+stripe-customer-contact: its person deleted, the link closes with a visible state
+stripe-customer-contact: its person deleted, the link closes with a visible state (fails with the event replaced by a no-op)
+stripe-customer-contact: the person's data subject export, the export carries it
+stripe-customer-contact: the person's data subject export, the export carries it (fails with the event replaced by a no-op)
 stripe-invoice-document: a reader lost the read scope, the reader who lost access sees nothing
 stripe-invoice-document: a reader lost the read scope, the reader who lost access sees nothing (fails with the event replaced by a no-op)
 stripe-invoice-document: the payments connector switched off and on again, it reads as before

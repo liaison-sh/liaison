@@ -270,8 +270,21 @@ const REVIEWED: Record<string, Record<string, string>> = {
     qualified:
       "quoteIdent(schemaRef()) and quoteIdent over the code constant APP_COMPANY_LINKS (companies.ts), checked with to_regclass first",
   },
+  "apps/api/src/modules/contacts/companies.ts#liveSchedulesBilling": {
+    qualified:
+      "quoteIdent(schemaRef()) over code constants (companies.ts), checked with to_regclass first",
+  },
+  "apps/api/src/modules/contacts/companies.ts#unlinkAppCompanyRows": {
+    qualified:
+      "quoteIdent(schemaRef()) and quoteIdent over the code constant APP_COMPANY_LINKS (companies.ts), checked with to_regclass first",
+  },
+  "apps/api/src/modules/contacts/service.ts#liveSchedulesBillingContact": {
+    qualified:
+      "quoteIdent(schemaRef()) over code constants (service.ts), checked with to_regclass first",
+  },
   "apps/api/src/modules/contacts/erasure.ts#clearContactSoftReferences": {
     dealsTable: "rel() over code constants (erasure.ts:81)",
+    customersTable: "rel() over code constants (erasure.ts), checked with to_regclass first",
   },
   "apps/api/src/modules/contacts/erasure.ts#release": {
     used: "OR-joined EXISTS predicates built in this function from the code reference table and the checked ids",
@@ -333,6 +346,9 @@ const REVIEWED: Record<string, Record<string, string>> = {
   "apps/api/src/modules/export/data-subject-export-tool.ts#buildDataSubjectBundle": {
     documentsTable: IDENT_FROM_CODE,
     identityTable: IDENT_FROM_CODE,
+    schedulesTable: IDENT_FROM_CODE,
+    customersTable: IDENT_FROM_CODE,
+    subscriptionsTable: IDENT_FROM_CODE,
   },
   "apps/api/src/modules/files/message-attachments.ts#messageIdOf": {
     filesAlias: IDENT_FROM_CODE,

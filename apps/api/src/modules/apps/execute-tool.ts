@@ -3656,6 +3656,10 @@ export function statusForToolError(code: string): number {
     case "company_has_accounts":
     case "company_has_schedules":
       return 409
+    // A person delete refused while a live recurring invoice schedule bills them
+    // (contacts/service.ts): the workspace's state, not a fault.
+    case "contact_has_schedules":
+      return 409
     // A connection with no stored credentials: the person reconnects it.
     case CONNECTION_CREDENTIALS_MISSING:
       return 422

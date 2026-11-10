@@ -1641,7 +1641,42 @@ interface DeleteContactParams {
   contactId: string
 }
 
+/** A contact delete refused while the person is still in use (409, with its code). */
+export class ContactDeleteRefusedError extends Error {
+  readonly status = 409
+  constructor(
+    readonly code: "contact_has_schedules",
+    message: string,
+  ) {
+    super(message)
+    this.name = "ContactDeleteRefusedError"
+  }
+}
+
+/** Recurring invoice schedules not ended that bill this person; 0 without the invoicing tables. */
+async function liveSchedulesBillingContact(
+  tx: Pick<PrivilegedDb, "execute">,
+  params: { orgId: string; contactId: string },
+): Promise<number> {
+  const qualified = `${quoteIdent(schemaRef("app_invoicing"))}.${quoteIdent("recurring_schedules")}`
+  const [reg] = extractRows<{ t: string | null }>(
+    await tx.execute(drizzleSql`SELECT to_regclass(${qualified})::text AS t`),
+  )
+  if (!reg?.t) return 0
+  const [row] = extractRows<{ n: number }>(
+    await tx.execute(drizzleSql`
+      SELECT count(*)::int AS n FROM ${drizzleSql.raw(qualified)}
+       WHERE org_id = ${params.orgId}::uuid AND contact_id = ${params.contactId}::uuid
+         AND status <> 'ended'`),
+  )
+  return row?.n ?? 0
+}
+
 /**
+ * Deletes a person the caller can see. Refused (409 `contact_has_schedules`) while a recurring
+ * invoice schedule not ended bills them; billing customers mirrored from the payment connector
+ * let go of them (the column is cleared), like a company's main contact and a deal's contact.
+ *
  * `privileged`: the privileged transaction the caller already holds (a kernel
  * job deleting as part of a larger write), so the contact's discussion goes in
  * that same transaction instead of a second privileged slot.
@@ -1652,6 +1687,20 @@ export async function deleteContact(
   privileged?: PrivilegedDb,
 ) {
   const { orgId, userId, contactId } = params
+
+  const visible = await getContact(db, { orgId, contactId })
+  if (!visible) return null
+  // A live schedule bills this person: deleting them would leave it billing nobody. Counted past
+  // the caller's row security, so the refusal does not depend on whether they can read invoicing.
+  const billing = await privilegedFrom(privileged ?? db, orgId, "contact-delete-schedules", (ptx) =>
+    liveSchedulesBillingContact(ptx, { orgId, contactId }),
+  )
+  if (billing > 0) {
+    throw new ContactDeleteRefusedError(
+      "contact_has_schedules",
+      `${visible.name ?? visible.email ?? "This person"} is billed by ${billing} recurring invoice schedule${billing === 1 ? "" : "s"}, so they cannot be deleted. End those schedules or bill another person first.`,
+    )
+  }
 
   const [deleted] = await db
     .delete(contacts)

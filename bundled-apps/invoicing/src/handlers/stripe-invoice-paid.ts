@@ -6,6 +6,8 @@
 //   payment failed: the document never changes; attention only when a person can act (no next
 //         attempt, or an expired card); otherwise Stripe is still retrying.
 //   voided, uncollectible: attention only, no document change.
+import { reportCollection } from "../einvoicing/collection"
+import type { EinvCtx } from "../einvoicing/transmit"
 import { civilDateOf } from "../issue-date"
 import { findIssuerProfile } from "../mutations/db-helpers"
 import { ensureDocumentPdf } from "../mutations/pdf"
@@ -71,6 +73,15 @@ async function recordCollection(ctx: StripeCtx, doc: Row): Promise<void> {
   await ctx.db.update("documents", String(doc.id), {
     lifecycle_log: [...log, { event: "collection_due", actor: "system", ts: new Date().toISOString(), source: "stripe" }],
   })
+  // Where VAT is due on receipt, the e-invoicing platform is told of the payment (einvoicing/collection.ts).
+  const einv = ctx as unknown as EinvCtx
+  if (!einv.contracts) return
+  const paidOn = String(((await ctx.db.findOne("documents", String(doc.id))) as Row | null)?.paid_at ?? doc.paid_at ?? "").slice(0, 10)
+  try {
+    await reportCollection(einv, String(doc.id), { kind: "paid", amount_minor: BigInt(String(doc.grand_total_minor ?? "0")), date: paidOn, ref: "stripe:paid" })
+  } catch {
+    // The payment stands; the collection shows as not reported and the document panel says so.
+  }
 }
 
 export type FailedResult = { status: "attention"; reason: string } | { status: "in_retries" } | { status: "skipped"; reason: string }

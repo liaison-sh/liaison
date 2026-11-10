@@ -647,7 +647,7 @@ links:
       Mv: what moves for this link is not driven in this file yet
 
   - name: schedule-contact
-    what: a recurring invoice schedule to the person it bills (required, so an ended schedule keeps the id of a person deleted later)
+    what: a recurring invoice schedule to the person it bills (a delete is refused while the schedule has not ended; an ended schedule lets go of the person, its contact cleared)
     storedIn: app_invoicing.recurring_schedules.contact_id
     columns: [app_invoicing.recurring_schedules.contact_id]
     paths:

@@ -100,13 +100,17 @@ async function billingAddress(ctx: RunCtx, contactId: string): Promise<{ line: s
 /**
  * Who the customer is on the draft: the snapshot of the schedule's last invoice to that contact.
  * With none, the schedule's company when it names one (its name, the contact's billing address,
- * the VAT number recorded for the contact), else the contact's name and email.
+ * the VAT number recorded for the contact), else the contact's name and email. A schedule whose
+ * person was deleted has no contact: it never looks up invoices or details by an empty contact.
  */
 async function counterpartySnapshot(ctx: RunCtx, s: ScheduleRow): Promise<Row> {
   const last = s.last_document_id ? ((await ctx.db.findOne("documents", s.last_document_id)) as Row | null) : null
+  const contactId = text(s.contact_id)
   const source =
     last ??
-    ((await ctx.db.findMany("documents", { where: { counterparty_contact_id: s.contact_id, type: "invoice" }, orderBy: { createdAt: "desc" }, limit: 1 })) as Row[])[0] ??
+    (contactId
+      ? ((await ctx.db.findMany("documents", { where: { counterparty_contact_id: contactId, type: "invoice" }, orderBy: { createdAt: "desc" }, limit: 1 })) as Row[])[0]
+      : null) ??
     null
   if (source) {
     return {
@@ -120,13 +124,13 @@ async function counterpartySnapshot(ctx: RunCtx, s: ScheduleRow): Promise<Row> {
   }
   const snapshot: Row = { counterparty_name: null, counterparty_address: null, counterparty_country: null, counterparty_vat_id: null, counterparty_email: null }
   // An unreadable contact or company leaves the row to fix; the draft is still made.
-  const c = ((await kernelRead(ctx, "kernel:contacts_read", { contactId: s.contact_id }))?.contact ?? {}) as Row
+  const c = (contactId ? ((await kernelRead(ctx, "kernel:contacts_read", { contactId }))?.contact ?? {}) : {}) as Row
   snapshot.counterparty_name = c.name ?? c.displayName ?? null
   snapshot.counterparty_email = c.email ?? null
   const companyName = s.company_id ? text(((await kernelRead(ctx, "kernel:companies_read", { companyId: s.company_id }))?.company as Row | undefined)?.name) : null
   if (!companyName) return snapshot
-  const identity = (await ctx.db.findMany("counterparty_identities", { where: { contact_id: s.contact_id }, limit: 1 })) as Row[]
-  const address = await billingAddress(ctx, s.contact_id)
+  const identity = contactId ? ((await ctx.db.findMany("counterparty_identities", { where: { contact_id: contactId }, limit: 1 })) as Row[]) : []
+  const address = contactId ? await billingAddress(ctx, contactId) : null
   return {
     ...snapshot,
     counterparty_name: companyName,

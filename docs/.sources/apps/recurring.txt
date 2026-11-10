@@ -19,3 +19,4 @@ month-end-check routine, off by default, changes nothing -> bundled-apps/invoici
 recurring_run_unapprove tool -> bundled-apps/invoicing/app.manifest.json:1788
 recurring_item_issue is the run's own job only -> bundled-apps/invoicing/app.manifest.json:1791
 run detail, partial run lists rows with Fix -> bundled-apps/invoicing/src/recurring/run-get.ts:1
+a deleted person is cleared from ended schedules, which still list as Customer and open -> apps/api/src/modules/contacts/service.ts:1702 ; apps/api/src/modules/contacts/erasure.ts:121 ; bundled-apps/invoicing/src/ui/RecurringList.tsx:182 ; bundled-apps/invoicing/src/ui/ScheduleEditor.tsx:184

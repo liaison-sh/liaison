@@ -4,7 +4,7 @@
 // drafts come and when they issue), the filters keep the right rows, and a customer billed through
 // Stripe never shows without what this schedule bills instead.
 import { afterEach, describe, expect, it } from "bun:test"
-import { billsText, filterRows, InvoicingRecurringList, titleLine, type ListRow } from "./RecurringList"
+import { billsText, filterRows, InvoicingRecurringList, scheduleContactIds, titleLine, type ListRow } from "./RecurringList"
 
 afterEach(() => {
   ;(globalThis as any).__liaisonHost = undefined
@@ -50,5 +50,12 @@ describe("the recurring list", () => {
     expect(billsText(row({}))).toBe("Team plan")
     expect(billsText(row({ bills_other_than_stripe: "On-site training days" }))).toBe("On-site training days")
     expect(typeof InvoicingRecurringList).toBe("function")
+  })
+
+  it("an ended schedule whose person was deleted still lists, and no person is looked up for it", () => {
+    const rows = [row({ id: "a", contact_id: "c1" }), row({ id: "e", status: "ended", contact_id: null }), row({ id: "b", contact_id: "c1" })]
+    expect(scheduleContactIds(rows)).toEqual(["c1"])
+    expect(filterRows(rows, "all").map((r) => r.id)).toEqual(["a", "e", "b"])
+    expect(billsText(rows[1] as ListRow)).toBe("Team plan")
   })
 })

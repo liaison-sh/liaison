@@ -614,6 +614,7 @@ function AddForgotten(props: {
       const res = await app.invokeTool<{ rows?: ScheduleOption[] }>("recurring_list", { status: "active", limit: 200 })
       const named: Array<ScheduleOption & { name: string }> = []
       for (const s of res?.rows ?? []) {
+        if (!s.contact_id) continue
         const c = await loadContact(s.contact_id)
         if (!c) continue
         named.push({ ...s, name: pickedContactPatch(c, {}).counterparty_name ?? contactLabel(c) })

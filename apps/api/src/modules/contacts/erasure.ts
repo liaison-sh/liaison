@@ -64,8 +64,10 @@ export async function firstOrgAdmin(
 
 /**
  * A deleted or erased contact stops being a company's main contact, a deal's
- * contact and a billing customer's person (mirrored from the payment connector,
- * which keeps its own record), in the transaction that removes it. Privileged:
+ * contact, a billing customer's person (mirrored from the payment connector,
+ * which keeps its own record) and the person of a recurring invoice schedule that
+ * has ended, in the transaction that removes it. A schedule not ended keeps its
+ * person: the delete refuses while one bills them. Privileged:
  * the remover may not see every company, deal or customer naming the person.
  * An app half is skipped where that app has no tables.
  */
@@ -73,8 +75,9 @@ export async function clearContactSoftReferences(
   tx: Pick<PrivilegedDb, "execute">,
   orgId: string,
   contactIds: string[],
-): Promise<{ companies: number; deals: number; billingCustomers: number }> {
-  if (contactIds.length === 0) return { companies: 0, deals: 0, billingCustomers: 0 }
+): Promise<{ companies: number; deals: number; billingCustomers: number; endedSchedules: number }> {
+  if (contactIds.length === 0)
+    return { companies: 0, deals: 0, billingCustomers: 0, endedSchedules: 0 }
   const ids = `{${contactIds.join(",")}}`
   const companies = extractRows(
     await tx.execute(drizzleSql`
@@ -107,7 +110,19 @@ export async function clearContactSoftReferences(
           RETURNING ${drizzleSql.raw(`${PAYMENTS_APP}_id`)}`),
       ).length
     : 0
-  return { companies, deals, billingCustomers }
+  const schedulesTable = rel("app_invoicing", "recurring_schedules")
+  const [schedules] = extractRows<{ t: string | null }>(
+    await tx.execute(drizzleSql`SELECT to_regclass(${schedulesTable})::text AS t`),
+  )
+  const endedSchedules = schedules?.t
+    ? extractRows(
+        await tx.execute(drizzleSql`
+          UPDATE ${drizzleSql.raw(schedulesTable)} SET contact_id = NULL, updated_at = now()
+           WHERE org_id = ${orgId}::uuid AND contact_id = ANY(${ids}::uuid[]) AND status = 'ended'
+          RETURNING id`),
+      ).length
+    : 0
+  return { companies, deals, billingCustomers, endedSchedules }
 }
 
 export async function releaseErasedUserContacts(

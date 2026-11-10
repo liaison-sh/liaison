@@ -1315,7 +1315,7 @@
           "references": { "table": "issuer_profiles", "column": "id", "onDelete": "restrict" }
         },
         "company_id": "uuid?",
-        "contact_id": "uuid",
+        "contact_id": "uuid?",
         "status": { "type": "string", "enum": ["draft", "active", "paused", "ended"], "default": "active" },
         "repeats": { "type": "string", "enum": ["month", "quarter", "year"] },
         "billing_day": "text",

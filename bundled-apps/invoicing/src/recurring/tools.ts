@@ -73,7 +73,8 @@ export interface ScheduleRow extends Cadence {
   id: string
   issuer_profile_id: string
   company_id?: string | null
-  contact_id: string
+  /** Null once the schedule has ended and its person was deleted. */
+  contact_id: string | null
   status: string
   ends_on?: string | null
   covers?: string

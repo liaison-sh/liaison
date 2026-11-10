@@ -166,6 +166,15 @@ function descriptor(name: string): Record<string, unknown> {
 let money: Promise<ApprovalOrg> | null = null
 let other: Promise<{ orgId: string; adminUserId: string }> | null = null
 
+/**
+ * Forget the cached money organizations, so the next case builds them again. For a file that
+ * runs beside the cells: a later file's org truncation would otherwise leave them stale.
+ */
+export function forgetMoneyOrgs(): void {
+  money = null
+  other = null
+}
+
 /** One organization for every money cell, with both apps registered and active. */
 export function moneyOrg(): Promise<ApprovalOrg> {
   money ??= (async () => {

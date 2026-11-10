@@ -208,6 +208,42 @@ describe("the month-end draft job", () => {
     })
   })
 
+  test("a schedule with no person bills its company and never borrows another customer's invoice", async () => {
+    const company = "66666666-6666-4666-8666-666666666661"
+    const unrelated = { ...previousDoc("44444444-4444-4444-8444-444444444449", true), counterparty_contact_id: null, counterparty_name: "Someone Else" }
+    const asked: Array<Record<string, unknown>> = []
+    const h = harness("2026-11-27", {
+      schedules: [schedule("33333333-3333-4333-8333-333333333331", { company_id: company, contact_id: null })],
+      docs: [unrelated],
+      kernel: {
+        "kernel:contacts_read": (p) => {
+          asked.push(p)
+          return { contact: {} }
+        },
+        "kernel:contacts_addresses_list": (p) => {
+          asked.push(p)
+          return { addresses: [] }
+        },
+        "kernel:companies_read": () => ({ company: { id: company, name: "Maison Brume SAS" }, people: [] }),
+      },
+    })
+    await recurringDraftJob(h.ctx)
+    const [draft] = h.db.__all("documents").filter((d) => d.status === "draft")
+    expect(draft).toMatchObject({ counterparty_name: "Maison Brume SAS", counterparty_contact_id: null, customer_kind: "business" })
+    expect(asked).toEqual([])
+  })
+
+  test("a schedule with no person takes the buyer from its last invoice", async () => {
+    const prev = previousDoc("44444444-4444-4444-8444-444444444441", true)
+    const h = harness("2026-11-27", {
+      schedules: [schedule("33333333-3333-4333-8333-333333333331", { contact_id: null, last_document_id: prev.id })],
+      docs: [prev],
+    })
+    await recurringDraftJob(h.ctx)
+    const [draft] = h.db.__all("documents").filter((d) => d.status === "draft")
+    expect(draft).toMatchObject({ counterparty_name: "Maison Sauvan", counterparty_address: "3 rue des Lilas, 69001 Lyon" })
+  })
+
   test("a schedule whose draft day has not come drafts nothing", async () => {
     const h = harness("2026-11-26")
     expect((await recurringDraftJob(h.ctx)).drafted).toBe(0)

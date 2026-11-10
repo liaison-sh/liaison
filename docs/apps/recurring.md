@@ -40,6 +40,7 @@ If the customer has a Stripe subscription, the editor shows a conflict. Choose *
 - **Pause** (or `recurring_schedule_pause`) stops drafting. With `until`, it resumes on that date and the days inside the pause are not billed afterwards. Pausing a paused schedule changes nothing.
 - A pause an agent asks for after reading outside text, such as a customer's email, waits for a person.
 - `recurring_schedule_update` with `status` set to `ended` stops billing for good.
+- A person a schedule bills cannot be deleted until the schedule ends. Deleting them afterwards clears the person from the ended schedule, which still shows in the list as **Customer** and still opens.
 
 ## The month-end run
 

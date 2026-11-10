@@ -223,7 +223,8 @@ export function suggestedAddress(row: RunRow): { patch: Record<string, string>; 
 /** One schedule as `recurring_list` returns it, the part "Add an invoice someone forgot" reads. */
 export interface ScheduleOption {
   id: string
-  contact_id: string
+  /** Null once the schedule has ended and its person was deleted. */
+  contact_id: string | null
   lines: Array<{ description: string; qty: number | string; unit_price_minor: number | string; vat_bp?: number; line_kind?: string }>
 }
 

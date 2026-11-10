@@ -16,7 +16,8 @@ const TAP = "min-h-11 md:min-h-8"
 
 export interface ListRow {
   id: string
-  contact_id: string
+  /** Null once the schedule has ended and its person was deleted. */
+  contact_id: string | null
   status: string
   repeats: string
   billing_day: string
@@ -29,6 +30,11 @@ export interface ListRow {
 }
 
 export type ListFilter = "all" | "active" | "paused"
+
+/** The people to look up for the rows' names, each once; an ended schedule may have none. */
+export function scheduleContactIds(rows: ListRow[]): string[] {
+  return [...new Set(rows.map((r) => r.contact_id).filter((id): id is string => typeof id === "string" && id !== ""))]
+}
 
 const FILTERS: ReadonlyArray<{ value: ListFilter; label: string }> = [
   { value: "all", label: "All" },
@@ -107,11 +113,11 @@ export const InvoicingRecurringList: Component<{ entityId?: string }> = () => {
     return p.rows
   })
   const [names] = createResource(
-    () => [...(page() ?? []), ...more()].map((r) => r.contact_id),
+    () => scheduleContactIds([...(page() ?? []), ...more()]),
     async (ids) => {
       const out: Record<string, string> = {}
       await Promise.all(
-        [...new Set(ids)].map(async (id) => {
+        ids.map(async (id) => {
           const c = await loadContact(id)
           if (c) out[id] = contactLabel(c)
         }),
@@ -173,7 +179,7 @@ export const InvoicingRecurringList: Component<{ entityId?: string }> = () => {
                         }}
                         class={`grid grid-cols-2 gap-x-3 gap-y-0.5 py-2.5 hover:bg-surface-hover md:grid-cols-[2fr_2fr_1.3fr_1fr_1fr_1fr_0.8fr] ${TAP}`}
                       >
-                        <span class="min-w-0 break-words font-medium text-text">{names()?.[r.contact_id] ?? tr("Customer")}</span>
+                        <span class="min-w-0 break-words font-medium text-text">{(r.contact_id ? names()?.[r.contact_id] : undefined) ?? tr("Customer")}</span>
                         <span data-testid={`schedule-bills-${r.id}`} class="min-w-0 break-words text-text-secondary">
                           {billsText(r)}
                         </span>

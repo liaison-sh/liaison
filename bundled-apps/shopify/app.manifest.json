@@ -282,7 +282,7 @@
       }
     ]
   },
-  "version": "0.4.20",
+  "version": "0.4.21",
   "network": {
     "imageHosts": ["cdn.shopify.com"],
     "linkHosts": ["admin.shopify.com"]
@@ -825,6 +825,11 @@
       "label": "Shipping emails"
     },
     {
+      "key": "b2bOrderTags",
+      "type": "string",
+      "label": "B2B order tags"
+    },
+    {
       "key": "b2bSkuSuffixes",
       "type": "string",
       "label": "B2B sku suffixes"
@@ -878,7 +883,7 @@
         "id": "shipping-emails",
         "title": "Shipping emails",
         "titleKey": "kernel.appSettings.shopify.shippingEmails",
-        "description": "Who gets Shopify's shipping email, with the tracking, when an order is fulfilled from Liaison (an agent, Boxtal's Packed tick or a carrier scan). An order is B2B when its buyer is a Shopify B2B company, or when a line item's sku ends with one of the B2B sku suffixes.",
+        "description": "Who gets Shopify's shipping email, with the tracking, when an order is fulfilled from Liaison (an agent, Boxtal's Packed tick or a carrier scan). An order is B2B when it is placed for a Shopify B2B company, or when it carries one of the B2B order tags; for older orders, also when a line item's sku ends with one of the B2B sku suffixes.",
         "descriptionKey": "kernel.appSettings.shopify.shippingEmailsHelp",
         "scope": "org",
         "blocks": [
@@ -916,11 +921,21 @@
           },
           {
             "block": "field",
+            "key": "b2bOrderTags",
+            "type": "text",
+            "label": "B2B order tags",
+            "labelKey": "kernel.appSettings.shopify.b2bOrderTags",
+            "help": "Comma separated, not case sensitive. An order carrying one of these tags is B2B. Default: B2B.",
+            "helpKey": "kernel.appSettings.shopify.b2bOrderTagsHelp",
+            "source": "config"
+          },
+          {
+            "block": "field",
             "key": "b2bSkuSuffixes",
             "type": "text",
             "label": "B2B sku suffixes",
             "labelKey": "kernel.appSettings.shopify.b2bSkuSuffixes",
-            "help": "Comma separated, not case sensitive, for example -B2B. Leave empty when only Shopify B2B companies buy wholesale.",
+            "help": "For older orders: comma separated, not case sensitive, for example -B2B. Leave empty when B2B orders never used a separate sku.",
             "helpKey": "kernel.appSettings.shopify.b2bSkuSuffixesHelp",
             "source": "config"
           }

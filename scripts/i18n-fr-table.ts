@@ -7387,7 +7387,7 @@ export const FR_BY_KEY: Record<string, string> = {
     "Désactivé, Shopify ne montre à Liaison que les 60 derniers jours de commandes. Activez-le une fois que Shopify a approuvé votre application pour « Read all orders », puis ajoutez read_all_orders à la configuration de l'app Shopify (téléchargez à nouveau shopify.app.toml depuis le guide de configuration), lancez shopify app deploy et reconnectez la boutique.",
   "kernel.appSettings.shopify.shippingEmails": "E-mails d'expédition",
   "kernel.appSettings.shopify.shippingEmailsHelp":
-    "Qui reçoit l'e-mail d'expédition de Shopify, avec le suivi, quand une commande est traitée depuis Liaison (un agent, la case Emballé de Boxtal ou un scan du transporteur). Une commande est B2B quand son acheteur est une entreprise B2B Shopify, ou quand le SKU d'un article se termine par l'un des suffixes de SKU B2B.",
+    "Qui reçoit l'e-mail d'expédition de Shopify, avec le suivi, quand une commande est traitée depuis Liaison (un agent, la case Emballé de Boxtal ou un scan du transporteur). Une commande est B2B quand elle est passée pour une entreprise B2B Shopify, ou quand elle porte l'une des étiquettes de commande B2B ; pour les commandes plus anciennes, aussi quand le SKU d'un article se termine par l'un des suffixes de SKU B2B.",
   "kernel.appSettings.shopify.customerShippingEmail": "Envoyer l'e-mail d'expédition de Shopify à",
   "kernel.appSettings.shopify.customerShippingEmailHelp":
     "Commandes particuliers uniquement : les clients particuliers le reçoivent, les acheteurs B2B jamais ; quand Liaison ne peut pas trancher, aucun e-mail n'est envoyé. Particuliers uniquement et Toutes les commandes envoient un seul e-mail par expédition, avec son premier numéro de suivi : une expédition sans suivi attend son numéro, et un changement de suivi ultérieur ne renvoie jamais d'e-mail.",
@@ -7396,9 +7396,12 @@ export const FR_BY_KEY: Record<string, string> = {
     "Commandes particuliers uniquement (jamais B2B)",
   "kernel.appSettings.shopify.shippingEmailAll": "Toutes les commandes",
   "kernel.appSettings.shopify.shippingEmailNone": "Aucune commande",
+  "kernel.appSettings.shopify.b2bOrderTags": "Étiquettes de commande B2B",
+  "kernel.appSettings.shopify.b2bOrderTagsHelp":
+    "Séparées par des virgules, sans tenir compte de la casse. Une commande portant l'une de ces étiquettes est B2B. Par défaut : B2B.",
   "kernel.appSettings.shopify.b2bSkuSuffixes": "Suffixes de SKU B2B",
   "kernel.appSettings.shopify.b2bSkuSuffixesHelp":
-    "Séparés par des virgules, sans tenir compte de la casse, par exemple -B2B. Laissez vide si seules des entreprises B2B Shopify achètent en gros.",
+    "Pour les commandes plus anciennes : séparés par des virgules, sans tenir compte de la casse, par exemple -B2B. Laissez vide si les commandes B2B n'ont jamais utilisé de SKU distinct.",
   "kernel.appSettings.social.connectionsHelp":
     "La page Facebook, le compte Instagram et le compte Google (YouTube) que l'application surveille. Connectez-les pour l'organisation afin que toute l'équipe et les tâches de fond les partagent.",
   "kernel.appSettings.social.terms": "Termes surveillés",

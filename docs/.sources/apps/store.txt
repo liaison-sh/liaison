@@ -174,7 +174,10 @@ short codes read from the kernel product attributes -> bundled-apps/shopify/src/
 Shipping emails section, Send Shopify's shipping email to, customerShippingEmail, options -> bundled-apps/shopify/app.manifest.json:862
 policy values caller/retail_only/all/none, unset is the caller's flag -> bundled-apps/shopify/src/lib/b2b.ts:48
 retail_only: retail emailed, B2B never, unreadable fails closed -> bundled-apps/shopify/src/lib/b2b.ts:187
-B2B = Shopify company buyer or a b2bSkuSuffixes suffix, comma separated, not case sensitive -> bundled-apps/shopify/src/lib/b2b.ts:55
+B2B = order placed for a Shopify company or company location -> bundled-apps/shopify/src/lib/b2b.ts:81
+B2B = order carries a b2bOrderTags tag, comma separated, not case sensitive, B2B when unset -> bundled-apps/shopify/src/lib/b2b.ts:76
+legacy: a line sku ending with a b2bSkuSuffixes suffix, checked last -> bundled-apps/shopify/src/lib/b2b.ts:128
+order search hits carry the verdict as b2bOrder -> bundled-apps/shopify/src/reads.ts:248
 every fulfilment path (agent, Boxtal tick, carrier scan) decided in the create handler -> bundled-apps/shopify/src/mutations/fulfillments.ts:465
 one email per fulfillment with its first tracking number; no tracking, or a later change, never emails -> bundled-apps/shopify/src/lib/b2b.ts:193
 the result says whether Shopify emailed the customer (customerNotification) -> bundled-apps/shopify/src/mutations/fulfillments.ts:345

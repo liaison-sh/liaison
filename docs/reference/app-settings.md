@@ -329,6 +329,7 @@ Section `shipping-emails`, scope `org`.
 | Key | Label | Type |
 | --- | --- | --- |
 | `customerShippingEmail` | Send Shopify's shipping email to | select |
+| `b2bOrderTags` | B2B order tags | text |
 | `b2bSkuSuffixes` | B2B sku suffixes | text |
 
 ## social

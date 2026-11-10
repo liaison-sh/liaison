@@ -17,7 +17,8 @@ External pull requests are welcome. A few ground rules keep review fast:
   don't need to be pristine, but the PR title and description should clearly
   explain the change.
 - Commit messages and PR descriptions are written in English.
-- CI must pass before a PR is merged.
+- CI must pass before a PR is merged. Pull requests land through a merge queue,
+  which runs the full CI gate on each one on top of `main` before merging it.
 - Changes to behavior need tests. A bug fix should include a test that would
   have caught the bug; a new feature should include tests for it.
 - Changes users can see need docs. `.claude/docs-map.ts` names the pages under
@@ -101,7 +102,8 @@ release binary) and refuse to run without it:
   `git config --global --add liaison.blockedEmails you@example.com`.
 
 The `gitleaks` check in CI scans every commit of a pull request the same way,
-and `bun run pr:land` refuses a PR until it passes.
+and `bun run pr:land` refuses to queue a PR until it passes; the merge queue
+scans the commits it adds the same way.
 
 **When it flags a real secret:** rotate it. Removing it from the newest commit
 isn't enough, since every commit is scanned and published: rewrite the branch so

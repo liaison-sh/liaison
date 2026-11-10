@@ -324,7 +324,7 @@ services:
     # before this file is published as a release asset. LIAISON_IMAGE overrides
     # it (used by validate-compose / load-test / lighthouse-ci
     # and by operators targeting a specific tag or a locally-built image).
-    image: ${LIAISON_IMAGE:-ghcr.io/mathieufro/liaison:v0.1.0}
+    image: ${LIAISON_IMAGE:-ghcr.io/liaison-sh/liaison:v0.1.0}
     restart: unless-stopped
     # A SIGTERM runs one shutdown sequence (apps/api/src/lib/shutdown.ts):
     # /readyz goes 503, the listener stops 2 s later, then in-flight requests,

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // Dealer profile handlers — wholesale/dealer relationship metadata used to
-// inform dealer-sell-in sensing and SKU-class attribution (doctrine block E:
-// B2B revenue must be split out before drawing DTC conclusions).
+// inform dealer-sell-in sensing and B2B attribution (doctrine block E:
+// B2B revenue must be split out before drawing DTC conclusions). A B2B order is
+// recognised by the order itself (company order, B2B order tag, legacy B2B sku
+// suffix), see metrics/sku-classing.ts.
 // `dealer_profile_upsert` is gated; `dealer_profiles_list` is an ungated read.
 //
 // All handlers use (params, ctx) — the kernel convention.

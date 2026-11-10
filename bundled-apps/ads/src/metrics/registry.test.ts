@@ -18,6 +18,8 @@ function lineage(source: string, extra: Partial<SourceLineage> = {}): SourceLine
 function makeInputs(overrides: Partial<MetricsInputs> = {}): MetricsInputs {
   return {
     shopifyNetRevenue: { value: 10_000, lineage: lineage("shopify") },
+    shopifyB2bNetRevenue: { value: 0, lineage: lineage("shopify") },
+    b2bOrderIds: { value: [], lineage: lineage("shopify") },
     manualSpendTotal: { value: 500, lineage: lineage("manual_spend") },
     metaSpend: { value: 1_500, lineage: lineage("meta") },
     googleSpend: { value: 1_000, lineage: lineage("google") },
@@ -46,18 +48,13 @@ describe("blended_mer_dtc", () => {
     // 10000 / (1500 + 1000 + 500) = 10000 / 3000 = 3.3333...
     expect(result.value).toBe("3.3333")
     expect(result.formulaId).toBe("blended_mer_dtc")
-    expect(result.formulaVersion).toBe("1.0.0")
+    expect(result.formulaVersion).toBe("1.1.0")
     expect(result.lineage.inputs.length).toBeGreaterThan(0)
     expect(result.lineage.period).toEqual(PERIOD)
   })
 
-  it("excludes B2B — a formula computed purely from DTC net revenue, no attribution B2B bucket added", () => {
-    const inputs = makeInputs({
-      attribution: {
-        value: [attributionRow({ sku_class_breakdown: { b2b: 500000 } })],
-        lineage: lineage("database"),
-      },
-    })
+  it("excludes B2B — computed purely from DTC orders' net revenue, the B2B orders' revenue left out", () => {
+    const inputs = makeInputs({ shopifyB2bNetRevenue: { value: 5_000, lineage: lineage("shopify") } })
     const dtc = blended_mer_dtc.compute(inputs, PERIOD)
     const total = blended_mer_total.compute(inputs, PERIOD)
     expect(Number(total.value)).toBeGreaterThan(Number(dtc.value))
@@ -80,54 +77,34 @@ describe("blended_mer_dtc", () => {
 })
 
 describe("blended_mer_total", () => {
-  it("includes B2B revenue (attribution sku_class_breakdown.b2b) in the numerator", () => {
-    const inputs = makeInputs({
-      attribution: {
-        value: [attributionRow({ sku_class_breakdown: { b2b: 500000 } })], // 5000.00 EUR
-        lineage: lineage("database"),
-      },
-    })
+  it("includes the B2B orders' net revenue in the numerator", () => {
+    const inputs = makeInputs({ shopifyB2bNetRevenue: { value: 5_000, lineage: lineage("shopify") } })
     const result = blended_mer_total.compute(inputs, PERIOD)
     // (10000 + 5000) / 3000 = 5.0
     expect(result.value).toBe("5.0000")
+    expect(result.formulaVersion).toBe("1.1.0")
+  })
+
+  it("ignores the attribution b2b bucket, so a B2B order is never counted twice", () => {
+    const inputs = makeInputs({
+      shopifyB2bNetRevenue: { value: 5_000, lineage: lineage("shopify") },
+      attribution: { value: [attributionRow({ sku_class_breakdown: { b2b: 500000 } })], lineage: lineage("database") },
+    })
+    expect(blended_mer_total.compute(inputs, PERIOD).value).toBe("5.0000")
+  })
+
+  it("degrades to unavailable when the B2B revenue cannot be read", () => {
+    const inputs = makeInputs({ shopifyB2bNetRevenue: { value: null, lineage: lineage("shopify", { unavailable: true }) } })
+    const result = blended_mer_total.compute(inputs, PERIOD)
+    expect(result.value).toBe("unavailable")
+    expect(result.degraded).toBe(true)
   })
 
   it("byte-identical repeat call (SC 5)", () => {
-    const inputs = makeInputs({
-      attribution: { value: [attributionRow({ sku_class_breakdown: { b2b: 100000 } })], lineage: lineage("database") },
-    })
+    const inputs = makeInputs({ shopifyB2bNetRevenue: { value: 1_000, lineage: lineage("shopify") } })
     const r1 = blended_mer_total.compute(inputs, PERIOD)
     const r2 = blended_mer_total.compute(inputs, PERIOD)
     expect(JSON.stringify(r1)).toBe(JSON.stringify(r2))
-  })
-
-  it("never sums B2B minor units across mixed conversion_currency rows -- excludes the minority currency, flags it in caveats", () => {
-    const inputs = makeInputs({
-      attribution: {
-        value: [
-          attributionRow({ sku_class_breakdown: { b2b: 500000 }, conversion_currency: "EUR" }),
-          attributionRow({ sku_class_breakdown: { b2b: 500000 }, conversion_currency: "EUR" }),
-          attributionRow({ sku_class_breakdown: { b2b: 999999 }, conversion_currency: "USD" }),
-        ],
-        lineage: lineage("database"),
-      },
-    })
-    const result = blended_mer_total.compute(inputs, PERIOD)
-    // Only the EUR rows (majority, 2 vs 1) contribute: (10000 + 10000) / 3000 = 6.6667
-    expect(result.value).toBe("6.6667")
-    expect(result.caveats.some((c) => c.includes("multiple currencies"))).toBe(true)
-    expect(result.caveats.some((c) => c.includes("EXCLUDED"))).toBe(true)
-  })
-
-  it("single-currency B2B rows produce no currency caveat", () => {
-    const inputs = makeInputs({
-      attribution: {
-        value: [attributionRow({ sku_class_breakdown: { b2b: 500000 }, conversion_currency: "EUR" })],
-        lineage: lineage("database"),
-      },
-    })
-    const result = blended_mer_total.compute(inputs, PERIOD)
-    expect(result.caveats.some((c) => c.includes("multiple currencies"))).toBe(false)
   })
 })
 
@@ -143,12 +120,7 @@ describe("total_vs_dtc_mer_gap", () => {
   })
 
   it("computes total MER minus DTC MER", () => {
-    const inputs = makeInputs({
-      attribution: {
-        value: [attributionRow({ sku_class_breakdown: { b2b: 500000 } })],
-        lineage: lineage("database"),
-      },
-    })
+    const inputs = makeInputs({ shopifyB2bNetRevenue: { value: 5_000, lineage: lineage("shopify") } })
     const dtc = blended_mer_dtc.compute(inputs, PERIOD)
     const total = blended_mer_total.compute(inputs, PERIOD)
     const gap = total_vs_dtc_mer_gap.compute(inputs, PERIOD)
@@ -249,6 +221,42 @@ describe("cpa_by_sku_class", () => {
     expect(parsed.hardware?.orders).toBe(1)
     expect(parsed.accessory?.orders).toBe(1)
     expect(result.caveats.some((c) => c.includes("mixed-class"))).toBe(true)
+  })
+
+  it("a B2B order (company or tagged) with plain skus is class b2b as a whole, matched by its order id", () => {
+    const inputs = makeInputs({
+      b2bOrderIds: { value: ["2002"], lineage: lineage("shopify") },
+      attribution: {
+        value: [
+          attributionRow({ shopify_order_id: "2002", sku_class_breakdown: { hardware: 40000, accessory: 5000 } }),
+          attributionRow({ shopify_order_id: "gid://shopify/Order/2003", sku_class_breakdown: { hardware: 40000 } }),
+        ],
+        lineage: lineage("database"),
+      },
+    })
+    const result = cpa_by_sku_class.compute(inputs, PERIOD)
+    const parsed = JSON.parse(result.value) as Record<string, { orders: number }>
+    expect(parsed.b2b?.orders).toBe(1)
+    expect(parsed.hardware?.orders).toBe(1)
+    expect(result.caveats.some((c) => c.includes("mixed-class"))).toBe(false)
+  })
+
+  it("a legacy order whose breakdown is all b2b (suffixed skus) stays b2b", () => {
+    const inputs = makeInputs({
+      attribution: { value: [attributionRow({ sku_class_breakdown: { b2b: 90000 } })], lineage: lineage("database") },
+    })
+    const parsed = JSON.parse(cpa_by_sku_class.compute(inputs, PERIOD).value) as Record<string, { orders: number }>
+    expect(parsed.b2b?.orders).toBe(1)
+  })
+
+  it("says so and degrades when the store's orders could not be read", () => {
+    const inputs = makeInputs({
+      b2bOrderIds: { value: [], lineage: lineage("shopify", { unavailable: true }) },
+      attribution: { value: [attributionRow({ sku_class_breakdown: { hardware: 40000 } })], lineage: lineage("database") },
+    })
+    const result = cpa_by_sku_class.compute(inputs, PERIOD)
+    expect(result.degraded).toBe(true)
+    expect(result.caveats.some((c) => c.includes("could not be read"))).toBe(true)
   })
 
   it("byte-identical repeat call (SC 5)", () => {

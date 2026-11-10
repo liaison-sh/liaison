@@ -463,15 +463,17 @@
       "fullOrderHistory": "Full order history",
       "fullOrderHistoryHelp": "When off, Shopify shows Liaison only the last 60 days of orders. Turn it on once Shopify has approved your app for Read all orders, then add read_all_orders to the Shopify app's configuration (download shopify.app.toml again from the setup guide), run shopify app deploy and reconnect the store.",
       "shippingEmails": "Shipping emails",
-      "shippingEmailsHelp": "Who gets Shopify's shipping email, with the tracking, when an order is fulfilled from Liaison (an agent, Boxtal's Packed tick or a carrier scan). An order is B2B when its buyer is a Shopify B2B company, or when a line item's sku ends with one of the B2B sku suffixes.",
+      "shippingEmailsHelp": "Who gets Shopify's shipping email, with the tracking, when an order is fulfilled from Liaison (an agent, Boxtal's Packed tick or a carrier scan). An order is B2B when it is placed for a Shopify B2B company, or when it carries one of the B2B order tags; for older orders, also when a line item's sku ends with one of the B2B sku suffixes.",
       "customerShippingEmail": "Send Shopify's shipping email to",
       "customerShippingEmailHelp": "Retail orders only: retail customers get it, B2B buyers never do; when Liaison cannot tell, no email is sent. Retail only and Every order send one email per fulfillment, with its first tracking number: a fulfillment without tracking waits for its number, and a later tracking change never emails again.",
       "shippingEmailCaller": "As each fulfillment asks",
       "shippingEmailRetailOnly": "Retail orders only (never B2B)",
       "shippingEmailAll": "Every order",
       "shippingEmailNone": "No order",
+      "b2bOrderTags": "B2B order tags",
+      "b2bOrderTagsHelp": "Comma separated, not case sensitive. An order carrying one of these tags is B2B. Default: B2B.",
       "b2bSkuSuffixes": "B2B sku suffixes",
-      "b2bSkuSuffixesHelp": "Comma separated, not case sensitive, for example -B2B. Leave empty when only Shopify B2B companies buy wholesale."
+      "b2bSkuSuffixesHelp": "For older orders: comma separated, not case sensitive, for example -B2B. Leave empty when B2B orders never used a separate sku."
     },
     "social": {
       "connections": "Connections",

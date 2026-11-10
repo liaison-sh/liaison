@@ -113,4 +113,6 @@ Every tool marked "Always" files an approval and changes nothing until a person 
 | `metrics_list`, `metrics_run` | Compute deterministic metrics | No |
 | `audience_erasure_sweep` | Apply pending erasure requests to audiences | No |
 
+The metrics that split DTC from B2B revenue (`blended_mer_dtc`, `blended_mer_total`, `cpa_by_sku_class`) recognise a B2B order by the order itself, with the store's own rule from [Store](store.md): placed for a Shopify B2B company, tagged with a B2B order tag, or, on older orders, carrying a B2B sku suffix. A B2B order counts as B2B as a whole, whatever its skus.
+
 Related: [Social](social.md), [Store](store.md), [Approve what agents do](../agents/approvals.md), [Agent tools](../reference/agent-tools.md), [App settings](../reference/app-settings.md).

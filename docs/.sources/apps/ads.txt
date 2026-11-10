@@ -93,3 +93,6 @@ metrics_run -> bundled-apps/ads/app.manifest.json:2651
 audience_erasure_sweep -> bundled-apps/ads/app.manifest.json:2685
 graph_get taintSource outside text -> bundled-apps/ads/app.manifest.json:675
 google_search_terms taintSource outside text -> bundled-apps/ads/app.manifest.json:1870
+metrics split DTC/B2B by the order-level rule (company, tag, legacy suffix) -> bundled-apps/ads/src/metrics/sku-classing.ts:61
+blended_mer_dtc excludes B2B orders -> bundled-apps/ads/src/metrics/registry.ts:66
+cpa_by_sku_class classes a B2B order b2b as a whole -> bundled-apps/ads/src/metrics/registry.ts:255

@@ -135,7 +135,11 @@ When more than one platform is in the mix:
 DTC/wholesale split: before drawing any allocation conclusion from revenue,
 split out B2B/wholesale revenue from direct-to-consumer. B2B demand-sensing is
 coarse and must never sit in a conversion feed; do not let wholesale revenue
-inflate the blended MER you are using to allocate consumer ad budget.
+inflate the blended MER you are using to allocate consumer ad budget. A B2B
+order is recognised by the order itself, never by guessing from its skus: it is
+placed for a B2B company, or it carries the store's B2B order tag (older orders
+may instead carry a B2B sku suffix). `blended_mer_dtc` and `cpa_by_sku_class`
+already apply this rule; quote them rather than re-splitting by sku.
 
 ## Interaction with other playbooks
 

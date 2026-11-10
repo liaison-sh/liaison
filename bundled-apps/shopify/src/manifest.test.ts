@@ -946,7 +946,8 @@ describe("Shopify app.manifest.json", () => {
     // as those assigned to it directly (Plus); companies_* mark each catalog's source.
     // 0.4.19: the branch's 0.4.18 merged with main's 0.4.16 to 0.4.18 (B2B drafts and catalogs).
     // 0.4.20: above main's 0.4.19 (references to the new repository), merged.
-    expect(m.version).toBe("0.4.20")
+    // 0.4.21: above main's 0.4.20 (b2bOrderTags; companies_search returns catalogs), merged.
+    expect(m.version).toBe("0.4.21")
   })
 
   it("orders_search and variants_search declare their filters and close their params", () => {
@@ -1043,14 +1044,16 @@ describe("Shopify app.manifest.json", () => {
     }
     expect(m.views.settings).toBeUndefined()
     expect(m.settings.sections.map((s) => s.id)).toEqual(["connection", "diagnostics", "shipping-emails"])
-    // The shipping email policy and the B2B sku suffixes live in declared config keys
-    // (ctx.config.get), edited on the settings page.
+    // The shipping email policy, the B2B order tags and the (legacy) B2B sku suffixes live in
+    // declared config keys (ctx.config.get), edited on the settings page.
     expect(m.settings.sections[2]?.blocks).toEqual([
       expect.objectContaining({ block: "field", key: "customerShippingEmail", type: "select", source: "config" }),
+      expect.objectContaining({ block: "field", key: "b2bOrderTags", type: "text", source: "config" }),
       expect.objectContaining({ block: "field", key: "b2bSkuSuffixes", type: "text", source: "config" }),
     ])
     const keys = (loadManifest() as { configKeys?: Array<{ key: string; type: string }> }).configKeys
     expect(keys).toContainEqual(expect.objectContaining({ key: "customerShippingEmail", type: "string" }))
+    expect(keys).toContainEqual(expect.objectContaining({ key: "b2bOrderTags", type: "string" }))
     expect(keys).toContainEqual(expect.objectContaining({ key: "b2bSkuSuffixes", type: "string" }))
     expect(m.settings.sections[0]?.blocks.map((b) => b.block)).toEqual(["connections", "field"])
     expect(m.settings.sections[0]?.blocks[0]).toEqual({ block: "connections", names: ["shop"] })

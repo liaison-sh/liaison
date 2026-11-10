@@ -27,7 +27,7 @@
 
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs"
 import path from "node:path"
-import { relationSuitesFor, TEST_MAP } from "../.claude/test-map"
+import { NO_CODE_PATHS, suitesFor } from "../.claude/test-map"
 import {
   namespaceEnv,
   namespaceForCheckout,
@@ -99,7 +99,7 @@ export const GATE_LANES: Record<string, number> = {
 
 /**
  * The suites the per-PR `ci` workflow already runs on every pull request (root,
- * guards, unit, web-unit, and the relation cells in its `relations` job): the
+ * guards, unit, web-unit, and the relation cells as a step of its `unit` job): the
  * gate leaves them out. Every other suite the test
  * map names must be a {@link GATE_LANES} key, or the gate would plan it and
  * never run it (scripts/test-gate.test.ts pins that).
@@ -181,9 +181,6 @@ export function laneOrder<T extends { suite: string }>(run: T[]): { dbLane: T[];
   }
 }
 
-/** Paths that carry no code: a change to them alone runs nothing. */
-const NO_CODE = [/\.md$/, /^docs\//, /^LICENSE/, /\.(png|jpe?g|svg|gif|webp)$/]
-
 export const UNIT_SOURCE_PREFIXES = [
   "apps/api/src/modules/",
   "apps/api/src/infra/",
@@ -251,13 +248,6 @@ export function colocatedTests(file: string, listDir: (dir: string) => string[])
     .sort()
 }
 
-function suitesFor(file: string): string[] | null {
-  for (const entry of TEST_MAP) {
-    if (new Bun.Glob(entry.glob).match(file)) return relationSuitesFor(file, entry.suites)
-  }
-  return null
-}
-
 /**
  * Pure planning: changed paths in, suites and files out. `suiteInfo` and
  * `listDir` are injected so the plan can be pinned by tests.
@@ -275,7 +265,7 @@ export function planGate(
     const suites = mapFor(file)
     if (suites) {
       for (const s of suites) triggers.set(s, [...(triggers.get(s) ?? []), file])
-    } else if (NO_CODE.some((re) => re.test(file))) {
+    } else if (NO_CODE_PATHS.some((re) => re.test(file))) {
       ignored.push(file)
     } else {
       broad.push(file)

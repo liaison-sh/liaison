@@ -2,18 +2,25 @@
 //
 // `bun run pr:land <number> [--wait]`: the one way a pull request reaches main.
 //
-// It squash-merges the PR (the repo deletes the branch on merge) only when:
+// It adds the PR to main's merge queue only when:
 //   - the PR is open, not a draft, targets main and has no conflict;
 //   - every check on its head commit is green, and the required ones
 //     (REQUIRED_CHECKS) have all reported; the secret scan must have passed,
-//     a skipped run does not count (MUST_SUCCEED);
-//   - main's newest finished `ci` run is green, or the PR is the fix of that
-//     red: its body or one of its commits carries `Fixes-CI: <run id>` naming a
-//     red run since the last green one.
-// A refusal prints what failed and the tail of the failing log, so whoever
-// lands next repairs the break instead of stacking work on it. The merge is
+//     a skipped run does not count (MUST_SUCCEED).
+// A refusal prints what failed and the tail of the failing log. The entry is
 // pinned to the head commit that was checked, so a push made meanwhile is not
-// merged unchecked. `--wait` polls pending checks for up to 30 minutes.
+// queued unchecked.
+//
+// The queue does the rest: it tests the PR on top of main and of the PRs ahead
+// of it (the `ci` workflow's merge_group run is the full gate: every test job),
+// squash-merges it when that passes, and removes it from the queue when it
+// fails. A red main cannot happen through the queue, so there is no main-green
+// gate and no admin bypass here.
+//
+// `--wait` polls pending checks for up to 30 minutes, then waits for the queue
+// to merge or eject the PR (up to QUEUE_WAIT_MS) and exits 0 only when it was
+// merged; an ejection prints the failing merge-group run's log. Without
+// `--wait`, exit 0 means queued.
 //
 // GitHub sometimes drops the pull_request event of a push or an opened PR: no
 // workflow runs at all for the head commit, and the checks would stay missing
@@ -23,16 +30,8 @@
 //
 // The repo's pre-push hook (scripts/git-hooks/pre-push) refuses direct pushes
 // to main, and GitHub's branch protection and ruleset enforce the same on the
-// server. Merging takes the admin bypass, so this script remains the merge gate.
+// server.
 import { spawnSync } from "node:child_process"
-
-export interface CiRun {
-  databaseId: number
-  status: string
-  conclusion: string
-  headSha: string
-  url: string
-}
 
 export type CheckEntry =
   | {
@@ -51,31 +50,8 @@ export const REQUIRED_CHECKS = ["checks", "CLAAssistant", "gitleaks"]
 /** Checks whose skipped or neutral run proves nothing: only a pass lets a PR land. */
 const MUST_SUCCEED = new Set(["gitleaks"])
 
-/** Runs that finished without deciding anything (superseded, skipped). */
-const UNDECIDED_RUN = new Set(["cancelled", "skipped", "neutral", "stale", ""])
 /** Check outcomes that do not block a merge. */
 const PASSING_CHECK = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"])
-
-export interface MainGate {
-  allow: boolean
-  /** The newest finished run when main is red. */
-  redRun?: CiRun
-  /** Every red run since the last green one; a fix may name any of them. */
-  redRunIds: string[]
-}
-
-/** `runs` newest first, as `gh run list` returns them. */
-export function decideMainGate(runs: CiRun[], fixesCi: string[]): MainGate {
-  const finished = runs.filter((r) => r.status === "completed" && !UNDECIDED_RUN.has(r.conclusion))
-  const redRuns: CiRun[] = []
-  for (const r of finished) {
-    if (r.conclusion === "success") break
-    redRuns.push(r)
-  }
-  const redRunIds = redRuns.map((r) => String(r.databaseId))
-  if (redRuns.length === 0) return { allow: true, redRunIds }
-  return { allow: fixesCi.some((id) => redRunIds.includes(id)), redRun: redRuns[0], redRunIds }
-}
 
 export interface PrChecks {
   state: "green" | "red" | "pending"
@@ -147,14 +123,62 @@ export function decideCiKick(
   return kicks < MAX_KICKS ? "kick" : "give_up"
 }
 
-/** Run ids from `Fixes-CI:` lines (PR body or commit trailers): a bare id or a run URL. */
-export function parseFixesCi(text: string): string[] {
-  return [...text.matchAll(/^\s*Fixes-CI:\s*\S*?(\d+)\/?\s*$/gim)].map((m) => m[1])
-}
-
 export function runIdFromUrl(url: string | undefined): string | null {
   return url?.match(/\/actions\/runs\/(\d+)/)?.[1] ?? null
 }
+
+/** How long `--wait` follows the PR through the merge queue. */
+export const QUEUE_WAIT_MS = 90 * 60_000
+
+/** The PR as the merge queue sees it (GraphQL). */
+export interface QueueStatus {
+  state: "OPEN" | "CLOSED" | "MERGED"
+  /** Null when the PR is not in the queue (never queued, merged or ejected). */
+  mergeQueueEntry: { state: string; position: number } | null
+}
+
+/**
+ * Where a PR we queued stands. Once queued, an open PR with no queue entry
+ * was ejected: its merge group failed, it conflicted with the PRs ahead, or a
+ * push to its branch removed it.
+ */
+export function decideQueue(s: QueueStatus): "merged" | "queued" | "ejected" | "closed" {
+  if (s.state === "MERGED") return "merged"
+  if (s.state === "CLOSED") return "closed"
+  return s.mergeQueueEntry ? "queued" : "ejected"
+}
+
+export interface QueueRun {
+  databaseId: number
+  headBranch: string
+  conclusion: string
+  url: string
+}
+
+/**
+ * The newest failed merge-group run that held PR `number`. Its branch is
+ * gh-readonly-queue/<base>/pr-<number>-<sha>; `runs` newest first.
+ */
+export function failedQueueRun(runs: QueueRun[], number: string): QueueRun | undefined {
+  return runs.find(
+    (r) =>
+      new RegExp(`^gh-readonly-queue/[^/]+/pr-${number}-[0-9a-f]+$`).test(r.headBranch) &&
+      (r.conclusion === "failure" || r.conclusion === "timed_out"),
+  )
+}
+
+const QUEUE_QUERY = `query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    mergeQueue(branch: "main") { id }
+    pullRequest(number: $number) { state mergeQueueEntry { state position } }
+  }
+}`
+
+const ENQUEUE = `mutation($id: ID!, $oid: GitObjectID!) {
+  enqueuePullRequest(input: { pullRequestId: $id, expectedHeadOid: $oid }) {
+    mergeQueueEntry { state position }
+  }
+}`
 
 function sh(cmd: string, args: string[]): { ok: boolean; out: string } {
   const r = spawnSync(cmd, args, { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 })
@@ -188,6 +212,8 @@ function failedLog(slug: string, runId: string): string {
 }
 
 interface Pr {
+  /** GraphQL node id. */
+  id: string
   number: number
   url: string
   state: string
@@ -195,8 +221,6 @@ interface Pr {
   baseRefName: string
   headRefOid: string
   mergeable: string
-  body: string
-  commits: Array<{ messageBody: string }>
   statusCheckRollup: CheckEntry[]
 }
 
@@ -217,8 +241,7 @@ function main(): number {
   const slug = remote.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?$/)?.[1]
   if (!slug) return refuse(`origin (${remote || "none"}) is not a GitHub repository`)
 
-  const fields =
-    "number,url,state,isDraft,baseRefName,headRefOid,mergeable,body,commits,statusCheckRollup"
+  const fields = "id,number,url,state,isDraft,baseRefName,headRefOid,mergeable,statusCheckRollup"
   const deadline = Date.now() + 30 * 60_000
   let pr: Pr
   let checks: PrChecks
@@ -280,51 +303,92 @@ function main(): number {
     )
   }
 
-  const runs = ghJson<CiRun[]>([
-    "run",
-    "list",
-    "-R",
-    slug,
-    "--branch",
-    "main",
-    "--workflow",
-    "ci.yml",
-    "--event",
-    "push",
-    "-L",
-    "20",
-    "--json",
-    "databaseId,status,conclusion,headSha,url",
-  ])
-  const fixesCi = parseFixesCi([pr.body ?? "", ...pr.commits.map((c) => c.messageBody)].join("\n"))
-  const gate = decideMainGate(runs, fixesCi)
-  if (!gate.allow && gate.redRun) {
-    const red = gate.redRun
-    return refuse(`main's CI is red, so only the fix of that red may land.
-  red run  : ${red.url}  (commit ${red.headSha.slice(0, 9)})
-  red runs since the last green: ${gate.redRunIds.join(", ")}
-${failedLog(slug, String(red.databaseId))}
-
-Fix what broke in its own PR, on top of origin/main, with "Fixes-CI: ${red.databaseId}" in the PR body,
-and land that first. Then re-run pr:land for this one.`)
+  const [owner, name] = slug.split("/")
+  const queueStatus = (): { queue: boolean; pr: QueueStatus } => {
+    const r = ghJson<{
+      data: { repository: { mergeQueue: { id: string } | null; pullRequest: QueueStatus } }
+    }>([
+      "api",
+      "graphql",
+      "-f",
+      `query=${QUEUE_QUERY}`,
+      "-f",
+      `owner=${owner}`,
+      "-f",
+      `name=${name}`,
+      "-F",
+      `number=${number}`,
+    ])
+    return { queue: r.data.repository.mergeQueue !== null, pr: r.data.repository.pullRequest }
   }
 
-  const merged = sh("gh", [
-    "pr",
-    "merge",
-    number,
-    "-R",
-    slug,
-    "--squash",
-    // The ruleset on main lets only admins update it, through this bypass. The
-    // gates above decide; a collaborator without the role is refused by GitHub.
-    "--admin",
-    "--match-head-commit",
-    pr.headRefOid,
-  ])
-  if (!merged.ok) return refuse(`gh pr merge failed: ${merged.out.trim()}`)
-  console.log(`pr:land: merged ${pr.url} (squash of ${pr.headRefOid.slice(0, 9)}).`)
-  return 0
+  const before = queueStatus()
+  if (!before.queue)
+    return refuse(
+      "main has no merge queue: enable it in the branch ruleset (required checks: checks, codeql, gitleaks; squash merge).",
+    )
+  if (before.pr.mergeQueueEntry) {
+    console.log(
+      `pr:land: ${pr.url} is already in the merge queue (${before.pr.mergeQueueEntry.state}).`,
+    )
+  } else {
+    const queued = sh("gh", [
+      "api",
+      "graphql",
+      "-f",
+      `query=${ENQUEUE}`,
+      "-f",
+      `id=${pr.id}`,
+      "-f",
+      `oid=${pr.headRefOid}`,
+    ])
+    if (!queued.ok)
+      return refuse(`adding ${pr.url} to the merge queue failed: ${queued.out.trim()}`)
+    console.log(
+      `pr:land: queued ${pr.url} (head ${pr.headRefOid.slice(0, 9)}); the merge queue tests it on top of main and squash-merges it when green.`,
+    )
+  }
+  if (!wait) return 0
+
+  const queueDeadline = Date.now() + QUEUE_WAIT_MS
+  for (;;) {
+    const now = queueStatus().pr
+    const where = decideQueue(now)
+    if (where === "merged") {
+      console.log(`pr:land: merged ${pr.url}.`)
+      return 0
+    }
+    if (where === "closed") return refuse(`${pr.url} was closed while in the merge queue`)
+    if (where === "ejected") {
+      const runs = ghJson<QueueRun[]>([
+        "run",
+        "list",
+        "-R",
+        slug,
+        "--workflow",
+        "ci.yml",
+        "--event",
+        "merge_group",
+        "-L",
+        "50",
+        "--json",
+        "databaseId,headBranch,conclusion,url",
+      ])
+      const failed = failedQueueRun(runs, number)
+      const next = failed
+        ? `  merge group run: ${failed.url}\n${failedLog(slug, String(failed.databaseId))}\n\nFix it on the PR branch, push, and re-run pr:land.`
+        : "No failed merge-group run names it: it conflicted with the PRs ahead of it, or its branch got a push. Rebase on origin/main if needed, push, and re-run pr:land."
+      return refuse(`${pr.url} was removed from the merge queue without merging.\n${next}`)
+    }
+    if (Date.now() > queueDeadline)
+      return refuse(
+        `${pr.url} is still in the merge queue after ${QUEUE_WAIT_MS / 60_000} minutes (${now.mergeQueueEntry?.state}); it stays queued.`,
+      )
+    console.error(
+      `pr:land: ${pr.url} in the merge queue (${now.mergeQueueEntry?.state}, position ${now.mergeQueueEntry?.position}); waiting 30 s`,
+    )
+    Bun.sleepSync(30_000)
+  }
 }
 
 if (import.meta.main) process.exit(main())

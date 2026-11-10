@@ -89,7 +89,7 @@ async function waitForHealth(host: string, timeoutMs = 180_000): Promise<void> {
 // Spec V6 + canonical load execution profile require the load test to run
 // against the release image, not whatever is pinned in deploy/docker-compose.yml.
 // LIAISON_IMAGE is consumed by deploy/docker-compose.yml `image:
-// ${LIAISON_IMAGE:-ghcr.io/mathieufro/liaison:v0.1.0}` so this run targets the
+// ${LIAISON_IMAGE:-ghcr.io/liaison-sh/liaison:v0.1.0}` so this run targets the
 // just-built image instead of the published tag.
 const LOAD_IMAGE_TAG = "liaison-load:tmp"
 

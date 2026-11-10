@@ -938,7 +938,8 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.14 (branch): above the 0.4.12 main took meanwhile, merged; 0.4.15 (branch): merged with 0.4.13.
     // 0.4.16: the branch's 0.4.15 merged with main's 0.4.14 and 0.4.15.
     // 0.4.17: above the 0.4.16 main took meanwhile, so an installed copy upgrades.
-    expect(m.version).toBe("0.4.17")
+    // 0.4.18: above the 0.4.17 main took meanwhile, so an installed copy upgrades.
+    expect(m.version).toBe("0.4.18")
   })
 
   it("orders_search and variants_search declare their filters and close their params", () => {

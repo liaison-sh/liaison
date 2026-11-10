@@ -26,10 +26,6 @@ interface EffectiveScope {
   scope: string
   fromRoles: string[]
   direct: boolean
-  /** Held by every active member, not through a role or a direct grant. */
-  everyMember?: boolean
-  /** Held through an org MCP server this person may use. */
-  mcpAccess?: boolean
 }
 
 interface UserDetail {

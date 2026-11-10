@@ -162,7 +162,7 @@ When someone asks to receive no more commercial mail, ask your agent to note it 
 
 When someone answers a mail asking to stop ("unsubscribe", "stop", "ne plus recevoir", "abmelden", "darme de baja", "cancellami" and other phrases in English, French, German, Spanish and Italian), Liaison raises an opt-out request for approval in the name of the mailbox's owner (for a shared mailbox, the person who connected it). Nothing is recorded until someone approves it, and each person gets one request however often they ask. A short reply counts; in a longer one the phrase must stand on a line of its own, and text quoted from an earlier mail never counts. Newsletters, automatic mail and the history imported when a mailbox is first connected raise no request. A sealed mailbox's mail cannot be read, so its replies raise no request: its reply still stops the draft it answers, and the opt-out is then for a person to record.
 
-A new sender whose address is at a company's domain is linked to that company, when exactly one company holds the domain.
+A new sender whose address is at a company's domain is linked to that company, when exactly one company holds the domain. A conversation that starts with mail you send is linked to the contact of its first To address, when that address already has a contact; sending never creates one.
 
 An agent can check up to 50 addresses at a time (`mail:suppression_check`, scope `mail:suppressions:read`). It says when and how each person opted out.
 
@@ -187,7 +187,7 @@ The footer is written in the recipient's language: the language recorded on thei
 An agent's commercial mail goes only to someone whose contact records a lawful basis: consent, existing customer, professional interest, or a generic company address. The check refuses it, and names the person, when:
 
 - no basis is recorded (contacts that existed before these fields have none until someone records one);
-- the person is recorded as a consumer, or nobody recorded whether they are one, and the basis is not consent;
+- the person is recorded as a consumer, or nobody recorded whether they are one and their contact is on no company, and the basis is not consent. A contact on a company with nothing recorded counts as a business;
 - their country's rule asks for consent and the basis is something else. The default rule is opt-out for France and consent everywhere else; a contact with no recorded country takes the rule for everywhere else;
 - two contacts at the same address record different bases. A person keeps one, by merging the contacts or correcting one.
 

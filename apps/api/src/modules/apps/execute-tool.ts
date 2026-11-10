@@ -82,6 +82,7 @@ import { withAppDimensionAliases } from "~/modules/apps/runtime-helpers"
 import { isBundleLoadError, loadBundle } from "~/modules/apps/sandbox/bundle-loader"
 import {
   exportOnlyBundle,
+  holdingExportOnlyBuilds,
   useFullBundle,
   watchBridgeCalls,
 } from "~/modules/apps/sandbox/bundle-shake"
@@ -3191,7 +3192,11 @@ export async function executeToolHandler(
     // from the stored payload and may predate the fill, and because a fill is idempotent:
     // a value that is present is never replaced.
     const handlerParams = withManifestDefaults(tool, validatedParams)
-    const runManifest = (bridge: Record<string, any>, holdsTx: boolean): Promise<unknown> => {
+    // No export-only build starts while a run is in flight (bundle-shake.ts): a page's burst
+    // of first calls is answered before any build takes the host's CPU.
+    const runManifest = (bridge: Record<string, any>, holdsTx: boolean): Promise<unknown> =>
+      holdingExportOnlyBuilds(() => runManifestOrFull(bridge, holdsTx))
+    const runManifestOrFull = (bridge: Record<string, any>, holdsTx: boolean): Promise<unknown> => {
       if (bundleSource === fullBundle) {
         return runManifestOnce(bridge, holdsTx, fullBundle).catch((err: unknown) => {
           attachUpstreamTrace(err, upstreamTrace)

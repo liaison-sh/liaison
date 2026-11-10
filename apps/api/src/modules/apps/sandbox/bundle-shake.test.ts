@@ -14,6 +14,7 @@ import {
   exportOnlyBundleCacheBytes,
   exportOnlyBundleCacheSize,
   exportOnlyBundle as exportOnlyBundleOf,
+  holdingExportOnlyBuilds,
   useFullBundle,
   watchBridgeCalls,
 } from "~/modules/apps/sandbox/bundle-shake"
@@ -99,6 +100,23 @@ describe("export-only bundles", () => {
     const shaken = await settled(SCRIPT, "handler")
     expect(shaken).not.toBe(SCRIPT)
     expect(shaken.length).toBeLessThan(SCRIPT.length)
+  })
+
+  it("starts no build while a run is in flight, and builds once the runs end", async () => {
+    let release = () => {}
+    const held = holdingExportOnlyBuilds(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve
+        }),
+    )
+    expect(exportOnlyBundle(SCRIPT, "handler")).toBe(SCRIPT)
+    // Long enough for an unheld build of this bundle to have finished several times over.
+    await Bun.sleep(500)
+    expect(exportOnlyBundle(SCRIPT, "handler")).toBe(SCRIPT)
+    release()
+    await held
+    expect(await settled(SCRIPT, "handler")).not.toBe(SCRIPT)
   })
 
   it("an upgraded bundle never runs the previous version's export-only bundle", async () => {

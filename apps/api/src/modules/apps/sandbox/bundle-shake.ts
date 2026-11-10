@@ -27,11 +27,16 @@
  * version, new bytes, misses and builds again) and the export it keeps. The
  * cache is bounded by the text of the export-only bundles it holds
  * (MAX_BYTES, sized from every first-party read-only handler warm at once) and
- * by its entry count; at most MAX_BUILDS builds run at a time.
+ * by its entry count.
  *
  * The build runs in the background: until it is done (or when it fails, or
  * when its output does not define the export as a global) the caller gets the
- * full bundle, exactly what it ran before.
+ * full bundle, exactly what it ran before. A build is a whole-bundle parse on
+ * the API host (CPU, and part of it on the API thread), so builds queue and run
+ * one at a time, and only while no sandboxed run that asked for one is in
+ * flight (`holdingExportOnlyBuilds`): the burst of first calls a page open
+ * makes is answered first, and the builds follow in the quiet after it. A build
+ * that waits MAX_DEFER_MS runs anyway, so a host that is never idle still trims.
  */
 import {
   esmExportsToGlobalThis,
@@ -49,8 +54,12 @@ import { importAttributeIssue } from "~/modules/apps/sandbox/import-attributes"
 const MAX_BYTES = 48 * 1024 * 1024
 /** Entries kept, any state: bounds the keys of bundles that hold no text. */
 const MAX_ENTRIES = 2048
-/** Builds running at once: each is a whole-bundle parse on the API host. */
-const MAX_BUILDS = 2
+/** Builds waiting at once; a miss past it runs the full bundle and asks again later. */
+const MAX_QUEUED = 512
+/** Longest a queued build waits for the runs in flight to end before it runs anyway. */
+const MAX_DEFER_MS = 30_000
+/** How often a build held by runs in flight looks again. */
+const RECHECK_MS = 250
 /** The export names a bundle can be shaken for (they are interpolated). */
 const SAFE_EXPORT_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/
 const ENTRY = "/liaison-export-only-entry.js"
@@ -58,7 +67,11 @@ type Entry = { state: "building" } | { state: "ready"; source: string } | { stat
 
 const cache = new Map<string, Entry>()
 let cachedBytes = 0
-let building = 0
+/** Sandboxed runs in flight that asked for an export-only bundle. */
+let running = 0
+let buildRunning = false
+let buildTimer: ReturnType<typeof setTimeout> | null = null
+const queue: Array<{ key: string; source: string; exportName: string; queuedAt: number }> = []
 
 /** Who an app's code comes from, as the registry recorded it at install. */
 export interface BundleProvenance {
@@ -170,10 +183,50 @@ export function exportOnlyBundle(
     remember(key, hit)
     return hit.state === "ready" ? hit.source : source
   }
-  // Two builds already running: this call runs the full bundle, a later one builds.
-  if (building >= MAX_BUILDS) return source
+  // The queue is full: this call runs the full bundle, a later one queues the build.
+  if (queue.length >= MAX_QUEUED) return source
   remember(key, { state: "building" })
-  building++
+  queue.push({ key, source, exportName, queuedAt: performance.now() })
+  scheduleBuild(0)
+  return source
+}
+
+/**
+ * Run `run` (a sandboxed run of a bundle `exportOnlyBundle` chose) with the
+ * export-only builds held: none starts while a held run is in flight.
+ */
+export async function holdingExportOnlyBuilds<T>(run: () => Promise<T>): Promise<T> {
+  running++
+  try {
+    return await run()
+  } finally {
+    running--
+    if (running === 0) scheduleBuild(0)
+  }
+}
+
+function scheduleBuild(delayMs: number): void {
+  if (buildTimer || buildRunning || queue.length === 0) return
+  buildTimer = setTimeout(startNextBuild, delayMs)
+  buildTimer.unref?.()
+}
+
+function startNextBuild(): void {
+  buildTimer = null
+  const next = queue[0]
+  if (buildRunning || !next) return
+  if (running > 0 && performance.now() - next.queuedAt < MAX_DEFER_MS) {
+    scheduleBuild(RECHECK_MS)
+    return
+  }
+  queue.shift()
+  const { key, source, exportName } = next
+  // Evicted, or asked to use the full bundle, while it waited: nothing to build.
+  if (cache.get(key)?.state !== "building") {
+    scheduleBuild(0)
+    return
+  }
+  buildRunning = true
   void buildExportOnlyBundle(source, exportName)
     .then(
       (shaken) => {
@@ -186,9 +239,9 @@ export function exportOnlyBundle(
       },
     )
     .finally(() => {
-      building--
+      buildRunning = false
+      scheduleBuild(0)
     })
-  return source
 }
 
 /**
@@ -245,4 +298,5 @@ export function exportOnlyBundleCacheBytes(): number {
 export function clearExportOnlyBundleCache(): void {
   cache.clear()
   cachedBytes = 0
+  queue.length = 0
 }

@@ -68,4 +68,5 @@ Archive route needs kernel:agents:admin -> apps/api/src/modules/agent/directory/
 Base agent cannot be archived -> apps/api/src/modules/agent/directory/archive.ts:41
 Personal agent ceiling follows its owner's grants on every permission event -> apps/api/src/modules/agent/directory/personal-agent.ts:33
 Admin narrowing kept as ceiling_restriction, cleared when it covers the owner -> apps/api/src/modules/agent/directory/definition-routes.ts:1334
-Common base includes dashboards (list, build personal) -> apps/api/src/modules/agent/directory/common-base-scopes.ts:51
+Common base includes dashboards (list, build personal) -> apps/api/src/modules/agent/directory/common-base-scopes.ts:61
+Boot adds missing base scopes to live role and system agents, additive, personal untouched -> apps/api/src/modules/agent/directory/reconcile-base-ceilings.ts:65 ; apps/api/src/db/reconcile-catalog-boot.ts:238

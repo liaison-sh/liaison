@@ -414,12 +414,19 @@ export async function stageSendApproval(
 }
 
 /** After issue: stage the send approval when the document is an e_invoice issued on or after the
- *  cut-over and sending is on. Returns the approval id, or null when nothing was staged. */
-export async function stageSendAfterIssue(ctx: EinvCtx, documentId: string): Promise<string | null> {
+ *  cut-over and sending is on. Returns the approval id, or null when nothing was staged.
+ *  `send: "batch"`: issued with no person, the document waits for the daily send card instead
+ *  (`awaiting_send_batch`), and nothing is staged for it alone. */
+export async function stageSendAfterIssue(ctx: EinvCtx, documentId: string, opts: { send?: "stage" | "batch" } = {}): Promise<string | null> {
   const settings = await readEinvoicingSettings(ctx.db)
   if (!settings.provider_app || !settings.send_enabled) return null
   const doc = ((await ctx.db.findMany("documents", { where: { id: documentId }, limit: 1 })) as Row[])[0]
   if (!doc || doc.regime !== "e_invoice" || !onOrAfterCutover(doc.issued_at, settings.cutover_date)) return null
+  if (doc.einvoice_state === "awaiting_send_batch") return null
+  if (opts.send === "batch") {
+    await ctx.db.update("documents", documentId, { einvoice_state: "awaiting_send_batch", einvoice_send_requested_at: new Date().toISOString() })
+    return null
+  }
   const r = await stageSendApproval(ctx, documentId)
   if ("approval_id" in r) return r.approval_id
   // The issuer may send it themselves: nothing was staged and nothing is blocked.

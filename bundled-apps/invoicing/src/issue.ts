@@ -338,6 +338,9 @@ export interface IssueInput {
   external_ref?: string | null
   /** Change-log entries the issued document carries over from the draft it replaces. */
   lifecycle_carry?: Array<Record<string, unknown>>
+  /** "batch": issued with no person (a month-end run issuing by itself), so an e-invoice waits
+   *  for the daily send card instead of its own send approval. */
+  einvoice_send?: "stage" | "batch"
 }
 
 export interface IssueResult {
@@ -1475,7 +1478,7 @@ export async function issueDocument(
   let einvoiceSend: { approval_id: string } | null = null
   if (pdfStatus === "ready" && pdfFileId && ctx.requestApproval) {
     try {
-      const staged = await stageSendAfterIssue(ctx as unknown as EinvCtx, documentId)
+      const staged = await stageSendAfterIssue(ctx as unknown as EinvCtx, documentId, { send: input.einvoice_send ?? "stage" })
       if (staged) einvoiceSend = { approval_id: staged }
     } catch (err) {
       newLog.push({

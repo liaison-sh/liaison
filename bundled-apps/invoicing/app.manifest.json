@@ -740,6 +740,41 @@
         }
       }
     },
+    "einvoice_send_batches": {
+      "rlsScope": "documents",
+      "fields": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "approved",
+            "released"
+          ]
+        },
+        "document_ids": {
+          "type": "json",
+          "required": false
+        },
+        "numbers": {
+          "type": "json",
+          "required": false
+        },
+        "items": {
+          "type": "json",
+          "required": false
+        },
+        "skipped": {
+          "type": "json",
+          "required": false
+        },
+        "provider_app": "text?",
+        "approval_request_id": "text?",
+        "requested_at": "text?",
+        "finished_at": "text?",
+        "oldest_waiting_since": "text?",
+        "waiting_alert_document_id": "text?"
+      }
+    },
     "einvoicing_orphan_events": {
       "rlsScope": "documents",
       "fields": {
@@ -2032,6 +2067,38 @@
       "summarizer": "summarizeEinvoiceBookBatch",
       "approvalCard": {
         "summary": "Book the day's reported sales in the e-invoicing platform's ledger"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "batch_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "batch_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "einvoice_send_batch": {
+      "description": "Send one day's batch of e-invoices issued with no person (a month-end run issuing by itself) through the e-invoicing platform. Created by the daily send job; runs once a person approves the batch, preparing each document's send under its own approval.",
+      "requiredScopes": [
+        "invoicing:documents:write"
+      ],
+      "handler": "einvoiceSendBatchHandler",
+      "gated": true,
+      "noAutoApprove": true,
+      "approvalImpact": "external",
+      "approvalExpiryHours": 24,
+      "editableFields": [],
+      "trustBoundary": "user",
+      "agentVisible": false,
+      "atomic": false,
+      "timeoutMs": 60000,
+      "writesToTable": "app_invoicing.einvoice_transmissions",
+      "approvalCard": {
+        "summary": "Send the day's e-invoices issued with no person through the e-invoicing platform"
       },
       "params": {
         "type": "object",
@@ -6119,6 +6186,7 @@
       "einvoicing:not_in_directory",
       "einvoicing:routing_mismatch",
       "einvoicing:booking_failed",
+      "einvoicing:send_waiting",
       "einvoicing:booking_summary",
       "einvoicing:booking_invariant_breach",
       "einvoicing:orphan_event",
@@ -6245,6 +6313,20 @@
         "recipients": {
           "kind": "scope_holders",
           "scope": "invoicing:documents:write"
+        },
+        "resolveWhen": {
+          "field": "resolved",
+          "equals": true
+        }
+      },
+      {
+        "event": "einvoicing:send_waiting",
+        "kind": "invoicing:einvoicing.send_waiting",
+        "urgency": 50,
+        "summary": "E-invoice {{data.number}} has waited for the daily send card since {{data.since}}: nobody approved a card since. Approve the next one to send it.",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "invoicing:settings:write"
         },
         "resolveWhen": {
           "field": "resolved",
@@ -6489,6 +6571,13 @@
       "atomic": false,
       "runsFor": {"rows": {"entity": "einvoicing_settings", "where": {"provider_app": {"not": null}}}},
       "schedule": "15 5 * * *",
+      "timeoutMs": 120000
+    },
+    "einvoicing-send-daily": {
+      "handler": "einvoicingSendDailyJobHandler",
+      "atomic": false,
+      "runsFor": {"rows": {"entity": "einvoicing_settings", "where": {"provider_app": {"not": null}}}},
+      "schedule": "20 5 * * *",
       "timeoutMs": 120000
     },
     "einvoicing-received-catchup": {

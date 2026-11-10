@@ -102,7 +102,8 @@ export async function recurringItemIssue(
   // The issued document takes the period's key; the draft gives it up first (the key is unique).
   await ctx.db.update("documents", draftId, { external_ref: null })
   const carried = jsonOf<Array<Record<string, unknown>>>(draft.lifecycle_log, [])
-  const issued = await issueRunDraft(ctx, { draft_id: draftId, external_ref: externalRef, lifecycle_log: carried })
+  // A run that issued by itself had no person: its e-invoices wait for the daily send card.
+  const issued = await issueRunDraft(ctx, { draft_id: draftId, external_ref: externalRef, lifecycle_log: carried, ...(run.auto === true ? { einvoice_send: "batch" as const } : {}) })
   if (issued.status !== "completed") {
     // Thrown, so the transaction rolls back whole: the claim, the cleared key, any number.
     const why = issued.status === "error" ? `${issued.error.code}: ${issued.error.message}` : "not_issued: the issue asked for an approval"

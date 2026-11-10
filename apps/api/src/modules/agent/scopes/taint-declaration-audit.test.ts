@@ -157,7 +157,12 @@ describe("taint declaration audit", () => {
   it("the sweep covers kernel tools and every bundled app (non-vacuous)", () => {
     const apps = new Set(orgTools().map(([[, app]]) => app))
     expect(bundled.length).toBeGreaterThanOrEqual(5)
-    expect(bundled.filter((name) => !apps.has(name))).toEqual([])
+    // An app that declares no tool (a connector whose tools come later) registers none.
+    const withTools = bundled.filter(
+      (name) => Object.keys((bundledDescriptor(name).tools as object | undefined) ?? {}).length > 0,
+    )
+    expect(withTools.length).toBeGreaterThanOrEqual(5)
+    expect(withTools.filter((name) => !apps.has(name))).toEqual([])
     expect(apps.has("kernel")).toBe(true)
     expect(orgTools().length).toBeGreaterThan(100)
   })

@@ -55,7 +55,11 @@ beforeAll(async () => {
   const org = await minimal.secondOrg({ name: "Credential Refuse Org" })
   orgId = org.orgId
   token = await minimal.token(org.adminUserId)
-  connectionConfigRegistry.set([orgId, "stripe", "stripe"], MANIFEST.connections.stripe)
+  // The field's own rule only: the app's check before storage is not installed here.
+  connectionConfigRegistry.set([orgId, "stripe", "stripe"], {
+    ...MANIFEST.connections.stripe,
+    checkBeforeStore: undefined,
+  })
 })
 
 afterAll(async () => {

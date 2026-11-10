@@ -41,7 +41,7 @@ After the key is saved, ask the agent to check it (it uses `connection_check`, w
 - **Read works** or **Write allowed**: the permission is there.
 - **Missing: give Read to Disputes** (for example): that permission is missing. The connection stays usable; what that permission covers is not read until you add it to the key in Stripe and run the check again.
 
-The check refuses, and changes nothing, when:
+Liaison also runs this check on a new key before it keeps it. The check refuses, and the key already saved stays the one Liaison uses, when:
 
 | Answer | What happened | What to do |
 |---|---|---|

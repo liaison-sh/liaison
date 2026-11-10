@@ -18,6 +18,7 @@ import { createHash } from "node:crypto"
 import { isCardNumber } from "@liaison/shared"
 import type { TestWorld, WorkerEnv } from "@liaison/test-helpers"
 import { api } from "@liaison/test-helpers"
+import { CryptoContext, decryptSecret } from "~/lib/crypto"
 import { setupScenario, teardownScenario } from "./setup"
 
 // Full length, so a mask that needs 10 key characters would find them.
@@ -25,6 +26,9 @@ const RESTRICTED = `rk_test_${"51HxQzA9bC3dE4fG5hI6jKmN"}`
 const SECRET = `sk_test_${"4eC39HqLyjWDarjtT1zdp7dc"}`
 const KEY_SHAPE = /(rk|sk)_(live|test)_[A-Za-z0-9]{10,}|whsec_[A-Za-z0-9]{10,}/
 const PAN = "4917484589897107"
+// A live-mode key of the same length, refused while the connection holds test-mode data.
+const LIVE_RESTRICTED = `rk_live_${"9ZyXwVuTsRqPoNmLkJiHgFeD"}`
+const sha = (v: string) => createHash("sha256").update(v).digest("hex")
 
 function buildBundle(): void {
   const r = spawnSync("bash", ["scripts/build-bundled-app.sh", "stripe", "--skip-sign"], {
@@ -152,5 +156,58 @@ describe("payments connector: connecting holds no key anywhere", () => {
     expect(cardNumbersIn(`card ${PAN}`)).toEqual([PAN])
     expect(cardNumbersIn(logs)).toEqual([])
     expect(logs).not.toMatch(/"(cvc|cvv|number)"\s*:\s*"\d/)
+  })
+
+  it("a key of the other mode is refused before it is stored, and the stored key stays the one a sync uses", async () => {
+    const token = world.admin.token
+    // The stored key's check records the connection's mode (test).
+    const first = await api(url, "/api/apps/tools/stripe:connection_check", {
+      method: "POST",
+      token,
+      body: { params: {}, threadId },
+    })
+    expect(JSON.stringify(first.body)).toContain('"mode":"test"')
+    await api(url, "/api/_test/stripe/mock/reset", { method: "POST", token })
+
+    const refused = await api(url, "/api/connections/stripe/stripe/credentials", {
+      method: "POST",
+      token,
+      body: { mode: "org", credentials: { restrictedKey: LIVE_RESTRICTED } },
+    })
+    expect(refused.status).toBe(422)
+    expect((refused.body as { error: { code: string } }).error.code).toBe("mode_changed")
+    expect(JSON.stringify(refused.body)).not.toContain(LIVE_RESTRICTED)
+    // The check did run with the new key (positive control)...
+    const during = await api(url, "/api/_test/stripe/mock/requests", { token })
+    const sent = (during.body as { requests: Array<{ authorizationSha256: string | null }> })
+      .requests
+    expect(sent.length).toBeGreaterThan(0)
+    expect(sent.every((r) => r.authorizationSha256 === sha(LIVE_RESTRICTED))).toBe(true)
+
+    // ...and the stored credential still decrypts to the first key.
+    const rows = (await env.db.sql.unsafe(
+      `SELECT credentials_encrypted AS c FROM ${schema}.connected_accounts
+       WHERE org_id = $1 AND app_name = 'stripe' AND status = 'active'`,
+      [world.org.id],
+    )) as unknown as Array<{ c: string }>
+    expect(rows).toHaveLength(1)
+    const stored = JSON.parse(
+      decryptSecret(rows[0]?.c ?? "", env.encryptionKey, CryptoContext.connectedAccountCredentials),
+    ) as { restrictedKey: string }
+    expect(stored.restrictedKey === RESTRICTED).toBe(true)
+
+    // A sync after the refusal reaches Stripe with the first key.
+    await api(url, "/api/_test/stripe/mock/reset", { method: "POST", token })
+    const after = await api(url, "/api/apps/tools/stripe:connection_check", {
+      method: "POST",
+      token,
+      body: { params: {}, threadId },
+    })
+    expect(after.status).toBe(200)
+    const synced = await api(url, "/api/_test/stripe/mock/requests", { token })
+    const used = (synced.body as { requests: Array<{ authorizationSha256: string | null }> })
+      .requests
+    expect(used.length).toBeGreaterThanOrEqual(10)
+    expect(used.every((r) => r.authorizationSha256 === sha(RESTRICTED))).toBe(true)
   })
 })

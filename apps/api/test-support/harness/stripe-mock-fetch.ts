@@ -71,6 +71,13 @@ freshStore()
 /** Resources the key check lists that the connector does not mirror: an empty list. */
 const LIST_ONLY = new Set(["payment_methods", "products", "prices"])
 
+/** A live key sees live-mode objects, a test key test-mode ones, as in Stripe. */
+function inMode<T>(obj: T, live: boolean): T {
+  return obj && typeof obj === "object" && "livemode" in (obj as object)
+    ? { ...obj, livemode: live }
+    : obj
+}
+
 function bearerSha256(header: string | null): string | null {
   const token = header?.replace(/^Bearer\s+/i, "")
   return token ? createHash("sha256").update(token).digest("hex") : null
@@ -199,12 +206,13 @@ export function makeStripeMockFetch(realFetch: typeof fetch = fetch): typeof fet
       )
     }
     const objects = store.get(resource as StripeMockResource) ?? new Map()
+    const live = /^Bearer\s+(rk|sk)_live_/i.test(headers.get("authorization") ?? "")
     if (method === "GET" && !id) {
       const limit = Number(parsed.searchParams.get("limit") ?? 10)
       const all = [...objects.values()]
       return json({
         object: "list",
-        data: all.slice(0, limit),
+        data: all.slice(0, limit).map((o) => inMode(o, live)),
         has_more: all.length > limit,
         url: `/v1/${resource}`,
       })
@@ -212,7 +220,7 @@ export function makeStripeMockFetch(realFetch: typeof fetch = fetch): typeof fet
     if (method === "GET" && id) {
       const obj = objects.get(id)
       return obj
-        ? json(obj)
+        ? json(inMode(obj, live))
         : stripeError(
             404,
             "invalid_request_error",

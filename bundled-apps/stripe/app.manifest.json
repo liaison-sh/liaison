@@ -1,6 +1,6 @@
 {
   "name": "stripe",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "kind": "connector",
   "iconName": "credit-card",
   "description": "Stripe connector: a read mirror of customers, subscriptions, invoices, payments, refunds and disputes, kept current by a signed webhook.",
@@ -83,6 +83,7 @@
           }
         }
       ],
+      "checkBeforeStore": "connection_precheck",
       "appSecretConfigKeys": [
         "webhookSigningSecret",
         "webhookSigningSecretPrevious"
@@ -164,6 +165,22 @@
           "meta": "{{item.meta}}",
           "limit": 10
         }
+      }
+    },
+    "connection_precheck": {
+      "readOnly": true,
+      "agentVisible": false,
+      "description": "The key check run on a key before it is stored: a key Stripe refuses, of another account or of the other mode is not kept. Records nothing.",
+      "requiredScopes": [
+        "stripe:admin:connection"
+      ],
+      "trustBoundary": "user",
+      "handler": "connectionPrecheck",
+      "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
       }
     },
     "settings_load": {

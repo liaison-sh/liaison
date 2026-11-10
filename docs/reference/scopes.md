@@ -352,7 +352,7 @@ Stripe: customers, subscriptions, invoices and payments from your Stripe account
 
 | Scope | Declared by | Description |
 | --- | --- | --- |
-| `stripe:admin:connection` | manifest scopes; role admin; tools connection_check, settings_load |  |
+| `stripe:admin:connection` | manifest scopes; role admin; tools connection_check, connection_precheck, settings_load |  |
 | `stripe:approve` | approver scope | Decide (approve, edit, or deny) stripe approvals raised by its gated tools |
 | `stripe:customers:read` | manifest scopes; role member |  |
 | `stripe:customers:write` | manifest scopes; role billing |  |

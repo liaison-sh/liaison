@@ -44,3 +44,5 @@ REST tool call from a device sign-in judged like MCP, one hidden thread per sign
 A message a device sign-in posts is not a typed turn: tools that need one park, the outside-text mark stays -> apps/api/src/modules/agent/runtime/agent-service.ts:1931-1938
 credentialFields refusePattern: pattern, code, message, messageKey -> apps/api/src/modules/apps/manifest-schema.ts:274
 refused value answers 422 with code and message, never the value -> apps/api/src/modules/apps/connections/routes.ts:473
+checkBeforeStore: read-only tool run with the candidate key; refusal stops the save -> apps/api/src/modules/apps/manifest-schema.ts:395
+candidate key reaches only that run's requests -> apps/api/src/modules/apps/sandbox/bridge/context.ts:1158

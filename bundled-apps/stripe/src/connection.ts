@@ -225,7 +225,12 @@ const modeWord = (live: boolean) => (live ? "live" : "test")
  */
 export async function runConnectionCheck(
   ctx: ConnectionCtx,
-  opts: { now?: Date; sleep?: (ms: number) => Promise<void> } = {},
+  opts: {
+    now?: Date
+    sleep?: (ms: number) => Promise<void>
+    /** The check of a key not stored yet: answers the same, records nothing. */
+    dryRun?: boolean
+  } = {},
 ): Promise<ConnectionCheckResult | ToolRefusal> {
   const now = opts.now ?? new Date()
   const install = await readInstall(ctx.db)
@@ -237,7 +242,7 @@ export async function runConnectionCheck(
   if (known.length > 0) {
     const answers: Probe[] = []
     for (const path of known) answers.push(await probe(ctx, path, {}, opts.sleep))
-    if (answers.some((a) => a.status === 401)) return await keyRefused(ctx, install, current)
+    if (answers.some((a) => a.status === 401)) return await keyRefused(ctx, install, current, opts.dryRun)
     if (answers.every((a) => a.status === 404)) {
       return refuseTool(
         "different_account",
@@ -250,7 +255,7 @@ export async function runConnectionCheck(
   const reads: Array<Probe & { resource: string; label: string }> = []
   for (const r of PERMISSION_READS) {
     const p = await probe(ctx, r.path, { params: { limit: 1 } }, opts.sleep)
-    if (p.status === 401) return await keyRefused(ctx, install, current)
+    if (p.status === 401) return await keyRefused(ctx, install, current, opts.dryRun)
     reads.push({ ...p, resource: r.resource, label: r.label })
   }
   const refund = await probe(
@@ -259,7 +264,7 @@ export async function runConnectionCheck(
     { method: "POST", params: { charge: REFUND_PROBE_CHARGE } },
     opts.sleep,
   )
-  if (refund.status === 401) return await keyRefused(ctx, install, current)
+  if (refund.status === 401) return await keyRefused(ctx, install, current, opts.dryRun)
 
   // 3. The mode, from any object Stripe returned.
   const seen = reads.find((r) => r.livemode !== null)?.livemode ?? null
@@ -289,7 +294,9 @@ export async function runConnectionCheck(
     permissions,
     livemode: (mode ?? previous?.mode) === "live",
   }
-  if (install) await ctx.db.update("install_metadata", install.id, data)
+  if (opts.dryRun) {
+    // Nothing recorded: the key is not stored yet.
+  } else if (install) await ctx.db.update("install_metadata", install.id, data)
   else await ctx.db.insert("install_metadata", { ...data, connected_at: now.toISOString() })
 
   const ok = rows.length - missing.length - failed.length
@@ -337,8 +344,10 @@ async function keyRefused(
   ctx: ConnectionCtx,
   install: InstallRow | null,
   current: ConnectionState,
+  dryRun = false,
 ): Promise<ToolRefusal> {
-  if (install) {
+  // A key not stored yet says nothing about the stored one: only a stored key's refusal moves the state.
+  if (install && !dryRun) {
     await ctx.db.update("install_metadata", install.id, {
       state: encodeState(transition(current, { kind: "key_refused" })),
     })

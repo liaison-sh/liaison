@@ -8,7 +8,7 @@
 // ingests nothing yet.
 import type { UpstreamProbeResult, WebhookResult } from "@liaison/app-sdk"
 
-export { connectionCheck, settingsLoad } from "./tools/connection-check"
+export { connectionCheck, connectionPrecheck, settingsLoad } from "./tools/connection-check"
 
 export interface WebhookVerifyParams {
   headers: Record<string, string>

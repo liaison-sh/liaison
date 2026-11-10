@@ -389,6 +389,10 @@ const connectionSchema = {
     refreshUsesAccessToken: { type: "boolean" },
     refreshWindowMs: { type: "number" },
     credentialFields: { type: "array", items: credentialFieldSchema },
+    // Credentials only: a read-only tool of the app run with the candidate key
+    // before it is stored; its refusal stops the save, so the stored key stays
+    // (connections/precheck.ts).
+    checkBeforeStore: { type: "string", pattern: "^[a-z][a-z0-9_]*$" },
     // Credentials only: several org-owned accounts per org, each keyed by its
     // slug identifier (the credentials route then requires `identifier`).
     multiInstance: { type: "boolean" },

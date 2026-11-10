@@ -268,6 +268,7 @@ import {
   primeOrgApps,
 } from "~/modules/apps/org-apps"
 import { featureOffAnswer } from "~/modules/apps/org-features"
+import type { CandidateCredentials } from "~/modules/apps/sandbox/bridge/context"
 import { sealMailApprovalPayload } from "~/modules/mailbox-crypto/approval-payload"
 import { CapLimitError } from "~/modules/org/caps"
 import {
@@ -372,6 +373,14 @@ interface ExecuteToolParams {
    * request lifetime to observe (jobs, routines, cross-app calls).
    */
   signal?: AbortSignal
+  /**
+   * Credentials not yet stored, which this run's `ctx.fetch({auth})` and
+   * `connections_getCredentials` use for `connection` instead of the stored
+   * ones: the connection's check before a key is kept
+   * (connections/precheck.ts). Host side only; never reaches the sandbox, a
+   * nested call, a result or a log.
+   */
+  candidateCredentials?: CandidateCredentials
   /**
    * The kernel.agents row acting in this dispatch, for a caller that is not
    * inside an agent run frame and so cannot be read from one: the MCP gateway,
@@ -3008,6 +3017,8 @@ export async function executeToolHandler(
   },
   bridgeOptions?: {
     callChain?: string[]
+    /** Credentials not yet stored, for the connection's check (ExecuteToolParams). */
+    candidateCredentials?: CandidateCredentials
     /**
      * The sandbox EXECUTION this dispatch runs inside, as a per-execution id.
      * It is what bounds one handler's `Promise.all` fan-out: every hop that one
@@ -5704,6 +5715,9 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
             priority: opts.priority, // propagate worker-pool scheduling class (main handler site)
             nested: isNestedDispatch, // reentrancy admission (main handler site)
             signal: opts.signal,
+            ...(opts.candidateCredentials
+              ? { candidateCredentials: opts.candidateCredentials }
+              : {}),
             actingAgentId, // FX3-1: the agent this dispatch acts as (main handler site)
             turnTaintScopes: handlerTurnTaint,
           },

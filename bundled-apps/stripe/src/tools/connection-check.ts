@@ -6,6 +6,10 @@ import { decodeState, readInstall, runConnectionCheck, storedPermissions, type C
 
 export const connectionCheck = (_params: Record<string, never>, ctx: ConnectionCtx) => runConnectionCheck(ctx)
 
+/** The kernel's check of a key before it is stored (`checkBeforeStore`): same answers, records nothing. */
+export const connectionPrecheck = (_params: Record<string, never>, ctx: ConnectionCtx) =>
+  runConnectionCheck(ctx, { dryRun: true })
+
 export async function settingsLoad(_params: Record<string, never>, ctx: ConnectionCtx) {
   const install = await readInstall(ctx.db)
   const permissions = storedPermissions(install)

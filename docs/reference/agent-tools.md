@@ -801,6 +801,7 @@ Stripe: customers, subscriptions, invoices and payments from your Stripe account
 | Tool | Description | Approval-gated | Required scopes |
 | --- | --- | --- | --- |
 | `connection_check` | Check the saved Stripe key: one read per permission Liaison uses and a refund probe that creates nothing. |  | `stripe:admin:connection` |
+| `connection_precheck` | The key check run on a key before it is stored: a key Stripe refuses, of another account or of the other mode is not kept. |  | `stripe:admin:connection` |
 | `settings_load` | The Stripe settings page's load: the connection state and the key's permissions from the last check. |  | `stripe:admin:connection` |
 
 ## tickets

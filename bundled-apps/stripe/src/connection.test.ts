@@ -163,6 +163,23 @@ describe("the key check", () => {
   })
 })
 
+describe("the check of a key before it is stored", () => {
+  it("answers like the check and records nothing, even when Stripe refuses the key", async () => {
+    const before = { install_metadata: [{ id: "i1", state: "connected", permissions: null }] }
+    const ok = memDb(before)
+    const result = await runConnectionCheck({ fetch: fakeStripe().fetch, db: ok.db }, { sleep: noSleep, dryRun: true })
+    expect("status" in result).toBe(false)
+    expect(ok.tables).toEqual(before)
+    const refused = memDb(before)
+    const r401 = await runConnectionCheck(
+      { fetch: fakeStripe({ "GET /v1/customers": { status: 401 } }).fetch, db: refused.db },
+      { sleep: noSleep, dryRun: true },
+    )
+    expect(r401).toMatchObject({ status: "error", error: { code: "key_invalid" } })
+    expect(refused.tables).toEqual(before)
+  })
+})
+
 describe("the secret key refusal declared by the connection", () => {
   const field = JSON.parse(readFileSync(join(import.meta.dir, "..", "app.manifest.json"), "utf8")).connections.stripe
     .credentialFields[0]

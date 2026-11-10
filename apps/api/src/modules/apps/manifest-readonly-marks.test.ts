@@ -254,7 +254,7 @@ const READ_ONLY: Record<string, string[]> = {
     "recurring_run_get",
     // Who a month-end run's card is for (approvalRoute), asked by the kernel.
     "approval_route_read",
-    // Who issues what per issuer profile, and the card stream's issuer the Stripe app's refunds read.
+    // Who issues what per issuer profile, and the card stream's issuer the payment connector's refunds read.
     "issuer_stream_get",
     "card_stream_issuer",
   ],

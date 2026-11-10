@@ -129,13 +129,13 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   shopify_draft_order_id: 400,
   draft_order_id_missing: 400,
   issuer_not_found: 404,
-  // Who issues what: a customer a live Stripe subscription bills, a Stripe mirror that cannot say
-  // yet, a card stream's issuer left unpicked, a stream with no choice, Stripe not connected.
-  stripe_stream_conflict: 409,
-  stripe_guard_unavailable: 503,
+  // Who issues what: a customer a live card subscription bills, a payment mirror that cannot say
+  // yet, a card stream's issuer left unpicked, a stream with no choice, no card stream connected.
+  subscription_stream_conflict: 409,
+  subscription_check_unavailable: 503,
   issuer_required: 400,
   stream_not_choosable: 400,
-  stripe_not_connected: 409,
+  card_stream_not_connected: 409,
   issuer_unknown: 503,
   // Month-end run rows: a required argument is missing, the row changed under the caller, the run
   // no longer takes changes, or "from now on" has no schedule to change.

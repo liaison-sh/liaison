@@ -59,12 +59,12 @@ export async function recurringItemIssue(
     const schedule = before.schedule_id ? ((await ctx.db.findOne("recurring_schedules", String(before.schedule_id))) as Row | null) : null
     const hold = draftBefore && draftBefore.status === "draft" ? await rowIssuerHold(ctx, draftBefore, schedule) : null
     if (hold) {
-      const code = hold === BILLED_BY_STRIPE ? "stripe_stream_conflict" : "stripe_guard_unavailable"
+      const code = hold === BILLED_BY_STRIPE ? "subscription_stream_conflict" : "subscription_check_unavailable"
       const message =
-        code === "stripe_stream_conflict"
+        code === "subscription_stream_conflict"
           ? `Item ${input.item_id} was not issued and no number was used: its customer pays a live Stripe subscription, which already invoices them. It stays a draft; take it out of the run, or say on its schedule what else it bills.`
           : `Item ${input.item_id} was not issued and no number was used: Stripe is connected but could not say whether its customer pays a subscription. It stays a draft, and the run names it until it is issued again.`
-      if (code === "stripe_stream_conflict") {
+      if (code === "subscription_stream_conflict") {
         await ctx.db.update("recurring_run_items", input.item_id, { state: "needs_fix", approved_hash: null, note: BILLED_BY_STRIPE, failure: { code, message } })
       }
       return fail(code, message)

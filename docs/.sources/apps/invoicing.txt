@@ -218,7 +218,7 @@ issuer_stream_set gated, never auto-approved, editable issuer -> bundled-apps/in
 A switch applies from its confirmation, earlier invoices keep issuer and numbers, unpaid ones alert -> bundled-apps/invoicing/src/streams.ts:69 ; bundled-apps/invoicing/src/streams.ts:223
 Stripe's emails: asked until a person confirms, an agent's call waits -> bundled-apps/invoicing/src/streams.ts:255 ; bundled-apps/invoicing/src/ui/IssuerStreams.tsx:49
 One customer, one issuer on six tools and the month-end row -> bundled-apps/invoicing/src/issuer-guard.ts:1 ; bundled-apps/invoicing/src/recurring/issue-job.ts:54
-stripe_guard_unavailable until imported or while the key cannot read -> bundled-apps/stripe/src/tools/routes.ts:43
+subscription_check_unavailable until imported or while the key cannot read -> bundled-apps/stripe/src/tools/routes.ts:43
 Unlinked Stripe customers found by email -> bundled-apps/stripe/src/tools/routes.ts:64
 billsOtherThanStripe at least 5 characters, a person's statement -> bundled-apps/invoicing/src/issuer-guard.ts:27
 A missing card stream row is not trusted: Stripe is asked and the row healed -> bundled-apps/invoicing/src/issuer-guard.ts:82

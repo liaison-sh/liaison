@@ -280,6 +280,9 @@ const CONNECTOR_PATHS = [
   "**/@@-*.test.ts",
   "**/@@-*.e2e.test.ts",
   "apps/api/src/tests/relations/@@-world.ts",
+  // The shared pieces of the connector's own page scenarios (its bundle, its
+  // test install, its tool mocks), next to the `@@-*` scenario files.
+  "apps/web/src/tests/e2e/@@/**",
   "**/i18n/**",
   "**/*i18n*",
   "apps/api/src/modules/agent/tools/tool-bench/corpus.json",
@@ -707,6 +710,7 @@ describe("extracted billing surface stays out of the repo", () => {
       `apps/api/src/tests/e2e/${FORBIDDEN}-sync.e2e.test.ts`,
       `apps/api/src/tests/${FORBIDDEN}-scopes.test.ts`,
       `apps/api/src/tests/relations/${FORBIDDEN}-world.ts`,
+      `apps/web/src/tests/e2e/${FORBIDDEN}/_${FORBIDDEN}-fixtures.ts`,
       "apps/web/src/modules/i18n/fr.ts",
       "apps/api/src/modules/agent/tools/tool-bench/corpus.json",
       // The corpus's typed forms, as the bench last ranked them.

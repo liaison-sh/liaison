@@ -533,6 +533,31 @@ export function summarizeDraftUpdate(
     links: openLink(doc?.id, doc),
   })
 }
+/**
+ * Discard a draft. On a month-end run's row the call says how far: this month only, or the
+ * schedule ends after a given month. The card names which one, since the two do different things.
+ */
+export function summarizeDraftDiscard(
+  params: { applies?: unknown; ends_on?: unknown },
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
+  const doc = docOf(meta)
+  const named = docWithCustomer(doc, "a draft")
+  const endsOn = text(params.ends_on, 10)
+  const title =
+    params.applies === "end_schedule"
+      ? `End the schedule of ${named}${endsOn ? ` after ${endsOn}` : ""}`
+      : params.applies === "this_month"
+        ? `Take ${named} out of this month's run`
+        : `Discard ${named}`
+  return done({
+    kind: "drafts_discard",
+    title,
+    lines: docFacts(doc, { total: false }),
+    links: openLink(doc?.id, doc),
+  })
+}
 function draftIssueSummarizer(type: string, kind: string) {
   return (params: { draft_id?: string; due_at?: string }, _ctx?: unknown, meta?: SummarizerMeta): Promise<ApprovalSummaryShape> => {
     const draft = docOf(meta)

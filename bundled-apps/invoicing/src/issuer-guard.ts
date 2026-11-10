@@ -110,7 +110,7 @@ export async function checkIssuerGuard(ctx: GuardCtx, input: GuardInput): Promis
       ok: false,
       calls: 0,
       reason: STRIPE_UNREACHABLE,
-      error: refusal("stripe_guard_unavailable", "Stripe is connected but could not be asked whether this customer pays a subscription, so nothing was issued or saved. Try again in a few minutes."),
+      error: refusal("subscription_check_unavailable", "Stripe is connected but could not be asked whether this customer pays a subscription, so nothing was issued or saved. Try again in a few minutes."),
     }
   }
   let status: BillingStatus | null = null
@@ -139,7 +139,7 @@ export async function checkIssuerGuard(ctx: GuardCtx, input: GuardInput): Promis
       calls: 1,
       reason: STRIPE_UNREACHABLE,
       error: refusal(
-        "stripe_guard_unavailable",
+        "subscription_check_unavailable",
         `${rowSaysConnected || status ? "Stripe is connected but cannot say yet" : "Liaison could not ask Stripe whether it is connected and"} whether this customer pays a subscription (${why}), so nothing was issued or saved. Try again in a few minutes.`,
       ),
     }
@@ -156,7 +156,7 @@ export async function checkIssuerGuard(ctx: GuardCtx, input: GuardInput): Promis
       calls: 1,
       needsPerson: true,
       reason: BILLED_BY_STRIPE,
-      error: refusal("stripe_stream_conflict", `This customer pays the live Stripe subscription ${subs}; that this bills something else ("${other}") is a person's statement, so it waits for a person.`),
+      error: refusal("subscription_stream_conflict", `This customer pays the live Stripe subscription ${subs}; that this bills something else ("${other}") is a person's statement, so it waits for a person.`),
     }
   }
   return {
@@ -164,7 +164,7 @@ export async function checkIssuerGuard(ctx: GuardCtx, input: GuardInput): Promis
     calls: 1,
     reason: BILLED_BY_STRIPE,
     error: refusal(
-      "stripe_stream_conflict",
+      "subscription_stream_conflict",
       `This customer pays the live Stripe subscription ${subs}, which already invoices them, so nothing was issued or saved. Open their subscription in Stripe, pick another customer, or, if this bills something else, ask the person what it bills and pass it as billsOtherThanStripe.`,
     ),
   }

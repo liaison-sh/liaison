@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.20.72",
+  "version": "0.20.73",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -3364,6 +3364,8 @@
       "description": "Discard an unissued draft; no number is used. Issued documents are never deleted: reverse an invoice with a credit note, reject a Shopify-linked quote by deleting its draft order.",
       "searchKeywords": ["brouillon", "supprimer", "abandonner", "jeter", "enlever", "retirer", "remove", "delete", "annuler"],
       "requiredScopes": ["invoicing:documents:write"],
+      "summarizer": "summarizeDraftDiscard",
+      "summarizerContext": { "tool": "documents_get", "params": { "id": "draft_id" } },
       "handler": "draftsDiscardHandler",
       "conditionalGate": true,
       "externalEffect": true,

@@ -143,32 +143,32 @@ describe("the issuer guard on every path that invoices a named customer", () => 
     const { db, ctx } = world()
     await seedDraft(db)
     // Preflight (stage time) and handler (the call itself, the preflight never run).
-    expect(code(await invoiceIssuePreflight(ctx as never, { draft_id: DRAFT }))).toBe("stripe_stream_conflict")
-    expect(code(await invoiceIssue(ctx as never, { draft_id: DRAFT }))).toBe("stripe_stream_conflict")
+    expect(code(await invoiceIssuePreflight(ctx as never, { draft_id: DRAFT }))).toBe("subscription_stream_conflict")
+    expect(code(await invoiceIssue(ctx as never, { draft_id: DRAFT }))).toBe("subscription_stream_conflict")
     const create = { counterparty: counterparty(PAYER), currency: "EUR", items } as never
-    expect(code(await invoiceCreateAndIssuePreflight(ctx as never, create))).toBe("stripe_stream_conflict")
-    expect(code(await invoiceCreateAndIssue(ctx as never, create))).toBe("stripe_stream_conflict")
+    expect(code(await invoiceCreateAndIssuePreflight(ctx as never, create))).toBe("subscription_stream_conflict")
+    expect(code(await invoiceCreateAndIssue(ctx as never, create))).toBe("subscription_stream_conflict")
     const draft = { type: "invoice", counterparty_contact_id: PAYER, counterparty_name: "Jordan Payer", counterparty_email: "accounts@payer.example", counterparty_country: "DE", items } as never
-    expect(code(await draftsCreatePreflight(ctx as never, draft))).toBe("stripe_stream_conflict")
-    expect(await thrownCode(draftsCreateTool(ctx as never, draft))).toBe("stripe_stream_conflict")
+    expect(code(await draftsCreatePreflight(ctx as never, draft))).toBe("subscription_stream_conflict")
+    expect(await thrownCode(draftsCreateTool(ctx as never, draft))).toBe("subscription_stream_conflict")
     // drafts_update only when the buyer changes: the buyer moves to the payer.
     await seedDraft(db, { id: "88888888-8888-4888-8888-888888888888", counterparty_contact_id: OTHER, counterparty_email: "x@other.example" })
     const move = { draft_id: "88888888-8888-4888-8888-888888888888", patch: { counterparty_contact_id: PAYER } }
-    expect(code(await draftsUpdatePreflight(ctx as never, move as never))).toBe("stripe_stream_conflict")
-    expect(await thrownCode(draftsUpdateTool(ctx as never, move as never))).toBe("stripe_stream_conflict")
+    expect(code(await draftsUpdatePreflight(ctx as never, move as never))).toBe("subscription_stream_conflict")
+    expect(await thrownCode(draftsUpdateTool(ctx as never, move as never))).toBe("subscription_stream_conflict")
     const schedule = { issuer_profile_id: ISSUER, contact_id: PAYER, repeats: "month", billing_day: "last", lines: [{ description: "Retainer", qty: 1, unit_price_minor: 1000, vat_bp: 2000 }] } as never
-    expect(code(await checkScheduleCreate(ctx as never, schedule))).toBe("stripe_stream_conflict")
-    expect(code(await recurringScheduleCreate(ctx as never, schedule))).toBe("stripe_stream_conflict")
+    expect(code(await checkScheduleCreate(ctx as never, schedule))).toBe("subscription_stream_conflict")
+    expect(code(await recurringScheduleCreate(ctx as never, schedule))).toBe("subscription_stream_conflict")
 
     // A person's statement of what else it bills lets the same calls through the guard.
     const said = "Consulting days, not the plan"
-    expect(code(await invoiceIssuePreflight(ctx as never, { draft_id: DRAFT, billsOtherThanStripe: said }))).not.toBe("stripe_stream_conflict")
+    expect(code(await invoiceIssuePreflight(ctx as never, { draft_id: DRAFT, billsOtherThanStripe: said }))).not.toBe("subscription_stream_conflict")
     expect(code(await recurringScheduleCreate(ctx as never, { ...(schedule as Obj), billsOtherThanStripe: said } as never))).toBeUndefined()
     const saved = (await db.findMany("recurring_schedules", { limit: 5 })) as Obj[]
     expect(saved[0]).toMatchObject({ bills_other_than_stripe: said, bills_other_by: "person-1" })
     // An update of that schedule keeps passing on the stored statement; four characters say nothing.
     expect(await checkScheduleUpdate(ctx as never, { id: String(saved[0]?.id), notes: "x" } as never)).toBeNull()
-    expect(code(await invoiceIssue(ctx as never, { draft_id: DRAFT, billsOtherThanStripe: "work" }))).toBe("stripe_stream_conflict")
+    expect(code(await invoiceIssue(ctx as never, { draft_id: DRAFT, billsOtherThanStripe: "work" }))).toBe("subscription_stream_conflict")
   })
 
   test("an agent's statement of what else it bills waits for a person, and an approved card goes on", async () => {
@@ -189,14 +189,14 @@ describe("the issuer guard on every path that invoices a named customer", () => 
       tool.startsWith("stripe:") ? { status: "error", error: { code: "upstream_timeout", message: "timed out" } } : { status: "completed", result: {} }
     await seedDraft(down.db)
     const r = (await invoiceIssue(down.ctx as never, { draft_id: DRAFT })) as Obj
-    expect(r.error.code).toBe("stripe_guard_unavailable")
+    expect(r.error.code).toBe("subscription_check_unavailable")
     expect(r.error.message).toContain("Try again in a few minutes")
 
     // Never connected or disconnected, as Stripe itself says: the guard passes and reads no mirror.
     for (const connected of ["no_row", false] as const) {
       const off = world({ connected, mirror: stripeMirror({ state: "not_connected" }) })
       await seedDraft(off.db)
-      expect(code(await invoiceIssuePreflight(off.ctx as never, { draft_id: DRAFT }))).not.toBe("stripe_stream_conflict")
+      expect(code(await invoiceIssuePreflight(off.ctx as never, { draft_id: DRAFT }))).not.toBe("subscription_stream_conflict")
       expect(off.stripeCalls()).toBe(1)
     }
     // The Stripe app turned off answers as absent: the guard passes.
@@ -218,8 +218,8 @@ describe("the issuer guard on every path that invoices a named customer", () => 
     // The connection event was lost: invoicing holds no card stream row at all.
     const { db, ctx } = world({ connected: "no_row" })
     await seedDraft(db)
-    expect(code(await invoiceIssue(ctx as never, { draft_id: DRAFT }))).toBe("stripe_stream_conflict")
-    expect(code(await invoiceIssuePreflight(ctx as never, { draft_id: DRAFT }))).toBe("stripe_stream_conflict")
+    expect(code(await invoiceIssue(ctx as never, { draft_id: DRAFT }))).toBe("subscription_stream_conflict")
+    expect(code(await invoiceIssuePreflight(ctx as never, { draft_id: DRAFT }))).toBe("subscription_stream_conflict")
     // The read healed the row: connected, undecided until a person picks.
     expect(((await db.findMany("stripe_streams", { limit: 5 })) as Obj[]).map((r) => [r.issuer_profile_id, r.stripe_connected, r.issuer])).toEqual([
       [ISSUER, true, "undecided"],
@@ -229,7 +229,7 @@ describe("the issuer guard on every path that invoices a named customer", () => 
     blind.ctx.executeTool = async (tool: string) =>
       tool.startsWith("stripe:") ? { status: "error", error: { code: "upstream_timeout", message: "timed out" } } : { status: "completed", result: {} }
     const v = await checkIssuerGuard(blind.ctx as never, { contactId: PAYER, stage: "handler" })
-    expect(v.ok ? null : v.error.error.code).toBe("stripe_guard_unavailable")
+    expect(v.ok ? null : v.error.error.code).toBe("subscription_check_unavailable")
     expect(v.ok ? "" : v.error.error.message).toContain("Try again in a few minutes")
   })
 
@@ -250,7 +250,7 @@ describe("the issuer guard on every path that invoices a named customer", () => 
       mirror.rows("stripe_subscriptions").length = 0
       const { ctx } = world({ mirror })
       const v = await checkIssuerGuard(ctx as never, { contactId: PAYER, stage: "handler" })
-      expect({ ok: v.ok, code: v.ok ? null : v.error.error.code }).toEqual({ ok: false, code: "stripe_guard_unavailable" })
+      expect({ ok: v.ok, code: v.ok ? null : v.error.error.code }).toEqual({ ok: false, code: "subscription_check_unavailable" })
     }
     // A missing read elsewhere (disputes) leaves the answer intact.
     const disputes = stripeMirror({
@@ -272,11 +272,11 @@ describe("the issuer guard on every path that invoices a named customer", () => 
     const mirror = stripeMirror({ linked: false })
     const byDraftEmail = world({ mirror })
     const v = await checkIssuerGuard(byDraftEmail.ctx as never, { contactId: OTHER, emails: ["billing@payer.example"], stage: "handler" })
-    expect(v.ok ? null : v.error.error.code).toBe("stripe_stream_conflict")
+    expect(v.ok ? null : v.error.error.code).toBe("subscription_stream_conflict")
     // The contact's own email, read from the kernel, finds them too.
     const byContact = world({ mirror, contactEmail: "BILLING@payer.example" })
     const w = await checkIssuerGuard(byContact.ctx as never, { contactId: OTHER, stage: "handler" })
-    expect(w.ok ? null : w.error.error.code).toBe("stripe_stream_conflict")
+    expect(w.ok ? null : w.error.error.code).toBe("subscription_stream_conflict")
     // Another email is free to bill.
     expect((await checkIssuerGuard(world({ mirror }).ctx as never, { contactId: OTHER, emails: ["x@else.example"], stage: "handler" })).ok).toBe(true)
   })
@@ -295,7 +295,7 @@ describe("the issuer guard on every path that invoices a named customer", () => 
     expect(runItemState(draft, [{ quantity: "1", unit_price_minor: "1000", tax_rate_bp: 2000 }], hold)).toEqual({ state: "needs_fix", reason: BILLED_BY_STRIPE })
     // The run's own issue path asks the guard too: the row stays a draft and no number is taken.
     const r = (await recurringItemIssue(ctx as never, { item_id: ITEM })) as Obj
-    expect(r.error.code).toBe("stripe_stream_conflict")
+    expect(r.error.code).toBe("subscription_stream_conflict")
     expect((await db.findOne("recurring_run_items", ITEM)) as Obj).toMatchObject({ state: "needs_fix", note: BILLED_BY_STRIPE })
     expect((await db.findOne("documents", DRAFT)) as Obj).toMatchObject({ status: "draft", external_ref: `recurring:${SCHEDULE}:2026-11` })
     expect(stripeCalls()).toBeGreaterThan(0)

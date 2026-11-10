@@ -165,7 +165,7 @@ const LISTED = new Map<string, string>([
   ["invoicing:settings_tax_regime_list", `org settings: ${NONE}`],
   [
     "invoicing:issuer_stream_get",
-    `who issues each stream and who confirmed Stripe's emails, set by the org's people: ${NONE}`,
+    `who issues each stream and who confirmed the card processor's own emails, set by the org's people: ${NONE}`,
   ],
   ["invoicing:settings_hs_code_list", `the org's code library: ${NONE}`],
   ["invoicing:settings_shop_mapping_list", `org settings: ${NONE}`],

@@ -235,7 +235,7 @@ async function cardStreamOf(ctx: StreamsCtx, issuerProfileId: string): Promise<{
   const row = (await streamRows(ctx)).find((r) => r.issuer_profile_id === issuerProfileId) ?? null
   if (!row || row.stripe_connected !== true) {
     return fail(
-      "stripe_not_connected",
+      "card_stream_not_connected",
       `Stripe is not connected, so ${String(profile.legal_name ?? issuerProfileId)} has no card stream; nothing was changed. Connect Stripe first.`,
     )
   }

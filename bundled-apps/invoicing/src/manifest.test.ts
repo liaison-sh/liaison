@@ -1555,7 +1555,8 @@ describe("invoicing manifest", () => {
     // 0.20.70: month-end rows edited through the draft tools (how far, put back, two writers, added rows)
     // 0.20.71: a run row's due rule reads its dates without a time suffix
     // 0.20.72: who issues what (card stream, Stripe's own emails) and the issuer guard
-    expect(m.version).toBe("0.20.72")
+    // 0.20.73: a parked draft discard names what it does (discard, this month only, end the schedule)
+    expect(m.version).toBe("0.20.73")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

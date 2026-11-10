@@ -225,7 +225,7 @@
   },
   "kernel.agents": {
     "rows": 12,
-    "digest": "0ac5efdf60589b4d"
+    "digest": "92ce93958e0b12aa"
   },
   "kernel.app_seeded_assets": {
     "rows": 9,
@@ -277,7 +277,7 @@
   },
   "kernel.pending_events": {
     "rows": 330,
-    "digest": "0e21765ed71cba0a"
+    "digest": "4acf6f6954046abb"
   },
   "kernel.resource_grants": {
     "rows": 7,
@@ -285,7 +285,7 @@
   },
   "kernel.roles": {
     "rows": 34,
-    "digest": "eaa461608abeffd9"
+    "digest": "a92c9a6e6c3577a7"
   },
   "kernel.routines": {
     "rows": 7,

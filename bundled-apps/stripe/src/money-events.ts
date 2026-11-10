@@ -54,6 +54,8 @@ export interface RefundEventPayload {
   currency: string | null
   status: string
   refunds: RefundItem[]
+  /** When the charge was made: who issued its invoice then decides whether a credit note follows. */
+  charged_at: string | null
 }
 
 export function refundItem(obj: Obj): RefundItem {
@@ -86,6 +88,14 @@ export async function invoiceOfCharge(ctx: StripeHttpCtx, charge: Obj): Promise<
   }
 }
 
+/** A charge's date from its mirror row or its Stripe object; a missing date (the epoch) is none. */
+export function chargedAt(row: Obj | null | undefined, charge?: Obj | null): string | null {
+  const v = row?.created_at_stripe
+  const fromRow = v instanceof Date ? v.toISOString() : typeof v === "string" && v ? new Date(v).toISOString() : null
+  const out = fromRow ?? at(charge?.created)
+  return out && Date.parse(out) > 0 ? out : null
+}
+
 /** Every refund of a charge, by id, newest first as Stripe lists them (at most 100). */
 export async function listRefunds(ctx: StripeHttpCtx, chargeId: string): Promise<Obj[]> {
   const list = await stripeFetch<{ data?: Obj[] }>(ctx, "/v1/refunds", { params: { charge: chargeId, limit: 100 } }, { maxRetries: 1 })
@@ -95,7 +105,7 @@ export async function listRefunds(ctx: StripeHttpCtx, chargeId: string): Promise
 /** Write each refund to the mirror (unless a newer copy is there) and return the event payload. */
 export async function refundEvent(
   ctx: MoneyEventCtx,
-  charge: { id: string; invoice: string | null },
+  charge: { id: string; invoice: string | null; charged_at?: string | null },
   refunds: Obj[],
   focus: Obj | null,
   stripeUpdated: string,
@@ -115,6 +125,7 @@ export async function refundEvent(
     currency: main?.currency ?? null,
     status: main?.status ?? "pending",
     refunds: items,
+    charged_at: charge.charged_at ?? null,
   }
 }
 

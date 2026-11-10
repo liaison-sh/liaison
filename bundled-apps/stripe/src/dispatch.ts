@@ -47,7 +47,7 @@ import {
   subscriptionRow,
   writeMirror,
 } from "./mirror"
-import { customerOf, invoiceEventPayload, invoiceOfCharge, listRefunds, refundEvent, unmatchedPayload } from "./money-events"
+import { chargedAt, customerOf, invoiceEventPayload, invoiceOfCharge, listRefunds, refundEvent, unmatchedPayload } from "./money-events"
 import { recordMovement } from "./mrr-events"
 import { claimDelivery, type LedgerDb, settleDelivery } from "./webhooks"
 
@@ -263,13 +263,16 @@ async function typedPayload(ctx: IngestCtx, route: Route, row: Obj, obj: Obj, ta
 }
 
 /** The charge a refund belongs to, with its invoice: the mirror's payment row, else Stripe. */
-async function chargeOfRefund(ctx: IngestCtx, refund: Obj): Promise<{ id: string; invoice: string | null } | null> {
+async function chargeOfRefund(ctx: IngestCtx, refund: Obj): Promise<{ id: string; invoice: string | null; charged_at: string | null } | null> {
   const chargeId = typeof refund.charge === "string" ? refund.charge : ((refund.charge as Obj | null)?.id as string | undefined)
   if (!chargeId) return null
   const [row] = (await ctx.db.findMany("stripe_payments", { where: { stripe_id: chargeId }, limit: 1 })) as Obj[]
-  if (row && typeof row.invoice_id === "string" && row.invoice_id) return { id: chargeId, invoice: row.invoice_id }
+  if (row && typeof row.invoice_id === "string" && row.invoice_id && chargedAt(row)) {
+    return { id: chargeId, invoice: row.invoice_id, charged_at: chargedAt(row) }
+  }
   const charge = await stripeFetch<Obj>(ctx, `/v1/charges/${encodeURIComponent(chargeId)}`, {}, { maxRetries: 1 })
-  return { id: chargeId, invoice: await invoiceOfCharge(ctx, charge ?? {}) }
+  const invoice = row && typeof row.invoice_id === "string" && row.invoice_id ? row.invoice_id : await invoiceOfCharge(ctx, charge ?? {})
+  return { id: chargeId, invoice, charged_at: chargedAt(row, charge) }
 }
 
 /**
@@ -286,7 +289,7 @@ async function moneyEvents(
   invoiceId: string | null,
 ): Promise<Array<{ entity: string; action: string; entityId: string; data: Obj }>> {
   if (type === "charge.refunded") {
-    const charge = { id: String(obj.id), invoice: invoiceId }
+    const charge = { id: String(obj.id), invoice: invoiceId, charged_at: chargedAt(null, obj) }
     const refunds = await listRefunds(ctx, charge.id)
     if (refunds.length === 0) return []
     const data = await refundEvent(ctx, charge, refunds, null, stripeUpdated, tally)

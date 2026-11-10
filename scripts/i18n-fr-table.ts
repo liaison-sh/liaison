@@ -7789,6 +7789,8 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.homeKind.uncollectible.other": "factures Stripe irrécouvrables",
   "kernel.homeKind.refund_failed.one": "remboursement Stripe échoué",
   "kernel.homeKind.refund_failed.other": "remboursements Stripe échoués",
+  "kernel.homeKind.refund_waiting.one": "remboursement Stripe en attente de sa facture",
+  "kernel.homeKind.refund_waiting.other": "remboursements Stripe en attente de leur facture",
   "kernel.homeKind.unmatched.one": "paiement Stripe sans facture",
   "kernel.homeKind.unmatched.other": "paiements Stripe sans facture",
   "kernel.notificationSettings.kinds.routine_mailbox_wait":

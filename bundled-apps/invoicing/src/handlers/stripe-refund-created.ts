@@ -13,7 +13,10 @@
 //   invoice's VAT rates in proportion (largest remainder; a short minor unit goes on one 0-tax
 //   "Rounding adjustment" line, so the parts sum exactly). An e-invoicing refusal parks it with its
 //   own arguments, re-issued alone by the retry sweep.
-// Mode B (Stripe issues) and an undecided stream: no credit note.
+// Mode B (Stripe issues) and an undecided stream: no credit note. A charge made while Stripe issued
+// (before a switch, or before Stripe was connected) has no Liaison invoice to credit: the refund is
+// recorded as Stripe's. One still waiting for its invoice after a day raises one Home item (the
+// safety job), closed once the refund gets its credit note or is skipped.
 import { park, resolveOpenParks } from "../deferred"
 import { reportCollection } from "../einvoicing/collection"
 import type { EinvCtx } from "../einvoicing/transmit"
@@ -22,9 +25,9 @@ import type { LineKind } from "../issue"
 import { creditedTotalMinor, creditNoteCreateAndIssue } from "../mutations"
 import { toBigInt } from "../mutations/shared"
 import { buildAdjustmentReversalItems } from "./shopify-refund-created"
-import { documentByRef, payloadOf, type StripeCtx, stripeRef } from "./stripe-invoice-finalized"
+import { cardStreamFor, documentByRef, payloadOf, type StripeCtx, stripeRef } from "./stripe-invoice-finalized"
 import { invoiceLinkedTo } from "./stripe-payment-unmatched"
-import { cardStreamIssuer, stripeDocumentRef } from "../streams"
+import { cardStreamIssuer, isoOf, stripeDocumentRef } from "../streams"
 
 type Row = Record<string, unknown>
 
@@ -45,6 +48,8 @@ export interface StripeRefundPayload {
   status?: string
   /** Every refund of the charge as Stripe lists it (`GET /v1/refunds?charge=`), by id. */
   refunds?: StripeRefund[]
+  /** When the charge was made: who issued its invoice then. */
+  charged_at?: string | null
 }
 
 export const STRIPE_CREDIT_NOTE_PARK = "stripe_credit_note"
@@ -55,12 +60,17 @@ export interface ParkedStripeCreditNote {
   charge_id: string
   invoice_id: string | null
   amount_minor: string
+  charged_at?: string | null
 }
+
+/** The once-only marker of a refund's waiting item, and the park kind the retry sweep leaves alone. */
+export const STRIPE_REFUND_WAIT_PARK = "stripe_refund_waiting"
+const waitKey = (refundId: string) => `${stripeRef(refundId)}:waiting`
 
 export type RefundOutcome =
   | { refund_id: string; outcome: "issued"; document_id: string; number: string }
   | { refund_id: string; outcome: "exists"; document_id: string }
-  | { refund_id: string; outcome: "pending" | "mode_b" | "no_invoice" | "parked" | "nothing_left" }
+  | { refund_id: string; outcome: "pending" | "mode_b" | "no_invoice" | "parked" | "nothing_left" | "issued_by_stripe" }
   | { refund_id: string; outcome: "failed_attention"; credit_note_id: string | null }
 
 const AUTO_APPROVAL = {
@@ -91,7 +101,10 @@ export async function onStripeRefundCreated(event: unknown, ctx: StripeCtx): Pro
   if (!p || typeof p.charge_id !== "string" || !p.charge_id) return { status: "skipped", reason: "invalid_payload", refunds: [] }
   if ((await cardStreamIssuer(ctx)).issuer !== "liaison") {
     const ids = Array.isArray(p.refunds) && p.refunds.length > 0 ? p.refunds.map((r) => r.id) : p.refund_id ? [p.refund_id] : []
-    for (const id of ids) await linkRefund(ctx, id, { skipped: "issued_by_stripe" })
+    for (const id of ids) {
+      await linkRefund(ctx, id, { skipped: "issued_by_stripe" })
+      await closeWait(ctx, id, "issued_by_stripe")
+    }
     return { status: "skipped", reason: "mode_b", refunds: [] }
   }
   const invoiceRef = stripeDocumentRef({ id: p.charge_id, invoice: p.invoice_id ?? null })
@@ -99,11 +112,75 @@ export async function onStripeRefundCreated(event: unknown, ctx: StripeCtx): Pro
   for (const r of await refundsOf(ctx, p)) {
     const one = await handleOne(ctx, p, invoiceRef, r)
     // Recorded on the Stripe refund once decided, so the safety job walks past it.
-    if (one.outcome === "issued" || one.outcome === "exists") await linkRefund(ctx, r.id, { documentId: one.document_id })
-    else if (one.outcome === "nothing_left") await linkRefund(ctx, r.id, { skipped: "nothing_left" })
+    if (one.outcome === "issued" || one.outcome === "exists") {
+      await linkRefund(ctx, r.id, { documentId: one.document_id })
+      await closeWait(ctx, r.id, "issued")
+    } else if (one.outcome === "nothing_left" || one.outcome === "issued_by_stripe") {
+      await linkRefund(ctx, r.id, { skipped: one.outcome })
+      await resolveOpenParks(ctx, stripeRef(r.id), one.outcome)
+      await closeWait(ctx, r.id, one.outcome)
+    }
     out.push(one)
   }
   return { status: "ok", refunds: out }
+}
+
+/** Close a refund's waiting item, if it raised one. */
+async function closeWait(ctx: StripeCtx, refundId: string, reason: string): Promise<void> {
+  const { resolved } = await resolveOpenParks(ctx, waitKey(refundId), reason)
+  if (resolved > 0) {
+    await ctx.emit({ entity: "stripe_refund", action: "waiting", entityId: refundId, data: { refund_id: refundId, resolved: true } })
+  }
+}
+
+/** Whether Stripe issued the invoices of card payments when this charge was made (or Stripe was
+ *  not connected yet): then no Liaison invoice exists to credit. Unknown date: not known. */
+async function issuedByStripeAt(ctx: StripeCtx, chargedAt: string | null | undefined): Promise<boolean> {
+  const at = isoOf(chargedAt)
+  if (!at) return false
+  const stream = await cardStreamFor(ctx, at)
+  if (!stream) return false
+  if (stream.issuer === "stripe") return true
+  const connectedAt = isoOf(stream.row.created_at)
+  return !!connectedAt && at < connectedAt
+}
+
+/** The safety job's pass: each refund waiting longer than a day for its invoice raises one Home
+ *  item to the people who issue documents. The marker park makes it once per refund. */
+export const REFUND_WAIT_MS = 24 * 60 * 60 * 1000
+
+export async function flagLongRefundWaits(ctx: StripeCtx, now = Date.now()): Promise<number> {
+  const rows = (await ctx.db.findMany("deferred_events", {
+    where: { reason: "invoice_not_issued", status: { in: ["awaiting_config", "awaiting_data", "awaiting_dependency"] } },
+    limit: 500,
+  })) as Row[]
+  let raised = 0
+  for (const row of rows) {
+    const b = (row.blocked_on ?? {}) as Row
+    if (b.kind !== STRIPE_CREDIT_NOTE_PARK || typeof b.refund_id !== "string") continue
+    const since = isoOf(row.created_at)
+    if (!since || now - Date.parse(since) < REFUND_WAIT_MS) continue
+    const p = (row.event_payload_json ?? {}) as Partial<ParkedStripeCreditNote>
+    const def = await park(
+      { db: ctx.db },
+      {
+        event_id: waitKey(b.refund_id),
+        event_payload_json: { kind: STRIPE_REFUND_WAIT_PARK, refund_id: b.refund_id },
+        status: "awaiting_dependency",
+        reason: "refund_waiting",
+        blocked_on: { kind: STRIPE_REFUND_WAIT_PARK, refund_id: b.refund_id },
+      },
+    )
+    if (!def.created) continue
+    raised += 1
+    await ctx.emit({
+      entity: "stripe_refund",
+      action: "waiting",
+      entityId: b.refund_id,
+      data: { deferred_id: def.id, refund_id: b.refund_id, charge_id: String(p.charge_id ?? ""), resolved: false },
+    })
+  }
+  return raised
 }
 
 /** Tell the Stripe app which credit note a refund became, or why none follows. Best effort. */
@@ -128,6 +205,8 @@ async function handleOne(ctx: StripeCtx, p: StripeRefundPayload, invoiceRef: str
   // The invoice the charge became, or the one a person linked it to by hand.
   const original = (await documentByRef(ctx, invoiceRef)) ?? (await invoiceLinkedTo(ctx, p.charge_id))
   if (!original) {
+    // Stripe issued the charge's invoice: there is nothing of Liaison's to credit.
+    if (await issuedByStripeAt(ctx, p.charged_at)) return { refund_id: r.id, outcome: "issued_by_stripe" }
     // The invoice is not issued yet (parked, or its event still on the way): wait for it.
     await park(
       { db: ctx.db },
@@ -151,6 +230,7 @@ function parked(p: StripeRefundPayload, r: StripeRefund): ParkedStripeCreditNote
     charge_id: p.charge_id,
     invoice_id: p.invoice_id ?? null,
     amount_minor: String(r.amount_minor),
+    charged_at: p.charged_at ?? null,
     refunds: [r],
   }
 }
@@ -279,11 +359,16 @@ export async function retryParkedStripeCreditNote(ctx: StripeCtx, payload: unkno
   const p = payload as ParkedStripeCreditNote & { refunds?: StripeRefund[] }
   if (!p || p.kind !== STRIPE_CREDIT_NOTE_PARK) return { status: "still_blocked", reason: "invalid_parked_credit_note" }
   const res = await onStripeRefundCreated(
-    { charge_id: p.charge_id, invoice_id: p.invoice_id, refunds: p.refunds ?? [{ id: p.refund_id, amount_minor: p.amount_minor, status: "succeeded" }] },
+    {
+      charge_id: p.charge_id,
+      invoice_id: p.invoice_id,
+      charged_at: p.charged_at ?? null,
+      refunds: p.refunds ?? [{ id: p.refund_id, amount_minor: p.amount_minor, status: "succeeded" }],
+    },
     ctx,
   )
   const one = res.refunds[0]
-  if (one && (one.outcome === "issued" || one.outcome === "exists" || one.outcome === "nothing_left")) {
+  if (one && (one.outcome === "issued" || one.outcome === "exists" || one.outcome === "nothing_left" || one.outcome === "issued_by_stripe")) {
     return { status: "ok" }
   }
   return { status: "still_blocked", reason: one?.outcome ?? res.reason ?? "unknown" }

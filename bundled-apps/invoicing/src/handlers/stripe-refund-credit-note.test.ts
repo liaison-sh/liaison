@@ -117,6 +117,66 @@ describe("Stripe refunds and credit notes", () => {
     expect(r.refunds[0]).toMatchObject({ outcome: "issued" })
   })
 
+  test("a refund of a charge whose invoice Stripe issued is recorded as Stripe's, never parked", async () => {
+    const db = stripeDb("liaison")
+    const ctx = stripeCtx(db)
+    const switchedAt = new Date(Date.UTC(2026, 10, 10, 9, 0)).toISOString()
+    await db.update("stripe_streams", "st-1", { previous_issuer: "stripe", switched_at: switchedAt })
+    const before = new Date(Date.UTC(2026, 10, 5, 9, 0)).toISOString()
+    const preConnection = new Date(Date.UTC(2026, 9, 20, 9, 0)).toISOString()
+    const after = new Date(Date.UTC(2026, 10, 12, 9, 0)).toISOString()
+    // Stripe issued at the charge's date (before the switch), or Stripe was not yet connected.
+    const a = await onStripeRefundCreated({ charge_id: "ch_s1", invoice_id: "in_s1", charged_at: before, refunds: [refund("re_s1", "500", "succeeded")] }, ctx)
+    const b = await onStripeRefundCreated({ charge_id: "ch_s2", charged_at: preConnection, refunds: [refund("re_s2", "500", "succeeded")] }, ctx)
+    expect([a.refunds[0]?.outcome, b.refunds[0]?.outcome]).toEqual(["issued_by_stripe", "issued_by_stripe"])
+    expect(ctx.calls).toContainEqual({ tool: "stripe:refund_document_link", params: { stripeRefundId: "re_s1", skipped: "issued_by_stripe" } })
+    expect(ctx.calls).toContainEqual({ tool: "stripe:refund_document_link", params: { stripeRefundId: "re_s2", skipped: "issued_by_stripe" } })
+    expect(parks(db).filter((r) => r.status !== "resolved")).toHaveLength(0)
+    // Liaison issued at the charge's date: the refund waits for that invoice.
+    const c = await onStripeRefundCreated({ charge_id: "ch_s3", invoice_id: "in_s3", charged_at: after, refunds: [refund("re_s3", "500", "succeeded")] }, ctx)
+    expect(c.refunds[0]?.outcome).toBe("no_invoice")
+    expect(parks(db).find((r) => r.event_id === "stripe:re_s3")?.event_payload_json).toMatchObject({ charged_at: after })
+  })
+
+  test("a refund waiting a day for its invoice raises one Home item, closed once it gets its credit note or is skipped", async () => {
+    const db = stripeDb("liaison")
+    const ctx = stripeCtx(db)
+    const waits = () => ctx.emitted.filter((e) => e.entity === "stripe_refund" && e.action === "waiting")
+    const age = async (eventId: string, hours: number) => {
+      const row = parks(db).find((r) => r.event_id === eventId) as Row
+      await db.update("deferred_events", String(row.id), { created_at: new Date(Date.now() - hours * 3_600_000) })
+    }
+    await onStripeRefundCreated({ charge_id: "ch_1", invoice_id: "in_1", refunds: [refund("re_w1", "1000", "succeeded")] }, ctx)
+    await onStripeRefundCreated({ charge_id: "ch_9", invoice_id: "in_9", refunds: [refund("re_w2", "99999", "succeeded")] }, ctx)
+    await age("stripe:re_w1", 2)
+    await reconcileStripePayments(ctx)
+    expect(waits()).toHaveLength(0)
+
+    await age("stripe:re_w1", 25)
+    await age("stripe:re_w2", 25)
+    await reconcileStripePayments(ctx)
+    await reconcileStripePayments(ctx)
+    expect(waits().map((e) => [(e.data as Row).refund_id, (e.data as Row).resolved])).toEqual([
+      ["re_w1", false],
+      ["re_w2", false],
+    ])
+    expect(waits()[0]).toMatchObject({ entityId: "re_w1", data: { charge_id: "ch_1" } })
+
+    // The invoice issues; the refund's re-drive makes its credit note and closes the item.
+    await onStripeInvoiceFinalized(finalized({ charge_id: "ch_1" }), ctx)
+    await onStripeRefundCreated({ charge_id: "ch_1", invoice_id: "in_1", refunds: [refund("re_w1", "1000", "succeeded")] }, ctx)
+    expect(creditNotes(db)).toHaveLength(1)
+    // The other is skipped: nothing is left to credit on its invoice.
+    await onStripeInvoiceFinalized(finalized({ stripe_invoice_id: "in_9", charge_id: "ch_9" }), ctx)
+    await onStripeRefundCreated({ charge_id: "ch_9", invoice_id: "in_9", refunds: [refund("re_w0", "12000", "succeeded")] }, ctx)
+    await onStripeRefundCreated({ charge_id: "ch_9", invoice_id: "in_9", refunds: [refund("re_w2", "99999", "succeeded")] }, ctx)
+    const closed = waits().filter((e) => (e.data as Row).resolved === true)
+    expect(closed.map((e) => e.entityId)).toEqual(["re_w1", "re_w2"])
+    expect(parks(db).filter((r) => String(r.event_id).startsWith("stripe:re_w") && r.status !== "resolved")).toHaveLength(0)
+    await reconcileStripePayments(ctx)
+    expect(waits()).toHaveLength(4)
+  })
+
   test("a refund made in Stripe yields the same credit note with no card", async () => {
     const { db, ctx } = await issued()
     let approvals = 0

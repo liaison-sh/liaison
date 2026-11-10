@@ -156,6 +156,40 @@ describe("refunds reach invoicing", () => {
   })
 })
 
+describe("a refund names the date of its charge", () => {
+  const CHARGED = 1764583200
+  const chargedIso = new Date(CHARGED * 1000).toISOString()
+
+  it("from a refunded charge, a refund's update and the refund tool, so invoicing can tell who issued the charge's invoice", async () => {
+    seedCharge("ch_D1", 12000, 3000, { status: "succeeded", created: CHARGED })
+    refund("re_D1", "ch_D1", 3000, "succeeded")
+    await deliver("charge.refunded", "ch_D1")
+    expect(of("refund:created")[0]?.data.charged_at).toBe(chargedIso)
+
+    seedCharge("ch_D2", 12000, 1000, { status: "succeeded", created: CHARGED })
+    refund("re_D2", "ch_D2", 1000, "succeeded")
+    await deliver("charge.refund.updated", "re_D2")
+    expect(of("refund:settled")[0]?.data.charged_at).toBe(chargedIso)
+
+    const tdb = new Tables()
+    tdb.seed("install_metadata", [{ state: "connected", livemode: false }])
+    tdb.seed("stripe_payments", [{ stripe_id: "ch_D3", invoice_id: "in_D3", amount_minor: 10000, refunded_minor: 0, disputed: false, currency: "eur", created_at_stripe: chargedIso }])
+    seedCharge("ch_D3", 10000, 0, { created: CHARGED })
+    const out: Emitted[] = []
+    const ctx = moneyCtx(tdb, "approval-d3", { cardIssuer: "liaison" })
+    await refundsCreate({ chargeId: "ch_D3", amountMinor: 2500 }, { ...ctx, emit: async (e) => void out.push(e as Emitted) })
+    expect(out[0]?.data.charged_at).toBe(chargedIso)
+  })
+
+  it("a mirror row's missing date is no date, never the epoch", async () => {
+    db.seed("stripe_payments", [{ stripe_id: "ch_D4", invoice_id: "in_D4", created_at_stripe: new Date(0).toISOString() }])
+    seedCharge("ch_D4", 12000, 1000, { status: "succeeded" })
+    refund("re_D4", "ch_D4", 1000, "succeeded")
+    await deliver("charge.refund.updated", "re_D4")
+    expect(of("refund:settled")[0]?.data.charged_at).toBeNull()
+  })
+})
+
 describe("payments no invoice explains", () => {
   it("a succeeded charge no invoice explains emits payment:unmatched once, masked, and one an invoice pays emits nothing", async () => {
     stripeMockSeed("customers", { id: "cus_U1", name: "Lumen Studio", email: "billing@lumen.example", description: null })
@@ -292,7 +326,7 @@ describe("the reads invoicing calls", () => {
       inv("in_DONE", { status: "paid", paid_at: recent, liaison_document_id: "7d4e3c1a-0000-4000-8000-000000000002" }),
     ])
     stripeMockSeed("invoices", { id: "in_M1", status: "open", lines: { object: "list", has_more: false, data: [] } })
-    db.seed("stripe_payments", [{ stripe_id: "ch_M1", invoice_id: "in_M1" }])
+    db.seed("stripe_payments", [{ stripe_id: "ch_M1", invoice_id: "in_M1", created_at_stripe: old }])
     db.seed("stripe_refunds", [
       { stripe_id: "re_M1", payment_id: "ch_M1", amount_minor: 3000, currency: "eur", status: "succeeded", liaison_document_id: null, created_at_stripe: recent },
       { stripe_id: "re_M2", payment_id: "ch_M1", amount_minor: 1000, currency: "eur", status: "pending", liaison_document_id: null, created_at_stripe: recent },
@@ -305,7 +339,7 @@ describe("the reads invoicing calls", () => {
     ])
     expect(res.invoices[0].lines).toEqual([])
     expect(res.refunds).toEqual([
-      { refund_id: "re_M1", charge_id: "ch_M1", invoice_id: "in_M1", document_ref: "stripe:in_M1", amount_minor: "3000", currency: "eur", status: "succeeded" },
+      { refund_id: "re_M1", charge_id: "ch_M1", invoice_id: "in_M1", document_ref: "stripe:in_M1", amount_minor: "3000", currency: "eur", status: "succeeded", charged_at: old },
     ])
   })
 

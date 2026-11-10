@@ -15,7 +15,7 @@
 import { refuseTool } from "@liaison/app-sdk"
 import { type StripeHttpCtx, stripeFetch } from "../http"
 import { type MirrorDb, newTally } from "../mirror"
-import { invoiceEventPayload, invoiceOfCharge, listRefunds, refundItem, stripeDocumentRef } from "../money-events"
+import { chargedAt, invoiceEventPayload, invoiceOfCharge, listRefunds, refundItem, stripeDocumentRef } from "../money-events"
 import { moneyActionHold, type StateDb } from "../states"
 
 type Obj = Record<string, unknown>
@@ -156,14 +156,15 @@ export async function reconcileCandidates(params: Obj | undefined, ctx: MoneyRea
     (r) => !waiting.has(String(r.stripe_id)) && !!r.payment_id,
   )
   const refunds: Obj[] = []
-  const invoiceByCharge = new Map<string, string | null>()
+  const paymentByCharge = new Map<string, { invoice: string | null; charged_at: string | null }>()
   for (const r of refundRows) {
     const chargeId = String(r.payment_id)
-    if (!invoiceByCharge.has(chargeId)) {
+    if (!paymentByCharge.has(chargeId)) {
       const [p] = (await ctx.db.findMany("stripe_payments", { where: { stripe_id: chargeId }, limit: 1 })) as Obj[]
-      invoiceByCharge.set(chargeId, typeof p?.invoice_id === "string" && p.invoice_id ? p.invoice_id : null)
+      paymentByCharge.set(chargeId, { invoice: typeof p?.invoice_id === "string" && p.invoice_id ? p.invoice_id : null, charged_at: chargedAt(p) })
     }
-    const invoiceId = invoiceByCharge.get(chargeId) ?? null
+    const payment = paymentByCharge.get(chargeId)
+    const invoiceId = payment?.invoice ?? null
     refunds.push({
       refund_id: String(r.stripe_id),
       charge_id: chargeId,
@@ -172,6 +173,7 @@ export async function reconcileCandidates(params: Obj | undefined, ctx: MoneyRea
       amount_minor: minor(r.amount_minor),
       currency: r.currency ?? null,
       status: "succeeded",
+      charged_at: payment?.charged_at ?? null,
     })
   }
   return {

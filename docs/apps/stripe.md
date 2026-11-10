@@ -5,9 +5,19 @@ description: "Connect your Stripe account with a restricted key so Liaison keeps
 
 The Stripe connector links your Stripe account to Liaison. Liaison keeps a read mirror of your customers, subscriptions, invoices, payments, refunds and disputes, so people and agents read money facts from it.
 
-Stripe is a connector: it has no screen of its own yet. It appears as a card on **Settings › Connectors**.
+Stripe is an app with its own page: **Stripe** in the activity bar opens **Home**, and **Customers** and a link to the Stripe dashboard sit in its sidebar. Its connection settings are on **Settings › Apps › Stripe**.
 
-This page grows as the connector does. Today the connector stores its connection, checks its key, and keeps its mirror current from Stripe's webhook events.
+This page grows as the app does. Today it stores its connection, checks its key, keeps its mirror current from Stripe's webhook events, and shows the Stripe Home.
+
+## The Stripe Home
+
+Home reads Liaison's mirror, never Stripe, so it says when it last heard from Stripe.
+
+- **Needs attention** lists what a person has to look at: payments that failed with no retry left (longest overdue first), refund and cancel requests waiting for you, and disputes whose evidence is due. **Review** opens the waiting request with its Approve and Deny. Cards Stripe is still retrying are one quiet line ("Nothing to do yet"), not a row.
+- **Trials ending** lists trials ending within 7 days, with whether a card is on file.
+- **Monthly recurring revenue** shows one block per currency, never converted: the amount, the change since the first of the month, the paying subscriptions by plan, and the movements. **How MRR is computed** shows the rule the figure is computed by.
+- **While the first import runs** Home shows the progress per kind of record and no MRR. If the key is revoked, the account is not the one Liaison holds, Stripe stops sending updates or the key lacks a permission, Home says what happened, what to do next and keeps the last figures marked "as of" their time. Waiting approvals stay open but their Approve is held until the key works.
+- On a phone, Home is one column and every control is at least 44 px tall.
 
 ## Create a restricted key
 

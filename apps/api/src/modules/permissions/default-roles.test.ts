@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { DEFAULT_ROLES } from "~/modules/permissions/default-roles"
+import { readFileSync } from "node:fs"
+import { DEFAULT_ROLES, KERNEL_MEMBER_SCOPES } from "~/modules/permissions/default-roles"
 
 describe("DEFAULT_ROLES", () => {
   it("declares at least admin / member / viewer as ship-with defaults", () => {
@@ -65,5 +66,50 @@ describe("DEFAULT_ROLES", () => {
     expect(hasScope("kernel:agent:memory:read", viewerScopes)).toBe(true)
     expect(hasScope("kernel:agent:memory:write", viewerScopes)).toBe(false)
     expect(hasScope("kernel:agent:memory", viewerScopes)).toBe(false)
+  })
+
+  // The kernel member tier reaches an existing org's `member` preset only through a forward
+  // migration (the seed covers new orgs, extendFullMemberRole covers Full Member). Each scope is
+  // listed with the migration that delivered it to existing orgs ("seed" = held since the
+  // preset's first release). A scope added to KERNEL_MEMBER_SCOPES without a migration leaves
+  // every older org without it, the way dashboards were (0275 -> 0284): add the migration, then
+  // its line here.
+  it("every kernel member-tier scope is delivered to existing orgs by a named migration", () => {
+    const DELIVERED: Record<string, string> = {
+      "kernel:threads:read": "seed",
+      "kernel:threads:write": "seed",
+      "kernel:contacts:read": "seed",
+      "kernel:contacts:write": "seed",
+      "kernel:companies:read": "0293_companies",
+      "kernel:companies:write": "0293_companies",
+      "kernel:products:read": "seed",
+      "kernel:products:write": "seed",
+      "kernel:approvals:read": "seed",
+      "kernel:approvals:write": "seed",
+      "kernel:files:read": "seed",
+      "kernel:files:analyze": "seed",
+      "kernel:saved_views:share": "seed",
+      "kernel:data:read": "0284_kernel_member_tier_dashboards",
+      "kernel:data:write": "0284_kernel_member_tier_dashboards",
+      "kernel:dashboards:write": "0284_kernel_member_tier_dashboards",
+      "kernel:dashboards:share": "0284_kernel_member_tier_dashboards",
+      "kernel:agent:memory": "seed",
+      "kernel:agents:spawn": "seed",
+    }
+    expect([...KERNEL_MEMBER_SCOPES].sort()).toEqual(Object.keys(DELIVERED).sort())
+    for (const [scope, migration] of Object.entries(DELIVERED)) {
+      if (migration === "seed") continue
+      const text = readFileSync(
+        new URL(`../../db/migrations/${migration}.sql`, import.meta.url),
+        "utf8",
+      )
+      expect(text).toContain(`'${scope}'`)
+    }
+  })
+
+  it("the member preset is exactly the kernel member tier", () => {
+    expect(DEFAULT_ROLES.find((r) => r.name === "member")?.scopes).toEqual([
+      ...KERNEL_MEMBER_SCOPES,
+    ])
   })
 })

@@ -144,8 +144,8 @@ The agent builds dashboards from read tools and data store collections, and prev
 | --- | --- | --- | --- |
 | `dashboards_sources` | List the read tools you may put on a dashboard, with their params and result fields. | `kernel:dashboards:write` | No |
 | `dashboards_preview_block` | Run one block as you and return what the chart would draw; saves nothing. | `kernel:dashboards:write` | No |
-| `dashboards_list` | List the dashboards you can see. | `kernel:dashboards:write` | No |
-| `dashboards_get` | Read one dashboard and its blocks. | `kernel:dashboards:write` | No |
+| `dashboards_list` | List the dashboards you can see. | `kernel:dashboards:read` (every member) | No |
+| `dashboards_get` | Read one dashboard and its blocks. | `kernel:dashboards:read` (every member) | No |
 | `dashboards_create` | Save a new dashboard. | `kernel:dashboards:write` | For an org dashboard (decided by `kernel:dashboards:admin`) |
 | `dashboards_update` | Change a dashboard's title, blocks or visibility. | `kernel:dashboards:write` | For an org dashboard, or to make one org-visible |
 | `dashboards_delete` | Delete a dashboard. | `kernel:dashboards:write` | For an org dashboard |

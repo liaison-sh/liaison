@@ -1,6 +1,6 @@
 Users page in Workspace group at /settings/admin/users -> apps/web/src/framework/bootstrap.ts:656
 Users page requires kernel:users:admin -> apps/web/src/framework/bootstrap.ts:662
-admin role holds every scope (*) -> apps/api/src/modules/permissions/default-roles.ts:30
+admin role holds every scope (*) -> apps/api/src/modules/permissions/default-roles.ts:77
 Workspace group label -> packages/shared/src/i18n/locales/en/kernel.json:1566
 Invite user button -> packages/shared/src/i18n/locales/en/kernel.json:2345
 Invite dialog Email address field -> apps/web/src/modules/settings/AdminUsers.tsx:373

@@ -100,11 +100,18 @@ export interface PieData {
 
 export type BlockData = MetricData | TableData | SeriesData | PieData
 
-/** Why a block shows no data. The first four come from the server; the rest are the wire's. */
+/**
+ * Why a block shows no data. The server's: `no_access`, `not_allowed`, `rate_limited`,
+ * `unknown_tool` (the source is gone: an app removed or turned off) and `invalid_map` (the
+ * block no longer fits its source's data), both permanent until the dashboard changes, and
+ * `source_error` (the source failed this time). The rest are the wire's.
+ */
 export type BlockErrorKind =
   | "no_access"
   | "not_allowed"
   | "rate_limited"
+  | "unknown_tool"
+  | "invalid_map"
   | "source_error"
   | "not_found"
   | "network"
@@ -125,6 +132,8 @@ const SERVER_ERRORS: ReadonlySet<string> = new Set([
   "no_access",
   "not_allowed",
   "rate_limited",
+  "unknown_tool",
+  "invalid_map",
   "source_error",
 ])
 
@@ -275,15 +284,26 @@ const MAX_IN_FLIGHT = 4
 let inFlight = 0
 const waiting: Array<() => void> = []
 
-async function withSlot<T>(run: () => Promise<T>): Promise<T> {
+/**
+ * Runs `run` in one of the page's slots. A finishing read hands its slot straight to the next
+ * waiter (the count never drops in between), so a newcomer can never slip past the queue and
+ * make five. A read whose view closed while it waited gives its slot on without running.
+ */
+async function withSlot<T>(run: () => Promise<T>, signal?: AbortSignal): Promise<T | null> {
   if (inFlight >= MAX_IN_FLIGHT) await new Promise<void>((resolve) => waiting.push(resolve))
-  inFlight++
+  else inFlight++
   try {
-    return await run()
+    return signal?.aborted ? null : await run()
   } finally {
-    inFlight--
-    waiting.shift()?.()
+    const next = waiting.shift()
+    if (next) next()
+    else inFlight--
   }
+}
+
+export const DashboardsClientTestAccess = {
+  inFlight: () => inFlight,
+  withSlot,
 }
 
 /** One block's data, run as the viewer. Never rejects: a failure is the block's state. */
@@ -294,7 +314,7 @@ export function getBlockData(
   opts?: { refresh?: boolean; signal?: AbortSignal },
 ): Promise<BlockResult> {
   const path = `/dashboards/${encodeURIComponent(dashboardId)}/blocks/${encodeURIComponent(blockId)}/data${opts?.refresh ? "?refresh=1" : ""}`
-  return withSlot(async () => {
+  const read = withSlot(async () => {
     try {
       const body = await api.get<unknown>(path, {
         signal: opts?.signal,
@@ -305,5 +325,7 @@ export function getBlockData(
     } catch (err) {
       return blockErrorFrom(err)
     }
-  })
+  }, opts?.signal)
+  // Cancelled before it ran: the view that asked is gone, nothing is shown.
+  return read.then((r) => r ?? { ok: false, error: "network" })
 }

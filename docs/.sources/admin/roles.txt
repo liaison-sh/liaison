@@ -2,15 +2,17 @@ Roles & access page in Workspace group, kernel:users:admin -> apps/web/src/frame
 Roles & access label -> packages/shared/src/i18n/locales/en/kernel.json:1639
 A role is a set of permissions -> packages/shared/src/i18n/locales/en/kernel.json:5325
 admin role scopes *, first registered user -> apps/api/src/modules/permissions/default-roles.ts:8
-admin scopes -> apps/api/src/modules/permissions/default-roles.ts:30
-member scopes list -> apps/api/src/modules/permissions/default-roles.ts:36
-viewer scopes list -> apps/api/src/modules/permissions/default-roles.ts:66
+admin scopes -> apps/api/src/modules/permissions/default-roles.ts:77
+member scopes list -> apps/api/src/modules/permissions/default-roles.ts:38
+viewer scopes list -> apps/api/src/modules/permissions/default-roles.ts:86
 App scopes not granted by default -> apps/api/src/modules/permissions/default-roles.ts:13
 App roles named <app>.<tier>, displayed App · Tier -> apps/web/src/lib/app-label.ts:73
 Tickets tiers support, support_lead, admin -> apps/api/src/modules/apps/runtime.ts:710
 Projects roles member, lead, admin -> apps/api/src/apps/projects/app.manifest.json:1689
 Knowledge roles member, curator -> apps/api/src/apps/knowledge/app.manifest.json:1620
-Full Member system-managed, base member tier, excludes admin/lead/curator -> apps/api/src/modules/apps/runtime.ts:731
+Full Member system-managed, base member tier, excludes admin/lead/curator -> apps/api/src/modules/apps/runtime.ts:1109
+Full Member carries the member role's kernel scopes, new ones included -> apps/api/src/modules/apps/runtime.ts:1166
+Older orgs' member role gets new member scopes by a release migration -> apps/api/src/modules/permissions/default-roles.ts:27 ; apps/api/src/db/migrations/0284_kernel_member_tier_dashboards.sql:10
 Base tier: member role or lowest non-admin -> apps/api/src/modules/apps/runtime.ts:718
 Additive only, never revokes -> apps/api/src/modules/apps/runtime.ts:751
 delete_role refuses system-managed; re-created by name -> apps/api/src/modules/agent/tools/kernel-tools.ts:2103
@@ -24,7 +26,7 @@ Full {{app}} access -> apps/web/src/modules/settings/PermissionGrid.tsx:405
 Inherited = granted by wildcard, not interactive -> apps/web/src/modules/settings/PermissionGrid.tsx:396
 Inherited not interactive -> apps/web/src/modules/settings/PermissionGrid.tsx:480
 Scope hierarchy prefix and trailing * -> apps/api/src/modules/permissions/permissions.ts:15
-Parent scope covers children (kernel:agent:memory) -> apps/api/src/modules/permissions/default-roles.ts:54
+Parent scope covers children (kernel:agent:memory) -> apps/api/src/modules/permissions/default-roles.ts:64
 Members list on role page -> packages/shared/src/i18n/locales/en/kernel.json:1536
 Assign role from users' settings page -> apps/web/src/modules/settings/AdminRoleDetail.tsx:209
 Delete role button -> apps/web/src/modules/settings/AdminRoleDetail.tsx:155

@@ -196,6 +196,12 @@ export const KERNEL_SCOPES: ScopeCatalogEntry[] = [
     description: "Write documents in the agent's own data store namespace",
   },
   {
+    // Every member holds it (every-member-scopes.ts): what the dashboards' row policy shows.
+    scope: "kernel:dashboards:read",
+    app: "kernel",
+    description: "List and open the dashboards you can see: yours and the org's",
+  },
+  {
     scope: "kernel:dashboards:write",
     app: "kernel",
     description: "Create and edit your own personal dashboards",

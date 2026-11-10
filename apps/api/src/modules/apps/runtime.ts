@@ -162,6 +162,7 @@ import {
 import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
 import { createSandboxRpcBridge, createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { orgSetupLockSql } from "~/modules/apps/setup-stamp"
+import { KERNEL_MEMBER_SCOPES } from "~/modules/permissions/default-roles"
 import { invalidateDimensionCatalog } from "~/modules/permissions/dimension-catalog"
 import {
   assertRlsManagementAllowed,
@@ -1204,9 +1205,9 @@ export function baselineMemberScopes(
 /** Reserved name of the auto-maintained composite role. */
 export const FULL_MEMBER_ROLE_NAME = "Full Member"
 const FULL_MEMBER_ROLE_DESCRIPTION =
-  "Standard member access to every installed app, automatically granted each " +
-  "app's base member tier. System-managed: scopes update as apps are installed. " +
-  "Excludes admin, lead and curator tiers."
+  "Standard member access to the workspace and every installed app: the kernel's " +
+  "member tier plus each app's base member tier. System-managed: scopes update " +
+  "as apps are installed. Excludes admin, lead and curator tiers."
 
 /**
  * The role names an app's registration creates in an org from its manifest
@@ -1235,6 +1236,11 @@ export function rolesSeededByRegistration(appName: string, declared: unknown): s
  * standard non-admin scopes, so full members gain access to new apps automatically.
  *
  * Semantics:
+ *  - Grants the kernel's own member tier (`KERNEL_MEMBER_SCOPES`, the `member`
+ *    preset: threads, contacts, the data store, dashboards...), so a person
+ *    holding Full Member alone can use the workspace's kernel features, and a
+ *    kernel scope added to that tier reaches every Full Member at the org's next
+ *    registration, the same way an app's new member scope does.
  *  - Grants each app's standard member tier (see `baselineMemberScopes`) — the
  *    `member` role, or the lowest non-admin tier for apps without one. App-admin
  *    and lead/curator tiers stay opt-in. `clevel` and other cross-cutting scopes
@@ -1255,7 +1261,7 @@ export async function extendFullMemberRole(
 ): Promise<void> {
   const baseline = baselineMemberScopes(roles)
   if (baseline.length === 0) return
-  const scopes = new Set(baseline)
+  const scopes = new Set([...KERNEL_MEMBER_SCOPES, ...baseline])
 
   const rolesTable = drizzleSql.raw(`${schemaRef("kernel")}.roles`)
   const usersTable = drizzleSql.raw(`${schemaRef("kernel")}.users`)

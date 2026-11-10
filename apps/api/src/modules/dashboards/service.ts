@@ -22,6 +22,8 @@ import { type UserContext, withRlsContext } from "~/db/rls"
 import { type DashboardRow, dashboards } from "~/db/schema/kernel"
 import {
   blockCacheKey,
+  FAILED_BLOCK_TTL_SEC,
+  failedBlockCacheKey,
   readCachedBlock,
   takeRefresh,
   withViewerSlot,
@@ -322,6 +324,12 @@ interface CachedBlock {
   computedAt: string
 }
 
+/** A block's failed outcome as cached (failedBlockCacheKey). */
+interface CachedFailure {
+  error: BlockErrorCode
+  message: string
+}
+
 /**
  * One block's data for `viewer`: from the cache (per viewer, per permissions,
  * per dashboard version), else run as the viewer. `refresh` bypasses the cache,
@@ -355,14 +363,27 @@ export async function getBlockData(
     }
   }
   const key = blockCacheKey(viewer, { dashboardId, version: dashboard.version, blockId })
+  const failedKey = failedBlockCacheKey(key)
   if (!opts.refresh) {
     const hit = await readCachedBlock<CachedBlock>(key)
     if (hit) return { blockId, ok: true, data: hit.data, cached: true, computedAt: hit.computedAt }
+    const failed = await readCachedBlock<CachedFailure>(failedKey)
+    if (failed) return { blockId, ok: false, error: failed.error, message: failed.message }
   }
   const outcome = await withViewerSlot(viewer, () =>
     computeBlock(block, { viewer, dashboardId, ...(opts.signal ? { signal: opts.signal } : {}) }),
   )
-  if (!outcome.ok) return { blockId, ok: false, error: outcome.error, message: outcome.message }
+  if (!outcome.ok) {
+    // A read the viewer abandoned says nothing about the source: never cached.
+    if (!opts.signal?.aborted) {
+      await writeCachedBlock(
+        failedKey,
+        { error: outcome.error, message: outcome.message } satisfies CachedFailure,
+        Math.min(FAILED_BLOCK_TTL_SEC, blockTtlSec(block)),
+      )
+    }
+    return { blockId, ok: false, error: outcome.error, message: outcome.message }
+  }
   const computedAt = new Date().toISOString()
   await writeCachedBlock(
     key,

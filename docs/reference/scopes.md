@@ -37,6 +37,7 @@ Scopes are hierarchical capability strings, `app:resource:action`. Granting `app
 | `kernel:contacts:read` | Read contacts |
 | `kernel:contacts:write` | Write contacts |
 | `kernel:dashboards:admin` | Manage every dashboard shared with the org |
+| `kernel:dashboards:read` | List and open the dashboards you can see: yours and the org's |
 | `kernel:dashboards:share` | Create and edit dashboards shared with the org |
 | `kernel:dashboards:write` | Create and edit your own personal dashboards |
 | `kernel:data_subject:export` | Compile a single data subject's records across apps into one GDPR data-subject-request (DSR) export bundle (privacy/DSR handler authority, NOT org admin) |

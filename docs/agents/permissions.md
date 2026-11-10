@@ -27,7 +27,7 @@ Because of this, adding a colleague with fewer permissions to a conversation can
 | --- | --- |
 | Personal agent | Your own permissions. It follows them when they change. |
 | Role agent | Set by an administrator in **Settings** under **Capabilities**. It cannot be wider than what that administrator may grant. See [Create an agent](../agents/create-an-agent.md). |
-| System agent (`@base`) | A common base: skills, conversations, memory, contacts, files, knowledge and projects. |
+| System agent (`@base`) | A common base: skills, conversations, memory, contacts, files, knowledge, projects and dashboards. |
 
 Administration scopes are meant for people: every scope that asks a person for a second factor when the organization requires one. That is `*`, any scope whose last part is `admin` (such as `kernel:org:admin`, `kernel:apps:admin`, `kernel:agents:admin` or an app's `tickets:settings:admin`), and a wildcard over a kernel one (`kernel:*`, `kernel:users:*`). Keep them out of a role agent's ceiling: `liaison config apply` refuses a role agent that lists one, and an approved access request never adds one.
 
@@ -93,6 +93,7 @@ An administrator can also use their own agent to read and change access: `descri
 | `kernel:agent:web` | Fetch and search the public web (`web_fetch`, `web_search`, `web_watch`, `watch_state`). |
 | `kernel:agent:memory` | The gate for memory tools and notifications. |
 | `kernel:bug_reports:file` | Report a bug about Liaison under your own name (`report_bug`). Every active member holds it whatever their roles, and an agent acting for them keeps it whatever its ceiling, as anyone may use **Report a bug**. |
+| `kernel:dashboards:read` | List and open the dashboards you can see, your own and the org's (`dashboards_list`, `dashboards_get`). Every active member holds it whatever their roles, as everyone sees those dashboards on **Home**. Each block still reads its data as the viewer. |
 | `kernel:data_subject:export:self` | Export everything the organization holds about yourself as a member (`data_subject_export`). Every active member holds it whatever their roles. Exporting anyone else needs `kernel:data_subject:export`. |
 | `kernel:agent:memory:read` | Read the current user's agent memory. |
 | `kernel:agent:memory:write` | Create, update or delete the current user's agent memory. |

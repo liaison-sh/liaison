@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 /**
- * Companies (kernel.companies, migration 0291): the organisations an org's
+ * Companies (kernel.companies, migration 0293): the organisations an org's
  * people work for, and the hub their deals, money, support and work hang off.
  *
  * Every read and write runs under the caller's RLS: a company shared with

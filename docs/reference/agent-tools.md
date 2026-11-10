@@ -96,8 +96,8 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `create_skill` | Create a personal or org shared SKILL: a reusable named playbook (reply macro, decision rule, tone guide) the agent later loads by name with kernel__skill_read and follows. | yes | `kernel:skills:write` |
 | `dashboards_create` | Save a new dashboard. |  | `kernel:dashboards:write` |
 | `dashboards_delete` | Delete a dashboard. |  | `kernel:dashboards:write` |
-| `dashboards_get` | Read one dashboard: title, visibility, version and its spec. |  | `kernel:dashboards:write` |
-| `dashboards_list` | List the dashboards you can see: yours and the organisation's, with their ids and visibility. |  | `kernel:dashboards:write` |
+| `dashboards_get` | Read one dashboard: title, visibility, version and its spec. |  | `kernel:dashboards:read` |
+| `dashboards_list` | List the dashboards you can see: yours and the organisation's, with their ids and visibility. |  | `kernel:dashboards:read` |
 | `dashboards_preview_block` | Run one dashboard block as you, without saving anything, and return exactly what the chart would draw. |  | `kernel:dashboards:write` |
 | `dashboards_sources` | List the read tools you can put on a dashboard (each block reads one), with their params and the fields of their result when declared. |  | `kernel:dashboards:write` |
 | `dashboards_update` | Change a dashboard's title, blocks (the whole spec) or visibility. |  | `kernel:dashboards:write` |

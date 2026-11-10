@@ -343,8 +343,9 @@ data store search: declared searchable agent-readable collections -> apps/api/sr
 data store search: read scopes admitted by the permission filter -> apps/api/src/modules/data-store/search.ts:331
 dashboards_sources tool: scope and approval flag -> apps/api/src/modules/dashboards/tools.ts:200
 dashboards_preview_block tool: scope, saves nothing -> apps/api/src/modules/dashboards/tools.ts:217
-dashboards_list tool: scope and approval flag -> apps/api/src/modules/dashboards/tools.ts:255
-dashboards_get tool: scope and approval flag -> apps/api/src/modules/dashboards/tools.ts:272
+dashboards_list tool: scope and approval flag -> apps/api/src/modules/dashboards/tools.ts:292
+dashboards_get tool: scope and approval flag -> apps/api/src/modules/dashboards/tools.ts:309
+kernel:dashboards:read held by every member -> apps/api/src/modules/permissions/every-member-scopes.ts:38
 dashboards_create tool: gated for org, decided by kernel:dashboards:admin -> apps/api/src/modules/dashboards/tools.ts:289
 dashboards_update tool: gated for an org dashboard or a switch to org -> apps/api/src/modules/dashboards/tools.ts:317
 dashboards_delete tool: gated for an org dashboard -> apps/api/src/modules/dashboards/tools.ts:356

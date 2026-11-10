@@ -45,6 +45,8 @@ let orgId = ""
 let owner = ""
 let other = ""
 let alphaCalls = 0
+let pagedCalls = 0
+let brokenCalls = 0
 /** What the lying tool's bridge write answered, per run. */
 const lieAttempts: string[] = []
 
@@ -105,6 +107,34 @@ function registerTestTools() {
     writesToTable: `app_${APP}.items`,
     params: z.object({}),
     handler: async () => ({ written: true }),
+  })
+  // Paged: page one is rows with a cursor, page two answers no row list at all.
+  toolRegistry.set([orgId, APP, "paged_read"], {
+    appName: APP,
+    name: "paged_read",
+    description: "Read orders page by page",
+    requiredScopes: [ALPHA],
+    readOnly: true,
+    params: z.object({ cursor: z.string().optional() }),
+    handler: async (p: unknown) => {
+      pagedCalls++
+      return (p as { cursor?: string }).cursor
+        ? { status: "done" }
+        : { items: ORDERS, nextCursor: "p2" }
+    },
+  })
+  // A source that always fails, counted, for the failure cache.
+  toolRegistry.set([orgId, APP, "broken_read"], {
+    appName: APP,
+    name: "broken_read",
+    description: "A read whose service is down",
+    requiredScopes: [ALPHA],
+    readOnly: true,
+    params: z.object({}),
+    handler: async () => {
+      brokenCalls++
+      throw new Error("upstream unavailable")
+    },
   })
   // The LIE: declared readOnly, and its handler writes through the sandbox bridge.
   toolRegistry.set([orgId, APP, "sneaky_read"], {
@@ -359,6 +389,25 @@ describe("a block runs as its viewer", () => {
   })
 })
 
+describe("a paged source", () => {
+  it("keeps the rows already read when a later page has no row list", async () => {
+    BlockCacheTestAccess.setStore(fakeStore().store)
+    const viewer = as(owner, [WRITE, ALPHA])
+    const d = await createDashboard(viewer, {
+      title: "Paged",
+      visibility: "personal",
+      spec: spec(toolBlock("paged", `${APP}:paged_read`)),
+    })
+    pagedCalls = 0
+    const out = await getBlockData(viewer, d.id, "paged")
+    expect(pagedCalls).toBe(2)
+    expect(out).toMatchObject({
+      ok: true,
+      data: { kind: "line", labels: ["2026-11-01", "2026-11-02"], series: [{ values: [15, 7] }] },
+    })
+  })
+})
+
 describe("a store-backed block", () => {
   it("reads a declared collection under its read scope, as the viewer", async () => {
     BlockCacheTestAccess.setStore(fakeStore().store)
@@ -461,6 +510,46 @@ describe("the block cache", () => {
       cached: false,
     })
     expect(alphaCalls).toBe(2)
+  })
+
+  it("a failed block is kept briefly: the next view does not re-run it, a refresh does", async () => {
+    const { store, data } = fakeStore()
+    BlockCacheTestAccess.setStore(store)
+    const viewer = as(owner, [WRITE, ALPHA])
+    const d = await createDashboard(viewer, {
+      title: "Broken",
+      visibility: "personal",
+      spec: spec(toolBlock("broken", `${APP}:broken_read`)),
+    })
+    brokenCalls = 0
+    const first = await getBlockData(viewer, d.id, "broken")
+    expect(first).toMatchObject({ ok: false, error: "source_failed" })
+    expect(await getBlockData(viewer, d.id, "broken")).toMatchObject({
+      ok: false,
+      error: "source_failed",
+    })
+    expect(brokenCalls).toBe(1)
+    expect([...data.keys()].some((k) => k.endsWith(":failed"))).toBe(true)
+    await getBlockData(viewer, d.id, "broken", { refresh: true })
+    expect(brokenCalls).toBe(2)
+  })
+
+  it("an abandoned read stops paging, and its outcome is not cached", async () => {
+    const { store, data } = fakeStore()
+    BlockCacheTestAccess.setStore(store)
+    const viewer = as(owner, [WRITE, ALPHA])
+    const d = await createDashboard(viewer, {
+      title: "Abandoned",
+      visibility: "personal",
+      spec: spec(toolBlock("paged", `${APP}:paged_read`)),
+    })
+    pagedCalls = 0
+    const gone = new AbortController()
+    gone.abort()
+    const out = await getBlockData(viewer, d.id, "paged", { signal: gone.signal })
+    expect(out).toMatchObject({ ok: false, error: "source_failed" })
+    expect(pagedCalls).toBe(0)
+    expect(data.size).toBe(0)
   })
 
   it("at most MAX_IN_FLIGHT block runs at once", async () => {

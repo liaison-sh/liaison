@@ -21,7 +21,9 @@ Each app adds its own roles, named `<app>.<tier>` and shown as **App · Tier**. 
 
 ### The Full Member role
 
-Liaison keeps one system-managed role, **Full Member**, that holds every installed app's base member tier: the app's `member` role, or its lowest non-admin tier. When a new app is installed, Full Member gains that app's scopes automatically. It never includes an app's admin, lead or curator tier.
+Liaison keeps one system-managed role, **Full Member**, that holds the scopes of the **member** role above (threads, contacts, the data store, dashboards...) and every installed app's base member tier: the app's `member` role, or its lowest non-admin tier. When a new app is installed, Full Member gains that app's scopes automatically, and when a Liaison release adds a scope to the **member** role, Full Member gains it too. It never includes an app's admin, lead or curator tier.
+
+An org created before a release that added scopes to **member** gets them on its own **member** role when it upgrades to that release.
 
 Liaison only adds scopes to Full Member, never removes them. If you remove a scope by hand, it can come back the next time the app registers. Do not delete Full Member: Liaison re-creates it by name, and the agent tool `delete_role` refuses it. Trim its scopes instead.
 

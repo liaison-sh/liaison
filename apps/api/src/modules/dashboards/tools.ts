@@ -12,12 +12,12 @@
 // its source. A personal dashboard is a plain write. A person's own REST call
 // is never gated: their scopes decide (service.ts).
 
-import { eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { z } from "zod"
 import type { RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
-import { dashboards } from "~/db/schema/kernel"
+import { dashboards, userRoles } from "~/db/schema/kernel"
 import { type ApprovalSummarizer, toolRegistry } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
 import { computeBlock } from "~/modules/dashboards/execute"
@@ -32,6 +32,7 @@ import {
 import { listEligibleSources } from "~/modules/dashboards/sources"
 import { type DashboardSpec, dashboardBlockSchema, specIssues } from "~/modules/dashboards/spec"
 
+const READ = "kernel:dashboards:read"
 const WRITE = "kernel:dashboards:write"
 const ADMIN = "kernel:dashboards:admin"
 const SINK = "kernel.dashboards"
@@ -46,13 +47,25 @@ interface HandlerCtx {
   abortSignal?: AbortSignal
 }
 
-function viewerOf(ctx: HandlerCtx): UserContext {
+/**
+ * The person a tool call reads and writes for, with their role ids: row policies read them (a
+ * record shared with a role), so an agent's preview shows exactly what the person will see on
+ * the saved dashboard, whose REST reads carry the roles of the session.
+ */
+async function viewerOf(ctx: HandlerCtx): Promise<UserContext> {
+  const held = await withPrivilegedDb(ctx.orgId, "dashboard-viewer-roles", (tx) =>
+    tx
+      .select({ roleId: userRoles.roleId })
+      .from(userRoles)
+      .where(and(eq(userRoles.userId, ctx.userId), eq(userRoles.orgId, ctx.orgId))),
+  )
   return {
     actorType: "user",
     userId: ctx.userId,
     orgId: ctx.orgId,
     scopes: ctx.scopes ?? [],
     dimensionGrants: ctx.dimensionGrants ?? {},
+    roles: held.map((r) => r.roleId),
   }
 }
 
@@ -218,7 +231,7 @@ export function registerDashboardTools(orgId: string): void {
     params: z.object({ query: z.string().max(200).optional() }),
     handler: (async (params: unknown, ctx: HandlerCtx) => {
       const { query } = params as { query?: string }
-      const sources = await listEligibleSources(ctx.orgId, viewerOf(ctx), query)
+      const sources = await listEligibleSources(ctx.orgId, await viewerOf(ctx), query)
       return { sources, total: sources.length }
     }) as (params: unknown, ctx: any) => Promise<unknown>,
   })
@@ -248,7 +261,7 @@ export function registerDashboardTools(orgId: string): void {
       const parsed = dashboardBlockSchema.safeParse((params as { block?: unknown }).block)
       if (!parsed.success)
         return { ok: false, reason: "invalid_block", problems: specIssues(parsed.error) }
-      const viewer = viewerOf(ctx)
+      const viewer = await viewerOf(ctx)
       const outcome = await computeBlock(parsed.data, {
         viewer,
         dashboardId: null,
@@ -276,10 +289,10 @@ export function registerDashboardTools(orgId: string): void {
     description:
       "List the dashboards you can see: yours and the organisation's, with their ids and visibility.",
     searchKeywords: ["dashboard", "tableau de bord"],
-    requiredScopes: [WRITE],
+    requiredScopes: [READ],
     params: z.object({}),
     handler: (async (_params: unknown, ctx: HandlerCtx) =>
-      guarded(async () => ({ dashboards: await listDashboards(viewerOf(ctx), ctx.db) }))) as (
+      guarded(async () => ({ dashboards: await listDashboards(await viewerOf(ctx), ctx.db) }))) as (
       params: unknown,
       ctx: any,
     ) => Promise<unknown>,
@@ -293,13 +306,12 @@ export function registerDashboardTools(orgId: string): void {
     description:
       "Read one dashboard: title, visibility, version and its spec. Open it for the person with kernel__open_app (app kernel, view dashboard, id).",
     searchKeywords: ["dashboard"],
-    requiredScopes: [WRITE],
+    requiredScopes: [READ],
     params: z.object({ id: z.string().uuid() }),
     handler: (async (params: unknown, ctx: HandlerCtx) =>
-      guarded(() => getDashboard(viewerOf(ctx), (params as { id: string }).id, ctx.db))) as (
-      params: unknown,
-      ctx: any,
-    ) => Promise<unknown>,
+      guarded(async () =>
+        getDashboard(await viewerOf(ctx), (params as { id: string }).id, ctx.db),
+      )) as (params: unknown, ctx: any) => Promise<unknown>,
   })
 
   toolRegistry.set([orgId, "kernel", "dashboards_create"], {
@@ -318,7 +330,7 @@ export function registerDashboardTools(orgId: string): void {
     handler: (async (params: unknown, ctx: HandlerCtx) => {
       const p = params as { title: string; visibility: "personal" | "org"; spec: DashboardSpec }
       return guarded(async () => {
-        const row = await createDashboard(viewerOf(ctx), p, ctx.db)
+        const row = await createDashboard(await viewerOf(ctx), p, ctx.db)
         return { id: row.id, title: row.title, visibility: row.visibility, version: row.version }
       })
     }) as (params: unknown, ctx: any) => Promise<unknown>,
@@ -354,7 +366,7 @@ export function registerDashboardTools(orgId: string): void {
         ifVersion?: number
       }
       return guarded(async () => {
-        const row = await updateDashboard(viewerOf(ctx), id, input, ctx.db)
+        const row = await updateDashboard(await viewerOf(ctx), id, input, ctx.db)
         return { id: row.id, title: row.title, visibility: row.visibility, version: row.version }
       })
     }) as (params: unknown, ctx: any) => Promise<unknown>,
@@ -380,7 +392,7 @@ export function registerDashboardTools(orgId: string): void {
     params: z.object({ id: z.string().uuid() }),
     handler: (async (params: unknown, ctx: HandlerCtx) =>
       guarded(async () => {
-        await deleteDashboard(viewerOf(ctx), (params as { id: string }).id, ctx.db)
+        await deleteDashboard(await viewerOf(ctx), (params as { id: string }).id, ctx.db)
         return { deleted: true }
       })) as (params: unknown, ctx: any) => Promise<unknown>,
     writesToTable: SINK,

@@ -6668,6 +6668,8 @@
     "noValue": "No value yet",
     "blockNoAccess": "You don't have access to the data behind this block.",
     "blockNotAllowed": "This block's source can no longer be shown on a dashboard.",
+    "blockSourceGone": "This block's source is no longer available. Ask your agent to pick another one.",
+    "blockMapInvalid": "This block no longer fits its source's data. Ask your agent to fix it.",
     "blockRateLimited": "Just refreshed. Try again in a few seconds.",
     "blockSourceError": "This block's data could not be read. Try again later.",
     "blockNotFound": "This block is no longer on the dashboard.",

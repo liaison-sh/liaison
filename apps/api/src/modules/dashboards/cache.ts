@@ -75,14 +75,22 @@ export interface CacheViewer {
   userId: string
   scopes: string[]
   dimensionGrants: Record<string, string[]>
+  /** The viewer's role ids: row policies read them (a record shared with a role). */
+  roles?: string[]
 }
 
-/** A short, order-independent hash of what the viewer may read. */
-export function permissionHash(viewer: Pick<CacheViewer, "scopes" | "dimensionGrants">): string {
+/** A short, order-independent hash of what the viewer may read: scopes, dimension grants, roles. */
+export function permissionHash(
+  viewer: Pick<CacheViewer, "scopes" | "dimensionGrants" | "roles">,
+): string {
   const grants = Object.keys(viewer.dimensionGrants)
     .sort()
     .map((k) => [k, [...(viewer.dimensionGrants[k] ?? [])].sort()])
-  const material = JSON.stringify([[...new Set(viewer.scopes)].sort(), grants])
+  const material = JSON.stringify([
+    [...new Set(viewer.scopes)].sort(),
+    grants,
+    [...new Set(viewer.roles ?? [])].sort(),
+  ])
   return createHash("sha256").update(material).digest("hex").slice(0, 20)
 }
 
@@ -92,6 +100,19 @@ export function blockCacheKey(
 ): string {
   return `dash:block:${viewer.orgId}:${block.dashboardId}:${block.version}:${block.blockId}:${viewer.userId}:${permissionHash(viewer)}`
 }
+
+/**
+ * Where a block's FAILED outcome is kept, beside its data key: a source that fails (a down
+ * service, a map that no longer fits) is not re-run on every view, only after this short wait
+ * or on a refresh. A separate key, so a release that reads only data entries never mistakes a
+ * failure for data.
+ */
+export function failedBlockCacheKey(dataKey: string): string {
+  return `${dataKey}:failed`
+}
+
+/** How long a failed outcome is kept: a refresh (once per 30 s) reads past it anyway. */
+export const FAILED_BLOCK_TTL_SEC = 30
 
 function refreshKey(viewer: CacheViewer, dashboardId: string, blockId: string): string {
   return `dash:refresh:${viewer.orgId}:${dashboardId}:${blockId}:${viewer.userId}`

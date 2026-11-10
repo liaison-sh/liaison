@@ -26,8 +26,14 @@
  *    holds about yourself as a member (`kernel:data_subject_export` with
  *    `userId` "me"), the access right every person has over their own data.
  *    Any other subject needs its parent, `kernel:data_subject:export`.
+ *  - `kernel:dashboards:read`: list and open the dashboards one can see, one's own
+ *    and the org's (`kernel:dashboards_list` / `_get`). The rows' SELECT policy
+ *    (0275) already shows every member those dashboards in the app, and each
+ *    block's data is still read as the viewer, so this reads nothing new: it only
+ *    lets a person's agent find what the person sees on Home.
  */
 export const KERNEL_EVERY_MEMBER_SCOPES: readonly string[] = [
   "kernel:bug_reports:file",
   "kernel:data_subject:export:self",
+  "kernel:dashboards:read",
 ]

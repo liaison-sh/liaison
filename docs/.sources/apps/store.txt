@@ -189,3 +189,17 @@ unchanged without Invoicing mapped to the shop -> bundled-apps/invoicing/src/ord
 orders_search hit carries shippingAmount / shippingCurrency (shipping line after discounts) -> bundled-apps/shopify/src/reads.ts:296
 draft_orders_get / orders_get return purchasingCompany (company, location addresses, tax registration id, tax exemption, contact email) -> bundled-apps/shopify/src/lib/draft-order.ts:514; bundled-apps/shopify/src/reads.ts:805
 orders_get returns taxesIncluded -> bundled-apps/shopify/src/reads.ts:804
+companies_search / companies_get: locations with addresses, tax settings, catalogs; contacts with roles per location -> bundled-apps/shopify/src/companies.ts:1
+companies_search, companies_get read tools, read_companies scope -> bundled-apps/shopify/app.manifest.json:1422
+read_companies OAuth scope -> bundled-apps/shopify/app.manifest.json:352
+purchasingCompany passes through; location addresses fill the draft -> bundled-apps/shopify/src/mutations/draft-order-input.ts:531
+B2B_COMPANY_REQUIRED lists companies and locations -> bundled-apps/shopify/src/mutations/draft-order-b2b.ts:265
+B2B_CONTACT_NO_ROLE -> bundled-apps/shopify/src/mutations/draft-order-b2b.ts:363
+B2B_PRICE_NOT_CATALOG -> bundled-apps/shopify/src/mutations/draft-order-b2b.ts:456
+B2B_CATALOG_UNREADABLE fails closed -> bundled-apps/shopify/src/mutations/draft-order-b2b.ts:491
+B2B_NO_CATALOG_PRICE -> bundled-apps/shopify/src/mutations/draft-order-b2b.ts:590
+priceException reasons; Price exception attribute -> bundled-apps/shopify/src/mutations/draft-order-b2b.ts:24
+B2B line price never becomes a discount (priceOverride) -> bundled-apps/shopify/src/mutations/draft-order-input.ts:358
+approval card shows company, location, price basis -> bundled-apps/shopify/src/summarizers.ts:457
+draft_orders_update preflight runs the same guard -> bundled-apps/shopify/src/mutations/draft-orders.ts:202
+draft_orders_get customAttributes (order and lines) -> bundled-apps/shopify/src/reads.ts:1177

@@ -255,6 +255,9 @@ const READ_ONLY: Record<string, string[]> = {
     "customers_get_by_external_id",
     "draft_orders_list",
     "draft_orders_get",
+    // B2B companies: locations, contacts with roles, catalogs.
+    "companies_search",
+    "companies_get",
     "locations_list",
     "products_search",
     // The short display code per SKU, read from the kernel product attributes.

@@ -923,7 +923,9 @@ describe("Shopify app.manifest.json", () => {
     // location addresses, tax registration id, tax exemption, contact email), orders_get the order's
     // taxesIncluded, and draft lines their priceOverride.
     // 0.4.16: variants_search sends product_status in lower case (Shopify matches no other).
-    expect(m.version).toBe("0.4.16")
+    // 0.4.17: B2B company drafts: companies_search / companies_get (read_companies), purchasingCompany
+    // on draft_orders_create / update, priceOverride + priceException, the B2B catalog-price guard.
+    expect(m.version).toBe("0.4.17")
   })
 
   it("orders_search and variants_search declare their filters and close their params", () => {

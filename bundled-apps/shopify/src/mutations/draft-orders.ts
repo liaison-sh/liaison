@@ -194,9 +194,31 @@ const DRAFT_ORDER_UPDATE = `
     }
   }
 `
+/**
+ * STAGE-TIME preflight for the gated `draft_orders_update`: the same normalisation and B2B pricing
+ * guard the handler runs (read only), so a B2B draft edit with an unexcepted discount or custom
+ * price is refused before an approval is staged, not after the approve.
+ */
+export async function draft_orders_update_preflight(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<PreflightResult> {
+  try {
+    if (!params.id) throw makeMutationError("BAD_PARAM", "id is required")
+    await normalizeDraftOrderInput(resolveMutationInput({ input: params.input ?? {} }), ctx, {
+      draftId: String(params.id),
+    })
+  } catch (err) {
+    return preflightRefusal(err, "BAD_PARAM")
+  }
+  return { ok: true }
+}
+
 export async function draft_orders_update(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
   if (!params.id) throw makeMutationError("BAD_PARAM", "id is required")
-  const input = await normalizeDraftOrderInput(resolveMutationInput({ input: params.input ?? {} }), ctx)
+  const input = await normalizeDraftOrderInput(resolveMutationInput({ input: params.input ?? {} }), ctx, {
+    draftId: String(params.id),
+  })
   // Same normalize-then-mutate shape as the create, so it carries the same exposure: a usable-looking
   // email whose domain Shopify rejects would 422 the whole gated update. Same single retry without it.
   const send = (variables: Record<string, unknown>): Promise<unknown> =>

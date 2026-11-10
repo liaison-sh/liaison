@@ -1259,6 +1259,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // Pinned export set of the mutations index over src/mutations/ (pure, no I/O).
             "src/mutations.export-set.test.ts",
             "src/mutations/invoiceability.test.ts",
+            // B2B company drafts: catalog-priced lines, the price-exception guard, companies reads.
+            "src/mutations/draft-order-b2b.test.ts",
             // Partial-fulfillment planning read (fulfillment_orders_get) — mock-driven fetch stub,
             // no Postgres/shop creds, same class as mutations.test.ts.
             "src/fulfillment-orders.test.ts",

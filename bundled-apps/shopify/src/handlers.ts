@@ -138,6 +138,9 @@ export const metafields_list = withShopifyConnectionEnvelope(readHandlers.metafi
 // were never re-exported here, so manifest-handler resolution failed for them.
 export const draft_orders_list = withShopifyConnectionEnvelope(readHandlers.draft_orders_list)
 export const draft_orders_get = withShopifyConnectionEnvelope(readHandlers.draft_orders_get)
+// B2B companies (read_companies): find a company, its locations, contacts with their roles, and catalogs.
+export const companies_search = withShopifyConnectionEnvelope(readHandlers.companies_search)
+export const companies_get = withShopifyConnectionEnvelope(readHandlers.companies_get)
 export const locations_list = withShopifyConnectionEnvelope(readHandlers.locations_list)
 
 // — webhook handlers + verifier (manifest.webhooks.<topic>.{handler,verify}) — Task B9
@@ -180,6 +183,9 @@ export const draft_orders_create = gatedMutation(mutationHandlers.draft_orders_c
 //   nothing. See the preflight block in mutations.ts.
 export const draft_orders_create_preflight = withShopifyConnectionEnvelope(
   mutationHandlers.draft_orders_create_preflight,
+)
+export const draft_orders_update_preflight = withShopifyConnectionEnvelope(
+  mutationHandlers.draft_orders_update_preflight,
 )
 export const products_merge_preflight = withShopifyConnectionEnvelope(mutationHandlers.products_merge_preflight)
 export const fulfillments_create_preflight = withShopifyConnectionEnvelope(

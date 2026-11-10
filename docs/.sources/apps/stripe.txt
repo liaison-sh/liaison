@@ -11,3 +11,11 @@ pinned API version -> bundled-apps/stripe/src/http.ts:14
 key added by the host -> bundled-apps/stripe/src/http.ts:147
 member, billing, admin roles -> bundled-apps/stripe/app.manifest.json:40
 connecting needs stripe:admin:connection -> bundled-apps/stripe/app.manifest.json:58
+scopes list -> bundled-apps/stripe/app.manifest.json:28
+customers table under the customers scope -> bundled-apps/stripe/app.manifest.json:149
+subscriptions and mrr events under the subscriptions scope -> bundled-apps/stripe/app.manifest.json:416
+invoices table under the invoices scope -> bundled-apps/stripe/app.manifest.json:259
+payments, refunds, disputes under the payments scope -> bundled-apps/stripe/app.manifest.json:365
+billing writes: link customers, request refunds and cancellations -> bundled-apps/stripe/app.manifest.json:50
+internal tables under the internal scope -> bundled-apps/stripe/app.manifest.json:458
+member reads, billing writes, admin connection -> bundled-apps/stripe/app.manifest.json:40

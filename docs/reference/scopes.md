@@ -346,6 +346,22 @@ Watch Facebook, Instagram and YouTube activity and answer with approved replies.
 | `social:watched:read` | manifest scopes; tool watched_list |  |
 | `social:watched:write` | manifest scopes; tools unwatch_object, watch_object |  |
 
+## stripe
+
+Stripe: customers, subscriptions, invoices and payments from your Stripe account, read through a restricted key.
+
+| Scope | Declared by | Description |
+| --- | --- | --- |
+| `stripe:admin:connection` | manifest scopes; role admin |  |
+| `stripe:customers:read` | manifest scopes; role member |  |
+| `stripe:customers:write` | manifest scopes; role billing |  |
+| `stripe:internal` | manifest scopes |  |
+| `stripe:invoices:read` | manifest scopes; role member |  |
+| `stripe:payments:read` | manifest scopes; role member |  |
+| `stripe:refunds:write` | manifest scopes; role billing |  |
+| `stripe:subscriptions:read` | manifest scopes; role member |  |
+| `stripe:subscriptions:write` | manifest scopes; role billing |  |
+
 ## tickets
 
 Track customer requests, returns and warranty cases to resolution.

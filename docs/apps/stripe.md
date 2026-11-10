@@ -35,3 +35,19 @@ Every request goes to `api.stripe.com` only, with a pinned API version. The key 
 | Admin | Also connect the account and manage its key and webhook |
 
 Connecting needs `stripe:admin:connection`. See [Connect apps](../connecting-apps.md).
+
+## Scopes
+
+| Scope | What it allows |
+| --- | --- |
+| `stripe:customers:read` | Read customers |
+| `stripe:subscriptions:read` | Read subscriptions and their revenue changes |
+| `stripe:invoices:read` | Read invoices |
+| `stripe:payments:read` | Read payments, refunds and disputes |
+| `stripe:customers:write` | Link customers to companies and contacts |
+| `stripe:refunds:write` | Request refunds |
+| `stripe:subscriptions:write` | Request cancellations |
+| `stripe:admin:connection` | Connect the account and manage its key and webhook |
+| `stripe:internal` | Used by the app itself |
+
+Member holds the four read scopes, Billing adds the three write scopes, Admin adds the connection.

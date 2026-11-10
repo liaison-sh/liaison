@@ -42,8 +42,8 @@ function deferred<T>() {
 
 const rows = () =>
   (messageStore.threads[THREAD]?.ids ?? []).map((id) => ({
-    id,
     ...messageStore.threads[THREAD]!.byId[id],
+    id,
   }))
 
 describe("a send racing the conversation's page read", () => {

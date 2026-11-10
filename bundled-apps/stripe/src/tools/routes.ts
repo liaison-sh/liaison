@@ -130,13 +130,46 @@ export async function invoiceDocumentLink(params: Obj | undefined, ctx: DocLinkC
   const p = params ?? {}
   const stripeInvoiceId = typeof p.stripeInvoiceId === "string" ? p.stripeInvoiceId : ""
   const documentId = typeof p.documentId === "string" && UUID.test(p.documentId) ? p.documentId : ""
-  if (!stripeInvoiceId || !documentId) {
-    return refuseTool("invoice_link_invalid", "A Stripe invoice id and a document id are both needed, so nothing was linked.")
+  const issuedBy = p.issuedBy === "stripe" || p.issuedBy === "before_connection" ? p.issuedBy : ""
+  if (!stripeInvoiceId || !documentId === !issuedBy) {
+    return refuseTool(
+      "invoice_link_invalid",
+      "A Stripe invoice id and either a document id or who issued it (stripe, before_connection) are needed, so nothing was linked.",
+    )
   }
   const row = await one(ctx, "stripe_invoices", stripeInvoiceId)
   if (!row) {
     return refuseTool("invoice_not_found", `No Stripe invoice ${stripeInvoiceId} is in the mirror, so nothing was linked.`)
   }
-  await ctx.db.update("stripe_invoices", String(row.id), { liaison_document_id: documentId })
+  if (!documentId) {
+    // Invoicing examined it and issues no document for it: the safety job walks past it.
+    await ctx.db.update("stripe_invoices", String(row.id), { issuer: issuedBy })
+    return { ok: true, summary: `Stripe invoice ${stripeInvoiceId} is recorded as issued by ${issuedBy === "stripe" ? "Stripe" : "Stripe before the connection"}; no Liaison document follows it.` }
+  }
+  await ctx.db.update("stripe_invoices", String(row.id), { liaison_document_id: documentId, issuer: "liaison" })
   return { ok: true, summary: `Stripe invoice ${stripeInvoiceId} now names document ${documentId}.` }
+}
+
+/** Record the credit note a Stripe refund became, or that invoicing makes none for it. */
+export async function refundDocumentLink(params: Obj | undefined, ctx: DocLinkCtx) {
+  const p = params ?? {}
+  const stripeRefundId = typeof p.stripeRefundId === "string" ? p.stripeRefundId : ""
+  const documentId = typeof p.documentId === "string" && UUID.test(p.documentId) ? p.documentId : ""
+  const skipped = p.skipped === "issued_by_stripe" || p.skipped === "nothing_left" ? p.skipped : ""
+  if (!stripeRefundId || !documentId === !skipped) {
+    return refuseTool(
+      "refund_link_invalid",
+      "A Stripe refund id and either a document id or why no credit note follows (issued_by_stripe, nothing_left) are needed, so nothing was linked.",
+    )
+  }
+  const row = await one(ctx, "stripe_refunds", stripeRefundId)
+  if (!row) {
+    return refuseTool("refund_not_found", `No Stripe refund ${stripeRefundId} is in the mirror, so nothing was linked.`)
+  }
+  if (!documentId) {
+    await ctx.db.update("stripe_refunds", String(row.id), { liaison_skipped: skipped })
+    return { ok: true, summary: `Stripe refund ${stripeRefundId} gets no credit note (${skipped}).` }
+  }
+  await ctx.db.update("stripe_refunds", String(row.id), { liaison_document_id: documentId })
+  return { ok: true, summary: `Stripe refund ${stripeRefundId} now names credit note ${documentId}.` }
 }

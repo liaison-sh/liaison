@@ -39,7 +39,7 @@ const ALLOWED: Record<string, string[]> = {
     "created_at_stripe", "disputed", "stripe_updated",
   ],
   stripe_refunds: [
-    "stripe_id", "payment_id", "amount_minor", "currency", "status", "reason", "liaison_document_id",
+    "stripe_id", "payment_id", "amount_minor", "currency", "status", "reason", "liaison_document_id", "liaison_skipped",
     "created_at_stripe", "stripe_updated",
   ],
   stripe_disputes: [

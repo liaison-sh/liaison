@@ -87,12 +87,30 @@ export async function onStripeRefundCreated(event: unknown, ctx: StripeCtx): Pro
   const p = payloadOf<StripeRefundPayload>(event)
   if (!p || typeof p.charge_id !== "string" || !p.charge_id) return { status: "skipped", reason: "invalid_payload", refunds: [] }
   if ((await cardStreamIssuer(ctx)).issuer !== "liaison") {
+    const ids = Array.isArray(p.refunds) && p.refunds.length > 0 ? p.refunds.map((r) => r.id) : p.refund_id ? [p.refund_id] : []
+    for (const id of ids) await linkRefund(ctx, id, { skipped: "issued_by_stripe" })
     return { status: "skipped", reason: "mode_b", refunds: [] }
   }
   const invoiceRef = stripeDocumentRef({ id: p.charge_id, invoice: p.invoice_id ?? null })
   const out: RefundOutcome[] = []
-  for (const r of await refundsOf(ctx, p)) out.push(await handleOne(ctx, p, invoiceRef, r))
+  for (const r of await refundsOf(ctx, p)) {
+    const one = await handleOne(ctx, p, invoiceRef, r)
+    // Recorded on the Stripe refund once decided, so the safety job walks past it.
+    if (one.outcome === "issued" || one.outcome === "exists") await linkRefund(ctx, r.id, { documentId: one.document_id })
+    else if (one.outcome === "nothing_left") await linkRefund(ctx, r.id, { skipped: "nothing_left" })
+    out.push(one)
+  }
   return { status: "ok", refunds: out }
+}
+
+/** Tell the Stripe app which credit note a refund became, or why none follows. Best effort. */
+async function linkRefund(ctx: StripeCtx, stripeRefundId: string, link: { documentId: string } | { skipped: "issued_by_stripe" | "nothing_left" }): Promise<void> {
+  if (!ctx.executeTool) return
+  try {
+    await ctx.executeTool("stripe:refund_document_link", { stripeRefundId, ...link })
+  } catch {
+    // The safety job finds it again; the credit note itself is what counts.
+  }
 }
 
 async function handleOne(ctx: StripeCtx, p: StripeRefundPayload, invoiceRef: string, r: StripeRefund): Promise<RefundOutcome> {

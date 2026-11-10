@@ -281,7 +281,10 @@ export async function onStripeInvoiceFinalized(
     const def = await parkInvoice(ctx, p, "awaiting_config", "card_stream_missing", STRIPE_INVOICE_PARK)
     return { status: "deferred", deferred_id: def.id, reason: "awaiting_config" }
   }
-  if (stream.issuer === "stripe") return { status: "skipped", reason: "issued_by_stripe" }
+  if (stream.issuer === "stripe") {
+    await markIssuedBy(ctx, p.stripe_invoice_id, "stripe")
+    return { status: "skipped", reason: "issued_by_stripe" }
+  }
   if (stream.issuer === "undecided" && !opts.byPerson) {
     const def = await parkInvoice(ctx, p, "awaiting_config", "issuer_undecided", STRIPE_UNDECIDED_PARK, {
       issuer_profile_id: stream.row.issuer_profile_id ?? null,
@@ -298,11 +301,18 @@ export async function onStripeInvoiceFinalized(
 
   // 3. Finalized before Stripe was connected: Stripe's invoice stands alone.
   const connectedAt = isoOf(stream.row.created_at)
-  if (connectedAt && finalizedAt < connectedAt) return { status: "skipped", reason: "before_connection" }
+  if (connectedAt && finalizedAt < connectedAt) {
+    await markIssuedBy(ctx, p.stripe_invoice_id, "before_connection")
+    return { status: "skipped", reason: "before_connection" }
+  }
 
   // 4. Totals.
   const total = toBigInt(p.total_minor)
-  if (total === 0n) return { status: "skipped", reason: "zero_total" }
+  if (total === 0n) {
+    // Nothing to invoice: Stripe's own zero invoice stands.
+    await markIssuedBy(ctx, p.stripe_invoice_id, "stripe")
+    return { status: "skipped", reason: "zero_total" }
+  }
   if (total < 0n) {
     const def = await parkInvoice(ctx, p, "awaiting_data", "negative_total", STRIPE_INVOICE_PARK)
     if (def.created) {
@@ -429,6 +439,17 @@ export async function onStripeInvoiceFinalized(
   await resolveOpenParks(ctx, ref, "issued")
   await linkBack(ctx, p.stripe_invoice_id, issued.result.document_id)
   return { status: "ok", document_id: issued.result.document_id, number: issued.result.number }
+}
+
+/** Tell the Stripe app that Stripe's own invoice stands (no Liaison document), so its safety job
+ *  walks past it. Best effort: the next run asks again. */
+async function markIssuedBy(ctx: StripeCtx, stripeInvoiceId: string, issuedBy: "stripe" | "before_connection"): Promise<void> {
+  if (!ctx.executeTool) return
+  try {
+    await ctx.executeTool("stripe:invoice_document_link", { stripeInvoiceId, issuedBy })
+  } catch {
+    // Examined again on the next run; it decides the same.
+  }
 }
 
 /** Tell the Stripe app which document its invoice became (`liaison_document_id`, set once). Best effort. */

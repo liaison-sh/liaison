@@ -37,7 +37,7 @@ export type MirrorEntity =
 export interface MirrorDb {
   findMany(
     entity: string,
-    opts?: { where?: Record<string, unknown>; limit?: number; orderBy?: Record<string, "asc" | "desc"> },
+    opts?: { where?: Record<string, unknown>; limit?: number; offset?: number; orderBy?: Record<string, "asc" | "desc"> },
   ): Promise<unknown[]>
   insert(entity: string, data: Record<string, unknown>): Promise<{ id: string }>
   updateMany(

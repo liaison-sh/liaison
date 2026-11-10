@@ -30,6 +30,8 @@ const WINDOW_DAYS = 35
 const PAID_DAYS = 3
 const MAX_INVOICES = 20
 const MAX_REFUNDS = 100
+const MAX_PAID = 100
+const PAGE = 200
 
 const iso = (v: unknown): string | null =>
   v instanceof Date ? v.toISOString() : typeof v === "string" && v ? new Date(v).toISOString() : null
@@ -68,23 +70,52 @@ export async function refundsForCharge(params: Obj | undefined, ctx: MoneyReadCt
   }
 }
 
-export async function reconcileCandidates(_params: Obj | undefined, ctx: MoneyReadCtx) {
+/** Rows of `entity` matching `where`, newest first by `order`, read a page at a time until `keep`
+ *  has taken `max` of them or a row falls before `since`. Rows invoicing already decided are
+ *  filtered out by the query, so they never take a place. */
+async function newestWhere(
+  ctx: MoneyReadCtx,
+  entity: string,
+  where: Obj,
+  order: string,
+  since: number,
+  max: number,
+  keep: (r: Obj) => boolean,
+): Promise<Obj[]> {
+  const out: Obj[] = []
+  for (let offset = 0; out.length < max; offset += PAGE) {
+    const page = (await ctx.db.findMany(entity, { where, orderBy: { [order]: "desc" }, limit: PAGE, offset })) as Obj[]
+    for (const r of page) {
+      const at = iso(r[order])
+      if (at === null) continue
+      if (Date.parse(at) < since) return out
+      if (keep(r)) out.push(r)
+      if (out.length >= max) return out
+    }
+    if (page.length < PAGE) return out
+  }
+  return out
+}
+
+export async function reconcileCandidates(params: Obj | undefined, ctx: MoneyReadCtx) {
   const hold = await moneyActionHold(ctx.db)
   if (hold) return refuseTool(hold.error.code ?? "stripe_unavailable", `No reconcile candidates were read: ${hold.error.message}`, { retryable: true })
   const now = Date.now()
   const since = now - WINDOW_DAYS * DAY
+  // Invoices and refunds invoicing holds parked: its retry sweep re-drives them, not this job.
+  const waiting = new Set(Array.isArray(params?.waiting) ? params.waiting.filter((x): x is string => typeof x === "string") : [])
 
-  const invoiceRows = (await ctx.db.findMany("stripe_invoices", {
-    orderBy: { finalized_at: "desc" },
-    limit: 500,
-  })) as Obj[]
-  const recent = invoiceRows.filter((r) => {
-    const f = iso(r.finalized_at)
-    return f !== null && Date.parse(f) >= since && (r.status === "open" || r.status === "paid")
-  })
-  const missing = recent
-    .filter((r) => !r.liaison_document_id && r.issuer !== "before_connection" && r.issuer !== "stripe")
-    .slice(0, MAX_INVOICES)
+  // Invoicing decides each finalized invoice once: a document (linked), or Stripe's own invoice
+  // stands (issuer recorded). Only the undecided ones are candidates, and a zero total never is.
+  const missing = await newestWhere(
+    ctx,
+    "stripe_invoices",
+    { liaison_document_id: null, issuer: { in: ["liaison", "undecided"] }, status: { in: ["open", "paid"] } },
+    "finalized_at",
+    since,
+    MAX_INVOICES,
+    (r) => minor(r.total_minor) !== "0" && !waiting.has(String(r.stripe_id)),
+  )
   const invoices: Obj[] = []
   let unread = 0
   for (const r of missing) {
@@ -96,31 +127,38 @@ export async function reconcileCandidates(_params: Obj | undefined, ctx: MoneyRe
       unread++
     }
   }
-  for (const r of recent) {
-    const paid = iso(r.paid_at)
-    if (r.liaison_document_id && r.status === "paid" && paid && Date.parse(paid) >= now - PAID_DAYS * DAY) {
-      invoices.push({
-        stripe_invoice_id: r.stripe_id,
-        status: "paid",
-        paid_at: paid,
-        total_minor: minor(r.total_minor),
-        currency: r.currency,
-      })
-    }
+  const paidRows = await newestWhere(
+    ctx,
+    "stripe_invoices",
+    { status: "paid" },
+    "paid_at",
+    now - PAID_DAYS * DAY,
+    MAX_PAID,
+    (r) => typeof r.liaison_document_id === "string" && r.liaison_document_id !== "",
+  )
+  for (const r of paidRows) {
+    invoices.push({
+      stripe_invoice_id: r.stripe_id,
+      status: "paid",
+      paid_at: iso(r.paid_at),
+      total_minor: minor(r.total_minor),
+      currency: r.currency,
+    })
   }
 
-  const refundRows = (await ctx.db.findMany("stripe_refunds", {
-    where: { status: "succeeded", liaison_document_id: null },
-    orderBy: { created_at_stripe: "desc" },
-    limit: MAX_REFUNDS,
-  })) as Obj[]
+  const refundRows = await newestWhere(
+    ctx,
+    "stripe_refunds",
+    { status: "succeeded", liaison_document_id: null, liaison_skipped: null },
+    "created_at_stripe",
+    since,
+    MAX_REFUNDS,
+    (r) => !waiting.has(String(r.stripe_id)) && !!r.payment_id,
+  )
   const refunds: Obj[] = []
   const invoiceByCharge = new Map<string, string | null>()
   for (const r of refundRows) {
-    const created = iso(r.created_at_stripe)
-    if (created && Date.parse(created) < since) continue
-    const chargeId = String(r.payment_id ?? "")
-    if (!chargeId) continue
+    const chargeId = String(r.payment_id)
     if (!invoiceByCharge.has(chargeId)) {
       const [p] = (await ctx.db.findMany("stripe_payments", { where: { stripe_id: chargeId }, limit: 1 })) as Obj[]
       invoiceByCharge.set(chargeId, typeof p?.invoice_id === "string" && p.invoice_id ? p.invoice_id : null)
@@ -139,6 +177,6 @@ export async function reconcileCandidates(_params: Obj | undefined, ctx: MoneyRe
   return {
     invoices,
     refunds,
-    summary: `${missing.length} Stripe invoice(s) with no Liaison document${unread ? ` (${unread} not read from Stripe this time)` : ""}, ${invoices.length - (missing.length - unread)} paid invoice(s) to check, ${refunds.length} succeeded refund(s) with no credit note recorded.`,
+    summary: `${missing.length} Stripe invoice(s) with no Liaison document${unread ? ` (${unread} not read from Stripe this time)` : ""}, ${paidRows.length} paid invoice(s) to check, ${refunds.length} succeeded refund(s) with no credit note recorded.`,
   }
 }

@@ -83,6 +83,8 @@ What approving does:
 
 An administrator can also use their own agent to read and change access: `describe_user_access`, `list_scopes`, `roles_list`, `get_role`, `users_list`, `list_dimensions` read it; `create_role`, `edit_role`, `delete_role`, `assign_role`, `remove_user_from_role`, `grant_user_scope` and `grant_dimension_value` change it. Every change waits in **Approvals** for a person. These need `kernel:users:admin` or `kernel:roles:admin`.
 
+`describe_user_access` and the user page in **Settings › Users** show exactly the scopes the person's sign-in holds: their roles and direct grants, the scopes every member holds (marked `everyMember`), the shared MCP servers they may use (marked `mcpAccess`), minus the apps restricted against them (listed in `deniedApps`).
+
 ## Scopes that matter for agents
 
 | Scope | What it allows |

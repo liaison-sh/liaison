@@ -262,7 +262,7 @@ Rules that say which document templates a record needs (a customs declaration, a
 | `edit_role` | Rename a role or add and remove its scopes. | `kernel:roles:admin` | Yes |
 | `delete_role` | Delete a role. | `kernel:roles:admin` | Yes |
 | `users_list` | List team members and their roles. | `kernel:users:admin` | No |
-| `describe_user_access` | Read one person's resolved access. | `kernel:users:admin` | No |
+| `describe_user_access` | Read one person's resolved access: exactly the scopes their sign-in holds, each with where it comes from. | `kernel:users:admin` | No |
 | `list_scopes` | List every grantable scope. | `kernel:users:admin` | No |
 | `invite_user` | Invite a person by email with a role. | `kernel:users:admin` | Yes |
 | `assign_role` | Assign a person to a role. | `kernel:users:admin` | Yes |

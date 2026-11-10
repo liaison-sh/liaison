@@ -23,6 +23,8 @@ On a local trial with no SMTP server, the email is written to the app log instea
 3. Under **What can this user do?**, click a role to grant it or revoke it. A user can hold several roles.
 4. Under **Which teams and sensitivity levels**, set what data the user can see on top of their roles' grants. See [Control data visibility with dimensions](dimensions.md).
 
+The permission count on the user page is the person's full access as their sign-in holds it: their roles and direct grants, the scopes every member holds, and the shared MCP servers they may use, minus the apps restricted against them.
+
 The roles themselves are defined in **Settings › Roles & access**. See [Set up roles](roles.md).
 
 ## Deactivate a user

@@ -50,6 +50,8 @@ import {
   userContextFor,
 } from "~/modules/mcp/test-helpers"
 import { handleToolCall } from "~/modules/mcp/tool-call"
+import { KERNEL_EVERY_MEMBER_SCOPES } from "~/modules/permissions/every-member-scopes"
+import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 
@@ -284,6 +286,45 @@ describe("kernel-admin reads — describe_user_access (per-user effective-scope 
       const r = await t.callHandler("describe_user_access", { userId })
       expect(r.scopeChecks).toBeUndefined()
       expect(Array.isArray(r.effectiveScopes)).toBe(true)
+    })
+  })
+
+  // Parity with enforcement: the scope set is exactly the token's (loadEffectivePermissions), so the
+  // every-member scopes a plain member holds without any role or direct grant are reported as held.
+  it("a plain member's effective scopes equal the token's resolved scopes (every-member scopes included)", async () => {
+    await withAdminToolTest({ scopes: ["kernel:users:admin"] }, async (t) => {
+      const roleId = await t.seedRole("Reader", ["tickets:read"])
+      const userId = await t.seedUser(`plain-${crypto.randomUUID()}@t.co`)
+      await withSystemDb("describe-access-parity", (db) =>
+        db.insert(userRoles).values({ userId, roleId, orgId: t.orgId }),
+      )
+      const token = await withPrivilegedDb(t.orgId, "describe-access-parity-token", (tx) =>
+        loadEffectivePermissions(tx, userId, t.orgId),
+      )
+      const r = await t.callHandler("describe_user_access", {
+        userId,
+        checkScopes: ["kernel:dashboards:read"],
+      })
+      const reported = r.effectiveScopes.map((s: { scope: string }) => s.scope).sort()
+      expect(reported).toEqual([...token.scopes].sort())
+      for (const scope of KERNEL_EVERY_MEMBER_SCOPES) expect(reported).toContain(scope)
+      const dash = r.effectiveScopes.find(
+        (s: { scope: string }) => s.scope === "kernel:dashboards:read",
+      )
+      expect(dash).toMatchObject({
+        fromRoles: [],
+        direct: false,
+        everyMember: true,
+        mcpAccess: false,
+      })
+      expect(r.scopeChecks["kernel:dashboards:read"]).toMatchObject({
+        held: true,
+        via: "exact",
+        everyMember: true,
+      })
+      const fromRole = r.effectiveScopes.find((s: { scope: string }) => s.scope === "tickets:read")
+      expect(fromRole).toMatchObject({ fromRoles: ["Reader"], everyMember: false })
+      expect(r.deniedApps).toEqual([])
     })
   })
 

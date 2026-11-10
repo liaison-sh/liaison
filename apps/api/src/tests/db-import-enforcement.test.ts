@@ -1467,6 +1467,10 @@ describe("db import enforcement", () => {
     // org's first, then every table that references a user is rewritten,
     // many of which carry no org_id to bind.
     "modules/users/merge-placeholder.ts",
+    // getUserDetail: the admin user detail's scope set is the token's own
+    // (resolveEffectivePermissions, privileged like token issuance), read only
+    // after the caller's RLS read of that user's identity succeeded.
+    "modules/users/service.ts",
   ])
 
   // Allowlist: only these files may import { sql } from ~/db

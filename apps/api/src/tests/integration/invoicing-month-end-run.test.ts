@@ -17,7 +17,7 @@ import { ObjectStorageTestAccess } from "~/infra/storage/object-storage"
 import { redis } from "~/lib/redis"
 import { decideApproval } from "~/modules/approvals/decide"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
-import { executeTool } from "~/modules/apps/execute-tool"
+import { executeTool, executeToolCore } from "~/modules/apps/execute-tool"
 import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
@@ -104,6 +104,20 @@ async function tool(toolName: string, params: Row): Promise<{ data?: Row; error?
     const e = err as { message?: string; details?: { code?: string } }
     return { error: `${e.details?.code ?? ""} ${e.message ?? String(err)}` }
   }
+}
+
+/** A call the app's own background code makes (its job's `ctx.executeTool`). */
+async function ownJobCall(toolName: string, params: Row): Promise<{ data?: Row; error?: string }> {
+  const env = await executeToolCore({
+    toolName: `invoicing:${toolName}`,
+    orgId: ORG,
+    actor: { actorType: "system", orgId: ORG, purpose: "job", scopes: ["invoicing:*"] },
+    params,
+    origin: "system",
+    internalCall: { callerApp: "invoicing" },
+  })
+  if ("error" in env) return { error: `${env.error.code} ${env.error.message}` }
+  return { data: ("data" in env ? env.data : undefined) as Row }
 }
 
 async function runJob(name: string): Promise<void> {
@@ -250,11 +264,13 @@ describe("the month-end run on the real kernel", () => {
     setSystemTime()
     ObjectStorageTestAccess.resetClient()
     await sql`DROP TRIGGER IF EXISTS refuse_one_issue ON app_invoicing.documents`
+    await sql`DROP TRIGGER IF EXISTS refuse_one_line ON app_invoicing.document_lines`
   })
 
   afterAll(async () => {
     setSystemTime()
     await sql`DROP FUNCTION IF EXISTS app_invoicing.refuse_one_issue_fn()`
+    await sql`DROP FUNCTION IF EXISTS app_invoicing.refuse_one_line_fn()`
     await shutdownWorkerPool()
     await shutdownSandboxPool()
     resetAppRegistries()
@@ -292,7 +308,7 @@ describe("the month-end run on the real kernel", () => {
     })
     const racer = async () => {
       await gate
-      return tool("recurring_item_issue", { item_id: String(item?.id) })
+      return ownJobCall("recurring_item_issue", { item_id: String(item?.id) })
     }
     const both = Promise.all([racer(), racer()])
     release()
@@ -303,6 +319,37 @@ describe("the month-end run on the real kernel", () => {
     const issued = (await documentsOf(fx.issuer)).filter((d) => d.number !== null)
     expect(issued).toHaveLength(1)
     expect(await sequenceOf(fx.issuer)).toBe(1)
+  }, 120_000)
+
+  it("a person, an API client and an MCP client cannot issue a run item; the app's own call before the window is refused too", async () => {
+    const fx = await draftAndApprove(1)
+    const [item] = await itemsOf(fx.runId)
+    const params = { item_id: String(item?.id) }
+    // A person's click (the REST tool route) and an MCP client, both holding the tool's scope.
+    const person = await tool("recurring_item_issue", params)
+    expect(person.error).toContain("internal use")
+    const mcp = await executeToolCore({
+      toolName: "invoicing:recurring_item_issue",
+      orgId: ORG,
+      actor,
+      params,
+      origin: "mcp",
+    })
+    expect("error" in mcp ? mcp.error.code : mcp).toBe("forbidden")
+    // The app's own call on Monday 07:59 in Paris, before the 08:00 window.
+    setSystemTime(new Date("2026-11-30T06:59:00Z"))
+    const early = await ownJobCall("recurring_item_issue", params)
+    expect(early.error).toContain("outside_issue_window")
+    expect(early.error).toContain("no number was used")
+    // Past the last issue day.
+    setSystemTime(new Date("2026-12-12T09:00:00Z"))
+    const late = await ownJobCall("recurring_item_issue", params)
+    expect(late.error).toContain("outside_issue_window")
+    expect((await itemsOf(fx.runId)).map((i) => i.state)).toEqual(["approved"])
+    expect(await sequenceOf(fx.issuer)).toBe(0)
+    // In the window the same call issues.
+    setSystemTime(new Date("2026-11-30T07:30:00Z"))
+    expect((await ownJobCall("recurring_item_issue", params)).data?.status).toBe("completed")
   }, 120_000)
 
   it("after issue the item, external_ref and the change log all name the issued document", async () => {
@@ -388,6 +435,32 @@ describe("the month-end run on the real kernel", () => {
     expect(cards[0]?.route_person_id).toBe(actor.userId)
   }, 120_000)
 
+  it("a failure between a draft and its lines leaves no draft, and the next tick writes it whole", async () => {
+    const fx = await monthEnd(2)
+    setSystemTime(new Date("2026-11-27T09:00:00Z"))
+    // The line of the second schedule cannot be written: its document is already inserted.
+    await sql.unsafe(`CREATE OR REPLACE FUNCTION app_invoicing.refuse_one_line_fn() RETURNS trigger AS $$
+      BEGIN IF NEW.description LIKE 'Retainer 2 %' THEN RAISE EXCEPTION 'forced line failure'; END IF; RETURN NEW; END $$ LANGUAGE plpgsql`)
+    await sql.unsafe(
+      `CREATE TRIGGER refuse_one_line BEFORE INSERT ON app_invoicing.document_lines FOR EACH ROW EXECUTE FUNCTION app_invoicing.refuse_one_line_fn()`,
+    )
+    await runJob("recurring-draft")
+    const draftOf = (schedule: string | undefined) =>
+      sql<
+        Row[]
+      >`SELECT d.id::text, (SELECT count(*)::int FROM app_invoicing.document_lines l WHERE l.document_id = d.id) AS lines FROM app_invoicing.documents d WHERE d.external_ref = ${`recurring:${schedule}:2026-11`}`
+    expect(await draftOf(fx.schedules[0])).toEqual([{ id: expect.any(String), lines: 1 }])
+    expect(await draftOf(fx.schedules[1])).toEqual([])
+    const run = await runOf(fx.issuer)
+    expect(await itemsOf(String(run.id))).toHaveLength(1)
+    await sql`DROP TRIGGER refuse_one_line ON app_invoicing.document_lines`
+    setSystemTime(new Date("2026-11-27T10:00:00Z"))
+    await runJob("recurring-draft")
+    expect(await draftOf(fx.schedules[1])).toEqual([{ id: expect.any(String), lines: 1 }])
+    const items = await itemsOf(String(run.id))
+    expect(items.map((i) => i.state)).toEqual(["ready", "ready"])
+  }, 120_000)
+
   it("a forced second draft, item or run for a period fails on the unique keys", async () => {
     const fx = await monthEnd(1)
     setSystemTime(new Date("2026-11-27T09:00:00Z"))
@@ -449,7 +522,7 @@ describe("the month-end run on the real kernel", () => {
     await sql`UPDATE app_invoicing.recurring_runs SET status = 'issuing' WHERE id = ${fx.runId}`
     const items = await itemsOf(fx.runId)
     for (const item of items.slice(0, 3)) {
-      const res = await tool("recurring_item_issue", { item_id: String(item.id) })
+      const res = await ownJobCall("recurring_item_issue", { item_id: String(item.id) })
       expect((res.data as Row | undefined)?.status).toBe("completed")
     }
     const oneOff = await tool("invoice_create_and_issue", {

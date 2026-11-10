@@ -425,6 +425,46 @@ describe("executeTool", () => {
     toolRegistry.delete([TEST_ORG, "test_et", "internal_helper"])
   })
 
+  it("an internal tool runs for its own app's background code and for no person, agent or client", async () => {
+    let ran = 0
+    toolRegistry.set([TEST_ORG, "test_et", "own_internal"], {
+      appName: "test_et",
+      name: "own_internal",
+      description: "Own internal step",
+      requiredScopes: ["test_et:items:write"],
+      trustBoundary: "internal",
+      agentVisible: false,
+      handler: async () => {
+        ran++
+        return { ok: true }
+      },
+    })
+    const job = {
+      actorType: "system" as const,
+      orgId: TEST_ORG,
+      purpose: "job" as const,
+      scopes: ["test_et:*"],
+    }
+    const person: UserContext = { ...actor, scopes: ["test_et:items:write", "test_et:approve"] }
+    const call = (o: Partial<Parameters<typeof executeToolCore>[0]>) =>
+      executeToolCore({ toolName: "test_et:own_internal", orgId: TEST_ORG, actor: job, params: {}, ...o })
+    try {
+      const own = await call({ origin: "system", internalCall: { callerApp: "test_et" } })
+      expect("data" in own ? own.data : own).toEqual({ ok: true })
+      const refused = [
+        await call({ actor: person, origin: "human-ui" }),
+        await call({ actor: person, origin: "mcp" }),
+        await call({ origin: "in-app-agent", internalCall: { callerApp: "test_et" } }),
+        await call({ actor: person, origin: "human-ui", internalCall: { callerApp: "test_et" } }),
+        await call({ origin: "system", internalCall: { callerApp: "other_et" } }),
+      ]
+      for (const r of refused) expect("error" in r ? r.error.code : r).toBe("forbidden")
+      expect(ran).toBe(1)
+    } finally {
+      toolRegistry.delete([TEST_ORG, "test_et", "own_internal"])
+    }
+  })
+
   // Phase 16 code-review I8 — per-user enforcement (success criterion #3):
   // a denied user must produce ZERO downstream calls (no fetcher invocation,
   // no handler execution). The scope-check must short-circuit before any

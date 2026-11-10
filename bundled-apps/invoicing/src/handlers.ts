@@ -38,7 +38,7 @@ import {
   recurringScheduleCreate,
   recurringScheduleUpdate,
 } from "./recurring/tools"
-import { recurringDraftJob } from "./recurring/draft-job"
+import { recurringDraftJob, recurringDraftWrite } from "./recurring/draft-job"
 import { recurringIssueJob, recurringItemIssue } from "./recurring/issue-job"
 import { recurringLegalDateJob } from "./recurring/legal-date-job"
 import {
@@ -686,6 +686,8 @@ export const recurringListHandler = (
 
 // --- The month-end run (draft, card, approve, issue, legal date; see recurring/*-job.ts) ---
 export const recurringDraftJobHandler = (_payload: unknown, ctx: RunCtx) => recurringDraftJob(ctx)
+export const recurringDraftWriteHandler = (params: Parameters<typeof recurringDraftWrite>[1], ctx: RunCtx) =>
+  recurringDraftWrite(ctx, params)
 export const recurringIssueJobHandler = (_payload: unknown, ctx: RunCtx) => recurringIssueJob(ctx)
 export const recurringLegalDateJobHandler = (_payload: unknown, ctx: RunCtx) => recurringLegalDateJob(ctx)
 export const recurringRunIssueHandler = (params: Parameters<typeof recurringRunIssue>[1], ctx: RunCtx) =>

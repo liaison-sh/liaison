@@ -1,7 +1,7 @@
 issues invoices, quotes, proformas, purchase orders, credit notes; gap-free numbering, tax from country, PDF -> bundled-apps/invoicing/README.md:3
 app settings page per app at /settings/apps/<app>, in the Apps group -> apps/web/src/framework/define-app.ts:827
 Settings > Invoicing named in the editor -> bundled-apps/invoicing/src/ui/Editor.tsx:273
-Issuer profiles section -> bundled-apps/invoicing/app.manifest.json:5676
+Issuer profiles section -> bundled-apps/invoicing/app.manifest.json:5677
 + New issuer profile button -> bundled-apps/invoicing/src/ui/settings.tsx:357
 Legal name * field -> bundled-apps/invoicing/src/ui/settings.tsx:372
 Country * field -> bundled-apps/invoicing/src/ui/settings.tsx:381
@@ -21,10 +21,10 @@ autoEmail field -> apps/api/src/cli/config/schema.ts:413
 invoiceApprovalThresholdMinor field -> apps/api/src/cli/config/schema.ts:414
 auto-invoice on paid order, threshold-gated, auto-email; not a routine -> bundled-apps/invoicing/README.md:46
 without the shop mapping nothing issues -> bundled-apps/invoicing/README.md:63
-Shopify shop mappings section, Shop URL / Issuer profile columns -> bundled-apps/invoicing/app.manifest.json:5692
+Shopify shop mappings section, Shop URL / Issuer profile columns -> bundled-apps/invoicing/app.manifest.json:5693
 Deferred row only when count > 0 -> bundled-apps/invoicing/src/ui/sidebar.tsx:405
 Issue with Shopify's tax / Issue as computed -> bundled-apps/invoicing/src/ui/DeferredList.tsx:91
-deferred_tax_override is gated -> bundled-apps/invoicing/app.manifest.json:2003
+deferred_tax_override is gated -> bundled-apps/invoicing/app.manifest.json:2004
 only quotes, proformas and POs started by hand -> bundled-apps/invoicing/README.md:106
 New quote / New proforma / New purchase order CTA -> bundled-apps/invoicing/src/ui/sidebar.tsx:213
 Issuer field -> bundled-apps/invoicing/src/ui/Editor.tsx:1367
@@ -47,20 +47,20 @@ document action labels -> bundled-apps/invoicing/src/ui/DocumentDetail.tsx:196
 no Mark paid on credit notes -> bundled-apps/invoicing/src/ui/DocumentDetail.tsx:1104
 saving an issued document re-renders its PDF -> bundled-apps/invoicing/src/ui/Editor.tsx:1384
 issued documents never deleted, reversed via credit note -> bundled-apps/invoicing/src/ui/DocumentDetail.tsx:1073
-credit note CN- series -> bundled-apps/invoicing/app.manifest.json:3675
-Shopify refund/cancellation auto issues credit note -> bundled-apps/invoicing/app.manifest.json:3591
+credit note CN- series -> bundled-apps/invoicing/app.manifest.json:3676
+Shopify refund/cancellation auto issues credit note -> bundled-apps/invoicing/app.manifest.json:3592
 Pending Approval sidebar row -> bundled-apps/invoicing/src/ui/sidebar.tsx:414
 invoicing:approve approver scope -> docs/reference/scopes.md:170
-E-invoicing section needs settings:write -> bundled-apps/invoicing/app.manifest.json:5851
-E-invoicing platform field -> bundled-apps/invoicing/app.manifest.json:5855
-Cut-over date and help -> bundled-apps/invoicing/app.manifest.json:5869
-Send e-invoices toggle -> bundled-apps/invoicing/app.manifest.json:5884
-Book reported sales toggle -> bundled-apps/invoicing/app.manifest.json:5897
+E-invoicing section needs settings:write -> bundled-apps/invoicing/app.manifest.json:5852
+E-invoicing platform field -> bundled-apps/invoicing/app.manifest.json:5856
+Cut-over date and help -> bundled-apps/invoicing/app.manifest.json:5870
+Send e-invoices toggle -> bundled-apps/invoicing/app.manifest.json:5885
+Book reported sales toggle -> bundled-apps/invoicing/app.manifest.json:5898
 non-EUR e-invoice: EUR VAT at the ECB rate fetched at issue, once per currency and day; none within 7 days -> refused before numbering, retryable; Shopify order deferred -> bundled-apps/invoicing/src/mutations/fx-issue.ts:24 ; bundled-apps/invoicing/src/einvoicing/fx.ts:17 ; bundled-apps/invoicing/src/einvoicing/fx.ts:185 ; bundled-apps/invoicing/src/einvoicing/fx.ts:213 ; bundled-apps/invoicing/src/issue.ts:1071-1088 ; bundled-apps/invoicing/src/handlers/shopify-order-paid.ts:1080
 E-invoicing readiness sidebar row -> bundled-apps/invoicing/src/ui/sidebar.tsx:436
 received_einvoice_action_request files approval to refuse/dispute -> bundled-apps/invoicing/app.manifest.json:1566
-Tax regimes section -> bundled-apps/invoicing/app.manifest.json:5550
-HS code library section -> bundled-apps/invoicing/app.manifest.json:5814
+Tax regimes section -> bundled-apps/invoicing/app.manifest.json:5551
+HS code library section -> bundled-apps/invoicing/app.manifest.json:5815
 scopes list incl. invoicing:internal -> bundled-apps/invoicing/app.manifest.json:240
 einvoicing_settings_values -> bundled-apps/invoicing/app.manifest.json:1450
 einvoicing_provider_options -> bundled-apps/invoicing/app.manifest.json:1464
@@ -71,70 +71,70 @@ received_einvoices_refresh -> bundled-apps/invoicing/app.manifest.json:1545
 received_einvoice_action_request -> bundled-apps/invoicing/app.manifest.json:1566
 received_einvoice_set_status gated -> bundled-apps/invoicing/app.manifest.json:1619
 einvoice_send_request -> bundled-apps/invoicing/app.manifest.json:1669
-einvoice_send gated -> bundled-apps/invoicing/app.manifest.json:1699
-einvoice_book_batch gated -> bundled-apps/invoicing/app.manifest.json:1748
-einvoice_status_refresh -> bundled-apps/invoicing/app.manifest.json:1775
-einvoice_transmission_get -> bundled-apps/invoicing/app.manifest.json:1799
-documents_search -> bundled-apps/invoicing/app.manifest.json:1819
-documents_get -> bundled-apps/invoicing/app.manifest.json:1891
-documents_for_orders -> bundled-apps/invoicing/app.manifest.json:1908
-hs_codes_lookup -> bundled-apps/invoicing/app.manifest.json:1928
-pending_approvals_list -> bundled-apps/invoicing/app.manifest.json:1948
-vat_validate -> bundled-apps/invoicing/app.manifest.json:1958
-vat_lookup -> bundled-apps/invoicing/app.manifest.json:2057-2092,5846
-contact_relationships_get -> bundled-apps/invoicing/app.manifest.json:1981
-deferred_tax_override gated -> bundled-apps/invoicing/app.manifest.json:2003
-deferred_list -> bundled-apps/invoicing/app.manifest.json:2022
-settings_issuer_profile_list -> bundled-apps/invoicing/app.manifest.json:2036
-settings_tax_regime_list -> bundled-apps/invoicing/app.manifest.json:2046
-settings_hs_code_list -> bundled-apps/invoicing/app.manifest.json:2056
-settings_shop_mapping_list -> bundled-apps/invoicing/app.manifest.json:2070
-drafts_create -> bundled-apps/invoicing/app.manifest.json:2080
-drafts_update -> bundled-apps/invoicing/app.manifest.json:2342
-drafts_discard -> bundled-apps/invoicing/app.manifest.json:2595
-invoice_issue gated -> bundled-apps/invoicing/app.manifest.json:2618
-invoice_create_and_issue gated -> bundled-apps/invoicing/app.manifest.json:2659
-quote_issue gated -> bundled-apps/invoicing/app.manifest.json:2897
-quote_create_and_issue -> bundled-apps/invoicing/app.manifest.json:2921
-proforma_issue gated -> bundled-apps/invoicing/app.manifest.json:3104
-proforma_create_and_issue gated -> bundled-apps/invoicing/app.manifest.json:3134
-po_issue -> bundled-apps/invoicing/app.manifest.json:3321
-po_create_and_issue -> bundled-apps/invoicing/app.manifest.json:3347
-documents_send_to_customer gated -> bundled-apps/invoicing/app.manifest.json:3514
-documents_mark_paid gated -> bundled-apps/invoicing/app.manifest.json:3564
-documents_record_refund gated -> bundled-apps/invoicing/app.manifest.json:3595
-documents_convert_to_invoice gated -> bundled-apps/invoicing/app.manifest.json:3633
-credit_note_create_and_issue -> bundled-apps/invoicing/app.manifest.json:3674
-credit_note_issue -> bundled-apps/invoicing/app.manifest.json:3924
-order_reissue_apply gated -> bundled-apps/invoicing/app.manifest.json:3956
-hs_codes_assign -> bundled-apps/invoicing/app.manifest.json:4057
-hs_codes_unassign -> bundled-apps/invoicing/app.manifest.json:4092
-hs_codes_library_upsert -> bundled-apps/invoicing/app.manifest.json:4129
-hs_codes_library_delete -> bundled-apps/invoicing/app.manifest.json:4149
-contact_relationships_set -> bundled-apps/invoicing/app.manifest.json:4170
-settings_issuer_profile_create gated -> bundled-apps/invoicing/app.manifest.json:4200
-settings_issuer_profile_update gated -> bundled-apps/invoicing/app.manifest.json:4246
-settings_issuer_profile_delete gated -> bundled-apps/invoicing/app.manifest.json:4298
-documents_update gated -> bundled-apps/invoicing/app.manifest.json:4321
-documents_retry_pdf -> bundled-apps/invoicing/app.manifest.json:4509
-documents_download_pdf -> bundled-apps/invoicing/app.manifest.json:4543
-einvoicing_classify -> bundled-apps/invoicing/app.manifest.json:4560
-counterparty_identity_get -> bundled-apps/invoicing/app.manifest.json:4595
-counterparty_identity_lookup -> bundled-apps/invoicing/app.manifest.json:4620
-counterparty_identity_set -> bundled-apps/invoicing/app.manifest.json:4660
-counterparty_territory_set gated -> bundled-apps/invoicing/app.manifest.json:4777
-einvoicing_settings_set gated -> bundled-apps/invoicing/app.manifest.json:4816
-legal_originals_verify -> bundled-apps/invoicing/app.manifest.json:4851
-einvoicing_readiness -> bundled-apps/invoicing/app.manifest.json:4886
-einvoicing_backfill_identities gated -> bundled-apps/invoicing/app.manifest.json:4913
-einvoicing_backfill_legacy_originals gated -> bundled-apps/invoicing/app.manifest.json:4955
-provider_app "E-invoicing platform" -> bundled-apps/invoicing/app.manifest.json:5855
-cutover_date "Cut-over date" -> bundled-apps/invoicing/app.manifest.json:5869
-send_enabled "Send e-invoices" -> bundled-apps/invoicing/app.manifest.json:5884
-book_enabled "Book reported sales" -> bundled-apps/invoicing/app.manifest.json:5897
-einvoicing_settings_set takes the same names -> bundled-apps/invoicing/app.manifest.json:4844
-Import kind invoicing.document -> bundled-apps/invoicing/app.manifest.json:5005
-Import needs invoicing:documents:write -> bundled-apps/invoicing/app.manifest.json:5071
+einvoice_send gated -> bundled-apps/invoicing/app.manifest.json:1700
+einvoice_book_batch gated -> bundled-apps/invoicing/app.manifest.json:1749
+einvoice_status_refresh -> bundled-apps/invoicing/app.manifest.json:1776
+einvoice_transmission_get -> bundled-apps/invoicing/app.manifest.json:1800
+documents_search -> bundled-apps/invoicing/app.manifest.json:1820
+documents_get -> bundled-apps/invoicing/app.manifest.json:1892
+documents_for_orders -> bundled-apps/invoicing/app.manifest.json:1909
+hs_codes_lookup -> bundled-apps/invoicing/app.manifest.json:1929
+pending_approvals_list -> bundled-apps/invoicing/app.manifest.json:1949
+vat_validate -> bundled-apps/invoicing/app.manifest.json:1959
+vat_lookup -> bundled-apps/invoicing/app.manifest.json:2058-2093,5846
+contact_relationships_get -> bundled-apps/invoicing/app.manifest.json:1982
+deferred_tax_override gated -> bundled-apps/invoicing/app.manifest.json:2004
+deferred_list -> bundled-apps/invoicing/app.manifest.json:2023
+settings_issuer_profile_list -> bundled-apps/invoicing/app.manifest.json:2037
+settings_tax_regime_list -> bundled-apps/invoicing/app.manifest.json:2047
+settings_hs_code_list -> bundled-apps/invoicing/app.manifest.json:2057
+settings_shop_mapping_list -> bundled-apps/invoicing/app.manifest.json:2071
+drafts_create -> bundled-apps/invoicing/app.manifest.json:2081
+drafts_update -> bundled-apps/invoicing/app.manifest.json:2343
+drafts_discard -> bundled-apps/invoicing/app.manifest.json:2596
+invoice_issue gated -> bundled-apps/invoicing/app.manifest.json:2619
+invoice_create_and_issue gated -> bundled-apps/invoicing/app.manifest.json:2660
+quote_issue gated -> bundled-apps/invoicing/app.manifest.json:2898
+quote_create_and_issue -> bundled-apps/invoicing/app.manifest.json:2922
+proforma_issue gated -> bundled-apps/invoicing/app.manifest.json:3105
+proforma_create_and_issue gated -> bundled-apps/invoicing/app.manifest.json:3135
+po_issue -> bundled-apps/invoicing/app.manifest.json:3322
+po_create_and_issue -> bundled-apps/invoicing/app.manifest.json:3348
+documents_send_to_customer gated -> bundled-apps/invoicing/app.manifest.json:3515
+documents_mark_paid gated -> bundled-apps/invoicing/app.manifest.json:3565
+documents_record_refund gated -> bundled-apps/invoicing/app.manifest.json:3596
+documents_convert_to_invoice gated -> bundled-apps/invoicing/app.manifest.json:3634
+credit_note_create_and_issue -> bundled-apps/invoicing/app.manifest.json:3675
+credit_note_issue -> bundled-apps/invoicing/app.manifest.json:3925
+order_reissue_apply gated -> bundled-apps/invoicing/app.manifest.json:3957
+hs_codes_assign -> bundled-apps/invoicing/app.manifest.json:4058
+hs_codes_unassign -> bundled-apps/invoicing/app.manifest.json:4093
+hs_codes_library_upsert -> bundled-apps/invoicing/app.manifest.json:4130
+hs_codes_library_delete -> bundled-apps/invoicing/app.manifest.json:4150
+contact_relationships_set -> bundled-apps/invoicing/app.manifest.json:4171
+settings_issuer_profile_create gated -> bundled-apps/invoicing/app.manifest.json:4201
+settings_issuer_profile_update gated -> bundled-apps/invoicing/app.manifest.json:4247
+settings_issuer_profile_delete gated -> bundled-apps/invoicing/app.manifest.json:4299
+documents_update gated -> bundled-apps/invoicing/app.manifest.json:4322
+documents_retry_pdf -> bundled-apps/invoicing/app.manifest.json:4510
+documents_download_pdf -> bundled-apps/invoicing/app.manifest.json:4544
+einvoicing_classify -> bundled-apps/invoicing/app.manifest.json:4561
+counterparty_identity_get -> bundled-apps/invoicing/app.manifest.json:4596
+counterparty_identity_lookup -> bundled-apps/invoicing/app.manifest.json:4621
+counterparty_identity_set -> bundled-apps/invoicing/app.manifest.json:4661
+counterparty_territory_set gated -> bundled-apps/invoicing/app.manifest.json:4778
+einvoicing_settings_set gated -> bundled-apps/invoicing/app.manifest.json:4817
+legal_originals_verify -> bundled-apps/invoicing/app.manifest.json:4852
+einvoicing_readiness -> bundled-apps/invoicing/app.manifest.json:4887
+einvoicing_backfill_identities gated -> bundled-apps/invoicing/app.manifest.json:4914
+einvoicing_backfill_legacy_originals gated -> bundled-apps/invoicing/app.manifest.json:4956
+provider_app "E-invoicing platform" -> bundled-apps/invoicing/app.manifest.json:5856
+cutover_date "Cut-over date" -> bundled-apps/invoicing/app.manifest.json:5870
+send_enabled "Send e-invoices" -> bundled-apps/invoicing/app.manifest.json:5885
+book_enabled "Book reported sales" -> bundled-apps/invoicing/app.manifest.json:5898
+einvoicing_settings_set takes the same names -> bundled-apps/invoicing/app.manifest.json:4845
+Import kind invoicing.document -> bundled-apps/invoicing/app.manifest.json:5006
+Import needs invoicing:documents:write -> bundled-apps/invoicing/app.manifest.json:5072
 Numbering raised past imported numbers per issuer, type and year -> bundled-apps/invoicing/src/import-kind.ts:276
 Credit note linked to its imported original -> bundled-apps/invoicing/src/import-kind.ts:194
 Several issuer profiles need the record to name one -> bundled-apps/invoicing/src/import-kind.ts:87
@@ -180,7 +180,7 @@ VIES name mismatch flagged on the card -> bundled-apps/invoicing/src/approval-ca
 buyer_is_consumer refused with a VAT number on record, else a person decides with the evidence on the card -> bundled-apps/invoicing/src/buyer-vat.ts:593-616
 Consumer declaration evidence on the approval card -> bundled-apps/invoicing/src/approval-cards.ts:290-304
 Approval card states treatment, rate, price basis, net, VAT and total -> bundled-apps/invoicing/src/approval-cards.ts:253-288
-customer_history -> bundled-apps/invoicing/app.manifest.json:1930
+customer_history -> bundled-apps/invoicing/app.manifest.json:1931
 Document search matches number, name, address, email, Shopify order, PO, notes and line descriptions, word by word -> bundled-apps/invoicing/src/reads.ts:422-436,474-552
 Exact numbers and whole-word name matches first, partial-word matches last -> bundled-apps/invoicing/src/reads.ts:463-486
 Search by contact also returns documents made out to its email or one of its addresses -> bundled-apps/invoicing/src/reads.ts:548-602
@@ -204,5 +204,9 @@ positive line allowed against a larger negative one -> bundled-apps/invoicing/sr
 minor-unit amount is a whole number, refusal says what to send -> packages/app-sdk/src/minor-amount.ts:15
 card that meets an unreadable amount says refused, prints no total -> bundled-apps/invoicing/src/approval-cards.ts:159
 imported credit note keeps its source's sign -> bundled-apps/invoicing/src/import-kind.ts:238
-The time zone is asked once, at the first issue on a profile with no zone chosen, in an organization with none -> bundled-apps/invoicing/src/issue.ts:970-980; bundled-apps/invoicing/app.manifest.json:5894-5911
+The time zone is asked once, at the first issue on a profile with no zone chosen, in an organization with none -> bundled-apps/invoicing/src/issue.ts:970-980; bundled-apps/invoicing/app.manifest.json:5895-5912
 A service line counts as a service in the operation type, as a software line does -> bundled-apps/invoicing/src/einvoicing/classify-operation.ts:23; bundled-apps/invoicing/src/einvoicing/booking.ts:289
+A draft and its lines are written in one transaction -> bundled-apps/invoicing/src/recurring/draft-job.ts:157
+A reused draft whose lines differ from its schedule needs a fix -> bundled-apps/invoicing/src/recurring/draft-job.ts:251
+Rows issue only inside the issue window -> bundled-apps/invoicing/src/recurring/issue-job.ts:48
+recurring_item_issue is internal, only the app's own job calls it -> bundled-apps/invoicing/app.manifest.json:1696 ; apps/api/src/modules/apps/execute-tool.ts:4387

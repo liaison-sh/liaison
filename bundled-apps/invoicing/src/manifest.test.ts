@@ -1550,7 +1550,7 @@ describe("invoicing manifest", () => {
     // 0.20.67: the month-end run: draft, card, approve, issue and legal-date jobs, four run tools.
     // 0.20.68: run rows issue atomically, refusals checked at staging, a held-by-the-day-limit
     // notice, and the run card's approval route.
-    expect(m.version).toBe("0.20.68")
+    expect(m.version).toBe("0.20.69")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

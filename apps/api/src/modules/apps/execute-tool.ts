@@ -4376,11 +4376,18 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
 
   // Cross-app callers may invoke an internal tool either via an approved
   // `cross_app_calls` capability, or (legacy) when they declared the dependency
-  // and the target sets `deferLoading: true`.
+  // and the target sets `deferLoading: true`. The app's own background code (a
+  // job or event handler calling `ctx.executeTool`, origin "system") may call
+  // its own internal tool: no person, agent or client call reaches it, since
+  // those never carry `internalCall` and a hop from a person's or agent's call
+  // keeps their origin.
   if (tool.trustBoundary === "internal") {
     const callerDeps =
       callerApp != null ? (appDependenciesRegistry.get([opts.orgId, callerApp])?.tools ?? []) : []
+    const ownBackgroundCall =
+      callerApp === appName && opts.origin === "system" && opts.actor.actorType === "system"
     const allowed =
+      ownBackgroundCall ||
       approvedCrossAppCall ||
       approvedContractCall ||
       (callerApp != null && callerDeps.includes(opts.toolName) && tool.deferLoading === true)

@@ -57,7 +57,7 @@ Map manually -> bundled-apps/shopify/src/ui/settings.tsx:362
 Shopify staff id input, Save -> bundled-apps/shopify/src/ui/settings.tsx:376
 Remove override -> bundled-apps/shopify/src/ui/settings.tsx:408
 quotes are draft orders, paid order auto invoice -> bundled-apps/invoicing/README.md:46
-Shopify refund/cancellation issues credit note -> bundled-apps/invoicing/app.manifest.json:3591
+Shopify refund/cancellation issues credit note -> bundled-apps/invoicing/app.manifest.json:3592
 scopes list -> bundled-apps/shopify/app.manifest.json:295
 shopify:approve approver scope -> docs/reference/scopes.md:282
 analytics_query partial: true plan limitation -> bundled-apps/shopify/README.md:117

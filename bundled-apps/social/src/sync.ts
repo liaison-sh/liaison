@@ -361,6 +361,8 @@ export async function runDiscoverySync(
       occurredAt: f.occurredAt,
       commentCount: f.commentCount,
       metadata: f.metadata,
+      authoredByOwner: f.authoredByOwner,
+      replyToExternalId: f.replyToExternalId,
     })
     if (res.created) {
       ingested += 1
@@ -695,6 +697,8 @@ export async function runWatchPoller(
         commentCount: f.commentCount,
         watchedObjectId: w.id,
         metadata: f.metadata,
+        authoredByOwner: f.authoredByOwner,
+        replyToExternalId: f.replyToExternalId,
       })
       if (res.created) {
         ingested += 1

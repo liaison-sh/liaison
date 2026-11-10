@@ -31,7 +31,22 @@ export interface NormalizedFinding {
   occurredAt?: string | null
   commentCount?: number
   metadata?: Record<string, unknown>
+  /** Written by the org's own connected account (the Page itself, the own IG
+   *  account or channel): a reply we posted, from Liaison or natively. Never a
+   *  finding; it is evidence that the finding it answers was replied to
+   *  (ingest.ts `ingestFinding`). */
+  authoredByOwner?: boolean
+  /** For a reply comment: the comment or post it answers (Meta's `parent_id`). */
+  replyToExternalId?: string | null
 }
+
+/** What a read of a target's replies found about a reply of ours with a given
+ *  text (`PlatformAdapter.findOwnReply`): it is there (with its id), it is not,
+ *  or the read could not tell. */
+export type OwnReplyLookup =
+  | { status: "found"; externalId: string | null }
+  | { status: "absent" }
+  | { status: "unknown"; reason: string }
 
 export interface NormalizedConversation {
   platform: Platform
@@ -252,6 +267,14 @@ export interface PlatformAdapter {
     target: { externalId: string },
     ctx?: AdapterContext,
   ): OutboundRequest | null | Promise<OutboundRequest | null>
+  /**
+   * Read the replies on `target` and look for one the org's own account wrote
+   * with exactly `text`. Post-back calls it before posting a reply (never post
+   * the same public reply twice) and to reconcile a reply whose outcome is
+   * unknown (the post timed out on our side). Absent = this platform cannot
+   * check, which reads as `unknown`.
+   */
+  findOwnReply?(target: { externalId: string }, text: string, ctx: AdapterContext): Promise<OwnReplyLookup>
   /** Parse a verified webhook body into normalized findings/messages. */
   parseWebhook?(body: unknown): { findings: NormalizedFinding[]; messages: NormalizedMessage[] }
   /** Verify a webhook signature (HMAC). */

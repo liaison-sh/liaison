@@ -25,6 +25,9 @@ export type SocialFetch = (
     method?: string
     headers?: Record<string, string>
     body?: string | Record<string, unknown>
+    /** Per-call deadline. A read may only tighten the host default; a write
+     *  (POST) may ask for up to 30 s (the host clamps it). */
+    timeoutMs?: number
   },
 ) => Promise<{
   status: number
@@ -84,6 +87,15 @@ export interface SocialToolCtx {
   approvals?: {
     pendingFor?: (payloadKey: string, toolNames?: string[]) => Promise<unknown>
   }
+  /** The approval handler protocol (host bridge), present on an approved
+   *  re-entry: `started` before an external effect, `effect landed` right after
+   *  the provider accepted it, then `succeeded`, or `failed (no effect)` when the
+   *  provider refused it. A run cut off between `started` and an outcome is held
+   *  as unknown, and the tool's reconciler settles it (`reconcileHandler`). */
+  approval_recordStarted?: (toolName: string) => Promise<void>
+  approval_recordEffectLanded?: (toolName: string, externalRefJson: string) => Promise<void>
+  approval_recordSucceeded?: (toolName: string, externalRefJson?: string) => Promise<void>
+  approval_recordFailedNoEffect?: (toolName: string, errJson: string) => Promise<void>
   enqueueJob?: (jobName: string, payload: unknown) => Promise<void>
   emit?: (event: { entity: string; action: string; entityId?: string; data?: unknown }) => Promise<void>
   // Resolve-or-create a kernel contact for an external author/participant

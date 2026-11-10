@@ -19,7 +19,7 @@
 
 import { facebookAdapter } from "./adapters/facebook"
 import { instagramAdapter } from "./adapters/instagram"
-import type { AdapterContext, OutboundRequest, Platform, PlatformAdapter } from "./adapters/types"
+import type { AdapterContext, OutboundRequest, OwnReplyLookup, Platform, PlatformAdapter } from "./adapters/types"
 import { youtubeAdapter } from "./adapters/youtube"
 import { resolveAccessToken } from "./connection"
 import type { SocialToolCtx } from "./ctx"
@@ -127,11 +127,13 @@ async function postJson(
   url: string,
   body: Record<string, unknown>,
   headers?: Record<string, string>,
+  timeoutMs?: number,
 ): Promise<{ status: number; body?: string }> {
   return ctx.fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body),
+    ...(timeoutMs ? { timeoutMs } : {}),
   })
 }
 
@@ -243,27 +245,13 @@ export async function replyToFinding(
   reason?: string
   http_status?: number
   provider_error?: string | null
+  reply_external_id?: string | null
+  already_posted?: boolean
 }> {
   const finding = await loadFinding(ctx, params.finding_id)
   if (!finding) return { status: "failed", reason: "not_found" }
   // Idempotency: never act on an already-handled finding (even on re-entry).
   if (finding.status === "handled") return { status: "noop", reason: "already_handled" }
-  // A reply intent left by this same approval means an earlier run posted (or
-  // may have posted) and never recorded the outcome: flag it for a person and
-  // never post the public reply a second time.
-  const approvalRequestId = ctx.approval?.approvalRequestId ?? null
-  const priorIntent = finding.metadata?.reply_intent as { approval_request_id?: string | null } | undefined
-  if (approvalRequestId && priorIntent?.approval_request_id === approvalRequestId) {
-    await ctx.db.update("finding", finding.id, {
-      metadata: { ...(finding.metadata ?? {}), reply_intent: { ...priorIntent, outcome: "unknown", needs_check: true } },
-    })
-    ctx.logger?.warn?.("social: reply_to_finding retry found an unconfirmed reply, not posting again", {
-      findingId: finding.id,
-      approvalRequestId,
-    })
-    return { status: "failed", reason: "send_outcome_unknown" }
-  }
-
   if (!ctx.approval) {
     const requested = (await ctx.requestApproval?.({
       tool_name: "social:reply_to_finding",
@@ -295,8 +283,47 @@ export async function replyToFinding(
   // The adapter context lets Facebook resolve the owning Page's access token
   // (via `/me/accounts`, using the connected user's token); other adapters
   // ignore the extra `ctx` argument.
+  const approvalRequestId = ctx.approval?.approvalRequestId ?? null
   const adapterCtx = await resolveOutboundAdapterContext(ctx, finding.platform)
   const adapter = ADAPTERS[finding.platform]
+  const topLevel = finding.relation === "keyword_match"
+
+  // Never post the same public reply twice. Our reply may already be there: an
+  // earlier run of this approval whose post timed out on our side but went
+  // through, or the same answer posted natively. Look before posting.
+  const priorIntent = finding.metadata?.reply_intent as ReplyIntent | undefined
+  const retry = approvalRequestId !== null && priorIntent?.approval_request_id === approvalRequestId
+  const existing = topLevel ? null : await lookupOwnReply(adapter, finding, params.reply_text, adapterCtx)
+  if (existing?.status === "found") {
+    await markReplied(ctx, finding, { approvalRequestId, replyText: params.reply_text, replyExternalId: existing.externalId })
+    const ref = { provider: finding.platform, reply_external_id: existing.externalId, already_posted: true }
+    if (ctx.approval) {
+      await ctx.approval_recordStarted?.(REPLY_TOOL)
+      await ctx.approval_recordSucceeded?.(REPLY_TOOL, JSON.stringify(ref))
+    }
+    ctx.logger?.info?.("social: reply_to_finding found its reply already posted, not posting again", {
+      findingId: finding.id,
+      approvalRequestId,
+      retry,
+    })
+    return { status: "completed", reply_external_id: existing.externalId, already_posted: true }
+  }
+  // A retry that cannot see whether the earlier post went through must not post
+  // again: the outcome stays unknown and the approval waits for its reconciler
+  // or a person.
+  if (retry && existing?.status !== "absent") {
+    await ctx.db.update("finding", finding.id, {
+      metadata: { ...(finding.metadata ?? {}), reply_intent: { ...priorIntent, outcome: "unknown", needs_check: true } },
+    })
+    ctx.logger?.warn?.("social: reply_to_finding retry found an unconfirmed reply, not posting again", {
+      findingId: finding.id,
+      approvalRequestId,
+      lookup: existing?.status === "unknown" ? existing.reason : "unsupported",
+    })
+    await ctx.approval_recordStarted?.(REPLY_TOOL)
+    throw new Error("send_outcome_unknown: an earlier attempt of this reply may have been posted and it cannot be checked now")
+  }
+
   // A `keyword_match` finding is a VIDEO match, not a comment — its
   // `external_id` is a video id, so `replyRequest` (which shapes a reply to an
   // existing COMMENT, via `parentId`) would post an invalid/nonsensical
@@ -305,18 +332,24 @@ export async function replyToFinding(
   // `replyRequest` for keyword_match — that would silently misfile the comment
   // as a reply to a nonexistent parent.
   const req =
-    finding.relation === "keyword_match" && adapter.topLevelCommentRequest
+    topLevel && adapter.topLevelCommentRequest
       ? await adapter.topLevelCommentRequest(
           { externalId: finding.external_id },
           params.reply_text,
           adapterCtx,
         )
       : await adapter.replyRequest({ externalId: finding.external_id }, params.reply_text, adapterCtx)
-  // Reply intent before the POST (see the guard above).
+  // The protocol's `started` and the reply intent go down before the POST: a run
+  // cut off after it (a timeout, a dead worker) is then known to be unknown,
+  // never mistaken for a reply that was not sent.
+  if (ctx.approval) await ctx.approval_recordStarted?.(REPLY_TOOL)
   await ctx.db.update("finding", finding.id, {
-    metadata: { ...(finding.metadata ?? {}), reply_intent: { approval_request_id: approvalRequestId, at: new Date().toISOString() } },
+    metadata: {
+      ...(finding.metadata ?? {}),
+      reply_intent: { approval_request_id: approvalRequestId, reply_text: params.reply_text, at: new Date().toISOString() },
+    },
   })
-  const res = await postJson(ctx, req.url, req.body, req.headers)
+  const res = await postJson(ctx, req.url, req.body, req.headers, REPLY_POST_TIMEOUT_MS)
   const verdict = classifyHttp(res.status)
   if (verdict !== "ok") {
     // §4.3/§7: a gone (404/410) or blocked parent is a terminal `failed` state
@@ -330,7 +363,7 @@ export async function replyToFinding(
       reason: verdict,
       http_status: res.status,
       provider_error: providerError(res.body),
-      approval_request_id: ctx.approval?.approvalRequestId ?? null,
+      approval_request_id: approvalRequestId,
       at: new Date().toISOString(),
     }
     // Spreading the metadata read before the intent drops the intent: the
@@ -340,6 +373,16 @@ export async function replyToFinding(
       metadata: { ...(finding.metadata ?? {}), last_reply_failure: failure },
     })
     ctx.logger?.warn?.("social: reply_to_finding failed", { findingId: finding.id, platform: finding.platform, ...failure })
+    // The platform refused it: nothing was posted.
+    if (ctx.approval) {
+      await ctx.approval_recordFailedNoEffect?.(
+        REPLY_TOOL,
+        JSON.stringify({
+          code: `reply_${verdict}`,
+          message: `The platform refused the reply (HTTP ${res.status})${failure.provider_error ? `: ${failure.provider_error}` : ""}`,
+        }),
+      )
+    }
     return {
       status: "failed",
       reason: verdict,
@@ -347,8 +390,124 @@ export async function replyToFinding(
       provider_error: failure.provider_error,
     }
   }
-  await ctx.db.update("finding", finding.id, { status: "handled" })
-  return { status: "completed" }
+  const replyExternalId = createdId(res.body)
+  const ref = { provider: finding.platform, reply_external_id: replyExternalId }
+  // Landed first, before any bookkeeping that could still be cut off.
+  if (ctx.approval) await ctx.approval_recordEffectLanded?.(REPLY_TOOL, JSON.stringify(ref))
+  await markReplied(ctx, finding, { approvalRequestId, replyText: params.reply_text, replyExternalId })
+  if (ctx.approval) await ctx.approval_recordSucceeded?.(REPLY_TOOL, JSON.stringify(ref))
+  return { status: "completed", reply_external_id: replyExternalId }
+}
+
+const REPLY_TOOL = "social:reply_to_finding"
+
+/** The reply POST may wait this long for the platform's answer (a write may ask
+ *  the host for up to 30 s; the tool's budget is 30 s). A Graph comment post
+ *  that took 11 s used to be cut off at the 10 s default although it went through. */
+export const REPLY_POST_TIMEOUT_MS = 20_000
+
+interface ReplyIntent {
+  approval_request_id?: string | null
+  reply_text?: string | null
+  outcome?: string
+  [k: string]: unknown
+}
+
+/** The id the platform gave a created object (`{ id }` from Graph, YouTube). */
+function createdId(body: string | undefined): string | null {
+  if (!body) return null
+  try {
+    const id = (JSON.parse(body) as { id?: unknown }).id
+    return typeof id === "string" && id ? id : null
+  } catch {
+    return null
+  }
+}
+
+async function lookupOwnReply(
+  adapter: PlatformAdapter,
+  finding: FindingRow,
+  text: string,
+  adapterCtx: AdapterContext,
+): Promise<OwnReplyLookup | null> {
+  if (!adapter.findOwnReply) return null
+  try {
+    return await adapter.findOwnReply({ externalId: finding.external_id }, text, adapterCtx)
+  } catch (err) {
+    return { status: "unknown", reason: err instanceof Error ? err.message.slice(0, 200) : "lookup_failed" }
+  }
+}
+
+/** The finding was answered with this reply: `handled`, with the reply intent
+ *  recorded as landed. */
+async function markReplied(
+  ctx: SocialToolCtx,
+  finding: FindingRow,
+  reply: { approvalRequestId: string | null; replyText: string; replyExternalId: string | null },
+): Promise<void> {
+  const metadata = finding.metadata ?? {}
+  await ctx.db.update("finding", finding.id, {
+    status: "handled",
+    metadata: {
+      ...metadata,
+      reply_intent: {
+        ...((metadata.reply_intent as ReplyIntent | undefined) ?? {}),
+        approval_request_id: reply.approvalRequestId,
+        reply_text: reply.replyText,
+        outcome: "landed",
+        reply_external_id: reply.replyExternalId,
+      },
+    },
+  })
+}
+
+/**
+ * reply_to_finding's outcome reconciler (manifest `reconcileHandler`). The
+ * approving reaper calls it when an approved reply's outcome is unknown: the
+ * POST timed out on our side, or the worker died after it. Read-only.
+ *  - executed: the finding records this approval's reply as landed (the
+ *    platform's echo of our comment did, ingest.ts `recordOwnReply`), or the
+ *    target's replies show ours with this text;
+ *  - not_executed: the replies were read and ours is not among them;
+ *  - unknown: neither could be established.
+ */
+export async function reconcileReplyToFinding(
+  ctx: SocialToolCtx,
+  params: { approval_request_id: string; payload: unknown },
+): Promise<{ outcome: "executed" | "not_executed" | "unknown"; ref?: Record<string, unknown>; reason?: string }> {
+  const payload = (params.payload ?? {}) as { finding_id?: unknown; reply_text?: unknown }
+  if (typeof payload.finding_id !== "string" || typeof payload.reply_text !== "string") {
+    return { outcome: "unknown", reason: "payload_unreadable" }
+  }
+  const finding = await loadFinding(ctx, payload.finding_id)
+  if (!finding) return { outcome: "unknown", reason: "finding_not_found" }
+  const intent = finding.metadata?.reply_intent as (ReplyIntent & { reply_external_id?: string | null }) | undefined
+  if (intent?.approval_request_id === params.approval_request_id && intent.outcome === "landed") {
+    return {
+      outcome: "executed",
+      ref: { provider: finding.platform, reply_external_id: intent.reply_external_id ?? null, source: "recorded" },
+    }
+  }
+  if (finding.relation === "keyword_match") return { outcome: "unknown", reason: "top_level_comment_not_checkable" }
+  const adapter = ADAPTERS[finding.platform]
+  const adapterCtx = await resolveOutboundAdapterContext(ctx, finding.platform)
+  const found = await lookupOwnReply(adapter, finding, payload.reply_text, adapterCtx)
+  if (!found) return { outcome: "unknown", reason: "platform_cannot_check" }
+  if (found.status === "unknown") return { outcome: "unknown", reason: found.reason }
+  if (found.status === "absent") {
+    // Not posted: a later approval may post it, so the intent no longer blocks.
+    if (intent?.approval_request_id === params.approval_request_id) {
+      const { reply_intent: _dropped, ...rest } = finding.metadata ?? {}
+      await ctx.db.update("finding", finding.id, { metadata: rest })
+    }
+    return { outcome: "not_executed", reason: "the reply is not among the target's replies" }
+  }
+  await markReplied(ctx, finding, {
+    approvalRequestId: params.approval_request_id,
+    replyText: payload.reply_text,
+    replyExternalId: found.externalId,
+  })
+  return { outcome: "executed", ref: { provider: finding.platform, reply_external_id: found.externalId, source: "platform_read" } }
 }
 
 /**

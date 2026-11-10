@@ -70,6 +70,9 @@ const SANDBOX_FETCH_MAX_REQUEST_BYTES = 1_000_000
  *  call, and the bytes never cross into the sandbox, so the 1 MB string cap does not apply. */
 export const SANDBOX_MULTIPART_MAX_REQUEST_BYTES = 25 * 1024 * 1024
 const SANDBOX_EGRESS_MAX_TIMEOUT_MS = 120_000
+/** The longest a non-multipart WRITE (POST, PUT, PATCH, DELETE) may ask to wait for its
+ *  answer through `timeoutMs` (see the clamp in `fetch` below). */
+export const SANDBOX_WRITE_MAX_TIMEOUT_MS = 30_000
 
 const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS"])
 
@@ -267,8 +270,19 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
       // print_pack held a worker for 39s in prod and timed the operator out at 30s.
       // Clamped to SANDBOX_FETCH_TIMEOUT_MS so an app can never pin a worker for longer than
       // the sandbox allows, which is the invariant the hardcoded value was protecting.
+      //
+      // A WRITE may ask for longer, up to SANDBOX_WRITE_MAX_TIMEOUT_MS. Giving up on a write
+      // that the upstream is still processing does not cancel it: it lands anyway and the
+      // caller is left not knowing (a public comment post that took 11s was recorded as an
+      // unknown outcome and parked for a person). A read can simply be retried, so reads keep
+      // the tight default. The tool's own execution budget still bounds the whole call.
       const requestedTimeout = Number(opts.timeoutMs)
-      const timeoutCeiling = upload ? SANDBOX_EGRESS_MAX_TIMEOUT_MS : SANDBOX_FETCH_TIMEOUT_MS
+      const isWrite = !IDEMPOTENT_METHODS.has(String(method).toUpperCase())
+      const timeoutCeiling = upload
+        ? SANDBOX_EGRESS_MAX_TIMEOUT_MS
+        : isWrite
+          ? Math.max(SANDBOX_FETCH_TIMEOUT_MS, SANDBOX_WRITE_MAX_TIMEOUT_MS)
+          : SANDBOX_FETCH_TIMEOUT_MS
       const fetchTimeoutMs =
         Number.isFinite(requestedTimeout) && requestedTimeout > 0
           ? Math.min(requestedTimeout, timeoutCeiling)

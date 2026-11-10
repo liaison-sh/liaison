@@ -2877,7 +2877,7 @@
           },
           "currency": {
             "type": "string",
-            "description": "ISO-4217 currency of the document (e.g. EUR, USD, GBP). Defaults to the issuer profile's default currency. When you are invoicing a Shopify order, set this to the ORDER'S currency (the currency the customer was charged, e.g. the order's currencyCode/presentment currency) so the invoice total matches the order — never silently re-denominate a USD order into EUR. The tax TREATMENT (domestic / reverse-charge / export) is still derived from counterparty_country independently of the currency."
+            "description": "ISO-4217 currency of the document (e.g. EUR, USD). Defaults to the issuer profile's. For a Shopify order, set the ORDER'S currency (what the customer was charged); never re-denominate a USD order into EUR. Tax treatment is derived from counterparty_country, not from the currency."
           },
           "shopify_order_id": {
             "type": [
@@ -3180,7 +3180,7 @@
               },
               "lines": {
                 "type": "array",
-                "description": "Replaces ALL draft lines. Under an issuer profile with prices_include_tax on, unit_price_minor here is treated as GROSS (tax included) and is divided down to net before storage, every time this is called, with no way to tell a freshly typed price apart from an echoed one. So a line read back from documents_get or from this same tool's own response is ALREADY NET: never echo those values back unchanged in a future call, and never replay ALL lines just to change one — read the others back only to know what they are, then resend the lines you actually mean as newly typed gross prices (or leave lines out of the patch entirely if none of them changed).",
+                "description": "Replaces ALL draft lines. With prices_include_tax on, unit_price_minor here is GROSS and is divided down to net on every call. Lines read back from documents_get or this tool are ALREADY NET: never echo them back, and never resend all lines to change one; leave unchanged lines out of the patch.",
                 "items": {
                   "type": "object",
                   "additionalProperties": true,
@@ -3283,12 +3283,10 @@
           },
           "applies": {
             "type": "string",
-            "enum": ["this_month", "end_schedule"],
-            "description": "Month-end row: how far."
+            "enum": ["this_month", "end_schedule"]
           },
           "ends_on": {
-            "type": "string",
-            "description": "With end_schedule: last month billed."
+            "type": "string"
           }
         },
         "required": [

@@ -11,6 +11,7 @@ import { sql } from "~/db"
 import { resetAppRegistries, toolRegistry } from "~/modules/apps/app-registries"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -31,10 +32,23 @@ import {
 
 async function thread(tainted: boolean): Promise<string> {
   const id = randomUUID()
-  await sql`INSERT INTO kernel.threads (id, org_id, handle, type, created_by, tainted)
-    VALUES (${id}, ${world.org}, ${`run-edit-${id.slice(0, 8)}`}, 'agent_chat', ${world.actor.userId}, ${tainted})`
-  await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id)
-    VALUES (${id}, ${world.actor.userId}, ${world.org})`
+  await sql.unsafe(
+    insertSql("kernel.threads", {
+      id,
+      org_id: world.org,
+      handle: `run-edit-${id.slice(0, 8)}`,
+      type: "agent_chat",
+      created_by: world.actor.userId,
+      tainted,
+    }),
+  )
+  await sql.unsafe(
+    insertSql("kernel.thread_participants", {
+      thread_id: id,
+      user_id: world.actor.userId,
+      org_id: world.org,
+    }),
+  )
   return id
 }
 

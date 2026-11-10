@@ -157,8 +157,14 @@ describe("identifiers next to card numbers", () => {
   it("SIRET, SIREN, VAT, IMEI, IBAN, invoice, order, EAN and serial numbers are left untouched", () => {
     expect(IDENTIFIERS.length).toBe(25)
     for (const [label, input] of IDENTIFIERS) {
-      expect({ label, out: maskCardNumbers(input) }).toEqual({ label, out: { text: input, masked: 0 } })
-      expect({ label, out: maskHtmlWithNote(`<p>${input}</p>`).text }).toEqual({ label, out: `<p>${input}</p>` })
+      expect({ label, out: maskCardNumbers(input) }).toEqual({
+        label,
+        out: { text: input, masked: 0 },
+      })
+      expect({ label, out: maskHtmlWithNote(`<p>${input}</p>`).text }).toEqual({
+        label,
+        out: `<p>${input}</p>`,
+      })
     }
   })
 
@@ -181,7 +187,9 @@ describe("identifiers next to card numbers", () => {
   })
 
   it("a card after an order number in one run is masked, the order number kept", () => {
-    expect(maskCardNumbers("Order 1234 4242 4242 4242 4242").text).toBe("Order 1234 •••• •••• •••• 4242")
+    expect(maskCardNumbers("Order 1234 4242 4242 4242 4242").text).toBe(
+      "Order 1234 •••• •••• •••• 4242",
+    )
   })
 })
 

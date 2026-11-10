@@ -51,6 +51,7 @@ const NO_PREFLIGHT_NEEDED: Record<string, string> = {
   // reaches a human in the first place.
   "invoicing:drafts_create": "validates before parking",
   "invoicing:drafts_update": "validates before parking",
+  "invoicing:drafts_discard": "validates before parking",
   "invoicing:quote_issue": "validates before parking",
   "invoicing:quote_create_and_issue": "validates before parking",
   "invoicing:credit_note_issue": "validates before parking",

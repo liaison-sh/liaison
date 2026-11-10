@@ -774,7 +774,7 @@
     },
     "invoicing__drafts_discard": {
       "desc": 179,
-      "schema": 22
+      "schema": 45
     },
     "invoicing__drafts_update": {
       "desc": 93,

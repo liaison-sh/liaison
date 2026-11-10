@@ -11,12 +11,14 @@
 //   - "Full Member" gains all four; an app role and `admin` are untouched;
 //   - running it again changes nothing.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
-import { randomUUID } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { sql as drizzleSql } from "drizzle-orm"
+import { sql as drizzleSql, eq } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { withSystemDb } from "~/db/privileged"
+import { agents, roles } from "~/db/schema/kernel"
+import { getOrCreatePersonalAgentId } from "~/modules/agent/directory/personal-agent"
+import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -68,31 +70,25 @@ async function dropTier(role: string, keep: string[] = []): Promise<void> {
   }
 }
 
-/** A holder of `role` with a personal agent whose ceiling is `ceiling`. */
+/**
+ * A member (the `member` preset) seeded through the minimal tier, whose personal agent's ceiling
+ * is set to `ceiling` (and `restriction`) as an older org would have it.
+ */
 async function holderWithAgent(
   orgId: string,
-  role: string,
   ceiling: string[],
   restriction: string[] | null = null,
-): Promise<{ user: string; agent: string }> {
-  const user = randomUUID()
-  const agent = randomUUID()
-  await exec(
-    "0284-test-user",
-    drizzleSql`INSERT INTO kernel.users (id, org_id, email, name, status, password_hash, auth_version, permission_version)
-      VALUES (${user}::uuid, ${orgId}, ${`0284-${user}@t.co`}, 'Holder', 'active', 'hash', 1, 1)`,
-  )
-  await exec(
-    "0284-test-user-role",
-    drizzleSql`INSERT INTO kernel.user_roles (user_id, role_id, org_id) VALUES (${user}::uuid, ${role}::uuid, ${orgId})`,
-  )
-  await exec(
-    "0284-test-agent",
-    drizzleSql`INSERT INTO kernel.agents (id, org_id, kind, handle, display_name, owner_user_id, scope_ceiling, ceiling_restriction)
-      VALUES (${agent}::uuid, ${orgId}, 'personal', ${`@m0284-${user.slice(0, 8)}`}, 'Agent', ${user}::uuid,
-              ${JSON.stringify(ceiling)}::jsonb, ${restriction ? JSON.stringify(restriction) : null}::jsonb)`,
-  )
-  return { user, agent }
+): Promise<{ user: string; agent: string; version: number }> {
+  const user = (await minimal.person(orgId)).id
+  const agent = await withSystemDb("0284-test-agent", async (tx) => {
+    const id = await getOrCreatePersonalAgentId(tx as never, { orgId, userId: user })
+    await tx
+      .update(agents)
+      .set({ scopeCeiling: ceiling, ceilingRestriction: restriction })
+      .where(eq(agents.id, id))
+    return id
+  })
+  return { user, agent, version: await permissionVersion(user) }
 }
 
 async function permissionVersion(user: string): Promise<number> {
@@ -122,20 +118,19 @@ describe("0284: the kernel member tier reaches orgs created before 0275", () => 
     const member = await roleId(oldOrg, "member")
     await dropTier(member) // as an org seeded before 0275
     const admin = await roleId(oldOrg, "admin")
-    const plain = await holderWithAgent(oldOrg, member, ["kernel:threads:read"])
+    const plain = await holderWithAgent(oldOrg, ["kernel:threads:read"])
     const narrowed = await holderWithAgent(
       oldOrg,
-      member,
       ["kernel:threads:read"],
       ["kernel:threads:read", "kernel:dashboards"],
     )
-    const wide = await holderWithAgent(oldOrg, member, ["kernel:*"])
+    const wide = await holderWithAgent(oldOrg, ["kernel:*"])
 
     await runMigration()
 
     expect(await grants(member)).toEqual(expect.arrayContaining(TIER))
     expect(await grants(admin)).toEqual(["*"])
-    expect(await permissionVersion(plain.user)).toBe(2)
+    expect(await permissionVersion(plain.user)).toBe(plain.version + 1)
     expect(await ceiling(plain.agent)).toEqual(["kernel:threads:read", ...TIER].sort())
     // An administrator's narrowing keeps out what it does not cover.
     expect(await ceiling(narrowed.agent)).toEqual(
@@ -146,7 +141,7 @@ describe("0284: the kernel member tier reaches orgs created before 0275", () => 
 
     // Re-runnable: nothing more is granted and no session is bumped again.
     await runMigration()
-    expect(await permissionVersion(plain.user)).toBe(2)
+    expect(await permissionVersion(plain.user)).toBe(plain.version + 1)
     expect((await ceiling(plain.agent)).length).toBe(1 + TIER.length)
   })
 
@@ -154,23 +149,23 @@ describe("0284: the kernel member tier reaches orgs created before 0275", () => 
     const tunedOrg = (await createTestOrg()).id
     const member = await roleId(tunedOrg, "member")
     await dropTier(member, ["kernel:data:read"]) // an admin removed the rest
-    const fullMember = randomUUID()
-    await exec(
-      "0284-test-full-member",
-      drizzleSql`INSERT INTO kernel.roles (id, org_id, name, system_managed)
-        VALUES (${fullMember}::uuid, ${tunedOrg}, 'Full Member', true)
-        ON CONFLICT (org_id, name) DO NOTHING`,
+    // Registration made it already; make sure, through the schema, never a raw INSERT.
+    await withSystemDb("0284-test-full-member", (tx) =>
+      tx
+        .insert(roles)
+        .values({ orgId: tunedOrg, name: "Full Member", systemManaged: true })
+        .onConflictDoNothing(),
     )
     const fm = await roleId(tunedOrg, "Full Member")
     await dropTier(fm)
     const appRole = await roleId(tunedOrg, "tickets.support")
     const appBefore = await grants(appRole)
-    const tuned = await holderWithAgent(tunedOrg, member, ["kernel:threads:read"])
+    const tuned = await holderWithAgent(tunedOrg, ["kernel:threads:read"])
 
     await runMigration()
 
     expect(await grants(member)).not.toContain("kernel:dashboards:write")
-    expect(await permissionVersion(tuned.user)).toBe(1)
+    expect(await permissionVersion(tuned.user)).toBe(tuned.version)
     expect(await grants(fm)).toEqual(expect.arrayContaining(TIER))
     expect(await grants(appRole)).toEqual(appBefore)
   })

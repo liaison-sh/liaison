@@ -1831,7 +1831,12 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
       ...bunTestFlags,
       ...(fileFilter
         ? fileArg
-        : ["src/manifest.test.ts", "src/schema-guard.test.ts", "src/http.test.ts"]),
+        : [
+            "src/manifest.test.ts",
+            "src/schema-guard.test.ts",
+            "src/http.test.ts",
+            "src/connection.test.ts",
+          ]),
     ],
     cwd: path.join(ROOT, "bundled-apps/stripe"),
   },

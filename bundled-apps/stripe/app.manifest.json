@@ -1,6 +1,6 @@
 {
   "name": "stripe",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "kind": "connector",
   "iconName": "credit-card",
   "description": "Stripe connector: a read mirror of customers, subscriptions, invoices, payments, refunds and disputes, kept current by a signed webhook.",
@@ -74,7 +74,13 @@
         {
           "name": "restrictedKey",
           "type": "password",
-          "label": "Restricted key"
+          "label": "Restricted key",
+          "refusePattern": {
+            "pattern": "^sk_(live|test)_",
+            "code": "secret_key_refused",
+            "message": "That is your secret key, so I did not keep it. Create a restricted key in Stripe (Developers, API keys, Create restricted key: it starts with rk_) and paste that one.",
+            "messageKey": "kernel.stripeSecretKeyRefused"
+          }
         }
       ],
       "appSecretConfigKeys": [
@@ -115,6 +121,66 @@
   },
   "webhookHealth": {
     "probe": "probe-webhook-upstream"
+  },
+  "tools": {
+    "connection_check": {
+      "deferLoading": true,
+      "description": "Check the saved Stripe key: one read per permission Liaison uses and a refund probe that creates nothing. Says which permission is missing, or that the key is wrong, of another account or of the other mode.",
+      "searchKeywords": [
+        "clé",
+        "vérifier"
+      ],
+      "requiredScopes": [
+        "stripe:admin:connection"
+      ],
+      "trustBoundary": "user",
+      "handler": "connectionCheck",
+      "writesToTable": "app_stripe.install_metadata",
+      "timeoutMs": 60000,
+      "runningLabel": "Checking the Stripe key",
+      "params": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "returns": {
+        "schema": {
+          "mode": "string",
+          "account": "object",
+          "state": "string",
+          "checks": "object",
+          "summary": "string"
+        }
+      },
+      "resultCard": {
+        "kind": "list",
+        "pill": {
+          "label": "Stripe key"
+        },
+        "title": "Stripe key",
+        "items": {
+          "path": "result.checks",
+          "label": "{{item.label}}: {{item.level}}",
+          "meta": "{{item.meta}}",
+          "limit": 10
+        }
+      }
+    },
+    "settings_load": {
+      "readOnly": true,
+      "agentVisible": false,
+      "description": "The Stripe settings page's load: the connection state and the key's permissions from the last check.",
+      "requiredScopes": [
+        "stripe:admin:connection"
+      ],
+      "trustBoundary": "user",
+      "handler": "settingsLoad",
+      "params": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    }
   },
   "jobs": {
     "probe-webhook-upstream": {

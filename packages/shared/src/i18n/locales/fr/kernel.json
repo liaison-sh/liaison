@@ -874,6 +874,7 @@
   "composeAttach": "Joindre",
   "composeEmoji": "Emoji",
   "composerKeyBlocked": "Cela ressemble à une clé Stripe, le message n’a donc pas été envoyé.",
+  "stripeSecretKeyRefused": "C’est votre clé secrète, je ne l’ai donc pas gardée. Créez une clé restreinte dans Stripe (Développeurs, Clés API, Créer une clé restreinte : elle commence par rk_) et collez celle-ci.",
   "configureOidcProvidersForSingleSign": "Configurez les fournisseurs OIDC pour l'authentification unique.",
   "confirmSetup": "Confirmer la configuration",
   "connect": "Connecter",

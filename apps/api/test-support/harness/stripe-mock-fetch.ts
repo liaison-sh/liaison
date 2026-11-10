@@ -12,6 +12,7 @@
 // fixtures alone. Lists answer Stripe's list envelope; a missing id answers
 // Stripe's 404 error shape. `stripeMockFailNext` makes the next call to a path
 // answer a chosen status (401, 403, 429) once.
+import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
@@ -45,6 +46,11 @@ export interface StripeMockRecord {
   path: string
   stripeVersion: string | null
   hasAuthorization: boolean
+  /**
+   * SHA-256 of the bearer token the host added, so a test can prove the stored
+   * key reached Stripe without the key ever being recorded or returned.
+   */
+  authorizationSha256: string | null
   idempotencyKey: string | null
   body: string | null
 }
@@ -61,6 +67,14 @@ function freshStore(): void {
   }
 }
 freshStore()
+
+/** Resources the key check lists that the connector does not mirror: an empty list. */
+const LIST_ONLY = new Set(["payment_methods", "products", "prices"])
+
+function bearerSha256(header: string | null): string | null {
+  const token = header?.replace(/^Bearer\s+/i, "")
+  return token ? createHash("sha256").update(token).digest("hex") : null
+}
 
 export function stripeMockRequests(): StripeMockRecord[] {
   return [...records]
@@ -129,6 +143,7 @@ export function makeStripeMockFetch(realFetch: typeof fetch = fetch): typeof fet
       path: parsed.pathname,
       stripeVersion: headers.get("stripe-version"),
       hasAuthorization: headers.has("authorization"),
+      authorizationSha256: bearerSha256(headers.get("authorization")),
       idempotencyKey: headers.get("idempotency-key"),
       body: typeof init?.body === "string" ? init.body : null,
     }
@@ -161,6 +176,21 @@ export function makeStripeMockFetch(realFetch: typeof fetch = fetch): typeof fet
     }
 
     const [, version, resource, id] = parsed.pathname.split("/")
+    if (version === "v1" && method === "GET" && !id && resource && LIST_ONLY.has(resource)) {
+      return json({ object: "list", data: [], has_more: false, url: `/v1/${resource}` })
+    }
+    // The key check's refund probe names a charge that cannot exist: Stripe's 404.
+    if (version === "v1" && method === "POST" && resource === "refunds" && !id) {
+      const charge = new URLSearchParams(record.body ?? "").get("charge") ?? ""
+      if (!store.get("charges")?.has(charge)) {
+        return stripeError(
+          404,
+          "invalid_request_error",
+          `No such charge: '${charge}'`,
+          "resource_missing",
+        )
+      }
+    }
     if (version !== "v1" || !(resource && resource in RESOURCES)) {
       return stripeError(
         404,

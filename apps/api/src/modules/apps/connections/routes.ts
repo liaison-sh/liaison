@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+import { resolveLocale } from "@liaison/shared"
 import { and, eq } from "drizzle-orm"
 import { Hono } from "hono"
 import { HTTPException } from "hono/http-exception"
@@ -29,6 +30,7 @@ import {
   CONNECT_CALLBACK_PATH,
   ConnectionHeldByMemberError,
   ConnectionHeldByOtherOwnerError,
+  CredentialRefusedError,
   connectionAccountLabel,
   createCredentialConnection,
   describeConnectionAccounts,
@@ -50,6 +52,7 @@ import {
   parseConnectClient,
 } from "~/modules/apps/connections/shell-connect"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { serverT } from "~/modules/i18n/server-i18n"
 import { hasScope } from "~/modules/permissions/permissions"
 
 type ConnectMode = "personal" | "org"
@@ -465,6 +468,21 @@ export const connectionRoutes = new Hono<AppEnv>()
       // The account is someone else's (service.ts, one active account per identifier).
       if (err instanceof ConnectionHeldByOtherOwnerError) {
         throw new HTTPException(409, { message: err.message })
+      }
+      // The wrong kind of secret: nothing was stored; the field's own message says why.
+      if (err instanceof CredentialRefusedError) {
+        const locale = resolveLocale(c.req.header("accept-language")?.split(",")[0]?.trim())
+        const translated = err.messageKey ? serverT(locale, err.messageKey) : null
+        return c.json(
+          {
+            error: {
+              code: err.code,
+              message: translated && translated !== err.messageKey ? translated : err.message,
+              details: { field: err.field, stored: false },
+            },
+          },
+          422,
+        )
       }
       // A member holds it personally: the caller confirms with `takeOver: true`.
       if (err instanceof ConnectionHeldByMemberError) {

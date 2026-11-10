@@ -20,8 +20,8 @@ function referencedHandlers(m: any): string[] {
 const CARD_PARAM = /card|pan|cvc|cvv|number|expir/i
 
 describe("stripe manifest", () => {
-  it("is at version 0.1.1", () => {
-    expect(load().version).toBe("0.1.1")
+  it("is at version 0.1.2", () => {
+    expect(load().version).toBe("0.1.2")
   })
 
   it("parses with the package manifest schema", () => {
@@ -40,7 +40,9 @@ describe("stripe manifest", () => {
     const c = load().connections.stripe
     expect(c.type).toBe("credentials")
     expect(c.adminScope).toBe("stripe:admin:connection")
-    expect(c.credentialFields).toEqual([{ name: "restrictedKey", type: "password", label: "Restricted key" }])
+    expect(c.credentialFields).toHaveLength(1)
+    expect(c.credentialFields[0]).toMatchObject({ name: "restrictedKey", type: "password", label: "Restricted key" })
+    expect(c.credentialFields[0].refusePattern.code).toBe("secret_key_refused")
     expect(c.appSecretConfigKeys).toEqual(["webhookSigningSecret", "webhookSigningSecretPrevious"])
   })
 

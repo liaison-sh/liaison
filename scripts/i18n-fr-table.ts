@@ -2103,6 +2103,8 @@ export const FR: Record<string, string> = {
   "Write a message... (@ people, # threads)": "Écrire un message… (@ personnes, # discussions)",
   "That looks like a Stripe key, so it was not sent.":
     "Cela ressemble à une clé Stripe, le message n’a donc pas été envoyé.",
+  "That is your secret key, so I did not keep it. Create a restricted key in Stripe (Developers, API keys, Create restricted key: it starts with rk_) and paste that one.":
+    "C’est votre clé secrète, je ne l’ai donc pas gardée. Créez une clé restreinte dans Stripe (Développeurs, Clés API, Créer une clé restreinte : elle commence par rk_) et collez celle-ci.",
   "Best on a larger screen": "Préférable sur un écran plus grand",
   "Continue anyway": "Continuer quand même",
   "Could not save the Face ID setting": "Impossible d'enregistrer le réglage Face ID",

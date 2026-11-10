@@ -513,6 +513,38 @@ export class ConnectionHeldByMemberError extends Error {
   }
 }
 
+/**
+ * A credential value its manifest field refuses (`credentialFields[].refusePattern`):
+ * the wrong kind of secret was pasted. Thrown before anything is encrypted or
+ * stored. The message is the manifest's and never holds the value.
+ */
+export class CredentialRefusedError extends Error {
+  constructor(
+    readonly code: string,
+    readonly field: string,
+    message: string,
+    readonly messageKey?: string,
+  ) {
+    super(message)
+    this.name = "CredentialRefusedError"
+  }
+}
+
+/** Throws {@link CredentialRefusedError} when a declared field's value matches its `refusePattern`. */
+export function assertCredentialsAccepted(
+  connConfig: ReturnType<typeof connectionConfigRegistry.get>,
+  credentials: Record<string, string>,
+): void {
+  for (const field of connConfig?.credentialFields ?? []) {
+    const rule = field.refusePattern
+    const value = credentials[field.name]
+    if (!rule || typeof value !== "string") continue
+    if (manifestRegExp(rule.pattern).test(value.trim())) {
+      throw new CredentialRefusedError(rule.code, field.name, rule.message, rule.messageKey)
+    }
+  }
+}
+
 /** A personal row an org connection took over: retired, announced, never silent. */
 export interface TakenOverAccount {
   id: string
@@ -1338,6 +1370,12 @@ export async function createCredentialConnection(
   if (!isInboundOnlyConnection(connectionConfigRegistry.get([orgId, appName, connectionName]))) {
     await assertDemoEgressAllowed(orgId, "connector_credentials", tx)
   }
+  // The wrong kind of secret (a field's `refusePattern`) is refused before it
+  // is encrypted or stored, so nothing of it is kept anywhere.
+  assertCredentialsAccepted(
+    connectionConfigRegistry.get([orgId, appName, connectionName]),
+    input.credentials,
+  )
   // A mailbox outside the org's allowed domains is refused (mail-domains.ts).
   // Read on this transaction: no second privileged connection.
   await assertMailboxAllowed(

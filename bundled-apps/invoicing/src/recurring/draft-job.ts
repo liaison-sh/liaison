@@ -73,7 +73,35 @@ async function insertOnce(ctx: RunCtx, entity: string, where: Row, data: Row): P
   }
 }
 
-/** Who the customer is on the draft: the snapshot of the schedule's last invoice to that contact. */
+/** A kernel read through the app's tool bridge; null when it is absent or fails. */
+async function kernelRead(ctx: RunCtx, tool: string, params: Record<string, unknown>): Promise<Row | null> {
+  if (!ctx.executeTool) return null
+  try {
+    const env = await ctx.executeTool(tool, params)
+    return env.status === "completed" ? ((env.result ?? null) as Row | null) : null
+  } catch {
+    return null
+  }
+}
+
+const text = (v: unknown): string | null => (typeof v === "string" && v.trim() !== "" ? v.trim() : null)
+
+/** A contact's billing address (else its first one) as the draft's one-line address and country. */
+async function billingAddress(ctx: RunCtx, contactId: string): Promise<{ line: string; country: string | null } | null> {
+  const list = (await kernelRead(ctx, "kernel:contacts_addresses_list", { contactId }))?.addresses
+  const all = (Array.isArray(list) ? list : []) as Row[]
+  const a = all.find((x) => x.role === "billing") ?? all[0]
+  if (!a) return null
+  const city = [text(a.postalCode), text(a.city)].filter(Boolean).join(" ")
+  const line = [text(a.street1), text(a.street2), city].filter(Boolean).join(", ")
+  return line ? { line, country: text(a.countryIso2)?.toUpperCase() ?? null } : null
+}
+
+/**
+ * Who the customer is on the draft: the snapshot of the schedule's last invoice to that contact.
+ * With none, the schedule's company when it names one (its name, the contact's billing address,
+ * the VAT number recorded for the contact), else the contact's name and email.
+ */
 async function counterpartySnapshot(ctx: RunCtx, s: ScheduleRow): Promise<Row> {
   const last = s.last_document_id ? ((await ctx.db.findOne("documents", s.last_document_id)) as Row | null) : null
   const source =
@@ -91,19 +119,22 @@ async function counterpartySnapshot(ctx: RunCtx, s: ScheduleRow): Promise<Row> {
     }
   }
   const snapshot: Row = { counterparty_name: null, counterparty_address: null, counterparty_country: null, counterparty_vat_id: null, counterparty_email: null }
-  if (ctx.executeTool) {
-    try {
-      const env = await ctx.executeTool("kernel:contacts_read", { contactId: s.contact_id })
-      if (env.status === "completed") {
-        const c = ((env.result as { contact?: Row } | null)?.contact ?? {}) as Row
-        snapshot.counterparty_name = c.name ?? c.displayName ?? null
-        snapshot.counterparty_email = c.email ?? null
-      }
-    } catch {
-      // An unreadable contact leaves the row to fix; the draft is still made.
-    }
+  // An unreadable contact or company leaves the row to fix; the draft is still made.
+  const c = ((await kernelRead(ctx, "kernel:contacts_read", { contactId: s.contact_id }))?.contact ?? {}) as Row
+  snapshot.counterparty_name = c.name ?? c.displayName ?? null
+  snapshot.counterparty_email = c.email ?? null
+  const companyName = s.company_id ? text(((await kernelRead(ctx, "kernel:companies_read", { companyId: s.company_id }))?.company as Row | undefined)?.name) : null
+  if (!companyName) return snapshot
+  const identity = (await ctx.db.findMany("counterparty_identities", { where: { contact_id: s.contact_id }, limit: 1 })) as Row[]
+  const address = await billingAddress(ctx, s.contact_id)
+  return {
+    ...snapshot,
+    counterparty_name: companyName,
+    counterparty_address: address?.line ?? null,
+    counterparty_country: address?.country ?? text(identity[0]?.establishment_country) ?? null,
+    counterparty_vat_id: text(identity[0]?.vat_id),
+    customer_kind: text(identity[0]?.customer_kind) ?? "business",
   }
-  return snapshot
 }
 
 /** The previous invoice of the schedule, for the row's flags. */

@@ -81,9 +81,26 @@ export const ORPHAN_ACTIONS: ReadonlyArray<{ id: string; tool: string; label: st
     id: "link",
     tool: "payment_link_to_invoice",
     label: "Link to an invoice",
-    confirm: "Link this payment to the invoice you picked? The invoice is marked paid once a person approves.",
+    confirm: "Link this payment to the invoice you picked? Once a person approves, the invoice names this payment; its payment status does not change.",
   },
 ]
+
+/**
+ * The params of an orphan payment's action. "Create the invoice" needs the VAT rate the amount
+ * includes (a charge with no Stripe invoice carries none), typed as a percent ("20", "5,5").
+ */
+export function orphanParams(
+  action: string,
+  chargeId: string,
+  documentId: string | null | undefined,
+  vatText: string,
+): { params: Record<string, unknown> } | { error: string } {
+  if (action === "link") return { params: { chargeId, ...(documentId ? { documentId } : {}) } }
+  const t = vatText.trim().replace(",", ".")
+  const pct = /^\d{1,2}(\.\d{1,2})?$/.test(t) ? Number(t) : Number.NaN
+  if (!Number.isFinite(pct)) return { error: tr("Type the VAT rate the amount includes, such as 20.") }
+  return { params: { chargeId, vatRateBp: Math.round(pct * 100) } }
+}
 
 export const RecurringEmpty: Component = () => (
   <div data-testid="recurring-empty" class="flex flex-col items-start gap-2 rounded-md border border-border-subtle px-4 py-5 text-[12.5px]">
@@ -138,12 +155,13 @@ export const LastDayNote: Component<{ lastDay: string }> = (p) => (
 export const OrphanPaymentCard: Component<{ chargeId: string; amount: string; documentId?: string | null }> = (p) => {
   const [asking, setAsking] = createSignal<(typeof ORPHAN_ACTIONS)[number] | null>(null)
   const [note, setNote] = createSignal<string | null>(null)
+  const [vat, setVat] = createSignal("20")
   const run = async (a: (typeof ORPHAN_ACTIONS)[number]) => {
     setAsking(null)
+    const built = orphanParams(a.id, p.chargeId, p.documentId, vat())
+    if ("error" in built) return setNote(built.error)
     try {
-      const params: Record<string, unknown> = { chargeId: p.chargeId }
-      if (a.id === "link" && p.documentId) params.documentId = p.documentId
-      const r = await app.invokeTool<{ status?: string; error?: { message?: string } }>(a.tool, params)
+      const r = await app.invokeTool<{ status?: string; error?: { message?: string } }>(a.tool, built.params)
       setNote(r?.status === "error" ? (r.error?.message ?? tr("Nothing was changed.")) : tr("Sent for approval."))
     } catch (e) {
       setNote(e instanceof Error ? e.message : tr("Nothing was changed."))
@@ -152,6 +170,17 @@ export const OrphanPaymentCard: Component<{ chargeId: string; amount: string; do
   return (
     <div data-testid="recurring-orphan-payment" class="flex flex-col gap-2 rounded-md border border-border-subtle px-4 py-3 text-[12.5px]">
       <div class="text-text">{tr("A Stripe payment of {{amount}} has no matching invoice.", { amount: p.amount })}</div>
+      <label class="flex items-center gap-2 text-text-secondary">
+        {tr("VAT included in the amount, %")}
+        <input
+          type="text"
+          inputmode="decimal"
+          data-testid="recurring-orphan-vat"
+          class="w-16 rounded-md border border-border bg-bg px-2 py-1 font-mono text-[12.5px] text-text"
+          value={vat()}
+          onInput={(e) => setVat(e.currentTarget.value)}
+        />
+      </label>
       <div class="flex flex-wrap gap-2">
         <For each={ORPHAN_ACTIONS}>
           {(a) => (

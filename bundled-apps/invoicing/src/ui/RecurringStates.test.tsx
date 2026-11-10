@@ -8,6 +8,7 @@ import {
   einvoiceStatusWord,
   LOAD_ERROR_LINES,
   ORPHAN_ACTIONS,
+  orphanParams,
   OVERFLOW_PAGE,
   RecurringStates,
   type EinvoiceFacts,
@@ -81,5 +82,15 @@ describe("less common situations", () => {
   it("a Stripe payment with no invoice offers two actions, each asking a confirm", () => {
     expect(ORPHAN_ACTIONS.map((a) => a.tool)).toEqual(["invoice_from_stripe_payment", "payment_link_to_invoice"])
     for (const a of ORPHAN_ACTIONS) expect(a.confirm.length).toBeGreaterThan(10)
+    // Linking never marks the invoice paid, so the confirm does not say it does.
+    expect(ORPHAN_ACTIONS.find((a) => a.id === "link")?.confirm).not.toContain("marked paid")
+  })
+
+  it("Create the invoice sends the VAT rate the amount includes, the one thing a charge with no invoice lacks", () => {
+    expect(orphanParams("create", "ch_1", null, "20")).toEqual({ params: { chargeId: "ch_1", vatRateBp: 2000 } })
+    expect(orphanParams("create", "ch_1", null, "5,5")).toEqual({ params: { chargeId: "ch_1", vatRateBp: 550 } })
+    expect(orphanParams("create", "ch_1", null, "0")).toEqual({ params: { chargeId: "ch_1", vatRateBp: 0 } })
+    expect(orphanParams("create", "ch_1", null, "twenty")).toHaveProperty("error")
+    expect(orphanParams("link", "ch_1", "doc-1", "")).toEqual({ params: { chargeId: "ch_1", documentId: "doc-1" } })
   })
 })

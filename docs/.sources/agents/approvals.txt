@@ -258,3 +258,4 @@ Link to connect your own account is routed to you -> apps/api/src/modules/agent/
 Disconnecting your own personal connection is routed to you -> apps/api/src/modules/agent/tools/connection-tools.ts:407
 Owner routing resolved per call -> apps/api/src/modules/approvals/resource-owner.ts:66
 Requester approves a request routed privately to them -> apps/api/src/modules/approvals/decide.ts:235
+Identity parameters keep their value in a request; other card numbers and keys are masked -> apps/api/src/modules/approvals/payload-mask.ts:59

@@ -381,6 +381,7 @@ Keys on a tool:
 | `focusCore` | `true` or an entity type | The tool is loaded when the app has the focus, or when that entity is in focus |
 | `taintSourceWhen` | `{field, equals}` | Narrows `taintSource` to the rows whose field has that value: a result with one such row marks the turn, rows that all carry another value leave it clean, and a result with no row carrying the field marks it |
 | `useInstead` | string | On a hidden tool (`agentVisible: false`): the visible tool of the same app to use |
+| `trustBoundary: "internal"` | string | Only code calls the tool: the app's own jobs, event handlers and tools through `ctx.executeTool`, or another app that declares it in `cross_app_calls`. A person (the REST tool route), an agent and an MCP client are refused with `forbidden`. Give a step that must run in one transaction (`atomic: true`) this mark, and call it from a tool or job that holds no transaction while it talks to another service |
 | `sinkReadersSelf` | boolean | First-party apps only: what the tool writes (its `writesToTable`) is read only by the person writing it, so a turn that read other data may still write there when that person holds it. Any other app declaring it is not loaded |
 | `contentParams` | string list | First-party apps only: the only parameters through which a call carries what the turn read; a call with all of them blank is not held back by what the turn read. Each must be in `params.properties`. Any other app declaring it is not loaded |
 

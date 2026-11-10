@@ -373,6 +373,9 @@ export const toolRegistry = createTypedRegistry<
      *  refuses every edit): what a person approves is the whole payload as staged, so a change
      *  means withdrawing the request and asking again (the app builder's publish). */
     payloadImmutable?: boolean
+    /** The tools of the same app that change what this tool's approval carries (manifest
+     *  `editWith`): an edit refused on its approval names them (approvals/edit.ts). */
+    editWith?: readonly string[]
     /** The params carrying text a person outside the org reads (an email body, a ticket reply,
      *  a DM). A call whose text there holds an unfilled placeholder ("[DATE]", "{{name}}", "TBD")
      *  is refused before any gate stages an approval (outbound-placeholders.ts). */

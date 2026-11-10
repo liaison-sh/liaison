@@ -512,6 +512,11 @@ export interface SpawnParentFrame {
    */
   run?: { runId: string; rootRunId: string; nestingDepth: number }
   /**
+   * Whether a person is behind the captured turn (`runHasPerson`), so an app handler reached
+   * after a hop that loses the frame can still tell a person's turn from a routine's (`ctx.turn`).
+   */
+  hasPerson?: boolean
+  /**
    * The message the captured turn answers (`RunContext.turnMessageId`), so an
    * event queued after a hop that loses the frame still says which request
    * caused it (a guided tour's `causedBy` binding reads it). Undefined when the
@@ -549,6 +554,7 @@ export function captureSpawnParentFrame(
     taintScopes,
     agentId: frame.agentId,
     run: { runId: frame.runId, rootRunId: frame.rootRunId, nestingDepth: frame.nestingDepth },
+    hasPerson: runHasPerson(frame),
     ...(frame.turnMessageId ? { turnMessageId: frame.turnMessageId } : {}),
     ...(account?.hardTokenLimit != null
       ? { tokenLimit: { accountId: account.id, hardTokenLimit: account.hardTokenLimit } }

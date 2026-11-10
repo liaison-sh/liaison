@@ -41,10 +41,10 @@ const companySelection = (withCatalogs: boolean): string => `
   }
 `
 
-const searchQuery = (withCatalogs: boolean): string => `
+const SEARCH_QUERY = `
   query CompaniesSearch($query: String, $first: Int!, $after: String) {
     companies(first: $first, after: $after, query: $query) {
-      nodes { ${companySelection(withCatalogs)} }
+      nodes { ${companySelection(false)} }
       pageInfo { hasNextPage endCursor }
     }
   }
@@ -108,6 +108,17 @@ function address(v: unknown): Rec | null {
   return Object.keys(out).length > 0 ? out : null
 }
 
+function directCatalog(c: Rec): CompanyCatalog {
+  const pl = isRec(c.priceList) ? c.priceList : null
+  return {
+    id: String(c.id),
+    title: str(c.title),
+    status: str(c.status),
+    priceList: pl ? { id: String(pl.id), name: str(pl.name), currency: str(pl.currency) } : null,
+    source: "direct",
+  }
+}
+
 function normalizeCompany(node: Rec, withCatalogs: boolean): CompanyOut {
   const locations = nodesOf(node.locations).map((l): CompanyLocationOut => {
     const tax = isRec(l.taxSettings) ? l.taxSettings : {}
@@ -119,16 +130,7 @@ function normalizeCompany(node: Rec, withCatalogs: boolean): CompanyOut {
       shippingAddress: address(l.shippingAddress),
       billingAddress: address(l.billingAddress),
       catalogs: withCatalogs
-        ? nodesOf(l.catalogs).map((c) => {
-            const pl = isRec(c.priceList) ? c.priceList : null
-            return {
-              id: String(c.id),
-              title: str(c.title),
-              status: str(c.status),
-              priceList: pl ? { id: String(pl.id), name: str(pl.name), currency: str(pl.currency) } : null,
-              source: "direct",
-            }
-          })
+        ? nodesOf(l.catalogs).map(directCatalog)
         : null,
     }
   })
@@ -181,6 +183,50 @@ async function withCatalogFallback<T>(
 }
 
 type QueryClient = Awaited<ReturnType<typeof getShopifyClient>>
+
+// A search returns up to 25 companies. Nesting the direct catalogs (25 per location, 25 locations per
+// company) inside that page multiplies past Shopify's query cost limit, so the query is rejected and the
+// fallback drops every catalog. The search therefore lists companies without catalogs, then reads the
+// direct catalogs of their locations in small batches by id (each batch stays well under the limit).
+const LOCATION_CATALOGS_BATCH = 10
+
+const LOCATION_CATALOGS_QUERY = `
+  query CompanyLocationDirectCatalogs($ids: [ID!]!) {
+    nodes(ids: $ids) {
+      ... on CompanyLocation {
+        id
+        catalogs(first: 25) { nodes { id title status priceList { id name currency } } pageInfo { hasNextPage } }
+      }
+    }
+  }
+`
+
+/** Fill each location's direct catalogs. Returns false (and leaves every list null) when any read fails or is truncated. */
+async function withDirectCatalogs(client: QueryClient, companies: CompanyOut[]): Promise<boolean> {
+  const locations = companies.flatMap((c) => c.locations)
+  const byId = new Map<string, CompanyCatalog[]>()
+  try {
+    for (let i = 0; i < locations.length; i += LOCATION_CATALOGS_BATCH) {
+      const ids = locations.slice(i, i + LOCATION_CATALOGS_BATCH).map((l) => l.id)
+      const data = await client.query<{ nodes?: unknown[] }>(LOCATION_CATALOGS_QUERY, { ids })
+      if (!Array.isArray(data?.nodes)) throw new Error("location catalogs not returned")
+      for (const n of data.nodes) {
+        if (!isRec(n)) continue
+        const id = str(n.id)
+        if (!id || !isRec(n.catalogs)) continue
+        if (isRec(n.catalogs.pageInfo) && n.catalogs.pageInfo.hasNextPage === true) {
+          throw new Error("a location has more than 25 catalogs")
+        }
+        byId.set(id, nodesOf(n.catalogs).map(directCatalog))
+      }
+    }
+    if (locations.some((l) => !byId.has(l.id))) throw new Error("location catalogs missing")
+  } catch {
+    return false
+  }
+  for (const l of locations) l.catalogs = byId.get(l.id) ?? []
+  return true
+}
 
 /**
  * Add each location's market catalogs to its direct ones. When the markets cannot be read in full, no
@@ -237,18 +283,16 @@ export async function companies_search(
   const first = Number.isFinite(n) && n > 0 ? Math.min(25, Math.floor(n)) : 10
   const client = await getShopifyClient(ctx)
   const vars = { query: companiesQueryString(params), first, after: str(params.cursor) }
-  const { data, catalogsReadable } = await withCatalogFallback((withCatalogs) =>
-    client.query<{ companies?: { nodes?: Rec[]; pageInfo?: { hasNextPage?: boolean; endCursor?: string | null } } }>(
-      searchQuery(withCatalogs),
-      vars,
-    ),
-  )
+  const data = await client.query<{
+    companies?: { nodes?: Rec[]; pageInfo?: { hasNextPage?: boolean; endCursor?: string | null } }
+  }>(SEARCH_QUERY, vars)
   const page = data.companies
-  const results = (page?.nodes ?? []).filter(isRec).map((c) => normalizeCompany(c, catalogsReadable))
+  const results = (page?.nodes ?? []).filter(isRec).map((c) => normalizeCompany(c, false))
+  const direct = await withDirectCatalogs(client, results)
   return {
     results,
     nextCursor: page?.pageInfo?.hasNextPage ? (page.pageInfo.endCursor ?? null) : null,
-    catalogsReadable: catalogsReadable && (await withMarketCatalogs(client, results)),
+    catalogsReadable: direct && (await withMarketCatalogs(client, results)),
   }
 }
 

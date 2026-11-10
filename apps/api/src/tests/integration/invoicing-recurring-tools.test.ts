@@ -17,6 +17,8 @@ import { executeTool } from "~/modules/apps/execute-tool"
 import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { seedOrgRow, seedUserRows } from "~/seed/factories/org/rows"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..")
@@ -73,6 +75,10 @@ const schedule = {
   lines,
 }
 
+async function rawRows(...statements: string[]): Promise<void> {
+  for (const statement of statements) await sql.unsafe(statement)
+}
+
 const rows = () =>
   sql<Array<Record<string, unknown>>>`
     SELECT id::text, status, issue_mode, version, auto_enabled_by::text, next_issue_on::text, next_draft_on::text, created_by
@@ -111,30 +117,78 @@ describe("recurring schedules on the real kernel", () => {
   beforeAll(async () => {
     await acquireTestLock()
     process.env.LIAISON_BUNDLED_APPS_FROM_SOURCE = "1"
-    await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${ORG}, 'Recurring Tools Org', 'recurring-tools-org') ON CONFLICT (id) DO NOTHING`
-    for (const [id, mail] of [
-      [STAFF, "staff"],
-      [OUTSIDER, "outsider"],
-      [READER, "reader"],
-    ] as const) {
-      await sql`INSERT INTO kernel.users (id, org_id, email, password_hash, name, status)
-        VALUES (${id}, ${ORG}, ${`recurring-${mail}@test.com`}, 'hash', ${`Recurring ${mail}`}, 'active') ON CONFLICT (id) DO NOTHING`
-    }
-    await sql`INSERT INTO kernel.threads (id, org_id, handle, type, created_by) VALUES (${THREAD}, ${ORG}, 'recurring-tools-thread', 'agent_chat', ${STAFF}) ON CONFLICT (id) DO NOTHING`
-    await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id, role) VALUES (${THREAD}, ${STAFF}, ${ORG}, 'admin') ON CONFLICT DO NOTHING`
-    await sql`INSERT INTO kernel.user_thread_state (user_id, thread_id, org_id) VALUES (${STAFF}, ${THREAD}, ${ORG}) ON CONFLICT DO NOTHING`
+    await seedOrgRow(
+      { id: ORG, name: "Recurring Tools Org", slug: "recurring-tools-org" },
+      { onConflict: "skip" },
+    )
+    await seedUserRows(
+      (
+        [
+          [STAFF, "staff"],
+          [OUTSIDER, "outsider"],
+          [READER, "reader"],
+        ] as const
+      ).map(([id, mail]) => ({
+        id,
+        orgId: ORG,
+        email: `recurring-${mail}@test.com`,
+        passwordHash: "hash",
+        name: `Recurring ${mail}`,
+        status: "active" as const,
+      })),
+      { onConflict: "skip" },
+    )
+    await rawRows(
+      insertSql(
+        "kernel.threads",
+        {
+          id: THREAD,
+          org_id: ORG,
+          handle: "recurring-tools-thread",
+          type: "agent_chat",
+          created_by: STAFF,
+        },
+        { onConflictDoNothing: true },
+      ),
+      insertSql(
+        "kernel.thread_participants",
+        { thread_id: THREAD, user_id: STAFF, org_id: ORG, role: "admin" },
+        { onConflictDoNothing: true },
+      ),
+      insertSql(
+        "kernel.user_thread_state",
+        { user_id: STAFF, thread_id: THREAD, org_id: ORG },
+        { onConflictDoNothing: true },
+      ),
+    )
     await sql`DELETE FROM kernel.user_scope_grants WHERE org_id = ${ORG}`
-    for (const scope of STAFF_SCOPES) {
-      await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope) VALUES (${STAFF}, ${ORG}, ${scope}) ON CONFLICT DO NOTHING`
-    }
-    for (const scope of READER_SCOPES) {
-      await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope) VALUES (${READER}, ${ORG}, ${scope}) ON CONFLICT DO NOTHING`
-    }
+    await rawRows(
+      insertSql(
+        "kernel.user_scope_grants",
+        [
+          ...STAFF_SCOPES.map((scope) => ({ user_id: STAFF, org_id: ORG, scope })),
+          ...READER_SCOPES.map((scope) => ({ user_id: READER, org_id: ORG, scope })),
+        ],
+        { onConflictDoNothing: true },
+      ),
+    )
     await initSandboxPool()
     await initWorkerPool()
     await registerApps([bundledDescriptor("invoicing") as never], ORG)
-    await sql`INSERT INTO app_invoicing.issuer_profiles (id, org_id, legal_name, country, default_currency, timezone)
-      VALUES (${ISSUER}, ${ORG}, 'Recurring Issuer SAS', 'FR', 'EUR', 'Europe/Paris') ON CONFLICT (id) DO NOTHING`
+    await rawRows(
+      insertSql(
+        "app_invoicing.issuer_profiles",
+        {
+          id: ISSUER,
+          org_id: ORG,
+          legal_name: "Recurring Issuer SAS",
+          country: "FR",
+          default_currency: "EUR",
+          timezone: "Europe/Paris",
+        },
+        { onConflictDoNothing: true },
+      ),
+    )
   }, 60_000)
 
   afterAll(async () => {
@@ -190,8 +244,14 @@ describe("recurring schedules on the real kernel", () => {
 
   // Mutation caught: letting create accept issue_mode auto, or dropping noAutoApprove from update.
   it("issue by itself is off by default and only a person's gated change turns it on, whatever the org's auto-approve policy", async () => {
-    await sql`INSERT INTO kernel.auto_approve_policies (org_id, tool_name, created_by)
-      VALUES (${ORG}, 'invoicing:recurring_schedule_create', ${STAFF}), (${ORG}, 'invoicing:recurring_schedule_update', ${STAFF})`
+    await rawRows(
+      insertSql(
+        "kernel.auto_approve_policies",
+        ["invoicing:recurring_schedule_create", "invoicing:recurring_schedule_update"].map(
+          (tool_name) => ({ org_id: ORG, tool_name, created_by: STAFF }),
+        ),
+      ),
+    )
     const [first] = await rows()
     const id = first?.id as string
     const total = (await rows()).length

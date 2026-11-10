@@ -5,7 +5,7 @@
 // opaque Boxtal 400 BAD_REQUEST after approval. validateParty now fails
 // precisely at stage time, and assembleAddress emits the state.
 import { describe, expect, it } from "bun:test"
-import { assembleAddress, normalizeRegion, validateParty, validateRecipientPhone } from "./address"
+import { assembleAddress, boxtalText, normalizeRegion, postalCodeRequired, validateParty, validateRecipientPhone } from "./address"
 
 const base = {
   name: "Stanley Fortson",
@@ -75,5 +75,45 @@ describe("validateRecipientPhone — North American rule for US/CA", () => {
     expect(validateRecipientPhone("DE", "+49 151 12345678")).toBeNull()
     expect(validateRecipientPhone("US", "")).toBeNull()
     expect(validateRecipientPhone("US", null)).toBeNull()
+  })
+})
+
+// Field reports, 2026-11: labels to the United Arab Emirates (a country with no postal codes) were
+// refused before reaching Boxtal for a "missing postal code", and names or streets carrying
+// characters outside Boxtal's set (accents, typographic quotes, non-Latin letters) were refused by
+// the carrier.
+describe("countries without postal codes", () => {
+  const ae = { ...base, countryIsoCode: "AE", city: "Dubai", postalCode: null, state: null, phone: "+971500000000" }
+  it("a UAE recipient without a postal code is complete", () => {
+    expect(postalCodeRequired("AE")).toBe(false)
+    expect(validateParty(ae)).toEqual([])
+  })
+  it("a country with postal codes still requires one", () => {
+    expect(postalCodeRequired("FR")).toBe(true)
+    expect(validateParty({ ...ae, countryIsoCode: "FR" })).toEqual(["postalCode"])
+  })
+  it("the address sent for a UAE recipient carries an empty postal code, never a guessed one", () => {
+    expect(assembleAddress({ ...ae, postalCode: "1234" }).location.postalCode).toBe("")
+  })
+})
+
+describe("Boxtal-safe text", () => {
+  it("transliterates accents and the letters NFD cannot split, keeps ASCII punctuation", () => {
+    expect(boxtalText("Zoë Ñúñez-O’Brien")).toBe("Zoe Nunez-O'Brien")
+    expect(boxtalText("12 Straße – Hof «B»")).toBe("12 Strasse - Hof B")
+    expect(boxtalText("Łódź, Kraków; Ørsted Æble")).toBe("Lodz, Krakow; Orsted AEble")
+  })
+  it("strips what has no Latin form and collapses the spaces left behind", () => {
+    expect(boxtalText("Test  \u0645\u062d\u0645\u062f  Road\u200b\t")).toBe("Test Road")
+  })
+  it("the create address is sent in Boxtal's character set", () => {
+    const a = assembleAddress({ ...base, state: "TN", name: "Zoë O’Brien", street: "1 Rue de l’Église", city: "Montréal" })
+    expect(a.contact.firstName).toBe("Zoe")
+    expect(a.contact.lastName).toBe("O'Brien")
+    expect(a.location.street).toBe("1 Rue de l'Eglise")
+    expect(a.location.city).toBe("Montreal")
+  })
+  it("a name with no Latin letters at all is reported missing, never sent blank", () => {
+    expect(validateParty({ ...base, state: "TN", name: "\u0645\u062d\u0645\u062f" })).toEqual(["name"])
   })
 })

@@ -33,7 +33,11 @@ import { registerEventSubscribers } from "~/infra/events/event-subscribers"
 import { registerOutboxSingleton } from "~/infra/events/outbox-worker"
 import { registerLiveStateSweep, startInstanceHeartbeat } from "~/infra/instance-registry"
 import { startEventRoutineSync } from "~/infra/jobs/event-routine-subscriber"
-import { hostJobWorkers } from "~/infra/jobs/jobs"
+import {
+  deferJobWorkersUntilBootComplete,
+  hostJobWorkers,
+  startDeferredJobWorkers,
+} from "~/infra/jobs/jobs"
 import { registerKernelJobs } from "~/infra/jobs/kernel-jobs"
 import { initWebhookWorker } from "~/infra/jobs/webhook-worker"
 import { startLeadership } from "~/infra/leadership"
@@ -219,7 +223,12 @@ registerEventSubscribers(wsManager)
 // routine changed on another process is announced, and a resync covers a lost one.
 await startEventRoutineSync()
 
-// A harness process runs the jobs it drives: declare it a job host.
+// A harness process runs the jobs it drives: declare it a job host. Its workers
+// start paused, as the server's do (index.ts), until the boot below has
+// registered every handler: a job left in Redis across a restart (a rebuild
+// handed back at shutdown) would otherwise be taken at once and fail "No
+// handler registered", spending an attempt and waiting out its retry delay.
+deferJobWorkersUntilBootComplete()
 hostJobWorkers()
 await registerKernelJobs()
 initWebhookWorker()
@@ -317,6 +326,8 @@ async function initApps() {
       } catch (err) {
         console.error("[E2E boot] MCP-client init failed (feature disabled this run):", err)
       }
+      // Every handler is registered: release the workers (index.ts does the same).
+      startDeferredJobWorkers()
       // Start outbox worker LAST so durable consumers are registered before events flow.
       registerOutboxSingleton()
       markBootFinished()

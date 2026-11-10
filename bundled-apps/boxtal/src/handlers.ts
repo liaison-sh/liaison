@@ -51,6 +51,7 @@ import {
 import { claimOpen, claimOpenPreflight, type ClaimOpenInput } from "./claims"
 import { printPack, type PrintPackInput } from "./print-pack"
 import { printRecordGet } from "./print-record"
+import { orderPrintRecordGet } from "./customs-documents"
 import { readySetPacked, type ReadySetPackedInput } from "./packed"
 import { printPackBatch, type PrintPackBatchInput } from "./print-pack-batch"
 import {
@@ -287,6 +288,9 @@ export const toPrepareListHandler = (_params: Record<string, never>, ctx: Ctx) =
 export const readyListHandler = (_params: Record<string, never>, ctx: Ctx) => readyList(ctx)
 export const printRecordGetHandler = (params: { shipment_id?: string }, ctx: Ctx) =>
   printRecordGet(ctx, params)
+export const orderPrintRecordGetHandler = (params: { document_ref?: string }, ctx: Ctx) =>
+  orderPrintRecordGet(ctx, params)
+export { generateOrderDocumentsJobHandler } from "./customs-documents"
 export const returnsListHandler = (_params: Record<string, never>, ctx: Ctx) => returnsList(ctx)
 export const exceptionsListHandler = (_params: Record<string, never>, ctx: Ctx) =>
   exceptionsList(ctx)

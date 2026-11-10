@@ -126,6 +126,11 @@ function isActive(el: HTMLElement): boolean {
   )
 }
 
+/** A control that ignores a press: disabled, natively or by its ARIA state. */
+function isDisabled(el: HTMLElement): boolean {
+  return el.matches(":disabled") || el.getAttribute("aria-disabled") === "true"
+}
+
 /**
  * The target on screen, waited for up to the find timeout. `ready` narrows it
  * to one that can be acted on: a typing step's field may be on screen before
@@ -291,7 +296,16 @@ export async function runAutoplay(
           ? { testid: pinned.testid, where: step.prefer }
           : null
       const target = preferred && visible(preferred) ? preferred : pinned
-      const ready = "type" in step ? (e: HTMLElement) => editableTarget(e) !== null : undefined
+      // A typing step waits for the editor inside its field; a press waits for
+      // a control that takes it: a disabled button drops the click (a send
+      // button greys out while the live connection reconnects for an instant)
+      // and the script would go on as if it had pressed.
+      const ready =
+        "type" in step
+          ? (e: HTMLElement) => editableTarget(e) !== null
+          : "click" in step
+            ? (e: HTMLElement) => !isDisabled(e)
+            : undefined
       let el = await find(target, opts, ready)
       if (!el) return { status: "failed", missing: target.testid }
       if ("waitFor" in step) continue
@@ -306,12 +320,19 @@ export async function runAutoplay(
       // The screen may have re-rendered the element during the glide (a list
       // refetch rebuilds its cards): a press on the detached one reaches no
       // handler, where a hand always presses what is on screen. Find it again.
-      for (let tries = 0; tries < REFIND_TRIES && !visible(target)?.isSameNode(el); tries++) {
+      // It may also have been disabled meanwhile: wait until it takes the press again.
+      for (
+        let tries = 0;
+        tries < REFIND_TRIES && (!visible(target)?.isSameNode(el) || (ready && !ready(el)));
+        tries++
+      ) {
         const fresh = await find(target, opts, ready)
         if (!fresh) return { status: "failed", missing: target.testid }
         el = fresh
         await options.cursor.moveTo(el, opts.signal)
       }
+      // Never a press that reaches nothing reported as done.
+      if (ready && !ready(el)) return { status: "failed", missing: target.testid }
       if ("click" in step) {
         ghostClick(clickTarget(el))
       } else if ("type" in step) {

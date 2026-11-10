@@ -38,13 +38,17 @@ A new label format applies to shipments created after the change.
 
 ## Prepare and ship orders
 
+Orders are prepared and shipped from one page, the **Shipping worklist**: the **Boxtal** icon opens it, and so does **Shipping worklist** in the sidebar (the shipped history stays under **All shipments**). It is one table: every order still to prepare and every bought label, each row with its **State** (**To prepare**, **Label bought**, **Packed**, **Packed, fulfilled**, **Fulfilled, not packed**, **Fulfillment awaiting approval**, **Fulfillment failed**). The orders to prepare come first, then the bought labels, oldest request first. Its filters at the top are **All**, **To prepare**, **Ready to ship**, **To pack** and **Packed**, each with its count, and they filter that one table. The search, **All countries** and product filters and the column sorts apply to it too (a bought label has no order tags, so a tag filter hides the bought labels; **Country** is the one sort the bought labels follow). The sidebar badge counts the orders still to prepare plus the labels ready to ship, tinted while some orders still need a label.
+
+The worklist refreshes in the background (when you come back to it, once a minute, after a reconnection). Rows update in place: nothing blanks and the page keeps its scroll.
+
 **To prepare** has one row per open, unfulfilled Shopify order. A row leaves the queue when Shopify reports the order fulfilled or when you exclude it.
 
-1. Open **Boxtal** and click **To prepare** in the sidebar.
+1. Open **Boxtal**, click **Shipping worklist** in the sidebar and pick **To prepare**.
 2. Click **Pull orders** to fetch new orders and refresh quotes. **Refresh stale** re-quotes only the rows whose estimate is out of date.
 3. On each row, set the status: **To prepare**, **Validated** or **On hold** (waiting on stock, a customer or a repair). An agent's call names the row by its `order_key` or its invoice's `document_ref`: one that names no row, order or document is refused and writes nothing, and so are two that name different rows.
 4. Set the category, which decides the shipping document: **Sale** ships on the order's issued invoice. **Repair** and **Sample** ship on a proforma the app issues through [Invoicing](invoicing.md). That proforma may wait for approval, and the category is locked until it is decided.
-5. Pick the carrier offer if you do not want the cheapest one.
+5. Pick the carrier offer if you do not want the cheapest one. Under the offer's price, **Paid** shows in blue what the customer paid for shipping on the Shopify order, in the order's currency, so you can compare the two. It stays when you pick another offer, and is left out when the order has no shipping line.
 6. Click **Ship**. A label purchase waits for approval. Someone who can approve sees **Approve and buy** and **Decline** on the row.
 
 The **Country** column shows the destination's two-letter code (hover it for the country's name). Click its header to sort by country, and use **All countries** to show one country only.
@@ -79,15 +83,15 @@ Once the customer has a verified address, the label's approval card says which a
 
 ## Print and pack
 
-**Ready to ship** lists shipments whose label is bought, oldest first.
+A bought label is a row of the worklist (filter **Ready to ship** to see only those), oldest request first. Its own actions are at the end of the row.
 
 1. Click **Print pack** on a row. The label and the invoice print as two separate jobs. **Label** and **Invoice** open each one alone. An issued invoice whose PDF was never rendered is rendered then. A draft invoice is not printed: issue it in Invoicing first. If the render fails, open the invoice and use its retry action, then print again.
-2. Select several rows and click **Print N packs** to get every label in one PDF and every invoice in another.
+2. Select several rows and click **Print N packs** to get every label in one PDF and every invoice in another. A shipment of several parcels prints one label per parcel, all in its label PDF.
 3. Tick the row as packed when the parcel is boxed. This fulfils the Shopify order with the tracking number and its carrier. Whether Shopify emails the customer is the Shopify app's **Shipping emails** setting (see [Shopify](store.md)).
 
-The **Country** column, its **Country** sort and the **All countries** filter work as in To prepare.
+The **Country** column, its **Country** sort and the **All countries** filter are the worklist's own, so they cover the bought labels too. **Select all** above the table selects the bought labels on screen.
 
-**Tracking numbers.** Boxtal's own number is used when it gives one at purchase. A carrier that issues its number only at the first scan prints it on the label, so the app reads it there once the label exists: FedEx from the label text, UPS and DHL Express from the label text, or from the label image through the workspace's media analysis. A number read from a label is kept only when it has the carrier's format and check digit and the label shows the recipient's postcode. Ticking the row then fulfils the order with it; a number read from a label never fulfils an order by itself. When no number can be confirmed (media analysis off, no model key, no recipient postcode on file to check the read against, or the read did not pass the checks), the row says **Tracking to confirm** until the carrier's first scan brings the number. A read that fails for a passing reason (a timeout, a model or storage error) is tried again on the next pass, up to three times.
+**Tracking numbers.** Boxtal's own number is used when it gives one at purchase. A carrier that issues its number only at the first scan prints it on the label, so the app reads it there once the label exists: FedEx from the label text, UPS and DHL Express from the label text, or from the label image through the workspace's media analysis. A number read from a label is kept only when it has the carrier's format and check digit and the label shows the recipient's postcode. Ticking the row then fulfils the order with it; a number read from a label never fulfils an order by itself. When no number can be confirmed (media analysis off, no model key, no recipient postcode on file to check the read against, or the read did not pass the checks), the row says **Tracking to confirm** until the carrier's first scan brings the number. A read that fails for a passing reason (a timeout, a model or storage error) is tried again on the next pass, up to three times. On a FedEx label the number is the one printed in groups of four next to **TRK#**; other digit runs on the label (the recipient's phone, account numbers) are not taken for it. When ticking a row is refused with "No tracking number yet", or the row says **Tracking to confirm**, the row offers a field for the number printed on the label: **Pack with this number** checks it has the carrier's format and fulfils the order with it. A typed number never replaces one the row already has, and the carrier's own number replaces it at the first scan.
 
 **Missing labels.** When a bought label still has no label document 15 minutes after purchase, the people who can ship (`boxtal:shipments:write`) get one attention item naming the orders. It is updated as labels arrive and clears itself once they all have. Labels bought more than 3 days ago are left out.
 
@@ -101,7 +105,7 @@ Each row also has **Print documents**: the organisation's document templates for
 
 The invoice, customer, address, carrier and lines come from the moment the label was bought, so a later change to the invoice does not change them. The tracking number is the row's current one, and stays blank until the carrier issues it. For FedEx it is labelled AWB. Labels bought before this existed print those fields as blanks.
 
-When a document rule matches a parcel (by SKU, destination country or carrier), the row's **Paperwork** mark lists the templates it asks for, and **Print documents** opens with them ticked and marked **Needed**. Document rules are kept under the workspace's document templates.
+When a document rule matches a parcel (by SKU, destination country or carrier), the row's **Paperwork** mark lists the templates it asks for, and **Print documents** opens with them ticked and marked **Needed**. Document rules are kept under the workspace's document templates. Rules for the record type `boxtal:order` go further: their papers are generated on their own when the order enters **To prepare**, printed again with the tracking number after the label buy, and returned by **Print pack** with the invoice ([Generate shipping papers automatically](../admin/shipping-documents.md)).
 
 ## Follow shipments and returns
 
@@ -185,7 +189,8 @@ Tools marked "Always" file an approval and nothing happens until a person approv
 | `prep_set_status`, `prep_set_category`, `prep_select_offer`, `prep_set_note`, `prep_exclude`, `prep_restore`, `prep_add_shipment` | Work queue rows. A row given by `document_ref` must name an existing invoicing document (id or number), else the call is refused as `document_not_found` | No |
 | `prep_set_address_choice` | Pick the order's address or the verified one when they differ | Always for an agent |
 | `ready_set_packed` | Tick a parcel packed, which fulfils the Shopify order | No |
-| `print_pack`, `print_pack_batch` | Prepare print documents | No |
+| `print_pack`, `print_pack_batch` | Prepare print documents (label, invoice and the order's generated papers) | No |
+| `order_print_record_get` | Read an order as the record its paper templates fill | No |
 | `print_record_get` | Read a shipment as the data its document templates fill | No |
 | `import_shipments`, `import_label_document` | Import existing Boxtal orders and labels | No |
 | `attention_rules_list`, `attention_rule_upsert`, `attention_rule_delete` | Rules that flag shipments needing extra paperwork | No |
@@ -201,7 +206,7 @@ Tools marked "Always" file an approval and nothing happens until a person approv
 
 `prep_sync` also copies an order's ship-to onto the recipient's contact, under its shipping address, when the contact has none (or lacks its state, phone or email). It never overwrites a filled field. This is the app's own write, so it runs without the approval an agent's contact edit waits for.
 
-When Boxtal refuses a row's quote or returns no offer, the row has no estimate and says why, for example "Quote failed: no offers returned". `prep_sync` lists the failed rows (how many, and the first three with their reason) in its result.
+When Boxtal refuses a row's quote or returns no offer, the row has no estimate and says why, for example "Quote failed: no offers returned". The reason is Boxtal's own message, and a refused label says which field Boxtal refused. A destination with no postal codes (the United Arab Emirates, Qatar, Hong Kong and the like) needs none: the row is not held for one, and whatever an address parse took for one there is not sent. Names and addresses are sent in the characters Boxtal accepts: accents are transliterated ("Zoë" becomes "Zoe"), typographic quotes and dashes become plain ones, and characters with no Latin form are left out; a name written only in another script reads as missing. `prep_sync` lists the failed rows (how many, and the first three with their reason) in its result.
 
 `settings_sender_form_get`, `settings_form_get` and `settings_form_set` back the settings page and are not offered to agents.
 

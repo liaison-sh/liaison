@@ -16,7 +16,20 @@ Pickup points section, Exclude relay and pickup point services -> bundled-apps/b
 Labels section, Label format -> bundled-apps/boxtal/app.manifest.json:401
 label format applies to shipments created after the change -> bundled-apps/boxtal/app.manifest.json:2491
 one row per open unfulfilled Shopify order; leaves when fulfilled or excluded -> bundled-apps/boxtal/README.md:30
-To prepare sidebar row -> bundled-apps/boxtal/src/ui/sidebar.tsx:407
+Shipping worklist sidebar row, badge to prepare plus ready, warn while to prepare -> bundled-apps/boxtal/src/ui/sidebar.tsx:419
+worklist filters All / To prepare / Ready to ship / To pack / Packed with counts -> bundled-apps/boxtal/src/ui/worklist-logic.ts:78
+Boxtal icon opens the Shipping worklist -> bundled-apps/boxtal/app.manifest.json:485
+shipped history under All shipments in the sidebar -> bundled-apps/boxtal/src/ui/sidebar.tsx:442
+one table, title Shipping worklist, State column -> bundled-apps/boxtal/src/ui/PrepGrid.tsx:2059 ; bundled-apps/boxtal/src/ui/PrepGrid.tsx:1050
+State wording (To prepare, Label bought, Packed, ...) -> bundled-apps/boxtal/src/ui/worklist-logic.ts:25 ; bundled-apps/boxtal/src/ui/ReadyRows.tsx:549
+filters, search and sorts apply to the one table; tag filter hides bought labels -> bundled-apps/boxtal/src/ui/worklist-logic.ts:126
+Select all over the bought labels on screen -> bundled-apps/boxtal/src/ui/ReadyRows.tsx:467
+background refresh on focus and once a minute -> bundled-apps/boxtal/src/ui/ReadyRows.tsx:220
+refresh after a reconnection or a stale tab coming back -> apps/web/src/primitives/createStaleResource.ts:52
+rows update in place on refresh (unchanged rows keep their objects) -> bundled-apps/boxtal/src/ui/prep-row-logic.ts:630
+no refreshing banner once read live this mount -> bundled-apps/boxtal/src/ui/PrepGrid.tsx:1575
+Paid: what the customer paid for shipping, blue, under the offer, stays across offers -> bundled-apps/boxtal/src/ui/PrepGrid.tsx:667
+paid shipping from the order's shipping line, order currency, null when no line -> bundled-apps/boxtal/src/orders.ts:325
 Pull orders button -> bundled-apps/boxtal/src/ui/PrepGrid.tsx:1957
 Refresh stale re-quotes stale rows -> bundled-apps/boxtal/src/ui/PrepGrid.tsx:1937
 status options To prepare / Validated / On hold -> bundled-apps/boxtal/src/ui/prep-row-logic.ts:483
@@ -31,12 +44,12 @@ exclude x button -> bundled-apps/boxtal/src/ui/PrepGrid.tsx:2518
 Show excluded toggle -> bundled-apps/boxtal/src/ui/PrepGrid.tsx:2057
 Restore button -> bundled-apps/boxtal/src/ui/PrepGrid.tsx:2535
 Add shipment for order-less parcels -> bundled-apps/boxtal/src/ui/PrepGrid.tsx:1946
-Ready to ship, oldest first -> bundled-apps/boxtal/src/ui/Queues.tsx:397
-Print pack two separate jobs -> bundled-apps/boxtal/src/ui/Queues.tsx:657
-Label / Invoice buttons -> bundled-apps/boxtal/src/ui/Queues.tsx:668
-Print N packs batch, labels in one, invoices in one -> bundled-apps/boxtal/src/ui/Queues.tsx:414
+Ready to ship rows after the orders to prepare, oldest request first -> bundled-apps/boxtal/src/ui/PrepGrid.tsx:2770 ; bundled-apps/boxtal/src/ui/PrepGrid.tsx:1607
+Print pack two separate jobs -> bundled-apps/boxtal/src/ui/ReadyRows.tsx:693
+Label / Invoice buttons -> bundled-apps/boxtal/src/ui/ReadyRows.tsx:700
+Print N packs batch, labels in one, invoices in one -> bundled-apps/boxtal/src/ui/ReadyRows.tsx:475
 packed tick fulfils Shopify order -> bundled-apps/boxtal/app.manifest.json:2998
-Attach to a ticket reply -> bundled-apps/boxtal/src/ui/Queues.tsx:685
+Attach to a ticket reply -> bundled-apps/boxtal/src/ui/ReadyRows.tsx:718
 In transit / Delivered / All shipments rows -> bundled-apps/boxtal/src/ui/sidebar.tsx:422
 Returns view, inbound returns -> bundled-apps/boxtal/src/ui/Returns.tsx:67
 Download return label / Document column with the linked document number -> bundled-apps/boxtal/src/ui/Returns.tsx:176
@@ -120,11 +133,11 @@ Import never changes an existing row -> bundled-apps/boxtal/src/import-kind.ts:1
 prep_sync copies the ship-to onto the contact, never overwriting a filled field -> bundled-apps/boxtal/src/prep-meta.ts:221-226
 The app's own write runs without approval (declared cross-app call) -> bundled-apps/boxtal/app.manifest.json:3123
 Country column, sort and All countries filter in To prepare -> bundled-apps/boxtal/src/ui/PrepGrid.tsx:367 ; bundled-apps/boxtal/src/ui/country.ts:9
-Country column, sort and filter in Ready to ship -> bundled-apps/boxtal/src/ui/Queues.tsx:223 ; bundled-apps/boxtal/src/ui/country.ts:51
+Country filter and sort cover the bought labels -> bundled-apps/boxtal/src/ui/PrepGrid.tsx:1605 ; bundled-apps/boxtal/src/ui/worklist-logic.ts:128 ; bundled-apps/boxtal/src/ui/country.ts:51
 Boxtal's number at purchase first -> bundled-apps/boxtal/src/shipment.ts:2575 ; bundled-apps/boxtal/src/lib/boxtal-v3-client.ts:594
 Label read: FedEx text, UPS/DHL Express text then image analysis, check digit and postcode -> bundled-apps/boxtal/src/label-tracking.ts:353 ; bundled-apps/boxtal/src/label-tracking.ts:606
 A label-read number never auto-fulfils -> bundled-apps/boxtal/src/webhooks.ts:218
-Tracking to confirm -> bundled-apps/boxtal/src/ui/Queues.tsx:598 ; bundled-apps/boxtal/src/queues.ts:412
+Tracking to confirm -> bundled-apps/boxtal/src/ui/ReadyRows.tsx:626 ; bundled-apps/boxtal/src/queues.ts:412
 Missing label after 15 minutes: one attention item, cleared on arrival -> bundled-apps/boxtal/src/label-missing.ts:22 ; bundled-apps/boxtal/app.manifest.json:683
 Shared profiles: profile own id + variant link, one profile per variant -> bundled-apps/boxtal/src/profiles.ts:1
 Catalog Variants column, Unused + Delete -> bundled-apps/boxtal/src/ui/Catalog.tsx:285
@@ -158,7 +171,7 @@ prep_set_address_choice gated, noAutoApprove -> bundled-apps/boxtal/app.manifest
 prep_set_address_choice card shows the staged addresses, a later change voids the approval -> bundled-apps/boxtal/src/address-choice.ts:60
 prep_set_address_choice refuses at staging when there is nothing to pick -> bundled-apps/boxtal/src/address-choice.ts:103
 card line: which address and whether verified; none for a customer with no verified address -> bundled-apps/boxtal/src/summarizers.ts:136
-Print documents control on each Ready to ship row -> bundled-apps/boxtal/src/ui/Queues.tsx:825
+Print documents control on each Ready to ship row -> bundled-apps/boxtal/src/ui/ReadyRows.tsx:765
 Print documents / Needed labels -> packages/app-ui/src/print-documents.tsx:37-38
 shipment print declaration (recordTool print_record_get) -> bundled-apps/boxtal/app.manifest.json:237
 print_record_get tool, read only -> bundled-apps/boxtal/app.manifest.json:2499
@@ -179,5 +192,13 @@ print pack renders an issued invoice's missing PDF on demand -> bundled-apps/box
 print pack refuses a draft invoice: issue it first -> bundled-apps/boxtal/src/print-pack.ts:143
 failed render names the retry action -> bundled-apps/boxtal/src/print-pack.ts:172
 an order_key naming nothing, or two keys naming different rows, is refused -> bundled-apps/boxtal/src/order-state.ts:434
-Unticking a fulfilled row asks first (Untick this order?); Boxtal tab Label opens the label PDF -> bundled-apps/boxtal/src/ui/Queues.tsx:425 ; bundled-apps/boxtal/src/ui/BoxtalShipmentTab.tsx:147
+Unticking a fulfilled row asks first (Untick this order?); Boxtal tab Label opens the label PDF -> bundled-apps/boxtal/src/ui/ReadyRows.tsx:438 ; bundled-apps/boxtal/src/ui/BoxtalShipmentTab.tsx:147
 Liaison records the label purchase in a save of its own before it calls Boxtal -> bundled-apps/boxtal/src/link-store.ts:131 ; bundled-apps/boxtal/src/shipment.ts:2625
+FedEx AWB: the grouped number next to TRK#, bare digit runs (phone) not taken -> bundled-apps/boxtal/src/label-tracking.ts:326
+Pack with this number: typed tracking number, carrier format, never replaces one -> bundled-apps/boxtal/src/ui/ReadyRows.tsx:819 ; bundled-apps/boxtal/src/packed.ts:137
+a multi-parcel shipment prints one label per parcel, all in its label PDF -> bundled-apps/boxtal/src/shipment.ts:2966 ; bundled-apps/boxtal/src/print-pack.ts:107
+no postal code needed where the country has none; parsed one not sent -> bundled-apps/boxtal/src/address.ts:150 ; bundled-apps/boxtal/src/shipment.ts:1906
+names and addresses in Boxtal's character set, transliterated -> bundled-apps/boxtal/src/address.ts:192
+refusals carry Boxtal's own message -> bundled-apps/boxtal/src/lib/boxtal-v3-client.ts:48 ; bundled-apps/boxtal/src/shipment.ts:2727
+boxtal:order papers generated at To prepare, after the buy, in the pack -> bundled-apps/boxtal/src/customs-documents.ts:466
+order_print_record_get tool -> bundled-apps/boxtal/app.manifest.json:2602

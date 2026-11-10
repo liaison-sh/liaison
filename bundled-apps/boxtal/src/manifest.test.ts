@@ -624,8 +624,23 @@ describe("Boxtal app.manifest.json", () => {
     // 0.23.27: above the 0.23.22 main took meanwhile; no change of its own.
     // 0.23.23 (main): the label reservation and its finalize commit at once (ctx.db.insertNow / updateNow),
     // so a sandbox kill after the paid POST no longer rolls the only record of the label back.
+    // 0.23.24: FedEx label reader skips the recipient's phone; a typed tracking number unblocks
+    // the packed tick; every parcel's label is printed; Boxtal-safe addresses and its own refusals.
+    // 0.23.25: To prepare rows show the shipping the customer paid; a background refresh updates
+    // the worklist in place (no suspended tab, no banner, unchanged rows keep their DOM); the
+    // sidebar names the one shipping worklist once.
+    // 0.23.26: the worklist is ONE table (every state in it, a State column, the filters over it),
+    // and the Boxtal icon opens it.
+    // 0.23.27: a Ready row's actions sit on two lines that never wrap and long refs are cut, so
+    //   the actions stay inside the grid at 1440 px.
+    // 0.24.0: the order's papers (document rules, record type boxtal:order) are generated at To
+    // prepare and again after the label buy, kept on the order and printed with the pack.
+    // 0.24.1: merged with 0.23.24-0.23.27 above.
+    // 0.24.2: an order's lines keyed by a store variant id print (and match the document rules)
+    //   as the merchant's SKU with its product attributes; countries print as their English name.
     // 0.23.28: above the 0.23.23 main took meanwhile; no change of its own.
-    expect(m.version).toBe("0.23.28")
+    // 0.24.3: 0.23.28 above merged with 0.24.2.
+    expect(m.version).toBe("0.24.3")
     expect(m.packageFormat).toBe(1)
   })
 

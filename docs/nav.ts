@@ -108,6 +108,7 @@ export const NAV: NavSection[] = [
       { id: "admin/roles", url: "admin/roles" },
       { id: "admin/dimensions", url: "admin/dimensions" },
       { id: "admin/settings", url: "admin/settings" },
+      { id: "admin/shipping-documents", url: "admin/shipping-documents" },
       { id: "admin/backups", url: "admin/backups" },
       { id: "admin/upgrades", url: "admin/upgrades" },
       { id: "runbooks/key-rotation", url: "admin/rotate-keys" },

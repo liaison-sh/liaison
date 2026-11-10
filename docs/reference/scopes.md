@@ -120,7 +120,7 @@ Boxtal: ship orders with Boxtal carriers, with quotes, shipments, tracking and c
 | `boxtal:documents:read` | manifest scopes; tool get_documents |  |
 | `boxtal:internal` | manifest scopes |  |
 | `boxtal:quotes:read` | manifest scopes; tools create_shipment, list_content_categories, quote, quote_batch |  |
-| `boxtal:shipments:read` | manifest scopes; entity shipment; tools attention_rules_list, exceptions_list, get_shipment, prep_document_pdf, prep_list, prep_order_prefill and 15 more |  |
+| `boxtal:shipments:read` | manifest scopes; entities order, shipment; tools attention_rules_list, exceptions_list, get_shipment, order_print_record_get, prep_document_pdf, prep_list and 16 more |  |
 | `boxtal:shipments:write` | manifest scopes; tools attention_rule_delete, attention_rule_upsert, cancel_shipment, claim_open, create_shipment, import_label_document and 13 more |  |
 | `invoicing:documents:write` | manifest scopes |  |
 

@@ -164,7 +164,7 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   { glob: "bundled-apps/monitoring/**", suites: ["api-guards", "bundled-monitoring", "bundled-monitoring-ui", "bundled-freeze", "e2e-parallel", "demo-seed"] },
   { glob: "bundled-apps/pennylane/**", suites: ["api-guards", "bundled-pennylane", "bundled-freeze", "e2e-parallel", "demo-seed"] },
   { glob: "bundled-apps/shopify/**", suites: ["api-guards", "bundled-shopify", "bundled-freeze", "e2e-parallel", "demo-seed"] },
-  { glob: "bundled-apps/social/**", suites: ["api-guards", "bundled-social", "bundled-social-ui", "bundled-freeze", "e2e-parallel", "demo-seed"] },
+  { glob: "bundled-apps/social/**", suites: ["api-guards", "bundled-social", "bundled-social-ui", "integration-extra", "bundled-freeze", "e2e-parallel", "demo-seed"] },
   { glob: "bundled-apps/*/**", suites: ["api-guards", "bundled-freeze", "e2e-parallel", "demo-seed"] },
 
   // The repo-root guards: each one fails a deploy or a shipped string rather

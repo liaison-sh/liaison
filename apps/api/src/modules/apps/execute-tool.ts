@@ -3360,6 +3360,9 @@ export async function executeToolHandler(
     // privilege checks (e.g. kernel:create_skill checks ctx.scopes against the
     // requested requiredScopes). Handlers that don't read .scopes simply ignore it.
     ctx.scopes = actorScopes
+    // The app that dispatched this call app-to-app, when one did (a handler acting for its own app's
+    // records with no person behind the call reads it: kernel:documents_print from a scheduled pass).
+    ctx.callerApp = bridgeOptions?.callerApp
     // The routine this call came from, when it came from one. Handlers that
     // record an author use it to attribute the work to the ROUTINE rather than
     // to the human who happens to own it.

@@ -564,6 +564,7 @@
     "draftFieldSentFrom": "Filed through",
     "draftFieldReporter": "Your email, so the team can reply",
     "draftFieldAttachments": "Attachments",
+    "draftFieldNotSent": "Attached but not sent",
     "draftFieldServerErrors": "Recent server errors",
     "draftFieldLogs": "Recent app logs",
     "draftLogsTruncated": "oldest lines left out",
@@ -2544,6 +2545,8 @@
       "agentWantsToAdd": "{{caller}} wants to add {{agent}} to this discussion"
     },
     "refFromStep": "the {{what}} from step {{n}}",
+    "refFromEarlierStep": "the {{what}} from an earlier step",
+    "refFilledLater": "filled in when that step runs",
     "refOutput": {
       "pdf_file_id": "PDF",
       "file_id": "file",

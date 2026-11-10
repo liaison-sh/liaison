@@ -13,6 +13,7 @@
 // only tool here that talks to a live Shopify / Boxtal API.
 
 import { isUniqueViolation } from "./db-errors"
+import { generateOrderDocuments } from "./customs-documents"
 import { shipmentDraftCreate } from "./shipment"
 import { quote } from "./shipment"
 import {
@@ -36,7 +37,7 @@ import type { Parcel } from "./resolver"
 import { resolvePrepCategory, type PrepCategory } from "./customs"
 import { toMinor } from "./money"
 import { businessDaysBetween } from "./quote-batch"
-import { stateRequired, validateRecipientPhone } from "./address"
+import { postalCodeRequired, stateRequired, validateRecipientPhone } from "./address"
 import { isPickupPointOffer } from "./carriers"
 import { pickSelectedOffer } from "./prep-selection"
 import { EMPTY_PRODUCT_CODE_CONFIG, orderProductsSummary, type ProductCodeConfig, shortProductCode } from "./product-codes"
@@ -187,6 +188,10 @@ export interface PrepRow {
   products: string
   grand_total_minor: number | null
   currency: string | null
+  /** What the customer paid for shipping on the Shopify order, in minor units of
+   *  `customer_shipping_currency` (the order's currency). Null when not known. */
+  customer_shipping_minor: number | null
+  customer_shipping_currency: string | null
   parcels: Parcel[]
   package_count: number
   category: PrepCategory
@@ -357,7 +362,8 @@ export function missingRecipientFields(r: PrepRecipient | null | undefined): str
   if (blankField(r.name)) missing.push("name")
   if (blankField(r.street)) missing.push("street")
   if (blankField(r.city)) missing.push("city")
-  if (blankField(r.postalCode)) missing.push("postal code")
+  // A country with no postal codes (UAE, Qatar, Hong Kong...) has none to give.
+  if (blankField(r.postalCode) && postalCodeRequired(r.countryIsoCode)) missing.push("postal code")
   if (blankField(r.countryIsoCode)) missing.push("country")
   if (blankField(r.email)) missing.push("email")
   if (blankField(r.phone)) missing.push("phone")
@@ -535,6 +541,8 @@ export function buildRow(args: {
     ),
     grand_total_minor: cached?.grand_total_minor ?? c.order_total_minor,
     currency: cached?.currency ?? c.currency,
+    customer_shipping_minor: c.customer_shipping_minor,
+    customer_shipping_currency: c.customer_shipping_currency,
     parcels,
     package_count: parcels.length,
     category: c.category,
@@ -943,6 +951,20 @@ export async function prepSync(ctx: BoxtalToolCtx, input: PrepSyncInput = {}): P
 
   const lastSyncAt = new Date().toISOString()
   await setLastSyncAt(ctx, lastSyncAt)
+
+  // The papers the document rules ask for, generated as the orders enter To prepare (and brought
+  // up to date when their facts change). The worklist refresh only: a row-scoped sync (the grid's
+  // Quote button, an edit) stays as cheap as it was, and the scheduled pass covers the rest. Best
+  // effort: never fails the sync.
+  const rowScoped = (input.document_refs?.length ?? 0) > 0 || (input.order_keys?.length ?? 0) > 0
+  if (!rowScoped) try {
+    await generateOrderDocuments(
+      ctx,
+      rows.flatMap((r) => (r.error || !r.document_ref ? [] : [r.document_ref])),
+    )
+  } catch (err) {
+    ctx.logger?.warn?.("prep_sync: order documents failed", { err: String(err) })
+  }
 
   const failed = rows.filter((r) => r.error)
   const errors = {
@@ -1394,7 +1416,9 @@ export async function prepAddShipment(
 
   const recipient = mergeRecipient(prefillRecipient, input.recipient)
   const missing = REQUIRED_RECIPIENT_FIELDS.filter(
-    ([field]) => !String(recipient[field] ?? "").trim(),
+    ([field]) =>
+      !String(recipient[field] ?? "").trim() &&
+      !(field === "postalCode" && !postalCodeRequired(recipient.countryIsoCode)),
   ).map(([, label]) => label)
   if (missing.length > 0) {
     throw new ToolError(`The recipient is missing its ${missing.join(", ")}.`, {

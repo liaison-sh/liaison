@@ -170,7 +170,7 @@ Each file is matched to its task by `externalRef`, backdated, and kept under its
 
 | Tool | What it does | Approval |
 |---|---|---|
-| `search`, `get` | Find and read projects and tasks. `search` with `involvedWithinDays` (1 to 90) returns only the tasks you were recently involved in, each with the reason | No |
+| `search`, `get` | Find and read projects and tasks. `search` with `involvedWithinDays` (1 to 90) returns only the tasks you were recently involved in, each with the reason. `search` leaves deleted tasks out unless you ask for them with `archived`, and marks them when they are included | No |
 | `createProject` | Create a project with up to 20 tasks | No |
 | `update_project` | Edit a project's name, description, group, icon, colour or key (the key only while the project has no task) | No |
 | `instantiate_template` | Create a project from a stored template | No |

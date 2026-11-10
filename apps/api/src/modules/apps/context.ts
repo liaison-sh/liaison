@@ -69,6 +69,12 @@ export interface AppContext {
   /** The actor's effective scopes — injected for handlers that do scope-subset checks. */
   scopes?: string[]
   /**
+   * The app whose handler dispatched this call through its own `ctx.executeTool` (a declared
+   * cross-app call, set by execute-tool from the bridge, never by the caller's params).
+   * `undefined` for a direct user, agent or MCP call.
+   */
+  callerApp?: string
+  /**
    * The acting user's dimension grants (e.g. `{ market: ["EU", "US"] }`).
    * Populated by `createAppContext` when a `UserContext` actor is provided
    * (always present from the production code path); empty `{}` for system

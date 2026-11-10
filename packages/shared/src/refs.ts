@@ -85,6 +85,10 @@ export interface RefSource {
   step: number
   toolName: string
   payload?: Record<string, unknown> | null
+  /** The request's label (`request-N`), the one the person can find. */
+  handle?: string | null
+  /** What the step returned, once it ran: a token on one of its keys reads as the value. */
+  result?: Record<string, unknown> | null
 }
 
 /** Looks up the step an `@ref` token's approval id names, when known. */
@@ -167,23 +171,46 @@ export function describeRefOutput(key: string, source?: RefSource): string {
   return `${what} from step ${source.step}`
 }
 
+/** Says a value is not known yet: it is filled in when the step it comes from runs. */
+export const REF_FILLED_LATER = "filled in when that step runs"
+
+/** The value a step that already ran returned for `key`, as text; undefined when it has not. */
+export function resolvedText(key: string, source?: RefSource): string | undefined {
+  const result = source?.result
+  if (!result || typeof result !== "object" || !(key in result)) return undefined
+  const value = result[key]
+  if (value === null || value === undefined) return undefined
+  if (typeof value === "string") return value
+  if (typeof value === "number" || typeof value === "boolean") return String(value)
+  return JSON.stringify(value).slice(0, 200)
+}
+
+/** "the shipment tracking number from step 1 (request-12, filled in when that step runs)". */
+export function pendingRef(key: string, source: RefSource): string {
+  const handle = source.handle?.trim()
+  return `the ${describeRefOutput(key, source)} (${handle ? `${handle}, ` : ""}${REF_FILLED_LATER})`
+}
+
 /** Replace every `@ref:<uuid>:<key>` token with readable provenance — display
  *  only, so a human never sees a raw token. Single source of truth for the
  *  token regex (no duplicate copies).
  *
- *  Without `sources` a token reads as `[key with spaces]`. With them, a token
- *  whose step is known names it: a value that IS the token reads "the quote PDF
- *  from step 2", one inside longer text "[quote number from step 2]", so the
- *  sentence around it stays legible. */
+ *  A token whose step already ran reads as the value it returned (what the call
+ *  will carry). A token whose step is known but has not run names it, its
+ *  request and that the value comes later: "the shipment tracking number from
+ *  step 1 (request-12, filled in when that step runs)". Without any source a
+ *  token reads as its key's words "from an earlier step". Never a bracketed
+ *  stand-in a person could take for the value itself. */
 export function humanizeRefTokens(text: string, sources?: RefSourceLookup): string {
   const whole = sources ? parseRefToken(text.trim()) : null
   if (whole && sources) {
     const source = sources(whole.approvalId)
-    if (source) return `the ${describeRefOutput(whole.outputKey, source)}`
+    if (source) return resolvedText(whole.outputKey, source) ?? pendingRef(whole.outputKey, source)
   }
   return text.replace(EMBED_RE, (_m, id: string, key: string) => {
     const source = sources?.(id.toLowerCase())
-    return `[${describeRefOutput(key, source)}]`
+    if (!source) return `the ${describeRefOutput(key)} from an earlier step (${REF_FILLED_LATER})`
+    return resolvedText(key, source) ?? pendingRef(key, source)
   })
 }
 

@@ -961,6 +961,9 @@ export interface PrintDeclaration {
   recordTool: string
   /** The record tool's parameter that takes the record id. */
   idParam: string
+  /** The fileParent row is made by the first print: a preview may read a record with no row
+   *  yet (manifest-schema.ts; contract.ts checks the parent's visibility is its scope alone). */
+  parentMadeOnPrint?: boolean
   /** What one record is called ("Shipment"). */
   label: string
   fields: PrintFieldDeclaration[]

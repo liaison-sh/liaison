@@ -89,6 +89,8 @@ Scopes are shown in full. `kernel:agent:memory` is the gate for the memory and n
 
 `analyze_media` reads attachments of tickets, email and agent chats. Apps can read their own files the same way (a shipping label, for its tracking number) through the `files.analyzeDocument` capability; those reads use the same model and credits, and follow the workspace's `apps` media-analysis setting.
 
+Agents set up the papers a record needs with the document tools: `document_template_create` writes a template, `product_attributes_upsert` keeps product facts by SKU, and `document_rules_upsert` says which templates a record needs, by destination country, SKU, carrier or product attribute (`attribute`). Each of these writes waits for approval. See [Generate shipping papers automatically](../admin/shipping-documents.md).
+
 `mail_attachment_read` reads an attachment of your own email by the file id `mail__read` lists. Images, videos and PDFs go through the same analysis, model and credits as `analyze_media`, under the workspace's `mail` media-analysis setting (for email, PDFs are on by default and images and videos are off until an admin turns them on); Word, Excel and PowerPoint files (.docx, .xlsx, .pptx) are read as text, without a model call. In a private mailbox, the attachment is opened by your unlocked Liaison window, analysed for that turn only, and nothing about it is stored: no summary, no preview, no cache. Files over 25 MB are refused, and so is a private mailbox's video: it can't be analysed yet, because reading a video needs a temporary file on disk. A long Word, Excel or PowerPoint file is read up to a size limit and its text says it was cut. When the mailbox is locked, the agent says so and asks you to unlock it. `analyze_media` refuses any attachment of a private mailbox and points the agent to `mail_attachment_read`.
 
 A mail tool that reads a private mailbox (`mail__read`, `mail__search`) asks your open Liaison window for the content. When none of your open windows can decrypt it, the tool result says the mailbox is locked on your open windows, and the agent asks you to unlock it rather than reporting the mail as unreadable.
@@ -330,7 +332,7 @@ A change that changes nothing (an app that is already on, a setting already at t
 | `notification_rules_set` | Silence an app or keep only some notification kinds. | `kernel:agent:memory` | No |
 | `thread_mute_set` | Mute or unmute a conversation. | `kernel:agent:memory` | No |
 | `set_away` | Record the days someone is away (never why), end them, or name their standing next in line. The result states the dates with weekdays, who is next in line and what they cannot approve. Someone else's days need `kernel:users:admin` or `projects:capacity:write`. | `kernel:threads:read` | Only when the turn read outside text, or a routine or an MCP client asks: then it waits for the person who asked |
-| `report_bug` | File a bug report about Liaison itself. It never waits for an approval, whatever the conversation read before. Where bug reports go only to the Liaison team, it prepares the report and you send it from its card. | `kernel:bug_reports:file` (every member holds it) | No |
+| `report_bug` | File a bug report about Liaison itself. It never waits for an approval, whatever the conversation read before. Where bug reports go only to the Liaison team, it prepares the report and you send it from its card. It can attach up to 5 of your files (`attachments`, file ids you can open). | `kernel:bug_reports:file` (every member holds it) | No |
 
 ### Sub-agents
 

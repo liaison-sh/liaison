@@ -176,3 +176,37 @@ describe("entities.<e>.print", () => {
     expect(result.error).toContain("print_record_tool_invalid")
   })
 })
+
+describe("entities.<e>.print.parentMadeOnPrint", () => {
+  function withFlag(table: Record<string, unknown>, parent: Record<string, unknown> = FILE_PARENT) {
+    const m = manifest({ print: { ...PRINT, parentMadeOnPrint: true } })
+    m.schema = { shipment: { fields: { reference: "string" }, ...table } }
+    ;(m.entities as { shipment: Record<string, unknown> }).shipment.fileParent = parent
+    return validateAppManifest(m)
+  }
+
+  it("accepts a parent in the app's own table whose rows every holder of its read scope sees", () => {
+    const result = withFlag({ rlsScope: "shipments" })
+    expect(result.error).toBeUndefined()
+    expect(result.success).toBe(true)
+  })
+
+  it("refuses a parent whose rows RLS restricts beyond the scope, or another schema, or another scope", () => {
+    for (const result of [
+      withFlag({
+        rlsScope: "shipments",
+        dimensions: { region: { type: "value", column: "reference" } },
+      }),
+      withFlag({ rlsScope: "shipments", personalScope: {} }),
+      withFlag({ rlsScope: "shipments", rlsGovernedByMigration: true }),
+      withFlag(
+        { rlsScope: "shipments" },
+        { ...FILE_PARENT, schemaRef: "kernel", tableName: "contacts" },
+      ),
+      withFlag({}), // generated read scope is shipper:shipment:read, the parent says shipments
+    ]) {
+      expect(result.success).toBe(false)
+      expect(result.error).toContain("entities.shipment.print.parentMadeOnPrint")
+    }
+  })
+})

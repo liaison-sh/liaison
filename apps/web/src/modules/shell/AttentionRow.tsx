@@ -344,7 +344,17 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
     return id !== null && isDecisionInFlight("approval", id)
   }
 
+  /** The click ends a text selection made in this row (the person is copying
+   *  text out of it): it neither opens nor folds the row. */
+  const endsTextSelection = (): boolean => {
+    const sel = typeof window === "undefined" ? null : window.getSelection()
+    if (!sel || sel.isCollapsed || sel.toString().trim() === "") return false
+    const node = sel.anchorNode ?? sel.focusNode
+    return !!node && !!rowEl && rowEl.contains(node)
+  }
+
   const handleClick = (): void => {
+    if (endsTextSelection()) return
     if (isApproval() && decideInContext()) {
       // Go to the RECORD the approval acts on (metadata.openTarget), never the
       // approval entity: that resolved to the agent's working thread, which is
@@ -702,7 +712,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
         <li
           ref={rowEl}
           class="group/row relative flex flex-col gap-1 px-3 py-2.5 transition-colors hover:bg-surface-hover/50"
-          classList={{ "cursor-pointer": isNavigable() || isApproval() }}
+          classList={{ "cursor-pointer": isNavigable() }}
           data-testid={`attention-row-${props.item.app}-${props.item.entity}-${props.item.entityId}`}
           data-kind={props.item.kind}
           /* Which tool an approval runs, so a guided tour can ring one kind of
@@ -903,7 +913,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
         <li
           ref={rowEl}
           class="group/row relative flex flex-wrap items-start gap-x-3 gap-y-2 py-3 pl-0 pr-4 transition-colors hover:bg-surface-hover/50"
-          classList={{ "cursor-pointer": isNavigable() || isApproval() }}
+          classList={{ "cursor-pointer": isNavigable() }}
           data-testid={`attention-row-${props.item.app}-${props.item.entity}-${props.item.entityId}`}
           data-kind={props.item.kind}
           /* Which tool an approval runs, so a guided tour can ring one kind of
@@ -923,6 +933,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
           {/* Body: title, what changes, who it reaches, meta. */}
           <div class="flex min-w-[300px] flex-1 flex-col gap-1">
             <span
+              data-testid={`${testId()}-title`}
               class="line-clamp-2 text-[14px] font-medium leading-snug text-text"
               title={title()}
             >

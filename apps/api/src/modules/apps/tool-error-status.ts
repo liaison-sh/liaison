@@ -60,6 +60,10 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   // generated or unreadable), or Shopify refused it for the order's state (already fulfilled,
   // cancelled, a bad id). The row records why; nothing of ours failed.
   no_tracking: 409,
+  // A typed tracking number the carrier's format refuses (re-type it), or a row that already
+  // carries one (a typed number never replaces it).
+  invalid_tracking_number: 422,
+  tracking_already_set: 409,
   // settle_orphan_create: the row is not an orphaned purchase, it already carries a Boxtal order
   // (adopt it instead of releasing), or the order named is linked to another shipment.
   not_orphan: 409,
@@ -93,6 +97,8 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   boxtal_account_payment_blocked: 402,
   // Upstream (Boxtal, Shopify, invoicing) failed or is not there.
   cotation_error: 502,
+  // The carrier's per-parcel label PDFs could not be merged into one document (a malformed upstream PDF).
+  label_merge_failed: 502,
   create_uncertain: 502,
   unknown: 502,
   upstream: 502,

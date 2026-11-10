@@ -185,3 +185,4 @@ Outbound access on an installed app's App store page: Allowed, Waiting for appro
 Install from a URL lists the hosts; an upgrade its new ones -> apps/web/src/modules/settings/InstallAppDialog.tsx ; apps/api/src/modules/apps/install-routes.ts:418
 Operator for a server-wide app, the org admin for its own app; holds from the next run -> apps/api/src/modules/apps/install-routes.ts:653 ; apps/api/src/modules/apps/install-routes.ts:673
 Users: deactivation asks who takes over a manager's companies -> apps/web/src/modules/settings/AdminUsers.tsx:488
+Rules match on product attribute -> apps/api/src/modules/documents/rules-store.ts:99

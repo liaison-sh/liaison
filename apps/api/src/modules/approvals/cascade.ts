@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
-import { findRefTokens, resolveRefTokens } from "@liaison/shared"
+import { type ApprovalSummary, findRefTokens, resolveRefTokens } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, type PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -35,6 +35,7 @@ import {
 import { approvalPayloadHash } from "~/modules/approvals/payload-hash"
 import { enqueuePoll } from "~/modules/approvals/poll-output"
 import { readDecidedResult } from "~/modules/approvals/read-decided-result"
+import { fillStepSummaryRefs } from "~/modules/approvals/ref-provenance"
 import { readApprovalRequester } from "~/modules/approvals/requester"
 import { resolveApprovalResourceOwner } from "~/modules/approvals/resource-owner"
 import {
@@ -526,9 +527,11 @@ export async function cascadeDeferredDependents(args: {
         current_payload: unknown
         status: string
         metadata: { approvedPayloadHash?: unknown } | null
+        requested_by: string
+        summary: ApprovalSummary
       }>(
         await tx.execute(drizzleSql`
-          SELECT current_payload, status, metadata FROM ${K}.approval_requests
+          SELECT current_payload, status, metadata, requested_by, summary FROM ${K}.approval_requests
           WHERE id = ${dep.id} FOR UPDATE`),
       )
       if (locked?.status !== "deferred") {
@@ -576,9 +579,23 @@ export async function cascadeDeferredDependents(args: {
         }
       }
 
+      // The card from now on reads the values the earlier steps returned, not
+      // "filled in when that step runs" (ref-provenance.ts).
+      const filledSummary = await fillStepSummaryRefs(
+        args.orgId,
+        locked.requested_by,
+        locked.current_payload,
+        locked.summary,
+        results,
+        tx,
+      ).catch((err: unknown) => {
+        log.warn({ err, depId: dep.id }, "step summary refs could not be filled in")
+        return locked.summary
+      })
       await tx.execute(drizzleSql`
         UPDATE ${K}.approval_requests
-        SET current_payload = ${JSON.stringify(resolvedPayload)}::jsonb
+        SET current_payload = ${JSON.stringify(resolvedPayload)}::jsonb,
+            summary = ${JSON.stringify(filledSummary)}::jsonb
         WHERE id = ${dep.id}`)
       return {
         kind: "resolved" as const,

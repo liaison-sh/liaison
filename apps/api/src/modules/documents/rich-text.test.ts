@@ -17,6 +17,7 @@ import {
   RICH_TEXT_MAX_LIST_ROWS,
   RichTextError,
   renderRichText,
+  richTextPlaceholderPaths,
 } from "./rich-text"
 
 const LABELS: Record<string, string> = {
@@ -275,5 +276,283 @@ describe("output", () => {
     const b = await renderRichText(input)
     const hash = (x: Uint8Array) => createHash("sha256").update(withoutDates(x)).digest("hex")
     expect(hash(a.bytes)).toBe(hash(b.bytes))
+  })
+})
+
+describe("conditions, tables, repeats and missing-value words", () => {
+  const record = {
+    invoice: { number: "INV-1" },
+    phone: null,
+    lines: [
+      { sku: "A-1", name: "Alpha", qty: 2, attributes: { metal: "aluminium", smelt: "Atlantis" } },
+      { sku: "B-2", name: "Beta", qty: 1, attributes: { metal: "steel", smelt: "" } },
+      { sku: "C-3", name: "Gamma", qty: 1, attributes: {} },
+    ],
+  }
+
+  it("prints a block only when its conditions hold, * reading any row", () => {
+    const body = parseRichTextBody({
+      blocks: [
+        {
+          type: "paragraph",
+          text: "has steel",
+          when: { path: "lines.*.attributes.metal", equals: "steel" },
+        },
+        {
+          type: "paragraph",
+          text: "has copper",
+          when: { path: "lines.*.attributes.metal", equals: "copper" },
+        },
+        { type: "paragraph", text: "no phone", when: { path: "phone", is: "absent" } },
+        {
+          type: "paragraph",
+          text: "both",
+          when: [{ path: "invoice.number" }, { path: "lines.*.sku", in: ["b-2", "z"] }],
+        },
+      ],
+    })
+    const drawn = texts(layoutRichText(body, record, labelOf).commands).map((c) => c.text.trim())
+    expect(drawn).toEqual(["has steel", "no phone", "both"])
+  })
+
+  it("{{path ?? words}} prints the words grey and lists the blank; {{path ??}} prints nothing", () => {
+    const body = parseRichTextBody({
+      blocks: [
+        { type: "paragraph", text: "Phone: {{phone ??}}." },
+        {
+          type: "list",
+          from: "lines",
+          where: { path: "attributes.metal" },
+          line: "{{name}} smelt: {{attributes.smelt ?? not confirmed by the supplier}} ({{invoice.number}})",
+        },
+      ],
+    })
+    const { commands, blanks } = layoutRichText(body, record, labelOf)
+    const drawn = texts(commands)
+    const all = drawn.map((c) => c.text).join("|")
+    expect(all).toContain("Phone: ")
+    expect(all).toContain("Atlantis")
+    expect(all).not.toContain("Gamma")
+    const grey = drawn.filter((c) => c.color?.r === 0.55).map((c) => c.text.trim())
+    expect(grey.join(" ")).toBe("not confirmed by the supplier")
+    expect(blanks.map((b) => b.path)).toEqual(["lines.1.attributes.smelt"])
+    // A row's path falls back to the record root: the invoice number prints on every row.
+    expect(drawn.filter((c) => c.text.includes("INV-1")).length).toBe(2)
+  })
+
+  it("lays out a table over a list and a fixed table inside a repeat", async () => {
+    const body = parseRichTextBody({
+      blocks: [
+        {
+          type: "table",
+          from: "lines",
+          columns: [
+            { header: "SKU", text: "{{sku}}", width: 1 },
+            { header: "Article", text: "{{name}}", width: 3 },
+            { header: "Qty", text: "{{qty}}", width: 1 },
+          ],
+        },
+        {
+          type: "repeat",
+          from: "lines",
+          where: { path: "attributes.metal" },
+          blocks: [
+            { type: "heading", level: 3, text: "{{name}}" },
+            {
+              type: "table",
+              columns: [{ width: 2, bold: true }, { width: 3 }],
+              rows: [
+                ["Metal", "{{attributes.metal}}"],
+                ["Country of smelt", "{{attributes.smelt ?? not confirmed}}"],
+                {
+                  cells: ["Steel only", "yes"],
+                  when: { path: "attributes.metal", equals: "steel" },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    })
+    const { commands } = layoutRichText(body, record, labelOf)
+    expect(commands.some((c) => c.op === "drawRectangle")).toBe(true)
+    const drawn = texts(commands).map((c) => c.text)
+    expect(drawn.filter((t) => t === "Steel only").length).toBe(1)
+    expect(drawn.filter((t) => t === "Metal").length).toBe(2)
+    const out = await renderRichText({ body, record, labelOf, resolveImage: noImages })
+    const text = await extractPdfText(out.bytes)
+    for (const want of ["SKU", "Alpha", "Gamma", "Country of smelt", "Atlantis", "not confirmed"]) {
+      expect(text).toContain(want)
+    }
+  })
+
+  it("refuses a table with both or neither of from and rows, and a malformed condition", () => {
+    const bad: unknown[] = [
+      { blocks: [{ type: "table", columns: [{ text: "x" }] }] },
+      { blocks: [{ type: "table", columns: [{ text: "x" }], from: "lines", rows: [["x"]] }] },
+      { blocks: [{ type: "table", columns: [{}, {}], rows: [["only one"]] }] },
+      { blocks: [{ type: "paragraph", text: "x", when: { path: "a..b" } }] },
+      {
+        blocks: [{ type: "paragraph", text: "x", when: { path: "a", is: "present", equals: "b" } }],
+      },
+      {
+        blocks: [
+          { type: "repeat", from: "lines", blocks: [{ type: "repeat", from: "x", blocks: [] }] },
+        ],
+      },
+    ]
+    for (const body of bad) expect(() => parseRichTextBody(body)).toThrow(RichTextError)
+  })
+})
+
+describe("computed values: arithmetic, sum and fixed", () => {
+  const record = {
+    invoice: { number: "INV-1" },
+    totals: { value: 300 },
+    lines: [
+      {
+        sku: "SKU-A",
+        quantity: 2,
+        value: 200,
+        attributes: { weight_kg: "0.82", metal: "aluminium" },
+      },
+      { sku: "SKU-B", quantity: 2, value: 25.2, attributes: { weight_kg: "1.95", metal: "steel" } },
+      {
+        sku: "SKU-C",
+        quantity: 3,
+        value: 74.8,
+        attributes: { metal: "none", weight_kg: "about 1 kg" },
+      },
+    ],
+  }
+  const drawnOf = (text: string, from?: string) => {
+    const body = parseRichTextBody({
+      blocks: [from ? { type: "list", from, line: text } : { type: "paragraph", text }],
+    })
+    const { commands, blanks } = layoutRichText(body, record, labelOf)
+    const drawn = texts(commands)
+    return {
+      all: drawn.map((c) => c.text).join(""),
+      grey: drawn.filter((c) => c.color?.r === 0.55).map((c) => c.text.trim()),
+      blanks: blanks.map((b) => b.path),
+    }
+  }
+
+  it("multiplies a row's quantity by a per-unit fact and formats it", () => {
+    const out = drawnOf(
+      "{{sku}} for the {{quantity}} units shipped: {{quantity * attributes.weight_kg | fixed:3}} kg;",
+      "lines",
+    )
+    expect(out.all).toContain("SKU-A for the 2 units shipped: 1.640 kg;")
+    expect(out.all).toContain("SKU-B for the 2 units shipped: 3.900 kg;")
+  })
+
+  it("a missing or non-numeric operand is a missing value: ?? words apply and the blank is listed", () => {
+    const out = drawnOf("{{quantity * attributes.weight_kg | fixed:3 ?? not confirmed}};", "lines")
+    expect(out.grey).toEqual(["not confirmed"])
+    expect(out.blanks).toEqual(["lines.2.attributes.weight_kg"])
+    const bare = drawnOf("{{quantity * attributes.density}};", "lines")
+    expect(bare.blanks).toEqual(["lines.0.attributes.density"])
+    expect(bare.all).toContain("[lines.0.attributes.density]")
+  })
+
+  it("sums over a list, keeps rows by a condition, and computes a percent", () => {
+    const out = drawnOf(
+      'Steel share: {{sum(lines, value, attributes.metal = "steel") / totals.value * 100 | fixed:1}} percent. Units: {{sum(lines, quantity)}}. Mix: {{(1 + 2) * -2 / 4}}.',
+    )
+    expect(out.all).toContain("Steel share: 8.4 percent.")
+    expect(out.all).toContain("Units: 7.")
+    expect(out.all).toContain("Mix: -1.5.")
+    expect(out.blanks).toEqual([])
+  })
+
+  it("division by zero is a missing value, never Infinity or NaN", () => {
+    const out = drawnOf(
+      '{{totals.value / 0 ?? n/a}} {{sum(lines, value, sku = "none") / sum(lines, value, sku = "none")}}',
+    )
+    expect(out.all).not.toContain("Infinity")
+    expect(out.all).not.toContain("NaN")
+    expect(out.grey.join(" ")).toContain("n/a")
+    expect(out.blanks).toContain("totals.value / 0")
+  })
+
+  it("fixed on a plain path formats a number; an untouched path prints as before", () => {
+    expect(drawnOf("{{totals.value | fixed:2}} {{invoice.number}}").all).toContain("300.00 INV-1")
+  })
+
+  it("atLeast and atMost compare a number: a row prints only for two units or more", () => {
+    const body = parseRichTextBody({
+      blocks: [
+        {
+          type: "list",
+          from: "lines",
+          where: { path: "quantity", atLeast: 3 },
+          line: "{{sku}} three or more;",
+        },
+        {
+          type: "list",
+          from: "lines",
+          where: [
+            { path: "quantity", atLeast: 2 },
+            { path: "quantity", atMost: 2 },
+          ],
+          line: "{{sku}} exactly two;",
+        },
+        {
+          type: "paragraph",
+          text: "weight",
+          when: { path: "lines.*.attributes.weight_kg", atLeast: 1 },
+        },
+        { type: "paragraph", text: "never", when: { path: "invoice.number", atLeast: 0 } },
+      ],
+    })
+    const all = texts(layoutRichText(body, record, labelOf).commands)
+      .map((c) => c.text)
+      .join("")
+    expect(all).toContain("SKU-C three or more;")
+    expect(all).toContain("SKU-A exactly two;SKU-B exactly two;")
+    expect(all).toContain("weight")
+    expect(all).not.toContain("never")
+    expect(() =>
+      parseRichTextBody({
+        blocks: [{ type: "paragraph", text: "x", when: { path: "a", atLeast: 1, equals: "b" } }],
+      }),
+    ).toThrow(RichTextError)
+  })
+
+  it("reports the paths an expression reads", () => {
+    const body = parseRichTextBody({
+      blocks: [
+        {
+          type: "paragraph",
+          text: '{{sum(lines, quantity * attributes.weight_kg, attributes.metal = "steel") / totals.value}}',
+        },
+      ],
+    })
+    expect(richTextPlaceholderPaths(body)).toEqual([
+      "lines",
+      "lines.quantity",
+      "lines.attributes.weight_kg",
+      "lines.attributes.metal",
+      "totals.value",
+    ])
+  })
+
+  it("refuses malformed expressions, unknown filters and functions", () => {
+    for (const text of [
+      "{{quantity *}}",
+      "{{(quantity}}",
+      "{{quantity | round:2}}",
+      "{{quantity | fixed:9}}",
+      "{{max(lines, quantity)}}",
+      "{{sum(lines, sum(lines, quantity))}}",
+      "{{quantity; 1}}",
+      "{{a b}}",
+      "{{sum(lines, value, metal = steel)}}",
+    ]) {
+      expect(() => parseRichTextBody({ blocks: [{ type: "paragraph", text }] }), text).toThrow(
+        RichTextError,
+      )
+    }
   })
 })

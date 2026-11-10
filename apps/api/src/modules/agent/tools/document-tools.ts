@@ -18,7 +18,7 @@
 import type { ApprovalSummary } from "@liaison/shared"
 import { z } from "zod"
 import type { RlsClient } from "~/db"
-import type { UserContext } from "~/db/rls"
+import { type ActorContext, type UserContext, withRlsContext } from "~/db/rls"
 import { pdfLogger as log } from "~/lib/logger"
 import {
   previewTemplate,
@@ -56,6 +56,8 @@ export interface DocumentToolContext {
   scopes?: string[]
   dimensionGrants?: Record<string, string[]>
   actingAgentId?: string | null
+  /** The app that dispatched the call app-to-app (execute-tool sets it), else undefined. */
+  callerApp?: string
 }
 
 export interface DocumentToolError {
@@ -71,8 +73,24 @@ function templateCaller(ctx: DocumentToolContext): TemplateCaller {
   }
 }
 
+/**
+ * An app's own call with no person behind it (a scheduled pass printing the papers of the app's
+ * records): execute-tool hands a non-person actor the user id "system" and names the dispatching
+ * app. It prints as that app, the way its job runs (`<app>:*`, infra/jobs/jobs.ts), so it can
+ * store files only on that app's own records (the parent's write scope is the app's), and the
+ * files have no uploader.
+ */
+function appSystemPrintScopes(ctx: DocumentToolContext): string[] | null {
+  if (ctx.userId !== "system" || !ctx.callerApp || ctx.callerApp === "kernel") return null
+  return [`${ctx.callerApp}:*`]
+}
+
 function printCaller(ctx: DocumentToolContext): PrintCaller {
-  const actor: UserContext = {
+  const appScopes = appSystemPrintScopes(ctx)
+  const asApp: ActorContext | null = appScopes
+    ? { actorType: "system", orgId: ctx.orgId, purpose: "job", scopes: appScopes }
+    : null
+  const userActor: UserContext = {
     actorType: "user",
     userId: ctx.userId,
     orgId: ctx.orgId,
@@ -82,10 +100,10 @@ function printCaller(ctx: DocumentToolContext): PrintCaller {
   return {
     orgId: ctx.orgId,
     userId: ctx.userId,
-    scopes: ctx.scopes ?? [],
-    withRls: (fn) => fn(ctx.db),
-    actor,
-    actingAgentId: ctx.actingAgentId ?? null,
+    scopes: appScopes ?? ctx.scopes ?? [],
+    withRls: asApp ? (fn) => withRlsContext(asApp, fn) : (fn) => fn(ctx.db),
+    actor: asApp ?? userActor,
+    actingAgentId: asApp ? null : (ctx.actingAgentId ?? null),
   }
 }
 
@@ -136,7 +154,7 @@ const templateIdParam = z
 const bodyParam = z
   .record(z.string(), z.unknown())
   .describe(
-    'The rich_text body: { page?: { size?: "A4"|"Letter", fontSize?: 8-14, margins? }, blocks: [...] }. Blocks: { type: "heading", text, level?: 1|2|3 }, { type: "paragraph", text }, { type: "list", from: "<list path>", line: "<text with {{field}} of one row>" }, { type: "image", fileId, width?, align? }, { type: "spacer", height }. Text takes {{path}} placeholders from the record type\'s fields.',
+    'The rich_text body: { page?: { size?: "A4"|"Letter", fontSize?: 8-14, margins? }, blocks: [...] }. Blocks: { type: "heading", text, level?: 1|2|3 }, { type: "paragraph", text }, { type: "list", from: "<list path>", line: "<text with {{field}} of one row>" }, { type: "image", fileId, width?, align? }, { type: "spacer", height }. Text takes {{path}} placeholders from the record type\'s fields; {{path ?? words}} prints the words when the value is missing. A placeholder can compute: + - * / and parentheses over numbers and paths, sum(list, expression[, path = "text"]) over a list\'s rows, and | fixed:N for N decimals, e.g. {{quantity * attributes.weight_kg | fixed:3}}; a missing or non-numeric operand makes the value missing.',
   )
 
 const recordTypesParams = z.object({ recordType: recordTypeParam.optional() }).strict()

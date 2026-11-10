@@ -29,10 +29,14 @@ if (typeof window !== "undefined") {
 
 export const RichEditor: Component<RichEditorProps> = (props) => {
   const [local, rest] = splitProps(props, ["autofocus", "ref"])
-  // The text the field opened with, and what was typed after it meanwhile.
-  const opened = untrack(() => props.value)
+  // The text the keys are typed after, and what was typed meanwhile. The text
+  // is the field's value as the first key lands, not as the field mounted: a
+  // surface may fill it just after (the ticket reply's signature), and keys
+  // added to the empty value it mounted with dropped that text.
+  let opened = untrack(() => props.value)
   const [typed, setTyped] = createSignal("")
   const type = (next: string) => {
+    if (!typed()) opened = untrack(() => props.value)
     setTyped(next)
     props.onChange?.(opened + next)
   }

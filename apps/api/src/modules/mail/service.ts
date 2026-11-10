@@ -22,13 +22,13 @@ import {
 } from "~/modules/mail/commercial-send-record"
 import { enqueueGmailWriteBack } from "~/modules/mail/gmail-write-back"
 import { markConversationReadThrough } from "~/modules/mail/page-write"
+import { resolveSenderContacts } from "~/modules/mail/sender-contacts"
 import {
   COMMERCIAL_IDENTITY_MISSING_MESSAGE,
   checkPersonCompose,
   commercialFooterFor,
   recipientsOf,
 } from "~/modules/mail/send-guard"
-import { resolveSenderContacts } from "~/modules/mail/sender-contacts"
 import {
   isMailAccountSuppressed,
   stripMailContentFromPayload,

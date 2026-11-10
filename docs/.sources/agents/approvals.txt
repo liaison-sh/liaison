@@ -247,3 +247,6 @@ A manager without the deciding scope is skipped, usual approvers -> packages/sha
 mail draft about a closed record is cancelled -> apps/api/src/modules/approvals/withdraw-on-events.ts:130-200
 mail draft about a record of a switched-off app is cancelled -> apps/api/src/modules/approvals/cancel.ts:262-290
 Agent mail card lists each contact recipient's basis, consumer or business, opt-out, as the composer -> apps/web/src/modules/approvals/ApprovalCard.tsx:2341 ; apps/api/src/modules/approvals/list.ts:516 ; apps/api/src/modules/mail/send-guard.ts:1610 ; packages/shared/src/i18n/locales/en/mail.json:264
+A step reference reads as its step, request and "filled in when that step runs" -> packages/shared/src/refs.ts:175-215 ; apps/api/src/modules/approvals/ref-provenance.ts:52-110
+Once the earlier step ran, the step's summary shows the returned value -> apps/api/src/modules/approvals/cascade.ts:463-480 ; apps/api/src/modules/approvals/ref-provenance.ts:118-155
+Home approval rows: chevron or click folds; a click ending a text selection does not -> apps/web/src/modules/shell/AttentionRow.tsx:292-302,658

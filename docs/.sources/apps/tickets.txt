@@ -48,6 +48,7 @@ Note posts immediately -> apps/web/src/modules/tickets/TicketComposer.tsx:871
 Own reply sent unless two-approver policy -> apps/web/src/modules/tickets/TicketComposer.tsx:258
 Awaiting second approver message -> packages/shared/src/i18n/locales/en/tickets.json:208
 Your reply signature section, user scope -> apps/api/src/apps/tickets/app.manifest.json:3016
+Signature prefilled once; typed-before-load keys keep their place, signature appended after them -> apps/web/src/modules/tickets/TicketComposer.tsx:132
 Assign / Assign to me -> apps/web/src/modules/tickets/TicketDetail.tsx:1312
 Change status / priority / category -> apps/web/src/modules/tickets/TicketDetail.tsx:943
 Schedule / Clear follow-up -> apps/web/src/modules/tickets/TicketDetail.tsx:1396

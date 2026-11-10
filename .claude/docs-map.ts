@@ -126,6 +126,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   // Bundled apps
   { glob: "bundled-apps/invoicing/**", pages: ["apps/invoicing", "sales/quotes"] },
   { glob: "bundled-apps/boxtal/**", pages: ["apps/boxtal"] },
+  { glob: "bundled-apps/boxtal/src/{customs-documents,print-pack,needed-documents}.ts", pages: ["admin/shipping-documents"] },
   { glob: "bundled-apps/shopify/**", pages: ["apps/store"] },
   { glob: "bundled-apps/pennylane/**", pages: ["apps/pennylane"] },
   { glob: "bundled-apps/social/**", pages: ["apps/social"] },
@@ -154,6 +155,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/web/src/modules/dashboards/**", pages: ["agents/dashboards"] },
   // Document templates (org admin settings); the settings page that edits them documents them.
   { glob: "apps/api/src/modules/documents/**", pages: ["admin/settings"] },
+  { glob: "apps/api/src/modules/documents/{rich-text,rules,rules-store}.ts", pages: ["admin/shipping-documents"] },
   { glob: "apps/api/src/modules/org/**", pages: ["admin/settings"] },
   { glob: "apps/api/src/modules/branding/**", pages: ["admin/settings"] },
   { glob: "apps/api/src/modules/client-policy/**", pages: ["reference/env"] },

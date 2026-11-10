@@ -169,11 +169,26 @@ export function buildBugReportForward(args: {
   includeEmail: boolean
   reporterEmail: string
   attachmentIndexes: number[]
+  /**
+   * Files already checked and hashed by the caller (an agent's report_bug
+   * attachments, bug-reports/agent-files.ts), listed as they are. They stand
+   * for the ticked form files, so `attachmentIndexes` is then empty.
+   */
+  files?: readonly ChosenAttachment[]
 }): BuiltForward {
   const replaceHost = hostReplacer()
   const attachments = listAttachments(args.form)
   const indexes = [...new Set(args.attachmentIndexes)].sort((a, b) => a - b)
-  const chosen: ChosenAttachment[] = []
+  const chosen: ChosenAttachment[] = (args.files ?? []).map((f) => ({
+    index: f.index,
+    filename: f.filename,
+    mimeType: f.mimeType,
+    sizeBytes: f.sizeBytes,
+    sha256: f.sha256,
+  }))
+  if (chosen.length > 0 && indexes.length > 0) {
+    throw new Error("buildBugReportForward: files and attachmentIndexes are exclusive")
+  }
   for (const index of indexes) {
     const listed = attachments[index]
     if (!listed || listed.tooLarge || listed.blocked) {

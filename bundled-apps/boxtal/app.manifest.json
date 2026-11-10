@@ -222,7 +222,7 @@
       }
     ]
   },
-  "version": "0.23.28",
+  "version": "0.24.3",
   "iconName": "box",
   "description": "Boxtal shipping integration: carrier quotes, tracking, shipments, customs documents",
   "listing": {
@@ -289,6 +289,68 @@
           {"path": "lines.quantity", "label": "Line quantity", "type": "number", "repeat": "lines"},
           {"path": "lines.value", "label": "Line value", "type": "number", "repeat": "lines"},
           {"path": "lines.currency", "label": "Line currency", "type": "string", "repeat": "lines"}
+        ]
+      }
+    },
+    "order": {
+      "labelField": "label",
+      "tableName": "prep_state",
+      "readScope": "boxtal:shipments:read",
+      "fileParent": {
+        "tableName": "prep_state",
+        "schemaRef": "app_boxtal",
+        "joinOn": "document_ref",
+        "readScope": "boxtal:shipments:read",
+        "writeScope": "boxtal:shipments:write"
+      },
+      "print": {
+        "recordTool": "order_print_record_get",
+        "parentMadeOnPrint": true,
+        "idParam": "document_ref",
+        "label": "Order",
+        "fields": [
+          {"path": "issued_on", "label": "Date of issue (today)", "type": "string"},
+          {"path": "invoice.number", "label": "Invoice number", "type": "string"},
+          {"path": "invoice.date", "label": "Invoice date", "type": "date"},
+          {"path": "invoice.date_text", "label": "Invoice date, written out", "type": "string"},
+          {"path": "order.name", "label": "Order number", "type": "string"},
+          {"path": "order.customer", "label": "Customer name", "type": "string"},
+          {"path": "order.company", "label": "Customer company", "type": "string"},
+          {"path": "order.email", "label": "Customer email", "type": "string"},
+          {"path": "order.phone", "label": "Delivery phone", "type": "string"},
+          {"path": "order.address.street", "label": "Street", "type": "string"},
+          {"path": "order.address.postal_code", "label": "Postal code", "type": "string"},
+          {"path": "order.address.city", "label": "City", "type": "string"},
+          {"path": "order.address.state", "label": "State or province", "type": "string"},
+          {"path": "order.address.country_iso2", "label": "Country code", "type": "string"},
+          {"path": "order.address_lines", "label": "Delivery address lines", "type": "string"},
+          {"path": "order.po_number", "label": "Customer PO number", "type": "string"},
+          {"path": "order.incoterm", "label": "Incoterm", "type": "string"},
+          {"path": "shipment.has_label", "label": "A label has been bought", "type": "boolean"},
+          {"path": "shipment.carrier_name", "label": "Carrier", "type": "string"},
+          {"path": "shipment.tracking_number", "label": "Tracking number", "type": "string"},
+          {"path": "shipment.tracking_label", "label": "Tracking number label (AWB for FedEx)", "type": "string"},
+          {"path": "shipment.reference", "label": "Carrier and tracking number, as one reference", "type": "string"},
+          {"path": "shipment.shipped_on", "label": "Date of shipment", "type": "string"},
+          {"path": "destination.iso2", "label": "Destination country code", "type": "string"},
+          {"path": "destination.name", "label": "Destination country", "type": "string"},
+          {"path": "currency", "label": "Invoice currency", "type": "string"},
+          {"path": "totals.value", "label": "Total goods value", "type": "number"},
+          {"path": "totals.value_text", "label": "Total goods value with currency", "type": "string"},
+          {"path": "totals.units", "label": "Units in total", "type": "number"},
+          {"path": "totals.articles", "label": "Articles (invoice lines)", "type": "number"},
+          {"path": "lines.description", "label": "Line description", "type": "string", "repeat": "lines"},
+          {"path": "lines.sku", "label": "Line SKU", "type": "string", "repeat": "lines"},
+          {"path": "lines.hts", "label": "Line HS code", "type": "string", "repeat": "lines"},
+          {"path": "lines.origin", "label": "Line country of origin (code)", "type": "string", "repeat": "lines"},
+          {"path": "lines.origin_name", "label": "Line country of origin", "type": "string", "repeat": "lines"},
+          {"path": "lines.quantity", "label": "Line quantity", "type": "number", "repeat": "lines"},
+          {"path": "lines.unit_value", "label": "Line unit value, net", "type": "number", "repeat": "lines"},
+          {"path": "lines.unit_value_text", "label": "Line unit value with currency", "type": "string", "repeat": "lines"},
+          {"path": "lines.value", "label": "Line value, net", "type": "number", "repeat": "lines"},
+          {"path": "lines.value_text", "label": "Line value with currency", "type": "string", "repeat": "lines"},
+          {"path": "lines.currency", "label": "Line currency", "type": "string", "repeat": "lines"},
+          {"path": "lines.attributes", "label": "Line product attributes (lines.attributes.<key>)", "type": "string", "repeat": "lines"}
         ]
       }
     }
@@ -511,9 +573,9 @@
       "label": "Boxtal",
       "order": 70,
       "tabAction": {
-        "type": "home",
-        "entityId": "shipments",
-        "label": "Shipments"
+        "type": "queue",
+        "entityId": "worklist",
+        "label": "Shipping worklist"
       }
     },
     "tabTypes": {
@@ -775,6 +837,14 @@
   },
   "webhookHealth": { "probe": "probe-webhook-upstream" },
   "jobs": {
+    "generate-order-documents": {
+      "handler": "generateOrderDocumentsJobHandler",
+      "runsFor": {
+        "connection": "boxtal"
+      },
+      "schedule": "*/10 * * * *",
+      "timeoutMs": 120000
+    },
     "backfill-queue-facts": {
       "handler": "backfillQueueFactsJobHandler",
       "runsFor": {"rows": {"entity": "shipment", "where": {"queue_facts": null, "document_ref": {"not": null}}}},
@@ -1231,6 +1301,10 @@
       "rlsScope": "shipments",
       "fields": {
         "document_ref": "string",
+        "documents": {
+          "type": "json",
+          "required": false
+        },
         "category": {
           "type": "string",
           "required": false,
@@ -2569,6 +2643,26 @@
       "timeoutMs": 20000,
       "readOnly": true
     },
+    "order_print_record_get": {
+      "description": "Read ONE order as its print record: the data the organisation's document templates fill for the order's paperwork (customs declarations, certifications), from the moment it enters To prepare. issued_on, invoice {number, date, date_text}, order {name, customer, company, email, phone, address, address_lines, po_number, incoterm}, shipment {has_label, carrier_name, tracking_number, tracking_label, reference, shipped_on}, destination {iso2, name}, currency, totals {value, value_text, units, articles}, lines [{description, sku, hts, origin, origin_name, quantity, unit_value, unit_value_text, value, value_text, currency, attributes}]. Before a label the shipment fields are null; after the buy they are the label's, and the tracking number appears once the carrier issues it. Goods lines only; a value the sources do not hold is null, never guessed. The order's papers are generated on their own by the document rules (record type boxtal:order): to print, use the document templates, not this tool.",
+      "requiredScopes": [
+        "boxtal:shipments:read"
+      ],
+      "handler": "orderPrintRecordGetHandler",
+      "readOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "document_ref": {
+            "type": "string",
+            "description": "The order's goods invoice document id (a ready_list row's invoice_ref, a prep_list row's document_ref)."
+          }
+        },
+        "required": [
+          "document_ref"
+        ]
+      }
+    },
     "print_record_get": {
       "taintSource": true,
       "description": "Read ONE shipment as its print record: the data the organisation's document templates fill (a customs declaration, a certificate, a thank-you letter). invoice {number, date}, order {name, customer, company, email, phone, address}, shipment {carrier_name, carrier_family, tracking_number, tracking_label}, destination {iso2, name}, lines [{description, sku, hts, origin, quantity, value, unit_value, currency, attributes}]. The invoice, customer, address, carrier and lines are a snapshot taken when the label was bought; the tracking number is the row's current one and stays null until the carrier issues it. A value the sources do not hold is null, never guessed: a template prints it as a blank for a person to fill. To print, use the document templates, not this tool.",
@@ -2720,7 +2814,7 @@
       "timeoutMs": 60000
     },
     "print_pack": {
-      "description": "Print a shipment's labels and shipping papers: prepare the print-station documents for ONE ready-to-ship shipment as TWO SEPARATE print jobs, never merged into one PDF: (1) the shipping LABEL alone, orientation-normalized server-side (Boxtal labels carry a Letter-landscape /Rotate 270 flag that label printers ignore; the rotation is baked into the page content) for the self-adhesive label printer, and (2) the INVOICE PDF for the A4 printer with the route's required copy count: 1 copy for an EU/domestic route, 3 copies for an export outside the EU. Returns kernel file ids to download each job separately.",
+      "description": "Print a shipment's labels and shipping papers: prepare the print-station documents for ONE ready-to-ship shipment as TWO SEPARATE print jobs, never merged into one PDF: (1) the shipping LABEL alone (every parcel's label of a multi-parcel shipment, in one PDF), orientation-normalized server-side (Boxtal labels carry a Letter-landscape /Rotate 270 flag that label printers ignore; the rotation is baked into the page content) for the self-adhesive label printer, and (2) the INVOICE PDF for the A4 printer with the route's required copy count: 1 copy for an EU/domestic route, 3 copies for an export outside the EU. It also returns (3) the order's generated papers (customs declarations, certifications: whatever the organisation's document rules ask for, record type boxtal:order), brought up to date first so they carry the tracking number, for the A4 printer with the invoice. Returns kernel file ids to download each job separately.",
       "searchKeywords": ["imprimer", "étiquette", "étiquettes", "label", "labels", "lot", "imprime"],
       "requiredScopes": ["boxtal:shipments:read"],
       "handler": "printPackHandler",
@@ -2928,7 +3022,7 @@
       "timeoutMs": 60000
     },
     "import_label_document": {
-      "description": "Backfill-import a created shipment's LABEL PDF into Liaison's file store and return its `label_file_id` (a kernel file id attachable to a tickets__reply / mail message). Boxtal generates the label ASYNCHRONOUSLY after the order, so create_shipment can return label_file_id null — call THIS tool with the boxtal_order_id (or the local shipment row id) to import it once it exists. Retries a few reads internally; returns label_not_ready when Boxtal has not served the LABEL yet (retry in a minute, never fabricate a file id). Also usable as the MIDDLE step of a one-approval sequence: create_shipment -> import_label_document with id = the @ref boxtal_order_id token -> tickets__reply with attachments = [the @ref label_file_id token]. Each call imports a fresh copy; reuse the returned id instead of re-calling.",
+      "description": "Backfill-import a created shipment's LABEL PDF into Liaison's file store and return its `label_file_id` (a kernel file id attachable to a tickets__reply / mail message). Boxtal generates the label ASYNCHRONOUSLY after the order, so create_shipment can return label_file_id null — call THIS tool with the boxtal_order_id (or the local shipment row id) to import it once it exists. Retries a few reads internally; returns label_not_ready when Boxtal has not served the LABEL yet (retry in a minute, never fabricate a file id). Also usable as the MIDDLE step of a one-approval sequence: create_shipment -> import_label_document with id = the @ref boxtal_order_id token -> tickets__reply with attachments = [the @ref label_file_id token]. A multi-parcel shipment has one LABEL per parcel: every one is imported, `label_file_id` is them all merged into one PDF in parcel order, and `label_file_ids` lists each parcel's own file (label_merge_failed when they could not be combined). Each call imports a fresh copy; reuse the returned id instead of re-calling.",
       "requiredScopes": ["boxtal:shipments:write"],
       "handler": "importLabelDocumentHandler",
       "referenceableOutputs": [
@@ -3539,7 +3633,7 @@
       }
     },
     "ready_set_packed": {
-      "description": "Tick ONE Ready-to-ship row as PACKED (boxed, taped, waiting for the carrier pickup), which FULFILS its Shopify order with the parcel's tracking number, or untick it. packed:true calls shopify__fulfillments_create for the linked order; the row is only marked packed when the fulfillment succeeds, otherwise `error` says why (no tracking number yet, Shopify refused) and the row stays unpacked. A parcel with no linked Shopify order is marked packed with a `notice` and nothing is fulfilled. packed:false on a fulfilled row CANCELS the Shopify fulfillment and requires confirm_unfulfill:true (without it the call returns error.code confirm_required and changes nothing). From an agent the Shopify calls are gated: the result is error.code pending_approval and the row is NOT packed until a human approves; report it as pending, never as fulfilled.",
+      "description": "Tick ONE Ready-to-ship row as PACKED (boxed, taped, waiting for the carrier pickup), which FULFILS its Shopify order with the parcel's tracking number, or untick it. When the label's number could not be read (error.code no_tracking), the number the person reads off the label goes in tracking_number. packed:true calls shopify__fulfillments_create for the linked order; the row is only marked packed when the fulfillment succeeds, otherwise `error` says why (no tracking number yet, Shopify refused) and the row stays unpacked. A parcel with no linked Shopify order is marked packed with a `notice` and nothing is fulfilled. packed:false on a fulfilled row CANCELS the Shopify fulfillment and requires confirm_unfulfill:true (without it the call returns error.code confirm_required and changes nothing). From an agent the Shopify calls are gated: the result is error.code pending_approval and the row is NOT packed until a human approves; report it as pending, never as fulfilled.",
       "searchKeywords": ["emballé", "emballer"],
       "requiredScopes": ["boxtal:shipments:write"],
       "handler": "readySetPackedHandler",
@@ -3559,6 +3653,10 @@
           "confirm_unfulfill": {
             "type": "boolean",
             "description": "Required with packed:false on a fulfilled row: the operator confirmed cancelling the Shopify fulfillment."
+          },
+          "tracking_number": {
+            "type": "string",
+            "description": "Optional, with packed:true on a row that has NO tracking number (error.code no_tracking): the tracking number the person read off the printed label. It must have the carrier's format (error.code invalid_tracking_number otherwise) and never replaces a number the row already has (error.code tracking_already_set). Only pass a number a person gave you; never guess one."
           }
         },
         "required": [
@@ -3569,6 +3667,10 @@
     }
   },
   "cross_app_calls": [
+    {
+      "target": "kernel:documents_print",
+      "reason": "generate the papers the organisation's document rules ask for on each order (customs declarations, certifications) as it enters To prepare and again once its label and tracking number exist, onto the order's own row"
+    },
     {
       "target": "kernel:document_rules_match",
       "reason": "mark on Ready to ship which document templates each parcel needs (the organisation's document rules, by SKU, destination and carrier), in one call for the whole list"
@@ -3651,7 +3753,7 @@
     },
     {
       "target": "shopify:variants_brief",
-      "reason": "look up the SKU of a Shopify variant a shipping profile is linked to (cached), to key its short code by SKU in the product attributes"
+      "reason": "look up the SKU of a Shopify variant a shipping profile is linked to (cached), to key its short code by SKU in the product attributes; and the SKU of an order line keyed by its variant id, so the order's papers print the SKU and match the document rules and product attributes by it"
     }
   ],
   "skills": {

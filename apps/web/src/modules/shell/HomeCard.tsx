@@ -35,30 +35,39 @@ const HomeCard: Component<HomeCardProps> = (props) => {
   const collapsed = () => isCardCollapsed(props.id)
   const isDragging = () => draggedId() === props.id
   const isDropTarget = () => dropTargetId() === props.id && draggedId() !== props.id
+  let sectionEl: HTMLElement | undefined
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: the card is a drop zone for the header drag; the drag source is the header.
     <section
+      ref={sectionEl}
       data-testid={`home-card-${props.id}`}
       class={cn(
         "mb-5 rounded-md border border-border-subtle bg-surface transition-opacity duration-150",
         isDragging() && "opacity-40",
         isDropTarget() && "ring-1 ring-accent",
       )}
-      draggable={true}
       onDragStart={(e) => {
-        // Gate initiation to the handle: draggable is on the whole card (so
-        // the browser drag ghost captures the full card visually) but a real
-        // drag must start from the header, never from a click inside the
-        // body. e.target stays the originally-dispatched element even after
-        // the event bubbles, so this also matches the dispatchEvent-on-handle
-        // pattern the DnD e2e helper (projects-dnd.scenario.test.ts) uses.
-        const target = e.target as HTMLElement
-        if (!target.closest(`[data-testid="${HANDLE_TESTID_PREFIX}${props.id}"]`)) {
+        // Only the header is draggable (below): a card body inside a draggable
+        // element gets `user-select: none` in Chromium and a text drag there
+        // turns into a card drag, so nobody could select or copy text out of
+        // a card. The gate also accepts a dragstart dispatched on the handle
+        // itself (the DnD e2e helper, projects-dnd.scenario.test.ts, does).
+        // A drag of selected text targets a Text node, which has no closest().
+        const target = e.target instanceof Element ? e.target : null
+        if (!target?.closest(`[data-home-card-drag="${props.id}"]`)) {
           e.preventDefault()
           return
         }
         e.dataTransfer?.setData("text/plain", props.id)
-        if (e.dataTransfer) e.dataTransfer.effectAllowed = "move"
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = "move"
+          // The ghost still shows the whole card, not only its header.
+          if (sectionEl && typeof e.dataTransfer.setDragImage === "function") {
+            const rect = sectionEl.getBoundingClientRect()
+            e.dataTransfer.setDragImage(sectionEl, e.clientX - rect.left, e.clientY - rect.top)
+          }
+        }
         beginCardDrag(props.id)
       }}
       onDragOver={(e) => {
@@ -80,7 +89,12 @@ const HomeCard: Component<HomeCardProps> = (props) => {
         endCardDrag()
       }}
     >
-      <header class="flex cursor-grab select-none items-center gap-2 px-4 py-2.5 active:cursor-grabbing">
+      <header
+        draggable={true}
+        data-home-card-drag={props.id}
+        data-testid={`home-card-header-${props.id}`}
+        class="flex cursor-grab select-none items-center gap-2 px-4 py-2.5 active:cursor-grabbing"
+      >
         <button
           type="button"
           data-testid={`home-card-collapse-${props.id}`}

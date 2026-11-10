@@ -1209,11 +1209,14 @@ describe("readyList: the documents the org's document rules ask for", () => {
     return { ctx, calls }
   }
 
-  it("asks the kernel ONCE for the whole list, with each row's buy-time facts", async () => {
+  it("asks the kernel ONCE per record type for the whole list, with each row's buy-time facts", async () => {
     const { ctx, calls } = rulesCtx()
     await readyList(ctx)
-    expect(calls).toHaveLength(1)
-    expect(calls[0]!.args.recordType).toBe("boxtal:shipment")
+    // The shipment's own rules, then the ORDER's (the papers generated at To prepare), keyed by
+    // the row's goods invoice.
+    expect(calls.map((c) => c.args.recordType)).toEqual(["boxtal:shipment", "boxtal:order"])
+    const orders = calls[1]!.args.records as Array<Record<string, unknown>>
+    expect(orders.find((r) => r.id === "inv-1")).toEqual({ id: "inv-1", skus: ["SKU-PLATE"], countryIso2: "US", carrier_family: "fedex" })
     const records = calls[0]!.args.records as Array<Record<string, unknown>>
     expect(records.find((r) => r.id === "p1")).toEqual({ id: "p1", skus: ["SKU-PLATE"], countryIso2: "US", carrier_family: "fedex" })
     // The old row sends no SKUs; its carrier family comes from its (unchanging) offer code.
@@ -1248,7 +1251,7 @@ describe("readyList: the documents the org's document rules ask for", () => {
   it("a failed kernel read still paints the list, with no template marks", async () => {
     const { ctx, calls } = rulesCtx({ fail: true })
     const { rows } = await readyList(ctx)
-    expect(calls).toHaveLength(1)
+    expect(calls).toHaveLength(2)
     expect(rows).toHaveLength(5)
     expect(rows.every((r) => r.attention === null && r.needed_template_ids.length === 0)).toBe(true)
   })

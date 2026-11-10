@@ -102,3 +102,35 @@ describe("matchRecords", () => {
     expect(out.map((m) => m.templateIds)).toEqual([[T1], []])
   })
 })
+
+describe("attribute conditions", () => {
+  const rec = (attributes: Record<string, string[]> | null) => ({
+    id: "r",
+    skus: ["A"],
+    countryIso2: "US",
+    attributes,
+  })
+  it("holds when any SKU holds a listed value; * is any non-empty value; keys AND", () => {
+    expect(
+      whenMatches({ attribute: { metal: ["Steel"] } }, rec({ metal: ["aluminium", "steel"] })),
+    ).toBe(true)
+    expect(whenMatches({ attribute: { metal: ["copper"] } }, rec({ metal: ["steel"] }))).toBe(false)
+    expect(whenMatches({ attribute: { metal: ["*"] } }, rec({ metal: [""] }))).toBe(false)
+    expect(whenMatches({ attribute: { metal: ["*"] } }, rec({ metal: ["x"] }))).toBe(true)
+    expect(whenMatches({ attribute: { metal: ["*"] } }, rec(null))).toBe(false)
+    expect(
+      whenMatches(
+        { countryIso2: ["US"], attribute: { metal: ["*"], kind: ["cable"] } },
+        rec({ metal: ["x"] }),
+      ),
+    ).toBe(false)
+    expect(
+      whenMatches({ countryIso2: ["CA"], attribute: { metal: ["*"] } }, rec({ metal: ["x"] })),
+    ).toBe(false)
+  })
+  it("never matches a malformed attribute condition", () => {
+    for (const attribute of [[], "metal", { metal: [] }, { metal: [1] }, {}]) {
+      expect(whenMatches({ attribute }, rec({ metal: ["x"] }))).toBe(false)
+    }
+  })
+})

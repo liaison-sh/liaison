@@ -20,9 +20,21 @@
 // same reporter (a send that could not be queued does not count). One reporter
 // has at most 10 drafts waiting and prepares at most 20 an hour, so a looping
 // agent cannot fill Redis.
+//
+// Files the agent attached (`attachments`, agent-files.ts) are kept as their
+// ids and the SHA-256 their bytes had when prepared; the payload lists them, so
+// the digest covers them. On the click they are read again, checked, and staged
+// for the outbox like the form's ticked files; one changed or deleted in between
+// is not sent. Files that could not go along are kept as `attachmentsNotSent`
+// so the card says so.
 
 import { randomUUID } from "node:crypto"
 import { redis } from "~/lib/redis"
+import {
+  type DraftFile,
+  type FileNotSent,
+  stageDraftFiles,
+} from "~/modules/bug-reports/agent-files"
 import type { BugReportForwardData } from "~/modules/liaison-team/bug-report-payload"
 import {
   BugReportForwardError,
@@ -31,6 +43,7 @@ import {
   type ForwardForm,
 } from "~/modules/liaison-team/bug-report-payload"
 import type { ForwardSnapshot } from "~/modules/liaison-team/snapshot"
+import { deleteStagedFiles } from "~/modules/liaison-team/team-only"
 
 const TTL_SECONDS = 24 * 3600
 /** Forwards one reporter may confirm per hour. */
@@ -45,6 +58,10 @@ interface StoredDraft {
   form: ForwardForm
   snapshot: ForwardSnapshot
   reporterEmail: string
+  /** The agent's attached files that go with it (ids local, never sent). */
+  files?: DraftFile[]
+  /** Attached files listed as not sent, with why. */
+  notSent?: FileNotSent[]
   /** The payload as built at creation. Absent on drafts stored before it was kept. */
   data?: BugReportForwardData
   digest: string
@@ -60,6 +77,8 @@ export interface AgentBugReportDraft {
   createdAt: string
   /** Set once the reporter sent it: the message id the Liaison team receives. */
   sentMessageId: string | null
+  /** Files the agent attached that do not go with the report, with why. */
+  attachmentsNotSent: FileNotSent[]
 }
 
 const draftKey = (orgId: string, userId: string, draftId: string) =>
@@ -106,6 +125,7 @@ function build(draft: StoredDraft) {
     includeEmail: true,
     reporterEmail: draft.reporterEmail,
     attachmentIndexes: [],
+    files: draft.files ?? [],
   })
 }
 
@@ -144,6 +164,7 @@ function view(draftId: string, draft: StoredDraft): AgentBugReportDraft {
     digest: payload.digest,
     createdAt: draft.createdAt,
     sentMessageId: draft.sentMessageId ?? null,
+    attachmentsNotSent: draft.notSent ?? [],
   }
 }
 
@@ -154,7 +175,13 @@ function view(draftId: string, draft: StoredDraft): AgentBugReportDraft {
 export async function createAgentDraft(
   orgId: string,
   userId: string,
-  args: { form: ForwardForm; snapshot: ForwardSnapshot; reporterEmail: string },
+  args: {
+    form: ForwardForm
+    snapshot: ForwardSnapshot
+    reporterEmail: string
+    files?: DraftFile[]
+    notSent?: FileNotSent[]
+  },
 ): Promise<AgentBugReportDraft> {
   if ((await listPendingAgentDrafts(orgId, userId)).length >= AGENT_DRAFTS_OPEN_MAX) {
     throw new AgentDraftError(
@@ -175,6 +202,8 @@ export async function createAgentDraft(
     form: args.form,
     snapshot: args.snapshot,
     reporterEmail: args.reporterEmail,
+    ...(args.files && args.files.length > 0 ? { files: args.files } : {}),
+    ...(args.notSent && args.notSent.length > 0 ? { notSent: args.notSent } : {}),
     digest: "",
     createdAt: new Date().toISOString(),
   }
@@ -286,14 +315,21 @@ export async function sendAgentDraft(
     )
   }
   let queued: Awaited<ReturnType<typeof enqueueBugReportForward>>
+  // The attached files, read again and staged like the form's (no user can read the copies).
+  const stageId = randomUUID()
   try {
-    queued = await enqueueBugReportForward(payload.data, [], new Date(), { teamOnly: { orgId } })
+    const files = await stageDraftFiles(orgId, stageId, stored.files ?? [])
+    queued = await enqueueBugReportForward(payload.data, files, new Date(), {
+      teamOnly: { orgId },
+    })
   } catch (err) {
+    await deleteStagedFiles(orgId, stageId)
     await redis.del(sentKey(orgId, userId, draftId))
     await releasePlace(forwardsKey(orgId, userId), place)
     throw err
   }
   if (queued.status === "unavailable") {
+    await deleteStagedFiles(orgId, stageId)
     await redis.del(sentKey(orgId, userId, draftId))
     await releasePlace(forwardsKey(orgId, userId), place)
     throw new BugReportForwardError(

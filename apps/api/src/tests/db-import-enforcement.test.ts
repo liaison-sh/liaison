@@ -1498,6 +1498,10 @@ describe("db import enforcement", () => {
     // Bug reports are open to every member, most of whom hold no tickets
     // scope: the ticket is created privileged, like the public tickets webhook.
     "modules/bug-reports/service.ts",
+    // The reporter's Send on a prepared bug report re-reads each attached file's storage key,
+    // bound to the org and the file id; only bytes matching the sha256 taken under the
+    // reporter's own RLS read when the report was prepared are forwarded.
+    "modules/bug-reports/agent-files.ts",
     // Only the operator purge (cli/files-purge-deleted-message-attachments) of
     // attachments whose message is already deleted; a user's own message
     // delete runs inside the caller's transaction, not through this handle.

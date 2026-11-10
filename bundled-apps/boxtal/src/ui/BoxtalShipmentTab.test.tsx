@@ -48,17 +48,17 @@ describe("BoxtalShipmentTab", () => {
 // NO onClick (dead buttons), and Print pack called window.open AFTER the async
 // print_pack — outside the user gesture, so the popup-blocker swallowed the tabs
 // ("almost nothing is clickable, can't retrieve invoices or label"). Pin the fix.
-describe("Ready-to-ship document retrieval (Queues.tsx)", () => {
-  const queuesSrc = readFileSync(join(import.meta.dir, "Queues.tsx"), "utf-8")
+describe("Ready-to-ship document retrieval (ReadyRows.tsx: the bought-label rows of the worklist)", () => {
+  const queuesSrc = readFileSync(join(import.meta.dir, "ReadyRows.tsx"), "utf-8")
 
   it("wires the Label and Invoice row buttons to live retrieval (no longer dead)", () => {
-    expect(queuesSrc).toContain('onClick={() => void retrieveDoc(row, "label")}')
-    expect(queuesSrc).toContain('onClick={() => void retrieveDoc(row, "invoice")}')
+    expect(queuesSrc).toContain('onClick={() => void r.retrieveDoc(props.row, "label")}')
+    expect(queuesSrc).toContain('onClick={() => void r.retrieveDoc(props.row, "invoice")}')
   })
 
   it("pre-opens the tab inside the click gesture so the popup-blocker keeps it", () => {
     // A synchronously-opened window, navigated to the blob URL after the fetch. The pair now lives
-    // in file-open.ts (shared with the prep grid's invoice and label buttons); Queues.tsx still has
+    // in file-open.ts (shared with the prep grid's invoice and label buttons); ReadyRows.tsx still has
     // to call openPreparingTab BEFORE it awaits anything, which is the half that actually breaks.
     const fileOpenSrc = readFileSync(join(import.meta.dir, "file-open.ts"), "utf-8")
     expect(fileOpenSrc).toContain('window.open("", "_blank")')
@@ -74,7 +74,7 @@ describe("Ready-to-ship document retrieval (Queues.tsx)", () => {
   it("asks before unticking in the app's own dialog: a framed screen has no window.confirm", () => {
     expect(queuesSrc).not.toContain("window.confirm")
     expect(queuesSrc).toContain('testid="boxtal-unpack-confirm"')
-    expect(queuesSrc).toContain("void togglePacked(ask.row, true)")
+    expect(queuesSrc).toContain("void props.ready.togglePacked(ask.row, true)")
   })
 
   it("the shipment tab opens its label through the host, never a dead in-app link", () => {

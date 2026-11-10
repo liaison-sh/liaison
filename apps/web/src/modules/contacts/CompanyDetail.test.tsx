@@ -539,6 +539,48 @@ describe("CompanyDetail states", () => {
     expect(screen.getAllByTestId(/^company-activity\.row-/)).toHaveLength(1)
   })
 
+  it("a source that ran out of time is asked once more on its own and its rows replace the notice", async () => {
+    mocks.routes[ACTIVITY] = {
+      items: [row("m1", "mail", "2026-11-06T09:00:00Z", "Can we go live before spring?")],
+      unavailable: [{ source: "invoicing", label: "Invoicing", reason: "timeout" }],
+      nextBefore: null,
+    }
+    render(() => <CompanyDetail entityId={CO} />)
+    const notice = await screen.findByTestId("company-activity.unavailable-invoicing")
+    expect(notice.textContent).toContain("Invoicing did not answer")
+    // The slow source answers on the second ask, with no click.
+    mocks.routes[ACTIVITY] = {
+      items: [row("i1", "invoicing", "2026-11-03T09:00:00Z", "F-2026-0418 issued")],
+      unavailable: [],
+      nextBefore: null,
+    }
+    await screen.findByTestId("company-activity.row-invoicing:i1", {}, { timeout: 3000 })
+    expect(screen.queryByTestId("company-activity.unavailable-invoicing")).toBeNull()
+    expect(screen.queryByTestId("company-activity.error")).toBeNull()
+    const asks = api.get.mock.calls.filter(([p]) => p === `${ACTIVITY}?limit=30&source=invoicing`)
+    expect(asks).toHaveLength(1)
+    expect(screen.getAllByTestId(/^company-activity\.row-/).map((el) => el.dataset.testid)).toEqual(
+      ["company-activity.row-mail:m1", "company-activity.row-invoicing:i1"],
+    )
+  })
+
+  it("a source still silent on the second ask keeps its notice and is not asked a third time", async () => {
+    mocks.routes[ACTIVITY] = {
+      items: [row("m1", "mail", "2026-11-06T09:00:00Z", "Hello")],
+      unavailable: [{ source: "invoicing", label: "Invoicing", reason: "timeout" }],
+      nextBefore: null,
+    }
+    render(() => <CompanyDetail entityId={CO} />)
+    await screen.findByTestId("company-activity.unavailable-invoicing")
+    const asked = () =>
+      api.get.mock.calls.filter(([p]) => p === `${ACTIVITY}?limit=30&source=invoicing`).length
+    await waitFor(() => expect(asked()).toBe(1), { timeout: 3000 })
+    await new Promise((r) => setTimeout(r, 1500))
+    expect(asked()).toBe(1)
+    expect(screen.getByTestId("company-activity.unavailable-invoicing")).toBeTruthy()
+    expect(screen.getByTestId("company-activity.row-mail:m1")).toBeTruthy()
+  })
+
   it("the timeline says it shows the 50 most recently active people when more are linked", async () => {
     mocks.routes[ACTIVITY] = {
       items: [row("m1", "mail", "2026-11-06T09:00:00Z", "Hello")],

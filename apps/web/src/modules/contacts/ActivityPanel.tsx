@@ -6,8 +6,11 @@
 // answer is one notice row with Retry (asking that source alone), and the rest
 // shows. The filter menu offers only the sources that returned rows. While the
 // route answers there is a static "Reading your apps" line, never a counter.
+// A source that only ran out of time is asked once more on its own, quietly,
+// a moment after the timeline shows: its rows replace the notice when they come,
+// and if it still does not answer the notice simply stays.
 import { ChevronDown, CircleX, ListFilter } from "lucide-solid"
-import { type Component, createMemo, createSignal, For, onMount, Show } from "solid-js"
+import { type Component, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { openEntity } from "~/modules/shell/entity-opener"
@@ -41,6 +44,8 @@ export interface ActivityPage {
 /** The people each source is asked about (the route's cap). */
 export const ACTIVITY_PEOPLE_CAP = 50
 const PAGE = 30
+/** How long after the timeline shows a source that ran out of time is asked again. */
+export const ACTIVITY_REASK_MS = 1000
 
 interface ActivityPanelProps {
   /** The route, e.g. `/contacts/companies/<id>/activity`. */
@@ -112,6 +117,8 @@ export const ActivityPanel: Component<ActivityPanelProps> = (props) => {
   const [filter, setFilter] = createSignal<string | null>(null)
   const [filterMenuOpen, setFilterMenuOpen] = createSignal(false)
   let seq = 0
+  let reaskTimer: ReturnType<typeof setTimeout> | undefined
+  onCleanup(() => clearTimeout(reaskTimer))
 
   const tid = (part?: string) => (part ? `${props.testId}.${part}` : props.testId)
   const url = (params: Record<string, string>) =>
@@ -132,6 +139,7 @@ export const ActivityPanel: Component<ActivityPanelProps> = (props) => {
       setTruncatedContacts(page?.truncatedContacts ?? 0)
       setTruncatedDeals(page?.truncatedDeals ?? 0)
       setStatus("ready")
+      reaskTimedOut(mine)
     } catch {
       if (mine === seq) setStatus("error")
     }
@@ -159,11 +167,36 @@ export const ActivityPanel: Component<ActivityPanelProps> = (props) => {
     }
   }
 
+  /**
+   * Once per load, a moment after it shows: ask each source that ran out of time again, on its
+   * own and quietly (no busy button, no error if it fails again).
+   */
+  function reaskTimedOut(load: number): void {
+    clearTimeout(reaskTimer)
+    const late = unavailable()
+      .filter((u) => u.reason === "timeout")
+      .map((u) => u.source)
+    if (late.length === 0) return
+    reaskTimer = setTimeout(() => {
+      if (load !== seq) return
+      for (const source of late) {
+        if (retrying() === source) continue
+        if (!unavailable().some((u) => u.source === source)) continue
+        void retry(source, { quiet: true, load })
+      }
+    }, ACTIVITY_REASK_MS)
+  }
+
   /** Ask one source again; its rows join the ones shown, down to the oldest already shown. */
-  async function retry(source: string): Promise<void> {
-    setRetrying(source)
+  async function retry(
+    source: string,
+    opts: { quiet?: boolean; load?: number } = {},
+  ): Promise<void> {
+    if (!opts.quiet) setRetrying(source)
     try {
       const page = await api.get<ActivityPage>(url({ source }))
+      // A reload since the quiet ask started owns the timeline now.
+      if (opts.load !== undefined && opts.load !== seq) return
       const failed = (page?.unavailable ?? []).find((u) => u.source === source)
       if (failed) {
         setUnavailable(unavailable().map((u) => (u.source === source ? failed : u)))
@@ -180,7 +213,7 @@ export const ActivityPanel: Component<ActivityPanelProps> = (props) => {
     } catch {
       // Still down: the notice stays as it was.
     } finally {
-      setRetrying(null)
+      if (!opts.quiet) setRetrying(null)
     }
   }
 

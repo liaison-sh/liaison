@@ -19,8 +19,9 @@ Support panel only for readers of tickets -> apps/web/src/modules/tickets/Compan
 Work panel lists projects whose client is the company and their open tasks -> apps/web/src/modules/projects/CompanyWorkPanel.tsx:2-6
 Timeline and Discussion, agent reads the page first -> packages/shared/src/i18n/locales/en/contacts.json:234-236
 Phone tabs Overview, Timeline, Discussion -> apps/web/src/modules/contacts/CompanyDetail.tsx:435-460
-Timeline sources Mail, Tickets, Invoicing, Calendar, Deals; filter lists only sources with rows; All activity -> packages/shared/src/i18n/locales/en/contacts.json:272-291 ; apps/web/src/modules/contacts/ActivityPanel.tsx:177-181
+Timeline sources Mail, Tickets, Invoicing, Calendar, Deals; filter lists only sources with rows; All activity -> packages/shared/src/i18n/locales/en/contacts.json:272-291 ; apps/web/src/modules/contacts/ActivityPanel.tsx:229-230
 A source that did not answer is named; truncated people and deals; Show older activity -> packages/shared/src/i18n/locales/en/contacts.json:279-282
+A source that ran out of time is asked once more on its own a moment later; its rows replace the notice; Retry asks by hand -> apps/web/src/modules/contacts/ActivityPanel.tsx:170-188
 company_timeline tool -> docs/reference/agent-tools.md:company_timeline
 Add person -> packages/shared/src/i18n/locales/en/contacts.json:205-209 ; apps/web/src/modules/contacts/CompanyDetail.tsx:956
 Share -> apps/web/src/modules/contacts/CompanyShareDialog.tsx:1-82

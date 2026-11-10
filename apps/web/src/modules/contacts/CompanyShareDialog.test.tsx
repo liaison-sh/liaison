@@ -47,6 +47,30 @@ describe("CompanyShareDialog", () => {
     expect(view.getAttribute("aria-pressed") ?? view.getAttribute("aria-checked")).not.toBe("true")
   })
 
+  it("shows the company's real general access, not Private, once the sharing read answers", async () => {
+    renderDialog(
+      makeApi(async () => ({
+        orgAccess: "viewer",
+        canManage: false,
+        users: [],
+        roles: [],
+        dimensions: [],
+      })),
+    )
+
+    expect(await screen.findByTestId("company-share-read-only")).toBeInTheDocument()
+    expect(screen.queryByTestId("company-share-load-error")).toBeNull()
+    expect(screen.getByTestId("company-share-access-viewer").getAttribute("aria-pressed")).toBe(
+      "true",
+    )
+    expect(screen.getByTestId("company-share-access-none").getAttribute("aria-pressed")).toBe(
+      "false",
+    )
+    expect(screen.getByTestId("company-share-access-editor").getAttribute("aria-pressed")).toBe(
+      "false",
+    )
+  })
+
   it("a sharing read that fails says so and never shows an editable form", async () => {
     renderDialog(
       makeApi(async () => {

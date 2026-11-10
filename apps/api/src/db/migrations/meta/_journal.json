@@ -2087,6 +2087,13 @@
       "when": 1900003380000,
       "tag": "0296_suppressions_read_for_conversation_readers",
       "breakpoints": true
+    },
+    {
+      "idx": 298,
+      "version": "7",
+      "when": 1900003381000,
+      "tag": "0297_definer_executes_has_scope",
+      "breakpoints": true
     }
   ]
 }

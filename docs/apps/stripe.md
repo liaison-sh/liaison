@@ -74,6 +74,15 @@ Stripe tells Liaison about changes through a webhook. In **Developers → Webhoo
 - **Card numbers.** A card number written in a customer's description or name, an invoice memo or line, a payment failure message or a dispute reason is hidden before anything is stored, and the connection's admins get one item on Home saying so.
 - **Live and test.** An event of the other mode (a live event on a test connection) is acknowledged and changes nothing.
 
+## What reaches Invoicing
+
+When Invoicing is on and Liaison issues your card subscriptions' invoices (invoicing's **Who issues what**), the Stripe app tells it about money, from what it read from Stripe:
+
+- **A finalized or paid invoice** carries each line's price before tax, its discount, its VAT rate and the tax Stripe charged, and the customer's name, email, country, address and VAT number as the mirror holds them (card numbers hidden).
+- **A refund.** When a payment is refunded, Invoicing gets every refund of that payment, each by its own id and amount, never the payment's refunded total. A credit note follows each refund once Stripe says it succeeded, once: two partial refunds make two credit notes that add up to what was refunded. A refund still pending waits; one that fails or is canceled makes no credit note. A refund approved in Liaison is announced as soon as Stripe answers, without waiting for Stripe's event.
+- **A payment no invoice explains** (a charge with no Stripe invoice behind it) goes to Invoicing's queue of unmatched payments, once.
+- **Missed events.** Invoicing's safety job asks the Stripe app every 10 minutes for Stripe invoices of the last 35 days with no Liaison invoice, invoices paid in the last 3 days, and succeeded refunds of the last 35 days with no credit note. A refund made while Invoicing was off gets its credit note this way once Invoicing is on again.
+
 ## Keep the mirror current
 
 Besides the webhook, Liaison reads Stripe on its own schedule.

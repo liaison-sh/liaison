@@ -751,3 +751,37 @@ export const onStripeConnectionStateChanged = (
   event: Parameters<typeof onStripeConnectionChanged>[1],
   ctx: Parameters<typeof onStripeConnectionChanged>[0],
 ) => onStripeConnectionChanged(ctx, event)
+
+// --- Card payments on Stripe, mode A: invoices, payments, refunds, unmatched payments ---
+// Event subscribers keep the kernel's `(event, ctx)` shape; tools are flipped like the others.
+import { onStripeInvoiceFinalized as stripeInvoiceFinalized, type StripeCtx } from "./handlers/stripe-invoice-finalized"
+import { onStripeInvoiceClosed, onStripeInvoicePaid as stripeInvoicePaid, onStripeInvoicePaymentFailed } from "./handlers/stripe-invoice-paid"
+import { onStripeRefundCreated as stripeRefundCreated } from "./handlers/stripe-refund-created"
+import {
+  invoiceFromStripePayment,
+  invoiceFromStripePaymentPreflight,
+  onStripePaymentUnmatched as stripePaymentUnmatched,
+  paymentLinkToInvoice,
+  paymentLinkToInvoicePreflight,
+} from "./handlers/stripe-payment-unmatched"
+export { reconcileStripePaymentsJobHandler } from "./handlers/reconcile-stripe-payments"
+
+export const onStripeInvoiceFinalizedEvent = (event: unknown, ctx: StripeCtx) => stripeInvoiceFinalized(event, ctx)
+export const onStripeInvoicePaidEvent = (event: unknown, ctx: StripeCtx) => stripeInvoicePaid(event, ctx)
+export const onStripeInvoicePaymentFailedEvent = (event: unknown, ctx: StripeCtx) => onStripeInvoicePaymentFailed(event, ctx)
+export const onStripeInvoiceVoidedEvent = (event: unknown, ctx: StripeCtx) => onStripeInvoiceClosed(event, ctx, "voided")
+export const onStripeInvoiceUncollectibleEvent = (event: unknown, ctx: StripeCtx) => onStripeInvoiceClosed(event, ctx, "uncollectible")
+export const onStripeRefundCreatedEvent = (event: unknown, ctx: StripeCtx) => stripeRefundCreated(event, ctx)
+export const onStripePaymentUnmatchedEvent = (event: unknown, ctx: StripeCtx) => stripePaymentUnmatched(event, ctx)
+export const invoiceFromStripePaymentHandler = (params: Parameters<typeof invoiceFromStripePayment>[1], ctx: StripeCtx) =>
+  invoiceFromStripePayment(ctx, params ?? {})
+export const invoiceFromStripePaymentPreflightHandler = async (params: Parameters<typeof invoiceFromStripePayment>[1], ctx: StripeCtx) => {
+  const r = await invoiceFromStripePaymentPreflight(ctx, params ?? {})
+  return "status" in r ? { error: r.error } : r
+}
+export const paymentLinkToInvoiceHandler = (params: Parameters<typeof paymentLinkToInvoice>[1], ctx: StripeCtx) =>
+  paymentLinkToInvoice(ctx, params)
+export const paymentLinkToInvoicePreflightHandler = async (params: Parameters<typeof paymentLinkToInvoice>[1], ctx: StripeCtx) => {
+  const r = await paymentLinkToInvoicePreflight(ctx, params)
+  return "status" in r ? { error: r.error } : r
+}

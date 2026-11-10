@@ -502,6 +502,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `hs_codes_lookup` | Look up HS-code library entries by code prefix or description. |  | `invoicing:documents:read` |
 | `hs_codes_unassign` | Clear a product's customs overlay, restoring the Shopify value. |  | `invoicing:documents:write` |
 | `invoice_create_and_issue` | Create a draft invoice and issue it in one call. | yes | `invoicing:documents:write` |
+| `invoice_from_stripe_payment` | Issue the Liaison invoice of a Stripe payment no invoice explains (chargeId, with the VAT rate its amount includes), or of a Stripe invoice that waited for a person (stripeInvoiceId). | yes | `invoicing:documents:write` |
 | `invoice_issue` | Issue an invoice from a draft. | yes | `invoicing:documents:write` |
 | `issuer_emails_confirm` | Record a person's statement that Stripe's own emails to customers (finalized invoices, credit notes, receipts) are off. |  | `invoicing:settings:write` |
 | `issuer_stream_get` | Who issues what for each issuer profile: card subscriptions on Stripe (Liaison, Stripe or undecided), recurring by transfer and one-off invoices (always Liaison), and whether a person confirmed Stripe's own customer emails are off. |  | `invoicing:settings:read` |
@@ -509,6 +510,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `legal_originals_verify` | Check that the stored legal originals (the exact file of each issued invoice and credit note's first render, the Factur-X for an e-invoice, and imported legacy originals) are intact: recomputes each file's fingerprint and compares it with the one recorded when it was fixed. |  | `invoicing:documents:read` |
 | `order_reissue_apply` | Reissue an invoice after a Shopify order edit changed the LINE SET or the AMOUNTS (an order edit that only touches address, notes, tags, or fulfilment does NOT call this). | yes | `invoicing:documents:write` |
 | `orders_invoiceability_check` | Would the order-created auto-flow invoice this Shopify order, or park it (no invoice)? |  | `invoicing:documents:read` |
+| `payment_link_to_invoice` | Link a Stripe payment no invoice explains to an invoice already issued, once. | yes | `invoicing:documents:write` |
 | `pending_approvals_list` | List the caller's pending approvals originating from invoicing-app tools (credit notes, refunds, dealer invoices), each with its summary, requester, and amount. |  | `invoicing:documents:read` |
 | `po_create_and_issue` | Create a draft purchase order and issue it in one call. |  | `invoicing:documents:write` |
 | `po_issue` | Issue a purchase order from a draft. |  | `invoicing:documents:write` |
@@ -832,7 +834,9 @@ Stripe: customers, subscriptions, invoices and payments from your Stripe account
 | `invoices_search` | Stripe invoices from the mirror by customer or status, with number, amounts due and paid, next retry, and the Liaison document it became. |  | `stripe:invoices:read` |
 | `mrr_query` | Stripe MRR from the mirror, per currency: now, past due, plan split, movements since the month start. |  | `stripe:subscriptions:read` |
 | `payments_search` | Stripe charges from the mirror by customer, invoice or status, card as brand and last 4; unmatched: charges no Stripe invoice explains. |  | `stripe:payments:read` |
+| `reconcile_candidates` | Stripe invoices with no Liaison document, recently paid invoices, and succeeded refunds with no credit note, for invoicing's safety job. |  | `stripe:internal` |
 | `refunds_create` | Refund a Stripe charge, in full or in part (amountMinor in cents). | yes | `stripe:refunds:write` |
+| `refunds_for_charge` | Every refund of one Stripe charge, by id, read from Stripe, with the charge's invoice. |  | `stripe:internal` |
 | `settings_load` | The Stripe settings page's load: the connection state and the key's permissions from the last check. |  | `stripe:admin:connection` |
 | `subscription_cancel` | Cancel a Stripe subscription, at the end of its period unless atPeriodEnd is false. | yes | `stripe:subscriptions:write` |
 | `subscription_cancel_effect` | What cancelling a subscription changes: MRR, invoices and the company's open deals, for its approval card. |  | `stripe:subscriptions:read` |

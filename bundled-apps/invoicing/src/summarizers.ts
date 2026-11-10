@@ -1152,3 +1152,23 @@ export function summarizeIssuerEmailsConfirm(): Promise<ApprovalSummaryShape> {
     lines: ["In Stripe, Settings, Billing: finalized invoices, credit notes and payment receipts should not email customers."],
   })
 }
+
+export function summarizeInvoiceFromStripePayment(params: Record<string, unknown>): Promise<ApprovalSummaryShape> {
+  const id = String(params.stripeInvoiceId ?? params.chargeId ?? "")
+  const rate = typeof params.vatRateBp === "number" ? `${params.vatRateBp / 100}% VAT included in the amount` : null
+  return done({
+    kind: "invoice_from_stripe_payment",
+    title: `Create the invoice of Stripe ${id} now`,
+    subtitle: "It takes the next number of your invoices",
+    lines: [...(rate ? [rate] : []), "One invoice per Stripe payment: a second one is refused."],
+  })
+}
+
+export function summarizePaymentLinkToInvoice(params: Record<string, unknown>): Promise<ApprovalSummaryShape> {
+  return done({
+    kind: "payment_link_to_invoice",
+    title: `Link Stripe payment ${String(params.chargeId ?? "")} to an invoice`,
+    subtitle: "No number is taken and nothing changes in Stripe",
+    lines: [`Invoice ${String(params.documentId ?? "")}`],
+  })
+}

@@ -1,6 +1,6 @@
 {
   "name": "stripe",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "kind": "app",
   "iconName": "credit-card",
   "description": "Stripe connector: a read mirror of customers, subscriptions, invoices, payments, refunds and disputes, kept current by a signed webhook.",
@@ -712,6 +712,45 @@
         ]
       }
     },
+    "refunds_for_charge": {
+      "readOnly": true,
+      "agentVisible": false,
+      "description": "Every refund of one Stripe charge, by id, read from Stripe, with the charge's invoice.",
+      "requiredScopes": [
+        "stripe:internal"
+      ],
+      "trustBoundary": "user",
+      "handler": "refundsForCharge",
+      "params": {
+        "type": "object",
+        "properties": {
+          "chargeId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chargeId"
+        ],
+        "additionalProperties": false
+      },
+      "timeoutMs": 15000
+    },
+    "reconcile_candidates": {
+      "readOnly": true,
+      "agentVisible": false,
+      "description": "Stripe invoices with no Liaison document, recently paid invoices, and succeeded refunds with no credit note, for invoicing's safety job.",
+      "requiredScopes": [
+        "stripe:internal"
+      ],
+      "trustBoundary": "user",
+      "handler": "reconcileCandidates",
+      "params": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "timeoutMs": 60000
+    },
     "invoice_send_state": {
       "readOnly": true,
       "agentVisible": false,
@@ -1088,6 +1127,8 @@
       "invoice:voided",
       "invoice:uncollectible",
       "refund:created",
+      "refund:settled",
+      "refund:failed",
       "dispute:opened",
       "dispute:closed",
       "payment:unmatched",

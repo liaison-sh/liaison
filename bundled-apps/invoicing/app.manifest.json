@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.20.73",
+  "version": "0.20.75",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -2790,6 +2790,57 @@
       "timeoutMs": 10000,
       "readsFromTable": "app_invoicing.stripe_streams",
       "params": { "type": "object", "properties": {}, "additionalProperties": false }
+    },
+    "invoice_from_stripe_payment": {
+      "description": "Issue the Liaison invoice of a Stripe payment no invoice explains (chargeId, with the VAT rate its amount includes), or of a Stripe invoice that waited for a person (stripeInvoiceId). Takes the next number. Always decided by a person.",
+      "searchKeywords": ["facturer", "paiement", "orphan"],
+      "deferLoading": true,
+      "requiredScopes": ["invoicing:documents:write"],
+      "handler": "invoiceFromStripePaymentHandler",
+      "preflight": "invoiceFromStripePaymentPreflightHandler",
+      "timeoutMs": 60000,
+      "gated": true,
+      "noAutoApprove": true,
+      "approvalImpact": "external",
+      "approvalDedupeKeyParam": "chargeId",
+      "summarizer": "summarizeInvoiceFromStripePayment",
+      "writesToTable": "app_invoicing.documents",
+      "params": {
+        "type": "object",
+        "properties": {
+          "chargeId": { "type": "string", "description": "Stripe payment, ch_..." },
+          "stripeInvoiceId": { "type": "string", "description": "Stripe invoice, in_..." },
+          "vatRateBp": { "type": "integer", "minimum": 0, "maximum": 10000, "description": "VAT rate in the amount, 2000 = 20%" },
+          "description": { "type": "string", "maxLength": 200 }
+        },
+        "additionalProperties": false
+      },
+      "approvalCard": { "summary": "Create this invoice now? It takes the next number." }
+    },
+    "payment_link_to_invoice": {
+      "description": "Link a Stripe payment no invoice explains to an invoice already issued, once. Takes no number and changes nothing in Stripe. Always decided by a person.",
+      "searchKeywords": ["rapprocher", "lettrer", "reconcile"],
+      "deferLoading": true,
+      "requiredScopes": ["invoicing:documents:write"],
+      "handler": "paymentLinkToInvoiceHandler",
+      "preflight": "paymentLinkToInvoicePreflightHandler",
+      "timeoutMs": 30000,
+      "gated": true,
+      "noAutoApprove": true,
+      "approvalImpact": "internal",
+      "approvalDedupeKeyParam": "chargeId",
+      "summarizer": "summarizePaymentLinkToInvoice",
+      "writesToTable": "app_invoicing.documents",
+      "params": {
+        "type": "object",
+        "properties": {
+          "chargeId": { "type": "string", "description": "Stripe payment, ch_..." },
+          "documentId": { "type": "string", "description": "The issued invoice's id" }
+        },
+        "required": ["chargeId", "documentId"],
+        "additionalProperties": false
+      },
+      "approvalCard": { "summary": "Link this Stripe payment to an invoice" }
     },
     "recurring_list": {
       "description": "List recurring schedules with their next issue day and draft day. Filter by status; page with cursor.",
@@ -6045,7 +6096,16 @@
       "shopify/draft_order:updated": "onShopifyDraftOrderUpdated",
       "shopify/draft_order:completed": "onShopifyDraftOrderCompleted",
       "shopify/draft_order:deleted": "onShopifyDraftOrderDeleted",
-      "stripe/connection:state_changed": "onStripeConnectionStateChanged"
+      "stripe/connection:state_changed": "onStripeConnectionStateChanged",
+      "stripe/invoice:finalized": "onStripeInvoiceFinalizedEvent",
+      "stripe/invoice:paid": "onStripeInvoicePaidEvent",
+      "stripe/invoice:payment_failed": "onStripeInvoicePaymentFailedEvent",
+      "stripe/invoice:voided": "onStripeInvoiceVoidedEvent",
+      "stripe/invoice:uncollectible": "onStripeInvoiceUncollectibleEvent",
+      "stripe/refund:created": "onStripeRefundCreatedEvent",
+      "stripe/refund:settled": "onStripeRefundCreatedEvent",
+      "stripe/refund:failed": "onStripeRefundCreatedEvent",
+      "stripe/payment:unmatched": "onStripePaymentUnmatchedEvent"
     },
     "emits": [
       "recurring_run:drafted",
@@ -6082,7 +6142,16 @@
       "deferred:credit_note_refused",
       "einvoicing:identity_missing",
       "einvoicing:facturx_failed",
-      "stripe_stream:switched"
+      "stripe_stream:switched",
+      "stripe_invoice:issuer_undecided",
+      "stripe_invoice:undecided_listed",
+      "stripe_invoice:needs_person",
+      "stripe_invoice:payment_failed",
+      "stripe_invoice:voided",
+      "stripe_invoice:uncollectible",
+      "stripe_refund:failed",
+      "stripe_payment:unmatched",
+      "deferred:stripe_tax_review"
     ]
   },
   "export": {
@@ -6112,6 +6181,15 @@
   "attention": {
     "groupLabel": { "label": "Invoicing", "labelKey": "kernel.homeGroupInvoicing" },
     "translations": [
+      {"event": "stripe_invoice:issuer_undecided", "kind": "invoicing:stripe_invoice.issuer_undecided", "urgency": 60, "summary": "Stripe invoice {{data.stripe_invoice_id}} ({{data.total}}) is not invoiced: nobody has decided who issues card payments' invoices. Decide in the issuer settings.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
+      {"event": "stripe_invoice:undecided_listed", "kind": "invoicing:stripe_invoice.undecided_listed", "urgency": 60, "summary": "{{data.count}} Stripe invoices finalized before the decision are not invoiced ({{data.invoices}}). Issue them now one by one, or say Stripe sent them.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
+      {"event": "stripe_invoice:needs_person", "kind": "invoicing:stripe_invoice.needs_person", "urgency": 60, "summary": "Stripe invoice {{data.stripe_invoice_id}} is not invoiced: {{data.reason}}.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
+      {"event": "stripe_invoice:payment_failed", "kind": "invoicing:stripe_invoice.payment_failed", "urgency": 50, "summary": "Card payment of {{data.number}} failed and {{data.reason}}. The invoice is unchanged.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
+      {"event": "stripe_invoice:voided", "kind": "invoicing:stripe_invoice.voided", "urgency": 40, "summary": "Stripe invoice {{data.number}} was voided in Stripe. No Liaison document changed.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
+      {"event": "stripe_invoice:uncollectible", "kind": "invoicing:stripe_invoice.uncollectible", "urgency": 40, "summary": "Stripe invoice {{data.number}} was marked uncollectible in Stripe. No Liaison document changed.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
+      {"event": "stripe_refund:failed", "kind": "invoicing:stripe_refund.refund_failed", "urgency": 60, "summary": "Stripe refund {{data.refund_id}} on {{data.charge_id}} failed. Credit note: {{data.credit_note}}.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
+      {"event": "stripe_payment:unmatched", "kind": "invoicing:stripe_payment.unmatched", "urgency": 60, "summary": "Stripe payment {{data.charge_id}} of {{data.amount}} from {{data.customer}} has no invoice. Create the invoice or link it to one.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
+      {"event": "deferred:stripe_tax_review", "kind": "invoicing:stripe_invoice.tax_review", "urgency": 60, "summary": "Stripe invoice {{data.stripe_invoice_id}} is not invoiced: its tax needs a decision ({{data.reason}}).", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "stripe_stream:switched", "kind": "invoicing:stripe_stream.issuer_switched", "urgency": 60, "summary": "Card subscriptions are now invoiced by {{data.issuer}}. {{data.unpaid}} invoices issued before the change are unpaid: they keep their issuer and numbers. Check the change with your accountant.", "recipients": {"kind": "scope_holders", "scope": "invoicing:settings:write"}},
       {"event": "recurring_run:partial", "kind": "invoicing:recurring_run.partial", "urgency": 70, "summary": "Draft {{data.document_id}} of the month-end run was not issued ({{data.code}}): {{data.reason}} It stays a draft and used no number.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "recurring_run:due", "kind": "invoicing:recurring_run.due", "urgency": 85, "summary": "The month-end run for {{data.period}} waits for approval. {{data.when}}: invoices must issue by {{data.latest_issue_on}}.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
@@ -6447,6 +6525,13 @@
       "runsFor": {"rows": {"entity": "documents", "where": {"status": "issued", "type": "invoice", "due_at": {"not": null}}}},
       "schedule": "0 6 * * *"
     },
+    "reconcile-stripe-payments": {
+      "handler": "reconcileStripePaymentsJobHandler",
+      "atomic": true,
+      "runsFor": {"rows": {"entity": "stripe_streams", "where": {"stripe_connected": true}}},
+      "schedule": "*/10 * * * *",
+      "timeoutMs": 120000
+    },
     "reconcile-shopify-payments": {
       "handler": "reconcileShopifyPaymentsJobHandler",
       "atomic": true,
@@ -6525,6 +6610,18 @@
       "reason": "a person's billing address on a month-end row is saved on the schedule's contact too"
     },
     {
+      "target": "stripe:invoice_document_link",
+      "reason": "record on the Stripe invoice which Liaison invoice it became"
+    },
+    {
+      "target": "stripe:refunds_for_charge",
+      "reason": "a credit note follows each refund of a charge by its own id, never the charge's cumulative amount"
+    },
+    {
+      "target": "stripe:reconcile_candidates",
+      "reason": "the safety job finds finalized invoices and succeeded refunds whose event never reached invoicing"
+    },
+    {
       "target": "stripe:billing_status_for_counterparty",
       "reason": "the issuer guard: a customer a live Stripe subscription bills is not invoiced again by hand, and ending a schedule says when that subscription keeps billing"
     },
@@ -6560,7 +6657,8 @@
   "dependencies": {
     "optional": [
       "shopify",
-      "boxtal"
+      "boxtal",
+      "stripe"
     ]
   },
   "pdf_templates": [

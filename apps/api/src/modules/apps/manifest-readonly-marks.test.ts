@@ -278,6 +278,8 @@ const READ_ONLY: Record<string, string[]> = {
     "invoice_send_state", // a live read of one invoice upstream, at the moment a reminder would leave
     "card_update_link", // a hosted page's link, read from config, the mirror or one invoice; never stored
     "subscription_cancel_effect", // the cancel card's MRR and invoice lines, plus the projects app's own deal search
+    "refunds_for_charge", // a charge's refunds listed live upstream, by id; nothing stored
+    "reconcile_candidates", // mirror rows an event may have missed, missing invoices re-read upstream; nothing stored
   ],
   pennylane: [
     "supplier_invoices_list",

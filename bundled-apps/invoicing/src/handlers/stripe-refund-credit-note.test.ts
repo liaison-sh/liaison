@@ -1,0 +1,141 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+//
+// A Stripe refund becomes a Liaison credit note in mode A: once per refund id, only once Stripe
+// confirms it, split over the invoice's VAT rates. Mode B makes none.
+import { describe, expect, test } from "bun:test"
+import { reconcileStripePayments } from "./reconcile-stripe-payments"
+import { onStripeInvoiceFinalized } from "./stripe-invoice-finalized"
+import { stripeTaxMismatches } from "./stripe-invoice-finalized"
+import { onStripeRefundCreated } from "./stripe-refund-created"
+import { creditNotes, finalized, parks, stripeCtx, stripeDb } from "./stripe-money.testkit"
+
+type Row = Record<string, unknown>
+
+async function issued(issuer: "liaison" | "stripe" = "liaison", payload = finalized({ charge_id: "ch_1" })) {
+  const db = stripeDb(issuer)
+  const ctx = stripeCtx(db)
+  await onStripeInvoiceFinalized(payload, ctx)
+  return { db, ctx }
+}
+
+const refund = (id: string, amount: string, status: string) => ({ id, amount_minor: amount, status })
+const net = (db: ReturnType<typeof stripeDb>, cn: Row) =>
+  db.__all("document_lines").filter((l) => l.document_id === cn.id)
+
+describe("Stripe refunds and credit notes", () => {
+  test("a credit note issues only after Stripe confirms, once, whichever arrives first", async () => {
+    const { db, ctx } = await issued()
+    await onStripeRefundCreated({ charge_id: "ch_1", invoice_id: "in_1", refunds: [refund("re_1", "6000", "pending")] }, ctx)
+    expect(creditNotes(db)).toHaveLength(0)
+    // The tool's result and charge.refunded both report it succeeded, then a replay.
+    for (let i = 0; i < 3; i++) {
+      await onStripeRefundCreated({ charge_id: "ch_1", invoice_id: "in_1", refunds: [refund("re_1", "6000", "succeeded")] }, ctx)
+    }
+    const cns = creditNotes(db)
+    expect(cns).toHaveLength(1)
+    expect((cns[0] as Row).external_ref).toBe("stripe:re_1")
+    expect(String((cns[0] as Row).number)).toMatch(/^CN-/)
+  })
+
+  test("€89.40 at 20% splits into €74.50 and €14.90, a two-rate refund's parts sum exactly, and a refused e-invoice gate parks it with its arguments", async () => {
+    const { db, ctx } = await issued()
+    await onStripeRefundCreated({ charge_id: "ch_1", invoice_id: "in_1", refunds: [refund("re_2", "8940", "succeeded")] }, ctx)
+    const cn = creditNotes(db)[0] as Row
+    const lines = net(db, cn)
+    expect(lines.map((l) => Number(l.unit_price_minor))).toEqual([-7450])
+    expect(String(cn.grand_total_minor)).toBe("-8940")
+    expect(String(cn.tax_total_minor)).toBe("-1490")
+
+    // Two rates, 20% and 5.5%: the gross is shared by each rate's share (largest remainder); a
+    // minor unit the per-rate split leaves short goes on one 0-tax "Rounding adjustment" line, so
+    // the credit note's total is exactly the refund.
+    const two = finalized({
+      stripe_invoice_id: "in_2",
+      total_minor: "22550",
+      lines: [
+        { description: "Plan", quantity: 1, unit_amount_excl_minor: "10000", tax_rate_bp: 2000, tax_minor: "2000" },
+        { description: "Books", quantity: 1, unit_amount_excl_minor: "10000", tax_rate_bp: 550, tax_minor: "550" },
+      ],
+    })
+    await onStripeInvoiceFinalized(two, ctx)
+    await onStripeRefundCreated({ charge_id: "ch_2", invoice_id: "in_2", refunds: [refund("re_3", "10001", "succeeded")] }, ctx)
+    const cn2 = creditNotes(db).find((d) => d.external_ref === "stripe:re_3") as Row
+    expect(String(cn2.grand_total_minor)).toBe("-10001")
+
+    // A refusal parks the credit note with its arguments; nothing is lost.
+    const parked = stripeDb()
+    const pctx = stripeCtx(parked)
+    await onStripeInvoiceFinalized(finalized({ charge_id: "ch_1" }), pctx)
+    await parked.update("documents", String((parked.__all("documents")[0] as Row).id), { counterparty_address: null })
+    await onStripeRefundCreated({ charge_id: "ch_1", invoice_id: "in_1", refunds: [refund("re_4", "1000", "succeeded")] }, pctx)
+    expect(creditNotes(parked)).toHaveLength(0)
+    const row = parks(parked).find((r) => r.event_id === "stripe:re_4") as Row
+    expect(row.event_payload_json).toMatchObject({ kind: "stripe_credit_note", refund_id: "re_4", amount_minor: "1000" })
+  })
+
+  test("a refund made in Stripe yields the same credit note with no card", async () => {
+    const { db, ctx } = await issued()
+    let approvals = 0
+    ctx.requestApproval = (async () => {
+      approvals += 1
+      return { approval_id: "x" }
+    }) as never
+    // Only `charge.refunded` arrives, naming the refund; no tool result, no card.
+    await onStripeRefundCreated({ data: { charge_id: "ch_1", invoice_id: "in_1", refund_id: "re_5", amount_minor: "3000", status: "succeeded" } }, ctx)
+    expect(creditNotes(db)).toHaveLength(1)
+    expect(approvals).toBe(0)
+  })
+
+  test("mode B refunds create no credit note", async () => {
+    const { db, ctx } = await issued("stripe")
+    const r = await onStripeRefundCreated({ charge_id: "ch_1", invoice_id: "in_1", refunds: [refund("re_6", "3000", "succeeded")] }, ctx)
+    expect(r).toMatchObject({ status: "skipped", reason: "mode_b" })
+    expect(db.__all("documents")).toHaveLength(0)
+  })
+
+  test("a pending refund makes no credit note until it succeeds, and a failed one makes none", async () => {
+    const { db, ctx } = await issued()
+    await onStripeRefundCreated({ charge_id: "ch_1", invoice_id: "in_1", refunds: [refund("re_7", "2000", "pending")] }, ctx)
+    await onStripeRefundCreated({ charge_id: "ch_1", invoice_id: "in_1", refunds: [refund("re_7", "2000", "failed")] }, ctx)
+    await onStripeRefundCreated({ charge_id: "ch_1", invoice_id: "in_1", refunds: [refund("re_7", "2000", "failed")] }, ctx)
+    expect(creditNotes(db)).toHaveLength(0)
+    expect(ctx.emitted.filter((e) => e.entity === "stripe_refund" && e.action === "failed")).toHaveLength(1)
+
+    // Succeeded, credited, then failed: one attention item naming the credit note.
+    await onStripeRefundCreated({ charge_id: "ch_1", invoice_id: "in_1", refunds: [refund("re_8", "2000", "succeeded")] }, ctx)
+    await onStripeRefundCreated({ charge_id: "ch_1", invoice_id: "in_1", refunds: [refund("re_8", "2000", "failed")] }, ctx)
+    const cn = creditNotes(db)[0] as Row
+    const alert = ctx.emitted.find((e) => e.action === "failed" && (e.data as Row).refund_id === "re_8")
+    expect((alert?.data as Row).credit_note).toBe(String(cn.number))
+  })
+
+  test("two partial refunds of one charge make two credit notes summing to the refunded total", async () => {
+    const { db, ctx } = await issued()
+    // charge.refunded fires twice; each delivery lists the charge's refunds by id.
+    await onStripeRefundCreated({ charge_id: "ch_1", invoice_id: "in_1", refunds: [refund("re_a", "3000", "succeeded")] }, ctx)
+    await onStripeRefundCreated(
+      { charge_id: "ch_1", invoice_id: "in_1", amount_minor: "7000", refunds: [refund("re_a", "3000", "succeeded"), refund("re_b", "4000", "succeeded")] },
+      ctx,
+    )
+    const cns = creditNotes(db)
+    expect(cns).toHaveLength(2)
+    expect(cns.reduce((s, c) => s + Number(c.grand_total_minor), 0)).toBe(-7000)
+  })
+
+  test("a refund made while invoicing was off gets its credit note within one reconcile tick", async () => {
+    const { db, ctx } = await issued()
+    ctx.executeTool = (async (tool: string) =>
+      tool === "stripe:reconcile_candidates"
+        ? { status: "completed", result: { invoices: [], refunds: [{ refund_id: "re_off", charge_id: "ch_1", invoice_id: "in_1", amount_minor: "2500", status: "succeeded" }] } }
+        : { status: "error", error: { code: "tool_not_found", message: "absent" } }) as never
+    const r = await reconcileStripePayments(ctx)
+    expect(r.credit_notes).toBe(1)
+    await reconcileStripePayments(ctx)
+    expect(creditNotes(db)).toHaveLength(1)
+    expect((creditNotes(db)[0] as Row).external_ref).toBe("stripe:re_off")
+  })
+
+  test("the tax check reads each line and judges only lines Stripe taxed", () => {
+    expect(stripeTaxMismatches([{ quantity: 1, unit_amount_excl_minor: "100" }])).toEqual([])
+  })
+})

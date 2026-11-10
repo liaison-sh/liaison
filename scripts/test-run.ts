@@ -609,6 +609,10 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/run-edit-taint.integration.test.ts",
             // Rolling a payments app's webhook signing secret: the old secret keeps verifying for 24 hours, then stops.
             "src/tests/integration/stripe-webhook-signing-secret-roll.integration.test.ts",
+            // Card payments on Stripe in mode A: typed events into invoicing's subscribers.
+            "src/tests/integration/invoicing-stripe-money.test.ts",
+            // A signed Stripe refund through the webhook route to one credit note, and the safety job.
+            "src/tests/integration/stripe-refund-to-credit-note.test.ts",
             // Minor-unit money through the real sandbox: refused before parking, card equals issue.
             "src/tests/integration/invoicing-minor-amounts.test.ts",
             // E-invoice send through the einvoicing-pa@1 provider contract (Pennylane fake behind
@@ -634,6 +638,10 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/shopify-instance-client.test.ts",
             // Rolling a payments app's webhook signing secret: the old one verifies for 24 hours.
             "src/tests/integration/stripe-webhook-signing-secret-roll.integration.test.ts",
+            // Card payments on Stripe in mode A: typed events into invoicing's subscribers.
+            "src/tests/integration/invoicing-stripe-money.test.ts",
+            // A signed Stripe refund through the webhook route to one credit note, and the safety job.
+            "src/tests/integration/stripe-refund-to-credit-note.test.ts",
             // Accounts keep the OAuth client that minted them (refresh, webhooks, reconnect).
             "src/tests/integration/oauth-minting-client.test.ts",
             // A protected (opt-in) OAuth scope is requested only when the org opted in.
@@ -1374,6 +1382,10 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // Who issues what, and the issuer guard on every path that invoices a named customer.
             "src/issuer-guard.test.ts",
             "src/streams.test.ts",
+            // Card payments on Stripe: invoices, payments, refunds, unmatched payments (pure store).
+            "src/handlers/stripe-subscribers.test.ts",
+            "src/handlers/stripe-refund-credit-note.test.ts",
+            "src/handlers/orphan-actions.test.ts",
             // The month-end run: drafts, flags, the card, approve and undo, the legal dates (pure store).
             "src/recurring/draft-job.test.ts",
             "src/recurring/run-card.test.ts",

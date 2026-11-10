@@ -2840,5 +2840,21 @@
     "say": "I turned off Stripe's receipt and invoice emails to customers, note it",
     "typed": ["Stripe emails are off", "confirm Stripe customer emails off"],
     "any": ["invoicing__issuer_emails_confirm"]
+  },
+  {
+    "id": "WI4",
+    "set": "seed",
+    "lang": "fr",
+    "say": "ce paiement Stripe n'a pas de facture, fais-la",
+    "typed": ["facturer un paiement Stripe orphelin", "créer la facture du paiement"],
+    "any": ["invoicing__invoice_from_stripe_payment"]
+  },
+  {
+    "id": "WI5",
+    "set": "seed",
+    "lang": "en",
+    "say": "that Stripe payment is for invoice 2026-0042, link them",
+    "typed": ["link a Stripe payment to an invoice", "reconcile the payment with its invoice"],
+    "any": ["invoicing__payment_link_to_invoice"]
   }
 ]

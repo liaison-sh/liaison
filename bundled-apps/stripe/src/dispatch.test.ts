@@ -202,7 +202,8 @@ describe("stripe event dispatch", () => {
     await handleStripeEvent(event("evt_amt1", "invoice.paid", invoice("paid", 1)), ctx(), { now })
     const [row] = db.rows("stripe_invoices")
     expect(row?.total_minor).toBe(2)
-    expect(api.calls).toEqual(["/v1/invoices/in_A1"])
+    // The invoice is read once by id; the buyer is read from the mirror, else from Stripe by id.
+    expect(api.calls.filter((c) => c.startsWith("/v1/invoices"))).toEqual(["/v1/invoices/in_A1"])
     const paid = emitted.find((e) => e.entity === "invoice" && e.action === "paid")
     expect((paid?.data as { total_minor: string }).total_minor).toBe("2")
   })

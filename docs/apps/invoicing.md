@@ -179,6 +179,19 @@ When Stripe is connected, each issuer profile sells in three streams, and each s
 - **One customer, one issuer.** A customer who pays a live Stripe subscription is not invoiced again by hand. `invoice_issue`, `invoice_create_and_issue`, `drafts_create` (invoices), `drafts_update` (when the customer changes), `recurring_schedule_create` and `recurring_schedule_update` refuse with `subscription_stream_conflict`, and a month-end row for such a customer shows **Billed by Stripe** and is not issued, including a schedule made before Stripe was connected. Stripe customers not yet linked to a contact are found by email. When the invoice bills something else, a person says what in `billsOtherThanStripe` (at least 5 characters); an agent's statement waits for a person.
 - **While Stripe cannot answer.** Until Stripe's customers and subscriptions are fully imported, or while its key is refused or cannot read them, the same calls refuse with `subscription_check_unavailable`: try again later. Liaison asks Stripe whether it is connected rather than trusting its own record, so a missed connection is caught at the next invoice. When Stripe says it is not connected, or the Stripe app is off, nothing is refused. Shopify orders, credit notes and quotes are never checked.
 
+### Card payments when Liaison issues them
+
+When **Subscriptions paid by card** is issued by **Liaison**, each Stripe invoice becomes one Liaison invoice, on its own:
+
+- **Finalized.** One invoice per Stripe invoice, in your series, with Stripe's lines, the period in each line's description and the tax Stripe charged. It is dated, and numbered, on the day it is issued in the issuer's time zone, never on Stripe's finalization date, and it is due that day. A second delivery of the same event makes nothing more. A total of zero makes no invoice; a negative total waits for a person.
+- **Waits instead of guessing.** A missing email or address, a tax that differs from Liaison's by more than 1 cent on a line, or an e-invoicing identity that is not complete keeps the invoice in **Waiting** with the reason, and no number is taken. Above the issuer's approval threshold, a person approves it first.
+- **Paid.** The invoice is marked paid on the day of the card payment and its PDF shows the amount paid. A failed payment never changes the invoice; you are told only when Stripe will not try again or the card has expired. A Stripe invoice voided or marked uncollectible is reported and changes nothing.
+- **Refunds.** Each refund that Stripe confirms becomes one credit note (CN- series) citing the invoice, split over the invoice's VAT rates (89.40 at 20% is 74.50 plus 14.90 VAT); a cent left over by the split goes on one **Rounding adjustment** line, so the credit note equals the refund. A pending refund waits, a failed one makes none and is reported. A refund made directly in Stripe gets the same credit note. When Stripe issues the invoices, no credit note is made.
+- **A payment with no invoice** waits in the queue with an attention item. A person creates its invoice (`invoice_from_stripe_payment`, which takes the next number) or links it to an invoice already issued (`payment_link_to_invoice`, once). Both always wait for a person: no auto-approve policy runs them.
+- **Before a decision.** Stripe invoices finalized while nobody had decided who issues stay waiting; once a person picks Liaison, an attention item lists them, and each is issued only on a person's click.
+- **Missed events.** Every 10 minutes Liaison asks Stripe what an event may have missed (invoicing turned off, an event that failed) and hands it to the same steps: the missing invoice, a payment, a credit note. It never issues anything by itself beyond that.
+
+
 ## Settings
 
 | Section | Who can edit | What it holds |

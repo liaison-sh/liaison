@@ -1387,6 +1387,38 @@
       "one": "card invoicing changed with unpaid invoices",
       "other": "card invoicing changes with unpaid invoices"
     },
+    "issuer_undecided": {
+      "one": "Stripe invoice waiting for an issuer decision",
+      "other": "Stripe invoices waiting for an issuer decision"
+    },
+    "undecided_listed": {
+      "one": "Stripe invoices to issue after the decision",
+      "other": "Stripe invoices to issue after the decision"
+    },
+    "needs_person": {
+      "one": "Stripe invoice needing a person",
+      "other": "Stripe invoices needing a person"
+    },
+    "payment_failed": {
+      "one": "failed card payment",
+      "other": "failed card payments"
+    },
+    "voided": {
+      "one": "Stripe invoice voided",
+      "other": "Stripe invoices voided"
+    },
+    "uncollectible": {
+      "one": "Stripe invoice uncollectible",
+      "other": "Stripe invoices uncollectible"
+    },
+    "refund_failed": {
+      "one": "failed Stripe refund",
+      "other": "failed Stripe refunds"
+    },
+    "unmatched": {
+      "one": "Stripe payment with no invoice",
+      "other": "Stripe payments with no invoice"
+    },
     "awaiting_agent": {
       "one": "awaiting reply",
       "other": "awaiting reply"

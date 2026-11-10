@@ -23,6 +23,7 @@
  * full bundle, exactly what it ran before.
  */
 import { esmExportsToGlobalThis } from "~/modules/apps/sandbox/bundle-loader"
+import { importAttributeIssue } from "~/modules/apps/sandbox/import-attributes"
 
 const MAX_ENTRIES = 64
 /** The export names a bundle can be shaken for (they are interpolated). */
@@ -51,13 +52,16 @@ function remember(key: string, entry: Entry): void {
  * Tree-shake `source` (a script-mode bundle whose top-level declarations are
  * its exports) down to `exportName`, returned in the same script shape: an
  * IIFE assigning `globalThis.<exportName>`. Null when the bundle cannot be
- * shaken (an IIFE-wrapped bundle, a syntax the bundler refuses, an import).
+ * shaken (an IIFE-wrapped bundle, a syntax the bundler refuses, an import, an
+ * import attribute).
  */
 export async function buildExportOnlyBundle(
   source: string,
   exportName: string,
 ): Promise<string | null> {
   if (!SAFE_EXPORT_RE.test(exportName)) return null
+  // Refused before the bundler sees it: a macro import runs during the build.
+  if ((await importAttributeIssue(source)) !== null) return null
   const contents = `${source}\nexport { ${exportName} };\n`
   let output: string
   try {

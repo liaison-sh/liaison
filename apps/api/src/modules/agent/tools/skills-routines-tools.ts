@@ -2914,6 +2914,19 @@ export async function createRoutinePreflight(
   params: { prompt?: string | null; kind?: string | null; scopes?: string[] | null },
   _ctx: AppContext,
 ): Promise<unknown> {
+  // A routine built around the deal follow-up candidates IS the Deal follow-ups
+  // template, minus its send-time checks: the template is proposed instead.
+  if (/deals_followup_candidates\b/.test(params.prompt ?? "")) {
+    return {
+      error: {
+        code: "routine_template_covers_this",
+        message:
+          "Nothing was created: this routine is the Deal follow-ups routine the platform ships (every weekday, one follow-up draft per open deal gone quiet, each approved by the deal's owner, checked again at send). " +
+          `Propose it with kernel__enable_routine_template ${JSON.stringify({ appName: KERNEL_TEMPLATE_APP, templateKey: DEAL_FOLLOWUPS_TEMPLATE_KEY })}, adding quietDays, pipelineId or time when the person named them.`,
+        retryable: true,
+      },
+    }
+  }
   const coverageError = validatePrepareShipmentsCoverage(params.prompt)
   if (coverageError) {
     return {

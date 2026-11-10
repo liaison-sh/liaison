@@ -9,7 +9,7 @@
 //     decision (the card stream undecided, or above the approval threshold);
 //   payment_link_to_invoice: link the charge to an invoice already issued, once.
 import { park, resolveOpenParks } from "../deferred"
-import { netOfIncludedTax } from "../money"
+import { lineTax, netOfIncludedTax } from "../money"
 import { toBigInt } from "../mutations/shared"
 import { isoOf, stripeDocumentRef, streamRows } from "../streams"
 import {
@@ -122,6 +122,25 @@ async function waiting(ctx: StripeCtx, input: InvoiceFromStripeInput) {
   return { row, id }
 }
 
+/**
+ * The lines of an invoice for a charge of `gross` that includes VAT at `rateBp`: the net whose
+ * net plus its tax is the charge, and when no net is (9.99 at 20%: 8.32 gives 9.98, 8.33 gives
+ * 10.00), the nearest one below plus a 0-tax "Rounding adjustment" line, so the invoice always
+ * totals what was charged.
+ */
+export function chargeLines(gross: bigint, rateBp: number, description: string): StripeInvoicePayload["lines"] {
+  const gross_of = (n: bigint) => n + lineTax({ subtotal_minor: n, tax_rate_bp: rateBp })
+  let net = netOfIncludedTax(gross, rateBp)
+  while (net > 0n && gross_of(net) > gross) net -= 1n
+  while (gross_of(net + 1n) <= gross) net += 1n
+  const residual = gross - gross_of(net)
+  const lines: NonNullable<StripeInvoicePayload["lines"]> = [
+    { description, quantity: 1, unit_amount_excl_minor: net.toString(), tax_rate_bp: rateBp },
+  ]
+  if (residual !== 0n) lines.push({ description: "Rounding adjustment", quantity: 1, unit_amount_excl_minor: residual.toString(), tax_rate_bp: 0 })
+  return lines
+}
+
 export async function invoiceFromStripePayment(ctx: StripeCtx, input: InvoiceFromStripeInput) {
   const found = await waiting(ctx, input)
   if ("status" in found) return found
@@ -133,7 +152,6 @@ export async function invoiceFromStripePayment(ctx: StripeCtx, input: InvoiceFro
     const p = stored as unknown as StripePaymentPayload
     const gross = toBigInt(p.amount_minor)
     const rate = Number(input.vatRateBp ?? 0)
-    const net = netOfIncludedTax(gross, rate)
     outcome = await onStripeInvoiceFinalized(
       {
         // One document per charge: keyed by its invoice when it has one, else by itself.
@@ -147,7 +165,7 @@ export async function invoiceFromStripePayment(ctx: StripeCtx, input: InvoiceFro
         status: "paid",
         charge_id: p.charge_id,
         customer: p.customer ?? null,
-        lines: [{ description: input.description?.trim() || p.description || `Payment ${p.charge_id}`, quantity: 1, unit_amount_excl_minor: net.toString(), tax_rate_bp: rate }],
+        lines: chargeLines(gross, rate, input.description?.trim() || p.description || `Payment ${p.charge_id}`),
       } satisfies StripeInvoicePayload,
       ctx,
       { byPerson: true },

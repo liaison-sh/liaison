@@ -23,7 +23,7 @@ import { EINVOICE_IDENTITY_PARK_KIND, GATE_CODES, type GateCode, raiseIdentityAt
 import { checkEinvoiceGate } from "../einvoicing/issue-gate"
 import type { Counterparty, DraftLine } from "../issue"
 import { civilDateOf, issueDateParts } from "../issue-date"
-import { lineTax } from "../money"
+import { lineAmounts, lineTax } from "../money"
 import { findIssuerProfile } from "../mutations/db-helpers"
 import { issueWithFxRate } from "../mutations/fx-issue"
 import { type ErrorEnvelope, type MutationsCtx, toBigInt } from "../mutations/shared"
@@ -191,6 +191,20 @@ export function stripeTaxMismatches(lines: StripeInvoiceLine[]): TaxMismatch[] {
     }
   }
   return out
+}
+
+/**
+ * What the Liaison invoice of these lines totals, computed as issuing computes it (one rounding
+ * per line), or null when a line's rate is not known (several taxes on one line).
+ */
+export function liaisonTotalOf(lines: StripeInvoiceLine[]): bigint | null {
+  let total = 0n
+  for (const l of lines) {
+    if (typeof l.tax_rate_bp !== "number") return null
+    const { qty, unit, discount } = lineNet(l)
+    total += lineAmounts({ quantity: qty.toString(), unit_price_minor: unit, discount_minor: discount }, l.tax_rate_bp).total_minor
+  }
+  return total
 }
 
 /** The lines of the Liaison invoice: Stripe's own, at the rate Stripe charged, the period in the description. */
@@ -366,7 +380,50 @@ export async function onStripeInvoiceFinalized(
     return { status: "deferred", deferred_id: def.id, reason: "awaiting_data" }
   }
 
+  // 6b. The whole invoice as charged. Each line's tax may differ from Stripe's by one minor unit
+  //     (checked above); what that leaves goes on one 0-tax "Rounding adjustment" line, so the
+  //     invoice totals the charge exactly. Anything more, or a line with several taxes (no single
+  //     rate to issue at), waits for a person.
+  const liaisonTotal = liaisonTotalOf(p.lines ?? [])
+  const residual = liaisonTotal === null ? null : total - liaisonTotal
+  const tolerance = BigInt((p.lines ?? []).length)
+  if (residual === null || residual > tolerance || -residual > tolerance) {
+    const def = await parkInvoice(ctx, p, "awaiting_data", "stripe_total_mismatch", STRIPE_TAX_PARK, {
+      liaison_total_minor: liaisonTotal === null ? null : liaisonTotal.toString(),
+      stripe_total_minor: total.toString(),
+    })
+    if (def.created && ctx.emit) {
+      await ctx.emit({
+        entity: "deferred",
+        action: "stripe_tax_review",
+        entityId: def.id,
+        data: {
+          deferred_id: def.id,
+          stripe_invoice_id: p.stripe_invoice_id,
+          reason:
+            liaisonTotal === null
+              ? "a line carries several taxes, so no single rate can be issued"
+              : `Stripe charged ${money(total, p.currency)}, Liaison computes ${money(liaisonTotal, p.currency)}`,
+          resolved: false,
+        },
+      })
+    }
+    return { status: "deferred", deferred_id: def.id, reason: "awaiting_data" }
+  }
+
   const lines = invoiceLines(p)
+  if (residual !== 0n) {
+    lines.push({
+      position: lines.length + 1,
+      description: "Rounding adjustment",
+      quantity: "1",
+      unit_price_minor: residual,
+      line_kind: "service",
+      tax_rate_bp_override: 0,
+      product_source: null,
+      external_id: null,
+    })
+  }
   // 7. The e-invoicing gate, before any number.
   const gate = await checkEinvoiceGate(ctx, { type: "invoice", issuer, counterparty, lines })
   if (!gate.ok) {

@@ -41,6 +41,8 @@ describe("Stripe invoices handled by invoicing", () => {
     const off1 = stripeDb()
     const r1 = await onStripeInvoiceFinalized(finalized({ total_minor: "5000", lines: [line("834")] }), stripeCtx(off1))
     expect(r1.status).toBe("ok")
+    // Issued at the charge, to the minor unit: the unit Stripe's tax differs by is a rounding line.
+    expect(String((invoices(off1)[0] as Record<string, unknown>).grand_total_minor)).toBe("5000")
 
     const off2 = stripeDb()
     const ctx2 = stripeCtx(off2)

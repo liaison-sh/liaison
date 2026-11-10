@@ -742,8 +742,10 @@ async function updateRunDraft(
     if ("status" in written) return written
   }
   // A person's address on a row: it goes on the schedule's contact as its billing address too.
-  if (turn.agentId === null && addressGiven && rd.schedule) {
-    notes.push(await billingAddressToContact(ctx, String(rd.schedule.contact_id), patch as Row))
+  // A schedule whose person was deleted has none to keep the address on.
+  const scheduleContact = typeof rd.schedule?.contact_id === "string" && rd.schedule.contact_id !== "" ? rd.schedule.contact_id : null
+  if (turn.agentId === null && addressGiven && scheduleContact) {
+    notes.push(await billingAddressToContact(ctx, scheduleContact, patch as Row))
   }
   if (addressGiven) await ctx.db.update("recurring_run_items", String(rd.item.id), { fix_suggestion: null })
   // How far: "from now on" waits on the row until the run's approval writes it to the schedule.

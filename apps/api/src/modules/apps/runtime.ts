@@ -100,6 +100,7 @@ import {
   generateDropIndexDdl,
   generateEnumCheckReconcileDdl,
   generateImmutableTriggerDdl,
+  generateNotNullLoosenDdl,
   generateNotNullTightenDdl,
   generateSequenceDdl,
   generateTableDdl,
@@ -2524,6 +2525,35 @@ async function registerSingleApp(
                               log.warn(
                                 { err, app: desc.name, entity: entityName, column: colName },
                                 "Schema drift: NOT NULL tighten failed",
+                              )
+                            }
+                          }
+                          // A field a later version made nullable: drop NOT NULL. Additive for
+                          // code still running from the earlier version, which keeps writing the
+                          // value; same savepoint so a lock timeout only leaves the drift warning.
+                          const loosen =
+                            existing.nullable === "NO" && expectedNullable === "YES"
+                              ? generateNotNullLoosenDdl(
+                                  schemaName,
+                                  entityName,
+                                  fieldName,
+                                  fieldDef,
+                                )
+                              : null
+                          if (loosen) {
+                            try {
+                              await tx.transaction(async (sp) => {
+                                await sp.execute(drizzleSql.raw(loosen))
+                              })
+                              existing.nullable = "YES"
+                              log.info(
+                                { app: desc.name, entity: entityName, column: colName },
+                                "Column loosened to nullable to match the manifest",
+                              )
+                            } catch (err) {
+                              log.warn(
+                                { err, app: desc.name, entity: entityName, column: colName },
+                                "Schema drift: NOT NULL drop failed",
                               )
                             }
                           }

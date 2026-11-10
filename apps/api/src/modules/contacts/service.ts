@@ -1675,7 +1675,8 @@ async function liveSchedulesBillingContact(
 /**
  * Deletes a person the caller can see. Refused (409 `contact_has_schedules`) while a recurring
  * invoice schedule not ended bills them; billing customers mirrored from the payment connector
- * let go of them (the column is cleared), like a company's main contact and a deal's contact.
+ * and ended schedules let go of them (the column is cleared), like a company's main contact and a
+ * deal's contact.
  *
  * `privileged`: the privileged transaction the caller already holds (a kernel
  * job deleting as part of a larger write), so the contact's discussion goes in

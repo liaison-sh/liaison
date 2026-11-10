@@ -206,6 +206,7 @@ const REVIEWED: Record<string, Record<string, string>> = {
     "tablePrivilegesFor(role)": "privilege list from a code constant per role",
     "generateSequenceDdl(schemaName, entityName)": APP_DDL,
     stmt: APP_DDL,
+    loosen: APP_DDL,
     "generateTableUniqueAddDdl(schemaName, entityName, cols)": APP_DDL,
     "generateDropIndexDdl(schemaName, indexname)":
       "index name read from pg_indexes; validateIdentifier + quoteIdent in the generator (ddl.ts)",
@@ -285,6 +286,7 @@ const REVIEWED: Record<string, Record<string, string>> = {
   "apps/api/src/modules/contacts/erasure.ts#clearContactSoftReferences": {
     dealsTable: "rel() over code constants (erasure.ts:81)",
     customersTable: "rel() over code constants (erasure.ts), checked with to_regclass first",
+    schedulesTable: "rel() over code constants (erasure.ts), checked with to_regclass first",
   },
   "apps/api/src/modules/contacts/erasure.ts#release": {
     used: "OR-joined EXISTS predicates built in this function from the code reference table and the checked ids",

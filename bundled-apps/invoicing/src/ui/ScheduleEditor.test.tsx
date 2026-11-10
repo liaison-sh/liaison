@@ -78,6 +78,35 @@ describe("the schedule editor", () => {
   })
 
 
+  it("an ended schedule whose person was deleted lists through the tool and opens with no customer", async () => {
+    const db = createMockDb({
+      seed: {
+        issuer_profiles: [{ id: "issuer-1", legal_name: "Maison Nord SARL", country: "FR", default_currency: "EUR", default_language: "fr", timezone: "Europe/Paris" }],
+        recurring_schedules: [
+          {
+            id: "sched-gone",
+            issuer_profile_id: "issuer-1",
+            contact_id: null,
+            status: "ended",
+            repeats: "month",
+            billing_day: "last",
+            issue_mode: "review",
+            lines: [{ description: "Retainer {period}", qty: 1, unit_price_minor: 150000, vat_bp: 2000 }],
+            next_issue_on: null,
+            next_draft_on: null,
+            version: 3,
+          },
+        ],
+      },
+    })
+    const ctx = { getUserId: async () => "user-person", db: db as never, approval: null } as unknown as RecurringCtx
+    const listed = await recurringList(ctx, {})
+    expect(listed.rows.map((r) => [r.id, r.contact_id])).toEqual([["sched-gone", null]])
+    const draft = draftFromRow("sched-gone", listed.rows[0] as unknown as Record<string, unknown>)
+    expect(draft).toMatchObject({ id: "sched-gone", status: "ended", contact_id: null })
+    expect(draft.lines).toHaveLength(1)
+  })
+
   it("Start stays disabled during an open conflict", () => {
     const conflict = conflictFrom(CONFLICT)
     expect(conflict).toEqual({ message: CONFLICT.error.message })

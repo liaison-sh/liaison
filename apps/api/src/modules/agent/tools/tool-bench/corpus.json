@@ -2792,5 +2792,29 @@
     "say": "what is our MRR right now?",
     "typed": ["monthly recurring revenue", "revenu récurrent mensuel"],
     "any": ["stripe__mrr_query"]
+  },
+  {
+    "id": "Y10",
+    "set": "seed",
+    "lang": "fr",
+    "say": "rembourse 30 euros sur le dernier paiement Stripe de Maison Lune",
+    "typed": ["rembourser un paiement Stripe", "refund a Stripe charge"],
+    "any": ["stripe__refunds_create"]
+  },
+  {
+    "id": "Y11",
+    "set": "seed",
+    "lang": "en",
+    "say": "cancel their Stripe subscription at the end of the month",
+    "typed": ["cancel Stripe subscription", "résilier l'abonnement Stripe"],
+    "any": ["stripe__subscription_cancel"]
+  },
+  {
+    "id": "Y12",
+    "set": "seed",
+    "lang": "fr",
+    "say": "envoie-lui un lien pour mettre à jour sa carte",
+    "typed": ["lien pour changer de carte", "card update link"],
+    "any": ["stripe__card_update_link"]
   }
 ]

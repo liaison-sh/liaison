@@ -17,11 +17,12 @@ function referencedHandlers(m: any): string[] {
   return out
 }
 
-const CARD_PARAM = /card|pan|cvc|cvv|number|expir/i
+// A card number, a security code or a PAN, by name: `cardNumber`, `card_number`, `cvc`, `pan`, `panLast`, ...
+const CARD_PARAM = /[cC]ard_?[nN]umber|[cC][vV][cC]|[cC][vV][vV]|(^|_)([pP]an|PAN)($|_|[A-Z])|Pan($|[A-Z_])|[eE]xpir/
 
 describe("stripe manifest", () => {
-  it("is at version 0.1.9", () => {
-    expect(load().version).toBe("0.1.9")
+  it("is at version 0.1.10", () => {
+    expect(load().version).toBe("0.1.10")
   })
 
   it("parses with the package manifest schema", () => {
@@ -52,7 +53,7 @@ describe("stripe manifest", () => {
 
   it("no tool takes a card number parameter", () => {
     for (const [name, t] of Object.entries<any>(load().tools ?? {})) {
-      for (const p of Object.keys(t.parameters?.properties ?? {})) {
+      for (const p of Object.keys((t.params ?? t.parameters)?.properties ?? {})) {
         expect({ tool: name, param: p, card: CARD_PARAM.test(p) }).toEqual({ tool: name, param: p, card: false })
       }
     }

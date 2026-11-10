@@ -7,8 +7,6 @@
 //   - `billing_status_for_counterparty`: whether a contact or a company pays a
 //     live Stripe subscription (invoicing's guard reads this one narrow tool);
 //   - `invoice_document_link`: the Liaison document a Stripe invoice became;
-//   - `invoice_send_state`: whether a reminder about a Stripe invoice should
-//     still go out, from the mirror (the live re-read comes with the reminders).
 import { refuseTool } from "@liaison/app-sdk"
 import { customerIdsFor, type ReadCtx, UUID } from "./read-common"
 
@@ -73,15 +71,4 @@ export async function invoiceDocumentLink(params: Obj | undefined, ctx: DocLinkC
   }
   await ctx.db.update("stripe_invoices", String(row.id), { liaison_document_id: documentId })
   return { ok: true, summary: `Stripe invoice ${stripeInvoiceId} now names document ${documentId}.` }
-}
-
-const DONE: Record<string, string> = { paid: "invoice_paid", void: "invoice_void", uncollectible: "invoice_uncollectible" }
-
-export async function invoiceSendState(params: Obj | undefined, ctx: ReadCtx) {
-  const ref = ((params ?? {}).ref ?? {}) as { kind?: unknown; id?: unknown }
-  const id = typeof ref.id === "string" ? ref.id : ""
-  const row = id ? await one(ctx, "stripe_invoices", id) : undefined
-  if (!row) return { stop: false }
-  const code = DONE[String(row.status)]
-  return code ? { stop: true, code, label: `Stripe invoice ${String(row.number ?? id)} is ${String(row.status)}` } : { stop: false }
 }

@@ -1,6 +1,6 @@
 {
   "name": "stripe",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "kind": "connector",
   "iconName": "credit-card",
   "description": "Stripe connector: a read mirror of customers, subscriptions, invoices, payments, refunds and disputes, kept current by a signed webhook.",
@@ -409,7 +409,11 @@
         },
         "additionalProperties": false
       },
-      "searchKeywords": ["mrr", "recurring", "revenu"]
+      "searchKeywords": [
+        "mrr",
+        "recurring",
+        "revenu"
+      ]
     },
     "invoices_search": {
       "deferLoading": true,
@@ -468,6 +472,10 @@
       "params": {
         "type": "object",
         "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stripe charge id, ch_..."
+          },
           "customerId": {
             "type": "string"
           },
@@ -700,7 +708,7 @@
     "invoice_send_state": {
       "readOnly": true,
       "agentVisible": false,
-      "description": "Whether a reminder about a Stripe invoice should still go: stops when the invoice is paid, void or uncollectible.",
+      "description": "Whether a payment reminder about a Stripe invoice may still go out, read from Stripe at send time: stops on paid, void or uncollectible; waits when Stripe cannot be asked.",
       "requiredScopes": [
         "stripe:invoices:read"
       ],
@@ -724,6 +732,193 @@
         "required": [
           "ref"
         ]
+      },
+      "timeoutMs": 2000
+    },
+    "refunds_create": {
+      "description": "Refund a Stripe charge, in full or in part (amountMinor in cents). Parks an approval; Stripe is called only after a person approves. Refused when the charge is already refunded, disputed, or the amount is above what is left.",
+      "deferLoading": true,
+      "searchKeywords": [
+        "rembourser",
+        "remboursement",
+        "refund"
+      ],
+      "requiredScopes": [
+        "stripe:refunds:write"
+      ],
+      "trustBoundary": "user",
+      "handler": "refundsCreate",
+      "preflight": "refundsCreatePreflight",
+      "summarizer": "summarizeRefundsCreate",
+      "summarizerContext": {
+        "tool": "payments_search",
+        "params": {
+          "id": "chargeId"
+        }
+      },
+      "gated": true,
+      "noAutoApprove": true,
+      "approvalImpact": "external",
+      "externalEffect": true,
+      "pinnedParams": [
+        "chargeId"
+      ],
+      "approvalDedupeKeyParam": "chargeId",
+      "approvalDedupeSameRequester": true,
+      "approvalExpiryHours": 168,
+      "writesToTable": "app_stripe.stripe_refunds",
+      "timeoutMs": 30000,
+      "runningLabel": "Refunding in Stripe",
+      "editableFields": [
+        {
+          "field": "amountMinor",
+          "label": "Amount incl. VAT",
+          "widget": "text"
+        }
+      ],
+      "params": {
+        "type": "object",
+        "properties": {
+          "chargeId": {
+            "type": "string",
+            "description": "ch_..."
+          },
+          "amountMinor": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]*$",
+            "description": "In cents, e.g. \"1200\". Omit to refund all that is left."
+          },
+          "reason": {
+            "type": "string"
+          },
+          "ticketId": {
+            "type": "string",
+            "description": "Adds an internal note there."
+          }
+        },
+        "required": [
+          "chargeId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "subscription_cancel": {
+      "description": "Cancel a Stripe subscription, at the end of its period unless atPeriodEnd is false. Parks an approval showing the MRR and invoice effect; Stripe is called only after a person approves.",
+      "deferLoading": true,
+      "searchKeywords": [
+        "résilier",
+        "annuler",
+        "abonnement"
+      ],
+      "requiredScopes": [
+        "stripe:subscriptions:write"
+      ],
+      "trustBoundary": "user",
+      "handler": "subscriptionCancel",
+      "preflight": "subscriptionCancelPreflight",
+      "summarizer": "summarizeSubscriptionCancel",
+      "summarizerContext": {
+        "tool": "subscription_cancel_effect",
+        "params": {
+          "subscriptionId": "subscriptionId",
+          "atPeriodEnd": "atPeriodEnd"
+        }
+      },
+      "gated": true,
+      "noAutoApprove": true,
+      "approvalImpact": "external",
+      "externalEffect": true,
+      "pinnedParams": [
+        "subscriptionId"
+      ],
+      "approvalDedupeKeyParam": "subscriptionId",
+      "approvalDedupeSameRequester": true,
+      "approvalExpiryHours": 168,
+      "writesToTable": "app_stripe.stripe_subscriptions",
+      "timeoutMs": 30000,
+      "runningLabel": "Cancelling in Stripe",
+      "params": {
+        "type": "object",
+        "properties": {
+          "subscriptionId": {
+            "type": "string",
+            "description": "sub_..."
+          },
+          "atPeriodEnd": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "subscriptionId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "subscription_cancel_effect": {
+      "description": "What cancelling a subscription changes: MRR, invoices and the company's open deals, for its approval card.",
+      "readOnly": true,
+      "agentVisible": false,
+      "requiredScopes": [
+        "stripe:subscriptions:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "subscriptionCancelEffect",
+      "readsFromTable": "app_stripe.stripe_subscriptions",
+      "timeoutMs": 5000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "subscriptionId": {
+            "type": "string"
+          },
+          "atPeriodEnd": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "subscriptionId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "card_update_link": {
+      "description": "A Stripe page where a customer can pay with a new card: the customer portal login link when set, else their open invoice's page. Returns the sentence that is true for that link (effect); never stored.",
+      "deferLoading": true,
+      "readOnly": true,
+      "searchKeywords": [
+        "carte",
+        "lien",
+        "card"
+      ],
+      "requiredScopes": [
+        "stripe:customers:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "cardUpdateLink",
+      "readsFromTable": "app_stripe.stripe_invoices",
+      "params": {
+        "type": "object",
+        "properties": {
+          "customerId": {
+            "type": "string",
+            "description": "cus_..."
+          }
+        },
+        "required": [
+          "customerId"
+        ],
+        "additionalProperties": false
+      },
+      "returns": {
+        "schema": {
+          "url": "string",
+          "kind": "string",
+          "effect": "string",
+          "invoiceId": "string",
+          "summary": "string",
+          "why": "string"
+        }
       }
     }
   },
@@ -776,6 +971,14 @@
     {
       "target": "tickets:get",
       "reason": "the contact of the ticket in view, for the customer context"
+    },
+    {
+      "target": "tickets:addNote",
+      "reason": "a refund made for a ticket leaves an internal note on it, never a reply"
+    },
+    {
+      "target": "projects:deals_search",
+      "reason": "a cancellation card names the company's open deals"
     }
   ],
   "jobs": {
@@ -1296,6 +1499,33 @@
           ]
         ]
       }
+    }
+  },
+  "sendGuardProviders": {
+    "stripe:invoice": {
+      "tool": "invoice_send_state",
+      "serviceMessage": true,
+      "pill": {
+        "label": "Stripe: payment reminder"
+      }
+    }
+  },
+  "routines": {
+    "failed-payments": {
+      "description": "Every morning, draft a payment reminder for each failed card payment that needs one.",
+      "kind": "recurring",
+      "cron": "0 7 * * *",
+      "timezone": "UTC",
+      "promptTemplate": "For each failed Stripe payment that Stripe no longer retries and that has no reminder waiting, draft one with mail__compose, followUp {refs:[{kind:\"stripe:invoice\", id}], classification:\"service\"}. Get the link with card_update_link and say what it does using its effect. Mention the customer's open tickets. Skip payments Stripe still retries.",
+      "scopes": [
+        "stripe:customers:read",
+        "stripe:invoices:read",
+        "stripe:payments:read",
+        "mail:conversations:write",
+        "tickets:tickets:read"
+      ],
+      "enabledByDefault": false,
+      "followUp": true
     }
   }
 }

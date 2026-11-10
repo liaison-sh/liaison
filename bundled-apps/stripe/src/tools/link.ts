@@ -8,6 +8,7 @@
 // `undo: true` puts it back.
 import { refuseTool } from "@liaison/app-sdk"
 import { customerItem, type ReadCtx, UUID } from "./read-common"
+import { cardNumberRefusal } from "./refunds"
 
 type Obj = Record<string, unknown>
 
@@ -35,6 +36,10 @@ async function canRead(ctx: LinkCtx, tool: "kernel:companies_read" | "kernel:con
 
 export async function customerLink(params: Obj | undefined, ctx: LinkCtx) {
   const p = params ?? {}
+  for (const [field, value] of Object.entries(p)) {
+    const refused = cardNumberRefusal(field, value)
+    if (refused) return refused
+  }
   const stripeId = typeof p.stripeCustomerId === "string" ? p.stripeCustomerId.trim() : ""
   if (!stripeId) {
     return refuseTool("customer_ref_missing", "No Stripe customer was named, so nothing was linked. Next step: pass stripeCustomerId.")

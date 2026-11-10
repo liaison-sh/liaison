@@ -22,15 +22,23 @@ export { customersGet, customersSearch } from "./tools/customers"
 export { disputesList } from "./tools/disputes"
 export { invoicesSearch } from "./tools/invoices"
 export { customerLink } from "./tools/link"
+export { cardUpdateLink } from "./tools/links"
+export { refundsCreate, refundsCreatePreflight } from "./tools/refunds"
+export { invoiceSendState } from "./tools/send-state"
+export { summarizeRefundsCreate, summarizeSubscriptionCancel } from "./summarizers"
 export { mrrQuery } from "./tools/mrr-query"
 export { paymentsSearch } from "./tools/payments"
 export {
   approvalRouteRead,
   billingStatusForCounterparty,
   invoiceDocumentLink,
-  invoiceSendState,
 } from "./tools/routes"
-export { subscriptionsSearch } from "./tools/subscriptions"
+export {
+  subscriptionCancel,
+  subscriptionCancelEffect,
+  subscriptionCancelPreflight,
+  subscriptionsSearch,
+} from "./tools/subscriptions"
 
 /** The kernel's verifier entry: the org's own secret, checked host-side (verify.ts). */
 export async function stripeWebhookVerifier(

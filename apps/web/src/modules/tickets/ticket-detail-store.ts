@@ -59,10 +59,13 @@ export function getComposeSignature(id: string): string | null {
 // changed. Replacing the object re-ran all of them on every markRead/WS echo,
 // refetching panel resources and re-triggering the tab-level Suspense: the
 // visible "ticket keeps reloading" blink.
+// The row's `id` is always the key it is stored under: every consumer reads
+// `ticket().id` (the file shelf's parent, panels, actions), so a payload that
+// names the ticket some other way must never leave a row without one.
 function upsertTicket(s: DetailState, ticketId: string, next: Ticket): void {
   const prev = s.byId[ticketId]
-  if (prev) Object.assign(prev, next)
-  else s.byId[ticketId] = next
+  if (prev) Object.assign(prev, next, { id: ticketId })
+  else s.byId[ticketId] = { ...next, id: ticketId }
 }
 
 // Last API client seen — captured so the module-level resync subscription can
@@ -419,7 +422,12 @@ export function handleTicketEvent(action: string, data: any): void {
   setTicketDetailStore(
     produce((s) => {
       if (action === "create") {
-        upsertTicket(s, id, data as Ticket)
+        // The server's create event is a notice (`ticketId`, handle, subject,
+        // priority), not a ticket: it has no status, requester or SLA. It may
+        // land before tickets:get (a reconnect replays it while the tab loads),
+        // so it only creates a row when it carries a whole ticket (`id`, as the
+        // update branch below), and otherwise patches a row that is loaded.
+        if (data.id || s.byId[id]) upsertTicket(s, id, data as Ticket)
       } else if (action === "summary_updated") {
         const t = s.byId[id]
         if (t) {

@@ -27,6 +27,8 @@ export interface RunRow {
   einvoice_state: string | null
   collection_state: string | null
   payment_status: string | null
+  /** An address an agent found for a row that has none, which a person uses; only on such a row. */
+  fix_suggestion?: Record<string, unknown>
 }
 
 /**
@@ -41,6 +43,11 @@ function scheduleMoved(item: Row, schedule: Row | null): string[] {
   const own = patch?.written === true ? Number(patch.written_version) : null
   const now = Number(schedule.version ?? 1)
   return now > Number(item.schedule_version) && now !== own ? ["The schedule changed after this draft"] : []
+}
+
+function suggestionOf(item: Row): { fix_suggestion?: Record<string, unknown> } {
+  const found = jsonOf<Record<string, unknown> | null>(item.fix_suggestion, null)
+  return found && typeof found === "object" ? { fix_suggestion: found } : {}
 }
 
 export async function recurringRunGet(
@@ -78,6 +85,7 @@ export async function recurringRunGet(
       einvoice_state: (doc?.einvoice_state as string | null) ?? null,
       collection_state: (doc?.collection_state as string | null) ?? null,
       payment_status: (doc?.payment_status as string | null) ?? null,
+      ...suggestionOf(item),
     })
   }
   const runOut: Row = {

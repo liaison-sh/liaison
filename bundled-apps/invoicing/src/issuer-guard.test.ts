@@ -69,7 +69,7 @@ function world(opts: WorldOpts = {}) {
     bridgeWhereOperators: true,
     seed: {
       issuer_profiles: [
-        { id: ISSUER, legal_name: "Tideform SAS", country: "FR", vat_id: "FR40902000009", default_currency: "EUR", timezone: "Europe/Paris" },
+        { id: ISSUER, legal_name: "Maree Logiciel SAS", country: "FR", vat_id: "FR40902000009", default_currency: "EUR", timezone: "Europe/Paris" },
       ],
       ...(opts.connected === "no_row" ? {} : { stripe_streams: [{ id: "st-1", issuer_profile_id: ISSUER, issuer: "liaison", stripe_connected: opts.connected !== false }] }),
     },

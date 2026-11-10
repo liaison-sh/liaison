@@ -26,7 +26,7 @@ function world(opts: { agent?: boolean; approved?: string; streams?: Obj[] } = {
     bridgeWhereOperators: true,
     seed: {
       issuer_profiles: [
-        { id: FR, legal_name: "Tideform SAS", country: "FR", vat_id: "FR40902000009" },
+        { id: FR, legal_name: "Maree Logiciel SAS", country: "FR", vat_id: "FR40902000009" },
         { id: DE, legal_name: "Nordwerk GmbH", country: "DE", vat_id: "DE123456789" },
       ],
       ...(opts.streams ? { stripe_streams: opts.streams } : {}),

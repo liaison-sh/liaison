@@ -603,6 +603,11 @@ describe("companies_search / companies_get", () => {
         if (failCatalogs && body.query.includes("catalogs(")) {
           return { status: 200, headers: {}, body: JSON.stringify({ errors: [{ message: "Access denied for catalogs" }] }) }
         }
+        if (body.query.includes("CompanyLocationDirectCatalogs")) {
+          const ids = body.variables?.ids as string[]
+          const nodes = ids.map((id) => ({ id, catalogs: { ...companyNode.locations.nodes[0]!.catalogs, pageInfo: { hasNextPage: false } } }))
+          return { status: 200, headers: {}, body: JSON.stringify({ data: { nodes } }) }
+        }
         const node = body.query.includes("catalogs(") ? companyNode : { ...companyNode, locations: { nodes: [{ ...companyNode.locations.nodes[0], catalogs: undefined }] } }
         const data = body.query.includes("CompaniesSearch")
           ? { companies: { nodes: [node], pageInfo: { hasNextPage: false, endCursor: null } } }
@@ -630,6 +635,46 @@ describe("companies_search / companies_get", () => {
     // A region market's catalog never shows as one that applies to the location.
     expect(c.locations[0]!.catalogs).toHaveLength(2)
     expect(c.contacts[0]).toMatchObject({ id: CONTACT, customer: { id: CONTACT_CUSTOMER }, roles: [{ locationId: LOCATION, role: "Ordering only" }] })
+  })
+
+  it("companies_search returns the same market catalogs as companies_get for several companies, under a query cost limit", async () => {
+    const LOC2 = "gid://shopify/CompanyLocation/99"
+    const mk = (n: number) => ({
+      ...companyNode,
+      id: `gid://shopify/Company/${n}`,
+      locations: { nodes: [{ ...companyNode.locations.nodes[0], id: n === 1 ? LOCATION : LOC2, catalogs: undefined }] },
+    })
+    const market: FakeMarket = { ...B2B_MARKET, companyLocations: { level: "ALL", ids: [] } }
+    const ctx = {
+      ...makeCtx({}).ctx,
+      fetch: async (_url: string, init?: { body?: string }) => {
+        const body = JSON.parse(init?.body ?? "{}") as { query: string; variables?: Record<string, unknown> }
+        const reply = (data: unknown) => ({ status: 200, headers: {}, body: JSON.stringify({ data }) })
+        // Shopify rejects a page of companies that nests the catalogs: the cost exceeds its limit.
+        if (body.query.includes("CompaniesSearch") && body.query.includes("catalogs(")) {
+          return { status: 200, headers: {}, body: JSON.stringify({ errors: [{ message: "Query cost is 14000, which exceeds the single query max cost limit (1000)" }] }) }
+        }
+        if (body.query.includes("B2bMarket")) return reply(answerMarkets({ markets: [market] }, body.query, body.variables ?? {}))
+        if (body.query.includes("CompanyLocationDirectCatalogs")) {
+          const ids = body.variables?.ids as string[]
+          return reply({ nodes: ids.map((id) => ({ id, catalogs: { nodes: [], pageInfo: { hasNextPage: false } } })) })
+        }
+        if (body.query.includes("CompaniesSearch")) {
+          return reply({ companies: { nodes: [mk(1), mk(2)], pageInfo: { hasNextPage: false, endCursor: null } } })
+        }
+        return reply({ company: mk(1) })
+      },
+    } as unknown as AppContext
+    const out = await companies_search({ name: "Example" }, ctx)
+    expect(out.catalogsReadable).toBe(true)
+    expect(out.results).toHaveLength(2)
+    for (const c of out.results) {
+      expect(c.locations[0]!.catalogs).toEqual([
+        expect.objectContaining({ title: "Trade catalog", source: "market:Trade buyers" }),
+      ])
+    }
+    const got = await companies_get({ id: COMPANY }, ctx)
+    expect(got.locations[0]!.catalogs?.map((c) => c.source)).toEqual(out.results[0]!.locations[0]!.catalogs?.map((c) => c.source))
   })
 
   it("falls back to no catalogs when they cannot be read", async () => {

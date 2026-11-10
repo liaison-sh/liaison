@@ -49,7 +49,7 @@
   },
   "kernel.agents": {
     "rows": 7,
-    "digest": "a8e25567a5a66459"
+    "digest": "5ac3db712467c9bf"
   },
   "kernel.app_seeded_assets": {
     "rows": 4,
@@ -69,7 +69,7 @@
   },
   "kernel.audit_log": {
     "rows": 229,
-    "digest": "2cf287e2d942f794"
+    "digest": "4b9b4e1d6a650eba"
   },
   "kernel.connected_accounts": {
     "rows": 5,
@@ -113,19 +113,19 @@
   },
   "kernel.pending_events": {
     "rows": 224,
-    "digest": "aa073e0b36e00bcc"
+    "digest": "6e469e0f09e81917"
   },
   "kernel.role_dimension_grants": {
     "rows": 1,
     "digest": "e4f244d9734ab9c4"
   },
   "kernel.role_scope_grants": {
-    "rows": 288,
-    "digest": "74dcbd9756c03f3c"
+    "rows": 305,
+    "digest": "40b433018693539f"
   },
   "kernel.roles": {
     "rows": 31,
-    "digest": "4260fe41bb0005eb"
+    "digest": "1ceeaad3f10e0e7b"
   },
   "kernel.routine_runs": {
     "rows": 6,

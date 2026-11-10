@@ -27,6 +27,7 @@ vi.mock("~/modules/auth/auth-store", async (importOriginal) => {
 })
 
 import { appSettingsLabelKey } from "~/framework/define-app"
+import { type OrgApp, orgAppsStore } from "../app-management/org-apps-store"
 import { AppSettingsPage } from "./AppSettingsPage"
 import { registerAppSettingsPage, resetAppSettingsPages } from "./app-settings-pages"
 
@@ -695,5 +696,55 @@ describe("AppSettingsPage leaving with unsaved edits (A9)", () => {
     fireEvent.click(await screen.findByTestId("app-settings-discard-confirm"))
     await waitFor(() => expect(window.location.pathname).toBe("/elsewhere"))
     expect(api.toolCalls().some((c) => c.toolName === `${FIXTURE_APP}:keys.create`)).toBe(false)
+  })
+})
+
+describe("AppSettingsPage when the app's manifest arrives after the page drew", () => {
+  afterEach(() => orgAppsStore.reset())
+
+  it("keeps an unsaved tree edit made on the admin's copy of the page", async () => {
+    // An admin's page can draw first from the workspace's app list, before the manifests feed
+    // registers the app. The same sections arriving from the feed must not redraw the blocks.
+    resetAppSettingsPages()
+    orgAppsStore.set([
+      {
+        name: FIXTURE_APP,
+        displayName: "Fixture",
+        version: "1.2.3",
+        kind: "app",
+        status: "active",
+        accessMode: "everyone",
+        principals: { roleIds: [], userIds: [] },
+        hasOwnScopes: true,
+        dependents: [],
+        installSource: "in-tree",
+        listing: null,
+        settings: JSON.parse(JSON.stringify(fixtureManifest.settings)),
+      } as OrgApp,
+    ])
+    api.tool(`${FIXTURE_APP}:categories.list`, () => ({
+      version: "v1",
+      nodes: [
+        { id: "a", parent_id: null, name: "Hardware", sort_order: 0 },
+        { id: "b", parent_id: null, name: "Billing", sort_order: 1 },
+      ],
+    }))
+    renderPage({ active: () => true })
+    await screen.findByTestId("tree-row-a")
+    fireEvent.dragStart(screen.getByTestId("tree-row-b"))
+    fireEvent.drop(screen.getByTestId("tree-row-a"))
+    await waitFor(() =>
+      expect(screen.getByTestId("tree-row-b").getAttribute("data-depth")).toBe("2"),
+    )
+
+    registerAppSettingsPage({
+      appId: FIXTURE_APP,
+      manifest: fixtureManifest,
+      exports: { FixturePanel: () => <div data-testid="fixture-panel">panel</div> },
+    })
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.getByTestId("tree-row-b").getAttribute("data-depth")).toBe("2")
+    expect(screen.getByTestId("tree-dirty-bar")).toBeTruthy()
+    expect(api.toolCalls().filter((c) => c.toolName.endsWith("categories.list"))).toHaveLength(1)
   })
 })

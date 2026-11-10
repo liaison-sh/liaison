@@ -40,6 +40,12 @@ const CASES: KeyCase[] = [
     expected: CARD,
   },
   {
+    key: "editWith",
+    tool: { gated: true, editWith: ["visible"] },
+    registry: "editWith",
+    expected: ["visible"],
+  },
+  {
     key: "runningLabel",
     tool: { runningLabel: "Reading items" },
     registry: "runningLabel",

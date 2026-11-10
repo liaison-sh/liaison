@@ -110,6 +110,15 @@ export interface UpdatePayloadArgs {
    * demand still stamps the edit's diff message.
    */
   turnTaintScopes?: readonly string[]
+  /**
+   * An app refreshing the payload of its OWN pending approval (`approvals_restagePayload`), after
+   * the records the payload describes changed. Accepted only when the row's tool belongs to
+   * `appName` (else 403 `forbidden`) and the row is pending or deferred. It skips the person check
+   * and the editable-field allowlist, nothing else: the row lock, schema validation, sign-off
+   * reset, taint narrowing and the thread note stay. `actor` is ignored for authority; the note is
+   * posted for the requester and names the app.
+   */
+  appRestage?: { appName: string; note?: string }
 }
 
 export interface UpdatePayloadResult {
@@ -144,15 +153,28 @@ interface ApprovalEditRow {
 }
 
 export async function updatePayload(args: UpdatePayloadArgs): Promise<UpdatePayloadResult> {
-  // 1. RLS read (404 if not visible).
-  const row = await withRlsContext(args.actor, async (tx) => {
-    const result = await tx.execute(drizzleSql`
-      SELECT id, thread_id, requested_by, tool_name, approve_scope, current_payload,
-             notify_user_ids, resource_owner_id, status, metadata
-      FROM ${K}.approval_requests WHERE id = ${args.requestId}
-    `)
-    return extractRows<ApprovalEditRow>(result)[0] ?? null
-  })
+  const restage = args.appRestage ?? null
+  // 1. RLS read (404 if not visible). An app's restage reads its own row in its org: the app is
+  //    not a person, and the prefix check below is its authority.
+  const row = restage
+    ? await withPrivilegedDb(args.orgId, "approval-restage-read", async (tx) =>
+        extractRows<ApprovalEditRow>(
+          await tx.execute(drizzleSql`
+            SELECT id, thread_id, requested_by, tool_name, approve_scope, current_payload,
+                   notify_user_ids, resource_owner_id, status, metadata
+            FROM ${K}.approval_requests WHERE id = ${args.requestId} AND org_id = ${args.orgId}
+          `),
+        ),
+      ).then((rows) => rows[0] ?? null)
+    : await withRlsContext(args.actor, async (tx) => {
+        const result = await tx.execute(drizzleSql`
+          SELECT id, thread_id, requested_by, tool_name, approve_scope, current_payload,
+                 notify_user_ids, resource_owner_id, status, metadata
+          FROM ${K}.approval_requests WHERE id = ${args.requestId}
+        `)
+        return extractRows<ApprovalEditRow>(result)[0] ?? null
+      })
+  if (!row && restage) throw new UpdatePayloadError(404, "not_found", "not_found")
   if (!row) {
     const hiddenRow = await loadHiddenApprovalForAuthCheck(args.orgId, args.requestId)
     if (hiddenRow) {
@@ -181,14 +203,24 @@ export async function updatePayload(args: UpdatePayloadArgs): Promise<UpdatePayl
   // The resource OWNER of a personal-resource approval may edit their own
   // pending draft without holding `<app>:approve` — it is their mailbox.
   const isResourceOwner = row.resource_owner_id === args.actor.userId
+  // Who the note and the audit name: the person editing, or, for an app's restage, the requester
+  // (always a participant of the approval's thread), with the app named in the note.
+  const editorId = restage ? row.requested_by : args.actor.userId
 
   // 2. Authorization. Shared-surface drafts (ticket/mail replies) widen the
   //    audience to any holder of the `<app>:approve` capability — a teammate who
   //    can act on the ticket may edit a colleague's drafted reply, matching the
   //    visibility boundary `listApprovals` uses and the decide-path check. For
   //    privately-routed approvals the notify-set still gates who may edit.
+  if (restage && !row.tool_name.startsWith(`${restage.appName}:`)) {
+    throw new UpdatePayloadError(
+      403,
+      "forbidden",
+      `${row.tool_name} is not a tool of ${restage.appName}: an app restages only its own approvals. Nothing was changed.`,
+    )
+  }
   const isRequester = row.requested_by === args.actor.userId
-  if (!isRequester && !isResourceOwner) {
+  if (!restage && !isRequester && !isResourceOwner) {
     const inAudience = sharedSurface || row.notify_user_ids.includes(args.actor.userId)
     if (!inAudience) {
       throw new UpdatePayloadError(403, "forbidden", "forbidden")
@@ -261,14 +293,20 @@ export async function updatePayload(args: UpdatePayloadArgs): Promise<UpdatePayl
     // Allow either exact-match top-level fields (legacy text/richtext)
     // or dot-paths whose declared editable field is a prefix.
     if (
+      !restage &&
       !allowed.has(k) &&
       !editableFields.some((f) => k.startsWith(`${f.field}.`) || f.field.startsWith(`${k}.`))
     ) {
+      // A tool that declares its edit path (`editWith`) is changed through those tools, never
+      // through the approval: the refusal names them, so the editor goes there instead.
+      const editWith = toolRegistry.get([args.orgId, appName, toolShortName])?.editWith ?? []
       throw new UpdatePayloadError(
         400,
         "invalid_edit",
-        `field '${k}' is not editable on this approval; editable fields: ${editableFieldsList}. Do NOT re-run the original tool to work around this: either retry approval_update_payload with a valid field, or ask the user. If no field can be edited because the request should not exist at all, withdraw it with kernel__approval_withdraw and create a corrected request.`,
-        { unknownField: k, editableFields: editableFields.map((f) => f.field) },
+        editWith.length > 0
+          ? `field '${k}' cannot be edited on this approval, so nothing was changed. Change it with ${editWith.map((t) => `${appName}__${t}`).join(", ")} instead: the approval follows those changes.`
+          : `field '${k}' is not editable on this approval; editable fields: ${editableFieldsList}. Do NOT re-run the original tool to work around this: either retry approval_update_payload with a valid field, or ask the user. If no field can be edited because the request should not exist at all, withdraw it with kernel__approval_withdraw and create a corrected request.`,
+        { unknownField: k, editableFields: editableFields.map((f) => f.field), editWith },
       )
     }
   }
@@ -291,7 +329,7 @@ export async function updatePayload(args: UpdatePayloadArgs): Promise<UpdatePayl
   }
   // An agent's edit is held to the same rule as its tool call: no unfilled placeholder in text
   // a person outside the org reads. A person editing through the route (`null`) is not judged.
-  if (args.actingAgentId !== null) {
+  if (!restage && args.actingAgentId !== null) {
     const refusal = await outboundPlaceholderRefusal({
       orgId: args.orgId,
       userId: args.actor.userId,
@@ -300,11 +338,15 @@ export async function updatePayload(args: UpdatePayloadArgs): Promise<UpdatePayl
     })
     if (refusal) throw new UpdatePayloadError(400, "invalid_edit", refusal)
   }
-  const revisionValidation = validateEditedParams({
-    editableFields,
-    originalParams: normalizeApprovalPayload(row.current_payload),
-    revision: args.fields,
-  })
+  // The allowlist's widget rules judge a person's edit of a declared field; an app restaging its
+  // own payload is judged by the tool's schema alone (below, under the lock).
+  const revisionValidation = restage
+    ? ({ ok: true } as const)
+    : validateEditedParams({
+        editableFields,
+        originalParams: normalizeApprovalPayload(row.current_payload),
+        revision: args.fields,
+      })
   if (!revisionValidation.ok) {
     throw new UpdatePayloadError(
       400,
@@ -489,24 +531,34 @@ export async function updatePayload(args: UpdatePayloadArgs): Promise<UpdatePayl
     }
 
     const fieldList = diff.map((d) => d.field).join(", ")
-    const editMetadata = { type: "payload-edit", diff, editorUserId: args.actor.userId }
+    const editMetadata = {
+      type: "payload-edit",
+      diff,
+      editorUserId: editorId,
+      ...(restage ? { restagedByApp: restage.appName } : {}),
+    }
+    const lead = restage
+      ? restage.note?.trim()
+        ? restage.note.trim().slice(0, 300)
+        : `${restage.appName} updated ${fieldList}, see diff.`
+      : `Edited ${fieldList}, see diff.`
     const editContent =
       priorApprovals > 0
-        ? `Edited ${fieldList}, see diff. ${priorApprovals} prior sign-off${priorApprovals === 1 ? "" : "s"} reset: approvers must re-review the edited content.`
-        : `Edited ${fieldList}, see diff.`
+        ? `${lead} ${priorApprovals} prior sign-off${priorApprovals === 1 ? "" : "s"} reset: approvers must re-review the edited content.`
+        : lead
     // The diff quotes the payload before and after: it is stamped with everything the row
     // demands of its readers, never posted unscoped (rule 8g).
     let message = await sendMessage(tx as unknown as Parameters<typeof sendMessage>[0], {
       requiredScopes: narrowing.mustHold,
       orgId: args.orgId,
-      userId: args.actor.userId,
+      userId: editorId,
       threadId: locked.thread_id,
       content: editContent,
       authorType: "system",
       agentId: args.actingAgentId,
       metadata: editMetadata,
     })
-    if (!message) {
+    if (!message && editorId !== row.requested_by) {
       // The editor is NOT a participant of the requester's private agent thread.
       // `sendMessage` refuses a post by a non-participant, so author the audit note
       // as the REQUESTER instead (always a participant of their own thread). The
@@ -548,7 +600,7 @@ export async function updatePayload(args: UpdatePayloadArgs): Promise<UpdatePayl
         { threadId: locked.thread_id },
       )
     const lastEdit = {
-      editorUserId: args.actor.userId,
+      editorUserId: editorId,
       at: new Date(message.createdAt).toISOString(),
       diff,
     }
@@ -560,8 +612,8 @@ export async function updatePayload(args: UpdatePayloadArgs): Promise<UpdatePayl
       action: "update",
       entityId: locked.id,
       orgId: args.orgId,
-      actorId: args.actor.userId,
-      actorType: "user",
+      actorId: editorId,
+      actorType: restage ? "system" : "user",
       // A11: see `UpdatePayloadArgs.actingAgentId` -- the agent when an agent
       // edits, a positive null when a person does.
       agentId: args.actingAgentId,
@@ -665,8 +717,8 @@ async function refreshSummaryAfterEdit(
         action: "update",
         entityId: row.id,
         orgId: args.orgId,
-        actorId: args.actor.userId,
-        actorType: "user",
+        actorId: lastEdit.editorUserId,
+        actorType: args.appRestage ? "system" : "user",
         agentId: args.actingAgentId,
         data: await loadApprovalSummary(tx, args.orgId, row.id, lastEdit),
       })

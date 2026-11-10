@@ -11,6 +11,7 @@ import {
   toolRegistry,
 } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
+import { insertSql } from "~/seed/factories/org/test-rows"
 
 const ORG = "00000000-0000-4000-8000-000000064001"
 const REQUESTER = "00000000-0000-4000-8000-000000064002"
@@ -501,6 +502,62 @@ describe("updatePayload", () => {
       code: "invalid_edit",
       message: expect.stringContaining("editable fields: (none)"),
     })
+  })
+
+  it("an edit refused on a tool that declares editWith names those tools", async () => {
+    const id = "00000000-0000-4000-8000-0000000640e1"
+    await sql.unsafe(
+      insertSql("kernel.approval_requests", {
+        id,
+        org_id: ORG,
+        handle: "request-edit-with",
+        thread_id: THREAD,
+        originating_thread_id: THREAD,
+        tool_name: "edit_approval:run_issue",
+        tool_params: { raw: `'{"run_id":"r1","items":[]}'::jsonb` },
+        current_payload: { raw: `'{"run_id":"r1","items":[]}'::jsonb` },
+        expires_at: { raw: "now() + interval '1 hour'" },
+        notify_user_ids: { raw: `ARRAY['${APPROVER}']::uuid[]` },
+        requested_by: REQUESTER,
+        status: "pending",
+        reason: "gated",
+        summary: { raw: `'{"kind":"run_issue","title":"Run","lines":[]}'::jsonb` },
+      }),
+    )
+    toolRegistry.set([ORG, "edit_approval", "run_issue"], {
+      appName: "edit_approval",
+      name: "run_issue",
+      description: "Issue a run",
+      requiredScopes: ["edit_approval:write"],
+      gated: true,
+      handler: { bundlePath: "unused", exportName: "unused" },
+      editWith: ["drafts_update", "drafts_create", "drafts_discard"],
+      params: {
+        type: "object",
+        properties: { run_id: { type: "string" }, items: { type: "array" } },
+      },
+    } as Parameters<typeof toolRegistry.set>[1])
+    try {
+      let err: { status?: number; code?: string; message?: string } | undefined
+      try {
+        await updatePayload({
+          orgId: ORG,
+          requestId: id,
+          fields: { items: [{ total: 1 }] },
+          actor: requesterActor,
+        })
+      } catch (e) {
+        err = e as typeof err
+      }
+      expect(err).toMatchObject({ status: 400, code: "invalid_edit" })
+      for (const tool of ["drafts_update", "drafts_create", "drafts_discard"]) {
+        expect(err?.message).toContain(`edit_approval__${tool}`)
+      }
+      const [row] = await sql`SELECT current_payload FROM kernel.approval_requests WHERE id = ${id}`
+      expect(row?.current_payload).toEqual({ run_id: "r1", items: [] })
+    } finally {
+      toolRegistry.delete([ORG, "edit_approval", "run_issue"])
+    }
   })
 
   it("blanks the derived htmlBody when the invalidating textBody is edited, so the executed send cannot ship the stale pre-edit HTML", async () => {

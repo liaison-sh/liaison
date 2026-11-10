@@ -226,6 +226,8 @@ export async function items_create(
 | `ctx.fetch` | Call an external API (kernel-mediated, allowlist-checked) |
 | `ctx.time.civil` | The date and clock of an instant in a named IANA zone. The sandbox has no `Intl`, so `new Date()` only knows UTC. `UTC`, the column default, follows the organization's zone; `Etc/UTC` is UTC exactly; an unknown zone rejects with `invalid_timezone` |
 | `ctx.resolveContact` | Resolve or create a contact |
+| `ctx.turn.get()` | The turn the handler runs in: `agentId` (null for a job, a webhook or a person's own click) and `hasPerson` (false for a routine, a background turn and a job) |
+| `ctx.approvals.restagePayload` | Rewrite fields of one of your app's own approvals still waiting for a decision, after the records it describes changed. Recorded sign-offs reset and the approval's conversation gets one note. Another app's approval answers `forbidden`; a decided one `not_pending` |
 | `ctx.logger` | Structured logging |
 
 **Refusing a call.** When a tool declines a call on purpose (a check failed,
@@ -293,6 +295,17 @@ param, never a dotted path. No `editableFields` entry may reach a pinned param
 and an edit of such a field is refused too. A handler cannot park an approval
 for a tool with pinned params through `ctx.requestApproval`; call the tool
 itself so its preflight pins them.
+
+**An approval's deadline.** A handler that parks an approval with
+`ctx.requestApproval` can set `expiry_hours`, a whole number from 1 to 720,
+when it knows its own deadline. It wins over the tool's `approvalExpiryHours`
+and the 168-hour default; any other value is refused (`expiry_hours_invalid`)
+and nothing is staged.
+
+**Changing an approval through other tools.** A tool whose approval takes no
+edit, because what it carries is changed through other tools of the app, lists
+them in `editWith` (for example `["drafts_update", "drafts_create"]`). An edit
+refused on its approval names those tools, so the editor goes there instead.
 
 **Outbound text.** A tool that sends text to a person outside the org (an
 email, a reply, a direct message) lists those params in `outboundTextParams`,

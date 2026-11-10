@@ -608,6 +608,16 @@ const toolSchema = {
     // On a tool with `agentVisible: false`: the visible tool of the same app to use instead.
     useInstead: { type: "string", minLength: 1 },
     approvalExpiryHours: { type: "integer", minimum: 1, maximum: 720 },
+    // The tools of the same app that change what this tool's approval carries, when the approval
+    // itself takes no edit (a month-end run card is changed through its drafts). An edit refused
+    // on its approval names them (approvals/edit.ts). app-registries.ts `editWith`.
+    editWith: {
+      type: "array",
+      items: { type: "string", minLength: 1, pattern: "^[a-z][a-z0-9_]*$" },
+      minItems: 1,
+      maxItems: 8,
+      uniqueItems: true,
+    },
     // Opt-in idempotency for a GATED tool: names a single param whose value
     // uniquely identifies the action being staged (e.g. boxtal:create_shipment's
     // `draft_id`). When set, staging a second approval for the SAME (org, tool,

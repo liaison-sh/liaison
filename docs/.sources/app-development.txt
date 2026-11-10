@@ -87,3 +87,7 @@ The loader fetches the module from the server with a signed request; an app inst
 Framed apps: host calls getContext, openFile, print, approvals, openExternal, openRecord; linkHosts/imageHosts -> packages/host-sdk/src/index.ts:482 ; packages/host-sdk/src/index.ts:549 ; apps/api/src/modules/apps/manifest-schema.ts:1608
 activitySources: tool, scope, label, labelKey, filterKey; readOnly ungated tool writing no table, scope in requiredScopes, filterKey unique within the app -> apps/api/src/modules/apps/manifest-schema.ts:779-793 ; apps/api/src/modules/apps/contract.ts:1030-1054
 ctx.db.insertNow / updateNow commit at once -> packages/app-sdk/src/types.ts:26 ; apps/api/src/modules/apps/sandbox/bridge/db.ts:382
+ctx.turn.get: agentId and hasPerson from the captured frame -> packages/app-sdk/src/types.ts:516 ; apps/api/src/modules/apps/sandbox/bridge/approvals.ts:22
+ctx.approvals.restagePayload: own app only, pending or deferred, sign-offs reset, one note, forbidden / not_pending -> packages/app-sdk/src/types.ts:527 ; apps/api/src/modules/apps/sandbox/bridge/approvals.ts:36 ; apps/api/src/modules/approvals/edit.ts:114
+requestApproval expiry_hours 1 to 720 wins over approvalExpiryHours and 168 h, else expiry_hours_invalid -> apps/api/src/modules/apps/execute-tool.ts:1533 ; apps/api/src/modules/apps/execute-tool.ts:2732
+editWith names the tools an edit refused on the approval points to -> apps/api/src/modules/apps/manifest-schema.ts:614 ; apps/api/src/modules/approvals/edit.ts:306

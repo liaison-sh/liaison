@@ -90,6 +90,8 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   crypto_hmacSha256Base64ForConfig: "read",
   crypto_verifyHmacForConfig: "read",
   time_civil: "read",
+  // The calling turn's agent and whether a person is behind it, from the captured frame.
+  turn_get: "read",
   connections_describe: "read",
   connections_getAccounts: "read",
   connections_getCredentials: "read",

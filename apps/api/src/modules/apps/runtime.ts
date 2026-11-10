@@ -3239,6 +3239,8 @@ async function registerSingleApp(
             if (Array.isArray(tool.outboundTextParams)) {
               entry.outboundTextParams = tool.outboundTextParams
             }
+            // The edit path a refused approval edit names (approvals/edit.ts).
+            if (Array.isArray(tool.editWith)) entry.editWith = tool.editWith
             if (Array.isArray(tool.referenceableOutputs)) {
               entry.referenceableOutputs = tool.referenceableOutputs
             }

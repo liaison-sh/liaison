@@ -2715,7 +2715,9 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     description:
       "Retract a PENDING approval request that you raised. It can never approve, deny or edit anything. Use it when the request should not exist at all, for instance when it was raised on stale or wrong information: withdraw it, then create a corrected request. When only the content is wrong but the request should still exist, edit it with kernel__approval_update_payload instead.",
     searchKeywords: ["retirer", "annuler", "approbation"],
-    requiredScopes: ["kernel:approvals:write"],
+    // Reading approvals, not deciding them: a person who may not decide any
+    // request can still retract their own. Ownership is the gate (withdraw.ts).
+    requiredScopes: ["kernel:approvals:read"],
     // No trust boundary: retracting one's own pending request is an undo that sends nothing
     // out, so outside text read earlier never makes it wait for a person either.
     params: z.object({

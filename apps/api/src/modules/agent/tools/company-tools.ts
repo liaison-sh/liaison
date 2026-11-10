@@ -408,7 +408,9 @@ export async function handleCompaniesWrite(params: CompaniesWriteParams, ctx: Co
       name: label,
       created,
       ...(notice ? { notice } : {}),
-      ...(manager ? { accountManager: manager.accountManager, skipped: manager.skipped } : {}),
+      ...(manager
+        ? { accountManager: manager.accountManager, moved: manager.moved, skipped: manager.skipped }
+        : {}),
       message: [
         created ? `Created ${label}.` : `Saved ${label}.`,
         ...(manager ? [manager.message] : []),

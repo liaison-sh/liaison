@@ -18,6 +18,9 @@ export interface CompanyApi {
 
 export interface CompanyDeal {
   taskId: string
+  /** The deal's title and its board; absent from an older server. */
+  title?: string
+  projectId?: string
   stage: string | null
   /** Null without deal access, or when the deal has no amount. */
   amountMinor: number | null

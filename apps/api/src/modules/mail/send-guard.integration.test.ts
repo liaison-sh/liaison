@@ -2548,6 +2548,8 @@ describe("a new message is commercial by its recipient's data", () => {
     const optedOut = await check(to)
     expect(optedOut.missingBasis).toBeNull()
     expect(String(optedOut.refusal)).toContain(`${to} opted out on `)
+    // A check before any send says why it cannot go, never that something failed to send.
+    expect(String(optedOut.refusal)).not.toContain("Nothing was sent")
     const refused = await ownCompose(to)
     if (!("error" in refused)) throw new Error(`not refused: ${JSON.stringify(refused)}`)
     expect(refused.error.code).toBe("suppressed_new_message")

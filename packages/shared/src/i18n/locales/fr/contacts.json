@@ -231,6 +231,7 @@
     "deals": "Affaires",
     "openTheBoard": "Ouvrir le tableau des affaires",
     "noOpenDeal": "Aucune affaire en cours.",
+    "openBoard": "Ouvrir le tableau",
     "timeline": "Historique",
     "discussion": "Discussion",
     "discussionHint": "Parlez de {{name}} ici. Un agent que vous mentionnez lit d'abord cette page.",

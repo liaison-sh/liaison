@@ -667,20 +667,45 @@ export const CompanyDetail: Component<CompanyDetailProps> = (props) => {
                         }
                       >
                         {(deal) => (
-                          <button
-                            type="button"
-                            data-testid={`company-deal-${deal().taskId}`}
-                            class="flex w-full items-center py-2 text-left text-[13px] text-text hover:bg-surface-hover"
-                            onClick={() =>
-                              openTab({
-                                type: "projects:task",
-                                entityId: deal().taskId,
-                                label: dealText(deal(), i18n),
-                              })
-                            }
-                          >
-                            {dealText(deal(), i18n)}
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              data-testid={`company-deal-${deal().taskId}`}
+                              class="flex w-full min-w-0 items-baseline gap-2 py-2 text-left text-[13px] text-text hover:bg-surface-hover"
+                              onClick={() =>
+                                openTab({
+                                  type: "projects:task",
+                                  entityId: deal().taskId,
+                                  label: deal().title ?? dealText(deal(), i18n),
+                                })
+                              }
+                            >
+                              <Show when={deal().title}>
+                                <span class="truncate font-medium">{deal().title}</span>
+                              </Show>
+                              <span class={deal().title ? "shrink-0 text-text-secondary" : ""}>
+                                {dealText(deal(), i18n)}
+                              </span>
+                            </button>
+                            <Show when={deal().projectId}>
+                              {(projectId) => (
+                                <button
+                                  type="button"
+                                  data-testid="company-detail.open-board"
+                                  class="mt-1 text-[12.5px] text-accent hover:underline"
+                                  onClick={() =>
+                                    openTab({
+                                      type: "projects:project",
+                                      entityId: projectId(),
+                                      label: i18n.t("contacts.companies.deals"),
+                                    })
+                                  }
+                                >
+                                  {i18n.t("contacts.companies.openBoard")}
+                                </button>
+                              )}
+                            </Show>
+                          </>
                         )}
                       </Show>
                     </section>
@@ -841,7 +866,9 @@ const Header: Component<{
         props.phone ? "flex flex-col items-start gap-3" : "flex items-start justify-between gap-6"
       }
     >
-      <div class="flex min-w-0 items-start gap-5">
+      {/* max-w-full: in the phone's column (items-start) this block would
+          otherwise grow to its one-line title and run off the screen. */}
+      <div class="flex min-w-0 max-w-full items-start gap-5">
         <ContactAvatar id={props.company.id} name={props.company.name} size="xl" />
         <div class="min-w-0 pt-1">
           <h1
@@ -1168,13 +1195,42 @@ const DuplicatePanel: Component<{
     if (timer) clearTimeout(timer)
   })
 
+  // The merge keeps the established company: the one with an open deal, else
+  // more people, else the older one. On a minute-old copy's page that is the
+  // other company, never the copy.
+  const survivor = (): { id: string; name: string } => {
+    const o = other.state === "ready" ? other() : null
+    const here = { id: props.company.id, name: props.company.name }
+    if (!o) return here
+    const weight = (c: Company) => [c.openDeal ? 1 : 0, c.peopleCount] as const
+    const [od, op] = weight(o)
+    const [hd, hp] = weight(props.company)
+    const otherWins =
+      od !== hd
+        ? od > hd
+        : op !== hp
+          ? op > hp
+          : !!o.createdAt && !!props.company.createdAt && o.createdAt < props.company.createdAt
+    return otherWins ? { id: o.id, name: o.name } : here
+  }
+  const mergedAway = () =>
+    survivor().id === props.company.id
+      ? { id: props.duplicate.id, name: props.duplicate.name }
+      : { id: props.company.id, name: props.company.name }
+
   function startMerge(): void {
     setFailed(null)
     setHolding(true)
+    const target = survivor()
+    const source = mergedAway()
     timer = setTimeout(() => {
       timer = undefined
-      mergeCompanyInto(api as never, props.duplicate.id, props.company.id)
-        .then(() => props.onMerged())
+      mergeCompanyInto(api as never, source.id, target.id)
+        .then(() =>
+          target.id === props.company.id
+            ? props.onMerged()
+            : openCompanyTab(target.id, target.name),
+        )
         .catch(() => setFailed(i18n.t("contacts.companies.mergeFailed")))
         .finally(() => setHolding(false))
     }, MERGE_HOLD_MS)
@@ -1248,7 +1304,7 @@ const DuplicatePanel: Component<{
                 data-testid="company-detail.duplicate-merge"
                 onClick={startMerge}
               >
-                {i18n.t("contacts.companies.mergeInto", { name: props.company.name })}
+                {i18n.t("contacts.companies.mergeInto", { name: survivor().name })}
               </Button>
               <Button
                 type="button"
@@ -1268,8 +1324,8 @@ const DuplicatePanel: Component<{
           >
             <span>
               {i18n.t("contacts.companies.mergeHolding", {
-                source: props.duplicate.name,
-                target: props.company.name,
+                source: mergedAway().name,
+                target: survivor().name,
               })}
             </span>
             <Button

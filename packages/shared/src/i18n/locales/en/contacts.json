@@ -231,6 +231,7 @@
     "deals": "Deals",
     "openTheBoard": "Open the deal board",
     "noOpenDeal": "No open deal.",
+    "openBoard": "Open the board",
     "timeline": "Timeline",
     "discussion": "Discussion",
     "discussionHint": "Talk about {{name}} here. An agent you mention reads this page first.",

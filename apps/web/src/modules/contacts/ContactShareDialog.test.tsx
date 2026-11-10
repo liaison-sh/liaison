@@ -104,7 +104,7 @@ describe("ContactShareDialog", () => {
     renderDialog(api)
 
     expect(await screen.findByTestId("contact-share-read-only")).toBeInTheDocument()
-    expect(screen.getByTestId("contact-share-save")).toBeDisabled()
+    expect(screen.queryByTestId("contact-share-save")).toBeNull()
     expect(api.put).not.toHaveBeenCalled()
   })
 

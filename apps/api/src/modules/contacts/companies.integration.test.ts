@@ -394,6 +394,8 @@ describe("company delete", () => {
     expect(withAccess!.peopleCount).toBe(1)
     expect(withAccess!.openDeal).toEqual({
       taskId: task,
+      title: "Rooms deal",
+      projectId: project,
       stage: "Proposal",
       amountMinor: 480_000,
       currency: "EUR",
@@ -404,6 +406,8 @@ describe("company delete", () => {
     )
     expect(noDealAccess!.openDeal).toEqual({
       taskId: task,
+      title: "Rooms deal",
+      projectId: project,
       stage: "Proposal",
       amountMinor: null,
       currency: null,

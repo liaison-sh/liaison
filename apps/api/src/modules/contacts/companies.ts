@@ -214,6 +214,9 @@ export interface CompanyWrite {
 
 export interface CompanyDealSummary {
   taskId: string
+  /** The deal's own title, and the board (pipeline project) it sits on. */
+  title: string
+  projectId: string
   stage: string | null
   /** Null for a reader without deal access, or when the deal has no amount. */
   amountMinor: number | null
@@ -339,6 +342,8 @@ async function openDeals(
   const rows = extractRows<{
     company_id: string
     task_id: string
+    title: string
+    project_id: string
     stage: string | null
     amount_minor: string | number | null
     currency: string | null
@@ -346,6 +351,7 @@ async function openDeals(
     await tx.execute(drizzleSql`
       SELECT DISTINCT ON (d.company_id)
              d.company_id::text AS company_id, d.task_id::text AS task_id,
+             t.title, t.project_id::text AS project_id,
              s.label AS stage, v.amount_minor, v.currency
         FROM ${ps()}.deals d
         JOIN ${ps()}.tasks t ON t.id = d.task_id AND t.archived_at IS NULL AND t.parent_task_id IS NULL
@@ -360,6 +366,8 @@ async function openDeals(
       r.company_id,
       {
         taskId: r.task_id,
+        title: r.title,
+        projectId: r.project_id,
         stage: r.stage,
         amountMinor: r.amount_minor === null ? null : Number(r.amount_minor),
         currency: r.currency,

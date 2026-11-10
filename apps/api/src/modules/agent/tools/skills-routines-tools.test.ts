@@ -2604,6 +2604,25 @@ describe("skills-routines-tools — authoring handlers (gated)", () => {
     expect(res.error?.retryable).toBe(true)
   })
 
+  it("createRoutinePreflight refuses a hand-written routine around the deal follow-up candidates and names the template", async () => {
+    // Measured: asked to set up deal follow-ups, the agent staged its own routine
+    // over the candidates read (its own quiet rule, drafts posted in discussions)
+    // instead of the Deal follow-ups template with its send-time checks.
+    const { createRoutinePreflight } = await import("~/modules/agent/tools/skills-routines-tools")
+    const res = (await createRoutinePreflight(
+      {
+        prompt:
+          "STEP 1, find the pipeline with projects__search. STEP 2, get the quiet deals: call projects__deals_followup_candidates with that projectId and quietDays 14. STEP 3, post a draft in each deal's discussion.",
+      },
+      baseCtx() as never,
+    )) as { error?: { code?: string; message?: string; retryable?: boolean } }
+    expect(res.error?.code).toBe("routine_template_covers_this")
+    expect(res.error?.retryable).toBe(true)
+    expect(res.error?.message).toContain("Nothing was created")
+    expect(res.error?.message).toContain("kernel__enable_routine_template")
+    expect(res.error?.message).toContain('"templateKey":"deal-followups"')
+  })
+
   it("createRoutinePreflight passes ({ ok: true }) a correctly-paged prepare-shipments prompt and a non-shipment prompt", async () => {
     const { createRoutinePreflight } = await import("~/modules/agent/tools/skills-routines-tools")
     const ctx = baseCtx()

@@ -525,7 +525,9 @@ mailRoutes.post(
       return success(c, {
         commercial: true,
         footerLines: null,
-        refusal: own.refused.message,
+        // Asked before any send: the reason it cannot go, without the send
+        // refusal's "Nothing was sent." (it reads as a failed send).
+        refusal: own.refused.message.replace(/^Nothing was sent\. /, ""),
         line: null,
         missingBasis: null,
       })

@@ -19,7 +19,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `approval_policy_get` | List the org's APPROVAL-TIGHTENING policies: which tools require approval or a second approver, and under what conditions. |  | `kernel:policies:read` |
 | `approval_policy_set` | Configure an org APPROVAL-TIGHTENING policy: escalate a non-gated action to gated, and/or require N distinct approvers (minApprovers:2 = a second person must approve). | yes | `kernel:policies:admin` |
 | `approval_update_payload` | Update the editable fields of a pending approval you can see as its requester or an approver. |  | `kernel:approvals:write` |
-| `approval_withdraw` | Retract a PENDING approval request that you raised. |  | `kernel:approvals:write` |
+| `approval_withdraw` | Retract a PENDING approval request that you raised. |  | `kernel:approvals:read` |
 | `approvals_list` | List the approvals waiting on this user to decide, oldest first, with origin app, requester, summary and age, plus recentlyDecided (last 24 hours) to check whether a requested action happened. |  | `kernel:approvals:read` |
 | `apps_build_check` | Build a draft version (the latest by default) and type-check it against the app SDK. |  | `kernel:apps:build` |
 | `apps_build_create` | Start a new app for the organisation: a draft from a working template (store-crud: one stored collection with a list and an add tool; read-only: one read tool), or from your own files. |  | `kernel:apps:build` |

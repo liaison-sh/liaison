@@ -290,6 +290,8 @@ export interface TaskSearchHit {
   number: number
   /** Effective labels (own or inherited) of the task. */
   labels: TaskLabel[]
+  /** Present (true) only on a deleted task, which a search returns only when asked to. */
+  archived?: true
 }
 
 type TaskSearchDbRow = {
@@ -302,6 +304,7 @@ type TaskSearchDbRow = {
   status_terminal: boolean | null
   project_key: string
   number: number
+  archived: boolean
 }
 
 function taskSearchHitFromRow(r: TaskSearchDbRow): TaskSearchHit {
@@ -317,6 +320,7 @@ function taskSearchHitFromRow(r: TaskSearchDbRow): TaskSearchHit {
     key: formatTaskKey(r.project_key, r.number),
     number: r.number,
     labels: [],
+    ...(r.archived ? { archived: true as const } : {}),
   }
 }
 
@@ -335,13 +339,21 @@ export async function searchTasksByTitle(
   orgId: string,
   q: string,
   limit: number,
+  /** Deleted (archived) tasks: left out by default, like archived projects. */
+  archived: "include" | "only" | "exclude" = "exclude",
 ): Promise<TaskSearchHit[]> {
   const cappedLimit = Math.max(1, Math.min(limit, 100))
   const baseColumns = drizzleSql`
     t.id, t.title, t.project_id, p.name AS project_name,
     t.status_id, ps.label AS status_label, ps.terminal AS status_terminal,
-    p.key AS project_key, t.number
+    p.key AS project_key, t.number, (t.archived_at IS NOT NULL) AS archived
   `
+  const archivedFilter =
+    archived === "include"
+      ? drizzleSql``
+      : archived === "only"
+        ? drizzleSql` AND t.archived_at IS NOT NULL`
+        : drizzleSql` AND t.archived_at IS NULL`
 
   const hits: TaskSearchHit[] = []
   const seen = new Set<string>()
@@ -354,7 +366,7 @@ export async function searchTasksByTitle(
         FROM ${projectsRel("tasks")} t
         JOIN ${projectsRel("projects")} p ON p.id = t.project_id AND p.org_id = t.org_id
         LEFT JOIN ${projectsRel("project_statuses")} ps ON ps.id = t.status_id AND ps.org_id = t.org_id
-        WHERE t.org_id = ${orgId}::uuid AND p.key = ${parsedKey.key} AND t.number = ${parsedKey.number}
+        WHERE t.org_id = ${orgId}::uuid AND p.key = ${parsedKey.key} AND t.number = ${parsedKey.number}${archivedFilter}
         LIMIT 1
       `),
     )
@@ -371,7 +383,7 @@ export async function searchTasksByTitle(
       JOIN ${projectsRel("projects")} p ON p.id = t.project_id AND p.org_id = t.org_id
       LEFT JOIN ${projectsRel("project_statuses")} ps ON ps.id = t.status_id AND ps.org_id = t.org_id
       WHERE t.org_id = ${orgId}::uuid
-        AND (t.title ILIKE ${`%${q}%`} OR (p.key || '-' || t.number::text) ILIKE ${`${q}%`})
+        AND (t.title ILIKE ${`%${q}%`} OR (p.key || '-' || t.number::text) ILIKE ${`${q}%`})${archivedFilter}
       ORDER BY t.updated_at DESC, t.id DESC
       LIMIT ${cappedLimit}
     `),

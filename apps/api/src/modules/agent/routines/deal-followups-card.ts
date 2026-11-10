@@ -46,8 +46,8 @@ function skipsLine(counts: Record<string, number> | null): string {
       : null,
   ].filter((x): x is string => x !== null)
   return parts.length === 0
-    ? `${base} Today none is skipped for a missing basis or sender.`
-    : `${base} Today: ${parts.join(", ")}.`
+    ? `${base} Of the deals quiet today, none is skipped for a missing basis or sender.`
+    : `${base} Of the deals quiet today: ${parts.join(", ")}.`
 }
 
 export async function summarizeDealFollowupsSetup(

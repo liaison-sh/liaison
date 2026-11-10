@@ -9,6 +9,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ApiError } from "~/lib/api-error"
+import { ActivityPanel } from "./ActivityPanel"
 import { CompanyDetail } from "./CompanyDetail"
 import { duplicateIds, loadCompany, resetCompanyStores } from "./company-store"
 import { resolveCompanyTabLabel } from "./exports"
@@ -350,6 +351,62 @@ function seedDuplicate(): void {
 }
 
 describe("CompanyDetail states", () => {
+  it("opening the page reads the timeline once", async () => {
+    // Each extra read asks every source again, the slow ones included.
+    mocks.routes[ACTIVITY] = {
+      rows: [row("t1", "tickets", "2026-11-05T10:00:00Z", "Ticket opened")],
+      nextBefore: null,
+      unavailable: [],
+    }
+    render(() => <CompanyDetail entityId={CO} />)
+    await screen.findByTestId("company-detail.people")
+    await waitFor(() => expect(api.get.mock.calls.some(([p]) => p.startsWith(ACTIVITY))).toBe(true))
+    await new Promise((r) => setTimeout(r, 50))
+    expect(api.get.mock.calls.filter(([p]) => p.startsWith(ACTIVITY)).length).toBe(1)
+  })
+
+  it("the Deals section names the newest open deal and opens its board", async () => {
+    mocks.routes[`/contacts/companies/${CO}`] = company({
+      openDeal: {
+        taskId: "deal-1",
+        title: "Rooms refit",
+        projectId: "pipe-1",
+        stage: "Proposal",
+        amountMinor: 1740000,
+        currency: "EUR",
+      },
+    })
+    render(() => <CompanyDetail entityId={CO} />)
+    const deal = await screen.findByTestId("company-deal-deal-1")
+    expect(deal.textContent).toContain("Rooms refit")
+    fireEvent.click(screen.getByTestId("company-detail.open-board"))
+    expect(mocks.openTab).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "projects:project", entityId: "pipe-1" }),
+    )
+  })
+
+  it("two views of one timeline opened together share one read", async () => {
+    // Measured in the browser: every company open read its timeline twice at
+    // once, doubling the load on the slow sources until one timed out.
+    let release: (v: unknown) => void = () => {}
+    mocks.routes[ACTIVITY] = new Promise((r) => {
+      release = r
+    })
+    render(() => (
+      <>
+        <ActivityPanel path={ACTIVITY} testId="a1" title="A" emptyText="none" />
+        <ActivityPanel path={ACTIVITY} testId="a2" title="B" emptyText="none" />
+      </>
+    ))
+    release({
+      items: [row("t1", "tickets", "2026-11-05T10:00:00Z", "Ticket opened")],
+      unavailable: [],
+    })
+    await screen.findAllByText("Ticket opened")
+    expect(api.get.mock.calls.filter(([p]) => p.startsWith(ACTIVITY)).length).toBe(1)
+    expect(screen.getAllByText("Ticket opened")).toHaveLength(2)
+  })
+
   it("Not the same removes the duplicate badge, and Undo brings it back", async () => {
     seedDuplicate()
     render(() => <CompanyDetail entityId={CO} />)
@@ -412,6 +469,34 @@ describe("CompanyDetail states", () => {
     expect((await screen.findByTestId("company-detail.duplicate-note")).textContent).toBe(
       "MAISON ARLON SAS is merged into Maison Arlon.",
     )
+  })
+
+  it("on a new copy's page, Merge keeps the established company and merges the copy into it", async () => {
+    // The minute-old copy has nobody and no deal; the other one has both.
+    seedDuplicate()
+    mocks.routes[`/contacts/companies/${CO}`] = company({ peopleCount: 0, openDeal: null })
+    mocks.routes["/contacts/companies/co-2"] = company({
+      id: "co-2",
+      name: "MAISON ARLON SAS",
+      peopleCount: 3,
+    })
+    render(() => <CompanyDetail entityId={CO} />)
+    await waitFor(() =>
+      expect(screen.getByTestId("company-detail.duplicate-merge").textContent).toContain(
+        "MAISON ARLON SAS",
+      ),
+    )
+    vi.useFakeTimers()
+    try {
+      fireEvent.click(screen.getByTestId("company-detail.duplicate-merge"))
+      expect(screen.getByTestId("company-detail.duplicate-holding").textContent).toContain(
+        "Maison Arlon merges into MAISON ARLON SAS",
+      )
+      await vi.advanceTimersByTimeAsync(8000)
+      expect(postsTo("kernel:companies_merge")).toEqual([{ sourceId: CO, targetId: "co-2" }])
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("one source failing shows one notice with Retry and the rest", async () => {

@@ -8,9 +8,14 @@
 // name and postal address under the three states that name the sender.
 
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { app } from "~/app"
 import { sql } from "~/db"
+import { WebSocketManager } from "~/infra/websocket"
 import { redis } from "~/lib/redis"
+import { createServer } from "~/lib/server"
 import * as footerModule from "~/modules/mail/commercial-footer"
 import { mintOptOutLink } from "~/modules/mail/commercial-footer"
 import { hashEmail } from "~/modules/mail/suppressions"
@@ -211,5 +216,54 @@ describe("the opt-out link", () => {
         expect(html.includes(`<footer>${footer}</footer>`)).toBe(c.footer)
       }
     }
+  })
+})
+
+describe("the opt-out link behind the server that also serves the web app", () => {
+  // In production one server answers both the web app and the API: a GET the
+  // static handler took for a web route would show the app's sign-in page.
+  let server: Awaited<ReturnType<typeof createServer>>
+  let base: string
+  let publicDir: string
+
+  beforeAll(async () => {
+    publicDir = mkdtempSync(join(tmpdir(), "liaison-optout-spa-"))
+    writeFileSync(
+      join(publicDir, "index.html"),
+      "<!doctype html><html><body><script>app</script>SPA</body></html>",
+    )
+    server = await createServer(app, { port: 0, publicDir, wsManager: new WebSocketManager(redis) })
+    base = `http://127.0.0.1:${server.port}`
+  })
+
+  afterAll(() => {
+    server.stop(true)
+    rmSync(publicDir, { recursive: true, force: true })
+  })
+
+  it("a GET of the link the mail footer carries reaches the opt-out page, not the web app", async () => {
+    const path = pathOf((await mintOptOutLink(ORG, `ines-${tag}@prospect.example`)).url)
+    const before = await suppressionRows()
+    const res = await fetch(`${base}${path}`, {
+      headers: { "Accept-Language": "en", "X-Forwarded-For": `10.9.${tag.length}.2` },
+    })
+    const html = await res.text()
+    expect(res.status).toBe(200)
+    expect(res.headers.get("x-robots-tag")).toBe("noindex, nofollow")
+    expect(html).not.toContain("SPA")
+    expect(html).not.toContain("<script")
+    expect(res.headers.get("set-cookie")).toBeNull()
+    // Opening the link records nothing.
+    expect(await suppressionRows()).toBe(before)
+  })
+
+  it("a GET of an unknown well-formed token answers the page's Invalid state, not the web app", async () => {
+    const res = await fetch(`${base}/public/opt-out/${"A".repeat(43)}`, {
+      headers: { "Accept-Language": "en", "X-Forwarded-For": `10.9.${tag.length}.3` },
+    })
+    const html = await res.text()
+    expect(res.status).toBe(404)
+    expect(html).not.toContain("SPA")
+    expect(html).not.toContain("<script")
   })
 })

@@ -10,6 +10,7 @@ import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { contacts } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
+import { rootLogger } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
 import { ConnectionCredentialsMissingError } from "~/modules/apps/connections/credentials-missing"
 import { NoConnectedAccountError } from "~/modules/apps/connections/no-connected-account"
@@ -17,6 +18,7 @@ import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { type MailCategory, mailCategoryCondition } from "~/modules/mail/category"
 import { enqueueGmailWriteBack } from "~/modules/mail/gmail-write-back"
 import { markConversationReadThrough } from "~/modules/mail/page-write"
+import { resolveSenderContacts } from "~/modules/mail/sender-contacts"
 import {
   isMailAccountSuppressed,
   stripMailContentFromPayload,
@@ -1189,6 +1191,35 @@ export async function sendReply(
   return { messageId: sendResult.messageId }
 }
 
+/**
+ * The existing contact a sent mail's first To address belongs to, under the
+ * mailbox's visibility rules, or null. The mail has already left when this
+ * runs, so a failed lookup leaves the conversation unlinked rather than
+ * losing its record.
+ */
+async function addressedContact(
+  orgId: string,
+  userId: string,
+  account: { id: string; owner_type: string; owner_id: string | null },
+  firstTo: string | undefined,
+): Promise<string | null> {
+  const email = firstTo?.trim().toLowerCase()
+  if (!email) return null
+  try {
+    const found = await resolveSenderContacts(
+      orgId,
+      userId,
+      { id: account.id, ownerType: account.owner_type, ownerId: account.owner_id },
+      [{ email }],
+      { create: false },
+    )
+    return found[email] ?? null
+  } catch (err) {
+    rootLogger.warn({ err, orgId, accountId: account.id }, "sent mail: contact lookup failed")
+    return null
+  }
+}
+
 export async function sendCompose(
   db: RlsClient,
   params: {
@@ -1234,6 +1265,11 @@ export async function sendCompose(
 
   const externalThreadId = sendResult.externalThreadId ?? sendResult.messageId
 
+  // The conversation links to the contact it was addressed to (its first To
+  // recipient), found by the same lookup and visibility rules as mail the
+  // mailbox sync stores: an existing contact only, sending creates none.
+  const contactId = await addressedContact(params.orgId, params.userId, account, params.to[0])
+
   // The email is delivered. Persist the new conversation + message in a SEPARATE
   // committed transaction so a DB failure (or rollback of any enclosing request
   // tx) cannot orphan an already-sent email. Idempotent on the provider message
@@ -1262,11 +1298,11 @@ export async function sendCompose(
         await tx.execute(drizzleSql`
         INSERT INTO ${convTable()} (
           id, org_id, account_id, owner_type, owner_id, external_thread_id,
-          subject, snippet, status, labels, is_read, is_starred, last_message_at, message_count
+          subject, snippet, contact_id, status, labels, is_read, is_starred, last_message_at, message_count
         ) VALUES (
           gen_random_uuid(), ${params.orgId}, ${params.accountId}, ${account.owner_type}, ${account.owner_id}, ${externalThreadId},
           ${sealing ? null : params.subject}, ${sealing ? null : params.textBody.slice(0, 200)},
-          'open', '["SENT"]'::jsonb, true, false, now(), 1
+          ${contactId}::uuid, 'open', '["SENT"]'::jsonb, true, false, now(), 1
         )
         ON CONFLICT (org_id, account_id, external_thread_id) DO NOTHING
         RETURNING *
@@ -1312,7 +1348,8 @@ export async function sendCompose(
       if (joinedExisting) {
         await tx.execute(drizzleSql`
           UPDATE ${convTable()}
-             SET message_count = message_count + 1, last_message_at = now(), updated_at = now()
+             SET message_count = message_count + 1, last_message_at = now(), updated_at = now(),
+                 contact_id = COALESCE(contact_id, ${contactId}::uuid)
            WHERE id = ${conversation.id} AND org_id = ${params.orgId}`)
       }
 

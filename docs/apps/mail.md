@@ -193,7 +193,7 @@ An agent's commercial mail goes only to someone whose contact records a lawful b
 
 A generic company address passes in France without a consumer status. A service message skips this check.
 
-A mail you write yourself to a prospect is not stopped for a missing basis: you are the sender who answers for it. The composer says calmly that no basis is recorded for writing to that person commercially, and lets you record one on their contact from there; you can still send. An address that opted out stays refused for everyone.
+A mail you write yourself to a prospect is not stopped for a missing basis: you are the sender who answers for it. The composer says calmly that no basis is recorded for writing to that person commercially, and lets you record one on their contact from there; you can still send. An address that opted out stays refused for everyone. Under the message, the composer lists what is recorded about each recipient who is a contact: the basis, business or consumer, and whether they opted out; an agent mail's approval card shows the same line.
 
 The first commercial mail to someone whose address did not come from them (recorded as from a third party, an enrichment, or with no recorded source) also says where the address came from and that they can object. Their contact then records that this notice went out, and later mails do not repeat it.
 

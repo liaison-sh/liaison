@@ -11,11 +11,12 @@ import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import type { Server } from "bun"
 import { app } from "~/app"
 import { sql } from "~/db"
 import { WebSocketManager } from "~/infra/websocket"
 import { redis } from "~/lib/redis"
-import { createServer } from "~/lib/server"
+import { createServer, type WsData } from "~/lib/server"
 import * as footerModule from "~/modules/mail/commercial-footer"
 import { mintOptOutLink } from "~/modules/mail/commercial-footer"
 import { hashEmail } from "~/modules/mail/suppressions"
@@ -222,7 +223,7 @@ describe("the opt-out link", () => {
 describe("the opt-out link behind the server that also serves the web app", () => {
   // In production one server answers both the web app and the API: a GET the
   // static handler took for a web route would show the app's sign-in page.
-  let server: Awaited<ReturnType<typeof createServer>>
+  let server: Server<WsData>
   let base: string
   let publicDir: string
 

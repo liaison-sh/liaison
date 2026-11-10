@@ -238,3 +238,14 @@ B2B company draft/order names the company, location billing (else shipping) addr
 each draft splits net/tax by its own taxesIncluded, issuer prices_include_tax only as fallback -> bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:231
 tax-exempt company location charged no VAT -> bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:240; bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:260
 catalog price or price override is the unit price, no discount -> bundled-apps/invoicing/src/handlers/shopify-draft-order.ts:298; bundled-apps/shopify/src/lib/draft-order.ts:607
+First run draft bills the schedule's company: name, contact billing address, recorded VAT -> bundled-apps/invoicing/src/recurring/draft-job.ts:126; bundled-apps/invoicing/src/recurring/draft-job.ts:90
+Run card approval mints a send grant per row; the row's invoice is prepared at issue -> bundled-apps/invoicing/src/recurring/run-card.ts:275; bundled-apps/invoicing/src/recurring/issue-job.ts:118
+A run row's send goes only for the invoice the row names -> bundled-apps/invoicing/src/einvoicing/transmit.ts:709
+No-person e-invoices wait for one daily send card listing all and the oldest -> bundled-apps/invoicing/src/einvoicing/transmit.ts:430; bundled-apps/invoicing/app.manifest.json:6688; bundled-apps/invoicing/src/einvoicing/send-batch.ts:133
+Rejected or expired card keeps them for the next day; two days waiting raises one Home line -> bundled-apps/invoicing/src/einvoicing/send-batch.ts:83; bundled-apps/invoicing/src/einvoicing/send-batch.ts:15
+Standing authorization per stream via issuer_stream_set einvoiceStanding, a person's approval mints the stream grant -> bundled-apps/invoicing/app.manifest.json:2886; bundled-apps/invoicing/src/einvoicing/standing.ts:74
+Standing: renewal a week before, lapse back to the batch with a Home line, off at once -> bundled-apps/invoicing/src/einvoicing/standing.ts:22; bundled-apps/invoicing/src/einvoicing/standing.ts:195; bundled-apps/invoicing/app.manifest.json:2893
+Standing send only for a document of that stream -> bundled-apps/invoicing/src/einvoicing/transmit.ts:702
+Collections by VAT rate where VAT is due on receipt; Not needed otherwise; To report at your platform -> bundled-apps/invoicing/src/einvoicing/collection.ts:35; bundled-apps/invoicing/src/einvoicing/collection.ts:110; bundled-apps/invoicing/src/mutations/payments.ts:152
+Buyer refusal opens a Home item, no document -> bundled-apps/invoicing/src/einvoicing/transmit.ts:884
+Payment reminder about a paid, credited or voided invoice is not sent -> bundled-apps/invoicing/src/send-state.ts:28; bundled-apps/invoicing/app.manifest.json:1776

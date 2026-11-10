@@ -16,7 +16,7 @@ A merge keeps one contact, the survivor, and permanently deletes the other. The 
 5. Click **Continue**. The summary reads **<survivor> will absorb <duplicate>.**, shows how many mail conversations will be reassigned, and names the duplicate's email that will be discarded.
 6. Click **Confirm Merge**. You see **Contacts merged**.
 
-A merge you start yourself runs at once, with no approval. It cannot be undone. Click **Back** on the summary to change your choices first.
+The duplicate's mail conversations, invoices, recurring invoice schedules and linked Stripe customers move to the survivor in the same step. A merge you start yourself runs at once, with no approval. It cannot be undone. Click **Back** on the summary to change your choices first.
 
 ## Let an agent find every duplicate
 

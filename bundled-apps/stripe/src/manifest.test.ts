@@ -20,8 +20,8 @@ function referencedHandlers(m: any): string[] {
 const CARD_PARAM = /card|pan|cvc|cvv|number|expir/i
 
 describe("stripe manifest", () => {
-  it("is at version 0.1.6", () => {
-    expect(load().version).toBe("0.1.6")
+  it("is at version 0.1.7", () => {
+    expect(load().version).toBe("0.1.7")
   })
 
   it("parses with the package manifest schema", () => {

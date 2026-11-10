@@ -1,6 +1,6 @@
 {
   "name": "stripe",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "kind": "connector",
   "iconName": "credit-card",
   "description": "Stripe connector: a read mirror of customers, subscriptions, invoices, payments, refunds and disputes, kept current by a signed webhook.",
@@ -123,6 +123,14 @@
   "webhookHealth": {
     "probe": "probe-webhook-upstream"
   },
+  "outsideTextFields": [
+    "name",
+    "email",
+    "plan",
+    "number",
+    "reason",
+    "failureCode"
+  ],
   "tools": {
     "connection_check": {
       "deferLoading": true,
@@ -212,8 +220,539 @@
         "properties": {},
         "additionalProperties": false
       }
+    },
+    "customers_search": {
+      "deferLoading": true,
+      "readOnly": true,
+      "taintSource": true,
+      "description": "Search Stripe customers in Liaison's mirror by name, email or id (cus_), or list those not linked, past due, on trial or cancelled. Masked: no address, card as brand and last 4.",
+      "requiredScopes": [
+        "stripe:customers:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "customersSearch",
+      "readsFromTable": "app_stripe.stripe_customers",
+      "params": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "filter": {
+            "type": "string",
+            "enum": [
+              "unlinked",
+              "past_due",
+              "trial",
+              "cancelled"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "cursor": {
+            "type": "string",
+            "description": "nextCursor of the previous page."
+          }
+        },
+        "additionalProperties": false
+      },
+      "searchKeywords": [
+        "abonné",
+        "client"
+      ]
+    },
+    "customers_get": {
+      "deferLoading": true,
+      "readOnly": true,
+      "taintSource": true,
+      "description": "One Stripe customer from the mirror, by its id, or the one linked to a contact or company: its subscriptions, open invoices, masked card and links.",
+      "requiredScopes": [
+        "stripe:customers:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "customersGet",
+      "readsFromTable": "app_stripe.stripe_customers",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stripe customer id, cus_..."
+          },
+          "contactId": {
+            "type": "string"
+          },
+          "companyId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "searchKeywords": [
+        "client"
+      ]
+    },
+    "customer_link": {
+      "deferLoading": true,
+      "externalEffect": true,
+      "description": "Link a Stripe customer to a Liaison company and/or contact, unlink it (unlink), or restore the link it replaced (undo). Changes Liaison only, never Stripe. Only records you can read.",
+      "requiredScopes": [
+        "stripe:customers:write"
+      ],
+      "trustBoundary": "user",
+      "handler": "customerLink",
+      "writesToTable": "app_stripe.stripe_customers",
+      "params": {
+        "type": "object",
+        "properties": {
+          "stripeCustomerId": {
+            "type": "string"
+          },
+          "companyId": {
+            "type": "string"
+          },
+          "contactId": {
+            "type": "string"
+          },
+          "unlink": {
+            "type": "boolean"
+          },
+          "undo": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "stripeCustomerId"
+        ]
+      },
+      "searchKeywords": [
+        "lier",
+        "associer"
+      ]
+    },
+    "subscriptions_search": {
+      "deferLoading": true,
+      "readOnly": true,
+      "taintSource": true,
+      "description": "Stripe subscriptions from the mirror by id, plan name, status or customer, with plan, MRR, period end, trial end and masked card. An id returns that one row.",
+      "requiredScopes": [
+        "stripe:subscriptions:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "subscriptionsSearch",
+      "readsFromTable": "app_stripe.stripe_subscriptions",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "trialing",
+              "active",
+              "past_due",
+              "unpaid",
+              "canceled",
+              "incomplete",
+              "incomplete_expired",
+              "paused"
+            ]
+          },
+          "customerId": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "cursor": {
+            "type": "string",
+            "description": "nextCursor of the previous page."
+          }
+        },
+        "additionalProperties": false
+      },
+      "searchKeywords": [
+        "abonnement"
+      ]
+    },
+    "invoices_search": {
+      "deferLoading": true,
+      "readOnly": true,
+      "taintSource": true,
+      "description": "Stripe invoices from the mirror by customer or status, with number, amounts due and paid, next retry, and the Liaison document it became.",
+      "requiredScopes": [
+        "stripe:invoices:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "invoicesSearch",
+      "readsFromTable": "app_stripe.stripe_invoices",
+      "params": {
+        "type": "object",
+        "properties": {
+          "customerId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "open",
+              "paid",
+              "uncollectible",
+              "void"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "cursor": {
+            "type": "string",
+            "description": "nextCursor of the previous page."
+          }
+        },
+        "additionalProperties": false
+      },
+      "searchKeywords": [
+        "impayé"
+      ]
+    },
+    "payments_search": {
+      "deferLoading": true,
+      "readOnly": true,
+      "taintSource": true,
+      "description": "Stripe charges from the mirror by customer, invoice or status, card as brand and last 4; unmatched: charges no Stripe invoice explains.",
+      "requiredScopes": [
+        "stripe:payments:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "paymentsSearch",
+      "readsFromTable": "app_stripe.stripe_payments",
+      "params": {
+        "type": "object",
+        "properties": {
+          "customerId": {
+            "type": "string"
+          },
+          "invoiceId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "succeeded",
+              "failed",
+              "pending"
+            ]
+          },
+          "unmatched": {
+            "type": "boolean"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "cursor": {
+            "type": "string",
+            "description": "nextCursor of the previous page."
+          }
+        },
+        "additionalProperties": false
+      },
+      "searchKeywords": [
+        "paiement",
+        "échec"
+      ]
+    },
+    "disputes_list": {
+      "deferLoading": true,
+      "readOnly": true,
+      "taintSource": true,
+      "description": "Stripe disputes from the mirror by customer or status, with reason and evidence due date. Read only: answer a dispute in Stripe.",
+      "requiredScopes": [
+        "stripe:payments:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "disputesList",
+      "readsFromTable": "app_stripe.stripe_disputes",
+      "params": {
+        "type": "object",
+        "properties": {
+          "customerId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "cursor": {
+            "type": "string",
+            "description": "nextCursor of the previous page."
+          }
+        },
+        "additionalProperties": false
+      },
+      "searchKeywords": [
+        "litige"
+      ]
+    },
+    "customer_context": {
+      "readOnly": true,
+      "agentVisible": false,
+      "description": "The linked Stripe customer's plan, status, masked card and unpaid invoices for the ticket, contact or company in view. Read by the kernel.",
+      "requiredScopes": [
+        "stripe:subscriptions:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "customerContext",
+      "params": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "object",
+            "properties": {
+              "app": {
+                "type": "string"
+              },
+              "entityType": {
+                "type": "string"
+              },
+              "entityId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "app",
+              "entityType",
+              "entityId"
+            ]
+          }
+        },
+        "required": [
+          "subject"
+        ]
+      },
+      "timeoutMs": 2000,
+      "readsFromTable": "app_stripe.stripe_subscriptions"
+    },
+    "activity_read": {
+      "readOnly": true,
+      "agentVisible": false,
+      "description": "A company's or a contact's Stripe rows for their timeline: payment failed, retry failed, subscription started or cancelled, refund, dispute. Read by the kernel.",
+      "requiredScopes": [
+        "stripe:customers:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "activityRead",
+      "params": {
+        "type": "object",
+        "properties": {
+          "contactIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "companyId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dealIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "before": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "prefix": {
+            "type": "string"
+          }
+        }
+      },
+      "timeoutMs": 2000
+    },
+    "approval_route_read": {
+      "readOnly": true,
+      "agentVisible": false,
+      "description": "Which company a pending approval about a Stripe customer, subscription or charge is for. Read by the kernel when an approval is proposed.",
+      "requiredScopes": [
+        "stripe:customers:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "approvalRouteRead",
+      "params": {
+        "type": "object",
+        "properties": {
+          "entityType": {
+            "type": "string"
+          },
+          "entityId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "entityType",
+          "entityId"
+        ]
+      },
+      "readsFromTable": "app_stripe.stripe_customers"
+    },
+    "billing_status_for_counterparty": {
+      "readOnly": true,
+      "agentVisible": false,
+      "description": "Whether a contact or company pays a live Stripe subscription, with those subscriptions and customer ids.",
+      "requiredScopes": [
+        "stripe:internal"
+      ],
+      "trustBoundary": "user",
+      "handler": "billingStatusForCounterparty",
+      "params": {
+        "type": "object",
+        "properties": {
+          "contactId": {
+            "type": "string"
+          },
+          "companyId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "invoice_document_link": {
+      "agentVisible": false,
+      "description": "Record the Liaison document a Stripe invoice became.",
+      "requiredScopes": [
+        "stripe:internal"
+      ],
+      "trustBoundary": "user",
+      "handler": "invoiceDocumentLink",
+      "writesToTable": "app_stripe.stripe_invoices",
+      "params": {
+        "type": "object",
+        "properties": {
+          "stripeInvoiceId": {
+            "type": "string"
+          },
+          "documentId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "stripeInvoiceId",
+          "documentId"
+        ]
+      }
+    },
+    "invoice_send_state": {
+      "readOnly": true,
+      "agentVisible": false,
+      "description": "Whether a reminder about a Stripe invoice should still go: stops when the invoice is paid, void or uncollectible.",
+      "requiredScopes": [
+        "stripe:invoices:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "invoiceSendState",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": [
+          "ref"
+        ]
+      }
     }
   },
+  "contextProviders": [
+    {
+      "on": [
+        "tickets:ticket",
+        "kernel:contact",
+        "contacts:contact-detail",
+        "kernel:company",
+        "contacts:company-detail"
+      ],
+      "tool": "customer_context",
+      "scope": "stripe:subscriptions:read",
+      "loadTools": [
+        "customers_get"
+      ]
+    }
+  ],
+  "activitySources": [
+    {
+      "tool": "activity_read",
+      "scope": "stripe:customers:read",
+      "label": "Stripe",
+      "filterKey": "stripe"
+    }
+  ],
+  "approvalRoute": {
+    "customer": "approval_route_read",
+    "subscription": "approval_route_read",
+    "charge": "approval_route_read"
+  },
+  "cross_app_calls": [
+    {
+      "target": "kernel:contacts_read",
+      "reason": "a link names only a contact the person can read"
+    },
+    {
+      "target": "kernel:contacts_search",
+      "reason": "find the contact a Stripe customer's email names"
+    },
+    {
+      "target": "kernel:companies_read",
+      "reason": "a link names only a company the person can read"
+    },
+    {
+      "target": "kernel:companies_search",
+      "reason": "suggest the company on a customer's email domain"
+    },
+    {
+      "target": "tickets:get",
+      "reason": "the contact of the ticket in view, for the customer context"
+    }
+  ],
   "jobs": {
     "backfill": {
       "handler": "backfillJob",
@@ -312,7 +851,8 @@
       "card_number:masked"
     ],
     "subscribes": {
-      "kernel/connected_account:disconnect": "onConnectionDisconnected"
+      "kernel/connected_account:disconnect": "onConnectionDisconnected",
+      "customer:updated": "matchCustomerOnUpdate"
     }
   },
   "attention": {
@@ -373,7 +913,8 @@
         },
         "deleted_at": "date?",
         "stripe_updated": "date",
-        "created_at_stripe": "date"
+        "created_at_stripe": "date",
+        "previous_link": "json?"
       },
       "constraints": {
         "unique": [

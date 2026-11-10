@@ -769,15 +769,15 @@
       "schema": 37
     },
     "invoicing__drafts_create": {
-      "desc": 429,
+      "desc": 290,
       "schema": 1520
     },
     "invoicing__drafts_discard": {
-      "desc": 247,
+      "desc": 179,
       "schema": 22
     },
     "invoicing__drafts_update": {
-      "desc": 169,
+      "desc": 93,
       "schema": 1375
     },
     "invoicing__einvoice_book_batch": {
@@ -2768,7 +2768,7 @@
     "A004|répondre mail": "15tl",
     "A005|find email": "15tl",
     "A006|invoice list": "5t",
-    "A007|find invoice": "15tl",
+    "A007|find invoice": "5t",
     "A008|paid invoice": "15tl",
     "A009|download invoice": "15tl",
     "A010|shipping label": "15tl",
@@ -2788,7 +2788,7 @@
     "A024|factures fournisseurs": "15tl",
     "A025|facture du mois": "5",
     "A026|la facture": "5tl",
-    "A027|search invoices": "15tl",
+    "A027|search invoices": "5t",
     "A028|where is the parcel": "15tl",
     "A029|what's left to ship": "15tl",
     "A030|rembourse": "15tl",
@@ -2797,7 +2797,7 @@
     "A033|auto approve": "5tl",
     "A034|active l'application": "15tl",
     "A035|imprime étiquettes": "15tl",
-    "C01|annuler abonnement mois": "5",
+    "C01|annuler abonnement mois": "",
     "C01|end schedule": "",
     "C01|enlever facture du mois": "5t",
     "C01|recurring schedule": "",
@@ -2840,7 +2840,7 @@
     "C20|nouvelle opportunité": "5t",
     "C21|close deal": "5t",
     "C21|deal won": "15tl",
-    "C21|mark won": "15t",
+    "C21|mark won": "5t",
     "C22|deals by stage": "5t",
     "C22|pipeline": "5t",
     "C22|sales forecast": "15t",
@@ -2872,9 +2872,9 @@
     "C44|courriel": "15tl",
     "C44|envoyer email": "5tl",
     "C44|envoyer mail": "5tl",
-    "C45|find invoice": "15tl",
+    "C45|find invoice": "5t",
     "C45|invoice number": "15tl",
-    "C45|search invoices": "15tl",
+    "C45|search invoices": "5t",
     "C46|chercher facture": "15tl",
     "C46|facture": "5tl",
     "C46|rechercher facture": "15tl",
@@ -2909,7 +2909,7 @@
     "C55|pending approvals": "15tl",
     "C56|create routine": "15tl",
     "C56|routine weekly": "15tl",
-    "C56|schedule recurring task": "15tl",
+    "C56|schedule recurring task": "5t",
     "C57|invoce search": "15tl",
     "C57|invocie": "",
     "C60|comapny": "5t",
@@ -3230,6 +3230,20 @@
     "N03|se souvenir": "15tl",
     "N03|souviens-toi": "15tl",
     "S01|check the Stripe key": "15tl",
-    "S01|vérifier la clé Stripe": "15tl"
+    "S01|vérifier la clé Stripe": "15tl",
+    "S02|clients Stripe non liés": "5t",
+    "S02|Stripe customers not linked": "5t",
+    "S03|customer subscriptions": "5t",
+    "S03|Stripe customer": "5tl",
+    "S04|lier un client Stripe": "15tl",
+    "S04|link Stripe customer to company": "15tl",
+    "S05|abonnements en retard": "",
+    "S05|past due subscriptions": "15t",
+    "S06|factures Stripe ouvertes": "15t",
+    "S06|open Stripe invoices": "15t",
+    "S07|failed payments": "5t",
+    "S07|paiements échoués": "5tl",
+    "S08|litiges Stripe": "15tl",
+    "S08|Stripe disputes": "15tl"
   }
 }

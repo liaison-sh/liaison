@@ -1,1 +1,10 @@
-[]
+[
+  {
+    "name": "customers_search",
+    "reason": "Two connector apps each keep their own customers; the app prefix tells them apart and each one's description names its source."
+  },
+  {
+    "name": "customers_get",
+    "reason": "Two connector apps each keep their own customers; the app prefix tells them apart and each one's description names its source."
+  }
+]

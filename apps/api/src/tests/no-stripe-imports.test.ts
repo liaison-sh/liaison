@@ -283,6 +283,8 @@ const CONNECTOR_PATHS = [
   "**/i18n/**",
   "**/*i18n*",
   "apps/api/src/modules/agent/tools/tool-bench/corpus.json",
+  // The corpus's typed forms, as the bench last ranked them.
+  "apps/api/src/modules/agent/tools/tool-bench/baseline.json",
   // The connector's registrations (D129: "its registrations may name the
   // vendor"): its setup label and timing, its tables' import coverage and
   // export redaction, its settings alias, its scope alias and capability
@@ -320,14 +322,15 @@ const isBillingPath = (file: string) => matchesAny(file, BILLING_PATHS)
 const isConnectorPath = (file: string) => matchesAny(file, CONNECTOR_PATHS)
 
 /**
- * The connector's identifiers: an `<app>:` scope, an `app_<app>.` table, an
+ * The connector's identifiers: an `<app>:` scope, an `app_<app>.<table>` table, an
  * `<app>__` tool name, an `<app>/` event name, the bundled app folder and the
  * app's own name in quotes. Removing them leaves what is NOT an identifier.
  */
 const CONNECTOR_IDENTIFIERS = new RegExp(
   [
     `bundled-apps/${FORBIDDEN}`,
-    `app_${FORBIDDEN}\\.`,
+    // The schema and its table together: app_<app>.<app>_customers is one identifier.
+    `app_${FORBIDDEN}\\.[a-z_]+`,
     `(?<![A-Za-z@/])${FORBIDDEN}__`,
     `(?<![A-Za-z@/])${FORBIDDEN}/`,
     `(?<![A-Za-z])${FORBIDDEN}:`,
@@ -706,6 +709,8 @@ describe("extracted billing surface stays out of the repo", () => {
       `apps/api/src/tests/relations/${FORBIDDEN}-world.ts`,
       "apps/web/src/modules/i18n/fr.ts",
       "apps/api/src/modules/agent/tools/tool-bench/corpus.json",
+      // The corpus's typed forms, as the bench last ranked them.
+      "apps/api/src/modules/agent/tools/tool-bench/baseline.json",
     ]) {
       expect(isConnectorPath(file), file).toBe(true)
       expect(nameViolation(file, `const ${FORBIDDEN}Client = 1`), file).toBe(false)

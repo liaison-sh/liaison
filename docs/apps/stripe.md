@@ -76,6 +76,36 @@ Besides the webhook, Liaison reads Stripe on its own schedule.
 - **When the key is refused** (401), the connection reads **key_invalid** and nothing is read until an admin saves a working key. Waiting requests, such as a refund, stay waiting; approving one meanwhile changes nothing and says why.
 - **When a permission is missing** (403), the connection reads **partial** and the page names what the key may not read; the rest keeps working.
 
+## Link customers to companies and contacts
+
+Each Stripe customer can name one Liaison company and one contact. Liaison links them by itself when a customer is created or changed in Stripe, in this order:
+
+1. A contact whose email is exactly the customer's email. The customer also takes that contact's company.
+2. Otherwise, a contact that already carries the customer's Stripe id.
+
+A company whose web domain matches the customer's email domain is only a suggestion: nothing is linked until a person links it. A free-mail address (gmail.com, hotmail.fr, t-online.de and the like) never suggests a company. A link a person made is never replaced by an automatic one, and Liaison never removes a link because a match found nothing.
+
+To link by hand, ask the agent (it uses `customer_link`, which needs `stripe:customers:write`). It links only a company or a contact you can open, changes Liaison only and never Stripe, and says so. `undo` puts back the link it replaced, and `unlink` clears it.
+
+When two companies or two contacts are merged, every Stripe customer that named the merged one names the one you keep, in the same step, even while the Stripe app is turned off.
+
+## Read customers, subscriptions and payments
+
+The agent reads the mirror, never Stripe directly. Each answer names its records and says when the mirror last changed them.
+
+| Tool | Reads | Scope |
+|---|---|---|
+| `customers_search` | Customers by name, email or id (`cus_`), or those not linked, past due, on trial or cancelled | `stripe:customers:read` |
+| `customers_get` | One customer, by id or by the contact or company it is linked to, with its subscriptions and open invoices | `stripe:customers:read` |
+| `subscriptions_search` | Subscriptions by id, plan, status or customer | `stripe:subscriptions:read` |
+| `invoices_search` | Stripe invoices by customer or status | `stripe:invoices:read` |
+| `payments_search` | Payments by customer, invoice or status; `unmatched` for those no invoice explains | `stripe:payments:read` |
+| `disputes_list` | Disputes by customer or status. Read only: answer a dispute in Stripe | `stripe:payments:read` |
+
+Answers are masked: no address and no tax id, and a card shows only its brand, last 4 digits and expiry. Customer names, plans and dispute reasons are written by people outside your company, so a turn that reads them is marked as having read outside text, and a later action that leaves Liaison (including `customer_link`) waits for a person's approval.
+
+On a ticket from a linked contact, and on a linked contact's or company's page, the agent also gets a few lines: the plan and its status, the card's brand and last 4 digits, and the unpaid invoices with the next retry date. A company's and a contact's **Activity** timeline shows Stripe rows: payment failed, retry failed, subscription started, subscription cancelled, refund and dispute.
+
 ## Disconnect Stripe
 
 Disconnecting removes every record Liaison kept from Stripe: the mirror, the event log and the connection's state. Invoices and credit notes in Liaison's invoicing are kept.

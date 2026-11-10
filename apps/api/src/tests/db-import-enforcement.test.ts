@@ -42,6 +42,8 @@ describe("db import enforcement", () => {
     "tests/relations/company-world.ts",
     "tests/relations/dashboard-world.ts",
     "tests/relations/cells.ts",
+    "tests/relations/payments-world.ts",
+    "tests/relations/recurring-world.ts",
     "tests/relations/routine-world.ts",
     "tests/relations/thread-world.ts",
   ])
@@ -620,6 +622,7 @@ describe("db import enforcement", () => {
     "tests/relations/calendar-world.ts",
     "tests/relations/company-world.ts",
     "tests/relations/dashboard-world.ts",
+    "tests/relations/payments-world.ts",
     "tests/relations/routine-world.ts",
     // The security suite's seeds: the few rows no product path writes (a file on
     // a thread, an undeclared dimension grant, a participant removed). Not

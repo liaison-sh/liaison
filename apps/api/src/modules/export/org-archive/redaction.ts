@@ -130,6 +130,7 @@ export const KEPT_COLUMNS: Readonly<Record<string, string>> = {
   "app_calendar.calendars.sync_token": "provider sync cursor, grants no access",
   "app_invoicing.counterparty_identities.verified_by": "who approved the identity, not a verifier",
   "app_invoicing.einvoice_book_batches.state": STATUS,
+  "app_invoicing.einvoice_send_batches.state": STATUS,
   "app_invoicing.einvoice_transmissions.idempotency_key": CONTENT_HASH,
   "app_invoicing.einvoice_transmissions.state": STATUS,
   "app_invoicing.recurring_run_items.approved_hash": CONTENT_HASH,

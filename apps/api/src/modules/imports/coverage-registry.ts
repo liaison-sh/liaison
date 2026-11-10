@@ -75,6 +75,15 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
     exempt: "sync",
     reason: "e-invoicing and FX sync state",
   },
+  "app_invoicing.einvoice_send_batches": {
+    exempt: "sync",
+    reason: "e-invoicing and FX sync state",
+  },
+  "app_invoicing.einvoice_standing": {
+    exempt: "system",
+    reason:
+      "a standing e-invoice send authorization: it names a kernel grant a person approves, so it is turned on again, never imported",
+  },
   "app_invoicing.einvoice_transmissions": {
     exempt: "sync",
     reason: "e-invoicing and FX sync state",

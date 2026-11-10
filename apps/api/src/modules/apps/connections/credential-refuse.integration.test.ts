@@ -27,11 +27,12 @@ const SECRET_KEYS = [
 ]
 const RESTRICTED = `rk_test_${"51HxQzA9bC3dE4fG5hI6jKmN"}`
 
+const APP = "stripe"
 let orgId = ""
 let token = ""
 
 async function save(restrictedKey: string, lang = "en") {
-  const res = await app.request("/api/connections/stripe/stripe/credentials", {
+  const res = await app.request(`/api/connections/${APP}/${APP}/credentials`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -46,7 +47,7 @@ async function save(restrictedKey: string, lang = "en") {
 async function storedRows(): Promise<number> {
   const [row] = await sql<{ n: number }[]>`
     SELECT count(*)::int AS n FROM kernel.connected_accounts
-    WHERE org_id = ${orgId} AND app_name = 'stripe'`
+    WHERE org_id = ${orgId} AND app_name = ${APP}`
   return row?.n ?? 0
 }
 
@@ -56,14 +57,14 @@ beforeAll(async () => {
   orgId = org.orgId
   token = await minimal.token(org.adminUserId)
   // The field's own rule only: the app's check before storage is not installed here.
-  connectionConfigRegistry.set([orgId, "stripe", "stripe"], {
-    ...MANIFEST.connections.stripe,
+  connectionConfigRegistry.set([orgId, APP, APP], {
+    ...MANIFEST.connections[APP],
     checkBeforeStore: undefined,
   })
 })
 
 afterAll(async () => {
-  connectionConfigRegistry.delete([orgId, "stripe", "stripe"])
+  connectionConfigRegistry.delete([orgId, APP, APP])
   await releaseTestLock()
 })
 

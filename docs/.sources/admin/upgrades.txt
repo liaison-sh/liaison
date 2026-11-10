@@ -49,7 +49,7 @@ Stopping the migration releases the lease, migration rolled back -> apps/api/scr
 migrate argument: migrate, reconcile, exit -> apps/api/scripts/entrypoint.sh:60-66
 LIAISON_MIGRATE_ON_START=false skips migrate, still reconciles -> apps/api/scripts/entrypoint.sh:71-74
 LIAISON_MIGRATE_ON_START default true -> apps/api/scripts/entrypoint.sh:71
-Release adds only; removal after a release stops using it (guard) -> scripts/check-migration-safety.ts:7-36 ; .github/workflows/ci.yml:72
+Release adds only; removal after a release stops using it (guard) -> scripts/check-migration-safety.ts:7-36 ; .github/workflows/ci.yml:115
 Updating line at once on a server restart signal -> apps/web/src/modules/shell/ServerPauseNotice.tsx:51
 Restart signal = WebSocket close 1012 -> apps/web/src/primitives/createWebSocket.ts:436
 Restart signal = 503 RESTARTING -> apps/web/src/lib/api-client.ts:466

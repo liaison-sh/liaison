@@ -2,23 +2,15 @@
 import { describe, expect, test } from "bun:test"
 import {
   type CheckEntry,
-  type CiRun,
   decideCiKick,
-  decideMainGate,
+  decideQueue,
+  failedQueueRun,
   judgePrChecks,
   KICK_AFTER_MS,
   MAX_KICKS,
-  parseFixesCi,
+  type QueueRun,
   runIdFromUrl,
 } from "./pr-land"
-
-const run = (id: number, conclusion: string, status = "completed"): CiRun => ({
-  databaseId: id,
-  status,
-  conclusion,
-  headSha: `sha${id}`,
-  url: `https://example.invalid/runs/${id}`,
-})
 
 const check = (name: string, conclusion: string, status = "COMPLETED"): CheckEntry => ({
   __typename: "CheckRun",
@@ -30,40 +22,49 @@ const check = (name: string, conclusion: string, status = "COMPLETED"): CheckEnt
 
 const GREEN = ["checks", "CLAAssistant", "gitleaks"].map((n) => check(n, "SUCCESS"))
 
-describe("decideMainGate", () => {
-  test("a green main lets the merge through", () => {
-    expect(decideMainGate([run(3, "success"), run(2, "failure")], []).allow).toBe(true)
+describe("decideQueue", () => {
+  test("a merged PR is merged", () => {
+    expect(decideQueue({ state: "MERGED", mergeQueueEntry: null })).toBe("merged")
   })
 
-  test("a red main refuses a PR that does not claim the fix", () => {
-    const d = decideMainGate([run(3, "failure"), run(2, "success")], [])
-    expect(d.allow).toBe(false)
-    expect(d.redRun?.databaseId).toBe(3)
+  test("an open PR with a queue entry is still queued", () => {
+    const entry = { state: "AWAITING_CHECKS", position: 2 }
+    expect(decideQueue({ state: "OPEN", mergeQueueEntry: entry })).toBe("queued")
   })
 
-  test("in-progress and cancelled runs do not decide: the newest finished run does", () => {
+  test("an open PR that left the queue without merging was ejected", () => {
+    expect(decideQueue({ state: "OPEN", mergeQueueEntry: null })).toBe("ejected")
+  })
+
+  test("a closed PR is closed", () => {
+    expect(decideQueue({ state: "CLOSED", mergeQueueEntry: null })).toBe("closed")
+  })
+})
+
+describe("failedQueueRun", () => {
+  const qrun = (id: number, headBranch: string, conclusion: string): QueueRun => ({
+    databaseId: id,
+    headBranch,
+    conclusion,
+    url: `https://example.invalid/runs/${id}`,
+  })
+
+  test("picks the newest failed merge-group run of that PR only", () => {
     const runs = [
-      run(5, "", "in_progress"),
-      run(4, "cancelled"),
-      run(3, "failure"),
-      run(2, "success"),
+      qrun(5, "gh-readonly-queue/main/pr-12-abc123", "failure"),
+      qrun(4, "gh-readonly-queue/main/pr-7-def456", "success"),
+      qrun(3, "gh-readonly-queue/main/pr-7-0a1b2c", "failure"),
+      qrun(2, "gh-readonly-queue/main/pr-70-0a1b2c", "failure"),
     ]
-    expect(decideMainGate(runs, []).redRun?.databaseId).toBe(3)
+    expect(failedQueueRun(runs, "7")?.databaseId).toBe(3)
+    expect(failedQueueRun(runs, "12")?.databaseId).toBe(5)
+    expect(failedQueueRun(runs, "9")).toBeUndefined()
   })
 
-  test("a PR naming any red run since the last green is the fix and passes", () => {
-    const runs = [run(4, "failure"), run(3, "failure"), run(2, "success")]
-    expect(decideMainGate(runs, ["3"]).allow).toBe(true)
-    expect(decideMainGate(runs, ["4"]).allow).toBe(true)
-  })
-
-  test("naming a run from before the last green does not unlock it", () => {
-    const runs = [run(4, "failure"), run(3, "success"), run(2, "failure")]
-    expect(decideMainGate(runs, ["2"]).allow).toBe(false)
-  })
-
-  test("no finished run at all lets the merge through", () => {
-    expect(decideMainGate([run(1, "", "queued")], []).allow).toBe(true)
+  test("a cancelled group (rebuilt after a PR ahead failed) is not the PR's failure", () => {
+    expect(
+      failedQueueRun([qrun(1, "gh-readonly-queue/main/pr-7-abc", "cancelled")], "7"),
+    ).toBeUndefined()
   })
 })
 
@@ -135,14 +136,6 @@ describe("judgePrChecks", () => {
 })
 
 describe("parsing", () => {
-  test("Fixes-CI ids from a PR body and commit trailers, bare or as run URLs", () => {
-    expect(
-      parseFixesCi(
-        "Repairs lint.\n\nFixes-CI: 123\nfixes-ci: https://github.com/o/r/actions/runs/456\n",
-      ),
-    ).toEqual(["123", "456"])
-  })
-
   test("run id from a check's details URL", () => {
     expect(runIdFromUrl("https://github.com/o/r/actions/runs/38977868410/job/117231532457")).toBe(
       "38977868410",

@@ -4,7 +4,23 @@
  *
  * Order matters: the first glob that matches a file determines its suites.
  * Keep entries specific → general.
+ *
+ * A path no entry matches runs every core suite (fail-safe), unless it carries
+ * no code ({@link NO_CODE_PATHS}): scripts/test-gate.ts locally, and the per-PR
+ * `ci` workflow's test jobs (scripts/ci-scope.ts `tests`).
  */
+
+/** Paths that carry no code: a change to them alone runs no test. */
+export const NO_CODE_PATHS = [/\.md$/, /^docs\//, /^LICENSE/, /\.(png|jpe?g|svg|gif|webp)$/]
+
+/** The suites of the first entry matching `file`, or null when none matches. */
+export function suitesFor(file: string): string[] | null {
+  for (const entry of TEST_MAP) {
+    if (new Bun.Glob(entry.glob).match(file)) return entry.suites
+  }
+  return null
+}
+
 export const TEST_MAP: { glob: string; suites: string[] }[] = [
   // Schema/migration changes ripple wide
   { glob: "apps/api/src/db/schema/**", suites: ["unit", "integration", "e2e-parallel", "demo-seed"] },
@@ -217,6 +233,8 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   { glob: "scripts/test-e2e-parallel.ts", suites: ["root"] },
   { glob: "scripts/with-test-lock*.ts", suites: ["root"] },
   { glob: "scripts/slots.ts", suites: ["root"] },
+  // The merge gate: its pure decisions are pinned in root.
+  { glob: "scripts/pr-land*.ts", suites: ["root"] },
   { glob: "scripts/lib/**", suites: ["root"] },
   { glob: ".claude/test-map.ts", suites: ["root"] },
   // The docs map feeds check-docs (its test is in root) and ci-scope (guards).

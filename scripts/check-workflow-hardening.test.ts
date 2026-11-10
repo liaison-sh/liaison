@@ -253,3 +253,40 @@ describe("ignore files", () => {
     expect(lines).toContain("dump.rdb")
   })
 })
+
+// The merge queue merges only when every required check reports on the merge
+// group: `checks` (ci.yml), `codeql` and `gitleaks` (codeql.yml). A required
+// check missing from a merge_group run stalls the whole queue.
+describe("merge queue", () => {
+  type QueueJob = Job & { needs?: string[]; if?: string; name?: string }
+  const ci = load("ci.yml") as Workflow & { jobs: Record<string, QueueJob> }
+  const codeql = load("codeql.yml") as Workflow & { jobs: Record<string, QueueJob> }
+
+  it("ci.yml and codeql.yml run on merge groups", () => {
+    for (const wf of [ci, codeql]) {
+      expect(wf.on?.merge_group).toEqual({ types: ["checks_requested"] })
+    }
+  })
+
+  it("the required jobs keep their names and no job-level skip on a merge group", () => {
+    expect(ci.jobs.checks?.name).toBeUndefined()
+    expect(codeql.jobs.gitleaks?.name).toBeUndefined()
+    expect(codeql.jobs.gitleaks?.if).toBeUndefined()
+    expect(codeql.jobs.codeql?.if).toBe("github.event.repository.private == false")
+  })
+
+  it("ci.yml's `checks` waits for every other job and runs whatever they did", () => {
+    const others = Object.keys(ci.jobs).filter((j) => j !== "checks")
+    expect([...(ci.jobs.checks?.needs ?? [])].sort()).toEqual(others.sort())
+    expect(ci.jobs.checks?.if).toBe("always()")
+  })
+
+  it("concurrency cancels only superseded pull request runs, never a merge group", () => {
+    for (const f of ["ci.yml", "codeql.yml"]) {
+      const c = (load(f) as Workflow & { concurrency?: Record<string, string> }).concurrency
+      // Per ref: each merge group has its own, so groups never cancel each other.
+      expect(c?.group).toContain("github.ref }}")
+      expect(c?.["cancel-in-progress"]).toContain("github.event_name == 'pull_request' }}")
+    }
+  })
+})

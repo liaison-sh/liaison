@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// `bun run scripts/ci-scope.ts scope|biome|typecheck|typecheck-apps [--base <ref>] [--all] [--tool tsgo|tsc]`
+// `bun run scripts/ci-scope.ts scope|tests|biome|typecheck|typecheck-apps [--base <ref>] [--all] [--tool tsgo|tsc]`
 //
 // What a pull request has to check, and the checks themselves run on that
 // scope. A pull request (GITHUB_BASE_REF set, or --base given) is scoped to the
@@ -10,6 +10,14 @@
 //
 //   scope      prints the scope; under Actions, writes `docs=true|false` to
 //              $GITHUB_OUTPUT so the docs step can be skipped.
+//   tests      which of the `ci` workflow's test jobs run, through the test map
+//              (.claude/test-map.ts): `unit` (the api unit suite) and `web`
+//              (web-unit). A pull request runs the ones its changed files map to;
+//              a path the map does not cover (and that is not plain docs) runs
+//              both. A merge group, or any run without a base, runs both: it is
+//              the full gate before main. A push to main runs neither, the merge
+//              group already tested that tree. Writes `unit=` and `web=` to
+//              $GITHUB_OUTPUT.
 //   biome      Biome on the changed files (all files on a full run).
 //   typecheck  every TypeScript project whose program contains a changed file.
 //              The program is the project's own file list (`tsgo --listFilesOnly`),
@@ -31,6 +39,7 @@ import { spawnSync } from "node:child_process"
 import { appendFileSync, existsSync, readdirSync, readFileSync } from "node:fs"
 import { join, relative, resolve } from "node:path"
 import { DOCS_EXEMPT, DOCS_FAILSAFE_ROOTS, DOCS_MAP } from "../.claude/docs-map"
+import { NO_CODE_PATHS, suitesFor } from "../.claude/test-map"
 
 const ROOT = resolve(import.meta.dir, "..")
 
@@ -114,6 +123,50 @@ export function classify(changed: Change[], base?: string): Scope {
     typescript: live.some((c) => TS_LIKE.test(c.path)),
     typescriptAll: changed.some((c) => c.status === "D" && TS_LIKE.test(c.path)),
     docs: changed.some((c) => docsRelevant(c.path)),
+  }
+}
+
+// ── Test jobs ─────────────────────────────────────────────────────────────
+
+/** Changes that run every test job: the full-run triggers, and the map itself. */
+export const TEST_FULL_RUN_GLOBS = [...FULL_RUN_GLOBS, ".claude/test-map.ts"]
+
+export type TestScope = {
+  /** The api unit suite (the `unit` jobs). */
+  unit: boolean
+  /** The web unit suite (the `web-unit` jobs). */
+  web: boolean
+  reason: string
+}
+
+/**
+ * Which test jobs a run needs. `event` is GITHUB_EVENT_NAME; `base` is set only
+ * for a pull request (see {@link resolveBase}).
+ */
+export function testScope(
+  event: string | undefined,
+  changed: Change[],
+  base: string | undefined,
+  mapFor: (file: string) => string[] | null = suitesFor,
+): TestScope {
+  if (event === "push") {
+    return { unit: false, web: false, reason: "push: the merge queue tested this tree" }
+  }
+  const all = (reason: string): TestScope => ({ unit: true, web: true, reason })
+  if (!base) return all(event === "merge_group" ? "merge group: full gate" : "not a pull request")
+  const trigger = changed.find((c) => TEST_FULL_RUN_GLOBS.some((g) => match(g, c.path)))
+  if (trigger) return all(`${trigger.path} changed`)
+  const suites = new Set<string>()
+  for (const c of changed) {
+    const mapped = mapFor(c.path)
+    if (mapped) for (const s of mapped) suites.add(s)
+    else if (!NO_CODE_PATHS.some((re) => re.test(c.path)))
+      return all(`${c.path} is not in the test map`)
+  }
+  return {
+    unit: suites.has("unit"),
+    web: suites.has("web-unit"),
+    reason: `${changed.length} changed files mapped to ${[...suites].sort().join(", ") || "no suite"}`,
   }
 }
 
@@ -245,6 +298,16 @@ function describe(scope: Scope): string {
 async function main(argv: string[]): Promise<number> {
   const [command] = argv
   const scope = computeScope(argv)
+  if (command === "tests") {
+    const t = testScope(process.env.GITHUB_EVENT_NAME, scope.changed, scope.base)
+    console.log(
+      `api unit: ${t.unit ? "runs" : "skipped"}; web unit: ${t.web ? "runs" : "skipped"} (${t.reason})`,
+    )
+    if (process.env.GITHUB_OUTPUT) {
+      appendFileSync(process.env.GITHUB_OUTPUT, `unit=${t.unit}\nweb=${t.web}\n`)
+    }
+    return 0
+  }
   if (command === "scope") {
     console.log(`scope: ${describe(scope)}`)
     console.log(
@@ -310,7 +373,7 @@ async function main(argv: string[]): Promise<number> {
     return failed === 0 ? 0 : 1
   }
   console.error(
-    "Usage: bun run scripts/ci-scope.ts scope|biome|typecheck|typecheck-apps [--base <ref>] [--all] [--tool tsgo|tsc]",
+    "Usage: bun run scripts/ci-scope.ts scope|tests|biome|typecheck|typecheck-apps [--base <ref>] [--all] [--tool tsgo|tsc]",
   )
   return 2
 }

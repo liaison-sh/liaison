@@ -28,7 +28,7 @@ pre-push: push to main REFUSED. Changes reach main only through a pull request:
   git push -u origin <your-branch>
   gh pr create --base main --fill
   bun run pr:land <number> --wait
-pr:land merges only when the PR's checks and main's CI are green.
+pr:land queues the PR once its checks are green; the merge queue merges it.
 
 MSG
         exit 1

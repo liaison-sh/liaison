@@ -274,7 +274,7 @@
       }
     ]
   },
-  "version": "0.4.13",
+  "version": "0.4.14",
   "network": {
     "imageHosts": ["cdn.shopify.com"],
     "linkHosts": ["admin.shopify.com"]
@@ -1232,7 +1232,17 @@
         "properties": {
           "query": {
             "type": "string",
-            "description": "Shopify order search syntax: text, email, customer name, order name/number (e.g. '#1099'), financial_status:paid, fulfillment_status:unfulfilled, tag:<tag>. For a DATE window use created_at_min/created_at_max instead — a date term written inside this query string is ignored."
+            "description": "Shopify order search syntax (space-separated terms are ANDed; OR and a leading - for NOT work; range operators :>, :>=, :<, :<=). Supported filters include: free text, email:<address>, name:<order name> (or '#1099'), customer_id:<id>, sku:<sku>, tag:<tag>, tag_not:<tag>, financial_status:paid|pending|refunded|partially_refunded|authorized|voided, fulfillment_status:unfulfilled|fulfilled|partial, status:open|closed|cancelled, return_status:<status>, discount_code:<code>, po_number:<po>, source_name:<source>, channel:<handle>, risk_level:<level>, test:true|false, current_total_price:>=100. A term outside Shopify's order search syntax matches nothing useful, so prefer the explicit params: created_at_min/created_at_max for a DATE window (a date term written inside this query string is ignored) and total_min/total_max for an AMOUNT window."
+          },
+          "total_min": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Inclusive MINIMUM order total, in the shop currency (e.g. 100 = orders of 100.00 or more). Filters server-side on the order's current total (after returns, refunds and removals). Composes with query and the date window."
+          },
+          "total_max": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Inclusive MAXIMUM order total, in the shop currency (e.g. 500 = orders of 500.00 or less). Filters server-side on the order's current total (after returns, refunds and removals). Composes with query and the date window."
           },
           "created_at_min": {
             "type": "string",
@@ -1253,7 +1263,8 @@
             "type": "string",
             "description": "Opaque pagination cursor. Pass the nextCursor returned by the previous call to fetch the next page; keep paging until nextCursor is null to enumerate the WHOLE matching set. A single un-paged call returns only the first page."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "readOnly": true
     },
@@ -1577,15 +1588,26 @@
       "readOnly": true
     },
     "variants_search": {
-      "description": "Search Shopify product variants (by sku, title, …)",
-      "searchKeywords": ["variante", "variantes", "sku", "référence", "barcode"],
+      "description": "Search Shopify product variants (by sku, title, barcode, vendor, product type, tag, …). Each hit's attributes carry productStatus (ACTIVE, ARCHIVED, DRAFT or UNLISTED) and inventoryQuantity (total across locations). To leave out archived or draft products, pass product_status: [\"ACTIVE\"]; to leave out variants without stock, pass min_quantity: 1. Both filter server-side, so limit and cursor stay exact.",
+      "searchKeywords": ["variante", "variantes", "sku", "référence", "barcode", "stock", "archivé", "archived"],
       "requiredScopes": ["shopify:products:read"],
       "handler": "variants_search",
       "params": {
         "type": "object",
         "properties": {
           "query": {
-            "type": "string"
+            "type": "string",
+            "description": "Shopify product-variant search syntax (space-separated terms are ANDed; OR and a leading - for NOT work; range operators :>, :>=, :<, :<=). Supported filters include: free text, sku:<sku>, barcode:<code>, title:<variant title>, vendor:<vendor>, product_type:<type>, product_id:<id>, tag:<tag>, tag_not:<tag>, collection:<id>, location_id:<id>, gift_card:true|false, option1:<value>, product_status:ACTIVE,DRAFT, inventory_quantity:>=1. Prefer the product_status and min_quantity params for status and stock."
+          },
+          "product_status": {
+            "type": "array",
+            "items": { "type": "string", "enum": ["ACTIVE", "ARCHIVED", "DRAFT", "UNLISTED"] },
+            "minItems": 1,
+            "description": "Keep only variants whose PRODUCT has one of these statuses, e.g. [\"ACTIVE\"] to leave out archived and draft products. Filters server-side."
+          },
+          "min_quantity": {
+            "type": "integer",
+            "description": "Keep only variants with at least this many units in stock, summed across all locations (e.g. 1 = in stock). Filters server-side."
           },
           "limit": {
             "type": "integer",
@@ -1594,9 +1616,11 @@
             "default": 25
           },
           "cursor": {
-            "type": "string"
+            "type": "string",
+            "description": "Opaque pagination cursor: pass the nextCursor of the previous call."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "readOnly": true
     },

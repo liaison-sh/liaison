@@ -537,6 +537,46 @@ function parseDateBound(input: unknown, paramName: string, endOfDay = false): st
   return new Date(ms).toISOString()
 }
 
+/** Parse a caller-supplied order-total bound (`total_min` / `total_max`) in the shop currency.
+ *  Accepts a finite non-negative number (or a numeric string a model sent quoted). Returns null for an
+ *  absent bound and THROWS BAD_PARAM for anything else, so an amount filter is never silently dropped. */
+function parseAmountBound(input: unknown, paramName: string): number | null {
+  if (input === undefined || input === null || input === "") return null
+  const n = typeof input === "number" ? input : typeof input === "string" ? Number(input.trim()) : Number.NaN
+  if (!Number.isFinite(n) || n < 0) {
+    throw makeReadError(
+      "BAD_PARAM",
+      `${paramName} must be a non-negative amount in the shop currency (e.g. 100 or 49.90), got ${JSON.stringify(input)}`,
+    )
+  }
+  return n
+}
+
+/** Server-side order filters from the explicit params, in Shopify's `orders(query:)` search syntax
+ *  (https://shopify.dev/docs/api/admin-graphql/latest/queries/orders): the placed-date window on
+ *  `processed_at` and the order-total window on `current_total_price` (the current total in the shop
+ *  currency, after returns, refunds and removals). Exported for tests. */
+export function orderFilterTerms(params: Record<string, unknown>): {
+  dateTerms: string[]
+  amountTerms: string[]
+  createdAtMin: string | null
+} {
+  const createdAtMin = parseDateBound(params.created_at_min, "created_at_min")
+  const createdAtMax = parseDateBound(params.created_at_max, "created_at_max", true)
+  const totalMin = parseAmountBound(params.total_min, "total_min")
+  const totalMax = parseAmountBound(params.total_max, "total_max")
+  if (totalMin !== null && totalMax !== null && totalMin > totalMax) {
+    throw makeReadError("BAD_PARAM", `total_min (${totalMin}) is greater than total_max (${totalMax})`)
+  }
+  const dateTerms: string[] = []
+  if (createdAtMin) dateTerms.push(`processed_at:>='${createdAtMin}'`)
+  if (createdAtMax) dateTerms.push(`processed_at:<='${createdAtMax}'`)
+  const amountTerms: string[] = []
+  if (totalMin !== null) amountTerms.push(`current_total_price:>=${totalMin}`)
+  if (totalMax !== null) amountTerms.push(`current_total_price:<=${totalMax}`)
+  return { dateTerms, amountTerms, createdAtMin }
+}
+
 /** Shopify's Admin API only exposes the LAST 60 DAYS of orders to an app whose
  *  token was granted without the `read_all_orders` scope — older orders are
  *  silently absent (a 2025 window on a years-old store reads totalCount 0, not
@@ -566,15 +606,11 @@ export async function orders_search(
   // (the same field the normalized hit's `processedAt` already grounds — never read a backdated order as
   // brand-new). The bounds are appended to whatever facet query the caller passed (SKU/status/etc.), so a
   // date window COMPOSES with a product/status filter rather than replacing it.
-  const createdAtMin = parseDateBound(params.created_at_min, "created_at_min")
-  const createdAtMax = parseDateBound(params.created_at_max, "created_at_max", true)
-  const dateTerms: string[] = []
-  if (createdAtMin) dateTerms.push(`processed_at:>='${createdAtMin}'`)
-  if (createdAtMax) dateTerms.push(`processed_at:<='${createdAtMax}'`)
+  // The order-total bounds (total_min / total_max) compose the same way, as current_total_price terms.
+  const { dateTerms, amountTerms, createdAtMin } = orderFilterTerms(params)
   const hasDateRange = dateTerms.length > 0
-  const effectiveQuery = hasDateRange
-    ? [rawQuery, ...dateTerms].filter(Boolean).join(" ")
-    : rawQuery
+  const extraTerms = [...dateTerms, ...amountTerms]
+  const effectiveQuery = extraTerms.length > 0 ? [rawQuery, ...extraTerms].filter(Boolean).join(" ") : rawQuery
 
   const data = await client.query<{
     ordersCount?: { count?: number | null }
@@ -1649,6 +1685,8 @@ interface VariantNode {
   product?: {
     id: string
     title: string
+    /** ACTIVE | ARCHIVED | DRAFT | UNLISTED (Shopify ProductStatus). */
+    status?: string | null
     // Customs goods description lives on the PRODUCT (metafield), not the
     // variant — see the convention near `normalizeProduct`.
     customsDescription?: { value?: string | null } | null
@@ -1676,6 +1714,8 @@ function normalizeVariant(node: VariantNode): NormalizedHit {
       price: node.price ?? null,
       inventoryQuantity: node.inventoryQuantity ?? null,
       product: node.product ?? null,
+      // The parent product's status, so an archived or draft product's variant is recognisable.
+      productStatus: node.product?.status ?? null,
       // The inventory item id is the key the inventory_levels_list tool takes, so surface it
       // here to make the SKU→item→per-location-levels chain reachable.
       inventory_item_id: node.inventoryItem?.id ?? null,
@@ -1695,7 +1735,7 @@ const VARIANTS_SEARCH_QUERY = `
       edges { node {
         id sku title displayName price inventoryQuantity
         ${VARIANT_CUSTOMS_FRAGMENT}
-        product { id title ${PRODUCT_CUSTOMS_DESC_FRAGMENT} }
+        product { id title status ${PRODUCT_CUSTOMS_DESC_FRAGMENT} }
       } }
       pageInfo { hasNextPage endCursor }
     }
@@ -1707,20 +1747,57 @@ const VARIANTS_GET_QUERY = `
     productVariant(id: $id) {
       id sku title displayName price inventoryQuantity
       ${VARIANT_CUSTOMS_FRAGMENT}
-      product { id title ${PRODUCT_CUSTOMS_DESC_FRAGMENT} }
+      product { id title status ${PRODUCT_CUSTOMS_DESC_FRAGMENT} }
     }
   }
 `
+
+const PRODUCT_STATUSES = ["ACTIVE", "ARCHIVED", "DRAFT", "UNLISTED"] as const
+
+/** The `productVariants(query:)` string: the caller's query plus the explicit filters, composed
+ *  server-side in Shopify's search syntax
+ *  (https://shopify.dev/docs/api/admin-graphql/latest/queries/productVariants) so `limit` and the
+ *  cursor stay exact. `product_status` becomes `product_status:ACTIVE,DRAFT`; `min_quantity` becomes
+ *  `inventory_quantity:>=N` (the total across all locations). Invalid values throw BAD_PARAM.
+ *  Exported for tests. */
+export function variantsSearchQuery(params: Record<string, unknown>): string | null {
+  const terms: string[] = []
+  if (typeof params.query === "string" && params.query.trim().length > 0) terms.push(params.query.trim())
+  const rawStatus = params.product_status
+  if (rawStatus !== undefined && rawStatus !== null) {
+    const list = (Array.isArray(rawStatus) ? rawStatus : [rawStatus]).map((v) =>
+      typeof v === "string" ? v.trim().toUpperCase() : v,
+    )
+    const bad = list.filter((v) => !PRODUCT_STATUSES.includes(v as (typeof PRODUCT_STATUSES)[number]))
+    if (list.length === 0 || bad.length > 0) {
+      throw makeReadError(
+        "BAD_PARAM",
+        `product_status must list one or more of ${PRODUCT_STATUSES.join(", ")}; got ${JSON.stringify(rawStatus)}`,
+      )
+    }
+    terms.push(`product_status:${[...new Set(list)].join(",")}`)
+  }
+  const rawMin = params.min_quantity
+  if (rawMin !== undefined && rawMin !== null && rawMin !== "") {
+    const n = typeof rawMin === "number" ? rawMin : typeof rawMin === "string" ? Number(rawMin.trim()) : Number.NaN
+    if (!Number.isInteger(n)) {
+      throw makeReadError("BAD_PARAM", `min_quantity must be a whole number, got ${JSON.stringify(rawMin)}`)
+    }
+    terms.push(`inventory_quantity:>=${n}`)
+  }
+  return terms.length > 0 ? terms.join(" ") : null
+}
 
 export async function variants_search(
   params: Record<string, unknown>,
   ctx: AppContext,
 ): Promise<{ results: NormalizedHit[]; nextCursor: string | null }> {
   const limit = clampLimit(params.limit)
+  const query = variantsSearchQuery(params)
   const client = await getShopifyClient(ctx)
   const data = await client.query<{
     productVariants?: { edges?: Array<{ node: VariantNode }>; pageInfo?: { endCursor?: string | null } }
-  }>(VARIANTS_SEARCH_QUERY, { query: params.query ?? null, first: limit, after: params.cursor ?? null })
+  }>(VARIANTS_SEARCH_QUERY, { query, first: limit, after: params.cursor ?? null })
   const edges = data.productVariants?.edges ?? []
   return {
     results: edges.map((e) => normalizeVariant(e.node)),

@@ -34,6 +34,8 @@ import {
   variants_get,
   variants_market_price,
   variants_search,
+  variantsSearchQuery,
+  orderFilterTerms,
 } from "./reads"
 
 const FIXTURE_DIR = join(import.meta.dir, "__fixtures__", "shopify")
@@ -378,6 +380,27 @@ describe("orders_search", () => {
         `date-range read ${JSON.stringify(params)} must NOT emit the no-date-filter notice`,
       ).toBeUndefined()
     }
+  })
+
+  it("composes total_min/total_max into server-side current_total_price terms", async () => {
+    const fixture = loadFixture("orders-search.json")
+    const { ctx, calls } = makeCtx({ fetchResponses: [fixture] })
+    await orders_search(
+      { query: "financial_status:paid", total_min: 100, total_max: 499.9, created_at_min: "2026-06-15" },
+      ctx,
+    )
+    const body = JSON.parse(calls[0]!.body) as { variables?: { query?: string } }
+    expect(body.variables?.query).toBe(
+      "financial_status:paid processed_at:>='2026-06-15T00:00:00.000Z' current_total_price:>=100 current_total_price:<=499.9",
+    )
+    expect(orderFilterTerms({ total_min: "250" }).amountTerms).toEqual(["current_total_price:>=250"])
+    expect(orderFilterTerms({}).amountTerms).toEqual([])
+  })
+
+  it("FAILS LOUD (BAD_PARAM) on an invalid order-total bound", async () => {
+    expect(() => orderFilterTerms({ total_min: "a lot" })).toThrow(/total_min must be a non-negative amount/)
+    expect(() => orderFilterTerms({ total_max: -5 })).toThrow(/total_max must be a non-negative amount/)
+    expect(() => orderFilterTerms({ total_min: 500, total_max: 100 })).toThrow(/greater than total_max/)
   })
 
   it("FAILS LOUD (BAD_PARAM) on an unparseable date bound (never silently drops the filter)", async () => {
@@ -2116,6 +2139,51 @@ describe("variants_search", () => {
       "gid://shopify/InventoryItem/55",
     )
     expect(out.nextCursor).toBe("c1")
+  })
+})
+
+describe("variants_search filters", () => {
+  const variantsPage = {
+    data: {
+      productVariants: {
+        edges: [
+          {
+            node: {
+              id: "gid://shopify/ProductVariant/2",
+              sku: "W-OLD",
+              title: "Old",
+              price: "9.00",
+              inventoryQuantity: 0,
+              product: { id: "gid://shopify/Product/200", title: "Widget", status: "ARCHIVED" },
+            },
+          },
+        ],
+        pageInfo: { endCursor: null, hasNextPage: false },
+      },
+    },
+  }
+
+  it("composes product_status and min_quantity into the server-side query", async () => {
+    const { ctx, calls } = makeCtx({ fetchResponses: [variantsPage] })
+    await variants_search({ query: "sku:W-*", product_status: ["ACTIVE", "draft"], min_quantity: 1 }, ctx)
+    const body = JSON.parse(calls[0]!.body) as { variables?: { query?: string } }
+    expect(body.variables?.query).toBe("sku:W-* product_status:ACTIVE,DRAFT inventory_quantity:>=1")
+    expect(variantsSearchQuery({})).toBeNull()
+    expect(variantsSearchQuery({ product_status: "ACTIVE" })).toBe("product_status:ACTIVE")
+    expect(variantsSearchQuery({ min_quantity: "5" })).toBe("inventory_quantity:>=5")
+  })
+
+  it("returns the parent product's status on each hit", async () => {
+    const { ctx, calls } = makeCtx({ fetchResponses: [variantsPage] })
+    const out = await variants_search({ query: "sku:W-OLD" }, ctx)
+    expect((out.results[0]!.attributes as Record<string, unknown>).productStatus).toBe("ARCHIVED")
+    expect(JSON.parse(calls[0]!.body).query).toMatch(/product \{ id title status /)
+  })
+
+  it("FAILS LOUD (BAD_PARAM) on an unknown status or a fractional quantity", () => {
+    expect(() => variantsSearchQuery({ product_status: ["ACTIVE", "SOLD_OUT"] })).toThrow(/product_status must list/)
+    expect(() => variantsSearchQuery({ product_status: [] })).toThrow(/product_status must list/)
+    expect(() => variantsSearchQuery({ min_quantity: 1.5 })).toThrow(/min_quantity must be a whole number/)
   })
 })
 

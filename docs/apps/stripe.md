@@ -174,6 +174,13 @@ Disputes have no write tool: answer them in Stripe's dashboard.
 - **Movements:** each change of a subscription's counted amount is kept once as new, upgrade, downgrade or cancelled (an amount that falls to zero for any reason). A trial that converts is new on the day it converts, and a cancellation set for the end of a period counts until that day. The month starts at midnight on the 1st in your organization's time zone, and the amount at the start of the month is the amount now less the month's movements.
 - **If an event was lost:** the nightly reconcile reads Stripe's events of the last 30 days and writes the movements that are missing. A change older than that with no event to explain it still corrects the figure, but its movement is dated the day the reconcile found it, and the answer says "Movements incomplete before <date>".
 
+## More
+
+- [Connect Stripe with a restricted key](../money/connect-stripe-restricted-key.md), [Who issues what](../money/who-issues-what.md) and [turn off Stripe's own emails](../money/turn-off-stripe-emails.md).
+- [The failed-payments routine](../money/failed-payments-routine.md) and [payment reminders](../money/payment-reminders.md).
+- [Refunds and credit notes](../money/refunds-and-credit-notes.md), [disputes](../money/disputes-in-stripe.md), [the MRR rules](../money/mrr-rules.md) and [what Liaison holds about cards](../money/no-card-data.md).
+- Schedules for customers who pay by transfer: [Recurring invoices](recurring.md).
+
 ## Disconnect Stripe
 
 Disconnecting removes every record Liaison kept from Stripe: the mirror, the event log and the connection's state. Invoices and credit notes in Liaison's invoicing are kept.

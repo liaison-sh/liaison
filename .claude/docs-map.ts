@@ -124,6 +124,8 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/api/src/apps/example/**", pages: ["app-development"] },
 
   // Bundled apps
+  { glob: "bundled-apps/invoicing/src/recurring/**", pages: ["apps/recurring"] },
+  { glob: "bundled-apps/invoicing/src/{streams,ui/IssuerStreams}*", pages: ["money/who-issues-what", "money/turn-off-stripe-emails", "apps/invoicing"] },
   { glob: "bundled-apps/invoicing/**", pages: ["apps/invoicing", "sales/quotes"] },
   { glob: "bundled-apps/boxtal/**", pages: ["apps/boxtal"] },
   { glob: "bundled-apps/boxtal/src/{customs-documents,print-pack,needed-documents}.ts", pages: ["admin/shipping-documents"] },
@@ -133,6 +135,8 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "bundled-apps/ads/**", pages: ["apps/ads"] },
   { glob: "bundled-apps/calls/**", pages: ["apps/calls", "sales/sales-data"] },
   { glob: "bundled-apps/monitoring/**", pages: ["apps/monitoring"] },
+  { glob: "bundled-apps/stripe/src/{mrr,mrr-events,mrr-rebuild,tools/mrr-query}*", pages: ["apps/stripe", "money/mrr-rules"] },
+  { glob: "bundled-apps/stripe/src/tools/refunds*", pages: ["apps/stripe", "money/refunds-and-credit-notes"] },
   { glob: "bundled-apps/stripe/**", pages: ["apps/stripe"] },
 
   // Admin

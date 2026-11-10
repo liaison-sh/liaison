@@ -28,22 +28,62 @@ const MAX_ENTRIES = 64
 /** The export names a bundle can be shaken for (they are interpolated). */
 const SAFE_EXPORT_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/
 const ENTRY = "/liaison-export-only-entry.js"
-/**
- * An import attribute: the keyword then its object, with only blanks or
- * comments between, as the grammar allows. Matched anywhere (string text
- * included): a false match only refuses a bundle that names the keyword
- * right before a brace.
- */
-const IMPORT_ATTRIBUTE_RE = /\b(?:with|assert)(?:\s|\/\*[\s\S]*?\*\/|\/\/[^\n\r]*[\n\r])*\{/
+/** The keywords an import attribute starts with (`with`, and the older `assert`). */
+const ATTRIBUTE_KEYWORD_RE = /\b(?:with|assert)/g
+const BLANK_RE = /\s/
+const isLineEnd = (c: string): boolean =>
+  c === "\n" || c === "\r" || c === "\u2028" || c === "\u2029"
 
 /**
- * True when `source` carries an import attribute (a macro import among them).
+ * True when `source` carries an import attribute (a macro import among them):
+ * `with` or `assert` then its object, with only blanks or comments between, as
+ * the grammar allows. Matched anywhere (string text included): a false match
+ * only refuses a bundle that names the keyword right before a brace.
+ *
  * Bun runs a macro import (`with { type: "macro" }`) while it parses or builds
  * the text, so a bundle carrying one must never reach `Bun.Transpiler` or
  * `Bun.build` on the host. No handler bundle needs one: it cannot import.
+ *
+ * Linear in the bundle's length whatever its text (a bundle is untrusted input):
+ * one right-to-left pass records, for every position, where the run of blanks
+ * and comments starting there ends.
  */
 export function hasImportAttribute(source: string): boolean {
-  return IMPORT_ATTRIBUTE_RE.test(source)
+  ATTRIBUTE_KEYWORD_RE.lastIndex = 0
+  if (!ATTRIBUTE_KEYWORD_RE.test(source)) return false
+  const n = source.length
+  // skipTo[i]: the first position at or after i that is neither a blank nor in a
+  // comment starting at or after i (n when the text ends first).
+  const skipTo = new Int32Array(n + 2)
+  skipTo[n] = n
+  skipTo[n + 1] = n
+  // The nearest `*/` at or after i, i + 1 and i + 2, and the nearest line end at or after i.
+  let close0 = -1
+  let close1 = -1
+  let close2 = -1
+  let lineEnd = -1
+  for (let i = n - 1; i >= 0; i--) {
+    const c = source[i] as string
+    close2 = close1
+    close1 = close0
+    if (c === "*" && source[i + 1] === "/") close0 = i
+    if (isLineEnd(c)) lineEnd = i
+    let to = i
+    if (BLANK_RE.test(c)) to = skipTo[i + 1] as number
+    else if (c === "/" && source[i + 1] === "*")
+      to = close2 < 0 ? n : (skipTo[close2 + 2] as number)
+    else if (c === "/" && source[i + 1] === "/") {
+      const end = lineEnd > i + 1 ? lineEnd : -1
+      to = end < 0 ? n : (skipTo[end] as number)
+    }
+    skipTo[i] = to
+  }
+  ATTRIBUTE_KEYWORD_RE.lastIndex = 0
+  for (const m of source.matchAll(ATTRIBUTE_KEYWORD_RE)) {
+    const after = m.index + m[0].length
+    if (source[skipTo[after] as number] === "{") return true
+  }
+  return false
 }
 
 type Entry = { state: "building" } | { state: "ready"; source: string } | { state: "full" }

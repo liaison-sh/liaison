@@ -9,15 +9,63 @@
 // pan-scan): a key keeps its prefix only; a card number keeps its last four.
 //
 // Keys are masked in every string. Card numbers are masked in every string
-// except identifier fields (`id`, `…Id`, `…_id`, `…Ref`, `gid://…`, URLs),
-// where a long Luhn-valid number is an order or a record id, not a card.
+// except identity fields, where a long Luhn-valid number is what the field
+// says it is, never a card: ids and references (`id`, `…Id`, `…_id`, `…Ref`,
+// `gid://…`, URLs), company and tax identifiers (SIRET, SIREN, VAT, tax and
+// registration numbers), bank identifiers (IBAN, BIC), device identifiers
+// (IMEI, serial), order and invoice numbers, and product codes (EAN, GTIN,
+// SKU). The field is read from its key's last word (`vat_number`,
+// `invoiceNumber`, `siret`); a key that names a card (`card_number`) is never
+// exempt.
 import { maskCardNumbers, maskVendorKeys } from "@liaison/shared"
 
-const ID_KEY = /(^id$|Id$|_id$|Ids$|_ids$|Ref$|_ref$|^ref$|Url$|_url$|^url$)/
+const IDENTITY_WORDS = new Set([
+  "id",
+  "ids",
+  "ref",
+  "refs",
+  "reference",
+  "url",
+  "siret",
+  "siren",
+  "vat",
+  "tva",
+  "tax",
+  "registration",
+  "iban",
+  "bic",
+  "imei",
+  "serial",
+  "number",
+  "numbers",
+  "no",
+  "ean",
+  "gtin",
+  "sku",
+  "tracking",
+])
+const CARD_WORDS = new Set(["card", "cards", "pan", "cc", "cvc", "cvv"])
+
+/** The words of a parameter key: `invoiceNumber`, `vat_number`, `SIRET` all split. */
+function keyWords(key: string): string[] {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map((w) => w.toLowerCase())
+}
+
+/** Whether `key` names an identity field, whose value is never a card. */
+export function isIdentityKey(key: string): boolean {
+  const words = keyWords(key)
+  const last = words[words.length - 1]
+  if (last === undefined || words.some((w) => CARD_WORDS.has(w))) return false
+  return IDENTITY_WORDS.has(last)
+}
 
 function maskString(text: string, key: string | null): string {
   const keys = maskVendorKeys(text).text
-  if ((key !== null && ID_KEY.test(key)) || /^(gid|https?):\/\//.test(keys)) return keys
+  if ((key !== null && isIdentityKey(key)) || /^(gid|https?):\/\//.test(keys)) return keys
   return maskCardNumbers(keys).text
 }
 

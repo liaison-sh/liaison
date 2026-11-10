@@ -7,6 +7,8 @@
 // The card's payload names each row by its item, its draft and a hash of the draft's billing
 // content, so a draft changed after the card was drawn changes the card (and a stale approve is
 // refused by the kernel), and a draft changed after approval is caught again at issue.
+import { mintRunSendGrants } from "../einvoicing/run-send"
+import type { EinvCtx } from "../einvoicing/transmit"
 import { currentItemHash, itemContentHash } from "./item-hash"
 import type { ErrorEnvelope, MutationsCtx } from "../mutations/shared"
 import { addDays, weekdayOf } from "./schedule"
@@ -244,6 +246,7 @@ export async function recurringRunIssue(
   const wanted = new Map((input.items ?? []).map((i) => [i.item_id, i.content_hash]))
   const issuer = (await ctx.db.findOne("issuer_profiles", String(run.issuer_profile_id))) as Row | null
   let approved = 0
+  const approvedIds: string[] = []
   const changed: string[] = []
   const patched: string[] = []
   for (const item of all) {
@@ -265,8 +268,11 @@ export async function recurringRunIssue(
     if (written) patched.push(written)
     const now = written ? (((await ctx.db.findOne("recurring_run_items", String(item.id))) as Row | null) ?? item) : item
     await ctx.db.update("recurring_run_items", String(item.id), { state: "approved", approved_hash: itemContentHash(now, draft, lines, issuer) })
+    approvedIds.push(String(item.id))
     approved += 1
   }
+  // The person's approval carries the rows' e-invoice sends: one grant per approved row.
+  if (approvedIds.length > 0) await mintRunSendGrants(ctx as unknown as EinvCtx, approvedIds)
   const issueOn = dayOf(run.issue_on) as string
   await ctx.db.update(
     "recurring_runs",

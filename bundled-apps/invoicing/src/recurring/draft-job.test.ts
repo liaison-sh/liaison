@@ -59,7 +59,7 @@ export interface Harness {
   draftWrites: number
 }
 
-export function harness(today: string, opts: { schedules?: Array<Record<string, unknown>>; docs?: Array<Record<string, unknown>>; lines?: Array<Record<string, unknown>>; items?: Array<Record<string, unknown>>; threshold?: number | null; hour?: number } = {}): Harness {
+export function harness(today: string, opts: { schedules?: Array<Record<string, unknown>>; docs?: Array<Record<string, unknown>>; lines?: Array<Record<string, unknown>>; items?: Array<Record<string, unknown>>; identities?: Array<Record<string, unknown>>; threshold?: number | null; hour?: number; kernel?: Record<string, (params: Record<string, unknown>) => unknown> } = {}): Harness {
   const db = createMockDb({
     bridgeWhereOperators: true,
     seed: {
@@ -77,6 +77,7 @@ export function harness(today: string, opts: { schedules?: Array<Record<string, 
       ...(opts.docs ? { documents: opts.docs } : {}),
       ...(opts.lines ? { document_lines: opts.lines } : {}),
       ...(opts.items ? { recurring_run_items: opts.items } : {}),
+      ...(opts.identities ? { counterparty_identities: opts.identities } : {}),
     },
   })
   const h: Harness = { ctx: null as never, db, approvals: [], restaged: [], decided: new Set(), agentCalls: 0, draftWrites: 0 }
@@ -111,6 +112,8 @@ export function harness(today: string, opts: { schedules?: Array<Record<string, 
         h.draftWrites += 1
         return { status: "completed", result: await recurringDraftWrite(h.ctx, params as never) }
       }
+      const kernel = opts.kernel?.[target]
+      if (kernel) return { status: "completed", result: kernel(params) }
       // No Stripe app here: the kernel answers an absent app's tool as not found.
       if (target.startsWith("stripe:")) return { status: "error", error: { code: "tool_not_found", message: `tool ${target} not registered` } }
       return { status: "error", error: { code: "unavailable", message: "no tool in this test" } }
@@ -173,6 +176,34 @@ describe("the month-end draft job", () => {
       counterparty_vat_id: "FR40123456789",
       counterparty_country: "FR",
       counterparty_email: "achats@brume.example",
+      customer_kind: "business",
+    })
+  })
+
+  test("a company schedule with no previous invoice bills the company: its name, billing address and VAT number", async () => {
+    const company = "66666666-6666-4666-8666-666666666661"
+    const h = harness("2026-11-27", {
+      schedules: [schedule("33333333-3333-4333-8333-333333333331", { company_id: company })],
+      identities: [{ id: "77777777-7777-4777-8777-777777777771", contact_id: CONTACT, customer_kind: "business", vat_id: "FR40123456789" }],
+      kernel: {
+        "kernel:contacts_read": () => ({ contact: { id: CONTACT, name: "Lucie Brume", email: "lucie@brume.example", companyId: company } }),
+        "kernel:companies_read": () => ({ company: { id: company, name: "Maison Brume SAS" }, people: [{ id: CONTACT, isMain: true }] }),
+        "kernel:contacts_addresses_list": () => ({
+          addresses: [
+            { role: "delivery", street1: "1 rue du Dépôt", postalCode: "69007", city: "Lyon", countryIso2: "FR" },
+            { role: "billing", street1: "12 quai Perrache", postalCode: "69002", city: "Lyon", countryIso2: "FR" },
+          ],
+        }),
+      },
+    })
+    await recurringDraftJob(h.ctx)
+    const [draft] = h.db.__all("documents").filter((d) => d.status === "draft")
+    expect(draft).toMatchObject({
+      counterparty_name: "Maison Brume SAS",
+      counterparty_address: "12 quai Perrache, 69002 Lyon",
+      counterparty_country: "FR",
+      counterparty_vat_id: "FR40123456789",
+      counterparty_email: "lucie@brume.example",
       customer_kind: "business",
     })
   })

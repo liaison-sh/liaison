@@ -273,7 +273,7 @@ export async function invoiceIssue(
  */
 export async function issueRunDraft(
   ctx: MutationsCtx,
-  input: { draft_id: string; external_ref: string; lifecycle_log: Array<Record<string, unknown>> },
+  input: { draft_id: string; external_ref: string; lifecycle_log: Array<Record<string, unknown>>; einvoice_send?: "stage" | "batch" | "held" },
 ): Promise<MutationResult<{ document_id: string; number: string; einvoicing_warning?: EinvoicingWarning }>> {
   const pre = await preflightInvoiceIssueParams(ctx, input, true)
   if (!pre.ok) return pre.error
@@ -281,7 +281,7 @@ export async function issueRunDraft(
   const when = await issueDateParts(ctx, issuer)
   if (!when.ok) return when.error
   const issueInput = buildIssueInputFromDraft(draft, issuer, counterparty, when)
-  const issued = await issueWithFxRate(ctx, { ...issueInput, external_ref: input.external_ref, lifecycle_carry: input.lifecycle_log })
+  const issued = await issueWithFxRate(ctx, { ...issueInput, external_ref: input.external_ref, lifecycle_carry: input.lifecycle_log, ...(input.einvoice_send ? { einvoice_send: input.einvoice_send } : {}) })
   if (!issued.ok) return issued.error
   await deleteDraftRow(ctx.db, input.draft_id)
   return {

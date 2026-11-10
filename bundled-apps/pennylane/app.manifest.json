@@ -350,6 +350,12 @@
           },
           "idempotency_key": {
             "type": "string"
+          },
+          "stream_ref": {
+            "type": "string"
+          },
+          "run_item_ref": {
+            "type": "string"
           }
         },
         "additionalProperties": false,
@@ -391,6 +397,12 @@
             "type": "string"
           },
           "legal_original_sha256": {
+            "type": "string"
+          },
+          "stream_ref": {
+            "type": "string"
+          },
+          "run_item_ref": {
             "type": "string"
           }
         },

@@ -1421,6 +1421,11 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // E-invoicing transmission and booking through the bound PA provider (the Pennylane
             // adapter over its recorded-shape fake behind a contract-call stub).
             "src/einvoicing/transmit.test.ts",
+            "src/einvoicing/send-batch.test.ts",
+            "src/einvoicing/collection.test.ts",
+            "src/einvoicing/standing.test.ts",
+            "src/einvoicing/run-send.test.ts",
+            "src/send-state.test.ts",
             // Received supplier e-invoices: the safe XML reader (DTD/entity/size/time refusals),
             // the mirror and its refuse/dispute approvals over the same adapter and fake.
             "src/received/xml.test.ts",

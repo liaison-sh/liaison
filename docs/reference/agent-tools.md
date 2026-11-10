@@ -466,6 +466,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `customer_history` | A customer's past sales with each line's unit price, the latest sale of a product (last_sale) and their Shopify orders. |  | `invoicing:documents:read` |
 | `deferred_list` | List parked/deferred auto-flow events for the org: Shopify orders whose invoice did not issue automatically. |  | `invoicing:documents:read` |
 | `deferred_tax_override` | Resolve a TAX REVIEW park (deferred_list items whose reason is shopify_tax_mismatch, tax_on_exempt_treatment, tax_rate_placeholder or buyer_vat_missing; they carry resolution_options) by issuing the order with an explicit tax decision. | yes | `invoicing:documents:write` |
+| `document_send_state` | Whether a payment reminder about an invoice issued by Liaison may still go out, read from the document at send time: stops on paid, credited or voided. |  | `invoicing:documents:read` |
 | `documents_convert_local` | Convert a quote or proforma with no Shopify draft order into an invoice, in one transaction. |  | `invoicing:documents:write` |
 | `documents_convert_to_invoice` | Convert a quote or proforma into an invoice. | yes | `invoicing:documents:write` |
 | `documents_download_pdf` | Resolve a document's rendered-PDF file id + URL for download. |  | `invoicing:documents:read` |
@@ -486,7 +487,9 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `drafts_update` | Update an unissued draft, including one from a source. |  | `invoicing:documents:write` |
 | `einvoice_book_batch` | Book one day's batch of reported sales (consumers, exports, EU customers, internal cancellations) in the e-invoicing platform's ledger: ledger entries only, nothing is transmitted to any customer. | yes | `invoicing:documents:write` |
 | `einvoice_send` | Send one issued e-invoice through the e-invoicing platform (PA). | yes | `invoicing:documents:write` |
+| `einvoice_send_batch` | Send one day's batch of e-invoices issued with no person (a month-end run issuing by itself) through the e-invoicing platform. | yes | `invoicing:documents:write` |
 | `einvoice_send_request` | Ask for the approval to send ONE issued e-invoice (or credit note) through the e-invoicing platform (PA). |  | `invoicing:documents:write` |
+| `einvoice_standing_off` | Turn off a stream's standing e-invoice authorization (card or transfer). |  | `invoicing:settings:write` |
 | `einvoice_status_refresh` | Re-read now the e-invoicing platform's status of one sent e-invoice (deposited, sent, accepted, approved, in dispute, refused, rejected, collected) and record it. |  | `invoicing:documents:read` |
 | `einvoice_transmission_get` | The e-invoicing transmission of one document: whether it was sent or booked, its platform status with history (raw provider value, official code, times), the last error, and whether a send approval is pending. |  | `invoicing:documents:read` |
 | `einvoicing_backfill_identities` | Backfill the e-invoicing identity of every existing customer: the customer kind its documents support, the SIREN read off a French VAT id and confirmed against the business registry (written only when the registry returns that company active under the customer's own name; anything else is left for einvoicing_readiness), the structured billing address of its latest document and open drafts from their printed address, and the issuer's SIREN / SIRET from a valid registration id. | yes | `invoicing:contacts:write` |

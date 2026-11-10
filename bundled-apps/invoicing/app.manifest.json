@@ -664,7 +664,8 @@
           "enum": [
             "approval",
             "direct_click",
-            "booking_policy"
+            "booking_policy",
+            "standing"
           ],
           "required": false
         },
@@ -684,6 +685,8 @@
         "next_attempt_at": "text?",
         "lease_until": "text?",
         "dispatch_grant": "text?",
+        "stream_ref": "text?",
+        "run_item_ref": "text?",
         "attempt": {
           "type": "integer",
           "required": false
@@ -738,6 +741,65 @@
           "type": "integer",
           "required": false
         }
+      }
+    },
+    "einvoice_standing": {
+      "rlsScope": "documents",
+      "fields": {
+        "issuer_profile_id": "uuid",
+        "stream": {
+          "type": "string",
+          "enum": [
+            "card",
+            "transfer"
+          ]
+        },
+        "turned_on_by": { "type": "uuid", "userRef": true, "onErase": "anonymize", "required": false },
+        "turned_on_at": "date?",
+        "grant_ref": "text?",
+        "until": "date?",
+        "ended_at": "date?",
+        "ended_by": { "type": "uuid", "userRef": true, "onErase": "anonymize", "required": false },
+        "ended_reason": "text?",
+        "renewal_requested_at": "date?"
+      },
+      "constraints": {
+        "unique": [["issuer_profile_id", "stream"]]
+      }
+    },
+    "einvoice_send_batches": {
+      "rlsScope": "documents",
+      "fields": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "approved",
+            "released"
+          ]
+        },
+        "document_ids": {
+          "type": "json",
+          "required": false
+        },
+        "numbers": {
+          "type": "json",
+          "required": false
+        },
+        "items": {
+          "type": "json",
+          "required": false
+        },
+        "skipped": {
+          "type": "json",
+          "required": false
+        },
+        "provider_app": "text?",
+        "approval_request_id": "text?",
+        "requested_at": "text?",
+        "finished_at": "text?",
+        "oldest_waiting_since": "text?",
+        "waiting_alert_document_id": "text?"
       }
     },
     "einvoicing_orphan_events": {
@@ -971,6 +1033,11 @@
           "legal_original_sha256": "text?",
           "einvoice_state": "text?",
           "einvoice_state_raw": "text?",
+          "collection_state": "text?",
+          "collection_reports": {
+            "type": "json",
+            "required": false
+          },
           "pa_provider": "text?",
           "tax_point_date": "date?",
           "tax_total_eur_minor": "bigint?",
@@ -1706,6 +1773,7 @@
   },
   "outsideTextFields": ["buyer", "supplier", "counterparty_name", "counterparty_address", "counterparty_shipping_name", "counterparty_shipping_address", "counterparty_email", "po_number", "customer_reference", "notes", "description", "customs_description", "billing_line1", "billing_line2", "billing_city", "customer", "email", "supplier_name", "invoice_number", "status_reason", "history", "filename", "lifecycle_reason", "lifecycle_log", "last_error", "registry_name", "registry_line1", "registry_city", "contact_name", "vies_name", "vies_address", "buyer_legal_name", "legal_name", "name", "address", "sigle", "enseignes", "line1", "city", "summary", "blocked_on", "label", "refusal", "buyer_refusal"],
   "approvalRoute": {"recurring_run": "approval_route_read"},
+  "sendGuardProviders": {"invoicing:document": {"tool": "document_send_state", "serviceMessage": true, "pill": {"label": "Invoicing: payment reminder"}}},
   "activitySources": [{"tool": "activity_read", "scope": "invoicing:documents:read", "label": "Invoices", "filterKey": "invoicing"}],
   "tools": {
     "recurring_run_get": {"description": "Read a month-end run: its state, issue and last days, and each row with its draft_id, amounts, account manager, latest change and flags. Omit run_id for the latest run.", "searchKeywords": ["mensuel", "récurrent", "month-end"], "requiredScopes": ["invoicing:documents:read"], "handler": "recurringRunGetHandler", "readOnly": true, "taintSource": true, "params": {"type": "object", "properties": {"run_id": {"type": "string"}}}},
@@ -2032,6 +2100,68 @@
       "summarizer": "summarizeEinvoiceBookBatch",
       "approvalCard": {
         "summary": "Book the day's reported sales in the e-invoicing platform's ledger"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "batch_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "batch_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "document_send_state": {
+      "readOnly": true,
+      "agentVisible": false,
+      "description": "Whether a payment reminder about an invoice issued by Liaison may still go out, read from the document at send time: stops on paid, credited or voided.",
+      "requiredScopes": [
+        "invoicing:documents:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "documentSendStateHandler",
+      "params": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": [
+          "ref"
+        ]
+      },
+      "timeoutMs": 2000
+    },
+    "einvoice_send_batch": {
+      "description": "Send one day's batch of e-invoices issued with no person (a month-end run issuing by itself) through the e-invoicing platform. Created by the daily send job; runs once a person approves the batch, preparing each document's send under its own approval.",
+      "requiredScopes": [
+        "invoicing:documents:write"
+      ],
+      "handler": "einvoiceSendBatchHandler",
+      "gated": true,
+      "noAutoApprove": true,
+      "approvalImpact": "external",
+      "approvalExpiryHours": 24,
+      "editableFields": [],
+      "trustBoundary": "user",
+      "agentVisible": false,
+      "atomic": false,
+      "timeoutMs": 60000,
+      "writesToTable": "app_invoicing.einvoice_transmissions",
+      "approvalCard": {
+        "summary": "Send the day's e-invoices issued with no person through the e-invoicing platform"
       },
       "params": {
         "type": "object",
@@ -2752,12 +2882,31 @@
         "properties": {
           "issuerProfileId": { "type": "string" },
           "stream": { "type": "string", "enum": ["card", "transfer", "one_off"] },
-          "issuer": { "type": "string", "enum": ["liaison", "stripe"] }
+          "issuer": { "type": "string", "enum": ["liaison", "stripe"] },
+          "einvoiceStanding": { "type": "boolean" }
         },
         "required": ["issuerProfileId"],
         "additionalProperties": false
       },
       "approvalCard": { "summary": "Who issues the invoices of card subscriptions" }
+    },
+    "einvoice_standing_off": {
+      "description": "Turn off a stream's standing e-invoice authorization (card or transfer). Runs at once: e-invoices issued with no person on that stream then wait for the daily send card.",
+      "requiredScopes": ["invoicing:settings:write"],
+      "handler": "einvoiceStandingOffHandler",
+      "trustBoundary": "user",
+      "agentVisible": false,
+      "timeoutMs": 15000,
+      "writesToTable": "app_invoicing.einvoice_standing",
+      "params": {
+        "type": "object",
+        "properties": {
+          "issuerProfileId": { "type": "string" },
+          "stream": { "type": "string", "enum": ["card", "transfer"] }
+        },
+        "required": ["issuerProfileId", "stream"],
+        "additionalProperties": false
+      }
     },
     "issuer_emails_confirm": {
       "summarizer": "summarizeIssuerEmailsConfirm",
@@ -6119,6 +6268,9 @@
       "einvoicing:not_in_directory",
       "einvoicing:routing_mismatch",
       "einvoicing:booking_failed",
+      "einvoicing:send_waiting",
+      "einvoicing:standing_lapsed",
+      "einvoicing:collection_manual",
       "einvoicing:booking_summary",
       "einvoicing:booking_invariant_breach",
       "einvoicing:orphan_event",
@@ -6245,6 +6397,48 @@
         "recipients": {
           "kind": "scope_holders",
           "scope": "invoicing:documents:write"
+        },
+        "resolveWhen": {
+          "field": "resolved",
+          "equals": true
+        }
+      },
+      {
+        "event": "einvoicing:collection_manual",
+        "kind": "invoicing:einvoicing.collection_manual",
+        "urgency": 40,
+        "summary": "Enter this collection at your platform: {{data.number}} was paid on {{data.date}}, and the e-invoicing platform does not take collections from Liaison.",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "invoicing:documents:write"
+        },
+        "resolveWhen": {
+          "field": "resolved",
+          "equals": true
+        }
+      },
+      {
+        "event": "einvoicing:standing_lapsed",
+        "kind": "invoicing:einvoicing.standing_lapsed",
+        "urgency": 50,
+        "summary": "The standing e-invoice authorization of the {{data.stream}} stream ended on {{data.until}} without renewal. E-invoices issued with no person on it now wait for the daily send card.",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "invoicing:settings:write"
+        },
+        "resolveWhen": {
+          "field": "resolved",
+          "equals": true
+        }
+      },
+      {
+        "event": "einvoicing:send_waiting",
+        "kind": "invoicing:einvoicing.send_waiting",
+        "urgency": 50,
+        "summary": "E-invoice {{data.number}} has waited for the daily send card since {{data.since}}: nobody approved a card since. Approve the next one to send it.",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "invoicing:settings:write"
         },
         "resolveWhen": {
           "field": "resolved",
@@ -6489,6 +6683,20 @@
       "atomic": false,
       "runsFor": {"rows": {"entity": "einvoicing_settings", "where": {"provider_app": {"not": null}}}},
       "schedule": "15 5 * * *",
+      "timeoutMs": 120000
+    },
+    "einvoicing-send-daily": {
+      "handler": "einvoicingSendDailyJobHandler",
+      "atomic": false,
+      "runsFor": {"rows": {"entity": "einvoicing_settings", "where": {"provider_app": {"not": null}}}},
+      "schedule": "20 5 * * *",
+      "timeoutMs": 120000
+    },
+    "einvoicing-standing-daily": {
+      "handler": "einvoicingStandingDailyJobHandler",
+      "atomic": false,
+      "runsFor": {"rows": {"entity": "einvoice_standing", "where": {"ended_at": null}}},
+      "schedule": "25 5 * * *",
       "timeoutMs": 120000
     },
     "einvoicing-received-catchup": {

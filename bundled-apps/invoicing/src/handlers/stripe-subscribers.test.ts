@@ -77,6 +77,27 @@ describe("Stripe invoices handled by invoicing", () => {
     expect((born[0] as Record<string, unknown>).payment_status).toBe("paid")
   })
 
+  test("a Stripe payment of an e-invoice where VAT is due on receipt reports its collection to the platform once", async () => {
+    setSystemTime(new Date(Date.UTC(2026, 10, 15, 12, 0)))
+    const db = stripeDb()
+    const reported: Array<Record<string, unknown>> = []
+    const contracts = {
+      call: async (_c: string, op: string, params: Record<string, unknown>) => {
+        reported.push({ op, ...params })
+        return { status: "completed", result: { state: "accepted" } }
+      },
+    }
+    const ctx = stripeCtx(db, { contracts } as never)
+    await onStripeInvoiceFinalized(finalized(), ctx)
+    const doc = invoices(db)[0] as Record<string, unknown>
+    await db.update("documents", String(doc.id), { tax_treatment: "eu_domestic", operation_category: "services" })
+    await db.insert("einvoice_transmissions", { document_id: doc.id, action: "send_einvoice", idempotency_key: "k-stripe", state: "sent", provider_app: "fakepa", provider_ref: "pa-stripe" })
+    const paidAt = new Date(Date.UTC(2026, 10, 17, 10, 0)).toISOString()
+    await onStripeInvoicePaid(finalized({ status: "paid", paid_at: paidAt }), ctx)
+    await onStripeInvoicePaid(finalized({ status: "paid", paid_at: paidAt }), ctx)
+    expect(reported).toEqual([expect.objectContaining({ op: "report_collection", provider_ref: "pa-stripe", date: "2026-11-17" })])
+  })
+
   test("a failed payment leaves the document equal and raises attention only when actionable", async () => {
     const db = stripeDb()
     const ctx = stripeCtx(db)

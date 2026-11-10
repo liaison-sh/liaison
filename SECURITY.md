@@ -5,7 +5,7 @@
 Security fixes land on `main` first and ship in the next release. Only the
 latest release of each part gets them:
 
-- **Server**: the latest `vX.Y.Z` release (the `ghcr.io/mathieufro/liaison`
+- **Server**: the latest `vX.Y.Z` release (the `ghcr.io/liaison-sh/liaison`
   image and the release's `docker-compose.yml`). Until the first tagged
   release, `main` is the only supported version.
 - **Desktop app**: the latest desktop release. The app updates itself; an
@@ -20,7 +20,7 @@ version you found it in.
 Please do not report security vulnerabilities through public GitHub issues.
 
 Instead, use GitHub's private vulnerability reporting: go to the
-[Security tab](https://github.com/mathieufro/liaison/security) of this
+[Security tab](https://github.com/liaison-sh/liaison/security) of this
 repository and click "Report a vulnerability". Alternatively, email
 mathieu@liaison.sh.
 

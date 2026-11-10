@@ -15,12 +15,12 @@ Liaison ships as one app image plus PostgreSQL, Redis, MeiliSearch and a Seaweed
 1. Clone the repository and run the quickstart:
 
    ```bash
-   git clone https://github.com/mathieufro/liaison.git
+   git clone https://github.com/liaison-sh/liaison.git
    cd liaison
    ./deploy/quickstart.sh
    ```
 
-   On the first run it creates `deploy/.env` from `deploy/.env.example` and fills in every required secret. It pulls `ghcr.io/mathieufro/liaison:latest` if it can, otherwise builds the image from `apps/api/Dockerfile`, starts the stack and waits until `/healthz` reports every dependency ok.
+   On the first run it creates `deploy/.env` from `deploy/.env.example` and fills in every required secret. It pulls `ghcr.io/liaison-sh/liaison:latest` if it can, otherwise builds the image from `apps/api/Dockerfile`, starts the stack and waits until `/healthz` reports every dependency ok.
 2. Open the URL it prints and register with the one-time setup token it shows. See [Install Liaison](../getting-started/install.md).
 
 | Flag | What it does |
@@ -38,7 +38,7 @@ To run Compose yourself, name the project and file: `docker compose -p liaison -
 
 | Service | Image | Role | Memory limit |
 |---|---|---|---|
-| `app` | `ghcr.io/mathieufro/liaison` (tag from `LIAISON_IMAGE`) | API, web app, MCP, background jobs | 3 GB |
+| `app` | `ghcr.io/liaison-sh/liaison` (tag from `LIAISON_IMAGE`) | API, web app, MCP, background jobs | 3 GB |
 | `postgres` | `postgres:17-alpine` | Database | 2 GB |
 | `redis` | `redis:7-alpine` | Pub-sub, rate limits, job queues | 512 MB (Redis heap capped at 384 MB) |
 | `meilisearch` | `getmeili/meilisearch:v1.10` | Search | 1.5 GB |

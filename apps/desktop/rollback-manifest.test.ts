@@ -33,7 +33,7 @@ const throwawayKey = readFileSync(path.join(FIXTURES, "throwaway.pub"), "utf8")
 function githubManifest(state: string): string {
   return manifestFor(state).replace(
     `${DOWNLOADS_BASE}/desktop/9.9.8`,
-    "https://github.com/mathieufro/liaison/releases/download/desktop-v9.9.8",
+    "https://github.com/liaison-sh/liaison/releases/download/desktop-v9.9.8",
   )
 }
 

@@ -29,7 +29,7 @@ const systemTest = createProfiledE2ETest({
   before: async (ports) => {
     _gh = await startFakeGitHubReleases(ports[2], {
       latest: "v0.1.1",
-      htmlUrl: "https://github.com/mathieufro/liaison/releases/tag/v0.1.1",
+      htmlUrl: "https://github.com/liaison-sh/liaison/releases/tag/v0.1.1",
     })
     return {
       env: { LIAISON_VERSION: "v0.1.0", GITHUB_API_BASE: _gh.url },

@@ -224,7 +224,7 @@
       }
     ]
   },
-  "version": "0.20.57",
+  "version": "0.20.58",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -232,7 +232,7 @@
     "category": "Finance",
     "icon": "file-text",
     "summary": "Invoices, quotes, proformas, purchase orders and credit notes.",
-    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/bundled-apps/invoicing"
+    "sourceRepository": "https://github.com/liaison-sh/liaison/tree/main/bundled-apps/invoicing"
   },
   "packageFormat": 1,
   "license": "FSL-1.1-ALv2",

@@ -170,7 +170,7 @@ describe("workflow hardening", () => {
 
     it("publishes only from main of this repository", () => {
       expect(raw).toContain(
-        "if: github.repository == 'mathieufro/liaison' && github.ref == 'refs/heads/main'",
+        "if: github.repository == 'liaison-sh/liaison' && github.ref == 'refs/heads/main'",
       )
     })
 

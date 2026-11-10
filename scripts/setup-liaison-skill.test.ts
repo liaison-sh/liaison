@@ -175,7 +175,7 @@ describe("onboarding shape, skill and in-product agent", () => {
     const t = flat(text)
     expect(t).toContain("openrsync")
     expect(t).not.toMatch(/rsync[^`]*--chmod/)
-    expect(t).toContain("https://github.com/mathieufro/liaison/blob/main/docs/")
+    expect(t).toContain("https://github.com/liaison-sh/liaison/blob/main/docs/")
     expect(t).not.toMatch(/point the owner at the published pages on liaison\.sh\/docs/)
   })
 })

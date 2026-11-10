@@ -186,7 +186,7 @@ async function main() {
   // selected by the LIAISON_IMAGE env var — not by rewriting the file (the old
   // regex never matched the `${…}` form and silently booted v0.1.0). Drive the
   // tag through env, exactly like load-test.ts / lighthouse-ci.ts already do.
-  const image = `ghcr.io/mathieufro/liaison:${tag}`
+  const image = `ghcr.io/liaison-sh/liaison:${tag}`
   const composePath = join(ROOT, "deploy/docker-compose.yml")
 
   // Static deploy invariant: fail fast (before touching Docker) if the runtime

@@ -73,6 +73,6 @@ runs:
         tags: ${{ inputs.tags }}
         build-args: LIAISON_VERSION=${{ inputs.version }}
         labels: |
-          org.opencontainers.image.source=https://github.com/mathieufro/liaison
+          org.opencontainers.image.source=https://github.com/liaison-sh/liaison
           org.opencontainers.image.licenses=FSL-1.1-ALv2
           org.opencontainers.image.description=Liaison self-hosted agent-native business OS

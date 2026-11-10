@@ -43,12 +43,12 @@ out from under you.
    ```sh
    export VERSION=v0.1.0
    sudo git clone --depth 1 --branch "$VERSION" \
-     https://github.com/mathieufro/liaison.git /opt/liaison
+     https://github.com/liaison-sh/liaison.git /opt/liaison
    cd /opt/liaison/deploy
    ```
    Verify the tag is the release you expect:
    ```sh
-   gh release view "$VERSION" --repo mathieufro/liaison | head
+   gh release view "$VERSION" --repo liaison-sh/liaison | head
    ```
    No release is published yet. Until the first one is, clone `main`
    (leave out `--branch`), build the image yourself from the checkout's root
@@ -510,7 +510,7 @@ the server, and a failed migration stops the container before it serves traffic.
    ```
 2. Set the new image tag in `.env` (the `app` service reads `LIAISON_IMAGE`):
    ```sh
-   LIAISON_IMAGE=ghcr.io/mathieufro/liaison:v0.1.1
+   LIAISON_IMAGE=ghcr.io/liaison-sh/liaison:v0.1.1
    ```
 3. Pull the image and restart the stack:
    ```sh
@@ -550,9 +550,9 @@ For anything not covered, gather:
 
 ## Where to file issues
 
-- Bug reports and feature requests: <https://github.com/mathieufro/liaison/issues>
+- Bug reports and feature requests: <https://github.com/liaison-sh/liaison/issues>
 - Security disclosures: report privately via [GitHub Security
-  Advisories](https://github.com/mathieufro/liaison/security/advisories/new)
+  Advisories](https://github.com/liaison-sh/liaison/security/advisories/new)
   (see `SECURITY.md`); please do not open public issues for vulnerabilities.
 - Commercial inquiries: see `CONTRIBUTING.md`
-- General discussion: <https://github.com/mathieufro/liaison/discussions>
+- General discussion: <https://github.com/liaison-sh/liaison/discussions>

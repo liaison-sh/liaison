@@ -17,7 +17,7 @@ You can install Liaison two ways: let Claude Code or Codex run the setup playboo
 1. Clone the repository, open the folder in Claude Code or Codex (the app, VS Code or the terminal) and ask "set up Liaison for my company":
 
    ```bash
-   git clone https://github.com/mathieufro/liaison.git
+   git clone https://github.com/liaison-sh/liaison.git
    ```
 
 2. The agent first asks two things: a trial on this machine or a server, and which features you want (email and Google sign-in, a support inbox, imports from Jira or Freshdesk, Calendar, Drive, Shopify, Facebook and Instagram, Google Ads). It records your answer (`setup.features` in the config), so what it calls left is only what you picked; it states the plan and the time per step, then asks its other questions in one message. Reply with what differs from the defaults:
@@ -71,7 +71,7 @@ The basic onboarding takes about 15 minutes for the basic onboarding on a server
 1. Run:
 
    ```bash
-   git clone https://github.com/mathieufro/liaison.git
+   git clone https://github.com/liaison-sh/liaison.git
    cd liaison
    ./deploy/quickstart.sh
    ```

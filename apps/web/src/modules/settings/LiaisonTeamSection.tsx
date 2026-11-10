@@ -27,7 +27,7 @@ export interface LiaisonTeamBody {
   }
 }
 
-const DOCS_URL = "https://github.com/mathieufro/liaison/blob/main/docs/self-hosting/liaison-team.md"
+const DOCS_URL = "https://github.com/liaison-sh/liaison/blob/main/docs/self-hosting/liaison-team.md"
 
 /**
  * Settings > System: the instance-wide "share with the Liaison team"

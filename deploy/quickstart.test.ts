@@ -70,18 +70,18 @@ describe("quickstart.sh --channel", () => {
   it("defaults to the release channel and its image", () => {
     const s = sandbox()
     expect(s.run([]).code).toBe(0)
-    expect(s.docker()).toContain("pull ghcr.io/mathieufro/liaison:latest")
+    expect(s.docker()).toContain("pull ghcr.io/liaison-sh/liaison:latest")
     expect(s.envValue("LIAISON_RELEASE_CHANNEL")).toBe("release")
-    expect(s.envValue("LIAISON_IMAGE")).toBe("ghcr.io/mathieufro/liaison:latest")
+    expect(s.envValue("LIAISON_IMAGE")).toBe("ghcr.io/liaison-sh/liaison:latest")
   })
 
   it("--channel nightly picks the nightly image and sets the variable", () => {
     const s = sandbox()
     expect(s.run(["--channel", "nightly"]).code).toBe(0)
-    expect(s.docker()).toContain("pull ghcr.io/mathieufro/liaison:nightly")
+    expect(s.docker()).toContain("pull ghcr.io/liaison-sh/liaison:nightly")
     expect(s.docker()).not.toContain("liaison:latest")
     expect(s.envValue("LIAISON_RELEASE_CHANNEL")).toBe("nightly")
-    expect(s.envValue("LIAISON_IMAGE")).toBe("ghcr.io/mathieufro/liaison:nightly")
+    expect(s.envValue("LIAISON_IMAGE")).toBe("ghcr.io/liaison-sh/liaison:nightly")
   })
 
   it("a plain rerun keeps the channel in deploy/.env, so it never moves a nightly back", () => {

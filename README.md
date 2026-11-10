@@ -29,7 +29,7 @@ Clone the repository, open the folder in Claude Code or Codex (the app, VS
 Code or the terminal) and ask "set up Liaison for my company":
 
 ```bash
-git clone https://github.com/mathieufro/liaison.git
+git clone https://github.com/liaison-sh/liaison.git
 ```
 
 It follows [the setup playbook](.claude/skills/setup-liaison/SKILL.md)
@@ -77,7 +77,7 @@ up to about 2 hours of your own time for a full onboarding on a server with ever
 Requires Docker, Docker Compose v2, and `openssl`.
 
 ```bash
-git clone https://github.com/mathieufro/liaison.git
+git clone https://github.com/liaison-sh/liaison.git
 cd liaison
 ./deploy/quickstart.sh
 ```

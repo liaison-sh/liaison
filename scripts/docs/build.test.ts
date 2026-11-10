@@ -114,7 +114,7 @@ describe("docs build", () => {
     )
     expect(html).toContain('<div class="tbl"><table>')
     expect(html).toContain('class="copy"')
-    expect(html).toContain("https://github.com/mathieufro/liaison/edit/main/docs/guides/one.md")
+    expect(html).toContain("https://github.com/liaison-sh/liaison/edit/main/docs/guides/one.md")
     expect(read(out, "docs/index.html")).toContain("Welcome to the fixture.")
   })
 

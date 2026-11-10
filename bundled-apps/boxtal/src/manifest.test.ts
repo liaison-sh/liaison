@@ -613,7 +613,7 @@ describe("Boxtal app.manifest.json", () => {
     // 0.24.1: merged with 0.23.24-0.23.27 above.
     // 0.24.2: an order's lines keyed by a store variant id print (and match the document rules)
     //   as the merchant's SKU with its product attributes; countries print as their English name.
-    expect(m.version).toBe("0.24.2")
+    expect(m.version).toBe("0.24.3")
     expect(m.packageFormat).toBe(1)
   })
 

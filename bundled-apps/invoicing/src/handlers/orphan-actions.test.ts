@@ -58,6 +58,13 @@ describe("a Stripe payment with no invoice", () => {
     expect(multi.status).toBe("deferred")
   })
 
+  test("a charge linked by hand to an invoice past the first 500 is still found", async () => {
+    const db = stripeDb()
+    const ctx = stripeCtx(db)
+    for (let i = 0; i < 600; i++) await db.insert("documents", { type: "invoice", status: "issued", number: `FA-${i}`, external_refs: i === 599 ? { stripe_charge_id: "ch_far" } : {} })
+    expect(await onStripePaymentUnmatched(charge("ch_far"), ctx)).toMatchObject({ status: "skipped", reason: "already_linked" })
+  })
+
   test("linking a charge twice answers already_linked", async () => {
     const db = stripeDb()
     const ctx = stripeCtx(db)

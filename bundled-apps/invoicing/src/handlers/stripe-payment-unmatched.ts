@@ -57,8 +57,7 @@ export async function onStripePaymentUnmatched(event: unknown, ctx: StripeCtx) {
   if (since && created && created < since) return { status: "skipped" as const, reason: "before_connection" }
   const ref = stripeRef(p.charge_id)
   if (await documentByRef(ctx, ref)) return { status: "skipped" as const, reason: "already_invoiced" }
-  const linked = (await ctx.db.findMany("documents", { where: { type: "invoice" }, limit: 500 })) as Row[]
-  if (linked.some((d) => (d.external_refs as Row | null)?.stripe_charge_id === p.charge_id)) {
+  if (await invoiceLinkedTo(ctx, p.charge_id)) {
     return { status: "skipped" as const, reason: "already_linked" }
   }
   const def = await park(
@@ -86,6 +85,19 @@ export async function onStripePaymentUnmatched(event: unknown, ctx: StripeCtx) {
     })
   }
   return { status: "deferred" as const, deferred_id: def.id, created: def.created }
+}
+
+const PAGE = 500
+
+/** The invoice a charge was linked to by hand (`external_refs.stripe_charge_id`), read a page at a
+ *  time through every invoice, so an organization with many never misses it. */
+export async function invoiceLinkedTo(ctx: StripeCtx, chargeId: string): Promise<Row | null> {
+  for (let offset = 0; ; offset += PAGE) {
+    const page = (await ctx.db.findMany("documents", { where: { type: "invoice" }, orderBy: { id: "asc" }, limit: PAGE, offset })) as Row[]
+    const hit = page.find((d) => (d.external_refs as Row | null)?.stripe_charge_id === chargeId)
+    if (hit) return hit
+    if (page.length < PAGE) return null
+  }
 }
 
 async function openPark(ctx: StripeCtx, eventId: string): Promise<Row | null> {
@@ -201,8 +213,7 @@ async function linkCheck(ctx: StripeCtx, input: PaymentLinkInput) {
     return fail("invoice_not_found", `No issued invoice ${input.documentId}; nothing was linked. Find it with documents_search.`)
   }
   const byRef = await documentByRef(ctx, stripeRef(chargeId))
-  const invoices = (await ctx.db.findMany("documents", { where: { type: "invoice" }, limit: 500 })) as Row[]
-  const holder = byRef ?? invoices.find((d) => (d.external_refs as Row | null)?.stripe_charge_id === chargeId) ?? null
+  const holder = byRef ?? (await invoiceLinkedTo(ctx, chargeId))
   if (holder) {
     return fail("already_linked", `Payment ${chargeId} is already linked to ${String(holder.number ?? holder.id)}; nothing changed.`)
   }

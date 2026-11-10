@@ -4,6 +4,175 @@
 
 Most recent first.
 
+## Apps your agent builds, dashboards for everyone, and approvals that answer to you
+
+This release lets an organization grow Liaison itself. Your agent can now write an app for
+you, store its data, and put it on a dashboard every member can open. Approvals go to the
+person they concern, and an agent can fix or take back what it asked for. Underneath, the
+same server can now run a managed cloud, and that edition is strictly opt-in.
+
+### Apps your agent builds
+
+Ask your agent for an app and it writes one in the conversation: it checks it, shows you a
+preview, and publishes it as your organization's own custom app once a person approves.
+`Publish version {n} as {app}? It installs for the whole workspace.` An apps admin
+publishes directly; anyone else gets `Publishing needs an apps admin. Ask your agent to
+publish it: it will request their approval.` The approval pins the exact version that
+installs, so nothing can change between the card and the install.
+
+- Custom apps are private to the organization that built them, on every installation.
+- A preview is always read only and never sees a secret.
+- Each custom app keeps its last 20 versions, and a `Logs` panel in its settings shows
+  what it printed.
+- Apps get their own data store: documents an app keeps per organization, which other
+  apps and agents can read only where the app says so, under their own permissions.
+- An app that wants to reach a new outside address asks first, at install, upgrade and
+  publish. What it may reach is listed under `Outbound access` in its settings.
+- Daily caps on app runs, calls and processing time keep one app from eating the
+  instance.
+
+The builder is off on a self-hosted server until you turn it on (see the notes below).
+How it works: [Build an app with your agent](agents/build-an-app.md).
+
+### Dashboards for every member
+
+A dashboard is a page of metrics, tables and bar, line or pie charts, each block fed by a
+tool or an app's data store and always run as the person looking at it, so nobody sees a
+number they could not have asked for. Dashboards are personal or shared with the
+organization; an agent that shares one with everybody asks for approval first.
+
+Every member can now read and build dashboards, including in organizations created before
+dashboards existed. Blocks can use rolling dates (`{{today-30d}}`, `{{startOfMonth}}`), so
+"the last 30 days" keeps moving instead of freezing on the day it was built; dates follow
+the organization's time zone. A `Dashboards` entry sits next to your apps, and open windows
+update by themselves when a dashboard is created, shared, renamed or deleted. A member's
+data export now lists their dashboards and data store documents. See
+[Dashboards](agents/dashboards.md).
+
+### Approvals that go to the right person
+
+- A person decides their own requests: a routine, a connection or a skill they asked their
+  agent for no longer waits on an admin.
+- An agent can edit or withdraw a request it raised, instead of stacking a duplicate, and
+  a member can withdraw their own request without being an approver.
+- When an approved action fails, the agent now knows it was approved, tried and failed,
+  and why, and the row in the approvals list says so too.
+- When you cannot decide a request yourself, the agent tells you who can, by name.
+- Several routine runs waiting for the same private mailbox show as one row, with
+  `Run all` and `Dismiss all`.
+- A pending request closes by itself when its task is deleted or its app is switched off,
+  and a social reply whose outcome was unknown is reconciled once it is known.
+- The number on Home is now the rows of `Needs you`, so every count you see can be opened.
+
+### Agents and the clients you connect
+
+- An outside AI client connected over MCP that lacks a permission now
+  says so and offers to request it, instead of building a stand-in. It looks for an
+  existing named agent whose job fits before creating anything, and it sees what each
+  agent is for.
+- The common agent base now reaches every existing role agent automatically when the
+  server starts. No configuration apply is needed after an upgrade.
+- An agent opens any tab you could open yourself, and opens a record by its number.
+- Tools can be found by describing the job, in French as well as English.
+- An agent that ends a turn announcing its next step without taking it is nudged to
+  actually do it.
+- `Reconnect` is offered on every connected account you manage, so you can re-run a
+  grant after an app asks for more access.
+- The organization's AI models can be read and set from the agent's own tools. The default
+  OpenRouter model is now DeepSeek V4.1 Flash 1017.
+
+### Invoicing
+
+- Issue dates and the year in a document number follow the issuer's time zone, not UTC.
+  An invoice made just after local midnight on 1 January is dated and numbered in the new
+  year.
+- Credit notes are never dated before the invoice they correct, their stated date decides
+  their number, and their approval card shows the amount, lines and date.
+- Quotes and invoices for a B2B company name the company, use its location's billing
+  address and tax number, and respect each document's own tax inclusivity.
+- An order retried later reads the customer's current VAT number and company. An untaxed
+  intra-EU order without a VAT number waits for review instead of issuing.
+- A document's handle is its number, and the PDF tab previews inline, including in Safari.
+  `Preview PDF` says when a PDF is not ready yet; the editor warns before a date would be
+  refused.
+
+### Shipping papers by configuration
+
+Customs and certification papers are now document templates you write yourself. Blocks
+can be conditional, tables repeat over an order's lines, and placeholders can compute
+weights, totals and percentages. Document rules, matched on product attributes, decide
+which papers an order needs; Boxtal generates them when an order reaches preparation and
+again after the label is bought, and prints them with the pack. You can preview an
+order's papers before the first one is printed. See
+[Shipping documents](admin/shipping-documents.md).
+
+Boxtal also got a batch of field fixes: FedEx tracking numbers are read reliably, and a
+typed number unblocks a label that cannot be read; every parcel of a multi-parcel
+shipment is printed; one shipping worklist replaces the separate tables; a label purchase
+survives a timeout without buying twice; and the shipment's label download opens the
+label.
+
+### Mail and social
+
+- Mail you send to a known contact is linked to that contact, from the composer and from
+  a mailbox, even before they reply.
+- Forwarding a sealed attachment from an encrypted mailbox sends it.
+- Sending from a mailbox whose connection is gone gives a clear answer instead of an error.
+- A Page's own replies are never reported as social findings.
+
+### Security
+
+- Role agents can no longer hold any scope that would ask a person for a second factor;
+  personal agents are unchanged.
+- A permission change takes effect the moment it commits: a token minted before it is no
+  longer accepted for a few seconds afterwards.
+- App bundles carrying import attributes are refused before they are parsed.
+- Disconnecting an account, from anywhere, now stops its push notifications and revokes
+  its grant at the provider.
+- Database and ads reads mark the turn as having read outside text, so a later outbound
+  action in that turn waits for a person.
+- A device sign-in can no longer pass a tool call off as a person's click.
+- Sign-in codes are rate limited per address and per network, with a countdown on
+  `Send a new code`.
+
+### The managed cloud edition
+
+The same code can now run Liaison as a hosted service: each organization on its own
+address, plans with a credit allowance metered per model call, `Plan`, `Usage` and
+`Billing` screens, and moving an organization between servers. It is off unless the
+server is started with `LIAISON_EDITION=managed`; a self-hosted installation behaves as
+before.
+
+### Fixes
+
+- Signing in while a session refreshes no longer fails now and then.
+- Search no longer misses something written just before an index rebuild.
+- A message edited or deleted is no longer brought back by an older page of the thread.
+- Deleted tasks are left out of project search unless you ask for them.
+- A deactivated person's routines pause, and routines paused for a missing scope resume
+  once it is back. Whoever may read a routine may read its runs.
+- A merged ticket's conversation moves to the ticket it was merged into.
+- Shopify draft orders refuse an order Invoicing would not invoice, and product status
+  filters now match.
+- The Discover list is in name order, and unsaved settings edits survive a refresh.
+- Bug reports can be discarded and send after an update; long log lines no longer break
+  the form.
+
+### Notes for operators
+
+- Migrations 0263 to 0286 run when the container starts. Upgrading across 0190 and 0261 in
+  one go no longer fails, and scope seeds a non-superuser migration login skipped are
+  re-applied.
+- New, all optional: `LIAISON_CUSTOM_APPS=on` turns on custom apps and the app builder
+  (off by default on a self-hosted server); `LIAISON_APP_FRAME_ORIGIN_TEMPLATE` serves app
+  screens from their own origin; `LIAISON_WORKERS_*` enables the Workers executor, a beta
+  that runs app code in isolated workers and falls back to the built-in sandbox; and
+  `GMAIL_PUSH_AUDIENCE` and `GMAIL_PUSH_SERVICE_ACCOUNT` verify Gmail push for every
+  organization. See [Docker](self-hosting/docker.md).
+- `CONTROL_PLANE_URL` and `CONTROL_PLANE_API_KEY` no longer make a server managed on
+  their own: only `LIAISON_EDITION=managed` does.
+- App webhooks register on an organization's own host when organizations have hosts.
+
 ## Named agents, Home, and Liaison on every screen
 
 This is the largest release Liaison has had. Until now your organization had one agent:

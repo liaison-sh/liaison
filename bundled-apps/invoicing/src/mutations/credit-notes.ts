@@ -76,6 +76,9 @@ export interface CreditNoteIssueOptions {
   /** The unique source key the credit note carries (a Stripe refund's `stripe:re_...`), so one
    *  refund never yields two credit notes. */
   external_ref?: string | null
+  /** "batch": issued with no person (a Stripe refund's automatic credit note), so its e-invoice
+   *  goes out like every other no-person issue instead of asking for its own send card. */
+  einvoice_send?: "batch"
 }
 
 /** The gate inputs an automatic Shopify credit note carries (see `CreditNoteIssueOptions.source`). */
@@ -519,6 +522,7 @@ export async function creditNoteCreateAndIssue(
     operation_category: input.operation_category ?? null,
     ...autoSourceGateFields(opts),
     ...(opts.external_ref ? { external_ref: opts.external_ref } : {}),
+    ...(opts.einvoice_send ? { einvoice_send: opts.einvoice_send } : {}),
   }
   const issued = await issueWithFxRate(ctx, issueInput)
   if (!issued.ok) return issued.error

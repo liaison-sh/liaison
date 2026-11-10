@@ -193,7 +193,7 @@ async function issueFor(ctx: StripeCtx, p: StripeRefundPayload, r: StripeRefund,
       original_document_id: String(fresh.id),
       reason: `Stripe refund ${r.id}`,
     },
-    { external_ref: stripeRef(r.id) },
+    { external_ref: stripeRef(r.id), einvoice_send: "batch" },
   )
   if (res.status === "completed") {
     await resolveOpenParks(ctx, stripeRef(r.id), "issued")

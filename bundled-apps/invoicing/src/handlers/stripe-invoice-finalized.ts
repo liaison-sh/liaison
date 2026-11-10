@@ -406,6 +406,9 @@ export async function onStripeInvoiceFinalized(
     issuer,
     counterparty,
     external_ref: ref,
+    // Issued with no person: its e-invoice goes out like every other no-person issue (the card
+    // stream's standing authorization when on, else the daily send card), never its own card.
+    einvoice_send: opts.byPerson ? "stage" : "batch",
     ...(settlement ? { settlement } : {}),
     draft: {
       currency: p.currency.toUpperCase(),

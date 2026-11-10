@@ -1,4 +1,23 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+//
+// WHAT THIS GUARD PROTECTS
+//
+// Liaison's OWN billing stays extracted from the product, and no payment
+// vendor SDK enters it. The product's billing, credits and edition code is
+// vendor-neutral: the managed edition's billing lives behind a control client,
+// and the kernel schema carries no vendor columns.
+//
+// It does NOT ban the vendor's name everywhere. A bundled connector app that
+// talks to the vendor's HTTP API through `ctx.fetch` is a customer-facing
+// feature, not Liaison's billing, so its identifiers (scopes, tables, tool
+// names, event names) and its test, harness, i18n and bench-corpus files may
+// name the vendor. What is forbidden, and pinned below:
+//   (a) the vendor's SDK in any package manifest or lockfile;
+//   (b) an import of the vendor's SDK anywhere in the code;
+//   (c) the vendor's name at all in the billing modules, the kernel credits
+//       and organizations schema and the edition code;
+//   (d) the vendor's name anywhere else, except as a connector identifier or
+//       inside the connector's own test, harness, i18n and corpus files.
 import { describe, expect, test } from "bun:test"
 import { spawnSync } from "node:child_process"
 import { existsSync, readFileSync } from "node:fs"
@@ -6,10 +25,9 @@ import path, { resolve } from "node:path"
 
 const REPO_ROOT = resolve(new URL("../../../..", import.meta.url).pathname)
 
-// V3 grep from the Phase 14 spec — the canonical Stripe extraction acceptance check.
-// The pattern is assembled at runtime from non-matching fragments so this test
-// file itself does not contain any V3-matching literal that would make the
-// repo-wide grep red.
+// The extraction acceptance pattern. It is assembled at runtime from
+// non-matching fragments so this test file itself does not contain a
+// matching literal that would make the repo-wide grep red.
 const FORBIDDEN = ["s", "t", "r", "i", "p", "e"].join("")
 const FORBIDDEN_UPPER = FORBIDDEN.toUpperCase()
 
@@ -243,6 +261,125 @@ function importLines(pattern: string, pathspecs: string[]): Array<[string, strin
   return out
 }
 
+/** Files the billing neutrality guard reads with the whole word forbidden. */
+const BILLING_PATHS = [
+  "apps/api/src/modules/billing-*/**",
+  "apps/api/src/modules/credits/**",
+  "apps/api/src/db/schema/kernel/credits.ts",
+  "apps/api/src/db/schema/kernel/organizations.ts",
+  "apps/api/src/lib/edition.ts",
+]
+
+/**
+ * Files that may name the vendor freely: the connector's own test, harness,
+ * i18n strings and the tool bench corpus. Everything else may only use the
+ * connector identifiers below.
+ */
+const CONNECTOR_PATHS = [
+  "apps/api/test-support/harness/@@-*",
+  "**/@@-*.test.ts",
+  "**/@@-*.e2e.test.ts",
+  "apps/api/src/tests/relations/@@-world.ts",
+  "**/i18n/**",
+  "**/*i18n*",
+  "apps/api/src/modules/agent/tools/tool-bench/corpus.json",
+].map((g) => g.replace(/@@/g, FORBIDDEN))
+
+/** A path glob (`*` within a segment, `**` across segments) as a RegExp. */
+function globToRegExp(glob: string): RegExp {
+  let out = ""
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i] as string
+    if (c === "*" && glob[i + 1] === "*") {
+      out += glob[i + 2] === "/" ? "(?:.*/)?" : ".*"
+      i += glob[i + 2] === "/" ? 2 : 1
+    } else if (c === "*") out += "[^/]*"
+    else out += c.replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+  }
+  return new RegExp(`^${out}$`)
+}
+
+function matchesAny(file: string, globs: string[]): boolean {
+  return globs.some((g) => globToRegExp(g).test(file))
+}
+
+const isBillingPath = (file: string) => matchesAny(file, BILLING_PATHS)
+const isConnectorPath = (file: string) => matchesAny(file, CONNECTOR_PATHS)
+
+/**
+ * The connector's identifiers: an `<app>:` scope, an `app_<app>.` table, an
+ * `<app>__` tool name, an `<app>/` event name, the bundled app folder and the
+ * app's own name in quotes. Removing them leaves what is NOT an identifier.
+ */
+const CONNECTOR_IDENTIFIERS = new RegExp(
+  [
+    `bundled-apps/${FORBIDDEN}`,
+    `app_${FORBIDDEN}\\.`,
+    `(?<![A-Za-z@/])${FORBIDDEN}__`,
+    `(?<![A-Za-z@/])${FORBIDDEN}/`,
+    `(?<![A-Za-z])${FORBIDDEN}:`,
+    `"${FORBIDDEN}"`,
+  ].join("|"),
+  "g",
+)
+
+/** The word on a line, once the connector identifiers are taken out. */
+function nameOutsideConnector(line: string): boolean {
+  return new RegExp(V3_PATTERN).test(line.replace(CONNECTOR_IDENTIFIERS, ""))
+}
+
+/** Whether `line`, found in `file`, breaks rule (c) or (d). */
+function nameViolation(file: string, line: string): boolean {
+  if (isBillingPath(file)) return new RegExp(V3_PATTERN).test(line)
+  if (isConnectorPath(file)) return false
+  return nameOutsideConnector(line)
+}
+
+/** A package manifest or lockfile entry for the vendor's SDK. */
+const SDK_DEPENDENCY = new RegExp(
+  `"(?:${FORBIDDEN}|@${FORBIDDEN}/[^"]*)"\\s*:|npm:(?:${FORBIDDEN}|@${FORBIDDEN}/)`,
+)
+const dependsOnSdk = (manifestText: string) => SDK_DEPENDENCY.test(manifestText)
+
+/** An import specifier that is the vendor's SDK, or a subpath of it. */
+function importsSdk(line: string): boolean {
+  for (const m of line.matchAll(SPECIFIERS)) {
+    const spec = m[1] as string
+    if (spec === FORBIDDEN || spec.startsWith(`${FORBIDDEN}/`) || spec.startsWith(`@${FORBIDDEN}/`))
+      return true
+  }
+  return false
+}
+
+// Where the word is swept: the product, its packages and its deploy files. The
+// bundled apps are swept for SDK imports only (CODE_ROOTS), since a connector
+// folder is where the vendor's name belongs.
+const NAME_ROOTS = ["apps/**", "packages/**", "deploy/**"]
+const CODE_ROOTS = [...NAME_ROOTS, "bundled-apps/**", "scripts/**"]
+// Docs and the negative-assertion surface: test files that assert the ABSENCE
+// of vendor-named symbols, and the setup CLI's key scanner (a detection
+// pattern, not an integration). Bench corpora are data (see BENCH_FIXTURES).
+const NOT_PRODUCTION = [
+  ":!docs/**",
+  ":!**/CHANGELOG.md",
+  `:!apps/api/src/tests/${import.meta.file}`,
+  ":!apps/api/src/tests/db-schema-billing-neutral.test.ts",
+  ":!apps/web/src/modules/settings/UsageSettings.test.tsx",
+  ":!apps/api/src/cli/setup/collect-repo-docs.ts",
+  BENCH_FIXTURES,
+]
+
+/** Tracked files matching `pathspecs`. */
+function trackedFiles(pathspecs: string[]): string[] {
+  const result = spawnSync("git", ["ls-files", "--", ...pathspecs], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  })
+  if (result.status !== 0) throw new Error(`git ls-files failed: ${result.stderr}`)
+  return result.stdout.split("\n").filter(Boolean)
+}
+
 describe("extracted billing surface stays out of the repo", () => {
   // The pattern, exercised directly. A repo-wide grep that returns nothing is
   // the same result whether the surface is gone or the pattern is broken, so
@@ -438,47 +575,154 @@ describe("extracted billing surface stays out of the repo", () => {
     }
   })
 
-  test("repo-wide grep returns no matches under apps/**, packages/**, deploy/**, package.json, lockfile", () => {
+  test("a dependency on the processor's SDK in any package manifest fails the guard", () => {
+    // The check itself, on shapes a manifest and a lockfile really carry.
+    for (const text of [
+      `{ "dependencies": { "${FORBIDDEN}": "^14.0.0" } }`,
+      `{ "devDependencies": { "@${FORBIDDEN}/${FORBIDDEN}-js": "^3" } }`,
+      `{ "dependencies": { "billing": "npm:${FORBIDDEN}@14.0.0" } }`,
+      `    "${FORBIDDEN}": ["${FORBIDDEN}@14.0.0", "", {}, "sha512-x"],`,
+    ]) {
+      expect(dependsOnSdk(text), text).toBe(true)
+    }
+    // A workspace that merely carries the connector's name is not the SDK.
+    for (const text of [
+      `{ "name": "@liaison/bundled-${FORBIDDEN}", "dependencies": { "zod": "^3" } }`,
+      `    "bundled-apps/${FORBIDDEN}": { "name": "@liaison/app-${FORBIDDEN}" },`,
+    ]) {
+      expect(dependsOnSdk(text), text).toBe(false)
+    }
+    const manifests = trackedFiles(["**/package.json", "package.json", "bun.lock*"]).filter(
+      (file) => existsSync(path.join(REPO_ROOT, file)),
+    )
+    expect(manifests.length, "no manifests found means the sweep reads nothing").toBeGreaterThan(0)
+    const offenders = manifests.filter((file) =>
+      dependsOnSdk(readFileSync(path.join(REPO_ROOT, file), "utf8")),
+    )
+    expect(offenders, "package manifests or lockfiles that depend on the SDK").toEqual([])
+  })
+
+  test("an import of the processor's SDK from api code fails the guard", () => {
+    for (const line of [
+      `import ${FORBIDDEN_UPPER[0]}${FORBIDDEN.slice(1)} from "${FORBIDDEN}"`,
+      `import { loadClient } from "@${FORBIDDEN}/${FORBIDDEN}-js"`,
+      `const c = require("${FORBIDDEN}")`,
+      `const c = await import("${FORBIDDEN}/lib/x")`,
+      `import "@${FORBIDDEN}/react-${FORBIDDEN}-js"`,
+    ]) {
+      expect(importsSdk(line), line).toBe(true)
+    }
+    for (const line of [
+      `import { x } from "./${FORBIDDEN}-client"`,
+      `import { y } from "~/modules/billing-managed/usage"`,
+      `import { z } from "${FORBIDDEN}-utils"`,
+    ]) {
+      expect(importsSdk(line), line).toBe(false)
+    }
+    const pattern = `(from|require\\(|import)[^;]*["'\`](@${FORBIDDEN}/|${FORBIDDEN}["'\`/])`
+    const offenders = importLines(pattern, [...CODE_ROOTS, ...NOT_PRODUCTION])
+      .filter(([, code]) => importsSdk(code))
+      .map(([file, code]) => `${file}: ${code.trim()}`)
+    expect(offenders, "imports of the SDK").toEqual([])
+  })
+
+  test("the word in the billing module fails the guard", () => {
+    const line = `const customer = ${FORBIDDEN}CustomerId`
+    for (const file of [
+      "apps/api/src/modules/billing-managed/usage.ts",
+      "apps/api/src/modules/billing-state/index.ts",
+      "apps/api/src/modules/credits/ledger.ts",
+      "apps/api/src/db/schema/kernel/credits.ts",
+      "apps/api/src/db/schema/kernel/organizations.ts",
+      "apps/api/src/lib/edition.ts",
+    ]) {
+      expect(isBillingPath(file), file).toBe(true)
+      expect(nameViolation(file, line), file).toBe(true)
+      // Even a connector identifier is out of place in the product's billing.
+      expect(nameViolation(file, `scope: "${FORBIDDEN}:read"`), file).toBe(true)
+    }
+    // Code beside them is not billing.
+    expect(isBillingPath("apps/api/src/modules/billing/x.ts")).toBe(false)
+    expect(isBillingPath("apps/api/src/lib/edition-flags.ts")).toBe(false)
+
+    // The repo: every file under the billing paths, read whole.
+    const files = trackedFiles([
+      "apps/api/src/modules/billing-*",
+      "apps/api/src/modules/credits",
+      "apps/api/src/db/schema/kernel/credits.ts",
+      "apps/api/src/db/schema/kernel/organizations.ts",
+      "apps/api/src/lib/edition.ts",
+    ]).filter((file) => isBillingPath(file) && existsSync(path.join(REPO_ROOT, file)))
+    expect(files.length, "the billing paths must exist or this reads nothing").toBeGreaterThan(0)
+    const offenders: string[] = []
+    for (const file of files) {
+      const lines = readFileSync(path.join(REPO_ROOT, file), "utf8").split("\n")
+      for (const [i, text] of lines.entries()) {
+        if (nameViolation(file, text)) offenders.push(`${file}:${i + 1}`)
+      }
+    }
+    expect(offenders, "the vendor's name in billing, credits or edition code").toEqual([])
+  })
+
+  test("the connector's scope, table and tool names pass the guard", () => {
+    const other = "apps/api/src/modules/agent/scopes.ts"
+    for (const line of [
+      `"${FORBIDDEN}:read": "Read payment data"`,
+      `FROM app_${FORBIDDEN}.customers WHERE org_id = $1`,
+      `"${FORBIDDEN}__list_invoices"`,
+      `emit("${FORBIDDEN}/invoice.paid")`,
+      `import { run } from "bundled-apps/${FORBIDDEN}/handlers"`,
+      `{ name: "${FORBIDDEN}", enabled: true }`,
+    ]) {
+      expect(nameViolation(other, line), line).toBe(false)
+    }
+    // The vendor's name in any other form is still caught outside the connector.
+    for (const line of [
+      `const ${FORBIDDEN}Client = makeClient()`,
+      `process.env.${FORBIDDEN_UPPER}_SECRET_KEY`,
+      `row.${FORBIDDEN}_customer_id`,
+      `import x from "@${FORBIDDEN}/${FORBIDDEN}-js"`,
+    ]) {
+      expect(nameViolation(other, line), line).toBe(true)
+    }
+    // The connector's own test, harness, i18n and corpus files may name it freely.
+    for (const file of [
+      `apps/api/test-support/harness/${FORBIDDEN}-mock-fetch.ts`,
+      `apps/api/src/tests/e2e/${FORBIDDEN}-sync.e2e.test.ts`,
+      `apps/api/src/tests/${FORBIDDEN}-scopes.test.ts`,
+      `apps/api/src/tests/relations/${FORBIDDEN}-world.ts`,
+      "apps/web/src/modules/i18n/fr.ts",
+      "apps/api/src/modules/agent/tools/tool-bench/corpus.json",
+    ]) {
+      expect(isConnectorPath(file), file).toBe(true)
+      expect(nameViolation(file, `const ${FORBIDDEN}Client = 1`), file).toBe(false)
+    }
+
+    // The repo: the word outside billing and connector files, identifiers taken out.
     const result = spawnSync(
       "git",
       [
         "grep",
-        "-nE",
+        "-nIE",
         V3_PATTERN,
         "--",
-        "apps/**",
-        "packages/**",
-        "deploy/**",
+        ...NAME_ROOTS,
         "package.json",
         "bun.lock*",
-        ":!docs/**",
-        ":!**/CHANGELOG.md",
-        // Exclude this file and the two test files that assert the absence
-        // of stripe-named symbols — they're the negative-assertion surface,
-        // not production code, so seeing the literal `stripe` in them is the
-        // point.
-        `:!apps/api/src/tests/${import.meta.file}`,
-        ":!apps/api/src/tests/db-schema-billing-neutral.test.ts",
-        ":!apps/web/src/modules/settings/UsageSettings.test.tsx",
-        // The setup CLI's secret scanner: its list of key shapes to redact
-        // includes the processor's live key prefix. A detection pattern, not
-        // an integration.
-        ":!apps/api/src/cli/setup/collect-repo-docs.ts",
-        // Benchmark corpora are DATA, not code: frozen transcripts a harness
-        // reads at runtime, in which an agent happens to have written the
-        // payment processor's name inside a message. Nothing there is imported,
-        // so nothing there can bring the extracted surface back; the case below
-        // is what keeps that true, and it is the reason this exclusion is
-        // narrower than "the bench directory".
-        BENCH_FIXTURES,
+        ...NOT_PRODUCTION,
       ],
-      { cwd: REPO_ROOT, encoding: "utf8" },
+      { cwd: REPO_ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
     )
-    // git grep exits 0 on matches, 1 on no matches. We want exit 1.
-    if (result.status !== 1) {
-      throw new Error(
-        `V3 grep produced matches (exit ${result.status}). Output:\n${result.stdout}\n${result.stderr}`,
-      )
+    if (result.status !== 0 && result.status !== 1) {
+      throw new Error(`git grep failed (exit ${result.status}): ${result.stderr}`)
     }
+    const offenders: string[] = []
+    for (const hit of (result.stdout ?? "").split("\n")) {
+      const [file, lineNo] = hit.split(":")
+      if (!file || !lineNo) continue
+      const code = hit.slice(file.length + lineNo.length + 2)
+      if (nameViolation(file, code)) offenders.push(`${file}:${lineNo}`)
+    }
+    expect(offenders, "the vendor's name outside a connector identifier").toEqual([])
   })
 })

@@ -22,6 +22,14 @@
  * declare `kernel:agent:memory`, so a role agent without it accumulates
  * nothing across turns, which spec-memory.md's per-agent tree assumes it does.
  *
+ * And dashboards: `kernel:dashboards:read` lists and opens the dashboards the
+ * person sees, and `kernel:dashboards:write` builds them a personal one, so
+ * any agent asked to "show the dashboard" can, bounded like every other read
+ * by the person's own grants (a block always reads as its viewer). Org
+ * dashboards stay with `kernel:dashboards:share` and the admin's approval.
+ * A change here reaches NEW agents; an existing role agent gains it at its
+ * next `config apply`, and @base agents keep what they were created with.
+ *
  * None of these is an admin scope: `assertNoAdminScopesInRoleCeiling` still
  * passes on every composed ceiling, and the ceiling remains a CAP, intersected
  * with the room floor and with the acting human's own grants on every turn.
@@ -40,4 +48,6 @@ export const COMMON_AGENT_BASE_SCOPES: readonly string[] = [
   "projects:projects:read",
   "projects:tasks:read",
   "projects:tasks:write",
+  "kernel:dashboards:read",
+  "kernel:dashboards:write",
 ]

@@ -7,8 +7,12 @@
 // eligible alternatives; sources lists the reads this person may chart.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { sql as drizzleSql, eq } from "drizzle-orm"
 import { z } from "zod"
+import { extractRows, type RlsClient } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
+import { userRoles } from "~/db/schema/kernel"
 import { isThreadTainted } from "~/modules/agent/scopes/taint"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { generateApprovalSummary } from "~/modules/apps/approval-summarizers"
@@ -22,6 +26,9 @@ import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const APP = "dshtools"
 const READ = `${APP}:orders:read`
+/** A second app, so its tool never shows among the first app's alternatives. */
+const ROLES_APP = "dshroles"
+const ROLES_READ = `${ROLES_APP}:roles:read`
 const WRITE = "kernel:dashboards:write"
 const SHARE = "kernel:dashboards:share"
 const ADMIN = "kernel:dashboards:admin"
@@ -86,6 +93,27 @@ beforeAll(async () => {
     params: z.object({ status: z.string().optional() }),
     returns: { schema: { orders: "object" } },
     handler: async () => ({ orders: ORDERS }),
+  })
+  // Echoes the role ids the row policies see for the caller (`app.current_roles`).
+  toolRegistry.set([orgId, ROLES_APP, "my_roles"], {
+    appName: ROLES_APP,
+    name: "my_roles",
+    description: "The caller's roles as the row policies see them",
+    requiredScopes: [ROLES_READ],
+    readOnly: true,
+    params: z.object({}),
+    handler: async (_p: unknown, ctx: { db: RlsClient }) => {
+      const rows = extractRows<{ r: string | null }>(
+        await ctx.db.execute(drizzleSql`SELECT current_setting('app.current_roles', true) AS r`),
+      )
+      const value = rows[0]?.r ?? ""
+      return {
+        items: value
+          .split(",")
+          .filter((r) => r !== "" && r !== "__none__")
+          .map((role) => ({ role })),
+      }
+    },
   })
   toolRegistry.set([orgId, APP, "orders_cancel"], {
     appName: APP,
@@ -258,6 +286,38 @@ describe("preview and sources", () => {
     expect(personal.lines.join("\n")).not.toContain("Everyone in the organisation")
     const org = await card("org")
     expect(org.title).toBe('Share the dashboard "Leads" with the organisation')
+  })
+
+  it("preview runs with the caller's roles, as the saved dashboard will for them", async () => {
+    const [member] = await withPrivilegedDb(orgId, "dash-tools-role", (tx) =>
+      tx.select({ id: userRoles.roleId }).from(userRoles).where(eq(userRoles.userId, owner)),
+    )
+    const res = await call(owner, [WRITE, ROLES_READ], "dashboards_preview_block", {
+      block: {
+        id: "roles",
+        type: "table",
+        title: "Roles",
+        source: { kind: "tool", tool: `${ROLES_APP}:my_roles` },
+        map: { columns: [{ field: "role", label: "Role" }] },
+      },
+    })
+    expect(res).toMatchObject({ data: { ok: true, data: { kind: "table" } } })
+    const rows = (res as { data: { data: { rows: { role: string }[] } } }).data.data.rows
+    expect(rows.map((r) => r.role)).toContain(member?.id)
+  })
+
+  it("list and get need only kernel:dashboards:read, which every member holds", async () => {
+    const shared = await createDashboard(as(owner, [WRITE, SHARE]), {
+      title: "Team numbers",
+      visibility: "org",
+      spec: { v: 1, blocks: [] },
+    })
+    const listed = await call(other, ["kernel:dashboards:read"], "dashboards_list", {})
+    expect(
+      (listed as { data: { dashboards: { id: string }[] } }).data.dashboards.map((d) => d.id),
+    ).toContain(shared.id)
+    const got = await call(other, ["kernel:dashboards:read"], "dashboards_get", { id: shared.id })
+    expect(got).toMatchObject({ data: { id: shared.id, canEdit: false } })
   })
 
   it("preview runs as the caller: without the tool's scope it is no_access", async () => {

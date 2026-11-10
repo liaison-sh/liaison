@@ -7646,6 +7646,10 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.dashboards.blockNoAccess": "Vous n'avez pas accès aux données de ce bloc.",
   "kernel.dashboards.blockNotAllowed":
     "La source de ce bloc ne peut plus être affichée sur un tableau de bord.",
+  "kernel.dashboards.blockSourceGone":
+    "La source de ce bloc n'est plus disponible. Demandez à votre agent d'en choisir une autre.",
+  "kernel.dashboards.blockMapInvalid":
+    "Ce bloc ne correspond plus aux données de sa source. Demandez à votre agent de le corriger.",
   "kernel.dashboards.blockRateLimited": "Actualisé à l'instant. Réessayez dans quelques secondes.",
   "kernel.dashboards.blockSourceError":
     "Les données de ce bloc n'ont pas pu être lues. Réessayez plus tard.",

@@ -76,6 +76,9 @@ const fail = (error: BlockErrorCode, message: string): BlockOutcome => ({
   message,
 })
 
+/** The viewer's request ended mid-read: nothing to show, and nothing worth caching. */
+const cancelled = (): BlockOutcome => fail("source_failed", "the read was cancelled")
+
 /** The run frame a block's source runs in: read-only, and the calling turn's own when there is one. */
 function readOnlyFrame(runId: string): RunContext {
   const parent = currentRunContext()
@@ -115,6 +118,8 @@ async function readToolSource(source: ToolSource, ctx: BlockRunContext, runId: s
   let cursor: string | null = null
   const seen = new Set<string>()
   for (let page = 0; page < MAX_SOURCE_PAGES; page++) {
+    // A viewer who left (tab closed, request timed out) stops the paging at the next page.
+    if (ctx.signal?.aborted) return { outcome: cancelled() }
     const params = cursor ? { ...source.params, cursor } : source.params
     const envelope = await runContextStore.run(frame, () =>
       executeToolCore({
@@ -153,7 +158,12 @@ async function readToolSource(source: ToolSource, ctx: BlockRunContext, runId: s
     }
     const result = unfenceSourceResult(envelope.data)
     const { rows: pageRows } = extractRows(result, source.rowsPath)
-    if (!pageRows) return { result }
+    // The first page decides the shape: one object (a metric's totals) is the result itself.
+    // A later page without a row list ends the paging and keeps the rows already read.
+    if (!pageRows) {
+      if (page === 0) return { result }
+      break
+    }
     rows.push(...pageRows)
     cursor = nextCursorOf(result)
     if (!cursor || seen.has(cursor) || rows.length >= MAX_SOURCE_ROWS) break
@@ -172,6 +182,7 @@ async function readStoreSource(source: StoreSource, ctx: BlockRunContext) {
   try {
     let cursor: string | undefined = (source.query as { cursor?: string }).cursor
     for (let page = 0; page < MAX_SOURCE_PAGES; page++) {
+      if (ctx.signal?.aborted) return { outcome: cancelled() }
       const query = { ...source.query, ...(cursor ? { cursor } : {}) }
       const res = await withRlsContext(viewer, (tx) =>
         queryDocuments(tx, caller, source.collection, query),

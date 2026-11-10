@@ -6443,6 +6443,8 @@
     "noValue": "Pas encore de valeur",
     "blockNoAccess": "Vous n'avez pas accès aux données de ce bloc.",
     "blockNotAllowed": "La source de ce bloc ne peut plus être affichée sur un tableau de bord.",
+    "blockSourceGone": "La source de ce bloc n'est plus disponible. Demandez à votre agent d'en choisir une autre.",
+    "blockMapInvalid": "Ce bloc ne correspond plus aux données de sa source. Demandez à votre agent de le corriger.",
     "blockRateLimited": "Actualisé à l'instant. Réessayez dans quelques secondes.",
     "blockSourceError": "Les données de ce bloc n'ont pas pu être lues. Réessayez plus tard.",
     "blockNotFound": "Ce bloc n'est plus sur le tableau de bord.",

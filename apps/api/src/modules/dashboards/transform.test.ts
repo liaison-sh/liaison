@@ -7,6 +7,7 @@ import { wrapExternalContent } from "~/lib/external-content"
 import {
   blockTtlSec,
   dashboardSpecSchema,
+  MAX_BLOCK_SERIES,
   MAX_SOURCE_ROWS,
   MAX_SOURCE_TTL_SEC,
 } from "~/modules/dashboards/spec"
@@ -135,6 +136,16 @@ describe("bar and line", () => {
         { name: "refunded", values: [20, 0] },
       ],
     })
+  })
+  test("series are capped: the largest by total are kept, in source order, and it says so", () => {
+    // 30 series over one category; series s<n> totals n, so s10..s29 are the 20 largest.
+    const rows = Array.from({ length: 30 }, (_, n) => ({ x: "a", s: `s${n}`, v: n }))
+    const out = transformBlock("bar", { x: "x", y: "v", series: "s" }, rows)
+    if (out.kind !== "bar") throw new Error("expected a bar")
+    expect(out.series.map((s) => s.name)).toEqual(
+      Array.from({ length: MAX_BLOCK_SERIES }, (_, i) => `s${i + 10}`),
+    )
+    expect(out.meta.truncated).toBe(true)
   })
   test("sort by category or by value, and an unknown sort field is refused", () => {
     const byKey = transformBlock(

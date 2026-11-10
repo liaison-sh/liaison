@@ -9,7 +9,26 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import postgres from "postgres"
-import { COMMON_AGENT_BASE_SCOPES } from "~/modules/agent/directory/common-base-scopes"
+
+/**
+ * COMMON_AGENT_BASE_SCOPES as 0101 wrote it. The constant has grown since (dashboards); a
+ * shipped migration never changes, so this pins the snapshot, not the live constant.
+ */
+const BASE_AT_0101 = [
+  "kernel:skills:read",
+  "kernel:skills:write",
+  "kernel:threads:read",
+  "kernel:threads:write",
+  "kernel:agent:memory",
+  "kernel:contacts:read",
+  "kernel:files:read",
+  "kernel:files:analyze",
+  "knowledge:documents:read",
+  "knowledge:documents:create",
+  "projects:projects:read",
+  "projects:tasks:read",
+  "projects:tasks:write",
+]
 
 const MIGRATION = new URL("./0101_base_agent_common_ceiling.sql", import.meta.url).pathname
 
@@ -62,11 +81,11 @@ async function ceilingOf(id: string): Promise<string[]> {
 }
 
 describe("0101: @base carries the common agent base", () => {
-  it("the SQL's scope list is the COMMON_AGENT_BASE_SCOPES constant", () => {
+  it("the SQL's scope list is the common base as it stood at 0101", () => {
     const text = readFileSync(MIGRATION, "utf8")
     const lists = [...text.matchAll(/'(\[[^']+\])'::jsonb/g)].map((m) => JSON.parse(m[1]!))
     expect(lists.length).toBe(2)
-    for (const list of lists) expect(list).toEqual([...COMMON_AGENT_BASE_SCOPES])
+    for (const list of lists) expect(list).toEqual([...BASE_AT_0101])
   })
 
   it("gives an empty @base the base, keeps an admin's extra scope, and leaves role agents alone", async () => {
@@ -74,12 +93,9 @@ describe("0101: @base carries the common agent base", () => {
 
     await sql.unsafe(readFileSync(MIGRATION, "utf8"))
 
-    expect(await ceilingOf(ids.emptyBase)).toEqual([...COMMON_AGENT_BASE_SCOPES])
+    expect(await ceilingOf(ids.emptyBase)).toEqual([...BASE_AT_0101])
     // The base first, then what the row already held, without a duplicate.
-    expect(await ceilingOf(ids.widenedBase)).toEqual([
-      ...COMMON_AGENT_BASE_SCOPES,
-      "acme:widgets:read",
-    ])
+    expect(await ceilingOf(ids.widenedBase)).toEqual([...BASE_AT_0101, "acme:widgets:read"])
     expect(await ceilingOf(ids.emptyRole)).toEqual([])
   })
 

@@ -51,7 +51,7 @@ import { authManager } from "~/modules/auth/createAuthManager"
 import { registerEntityPreviews as registerUserPreviews } from "~/modules/auth/entity-preview-renderers"
 import { subscribeContactDetailResync } from "~/modules/contacts/contact-detail-store"
 import { subscribeContactsResync } from "~/modules/contacts/contact-list-store"
-import { dashboardTitle } from "~/modules/dashboards/dashboards-store"
+import { dashboardTitle, reloadDashboard } from "~/modules/dashboards/dashboards-store"
 import { handleFileEvent } from "~/modules/files/file-events"
 import { tNow } from "~/modules/i18n/i18n-context"
 import { importRunStore } from "~/modules/imports/import-run-store"
@@ -1279,11 +1279,11 @@ export function bootstrapKernelApps(): void {
     const row = await ensureApprovalLoaded(api, id)
     return { tabType: "thread", entityId: row.threadId, label: row.handle }
   })
-  registerEntityOpener("kernel", "dashboard", (_api, id) => ({
-    tabType: "kernel:dashboard",
-    entityId: id,
-    label: dashboardTitle(id),
-  }))
+  registerEntityOpener("kernel", "dashboard", (_api, id) => {
+    // The agent opens a dashboard after changing it: an open tab reads the new spec.
+    reloadDashboard(id)
+    return { tabType: "kernel:dashboard", entityId: id, label: dashboardTitle(id) }
+  })
   registerEntityOpener("kernel", "app-builder", (_api, id) => ({
     tabType: BUILDER_TAB_TYPE,
     entityId: id,

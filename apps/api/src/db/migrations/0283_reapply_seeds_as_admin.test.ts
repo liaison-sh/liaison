@@ -178,6 +178,18 @@ beforeAll(async () => {
   const upToFix = folderUpTo(FIX_TAG, -1)
   folders.push(upToFix)
   await runMigrations(freshAsSuperuser.toString(), { migrationsFolder: upToFix })
+  // Had the login run those itself, it would own the functions they created: a later migration
+  // replaces one (CREATE OR REPLACE needs its owner). The ones given to a runtime role stay theirs.
+  await fresh.unsafe(`DO $$
+    DECLARE r record;
+    BEGIN
+      FOR r IN SELECT p.oid::regprocedure AS fn FROM pg_proc p
+                 JOIN pg_namespace n ON n.oid = p.pronamespace
+                WHERE p.proowner = (SELECT oid FROM pg_roles WHERE rolname = current_user)
+                  AND (n.nspname = 'kernel' OR n.nspname LIKE 'app\\_%') LOOP
+        EXECUTE format('ALTER FUNCTION %s OWNER TO "${login}"', r.fn);
+      END LOOP;
+    END $$`)
   // 0283 and anything after it, by the login again.
   const all = folderUpTo(FIX_TAG, Number.MAX_SAFE_INTEGER)
   folders.push(all)

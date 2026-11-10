@@ -8,9 +8,9 @@ Users settings page -> apps/web/src/framework/bootstrap.ts:656
 Invite user -> packages/shared/src/i18n/locales/en/kernel.json:2345
 Email address, Role fields -> apps/web/src/modules/settings/AdminUsers.tsx:373
 Send invitation -> packages/shared/src/i18n/locales/en/kernel.json:2357
-Default roles admin, member, viewer; admin has * -> apps/api/src/modules/permissions/default-roles.ts:26
+Default roles admin, member, viewer; admin has * -> apps/api/src/modules/permissions/default-roles.ts:73
 member/viewer kernel-only scopes; app scopes not granted by default -> apps/api/src/modules/permissions/default-roles.ts:13
-member scopes threads, contacts, approvals, files -> apps/api/src/modules/permissions/default-roles.ts:36
+member scopes threads, contacts, approvals, files -> apps/api/src/modules/permissions/default-roles.ts:38
 Per-app member/admin roles -> apps/api/src/db/migrations/0006_system_managed_full_member_role.sql:4
 Apps settings group, one row per app -> apps/web/src/modules/settings/settings-nav-groups.ts:4
 Connect Gmail -> apps/web/src/modules/mail/MailAccounts.tsx:551

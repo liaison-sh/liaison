@@ -5,7 +5,7 @@ import type { ApiClient } from "~/lib/api-client"
 import { ApiError } from "~/lib/api-error"
 import { ApiContext } from "~/modules/shell/ApiContext"
 import { blockSpanClass, DashboardView } from "./DashboardView"
-import { dashboardTitle, resetDashboardsStore } from "./dashboards-store"
+import { dashboardTitle, reloadDashboard, resetDashboardsStore } from "./dashboards-store"
 
 vi.mock("chart.js", () => {
   class Chart {
@@ -94,5 +94,42 @@ describe("blockSpanClass", () => {
     expect(blockSpanClass(1)).toBe("")
     expect(blockSpanClass(2)).toBe("@2xl:col-span-2")
     expect(blockSpanClass(3)).toBe("@2xl:col-span-2 @5xl:col-span-3")
+  })
+
+  it("an open tab shows the new blocks when the dashboard is opened again after a change", async () => {
+    let current = { id: "d1", title: "Sales", visibility: "personal", version: 1, spec }
+    mount(async (path) => {
+      if (path === "/dashboards/d1") return current
+      return { kind: "metric", value: 1 }
+    })
+    await waitFor(() => expect(screen.getByTestId("dashboard-block-m")).toBeTruthy())
+    expect(screen.queryByTestId("dashboard-block-n")).toBeNull()
+
+    // The agent updated it (version 2, one more block), then opened it.
+    current = {
+      ...current,
+      version: 2,
+      spec: {
+        ...spec,
+        blocks: [
+          ...spec.blocks,
+          { id: "n", type: "metric", title: "New", width: 1, source: { kind: "store" } },
+        ],
+      },
+    }
+    reloadDashboard("d1")
+    await waitFor(() => expect(screen.getByTestId("dashboard-block-n")).toBeTruthy())
+  })
+
+  it("closing the tab cancels its block reads", async () => {
+    const signals: AbortSignal[] = []
+    mount(async (path, init) => {
+      if (path === "/dashboards/d1") return { id: "d1", title: "Sales", visibility: "org", spec }
+      signals.push(init?.signal)
+      return new Promise(() => {})
+    })
+    await waitFor(() => expect(signals.length).toBeGreaterThan(0))
+    cleanup()
+    expect(signals.every((sig) => sig?.aborted)).toBe(true)
   })
 })

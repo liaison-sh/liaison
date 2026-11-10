@@ -348,3 +348,4 @@ dashboards_delete tool: gated for an org dashboard -> apps/api/src/modules/dashb
 build-dashboard kernel skill -> apps/api/src/modules/agent/prompts/kernel/build-dashboard.md:2
 report_bug attachments param (up to 5 readable file ids) -> apps/api/src/modules/bug-reports/tool.ts:88-96
 Document tools: rules by attribute, writes wait for approval -> apps/api/src/modules/agent/tools/kernel-tools.ts:2580
+open_app opens the kernel Dashboards page -> apps/api/src/modules/agent/tools/open-targets.ts:110

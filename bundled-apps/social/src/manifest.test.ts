@@ -42,7 +42,8 @@ describe("social manifest (B1)", () => {
     //   declares an outcome reconciler.
     // 0.6.66: above the 0.6.62 main took meanwhile, merged.
     // 0.6.67: a reply the platform refuses as gone or blocked closes its approval.
-    expect(manifest.version).toBe("0.6.67")
+    // 0.6.68: the source repository link names the repository where the code now lives.
+    expect(manifest.version).toBe("0.6.68")
     expect(manifest.packageFormat).toBe(1)
   })
 

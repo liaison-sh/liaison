@@ -222,7 +222,7 @@
       }
     ]
   },
-  "version": "0.24.4",
+  "version": "0.24.5",
   "iconName": "box",
   "description": "Boxtal shipping integration: carrier quotes, tracking, shipments, customs documents",
   "listing": {
@@ -230,7 +230,7 @@
     "category": "Operations",
     "icon": "send",
     "summary": "Boxtal: ship orders with Boxtal carriers, with quotes, shipments, tracking and customs documents.",
-    "sourceRepository": "https://github.com/mathieufro/liaison/tree/main/bundled-apps/boxtal"
+    "sourceRepository": "https://github.com/liaison-sh/liaison/tree/main/bundled-apps/boxtal"
   },
   "packageFormat": 1,
   "license": "FSL-1.1-ALv2",

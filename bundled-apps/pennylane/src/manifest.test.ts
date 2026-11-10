@@ -86,7 +86,8 @@ describe("pennylane app.manifest.json", () => {
     // 0.1.47: invoice reads (supplier and customer names) and the trial balance (entry labels) mark the turn.
     // 0.1.46 (main): the package carries the app SDK's manifest `secrets` field; no change of its own.
     // 0.1.49: both of the above, merged.
-    expect(m.version).toBe("0.1.49")
+    // 0.1.50: the source repository link names the repository where the code now lives.
+    expect(m.version).toBe("0.1.50")
     expect(m.packageFormat).toBe(1)
   })
 

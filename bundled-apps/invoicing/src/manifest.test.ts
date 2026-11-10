@@ -1562,7 +1562,8 @@ describe("invoicing manifest", () => {
     // 0.20.57 (main): quotes and invoices for a B2B company name the company, billed at its location
     //   with its tax registration id; each draft's own taxesIncluded splits net and tax.
     // 0.20.79: above the 0.20.57 main took meanwhile, merged.
-    expect(m.version).toBe("0.20.82")
+    // 0.20.83: the source repository link names the repository where the code now lives.
+    expect(m.version).toBe("0.20.83")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

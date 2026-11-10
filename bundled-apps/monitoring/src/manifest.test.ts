@@ -77,7 +77,8 @@ describe("monitoring app.manifest.json", () => {
     // 0.4.16: incident reads mark the turn, since an outside monitor writes titles and bodies.
     // 0.4.13 (main): above both lines of work, which each changed it under the number before; no change of its own.
     // 0.4.17: both of the above, merged.
-    expect(MANIFEST.version).toBe("0.4.17")
+    // 0.4.18: the source repository link names the repository where the code now lives.
+    expect(MANIFEST.version).toBe("0.4.18")
   })
 
   // The declarative settings page (/settings/apps/monitoring): the detailed

@@ -103,6 +103,7 @@ Remote archive/read/star and reopen come back on incremental sync; only the move
 Inbox above 20,000 messages not tracked -> apps/api/src/modules/apps/sandbox/imap-mailbox.ts:145 ; apps/api/src/apps/mail/handlers.ts:4330
 Trashed in Liaison stays trashed through read-back -> apps/api/src/apps/mail/handlers.ts:1023
 Sent folder imported; outbound-only thread arrives archived -> apps/api/src/apps/mail/handlers.ts:4352 ; apps/api/src/modules/mail/page-write.ts:198
+Mail you sent links its conversation to the first To address's existing contact; sending creates none -> apps/api/src/modules/mail/page-write.ts:639 ; apps/api/src/modules/mail/sender-contacts.ts:119
 Sent copy 30 s after the send, skipped for Gmail, Microsoft, Yahoo, AOL -> apps/api/src/modules/apps/sandbox/imap-mailbox.ts:395 ; apps/api/src/modules/apps/sandbox/imap-mailbox.ts:413 ; apps/api/src/modules/apps/sandbox/bridge/egress.ts:137
 Bulk changes in groups of 15, one sign-in per group -> apps/api/src/apps/mail/handlers.ts:3671 ; apps/api/src/modules/apps/sandbox/imap-bridge.ts:601
 New mail every 2 minutes -> packages/shared/src/imap-login-failures.ts:115

@@ -473,6 +473,9 @@ frame. Write it so that it works there too:
   the agent is told its id. A tab whose own id is the record needs none of this:
   when the tab is not named for its entity, it declares it instead
   (`"entity": "document"`, or `"entity": "kernel:contact"`, in `views.tabTypes.<tab>`).
+- A tab that shows one record can be named after it: `app.tabLabel(() => customerName())`
+  in the component body. Until the label is known (null) the tab keeps the view's
+  `label`. A host without this call keeps the view's label too.
 - Keep every tab `urlPattern` under a first segment your app owns
   (`/<app>/...`): a pattern under another app, a Liaison page or a leading
   parameter is refused at install (see "Tab routes" in `app-package-format.md`).

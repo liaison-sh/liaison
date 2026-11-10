@@ -88,6 +88,7 @@ export async function recurringRunGet(
       ...suggestionOf(item),
     })
   }
+  const issuer = run.issuer_profile_id ? ((await ctx.db.findOne("issuer_profiles", String(run.issuer_profile_id))) as Row | null) : null
   const runOut: Row = {
     id: String(run.id),
     status: run.status,
@@ -98,6 +99,7 @@ export async function recurringRunGet(
     approved_at: run.approved_at ?? null,
     auto: run.auto === true,
     approval_request_id: run.approval_request_id ?? null,
+    timezone: (issuer?.timezone as string | null) ?? null,
   }
   return {
     status: "completed",

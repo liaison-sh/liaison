@@ -1111,14 +1111,47 @@ export function summarizeRecurringSchedulePause(params: Record<string, unknown>)
   })
 }
 
+/**
+ * A month-end run card's lines, from its payload items: who is billed, in one line, and the total.
+ * The panel under the card lists each row with its amounts, so the lines do not repeat them. Used
+ * when the card is staged and when its summary is rebuilt after a restage, so both read the same.
+ */
+export function runCardLines(rawItems: unknown): string[] {
+  const items = (Array.isArray(rawItems) ? rawItems : []) as Array<Record<string, unknown>>
+  const names: string[] = []
+  let total = 0n
+  let currency: string | null = null
+  for (const it of items) {
+    total += typeof it.total_minor === "string" && /^-?\d+$/.test(it.total_minor) ? BigInt(it.total_minor) : 0n
+    const cur = typeof it.currency === "string" ? it.currency : "EUR"
+    currency = currency === null || currency === cur ? cur : "mixed"
+    if (typeof it.customer === "string" && it.customer) names.push(it.customer)
+  }
+  const lines: string[] = []
+  if (names.length > 0) {
+    const shown = names.slice(0, 5).join(", ")
+    lines.push((names.length > 5 ? `${shown} and ${names.length - 5} more` : shown).slice(0, 200))
+  }
+  if (items.length > 0 && currency && currency !== "mixed") lines.push(`Total: ${moneyLine(total, currency)} incl. VAT`)
+  return lines
+}
+
 export function summarizeRecurringRunIssue(params: Record<string, unknown>): Promise<ApprovalSummaryShape> {
   const items = Array.isArray(params.items) ? params.items : []
+  const period = typeof params.period === "string" && params.period ? params.period : null
+  const lines = runCardLines(items)
   return done({
     kind: "recurring_run_issue",
-    title: `Issue ${items.length} invoice${items.length === 1 ? "" : "s"} of a month-end run`,
+    title: `Issue ${items.length} invoice${items.length === 1 ? "" : "s"} for ${period ?? "a month-end run"}`,
     subtitle: "Numbers are taken on the issue day from 08:00, never at approval",
-    lines: [`Run ${String(params.run_id ?? "")}`],
+    lines: lines.length > 0 ? lines : [period ? `Month-end run for ${period}` : "Month-end run"],
   })
+}
+
+function moneyLine(v: bigint, currency: string): string {
+  const neg = v < 0n
+  const a = neg ? -v : v
+  return `${neg ? "-" : ""}${a / 100n}.${String(a % 100n).padStart(2, "0")} ${currency}`
 }
 
 export function summarizeRecurringItemIssue(params: Record<string, unknown>): Promise<ApprovalSummaryShape> {

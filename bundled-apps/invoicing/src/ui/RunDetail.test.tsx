@@ -4,7 +4,7 @@
 // number range ("none missing" only when the numbers really follow each other), and where each
 // invoice stands with the e-invoicing platform. A partial run lists its failed rows with Fix.
 import { afterEach, describe, expect, it } from "bun:test"
-import { numberRange, RunDetail, runDetailView, type RunDetailRow, type RunDetailRun } from "./RunDetail"
+import { dayIn, numberRange, RunDetail, runDetailView, type RunDetailRow, type RunDetailRun } from "./RunDetail"
 
 afterEach(() => {
   ;(globalThis as any).__liaisonHost = undefined
@@ -78,5 +78,35 @@ describe("an issued month-end run", () => {
     expect(v.rows.map((r) => r.number)).toEqual(["F-2026-0463"])
     expect(v.approvedBy).toBeNull()
     expect(typeof RunDetail).toBe("function")
+  })
+})
+
+describe("a run that has not issued yet", () => {
+  it("a drafted run says so, lists its drafts with no number, and never claims the period is billed", () => {
+    const rows = [
+      row({ item_id: "a", state: "ready", draft_id: "da", document_id: "da" }),
+      row({ item_id: "b", state: "ready", draft_id: "db", document_id: "db" }),
+      row({ item_id: "c", state: "left_out", draft_id: "dc", document_id: "dc" }),
+    ]
+    const v = runDetailView({ ...run, status: "drafted", approved_by: null, approved_at: null }, rows, null)
+    expect(v.issued).toBe(false)
+    expect(v.statusWord).toBe("Drafted, waiting for approval")
+    expect(v.approvalWord).toBe("Not approved yet")
+    expect(v.range).toBeNull()
+    expect(v.rows.map((r) => [r.key, r.number, r.href])).toEqual([
+      ["a", null, "/invoicing/editor/da"],
+      ["b", null, "/invoicing/editor/db"],
+    ])
+    expect(v.totals.total).toBe("240000")
+  })
+
+  it("an approved run is approved, not issued, and shows the approval day in the issuer's zone", () => {
+    const rows = [row({ item_id: "a", state: "approved", draft_id: "da", document_id: "da" })]
+    const v = runDetailView({ ...run, status: "approved", approved_at: "2026-11-10T23:10:00.000Z", timezone: "Europe/Paris" }, rows, "Claire Dubois")
+    expect(v.statusWord).toBe("Approved, not issued yet")
+    expect(v.issued).toBe(false)
+    expect(v.approvedOn).toBe("2026-11-11")
+    expect(v.rows).toHaveLength(1)
+    expect(dayIn("2026-11-10T23:10:00.000Z", null)).toBe("2026-11-10")
   })
 })

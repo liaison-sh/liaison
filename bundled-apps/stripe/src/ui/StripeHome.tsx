@@ -423,7 +423,7 @@ export const StripeHome: Component<{ entityId?: string }> = () => {
                 <div class="min-w-0">
                   <h1 data-testid="stripe-home-title" class="text-[15px] font-semibold text-text">{tr("Stripe")}</h1>
                   <p data-testid="stripe-home-subtitle" class="mt-0.5 text-[12.5px] text-text-secondary break-words">
-                    {d().load
+                    {d().load && d().kind !== "not_connected"
                       ? [
                           mode() === "live" ? tr("Live account.") : tr("Test mode."),
                           last() ? tr("Last update from Stripe at {{time}}.", { time: last() }) : null,

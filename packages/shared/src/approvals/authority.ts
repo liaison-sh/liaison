@@ -265,6 +265,11 @@ export interface PeerRequestFacts {
   requestedById: string
   /** Set when a routine raised the request rather than a person. */
   originRoutineId: string | null
+  /**
+   * A scheduled job raised it (`metadata.origin` "system"). The row is filed under a member only
+   * because a request needs one, so that member did not ask for it.
+   */
+  raisedBySystem?: boolean
   /** Whether the REQUESTER holds the scope that decides their OWN request. */
   requesterCanDecide: boolean
 }
@@ -295,7 +300,7 @@ export function isPeerSelfApprovable(f: PeerRequestFacts, viewerUserId: string):
 
 /** A person, not a routine, raised this and can decide it themselves. */
 function requesterApprovesTheirOwn(f: PeerRequestFacts): boolean {
-  if (f.originRoutineId) return false
+  if (f.originRoutineId || f.raisedBySystem) return false
   return f.requesterCanDecide
 }
 

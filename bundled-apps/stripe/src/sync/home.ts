@@ -30,7 +30,7 @@ export async function homeLoad(_params: Record<string, never>, ctx: { db: HomeDb
       counts: null,
       attention: null,
       mrr: null,
-      summary: "Stripe is not connected. Next step: an admin connects it in Settings, Connectors.",
+      summary: "Stripe is not connected. Next step: an admin connects it in Settings, Apps, Stripe.",
     }
   }
   const state = decodeState(install.state)

@@ -154,6 +154,23 @@ describe("routeApproval: the order", () => {
     expect(route).toEqual(person("ines", "on_item"))
   })
 
+  it("a scheduled job's request is never asked, though it is filed under a member", () => {
+    const route = routeApproval(
+      facts({ requestedById: "tom" }),
+      routing({
+        routePersonId: "ines",
+        peer: {
+          requestedById: "tom",
+          originRoutineId: null,
+          raisedBySystem: true,
+          requesterCanDecide: true,
+        },
+      }),
+      world({ tom: { decides: true }, ines: { decides: true } }),
+    )
+    expect(route).toEqual(person("ines", "on_item"))
+  })
+
   it("a requester who cannot decide their own is not asked", () => {
     const route = routeApproval(
       facts({ requestedById: "tom" }),

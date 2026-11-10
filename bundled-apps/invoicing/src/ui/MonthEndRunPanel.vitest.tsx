@@ -383,10 +383,10 @@ describe("the month-end panel", () => {
 
   it.each([
     { write: false, approve: true, status: "pending", shown: true },
-    { write: true, approve: true, status: "pending", shown: false },
+    { write: true, approve: true, status: "pending", shown: true },
     { write: false, approve: false, status: "pending", shown: false },
     { write: false, approve: true, status: "approved", shown: false },
-  ])("someone who approves but cannot edit approves from the panel (write $write, approve $approve, $status)", async (c) => {
+  ])("anyone who approves decides with \"Approve N\" at the top of the panel (write $write, approve $approve, $status)", async (c) => {
     render(() => (
       <MonthEndRunPanel
         approvalId="appr-1"

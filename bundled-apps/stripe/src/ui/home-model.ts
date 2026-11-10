@@ -178,6 +178,14 @@ export function dotTone(k: PageKind): DotTone {
   return "muted"
 }
 
+/** The word beside the rail's dot, so its state is said and not only coloured. */
+export function dotWord(k: PageKind): string {
+  if (k === "not_connected") return tr("Not connected")
+  if (k === "home") return tr("Connected")
+  if (k === "waiting" || k === "importing" || k === "empty") return tr("Setting up")
+  return tr("Needs a look")
+}
+
 /** What Approve does on this page: a revoked key holds it, with the reason beside it. */
 export function approveState(k: PageKind): { enabled: boolean; label: string; hint: string | null } {
   if (isFrozen(k)) return { enabled: false, label: tr("Held"), hint: tr("Waits for the key") }
@@ -212,9 +220,9 @@ export function stateCard(load: HomeLoad | null, locale: string, now: Date, tz?:
         kind,
         title: tr("Stripe is not connected"),
         body: tr("Nothing has been read from Stripe and nothing has been changed."),
-        steps: [tr("An admin connects Stripe in Settings, Connectors, with a restricted key that starts with rk_.")],
+        steps: [tr("An admin connects Stripe in Settings, Apps, Stripe, with a restricted key that starts with rk_.")],
         note: null,
-        actions: [{ id: "settings", label: tr("Open the connection settings"), primary: true }],
+        actions: [{ id: "settings", label: tr("Connect Stripe"), primary: true }],
       }
     case "waiting":
       return {

@@ -360,8 +360,7 @@ async function keyRefused(
       state: encodeState(transition(current, { kind: "key_refused" })),
     })
   }
-  return refuseTool(
-    "key_invalid",
-    `Stripe refused the saved key (401): it was revoked, rolled or mistyped. ${KEY_INVALID_NEXT}`,
-  )
+  // A key checked before it is stored (dry run, or no install yet) was never saved: say "this key".
+  const which = install && !dryRun ? "the saved key" : "this key, so it was not saved"
+  return refuseTool("key_invalid", `Stripe refused ${which} (401): it was revoked, rolled or mistyped. ${KEY_INVALID_NEXT}`)
 }

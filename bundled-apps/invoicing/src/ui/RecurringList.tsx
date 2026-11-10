@@ -80,7 +80,7 @@ export function titleLine(rows: ListRow[], locale = uiLocale()): string {
 
 function amountOf(r: ListRow): string {
   const net = r.lines.reduce((acc, l) => acc + Number(l.unit_price_minor) * Number(l.qty), 0)
-  return formatMoneyMinor(Math.round(net), "EUR")
+  return `${formatMoneyMinor(Math.round(net), "EUR")} EUR`
 }
 
 function everyText(r: ListRow): string {
@@ -167,6 +167,20 @@ export const InvoicingRecurringList: Component<{ entityId?: string }> = () => {
           <Show when={!page.error} fallback={<RecurringLoadError onRetry={() => refetch()} />}>
             <Show when={rows().length > 0} fallback={<RecurringEmpty />}>
               <ul class="flex flex-col divide-y divide-border-subtle">
+                {/* Column names, on a wide screen; on a phone each value says what it is. */}
+                <li
+                  data-testid="recurring-columns"
+                  aria-hidden="true"
+                  class="hidden gap-x-3 pb-1.5 text-[11.5px] text-text-tertiary md:grid md:grid-cols-[2fr_2fr_1.3fr_1fr_1fr_1fr_0.8fr]"
+                >
+                  <span>{tr("Customer")}</span>
+                  <span>{tr("Bills")}</span>
+                  <span>{tr("Repeats")}</span>
+                  <span>{tr("Next invoice")}</span>
+                  <span class="text-right">{tr("Excl. VAT")}</span>
+                  <span>{tr("Paid by")}</span>
+                  <span>{tr("Status")}</span>
+                </li>
                 <For each={filterRows(rows(), filter())}>
                   {(r) => (
                     <li>
@@ -185,9 +199,13 @@ export const InvoicingRecurringList: Component<{ entityId?: string }> = () => {
                         </span>
                         <span class="text-text-secondary">{everyText(r)}</span>
                         <span class="tabular-nums text-text">
+                          <span class="text-text-tertiary md:hidden">{tr("Next invoice")}: </span>
                           {r.status === "paused" && r.paused_until ? tr("Resumes {{day}}", { day: r.paused_until }) : (r.next_issue_on ?? "-")}
                         </span>
-                        <span class="tabular-nums text-text md:text-right">{amountOf(r)}</span>
+                        <span class="tabular-nums text-text md:text-right">
+                          {amountOf(r)}
+                          <span class="text-text-tertiary md:hidden"> {tr("excl. VAT")}</span>
+                        </span>
                         <span class="text-text-secondary">{tr(PAID_BY[r.paid_by ?? "transfer"] ?? "Bank transfer")}</span>
                         <span class="text-text-secondary">{tr(STATUS[r.status] ?? r.status)}</span>
                       </a>

@@ -114,3 +114,14 @@ describe("the standing e-invoice authorization of a stream", () => {
     )
   })
 })
+
+describe("turning the standing authorization on", () => {
+  it("is offered only with a platform, says what it does, and never promises an approval it does not file", () => {
+    const src = readFileSync(join(import.meta.dir, "IssuerStreams.tsx"), "utf8")
+    expect(src).not.toContain("after a person approves")
+    expect(src).toContain("window.confirm(tr(STANDING_ON_CONFIRM))")
+    expect(src).toContain("standing-needs-platform-")
+    // The Undo window counts down instead of a fixed "8 seconds".
+    expect(src).toContain('tr("Turning off in {{n}} seconds.", { n: left() })')
+  })
+})

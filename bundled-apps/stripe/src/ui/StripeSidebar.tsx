@@ -4,7 +4,7 @@
 // whether the connection is healthy. Calm: green, amber or grey, never a count or an alarm.
 import { app, currentPath } from "@liaison/host"
 import { type Component, createSignal, For, onCleanup, onMount } from "solid-js"
-import { dashboardUrl, dotTone, type DotTone, type HomeLoad, pageKind, type PageKind } from "./home-model"
+import { dashboardUrl, dotTone, type DotTone, dotWord, type HomeLoad, pageKind, type PageKind } from "./home-model"
 import { tr } from "./i18n"
 
 export { dotTone }
@@ -45,6 +45,9 @@ export const StripeSidebar: Component = () => {
       <div class="flex items-center gap-2 border-b border-border-subtle px-4 py-3">
         <span data-testid="stripe-sidebar-dot" data-tone={dotTone(kind())} class={`h-1.5 w-1.5 rounded-full ${DOT[dotTone(kind())]}`} aria-hidden="true" />
         <span class="text-[12.5px] font-semibold text-text">{tr("Stripe")}</span>
+        <span data-testid="stripe-sidebar-state" class="ml-auto text-[11.5px] text-text-tertiary">
+          {dotWord(kind())}
+        </span>
       </div>
       <div class="flex-1 overflow-y-auto px-2 py-3">
         <ul class="flex flex-col gap-0.5">

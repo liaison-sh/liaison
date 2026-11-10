@@ -321,6 +321,9 @@ export interface HostServices {
     entityType: string,
     id: () => string | null | undefined,
   ) => void
+  /** Name the page's tab after the record it shows (see `app.tabLabel`). Optional:
+   *  a host without it keeps the view's label. */
+  tabLabel?: (appName: string, label: () => string | null | undefined) => void
   // Host API 1.3: typed calls instead of kernel routes, so a screen framed on an
   // origin of its own (no network, no session) still works. Each is bound to the
   // calling app and limited by the host; optional so older shims stay valid.
@@ -709,6 +712,12 @@ export const app = {
   },
   trackOpenRecord: (entityType: string, id: () => string | null | undefined): void => {
     getHost().trackOpenRecord?.(getAppName(), entityType, id)
+  },
+  /** From a page's component body: the tab's label follows `label()` (null keeps the view's). */
+  tabLabel: (label: () => string | null | undefined): void => {
+    // A host without it (an older one, a test with no host) keeps the view's label.
+    const host = optionalHost()
+    if (host?.tabLabel) host.tabLabel(getAppName(), label)
   },
   /**
    * Host-driven cross-app slot-body mount. Renders another app's contributed

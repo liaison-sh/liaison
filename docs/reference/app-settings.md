@@ -362,6 +362,18 @@ Section `quota`, scope `org`, edited with `social:findings:read`.
 | --- | --- | --- |
 |  | SocialQuota | custom |
 
+## stripe
+
+Stripe: customers, subscriptions, invoices and payments from your Stripe account, read through a restricted key.
+
+### Stripe account
+
+Section `connection`, scope `org`, edited with `stripe:admin:connection`.
+
+| Key | Label | Type |
+| --- | --- | --- |
+|  | stripe | connections |
+
 ## tickets
 
 Track customer requests, returns and warranty cases to resolution.

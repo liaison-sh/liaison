@@ -159,7 +159,7 @@ export async function moneyActionHold(db: StateDb): Promise<ToolRefusal | null> 
   if (!install) {
     return refuseTool(
       "not_connected",
-      "Stripe is not connected, so nothing was sent to Stripe and nothing changed. Next step: an admin connects Stripe in Settings, Connectors.",
+      "Stripe is not connected, so nothing was sent to Stripe and nothing changed. Next step: an admin connects Stripe in Settings, Apps, Stripe.",
     )
   }
   const blocked = blockedOverlay(install)

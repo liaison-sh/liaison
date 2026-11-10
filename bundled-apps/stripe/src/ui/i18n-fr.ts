@@ -21,9 +21,9 @@ export const FR: Record<string, string> = {
     "Ce qui s'affiche date d'avant l'arrêt de la clé. Rien ne se met à jour tant qu'elle ne fonctionne pas.",
   "Stripe is not connected": "Stripe n'est pas connecté",
   "Nothing has been read from Stripe and nothing has been changed.": "Rien n'a été lu dans Stripe et rien n'a été modifié.",
-  "An admin connects Stripe in Settings, Connectors, with a restricted key that starts with rk_.":
-    "Un administrateur connecte Stripe dans Paramètres, Connecteurs, avec une clé restreinte qui commence par rk_.",
-  "Open the connection settings": "Ouvrir les réglages de la connexion",
+  "An admin connects Stripe in Settings, Apps, Stripe, with a restricted key that starts with rk_.":
+    "Un administrateur connecte Stripe dans Paramètres, Apps, Stripe, avec une clé restreinte qui commence par rk_.",
+  "Connect Stripe": "Connecter Stripe",
   "Key stored, waiting for Stripe's first update": "Clé enregistrée, en attente de la première mise à jour de Stripe",
   "The key works. The import starts when Stripe sends its first update to this workspace.":
     "La clé fonctionne. L'import démarre dès que Stripe envoie sa première mise à jour à cet espace.",
@@ -257,4 +257,9 @@ export const FR: Record<string, string> = {
   "No disputes, ever.": "Aucun litige, jamais.",
   "Answer it in Stripe": "À traiter dans Stripe",
   "Discussion": "Discussion",
+  "No customer has been read from Stripe yet. They show here once Stripe is connected.": "Aucun client n'a encore été lu dans Stripe. Ils s'afficheront ici une fois Stripe connecté.",
+  "Not connected": "Non connecté",
+  "Connected": "Connecté",
+  "Setting up": "Mise en place",
+  "Needs a look": "À vérifier",
 }

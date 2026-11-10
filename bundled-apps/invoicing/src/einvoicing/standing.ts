@@ -75,6 +75,13 @@ async function deciderOf(ctx: EinvCtx): Promise<string | null> {
 export async function standingOn(ctx: EinvCtx, issuerProfileId: string, stream: StandingStream) {
   const granted = await mintDispatchGrant(ctx, ["submit_einvoice", "advance_einvoice"], { stream_ref: streamRef(issuerProfileId, stream) })
   if (!("ok" in granted)) {
+    // No platform bound: say so in the settings' own words, never the contract's id.
+    if (granted.error.code === "contract_provider_not_configured") {
+      return fail(
+        "einvoicing_platform_not_set",
+        "The standing e-invoice authorization was not turned on and nothing was recorded: no e-invoicing platform is set. Choose one in Settings, Invoicing, E-invoicing, then turn it on.",
+      )
+    }
     return fail(
       granted.error.code,
       `The standing e-invoice authorization was not turned on and nothing was recorded: ${granted.error.message}. Only a person's approval turns it on.`,

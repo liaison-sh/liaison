@@ -10,6 +10,7 @@ import { recurringIssueJob } from "./issue-job"
 import { recurringLegalDateJob, urgencyOf } from "./legal-date-job"
 import { cardItems, recurringRunIssue, recurringRunUnapprove } from "./run-card"
 import { recurringRunGet } from "./run-get"
+import { summarizeRecurringRunIssue } from "../summarizers"
 
 const SCHED_ONE = "33333333-3333-4333-8333-333333333331"
 const SCHED_TWO = "33333333-3333-4333-8333-333333333332"
@@ -34,8 +35,9 @@ describe("the month-end run card", () => {
     expect(card.tool_name).toBe("invoicing:recurring_run_issue")
     expect(card.current_payload.items).toHaveLength(2)
     expect(card.current_payload.items[0]?.total_minor).toBe("180000")
+    // Who is billed, then the total: the panel under the card lists each row's amounts.
     expect(card.summary_detail.lines).toHaveLength(2)
-    expect(card.summary_detail.lines[0]).toContain("1500.00 EUR excl., 300.00 EUR VAT, 1800.00 EUR incl.")
+    expect(card.summary_detail.lines[1]).toBe("Total: 3600.00 EUR incl. VAT")
     // Drawn on 27 Nov at 09:00 in Paris, valid to the end of 30 Nov.
     expect(card.expiry_hours).toBe(3 * 24 + 15)
     const got = await recurringRunGet(h.ctx, { run_id: runId })
@@ -48,6 +50,17 @@ describe("the month-end run card", () => {
     await h.db.update("document_lines", String(line?.id), { unit_price_minor: "160000", subtotal_minor: "160000" })
     const after = (await cardItems(h.ctx, runId)).items[0]?.content_hash
     expect(after).not.toBe(before)
+  })
+
+  test("the card's summary rebuilt from its payload still names the period, each customer and the total", async () => {
+    const { h } = await drafted()
+    const card = h.approvals[0] as { current_payload: Record<string, unknown> }
+    const summary = await summarizeRecurringRunIssue(card.current_payload)
+    expect(summary.title).toContain("Issue 2 invoices for ")
+    expect(summary.title).not.toContain("a month-end run")
+    const staged = (h.approvals[0] as { summary_detail: { lines: string[] } }).summary_detail.lines
+    expect(summary.lines).toEqual(staged)
+    expect(summary.lines[0]?.split(", ")).toHaveLength(2)
   })
 
   test("a row carries the address an agent found for it, and only a row that has one", async () => {

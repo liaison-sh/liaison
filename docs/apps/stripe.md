@@ -40,9 +40,9 @@ Leave every other permission at None.
 
 1. In the Stripe Dashboard, open **Developers → API keys → Create restricted key**.
 2. Set the permissions in the table above, and create the key. It starts with `rk_live_` (live mode) or `rk_test_` (test mode).
-3. In Liaison, paste it into **Restricted key** on the Stripe card. The key is stored encrypted, and the connector's code never sees it: the server adds it to each request.
+3. In Liaison, open **Settings › Apps › Stripe** (or **Connect Stripe** on Stripe's Home while it is not connected) and paste it into **Restricted key**, or ask the agent, which posts the same form in the conversation. The key is stored encrypted, and the connector's code never sees it: the server adds it to each request.
 
-A secret key (`sk_live_` or `sk_test_`) is refused before anything is stored: the card says "That is your secret key, so I did not keep it." Create a restricted key and paste that one instead.
+A secret key (`sk_live_` or `sk_test_`) is refused before anything is stored: the form says "That is your secret key, so I did not keep it." Create a restricted key and paste that one instead. A key Stripe refuses is not stored either, and the form says why.
 
 ## Check the key
 

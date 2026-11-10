@@ -333,10 +333,10 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
           </span>
         </Show>
       </div>
-      {/* Actions at the top. Someone who approves but may not edit approves here, without opening a row. */}
-      <Show when={(rights().approve && !rights().write && props.status === "pending") || rights().write}>
+      {/* Actions at the top. "Approve N, total" is the decision, for everyone who may approve. */}
+      <Show when={(rights().approve && props.status === "pending") || rights().write}>
         <div data-testid="month-end-actions" class="mt-2 flex flex-wrap gap-2">
-          <Show when={rights().approve && !rights().write && props.status === "pending" && summary().count > 0}>
+          <Show when={rights().approve && props.status === "pending" && summary().count > 0}>
             <button type="button" data-testid="month-end-approve" class="min-h-11 rounded bg-accent px-3 text-accent-foreground" onClick={() => void approveNow()}>
               {approveLabel()}
             </button>

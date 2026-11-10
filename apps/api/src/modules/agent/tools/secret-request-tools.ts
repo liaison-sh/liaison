@@ -28,7 +28,7 @@ import {
   currentToolCallScopesBefore,
 } from "~/modules/agent/runtime/run-context"
 import { UNKNOWN_TURN_TAINT } from "~/modules/agent/scopes/scope-taint"
-import { toolRegistry } from "~/modules/apps/app-registries"
+import { connectionConfigRegistry, toolRegistry } from "~/modules/apps/app-registries"
 import { connectionTurnedOff } from "~/modules/apps/connections/oauth-client-config"
 import { isAppUnavailableFor, primeOrgApps } from "~/modules/apps/org-apps"
 import { resolveGoogleClients } from "~/modules/connection-guides/google"
@@ -259,8 +259,20 @@ export async function handleRequestSecret(
     kind: checked.target.kind,
     target: targetFields(checked.target),
     card,
-    note: requestSecretNote(checked.target.kind, card),
+    note: requestSecretNote(checked.target.kind, card) + asksFor(ctx.orgId, checked.target),
   }
+}
+
+/**
+ * The fields a credentials card asks for, by their labels ("Restricted key"), so what the agent
+ * tells the person matches the card and never names a kind of key the app refuses.
+ */
+function asksFor(orgId: string, target: SecretTarget): string {
+  if (target.kind !== "connection_credentials") return ""
+  const fields =
+    connectionConfigRegistry.get([orgId, target.app, target.connection])?.credentialFields ?? []
+  const labels = fields.filter((f) => f.type === "password").map((f) => f.label)
+  return labels.length > 0 ? ` The card asks for: ${labels.join(", ")}.` : ""
 }
 
 export function registerSecretRequestTool(orgId: string): void {

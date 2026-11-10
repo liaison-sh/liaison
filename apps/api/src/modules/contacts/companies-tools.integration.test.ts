@@ -376,6 +376,19 @@ describe("company tools", () => {
     expect(await ownerOf(c)).toBeNull()
   })
 
+  it("one company's manager change names the company it moved, as the list form does", async () => {
+    // The company page reads `moved` to tell a change from a no-op: without it
+    // the page said "did not change" after a change that happened.
+    const c = await company("Atelier Brume")
+    const one = await ownCall<{ moved: { id: string; name: string }[]; skipped: unknown[] }>(
+      "companies_write",
+      { companyId: c, ownerUserId: TOM },
+    )
+    expect(one.moved).toEqual([{ id: c, name: "Atelier Brume" }])
+    expect(one.skipped).toEqual([])
+    expect(await ownerOf(c)).toBe(TOM)
+  })
+
   it("a list with other fields is refused before anything parks", async () => {
     const c = await company("Hotel Écume")
     const before = (await pendingFor("companies_write")).length

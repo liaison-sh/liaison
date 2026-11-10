@@ -73,6 +73,9 @@ export interface CreditNoteIssueOptions {
    *  The original's line kinds come from the Shopify adapter, so they state the operation
    *  category, and a buyer with no company and no VAT id is a checkout consumer. */
   source?: "shopify"
+  /** The unique source key the credit note carries (a Stripe refund's `stripe:re_...`), so one
+   *  refund never yields two credit notes. */
+  external_ref?: string | null
 }
 
 /** The gate inputs an automatic Shopify credit note carries (see `CreditNoteIssueOptions.source`). */
@@ -515,6 +518,7 @@ export async function creditNoteCreateAndIssue(
     original: originalRef,
     operation_category: input.operation_category ?? null,
     ...autoSourceGateFields(opts),
+    ...(opts.external_ref ? { external_ref: opts.external_ref } : {}),
   }
   const issued = await issueWithFxRate(ctx, issueInput)
   if (!issued.ok) return issued.error

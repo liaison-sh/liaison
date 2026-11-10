@@ -83,7 +83,7 @@ An agent sets the conversation with `create_routine` or `update_routine` and the
 11. Optionally set **Who approves its drafts** and the token fields.
 12. Click **Create routine**.
 
-An agent can create routines for you, too, with `create_routine`. That call is itself an approval request, and the card lists the next fire times. A routine your agent drafts for you (it runs as you, with scopes you hold) is yours to approve: the request goes to you alone, with no administrator needed, and the same goes for editing, running or deleting it. A routine that runs as another person goes to the organization's approvers, and its drafts later go to that person.
+An agent can create routines for you, too, with `create_routine`. That call is itself an approval request, and the card lists the next fire times. A routine your agent drafts for you (it runs as you) is yours to approve: the request goes to you alone, with no administrator needed, and the same goes for editing, running or deleting it. A scope it lists that you do not hold is left out of the routine and filed as a scope request, since approving could not grant it. A routine that runs as another person goes to the organization's approvers, and its drafts later go to that person.
 
 ### Schedule options
 

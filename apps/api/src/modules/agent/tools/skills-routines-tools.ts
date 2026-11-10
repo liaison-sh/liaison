@@ -5779,7 +5779,7 @@ function registerAuthoringTools(orgId: string): void {
 
   // A person's own routine is approved by that person (owner-routed, like any personal
   // resource): the approval confirms what the agent drafted, and for a routine that runs as
-  // the requester, within the requester's own scopes, the requester is that human.
+  // the requester, the requester is that human.
   approvalResourceOwnerRegistry.set([orgId, "kernel", "create_routine"], {
     resolveOwner: (params, ctx) => selfOwnedRoutineApprover("create_routine", params, ctx),
   })
@@ -5801,11 +5801,13 @@ function registerAuthoringTools(orgId: string): void {
 
 /**
  * Who alone decides a routine lifecycle call (approvals/resource-owner.ts): the requester, when
- * the routine is their own and stays within their own scopes; null (the org's deciders) otherwise.
+ * the routine is their own (it runs as them); null (the org's deciders) otherwise.
  *
  * Own means: a create with no `ownerUserId` (or the requester's own id), or an existing routine
- * whose owner is the requester. A routine that runs as ANOTHER person keeps the org's deciders,
- * and so does a `scopes` list the requester does not fully hold. An org policy demanding two
+ * whose owner is the requester. A routine that runs as ANOTHER person keeps the org's deciders.
+ * A listed scope the requester does not hold changes nothing here: approving could never grant it,
+ * so the handler leaves it out of the routine and files it as a scope request (`omittedScopes`
+ * in the result), whoever decides. An org policy demanding two
  * approvers for the tool also keeps the org's deciders: a personal resource has one decider, so
  * owner routing would make that policy unsatisfiable.
  */
@@ -5835,11 +5837,6 @@ export async function selfOwnedRoutineApprover(
       return r ?? null
     })
     if (row?.ownerUserId !== ctx.requestedBy) return null
-  }
-  if (Array.isArray(params.scopes) && params.scopes.length > 0) {
-    const requested = params.scopes.filter((s): s is string => typeof s === "string")
-    const held = await loadUserEffectiveScopes(ctx.orgId, ctx.requestedBy)
-    if (grantableScopes(requested, held).omitted.length > 0) return null
   }
   const { evaluateApprovalPolicy } = await import("~/modules/approvals/approval-policy")
   const policy = await evaluateApprovalPolicy({

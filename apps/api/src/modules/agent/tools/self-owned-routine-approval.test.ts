@@ -6,12 +6,14 @@
 // like any personal resource) even without the org's deciding scope (`kernel:approve`). Another
 // member cannot decide it, and a routine that runs as ANOTHER person keeps the org's deciders.
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
+import { Queue } from "bullmq"
 import { eq } from "drizzle-orm"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { connectedAccounts, users } from "~/db/schema/kernel"
 import * as eventBusModule from "~/infra/events/event-bus"
+import { registerJobWorker } from "~/infra/jobs/jobs"
 import { registerConnectionTools } from "~/modules/agent/tools/connection-tools"
 import { registerSkillRoutineTools } from "~/modules/agent/tools/skills-routines-tools"
 import { ApprovalDecisionError, decideApproval } from "~/modules/approvals/decide"
@@ -22,6 +24,17 @@ import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 
 const broadcastSpy = spyOn(eventBusModule, "broadcastEphemeral").mockImplementation(async () => {})
+// A one-off routine is scheduled as a delayed `kernel:routine-tick` job. Every server process
+// registers that job's handler at boot (index.ts, registerKernelJobs, in every role), and
+// enqueueing refuses a job with no local handler: register it here as boot does, and record the
+// enqueue instead of sending it to Redis.
+const enqueued: Array<{ name: string; data: unknown; delay?: number; jobId?: string }> = []
+const addBulkSpy = spyOn(Queue.prototype, "addBulk").mockImplementation(async (jobs) => {
+  for (const j of jobs) {
+    enqueued.push({ name: j.name, data: j.data, delay: j.opts?.delay, jobId: j.opts?.jobId })
+  }
+  return jobs.map((j, i) => ({ id: j.opts?.jobId ?? `stub-${i}`, name: j.name })) as never
+})
 
 async function contextOf(orgId: string, userId: string): Promise<UserContext> {
   const perms = await withPrivilegedDb(orgId, "test-self-owned-routine-perms", (tx) =>
@@ -53,11 +66,13 @@ describe("routine approvals: a person approves their own routine", () => {
       await minimal.grantScope(id, "kernel:routines:write")
     }
     await minimal.grantScope(delegatorId, "kernel:routines:delegate")
+    registerJobWorker("kernel", "routine-tick", async () => {})
     await registerSkillRoutineTools(orgId)
   })
 
   afterAll(() => {
     broadcastSpy.mockRestore()
+    addBulkSpy.mockRestore()
   })
 
   const propose = async (
@@ -83,9 +98,8 @@ describe("routine approvals: a person approves their own routine", () => {
   const reminder = (name: string, extra: Record<string, unknown> = {}) => ({
     name,
     description: "Reminder to send the invoices",
-    kind: "recurring",
-    cron: "30 9 * * 1-5",
-    timezone: "UTC",
+    kind: "scheduled",
+    runAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
     prompt: "Remind me to send the invoices.",
     scopes: [],
     ...extra,
@@ -158,13 +172,35 @@ describe("routine approvals: a person approves their own routine", () => {
     expect(await routineNamed("lifecycle")).toHaveLength(0)
   })
 
-  it("scopes beyond the requester's own keep the org's deciders", async () => {
+  it("a one-off reminder for oneself is approved by its requester and scheduled once", async () => {
+    const id = await propose(requesterId, "kernel:create_routine", reminder("one-off"))
+    expect((await approvalRow(id))?.resource_owner_id).toBe(requesterId)
+    await decide(requesterId, id)
+    const [row] = await routineNamed("one-off")
+    expect(row?.owner_user_id).toBe(requesterId)
+    const job = enqueued.find(
+      (j) => (j.data as { routineId?: string } | null)?.routineId === row?.id,
+    )
+    expect(job?.name).toBe("routine-tick")
+    // Fires about a day from now, not at once.
+    expect(job?.delay ?? 0).toBeGreaterThan(23 * 3600 * 1000)
+  })
+
+  it("a scope the requester does not hold still leaves the decision to them; it is left out and requested", async () => {
     const id = await propose(
       requesterId,
       "kernel:create_routine",
       reminder("too-wide", { scopes: ["kernel:roles:admin"] }),
     )
-    expect((await approvalRow(id))?.resource_owner_id).toBeNull()
+    expect((await approvalRow(id))?.resource_owner_id).toBe(requesterId)
+    await decide(requesterId, id)
+    const [row] = await sql<Array<{ scopes: string[] }>>`
+      SELECT scopes FROM kernel.routines WHERE org_id = ${orgId} AND name = 'too-wide'`
+    expect(row?.scopes).toEqual([])
+    const requests = await sql<Array<{ scopes: string[] }>>`
+      SELECT requested_scopes AS scopes FROM kernel.scope_requests
+       WHERE org_id = ${orgId} AND requested_by = ${requesterId}`
+    expect(requests.some((r) => JSON.stringify(r.scopes).includes("kernel:roles:admin"))).toBe(true)
   })
 
   it("a routine that runs as another person routes to delegate or admin deciders", async () => {

@@ -203,11 +203,14 @@ describe("tools/list projection parity", () => {
     }
   }, 30_000)
 
-  it("listMcpTools includes kernel__approval_withdraw for a caller holding kernel:approvals:write", async () => {
+  it("listMcpTools includes kernel__approval_withdraw for a caller holding only kernel:approvals:read", async () => {
     const { orgId, ownerId, scopes } = await seedOrgWithTicketsApp()
     orgs.push(orgId)
     await registerKernelAgentTools(orgId)
-    const actor = userContextFor(orgId, ownerId, [...scopes, "kernel:approvals:write"])
+    const actor = userContextFor(orgId, ownerId, [
+      ...scopes.filter((s) => !s.startsWith("kernel:approvals") && s !== "*" && s !== "kernel:*"),
+      "kernel:approvals:read",
+    ])
 
     const agentSet = buildToolSet(orgId, actor, undefined, ALL_DEFERRED_TOOLS_UNLOCKED)
     expect(agentSet.kernel__approval_withdraw).toBeDefined()

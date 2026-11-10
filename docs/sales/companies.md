@@ -44,7 +44,7 @@ The buttons at the top of the page need `kernel:companies:write` and a company y
 - **Add person**: search for a contact and add them. Their company becomes this one.
 - **Share**: choose who sees the company. See below.
 - **Merge with...**: see below.
-- **More actions**, then **Delete**: removes the company and its discussion. Its people keep the company name as text but lose the link, and its deals and pipelines stop naming it. A company that has portal accounts cannot be deleted until they are removed or moved.
+- **More actions**, then **Delete**: removes the company and its discussion. Its people keep the company name as text but lose the link, and its deals and pipelines stop naming it. A company that has portal accounts cannot be deleted until they are removed or moved, nor one that a recurring invoice schedule still bills until that schedule ends or bills another company. Linked Stripe customers and ended schedules lose the link.
 
 ### Share a company
 

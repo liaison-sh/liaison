@@ -298,6 +298,47 @@ async function repointAppCompanyLinks(
   return moved
 }
 
+/** Schedules not ended that bill this company; 0 when the invoicing tables do not exist. */
+async function liveSchedulesBilling(
+  tx: Pick<RlsClient, "execute">,
+  params: { orgId: string; companyId: string },
+): Promise<number> {
+  const qualified = `${quoteIdent(schemaRef("app_invoicing"))}.${quoteIdent("recurring_schedules")}`
+  const [reg] = extractRows<{ t: string | null }>(
+    await tx.execute(drizzleSql`SELECT to_regclass(${qualified})::text AS t`),
+  )
+  if (!reg?.t) return 0
+  const [row] = extractRows<{ n: number }>(
+    await tx.execute(drizzleSql`
+      SELECT count(*)::int AS n FROM ${drizzleSql.raw(qualified)}
+       WHERE org_id = ${params.orgId}::uuid AND company_id = ${params.companyId}::uuid
+         AND status <> 'ended'`),
+  )
+  return row?.n ?? 0
+}
+
+/**
+ * App rows that name a deleted company let go of it (the column is cleared), so nothing points
+ * at a company that is gone: ended schedules and billing customers mirrored from the payment
+ * connector, which keep their own record.
+ */
+async function unlinkAppCompanyRows(
+  tx: Pick<RlsClient, "execute">,
+  params: { orgId: string; companyId: string },
+): Promise<void> {
+  for (const link of APP_COMPANY_LINKS) {
+    const [schema = "", table = ""] = link.split(".")
+    const qualified = `${quoteIdent(schemaRef(schema))}.${quoteIdent(table)}`
+    const [reg] = extractRows<{ t: string | null }>(
+      await tx.execute(drizzleSql`SELECT to_regclass(${qualified})::text AS t`),
+    )
+    if (!reg?.t) continue
+    await tx.execute(drizzleSql`
+      UPDATE ${drizzleSql.raw(qualified)} SET company_id = NULL, updated_at = now()
+       WHERE org_id = ${params.orgId}::uuid AND company_id = ${params.companyId}::uuid`)
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 /* Reads                                                                      */
 /* -------------------------------------------------------------------------- */
@@ -769,7 +810,9 @@ export async function updateCompany(
  * naming it (elevated: the deleter may not see every deal), its discussion
  * goes, and the grant rows go by the table's cleanup trigger. People keep
  * their company text and lose the link (the foreign key sets it NULL). A
- * company a portal account belongs to is refused (409 `company_has_accounts`).
+ * company a portal account belongs to is refused (409 `company_has_accounts`), and so is one a
+ * recurring invoice schedule not ended still bills (409 `company_has_schedules`). Ended schedules
+ * and billing customers mirrored from the payment connector let go of it (the column is cleared).
  */
 export async function deleteCompany(
   db: RlsClient,
@@ -778,6 +821,19 @@ export async function deleteCompany(
   const { orgId, userId, companyId } = params
   return withElevatableRlsFrom(db, "company-delete", async (tx) => {
     const company = await loadVisible(tx, orgId, companyId)
+    // A live recurring schedule bills this company: deleting it would leave the schedule
+    // billing nobody. Counted past the caller's row security, so the refusal does not depend
+    // on whether the caller can read invoicing.
+    const billing = await tx.transaction((sp) =>
+      asAdmin(sp, () => liveSchedulesBilling(sp, { orgId, companyId })),
+    )
+    if (billing > 0) {
+      throw new CompanyRequestError(
+        409,
+        "company_has_schedules",
+        `${company.name} is billed by ${billing} recurring invoice schedule${billing === 1 ? "" : "s"}, so it cannot be deleted. End those schedules or bill another company first.`,
+      )
+    }
     let deleted: { id: string } | undefined
     try {
       deleted = await tx.transaction(async (sp) => {
@@ -819,6 +875,7 @@ export async function deleteCompany(
         return { deals, projects }
       }),
     )
+    await tx.transaction((sp) => asAdmin(sp, () => unlinkAppCompanyRows(sp, { orgId, companyId })))
     await tx.transaction((sp) =>
       asAdmin(sp, () =>
         deleteEntityDiscussions(

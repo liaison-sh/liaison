@@ -137,3 +137,45 @@ app-draft-author: the person who made it deactivated, the link holds
 app-draft-author: the person who made it deactivated, the link holds (fails with the event replaced by a no-op)
 app-draft-author: the person who made it exporting their own data, the export carries it
 app-draft-author: the person who made it exporting their own data, the export carries it (fails with the event replaced by a no-op)
+invoice-party: its person renamed after the invoice was issued, the frozen record keeps its text
+invoice-party: its person renamed after the invoice was issued, the frozen record keeps its text (fails with the event replaced by a no-op)
+invoice-party: its person merged into another, the link moves to the survivor
+invoice-party: its person merged into another, the link moves to the survivor (fails with the event replaced by a no-op)
+invoice-party: a reader lost the read scope, the reader who lost access sees nothing
+invoice-party: a reader lost the read scope, the reader who lost access sees nothing (fails with the event replaced by a no-op)
+invoice-party: the person's data subject export, the export carries it
+invoice-party: the person's data subject export, the export carries it (fails with the event replaced by a no-op)
+invoice-party: a reader lost the read scope and got it back, it reads as before
+invoice-party: a reader lost the read scope and got it back, it reads as before (fails with the event replaced by a no-op)
+schedule-party: its company renamed, the link holds
+schedule-party: its company renamed, the link holds (fails with the event replaced by a no-op)
+schedule-party: its company merged into another, the link moves to the survivor
+schedule-party: its company merged into another, the link moves to the survivor (fails with the event replaced by a no-op)
+schedule-party: its company deleted while the schedule bills it, the event is refused while the link is live
+schedule-party: its company deleted while the schedule bills it, the event is refused while the link is live (fails with the event replaced by a no-op)
+schedule-party: a reader lost the read scope, the reader who lost access sees nothing
+schedule-party: a reader lost the read scope, the reader who lost access sees nothing (fails with the event replaced by a no-op)
+schedule-party: a reader lost the read scope and got it back, it reads as before
+schedule-party: a reader lost the read scope and got it back, it reads as before (fails with the event replaced by a no-op)
+run-item-schedule-draft: a reader lost the read scope, the reader who lost access sees nothing
+run-item-schedule-draft: a reader lost the read scope, the reader who lost access sees nothing (fails with the event replaced by a no-op)
+run-item-schedule-draft: a reader lost the read scope and got it back, it reads as before
+run-item-schedule-draft: a reader lost the read scope and got it back, it reads as before (fails with the event replaced by a no-op)
+stripe-customer-party: its company renamed, the link holds
+stripe-customer-party: its company renamed, the link holds (fails with the event replaced by a no-op)
+stripe-customer-party: its company merged into another, the link moves to the survivor
+stripe-customer-party: its company merged into another, the link moves to the survivor (fails with the event replaced by a no-op)
+stripe-customer-party: its company deleted, the link closes with a visible state
+stripe-customer-party: its company deleted, the link closes with a visible state (fails with the event replaced by a no-op)
+stripe-customer-party: a reader lost the read scope, the reader who lost access sees nothing
+stripe-customer-party: a reader lost the read scope, the reader who lost access sees nothing (fails with the event replaced by a no-op)
+stripe-customer-party: the payments connector switched off and on again, it reads as before
+stripe-customer-party: the payments connector switched off and on again, it reads as before (fails with the event replaced by a no-op)
+stripe-invoice-document: a reader lost the read scope, the reader who lost access sees nothing
+stripe-invoice-document: a reader lost the read scope, the reader who lost access sees nothing (fails with the event replaced by a no-op)
+stripe-invoice-document: the payments connector switched off and on again, it reads as before
+stripe-invoice-document: the payments connector switched off and on again, it reads as before (fails with the event replaced by a no-op)
+stripe-refund-charge: a reader lost the read scope, the reader who lost access sees nothing
+stripe-refund-charge: a reader lost the read scope, the reader who lost access sees nothing (fails with the event replaced by a no-op)
+stripe-refund-charge: the payments connector switched off and on again, it reads as before
+stripe-refund-charge: the payments connector switched off and on again, it reads as before (fails with the event replaced by a no-op)

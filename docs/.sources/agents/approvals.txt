@@ -231,3 +231,11 @@ Approver eligibility counts every-member scopes, with the app restriction -> app
 A step reference reads as its step, request and "filled in when that step runs" -> packages/shared/src/refs.ts:175-215 ; apps/api/src/modules/approvals/ref-provenance.ts:52-110
 Once the earlier step ran, the step's summary shows the returned value -> apps/api/src/modules/approvals/cascade.ts:463-480 ; apps/api/src/modules/approvals/ref-provenance.ts:118-155
 Home approval rows: chevron or click folds; a click ending a text selection does not -> apps/web/src/modules/shell/AttentionRow.tsx:292-302,658
+Own routines are private requests decided by the requester (runs as them, scopes they hold) -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5812
+Scopes the requester does not hold keep the org's approvers -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5842
+A two-approver policy keeps the org's approvers -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5851
+Hiding an app skill for yourself only is routed to you -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5473
+Link to connect your own account is routed to you -> apps/api/src/modules/agent/tools/connection-tools.ts:395
+Disconnecting your own personal connection is routed to you -> apps/api/src/modules/agent/tools/connection-tools.ts:407
+Owner routing resolved per call -> apps/api/src/modules/approvals/resource-owner.ts:66
+Requester approves a request routed privately to them -> apps/api/src/modules/approvals/decide.ts:235

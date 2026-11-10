@@ -183,3 +183,7 @@ Transparent mailbox read server-side, routines never wait -> apps/api/src/module
 Waiting run row: Private mailbox pill, name waits for you, Details facts -> apps/web/src/modules/agent/RoutineMailboxWaitRow.tsx:335
 Run now: the row leaves the list, a toast says it is running or starts after the current run -> apps/web/src/modules/agent/RoutineMailboxWaitRow.tsx:235
 A task a routine run creates says Created by Routine <name> -> apps/api/src/modules/agent/routines/routine-report.ts:86 ; apps/api/src/modules/apps/sandbox/bridge/projects.ts:76
+A routine drafted for yourself is approved by you; one running as another person goes to the org's approvers -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:5812
+Delegate who built a routine for someone may edit it -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:3479
+Delegate or apps admin may edit a routine run by a role agent -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:3481
+Scope added by a non-owner is capped at the owner's scopes -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:3688

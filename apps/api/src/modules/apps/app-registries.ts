@@ -738,6 +738,16 @@ export type ResourceOwnerDecl =
        *  Host tools only (scope-taint.ts, rule 13). */
       actingAgentTree: true
     }
+  | {
+      /** Decided per call from its params: the user who alone decides it (a personal resource),
+       *  or null for the org's deciders. For an owner that is neither a row column nor a fixed
+       *  param value, such as "the requester's own routine". Host tools only; a throw counts as
+       *  null. */
+      resolveOwner: (
+        params: Record<string, unknown>,
+        ctx: { orgId: string; requestedBy: string },
+      ) => Promise<string | null>
+    }
 
 export const approvalResourceOwnerRegistry = createTypedRegistry<
   [orgId: string, appName: string, toolName: string],

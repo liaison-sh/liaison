@@ -1383,6 +1383,10 @@
   "homeGroupTasks": "Tasks",
   "homeGroupTeam": "Team",
   "homeKind": {
+    "issuer_switched": {
+      "one": "card invoicing changed with unpaid invoices",
+      "other": "card invoicing changes with unpaid invoices"
+    },
     "awaiting_agent": {
       "one": "awaiting reply",
       "other": "awaiting reply"

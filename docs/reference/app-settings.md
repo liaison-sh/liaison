@@ -162,6 +162,7 @@ Section `issuers`, scope `org`, edited with `invoicing:settings:read`.
 | Key | Label | Type |
 | --- | --- | --- |
 |  | InvoicingIssuerProfiles | custom |
+|  | InvoicingIssuerStreams | custom |
 
 ### Shopify shop mappings
 

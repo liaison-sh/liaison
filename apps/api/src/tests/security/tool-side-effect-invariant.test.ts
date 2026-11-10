@@ -517,6 +517,8 @@ const REVIEWED_UNGATED_OUTWARD: Record<string, string> = {
     "stages the send approval (einvoicing/transmit.ts einvoiceSendRequest); the PA submit needs the approval's dispatch grant",
   "invoicing:po_create_and_issue":
     "gated: parks via the handler's ctx.requestApproval (conditionalGate; execute-tool.ts:2767-2900), person shortcut only for origin human-ui (:2879)",
+  "invoicing:issuer_emails_confirm":
+    "an agent's call always parks via the handler's ctx.requestApproval (conditionalGate); only a person's own click records the statement, which sends nothing and changes no document",
   "invoicing:po_issue":
     "gated: parks via the handler's ctx.requestApproval (conditionalGate; execute-tool.ts:2767-2900), person shortcut only for origin human-ui (:2879)",
   "invoicing:quote_create_and_issue":

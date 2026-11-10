@@ -30,7 +30,15 @@ import { documentsIssuePreview } from "./buyer-vat"
 import { ordersInvoiceabilityCheck } from "./order-invoiceability"
 import { customerHistory } from "./customer-history"
 import { vatLookup } from "./vat-lookup"
-import { cardStreamIssuer, issuerEmailsConfirm, issuerStreamGet, issuerStreamSet, onStripeConnectionChanged } from "./streams"
+import {
+  cardStreamIssuer,
+  issuerEmailsConfirm,
+  issuerEmailsConfirmPreflight,
+  issuerStreamGet,
+  issuerStreamSet,
+  issuerStreamSetPreflight,
+  onStripeConnectionChanged,
+} from "./streams"
 import {
   checkScheduleInput,
   checkScheduleCreate,
@@ -720,6 +728,20 @@ export const issuerStreamSetHandler = (
   params: Parameters<typeof issuerStreamSet>[1],
   ctx: Parameters<typeof issuerStreamSet>[0],
 ) => issuerStreamSet(ctx, params)
+export const issuerStreamSetPreflightHandler = async (
+  params: Parameters<typeof issuerStreamSetPreflight>[1],
+  ctx: Parameters<typeof issuerStreamSetPreflight>[0],
+) => {
+  const r = await issuerStreamSetPreflight(ctx, params)
+  return "status" in r ? { error: r.error } : r
+}
+export const issuerEmailsConfirmPreflightHandler = async (
+  params: Parameters<typeof issuerEmailsConfirmPreflight>[1],
+  ctx: Parameters<typeof issuerEmailsConfirmPreflight>[0],
+) => {
+  const r = await issuerEmailsConfirmPreflight(ctx, params)
+  return "status" in r ? { error: r.error } : r
+}
 export const issuerEmailsConfirmHandler = (
   params: Parameters<typeof issuerEmailsConfirm>[1],
   ctx: Parameters<typeof issuerEmailsConfirm>[0],

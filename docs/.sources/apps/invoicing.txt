@@ -212,3 +212,12 @@ Rows issue only inside the issue window -> bundled-apps/invoicing/src/recurring/
 recurring_item_issue is internal, only the app's own job calls it -> bundled-apps/invoicing/app.manifest.json:1696 ; apps/api/src/modules/apps/execute-tool.ts:4387
 A local convert runs in one transaction; a failure leaves the quote and uses no number -> bundled-apps/invoicing/src/mutations/convert-to-invoice.ts:179
 194 ; bundled-apps/invoicing/src/mutations/convert-to-invoice.ts:228
+Three streams, card only while connected, the other two always Liaison -> bundled-apps/invoicing/src/streams.ts:152
+Issuer card on connect, French profile pre-selects Liaison with the reason -> bundled-apps/invoicing/src/streams.ts:44 ; bundled-apps/invoicing/src/streams.ts:116
+issuer_stream_set gated, never auto-approved, editable issuer -> bundled-apps/invoicing/app.manifest.json:2735
+A switch applies from its confirmation, earlier invoices keep issuer and numbers, unpaid ones alert -> bundled-apps/invoicing/src/streams.ts:69 ; bundled-apps/invoicing/src/streams.ts:223
+Stripe's emails: asked until a person confirms, an agent's call waits -> bundled-apps/invoicing/src/streams.ts:255 ; bundled-apps/invoicing/src/ui/IssuerStreams.tsx:49
+One customer, one issuer on six tools and the month-end row -> bundled-apps/invoicing/src/issuer-guard.ts:1 ; bundled-apps/invoicing/src/recurring/issue-job.ts:54
+stripe_guard_unavailable until imported or while the key cannot read -> bundled-apps/stripe/src/tools/routes.ts:43
+Unlinked Stripe customers found by email -> bundled-apps/stripe/src/tools/routes.ts:64
+billsOtherThanStripe at least 5 characters, a person's statement -> bundled-apps/invoicing/src/issuer-guard.ts:27

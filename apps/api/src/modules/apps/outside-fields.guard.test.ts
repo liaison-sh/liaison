@@ -163,6 +163,7 @@ const LISTED = new Map<string, string>([
     `the org's own schedules: cadence, dates and the lines its people wrote, the free-text notes left out: ${NONE}`,
   ],
   ["invoicing:settings_tax_regime_list", `org settings: ${NONE}`],
+  ["invoicing:issuer_stream_get", `who issues each stream and who confirmed Stripe's emails, set by the org's people: ${NONE}`],
   ["invoicing:settings_hs_code_list", `the org's code library: ${NONE}`],
   ["invoicing:settings_shop_mapping_list", `org settings: ${NONE}`],
   [

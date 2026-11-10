@@ -228,6 +228,35 @@ async function unpaidStripeDocuments(ctx: StreamsCtx, issuerProfileId: string): 
   return rows.filter((d) => typeof d.external_ref === "string" && d.external_ref.startsWith("stripe:")).length
 }
 
+/** The profile and its connected card stream, or why there is none. Read-only. */
+async function cardStreamOf(ctx: StreamsCtx, issuerProfileId: string): Promise<{ profile: Row; row: Row } | ErrorEnvelope> {
+  const profile = (await ctx.db.findOne("issuer_profiles", issuerProfileId)) as Row | null
+  if (!profile) return fail("issuer_not_found", `No issuer profile ${issuerProfileId}; nothing was changed.`)
+  const row = (await streamRows(ctx)).find((r) => r.issuer_profile_id === issuerProfileId) ?? null
+  if (!row || row.stripe_connected !== true) {
+    return fail(
+      "stripe_not_connected",
+      `Stripe is not connected, so ${String(profile.legal_name ?? issuerProfileId)} has no card stream; nothing was changed. Connect Stripe first.`,
+    )
+  }
+  return { profile, row }
+}
+
+/** Stage-time check of issuer_stream_set: a card stream exists to decide. The pick itself is the person's, on the card. */
+export async function issuerStreamSetPreflight(ctx: StreamsCtx, input: { issuerProfileId: string; stream?: string }) {
+  if (input.stream && input.stream !== "card") {
+    return fail("stream_not_choosable", "Only card subscriptions on Stripe have a choice of issuer; transfer and one-off invoices are always Liaison's. Nothing was staged.")
+  }
+  const found = await cardStreamOf(ctx, input.issuerProfileId)
+  return "status" in found ? found : { ok: true }
+}
+
+/** Stage-time check of issuer_emails_confirm: a card stream exists to confirm. */
+export async function issuerEmailsConfirmPreflight(ctx: StreamsCtx, input: { issuerProfileId: string }) {
+  const found = await cardStreamOf(ctx, input.issuerProfileId)
+  return "status" in found ? found : { ok: true }
+}
+
 export async function issuerStreamSet(
   ctx: StreamsCtx,
   input: { issuerProfileId: string; stream?: string; issuer?: string },
@@ -244,15 +273,9 @@ export async function issuerStreamSet(
       "Pick who issues the invoices of card subscriptions, liaison or stripe; nothing was changed. Ask the person, and check the choice with their accountant.",
     )
   }
-  const profile = (await ctx.db.findOne("issuer_profiles", input.issuerProfileId)) as Row | null
-  if (!profile) return fail("issuer_not_found", `No issuer profile ${input.issuerProfileId}; nothing was changed.`)
-  const row = (await streamRows(ctx)).find((r) => r.issuer_profile_id === input.issuerProfileId) ?? null
-  if (!row || row.stripe_connected !== true) {
-    return fail(
-      "stripe_not_connected",
-      `Stripe is not connected, so ${String(profile.legal_name ?? input.issuerProfileId)} has no card stream to decide; nothing was changed. Connect Stripe first.`,
-    )
-  }
+  const found = await cardStreamOf(ctx, input.issuerProfileId)
+  if ("status" in found) return found
+  const { profile, row } = found
   const by = await decider(ctx)
   const now = new Date().toISOString()
   const before = (row.issuer as StreamIssuer) ?? "undecided"
@@ -301,10 +324,9 @@ export async function issuerStreamSet(
  * is the person's.
  */
 export async function issuerEmailsConfirm(ctx: StreamsCtx, input: { issuerProfileId: string }) {
-  const row = (await streamRows(ctx)).find((r) => r.issuer_profile_id === input.issuerProfileId) ?? null
-  if (!row || row.stripe_connected !== true) {
-    return fail("stripe_not_connected", `Stripe is not connected for issuer profile ${input.issuerProfileId}, so there is nothing to confirm; nothing was recorded.`)
-  }
+  const found = await cardStreamOf(ctx, input.issuerProfileId)
+  if ("status" in found) return found
+  const { row } = found
   if (!ctx.approval && (await actingAgent(ctx)) !== null) {
     const approval = ctx.requestApproval
       ? await ctx.requestApproval({

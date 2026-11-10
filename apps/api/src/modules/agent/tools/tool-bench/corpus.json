@@ -2816,5 +2816,29 @@
     "say": "envoie-lui un lien pour mettre à jour sa carte",
     "typed": ["lien pour changer de carte", "card update link"],
     "any": ["stripe__card_update_link"]
+  },
+  {
+    "id": "WI1",
+    "set": "seed",
+    "lang": "en",
+    "say": "who sends the legal invoice for our card subscriptions, us or Stripe",
+    "typed": ["who issues card subscription invoices", "invoice issuer Stripe or Liaison"],
+    "any": ["invoicing__issuer_stream_get"]
+  },
+  {
+    "id": "WI2",
+    "set": "seed",
+    "lang": "fr",
+    "say": "je veux que ce soit Stripe qui émette les factures des abonnements par carte",
+    "typed": ["Stripe émet les factures", "changer l'émetteur des abonnements carte"],
+    "any": ["invoicing__issuer_stream_set"]
+  },
+  {
+    "id": "WI3",
+    "set": "seed",
+    "lang": "en",
+    "say": "I turned off Stripe's receipt and invoice emails to customers, note it",
+    "typed": ["Stripe emails are off", "confirm Stripe customer emails off"],
+    "any": ["invoicing__issuer_emails_confirm"]
   }
 ]

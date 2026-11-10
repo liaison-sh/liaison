@@ -1380,6 +1380,10 @@
   "homeGroupTasks": "Tâches",
   "homeGroupTeam": "Équipe",
   "homeKind": {
+    "issuer_switched": {
+      "one": "émetteur des abonnements carte changé, factures impayées",
+      "other": "émetteurs des abonnements carte changés, factures impayées"
+    },
     "awaiting_agent": {
       "one": "en attente de réponse",
       "other": "en attente de réponse"

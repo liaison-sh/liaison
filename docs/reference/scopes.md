@@ -193,12 +193,12 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `invoicing:contacts:write` | manifest scopes; tools contact_relationships_set, counterparty_identity_set, counterparty_territory_set, einvoicing_backfill_identities |  |
 | `invoicing:documents:read` | manifest scopes; entity document; tools activity_read, approval_route_read, customer_history, deferred_list, documents_download_pdf, documents_for_orders and 16 more |  |
 | `invoicing:documents:write` | manifest scopes; tools credit_note_create_and_issue, credit_note_issue, deferred_tax_override, documents_convert_local, documents_convert_to_invoice, documents_mark_paid and 29 more |  |
-| `invoicing:internal` | manifest scopes |  |
+| `invoicing:internal` | manifest scopes; tool card_stream_issuer |  |
 | `invoicing:issuer:admin` | manifest scopes |  |
 | `invoicing:received:read` | manifest scopes; entity received_einvoice; tools received_einvoices_get, received_einvoices_list |  |
 | `invoicing:received:write` | manifest scopes; tools received_einvoice_action_request, received_einvoice_set_status, received_einvoices_refresh |  |
-| `invoicing:settings:read` | manifest scopes; settings sections hs-codes, issuers, shop-mappings, tax-regimes; tools documents_issue_preview, einvoicing_provider_options, einvoicing_settings_get, einvoicing_settings_values, settings_hs_code_list, settings_issuer_profile_list and 2 more |  |
-| `invoicing:settings:write` | manifest scopes; settings section einvoicing; tools einvoicing_settings_set, hs_codes_library_delete, hs_codes_library_upsert, settings_issuer_profile_create, settings_issuer_profile_delete, settings_issuer_profile_update |  |
+| `invoicing:settings:read` | manifest scopes; settings sections hs-codes, issuers, shop-mappings, tax-regimes; tools documents_issue_preview, einvoicing_provider_options, einvoicing_settings_get, einvoicing_settings_values, issuer_stream_get, settings_hs_code_list and 3 more |  |
+| `invoicing:settings:write` | manifest scopes; settings section einvoicing; tools einvoicing_settings_set, hs_codes_library_delete, hs_codes_library_upsert, issuer_emails_confirm, issuer_stream_set, settings_issuer_profile_create and 2 more |  |
 
 ## knowledge
 

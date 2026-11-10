@@ -2611,7 +2611,7 @@
       "writesToTable": "app_invoicing.recurring_schedules",
       "params": {
         "type": "object",
-        "properties": { "billsOtherThanStripe": { "type": "string", "minLength": 5, "maxLength": 300, "description": "What this bills when the customer also pays a live Stripe subscription, in a person's words." }, 
+        "properties": { "billsOtherThanStripe": { "type": "string", "minLength": 5 }, 
           "issuer_profile_id": { "type": "string" },
           "status": { "type": "string", "enum": ["draft", "active"], "description": "Default active; draft bills nothing yet." },
           "issue_mode": { "type": "string", "enum": ["review", "auto"], "description": "review only here; auto is set by recurring_schedule_update." },
@@ -2661,7 +2661,7 @@
       "writesToTable": "app_invoicing.recurring_schedules",
       "params": {
         "type": "object",
-        "properties": { "billsOtherThanStripe": { "type": "string", "minLength": 5, "maxLength": 300, "description": "What this bills when the customer also pays a live Stripe subscription, in a person's words." }, 
+        "properties": { "billsOtherThanStripe": { "type": "string", "minLength": 5 }, 
           "id": { "type": "string" },
           "status": { "type": "string", "enum": ["active", "ended"] },
           "issue_mode": { "type": "string", "enum": ["review", "auto"], "description": "auto issues without a card; a person turns it on." },
@@ -2719,7 +2719,7 @@
     },
     "issuer_stream_get": {
       "description": "Who issues what for each issuer profile: card subscriptions on Stripe (Liaison, Stripe or undecided), recurring by transfer and one-off invoices (always Liaison), and whether a person confirmed Stripe's own customer emails are off.",
-      "searchKeywords": ["émetteur", "qui facture", "issuer", "stripe"],
+      "searchKeywords": ["émetteur", "facturation", "issuer", "stripe"],
       "deferLoading": true,
       "readOnly": true,
       "requiredScopes": ["invoicing:settings:read"],
@@ -2735,10 +2735,11 @@
     "issuer_stream_set": {
       "summarizer": "summarizeIssuerStreamSet",
       "description": "Choose who issues the legal invoice of card subscriptions on Stripe: liaison or stripe. A person decides; it applies to invoices finalized after the confirmation, earlier ones keep their issuer and numbers.",
-      "searchKeywords": ["émetteur", "qui facture", "issuer", "stripe"],
+      "searchKeywords": ["émetteur", "facturation", "issuer", "stripe"],
       "deferLoading": true,
       "requiredScopes": ["invoicing:settings:write"],
       "handler": "issuerStreamSetHandler",
+      "preflight": "issuerStreamSetPreflightHandler",
       "timeoutMs": 30000,
       "gated": true,
       "noAutoApprove": true,
@@ -2761,10 +2762,11 @@
     "issuer_emails_confirm": {
       "summarizer": "summarizeIssuerEmailsConfirm",
       "description": "Record a person's statement that Stripe's own emails to customers (finalized invoices, credit notes, receipts) are off. Liaison cannot read that setting; an agent's call waits for a person.",
-      "searchKeywords": ["emails stripe", "reçus", "receipts"],
+      "searchKeywords": ["e-mails", "reçus", "receipts", "stripe"],
       "deferLoading": true,
       "requiredScopes": ["invoicing:settings:write"],
       "handler": "issuerEmailsConfirmHandler",
+      "preflight": "issuerEmailsConfirmPreflightHandler",
       "timeoutMs": 15000,
       "conditionalGate": true,
       "externalEffect": true,
@@ -2819,7 +2821,7 @@
       "writesToTable": "app_invoicing.documents",
       "params": {
         "type": "object",
-        "properties": { "billsOtherThanStripe": { "type": "string", "minLength": 5, "maxLength": 300, "description": "What this bills when the customer also pays a live Stripe subscription, in a person's words." }, 
+        "properties": { "billsOtherThanStripe": { "type": "string", "minLength": 5 }, 
           "run_id": {
             "type": "string",
             "description": "Add as a row of this month-end run."
@@ -3099,7 +3101,7 @@
       "writesToTable": "app_invoicing.documents",
       "params": {
         "type": "object",
-        "properties": { "billsOtherThanStripe": { "type": "string", "minLength": 5, "maxLength": 300, "description": "What this bills when the customer also pays a live Stripe subscription, in a person's words." }, 
+        "properties": { "billsOtherThanStripe": { "type": "string", "minLength": 5 }, 
           "draft_id": {
             "type": "string"
           },
@@ -3398,7 +3400,7 @@
       "approvalImpact": "external",
       "params": {
         "type": "object",
-        "properties": { "billsOtherThanStripe": { "type": "string", "minLength": 5, "maxLength": 300, "description": "What this bills when the customer also pays a live Stripe subscription, in a person's words." }, 
+        "properties": { "billsOtherThanStripe": { "type": "string", "minLength": 5 }, 
           "draft_id": {
             "type": "string"
           },
@@ -3440,7 +3442,7 @@
       "gated": true,
       "params": {
         "type": "object",
-        "properties": { "billsOtherThanStripe": { "type": "string", "minLength": 5, "maxLength": 300, "description": "What this bills when the customer also pays a live Stripe subscription, in a person's words." }, 
+        "properties": { "billsOtherThanStripe": { "type": "string", "minLength": 5 }, 
           "buyer_is_consumer": {
             "type": "boolean",
             "description": "The approval card shows it."
@@ -6108,7 +6110,7 @@
   "attention": {
     "groupLabel": { "label": "Invoicing", "labelKey": "kernel.homeGroupInvoicing" },
     "translations": [
-      {"event": "stripe_stream:switched", "kind": "invoicing:stripe_stream.switched", "urgency": 60, "summary": "Card subscriptions are now invoiced by {{data.issuer}}. {{data.unpaid}} invoices issued before the change are unpaid: they keep their issuer and numbers. Check the change with your accountant.", "recipients": {"kind": "scope_holders", "scope": "invoicing:settings:write"}},
+      {"event": "stripe_stream:switched", "kind": "invoicing:stripe_stream.issuer_switched", "urgency": 60, "summary": "Card subscriptions are now invoiced by {{data.issuer}}. {{data.unpaid}} invoices issued before the change are unpaid: they keep their issuer and numbers. Check the change with your accountant.", "recipients": {"kind": "scope_holders", "scope": "invoicing:settings:write"}},
       {"event": "recurring_run:partial", "kind": "invoicing:recurring_run.partial", "urgency": 70, "summary": "Draft {{data.document_id}} of the month-end run was not issued ({{data.code}}): {{data.reason}} It stays a draft and used no number.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "recurring_run:due", "kind": "invoicing:recurring_run.due", "urgency": 85, "summary": "The month-end run for {{data.period}} waits for approval. {{data.when}}: invoices must issue by {{data.latest_issue_on}}.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "recurring_run:held", "kind": "invoicing:recurring_run.held", "urgency": 90, "summary": "Month-end invoicing is held until {{data.until}} by the organisation's daily app limit ({{data.job}}). Nothing was drafted or issued meanwhile; it resumes by itself after that time.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},

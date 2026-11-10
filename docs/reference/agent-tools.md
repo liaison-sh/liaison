@@ -453,6 +453,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | --- | --- | --- | --- |
 | `activity_read` | A company's or a contact's documents issued, paid and credited, newest first, for their timeline. |  | `invoicing:documents:read` |
 | `approval_route_read` | Who a month-end run's card is for: its account manager when every row has the same one. |  | `invoicing:documents:read` |
+| `card_stream_issuer` | Who issues the invoices of card payments on Stripe for the org. |  | `invoicing:internal` |
 | `contact_relationships_get` | Get a contact's invoicing relationship classification (customer/vendor). |  | `invoicing:contacts:read` |
 | `contact_relationships_set` | Set a contact's relationship classification (customer/vendor/both/other). |  | `invoicing:contacts:write` |
 | `counterparty_identity_get` | The e-invoicing identity of a counterparty: customer kind, SIREN / SIRET and whether the SIREN is confirmed against the business registry, registry name and head office, territory treatment. |  | `invoicing:contacts:read` |
@@ -502,6 +503,9 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `hs_codes_unassign` | Clear a product's customs overlay, restoring the Shopify value. |  | `invoicing:documents:write` |
 | `invoice_create_and_issue` | Create a draft invoice and issue it in one call. | yes | `invoicing:documents:write` |
 | `invoice_issue` | Issue an invoice from a draft. | yes | `invoicing:documents:write` |
+| `issuer_emails_confirm` | Record a person's statement that Stripe's own emails to customers (finalized invoices, credit notes, receipts) are off. |  | `invoicing:settings:write` |
+| `issuer_stream_get` | Who issues what for each issuer profile: card subscriptions on Stripe (Liaison, Stripe or undecided), recurring by transfer and one-off invoices (always Liaison), and whether a person confirmed Stripe's own customer emails are off. |  | `invoicing:settings:read` |
+| `issuer_stream_set` | Choose who issues the legal invoice of card subscriptions on Stripe: liaison or stripe. | yes | `invoicing:settings:write` |
 | `legal_originals_verify` | Check that the stored legal originals (the exact file of each issued invoice and credit note's first render, the Factur-X for an e-invoice, and imported legacy originals) are intact: recomputes each file's fingerprint and compares it with the one recorded when it was fixed. |  | `invoicing:documents:read` |
 | `order_reissue_apply` | Reissue an invoice after a Shopify order edit changed the LINE SET or the AMOUNTS (an order edit that only touches address, notes, tags, or fulfilment does NOT call this). | yes | `invoicing:documents:write` |
 | `orders_invoiceability_check` | Would the order-created auto-flow invoice this Shopify order, or park it (no invoice)? |  | `invoicing:documents:read` |
@@ -813,7 +817,7 @@ Stripe: customers, subscriptions, invoices and payments from your Stripe account
 | --- | --- | --- | --- |
 | `activity_read` | A company's or a contact's Stripe rows for their timeline: payment failed, retry failed, subscription started or cancelled, refund, dispute. |  | `stripe:customers:read` |
 | `approval_route_read` | Which company a pending approval about a Stripe customer, subscription or charge is for. |  | `stripe:customers:read` |
-| `billing_status_for_counterparty` | Whether a contact or company pays a live Stripe subscription, with those subscriptions and customer ids. |  | `stripe:internal` |
+| `billing_status_for_counterparty` | Whether a contact or company, or a Stripe customer with one of their emails, pays a live Stripe subscription; unavailable until the import is complete. |  | `stripe:internal` |
 | `card_update_link` | A Stripe page where a customer can pay with a new card: the customer portal login link when set, else their open invoice's page. |  | `stripe:customers:read` |
 | `connection_check` | Check the saved Stripe key: one read per permission Liaison uses and a refund probe that creates nothing. |  | `stripe:admin:connection` |
 | `connection_precheck` | The key check run on a key before it is stored: a key Stripe refuses, of another account or of the other mode is not kept. |  | `stripe:admin:connection` |

@@ -95,6 +95,47 @@ describe("runAutoplay", () => {
     expect(pressed).toEqual(["fresh"])
   })
 
+  // CI, projects.basics at 390: the send button greyed out for an instant
+  // while the live connection reconnected, during the cursor's glide to it.
+  // The press on the disabled button reached nothing, the script reported
+  // done, and the typed request sat in the composer unsent.
+  it("waits for a button disabled during the glide to take the press again", async () => {
+    const send = add(document.createElement("button"), "send")
+    const pressed: boolean[] = []
+    send.addEventListener("click", () => pressed.push(send.disabled))
+    const glide = {
+      moveTo: vi.fn(async (el: HTMLElement) => {
+        if (el !== send || glide.moveTo.mock.calls.length > 1) return
+        send.disabled = true
+        setTimeout(() => {
+          send.disabled = false
+        }, 30)
+      }),
+    }
+    const result = await runAutoplay([{ click: "send" }], {
+      cursor: glide,
+      signal: new AbortController().signal,
+      ...fast,
+      findTimeoutMs: 500,
+    })
+    expect(result).toEqual({ status: "done" })
+    expect(pressed).toEqual([false])
+  })
+
+  it("a button that stays disabled fails the step instead of a press that reaches nothing", async () => {
+    const send = add(document.createElement("button"), "send")
+    send.disabled = true
+    const pressed = vi.fn()
+    send.addEventListener("click", pressed)
+    const result = await runAutoplay([{ click: "send" }], {
+      cursor,
+      signal: new AbortController().signal,
+      ...fast,
+    })
+    expect(result).toEqual({ status: "failed", missing: "send" })
+    expect(pressed).not.toHaveBeenCalled()
+  })
+
   it("types into a textarea one character at a time and presses a key", async () => {
     const ta = add(document.createElement("textarea"), "field")
     const inputs: string[] = []

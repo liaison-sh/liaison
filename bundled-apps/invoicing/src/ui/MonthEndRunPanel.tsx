@@ -300,7 +300,7 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
                 <button
                   type="button"
                   data-testid="month-end-approve-new"
-                  class="min-h-11 rounded bg-accent px-3 text-white"
+                  class="min-h-11 rounded bg-accent px-3 text-accent-foreground"
                   onClick={() => void approveNow()}
                 >
                   {approveLabel()}
@@ -337,7 +337,7 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
       <Show when={(rights().approve && !rights().write && props.status === "pending") || rights().write}>
         <div data-testid="month-end-actions" class="mt-2 flex flex-wrap gap-2">
           <Show when={rights().approve && !rights().write && props.status === "pending" && summary().count > 0}>
-            <button type="button" data-testid="month-end-approve" class="min-h-11 rounded bg-accent px-3 text-white" onClick={() => void approveNow()}>
+            <button type="button" data-testid="month-end-approve" class="min-h-11 rounded bg-accent px-3 text-accent-foreground" onClick={() => void approveNow()}>
               {approveLabel()}
             </button>
           </Show>
@@ -444,12 +444,12 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
                         <Show
                           when={fromSchedule()}
                           fallback={
-                            <button type="button" data-testid="month-end-row-save" class="min-h-11 rounded bg-accent px-3 text-white" onClick={() => void saveRow(row, null)}>
+                            <button type="button" data-testid="month-end-row-save" class="min-h-11 rounded bg-accent px-3 text-accent-foreground" onClick={() => void saveRow(row, null)}>
                               {tr("Save")}
                             </button>
                           }
                         >
-                          <button type="button" data-testid="month-end-row-save-month" class="min-h-11 rounded bg-accent px-3 text-white" onClick={() => void saveRow(row, "this_month")}>
+                          <button type="button" data-testid="month-end-row-save-month" class="min-h-11 rounded bg-accent px-3 text-accent-foreground" onClick={() => void saveRow(row, "this_month")}>
                             {tr("Save for {{month}} only", { month: month() })}
                           </button>
                           <button type="button" data-testid="month-end-row-save-on" class="min-h-11 rounded border border-border px-3" onClick={() => void saveRow(row, "from_now_on")}>
@@ -570,7 +570,7 @@ function RowAddressFix(props: {
             <button
               type="button"
               data-testid={`month-end-row-fix-save-${id}`}
-              class="min-h-11 rounded bg-accent px-3 text-white disabled:opacity-55"
+              class="min-h-11 rounded bg-accent px-3 text-accent-foreground disabled:opacity-55"
               disabled={!typed().trim()}
               onClick={() => props.onSave({ counterparty_address: typed().trim() })}
             >
@@ -670,7 +670,7 @@ function AddForgotten(props: {
         <button
           type="button"
           data-testid="month-end-add-customer-save"
-          class="min-h-11 rounded bg-accent px-3 text-white disabled:opacity-55"
+          class="min-h-11 rounded bg-accent px-3 text-accent-foreground disabled:opacity-55"
           disabled={!ready()}
           onClick={() =>
             void add({

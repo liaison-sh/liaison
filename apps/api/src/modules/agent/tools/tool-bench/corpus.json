@@ -2646,7 +2646,7 @@
     "modelRun": true
   },
   {
-    "id": "S01",
+    "id": "Y01",
     "set": "seed",
     "lang": "fr",
     "say": "vérifie la clé Stripe",
@@ -2654,7 +2654,7 @@
     "any": ["stripe__connection_check"]
   },
   {
-    "id": "S02",
+    "id": "Y02",
     "set": "seed",
     "lang": "fr",
     "say": "quels clients Stripe ne sont liés à aucune entreprise ?",
@@ -2662,7 +2662,7 @@
     "any": ["stripe__customers_search"]
   },
   {
-    "id": "S03",
+    "id": "Y03",
     "set": "seed",
     "lang": "en",
     "say": "show me the Stripe customer for Atelier Lune",
@@ -2670,7 +2670,7 @@
     "any": ["stripe__customers_get"]
   },
   {
-    "id": "S04",
+    "id": "Y04",
     "set": "seed",
     "lang": "fr",
     "say": "rattache ce client Stripe à l'entreprise Atelier Lune",
@@ -2678,7 +2678,7 @@
     "any": ["stripe__customer_link"]
   },
   {
-    "id": "S05",
+    "id": "Y05",
     "set": "seed",
     "lang": "en",
     "say": "which subscriptions are past due?",
@@ -2686,7 +2686,7 @@
     "any": ["stripe__subscriptions_search"]
   },
   {
-    "id": "S06",
+    "id": "Y06",
     "set": "seed",
     "lang": "fr",
     "say": "les factures Stripe impayées de ce client",
@@ -2694,7 +2694,7 @@
     "any": ["stripe__invoices_search"]
   },
   {
-    "id": "S07",
+    "id": "Y07",
     "set": "seed",
     "lang": "en",
     "say": "list the failed card payments this week",
@@ -2702,7 +2702,7 @@
     "any": ["stripe__payments_search"]
   },
   {
-    "id": "S08",
+    "id": "Y08",
     "set": "seed",
     "lang": "fr",
     "say": "y a-t-il des litiges ouverts sur Stripe ?",

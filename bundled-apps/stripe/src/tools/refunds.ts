@@ -138,10 +138,31 @@ export async function readCharge(ctx: StripeHttpCtx, chargeId: string): Promise<
 
 const isRefusal = (v: unknown): v is ToolRefusal => (v as ToolRefusal | null)?.status === "error"
 
+/**
+ * Who issues the legal invoice for card payments, as invoicing's "Who issues what" records it:
+ * `liaison` (mode A: each charge has a Liaison invoice, and a refund a credit note), or anything
+ * else (Stripe issues, or nobody decided yet). Invoicing off or absent: no Liaison invoice exists.
+ */
+async function cardStreamIssuer(ctx: MoneyCtx): Promise<string | null | ToolRefusal> {
+  if (!ctx.executeTool) return null
+  const env = await ctx.executeTool("invoicing:card_stream_issuer", {})
+  if (env.status === "completed") {
+    const issuer = (env.result as { issuer?: unknown } | null)?.issuer
+    return typeof issuer === "string" ? issuer : null
+  }
+  if (env.status === "error" && env.error.code === "tool_not_found") return null
+  return refuseTool(
+    "issuer_unknown",
+    "Liaison could not read who issues the invoices for card payments, so it cannot tell whether a credit note must follow; nothing was staged or sent. Next step: try again in a minute.",
+  )
+}
+
 /** When Liaison issues the invoices (mode A), the Liaison invoice behind this charge, or null. */
-async function invoiceBehind(db: MoneyCtx["db"], chargeId: string): Promise<{ modeA: boolean; documentId: string | null }> {
-  const liaisonIssued = await db.findMany("stripe_invoices", { where: { issuer: "liaison" }, limit: 1 })
-  if (liaisonIssued.length === 0) return { modeA: false, documentId: null }
+async function invoiceBehind(ctx: MoneyCtx, chargeId: string): Promise<{ modeA: boolean; documentId: string | null } | ToolRefusal> {
+  const issuer = await cardStreamIssuer(ctx)
+  if (isRefusal(issuer)) return issuer
+  if (issuer !== "liaison") return { modeA: false, documentId: null }
+  const db = ctx.db
   const payment = ((await db.findMany("stripe_payments", { where: { stripe_id: chargeId }, limit: 1 })) as Obj[])[0]
   const invoiceId = typeof payment?.invoice_id === "string" ? payment.invoice_id : null
   if (!invoiceId) return { modeA: true, documentId: null }
@@ -208,7 +229,9 @@ export async function refundsCreatePreflight(params: Obj | undefined, ctx: Money
   const p = params ?? {}
   const checked = await checks(p, ctx)
   if (isRefusal(checked)) return checked
-  const { modeA, documentId } = await invoiceBehind(ctx.db, checked.charge.id)
+  const behind = await invoiceBehind(ctx, checked.charge.id)
+  if (isRefusal(behind)) return behind
+  const { modeA, documentId } = behind
   if (modeA && !documentId) {
     return refuseTool(
       "no_invoice_for_refund",

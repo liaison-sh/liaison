@@ -52,6 +52,7 @@ import { issueDateParts } from "../issue-date"
 import { runItemDraftRefusal } from "../recurring/run-card"
 import { issueWithFxRate } from "./fx-issue"
 import { checkDraftBuyer } from "./quote-proforma-po"
+import { checkIssuerGuard, type GuardCtx } from "../issuer-guard"
 
 /**
  * Read-only validation shared by `invoiceIssue` and its stage-time preflight export: the draft
@@ -61,8 +62,9 @@ import { checkDraftBuyer } from "./quote-proforma-po"
  */
 async function preflightInvoiceIssueParams(
   ctx: MutationsCtx,
-  input: { draft_id: string },
+  input: { draft_id: string; billsOtherThanStripe?: string | null },
   forRun = false,
+  stage: "preflight" | "handler" = "handler",
 ): Promise<
   | {
       ok: true
@@ -100,6 +102,17 @@ async function preflightInvoiceIssueParams(
         },
       },
     }
+  }
+  // One customer, one issuer: a customer Stripe bills is not invoiced again by hand. A Shopify order
+  // is its own sale, and a month-end row is checked by its run (recurring_item_issue).
+  if (!forRun && !draft.shopify_order_id && !draft.external_refs?.shopify_order_id) {
+    const guard = await checkIssuerGuard(ctx as GuardCtx, {
+      contactId: draft.counterparty_contact_id,
+      emails: [draft.counterparty_email],
+      billsOtherThanStripe: input.billsOtherThanStripe,
+      stage,
+    })
+    if (!guard.ok) return { ok: false, error: guard.error }
   }
   if (!draft.lines || draft.lines.length === 0) {
     return {
@@ -167,14 +180,14 @@ async function preflightInvoiceIssueParams(
  */
 export async function invoiceIssuePreflight(
   ctx: MutationsCtx,
-  input: { draft_id: string },
+  input: { draft_id: string; billsOtherThanStripe?: string | null },
 ): Promise<PreflightResult> {
-  return toPreflightResult(await preflightInvoiceIssueParams(ctx, input))
+  return toPreflightResult(await preflightInvoiceIssueParams(ctx, input, false, "preflight"))
 }
 
 export async function invoiceIssue(
   ctx: MutationsCtx,
-  input: { draft_id: string; due_at?: string | null },
+  input: { draft_id: string; due_at?: string | null; billsOtherThanStripe?: string | null },
 ): Promise<MutationResult<{ document_id: string; number: string; einvoicing_warning?: EinvoicingWarning }>> {
   const pre = await preflightInvoiceIssueParams(ctx, input)
   if (!pre.ok) return pre.error
@@ -306,6 +319,8 @@ export interface InvoiceCreateAndIssueInput {
   /** The intra-EU buyer is a private consumer although the org's data suggests a business
    *  (see QuoteCreateAndIssueInput.buyer_is_consumer). */
   buyer_is_consumer?: boolean | null
+  /** What this invoice bills when the customer also pays a live Stripe subscription (a person's statement). */
+  billsOtherThanStripe?: string | null
   items: DraftLineInput[]
 }
 
@@ -318,6 +333,7 @@ export interface InvoiceCreateAndIssueInput {
 async function preflightInvoiceCreateAndIssueParams(
   ctx: MutationsCtx,
   rawInput: InvoiceCreateAndIssueInput,
+  stage: "preflight" | "handler" = "handler",
 ): Promise<
   | {
       ok: true
@@ -386,6 +402,17 @@ async function preflightInvoiceCreateAndIssueParams(
       }
     }
   }
+  // One customer, one issuer: a customer a live Stripe subscription bills is not invoiced again by
+  // hand. A Shopify order is its own sale.
+  if (!input.shopify_order_id) {
+    const guard = await checkIssuerGuard(ctx as GuardCtx, {
+      contactId: input.counterparty.contact_id ?? null,
+      emails: [input.counterparty.email],
+      billsOtherThanStripe: input.billsOtherThanStripe,
+      stage,
+    })
+    if (!guard.ok) return { ok: false, error: guard.error }
+  }
   // Threshold check happens BEFORE persisting any draft — keeps the "above
   // threshold → no draft persisted as document" invariant the tests pin.
   // Resolve the issuer safely: default to the sole profile, or return a typed
@@ -431,7 +458,7 @@ export async function invoiceCreateAndIssuePreflight(
   ctx: MutationsCtx,
   rawInput: InvoiceCreateAndIssueInput,
 ): Promise<PreflightResult> {
-  return toPreflightResult(await preflightInvoiceCreateAndIssueParams(ctx, rawInput))
+  return toPreflightResult(await preflightInvoiceCreateAndIssueParams(ctx, rawInput, "preflight"))
 }
 
 export async function invoiceCreateAndIssue(

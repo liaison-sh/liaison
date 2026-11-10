@@ -7,6 +7,7 @@
 // Every date a schedule takes is the issuer's civil date (`civilDateOf`), never a UTC date, and a
 // schedule that is paused or ended is never due.
 import { civilDateOf, type TimeSurface } from "../issue-date"
+import { billsOtherOf, checkIssuerGuard } from "../issuer-guard"
 import type { ErrorEnvelope, MutationsCtx } from "../mutations/shared"
 import {
   type Cadence,
@@ -22,6 +23,8 @@ import {
 export type RecurringCtx = Pick<MutationsCtx, "getUserId" | "db"> & {
   time: TimeSurface["time"]
   approval?: MutationsCtx["approval"] | null
+  executeTool?: MutationsCtx["executeTool"]
+  turn?: { get(): Promise<unknown> }
 }
 
 const ENTITY = "recurring_schedules"
@@ -50,6 +53,8 @@ export interface ScheduleFields {
   language?: string
   lines: ScheduleLineInput[]
   notes?: string | null
+  /** What the schedule bills when the customer also pays a live Stripe subscription (a person's statement). */
+  billsOtherThanStripe?: string | null
 }
 
 export interface ScheduleCreateInput extends ScheduleFields {
@@ -87,6 +92,7 @@ export interface ScheduleRow extends Cadence {
   next_draft_on?: string | null
   version: number
   last_document_id?: string | null
+  bills_other_than_stripe?: string | null
   created_by?: string
 }
 
@@ -188,6 +194,26 @@ export function checkScheduleInput(raw: ScheduleFields & { issue_mode?: string }
   return errors.length > 0 ? invalid(errors) : null
 }
 
+/**
+ * One customer, one issuer (issuer-guard.ts): a schedule for a customer a live Stripe subscription
+ * bills is refused unless a person says what else it bills. Checked at the card and again when it
+ * runs.
+ */
+async function scheduleGuard(
+  ctx: RecurringCtx,
+  who: { contact_id?: string | null; company_id?: string | null },
+  billsOther: unknown,
+  stage: "preflight" | "handler",
+): Promise<Fail | null> {
+  const guard = await checkIssuerGuard(ctx, { contactId: who.contact_id ?? null, companyId: who.company_id ?? null, billsOtherThanStripe: billsOther, stage })
+  return guard.ok ? null : (guard.error as Fail)
+}
+
+/** Stage-time check of a new schedule: its fields, then the issuer guard. */
+export async function checkScheduleCreate(ctx: RecurringCtx, raw: ScheduleFields & { issue_mode?: string }): Promise<Fail | null> {
+  return checkScheduleInput(raw) ?? (await scheduleGuard(ctx, raw, raw.billsOtherThanStripe, "preflight"))
+}
+
 export async function recurringScheduleCreate(
   ctx: RecurringCtx,
   raw: ScheduleCreateInput,
@@ -195,7 +221,7 @@ export async function recurringScheduleCreate(
   { status: "completed"; id: string; scheduleStatus: string; nextIssueOn: string | null; nextDraftOn: string | null; message: string } | Fail
 > {
   const input = withCoercedLines(raw)
-  const refused = checkScheduleInput(input)
+  const refused = checkScheduleInput(input) ?? (await scheduleGuard(ctx, input, input.billsOtherThanStripe, "handler"))
   if (refused) return refused
   const issuer = await issuerOf(ctx, input.issuer_profile_id)
   if (isFail(issuer)) return issuer
@@ -221,6 +247,9 @@ export async function recurringScheduleCreate(
     language: input.language ?? issuer.default_language ?? "en",
     lines: input.lines.map((l) => ({ ...l, line_kind: l.line_kind ?? "service" })),
     notes: input.notes ?? null,
+    ...(billsOtherOf(input.billsOtherThanStripe)
+      ? { bills_other_than_stripe: billsOtherOf(input.billsOtherThanStripe), bills_other_by: ctx.approval?.approvalDeciderId ?? userId }
+      : {}),
     next_issue_on: dates?.next_issue_on ?? null,
     next_draft_on: dates?.next_draft_on ?? null,
     version: 1,
@@ -246,7 +275,11 @@ function merged(row: ScheduleRow, patch: Partial<ScheduleFields>): ScheduleRow {
 }
 
 /** Stage-time check of an update, against the schedule as it stands. */
-export async function checkScheduleUpdate(ctx: RecurringCtx, raw: ScheduleUpdateInput): Promise<Fail | null> {
+export async function checkScheduleUpdate(
+  ctx: RecurringCtx,
+  raw: ScheduleUpdateInput,
+  stage: "preflight" | "handler" = "handler",
+): Promise<Fail | null> {
   const input = withCoercedLines(raw)
   const row = await load(ctx, input.id)
   if ("status" in row && row.status === "error") return row as Fail
@@ -254,10 +287,13 @@ export async function checkScheduleUpdate(ctx: RecurringCtx, raw: ScheduleUpdate
   if (current.status === "ended") {
     return fail("schedule_ended", `Schedule ${current.id} has ended and cannot be changed. Save a new schedule instead.`)
   }
-  const { id: _id, status: _status, ...patch } = input
+  const { id: _id, status: _status, billsOtherThanStripe, ...patch } = input
   const next = merged(current, patch)
   const errors = [...validateSchedule(next), ...extraErrors(next)]
-  return errors.length > 0 ? invalid(errors) : null
+  if (errors.length > 0) return invalid(errors)
+  // Ending a schedule bills nothing more, so it never meets the guard.
+  if (raw.status === "ended") return null
+  return scheduleGuard(ctx, next, billsOtherThanStripe ?? current.bills_other_than_stripe, stage)
 }
 
 export async function recurringScheduleUpdate(
@@ -275,10 +311,15 @@ export async function recurringScheduleUpdate(
   const now = await today(ctx, issuer)
   if (!now.ok) return now.error
 
-  const { id: _id, status: wanted, ...patch } = input
+  const { id: _id, status: wanted, billsOtherThanStripe, ...patch } = input
   const next = merged(current, patch)
   const data: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(patch)) if (v !== undefined) data[k] = v
+  const statement = billsOtherOf(billsOtherThanStripe)
+  if (statement) {
+    data.bills_other_than_stripe = statement
+    data.bills_other_by = ctx.approval?.approvalDeciderId ?? (await ctx.getUserId())
+  }
   if (patch.lines) data.lines = patch.lines.map((l) => ({ ...l, line_kind: l.line_kind ?? "service" }))
 
   // Who turned automatic issuing on is the person who decided it: the approver of an agent's

@@ -8,7 +8,8 @@
 //     live Stripe subscription (invoicing's guard reads this one narrow tool);
 //   - `invoice_document_link`: the Liaison document a Stripe invoice became;
 import { refuseTool } from "@liaison/app-sdk"
-import { customerIdsFor, type ReadCtx, UUID } from "./read-common"
+import { decodeState, type InstallRow, storedPermissions } from "../connection"
+import { customerIdsFor, type ReadCtx, SCAN_CAP, UUID } from "./read-common"
 
 type Obj = Record<string, unknown>
 
@@ -30,18 +31,76 @@ export async function approvalRouteRead(params: Obj | undefined, ctx: ReadCtx) {
 }
 
 const LIVE = new Set(["trialing", "active", "past_due", "unpaid", "paused"])
+/** The import rows whose answer the guard needs before it may say "no live subscription". */
+const GUARD_RESOURCES = ["customers", "subscriptions"] as const
+
+/**
+ * Why the mirror cannot answer "no live subscription" yet, or null when it can: the connection is
+ * fully connected, no overlay (a refused key, a missing read, a stall, another account) and the
+ * customers and subscriptions imports are done. A mirror that is importing or partial would say
+ * "none" for a customer Stripe bills, so the guard is told it cannot know.
+ */
+async function mirrorUnavailable(ctx: ReadCtx): Promise<string | null> {
+  const install = ((await ctx.db.findMany("install_metadata", { limit: 1 })) as Obj[])[0]
+  const { base, overlay } = decodeState(install?.state)
+  if (base !== "connected") return `the Stripe connection is ${base.replace(/_/g, " ")}, not yet connected`
+  if (overlay === "partial") {
+    // A missing permission elsewhere (disputes, products) leaves this answer intact; a missing
+    // customers or subscriptions read does not.
+    const checks = storedPermissions(install as InstallRow | undefined ?? null)?.checks ?? null
+    const unread = GUARD_RESOURCES.find((r) => !checks?.some((c) => c.resource === r && c.level === "read" && c.state === "ok"))
+    if (unread) return `the Stripe key cannot read ${unread}`
+  } else if (overlay) return `the Stripe connection is ${overlay.replace(/_/g, " ")}`
+  for (const resource of GUARD_RESOURCES) {
+    const row = ((await ctx.db.findMany("sync_state", { where: { resource }, limit: 1 })) as Obj[])[0]
+    if (row?.status !== "done") return `the import of Stripe ${resource} is ${String(row?.status ?? "not started")}`
+  }
+  return null
+}
+
+const emailKey = (v: unknown): string | null => (typeof v === "string" && v.includes("@") ? v.trim().toLowerCase() : null)
+
+/** Mirror customers with exactly one of these emails, linked or not (an unlinked customer still pays). */
+async function customerIdsByEmail(ctx: ReadCtx, emails: string[]): Promise<string[]> {
+  if (emails.length === 0) return []
+  const wanted = new Set(emails)
+  const out: string[] = []
+  // Stripe keeps the email as typed, so the comparison folds case on both sides.
+  for (let offset = 0; offset < SCAN_CAP; offset += 500) {
+    const rows = (await ctx.db.findMany("stripe_customers", { limit: 500, offset })) as Obj[]
+    for (const r of rows) {
+      const e = emailKey(r.email)
+      if (e && wanted.has(e) && r.deleted_at == null) out.push(String(r.stripe_id))
+    }
+    if (rows.length < 500) break
+  }
+  return out
+}
 
 export async function billingStatusForCounterparty(params: Obj | undefined, ctx: ReadCtx) {
   const p = params ?? {}
   const contactId = typeof p.contactId === "string" && UUID.test(p.contactId) ? p.contactId : undefined
   const companyId = typeof p.companyId === "string" && UUID.test(p.companyId) ? p.companyId : undefined
+  const emails = [...new Set((Array.isArray(p.emails) ? p.emails : []).map(emailKey).filter((e): e is string => e !== null))]
+  const unavailable = await mirrorUnavailable(ctx)
+  if (unavailable) {
+    return {
+      live: null,
+      unavailable: true,
+      reason: unavailable,
+      subscriptions: [],
+      customerIds: [],
+      summary: `Stripe cannot say yet whether this customer pays a subscription: ${unavailable}.`,
+    }
+  }
   const customerIds = [
     ...new Set([
       ...(contactId ? await customerIdsFor(ctx, { contactId }) : []),
       ...(companyId ? await customerIdsFor(ctx, { companyId }) : []),
+      ...(await customerIdsByEmail(ctx, emails)),
     ]),
   ]
-  if (customerIds.length === 0) return { live: false, subscriptions: [], customerIds: [] }
+  if (customerIds.length === 0) return { live: false, unavailable: false, subscriptions: [], customerIds: [] }
   const subs = (await ctx.db.findMany("stripe_subscriptions", {
     where: { customer_id: { in: customerIds } },
     limit: 100,
@@ -49,6 +108,7 @@ export async function billingStatusForCounterparty(params: Obj | undefined, ctx:
   const live = subs.filter((s) => LIVE.has(String(s.status)))
   return {
     live: live.length > 0,
+    unavailable: false,
     subscriptions: live.map((s) => ({ id: String(s.stripe_id), plan: String(s.plan_name ?? "") })),
     customerIds,
   }

@@ -1104,3 +1104,26 @@ export function summarizeRecurringRunUnapprove(params: Record<string, unknown>):
     lines: [`Run ${String(params.run_id ?? "")}`],
   })
 }
+
+export function summarizeIssuerStreamSet(params: Record<string, unknown>): Promise<ApprovalSummaryShape> {
+  const issuer = params.issuer === "liaison" ? "Liaison" : params.issuer === "stripe" ? "Stripe" : null
+  return done({
+    kind: "issuer_stream_set",
+    title: issuer ? `${issuer} issues the invoices of card subscriptions on Stripe` : "Who issues the invoices of card subscriptions on Stripe?",
+    subtitle: "Starts with the next renewal, after you confirm",
+    lines: [
+      "Liaison: a legal invoice from Liaison for each charge, in your series; Stripe only takes the payment.",
+      "Stripe: Stripe's invoice is the legal one; Liaison keeps a copy marked Issued by Stripe.",
+      "Invoices already issued keep their issuer and numbers. Check the change with your accountant.",
+    ],
+  })
+}
+
+export function summarizeIssuerEmailsConfirm(): Promise<ApprovalSummaryShape> {
+  return done({
+    kind: "issuer_emails_confirm",
+    title: "Confirm that Stripe's emails to customers are off",
+    subtitle: "Liaison cannot read this setting; only a person who checked can say so",
+    lines: ["In Stripe, Settings, Billing: finalized invoices, credit notes and payment receipts should not email customers."],
+  })
+}

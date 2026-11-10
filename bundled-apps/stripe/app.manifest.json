@@ -1,6 +1,6 @@
 {
   "name": "stripe",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "kind": "connector",
   "iconName": "credit-card",
   "description": "Stripe connector: a read mirror of customers, subscriptions, invoices, payments, refunds and disputes, kept current by a signed webhook.",
@@ -660,7 +660,7 @@
     "billing_status_for_counterparty": {
       "readOnly": true,
       "agentVisible": false,
-      "description": "Whether a contact or company pays a live Stripe subscription, with those subscriptions and customer ids.",
+      "description": "Whether a contact or company, or a Stripe customer with one of their emails, pays a live Stripe subscription; unavailable until the import is complete.",
       "requiredScopes": [
         "stripe:internal"
       ],
@@ -674,6 +674,13 @@
           },
           "companyId": {
             "type": "string"
+          },
+          "emails": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20
           }
         },
         "additionalProperties": false
@@ -955,6 +962,10 @@
     {
       "target": "kernel:contacts_read",
       "reason": "a link names only a contact the person can read"
+    },
+    {
+      "target": "invoicing:card_stream_issuer",
+      "reason": "a refund is followed by a credit note only when Liaison issues the invoices for card payments"
     },
     {
       "target": "kernel:contacts_search",

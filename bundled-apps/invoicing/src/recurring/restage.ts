@@ -6,7 +6,7 @@
 // stale approve is refused). After it, a row that was approved, or one that becomes ready (fixed,
 // added, put back), waits for a new approval, and every such row joins one second card.
 import type { ErrorEnvelope } from "../mutations/shared"
-import { NEGATIVE_TOTAL, runItemState, STATE_REASONS } from "./item-state"
+import { NEGATIVE_TOTAL, rowIssuerHold, runItemState, STATE_REASONS } from "./item-state"
 import {
   cardItems,
   dayOf,
@@ -246,7 +246,8 @@ export async function afterRunWrite(
   const data: Row = {}
   if (state !== "left_out" || opts.putBack) {
     const wasApproved = state === "approved"
-    const now = runItemState(draft, lines)
+    const schedule = item.schedule_id ? ((await ctx.db.findOne("recurring_schedules", String(item.schedule_id))) as Row | null) : null
+    const now = runItemState(draft, lines, await rowIssuerHold(ctx, draft, schedule))
     if (now.state === "needs_fix") {
       state = "needs_fix"
       note = [...note, now.reason]

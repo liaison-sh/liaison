@@ -13,6 +13,8 @@
 // its change log, and the item points at the issued document.
 import { issueRunDraft } from "../mutations/invoice-issue"
 import type { ErrorEnvelope } from "../mutations/shared"
+import { BILLED_BY_STRIPE } from "../issuer-guard"
+import { rowIssuerHold } from "./item-state"
 import { currentItemHash, dayOf, endHold, jsonOf, type Row, type RunCtx, runItems, stageRunCard, workingDayFrom } from "./run-card"
 
 /** Items a tick starts at most. */
@@ -48,6 +50,25 @@ export async function recurringItemIssue(
       "outside_issue_window",
       `Item ${input.item_id} was not issued and no number was used: ${when}${window ? `, and it is ${window.today} ${String(window.hour).padStart(2, "0")}h in the issuer's time zone` : ""}.`,
     )
+  }
+  // One customer, one issuer: a row whose customer now pays a live Stripe subscription (a schedule
+  // made before Stripe was connected), or that Stripe cannot be asked about, is not issued. Checked
+  // before the claim, so no number is taken; the row stays a draft and says why.
+  if (before.state === "approved") {
+    const draftBefore = (await ctx.db.findOne("documents", String(before.document_id))) as Row | null
+    const schedule = before.schedule_id ? ((await ctx.db.findOne("recurring_schedules", String(before.schedule_id))) as Row | null) : null
+    const hold = draftBefore && draftBefore.status === "draft" ? await rowIssuerHold(ctx, draftBefore, schedule) : null
+    if (hold) {
+      const code = hold === BILLED_BY_STRIPE ? "stripe_stream_conflict" : "stripe_guard_unavailable"
+      const message =
+        code === "stripe_stream_conflict"
+          ? `Item ${input.item_id} was not issued and no number was used: its customer pays a live Stripe subscription, which already invoices them. It stays a draft; take it out of the run, or say on its schedule what else it bills.`
+          : `Item ${input.item_id} was not issued and no number was used: Stripe is connected but could not say whether its customer pays a subscription. It stays a draft, and the run names it until it is issued again.`
+      if (code === "stripe_stream_conflict") {
+        await ctx.db.update("recurring_run_items", input.item_id, { state: "needs_fix", approved_hash: null, note: BILLED_BY_STRIPE, failure: { code, message } })
+      }
+      return fail(code, message)
+    }
   }
   await ctx.db.update("recurring_run_items", input.item_id, { run_id: before.run_id })
   const item = (await ctx.db.findOne("recurring_run_items", input.item_id)) as Row

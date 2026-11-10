@@ -114,11 +114,22 @@ export function updatedAtOf(doc: Row): string | null {
   return v instanceof Date ? v.toISOString() : String(v)
 }
 
+/** A timestamp as microseconds since the epoch: Postgres keeps six digits, a Date only three. */
+function micros(text: string): number | null {
+  const m = /^(.*?\d{2}:\d{2}:\d{2})(?:\.(\d+))?(.*)$/.exec(text.trim())
+  if (!m) return null
+  let zone = (m[3] ?? "").trim()
+  if (/^[+-]\d{2}$/.test(zone)) zone = `${zone}:00`
+  const base = Date.parse(`${(m[1] as string).replace(" ", "T")}${zone || "Z"}`)
+  if (!Number.isFinite(base)) return null
+  return base * 1000 + Number(((m[2] ?? "") + "000000").slice(0, 6))
+}
+
 function sameInstant(a: string | null, b: string): boolean {
   if (a === null) return false
-  const x = Date.parse(a)
-  const y = Date.parse(b)
-  return Number.isFinite(x) && Number.isFinite(y) ? x === y : a === b
+  const x = micros(a)
+  const y = micros(b)
+  return x !== null && y !== null ? x === y : a === b
 }
 
 /** Who made the draft's latest change, in words. */

@@ -23,13 +23,21 @@ const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..")
 export type Row = Record<string, unknown>
 
 export function invoicingDescriptor(): Record<string, unknown> {
-  const manifest = JSON.parse(readFileSync(join(REPO_ROOT, "bundled-apps", "invoicing", "app.manifest.json"), "utf8")) as Record<string, unknown>
+  const manifest = JSON.parse(
+    readFileSync(join(REPO_ROOT, "bundled-apps", "invoicing", "app.manifest.json"), "utf8"),
+  ) as Record<string, unknown>
   return {
     ...manifest,
     trusted: false,
     _firstParty: true,
     _format: "manifest",
-    _bundlePath: join(REPO_ROOT, "bundled-apps", "invoicing", String(manifest.version), "bundle.js"),
+    _bundlePath: join(
+      REPO_ROOT,
+      "bundled-apps",
+      "invoicing",
+      String(manifest.version),
+      "bundle.js",
+    ),
   }
 }
 
@@ -76,6 +84,7 @@ export async function call(
   toolName: string,
   params: Row,
   as: "person" | "agent" | "routine" = "person",
+  opts: { threadId?: string; turnRead?: string[] } = {},
 ): Promise<{ data?: Row; error?: string; code?: string; blocked?: Row }> {
   const { executeTool } = await import("~/modules/apps/execute-tool")
   const run = async () => {
@@ -86,14 +95,25 @@ export async function call(
         actor: world.actor,
         params,
         origin: as === "person" ? "human-ui" : "in-app-agent",
+        ...(opts.threadId ? { threadId: opts.threadId } : {}),
       })
-      return { data: res.data as Row, ...(res.blocked ? { blocked: res.blocked as unknown as Row } : {}) }
+      return {
+        data: res.data as Row,
+        ...(res.blocked ? { blocked: res.blocked as unknown as Row } : {}),
+      }
     } catch (err) {
       const e = err as { message?: string; details?: { code?: string }; code?: string }
-      return { error: `${e.details?.code ?? e.code ?? ""} ${e.message ?? String(err)}`, code: e.details?.code ?? e.code }
+      return {
+        error: `${e.details?.code ?? e.code ?? ""} ${e.message ?? String(err)}`,
+        code: e.details?.code ?? e.code,
+      }
     }
   }
-  return as === "person" ? run() : runContextStore.run(turnFrame(as === "agent" ? "person" : "routine"), run)
+  if (as === "person") return run()
+  const frame = turnFrame(as === "agent" ? "person" : "routine")
+  // What the turn read before this call (its scope taint).
+  if (opts.turnRead) frame.turnScopeAccumulator?.recordInjected(opts.turnRead)
+  return runContextStore.run(frame, run)
 }
 
 export async function runJob(name: string): Promise<void> {
@@ -118,7 +138,10 @@ export interface MonthEnd {
  * An issuer in Paris with `n` monthly schedules due for their draft on Friday 27 November 2026.
  * `withAddress: false` leaves the customers' last invoices with no address.
  */
-export async function monthEnd(n: number, opts: { withAddress?: boolean; paidBy?: "transfer" | "card_link"; numbered?: boolean } = {}): Promise<MonthEnd> {
+export async function monthEnd(
+  n: number,
+  opts: { withAddress?: boolean; paidBy?: "transfer" | "card_link"; numbered?: boolean } = {},
+): Promise<MonthEnd> {
   const issuer = randomUUID()
   await sql.unsafe(
     insertSql("app_invoicing.issuer_profiles", {
@@ -139,7 +162,11 @@ export async function monthEnd(n: number, opts: { withAddress?: boolean; paidBy?
   const previous: string[] = []
   for (let i = 1; i <= n; i++) {
     // A real contact: a person's billing address on the row is saved on it.
-    const contact = await minimal.contact(world.org, `client-${randomUUID().slice(0, 8)}@example.com`, { name: `Client ${i}` })
+    const contact = await minimal.contact(
+      world.org,
+      `client-${randomUUID().slice(0, 8)}@example.com`,
+      { name: `Client ${i}` },
+    )
     const prev = randomUUID()
     const id = randomUUID()
     await sql.unsafe(
@@ -148,7 +175,9 @@ export async function monthEnd(n: number, opts: { withAddress?: boolean; paidBy?
         org_id: world.org,
         type: "invoice",
         status: "issued",
-        ...(opts.numbered ? { number: `F-2026-04${10 + i}`, number_int: 410 + i, year_of_issue: 2026 } : {}),
+        ...(opts.numbered
+          ? { number: `F-2026-04${10 + i}`, number_int: 410 + i, year_of_issue: 2026 }
+          : {}),
         issuer_profile_id: issuer,
         counterparty_contact_id: contact,
         counterparty_name: `Client ${i}`,
@@ -206,7 +235,7 @@ export async function itemsOf(runId: string): Promise<Row[]> {
 export async function docOf(id: string): Promise<Row> {
   const [d] = await sql<Row[]>`
     SELECT id::text, status, number, notes, po_number, counterparty_address, lifecycle_log, external_ref,
-           to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at
+           to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS updated_at
     FROM app_invoicing.documents WHERE id = ${id}`
   if (!d) throw new Error(`no document ${id}`)
   return d
@@ -235,7 +264,10 @@ export async function approvalOf(id: string): Promise<Row> {
 }
 
 /** Draft on Friday 27 November 09:00 UTC; the card waits. */
-export async function drafted(n: number, opts: Parameters<typeof monthEnd>[1] = {}): Promise<MonthEnd & { runId: string; card: string }> {
+export async function drafted(
+  n: number,
+  opts: Parameters<typeof monthEnd>[1] = {},
+): Promise<MonthEnd & { runId: string; card: string }> {
   const fx = await monthEnd(n, opts)
   setSystemTime(new Date("2026-11-27T09:00:00Z"))
   await runJob("recurring-draft")
@@ -244,14 +276,26 @@ export async function drafted(n: number, opts: Parameters<typeof monthEnd>[1] = 
 }
 
 export async function approve(approvalId: string): Promise<void> {
-  await decideApproval({ orgId: world.org, requestId: approvalId, actor: world.actor, decision: "approve" })
+  await decideApproval({
+    orgId: world.org,
+    requestId: approvalId,
+    actor: world.actor,
+    decision: "approve",
+  })
 }
 
 export async function reject(approvalId: string): Promise<void> {
-  await decideApproval({ orgId: world.org, requestId: approvalId, actor: world.actor, decision: "reject" })
+  await decideApproval({
+    orgId: world.org,
+    requestId: approvalId,
+    actor: world.actor,
+    decision: "reject",
+  })
 }
 
 /** The fields a write to a run row needs: the draft, and the version it was read at. */
-export async function asRead(draftId: string): Promise<{ draft_id: string; if_unchanged_since: string }> {
+export async function asRead(
+  draftId: string,
+): Promise<{ draft_id: string; if_unchanged_since: string }> {
   return { draft_id: draftId, if_unchanged_since: String((await docOf(draftId)).updated_at) }
 }

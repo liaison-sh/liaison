@@ -69,8 +69,12 @@ test.describe("Invoicing: one month-end run in two browsers", () => {
       await expect(panel.getByTestId("month-end-add")).toHaveCount(0)
       await expect(panel.getByTestId("month-end-changed")).toHaveCount(0)
 
-      // The editor changes the first row's price from 490 to 650 and saves it for this month.
-      await mine.locator('[data-testid^="month-end-row-open-"]').first().click()
+      // The editor changes the first row's price from 490 to 650 and saves it for this month. Rows
+      // of one run may list in any order, so the row is named by what it shows.
+      const firstRow = mine.locator('[data-testid^="month-end-row-open-"]').first()
+      const customer = (await firstRow.innerText()).match(/Maison Client \d+/)?.[0]
+      expect(customer).toBeTruthy()
+      await firstRow.click()
       const price = mine.getByTestId("editor-line-1-unit-price")
       await expect(price).toBeVisible({ timeout: 20_000 })
       await price.fill("650")
@@ -83,7 +87,7 @@ test.describe("Invoicing: one month-end run in two browsers", () => {
       // The approver's panel follows without a reload: what changed, by whom, both totals.
       const changed = panel.getByTestId("month-end-changed")
       await expect(changed).toBeVisible({ timeout: 30_000 })
-      await expect(changed).toContainText("Maison Client 1 changed")
+      await expect(changed).toContainText(`${customer} changed`)
       await expect(changed).toContainText(qa.admin.name)
       await expect(panel.getByTestId("month-end-changed-totals")).toContainText(
         /1[\s ,.]?764.*1[\s ,.]?956/,

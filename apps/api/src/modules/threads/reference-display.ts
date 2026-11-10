@@ -14,6 +14,7 @@ import {
 import { approvalRequests } from "~/db/schema/kernel/agent-memory"
 import { companies } from "~/db/schema/kernel/companies"
 import { contacts } from "~/db/schema/kernel/contacts"
+import { schemaRef } from "~/db/schema-ref"
 import { entityRegistry, type SearchIndexFields, viewRegistry } from "~/modules/apps/app-registries"
 import { isMailEntitySuppressed } from "~/modules/mailbox-crypto/content-suppression"
 
@@ -189,7 +190,8 @@ async function loadAppEntityLabelAndSnippet(
   if (handleField && !SAFE_IDENT.test(handleField)) return null
   if (!SAFE_IDENT.test(app)) return null
 
-  const schema = `app_${app}`
+  // The app's schema as the database names it: a run namespace prefixes every schema.
+  const schema = schemaRef(`app_${app}`)
   // An external entity may have no local table at all, and a failed read would
   // abort the caller's transaction.
   if (decl.external) {

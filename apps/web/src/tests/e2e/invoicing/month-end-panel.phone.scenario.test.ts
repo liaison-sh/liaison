@@ -76,5 +76,19 @@ test.describe("Invoicing: the month-end panel on a phone", () => {
     await expect(rowItems).toHaveCount(24)
     await expectNoSidewaysScroll(page, "month-end-panel")
     await expectTapSize(page, "month-end-rows")
+
+    // The run's discussion opens (never "could not be opened"), and a message posted there shows.
+    const discussion = panel.getByTestId("month-end-discussion")
+    await expect(discussion.getByTestId("month-end-discussion.thread")).toBeVisible({
+      timeout: 30_000,
+    })
+    await expect(discussion.getByTestId("month-end-discussion.unavailable")).toHaveCount(0)
+    await discussion.getByTestId("month-end-discussion.thread.composer").click()
+    await page.keyboard.type("Maison check before the run issues")
+    await discussion.getByTestId("month-end-discussion.thread.send").click()
+    await expect(discussion.getByTestId("month-end-discussion.thread.messages")).toContainText(
+      "Maison check before the run issues",
+      { timeout: 20_000 },
+    )
   })
 })

@@ -11,51 +11,55 @@ import { ensureBaseAgent } from "~/modules/agent/directory/base-agent"
 import { assertNoAdminScopesInRoleCeiling } from "~/modules/agent/directory/ceiling-guard"
 import { COMMON_AGENT_BASE_SCOPES } from "~/modules/agent/directory/common-base-scopes"
 import { reconcileAgentBaseCeilings } from "~/modules/agent/directory/reconcile-base-ceilings"
+import { seedBaseAgent, seedPersonalAgent, upsertRoleAgent } from "~/seed/factories/agent/agents"
+import { seedOrgRow, seedUserRow } from "~/seed/factories/org/rows"
 
 const ORG = crypto.randomUUID()
 const FRESH_ORG = crypto.randomUUID()
 const USER = crypto.randomUUID()
 const tag = ORG.slice(0, 8)
-const ids = {
-  base: crypto.randomUUID(),
-  role: crypto.randomUUID(),
-  current: crypto.randomUUID(),
-  archived: crypto.randomUUID(),
-  personal: crypto.randomUUID(),
-}
+const ids = { base: "", role: "", current: "", archived: "", personal: "" }
 
 /** The base as an older release stored it: the last three scopes missing. */
 const STALE = COMMON_AGENT_BASE_SCOPES.slice(0, -3)
 const MISSING = COMMON_AGENT_BASE_SCOPES.slice(-3)
 const EXTRA = "tickets:tickets:read"
 
+/** Put a stored ceiling (and archive mark) where an older release left it. */
+async function age(id: string, ceiling: readonly string[], archived = false): Promise<void> {
+  await sql`UPDATE kernel.agents
+    SET scope_ceiling = ${JSON.stringify(ceiling)}::jsonb,
+        archived_at = ${archived ? new Date().toISOString() : null}::timestamptz
+    WHERE id = ${id}`
+}
+
+async function roleAgent(handle: string): Promise<string> {
+  const { agentId } = await upsertRoleAgent(ORG, {
+    handle,
+    displayName: handle,
+    purpose: "test",
+    systemPrompt: "test",
+    scopes: [],
+    toolAllowlist: null,
+    modelPreference: null,
+  })
+  return agentId
+}
+
 beforeAll(async () => {
-  for (const [id, slug] of [
-    [ORG, `base-reconcile-${tag}`],
-    [FRESH_ORG, `base-reconcile-fresh-${tag}`],
-  ] as const) {
-    await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${id}, 'BaseReconcile', ${slug})`
-  }
-  await sql`INSERT INTO kernel.users (id, org_id, email, name)
-    VALUES (${USER}, ${ORG}, ${`owner-${tag}@example.test`}, 'Owner')`
-  const insert = async (
-    id: string,
-    kind: string,
-    handle: string,
-    ceiling: readonly string[],
-    opts: { owner?: string; archived?: boolean } = {},
-  ) => {
-    await sql`INSERT INTO kernel.agents
-        (id, org_id, kind, handle, display_name, scope_ceiling, owner_user_id, archived_at)
-      VALUES (${id}, ${ORG}, ${kind}::kernel.agent_kind, ${handle}, ${handle},
-              ${JSON.stringify(ceiling)}::jsonb, ${opts.owner ?? null},
-              ${opts.archived ? new Date().toISOString() : null}::timestamptz)`
-  }
-  await insert(ids.base, "system", "@base", STALE)
-  await insert(ids.role, "role", `@support-${tag}`, [...STALE, EXTRA])
-  await insert(ids.current, "role", `@current-${tag}`, [...COMMON_AGENT_BASE_SCOPES])
-  await insert(ids.archived, "role", `@gone-${tag}`, STALE, { archived: true })
-  await insert(ids.personal, "personal", `@owner-${tag}`, [EXTRA], { owner: USER })
+  await seedOrgRow({ id: ORG, name: "BaseReconcile", slug: `base-reconcile-${tag}` })
+  await seedOrgRow({ id: FRESH_ORG, name: "BaseReconcile", slug: `base-reconcile-fresh-${tag}` })
+  await seedUserRow({ id: USER, orgId: ORG, email: `owner-${tag}@example.test`, name: "Owner" })
+  ids.base = (await seedBaseAgent(ORG)).agentId
+  ids.role = await roleAgent(`@support-${tag}`)
+  ids.current = await roleAgent(`@current-${tag}`)
+  ids.archived = await roleAgent(`@gone-${tag}`)
+  ids.personal = (await seedPersonalAgent(ORG, USER, `@owner-${tag}`)).agentId
+  await age(ids.base, STALE)
+  await age(ids.role, [...STALE, EXTRA])
+  await age(ids.current, COMMON_AGENT_BASE_SCOPES)
+  await age(ids.archived, STALE, true)
+  await age(ids.personal, [EXTRA])
 })
 
 afterAll(async () => {

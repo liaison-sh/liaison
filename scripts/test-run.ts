@@ -1374,6 +1374,10 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // Who issues what, and the issuer guard on every path that invoices a named customer.
             "src/issuer-guard.test.ts",
             "src/streams.test.ts",
+            // Card payments on Stripe: invoices, payments, refunds, unmatched payments (pure store).
+            "src/handlers/stripe-subscribers.test.ts",
+            "src/handlers/stripe-refund-credit-note.test.ts",
+            "src/handlers/orphan-actions.test.ts",
             // The month-end run: drafts, flags, the card, approve and undo, the legal dates (pure store).
             "src/recurring/draft-job.test.ts",
             "src/recurring/run-card.test.ts",

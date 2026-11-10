@@ -62,9 +62,13 @@ const CATALOG_DEMO_APPS = ["invoicing", "social", "pennylane", "boxtal", "shopif
  * Re-measured 2026-11-09 after main's dealer-quote contact (+1 contact create
  * event) merged in: 5 867 round trips in 545 transactions (cold 5 881), 324
  * outbox events; the Linux figure is set 5 above the warm local one, as before.
+ * Re-measured 2026-11-10 once each dealer's sales contact is linked to its
+ * company: 330 outbox events, the six dealer links each emitting one contact
+ * update event (inherent to the links; one write per dealer, nothing per-row
+ * to batch).
  */
 const BASELINE = {
-  outboxEvents: 324,
+  outboxEvents: 330,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,

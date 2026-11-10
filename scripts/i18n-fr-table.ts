@@ -623,6 +623,7 @@ export const FR: Record<string, string> = {
   "Nudge customer": "Relancer le client",
   "Only mail admins can manage mail setup.":
     "Seuls les administrateurs de messagerie peuvent gérer la configuration.",
+  "Open the board": "Ouvrir le tableau",
   "Open the full contact list": "Ouvrir la liste complète des contacts",
   "Optional UUID": "UUID facultatif",
   "Optional note": "Note facultative",

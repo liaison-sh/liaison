@@ -225,7 +225,7 @@
   },
   "kernel.agents": {
     "rows": 12,
-    "digest": "dcd06af4aaa268f2"
+    "digest": "c5e4789a90c10115"
   },
   "kernel.app_seeded_assets": {
     "rows": 9,
@@ -261,7 +261,7 @@
   },
   "kernel.contacts": {
     "rows": 41,
-    "digest": "823df40ffde049bd"
+    "digest": "13d5347ae23fb147"
   },
   "kernel.credit_balances": {
     "rows": 1,
@@ -276,8 +276,8 @@
     "digest": "80cdbe01c0fdd51d"
   },
   "kernel.pending_events": {
-    "rows": 324,
-    "digest": "50cd115f1ca4f3d4"
+    "rows": 330,
+    "digest": "ea5f82f9f93089de"
   },
   "kernel.resource_grants": {
     "rows": 7,

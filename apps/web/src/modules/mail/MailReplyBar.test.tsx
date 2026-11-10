@@ -201,4 +201,25 @@ describe("MailReplyBar — send errors", () => {
       ),
     )
   })
+
+  test("a mailbox whose connection is gone says nothing was sent and to reconnect it", async () => {
+    const { sendDraft } = await import("~/modules/mail/mail-draft-store")
+    const { ApiError } = await import("~/lib/api-error")
+    vi.mocked(sendDraft).mockReset()
+    vi.mocked(sendDraft).mockRejectedValue(
+      new ApiError(
+        'No connected account for connection "imap": The mailbox support@example.com is no longer connected, so nothing was sent.',
+        422,
+        "connection_not_connected",
+      ),
+    )
+    render(() => <MailReplyBar conversationId="conv-1" startExpanded />)
+    await writeReply("It ships tomorrow.")
+    fireEvent.click(screen.getByTestId("mail-reply-send"))
+    await waitFor(() => {
+      const text = screen.getByTestId("mail-reply-error").textContent ?? ""
+      expect(text).toContain("This mailbox is no longer connected, so nothing was sent.")
+      expect(text).not.toContain("No connected account")
+    })
+  })
 })

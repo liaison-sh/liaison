@@ -105,6 +105,14 @@ describe("refunds reach invoicing", () => {
     expect(db.rows("stripe_payments")[0]?.invoice_id).toBe("in_R1")
   })
 
+  it("a refund still reaches invoicing when another write of its charge made this mirror write stale", async () => {
+    seedCharge("ch_R9", 12000, 3000, { status: "succeeded" })
+    refund("re_R9", "ch_R9", 3000, "succeeded")
+    db.seed("stripe_payments", [{ stripe_id: "ch_R9", status: "succeeded", stripe_updated: "2099-01-01T00:00:00.000Z" }])
+    expect((await deliver("charge.refunded", "ch_R9")).status).toBe(200)
+    expect(of("refund:created").map((e) => e.data.charge_id)).toEqual(["ch_R9"])
+  })
+
   it("a refund that settles emits refund:settled, a failed or canceled one refund:failed, and a pending one nothing", async () => {
     seedCharge("ch_R2", 12000, 3000, { status: "succeeded" })
     refund("re_S", "ch_R2", 1000, "succeeded")

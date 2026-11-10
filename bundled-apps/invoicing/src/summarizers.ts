@@ -998,3 +998,81 @@ export function summarizeDeferredTaxOverride(
     ],
   })
 }
+
+const REPEATS_LABEL: Record<string, string> = { month: "every month", quarter: "every quarter", year: "every year" }
+
+function billingDayLabel(billingDay: unknown): string | null {
+  if (billingDay === "last") return "the last day of the period"
+  if (typeof billingDay === "string" && /^\d{1,2}$/.test(billingDay)) return `day ${billingDay}`
+  if (typeof billingDay === "string" && /^\d{2}-\d{2}$/.test(billingDay)) return `on ${billingDay.slice(3)}/${billingDay.slice(0, 2)}`
+  return null
+}
+
+function scheduleLines(params: Record<string, unknown>, currency: string | null): string[] {
+  const out: string[] = []
+  const repeats = typeof params.repeats === "string" ? REPEATS_LABEL[params.repeats] : null
+  if (repeats) out.push(`Bills: ${repeats}`)
+  const when = billingDayLabel(params.billing_day)
+  if (when) out.push(`Billing day: ${when}`)
+  const ends = day(params.ends_on)
+  if (ends) out.push(`Last billing: ${ends}`)
+  if (Array.isArray(params.lines)) {
+    const lines = params.lines as Array<CardLineItem & { qty?: unknown }>
+    for (const l of lines.slice(0, 4)) {
+      // The price is shown only with the issuer's currency; without it the card names the line alone.
+      out.push(
+        currency
+          ? lineText({ description: l.description, quantity: l.qty, unit_price_minor: l.unit_price_minor }, currency)
+          : (text(l.description, 80) ?? "(no description)"),
+      )
+    }
+  }
+  if (params.issue_mode === "auto") out.push("Issues by itself, with no card to approve each month")
+  if (params.issue_mode === "review") out.push("Each period is drafted for review")
+  return out
+}
+
+export function summarizeRecurringScheduleCreate(
+  params: Record<string, unknown>,
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
+  const issuer = issuerOf(params as { issuer_profile_id?: string }, meta)
+  const currency = typeof issuer?.default_currency === "string" ? issuer.default_currency : null
+  return done({
+    kind: "recurring_schedule_create",
+    title: "Start a recurring invoice schedule",
+    subtitle: "A draft is made each period and a person approves it before it is issued",
+    lines: scheduleLines(params, currency),
+  })
+}
+
+export function summarizeRecurringScheduleUpdate(params: Record<string, unknown>): Promise<ApprovalSummaryShape> {
+  const auto = params.issue_mode === "auto"
+  const ended = params.status === "ended"
+  const lines = scheduleLines(params, null)
+  if (params.status === "active") lines.unshift("Resumes billing from today, without the days it was paused")
+  if (ended) lines.unshift("Ends the schedule: nothing more is billed")
+  return done({
+    kind: "recurring_schedule_update",
+    title: auto
+      ? "Let a recurring schedule issue its invoices by itself"
+      : ended
+        ? "End a recurring invoice schedule"
+        : "Change a recurring invoice schedule",
+    subtitle: auto
+      ? "Invoices under the approval threshold go out with no card to approve; a person must turn this on"
+      : "Drafts already made keep their amounts; the change applies from the next period",
+    lines: lines.length > 0 ? lines : ["No field changes"],
+  })
+}
+
+export function summarizeRecurringSchedulePause(params: Record<string, unknown>): Promise<ApprovalSummaryShape> {
+  const until = day(params.until)
+  return done({
+    kind: "recurring_schedule_pause",
+    title: "Pause a recurring invoice schedule",
+    subtitle: "Nothing is drafted while it is paused",
+    lines: [until ? `Resumes on ${until}, without billing the days in between` : "Stays paused until someone resumes it"],
+  })
+}

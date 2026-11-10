@@ -31,6 +31,14 @@ import { ordersInvoiceabilityCheck } from "./order-invoiceability"
 import { customerHistory } from "./customer-history"
 import { vatLookup } from "./vat-lookup"
 import {
+  checkScheduleInput,
+  checkScheduleUpdate,
+  recurringList,
+  recurringSchedulePause,
+  recurringScheduleCreate,
+  recurringScheduleUpdate,
+} from "./recurring/tools"
+import {
   contactRelationshipsGet,
   deferredList,
   documentsDownloadPdf,
@@ -624,3 +632,35 @@ export const einvoicingReceivedCatchUpJobHandler = (_payload: unknown, ctx: Rece
 
 // — import kinds (manifest `import.kinds`) —
 export { checkDocuments, importDocuments } from "./import-kind"
+export { checkSchedules, importSchedules } from "./recurring/import-kind"
+
+// --- Recurring schedules (the kernel gates the writes; see recurring/tools.ts) ---
+export const recurringScheduleCreateHandler = (
+  params: Parameters<typeof recurringScheduleCreate>[1],
+  ctx: Parameters<typeof recurringScheduleCreate>[0],
+) => recurringScheduleCreate(ctx, params)
+export const recurringScheduleCreatePreflightHandler = async (
+  params: Parameters<typeof checkScheduleInput>[0],
+) => {
+  const refused = checkScheduleInput(params)
+  return refused ? { error: refused.error } : { ok: true }
+}
+export const recurringScheduleUpdateHandler = (
+  params: Parameters<typeof recurringScheduleUpdate>[1],
+  ctx: Parameters<typeof recurringScheduleUpdate>[0],
+) => recurringScheduleUpdate(ctx, params)
+export const recurringScheduleUpdatePreflightHandler = async (
+  params: Parameters<typeof checkScheduleUpdate>[1],
+  ctx: Parameters<typeof checkScheduleUpdate>[0],
+) => {
+  const refused = await checkScheduleUpdate(ctx, params)
+  return refused ? { error: refused.error } : { ok: true }
+}
+export const recurringSchedulePauseHandler = (
+  params: Parameters<typeof recurringSchedulePause>[1],
+  ctx: Parameters<typeof recurringSchedulePause>[0],
+) => recurringSchedulePause(ctx, params)
+export const recurringListHandler = (
+  params: Parameters<typeof recurringList>[1],
+  ctx: Parameters<typeof recurringList>[0],
+) => recurringList(ctx, params)

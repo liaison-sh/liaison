@@ -261,7 +261,7 @@
   },
   "kernel.contacts": {
     "rows": 41,
-    "digest": "13d5347ae23fb147"
+    "digest": "af7f7ba9851701e4"
   },
   "kernel.credit_balances": {
     "rows": 1,
@@ -277,7 +277,7 @@
   },
   "kernel.pending_events": {
     "rows": 330,
-    "digest": "ea5f82f9f93089de"
+    "digest": "5a6761127829b490"
   },
   "kernel.resource_grants": {
     "rows": 7,

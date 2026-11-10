@@ -170,6 +170,7 @@ async function seedContacts(
       company: dealer.name,
       externalId: { demo: `dealer:${dealer.key}` },
       tags: dealer.isVip ? ["dealer", "vip"] : ["dealer"],
+      recipientCountry: dealer.country,
       metadata: {
         country: dealer.country,
         ...(dealer.vat ? { vat: dealer.vat } : {}),
@@ -185,6 +186,7 @@ async function seedContacts(
         ...(company ? { company } : {}),
         externalId: { demo: `customer:${customer.key}` },
         tags: customer.isVip ? ["customer", "vip"] : ["customer"],
+        recipientCountry: customer.country,
         metadata: { country: customer.country, relationship: "direct" },
       }
     }),
@@ -442,6 +444,7 @@ async function seedQuoteDealerContact(ctx: SeedContext, actor: UserContext): Pro
         shopify: `gid://shopify/Customer/${DEMO_QUOTE_DEALER.shopifyCustomerId}`,
       },
       tags: ["dealer"],
+      recipientCountry: DEMO_QUOTE_DEALER.country,
       metadata: { country: DEMO_QUOTE_DEALER.country, relationship: "dealer" },
     },
   ])

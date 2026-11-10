@@ -633,7 +633,16 @@ export async function lawfulBasisFacts(
           }>(
             await tx.execute(drizzleSql`
               SELECT c.id::text AS id, lower(c.email) AS email, c.name, c.lawful_basis,
-                     c.is_consumer, lower(trim(co.domain)) AS company_domain, c.recipient_country
+                     c.is_consumer, lower(trim(co.domain)) AS company_domain,
+                     -- The recorded country, else the country of the contact's first
+                     -- current address that has one, in its address book's order.
+                     COALESCE(NULLIF(trim(c.recipient_country), ''), (
+                       SELECT trim(a.country_iso2) FROM ${K()}.contact_addresses a
+                        WHERE a.org_id = c.org_id AND a.contact_id = c.id
+                          AND a.archived_at IS NULL AND a.stale_at IS NULL
+                          AND NULLIF(trim(a.country_iso2), '') IS NOT NULL
+                        ORDER BY (a.verified_at IS NULL), a.role, a.created_at, a.id
+                        LIMIT 1)) AS recipient_country
                 FROM ${K()}.contacts c
                 LEFT JOIN ${K()}.companies co ON co.id = c.company_id AND co.org_id = c.org_id
                WHERE c.org_id = ${orgId}::uuid
@@ -694,6 +703,33 @@ const BASIS_WORDS: Record<LawfulBasis, string> = {
   generic_address: "generic company address",
 }
 
+/**
+ * Which countries the policy lets commercial mail go to without recorded
+ * consent (on opt-out), and, when the recipient's country is unknown, whether
+ * recording it could help.
+ */
+function optOutCountriesNote(
+  policy: Record<string, "optout" | "consent">,
+  countryUnknown: boolean,
+): string {
+  const optOut = Object.entries(policy)
+    .filter(([k, v]) => k !== "default" && v === "optout")
+    .map(([k]) => k)
+    .sort()
+  if (optOut.length === 0) {
+    return countryUnknown
+      ? "The organization's policy allows no commercial mail without recorded consent, so recording their country would not change this."
+      : "The organization's policy allows no commercial mail without recorded consent."
+  }
+  const list =
+    optOut.length === 1
+      ? optOut[0]
+      : `${optOut.slice(0, -1).join(", ")} and ${optOut[optOut.length - 1]}`
+  const allowed = `Without recorded consent, the organization's policy allows commercial mail only to ${list}.`
+  if (!countryUnknown) return allowed
+  return `${allowed} Recording their country helps only if it is ${optOut.length === 1 ? list : `one of ${list}`}.`
+}
+
 /** The first rule one recipient breaks, or null. */
 export function basisProblemFor(
   r: RecipientBasis,
@@ -740,7 +776,7 @@ export function basisProblemFor(
       return {
         code: "country_needs_consent",
         who,
-        label: `${where} needs recorded consent for commercial mail, and ${who} is recorded under ${BASIS_WORDS[r.basis]}.`,
+        label: `${where} needs recorded consent for commercial mail, and ${who} is recorded under ${BASIS_WORDS[r.basis]}. ${optOutCountriesNote(policy, country === "default")}`,
       }
     }
   }

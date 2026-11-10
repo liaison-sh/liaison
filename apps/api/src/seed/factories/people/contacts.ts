@@ -11,7 +11,7 @@
 // second layer naming the same person) updates the row already there instead
 // of adding a twin, and queues the same contact events the product queues.
 import { resolveContactSchema } from "@liaison/shared"
-import { and, eq, sql } from "drizzle-orm"
+import { and, eq, isNull, sql } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { contacts } from "~/db/schema/kernel/contacts"
@@ -28,6 +28,11 @@ export interface ResolvedContactInput {
   externalId?: Record<string, string>
   tags?: string[]
   metadata?: Record<string, unknown>
+  /**
+   * The country the world places them in (ISO 3166 alpha-2), recorded as the
+   * country the send check reads. Never replaces one already recorded.
+   */
+  recipientCountry?: string
 }
 
 export interface ResolvedContact {
@@ -72,6 +77,18 @@ export async function resolveContacts(
       const params = { ...fields, ...(input.tags !== undefined ? { tags: input.tags } : {}) }
       const { contact } = await resolveContact(tx as never, ctx.orgId, actor.userId, params, target)
       if (!contact) throw new Error(`contacts seed: contact ${input.key} was not created`)
+      if (input.recipientCountry) {
+        await tx
+          .update(contacts)
+          .set({ recipientCountry: input.recipientCountry.toUpperCase() })
+          .where(
+            and(
+              eq(contacts.orgId, ctx.orgId),
+              eq(contacts.id, contact.id),
+              isNull(contacts.recipientCountry),
+            ),
+          )
+      }
       out.push([input.key, { id: contact.id, name: contact.name, email: contact.email }])
     }
   })

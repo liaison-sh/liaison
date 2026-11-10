@@ -5,6 +5,7 @@
 // the dedupe key and the same-requester rule the shipped manifest declares, and
 // staged through the real executeTool gate by two people of one org.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { randomUUID } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { sql as drizzleSql } from "drizzle-orm"
@@ -18,6 +19,7 @@ import {
   approvalExpiryRegistry,
   toolRegistry,
 } from "~/modules/apps/app-registries"
+import { insertSql } from "~/seed/factories/org/test-rows"
 
 const { executeTool } = await import("~/modules/apps/execute-tool")
 
@@ -54,16 +56,28 @@ let runs = 0
 beforeAll(async () => {
   const slug = `stripe-refund-dedupe-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
   await withSystemDb("stripe-refund-dedupe-fixture", async (tx) => {
-    orgId = extractRows<{ id: string }>(
-      await tx.execute(drizzleSql`
-        INSERT INTO kernel.organizations (id, name, slug) VALUES (gen_random_uuid(), 'Refund Dedupe', ${slug}) RETURNING id`),
-    )[0]!.id
-    const user = async (name: string) =>
-      extractRows<{ id: string }>(
-        await tx.execute(drizzleSql`
-          INSERT INTO kernel.users (id, org_id, email, name, status, password_hash, auth_version, permission_version)
-          VALUES (gen_random_uuid(), ${orgId}, ${`${name}-${slug}@x.test`}, ${name}, 'active', 'h', 1, 1) RETURNING id`),
-      )[0]!.id
+    orgId = randomUUID()
+    await tx.execute(
+      drizzleSql.raw(insertSql("kernel.organizations", { id: orgId, name: "Refund Dedupe", slug })),
+    )
+    const user = async (name: string) => {
+      const id = randomUUID()
+      await tx.execute(
+        drizzleSql.raw(
+          insertSql("kernel.users", {
+            id,
+            org_id: orgId,
+            email: `${name}-${slug}@x.test`,
+            name,
+            status: "active",
+            password_hash: "h",
+            auth_version: 1,
+            permission_version: 1,
+          }),
+        ),
+      )
+      return id
+    }
     alice = await user("alice")
     bruno = await user("bruno")
   })

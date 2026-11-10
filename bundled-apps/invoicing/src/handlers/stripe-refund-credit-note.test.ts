@@ -109,6 +109,14 @@ describe("Stripe refunds and credit notes", () => {
     expect(ctx.calls).toContainEqual({ tool: "stripe:refund_document_link", params: { stripeRefundId: "re_B", skipped: "issued_by_stripe" } })
   })
 
+  test("a refund of a charge linked by hand to an invoice credits that invoice instead of waiting forever", async () => {
+    const { db, ctx } = await issued("liaison", finalized({ stripe_invoice_id: "in_x" }))
+    const doc = db.__all("documents")[0] as Row
+    await db.update("documents", String(doc.id), { external_refs: { ...(doc.external_refs as Row), stripe_charge_id: "ch_hand" } })
+    const r = await onStripeRefundCreated({ charge_id: "ch_hand", refunds: [refund("re_h", "1200", "succeeded")] }, ctx)
+    expect(r.refunds[0]).toMatchObject({ outcome: "issued" })
+  })
+
   test("a refund made in Stripe yields the same credit note with no card", async () => {
     const { db, ctx } = await issued()
     let approvals = 0

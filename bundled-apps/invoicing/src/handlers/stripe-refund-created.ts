@@ -23,6 +23,7 @@ import { creditedTotalMinor, creditNoteCreateAndIssue } from "../mutations"
 import { toBigInt } from "../mutations/shared"
 import { buildAdjustmentReversalItems } from "./shopify-refund-created"
 import { documentByRef, payloadOf, type StripeCtx, stripeRef } from "./stripe-invoice-finalized"
+import { invoiceLinkedTo } from "./stripe-payment-unmatched"
 import { cardStreamIssuer, stripeDocumentRef } from "../streams"
 
 type Row = Record<string, unknown>
@@ -124,7 +125,8 @@ async function handleOne(ctx: StripeCtx, p: StripeRefundPayload, invoiceRef: str
   }
   if (note) return { refund_id: r.id, outcome: "exists", document_id: String(note.id) }
   if (status !== "succeeded") return { refund_id: r.id, outcome: "pending" }
-  const original = await documentByRef(ctx, invoiceRef)
+  // The invoice the charge became, or the one a person linked it to by hand.
+  const original = (await documentByRef(ctx, invoiceRef)) ?? (await invoiceLinkedTo(ctx, p.charge_id))
   if (!original) {
     // The invoice is not issued yet (parked, or its event still on the way): wait for it.
     await park(

@@ -18,7 +18,11 @@ test.describe("Stripe customers", () => {
     await installStripeApp({ serverUrl: env.serverUrl, token: qa.admin.token, orgId: world.org.id })
   })
 
-  test("the list shows customers, the Not linked section and the filters", async ({ page, env, qa }) => {
+  test("the list shows customers, the Not linked section and the filters", async ({
+    page,
+    env,
+    qa,
+  }) => {
     await installToolMocks(page, customersMocks())
     await loginAs(page, env, qa.admin.email, "12345678")
     await page.goto(`http://localhost:${env.ports[1]}/stripe/customers`)
@@ -33,17 +37,28 @@ test.describe("Stripe customers", () => {
       await expect(page.getByTestId(`stripe-chip-${chip}`)).toBeVisible()
     }
     await page.getByTestId("stripe-chip-subscriptions").click()
-    await expect(page.getByTestId("stripe-chip-subscriptions")).toHaveAttribute("aria-pressed", "true")
+    await expect(page.getByTestId("stripe-chip-subscriptions")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
     await expect(page.getByTestId("stripe-plan-totals")).toBeVisible()
   })
 
-  test("a customer page shows the masked card, invoices and a dispute-free history", async ({ page, env, qa }) => {
+  test("a customer page shows the masked card, invoices and a dispute-free history", async ({
+    page,
+    env,
+    qa,
+  }) => {
     await installToolMocks(page, customersMocks())
     await loginAs(page, env, qa.admin.email, "12345678")
-    await page.goto(`http://localhost:${env.ports[1]}/stripe/customers/5b1f0c2e-7a64-4f0e-9d0a-2f0a1b7c9e01`)
+    await page.goto(
+      `http://localhost:${env.ports[1]}/stripe/customers/5b1f0c2e-7a64-4f0e-9d0a-2f0a1b7c9e01`,
+    )
     await expect(page.getByTestId("stripe-customer")).toBeVisible({ timeout: 20_000 })
     await expect(page.getByTestId("stripe-customer-card-line")).toContainText("Visa 4242, 10/26")
-    await expect(page.getByTestId("stripe-customer-invoice-in_1")).toContainText("Issued by Liaison, collected by Stripe")
+    await expect(page.getByTestId("stripe-customer-invoice-in_1")).toContainText(
+      "Issued by Liaison, collected by Stripe",
+    )
     await expect(page.getByTestId("stripe-customer-refund")).toBeVisible()
     await expect(page.getByTestId("stripe-customer-cancel")).toBeVisible()
     // No full card number anywhere on the page.

@@ -187,7 +187,13 @@ const ROW_GARANCE = "5b1f0c2e-7a64-4f0e-9d0a-2f0a1b7c9e02"
 
 /** What the Stripe tools answer for the customers list and one customer page (fictional people). */
 export function customersMocks(): Record<string, unknown> {
-  const customer = (id: string, rowId: string, name: string | null, email: string, linked: boolean) => ({
+  const customer = (
+    id: string,
+    rowId: string,
+    name: string | null,
+    email: string,
+    linked: boolean,
+  ) => ({
     id,
     rowId,
     name,
@@ -199,8 +205,20 @@ export function customersMocks(): Record<string, unknown> {
     contactId: null,
     linkedBy: linked ? "person" : null,
   })
-  const arlon = customer("cus_ArlonHotels", ROW_ARLON, "Maison Arlon Longname Hospitality Group", "claire@maison-arlon.example", true)
-  const garance = customer("cus_GaranceBistrot", ROW_GARANCE, "Bistrot Garance SARL", "compta@bistrot-garance.example", false)
+  const arlon = customer(
+    "cus_ArlonHotels",
+    ROW_ARLON,
+    "Maison Arlon Longname Hospitality Group",
+    "claire@maison-arlon.example",
+    true,
+  )
+  const garance = customer(
+    "cus_GaranceBistrot",
+    ROW_GARANCE,
+    "Bistrot Garance SARL",
+    "compta@bistrot-garance.example",
+    false,
+  )
   const sub = (customerId: string, over: Record<string, unknown>) => ({
     id: `sub_${customerId}`,
     customerId,
@@ -239,8 +257,32 @@ export function customersMocks(): Record<string, unknown> {
     },
     "stripe:payments_search": {
       items: [
-        { id: "ch_3QArlon1003", customerId: "cus_ArlonHotels", invoiceId: "in_0", amountMinor: 174000, refundedMinor: 0, currency: "eur", status: "succeeded", failureCode: null, disputed: false, at: IN(-38), card: { brand: "visa", last4: "4242", exp: "10/26" } },
-        { id: "ch_3QArlon1107", customerId: "cus_ArlonHotels", invoiceId: "in_1", amountMinor: 174000, refundedMinor: 0, currency: "eur", status: "failed", failureCode: "card_expired", disputed: false, at: IN(-3), card: { brand: "visa", last4: "4242", exp: "10/26" } },
+        {
+          id: "ch_3QArlon1003",
+          customerId: "cus_ArlonHotels",
+          invoiceId: "in_0",
+          amountMinor: 174000,
+          refundedMinor: 0,
+          currency: "eur",
+          status: "succeeded",
+          failureCode: null,
+          disputed: false,
+          at: IN(-38),
+          card: { brand: "visa", last4: "4242", exp: "10/26" },
+        },
+        {
+          id: "ch_3QArlon1107",
+          customerId: "cus_ArlonHotels",
+          invoiceId: "in_1",
+          amountMinor: 174000,
+          refundedMinor: 0,
+          currency: "eur",
+          status: "failed",
+          failureCode: "card_expired",
+          disputed: false,
+          at: IN(-3),
+          card: { brand: "visa", last4: "4242", exp: "10/26" },
+        },
       ],
     },
     "stripe:disputes_list": { items: [] },

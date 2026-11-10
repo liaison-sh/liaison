@@ -8,8 +8,8 @@
 // drives the Component-A event-triage routine (Task A7). `parseWebhookJob` is
 // the deferred work the webhook handler enqueues after its fast-ack 200.
 
-import { livePagesOnly } from "./meta-pages"
-import { facebookAdapter } from "./adapters/facebook"
+import { META_PAGE_IDS_KEY, livePagesOnly } from "./meta-pages"
+import { facebookAdapter, sameReplyText } from "./adapters/facebook"
 import type { NormalizedFinding, NormalizedMessage, Platform } from "./adapters/types"
 import type { SocialToolCtx } from "./ctx"
 
@@ -42,12 +42,17 @@ export interface FindingUpsert {
   brandRelevant?: boolean
   watchedObjectId?: string | null
   metadata?: Record<string, unknown>
+  /** Written by the org's own account (see `NormalizedFinding.authoredByOwner`). */
+  authoredByOwner?: boolean
+  /** For a reply comment: the comment or post it answers. */
+  replyToExternalId?: string | null
 }
 
-export interface UpsertResult {
-  id: string
-  created: boolean
-}
+export type UpsertResult =
+  | { id: string; created: true }
+  /** `id` is null for one of our own replies, which is never stored as a finding
+   *  (`ownReply` then names the finding it answered, if one is stored). */
+  | { id: string | null; created: false; ownReply?: { repliedFindingId: string | null } }
 
 function toRow(f: FindingUpsert): Record<string, unknown> {
   return {
@@ -118,6 +123,11 @@ export async function resolveAuthorContact(
  * the poller watermark advance).
  */
 export async function upsertFinding(ctx: SocialToolCtx, f: FindingUpsert): Promise<UpsertResult> {
+  // One of our own replies, echoed back by the platform or read by a poll: it
+  // is never a finding, only evidence that we answered.
+  if (await isOwnAuthored(ctx, f)) {
+    return { id: null, created: false, ownReply: await recordOwnReply(ctx, f) }
+  }
   const found = await ctx.db.findMany("finding", {
     where: { platform: f.platform, external_id: f.externalId },
     limit: 1,
@@ -177,6 +187,126 @@ async function updateExisting(
     await ctx.emit?.({ entity: "finding", action: "updated", entityId: existing.id })
   }
   return { id: existing.id, created: false }
+}
+
+/** Statuses of a finding that still waits for an answer from us. */
+const OPEN_FINDING_STATUSES = new Set(["new", "triaged", "drafted", "awaiting_approval", "failed"])
+
+/** The ids the org's own accounts on `platform` are known by: the connected
+ *  account of each `sync_state` row and, for Facebook, the Page ids it routes. */
+async function ownAccountIds(ctx: SocialToolCtx, platform: FindingUpsert["platform"]): Promise<Set<string>> {
+  // Read once per invocation (a sync batch checks every finding it lands).
+  let perCtx = OWN_IDS_CACHE.get(ctx)
+  if (!perCtx) {
+    perCtx = new Map()
+    OWN_IDS_CACHE.set(ctx, perCtx)
+  }
+  let ids = perCtx.get(platform)
+  if (!ids) {
+    ids = readOwnAccountIds(ctx, platform)
+    perCtx.set(platform, ids)
+  }
+  return ids
+}
+
+const OWN_IDS_CACHE = new WeakMap<object, Map<string, Promise<Set<string>>>>()
+
+async function readOwnAccountIds(ctx: SocialToolCtx, platform: FindingUpsert["platform"]): Promise<Set<string>> {
+  const rows = (await ctx.db.findMany("sync_state", { where: { platform } })) as Array<{
+    account_external_id?: string | null
+    metadata?: unknown
+  }>
+  const ids = new Set<string>()
+  for (const r of rows) {
+    if (r.account_external_id) ids.add(r.account_external_id)
+    const pageIds = asRecord(r.metadata)[META_PAGE_IDS_KEY]
+    if (Array.isArray(pageIds)) for (const id of pageIds) if (typeof id === "string") ids.add(id)
+  }
+  return ids
+}
+
+/**
+ * True when the item was written by the org's own account. The adapter says so
+ * when its source names the owner (a webhook delivery's `entry.id`); otherwise
+ * the author is checked against the connected accounts, and, for a comment on a
+ * Facebook post of ours, against the Page whose id prefixes the post id.
+ */
+export async function isOwnAuthored(ctx: SocialToolCtx, f: FindingUpsert): Promise<boolean> {
+  if (f.authoredByOwner === true) return true
+  const author = f.authorExternalId
+  if (!author) return false
+  if (
+    f.platform === "facebook" &&
+    f.relation === "comment_on_our_content" &&
+    f.parentExternalId &&
+    f.parentExternalId.indexOf("_") > 0 &&
+    f.parentExternalId.slice(0, f.parentExternalId.indexOf("_")) === author
+  ) {
+    return true
+  }
+  return (await ownAccountIds(ctx, f.platform)).has(author)
+}
+
+interface ReplyIntent {
+  approval_request_id?: string | null
+  reply_text?: string | null
+  outcome?: string
+  reply_external_id?: string | null
+  [k: string]: unknown
+}
+
+/**
+ * Land one of our own replies as evidence, never as a finding:
+ *  - a finding row stored for it before this rule existed is dismissed;
+ *  - the finding it answers (`replyToExternalId`), when still open, is marked
+ *    `handled` with the reply recorded in `metadata.own_reply`;
+ *  - a reply intent of a gated `reply_to_finding` on that finding with the same
+ *    text is marked landed: the post went through even if its call timed out,
+ *    which is what the approval's reconciler reads (post-back.ts).
+ */
+export async function recordOwnReply(
+  ctx: SocialToolCtx,
+  f: FindingUpsert,
+): Promise<{ repliedFindingId: string | null }> {
+  const [stale] = (await ctx.db.findMany("finding", {
+    where: { platform: f.platform, external_id: f.externalId },
+    limit: 1,
+  })) as Array<{ id: string; status: string; metadata?: unknown }>
+  if (stale && stale.status !== "dismissed") {
+    await ctx.db.update("finding", stale.id, {
+      status: "dismissed",
+      metadata: { ...asRecord(stale.metadata), own_reply: true },
+    })
+    await ctx.emit?.({ entity: "finding", action: "updated", entityId: stale.id })
+  }
+  if (!f.replyToExternalId) return { repliedFindingId: null }
+  const [target] = (await ctx.db.findMany("finding", {
+    where: { platform: f.platform, external_id: f.replyToExternalId },
+    limit: 1,
+  })) as Array<{ id: string; status: string; metadata?: unknown }>
+  if (!target) return { repliedFindingId: null }
+  const metadata = asRecord(target.metadata)
+  const intent = asRecord(metadata.reply_intent) as ReplyIntent
+  const intentLanded =
+    metadata.reply_intent !== undefined && intent.outcome !== "landed" && sameReplyText(intent.reply_text, f.contentText)
+  const open = OPEN_FINDING_STATUSES.has(target.status)
+  if (!open && !intentLanded) return { repliedFindingId: target.id }
+  const patch: Record<string, unknown> = {
+    metadata: {
+      ...metadata,
+      own_reply: { external_id: f.externalId, at: f.occurredAt ?? new Date().toISOString() },
+      ...(intentLanded ? { reply_intent: { ...intent, outcome: "landed", reply_external_id: f.externalId } } : {}),
+    },
+  }
+  if (open) patch.status = "handled"
+  await ctx.db.update("finding", target.id, patch)
+  await ctx.emit?.({ entity: "finding", action: "updated", entityId: target.id })
+  ctx.logger?.info?.("social: own reply recorded on the finding it answers", {
+    findingId: target.id,
+    replyExternalId: f.externalId,
+    intentLanded,
+  })
+  return { repliedFindingId: target.id }
 }
 
 /** Publish `social:finding:created` so the event-triage routine (A7) fires. */
@@ -492,6 +622,8 @@ export async function parseWebhookJob(
       occurredAt: f.occurredAt,
       commentCount: f.commentCount,
       metadata: f.metadata,
+      authoredByOwner: f.authoredByOwner,
+      replyToExternalId: f.replyToExternalId,
     })
     if (res.created) {
       ingested += 1

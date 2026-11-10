@@ -274,7 +274,7 @@
       }
     ]
   },
-  "version": "0.4.15",
+  "version": "0.4.16",
   "network": {
     "imageHosts": ["cdn.shopify.com"],
     "linkHosts": ["admin.shopify.com"]
@@ -1513,7 +1513,7 @@
     },
     "draft_orders_get": {
       "taintSource": true,
-      "description": "Get one Shopify draft order by id (with line items and their customAttributes). The result carries a top level `po_number`, the customer's purchase order reference, which flows to the linked quote and on to the invoice; `purchasingCompany` (B2B: company, location with addresses and tax settings, contact; null for a consumer), `taxesIncluded` and the order's `customAttributes`.",
+      "description": "Get one Shopify draft order by id (with line items and their customAttributes). The result carries a top level `po_number`, the customer's purchase order reference, which flows to the linked quote and on to the invoice. `draftOrder.purchasingCompany` is the B2B company and location (null for a consumer); the order's and each line's `customAttributes` carry a price exception's reason.",
       "requiredScopes": ["shopify:draft-orders:read"],
       "handler": "draft_orders_get",
       "params": {

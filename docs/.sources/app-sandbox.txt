@@ -114,3 +114,6 @@ Refused on a read-only run and in a run with no commit-now channel (webhook, job
 A commit-now write waits at most 5 s for a row lock -> apps/api/src/modules/apps/sandbox/bridge/db.ts:39
 Boxtal's label reservation and finalize commit at once -> bundled-apps/boxtal/src/link-store.ts:131 ; bundled-apps/boxtal/src/link-store.ts:182
 The effect ledger claim commits on its own connection -> apps/api/src/lib/effect-once.ts:1
+A write may ask for up to 30 s; reads keep the default -> apps/api/src/modules/apps/sandbox/bridge/egress.ts:75 ; apps/api/src/modules/apps/sandbox/bridge/egress.ts:280
+reconcileHandler declared per tool, called by the approvals reaper -> apps/api/src/modules/apps/manifest-schema.ts:590 ; apps/api/src/modules/apps/runtime.ts:3289 ; apps/api/src/modules/approvals/approving-reaper.ts:282
+executed / not_executed / unknown recorded on the execution row -> apps/api/src/modules/approvals/reconcile-outcome.ts:60

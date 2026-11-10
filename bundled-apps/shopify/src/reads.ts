@@ -14,6 +14,10 @@
 import type { AppContext } from "@liaison/app-sdk"
 import {
   normalizeDraftOrderNode,
+  normalizePurchasingCompany,
+  PURCHASING_COMPANY_SELECTION,
+  type NormalizedPurchasingCompany,
+  type ShopifyPurchasingCompanyGraphQL,
   resolveOrderPoNumber,
   toPoNumber,
   type NormalizedDraftOrder,
@@ -388,7 +392,8 @@ const ORDERS_GET_QUERY = `
       originalTotalPriceSet { presentmentMoney { amount currencyCode } shopMoney { amount currencyCode } }
       totalTaxSet { presentmentMoney { amount } }
       taxExempt
-      purchasingEntity { ... on PurchasingCompany { company { name } location { taxSettings { taxRegistrationId } } } }
+      taxesIncluded
+      ${PURCHASING_COMPANY_SELECTION}
       shippingAddress { name address1 address2 city province provinceCode zip country countryCode phone }
       billingAddress { name company address1 address2 city province provinceCode zip country countryCode phone }
       customAttributes { key value }
@@ -421,6 +426,8 @@ interface OrderLineItemNode {
   }
 }
 interface OrderDetailNode extends OrderNode {
+  taxesIncluded?: boolean | null
+  purchasingEntity?: ShopifyPurchasingCompanyGraphQL | null
   billingAddress?: (ShopifyAddress & { company?: string | null }) | null
   customAttributes?: Array<{ key?: string | null; value?: string | null }> | null
   lineItems?: { edges?: Array<{ node: OrderLineItemNode }> }
@@ -471,6 +478,12 @@ export interface OrderDetail extends NormalizedHit {
   /** The buyer's VAT / tax number from the order's CURRENT custom attributes (the keys the
    *  order:created event reads), so a later read sees a number added after checkout. Null if none. */
   buyerTaxId: string | null
+  /** True when the order's prices include tax (a B2B catalog order on a tax-inclusive shop is
+   *  often net). Absent when Shopify did not say. */
+  taxesIncluded?: boolean
+  /** The B2B company buying (name, location addresses, tax registration id, tax exemption,
+   *  contact email), or null for a consumer order. */
+  purchasingCompany: NormalizedPurchasingCompany | null
   totalPrice?: { amount: string; currencyCode: string }
   // Buyer's PO reference, cross-app contract with invoicing: nullable string,
   // ABSENT (not `""`) when there is none. This order's OWN Shopify field only
@@ -788,6 +801,8 @@ export async function orders_get(params: Record<string, unknown>, ctx: AppContex
     buyerTaxId: buyerTaxIdFromNoteAttributes(
       (order.customAttributes ?? []).map((a) => ({ name: a?.key ?? null, value: a?.value ?? null })),
     ),
+    ...(typeof order.taxesIncluded === "boolean" ? { taxesIncluded: order.taxesIncluded } : {}),
+    purchasingCompany: normalizePurchasingCompany(order.purchasingEntity),
     totalPrice: money ? { amount: money.amount, currencyCode: money.currencyCode } : undefined,
     ...(po_number !== undefined ? { po_number } : {}),
     ...(b2bOrder ? { b2bOrder } : {}),
@@ -1006,53 +1021,6 @@ const DRAFT_ORDERS_LIST_QUERY = `
 // full quote (addresses, discounts, shipping, tax lines, order linkage) via
 // `normalizeDraftOrderNode`, without breaking the pre-existing `NormalizedHit`
 // fields other callers already rely on.
-const DRAFT_COMPANY_ADDRESS_FIELDS =
-  "address1 address2 city zip province zoneCode countryCode companyName recipient phone"
-
-/**
- * The B2B buyer of a draft (`purchasingEntity.purchasingCompany`): company, location (addresses and
- * tax settings) and contact. Null for a consumer draft.
- */
-export interface DraftPurchasingCompany {
-  company: { id: string | null; name: string | null }
-  location: {
-    id: string | null
-    name: string | null
-    taxExempt: boolean | null
-    taxRegistrationId: string | null
-    shippingAddress: Record<string, unknown> | null
-    billingAddress: Record<string, unknown> | null
-  }
-  contact: { id: string | null; customerId: string | null; email: string | null } | null
-}
-
-function draftPurchasingCompany(pe: unknown): DraftPurchasingCompany | null {
-  if (!pe || typeof pe !== "object") return null
-  const p = pe as Record<string, unknown>
-  if (p.__typename !== "PurchasingCompany" && !p.company) return null
-  const s = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null)
-  const rec = (v: unknown): Record<string, unknown> | null =>
-    v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null
-  const loc = rec(p.location) ?? {}
-  const tax = rec(loc.taxSettings) ?? {}
-  const contact = rec(p.contact)
-  const contactCustomer = rec(contact?.customer)
-  return {
-    company: { id: s(rec(p.company)?.id), name: s(rec(p.company)?.name) },
-    location: {
-      id: s(loc.id),
-      name: s(loc.name),
-      taxExempt: typeof tax.taxExempt === "boolean" ? tax.taxExempt : null,
-      taxRegistrationId: s(tax.taxRegistrationId),
-      shippingAddress: rec(loc.shippingAddress),
-      billingAddress: rec(loc.billingAddress),
-    },
-    contact: contact
-      ? { id: s(contact.id), customerId: s(contactCustomer?.id), email: s(contactCustomer?.email) }
-      : null,
-  }
-}
-
 const DRAFT_ORDER_GET_QUERY = `
   query DraftOrderGet($id: ID!) {
     draftOrder(id: $id) {
@@ -1078,19 +1046,7 @@ const DRAFT_ORDER_GET_QUERY = `
       shippingAddress { name company address1 address2 zip city province countryCodeV2 phone }
       customer { id email firstName lastName defaultAddress { company } }
       customAttributes { key value }
-      purchasingEntity {
-        __typename
-        ... on PurchasingCompany {
-          company { id name }
-          location {
-            id name
-            taxSettings { taxExempt taxRegistrationId }
-            shippingAddress { ${DRAFT_COMPANY_ADDRESS_FIELDS} }
-            billingAddress { ${DRAFT_COMPANY_ADDRESS_FIELDS} }
-          }
-          contact { id customer { id email } }
-        }
-      }
+      ${PURCHASING_COMPANY_SELECTION}
       lineItems(first: 100) {
         edges {
           node {
@@ -1098,6 +1054,7 @@ const DRAFT_ORDER_GET_QUERY = `
             customAttributes { key value }
             variant { id product { id } }
             originalUnitPriceSet { presentmentMoney { amount currencyCode } }
+            priceOverride { amount currencyCode }
             discountedTotalSet { presentmentMoney { amount } }
             appliedDiscount {
               valueType value
@@ -1134,8 +1091,6 @@ export async function draft_orders_get(
     lineItems: unknown[]
     draftOrder: NormalizedDraftOrder
     po_number?: string
-    purchasingCompany: DraftPurchasingCompany | null
-    taxesIncluded: boolean | null
     customAttributes: Array<{ key: string; value: string | null }>
   }
 > {
@@ -1149,7 +1104,6 @@ export async function draft_orders_get(
       | (DraftOrderNode &
           ShopifyDraftOrderGraphQLNode & {
             lineItems?: { edges?: Array<{ node: unknown }> }
-            purchasingEntity?: unknown
             customAttributes?: Array<{ key: string; value: string | null }> | null
           })
       | null
@@ -1173,9 +1127,6 @@ export async function draft_orders_get(
     ...(po_number !== undefined ? { po_number } : {}),
     lineItems,
     draftOrder: normalizeDraftOrderNode(data.draftOrder as ShopifyDraftOrderGraphQLNode, meta?.shopDomain ?? null),
-    // B2B: the company location the draft is placed for (catalog prices, tax settings), or null.
-    purchasingCompany: draftPurchasingCompany(data.draftOrder.purchasingEntity),
-    taxesIncluded: typeof data.draftOrder.taxesIncluded === "boolean" ? data.draftOrder.taxesIncluded : null,
     // Order custom attributes, e.g. a price exception's reason or a buyer VAT number.
     customAttributes: data.draftOrder.customAttributes ?? [],
   }

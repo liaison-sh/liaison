@@ -131,6 +131,7 @@ function draftOrder(overrides?: Partial<NormalizedDraftOrder>): NormalizedDraftO
         custom: false,
       },
     ],
+    purchasingCompany: null,
     ...overrides,
   }
 }
@@ -767,66 +768,197 @@ describe("draft order money + line mapping (pure)", () => {
 const _ctxIsMutationsCtx: (c: DraftOrderCtx) => MutationsCtx = (c) => c
 void _ctxIsMutationsCtx
 
-// ── prices_include_tax mismatch ────────────────────────────────────────────
+// ── Per-draft tax inclusivity ──────────────────────────────────────────────
 //
-// The issuer profile's `prices_include_tax` is meant to MIRROR the shop's "include tax in
-// prices". When the two disagree, a price typed in Liaison means something different from the
-// same price typed in the Shopify admin, so the sync says so. It must only WARN: this draft
-// order's own `taxesIncluded` is authoritative for this draft, so the quote is unchanged.
+// One shop prices retail gross and B2B catalogs net, so the issuer profile's
+// `prices_include_tax` cannot describe both. Each draft's OWN `taxesIncluded` splits net and tax;
+// the profile is only the fallback when Shopify states nothing, and no mismatch warning fires.
 
-describe("issuer prices_include_tax vs the shop setting", () => {
-  async function syncWithCapturedWarnings(
-    profileSaysInclusive: boolean,
-    draftTaxesIncluded: boolean,
-  ): Promise<{ warnings: string[]; result: Awaited<ReturnType<typeof syncQuoteFromDraftOrder>>; db: MockDb }> {
-    const draft = draftOrder({
-      taxesIncluded: draftTaxesIncluded,
-      ...(draftTaxesIncluded ? { taxLines: [{ title: "VAT", rate: 0.2, price: "20.00" }] } : {}),
+function captureWarnings<T>(fn: () => Promise<T>): Promise<{ warnings: string[]; value: T }> {
+  const warnings: string[] = []
+  const realWarn = console.warn
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args.map((a) => String(a)).join(" "))
+  }
+  return fn()
+    .then((value) => ({ warnings, value }))
+    .finally(() => {
+      console.warn = realWarn
     })
+}
+
+function catalogLine(overrides?: Partial<NormalizedDraftOrder["lineItems"][number]>): NormalizedDraftOrder["lineItems"][number] {
+  return {
+    id: "gid://shopify/DraftOrderLineItem/5",
+    title: "Catalog item",
+    sku: "CAT-1",
+    variantId: "gid://shopify/ProductVariant/11",
+    productId: "gid://shopify/Product/4",
+    quantity: 1,
+    unitPrice: "629.00",
+    discountedTotal: "629.00",
+    appliedDiscount: null,
+    taxable: true,
+    requiresShipping: true,
+    custom: false,
+    ...overrides,
+  }
+}
+
+describe("each draft's own taxesIncluded splits net and tax", () => {
+  async function syncUnder(profileSaysInclusive: boolean, draft: NormalizedDraftOrder) {
     const { ctx, db } = makeCtx({ draft })
     await db.update("issuer_profiles", "iss-1", { prices_include_tax: profileSaysInclusive })
-    const warnings: string[] = []
-    const realWarn = console.warn
-    console.warn = (...args: unknown[]) => {
-      warnings.push(args.map((a) => String(a)).join(" "))
-    }
-    try {
-      const result = await syncQuoteFromDraftOrder(ctx, { draftOrderId: DRAFT_GID, draft })
-      return { warnings, result, db }
-    } finally {
-      console.warn = realWarn
-    }
+    const { warnings, value } = await captureWarnings(() =>
+      syncQuoteFromDraftOrder(ctx, { draftOrderId: DRAFT_GID, draft }),
+    )
+    const q = quotes(db)[0]
+    const lines = q ? db.__all("document_lines").filter((l) => l.document_id === q.id) : []
+    return { warnings, result: value, q, lines }
   }
 
-  test("profile says inclusive, the draft order is net: warns and still creates the quote", async () => {
-    const { warnings, result, db } = await syncWithCapturedWarnings(true, false)
+  test("a net B2B catalog draft on an inclusive issuer: 629.00 net + 125.80 tax = 754.80, no warning", async () => {
+    const draft = draftOrder({
+      taxesIncluded: false,
+      totalPrice: "754.80",
+      taxLines: [{ title: "VAT", rate: 0.2, price: "125.80" }],
+      lineItems: [catalogLine()],
+    })
+    const { warnings, result, q, lines } = await syncUnder(true, draft)
     expect(result.status).toBe("created")
-    expect(
-      warnings.some((w) => w.includes("set prices_include_tax on the issuer profile to match the shop")),
-    ).toBe(true)
-    // Unchanged: the draft order's own flag drove the lines, so 2 x 50.00 net stands.
-    const q = quotes(db)[0]!
-    expect(String(q.subtotal_minor)).toBe("10000")
-    expect(String(q.tax_total_minor)).toBe("2000")
+    expect(String(lines[0]!.unit_price_minor)).toBe("62900")
+    expect(String(lines[0]!.discount_minor ?? "0")).toBe("0")
+    expect(String(q!.subtotal_minor)).toBe("62900")
+    expect(String(q!.tax_total_minor)).toBe("12580")
+    expect(String(q!.grand_total_minor)).toBe("75480")
+    expect(warnings.some((w) => w.includes("prices_include_tax"))).toBe(false)
+    // Matches Shopify's own total, so no drift warning either.
+    expect(warnings.some((w) => w.includes("total differs from Shopify"))).toBe(false)
   })
 
-  test("profile and shop agree: no mismatch warning", async () => {
-    const { warnings, result } = await syncWithCapturedWarnings(false, false)
+  test("a tax-exempt company location: 629.00 and no tax", async () => {
+    const draft = draftOrder({
+      taxesIncluded: false,
+      totalPrice: "629.00",
+      taxLines: [],
+      lineItems: [catalogLine()],
+      purchasingCompany: {
+        companyName: "Buyer SARL",
+        locationName: "HQ",
+        taxRegistrationId: null,
+        taxExempt: true,
+        contactEmail: "ap@buyersarl.example",
+        billingAddress: address(),
+        shippingAddress: null,
+      },
+    })
+    const { result, q, lines } = await syncUnder(true, draft)
     expect(result.status).toBe("created")
-    expect(warnings.some((w) => w.includes("set prices_include_tax on the issuer profile"))).toBe(
-      false,
-    )
+    expect(String(lines[0]!.unit_price_minor)).toBe("62900")
+    expect(String(q!.tax_total_minor)).toBe("0")
+    expect(String(q!.grand_total_minor)).toBe("62900")
   })
 
-  test("both inclusive: no warning, and the included tax is still divided out of the lines", async () => {
-    const { warnings, result, db } = await syncWithCapturedWarnings(true, true)
+  test("a draft-level tax exemption also charges no tax", () => {
+    const items = draftOrderLinesToItems(draftOrder({ taxExempt: true, lineItems: [catalogLine()] }))
+    expect(items[0]!.tax_rate_bp_override).toBe(0)
+  })
+
+  test("a retail inclusive draft on a net issuer is still divided out, with no warning", async () => {
+    const draft = draftOrder({
+      taxesIncluded: true,
+      taxLines: [{ title: "VAT", rate: 0.2, price: "20.00" }],
+    })
+    const { warnings, result, q } = await syncUnder(false, draft)
     expect(result.status).toBe("created")
-    expect(warnings.some((w) => w.includes("set prices_include_tax on the issuer profile"))).toBe(
-      false,
-    )
-    const q = quotes(db)[0]!
     // 2 x 50.00 gross at 20% -> 2 x 41.67 net.
-    expect(String(q.subtotal_minor)).toBe("8334")
+    expect(String(q!.subtotal_minor)).toBe("8334")
+    expect(warnings.some((w) => w.includes("prices_include_tax"))).toBe(false)
+  })
+
+  test("the issuer setting is the fallback only when the draft states no flag", () => {
+    const stated = draftOrder({ taxesIncluded: false, taxLines: [{ title: "VAT", rate: 0.2, price: "0" }] })
+    expect(String(draftOrderLinesToItems(stated, true)[0]!.unit_price_minor)).toBe("5000")
+    const unstated = { ...stated, taxesIncluded: undefined } as unknown as NormalizedDraftOrder
+    expect(String(draftOrderLinesToItems(unstated, true)[0]!.unit_price_minor)).toBe("4167")
+    expect(String(draftOrderLinesToItems(unstated, false)[0]!.unit_price_minor)).toBe("5000")
+  })
+
+  test("a catalog price or a price override is the unit price, with no discount", () => {
+    const items = draftOrderLinesToItems(
+      draftOrder({
+        lineItems: [
+          catalogLine(),
+          catalogLine({ id: "l2", unitPrice: "500.00", priceOverride: "500.00", discountedTotal: "500.00" }),
+        ],
+      }),
+    )
+    expect(items.map((i) => String(i.unit_price_minor))).toEqual(["62900", "50000"])
+    expect(items.map((i) => String(i.discount_minor))).toEqual(["0", "0"])
+  })
+})
+
+// ── B2B company drafts ─────────────────────────────────────────────────────
+//
+// A draft created for a company carries the buyer in `purchasingEntity` and often no address of
+// its own. The quote names the company, billed at its location.
+
+describe("a draft order for a B2B company", () => {
+  const company = (overrides?: Partial<NonNullable<NormalizedDraftOrder["purchasingCompany"]>>) => ({
+    companyName: "Buyer Industries SAS",
+    locationName: "Head office",
+    taxRegistrationId: "FR99887766554",
+    taxExempt: false,
+    contactEmail: "buyer@buyer-industries.example",
+    billingAddress: address({ name: "Accounts", company: "Buyer Industries SAS", address1: "5 rue Exemple", zip: "69002", city: "Lyon" }),
+    shippingAddress: address({ name: "Warehouse", company: "Buyer Industries SAS", address1: "9 quai Exemple", zip: "69007", city: "Lyon" }),
+    ...overrides,
+  })
+
+  test("no draft address: the counterparty comes from the company and its location", async () => {
+    const draft = draftOrder({
+      billingAddress: null,
+      shippingAddress: null,
+      email: null,
+      customer: null,
+      taxLines: [{ title: "VAT", rate: 0.2, price: "125.80" }],
+      lineItems: [catalogLine()],
+      purchasingCompany: company(),
+    })
+    const { ctx, db } = makeCtx({ draft })
+    const r = await syncQuoteFromDraftOrder(ctx, { draftOrderId: DRAFT_GID, draft })
+    expect(r.status).toBe("created")
+    const q = quotes(db)[0]!
+    expect(q.counterparty_name).toBe("Buyer Industries SAS")
+    expect(q.counterparty_country).toBe("FR")
+    expect(q.counterparty_email).toBe("buyer@buyer-industries.example")
+    expect(q.counterparty_vat_id).toBe("FR99887766554")
+    // The location's billing address, without repeating the company line.
+    expect(q.counterparty_address).toBe("5 rue Exemple\n69002 Lyon")
+    expect(String(q.counterparty_shipping_address)).toContain("9 quai Exemple")
+  })
+
+  test("no location billing address: the location's shipping address bills", async () => {
+    const draft = draftOrder({
+      billingAddress: null,
+      shippingAddress: null,
+      purchasingCompany: company({ billingAddress: null }),
+    })
+    const { ctx, db } = makeCtx({ draft })
+    const r = await syncQuoteFromDraftOrder(ctx, { draftOrderId: DRAFT_GID, draft })
+    expect(r.status).toBe("created")
+    expect(quotes(db)[0]!.counterparty_address).toBe("9 quai Exemple\n69007 Lyon")
+  })
+
+  test("a webhook draft without purchasingCompany is re-fetched to learn the company", async () => {
+    const fetched = draftOrder({ billingAddress: null, shippingAddress: null, purchasingCompany: company() })
+    const { ctx, db, extras } = makeCtx({ draft: fetched })
+    const webhook = { ...fetched } as Partial<NormalizedDraftOrder>
+    delete webhook.purchasingCompany
+    const r = await onShopifyDraftOrderCreated({ entityId: DRAFT_GID, data: webhook } as never, ctx)
+    expect(r.status).toBe("created")
+    expect(extras.executeToolCalls.map((c) => c.name)).toContain("shopify:draft_orders_get")
+    expect(quotes(db)[0]!.counterparty_name).toBe("Buyer Industries SAS")
   })
 })
 

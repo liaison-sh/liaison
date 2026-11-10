@@ -187,6 +187,8 @@ intra-EU buyer charged no VAT without a VAT number refused; VAT number custom at
 reverse charge or export charged VAT refused at complete (taxExempt) -> bundled-apps/invoicing/src/order-invoiceability.ts:179
 unchanged without Invoicing mapped to the shop -> bundled-apps/invoicing/src/order-invoiceability.ts:199
 orders_search hit carries shippingAmount / shippingCurrency (shipping line after discounts) -> bundled-apps/shopify/src/reads.ts:296
+draft_orders_get / orders_get return purchasingCompany (company, location addresses, tax registration id, tax exemption, contact email) -> bundled-apps/shopify/src/lib/draft-order.ts:514; bundled-apps/shopify/src/reads.ts:805
+orders_get returns taxesIncluded -> bundled-apps/shopify/src/reads.ts:804
 companies_search / companies_get: locations with addresses, tax settings, catalogs; contacts with roles per location -> bundled-apps/shopify/src/companies.ts:1
 companies_search, companies_get read tools, read_companies scope -> bundled-apps/shopify/app.manifest.json:1422
 read_companies OAuth scope -> bundled-apps/shopify/app.manifest.json:352
@@ -200,4 +202,4 @@ priceException reasons; Price exception attribute -> bundled-apps/shopify/src/mu
 B2B line price never becomes a discount (priceOverride) -> bundled-apps/shopify/src/mutations/draft-order-input.ts:358
 approval card shows company, location, price basis -> bundled-apps/shopify/src/summarizers.ts:457
 draft_orders_update preflight runs the same guard -> bundled-apps/shopify/src/mutations/draft-orders.ts:202
-draft_orders_get purchasingCompany, taxesIncluded, customAttributes -> bundled-apps/shopify/src/reads.ts:1177
+draft_orders_get customAttributes (order and lines) -> bundled-apps/shopify/src/reads.ts:1177

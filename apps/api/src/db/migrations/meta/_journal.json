@@ -2010,6 +2010,13 @@
       "when": 1900003369000,
       "tag": "0285_every_member_dashboards_read",
       "breakpoints": true
+    },
+    {
+      "idx": 287,
+      "version": "7",
+      "when": 1900003370000,
+      "tag": "0286_social_own_reply_findings",
+      "breakpoints": true
     }
   ]
 }

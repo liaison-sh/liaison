@@ -13,11 +13,19 @@ import {
   postDualSystemMessages,
 } from "~/modules/approvals/event-data"
 import { hasLandedEffect, promoteLandedEffect } from "~/modules/approvals/handler-protocol"
+import { applyReconcileOutcome } from "~/modules/approvals/reconcile-outcome"
 import { approvalFailureRequiredScopes } from "~/modules/approvals/result-notice"
+import { toolRegistry } from "~/modules/apps/app-registries"
 import { sweepSkippingMoving, writeUnlessMoving } from "~/modules/org/transfer-state/skip-moving"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 
 const K = drizzleSql.raw(schemaRef("kernel"))
+
+/** How long after an execution settles as `ambiguous` its reconciler first asks
+ *  the provider: long enough for a write that went through upstream to be
+ *  readable there (a slow Graph comment post was visible 11 s after our side
+ *  gave up). */
+export const AMBIGUOUS_RECONCILE_DELAY_MS = 60_000
 
 interface StaleRow {
   id: string
@@ -28,8 +36,10 @@ interface StaleRow {
   originating_thread_id: string
   notify_user_ids: string[]
   requested_by: string
+  decided_by: string | null
   current_payload: unknown
   operator_flagged: boolean
+  past_grace: boolean
 }
 
 export async function runApprovingReaper() {
@@ -38,12 +48,25 @@ export async function runApprovingReaper() {
     withSystemDb("approving-reaper-scan", (db) =>
       db.execute(drizzleSql`
       SELECT id, org_id, tool_name, thread_id, originating_thread_id, notify_user_ids,
-             requested_by, current_payload, proposing_turn_scopes,
-             (metadata ? 'reaperFlaggedAt') AS operator_flagged
-      FROM ${K}.approval_requests
+             requested_by, decided_by, current_payload, proposing_turn_scopes,
+             (metadata ? 'reaperFlaggedAt') AS operator_flagged,
+             (approving_started_at IS NULL
+               OR approving_started_at < now() - make_interval(secs => ${APPROVING_WEDGE_GRACE_MS / 1000}::double precision)
+             ) AS past_grace
+      FROM ${K}.approval_requests r
       WHERE status = 'approving'
         AND ${notMoving(drizzleSql.raw("org_id"))}
-        AND approving_started_at < now() - make_interval(secs => ${APPROVING_WEDGE_GRACE_MS / 1000}::double precision)
+        AND (
+          approving_started_at < now() - make_interval(secs => ${APPROVING_WEDGE_GRACE_MS / 1000}::double precision)
+          -- An execution already settled as ambiguous is over: its tool's
+          -- reconciler (if any) can ask the provider now, not after the grace.
+          OR EXISTS (
+            SELECT 1 FROM ${K}.approved_handler_executions e
+            WHERE e.approval_request_id = r.id AND e.tool_name = r.tool_name
+              AND e.status = 'ambiguous'
+              AND e.finished_at < now() - make_interval(secs => ${AMBIGUOUS_RECONCILE_DELAY_MS / 1000}::double precision)
+          )
+        )
       LIMIT 100
     `),
     ),
@@ -97,20 +120,41 @@ async function reapOne(row: StaleRow) {
     if (promoted) exec.status = "succeeded"
   }
 
-  if (!exec || exec.status === "started") {
+  // The outcome is unknown: ask the tool's reconciler, when it declares one,
+  // whether the effect happened (reconcile-outcome.ts). A definite answer is
+  // recorded on the execution row and handled by the branches below like any
+  // other outcome.
+  let reconciled: "executed" | "not_executed" | null = null
+  if (!exec || exec.status === "started" || exec.status === "ambiguous") {
+    // A missing or `started` row may still belong to a live execution until the
+    // grace window has passed; an `ambiguous` one is over.
+    if (row.past_grace || exec?.status === "ambiguous")
+      reconciled = await reconcileUnknownOutcome(row)
+    // Picked up early for its reconciler, which could not tell: the grace
+    // window still runs before anyone is asked to look.
+    if (!row.past_grace && reconciled === null) return
+  }
+  const execNow: { status: string; error: unknown } | undefined =
+    reconciled === "executed"
+      ? { status: "succeeded", error: null }
+      : reconciled === "not_executed"
+        ? { status: "failed_no_effect", error: { code: "reconciled_not_executed" } }
+        : exec
+
+  if (!execNow || execNow.status === "started") {
     if (!row.operator_flagged) {
       log.error(
-        { requestId: row.id, recordStatus: exec?.status ?? "none" },
+        { requestId: row.id, recordStatus: execNow?.status ?? "none" },
         "Approving row without resolved handler record — operator review required",
       )
       await markOperatorFlagged(row)
     }
     return
   }
-  if (exec.status === "ambiguous") {
+  if (execNow.status === "ambiguous") {
     if (!row.operator_flagged) {
       log.error(
-        { requestId: row.id, error: exec.error },
+        { requestId: row.id, error: execNow.error },
         "Ambiguous handler outcome past stale threshold — operator review required",
       )
       await markOperatorFlagged(row)
@@ -118,7 +162,7 @@ async function reapOne(row: StaleRow) {
     return
   }
 
-  if (exec.status === "succeeded") {
+  if (execNow.status === "succeeded") {
     await withPrivilegedDb(row.org_id, "approving-reaper-terminalize", async (tx) => {
       const updated = extractRows<{ id: string; decided_by: string; decided_at: string }>(
         await tx.execute(drizzleSql`
@@ -135,7 +179,10 @@ async function reapOne(row: StaleRow) {
         decision: "approved",
         actorId,
       }
-      const text = "Approved (recovered). Tool executed successfully."
+      const text =
+        reconciled === "executed"
+          ? "Approved (reconciled). The provider shows the action happened."
+          : "Approved (recovered). Tool executed successfully."
       await postDualSystemMessages(tx, {
         // Fixed text, no tool output.
         requiredScopes: [],
@@ -169,7 +216,7 @@ async function reapOne(row: StaleRow) {
     return
   }
 
-  if (exec.status === "failed_no_effect") {
+  if (execNow.status === "failed_no_effect") {
     await withPrivilegedDb(row.org_id, "approving-reaper-revert", async (tx) => {
       const reverted = extractRows<{ id: string }>(
         await tx.execute(drizzleSql`
@@ -180,8 +227,11 @@ async function reapOne(row: StaleRow) {
         `),
       )[0]
       if (!reverted) return
-      const meta = { type: "approval-error", error: exec.error }
-      const text = "Handler failed (recovered). Request reverted to pending."
+      const meta = { type: "approval-error", error: execNow.error }
+      const text =
+        reconciled === "not_executed"
+          ? "The approved action did not happen (checked with the provider). Request reverted to pending."
+          : "Handler failed (recovered). Request reverted to pending."
       // The text is fixed, but `meta.error` is the handler's own error object
       // verbatim and listMessages serves metadata to every reader of the row,
       // so a handler that failed while holding scoped data would disclose it
@@ -220,6 +270,82 @@ async function reapOne(row: StaleRow) {
         data: summaryData,
       })
     })
+  }
+}
+
+/**
+ * Ask the tool's reconciler whether an approved execution with an unknown
+ * outcome took effect, and record a definite answer on its execution row
+ * (reconcile-outcome.ts). Null when the tool declares no reconciler, the
+ * reconciler cannot tell, or it failed: the row is then left as it was.
+ */
+export async function reconcileUnknownOutcome(row: {
+  id: string
+  org_id: string
+  tool_name: string
+  current_payload: unknown
+  requested_by: string
+  decided_by?: string | null
+}): Promise<"executed" | "not_executed" | null> {
+  const [appName, short] = row.tool_name.split(":")
+  if (!appName || !short) return null
+  // The reaper is an org-less cron: set the org's apps up before reading its tools.
+  try {
+    const { awaitOrgApps } = await import("~/modules/apps/init")
+    await awaitOrgApps(row.org_id)
+  } catch (err) {
+    log.error(
+      { err, requestId: row.id, orgId: row.org_id },
+      "Reconcile: the org's apps could not be set up",
+    )
+    return null
+  }
+  const tool = toolRegistry.get([row.org_id, appName, short])
+  if (!tool?.reconcile) return null
+  const reconcile = tool.reconcile
+  try {
+    return await withPrivilegedDb(row.org_id, "approving-reaper-reconcile", async (tx) => {
+      const [current] = extractRows<{ external_ref: unknown }>(
+        await tx.execute(drizzleSql`
+          SELECT external_ref FROM ${K}.approved_handler_executions
+          WHERE approval_request_id = ${row.id} AND tool_name = ${row.tool_name}
+        `),
+      )
+      const answer = await reconcile(
+        { orgId: row.org_id, tx },
+        {
+          approvalRequestId: row.id,
+          payload: row.current_payload,
+          externalRef: current?.external_ref ?? null,
+        },
+      )
+      if (answer.outcome === "unknown") {
+        log.info(
+          { requestId: row.id, tool: row.tool_name, reason: answer.reason },
+          "Reconciler could not tell whether the approved action happened",
+        )
+        return null
+      }
+      const applied = await applyReconcileOutcome(tx, {
+        orgId: row.org_id,
+        approvalRequestId: row.id,
+        toolName: row.tool_name,
+        actorId: row.decided_by ?? row.requested_by,
+        outcome: answer,
+      })
+      if (!applied) return null
+      log.warn(
+        { requestId: row.id, tool: row.tool_name, outcome: answer.outcome },
+        "Approved execution with an unknown outcome reconciled with the provider",
+      )
+      return answer.outcome
+    })
+  } catch (err) {
+    log.error(
+      { err, requestId: row.id, tool: row.tool_name },
+      "Reconciler failed; the approval stays held",
+    )
+    return null
   }
 }
 

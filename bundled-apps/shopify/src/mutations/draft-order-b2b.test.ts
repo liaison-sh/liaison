@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from "bun:test"
 import type { AppContext } from "@liaison/app-sdk"
-import { summarizeDraftOrderCreate } from "../summarizers"
+import { summarizeDraftOrderCreate, summarizeDraftOrdersUpdate } from "../summarizers"
 import { normalizeDraftOrderInput } from "./draft-order-input"
 import { draft_orders_create, draft_orders_create_preflight, draft_orders_update_preflight } from "./draft-orders"
 import { companies_get, companies_search, companiesQueryString } from "../companies"
@@ -390,6 +390,21 @@ describe("approval card for a company draft", () => {
     expect(s.lines).toContain("2× Studio Monitor: catalog price")
     expect(s.lines).toContain("1× Cable: price exception (gift: trade show), unit price 0.00")
     expect(s.lines.some((l) => l.startsWith("Projected total"))).toBe(false)
+  })
+})
+
+describe("approval card for a company draft update", () => {
+  it("names the existing draft's company and location and each line's basis", async () => {
+    const s = await summarizeDraftOrdersUpdate(
+      { id: "gid://shopify/DraftOrder/9", input: { lineItems: [{ variantId: VARIANT, quantity: 4 }] } },
+      undefined,
+      {
+        connectionIdentifier: null,
+        context: { draftOrder: { purchasingCompany: { companyName: "Example Trading Co", locationName: "Head office" } } },
+      },
+    )
+    expect(s.lines).toContain("Company: Example Trading Co")
+    expect(s.lines).toContain("4x 41: catalog price")
   })
 })
 

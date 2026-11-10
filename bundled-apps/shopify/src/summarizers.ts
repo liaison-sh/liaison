@@ -898,7 +898,10 @@ export function summarizeDraftOrdersUpdate(params: unknown, _ctx?: unknown, meta
   const lines: string[] = []
   const context = meta?.context
   // B2B: the company the draft is (or will be) placed for, and each line's price basis.
-  const existing = isRec(context) && isRec(context.purchasingCompany) ? context.purchasingCompany : null
+  const existing =
+    isRec(context) && isRec(context.draftOrder) && isRec(context.draftOrder.purchasingCompany)
+      ? context.draftOrder.purchasingCompany
+      : null
   const pcInput =
     isRec(input.purchasingEntity) && isRec(input.purchasingEntity.purchasingCompany)
       ? input.purchasingEntity.purchasingCompany
@@ -906,8 +909,8 @@ export function summarizeDraftOrdersUpdate(params: unknown, _ctx?: unknown, meta
   const companyDraft = pcInput != null || existing != null
   if (pcInput) lines.push(...companyLines(pcInput, null))
   else if (existing) {
-    const company = isRec(existing.company) && typeof existing.company.name === "string" ? existing.company.name : "?"
-    const location = isRec(existing.location) && typeof existing.location.name === "string" ? existing.location.name : "?"
+    const company = typeof existing.companyName === "string" ? existing.companyName : "?"
+    const location = typeof existing.locationName === "string" ? existing.locationName : "?"
     lines.push(`Company: ${company}`, `Location: ${location} (prices from this location's B2B catalog)`)
   }
   for (const li of lineItems) {

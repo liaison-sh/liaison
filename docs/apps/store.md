@@ -118,6 +118,8 @@ An order is B2B when its buyer is a Shopify B2B company, or when a line item's s
 
 With Invoicing installed and a shop mapped to an issuer profile, a Shopify draft order and an Invoicing quote are the same object, and a paid order issues its invoice automatically. A refund or cancellation in Shopify issues the matching credit note. See [Issue invoices and quotes](invoicing.md).
 
+`draft_orders_get` and `orders_get` return the B2B company behind a draft order or order (`purchasingCompany`: company name, location addresses, tax registration number, tax exemption, contact email), so its quote or invoice is addressed to the company. `orders_get` also returns the order's `taxesIncluded`.
+
 With Invoicing mapped to the shop, `draft_orders_create` and `draft_orders_complete` refuse an order Invoicing could not invoice, before any approval is filed. The error (`NOT_INVOICEABLE`) names each fix:
 
 - The customer has no email. Invoicing sends the invoice to the email on the Shopify customer record, so an email on the draft order alone is not enough. Add it with `customers_update`.
@@ -140,7 +142,7 @@ Before any approval is filed, a B2B draft is refused when:
 
 A real exception (a demo unit, a warranty replacement, a gift, an approved agreement) sets the line's `priceOverride` with a `priceException` reason and a note. The reason is saved on the line as a `Price exception` attribute, so the approval card and the order both show it. A B2B line price never becomes a discount. The approval card shows the company, the location and, for each line, whether the catalog or an exception sets its price. `draft_orders_update` follows the same rules. The store must grant the `read_companies` scope: after an upgrade, deploy the app configuration again and Reconnect.
 
-`draft_orders_get` returns the draft's company, location and contact (`purchasingCompany`), `taxesIncluded`, and the custom attributes of the order and each line.
+`draft_orders_get` also returns the custom attributes of the order and of each line, where a price exception's reason shows.
 
 An order read shows the tax it charged, whether it was tax exempt, the B2B company that bought it, its billing address with the company, and the buyer's VAT number from its custom attributes as they are now, and a customer read shows whether the customer is tax exempt and the companies they buy for. Invoicing reads these to tell a business customer in another EU country from a consumer. An order found by `orders_search` also carries what the customer paid for shipping (its shipping line after shipping discounts, in the order's currency), which the [Boxtal](boxtal.md) worklist shows beside a carrier quote. `orders_search` and `customers_search` take an optional `timeout_ms` (500 to 10000): a caller on a time budget, such as that check, gets an error at once when Shopify is slow or rate limits it, instead of waiting.
 

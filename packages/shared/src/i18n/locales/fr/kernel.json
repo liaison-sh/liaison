@@ -877,6 +877,7 @@
   "connectedAccounts": "Comptes connectés",
   "connections": "Connexions",
   "connectionCredentialsMissing": "Cette boîte mail n'a pas d'identifiants enregistrés, rien n'a été envoyé. Reconnectez-la dans Paramètres → Connexions.",
+  "connectionNotConnected": "Cette boîte mail n'est plus connectée, rien n'a été envoyé. Reconnectez-la dans Paramètres → Connexions, ou envoyez depuis une autre boîte.",
   "contactsActionCall": "Appeler",
   "contactsActionEmail": "Mail",
   "contactsActionMessage": "Message",

@@ -285,7 +285,7 @@
       "schema": 61
     },
     "boxtal__import_label_document": {
-      "desc": 811,
+      "desc": 1053,
       "schema": 48
     },
     "boxtal__import_shipments": {
@@ -299,6 +299,10 @@
     "boxtal__local_product_upsert": {
       "desc": 54,
       "schema": 28
+    },
+    "boxtal__order_print_record_get": {
+      "desc": 1000,
+      "schema": 54
     },
     "boxtal__pack_delete": {
       "desc": 33,
@@ -369,7 +373,7 @@
       "schema": 39
     },
     "boxtal__print_pack": {
-      "desc": 610,
+      "desc": 936,
       "schema": 47
     },
     "boxtal__print_pack_batch": {
@@ -417,8 +421,8 @@
       "schema": 9
     },
     "boxtal__ready_set_packed": {
-      "desc": 845,
-      "schema": 131
+      "desc": 980,
+      "schema": 236
     },
     "boxtal__returns_list": {
       "desc": 1523,
@@ -1345,7 +1349,7 @@
       "schema": 104
     },
     "kernel__document_rules_upsert": {
-      "desc": 899,
+      "desc": 1106,
       "schema": 158
     },
     "kernel__document_template_archive": {
@@ -1605,7 +1609,7 @@
       "schema": 17
     },
     "kernel__report_bug": {
-      "desc": 561,
+      "desc": 716,
       "schema": 4
     },
     "kernel__request_scope": {

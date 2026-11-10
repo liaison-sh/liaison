@@ -2644,5 +2644,13 @@
     "typed": ["create companies", "put people in companies", "group contacts under companies"],
     "any": ["kernel__companies_link_batch"],
     "modelRun": true
+  },
+  {
+    "id": "S01",
+    "set": "seed",
+    "lang": "fr",
+    "say": "vérifie la clé Stripe",
+    "typed": ["vérifier la clé Stripe", "check the Stripe key"],
+    "any": ["stripe__connection_check"]
   }
 ]

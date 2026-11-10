@@ -52,3 +52,13 @@ key refused: acknowledged, catch-up, key_invalid or partial -> bundled-apps/stri
 card numbers hidden before storage -> bundled-apps/stripe/src/mirror.ts:9
 one Home item for the connection's admins -> bundled-apps/stripe/app.manifest.json:235
 other mode acknowledged, nothing changed -> bundled-apps/stripe/src/dispatch.ts:7
+first import resumes per resource, no duplicate -> bundled-apps/stripe/src/sync/backfill.ts:4
+about 10 requests a second -> bundled-apps/stripe/src/sync/common.ts:77
+invoices before the connection are history -> bundled-apps/stripe/src/sync/backfill.ts:14
+no figures while importing, events announced after -> bundled-apps/stripe/src/states.ts:5
+nightly at 03:00, absent is not deleted -> bundled-apps/stripe/src/sync/reconcile.ts:9
+stalled after 2 hours with newer events, quiet never stalled -> bundled-apps/stripe/src/sync/probe.ts:5
+failed events applied again each minute -> bundled-apps/stripe/src/sync/maintenance.ts:6
+key refused: nothing read, waiting requests stay -> bundled-apps/stripe/src/states.ts:15
+missing permission reads partial -> bundled-apps/stripe/src/sync/backfill.ts:21
+disconnect removes the mirror, keeps invoicing documents -> bundled-apps/stripe/src/sync/maintenance.ts:17

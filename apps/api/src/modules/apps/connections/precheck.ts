@@ -9,7 +9,10 @@
 // only this one run's outbound requests, host side.
 import type { UserContext } from "~/db/rls"
 import { connectionConfigRegistry } from "~/modules/apps/app-registries"
-import { assertCredentialsAccepted, CredentialRefusedError } from "~/modules/apps/connections/service"
+import {
+  assertCredentialsAccepted,
+  CredentialRefusedError,
+} from "~/modules/apps/connections/service"
 import { executeTool } from "~/modules/apps/execute-tool"
 
 export async function precheckCredentials(input: {

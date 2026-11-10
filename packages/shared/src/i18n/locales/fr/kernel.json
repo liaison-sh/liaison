@@ -1595,6 +1595,14 @@
     "missing": {
       "one": "étiquette manquante",
       "other": "étiquettes manquantes"
+    },
+    "masked": {
+      "one": "numéro de carte masqué",
+      "other": "numéros de carte masqués"
+    },
+    "problem": {
+      "one": "problème de connexion",
+      "other": "problèmes de connexion"
     }
   },
   "homeMarkAllRead": "Tout marquer comme lu",

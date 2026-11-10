@@ -251,6 +251,11 @@ const READ_ONLY: Record<string, string[]> = {
     "customer_history",
   ],
   monitoring: ["incidents_list", "incidents_get", "incidents_summary", "webhook_info"],
+  stripe: [
+    "connection_precheck", // the key check run on a key before it is stored: records nothing
+    "settings_load",
+    "home_load",
+  ],
   pennylane: [
     "supplier_invoices_list",
     "supplier_invoice_get",

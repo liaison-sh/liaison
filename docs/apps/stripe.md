@@ -64,6 +64,22 @@ Stripe tells Liaison about changes through a webhook. In **Developers → Webhoo
 - **Card numbers.** A card number written in a customer's description or name, an invoice memo or line, a payment failure message or a dispute reason is hidden before anything is stored, and the connection's admins get one item on Home saying so.
 - **Live and test.** An event of the other mode (a live event on a test connection) is acknowledged and changes nothing.
 
+## Keep the mirror current
+
+Besides the webhook, Liaison reads Stripe on its own schedule.
+
+- **First import.** Right after you connect, Liaison reads every customer, subscription, invoice, payment, refund and dispute, about 10 requests a second. It keeps its place per kind of record, so an import that stops picks up where it left off, and nothing is stored twice. Invoices finalized before you connected are kept as history and never become Liaison invoices.
+- **While importing**, the Stripe page shows the progress per kind of record and no figures. Events that arrive meanwhile are applied to the mirror at once, and announced to the rest of Liaison once the import is done.
+- **Every night at 03:00**, Liaison reads Stripe's lists again and updates what changed. A record missing from a list is never treated as deleted: Liaison reads it back by itself, and marks a customer deleted only when Stripe says so for an account it has just confirmed is still yours.
+- **Every 15 minutes**, Liaison compares the last event it received with Stripe's event log. When Stripe has newer events and none reached Liaison for 2 hours, the connection reads **stalled**, its admins get a Home item, and the missed events are applied from the log. A quiet account with no new events is never stalled.
+- **Events that could not be applied** (for example while the key was refused) are applied again each minute once the key works.
+- **When the key is refused** (401), the connection reads **key_invalid** and nothing is read until an admin saves a working key. Waiting requests, such as a refund, stay waiting; approving one meanwhile changes nothing and says why.
+- **When a permission is missing** (403), the connection reads **partial** and the page names what the key may not read; the rest keeps working.
+
+## Disconnect Stripe
+
+Disconnecting removes every record Liaison kept from Stripe: the mirror, the event log and the connection's state. Invoices and credit notes in Liaison's invoicing are kept.
+
 ## What Liaison stores
 
 - Customers, subscriptions, invoices, payments, refunds and disputes, with amounts in minor units.

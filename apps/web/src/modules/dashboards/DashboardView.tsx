@@ -5,7 +5,15 @@
 // phone, up to three on a wide panel. Each block reads its own data as the
 // viewer and fails alone.
 import { RefreshCw } from "lucide-solid"
-import { type Component, createResource, createSignal, For, Match, Switch } from "solid-js"
+import {
+  type Component,
+  createResource,
+  createSignal,
+  For,
+  Match,
+  onCleanup,
+  Switch,
+} from "solid-js"
 import { ApiError } from "~/lib/api-error"
 import { cn } from "~/lib/cn"
 import { useI18n } from "~/modules/i18n/i18n-context"
@@ -13,8 +21,13 @@ import { useApi } from "~/modules/shell/ApiContext"
 import { Button } from "~/ui/Button"
 import { Skeleton } from "~/ui/Skeleton"
 import { BlockCard } from "./blocks/BlockCard"
-import { type DashboardBlockSpec, getBlockData, getDashboard } from "./dashboards-client"
-import { rememberDashboard } from "./dashboards-store"
+import {
+  type Dashboard,
+  type DashboardBlockSpec,
+  getBlockData,
+  getDashboard,
+} from "./dashboards-client"
+import { dashboardRevision, reloadDashboard, rememberDashboard } from "./dashboards-store"
 
 /** The grid span of a block's width, against the panel's own width (container queries). */
 export function blockSpanClass(width: DashboardBlockSpec["width"]): string {
@@ -27,14 +40,23 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
   const i18n = useI18n()
   const api = useApi()
   const [tick, setTick] = createSignal(0)
+  // Closing the tab cancels its block reads, queued or running, here and on the server.
+  const reads = new AbortController()
+  onCleanup(() => reads.abort())
+  let shown: Dashboard | null = null
 
+  // Keyed on the read revision too: an agent's open after a change, or Refresh all, reads the
+  // spec again, and blocks added, removed or remapped show at once.
   const [dashboard] = createResource(
-    () => props.entityId,
-    async (id) => {
+    () => [props.entityId, dashboardRevision(props.entityId)] as const,
+    async ([id]) => {
       try {
         const d = await getDashboard(api, id)
         rememberDashboard(d)
-        return { ok: true as const, dashboard: d }
+        // The same version keeps the same object, so its blocks stay mounted (Refresh all then
+        // refreshes them in place); a new version remounts them on the new spec.
+        if (shown?.id !== d.id || shown.version !== d.version) shown = d
+        return { ok: true as const, dashboard: shown }
       } catch (err) {
         const missing = err instanceof ApiError && (err.status === 404 || err.status === 403)
         return { ok: false as const, missing }
@@ -76,7 +98,10 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
                   size="sm"
                   data-testid="dashboard-refresh-all"
                   disabled={d().spec.blocks.length === 0}
-                  onClick={() => setTick((t) => t + 1)}
+                  onClick={() => {
+                    reloadDashboard(d().id)
+                    setTick((t) => t + 1)
+                  }}
                 >
                   <RefreshCw size={13} />
                   {i18n.t("kernel.dashboards.refreshAll")}
@@ -126,7 +151,9 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
                       block={block}
                       class={cn(blockSpanClass(block.width))}
                       refreshTick={tick()}
-                      load={(refresh) => getBlockData(api, d().id, block.id, { refresh })}
+                      load={(refresh) =>
+                        getBlockData(api, d().id, block.id, { refresh, signal: reads.signal })
+                      }
                     />
                   )}
                 </For>

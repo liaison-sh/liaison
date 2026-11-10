@@ -39,6 +39,8 @@ export type BlockStatus = "loading" | "ready" | "error"
 const ERROR_KEYS: Record<BlockErrorKind, string> = {
   no_access: "kernel.dashboards.blockNoAccess",
   not_allowed: "kernel.dashboards.blockNotAllowed",
+  unknown_tool: "kernel.dashboards.blockSourceGone",
+  invalid_map: "kernel.dashboards.blockMapInvalid",
   rate_limited: "kernel.dashboards.blockRateLimited",
   source_error: "kernel.dashboards.blockSourceError",
   not_found: "kernel.dashboards.blockNotFound",

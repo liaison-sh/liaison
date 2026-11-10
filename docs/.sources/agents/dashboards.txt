@@ -43,3 +43,11 @@ Four in flight, one refresh per 30 s -> apps/api/src/modules/dashboards/cache.ts
 Refresh window -> apps/api/src/modules/dashboards/cache.ts:24
 REST routes -> apps/api/src/modules/dashboards/routes.ts:71
 Block data endpoint and its 200 refusals -> apps/api/src/modules/dashboards/routes.ts:118
+Every member holds kernel:dashboards:read, agents keep it -> apps/api/src/modules/permissions/every-member-scopes.ts:38 ; apps/api/src/modules/agent/scopes/effective-scope.ts:51
+Config-declared agents get dashboards with the common base -> apps/api/src/modules/agent/directory/common-base-scopes.ts:51 ; apps/api/src/cli/provisioners/agents.ts:67
+Source gone / map no longer fits messages -> packages/shared/src/i18n/locales/en/kernel.json:6449 ; apps/web/src/modules/dashboards/blocks/BlockCard.tsx:42
+At most 20 series, the largest kept, truncated -> apps/api/src/modules/dashboards/spec.ts:34
+A failed block's answer is kept 30 s; refresh reads past it -> apps/api/src/modules/dashboards/cache.ts:115
+Closing the tab cancels its block reads -> apps/web/src/modules/dashboards/DashboardView.tsx:45
+The agent's open and Refresh all re-read the open dashboard -> apps/web/src/framework/bootstrap.ts:1284 ; apps/web/src/modules/dashboards/DashboardView.tsx:102
+Agent previews read with the person's roles -> apps/api/src/modules/dashboards/tools.ts:68

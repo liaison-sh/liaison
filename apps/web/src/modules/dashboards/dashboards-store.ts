@@ -12,6 +12,8 @@ export const DASHBOARD_TAB_TYPE = "kernel:dashboard"
 
 const [list, setList] = createSignal<DashboardSummary[]>([])
 const [titles, setTitles] = createStore<Record<string, string>>({})
+/** Bumped to make an open dashboard read its spec again (see `reloadDashboard`). */
+const [revisions, setRevisions] = createStore<Record<string, number>>({})
 let pending: Promise<void> | null = null
 
 /** Personal dashboards first, then the org's, each by title. */
@@ -73,13 +75,29 @@ export function loadDashboards(api: DashboardsApi): Promise<void> {
 }
 
 export function openDashboard(d: Pick<DashboardSummary, "id" | "title">): void {
+  reloadDashboard(d.id)
   openTab({ type: DASHBOARD_TAB_TYPE, entityId: d.id, label: d.title })
+}
+
+/**
+ * The open dashboard `id` reads its spec again. Every open goes through here (the sidebar, the
+ * agent's open after it changed the dashboard, Refresh all), so a tab already open shows the
+ * blocks as they are now, not as they were when the tab first opened.
+ */
+export function reloadDashboard(id: string): void {
+  setRevisions(id, (n) => (n ?? 0) + 1)
+}
+
+/** The read revision `DashboardView` keys its dashboard on. */
+export function dashboardRevision(id: string): number {
+  return revisions[id] ?? 0
 }
 
 /** Forget the viewer's dashboards: at sign-out (the next person must not see them) and between tests. */
 export function resetDashboardsStore(): void {
   setList([])
   setTitles({})
+  setRevisions({})
   pending = null
 }
 

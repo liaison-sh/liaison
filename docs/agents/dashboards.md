@@ -11,7 +11,7 @@ Dashboards are listed on **Home**, in the **Dashboards** section of the sidebar.
 
 - Your own dashboards come first, then the ones shared with the org, marked **Org**.
 - Click a dashboard to open it in its own tab. The tab's address is `/dashboard/<id>`, and the tab is named after the dashboard.
-- Your agent can also open a dashboard for you when it has made or changed one.
+- Your agent can also open a dashboard for you when it has made or changed one. A tab already open then shows the dashboard as it is now, and so does **Refresh all**.
 
 To get a dashboard, ask your agent, for example: "Build me a dashboard of last month's orders, with revenue by day and the ten most recent orders."
 
@@ -33,9 +33,11 @@ A block that cannot draw says why, and the rest of the dashboard still shows:
 | --- | --- |
 | You don't have access to the data behind this block. | The block reads a tool or a collection your role does not allow. Ask an administrator for the access. |
 | This block's source can no longer be shown on a dashboard. | The source now asks for approval or changes data, so a dashboard may not run it. Ask your agent to pick another source. |
+| This block's source is no longer available. Ask your agent to pick another one. | The app or connection behind the block was removed or turned off. |
+| This block no longer fits its source's data. Ask your agent to fix it. | The source's data changed shape, so the block's chart settings no longer apply. |
 | This block's data could not be read. Try again later. | The source failed, for example a connected service did not answer. |
 | No data for this block yet | The source answered with nothing to show. |
-| Some rows are left out: the block shows the first ones. | The source returned more rows than a block shows. |
+| Some rows are left out: the block shows the first ones. | The source returned more rows than a block shows, or more than 20 series (the largest are kept). |
 
 ## Who can make and share dashboards
 
@@ -47,7 +49,9 @@ A block that cannot draw says why, and the rest of the dashboard still shows:
 
 Every member can make dashboards: the **member** role and the **Full Member** role both hold `kernel:dashboards:write` and `kernel:dashboards:share` ([Set up roles](../admin/roles.md)). Only administrators hold `kernel:dashboards:admin` by default; give it to another role to let its people decide the agent's org dashboards.
 
-Your personal agent builds dashboards with your access. A named agent, such as a team's sales or support agent, builds them only when `kernel:dashboards:write` is in its scopes (`agents[].scopes` in the config file, see [Create an agent](create-an-agent.md)), and still only with the access of the person it works for. A named agent can never hold `kernel:dashboards:admin`. Asked for a dashboard without that access, the agent says which access is missing instead of saying dashboards do not exist.
+Everyone can list and open the dashboards they see: every active member holds `kernel:dashboards:read`, whatever their roles, and so does an agent working for them.
+
+Your personal agent builds dashboards with your access. A named agent, such as a team's sales or support agent, builds them when `kernel:dashboards:write` is in its scopes, and always with the access of the person it works for. An agent declared in the config file gets it with its common base; an agent created before that gets it at the next `liaison config apply` ([Create an agent](create-an-agent.md)). A named agent can never hold `kernel:dashboards:admin`. Asked for a dashboard without that access, the agent says which access is missing instead of saying dashboards do not exist.
 
 Nobody else sees a personal dashboard, administrators included. Your own changes are never held for approval: your scopes decide. When the **agent** creates an org dashboard, makes one org-visible, or changes or deletes an org dashboard, the change waits for a person who holds `kernel:dashboards:admin`. The approval card lists the title and each block with the tool or collection it reads. A personal dashboard the agent makes for you saves at once.
 
@@ -64,7 +68,7 @@ A block reads at most 2,000 rows from its source, and shows at most 100 rows, ba
 
 ## How long figures are kept
 
-A block's figures are kept for a minute, or for the block's own interval, set by whoever built it (at most 15 minutes, whatever the interval). They are kept per person and per set of access rights (scopes, dimension grants and roles), so a change to your access is never answered with figures read under the old one. A block runs at most four sources at once for one person; the rest wait their turn. One refresh per block per person every 30 seconds.
+A block's figures are kept for a minute, or for the block's own interval, set by whoever built it (at most 15 minutes, whatever the interval). They are kept per person and per set of access rights (scopes, dimension grants and roles), so a change to your access is never answered with figures read under the old one. A block runs at most four sources at once for one person; the rest wait their turn. One refresh per block per person every 30 seconds. A block whose source failed keeps that answer for 30 seconds too, so opening the dashboard again does not run the failing source again; **Refresh** reads it at once. Closing the tab stops its blocks' reads.
 
 ## The dashboards API
 

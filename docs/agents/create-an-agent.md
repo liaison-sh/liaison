@@ -34,7 +34,7 @@ An agent only sees the tools its ceiling allows. Three basic scopes matter for a
 | `kernel:threads:write` | Lets it ask other agents (`agents_ask`) and ask you to add one to a conversation (`agents_invite`). |
 | `kernel:agent:memory` | Lets it keep notes across turns with the memory tools. |
 
-Agents declared in a config file with `liaison config apply` get a common base automatically: skills, conversations, memory, contacts and files, knowledge documents, and projects. The base never includes administration. See [Config as code](../provisioning-cli.md). Agents you create in the form get exactly the capabilities you tick.
+Agents declared in a config file with `liaison config apply` get a common base automatically: skills, conversations, memory, contacts and files, knowledge documents, projects, and dashboards (list them, and build personal ones). The base never includes administration. See [Config as code](../provisioning-cli.md). Agents you create in the form get exactly the capabilities you tick.
 
 ## Write good instructions
 

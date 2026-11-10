@@ -4,6 +4,7 @@ import { ApiError } from "~/lib/api-error"
 import {
   blockErrorFrom,
   type DashboardsApi,
+  DashboardsClientTestAccess,
   getBlockData,
   getDashboard,
   listDashboards,
@@ -216,5 +217,64 @@ describe("dashboards", () => {
     ).rejects.toMatchObject({
       status: 404,
     })
+  })
+})
+
+describe("permanent block refusals", () => {
+  it("a gone source and a map that no longer fits keep their own kind", () => {
+    expect(parseBlockResponse({ error: "unknown_tool", message: "x" })).toMatchObject({
+      ok: false,
+      error: "unknown_tool",
+    })
+    expect(parseBlockResponse({ error: "invalid_map" })).toMatchObject({ error: "invalid_map" })
+    expect(parseBlockResponse({ error: "source_failed" })).toMatchObject({ error: "source_error" })
+  })
+})
+
+describe("block read slots", () => {
+  it("a finishing read hands its slot to the next waiter: never more than four at once", async () => {
+    const { withSlot, inFlight } = DashboardsClientTestAccess
+    let peak = 0
+    const releases: Array<() => void> = []
+    const job = () =>
+      withSlot(
+        () =>
+          new Promise<void>((resolve) => {
+            peak = Math.max(peak, inFlight())
+            releases.push(resolve)
+          }),
+      )
+    const first = [job(), job(), job(), job(), job()]
+    await Promise.resolve()
+    expect(releases.length).toBe(4)
+    releases.shift()?.()
+    // A newcomer arriving while the slot is being handed over waits its turn.
+    const late = job()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(inFlight()).toBe(4)
+    while (releases.length) {
+      releases.shift()?.()
+      await new Promise((r) => setTimeout(r, 0))
+    }
+    await Promise.all([...first, late])
+    expect(peak).toBeLessThanOrEqual(4)
+    expect(inFlight()).toBe(0)
+  })
+
+  it("a read whose view closed while it waited never runs", async () => {
+    const { withSlot } = DashboardsClientTestAccess
+    const releases: Array<() => void> = []
+    const hold = () => withSlot(() => new Promise<void>((resolve) => releases.push(resolve)))
+    const held = [hold(), hold(), hold(), hold()]
+    const gone = new AbortController()
+    let ran = false
+    const waiting = withSlot(async () => {
+      ran = true
+    }, gone.signal)
+    gone.abort()
+    for (const r of releases) r()
+    await Promise.all(held)
+    expect(await waiting).toBeNull()
+    expect(ran).toBe(false)
   })
 })

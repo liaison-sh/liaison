@@ -17,6 +17,7 @@ import {
   Show,
 } from "solid-js"
 import { ApiError } from "~/lib/api-error"
+import { userFromToken } from "~/modules/auth/auth-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { Dialog } from "~/ui/Dialog"
 
@@ -148,8 +149,10 @@ const ShareDialog: Component<ShareDialogProps> = (props) => {
   const availableMembers = createMemo(() => {
     const sharedIds = new Set(users().map((s) => s.userId))
     const q = addQuery().trim().toLowerCase()
+    // The person managing the sharing already has access: never offered to themselves.
+    const self = userFromToken()?.userId
     return (members() ?? []).filter((m) => {
-      if (sharedIds.has(m.userId)) return false
+      if (sharedIds.has(m.userId) || m.userId === self) return false
       if (!q) return true
       return m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q)
     })
@@ -334,7 +337,9 @@ const ShareDialog: Component<ShareDialogProps> = (props) => {
                           setAddQuery(e.currentTarget.value)
                           setAddOpen(true)
                         }}
-                        onFocus={() => setAddOpen(true)}
+                        // Opened by the person (a click or typing), not by the focus the
+                        // dialog gives it on open, so it never covers General access.
+                        onClick={() => setAddOpen(true)}
                         onBlur={() => setTimeout(() => setAddOpen(false), 150)}
                       />
                     </div>

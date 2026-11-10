@@ -11,6 +11,7 @@ import { mockFetch, moneyCtx, seedCharge, stripeMockReset, stripeMockSeed } from
 import { stripeDocumentRef } from "./money-events"
 import { reconcileCandidates, refundsForCharge } from "./tools/money-reads"
 import { refundsCreate } from "./tools/refunds"
+import { invoiceDocumentLink, refundDocumentLink } from "./tools/routes"
 
 type Obj = Record<string, any>
 type Emitted = { entity: string; action: string; entityId?: string; data?: any }
@@ -102,6 +103,14 @@ describe("refunds reach invoicing", () => {
       ["re_B", "pending"],
     ])
     expect(db.rows("stripe_payments")[0]?.invoice_id).toBe("in_R1")
+  })
+
+  it("a refund still reaches invoicing when another write of its charge made this mirror write stale", async () => {
+    seedCharge("ch_R9", 12000, 3000, { status: "succeeded" })
+    refund("re_R9", "ch_R9", 3000, "succeeded")
+    db.seed("stripe_payments", [{ stripe_id: "ch_R9", status: "succeeded", stripe_updated: "2099-01-01T00:00:00.000Z" }])
+    expect((await deliver("charge.refunded", "ch_R9")).status).toBe(200)
+    expect(of("refund:created").map((e) => e.data.charge_id)).toEqual(["ch_R9"])
   })
 
   it("a refund that settles emits refund:settled, a failed or canceled one refund:failed, and a pending one nothing", async () => {
@@ -298,6 +307,55 @@ describe("the reads invoicing calls", () => {
     expect(res.refunds).toEqual([
       { refund_id: "re_M1", charge_id: "ch_M1", invoice_id: "in_M1", document_ref: "stripe:in_M1", amount_minor: "3000", currency: "eur", status: "succeeded" },
     ])
+  })
+
+  it("reconcile_candidates walks past what invoicing decided or holds parked, however many come first", async () => {
+    const day = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString()
+    const inv = (stripe_id: string, finalized_at: string, extra: Obj = {}) => ({
+      stripe_id,
+      customer_id: "cus_FIXTURE0001",
+      status: "open",
+      total_minor: 12000,
+      currency: "eur",
+      finalized_at,
+      issuer: "liaison",
+      liaison_document_id: null,
+      ...extra,
+    })
+    // Newer than the one invoice an event missed: free trials, Stripe's own, a parked one.
+    const skipped = Array.from({ length: 30 }, (_, i) => inv(`in_Z${i}`, day(1), { total_minor: 0 }))
+    db.seed("stripe_invoices", [
+      ...skipped,
+      ...Array.from({ length: 30 }, (_, i) => inv(`in_S${i}`, day(1), { issuer: "stripe" })),
+      inv("in_PARKED", day(1)),
+      inv("in_LOST", day(3)),
+    ])
+    stripeMockSeed("invoices", { id: "in_LOST", status: "open", lines: { object: "list", has_more: false, data: [] } })
+    db.seed("stripe_refunds", [
+      ...Array.from({ length: 120 }, (_, i) => ({ stripe_id: `re_K${i}`, payment_id: "ch_K", amount_minor: 100, currency: "eur", status: "succeeded", liaison_document_id: null, liaison_skipped: "issued_by_stripe", created_at_stripe: day(1) })),
+      { stripe_id: "re_WAIT", payment_id: "ch_K", amount_minor: 100, currency: "eur", status: "succeeded", liaison_document_id: null, created_at_stripe: day(1) },
+      { stripe_id: "re_LOST", payment_id: "ch_K", amount_minor: 100, currency: "eur", status: "succeeded", liaison_document_id: null, created_at_stripe: day(2) },
+    ])
+    const res = (await reconcileCandidates({ waiting: ["in_PARKED", "re_WAIT"] }, { db: db as never, fetch: fetchStripe })) as Obj
+    expect(res.invoices.map((i: Obj) => i.stripe_invoice_id)).toEqual(["in_LOST"])
+    expect(res.refunds.map((r: Obj) => r.refund_id)).toEqual(["re_LOST"])
+  })
+
+  it("invoicing records what a Stripe invoice or refund became, or that none follows", async () => {
+    const doc = "7d4e3c1a-0000-4000-8000-000000000009"
+    db.seed("stripe_invoices", [{ stripe_id: "in_L1", status: "open" }, { stripe_id: "in_L2", status: "open" }])
+    db.seed("stripe_refunds", [{ stripe_id: "re_L1", status: "succeeded" }, { stripe_id: "re_L2", status: "succeeded" }])
+    const ctx = { db: db as never }
+    expect(await invoiceDocumentLink({ stripeInvoiceId: "in_L1", documentId: doc }, ctx)).toMatchObject({ ok: true })
+    expect(await invoiceDocumentLink({ stripeInvoiceId: "in_L2", issuedBy: "stripe" }, ctx)).toMatchObject({ ok: true })
+    expect(((await invoiceDocumentLink({ stripeInvoiceId: "in_L2" }, ctx)) as Obj).error.code).toBe("invoice_link_invalid")
+    expect(await refundDocumentLink({ stripeRefundId: "re_L1", documentId: doc }, ctx)).toMatchObject({ ok: true })
+    expect(await refundDocumentLink({ stripeRefundId: "re_L2", skipped: "nothing_left" }, ctx)).toMatchObject({ ok: true })
+    const by = (t: string, id: string) => db.rows(t).find((r) => r.stripe_id === id) as Obj
+    expect([by("stripe_invoices", "in_L1").issuer, by("stripe_invoices", "in_L1").liaison_document_id]).toEqual(["liaison", doc])
+    expect(by("stripe_invoices", "in_L2").issuer).toBe("stripe")
+    expect(by("stripe_refunds", "re_L1").liaison_document_id).toBe(doc)
+    expect(by("stripe_refunds", "re_L2").liaison_skipped).toBe("nothing_left")
   })
 
   it("the document key of a charge is invoicing's own", () => {

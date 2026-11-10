@@ -73,6 +73,50 @@ describe("Stripe refunds and credit notes", () => {
     expect(row.event_payload_json).toMatchObject({ kind: "stripe_credit_note", refund_id: "re_4", amount_minor: "1000" })
   })
 
+  test("a refund of a services invoice credits services, never goods", async () => {
+    const { db, ctx } = await issued()
+    await onStripeRefundCreated({ charge_id: "ch_1", invoice_id: "in_1", refunds: [refund("re_9", "6000", "succeeded")] }, ctx)
+    const kinds = net(db, creditNotes(db)[0] as Row).map((l) => l.line_kind)
+    expect(kinds.length).toBeGreaterThan(0)
+    expect(new Set(kinds)).toEqual(new Set(["service"]))
+  })
+
+  test("each decided Stripe invoice and refund is recorded on the Stripe side, and parked ones are left to the retry sweep", async () => {
+    const { db, ctx } = await issued()
+    const links = () => ctx.calls.filter((c) => c.tool.endsWith("_document_link")).map((c) => [c.tool, c.params])
+    // Issued, a free trial's zero invoice, and a refund's credit note.
+    expect(links()).toContainEqual(["stripe:invoice_document_link", { stripeInvoiceId: "in_1", documentId: String((db.__all("documents")[0] as Row).id) }])
+    await onStripeInvoiceFinalized(finalized({ stripe_invoice_id: "in_0", total_minor: "0", tax_minor: "0" }), ctx)
+    expect(links()).toContainEqual(["stripe:invoice_document_link", { stripeInvoiceId: "in_0", issuedBy: "stripe" }])
+    await onStripeRefundCreated({ charge_id: "ch_1", invoice_id: "in_1", refunds: [refund("re_7", "6000", "succeeded")] }, ctx)
+    const cn = creditNotes(db)[0] as Row
+    expect(links()).toContainEqual(["stripe:refund_document_link", { stripeRefundId: "re_7", documentId: String(cn.id) }])
+    // Nothing left to credit: decided too.
+    await onStripeRefundCreated({ charge_id: "ch_1", invoice_id: "in_1", refunds: [refund("re_8", "99999", "succeeded")] }, ctx)
+    await onStripeRefundCreated({ charge_id: "ch_1", invoice_id: "in_1", refunds: [refund("re_10", "100", "succeeded")] }, ctx)
+    expect(links()).toContainEqual(["stripe:refund_document_link", { stripeRefundId: "re_10", skipped: "nothing_left" }])
+
+    // A parked invoice is named to the safety job's read, which leaves it to the retry sweep.
+    await onStripeInvoiceFinalized(finalized({ stripe_invoice_id: "in_P", customer: { name: "No Mail", email: null, country: "FR", address: null } as never }), ctx)
+    await reconcileStripePayments(ctx)
+    const read = ctx.calls.find((c) => c.tool === "stripe:reconcile_candidates")
+    expect((read?.params as { waiting: string[] }).waiting).toContain("in_P")
+  })
+
+  test("in mode B a refund is recorded as Stripe's, so the safety job never asks again", async () => {
+    const { ctx } = await issued("stripe")
+    await onStripeRefundCreated({ charge_id: "ch_1", invoice_id: "in_1", refund_id: "re_B", amount_minor: "100", status: "succeeded" }, ctx)
+    expect(ctx.calls).toContainEqual({ tool: "stripe:refund_document_link", params: { stripeRefundId: "re_B", skipped: "issued_by_stripe" } })
+  })
+
+  test("a refund of a charge linked by hand to an invoice credits that invoice instead of waiting forever", async () => {
+    const { db, ctx } = await issued("liaison", finalized({ stripe_invoice_id: "in_x" }))
+    const doc = db.__all("documents")[0] as Row
+    await db.update("documents", String(doc.id), { external_refs: { ...(doc.external_refs as Row), stripe_charge_id: "ch_hand" } })
+    const r = await onStripeRefundCreated({ charge_id: "ch_hand", refunds: [refund("re_h", "1200", "succeeded")] }, ctx)
+    expect(r.refunds[0]).toMatchObject({ outcome: "issued" })
+  })
+
   test("a refund made in Stripe yields the same credit note with no card", async () => {
     const { db, ctx } = await issued()
     let approvals = 0

@@ -688,7 +688,7 @@
     },
     "invoice_document_link": {
       "agentVisible": false,
-      "description": "Record the Liaison document a Stripe invoice became.",
+      "description": "Record the Liaison document a Stripe invoice became, or that Stripe's own invoice stands.",
       "requiredScopes": [
         "stripe:internal"
       ],
@@ -703,12 +703,50 @@
           },
           "documentId": {
             "type": "string"
+          },
+          "issuedBy": {
+            "type": "string",
+            "enum": [
+              "stripe",
+              "before_connection"
+            ]
           }
         },
         "additionalProperties": false,
         "required": [
-          "stripeInvoiceId",
-          "documentId"
+          "stripeInvoiceId"
+        ]
+      }
+    },
+    "refund_document_link": {
+      "agentVisible": false,
+      "description": "Record the credit note a Stripe refund became, or that none follows it.",
+      "requiredScopes": [
+        "stripe:internal"
+      ],
+      "trustBoundary": "user",
+      "handler": "refundDocumentLink",
+      "writesToTable": "app_stripe.stripe_refunds",
+      "params": {
+        "type": "object",
+        "properties": {
+          "stripeRefundId": {
+            "type": "string"
+          },
+          "documentId": {
+            "type": "string"
+          },
+          "skipped": {
+            "type": "string",
+            "enum": [
+              "issued_by_stripe",
+              "nothing_left"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "stripeRefundId"
         ]
       }
     },
@@ -746,7 +784,15 @@
       "handler": "reconcileCandidates",
       "params": {
         "type": "object",
-        "properties": {},
+        "properties": {
+          "waiting": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500
+          }
+        },
         "additionalProperties": false
       },
       "timeoutMs": 60000
@@ -1393,6 +1439,7 @@
         "status": "string",
         "reason": "text?",
         "liaison_document_id": "uuid?",
+        "liaison_skipped": "text?",
         "created_at_stripe": "date",
         "stripe_updated": "date?"
       },

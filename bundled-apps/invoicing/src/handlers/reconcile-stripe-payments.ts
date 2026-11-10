@@ -33,10 +33,26 @@ export interface StripeReconcileResult {
   message: string
 }
 
+const OPEN_PARK = ["awaiting_config", "awaiting_data", "awaiting_dependency"]
+const WAITING_MAX = 500
+
+/** Stripe invoices and refunds held by an open park: the retry sweep re-drives them, so the
+ *  safety job's places go to what no handler holds. */
+async function waitingIds(ctx: StripeCtx): Promise<string[]> {
+  const rows = (await ctx.db.findMany("deferred_events", { where: { status: { in: OPEN_PARK } }, limit: 2000 })) as Row[]
+  const ids = new Set<string>()
+  for (const r of rows) {
+    const m = /^stripe:((?:in|re)_[A-Za-z0-9]+)$/.exec(String(r.event_id ?? ""))
+    if (m?.[1]) ids.add(m[1])
+    if (ids.size >= WAITING_MAX) break
+  }
+  return [...ids]
+}
+
 async function candidates(ctx: StripeCtx): Promise<ReconcileCandidates | null> {
   if (!ctx.executeTool) return null
   try {
-    const env = await ctx.executeTool("stripe:reconcile_candidates", {})
+    const env = await ctx.executeTool("stripe:reconcile_candidates", { waiting: await waitingIds(ctx) })
     return env.status === "completed" ? ((env.result ?? {}) as ReconcileCandidates) : null
   } catch {
     return null
@@ -88,7 +104,7 @@ export async function reconcileStripePayments(ctx: StripeCtx): Promise<StripeRec
       if (r.status === "ok") issued += 1
       continue
     }
-    if (inv.status === "paid" && doc.payment_status !== "paid") {
+    if (inv.status === "paid" && (doc.payment_status !== "paid" || doc.collection_state === "failed")) {
       const r = await onStripeInvoicePaid(inv, ctx)
       if (r.status === "ok") paid += 1
     } else if (doc.payment_status === "paid") {

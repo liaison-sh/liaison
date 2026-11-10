@@ -11,6 +11,7 @@ export const CONTACT = "00000000-0000-4000-8000-00000000c001"
 
 export function stripeDb(issuer: "liaison" | "stripe" | "undecided" = "liaison", over: Record<string, unknown> = {}): MockDb {
   return createMockDb({
+    bridgeWhereOperators: true,
     seed: {
       issuer_profiles: [{ ...ISSUER_ROW, timezone: "Europe/Paris", ...over }],
       stripe_streams: [

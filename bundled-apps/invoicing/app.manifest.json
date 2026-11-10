@@ -6836,6 +6836,10 @@
       "reason": "record on the Stripe invoice which Liaison invoice it became"
     },
     {
+      "target": "stripe:refund_document_link",
+      "reason": "record on the Stripe refund which credit note it became, or that none follows it"
+    },
+    {
       "target": "stripe:refunds_for_charge",
       "reason": "a credit note follows each refund of a charge by its own id, never the charge's cumulative amount"
     },

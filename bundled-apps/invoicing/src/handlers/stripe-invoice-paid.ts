@@ -41,7 +41,11 @@ export async function onStripeInvoicePaid(event: unknown, ctx: StripeCtx): Promi
     await recordCollection(ctx, doc)
     return { status: "ok", document_id: String(doc.id), paid_at: String(doc.paid_at ?? "") }
   }
-  if (doc.payment_status === "paid") return { status: "skipped", reason: "already_paid", document_id: String(doc.id) }
+  if (doc.payment_status === "paid") {
+    // A collection report that failed is tried again on the next delivery or safety-job run.
+    if (doc.collection_state === "failed") await reportPaid(ctx, doc)
+    return { status: "skipped", reason: "already_paid", document_id: String(doc.id) }
+  }
   const issuer = await findIssuerProfile(ctx.db, String(doc.issuer_profile_id ?? ""))
   const paid = await civilDateOf(ctx, issuer ?? {}, p.paid_at ?? null)
   if (!paid.ok) return { status: "skipped", reason: paid.error.error.code ?? "timezone", document_id: String(doc.id) }
@@ -73,7 +77,12 @@ async function recordCollection(ctx: StripeCtx, doc: Row): Promise<void> {
   await ctx.db.update("documents", String(doc.id), {
     lifecycle_log: [...log, { event: "collection_due", actor: "system", ts: new Date().toISOString(), source: "stripe" }],
   })
-  // Where VAT is due on receipt, the e-invoicing platform is told of the payment (einvoicing/collection.ts).
+  await reportPaid(ctx, doc)
+}
+
+/** Where VAT is due on receipt, the e-invoicing platform is told of the payment
+ *  (einvoicing/collection.ts); idempotent per document and payment. */
+async function reportPaid(ctx: StripeCtx, doc: Row): Promise<void> {
   const einv = ctx as unknown as EinvCtx
   if (!einv.contracts) return
   const paidOn = String(((await ctx.db.findOne("documents", String(doc.id))) as Row | null)?.paid_at ?? doc.paid_at ?? "").slice(0, 10)

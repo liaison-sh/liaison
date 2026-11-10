@@ -4,7 +4,7 @@
 // Both are a person's decision, never auto-approved.
 import { describe, expect, test } from "bun:test"
 import manifest from "../../app.manifest.json"
-import { invoiceFromStripePayment, invoiceFromStripePaymentPreflight, onStripePaymentUnmatched, paymentLinkToInvoice, paymentLinkToInvoicePreflight } from "./stripe-payment-unmatched"
+import { chargeLines, invoiceFromStripePayment, invoiceFromStripePaymentPreflight, onStripePaymentUnmatched, paymentLinkToInvoice, paymentLinkToInvoicePreflight } from "./stripe-payment-unmatched"
 import { onStripeInvoiceFinalized } from "./stripe-invoice-finalized"
 import { finalized, invoices, parks, stripeCtx, stripeDb } from "./stripe-money.testkit"
 
@@ -30,6 +30,39 @@ describe("a Stripe payment with no invoice", () => {
     // A second click is refused: one invoice per payment.
     const again = await invoiceFromStripePayment({ ...ctx, approval: approved }, { chargeId: "ch_7", vatRateBp: 2000 })
     expect(again).toMatchObject({ status: "error", error: { code: "already_invoiced" } })
+  })
+
+  test("an invoice for a 9.99 charge at 20% totals 9.99, with a rounding line where no net fits", async () => {
+    const db = stripeDb()
+    const ctx = stripeCtx(db)
+    await onStripePaymentUnmatched({ ...charge("ch_9"), amount_minor: "999" }, ctx)
+    const r = await invoiceFromStripePayment({ ...ctx, approval: approved }, { chargeId: "ch_9", vatRateBp: 2000 })
+    expect(r).toMatchObject({ status: "completed" })
+    expect(String((invoices(db)[0] as Row).grand_total_minor)).toBe("999")
+    for (const gross of [1n, 999n, 1000n, 6000n, 12345n]) {
+      const total = chargeLines(gross, 2000, "x")?.reduce((a, l) => a + BigInt(String(l.unit_amount_excl_minor)) + (l.tax_rate_bp ? (BigInt(String(l.unit_amount_excl_minor)) * 2000n + 5000n) / 10000n : 0n), 0n)
+      expect(total).toBe(gross)
+    }
+  })
+
+  test("a Stripe invoice whose total Liaison would not reproduce waits for a person, never issued off by a cent", async () => {
+    const db = stripeDb()
+    const ctx = stripeCtx(db)
+    const r = await onStripeInvoiceFinalized(finalized({ total_minor: "12002" }), ctx)
+    expect(r.status).toBe("deferred")
+    expect(invoices(db)).toHaveLength(0)
+    expect(parks(db)[0]).toMatchObject({ reason: "stripe_total_mismatch" })
+    expect(ctx.emitted.filter((e) => e.action === "stripe_tax_review")).toHaveLength(1)
+    // A line with several taxes carries no single rate: it waits too.
+    const multi = await onStripeInvoiceFinalized(finalized({ stripe_invoice_id: "in_m", lines: [{ description: "Plan", quantity: 1, unit_amount_excl_minor: "10000" }] }), ctx)
+    expect(multi.status).toBe("deferred")
+  })
+
+  test("a charge linked by hand to an invoice past the first 500 is still found", async () => {
+    const db = stripeDb()
+    const ctx = stripeCtx(db)
+    for (let i = 0; i < 600; i++) await db.insert("documents", { type: "invoice", status: "issued", number: `FA-${i}`, external_refs: i === 599 ? { stripe_charge_id: "ch_far" } : {} })
+    expect(await onStripePaymentUnmatched(charge("ch_far"), ctx)).toMatchObject({ status: "skipped", reason: "already_linked" })
   })
 
   test("linking a charge twice answers already_linked", async () => {

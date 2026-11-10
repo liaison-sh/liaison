@@ -4,9 +4,13 @@
 // Stripe subscription and nobody said what this schedule bills instead; no invoice number ever
 // shows before an invoice issues; the save sends exactly the fields the tools take.
 import { afterEach, describe, expect, it } from "bun:test"
+import { createMockDb } from "../test-db"
+import { recurringList, recurringScheduleUpdate, type RecurringCtx } from "../recurring/tools"
 import {
+  changedParams,
   conflictFrom,
   defaultSchedule,
+  draftFromRow,
   editorActions,
   nextInvoices,
   NUMBER_LINE,
@@ -33,6 +37,47 @@ const CONFLICT = {
 }
 
 describe("the schedule editor", () => {
+  it("a saved change of how each invoice issues round-trips through the tool and back into the editor", async () => {
+    const db = createMockDb({
+      seed: {
+        issuer_profiles: [{ id: "issuer-1", legal_name: "Maison Nord SARL", country: "FR", default_currency: "EUR", default_language: "fr", timezone: "Europe/Paris" }],
+        recurring_schedules: [
+          {
+            id: "sched-1",
+            issuer_profile_id: "issuer-1",
+            contact_id: "contact-1",
+            status: "active",
+            repeats: "month",
+            billing_day: "last",
+            covers: "period_ended",
+            issue_mode: "review",
+            paid_by: "transfer",
+            due_rule: "days_30",
+            language: "fr",
+            lines: [{ description: "Retainer {period}", qty: 1, unit_price_minor: 150000, vat_bp: 2000 }],
+            next_issue_on: "2026-11-30",
+            next_draft_on: "2026-11-27",
+            version: 1,
+          },
+        ],
+      },
+    })
+    const ctx = {
+      getUserId: async () => "user-person",
+      db: db as never,
+      time: { civil: async ({ timezone }: { timezone: string }) => ({ date: "2026-11-10", year: 2026, month: 11, day: 10, hour: 8, minute: 0, weekday: 2, zone: timezone }) },
+      approval: null,
+    } as unknown as RecurringCtx
+    const load = async () => draftFromRow("sched-1", (await recurringList(ctx, {})).rows[0] as unknown as Record<string, unknown>)
+    const before = await load()
+    expect(before.issue_mode).toBe("review")
+    const params = changedParams(before, { ...before, issue_mode: "auto" })
+    expect(params).toEqual({ issue_mode: "auto" })
+    expect(await recurringScheduleUpdate(ctx, { id: "sched-1", ...params })).toMatchObject({ status: "completed", issueMode: "auto" })
+    expect((await load()).issue_mode).toBe("auto")
+  })
+
+
   it("Start stays disabled during an open conflict", () => {
     const conflict = conflictFrom(CONFLICT)
     expect(conflict).toEqual({ message: CONFLICT.error.message })

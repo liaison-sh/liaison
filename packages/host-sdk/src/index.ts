@@ -22,6 +22,12 @@ declare const __LIAISON_APP_NAME__: string | undefined
 // Public types — plugins `import type { HostServices } from "@liaison/host"`.
 // ─────────────────────────────────────────────────────────────────────────
 
+/** A pending approval after an edit: its payload as it now stands and its fingerprint. */
+export interface HostApprovalEdit {
+  currentPayload?: Record<string, unknown>
+  payloadHash?: string
+}
+
 /** Generic auth-aware fetch. Path is kernel-relative ("/api/..."). */
 export type HostFetch = <T = unknown>(path: string, init?: RequestInit) => Promise<T>
 
@@ -339,6 +345,13 @@ export interface HostServices {
     decision: "approve" | "deny",
     payloadHash?: string,
   ) => Promise<unknown>
+  /** Change the fields of one of this app's pending approvals that its tool lets a person
+   *  edit; answers the payload as it now stands, with its new fingerprint. */
+  editApproval?: (
+    appName: string,
+    approvalId: string,
+    fields: Record<string, unknown>,
+  ) => Promise<HostApprovalEdit>
   /** Open an https page of a host the app's manifest declares, in a new tab. */
   openExternal?: (appName: string, url: string) => Promise<void>
   /** Open another app's record in its own tab. */
@@ -642,6 +655,25 @@ export const app = {
         decision === "approve" && payloadHash ? { decision, payloadHash } : { decision },
       ),
     })
+  },
+  /**
+   * Edit one of this app's pending approvals: only the fields its tool declares editable
+   * change (the server refuses any other). Answers the new payload fingerprint, the one a
+   * following `decideApproval(id, "approve", payloadHash)` approves.
+   */
+  editApproval: (
+    approvalId: string,
+    fields: Record<string, unknown>,
+  ): Promise<HostApprovalEdit> => {
+    const host = getHost()
+    if (host.framed && host.editApproval) return host.editApproval(getAppName(), approvalId, fields)
+    return host.fetch<HostApprovalEdit>(
+      `/api/approvals/${encodeURIComponent(approvalId)}/payload`,
+      {
+        method: "POST",
+        body: JSON.stringify({ fields }),
+      },
+    )
   },
   /** Whether the host confirms approval decisions itself (the app need not ask again). */
   confirmsApprovals: (): boolean => {

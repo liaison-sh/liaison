@@ -9,6 +9,7 @@ import { reconcileStripePayments } from "./reconcile-stripe-payments"
 import { onStripeInvoiceFinalized } from "./stripe-invoice-finalized"
 import { onStripeInvoiceClosed, onStripeInvoicePaid, onStripeInvoicePaymentFailed } from "./stripe-invoice-paid"
 import { onStripePaymentUnmatched } from "./stripe-payment-unmatched"
+import { onStripeRefundCreated } from "./stripe-refund-created"
 import { finalized, invoices, parks, stripeCtx, stripeDb } from "./stripe-money.testkit"
 
 afterEach(() => setSystemTime())
@@ -40,6 +41,8 @@ describe("Stripe invoices handled by invoicing", () => {
     const off1 = stripeDb()
     const r1 = await onStripeInvoiceFinalized(finalized({ total_minor: "5000", lines: [line("834")] }), stripeCtx(off1))
     expect(r1.status).toBe("ok")
+    // Issued at the charge, to the minor unit: the unit Stripe's tax differs by is a rounding line.
+    expect(String((invoices(off1)[0] as Record<string, unknown>).grand_total_minor)).toBe("5000")
 
     const off2 = stripeDb()
     const ctx2 = stripeCtx(off2)
@@ -96,6 +99,37 @@ describe("Stripe invoices handled by invoicing", () => {
     await onStripeInvoicePaid(finalized({ status: "paid", paid_at: paidAt }), ctx)
     await onStripeInvoicePaid(finalized({ status: "paid", paid_at: paidAt }), ctx)
     expect(reported).toEqual([expect.objectContaining({ op: "report_collection", provider_ref: "pa-stripe", date: "2026-11-17" })])
+  })
+
+  test("a failed collection report is tried again on the next delivery, and a Stripe refund reports its negative collection", async () => {
+    setSystemTime(new Date(Date.UTC(2026, 10, 15, 12, 0)))
+    const db = stripeDb()
+    const reported: Array<Record<string, unknown>> = []
+    let up = false
+    const contracts = {
+      call: async (_c: string, op: string, params: Record<string, unknown>) => {
+        if (!up) return { status: "error", error: { code: "provider_unavailable", message: "down" } }
+        reported.push({ op, ...params })
+        return { status: "completed", result: { state: "accepted" } }
+      },
+    }
+    const ctx = stripeCtx(db, { contracts } as never)
+    await onStripeInvoiceFinalized(finalized({ charge_id: "ch_1" }), ctx)
+    const doc = invoices(db)[0] as Record<string, unknown>
+    await db.update("documents", String(doc.id), { tax_treatment: "eu_domestic", operation_category: "services" })
+    await db.insert("einvoice_transmissions", { document_id: doc.id, action: "send_einvoice", idempotency_key: "k-stripe", state: "sent", provider_app: "fakepa", provider_ref: "pa-stripe" })
+    const paidAt = new Date(Date.UTC(2026, 10, 17, 10, 0)).toISOString()
+    await onStripeInvoicePaid(finalized({ status: "paid", paid_at: paidAt }), ctx)
+    expect((invoices(db)[0] as Record<string, unknown>).collection_state).toBe("failed")
+    up = true
+    await onStripeInvoicePaid(finalized({ status: "paid", paid_at: paidAt }), ctx)
+    expect(reported).toEqual([expect.objectContaining({ op: "report_collection", date: "2026-11-17" })])
+    expect((invoices(db)[0] as Record<string, unknown>).collection_state).toBe("reported")
+
+    await onStripeRefundCreated({ charge_id: "ch_1", invoice_id: "in_1", refunds: [{ id: "re_1", amount_minor: "6000", status: "succeeded" }] }, ctx)
+    const back = reported.at(-1) as { amounts_by_vat_rate: Array<{ rate_bp: number; net_minor: string; vat_minor: string }> }
+    expect(reported).toHaveLength(2)
+    expect(back.amounts_by_vat_rate).toEqual([{ rate_bp: 2000, net_minor: "-5000", vat_minor: "-1000" }])
   })
 
   test("a failed payment leaves the document equal and raises attention only when actionable", async () => {

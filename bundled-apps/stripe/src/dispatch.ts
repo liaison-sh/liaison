@@ -427,7 +427,10 @@ export async function handleStripeEvent(
     const typed = EMITS[event.type]
     const fresh = outcome !== "stale"
     const typedData = typed && fresh ? await typedPayload(ctx, route, mirrorRow, obj ?? {}, tally, instant(started)) : null
-    const money = fresh ? await moneyEvents(ctx, event.type, obj ?? {}, tally, instant(started), typeof mirrorRow.invoice_id === "string" ? mirrorRow.invoice_id : null) : []
+    // Money events come from the object as Stripe returns it now, whatever the mirror write did: a
+    // concurrent write of the same object can make this one stale, and the refund or payment it
+    // reports must still reach invoicing (idempotent there, by refund and invoice id).
+    const money = await moneyEvents(ctx, event.type, obj ?? {}, tally, instant(started), typeof mirrorRow.invoice_id === "string" ? mirrorRow.invoice_id : null)
     if (tally.cards > 0) {
       await ctx.emit({
         entity: "card_number",

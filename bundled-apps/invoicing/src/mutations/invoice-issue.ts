@@ -49,6 +49,7 @@ import {
   lineAmountsError,
 } from "./shared"
 import { issueDateParts } from "../issue-date"
+import { runItemDraftRefusal } from "../recurring/run-card"
 import { issueWithFxRate } from "./fx-issue"
 import { checkDraftBuyer } from "./quote-proforma-po"
 
@@ -61,6 +62,7 @@ import { checkDraftBuyer } from "./quote-proforma-po"
 async function preflightInvoiceIssueParams(
   ctx: MutationsCtx,
   input: { draft_id: string },
+  forRun = false,
 ): Promise<
   | {
       ok: true
@@ -81,6 +83,11 @@ async function preflightInvoiceIssueParams(
         error: { code: "not_found", message: `draft ${input.draft_id} not found` },
       },
     }
+  }
+  // A month-end run's draft issues from its run's card only: never twice, never around it.
+  if (!forRun) {
+    const runRefusal = await runItemDraftRefusal(ctx, draft, "invoice_issue")
+    if (runRefusal) return { ok: false, error: runRefusal }
   }
   if (draft.type !== "invoice") {
     return {
@@ -243,6 +250,32 @@ export async function invoiceIssue(
     document_id: result.document_id,
     number: result.number,
     ...(result.einvoicing_warning ? { einvoicing_warning: result.einvoicing_warning } : {}),
+  }
+}
+
+/**
+ * Issue a month-end run's draft: the same checks and numbering as `invoice_issue`, with no card of
+ * its own (the run's approval is that card). The issued document takes the draft's
+ * `external_ref` and change log, and the draft is deleted in the same transaction.
+ */
+export async function issueRunDraft(
+  ctx: MutationsCtx,
+  input: { draft_id: string; external_ref: string; lifecycle_log: Array<Record<string, unknown>> },
+): Promise<MutationResult<{ document_id: string; number: string; einvoicing_warning?: EinvoicingWarning }>> {
+  const pre = await preflightInvoiceIssueParams(ctx, input, true)
+  if (!pre.ok) return pre.error
+  const { draft, issuer, counterparty } = pre
+  const when = await issueDateParts(ctx, issuer)
+  if (!when.ok) return when.error
+  const issueInput = buildIssueInputFromDraft(draft, issuer, counterparty, when)
+  const issued = await issueWithFxRate(ctx, { ...issueInput, external_ref: input.external_ref, lifecycle_carry: input.lifecycle_log })
+  if (!issued.ok) return issued.error
+  await deleteDraftRow(ctx.db, input.draft_id)
+  return {
+    status: "completed",
+    document_id: issued.result.document_id,
+    number: issued.result.number,
+    ...(issued.result.einvoicing_warning ? { einvoicing_warning: issued.result.einvoicing_warning } : {}),
   }
 }
 

@@ -1076,3 +1076,22 @@ export function summarizeRecurringSchedulePause(params: Record<string, unknown>)
     lines: [until ? `Resumes on ${until}, without billing the days in between` : "Stays paused until someone resumes it"],
   })
 }
+
+export function summarizeRecurringRunIssue(params: Record<string, unknown>): Promise<ApprovalSummaryShape> {
+  const items = Array.isArray(params.items) ? params.items : []
+  return done({
+    kind: "recurring_run_issue",
+    title: `Issue ${items.length} invoice${items.length === 1 ? "" : "s"} of a month-end run`,
+    subtitle: "Numbers are taken on the issue day from 08:00, never at approval",
+    lines: [`Run ${String(params.run_id ?? "")}`],
+  })
+}
+
+export function summarizeRecurringRunUnapprove(params: Record<string, unknown>): Promise<ApprovalSummaryShape> {
+  return done({
+    kind: "recurring_run_unapprove",
+    title: "Undo the approval of a month-end run",
+    subtitle: "Every edit is kept and a new card asks again; refused once a number is taken",
+    lines: [`Run ${String(params.run_id ?? "")}`],
+  })
+}

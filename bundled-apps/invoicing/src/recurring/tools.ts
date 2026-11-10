@@ -328,6 +328,7 @@ export async function recurringScheduleUpdate(
 export async function recurringSchedulePause(
   ctx: RecurringCtx,
   input: { id: string; until?: string | null },
+  checkOnly = false,
 ): Promise<
   { status: "completed"; id: string; scheduleStatus: "paused"; until: string | null; unchanged?: true; message: string } | Fail
 > {
@@ -360,6 +361,9 @@ export async function recurringSchedulePause(
     if (!isCivilDate(input.until) || input.until <= now.date) {
       return fail("invalid_until", `until must be a date after today (${now.date}), written YYYY-MM-DD. Nothing was paused.`)
     }
+  }
+  if (checkOnly) {
+    return { status: "completed", id: current.id, scheduleStatus: "paused", until: input.until ?? null, message: "Checked; nothing was written." }
   }
   await ctx.db.update(ENTITY, current.id, {
     status: "paused",

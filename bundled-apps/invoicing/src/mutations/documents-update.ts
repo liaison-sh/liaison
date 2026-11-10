@@ -2,6 +2,7 @@
 //
 // Invoicing mutations: documents.update (post-issue editing in place).
 
+import { runItemDraftRefusal } from "../recurring/run-card"
 import { documentRollup, lineSubtotal, lineTax, lineTotal } from "../money"
 import { type DraftLine, type DraftLineInput, enrichLineCustoms, readRefString } from "../issue"
 import { type ClassifyInput, classify } from "../tax"
@@ -453,6 +454,10 @@ async function documentsUpdateRun(
   // From here on, always operate on the RESOLVED uuid — never the raw (possibly non-uuid) input.
   const id = String(doc.id)
   const currentStatus = String(doc.status ?? "draft")
+  if (currentStatus === "draft") {
+    const runRefusal = await runItemDraftRefusal(ctx, doc, "documents_update")
+    if (runRefusal) return runRefusal
+  }
   if (NOT_EDITABLE_STATUSES.has(currentStatus)) {
     return {
       status: "error",

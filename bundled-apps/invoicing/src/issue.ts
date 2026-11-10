@@ -333,6 +333,11 @@ export interface IssueInput {
    *  is reserved for a value read straight off a Shopify webhook payload with no human step in
    *  between (the order-paid auto-flow). */
   po_number_source?: "shopify_sync" | "person"
+  /** The unique source key the issued document carries (a month-end run's draft hands its own
+   *  over, after clearing it on the draft, so the period stays billed once). */
+  external_ref?: string | null
+  /** Change-log entries the issued document carries over from the draft it replaces. */
+  lifecycle_carry?: Array<Record<string, unknown>>
 }
 
 export interface IssueResult {
@@ -574,6 +579,8 @@ export interface DocumentInsert {
   /** The e-invoicing snapshot written by the issue gate (regime, buyer, billing, category). */
   einvoice?: Partial<RegimeSnapshotColumns>
   lifecycle_log: Array<Record<string, unknown>>
+  /** The unique source key of the document, when one produced it. */
+  external_ref?: string | null
 }
 export interface DocumentRow extends DocumentInsert {
   id: string
@@ -694,6 +701,7 @@ function serialiseDocumentInsert(
       ? { internal_cancellation: row.internal_cancellation }
       : {}),
     ...(row.einvoice ?? {}),
+    ...(row.external_ref ? { external_ref: row.external_ref } : {}),
     lifecycle_log: row.lifecycle_log,
   }
 }
@@ -1198,7 +1206,9 @@ export async function issueDocument(
           }),
         }
       : creditNoteOriginalColumns(type, issuer, input.original ?? null)),
+    ...(input.external_ref ? { external_ref: input.external_ref } : {}),
     lifecycle_log: [
+      ...(input.lifecycle_carry ?? []),
       { event: "issued", actor: userId, ts: nowIso },
       // Warn mode: the gate's refusal is recorded, calmly, on the document it did not block.
       ...(gateRefusal

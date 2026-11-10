@@ -452,6 +452,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | Tool | Description | Approval-gated | Required scopes |
 | --- | --- | --- | --- |
 | `activity_read` | A company's or a contact's documents issued, paid and credited, newest first, for their timeline. |  | `invoicing:documents:read` |
+| `approval_route_read` | Who a month-end run's card is for: its account manager when every row has the same one. |  | `invoicing:documents:read` |
 | `contact_relationships_get` | Get a contact's invoicing relationship classification (customer/vendor). |  | `invoicing:contacts:read` |
 | `contact_relationships_set` | Set a contact's relationship classification (customer/vendor/both/other). |  | `invoicing:contacts:write` |
 | `counterparty_identity_get` | The e-invoicing identity of a counterparty: customer kind, SIREN / SIRET and whether the SIREN is confirmed against the business registry, registry name and head office, territory treatment. |  | `invoicing:contacts:read` |
@@ -515,7 +516,11 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `received_einvoices_get` | One received supplier e-invoice: supplier, number, dates, totals (the platform's, and the original file's own figures when they differ), status with its official code and history, its files (the original as received, the platform's PDF), and the actions possible now with their reasons. |  | `invoicing:received:read` |
 | `received_einvoices_list` | List the supplier e-invoices delivered by the e-invoicing platform (the invoicing app's Received tab): supplier, number, issue and due dates, total with currency, status (received, approved, in_dispute, refused, rejected, partially_collected, collected), received date, newest first. |  | `invoicing:received:read` |
 | `received_einvoices_refresh` | Re-read received supplier e-invoices from the e-invoicing platform now: with received_id, that one; without, everything new since the last check plus the statuses of open ones. |  | `invoicing:received:write` |
+| `recurring_item_issue` | Issue one approved row of a month-end run. |  | `invoicing:documents:write` |
 | `recurring_list` | List recurring schedules with their next issue day and draft day. |  | `invoicing:documents:read` |
+| `recurring_run_get` | Read a month-end run: its state, issue and last days, and each row with its draft_id, amounts, account manager, latest change and flags. |  | `invoicing:documents:read` |
+| `recurring_run_issue` | Approve a month-end run's card: records each row as approved and takes no number; the invoices issue on the issue day from 08:00. | yes | `invoicing:documents:write` |
+| `recurring_run_unapprove` | Undo a month-end run's approval before its first number: the run returns to drafted, edits are kept, and a new card asks again. |  | `invoicing:documents:write` |
 | `recurring_schedule_create` | Save a recurring invoice schedule for one customer: cadence, billing day and lines. | yes | `invoicing:documents:write` |
 | `recurring_schedule_pause` | Pause a recurring schedule: it drafts nothing while paused. |  | `invoicing:documents:write` |
 | `recurring_schedule_update` | Change a recurring schedule, resume a paused one (status active), end it (status ended) or turn issue_mode auto on or off. | yes | `invoicing:documents:write` |

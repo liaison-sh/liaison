@@ -249,6 +249,11 @@ const READ_ONLY: Record<string, string[]> = {
     "received_einvoices_get",
     // A customer's earlier sales, lines and Shopify orders (cross-calls only reads).
     "customer_history",
+    // Recurring schedules and a month-end run with its rows, read as stored.
+    "recurring_list",
+    "recurring_run_get",
+    // Who a month-end run's card is for (approvalRoute), asked by the kernel.
+    "approval_route_read",
   ],
   monitoring: ["incidents_list", "incidents_get", "incidents_summary", "webhook_info"],
   stripe: [
@@ -288,6 +293,9 @@ const READ_ONLY: Record<string, string[]> = {
     "einvoicing_received_list",
     "einvoicing_received_get",
   ],
+  // The key check run before a key is stored (a dry run that records nothing), and the
+  // settings page's read of the last check.
+  stripe: ["connection_precheck", "settings_load"],
   // A missing install_metadata row is derived in memory on the read path, never inserted.
   shopify: [
     "orders_invoice_links",

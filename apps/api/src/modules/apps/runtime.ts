@@ -291,6 +291,20 @@ export function hasPrivilegedBridge(desc: object): boolean {
   return d.trusted !== false || d._firstParty === true
 }
 
+/**
+ * The scopes a job's bridge acts with: the enqueuing person's snapshot when a person's action
+ * enqueued it, else the app's own (`<app>:*`), the same authority the job's RLS context carries
+ * (infra/jobs/jobs.ts). Without them a scheduled job's `ctx.executeTool` into one of its own
+ * app's tools was refused for a missing scope.
+ */
+export function jobCallerScopes(
+  appName: string,
+  payload: { _callerScopes?: unknown; _userId?: unknown },
+): string[] | undefined {
+  if (Array.isArray(payload._callerScopes)) return payload._callerScopes as string[]
+  return payload._userId ? undefined : [`${appName}:*`]
+}
+
 /** Bridge for a manifest job run: session-owned per-call transactions when the
  *  worker handed over `_session`, else the legacy ambient `_tx` bridge. */
 export function buildJobBridge(
@@ -3098,9 +3112,12 @@ async function registerSingleApp(
               // pre-session legacy contract) — for multi-write handlers whose
               // failure paths rely on whole-run rollback. Everything else runs
               // each bridge call in its own short transaction (executeToolHandler).
-              // TRUSTED apps only: a third-party .liaisonapp must not opt back
-              // into pinning a pool connection for its whole sandbox run.
-              atomic: tool.atomic === true && desc.trusted !== false,
+              // Code the platform vouches for only (trusted, in-tree, or the image's own
+              // catalog artifact, which runs sandboxed): a third-party .liaisonapp must not
+              // opt back into pinning a pool connection for its whole sandbox run. Dropping
+              // it for first-party sandboxed apps committed half of a failed run (a number
+              // taken, a claim kept, the document never written).
+              atomic: tool.atomic === true && hasPrivilegedBridge(desc),
             }
             if (manifestForBridge) entry._manifest = manifestForBridge
             // Scope-taint declarations. A write target counts only inside the app's
@@ -3984,12 +4001,26 @@ async function registerSingleApp(
                 // At an app day cap a scheduled tick is skipped: the job is
                 // periodic, the first tick after midnight UTC runs it
                 // (modules/apps/usage/app-day-cap.ts).
-                const { appRunHoldMs } = await import("~/modules/apps/usage/app-day-cap")
-                if ((await appRunHoldMs({ orgId: jobOrgId, trusted: false })) !== null) {
+                const { appRunHoldMs, noticeHeldJob } = await import(
+                  "~/modules/apps/usage/app-day-cap"
+                )
+                const holdMs = await appRunHoldMs({ orgId: jobOrgId, trusted: false })
+                if (holdMs !== null) {
                   log.info(
                     { app: appName, job: jobName, orgId: jobOrgId },
                     "scheduled job skipped: the org reached an app day cap",
                   )
+                  // A job whose skipped tick someone must know about (money that does not
+                  // go out) names the event that says so.
+                  if (typeof jobDef.heldEvent === "string") {
+                    await noticeHeldJob({
+                      orgId: jobOrgId,
+                      app: appName,
+                      job: jobName,
+                      heldEvent: jobDef.heldEvent,
+                      holdMs,
+                    })
+                  }
                   return
                 }
                 const actorId: string = payload._userId ?? `system:${appName}:${jobName}`
@@ -3999,7 +4030,7 @@ async function registerSingleApp(
                   jobOrgId,
                   payload,
                   bridgeManifest,
-                  Array.isArray(payload._callerScopes) ? payload._callerScopes : undefined,
+                  jobCallerScopes(appName, payload),
                 )
                 // Job handlers execute in the OUT-OF-PROCESS worker pool, like
                 // manifest event handlers: an in-process QuickJS job (e.g. a mail
@@ -4065,7 +4096,7 @@ async function registerSingleApp(
                   jobOrgId,
                   payload,
                   bridgeManifest,
-                  Array.isArray(payload._callerScopes) ? payload._callerScopes : undefined,
+                  jobCallerScopes(appName, payload),
                 )
                 // Out-of-process worker pool — see the scheduled-job branch.
                 // `_tx` / `_session` are host-only handles the bridge closes over;

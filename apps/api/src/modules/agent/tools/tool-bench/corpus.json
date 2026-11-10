@@ -2708,5 +2708,81 @@
     "say": "y a-t-il des litiges ouverts sur Stripe ?",
     "typed": ["litiges Stripe", "Stripe disputes"],
     "any": ["stripe__disputes_list"]
+  },
+  {
+    "id": "M01",
+    "set": "seed",
+    "lang": "en",
+    "say": "which clients do we bill every month",
+    "typed": ["recurring invoices", "monthly billing list", "subscriptions we invoice"],
+    "any": ["invoicing__recurring_list"],
+    "modelRun": true
+  },
+  {
+    "id": "M02",
+    "set": "seed",
+    "lang": "fr",
+    "say": "montre-moi la facturation de fin de mois avant que je valide",
+    "typed": ["facturation fin de mois", "factures mensuelles à valider", "month-end invoices"],
+    "any": ["invoicing__recurring_run_get"],
+    "modelRun": true
+  },
+  {
+    "id": "M03",
+    "set": "seed",
+    "lang": "en",
+    "say": "approve this month's invoices so they go out on Monday",
+    "typed": ["approve month-end invoices", "send monthly invoices", "month-end run"],
+    "any": ["invoicing__recurring_run_issue"],
+    "modelRun": true
+  },
+  {
+    "id": "M04",
+    "set": "seed",
+    "lang": "fr",
+    "say": "j'ai validé les factures du mois trop vite, annule la validation",
+    "typed": [
+      "annuler validation factures du mois",
+      "undo month-end approval",
+      "revenir en arrière"
+    ],
+    "any": ["invoicing__recurring_run_unapprove"],
+    "modelRun": true
+  },
+  {
+    "id": "M05",
+    "set": "seed",
+    "lang": "fr",
+    "say": "facture Sauvan 1 200 euros tous les mois à partir de janvier",
+    "typed": ["facturer chaque mois", "nouvel abonnement", "facture récurrente"],
+    "any": ["invoicing__recurring_schedule_create"],
+    "modelRun": true
+  },
+  {
+    "id": "M06",
+    "set": "seed",
+    "lang": "en",
+    "say": "stop billing Atelier Nord until March, they paused the contract",
+    "typed": ["pause billing", "suspend monthly invoice", "stop invoicing for now"],
+    "any": ["invoicing__recurring_schedule_pause"],
+    "modelRun": true
+  },
+  {
+    "id": "M07",
+    "set": "seed",
+    "lang": "fr",
+    "say": "à partir de février le forfait passe à 1 500 euros",
+    "typed": ["changer montant mensuel", "modifier abonnement", "update monthly price"],
+    "any": ["invoicing__recurring_schedule_update"],
+    "modelRun": true
+  },
+  {
+    "id": "M08",
+    "set": "seed",
+    "lang": "fr",
+    "say": "est-ce que la clé Stripe qu'on a mise marche bien ?",
+    "typed": ["vérifier clé stripe", "tester connexion stripe", "check stripe key"],
+    "any": ["stripe__connection_check"],
+    "modelRun": true
   }
 ]

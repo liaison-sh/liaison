@@ -41,6 +41,7 @@ export interface SubItem {
   currency: string | null
   currentPeriodEnd?: string | null
   trialEnd: string | null
+  cancelAt?: string | null
   pastDueSince: string | null
   card: { brand: string | null; last4: string | null; exp: string | null } | null
 }
@@ -53,6 +54,10 @@ export interface InvoiceItem {
   amountDueMinor: number | null
   currency: string | null
   nextPaymentAttempt: string | null
+  number?: string | null
+  totalMinor?: number | null
+  issuer?: string | null
+  liaisonDocumentId?: string | null
 }
 
 export interface DisputeItem {

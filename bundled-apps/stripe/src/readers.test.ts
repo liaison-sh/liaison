@@ -27,6 +27,18 @@ function world() {
   return { db }
 }
 
+describe("a customer page's address", () => {
+  it("a customer is read by the row id its page carries, and the lists name that row id", async () => {
+    const db = new MemDb()
+    const ROW = "5b1f0c2e-7a64-4f0e-9d0a-2f0a1b7c9e01"
+    db.seed("stripe_customers", [{ id: ROW, stripe_id: "cus_Z", email: "zoe@maison.example", name: "Zoe Marin", stripe_updated: AT }])
+    const byRow = (await customersGet({ id: ROW }, { db })) as { customer: { id: string; rowId: string } }
+    expect(byRow.customer).toMatchObject({ id: "cus_Z", rowId: ROW })
+    const listed = (await customersSearch({ query: "zoe" }, { db })) as { items: Array<{ rowId: string }> }
+    expect(listed.items[0]?.rowId).toBe(ROW)
+  })
+})
+
 describe("the Stripe mirror readers", () => {
   it("a reader's result names its record and says when the mirror was last synced", async () => {
     const ctx = world()

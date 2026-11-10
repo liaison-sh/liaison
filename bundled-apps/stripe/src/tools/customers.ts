@@ -87,7 +87,9 @@ export async function customersGet(params: Obj | undefined, ctx: ReadCtx) {
   const p = params ?? {}
   let row: Obj | undefined
   if (typeof p.id === "string" && p.id) {
-    row = ((await ctx.db.findMany("stripe_customers", { where: { stripe_id: p.id }, limit: 1 })) as Obj[])[0]
+    // A Stripe id (cus_...), or the row's own id, which is what a customer page's address carries.
+    const where = UUID.test(p.id) ? { id: p.id } : { stripe_id: p.id }
+    row = ((await ctx.db.findMany("stripe_customers", { where, limit: 1 })) as Obj[])[0]
   } else if (typeof p.contactId === "string" && UUID.test(p.contactId)) {
     const [id] = await customerIdsFor(ctx, { contactId: p.contactId })
     if (id) row = ((await ctx.db.findMany("stripe_customers", { where: { stripe_id: id }, limit: 1 })) as Obj[])[0]

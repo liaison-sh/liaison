@@ -83,6 +83,7 @@ export async function customerContext(params: Obj | undefined, ctx: ReadCtx) {
   if (more > 0) lines.push(`${more} more in Stripe: customers_get has them all.`)
   return {
     lines: lines.slice(0, CONTEXT_MAX_LINES),
+    customerIds: customerIds.slice(0, 5),
     source: { label: "Stripe", syncedAt: syncedAt([...subs, ...unpaid]) },
   }
 }

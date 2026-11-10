@@ -99,6 +99,7 @@ export async function customerIdsFor(ctx: ReadCtx, by: { contactId?: string; com
 export function customerItem(r: Obj) {
   return {
     id: String(r.stripe_id),
+    rowId: str(r.id),
     name: str(r.name),
     email: str(r.email),
     currency: str(r.currency),

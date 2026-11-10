@@ -2,6 +2,7 @@
 import { describe, expect, it } from "bun:test"
 import {
   gatherShopifyNetRevenue,
+  gatherShopifyRevenueSplit,
   gatherManualSpendTotal,
   gatherPlatformSpend,
   gatherAttributionRows,
@@ -131,6 +132,35 @@ describe("gatherShopifyNetRevenue", () => {
     expect(result.value).toBeNull()
     expect(result.lineage.unavailable).toBe(true)
     expect(result.lineage.note).toMatch(/currency/i)
+  })
+
+  it("splits B2B orders out of DTC by the order itself: company, tag, legacy suffix, shopify verdict", async () => {
+    const hit = (id: string, total: string, attributes: Record<string, unknown>) => ({
+      id: `gid://shopify/Order/${id}`,
+      currency: "EUR",
+      attributes: { totalAmount: total, ...attributes },
+    })
+    const executeTool = makeExecuteTool({
+      "shopify:orders_search": {
+        status: "completed",
+        result: {
+          results: [
+            hit("1", "1000", { b2bCompany: { name: "A dealer" }, tags: [], lineItems: [{ sku: "KIT-01" }] }),
+            hit("2", "500", { tags: ["B2B", "Distribution"], lineItems: [{ sku: "KIT-01" }] }),
+            hit("3", "200", { tags: [], lineItems: [{ sku: "KIT-01-B2B" }] }),
+            hit("4", "70", { b2bOrder: { b2b: true, reason: "b2b_order_tag" }, tags: ["Trade"] }),
+            hit("5", "30", { b2bCompany: null, tags: ["vip"], lineItems: [{ sku: "KIT-01" }] }),
+          ],
+          nextCursor: null,
+          totalCount: 5,
+        },
+      },
+    })
+    const split = await gatherShopifyRevenueSplit({ executeTool }, PERIOD)
+    expect(split.dtc.value).toBe(30)
+    expect(split.b2b.value).toBe(1770)
+    expect(split.b2bOrderIds.value).toEqual(["1", "2", "3", "4"])
+    expect(split.dtc.lineage.note).toContain("4 of 5 order(s) are B2B")
   })
 
   it("returns unavailable with no cross-app enabled", async () => {

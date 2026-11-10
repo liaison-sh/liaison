@@ -13,7 +13,7 @@
 // calls (SC 5) -- never a bare JS number whose toString() can vary by
 // floating-point path.
 
-import { DEFAULT_SKU_CLASSING_CONFIG, type SkuClassingConfig } from "./sku-classing"
+import { DEFAULT_SKU_CLASSING_CONFIG, shopifyOrderKey, type SkuClassingConfig } from "./sku-classing"
 import type { AttributionRow, MetricsInputs, Period, SourceLineage } from "./inputs"
 
 export interface FormulaInputDescriptor {
@@ -60,14 +60,15 @@ const UNAVAILABLE = "unavailable"
 // --- blended_mer_dtc --------------------------------------------------------
 //
 // DTC net Shopify revenue / total spend incl. manual ledger. Excludes B2B
-// (dealer/wholesale) revenue -- DTC only.
+// (dealer/wholesale) orders -- DTC only. An order is B2B by the order itself
+// (inputs.ts gatherShopifyRevenueSplit).
 
 export const blended_mer_dtc: Formula = {
   id: "blended_mer_dtc",
-  version: "1.0.0",
+  version: "1.1.0",
   title: "Blended MER (DTC)",
   inputs: [
-    { name: "shopifyNetRevenue", description: "Net Shopify revenue (refund-adjusted current totals), DTC channel", lineage: "shopify:orders_search" },
+    { name: "shopifyNetRevenue", description: "Net Shopify revenue (refund-adjusted current totals) of the DTC orders, B2B orders excluded", lineage: "shopify:orders_search" },
     { name: "metaSpend", description: "Meta ad spend for the period", lineage: "meta:insights_query" },
     { name: "googleSpend", description: "Google Ads spend for the period", lineage: "google:google_insights_query" },
     { name: "manualSpendTotal", description: "Manual (non-platform) spend ledger total", lineage: "manual_spend table" },
@@ -75,7 +76,7 @@ export const blended_mer_dtc: Formula = {
   caveats: [
     "Blended MER (total real revenue / total ad spend) is a rear-view directional efficiency ratio, NOT an incrementality measure.",
     "It cannot separate demand you created from demand you merely captured, and must NEVER by itself justify cutting continuity or brand budget.",
-    "Excludes B2B/wholesale revenue: DTC channel only.",
+    "Excludes B2B/wholesale revenue: DTC orders only. An order is B2B by the order itself: placed for a B2B company, tagged with a B2B order tag, or (older orders) carrying a B2B sku suffix.",
   ],
   compute(inputs, period) {
     const { shopifyNetRevenue, metaSpend, googleSpend, manualSpendTotal } = inputs
@@ -108,16 +109,16 @@ export const blended_mer_dtc: Formula = {
 // --- blended_mer_total -------------------------------------------------------
 //
 // Same as blended_mer_dtc but INCLUDES B2B/wholesale revenue in the
-// numerator (via attribution rows' sku_class_breakdown.b2b bucket, when
-// present).
+// numerator: the net revenue of the window's B2B orders, recognised by the
+// order itself (a company order, a B2B order tag, or a legacy B2B sku suffix).
 
 export const blended_mer_total: Formula = {
   id: "blended_mer_total",
-  version: "1.0.0",
+  version: "1.1.0",
   title: "Blended MER (total, incl. B2B)",
   inputs: [
-    { name: "shopifyNetRevenue", description: "Net Shopify revenue (refund-adjusted current totals)", lineage: "shopify:orders_search" },
-    { name: "attribution", description: "hub-DB purchase_attribution rows (for B2B revenue bucket)", lineage: "database:db_read/db_query" },
+    { name: "shopifyNetRevenue", description: "Net Shopify revenue (refund-adjusted current totals) of the DTC orders", lineage: "shopify:orders_search" },
+    { name: "shopifyB2bNetRevenue", description: "Net Shopify revenue (refund-adjusted current totals) of the B2B orders", lineage: "shopify:orders_search" },
     { name: "metaSpend", description: "Meta ad spend for the period", lineage: "meta:insights_query" },
     { name: "googleSpend", description: "Google Ads spend for the period", lineage: "google:google_insights_query" },
     { name: "manualSpendTotal", description: "Manual (non-platform) spend ledger total", lineage: "manual_spend table" },
@@ -128,16 +129,21 @@ export const blended_mer_total: Formula = {
     "Includes B2B/wholesale revenue in the numerator. Any brand halo from wholesale presence is not measurable at low volume and is not implied by this figure.",
   ],
   compute(inputs, period) {
-    const { shopifyNetRevenue, attribution, metaSpend, googleSpend, manualSpendTotal } = inputs
+    const { shopifyNetRevenue, shopifyB2bNetRevenue, metaSpend, googleSpend, manualSpendTotal } = inputs
     const lineageInputs = [
       shopifyNetRevenue.lineage,
-      attribution.lineage,
+      shopifyB2bNetRevenue.lineage,
       metaSpend.lineage,
       googleSpend.lineage,
       manualSpendTotal.lineage,
     ]
 
-    if (shopifyNetRevenue.value === null || metaSpend.value === null || googleSpend.value === null) {
+    if (
+      shopifyNetRevenue.value === null ||
+      shopifyB2bNetRevenue.value === null ||
+      metaSpend.value === null ||
+      googleSpend.value === null
+    ) {
       return {
         value: UNAVAILABLE,
         formulaId: this.id,
@@ -148,57 +154,7 @@ export const blended_mer_total: Formula = {
       }
     }
 
-    // B2B revenue in minor units, summed from attribution rows' breakdown
-    // (data -- never interpolated as instruction, R8). Divide by 100 to
-    // align with Shopify's major-unit net revenue figure (assumes 2-decimal
-    // currency). Rows carry their OWN conversion_currency for audit -- a
-    // naive sum across mixed currencies (e.g. EUR + USD minor units added as
-    // if they were the same unit) would silently corrupt the figure, so the
-    // sum is restricted to rows in ONE currency, chosen as whichever
-    // currency has the most b2b-bearing rows (a reasonable single reporting
-    // currency when the account is overwhelmingly one currency with a few
-    // stray rows) -- rows in any OTHER currency are excluded from the sum
-    // and reported via a caveat, mirroring the Shopify MIXED-currency path
-    // in metrics/inputs.ts (never silent mixing).
-    const b2bRowsByCurrency = new Map<string, number>() // currency -> minor-unit sum
-    const b2bRowCountByCurrency = new Map<string, number>()
-    for (const row of attribution.value) {
-      const b2b = row.sku_class_breakdown?.b2b
-      if (typeof b2b !== "number" || b2b === 0) continue
-      const currency = typeof row.conversion_currency === "string" && row.conversion_currency ? row.conversion_currency : "UNKNOWN"
-      b2bRowsByCurrency.set(currency, (b2bRowsByCurrency.get(currency) ?? 0) + b2b)
-      b2bRowCountByCurrency.set(currency, (b2bRowCountByCurrency.get(currency) ?? 0) + 1)
-    }
-
-    const currenciesPresent = [...b2bRowsByCurrency.keys()].sort()
-    let b2bMinor = 0
-    let excludedCurrencyNote: string | undefined
-    if (currenciesPresent.length > 1) {
-      // Pick the currency with the most b2b-bearing rows as the reporting
-      // currency (ties broken by the sorted-first currency code, for
-      // determinism); every other currency's b2b revenue is EXCLUDED from
-      // the sum, never silently added as if it were the same unit.
-      let reportingCurrency = currenciesPresent[0]!
-      let bestCount = b2bRowCountByCurrency.get(reportingCurrency) ?? 0
-      for (const currency of currenciesPresent) {
-        const count = b2bRowCountByCurrency.get(currency) ?? 0
-        if (count > bestCount) {
-          bestCount = count
-          reportingCurrency = currency
-        }
-      }
-      b2bMinor = b2bRowsByCurrency.get(reportingCurrency) ?? 0
-      const excluded = currenciesPresent.filter((c) => c !== reportingCurrency)
-      excludedCurrencyNote =
-        `B2B revenue spanned multiple currencies (${currenciesPresent.join(", ")}): only ${reportingCurrency} ` +
-        `(the majority currency) is included in the B2B figure; ${excluded.join(", ")} B2B revenue is EXCLUDED, ` +
-        "not silently mixed. Verify currency alignment before quoting this figure across a multi-currency account."
-    } else if (currenciesPresent.length === 1) {
-      b2bMinor = b2bRowsByCurrency.get(currenciesPresent[0]!) ?? 0
-    }
-    const b2bMajor = b2bMinor / 100
-
-    const totalRevenue = shopifyNetRevenue.value + b2bMajor
+    const totalRevenue = shopifyNetRevenue.value + shopifyB2bNetRevenue.value
     const totalSpend = metaSpend.value + googleSpend.value + manualSpendTotal.value
     const mer = totalSpend > 0 ? totalRevenue / totalSpend : 0
 
@@ -207,8 +163,7 @@ export const blended_mer_total: Formula = {
       formulaId: this.id,
       formulaVersion: this.version,
       lineage: { inputs: lineageInputs, period },
-      caveats: excludedCurrencyNote ? [...this.caveats, excludedCurrencyNote] : this.caveats,
-      degraded: attribution.lineage.unavailable ? true : undefined,
+      caveats: this.caveats,
     }
   },
 }
@@ -263,27 +218,22 @@ export const total_vs_dtc_mer_gap: Formula = {
 
 // --- cpa_by_sku_class ---------------------------------------------------------
 //
-// CPA (spend / conversions) per SKU class, classed at ORDER level by
-// majority line value -- an approximation, distinct from P3's per-line-item
-// conversion-feed classing (R7), flagged in lineage.
+// CPA (spend / conversions) per SKU class. A B2B order (recognised by the
+// order itself: inputs.b2bOrderIds) is class b2b as a whole. Any other order
+// is classed by majority line value of its sku_class_breakdown -- an
+// approximation, distinct from P3's per-line-item conversion-feed classing
+// (R7), flagged in lineage.
 
 export interface CpaBySkuClassValue {
   [skuClass: string]: { cpa: string; orders: number; spend_share: string }
 }
 
 /**
- * Pick the majority-value class directly from P3's per-order
- * sku_class_breakdown (already bucketed hardware/accessory/software/b2b --
- * see p3-blueprint.md section 3). This does NOT re-run the raw-SKU
- * classifier (sku-classing.ts's classifySku/b2bSuffix rules, which classify
- * a raw SKU STRING) -- the breakdown buckets ARE the classes already;
- * running a class name back through the SKU->class lookup would misread it
- * as an unrecognized SKU and fall through to the default class. The
- * majority-value / mixed-flag RULE (largest value share wins; more than one
- * non-zero bucket = mixed) is the same rule sku-classing.ts's classifyOrder
- * implements for raw SKUs -- restated here directly against the
- * already-classed breakdown, since sku-classing.ts's types are scoped to
- * real SKU strings, not P3's bucket-name keys.
+ * Pick the majority-value class directly from the hub's per-order
+ * sku_class_breakdown (already bucketed hardware/accessory/software/b2b).
+ * The breakdown buckets ARE the classes already, so no sku lookup runs here.
+ * Rule: the largest value share wins; more than one non-zero bucket = mixed.
+ * Only for orders that are not B2B by the order itself.
  */
 function classifyFromBreakdown(breakdown: Record<string, number>): { orderClass: string; mixed: boolean } {
   const entries = Object.entries(breakdown).filter(([, v]) => typeof v === "number" && v > 0)
@@ -304,20 +254,23 @@ function classifyFromBreakdown(breakdown: Record<string, number>): { orderClass:
 
 export const cpa_by_sku_class: Formula = {
   id: "cpa_by_sku_class",
-  version: "1.0.0",
+  version: "1.1.0",
   title: "CPA by SKU class (order-level majority classing)",
   inputs: [
     { name: "attribution", description: "hub-DB purchase_attribution rows", lineage: "database:db_read/db_query" },
+    { name: "b2bOrderIds", description: "The window's B2B orders, recognised by the order itself", lineage: "shopify:orders_search" },
     { name: "metaSpend", description: "Meta ad spend for the period", lineage: "meta:insights_query" },
     { name: "googleSpend", description: "Google Ads spend for the period", lineage: "google:google_insights_query" },
   ],
   caveats: [
-    "SKU classing here is ORDER-LEVEL majority-value (approximate), distinct from the per-line-item conversion-feed classing used for pixel uploads.",
+    "A B2B order (placed for a B2B company, tagged with a B2B order tag, or on older orders carrying a B2B sku suffix) is class b2b as a whole, whatever its skus.",
+    "SKU classing of the other orders is ORDER-LEVEL majority-value (approximate), distinct from the per-line-item conversion-feed classing used for pixel uploads.",
     "An order with line items split across multiple classes is assigned to whichever class holds the largest value share; such orders are flagged mixed in lineage.",
   ],
   compute(inputs, period) {
-    const { attribution, metaSpend, googleSpend } = inputs
-    const lineageInputs = [attribution.lineage, metaSpend.lineage, googleSpend.lineage]
+    const { attribution, b2bOrderIds, metaSpend, googleSpend } = inputs
+    const lineageInputs = [attribution.lineage, b2bOrderIds.lineage, metaSpend.lineage, googleSpend.lineage]
+    const b2bOrders = new Set(b2bOrderIds.value)
 
     if (metaSpend.value === null || googleSpend.value === null) {
       return {
@@ -335,6 +288,11 @@ export const cpa_by_sku_class: Formula = {
     let mixedCount = 0
 
     for (const row of attribution.value) {
+      const orderKey = shopifyOrderKey(row.shopify_order_id)
+      if (orderKey !== null && b2bOrders.has(orderKey)) {
+        perClass.set("b2b", (perClass.get("b2b") ?? 0) + 1)
+        continue
+      }
       const breakdown = row.sku_class_breakdown
       if (!breakdown) continue
       const result = classifyFromBreakdown(breakdown)
@@ -364,10 +322,14 @@ export const cpa_by_sku_class: Formula = {
         inputs: lineageInputs,
         period,
       },
-      caveats: mixedCount > 0
-        ? [...this.caveats, `${mixedCount} order(s) had mixed-class line items, assigned by majority value.`]
-        : this.caveats,
-      degraded: attribution.lineage.unavailable ? true : undefined,
+      caveats: [
+        ...this.caveats,
+        ...(mixedCount > 0 ? [`${mixedCount} order(s) had mixed-class line items, assigned by majority value.`] : []),
+        ...(b2bOrderIds.lineage.unavailable
+          ? ["The store's orders could not be read, so only orders whose skus carry the B2B class count as b2b; a B2B company or B2B-tagged order with plain skus may sit in a product class."]
+          : []),
+      ],
+      degraded: attribution.lineage.unavailable || b2bOrderIds.lineage.unavailable ? true : undefined,
     }
   },
 }

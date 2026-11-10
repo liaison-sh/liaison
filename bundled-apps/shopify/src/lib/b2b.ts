@@ -11,8 +11,11 @@
 //   "all"                   every order
 //   "none"                  no order
 //
-// An order is B2B when its purchasing entity is a Shopify B2B company, or when a line item's sku
-// ends with one of the org's `b2bSkuSuffixes` (comma separated, case-insensitive). Under
+// An order is B2B when the ORDER says so: it is placed for a Shopify B2B company (its purchasing
+// entity is a company or a company location), or it carries one of the org's `b2bOrderTags`
+// (comma separated, case-insensitive; unset means the one tag "B2B", an empty value means none).
+// Legacy: a line item's sku ending with one of the org's `b2bSkuSuffixes` also counts, for stores
+// that once sold wholesale through suffixed sku variants. Checked in that order. Under
 // "retail_only" a fact that cannot be read means NO email (fail closed: better a missed retail
 // email than one to a B2B buyer), and the result says so.
 //
@@ -24,6 +27,10 @@
 
 /** `kernel.apps.config` key holding the org's B2B sku suffixes (manifest `configKeys`). */
 export const B2B_SKU_SUFFIXES_CONFIG_KEY = "b2bSkuSuffixes"
+/** `kernel.apps.config` key holding the order tags that mark an order B2B (manifest `configKeys`). */
+export const B2B_ORDER_TAGS_CONFIG_KEY = "b2bOrderTags"
+/** The B2B order tags when the org has not set any (lowercased, as compared). */
+export const DEFAULT_B2B_ORDER_TAGS: readonly string[] = ["b2b"]
 /** `kernel.apps.config` key holding the org's customer shipping email policy. */
 export const SHIPPING_EMAIL_POLICY_CONFIG_KEY = "customerShippingEmail"
 
@@ -35,14 +42,16 @@ export type ShippingEmailPolicy = (typeof SHIPPING_EMAIL_POLICIES)[number]
  * order reads already use (a consumer order answers `{}`).
  */
 export const ORDER_B2B_SIGNALS_SELECTION =
-  "purchasingEntity { ... on PurchasingCompany { company { name } } } lineItems(first: 250) { nodes { sku } }"
+  "tags purchasingEntity { ... on PurchasingCompany { company { name } location { id } } } lineItems(first: 250) { nodes { sku } }"
 
 export interface OrderB2bSignals {
-  purchasingEntity?: { company?: { name?: string | null } | null } | null
+  tags?: readonly string[] | null
+  purchasingEntity?: { company?: { name?: string | null } | null; location?: unknown } | null
   lineItems?: { nodes?: Array<{ sku?: string | null } | null> | null } | null
 }
 
-export type B2bReason = "b2b_company_buyer" | "b2b_sku_suffix"
+export type B2bReason = "b2b_company_buyer" | "b2b_order_tag" | "b2b_sku_suffix"
+export const B2B_REASONS: readonly B2bReason[] = ["b2b_company_buyer", "b2b_order_tag", "b2b_sku_suffix"]
 
 /** Read the policy value; anything unknown (or unset) is the caller's own flag. */
 export function parseShippingEmailPolicy(value: unknown): ShippingEmailPolicy {
@@ -60,8 +69,24 @@ export function parseSkuSuffixes(value: unknown): string[] {
     .filter((s) => s.length > 0)
 }
 
+/**
+ * Parse the B2B order tags config value: a comma-separated string (or a string array). Unset (null
+ * or undefined) is the default tag "B2B"; an empty value means no tag marks an order B2B.
+ */
+export function parseOrderTags(value: unknown): string[] {
+  if (value === undefined || value === null) return [...DEFAULT_B2B_ORDER_TAGS]
+  return parseSkuSuffixes(value)
+}
+
 function companyReason(order: OrderB2bSignals | null | undefined): B2bReason | null {
-  return order?.purchasingEntity?.company ? "b2b_company_buyer" : null
+  const entity = order?.purchasingEntity
+  return entity?.company || entity?.location ? "b2b_company_buyer" : null
+}
+
+function tagReason(order: OrderB2bSignals | null | undefined, b2bTags: string[]): B2bReason | null {
+  if (b2bTags.length === 0) return null
+  const tags = (order?.tags ?? []).map((t) => (typeof t === "string" ? t.trim().toLowerCase() : ""))
+  return tags.some((t) => t.length > 0 && b2bTags.includes(t)) ? "b2b_order_tag" : null
 }
 
 function skuReason(order: OrderB2bSignals | null | undefined, suffixes: string[]): B2bReason | null {
@@ -75,21 +100,50 @@ function skuReason(order: OrderB2bSignals | null | undefined, suffixes: string[]
 /** The B2B verdict a read carries for the approval card (`b2bOrder`). */
 export type B2bVerdict = { b2b: true; reason: B2bReason } | { b2b: false; reason: null }
 
-/** Is this order B2B? Null when it cannot be decided (the org's suffixes could not be read). */
-export async function b2bVerdict(
-  order: OrderB2bSignals | null | undefined,
-  readSuffixes: () => Promise<unknown>,
-): Promise<B2bVerdict | null> {
-  const company = companyReason(order)
-  if (company) return { b2b: true, reason: company }
-  let raw: unknown
+/** The org's B2B recognition settings, parsed. */
+export interface B2bRecognition {
+  orderTags: string[]
+  skuSuffixes: string[]
+}
+
+/** Read the org's B2B order tags and sku suffixes; null when either setting cannot be read. */
+export async function readB2bRecognition(
+  readConfig: (key: string) => Promise<unknown>,
+): Promise<B2bRecognition | null> {
   try {
-    raw = await readSuffixes()
+    const [tags, suffixes] = await Promise.all([
+      readConfig(B2B_ORDER_TAGS_CONFIG_KEY),
+      readConfig(B2B_SKU_SUFFIXES_CONFIG_KEY),
+    ])
+    return { orderTags: parseOrderTags(tags), skuSuffixes: parseSkuSuffixes(suffixes) }
   } catch {
     return null
   }
-  const sku = skuReason(order, parseSkuSuffixes(raw))
-  return sku ? { b2b: true, reason: sku } : { b2b: false, reason: null }
+}
+
+/**
+ * The verdict, pure: a company order, then a B2B order tag, then (legacy) a B2B sku suffix. With
+ * `recognition` null (the settings could not be read) only a company order is decided.
+ */
+export function b2bVerdictFor(
+  order: OrderB2bSignals | null | undefined,
+  recognition: B2bRecognition | null,
+): B2bVerdict | null {
+  const company = companyReason(order)
+  if (company) return { b2b: true, reason: company }
+  if (recognition === null) return null
+  const reason = tagReason(order, recognition.orderTags) ?? skuReason(order, recognition.skuSuffixes)
+  return reason ? { b2b: true, reason } : { b2b: false, reason: null }
+}
+
+/** Is this order B2B? Null when it cannot be decided (the org's B2B settings could not be read). */
+export async function b2bVerdict(
+  order: OrderB2bSignals | null | undefined,
+  readConfig: (key: string) => Promise<unknown>,
+): Promise<B2bVerdict | null> {
+  const company = companyReason(order)
+  if (company) return { b2b: true, reason: company }
+  return b2bVerdictFor(order, await readB2bRecognition(readConfig))
 }
 
 /** Read the org's policy; null when the setting cannot be read. */
@@ -121,6 +175,8 @@ export interface CustomerNotification {
 const MESSAGES: Record<CustomerNotificationReason, string> = {
   b2b_company_buyer:
     "Shopify did not email the customer: this is a B2B order (its buyer is a Shopify B2B company), and B2B buyers never get Shopify's shipping email.",
+  b2b_order_tag:
+    "Shopify did not email the customer: this is a B2B order (it carries the store's B2B order tag), and B2B buyers never get Shopify's shipping email.",
   b2b_sku_suffix:
     "Shopify did not email the customer: this is a B2B order (a line item's sku carries the store's B2B suffix), and B2B buyers never get Shopify's shipping email.",
   retail_order:
@@ -202,7 +258,7 @@ export function customerNotificationFor(args: {
 
 /**
  * Decide Shopify's `notifyCustomer` for one fulfilment write at execution: reads the policy, then
- * (retail_only only) the order and the suffix setting, then the write's tracking facts, and applies
+ * (retail_only only) the order and the B2B tag and suffix settings, then the write's tracking facts, and applies
  * `customerNotificationFor`. `loadOrder` may throw or return null, which fails closed; so does a
  * `tracking` that throws.
  */
@@ -221,7 +277,7 @@ export async function decideCustomerNotification(args: {
     } catch {
       order = null
     }
-    verdict = order ? await b2bVerdict(order, () => args.readConfig(B2B_SKU_SUFFIXES_CONFIG_KEY)) : null
+    verdict = order ? await b2bVerdict(order, args.readConfig) : null
   }
   const base = { policy, verdict, callerAsksToNotify: args.callerAsksToNotify }
   // The tracking facts matter only when the policy would email (a create's are free; an update's

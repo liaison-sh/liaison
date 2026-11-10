@@ -868,6 +868,28 @@ describe("B2B and tax signals on order reads", () => {
     expect(attrs.customerTaxExempt).toBe(false)
   })
 
+  it("orders_search hits carry the order's B2B verdict: company, tag, legacy suffix, retail", async () => {
+    const plainLine = { lineItems: { edges: [{ node: { title: "Kit", quantity: 1, variant: { sku: "KIT-01" } } }] } }
+    const suffixLine = { lineItems: { edges: [{ node: { title: "Kit", quantity: 1, variant: { sku: "KIT-01-B2B" } } }] } }
+    const nodes = [
+      { ...b2bOrder, ...plainLine, tags: [] },
+      { ...baseOrder, ...plainLine, id: "gid://shopify/Order/3002", tags: ["B2B", "Distribution"] },
+      { ...baseOrder, ...suffixLine, id: "gid://shopify/Order/3003", tags: [] },
+      { ...baseOrder, ...plainLine, id: "gid://shopify/Order/3004", tags: ["vip"] },
+    ]
+    const { ctx } = makeCtx({
+      fetchResponses: [{ data: { orders: { edges: nodes.map((node) => ({ node })), pageInfo: {} } } }],
+      config: { b2bSkuSuffixes: "-B2B" },
+    })
+    const verdicts = (await orders_search({}, ctx)).results.map((r) => (r.attributes as Attrs).b2bOrder)
+    expect(verdicts).toEqual([
+      { b2b: true, reason: "b2b_company_buyer" },
+      { b2b: true, reason: "b2b_order_tag" },
+      { b2b: true, reason: "b2b_sku_suffix" },
+      { b2b: false, reason: null },
+    ])
+  })
+
   it("a Customer purchasing entity (empty union arm) is not a company", async () => {
     const { ctx } = makeCtx({
       fetchResponses: [

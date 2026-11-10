@@ -57,7 +57,7 @@ describe("metrics_run", () => {
     )) as { value: string; formulaId: string; formulaVersion: string; lineage: unknown; caveats: string[] }
 
     expect(result.formulaId).toBe("blended_mer_dtc")
-    expect(result.formulaVersion).toBe("1.0.0")
+    expect(result.formulaVersion).toBe("1.1.0")
     expect(result.value).toBe("4.0000") // 10000 / 2500
     expect(Array.isArray(result.caveats)).toBe(true)
     expect(result.lineage).toBeTruthy()

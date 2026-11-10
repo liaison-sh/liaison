@@ -715,7 +715,9 @@ export const app = {
   },
   /** From a page's component body: the tab's label follows `label()` (null keeps the view's). */
   tabLabel: (label: () => string | null | undefined): void => {
-    getHost().tabLabel?.(getAppName(), label)
+    // A host without it (an older one, a test with no host) keeps the view's label.
+    const host = optionalHost()
+    if (host?.tabLabel) host.tabLabel(getAppName(), label)
   },
   /**
    * Host-driven cross-app slot-body mount. Renders another app's contributed

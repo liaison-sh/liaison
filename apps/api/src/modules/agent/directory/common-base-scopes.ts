@@ -27,6 +27,12 @@
  * any agent asked to "show the dashboard" can, bounded like every other read
  * by the person's own grants (a block always reads as its viewer). Org
  * dashboards stay with `kernel:dashboards:share` and the admin's approval.
+ * And `kernel:approvals:read`: an agent that staged a request must be able to
+ * find it (`approvals_list`), fix it (`approval_update_payload`) and withdraw it
+ * (`approval_withdraw`) instead of stacking a duplicate. It decides nothing:
+ * editing another person's request still needs `kernel:approvals:write`, which
+ * stays out of the base.
+ *
  * A change here reaches NEW agents; an existing role agent gains it at its
  * next `config apply`, and @base agents keep what they were created with.
  *
@@ -50,4 +56,5 @@ export const COMMON_AGENT_BASE_SCOPES: readonly string[] = [
   "projects:tasks:write",
   "kernel:dashboards:read",
   "kernel:dashboards:write",
+  "kernel:approvals:read",
 ]

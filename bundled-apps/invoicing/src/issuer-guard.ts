@@ -15,14 +15,16 @@
 // says "unavailable" until the connection is connected and its customers and subscriptions are
 // fully imported. Unavailable refuses: a mirror that is still importing would say "none".
 //
-// Stripe never connected, or disconnected: no card stream is connected, and the guard passes
-// without asking anything. A Stripe app that is turned off answers as absent, and passes too.
+// Invoicing's card stream row is not trusted when it is missing: the Stripe app is asked, and its
+// answer decides. Stripe not connected, or the app turned off or absent, passes. Connected with no
+// row (a lost connection event): the row is made and the customer is checked as usual. Stripe
+// cannot be asked: unavailable, and nothing issues for that customer.
 //
 // A person may say what else the customer is billed for (`billsOtherThanStripe`, at least 5
 // characters): then the invoice is not the subscription, and it passes. Only a person says it: an
 // approved card, or a person's own click. An agent's statement alone waits for a person.
 import type { ErrorEnvelope, MutationsCtx } from "./mutations/shared"
-import { stripeConnected } from "./streams"
+import { ensureCardStreams, type StreamsCtx, stripeConnected } from "./streams"
 
 export const BILLS_OTHER_MIN = 5
 
@@ -76,7 +78,17 @@ async function personSaid(ctx: GuardCtx): Promise<boolean> {
   return (await actingAgent(ctx)) === null
 }
 
+/** Card stream rows for every issuer profile, connected. A write that fails (a read-only stage) leaves the verdict unchanged. */
+async function healCardStreams(ctx: GuardCtx): Promise<void> {
+  try {
+    await ensureCardStreams(ctx as unknown as StreamsCtx, true)
+  } catch {
+    // Made by the next call that may write.
+  }
+}
+
 interface BillingStatus {
+  connected?: boolean
   live?: boolean | null
   unavailable?: boolean
   reason?: string
@@ -88,10 +100,12 @@ export async function checkIssuerGuard(ctx: GuardCtx, input: GuardInput): Promis
   const companyId = input.companyId && UUID.test(input.companyId) ? input.companyId : null
   const given = (input.emails ?? []).filter((e): e is string => typeof e === "string" && e.includes("@"))
   if (!contactId && !companyId && given.length === 0) return { ok: true, calls: 0, billsOther: null }
-  // Stripe never connected or disconnected: nothing to ask.
-  if (!(await stripeConnected(ctx))) return { ok: true, calls: 0, billsOther: null }
+  // A card stream row says Stripe is connected; a missing row proves nothing (the connection event
+  // may have been lost), so Stripe is asked either way and its own answer decides.
+  const rowSaysConnected = await stripeConnected(ctx)
   const emails = [...new Set([...given, ...(await contactEmails(ctx, contactId))].map((e) => e.trim().toLowerCase()))]
   if (!ctx.executeTool) {
+    if (!rowSaysConnected) return { ok: true, calls: 0, billsOther: null }
     return {
       ok: false,
       calls: 0,
@@ -108,11 +122,16 @@ export async function checkIssuerGuard(ctx: GuardCtx, input: GuardInput): Promis
       ...(emails.length ? { emails: emails.slice(0, 20) } : {}),
     })
     if (env.status === "completed") status = (env.result ?? null) as BillingStatus | null
+    // The Stripe app is absent or turned off: nothing bills from it.
     else if (env.status === "error" && env.error.code === "tool_not_found") return { ok: true, calls: 1, billsOther: null }
     else failure = env.status === "error" ? env.error.message : "it asked for an approval"
   } catch (err) {
     failure = err instanceof Error ? err.message : String(err)
   }
+  if (status && status.connected === false) return { ok: true, calls: 1, billsOther: null }
+  // Stripe is connected but invoicing held no card stream: make it now (undecided until a person
+  // picks), so the settings and the issuing paths see it from here on. The answer applies either way.
+  if (status && !rowSaysConnected) await healCardStreams(ctx)
   if (!status || status.unavailable === true || typeof status.live !== "boolean") {
     const why = status?.reason || failure || "no answer"
     return {
@@ -121,7 +140,7 @@ export async function checkIssuerGuard(ctx: GuardCtx, input: GuardInput): Promis
       reason: STRIPE_UNREACHABLE,
       error: refusal(
         "stripe_guard_unavailable",
-        `Stripe is connected but cannot say yet whether this customer pays a subscription (${why}), so nothing was issued or saved. Try again in a few minutes.`,
+        `${rowSaysConnected || status ? "Stripe is connected but cannot say yet" : "Liaison could not ask Stripe whether it is connected and"} whether this customer pays a subscription (${why}), so nothing was issued or saved. Try again in a few minutes.`,
       ),
     }
   }

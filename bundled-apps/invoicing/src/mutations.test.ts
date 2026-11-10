@@ -284,6 +284,8 @@ function makeCtx(opts?: {
     if (name === "invoicing:documents_convert_local") {
       return { status: "completed", result: await documentsConvertLocal(ctx, args as never) }
     }
+    // No Stripe app in these tests: the kernel answers an absent app's tool as not found.
+    if (name.startsWith("stripe:")) return { status: "error", error: { code: "tool_not_found", message: `tool ${name} not registered` } }
     if (opts?.executeToolImpl) return opts.executeToolImpl(name, args)
     return { status: "completed", result: { dispatched: true } }
   }

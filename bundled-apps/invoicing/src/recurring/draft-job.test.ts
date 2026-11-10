@@ -111,6 +111,8 @@ export function harness(today: string, opts: { schedules?: Array<Record<string, 
         h.draftWrites += 1
         return { status: "completed", result: await recurringDraftWrite(h.ctx, params as never) }
       }
+      // No Stripe app here: the kernel answers an absent app's tool as not found.
+      if (target.startsWith("stripe:")) return { status: "error", error: { code: "tool_not_found", message: `tool ${target} not registered` } }
       return { status: "error", error: { code: "unavailable", message: "no tool in this test" } }
     },
     emit: async () => {},

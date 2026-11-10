@@ -183,7 +183,7 @@ describe("the issuer guard on every path that invoices a named customer", () => 
     expect(v.ok).toBe(true)
   })
 
-  test("Stripe connected but unreachable refuses with a retry line; Stripe off makes zero calls; Shopify, credit notes and quotes never call it", async () => {
+  test("Stripe connected but unreachable refuses with a retry line; Stripe disconnected or turned off passes; Shopify, credit notes and quotes never call it", async () => {
     const down = world()
     down.ctx.executeTool = async (tool: string) =>
       tool.startsWith("stripe:") ? { status: "error", error: { code: "upstream_timeout", message: "timed out" } } : { status: "completed", result: {} }
@@ -192,12 +192,12 @@ describe("the issuer guard on every path that invoices a named customer", () => 
     expect(r.error.code).toBe("stripe_guard_unavailable")
     expect(r.error.message).toContain("Try again in a few minutes")
 
-    // Never connected (no card stream) or disconnected: the guard asks nothing.
+    // Never connected or disconnected, as Stripe itself says: the guard passes and reads no mirror.
     for (const connected of ["no_row", false] as const) {
-      const off = world({ connected })
+      const off = world({ connected, mirror: stripeMirror({ state: "not_connected" }) })
       await seedDraft(off.db)
       expect(code(await invoiceIssuePreflight(off.ctx as never, { draft_id: DRAFT }))).not.toBe("stripe_stream_conflict")
-      expect(off.calls).toHaveLength(0)
+      expect(off.stripeCalls()).toBe(1)
     }
     // The Stripe app turned off answers as absent: the guard passes.
     const appOff = world({ stripeOff: true })
@@ -212,6 +212,25 @@ describe("the issuer guard on every path that invoices a named customer", () => 
       await draftsCreatePreflight(w.ctx as never, { type, counterparty_contact_id: PAYER, counterparty_name: "Jordan Payer", counterparty_country: "DE", items } as never)
     }
     expect(w.stripeCalls()).toBe(0)
+  })
+
+  test("with no card stream row while Stripe is connected, a Stripe-billed customer is refused as if the row existed, and the row is made", async () => {
+    // The connection event was lost: invoicing holds no card stream row at all.
+    const { db, ctx } = world({ connected: "no_row" })
+    await seedDraft(db)
+    expect(code(await invoiceIssue(ctx as never, { draft_id: DRAFT }))).toBe("stripe_stream_conflict")
+    expect(code(await invoiceIssuePreflight(ctx as never, { draft_id: DRAFT }))).toBe("stripe_stream_conflict")
+    // The read healed the row: connected, undecided until a person picks.
+    expect(((await db.findMany("stripe_streams", { limit: 5 })) as Obj[]).map((r) => [r.issuer_profile_id, r.stripe_connected, r.issuer])).toEqual([
+      [ISSUER, true, "undecided"],
+    ])
+    // Still no row and Stripe cannot say whether it is connected: unavailable, with the next step.
+    const blind = world({ connected: "no_row" })
+    blind.ctx.executeTool = async (tool: string) =>
+      tool.startsWith("stripe:") ? { status: "error", error: { code: "upstream_timeout", message: "timed out" } } : { status: "completed", result: {} }
+    const v = await checkIssuerGuard(blind.ctx as never, { contactId: PAYER, stage: "handler" })
+    expect(v.ok ? null : v.error.error.code).toBe("stripe_guard_unavailable")
+    expect(v.ok ? "" : v.error.error.message).toContain("Try again in a few minutes")
   })
 
   test("while importing or with subscriptions unreadable the guard refuses as unavailable", async () => {

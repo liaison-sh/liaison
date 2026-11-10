@@ -82,10 +82,17 @@ export async function billingStatusForCounterparty(params: Obj | undefined, ctx:
   const contactId = typeof p.contactId === "string" && UUID.test(p.contactId) ? p.contactId : undefined
   const companyId = typeof p.companyId === "string" && UUID.test(p.companyId) ? p.companyId : undefined
   const emails = [...new Set((Array.isArray(p.emails) ? p.emails : []).map(emailKey).filter((e): e is string => e !== null))]
+  // Not connected at all: nothing bills from Stripe, and the caller is told so (its own record of
+  // the connection may have missed the event).
+  const install = ((await ctx.db.findMany("install_metadata", { limit: 1 })) as Obj[])[0]
+  if (decodeState(install?.state).base === "not_connected") {
+    return { live: false, connected: false, unavailable: false, subscriptions: [], customerIds: [] }
+  }
   const unavailable = await mirrorUnavailable(ctx)
   if (unavailable) {
     return {
       live: null,
+      connected: true,
       unavailable: true,
       reason: unavailable,
       subscriptions: [],
@@ -100,7 +107,7 @@ export async function billingStatusForCounterparty(params: Obj | undefined, ctx:
       ...(await customerIdsByEmail(ctx, emails)),
     ]),
   ]
-  if (customerIds.length === 0) return { live: false, unavailable: false, subscriptions: [], customerIds: [] }
+  if (customerIds.length === 0) return { live: false, connected: true, unavailable: false, subscriptions: [], customerIds: [] }
   const subs = (await ctx.db.findMany("stripe_subscriptions", {
     where: { customer_id: { in: customerIds } },
     limit: 100,
@@ -108,6 +115,7 @@ export async function billingStatusForCounterparty(params: Obj | undefined, ctx:
   const live = subs.filter((s) => LIVE.has(String(s.status)))
   return {
     live: live.length > 0,
+    connected: true,
     unavailable: false,
     subscriptions: live.map((s) => ({ id: String(s.stripe_id), plan: String(s.plan_name ?? "") })),
     customerIds,

@@ -221,3 +221,4 @@ One customer, one issuer on six tools and the month-end row -> bundled-apps/invo
 stripe_guard_unavailable until imported or while the key cannot read -> bundled-apps/stripe/src/tools/routes.ts:43
 Unlinked Stripe customers found by email -> bundled-apps/stripe/src/tools/routes.ts:64
 billsOtherThanStripe at least 5 characters, a person's statement -> bundled-apps/invoicing/src/issuer-guard.ts:27
+A missing card stream row is not trusted: Stripe is asked and the row healed -> bundled-apps/invoicing/src/issuer-guard.ts:82

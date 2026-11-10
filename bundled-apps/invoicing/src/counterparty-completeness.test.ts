@@ -126,7 +126,9 @@ function makeCtx(): { ctx: MutationsCtx; db: MockDb } {
     },
     requestApproval: async () => ({ approval_id: `appr-${++idSeq}` }),
     decideApproval: async () => ({ status: "ok" }),
-    executeTool: async () => ({ status: "completed", result: {} }),
+    executeTool: async (name: string) =>
+      // No Stripe app here: the kernel answers an absent app's tool as not found.
+      name.startsWith("stripe:") ? { status: "error" as const, error: { code: "tool_not_found", message: "tool not registered" } } : ({ status: "completed", result: {} }),
     emit: async () => {},
   }
   return { ctx, db }
@@ -202,7 +204,9 @@ describe("issueDocument recipient backstop", () => {
           return { message_id: `msg-${++idSeq}` }
         },
       },
-      executeTool: async () => ({ status: "completed", result: {} }),
+      executeTool: async (name: string) =>
+      // No Stripe app here: the kernel answers an absent app's tool as not found.
+      name.startsWith("stripe:") ? { status: "error" as const, error: { code: "tool_not_found", message: "tool not registered" } } : ({ status: "completed", result: {} }),
       emit: async () => {},
     } as unknown as IssueCtx
   }

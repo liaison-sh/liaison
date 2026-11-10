@@ -41,7 +41,9 @@ describe("approval payload masking", () => {
     expect(isIdentityKey("cardNumber")).toBe(false)
     expect(isIdentityKey("note")).toBe(false)
     expect(isIdentityKey("vatNumber")).toBe(true)
-    expect(maskApprovalPayload({ card_number: VISA_SHAPED })).toEqual({ card_number: "•••• •••• •••• 0008" })
+    expect(maskApprovalPayload({ card_number: VISA_SHAPED })).toEqual({
+      card_number: "•••• •••• •••• 0008",
+    })
   })
 
   it("keys are masked in identity fields too", () => {

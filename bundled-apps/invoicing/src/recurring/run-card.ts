@@ -7,10 +7,11 @@
 // The card's payload names each row by its item, its draft and a hash of the draft's billing
 // content, so a draft changed after the card was drawn changes the card (and a stale approve is
 // refused by the kernel), and a draft changed after approval is caught again at issue.
-import { sha256Hex } from "../einvoicing/backfill-sha256"
-import { utf8Bytes } from "../legal-originals/bytes"
+import { currentItemHash, itemContentHash } from "./item-hash"
 import type { ErrorEnvelope, MutationsCtx } from "../mutations/shared"
 import { addDays, weekdayOf } from "./schedule"
+
+export { currentItemHash, itemContentHash }
 
 export const RUN_ISSUE_TOOL = "invoicing:recurring_run_issue"
 
@@ -84,57 +85,44 @@ export function draftTotals(lines: Row[]): { net: bigint; vat: bigint; total: bi
   return { net, vat, total: net + vat }
 }
 
-/**
- * The hash of what a row bills: the draft's customer, currency, terms, notes and lines, and the
- * item's state. Any change a person or an agent makes to a draft changes it.
- */
-export function itemContentHash(item: Row, draft: Row, lines: Row[]): string {
-  const canonical = JSON.stringify({
-    item: [item.id, item.state === "left_out" ? "left_out" : "in", item.schedule_id ?? null, item.schedule_version ?? null],
-    draft: [
-      draft.counterparty_contact_id ?? null,
-      draft.counterparty_name ?? null,
-      draft.counterparty_address ?? null,
-      draft.counterparty_country ?? null,
-      draft.counterparty_vat_id ?? null,
-      draft.counterparty_email ?? null,
-      draft.currency ?? null,
-      dayOf(draft.due_at),
-      draft.notes ?? null,
-      draft.po_number ?? null,
-    ],
-    lines: lines.map((l) => [
-      String(l.description ?? ""),
-      String(l.quantity ?? ""),
-      String(l.unit_price_minor ?? ""),
-      String(l.discount_minor ?? "0"),
-      l.tax_rate_bp ?? null,
-      l.line_kind ?? null,
-    ]),
-  })
-  return sha256Hex(utf8Bytes(canonical))
+/** A run whose card was approved: what changes after it waits for a second card of its own. */
+export function runDecided(run: Row | null | undefined): boolean {
+  return run?.status === "approved" || run?.status === "issuing" || run?.status === "partial"
 }
 
-/** The rows of a run a card shows: every item not left out and not issued, in order. */
-export async function cardItems(ctx: Pick<RunCtx, "db">, runId: string): Promise<{ items: CardItem[]; lines: string[]; total: bigint }> {
+/**
+ * The rows of a run a card shows, in order: before the decision, every ready row (a row that needs
+ * a fix, is left out or issued stays off the card and out of "Approve N"); after it, the rows
+ * waiting for a new approval.
+ */
+export async function cardItems(
+  ctx: Pick<RunCtx, "db">,
+  runId: string,
+): Promise<{ items: CardItem[]; lines: string[]; total: bigint; needsFix: number }> {
   const items: CardItem[] = []
   const lines: string[] = []
   let total = 0n
+  let needsFix = 0
+  const run = (await ctx.db.findOne("recurring_runs", runId)) as Row | null
+  const decided = runDecided(run)
+  const issuer = run ? ((await ctx.db.findOne("issuer_profiles", String(run.issuer_profile_id))) as Row | null) : null
   for (const item of await runItems(ctx, runId)) {
-    if (item.state === "left_out" || item.state === "issued") continue
+    if (item.state === "needs_fix") needsFix += 1
+    const onCard = decided ? item.state === "waiting_reapproval" : item.state === "ready" || item.state === "waiting_reapproval"
+    if (!onCard) continue
     const draft = (await ctx.db.findOne("documents", String(item.document_id))) as Row | null
     if (!draft) continue
     const dl = await draftLines(ctx, String(draft.id))
     const t = draftTotals(dl)
     total += t.total
-    items.push({ item_id: String(item.id), document_id: String(draft.id), content_hash: itemContentHash(item, draft, dl), total_minor: t.total.toString() })
+    items.push({ item_id: String(item.id), document_id: String(draft.id), content_hash: itemContentHash(item, draft, dl, issuer), total_minor: t.total.toString() })
     const cur = String(draft.currency ?? "EUR")
     const note = item.note ? ` · ${String(item.note)}` : ""
     lines.push(
       `${String(draft.counterparty_name ?? "Customer")}: ${minor(t.net, cur)} excl., ${minor(t.vat, cur)} VAT, ${minor(t.total, cur)} incl.${note}`.slice(0, 200),
     )
   }
-  return { items, lines, total }
+  return { items, lines, total, needsFix }
 }
 
 function minor(v: bigint, currency: string): string {
@@ -183,17 +171,19 @@ export async function approvalRouteRead(
   return { personId: managers.size === 1 && only ? only : null, companyId: null }
 }
 
-export async function stageRunCard(ctx: RunCtx, runId: string): Promise<{ approval_id: string | null; staged: boolean }> {
+export async function stageRunCard(ctx: RunCtx, runId: string): Promise<{ approval_id: string | null; staged: boolean; owed?: boolean }> {
   const run = (await ctx.db.findOne("recurring_runs", runId)) as Row | null
   if (!run) return { approval_id: null, staged: false }
-  const { items, lines, total } = await cardItems(ctx, runId)
-  if (items.length === 0) return { approval_id: null, staged: false }
+  const { items, lines, total, needsFix } = await cardItems(ctx, runId)
   const existing = typeof run.approval_request_id === "string" && run.approval_request_id !== "staging" ? run.approval_request_id : null
+  // The card still waiting follows its rows, even down to none left to approve.
   if (existing && ctx.approvals?.restagePayload) {
     const res = (await ctx.approvals.restagePayload(existing, { items }, "The month-end run's rows changed.")) as { ok?: boolean } | null
     if (res?.ok) return { approval_id: existing, staged: false }
   }
+  if (items.length === 0) return { approval_id: null, staged: false }
   if (run.approval_request_id === "staging") return { approval_id: null, staged: false }
+  const again = runDecided(run)
   // The bridge takes no `where.id` on a bulk write: the run's unique issuer and issue day name it.
   const claim = await ctx.db.updateMany("recurring_runs", {
     where: { issuer_profile_id: run.issuer_profile_id, issue_on: dayOf(run.issue_on), approval_request_id: existing ?? null },
@@ -207,9 +197,12 @@ export async function stageRunCard(ctx: RunCtx, runId: string): Promise<{ approv
   try {
     const approval = await ctx.requestApproval({
       tool_name: RUN_ISSUE_TOOL,
-      summary: `Issue ${items.length} invoice${items.length === 1 ? "" : "s"} for ${String(run.period_label ?? issueOn)} on ${issueOn}`,
+      summary: `${again ? "Approve again: issue" : "Issue"} ${items.length} invoice${items.length === 1 ? "" : "s"} for ${String(run.period_label ?? issueOn)} on ${issueOn}`,
       summary_detail: {
-        subtitle: `Numbers are taken on ${issueOn} from 08:00, never at approval. Last day: ${lastDay}.`,
+        subtitle:
+          `Numbers are taken on ${issueOn} from 08:00, never at approval. Last day: ${lastDay}.` +
+          (again ? " These rows changed after the run was approved; the others issue as approved." : "") +
+          (needsFix > 0 ? ` ${needsFix} row${needsFix === 1 ? " needs" : "s need"} a fix: it stays a draft, uses no number and comes back to you once fixed.` : ""),
         lines: [...lines.slice(0, 7), ...(lines.length > 7 ? [`and ${lines.length - 7} more; total ${minor(total, "")}`.trim()] : [])],
         // The run is the record the card is about: the kernel asks `approval_route_read` who it is for.
         links: [{ label: `Month-end run ${String(run.period_label ?? issueOn)}`, app: "invoicing", entityType: "recurring_run", entityId: runId }],
@@ -218,8 +211,14 @@ export async function stageRunCard(ctx: RunCtx, runId: string): Promise<{ approv
       editable_fields: [],
       expiry_hours: hoursUntilEndOf(now.date, now.hour, lastDay),
     })
-    await ctx.db.update("recurring_runs", runId, { approval_request_id: approval.approval_id ?? null })
-    return { approval_id: approval.approval_id ?? null, staged: true }
+    if (!approval.approval_id) {
+      // A person's own click cannot ask for a decision: the kernel takes it as theirs. The card is
+      // owed instead, and the run's job stages it on its next tick, as nobody's click.
+      await ctx.db.update("recurring_runs", runId, { approval_request_id: existing ?? null })
+      return { approval_id: null, staged: false, owed: true }
+    }
+    await ctx.db.update("recurring_runs", runId, { approval_request_id: approval.approval_id })
+    return { approval_id: approval.approval_id, staged: true }
   } catch (err) {
     await ctx.db.update("recurring_runs", runId, { approval_request_id: existing ?? null })
     throw err
@@ -236,18 +235,24 @@ export async function recurringRunIssue(
 > {
   const run = (await ctx.db.findOne("recurring_runs", input.run_id)) as Row | null
   if (!run) return fail("run_not_found", `No month-end run ${input.run_id}. Read it with recurring_run_get.`)
-  if (run.status !== "drafted" && run.status !== "rejected") {
+  const reask = runDecided(run)
+  const all = await runItems(ctx, input.run_id)
+  if (reask ? !all.some((i) => i.state === "waiting_reapproval") : run.status !== "drafted" && run.status !== "rejected") {
     return fail("run_not_drafted", `Run ${input.run_id} is ${String(run.status)}, so there is nothing to approve. Read it with recurring_run_get.`)
   }
   const decider = ctx.approval?.approvalDeciderId ?? (await ctx.getUserId())
   const wanted = new Map((input.items ?? []).map((i) => [i.item_id, i.content_hash]))
+  const issuer = (await ctx.db.findOne("issuer_profiles", String(run.issuer_profile_id))) as Row | null
   let approved = 0
   const changed: string[] = []
-  for (const item of await runItems(ctx, input.run_id)) {
-    if (item.state === "left_out" || item.state === "issued") continue
+  const patched: string[] = []
+  for (const item of all) {
+    // Only rows a card can show are approved: a row that needs a fix stays a draft.
+    if (reask ? item.state !== "waiting_reapproval" : item.state !== "ready" && item.state !== "waiting_reapproval") continue
     const draft = (await ctx.db.findOne("documents", String(item.document_id))) as Row | null
     if (!draft) continue
-    const hash = itemContentHash(item, draft, await draftLines(ctx, String(draft.id)))
+    const lines = await draftLines(ctx, String(draft.id))
+    const hash = itemContentHash(item, draft, lines, issuer)
     const shown = wanted.get(String(item.id))
     if (shown !== undefined && shown !== hash) {
       await ctx.db.update("recurring_run_items", String(item.id), { state: "waiting_reapproval", approved_hash: null })
@@ -255,15 +260,21 @@ export async function recurringRunIssue(
       continue
     }
     if (shown === undefined && wanted.size > 0) continue
-    await ctx.db.update("recurring_run_items", String(item.id), { state: "approved", approved_hash: hash })
+    // "From now on" reaches its schedule only now, with a person's approval, once.
+    const written = await writeSchedulePatch(ctx, item)
+    if (written) patched.push(written)
+    const now = written ? (((await ctx.db.findOne("recurring_run_items", String(item.id))) as Row | null) ?? item) : item
+    await ctx.db.update("recurring_run_items", String(item.id), { state: "approved", approved_hash: itemContentHash(now, draft, lines, issuer) })
     approved += 1
   }
   const issueOn = dayOf(run.issue_on) as string
-  await ctx.db.update("recurring_runs", input.run_id, {
-    status: "approved",
-    approved_by: decider,
-    approved_at: new Date().toISOString(),
-  })
+  await ctx.db.update(
+    "recurring_runs",
+    input.run_id,
+    reask
+      ? { status: run.status === "partial" ? "issuing" : run.status }
+      : { status: "approved", approved_by: decider, approved_at: new Date().toISOString() },
+  )
   return {
     status: "completed",
     run_id: input.run_id,
@@ -272,8 +283,25 @@ export async function recurringRunIssue(
     issueOn,
     message:
       `Approved ${approved} invoice${approved === 1 ? "" : "s"} of run ${input.run_id}. No number is taken now: they issue on ${issueOn} from 08:00.` +
-      (changed.length > 0 ? ` ${changed.length} draft${changed.length === 1 ? "" : "s"} changed since the card was drawn and wait for a new approval: ${changed.join(", ")}.` : ""),
+      (changed.length > 0 ? ` ${changed.length} draft${changed.length === 1 ? "" : "s"} changed since the card was drawn and wait for a new approval: ${changed.join(", ")}.` : "") +
+      (patched.length > 0 ? ` ${patched.length} schedule${patched.length === 1 ? "" : "s"} now bill${patched.length === 1 ? "s" : ""} the new terms from the next period: ${patched.join(", ")}.` : ""),
   }
+}
+
+/**
+ * Write a row's "from now on" patch to its schedule, raising the schedule's version. Returns the
+ * schedule id, or null when there is nothing to write or it was written at an earlier approval.
+ */
+async function writeSchedulePatch(ctx: RunCtx, item: Row): Promise<string | null> {
+  const patch = jsonOf<Row | null>(item.schedule_patch, null)
+  if (!patch || patch.written === true || !item.schedule_id) return null
+  const schedule = (await ctx.db.findOne("recurring_schedules", String(item.schedule_id))) as Row | null
+  if (!schedule) return null
+  const data: Row = { version: Number(schedule.version ?? 1) + 1 }
+  for (const key of ["lines", "contact_id", "due_rule", "due_days", "notes"]) if (key in patch) data[key] = patch[key]
+  await ctx.db.update("recurring_schedules", String(item.schedule_id), data)
+  await ctx.db.update("recurring_run_items", String(item.id), { schedule_patch: { ...patch, written: true, written_version: data.version } })
+  return String(item.schedule_id)
 }
 
 /** Undo an approval before the first number: the run goes back to drafted and a new card is staged. */
@@ -309,16 +337,20 @@ export async function recurringRunUnapprove(
   const items = await runItems(ctx, input.run_id)
   for (const item of items) {
     if (item.state === "approved" || item.state === "waiting_reapproval") {
-      await ctx.db.update("recurring_run_items", String(item.id), { state: "ready", approved_hash: null })
+      await ctx.db.update("recurring_run_items", String(item.id), { state: "ready", approved_hash: null, send_grant: null })
     }
   }
-  await ctx.db.update("recurring_runs", input.run_id, { status: "drafted", approved_by: null, approved_at: null, approval_request_id: null })
+  // Every edit stays, and a patch already written to its schedule stays written. A re-ask still
+  // waiting becomes the run's card again (restaged with every row); a decided one gives way to a new card.
+  await ctx.db.update("recurring_runs", input.run_id, { status: "drafted", approved_by: null, approved_at: null })
   const card = await stageRunCard(ctx, input.run_id)
   return {
     status: "completed",
     run_id: input.run_id,
     approval_id: card.approval_id,
-    message: `Run ${input.run_id} is back to drafted with every edit kept; no number was taken. A new card${card.approval_id ? ` (${card.approval_id})` : ""} asks for its approval.`,
+    message: card.owed
+      ? `Run ${input.run_id} is back to drafted with every edit kept; no number was taken. Its card is staged again within 5 minutes.`
+      : `Run ${input.run_id} is back to drafted with every edit kept; no number was taken. A new card${card.approval_id ? ` (${card.approval_id})` : ""} asks for its approval.`,
   }
 }
 
@@ -355,7 +387,8 @@ export async function runItemDraftRefusal(
 export async function recurringRunIssuePreflight(ctx: RunCtx, input: { run_id: string }): Promise<{ ok: true } | { error: { code: string; message: string } }> {
   const run = (await ctx.db.findOne("recurring_runs", input.run_id)) as Row | null
   if (!run) return { error: { code: "run_not_found", message: `No month-end run ${input.run_id}. Read it with recurring_run_get.` } }
-  if (run.status !== "drafted" && run.status !== "rejected") {
+  const reask = runDecided(run) && (await runItems(ctx, input.run_id)).some((i) => i.state === "waiting_reapproval")
+  if (!reask && run.status !== "drafted" && run.status !== "rejected") {
     return { error: { code: "run_not_drafted", message: `Run ${input.run_id} is ${String(run.status)}, so there is nothing to approve.` } }
   }
   return { ok: true }

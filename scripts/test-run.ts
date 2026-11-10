@@ -603,6 +603,12 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/invoicing-issue-date.test.ts",
             // Recurring schedules on the real kernel: the gate, the policy that cannot turn on issuing, the scopes.
             "src/tests/integration/invoicing-recurring-tools.test.ts",
+            // Month-end run rows on the real kernel: the draft tools' own paths, the writers' compare, and who may change a row without a person deciding.
+            "src/tests/integration/invoicing-month-end-run.test.ts",
+            "src/tests/integration/run-edit.integration.test.ts",
+            "src/tests/integration/run-edit-taint.integration.test.ts",
+            // Rolling a payments app's webhook signing secret: the old secret keeps verifying for 24 hours, then stops.
+            "src/tests/integration/stripe-webhook-signing-secret-roll.integration.test.ts",
             // Minor-unit money through the real sandbox: refused before parking, card equals issue.
             "src/tests/integration/invoicing-minor-amounts.test.ts",
             // E-invoice send through the einvoicing-pa@1 provider contract (Pennylane fake behind

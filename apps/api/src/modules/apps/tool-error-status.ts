@@ -129,6 +129,17 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   shopify_draft_order_id: 400,
   draft_order_id_missing: 400,
   issuer_not_found: 404,
+  // Month-end run rows: a required argument is missing, the row changed under the caller, the run
+  // no longer takes changes, or "from now on" has no schedule to change.
+  applies_required: 400,
+  ends_on_required: 400,
+  if_unchanged_since_required: 400,
+  draft_changed: 409,
+  already_in_run: 409,
+  run_closed: 409,
+  schedule_issues_by_itself: 409,
+  no_schedule: 422,
+  schedule_has_no_currency: 422,
   draft_order_not_found: 404,
   issued_document_immutable: 409,
   // A create-and-issue keyed onto an existing document asked for different content: edit that

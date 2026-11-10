@@ -23,7 +23,7 @@ import {
   endHold,
   draftTotals,
   findOneWhere,
-  itemContentHash,
+  currentItemHash,
   jsonOf,
   type Row,
   type RunCtx,
@@ -31,6 +31,7 @@ import {
   stageRunCard,
 } from "./run-card"
 import { addDays, datesFrom, daysInMonth, latestIssueOn, periodKey, periodStart, type Repeats } from "./schedule"
+import { runItemState } from "./item-state"
 import { draftCandidates, type ScheduleLineInput, type ScheduleRow } from "./tools"
 
 export interface DraftJobResult {
@@ -252,7 +253,9 @@ async function draftSchedule(ctx: RunCtx, s: ScheduleRow): Promise<{ runId: stri
   const totals = draftTotals(lines)
   const current: CurrentDraft = { net_minor: totals.net, lines_signature: linesSignature(lines) }
   const flags = runItemFlags(await previousInvoice(ctx, s), current)
-  const missing = !counterparty.counterparty_name || !counterparty.counterparty_address
+  // One rule for whether a row is ready (customer, address, total), the same the edits apply.
+  const rowState = runItemState(draftRow ?? docRow, lines)
+  const missing = rowState.state === "needs_fix"
   const position = (await runItems(ctx, runId)).length + 1
   const item = await insertOnce(
     ctx,
@@ -269,7 +272,7 @@ async function draftSchedule(ctx: RunCtx, s: ScheduleRow): Promise<{ runId: stri
       document_id: draftId,
       position,
       state: missing || differs ? "needs_fix" : "ready",
-      note: [...flags, ...(missing ? ["No billing address"] : []), ...(differs ? ["Lines differ from the schedule"] : [])].join(" · "),
+      note: [...flags, ...(rowState.state === "needs_fix" ? [rowState.reason] : []), ...(differs ? ["Lines differ from the schedule"] : [])].join(" · "),
     },
   )
   const refs = jsonOf<Row>(draftRow?.external_refs ?? docRow.external_refs, {})
@@ -304,7 +307,7 @@ async function approveByItself(ctx: RunCtx, runId: string): Promise<boolean> {
     if (!draft) return false
     const lines = await draftLines(ctx, String(draft.id))
     if (limit !== null && draftTotals(lines).total > limit) return false
-    hashes.push([String(item.id), itemContentHash(item, draft, lines)])
+    hashes.push([String(item.id), await currentItemHash(ctx, item, draft)])
   }
   const claim = await ctx.db.updateMany("recurring_runs", {
     where: { issuer_profile_id: run.issuer_profile_id, issue_on: dayOf(run.issue_on), status: "drafted", approval_request_id: null },

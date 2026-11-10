@@ -507,6 +507,12 @@ const REVIEWED_UNGATED_OUTWARD: Record<string, string> = {
     "gated: parks via the handler's ctx.requestApproval (conditionalGate; execute-tool.ts:2767-2900), person shortcut only for origin human-ui (:2879)",
   "invoicing:credit_note_issue":
     "gated: parks via the handler's ctx.requestApproval (conditionalGate; execute-tool.ts:2767-2900), person shortcut only for origin human-ui (:2879)",
+  "invoicing:drafts_create":
+    "local draft row, or a row added to a month-end run: nothing is issued, numbered or sent; a draft with an outside-text taint parks after outside text (execute-tool.ts taint escalation); an agent's run-row add also lands on the run's gated card",
+  "invoicing:drafts_discard":
+    "externalEffect: parks after outside text (execute-tool.ts taint escalation); an agent's take-out or end-schedule of a month-end row parks for a person (conditionalGate, handler's ctx.requestApproval); a draft discard takes no number and sends nothing",
+  "invoicing:drafts_update":
+    "local draft row, or a month-end row change: nothing is issued or sent; externalEffect parks after outside text (execute-tool.ts taint escalation); an agent's run-row edit restages the run's gated card",
   "invoicing:einvoice_send_request":
     "stages the send approval (einvoicing/transmit.ts einvoiceSendRequest); the PA submit needs the approval's dispatch grant",
   "invoicing:po_create_and_issue":

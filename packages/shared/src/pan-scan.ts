@@ -90,7 +90,10 @@ export const CARD_NETWORKS: readonly Network[] = [
   {
     name: "Diners Club",
     prefix: (d) =>
-      inRange(d, 3, 300, 305) || d.startsWith("3095") || d.startsWith("36") || inRange(d, 2, 38, 39),
+      inRange(d, 3, 300, 305) ||
+      d.startsWith("3095") ||
+      d.startsWith("36") ||
+      inRange(d, 2, 38, 39),
     lengths: [14, ...LONG],
   },
 ]
@@ -142,7 +145,8 @@ function overlaps(spans: Span[], start: number, end: number): boolean {
 // up to the number.
 const ID_LABEL =
   "(?:siret|siren|n°\\s*tva|tva|vat|iban|imei(?:sv)?|serial|s/n|sn|n° de série|num[ée]ro de s[ée]rie|order|commande|invoice|facture|avoir|credit note|tracking|suivi|colis|parcel|r[ée]f[ée]rence|reference|ref|ean|gtin|isbn|eori)"
-const ID_FILLER = "(?:[\\s\\u00a0:#°.\\-]|n°|no|nr|num[ée]ro|number|de|du|d'|intra-?com(?:munautaire)?)*"
+const ID_FILLER =
+  "(?:[\\s\\u00a0:#°.\\-]|n°|no|nr|num[ée]ro|number|de|du|d'|intra-?com(?:munautaire)?)*"
 const LABEL_BEFORE_TEXT = new RegExp(`(?:^|[^\\p{L}\\d])${ID_LABEL}${ID_FILLER}$`, "iu")
 const LABEL_BEFORE_HTML = new RegExp(
   `(?:^|[^\\p{L}\\d])${ID_LABEL}(?:${ID_FILLER.slice(3, -2)}|&nbsp;|<[^<>]{0,200}>)*$`,

@@ -21,6 +21,10 @@ Reading profiles needs `invoicing:settings:read` and editing their ordinary fiel
 
 A document's issue date and its number year are the date in the issuer's time zone when its number is taken. Set the zone in **Time zone** on the profile, for example `Europe/Paris`; an unknown name is refused. A profile with no zone chosen follows the organization's time zone, or UTC when the organization has none, and the profile list shows **Not chosen** until someone picks one. To keep UTC on purpose, type `UTC`. An agent reads the same reminder from `einvoicing_readiness` and sets the zone with `settings_issuer_profile_update`.
 
+The first time a document is issued on a profile with no zone chosen, in an organization that has none either, Home shows one line to people who can edit settings: the profile has no time zone and dates follow UTC until one is set. Issuing is not blocked and nothing issued changes. Setting a zone, or typing `UTC` to keep it, clears the line, and it is never raised again for that profile. A profile that already has issued documents is not asked.
+
+A line is one of four kinds: goods, software, service or shipping. A service line (consulting, a retainer) counts as a service in the operation type of an e-invoice and in the legal mention, as a software line does; it is never customs goods. A document issued before the service kind existed reads exactly as it did.
+
 A credit note can state an earlier date. The date decides the number's year: a date in a past year takes that year's series, never this year's number. A date before the last number of that series is refused, and so is a date after today. A payment date nobody states, from **Mark paid** or from a Shopify order, is read in the same time zone. A credit note that names its invoice cannot be dated before it, and moving either date later cannot put the credit note first. An imported document keeps the date it came with.
 
 If the issuer's zone is not one the host knows, nothing is numbered. A paid order or a Shopify draft order waits in `deferred_list` with what it needs, and its invoice or quote is made once the zone is fixed. A draft order deleted or completed meanwhile closes its wait.
@@ -197,7 +201,7 @@ Invoices, credit notes and proformas issued in another tool can be imported with
 | `documents_retry_pdf` | Re-render a failed PDF | No |
 | `order_reissue_apply` | Reissue an invoice after a Shopify order edit changed lines or amounts | Always |
 | `deferred_tax_override` | Issue a parked order with a chosen tax decision | Always |
-| `drafts_create`, `drafts_update`, `drafts_discard` | Legacy unnumbered drafts | No |
+| `drafts_create`, `drafts_update`, `drafts_discard` | Unissued drafts; a draft with a source, such as a recurring run, is a visible pending draft that `invoice_issue` issues by draft id | No |
 | `einvoicing_classify`, `einvoicing_readiness`, `einvoicing_settings_get` | Explain e-invoicing status and blockers | No |
 | `einvoicing_settings_set` | Change e-invoicing settings | Always |
 | `counterparty_identity_get`, `counterparty_identity_lookup`, `counterparty_identity_set` | Read, look up and record a customer's SIREN/SIRET identity | No |

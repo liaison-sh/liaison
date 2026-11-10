@@ -82,7 +82,7 @@ import {
 import { summarizeDocumentUpdate } from "./summarizers"
 import type { ReadsFetch } from "./reads"
 import { createMockDb, type MockDb } from "./test-db"
-import { documentsGet, type ReadsCtx } from "./reads"
+import { documentsGet, documentsSearch, type ReadsCtx } from "./reads"
 import { FICTIONAL_SIRENS, FR_SELLER_IDENTITY } from "./einvoicing/test-fixtures"
 import { creditNoteCreateAndIssuePreflight, creditNoteIssuePreflight } from "./mutations"
 import {
@@ -929,6 +929,36 @@ describe("drafts.create", () => {
     const issued = issuedDocs(db)[0]!
     expect(issued.shopify_order_id).toBe("12768069779622")
     expect(issued.shopify_order_number).toBe("#1149")
+  })
+
+  test("a draft with external_ref set appears in the Pending list and issues by draft id", async () => {
+    // A draft that comes from a source (a recurring run) carries an external_ref. It is a pending
+    // draft anyone can list, and invoice_issue {draft_id} issues it: one numbered invoice, the
+    // draft consumed.
+    const { ctx, db } = makeCtx()
+    const { draft_id } = await draftsCreate(ctx, {
+      type: "invoice",
+      ...BUYER_DRAFT_EINVOICE,
+      counterparty_contact_id: "contact-1",
+      counterparty_name: "Buyer SARL",
+      counterparty_address: "1 rue Buyer, 75002 Paris",
+      counterparty_email: "ap@buyersarl.example",
+      counterparty_country: "FR",
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: sampleDraftItems,
+    })
+    await db.update("documents", draft_id, { external_ref: "recurring:run-1:item-1" })
+
+    const pending = await documentsSearch(ctx as unknown as ReadsCtx, { status: "draft" })
+    expect(pending.map((r) => r.id)).toEqual([draft_id])
+
+    const r = await invoiceIssue(ctx, { draft_id })
+    expect(r.status).toBe("completed")
+    expect(draftDocs(db)).toHaveLength(0)
+    expect(issuedDocs(db)).toHaveLength(1)
+    expect(issuedDocs(db)[0]!.number).toMatch(/^INV-/)
+    expect(await documentsSearch(ctx as unknown as ReadsCtx, { status: "draft" })).toHaveLength(0)
   })
 
   test("defaults currency to EUR when neither input nor issuer specifies one", async () => {

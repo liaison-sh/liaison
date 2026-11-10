@@ -18,6 +18,8 @@ const ALLOWED: Record<string, string[]> = {
   stripe_customers: [
     "stripe_id", "email", "name", "currency", "delinquent", "address", "tax_ids", "company_id",
     "contact_id", "match_method", "match_by", "deleted_at", "stripe_updated", "created_at_stripe",
+    // The link a person's change replaced (company, contact, method, who), for undo: Liaison ids only.
+    "previous_link",
   ],
   stripe_subscriptions: [
     "stripe_id", "customer_id", "status", "plan_name", "items", "discount_percent",

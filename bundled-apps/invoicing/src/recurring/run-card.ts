@@ -159,6 +159,30 @@ async function issuerOf(ctx: Pick<RunCtx, "db">, id: string): Promise<Row | null
  * Stage the run's card, or rewrite the one already waiting. One card per run: the run row is
  * claimed before the request, so two jobs running at once stage one.
  */
+/** Resolve the "held by the day limit" notice of a money job, once it runs again. */
+export async function endHold(ctx: RunCtx, job: string): Promise<void> {
+  if (ctx.emit) await ctx.emit({ entity: "recurring_run", action: "held", entityId: job, data: { job, resolved: true } })
+}
+
+/**
+ * Who a run's card is for (manifest `approvalRoute`): the account manager of its rows (the person
+ * who set up each schedule) when they are all the same person, else nobody, and the card reaches
+ * the usual deciders. A run spans companies, so it names none.
+ */
+export async function approvalRouteRead(
+  ctx: RunCtx,
+  input: { entityType: string; entityId: string },
+): Promise<{ personId: string | null; companyId: null }> {
+  if (input.entityType !== "recurring_run") return { personId: null, companyId: null }
+  const managers = new Set<string>()
+  for (const item of await runItems(ctx, input.entityId)) {
+    const schedule = item.schedule_id ? ((await ctx.db.findOne("recurring_schedules", String(item.schedule_id))) as Row | null) : null
+    managers.add(String(schedule?.created_by ?? ""))
+  }
+  const [only] = managers
+  return { personId: managers.size === 1 && only ? only : null, companyId: null }
+}
+
 export async function stageRunCard(ctx: RunCtx, runId: string): Promise<{ approval_id: string | null; staged: boolean }> {
   const run = (await ctx.db.findOne("recurring_runs", runId)) as Row | null
   if (!run) return { approval_id: null, staged: false }
@@ -187,6 +211,8 @@ export async function stageRunCard(ctx: RunCtx, runId: string): Promise<{ approv
       summary_detail: {
         subtitle: `Numbers are taken on ${issueOn} from 08:00, never at approval. Last day: ${lastDay}.`,
         lines: [...lines.slice(0, 7), ...(lines.length > 7 ? [`and ${lines.length - 7} more; total ${minor(total, "")}`.trim()] : [])],
+        // The run is the record the card is about: the kernel asks `approval_route_read` who it is for.
+        links: [{ label: `Month-end run ${String(run.period_label ?? issueOn)}`, app: "invoicing", entityType: "recurring_run", entityId: runId }],
       },
       current_payload: { run_id: runId, items },
       editable_fields: [],

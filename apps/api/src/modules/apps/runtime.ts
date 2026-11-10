@@ -4001,12 +4001,26 @@ async function registerSingleApp(
                 // At an app day cap a scheduled tick is skipped: the job is
                 // periodic, the first tick after midnight UTC runs it
                 // (modules/apps/usage/app-day-cap.ts).
-                const { appRunHoldMs } = await import("~/modules/apps/usage/app-day-cap")
-                if ((await appRunHoldMs({ orgId: jobOrgId, trusted: false })) !== null) {
+                const { appRunHoldMs, noticeHeldJob } = await import(
+                  "~/modules/apps/usage/app-day-cap"
+                )
+                const holdMs = await appRunHoldMs({ orgId: jobOrgId, trusted: false })
+                if (holdMs !== null) {
                   log.info(
                     { app: appName, job: jobName, orgId: jobOrgId },
                     "scheduled job skipped: the org reached an app day cap",
                   )
+                  // A job whose skipped tick someone must know about (money that does not
+                  // go out) names the event that says so.
+                  if (typeof jobDef.heldEvent === "string") {
+                    await noticeHeldJob({
+                      orgId: jobOrgId,
+                      app: appName,
+                      job: jobName,
+                      heldEvent: jobDef.heldEvent,
+                      holdMs,
+                    })
+                  }
                   return
                 }
                 const actorId: string = payload._userId ?? `system:${appName}:${jobName}`

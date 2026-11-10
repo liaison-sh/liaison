@@ -5,7 +5,7 @@
 // day nears: three days before, its line rises to the top; on the day, the card says it ends
 // today; the day after, the run is late, the line stays, and nothing issues by itself. A rejected
 // card also lands here: its drafts stay drafts until the issue job asks again.
-import { dayOf, type Row, type RunCtx } from "./run-card"
+import { dayOf, endHold, type Row, type RunCtx } from "./run-card"
 import { addDays } from "./schedule"
 
 export type Urgency = "normal" | "rising" | "ends_today" | "late"
@@ -38,6 +38,7 @@ async function approvalStatus(ctx: RunCtx, approvalId: string): Promise<string |
 export async function recurringLegalDateJob(ctx: RunCtx): Promise<{ status: "ok"; runs: Array<{ run_id: string; urgency: Urgency }> }> {
   const runs = (await ctx.db.findMany("recurring_runs", { where: { status: { in: OPEN } }, orderBy: { issue_on: "asc" }, limit: 200 })) as Row[]
   const out: Array<{ run_id: string; urgency: Urgency }> = []
+  if (runs.length > 0) await endHold(ctx, "recurring-legal-date")
   for (const run of runs) {
     const runId = String(run.id)
     const issuer = (await ctx.db.findOne("issuer_profiles", String(run.issuer_profile_id))) as Row | null

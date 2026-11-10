@@ -42,6 +42,7 @@ import { recurringDraftJob } from "./recurring/draft-job"
 import { recurringIssueJob, recurringItemIssue } from "./recurring/issue-job"
 import { recurringLegalDateJob } from "./recurring/legal-date-job"
 import {
+  approvalRouteRead,
   type RunCtx,
   recurringRunIssue,
   recurringRunIssuePreflight,
@@ -697,3 +698,5 @@ export const recurringRunGetHandler = (params: Parameters<typeof recurringRunGet
 export const recurringRunIssuePreflightHandler = (params: { run_id: string }, ctx: RunCtx) => recurringRunIssuePreflight(ctx, params)
 export const recurringRunUnapprovePreflightHandler = (params: { run_id: string }, ctx: RunCtx) =>
   recurringRunUnapprovePreflight(ctx, params)
+export const approvalRouteReadHandler = (params: { entityType: string; entityId: string }, ctx: RunCtx) =>
+  approvalRouteRead(ctx, params)

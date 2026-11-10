@@ -2707,5 +2707,14 @@
     "typed": ["changer montant mensuel", "modifier abonnement", "update monthly price"],
     "any": ["invoicing__recurring_schedule_update"],
     "modelRun": true
+  },
+  {
+    "id": "M08",
+    "set": "seed",
+    "lang": "fr",
+    "say": "est-ce que la clé Stripe qu'on a mise marche bien ?",
+    "typed": ["vérifier clé stripe", "tester connexion stripe", "check stripe key"],
+    "any": ["stripe__connection_check"],
+    "modelRun": true
   }
 ]

@@ -14,6 +14,7 @@ import { type CurrentDraft, linesSignature, periodLabel, type PreviousInvoice, r
 import {
   dayOf,
   draftLines,
+  endHold,
   draftTotals,
   findOneWhere,
   itemContentHash,
@@ -266,6 +267,7 @@ export async function recurringDraftJob(ctx: RunCtx): Promise<DraftJobResult> {
       if (res.drafted) drafted += 1
     }
   }
+  if (drafted > 0) await endHold(ctx, "recurring-draft")
   for (const runId of runs) {
     if (await approveByItself(ctx, runId)) continue
     const run = (await ctx.db.findOne("recurring_runs", runId)) as Row | null

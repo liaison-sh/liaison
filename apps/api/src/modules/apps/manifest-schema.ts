@@ -1130,6 +1130,10 @@ export const appManifestJsonSchema = {
             // Which orgs a scheduled run is for: { everyOrg } | { connection?, rows? }
             // (infra/jobs/fanout-runs-for.ts, which validates its shape).
             runsFor: { type: "object" },
+            // An event of the app's own (`entity:action`, declared in its emits) the kernel
+            // queues once when an app day cap holds a scheduled tick of this job, with
+            // `{job, until, resolved: false}`, so the hold is told rather than silent.
+            heldEvent: { type: "string", pattern: "^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$" },
             retry: {
               type: "object",
               properties: {

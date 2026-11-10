@@ -148,6 +148,21 @@ A schedule bills one customer on a fixed cadence: every month, quarter or year, 
 - **Reading.** `recurring_list` shows the schedules with their next issue day and draft day. Reading and saving need `invoicing:documents:read` and `invoicing:documents:write`; reading the issuer's time zone needs `invoicing:settings:read`, and a member without it is told the issuer cannot be read.
 - **Importing.** Schedules from another tool can be imported as **Recurring invoice schedules** (`recurring-schedule`) records. They arrive as drafts that bill nothing until a person starts them.
 
+## The month-end run
+
+Each schedule's invoice for a period is made by the **month-end run** of its issuer and issue day, in four steps. No model is asked anything along the way.
+
+- **Drafted.** On a schedule's draft day (in the issuer's time zone), an hourly job makes one unnumbered draft for the period from the schedule alone: its lines, prices, rates and terms, with `{period}` filled. Each draft joins the run as one row, with flags taken from the data ("First invoice", "Same as October", "Changed since October", "October is still unpaid"). Running the job twice, or twice at the same time, adds nothing: the draft, the row and the run each have a unique key.
+- **Approved.** The run gets one card listing every row, its total and its account manager. The card is for the rows' account manager when they all have the same one. Approving it records each row as approved; **no number is taken at approval**. To change a row, change its draft (`drafts_update`, `drafts_create`, `drafts_discard`): the card follows. A run draft is never issued, edited in place or deleted around its run: `invoice_issue`, `documents_update` and `drafts_discard` refuse it and name the run. `recurring_run_unapprove` undoes an approval until the first number is taken, keeping every edit.
+- **Issued.** From 08:00 on the issue day, the rows issue in order, each in its own transaction, at most 25 every five minutes: a large run takes several passes and stays **issuing** until done. A row that fails stays an unnumbered draft and uses no number; the others keep consecutive numbers and the run ends **partial**, with one attention item naming the draft. A row whose draft changed after approval is not issued and waits for a new approval. Two passes, or a pass and a person, never issue a row twice. A one-off invoice issued meanwhile simply takes the next number.
+- **Late.** Three days before the run's last issue day (the billing month's last day), its attention item rises; on the day it says it ends today; after it, the run is **late** and nothing issues by itself: a person decides. A rejected card keeps the drafts and asks again on the issue day, or the next working day.
+
+When the organisation reaches its daily app limit, the run's jobs wait for the next day, and one attention item says until when ("Month-end invoicing is held until ...") instead of the run going quiet. A run whose last issue day passes during the hold is late the next day.
+
+A run where every row comes from a schedule set to **issue by itself**, and none is above the issuer's approval threshold, issues with no card.
+
+`recurring_run_get` shows a run: its state, issue and last days, and each row with its draft id, amounts, account manager, latest change and flags.
+
 ## Settings
 
 | Section | Who can edit | What it holds |
@@ -213,10 +228,13 @@ A schedule bills one customer on a fixed cadence: every month, quarter or year, 
 | `recurring_list` | List recurring invoice schedules with their next issue day | No |
 | `recurring_schedule_create`, `recurring_schedule_update` | Save or change a recurring schedule; turning on issue by itself is never auto-approved | Always |
 | `recurring_schedule_pause` | Pause a schedule, until a date or until resumed | No, unless the turn read outside text |
+| `recurring_run_get` | Read a month-end run and its rows | No |
+| `recurring_run_issue` | Approve a month-end run's card; numbers are taken on the issue day | Always, never auto-approved |
+| `recurring_run_unapprove` | Undo a run's approval before its first number | No, unless the turn read outside text |
 | `documents_retry_pdf` | Re-render a failed PDF | No |
 | `order_reissue_apply` | Reissue an invoice after a Shopify order edit changed lines or amounts | Always |
 | `deferred_tax_override` | Issue a parked order with a chosen tax decision | Always |
-| `drafts_create`, `drafts_update`, `drafts_discard` | Unissued drafts; a draft with a source, such as a recurring run, is a visible pending draft that `invoice_issue` issues by draft id | No |
+| `drafts_create`, `drafts_update`, `drafts_discard` | Unissued drafts; a month-end run's draft issues only through its run's card | No |
 | `einvoicing_classify`, `einvoicing_readiness`, `einvoicing_settings_get` | Explain e-invoicing status and blockers | No |
 | `einvoicing_settings_set` | Change e-invoicing settings | Always |
 | `counterparty_identity_get`, `counterparty_identity_lookup`, `counterparty_identity_set` | Read, look up and record a customer's SIREN/SIRET identity | No |

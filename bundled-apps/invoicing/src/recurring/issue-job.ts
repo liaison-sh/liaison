@@ -13,7 +13,7 @@
 // its change log, and the item points at the issued document.
 import { issueRunDraft } from "../mutations/invoice-issue"
 import type { ErrorEnvelope } from "../mutations/shared"
-import { dayOf, draftLines, itemContentHash, jsonOf, type Row, type RunCtx, runItems, stageRunCard, workingDayFrom } from "./run-card"
+import { dayOf, draftLines, endHold, itemContentHash, jsonOf, type Row, type RunCtx, runItems, stageRunCard, workingDayFrom } from "./run-card"
 
 /** Items a tick starts at most. */
 export const ITEMS_PER_TICK = 25
@@ -179,6 +179,8 @@ export async function recurringIssueJob(ctx: RunCtx): Promise<{ status: "ok"; is
   })) as Row[]
   let issued = 0
   let failed = 0
+  // Running again ends any hold the day limit put on this job (the kernel's held notice).
+  if (runs.length > 0) await endHold(ctx, "recurring-issue")
   for (const run of runs) {
     const w = await windowOf(ctx, run)
     if (!w) continue

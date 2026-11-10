@@ -1548,7 +1548,9 @@ describe("invoicing manifest", () => {
     //   pending draft that invoice_issue issues; the first issue on a profile with no time zone asks for one.
     // 0.20.66: recurring schedules: three tables, four tools (save, change, pause, list) and an import kind.
     // 0.20.67: the month-end run: draft, card, approve, issue and legal-date jobs, four run tools.
-    expect(m.version).toBe("0.20.67")
+    // 0.20.68: run rows issue atomically, refusals checked at staging, a held-by-the-day-limit
+    // notice, and the run card's approval route.
+    expect(m.version).toBe("0.20.68")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

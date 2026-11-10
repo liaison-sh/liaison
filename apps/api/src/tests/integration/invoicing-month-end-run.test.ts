@@ -14,13 +14,16 @@ import { processOutboxBatch } from "~/infra/events/outbox-worker"
 import { dispatchAppJobWithContext } from "~/infra/jobs/job-context"
 import { JobsTestAccess } from "~/infra/jobs/jobs"
 import { ObjectStorageTestAccess } from "~/infra/storage/object-storage"
+import { redis } from "~/lib/redis"
 import { decideApproval } from "~/modules/approvals/decide"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { AppDayCapTestAccess } from "~/modules/apps/usage/app-day-cap"
 import { registerTranslatorConsumer } from "~/modules/attention/translator"
+import { appDayKey } from "~/modules/org/caps"
 import { registerTemplate } from "~/modules/pdf/registry"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
@@ -379,8 +382,10 @@ describe("the month-end run on the real kernel", () => {
     expect(drafts).toHaveLength(3)
     const cards = await sql<
       Row[]
-    >`SELECT id FROM kernel.approval_requests WHERE org_id = ${ORG} AND tool_name LIKE '%recurring_run_issue' AND tool_params->>'run_id' = ${runId}`
+    >`SELECT route_person_id::text FROM kernel.approval_requests WHERE org_id = ${ORG} AND tool_name LIKE '%recurring_run_issue' AND tool_params->>'run_id' = ${runId}`
     expect(cards).toHaveLength(1)
+    // The card is for the rows' account manager (the run's approval route).
+    expect(cards[0]?.route_person_id).toBe(actor.userId)
   }, 120_000)
 
   it("a forced second draft, item or run for a period fails on the unique keys", async () => {
@@ -504,4 +509,42 @@ describe("the month-end run on the real kernel", () => {
     expect((await runOf(fx.issuer)).status).toBe("issued")
     expect(await sequenceOf(fx.issuer)).toBe(60)
   }, 900_000)
+
+  it("an org at its app day cap on the last issue day sees the hold once, nothing issues, and the next day the run is late, never silently", async () => {
+    const fx = await draftAndApprove(1)
+    // Monday 30 November, 08:30 in Paris: the issue day is also the last issue day.
+    AppDayCapTestAccess.setReader(async () => ({
+      appRunsPerDay: 1,
+      appBridgeCallsPerDay: null,
+      appCpuMsPerDay: null,
+    }))
+    const key = appDayKey("appRunsPerDay", ORG, "2026-11-30")
+    await redis.set(key, "5")
+    try {
+      await runJob("recurring-issue")
+      await runJob("recurring-issue")
+      await drainOutbox()
+      const held = await sql<
+        Row[]
+      >`SELECT summary FROM kernel.attention_events WHERE org_id = ${ORG} AND user_id = ${actor.userId} AND kind = 'invoicing:recurring_run.held'`
+      expect(held).toHaveLength(1)
+      expect(String(held[0]?.summary)).toContain("held until 2026-12-01")
+      expect(await sequenceOf(fx.issuer)).toBe(0)
+      expect((await itemsOf(fx.runId)).map((i) => i.state)).toEqual(["approved"])
+    } finally {
+      await redis.del(key)
+      AppDayCapTestAccess.setReader(null)
+    }
+    // Tuesday 1 December: the cap is gone, the last day has passed; nothing issues by itself.
+    setSystemTime(new Date("2026-12-01T06:00:00Z"))
+    await runJob("recurring-issue")
+    await runJob("recurring-legal-date")
+    await drainOutbox()
+    expect(await sequenceOf(fx.issuer)).toBe(0)
+    expect((await runOf(fx.issuer)).status).toBe("late")
+    const late = await sql<
+      Row[]
+    >`SELECT id FROM kernel.attention_events WHERE org_id = ${ORG} AND user_id = ${actor.userId} AND kind = 'invoicing:recurring_run.late' AND entity_id = ${fx.runId}`
+    expect(late).toHaveLength(1)
+  }, 180_000)
 })

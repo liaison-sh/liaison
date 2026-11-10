@@ -1548,6 +1548,34 @@
       "one": "identité de facturation électronique manquante",
       "other": "identités de facturation électronique manquantes"
     },
+    "partial": {
+      "one": "facture mensuelle non émise",
+      "other": "factures mensuelles non émises"
+    },
+    "due": {
+      "one": "facturation mensuelle à valider",
+      "other": "facturations mensuelles à valider"
+    },
+    "held": {
+      "one": "facturation suspendue par la limite du jour",
+      "other": "facturation suspendue par la limite du jour"
+    },
+    "late": {
+      "one": "facturation mensuelle en retard",
+      "other": "facturations mensuelles en retard"
+    },
+    "issuer_timezone_unset": {
+      "one": "émetteur sans fuseau horaire",
+      "other": "émetteurs sans fuseau horaire"
+    },
+    "masked": {
+      "one": "numéro de carte masqué",
+      "other": "numéros de carte masqués"
+    },
+    "problem": {
+      "one": "problème de connexion",
+      "other": "problèmes de connexion"
+    },
     "transmission_refused": {
       "one": "facture électronique refusée",
       "other": "factures électroniques refusées"

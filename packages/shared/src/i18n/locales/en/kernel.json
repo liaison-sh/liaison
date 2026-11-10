@@ -1551,6 +1551,34 @@
       "one": "missing e-invoicing identity",
       "other": "missing e-invoicing identities"
     },
+    "partial": {
+      "one": "month-end invoice not issued",
+      "other": "month-end invoices not issued"
+    },
+    "due": {
+      "one": "month-end run to approve",
+      "other": "month-end runs to approve"
+    },
+    "held": {
+      "one": "invoicing held by the day limit",
+      "other": "invoicing held by the day limit"
+    },
+    "late": {
+      "one": "month-end run late",
+      "other": "month-end runs late"
+    },
+    "issuer_timezone_unset": {
+      "one": "issuer without a time zone",
+      "other": "issuers without a time zone"
+    },
+    "masked": {
+      "one": "card number masked",
+      "other": "card numbers masked"
+    },
+    "problem": {
+      "one": "connection problem",
+      "other": "connection problems"
+    },
     "transmission_refused": {
       "one": "e-invoice refused",
       "other": "e-invoices refused"

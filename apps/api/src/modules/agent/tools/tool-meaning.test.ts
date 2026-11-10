@@ -6,6 +6,8 @@
 import { describe, expect, it } from "bun:test"
 import {
   MEANING_FLOOR_Z,
+  MEANING_PARTIAL_FLOOR_Z,
+  MEANING_WEIGHT,
   meaningPoints,
   type TextEmbedder,
   type ToolMeaning,
@@ -126,6 +128,14 @@ describe("tool search by meaning", () => {
     const points = meaningPoints(CATALOG, meaningOf(unit(0)))
     expect(points.get(DEACTIVATE.sdkName) ?? 0).toBeGreaterThan(MEANING_FLOOR_Z)
     expect(points.get(FILLER[0]?.sdkName ?? "") ?? 0).toBeLessThan(0.01)
+  })
+
+  it("holds a tool the words matched in part to the higher floor", () => {
+    const full = meaningPoints(CATALOG, meaningOf(unit(0)))
+    const held = meaningPoints(CATALOG, meaningOf(unit(0)), new Set([DEACTIVATE.sdkName]))
+    const gap = (full.get(DEACTIVATE.sdkName) ?? 0) - (held.get(DEACTIVATE.sdkName) ?? 0)
+    expect(gap).toBeCloseTo(MEANING_WEIGHT * (MEANING_PARTIAL_FLOOR_Z - MEANING_FLOOR_Z), 5)
+    expect(held.get(ARCHIVE.sdkName)).toBe(full.get(ARCHIVE.sdkName))
   })
 })
 

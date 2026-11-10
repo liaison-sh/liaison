@@ -33,6 +33,13 @@ import { defaultEmbedderSocketPath, EmbedderUnavailable, socketEmbedder } from "
 export const MEANING_WEIGHT = 4
 /** A tool adds meaning only this many standard deviations above the catalog's mean. */
 export const MEANING_FLOOR_Z = 2
+/**
+ * The floor for a tool the query's words matched only in part. Its closeness
+ * is partly the very word that matched, which its keyword score already
+ * counts, so it must stand out a little more before meaning lifts it past a
+ * tool that matched another word of the request.
+ */
+export const MEANING_PARTIAL_FLOOR_Z = 2.6
 /** Below this many tools with vectors, the catalog's spread says nothing: no meaning. */
 const MIN_TOOLS_FOR_MEANING = 20
 
@@ -59,6 +66,8 @@ function dot(a: Vector, b: Vector): number {
 export function meaningPoints(
   catalog: ReadonlyArray<{ sdkName: string }>,
   meaning: ToolMeaning,
+  /** The tools held to MEANING_PARTIAL_FLOOR_Z instead of MEANING_FLOOR_Z. */
+  partial: ReadonlySet<string> = new Set(),
 ): Map<string, number> {
   const sims: Array<{ name: string; sim: number }> = []
   for (const t of catalog) {
@@ -73,7 +82,8 @@ export function meaningPoints(
   for (const s of sims) {
     const z = (s.sim - mean) / sd
     // A trace of z on every tool breaks keyword ties by meaning.
-    const p = MEANING_WEIGHT * Math.max(0, z - MEANING_FLOOR_Z) + 1e-6 * z
+    const floor = partial.has(s.name) ? MEANING_PARTIAL_FLOOR_Z : MEANING_FLOOR_Z
+    const p = MEANING_WEIGHT * Math.max(0, z - floor) + 1e-6 * z
     points.set(s.name, p)
   }
   return points

@@ -2333,8 +2333,11 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
                     </Show>
 
                     {/* What is recorded about each recipient who is a contact, as the composer
-                    shows it: approving makes this mail the approver's own send. */}
-                    <Show when={c().status === "pending"}>
+                    shows it: approving makes this mail the approver's own send. Only a card
+                    with such recipients gets the line, so no other card gains its spacing. */}
+                    <Show
+                      when={c().status === "pending" && (sendGuard()?.recipients?.length ?? 0) > 0}
+                    >
                       <div class="mt-2">
                         <RecipientFactsLine
                           facts={sendGuard()?.recipients}

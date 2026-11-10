@@ -66,13 +66,19 @@ const CATALOG_DEMO_APPS = ["invoicing", "social", "pennylane", "boxtal", "shopif
  * company: 330 outbox events, the six dealer links each emitting one contact
  * update event (inherent to the links; one write per dealer, nothing per-row
  * to batch).
+ * Re-measured 2026-11-10 once contacts carry the country the world places
+ * them in: 5 892 round trips in 545 transactions (cold 5 897), 330 outbox
+ * events; the Linux figure is set 5 above the warm local one, as before. The
+ * countries are written in one statement per contacts batch (one per contact
+ * cost 5 926 on Linux), and the round trips also count the dealer links above,
+ * whose re-measure left the statement figure as it was.
  */
 const BASELINE = {
   outboxEvents: 330,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 5_872,
+  statements: 5_897,
   transactions: 545,
 }
 /**

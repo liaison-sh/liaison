@@ -594,3 +594,137 @@ links:
     whoIsTold: []
     copiedNameAt: []
     cells: { Rn: a, Mg: a, Dl: a, Dx: a, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: a, Mi: a, Rv: a, Aw: a }
+
+  - name: invoice-party
+    what: an invoice to the person and company it bills, with their name copied onto it
+    storedIn: app_invoicing.documents.counterparty_contact_id, counterparty_name (the copied name)
+    columns: [app_invoicing.documents.counterparty_contact_id]
+    paths:
+      - bundled-apps/invoicing/
+      - apps/api/src/modules/contacts/service.ts
+      - apps/api/src/modules/export/data-subject-export-tool.ts
+    visibleState: [unlinked]
+    whoIsTold: [admin, clerk]
+    copiedNameAt: [admin, clerk]
+    cells: { Rn: S, Mg: P, Dl: R, Dx: a, Pm: H, Ap: H, Mv: K, Rs: a, Dr: e, Ex: E, Mi: M, Rv: V, Aw: a }
+    open:
+      Dl: deleting the person or the company of an issued invoice is not driven in this file yet
+      Ap: with invoicing off its tools and views are gone, but its tables still answer a reader's row security; on which read path an off app's rows must be hidden is not defined yet
+      Mv: what moves for this link is not driven in this file yet
+      Mi: an invoice written before the party columns is not built in this file yet
+
+  - name: invoice-pdf-file
+    what: an issued invoice to its PDF, the legal original
+    storedIn: app_invoicing.documents.pdf_file_id, the file's parent
+    columns: [app_invoicing.documents.pdf_file_id]
+    paths:
+      - bundled-apps/invoicing/
+      - apps/api/src/modules/files/
+    visibleState: []
+    whoIsTold: [admin, clerk]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: a, Dl: R, Dx: a, Pm: H, Ap: b, Mv: a, Rs: a, Dr: Z, Ex: E, Mi: b, Rv: V, Aw: a }
+    open:
+      Dl: no rendered PDF is built in this file yet (the PDF is written by the invoicing app's render job)
+      Pm: no rendered PDF is built in this file yet
+      Dr: object store bytes after a demo reset are not counted in this file yet
+      Ex: no rendered PDF is built in this file yet
+      Rv: no rendered PDF is built in this file yet
+
+  - name: schedule-party
+    what: a recurring invoice schedule to the company and person it bills
+    storedIn: app_invoicing.recurring_schedules.company_id, contact_id
+    columns: [app_invoicing.recurring_schedules.company_id, app_invoicing.recurring_schedules.contact_id]
+    paths:
+      - bundled-apps/invoicing/src/recurring/
+      - apps/api/src/modules/contacts/companies.ts
+      - apps/api/src/modules/contacts/service.ts
+    visibleState: [unlinked]
+    whoIsTold: [admin, clerk]
+    copiedNameAt: []
+    cells: { Rn: K, Mg: P, Dl: R, Dx: a, Pm: H, Ap: H, Mv: K, Rs: a, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Ap: with invoicing off its tools and views are gone, but its tables still answer a reader's row security; on which read path an off app's rows must be hidden is not defined yet
+      Mv: what moves for this link is not driven in this file yet
+      Ex: the data subject export does not carry the person's schedules yet
+
+  - name: schedule-issuer-profile
+    what: a recurring invoice schedule to the issuer profile it bills from
+    storedIn: app_invoicing.recurring_schedules.issuer_profile_id (foreign key, restrict)
+    columns: [app_invoicing.recurring_schedules.issuer_profile_id]
+    paths:
+      - bundled-apps/invoicing/
+    visibleState: []
+    whoIsTold: [admin, clerk]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: a, Dl: R, Dx: a, Pm: c, Ap: c, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: a, Aw: a }
+    open:
+      Dl: the issuer profile delete runs in the invoicing app's sandbox, which this file does not start yet
+      Ex: the org export of settings is not driven in this file yet
+
+  - name: run-item-schedule-draft
+    what: a month-end run item to the schedule it bills for and the draft it made
+    storedIn: app_invoicing.recurring_run_items.schedule_id, document_id, the draft's external_ref
+    columns: [app_invoicing.recurring_run_items.schedule_id, app_invoicing.recurring_run_items.document_id, app_invoicing.recurring_run_items.run_id]
+    paths:
+      - bundled-apps/invoicing/src/recurring/
+    visibleState: [unlinked]
+    whoIsTold: [admin, clerk]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: a, Dl: C, Dx: a, Pm: H, Ap: C, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Dl: ending a schedule with an open run item runs in the invoicing app's sandbox, which this file does not start yet
+      Ap: switching invoicing off is not driven in this file yet
+      Ex: the org export of run items is not driven in this file yet
+
+  - name: stripe-customer-party
+    what: a payments customer (and its subscriptions) to the company and person it was matched to
+    storedIn: app_stripe.stripe_customers.company_id, contact_id
+    columns: [app_stripe.stripe_customers.company_id, app_stripe.stripe_customers.contact_id]
+    paths:
+      - bundled-apps/stripe/
+      - apps/api/src/modules/contacts/companies.ts
+      - apps/api/src/modules/contacts/service.ts
+    visibleState: [unlinked]
+    whoIsTold: [admin, clerk]
+    copiedNameAt: []
+    cells: { Rn: K, Mg: P, Dl: C, Dx: a, Pm: H, Ap: C, Mv: K, Rs: a, Dr: Z, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Ap: what a customer card shows of its link while the connector is off is not defined yet
+      Mv: what moves for this link is not driven in this file yet
+      Dr: the payments fixtures after a demo reset are not counted in this file yet
+      Ex: the data subject export does not carry the person's payments customer yet
+
+  - name: stripe-invoice-document
+    what: a payments invoice to the invoice document Liaison issued for it
+    storedIn: app_stripe.stripe_invoices.liaison_document_id
+    columns: [app_stripe.stripe_invoices.liaison_document_id]
+    paths:
+      - bundled-apps/stripe/
+      - bundled-apps/invoicing/
+    visibleState: []
+    whoIsTold: [admin, clerk]
+    copiedNameAt: []
+    cells: { Rn: S, Mg: a, Dl: R, Dx: a, Pm: H, Ap: C, Mv: a, Rs: a, Dr: Z, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Rn: renaming the party of an issued invoice is not driven in this file yet
+      Dl: deleting an issued invoice runs in the invoicing app's sandbox, which this file does not start yet
+      Ap: what the payments invoice shows of its document while the connector is off is not defined yet
+      Dr: the payments fixtures after a demo reset are not counted in this file yet
+      Ex: the org export of payments invoices is not driven in this file yet
+
+  - name: stripe-refund-charge
+    what: a payments refund to the charge it refunds and the credit note issued for it
+    storedIn: app_stripe.stripe_refunds.payment_id, liaison_document_id, app_stripe.stripe_payments.invoice_id
+    columns: [app_stripe.stripe_refunds.payment_id, app_stripe.stripe_refunds.liaison_document_id, app_stripe.stripe_payments.invoice_id]
+    paths:
+      - bundled-apps/stripe/
+    visibleState: []
+    whoIsTold: [admin, clerk]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: a, Dl: R, Dx: a, Pm: H, Ap: C, Mv: a, Rs: a, Dr: Z, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Dl: deleting a refunded charge's credit note runs in the invoicing app's sandbox, which this file does not start yet
+      Ap: what a refund shows of its charge while the connector is off is not defined yet
+      Dr: the payments fixtures after a demo reset are not counted in this file yet
+      Ex: the org export of payments refunds is not driven in this file yet

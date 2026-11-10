@@ -3651,6 +3651,11 @@ export function statusForToolError(code: string): number {
     // administrator's fix, not a server fault: it must not page the watchdog.
     case "config_error":
       return 409
+    // A company delete refused while portal accounts or a live recurring invoice schedule still
+    // hold it (contacts/companies.ts): the workspace's state, not a fault.
+    case "company_has_accounts":
+    case "company_has_schedules":
+      return 409
     // A connection with no stored credentials: the person reconnects it.
     case CONNECTION_CREDENTIALS_MISSING:
       return 422

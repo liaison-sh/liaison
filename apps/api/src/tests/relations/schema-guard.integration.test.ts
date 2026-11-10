@@ -37,6 +37,29 @@ function productSchemas(): string[] {
   return ["kernel", ...names.map((n) => `app_${n.replaceAll("-", "_")}`)]
 }
 
+/**
+ * Columns of the bundled apps' tables, read from their manifests: a bundled app's schema is made
+ * when the app is installed, so the migrated database does not carry it. `app_<name>.<table>.<column>`.
+ */
+function bundledAppColumns(): Set<string> {
+  const dir = path.join(import.meta.dir, "../../../../../bundled-apps")
+  const out = new Set<string>()
+  for (const d of readdirSync(dir)) {
+    const file = path.join(dir, d, "app.manifest.json")
+    if (!existsSync(file)) continue
+    const m = JSON.parse(readFileSync(file, "utf8")) as {
+      name: string
+      schema?: Record<string, { fields?: Record<string, unknown> }>
+    }
+    const schema = `app_${m.name.replaceAll("-", "_")}`
+    for (const [table, spec] of Object.entries(m.schema ?? {})) {
+      for (const column of ["id", "org_id", ...Object.keys(spec.fields ?? {})])
+        out.add(`${schema}.${table}.${column}`)
+    }
+  }
+  return out
+}
+
 async function migratedColumns(): Promise<SchemaColumn[]> {
   const schemas = productSchemas()
   const rows = (await sql`
@@ -77,9 +100,9 @@ describe("relation schema guard on the migrated database", () => {
     await releaseTestLock()
   })
 
-  it("reads app schemas as well as kernel, and finds the columns the built links name", () => {
+  it("reads app schemas as well as kernel, and finds the columns the built links name, a bundled app's in its manifest", () => {
     expect(columns.some((c) => c.schema.startsWith("app_"))).toBe(true)
-    const present = new Set(columns.map(columnKey))
+    const present = new Set([...columns.map(columnKey), ...bundledAppColumns()])
     expect([...named].filter((k) => !present.has(k))).toEqual([])
   })
 

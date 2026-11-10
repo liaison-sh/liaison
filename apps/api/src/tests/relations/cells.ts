@@ -22,6 +22,7 @@ import { companyCells } from "./company-cells"
 import { MadeCase, type MadeLink, SHARE_SCOPE } from "./dashboard-world"
 import type { EventCode } from "./matrix"
 import { RoutineCase } from "./routine-world"
+import { moneyCells } from "./stripe-world"
 import { ThreadCase, type ThreadOrg } from "./thread-world"
 
 /** The kernel schema as the run names it (a test namespace prefixes it). */
@@ -740,4 +741,5 @@ export const CELLS: CellImpl[] = [
   // ── what a person makes: dashboard-owner, dashboard-author, store-document-author ──
   ...madeCells(),
   ...companyCells(),
+  ...moneyCells(),
 ]

@@ -94,6 +94,8 @@ export function taintReadCatalog(orgId?: string): string[] {
       // The org catalog is a widening of the build's universe, never required.
     }
   }
+  // A scope every member holds classifies no data (`readScopesImpliedBy`): never a reader's bar.
+  for (const scope of KERNEL_EVERY_MEMBER_SCOPES) out.delete(scope)
   return [...out]
 }
 

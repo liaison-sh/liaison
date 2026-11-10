@@ -604,10 +604,10 @@ describe("kernel tool registration", () => {
     expect(toolRegistry.get([ORG_ID, "kernel", "user_memory_get"])?.trustBoundary).toBeUndefined()
   })
 
-  it("registers approval_update_payload with the approvals write scope and user trust boundary", () => {
+  it("registers approval_update_payload under the approvals read scope (a requester fixes its own; edit.ts guards the rest) and user trust boundary", () => {
     const entry = toolRegistry.get([ORG_ID, "kernel", "approval_update_payload"])
     expect(entry).toBeDefined()
-    expect(entry!.requiredScopes).toEqual(["kernel:approvals:write"])
+    expect(entry!.requiredScopes).toEqual(["kernel:approvals:read"])
     expect(entry!.trustBoundary).toBe("user")
     expect(typeof entry!.handler).toBe("function")
   })

@@ -42,9 +42,18 @@ Ask the agent for the same list with the tool `company_timeline`.
 The buttons at the top of the page need `kernel:companies:write` and a company you may change.
 
 - **Add person**: search for a contact and add them. Their company becomes this one.
-- **Share**: choose who sees the company, as for a contact.
+- **Share**: choose who sees the company. See below.
 - **Merge with...**: see below.
 - **More actions**, then **Delete**: removes the company and its discussion. Its people keep the company name as text but lose the link, and its deals and pipelines stop naming it. A company that has portal accounts cannot be deleted until they are removed or moved.
+
+### Share a company
+
+1. Open the company and click **Share**.
+2. Add people with **Add people…**, and pick **Viewer** or **Editor** for each.
+3. Under general access, pick **Private**, **Anyone in the organisation can view** or **Anyone in the organisation can edit**.
+4. Click **Save**.
+
+Only the person who created the company can change its sharing. For a company whose creator is no longer active, or that nobody created (an import), someone with `kernel:contacts:admin` can. Everyone else sees the dialog read only. A company nobody created stays visible to the organisation; you can still share it with people. Being its account manager gives no access.
 
 ### Merge two companies
 

@@ -831,6 +831,8 @@ export const KERNEL_DECLARED_EMITS: ReadonlySet<string> = new Set([
   "company:update",
   "company:merge",
   "company:closed",
+  // A company's general access or grants changed (modules/contacts/companies.ts).
+  "company:share",
   // A company was deleted: its search document and open rows go.
   "company:delete",
   "presence:update",

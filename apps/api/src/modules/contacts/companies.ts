@@ -39,6 +39,7 @@ import {
   listGrants,
   type OrgAccess,
   type ResourceGrants,
+  replaceGrants,
 } from "~/modules/sharing/service"
 import {
   deleteEntityDiscussions,
@@ -1912,6 +1913,99 @@ export async function getCompanySharing(
     canManage: await canManageSharing(tx, COMPANY_RESOURCE, row.id),
     ...(await listGrants(tx, COMPANY_RESOURCE, row.id)),
   }
+}
+
+export interface CompanySharingInput extends Partial<ResourceGrants> {
+  orgAccess: OrgAccess
+}
+
+/**
+ * Change who sees the company: its general access and its grants (each kind
+ * given replaces that kind, one left out is unchanged), through the generic
+ * sharing model. Only whoever `kernel.can_manage_company_sharing` names may:
+ * the creator, or for a company whose creator is gone, a contacts admin; the
+ * database refuses everyone else too (the grants write policy and the
+ * companies sharing guard). A company the caller cannot see answers 404.
+ * Announced as `company:share` (audited, reindexed), its frame reaching
+ * everyone who saw the company before or sees it now.
+ */
+export async function setCompanySharing(
+  tx: RlsClient,
+  params: { orgId: string; userId: string; companyId: string; sharing: CompanySharingInput },
+): Promise<CompanySharing> {
+  const row = await loadVisible(tx, params.orgId, params.companyId)
+  if (!(await canManageSharing(tx, COMPANY_RESOURCE, row.id))) {
+    throw new HTTPException(403, {
+      message:
+        "Only the company's creator (or, for a company whose creator is gone, a contacts admin) can change who it is shared with; nothing was changed",
+    })
+  }
+  const { orgAccess, users, roles, dimensions } = params.sharing
+  if (orgAccess === "none" && !row.createdBy) {
+    throw new HTTPException(409, {
+      message:
+        "This company has no creator, so it stays visible to the organisation; share it with people instead. Nothing was changed",
+    })
+  }
+  if (orgAccess !== row.orgAccess) {
+    await tx
+      .update(companies)
+      .set({ orgAccess, updatedAt: new Date() })
+      .where(and(eq(companies.id, row.id), eq(companies.orgId, params.orgId)))
+  }
+  await replaceGrants(
+    tx,
+    { orgId: params.orgId, userId: params.userId },
+    COMPANY_RESOURCE,
+    row.id,
+    { users, roles, dimensions },
+  )
+  const [after] = await tx
+    .select({
+      orgAccess: companies.orgAccess,
+      createdBy: companies.createdBy,
+      aclUserIds: companies.aclUserIds,
+    })
+    .from(companies)
+    .where(and(eq(companies.id, row.id), eq(companies.orgId, params.orgId)))
+    .limit(1)
+  const before = companyEventAudience(row)
+  const now = after ? companyEventAudience(after) : before
+  await tx.queueEvent({
+    app: "kernel",
+    entity: "company",
+    action: "share",
+    entityId: row.id,
+    orgId: params.orgId,
+    actorId: params.userId,
+    actorType: "user",
+    data: {
+      id: row.id,
+      orgAccess,
+      previousOrgAccess: row.orgAccess,
+      userCount: users?.length ?? null,
+      roleCount: roles?.length ?? null,
+      dimensionCount: dimensions?.length ?? null,
+      // Whoever saw it before learns it changed (their tab then reads 404).
+      audience: {
+        orgWide: before.orgWide || now.orgWide,
+        userIds: [...new Set([...before.userIds, ...now.userIds])],
+      },
+    },
+  })
+  if (!after) {
+    // Restricted away from the caller (an admin managing a company whose
+    // creator is gone, with no grant of their own): what was written.
+    return {
+      orgAccess,
+      createdBy: row.createdBy,
+      canManage: false,
+      users: users ?? [],
+      roles: roles ?? [],
+      dimensions: dimensions ?? [],
+    }
+  }
+  return getCompanySharing(tx, params)
 }
 
 /* -------------------------------------------------------------------------- */

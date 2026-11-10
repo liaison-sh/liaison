@@ -296,14 +296,14 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_DEBUG_GEMINI_REQ` | `apps/api/src/modules/agent/providers/provider.ts:157` |
 | `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1666` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
-| `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:504`, `apps/api/src/modules/apps/app-frame.ts:35` |
+| `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:513`, `apps/api/src/modules/apps/app-frame.ts:35` |
 | `LIAISON_SANDBOX_FETCH_TIMEOUT_MS` | `apps/api/src/modules/apps/sandbox/bridge/egress.ts:63` |
 | `LIAISON_TRUSTED_SUMMARIZER_APPS` | `apps/api/src/modules/apps/runtime.ts:1326` |
 | `LIAISON_WEB_TOOLS_ALLOW_PRIVATE` | `apps/api/src/modules/agent/tools/web-tools.ts:160`, `apps/api/src/modules/agent/tools/web-tools.ts:253` |
 | `MAIL_INGEST_STALE_SEC` | `apps/api/src/modules/monitor/index.ts:306` |
 | `MAILBOX_DECRYPT_WAIT_BUDGET_MS` | `apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:101` |
-| `MAINTENANCE_FLAG_PATH` | `apps/api/src/lib/server.ts:165`, `apps/api/src/middleware/maintenance.ts:23` |
-| `MAINTENANCE_VERSION_PATH` | `apps/api/src/lib/server.ts:172`, `apps/api/src/middleware/maintenance.ts:27` |
+| `MAINTENANCE_FLAG_PATH` | `apps/api/src/lib/server.ts:174`, `apps/api/src/middleware/maintenance.ts:23` |
+| `MAINTENANCE_VERSION_PATH` | `apps/api/src/lib/server.ts:181`, `apps/api/src/middleware/maintenance.ts:27` |
 | `MCP_MAILBOX_WAIT_MS` | `apps/api/src/modules/mcp/mcp-mailbox-plaintext.ts:57` |
 | `MCP_MAX_RESPONSE_BYTES` | `apps/api/src/modules/mcp-client/call.ts:485` |
 | `MCP_MAX_TOOLS_PER_CONNECTION` | `apps/api/src/modules/mcp-client/projector.ts:51` |

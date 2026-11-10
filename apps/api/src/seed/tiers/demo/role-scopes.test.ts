@@ -38,3 +38,15 @@ describe("seeded role scopes match the migrated server", () => {
     expect(missingBackfills(QA_MEMBER_SCOPES)).toEqual([])
   })
 })
+
+describe("seeded desks that own deals can work them", () => {
+  // The world assigns its deals to the sales and operations desks: without the
+  // deal scopes their owners read "Needs deal access" on their own deals.
+  for (const role of ["sales", "ops_lead"] as const) {
+    it(`${role} reads and edits deal amounts`, () => {
+      const scopes = demoScopesForRole(role)
+      expect(scopes).toContain("projects:deals:read")
+      expect(scopes).toContain("projects:deals:write")
+    })
+  }
+})

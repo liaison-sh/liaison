@@ -2,7 +2,16 @@
 // Kernel app registrations — imports from domain stores live HERE, not in app-registry.
 // bootstrap.ts is a leaf module: it imports from stores, but no store imports from it.
 
-import { Hammer, Home, LayoutGrid, MessageSquare, Search, Settings, Terminal } from "lucide-solid"
+import {
+  Hammer,
+  Home,
+  LayoutDashboard,
+  LayoutGrid,
+  MessageSquare,
+  Search,
+  Settings,
+  Terminal,
+} from "lucide-solid"
 import { createRoot, lazy } from "solid-js"
 import {
   getConnectorApps,
@@ -52,7 +61,11 @@ import { authManager } from "~/modules/auth/createAuthManager"
 import { registerEntityPreviews as registerUserPreviews } from "~/modules/auth/entity-preview-renderers"
 import { subscribeContactDetailResync } from "~/modules/contacts/contact-detail-store"
 import { subscribeContactsResync } from "~/modules/contacts/contact-list-store"
-import { dashboardTitle, reloadDashboard } from "~/modules/dashboards/dashboards-store"
+import {
+  dashboardTitle,
+  handleDashboardEvent,
+  reloadDashboard,
+} from "~/modules/dashboards/dashboards-store"
 import { handleFileEvent } from "~/modules/files/file-events"
 import { tNow } from "~/modules/i18n/i18n-context"
 import { importRunStore } from "~/modules/imports/import-run-store"
@@ -514,6 +527,18 @@ export function bootstrapKernelApps(): void {
         urlPattern: "/detail/:entityId+",
         defaultLabel: "Detail",
         defaultLabelKey: "kernel.nav.detail",
+        referenceable: false,
+      },
+      // The Dashboards page (`/dashboards`): every dashboard the viewer can see,
+      // or, with none, what a dashboard is and that the agent builds them.
+      dashboards: {
+        component: lazy(() => import("~/modules/dashboards/DashboardsIndex")),
+        sidebar: HomeAttentionSidebar,
+        icon: LayoutDashboard,
+        urlPattern: "/dashboards",
+        defaultLabel: "Dashboards",
+        defaultLabelKey: "kernel.nav.dashboards",
+        singleton: true,
         referenceable: false,
       },
       // P3: one dashboard (`/dashboard/:id`), named by its title. Its sidebar is
@@ -1093,6 +1118,14 @@ export function bootstrapKernelApps(): void {
         const api = getAttentionApi()
         if (api) attentionStore.markStaleAndReload(api)
       },
+      // A dashboard was created, changed, shared or deleted (by anyone, or an
+      // agent for them): the list re-reads and an open tab of it reads it again.
+      // The frame carries ids and visibility only, and reaches only the people
+      // who can see the dashboard (websocket.ts `hasDashboardVisibilityAccess`).
+      dashboard: (action, data) => {
+        const api = getAttentionApi()
+        if (api) void handleDashboardEvent(api, action, data)
+      },
       // A secret card changed (saved, cancelled, expired): the card on screen
       // re-reads its row. The frame carries the id and status only.
       secret_request: (_action, data) => {
@@ -1229,6 +1262,24 @@ export function bootstrapKernelApps(): void {
       type: namespaceRegistryKey("kernel", "chats"),
       entityId: "chats",
       label: "Messages",
+    },
+  })
+
+  // Dashboards: the page that lists the viewer's dashboards (and says what one is
+  // when there is none). A dashboard tab keeps the entry lit.
+  registerActivityBarEntry({
+    id: "dashboards",
+    icon: LayoutDashboard,
+    label: "Dashboards",
+    labelKey: "kernel.nav.dashboards",
+    order: 900,
+    appId: "kernel",
+    position: "top",
+    activeForTabTypes: [namespaceRegistryKey("kernel", "dashboard")],
+    tabAction: {
+      type: namespaceRegistryKey("kernel", "dashboards"),
+      entityId: "dashboards",
+      label: "Dashboards",
     },
   })
 

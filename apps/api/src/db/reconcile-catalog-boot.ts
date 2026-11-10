@@ -43,6 +43,7 @@ import {
   rebuildFilesSelectPolicy,
 } from "~/infra/boot-phase10"
 import { appsLogger as log } from "~/lib/logger"
+import { runAgentBaseCeilingReconcile } from "~/modules/agent/directory/reconcile-base-ceilings"
 import { reconcileCatalogApps } from "~/modules/apps/catalog"
 import {
   catalogFileParents,
@@ -231,6 +232,10 @@ export function reconcileExitCode(ok: boolean, strict: boolean): number {
 if (import.meta.main) {
   const strict = process.argv.includes("--strict")
   const ok = await runReconcileCatalogBoot()
+  // Stored copies of the common agent base catch up with the constant on every
+  // start (reconcile-base-ceilings.ts). Fail-soft in both modes: a stale
+  // ceiling narrows an agent, it breaks nothing, so it never stops a deploy.
+  await runAgentBaseCeilingReconcile()
   if (!ok && strict) {
     console.error(
       "[reconcile-catalog-boot] a catalog app did not install (log above). If it says a version directory already holds different files, the image carries a changed app under a version already installed: raise that app's version and rebuild the image.",

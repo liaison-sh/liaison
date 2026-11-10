@@ -67,8 +67,9 @@ interface CreateThreadParams {
   initialMessage?: InitialMessageInput
   type?: "thread" | "agent_chat" | "approval"
   /** Escape hatch for the duplicate-thread guard: create a SECOND plain thread
-   *  for a participant set that already has one. Only pass it when a genuinely
-   *  separate conversation is intended. */
+   *  for a participant set that already has one. A person's own "new
+   *  conversation" action passes it; an agent's call that carries it is gated
+   *  (a person approves the new conversation, `agentCreateOpensNewConversation`). */
   forceCreate?: boolean
 }
 
@@ -90,8 +91,10 @@ export class DuplicateThreadError extends Error {
     super(
       `These participants already have a thread (${existing.handle}${
         existing.title ? `: "${existing.title}"` : ""
-      }). Reply in that thread (id ${existing.id}) instead of opening a second one. ` +
-        "Pass forceCreate: true only if a genuinely separate conversation is intended.",
+      }). Reply in that thread (id ${existing.id}) if your message fits there; otherwise ` +
+        "ask the user where to post it (that thread, another existing one, or a new " +
+        "conversation). Never retry with forceCreate on your own judgement: only the user " +
+        "can ask for a new conversation.",
     )
     this.name = "DuplicateThreadError"
   }
@@ -498,6 +501,95 @@ async function findPlainThreadForParticipants(
   return row ?? null
 }
 
+/**
+ * The untitled DM between exactly these people (the requester included in
+ * `allIds`, sorted): what an untitled plain create lands in instead of opening
+ * a new thread. Shared by createThread's dedup and the agent gate.
+ */
+function untitledDmQuery(orgId: string, allIds: string[]) {
+  const sch = drizzleSql.raw(schemaRef("kernel"))
+  const idList = drizzleSql.join(
+    allIds.map((id) => drizzleSql`${id}::uuid`),
+    drizzleSql`, `,
+  )
+  return drizzleSql`
+    SELECT t.id, t.handle, t.title, t.is_pinned, t.created_from, t.created_at, t.updated_at
+    FROM ${sch}.threads t
+    WHERE t.org_id = ${orgId}
+      AND t.type = 'thread'
+      AND t.title IS NULL
+      AND t.created_from IS NULL
+      AND t.is_pinned = false
+      AND (
+        SELECT COUNT(*) FROM ${sch}.thread_participants tp
+        WHERE tp.thread_id = t.id AND tp.participant_type = 'user'
+      ) = ${allIds.length}
+      -- D23a (2026-10-12, refines D23): the DM between these people is
+      -- identified by THEM. An agent added on purpose (a person added to
+      -- someone's agent chat, an agent added with "Add people") makes the
+      -- room a group conversation, so "message this person" opens a fresh
+      -- 1:1 instead. An agent an @mention seated does not (the people
+      -- were talking in their DM and asked it something), nor does a
+      -- GUEST seat (a turn in flight, never announced to the room). The
+      -- same rule as seatMakesGroupOfDm in @liaison/shared, which the web
+      -- applies to its own copy of the rooms (dm-dedupe.ts).
+      AND NOT EXISTS (
+        SELECT 1 FROM ${sch}.thread_participants tp
+        WHERE tp.thread_id = t.id AND tp.participant_type = 'agent'
+          AND tp.role <> ${AGENT_GUEST_SEAT_ROLE}
+          AND tp.seat_origin IS DISTINCT FROM ${MENTION_SEAT_ORIGIN}
+      )
+      AND (
+        SELECT COUNT(*) FROM ${sch}.thread_participants tp
+        WHERE tp.thread_id = t.id AND tp.user_id IN (${idList})
+      ) = ${allIds.length}
+    -- Twins (an old room and a fresh one): the one last active, as the web picks.
+    ORDER BY t.updated_at DESC, t.id
+    LIMIT 1
+  `
+}
+
+/**
+ * Whether an AGENT's threads_create call would open a NEW conversation the user
+ * did not necessarily ask for, and so needs a person's approval (kernel-tools
+ * `gatedWhen`): any `forceCreate`; a titled create, unless it would be refused
+ * as a duplicate anyway (the duplicate_thread error then points at the
+ * existing thread); an untitled create with two or more other people that
+ * finds no existing conversation between exactly them. An untitled create that
+ * lands in an existing thread, or opens a 1:1 DM, is not a new conversation.
+ */
+export async function agentCreateOpensNewConversation(
+  db: RlsClient | PrivilegedDb,
+  params: {
+    orgId: string
+    userId: string
+    participantIds: string[]
+    title?: string
+    forceCreate?: boolean
+    references?: ReadonlyArray<unknown>
+  },
+): Promise<boolean> {
+  if (params.forceCreate === true) return true
+  const others = Array.from(new Set(params.participantIds)).filter((id) => id !== params.userId)
+  const title = typeof params.title === "string" ? params.title.trim() : ""
+  if (title !== "") {
+    // A titled plain create for people who already share a thread is refused
+    // (DuplicateThreadError) before anything is created: let that answer reach
+    // the agent instead of asking a person to approve a call that would fail.
+    if ((params.references?.length ?? 0) > 0 || others.length === 0) return true
+    const existing = await findPlainThreadForParticipants(db as RlsClient, {
+      orgId: params.orgId,
+      userId: params.userId,
+      participantIds: others,
+    })
+    return existing === null
+  }
+  if (others.length < 2) return false
+  const allIds = Array.from(new Set([params.userId, ...others])).sort()
+  const rows = await db.execute(untitledDmQuery(params.orgId, allIds))
+  return rows.length === 0
+}
+
 /** The channel name rule (`normalizeChannelTitle`), for every caller: the route,
  *  agent tools, internal creators. Only a CHANNEL's title is a channel name: an
  *  agent chat titled "#1 priority" and a room anchored to an entity keep their
@@ -561,7 +653,6 @@ export async function createThread(db: RlsClient, params: CreateThreadParams) {
 
   if (isDmCandidate) {
     const allIds = Array.from(new Set([userId, ...participantIds])).sort()
-    const expectedCount = allIds.length
 
     // One lock namespace for the whole kernel (db/advisory-lock.ts): concurrent
     // requests for the same participant set serialize, different sets proceed
@@ -576,52 +667,9 @@ export async function createThread(db: RlsClient, params: CreateThreadParams) {
       await tx.execute(advisoryXactLock(lockName))
 
       // Exact participant-set match: thread has exactly N participants AND all N are in our set.
-      // This uses raw SQL via the outer postgres.js `sql` tag because the query uses schema
-      // identifiers (K) that Drizzle can't express. The advisory lock on the same connection
-      // ensures atomicity — the lock was acquired on this transaction's connection.
-      const sch = drizzleSql.raw(schemaRef("kernel"))
-      // Build a parameterized IN list for the participant IDs.
-      // Drizzle's sql tag doesn't auto-convert JS arrays to PG arrays (unlike postgres.js),
-      // so we use IN (...) with joined parameters instead of ANY(array).
-      const idList = drizzleSql.join(
-        allIds.map((id) => drizzleSql`${id}::uuid`),
-        drizzleSql`, `,
-      )
-      const existing = await tx.execute(drizzleSql`
-        SELECT t.id, t.handle, t.title, t.is_pinned, t.created_from, t.created_at, t.updated_at
-        FROM ${sch}.threads t
-        WHERE t.org_id = ${orgId}
-          AND t.type = 'thread'
-          AND t.title IS NULL
-          AND t.created_from IS NULL
-          AND t.is_pinned = false
-          AND (
-            SELECT COUNT(*) FROM ${sch}.thread_participants tp
-            WHERE tp.thread_id = t.id AND tp.participant_type = 'user'
-          ) = ${expectedCount}
-          -- D23a (2026-10-12, refines D23): the DM between these people is
-          -- identified by THEM. An agent added on purpose (a person added to
-          -- someone's agent chat, an agent added with "Add people") makes the
-          -- room a group conversation, so "message this person" opens a fresh
-          -- 1:1 instead. An agent an @mention seated does not (the people
-          -- were talking in their DM and asked it something), nor does a
-          -- GUEST seat (a turn in flight, never announced to the room). The
-          -- same rule as seatMakesGroupOfDm in @liaison/shared, which the web
-          -- applies to its own copy of the rooms (dm-dedupe.ts).
-          AND NOT EXISTS (
-            SELECT 1 FROM ${sch}.thread_participants tp
-            WHERE tp.thread_id = t.id AND tp.participant_type = 'agent'
-              AND tp.role <> ${AGENT_GUEST_SEAT_ROLE}
-              AND tp.seat_origin IS DISTINCT FROM ${MENTION_SEAT_ORIGIN}
-          )
-          AND (
-            SELECT COUNT(*) FROM ${sch}.thread_participants tp
-            WHERE tp.thread_id = t.id AND tp.user_id IN (${idList})
-          ) = ${expectedCount}
-        -- Twins (an old room and a fresh one): the one last active, as the web picks.
-        ORDER BY t.updated_at DESC, t.id
-        LIMIT 1
-      `)
+      // The advisory lock on the same connection ensures atomicity: the lock was
+      // acquired on this transaction's connection.
+      const existing = await tx.execute(untitledDmQuery(orgId, allIds))
 
       if (existing.length > 0) {
         const row = existing[0] as {

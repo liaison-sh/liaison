@@ -930,7 +930,7 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.12 (main): orders_get returns the order's billing address (with its company) and the buyer's
     // VAT number from its current custom attributes.
     // 0.4.13: orders_search hits carry the shipping the customer paid (shippingAmount, shippingCurrency).
-    // 0.4.14: orders_search takes total_min/total_max; variants_search takes product_status/min_quantity
+    // 0.4.15: variants_search sends product_status in lower case (Shopify matches no other)
     // and returns productStatus; both reject an unknown parameter.
     // 0.4.15: draft_orders_get and orders_get return the B2B buyer (purchasingCompany: company name,
     // location addresses, tax registration id, tax exemption, contact email), orders_get the order's
@@ -939,7 +939,13 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.16: the branch's 0.4.15 merged with main's 0.4.14 and 0.4.15.
     // 0.4.17: above the 0.4.16 main took meanwhile, so an installed copy upgrades.
     // 0.4.18: above the 0.4.17 main took meanwhile, so an installed copy upgrades.
-    expect(m.version).toBe("0.4.18")
+    // 0.4.16: variants_search sends product_status in lower case (Shopify matches no other).
+    // 0.4.17: B2B company drafts: companies_search / companies_get (read_companies), purchasingCompany
+    // on draft_orders_create / update, priceOverride + priceException, the B2B catalog-price guard.
+    // 0.4.18: B2B catalogs that reach a location through a B2B market (every plan) count, as well
+    // as those assigned to it directly (Plus); companies_* mark each catalog's source.
+    // 0.4.19: the branch's 0.4.18 merged with main's 0.4.16 to 0.4.18 (B2B drafts and catalogs).
+    expect(m.version).toBe("0.4.19")
   })
 
   it("orders_search and variants_search declare their filters and close their params", () => {

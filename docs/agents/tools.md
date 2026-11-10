@@ -67,13 +67,13 @@ Scopes are shown in full. `kernel:agent:memory` is the gate for the memory and n
 | `threads_list` | List recent conversations you are in. | `kernel:threads:read` | No |
 | `threads_search` | Search conversations by title, participant or content. | `kernel:threads:read` | No |
 | `threads_read` | Read the messages of one conversation. | `kernel:threads:read` | No |
-| `threads_create` | Start a new conversation with chosen participants. With `createdFrom` naming a record that has a discussion, posts into that discussion instead, as the agent; people listed who cannot see the record are left out and named. A record you cannot see: `created_from_not_visible`, nothing is posted. | `kernel:threads:write` | No |
+| `threads_create` | Message people in the conversation you already share (a 1:1 opens if none). With `createdFrom` naming a record that has a discussion, posts into that discussion instead, as the agent; people listed who cannot see the record are left out and named. A record you cannot see: `created_from_not_visible`, nothing is posted. | `kernel:threads:write` | When an agent opens a new conversation |
 | `threads_reply` | Post a message into an existing conversation, or into a contact's discussion (`contactId`). | `kernel:threads:write` | No |
 | `agents_ask` | Ask another agent a question, or hand it one piece of work, without adding it to the conversation. | `kernel:threads:write` | No |
 | `agents_invite` | Add another agent to the conversation, after you approve it there. | `kernel:threads:write` | Yes |
 | `users_search` | Find colleagues by name or email. | `kernel:users:read` | No |
 | `create_pinned_thread` | Create an organization-wide pinned conversation. | `kernel:threads:admin` | No |
-| `open_app` | Open an app, a view or one record (an invoice, a ticket, a channel) on your screen. Only your own request moves your own tabs. | `kernel:threads:read` | No |
+| `open_app` | Open an app, a view (such as **Dashboards**, the list of your dashboards) or one record (an invoice, a ticket, a channel) on your screen. Only your own request moves your own tabs. | `kernel:threads:read` | No |
 
 ### Files and media
 

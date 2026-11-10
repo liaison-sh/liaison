@@ -4960,10 +4960,12 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
     tool.gated !== true &&
     !approvalExecutingNestedCall &&
     tool.gatedWhen !== undefined &&
-    (await tool.gatedWhen(validatedParams, { orgId: opts.orgId }).catch((err: unknown) => {
-      log.error({ err, toolName: opts.toolName }, "gatedWhen failed: the call is gated")
-      return true
-    }))
+    (await tool
+      .gatedWhen(validatedParams, { orgId: opts.orgId, userId, origin: opts.origin })
+      .catch((err: unknown) => {
+        log.error({ err, toolName: opts.toolName }, "gatedWhen failed: the call is gated")
+        return true
+      }))
 
   // A DISCLOSURE DECISION, NOTHING MORE (scope-taint.ts, rule 8h, 2026-10-27). An ungated write
   // parked ONLY because the turn read scoped data (rule 8b) would have run inline on a clean turn:

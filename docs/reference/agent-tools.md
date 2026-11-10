@@ -205,7 +205,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `subagent_list` | List sub-agent role definitions registered in this org. |  | `kernel:agents:spawn` |
 | `suggest_next_steps` | Offer up to 4 one-click next steps under your reply: a chip sends its label as the person's message, or opens a tab (app, view, id). |  | `kernel:threads:read` |
 | `thread_mute_set` | Mute or unmute one conversation thread for the user: replies there stop notifying (an @mention still does). |  | `kernel:agent:memory` |
-| `threads_create` | Start a thread with participants, or message a teammate directly: participantIds [their user id from kernel__users_search], no title, the text as initialMessage. |  | `kernel:threads:write` |
+| `threads_create` | Message teammates: participantIds [kernel__users_search ids], no title, text as initialMessage. |  | `kernel:threads:write` |
 | `threads_list` | List recent threads the user participates in, with ids, handles, titles, participants, last message metadata, unreadCount and paging. |  | `kernel:threads:read` |
 | `threads_read` | Read a thread's messages in chronological order, with its title and handle. |  | `kernel:threads:read` |
 | `threads_reply` | Post a message into a thread (threadId) or into a Liaison contact's discussion (contactId). |  | `kernel:threads:write` |
@@ -714,6 +714,8 @@ Shopify orders, customers, products, refunds, fulfilments and returns.
 | `abandoned_checkouts_list` | List abandoned customer checkouts for cart recovery (value, customer name + email, line items, and the recovery URL per checkout), newest first. |  | `shopify:orders:read` |
 | `analytics_query` | Aggregate sales analytics over a period, optionally grouped by SKU or market. |  | `shopify:analytics:read` |
 | `apply_seed_suggestion` | Apply an admin-reviewed scope-seed suggestion (writes Liaison scopes for the named user). | yes | `shopify:admin:scope-seed` |
+| `companies_get` | Get one Shopify B2B company by id, with the same shape as a companies_search result: locations (addresses, tax settings, catalogs) and contacts with their roles per location. |  | `shopify:customers:read` |
+| `companies_search` | Search Shopify B2B companies by name. |  | `shopify:customers:read` |
 | `connection_disconnect` | Disconnect the Shopify connection (flips install_metadata to disconnected; stops background sync). | yes | `shopify:admin:identity-map` |
 | `customers_email_marketing_consent_update` | Set a Shopify customer's email-marketing consent state | yes | `shopify:customers:write` |
 | `customers_get` | Get one Shopify customer by id. |  | `shopify:customers:read` |
@@ -731,7 +733,7 @@ Shopify orders, customers, products, refunds, fulfilments and returns.
 | `draft_orders_complete` | Complete a Shopify draft order: it becomes a real order. | yes | `shopify:draft-orders:write` |
 | `draft_orders_create` | Create a Shopify draft order. | yes | `shopify:draft-orders:write` |
 | `draft_orders_delete` | Delete a Shopify draft order. | yes | `shopify:draft-orders:write` |
-| `draft_orders_get` | Get one Shopify draft order by id (with line items). |  | `shopify:draft-orders:read` |
+| `draft_orders_get` | Get one Shopify draft order by id (with line items and their customAttributes). |  | `shopify:draft-orders:read` |
 | `draft_orders_list` | List Shopify draft orders |  | `shopify:draft-orders:read` |
 | `draft_orders_send` | Send a draft-order invoice to the customer. | yes | `shopify:draft-orders:write` |
 | `draft_orders_update` | Update a Shopify draft order (lines, customer, addresses, discounts, note, tags). | yes | `shopify:draft-orders:write` |

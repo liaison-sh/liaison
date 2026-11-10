@@ -2016,7 +2016,8 @@
     "oauthError": "La connexion au fournisseur a échoué ({{error}}). Réessayez de vous connecter.",
     "oauthErrorWithDescription": "La connexion au fournisseur a échoué : {{description}}",
     "dashboard": "Tableau de bord",
-    "appBuilder": "Créateur d'apps"
+    "appBuilder": "Créateur d'apps",
+    "dashboards": "Tableaux de bord"
   },
   "newConversation": {
     "newChannel": "Nouveau canal",
@@ -6711,7 +6712,10 @@
     "blockSourceError": "Les données de ce bloc n'ont pas pu être lues. Réessayez plus tard.",
     "blockNotFound": "Ce bloc n'est plus sur le tableau de bord.",
     "blockNetwork": "Impossible de joindre le serveur pour le moment. Réessayez dans un instant.",
-    "blockTruncated": "Certaines lignes sont omises : le bloc montre les premières."
+    "blockTruncated": "Certaines lignes sont omises : le bloc montre les premières.",
+    "indexEmptyTitle": "Aucun tableau de bord pour l'instant",
+    "indexEmptyBody": "Un tableau de bord réunit sur une page des graphiques, des tableaux et des chiffres tirés de vos apps, et les tient à jour. Gardez-le pour vous ou partagez-le avec votre organisation.",
+    "indexEmptyHint": "Demandez à votre agent d'en créer un, par exemple : « Fais-moi un tableau de bord des commandes du mois, jour par jour. »"
   },
   "appBuilder": {
     "check": "Vérifier",

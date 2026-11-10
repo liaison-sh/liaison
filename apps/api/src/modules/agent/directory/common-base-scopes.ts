@@ -33,8 +33,12 @@
  * editing another person's request still needs `kernel:approvals:write`, which
  * stays out of the base.
  *
- * A change here reaches NEW agents; an existing role agent gains it at its
- * next `config apply`, and @base agents keep what they were created with.
+ * A scope added here reaches every live role agent and `@base` at the next
+ * server start: the setup step (db/reconcile-catalog-boot.ts) appends whatever
+ * a stored ceiling lacks (reconcile-base-ceilings.ts), additive only, so no
+ * migration is needed. A scope REMOVED here is not taken back from stored
+ * ceilings; that needs its own migration. Personal agents never receive the
+ * base this way: their ceiling is their owner's grants.
  *
  * None of these is an admin scope: `assertNoAdminScopesInRoleCeiling` still
  * passes on every composed ceiling, and the ceiling remains a CAP, intersected

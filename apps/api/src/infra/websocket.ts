@@ -1062,6 +1062,7 @@ export class WebSocketManager {
       if (!this.hasOwnNodeSessionAccess(client, payload)) continue
       if (!this.hasPersonalRoutineAccess(client, payload)) continue
       if (!this.hasCompanyAudienceAccess(client, payload)) continue
+      if (!this.hasDashboardVisibilityAccess(client, payload)) continue
       if (!this.wantsNodeSessionEvent(client, payload)) continue
       if (!this.hasDimensionAccess(client.dimensionGrants, payload)) continue
       const out = stripCompanyAudience(
@@ -1181,6 +1182,7 @@ export class WebSocketManager {
       if (!this.hasOwnNodeSessionAccess(client, payload)) continue
       if (!this.hasPersonalRoutineAccess(client, payload)) continue
       if (!this.hasCompanyAudienceAccess(client, payload)) continue
+      if (!this.hasDashboardVisibilityAccess(client, payload)) continue
       if (!this.wantsNodeSessionEvent(client, payload)) continue
       if (!this.hasDimensionAccess(client.dimensionGrants, payload)) continue
       const out = stripCompanyAudience(
@@ -1330,6 +1332,7 @@ export class WebSocketManager {
             this.hasOwnNodeSessionAccess(replayClient, parsed.payload) &&
             this.hasPersonalRoutineAccess(replayClient, parsed.payload) &&
             this.hasCompanyAudienceAccess(replayClient, parsed.payload) &&
+            this.hasDashboardVisibilityAccess(replayClient, parsed.payload) &&
             this.hasDimensionAccess(dimensionGrants, parsed.payload)
           ) {
             // The buffer holds the unredacted frame, so replay redacts per member too.
@@ -1608,6 +1611,23 @@ export class WebSocketManager {
       | undefined
     if (data?.visibility === "shared") return true
     return data?.ownerUserId === client.userId || data?.createdByUserId === client.userId
+  }
+
+  /**
+   * A `kernel:dashboard` frame (modules/dashboards/service.ts) follows the row's
+   * SELECT policy: an org dashboard's reaches every reader, a personal one's its
+   * owner only. A switch from org to personal (`previousVisibility: "org"`) still
+   * reaches the readers who saw it, so their list drops it; the frame carries ids
+   * and visibility, never a title. A frame naming no owner and no org visibility
+   * reaches no one (fail closed).
+   */
+  private hasDashboardVisibilityAccess(client: { userId: string }, payload: EventPayload): boolean {
+    if (payload.app !== "kernel" || payload.entity !== "dashboard") return true
+    const data = payload.data as
+      | { visibility?: unknown; previousVisibility?: unknown; ownerUserId?: unknown }
+      | undefined
+    if (data?.visibility === "org" || data?.previousVisibility === "org") return true
+    return typeof data?.ownerUserId === "string" && data.ownerUserId === client.userId
   }
 
   private hasOwnNodeSessionAccess(client: { userId: string }, payload: EventPayload): boolean {

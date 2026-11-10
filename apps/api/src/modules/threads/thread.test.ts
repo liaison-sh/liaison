@@ -153,6 +153,13 @@ describe("thread service", () => {
     expect((caught as DuplicateThreadError).existing.id).toBe(first.id)
     expect((caught as DuplicateThreadError).code).toBe("duplicate_thread")
     expect((caught as DuplicateThreadError).message).toContain(first.handle)
+    // It points at the existing thread or the user, never at forceCreate as the way out.
+    const message = (caught as DuplicateThreadError).message
+    expect(message).toContain(`Reply in that thread (id ${first.id}) if your message fits there`)
+    expect(message).toContain("ask the user where to post it")
+    expect(message).toContain("Never retry with forceCreate on your own judgement")
+    expect(message).not.toContain("genuinely separate")
+    expect(message).not.toMatch(/Pass forceCreate/)
   })
 
   it("refuses symmetrically — B->A is the same participant set as A->B", async () => {

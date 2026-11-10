@@ -27,6 +27,7 @@ import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-co
 import { UNKNOWN_TURN_TAINT } from "~/modules/agent/scopes/scope-taint"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { ALL_DEFERRED_TOOLS_UNLOCKED, buildToolSet } from "~/modules/agent/tools/tool-bridge"
+import { decideApproval } from "~/modules/approvals/decide"
 import { initializedOrgRuntimes, toolRegistry } from "~/modules/apps/app-registries"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -67,6 +68,8 @@ async function run<T>(frame: RunContext, body: (tools: any) => Promise<T>): Prom
 }
 
 async function cleanup(): Promise<void> {
+  await sql`DELETE FROM kernel.approved_handler_executions WHERE approval_request_id IN (
+    SELECT id FROM kernel.approval_requests WHERE org_id = ${ORG})`
   await sql`DELETE FROM kernel.approval_requests WHERE org_id = ${ORG}`
   await sql`DELETE FROM kernel.thread_references WHERE org_id = ${ORG}`
   await sql`DELETE FROM kernel.messages WHERE org_id = ${ORG}`
@@ -149,15 +152,24 @@ describe("threads_create under scope taint", () => {
 
     expect(JSON.stringify(found)).toContain(ALICE)
     expect(frame.turnScopeAccumulator?.snapshot()).toContain("kernel:users:read")
-    expect(created.code).toBeUndefined()
-    expect(created.error).toBeUndefined()
-    expect(created.thread?.title).toBe("Launch channel")
-    expect(await threadsTitled("Launch channel")).toHaveLength(1)
+    expect(JSON.stringify(created)).not.toContain("E_SCOPE_TAINT_BLOCKED")
+    expect(frame.scopeTaintRefused).toBeFalsy()
+    // A new titled conversation an agent opens waits for the requester's approval (it is
+    // never opened on the agent's own judgement); approving it creates the channel.
+    expect(created.blocked).toBe(true)
+    expect(await threadsTitled("Launch channel")).toHaveLength(0)
+    await decideApproval({
+      orgId: ORG,
+      requestId: created.approvalRequestId,
+      actor,
+      decision: "approve",
+    })
+    const [channel] = await threadsTitled("Launch channel")
+    expect(channel).toBeDefined()
     // The initial message is stamped with what the turn read, like a threads_reply post.
     const [message] = await sql<{ required_scopes: string[] }[]>`
-      SELECT required_scopes FROM kernel.messages WHERE thread_id = ${created.thread.id}`
+      SELECT required_scopes FROM kernel.messages WHERE thread_id = ${channel?.id as string}`
     expect(message?.required_scopes).toContain("kernel:users:read")
-    expect(frame.scopeTaintRefused).toBeFalsy()
   })
 
   it("(b) a title tainted by a scope one participant lacks parks for the requester instead of being refused", async () => {
@@ -183,9 +195,11 @@ describe("threads_create under scope taint", () => {
     const [row] = await sql<{ metadata: { taintAudienceMustHold?: string[] } }[]>`
       SELECT metadata FROM kernel.approval_requests WHERE id = ${refused.approvalRequestId}`
     expect(row?.metadata.taintAudienceMustHold).toContain(SECRET)
-    const titled = await threadsTitled("The launch code")
-    expect(titled).toHaveLength(1)
-    expect(allowed.thread?.id).toBe(titled[0]?.id)
+    // The audience that holds the taint is not refused either; as a new conversation an agent
+    // opens, it waits for the requester like the first. Nothing exists before that.
+    expect(JSON.stringify(allowed)).not.toContain("E_SCOPE_TAINT_BLOCKED")
+    expect(allowed.blocked).toBe(true)
+    expect(await threadsTitled("The launch code")).toHaveLength(0)
   })
 
   it("(b) references tainted by a scope one participant lacks park the same way, untitled or not", async () => {
@@ -211,13 +225,17 @@ describe("threads_create under scope taint", () => {
     const frame = freshFrame()
     const refused = await run(frame, async (tools) => {
       await tools.kernel__users_search.execute({ query: "Alice" }, {})
+      // Untitled, one person: not a new conversation, so the taint judgement answers it.
       return (await tools.kernel__threads_create.execute(
-        { participantIds: [ALICE, NOT_IN_ORG], title: "Ghost channel", forceCreate: true },
+        {
+          participantIds: [NOT_IN_ORG],
+          references: [{ app: "tickets", entityType: "ticket", entityId: "ghost" }],
+        },
         {},
       )) as any
     })
     expect(JSON.stringify(refused)).toContain("E_SCOPE_TAINT_BLOCKED")
-    expect(await threadsTitled("Ghost channel")).toHaveLength(0)
+    expect(await sql`SELECT 1 FROM kernel.thread_references WHERE org_id = ${ORG}`).toHaveLength(0)
   })
 
   it("(c) an unknown taint refuses a titled create", async () => {

@@ -885,6 +885,10 @@ export const KERNEL_DECLARED_EMITS: ReadonlySet<string> = new Set([
   "saved_view:created",
   "saved_view:updated",
   "saved_view:deleted",
+  // Dashboards (modules/dashboards/service.ts): ids and visibility only, scoped per viewer.
+  "dashboard:created",
+  "dashboard:updated",
+  "dashboard:deleted",
   // Module H — market-intelligence web-watch: `web_watch` queues this to the
   // outbox (not ephemeral) when a watched source's normalized extraction
   // changes across ticks, so downstream subscribers (timeline/notifications)

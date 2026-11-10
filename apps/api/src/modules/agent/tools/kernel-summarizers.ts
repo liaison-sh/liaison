@@ -3,6 +3,7 @@
 // fell back to the raw parameters. Params in, summary out; subagent_create also
 // reads the role it would overwrite, to show what changes.
 import { loadSubAgentDefinition } from "~/modules/agent/subruns/sub-agent-definitions"
+import { loadUserName } from "~/modules/approvals/event-data"
 import type { ApprovalSummarizer } from "~/modules/apps/app-registries"
 import { listCatalog } from "~/modules/apps/catalog"
 import { isAppRegistered } from "~/modules/apps/enabled-apps"
@@ -214,4 +215,36 @@ export const summarizeSetAway: ApprovalSummarizer = async (raw) => {
     }
   }
   return { kind: "set_away", title: other ? "Mark someone else away" : "Mark yourself away", lines }
+}
+
+/**
+ * kernel:threads_create: gated only when an agent would open a NEW conversation (a title,
+ * forceCreate, or a new group of two or more people). The card names it and the people.
+ */
+export const summarizeThreadsCreate: ApprovalSummarizer = async (raw, ctx) => {
+  const p = asParams(raw)
+  const ids = Array.isArray(p.participantIds)
+    ? [...new Set(p.participantIds.filter((id): id is string => typeof id === "string"))]
+    : []
+  const names: string[] = []
+  for (const id of ids.slice(0, 10)) names.push(await loadUserName(ctx.tx, id))
+  const people =
+    names.length === 0
+      ? "nobody else"
+      : `${names.join(", ")}${ids.length > names.length ? ` and ${ids.length - names.length} more` : ""}`
+  const title = text(p.title)
+  const message = text(p.initialMessage)
+  const preview = message && message.length > 180 ? `${message.slice(0, 180)}…` : message
+  return {
+    kind: "threads_create",
+    title: title
+      ? `Create new conversation "${title}" with ${people}`
+      : `Create new conversation with ${people}`,
+    lines: [
+      p.forceCreate === true
+        ? "These people already share a conversation; this opens a separate one."
+        : "Opens a new conversation instead of posting into one these people already share.",
+      ...(preview ? [`First message: ${preview}`] : []),
+    ],
+  }
 }

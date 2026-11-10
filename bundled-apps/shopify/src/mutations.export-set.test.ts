@@ -35,6 +35,7 @@ const EXPECTED_EXPORTS: ReadonlyArray<string> = [
   "draft_orders_delete_preflight",
   "draft_orders_send",
   "draft_orders_update",
+  "draft_orders_update_preflight",
   "fulfillments_cancel",
   "fulfillments_cancel_preflight",
   "fulfillments_create",

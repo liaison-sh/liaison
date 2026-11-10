@@ -282,7 +282,7 @@
       }
     ]
   },
-  "version": "0.4.18",
+  "version": "0.4.19",
   "network": {
     "imageHosts": ["cdn.shopify.com"],
     "linkHosts": ["admin.shopify.com"]
@@ -357,6 +357,7 @@
         "read_merchant_managed_fulfillment_orders",
         "write_merchant_managed_fulfillment_orders",
         "read_markets",
+        "read_companies",
         "read_discounts",
         "write_discounts",
         "read_reports",
@@ -1432,6 +1433,74 @@
       },
       "readOnly": true
     },
+    "companies_search": {
+      "taintSource": true,
+      "description": "Search Shopify B2B companies by name. Each company carries its locations (id, name, shippingAddress, billingAddress, taxExempt, taxRegistrationId, and the catalogs that apply to the location with their price lists, each with source 'direct' (assigned to the location) or 'market:<name>' (through a B2B market that includes the location), or null when catalogs are not readable) and its contacts (id, customer, and roles: one {locationId, locationName, role} per location the contact may order for). Use the ids for draft_orders_create's purchasingEntity.purchasingCompany {companyId, companyLocationId, companyContactId}: pick a contact that holds a role at that location.",
+      "searchKeywords": [
+        "entreprise",
+        "société",
+        "B2B",
+        "company",
+        "dealer",
+        "revendeur"
+      ],
+      "requiredScopes": [
+        "shopify:customers:read"
+      ],
+      "handler": "companies_search",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Company name, or its first word (prefix match)."
+          },
+          "query": {
+            "type": "string",
+            "description": "Raw Shopify company search instead of name, e.g. 'external_id:123'."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 25,
+            "default": 10
+          },
+          "cursor": {
+            "type": "string"
+          }
+        }
+      },
+      "readOnly": true
+    },
+    "companies_get": {
+      "taintSource": true,
+      "description": "Get one Shopify B2B company by id, with the same shape as a companies_search result: locations (addresses, tax settings, catalogs) and contacts with their roles per location.",
+      "searchKeywords": [
+        "entreprise",
+        "société",
+        "B2B",
+        "company"
+      ],
+      "requiredScopes": [
+        "shopify:customers:read"
+      ],
+      "handler": "companies_get",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Company gid (gid://shopify/Company/…)."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "readOnly": true
+    },
     "draft_orders_list": {
       "taintSource": true,
       "description": "List Shopify draft orders",
@@ -1458,7 +1527,7 @@
     },
     "draft_orders_get": {
       "taintSource": true,
-      "description": "Get one Shopify draft order by id (with line items). The result carries a top level `po_number`, the customer's purchase order reference, which flows to the linked quote and on to the invoice.",
+      "description": "Get one Shopify draft order by id (with line items and their customAttributes). The result carries a top level `po_number`, the customer's purchase order reference, which flows to the linked quote and on to the invoice. `draftOrder.purchasingCompany` is the B2B company and location (null for a consumer); the order's and each line's `customAttributes` carry a price exception's reason.",
       "requiredScopes": ["shopify:draft-orders:read"],
       "handler": "draft_orders_get",
       "params": {
@@ -1612,7 +1681,7 @@
         "properties": {
           "query": {
             "type": "string",
-            "description": "Shopify product-variant search syntax (space-separated terms are ANDed; OR and a leading - for NOT work; range operators :>, :>=, :<, :<=). Supported filters include: free text, sku:<sku>, barcode:<code>, title:<variant title>, vendor:<vendor>, product_type:<type>, product_id:<id>, tag:<tag>, tag_not:<tag>, collection:<id>, location_id:<id>, gift_card:true|false, option1:<value>, product_status:ACTIVE,DRAFT, inventory_quantity:>=1. Prefer the product_status and min_quantity params for status and stock."
+            "description": "Shopify product-variant search syntax (space-separated terms are ANDed; OR and a leading - for NOT work; range operators :>, :>=, :<, :<=). Supported filters include: free text, sku:<sku>, barcode:<code>, title:<variant title>, vendor:<vendor>, product_type:<type>, product_id:<id>, tag:<tag>, tag_not:<tag>, collection:<id>, location_id:<id>, gift_card:true|false, option1:<value>, product_status:active,draft (lower case), inventory_quantity:>=1. Prefer the product_status and min_quantity params for status and stock."
           },
           "product_status": {
             "type": "array",
@@ -1675,6 +1744,11 @@
               "type": "object",
               "additionalProperties": true
             }
+          },
+          "purchasingCompany": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "A draft's purchasingCompany ({companyId, companyLocationId}): the result adds the company and location names."
           }
         }
       },
@@ -2062,7 +2136,7 @@
       ]
     },
     "draft_orders_create": {
-      "description": "Create a Shopify draft order. To apply a dealer / volume / tier discount you MUST set an appliedDiscount on the line item (lineItems[].appliedDiscount) or order-level — { value: <number>, valueType: 'PERCENTAGE' (or 'FIXED_AMOUNT'), description: '<reason>' }. Stating the discount only in your reply WITHOUT setting appliedDiscount creates the draft at FULL price (a fabricated discount — the rubric fails). Resolve the customer with shopify customers_search and set purchasingEntity.customerId to its Shopify Customer GID (gid://shopify/Customer/…) — do NOT pass a kernel contact id (a bare UUID from kernel contacts_search; Shopify rejects it: 'Invalid global id'). If you pass an email instead of customerId, it must be a real deliverable address (a kernel contact's `.example` TLD is rejected: 'Email contains an invalid domain name') — so prefer the Shopify customerId. Pass each line as lineItems[] = { variantId, quantity, appliedDiscount? }. QUOTES: when the Invoicing app is installed and its issuer profile is mapped to this shop, a draft order IS the customer's quote: creating it makes a numbered quote PDF appear in Invoicing automatically (linked by the draft order id), so never also create a quote there. Set the customer (purchasingEntity.customerId) and a shipping address so the quote has a complete recipient; without them the quote waits until the draft order is updated with them. Prices on custom lines are tax inclusive when the shop prices tax inclusive. A `poNumber` on the draft is the customer's purchase order reference: it travels to the numbered quote and on to the invoice, so put a PO there rather than in a tag or a note. INVOICEABILITY: when Invoicing is mapped to this shop, the create is REFUSED (NOT_INVOICEABLE) when the order could not be invoiced later: the linked customer's own record has no email (an email on the draft is not used when a customer is linked: add it first with customers_update), the order has no postal address, or the buyer is in another EU member state and the order charges no VAT (tax exempt) without the buyer's VAT number (pass it as customAttributes: [{key: 'VAT number', value: '<number>'}]). Check the customer with customers_get before creating.",
+      "description": "Create a Shopify draft order. To apply a dealer / volume / tier discount you MUST set an appliedDiscount on the line item (lineItems[].appliedDiscount) or order-level — { value: <number>, valueType: 'PERCENTAGE' (or 'FIXED_AMOUNT'), description: '<reason>' }. Stating the discount only in your reply WITHOUT setting appliedDiscount creates the draft at FULL price (a fabricated discount — the rubric fails). Resolve the customer with shopify customers_search and set purchasingEntity.customerId to its Shopify Customer GID (gid://shopify/Customer/…) — do NOT pass a kernel contact id (a bare UUID from kernel contacts_search; Shopify rejects it: 'Invalid global id'). If you pass an email instead of customerId, it must be a real deliverable address (a kernel contact's `.example` TLD is rejected: 'Email contains an invalid domain name') — so prefer the Shopify customerId. Pass each line as lineItems[] = { variantId, quantity, appliedDiscount? }. QUOTES: when the Invoicing app is installed and its issuer profile is mapped to this shop, a draft order IS the customer's quote: creating it makes a numbered quote PDF appear in Invoicing automatically (linked by the draft order id), so never also create a quote there. Set the customer (purchasingEntity.customerId) and a shipping address so the quote has a complete recipient; without them the quote waits until the draft order is updated with them. Prices on custom lines are tax inclusive when the shop prices tax inclusive. A `poNumber` on the draft is the customer's purchase order reference: it travels to the numbered quote and on to the invoice, so put a PO there rather than in a tag or a note. INVOICEABILITY: when Invoicing is mapped to this shop, the create is REFUSED (NOT_INVOICEABLE) when the order could not be invoiced later: the linked customer's own record has no email (an email on the draft is not used when a customer is linked: add it first with customers_update), the order has no postal address, or the buyer is in another EU member state and the order charges no VAT (tax exempt) without the buyer's VAT number (pass it as customAttributes: [{key: 'VAT number', value: '<number>'}]). Check the customer with customers_get before creating. B2B: when the buyer is a company contact (customers_get lists its companies), find the company with companies_search and set purchasingEntity.purchasingCompany {companyId, companyLocationId, companyContactId} instead of customerId, with plain {variantId, quantity} lines: Shopify prices them from the location's B2B catalog and applies its tax settings. A B2B draft is REFUSED without the company location (B2B_COMPANY_REQUIRED), when the contact holds no role there (B2B_CONTACT_NO_ROLE), when a variant has no fixed price in the location's catalogs (B2B_NO_CATALOG_PRICE), and when it carries a discount or custom price without a priceException (B2B_PRICE_NOT_CATALOG). A genuine exception: the line's priceOverride {amount, currencyCode} with priceException {reason: demo_unit | warranty_replacement | gift | approved_agreement, note}; an order-level discount takes input.priceException.",
       "searchKeywords": ["brouillon", "commande"],
       "requiredScopes": ["shopify:draft-orders:write"],
       "handler": "draft_orders_create",
@@ -2071,7 +2145,8 @@
       "summarizerContext": {
         "tool": "variants_brief",
         "params": {
-          "lines": "input.lineItems"
+          "lines": "input.lineItems",
+          "purchasingCompany": "input.purchasingEntity.purchasingCompany"
         }
       },
       "gated": true,
@@ -2092,7 +2167,31 @@
                 "properties": {
                   "customerId": {
                     "type": "string",
-                    "description": "Customer gid."
+                    "description": "Customer gid (a consumer). A B2B company contact is placed through purchasingCompany instead."
+                  },
+                  "purchasingCompany": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "companyId",
+                      "companyLocationId",
+                      "companyContactId"
+                    ],
+                    "description": "B2B: place the draft for a company location (ids from companies_search / companies_get). The location's catalogs price plain {variantId, quantity} lines and its tax settings apply; the contact must hold a role at that location. Use it INSTEAD of customerId.",
+                    "properties": {
+                      "companyId": {
+                        "type": "string",
+                        "description": "Company gid."
+                      },
+                      "companyLocationId": {
+                        "type": "string",
+                        "description": "CompanyLocation gid."
+                      },
+                      "companyContactId": {
+                        "type": "string",
+                        "description": "CompanyContact gid (holds a role at the location)."
+                      }
+                    }
                   }
                 }
               },
@@ -2129,13 +2228,50 @@
                           "type": "string"
                         }
                       }
+                    },
+                    "priceOverride": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "description": "The line's unit price, set as the price itself (no discount on the line): {amount:'120.00', currencyCode:'EUR'}. Needs a priceException.",
+                      "properties": {
+                        "amount": {
+                          "type": "string"
+                        },
+                        "currencyCode": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "priceException": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "reason"
+                      ],
+                      "description": "Why this price is not the catalog's: required for a priceOverride, and on a B2B draft for any discount or custom price. Recorded in the line's (or order's) custom attributes as 'Price exception', so the approval card and the order show it.",
+                      "properties": {
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "demo_unit",
+                            "warranty_replacement",
+                            "gift",
+                            "approved_agreement"
+                          ],
+                          "description": "demo_unit | warranty_replacement | gift | approved_agreement."
+                        },
+                        "note": {
+                          "type": "string",
+                          "description": "Free text: who approved it, the agreement or ticket reference."
+                        }
+                      }
                     }
                   },
                   "required": [
                     "quantity"
                   ]
                 },
-                "description": "Line items. Catalog line: {variantId, quantity, appliedDiscount?}. Custom line: {title, originalUnitPriceWithCurrency:{amount,currencyCode}, quantity}. To discount, use appliedDiscount {valueType:'PERCENTAGE'|'FIXED_AMOUNT', value, title}. There is NO per-unit `price` and NO `productId` on a line item — use variantId (catalog) or a custom line."
+                "description": "Line items. B2B (purchasingCompany): send {variantId, quantity} only, the company catalog prices it; a different price needs priceOverride + priceException. Catalog line: {variantId, quantity, appliedDiscount?}. Custom line: {title, originalUnitPriceWithCurrency:{amount,currencyCode}, quantity}. To discount, use appliedDiscount {valueType:'PERCENTAGE'|'FIXED_AMOUNT', value, title}. There is NO per-unit `price` and NO `productId` on a line item — use variantId (catalog) or a custom line."
               },
               "appliedDiscount": {
                 "type": "object",
@@ -3706,9 +3842,10 @@
       }
     },
     "draft_orders_update": {
-      "description": "Update a Shopify draft order (lines, customer, addresses, discounts, note, tags). When Invoicing is installed the linked quote is updated to match (recomputed totals, re-rendered PDF) as long as it is still open. A poNumber edit travels to the linked quote too.",
+      "description": "Update a Shopify draft order (lines, customer, addresses, discounts, note, tags). When Invoicing is installed the linked quote is updated to match (recomputed totals, re-rendered PDF) as long as it is still open. A poNumber edit travels to the linked quote too. B2B drafts (placed for a company location) follow the same rules as draft_orders_create: plain {variantId, quantity} lines take the catalog price, and a discount or custom price needs a priceException.",
       "requiredScopes": ["shopify:draft-orders:write"],
       "handler": "draft_orders_update",
+      "preflight": "draft_orders_update_preflight",
       "summarizer": "summarizeDraftOrdersUpdate",
       "summarizerContext": {
         "tool": "draft_orders_get",
@@ -3731,6 +3868,64 @@
             "minProperties": 1,
             "description": "Shopify DraftOrderInput for an existing draft. The draft id is the sibling `id` param.",
             "properties": {
+              "purchasingEntity": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "customerId": {
+                    "type": "string",
+                    "description": "Customer gid (a consumer)."
+                  },
+                  "purchasingCompany": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "companyId",
+                      "companyLocationId",
+                      "companyContactId"
+                    ],
+                    "description": "B2B: place the draft for a company location (ids from companies_search / companies_get). The location's catalogs price plain {variantId, quantity} lines and its tax settings apply; the contact must hold a role at that location. Use it INSTEAD of customerId.",
+                    "properties": {
+                      "companyId": {
+                        "type": "string",
+                        "description": "Company gid."
+                      },
+                      "companyLocationId": {
+                        "type": "string",
+                        "description": "CompanyLocation gid."
+                      },
+                      "companyContactId": {
+                        "type": "string",
+                        "description": "CompanyContact gid (holds a role at the location)."
+                      }
+                    }
+                  }
+                }
+              },
+              "priceException": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "reason"
+                ],
+                "description": "Why this price is not the catalog's: required for a priceOverride, and on a B2B draft for any discount or custom price. Recorded in the line's (or order's) custom attributes as 'Price exception', so the approval card and the order show it.",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "enum": [
+                      "demo_unit",
+                      "warranty_replacement",
+                      "gift",
+                      "approved_agreement"
+                    ],
+                    "description": "demo_unit | warranty_replacement | gift | approved_agreement."
+                  },
+                  "note": {
+                    "type": "string",
+                    "description": "Free text: who approved it, the agreement or ticket reference."
+                  }
+                }
+              },
               "lineItems": {
                 "type": "array",
                 "items": {
@@ -3742,6 +3937,43 @@
                     },
                     "quantity": {
                       "type": "integer"
+                    },
+                    "priceOverride": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "description": "The line's unit price, set as the price itself (no discount on the line): {amount:'120.00', currencyCode:'EUR'}. Needs a priceException.",
+                      "properties": {
+                        "amount": {
+                          "type": "string"
+                        },
+                        "currencyCode": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "priceException": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "reason"
+                      ],
+                      "description": "Why this price is not the catalog's: required for a priceOverride, and on a B2B draft for any discount or custom price. Recorded in the line's (or order's) custom attributes as 'Price exception', so the approval card and the order show it.",
+                      "properties": {
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "demo_unit",
+                            "warranty_replacement",
+                            "gift",
+                            "approved_agreement"
+                          ],
+                          "description": "demo_unit | warranty_replacement | gift | approved_agreement."
+                        },
+                        "note": {
+                          "type": "string",
+                          "description": "Free text: who approved it, the agreement or ticket reference."
+                        }
+                      }
                     }
                   }
                 }

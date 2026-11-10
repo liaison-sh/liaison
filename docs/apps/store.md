@@ -74,7 +74,7 @@ When your server provides the Shopify app, its operator requests the access for 
 
 When the agent searches orders in a date window, the window is on each order's placed date (`processedAt`), which differs from its creation date for an imported or backdated order. An order can then be missing from a window although its number falls between two orders shown, so the agent looks a neighbouring order up by its number before calling it the previous one.
 
-Order searches also take an order-total window (`total_min`, `total_max`, in the store currency, on the order's current total after refunds), and product-variant searches take the product's status (`product_status`, for example only `ACTIVE` to leave out archived and draft products) and a minimum stock across locations (`min_quantity`). Shopify applies these filters itself, so a page of results is never thinned out afterwards. Each variant found shows its product's status. A search parameter the tool does not know is refused with an error that names it.
+Order searches also take an order-total window (`total_min`, `total_max`, in the store currency, on the order's current total after refunds), and product-variant searches take the product's status (`product_status`, for example only `ACTIVE` to leave out archived and draft products) and a minimum stock across locations (`min_quantity`). Shopify applies these filters itself, so a page of results is never thinned out afterwards (the tool sends the status in lower case, the only form Shopify matches). Each variant found shows its product's status. A search parameter the tool does not know is refused with an error that names it.
 
 If **Permissions update required** appears in the settings, the connection was approved before the app asked for a newer permission, and Shopify limits what the tools can see (for example order history older than 60 days). Shopify grants only the scopes of your Shopify app's configuration, so **Reconnect** alone cannot add it: first add the missing scopes to the configuration (download the current `shopify.app.toml` from the setup guide, or add them to `[access_scopes] scopes`) and run `shopify app deploy` (in the Dev Dashboard: add them to the **Scopes** and click **Release**), then click **Reconnect** and approve. A store connected before the app asked for the locations permission (`read_locations`) is one: until it reconnects, `locations_list` and the stock-per-location reads are refused.
 
@@ -129,6 +129,21 @@ With Invoicing mapped to the shop, `draft_orders_create` and `draft_orders_compl
 
 A draft order made in the Shopify admin is checked too when it is completed through Liaison. Without Invoicing, or with Invoicing mapped to another shop, nothing changes.
 
+## B2B draft orders for a company
+
+When the store sells to companies (Shopify B2B), the agent places a draft order for a company location rather than for a customer. `companies_search` and `companies_get` read a company: its locations with their addresses, tax settings and catalogs, and its contacts with the locations each may order for. `draft_orders_create` then takes `purchasingEntity.purchasingCompany` (`companyId`, `companyLocationId`, `companyContactId`) and plain lines (a variant and a quantity). Shopify prices each line from the catalogs that apply to the location, adds or exempts tax from the location's tax settings, and the location's addresses fill the draft. The catalogs that apply to a location are those assigned to it directly (Shopify Plus) and those of every active B2B market whose conditions include the location (any plan). A region market's catalog never counts. `companies_search` and `companies_get` mark each catalog `direct` or `market:<market name>`.
+
+Before any approval is filed, a B2B draft is refused when:
+
+- The buyer is a company contact but the draft names no company location (`B2B_COMPANY_REQUIRED`). The error lists the companies and locations found.
+- The contact holds no role at that location (`B2B_CONTACT_NO_ROLE`).
+- A line's product has no fixed price in any catalog of the location (`B2B_NO_CATALOG_PRICE`). Set one in the catalog's price list. When the catalogs or the markets cannot be read in full, the draft is refused too (`B2B_CATALOG_UNREADABLE`).
+- A line or the order carries a discount, a custom price or a price override without a reason (`B2B_PRICE_NOT_CATALOG`).
+
+A real exception (a demo unit, a warranty replacement, a gift, an approved agreement) sets the line's `priceOverride` with a `priceException` reason and a note. The reason is saved on the line as a `Price exception` attribute, so the approval card and the order both show it. A B2B line price never becomes a discount. The approval card shows the company, the location and, for each line, whether the catalog or an exception sets its price. `draft_orders_update` follows the same rules. The store must grant the `read_companies` scope: after an upgrade, deploy the app configuration again and Reconnect.
+
+`draft_orders_get` also returns the custom attributes of the order and of each line, where a price exception's reason shows.
+
 An order read shows the tax it charged, whether it was tax exempt, the B2B company that bought it, its billing address with the company, and the buyer's VAT number from its custom attributes as they are now, and a customer read shows whether the customer is tax exempt and the companies they buy for. Invoicing reads these to tell a business customer in another EU country from a consumer. An order found by `orders_search` also carries what the customer paid for shipping (its shipping line after shipping discounts, in the order's currency), which the [Boxtal](boxtal.md) worklist shows beside a carrier quote. `orders_search` and `customers_search` take an optional `timeout_ms` (500 to 10000): a caller on a time budget, such as that check, gets an error at once when Shopify is slow or rate limits it, instead of waiting.
 
 ## Scopes
@@ -165,6 +180,7 @@ Read tools never wait. Every tool marked "Always" files an approval and changes 
 | `abandoned_checkouts_list` | Abandoned checkouts with recovery links | No |
 | `customers_search`, `customers_segment_search`, `customers_get`, `customers_get_by_external_id`, `repeat_rate` | Find customers, spend segments, repeat purchase rate | No |
 | `draft_orders_list`, `draft_orders_get` | Read draft orders | No |
+| `companies_search`, `companies_get` | Read B2B companies, their locations, contacts and catalogs | No |
 | `products_search`, `products_get`, `products_publication_targets`, `variants_search`, `variants_get`, `variants_brief`, `variants_market_price` | Read products, their sales channels, variants and market prices | No |
 | `inventory_levels_list`, `inventory_value`, `locations_list` | Stock per location and stock value | No |
 | `markets_list`, `markets_get` | Read markets | No |

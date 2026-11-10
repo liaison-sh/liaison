@@ -1045,11 +1045,13 @@ const DRAFT_ORDER_GET_QUERY = `
       billingAddress { name company address1 address2 zip city province countryCodeV2 phone }
       shippingAddress { name company address1 address2 zip city province countryCodeV2 phone }
       customer { id email firstName lastName defaultAddress { company } }
+      customAttributes { key value }
       ${PURCHASING_COMPANY_SELECTION}
       lineItems(first: 100) {
         edges {
           node {
             id name title sku custom taxable requiresShipping quantity
+            customAttributes { key value }
             variant { id product { id } }
             originalUnitPriceSet { presentmentMoney { amount currencyCode } }
             priceOverride { amount currencyCode }
@@ -1084,14 +1086,27 @@ export async function draft_orders_list(
 export async function draft_orders_get(
   params: Record<string, unknown>,
   ctx: AppContext,
-): Promise<NormalizedHit & { lineItems: unknown[]; draftOrder: NormalizedDraftOrder; po_number?: string }> {
+): Promise<
+  NormalizedHit & {
+    lineItems: unknown[]
+    draftOrder: NormalizedDraftOrder
+    po_number?: string
+    customAttributes: Array<{ key: string; value: string | null }>
+  }
+> {
   const id = params.id
   if (typeof id !== "string" || id.length === 0) {
     throw makeReadError("BAD_PARAM", "id is required")
   }
   const client = await getShopifyClient(ctx)
   const data = await client.query<{
-    draftOrder?: (DraftOrderNode & ShopifyDraftOrderGraphQLNode & { lineItems?: { edges?: Array<{ node: unknown }> } }) | null
+    draftOrder?:
+      | (DraftOrderNode &
+          ShopifyDraftOrderGraphQLNode & {
+            lineItems?: { edges?: Array<{ node: unknown }> }
+            customAttributes?: Array<{ key: string; value: string | null }> | null
+          })
+      | null
   }>(DRAFT_ORDER_GET_QUERY, { id })
   if (!data.draftOrder) throw makeReadError("NOT_FOUND", `draft order ${id} not found`)
   const lineItems = data.draftOrder.lineItems?.edges?.map((e) => e.node) ?? []
@@ -1112,8 +1127,12 @@ export async function draft_orders_get(
     ...(po_number !== undefined ? { po_number } : {}),
     lineItems,
     draftOrder: normalizeDraftOrderNode(data.draftOrder as ShopifyDraftOrderGraphQLNode, meta?.shopDomain ?? null),
+    // Order custom attributes, e.g. a price exception's reason or a buyer VAT number.
+    customAttributes: data.draftOrder.customAttributes ?? [],
   }
 }
+
+export { companies_search, companies_get } from "./companies"
 
 // — Locations (read) —
 
@@ -1774,7 +1793,8 @@ const PRODUCT_STATUSES = ["ACTIVE", "ARCHIVED", "DRAFT", "UNLISTED"] as const
 /** The `productVariants(query:)` string: the caller's query plus the explicit filters, composed
  *  server-side in Shopify's search syntax
  *  (https://shopify.dev/docs/api/admin-graphql/latest/queries/productVariants) so `limit` and the
- *  cursor stay exact. `product_status` becomes `product_status:ACTIVE,DRAFT`; `min_quantity` becomes
+ *  cursor stay exact. `product_status` becomes `product_status:active,draft` (Shopify matches the
+ *  status values in lower case only: `product_status:ACTIVE` returns nothing); `min_quantity` becomes
  *  `inventory_quantity:>=N` (the total across all locations). Invalid values throw BAD_PARAM.
  *  Exported for tests. */
 export function variantsSearchQuery(params: Record<string, unknown>): string | null {
@@ -1792,7 +1812,7 @@ export function variantsSearchQuery(params: Record<string, unknown>): string | n
         `product_status must list one or more of ${PRODUCT_STATUSES.join(", ")}; got ${JSON.stringify(rawStatus)}`,
       )
     }
-    terms.push(`product_status:${[...new Set(list)].join(",")}`)
+    terms.push(`product_status:${[...new Set(list)].map((v) => String(v).toLowerCase()).join(",")}`)
   }
   const rawMin = params.min_quantity
   if (rawMin !== undefined && rawMin !== null && rawMin !== "") {
@@ -1854,7 +1874,10 @@ export async function variants_brief(
   ctx: AppContext,
 ): Promise<{
   variants: Array<{ id: string; title: string; sku: string | null; price: string | null; requiresShipping: boolean | null }>
+  company?: { id: string; name: string | null; locationId: string | null; locationName: string | null } | null
 }> {
+  const company = await briefCompany(params.purchasingCompany, ctx)
+  const withCompany = <T extends object>(out: T): T => (company ? { ...out, company } : out)
   const fromIds = Array.isArray(params.ids) ? params.ids : []
   const fromLines = Array.isArray(params.lines) ? params.lines : []
   const ids = [
@@ -1869,7 +1892,7 @@ export async function variants_brief(
       ].filter((v): v is string => v != null && v.includes("/ProductVariant/")),
     ),
   ].slice(0, 50)
-  if (ids.length === 0) return { variants: [] }
+  if (ids.length === 0) return withCompany({ variants: [] })
   const client = await getShopifyClient(ctx)
   const data = await client.query<{
     nodes?: Array<{
@@ -1899,7 +1922,40 @@ export async function variants_brief(
         requiresShipping: typeof n.inventoryItem?.requiresShipping === "boolean" ? n.inventoryItem.requiresShipping : null,
       }
     })
-  return { variants }
+  return withCompany({ variants })
+}
+
+/**
+ * The company and location names of a draft's `purchasingCompany`, for the approval card
+ * (best effort: an unreadable company leaves the card on the ids).
+ */
+async function briefCompany(
+  pc: unknown,
+  ctx: AppContext,
+): Promise<{ id: string; name: string | null; locationId: string | null; locationName: string | null } | null> {
+  if (!pc || typeof pc !== "object") return null
+  const p = pc as Record<string, unknown>
+  const companyId = typeof p.companyId === "string" ? p.companyId : null
+  const locationId = typeof p.companyLocationId === "string" ? p.companyLocationId : null
+  if (!companyId) return null
+  try {
+    const client = await getShopifyClient(ctx)
+    const data = await client.query<{
+      company?: { name?: string | null } | null
+      companyLocation?: { name?: string | null } | null
+    }>(
+      `query($id: ID!, $loc: ID!, $hasLoc: Boolean!){ company(id: $id){ name } companyLocation(id: $loc) @include(if: $hasLoc){ name } }`,
+      { id: companyId, loc: locationId ?? companyId, hasLoc: locationId != null },
+    )
+    return {
+      id: companyId,
+      name: data.company?.name ?? null,
+      locationId,
+      locationName: data.companyLocation?.name ?? null,
+    }
+  } catch {
+    return { id: companyId, name: null, locationId, locationName: null }
+  }
 }
 
 // — Per-market (contextual) variant pricing —

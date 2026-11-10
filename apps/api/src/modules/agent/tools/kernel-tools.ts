@@ -201,6 +201,7 @@ import {
   summarizeSetAway,
   summarizeSubagentCreate,
   summarizeSubagentDelete,
+  summarizeThreadsCreate,
 } from "~/modules/agent/tools/kernel-summarizers"
 import { handleOpenApp } from "~/modules/agent/tools/navigation-tool"
 import {
@@ -254,6 +255,7 @@ import {
   toolRegistry,
 } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
+import type { ToolOrigin } from "~/modules/apps/execute-tool"
 import {
   captureRegistrationTemplate,
   onRegistrationTemplatesReset,
@@ -316,6 +318,7 @@ import {
   RUN_ON_MY_COMPUTER_DESCRIPTION,
   summarizeRunOnMyComputer,
 } from "~/modules/nodes/run-on-my-computer"
+import { agentCreateOpensNewConversation } from "~/modules/threads/thread"
 import { handleSetAwayTool, setAwayRefusal } from "~/modules/users/away"
 import {
   handleMergeImportedUser,
@@ -1170,7 +1173,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     appName: "kernel",
     name: "threads_create",
     description:
-      "Start a thread with participants, or message a teammate directly: participantIds [their user id from kernel__users_search], no title, the text as initialMessage. Never email a teammate with mail__compose unless asked.",
+      "Message teammates: participantIds [kernel__users_search ids], no title, text as initialMessage. ASK the user where to post before a new thread; never retry with forceCreate on your own judgement. Never email a teammate with mail__compose.",
     searchKeywords: [
       "message",
       "discussion",
@@ -1184,6 +1187,38 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
       "demander",
     ],
     requiredScopes: ["kernel:threads:write"],
+    // An agent never opens a new conversation with people on its own: a title, forceCreate or
+    // a new group of two or more people parks an approval card a person decides ("Create new
+    // conversation ... with ..."). An untitled create that lands in the existing thread, or a
+    // 1:1 DM, runs. A person's own call (human-ui) is never gated here.
+    gatedWhen: async (
+      params: unknown,
+      ctx: { orgId: string; userId: string; origin: ToolOrigin },
+    ) => {
+      if (ctx.origin === "human-ui") return false
+      const p = (params ?? {}) as {
+        participantIds?: unknown
+        title?: unknown
+        forceCreate?: unknown
+        references?: unknown
+      }
+      return withPrivilegedDb(ctx.orgId, "threads-create-gate", (tx) =>
+        agentCreateOpensNewConversation(tx, {
+          orgId: ctx.orgId,
+          userId: ctx.userId,
+          participantIds: Array.isArray(p.participantIds)
+            ? p.participantIds.filter((id): id is string => typeof id === "string")
+            : [],
+          title: typeof p.title === "string" ? p.title : undefined,
+          forceCreate: p.forceCreate === true,
+          references: Array.isArray(p.references) ? p.references : undefined,
+        }),
+      )
+    },
+    // The person whose agent asked decides, by the tool's own scope; no policy decides for them.
+    approveScope: "kernel:threads:write",
+    noAutoApprove: true,
+    approvalImpact: "internal",
     params: z.object({
       participantIds: z.array(z.string().uuid()),
       title: z.string().max(THREAD_TITLE_MAX_CHARS).optional(),
@@ -1192,7 +1227,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
         .boolean()
         .optional()
         .describe(
-          "Create a second thread even though these participants already have one. Set it only when the user explicitly wants a separate conversation: a duplicate_thread failure is the answer, not an obstacle, so reply into the id it names.",
+          "Create a second thread even though these participants already have one. Only when the user explicitly asked for a new conversation in this request; never on your own judgement, and never as the answer to a duplicate_thread failure (reply into the thread it names, or ask the user). A person approves it before the thread exists.",
         ),
       references: z
         .array(
@@ -3658,6 +3693,7 @@ When to use: When an admin asks to set up a reusable role they will spawn repeat
   })
 
   registerApprovalSummarizer(orgId, "kernel", "subagent_create", summarizeSubagentCreate)
+  registerApprovalSummarizer(orgId, "kernel", "threads_create", summarizeThreadsCreate)
 
   toolRegistry.set([orgId, "kernel", "subagent_list"], {
     appName: "kernel",

@@ -38,7 +38,8 @@ Search threads... -> packages/shared/src/i18n/locales/en/kernel.json:1764
 kernel:threads:read / write / admin scopes -> apps/api/src/modules/permissions/scope-catalog.ts:24
 threads_list -> apps/api/src/modules/agent/tools/kernel-tools.ts:760
 threads_read -> apps/api/src/modules/agent/tools/kernel-tools.ts:914
-threads_create -> apps/api/src/modules/agent/tools/kernel-tools.ts:943
+threads_create -> apps/api/src/modules/agent/tools/kernel-tools.ts:1162
+threads_create new conversation gate -> apps/api/src/modules/threads/thread.ts:560
 threads_reply -> apps/api/src/modules/agent/tools/kernel-tools.ts:980
 agents_ask -> apps/api/src/modules/agent/tools/kernel-tools.ts:1023
 agents_invite -> apps/api/src/modules/agent/tools/kernel-tools.ts:1453

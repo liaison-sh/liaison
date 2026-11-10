@@ -7,9 +7,12 @@
 // on a fake store here (the Redis lane: tests/integration/dashboards-block-cache.test.ts).
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
+import { and, eq, sql } from "drizzle-orm"
 import { z } from "zod"
 import type { RlsClient } from "~/db"
+import { withSystemDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
+import { pendingEvents } from "~/db/schema/kernel"
 import { READ_ONLY_RUN_BLOCKED_CODE } from "~/modules/agent/runtime/read-only-run"
 import { customAppOrgKey } from "~/modules/apps/app-org-scope"
 import { toolRegistry } from "~/modules/apps/app-registries"
@@ -269,6 +272,72 @@ describe("who creates, sees and edits", () => {
     await expect(getDashboard(as(owner, [WRITE]), personal.id)).rejects.toBeInstanceOf(
       DashboardError,
     )
+  })
+})
+
+/** The outbox rows queued for one dashboard, oldest first. */
+async function dashboardEvents(dashboardId: string) {
+  const rows = await withSystemDb("dashboards-events-test", (db) =>
+    db
+      .select({ seq: pendingEvents.seq, payload: pendingEvents.payload })
+      .from(pendingEvents)
+      .where(
+        and(
+          eq(pendingEvents.orgId, orgId),
+          sql`${pendingEvents.payload}->>'entity' = 'dashboard'`,
+          sql`${pendingEvents.payload}->>'entityId' = ${dashboardId}`,
+        ),
+      ),
+  )
+  return rows
+    .sort((a, b) => a.seq - b.seq)
+    .map((r) => r.payload as { action: string; data: Record<string, unknown> })
+}
+
+describe("live updates", () => {
+  it("queues a created, updated and deleted event with ids and visibility only, never the title", async () => {
+    const d = await createDashboard(as(owner, [WRITE, SHARE]), {
+      title: "Secret plans",
+      visibility: "personal",
+      spec: spec(),
+    })
+    await updateDashboard(as(owner, [WRITE, SHARE]), d.id, { visibility: "org" })
+    await updateDashboard(as(owner, [WRITE, SHARE]), d.id, { visibility: "personal" })
+    await deleteDashboard(as(owner, [WRITE, SHARE]), d.id)
+
+    const events = await dashboardEvents(d.id)
+    expect(events.map((e) => e.action)).toEqual(["created", "updated", "updated", "deleted"])
+    expect(events.map((e) => e.data)).toEqual([
+      { dashboardId: d.id, visibility: "personal", ownerUserId: owner, version: 1 },
+      {
+        dashboardId: d.id,
+        visibility: "org",
+        previousVisibility: "personal",
+        ownerUserId: owner,
+        version: 2,
+      },
+      {
+        dashboardId: d.id,
+        visibility: "personal",
+        previousVisibility: "org",
+        ownerUserId: owner,
+        version: 3,
+      },
+      { dashboardId: d.id, visibility: "personal", ownerUserId: owner, version: 3 },
+    ])
+    expect(JSON.stringify(events)).not.toContain("Secret plans")
+  })
+
+  it("a refused write queues nothing", async () => {
+    const d = await createDashboard(as(owner, [WRITE, SHARE]), {
+      title: "Shared",
+      visibility: "org",
+      spec: spec(),
+    })
+    await expect(
+      updateDashboard(as(other, [WRITE, SHARE]), d.id, { title: "Taken" }),
+    ).rejects.toMatchObject({ code: "SCOPE_DENIED" })
+    expect((await dashboardEvents(d.id)).map((e) => e.action)).toEqual(["created"])
   })
 })
 

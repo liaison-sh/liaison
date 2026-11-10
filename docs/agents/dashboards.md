@@ -7,11 +7,15 @@ A dashboard is a page of figures, tables and charts that your agent builds from 
 
 ## Open a dashboard
 
-Dashboards are listed on **Home**, in the **Dashboards** section of the sidebar. The section appears once you have one.
+Click **Dashboards** in the bar on the left (on a phone, in **Work**). The page lists every dashboard you can see. With none yet, it says what a dashboard is and how to get one.
+
+Dashboards are also listed on **Home**, in the **Dashboards** section of the sidebar. The section appears once you have one.
 
 - Your own dashboards come first, then the ones shared with the org, marked **Org**.
 - Click a dashboard to open it in its own tab. The tab's address is `/dashboard/<id>`, and the tab is named after the dashboard.
 - Your agent can also open a dashboard for you when it has made or changed one. A tab already open then shows the dashboard as it is now, and so does **Refresh all**.
+
+The lists stay up to date without reloading the page. When someone, or an agent working for them, creates, renames, shares or deletes a dashboard you can see, the **Dashboards** page and the Home section show it at once. An open dashboard tab shows the new version, or says "This dashboard no longer exists, or it is not shared with you." once it was deleted or made personal by its owner. Nobody is told about your personal dashboards.
 
 To get a dashboard, ask your agent, for example: "Build me a dashboard of last month's orders, with revenue by day and the ten most recent orders."
 
@@ -51,7 +55,7 @@ Every member can make dashboards: the **member** role and the **Full Member** ro
 
 Everyone can list and open the dashboards they see: every active member holds `kernel:dashboards:read`, whatever their roles, and so does an agent working for them.
 
-Your personal agent builds dashboards with your access. A named agent, such as a team's sales or support agent, builds them when `kernel:dashboards:write` is in its scopes, and always with the access of the person it works for. An agent declared in the config file gets it with its common base; an agent created before that gets it at the next `liaison config apply` ([Create an agent](create-an-agent.md)). A named agent can never hold `kernel:dashboards:admin`. Asked for a dashboard without that access, the agent says which access is missing instead of saying dashboards do not exist.
+Your personal agent builds dashboards with your access. A named agent, such as a team's sales or support agent, builds them when `kernel:dashboards:write` is in its scopes, and always with the access of the person it works for. An agent declared in the config file gets it with its common base; an agent created before that gets it the next time the server starts ([Create an agent](create-an-agent.md)). A named agent can never hold `kernel:dashboards:admin`. Asked for a dashboard without that access, the agent says which access is missing instead of saying dashboards do not exist.
 
 Nobody else sees a personal dashboard, administrators included. Your own changes are never held for approval: your scopes decide. When the **agent** creates an org dashboard, makes one org-visible, or changes or deletes an org dashboard, the change waits for a person who holds `kernel:dashboards:admin`. The approval card lists the title and each block with the tool or collection it reads, and the rolling dates it uses with the date each one stands for today. A personal dashboard the agent makes for you saves at once.
 

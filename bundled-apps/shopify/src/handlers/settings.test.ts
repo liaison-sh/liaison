@@ -220,6 +220,7 @@ describe("settingsLoad", () => {
       "read_locations",
       "read_merchant_managed_fulfillment_orders",
       "write_merchant_managed_fulfillment_orders",
+      "read_companies",
       "read_reports",
     ])
   })

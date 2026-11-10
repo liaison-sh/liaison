@@ -14,6 +14,7 @@
 import type { AppContext } from "@liaison/app-sdk"
 import { getShopifyClient, resolveInstallMetadata } from "../lib/get-client"
 import { buyerTaxIdFromNoteAttributes } from "../webhooks"
+import { type VerifiedCompanyBuyer, verifiedBuyerOf } from "./draft-order-b2b"
 import { isUsableEmail } from "./draft-order-input"
 import { isRec, makeMutationError } from "./shared"
 
@@ -113,11 +114,34 @@ function obviouslyFree(input: Record<string, unknown>): boolean {
   })
 }
 
+function factsForCompanyDraft(input: Record<string, unknown>, company: VerifiedCompanyBuyer): InvoiceabilityFacts {
+  const contact = company.contactCustomer
+  const defaultAddress = toFactsAddress(contact?.defaultAddress)
+  return {
+    stage: "create",
+    draft_order_id: null,
+    customer_id: contact?.id ?? null,
+    email: contact?.email ?? null,
+    legal_name: company.companyName ?? customerName(contact),
+    billing_address: toFactsAddress(input.billingAddress),
+    shipping_address: toFactsAddress(input.shippingAddress),
+    customer_default_address: defaultAddress,
+    vat_id: vatFromAttributes(input.customAttributes) ?? company.location.taxRegistrationId,
+    tax_exempt: input.taxExempt === true || company.location.taxExempt === true,
+    total_price: obviouslyFree(input) ? "0" : null,
+    total_tax: null,
+  }
+}
+
 /** Facts for a draft about to be created, from its NORMALISED input plus its customer record. */
 export async function invoiceabilityFactsForCreate(
   input: Record<string, unknown>,
   ctx: AppContext,
 ): Promise<InvoiceabilityFacts> {
+  // A company draft (purchasingCompany): its contact's customer is the order's customer, and the
+  // company location's tax settings are the order's. The normaliser already read them.
+  const company = verifiedBuyerOf(input)
+  if (company) return factsForCompanyDraft(input, company)
   const customerId =
     isRec(input.purchasingEntity) && typeof input.purchasingEntity.customerId === "string"
       ? input.purchasingEntity.customerId

@@ -126,7 +126,7 @@ See the [scope reference](../reference/scopes.md).
 |---|---|---|
 | `threads_list` | List recent threads the user takes part in | `kernel:threads:read` |
 | `threads_read` | Read a thread's messages in order | `kernel:threads:read` |
-| `threads_create` | Create a thread with the given participants | `kernel:threads:write` |
+| `threads_create` | Post into the conversation the people already share, or open a direct one. An agent that would open a new conversation (a title, or a new group) waits for a person to approve it | `kernel:threads:write` |
 | `threads_reply` | Post a message into a thread | `kernel:threads:write` |
 | `agents_ask` | Ask another agent a question, without adding it to the conversation | `kernel:threads:write` |
 | `agents_invite` | Add another agent to this conversation, once a person approves | `kernel:threads:write` |

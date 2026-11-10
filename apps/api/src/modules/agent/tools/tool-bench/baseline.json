@@ -1689,8 +1689,8 @@
       "schema": 5
     },
     "kernel__threads_create": {
-      "desc": 217,
-      "schema": 244
+      "desc": 238,
+      "schema": 268
     },
     "kernel__threads_list": {
       "desc": 277,
@@ -2136,6 +2136,14 @@
       "desc": 118,
       "schema": 39
     },
+    "shopify__companies_get": {
+      "desc": 174,
+      "schema": 40
+    },
+    "shopify__companies_search": {
+      "desc": 672,
+      "schema": 88
+    },
     "shopify__connection_disconnect": {
       "desc": 118,
       "schema": 9
@@ -2197,15 +2205,15 @@
       "schema": 28
     },
     "shopify__draft_orders_create": {
-      "desc": 2216,
-      "schema": 933
+      "desc": 3107,
+      "schema": 1386
     },
     "shopify__draft_orders_delete": {
       "desc": 155,
       "schema": 19
     },
     "shopify__draft_orders_get": {
-      "desc": 192,
+      "desc": 386,
       "schema": 19
     },
     "shopify__draft_orders_list": {
@@ -2217,8 +2225,8 @@
       "schema": 153
     },
     "shopify__draft_orders_update": {
-      "desc": 261,
-      "schema": 147
+      "desc": 463,
+      "schema": 741
     },
     "shopify__fulfillment_orders_get": {
       "desc": 516,
@@ -2398,7 +2406,7 @@
     },
     "shopify__variants_brief": {
       "desc": 302,
-      "schema": 40
+      "schema": 88
     },
     "shopify__variants_create": {
       "desc": 34,
@@ -2418,7 +2426,7 @@
     },
     "shopify__variants_search": {
       "desc": 405,
-      "schema": 312
+      "schema": 315
     },
     "shopify__variants_update": {
       "desc": 32,

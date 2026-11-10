@@ -158,7 +158,10 @@ export function startFrameRuntime(win: Window & typeof globalThis = window): voi
     decideApproval: (_app: string, id: string, decision: string, payloadHash?: string) =>
       call("decideApproval", [id, decision, payloadHash ?? null]),
     editApproval: (_app: string, id: string, fields: Record<string, unknown>) =>
-      call("editApproval", [id, fields]) as Promise<{ currentPayload?: Record<string, unknown>; payloadHash?: string }>,
+      call("editApproval", [id, fields]) as Promise<{
+        currentPayload?: Record<string, unknown>
+        payloadHash?: string
+      }>,
     openExternal: async (_app: string, url: string) => {
       await call("openExternal", [url])
     },

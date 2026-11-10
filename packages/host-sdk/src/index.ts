@@ -661,13 +661,19 @@ export const app = {
    * change (the server refuses any other). Answers the new payload fingerprint, the one a
    * following `decideApproval(id, "approve", payloadHash)` approves.
    */
-  editApproval: (approvalId: string, fields: Record<string, unknown>): Promise<HostApprovalEdit> => {
+  editApproval: (
+    approvalId: string,
+    fields: Record<string, unknown>,
+  ): Promise<HostApprovalEdit> => {
     const host = getHost()
     if (host.framed && host.editApproval) return host.editApproval(getAppName(), approvalId, fields)
-    return host.fetch<HostApprovalEdit>(`/api/approvals/${encodeURIComponent(approvalId)}/payload`, {
-      method: "POST",
-      body: JSON.stringify({ fields }),
-    })
+    return host.fetch<HostApprovalEdit>(
+      `/api/approvals/${encodeURIComponent(approvalId)}/payload`,
+      {
+        method: "POST",
+        body: JSON.stringify({ fields }),
+      },
+    )
   },
   /** Whether the host confirms approval decisions itself (the app need not ask again). */
   confirmsApprovals: (): boolean => {

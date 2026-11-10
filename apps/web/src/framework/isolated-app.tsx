@@ -449,7 +449,13 @@ export async function answerFrameCall(
     }
     case "editApproval": {
       const [id, fields] = args
-      if (typeof id !== "string" || !fields || typeof fields !== "object" || Array.isArray(fields) || !host.editApproval) {
+      if (
+        typeof id !== "string" ||
+        !fields ||
+        typeof fields !== "object" ||
+        Array.isArray(fields) ||
+        !host.editApproval
+      ) {
         throw new Error("editApproval: an approval id and the fields to change are required")
       }
       // The host checks the approval is this app's; the server checks each field is editable.

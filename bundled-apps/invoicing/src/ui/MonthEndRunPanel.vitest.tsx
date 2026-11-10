@@ -11,6 +11,8 @@ const calls: Array<{ tool: string; params: Record<string, unknown> }> = []
 const decided: unknown[] = []
 const mounted: Array<Record<string, unknown>> = []
 let rows: Array<Record<string, unknown>> = []
+let schedules: Array<Record<string, unknown>> = []
+let toolAnswers: Record<string, unknown> = {}
 
 const row = (id: string, customer: string, total: string, extra: Record<string, unknown> = {}) => ({
   item_id: id,
@@ -32,6 +34,7 @@ const row = (id: string, customer: string, total: string, extra: Record<string, 
 })
 
 const RETAINER = ["Retainer"][0]
+const [TEAM_PLAN_NOV, WORKSHOP, REFUSED] = ["Team plan, November 2026", "Workshop days", "Maison Lumen is already billed these lines in this run."]
 
 const draftDoc = (id: string) => ({
   id: `doc-${id}`,
@@ -58,6 +61,8 @@ vi.mock("@liaison/host", () => ({
   fetch: async (path: string) => {
     if (path.includes("u-elodie")) return { data: { name: "Élodie Renard" } }
     if (path.includes("u-sara")) return { data: { name: "Sara Benali" } }
+    if (path === "/api/contacts/c-belcour") return { id: "c-belcour", name: null, company: "Hôtels Belcour", email: null }
+    if (path === "/api/contacts/c-arlon") return { id: "c-arlon", name: "Lea Arlon", company: "Maison Arlon", email: null }
     throw new Error("unknown")
   },
   app: {
@@ -76,6 +81,8 @@ vi.mock("@liaison/host", () => ({
         return { status: "completed", run: { id: "run-1", issue_on: "2026-11-30", period: "November 2026", status: "drafted" }, rows }
       }
       if (tool === "documents_get") return { ...draftDoc(String(params.id).replace("doc-", "")), lines: draftDoc("x").lines }
+      if (tool in toolAnswers) return toolAnswers[tool]
+      if (tool === "recurring_list") return { rows: schedules, nextCursor: null, nextRun: null }
       if (tool === "settings_issuer_profile_list") {
         return { items: [{ id: "iss-1", legal_name: "Issuer", country: "FR", is_default: true, today: "2026-11-27" }] }
       }
@@ -122,6 +129,8 @@ describe("the month-end panel", () => {
     decided.length = 0
     mounted.length = 0
     rows = [row("a", "Hôtels Belcour", "58800", { account_manager: "u-elodie" }), row("b", "Le Comptoir Sud", "58800")]
+    schedules = []
+    toolAnswers = {}
   })
   afterEach(cleanup)
 
@@ -192,6 +201,31 @@ describe("the month-end panel", () => {
     await waitFor(() => expect(decided).toEqual([["appr-1", "approve", "hash-2"]]))
   })
 
+  it("drawn again for the same card, the panel still lists what changed since the person first saw it", async () => {
+    const first = [item("a", "h-a", "58800"), item("b", "h-b", "58800")]
+    render(() => (
+      <MonthEndRunPanel approvalId="appr-redraw" status="pending" payload={{ run_id: "run-1", items: first }} payloadHash="hash-1" canDecide viewerScopes={[]} />
+    ))
+    await screen.findByTestId("month-end-row-open-a")
+    cleanup()
+    // The host draws the card again with the rewritten payload.
+    rows = [row("a", "Hôtels Belcour", "78000", { latest_change: { actor_user_id: "u-sara", fields: [] } }), row("b", "Le Comptoir Sud", "58800")]
+    render(() => (
+      <MonthEndRunPanel
+        approvalId="appr-redraw"
+        status="pending"
+        payload={{ run_id: "run-1", items: [item("a", "h-a2", "78000"), item("b", "h-b", "58800")] }}
+        payloadHash="hash-2"
+        canDecide
+        viewerScopes={[]}
+      />
+    ))
+    const box = await screen.findByTestId("month-end-changed")
+    await waitFor(() => expect(within(box).getByTestId("month-end-change-a").textContent).toContain("Changed by Sara Benali"))
+    fireEvent.click(screen.getByTestId("month-end-approve-new"))
+    await waitFor(() => expect(decided).toEqual([["appr-redraw", "approve", "hash-2"]]))
+  })
+
   it("each row shows its account manager or None, and Ask puts a mention in the box without sending", async () => {
     renderPanel()
     await waitFor(() => expect(screen.getByTestId("month-end-row-manager-a").textContent).toContain("Élodie Renard"))
@@ -246,5 +280,131 @@ describe("the month-end panel", () => {
     expect(screen.getByTestId("month-end-approve-count").textContent).toContain("300 invoices to approve")
     fireEvent.input(screen.getByTestId("month-end-search"), { target: { value: "Client 42" } })
     await waitFor(() => expect(screen.getByTestId("month-end-row-r42")).toBeTruthy())
+  })
+  it("add an invoice someone forgot offers the schedules missing from the run and adds the one picked as a draft of the run", async () => {
+    const line = (description: string, unit: number) => [{ description, qty: 1, unit_price_minor: unit, vat_bp: 2000 }]
+    schedules = [
+      { id: "s-belcour", issuer_profile_id: "iss-1", contact_id: "c-belcour", status: "active", lines: line("Retainer, {period}", 49000), version: 1 },
+      { id: "s-arlon", issuer_profile_id: "iss-1", contact_id: "c-arlon", status: "active", lines: line("Team plan, {period}", 65000), version: 1 },
+    ]
+    renderPanel()
+    fireEvent.click(await screen.findByTestId("month-end-add"))
+    const form = await screen.findByTestId("month-end-add-form")
+    // Belcour is in the run already: only Arlon is offered.
+    await waitFor(() => expect(within(form).getByTestId("month-end-add-schedule-s-arlon").textContent).toContain("Maison Arlon"))
+    expect(within(form).queryByTestId("month-end-add-schedule-s-belcour")).toBeNull()
+    expect(calls.find((c) => c.tool === "recurring_list")?.params).toMatchObject({ status: "active" })
+    fireEvent.click(within(form).getByTestId("month-end-add-schedule-s-arlon"))
+    await waitFor(() => expect(calls.some((c) => c.tool === "drafts_create")).toBe(true))
+    expect(calls.find((c) => c.tool === "drafts_create")?.params).toEqual({
+      type: "invoice",
+      run_id: "run-1",
+      counterparty_contact_id: "c-arlon",
+      counterparty_name: "Maison Arlon",
+      items: [{ position: 1, description: TEAM_PLAN_NOV, quantity: "1", unit_price_minor: "65000", tax_rate_bp_override: 2000 }],
+    })
+    // The rows are read again, and the form closes.
+    await waitFor(() => expect(screen.queryByTestId("month-end-add-form")).toBeNull())
+    expect(calls.filter((c) => c.tool === "recurring_run_get").length).toBeGreaterThan(1)
+  })
+
+  it("add an invoice someone forgot also takes a customer with no schedule, and says why when the run refuses it", async () => {
+    toolAnswers.drafts_create = { status: "error", error: { code: "already_in_run", message: REFUSED } }
+    renderPanel()
+    fireEvent.click(await screen.findByTestId("month-end-add"))
+    await screen.findByTestId("month-end-add-form")
+    const add = screen.getByTestId("month-end-add-customer-save") as HTMLButtonElement
+    expect(add.disabled).toBe(true)
+    fireEvent.input(screen.getByTestId("month-end-add-customer-name"), { target: { value: "Maison Lumen" } })
+    fireEvent.input(screen.getByTestId("month-end-add-customer-line"), { target: { value: "Workshop days" } })
+    fireEvent.input(screen.getByTestId("month-end-add-customer-qty"), { target: { value: "2" } })
+    fireEvent.input(screen.getByTestId("month-end-add-customer-price"), { target: { value: "650,50" } })
+    expect(add.disabled).toBe(false)
+    fireEvent.click(add)
+    await waitFor(() => expect(screen.getByTestId("month-end-error").textContent).toContain("already billed these lines"))
+    expect(calls.find((c) => c.tool === "drafts_create")?.params).toEqual({
+      type: "invoice",
+      run_id: "run-1",
+      counterparty_contact_id: null,
+      counterparty_name: "Maison Lumen",
+      items: [{ position: 1, description: WORKSHOP, quantity: "2", unit_price_minor: "65050" }],
+    })
+    // A refusal keeps what was typed.
+    expect((screen.getByTestId("month-end-add-customer-name") as HTMLInputElement).value).toBe("Maison Lumen")
+  })
+
+  it("only someone who may edit sees add an invoice someone forgot", async () => {
+    renderPanel({ scopes: ["invoicing:documents:read"] })
+    await screen.findByTestId("month-end-row-open-a")
+    expect(screen.queryByTestId("month-end-add")).toBeNull()
+  })
+
+  it("a row waiting for its address offers the address an agent found, and Use it saves it on that draft for this month", async () => {
+    const found = { counterparty_address: "12 quai des Chartrons, 33000 Bordeaux", found_by_agent: "agent-1", at: "2026-11-27" }
+    rows = [
+      row("a", "Hôtels Belcour", "58800"),
+      row("m", "Hôtel Mirabel", "58800", { state: "needs_fix", flags: ["No billing address"], fix_suggestion: found }),
+    ]
+    renderPanel()
+    const suggestion = await screen.findByTestId("month-end-row-suggestion-m")
+    expect(suggestion.textContent).toContain("12 quai des Chartrons, 33000 Bordeaux")
+    expect(screen.queryByTestId("month-end-row-suggestion-a")).toBeNull()
+    fireEvent.click(screen.getByTestId("month-end-row-use-suggestion-m"))
+    await waitFor(() => expect(calls.some((c) => c.tool === "drafts_update")).toBe(true))
+    expect(calls.find((c) => c.tool === "drafts_update")?.params).toEqual({
+      draft_id: "doc-m",
+      patch: { counterparty_address: "12 quai des Chartrons, 33000 Bordeaux" },
+      applies: "this_month",
+      if_unchanged_since: "2026-11-27T07:00:00.000Z",
+    })
+  })
+
+  it("a row waiting for its address takes one typed in place, and a reader sees the suggestion without Use it", async () => {
+    rows = [row("m", "Hôtel Mirabel", "58800", { state: "needs_fix", flags: ["No billing address"] })]
+    renderPanel()
+    fireEvent.click(await screen.findByTestId("month-end-row-fix-m"))
+    const save = screen.getByTestId("month-end-row-fix-save-m") as HTMLButtonElement
+    expect(save.disabled).toBe(true)
+    fireEvent.input(screen.getByTestId("month-end-row-fix-address-m"), { target: { value: "3 rue Sainte, 13001 Marseille" } })
+    fireEvent.click(save)
+    await waitFor(() => expect(calls.some((c) => c.tool === "drafts_update")).toBe(true))
+    expect(calls.find((c) => c.tool === "drafts_update")?.params).toMatchObject({
+      draft_id: "doc-m",
+      patch: { counterparty_address: "3 rue Sainte, 13001 Marseille" },
+      applies: "this_month",
+    })
+    cleanup()
+    rows = [row("m", "Hôtel Mirabel", "58800", { state: "needs_fix", fix_suggestion: { counterparty_address: "3 rue Sainte" } })]
+    renderPanel({ scopes: ["invoicing:documents:read"] })
+    await screen.findByTestId("month-end-row-suggestion-m")
+    expect(screen.queryByTestId("month-end-row-use-suggestion-m")).toBeNull()
+    expect(screen.queryByTestId("month-end-row-fix-m")).toBeNull()
+  })
+
+  it.each([
+    { write: false, approve: true, status: "pending", shown: true },
+    { write: true, approve: true, status: "pending", shown: false },
+    { write: false, approve: false, status: "pending", shown: false },
+    { write: false, approve: true, status: "approved", shown: false },
+  ])("someone who approves but cannot edit approves from the panel (write $write, approve $approve, $status)", async (c) => {
+    render(() => (
+      <MonthEndRunPanel
+        approvalId="appr-1"
+        status={c.status}
+        payload={{ run_id: "run-1", items: rows.map((r) => item(String(r.item_id), `h-${r.item_id}`, String(r.total_minor))) }}
+        payloadHash="hash-1"
+        canDecide={c.approve}
+        viewerScopes={c.write ? WRITE : ["invoicing:documents:read"]}
+      />
+    ))
+    await screen.findByTestId("month-end-row-open-a")
+    const button = screen.queryByTestId("month-end-approve")
+    expect(button !== null).toBe(c.shown)
+    if (!button) return
+    expect(button.textContent).toMatch(/Approve 2, .*1[,.\s\u202f]?176/)
+    // At the top: before the first line and the rows.
+    expect(button.compareDocumentPosition(screen.getByTestId("month-end-rows")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    fireEvent.click(button)
+    await waitFor(() => expect(decided).toEqual([["appr-1", "approve", "hash-1"]]))
   })
 })

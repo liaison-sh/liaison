@@ -22,6 +22,8 @@ export interface RunRow {
   latest_change: Record<string, unknown> | null
   flags: string[]
   failure: unknown
+  /** An address an agent found for a row that has none; a person uses it. Absent when none. */
+  fix_suggestion?: Record<string, unknown> | null
 }
 
 /** One row of the card's payload: what approving it covers. */
@@ -194,4 +196,56 @@ export function runChanges(
   }
   const sum = (items: CardItem[]) => items.reduce((t, i) => t + big(i.total_minor), 0n)
   return { changes, before: sum(shown), after: sum(now) }
+}
+
+/** The address fields a row's fix may set (`drafts_update` patch keys). */
+const ADDRESS_FIELDS = ["counterparty_address", "billing_line1", "billing_postcode", "billing_city", "billing_country_code"] as const
+
+/** The address an agent found for a row, as a patch and as one line to read; null when none. */
+export function suggestedAddress(row: RunRow): { patch: Record<string, string>; text: string } | null {
+  const found = row.fix_suggestion
+  if (!found || typeof found !== "object") return null
+  const patch: Record<string, string> = {}
+  for (const k of ADDRESS_FIELDS) {
+    const v = found[k]
+    if (typeof v === "string" && v.trim()) patch[k] = v.trim()
+  }
+  const keys = Object.keys(patch)
+  if (keys.length === 0) return null
+  const text =
+    patch.counterparty_address ??
+    [patch.billing_line1, [patch.billing_postcode, patch.billing_city].filter(Boolean).join(" "), patch.billing_country_code]
+      .filter(Boolean)
+      .join(", ")
+  return { patch, text }
+}
+
+/** One schedule as `recurring_list` returns it, the part "Add an invoice someone forgot" reads. */
+export interface ScheduleOption {
+  id: string
+  contact_id: string
+  lines: Array<{ description: string; qty: number | string; unit_price_minor: number | string; vat_bp?: number; line_kind?: string }>
+}
+
+/** The `drafts_create` lines for a schedule's invoice of one period, `{period}` filled as the draft job fills it. */
+export function scheduleItems(s: ScheduleOption, period: string): Array<Record<string, unknown>> {
+  return s.lines.map((l, i) => ({
+    position: i + 1,
+    description: String(l.description).split("{period}").join(period),
+    quantity: String(l.qty),
+    unit_price_minor: String(l.unit_price_minor),
+    ...(typeof l.vat_bp === "number" ? { tax_rate_bp_override: l.vat_bp } : {}),
+    ...(l.line_kind ? { line_kind: l.line_kind } : {}),
+  }))
+}
+
+/** Schedules whose customer has no row in the run yet, by name (the run refuses a true duplicate itself). */
+export function missingSchedules<T extends { name: string }>(options: T[], rows: RunRow[]): T[] {
+  const billed = new Set(rows.map((r) => (r.customer ?? "").trim().toLowerCase()).filter(Boolean))
+  return options.filter((o) => !billed.has(o.name.trim().toLowerCase()))
+}
+
+/** A row the draft job held for want of an address (`recurring/item-state.ts`, `NO_ADDRESS`). */
+export function lacksAddress(row: RunRow): boolean {
+  return row.state === "needs_fix" && (row.flags.includes("No billing address") || suggestedAddress(row) !== null)
 }

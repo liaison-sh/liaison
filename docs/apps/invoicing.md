@@ -185,8 +185,10 @@ The run's card on Home shows every row under its summary, with the line **Drafts
 
 - **Open a row.** A click opens the row where it is, with the document editor's own fields: customer, notes, due date and lines. The row's amounts, the total and the count change as you type, and the row says **Not saved yet**. **Save for November only** or **Save from now on** saves it (an added row has one **Save**); **Cancel** puts the saved amounts back. **Open the full editor** opens the draft in its own tab.
 - **Take out.** **Take out of November** leaves the row out this month only; **End the schedule** with **Last month billed** stops the schedule. A taken-out row has **Put back**.
+- **Add an invoice someone forgot.** Lists the active schedules whose customer has no row in the run; picking one adds its invoice for the run's period. A customer with no schedule is added with one line (what it bills, quantity, unit price excl. VAT). The run refuses a second row with the same customer and lines, and the card says why.
+- **Fix an address.** A row held for a missing billing address has **Fix**, which takes the address in place. When an agent found one, the row shows it with **Use it**. Either saves the address on this month's draft.
 - **Ask.** Each row names its account manager, or **None**. **Ask** puts a mention of that person and the row's customer in the run's discussion, for you to finish and send.
-- **Rights.** People with `invoicing:documents:write` change rows. Without it, a row opens read-only. Without the right to decide, the card says someone who can approve invoices decides it.
+- **Rights.** People with `invoicing:documents:write` change rows. Without it, a row opens read-only. Without the right to decide, the card says someone who can approve invoices decides it. Someone who can decide but not edit has **Approve N** at the top of the panel.
 - **A long run.** Above 20 rows, rows with nothing to look at fold under one line ("280 same as October"); they still count in the total. Search finds any row by customer.
 - **A run that changed.** When a row changes while you have the card open, the card lists what changed, who changed it, and the total you saw against the total now, and offers **Approve N** on what is there now.
 

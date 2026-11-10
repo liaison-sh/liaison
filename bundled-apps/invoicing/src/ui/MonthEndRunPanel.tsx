@@ -6,7 +6,8 @@
 // changed it, and offers to approve what is there now.
 import { app, fetch as hostFetch, navigate, onEntityChange } from "@liaison/host"
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, type Component } from "solid-js"
-import { type DraftDocument, Editor, rollupTotals } from "./Editor"
+import { contactLabel, loadContact, pickedContactPatch } from "./ContactPicker"
+import { type DraftDocument, Editor, priceInputToMinor, rollupTotals } from "./Editor"
 import { tr } from "./i18n"
 import { formatMoneyMinor } from "./kit"
 import {
@@ -15,10 +16,15 @@ import {
   type CardItem,
   changedBy,
   foldRows,
+  lacksAddress,
+  missingSchedules,
   numberCell,
   rightsOf,
   type RunRow,
   runChanges,
+  type ScheduleOption,
+  scheduleItems,
+  suggestedAddress,
   waitingSentence,
 } from "./month-end"
 
@@ -67,6 +73,12 @@ async function loadNames(ids: string[]): Promise<Map<string, string>> {
   return out
 }
 
+/**
+ * The card's rows as each viewer first saw them, by approval. The host may draw the panel again
+ * when the card's payload is rewritten; the first view is kept, so what changed still shows.
+ */
+const firstSeen = new Map<string, CardItem[]>()
+
 export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
   const runId = () => props.payload?.run_id ?? null
   const items = () => props.payload?.items ?? []
@@ -82,8 +94,16 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
   const [takingOut, setTakingOut] = createSignal<string | null>(null)
   const [error, setError] = createSignal<string | null>(null)
   const [discussion, setDiscussion] = createSignal<string | null>(null)
+  const [adding, setAdding] = createSignal(false)
+  const [fixing, setFixing] = createSignal<string | null>(null)
   // The card as first drawn: a later change is listed against it until the person reads it.
-  const [shownItems, setShownItems] = createSignal<CardItem[] | null>(null)
+  const [shownItems, setShownItemsSignal] = createSignal<CardItem[] | null>(
+    props.approvalId ? (firstSeen.get(props.approvalId) ?? null) : null,
+  )
+  const setShownItems = (seen: CardItem[]) => {
+    if (props.approvalId) firstSeen.set(props.approvalId, seen)
+    setShownItemsSignal(seen)
+  }
   let save: ((extra?: Record<string, unknown>) => Promise<boolean>) | null = null
   let saveError: (() => string | null) | null = null
 
@@ -191,6 +211,38 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
     await refresh()
   }
 
+  /** Add a draft to the run; false (with the reason shown) when the run refuses it. */
+  const addToRun = async (args: Record<string, unknown>): Promise<boolean> => {
+    const id = runId()
+    if (!id) return false
+    setError(null)
+    try {
+      const res = await app.invokeTool<{ status?: string; error?: { message?: string } }>("drafts_create", { type: "invoice", run_id: id, ...args })
+      if (res?.status === "error") {
+        setError(res.error?.message ?? tr("The request failed."))
+        return false
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : tr("The request failed."))
+      return false
+    }
+    setAdding(false)
+    await refresh()
+    return true
+  }
+
+  /** A row's address, typed in place or found by an agent, saved on its draft for this month. */
+  const fixAddress = async (row: RunRow, patch: Record<string, string>, fromSchedule: boolean) => {
+    if (!row.draft_id) return
+    setFixing(null)
+    await call("drafts_update", {
+      draft_id: row.draft_id,
+      patch,
+      ...(fromSchedule ? { applies: "this_month" } : {}),
+      ...(row.updated_at ? { if_unchanged_since: row.updated_at } : {}),
+    })
+  }
+
   const ask = (row: RunRow) => {
     const who = row.account_manager ? names().get(row.account_manager) : null
     setDiscussion(`${who ? `@${who} ` : ""}${row.customer ?? ""}: `)
@@ -281,6 +333,29 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
           </span>
         </Show>
       </div>
+      {/* Actions at the top. Someone who approves but may not edit approves here, without opening a row. */}
+      <Show when={(rights().approve && !rights().write && props.status === "pending") || rights().write}>
+        <div data-testid="month-end-actions" class="mt-2 flex flex-wrap gap-2">
+          <Show when={rights().approve && !rights().write && props.status === "pending" && summary().count > 0}>
+            <button type="button" data-testid="month-end-approve" class="min-h-11 rounded bg-accent px-3 text-white" onClick={() => void approveNow()}>
+              {approveLabel()}
+            </button>
+          </Show>
+          <Show when={rights().write && run() && !adding()}>
+            <button type="button" data-testid="month-end-add" class="min-h-11 rounded border border-border px-3" onClick={() => setAdding(true)}>
+              {tr("Add an invoice someone forgot")}
+            </button>
+          </Show>
+        </div>
+      </Show>
+      <Show when={adding()}>
+        <AddForgotten
+          rows={rows()}
+          period={run()?.run.period ?? ""}
+          onAdd={(args) => addToRun(args)}
+          onCancel={() => setAdding(false)}
+        />
+      </Show>
       <For each={waiting()}>
         {(line) => (
           <p data-testid="month-end-waiting" class="mt-1 text-text-secondary">
@@ -343,6 +418,16 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
                   <For each={row.flags}>{(f) => <span class="mr-2">{f}</span>}</For>
                   <Show when={changedBy(row.latest_change, names())}>{(w) => <span>{w()}</span>}</Show>
                 </div>
+                <Show when={lacksAddress(row) && row.draft_id}>
+                  <RowAddressFix
+                    row={row}
+                    canWrite={rights().write}
+                    open={fixing() === row.item_id}
+                    onOpen={() => setFixing(row.item_id)}
+                    onCancel={() => setFixing(null)}
+                    onSave={(patch) => void fixAddress(row, patch, fromSchedule())}
+                  />
+                </Show>
                 <Show when={isOpen()}>
                   <div data-testid={`month-end-row-editor-${row.item_id}`} class="mt-2 min-w-0 rounded border border-border">
                     <Show when={amounts() && amounts()?.total !== BigInt(row.total_minor)}>
@@ -438,6 +523,172 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
         {(id) => <RunDiscussion runId={id()} prefill={discussion()} />}
       </Show>
     </section>
+  )
+}
+
+/** A row held for want of an address: the address an agent found, with Use it, or one typed in place. */
+function RowAddressFix(props: {
+  row: RunRow
+  canWrite: boolean
+  open: boolean
+  onOpen: () => void
+  onCancel: () => void
+  onSave: (patch: Record<string, string>) => void
+}) {
+  const [typed, setTyped] = createSignal("")
+  const found = () => suggestedAddress(props.row)
+  const id = props.row.item_id
+  return (
+    <div class="mt-1 space-y-1">
+      <Show when={found()}>
+        {(f) => (
+          <div data-testid={`month-end-row-suggestion-${id}`} class="flex flex-wrap items-center gap-2 text-text-secondary">
+            <span class="min-w-0 break-words">{tr("Address an agent found: {{address}}", { address: f().text })}</span>
+            <Show when={props.canWrite}>
+              <button
+                type="button"
+                data-testid={`month-end-row-use-suggestion-${id}`}
+                class="min-h-11 rounded border border-border px-3 text-text"
+                onClick={() => props.onSave(f().patch)}
+              >
+                {tr("Use it")}
+              </button>
+            </Show>
+          </div>
+        )}
+      </Show>
+      <Show when={props.canWrite}>
+        <Show
+          when={props.open}
+          fallback={
+            <button type="button" data-testid={`month-end-row-fix-${id}`} class="min-h-11 rounded border border-border px-3" onClick={props.onOpen}>
+              {tr("Fix")}
+            </button>
+          }
+        >
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              data-testid={`month-end-row-fix-save-${id}`}
+              class="min-h-11 rounded bg-accent px-3 text-white disabled:opacity-55"
+              disabled={!typed().trim()}
+              onClick={() => props.onSave({ counterparty_address: typed().trim() })}
+            >
+              {tr("Save the address")}
+            </button>
+            <button type="button" class="min-h-11 rounded px-3" data-testid={`month-end-row-fix-cancel-${id}`} onClick={props.onCancel}>
+              {tr("Cancel")}
+            </button>
+            <input
+              data-testid={`month-end-row-fix-address-${id}`}
+              class="min-h-11 min-w-0 flex-1 basis-56 rounded border border-border bg-surface px-2"
+              placeholder={tr("Billing address")}
+              value={typed()}
+              onInput={(e) => setTyped(e.currentTarget.value)}
+            />
+          </div>
+        </Show>
+      </Show>
+    </div>
+  )
+}
+
+/**
+ * "Add an invoice someone forgot": a schedule whose customer has no row in the run, or a customer
+ * with one line. Either becomes a draft of the run through `drafts_create`.
+ */
+function AddForgotten(props: {
+  rows: RunRow[]
+  period: string
+  onAdd: (args: Record<string, unknown>) => Promise<boolean>
+  onCancel: () => void
+}) {
+  const [options, setOptions] = createSignal<Array<ScheduleOption & { name: string }>>([])
+  const [name, setName] = createSignal("")
+  const [line, setLine] = createSignal("")
+  const [qty, setQty] = createSignal("1")
+  const [price, setPrice] = createSignal("")
+  const [busy, setBusy] = createSignal(false)
+  onMount(async () => {
+    try {
+      const res = await app.invokeTool<{ rows?: ScheduleOption[] }>("recurring_list", { status: "active", limit: 200 })
+      const named: Array<ScheduleOption & { name: string }> = []
+      for (const s of res?.rows ?? []) {
+        const c = await loadContact(s.contact_id)
+        if (!c) continue
+        named.push({ ...s, name: pickedContactPatch(c, {}).counterparty_name ?? contactLabel(c) })
+      }
+      setOptions(named)
+    } catch {
+      // No schedule list: the customer form still works.
+    }
+  })
+  const missing = () => missingSchedules(options(), props.rows)
+  const currency = () => props.rows[0]?.currency ?? "EUR"
+  const priceMinor = () => (price().trim() ? priceInputToMinor(price(), currency()) : null)
+  const qtyOk = () => Number(qty().replace(",", ".")) > 0
+  const ready = () => !busy() && !!name().trim() && !!line().trim() && priceMinor() !== null && qtyOk()
+  const add = async (args: Record<string, unknown>) => {
+    setBusy(true)
+    await props.onAdd(args)
+    setBusy(false)
+  }
+  return (
+    <div data-testid="month-end-add-form" class="mt-2 space-y-2 rounded border border-border p-2">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <p class="font-medium text-text">{tr("Add an invoice someone forgot")}</p>
+        <button type="button" data-testid="month-end-add-cancel" class="min-h-11 rounded px-3" onClick={props.onCancel}>
+          {tr("Cancel")}
+        </button>
+      </div>
+      <Show when={missing().length > 0}>
+        <p class="text-text-secondary">{tr("Schedules with no invoice in this run:")}</p>
+        <ul class="space-y-1">
+          <For each={missing()}>
+            {(s) => (
+              <li>
+                <button
+                  type="button"
+                  data-testid={`month-end-add-schedule-${s.id}`}
+                  class="min-h-11 w-full min-w-0 rounded border border-border px-3 text-left disabled:opacity-55"
+                  disabled={busy()}
+                  onClick={() =>
+                    void add({ counterparty_contact_id: s.contact_id, counterparty_name: s.name, items: scheduleItems(s, props.period) })
+                  }
+                >
+                  <span class="break-words font-medium text-text">{s.name}</span>
+                  <span class="text-text-secondary">{` · ${String(s.lines[0]?.description ?? "").split("{period}").join(props.period)}`}</span>
+                </button>
+              </li>
+            )}
+          </For>
+        </ul>
+      </Show>
+      <p class="text-text-secondary">{tr("Or a customer with no schedule:")}</p>
+      <div class="flex flex-wrap gap-2">
+        <button
+          type="button"
+          data-testid="month-end-add-customer-save"
+          class="min-h-11 rounded bg-accent px-3 text-white disabled:opacity-55"
+          disabled={!ready()}
+          onClick={() =>
+            void add({
+              counterparty_contact_id: null,
+              counterparty_name: name().trim(),
+              items: [{ position: 1, description: line().trim(), quantity: qty().trim().replace(",", "."), unit_price_minor: priceMinor() }],
+            })
+          }
+        >
+          {tr("Add to the run")}
+        </button>
+      </div>
+      <div class="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
+        <input data-testid="month-end-add-customer-name" class="min-h-11 min-w-0 rounded border border-border bg-surface px-2" placeholder={tr("Customer")} value={name()} onInput={(e) => setName(e.currentTarget.value)} />
+        <input data-testid="month-end-add-customer-line" class="min-h-11 min-w-0 rounded border border-border bg-surface px-2" placeholder={tr("What it bills")} value={line()} onInput={(e) => setLine(e.currentTarget.value)} />
+        <input data-testid="month-end-add-customer-qty" inputmode="decimal" class="min-h-11 min-w-0 rounded border border-border bg-surface px-2" placeholder={tr("Quantity")} aria-label={tr("Quantity")} value={qty()} onInput={(e) => setQty(e.currentTarget.value)} />
+        <input data-testid="month-end-add-customer-price" inputmode="decimal" class="min-h-11 min-w-0 rounded border border-border bg-surface px-2" placeholder={tr("Unit price excl. VAT")} aria-label={tr("Unit price excl. VAT")} value={price()} onInput={(e) => setPrice(e.currentTarget.value)} />
+      </div>
+    </div>
   )
 }
 

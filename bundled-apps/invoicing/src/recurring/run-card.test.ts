@@ -50,6 +50,18 @@ describe("the month-end run card", () => {
     expect(after).not.toBe(before)
   })
 
+  test("a row carries the address an agent found for it, and only a row that has one", async () => {
+    const { h, runId } = await drafted()
+    const [first] = h.db.__all("recurring_run_items")
+    const found = { counterparty_address: "12 quai des Chartrons, 33000 Bordeaux", found_by_agent: "agent-1", at: "2026-11-27" }
+    await h.db.update("recurring_run_items", String(first?.id), { fix_suggestion: found })
+    const got = await recurringRunGet(h.ctx, { run_id: runId })
+    if (got.status !== "completed") throw new Error("run not read")
+    expect(got.rows[0]?.fix_suggestion).toEqual(found)
+    // A row with nothing found says nothing about it.
+    expect("fix_suggestion" in (got.rows[1] ?? {})).toBe(false)
+  })
+
   test("approval records each item's hash and the approver and takes no number", async () => {
     const { h, runId } = await drafted()
     const payload = (h.approvals[0] as { current_payload: { run_id: string; items: never[] } }).current_payload

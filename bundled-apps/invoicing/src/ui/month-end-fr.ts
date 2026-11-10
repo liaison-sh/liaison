@@ -55,4 +55,15 @@ export const MONTH_END_FR: Record<string, string> = {
   "Ending the schedule stops these invoices only: a card link or a subscription elsewhere keeps running until it is turned off there.":
     "Arrêter l'échéancier arrête seulement ces factures : un lien de paiement par carte ou un abonnement ailleurs continue jusqu'à ce qu'il y soit désactivé.",
   "Discussion": "Discussion",
+  "Add an invoice someone forgot": "Ajouter une facture oubliée",
+  "Address an agent found: {{address}}": "Adresse trouvée par un agent : {{address}}",
+  "Use it": "L'utiliser",
+  "Save the address": "Enregistrer l'adresse",
+  "Billing address": "Adresse de facturation",
+  "Schedules with no invoice in this run:": "Échéanciers sans facture dans ce lot :",
+  "Or a customer with no schedule:": "Ou un client sans échéancier :",
+  "Add to the run": "Ajouter au lot",
+  "What it bills": "Ce qui est facturé",
+  "Quantity": "Quantité",
+  "Unit price excl. VAT": "Prix unitaire HT",
 }

@@ -1,6 +1,6 @@
 {
   "name": "stripe",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "kind": "connector",
   "iconName": "credit-card",
   "description": "Stripe connector: a read mirror of customers, subscriptions, invoices, payments, refunds and disputes, kept current by a signed webhook.",
@@ -385,6 +385,31 @@
       "searchKeywords": [
         "abonnement"
       ]
+    },
+    "mrr_query": {
+      "deferLoading": true,
+      "readOnly": true,
+      "taintSource": true,
+      "description": "Stripe MRR from the mirror, per currency: now, past due, plan split, movements since the month start.",
+      "requiredScopes": [
+        "stripe:subscriptions:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "mrrQuery",
+      "readsFromTable": "app_stripe.stripe_subscriptions",
+      "params": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "breakdown": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "searchKeywords": ["mrr", "recurring", "revenu"]
     },
     "invoices_search": {
       "deferLoading": true,
@@ -827,6 +852,11 @@
     },
     "purge-mirror": {
       "handler": "purgeMirrorJob",
+      "onDemand": true,
+      "timeoutMs": 90000
+    },
+    "mrr-rebuild": {
+      "handler": "mrrRebuildJob",
       "onDemand": true,
       "timeoutMs": 90000
     }

@@ -361,7 +361,7 @@ Stripe: customers, subscriptions, invoices and payments from your Stripe account
 | `stripe:invoices:read` | manifest scopes; role member; tools invoice_send_state, invoices_search |  |
 | `stripe:payments:read` | manifest scopes; role member; tools disputes_list, payments_search |  |
 | `stripe:refunds:write` | manifest scopes; role billing |  |
-| `stripe:subscriptions:read` | manifest scopes; role member; tools customer_context, subscriptions_search |  |
+| `stripe:subscriptions:read` | manifest scopes; role member; tools customer_context, mrr_query, subscriptions_search |  |
 | `stripe:subscriptions:write` | manifest scopes; role billing |  |
 
 ## tickets

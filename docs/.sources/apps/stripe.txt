@@ -73,3 +73,9 @@ masked rows: no address, no tax id, card brand last 4 expiry -> bundled-apps/str
 readers mark outside text, customer_link external effect -> bundled-apps/stripe/app.manifest.json:1
 context lines on ticket, contact, company -> bundled-apps/stripe/src/tools/context.ts:3
 timeline rows six kinds -> bundled-apps/stripe/src/tools/activity.ts:3
+mrr_query tool, scope -> bundled-apps/stripe/app.manifest.json:1
+MRR counted statuses, month factors, rounding half up per subscription -> bundled-apps/stripe/src/mrr.ts:22
+discounts percent first then amount, once or ended not counted -> bundled-apps/stripe/src/mrr.ts:127
+movement kinds, written once by the change that moved the stored amount -> bundled-apps/stripe/src/mrr-events.ts:1
+month start in the organization zone, start = now less movements, partial while importing -> bundled-apps/stripe/src/tools/mrr-query.ts:3
+rebuild from 30 days of events, "Movements incomplete before" -> bundled-apps/stripe/src/mrr-rebuild.ts:1

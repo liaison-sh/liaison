@@ -98,6 +98,7 @@ The agent reads the mirror, never Stripe directly. Each answer names its records
 | `customers_search` | Customers by name, email or id (`cus_`), or those not linked, past due, on trial or cancelled | `stripe:customers:read` |
 | `customers_get` | One customer, by id or by the contact or company it is linked to, with its subscriptions and open invoices | `stripe:customers:read` |
 | `subscriptions_search` | Subscriptions by id, plan, status or customer | `stripe:subscriptions:read` |
+| `mrr_query` | Monthly recurring revenue per currency, with the plan split and the month's movements | `stripe:subscriptions:read` |
 | `invoices_search` | Stripe invoices by customer or status | `stripe:invoices:read` |
 | `payments_search` | Payments by customer, invoice or status; `unmatched` for those no invoice explains | `stripe:payments:read` |
 | `disputes_list` | Disputes by customer or status. Read only: answer a dispute in Stripe | `stripe:payments:read` |
@@ -105,6 +106,17 @@ The agent reads the mirror, never Stripe directly. Each answer names its records
 Answers are masked: no address and no tax id, and a card shows only its brand, last 4 digits and expiry. Customer names, plans and dispute reasons are written by people outside your company, so a turn that reads them is marked as having read outside text, and a later action that leaves Liaison (including `customer_link`) waits for a person's approval.
 
 On a ticket from a linked contact, and on a linked contact's or company's page, the agent also gets a few lines: the plan and its status, the card's brand and last 4 digits, and the unpaid invoices with the next retry date. A company's and a contact's **Activity** timeline shows Stripe rows: payment failed, retry failed, subscription started, subscription cancelled, refund and dispute.
+
+## How MRR is computed
+
+`mrr_query` answers per currency; nothing is converted. While the first import runs, or a resource the key cannot read is missing, it answers "partial" and gives no figure.
+
+- **Counted:** subscriptions that are `active` or `past_due`. Not counted: `trialing`, `canceled`, `unpaid`, `incomplete`, `paused`, free, metered and one-off prices.
+- **Per item:** price times quantity, in one month: a year is divided by 12, a quarter by 3, a week is multiplied by 52/12 and a day by 365/12. A price that includes tax is reduced to its net by its rate. Discounts that recur come off (percentages first, then amounts); a discount that applies once, or has ended, does not.
+- **Rounding:** once per subscription, to the nearest minor unit, halves up. A currency's figure is the sum of those whole amounts.
+- **Past due:** shown beside the figure; "without it" is the figure less the past due amount.
+- **Movements:** each change of a subscription's counted amount is kept once as new, upgrade, downgrade or cancelled (an amount that falls to zero for any reason). A trial that converts is new on the day it converts, and a cancellation set for the end of a period counts until that day. The month starts at midnight on the 1st in your organization's time zone, and the amount at the start of the month is the amount now less the month's movements.
+- **If an event was lost:** the nightly reconcile reads Stripe's events of the last 30 days and writes the movements that are missing. A change older than that with no event to explain it still corrects the figure, but its movement is dated the day the reconcile found it, and the answer says "Movements incomplete before <date>".
 
 ## Disconnect Stripe
 

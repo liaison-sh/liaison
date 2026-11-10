@@ -3268,6 +3268,8 @@
     "Y07|failed payments": "5t",
     "Y07|paiements échoués": "5tl",
     "Y08|litiges Stripe": "15tl",
-    "Y08|Stripe disputes": "15tl"
+    "Y08|Stripe disputes": "15tl",
+    "Y09|monthly recurring revenue": "15tl",
+    "Y09|revenu récurrent mensuel": "5t"
   }
 }

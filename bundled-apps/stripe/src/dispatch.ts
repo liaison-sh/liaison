@@ -45,6 +45,7 @@ import {
   subscriptionRow,
   writeMirror,
 } from "./mirror"
+import { recordMovement } from "./mrr-events"
 import { claimDelivery, type LedgerDb, settleDelivery } from "./webhooks"
 
 type Obj = Record<string, unknown>
@@ -341,7 +342,12 @@ export async function handleStripeEvent(
     const started = now()
     let obj: Obj | null = null
     try {
-      obj = await stripeFetch<Obj>(ctx, `${route.path}${encodeURIComponent(event.objectId)}`, {}, { maxRetries: 0 })
+      obj = await stripeFetch<Obj>(
+        ctx,
+        `${route.path}${encodeURIComponent(event.objectId)}`,
+        route === SUBSCRIPTION ? { params: { expand: ["discounts"] } } : {},
+        { maxRetries: 0 },
+      )
     } catch (err) {
       if (!(err instanceof StripeApiError)) throw err
       if (err.code === "key_invalid" || err.code === "permission_missing") {
@@ -374,7 +380,19 @@ export async function handleStripeEvent(
         ? await ctx.db
             .updateMany("stripe_customers", { where: { stripe_id: event.objectId }, data: { deleted_at: instant(started) } })
             .then(() => "updated" as const)
-        : await writeMirror(ctx.db, route.entity, mirrorRow, instant(started))
+        : await writeMirror(
+            ctx.db,
+            route.entity,
+            mirrorRow,
+            instant(started),
+            route === SUBSCRIPTION
+              ? recordMovement(ctx.db, mirrorRow, {
+                  source: "webhook",
+                  eventId: event.id,
+                  at: at(event.created) ?? now().toISOString(),
+                })
+              : undefined,
+          )
 
     // The typed event's payload is built first: its text is masked too.
     const typed = EMITS[event.type]

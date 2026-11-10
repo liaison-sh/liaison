@@ -823,6 +823,7 @@ Stripe: customers, subscriptions, invoices and payments from your Stripe account
 | `invoice_document_link` | Record the Liaison document a Stripe invoice became. |  | `stripe:internal` |
 | `invoice_send_state` | Whether a reminder about a Stripe invoice should still go: stops when the invoice is paid, void or uncollectible. |  | `stripe:invoices:read` |
 | `invoices_search` | Stripe invoices from the mirror by customer or status, with number, amounts due and paid, next retry, and the Liaison document it became. |  | `stripe:invoices:read` |
+| `mrr_query` | Stripe MRR from the mirror, per currency: now, past due, plan split, movements since the month start. |  | `stripe:subscriptions:read` |
 | `payments_search` | Stripe charges from the mirror by customer, invoice or status, card as brand and last 4; unmatched: charges no Stripe invoice explains. |  | `stripe:payments:read` |
 | `settings_load` | The Stripe settings page's load: the connection state and the key's permissions from the last check. |  | `stripe:admin:connection` |
 | `subscriptions_search` | Stripe subscriptions from the mirror by id, plan name, status or customer, with plan, MRR, period end, trial end and masked card. |  | `stripe:subscriptions:read` |

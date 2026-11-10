@@ -22,6 +22,7 @@
 //     again. Postgres re-checks that WHERE on the newest committed row after
 //     waiting for a concurrent writer's lock, so two re-fetches committing in
 //     either order leave the later one's state.
+import { computeMrr, discountColumns, discountsOf, taxPercentOf, type MrrDiscount } from "./mrr"
 import { maskCardNumbers } from "./pan-scan"
 
 export type MirrorEntity =
@@ -34,7 +35,10 @@ export type MirrorEntity =
 
 /** The slice of the app's db bridge the mirror uses. */
 export interface MirrorDb {
-  findMany(entity: string, opts?: { where?: Record<string, unknown>; limit?: number }): Promise<unknown[]>
+  findMany(
+    entity: string,
+    opts?: { where?: Record<string, unknown>; limit?: number; orderBy?: Record<string, "asc" | "desc"> },
+  ): Promise<unknown[]>
   insert(entity: string, data: Record<string, unknown>): Promise<{ id: string }>
   updateMany(
     entity: string,
@@ -113,10 +117,11 @@ export function customerRow(obj: Obj, tally: MaskTally): Obj {
   }
 }
 
-const MONTHLY: Record<string, number> = { day: 365 / 12, week: 52 / 12, month: 1, year: 1 / 12 }
-const NO_REVENUE = new Set(["canceled", "incomplete", "incomplete_expired", "paused", "trialing"])
-
-export function subscriptionRow(obj: Obj, tally: MaskTally): Obj {
+/**
+ * A subscription's mirror row. `kept` is the discounts the stored row already
+ * holds: used when the object carries discount ids only (an event snapshot).
+ */
+export function subscriptionRow(obj: Obj, tally: MaskTally, now: Date = new Date(), kept: MrrDiscount[] = []): Obj {
   scan(obj.description, "subscription description", tally)
   const items = (((obj.items as Obj | undefined)?.data ?? []) as Obj[]).map((it) => {
     const price = (it.price ?? {}) as Obj
@@ -131,16 +136,14 @@ export function subscriptionRow(obj: Obj, tally: MaskTally): Obj {
       quantity: num(it.quantity) || 1,
       usage_type: str(rec.usage_type),
       tax_behavior: str(price.tax_behavior),
+      tax_percent: taxPercentOf(it, obj),
       period_start: at(it.current_period_start),
       period_end: at(it.current_period_end),
     }
   })
   const status = String(obj.status ?? "active")
-  const mrr = NO_REVENUE.has(status)
-    ? 0
-    : Math.round(
-        items.reduce((s, it) => s + (it.unit_amount * it.quantity * (MONTHLY[it.interval ?? "month"] ?? 1)) / it.interval_count, 0),
-      )
+  const discounts = discountsOf(obj, now) ?? kept
+  const mrr = computeMrr({ status, items, discounts })
   const first = items[0]
   return {
     stripe_id: obj.id,
@@ -148,6 +151,7 @@ export function subscriptionRow(obj: Obj, tally: MaskTally): Obj {
     status,
     plan_name: first?.product_name ?? first?.price_id ?? "",
     items: items.map(({ period_start: _s, period_end: _e, ...rest }) => rest),
+    ...discountColumns(discounts),
     mrr_minor: mrr,
     currency: str(obj.currency) ?? first?.currency ?? "",
     current_period_start: first?.period_start ?? at(obj.start_date) ?? new Date(0).toISOString(),
@@ -251,6 +255,8 @@ export async function writeMirror(
   entity: MirrorEntity,
   row: Obj,
   stripeUpdated: string,
+  /** Called once after this call's own write, with the row as it was before (null: none). */
+  written?: (before: Obj | null) => Promise<void>,
 ): Promise<WriteOutcome> {
   const stripeId = row.stripe_id
   if (typeof stripeId !== "string" || stripeId.length === 0) throw new Error(`${entity}: a row without a Stripe id`)
@@ -262,6 +268,7 @@ export async function writeMirror(
     if (!current) {
       try {
         await db.insert(entity, data)
+        await written?.(null)
         return "inserted"
       } catch (err) {
         // Another writer inserted the same id first: read it and decide again.
@@ -276,7 +283,10 @@ export async function writeMirror(
       where: seen === null || seen === undefined ? { stripe_id: stripeId, stripe_updated: null } : { stripe_id: stripeId, stripe_updated: seen },
       data,
     })
-    if (count > 0) return "updated"
+    if (count > 0) {
+      await written?.(current)
+      return "updated"
+    }
     // Someone committed in between: read again.
   }
   throw new Error(

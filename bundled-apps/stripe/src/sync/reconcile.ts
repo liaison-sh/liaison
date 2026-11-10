@@ -20,6 +20,8 @@
 // webhook wrote after this run's read is left alone. No typed event, no document.
 import { StripeApiError, stripeFetch } from "../http"
 import { newTally, writeMirror } from "../mirror"
+import { recordMovement } from "../mrr-events"
+import { runMrrRebuild } from "../mrr-rebuild"
 import { blockedOverlay, type Install, moveState, readInstall } from "../states"
 import {
   asPage,
@@ -77,6 +79,13 @@ async function confirmAccount(
   return notFound === known.length ? "other" : "unknown"
 }
 
+/** A subscription healed here leaves one movement, dated now, unless the log already carries the change. */
+function healed(ctx: SyncCtx, res: SyncResource, row: Obj) {
+  return res.entity === "stripe_subscriptions"
+    ? recordMovement(ctx.db, row, { source: "reconcile", at: new Date().toISOString() })
+    : undefined
+}
+
 export async function runReconcile(ctx: SyncCtx, opts: SyncOptions = {}): Promise<ReconcileResult> {
   const now = opts.now ?? (() => new Date())
   const sleep = opts.sleep ?? pause
@@ -100,6 +109,9 @@ export async function runReconcile(ctx: SyncCtx, opts: SyncOptions = {}): Promis
   }
   // "unknown" (Stripe did not answer): read and update, but delete nothing this run.
   const mayDelete = canary === "same"
+
+  // The movement log first: what the events of the last 30 days say, before a heal writes its own.
+  await runMrrRebuild(ctx, install, { now, sleep, budget })
 
   for (const res of RESOURCES) {
     const listed = await reconcileList(ctx, install, res, budget, sleep, result)
@@ -160,7 +172,8 @@ async function reconcileList(
     for (const obj of page.data) {
       if (typeof obj.id !== "string") continue
       seen.add(obj.id)
-      const outcome = await writeMirror(ctx.db, res.entity, res.row(obj, tally), started)
+      const row = res.row(obj, tally)
+      const outcome = await writeMirror(ctx.db, res.entity, row, started, healed(ctx, res, row))
       if (outcome !== "stale") result.written++
     }
     const last = page.data[page.data.length - 1]
@@ -195,11 +208,12 @@ async function readBackAbsent(
     }
     const started = now().toISOString()
     try {
-      const obj = await stripeFetch<Obj>(ctx, `${res.byId}${encodeURIComponent(id)}`, {}, { maxRetries: 3, sleep })
+      const obj = await stripeFetch<Obj>(ctx, `${res.byId}${encodeURIComponent(id)}`, res.entity === "stripe_subscriptions" ? { params: { expand: ["discounts"] } } : {}, { maxRetries: 3, sleep })
       if (obj?.deleted === true) {
         if (res.entity === "stripe_customers" && mayDelete) await markDeleted(ctx, id, started, result)
-      } else if (obj && (await writeMirror(ctx.db, res.entity, res.row(obj, tally), started)) !== "stale") {
-        result.written++
+      } else if (obj) {
+        const row = res.row(obj, tally)
+        if ((await writeMirror(ctx.db, res.entity, row, started, healed(ctx, res, row))) !== "stale") result.written++
       }
     } catch (err) {
       if (!(err instanceof StripeApiError)) throw err

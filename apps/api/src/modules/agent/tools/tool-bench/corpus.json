@@ -2784,5 +2784,13 @@
     "typed": ["vérifier clé stripe", "tester connexion stripe", "check stripe key"],
     "any": ["stripe__connection_check"],
     "modelRun": true
+  },
+  {
+    "id": "Y09",
+    "set": "seed",
+    "lang": "en",
+    "say": "what is our MRR right now?",
+    "typed": ["monthly recurring revenue", "revenu récurrent mensuel"],
+    "any": ["stripe__mrr_query"]
   }
 ]

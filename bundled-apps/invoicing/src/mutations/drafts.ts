@@ -602,7 +602,8 @@ async function schedulePatchFrom(ctx: MutationsCtx, rd: RunDraft, applies: Appli
   const due = dayOf(draft.due_at)
   const issueOn = dayOf(rd.run.issue_on)
   if (due && issueOn) {
-    const days = Math.round((Date.parse(`${due}T00:00:00Z`) - Date.parse(`${issueOn}T00:00:00Z`)) / 86_400_000)
+    // A date-only ISO string parses as UTC midnight.
+    const days = Math.round((Date.parse(due) - Date.parse(issueOn)) / 86_400_000)
     if (days === 0) patch.due_rule = "on_issue"
     else if (days === 30) patch.due_rule = "days_30"
     else if (days > 0) {

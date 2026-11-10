@@ -128,6 +128,7 @@ export function scheduleParams(d: ScheduleDraft, status: "active" | "draft"): Re
     billing_day: d.billing_day,
     ends_on: d.ends_on,
     covers: d.covers,
+    issue_mode: d.issue_mode,
     paid_by: d.paid_by,
     due_rule: d.due_rule,
     language: d.language,
@@ -169,7 +170,11 @@ function today(): string {
 async function loadSchedule(id: string): Promise<ScheduleDraft | null> {
   const r = await app.invokeTool<{ rows?: Array<Record<string, unknown>> }>("recurring_list", { limit: 200 })
   const row = r?.rows?.find((s) => s.id === id)
-  if (!row) return null
+  return row ? draftFromRow(id, row) : null
+}
+
+/** The editor's draft of a schedule as `recurring_list` returns it. */
+export function draftFromRow(id: string, row: Record<string, unknown>): ScheduleDraft {
   const base = defaultSchedule()
   return {
     ...base,

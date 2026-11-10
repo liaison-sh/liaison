@@ -9,6 +9,8 @@
 // The test reads the file's REVOKE and GRANT lines and works out, from the
 // catalog, which roles still hold EXECUTE once PUBLIC loses it: a function's
 // owner, a role re-granted the schema, an explicit grantee, or a member of one.
+// The read-only role is matched by name: a test database need not have it
+// (CI's does not; the file creates it on a deployed instance).
 
 import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
@@ -54,7 +56,7 @@ describe("read-only grants and definer functions", () => {
                            WHERE r.nsp = c.nsp AND pg_has_role(c.proowner, r.role, 'USAGE'))
                OR EXISTS (SELECT 1 FROM aclexplode(f.proacl) a
                            WHERE a.privilege_type = 'EXECUTE' AND a.grantee <> 0
-                             AND a.grantee <> 'liaison_readonly'::regrole
+                             AND pg_get_userbyid(a.grantee) <> 'liaison_readonly'
                              AND pg_has_role(c.proowner, a.grantee, 'USAGE'))
              ) AS ok
         FROM calls c

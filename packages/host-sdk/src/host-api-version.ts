@@ -19,9 +19,11 @@
 // `app.openRecord`, `app.openApprovals`.
 // 1.4: `app.editApproval` (a person edits a pending approval's fields, confirmed by
 // the host) and `prefill` on `mountEntityDiscussion` (text placed in the composer).
+// 1.5: `app.tabLabel()` (names a page's tab after the record it shows; a host
+// without it keeps the app's own tab label).
 
 /** The host API version this build of Liaison provides. */
-export const HOST_API_VERSION = "1.4.0"
+export const HOST_API_VERSION = "1.5.0"
 
 /** The host API majors this build of Liaison answers. */
 export const SUPPORTED_HOST_API_MAJORS: readonly number[] = [1]

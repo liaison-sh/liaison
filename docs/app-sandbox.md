@@ -344,7 +344,7 @@ Set `LIAISON_APP_FRAME_ORIGIN_TEMPLATE` (`https://{app}--{org}.example-userconte
 
 ### Host calls a framed screen makes
 
-A framed screen reaches only its own `/api/apps/<app>/...` routes through `fetch`. For the rest it calls `@liaison/host` (host API 1.4), and the page answers each call for that app only:
+A framed screen reaches only its own `/api/apps/<app>/...` routes through `fetch`. For the rest it calls `@liaison/host` (host API 1.5), and the page answers each call for that app only:
 
 | Call | What the host does |
 |---|---|
@@ -356,6 +356,7 @@ A framed screen reaches only its own `/api/apps/<app>/...` routes through `fetch
 | `app.editApproval(id, fields)` | Changes a pending approval of one of the app's own tools; the server accepts only the fields that tool declares editable and returns the new payload fingerprint, which a later `decideApproval` must use. |
 | `app.openExternal(url)` | Opens an `https` page in a new tab, with no opener and no referrer, only on a host the manifest declares (fetch domains, connection domains, `network.imageHosts`, `network.linkHosts`) and never the Liaison page's own origin. |
 | `app.openRecord(app, entity, id)`, `app.openApprovals()` | Opens another app's record in its own tab (what it shows is up to the person's access), or the approvals queue. |
+| `app.tabLabel(label)` | Names the page's tab after the record it shows, from a function the host re-reads when it changes; empty keeps the app's own label. A host before 1.5 ignores it. |
 
 In the page (a first-party app that is not framed) the same calls work; file opening, approval decisions and outside links then keep their direct path (`packages/host-sdk/src/index.ts`, `apps/web/src/framework/host-app-calls.ts`).
 

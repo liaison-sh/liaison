@@ -444,7 +444,7 @@ frame. Write it so that it works there too:
 
 - In a frame, `fetch` reaches only your own `/api/apps/<app>/...` routes, and the
   frame has no popups, no token and no network of its own. Use the host calls
-  instead (host API 1.4): `getContext()` for the org and the person (never the
+  instead (host API 1.5): `getContext()` for the org and the person (never the
   token), `app.openFile(fileId, filename)` to show a file your own tool returned,
   `app.listDocumentTemplates` and `app.printDocuments` for templates and prints,
   `app.listMyApprovals` and `app.decideApproval` for your tools' approvals (the

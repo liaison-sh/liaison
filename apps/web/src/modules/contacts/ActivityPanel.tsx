@@ -80,6 +80,24 @@ function bucketOf(at: string, now: Date, t: (k: string) => string, locale: strin
   }
 }
 
+/**
+ * First-page reads in flight, by URL. Two views of one timeline that open
+ * together (a page mounted twice as it opens) share one read: each read asks
+ * every source, the slow ones included, so a second one at the same moment
+ * only doubles their load. A reload asked for after a change never shares.
+ */
+const firstPageReads = new Map<string, Promise<ActivityPage>>()
+
+function sharedFirstPage(url: string, read: () => Promise<ActivityPage>): Promise<ActivityPage> {
+  const pending = firstPageReads.get(url)
+  if (pending) return pending
+  const started = read().finally(() => {
+    if (firstPageReads.get(url) === started) firstPageReads.delete(url)
+  })
+  firstPageReads.set(url, started)
+  return started
+}
+
 export const ActivityPanel: Component<ActivityPanelProps> = (props) => {
   const i18n = useI18n()
   const api = useApi()
@@ -99,11 +117,14 @@ export const ActivityPanel: Component<ActivityPanelProps> = (props) => {
   const url = (params: Record<string, string>) =>
     `${props.path}?${new URLSearchParams({ limit: String(PAGE), ...params }).toString()}`
 
-  async function load(): Promise<void> {
+  async function load(opts: { shared?: boolean } = {}): Promise<void> {
     const mine = ++seq
     setStatus("loading")
     try {
-      const page = await api.get<ActivityPage>(url({}))
+      const first = url({})
+      const page = opts.shared
+        ? await sharedFirstPage(first, () => api.get<ActivityPage>(first))
+        : await api.get<ActivityPage>(first)
       if (mine !== seq) return
       setRows([...(page?.items ?? [])].sort(newestFirst))
       setUnavailable(page?.unavailable ?? [])
@@ -165,7 +186,7 @@ export const ActivityPanel: Component<ActivityPanelProps> = (props) => {
 
   onMount(() => {
     props.ref?.(() => void load())
-    void load()
+    void load({ shared: true })
   })
 
   const sourceLabel = (key: string): string => {

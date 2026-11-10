@@ -9,6 +9,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ApiError } from "~/lib/api-error"
+import { ActivityPanel } from "./ActivityPanel"
 import { CompanyDetail } from "./CompanyDetail"
 import { duplicateIds, loadCompany, resetCompanyStores } from "./company-store"
 import { resolveCompanyTabLabel } from "./exports"
@@ -350,6 +351,39 @@ function seedDuplicate(): void {
 }
 
 describe("CompanyDetail states", () => {
+  it("opening the page reads the timeline once", async () => {
+    // Each extra read asks every source again, the slow ones included.
+    mocks.routes[ACTIVITY] = {
+      rows: [row("t1", "tickets", "2026-11-05T10:00:00Z", "Ticket opened")],
+      nextBefore: null,
+      unavailable: [],
+    }
+    render(() => <CompanyDetail entityId={CO} />)
+    await screen.findByTestId("company-detail.people")
+    await waitFor(() => expect(api.get.mock.calls.some(([p]) => p.startsWith(ACTIVITY))).toBe(true))
+    await new Promise((r) => setTimeout(r, 50))
+    expect(api.get.mock.calls.filter(([p]) => p.startsWith(ACTIVITY)).length).toBe(1)
+  })
+
+  it("two views of one timeline opened together share one read", async () => {
+    // Measured in the browser: every company open read its timeline twice at
+    // once, doubling the load on the slow sources until one timed out.
+    let release: (v: unknown) => void = () => {}
+    mocks.routes[ACTIVITY] = new Promise((r) => {
+      release = r
+    })
+    render(() => (
+      <>
+        <ActivityPanel path={ACTIVITY} testId="a1" title="A" emptyText="none" />
+        <ActivityPanel path={ACTIVITY} testId="a2" title="B" emptyText="none" />
+      </>
+    ))
+    release({ items: [row("t1", "tickets", "2026-11-05T10:00:00Z", "Ticket opened")], unavailable: [] })
+    await screen.findAllByText("Ticket opened")
+    expect(api.get.mock.calls.filter(([p]) => p.startsWith(ACTIVITY)).length).toBe(1)
+    expect(screen.getAllByText("Ticket opened")).toHaveLength(2)
+  })
+
   it("Not the same removes the duplicate badge, and Undo brings it back", async () => {
     seedDuplicate()
     render(() => <CompanyDetail entityId={CO} />)

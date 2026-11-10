@@ -14,7 +14,6 @@ import {
   exportOnlyBundleCacheBytes,
   exportOnlyBundleCacheSize,
   exportOnlyBundle as exportOnlyBundleOf,
-  hasImportAttribute,
   useFullBundle,
   watchBridgeCalls,
 } from "~/modules/apps/sandbox/bundle-shake"
@@ -193,7 +192,6 @@ describe("export-only bundles", () => {
       it(`is refused before any build, and its macro never runs on the host (${attribute.replace("\n", " ")})`, async () => {
         const marker = join(dir, `ran-${crypto.randomUUID()}`)
         const bundle = macroBundle(marker, attribute)
-        expect(hasImportAttribute(bundle)).toBe(true)
         expect(await buildExportOnlyBundle(bundle, "handler")).toBeNull()
         for (let i = 0; i < 10; i++) {
           expect(exportOnlyBundle(bundle, "handler")).toBe(bundle)
@@ -202,13 +200,6 @@ describe("export-only bundles", () => {
         expect(existsSync(marker)).toBe(false)
       })
     }
-
-    it("a bundle with no attribute is not taken for one", () => {
-      expect(hasImportAttribute(SCRIPT)).toBe(false)
-      expect(hasImportAttribute("var o = { with: 1 }; function assertOk() { return {} }")).toBe(
-        false,
-      )
-    })
   })
 
   it("keeps a body's own trailing global assignment, which is no export", async () => {

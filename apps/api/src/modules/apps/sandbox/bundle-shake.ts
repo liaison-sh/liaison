@@ -17,8 +17,9 @@
  * app's bundle or a first-party one (in-tree, or the image's own catalog
  * tarball), never a third-party package (a signed publisher's included) or an
  * org's custom app: those always run their full bundle, in the sandbox only.
- * And a bundle carrying an import attribute (`with {` / `assert {`) is refused
- * before any build, whoever it comes from.
+ * And a bundle carrying an import attribute (`with {` / `assert {`), or one
+ * the TypeScript parser cannot read, is refused before any build, whoever it
+ * comes from (import-attributes.ts).
  *
  * What is cached is source text derived from the bundle's bytes alone: no
  * caller data, no evaluated state, nothing one call can write and another
@@ -36,6 +37,7 @@ import {
   esmExportsToGlobalThis,
   unwrapGlobalThisExports,
 } from "~/modules/apps/sandbox/bundle-loader"
+import { importAttributeIssue } from "~/modules/apps/sandbox/import-attributes"
 
 /**
  * Export-only bundle text kept, in characters (bytes, for ASCII source). Every
@@ -52,13 +54,6 @@ const MAX_BUILDS = 2
 /** The export names a bundle can be shaken for (they are interpolated). */
 const SAFE_EXPORT_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/
 const ENTRY = "/liaison-export-only-entry.js"
-/**
- * An import attribute: the keyword then its object, with only blanks or
- * comments between, as the grammar allows. Matched anywhere (string text
- * included): a false match only costs the shake.
- */
-const IMPORT_ATTRIBUTE_RE = /\b(?:with|assert)(?:\s|\/\*[\s\S]*?\*\/|\/\/[^\n\r]*)*\{/
-
 type Entry = { state: "building" } | { state: "ready"; source: string } | { state: "full" }
 
 const cache = new Map<string, Entry>()
@@ -76,11 +71,6 @@ export interface BundleProvenance {
 /** Does the platform vouch for this code, so the host may build over it? */
 export function platformVouchesFor(provenance: BundleProvenance): boolean {
   return provenance.trusted === true || provenance.firstParty === true
-}
-
-/** True when `source` carries an import attribute (a macro import among them). */
-export function hasImportAttribute(source: string): boolean {
-  return IMPORT_ATTRIBUTE_RE.test(source)
 }
 
 function keyFor(source: string, exportName: string): string {
@@ -116,7 +106,7 @@ export async function buildExportOnlyBundle(
 ): Promise<string | null> {
   if (!SAFE_EXPORT_RE.test(exportName)) return null
   // Refused before the bundler sees it: a macro import runs during the build.
-  if (hasImportAttribute(source)) return null
+  if ((await importAttributeIssue(source)) !== null) return null
   // An installed bundle comes scoped, its exports assigned to globalThis
   // (bundle-loader.ts): shake its body, exporting the handler's local name.
   const scoped = unwrapGlobalThisExports(source)
@@ -179,10 +169,6 @@ export function exportOnlyBundle(
   if (hit) {
     remember(key, hit)
     return hit.state === "ready" ? hit.source : source
-  }
-  if (hasImportAttribute(source)) {
-    remember(key, { state: "full" })
-    return source
   }
   // Two builds already running: this call runs the full bundle, a later one builds.
   if (building >= MAX_BUILDS) return source

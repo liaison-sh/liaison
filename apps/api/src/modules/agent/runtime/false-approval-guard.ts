@@ -300,6 +300,20 @@ export async function* withFalseApprovalGuard(opts: {
   holdContinuation?: () => boolean
   /** The platform line a dropped continuation leaves after the first answer. */
   droppedNotice?: (first: ObservedRun) => string
+  /**
+   * One more continuation, for a correction that again ends on the turn's own
+   * plan: its last step called no tool and `shouldCorrect` reads its final text
+   * as unfinished. The plan text is cut from the stored reply (`onRetractAgain`
+   * when it was already streamed) and `continueWith` runs, given the first
+   * run's and the correction's response messages. Its verdict replaces
+   * `keepContinuation` for that correction. Bounded: never a third.
+   */
+  correctAgain?: {
+    shouldCorrect: (continuation: { finalText: string }) => Promise<boolean>
+    continueWith: (firstMessages: unknown[], correctionMessages: unknown[]) => StreamLike
+  }
+  /** A second cut of the stored reply: the correction's own plan text, already streamed. */
+  onRetractAgain?: (retraction: Retraction) => void
 }): AsyncGenerator<unknown> {
   let textLength = 0
   let finalText = ""
@@ -370,27 +384,80 @@ export async function* withFalseApprovalGuard(opts: {
     // Text held until the verdict; null once released (or when no verdict is asked).
     let heldText: unknown[] | null =
       opts.keepContinuation && (opts.holdContinuation?.() ?? true) ? [] : null
-    for await (const raw of opts.continueWith(responseMessages).fullStream) {
+    // The correction's own ending, read for `correctAgain`.
+    let contFinalText = ""
+    let contStepCalledTool = false
+    let contLastStepCalledTool = false
+    let contFinishReason: string | undefined
+    let contError = false
+    // Turn text streamed so far, the separator included.
+    let streamedLength = textLength + CORRECTION_SEPARATOR.length
+    const continuation = opts.continueWith(responseMessages)
+    for await (const raw of continuation.fullStream) {
       const chunk = raw as Chunk
       if (chunk.type === "text-delta") {
         continuationText += chunk.text ?? ""
+        contFinalText += chunk.text ?? ""
         if (heldText) {
           heldText.push(raw)
           continue
         }
+        streamedLength += chunk.text?.length ?? 0
       } else if (chunk.type === "tool-call") {
         calledTool = true
+        contStepCalledTool = true
+        contFinalText = ""
         // A tool call keeps the continuation: what it wrote before is released, in order.
         if (heldText) {
+          for (const held of heldText) streamedLength += (held as Chunk).text?.length ?? 0
           yield* heldText
           heldText = null
         }
+      } else if (chunk.type === "finish-step") {
+        contLastStepCalledTool = contStepCalledTool
+        contStepCalledTool = false
+        contFinishReason = chunk.finishReason
+      } else if (chunk.type === "error" || chunk.type === "abort") {
+        contError = true
       } else if (chunk.type === "finish") {
         // Held until the verdict below: a consumer finalizes on `finish`.
         heldContinuationFinish = raw
         continue
       }
       yield raw
+    }
+    if (
+      opts.correctAgain &&
+      !contError &&
+      !contLastStepCalledTool &&
+      (contFinishReason === undefined || contFinishReason === "stop") &&
+      contFinalText.trim().length > 0 &&
+      continuation.responseMessages !== undefined &&
+      (await opts.correctAgain.shouldCorrect({ finalText: contFinalText }))
+    ) {
+      // Held text was never shown: it is simply not released. Text already
+      // streamed (the correction called a tool before it) is cut from the
+      // stored reply, with a separator before what follows.
+      if (!heldText) {
+        yield { type: "text-delta", id: "false-approval-correction", text: CORRECTION_SEPARATOR }
+        streamedLength += CORRECTION_SEPARATOR.length
+        opts.onRetractAgain?.({
+          end: streamedLength,
+          text: contFinalText + CORRECTION_SEPARATOR,
+        })
+      }
+      const correctionMessages = await continuation.responseMessages
+      let againFinish: unknown = null
+      for await (const raw of opts.correctAgain.continueWith(responseMessages, correctionMessages)
+        .fullStream) {
+        if ((raw as Chunk).type === "finish") {
+          againFinish = raw
+          continue
+        }
+        yield raw
+      }
+      if (againFinish ?? heldContinuationFinish) yield againFinish ?? heldContinuationFinish
+      return
     }
     if (heldText) {
       const keep = opts.keepContinuation?.({ text: continuationText, calledTool }) ?? true

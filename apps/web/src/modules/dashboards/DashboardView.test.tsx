@@ -5,7 +5,12 @@ import type { ApiClient } from "~/lib/api-client"
 import { ApiError } from "~/lib/api-error"
 import { ApiContext } from "~/modules/shell/ApiContext"
 import { blockSpanClass, DashboardView } from "./DashboardView"
-import { dashboardTitle, reloadDashboard, resetDashboardsStore } from "./dashboards-store"
+import {
+  dashboardTitle,
+  handleDashboardEvent,
+  reloadDashboard,
+  resetDashboardsStore,
+} from "./dashboards-store"
 
 vi.mock("chart.js", () => {
   class Chart {
@@ -85,6 +90,40 @@ describe("DashboardView", () => {
       expect(screen.getByTestId("dashboard-not-found").textContent).toBe(
         "This dashboard no longer exists, or it is not shared with you.",
       ),
+    )
+  })
+})
+
+describe("DashboardView live updates", () => {
+  it("an open tab of a dashboard deleted elsewhere says it is gone", async () => {
+    let deleted = false
+    const api = mount(async (path) => {
+      if (path === "/dashboards") return []
+      if (path === "/dashboards/d1") {
+        if (deleted) throw new ApiError("Not found", 404)
+        return { id: "d1", title: "Sales", visibility: "org", version: 1, spec }
+      }
+      return { kind: "metric", value: 1 }
+    })
+    await waitFor(() => expect(screen.getByTestId("dashboard-title").textContent).toBe("Sales"))
+    deleted = true
+    await handleDashboardEvent(api, "deleted", { dashboardId: "d1", visibility: "org" })
+    await waitFor(() => expect(screen.getByTestId("dashboard-not-found")).toBeTruthy())
+    expect(screen.queryByTestId("dashboard-grid")).toBeNull()
+  })
+
+  it("an open tab shows a change made elsewhere, without a reload", async () => {
+    let current = { id: "d1", title: "Sales", visibility: "org", version: 1, spec }
+    const api = mount(async (path) => {
+      if (path === "/dashboards") return [current]
+      if (path === "/dashboards/d1") return current
+      return { kind: "metric", value: 1 }
+    })
+    await waitFor(() => expect(screen.getByTestId("dashboard-title").textContent).toBe("Sales"))
+    current = { ...current, title: "Sales by day", version: 2 }
+    await handleDashboardEvent(api, "updated", { dashboardId: "d1", visibility: "org", version: 2 })
+    await waitFor(() =>
+      expect(screen.getByTestId("dashboard-title").textContent).toBe("Sales by day"),
     )
   })
 })

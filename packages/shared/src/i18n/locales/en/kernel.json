@@ -1923,7 +1923,8 @@
     "oauthError": "Signing in with the provider failed ({{error}}). Try connecting again.",
     "oauthErrorWithDescription": "Signing in with the provider failed: {{description}}",
     "dashboard": "Dashboard",
-    "appBuilder": "App builder"
+    "appBuilder": "App builder",
+    "dashboards": "Dashboards"
   },
   "newConversation": {
     "newChannel": "New channel",
@@ -6452,7 +6453,10 @@
     "blockSourceError": "This block's data could not be read. Try again later.",
     "blockNotFound": "This block is no longer on the dashboard.",
     "blockNetwork": "Can't reach the server right now. Try again in a moment.",
-    "blockTruncated": "Some rows are left out: the block shows the first ones."
+    "blockTruncated": "Some rows are left out: the block shows the first ones.",
+    "indexEmptyTitle": "No dashboards yet",
+    "indexEmptyBody": "A dashboard puts charts, tables and figures from your apps on one page and keeps them up to date. Keep it for yourself or share it with your organization.",
+    "indexEmptyHint": "Ask your agent to build one, for example: \"Make me a dashboard of this month's orders by day.\""
   },
   "appBuilder": {
     "check": "Check",

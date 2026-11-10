@@ -7630,6 +7630,12 @@ export const FR_BY_KEY: Record<string, string> = {
   // Dashboards (P3): the dashboard tab and its blocks.
   "kernel.nav.dashboard": "Tableau de bord",
   "kernel.dashboards.sectionTitle": "Tableaux de bord",
+  "kernel.nav.dashboards": "Tableaux de bord",
+  "kernel.dashboards.indexEmptyTitle": "Aucun tableau de bord pour l'instant",
+  "kernel.dashboards.indexEmptyBody":
+    "Un tableau de bord réunit sur une page des graphiques, des tableaux et des chiffres tirés de vos apps, et les tient à jour. Gardez-le pour vous ou partagez-le avec votre organisation.",
+  "kernel.dashboards.indexEmptyHint":
+    "Demandez à votre agent d'en créer un, par exemple : « Fais-moi un tableau de bord des commandes du mois, jour par jour. »",
   "kernel.dashboards.visibilityPersonal": "Personnel",
   "kernel.dashboards.visibilityOrg": "Organisation",
   "kernel.dashboards.refreshAll": "Tout actualiser",

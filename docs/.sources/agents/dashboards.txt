@@ -2,8 +2,8 @@ Dashboards section on Home, only once one exists -> apps/web/src/modules/shell/H
 Section label Dashboards -> packages/shared/src/i18n/locales/en/kernel.json:6407
 Own dashboards first, then the org's -> apps/web/src/modules/dashboards/dashboards-store.ts:17
 Org marker label -> packages/shared/src/i18n/locales/en/kernel.json:6409
-Dashboard tab address /dashboard/<id>, named by its title -> apps/web/src/framework/bootstrap.ts:517
-Agent opens a dashboard (entity opener) -> apps/web/src/framework/bootstrap.ts:1264
+Dashboard tab address /dashboard/<id>, named by its title -> apps/web/src/framework/bootstrap.ts:545
+Agent opens a dashboard (entity opener) -> apps/web/src/framework/bootstrap.ts:1333
 Blocks read as the viewer -> apps/web/src/modules/dashboards/dashboards-client.ts:289
 Toolbar: title, visibility badge, Refresh all -> apps/web/src/modules/dashboards/DashboardView.tsx:52
 Refresh all re-reads past the cache -> apps/web/src/modules/dashboards/blocks/BlockCard.tsx:79
@@ -49,7 +49,7 @@ Source gone / map no longer fits messages -> packages/shared/src/i18n/locales/en
 At most 20 series, the largest kept, truncated -> apps/api/src/modules/dashboards/spec.ts:34
 A failed block's answer is kept 30 s; refresh reads past it -> apps/api/src/modules/dashboards/cache.ts:115
 Closing the tab cancels its block reads -> apps/web/src/modules/dashboards/DashboardView.tsx:45
-The agent's open and Refresh all re-read the open dashboard -> apps/web/src/framework/bootstrap.ts:1284 ; apps/web/src/modules/dashboards/DashboardView.tsx:102
+The agent's open and Refresh all re-read the open dashboard -> apps/web/src/framework/bootstrap.ts:1335 ; apps/web/src/modules/dashboards/DashboardView.tsx:102
 Agent previews read with the person's roles -> apps/api/src/modules/dashboards/tools.ts:68
 Rolling date tokens: anchors and one d/w/M/y offset -> apps/api/src/modules/dashboards/relative-dates.ts:22
 Week starts Monday; month offsets clamp to the month's last day -> apps/api/src/modules/dashboards/relative-dates.ts:83 ; apps/api/src/modules/dashboards/relative-dates.ts:65
@@ -59,3 +59,12 @@ Unknown tokens refused at preview and save -> apps/api/src/modules/dashboards/sp
 Cache key moves with the resolved dates -> apps/api/src/modules/dashboards/service.ts:380 ; apps/api/src/modules/dashboards/cache.ts:119
 Approval card shows each token and today's date -> apps/api/src/modules/dashboards/tools.ts:137
 Agents created before gain dashboards at the next server start -> apps/api/src/modules/agent/directory/reconcile-base-ceilings.ts:67 ; apps/api/src/db/reconcile-catalog-boot.ts:238
+Dashboards entry in the left bar, lit on a dashboard tab -> apps/web/src/framework/bootstrap.ts:1270 ; apps/web/src/framework/bootstrap.ts:1277
+Dashboards entry label -> packages/shared/src/i18n/locales/en/kernel.json:1927
+Phone: Work lists the rail's entries -> apps/web/src/modules/shell/Work.tsx:169
+The Dashboards page (/dashboards) lists every dashboard the viewer sees -> apps/web/src/framework/bootstrap.ts:533 ; apps/web/src/modules/dashboards/DashboardsIndex.tsx:39
+Empty state says what a dashboard is and to ask the agent -> apps/web/src/modules/dashboards/DashboardsIndex.tsx:74 ; packages/shared/src/i18n/locales/en/kernel.json:6457
+Server emits created, updated and deleted events (ids and visibility, no title) -> apps/api/src/modules/dashboards/service.ts:136 ; apps/api/src/modules/dashboards/service.ts:280 ; apps/api/src/modules/dashboards/service.ts:341 ; apps/api/src/modules/dashboards/service.ts:368
+Org dashboard events reach every reader, personal ones only their owner, a switch to personal reaches those who saw it -> apps/api/src/infra/websocket.ts:1559
+Lists re-read on an event; a deleted one leaves at once; an open tab reads again -> apps/web/src/framework/bootstrap.ts:1124 ; apps/web/src/modules/dashboards/dashboards-store.ts:119 ; apps/web/src/modules/dashboards/dashboards-store.ts:126
+Deleted or no longer shared message -> packages/shared/src/i18n/locales/en/kernel.json:6444

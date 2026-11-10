@@ -122,6 +122,52 @@ function toRecord(viewer: DashboardViewer, row: DashboardRow): DashboardRecord {
   }
 }
 
+export type DashboardEventAction = "created" | "updated" | "deleted"
+
+/**
+ * What a `kernel:dashboard` frame carries: ids, visibility and version, never the
+ * title or the spec. A client that hears one re-reads its list (and an open view
+ * its record) through the REST routes, under its own RLS. Delivery
+ * (infra/websocket.ts, `hasDashboardVisibilityAccess`): an org dashboard's frame
+ * reaches every member who reads dashboards; a personal one's reaches its owner
+ * only. `previousVisibility: "org"` on a switch to personal tells the members who
+ * saw it to drop it.
+ */
+export interface DashboardEventData {
+  dashboardId: string
+  visibility: DashboardVisibility
+  previousVisibility?: DashboardVisibility
+  ownerUserId: string | null
+  version: number
+}
+
+async function queueDashboardEvent(
+  t: RlsClient,
+  viewer: DashboardViewer,
+  action: DashboardEventAction,
+  row: Pick<DashboardRow, "id" | "visibility" | "ownerUserId" | "version">,
+  previousVisibility?: DashboardVisibility,
+): Promise<void> {
+  const data: DashboardEventData = {
+    dashboardId: row.id,
+    visibility: row.visibility,
+    ownerUserId: row.ownerUserId,
+    version: row.version,
+    ...(previousVisibility && previousVisibility !== row.visibility ? { previousVisibility } : {}),
+  }
+  await t.queueEvent({
+    app: "kernel",
+    entity: "dashboard",
+    action,
+    entityId: row.id,
+    data: data as unknown as Record<string, unknown>,
+    actorId: viewer.userId,
+    actorType: "user",
+    orgId: viewer.orgId,
+    timestamp: new Date().toISOString(),
+  })
+}
+
 /** Runs on `tx` when the caller holds one (an agent tool's), else in a fresh RLS transaction. */
 function inTx<T>(
   viewer: DashboardViewer,
@@ -218,8 +264,8 @@ export async function createDashboard(
     )
   }
   const spec = await validateSpec(viewer, input.spec)
-  const [row] = await inTx(viewer, tx, (t) =>
-    t
+  const row = await inTx(viewer, tx, async (t) => {
+    const [inserted] = await t
       .insert(dashboards)
       .values({
         orgId: viewer.orgId,
@@ -230,9 +276,11 @@ export async function createDashboard(
         createdBy: viewer.userId,
         updatedBy: viewer.userId,
       })
-      .returning(),
-  )
-  return toRecord(viewer, row!)
+      .returning()
+    await queueDashboardEvent(t, viewer, "created", inserted!)
+    return inserted!
+  })
+  return toRecord(viewer, row)
 }
 
 export interface UpdateDashboardInput {
@@ -277,8 +325,8 @@ export async function updateDashboard(
     )
   }
   const spec = input.spec === undefined ? undefined : await validateSpec(viewer, input.spec)
-  const [row] = await inTx(viewer, tx, (t) =>
-    t
+  const row = await inTx(viewer, tx, async (t) => {
+    const [updated] = await t
       .update(dashboards)
       .set({
         ...(input.title !== undefined ? { title: input.title } : {}),
@@ -289,8 +337,10 @@ export async function updateDashboard(
         updatedAt: new Date(),
       })
       .where(and(eq(dashboards.id, id), eq(dashboards.version, current.version)))
-      .returning(),
-  )
+      .returning()
+    if (updated) await queueDashboardEvent(t, viewer, "updated", updated, current.visibility)
+    return updated
+  })
   if (!row)
     throw new DashboardError(
       "VERSION_CONFLICT",
@@ -313,7 +363,10 @@ export async function deleteDashboard(
         : "only its owner deletes a personal dashboard",
     )
   }
-  await inTx(viewer, tx, (t) => t.delete(dashboards).where(eq(dashboards.id, id)))
+  await inTx(viewer, tx, async (t) => {
+    await t.delete(dashboards).where(eq(dashboards.id, id))
+    await queueDashboardEvent(t, viewer, "deleted", current)
+  })
 }
 
 export type BlockDataResponse =

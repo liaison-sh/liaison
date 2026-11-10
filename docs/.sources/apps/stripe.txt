@@ -62,9 +62,9 @@ failed events applied again each minute -> bundled-apps/stripe/src/sync/maintena
 key refused: nothing read, waiting requests stay -> bundled-apps/stripe/src/states.ts:15
 missing permission reads partial -> bundled-apps/stripe/src/sync/backfill.ts:21
 disconnect removes the mirror, keeps invoicing documents -> bundled-apps/stripe/src/sync/maintenance.ts:17
-matching order email, contact's company, external id -> bundled-apps/stripe/src/match.ts:3
+a new contact for an email no contact has, then the Stripe id -> bundled-apps/stripe/src/match.ts:148
 domain only suggests, free mail never -> bundled-apps/stripe/src/match.ts:6
-person's link never replaced, never unlinked by a match -> bundled-apps/stripe/src/match.ts:95
+person's link never replaced, never unlinked by a match -> bundled-apps/stripe/src/match.ts:128
 customer_link: readable records only, Liaison only, undo -> bundled-apps/stripe/src/tools/link.ts:3
 merges re-point linked customers -> apps/api/src/modules/contacts/service.ts:1382
 merges re-point linked customers (companies) -> apps/api/src/modules/contacts/companies.ts:273
@@ -79,3 +79,5 @@ discounts percent first then amount, once or ended not counted -> bundled-apps/s
 movement kinds, written once by the change that moved the stored amount -> bundled-apps/stripe/src/mrr-events.ts:1
 month start in the organization zone, start = now less movements, partial while importing -> bundled-apps/stripe/src/tools/mrr-query.ts:3
 rebuild from 30 days of events, "Movements incomplete before" -> bundled-apps/stripe/src/mrr-rebuild.ts:1
+an existing contact with the email is only a suggestion, shown by customers_get -> bundled-apps/stripe/src/match.ts:141 ; bundled-apps/stripe/src/tools/customers.ts:134
+a delivery cut off is retried after 5 minutes -> bundled-apps/stripe/src/webhooks.ts:29

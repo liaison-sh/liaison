@@ -6,7 +6,7 @@
 // `taintSource`. The app database answers equality and `in` only: an id or an
 // email is one exact read, a name is matched over at most `SCAN_CAP` rows.
 import { refuseTool } from "@liaison/app-sdk"
-import { matchCustomer } from "../match"
+import { existingContactByEmail, matchCustomer } from "../match"
 import {
   customerIdsFor,
   customerItem,
@@ -130,6 +130,12 @@ export async function customersGet(params: Obj | undefined, ctx: ReadCtx) {
           },
         )
       ).suggestion
+  // The customer's email is not verified: a contact with that email is shown for a person to confirm.
+  let contactSuggestion: { contactId: string; email: string } | null = null
+  if (!linked && typeof row.email === "string" && row.email.includes("@")) {
+    const existing = await existingContactByEmail(ctx, row.email)
+    if (existing && existing !== "unknown") contactSuggestion = { contactId: existing.id, email: row.email.trim().toLowerCase() }
+  }
   const all = [row, ...subs, ...invoices]
   const customer = customerItem(row)
   return {
@@ -137,7 +143,8 @@ export async function customersGet(params: Obj | undefined, ctx: ReadCtx) {
     subscriptions: subs.map(subscriptionItem),
     openInvoices: invoices.map(invoiceItem),
     suggestion,
+    contactSuggestion,
     syncedAt: syncedAt(all),
-    summary: `Stripe customer ${stripeId}${customer.name ? ` (${customer.name})` : ""}: ${subs.length} subscription${subs.length === 1 ? "" : "s"}, ${invoices.length} open invoice${invoices.length === 1 ? "" : "s"}, ${linked ? "linked" : "not linked to a contact or company"}. From the Stripe mirror${syncedAt(all) ? `, last synced ${syncedAt(all)}` : ""}.`,
+    summary: `Stripe customer ${stripeId}${customer.name ? ` (${customer.name})` : ""}: ${subs.length} subscription${subs.length === 1 ? "" : "s"}, ${invoices.length} open invoice${invoices.length === 1 ? "" : "s"}, ${linked ? "linked" : "not linked to a contact or company"}. From the Stripe mirror${syncedAt(all) ? `, last synced ${syncedAt(all)}` : ""}.${contactSuggestion ? ` Its email is not verified: contact ${contactSuggestion.contactId} has this email; if it is them, a person links it with customer_link.` : ""}`,
   }
 }

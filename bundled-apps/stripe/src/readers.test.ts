@@ -75,4 +75,20 @@ describe("the Stripe mirror readers", () => {
     expect(first.nextCursor).toBe("1")
     expect(await ids({ limit: 1, cursor: first.nextCursor })).toEqual(["cus_B"])
   })
+
+  it("an unlinked customer whose email names a contact shows that contact as a suggestion to confirm", async () => {
+    const { db } = world()
+    const ANA = "33333333-3333-4333-8333-333333333333"
+    const ctx = {
+      db,
+      executeTool: async (tool: string) =>
+        tool === "kernel:contacts_search"
+          ? { status: "completed" as const, result: { items: [{ id: ANA, primaryEmail: "ana@maison.example" }] } }
+          : { status: "completed" as const, result: { items: [] } },
+    }
+    const one = (await customersGet({ id: "cus_A" }, ctx)) as Record<string, unknown>
+    expect(one.contactSuggestion).toEqual({ contactId: ANA, email: "ana@maison.example" })
+    expect(String(one.summary)).toContain(`contact ${ANA} has this email`)
+    expect(String(one.summary)).toContain("customer_link")
+  })
 })

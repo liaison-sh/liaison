@@ -77,9 +77,16 @@ export const AppSettingsBody: Component<{
   const api = useApi()
   const state = createAppPageState()
   const app = () => props.entry.appId
-  const sections = createMemo(() =>
-    visibleSections(props.entry.manifest.settings?.sections, (s) => canAccessScope(s)),
-  )
+  // A section equal to the one already drawn keeps its object, so the list does not redraw it:
+  // an admin's page may draw from the workspace's app list before the manifests feed registers
+  // the app, and the same sections arriving then must not throw away an unsaved edit.
+  const sections = createMemo<SettingsSection[]>((prev) => {
+    const next = visibleSections(props.entry.manifest.settings?.sections, (s) => canAccessScope(s))
+    return next.map((s) => {
+      const drawn = prev.find((p) => p.id === s.id)
+      return drawn && JSON.stringify(drawn) === JSON.stringify(s) ? drawn : s
+    })
+  }, [])
 
   // Values the page saved since the last load, shown over the loaded ones.
   const [saved, setSaved] = createSignal<Record<SettingsScope, Record<string, unknown>>>({

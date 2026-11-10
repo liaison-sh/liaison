@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { describe, expect, it } from "bun:test"
+import { describe, expect, it, spyOn } from "bun:test"
+import * as fs from "node:fs"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { delimiter, join } from "node:path"
@@ -350,6 +351,50 @@ describe("discoverInstalledApps", () => {
       expect(apps[0].uiBundlePath).toBeUndefined()
     } finally {
       rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("discovery order", () => {
+  // Registration follows discovery order, and the first app an org registers carries the
+  // kernel member tier into its role grant event: the order must not be the filesystem's.
+  it("lists in-tree and installed apps by name whatever order the directory reads in", async () => {
+    const tree = mkdtempSync(join(tmpdir(), "liaison-order-tree-"))
+    const installed = mkdtempSync(join(tmpdir(), "liaison-order-inst-"))
+    const real = fs.readdirSync
+    const reversed = spyOn(fs, "readdirSync").mockImplementation(((
+      ...args: Parameters<typeof fs.readdirSync>
+    ) => {
+      const out = real(...args)
+      return Array.isArray(out) ? [...out].sort().reverse() : out
+    }) as typeof fs.readdirSync)
+    try {
+      for (const name of ["alpha", "bravo", "charlie"]) {
+        mkdirSync(join(tree, name), { recursive: true })
+        writeFileSync(join(tree, name, "app.manifest.json"), JSON.stringify({ name }))
+        writeFileSync(join(tree, name, "manifest-descriptor.ts"), "export const x = {}")
+        for (const version of ["1.0.0", "1.1.0"]) {
+          const dir = join(installed, name, version)
+          mkdirSync(dir, { recursive: true })
+          writeFileSync(join(dir, "app.manifest.json"), JSON.stringify({ name, version }))
+          writeFileSync(join(dir, "bundle.js"), "// noop")
+        }
+      }
+      const inTree = await discoverInTreeApps({ rootOverride: tree })
+      expect(inTree.map((a) => a.name)).toEqual(["alpha", "bravo", "charlie"])
+      const inst = await discoverInstalledApps({ rootOverride: installed })
+      expect(inst.map((a) => `${a.name}@${a.version}`)).toEqual([
+        "alpha@1.0.0",
+        "alpha@1.1.0",
+        "bravo@1.0.0",
+        "bravo@1.1.0",
+        "charlie@1.0.0",
+        "charlie@1.1.0",
+      ])
+    } finally {
+      reversed.mockRestore()
+      rmSync(tree, { recursive: true, force: true })
+      rmSync(installed, { recursive: true, force: true })
     }
   })
 })

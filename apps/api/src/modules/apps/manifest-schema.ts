@@ -267,6 +267,21 @@ const credentialFieldSchema = {
     // (GET /api/connections/:id/settings). Default false: a field is
     // readable only when the manifest says it holds no secret.
     readable: { type: "boolean" },
+    // A value that must never be kept in this field (another kind of secret
+    // pasted by mistake, e.g. a full secret key where a restricted one is
+    // asked): refused before anything is encrypted or stored, and the person
+    // reads `message` (or the catalog's `messageKey`). Never echoes the value.
+    refusePattern: {
+      type: "object",
+      properties: {
+        pattern: { type: "string", minLength: 1 },
+        code: { type: "string", pattern: "^[a-z][a-z0-9_]*$" },
+        message: { type: "string", minLength: 1 },
+        messageKey: { type: "string", minLength: 1 },
+      },
+      required: ["pattern", "code", "message"],
+      additionalProperties: false,
+    },
   },
   required: ["name", "label", "type"],
 }
@@ -374,6 +389,10 @@ const connectionSchema = {
     refreshUsesAccessToken: { type: "boolean" },
     refreshWindowMs: { type: "number" },
     credentialFields: { type: "array", items: credentialFieldSchema },
+    // Credentials only: a read-only tool of the app run with the candidate key
+    // before it is stored; its refusal stops the save, so the stored key stays
+    // (connections/precheck.ts).
+    checkBeforeStore: { type: "string", pattern: "^[a-z][a-z0-9_]*$" },
     // Credentials only: several org-owned accounts per org, each keyed by its
     // slug identifier (the credentials route then requires `identifier`).
     multiInstance: { type: "boolean" },

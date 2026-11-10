@@ -874,6 +874,7 @@
   "composeAttach": "Attach",
   "composeEmoji": "Emoji",
   "composerKeyBlocked": "That looks like a Stripe key, so it was not sent.",
+  "stripeSecretKeyRefused": "That is your secret key, so I did not keep it. Create a restricted key in Stripe (Developers, API keys, Create restricted key: it starts with rk_) and paste that one.",
   "configureOidcProvidersForSingleSign": "Configure OIDC providers for single sign-on.",
   "confirmSetup": "Confirm setup",
   "connect": "Connect",

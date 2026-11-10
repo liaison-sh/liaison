@@ -1322,7 +1322,11 @@ export const connectionConfigRegistry = createTypedRegistry<
       type: string
       required?: boolean
       readable?: boolean
+      /** A value refused before storage (manifest-schema.ts); the message never holds the value. */
+      refusePattern?: { pattern: string; code: string; message: string; messageKey?: string }
     }>
+    /** A read-only tool run with the candidate key before it is stored (connections/precheck.ts). */
+    checkBeforeStore?: string
     allowedDomains: string[]
     templateVars?: Record<string, { lowercase?: boolean; pattern: string; appendSuffix?: string }>
     identifierVar?: string

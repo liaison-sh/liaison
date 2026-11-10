@@ -236,6 +236,7 @@ import {
   taintDisclosureAuthority,
 } from "~/modules/approvals/authority"
 import { buildApprovalSummary, proposingTurnScopesUnionSql } from "~/modules/approvals/event-data"
+import { maskApprovalPayload } from "~/modules/approvals/payload-mask"
 import { humanizeStepSummary } from "~/modules/approvals/ref-provenance"
 import { readApprovalRequester } from "~/modules/approvals/requester"
 import {
@@ -267,6 +268,7 @@ import {
   primeOrgApps,
 } from "~/modules/apps/org-apps"
 import { featureOffAnswer } from "~/modules/apps/org-features"
+import type { CandidateCredentials } from "~/modules/apps/sandbox/bridge/context"
 import { sealMailApprovalPayload } from "~/modules/mailbox-crypto/approval-payload"
 import { CapLimitError } from "~/modules/org/caps"
 import {
@@ -371,6 +373,14 @@ interface ExecuteToolParams {
    * request lifetime to observe (jobs, routines, cross-app calls).
    */
   signal?: AbortSignal
+  /**
+   * Credentials not yet stored, which this run's `ctx.fetch({auth})` and
+   * `connections_getCredentials` use for `connection` instead of the stored
+   * ones: the connection's check before a key is kept
+   * (connections/precheck.ts). Host side only; never reaches the sandbox, a
+   * nested call, a result or a log.
+   */
+  candidateCredentials?: CandidateCredentials
   /**
    * The kernel.agents row acting in this dispatch, for a caller that is not
    * inside an agent run frame and so cannot be read from one: the MCP gateway,
@@ -1440,11 +1450,13 @@ async function createApprovalRequest(opts: CreateApprovalRequestOpts): Promise<s
     toolParams,
     requestedBy,
     reason,
-    summary,
+    summary: unmaskedSummary,
     appName,
     toolShortName,
     origin,
   } = opts
+  // The card's text is masked like the payload it describes (payload-mask.ts).
+  const summary = maskApprovalPayload(unmaskedSummary)
   // Dimension-constrained approvals: a custom decision scope + optional dimension
   // constraint override the derived default. The derivation is the shared
   // authority answer, so write-time and read-time can never disagree.
@@ -1548,7 +1560,8 @@ async function createApprovalRequest(opts: CreateApprovalRequestOpts): Promise<s
     appName,
     toolShortName,
     approvalRequestId: id,
-    toolParams: (toolParams ?? {}) as Record<string, unknown>,
+    // Card numbers and payment keys never reach the row (payload-mask.ts).
+    toolParams: maskApprovalPayload((toolParams ?? {}) as Record<string, unknown>),
   })
   const payloadJson = JSON.parse(JSON.stringify(sealedToolParams))
 
@@ -2295,9 +2308,10 @@ export async function createSequencedApprovalStep(args: {
       appName: args.appName,
       toolShortName: args.toolShortName,
       approvalRequestId,
-      toolParams: (args.toolParams ?? {}) as Record<string, unknown>,
+      toolParams: maskApprovalPayload((args.toolParams ?? {}) as Record<string, unknown>),
     })
   const sealedToolParams = await sealStepParams(id)
+  const stepSummary = maskApprovalPayload(args.summary)
   const payloadJson = JSON.parse(JSON.stringify(sealedToolParams))
   // FX4: captured here, in the proposing turn's frame. A deferred step is
   // executed by the same approved re-entry path as a head, so it needs the same
@@ -2371,7 +2385,7 @@ export async function createSequencedApprovalStep(args: {
         UPDATE ${K}.approval_requests
         SET tool_params = ${JSON.stringify(payload)}::jsonb,
             current_payload = ${JSON.stringify(payload)}::jsonb,
-            summary = ${JSON.stringify(args.summary)}::jsonb,
+            summary = ${JSON.stringify(stepSummary)}::jsonb,
             notify_user_ids = (SELECT s.notify_user_ids FROM ${K}.approval_requests s
                                 WHERE s.id = ${args.bundle.dependsOnId}),
             ${
@@ -2463,7 +2477,7 @@ export async function createSequencedApprovalStep(args: {
           requestedBy: args.requestedBy,
           status: "deferred",
           reason: "gated",
-          summary: args.summary,
+          summary: stepSummary,
           bundleId: args.bundle.bundleId,
           bundlePosition,
           dependsOnId: args.bundle.dependsOnId,
@@ -2496,7 +2510,7 @@ export async function createSequencedApprovalStep(args: {
             expires_at: new Date(source.expires_at),
             tool_name: args.toolName,
             approve_scope: args.approveScope ?? null,
-            summary: args.summary,
+            summary: stepSummary,
             current_payload: payloadJson,
             thread_id: source.thread_id,
             originating_thread_id: args.threadId,
@@ -3003,6 +3017,8 @@ export async function executeToolHandler(
   },
   bridgeOptions?: {
     callChain?: string[]
+    /** Credentials not yet stored, for the connection's check (ExecuteToolParams). */
+    candidateCredentials?: CandidateCredentials
     /**
      * The sandbox EXECUTION this dispatch runs inside, as a per-execution id.
      * It is what bounds one handler's `Promise.all` fan-out: every hop that one
@@ -5699,6 +5715,9 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
             priority: opts.priority, // propagate worker-pool scheduling class (main handler site)
             nested: isNestedDispatch, // reentrancy admission (main handler site)
             signal: opts.signal,
+            ...(opts.candidateCredentials
+              ? { candidateCredentials: opts.candidateCredentials }
+              : {}),
             actingAgentId, // FX3-1: the agent this dispatch acts as (main handler site)
             turnTaintScopes: handlerTurnTaint,
           },

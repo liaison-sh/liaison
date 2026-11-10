@@ -118,8 +118,16 @@ export type RpcBridgeApprovalContext = {
   originRoutineId?: string
 }
 
+/** Credentials a connection's check uses before they are stored (connections/precheck.ts). */
+export type CandidateCredentials = { connection: string; values: Record<string, string> }
+
 export type RpcBridgeOptions = {
   callChain?: string[]
+  /**
+   * For `connection`, the run reads these credentials instead of the stored
+   * ones: the connection's check of a key before it is kept. Host side only.
+   */
+  candidateCredentials?: CandidateCredentials
   /**
    * The run is a draft preview of the app builder: its `ctx.logger` lines go to
    * kernel.app_logs under the draft (readable by this run's person only), with
@@ -1147,6 +1155,17 @@ export function createBridgeContext(
     if (!declaration) {
       throw new Error(`Connection "${connectionName}" not declared in app manifest`)
     }
+    const candidate = bridgeOptions?.candidateCredentials
+    const credentials =
+      candidate && candidate.connection === connectionName
+        ? candidate.values
+        : await storedCredentials(connectionName, identifier)
+    const allowed = new Set(declaration.credentialFields?.map((field) => field.name) ?? [])
+    if (allowed.size === 0) return {}
+    return Object.fromEntries(Object.entries(credentials).filter(([key]) => allowed.has(key)))
+  }
+
+  async function storedCredentials(connectionName: string, identifier: string) {
     const { getCredentialsForConnection } = await import("~/modules/apps/connections/service")
     const lookup = (db: RlsClient) =>
       getCredentialsForConnection(db, orgId, userId, appName, connectionName, identifier, {
@@ -1156,12 +1175,7 @@ export function createBridgeContext(
     // session bridge (rpc-bridge.ts SESSION_TXLESS_METHOD_PREFIXES): the
     // caller's RLS lookup then takes its own short transaction instead of the
     // poisoned txDb, which made every person's IMAP/SMTP send fail with a 500.
-    const credentials = bridgeOptions?.withShortTx
-      ? await bridgeOptions.withShortTx(lookup)
-      : await lookup(txDb)
-    const allowed = new Set(declaration.credentialFields?.map((field) => field.name) ?? [])
-    if (allowed.size === 0) return {}
-    return Object.fromEntries(Object.entries(credentials).filter(([key]) => allowed.has(key)))
+    return bridgeOptions?.withShortTx ? bridgeOptions.withShortTx(lookup) : lookup(txDb)
   }
 
   const inheritedActor: ActorContext =

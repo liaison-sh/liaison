@@ -24,6 +24,7 @@ import {
   splitToolName,
 } from "~/modules/approvals/event-data"
 import { approvalPayloadHash } from "~/modules/approvals/payload-hash"
+import { maskApprovalPayload } from "~/modules/approvals/payload-mask"
 import { humanizeStepSummary } from "~/modules/approvals/ref-provenance"
 import {
   narrowPendingApprovalForTaint,
@@ -152,7 +153,10 @@ interface ApprovalEditRow {
   metadata: { taintAudienceMustHold?: unknown; taintDisclosedToReaders?: unknown } | null
 }
 
-export async function updatePayload(args: UpdatePayloadArgs): Promise<UpdatePayloadResult> {
+export async function updatePayload(input: UpdatePayloadArgs): Promise<UpdatePayloadResult> {
+  // An edit (the agent's, a person's or an app's restage) is masked like a new
+  // request: no card number or payment key reaches the row (payload-mask.ts).
+  const args: UpdatePayloadArgs = { ...input, fields: maskApprovalPayload(input.fields) }
   const restage = args.appRestage ?? null
   // 1. RLS read (404 if not visible). An app's restage reads its own row in its org: the app is
   //    not a person, and the prefix check below is its authority.

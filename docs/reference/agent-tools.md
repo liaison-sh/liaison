@@ -794,6 +794,16 @@ Watch Facebook, Instagram and YouTube activity and answer with approved replies.
 | `watched_list` | List the posts/videos/threads ALREADY being watched (read-only). |  | `social:watched:read` |
 | `webhooks_setup` | Point Meta's Facebook Page webhooks at this instance, so new comments and Messenger DMs arrive in real time instead of on the next poll. | yes | `social:admin:connection`, `social:findings:read` |
 
+## stripe
+
+Stripe: customers, subscriptions, invoices and payments from your Stripe account, read through a restricted key.
+
+| Tool | Description | Approval-gated | Required scopes |
+| --- | --- | --- | --- |
+| `connection_check` | Check the saved Stripe key: one read per permission Liaison uses and a refund probe that creates nothing. |  | `stripe:admin:connection` |
+| `connection_precheck` | The key check run on a key before it is stored: a key Stripe refuses, of another account or of the other mode is not kept. |  | `stripe:admin:connection` |
+| `settings_load` | The Stripe settings page's load: the connection state and the key's permissions from the last check. |  | `stripe:admin:connection` |
+
 ## tickets
 
 Track customer requests, returns and warranty cases to resolution.

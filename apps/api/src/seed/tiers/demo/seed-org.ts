@@ -937,7 +937,10 @@ async function seedDemoOrgPeople(input: {
   // without it the customer card and the connector tools have nothing to show.
   // The adapter and the sentinel key are fixed constants, and the fixture
   // origin is answered in-process for demo orgs only (never put on the wire).
-  if (apps.some((a) => a.name === "api-connector" && a.enabled)) {
+  // Only the demo instance answers that origin: anywhere else the connection
+  // would point at a host that does not resolve, and every read would fail, so
+  // none is seeded there.
+  if (isDemoModeEnabled() && apps.some((a) => a.name === "api-connector" && a.enabled)) {
     const { installDemoApiConnectorConnection } = await import("~/modules/demo/api-connector")
     const conn = await installDemoApiConnectorConnection({ orgId, createdByUserId: admin.userId })
     log(`app 'api-connector': demo fixture connection '${conn.identifier}' installed`)

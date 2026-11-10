@@ -17,15 +17,9 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { sql } from "drizzle-orm"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
-import { CryptoContext, decryptSecret } from "~/lib/crypto"
 import { env } from "~/lib/env"
 import { login } from "~/modules/auth/auth"
 import { verifyAccessToken } from "~/modules/auth/jwt"
-import {
-  DEMO_API_CONNECTOR_BASE_URL,
-  DEMO_API_CONNECTOR_IDENTIFIER,
-  DEMO_API_CONNECTOR_SENTINEL_KEY,
-} from "~/modules/demo/api-connector"
 import { invalidateDemoMarker, isDemoOrgId, loadDemoMarker } from "~/modules/demo/demo-org"
 import { DEMO_SHOP_DOMAIN } from "~/modules/demo/shopify"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
@@ -564,11 +558,11 @@ describe("seedDemoOrg against a real database", () => {
     expect((rows[0]?.metadata as { demo?: boolean } | null)?.demo).toBe(true)
   })
 
-  it("installs the API connector's demo connection with the sentinel key and the fixture adapter", async () => {
-    // Demo mode refuses adapter uploads and credentials, so the customer card
-    // and the connector tools only have something to show because the seeder
-    // wrote this connection. Its adapter points at the fixed demo fixture
-    // origin and its key is the sentinel, never anything a caller supplied.
+  it("seeds no API connection off the demo instance, where nothing answers the fixture origin", async () => {
+    // Only the demo instance answers the fixture CRM's origin in-process
+    // (modules/demo/api-connector/responder.ts); this box is not one, so a
+    // seeded connection would point at a host that does not resolve. The
+    // demo-instance install itself: modules/demo/api-connector tests.
     const { adapters, accounts } = await withSystemDb(
       "demo-seed-test-api-connector",
       async (tx) => {
@@ -577,44 +571,20 @@ describe("seedDemoOrg against a real database", () => {
         return {
           adapters: listOf(
             await tx.execute(
-              sql`select identifier, adapter ->> 'id' as adapter_id, adapter ->> 'baseUrl' as base_url
-                  from app_api_connector.adapters where org_id = ${first.orgId}`,
+              sql`select identifier from app_api_connector.adapters where org_id = ${first.orgId}`,
             ),
-          ) as { identifier: string; adapter_id: string; base_url: string }[],
+          ),
           accounts: listOf(
             await tx.execute(
-              sql`select identifier, status, owner_type, credentials_encrypted
-                  from kernel.connected_accounts
+              sql`select identifier from kernel.connected_accounts
                   where org_id = ${first.orgId} and app_name = 'api-connector'`,
             ),
-          ) as {
-            identifier: string
-            status: string
-            owner_type: string
-            credentials_encrypted: string
-          }[],
+          ),
         }
       },
     )
-    expect(adapters).toEqual([
-      {
-        identifier: DEMO_API_CONNECTOR_IDENTIFIER,
-        adapter_id: "fixture-crm",
-        base_url: DEMO_API_CONNECTOR_BASE_URL,
-      },
-    ])
-    expect(accounts).toHaveLength(1)
-    expect(accounts[0]?.identifier).toBe(DEMO_API_CONNECTOR_IDENTIFIER)
-    expect(accounts[0]?.status).toBe("active")
-    expect(accounts[0]?.owner_type).toBe("org")
-    const stored = JSON.parse(
-      decryptSecret(
-        accounts[0]?.credentials_encrypted ?? "",
-        process.env.ENCRYPTION_KEY ?? "",
-        CryptoContext.connectedAccountCredentials,
-      ),
-    )
-    expect(stored).toEqual({ apiKey: DEMO_API_CONNECTOR_SENTINEL_KEY })
+    expect(adapters).toEqual([])
+    expect(accounts).toEqual([])
   })
 
   it("gives each seeded org its own copy of every address", async () => {

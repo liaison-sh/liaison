@@ -2856,5 +2856,236 @@
     "say": "that Stripe payment is for invoice 2026-0042, link them",
     "typed": ["link a Stripe payment to an invoice", "reconcile the payment with its invoice"],
     "any": ["invoicing__payment_link_to_invoice"]
+  },
+  {
+    "id": "C03",
+    "set": "seed",
+    "lang": "en",
+    "say": "Lumen cancelled",
+    "typed": ["cancel subscription", "subscription cancelled", "stripe subscription"],
+    "any": ["stripe__subscriptions_search", "stripe__subscription_cancel"],
+    "modelRun": true
+  },
+  {
+    "id": "C14",
+    "set": "seed",
+    "lang": "en",
+    "say": "refund Arlon on stripe",
+    "typed": ["refund", "stripe refund", "refund payment", "refund charge"],
+    "any": ["stripe__refunds_create"],
+    "modelRun": true
+  },
+  {
+    "id": "C18",
+    "set": "seed",
+    "lang": "en",
+    "say": "what's our MRR",
+    "typed": ["mrr", "monthly recurring revenue", "revenue"],
+    "any": ["stripe__mrr_query"],
+    "modelRun": true
+  },
+  {
+    "id": "C19",
+    "set": "seed",
+    "lang": "en",
+    "say": "send them the link to change their card",
+    "typed": ["update card", "card update link", "payment method link"],
+    "any": ["stripe__card_update_link"],
+    "modelRun": true
+  },
+  {
+    "id": "C37",
+    "set": "seed",
+    "lang": "en",
+    "say": "bill them 2000 every month",
+    "typed": [
+      "recurring invoice",
+      "facture récurrente",
+      "retainer",
+      "schedule invoice",
+      "monthly invoice"
+    ],
+    "any": ["invoicing__recurring_schedule_create"],
+    "modelRun": true
+  },
+  {
+    "id": "C38",
+    "set": "seed",
+    "lang": "en",
+    "say": "what's in this month's run",
+    "typed": ["recurring run", "month end", "run of invoices", "pending recurring"],
+    "any": ["invoicing__recurring_run_get", "invoicing__recurring_list"],
+    "modelRun": true
+  },
+  {
+    "id": "C58",
+    "set": "seed",
+    "lang": "en",
+    "say": "typo: subscripton of Lumen",
+    "typed": ["subscripton", "subscrition"],
+    "any": ["stripe__subscriptions_search"],
+    "modelRun": true
+  },
+  {
+    "id": "C64",
+    "set": "seed",
+    "lang": "en",
+    "say": "Lumen cancelled, take them out",
+    "typed": ["take out of this month's run", "remove from month end run", "end schedule"],
+    "any": ["invoicing__recurring_run_get", "invoicing__drafts_discard"],
+    "modelRun": true
+  },
+  {
+    "id": "C65",
+    "set": "seed",
+    "lang": "en",
+    "say": "Lumen cancelled, take them out",
+    "typed": ["end the monthly invoice", "stop recurring invoice", "pause schedule"],
+    "any": ["invoicing__recurring_schedule_pause", "invoicing__recurring_schedule_update"],
+    "modelRun": true
+  },
+  {
+    "id": "C66",
+    "set": "seed",
+    "lang": "en",
+    "say": "add 2 days at 650 for Sauvan",
+    "typed": ["add a line to the draft", "edit draft", "month end run add row"],
+    "any": ["invoicing__drafts_update"],
+    "modelRun": true
+  },
+  {
+    "id": "C67",
+    "set": "seed",
+    "lang": "en",
+    "say": "from now on 650 for Belcour",
+    "typed": ["change monthly amount", "update recurring price", "modifier abonnement"],
+    "any": ["invoicing__recurring_schedule_update"],
+    "modelRun": true
+  },
+  {
+    "id": "C68",
+    "set": "seed",
+    "lang": "en",
+    "say": "approve it",
+    "typed": ["approve month-end invoices", "month-end run", "approuver factures du mois"],
+    "any": ["invoicing__recurring_run_get", "invoicing__recurring_run_issue"],
+    "modelRun": true
+  },
+  {
+    "id": "Y13",
+    "set": "seed",
+    "lang": "en",
+    "say": "which Stripe customers are on a trial?",
+    "typed": ["Stripe customers on trial", "trial customers"],
+    "any": ["stripe__customers_search"],
+    "modelRun": true
+  },
+  {
+    "id": "Y14",
+    "set": "seed",
+    "lang": "fr",
+    "say": "montre-moi la fiche Stripe de Maison Arlon",
+    "typed": ["fiche client Stripe", "Stripe customer record"],
+    "any": ["stripe__customers_get"],
+    "modelRun": true
+  },
+  {
+    "id": "Y15",
+    "set": "seed",
+    "lang": "en",
+    "say": "this Stripe customer is Lumen Studio, link them",
+    "typed": ["link Stripe customer to company", "associate Stripe customer"],
+    "any": ["stripe__customer_link"],
+    "modelRun": true
+  },
+  {
+    "id": "Y16",
+    "set": "seed",
+    "lang": "en",
+    "say": "does Arlon have open Stripe invoices?",
+    "typed": ["open Stripe invoices", "unpaid Stripe invoices"],
+    "any": ["stripe__invoices_search"],
+    "modelRun": true
+  },
+  {
+    "id": "Y17",
+    "set": "seed",
+    "lang": "fr",
+    "say": "quels paiements par carte ont échoué cette semaine ?",
+    "typed": ["paiements échoués", "failed card payments"],
+    "any": ["stripe__payments_search"],
+    "modelRun": true
+  },
+  {
+    "id": "Y18",
+    "set": "seed",
+    "lang": "en",
+    "say": "are there any open chargebacks?",
+    "typed": ["open disputes", "chargebacks"],
+    "any": ["stripe__disputes_list"],
+    "modelRun": true
+  },
+  {
+    "id": "M09",
+    "set": "seed",
+    "lang": "en",
+    "say": "take back my approval of this month's invoices",
+    "typed": ["undo month-end approval", "reopen month-end run"],
+    "any": ["invoicing__recurring_run_unapprove"],
+    "modelRun": true
+  },
+  {
+    "id": "M10",
+    "set": "seed",
+    "lang": "fr",
+    "say": "quelles factures récurrentes avons-nous ce mois-ci ?",
+    "typed": ["factures récurrentes", "échéancier de facturation"],
+    "any": ["invoicing__recurring_list"],
+    "modelRun": true
+  },
+  {
+    "id": "WI6",
+    "set": "seed",
+    "lang": "fr",
+    "say": "qui émet les factures de ce vendeur, Stripe ou nous ?",
+    "typed": ["flux de facturation émetteur", "who issues the invoices"],
+    "any": ["invoicing__issuer_stream_get"],
+    "modelRun": true
+  },
+  {
+    "id": "WI7",
+    "set": "seed",
+    "lang": "en",
+    "say": "from now on we issue the invoices, not Stripe",
+    "typed": ["switch invoice stream to Liaison", "set issuer stream"],
+    "any": ["invoicing__issuer_stream_set"],
+    "modelRun": true
+  },
+  {
+    "id": "WI8",
+    "set": "seed",
+    "lang": "en",
+    "say": "I switched off Stripe's receipt emails",
+    "typed": ["confirm Stripe emails are off", "Stripe receipts disabled"],
+    "any": ["invoicing__issuer_emails_confirm"],
+    "modelRun": true
+  },
+  {
+    "id": "WI9",
+    "set": "seed",
+    "lang": "fr",
+    "say": "rapproche ce paiement avec la facture 2026-0042",
+    "typed": ["rapprocher paiement facture", "lettrer un paiement"],
+    "any": ["invoicing__payment_link_to_invoice"],
+    "modelRun": true
+  },
+  {
+    "id": "WI10",
+    "set": "seed",
+    "lang": "en",
+    "say": "make an invoice for this Stripe payment that has none",
+    "typed": ["invoice a Stripe payment", "create invoice from payment"],
+    "any": ["invoicing__invoice_from_stripe_payment"],
+    "modelRun": true
   }
 ]

@@ -640,7 +640,8 @@ describe("Boxtal app.manifest.json", () => {
     //   as the merchant's SKU with its product attributes; countries print as their English name.
     // 0.23.28: above the 0.23.23 main took meanwhile; no change of its own.
     // 0.24.3: 0.23.28 above merged with 0.24.2.
-    expect(m.version).toBe("0.24.3")
+    // 0.24.4: the order print record is a taint source (customer-entered names, addresses).
+    expect(m.version).toBe("0.24.4")
     expect(m.packageFormat).toBe(1)
   })
 

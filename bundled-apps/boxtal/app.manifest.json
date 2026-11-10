@@ -222,7 +222,7 @@
       }
     ]
   },
-  "version": "0.24.3",
+  "version": "0.24.4",
   "iconName": "box",
   "description": "Boxtal shipping integration: carrier quotes, tracking, shipments, customs documents",
   "listing": {
@@ -2644,6 +2644,7 @@
       "readOnly": true
     },
     "order_print_record_get": {
+      "taintSource": true,
       "description": "Read ONE order as its print record: the data the organisation's document templates fill for the order's paperwork (customs declarations, certifications), from the moment it enters To prepare. issued_on, invoice {number, date, date_text}, order {name, customer, company, email, phone, address, address_lines, po_number, incoterm}, shipment {has_label, carrier_name, tracking_number, tracking_label, reference, shipped_on}, destination {iso2, name}, currency, totals {value, value_text, units, articles}, lines [{description, sku, hts, origin, origin_name, quantity, unit_value, unit_value_text, value, value_text, currency, attributes}]. Before a label the shipment fields are null; after the buy they are the label's, and the tracking number appears once the carrier issues it. Goods lines only; a value the sources do not hold is null, never guessed. The order's papers are generated on their own by the document rules (record type boxtal:order): to print, use the document templates, not this tool.",
       "requiredScopes": [
         "boxtal:shipments:read"

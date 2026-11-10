@@ -87,7 +87,7 @@ export class StripeApi {
   objects = new Map<string, Obj>()
   events: Obj[] = []
   list(path: string, items: Obj[]) {
-    const withMode = items.map((o) => ({ livemode: false, ...o }))
+    const withMode: Obj[] = items.map((o) => ({ livemode: false, ...o }))
     this.lists.set(path, withMode)
     for (const o of withMode) this.objects.set(`${path}/${o.id}`, o)
   }

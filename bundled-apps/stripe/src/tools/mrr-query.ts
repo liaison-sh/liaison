@@ -90,13 +90,16 @@ export async function mrrQuery(params: Obj | undefined, ctx: MrrCtx) {
     (r) => (Date.parse(iso(r.at) ?? "") || 0) < monthStart.getTime(),
   )
 
+  type MoveKind = "new" | "upgrade" | "downgrade" | "cancelled"
+  const isMoveKind = (k: string): k is MoveKind =>
+    k === "new" || k === "upgrade" || k === "downgrade" || k === "cancelled"
   type Line = {
     currency: string
     mrrMinor: number
     pastDueMinor: number
     activeCount: number
     byPlan: Map<string, { mrrMinor: number; count: number }>
-    mv: Record<string, number>
+    mv: Record<MoveKind, number>
   }
   const lines = new Map<string, Line>()
   const line = (currency: string): Line => {
@@ -123,7 +126,7 @@ export async function mrrQuery(params: Obj | undefined, ctx: MrrCtx) {
   for (const ev of events.rows) {
     const l = line(String(ev.currency ?? "").toLowerCase())
     const kind = String(ev.kind)
-    if (kind in l.mv) l.mv[kind] = (l.mv[kind] ?? 0) + n(ev.delta_minor)
+    if (isMoveKind(kind)) l.mv[kind] += n(ev.delta_minor)
   }
 
   const shown = [...lines.values()]

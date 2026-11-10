@@ -50,7 +50,10 @@ import { claimDelivery, type LedgerDb, settleDelivery } from "./webhooks"
 
 type Obj = Record<string, unknown>
 
-export interface IngestDb extends MirrorDb, LedgerDb {}
+/** One store for the mirror and the delivery ledger: its reads take the mirror's wider options. */
+export interface IngestDb extends MirrorDb, LedgerDb {
+  findMany: MirrorDb["findMany"]
+}
 
 export interface IngestCtx extends StripeHttpCtx {
   db: IngestDb

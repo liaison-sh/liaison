@@ -65,7 +65,7 @@
       "schema": 61
     },
     "ads__dealer_profile_upsert": {
-      "desc": 258,
+      "desc": 401,
       "schema": 176
     },
     "ads__dealer_profiles_list": {

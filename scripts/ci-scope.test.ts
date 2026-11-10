@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { bundledApps, classify, docsRelevant, projects, testScope } from "./ci-scope"
+import { bundledApps, classify, docsRelevant, projects, testOutputs, testScope } from "./ci-scope"
 
 const m = (path: string) => ({ status: "M", path })
 
@@ -57,7 +57,22 @@ describe("ci-scope testScope", () => {
   const pr = (...paths: string[]) => testScope("pull_request", paths.map(m), "origin/main")
 
   it("runs every test job on a merge group: it is the full gate", () => {
-    expect(testScope("merge_group", [], undefined)).toMatchObject({ unit: true, web: true })
+    const t = testScope("merge_group", [], undefined)
+    expect(t).toMatchObject({ unit: true, web: true, gate: true })
+    expect(testOutputs(t)).toMatchObject({
+      unit: "true",
+      unit_of: "3",
+      unit_parts: "[1,2,3]",
+      web: "shards",
+      web_parts: "[1,2]",
+    })
+  })
+
+  it("runs a pull request's suites in as few jobs as possible", () => {
+    const t = pr("packages/shared/src/csv.ts")
+    expect(t.gate).toBe(false)
+    expect(testOutputs(t)).toMatchObject({ unit_of: "1", unit_parts: "[1]", web: "inline" })
+    expect(testOutputs(pr("docs/a.md"))).toMatchObject({ unit: "false", web: "none" })
   })
 
   it("runs no test job on a push to main: the merge group tested that tree", () => {

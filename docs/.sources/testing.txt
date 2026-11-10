@@ -27,6 +27,6 @@ seed-qa: admin through the server, standard tier, dev extras (pricing, credits, 
 seed outside the image: catalog default app-catalog/, apps default .liaison-apps/apps, missing catalog stops with exit 2 naming the variable -> apps/api/src/cli/seed/app-dirs.ts:32-72 ; apps/api/src/cli/seed/run.ts:65-71
 macOS memory gate: kernel pressure warn/critical holds a new job; swap counts only under it; 1024 MB free backstop -> scripts/lib/machine-slots.ts:190-212 ; scripts/lib/machine-slots.ts:346-364
 targeted --file runs keep the 2 GiB reserve; mem-guard on macOS counts low memory only under pressure -> scripts/test-run.ts:133-144 ; scripts/lib/mem-guard.ts:95-101
-ci workflow: pull_request, merge_group and push to main; static always, unit/web-unit per the test map, everything on a merge group, static only on a push -> .github/workflows/ci.yml:1-43 ; scripts/ci-scope.ts:131-171
-checks is the required job: fails when a job that had to run did not pass -> .github/workflows/ci.yml:316-352
+ci workflow: pull_request, merge_group and push to main; static always, unit/web-unit per the test map, everything on a merge group, static only on a push -> .github/workflows/ci.yml:1-45 ; scripts/ci-scope.ts:131-204
+checks is the required job: fails when a job that had to run did not pass -> .github/workflows/ci.yml:335-370
 pr:land checks the PR, then adds it to the merge queue pinned to the checked head; --wait follows it to merge or removal -> scripts/pr-land.ts:1-28 ; scripts/pr-land.ts:140-182

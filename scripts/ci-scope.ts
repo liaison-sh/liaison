@@ -10,14 +10,14 @@
 //
 //   scope      prints the scope; under Actions, writes `docs=true|false` to
 //              $GITHUB_OUTPUT so the docs step can be skipped.
-//   tests      which of the `ci` workflow's test jobs run, through the test map
-//              (.claude/test-map.ts): `unit` (the api unit suite) and `web`
-//              (web-unit). A pull request runs the ones its changed files map to;
-//              a path the map does not cover (and that is not plain docs) runs
-//              both. A merge group, or any run without a base, runs both: it is
-//              the full gate before main. A push to main runs neither, the merge
-//              group already tested that tree. Writes `unit=` and `web=` to
-//              $GITHUB_OUTPUT.
+//   tests      which of the `ci` workflow's test suites run, through the test map
+//              (.claude/test-map.ts): the api unit suite and web-unit. A pull
+//              request runs the ones its changed files map to, each in as few
+//              jobs as possible; a path the map does not cover (and that is not
+//              plain docs) runs both. A merge group, or any run without a base,
+//              runs both split over several runners: it is the full gate before
+//              main. A push to main runs neither, the merge group already tested
+//              that tree. Writes the outputs of `testOutputs` to $GITHUB_OUTPUT.
 //   biome      Biome on the changed files (all files on a full run).
 //   typecheck  every TypeScript project whose program contains a changed file.
 //              The program is the project's own file list (`tsgo --listFilesOnly`),
@@ -132,11 +132,35 @@ export function classify(changed: Change[], base?: string): Scope {
 export const TEST_FULL_RUN_GLOBS = [...FULL_RUN_GLOBS, ".claude/test-map.ts"]
 
 export type TestScope = {
-  /** The api unit suite (the `unit` jobs). */
+  /** The api unit suite (the `unit` job or jobs). */
   unit: boolean
-  /** The web unit suite (the `web-unit` jobs). */
+  /** The web unit suite. */
   web: boolean
+  /**
+   * The full gate (a merge group, or any run that is not a pull request): the
+   * suites split over several runners for wall clock. A pull request runs each
+   * suite in as few jobs as possible instead (runners are the scarce resource):
+   * the api unit suite in one job, the web unit suite inside the static job.
+   */
+  gate: boolean
   reason: string
+}
+
+/** Runners each suite is split over on the full gate (TEST_UNIT_PART, vitest --shard). */
+export const GATE_PARTS = { unit: 3, web: 2 }
+
+/** The `ci` workflow's view of a {@link TestScope}, written to $GITHUB_OUTPUT. */
+export function testOutputs(t: TestScope): Record<string, string> {
+  const parts = (n: number) => JSON.stringify(Array.from({ length: n }, (_, i) => i + 1))
+  return {
+    unit: String(t.unit),
+    unit_of: String(t.gate ? GATE_PARTS.unit : 1),
+    unit_parts: parts(t.gate ? GATE_PARTS.unit : 1),
+    // `shards`: the web-unit jobs; `inline`: a step of the static job.
+    web: t.web ? (t.gate ? "shards" : "inline") : "none",
+    web_of: String(GATE_PARTS.web),
+    web_parts: parts(GATE_PARTS.web),
+  }
 }
 
 /**
@@ -150,10 +174,18 @@ export function testScope(
   mapFor: (file: string) => string[] | null = suitesFor,
 ): TestScope {
   if (event === "push") {
-    return { unit: false, web: false, reason: "push: the merge queue tested this tree" }
+    return {
+      unit: false,
+      web: false,
+      gate: false,
+      reason: "push: the merge queue tested this tree",
+    }
   }
-  const all = (reason: string): TestScope => ({ unit: true, web: true, reason })
-  if (!base) return all(event === "merge_group" ? "merge group: full gate" : "not a pull request")
+  if (!base) {
+    const reason = event === "merge_group" ? "merge group: full gate" : "not a pull request"
+    return { unit: true, web: true, gate: true, reason }
+  }
+  const all = (reason: string): TestScope => ({ unit: true, web: true, gate: false, reason })
   const trigger = changed.find((c) => TEST_FULL_RUN_GLOBS.some((g) => match(g, c.path)))
   if (trigger) return all(`${trigger.path} changed`)
   const suites = new Set<string>()
@@ -166,6 +198,7 @@ export function testScope(
   return {
     unit: suites.has("unit"),
     web: suites.has("web-unit"),
+    gate: false,
     reason: `${changed.length} changed files mapped to ${[...suites].sort().join(", ") || "no suite"}`,
   }
 }
@@ -300,11 +333,13 @@ async function main(argv: string[]): Promise<number> {
   const scope = computeScope(argv)
   if (command === "tests") {
     const t = testScope(process.env.GITHUB_EVENT_NAME, scope.changed, scope.base)
+    const out = testOutputs(t)
     console.log(
-      `api unit: ${t.unit ? "runs" : "skipped"}; web unit: ${t.web ? "runs" : "skipped"} (${t.reason})`,
+      `api unit: ${t.unit ? `runs on ${out.unit_of} runner(s)` : "skipped"}; web unit: ${out.web} (${t.reason})`,
     )
     if (process.env.GITHUB_OUTPUT) {
-      appendFileSync(process.env.GITHUB_OUTPUT, `unit=${t.unit}\nweb=${t.web}\n`)
+      const lines = Object.entries(out).map(([k, v]) => `${k}=${v}\n`)
+      appendFileSync(process.env.GITHUB_OUTPUT, lines.join(""))
     }
     return 0
   }

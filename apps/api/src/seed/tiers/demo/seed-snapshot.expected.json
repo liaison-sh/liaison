@@ -225,7 +225,7 @@
   },
   "kernel.agents": {
     "rows": 12,
-    "digest": "c5e4789a90c10115"
+    "digest": "0ac5efdf60589b4d"
   },
   "kernel.app_seeded_assets": {
     "rows": 9,
@@ -277,7 +277,7 @@
   },
   "kernel.pending_events": {
     "rows": 330,
-    "digest": "5a6761127829b490"
+    "digest": "0e21765ed71cba0a"
   },
   "kernel.resource_grants": {
     "rows": 7,

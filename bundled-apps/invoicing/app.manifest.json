@@ -664,7 +664,8 @@
           "enum": [
             "approval",
             "direct_click",
-            "booking_policy"
+            "booking_policy",
+            "standing"
           ],
           "required": false
         },
@@ -684,6 +685,7 @@
         "next_attempt_at": "text?",
         "lease_until": "text?",
         "dispatch_grant": "text?",
+        "stream_ref": "text?",
         "attempt": {
           "type": "integer",
           "required": false
@@ -738,6 +740,30 @@
           "type": "integer",
           "required": false
         }
+      }
+    },
+    "einvoice_standing": {
+      "rlsScope": "documents",
+      "fields": {
+        "issuer_profile_id": "uuid",
+        "stream": {
+          "type": "string",
+          "enum": [
+            "card",
+            "transfer"
+          ]
+        },
+        "turned_on_by": { "type": "uuid", "userRef": true, "onErase": "anonymize", "required": false },
+        "turned_on_at": "timestamptz?",
+        "grant_ref": "text?",
+        "until": "date?",
+        "ended_at": "timestamptz?",
+        "ended_by": { "type": "uuid", "userRef": true, "onErase": "anonymize", "required": false },
+        "ended_reason": "text?",
+        "renewal_requested_at": "timestamptz?"
+      },
+      "constraints": {
+        "unique": [["issuer_profile_id", "stream"]]
       }
     },
     "einvoice_send_batches": {
@@ -2855,12 +2881,31 @@
         "properties": {
           "issuerProfileId": { "type": "string" },
           "stream": { "type": "string", "enum": ["card", "transfer", "one_off"] },
-          "issuer": { "type": "string", "enum": ["liaison", "stripe"] }
+          "issuer": { "type": "string", "enum": ["liaison", "stripe"] },
+          "einvoiceStanding": { "type": "boolean" }
         },
         "required": ["issuerProfileId"],
         "additionalProperties": false
       },
       "approvalCard": { "summary": "Who issues the invoices of card subscriptions" }
+    },
+    "einvoice_standing_off": {
+      "description": "Turn off a stream's standing e-invoice authorization (card or transfer). Runs at once: e-invoices issued with no person on that stream then wait for the daily send card.",
+      "requiredScopes": ["invoicing:settings:write"],
+      "handler": "einvoiceStandingOffHandler",
+      "trustBoundary": "user",
+      "agentVisible": false,
+      "timeoutMs": 15000,
+      "writesToTable": "app_invoicing.einvoice_standing",
+      "params": {
+        "type": "object",
+        "properties": {
+          "issuerProfileId": { "type": "string" },
+          "stream": { "type": "string", "enum": ["card", "transfer"] }
+        },
+        "required": ["issuerProfileId", "stream"],
+        "additionalProperties": false
+      }
     },
     "issuer_emails_confirm": {
       "summarizer": "summarizeIssuerEmailsConfirm",
@@ -6223,6 +6268,7 @@
       "einvoicing:routing_mismatch",
       "einvoicing:booking_failed",
       "einvoicing:send_waiting",
+      "einvoicing:standing_lapsed",
       "einvoicing:collection_manual",
       "einvoicing:booking_summary",
       "einvoicing:booking_invariant_breach",
@@ -6364,6 +6410,20 @@
         "recipients": {
           "kind": "scope_holders",
           "scope": "invoicing:documents:write"
+        },
+        "resolveWhen": {
+          "field": "resolved",
+          "equals": true
+        }
+      },
+      {
+        "event": "einvoicing:standing_lapsed",
+        "kind": "invoicing:einvoicing.standing_lapsed",
+        "urgency": 50,
+        "summary": "The standing e-invoice authorization of the {{data.stream}} stream ended on {{data.until}} without renewal. E-invoices issued with no person on it now wait for the daily send card.",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "invoicing:settings:write"
         },
         "resolveWhen": {
           "field": "resolved",
@@ -6629,6 +6689,13 @@
       "atomic": false,
       "runsFor": {"rows": {"entity": "einvoicing_settings", "where": {"provider_app": {"not": null}}}},
       "schedule": "20 5 * * *",
+      "timeoutMs": 120000
+    },
+    "einvoicing-standing-daily": {
+      "handler": "einvoicingStandingDailyJobHandler",
+      "atomic": false,
+      "runsFor": {"rows": {"entity": "einvoice_standing", "where": {"ended_at": null}}},
+      "schedule": "25 5 * * *",
       "timeoutMs": 120000
     },
     "einvoicing-received-catchup": {

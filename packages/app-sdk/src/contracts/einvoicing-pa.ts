@@ -55,7 +55,9 @@ export const einvoicingPaV1: ContractSpec = {
     /**
      * Deposit the legal original (Factur-X) with the PA without transmitting it yet. Upserts the
      * buyer, re-checks eligibility from the CII, pins the file to `legal_original_sha256`, adopts
-     * an existing deposit for the same invoice. `{provider_ref, state}`.
+     * an existing deposit for the same invoice. `{provider_ref, state}`. `stream_ref` (optional,
+     * `<issuer profile>:<stream>`) is set on a send under a stream's standing authorization so the
+     * dispatch grant can bind it; a provider declares it and ignores it.
      */
     submit_einvoice: {
       required: true,
@@ -70,6 +72,7 @@ export const einvoicingPaV1: ContractSpec = {
         "cii_xml",
         "buyer",
         "idempotency_key",
+        "stream_ref",
       ],
     },
     /**
@@ -85,6 +88,7 @@ export const einvoicingPaV1: ContractSpec = {
         "issue_date",
         "document_ref",
         "legal_original_sha256",
+        "stream_ref",
       ],
     },
     /** Re-read the provider's status: `{raw, mapped, code, provider_ts, reason_text}` */

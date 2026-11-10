@@ -14,6 +14,8 @@
 // Stripe's own emails to customers (finalized invoices, credit notes, receipts) cannot be read
 // through Stripe's API, so Liaison never says they are off: it asks, until a person states they
 // checked, and keeps who and when (`issuer_emails_confirm`).
+import { einvoiceStandingOff, standingOf, standingOn } from "./einvoicing/standing"
+import type { EinvCtx } from "./einvoicing/transmit"
 import type { ErrorEnvelope, MutationsCtx } from "./mutations/shared"
 
 type Row = Record<string, unknown>
@@ -243,7 +245,14 @@ async function cardStreamOf(ctx: StreamsCtx, issuerProfileId: string): Promise<{
 }
 
 /** Stage-time check of issuer_stream_set: a card stream exists to decide. The pick itself is the person's, on the card. */
-export async function issuerStreamSetPreflight(ctx: StreamsCtx, input: { issuerProfileId: string; stream?: string }) {
+export async function issuerStreamSetPreflight(ctx: StreamsCtx, input: { issuerProfileId: string; stream?: string; issuer?: string; einvoiceStanding?: boolean }) {
+  if (typeof input.einvoiceStanding === "boolean" && input.issuer === undefined) {
+    if (input.stream !== "card" && input.stream !== "transfer") {
+      return fail("stream_not_authorizable", "A standing e-invoice authorization is for the card or transfer stream; one-off invoices always have a person at issue. Nothing was staged.")
+    }
+    const profile = await ctx.db.findOne("issuer_profiles", input.issuerProfileId)
+    return profile ? { ok: true } : fail("issuer_not_found", `No issuer profile ${input.issuerProfileId}; nothing was staged.`)
+  }
   if (input.stream && input.stream !== "card") {
     return fail("stream_not_choosable", "Only card subscriptions on Stripe have a choice of issuer; transfer and one-off invoices are always Liaison's. Nothing was staged.")
   }
@@ -259,8 +268,9 @@ export async function issuerEmailsConfirmPreflight(ctx: StreamsCtx, input: { iss
 
 export async function issuerStreamSet(
   ctx: StreamsCtx,
-  input: { issuerProfileId: string; stream?: string; issuer?: string },
+  input: { issuerProfileId: string; stream?: string; issuer?: string; einvoiceStanding?: boolean },
 ) {
+  if (typeof input.einvoiceStanding === "boolean" && input.issuer === undefined) return standingSet(ctx, input)
   if (input.stream && input.stream !== "card") {
     return fail(
       "stream_not_choosable",
@@ -284,8 +294,7 @@ export async function issuerStreamSet(
       status: "completed" as const,
       issuer: before,
       effectiveAt: isoOf(row.decided_at),
-      einvoiceStanding: false,
-      standingUntil: null,
+      ...(await cardStanding(ctx, input.issuerProfileId)),
       summary: `${String(profile.legal_name)}'s card subscriptions were already issued by ${before === "liaison" ? "Liaison" : "Stripe"}; nothing changed.`,
     }
   }
@@ -310,11 +319,46 @@ export async function issuerStreamSet(
     status: "completed" as const,
     issuer: input.issuer,
     effectiveAt: now,
-    einvoiceStanding: false,
-    standingUntil: null,
+    ...(await cardStanding(ctx, input.issuerProfileId)),
     summary: switching
       ? `${who} now issues the invoices of ${String(profile.legal_name)}'s card subscriptions finalized from ${now}. Invoices issued before keep their issuer and numbers${unpaid > 0 ? `; ${unpaid} of them are unpaid and an alert names them` : ""}. Check the change with your accountant.`
       : `${who} issues the invoices of ${String(profile.legal_name)}'s card subscriptions from ${now}.`,
+  }
+}
+
+/** The card stream's standing e-invoice authorization, as issuer_stream_set reports it. */
+async function cardStanding(ctx: StreamsCtx, issuerProfileId: string): Promise<{ einvoiceStanding: boolean; standingUntil: string | null }> {
+  const live = await standingOf(ctx as unknown as EinvCtx, issuerProfileId, "card")
+  return { einvoiceStanding: live !== null, standingUntil: live ? String(live.until).slice(0, 10) : null }
+}
+
+/**
+ * The standing e-invoice authorization of the card or transfer stream (einvoicing/standing.ts).
+ * On: only inside a person's approval, which mints the stream's grant. Off: at once.
+ */
+async function standingSet(ctx: StreamsCtx, input: { issuerProfileId: string; stream?: string; einvoiceStanding?: boolean }) {
+  const stream = input.stream
+  if (stream !== "card" && stream !== "transfer") {
+    return fail(
+      "stream_not_authorizable",
+      "A standing e-invoice authorization is for the card or transfer stream; one-off invoices always have a person at issue. Nothing was changed.",
+    )
+  }
+  const profile = (await ctx.db.findOne("issuer_profiles", input.issuerProfileId)) as Row | null
+  if (!profile) return fail("issuer_not_found", `No issuer profile ${input.issuerProfileId}; nothing was changed.`)
+  const einv = ctx as unknown as EinvCtx
+  if (input.einvoiceStanding === false) return einvoiceStandingOff(einv, { issuerProfileId: input.issuerProfileId, stream })
+  const on = await standingOn(einv, input.issuerProfileId, stream)
+  if (!("ok" in on)) return on
+  const live = await standingOf(einv, input.issuerProfileId, stream)
+  const label = stream === "card" ? "card subscriptions" : "recurring by transfer"
+  return {
+    status: "completed" as const,
+    issuer: stream === "card" ? ((((await streamRows(ctx)).find((r) => r.issuer_profile_id === input.issuerProfileId)?.issuer as StreamIssuer | undefined) ?? "undecided")) : "liaison",
+    effectiveAt: isoOf(live?.turned_on_at),
+    einvoiceStanding: true,
+    standingUntil: on.until,
+    summary: `E-invoices of ${String(profile.legal_name)}'s ${label} issued with no person are now sent at issue, with no card, until ${on.until}. A renewal card comes a week before; turn it off at any time.`,
   }
 }
 

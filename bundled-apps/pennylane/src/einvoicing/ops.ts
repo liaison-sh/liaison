@@ -47,15 +47,22 @@ export const einvoicingSubmit = (
     cii_xml: string
     buyer: EinvoiceBuyer
     idempotency_key: string
+    stream_ref?: string
   },
   ctx: PennylaneToolCtx,
-) => withClient(ctx, "submit_einvoice", (c) => submitEinvoice(c, p))
+) => {
+  // `stream_ref` binds the dispatch grant of a standing authorization; Pennylane never sees it.
+  const { stream_ref: _stream, ...send } = p
+  return withClient(ctx, "submit_einvoice", (c) => submitEinvoice(c, send))
+}
 
 export const einvoicingAdvance = (
-  p: { provider_ref: string; invoice_number: string; issue_date: string; document_ref?: string; legal_original_sha256?: string },
+  p: { provider_ref: string; invoice_number: string; issue_date: string; document_ref?: string; legal_original_sha256?: string; stream_ref?: string },
   ctx: PennylaneToolCtx,
-) =>
-  withClient(ctx, "advance_einvoice", (c) => advanceEinvoice(c, p))
+) => {
+  const { stream_ref: _stream, ...step } = p
+  return withClient(ctx, "advance_einvoice", (c) => advanceEinvoice(c, step))
+}
 
 export const einvoicingStatus = (p: { provider_ref: string }, ctx: PennylaneToolCtx) =>
   withClient(ctx, "get_einvoice_status", (c) => getEinvoiceStatus(c, p))

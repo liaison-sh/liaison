@@ -21,6 +21,7 @@ import { type EffectsBridge, EffectOutcomeUnknown, appEffectOnce } from "@liaiso
 import { base64, utf8Bytes } from "../legal-originals/bytes"
 import { base64ToBytes, sha256OfBase64 } from "./backfill-sha256"
 import { isValidSiren } from "./identity"
+import { documentStreamRef, prepareStandingSend } from "./standing"
 import { buyerTerritory } from "./territory"
 
 export const CONTRACT = "einvoicing-pa@1"
@@ -424,6 +425,8 @@ export async function stageSendAfterIssue(ctx: EinvCtx, documentId: string, opts
   if (!doc || doc.regime !== "e_invoice" || !onOrAfterCutover(doc.issued_at, settings.cutover_date)) return null
   if (doc.einvoice_state === "awaiting_send_batch") return null
   if (opts.send === "batch") {
+    // A stream a person authorized to send on its own: prepared now, under that standing grant.
+    if (await prepareStandingSend(ctx, documentId)) return null
     await ctx.db.update("documents", documentId, { einvoice_state: "awaiting_send_batch", einvoice_send_requested_at: new Date().toISOString() })
     return null
   }
@@ -689,6 +692,13 @@ async function stepSend(ctx: EinvCtx, row: Row): Promise<StepOutcome> {
   if (snapshot.legal_original_sha256 && snapshot.legal_original_sha256 !== f.binding.legal_original_sha256) {
     return recordFailure(ctx, row, { code: "einvoice_approval_stale", message: "The legal original changed after the approval." }, f.doc)
   }
+  // A send under a stream's standing grant goes only for a document of that very stream, read
+  // from the document now, never from what was stored with the send.
+  const rowStream = str(row.stream_ref)
+  if (rowStream && documentStreamRef(f.doc) !== rowStream) {
+    return recordFailure(ctx, row, { code: "stream_mismatch", message: `Document ${String(f.doc.number)} is not in the stream whose standing authorization prepared this send; nothing was sent. Ask for its send on the daily card.` }, f.doc)
+  }
+  const streamParam = rowStream ? { stream_ref: rowStream } : {}
   // The switches, right before any provider call: sending switched off since the approval holds
   // the row (it resumes when switched back on); a document before the cut-over never goes.
   const switched = sendSwitchProblem(await readEinvoicingSettings(ctx.db), f.doc)
@@ -742,6 +752,7 @@ async function stepSend(ctx: EinvCtx, row: Row): Promise<StepOutcome> {
         },
       },
       idempotency_key: String(row.idempotency_key),
+      ...streamParam,
     }
     const submitted = await submitOnce(ctx, row, submitParams, number, issueDate)
     if (submitted === "in_flight") {
@@ -779,6 +790,7 @@ async function stepSend(ctx: EinvCtx, row: Row): Promise<StepOutcome> {
       issue_date: issueDate,
       document_ref: String(row.document_id),
       legal_original_sha256: f.binding.legal_original_sha256,
+      ...streamParam,
     },
     rowOpts(row, true),
   )

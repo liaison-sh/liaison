@@ -209,7 +209,7 @@ describe("workflow hardening", () => {
 
   it("the compose pin both publishing workflows rewrite is in the compose file", () => {
     const compose = readFileSync(join(ROOT, "deploy/docker-compose.yml"), "utf8")
-    expect(compose).toContain(`\${LIAISON_IMAGE:-ghcr.io/mathieufro/liaison:v0.1.0}`)
+    expect(compose).toContain(`\${LIAISON_IMAGE:-ghcr.io/liaison-sh/liaison:v0.1.0}`)
     expect(compose).toContain(`\${LIAISON_RELEASE_CHANNEL:-release}`)
     for (const f of PUBLISHING) {
       expect(readFileSync(join(WORKFLOW_DIR, f), "utf8")).toContain("s#liaison:v0.1.0}#liaison:")
@@ -217,6 +217,18 @@ describe("workflow hardening", () => {
     expect(readFileSync(join(WORKFLOW_DIR, "nightly.yml"), "utf8")).toContain(
       "s#LIAISON_RELEASE_CHANNEL:-release}#LIAISON_RELEASE_CHANNEL:-nightly}#",
     )
+  })
+
+  it("the compose default image is the registry path both publishing workflows push to", () => {
+    // The publishing workflows rewrite only the tag of this default, so its registry path must be
+    // the one they push to, or a published compose points at an image that does not exist.
+    const compose = readFileSync(join(ROOT, "deploy/docker-compose.yml"), "utf8")
+    const fallback = compose.match(/\$\{LIAISON_IMAGE:-([^:}]+):v0\.1\.0\}/)?.[1]
+    expect(fallback).toBeDefined()
+    for (const f of PUBLISHING) {
+      const image = readFileSync(join(WORKFLOW_DIR, f), "utf8").match(/^\s+IMAGE: (\S+)$/m)?.[1]
+      expect(image).toBe(fallback)
+    }
   })
 
   it("both publishing workflows ship .env.example, which upload-artifact would drop as hidden", () => {

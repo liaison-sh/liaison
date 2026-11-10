@@ -486,6 +486,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // the real chat seam, no module replaced.
             "src/tests/integration/scope-taint-audience-readers.test.ts",
             "src/tests/integration/contacts-write-taint.test.ts",
+            // A system guard's identity read of contacts leaves the turn untainted.
+            "src/tests/integration/contacts-identity-taint.integration.test.ts",
             "src/tests/integration/notify-user-self-reader-taint.test.ts",
             "src/tests/integration/contact-groups-agent-tools.test.ts",
             // Agent tools over documents, contact addresses and mail conversation

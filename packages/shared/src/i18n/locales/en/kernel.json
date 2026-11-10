@@ -1415,6 +1415,10 @@
       "one": "failed Stripe refund",
       "other": "failed Stripe refunds"
     },
+    "refund_waiting": {
+      "one": "Stripe refund waiting for its invoice",
+      "other": "Stripe refunds waiting for their invoice"
+    },
     "unmatched": {
       "one": "Stripe payment with no invoice",
       "other": "Stripe payments with no invoice"

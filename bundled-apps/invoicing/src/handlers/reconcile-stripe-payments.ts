@@ -10,12 +10,13 @@
 //   - a succeeded refund in mode A with no credit note, whose payment's invoice has a document:
 //     the refund handler (its unique key stops a second credit note).
 // It also lists, once, the Stripe invoices that waited while nobody had decided who issues, as
-// soon as a person picked Liaison: they issue only on a person's click.
+// soon as a person picked Liaison: they issue only on a person's click. A refund still waiting for
+// its invoice after a day raises one Home item.
 import { resolveOpenParks } from "../deferred"
 import { issuerAt, isoOf, streamRows } from "../streams"
 import { onStripeInvoicePaid } from "./stripe-invoice-paid"
 import { documentByRef, onStripeInvoiceFinalized, STRIPE_UNDECIDED_PARK, type StripeCtx, type StripeInvoicePayload, stripeRef } from "./stripe-invoice-finalized"
-import { onStripeRefundCreated, type StripeRefundPayload } from "./stripe-refund-created"
+import { flagLongRefundWaits, onStripeRefundCreated, type StripeRefundPayload } from "./stripe-refund-created"
 
 type Row = Record<string, unknown>
 
@@ -95,6 +96,7 @@ export async function reconcileStripePayments(ctx: StripeCtx): Promise<StripeRec
   let paid = 0
   let notes = 0
   const listed = await listUndecided(ctx)
+  await flagLongRefundWaits(ctx)
   const found = await candidates(ctx)
   for (const inv of found?.invoices ?? []) {
     const doc = await documentByRef(ctx, stripeRef(inv.stripe_invoice_id))
@@ -113,7 +115,12 @@ export async function reconcileStripePayments(ctx: StripeCtx): Promise<StripeRec
   }
   for (const ref of found?.refunds ?? []) {
     const r = await onStripeRefundCreated(
-      { charge_id: ref.charge_id, invoice_id: ref.invoice_id ?? null, refunds: [{ id: ref.refund_id, amount_minor: ref.amount_minor, status: ref.status }] },
+      {
+        charge_id: ref.charge_id,
+        invoice_id: ref.invoice_id ?? null,
+        charged_at: ref.charged_at ?? null,
+        refunds: [{ id: ref.refund_id, amount_minor: ref.amount_minor, status: ref.status }],
+      },
       ctx,
     )
     notes += r.refunds.filter((x) => x.outcome === "issued").length

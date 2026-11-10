@@ -6312,6 +6312,7 @@
       "stripe_invoice:voided",
       "stripe_invoice:uncollectible",
       "stripe_refund:failed",
+      "stripe_refund:waiting",
       "stripe_payment:unmatched",
       "deferred:stripe_tax_review"
     ]
@@ -6350,6 +6351,7 @@
       {"event": "stripe_invoice:voided", "kind": "invoicing:stripe_invoice.voided", "urgency": 40, "summary": "Stripe invoice {{data.number}} was voided in Stripe. No Liaison document changed.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "stripe_invoice:uncollectible", "kind": "invoicing:stripe_invoice.uncollectible", "urgency": 40, "summary": "Stripe invoice {{data.number}} was marked uncollectible in Stripe. No Liaison document changed.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "stripe_refund:failed", "kind": "invoicing:stripe_refund.refund_failed", "urgency": 60, "summary": "Stripe refund {{data.refund_id}} on {{data.charge_id}} failed. Credit note: {{data.credit_note}}.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
+      {"event": "stripe_refund:waiting", "kind": "invoicing:stripe_refund.refund_waiting", "urgency": 50, "summary": "Stripe refund {{data.refund_id}} on {{data.charge_id}} has waited a day for its invoice, so it has no credit note yet.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "stripe_payment:unmatched", "kind": "invoicing:stripe_payment.unmatched", "urgency": 60, "summary": "Stripe payment {{data.charge_id}} of {{data.amount}} from {{data.customer}} has no invoice. Create the invoice or link it to one.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "deferred:stripe_tax_review", "kind": "invoicing:stripe_invoice.tax_review", "urgency": 60, "summary": "Stripe invoice {{data.stripe_invoice_id}} is not invoiced: its tax needs a decision ({{data.reason}}).", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "stripe_stream:switched", "kind": "invoicing:stripe_stream.issuer_switched", "urgency": 60, "summary": "Card subscriptions are now invoiced by {{data.issuer}}. {{data.unpaid}} invoices issued before the change are unpaid: they keep their issuer and numbers. Check the change with your accountant.", "recipients": {"kind": "scope_holders", "scope": "invoicing:settings:write"}},

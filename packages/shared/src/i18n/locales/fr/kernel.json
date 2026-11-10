@@ -1412,6 +1412,10 @@
       "one": "remboursement Stripe échoué",
       "other": "remboursements Stripe échoués"
     },
+    "refund_waiting": {
+      "one": "remboursement Stripe en attente de sa facture",
+      "other": "remboursements Stripe en attente de leur facture"
+    },
     "unmatched": {
       "one": "paiement Stripe sans facture",
       "other": "paiements Stripe sans facture"

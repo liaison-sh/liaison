@@ -24,6 +24,7 @@ export function stripeDb(issuer: "liaison" | "stripe" | "undecided" = "liaison",
 export interface Emitted {
   entity: string
   action: string
+  entityId?: string
   data?: unknown
 }
 

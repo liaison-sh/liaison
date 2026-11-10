@@ -21,7 +21,7 @@
 // expiry only.
 import { refuseTool, type ToolRefusal } from "@liaison/app-sdk"
 import { type StripeHttpCtx, StripeApiError, stripeFetch } from "../http"
-import { invoiceOfCharge, listRefunds, refundItem, stripeDocumentRef } from "../money-events"
+import { chargedAt, invoiceOfCharge, listRefunds, refundItem, stripeDocumentRef } from "../money-events"
 import { maskCardNumbers } from "../pan-scan"
 import { moneyActionHold, type StateDb } from "../states"
 import type { ReadCtx } from "./read-common"
@@ -267,7 +267,12 @@ async function announceRefund(ctx: MoneyCtx, chargeId: string, refund: Refund): 
   try {
     const [row] = (await ctx.db.findMany("stripe_payments", { where: { stripe_id: chargeId }, limit: 1 })) as Obj[]
     let invoice = typeof row?.invoice_id === "string" && row.invoice_id ? row.invoice_id : null
-    if (!invoice) invoice = await invoiceOfCharge(ctx, await stripeFetch<Obj>(ctx, `/v1/charges/${encodeURIComponent(chargeId)}`, {}, { maxRetries: 1 }))
+    let charged = chargedAt(row)
+    if (!invoice || !charged) {
+      const charge = await stripeFetch<Obj>(ctx, `/v1/charges/${encodeURIComponent(chargeId)}`, {}, { maxRetries: 1 })
+      invoice ??= await invoiceOfCharge(ctx, charge)
+      charged ??= chargedAt(null, charge)
+    }
     let refunds: Obj[] = []
     try {
       refunds = await listRefunds(ctx, chargeId)
@@ -290,6 +295,7 @@ async function announceRefund(ctx: MoneyCtx, chargeId: string, refund: Refund): 
         currency: main.currency,
         status: main.status,
         refunds: items,
+        charged_at: charged,
       },
     })
   } catch (err) {

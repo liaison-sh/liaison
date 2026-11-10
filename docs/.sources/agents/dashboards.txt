@@ -16,7 +16,7 @@ Scopes write, share, admin and who may edit -> apps/api/src/modules/dashboards/s
 Owning an org dashboard needs share or admin -> apps/api/src/modules/dashboards/service.ts:101
 write and share in the kernel member tier (member role) -> apps/api/src/modules/permissions/default-roles.ts:57 ; apps/api/src/modules/permissions/default-roles.ts:81
 Full Member carries the kernel member tier -> apps/api/src/modules/apps/runtime.ts:1166
-Existing orgs' member and Full Member roles get write and share -> apps/api/src/db/migrations/0284_kernel_member_tier_dashboards.sql:28
+Existing orgs' member and Full Member roles get write and share -> apps/api/src/db/migrations/0284_kernel_member_tier_dashboards.sql:34
 admin held by administrators (*) by default -> apps/api/src/modules/permissions/default-roles.ts:77
 Personal agent ceiling is its owner's scopes -> apps/api/src/modules/agent/directory/personal-agent.ts:34
 Named agent ceiling: common base plus declared scopes -> apps/api/src/cli/provisioners/agents.ts:67

@@ -1,7 +1,7 @@
 ---
 name: build-dashboard
 type: skill
-description: Show, open or build a dashboard, chart, KPI or report from the org's data (sales by day, orders, top products). Dashboards are built into Liaison; read this before saying there is none.
+description: Show, open or build a dashboard, chart or KPI (sales, orders). Built in, never say none exists.
 ---
 
 ### When someone asks to see a dashboard

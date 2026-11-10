@@ -18,6 +18,12 @@
 -- `ceiling_restriction` does not cover it: `personalCeiling`, personal-agent.ts), and
 -- permission_version moves so live sessions pick the grants up.
 -- Re-runnable: a second run finds every scope granted and changes nothing.
+--
+-- Runs as liaison_admin (BYPASSRLS), which every migration login is a member of: these tables
+-- force row-level security, and a login that is neither superuser nor BYPASSRLS would read no
+-- row and grant nothing while the migration still succeeded (0283).
+SET LOCAL ROLE liaison_admin;
+--> statement-breakpoint
 WITH tier(scope) AS (
   VALUES
     ('kernel:data:read'),
@@ -83,3 +89,5 @@ ceilings AS (
 UPDATE kernel.users u
    SET permission_version = u.permission_version + 1
  WHERE u.id IN (SELECT h.user_id FROM holders h);
+--> statement-breakpoint
+RESET ROLE;

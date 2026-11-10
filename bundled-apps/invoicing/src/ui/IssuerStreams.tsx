@@ -9,8 +9,8 @@
 // A person's own change runs at once, so it asks a confirm whose text is the panel's warning.
 // Stripe's own emails to customers cannot be read, so the block asks the person to check them
 // until a person says they did; the word Checked appears only after that click.
-import { app } from "@liaison/host"
-import { createSignal, For, Show, type Component } from "solid-js"
+import { app, fetch as hostFetch } from "@liaison/host"
+import { createResource, createSignal, For, onCleanup, Show, type Component } from "solid-js"
 import { tr } from "./i18n"
 import { Badge, Button } from "./kit"
 
@@ -20,6 +20,74 @@ export interface StreamView {
   notBilledFromStripe?: boolean
   decidedAt?: string | null
   suggested?: { issuer: "liaison"; why: string } | null
+  /** The stream's standing e-invoice authorization (card and transfer only). */
+  standing?: StandingView
+}
+
+export interface StandingView {
+  on: boolean
+  turnedOnBy: string | null
+  turnedOnAt: string | null
+  until: string | null
+}
+
+export type StandingStream = "card" | "transfer"
+
+/** How long a person has to take back turning a standing authorization off. */
+export const STANDING_UNDO_MS = 8000
+
+/** Turning it on is a person's approval: the gated stream setting, never auto-approved. */
+export function standingOnCall(issuerProfileId: string, stream: StandingStream) {
+  return { tool: "issuer_stream_set", params: { issuerProfileId, stream, einvoiceStanding: true } }
+}
+
+/**
+ * Turning it off runs only after STANDING_UNDO_MS; Undo inside that time calls nothing. One
+ * pending "off" at a time: a second request replaces the first.
+ */
+export function createStandingOff(deps: {
+  run: (tool: string, params: Record<string, unknown>) => void
+  setTimer?: (fn: () => void, ms: number) => unknown
+  clearTimer?: (id: unknown) => void
+}) {
+  const setTimer = deps.setTimer ?? ((fn: () => void, ms: number) => setTimeout(fn, ms))
+  const clearTimer = deps.clearTimer ?? ((id: unknown) => clearTimeout(id as ReturnType<typeof setTimeout>))
+  let pending: { issuerProfileId: string; stream: StandingStream } | null = null
+  let timer: unknown = null
+  const cancel = () => {
+    if (timer !== null) clearTimer(timer)
+    timer = null
+    pending = null
+  }
+  return {
+    request(issuerProfileId: string, stream: StandingStream) {
+      cancel()
+      const target = { issuerProfileId, stream }
+      pending = target
+      timer = setTimer(() => {
+        timer = null
+        pending = null
+        deps.run("einvoice_standing_off", { ...target })
+      }, STANDING_UNDO_MS)
+    },
+    undo: cancel,
+    pending: () => (pending ? { ...pending } : null),
+  }
+}
+
+function dayOf(iso: string, locale?: string): string {
+  const t = iso.length === 10 ? `${iso}T12:00:00Z` : iso
+  return new Date(t).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })
+}
+
+/** Off, or who turned it on, when, and until when. */
+export function standingLine(v: StandingView, byName: string | null, locale?: string): string {
+  if (!v.on) return tr("Off: e-invoices issued with no person wait for the daily send card.")
+  return tr("On: turned on by {{who}} on {{on}}, until {{until}}.", {
+    who: byName ?? tr("a person"),
+    on: v.turnedOnAt ? dayOf(v.turnedOnAt, locale) : "-",
+    until: v.until ? dayOf(v.until, locale) : "-",
+  })
 }
 
 export interface IssuerStreamsView {
@@ -62,6 +130,94 @@ async function loadStreams(): Promise<IssuerStreamsView[]> {
   }
 }
 
+async function personName(id: string | null): Promise<string | null> {
+  if (!id) return null
+  try {
+    const p = await hostFetch<{ name?: string | null }>(`/api/users/${encodeURIComponent(id)}/preview`)
+    return p?.name ?? null
+  } catch {
+    return null
+  }
+}
+
+const STANDING_LABEL: Record<StandingStream, string> = {
+  card: "Send e-invoices of card subscriptions without a daily card",
+  transfer: "Send e-invoices of recurring transfers without a daily card",
+}
+
+/** One stream's standing e-invoice authorization: its line, and Turn on, or Turn off with Undo. */
+const StandingControl: Component<{
+  issuerProfileId: string
+  stream: StandingStream
+  view: StandingView
+  run: (tool: string, params: Record<string, unknown>) => Promise<void>
+}> = (p) => {
+  const [by] = createResource(() => p.view.turnedOnBy, personName)
+  const [waiting, setWaiting] = createSignal(false)
+  const off = createStandingOff({
+    run: (tool, params) => {
+      setWaiting(false)
+      void p.run(tool, params)
+    },
+  })
+  onCleanup(() => off.undo())
+  return (
+    <div data-testid={`standing-${p.stream}`} class="flex flex-col gap-2 rounded-lg border border-[var(--color-border)] p-3">
+      <span class="text-sm font-medium">{tr(STANDING_LABEL[p.stream])}</span>
+      <p class="text-xs text-[var(--color-text-secondary)]" data-testid={`standing-line-${p.stream}`}>
+        {standingLine(p.view, by() ?? null)}
+      </p>
+      <Show
+        when={waiting()}
+        fallback={
+          <Show
+            when={p.view.on}
+            fallback={
+              <Button
+                class="min-h-11 md:min-h-8"
+                testid={`standing-on-${p.stream}`}
+                onClick={() => {
+                  const c = standingOnCall(p.issuerProfileId, p.stream)
+                  void p.run(c.tool, c.params)
+                }}
+              >
+                {tr("Turn on, after a person approves")}
+              </Button>
+            }
+          >
+            <Button
+              class="min-h-11 md:min-h-8"
+              testid={`standing-off-${p.stream}`}
+              onClick={() => {
+                off.request(p.issuerProfileId, p.stream)
+                setWaiting(true)
+              }}
+            >
+              {tr("Turn off")}
+            </Button>
+          </Show>
+        }
+      >
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-xs text-[var(--color-text-secondary)]" data-testid={`standing-pending-${p.stream}`}>
+            {tr("Turning off in 8 seconds.")}
+          </span>
+          <Button
+            class="min-h-11 md:min-h-8"
+            testid={`standing-undo-${p.stream}`}
+            onClick={() => {
+              off.undo()
+              setWaiting(false)
+            }}
+          >
+            {tr("Undo")}
+          </Button>
+        </div>
+      </Show>
+    </div>
+  )
+}
+
 export const InvoicingIssuerStreams: Component = () => {
   const [data, { refetch }] = app.createResource(loadStreams)
   const [error, setError] = createSignal<string | null>(null)
@@ -71,6 +227,7 @@ export const InvoicingIssuerStreams: Component = () => {
     try {
       const r = await app.invokeTool<{ status?: string; error?: { message?: string } }>(tool, params)
       if (r?.status === "error") setError(r.error?.message ?? tr("Nothing was changed."))
+      else if (r && ("blocked" in r || r.status === "pending_approval")) setError(tr("Sent for approval."))
       refetch()
     } catch (e) {
       setError(e instanceof Error ? e.message : tr("Nothing was changed."))
@@ -120,6 +277,16 @@ export const InvoicingIssuerStreams: Component = () => {
                   </For>
                 </tbody>
               </table>
+              <For each={issuer.streams.filter((s) => (s.stream === "card" || s.stream === "transfer") && s.standing)}>
+                {(s) => (
+                  <StandingControl
+                    issuerProfileId={issuer.issuerProfileId}
+                    stream={s.stream as StandingStream}
+                    view={s.standing as StandingView}
+                    run={run}
+                  />
+                )}
+              </For>
               <Show when={card()}>
                 {(c) => (
                   <div class="space-y-2 rounded-lg border border-[var(--color-border)] p-3" data-testid="card-stream-panel">

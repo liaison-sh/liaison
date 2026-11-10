@@ -151,7 +151,27 @@ export function stripeEmailsOf(row: Row | null): StripeEmails {
 }
 
 /** One issuer profile's streams, as `issuer_stream_get` returns them and the settings section shows. */
-export function streamsOf(profile: Row, card: Row | null) {
+/** A stream's standing e-invoice authorization as the settings section shows it: who, when, until. */
+export interface StandingView {
+  on: boolean
+  turnedOnBy: string | null
+  turnedOnAt: string | null
+  until: string | null
+}
+
+const STANDING_OFF: StandingView = { on: false, turnedOnBy: null, turnedOnAt: null, until: null }
+
+function standingView(row: Row | null): StandingView {
+  if (!row) return STANDING_OFF
+  return {
+    on: true,
+    turnedOnBy: typeof row.turned_on_by === "string" ? row.turned_on_by : null,
+    turnedOnAt: isoOf(row.turned_on_at),
+    until: untilDay(row) || null,
+  }
+}
+
+export function streamsOf(profile: Row, card: Row | null, standing: { card?: Row | null; transfer?: Row | null } = {}) {
   const cardStream =
     card && card.stripe_connected === true
       ? [
@@ -163,6 +183,7 @@ export function streamsOf(profile: Row, card: Row | null) {
             previousIssuer: typeof card.previous_issuer === "string" ? card.previous_issuer : null,
             switchedAt: isoOf(card.switched_at),
             suggested: suggestedIssuer(profile),
+            standing: standingView(standing.card ?? null),
           },
         ]
       : []
@@ -172,7 +193,7 @@ export function streamsOf(profile: Row, card: Row | null) {
     country: typeof profile.country === "string" ? profile.country : null,
     streams: [
       ...cardStream,
-      { stream: "transfer" as const, issuer: "liaison" as const, notBilledFromStripe: true },
+      { stream: "transfer" as const, issuer: "liaison" as const, notBilledFromStripe: true, standing: standingView(standing.transfer ?? null) },
       { stream: "one_off" as const, issuer: "liaison" as const, notBilledFromStripe: true },
     ],
     stripe_emails: cardStream.length > 0 ? stripeEmailsOf(card) : null,
@@ -187,7 +208,15 @@ export async function issuerStreamGet(ctx: StreamsCtx, input: { issuerProfileId?
     return fail("issuer_not_found", `No issuer profile ${input.issuerProfileId}. List them with settings_issuer_profile_list.`)
   }
   const rows = await streamRows(ctx)
-  const out = profiles.map((p) => streamsOf(p, rows.find((r) => r.issuer_profile_id === p.id) ?? null))
+  const einv = ctx as unknown as EinvCtx
+  const out = await Promise.all(
+    profiles.map(async (p) =>
+      streamsOf(p, rows.find((r) => r.issuer_profile_id === p.id) ?? null, {
+        card: await standingOf(einv, String(p.id), "card"),
+        transfer: await standingOf(einv, String(p.id), "transfer"),
+      }),
+    ),
+  )
   const connected = out.some((o) => o.streams.some((s) => s.stream === "card"))
   return {
     status: "completed" as const,

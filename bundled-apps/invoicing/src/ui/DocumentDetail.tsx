@@ -54,6 +54,7 @@ import {
 } from "./kit"
 import { RegimeLine } from "./einvoicing/RegimeLine"
 import { TransmissionPanel } from "./einvoicing/TransmissionPanel"
+import { type EinvoiceFacts, einvoiceStatusWord } from "./RecurringStates"
 import { rememberDocumentLabel } from "./tab-labels"
 import { formatMoneyMinor } from "../money"
 
@@ -529,6 +530,61 @@ export function shopifyOrderUrl(refs: Record<string, unknown> | undefined): stri
 // once the customer had paid. Credit notes are never payable, so they never
 // render this badge (mirrors the header's mark-paid gate).
 // ─────────────────────────────────────────────────────────────────────────
+/** What the header chips read: who issued an invoice and who took its payment. */
+export interface MoneyChipFacts {
+  status: string
+  type: string
+  stream: "card" | "transfer" | null
+  payment_status: string | null
+}
+
+/**
+ * "Issued by Liaison" on an issued invoice from a Stripe payment or a recurring schedule, and
+ * "Collected by Stripe" once a card payment through Stripe is in. Nothing on drafts or other types.
+ */
+export function moneyChips(f: MoneyChipFacts): string[] {
+  if (f.type !== "invoice" || f.status === "draft" || !f.stream) return []
+  const chips = ["Issued by Liaison"]
+  if (f.stream === "card" && f.payment_status === "paid") chips.push("Collected by Stripe")
+  return chips
+}
+
+/** The header's quiet chips and the e-invoice status word, from the transmission read. */
+function MoneyChips(p: { documentId: string; status: string; type: string }): JSX.Element {
+  const [facts] = createResource(
+    () => (p.type === "invoice" && p.status !== "draft" ? p.documentId : null),
+    async (id) => {
+      try {
+        return await app.invokeTool<EinvoiceFacts & { status?: string; stream?: "card" | "transfer" | null }>("einvoice_transmission_get", { document_id: id })
+      } catch {
+        return null
+      }
+    },
+  )
+  return (
+    <Show when={facts()}>
+      {(f) => (
+        <>
+          <For each={moneyChips({ status: p.status, type: p.type, stream: f().stream ?? null, payment_status: f().payment_status ?? null })}>
+            {(chip) => (
+              <Badge tone="neutral" testid={`document-detail-chip-${chip.toLowerCase().replace(/\s+/g, "-")}`}>
+                {tr(chip)}
+              </Badge>
+            )}
+          </For>
+          <Show when={einvoiceStatusWord(f())}>
+            {(word) => (
+              <Badge tone="neutral" testid="document-detail-einvoice-word">
+                {tr("E-invoice: {{word}}", { word: tr(word()) })}
+              </Badge>
+            )}
+          </Show>
+        </>
+      )}
+    </Show>
+  )
+}
+
 const PAYMENT_TONE: Record<string, BadgeTone> = {
   paid: "success",
   partial: "warning",
@@ -1084,6 +1140,7 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                     <Show when={doc().type !== "credit_note" && doc().payment_status}>
                       {(paymentStatus) => <PaymentBadge paymentStatus={paymentStatus()} />}
                     </Show>
+                    <MoneyChips documentId={doc().id} status={doc().status} type={doc().type} />
                   </div>
                   {/* Actions — spec §12. Pinned to the top of the panel: the chat dock
                       floats over the panel's bottom-right corner, so a bottom action row

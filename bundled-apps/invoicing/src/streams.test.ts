@@ -152,7 +152,13 @@ describe("who issues what", () => {
     expect(r.stripeConnected).toBe(false)
     for (const i of r.issuers) {
       expect(i.streams).toEqual([
-        { stream: "transfer", issuer: "liaison", notBilledFromStripe: true },
+        {
+          stream: "transfer",
+          issuer: "liaison",
+          notBilledFromStripe: true,
+          // The standing e-invoice authorization is off by default, said with no person or date.
+          standing: { on: false, turnedOnBy: null, turnedOnAt: null, until: null },
+        },
         { stream: "one_off", issuer: "liaison", notBilledFromStripe: true },
       ])
       expect(i.stripe_emails).toBeNull()

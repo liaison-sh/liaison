@@ -19,6 +19,7 @@ import { clearExportOnlyBundleCache } from "~/modules/apps/sandbox/bundle-shake"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import * as runAppModule from "~/modules/apps/sandbox/run-app"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..")
@@ -57,14 +58,29 @@ describe("read-only tools and export-only bundles", () => {
   beforeAll(async () => {
     await acquireTestLock()
     process.env.LIAISON_BUNDLED_APPS_FROM_SOURCE = "1"
-    await sql`INSERT INTO kernel.organizations (id, name, slug)
-      VALUES (${ORG}, 'Export bundles', ${`eb-${ORG.slice(0, 8)}`})`
-    await sql`INSERT INTO kernel.users (id, org_id, email, password_hash, name, status)
-      VALUES (${USER}, ${ORG}, ${`eb-${USER.slice(0, 8)}@example.test`}, 'h', 'Reader', 'active')`
-    for (const scope of SCOPES) {
-      await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
-        VALUES (${USER}, ${ORG}, ${scope})`
-    }
+    await sql.unsafe(
+      insertSql("kernel.organizations", {
+        id: ORG,
+        name: "Export bundles",
+        slug: `eb-${ORG.slice(0, 8)}`,
+      }),
+    )
+    await sql.unsafe(
+      insertSql("kernel.users", {
+        id: USER,
+        org_id: ORG,
+        email: `eb-${USER.slice(0, 8)}@example.test`,
+        password_hash: "h",
+        name: "Reader",
+        status: "active",
+      }),
+    )
+    await sql.unsafe(
+      insertSql(
+        "kernel.user_scope_grants",
+        SCOPES.map((scope) => ({ user_id: USER, org_id: ORG, scope })),
+      ),
+    )
     const manifest = JSON.parse(
       readFileSync(join(REPO_ROOT, "bundled-apps/invoicing/app.manifest.json"), "utf8"),
     ) as Record<string, unknown>

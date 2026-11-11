@@ -149,4 +149,37 @@ describe("demo:seed, the CLI", () => {
     expect(await reviewerPasswordIsPinned()).toBe(false)
     expect(await otherAdmins()).toBe(0)
   })
+
+  it("the reserved variant with a world flag exits 2", async () => {
+    const before = seen.length
+    for (const argv of [
+      ["--slug", ORG_SLUG, "--world", "saas"],
+      ["--slug", ORG_SLUG, "--world", "studio", "--variant", "reserved"],
+    ]) {
+      const { exitCode, result } = await runSeedDemoCli(argv, { seedWorld: stubWorld })
+      expect(exitCode).toBe(2)
+      expect(result).toBeNull()
+    }
+    expect(seen.length).toBe(before)
+  })
+
+  it("an unknown world exits 2", async () => {
+    const before = seen.length
+    const { exitCode } = await runSeedDemoCli(
+      ["--slug", ORG_SLUG, "--variant", "visitor", "--world", "atlantis"],
+      { seedWorld: stubWorld },
+    )
+    expect(exitCode).toBe(2)
+    expect(seen.length).toBe(before)
+  })
+
+  it("the products world flag seeds the products world, and no flag means products", async () => {
+    await runSeedDemoCli(["--slug", ORG_SLUG, "--no-reset", "--world", "products"], {
+      seedWorld: stubWorld,
+    })
+    expect(seen.at(-1)?.worldId).toBe("products")
+    expect(seen.at(-1)?.variant).toBe("reserved")
+    await runSeedDemoCli(["--slug", ORG_SLUG, "--no-reset"], { seedWorld: stubWorld })
+    expect(seen.at(-1)?.worldId).toBe("products")
+  })
 })

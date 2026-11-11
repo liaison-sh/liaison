@@ -197,6 +197,7 @@ async function seedAndSnapshot(tag: string): Promise<Snapshot> {
     variant: "visitor",
     locale: "en",
     owner: { email: `owner@${slug}.example`, name: "Snapshot Owner", password: "SnapOwner1!Seed" },
+    worldId: "products",
     needs: [...DEMO_WORLD_NEEDS.products],
     baseTime: BASE_TIME,
   })
@@ -258,7 +259,7 @@ describe("the demo tier's output for a fixed base time", () => {
     expect([...wallClockLeaks].sort()).toEqual([])
   })
 
-  it("matches the pinned snapshot, table by table", () => {
+  it("the products digest is unchanged, table by table", () => {
     if (process.env.SEED_SNAPSHOT_WRITE === "1" || !existsSync(EXPECTED_FILE)) {
       writeFileSync(EXPECTED_FILE, `${JSON.stringify(first, null, 2)}\n`)
       console.log(`[seed-snapshot] wrote ${EXPECTED_FILE}`)

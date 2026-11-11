@@ -1113,6 +1113,10 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/seed/tiers/demo/seed-profile.test.ts",
             "src/seed/tiers/demo/seed-apps.test.ts",
             "src/seed/tiers/demo/seed-support.test.ts",
+            // What a visitor's picks install and write, per world (the
+            // products plan pinned), and the worlds' seed packs.
+            "src/seed/tiers/demo/seed-plan.test.ts",
+            "src/seed/worlds/worlds.test.ts",
             // The seed engine's own rule: one `now`, no randomness.
             "src/seed/seed-determinism.test.ts",
             // The world packs' story clock (dates from the anchor, on the

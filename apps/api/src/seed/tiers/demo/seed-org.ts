@@ -114,6 +114,7 @@ import {
   DEMO_WORLD,
   type DemoPerson,
   type DemoRole,
+  type DemoRoleAgent,
   type DemoWorld,
 } from "~/seed/world/fiction"
 import { demoModelPreference, demoModelPreferenceOverride } from "./model-preference"
@@ -134,12 +135,16 @@ function throwawayPassword(): string {
 export const DEMO_TIMEZONE = "Europe/Paris"
 export const DEMO_LOCALE = "en"
 
+/** The teams each desk role is granted (`DEMO_DESK_TEAMS` in the `products` world). */
+export type DemoDeskTeams = Readonly<Record<Exclude<DemoRole, "founder_admin">, readonly string[]>>
+
 /**
  * The mail domain a given demo org's people live on: one DNS label per org
- * under the reserved `.example` domain. Deterministic in the slug, so a re-seed
- * of the same org resolves the same people.
+ * under the world's reserved `.example` domain (`products`' by default).
+ * Deterministic in the slug, so a re-seed of the same org resolves the same
+ * people.
  */
-export function demoOrgEmailDomain(orgSlug: string): string {
+export function demoOrgEmailDomain(orgSlug: string, worldDomain = DEMO_EMAIL_DOMAIN): string {
   const label =
     orgSlug
       .toLowerCase()
@@ -147,18 +152,22 @@ export function demoOrgEmailDomain(orgSlug: string): string {
       .replace(/^-+|-+$/g, "")
       .slice(0, 40)
       .replace(/-+$/, "") || "org"
-  return `${label}.${DEMO_EMAIL_DOMAIN}`
+  return `${label}.${worldDomain}`
 }
 
 /**
  * A persona's address IN THIS ORG. Unique per org on purpose: see the note at
  * the top of this file about `login()` and multi-org emails.
  */
-export function demoPersonEmail(orgSlug: string, personKey: string): string {
-  return `${personKey}@${demoOrgEmailDomain(orgSlug)}`
+export function demoPersonEmail(
+  orgSlug: string,
+  personKey: string,
+  worldDomain = DEMO_EMAIL_DOMAIN,
+): string {
+  return `${personKey}@${demoOrgEmailDomain(orgSlug, worldDomain)}`
 }
 
-import { DEMO_APPS } from "./demo-apps"
+import { DEMO_APPS, DEMO_WORLD_APPS } from "./demo-apps"
 
 export { DEMO_APPS }
 
@@ -248,6 +257,15 @@ export interface SeedDemoOrgOptions {
   includeDomainData?: boolean
   /** Defaults to `DEMO_WORLD`. Injectable so a test can seed a smaller world. */
   world?: DemoWorld
+  /** The org's shared role agents. Defaults to the `products` world's `DEMO_ROLE_AGENTS`. */
+  roleAgents?: readonly DemoRoleAgent[]
+  /** The teams each desk role is granted. Defaults to the `products` world's `DEMO_DESK_TEAMS`. */
+  deskTeams?: DemoDeskTeams
+  /**
+   * The reserved `.example` domain the world's people live under, one label per
+   * org below it. Defaults to the `products` world's `DEMO_EMAIL_DOMAIN`.
+   */
+  emailDomain?: string
   /**
    * How long a `visitor` org's demo marker is valid for. Defaults to the demo
    * box's own `LIAISON_DEMO_VISITOR_TTL_HOURS`. Ignored for `reserved`, whose
@@ -451,6 +469,7 @@ async function grantDeskTeams(
   orgId: string,
   adminUserId: string,
   team: readonly DemoPerson[],
+  deskTeams: DemoDeskTeams,
   log: (msg: string) => void,
 ): Promise<void> {
   const deskRoles = [...new Set(team.map((p) => p.role))].filter(
@@ -460,7 +479,7 @@ async function grantDeskTeams(
     orgId,
     adminUserId,
     DESK_TEAM_DIMENSION,
-    deskRoles.map((role) => [ROLE_NAMES[role], DEMO_DESK_TEAMS[role]] as const),
+    deskRoles.map((role) => [ROLE_NAMES[role], deskTeams[role]] as const),
     "seedDemoOrg",
     log,
   )
@@ -503,9 +522,13 @@ async function applyDemoModelPreference(agentId: string): Promise<void> {
  * (same columns, same `(orgId, handle)` conflict target), so a re-seed adopts
  * the agent already answering under the handle instead of duplicating it.
  */
-async function seedRoleAgents(orgId: string, log: (msg: string) => void): Promise<SeededAgent[]> {
+async function seedRoleAgents(
+  orgId: string,
+  roleAgents: readonly DemoRoleAgent[],
+  log: (msg: string) => void,
+): Promise<SeededAgent[]> {
   const seeded: SeededAgent[] = []
-  for (const def of DEMO_ROLE_AGENTS) {
+  for (const def of roleAgents) {
     // The box may pin every demo agent to one model (a QA box does, so its
     // spend is bounded); unset, the agent keeps the model the world names. The
     // factory writes the same value on insert AND on conflict.
@@ -590,7 +613,7 @@ export async function seedDemoOrg(opts: SeedDemoOrgOptions): Promise<SeedDemoOrg
   const locale = opts.locale ?? DEMO_LOCALE
   const timezone = opts.timezone ?? DEMO_TIMEZONE
   const orgName = opts.orgName ?? world.company.legalName
-  const appNames = opts.apps ?? DEMO_APPS
+  const appNames = opts.apps ?? DEMO_WORLD_APPS.products
   const log = opts.log ?? (() => {})
 
   // BEFORE ANY WRITE. A demo box may not hand out persona logins, and an
@@ -606,7 +629,7 @@ export async function seedDemoOrg(opts: SeedDemoOrgOptions): Promise<SeedDemoOrg
   }
 
   const emailOf = (key: string): string =>
-    (opts.personEmails?.[key] ?? demoPersonEmail(opts.orgSlug, key)).toLowerCase()
+    (opts.personEmails?.[key] ?? demoPersonEmail(opts.orgSlug, key, opts.emailDomain)).toLowerCase()
 
   // An org someone else made: read what it is, write nothing about it.
   const target = opts.existingOrg ? await readExistingOrg(opts.existingOrg, opts.orgSlug) : null
@@ -990,6 +1013,7 @@ async function seedDemoOrgPeople(input: {
     orgId,
     admin.userId,
     world.team.filter((p) => !input.existingRoles.has(ROLE_NAMES[p.role])),
+    opts.deskTeams ?? DEMO_DESK_TEAMS,
     log,
   )
   if (!input.existingOrg) await grantDemoDomainAccess(orgId, log)
@@ -1021,7 +1045,7 @@ async function seedDemoOrgPeople(input: {
     log(`org '${opts.orgSlug}': owner given their own personal agent`)
   }
 
-  seededAgents.push(...(await seedRoleAgents(orgId, log)))
+  seededAgents.push(...(await seedRoleAgents(orgId, opts.roleAgents ?? DEMO_ROLE_AGENTS, log)))
 
   for (const person of people) {
     if (adopted.has(person.email)) continue

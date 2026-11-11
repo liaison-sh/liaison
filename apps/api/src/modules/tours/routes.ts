@@ -68,6 +68,7 @@ async function resolveTour(c: Context<AppEnv>): Promise<{
       scopes: c.get("scopes") ?? [],
       // A demo scenario (demoOnly) exists only in a demo org: elsewhere it is not found.
       isDemo: ctx.isDemo,
+      worldId: ctx.worldId,
     }).length === 0
   ) {
     throw new HTTPException(404, { message: "Tour not found" })
@@ -84,6 +85,7 @@ export const tourRoutes = new Hono<AppEnv>()
       installedApps: ctx.installedApps,
       scopes: c.get("scopes") ?? [],
       isDemo: ctx.isDemo,
+      worldId: ctx.worldId,
     })
     const rows = await withRequestRls(c, (tx) => listProgressRows(tx, { orgId, userId }))
     const byTour = new Map(rows.map((r) => [r.tourId, r]))
@@ -97,6 +99,7 @@ export const tourRoutes = new Hono<AppEnv>()
           title: tour.title,
           summary: tour.summary,
           beatCount: beats.length,
+          ...(tour.singleRun ? { singleRun: true as const } : {}),
           // An active run carries its step's status (only active runs compute one).
           progress: row
             ? await withBeatStatus(orgId, userId, progressOf(tour, row, beats), beats)

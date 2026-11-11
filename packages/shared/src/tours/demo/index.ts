@@ -22,3 +22,17 @@ export const SCENARIO_TOURS = [
   scenarioDevTour,
   scenarioKnowledgeTour,
 ] as const
+
+/** The builders a world's configuration is built on (`PRODUCTS_CFG` is the products world's). */
+export { buildChatTour } from "./chat"
+export { buildCommerceTour } from "./commerce"
+export { buildDevTour, type DevScenarioCfg, PRODUCTS_DEV_CFG } from "./dev"
+export {
+  buildKnowledgeTour,
+  type KnowledgeScenarioCfg,
+  PRODUCTS_KNOWLEDGE_CFG,
+} from "./knowledge"
+export { buildProjectsTour } from "./projects"
+export { buildSalesTour, PRODUCTS_SALES_CFG, type SalesScenarioCfg } from "./sales"
+export { PRODUCTS_CFG, type ScenarioCfg, type ScenarioExtraBeat } from "./shared"
+export { buildSupportTour } from "./support"

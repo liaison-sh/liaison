@@ -20,6 +20,7 @@ import {
   beatArrives,
   beatIndexOf,
   beatOutcome,
+  type DemoWorldId,
   type EffectiveBeat,
   effectiveBeats,
   findTour,
@@ -46,7 +47,7 @@ import { env } from "~/lib/env"
 import { listInstalledAppNames } from "~/modules/apps/app-registries"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { isDemoEgressRestricted } from "~/modules/demo/demo-egress"
-import { isDemoOrgId, isVisitorDemoOrgId } from "~/modules/demo/demo-org"
+import { demoWorldOf, isVisitorDemoOrgId, loadDemoMarker } from "~/modules/demo/demo-org"
 import { hasScope } from "~/modules/permissions/permissions"
 import { routineRaisedNothingFor } from "~/modules/tours/beat-status"
 
@@ -57,6 +58,8 @@ export type TourDb = Pick<RlsClient, "select" | "insert" | "update" | "queueEven
 export interface TourOrgContext {
   installedApps: readonly string[]
   isDemo: boolean
+  /** The demo world of the org (the default world outside a demo org). */
+  worldId: DemoWorldId
   features: readonly TourFeature[]
 }
 
@@ -73,8 +76,8 @@ export async function loadTourOrgContext(orgId: string): Promise<TourOrgContext>
   await ensureAppsForOrg(orgId)
   const installedApps = listInstalledAppNames(orgId)
   const connector = installedApps.includes(API_CONNECTOR_APP)
-  const [isDemo, customerCard, connectorReadOnly] = await Promise.all([
-    isDemoOrgId(orgId),
+  const [marker, customerCard, connectorReadOnly] = await Promise.all([
+    loadDemoMarker(orgId),
     connector ? customerLookupConfigured(orgId) : false,
     // The page a demo org shows is read-only (api-connector routes, `readOnly`).
     connector ? isDemoEgressRestricted(orgId) : true,
@@ -82,7 +85,7 @@ export async function loadTourOrgContext(orgId: string): Promise<TourOrgContext>
   const features: TourFeature[] = []
   if (customerCard) features.push("customer-card")
   if (connector && !connectorReadOnly) features.push("connector-add")
-  return { installedApps, isDemo, features }
+  return { installedApps, isDemo: marker !== null, worldId: demoWorldOf(marker), features }
 }
 
 /**
@@ -93,7 +96,12 @@ export async function loadTourOrgContext(orgId: string): Promise<TourOrgContext>
  */
 export function availableTours(
   tours: readonly Tour[],
-  ctx: { installedApps: readonly string[]; scopes: readonly string[]; isDemo?: boolean },
+  ctx: {
+    installedApps: readonly string[]
+    scopes: readonly string[]
+    isDemo?: boolean
+    worldId?: DemoWorldId
+  },
 ): Tour[] {
   const held = [...ctx.scopes]
   return tours.filter((tour) => {
@@ -102,6 +110,7 @@ export function availableTours(
       installedApps: ctx.installedApps,
       scopes: [...held, ...covered],
       isDemo: ctx.isDemo,
+      worldId: ctx.worldId,
     })
   })
 }
@@ -110,6 +119,7 @@ export function tourBeats(tour: Tour, ctx: TourOrgContext): EffectiveBeat[] {
   return effectiveBeats(tour, {
     installedApps: ctx.installedApps,
     isDemo: ctx.isDemo,
+    worldId: ctx.worldId,
     features: ctx.features,
   })
 }

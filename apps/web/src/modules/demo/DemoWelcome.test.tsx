@@ -261,6 +261,38 @@ describe("DemoWelcome", () => {
     expect(rows[0]?.textContent).toContain("Agentic team chat")
   })
 
+  it("a played single-run tour offers Start over, never Start again", async () => {
+    server.verified = true
+    server.queue = [
+      item("support"),
+      { ...item("chat", "completed"), singleRun: true },
+      item("sales"),
+    ]
+    setTourApi(tourApi())
+    mount()
+    await tourStore.load()
+    const row = await screen.findByTestId("demo-welcome-row-chat")
+    expect(row.textContent).toContain("Played")
+    expect(row.textContent).not.toMatch(/Replay|Start again|Play again/)
+    expect(screen.queryByTestId("demo-welcome-row-chat-start")).toBeNull()
+    // A played scenario that is not single-run still replays.
+    expect(screen.getByTestId("demo-welcome-row-sales-start").textContent).toBe("Start")
+    fireEvent.click(screen.getByTestId("demo-welcome-row-chat-start-over"))
+    expect(await screen.findByTestId("demo-start-over")).toBeTruthy()
+  })
+
+  it("a played single-run tour featured when every scenario is played says so and offers Start over", async () => {
+    server.verified = true
+    server.queue = [{ ...item("chat", "completed"), singleRun: true }]
+    setTourApi(tourApi())
+    mount()
+    await tourStore.load()
+    const featured = await screen.findByTestId("demo-welcome-featured")
+    expect(featured.textContent).toContain("Played")
+    expect(screen.queryByTestId("demo-welcome-featured-start")).toBeNull()
+    expect(screen.getByTestId("demo-welcome-featured-start-over")).toBeTruthy()
+  })
+
   for (const way of ["browse", "close", "escape"] as const) {
     it(`closes on ${way} and records it as browsing`, async () => {
       setTourApi(tourApi())

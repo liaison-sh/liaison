@@ -1,7 +1,7 @@
 {
   "name": "invoicing",
   "agentInstructions": {
-    "core": "Invoicing issues financial documents: invoices, quotes, proformas, purchase orders, and credit notes, and reconciles them. Reach for it for the financial document (use shopify for store and order data). Key handles: document id and number, issuer profile, counterparty contact, money in MINOR units.\n\nTo perform an action you MUST actually CALL its tool (e.g. documents_record_refund, invoice_issue); NEVER fabricate a link / button / markdown URL or merely describe the action in prose instead of calling the tool (a written link creates nothing).\n\nALWAYS reply in words: if you cannot do something, explain why, NEVER send an empty message or go silent.\n\nCash and runway come from the connect probe: when the probe reports cash is unavailable, say so rather than fabricating a number.\n\nUse tool_search to discover the deferred read tools first.\n\nMinor units are cents: divide by 100 before you show or compare a currency figure, and never present a raw minor-unit integer as euros. Every issue, convert, refund and send tool is GATED: report it as a pending approval, never as done. Never invent a document number, an amount, a counterparty or a date: cite only what a tool returned in this turn. Route by question: shopify owns the store order and the draft order, boxtal owns the parcel, pennylane owns the accounting of supplier bills and cash; a supplier e-invoice received through the e-invoicing platform is mirrored HERE (received_einvoices_list / received_einvoices_get; refuse or dispute only through received_einvoice_action_request).",
+    "core": "Invoicing issues and reconciles invoices, quotes, proformas, purchase orders, and credit notes, bills recurring schedules (subscriptions, retainers) in the month-end run, and sets who issues Stripe subscription invoices. Reach for it for the financial document (use shopify for store and order data). Key handles: document id and number, issuer profile, counterparty contact, money in MINOR units.\n\nTo perform an action you MUST actually CALL its tool (e.g. documents_record_refund, invoice_issue); NEVER fabricate a link / button / markdown URL or merely describe the action in prose instead of calling the tool (a written link creates nothing).\n\nALWAYS reply in words: if you cannot do something, explain why, NEVER send an empty message or go silent.\n\nCash and runway come from the connect probe: when the probe reports cash is unavailable, say so rather than fabricating a number.\n\nUse tool_search to discover the deferred read tools first.\n\nMinor units are cents: divide by 100 before you show or compare a currency figure, and never present a raw minor-unit integer as euros. Every issue, convert, refund and send tool is GATED: report it as a pending approval, never as done. Never invent a document number, an amount, a counterparty or a date: cite only what a tool returned in this turn. Route by question: shopify owns the store order and the draft order, boxtal owns the parcel, pennylane owns the accounting of supplier bills and cash; a supplier e-invoice received through the e-invoicing platform is mirrored HERE (received_einvoices_list / received_einvoices_get; refuse or dispute only through received_einvoice_action_request).",
     "sections": [
       {
         "tools": [
@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.20.89",
+  "version": "0.20.90",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1789,7 +1789,7 @@
   "sendGuardProviders": {"invoicing:document": {"tool": "document_send_state", "serviceMessage": true, "pill": {"label": "Invoicing: payment reminder"}}},
   "activitySources": [{"tool": "activity_read", "scope": "invoicing:documents:read", "label": "Invoices", "filterKey": "invoicing"}],
   "tools": {
-    "recurring_run_get": {"description": "Read a month-end run: its state, issue and last days, and each row with its draft_id, amounts, account manager, latest change and flags. Omit run_id for the latest run.", "searchKeywords": ["mensuel", "récurrent", "month-end"], "requiredScopes": ["invoicing:documents:read"], "handler": "recurringRunGetHandler", "readOnly": true, "taintSource": true, "params": {"type": "object", "properties": {"run_id": {"type": "string"}}}},
+    "recurring_run_get": {"description": "Read a month-end run: its state, issue and last days, and each row with its draft_id, amounts, account manager, latest change and flags. Omit run_id for the latest run.", "searchKeywords": ["mensuel", "récurrent", "month-end", "lot", "batch"], "requiredScopes": ["invoicing:documents:read"], "handler": "recurringRunGetHandler", "readOnly": true, "taintSource": true, "params": {"type": "object", "properties": {"run_id": {"type": "string"}}}},
     "recurring_run_issue": {"summarizer": "summarizeRecurringRunIssue", "description": "Approve a month-end run's card: records each row as approved and takes no number; the invoices issue on the issue day from 08:00. Always waits for a person.", "searchKeywords": ["mensuel", "approuver", "récurrent", "month-end"], "requiredScopes": ["invoicing:documents:write"], "handler": "recurringRunIssueHandler", "preflight": "recurringRunIssuePreflightHandler", "timeoutMs": 30000, "gated": true, "noAutoApprove": true, "approvalImpact": "external", "approvalDedupeKeyParam": "run_id", "editableFields": [], "editWith": ["drafts_update", "drafts_create", "drafts_discard"], "writesToTable": "app_invoicing.recurring_runs", "params": {"type": "object", "properties": {"run_id": {"type": "string"}, "items": {"type": "array", "items": {"type": "object", "properties": {"item_id": {"type": "string"}, "document_id": {"type": "string"}, "content_hash": {"type": "string"}, "total_minor": {"type": "string"}, "customer": {"type": "string"}, "currency": {"type": "string"}}, "required": ["item_id", "document_id", "content_hash", "total_minor"]}}, "period": {"type": "string"}}, "required": ["run_id"]}, "approvalCard": {"summary": "Issue the month-end run {{params.run_id}}"}},
     "recurring_run_unapprove": {"summarizer": "summarizeRecurringRunUnapprove", "description": "Undo a month-end run's approval before its first number: the run returns to drafted, edits are kept, and a new card asks again.", "searchKeywords": ["annuler", "mensuel", "récurrent", "undo"], "requiredScopes": ["invoicing:documents:write"], "handler": "recurringRunUnapproveHandler", "preflight": "recurringRunUnapprovePreflightHandler", "timeoutMs": 30000, "conditionalGate": true, "externalEffect": true, "approvalImpact": "external", "writesToTable": "app_invoicing.recurring_runs", "params": {"type": "object", "properties": {"run_id": {"type": "string"}}, "required": ["run_id"]}, "approvalCard": {"summary": "Undo the approval of month-end run {{params.run_id}}"}},
     "approval_route_read": {"description": "Who a month-end run's card is for: its account manager when every row has the same one. Read by the kernel when the card is staged.", "readOnly": true, "agentVisible": false, "timeoutMs": 5000, "requiredScopes": ["invoicing:documents:read"], "handler": "approvalRouteReadHandler", "params": {"type": "object", "properties": {"entityType": {"type": "string"}, "entityId": {"type": "string"}}, "required": ["entityType", "entityId"]}},
@@ -2239,7 +2239,7 @@
       "focusCore": true,
       "taintSource": true,
       "description": "Search invoices, quotes, credit notes, proformas and purchase orders issued here, by query, type, status, contact, date range, or tax treatment. The free-text `query` matches, word by word and in any case, the document NUMBER, the COUNTERPARTY NAME, ADDRESS and EMAIL (billing and shipping), the SHOPIFY ORDER (e.g. query='#1149'), the PO NUMBER, the notes and the line descriptions; best matches come first. To find a customer's invoices, search their name directly (e.g. query='Claudine Moreau'): a person named only in a company invoice's address is found too. `contact_id` also returns the documents made out to the contact's email or address. For a customer's earlier prices ('same price as last time') use customer_history.",
-      "searchKeywords": ["facture", "factures", "invoice", "invoices", "devis", "quote", "quotes", "avoir", "proforma", "chercher", "rechercher", "trouver", "retrouver", "find", "numéro", "number", "impayé", "impayée", "impayées", "unpaid", "overdue", "retard", "list", "liste", "issued", "relance", "paiement", "payment", "due", "failed"],
+      "searchKeywords": ["facture", "factures", "invoice", "invoices", "devis", "quote", "quotes", "avoir", "proforma", "chercher", "rechercher", "trouver", "retrouver", "find", "numéro", "number", "impayé", "impayée", "impayées", "unpaid", "overdue", "retard", "list", "liste", "issued", "relance", "paiement", "payment", "due", "failed", "paid", "payé"],
       "requiredScopes": ["invoicing:documents:read"],
       "handler": "documentsSearchHandler",
       "params": {
@@ -2745,7 +2745,7 @@
       "summarizer": "summarizeRecurringScheduleCreate",
       "summarizerContext": { "tool": "settings_issuer_profile_list", "params": {} },
       "description": "Save a recurring invoice schedule for one customer: cadence, billing day and lines. It drafts each period for review and never issues by itself. An agent's call waits for a person's approval.",
-      "searchKeywords": ["récurrent", "abonnement", "facturation", "échéancier", "recurring", "subscription", "retainer"],
+      "searchKeywords": ["récurrent", "abonnement", "facturation", "échéancier", "recurring", "subscription", "retainer", "monthly", "facturer", "bill"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "recurringScheduleCreateHandler",
       "preflight": "recurringScheduleCreatePreflightHandler",
@@ -2794,7 +2794,7 @@
     "recurring_schedule_update": {
       "summarizer": "summarizeRecurringScheduleUpdate",
       "description": "Change a recurring schedule, resume a paused one (status active), end it (status ended) or turn issue_mode auto on or off. Drafts already made keep their amounts. Always waits for a person's approval.",
-      "searchKeywords": ["récurrent", "abonnement", "modifier", "arrêter", "recurring"],
+      "searchKeywords": ["récurrent", "abonnement", "modifier", "arrêter", "recurring", "tarif", "prix", "montant", "amount", "résilier", "contrat", "contract", "cancel", "annuler"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "recurringScheduleUpdateHandler",
       "preflight": "recurringScheduleUpdatePreflightHandler",
@@ -2865,7 +2865,7 @@
     },
     "issuer_stream_get": {
       "description": "Who issues what for each issuer profile: card subscriptions on Stripe (Liaison, Stripe or undecided), recurring by transfer and one-off invoices (always Liaison), and whether a person confirmed Stripe's own customer emails are off.",
-      "searchKeywords": ["émetteur", "facturation", "issuer", "stripe"],
+      "searchKeywords": ["émetteur", "facturation", "issuer", "stripe", "émettre", "émet"],
       "deferLoading": true,
       "readOnly": true,
       "requiredScopes": ["invoicing:settings:read"],
@@ -2881,7 +2881,7 @@
     "issuer_stream_set": {
       "summarizer": "summarizeIssuerStreamSet",
       "description": "Choose who issues the legal invoice of card subscriptions on Stripe: liaison or stripe. A person decides; it applies to invoices finalized after the confirmation, earlier ones keep their issuer and numbers.",
-      "searchKeywords": ["émetteur", "facturation", "issuer", "stripe"],
+      "searchKeywords": ["émetteur", "facturation", "issuer", "stripe", "émettre", "émet"],
       "deferLoading": true,
       "requiredScopes": ["invoicing:settings:write"],
       "handler": "issuerStreamSetHandler",
@@ -3305,7 +3305,7 @@
       "summarizer": "summarizeDraftUpdate",
       "summarizerContext": { "tool": "documents_get", "params": { "id": "draft_id" } },
       "description": "Update an unissued draft, including one from a source. Issued documents use documents_update.",
-      "searchKeywords": ["brouillon", "modifier", "edit", "corriger"],
+      "searchKeywords": ["brouillon", "modifier", "edit", "corriger", "ligne", "line", "row", "ajouter", "add"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "draftsUpdateHandler",
       "preflight": "draftsUpdatePreflightHandler",

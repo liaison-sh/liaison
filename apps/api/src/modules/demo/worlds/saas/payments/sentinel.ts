@@ -55,6 +55,19 @@ export function standInHostedInvoiceUrl(invoiceId: string): string {
   return `https://${PAYMENTS_STANDIN_HOST}/i/${invoiceId.replace(/[^A-Za-z0-9_-]/g, "")}`
 }
 
+/**
+ * The processor's API hosts (the payments app's `allowedDomains`). A demo org's
+ * call to one of them is the stand-in's whatever app makes it: a connector
+ * holding a real key reaches the processor exactly as the payments app would.
+ */
+export const PAYMENTS_HOSTS: readonly string[] = ["api.stripe.com"]
+
+/** Is `host` one of the processor's API hosts? */
+export function isPaymentsHost(host: string): boolean {
+  const h = host.toLowerCase().replace(/\.$/, "")
+  return PAYMENTS_HOSTS.includes(h)
+}
+
 /** Is `host` one the payments app declared for its connection? */
 export function isDeclaredPaymentsHost(host: string, allowedDomains: readonly string[]): boolean {
   const h = host.toLowerCase()

@@ -135,6 +135,31 @@ describe("claiming a pooled workspace of one world", () => {
     expect(await claim("saas", "One too many")).toBeNull()
   })
 
+  it("retiring a workspace a visitor already claimed leaves the visitor's marker alone", async () => {
+    env.LIAISON_DEMO_POOL_SIZES = "saas=2"
+    expect((await refillDemoPool()).seeded).toBe(2)
+    const [first, second] = await readyByWorld()
+    // Another process claims one for a visitor after this one read it as pooled.
+    const taken = await claim("saas", "Claimed visitor")
+    expect(taken?.orgId).toBe(first?.id ?? "none")
+    const markerOf = async (id: string) =>
+      (
+        await sql<{ demo: Record<string, unknown> }[]>`
+          SELECT settings->'demo' AS demo FROM kernel.organizations WHERE id = ${id}`
+      )[0]?.demo ?? {}
+    const claimed = await markerOf(taken?.orgId ?? "")
+    expect(await DemoPoolTestAccess.retirePooledOrg(taken?.orgId ?? "")).toBe(false)
+    const after = await markerOf(taken?.orgId ?? "")
+    expect(after).toEqual(claimed)
+    expect(Date.parse(String(after.expiresAt))).toBeGreaterThan(Date.now())
+
+    // A workspace still in the pool is retired: out of the pool, already expired.
+    expect(await DemoPoolTestAccess.retirePooledOrg(second?.id ?? "")).toBe(true)
+    const retired = await markerOf(second?.id ?? "")
+    expect(retired.pool).toBeUndefined()
+    expect(Date.parse(String(retired.expiresAt))).toBeLessThan(Date.now())
+  })
+
   it("with no warm org of the asked world the claim returns none and logs the miss with its world", async () => {
     // Ready saas orgs, none of products: the products claim takes nothing.
     env.LIAISON_DEMO_POOL_SIZES = "saas=2"

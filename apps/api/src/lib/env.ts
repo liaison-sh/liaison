@@ -482,16 +482,14 @@ export const envSchema = z
     // Off by default, and off on the public demo box too, where
     // LIAISON_DEMO_MODE already opens the same door.
     LIAISON_DEMO_SHOPIFY_FIXTURES: envBoolean(false),
-    // LIAISON_DEMO_PAYMENTS_FIXTURES is its twin for the card-payments app: a
-    // DEMO MARKED org's payments calls are answered by the stand-in (its own
-    // mirror rows and outside state, modules/demo/worlds/saas/payments/) on a
-    // box that is NOT the public demo instance (a private walk, bench or year
-    // box). It also turns on the stand-in's signed QA route, which writes an
-    // outside object for such an org. It widens gate one of
-    // `maybeDemoPaymentsResponse` and nothing else: an org with no demo marker
-    // is never intercepted, and a demo marked org's call is answered instead of
-    // being put on the wire. Off by default, and off on the public demo box,
-    // where LIAISON_DEMO_MODE already opens the same door.
+    // LIAISON_DEMO_PAYMENTS_FIXTURES turns on the card-payments stand-in's
+    // signed QA route (modules/demo/worlds/saas/payments/), which writes an
+    // outside object for a DEMO MARKED org on a box that is NOT the public demo
+    // instance (a private walk, bench or year box). The stand-in itself needs
+    // no flag: a demo marked org's call to the payments host, from any app, is
+    // answered or refused on every box and never put on the wire, and an org
+    // with no demo marker is never intercepted. Off by default, and off on the
+    // public demo box.
     LIAISON_DEMO_PAYMENTS_FIXTURES: envBoolean(false),
     // LIAISON_DEMO_WAREHOUSE opts this deployment into the demo seed's
     // warehouse part: the read-only analytics schema behind the `database`

@@ -2,35 +2,32 @@
 //
 // The interception point: a demo org's card-payments traffic never leaves the box.
 //
-// The sandbox fetch bridge calls `maybeDemoPaymentsResponse` once per outbound
-// call, after the store and carrier stand-ins. On a normal deployment the cost
-// is two module-local booleans (demo mode, `LIAISON_DEMO_PAYMENTS_FIXTURES`)
-// and a string compare per header: the function returns null before it parses
-// the URL or reads anything. The stand-in itself is behind a dynamic import.
+// The sandbox fetch bridge (`ctx.fetch`, file imports and bulk downloads) calls
+// `maybeDemoPaymentsResponse` once per outbound call, after the store and
+// carrier stand-ins. The stand-in itself is behind a dynamic import.
 //
-// Gate one, the process: demo mode on (the public demo box), or
-// `LIAISON_DEMO_PAYMENTS_FIXTURES` set (a private walk, bench or year box that
-// runs the product as it ships and holds demo-marked orgs), or the request
-// carries the stand-in's sentinel key, which opens it on ANY box: that
-// connection holds no real key and must never reach the processor.
+// Gate one, the request: a call to the processor's API host from ANY app (the
+// payments app, an API connector, anything whose install declares the host),
+// a host the payments app's own connection declares, or a request carrying the
+// stand-in's sentinel key (that connection holds no real key and must never
+// reach the processor). Anything else returns null before any read: on a
+// normal deployment the cost is a string compare per header and one URL parse.
 //
-// Gate two, the request: the payments app calling a host its own connection
-// declares (`allowedDomains`).
+// Gate two, the org: an org without the demo marker is not a demo org, so its
+// call is forwarded exactly as before, on every box (a sentinel request from
+// such an org is refused, never forwarded). A demo-marked org's call is the
+// stand-in's on every box, whether or not demo mode or
+// `LIAISON_DEMO_PAYMENTS_FIXTURES` is on: a self-hosted demo seed or a walk box
+// holds demo orgs too.
 //
-// Gate three, the org: an org without the demo marker is not a demo org, so
-// its call is forwarded exactly as before (a sentinel request from such an org
-// is refused, never forwarded).
-//
-// For a demo org past all three, the processor is a closed door: the stand-in
-// answers or refuses. A demo org whose connection somehow holds anything but
-// the sentinel (a real key) is refused with the connector sentence and its key
-// is never used.
-import { env } from "~/lib/env"
+// For a demo org past both, the processor is a closed door: the stand-in
+// answers or refuses. A demo org whose request carries anything but the
+// sentinel (a real key, a connector's own credential) is refused with the
+// connector sentence and its key is never used.
 import { DemoRestrictionError, demoRestrictionMessage } from "~/modules/demo/demo-egress"
-import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
 import { loadDemoOrg } from "~/modules/demo/demo-org"
 import { fixtureConnectionOf, fixtureRefusal } from "~/modules/demo/fixture-credential"
-import { isDeclaredPaymentsHost, PAYMENTS_APP } from "./sentinel"
+import { isDeclaredPaymentsHost, isPaymentsHost, PAYMENTS_APP } from "./sentinel"
 
 export interface DemoPaymentsRequest {
   orgId: string
@@ -60,22 +57,21 @@ function idempotencyKeyOf(headers: Record<string, string> | undefined): string |
 export async function maybeDemoPaymentsResponse(
   request: DemoPaymentsRequest,
 ): Promise<Response | null> {
-  // Gate one: the process (or the sentinel key itself).
+  // Gate one: the request.
   const fixture = fixtureConnectionOf(request.url, request.headers) === PAYMENTS_APP
-  if (!isDemoModeEnabled() && !env.LIAISON_DEMO_PAYMENTS_FIXTURES && !fixture) return null
-
-  // Gate two: the payments app, on a host it declares.
   let url: URL
   try {
     url = new URL(request.url)
   } catch {
     return null
   }
-  const declared =
-    request.appName === PAYMENTS_APP && isDeclaredPaymentsHost(url.hostname, request.allowedDomains)
-  if (!declared && !fixture) return null
+  const paymentsHost =
+    isPaymentsHost(url.hostname) ||
+    (request.appName === PAYMENTS_APP &&
+      isDeclaredPaymentsHost(url.hostname, request.allowedDomains))
+  if (!paymentsHost && !fixture) return null
 
-  // Gate three: the org.
+  // Gate two: the org.
   const { marker, locale } = await loadDemoOrg(request.orgId)
   if (!marker) return fixture ? fixtureRefusal(PAYMENTS_APP) : null
 

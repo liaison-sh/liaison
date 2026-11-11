@@ -253,7 +253,10 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
                       choice={choice()}
                       label={rangeLabel()}
                       window={windows().window}
-                      saved={remembered()?.saved === true}
+                      saved={
+                        remembered()?.saved === true ||
+                        Object.keys(choiceFromQuery(queryOf(tab()?.routePath))).length > 0
+                      }
                       onChange={(next) => {
                         if (!sameChoice(next, choice())) pick(next)
                       }}

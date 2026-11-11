@@ -3284,35 +3284,38 @@ async function registerSingleApp(
                 const source = await loadBundle(pollBundlePath)
                 // No transaction held across the run (it calls the provider): each
                 // bridge call opens its own short one, as the app (backgroundAppSession).
-                const bridge = createSessionRpcBridge(
-                  pollAppName,
-                  `system:${pollAppName}:poll`,
-                  pollCtx.orgId,
-                  backgroundAppSession({
+                const runPoll = (orgId: string) => {
+                  const bridge = createSessionRpcBridge(
+                    pollAppName,
+                    `system:${pollAppName}:poll`,
+                    orgId,
+                    backgroundAppSession({
+                      appName: pollAppName,
+                      orgId,
+                      privileged: pollPrivileged,
+                      scopes: pollManifest?.scopes ?? [],
+                      label: `poll:${pollAppName}:${pollExport}`,
+                    }),
+                    pollManifest as never,
+                  )
+                  // Always the worker pool.
+                  return runApp({
+                    trusted: false,
                     appName: pollAppName,
-                    orgId: pollCtx.orgId,
-                    privileged: pollPrivileged,
-                    scopes: pollManifest?.scopes ?? [],
-                    label: `poll:${pollAppName}:${pollExport}`,
-                  }),
-                  pollManifest as never,
-                )
-                // Always the worker pool.
-                const out = await runApp({
-                  trusted: false,
-                  appName: pollAppName,
-                  orgId: pollCtx.orgId,
-                  bundlePath: pollBundlePath,
-                  bundleSource: source,
-                  exportName: pollExport,
-                  entry: `poll:${pollExport}`,
-                  params: { external_ref: externalRef },
-                  bridge,
-                  timeoutMs: runLimits("poll").wallMs,
-                  priority: "background",
-                  appId: pollAppName,
-                  holdsTx: false,
-                })
+                    orgId,
+                    bundlePath: pollBundlePath,
+                    bundleSource: source,
+                    exportName: pollExport,
+                    entry: `poll:${pollExport}`,
+                    params: { external_ref: externalRef },
+                    bridge,
+                    timeoutMs: runLimits("poll").wallMs,
+                    priority: "background",
+                    appId: pollAppName,
+                    holdsTx: false,
+                  })
+                }
+                const out = await runPoll(pollCtx.orgId)
                 const r = out as { ready?: unknown; result?: unknown } | null
                 return r && r.ready === true
                   ? { ready: true, result: (r.result ?? {}) as Record<string, unknown> }
@@ -3345,38 +3348,41 @@ async function registerSingleApp(
                 const { runApp } = await import("~/modules/apps/sandbox/run-app")
                 const { createSessionRpcBridge } = await import("~/modules/apps/sandbox/rpc-bridge")
                 const source = await loadBundle(reconcileBundlePath)
-                const bridge = createSessionRpcBridge(
-                  reconcileAppName,
-                  `system:${reconcileAppName}:reconcile`,
-                  rCtx.orgId,
-                  backgroundAppSession({
+                const runReconcile = (orgId: string) => {
+                  const bridge = createSessionRpcBridge(
+                    reconcileAppName,
+                    `system:${reconcileAppName}:reconcile`,
+                    orgId,
+                    backgroundAppSession({
+                      appName: reconcileAppName,
+                      orgId,
+                      privileged: reconcilePrivileged,
+                      scopes: reconcileManifest?.scopes ?? [],
+                      label: `reconcile:${reconcileAppName}:${reconcileExport}`,
+                    }),
+                    reconcileManifest as never,
+                  )
+                  return runApp({
+                    trusted: false,
                     appName: reconcileAppName,
-                    orgId: rCtx.orgId,
-                    privileged: reconcilePrivileged,
-                    scopes: reconcileManifest?.scopes ?? [],
-                    label: `reconcile:${reconcileAppName}:${reconcileExport}`,
-                  }),
-                  reconcileManifest as never,
-                )
-                const out = await runApp({
-                  trusted: false,
-                  appName: reconcileAppName,
-                  orgId: rCtx.orgId,
-                  bundlePath: reconcileBundlePath,
-                  bundleSource: source,
-                  exportName: reconcileExport,
-                  entry: `reconcile:${reconcileExport}`,
-                  params: {
-                    approval_request_id: input.approvalRequestId,
-                    payload: input.payload,
-                    external_ref: input.externalRef,
-                  },
-                  bridge,
-                  timeoutMs: runLimits("reconcile").wallMs,
-                  priority: "background",
-                  appId: reconcileAppName,
-                  holdsTx: false,
-                })
+                    orgId,
+                    bundlePath: reconcileBundlePath,
+                    bundleSource: source,
+                    exportName: reconcileExport,
+                    entry: `reconcile:${reconcileExport}`,
+                    params: {
+                      approval_request_id: input.approvalRequestId,
+                      payload: input.payload,
+                      external_ref: input.externalRef,
+                    },
+                    bridge,
+                    timeoutMs: runLimits("reconcile").wallMs,
+                    priority: "background",
+                    appId: reconcileAppName,
+                    holdsTx: false,
+                  })
+                }
+                const out = await runReconcile(rCtx.orgId)
                 return normalizeReconcileOutcome(out)
               }
             }

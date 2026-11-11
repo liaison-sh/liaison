@@ -92,7 +92,16 @@ Refilled in the background one at a time -> apps/api/src/modules/demo/demo-pool.
 Refill warn line with fill time and ready count -> apps/api/src/modules/demo/demo-pool.ts:419
 Pooled workspace never expires, 72 hours start at claim -> apps/api/src/modules/demo/demo-pool.ts:613
 Only the running build's pooled workspaces are claimed; others retired with a warn line -> apps/api/src/modules/demo/demo-pool.ts:517
-Pool empty warning with running count -> apps/api/src/modules/demo/demo-pool.ts:837
+Pool empty warning with running count, naming the world -> apps/api/src/modules/demo/demo-pool.ts:1527
+LIAISON_DEMO_WORLDS lists the worlds, default products -> apps/api/src/lib/env.ts:565
+A world without a seed pack is dropped with one warn line -> apps/api/src/modules/demo/demo-worlds.ts:31
+A claim takes only an org of the asked world -> apps/api/src/modules/demo/demo-pool.ts:1272
+LIAISON_DEMO_POOL_SIZES split, malformed fails boot -> apps/api/src/lib/env.ts:579
+Even split of LIAISON_DEMO_POOL_SIZE, remainder in world order -> apps/api/src/modules/demo/demo-pool.ts:510
+A failing world backs off alone -> apps/api/src/modules/demo/demo-pool.ts:917
+Max age and calendar month rules -> apps/api/src/modules/demo/demo-pool.ts:623
+Retired as too old with a warn line -> apps/api/src/modules/demo/demo-pool.ts:1097
+LIAISON_DEMO_POOL_MAX_AGE_HOURS default 12 -> apps/api/src/lib/env.ts:592
 LIAISON_DEMO_SEED_CONCURRENCY default 2, seeds at once -> apps/api/src/lib/env.ts:304
 Empty-pool seeds go through the gate -> apps/api/src/modules/demo/routes.ts:950
 Visitors beyond the limit wait in line, warn with queue depth -> apps/api/src/modules/demo/demo-seed-gate.ts:108

@@ -76,7 +76,17 @@ export interface ShimRules {
 
 export const SHIM_RULES: ShimRules = {
   reservedGroups: ["approval"],
-  structuredReturnGroups: ["kernel", "db", "bulk", "store", "jobs", "timers", "steps"],
+  structuredReturnGroups: [
+    "kernel",
+    "db",
+    "bulk",
+    "store",
+    "jobs",
+    "timers",
+    "steps",
+    "sql",
+    "accounts",
+  ],
   hiddenNames: ["_approvalContext_get", "_steps_begin", "_steps_save"],
   groupAliases: [["log", "logger"]],
   iterators: [{ group: "bulk", member: "iterateJsonl", nextMethod: "bulk_iterateJsonl_next" }],

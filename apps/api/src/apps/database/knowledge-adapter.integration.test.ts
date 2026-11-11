@@ -14,9 +14,9 @@
 
 import { describe, expect, it } from "bun:test"
 import { type ReadDefinition, type ResolvedReadCatalog, validateCatalog } from "@liaison/db-core"
+import type { DbTransport, RunReadResult } from "~/modules/apps/connections/sql/transport"
 import { kbSyncCatalog } from "./adapters/__fixtures__/kb-sync"
 import { createDatabaseKnowledgeAdapter } from "./knowledge-adapter"
-import type { DbTransport, RunReadResult } from "./transport"
 
 const actor = {
   orgId: "org-1",

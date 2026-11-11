@@ -16,7 +16,6 @@
  * BullMQ at boot.
  */
 import { sql as drizzleSql } from "drizzle-orm"
-import { resolveDatabaseCatalog } from "~/apps/database/bridge"
 import { createDatabaseKnowledgeAdapter } from "~/apps/database/knowledge-adapter"
 import { createDatabaseKnowledgeReadRunner } from "~/apps/database/knowledge-read-runner"
 import { createGitlabAdapter } from "~/apps/gitlab/adapter"
@@ -42,6 +41,7 @@ import {
   registerScheduledJob,
 } from "~/infra/jobs/jobs"
 import { jobsLogger as log } from "~/lib/logger"
+import { resolveDatabaseCatalog } from "~/modules/apps/connections/sql/catalog"
 import { isDemoOrgId } from "~/modules/demo/demo-org"
 import { sweepSkippingMoving, writeUnlessMoving } from "~/modules/org/transfer-state/skip-moving"
 import { movingOrgIds } from "~/modules/org/transfer-state/state"

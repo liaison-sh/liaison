@@ -63,7 +63,8 @@ agent ──tool call──▶ execute-tool.ts (trust boundary → scope → AJV
   cluster so the role gets the columns those filters read. A toy portability
   fixture lives at `apps/api/src/apps/database/adapters/__fixtures__/
   toy-shop.ts` (see [§7](#7-authoring-your-own-adapter)).
-- **Transport** = `DbTransport` (`apps/api/src/apps/database/transport.ts`):
+- **Transport** = `DbTransport` (`apps/api/src/modules/apps/connections/sql/transport.ts`,
+  the platform's SQL connections, which also serve `ctx.sql` for any app):
   `probe() / runRead() / runQuery() / describe() / close()`. Two
   implementations, interchangeable behind the seam:
   - `PostgresDirect` (`transports/postgres-direct.ts`) — a DSN, driven with

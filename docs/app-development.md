@@ -230,6 +230,8 @@ export async function items_create(
 | `ctx.timers.wakeIn` | Run a job in N seconds instead of waiting inside a run |
 | `ctx.steps.run` | Long work in bounded chunks across runs, the cursor saved for you ([Sandboxing](app-sandbox.md#long-work-come-back-later-ctxsteps-ctxtimers-ctxjobs)) |
 | `ctx.connections` | Per-connection OAuth/credential tokens |
+| `ctx.sql` | Query a database the platform holds the connection to: named reads or a read-only `SELECT`, rows only, never the credentials ([Sandboxing](app-sandbox.md#query-a-database-ctxsql)) |
+| `ctx.accounts` | Your app's own connected accounts and their metadata ([Sandboxing](app-sandbox.md#read-your-own-accounts-ctxaccounts)) |
 | `ctx.fetch` | Call an external API (kernel-mediated, allowlist-checked). `timeoutMs` shortens the 10 s deadline; a write may ask for up to 30 s |
 | `ctx.time.civil` | The date and clock of an instant in a named IANA zone. The sandbox has no `Intl`, so `new Date()` only knows UTC. `UTC`, the column default, follows the organization's zone; `Etc/UTC` is UTC exactly; an unknown zone rejects with `invalid_timezone` |
 | `ctx.resolveContact` | Resolve or create a contact |

@@ -37,11 +37,11 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { sql } from "drizzle-orm"
 import postgres from "postgres"
-import { DatabaseBridgeTestAccess } from "~/apps/database/bridge"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { CryptoContext, decryptSecret, encryptSecret } from "~/lib/crypto"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
+import { SqlPoolTestAccess } from "~/modules/apps/connections/sql/pool"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
@@ -147,7 +147,7 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  DatabaseBridgeTestAccess.resetTransportPool()
+  SqlPoolTestAccess.reset()
   resetAppRegistries()
   DemoModeTestAccess.set(null)
 })
@@ -464,7 +464,7 @@ describe("the demo oracle: the walls hold", () => {
       sql`UPDATE kernel.connected_accounts SET credentials_encrypted = ${real}
           WHERE org_id = ${ORG}::uuid AND app_name = 'database' AND status = 'active'`,
     )
-    DatabaseBridgeTestAccess.resetTransportPool()
+    SqlPoolTestAccess.reset()
     try {
       const caught = await toolError("database:db_read", {
         name: "product_catalog",
@@ -474,14 +474,14 @@ describe("the demo oracle: the walls hold", () => {
       expect(caught?.code).toBe("not_connected")
     } finally {
       await seedDemoWarehouse({ orgId: ORG, orgSlug: SLUG, adminUserId: USER }, {})
-      DatabaseBridgeTestAccess.resetTransportPool()
+      SqlPoolTestAccess.reset()
     }
   })
 
   it("a box that is not a demo instance gets nothing from the sentinel", async () => {
     DemoModeTestAccess.set(false)
     invalidateDemoMarker(ORG)
-    DatabaseBridgeTestAccess.resetTransportPool()
+    SqlPoolTestAccess.reset()
     try {
       const listed = await tool<{ adapter: string }>("database:db_list_reads", {})
       expect(listed.adapter).toBe("liaison-self")
@@ -490,7 +490,7 @@ describe("the demo oracle: the walls hold", () => {
     } finally {
       DemoModeTestAccess.set(true)
       invalidateDemoMarker(ORG)
-      DatabaseBridgeTestAccess.resetTransportPool()
+      SqlPoolTestAccess.reset()
     }
   })
 })

@@ -128,6 +128,29 @@ export async function configSecret(p: { value: string }, ctx: Ctx) {
   }
 }
 
+// ctx.sql / ctx.accounts / ctx.kernel.findByIds: the generic platform reads.
+export async function platformReads(p: { n: number; userIds: string[] }, ctx: Ctx) {
+  const q = await ctx.sql.query("warehouse", { sql: "SELECT $1::int AS n", params: [p.n] })
+  const capped = await ctx.sql.query("warehouse", {
+    sql: "SELECT generate_series(1, 20) AS n",
+    maxRows: 5,
+  })
+  const refused = await ctx.sql.query("carrier", { sql: "SELECT 1" })
+  const accounts = await ctx.accounts.list("carrier")
+  const users = await ctx.kernel.findByIds("users", p.userIds)
+  return {
+    rows: q.rows,
+    cappedRows: capped.rows.length,
+    cappedTruncated: capped.truncated,
+    refused: refused.error.code,
+    accounts: accounts.map((a: { identifier: string; ownerType: string }) => [
+      a.identifier,
+      a.ownerType,
+    ]),
+    users: users.length,
+  }
+}
+
 export async function slowCreate(p: { ms: number; title: string }, ctx: Ctx) {
   const until = Date.now() + p.ms
   while (Date.now() < until) await ctx.db.count("items", {})

@@ -287,6 +287,41 @@ export function egressLimits(env: Env = process.env): EgressLimits {
   }
 }
 
+// -- SQL connections (one `ctx.sql` call of a run) -------------------------------
+
+export interface SqlCallLimits {
+  /** A call's statement timeout when it asks for none. */
+  defaultTimeoutMs: number
+  /** The longest statement timeout a call may ask for (also bounded by its run). */
+  maxTimeoutMs: number
+  /** Rows a call returns when it asks for no cap. */
+  defaultMaxRows: number
+  /** The most rows any call returns. */
+  maxRows: number
+  /** Host-held connection pools per server process (least recently used closed first). */
+  poolsMax: number
+  /** A pool unused this long is closed. */
+  poolIdleMs: number
+}
+
+/**
+ * The per-call limits of the platform-held SQL connections
+ * (connections/sql/service.ts). The statement timeout is set on the database
+ * and the call is cancelled there at its deadline; rows beyond the cap are
+ * never sent to the run. LIAISON_SQL_POOLS_MAX overrides the pool bound.
+ */
+export function sqlCallLimits(env: Env = process.env): SqlCallLimits {
+  const pools = Number(env.LIAISON_SQL_POOLS_MAX)
+  return {
+    defaultTimeoutMs: 10_000,
+    maxTimeoutMs: Math.min(120_000, resolveSandboxMaxToolTimeoutMs(env)),
+    defaultMaxRows: 500,
+    maxRows: 2_000,
+    poolsMax: Number.isInteger(pools) && pools > 0 ? pools : 32,
+    poolIdleMs: 10 * 60_000,
+  }
+}
+
 // -- The shared per-connection limiter (connection-limiter.ts) ---------------------
 
 export interface ConnectionLimiterLimits {

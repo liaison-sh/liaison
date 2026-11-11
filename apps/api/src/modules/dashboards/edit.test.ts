@@ -213,6 +213,86 @@ describe("describeOperations", () => {
   })
 })
 
+describe("datasets and filters by operation", () => {
+  const src = { kind: "tool", tool: "shop:orders_search", params: { market: "{{filter.market}}" } }
+  const filter = { id: "market", label: "Market", type: "select", options: ["FR", "DE"] }
+
+  it("sets, replaces and removes a dataset and a filter", () => {
+    const out = applyOperations(dashboard(), [
+      { op: "setDataset", id: "orders", source: src },
+      { op: "setFilter", filter },
+      { op: "setFilter", filter: { id: "channel", label: "Channel", type: "text" }, position: 0 },
+      { op: "setFilter", filter: { ...filter, label: "Pays" } },
+      {
+        op: "addBlock",
+        block: { id: "d", type: "metric", title: "D", dataset: "orders", map: { agg: "count" } },
+      },
+    ])
+    expect(out.spec.datasets).toEqual({ orders: src })
+    expect(
+      (out.spec.filters as { id: string; label: string }[]).map((f) => `${f.id}:${f.label}`),
+    ).toEqual(["channel:Channel", "market:Pays"])
+    const back = applyOperations({ ...dashboard(), spec: out.spec as unknown as DashboardSpec }, [
+      { op: "removeBlock", blockId: "d" },
+      { op: "removeDataset", id: "orders" },
+      { op: "removeFilter", id: "channel" },
+      { op: "removeFilter", id: "market" },
+    ])
+    expect(back.spec.datasets).toBeUndefined()
+    expect(back.spec.filters).toBeUndefined()
+    expect(() => applyOperations(dashboard(), [{ op: "removeDataset", id: "x" }])).toThrow(
+      EditOperationError,
+    )
+  })
+
+  it("describes each in plain words: where a dataset reads and who uses it, a filter's options", () => {
+    const lines = describeOperations(
+      dashboard(),
+      [
+        { op: "setDataset", id: "orders", source: src },
+        { op: "setFilter", filter: { ...filter, default: "FR" } },
+        {
+          op: "addBlock",
+          block: {
+            id: "d",
+            type: "bar",
+            title: "By channel",
+            dataset: "orders",
+            map: {
+              x: "channel",
+              agg: "count",
+              where: [{ field: "status", op: "neq", value: "cancelled" }],
+            },
+          },
+        },
+        {
+          op: "addBlock",
+          block: { id: "n", type: "text", title: "Notes", text: "B2B = tagged b2b" },
+        },
+        {
+          op: "updateBlock",
+          blockId: "a",
+          changes: { map: { where: [{ field: "market", op: "eq", value: { filter: "market" } }] } },
+        },
+        { op: "removeFilter", id: "market" },
+      ],
+      { timeZone: "UTC", now: new Date("2026-11-11T12:00:00Z") },
+    )
+    expect(lines[0]).toContain("Add the shared dataset 'orders': it reads shop:orders_search")
+    expect(lines[0]).toContain("no block uses it yet")
+    expect(lines[1]).toContain(
+      'Add the filter "Market" (id market, one value, options FR, DE, default FR',
+    )
+    expect(lines[2]).toContain("reading the shared dataset 'orders'")
+    expect(lines[2]).toContain("keeps only rows where status is not cancelled")
+    expect(lines[3]).toContain('showing the note "B2B = tagged b2b"')
+    expect(lines[4]).toContain(
+      'keeps only rows where market is the "Market" filter\'s value (all rows while it is empty)',
+    )
+    expect(lines[5]).toBe('6. Remove the filter "Market".')
+  })
+})
+
 describe("diffDashboards", () => {
   const ctx = { timeZone: "UTC", now: new Date("2026-11-10T12:00:00Z") }
 
@@ -266,5 +346,35 @@ describe("diffDashboards", () => {
   it("the refusal past one card says to split and wait for the first approval", () => {
     expect(MAX_CARD_CHANGES).toBe(50)
     expect(tooManyChangesMessage(60)).toContain("send the rest only once that approval is decided")
+  })
+})
+
+describe("diffDashboards with datasets and filters", () => {
+  it("adds them before the blocks that read them and removes them after", () => {
+    const src = { kind: "tool", tool: "shop:orders_search", params: {} }
+    const current = dashboard()
+    const withShared = {
+      ...current.spec,
+      datasets: { orders: src },
+      filters: [{ id: "market", label: "Market", type: "text" }],
+      blocks: [block("a", { source: undefined, dataset: "orders" }), block("b"), block("c")],
+    } as unknown as Record<string, unknown>
+    const ops = diffDashboards(current, { spec: withShared })
+    expect(ops.map((o) => o.op)).toEqual(["setDataset", "setFilter", "updateBlock"])
+    const out = applyOperations(current, ops)
+    expect(out.spec.datasets).toEqual({ orders: src })
+    expect(out.spec.filters).toEqual(withShared.filters)
+
+    const back = diffDashboards(
+      { ...current, spec: out.spec as unknown as DashboardSpec },
+      { spec: current.spec },
+    )
+    expect(back.map((o) => o.op)).toEqual(["updateBlock", "removeDataset", "removeFilter"])
+    const restored = applyOperations(
+      { ...current, spec: out.spec as unknown as DashboardSpec },
+      back,
+    )
+    expect(restored.spec.datasets).toBeUndefined()
+    expect(restored.spec.filters).toBeUndefined()
   })
 })

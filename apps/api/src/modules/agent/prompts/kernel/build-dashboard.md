@@ -14,7 +14,7 @@ Dashboards are built into Liaison (Home, **Dashboards** in the sidebar), not an 
 
 ### Building a dashboard
 
-A dashboard is a grid of up to 24 blocks. Each block is one chart (`metric`, `table`, `bar`, `line`, `pie`) over one **source**, and a **map** that the server applies to the source's rows. Every block runs as the person viewing it: someone who may not call a block's tool sees "no access" for that block only.
+A dashboard is a grid of up to 24 blocks. Each block is one chart (`metric`, `table`, `bar`, `line`, `area`, `pie`, `combo`, `funnel`) over one **source** (its own, or a shared **dataset**), and a **map** that the server applies to the source's rows; or a `text` note. Every block runs as the person viewing it: someone who may not call a block's tool sees "no access" for that block only.
 
 Always in this order:
 
@@ -31,6 +31,8 @@ Always in this order:
 - `{ "op": "updateBlock", "blockId": "orders", "changes": { "title": "...", "source": { "params": { "since": "{{range.from}}" } } } }`: `map` and `source.params` merge key by key (`null` removes a key), other fields are replaced
 - `{ "op": "removeBlock", "blockId": "..." }`, `{ "op": "moveBlock", "blockId": "...", "position": { "after": "..." } }`
 - `{ "op": "setTitle", "title": "..." }`, `{ "op": "setTimeRange", "timeRange": { "preset": "lastMonth" }, "compare": "previousPeriod" }`, `{ "op": "setVisibility", "visibility": "org" }`
+- `{ "op": "setDataset", "id": "orders", "source": {...} }` (adds or replaces a shared source), `{ "op": "removeDataset", "id": "orders" }` (after the blocks that read it changed)
+- `{ "op": "setFilter", "filter": { "id": "market", "label": "Market", "type": "select", "options": [...] }, "position": 0 }`, `{ "op": "removeFilter", "id": "market" }`
 
 The operations apply together or not at all, and are checked before anything waits for a person: an unknown block, a duplicate id, a map that does not fit or a source the person cannot read is refused at once, naming it. Fix the call and send it again. On an org dashboard the whole call waits for ONE approval, whose card lists each change: never split one request into several calls (each would be its own approval), never send changes the person did not ask for. Preview a new or changed block first. A `version_conflict` means someone saved meanwhile: read it again and redo the call. `too_many_changes` (over 50): send the first part, and the rest only once that approval is decided and applied, after reading the dashboard again for its new version.
 
@@ -44,12 +46,35 @@ Changes always go through `kernel__dashboards_edit`. `kernel__dashboards_update(
 - `table`: `columns: [{ field, label, format? }]`, plus `sort` and `limit`. A table shows rows: no `groupBy` or `agg`.
 - `bar` and `line`: the category is `groupBy` (or `x`); `y` is aggregated per category; `series` splits it into one line or bar per value of that field.
 - `pie`: the slice is `groupBy` (or `label`); `value` is aggregated per slice.
+- `area`: a `line` filled. `stacked: true` stacks the series of a `bar`, `area` or `combo`; `horizontal: true` lays a `bar` on its side (long category names, rankings).
+- `measures: [{ label, field?, agg? }]` gives a `bar`, `line`, `area` or `combo` several values per category, one series each (revenue and order count by month), instead of `y` + `series`.
+- `combo`: bars and lines over the same categories: `measures` (two or more) or `series`; `lineSeries: ["Orders"]` names the series drawn as lines (default the last), `secondaryAxis: true` puts them on their own axis (a count beside an amount).
+- `funnel`: ordered stages. From fields: `stages: [{ label, field?, agg? }]`, each one aggregation over all rows (or a path into a one-object answer). From categories: `x` (or `groupBy`) with `y` or `agg: "count"`, and `order: ["cart", "paid", "shipped"]` for the stage order.
+- `where: [{ field, op, value }]` keeps only the rows that match, before anything is counted: `op` `eq`, `neq`, `in` (a list), `contains`, `gt`, `gte`, `lt`, `lte`, `empty`, `notEmpty`; `value` may be `{ "filter": "<filterId>" }` (below). Use it when the tool has no param for the condition ("only ad sets that spent": `{ "field": "spend", "op": "gt", "value": 0 }`).
+- `link`: where a row leads, so a person goes from a figure to the record. An app path with fields: `"/tickets/{{id}}"`, or a record of the source's app: `{ "entity": "order", "idField": "id" }` (the app's entity name; `app` when it is another app). A table's rows become clickable, and every block's drill-down rows too. `drillColumns: [{ field, label }]` chooses what the drill-down shows per row (default the table's columns, else the fields the block uses).
 - `sort: { field, dir }`: `field` is the category field to order by category, or the aggregated field (or `value`) to order by value. Defaults: lines and date buckets by date ascending, bars and pies by value descending. `limit` keeps at most that many (100 at most).
 - `format`: `number`, `currency` (with `currency: "EUR"`), `percent` or `date`.
 - Fields may be dotted paths (`billing.country`). Numbers sent as text (`"12.50"`) are read as numbers.
 - `source.rowsPath` names where the rows are when the result is not a list and has more than one list field.
 - At most 2,000 source rows are read per block. A source that answers a `nextCursor` is read page by page up to that.
 - `width` is 1, 2 or 3 columns; `refreshSec` (60 to 86400) is how long the data is kept before it is read again, at most 15 minutes whatever the value.
+
+### Shared datasets
+
+When two or more blocks read the same source with the same params (a count and a list of the same orders, a chart and a table of the same ad spend), declare it once in `datasets` and point each block at it with `"dataset": "<id>"` instead of `source`. The source then runs once per view for all of them: fewer calls to rate-limited services, and blocks that always agree. Each block keeps its own `map` (and `where`). A dataset's params take the same date, range and filter tokens as a block's.
+
+### Filters
+
+`filters` puts pickers above the dashboard (at most 8), for slicing by market, channel, customer type or campaign instead of one dashboard per slice. Each person's picks are remembered for them.
+
+- `{ "id": "market", "label": "Market", "type": "select" | "multi" | "text", "options": [...], "default": "FR" }`. `options` is a list, or `{ "fromDataset": "orders", "field": "market" }` / `{ "fromSource": {...}, "field": "name" }` for the values found in the data. A `text` filter has no options.
+- A source reads a filter with `{{filter.market}}` in its params. Empty (the person chose all) drops that param, so put the token in its own param. A multi filter's whole-string token becomes a list; inside a longer text its values are joined by commas.
+- When the tool has no param for it, filter the rows instead: `"where": [{ "field": "market", "op": "eq", "value": { "filter": "market" } }]` (empty filter = every row; several values = any of them).
+- Preview with `kernel__dashboards_preview_block({ block, datasets, filters, filterValues: { "market": ["FR"] } })`.
+
+### Text notes
+
+A `text` block has no source: `{ "id": "notes", "type": "text", "title": "How to read this", "text": "**B2B** = orders tagged `b2b`. Target: 40 units a month.", "width": 3 }`. Use one for definitions (what "B2B" or "active" means here), targets and caveats, rather than long titles. Markdown, at most 4,000 characters.
 
 ### One worked block per chart type
 
@@ -80,38 +105,39 @@ For a range that should move with the calendar ("this month", "last 30 days"), w
 - Title the block for the range it covers ("Revenue, last 30 days"); with a literal date, name that date.
 
 ```
-{ "v": 1, "blocks": [
-  { "id": "revenue", "type": "metric", "title": "Revenue", "width": 1,
-    "source": { "kind": "tool", "tool": "api-connector:connector_read",
-                "params": { "connection": "shop", "operation": "orders_list" } },
+{ "v": 1,
+  "datasets": {
+    "orders": { "kind": "tool", "tool": "api-connector:connector_read",
+                "params": { "connection": "shop", "operation": "orders_list", "country": "{{filter.market}}" } } },
+  "filters": [ { "id": "market", "label": "Market", "type": "select", "options": { "fromDataset": "orders", "field": "billing.country" } } ],
+  "blocks": [
+  { "id": "revenue", "type": "metric", "title": "Revenue", "width": 1, "dataset": "orders",
     "map": { "value": "total", "agg": "sum", "format": "currency", "currency": "EUR" } },
 
-  { "id": "orders", "type": "metric", "title": "Orders", "width": 1,
-    "source": { "kind": "tool", "tool": "api-connector:connector_read",
-                "params": { "connection": "shop", "operation": "orders_list" } },
+  { "id": "orders", "type": "metric", "title": "Orders", "width": 1, "dataset": "orders",
     "map": { "agg": "count" } },
 
-  { "id": "by-day", "type": "line", "title": "Revenue by day", "width": 2,
-    "source": { "kind": "tool", "tool": "api-connector:connector_read",
-                "params": { "connection": "shop", "operation": "orders_list" } },
-    "map": { "groupBy": { "field": "date_created", "bucket": "day" }, "y": "total", "agg": "sum", "format": "currency", "currency": "EUR" } },
+  { "id": "by-day", "type": "combo", "title": "Revenue and orders by day", "width": 2, "dataset": "orders",
+    "map": { "groupBy": { "field": "date_created", "bucket": "day" },
+             "measures": [ { "label": "Revenue", "field": "total", "agg": "sum" }, { "label": "Orders", "agg": "count" } ],
+             "lineSeries": ["Orders"], "secondaryAxis": true } },
 
   { "id": "top", "type": "bar", "title": "Top products", "width": 2,
     "source": { "kind": "tool", "tool": "api-connector:connector_read",
                 "params": { "connection": "shop", "operation": "top_sellers" } },
-    "map": { "x": "name", "y": "quantity", "limit": 10 } },
+    "map": { "x": "name", "y": "quantity", "limit": 10, "horizontal": true } },
 
-  { "id": "status", "type": "pie", "title": "Orders by status", "width": 1,
-    "source": { "kind": "tool", "tool": "api-connector:connector_read",
-                "params": { "connection": "shop", "operation": "orders_list" } },
+  { "id": "status", "type": "pie", "title": "Orders by status", "width": 1, "dataset": "orders",
     "map": { "groupBy": { "field": "status" }, "agg": "count" } },
 
-  { "id": "recent", "type": "table", "title": "Recent orders", "width": 3,
-    "source": { "kind": "tool", "tool": "api-connector:connector_read",
-                "params": { "connection": "shop", "operation": "orders_list" } },
+  { "id": "recent", "type": "table", "title": "Recent orders", "width": 3, "dataset": "orders",
     "map": { "columns": [ { "field": "number", "label": "Order" }, { "field": "billing.last_name", "label": "Customer" },
                           { "field": "total", "label": "Total", "format": "currency" }, { "field": "date_created", "label": "Date", "format": "date" } ],
-             "sort": { "field": "date_created", "dir": "desc" }, "limit": 20, "currency": "EUR" } }
+             "where": [ { "field": "status", "op": "neq", "value": "cancelled" } ],
+             "sort": { "field": "date_created", "dir": "desc" }, "limit": 20, "currency": "EUR" } },
+
+  { "id": "notes", "type": "text", "title": "Notes", "width": 3,
+    "text": "Revenue includes tax. Cancelled orders are left out of the list." }
 ] }
 ```
 

@@ -313,6 +313,27 @@ describe("the software world, seeded and read back", () => {
       "Support handover",
     ])
   })
+
+  it("the visitor and the founder both read the Support handover channel", async () => {
+    const [channel] = await rows(
+      world.orgId,
+      sql`SELECT id FROM kernel.threads WHERE org_id = ${world.orgId} AND title = 'Support handover'`,
+    )
+    const threadId = channel?.id as string
+    const seats = await rows(
+      world.orgId,
+      sql`SELECT p.user_id FROM kernel.thread_participants p WHERE p.thread_id = ${threadId}::uuid`,
+    )
+    const seated = seats.map((s) => s.user_id)
+    expect(seated).toContain(world.org.ownerUserId as string)
+    expect(seated).toContain(world.org.peopleByKey.yann?.userId as string)
+    const read = await ownerCall<{ thread: { title: string }; messages: unknown[] }>(
+      "threads_read",
+      { threadId },
+    )
+    expect(read.thread.title).toBe("Support handover")
+    expect(read.messages.length).toBeGreaterThanOrEqual(2)
+  })
 })
 
 interface MrrLine {

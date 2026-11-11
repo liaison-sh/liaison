@@ -34,7 +34,15 @@ import { installFromDist } from "../../../../test-support/seed/install-dist-apps
 
 const DB_URL = process.env.DATABASE_URL ?? ""
 /** The demo apps shipped as catalog bundles; the others are in-tree. */
-const CATALOG_DEMO_APPS = ["invoicing", "social", "pennylane", "boxtal", "shopify", "monitoring"]
+const CATALOG_DEMO_APPS = [
+  "invoicing",
+  "social",
+  "pennylane",
+  "boxtal",
+  "shopify",
+  "monitoring",
+  "stripe",
+]
 
 /**
  * What one warm visitor seed cost on a Mac mini (M-series, 2026-11), median of
@@ -79,20 +87,41 @@ const CATALOG_DEMO_APPS = ["invoicing", "social", "pennylane", "boxtal", "shopif
  * alone carries the email section; the later passes, which never write it,
  * read it back four more times when they carried it too (5 932 in 553 on
  * Linux).
+ * Re-measured 2026-11-11 with the payments app in the demo catalog: 5 923
+ * round trips in 551 transactions (cold 5 942 in 552), 334 outbox events: the
+ * app is installed for the org, with its roles and their events. The figure is
+ * set 5 above the warm local one, as before.
  */
-const BASELINE = {
-  outboxEvents: 330,
+const PRODUCTS_BASELINE = {
+  outboxEvents: 334,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 5_908,
-  transactions: 547,
+  statements: 5_928,
+  transactions: 551,
 }
 /**
  * Round trips are deterministic up to a few cache reads (5 251-5 262 across
  * runs, cold or warm, alone or concurrent); transactions did not move at all.
  * One more transaction per seeded ticket already fails both.
  */
+/**
+ * The software world's visitor seed, measured on its own (no concurrent run):
+ * its companies, deals, card mirror, the year's invoices and schedules.
+ */
+const SAAS_BASELINE = {
+  // Measured 2026-11-11: 6 751 round trips in 630 transactions, 466 outbox
+  // events (1.14 times the products world); set 5 above, as products is.
+  outboxEvents: 466,
+  queuedJobs: 0,
+  attentionEvents: 0,
+  notificationDeliveries: 0,
+  statements: 6_756,
+  transactions: 630,
+}
+const BASELINE = { products: PRODUCTS_BASELINE, saas: SAAS_BASELINE } as const
+/** No world's seed costs more than this many times the products world's. */
+const WORLD_COST_RATIO = 1.5
 const STATEMENT_MARGIN = 1.005
 const TRANSACTION_SLACK = 2
 /**
@@ -122,12 +151,15 @@ async function count(orgId: string, query: ReturnType<typeof sql>): Promise<numb
   })
 }
 
-async function seedVisitorWorld(): Promise<{ ok: boolean; orgId: string; wallMs: number }> {
+async function seedVisitorWorld(
+  world: keyof typeof BASELINE = "products",
+): Promise<{ ok: boolean; orgId: string; wallMs: number }> {
   const slug = `demo-cost-${crypto.randomUUID().slice(0, 8)}`
   const t0 = performance.now()
   const seed = await seedDemoOrgData({
     orgSlug: slug,
-    orgName: DEMO_COMPANY_NAME,
+    ...(world === "products" ? { orgName: DEMO_COMPANY_NAME } : {}),
+    worldId: world,
     variant: "visitor",
     locale: "en",
     owner: {
@@ -135,15 +167,17 @@ async function seedVisitorWorld(): Promise<{ ok: boolean; orgId: string; wallMs:
       name: "Unclaimed",
       password: "VisitorOwner1!Seed",
     },
-    needs: [...DEMO_WORLD_NEEDS.products],
+    needs: [...DEMO_WORLD_NEEDS[world]],
   })
   return { ok: seed.ok, orgId: seed.orgId ?? "", wallMs: Math.round(performance.now() - t0) }
 }
 
-async function seedOnce(): Promise<{ orgId: string; cost: SeedCost }> {
+async function seedOnce(
+  world: keyof typeof BASELINE = "products",
+): Promise<{ orgId: string; cost: SeedCost }> {
   const cpu0 = process.cpuUsage()
   const counter = startStatementCount()
-  const { ok, orgId, wallMs } = await seedVisitorWorld()
+  const { ok, orgId, wallMs } = await seedVisitorWorld(world)
   const { statements, transactions } = counter.stop()
   const cpu = process.cpuUsage(cpu0)
   expect(ok).toBe(true)
@@ -225,19 +259,51 @@ describe("the visitor seed's cost", () => {
   }, 2_400_000)
 
   it("makes no more database round trips than the baseline, alone or beside other seeds", () => {
-    expect(warm.statements).toBeLessThanOrEqual(BASELINE.statements * STATEMENT_MARGIN)
-    expect(warm.transactions).toBeLessThanOrEqual(BASELINE.transactions + TRANSACTION_SLACK)
+    expect(warm.statements).toBeLessThanOrEqual(PRODUCTS_BASELINE.statements * STATEMENT_MARGIN)
+    expect(warm.transactions).toBeLessThanOrEqual(
+      PRODUCTS_BASELINE.transactions + TRANSACTION_SLACK,
+    )
     expect(concurrent.ok).toBe(POOL_PARALLELISM)
-    expect(concurrent.statementsPerSeed).toBeLessThanOrEqual(BASELINE.statements * STATEMENT_MARGIN)
+    expect(concurrent.statementsPerSeed).toBeLessThanOrEqual(
+      PRODUCTS_BASELINE.statements * STATEMENT_MARGIN,
+    )
     expect(concurrent.transactionsPerSeed).toBeLessThanOrEqual(
-      BASELINE.transactions + TRANSACTION_SLACK,
+      PRODUCTS_BASELINE.transactions + TRANSACTION_SLACK,
     )
   })
 
   it("queues no more work for the api and worker processes than the baseline", () => {
-    expect(warm.outboxEvents).toBeLessThanOrEqual(BASELINE.outboxEvents)
-    expect(warm.queuedJobs).toBeLessThanOrEqual(BASELINE.queuedJobs)
-    expect(warm.attentionEvents).toBeLessThanOrEqual(BASELINE.attentionEvents)
-    expect(warm.notificationDeliveries).toBeLessThanOrEqual(BASELINE.notificationDeliveries)
+    expect(warm.outboxEvents).toBeLessThanOrEqual(PRODUCTS_BASELINE.outboxEvents)
+    expect(warm.queuedJobs).toBeLessThanOrEqual(PRODUCTS_BASELINE.queuedJobs)
+    expect(warm.attentionEvents).toBeLessThanOrEqual(PRODUCTS_BASELINE.attentionEvents)
+    expect(warm.notificationDeliveries).toBeLessThanOrEqual(
+      PRODUCTS_BASELINE.notificationDeliveries,
+    )
+  })
+})
+
+describe("the software world's visitor seed cost", () => {
+  let products: SeedCost
+  let saas: SeedCost
+
+  beforeAll(async () => {
+    for (const app of CATALOG_DEMO_APPS) await installFromDist(app, crypto.randomUUID())
+    // Warm both, then measure each alone.
+    await seedOnce("saas")
+    products = (await seedOnce("products")).cost
+    saas = (await seedOnce("saas")).cost
+    console.log(`[visitor-seed-cost] ${JSON.stringify({ products, saas })}`)
+  }, 2_400_000)
+
+  it("makes no more round trips than its baseline, and queues no job, attention row or delivery", () => {
+    expect(saas.statements).toBeLessThanOrEqual(SAAS_BASELINE.statements * STATEMENT_MARGIN)
+    expect(saas.transactions).toBeLessThanOrEqual(SAAS_BASELINE.transactions + TRANSACTION_SLACK)
+    expect(saas.outboxEvents).toBeLessThanOrEqual(SAAS_BASELINE.outboxEvents)
+    expect([saas.queuedJobs, saas.attentionEvents, saas.notificationDeliveries]).toEqual([0, 0, 0])
+  })
+
+  it("costs at most one and a half times the products world in statements and transactions", () => {
+    expect(saas.statements).toBeLessThanOrEqual(products.statements * WORLD_COST_RATIO)
+    expect(saas.transactions).toBeLessThanOrEqual(products.transactions * WORLD_COST_RATIO)
   })
 })

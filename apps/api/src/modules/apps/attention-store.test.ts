@@ -5,7 +5,7 @@
 // stores them, and a list the provider no longer returns is cleared.
 import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import type { AttentionItem } from "@liaison/shared"
-import type { ActorContext } from "~/db/rls"
+import type { UserContext } from "~/db/rls"
 import { attentionItemsRegistry } from "~/modules/apps/app-registries"
 import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
 import {
@@ -46,7 +46,7 @@ describe("stored app attention", () => {
   const notified: string[] = []
   const deps = {
     listActiveUsers: async () => [userId],
-    loadPersonActor: async (o: string, u: string): Promise<ActorContext> => ({
+    loadPersonActor: async (o: string, u: string): Promise<UserContext> => ({
       actorType: "user",
       userId: u,
       orgId: o,

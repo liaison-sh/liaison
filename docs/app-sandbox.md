@@ -103,6 +103,9 @@ The bridge surface is large and grows as apps need new host capabilities. Core c
 | Network | `fetch(url, opts)` — domain allowlist enforced. `opts.auth` (`{connection, identifier?, scheme: "header:<Name>" \| "bearer" \| "basic", fields?, exchange?}`) has the host add the connection's credential, only to that connection's own hosts, and redact it from the answer; `opts.configSecrets` (`{placeholder: configKey}`) has the host write a declared config secret exactly where the manifest's `secrets` places it (see below), else `secret_placement_refused` |
 | Data store | `store_get`, `store_set`, `store_update`, `store_delete`, `store_query`, `store_count` (`ctx.store.*`, the calling app's collections; the writes are refused on a read-only run) |
 | Connections | `connections_getToken(connName, identifier?)`, `connections_getAccounts(connName)`, `connections_describe(connName)` (owner, connected by, health, token expiry, whether a refresh token is stored; no secrets), `connections_getCredentials`, `connections_getSettings(connName, identifier?)` (the fields marked `readable`, and which fields are empty; no secrets), `connections_disconnect` |
+| SQL connections | `sql_query(connName, request)`, `sql_reads(connName)`, `sql_schema(connName, request)`, `sql_probe(connName, request)` (`ctx.sql.*`: a database the platform holds the connection to, see "Query a database"; read-only, no secrets) |
+| Accounts | `accounts_list(connName, opts)`, `accounts_setMetadata(accountId, patch)` (`ctx.accounts.*`: the app's own accounts, the organization's and the caller's own; `setMetadata` is refused on a read-only run) |
+| Directory | `kernel_findOne(entity, id)`, `kernel_findByIds(entity, ids)` (`ctx.kernel.*`: a user's directory fields or a contact of the caller's organization, up to 200 ids) |
 | Logging | `log_info`, `log_warn`, `log_error`, `log_debug` (`ctx.logger.*`; `console.*` lines arrive here too, see "Console output") |
 | Config | `config_get(key)`, `config_has(key)`, `crypto_hmacSha256Base64ForConfig(key, data)`, `crypto_verifyHmacForConfig(key, data, signature, "base64" \| "hex")` (sign or verify with a declared config secret, which stays on the host) |
 
@@ -501,6 +504,42 @@ export async function backfill(params, ctx) {
 
 **Enqueue a job with `ctx.jobs.enqueue(name, payload, { delay, jobId })`.** `delay` is in milliseconds, at most 15 minutes (a longer one is cut to 15 minutes: use `timers.wakeIn`). `jobId` drops a second enqueue of that id while the first waits or runs. Both ids are scoped to your organization. The job runs as the person whose run enqueued it, or as the app.
 
+### Query a database (`ctx.sql`)
+
+An app that reads an organization's database declares a SQL connection: a `credentials` connection with an `sql` block. The organization stores either a Postgres or Redshift DSN (`connectionString`, with optional `dialect` and `statementTimeoutMs`) or a db-gate (`gateUrl` and `gateToken`). The server holds the connection pool and the credentials. App code names the connection and gets rows back, on every executor.
+
+```json
+"connections": {
+  "warehouse": {
+    "type": "credentials",
+    "allowedDomains": [],
+    "credentialFields": [{ "name": "connectionString", "type": "password", "label": "DSN" }],
+    "sql": { "rawQuery": { "scope": "my-app:query:read" } }
+  }
+}
+```
+
+```typescript
+const out = await ctx.sql.query("warehouse", { sql: "SELECT id, total FROM orders WHERE id = $1", params: [id] })
+if ("error" in out) return out             // { error: { code, message } }
+return out.rows                            // { rows, truncated, durationMs }
+```
+
+- `sql.catalog: "instance"` gives the connection the deployment's read catalog (`LIAISON_DATABASE_ADAPTER_PATH` or `LIAISON_DATABASE_ADAPTER`): `ctx.sql.query(name, { read, params })` runs a named read and `ctx.sql.reads(name)` lists them. The catalog is the deployment's, never the app's.
+- `sql.rawQuery.scope` allows a read-only `SELECT` of the app's own (`{ sql, params }`, `params` bind `$1`, `$2`, ...; a db-gate takes none). The person the run acts for must hold the scope. A deployment turns raw queries off with `LIAISON_DATABASE_ALLOW_RAW_QUERY=false`.
+- `sql.modes` (`["direct"]` or `["gate"]`) limits the credential modes the connection takes.
+- Every call runs in a read-only transaction, with a statement timeout set on the database (`timeoutMs`, default 10 s, at most 120 s) and cancelled there past it. It returns at most `maxRows` rows (default 500, at most 2000) and says `truncated` when more matched.
+- The credentials never reach the run: a failure is answered as `{ error: { code, message } }`, with no DSN or token in it (`not_connected`, `forbidden`, `unknown_read`, `invalid_params`, `statement_timeout`, `config_error`, ...). Every call writes an audit line (`sql.query`, `sql.schema`, `sql.probe`, `sql.reads`) with a hash of the SQL, never the SQL.
+- The account used is the organization's, never a member's personal one. The pool is per organization, connection and account. It is opened on first use, replaced when the credentials change, and closed when the account is disconnected, after 10 minutes unused, or past `LIAISON_SQL_POOLS_MAX` pools (32) per server process.
+- The `liaison-self` catalog reads this instance's own database through a login that bypasses row-level security. Its reads always take the caller's organization as `orgId`, whatever the app sends, and a read over tickets, knowledge, mail or the audit log needs that app's read scope. Raw SQL over it is refused outside the instance operator's organization.
+- `ctx.sql.schema(name, { table? })` lists readable tables and columns (secret columns removed; it needs the raw-query scope when the connection has one). `ctx.sql.probe(name)` reports write grants and catalog reads a gate is missing.
+
+### Read your own accounts (`ctx.accounts`)
+
+`ctx.accounts.list(connection, { identifier?, includeInactive? })` returns the app's accounts of one declared connection: the organization's and the caller's own, never another member's, another app's or another organization's, and never a token. Each has its `metadata` and `canManage`. `ctx.accounts.setMetadata(accountId, patch)` merges keys into an account's metadata (`null` removes a key, at most 32 KiB). A personal account is its owner's to change. The organization's account needs the connection's admin scope (`adminScope`, default `<app>:accounts:admin`), or a run of the app itself (a job). Every change is audited.
+
+`ctx.kernel.findByIds("users", ids)` returns the directory fields of up to 200 users of the caller's organization in one call, as `ctx.kernel.findOne` does for one.
+
 ### Commit an intent row before an outside call (`ctx.db.insertNow`)
 
 Some runs share one transaction from start to end: an approved gated call (the approval claim, the handler and the "approved" mark), and a tool declared `atomic: true`. If the sandbox stops such a handler ("App execution timed out"), every write it made rolls back. A row written with `ctx.db.insert` just before a call you cannot undo (buying a label, charging a card) is lost with it, and the outside effect has no local record.
@@ -787,6 +826,46 @@ on our side is often still applied upstream. A multipart upload can ask for up t
 seconds. The tool's own `timeoutMs` still bounds the whole call
 (`apps/api/src/modules/apps/sandbox/bridge/egress.ts`).
 
+### Share a provider's rate limit across runs (`limits`, `ctx.limiter`)
+
+A provider limits how hard one account may call it: so many calls at once, or so
+many per second. Declare that limit on the connection in the manifest, and every
+`ctx.fetch` that names the connection (`auth: { connection }`) keeps to it, across
+every run, process and executor (QuickJS or Workers). Do not keep your own counter
+or semaphore in module state: it is per process, and a Workers isolate does not
+share it.
+
+```json
+"connections": {
+  "shop": {
+    "type": "oauth2",
+    "limits": { "concurrency": 4, "perSecond": 2, "burst": 40 }
+  }
+}
+```
+
+- `concurrency`: calls to one account in flight at once (1 to 1000).
+- `perSecond`: calls started per second, on average; `burst`: how many may start at
+  once when there is room (default: `perSecond` rounded up). Give `concurrency`,
+  `perSecond` or both.
+- The limit is per account: the organization, the app, the connection and the
+  `identifier` the call names (none: the connection's default account).
+- A call waits for its turn before it goes out, at most 2 seconds in a tool and 20
+  seconds in a job. Past that it fails with `provider_rate_limited` (status 429), which
+  the caller can retry later.
+- When the provider answers a limited connection's call with 429 or 503 and a
+  `Retry-After` header, every call to that account waits that long (at most 60
+  seconds).
+- A provider that reports its throttle in the response body (a GraphQL cost):
+  call `await ctx.limiter.pause("shop", ms)` (or `pause("shop", ms, identifier)`),
+  and every call to that account waits `ms`, at most 60 seconds. It answers the pause
+  in force. Only for a connection that declares `limits`.
+- When the limiter cannot reach its store, calls go out without a limit (the
+  provider's own 429 still applies) and the server logs it.
+
+(`apps/api/src/modules/apps/connection-limiter.ts`,
+`apps/api/src/modules/apps/run-limits.ts` `connectionLimiterLimits`.)
+
 ### Unknown outcomes of approved writes
 
 An approved tool with an outside effect records its progress with the approval
@@ -808,8 +887,15 @@ never recorded an outcome:
 - `not_executed`: the approval goes back to pending, so a person can approve it again.
 - `unknown`: nothing changes; the approval stays for a person to decide.
 
+A `reconcileHandler`, like a `pollHandler` (an approved tool's output that is not
+ready yet), runs with no transaction held for its whole run: each `ctx` call opens and
+commits its own, so it may call the provider. The reaper and the poll job record the
+answer afterwards, in one write that only applies if nobody settled the approval in
+between.
+
 (`apps/api/src/modules/approvals/approving-reaper.ts`,
-`apps/api/src/modules/approvals/reconcile-outcome.ts`.)
+`apps/api/src/modules/approvals/reconcile-outcome.ts`,
+`apps/api/src/modules/approvals/poll-output.ts`.)
 
 ### Tiering model (Phase 14+)
 

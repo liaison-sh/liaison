@@ -18,6 +18,7 @@ interface TestAppCtx {
   approval_recordSucceeded(toolName: string, externalRefJson?: string): Promise<void>
   approval_recordFailedNoEffect(toolName: string, errJson: string): Promise<void>
   approval_recordAmbiguous(toolName: string, errJson: string): Promise<void>
+  fetch(url: string, optsJson: string): Promise<string>
 }
 
 async function listItems(params: { status?: string }, ctx: TestAppCtx) {
@@ -26,6 +27,15 @@ async function listItems(params: { status?: string }, ctx: TestAppCtx) {
     JSON.stringify(params.status ? { where: { status: params.status } } : {}),
   )
   return JSON.parse(rows)
+}
+
+/** An async-output poll that asks its provider, then reads (runtime.ts `pollHandler`). */
+async function pollProbe(params: { external_ref?: unknown }, ctx: TestAppCtx) {
+  const res = JSON.parse(
+    await ctx.fetch(`https://poll.provider.test/status/${String(params.external_ref)}`, "{}"),
+  ) as { status: number; body: string }
+  await ctx.db_findMany("items", "{}")
+  return { ready: res.status === 200, result: { value: JSON.parse(res.body).value } }
 }
 
 async function createItem(

@@ -9,7 +9,7 @@ import type {
 import type { ApprovalSummary } from "@liaison/shared"
 import type { z } from "zod"
 import type { McpToolAnnotations } from "~/apps/mcp-manager/types"
-import type { PrivilegedDb, RlsClient } from "~/db"
+import type { RlsClient } from "~/db"
 import type { AppGuideInput } from "~/modules/agent/context/app-guide"
 import type { BulkToolSchema } from "~/modules/apps/bulk-field-schemas"
 import { bumpCatalogGeneration } from "~/modules/apps/catalog-generation"
@@ -561,10 +561,12 @@ export const toolRegistry = createTypedRegistry<
       ctx: { orgId: string; userId: string; scopes: string[] },
     ) => Promise<Record<string, unknown> | null>
     /** Poll handler for async outputs — called by the approval-poll-output job.
-     *  Returns the final result when ready, else { ready: false }.
-     *  `tx` is the PrivilegedDb handle created by withPrivilegedDb. */
+     *  Returns the final result when ready, else { ready: false }. It asks the
+     *  provider, so it is called with NO transaction open and opens its own
+     *  short ones (a sandboxed poll: one per bridge call); the job writes the
+     *  result afterwards in one guarded statement (poll-output.ts). */
     poll?: (
-      ctx: { orgId: string; userId: string; tx: PrivilegedDb },
+      ctx: { orgId: string; userId: string },
       partialResult: unknown,
     ) => Promise<{ ready: true; result: Record<string, unknown> } | { ready: false }>
     /** Outcome reconciler for a gated tool with an external effect — called by
@@ -573,9 +575,11 @@ export const toolRegistry = createTypedRegistry<
      *  It asks the provider whether the effect happened: `executed` (with the
      *  provider's ref) settles the approval as approved, `not_executed` reverts
      *  it to pending, `unknown` leaves it for a person. Read-only: it never
-     *  performs the effect. Declared in a manifest as `reconcileHandler`. */
+     *  performs the effect. Declared in a manifest as `reconcileHandler`.
+     *  Called with NO transaction open (it asks the provider); the reaper
+     *  records the answer afterwards in one guarded statement. */
     reconcile?: (
-      ctx: { orgId: string; tx: PrivilegedDb },
+      ctx: { orgId: string },
       input: { approvalRequestId: string; payload: unknown; externalRef: unknown },
     ) => Promise<ReconcileOutcome>
     /** Manifest snapshot attached at registration (manifest-format apps only).

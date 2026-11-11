@@ -7,7 +7,7 @@
 // login really reaches nothing but the warehouse.
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "bun:test"
 import postgres from "postgres"
-import { PostgresDirect } from "~/apps/database/transports/postgres-direct"
+import { PostgresDirect } from "~/modules/apps/connections/sql/transports/postgres-direct"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { DemoOrgTestAccess, invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { provisionDemoWarehouse, warehouseLoginFromDsn } from "./provision"

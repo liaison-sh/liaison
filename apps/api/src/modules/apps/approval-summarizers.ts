@@ -121,6 +121,16 @@ function defaultLines(params: unknown): string[] {
  * and consequences).
  */
 function defaultSummary(toolName: string, params: unknown): ApprovalSummary {
+  return genericApprovalSummary(toolName, params)
+}
+
+/**
+ * The generic summary of a tool call: computed host-side from the tool id and
+ * the payload, no summarizer runs. What a summarizer's failure falls back to,
+ * and what serving an approval shows while its stored summary is missing
+ * (approvals/served-summary.ts).
+ */
+export function genericApprovalSummary(toolName: string, params: unknown): ApprovalSummary {
   return {
     kind: toolName,
     title: humanizeToolName(toolName),

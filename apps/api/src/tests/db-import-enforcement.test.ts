@@ -155,6 +155,10 @@ describe("db import enforcement", () => {
     // caller under RLS, which is exactly the fault being repaired, and purges the
     // org's accounts whose kernel connection was disconnected.
     "modules/apps/sandbox/bridge/calendar.ts",
+    // ctx.accounts (accounts_list / accounts_setMetadata): the calling app's own
+    // org-owned accounts are invisible to RLS; every read and write pins org,
+    // app and connection in its predicate, and the caller's own personal rows.
+    "modules/apps/sandbox/bridge/accounts.ts",
     // App config write path (PUT /api/apps/:app/config/:key, config apply):
     // instance `kernel.apps.config` rows, written after the route's
     // kernel:apps:admin check and the manifest configKeys allowlist.
@@ -343,6 +347,13 @@ describe("db import enforcement", () => {
     // claims and results are written through the privileged pool for the
     // org whose effect it is.
     "lib/effect-once.ts",
+    // The webhook inbox: kernel.webhook_inbox is deny-all to the request
+    // roles; deliveries are stored, claimed and settled through the
+    // privileged pool for the org they were delivered to.
+    "modules/webhooks/inbox.ts",
+    // A webhook handler's fallback acting user (requiresUserActor): the org's
+    // oldest active user, read by the delivery's own org id.
+    "modules/webhooks/handler-run.ts",
     // The load harness: reads (and, for its own signed paths, sets) one org's
     // `settings.loadHarness` flag, matched on that org's id.
     "lib/load-harness.ts",
@@ -512,6 +523,13 @@ describe("db import enforcement", () => {
     "infra/boot-phase10.ts",
     "modules/attention/translator.ts",
     "modules/attention/state-materializer.ts",
+    // The apps' stored attention lists (0288): the refresh lists the org's
+    // active people, loads each one's permissions and writes their list, all
+    // bound to org_id (the feed reads them under the reader's RLS).
+    "modules/apps/attention-store.ts",
+    // The approval summary backfill: lists the orgs with approvals lacking a
+    // stored summary (a system read, no org yet), then pages one org's ids.
+    "modules/approvals/summary-backfill.ts",
     "modules/attention/digest-jobs.ts",
     // Cron fan-out: the tick lists every org with the app's per-org state (a
     // system read, no org yet) and the reconcile reads active app versions.

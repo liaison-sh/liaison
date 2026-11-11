@@ -94,6 +94,8 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   time_civil: "read",
   // The calling turn's agent and whether a person is behind it, from the captured frame.
   turn_get: "read",
+  // A provider throttle signal (connection-limiter.ts): delays later calls, writes no data.
+  limiter_pause: "throttle signal, no data written",
   connections_describe: "read",
   connections_getAccounts: "read",
   connections_getCredentials: "read",
@@ -116,6 +118,14 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   hasScope: "read",
   kernel_findContactsByExternalId: "read",
   kernel_findOne: "read",
+  kernel_findByIds: "read",
+  // Platform-held SQL connections: a READ ONLY transaction on the app's own
+  // connection (connections/sql/service.ts); the audit line is the kernel's.
+  sql_query: "read",
+  sql_reads: "read",
+  sql_schema: "read",
+  sql_probe: "read",
+  accounts_list: "read",
   kernel_listApprovals: "read",
   knowledge_attentionItems: "read",
   knowledge_create_validate: "read",

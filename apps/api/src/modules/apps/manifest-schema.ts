@@ -393,10 +393,48 @@ const connectionSchema = {
     // before it is stored; its refusal stops the save, so the stored key stays
     // (connections/precheck.ts).
     checkBeforeStore: { type: "string", pattern: "^[a-z][a-z0-9_]*$" },
+    // A SQL database the platform holds the connection to (`ctx.sql.*`,
+    // connections/sql/service.ts). Credentials only: `connectionString` (direct
+    // Postgres or Redshift, optional `dialect`, `statementTimeoutMs`) or
+    // `gateUrl` + `gateToken` (a db-gate). App code gets rows, never these.
+    sql: {
+      type: "object",
+      properties: {
+        // Named reads come from the deployment's read catalog.
+        catalog: { enum: ["instance"] },
+        // Read-only SELECTs of the app's own, for callers holding `scope`.
+        rawQuery: {
+          type: "object",
+          properties: { scope: { type: "string", minLength: 3 } },
+          required: ["scope"],
+          additionalProperties: false,
+        },
+        // The credential modes the connection takes (default both).
+        modes: {
+          type: "array",
+          items: { enum: ["direct", "gate"] },
+          minItems: 1,
+          uniqueItems: true,
+        },
+      },
+      additionalProperties: false,
+    },
     // Credentials only: several org-owned accounts per org, each keyed by its
     // slug identifier (the credentials route then requires `identifier`).
     multiInstance: { type: "boolean" },
     allowedDomains: { type: "array", items: { type: "string" } },
+    // The shared per-connection limiter (connection-limiter.ts): how many calls
+    // to one account may be in flight, and how many may start per second, across
+    // every run and process. Meaning checked by contract.ts connectionLimitsErrors.
+    limits: {
+      type: "object",
+      properties: {
+        concurrency: { type: "integer" },
+        perSecond: { type: "number" },
+        burst: { type: "integer" },
+      },
+      additionalProperties: false,
+    },
     // Per-template-variable normalization rules (e.g. `{shop}` for per-store
     // providers). The kernel applies these generically during the OAuth flow.
     templateVars: {

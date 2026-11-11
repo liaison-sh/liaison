@@ -311,6 +311,7 @@ export function bootstrapKernelApps(): void {
   const HomeSidebar = lazy(() => import("~/modules/threads/HomeSidebar"))
   // D21: Home's own sidebar (what is asked of you), not the Messages list.
   const HomeAttentionSidebar = lazy(() => import("~/modules/shell/HomeAttentionSidebar"))
+  const DashboardsSidebar = lazy(() => import("~/modules/dashboards/DashboardsSidebar"))
   const SettingsSidebar = lazy(() =>
     import("~/modules/settings/SettingsSidebar").then((m) => ({ default: m.SettingsSidebar })),
   )
@@ -533,7 +534,7 @@ export function bootstrapKernelApps(): void {
       // or, with none, what a dashboard is and that the agent builds them.
       dashboards: {
         component: lazy(() => import("~/modules/dashboards/DashboardsIndex")),
-        sidebar: HomeAttentionSidebar,
+        sidebar: DashboardsSidebar,
         icon: LayoutDashboard,
         urlPattern: "/dashboards",
         defaultLabel: "Dashboards",
@@ -541,17 +542,19 @@ export function bootstrapKernelApps(): void {
         singleton: true,
         referenceable: false,
       },
-      // P3: one dashboard (`/dashboard/:id`), named by its title. Its sidebar is
-      // Home's, where the Dashboards section lists the viewer's dashboards.
+      // P3: one dashboard (`/dashboard/:id`), named by its title, beside the
+      // Dashboards sidebar that lists the viewer's dashboards.
       dashboard: {
         component: lazy(() => import("~/modules/dashboards/DashboardView")),
-        sidebar: HomeAttentionSidebar,
+        sidebar: DashboardsSidebar,
         icon: LayoutGrid,
         urlPattern: "/dashboard/:entityId",
         defaultLabel: "Dashboard",
         defaultLabelKey: "kernel.nav.dashboard",
         resolveLabel: (entityId) => dashboardTitle(entityId),
         referenceable: false,
+        // The time range rides in the URL (`?range=&compare=`), so a link carries it.
+        preserveSubRoutes: true,
       },
       // P4: one app draft in the builder (`/apps/builder/:id`), named by its title.
       "app-builder": {

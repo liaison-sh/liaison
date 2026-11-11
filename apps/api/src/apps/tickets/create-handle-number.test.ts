@@ -3,24 +3,16 @@
 // a ticket made later in that org never meets one of those numbers, and its
 // number follows the org's highest rather than an instance-wide count below it.
 import { beforeAll, describe, expect, it } from "bun:test"
-import { sql as drizzleSql } from "drizzle-orm"
 import { createTicket } from "~/apps/tickets/create"
-import { extractRows } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { seedOrgRow } from "~/seed/factories/org/rows"
 
 let orgId: string
 
 beforeAll(async () => {
   const slug = `ticket-number-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
-  await withSystemDb("ticket-number-fixture", async (tx) => {
-    orgId = extractRows<{ id: string }>(
-      await tx.execute(drizzleSql`
-        INSERT INTO kernel.organizations (id, name, slug)
-        VALUES (gen_random_uuid(), 'TicketNumber', ${slug}) RETURNING id
-      `),
-    )[0]!.id
-  })
+  orgId = await seedOrgRow({ name: "TicketNumber", slug })
   await ensureAppsForOrg(orgId, {})
 })
 

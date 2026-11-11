@@ -22,7 +22,7 @@ const PORT = 18_490
 
 let setupSql: ReturnType<typeof postgres>
 let gateServer: ReturnType<typeof Bun.serve> | undefined
-let gateDb: import("../../../../../db-gate/src/gate-db").GateDb | undefined
+let gateDb: import("../../../../../../../db-gate/src/gate-db").GateDb | undefined
 
 const testCatalog: ReadCatalog = {
   adapter: "gate-parity-test",
@@ -49,8 +49,8 @@ beforeAll(async () => {
   await setupSql.unsafe(`GRANT USAGE ON SCHEMA ${SCRATCH_SCHEMA} TO liaison_app`)
   await setupSql.unsafe(`GRANT SELECT ON ${SCRATCH_SCHEMA}.widgets TO liaison_app`)
 
-  const { GateDb } = await import("../../../../../db-gate/src/gate-db")
-  const { createDbGateHandler } = await import("../../../../../db-gate/src/server")
+  const { GateDb } = await import("../../../../../../../db-gate/src/gate-db")
+  const { createDbGateHandler } = await import("../../../../../../../db-gate/src/server")
   gateDb = new GateDb(DSN)
   const config = { dsn: DSN, token: TOKEN, catalogPath: "", allowQuery: false, port: PORT }
   const handler = createDbGateHandler({ config, catalog: testCatalog, db: gateDb })

@@ -43,7 +43,7 @@ Hover a message to **Reply in thread**, **Quote** it, **Copy text**, or **Edit**
 
 **Copy link** in a conversation's actions menu copies its address, and the same entry is in the right-click menu of every tab. Pasting an address of a project, task, conversation or ticket from this server into the message box turns it into a chip, which never notifies anyone; an address from another site stays a link. A pasted address never adds a mention of a person by itself.
 
-A dashboard an agent or a colleague links in a message is shown by the dashboard's title. Your dashboards themselves are listed on **Home**, in the sidebar's **Dashboards** section (see [Dashboards](../agents/dashboards.md)).
+A dashboard an agent or a colleague links in a message is shown by the dashboard's title. Your dashboards themselves are listed under **Dashboards** in the bar on the left (see [Dashboards](../agents/dashboards.md)).
 
 **Close other tabs** and **Close tabs to the right** ask first when one of those tabs holds a message you have not sent or an attached file, and list what would be lost.
 

@@ -2,26 +2,24 @@
 import type { AttentionFeedResponse, AttentionItem, AttentionProviderError } from "@liaison/shared"
 import type { RlsClient } from "~/db"
 import type { ActorContext } from "~/db/rls"
-import { createRlsSession, withRlsContext } from "~/db/rls"
+import { withRlsContext } from "~/db/rls"
 import { appsLogger as log } from "~/lib/logger"
 import { readStandingInFor } from "~/modules/approvals/route-world"
-import { appBridgeManifest, attentionItemsRegistry } from "~/modules/apps/app-registries"
+import { attentionItemsRegistry } from "~/modules/apps/app-registries"
+import {
+  compareAttentionItems,
+  normalizeProviderItems,
+  readStoredAttention,
+} from "~/modules/apps/attention-store"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { isAppOffForOrg, isAppUnavailableFor, primeOrgApps } from "~/modules/apps/org-apps"
 import { withAppDimensionAliases } from "~/modules/apps/runtime-helpers"
-import { isBundleLoadError, loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import {
-  exportOnlyBundle,
-  useFullBundle,
-  watchBridgeCalls,
-} from "~/modules/apps/sandbox/bundle-shake"
-import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
-import { runApp } from "~/modules/apps/sandbox/run-app"
 import { attentionSourceApp } from "~/modules/attention/attention-source-app"
 import { hasScope } from "~/modules/permissions/permissions"
 
+// The kernel's own providers (plain server code reading the database) run on
+// each feed read, bounded by this; apps' providers never do (attention-store.ts).
 const PROVIDER_TIMEOUT_MS = 2000
-const PROVIDER_ITEM_CAP = 200
 const TIMEOUT_SENTINEL = "__attention_aggregator_timeout__"
 
 interface RegistryEntry {
@@ -31,11 +29,6 @@ interface RegistryEntry {
   trusted: boolean
   /** Declared `passesOn`: also returns the items of the people the viewer stands in for. */
   passesOn?: boolean
-}
-
-function compareAttentionItems(a: AttentionItem, b: AttentionItem): number {
-  if (b.urgency !== a.urgency) return b.urgency - a.urgency
-  return new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()
 }
 
 /**
@@ -130,77 +123,12 @@ async function invokeKernelProvider(
   return tx.transaction((sp) => handler(sp as unknown as RlsClient, orgId, userId, ...passOn))
 }
 
-async function invokeManifestProvider(
-  reg: RegistryEntry,
-  appName: string,
-  actor: ActorContext,
-  orgId: string,
-  forUserIds: readonly string[],
-): Promise<AttentionItem[]> {
-  const source = await loadBundle(reg.bundlePath)
-  // Only a provider that declared `passesOn` hears of anyone but the viewer.
-  const passOn =
-    reg.passesOn === true && forUserIds.length > 0 ? { forUserIds: [...forUserIds] } : {}
-  const aliasedActor = withAppDimensionAliases(actor, appName)
-  const userId = aliasedActor.actorType === "user" ? aliasedActor.userId : "system"
-  // The bridge must carry the app's REAL manifest: db_findMany validates every
-  // entity/orderBy key against `manifest.schema`, so an empty stub makes every
-  // provider db read fail ("Entity not found in app schema").
-  const bridgeManifest = appBridgeManifest(orgId, appName)
-  if (!bridgeManifest) {
-    throw new Error(`No bridge manifest registered for app "${appName}" (org ${orgId})`)
-  }
-  // Bridge-owned transactions: the attention feed fans out one provider per
-  // app on every poll — with an ambient wrap each provider pinned a request-
-  // pool connection for its whole sandbox run, a top contributor to the
-  // 2026-07-10 interactive pool exhaustion. The session bridge acquires per
-  // bridge db call instead.
-  const session = createRlsSession(aliasedActor)
-  const bridge = createSessionRpcBridge(
-    appName,
-    userId,
-    orgId,
-    session,
-    bridgeManifest,
-    aliasedActor.scopes,
-    aliasedActor.actorType,
-    undefined,
-    { actor: aliasedActor },
-  )
-  // A sandboxed (untrusted) app's provider runs in the isolated worker pool,
-  // like its tools; only trusted code runs on the host's in-process pool.
-  // A trusted provider runs the part of its bundle the provider needs (the
-  // whole bundle until that is built): QuickJS compiles all of a bundle on
-  // every evaluation, and the feed calls each provider on every poll. Still a
-  // fresh context per call; see bundle-shake.ts.
-  const trusted = reg.trusted === true
-  const bundleSource = trusted ? exportOnlyBundle(source, reg.handler, { trusted }) : source
-  const watched =
-    bundleSource !== source ? watchBridgeCalls(bridge) : { bridge, called: () => false }
-  try {
-    return (await runApp({
-      trusted,
-      appName,
-      orgId,
-      bundlePath: reg.bundlePath,
-      bundleSource,
-      exportName: reg.handler,
-      entry: `attention:${reg.handler}`,
-      params: { actor: aliasedActor, ...passOn },
-      bridge: watched.bridge,
-      holdsTx: false,
-      appId: appName,
-    })) as AttentionItem[]
-  } catch (err) {
-    // The export-only bundle failed to load (before the provider reached the host): the
-    // next poll runs the full one.
-    if (trusted && bundleSource !== source && !watched.called() && isBundleLoadError(err)) {
-      useFullBundle(source, reg.handler)
-    }
-    throw err
-  }
-}
-
+/**
+ * The attention feed. The kernel's providers (approvals, connection health,
+ * persisted attention events, ...) are server code and are read live. An app's
+ * provider is app code: the feed reads the list stored for the reader the last
+ * time the app was woken (attention-store.ts) and runs nothing of the app.
+ */
 export async function aggregateAttentionItems(args: {
   orgId: string
   actor: ActorContext
@@ -235,10 +163,14 @@ export async function aggregateAttentionItems(args: {
 
   const callerScopes = args.actor.actorType === "user" ? args.actor.scopes : ["*"]
 
-  // The people away today who name the viewer next in line, read once and only when a provider
-  // passes items on. Unreadable means nobody: the viewer's own feed never waits on it.
+  // The people away today who name the viewer next in line, read once and only when a kernel
+  // provider passes items on (an app's stored list was built with them, attention-store.ts).
+  // Unreadable means nobody: the viewer's own feed never waits on it.
   let forUserIds: string[] = []
-  if (viewerId && [...byApp.values()].some(({ reg }) => reg.passesOn === true)) {
+  if (
+    viewerId &&
+    [...byApp.values()].some(({ entryOrgId, reg }) => entryOrgId === "*" && reg.passesOn === true)
+  ) {
     forUserIds = await withRlsContext(args.actor, (tx) =>
       readStandingInFor(tx, args.orgId, viewerId),
     ).catch((err: unknown) => {
@@ -247,17 +179,15 @@ export async function aggregateAttentionItems(args: {
     })
   }
 
-  // App providers are independent (each acquires per bridge call) and run in
-  // parallel: sequential per-app awaits added N×DB-round-trip latency to
-  // every feed fetch (k6 A4 measured 770ms p95 at 50 VUs against the spec'd
-  // 300ms). The kernel providers share ONE RLS transaction, one after the
-  // other, each in its own savepoint: a transaction each held up to eight
-  // request-pool connections per feed poll and paid eight transaction
-  // setups, so under a launch's walking visitors the feed alone exhausted
-  // the pool and other requests timed out waiting for a connection. A
-  // failing provider rolls back its own savepoint only.
-  const tasks: Promise<void>[] = []
+  // The kernel providers share ONE RLS transaction, one after the other, each
+  // in its own savepoint: a transaction each held up to eight request-pool
+  // connections per feed poll and paid eight transaction setups, so under a
+  // launch's walking visitors the feed alone exhausted the pool and other
+  // requests timed out waiting for a connection. A failing provider rolls
+  // back its own savepoint only. The apps' stored lists are read first, in
+  // the same transaction.
   const kernelProviders: Array<{ appName: string; reg: RegistryEntry }> = []
+  const storedApps: string[] = []
   const runProvider = async (
     appName: string,
     providerPromise: Promise<AttentionItem[]>,
@@ -271,47 +201,12 @@ export async function aggregateAttentionItems(args: {
         }),
       ])
       if (timeoutHandle) clearTimeout(timeoutHandle)
-
-      if (!Array.isArray(providerItems)) {
-        errors.push({
-          app: appName,
-          reason: "error",
-          message: "Provider returned non-array attention items",
-        })
-        return
-      }
       // Contract enforcement: a provider emitting malformed items (missing
       // action/summary/id) must degrade to a provider error, never crash
       // the feed UI. The knowledge provider shipped its domestic shape for
       // months undetected because its queue was empty on every deploy.
-      const wellFormed = providerItems.filter(
-        (i) =>
-          i &&
-          typeof i === "object" &&
-          typeof i.id === "string" &&
-          typeof i.entityId === "string" &&
-          typeof i.kind === "string" &&
-          typeof i.summary === "string" &&
-          typeof i.urgency === "number" &&
-          i.action &&
-          typeof (i.action as { type?: unknown }).type === "string",
-      )
-      if (wellFormed.length < providerItems.length) {
-        errors.push({
-          app: appName,
-          reason: "error",
-          message: `Dropped ${providerItems.length - wellFormed.length} malformed attention item(s)`,
-        })
-      }
-      const sorted = [...wellFormed].sort(compareAttentionItems)
-      const sliced = sorted.length > PROVIDER_ITEM_CAP ? sorted.slice(0, PROVIDER_ITEM_CAP) : sorted
-      if (sliced.length < providerItems.length) {
-        errors.push({
-          app: appName,
-          reason: "error",
-          message: `Provider returned ${providerItems.length} items; truncated to ${PROVIDER_ITEM_CAP}`,
-        })
-      }
+      const { items: sliced, error } = normalizeProviderItems(providerItems)
+      if (error) errors.push({ app: appName, ...error })
       items.push(...sliced.filter((i) => !unavailable(attentionSourceApp(i))))
     } catch (err) {
       if (timeoutHandle) clearTimeout(timeoutHandle)
@@ -332,38 +227,48 @@ export async function aggregateAttentionItems(args: {
       if (!hasScope(reg.scope, aliasedScopes ?? callerScopes)) continue
     }
     if (entryOrgId === "*") kernelProviders.push({ appName, reg })
-    else
-      tasks.push(
-        runProvider(
-          appName,
-          invokeManifestProvider(reg, appName, args.actor, args.orgId, forUserIds),
-        ),
-      )
+    else storedApps.push(appName)
   }
-  if (kernelProviders.length > 0) {
+  if (kernelProviders.length > 0 || storedApps.length > 0) {
     const userId = args.actor.actorType === "user" ? args.actor.userId : ""
     const orgId = args.orgId
-    const shared = withRlsContext(args.actor, async (tx) => {
-      for (const { appName, reg } of kernelProviders) {
-        const run = invokeKernelProvider(tx, reg, orgId, userId, forUserIds)
-        await runProvider(appName, run)
-        // A provider that timed out may still be running on this connection:
-        // the next savepoint starts only once it has settled.
-        await run.catch(() => {})
-      }
-    })
-    tasks.push(
-      shared.catch((err: unknown) => {
-        // No transaction at all (say the pool is full): every kernel provider failed.
-        const message = err instanceof Error ? err.message : "unknown"
-        log.warn({ reason: "error", message }, "Attention kernel providers failed")
-        for (const { appName } of kernelProviders) {
-          errors.push({ app: appName, reason: "error", message })
+    try {
+      await withRlsContext(args.actor, async (tx) => {
+        if (storedApps.length > 0) {
+          try {
+            const stored = await tx.transaction((sp) =>
+              readStoredAttention(sp as unknown as RlsClient, orgId, userId, storedApps),
+            )
+            for (const [appName, list] of stored) {
+              if (list.error) errors.push({ app: appName, ...list.error })
+              items.push(...list.items.filter((i) => !unavailable(attentionSourceApp(i))))
+            }
+          } catch (err) {
+            const message = err instanceof Error ? err.message : "unknown"
+            log.warn({ reason: "error", message }, "Stored app attention unreadable")
+            for (const appName of storedApps)
+              errors.push({ app: appName, reason: "error", message })
+          }
         }
-      }),
-    )
+        for (const { appName, reg } of kernelProviders) {
+          const run = invokeKernelProvider(tx, reg, orgId, userId, forUserIds)
+          await runProvider(appName, run)
+          // A provider that timed out may still be running on this connection:
+          // the next savepoint starts only once it has settled.
+          await run.catch(() => {})
+        }
+      })
+    } catch (err) {
+      // No transaction at all (say the pool is full): every provider failed.
+      const message = err instanceof Error ? err.message : "unknown"
+      log.warn({ reason: "error", message }, "Attention kernel providers failed")
+      for (const appName of [...kernelProviders.map((p) => p.appName), ...storedApps]) {
+        if (!errors.some((e) => e.app === appName))
+          errors.push({ app: appName, reason: "error", message })
+      }
+    }
   }
-  await Promise.all(tasks)
+
   // A calendar question shows its event's title, read now under the viewer's own access.
   const { withLiveCalendarTitles } = await import("~/apps/calendar/away-from-calendar")
   await withLiveCalendarTitles(args.actor, items)

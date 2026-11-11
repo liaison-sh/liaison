@@ -73,7 +73,7 @@ export function approvalActionKey(item: AttentionItem): string | null {
   if (item.kind === "routine_mailbox_wait") return ROUTINE_RUNS_FACET
   const tool = item.metadata?.toolName
   if (typeof tool !== "string" || tool === "") return null
-  // A row the server names with a pill ("Stripe: payment reminder" on a mail draft) files under
+  // A row the server names with a pill ("Billing: payment reminder" on a mail draft) files under
   // that name, so the count sits beside the name the row shows.
   const pill = approvalRowPill(item)
   return pill ? `${tool}${PILL_FACET_SEPARATOR}${pill.label}` : tool

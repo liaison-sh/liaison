@@ -88,6 +88,7 @@ const EXPECTED_CLOSURE: Record<string, string> = {
   "kernel.app_build_artifacts": "direct",
   "kernel.app_documents": "direct",
   "kernel.app_usage_daily": "direct",
+  "kernel.app_attention_items": "direct",
   "kernel.app_draft_versions": "direct",
   "kernel.app_drafts": "direct",
   "kernel.app_logs": "direct",
@@ -200,6 +201,7 @@ const EXPECTED_CLOSURE: Record<string, string> = {
   "kernel.user_scope_grants": "direct",
   "kernel.user_thread_state": "direct",
   "kernel.users": "direct",
+  "kernel.webhook_inbox": "direct",
 }
 
 const sql = postgres(process.env.DATABASE_URL_SUPERUSER as string, { max: 1, onnotice: () => {} })

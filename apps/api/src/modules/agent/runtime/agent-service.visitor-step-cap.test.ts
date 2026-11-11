@@ -25,6 +25,8 @@ import type { RlsClient } from "~/db"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { agents } from "~/db/schema/kernel/agents"
+import { userScopeGrants } from "~/db/schema/kernel/roles"
+import { threadParticipants, threads } from "~/db/schema/kernel/threads"
 import { env } from "~/lib/env"
 import {
   noteTokens,
@@ -39,6 +41,7 @@ import { DemoBudgetTestAccess } from "~/modules/demo/demo-budget"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { invalidateDemoMarker, markOrgAsDemo } from "~/modules/demo/demo-org"
 import { sendMessage } from "~/modules/threads/message"
+import { seedOrgRow, seedUserRows } from "~/seed/factories/org/rows"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 
 const ORG_ID = "00000000-0000-0000-0000-000000f31001"
@@ -120,9 +123,16 @@ const saved = {
 
 async function seedThread(): Promise<string> {
   const threadId = crypto.randomUUID()
-  await sql`INSERT INTO kernel.threads (id, org_id, handle, type, created_by)
-    VALUES (${threadId}, ${ORG_ID}, ${`cap-${threadId.slice(0, 8)}`}, 'agent_chat', ${USER_ID})`
-  await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id) VALUES (${threadId}, ${USER_ID}, ${ORG_ID})`
+  await withPrivilegedDb(ORG_ID, "test-cap-thread", async (tx) => {
+    await tx.insert(threads).values({
+      id: threadId,
+      orgId: ORG_ID,
+      handle: `cap-${threadId.slice(0, 8)}`,
+      type: "agent_chat",
+      createdBy: USER_ID,
+    })
+    await tx.insert(threadParticipants).values({ threadId, userId: USER_ID, orgId: ORG_ID })
+  })
   return threadId
 }
 
@@ -178,9 +188,27 @@ describe("a demo visitor's conversation stays within its budgets", () => {
       emailNormalized: `visitor-step-cap-${Date.now()}@example.com`,
       network: "192.0.2.0/24",
     }))
-    await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${ORG_ID}, 'VisitorStepCapOrg', 'visitor-step-cap-org') ON CONFLICT DO NOTHING`
-    await sql`INSERT INTO kernel.users (id, org_id, email, name) VALUES (${USER_ID}, ${ORG_ID}, 'visitor-step-cap@visitor.demo.invalid', 'Visitor') ON CONFLICT DO NOTHING`
-    await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope) VALUES (${USER_ID}, ${ORG_ID}, '*') ON CONFLICT DO NOTHING`
+    await seedOrgRow(
+      { id: ORG_ID, name: "VisitorStepCapOrg", slug: "visitor-step-cap-org" },
+      { onConflict: "skip" },
+    )
+    await seedUserRows(
+      [
+        {
+          id: USER_ID,
+          orgId: ORG_ID,
+          email: "visitor-step-cap@visitor.demo.invalid",
+          name: "Visitor",
+        },
+      ],
+      { onConflict: "skip" },
+    )
+    await withPrivilegedDb(ORG_ID, "test-cap-grant", (tx) =>
+      tx
+        .insert(userScopeGrants)
+        .values({ userId: USER_ID, orgId: ORG_ID, scope: "*" })
+        .onConflictDoNothing(),
+    )
     await withPrivilegedDb(ORG_ID, "test-cap-agent", (tx) =>
       tx
         .insert(agents)

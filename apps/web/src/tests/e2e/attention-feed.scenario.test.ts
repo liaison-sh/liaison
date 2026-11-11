@@ -10,6 +10,7 @@ import { expect, loginAs, test } from "./fixtures/test"
 import {
   grantPhase8AttentionScopes,
   observeNoPerAppAttentionFetches,
+  refreshStoredAttention,
   resetAttentionForUser,
   seedAttentionFixtures,
 } from "./helpers/projects-seed"
@@ -39,28 +40,37 @@ test("attention.feed-three-providers-inline-approval", async ({ page, env, qa, w
     inboxId,
   })
 
-  // 5. Verify the aggregator returns the three seeded rows ordered by urgency desc.
-  const aggRes = await api(env.serverUrl, "/api/attention-items", { token: qa.admin.token })
-  expect(aggRes.status).toBe(200)
-  const items = (aggRes.body.data.items ?? aggRes.body.data) as Array<{
-    id: string
-    app: string
-    urgency: number
-    entityId?: string
-  }>
+  // 5. The apps' attention lists are stored, recomputed after the app was woken
+  //    and on the attention minute tick: a ticket written straight into its
+  //    table wakes nothing, so run the org's tick job, as the next minute would.
+  await refreshStoredAttention(env, world.org.id)
+
+  // 6. Verify the aggregator returns the three seeded rows ordered by urgency desc.
   const seededIds = new Set([
     `projects:task_overdue:${seeded.overdueTaskId}`,
     `awaiting_agent:${seeded.ticketId}`,
     `kernel:approval_pending:${seeded.approvalRequestId}`,
   ])
-  const seenApps = new Set(items.filter((i) => seededIds.has(i.id)).map((i) => i.app))
-  expect(seenApps).toEqual(new Set(["projects", "tickets", "kernel"]))
+  const seenAppsNow = async () => {
+    const aggRes = await api(env.serverUrl, "/api/attention-items", { token: qa.admin.token })
+    expect(aggRes.status).toBe(200)
+    const items = (aggRes.body.data.items ?? aggRes.body.data) as Array<{
+      id: string
+      app: string
+      urgency: number
+      entityId?: string
+    }>
+    return new Set(items.filter((i) => seededIds.has(i.id)).map((i) => i.app))
+  }
+  await expect
+    .poll(seenAppsNow, { timeout: 15_000 })
+    .toEqual(new Set(["projects", "tickets", "kernel"]))
 
-  // 6. Login + observe no per-app fetches across all subsequent navigation.
+  // 7. Login + observe no per-app fetches across all subsequent navigation.
   const teardownObserver = await observeNoPerAppAttentionFetches(page)
   await loginAs(page, env, "admin@test.com", "12345678")
 
-  // 7. Open Home, wait for the unified feed mount. Needs you holds the
+  // 8. Open Home, wait for the unified feed mount. Needs you holds the
   //    approval and its total IS the Home badge (both read homeActionItems);
   //    the unassigned ticket awaiting a reply is queue volume, listed under
   //    Your queues, not in the badge (D21).
@@ -83,7 +93,7 @@ test("attention.feed-three-providers-inline-approval", async ({ page, env, qa, w
   ).toBeVisible()
   await expect(page.getByTestId("home-side-queue-tickets")).toBeVisible()
 
-  // 8. Assert all three rows are mounted, each ONCE (a page-wide locator is
+  // 9. Assert all three rows are mounted, each ONCE (a page-wide locator is
   //    strict: an approval drawn in two cards fails here).
   const overdueRow = page.locator(
     `[data-testid="attention-row-projects-task-${seeded.overdueTaskId}"]`,
@@ -96,7 +106,7 @@ test("attention.feed-three-providers-inline-approval", async ({ page, env, qa, w
   await expect(ticketRow).toBeVisible()
   await expect(approvalRow).toBeVisible()
 
-  // 9. Approve via the inline button; the row should disappear and the server
+  // 10. Approve via the inline button; the row should disappear and the server
   //    should record the decision.
   await approvalRow
     .getByTestId(/approve$/)
@@ -118,14 +128,14 @@ test("attention.feed-three-providers-inline-approval", async ({ page, env, qa, w
     )
     .toBe("approved")
 
-  // 10. After approval, Needs you and the Home badge drop by one together,
+  // 11. After approval, Needs you and the Home badge drop by one together,
   //     and the queues are untouched.
   await expect(needsTotal).toHaveText(String(needsBefore - 1), { timeout: 10_000 })
   if (needsBefore - 1 > 0) await expect(homeBadge).toHaveText(String(needsBefore - 1))
   else await expect(homeBadge).toHaveCount(0)
   await expect(page.getByTestId("home-side-queue-tickets")).toBeVisible()
 
-  // 11. Detach the observer; throws if any per-app fetch fired.
+  // 12. Detach the observer; throws if any per-app fetch fired.
   await teardownObserver()
 })
 

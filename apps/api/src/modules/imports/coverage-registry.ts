@@ -270,6 +270,10 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
     exempt: "system",
     reason: "lines custom apps and draft previews logged, kept 7 days",
   },
+  "kernel.app_attention_items": {
+    exempt: "derived",
+    reason: "attention lists the instance recomputes from each app's own data, never imported",
+  },
   "kernel.app_usage_daily": {
     exempt: "derived",
     reason: "per-day app run counters the instance records as runs settle, never imported",
@@ -358,6 +362,10 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
     reason: "once-only ledger of outside effects (agent runtime state)",
   },
   "kernel.file_upload_sessions": { exempt: "system", reason: "transient upload state" },
+  "kernel.webhook_inbox": {
+    exempt: "system",
+    reason: "inbound webhook deliveries awaiting or past their handler (delivery bookkeeping)",
+  },
   "kernel.import_ledger": { exempt: "system", reason: "import framework bookkeeping" },
   "kernel.import_transforms": { exempt: "system", reason: "import framework bookkeeping" },
   "kernel.import_uploads": { exempt: "system", reason: "import framework bookkeeping" },

@@ -1285,7 +1285,7 @@
       "schema": 13
     },
     "kernel__dashboards_update": {
-      "desc": 261,
+      "desc": 410,
       "schema": 60
     },
     "kernel__data_collections_list": {

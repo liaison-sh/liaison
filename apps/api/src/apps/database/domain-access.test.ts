@@ -9,18 +9,15 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { ReadCatalog } from "@liaison/db-core"
 import { validateCatalog } from "@liaison/db-core"
 import type { DatabaseDomainAccess } from "@liaison/shared"
-import {
-  buildDatabaseBridgeMethods,
-  type DatabaseBridgeDeps,
-  DatabaseBridgeTestAccess,
-} from "./bridge"
+import { SqlPoolTestAccess } from "~/modules/apps/connections/sql/pool"
+import type { DbTransport, ProbeReport } from "~/modules/apps/connections/sql/transport"
+import { buildDatabaseBridgeMethods, type DatabaseBridgeDeps } from "./bridge"
 import {
   callerMayRunDomain,
   type DomainAccessCaller,
   parseStoredDomainAccess,
   resolveDomainRule,
 } from "./domain-access"
-import type { DbTransport, ProbeReport } from "./transport"
 
 const FINANCE = "11111111-1111-4111-8111-111111111111"
 const SUPPORT = "22222222-2222-4222-8222-222222222222"
@@ -222,8 +219,8 @@ function makeDeps(opts: {
   return { methods: buildDatabaseBridgeMethods(deps), transport, audit, lookups }
 }
 
-beforeEach(() => DatabaseBridgeTestAccess.resetTransportPool())
-afterEach(() => DatabaseBridgeTestAccess.resetTransportPool())
+beforeEach(() => SqlPoolTestAccess.reset())
+afterEach(() => SqlPoolTestAccess.reset())
 
 describe("no tier configured anywhere: exactly today's behaviour", () => {
   test("db_list_reads and db_read answer byte for byte what a bridge without domain access answers", async () => {

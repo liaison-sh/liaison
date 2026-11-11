@@ -9,20 +9,23 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { ReadCatalog } from "@liaison/db-core"
-import { resolveToolTimeoutMs } from "~/modules/apps/run-limits"
-import manifest from "./app.manifest.json"
-import * as bridgeModule from "./bridge"
 import {
-  buildDatabaseBridgeMethods,
   buildTransport,
-  type DatabaseBridgeDeps,
-  DatabaseBridgeTestAccess,
   DatabaseConfigError,
   type DatabaseCredentials,
   resolveCredentialMode,
-} from "./bridge"
-import type { DbTransport, ExecOptions, ProbeReport } from "./transport"
-import { DbTransportError } from "./transport"
+} from "~/modules/apps/connections/sql/credentials"
+import { SqlPoolTestAccess } from "~/modules/apps/connections/sql/pool"
+import type {
+  DbTransport,
+  ExecOptions,
+  ProbeReport,
+} from "~/modules/apps/connections/sql/transport"
+import { DbTransportError } from "~/modules/apps/connections/sql/transport"
+import { resolveToolTimeoutMs } from "~/modules/apps/run-limits"
+import manifest from "./app.manifest.json"
+import * as bridgeModule from "./bridge"
+import { buildDatabaseBridgeMethods, type DatabaseBridgeDeps } from "./bridge"
 
 const testCatalog: ReadCatalog = {
   adapter: "bridge-test",
@@ -127,10 +130,10 @@ function makeDeps(overrides: Partial<DatabaseBridgeDeps> = {}) {
 }
 
 beforeEach(() => {
-  DatabaseBridgeTestAccess.resetTransportPool()
+  SqlPoolTestAccess.reset()
 })
 afterEach(() => {
-  DatabaseBridgeTestAccess.resetTransportPool()
+  SqlPoolTestAccess.reset()
 })
 
 describe("resolveCredentialMode — exactly-one-mode validation", () => {
@@ -250,7 +253,7 @@ describe("db_read", () => {
 
   test("transport throw -> error outcome, audit still fires with sqlHash-style redactedReason not raw detail (M8)", async () => {
     const { deps, transport, auditCalls } = makeDeps()
-    const { DbTransportError } = await import("./transport")
+    const { DbTransportError } = await import("~/modules/apps/connections/sql/transport")
     transport.throwOnRunRead = new DbTransportError("permission denied", "execution", "42501")
     const methods = buildDatabaseBridgeMethods(deps)
     const result = JSON.parse(

@@ -23,7 +23,24 @@
           "label": "API key",
           "type": "password"
         }
-      ]
+      ],
+      "limits": {
+        "concurrency": 2,
+        "perSecond": 50
+      }
+    },
+    "warehouse": {
+      "type": "credentials",
+      "description": "Test SQL connection held by the platform",
+      "allowedDomains": [],
+      "credentialFields": [
+        {
+          "name": "connectionString",
+          "label": "DSN",
+          "type": "password"
+        }
+      ],
+      "sql": { "rawQuery": { "scope": "wparity:items:read" } }
     }
   },
   "schema": {
@@ -127,6 +144,16 @@
       "description": "Wait, then insert",
       "handler": "slowCreate",
       "requiredScopes": ["wparity:items:write"]
+    },
+    "platformReads": {
+      "description": "A query on a platform-held SQL connection, the app's accounts, kernel users",
+      "handler": "platformReads",
+      "requiredScopes": ["wparity:items:read"]
+    },
+    "limited": {
+      "description": "Pause the carrier connection, then call it",
+      "handler": "limited",
+      "requiredScopes": ["wparity:items:read"]
     }
   },
   "jobs": {

@@ -6,6 +6,7 @@ import { join, relative } from "node:path"
 import { registerKnowledgeJobs } from "~/apps/knowledge/knowledge-jobs"
 import { closeAllQueues, listOrglessScheduledJobs } from "~/infra/jobs/jobs"
 import { registerKernelJobs } from "~/infra/jobs/kernel-jobs"
+import { registerWebhookInboxJobs } from "~/infra/jobs/webhook-inbox-jobs"
 import { registerDigestScheduledJobs } from "~/modules/attention/digest-jobs"
 import { registerStateMaterializerScheduledJob } from "~/modules/attention/state-materializer"
 import { registerOrphanGcScheduledJob } from "~/modules/files/orphan-gc"
@@ -64,6 +65,7 @@ describe("org-less jobs and the transfer hold", () => {
     await registerOrphanGcScheduledJob()
     await registerImportUploadReaper()
     await registerMailboxBackfillJobs()
+    await registerWebhookInboxJobs()
     const registered = listOrglessScheduledJobs()
     expect(registered.filter((key) => !(key in ORGLESS_JOB_AUDIT))).toEqual([])
     // A key audited but never registered is stale (a renamed or removed job), or hides

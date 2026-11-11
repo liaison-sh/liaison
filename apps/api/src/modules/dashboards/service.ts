@@ -19,12 +19,13 @@
 import { and, desc, eq } from "drizzle-orm"
 import type { RlsClient } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
-import { type DashboardRow, dashboards, dashboardViewerStates } from "~/db/schema/kernel"
+import { type DashboardRow, dashboards, dashboardViewerStates, users } from "~/db/schema/kernel"
 import {
   blockCacheKey,
   FAILED_BLOCK_TTL_SEC,
   failedBlockCacheKey,
   readCachedBlock,
+  takeCustomWindowRun,
   takeRefresh,
   withViewerSlot,
   writeCachedBlock,
@@ -102,6 +103,8 @@ export interface DashboardSummary {
   title: string
   visibility: DashboardVisibility
   ownerUserId: string | null
+  /** The owner's display name, for "by <name>" in the list (null when the owner is gone). */
+  ownerName: string | null
   version: number
   blockCount: number
   updatedAt: string
@@ -233,13 +236,19 @@ export async function listDashboards(
   tx?: RlsClient,
 ): Promise<DashboardSummary[]> {
   const rows = await inTx(viewer, tx, (t) =>
-    t.select().from(dashboards).orderBy(desc(dashboards.updatedAt)).limit(200),
+    t
+      .select({ d: dashboards, ownerName: users.name })
+      .from(dashboards)
+      .leftJoin(users, eq(users.id, dashboards.ownerUserId))
+      .orderBy(desc(dashboards.updatedAt))
+      .limit(200),
   )
-  return rows.map((r) => ({
+  return rows.map(({ d: r, ownerName }) => ({
     id: r.id,
     title: r.title,
     visibility: r.visibility,
     ownerUserId: r.ownerUserId,
+    ownerName: ownerName ?? null,
     version: r.version,
     blockCount: Array.isArray((r.spec as { blocks?: unknown }).blocks)
       ? (r.spec as { blocks: unknown[] }).blocks.length
@@ -550,6 +559,40 @@ export async function editDashboard(
   input: EditDashboardInput,
   tx?: RlsClient,
 ): Promise<DashboardRecord> {
+  const { current, next } = await planEdit(viewer, id, input, tx)
+  return updateDashboard(
+    viewer,
+    id,
+    {
+      ifVersion: input.ifVersion,
+      spec: next.spec,
+      ...(next.title !== current.title ? { title: next.title } : {}),
+      ...(next.visibility !== current.visibility ? { visibility: next.visibility } : {}),
+    },
+    tx,
+  )
+}
+
+/**
+ * An edit checked without saving anything, before it waits for an approval: the version,
+ * every operation applying in order, and the resulting spec whole (blocks, maps, and each
+ * source one `viewer` may read). Throws as the save would.
+ */
+export async function checkEdit(
+  viewer: DashboardViewer,
+  id: string,
+  input: EditDashboardInput,
+): Promise<void> {
+  const { next } = await planEdit(viewer, id, input)
+  await validateSpec(viewer, next.spec)
+}
+
+async function planEdit(
+  viewer: DashboardViewer,
+  id: string,
+  input: EditDashboardInput,
+  tx?: RlsClient,
+): Promise<{ current: DashboardRow; next: ReturnType<typeof applyOperations> }> {
   const current = await loadRow(viewer, id, tx)
   if (input.ifVersion !== current.version) {
     throw new DashboardError(
@@ -573,17 +616,7 @@ export async function editDashboard(
     }
     throw err
   }
-  return updateDashboard(
-    viewer,
-    id,
-    {
-      ifVersion: input.ifVersion,
-      spec: next.spec,
-      ...(next.title !== current.title ? { title: next.title } : {}),
-      ...(next.visibility !== current.visibility ? { visibility: next.visibility } : {}),
-    },
-    tx,
-  )
+  return { current, next }
 }
 
 export async function deleteDashboard(
@@ -761,7 +794,15 @@ export async function getBlockData(
       previousError = { error: "invalid_map", message: err.message }
     }
     if (previousBlock) {
-      const previous = await runBlockCached(viewer, dashboard, previousBlock, compareRange, opts)
+      // A past window rarely changes: kept for hours, and Refresh re-runs only the current one.
+      const previous = await runBlockCached(
+        viewer,
+        dashboard,
+        previousBlock,
+        compareRange,
+        { ...opts, refresh: false },
+        PAST_WINDOW_TTL_SEC,
+      )
       if (previous.ok) {
         data = attachPrevious(data, previous.data, {
           ...(saved.map.groupBy?.bucket ? { bucket: saved.map.groupBy.bucket } : {}),
@@ -785,6 +826,9 @@ export async function getBlockData(
   }
 }
 
+/** How long a comparison run is kept: its window is wholly in the past. */
+const PAST_WINDOW_TTL_SEC = 6 * 3600
+
 /** One run of a block whose dates are resolved: from the cache, else computed and cached. */
 async function runBlockCached(
   viewer: DashboardViewer,
@@ -792,6 +836,7 @@ async function runBlockCached(
   block: DashboardSpec["blocks"][number],
   range: DayWindow | null,
   opts: BlockDataOptions,
+  ttlSec = blockTtlSec(block),
 ): Promise<BlockRunResult> {
   const key = blockCacheKey(viewer, {
     dashboardId: dashboard.id,
@@ -807,6 +852,18 @@ async function runBlockCached(
     const failed = await readCachedBlock<CachedFailure>(failedKey)
     if (failed) return { ok: false, error: failed.error, message: failed.message }
   }
+  // A custom range is a new run for every new pair of days: a budget per viewer and block, so
+  // walking the calendar cannot run the source without end. Presets and the default never count.
+  if (
+    opts.range?.preset === "custom" &&
+    !(await takeCustomWindowRun(viewer, dashboard.id, block.id))
+  ) {
+    return {
+      ok: false,
+      error: "rate_limited",
+      message: "too many different custom ranges for this block in the last minute",
+    }
+  }
   const outcome = await withViewerSlot(viewer, () =>
     computeBlock(block, {
       viewer,
@@ -821,16 +878,12 @@ async function runBlockCached(
       await writeCachedBlock(
         failedKey,
         { error: outcome.error, message: outcome.message } satisfies CachedFailure,
-        Math.min(FAILED_BLOCK_TTL_SEC, blockTtlSec(block)),
+        Math.min(FAILED_BLOCK_TTL_SEC, ttlSec),
       )
     }
     return { ok: false, error: outcome.error, message: outcome.message }
   }
   const computedAt = new Date().toISOString()
-  await writeCachedBlock(
-    key,
-    { data: outcome.data, computedAt } satisfies CachedBlock,
-    blockTtlSec(block),
-  )
+  await writeCachedBlock(key, { data: outcome.data, computedAt } satisfies CachedBlock, ttlSec)
   return { ok: true, data: outcome.data, cached: false, computedAt }
 }

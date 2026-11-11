@@ -25,7 +25,6 @@ import {
   Hourglass,
   Laptop,
   LayoutDashboard,
-  LayoutGrid,
   Sun,
   XCircle,
 } from "lucide-solid"
@@ -35,11 +34,6 @@ import { cn } from "~/lib/cn"
 import { approvalActionLabel } from "~/modules/approvals/approval-copy"
 import { hasScope, userFromToken } from "~/modules/auth/auth-store"
 import { setFocusedDate } from "~/modules/calendar/calendar-store"
-import {
-  dashboardsList,
-  loadDashboards,
-  openDashboard,
-} from "~/modules/dashboards/dashboards-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import {
@@ -170,7 +164,6 @@ const HomeAttentionSidebar: Component = () => {
 
   onMount(() => {
     hydrateSidebarSections(userId())
-    void loadDashboards(api)
     const stop = followAttentionFeed(api)
     onCleanup(stop)
   })
@@ -555,38 +548,6 @@ const HomeAttentionSidebar: Component = () => {
             label={t("kernel.homeSidebar.openCalendar")}
             onClick={() => openCalendar()}
           />
-        </Show>
-      </Show>
-
-      {/* DASHBOARDS: the viewer's own, then the org's. Only once one exists. */}
-      <Show when={dashboardsList().length > 0}>
-        <SectionHeader
-          id="homeDashboards"
-          testid="home-side-dashboards"
-          label={t("kernel.dashboards.sectionTitle")}
-          onToggle={() => toggle("homeDashboards")}
-        />
-        <Show when={open("homeDashboards")}>
-          <For each={dashboardsList()}>
-            {(d) => (
-              <Row
-                testid={`home-side-dashboard-${d.id}`}
-                label={d.title}
-                icon={LayoutGrid}
-                trailing={
-                  <Show when={d.visibility === "org"}>
-                    <span
-                      data-testid={`home-side-dashboard-${d.id}-org`}
-                      class="ml-2 shrink-0 text-[11px] text-text-tertiary"
-                    >
-                      {t("kernel.dashboards.visibilityOrg")}
-                    </span>
-                  </Show>
-                }
-                onClick={() => openDashboard(d)}
-              />
-            )}
-          </For>
         </Show>
       </Show>
 

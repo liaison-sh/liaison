@@ -37,6 +37,7 @@ export {
 } from "./agent-turns"
 export type { Agent, AgentKind, NewAgent } from "./agents"
 export { agentKindEnum, agents } from "./agents"
+export { type AppAttentionItemsRow, appAttentionItems } from "./app-attention"
 export {
   type AppBuildArtifactKind,
   type AppBuildArtifactRow,
@@ -312,3 +313,9 @@ export { timelineEntries } from "./timeline-entries"
 export { type TourProgressRow, tourProgress } from "./tour-progress"
 export { userPreferences } from "./user-preferences"
 export { userStatusEnum, users } from "./users"
+export {
+  WEBHOOK_INBOX_STATUSES,
+  type WebhookInboxRow,
+  type WebhookInboxStatus,
+  webhookInbox,
+} from "./webhook-inbox"

@@ -108,6 +108,11 @@ handlers teaches exactly one thing.
   narrow as the handler allows: each run sets the workspace up in the process
   that runs it, and a workspace an hourly job reaches every hour stays set up
   there for good.
+  A job marked `atomic: true` runs in one database transaction from start to
+  end, so it may not call outside: `ctx.fetch`, `ctx.executeTool`, a contract
+  call, an agent run and the other outside calls fail with
+  `atomic_run_egress_refused`. Read, call the provider, then write in one
+  `ctx` call (or use `ctx.steps.run`) instead.
   A job marked `atomic: true`, an event-subscription handler and an import
   batch hold one database connection for their whole run, so each waits for
   a free slot before it starts, first come first served (the slots come from
@@ -227,6 +232,8 @@ export async function items_create(
 | `ctx.timers.wakeIn` | Run a job in N seconds instead of waiting inside a run |
 | `ctx.steps.run` | Long work in bounded chunks across runs, the cursor saved for you ([Sandboxing](app-sandbox.md#long-work-come-back-later-ctxsteps-ctxtimers-ctxjobs)) |
 | `ctx.connections` | Per-connection OAuth/credential tokens |
+| `ctx.sql` | Query a database the platform holds the connection to: named reads or a read-only `SELECT`, rows only, never the credentials ([Sandboxing](app-sandbox.md#query-a-database-ctxsql)) |
+| `ctx.accounts` | Your app's own connected accounts and their metadata ([Sandboxing](app-sandbox.md#read-your-own-accounts-ctxaccounts)) |
 | `ctx.fetch` | Call an external API (kernel-mediated, allowlist-checked). `timeoutMs` shortens the 10 s deadline; a write may ask for up to 30 s |
 | `ctx.time.civil` | The date and clock of an instant in a named IANA zone. The sandbox has no `Intl`, so `new Date()` only knows UTC. `UTC`, the column default, follows the organization's zone; `Etc/UTC` is UTC exactly; an unknown zone rejects with `invalid_timezone` |
 | `ctx.resolveContact` | Resolve or create a contact |
@@ -917,6 +924,36 @@ An item raised this way is stored for each person, so on **Home** it offers **No
 - `when` keeps the translation to the events that match it (`eq`, `in`, `exists`, `and`, `or`, `not` on a path of the event).
 - `recipients.kind` is `field`, `participants`, `mentions`, `actor` or `scope_holders`. `excludeActor` (on `participants` and `scope_holders`) leaves out the person who caused the event.
 - `resolveWhen` makes the translation end an item instead of raising one, for an event that means the condition is over: `{ "always": true }`, or `{ "field": ..., "equals": ... }`.
+
+## 13. List what needs attention
+
+An app can also list what needs a person's attention right now (their overdue
+tasks, the tickets close to their SLA), with an attention provider: an export
+named in `views.attentionItems` of the manifest, `{ "handler": "...", "scope": "..." }`.
+It returns attention items for the person in `ctx.actor`.
+
+The feed never calls the provider. Liaison runs it when the app is woken, and
+stores what it returns, one list per person:
+
+- after any run of the app (a tool, an event handler, a job, a webhook),
+- after an event of the app is delivered,
+- on the attention minute tick: the next minute in a workspace where something
+  changed, at least every 10 minutes otherwise. Items that only time changes
+  (a deadline coming closer) appear on that tick.
+
+Each run replaces the person's whole list, so an item the provider no longer
+returns is cleared. A person without the provider's scope gets an empty list. A
+failed run keeps the last list and shows the error in the feed.
+
+## 14. Approval card summaries
+
+A gated tool's `summarizer` builds the approval card. It runs once when the
+request is made, and again when the request's parameters are edited
+(`approval_update_payload` or the card's editor). The summary is stored with the
+request; the card, the approvals list, Home and the agent read the stored text
+and never run the summarizer. A request with no stored summary (an older one)
+shows a generic summary of its parameters until the server stores the real one,
+which it does in the background.
 
 ## See also
 

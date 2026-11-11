@@ -6755,7 +6755,6 @@
     },
     "reconcile-stripe-payments": {
       "handler": "reconcileStripePaymentsJobHandler",
-      "atomic": true,
       "runsFor": {"rows": {"entity": "stripe_streams", "where": {"stripe_connected": true}}},
       "schedule": "*/10 * * * *",
       "timeoutMs": 120000

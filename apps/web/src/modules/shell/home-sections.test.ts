@@ -86,12 +86,12 @@ describe("buildHomeSections", () => {
   it("files a mail draft named by a pill under that pill's facet, apart from plain mail drafts", () => {
     const reminder: AttentionItem = {
       ...approval("r1", "mail:compose"),
-      metadata: { toolName: "mail:compose", pill: { label: "Stripe: payment reminder" } },
+      metadata: { toolName: "mail:compose", pill: { label: "Billing: payment reminder" } },
     }
     const s = buildHomeSections([reminder, approval("m1", "mail:compose")], { viewer: admin })
     const labels = s.needs.approvalFacets.map((f) => [f.label, f.count])
-    expect(labels).toContainEqual(["Stripe: payment reminder", 1])
-    expect(s.needs.approvalFacets.find((f) => f.label === "Stripe: payment reminder")?.pill).toBe(
+    expect(labels).toContainEqual(["Billing: payment reminder", 1])
+    expect(s.needs.approvalFacets.find((f) => f.label === "Billing: payment reminder")?.pill).toBe(
       true,
     )
     expect(s.needs.approvalFacets).toHaveLength(2)

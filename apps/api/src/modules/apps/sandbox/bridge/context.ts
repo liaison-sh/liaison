@@ -8,6 +8,7 @@ import { schemaRef } from "~/db/schema-ref"
 import type { AppEvent } from "~/infra/events/event-bus"
 import { rootLogger } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
+import { isUuid } from "~/lib/uuid"
 import { assertWritableRun } from "~/modules/agent/runtime/read-only-run"
 import {
   captureReadOnlyRun,
@@ -1116,6 +1117,33 @@ export function createBridgeContext(
   }
 
   /**
+   * `kernel_findByIds`: several rows of `kernel_findOne` in one call (an app
+   * naming the authors of a list of versions), the same entities, columns, org
+   * pin and RLS. At most 200 ids; an id that is not a uuid or not visible is
+   * simply absent from the answer.
+   */
+  async function findKernelEntitiesByIds(entity: string, ids: readonly unknown[]) {
+    if (entity !== "contacts" && entity !== "users") {
+      throw new Error(`kernel_findByIds entity not allowed: ${entity}`)
+    }
+    if (ids.length > 200) throw new Error("kernel_findByIds: at most 200 ids")
+    const wanted = [
+      ...new Set(ids.filter((id): id is string => typeof id === "string" && isUuid(id))),
+    ]
+    if (wanted.length === 0) return []
+    const table = drizzleSql.raw(`${quoteIdent(schemaRef("kernel"))}.${quoteIdent(entity)}`)
+    const columns = drizzleSql.raw(entity === "users" ? KERNEL_USER_COLUMNS : "*")
+    return extractRows(
+      await txDb.execute(
+        drizzleSql`SELECT ${columns} FROM ${table} WHERE org_id = ${orgId} AND id IN (${drizzleSql.join(
+          wanted.map((id) => drizzleSql`${id}::uuid`),
+          drizzleSql`, `,
+        )})`,
+      ),
+    )
+  }
+
+  /**
    * Cluster 6 — kernel read affordance for the reconcile/drift-backstop path.
    *
    * Lists `kernel.contacts` rows that carry an external id for the CALLING app
@@ -1438,6 +1466,7 @@ export function createBridgeContext(
     buildFilteredWhereClause,
     findEntityById,
     findKernelEntityById,
+    findKernelEntitiesByIds,
     findKernelContactsByExternalId,
     resolveCredentials,
     inheritedActor,

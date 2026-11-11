@@ -4,7 +4,7 @@
 // connection fails. Against a fake postgres.js client: no database, no network.
 import { describe, expect, test } from "bun:test"
 import type postgres from "postgres"
-import { buildTransport, instanceServiceEndpoints } from "../bridge"
+import { buildTransport, instanceServiceEndpoints } from "../credentials"
 import { DbTransportError } from "../transport"
 import {
   hostMatchesAllowList,

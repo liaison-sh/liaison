@@ -36,6 +36,7 @@ import {
   parseConcurrencyOverrides,
   planKernelSlots,
 } from "~/infra/jobs/queue-classes"
+import { registerWebhookInboxJobs } from "~/infra/jobs/webhook-inbox-jobs"
 import { initWebhookWorker } from "~/infra/jobs/webhook-worker"
 import { startLeadership } from "~/infra/leadership"
 import { setWsManager, WebSocketManager } from "~/infra/websocket"
@@ -249,6 +250,7 @@ registerAppCronFanout()
 await registerKernelJobs()
 await registerKnowledgeJobs()
 initWebhookWorker()
+await registerWebhookInboxJobs()
 // Per-org app usage (modules/apps/usage/app-usage.ts): counted as runs settle,
 // written in batches; what is pending is written at shutdown.
 startAppUsageRecorder()

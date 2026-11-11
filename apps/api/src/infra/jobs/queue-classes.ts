@@ -117,6 +117,11 @@ export const KERNEL_JOBS: Readonly<Record<string, KernelJobSpec>> = {
   "agent-side-thread-reaper": { queueClass: "cron" },
   "routine-event-reconcile": { queueClass: "cron" },
   "retry-webhook": { queueClass: "cron" },
+  // The webhook inbox (modules/webhooks/inbox.ts): one row's replay, the
+  // minute sweep that wakes due rows, and the daily retention.
+  "webhook-inbox-replay": { queueClass: "cron" },
+  "webhook-inbox-sweep": { queueClass: "cron" },
+  "webhook-inbox-retention": { queueClass: "cron", priority: YIELD },
   "mailbox-backfill": { queueClass: "cron", priority: YIELD },
   // Daily/weekly maintenance: still crons, but they yield to the sweeps above.
   "cleanup-expired-sessions": { queueClass: "cron", priority: YIELD },

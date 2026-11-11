@@ -154,11 +154,17 @@ const REASONS = {
   CHANGE_PAYLOAD: "an org-app access change payload ({ scope, mode }), not a tool",
   ROUTE_PARAM: "a URL route or search parameter naming a scope filter, not a tool",
   SETTINGS: "a declarative settings section's user or org scope",
+  SQL_RAW: "a SQL connection's manifest rawQuery scope (connections.<name>.sql.rawQuery)",
 } as const
 
 // One entry per read, keyed by file and exact trimmed line. A line that reads
 // scope twice, or repeats in a file, is listed once per read.
 const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, reason: string]> = [
+  [
+    "apps/api/src/modules/apps/connections/sql/service.ts",
+    "return declaration.rawQuery?.scope ?? null",
+    REASONS.SQL_RAW,
+  ],
   [
     "apps/api/src/modules/mcp-client/call.ts",
     'return err.challenge.scope ?? ""',
@@ -810,6 +816,16 @@ const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, 
     REASONS.EXPORT,
   ],
   ["apps/api/src/modules/apps/attention-aggregator.ts", "if (reg.scope) {", REASONS.ATTN],
+  [
+    "apps/api/src/modules/apps/attention-store.ts",
+    "!isAppUnavailableFor(orgId, appName, userId) && (!reg.scope || hasScope(reg.scope, scopes))",
+    REASONS.ATTN,
+  ],
+  [
+    "apps/api/src/modules/apps/attention-store.ts",
+    "!isAppUnavailableFor(orgId, appName, userId) && (!reg.scope || hasScope(reg.scope, scopes))",
+    REASONS.ATTN,
+  ],
   [
     "apps/api/src/modules/apps/attention-aggregator.ts",
     "if (!hasScope(reg.scope, aliasedScopes ?? callerScopes)) continue",

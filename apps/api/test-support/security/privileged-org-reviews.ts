@@ -14,6 +14,8 @@ import type { OrgTraceReviews } from "./enumerate"
 export const TRUSTED_SOURCES: Record<string, string> = {
   resolveOptOutToken:
     "the opt-out link's own row: kernel.suppression_links matched on the sha256 of the 32-byte random token the link carries, which only the send path writes for that org and recipient (mail/commercial-footer.ts); the page acts for that org and that address fingerprint alone",
+  claimForReplay:
+    "a row of kernel.webhook_inbox (deny-all to the request roles), claimed by id AND org: written only by the inbound webhook route for an already verified delivery, under the org of the registration found under its URL key (webhooks/routes.ts dispatchVerifiedWebhook), or by the legacy drain from a retry job that route enqueued for the same org; the replay runs the handler for that org only (modules/webhooks/inbox.ts)",
   requireNodeCredential:
     "the node credential's row, refused unless node.orgId === c.get('orgId') and its owner is the caller (nodes/credentials.ts:51-59)",
   claimTeardowns:
@@ -277,6 +279,12 @@ export const REVIEWED_CALLERS: Record<string, readonly string[]> = {
 export const REVIEWED_ORIGINS: Record<string, string> = {
   "apps/api/src/modules/apps/org-features.ts#setOrgAppFeature":
     "no product caller yet (the settings door that switches a feature will call it with the org of the admin's session, tests only today); what it hands on is the org id it was given, for that one org's cache and broadcast",
+  "apps/api/src/modules/approvals/summary-backfill.ts#backfillApprovalSummaries":
+    "the leader's one-off summary backfill (boot-phase10.ts registerApprovalSummaryBackfill, a dynamic import): each org id is read from kernel.approval_requests rows that lack a summary, and only that org's rows are read and written",
+  "apps/api/src/modules/apps/attention-store.ts#wakeOnRunSettled":
+    "run-settled subscriber: the org and app of a run runApp itself made and reported (workers/run-settled.ts); it only schedules that app's stored attention refresh for that org, which runs the provider as each active person of that same org",
+  "apps/api/src/modules/apps/attention-store.ts#wakeOnAppEvent":
+    "event bus handler (once): the delivered event's own org and app; it only schedules that app's stored attention refresh for that org, which runs the provider as each active person of that same org",
   "apps/api/src/modules/app-builder/preview.ts#previewBridge":
     "an app builder preview: the org is the previewing person's own (the agent tool's ctx.orgId or the route's session org, passed through previewDraft's actor); the bridge, its RLS session and every nested call are built for that org and that person only",
   "apps/api/src/modules/apps/connections/revoke.ts#isAccountUsedElsewhere":

@@ -7,21 +7,26 @@ A dashboard is a page of figures, tables and charts that your agent builds from 
 
 ## Open a dashboard
 
-Click **Dashboards** in the bar on the left (on a phone, in **Work**). The page lists every dashboard you can see. With none yet, it says what a dashboard is and how to get one.
+Click **Dashboards** in the bar on the left (on a phone, in **Work**). The page shows every dashboard you can see as a card: who sees it, how many blocks it has and when it last changed. With none yet, it says what a dashboard is and how to get one.
 
-Dashboards are also listed on **Home**, in the **Dashboards** section of the sidebar. The section appears once you have one.
+The **Dashboards** sidebar stays beside the page and beside every open dashboard:
 
-- Your own dashboards come first, then the ones shared with the org, marked **Org**.
+- **Filter dashboards** narrows the list by title.
+- **All dashboards** opens the page.
+- **Yours** lists your own dashboards. The ones you shared with the team carry a people icon.
+- **Shared with the team** lists the dashboards others shared, each with its owner's first name.
+- The dashboard you have open is highlighted.
+
 - Click a dashboard to open it in its own tab. The tab's address is `/dashboard/<id>`, and the tab is named after the dashboard.
 - Your agent can also open a dashboard for you when it has made or changed one. A tab already open then shows the dashboard as it is now, and so does **Refresh all**.
 
-The lists stay up to date without reloading the page. When someone, or an agent working for them, creates, renames, shares or deletes a dashboard you can see, the **Dashboards** page and the Home section show it at once. An open dashboard tab shows the new version, or says "This dashboard no longer exists, or it is not shared with you." once it was deleted or made personal by its owner. Nobody is told about your personal dashboards.
+The lists stay up to date without reloading the page. When someone, or an agent working for them, creates, renames, shares or deletes a dashboard you can see, the **Dashboards** page and sidebar show it at once. An open dashboard tab shows the new version, or says "This dashboard no longer exists, or it is not shared with you." once it was deleted or made personal by its owner. Nobody is told about your personal dashboards.
 
 To get a dashboard, ask your agent, for example: "Build me a dashboard of last month's orders, with revenue by day and the ten most recent orders."
 
 ## Read and refresh the figures
 
-The bar at the top of the dashboard shows its title, who sees it (**Personal** or **Org**) and **Refresh all**.
+The bar at the top of the dashboard shows its title, the period it shows when a block follows one, who sees it (**Personal** or **Org**) and **Refresh all**.
 
 - Blocks keep their figures for a short while. **Refresh all** reads every block again from its source.
 - Each block also has its own refresh button, next to its title.
@@ -57,17 +62,19 @@ Everyone can list and open the dashboards they see: every active member holds `k
 
 Your personal agent builds dashboards with your access. A named agent, such as a team's sales or support agent, builds them when `kernel:dashboards:write` is in its scopes, and always with the access of the person it works for. An agent declared in the config file gets it with its common base; an agent created before that gets it the next time the server starts ([Create an agent](create-an-agent.md)). A named agent can never hold `kernel:dashboards:admin`. Asked for a dashboard without that access, the agent says which access is missing instead of saying dashboards do not exist.
 
-Nobody else sees a personal dashboard, administrators included. Your own changes are never held for approval: your scopes decide. When the **agent** creates an org dashboard, makes one org-visible, or changes or deletes an org dashboard, the change waits for a person who holds `kernel:dashboards:admin`. The approval card lists the title and each block with the tool or collection it reads, and the rolling dates it uses with the date each one stands for today. A personal dashboard the agent makes for you saves at once.
+Nobody else sees a personal dashboard, administrators included. Your own changes are never held for approval: your scopes decide. When the **agent** creates an org dashboard, makes one org-visible, or changes or deletes an org dashboard, the change waits for a person who holds `kernel:dashboards:admin`. The approval card of a new dashboard lists the title and each block with the tool or collection it reads, and the rolling dates it uses with the date each one stands for today. The card of a change lists every change, one line each (next section). A personal dashboard the agent makes for you saves at once.
 
 ## Ask your agent to change a dashboard
 
 Ask for the changes in plain words, for example: "Add Google spend by campaign after the orders, remove the stock table, and open the dashboard on last month." The agent sends everything you asked for in one go, applied in order: add, change, move or remove a block, rename the dashboard, set the period it opens on, or share it. Either every change is saved, or none is.
 
-On an org dashboard the whole request waits for **one** approval by a person who holds `kernel:dashboards:admin`. Its card numbers the changes, one line each: the block added, changed, moved or removed with its title and position, the tool or collection it reads with its settings, each date in them and what it stands for today, and the period the dashboard opens on. If someone saved the dashboard in the meantime, the change is refused and the agent reads it again. A change to your personal dashboard saves at once.
+On an org dashboard the whole request waits for **one** approval by a person who holds `kernel:dashboards:admin`, however many changes it holds (up to 50; the list scrolls on a long card). Its card numbers the changes, one line each: the block added, changed, moved or removed with its title and position; the tool or collection it reads with its settings (written out when short, else each setting by name), each date in them and what it stands for today; for an added block, what it shows (for example "sum of total by status, target 5000"), whether it follows the dashboard's period or keeps its own dates, and its refresh interval; for a changed block, what changed; and the period the dashboard opens on. Sharing a personal dashboard with the organization reads "Share the dashboard". When the agent rebuilds a whole dashboard at once, its card lists the differences from the saved dashboard the same way.
+
+The request is checked before anyone is asked: a block that is not there or already is, a block that cannot draw its data, or a source you cannot read is refused at once, and the agent corrects it, so an administrator never approves a change that then fails. If someone saved the dashboard in the meantime, the change is refused and the agent reads it again. Past 50 changes, the agent sends them in two requests, the second once the first is approved. A change to your personal dashboard saves at once.
 
 ## Time range and comparison
 
-A dashboard can follow a time range: last 7, 30 or 90 days, this month, quarter or year to date, last month, quarter or year, or two dates of your choice. The blocks that follow it are compared with another period: the same period last year by default, or the period just before. A metric then shows its previous value beside the current one, and a chart the previous values for each point.
+A dashboard can follow a time range: last 7, 30 or 90 days, this month, quarter or year to date, last month, quarter or year, or two dates of your choice. The blocks that follow it are compared with another period: the same period last year by default, or the period just before. A metric then shows its previous value beside the current one, and a chart the previous values for each point. A month, quarter or year compares with the whole same month, quarter or year (February 2028 with February 2027); a number of days, or dates of your choice, compares with as many days a year earlier, even across 29 February.
 
 - Whoever builds the dashboard (usually your agent) sets the range it opens on. Without one, it is the last 30 days, compared with last year.
 - The range you choose on a dashboard is remembered for you alone, on that dashboard. Others keep their own choice.
@@ -75,6 +82,27 @@ A dashboard can follow a time range: last 7, 30 or 90 days, this month, quarter 
 - Dashboards built before time ranges existed keep their blocks' own dates.
 
 A metric can also show a goal (its target) and its trend over the period as a small line.
+
+## Choose the period
+
+When at least one block follows the time range, the bar at the top shows the period as days, with the period it is compared with: for example "1–11 Nov 2026 · vs 1–11 Nov 2025". Click it to change it:
+
+- Under **Period**: **Last 7 days**, **Last 30 days**, **Last 90 days**, **Month to date**, **Last month**, **Quarter to date**, **Last quarter**, **Year to date**, **Last year**, or **Custom range…**, which asks for a **From** and a **To** day and applies them with **Apply**.
+- Under **Compare to**: **Same period last year**, **Previous period** or **No comparison**.
+- **Back to the dashboard's default** forgets your choice. It shows once you have picked a period on that dashboard.
+
+The blocks that follow the period read again at once. Your choice is remembered for you on that dashboard, and it goes into the tab's address (`?range=lastMonth&compare=lastYear`, or `?range=custom&from=2026-11-01&to=2026-11-11`), so a link you copy opens on the same period. A dashboard opens on the period in its link, else on the one you last chose there, else on its default.
+
+A block that keeps its own dates says them in a small label next to its title, such as "Since 13 Aug 2026", or **Own period** when it reads no dates at all.
+
+## What the figures show
+
+- A metric that is compared shows the change under the figure, with an arrow and its sign, for example "+12% vs same period last year". It is never coloured red or green: up is not always good news.
+- A metric with a target shows "30 of 40" and a thin bar of the progress toward it, and a metric with a trend shows it as a small line beside the figure.
+- A chart draws the compared period's values lighter (dashed for a line), named **Same period last year** or **Previous period**.
+- Under each block, "Updated 4 min. ago" says when its figures were read. A block built with its own refresh interval reads again on that interval, but only while its tab is on screen.
+- A block that follows the period and finds nothing says which days it read: "No data between 1 Nov and 11 Nov".
+- "3 rows are left out: a field they need is missing or unreadable." means some of the source's rows lacked a date or a number the block needs. "The comparison could not be read this time." means the compared period failed while the current figures still show.
 
 ## What a block can read
 
@@ -102,12 +130,13 @@ A block's source settings can hold a rolling date, so "this month" or "the last 
 | `{{endOfWeek}}`, `{{endOfMonth}}`, `{{endOfQuarter}}`, `{{endOfYear}}` | The last day of this week (Sunday), month, quarter or year. |
 | `{{range.from}}`, `{{range.to}}` | The first and last day of the dashboard's time range, as the viewer chose it. |
 | `{{range.fromTime}}`, `{{range.toTime}}` | The first and last second of that range, as a date and time with the organization's UTC offset. |
+| `{{range.endExclusive}}` | The first instant after the range (midnight of the next day), for a filter written "before this instant". |
 
 Each may carry one offset (not the two date and time forms): `+` or `-`, a number, and `d` (days), `w` (weeks), `M` (months) or `y` (years). For example `{{today-30d}}`, `{{startOfMonth-1M}}` (the 1st of last month) or `{{endOfMonth-1M}}` (the last day of last month). A month or year offset keeps the day, moved back to the month's last day when the month is shorter; on an end-of date it moves the whole period, so `{{endOfMonth-1M}}` is always last month's last day. A rolling date also works inside a longer text, such as a query's `BETWEEN '{{today-29d}}' AND '{{today}}'`. A date written out in full stays that date. Anything else between `{{` and `}}` is refused when the block is previewed or saved.
 
 ## How long figures are kept
 
-A block's figures are kept for a minute, or for the block's own interval, set by whoever built it (at most 15 minutes, whatever the interval). They are kept per person and per set of access rights (scopes, dimension grants and roles), so a change to your access is never answered with figures read under the old one. A block with rolling dates reads again as soon as its dates move, and a block that follows the time range keeps its figures per range. A block runs at most four sources at once for one person; the rest wait their turn. One refresh per block per person every 30 seconds. A block whose source failed keeps that answer for 30 seconds too, so opening the dashboard again does not run the failing source again; **Refresh** reads it at once. Closing the tab stops its blocks' reads.
+A block's figures are kept for a minute, or for the block's own interval, set by whoever built it (at most 15 minutes, whatever the interval). They are kept per person and per set of access rights (scopes, dimension grants and roles), so a change to your access is never answered with figures read under the old one. A block with rolling dates reads again as soon as its dates move, and a block that follows the time range keeps its figures per range. A block runs at most four sources at once for one person; the rest wait their turn. One refresh per block per person every 30 seconds. The compared period lies in the past, so its figures are kept for 6 hours and **Refresh** reads only the current period again. Dates of your choice are budgeted too: a block reads at most 12 new pairs of dates (counting the compared period) per person per minute; past that it keeps its figures and says "Just refreshed. Try again in a few seconds." The listed periods and the dashboard's default never count. A block whose source failed keeps that answer for 30 seconds too, so opening the dashboard again does not run the failing source again; **Refresh** reads it at once. Closing the tab stops its blocks' reads.
 
 ## The dashboards API
 

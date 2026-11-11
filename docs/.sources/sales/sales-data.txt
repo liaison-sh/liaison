@@ -34,7 +34,7 @@ database:approve is the derived approver scope; any tool can be gated by an org 
 database member/admin roles hold only reads:read and query:read -> apps/api/src/apps/database/app.manifest.json:187
 Report access section of the Database settings, tiers Internal / Confidential / Restricted -> packages/shared/src/i18n/locales/en/database.json:5-16 ; apps/api/src/apps/database/app.manifest.json:261-275
 Admins and members who can run raw queries see every report -> apps/api/src/apps/database/domain-access.ts:117-120
-Hidden reports are not listed; asked by name, the read is refused as restricted -> apps/api/src/apps/database/bridge.ts:779 ; apps/api/src/apps/database/bridge.ts:835-846
+Hidden reports are not listed; asked by name, the read is refused as restricted -> apps/api/src/apps/database/bridge.ts:460 ; apps/api/src/apps/database/bridge.ts:530
 Raw SQL queries (admins only) are not limited by these tiers -> packages/shared/src/i18n/locales/en/database.json:8
 Deals live on a pipeline in Projects with an amount, a company and a contact -> apps/api/src/apps/projects/service/deals.ts:447-478
 deals_search and deals_rollup -> apps/api/src/apps/projects/app.manifest.json:1324 ; apps/api/src/apps/projects/app.manifest.json:1397

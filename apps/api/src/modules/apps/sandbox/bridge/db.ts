@@ -83,6 +83,7 @@ export function createDbMethods(ctx: BridgeContext): Record<string, any> {
     findEntityById,
     findKernelContactsByExternalId,
     findKernelEntityById,
+    findKernelEntitiesByIds,
     manifest,
     multiTermSearch,
     orgId,
@@ -231,6 +232,12 @@ export function createDbMethods(ctx: BridgeContext): Record<string, any> {
 
     kernel_findOne: async (entity: string, id: string) => {
       return JSON.stringify(await findKernelEntityById(entity, id))
+    },
+
+    kernel_findByIds: async (entity: string, idsJson: unknown) => {
+      const ids = typeof idsJson === "string" ? JSON.parse(idsJson) : idsJson
+      if (!Array.isArray(ids)) throw new Error("kernel_findByIds: ids is an array")
+      return JSON.stringify(await findKernelEntitiesByIds(entity, ids))
     },
 
     // Cluster 6 — kernel read affordance. Exposed to handlers as both

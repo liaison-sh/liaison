@@ -423,7 +423,7 @@ describe("the company read alone, with a scripted model", () => {
     if (!read) throw new Error("the company read never ran")
     const result = results.get(read.id) ?? ""
     // The one read names what each other app holds for the group: the plan and
-    // the failed payment from Stripe, its invoices, its open ticket, its deal.
+    // the failed card payment, its invoices, its open ticket, its deal.
     const listed = /"linkedRecords":(\[[^\]]*\])/.exec(result)?.[1]
     const lines = listed ? (JSON.parse(listed) as string[]) : []
     console.log(`LINKED ${lines.join(" | ")}`)

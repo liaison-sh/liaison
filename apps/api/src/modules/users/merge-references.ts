@@ -138,6 +138,11 @@ export const USER_FK_DISPOSITION: Record<string, ReferenceDisposition> = {
     kind: "drop",
     reason: "notifications addressed to the placeholder, which nobody read",
   },
+  "kernel.app_attention_items.user_id": {
+    kind: "drop",
+    reason:
+      "the apps' attention lists computed for the placeholder; the person's own are recomputed",
+  },
   "kernel.attention_subscriptions.user_id": {
     kind: "drop",
     reason: "the placeholder's notification rules are not the person's",

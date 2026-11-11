@@ -206,7 +206,7 @@ Starting work on your own computer, sharing a folder, cloning a repository and i
 
 ## Preview details for approvers
 
-An approval card shows a summary built by the app that owns the action, for example a before and after of the record. Apps that run in the sandbox cannot read the record to build it, so the card then shows the raw parameters. A self-hosting operator can name host-reviewed bundled apps in `LIAISON_TRUSTED_SUMMARIZER_APPS` (comma-separated app names, empty by default) to run their summarizers on the host, which restores those previews.
+An approval card shows a summary built by the app that owns the action, for example a before and after of the record. The summary is built once, when the request is made, and again when its details are edited; opening the card reads the stored summary. A card lists at most 8 lines, except a card that pools a whole request into one numbered line per change (a dashboard change, up to 50 lines): its list scrolls inside the card. Apps that run in the sandbox cannot read the record to build it, so the card then shows the raw parameters. A self-hosting operator can name host-reviewed bundled apps in `LIAISON_TRUSTED_SUMMARIZER_APPS` (comma-separated app names, empty by default) to run their summarizers on the host, which restores those previews.
 
 An app can also draw a panel inside its own tool's cards, for example the rows of a month-end invoicing run, which open and change in place.
 

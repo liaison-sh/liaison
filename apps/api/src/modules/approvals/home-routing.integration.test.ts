@@ -31,6 +31,7 @@ import {
 import { resolveProposeRoute, updateItemRoutePerson } from "~/modules/approvals/route-world"
 import { attentionItemsRegistry } from "~/modules/apps/app-registries"
 import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
+import { attentionRefreshesSettled, refreshAppAttention } from "~/modules/apps/attention-store"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { handOverCompanies } from "~/modules/contacts/company-unowned"
@@ -913,10 +914,15 @@ describe("home routing: who a pending approval is for", () => {
         await minimal.grantScope(people[p] as string, "projects:projects:read")
         await minimal.grantScope(people[p] as string, "projects:tasks:read")
       }
-      const tomsTask = async () =>
-        (
+      // An app's attention list is stored: refreshed (as the platform does on its minute tick)
+      // before each read, so the read sees who stands in for whom now.
+      const tomsTask = async () => {
+        await attentionRefreshesSettled()
+        await refreshAppAttention(ORG, "projects", { userIds: [people.tom as string] })
+        return (
           await aggregateAttentionItems({ orgId: ORG, actor: await ctxOf(people.tom as string) })
         ).items.find((i) => i.app === "projects" && i.entityId === taskId)
+      }
       expect(await tomsTask()).toBeUndefined()
       const range = await away(people.sara as string, people.tom as string)
       try {

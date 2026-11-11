@@ -897,11 +897,15 @@ describe("updatePayload", () => {
       [ORG, "edit_approval", "tool"],
       [{ field: "message", label: "Message", widget: "text" }],
     )
-    registerApprovalSummarizer(ORG, "edit_approval", "tool", async (p) => ({
-      kind: "edit",
-      title: "Edit Approval",
-      lines: [`Message: ${(p as { message?: string }).message}`],
-    }))
+    let summarizerRuns = 0
+    registerApprovalSummarizer(ORG, "edit_approval", "tool", async (p) => {
+      summarizerRuns++
+      return {
+        kind: "edit",
+        title: "Edit Approval",
+        lines: [`Message: ${(p as { message?: string }).message}`],
+      }
+    })
     try {
       const res = await updatePayload({
         orgId: ORG,
@@ -913,6 +917,19 @@ describe("updatePayload", () => {
       const [row] =
         await sql`SELECT summary FROM kernel.approval_requests WHERE id = ${SUMMARY_REQUEST}`
       expect((row.summary as { lines: string[] }).lines).toEqual(["Message: to mallory"])
+      expect(summarizerRuns).toBe(1)
+      // The card and the list serve the stored summary: no summarizer runs on a read.
+      const detail = await withRlsContext(requesterActor, (tx) =>
+        getApproval(tx, { orgId: ORG, userId: REQUESTER, requestId: SUMMARY_REQUEST }),
+      )
+      const list = await withRlsContext(requesterActor, (tx) =>
+        listApprovals(tx, { orgId: ORG, userId: REQUESTER, scopes: requesterActor.scopes }),
+      )
+      expect(detail?.summary?.lines).toEqual(["Message: to mallory"])
+      expect(list.find((a) => a.id === SUMMARY_REQUEST)?.summary?.lines).toEqual([
+        "Message: to mallory",
+      ])
+      expect(summarizerRuns).toBe(1)
     } finally {
       approvalSummarizerRegistry.delete([ORG, "edit_approval", "tool"])
       if (editable) approvalEditableFieldsRegistry.set([ORG, "edit_approval", "tool"], editable)

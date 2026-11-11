@@ -34,6 +34,10 @@ const world = {
   org: "",
   admin: null as unknown as UserContext,
   clerk: null as unknown as UserContext,
+  roleReader: null as unknown as UserContext,
+  roleId: "",
+  shared: "",
+  sharedScheduleId: "",
   buyer: "",
   other: "",
   scheduleId: "",
@@ -112,6 +116,17 @@ describe("the agent's contact read names other apps' records for the person", ()
       scopes: ["kernel:contacts:read"],
       dimensionGrants: {},
     }
+    // A third person who reads one restricted contact through a role they hold.
+    const reader = await minimal.person(world.org, { role: "admin" })
+    world.roleId = randomUUID()
+    world.roleReader = {
+      actorType: "user",
+      userId: reader.id,
+      orgId: world.org,
+      scopes: ["kernel:contacts:read", "invoicing:documents:read"],
+      dimensionGrants: {},
+      roles: [world.roleId],
+    }
     await initSandboxPool()
     await initWorkerPool()
     process.env.LIAISON_BUNDLED_APPS_FROM_SOURCE = "1"
@@ -149,6 +164,22 @@ describe("the agent's contact read names other apps' records for the person", ()
     world.otherScheduleId = randomUUID()
     await schedule(world.scheduleId, world.buyer, 65000)
     await schedule(world.otherScheduleId, world.other, 99000)
+    // Restricted to its owner, and shared to one role.
+    world.shared = await minimal.contact(world.org, `shared-${tag}@maison-${tag}.example`, {
+      name: "Maison Partagee",
+    })
+    await sql`UPDATE kernel.contacts SET org_access = 'none', owner_user_id = ${admin.id}
+      WHERE id = ${world.shared}`
+    await insertRow(`${schemaRef("kernel")}.resource_grants`, {
+      org_id: world.org,
+      resource_type: "kernel.contact",
+      resource_id: world.shared,
+      grantee_kind: "role",
+      grantee: world.roleId,
+      role: "viewer",
+    })
+    world.sharedScheduleId = randomUUID()
+    await schedule(world.sharedScheduleId, world.shared, 42000)
     world.documentId = randomUUID()
     await insertRow(inv("documents"), {
       id: world.documentId,
@@ -198,6 +229,18 @@ describe("the agent's contact read names other apps' records for the person", ()
     expect(text).not.toContain(world.scheduleId)
     expect(text).not.toContain(world.documentId)
     expect(linesOf(result).some((l) => l.startsWith("Invoices"))).toBe(false)
+  }, 60_000)
+
+  it("a contact shared to a role the person holds names its records, read with that role", async () => {
+    const result = await agentRead(world.roleReader, world.shared)
+    expect((result.contact as Row).id).toBe(world.shared)
+    const invoices = linesOf(result).find((l) => l.startsWith("Invoices:"))
+    expect(invoices).toContain(`(invoicing schedule ${world.sharedScheduleId})`)
+    expect(linesOf(result).join("\n")).not.toContain(world.scheduleId)
+
+    // The same person without the role reads neither the contact nor its records.
+    const without = agentRead({ ...world.roleReader, roles: [] }, world.shared)
+    await expect(without).rejects.toMatchObject({ code: "NOT_FOUND" })
   }, 60_000)
 
   it("an app's contact read result is unchanged", async () => {

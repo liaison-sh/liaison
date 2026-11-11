@@ -67,6 +67,8 @@ interface ContactToolContext {
   /** The app that called app-to-app, when one did (execute-tool sets it). */
   callerApp?: string
   dimensionGrants?: UserContext["dimensionGrants"]
+  /** The person's roles: a record shared to one of them is theirs to read. */
+  roles?: UserContext["roles"]
 }
 
 /**
@@ -338,6 +340,7 @@ async function linkedRecordLines(contactId: string, ctx: ContactToolContext): Pr
     orgId: ctx.orgId,
     scopes: ctx.scopes ?? [],
     dimensionGrants: ctx.dimensionGrants ?? {},
+    roles: ctx.roles,
   }
   try {
     const linked = await readLinkedRecords({

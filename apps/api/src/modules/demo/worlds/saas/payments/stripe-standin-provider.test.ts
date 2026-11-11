@@ -504,6 +504,45 @@ describe("the stand-in's gates", () => {
     expect(onTheWire).toEqual([])
   })
 
+  it("a demo org's call to the payments host from any app is refused on every box and never sent", async () => {
+    for (const appName of ["api-connector", "stripe"]) {
+      for (const flag of [true, false]) {
+        DemoModeTestAccess.set(false)
+        const before = env.LIAISON_DEMO_PAYMENTS_FIXTURES
+        env.LIAISON_DEMO_PAYMENTS_FIXTURES = flag
+        let refused: unknown = null
+        try {
+          await sandboxFetch(
+            demoOrgId,
+            demoUserId,
+            appName,
+          )("/v1/customers?limit=1", `rk_live_${"aRealRestrictedKey123"}`)
+        } catch (err) {
+          refused = err
+        } finally {
+          env.LIAISON_DEMO_PAYMENTS_FIXTURES = before
+        }
+        expect({ appName, flag, refused: refused instanceof DemoRestrictionError }).toEqual({
+          appName,
+          flag,
+          refused: true,
+        })
+      }
+    }
+    expect(onTheWire).toEqual([])
+  })
+
+  it("a non-demo org's call to the payments host from another app goes to the wire", async () => {
+    DemoModeTestAccess.set(false)
+    const res = await sandboxFetch(
+      normalOrgId,
+      normalUserId,
+      "api-connector",
+    )("/v1/customers?limit=1", "rk_test_customerOwnKey")
+    expect(res.body.data).toEqual([{ id: "cus_REAL" }])
+    expect(onTheWire).toEqual([`https://${HOST}/v1/customers?limit=1`])
+  })
+
   it("a sentinel request from an org without the demo marker is refused, never forwarded", async () => {
     DemoModeTestAccess.set(false)
     const res = await sandboxFetch(normalOrgId, normalUserId)(

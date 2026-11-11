@@ -710,9 +710,31 @@ function rowsOf(result: unknown): Array<Record<string, unknown>> {
  * Hand a pooled org to the reaper: an expired visitor marker, no `pool`. Used
  * for a seed that failed and for a seed a dead process left half done, so a
  * broken org is never claimed and never squats a pool slot.
+ *
+ * Only while the org is still pooled: the caller read its row earlier, and in
+ * between another process may have claimed it for a visitor. A claimed org
+ * keeps the visitor's marker, so the reaper never takes their workspace.
+ * Returns whether the org was retired.
  */
-async function retirePooledOrg(orgId: string): Promise<void> {
-  await markOrgAsDemo(orgId, visitorMarker(1, new Date(Date.now() - 2 * 3600_000)))
+async function retirePooledOrg(orgId: string): Promise<boolean> {
+  const retired = visitorMarker(1, new Date(Date.now() - 2 * 3600_000))
+  const k = drizzleSql.raw(schemaRef("kernel"))
+  const rows = await withSystemDb("demo-pool-retire", async (tx) =>
+    rowsOf(
+      await tx.execute(drizzleSql`
+        UPDATE ${k}.organizations
+        SET settings = jsonb_set(settings, '{demo}', ${JSON.stringify(retired)}::jsonb),
+          updated_at = now()
+        WHERE id = ${orgId}::uuid AND settings->'demo'->>'pool' IN ('seeding', 'ready')
+        RETURNING id`),
+    ),
+  )
+  if (rows.length === 0) {
+    log.warn({ orgId }, "demo pool: a workspace to retire is no longer pooled; left as it is")
+    return false
+  }
+  await invalidateDemoMarker(orgId)
+  return true
 }
 
 export interface DemoPoolRefillOutcome {
@@ -1054,15 +1076,15 @@ async function retireStalePooledOrgs(nowMs: number, run: string): Promise<void> 
       if (!deadRun && known && at >= PROCESS_STARTED_AT && nowMs - at <= STALE_PROVISIONING_MS) {
         continue
       }
-      otherBuild.push(row)
-      await retirePooledOrg(row.orgId)
+      if (await retirePooledOrg(row.orgId)) otherBuild.push(row)
       continue
     }
     if (row.state === "ready") {
       const reason = expiredReason(row, nowMs)
       if (reason !== null) {
-        expired.push({ orgId: row.orgId, worldId: row.worldId, reason })
-        await retirePooledOrg(row.orgId)
+        if (await retirePooledOrg(row.orgId)) {
+          expired.push({ orgId: row.orgId, worldId: row.worldId, reason })
+        }
       }
       continue
     }
@@ -1586,4 +1608,5 @@ export const DemoPoolTestAccess = {
     else worldOverrides.set(worldId, world)
   },
   keys: { REFILL_LOCK_KEY, BACKOFF_KEY, STATUS_KEY, EMPTY_COUNT_KEY, backoffKey },
+  retirePooledOrg,
 }

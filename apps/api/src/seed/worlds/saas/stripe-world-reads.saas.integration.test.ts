@@ -608,6 +608,64 @@ describe("the software world's money, read through the apps", () => {
   })
 })
 
+interface SubItem {
+  id: string
+  customerId: string
+  status: string
+  plan: string | null
+  mrrMinor: number
+  trialEnd: string | null
+}
+/** Every subscription in one status, through the payments app's search, page by page. */
+async function subscriptionsIn(status: string): Promise<SubItem[]> {
+  const out: SubItem[] = []
+  let cursor: string | null = null
+  do {
+    const page: { items: SubItem[]; nextCursor: string | null } = await appCall(
+      "stripe:subscriptions_search",
+      { status, limit: 50, ...(cursor ? { cursor } : {}) },
+    )
+    out.push(...page.items)
+    cursor = page.nextCursor
+  } while (cursor)
+  return out
+}
+
+describe("the software world's figures, read through the payments app", () => {
+  it("seven past due subscriptions, one Group, three Team, three Starter, 3,367 a month of which 1,917 beside Maison Arlon's", async () => {
+    const pastDue = await subscriptionsIn("past_due")
+    const count = (plan: string) => pastDue.filter((s) => s.plan === plan).length
+    expect([pastDue.length, count("Group"), count("Team"), count("Starter")]).toEqual([7, 1, 3, 3])
+    const total = pastDue.reduce((n, s) => n + s.mrrMinor, 0)
+    expect(total).toBe(336_700)
+    const arlon = pastDue.find((s) => s.id === "sub_1Q8XarlonGroup")
+    expect(arlon?.mrrMinor).toBe(145_000)
+    expect(total - (arlon?.mrrMinor ?? 0)).toBe(191_700)
+    // Counted in MRR: without them, 81,341 a month.
+    const line = (await mrr()).lines[0] as MrrLine
+    expect(line.mrrMinor - total).toBe(8_134_100)
+  })
+
+  it("four trials, each ending within seven days of the board date, in no MRR figure", async () => {
+    const trials = await subscriptionsIn("trialing")
+    expect(trials).toHaveLength(4)
+    for (const t of trials) {
+      const days = (Date.parse(t.trialEnd ?? "") - BOARD_DATE.getTime()) / 86_400_000
+      expect(days).toBeGreaterThan(0)
+      expect(days).toBeLessThanOrEqual(7)
+    }
+    const customers = await appCall<{ items: Array<{ id: string }> }>("stripe:customers_search", {
+      filter: "trial",
+      limit: 50,
+    })
+    expect(customers.items.map((c) => c.id).sort()).toEqual(
+      [...new Set(trials.map((t) => t.customerId))].sort(),
+    )
+    const line = (await mrr()).lines[0] as MrrLine
+    expect(line.activeCount).toBe(169)
+  })
+})
+
 describe("the visitor's Home at the board date", () => {
   it("Home's groups read Needs you with the card reminder, the follow-up and the refund, then Support 6, Tasks 2 and Knowledge 1", async () => {
     const actor = await ownerActor()

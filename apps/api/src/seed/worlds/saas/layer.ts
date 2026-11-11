@@ -5,12 +5,16 @@
 // and their account managers, the pipeline's deals in number order with their
 // dates, the subtasks under the Arlon expansion, who is away, and the three
 // routines. Every write is idempotent: a re-run adopts what is there.
-import { sql } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 import { setLostReason, writeDealFields } from "~/apps/projects/service/deals"
 import { createTask } from "~/apps/projects/service/tasks"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
+import { routines } from "~/db/schema/kernel"
+import { messages } from "~/db/schema/kernel/threads"
 import { schemaRef } from "~/db/schema-ref"
+import { refreshPersonalAgentCeiling } from "~/modules/agent/directory/personal-agent"
+import { MORNING_BRIEF_TEMPLATE_KEY } from "~/modules/agent/routines/kernel-routine-templates"
 import { routineTemplateRegistry } from "~/modules/apps/app-registries"
 import { awaitOrgApps } from "~/modules/apps/init"
 import { setCompanyManager } from "~/modules/contacts/companies"
@@ -18,6 +22,9 @@ import { installDemoPaymentsConnection } from "~/modules/demo/worlds/saas/paymen
 import { forgetDemoPaymentsOutside } from "~/modules/demo/worlds/saas/payments/overlay"
 import { buildSendGuard } from "~/modules/mail/send-guard"
 import { addSuppression } from "~/modules/mail/suppressions"
+import { SEEDED_METADATA } from "~/modules/notifications/seeded"
+import { sendMessage } from "~/modules/threads/message"
+import { createThread } from "~/modules/threads/thread"
 import { setAway } from "~/modules/users/away"
 import { type SeedContext, seedContext } from "~/seed/context"
 import { scopeReader, seedRoutine } from "~/seed/factories/agent/routines"
@@ -41,6 +48,7 @@ import type { SeedDemoOrgResult } from "~/seed/tiers/demo/seed-org"
 import { STORY_TIME_ZONE, storyClock } from "~/seed/worlds/story-clock"
 import type { DemoWorldLayerInput } from "../index"
 import { SAAS_ROUTINES } from "./agent-native"
+import { saasMorningBrief } from "./brief"
 import { SAAS_AWAY, SAAS_COMPANY, SAAS_CUSTOMERS, SAAS_PLANS } from "./fiction"
 import {
   SAAS_PIPELINE_KEY,
@@ -466,6 +474,83 @@ async function seedSaasFollowups(
   ctx.log(`follow-ups: ${rows.length} drafts staged with their send check`)
 }
 
+/**
+ * The Morning brief as its routine last wrote it, so Home's brief card has the
+ * day's brief: the routine's output thread (made the way the routine worker
+ * makes it, the owner its admin) and the brief posted there by the owner's
+ * agent. A re-run that finds the brief adopts it.
+ */
+async function seedSaasMorningBrief(
+  ctx: SeedContext,
+  routineId: string,
+  ownerUserId: string,
+  agent: { agentId: string; displayName: string },
+): Promise<void> {
+  const owner = await actorFor(ctx, ownerUserId)
+  const [routine] = await withPrivilegedDb(ctx.orgId, "saas-brief:routine", (tx) =>
+    tx
+      .select({ outputThreadId: routines.outputThreadId })
+      .from(routines)
+      .where(and(eq(routines.orgId, ctx.orgId), eq(routines.id, routineId))),
+  )
+  let threadId = routine?.outputThreadId ?? null
+  if (!threadId) {
+    threadId = await asUser(owner, async (tx) => {
+      const created = await createThread(
+        tx as never,
+        {
+          orgId: ctx.orgId,
+          userId: ownerUserId,
+          participantIds: [],
+          title: "Morning brief",
+          type: "routine",
+          forceCreate: true,
+        } as never,
+      )
+      return created.id as string
+    })
+    const outputThreadId = threadId
+    await withPrivilegedDb(ctx.orgId, "saas-brief:link", (tx) =>
+      tx
+        .update(routines)
+        .set({ outputThreadId, lastRunAt: storyClock(ctx.now).h(-1) })
+        .where(and(eq(routines.orgId, ctx.orgId), eq(routines.id, routineId))),
+    )
+  }
+  const briefThreadId = threadId
+  const [written] = await withPrivilegedDb(ctx.orgId, "saas-brief:count", (tx) =>
+    tx
+      .select({ id: messages.id })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.orgId, ctx.orgId),
+          eq(messages.threadId, briefThreadId),
+          eq(messages.authorType, "agent"),
+        ),
+      )
+      .limit(1),
+  )
+  if (written) return
+  await asUser(owner, (tx) =>
+    sendMessage(
+      tx as never,
+      {
+        orgId: ctx.orgId,
+        userId: ownerUserId,
+        threadId: briefThreadId,
+        content: saasMorningBrief(ctx.now),
+        authorType: "agent",
+        agentId: agent.agentId,
+        agentAuthorLabel: agent.displayName,
+        requiredScopes: [],
+        metadata: { ...SEEDED_METADATA, seededAt: storyClock(ctx.now).h(-1).toISOString() },
+      } as never,
+    ),
+  )
+  ctx.log("routines: the morning brief written to its thread")
+}
+
 /** The three routines, on, each from its product template. */
 async function seedSaasRoutines(ctx: SeedContext, org: SeedDemoOrgResult): Promise<string[]> {
   // The templates live in the org's app registries, filled on first touch.
@@ -511,9 +596,13 @@ async function seedSaasRoutines(ctx: SeedContext, org: SeedDemoOrgResult): Promi
           ownerAgentId: agent.agentId,
           scopes: [...tpl.scopes],
           prompt: tpl.promptTemplate,
+          template: spec.template,
         },
       }),
     )
+    if (spec.template.templateKey === MORNING_BRIEF_TEMPLATE_KEY) {
+      await seedSaasMorningBrief(ctx, ids[ids.length - 1] as string, ownerUserId, agent)
+    }
   }
   ctx.log(`routines: ${ids.length} seeded on`)
   return ids
@@ -964,6 +1053,9 @@ async function seedSaasMoneyDecisions(
           SET route_person_id = ${elodie}::uuid
           WHERE org_id = ${ctx.orgId}::uuid AND id = ${arlonId}::uuid`,
     )
+    // A grant widens the person's agent as granting does in the product, so the
+    // first seed ends where a re-seed of the same org would.
+    await refreshPersonalAgentCeiling(tx, { orgId: ctx.orgId, userId: elodie })
   })
 }
 

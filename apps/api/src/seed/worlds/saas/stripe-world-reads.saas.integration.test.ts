@@ -12,10 +12,12 @@ import { afterAll, beforeAll, describe, expect, it, setSystemTime } from "bun:te
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { sql } from "drizzle-orm"
+import { and, desc, eq, isNull, sql } from "drizzle-orm"
 import { dealsRollup } from "~/apps/projects/service/deals"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
+import { messages, routines } from "~/db/schema/kernel"
+import { MORNING_BRIEF_TEMPLATE_KEY } from "~/modules/agent/routines/kernel-routine-templates"
 import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
@@ -23,6 +25,7 @@ import { seedContext } from "~/seed/context"
 import { actorFor, asUser } from "~/seed/factories/people/actors"
 import { type SeedDemoWorldResult, seedDemoWorld } from "~/seed/tiers/demo/seed-demo"
 import { installFromDist } from "../../../../test-support/seed/install-dist-apps"
+import { saasMorningBrief } from "./brief"
 
 /** The software world's catalog apps, installed the way a demo box has them. */
 const CATALOG_WORLD_APPS = ["invoicing", "stripe"]
@@ -642,5 +645,39 @@ describe("the visitor's Home at the board date", () => {
     } finally {
       setSystemTime()
     }
+  })
+
+  it("the brief card shows the seeded Morning brief, the owner's own, with the board's text", async () => {
+    const actor = await ownerActor()
+    const brief = await asUser(actor, async (tx) => {
+      const [routine] = await tx
+        .select({ name: routines.name, outputThreadId: routines.outputThreadId })
+        .from(routines)
+        .where(
+          and(
+            eq(routines.orgId, world.orgId),
+            eq(routines.ownerUserId, actor.userId),
+            eq(routines.templateKey, MORNING_BRIEF_TEMPLATE_KEY),
+          ),
+        )
+      if (!routine?.outputThreadId) return null
+      const [latest] = await tx
+        .select({ content: messages.content })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.threadId, routine.outputThreadId),
+            eq(messages.authorType, "agent"),
+            isNull(messages.deletedAt),
+          ),
+        )
+        .orderBy(desc(messages.createdAt))
+        .limit(1)
+      return { name: routine.name, text: latest?.content ?? null }
+    })
+    expect(brief).toEqual({ name: "Morning brief", text: saasMorningBrief(BOARD_DATE) })
+    expect(brief?.text).toContain(
+      "Hôtels Sauvan answered, so the follow-up drafted for Marc will not go out.",
+    )
   })
 })

@@ -27,6 +27,7 @@ import { sql } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { DEMO_COMPANY_NAME } from "~/modules/demo/demo-seeder"
+import { APPROVAL_EXPIRY_HOURS } from "~/seed/factories/approvals/requests"
 import { installFromDist } from "../../../../test-support/seed/install-dist-apps"
 import { seedDemoWorld } from "./seed-demo"
 
@@ -34,7 +35,19 @@ const DB_URL = process.env.DATABASE_URL ?? ""
 /** Far from the wall clock, so a world timestamp never reads as a write time. */
 const BASE_TIME = new Date("2025-01-15T09:00:00.000Z")
 const EXPECTED_FILE = path.join(import.meta.dir, "seed-snapshot.expected.json")
-const CATALOG_DEMO_APPS = ["invoicing", "social", "pennylane", "boxtal", "shopify", "monitoring"]
+const CATALOG_DEMO_APPS = [
+  "invoicing",
+  "social",
+  "pennylane",
+  "boxtal",
+  "shopify",
+  "monitoring",
+  "stripe",
+]
+/** The software world's file, beside the products world's (which keeps its old name). */
+const SAAS_EXPECTED_FILE = path.join(import.meta.dir, "seed-snapshot.saas.expected.json")
+/** The software world's base time is the board date. */
+const BOARD_DATE = new Date("2026-11-09T08:30:00.000Z")
 
 /**
  * Columns whose value is random per run by design: salted hashes, ciphertexts,
@@ -65,6 +78,10 @@ const BUILD_COLUMNS: Record<string, RegExp> = {
 const UNORDERED_COLUMN = /^(scope_ceiling|participants)$/
 const COUNTER_HANDLE = /-[0-9a-f-]*\d[0-9a-f-]*$/
 
+const HEX_DIGEST = /^[0-9a-f]{64}$/
+const DIGEST_COLUMN = /(^|_)hash$|Hash$|^entityId$/
+const EXPIRY_COLUMN = /^(expires_at|expiresAt)$/
+const EXPIRY_MS = APPROVAL_EXPIRY_HOURS * 3_600_000
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
 const ISO_TS = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}(:?\d{2})?)?$/
 
@@ -109,9 +126,18 @@ function normalise(
   if (ARRIVAL_ORDER_COLUMN.test(column)) return "<counter>"
   if (column === "handle" && typeof value === "string") return value.replace(COUNTER_HANDLE, "-<n>")
   if (typeof value === "string") {
+    // A digest keyed per org (a suppressed address's hash) differs between two orgs by design.
+    if (DIGEST_COLUMN.test(column) && HEX_DIGEST.test(value)) return "<digest>"
     if (ISO_TS.test(value)) {
       const t = Date.parse(value)
       if (!Number.isNaN(t) && t >= ctx.written.from && t <= ctx.written.to) return "<written>"
+      // A pending request's expiry: its write time plus the lifetime.
+      if (
+        EXPIRY_COLUMN.test(column) &&
+        t >= ctx.written.from + EXPIRY_MS &&
+        t <= ctx.written.to + EXPIRY_MS
+      )
+        return "<written+expiry>"
       return new Date(t).toISOString()
     }
     return value.replace(UUID, "<uuid>").split(ctx.slug).join("<slug>")
@@ -188,18 +214,24 @@ async function snapshotOrg(
   })
 }
 
-async function seedAndSnapshot(tag: string): Promise<Snapshot> {
-  const slug = `demo-snap-${crypto.randomUUID().slice(0, 8)}`
-  const from = Date.now() - 60_000
+async function seedAndSnapshot(
+  tag: string,
+  world: "products" | "saas" = "products",
+  reuseSlug?: string,
+): Promise<Snapshot> {
+  const slug = reuseSlug ?? `demo-snap-${crypto.randomUUID().slice(0, 8)}`
+  // A re-seed's window starts with the org's first seed, whose write times it still holds.
+  const from = (reuseSlug && firstWrite.get(reuseSlug)) || Date.now() - 60_000
+  if (!reuseSlug) firstWrite.set(slug, from)
   const result = await seedDemoWorld({
     orgSlug: slug,
-    orgName: DEMO_COMPANY_NAME,
+    ...(world === "products" ? { orgName: DEMO_COMPANY_NAME } : {}),
     variant: "visitor",
     locale: "en",
     owner: { email: `owner@${slug}.example`, name: "Snapshot Owner", password: "SnapOwner1!Seed" },
-    worldId: "products",
-    needs: [...DEMO_WORLD_NEEDS.products],
-    baseTime: BASE_TIME,
+    worldId: world,
+    needs: [...DEMO_WORLD_NEEDS[world]],
+    baseTime: world === "products" ? BASE_TIME : BOARD_DATE,
   })
   expect(result.failures).toEqual([])
   expect(result.complete).toBe(true)
@@ -207,8 +239,15 @@ async function seedAndSnapshot(tag: string): Promise<Snapshot> {
   const root = process.env.SEED_SNAPSHOT_DUMP
   const dumpDir = root ? path.join(root, tag) : null
   if (dumpDir) mkdirSync(dumpDir, { recursive: true })
-  return snapshotOrg(result.orgId, slug, written, dumpDir)
+  const snapshot = await snapshotOrg(result.orgId, slug, written, dumpDir)
+  slugs.set(snapshot, slug)
+  return snapshot
 }
+
+/** The slug each snapshot was seeded under, for a re-seed of the same org. */
+const slugs = new WeakMap<Snapshot, string>()
+/** When each org's first seed started. */
+const firstWrite = new Map<string, number>()
 
 function diff(expected: Snapshot, actual: Snapshot): string[] {
   const out: string[] = []
@@ -265,6 +304,39 @@ describe("the demo tier's output for a fixed base time", () => {
       console.log(`[seed-snapshot] wrote ${EXPECTED_FILE}`)
     }
     const expected = JSON.parse(readFileSync(EXPECTED_FILE, "utf8")) as Snapshot
+    expect(diff(expected, first)).toEqual([])
+  })
+})
+
+// No wall-clock day check here: the board date is days from the day the test
+// runs, so a world date (a due date two days on) can fall on it. The products
+// world, seeded in 2025, keeps that check; both read every date from the anchor.
+describe("the software world's output at the board date", () => {
+  let first: Snapshot
+  let second: Snapshot
+  let reseeded: Snapshot
+
+  beforeAll(async () => {
+    first = await seedAndSnapshot("saas-first", "saas")
+    second = await seedAndSnapshot("saas-second", "saas")
+    // The same org seeded again: every layer adopts what it finds.
+    reseeded = await seedAndSnapshot("saas-again", "saas", slugs.get(first))
+  }, 2_400_000)
+
+  it("two seeds at one anchor give equal rows, table by table", () => {
+    expect(diff(first, second)).toEqual([])
+  })
+
+  it("seeding the same org again changes no row count and no digest", () => {
+    expect(diff(first, reseeded)).toEqual([])
+  })
+
+  it("the software world's digest is the pinned one, table by table", () => {
+    if (process.env.SEED_SNAPSHOT_WRITE === "1" || !existsSync(SAAS_EXPECTED_FILE)) {
+      writeFileSync(SAAS_EXPECTED_FILE, `${JSON.stringify(first, null, 2)}\n`)
+      console.log(`[seed-snapshot] wrote ${SAAS_EXPECTED_FILE}`)
+    }
+    const expected = JSON.parse(readFileSync(SAAS_EXPECTED_FILE, "utf8")) as Snapshot
     expect(diff(expected, first)).toEqual([])
   })
 })

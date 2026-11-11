@@ -240,8 +240,8 @@
     "digest": "9f916c3abef3049b"
   },
   "kernel.apps": {
-    "rows": 21,
-    "digest": "760f0ccfdba1c3cd"
+    "rows": 22,
+    "digest": "3e257e05d5e14865"
   },
   "kernel.audit_log": {
     "rows": 35,
@@ -276,16 +276,16 @@
     "digest": "80cdbe01c0fdd51d"
   },
   "kernel.pending_events": {
-    "rows": 330,
-    "digest": "181acd403e499e66"
+    "rows": 334,
+    "digest": "b476792e46d880f9"
   },
   "kernel.resource_grants": {
     "rows": 7,
     "digest": "b1ae9ad68f7cda0f"
   },
   "kernel.roles": {
-    "rows": 34,
-    "digest": "a92c9a6e6c3577a7"
+    "rows": 37,
+    "digest": "37b1b32edd2f993f"
   },
   "kernel.routines": {
     "rows": 7,

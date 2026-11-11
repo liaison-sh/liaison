@@ -51,6 +51,11 @@ export interface RoutineSeed {
   /** Requested ceiling, clamped to what the owner holds before it is written. */
   scopes: string[]
   prompt: string
+  /**
+   * The product template it was made from, recorded as enabling the template
+   * records it: a kernel template carries no app name.
+   */
+  template?: { appName: string; templateKey: string }
 }
 
 /**
@@ -88,6 +93,13 @@ export async function seedRoutine(
     ...(spec.eventFilter !== undefined ? { eventFilter: spec.eventFilter } : {}),
     ...(spec.reportThreadId !== undefined ? { reportThreadId: spec.reportThreadId } : {}),
     prompt: spec.prompt,
+    ...(spec.template
+      ? {
+          appName: spec.template.appName === "kernel" ? null : spec.template.appName,
+          templateKey: spec.template.templateKey,
+          sourceKind: spec.template.appName === "kernel" ? "kernel" : "app",
+        }
+      : {}),
     scopes: granted,
     // Shared, not personal: the whole org sees it under Shared.
     visibility: "shared" as const,

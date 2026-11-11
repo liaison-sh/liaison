@@ -1115,6 +1115,11 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/seed/tiers/demo/seed-support.test.ts",
             // The seed engine's own rule: one `now`, no randomness.
             "src/seed/seed-determinism.test.ts",
+            // The world packs' story clock (dates from the anchor, on the
+            // company's calendar) and the guard that keeps literal dates and
+            // relative day words out of pack prose.
+            "src/seed/worlds/story-clock.test.ts",
+            "src/seed/worlds/prose-guard.test.ts",
             // The demo-instance org seeder: it seeds its own orgs and
             // truncates nothing.
             "src/seed/tiers/demo/seed-org.integration.test.ts",

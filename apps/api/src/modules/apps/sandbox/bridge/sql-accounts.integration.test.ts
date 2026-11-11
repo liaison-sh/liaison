@@ -12,24 +12,29 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { withRlsContext } from "~/db/rls"
-import { CryptoContext, encryptSecret } from "~/lib/crypto"
-import { env } from "~/lib/env"
-import { disconnectConnection } from "~/modules/apps/connections/service"
+import {
+  createCredentialConnection,
+  disconnectConnection,
+} from "~/modules/apps/connections/service"
 import { SqlPoolTestAccess } from "~/modules/apps/connections/sql/pool"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import * as minimal from "~/seed/tiers/minimal"
+import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const APP = "sqlprobe"
-const ORG_A = "00000000-0000-4000-8000-0000000e5a01"
-const ORG_B = "00000000-0000-4000-8000-0000000e5b01"
-const ALICE = "00000000-0000-4000-8000-0000000e5a11" // org A
-const BOB = "00000000-0000-4000-8000-0000000e5a12" // org A
-const CAROL = "00000000-0000-4000-8000-0000000e5b11" // org B
-const ACC_A_ORG = "00000000-0000-4000-8000-0000000e5a21"
-const ACC_A_ALICE = "00000000-0000-4000-8000-0000000e5a22"
-const ACC_A_BOB = "00000000-0000-4000-8000-0000000e5a23"
-const ACC_B_ORG = "00000000-0000-4000-8000-0000000e5b21"
-const ACC_A_SQL = "00000000-0000-4000-8000-0000000e5a24"
+// Set in beforeAll: org A (Alice its admin, Bob a member), org B (Carol).
+let ORG_A = ""
+let ORG_B = ""
+let ALICE = ""
+let BOB = ""
+let CAROL = ""
+let ACC_A_SQL = ""
+let ACC_A_ORG = ""
+let ACC_A_ALICE = ""
+let ACC_A_BOB = ""
+let ACC_B_ORG = ""
+const NO_SUCH_USER = "00000000-0000-4000-8000-0000000e5b99"
 
 const DSN =
   process.env.DATABASE_URL ?? "postgres://liaison_app:liaison_app@localhost:5432/liaison_test"
@@ -55,38 +60,23 @@ const saved = {
   plaintext: process.env.LIAISON_DB_ALLOW_PLAINTEXT_LOCAL,
 }
 
-function encrypted(value: Record<string, string>): string {
-  return encryptSecret(
-    JSON.stringify(value),
-    env.ENCRYPTION_KEY,
-    CryptoContext.connectedAccountCredentials,
+/** An account through the connections service, as a connect would store it. */
+async function connect(
+  org: string,
+  user: string,
+  connection: string,
+  identifier: string,
+  ownerType: "org" | "user",
+  credentials: Record<string, string> = { token: "unused-in-these-tests" },
+): Promise<string> {
+  const dto = await withPrivilegedDb(org, "test-sql-accounts-connect", (tx) =>
+    createCredentialConnection(tx as never, org, user, APP, connection, {
+      identifier,
+      credentials,
+      ownerType,
+    }),
   )
-}
-
-async function insertAccount(row: {
-  id: string
-  org: string
-  connection: string
-  ownerType: "org" | "user"
-  ownerId: string | null
-  identifier: string
-  creds?: Record<string, string>
-  createdBy: string
-}) {
-  await sql`INSERT INTO kernel.connected_accounts
-      (id, org_id, app_name, connection_name, owner_type, owner_id, provider_type, identifier,
-       credentials_encrypted, status, created_by, metadata)
-    VALUES (${row.id}, ${row.org}, ${APP}, ${row.connection}, ${row.ownerType}, ${row.ownerId},
-      'credentials', ${row.identifier}, ${row.creds ? encrypted(row.creds) : null}, 'active',
-      ${row.createdBy}, '{"seed":true}'::jsonb)
-    ON CONFLICT (id) DO NOTHING`
-}
-
-async function cleanup() {
-  await sql`DELETE FROM kernel.connected_accounts WHERE org_id IN (${ORG_A}, ${ORG_B})`
-  await sql`DELETE FROM kernel.audit_log WHERE org_id IN (${ORG_A}, ${ORG_B})`
-  await sql`DELETE FROM kernel.users WHERE org_id IN (${ORG_A}, ${ORG_B})`
-  await sql`DELETE FROM kernel.organizations WHERE id IN (${ORG_A}, ${ORG_B})`
+  return dto.id
 }
 
 beforeAll(async () => {
@@ -96,64 +86,23 @@ beforeAll(async () => {
   // integration suite does). Loopback plaintext is the local opt-in.
   process.env.LIAISON_DB_ALLOW_PRIVILEGED_SESSION = "true"
   process.env.LIAISON_DB_ALLOW_PLAINTEXT_LOCAL = "true"
-  await cleanup()
-  await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES
-    (${ORG_A}, 'Sql A', 'sql-probe-a'), (${ORG_B}, 'Sql B', 'sql-probe-b')`
-  await sql`INSERT INTO kernel.users (id, org_id, email, name, password_hash) VALUES
-    (${ALICE}, ${ORG_A}, 'alice@sqlprobe.test', 'Alice', 'h'),
-    (${BOB}, ${ORG_A}, 'bob@sqlprobe.test', 'Bob', 'h'),
-    (${CAROL}, ${ORG_B}, 'carol@sqlprobe.test', 'Carol', 'h')`
-  await insertAccount({
-    id: ACC_A_SQL,
-    org: ORG_A,
-    connection: "warehouse",
-    ownerType: "org",
-    ownerId: null,
-    identifier: "warehouse",
-    creds: { connectionString: DSN },
-    createdBy: ALICE,
+  ORG_A = (await createTestOrg()).id
+  ALICE = (await minimal.orgAdmin(ORG_A)).id
+  BOB = (await minimal.person(ORG_A)).id
+  const second = await minimal.secondOrg()
+  ORG_B = second.orgId
+  CAROL = second.adminUserId
+  ACC_A_SQL = await connect(ORG_A, ALICE, "warehouse", "warehouse", "org", {
+    connectionString: DSN,
   })
-  await insertAccount({
-    id: ACC_A_ORG,
-    org: ORG_A,
-    connection: "drive",
-    ownerType: "org",
-    ownerId: null,
-    identifier: "org@a.test",
-    createdBy: ALICE,
-  })
-  await insertAccount({
-    id: ACC_A_ALICE,
-    org: ORG_A,
-    connection: "drive",
-    ownerType: "user",
-    ownerId: ALICE,
-    identifier: "alice@a.test",
-    createdBy: ALICE,
-  })
-  await insertAccount({
-    id: ACC_A_BOB,
-    org: ORG_A,
-    connection: "drive",
-    ownerType: "user",
-    ownerId: BOB,
-    identifier: "bob@a.test",
-    createdBy: BOB,
-  })
-  await insertAccount({
-    id: ACC_B_ORG,
-    org: ORG_B,
-    connection: "drive",
-    ownerType: "org",
-    ownerId: null,
-    identifier: "org@b.test",
-    createdBy: CAROL,
-  })
+  ACC_A_ORG = await connect(ORG_A, ALICE, "drive", "org@a.test", "org")
+  ACC_A_ALICE = await connect(ORG_A, ALICE, "drive", "alice@a.test", "user")
+  ACC_A_BOB = await connect(ORG_A, BOB, "drive", "bob@a.test", "user")
+  ACC_B_ORG = await connect(ORG_B, CAROL, "drive", "org@b.test", "org")
 }, 120_000)
 
 afterAll(async () => {
   SqlPoolTestAccess.reset()
-  await cleanup()
   for (const [k, v] of [
     ["LIAISON_DB_ALLOW_PRIVILEGED_SESSION", saved.privileged],
     ["LIAISON_DB_ALLOW_PLAINTEXT_LOCAL", saved.plaintext],
@@ -285,7 +234,7 @@ describe("ctx.accounts: the app's own accounts", () => {
     expect(out.find((a) => a.id === ACC_A_ALICE)?.canManage).toBe(true)
     // The org's account is managed under the connection's admin scope only.
     expect(out.find((a) => a.id === ACC_A_ORG)?.canManage).toBe(false)
-    expect(out[0]?.metadata).toEqual({ seed: true })
+    expect(out[0]?.metadata).toEqual({})
     expect(JSON.stringify(out)).not.toContain("credentials")
   })
 
@@ -306,7 +255,7 @@ describe("ctx.accounts: the app's own accounts", () => {
         b.accounts_setMetadata(ACC_A_ORG, JSON.stringify({ sharedDrives: ["d1"] })),
       ),
     )
-    expect(changed.metadata).toEqual({ seed: true, sharedDrives: ["d1"] })
+    expect(changed.metadata).toEqual({ sharedDrives: ["d1"] })
   })
 
   it("never reaches another member's account or another org's", async () => {
@@ -319,7 +268,7 @@ describe("ctx.accounts: the app's own accounts", () => {
     }
     const [bob] = await sql<{ metadata: unknown }[]>`
       SELECT metadata FROM kernel.connected_accounts WHERE id = ${ACC_A_BOB}`
-    expect(bob?.metadata).toEqual({ seed: true })
+    expect(bob?.metadata ?? {}).toEqual({})
   })
 })
 
@@ -327,7 +276,10 @@ describe("ctx.kernel.findByIds", () => {
   it("answers the caller's org's users only, their directory fields only", async () => {
     const out = JSON.parse(
       await asUser(ORG_A, ALICE, ["*"], (b) =>
-        b.kernel_findByIds("users", JSON.stringify([ALICE, BOB, CAROL, "not-a-uuid"])),
+        b.kernel_findByIds(
+          "users",
+          JSON.stringify([ALICE, BOB, CAROL, NO_SUCH_USER, "not-a-uuid"]),
+        ),
       ),
     ) as Array<Record<string, unknown>>
     expect(out.map((u) => u.id).sort()).toEqual([ALICE, BOB].sort())

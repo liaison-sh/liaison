@@ -173,6 +173,11 @@ function declarationOf(ctx: SqlCallContext, connection: string): SqlConnectionDe
   return declared.sql
 }
 
+/** The scope a raw query on the connection needs, or null when it takes named reads only. */
+function rawQueryScopeOf(declaration: SqlConnectionDeclaration): string | null {
+  return declaration.rawQuery?.scope ?? null
+}
+
 /** The call's statement timeout and deadline, from the limit table. */
 function budgetOf(timeoutMs: number | undefined) {
   const limits = sqlCallLimits()
@@ -389,13 +394,14 @@ export async function sqlQuery(
     }
     const sql = req.sql as string
     meta.sqlHash = createHash("sha256").update(sql).digest("hex").slice(0, 16)
-    if (!declaration.rawQuery) {
+    const rawScope = rawQueryScopeOf(declaration)
+    if (rawScope === null) {
       refuse("raw_query_not_allowed", `Connection "${connection}" takes named reads only`)
     }
-    if (!hasScope(declaration.rawQuery.scope, ctx.callerScopes)) {
+    if (!hasScope(rawScope, ctx.callerScopes)) {
       refuse(
         "forbidden",
-        `A query on "${connection}" needs the ${declaration.rawQuery.scope} scope`,
+        `A query on "${connection}" needs the ${rawScope} scope`,
       )
     }
     if (process.env.LIAISON_DATABASE_ALLOW_RAW_QUERY === "false") {
@@ -483,10 +489,11 @@ export async function sqlSchema(
     if (req.table) meta.table = req.table
     // The schema of a database is what a raw query needs, so it takes the
     // same scope; a connection of named reads only describes its catalog.
-    if (declaration.rawQuery && !hasScope(declaration.rawQuery.scope, ctx.callerScopes)) {
+    const rawScope = rawQueryScopeOf(declaration)
+    if (rawScope !== null && !hasScope(rawScope, ctx.callerScopes)) {
       refuse(
         "forbidden",
-        `The schema of "${connection}" needs the ${declaration.rawQuery.scope} scope`,
+        `The schema of "${connection}" needs the ${rawScope} scope`,
       )
     }
     const catalog = (await catalogOf(ctx, declaration)) ?? { adapter: connection, reads: {} }

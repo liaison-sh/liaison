@@ -14,14 +14,25 @@ import { schemaRef } from "~/db/schema-ref"
 import { routineTemplateRegistry } from "~/modules/apps/app-registries"
 import { awaitOrgApps } from "~/modules/apps/init"
 import { setCompanyManager } from "~/modules/contacts/companies"
+import { installDemoPaymentsConnection } from "~/modules/demo/worlds/saas/payments/connection"
+import { forgetDemoPaymentsOutside } from "~/modules/demo/worlds/saas/payments/overlay"
 import { buildSendGuard } from "~/modules/mail/send-guard"
 import { addSuppression } from "~/modules/mail/suppressions"
 import { setAway } from "~/modules/users/away"
 import { type SeedContext, seedContext } from "~/seed/context"
 import { scopeReader, seedRoutine } from "~/seed/factories/agent/routines"
+import { type AppCell, upsertAppRow } from "~/seed/factories/app-tables"
 import { type ApprovalRequestSeed, seedApprovalRequests } from "~/seed/factories/approvals/requests"
 import { type EventSpec, seedTeamCalendar } from "~/seed/factories/calendar/events"
+import {
+  computeDocuments,
+  type InvoicingDocumentSpec,
+  type InvoicingParty,
+  recurringScheduleRows,
+  seedInvoicingHistory,
+} from "~/seed/factories/commerce/invoicing"
 import { insertUnarmedMail } from "~/seed/factories/mail/conversations"
+import { type PaymentsMirrorSpec, seedPaymentsMirror } from "~/seed/factories/payments/mirror"
 import { actorFor, asUser, rowsOf } from "~/seed/factories/people/actors"
 import { seedCompanies } from "~/seed/factories/people/companies"
 import { resolveContacts } from "~/seed/factories/people/contacts"
@@ -30,9 +41,21 @@ import type { SeedDemoOrgResult } from "~/seed/tiers/demo/seed-org"
 import { STORY_TIME_ZONE, storyClock } from "~/seed/worlds/story-clock"
 import type { DemoWorldLayerInput } from "../index"
 import { SAAS_ROUTINES } from "./agent-native"
-import { SAAS_AWAY, SAAS_CUSTOMERS } from "./fiction"
-import { SAAS_PIPELINE_KEY, type SaasPlanResult, saasPlan } from "./plan"
-import { SAAS_FOLLOWUPS, SAAS_SUPPORT_SPECS, saasKoraConversation } from "./support-specs"
+import { SAAS_AWAY, SAAS_COMPANY, SAAS_CUSTOMERS, SAAS_PLANS } from "./fiction"
+import {
+  SAAS_PIPELINE_KEY,
+  SAAS_TRANSFER_KEYS,
+  type SaasMoneyPlan,
+  type SaasPlanResult,
+  saasMoneyPlan,
+  saasPlan,
+} from "./plan"
+import {
+  SAAS_FOLLOWUPS,
+  SAAS_SUPPORT_SPECS,
+  SAAS_TICKET_KEYS,
+  saasKoraConversation,
+} from "./support-specs"
 import { SAAS_CHANNEL_TITLES } from "./threads-specs"
 
 type ExecTx = { execute: (q: unknown) => Promise<unknown> }
@@ -509,4 +532,439 @@ export async function seedSaasLayer(input: DemoWorldLayerInput): Promise<void> {
   await seedSaasMail(ctx, org)
   await seedSaasFollowups(ctx, org, dealIds, contactIds)
   await seedSaasRoutines(ctx, org)
+  await seedSaasMoney(ctx, org, actor, plan, companyIds, contactIds)
 }
+
+// ── Money ────────────────────────────────────────────────────────────────────
+
+/** The payments app and the invoicing app, by the ids they are installed under. */
+const PAYMENTS_APP = "stripe"
+const INVOICING_APP = "invoicing"
+
+/** The issuer profile's key: the company that invoices. */
+const ISSUER_KEY = "saas-issuer"
+
+/**
+ * The money of the workspace, in the order the apps would have written it:
+ * the card-payments connection (the demo stand-in), the issuer and who issues
+ * what, the year's invoices with their numbers, the schedules billed by
+ * transfer, the card mirror linked to the invoices it paid, and the two
+ * decisions waiting on Home (Maison Arlon's card reminder, Café Ombre's refund).
+ */
+async function seedSaasMoney(
+  ctx: SeedContext,
+  org: SeedDemoOrgResult,
+  actor: UserContext,
+  plan: SaasPlanResult,
+  companyIds: Record<string, string>,
+  contactIds: Record<string, string>,
+): Promise<void> {
+  const money = saasMoneyPlan(ctx.now)
+  const clock = storyClock(ctx.now)
+  const companyOf = (key: string) => {
+    const c = plan.companies.find((x) => x.key === key)
+    if (!c) throw new Error(`saas layer: no company '${key}'`)
+    return c
+  }
+  // A re-seed starts from the mirror alone: what a visitor's play left outside is gone.
+  await forgetDemoPaymentsOutside(ctx.orgId)
+  await installDemoPaymentsConnection({ orgId: ctx.orgId, createdByUserId: org.adminUserId })
+
+  // The people invoices go to at the companies billed by transfer: their accounts desk.
+  const billing = await resolveContacts(
+    ctx,
+    actor,
+    SAAS_TRANSFER_KEYS.filter((key) => companyOf(key).contactKeys.length === 0).map((key) => {
+      const c = companyOf(key)
+      return {
+        key: `billing:${key}`,
+        email: `compta@${c.domain}`,
+        name: `${c.name} accounts`,
+        externalId: { demo: `billing:${key}` },
+        tags: ["customer"],
+      }
+    }),
+  )
+  const contactOfCompany: Record<string, string> = {}
+  for (const [key, c] of billing) contactOfCompany[key.replace(/^billing:/, "")] = c.id
+  for (const c of plan.companies) {
+    const first = c.contactKeys[0]
+    const id = first ? contactIds[first] : undefined
+    if (id) contactOfCompany[c.key] = id
+  }
+
+  // The issued invoices of the year, priced and numbered by the plan.
+  const parties = new Map<string, InvoicingParty>()
+  for (const inv of money.invoices) {
+    if (parties.has(inv.companyKey)) continue
+    const c = companyOf(inv.companyKey)
+    const dutch = c.name === "Stadshotel Noord BV"
+    parties.set(c.key, {
+      key: c.key,
+      name: c.name,
+      email: emailOfCompany(c.key, c.domain, c.contactKeys),
+      country: dutch ? "NL" : "FR",
+      // A Dutch business with its VAT number: reverse charge.
+      vatId: dutch ? "NL000000000B00" : null,
+      address: dutch ? `${c.name}, Amsterdam, Netherlands` : `${c.name}, France`,
+    })
+  }
+  const specs: InvoicingDocumentSpec[] = money.invoices.map((inv) => ({
+    key: inv.key,
+    type: "invoice",
+    status: inv.paidAt ? "paid" : "issued",
+    paymentStatus: inv.paidAt ? "paid" : "unpaid",
+    party: inv.companyKey,
+    lines: [
+      {
+        description: inv.description,
+        unitPriceMinor: inv.unitMinor,
+        quantity: inv.quantity,
+        lineKind: "software",
+      },
+    ],
+    issuedDaysAgo: (ctx.now.getTime() - inv.issuedAt.getTime()) / 86_400_000,
+    termsDays: 30,
+  }))
+  const byKey = new Map(money.invoices.map((i) => [i.key, i]))
+  const documents = computeDocuments(ctx, { documents: specs, parties, skus: new Map() }).map(
+    (d) => {
+      // The plan's instants and numbers: per year on the company's calendar, in date order.
+      const inv = byKey.get(d.spec.key)
+      if (!inv) throw new Error(`saas layer: no planned invoice ${d.spec.key}`)
+      return {
+        ...d,
+        issuedAt: inv.issuedAt,
+        dueAt: new Date(inv.issuedAt.getTime() + 30 * 86_400_000),
+        paidAt: inv.paidAt,
+        number: inv.number,
+        numberInt: inv.numberInt,
+        yearOfIssue: inv.year,
+      }
+    },
+  )
+  const { issuerProfileId: issuerId } = await seedInvoicingHistory(ctx, {
+    issuer: {
+      key: ISSUER_KEY,
+      legalName: SAAS_COMPANY.legalName ?? SAAS_COMPANY.name,
+      country: SAAS_COMPANY.country ?? "FR",
+      vatId: SAAS_COMPANY.vat ?? null,
+      address: `${SAAS_COMPANY.addressLine1}, ${SAAS_COMPANY.postalCode} ${SAAS_COMPANY.city}`,
+      iban: SAAS_COMPANY.iban ?? "",
+      swiftBic: SAAS_COMPANY.swiftBic ?? "",
+      bankName: SAAS_COMPANY.bankName ?? "",
+      defaultCurrency: "EUR",
+      prefixes: {
+        invoice: "F-{YYYY}-",
+        quote: "Q-{YYYY}-",
+        proforma: "PRO-{YYYY}-",
+        po: "PO-{YYYY}-",
+        creditNote: "CN-{YYYY}-",
+      },
+      shopifyShopId: null,
+      invoiceApprovalThresholdMinor: "0",
+      poApprovalThresholdMinor: "0",
+      timezone: STORY_TIME_ZONE,
+    },
+    hsCodes: [],
+    relationships: Object.entries(contactOfCompany)
+      .filter(([key]) => parties.has(key))
+      .map(([key, contactId]) => ({ key, contactId, relationship: "customer" as const })),
+    documents,
+    contactIdsByPartyKey: contactOfCompany,
+  })
+  const documentId = (key: string) => ctx.id("document", key)
+
+  await withPrivilegedDb(ctx.orgId, "saas-seed-invoicing", async (tx) => {
+    // Who issues what: card subscriptions are invoiced by Liaison, the processor only collects.
+    await upsertAppRow(tx as never, INVOICING_APP, `${PAYMENTS_APP}_streams`, {
+      id: ctx.id("issuer-stream", ISSUER_KEY),
+      org_id: ctx.orgId,
+      issuer_profile_id: issuerId,
+      [`${PAYMENTS_APP}_account_ref`]: null,
+      [`${PAYMENTS_APP}_connected`]: true,
+      issuer: "liaison",
+      decided_by: ownerIdOf(org),
+      decided_at: money.connectedAt.toISOString(),
+      emails_confirmed_by: ownerIdOf(org),
+      emails_confirmed_at: money.connectedAt.toISOString(),
+    })
+    // The ten schedules billed by transfer, none of them run yet this month.
+    const rows = recurringScheduleRows(
+      ctx,
+      issuerId,
+      money.schedules.map((s) => ({
+        key: s.key,
+        contactId: contactOfCompany[s.companyKey] as string,
+        companyId: companyIds[s.companyKey] ?? null,
+        repeats: s.repeats,
+        billingDay: s.billingDay,
+        status: s.status,
+        lines: [
+          {
+            description: s.description,
+            qty: s.quantity,
+            unitPriceMinor: s.unitMinor,
+            vatBp: s.vatBp,
+          },
+        ],
+        nextIssueOn: s.nextIssueOn,
+        nextDraftOn: s.nextDraftOn,
+        pausedUntil: s.pausedUntil,
+      })),
+    )
+    for (const [i, row] of rows.entries()) {
+      const s = money.schedules[i] as SaasMoneyPlan["schedules"][number]
+      if (!row.contact_id) throw new Error(`saas layer: schedule ${s.key} has no customer`)
+      const extra: Record<string, AppCell> = {
+        last_document_id: s.lastInvoiceKey ? documentId(s.lastInvoiceKey) : null,
+        external_ref: `demo:saas:schedule:${s.key}`,
+      }
+      await upsertAppRow(tx as never, INVOICING_APP, "recurring_schedules", { ...row, ...extra })
+    }
+  })
+
+  // The card mirror.
+  await seedPaymentsMirror(
+    ctx,
+    saasPaymentsMirrorSpec(money, plan, {
+      companyIds,
+      contactIds,
+      documentId,
+      nextAttempt: sec(clock.d(1)),
+    }),
+  )
+  await seedSaasMoneyDecisions(ctx, org, money)
+  ctx.log(
+    `money: ${money.subscriptions.length} card subscriptions, ${money.invoices.length} invoices, ${money.schedules.length} schedules`,
+  )
+}
+
+/** The card mirror of the money plan, in the payments factory's terms. Pure. */
+export function saasPaymentsMirrorSpec(
+  money: SaasMoneyPlan,
+  plan: SaasPlanResult,
+  ids: {
+    companyIds: Record<string, string>
+    contactIds: Record<string, string>
+    documentId: (invoiceKey: string) => string
+    /** When a failed charge is tried again: the next day. */
+    nextAttempt: Date
+  },
+): PaymentsMirrorSpec {
+  const subsByKey = new Map(money.subscriptions.map((s) => [s.companyKey, s]))
+  return {
+    currency: "eur",
+    customers: money.subscriptions.map((s) => {
+      const c = companyOf(plan, s.companyKey)
+      const contact = c.contactKeys[0]
+      return {
+        id: s.customerId,
+        email: s.email,
+        name: c.name,
+        createdAt: s.customerSince,
+        delinquent: s.status === "past_due",
+        companyId: ids.companyIds[c.key] ?? null,
+        contactId: contact ? (ids.contactIds[contact] ?? null) : null,
+      }
+    }),
+    subscriptions: money.subscriptions.map((s) => ({
+      id: s.subscriptionId,
+      customerId: s.customerId,
+      status: s.status,
+      planName: SAAS_PLANS[s.plan].name,
+      unitMinor: (s.billing === "year" ? 12 : 1) * SAAS_PLANS[s.plan].monthlyMinor,
+      interval: s.billing,
+      taxPercent: 20,
+      periodStart: s.periodStart,
+      periodEnd: s.periodEnd,
+      trialEnd: s.trialEnd,
+      canceledAt: s.canceledAt,
+      pastDueSince: s.pastDueSince,
+      card: s.card,
+    })),
+    invoices: money.charges.map((c) => ({
+      id: c.invoiceId,
+      customerId: c.customerId,
+      subscriptionId: c.subscriptionId,
+      status: c.invoiceStatus,
+      netMinor: c.netMinor,
+      taxMinor: c.taxMinor,
+      periodStart: c.periodStart,
+      periodEnd: c.periodEnd,
+      finalizedAt: c.at,
+      paidAt: c.invoiceStatus === "paid" ? c.at : null,
+      nextPaymentAttempt: c.invoiceStatus === "open" ? ids.nextAttempt : null,
+      billingReason:
+        subsByKey.get(customerKeyOf(money, c.customerId))?.customerSince.getTime() ===
+        c.at.getTime()
+          ? "subscription_create"
+          : "subscription_cycle",
+      documentId: c.invoiceKey ? ids.documentId(c.invoiceKey) : null,
+    })),
+    payments: money.charges.map((c) => ({
+      id: c.chargeId,
+      invoiceId: c.invoiceId,
+      customerId: c.customerId,
+      amountMinor: c.netMinor + c.taxMinor,
+      status: c.chargeStatus,
+      failureCode: c.failureCode,
+      failureMessage:
+        c.failureCode === "expired_card"
+          ? "Your card has expired."
+          : c.failureCode
+            ? "Your card was declined."
+            : null,
+      card: c.card,
+      at: c.at,
+      disputed: c.disputed,
+    })),
+    disputes: [
+      {
+        id: money.dispute.disputeId,
+        paymentId: money.dispute.chargeId,
+        amountMinor: money.dispute.amountMinor,
+        reason: money.dispute.reason,
+        status: money.dispute.status,
+        at: money.dispute.at,
+        evidenceDueBy: money.dispute.evidenceDueBy,
+      },
+    ],
+    movements: money.movements,
+    install: {
+      accountId: "acct_1WorldDemoAccount",
+      accountName: SAAS_COMPANY.name,
+      connectedAt: money.connectedAt,
+      lastEventAt: money.lastEventAt,
+      lastEventType: "invoice.paid",
+    },
+    syncedAt: money.syncedAt,
+  }
+}
+
+function companyOf(plan: SaasPlanResult, key: string) {
+  const c = plan.companies.find((x) => x.key === key)
+  if (!c) throw new Error(`saas layer: no company '${key}'`)
+  return c
+}
+
+function customerKeyOf(money: SaasMoneyPlan, customerId: string): string {
+  return money.subscriptions.find((s) => s.customerId === customerId)?.companyKey ?? ""
+}
+
+function emailOfCompany(key: string, domain: string, contactKeys: readonly string[]): string {
+  const first = contactKeys[0]?.replace(/^customer:/, "")
+  const named = first ? SAAS_CUSTOMERS.find((c) => c.key === first)?.email : undefined
+  return named ?? (SAAS_TRANSFER_KEYS.includes(key) ? `compta@${domain}` : `billing@${domain}`)
+}
+
+/**
+ * The two money decisions on the owner's Home: the card reminder to Maison
+ * Arlon, staged by the failed payments routine for its account manager (away,
+ * the owner next in line), and the refund to Café Ombre, asked by the support
+ * lead's agent from the ticket.
+ */
+async function seedSaasMoneyDecisions(
+  ctx: SeedContext,
+  org: SeedDemoOrgResult,
+  money: SaasMoneyPlan,
+): Promise<void> {
+  const clock = storyClock(ctx.now)
+  const ownerId = ownerIdOf(org)
+  const threadOf = async (title: string) => {
+    const [row] = await withPrivilegedDb(ctx.orgId, "saas-seed-money-thread", async (tx) =>
+      rowsOf<{ id: string }>(
+        await tx.execute(
+          sql`SELECT id FROM ${sql.raw(schemaRef("kernel"))}.threads
+              WHERE org_id = ${ctx.orgId}::uuid AND title = ${title} LIMIT 1`,
+        ),
+      ),
+    )
+    if (!row) throw new Error(`saas layer: no '${title}' channel for the money decisions`)
+    return row.id
+  }
+  const ticketId = await withPrivilegedDb(ctx.orgId, "saas-seed-money-ticket", async (tx) =>
+    rowsOf<{ id: string }>(
+      await tx.execute(
+        sql`SELECT id FROM ${sql.raw(schemaRef("app_tickets"))}.tickets
+            WHERE org_id = ${ctx.orgId}::uuid AND external_ref = ${`demo:${SAAS_TICKET_KEYS.ombreCharge}`}
+            LIMIT 1`,
+      ),
+    ),
+  )
+  const finance = org.agentsByHandle["@finance"]?.agentId
+  const inesAgent =
+    org.agents.find(
+      (a) => a.kind === "personal" && (a as { ownerKey?: string }).ownerKey === "ines",
+    )?.agentId ?? org.agentsByHandle["@support"]?.agentId
+  if (!finance || !inesAgent) throw new Error("saas layer: no agent for the money decisions")
+  const arlonOpen = money.charges.find((c) => c.invoiceKey === "arlon-current")
+  const ombreCharge = money.charges.find((c) => c.invoiceKey === "ombre-after-cancel")
+  const ombreInvoice = money.invoices.find((i) => i.key === "ombre-after-cancel")
+  if (!arlonOpen || !ombreCharge || !ombreInvoice) {
+    throw new Error("saas layer: the money decisions name no charge")
+  }
+  const claire = SAAS_CUSTOMERS.find((c) => c.key === "claire-vidal")?.email as string
+  const elodie = userIdOf(org, "elodie")
+  const ines = userIdOf(org, "ines")
+  const arlonId = ctx.id("approval", "arlon-card-reminder")
+  await seedApprovalRequests(ctx, [
+    {
+      id: arlonId,
+      handle: "demo-arlon-card-reminder",
+      threadId: await threadOf(SAAS_CHANNEL_TITLES.handover),
+      toolName: "mail:compose",
+      payload: {
+        accountId: ctx.id("mail-account", "org"),
+        to: [claire],
+        subject: "Your card for the Group plan needs updating",
+        textBody: `Hello Claire,\n\nThe payment for your Group plan did not go through: the Visa ending 4242 on file has expired. You can add a new card on the secure page linked below. Your rotas keep running while you do.\n\nThank you,\n${SAAS_COMPANY.name}`,
+        followUp: {
+          refs: [{ kind: `${PAYMENTS_APP}:invoice`, id: arlonOpen.invoiceId }],
+          classification: "service",
+        },
+      },
+      requestedBy: userIdOf(org, "sara"),
+      agentId: finance,
+      notifyUserIds: [elodie, ownerId],
+      status: "pending",
+      createdAt: sec(clock.h(-1)),
+    },
+    {
+      id: ctx.id("approval", "ombre-refund"),
+      handle: "demo-ombre-refund",
+      threadId: await threadOf(SAAS_CHANNEL_TITLES.handover),
+      toolName: `${PAYMENTS_APP}:refunds_create`,
+      payload: {
+        chargeId: ombreCharge.chargeId,
+        reason: `Charged two days after the cancellation; invoice ${ombreInvoice.number}`,
+        ...(ticketId[0] ? { ticketId: ticketId[0].id } : {}),
+      },
+      requestedBy: ines,
+      agentId: inesAgent,
+      notifyUserIds: [ownerId],
+      status: "pending",
+      createdAt: sec(clock.h(-16)),
+    },
+  ])
+  // The reminder is for Maison Arlon's account manager: the person it routes to. She
+  // approves reminders to the customers she manages, so it waits on her, and while
+  // she is away, on the owner next in line.
+  await withPrivilegedDb(ctx.orgId, "saas-seed-money-route", async (tx) => {
+    await tx.execute(
+      sql`INSERT INTO ${sql.raw(schemaRef("kernel"))}.user_scope_grants (user_id, org_id, scope)
+          SELECT ${elodie}::uuid, ${ctx.orgId}::uuid, 'mail:approve'
+          WHERE NOT EXISTS (
+            SELECT 1 FROM ${sql.raw(schemaRef("kernel"))}.user_scope_grants
+            WHERE org_id = ${ctx.orgId}::uuid AND user_id = ${elodie}::uuid AND scope = 'mail:approve'
+          )`,
+    )
+    await tx.execute(
+      sql`UPDATE ${sql.raw(schemaRef("kernel"))}.approval_requests
+          SET route_person_id = ${elodie}::uuid
+          WHERE org_id = ${ctx.orgId}::uuid AND id = ${arlonId}::uuid`,
+    )
+  })
+}
+
+const sec = (d: Date) => new Date(Math.floor(d.getTime() / 1000) * 1000)

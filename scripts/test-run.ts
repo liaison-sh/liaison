@@ -1129,8 +1129,12 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // The software world's plan held to its invariants at anchors
             // across a year, with no database.
             "src/seed/worlds/saas/plan-invariants.test.ts",
+            // The software world's card mirror read back through the
+            // payments stand-in rebuilds to the rows it was seeded with.
+            "src/seed/factories/payments/stripe-mirror-roundtrip.test.ts",
             // The software world seeded once and read through the product's
-            // own tools: pipeline, companies, team, agents and routines.
+            // own tools: pipeline, companies, team, agents, routines, MRR,
+            // invoice numbers, schedules and the money decisions on Home.
             "src/seed/worlds/saas/stripe-world-reads.saas.integration.test.ts",
             // The demo-instance org seeder: it seeds its own orgs and
             // truncates nothing.

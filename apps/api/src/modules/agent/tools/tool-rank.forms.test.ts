@@ -92,8 +92,11 @@ describe("tool search: misspelt words", () => {
     expect(rank("cards")).not.toContain("carts__carts_list")
   })
 
-  it("a word under 5 letters is not corrected", () => {
-    expect(rank("crad")).toEqual([])
+  it("a word under 5 letters is corrected only for two swapped neighbouring letters", () => {
+    // A letter changed or dropped in so short a word makes another word ("cord", "crd").
+    expect(rank("cerd")).toEqual([])
+    expect(rank("crd")).toEqual([])
+    expect(rank("crad")[0]).toBe("cards__cards_list")
   })
 })
 

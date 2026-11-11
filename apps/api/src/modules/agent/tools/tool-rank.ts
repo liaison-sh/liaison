@@ -6,7 +6,7 @@
  * no server.
  */
 
-import { NAME_WORD_SYNONYMS } from "./tool-lexicon"
+import { NAME_WORD_SYNONYMS, withoutCourtesy } from "./tool-lexicon"
 import { meaningPoints, type ToolMeaning } from "./tool-meaning"
 
 /** Meaning points a tool no word matched needs to join the list: past the floor, not the tie trace. */
@@ -253,6 +253,46 @@ const SYNONYMS_BY_STEM = (() => {
   return out
 })()
 
+/** French verb endings, longest first: present, imperative, past participle. */
+const FRENCH_VERB_ENDINGS = [
+  "issons",
+  "issez",
+  "issent",
+  "ons",
+  "ez",
+  "ent",
+  "es",
+  "is",
+  "it",
+  "ts",
+  "e",
+  "s",
+  "t",
+  "i",
+  "u",
+  "",
+]
+/** The infinitive endings those forms come from, "-er" verbs aside (wordStem folds them). */
+const FRENCH_INFINITIVES = ["ir", "re", "tre", "dre"]
+
+/**
+ * The name words a French verb form stands for when its infinitive is a
+ * lexicon word but its stem is not the infinitive's: "ouvre" and "ouvrez" are
+ * "ouvrir", "émets" is "émettre".
+ */
+function frenchVerbSynonyms(term: string): readonly string[] {
+  for (const ending of FRENCH_VERB_ENDINGS) {
+    if (!term.endsWith(ending)) continue
+    const root = term.slice(0, term.length - ending.length)
+    if (root.length < 3) continue
+    for (const infinitive of FRENCH_INFINITIVES) {
+      const names = NAME_WORD_SYNONYMS[`${root}${infinitive}`]
+      if (names) return names
+    }
+  }
+  return []
+}
+
 /** Every word the catalog holds: name parts, keywords, app parts, description words. */
 const vocabularyCache = new WeakMap<readonly ScorableDeferredTool[], Set<string>>()
 function vocabularyOf(tools: readonly ScorableDeferredTool[]): Set<string> {
@@ -276,6 +316,7 @@ function typoEdits(length: number): number {
 
 /** True when `term` is within its allowed edits (a swap of two letters is one) of a word. */
 function typoOf(term: string, words: readonly string[]): boolean {
+  if (term.length === MIN_TYPO_TERM - 1) return words.some((w) => swapOf(term, w))
   if (term.length < MIN_TYPO_TERM) return false
   const max = typoEdits(term.length)
   return words.some(
@@ -283,6 +324,22 @@ function typoOf(term: string, words: readonly string[]): boolean {
       w.length >= MIN_TYPO_TERM - 1 &&
       Math.abs(w.length - term.length) <= max &&
       editDistance(term, w, max) <= max,
+  )
+}
+
+/**
+ * True when `term` is `word` with two neighbouring letters swapped ("mial",
+ * "mail"): the one misspelling a four-letter word is read as, since a letter
+ * dropped or changed in so short a word ("main", "mails") is another word.
+ */
+function swapOf(term: string, word: string): boolean {
+  if (term.length !== word.length || term === word) return false
+  const i = [...term].findIndex((c, k) => c !== word[k])
+  return (
+    i < term.length - 1 &&
+    term[i] === word[i + 1] &&
+    term[i + 1] === word[i] &&
+    term.slice(i + 2) === word.slice(i + 2)
   )
 }
 
@@ -342,8 +399,7 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
   },
 ): Array<{ tool: T; score: number; termsMatched: number; termCount: number }> {
   // The separators rankByKeywords splits on, plus `_` and `-`.
-  let terms = query
-    .toLowerCase()
+  let terms = requestOf(query)
     .split(/[\s,:;./_'’+&?!()"«»-]+/)
     .filter(Boolean)
     .map(foldSearchTerm)
@@ -360,7 +416,8 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
   // A stem too short to tell words apart ("cre") is not compared.
   const stemOk = termStems.map((stem) => stem.length >= MIN_STEM)
   const termSynonyms = terms.map(
-    (term, i) => SYNONYMS_BY_STEM.get(termStems[i]) ?? SYNONYMS_BY_STEM.get(term) ?? [],
+    (term, i) =>
+      SYNONYMS_BY_STEM.get(termStems[i]) ?? SYNONYMS_BY_STEM.get(term) ?? frenchVerbSynonyms(term),
   )
   // The plural of each word, and the word less its final "s", built once rather than per tool.
   const termPlurals = terms.map((term) => `${term}s`)
@@ -560,6 +617,11 @@ export function strongMatches<T extends { score: number; termsMatched: number; t
       s.termsMatched === s.termCount &&
       s.score > DESCRIPTION_SCORE * s.termCount,
   )
+}
+
+/** A query as the words to rank: lower case, without its courtesy wrapper. */
+function requestOf(query: string): string {
+  return withoutCourtesy(query).toLowerCase()
 }
 
 /** Words of a request that name no capability ("connect OUR crm"). */
@@ -770,8 +832,7 @@ function rankByKeywords<T extends ScorableDeferredTool & { sdkName: string; lock
   // Punctuation people type around a word ("refunds?", "(invoice)", "« devis »")
   // and a plus or ampersand between two ("create+send") split as well, so the
   // word is read as itself rather than as a misspelling of itself.
-  const terms = query
-    .toLowerCase()
+  const terms = requestOf(query)
     .split(/[\s,:;./'’+&?!()"«»]+/)
     .filter(Boolean)
     .map(foldSearchTerm)

@@ -255,3 +255,51 @@ export const NAME_WORD_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
   reopen: ["reopen"],
   resolve: ["close", "resolve"],
 }
+
+/**
+ * The ways people wrap a request in courtesy, English and French: "could you
+ * please", "would you mind", "when you get a chance", "est-ce que tu pourrais",
+ * "merci de bien vouloir", "s'il te plaît". Whole phrases from the dictionary,
+ * never a word of any tool: only the wrapper goes, so "could you GET the
+ * invoice" keeps its "get" while "when you get a chance" loses its own.
+ */
+const COURTESY_FRAMES: readonly RegExp[] = [
+  // English
+  /\b(?:would|do) you mind(?: if)?\b/gi,
+  /\bwould you be (?:so kind as|able) to\b/gi,
+  // The longer frames above first: "would you" alone would leave "mind".
+  /\b(?:could|can|would|will) you(?: please| kindly| possibly| just)*\b/gi,
+  /\bwhen(?:ever)? you (?:get|have|find) a (?:chance|moment|minute|sec(?:ond)?|spare moment)\b/gi,
+  /\bif you (?:could|can|don['’]?t mind|have a (?:moment|minute|sec(?:ond)?))\b/gi,
+  /\bif possible\b/gi,
+  /\bi(?:['’]d| would) (?:like|love|appreciate it if)(?: you)?(?: to| could)?\b/gi,
+  /\bi (?:need|want) you to\b/gi,
+  /\b(?:that|it) would be (?:great|lovely|perfect|nice|helpful|amazing)(?: if you could)?\b/gi,
+  /\bthanks?(?: you)?(?: (?:so|very) much| a lot| in advance)?\b/gi,
+  /\b(?:please|pls|plz|kindly|thx|cheers)\b/gi,
+  // French
+  /\best[- ]ce que (?:tu|vous) (?:pourrais|pourriez|peux|pouvez|voudrais|voudriez|veux|voulez)(?: bien)?\b/gi,
+  /\b(?:pourrais|pourriez|peux|pouvez|voudrais|voudriez|veux|voulez)[- ](?:tu|vous)(?: bien)?\b/gi,
+  /\b(?:tu|vous) (?:pourrais|pourriez|peux|pouvez|voudrais|voudriez|veux|voulez)(?: bien)?\b/gi,
+  /\b(?:je |j'|j’)?(?:voudrais|aimerais|souhaiterais|souhaite)(?: bien)? (?:que (?:tu|vous)|qu['’]on)\b/gi,
+  /\bj['’]ai besoin que (?:tu|vous)\b/gi,
+  /\b(?:il )?(?:faut|faudrait) que (?:tu|vous)\b/gi,
+  /\bmerci(?: beaucoup| bien)?(?: de| d['’])?(?: bien vouloir)?/gi,
+  /\bs['’]il (?:te|vous) pla[iî]t\b/gi,
+  /\bquand (?:tu as|vous avez|t['’]as|tu auras|vous aurez) (?:un moment|une minute|deux minutes|un instant|le temps)\b/gi,
+  /\bsi (?:possible|tu peux|vous pouvez)\b/gi,
+  /(?:^|\s)(?:[cç]a|cela) (?:te|vous) (?:d[eé]rangerait|ennuierait) (?:de|d['’])/gi,
+  /\b(?:tu|vous) (?:serais|serait|seriez) (?:gentil|gentille|gentils|aimable|sympa)s? de\b/gi,
+  /\bauri(?:ez|ais)[- ](?:vous|tu) l['’]amabilit[eé] de\b/gi,
+]
+
+/**
+ * A request without its courtesy wrapper, as typed otherwise (the meaning
+ * model reads case). When nothing but the wrapper was typed ("thanks"), the
+ * query stays whole.
+ */
+export function withoutCourtesy(query: string): string {
+  let out = query
+  for (const frame of COURTESY_FRAMES) out = out.replace(frame, " ")
+  return /[\p{L}\p{N}]/u.test(out) ? out.replace(/\s+/g, " ").trim() : query
+}

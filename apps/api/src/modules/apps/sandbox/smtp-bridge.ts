@@ -138,6 +138,11 @@ export function classifyDeliveryState(
 export type SmtpSendResult = {
   messageId: string
   deliveryState: SmtpDeliveryState
+  /**
+   * True when the send was recorded in place and never put on the wire: a demo
+   * workspace's mail to its fictional recipients. Nobody received it.
+   */
+  captured?: true
 }
 
 export async function smtpSend(

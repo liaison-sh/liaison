@@ -218,9 +218,12 @@ const AttentionFeedView: Component<AttentionFeedViewProps> = (props) => {
   const approvalSplit = createMemo(() => partitionOthersRows(allApprovalItems()))
   const othersRows = createMemo(() => approvalSplit().others)
   const approvalItems = createMemo(() => approvalSplit().mine)
+  // A held draft waits on no one until its hold ends, so it is in no count. It sits under the
+  // counted rows in its own group with its own count, so the card's count is its list's length.
+  const heldRows = createMemo(() => approvalItems().filter((i) => isHeldItem(i)))
   // One list, no per-action filter (the pill on each row names the action). Over five rows the
   // first three show and the rest fold behind "Show N more", order kept.
-  const approvalRows = approvalItems
+  const approvalRows = createMemo(() => approvalItems().filter((i) => !isHeldItem(i)))
   const [showAllApprovals, setShowAllApprovals] = createSignal(false)
   const visibleApprovalRows = createMemo(() =>
     showAllApprovals() || approvalRows().length <= APPROVALS_FOLD_OVER
@@ -435,7 +438,7 @@ const AttentionFeedView: Component<AttentionFeedViewProps> = (props) => {
                       <HomeCard
                         id="approvals"
                         title={cardTitles().approvals}
-                        count={approvalItems().filter((i) => !isHeldItem(i)).length}
+                        count={approvalRows().length}
                       >
                         <ul class="divide-y divide-border-subtle">
                           <For each={visibleApprovalRows()}>
@@ -465,6 +468,9 @@ const AttentionFeedView: Component<AttentionFeedViewProps> = (props) => {
                               {i18n.t("kernel.homeShowMoreAfter")}
                             </Show>
                           </button>
+                        </Show>
+                        <Show when={heldRows().length > 0}>
+                          <HeldGroup rows={heldRows()} />
                         </Show>
                         <Show when={othersRows().length > 0}>
                           <OthersGroup rows={othersRows()} />
@@ -979,6 +985,27 @@ const HomeReadAllButton: Component<{ phone: boolean }> = (props) => {
         </Show>
       </button>
     </Show>
+  )
+}
+
+/**
+ * Drafts held by an auto-reply: under the counted rows, with their own count. Each row keeps
+ * its Held card and comes back among the counted ones when its hold ends.
+ */
+const HeldGroup: Component<{ rows: AttentionItem[] }> = (props) => {
+  const i18n = useI18n()
+  return (
+    <div data-testid="home-approvals-held" class="border-t border-border-subtle">
+      <div class="flex items-center gap-2 px-4 py-2.5 text-[12px] text-text-tertiary">
+        <span>{i18n.t("kernel.homeRouting.heldGroup")}</span>
+        <span data-testid="home-approvals-held-count" class="font-mono tabular-nums">
+          {props.rows.length}
+        </span>
+      </div>
+      <ul class="divide-y divide-border-subtle">
+        <For each={props.rows}>{(item) => <AttentionRow item={item} />}</For>
+      </ul>
+    </div>
   )
 }
 

@@ -103,6 +103,21 @@ export async function customersGet(params: Obj | undefined, ctx: ReadCtx) {
     )
   }
   if (!row) {
+    // A contact or company with no Stripe customer is an answer, not a failure: it is
+    // not billed in Stripe (a prospect, or billed another way). Only a named Stripe id
+    // that matches nothing is refused.
+    const named = typeof p.contactId === "string" ? "contact" : typeof p.companyId === "string" ? "company" : null
+    if (named) {
+      return {
+        customer: null,
+        subscriptions: [],
+        openInvoices: [],
+        suggestion: null,
+        contactSuggestion: null,
+        syncedAt: null,
+        summary: `No Stripe customer is linked to this ${named}, so it has no subscription or invoice in Stripe. If it does pay by card, find the customer with customers_search and a person links it with customer_link.`,
+      }
+    }
     return refuseTool(
       "customer_not_found",
       "No Stripe customer in the mirror matches that, so nothing was read. Next step: search with customers_search, or link the customer to the contact or company first.",

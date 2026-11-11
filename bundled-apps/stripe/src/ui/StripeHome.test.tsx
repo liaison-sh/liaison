@@ -34,7 +34,7 @@ const sub = (id: string, over: Record<string, unknown> = {}) => ({
   trialEnd: null,
   cancelAt: null,
   pastDueSince: day(-6),
-  card: { brand: "visa", last4: "4242", exp: "01/26" },
+  card: { brand: "visa", last4: "4242", exp: "01/28" },
   ...over,
 })
 const invoice = (subscriptionId: string, over: Record<string, unknown> = {}) => ({
@@ -80,6 +80,19 @@ describe("attention", () => {
     expect(a.retrying.count).toBe(2)
     expect(a.retrying.mrrByCurrency).toEqual({ eur: 98000 })
     // The count in the header is the rows a person has to look at, never the retries.
+    expect(a.count).toBe(1)
+  })
+
+  it("a retry on an expired card is a failed payment to look at, never in Stripe's retries", () => {
+    const a = buildAttention({
+      pastDue: [sub("a", { card: { brand: "visa", last4: "4242", exp: "10/26" } }), sub("b")],
+      openInvoices: [invoice("a", { nextPaymentAttempt: day(1) }), invoice("b", { nextPaymentAttempt: day(1) })],
+      disputes: [],
+      approvals: [],
+      now: NOW,
+    })
+    expect(a.failed.map((r) => r.subscriptionId)).toEqual(["a"])
+    expect(a.retrying.count).toBe(1)
     expect(a.count).toBe(1)
   })
 

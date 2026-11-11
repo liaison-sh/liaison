@@ -10,7 +10,7 @@ import { setLostReason, writeDealFields } from "~/apps/projects/service/deals"
 import { createTask } from "~/apps/projects/service/tasks"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
-import { routines } from "~/db/schema/kernel"
+import { contactAddresses, routines } from "~/db/schema/kernel"
 import { messages } from "~/db/schema/kernel/threads"
 import { schemaRef } from "~/db/schema-ref"
 import { refreshPersonalAgentCeiling } from "~/modules/agent/directory/personal-agent"
@@ -49,7 +49,13 @@ import { STORY_TIME_ZONE, storyClock } from "~/seed/worlds/story-clock"
 import type { DemoWorldLayerInput } from "../index"
 import { SAAS_ROUTINES } from "./agent-native"
 import { saasMorningBrief } from "./brief"
-import { SAAS_AWAY, SAAS_COMPANY, SAAS_CUSTOMERS, SAAS_PLANS } from "./fiction"
+import {
+  SAAS_AWAY,
+  SAAS_BILLING_ADDRESSES,
+  SAAS_COMPANY,
+  SAAS_CUSTOMERS,
+  SAAS_PLANS,
+} from "./fiction"
 import {
   SAAS_PIPELINE_KEY,
   SAAS_TRANSFER_KEYS,
@@ -690,6 +696,33 @@ async function seedSaasMoney(
   )
   const contactOfCompany: Record<string, string> = {}
   for (const [key, c] of billing) contactOfCompany[key.replace(/^billing:/, "")] = c.id
+  // Each accounts desk's billing address: a schedule's draft takes its address from its
+  // contact, so a transfer customer with none could never be issued.
+  await withPrivilegedDb(ctx.orgId, "saas-seed-billing-addresses", async (tx) => {
+    for (const [key, c] of billing) {
+      const company = companyOf(key.replace(/^billing:/, ""))
+      const a = SAAS_BILLING_ADDRESSES[company.name]
+      if (!a) throw new Error(`saas layer: no billing address for ${company.name}`)
+      await tx
+        .insert(contactAddresses)
+        .values({
+          id: ctx.id("contact-address", key),
+          orgId: ctx.orgId,
+          contactId: c.id,
+          role: "billing",
+          name: `${company.name} accounts`,
+          company: company.name,
+          street1: a.street1,
+          postalCode: a.postalCode,
+          city: a.city,
+          countryIso2: a.countryIso2,
+          origin: "import",
+          createdAt: sec(clock.d(-300)),
+          updatedAt: sec(clock.d(-300)),
+        })
+        .onConflictDoNothing()
+    }
+  })
   for (const c of plan.companies) {
     if (contactOfCompany[c.key]) continue
     const first = c.contactKeys[0]

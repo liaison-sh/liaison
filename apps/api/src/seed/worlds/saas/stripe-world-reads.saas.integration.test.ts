@@ -17,6 +17,8 @@ import { dealsRollup } from "~/apps/projects/service/deals"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { messages, routines } from "~/db/schema/kernel"
+import { dispatchAppJobWithContext } from "~/infra/jobs/job-context"
+import { JobsTestAccess } from "~/infra/jobs/jobs"
 import { MORNING_BRIEF_TEMPLATE_KEY } from "~/modules/agent/routines/kernel-routine-templates"
 import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
 import { executeTool } from "~/modules/apps/execute-tool"
@@ -24,6 +26,11 @@ import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { seedContext } from "~/seed/context"
 import { actorFor, asUser } from "~/seed/factories/people/actors"
 import { type SeedDemoWorldResult, seedDemoWorld } from "~/seed/tiers/demo/seed-demo"
+import {
+  buildAttention,
+  type InvoiceItem as HomeInvoiceItem,
+  type SubItem as HomeSubItem,
+} from "../../../../../../bundled-apps/stripe/src/ui/home-model"
 import { installFromDist } from "../../../../test-support/seed/install-dist-apps"
 import { saasMorningBrief } from "./brief"
 
@@ -667,6 +674,28 @@ describe("the software world's figures, read through the payments app", () => {
     expect(line.mrrMinor - total).toBe(8_134_100)
   })
 
+  it("the payments home's failed payments are the card reminder Home holds: the expired card, with the other six in retries", async () => {
+    const page = async <T>(tool: string, args: Record<string, unknown>): Promise<T[]> =>
+      (await appCall<{ items: T[] }>(tool, { ...args, limit: 50 })).items
+    // The very reads the payments home makes, then its own attention rule.
+    const attention = buildAttention({
+      pastDue: await page<HomeSubItem>("stripe:subscriptions_search", { status: "past_due" }),
+      openInvoices: await page<HomeInvoiceItem>("stripe:invoices_search", { status: "open" }),
+      disputes: [],
+      approvals: [],
+      now: BOARD_DATE,
+    })
+    expect(attention.failed.map((f) => f.subscriptionId)).toEqual(["sub_1Q8XarlonGroup"])
+    expect(attention.retrying.count).toBe(6)
+    // Home's failed-payment reminder is for the same customer, and it is the only one.
+    const reminders = await rows(
+      world.orgId,
+      sql`SELECT handle FROM kernel.approval_requests
+          WHERE org_id = ${world.orgId} AND handle LIKE '%card-reminder'`,
+    )
+    expect(reminders.map((r) => r.handle)).toEqual(["demo-arlon-card-reminder"])
+  })
+
   it("four trials, each ending within seven days of the board date, in no MRR figure", async () => {
     const trials = await subscriptionsIn("trialing")
     expect(trials).toHaveLength(4)
@@ -788,5 +817,59 @@ describe("the visitor's Home at the board date", () => {
     expect(brief?.text).toContain(
       "Hôtels Sauvan answered, so the follow-up drafted for Marc will not go out.",
     )
+  })
+})
+
+// Last in this file: it runs the month-end draft job, which writes runs the reads above assert absent.
+describe("the transfer schedules' runs", () => {
+  it("every active schedule's next run row is ready, the yearly group schedule on its due date included", async () => {
+    const list = await appCall<{ rows: Array<Record<string, unknown>> }>(
+      "invoicing:recurring_list",
+      { limit: 50 },
+    )
+    const active = list.rows.filter((s) => s.status === "active")
+    expect(active.length).toBe(9)
+    const draftDays = [...new Set(active.map((s) => String(s.next_draft_on)))].sort()
+    const handler = JobsTestAccess.getHandler("invoicing", "recurring-draft")
+    if (!handler) throw new Error("recurring-draft is not registered")
+    for (const day of draftDays) {
+      // Mid-morning in Paris on the schedule's draft day.
+      setSystemTime(new Date(Date.parse(day) + 9 * 3_600_000))
+      try {
+        await dispatchAppJobWithContext(
+          handler,
+          { orgId: world.orgId },
+          { actorType: "system", orgId: world.orgId, purpose: "job", scopes: ["invoicing:*"] },
+          "session",
+        )
+      } finally {
+        setSystemTime()
+      }
+    }
+    const items = await rows(
+      world.orgId,
+      sql`SELECT i.schedule_id::text AS schedule_id, i.state, i.note, r.issue_on::text AS issue_on
+          FROM app_invoicing.recurring_run_items i
+          JOIN app_invoicing.recurring_runs r ON r.id = i.run_id
+          WHERE i.org_id = ${world.orgId}
+          ORDER BY r.issue_on`,
+    )
+    const firstOf = new Map<string, Row>()
+    for (const i of items)
+      if (!firstOf.has(String(i.schedule_id))) firstOf.set(String(i.schedule_id), i)
+    const notReady = active
+      .map((s) => ({ name: s.company_name ?? s.id, item: firstOf.get(String(s.id)) }))
+      .filter(({ item }) => item?.state !== "ready")
+      .map(
+        ({ name, item }) => `${String(name)}: ${String(item?.state)} ${String(item?.note ?? "")}`,
+      )
+    expect(notReady).toEqual([])
+    const verrieres = active.find((s) => String(s.next_issue_on).endsWith("-01-05"))
+    if (!verrieres) throw new Error("no yearly schedule due on 5 January")
+    const row = firstOf.get(String(verrieres.id))
+    expect([row?.state, String(row?.issue_on).slice(0, 10)]).toEqual([
+      "ready",
+      String(verrieres.next_issue_on),
+    ])
   })
 })

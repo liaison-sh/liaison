@@ -794,6 +794,41 @@ describe("home decisions", () => {
     localStorage.removeItem("liaison:heldKept.v1")
   })
 
+  it("the approvals count is the length of its list: a held draft sits in its own group with its own count", () => {
+    const waiting = {
+      ...approval("ap-1", { toolName: "mail:compose", actionLabel: "Mail: compose" }),
+      summary: "Follow up on the proposal",
+    }
+    const other = {
+      ...approval("ap-2", { toolName: "mail:compose", actionLabel: "Mail: compose" }),
+      summary: "Card reminder",
+    }
+    const held = {
+      ...approval("ap-held", {
+        toolName: "mail:compose",
+        actionLabel: "Mail: compose",
+        sendGuard: {
+          state: "held",
+          who: "omar@example.test",
+          holdUntil: "2026-11-17T08:00:00.000Z",
+        },
+      }),
+      summary: "Shift planning",
+    }
+    attentionStore._setForTest({ items: [waiting, held, other], errors: [] })
+    render(() => <Home entityId="home" />)
+    const card = screen.getByTestId("home-card-approvals")
+    const heldGroup = screen.getByTestId("home-approvals-held")
+    const rows = [waiting, held, other].map((item) => screen.getByTestId(row(item)))
+    for (const el of rows) expect(card.contains(el)).toBe(true)
+    const counted = rows.filter((el) => !heldGroup.contains(el))
+    expect(screen.getByTestId("home-card-count-approvals").textContent).toBe(String(counted.length))
+    expect(counted.length).toBe(2)
+    expect(screen.getByTestId("home-approvals-held-count").textContent).toBe("1")
+    expect(heldGroup.contains(screen.getByTestId(row(held)))).toBe(true)
+    expect(heldGroup.contains(screen.getByTestId(row(waiting)))).toBe(false)
+  })
+
   it("stopped shows reason, Dismiss only, uncounted", () => {
     const notice = attention("ev-stop", {
       app: "mail",

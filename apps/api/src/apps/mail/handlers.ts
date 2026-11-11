@@ -5218,7 +5218,7 @@ async function sendViaSmtp(
   accountEmail: string,
   message: Record<string, unknown>,
   opts?: { onDispatch?: () => void },
-): Promise<{ messageId: string }> {
+): Promise<{ messageId: string; captured?: true }> {
   opts?.onDispatch?.()
   const sent = await ctx
     .smtp_send("imap", accountEmail, JSON.stringify(message))
@@ -5226,7 +5226,25 @@ async function sendViaSmtp(
       throw mailboxNotConnected(err, accountEmail)
     })
   const result = JSON.parse(sent)
-  return { messageId: result.messageId }
+  return { messageId: result.messageId, ...(result.captured === true ? { captured: true } : {}) }
+}
+
+/**
+ * The result's line about the send. A demo workspace records its mail to the
+ * world's fictional people and never delivers it, so that send says so: the
+ * mail was captured here and nobody received it.
+ */
+function sentNote(
+  result: { captured?: true },
+  to: readonly unknown[],
+  from: string | null | undefined,
+  where: string,
+): string {
+  const recipients = to.map(sentToLabel).join(", ")
+  if (result.captured) {
+    return `Captured, not delivered: this is a demo workspace, so the mail to ${recipients} from ${from} was recorded${where} and never left. Nobody received it.`
+  }
+  return `Sent to ${recipients} from ${from}${where}.`
 }
 
 /**
@@ -5463,7 +5481,11 @@ async function sendReply(params: any, ctx: MailCtx, opts?: { onDispatch?: () => 
   }
 
   const result = await sendViaSmtp(ctx, params.accountEmail, msg, opts)
-  return { messageId: result.messageId, externalThreadId: params.externalThreadId }
+  return {
+    messageId: result.messageId,
+    externalThreadId: params.externalThreadId,
+    ...(result.captured ? { captured: result.captured, delivered: false } : {}),
+  }
 }
 
 async function sendCompose(params: any, ctx: MailCtx, opts?: { onDispatch?: () => void }) {
@@ -5479,7 +5501,11 @@ async function sendCompose(params: any, ctx: MailCtx, opts?: { onDispatch?: () =
   }
 
   const result = await sendViaSmtp(ctx, params.accountEmail, msg, opts)
-  return { messageId: result.messageId, externalThreadId: result.messageId }
+  return {
+    messageId: result.messageId,
+    externalThreadId: result.messageId,
+    ...(result.captured ? { captured: result.captured, delivered: false } : {}),
+  }
 }
 
 async function persistSentMessage(
@@ -6799,7 +6825,7 @@ async function agentMailReply(params: any, ctx: MailCtx): Promise<any> {
     return {
       ...result,
       ...(guardCheck.record ?? {}),
-      note: `Sent to ${sendParams.to.map(sentToLabel).join(", ")} from ${account.email_address}, in conversation ${params.conversationId}.${unrecorded}`,
+      note: `${sentNote(result, sendParams.to, account.email_address, `, in conversation ${params.conversationId}`)}${unrecorded}`,
     }
   } catch (err: any) {
     if (classified) throw err
@@ -7205,7 +7231,7 @@ async function _doCompose(
     return {
       ...result,
       ...(guardRecord ?? {}),
-      note: `Sent to ${(Array.isArray(params.to) ? params.to : [params.to]).map(sentToLabel).join(", ")} from ${account.email_address}.${unrecorded}`,
+      note: `${sentNote(result, Array.isArray(params.to) ? params.to : [params.to], account.email_address, "")}${unrecorded}`,
     }
   } catch (err: any) {
     if (classified) throw err

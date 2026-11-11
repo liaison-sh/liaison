@@ -508,8 +508,10 @@ export function bootstrapKernelApps(): void {
         referenceable: false,
       },
       search: {
+        // No sidebar: Home's sidebar carries its own list filter, and a second
+        // search box beside "Search everything" reads as the one that searches.
         component: lazy(() => import("~/modules/search/SearchTab")),
-        sidebar: HomeSidebar,
+        sidebar: null,
         icon: Search,
         urlPattern: "/search",
         defaultLabel: "Search",

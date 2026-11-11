@@ -6733,6 +6733,7 @@
   },
   "homeRouting": {
     "othersGroup": "Pour d'autres, vous pouvez aussi approuver",
+    "heldGroup": "En attente jusqu'à leur retour",
     "someone": "un collègue",
     "standingIn": "Pour {{name}}, absent jusqu'au {{date}}. Vous êtes son remplaçant.",
     "othersAsked": "Pour {{name}}, qui l'a demandé et peut l'approuver. Vous aussi : vous avez le droit d'approuver.",

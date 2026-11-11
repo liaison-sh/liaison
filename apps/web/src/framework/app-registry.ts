@@ -747,6 +747,27 @@ export function getKeybindings(): KeyBinding[] {
   return keybindingStore.bindings
 }
 
+/**
+ * Runs the first registered binding a keydown matches, and returns it. A
+ * keydown typed into a field (an input, a textarea, an editable element) only
+ * reaches bindings marked `activeInInput`, so typing a word into a search box
+ * never fires a single-letter shortcut such as "n" for a new message.
+ */
+export function dispatchKeybinding(e: KeyboardEvent): KeyBinding | null {
+  const target = e.target as HTMLElement | null
+  const tag = target?.tagName
+  const isInput = tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable === true
+  for (const binding of getKeybindings()) {
+    if (!binding.activeInInput && isInput) continue
+    if (matchesKey(e, binding.key)) {
+      e.preventDefault()
+      binding.handler(e)
+      return binding
+    }
+  }
+  return null
+}
+
 /** Cross-platform key matching. "mod" maps to Meta on Mac, Ctrl on Windows/Linux */
 export function matchesKey(e: KeyboardEvent, keySpec: string): boolean {
   const parts = keySpec.toLowerCase().split("+")

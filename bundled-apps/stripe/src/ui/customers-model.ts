@@ -186,13 +186,8 @@ export function maskedCard(card: Card | null | undefined): string {
   return [`${brand} ${last4}`, card.exp].filter(Boolean).join(", ")
 }
 
-/** True when the card is past its expiry month. */
-export function cardExpired(card: Card | null | undefined, now: Date): boolean {
-  const m = /^(\d{1,2})\/(\d{2}|\d{4})$/.exec(card?.exp ?? "")
-  if (!m) return false
-  const year = m[2]!.length === 2 ? 2000 + Number(m[2]) : Number(m[2])
-  return year * 12 + Number(m[1]) - 1 < now.getUTCFullYear() * 12 + now.getUTCMonth()
-}
+/** True when the card is past its expiry month. One rule, shared with the home's attention. */
+export { cardExpired } from "./home-model"
 
 // ---- Company link ----
 

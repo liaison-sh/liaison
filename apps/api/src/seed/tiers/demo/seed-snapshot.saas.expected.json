@@ -179,6 +179,10 @@
     "rows": 1,
     "digest": "adcbfcc61e0b4b41"
   },
+  "kernel.contact_addresses": {
+    "rows": 10,
+    "digest": "b10eb0bb1155cfa9"
+  },
   "kernel.contacts": {
     "rows": 32,
     "digest": "c793b206b978aca0"

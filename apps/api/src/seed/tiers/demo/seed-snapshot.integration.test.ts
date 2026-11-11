@@ -100,6 +100,13 @@ type Snapshot = Record<string, TableSnapshot>
  */
 const wallClockLeaks = new Set<string>()
 
+/**
+ * Caches the platform rebuilds on its own after a seed, never written by it: each person's
+ * stored app attention list (attention-store.ts) is refreshed in the background, so its rows
+ * depend on when a refresh ran, not on what the seed wrote.
+ */
+const DERIVED_TABLES = new Set(["kernel.app_attention_items"])
+
 function rowsOf<T>(result: unknown): T[] {
   return (Array.isArray(result) ? result : ((result as { rows?: unknown[] }).rows ?? [])) as T[]
 }
@@ -190,6 +197,7 @@ async function snapshotOrg(
       )
       if (rows.length === 0) continue
       const name = `${logical}.${table}`
+      if (DERIVED_TABLES.has(name)) continue
       const build = BUILD_COLUMNS[name]
       const days = [written.from, written.to].map((t) => new Date(t).toISOString().slice(0, 10))
       const lines = rows

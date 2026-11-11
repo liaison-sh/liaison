@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+
+vi.mock("~/modules/auth/auth-store", () => ({
+  onAuthCleared: () => () => {},
+  userFromToken: () => ({ userId: "me", name: "Tester", scopes: [] }),
+}))
+
 import type { ApiClient } from "~/lib/api-client"
 import { ApiContext } from "~/modules/shell/ApiContext"
 import { tabStore } from "~/modules/shell/tab-store"
@@ -36,20 +42,42 @@ describe("DashboardsIndex", () => {
     expect(screen.queryByTestId("dashboards-index-list")).toBeNull()
   })
 
-  it("lists the viewer's dashboards, their own first, and opens one in a tab", async () => {
+  it("shows the viewer's own dashboards, then the team's, as cards, and opens one in a tab", async () => {
     mount({
       current: [
-        { id: "o1", title: "Team sales", visibility: "org", ownerUserId: "x" },
-        { id: "p1", title: "My orders", visibility: "personal", ownerUserId: "me" },
+        {
+          id: "o1",
+          title: "Team sales",
+          visibility: "org",
+          ownerUserId: "x",
+          ownerName: "Claire Martin",
+          blockCount: 6,
+        },
+        { id: "s1", title: "Support load", visibility: "org", ownerUserId: "me", blockCount: 1 },
+        { id: "p1", title: "My orders", visibility: "personal", ownerUserId: "me", blockCount: 4 },
       ],
     })
     await screen.findByTestId("dashboards-index-list")
-    const rows = screen.getAllByTestId(/^dashboards-index-row-[a-z0-9]+$/)
-    expect(rows.map((r) => r.getAttribute("data-testid"))).toEqual([
+    const ids = (group: string) =>
+      Array.from(
+        screen.getByTestId(group).querySelectorAll("[data-testid^='dashboards-index-row-']"),
+      )
+        .map((r) => r.getAttribute("data-testid"))
+        .filter((id) => !id?.endsWith("-meta"))
+    expect(ids("dashboards-index-yours")).toEqual([
       "dashboards-index-row-p1",
-      "dashboards-index-row-o1",
+      "dashboards-index-row-s1",
     ])
-    expect(screen.getByTestId("dashboards-index-row-o1-visibility").textContent).toBe("Org")
+    expect(ids("dashboards-index-team")).toEqual(["dashboards-index-row-o1"])
+    expect(screen.getByTestId("dashboards-index-row-p1-meta").textContent).toBe(
+      "Only you · 4 blocks",
+    )
+    expect(screen.getByTestId("dashboards-index-row-s1-meta").textContent).toBe(
+      "Shared with the team · 1 block",
+    )
+    expect(screen.getByTestId("dashboards-index-row-o1-meta").textContent).toBe(
+      "By Claire Martin · 6 blocks",
+    )
     fireEvent.click(screen.getByTestId("dashboards-index-row-o1"))
     expect(tabStore.tabs.some((t) => t.type === "kernel:dashboard" && t.entityId === "o1")).toBe(
       true,

@@ -64,7 +64,8 @@ test("a seeded dashboard renders a store block and a tool block", async ({
 
   await page.goto(`http://localhost:${env.ports[1]}/`)
   await page.waitForSelector("[data-shell]", { timeout: 30_000 })
-  await page.getByTestId(`home-side-dashboard-${id}`).click()
+  await page.getByTestId("activity-dashboards").click()
+  await page.getByTestId(`dashboards-sidebar-row-${id}`).click()
 
   await expect(page.getByTestId("dashboard-title")).toHaveText("E2E sales")
   await expect(page.getByTestId("dashboard-visibility")).toHaveAttribute(

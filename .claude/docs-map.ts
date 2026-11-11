@@ -189,6 +189,8 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "scripts/app-signing/**", pages: ["app-package-format"] },
   { glob: "packages/host-sdk/**", pages: ["app-development"] },
   { glob: "packages/app-ui/**", pages: ["app-development"] },
+  // The platform-held SQL connections: `ctx.sql` and the database connector's transports.
+  { glob: "apps/api/src/modules/apps/connections/sql/**", pages: ["app-sandbox", "database-connector"] },
   { glob: "apps/api/src/modules/apps/**", pages: ["app-development", "app-sandbox", "connecting-apps"] },
   { glob: "apps/api/src/modules/webhooks/**", pages: ["app-webhooks"] },
   { glob: "apps/api/src/modules/notifications/**", pages: ["notifications"] },

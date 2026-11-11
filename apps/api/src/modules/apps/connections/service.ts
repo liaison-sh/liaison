@@ -66,6 +66,7 @@ import {
   type ShellConnectFlow,
   shellConnectFlowOf,
 } from "~/modules/apps/connections/shell-connect"
+import { closeSqlPools } from "~/modules/apps/connections/sql/pool"
 import { isAppActiveForOrgAsync } from "~/modules/apps/org-apps"
 import { appSettingsPath } from "~/modules/apps/settings-paths"
 import { detectMailAccountType } from "~/modules/connection-guides/account-type"
@@ -1739,6 +1740,10 @@ export async function disconnectConnection(
       ...CLEARED_SECRETS,
     })
     .where(and(eq(connectedAccounts.id, connectionId), eq(connectedAccounts.orgId, orgId)))
+
+  // A SQL connection's pool in this process serves nobody now (other processes
+  // close theirs when their next call finds no account, or when idle).
+  closeSqlPools({ orgId, appName: row.appName, connectionName: row.connectionName })
 
   await tx.queueEvent({
     app: "kernel",

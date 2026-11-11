@@ -83,10 +83,10 @@ const REVIEWED: Record<string, Record<string, string>> = {
     'pointTimestampSql(`"end"`)': IDENT_FROM_CODE,
     'pointTimestampSql("original_start_time")': IDENT_FROM_CODE,
   },
-  "apps/api/src/apps/database/transports/postgres-direct.ts#PostgresDirect.begin": {
+  "apps/api/src/modules/apps/connections/sql/transports/postgres-direct.ts#PostgresDirect.begin": {
     timeoutMs: "timeout is a validated integer",
   },
-  "apps/api/src/apps/database/transports/postgres-direct.ts#PostgresDirect.exec": {
+  "apps/api/src/modules/apps/connections/sql/transports/postgres-direct.ts#PostgresDirect.exec": {
     text: BY_DESIGN_SQL,
   },
   "apps/api/src/apps/knowledge/knowledge-jobs.ts#reclaimStaleRunningSources": {
@@ -216,6 +216,10 @@ const REVIEWED: Record<string, Record<string, string>> = {
   "apps/api/src/modules/apps/sandbox/bridge/context.ts#findKernelEntityById": {
     'entity === "users" ? KERNEL_USER_COLUMNS : "*"':
       "fixed column list; entity limited to contacts|users",
+  },
+  "apps/api/src/modules/apps/sandbox/bridge/context.ts#findKernelEntitiesByIds": {
+    'entity === "users" ? KERNEL_USER_COLUMNS : "*"':
+      "fixed column list; entity limited to contacts|users; ids bound as uuid parameters",
   },
   "apps/api/src/modules/apps/sandbox/bridge/db.ts#createDbMethods.db_findMany": {
     'cols.join(", ")':

@@ -1,11 +1,11 @@
 Restrict reports by domain: tiers internal / confidential / restricted -> apps/api/src/apps/database/domain-access.ts:7-9 ; apps/api/src/apps/database/domain-access.ts:111-123
 Org admins (kernel:org:admin) and holders of database:query:read always pass -> apps/api/src/apps/database/domain-access.ts:35-37 ; apps/api/src/apps/database/domain-access.ts:117-120
 Org rule wins over the catalog default; neither = internal -> apps/api/src/apps/database/domain-access.ts:85-96
-No gated domain = nothing looked up, today's behaviour -> apps/api/src/apps/database/bridge.ts:700-720 ; apps/api/src/apps/database/domain-access.test.ts:1
+No gated domain = nothing looked up, today's behaviour -> apps/api/src/apps/database/bridge.ts:385 ; apps/api/src/apps/database/domain-access.test.ts:1
 Catalog `domains` block (optional, tier + description) -> packages/db-core/src/catalog.ts:81-100
-db_list_reads leaves out reads the caller may not run -> apps/api/src/apps/database/bridge.ts:779
-db_read answers domain_restricted and points to Report access -> apps/api/src/apps/database/bridge.ts:835-846
-The caller is the person the call acts for (ctx.userId), jobs are the system -> apps/api/src/apps/database/bridge.ts:1205-1217 ; apps/api/src/apps/database/domain-access-store.ts:49
+db_list_reads leaves out reads the caller may not run -> apps/api/src/apps/database/bridge.ts:460
+db_read answers domain_restricted and points to Report access -> apps/api/src/apps/database/bridge.ts:530
+The caller is the person the call acts for (ctx.userId), jobs are the system -> apps/api/src/apps/database/bridge.ts:853 ; apps/api/src/apps/database/domain-access-store.ts:49
 An asked agent's turn runs as the person who asked -> apps/api/src/modules/agent/tools/coordination-tools.scope.test.ts:1
 Knowledge sync of database reads does not go through the tier check -> apps/api/src/apps/database/knowledge-read-runner.ts:71
 Settings › Connectors › Database › Report access, kernel:apps:admin -> apps/api/src/apps/database/app.manifest.json:261-275 ; apps/api/src/modules/database/routes.ts:92-97

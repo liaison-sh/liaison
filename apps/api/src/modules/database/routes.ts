@@ -19,7 +19,6 @@ import { and, asc, eq } from "drizzle-orm"
 import { Hono } from "hono"
 import { HTTPException } from "hono/http-exception"
 import type { AppEnv } from "~/app"
-import { resolveOrgDatabaseCatalog } from "~/apps/database/bridge"
 import { DOMAIN_ACCESS_MANAGE_SCOPE, resolveDomainRule } from "~/apps/database/domain-access"
 import {
   assertDomainAccessReferences,
@@ -32,6 +31,7 @@ import { roles, users } from "~/db/schema/kernel"
 import { rootLogger } from "~/lib/logger"
 import { success } from "~/lib/response"
 import { zValidator } from "~/lib/validate"
+import { resolveOrgDatabaseCatalog } from "~/modules/apps/connections/sql/catalog"
 import { writeAuditLog } from "~/modules/audit/service"
 import { hasScope } from "~/modules/permissions/permissions"
 

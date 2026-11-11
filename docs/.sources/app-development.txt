@@ -74,3 +74,4 @@ Framed apps: host calls getContext, openFile, print, approvals, openExternal, op
 ctx.db.insertNow / updateNow commit at once -> packages/app-sdk/src/types.ts:26 ; apps/api/src/modules/apps/sandbox/bridge/db.ts:382
 ctx.fetch timeoutMs: shortens the 10 s default, a write may ask for up to 30 s -> apps/api/src/modules/apps/sandbox/bridge/egress.ts:75 ; packages/app-sdk/src/types.ts:244
 ctx.jobs.enqueue / ctx.timers.wakeIn / ctx.steps.run -> packages/app-sdk/src/types.ts:112 ; packages/app-sdk/src/types.ts:124 ; packages/app-sdk/src/types.ts:185
+ctx.sql / ctx.accounts in the SDK -> packages/app-sdk/src/types.ts:249 ; packages/app-sdk/src/types.ts:299

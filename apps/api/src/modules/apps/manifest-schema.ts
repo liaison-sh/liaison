@@ -350,6 +350,32 @@ const connectionSchema = {
     refreshUsesAccessToken: { type: "boolean" },
     refreshWindowMs: { type: "number" },
     credentialFields: { type: "array", items: credentialFieldSchema },
+    // A SQL database the platform holds the connection to (`ctx.sql.*`,
+    // connections/sql/service.ts). Credentials only: `connectionString` (direct
+    // Postgres or Redshift, optional `dialect`, `statementTimeoutMs`) or
+    // `gateUrl` + `gateToken` (a db-gate). App code gets rows, never these.
+    sql: {
+      type: "object",
+      properties: {
+        // Named reads come from the deployment's read catalog.
+        catalog: { enum: ["instance"] },
+        // Read-only SELECTs of the app's own, for callers holding `scope`.
+        rawQuery: {
+          type: "object",
+          properties: { scope: { type: "string", minLength: 3 } },
+          required: ["scope"],
+          additionalProperties: false,
+        },
+        // The credential modes the connection takes (default both).
+        modes: {
+          type: "array",
+          items: { enum: ["direct", "gate"] },
+          minItems: 1,
+          uniqueItems: true,
+        },
+      },
+      additionalProperties: false,
+    },
     // Credentials only: several org-owned accounts per org, each keyed by its
     // slug identifier (the credentials route then requires `identifier`).
     multiInstance: { type: "boolean" },

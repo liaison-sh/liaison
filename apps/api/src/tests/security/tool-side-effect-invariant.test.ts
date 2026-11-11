@@ -105,6 +105,14 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   hasScope: "read",
   kernel_findContactsByExternalId: "read",
   kernel_findOne: "read",
+  kernel_findByIds: "read",
+  // Platform-held SQL connections: a READ ONLY transaction on the app's own
+  // connection (connections/sql/service.ts); the audit line is the kernel's.
+  sql_query: "read",
+  sql_reads: "read",
+  sql_schema: "read",
+  sql_probe: "read",
+  accounts_list: "read",
   kernel_listApprovals: "read",
   knowledge_attentionItems: "read",
   knowledge_create_validate: "read",

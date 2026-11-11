@@ -194,6 +194,127 @@ export interface StepsClient {
   reset(name: string): Promise<{ reset: boolean }>
 }
 
+/**
+ * A request to `ctx.sql.query`: exactly one of `read` (a named read of the
+ * connection's catalog, with its `params` as an object) or `sql` (a read-only
+ * SELECT, allowed when the manifest's `sql.rawQuery` says so; `params` bind
+ * `$1`, `$2`, ... and are direct-mode only).
+ */
+export type SqlQueryRequest = {
+  /** Which org account of the connection (default: its newest). */
+  identifier?: string
+  /** Statement timeout, ms (default 10 s, at most 120 s); cancelled on the database past it. */
+  timeoutMs?: number
+  /** Rows to return at most (default 500, at most 2000). */
+  maxRows?: number
+} & (
+  | { read: string; params?: Record<string, unknown>; sql?: never }
+  | { sql: string; params?: unknown[]; read?: never }
+)
+
+/** Every `ctx.sql` failure: no DSN, token or curated SQL in it. */
+export interface SqlError {
+  error: {
+    /** `not_connected`, `unknown_read`, `forbidden`, `statement_timeout`, `invalid_params`, `config_error`, ... */
+    code: string
+    message: string
+    retryable?: boolean
+    [key: string]: unknown
+  }
+}
+
+export interface SqlRows {
+  rows: Record<string, unknown>[]
+  /** More rows matched than were returned (the row cap). */
+  truncated: boolean
+  durationMs: number
+}
+
+export interface SqlReadInfo {
+  description?: string
+  domain?: string
+  params: Record<string, { type: "string" | "number" | "boolean" | "integer" }>
+  columns: string[]
+  tables: string[]
+  /** The caller holds the scopes the read's tables need. */
+  allowed: boolean
+}
+
+/**
+ * Platform-held SQL connections: a connection the manifest declares with an
+ * `sql` block. The host holds the pool and the credentials; app code names the
+ * connection and gets rows. Every call is read-only, bounded (statement
+ * timeout, row cap) and audited. Failures are answered, not thrown.
+ */
+export interface SqlClient {
+  query(connection: string, request: SqlQueryRequest): Promise<SqlRows | SqlError>
+  /** The named reads of the connection's catalog. */
+  reads(
+    connection: string,
+  ): Promise<{ adapter: string; reads: Record<string, SqlReadInfo> } | SqlError>
+  /** Readable tables and their columns (all, or `table`). */
+  schema(
+    connection: string,
+    request?: { identifier?: string; table?: string; timeoutMs?: number },
+  ): Promise<
+    | { tables: Array<{ table: string; columns: Array<{ column: string; dataType: string }> }> }
+    | SqlError
+  >
+  /** The connection's safety report: write grants, missing reads, warnings. */
+  probe(
+    connection: string,
+    request?: { identifier?: string; timeoutMs?: number },
+  ): Promise<
+    | {
+        ok: boolean
+        mode: "direct" | "gate"
+        writeGrantsDetected?: boolean
+        missingReads?: string[]
+        warnings: string[]
+      }
+    | SqlError
+  >
+}
+
+/** One of this app's connected accounts, as `ctx.accounts.list` answers it. */
+export interface AppAccount {
+  id: string
+  identifier: string
+  ownerType: "org" | "user"
+  ownerId: string | null
+  displayName: string | null
+  status: string
+  /** What the app stored on the account (`setMetadata`); never a credential. */
+  metadata: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+  /** The caller may change it: their own, or the organization's with the connection's admin scope. */
+  canManage: boolean
+}
+
+/**
+ * This app's own connected accounts: the organization's and the acting
+ * person's own, never another member's, app's or org's, never a secret.
+ */
+export interface AccountsClient {
+  list(
+    connection: string,
+    opts?: { identifier?: string; includeInactive?: boolean },
+  ): Promise<AppAccount[]>
+  /**
+   * Merge keys into an account's metadata (`null` removes one). An
+   * organization's account needs the connection's admin scope; audited.
+   */
+  setMetadata(accountId: string, patch: Record<string, unknown>): Promise<AppAccount>
+}
+
+/** Directory reads of the app's org (RLS applies): users' public fields, contacts. */
+export interface KernelClient {
+  findOne(entity: "users" | "contacts", id: string): Promise<Record<string, unknown> | null>
+  /** Up to 200 ids; ids not visible are absent from the answer. */
+  findByIds(entity: "users" | "contacts", ids: string[]): Promise<Record<string, unknown>[]>
+}
+
 export interface ConnectionClient {
   getToken(identifier?: string): Promise<string>
   getAccounts(): Promise<
@@ -309,6 +430,12 @@ export interface AppContext {
   timers: TimersClient
   /** Work longer than one run, done as bounded chunks across runs (see {@link StepsClient}). */
   steps: StepsClient
+  /** Platform-held SQL connections (see {@link SqlClient}). */
+  sql: SqlClient
+  /** This app's own connected accounts (see {@link AccountsClient}). */
+  accounts: AccountsClient
+  /** Directory reads of the org (see {@link KernelClient}). */
+  kernel: KernelClient
   resolveContact(params: {
     email?: string
     name?: string

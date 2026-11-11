@@ -101,6 +101,8 @@ export {
   secretsDeclarationErrors,
 } from "./secret-placement"
 export type {
+  AccountsClient,
+  AppAccount,
   AppContext,
   ConnectionClient,
   ConnectionSettings,
@@ -110,7 +112,13 @@ export type {
   FetchAuth,
   FetchMultipartPart,
   JobsClient,
+  KernelClient,
   Logger,
+  SqlClient,
+  SqlError,
+  SqlQueryRequest,
+  SqlReadInfo,
+  SqlRows,
   StepChunkResult,
   StepRunResult,
   StepState,

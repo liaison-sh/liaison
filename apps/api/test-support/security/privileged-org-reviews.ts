@@ -249,6 +249,12 @@ export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
  * The caller trace stops at a call made from one of them.
  */
 export const REVIEWED_ORIGINS: Record<string, string> = {
+  "apps/api/src/modules/approvals/summary-backfill.ts#backfillApprovalSummaries":
+    "the leader's one-off summary backfill (boot-phase10.ts registerApprovalSummaryBackfill, a dynamic import): each org id is read from kernel.approval_requests rows that lack a summary, and only that org's rows are read and written",
+  "apps/api/src/modules/apps/attention-store.ts#wakeOnRunSettled":
+    "run-settled subscriber: the org and app of a run runApp itself made and reported (workers/run-settled.ts); it only schedules that app's stored attention refresh for that org, which runs the provider as each active person of that same org",
+  "apps/api/src/modules/apps/attention-store.ts#wakeOnAppEvent":
+    "event bus handler (once): the delivered event's own org and app; it only schedules that app's stored attention refresh for that org, which runs the provider as each active person of that same org",
   "apps/api/src/modules/app-builder/preview.ts#previewBridge":
     "an app builder preview: the org is the previewing person's own (the agent tool's ctx.orgId or the route's session org, passed through previewDraft's actor); the bridge, its RLS session and every nested call are built for that org and that person only",
   "apps/api/src/modules/apps/connections/revoke.ts#isAccountUsedElsewhere":

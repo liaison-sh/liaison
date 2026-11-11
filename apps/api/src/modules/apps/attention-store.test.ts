@@ -46,7 +46,7 @@ describe("stored app attention", () => {
   const notified: string[] = []
   const deps = {
     listActiveUsers: async () => [userId],
-    loadActor: async (o: string, u: string): Promise<ActorContext> => ({
+    loadPersonActor: async (o: string, u: string): Promise<ActorContext> => ({
       actorType: "user",
       userId: u,
       orgId: o,

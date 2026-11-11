@@ -38,7 +38,7 @@ async function refreshStoredAttention(): Promise<void> {
   await ensureAppsForOrg(orgId)
   await refreshAllAppAttention(orgId, {
     userIds: [userId],
-    loadActor: async (o, u) => ({
+    loadPersonActor: async (o, u) => ({
       actorType: "user",
       userId: u,
       orgId: o,

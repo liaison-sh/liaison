@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { ManifestHandlerRef } from "~/modules/apps/app-registries"
-import { resolveToolTimeoutMs } from "~/modules/apps/sandbox/executor"
+import { resolveToolTimeoutMs } from "~/modules/apps/run-limits"
 import { type AppBridge, runApp } from "~/modules/apps/sandbox/run-app"
 
 /**

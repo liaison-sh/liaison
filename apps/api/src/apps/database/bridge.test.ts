@@ -9,7 +9,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { ReadCatalog } from "@liaison/db-core"
-import { resolveToolTimeoutMs } from "~/modules/apps/sandbox/executor"
+import { resolveToolTimeoutMs } from "~/modules/apps/run-limits"
 import manifest from "./app.manifest.json"
 import * as bridgeModule from "./bridge"
 import {

@@ -11,6 +11,7 @@
 //   3. `replayDrawCommands` zod-validates + bounds-checks the list and renders
 //      the PDF. A non-array / garbage return fails closed at the schema gate.
 
+import { runLimits } from "~/modules/apps/run-limits"
 import { executeInSandbox } from "~/modules/apps/sandbox/executor"
 import { getSandboxPool, type SandboxPool } from "~/modules/apps/sandbox/pool"
 import { type ReplayDrawCommandsOptions, replayDrawCommands } from "./replay"
@@ -32,8 +33,6 @@ export interface RunTemplateToPdfArgs {
   replay?: ReplayDrawCommandsOptions
 }
 
-const DEFAULT_TIMEOUT_MS = 30_000
-
 export async function runTemplateToPdf(args: RunTemplateToPdfArgs): Promise<Uint8Array> {
   const { bundleSource, data } = args
   const pool = args.pool ?? getSandboxPool()
@@ -43,7 +42,7 @@ export async function runTemplateToPdf(args: RunTemplateToPdfArgs): Promise<Uint
     exportName: "renderTemplate",
     params: data,
     bridge: {},
-    timeoutMs: args.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    timeoutMs: args.timeoutMs ?? runLimits("pdf-template").wallMs,
   })
   // `replayDrawCommands` zod-validates, so a non-array / garbage return fails
   // closed with `invalid_commands` rather than producing a corrupt PDF.

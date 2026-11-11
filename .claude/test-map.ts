@@ -54,6 +54,8 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
     glob: "apps/api/src/modules/agent/subruns/spawn-agent.ts",
     suites: ["unit", "integration", "cell"],
   },
+  // The app runtime and its limit table: the app wake-up contract runs in api-guards.
+  { glob: "apps/api/src/modules/apps/**", suites: ["unit", "integration", "api-guards"] },
   { glob: "apps/api/src/modules/**", suites: ["unit", "integration"] },
   // Event delivery across processes is what the cell scenarios prove.
   { glob: "apps/api/src/infra/events/**", suites: ["unit", "integration", "cell"] },
@@ -67,7 +69,7 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   { glob: "apps/api/src/middleware/**", suites: ["unit", "integration"] },
   // The agent's authoring reference carries generated tables (drift test in root).
   { glob: "apps/api/src/apps/api-connector/reference/**", suites: ["root", "unit"] },
-  { glob: "apps/api/src/apps/**", suites: ["unit", "integration", "e2e-parallel"] },
+  { glob: "apps/api/src/apps/**", suites: ["unit", "integration", "e2e-parallel", "api-guards"] },
   { glob: "apps/api/src/services/**", suites: ["unit", "integration"] },
   { glob: "apps/api/src/cli/**", suites: ["unit"] },
   // The seed engine (demo tier today) and its test support: the demo-seed suite,

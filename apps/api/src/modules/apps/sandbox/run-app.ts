@@ -40,6 +40,7 @@ import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-instal
 import { rootLogger } from "~/lib/logger"
 import { flushRunLogs } from "~/modules/app-builder/logs"
 import { isCustomAppName } from "~/modules/apps/custom-app-name"
+import { entryKindOf, type RunEntryKind, runLimits } from "~/modules/apps/run-limits"
 import {
   forWorkersRun,
   isWorkersRunBridge,
@@ -60,11 +61,7 @@ import {
   workersBundleSha,
   workersSelectsApp,
 } from "~/modules/apps/workers/config"
-import {
-  defaultWorkersTimeoutMs,
-  executeOnWorkers,
-  type WorkersRunInfo,
-} from "~/modules/apps/workers/executor"
+import { executeOnWorkers, type WorkersRunInfo } from "~/modules/apps/workers/executor"
 import { AppFallbacks, appFallbacks, loaderBreaker } from "~/modules/apps/workers/fallback"
 import { emitRunSettled, type WorkersFallback } from "~/modules/apps/workers/run-settled"
 import { deliverRunLogs } from "~/modules/apps/workers/worker-logs"
@@ -260,7 +257,7 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
       if (executor !== "workers" || !fallsBackAfterLoaderFault(info, opts.signal)) throw err
       // Nothing the app did can have happened (no bridge call): the run goes to
       // QuickJS once, on the bridge built for it, within what is left of its budget.
-      const budget = opts.timeoutMs ?? defaultWorkersTimeoutMs()
+      const budget = opts.timeoutMs ?? runLimits(runEntryKind(opts)).wallMs
       const remaining = Math.max(MIN_FALLBACK_BUDGET_MS, budget - (Date.now() - started))
       log.warn(
         {
@@ -390,6 +387,7 @@ async function runOnExecutor(
         approval: opts.syncContext?.approval ?? null,
         bridge,
         ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
+        entryKind: runEntryKind(opts),
         ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
         holdsTx: opts.holdsTx,
         nested: opts.nested === true,
@@ -439,6 +437,11 @@ async function runOnExecutor(
       throw new Error(`Unknown app executor: ${String(never)}`)
     }
   }
+}
+
+/** The run's row of the limit table: its entry label's kind, a tool's when it names none. */
+function runEntryKind(opts: Pick<RunAppOptions, "entry">): RunEntryKind {
+  return (opts.entry ? entryKindOf(opts.entry) : null) ?? "tool"
 }
 
 function loadBundleFor(opts: RunAppOptions): Promise<string> {

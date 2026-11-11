@@ -38,11 +38,11 @@ import { parse as parseYaml } from "yaml"
 import { rootLogger } from "~/lib/logger"
 import { withOpenFileSync } from "~/lib/read-checked-file"
 import { isInstanceOperatorOrg } from "~/modules/apps/operator-org"
+import { resolveToolTimeoutMs } from "~/modules/apps/run-limits"
 import type {
   BridgeExtensionContext,
   BridgeExtensionMethod,
 } from "~/modules/apps/sandbox/bridge-extensions"
-import { resolveToolTimeoutMs } from "~/modules/apps/sandbox/executor"
 import { hasScope } from "~/modules/permissions/permissions"
 import {
   callerMayRunDomain,

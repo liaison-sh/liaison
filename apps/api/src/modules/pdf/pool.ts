@@ -7,6 +7,7 @@
 // per-org / per-app caps + 30s deadline this pool enforces are the only
 // guarantees the rest of the system relies on.
 
+import { runLimits } from "~/modules/apps/run-limits"
 import type { ReplayDrawCommandsOptions } from "./replay"
 import { runTemplateToPdf } from "./sandbox-render"
 
@@ -15,7 +16,7 @@ export const MAX_INFLIGHT_PER_ORG = 10
 // The previous value (50) was 10x the spec — relaxing the rate-limit by an
 // order of magnitude. The per-org cap (10) is unchanged.
 export const MAX_INFLIGHT_PER_APP = 5
-export const DEFAULT_DEADLINE_MS = 30_000
+export const DEFAULT_DEADLINE_MS = runLimits("pdf-template").wallMs
 
 const inflightPerOrg = new Map<string, number>()
 const inflightPerApp = new Map<string, number>()

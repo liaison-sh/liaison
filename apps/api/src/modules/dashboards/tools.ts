@@ -35,6 +35,13 @@ import {
 } from "~/modules/dashboards/edit"
 import { computeBlock, dashboardTimezone } from "~/modules/dashboards/execute"
 import {
+  FilterValueError,
+  type FilterValues,
+  normalizeFilterValues,
+  resolveFilterTokens,
+  resolveWhere,
+} from "~/modules/dashboards/filters"
+import {
   DateTokenError,
   type DayWindow,
   dateTokensIn,
@@ -55,9 +62,10 @@ import {
 import { listEligibleSources } from "~/modules/dashboards/sources"
 import {
   blockRangeMode,
+  blockSourceOf,
   type DashboardSpec,
-  dashboardBlockSchema,
   dashboardDefaultRange,
+  dashboardSpecSchema,
   specIssues,
   timeRangeSchema,
 } from "~/modules/dashboards/spec"
@@ -106,6 +114,7 @@ const STATUS = {
   SCOPE_DENIED: 403,
   INVALID_SPEC: 422,
   VERSION_CONFLICT: 409,
+  INVALID_REQUEST: 400,
 } as const
 
 /** A service refusal as the tool's error, with every problem named. */
@@ -177,10 +186,12 @@ const specParam = z
     layout: z.literal("grid").optional(),
     timeRange: z.record(z.string(), z.unknown()).optional(),
     compare: z.string().optional(),
+    datasets: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
+    filters: z.array(z.record(z.string(), z.unknown())).max(8).optional(),
     blocks: z.array(z.record(z.string(), z.unknown())).max(24),
   })
   .describe(
-    "The dashboard spec: {v:1, timeRange?, compare?, blocks:[{id, type, title, width, source, map, refreshSec?, timeRange?}]}, at most 24 blocks. kernel__skill_read build-dashboard for one worked block per chart type and the dashboard time range.",
+    "The dashboard spec: {v:1, timeRange?, compare?, datasets?, filters?, blocks:[{id, type, title, width, source | dataset, map, text?, refreshSec?, timeRange?}]}, at most 24 blocks. kernel__skill_read build-dashboard for one worked block per chart type, shared datasets, filters and the dashboard time range.",
   )
 
 /** The days a spec's default range covers today (what {{range.*}} mean on the card). */
@@ -224,14 +235,18 @@ function blockLines(spec: unknown, timeZone: string, max = 6): string[] {
     ? ((spec as { blocks: unknown[] }).blocks as Record<string, unknown>[])
     : []
   const range = defaultWindow(spec, timeZone)
+  const datasets = ((spec as { datasets?: unknown })?.datasets ?? {}) as Record<string, unknown>
   const lines = blocks.slice(0, max).map((b) => {
-    const source = (b.source ?? {}) as Record<string, unknown>
+    if (b.type === "text") return `text note "${String(b.title ?? b.id ?? "")}"`
+    const shared = typeof b.dataset === "string" ? datasets[b.dataset] : undefined
+    const source = (b.source ?? shared ?? {}) as Record<string, unknown>
     const from =
       source.kind === "store"
         ? `store ${String(source.app)}/${String(source.collection)}`
         : String(source.tool ?? "(no source)")
     const dates = tokenDates(source, timeZone, range)
-    return `${String(b.type ?? "block")} "${String(b.title ?? b.id ?? "")}" from ${from}${dates ? `, dates ${dates} (today, rolling)` : ""}`
+    const via = typeof b.dataset === "string" ? ` (shared dataset '${b.dataset}')` : ""
+    return `${String(b.type ?? "block")} "${String(b.title ?? b.id ?? "")}" from ${from}${via}${dates ? `, dates ${dates} (today, rolling)` : ""}`
   })
   if (blocks.length > max) lines.push(`and ${blocks.length - max} more blocks`)
   if (blocks.length === 0) lines.push("No blocks.")
@@ -405,46 +420,100 @@ export function registerDashboardTools(orgId: string): void {
     params: z.object({
       block: z
         .record(z.string(), z.unknown())
-        .describe("One block: {id, type, title, source, map}, as in the spec."),
+        .describe(
+          "One block: {id, type, title, source or dataset, map}, as in the spec (a text block needs no preview).",
+        ),
       timeRange: z
         .record(z.string(), z.unknown())
         .optional()
         .describe(
           'The dashboard range its {{range.from}} / {{range.to}} read, e.g. {preset:"lastMonth"}. Default: the last 30 days.',
         ),
+      datasets: z
+        .record(z.string(), z.unknown())
+        .optional()
+        .describe("The spec's datasets, when the block reads one ({dataset: id})."),
+      filters: z
+        .array(z.record(z.string(), z.unknown()))
+        .optional()
+        .describe("The spec's filters, when the block reads one ({{filter.<id>}} or map.where)."),
+      filterValues: z
+        .record(z.string(), z.array(z.string()))
+        .optional()
+        .describe(
+          'Values to preview with, e.g. {market: ["FR"]}. Default: each filter\'s default.',
+        ),
     }),
     handler: (async (params: unknown, ctx: HandlerCtx) => {
-      const p = params as { block?: unknown; timeRange?: unknown }
-      const parsed = dashboardBlockSchema.safeParse(p.block)
-      if (!parsed.success)
-        return { ok: false, reason: "invalid_block", problems: specIssues(parsed.error) }
+      const p = params as {
+        block?: unknown
+        timeRange?: unknown
+        datasets?: unknown
+        filters?: unknown
+        filterValues?: Record<string, string[]>
+      }
+      // The block checked as part of a spec: its dataset and filters must exist.
+      const parsedSpec = dashboardSpecSchema.safeParse({
+        v: 1,
+        ...(p.datasets ? { datasets: p.datasets } : {}),
+        ...(p.filters ? { filters: p.filters } : {}),
+        blocks: [p.block],
+      })
+      if (!parsedSpec.success) {
+        return { ok: false, reason: "invalid_block", problems: specIssues(parsedSpec.error) }
+      }
+      const spec = parsedSpec.data
+      const block = spec.blocks[0]!
       const tr = timeRangeSchema.safeParse(p.timeRange ?? { preset: "last30d" })
       if (!tr.success)
         return { ok: false, reason: "invalid_time_range", problems: specIssues(tr.error) }
+      let values: FilterValues
+      try {
+        values = normalizeFilterValues(spec, p.filterValues)
+      } catch (err) {
+        if (err instanceof FilterValueError) {
+          return { ok: false, reason: "invalid_filter_values", problems: [err.message] }
+        }
+        throw err
+      }
       const viewer = await viewerOf(ctx)
       const range = resolveTimeRange(tr.data, {
         timeZone: await dashboardTimezone(ctx.orgId),
         now: new Date(),
       })
-      const outcome = await computeBlock(parsed.data, {
-        viewer,
-        dashboardId: null,
-        range,
-        ...(ctx.agentExecutionThreadId ? { threadId: ctx.agentExecutionThreadId } : {}),
-        ...(ctx.abortSignal ? { signal: ctx.abortSignal } : {}),
-      })
+      const saved = blockSourceOf(block, spec.datasets)
+      const withValues = saved
+        ? saved.kind === "tool"
+          ? { ...saved, params: resolveFilterTokens(saved.params, values) }
+          : { ...saved, query: resolveFilterTokens(saved.query, values) }
+        : null
+      const outcome = await computeBlock(
+        withValues ? { ...block, source: withValues, dataset: undefined } : block,
+        {
+          viewer,
+          dashboardId: null,
+          range,
+          where: resolveWhere(block.map.where, values),
+          ...(ctx.agentExecutionThreadId ? { threadId: ctx.agentExecutionThreadId } : {}),
+          ...(ctx.abortSignal ? { signal: ctx.abortSignal } : {}),
+        },
+      )
       if (outcome.ok) {
         // A block that follows the dashboard range says which days the preview read.
-        return blockRangeMode(parsed.data) === "dashboard"
+        return blockRangeMode(block, spec.datasets) === "dashboard"
           ? { ok: true, data: outcome.data, range }
           : { ok: true, data: outcome.data }
       }
-      const source = parsed.data.source
-      const words = source.kind === "tool" ? source.tool.replace(/[:_-]+/g, " ") : source.collection
+      const words = !saved
+        ? ""
+        : saved.kind === "tool"
+          ? saved.tool.replace(/[:_-]+/g, " ")
+          : saved.collection
       const alternatives =
-        outcome.error === "not_allowed" ||
-        outcome.error === "unknown_tool" ||
-        outcome.error === "no_access"
+        saved &&
+        (outcome.error === "not_allowed" ||
+          outcome.error === "unknown_tool" ||
+          outcome.error === "no_access")
           ? (await listEligibleSources(ctx.orgId, viewer, words, 5)).map((s) => s.tool)
           : []
       return { ok: false, reason: outcome.error, message: outcome.message, alternatives }
@@ -591,7 +660,7 @@ export function registerDashboardTools(orgId: string): void {
     name: "dashboards_edit",
     deferLoading: true,
     description:
-      "Change a dashboard by a list of operations, applied in order and together (all or none): addBlock, updateBlock (partial), removeBlock, moveBlock, setTitle, setTimeRange (the default range and comparison), setVisibility. Put EVERY change the person asked for in ONE call: on an org dashboard the whole list waits for ONE approval; a personal one saves at once. Pass ifVersion from kernel__dashboards_get. Preview a new or changed block with kernel__dashboards_preview_block first.",
+      "Change a dashboard by a list of operations, applied in order and together (all or none): addBlock, updateBlock (partial), removeBlock, moveBlock, setTitle, setTimeRange (the default range and comparison), setVisibility, setDataset / removeDataset (a source shared by several blocks), setFilter / removeFilter (a dashboard filter). Put EVERY change the person asked for in ONE call: on an org dashboard the whole list waits for ONE approval; a personal one saves at once. Pass ifVersion from kernel__dashboards_get. Preview a new or changed block with kernel__dashboards_preview_block first.",
     searchKeywords: ["dashboard", "modifier", "edit", "block", "bloc", "période"],
     requiredScopes: [WRITE],
     params: z.object({
@@ -605,7 +674,7 @@ export function registerDashboardTools(orgId: string): void {
         .array(editOperationSchema)
         .min(1)
         .describe(
-          `1 to ${MAX_CARD_CHANGES} operations, applied in order: {op:"addBlock", block, position?}, {op:"updateBlock", blockId, changes}, {op:"removeBlock", blockId}, {op:"moveBlock", blockId, position}, {op:"setTitle", title}, {op:"setTimeRange", timeRange?, compare?}, {op:"setVisibility", visibility}. A position is an index (0 = first) or {before: blockId} / {after: blockId}.`,
+          `1 to ${MAX_CARD_CHANGES} operations, applied in order: {op:"addBlock", block, position?}, {op:"updateBlock", blockId, changes}, {op:"removeBlock", blockId}, {op:"moveBlock", blockId, position}, {op:"setTitle", title}, {op:"setTimeRange", timeRange?, compare?}, {op:"setVisibility", visibility}, {op:"setDataset", id, source}, {op:"removeDataset", id}, {op:"setFilter", filter, position?}, {op:"removeFilter", id}. A position is an index (0 = first) or {before: blockId} / {after: blockId}.`,
         ),
     }),
     handler: (async (params: unknown, ctx: HandlerCtx) => {

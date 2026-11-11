@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// A dashboard block's cache on the real Redis: a second view is served from
+// A dashboard block's source cache on the real Redis: a second view is served from
 // it, a forced refresh runs the source again and a second one inside 30 s is
 // refused for that block, the entry expires with the block's TTL (a tool
 // source at most 900 s), and another permission set never reads it.
@@ -10,7 +10,7 @@ import { z } from "zod"
 import type { UserContext } from "~/db/rls"
 import { redis } from "~/lib/redis"
 import { toolRegistry } from "~/modules/apps/app-registries"
-import { blockCacheKey, redisBlockCacheStore } from "~/modules/dashboards/cache"
+import { redisBlockCacheStore, sourceCacheKey } from "~/modules/dashboards/cache"
 import { createDashboard, getBlockData } from "~/modules/dashboards/service"
 import * as minimal from "~/seed/tiers/minimal"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -88,10 +88,10 @@ describe("the block cache on Redis", () => {
     })
     expect(calls).toBe(1)
 
-    const key = blockCacheKey(viewer, {
+    const key = sourceCacheKey(viewer, {
       dashboardId,
       version: 1,
-      blockId: "total",
+      sourceKey: "blk:total",
       resolvedSource: { kind: "tool", tool: `${APP}:rows_list`, params: {} },
     })
     const ttl = await redis.ttl(key)

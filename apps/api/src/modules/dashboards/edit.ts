@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // Editing a dashboard by operations: an ordered list (add, change, remove or move a
-// block, set the title, the default time range or the visibility) applied to the saved
+// block, set the title, the default time range or the visibility, set or remove a shared
+// dataset or a filter) applied to the saved
 // dashboard in one go (service.ts editDashboard), so an agent's request changes exactly
 // what it names and one approval covers it. applyOperations is pure; the result is
 // validated as a whole spec by the service, so a list either applies entirely or not at all.
@@ -28,6 +29,7 @@ import {
   dashboardDefaultRange,
   dashboardSpecSchema,
   MAX_DASHBOARD_BLOCKS,
+  MAX_FILTERS,
   timeRangeSchema,
 } from "~/modules/dashboards/spec"
 
@@ -92,6 +94,32 @@ export const editOperationSchema = z.discriminatedUnion("op", [
     })
     .strict(),
   z.object({ op: z.literal("setVisibility"), visibility: z.enum(["personal", "org"]) }).strict(),
+  z
+    .object({
+      op: z.literal("setDataset"),
+      id: z.string().min(1).max(40),
+      source: blockRecord.describe(
+        'The shared source, as a block\'s: {kind:"tool", tool, params, rowsPath?} or {kind:"store", app, collection, query}. Adds it, or replaces the one with this id.',
+      ),
+    })
+    .strict(),
+  z.object({ op: z.literal("removeDataset"), id: z.string().min(1).max(40) }).strict(),
+  z
+    .object({
+      op: z.literal("setFilter"),
+      filter: blockRecord.describe(
+        "The whole filter: {id, label, type: select|multi|text, options?, default?}. Adds it, or replaces the one with this id.",
+      ),
+      position: z
+        .number()
+        .int()
+        .min(0)
+        .max(MAX_FILTERS)
+        .optional()
+        .describe("Its place in the filter bar (0 = first). Default: where it was, or the end."),
+    })
+    .strict(),
+  z.object({ op: z.literal("removeFilter"), id: z.string().min(1).max(40) }).strict(),
 ])
 export type EditOperation = z.infer<typeof editOperationSchema>
 
@@ -226,6 +254,42 @@ export function applyOperations(
       case "setVisibility":
         visibility = op.visibility
         return
+      case "setDataset":
+        spec.datasets = { ...(isObject(spec.datasets) ? spec.datasets : {}), [op.id]: op.source }
+        return
+      case "removeDataset": {
+        const datasets = isObject(spec.datasets) ? { ...spec.datasets } : {}
+        if (!(op.id in datasets)) throw new EditOperationError(i, `no dataset '${op.id}'`)
+        delete datasets[op.id]
+        if (Object.keys(datasets).length) spec.datasets = datasets
+        else delete spec.datasets
+        return
+      }
+      case "setFilter": {
+        const filters = (Array.isArray(spec.filters) ? [...spec.filters] : []) as Record<
+          string,
+          unknown
+        >[]
+        const at = filters.findIndex((f) => f.id === op.filter.id)
+        if (at >= 0) filters.splice(at, 1)
+        const to = op.position ?? (at >= 0 ? at : filters.length)
+        filters.splice(Math.min(to, filters.length), 0, { ...op.filter })
+        spec.filters = filters
+        return
+      }
+      case "removeFilter": {
+        const filters = (Array.isArray(spec.filters) ? spec.filters : []) as Record<
+          string,
+          unknown
+        >[]
+        if (!filters.some((f) => f.id === op.id)) {
+          throw new EditOperationError(i, `no filter '${op.id}'`)
+        }
+        const rest = filters.filter((f) => f.id !== op.id)
+        if (rest.length) spec.filters = rest
+        else delete spec.filters
+        return
+      }
     }
   })
   spec.blocks = blocks
@@ -284,34 +348,67 @@ function paramWords(params: Record<string, unknown>): string {
     .join(", ")
 }
 
-/** What a block's map draws, in words: "sum of total by status, target 5000". */
-function mapWords(rawMap: unknown): string {
+/** One aggregation in words: "sum of total", "a count of rows". */
+function aggWords(field: unknown, agg: unknown): string {
+  const a = agg ?? (field ? "sum" : "count")
+  return a === "count" && !field ? "a count of rows" : `${String(a)} of ${String(field)}`
+}
+
+/**
+ * What a block's map draws, in words: "sum of total by status, target 5000; keeps only rows
+ * where status is not cancelled". `spec` names the filters a where clause reads.
+ */
+function mapWords(rawMap: unknown, spec: Record<string, unknown> = {}): string {
   const map = isObject(rawMap) ? rawMap : {}
   const field = map.value ?? map.y
-  const agg = map.agg ?? (field ? "sum" : "count")
   const parts: string[] = []
+  const measureList = (list: unknown) =>
+    (Array.isArray(list) ? list : [])
+      .filter(isObject)
+      .map((m) => `${String(m.label)} (${aggWords(m.field, m.agg)})`)
+      .join(", ")
   if (Array.isArray(map.columns)) {
     parts.push(
       `columns ${map.columns.map((c) => String(isObject(c) ? (c.label ?? c.field) : c)).join(", ")}`,
     )
-  } else parts.push(agg === "count" && !field ? "a count of rows" : `${agg} of ${String(field)}`)
+  } else if (Array.isArray(map.stages)) parts.push(`the stages ${measureList(map.stages)}`)
+  else if (Array.isArray(map.measures)) parts.push(measureList(map.measures))
+  else parts.push(aggWords(field, map.agg))
   if (isObject(map.groupBy)) {
     const bucket = map.groupBy.bucket ? ` per ${String(map.groupBy.bucket)}` : ""
     parts[0] += ` by ${String(map.groupBy.field)}${bucket}`
   } else if (map.x ?? map.label) parts[0] += ` by ${String(map.x ?? map.label)}`
+  if (Array.isArray(map.order)) parts.push(`stages in the order ${map.order.join(", ")}`)
   if (map.series) parts.push(`split by ${String(map.series)}`)
+  if (map.stacked) parts.push("stacked")
+  if (map.horizontal) parts.push("horizontal bars")
+  if (Array.isArray(map.lineSeries)) parts.push(`drawn as lines: ${map.lineSeries.join(", ")}`)
+  if (map.secondaryAxis) parts.push("lines on their own axis")
   if (map.target !== undefined) parts.push(`target ${String(map.target)}`)
   if (isObject(map.sparkline)) {
     parts.push(
       `sparkline of ${String(map.sparkline.field)} per ${String(map.sparkline.bucket ?? "day")}`,
     )
   }
-  return parts.join(", ")
+  if (map.link !== undefined) parts.push(`each row links to ${compact(map.link, 80)}`)
+  let out = parts.join(", ")
+  if (Array.isArray(map.where) && map.where.length) {
+    out += `; keeps only rows where ${whereWords(map.where, spec)}`
+  }
+  return out
 }
 
 /** Whether a block follows the dashboard range (spec.ts blockRangeMode, on an unchecked block). */
-function rangeModeWords(block: Record<string, unknown>): string {
-  const s = isObject(block.source) ? block.source : {}
+function rangeModeWords(
+  block: Record<string, unknown>,
+  spec: Record<string, unknown> = {},
+): string {
+  if (block.type === "text") return "no dates"
+  const shared =
+    typeof block.dataset === "string" && isObject(spec.datasets)
+      ? spec.datasets[block.dataset]
+      : undefined
+  const s = isObject(block.source) ? block.source : isObject(shared) ? shared : {}
   const follows =
     block.timeRange === "dashboard" ||
     (block.timeRange !== "fixed" && hasRangeTokens(s.kind === "store" ? s.query : s.params))
@@ -358,6 +455,75 @@ function sourceWords(source: unknown, window: DayWindow, ctx: DescribeContext): 
   return `${String(s.tool ?? "(no source)")}${params}${tokenMeanings(s.params, window, ctx)}`
 }
 
+/** Where a block reads, in words: its own source, a shared dataset, or nothing (a note). */
+function blockSourceWords(
+  b: Record<string, unknown>,
+  spec: Record<string, unknown>,
+  window: DayWindow,
+  ctx: DescribeContext,
+): string {
+  if (b.type === "text") return `showing the note "${compact(String(b.text ?? ""), 100)}"`
+  if (typeof b.dataset === "string") {
+    const ds = isObject(spec.datasets) ? spec.datasets[b.dataset] : undefined
+    return `reading the shared dataset '${b.dataset}' (${ds ? sourceWords(ds, window, ctx) : "not declared: this edit will be refused"})`
+  }
+  return `reading ${sourceWords(b.source, window, ctx)}`
+}
+
+const OP_WORDS: Record<string, string> = {
+  eq: "is",
+  neq: "is not",
+  in: "is one of",
+  contains: "contains",
+  gt: "is above",
+  gte: "is at least",
+  lt: "is below",
+  lte: "is at most",
+  empty: "is empty",
+  notEmpty: "is not empty",
+}
+
+/** A where list in words: `market is the "Market" filter's value, total is above 0`. */
+function whereWords(where: unknown, spec: Record<string, unknown>): string {
+  if (!Array.isArray(where) || where.length === 0) return "all rows"
+  const filters = (Array.isArray(spec.filters) ? spec.filters : []) as Record<string, unknown>[]
+  return where
+    .map((w) => {
+      const c = isObject(w) ? w : {}
+      const op = OP_WORDS[String(c.op)] ?? String(c.op)
+      const v = c.value
+      let value = ""
+      if (isObject(v) && typeof v.filter === "string") {
+        const f = filters.find((x) => x.id === v.filter)
+        value = ` the "${String(f?.label ?? v.filter)}" filter's value (all rows while it is empty)`
+      } else if (v !== undefined) value = ` ${compact(v, 60)}`
+      return `${String(c.field)} ${op}${value}`
+    })
+    .join(", ")
+}
+
+/** A filter in words: its label, kind, options and default. */
+function filterWords(f: Record<string, unknown>, spec: Record<string, unknown>): string {
+  const kind = f.type === "multi" ? "several values" : f.type === "text" ? "free text" : "one value"
+  const o = f.options
+  let options = ""
+  if (Array.isArray(o)) options = `, options ${compact(o.join(", "), 100)}`
+  else if (isObject(o) && typeof o.fromDataset === "string")
+    options = `, options: the values of ${String(o.field)} in the dataset '${o.fromDataset}'`
+  else if (isObject(o) && isObject(o.fromSource))
+    options = `, options: the values of ${String(o.field)} read from ${String(o.fromSource.tool ?? o.fromSource.collection ?? "a source")}`
+  const def =
+    f.default === undefined || (Array.isArray(f.default) && f.default.length === 0)
+      ? ", default all"
+      : `, default ${compact(f.default, 60)}`
+  const blocks = ((spec.blocks ?? []) as Record<string, unknown>[]).filter((b) =>
+    JSON.stringify([b.source, b.map]).includes(String(f.id)),
+  ).length
+  return `"${String(f.label ?? f.id)}" (id ${String(f.id)}, ${kind}${options}${def}${blocks ? `; read by ${blocks} block${blocks === 1 ? "" : "s"}` : ""})`
+}
+
+const specOf = (d: EditableDashboard) => d.spec as unknown as Record<string, unknown>
+
 const blockName = (b: Record<string, unknown> | undefined, id: string) =>
   b ? `"${String(b.title ?? id)}"` : `'${id}'`
 
@@ -371,6 +537,7 @@ function positionWords(blocks: Record<string, unknown>[], at: number): string {
 function changeWords(
   before: Record<string, unknown>,
   changes: Record<string, unknown>,
+  spec: Record<string, unknown>,
   window: DayWindow,
   ctx: DescribeContext,
 ): string {
@@ -379,9 +546,19 @@ function changeWords(
     if (k === "id") continue
     if (k === "title") parts.push(`title "${String(before.title)}" → "${String(v)}"`)
     else if (k === "source") {
-      const after = mergeBlock(before, { source: v }).source
-      parts.push(`source now ${sourceWords(after, window, ctx)}`)
-    } else if (k === "map") parts.push(`now shows ${mapWords(mergeKeys(before.map, v))}`)
+      if (v === null) parts.push("no own source any more")
+      else {
+        const after = mergeBlock(before, { source: v }).source
+        parts.push(`source now ${sourceWords(after, window, ctx)}`)
+      }
+    } else if (k === "dataset") {
+      parts.push(
+        v === null
+          ? "no longer reads a shared dataset"
+          : `now reads the shared dataset '${String(v)}'`,
+      )
+    } else if (k === "text") parts.push(`note now "${compact(v, 100)}"`)
+    else if (k === "map") parts.push(`now shows ${mapWords(mergeKeys(before.map, v), spec)}`)
     else if (k === "timeRange") {
       parts.push(
         v === "fixed"
@@ -435,20 +612,31 @@ export function describeOperations(
         const at = indexOf(nextBlocks, String(b.id))
         const refresh =
           b.refreshSec !== undefined ? `, refreshed every ${String(b.refreshSec)} s` : ""
-        line = `Add a ${String(b.type ?? "")} block "${String(b.title ?? b.id)}" (width ${String(b.width ?? 1)})${at >= 0 ? ` at ${positionWords(nextBlocks, at)}` : ""}, reading ${sourceWords(b.source, window, ctx)}; it shows ${mapWords(b.map)}, ${rangeModeWords(b)}${refresh}`
+        const shows =
+          b.type === "text"
+            ? ""
+            : `; it shows ${mapWords(b.map, specOf(next))}, ${rangeModeWords(b, specOf(next))}`
+        line = `Add a ${String(b.type ?? "")} block "${String(b.title ?? b.id)}" (width ${String(b.width ?? 1)})${at >= 0 ? ` at ${positionWords(nextBlocks, at)}` : ""}, ${blockSourceWords(b, specOf(next), window, ctx)}${shows}${refresh}`
         break
       }
       case "updateBlock": {
         const before = blocks[indexOf(blocks, op.blockId)]
         line = before
-          ? `Change the block ${blockName(before, op.blockId)}: ${changeWords(before, op.changes, window, ctx)}`
+          ? `Change the block ${blockName(before, op.blockId)}: ${changeWords(before, op.changes, specOf(state), window, ctx)}`
           : `Change the block '${op.blockId}' (not on the dashboard: this edit will be refused)`
         break
       }
       case "removeBlock": {
         const before = blocks[indexOf(blocks, op.blockId)]
         line = before
-          ? `Remove the ${String(before.type)} block ${blockName(before, op.blockId)} (it read ${sourceWords(before.source, window, ctx)})`
+          ? `Remove the ${String(before.type)} block ${blockName(before, op.blockId)} (${blockSourceWords(
+              before,
+              specOf(state),
+              window,
+              ctx,
+            )
+              .replace(/^reading/, "it read")
+              .replace(/^showing/, "it showed")})`
           : `Remove the block '${op.blockId}' (not on the dashboard: this edit will be refused)`
         break
       }
@@ -487,6 +675,35 @@ export function describeOperations(
             ? "Share the dashboard with the whole organisation"
             : "Make the dashboard personal: only its owner sees it"
         break
+      case "setDataset": {
+        const had = isObject(specOf(state).datasets) && op.id in (specOf(state).datasets as object)
+        const users = nextBlocks
+          .filter((b) => b.dataset === op.id)
+          .map((b) => blockName(b, String(b.id)))
+        line = `${had ? "Change" : "Add"} the shared dataset '${op.id}': it reads ${sourceWords(op.source, window, ctx)}, once per view for every block that uses it${users.length ? ` (${users.join(", ")})` : " (no block uses it yet)"}`
+        break
+      }
+      case "removeDataset":
+        line = `Remove the shared dataset '${op.id}'${
+          blocks.some((b) => b.dataset === op.id)
+            ? " (blocks still read it: this edit will be refused unless they change too)"
+            : ""
+        }`
+        break
+      case "setFilter": {
+        const had =
+          Array.isArray(specOf(state).filters) &&
+          (specOf(state).filters as Record<string, unknown>[]).some((f) => f.id === op.filter.id)
+        line = `${had ? "Change" : "Add"} the filter ${filterWords(op.filter, specOf(next))}; each person picks their own value`
+        break
+      }
+      case "removeFilter": {
+        const f = ((specOf(state).filters ?? []) as Record<string, unknown>[]).find(
+          (x) => x.id === op.id,
+        )
+        line = `Remove the filter ${f ? `"${String(f.label ?? op.id)}"` : `'${op.id}' (not on the dashboard: this edit will be refused)`}`
+        break
+      }
     }
     lines.push(`${i + 1}. ${line}.`)
     state = next
@@ -495,6 +712,7 @@ export function describeOperations(
 }
 
 // ── a whole new spec, as operations ────────────────────────────────────────
+// (title, visibility, range, datasets, filters, then blocks; removed datasets and filters last)
 
 /** JSON with object keys sorted: two values are the same when this is. */
 function stable(value: unknown): string {
@@ -600,6 +818,34 @@ export function diffDashboards(
       ...(compareChanged ? { compare: (now.compare ?? null) as CompareMode | null } : {}),
     })
   }
+  // Shared datasets and filters first (a block may read a new one), their removals last.
+  const removals: EditOperation[] = []
+  const oldDatasets = isObject(was.datasets) ? was.datasets : {}
+  const newDatasets = isObject(now.datasets) ? now.datasets : {}
+  for (const [id, source] of Object.entries(newDatasets)) {
+    if (!same(oldDatasets[id], source) && isObject(source)) {
+      ops.push({ op: "setDataset", id, source })
+    }
+  }
+  for (const id of Object.keys(oldDatasets)) {
+    if (!(id in newDatasets)) removals.push({ op: "removeDataset", id })
+  }
+  const filtersOf = (spec: Record<string, unknown>) =>
+    (Array.isArray(spec.filters) ? spec.filters : []).filter(isObject)
+  const oldFilters = filtersOf(was)
+  const newFilters = filtersOf(now)
+  const newFilterIds = new Set(newFilters.map((f) => String(f.id)))
+  for (const f of oldFilters) {
+    if (!newFilterIds.has(String(f.id))) removals.push({ op: "removeFilter", id: String(f.id) })
+  }
+  const keptFilterOrder = oldFilters
+    .filter((f) => newFilterIds.has(String(f.id)))
+    .map((f) => String(f.id))
+  newFilters.forEach((f, i) => {
+    const at = oldFilters.find((o) => o.id === f.id)
+    const sameOrder = keptFilterOrder.indexOf(String(f.id)) === i
+    if (!at || !same(at, f) || !sameOrder) ops.push({ op: "setFilter", filter: f, position: i })
+  })
   const blocksOf = (spec: Record<string, unknown>) =>
     (Array.isArray(spec.blocks) ? spec.blocks : []).filter(isObject)
   const oldBlocks = blocksOf(was)
@@ -624,5 +870,6 @@ export function diffDashboards(
     if (!oldById.has(id)) ops.push({ op: "addBlock", block: b, position })
     else if (!stays.has(id)) ops.push({ op: "moveBlock", blockId: id, position })
   })
+  ops.push(...removals)
   return ops
 }

@@ -76,8 +76,11 @@ export const dashboardViewerStates = kernel.table(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    timeRange: jsonb("time_range").$type<Record<string, unknown>>().notNull(),
-    compare: text("compare").notNull(),
+    /** NULL: the person never chose a range (migration 0290). */
+    timeRange: jsonb("time_range").$type<Record<string, unknown>>(),
+    compare: text("compare"),
+    /** The filter values the person last chose: {filterId: [values]}. */
+    filters: jsonb("filters").$type<Record<string, string[]>>().notNull().default({}),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

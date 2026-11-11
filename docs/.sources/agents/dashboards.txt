@@ -118,3 +118,18 @@ range.endExclusive, a skipped midnight starts the day at the change -> apps/api/
 Rolling and custom ranges keep their day count against last year -> apps/api/src/modules/dashboards/relative-dates.ts:479
 Compared period kept 6 h, not re-read by Refresh -> apps/api/src/modules/dashboards/service.ts:830
 At most 12 new custom ranges per block per person per minute -> apps/api/src/modules/dashboards/cache.ts:29 ; apps/api/src/modules/dashboards/service.ts:859
+Block types area, combo, funnel, text -> apps/api/src/modules/dashboards/spec.ts:36 ; apps/api/src/modules/dashboards/spec.ts:39 ; apps/api/src/modules/dashboards/transform.ts:552
+Stacked, horizontal, combo lines on their own axis, funnel stages -> apps/api/src/modules/dashboards/spec.ts:255 ; apps/api/src/modules/dashboards/spec.ts:257 ; apps/api/src/modules/dashboards/spec.ts:261 ; apps/api/src/modules/dashboards/spec.ts:265
+Text note: no source, at most 4,000 characters -> apps/api/src/modules/dashboards/spec.ts:71 ; apps/api/src/modules/dashboards/spec.ts:481
+Filters: at most 8, select/multi/text, list or values from the data -> apps/api/src/modules/dashboards/spec.ts:65 ; apps/api/src/modules/dashboards/spec.ts:393
+A filter reaches the source param (empty = all) or keeps rows -> apps/api/src/modules/dashboards/filters.ts:104 ; apps/api/src/modules/dashboards/filters.ts:146 ; apps/api/src/modules/dashboards/filters.ts:254
+A block keeps only some rows before counting -> apps/api/src/modules/dashboards/spec.ts:249 ; apps/api/src/modules/dashboards/transform.ts:552
+Filter values remembered per person -> apps/api/src/modules/dashboards/service.ts:482 ; apps/api/src/modules/dashboards/service.ts:416
+Shared dataset read once for its blocks; loaded together wait on one read -> apps/api/src/modules/dashboards/spec.ts:550 ; apps/api/src/modules/dashboards/service.ts:895 ; apps/api/src/modules/dashboards/service.ts:924 ; apps/api/src/modules/dashboards/cache.ts:1
+Rows behind a figure from the loaded figures, same access, links to records -> apps/api/src/modules/dashboards/service.ts:1228 ; apps/api/src/modules/dashboards/spec.ts:251 ; apps/api/src/modules/dashboards/transform.ts:552
+Dataset and filter-option sources checked like block sources -> apps/api/src/modules/dashboards/service.ts:1351 ; apps/api/src/modules/dashboards/service.ts:895
+Audit row names block, dataset or filter -> apps/api/src/modules/dashboards/execute.ts:229
+Dataset cache follows the shortest block interval; where-only filter never re-reads; refreshes within 30 s read once -> apps/api/src/modules/dashboards/service.ts:873 ; apps/api/src/modules/dashboards/service.ts:913 ; apps/api/src/modules/dashboards/service.ts:831
+Agent edit ops for datasets and filters, plain lines on the card -> apps/api/src/modules/dashboards/edit.ts:244 ; apps/api/src/modules/dashboards/edit.ts:255 ; apps/api/src/modules/dashboards/edit.ts:602 ; apps/api/src/modules/dashboards/edit.ts:617
+API: rows route, options route, f.<id> params, 400 on a bad filter -> apps/api/src/modules/dashboards/routes.ts:304 ; apps/api/src/modules/dashboards/routes.ts:347 ; apps/api/src/modules/dashboards/routes.ts:125 ; apps/api/src/modules/dashboards/routes.ts:159 ; apps/api/src/modules/dashboards/service.ts:1168 ; apps/api/src/modules/dashboards/service.ts:1340
+New filter values a source reads share the per-minute budget; defaults never count -> apps/api/src/modules/dashboards/service.ts:957 ; apps/api/src/modules/dashboards/service.ts:1055

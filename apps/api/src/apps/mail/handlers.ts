@@ -5237,7 +5237,7 @@ async function sendViaSmtp(
 function sentNote(
   result: { captured?: true },
   to: readonly unknown[],
-  from: string,
+  from: string | null | undefined,
   where: string,
 ): string {
   const recipients = to.map(sentToLabel).join(", ")

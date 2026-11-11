@@ -136,6 +136,10 @@ describe("db import enforcement", () => {
     // caller under RLS, which is exactly the fault being repaired, and purges the
     // org's accounts whose kernel connection was disconnected.
     "modules/apps/sandbox/bridge/calendar.ts",
+    // ctx.accounts (accounts_list / accounts_setMetadata): the calling app's own
+    // org-owned accounts are invisible to RLS; every read and write pins org,
+    // app and connection in its predicate, and the caller's own personal rows.
+    "modules/apps/sandbox/bridge/accounts.ts",
     // App config write path (PUT /api/apps/:app/config/:key, config apply):
     // instance `kernel.apps.config` rows, written after the route's
     // kernel:apps:admin check and the manifest configKeys allowlist.

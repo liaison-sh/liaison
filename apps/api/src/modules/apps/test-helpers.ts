@@ -218,6 +218,24 @@ export function mockAppContext(opts: MockAppContextOpts): MockAppContext {
       },
       reset: async (name) => ({ reset: (await store.delete("liaison_steps", name)).deleted }),
     },
+    // The platform-held reads answer "nothing connected" by default; a test that
+    // needs rows replaces the member it calls.
+    sql: {
+      query: async () => ({ error: { code: "not_connected", message: "No connection (mock)" } }),
+      reads: async () => ({ adapter: "none", reads: {} }),
+      schema: async () => ({ tables: [] }),
+      probe: async () => ({ ok: true, mode: "direct", warnings: [] }),
+    },
+    accounts: {
+      list: async () => [],
+      setMetadata: async () => {
+        throw Object.assign(new Error("no such account (mock)"), { status: 404, code: "not_found" })
+      },
+    },
+    kernel: {
+      findOne: async () => null,
+      findByIds: async () => [],
+    },
     resolveContact: mock(async (_params: Parameters<AppContext["resolveContact"]>[0]) => undefined),
     listContactsByExternalId: mock(async (_limit?: number, _cursor?: string) => ({
       contacts: [] as Array<{ id: string; externalId: string | null }>,

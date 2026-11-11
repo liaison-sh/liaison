@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // Shared execution-wrapper primitives used by both PostgresDirect
-// (`apps/api/src/apps/database/transports/postgres-direct.ts`) and the
+// (`apps/api/src/modules/apps/connections/sql/transports/postgres-direct.ts`) and the
 // `apps/db-gate` sidecar, so both drive the same READ ONLY / statement-timeout
 // / row-cap / column-projection / pool-concurrency-bound behavior from one
 // implementation (Task 3 + Task 4). This module holds the PURE, easily

@@ -6,14 +6,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { ReadCatalog } from "@liaison/db-core"
 import { env } from "~/lib/env"
+import { SqlPoolTestAccess } from "~/modules/apps/connections/sql/pool"
+import type { DbTransport, ProbeReport } from "~/modules/apps/connections/sql/transport"
 import { resetOperatorOrgCache } from "~/modules/apps/operator-org"
 import { liaisonSelfCatalog } from "./adapters/liaison-self"
-import {
-  buildDatabaseBridgeMethods,
-  type DatabaseBridgeDeps,
-  DatabaseBridgeTestAccess,
-} from "./bridge"
-import type { DbTransport, ProbeReport } from "./transport"
+import { buildDatabaseBridgeMethods, type DatabaseBridgeDeps } from "./bridge"
 
 const CALLER_ORG = "00000000-0000-4000-8000-0000000d8001"
 const OTHER_ORG = "00000000-0000-4000-8000-0000000d8002"
@@ -49,8 +46,8 @@ function bridge(callerScopes: string[], catalog: ReadCatalog = liaisonSelfCatalo
   return { methods: buildDatabaseBridgeMethods(deps), transport }
 }
 
-beforeEach(() => DatabaseBridgeTestAccess.resetTransportPool())
-afterEach(() => DatabaseBridgeTestAccess.resetTransportPool())
+beforeEach(() => SqlPoolTestAccess.reset())
+afterEach(() => SqlPoolTestAccess.reset())
 
 describe("liaison-self reads", () => {
   test("run against the caller's org whatever orgId the caller passes", async () => {

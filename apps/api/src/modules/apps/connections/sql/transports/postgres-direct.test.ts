@@ -13,7 +13,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import type { ReadDefinition } from "@liaison/db-core"
 import postgres from "postgres"
-import { buildTransport } from "../bridge"
+import { buildTransport } from "../credentials"
 import { DbTransportError } from "../transport"
 import { PostgresDirect } from "./postgres-direct"
 

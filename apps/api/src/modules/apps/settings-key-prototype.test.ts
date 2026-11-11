@@ -6,8 +6,8 @@
 // values even if something else pollutes the prototype.
 import { afterEach, describe, expect, test } from "bun:test"
 import { appSettingsSchema } from "@liaison/app-sdk"
-import { buildTransport } from "~/apps/database/bridge"
-import { DbTransportError } from "~/apps/database/transport"
+import { buildTransport } from "~/modules/apps/connections/sql/credentials"
+import { DbTransportError } from "~/modules/apps/connections/sql/transport"
 import {
   buildManifestSettingsEntry,
   namespaceDefaultsFor,

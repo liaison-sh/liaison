@@ -136,14 +136,25 @@ Per-fetch read 10 s (env up to 120 s), write up to 30 s -> apps/api/src/modules/
 Contract: each entry twice in one reused isolate, recorded answers, production limits -> apps/api/src/modules/apps/contract/harness.ts:71 ; apps/api/src/modules/apps/contract/harness.ts:88
 Waits over 2 s and the source scan -> apps/api/src/modules/apps/contract/wait-lint.ts:20 ; apps/api/src/modules/apps/contract/wait-lint.ts:111
 Expected failures only shrink -> apps/api/src/modules/apps/contract/expected-failures.guard.test.ts:1
-Connection limits declared in the manifest, concurrency/perSecond/burst bounds -> apps/api/src/modules/apps/manifest-schema.ts:360 ; apps/api/src/modules/apps/connection-limits.ts:1
+SQL connections: manifest `sql` block (catalog, rawQuery.scope, modes) -> apps/api/src/modules/apps/manifest-schema.ts:357 ; apps/api/src/modules/apps/connections/sql/service.ts:51
+ctx.sql.query / reads / schema / probe -> apps/api/src/modules/apps/connections/sql/service.ts:339 ; apps/api/src/modules/apps/connections/sql/service.ts:448 ; apps/api/src/modules/apps/connections/sql/service.ts:475 ; apps/api/src/modules/apps/connections/sql/service.ts:508 ; apps/api/src/modules/apps/sandbox/bridge/sql.ts:60
+Raw queries need the declared scope, pass the read-only guard, LIAISON_DATABASE_ALLOW_RAW_QUERY=false turns them off -> apps/api/src/modules/apps/connections/sql/service.ts:401 ; apps/api/src/modules/apps/connections/sql/service.ts:404
+Timeout default 10 s / max 120 s, rows default 500 / max 2000, pools 32, idle 10 min -> apps/api/src/modules/apps/run-limits.ts:309 ; apps/api/src/modules/apps/connections/sql/service.ts:182 ; apps/api/src/modules/apps/connections/sql/service.ts:191
+Pool per org/connection/account, replaced on credential change, closed on disconnect, idle, bound -> apps/api/src/modules/apps/connections/sql/pool.ts:72 ; apps/api/src/modules/apps/connections/sql/pool.ts:88 ; apps/api/src/modules/apps/connections/sql/pool.ts:170 ; apps/api/src/modules/apps/connections/service.ts:1746
+Org-owned account only -> apps/api/src/modules/apps/sandbox/bridge/sql.ts:79
+Answers carry no credential; audit line with a SQL hash -> apps/api/src/modules/apps/connections/sql/service.ts:325 ; apps/api/src/modules/apps/connections/sql/service.ts:396
+liaison-self: orgId pinned, table scopes, raw SQL operator only -> apps/api/src/modules/apps/connections/sql/catalog.ts:36 ; apps/api/src/modules/apps/connections/sql/catalog.ts:106 ; apps/api/src/modules/apps/connections/sql/service.ts:422
+Schema drops secret columns -> apps/api/src/modules/apps/connections/sql/catalog.ts:131
+ctx.accounts.list / setMetadata: own app, org's and caller's own, admin scope, 32 KiB, audited -> apps/api/src/modules/apps/sandbox/bridge/accounts.ts:86 ; apps/api/src/modules/apps/sandbox/bridge/accounts.ts:152 ; apps/api/src/modules/apps/sandbox/bridge/accounts.ts:176 ; apps/api/src/modules/apps/sandbox/bridge/accounts.ts:34
+ctx.kernel.findByIds: up to 200 ids, directory fields, caller's org -> apps/api/src/modules/apps/sandbox/bridge/context.ts:1109
+Connection limits declared in the manifest, concurrency/perSecond/burst bounds -> apps/api/src/modules/apps/manifest-schema.ts:386 ; apps/api/src/modules/apps/connection-limits.ts:1
 ctx.fetch with auth.connection takes a permit, key per org/app/connection/identifier -> apps/api/src/modules/apps/sandbox/bridge/egress.ts:419 ; apps/api/src/modules/apps/connection-limiter.ts:1
-Waits 2 s in a tool, 20 s in a job, then provider_rate_limited 429 -> apps/api/src/modules/apps/run-limits.ts:309 ; apps/api/src/modules/apps/connection-limiter.ts:54
+Waits 2 s in a tool, 20 s in a job, then provider_rate_limited 429 -> apps/api/src/modules/apps/run-limits.ts:342 ; apps/api/src/modules/apps/connection-limiter.ts:54
 Retry-After on 429/503 pauses the account, at most 60 s -> apps/api/src/modules/apps/connection-limiter.ts:282 ; apps/api/src/modules/apps/run-limits.ts:310
 ctx.limiter.pause only for a connection with limits -> apps/api/src/modules/apps/sandbox/bridge/egress.ts:600
 Limiter fails open when Redis fails -> apps/api/src/modules/apps/connection-limiter.ts:221
 Poll and reconcile runs hold no transaction; answer recorded in one guarded write -> apps/api/src/modules/apps/runtime.ts:3314 ; apps/api/src/modules/apps/runtime.ts:3378 ; apps/api/src/modules/approvals/poll-output.ts:129 ; apps/api/src/modules/approvals/approving-reaper.ts:334 ; apps/api/src/modules/approvals/reconcile-outcome.ts:60
-Event handlers and webhook deliveries of sandboxed apps hold no transaction; each ctx call commits on its own -> apps/api/src/modules/apps/runtime.ts:3889 ; apps/api/src/modules/webhooks/handler-run.ts:113 ; apps/api/src/modules/apps/sandbox/rpc-bridge.ts:564
+Event handlers and webhook deliveries of sandboxed apps hold no transaction; each ctx call commits on its own -> apps/api/src/modules/apps/runtime.ts:3889 ; apps/api/src/modules/webhooks/handler-run.ts:113 ; apps/api/src/modules/apps/sandbox/rpc-bridge.ts:573
 A failed event handler runs once more; a failed delivery goes back to the inbox -> apps/api/src/infra/events/event-bus.ts:592 ; apps/api/src/modules/webhooks/routes.ts:647 ; apps/api/src/infra/jobs/webhook-inbox-jobs.ts:165
 Listed handlers keep one transaction; the list only shrinks; core apps keep it -> apps/api/src/modules/apps/run-wide-tx.ts:47 ; apps/api/src/modules/apps/contract/run-wide-tx.guard.test.ts:1
-insertNow behaves like insert in a session run, refused without commitNowTx -> apps/api/src/modules/apps/sandbox/bridge/db.ts:58 ; apps/api/src/modules/apps/sandbox/rpc-bridge.ts:564
+insertNow behaves like insert in a session run, refused without commitNowTx -> apps/api/src/modules/apps/sandbox/bridge/db.ts:59 ; apps/api/src/modules/apps/sandbox/rpc-bridge.ts:573

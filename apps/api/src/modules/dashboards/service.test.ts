@@ -189,15 +189,23 @@ function registerTestTools() {
 /** A cache store in memory, which can be made to fail like a Redis outage. */
 function fakeStore() {
   const data = new Map<string, string>()
+  const ttls = new Map<string, number>()
   const state = { down: false }
   const store: BlockCacheStore = {
     async get(k) {
       if (state.down) throw new Error("ECONNREFUSED")
       return data.get(k) ?? null
     },
-    async set(k, v) {
+    async set(k, v, ttl) {
       if (state.down) throw new Error("ECONNREFUSED")
       data.set(k, v)
+      ttls.set(k, ttl)
+    },
+    async increment(k) {
+      if (state.down) throw new Error("ECONNREFUSED")
+      const n = Number(data.get(k) ?? 0) + 1
+      data.set(k, String(n))
+      return n
     },
     async setIfAbsent(k) {
       if (state.down) throw new Error("ECONNREFUSED")
@@ -206,7 +214,7 @@ function fakeStore() {
       return true
     },
   }
-  return { store, data, state }
+  return { store, data, ttls, state }
 }
 
 beforeAll(async () => {
@@ -815,6 +823,57 @@ describe("the dashboard time range", () => {
       "2026-11-01",
       "2026-10-25",
     ])
+  })
+
+  it("keeps a comparison run for hours, and Refresh re-runs only the current window", async () => {
+    const { store, ttls } = fakeStore()
+    BlockCacheTestAccess.setStore(store)
+    const viewer = as(owner, [WRITE, ALPHA])
+    await getBlockData(viewer, dashboardId, "sales", { now })
+    const ttlOf = (range: string) =>
+      [...ttls].find(([k]) => k.includes(`:${dashboardId}:`) && k.includes(range))?.[1]
+    expect(ttlOf(":2025-10-12..2025-11-10:")).toBe(6 * 3600)
+    expect(ttlOf(":2026-10-12..2026-11-10:")).toBeLessThanOrEqual(900)
+    datedParams.length = 0
+    expect(await getBlockData(viewer, dashboardId, "sales", { now, refresh: true })).toMatchObject({
+      ok: true,
+      data: { previous: 22 },
+    })
+    expect(datedParams).toHaveLength(1)
+  })
+
+  it("custom ranges not in the cache are budgeted per viewer and block; presets never are", async () => {
+    BlockCacheTestAccess.setStore(fakeStore().store)
+    const viewer = as(owner, [WRITE, ALPHA])
+    const custom = (day: number) =>
+      getBlockData(viewer, dashboardId, "sales", {
+        now,
+        range: {
+          preset: "custom",
+          from: "2026-10-01",
+          to: `2026-10-${String(day).padStart(2, "0")}`,
+        },
+        compare: "none",
+      })
+    for (let day = 2; day <= 13; day++) expect((await custom(day)).ok).toBe(true)
+    // A range already in the cache costs nothing; a new one past the budget is refused.
+    expect(await custom(13)).toMatchObject({ ok: true, cached: true })
+    expect(await custom(14)).toMatchObject({ ok: false, error: "rate_limited" })
+    for (const preset of ["last7d", "lastMonth", "qtd", "ytd"] as const) {
+      expect(
+        (await getBlockData(viewer, dashboardId, "sales", { now, range: { preset } })).ok,
+      ).toBe(true)
+    }
+    // Another viewer has a budget of their own.
+    expect(
+      (
+        await getBlockData(as(other, [WRITE, ALPHA]), dashboardId, "sales", {
+          now,
+          range: { preset: "custom", from: "2026-10-01", to: "2026-10-14" },
+          compare: "none",
+        })
+      ).ok,
+    ).toBe(true)
   })
 
   it("a fixed block keeps its own dates, names them, and is never compared", async () => {

@@ -2008,7 +2008,12 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
                   <Show
                     when={visibleSummaryLines().length > 0 && !editing() && !skillApprovalKind()}
                   >
-                    <ul class="mt-2 space-y-1 text-text-secondary">
+                    {/* A pooled card (a dashboard edit) can list dozens of changes: the list
+                      scrolls past ~12 lines, the card around it keeps its layout. */}
+                    <ul
+                      data-testid="approval-summary-lines"
+                      class="mt-2 max-h-80 space-y-1 overflow-y-auto text-text-secondary"
+                    >
                       <For each={visibleSummaryLines()}>
                         {(line) => (
                           <li>

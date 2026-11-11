@@ -197,6 +197,19 @@ describe("range tokens", () => {
     )
   })
 
+  it("gives an exclusive end, and starts a day the zone skips at its real first instant", () => {
+    expect(resolveDateTokens("{{range.endExclusive}}", opts("Europe/Paris"))).toBe(
+      "2026-11-01T00:00:00+01:00",
+    )
+    // America/Santiago moves 00:00 to 01:00 on 2026-09-06: the day starts at 01:00-03:00.
+    const santiago = {
+      ...opts("America/Santiago"),
+      range: { from: "2026-09-06", to: "2026-09-06" },
+    }
+    expect(resolveDateTokens("{{range.fromTime}}", santiago)).toBe("2026-09-06T01:00:00-03:00")
+    expect(resolveDateTokens("{{range.endExclusive}}", santiago)).toBe("2026-09-07T00:00:00-03:00")
+  })
+
   it("refuses a range token with no range, and finds range tokens", () => {
     expect(() => resolveDateTokens("{{range.from}}", { ...opts(), range: null })).toThrow(
       DateTokenError,
@@ -251,6 +264,25 @@ describe("compareWindow", () => {
     expect(
       compareWindow("lastMonth", { from: "2027-02-01", to: "2027-02-28" }, "lastYear"),
     ).toEqual({ from: "2026-02-01", to: "2026-02-28" })
+  })
+
+  it("keeps a rolling or custom range's number of days around 29 February", () => {
+    const len = (w: { from: string; to: string } | null) =>
+      w ? (Date.parse(w.to) - Date.parse(w.from)) / 86_400_000 + 1 : 0
+    const cases: [Parameters<typeof compareWindow>[0], string, string][] = [
+      ["last7d", "2029-02-22", "2029-02-28"],
+      ["last7d", "2028-02-23", "2028-02-29"],
+      ["last30d", "2029-01-30", "2029-02-28"],
+      ["custom", "2028-02-29", "2028-03-06"],
+    ]
+    for (const [preset, from, to] of cases) {
+      const w = compareWindow(preset, { from, to }, "lastYear")
+      expect(len(w)).toBe(len({ from, to }))
+    }
+    expect(compareWindow("last7d", { from: "2029-02-22", to: "2029-02-28" }, "lastYear")).toEqual({
+      from: "2028-02-22",
+      to: "2028-02-28",
+    })
   })
 
   it("compares a calendar preset with the period before, the same day span", () => {

@@ -27,9 +27,11 @@ import { type ApprovalSummarizer, toolRegistry } from "~/modules/apps/app-regist
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
 import {
   describeOperations,
+  diffDashboards,
   type EditOperation,
   editOperationSchema,
-  MAX_EDIT_OPERATIONS,
+  MAX_CARD_CHANGES,
+  tooManyChangesMessage,
 } from "~/modules/dashboards/edit"
 import { computeBlock, dashboardTimezone } from "~/modules/dashboards/execute"
 import {
@@ -41,6 +43,7 @@ import {
   resolveTimeRange,
 } from "~/modules/dashboards/relative-dates"
 import {
+  checkEdit,
   createDashboard,
   DashboardError,
   deleteDashboard,
@@ -79,7 +82,9 @@ interface HandlerCtx {
  * record shared with a role), so an agent's preview shows exactly what the person will see on
  * the saved dashboard, whose REST reads carry the roles of the session.
  */
-async function viewerOf(ctx: HandlerCtx): Promise<UserContext> {
+async function viewerOf(
+  ctx: Pick<HandlerCtx, "userId" | "orgId" | "scopes" | "dimensionGrants">,
+): Promise<UserContext> {
   const held = await withPrivilegedDb(ctx.orgId, "dashboard-viewer-roles", (tx) =>
     tx
       .select({ roleId: userRoles.roleId })
@@ -122,6 +127,29 @@ async function guarded<T>(fn: () => Promise<T>) {
   } catch (err) {
     return asToolError(err)
   }
+}
+
+/** The refusal of a request with more changes than one approval card lists. */
+function tooManyChanges(count: number) {
+  return {
+    error: {
+      code: "too_many_changes",
+      message: tooManyChangesMessage(count),
+      retryable: false,
+      status: 422,
+    },
+  }
+}
+
+/** A saved dashboard as the card reads it (the summarizer's own transaction). */
+async function cardRow(tx: Parameters<ApprovalSummarizer>[1]["tx"], id: unknown) {
+  if (typeof id !== "string") return undefined
+  const [row] = await tx
+    .select({ title: dashboards.title, visibility: dashboards.visibility, spec: dashboards.spec })
+    .from(dashboards)
+    .where(eq(dashboards.id, id))
+    .limit(1)
+  return row
 }
 
 /** The visibility of a saved dashboard, read for the gate (which runs before the handler). */
@@ -232,44 +260,50 @@ const summarizeCreate: ApprovalSummarizer = async (raw, ctx) => {
   }
 }
 
+/**
+ * A whole-spec save of an org dashboard, listed change by change as dashboards_edit's card
+ * does: the stored dashboard and the new spec diffed into operations (title, visibility,
+ * default range and comparison, each block removed, changed, added or moved), one plain
+ * line each. Computed once when the approval is created.
+ */
 const summarizeUpdate: ApprovalSummarizer = async (raw, ctx) => {
   const p = (raw ?? {}) as { id?: string; title?: string; spec?: unknown; visibility?: string }
-  const [current] =
-    typeof p.id === "string"
-      ? await ctx.tx
-          .select({
-            title: dashboards.title,
-            visibility: dashboards.visibility,
-            spec: dashboards.spec,
-          })
-          .from(dashboards)
-          .where(eq(dashboards.id, p.id))
-          .limit(1)
-      : []
-  const title = p.title ?? current?.title ?? ""
-  const lines: string[] = []
-  if (p.visibility && p.visibility !== current?.visibility) {
-    lines.push(
-      p.visibility === "org"
-        ? "It becomes visible to the whole organisation."
-        : "It becomes personal: only its owner sees it.",
-    )
-  } else {
-    lines.push("Everyone in the organisation sees this dashboard.")
+  const current = await cardRow(ctx.tx, p.id)
+  const title = current?.title ?? p.title ?? ""
+  if (!current) {
+    return {
+      kind: "dashboard_update",
+      title: `Change the org dashboard "${title}"`,
+      lines: [
+        "The dashboard could not be read: approving applies the call as sent, or refuses it.",
+      ],
+    }
   }
-  if (p.title && current && p.title !== current.title)
-    lines.push(`Title: "${current.title}" → "${p.title}".`)
-  lines.push(
-    ...blockLines(
-      p.spec ?? current?.spec,
-      await cardTimezone(p.spec ?? current?.spec, ctx.orgId),
-      5,
-    ),
-  )
+  const stored = {
+    title: current.title,
+    visibility: current.visibility,
+    spec: current.spec as unknown as DashboardSpec,
+  }
+  const ops = diffDashboards(stored, {
+    ...(p.title !== undefined ? { title: p.title } : {}),
+    ...(p.visibility === "org" || p.visibility === "personal" ? { visibility: p.visibility } : {}),
+    ...(p.spec !== undefined ? { spec: p.spec } : {}),
+  })
+  const lines = ops.length
+    ? describeOperations(stored, ops, {
+        timeZone: await dashboardTimezone(ctx.orgId),
+        now: new Date(),
+      })
+    : ["No change: the dashboard stays as it is."]
+  const n = ops.length
+  const sharing = current.visibility === "personal"
   return {
     kind: "dashboard_update",
-    title: `Change the org dashboard "${title}"`,
-    lines: lines.slice(0, 8),
+    title: `${sharing ? "Share the dashboard" : "Change the org dashboard"} "${title}": ${n} change${n === 1 ? "" : "s"}`,
+    subtitle: sharing
+      ? "Everyone in the organisation will see this dashboard. All changes apply together."
+      : "Everyone in the organisation sees this dashboard. All changes apply together.",
+    lines,
   }
 }
 
@@ -282,18 +316,7 @@ const summarizeUpdate: ApprovalSummarizer = async (raw, ctx) => {
 const summarizeEdit: ApprovalSummarizer = async (raw, ctx) => {
   const p = (raw ?? {}) as { dashboardId?: string; operations?: unknown }
   const ops = z.array(editOperationSchema).safeParse(p.operations)
-  const [current] =
-    typeof p.dashboardId === "string"
-      ? await ctx.tx
-          .select({
-            title: dashboards.title,
-            visibility: dashboards.visibility,
-            spec: dashboards.spec,
-          })
-          .from(dashboards)
-          .where(eq(dashboards.id, p.dashboardId))
-          .limit(1)
-      : []
+  const current = await cardRow(ctx.tx, p.dashboardId)
   const title = current?.title ?? p.dashboardId ?? ""
   if (!ops.success || !current) {
     return {
@@ -312,10 +335,14 @@ const summarizeEdit: ApprovalSummarizer = async (raw, ctx) => {
     { timeZone: await dashboardTimezone(ctx.orgId), now: new Date() },
   )
   const n = ops.data.length
+  // A personal dashboard's edit is gated by its own setVisibility org: it is being shared.
+  const sharing = current.visibility === "personal"
   return {
     kind: "dashboard_edit",
-    title: `Change the org dashboard "${title}": ${n} change${n === 1 ? "" : "s"}`,
-    subtitle: "Everyone in the organisation sees this dashboard. All changes apply together.",
+    title: `${sharing ? "Share the dashboard" : "Change the org dashboard"} "${title}": ${n} change${n === 1 ? "" : "s"}`,
+    subtitle: sharing
+      ? "Everyone in the organisation will see this dashboard. All changes apply together."
+      : "Everyone in the organisation sees this dashboard. All changes apply together.",
     lines,
   }
 }
@@ -490,7 +517,7 @@ export function registerDashboardTools(orgId: string): void {
     name: "dashboards_update",
     deferLoading: true,
     description:
-      "Change a dashboard's title, blocks (the whole spec) or visibility. Your personal dashboard saves at once; an org dashboard, or switching one to org, waits for a person's approval. Pass ifVersion (from kernel__dashboards_get) so you never overwrite a newer save.",
+      "Replace a dashboard's whole spec (and its title or visibility): for a wholesale rebuild only. To change some blocks, the title, the range or the visibility, use kernel__dashboards_edit. Your personal dashboard saves at once; an org dashboard, or switching one to org, waits for a person's approval whose card lists every change. Pass ifVersion (from kernel__dashboards_get) so you never overwrite a newer save.",
     searchKeywords: ["dashboard", "modifier"],
     requiredScopes: [WRITE],
     params: z.object({
@@ -521,6 +548,41 @@ export function registerDashboardTools(orgId: string): void {
       if (p.visibility === "org") return true
       return (await storedVisibility(o, p.id)) === "org"
     },
+    // One approval card lists every change of an org dashboard: more than it lists is refused.
+    refuseBeforeGate: async (params: unknown, { orgId: o, userId }) => {
+      const p = (params ?? {}) as {
+        id?: string
+        title?: string
+        visibility?: "personal" | "org"
+        spec?: unknown
+      }
+      if (p.spec === undefined || typeof p.id !== "string") return null
+      const [row] = await withPrivilegedDb(o, "dashboard-update-card", (tx) =>
+        tx
+          .select({
+            title: dashboards.title,
+            visibility: dashboards.visibility,
+            ownerUserId: dashboards.ownerUserId,
+            spec: dashboards.spec,
+          })
+          .from(dashboards)
+          .where(eq(dashboards.id, p.id!))
+          .limit(1),
+      )
+      // Only a card that will exist is counted: an org dashboard, or the caller's own one shared.
+      const carded =
+        row?.visibility === "org" || (p.visibility === "org" && row?.ownerUserId === userId)
+      if (!row || !carded) return null
+      const count = diffDashboards(
+        {
+          title: row.title,
+          visibility: row.visibility,
+          spec: row.spec as unknown as DashboardSpec,
+        },
+        p,
+      ).length
+      return count > MAX_CARD_CHANGES ? tooManyChanges(count) : null
+    },
   })
   registerApprovalSummarizer(orgId, "kernel", "dashboards_update", summarizeUpdate)
 
@@ -542,13 +604,13 @@ export function registerDashboardTools(orgId: string): void {
       operations: z
         .array(editOperationSchema)
         .min(1)
-        .max(MAX_EDIT_OPERATIONS)
         .describe(
-          `1 to ${MAX_EDIT_OPERATIONS} operations, applied in order: {op:"addBlock", block, position?}, {op:"updateBlock", blockId, changes}, {op:"removeBlock", blockId}, {op:"moveBlock", blockId, position}, {op:"setTitle", title}, {op:"setTimeRange", timeRange?, compare?}, {op:"setVisibility", visibility}. A position is an index (0 = first) or {before: blockId} / {after: blockId}.`,
+          `1 to ${MAX_CARD_CHANGES} operations, applied in order: {op:"addBlock", block, position?}, {op:"updateBlock", blockId, changes}, {op:"removeBlock", blockId}, {op:"moveBlock", blockId, position}, {op:"setTitle", title}, {op:"setTimeRange", timeRange?, compare?}, {op:"setVisibility", visibility}. A position is an index (0 = first) or {before: blockId} / {after: blockId}.`,
         ),
     }),
     handler: (async (params: unknown, ctx: HandlerCtx) => {
       const p = params as { dashboardId: string; ifVersion: number; operations: EditOperation[] }
+      if (p.operations.length > MAX_CARD_CHANGES) return tooManyChanges(p.operations.length)
       return guarded(async () => {
         const row = await editDashboard(
           await viewerOf(ctx),
@@ -575,6 +637,22 @@ export function registerDashboardTools(orgId: string): void {
         return true
       }
       return (await storedVisibility(o, p.dashboardId)) === "org"
+    },
+    // Checked before any approval is staged: an admin never approves an edit that would then be
+    // refused (an unknown or duplicate block, an invalid map, a source the requester cannot
+    // read, a stale ifVersion), and one card lists every operation.
+    refuseBeforeGate: async (params: unknown, ctx) => {
+      const p = params as { dashboardId: string; ifVersion: number; operations: EditOperation[] }
+      if (p.operations.length > MAX_CARD_CHANGES) return tooManyChanges(p.operations.length)
+      if (ctx.userId === "system") return null
+      const viewer = await viewerOf({ ...ctx, scopes: [...ctx.scopes] })
+      return guarded(async () => {
+        await checkEdit(viewer, p.dashboardId, {
+          ifVersion: p.ifVersion,
+          operations: p.operations,
+        })
+        return null
+      })
     },
   })
   registerApprovalSummarizer(orgId, "kernel", "dashboards_edit", summarizeEdit)

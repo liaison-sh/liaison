@@ -22,7 +22,7 @@ import { createHash } from "node:crypto"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { DEMO_NEEDS } from "@liaison/shared"
+import { DEMO_WORLD_NEEDS } from "@liaison/shared"
 import { sql } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
@@ -197,7 +197,7 @@ async function seedAndSnapshot(tag: string): Promise<Snapshot> {
     variant: "visitor",
     locale: "en",
     owner: { email: `owner@${slug}.example`, name: "Snapshot Owner", password: "SnapOwner1!Seed" },
-    needs: [...DEMO_NEEDS],
+    needs: [...DEMO_WORLD_NEEDS.products],
     baseTime: BASE_TIME,
   })
   expect(result.failures).toEqual([])

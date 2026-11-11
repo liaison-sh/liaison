@@ -17,7 +17,7 @@
 // visitor org, so the popup opens by itself only until they have answered it.
 import {
   DEMO_NEED_SPECS,
-  DEMO_NEEDS,
+  DEMO_WORLD_NEEDS,
   type DemoNeed,
   type DemoWelcomeState,
   demoNeedsSchema,
@@ -71,7 +71,7 @@ export interface DemoScenarioRetryResponse {
  */
 export function pickedNeeds(marker: Record<string, unknown> | null): DemoNeed[] {
   const parsed = demoNeedsSchema.safeParse(marker?.needs)
-  return parsed.success ? parsed.data : [...DEMO_NEEDS]
+  return parsed.success ? parsed.data : [...DEMO_WORLD_NEEDS.products]
 }
 
 /** The session org's visitor marker, else 404 (a regular org, the reserved org). */

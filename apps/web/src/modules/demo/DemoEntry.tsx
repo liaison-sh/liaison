@@ -30,7 +30,7 @@
 // presets the picks; a link's `needs` win over the entry's.
 import {
   DEMO_ENTRY_NEEDS,
-  DEMO_NEEDS,
+  DEMO_WORLD_NEEDS,
   type DemoEntry as DemoEntryAnswer,
   type DemoEntryId,
   type DemoNeed,
@@ -81,7 +81,7 @@ const STEPS = ["scenarios", "company", "details"] as const
 export function parseNeedsParam(raw: string | null | undefined): DemoNeed[] {
   if (!raw) return []
   const values = raw.split(",").map((value) => value.trim().toLowerCase())
-  if (values.includes("all")) return [...DEMO_NEEDS]
+  if (values.includes("all")) return [...DEMO_WORLD_NEEDS.products]
   const picked: DemoNeed[] = []
   for (const value of values) {
     if (isDemoNeed(value) && !picked.includes(value)) picked.push(value)
@@ -233,7 +233,7 @@ export const DemoEntry: Component<DemoEntryProps> = (props) => {
   const startHint = (): string | null =>
     name().trim() === "" || email().trim() === "" ? i18n.t("kernel.demo.startHintDetails") : null
 
-  const everything = () => needs().length === DEMO_NEEDS.length
+  const everything = () => needs().length === DEMO_WORLD_NEEDS.products.length
   const pickSummary = (): string =>
     everything()
       ? i18n.t("kernel.demo.needEverything")
@@ -269,7 +269,7 @@ export const DemoEntry: Component<DemoEntryProps> = (props) => {
   }
 
   function exploreOnOwn(): void {
-    setNeeds([...DEMO_NEEDS])
+    setNeeds([...DEMO_WORLD_NEEDS.products])
     setExplore(true)
     setStep(2)
   }

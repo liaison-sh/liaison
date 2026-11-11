@@ -2,7 +2,7 @@
 //
 // The entry screen is the whole demo, so the one door and every refusal the
 // server can hand back are exercised here.
-import { DEMO_ENTRY_TEXT_MAX, DEMO_NEEDS, type DemoNeed } from "@liaison/shared"
+import { DEMO_ENTRY_TEXT_MAX, DEMO_WORLD_NEEDS, type DemoNeed } from "@liaison/shared"
 import { Route, Router } from "@solidjs/router"
 import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -54,9 +54,10 @@ function serve(replies: Record<string, Reply>): { calls: { url: string; body: un
   return { calls }
 }
 
-/** Tiles sit in `DEMO_NEEDS` order, so the DOM lists picks in that order. */
+/** Tiles sit in `DEMO_WORLD_NEEDS.products` order, so the DOM lists picks in that order. */
 const cmpTile = (a: string, b: string) =>
-  DEMO_NEEDS.indexOf(a as DemoNeed) - DEMO_NEEDS.indexOf(b as DemoNeed)
+  DEMO_WORLD_NEEDS.products.indexOf(a as DemoNeed) -
+  DEMO_WORLD_NEEDS.products.indexOf(b as DemoNeed)
 
 function renderEntry(onSignedIn = vi.fn()) {
   render(() => (

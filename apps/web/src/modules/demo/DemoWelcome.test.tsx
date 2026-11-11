@@ -6,7 +6,7 @@
 // scenarios, and every other way out counts as browsing. The answer is the
 // server's, so a reload after it never opens the popup again; the banner's
 // scenario count always does.
-import { DEMO_NEEDS, findTour, type TourListItem, type TourProgress } from "@liaison/shared"
+import { DEMO_WORLD_NEEDS, findTour, type TourListItem, type TourProgress } from "@liaison/shared"
 import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { TourApi } from "~/modules/tours/tour-api"
@@ -397,7 +397,7 @@ describe("DemoWelcome", () => {
   })
 
   describe("a new workspace in the same tab", () => {
-    const seven = () => DEMO_NEEDS.map((need) => item(need))
+    const seven = () => DEMO_WORLD_NEEDS.products.map((need) => item(need))
 
     /** Org A answered and finished a scenario; the session then moves to org B. */
     async function answerInOrgA(api: TourApi) {

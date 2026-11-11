@@ -162,7 +162,9 @@ jobs:
       # the namespace lock itself, in the runner's own temp dir.
       # The e-invoice schematron tests in the root suite validate with xmllint.
       - name: Install xmllint
-        run: sudo apt-get install -y --no-install-recommends libxml2-utils
+        uses: ./.github/actions/apt-install
+        with:
+          packages: libxml2-utils
       - name: Root script tests
         # These are small script tests. The runner's default memory reserve is
         # sized for whole test lanes and stops them on a normal CI machine.
@@ -267,14 +269,20 @@ jobs:
         # real ffmpeg, only the live, keyed media scenario. Same fallback as
         # apps/api/Dockerfile.
         run: bun install --frozen-lockfile || { echo "install scripts failed (CDN outage?), retrying with --ignore-scripts"; bun install --frozen-lockfile --ignore-scripts; }
-      - name: Install postgres/redis CLIs
+      - name: Install postgresql-common
+        uses: ./.github/actions/apt-install
+        with:
+          packages: postgresql-common
+      - name: Add the PostgreSQL apt repository
         # The client's major matches docker-compose's postgres: pg_dump refuses a
         # newer server, and the runner's own packages stop at an older major.
+        run: sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+      - name: Install postgres/redis CLIs
+        uses: ./.github/actions/apt-install
+        with:
+          packages: postgresql-client-17 redis-tools libxml2-utils
+      - name: Put the PostgreSQL 17 client first on PATH
         run: |
-          set -euo pipefail
-          sudo apt-get install -y --no-install-recommends postgresql-common
-          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
-          sudo apt-get install -y --no-install-recommends postgresql-client-17 redis-tools libxml2-utils
           # pg_wrapper in /usr/bin picks the runner's own older cluster, not the newest client.
           echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
       - name: Write .env.test

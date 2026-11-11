@@ -59,4 +59,5 @@ export const SAAS_AGENT_NATIVE_SPECS: DemoAgentNativeSpecs = {
     "somebody else and what can wait.",
   ownerAgentChannelTitles: [SAAS_CHANNEL_TITLES.pipeline, SAAS_CHANNEL_TITLES.handover],
   scenarioRoutines: false,
+  layerRoutineNames: SAAS_ROUTINES.map((r) => r.name),
 }

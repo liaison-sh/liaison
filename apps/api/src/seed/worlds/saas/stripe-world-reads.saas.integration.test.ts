@@ -7,6 +7,9 @@
 //
 //   bun run scripts/test-run.ts demo-seed --file src/seed/worlds/saas/stripe-world-reads.saas.integration.test.ts
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import path from "node:path"
 import { sql } from "drizzle-orm"
 import { dealsRollup } from "~/apps/projects/service/deals"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -14,6 +17,10 @@ import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { seedContext } from "~/seed/context"
 import { actorFor, asUser } from "~/seed/factories/people/actors"
 import { type SeedDemoWorldResult, seedDemoWorld } from "~/seed/tiers/demo/seed-demo"
+import { installFromDist } from "../../../../test-support/seed/install-dist-apps"
+
+/** The software world's catalog apps, installed the way a demo box has them. */
+const CATALOG_WORLD_APPS = ["invoicing", "stripe"]
 
 const BOARD_DATE = new Date("2026-11-09T08:30:00.000Z")
 const ORG_SLUG = "saas-world-reads"
@@ -32,9 +39,16 @@ async function rows(orgId: string, query: ReturnType<typeof sql>): Promise<Row[]
 }
 
 let world: SeedDemoWorldResult
+let appsRoot: string | null = null
 
 beforeAll(async () => {
   DemoModeTestAccess.set(true)
+  // Installed packages go to a temporary root unless the run names one.
+  if (!process.env.LIAISON_APPS_DIR) {
+    appsRoot = mkdtempSync(path.join(tmpdir(), "saas-world-reads-"))
+    process.env.LIAISON_APPS_DIR = path.join(appsRoot, "apps")
+  }
+  for (const app of CATALOG_WORLD_APPS) await installFromDist(app, crypto.randomUUID())
   world = await seedDemoWorld({
     orgSlug: ORG_SLUG,
     worldId: "saas",
@@ -46,6 +60,7 @@ beforeAll(async () => {
 
 afterAll(() => {
   DemoModeTestAccess.set(null)
+  if (appsRoot) rmSync(appsRoot, { recursive: true, force: true })
 })
 
 describe("the software world, seeded and read back", () => {
@@ -138,13 +153,8 @@ describe("the software world, seeded and read back", () => {
       sql`SELECT name, enabled FROM kernel.routines WHERE org_id = ${world.orgId} ORDER BY name`,
     )
     const on = routines.filter((r) => r.enabled === true).map((r) => r.name)
-    // The failed payments routine is the payments app's: on wherever that app is.
-    const payments = world.org.appsByName.stripe?.enabled === true
-    expect(on).toEqual(
-      payments
-        ? ["Deal follow-ups", "Failed payments", "Morning brief"]
-        : ["Deal follow-ups", "Morning brief"],
-    )
+    expect(world.org.appsByName.stripe?.enabled).toBe(true)
+    expect(on).toEqual(["Deal follow-ups", "Failed payments", "Morning brief"])
     const runs = await rows(
       world.orgId,
       sql`SELECT count(*)::int AS n FROM kernel.routine_runs WHERE org_id = ${world.orgId}`,

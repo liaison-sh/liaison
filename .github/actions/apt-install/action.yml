@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# Installs Ubuntu packages on a hosted runner. The runner's apt sources go
+# through Azure's mirror list; when that mirror does not resolve, the install
+# switches the sources to archive.ubuntu.com and tries again instead of failing.
+name: apt-install
+description: Install Ubuntu packages, falling back to archive.ubuntu.com when the runner mirror is down
+inputs:
+  packages:
+    description: Space-separated package names
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+      run: |
+        set -euo pipefail
+        apt_get() {
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o APT::Update::Error-Mode=any "$@"
+        }
+        install() {
+          apt_get update && apt_get install -y --no-install-recommends $PACKAGES
+        }
+        if ! install; then
+          echo "::warning::apt mirror unreachable; using archive.ubuntu.com"
+          sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://archive.ubuntu.com/ubuntu/#g' /etc/apt/sources.list.d/ubuntu.sources
+          install
+        fi

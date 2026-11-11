@@ -668,3 +668,47 @@ describe("the schema a model is sent, over the real catalog", () => {
     expect((await validate?.({ [id]: "3f2b8c1e-6a4d-4e9b-8f10-2c7d5e9a1b34" }))?.success).toBe(true)
   })
 })
+
+describe("a hard focus on a payments customer tab", () => {
+  const manifest = "bundled-apps/stripe/app.manifest.json"
+  const turn = (heavy: readonly string[] = []) => {
+    const appTools = manifestTools(manifest)
+    const names = Object.keys(appTools)
+    const tools = { ...kernelTools, ...appTools }
+    const focus = hardFocus("stripe", "customer")
+    const { preload } = focusCorePreload({ candidates: names, tools, focus })
+    const plan = planTurnToolBudget({
+      visible: [...coreTools, ...heavy, ...preload],
+      tools,
+      droppable: (n) => heavy.includes(n) || n in appTools,
+      preloaded: new Set(preload),
+      hardFocusApps: new Set(["stripe"]),
+      focus,
+      recency: new Map(heavy.map((name) => [name, 0])),
+      cap: TURN_TOOL_SCHEMA_TOKEN_CAP,
+    })
+    return { tools, focus, preload, plan }
+  }
+
+  it("ranks customers_get as acting on the focused customer", () => {
+    const t = turn()
+    expect(entityRank("stripe__customers_get", t.tools, t.focus)).toBe(2)
+  })
+
+  it("keeps customers_get, card_update_link and payments_search through shedding", () => {
+    const base = turn()
+    const load = (ns: readonly string[]) =>
+      ns.reduce((n, name) => n + wireTokens(name, { ...kernelTools, ...base.tools }[name]), 0)
+    const heavy = kernelLoadOver(
+      Math.max(
+        HEAVY_LOAD_TOKENS,
+        TURN_TOOL_SCHEMA_TOKEN_CAP - load(coreTools) - load(base.preload),
+      ),
+    )
+    const t = turn(heavy)
+    for (const name of ["customers_get", "card_update_link", "payments_search"]) {
+      expect(t.preload).toContain(`stripe__${name}`)
+      expect(t.plan.drop).not.toContain(`stripe__${name}`)
+    }
+  })
+})

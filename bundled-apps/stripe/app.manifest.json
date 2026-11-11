@@ -1,6 +1,6 @@
 {
   "name": "stripe",
-  "version": "0.1.24",
+  "version": "0.1.25",
   "kind": "app",
   "iconName": "credit-card",
   "description": "Stripe connector: a read mirror of customers, subscriptions, invoices, payments, refunds and disputes, kept current by a signed webhook.",
@@ -277,6 +277,7 @@
       ]
     },
     "customers_get": {
+      "focusCore": "customer",
       "deferLoading": true,
       "readOnly": true,
       "taintSource": true,
@@ -471,6 +472,7 @@
       ]
     },
     "payments_search": {
+      "focusCore": "customer",
       "deferLoading": true,
       "readOnly": true,
       "taintSource": true,
@@ -988,6 +990,7 @@
       }
     },
     "card_update_link": {
+      "focusCore": "customer",
       "description": "A Stripe page where a customer can pay with a new card: the customer portal login link when set, else their open invoice's page. Returns the sentence that is true for that link (effect); never stored.",
       "deferLoading": true,
       "readOnly": true,

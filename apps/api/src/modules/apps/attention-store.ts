@@ -32,7 +32,7 @@ import type { AttentionItem, AttentionProviderError } from "@liaison/shared"
 import { and, eq, inArray, sql } from "drizzle-orm"
 import type { RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
-import { type ActorContext, createRlsSession } from "~/db/rls"
+import { type ActorContext, createRlsSession, type UserContext } from "~/db/rls"
 import { appAttentionItems } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
 import { type AppEvent, onEvent } from "~/infra/events/event-bus"
@@ -186,7 +186,7 @@ export function normalizeProviderItems(raw: unknown): {
 
 export interface AttentionStoreDeps {
   listActiveUsers: (orgId: string) => Promise<string[]>
-  loadPersonActor: (orgId: string, userId: string) => Promise<ActorContext>
+  loadPersonActor: (orgId: string, userId: string) => Promise<UserContext>
   invoke: (
     reg: ProviderRegistration,
     appName: string,
@@ -206,7 +206,7 @@ async function defaultListActiveUsers(orgId: string): Promise<string[]> {
   })
 }
 
-async function defaultLoadPersonActor(orgId: string, userId: string): Promise<ActorContext> {
+async function defaultLoadPersonActor(orgId: string, userId: string): Promise<UserContext> {
   const { scopes, dimensionGrants } = await withPrivilegedDb(
     orgId,
     "attention-store:load-scopes",
@@ -308,7 +308,7 @@ export async function refreshAppAttention(
     try {
       const loaded = await deps.loadPersonActor(orgId, userId)
       // The run is always this org's and this person's, whatever was loaded.
-      const actor: ActorContext = { ...loaded, actorType: "user", userId, orgId }
+      const actor: UserContext = { ...loaded, actorType: "user", userId, orgId }
       const scopes = withAppDimensionAliases(actor, appName).scopes ?? []
       const allowed =
         !isAppUnavailableFor(orgId, appName, userId) && (!reg.scope || hasScope(reg.scope, scopes))

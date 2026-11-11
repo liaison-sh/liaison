@@ -701,7 +701,7 @@
       "schema": 22
     },
     "invoicing__customer_history": {
-      "desc": 261,
+      "desc": 302,
       "schema": 131
     },
     "invoicing__deferred_list": {

@@ -12,6 +12,8 @@ import type { OrgTraceReviews } from "./enumerate"
  * caller trace can stop at them: name → why.
  */
 export const TRUSTED_SOURCES: Record<string, string> = {
+  claimForReplay:
+    "a row of kernel.webhook_inbox (deny-all to the request roles), claimed by id AND org: written only by the inbound webhook route for an already verified delivery, under the org of the registration found under its URL key (webhooks/routes.ts dispatchVerifiedWebhook), or by the legacy drain from a retry job that route enqueued for the same org; the replay runs the handler for that org only (modules/webhooks/inbox.ts)",
   requireNodeCredential:
     "the node credential's row, refused unless node.orgId === c.get('orgId') and its owner is the caller (nodes/credentials.ts:51-59)",
   claimTeardowns:

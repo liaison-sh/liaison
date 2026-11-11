@@ -555,7 +555,7 @@ async function dispatchVerifiedWebhook(
       trusted: (registration.handler as ManifestHandlerRef).trusted === true,
     })
     if (holdMs !== null) {
-      let held: ClaimedDelivery | null
+      let held: ClaimedDelivery | null = null
       try {
         held = await storeDelivery(delivery, { holdMs })
       } catch (storeErr) {
@@ -578,7 +578,7 @@ async function dispatchVerifiedWebhook(
   // slot leaves the delivery in the inbox, which replays it (inbox.ts). The
   // claim's lease outlives the request ceiling, so only a dead process lets it
   // lapse.
-  let claimed: ClaimedDelivery | null
+  let claimed: ClaimedDelivery | null = null
   try {
     claimed = await storeDelivery(delivery, {
       claimLeaseMs: env.REQUEST_TIMEOUT_MS + INLINE_LEASE_MARGIN_MS,
@@ -592,7 +592,7 @@ async function dispatchVerifiedWebhook(
     log.warn({ replayHash, app: appName, endpoint: endpointName }, "Duplicate webhook rejected")
     return success(c, { received: true, duplicate: true })
   }
-  const inboxRow = claimed
+  const inboxRow: ClaimedDelivery = claimed
 
   // The delivery did not durably succeed: back to `pending` with its backoff,
   // and the replay job woken for that time. Never changes the response.

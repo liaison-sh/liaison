@@ -21,7 +21,7 @@
   },
   "app_invoicing.documents": {
     "rows": 418,
-    "digest": "8f7261da80089e96"
+    "digest": "cabb915370bc41a7"
   },
   "app_invoicing.issuer_profiles": {
     "rows": 1,
@@ -157,7 +157,7 @@
   },
   "kernel.approval_requests": {
     "rows": 6,
-    "digest": "0c35cd14d0f73077"
+    "digest": "66cbcf6ee4ae6f3e"
   },
   "kernel.apps": {
     "rows": 22,

@@ -284,7 +284,7 @@ export const KERNEL_RESET_RULES: Record<string, KernelResetRule> = {
   // caps are enforced from Redis counters, never from these rows, so keeping
   // them changes no limit, and a reset has no business rewriting the history.
   app_usage_daily: "keep",
-  // The apps' stored attention lists (0287): derived per person, recomputed
+  // The apps' stored attention lists (0288): derived per person, recomputed
   // after the next run of each app; a reset clears them with the data they
   // were computed from.
   app_attention_items: "clear",
@@ -377,6 +377,7 @@ export const KERNEL_RESET_RULES: Record<string, KernelResetRule> = {
   app_documents: "clear",
   app_document_usage: "clear",
   dashboards: "clear",
+  dashboard_viewer_states: "clear",
   // A visitor's app builder drafts, their versions and builds, and app logs (0276).
   app_drafts: "clear",
   app_draft_versions: "clear",

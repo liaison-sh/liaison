@@ -94,7 +94,13 @@ export {
 export type { ControlPlaneOutboxRow } from "./control-plane-outbox"
 export { controlPlaneOutbox } from "./control-plane-outbox"
 export { creditBalances, creditTransactions, modelPricing } from "./credits"
-export { type DashboardRow, type DashboardVisibility, dashboards } from "./dashboards"
+export {
+  type DashboardRow,
+  type DashboardViewerStateRow,
+  type DashboardVisibility,
+  dashboards,
+  dashboardViewerStates,
+} from "./dashboards"
 export { demoLeads } from "./demo-leads"
 export { demoSpend } from "./demo-spend"
 export { type DemoWorldMarkRow, demoWorldMarks } from "./demo-world-marks"

@@ -467,7 +467,7 @@ describe("db import enforcement", () => {
     "infra/boot-phase10.ts",
     "modules/attention/translator.ts",
     "modules/attention/state-materializer.ts",
-    // The apps' stored attention lists (0287): the refresh lists the org's
+    // The apps' stored attention lists (0288): the refresh lists the org's
     // active people, loads each one's permissions and writes their list, all
     // bound to org_id (the feed reads them under the reader's RLS).
     "modules/apps/attention-store.ts",

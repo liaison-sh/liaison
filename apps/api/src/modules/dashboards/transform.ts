@@ -12,6 +12,10 @@
 //   count without `y`) of `y`; an optional `series` field splits it into series.
 // - pie: the slice is the `groupBy` key or the `label` field; its value is `agg`
 //   of `value`.
+// - metric extras: `target` is echoed; `sparkline {field, bucket}` is the same
+//   aggregation per date bucket (zero-filled over the dashboard window for sum/count).
+// - compare: attachPrevious puts a second run's numbers (the comparison window) beside
+//   the first, aligned: a metric's value, a chart's values per label and series.
 // Sorting: `sort.field` names the category field (or "label"/"key") to order by
 // category, or the aggregated field (or "value") to order by value. Defaults:
 // line and bucketed bar by category ascending, bar and pie by value descending.
@@ -41,8 +45,22 @@ export interface BlockMeta {
   currency?: string
 }
 
+/** A chart's comparison values, index by index with its labels and series (null: none matches). */
+export interface PreviousSeries {
+  labels: (string | null)[]
+  series: { name: string; values: (number | null)[] }[]
+}
+
 export type BlockData =
-  | { kind: "metric"; value: number | null; meta: BlockMeta }
+  | {
+      kind: "metric"
+      value: number | null
+      meta: BlockMeta
+      /** The same metric over the comparison window, when one ran. */
+      previous?: number | null
+      target?: number
+      sparkline?: { labels: string[]; values: number[] }
+    }
   | {
       kind: "table"
       columns: { field: string; label: string; format?: BlockMap["format"] }[]
@@ -54,7 +72,14 @@ export type BlockData =
       labels: string[]
       series: { name: string; values: number[] }[]
       meta: BlockMeta
+      previous?: PreviousSeries
     }
+
+/** Two calendar days (YYYY-MM-DD), inclusive. */
+export interface TransformWindow {
+  from: string
+  to: string
+}
 
 export class TransformError extends Error {
   code = "invalid_map" as const
@@ -271,7 +296,7 @@ export function transformBlock(
   type: BlockType,
   map: BlockMap,
   result: unknown,
-  opts: { rowsPath?: string } = {},
+  opts: { rowsPath?: string; window?: TransformWindow | null } = {},
 ): BlockData {
   const { rows: allRows, object } = extractRows(result, opts.rowsPath)
   const sourceRows = allRows?.length ?? 0
@@ -285,13 +310,22 @@ export function transformBlock(
   const rows = allRows ? allRows.slice(0, MAX_SOURCE_ROWS) : null
 
   if (type === "metric") {
+    const extras = map.target !== undefined ? { target: map.target } : {}
     if (!rows) {
       if (!map.value)
         throw new TransformError("the source returned one object: map.value names its field")
-      return { kind: "metric", value: toNumber(readPath(object, map.value)), meta }
+      return { kind: "metric", value: toNumber(readPath(object, map.value)), meta, ...extras }
     }
     const agg = map.agg ?? (map.value ? "sum" : "count")
-    return { kind: "metric", value: aggregate(agg, rows, map.value), meta }
+    return {
+      kind: "metric",
+      value: aggregate(agg, rows, map.value),
+      meta,
+      ...extras,
+      ...(map.sparkline
+        ? { sparkline: sparklineOf(rows, map.sparkline, agg, map.value, meta, opts.window) }
+        : {}),
+    }
   }
 
   if (!rows) {
@@ -397,4 +431,110 @@ function splitSeries(
       .map((s) => s.name),
   )
   return all.filter((s) => keep.has(s.name))
+}
+
+/** The most points a zero-filled sparkline gets; a longer window keeps only its buckets with data. */
+const MAX_SPARKLINE_POINTS = 400
+
+/** Every bucket key from `from` to `to` (YYYY-MM-DD), or null past MAX_SPARKLINE_POINTS. */
+function bucketKeysBetween(from: string, to: string, bucket: DateBucket): string[] | null {
+  const start = toDate(`${from}T00:00:00Z`)
+  const end = toDate(`${to}T00:00:00Z`)
+  if (!start || !end || start > end) return null
+  const keys: string[] = []
+  const cur = new Date(start)
+  while (cur <= end) {
+    const key = bucketKey(cur, bucket)
+    if (keys[keys.length - 1] !== key) keys.push(key)
+    if (keys.length > MAX_SPARKLINE_POINTS) return null
+    cur.setUTCDate(cur.getUTCDate() + 1)
+  }
+  return keys
+}
+
+function sparklineOf(
+  rows: Row[],
+  spec: { field: string; bucket: DateBucket },
+  agg: Aggregation,
+  valueField: string | undefined,
+  meta: BlockMeta,
+  window: TransformWindow | null | undefined,
+): { labels: string[]; values: number[] } {
+  // Rows without a usable date are already counted by the metric: not skipped twice.
+  const scratch: BlockMeta = { ...meta, skippedRows: 0 }
+  const groups = groupRows(rows, spec.field, spec.bucket, scratch)
+  const byKey = new Map(groups.map((g) => [g.key, aggregate(agg, g.rows, valueField) ?? 0]))
+  const fill =
+    window && (agg === "sum" || agg === "count")
+      ? bucketKeysBetween(window.from, window.to, spec.bucket)
+      : null
+  const labels = fill ?? [...byKey.keys()].sort()
+  return { labels, values: labels.map((k) => byKey.get(k) ?? 0) }
+}
+
+/** A bucket key's position on its own scale: days, weeks or months since the epoch. */
+function bucketOrdinal(key: string, bucket: DateBucket): number | null {
+  if (bucket === "month") {
+    const m = /^(\d{4})-(\d{2})$/.exec(key)
+    return m ? Number(m[1]) * 12 + Number(m[2]) - 1 : null
+  }
+  const d = toDate(`${key}T00:00:00Z`)
+  if (!d) return null
+  const days = Math.round(d.getTime() / 86_400_000)
+  return bucket === "week" ? Math.floor((days + 3) / 7) : days
+}
+
+/**
+ * `current` with `previous` (the same block over the comparison window) beside it. A metric
+ * takes the previous value. A chart takes, for each of its labels, the previous label at the
+ * same place: a date bucket at the same distance from its window's start (`bucket` with both
+ * windows), any other category the same label; series match by name. A table, or two shapes
+ * that differ, is returned as it is.
+ */
+export function attachPrevious(
+  current: BlockData,
+  previous: BlockData,
+  align: { bucket?: DateBucket; window?: TransformWindow; compareWindow?: TransformWindow } = {},
+): BlockData {
+  if (current.kind === "metric") {
+    return previous.kind === "metric" ? { ...current, previous: previous.value } : current
+  }
+  if (current.kind === "table" || previous.kind !== current.kind) return current
+  const prevIndex = new Map<string, number>()
+  previous.labels.forEach((l, i) => {
+    prevIndex.set(l, i)
+  })
+  let match: (label: string) => number | undefined = (label) => prevIndex.get(label)
+  const { bucket, window, compareWindow } = align
+  if (bucket && window && compareWindow) {
+    const curStart = bucketOrdinal(bucketKey(new Date(`${window.from}T00:00:00Z`), bucket), bucket)
+    const prevStart = bucketOrdinal(
+      bucketKey(new Date(`${compareWindow.from}T00:00:00Z`), bucket),
+      bucket,
+    )
+    const byOffset = new Map<number, number>()
+    previous.labels.forEach((l, i) => {
+      const o = bucketOrdinal(l, bucket)
+      if (o !== null && prevStart !== null) byOffset.set(o - prevStart, i)
+    })
+    match = (label) => {
+      const o = bucketOrdinal(label, bucket)
+      return o === null || curStart === null ? undefined : byOffset.get(o - curStart)
+    }
+  }
+  const at = current.labels.map(match)
+  const prevSeries = new Map(previous.series.map((s) => [s.name, s.values]))
+  return {
+    ...current,
+    previous: {
+      labels: at.map((i) => (i === undefined ? null : (previous.labels[i] ?? null))),
+      series: current.series.map((s) => {
+        const values = prevSeries.get(s.name)
+        return {
+          name: s.name,
+          values: at.map((i) => (i === undefined || !values ? null : (values[i] ?? null))),
+        }
+      }),
+    },
+  }
 }

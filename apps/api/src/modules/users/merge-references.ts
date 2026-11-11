@@ -149,6 +149,7 @@ export const USER_FK_DISPOSITION: Record<string, ReferenceDisposition> = {
   "kernel.password_resets.user_id": credential("password reset tokens"),
   "kernel.user_roles.user_id": credential("role memberships (never granted to another person)"),
   "kernel.user_preferences.user_id": credential("settings"),
+  "kernel.dashboard_viewer_states.user_id": credential("dashboard time range choices"),
   "kernel.file_upload_sessions.created_by": credential("in-flight uploads"),
   "kernel.import_uploads.created_by": credential("in-flight import uploads"),
   "kernel.secret_requests.requested_by": credential("in-flight secret requests"),

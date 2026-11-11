@@ -12,6 +12,10 @@
 // its source. A personal dashboard is a plain write. A person's own REST call
 // is never gated: their scopes decide (service.ts). A block whose params carry date
 // tokens ({{today-30d}}) shows them as written and the date each one is today.
+//
+// dashboards_edit changes a dashboard by an ordered list of operations (edit.ts), applied
+// at once or not at all; on an org dashboard the whole list is ONE approval whose card
+// numbers the operations, one plain line each (describeOperations).
 
 import { and, eq } from "drizzle-orm"
 import { z } from "zod"
@@ -21,23 +25,39 @@ import type { UserContext } from "~/db/rls"
 import { dashboards, userRoles } from "~/db/schema/kernel"
 import { type ApprovalSummarizer, toolRegistry } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
+import {
+  describeOperations,
+  type EditOperation,
+  editOperationSchema,
+  MAX_EDIT_OPERATIONS,
+} from "~/modules/dashboards/edit"
 import { computeBlock, dashboardTimezone } from "~/modules/dashboards/execute"
 import {
   DateTokenError,
+  type DayWindow,
   dateTokensIn,
   hasDateTokens,
   resolveDateTokens,
+  resolveTimeRange,
 } from "~/modules/dashboards/relative-dates"
 import {
   createDashboard,
   DashboardError,
   deleteDashboard,
+  editDashboard,
   getDashboard,
   listDashboards,
   updateDashboard,
 } from "~/modules/dashboards/service"
 import { listEligibleSources } from "~/modules/dashboards/sources"
-import { type DashboardSpec, dashboardBlockSchema, specIssues } from "~/modules/dashboards/spec"
+import {
+  blockRangeMode,
+  type DashboardSpec,
+  dashboardBlockSchema,
+  dashboardDefaultRange,
+  specIssues,
+  timeRangeSchema,
+} from "~/modules/dashboards/spec"
 
 const READ = "kernel:dashboards:read"
 const WRITE = "kernel:dashboards:write"
@@ -127,21 +147,34 @@ const specParam = z
   .object({
     v: z.literal(1),
     layout: z.literal("grid").optional(),
+    timeRange: z.record(z.string(), z.unknown()).optional(),
+    compare: z.string().optional(),
     blocks: z.array(z.record(z.string(), z.unknown())).max(24),
   })
   .describe(
-    "The dashboard spec: {v:1, blocks:[{id, type, title, width, source, map, refreshSec?}]}, at most 24 blocks. kernel__skill_read build-dashboard for one worked block per chart type.",
+    "The dashboard spec: {v:1, timeRange?, compare?, blocks:[{id, type, title, width, source, map, refreshSec?, timeRange?}]}, at most 24 blocks. kernel__skill_read build-dashboard for one worked block per chart type and the dashboard time range.",
   )
 
+/** The days a spec's default range covers today (what {{range.*}} mean on the card). */
+function defaultWindow(spec: unknown, timeZone: string): DayWindow {
+  const raw = (spec ?? {}) as { timeRange?: unknown; compare?: unknown }
+  const parsed = timeRangeSchema.safeParse(raw.timeRange)
+  const tr = dashboardDefaultRange(parsed.success ? { timeRange: parsed.data } : {}).timeRange
+  return resolveTimeRange(tr, { timeZone, now: new Date() })
+}
+
 /** A block's date tokens with what each is today: `{{today-30d}} = 2026-10-11`. */
-function tokenDates(source: Record<string, unknown>, timeZone: string): string {
+function tokenDates(source: Record<string, unknown>, timeZone: string, range: DayWindow): string {
   const value = source.kind === "store" ? source.query : source.params
   const now = new Date()
   return dateTokensIn(value)
     .slice(0, 4)
     .map((token) => {
       try {
-        return `${token} = ${resolveDateTokens(token, { timeZone, now })}`
+        const date = resolveDateTokens(token, { timeZone, now, range })
+        return token.startsWith("{{range.")
+          ? `${token} = ${date} (the dashboard range by default)`
+          : `${token} = ${date}`
       } catch (err) {
         if (err instanceof DateTokenError) return `${token} (not a date token)`
         throw err
@@ -162,13 +195,14 @@ function blockLines(spec: unknown, timeZone: string, max = 6): string[] {
   const blocks = Array.isArray((spec as { blocks?: unknown })?.blocks)
     ? ((spec as { blocks: unknown[] }).blocks as Record<string, unknown>[])
     : []
+  const range = defaultWindow(spec, timeZone)
   const lines = blocks.slice(0, max).map((b) => {
     const source = (b.source ?? {}) as Record<string, unknown>
     const from =
       source.kind === "store"
         ? `store ${String(source.app)}/${String(source.collection)}`
         : String(source.tool ?? "(no source)")
-    const dates = tokenDates(source, timeZone)
+    const dates = tokenDates(source, timeZone, range)
     return `${String(b.type ?? "block")} "${String(b.title ?? b.id ?? "")}" from ${from}${dates ? `, dates ${dates} (today, rolling)` : ""}`
   })
   if (blocks.length > max) lines.push(`and ${blocks.length - max} more blocks`)
@@ -239,6 +273,53 @@ const summarizeUpdate: ApprovalSummarizer = async (raw, ctx) => {
   }
 }
 
+/**
+ * The pooled card of one dashboards_edit call: one numbered line per operation, as they apply
+ * in order to the dashboard read now (titles, positions, sources, date tokens and what they
+ * mean today). A deterministic function of the call and the saved dashboard, computed once
+ * when the approval is created.
+ */
+const summarizeEdit: ApprovalSummarizer = async (raw, ctx) => {
+  const p = (raw ?? {}) as { dashboardId?: string; operations?: unknown }
+  const ops = z.array(editOperationSchema).safeParse(p.operations)
+  const [current] =
+    typeof p.dashboardId === "string"
+      ? await ctx.tx
+          .select({
+            title: dashboards.title,
+            visibility: dashboards.visibility,
+            spec: dashboards.spec,
+          })
+          .from(dashboards)
+          .where(eq(dashboards.id, p.dashboardId))
+          .limit(1)
+      : []
+  const title = current?.title ?? p.dashboardId ?? ""
+  if (!ops.success || !current) {
+    return {
+      kind: "dashboard_edit",
+      title: `Change the org dashboard "${title}"`,
+      lines: ["The changes could not be read: approving applies them as sent, or refuses them."],
+    }
+  }
+  const lines = describeOperations(
+    {
+      title: current.title,
+      visibility: current.visibility,
+      spec: current.spec as unknown as DashboardSpec,
+    },
+    ops.data,
+    { timeZone: await dashboardTimezone(ctx.orgId), now: new Date() },
+  )
+  const n = ops.data.length
+  return {
+    kind: "dashboard_edit",
+    title: `Change the org dashboard "${title}": ${n} change${n === 1 ? "" : "s"}`,
+    subtitle: "Everyone in the organisation sees this dashboard. All changes apply together.",
+    lines,
+  }
+}
+
 const summarizeDelete: ApprovalSummarizer = async (raw, ctx) => {
   const id = (raw as { id?: string } | null)?.id
   const [current] =
@@ -298,19 +379,39 @@ export function registerDashboardTools(orgId: string): void {
       block: z
         .record(z.string(), z.unknown())
         .describe("One block: {id, type, title, source, map}, as in the spec."),
+      timeRange: z
+        .record(z.string(), z.unknown())
+        .optional()
+        .describe(
+          'The dashboard range its {{range.from}} / {{range.to}} read, e.g. {preset:"lastMonth"}. Default: the last 30 days.',
+        ),
     }),
     handler: (async (params: unknown, ctx: HandlerCtx) => {
-      const parsed = dashboardBlockSchema.safeParse((params as { block?: unknown }).block)
+      const p = params as { block?: unknown; timeRange?: unknown }
+      const parsed = dashboardBlockSchema.safeParse(p.block)
       if (!parsed.success)
         return { ok: false, reason: "invalid_block", problems: specIssues(parsed.error) }
+      const tr = timeRangeSchema.safeParse(p.timeRange ?? { preset: "last30d" })
+      if (!tr.success)
+        return { ok: false, reason: "invalid_time_range", problems: specIssues(tr.error) }
       const viewer = await viewerOf(ctx)
+      const range = resolveTimeRange(tr.data, {
+        timeZone: await dashboardTimezone(ctx.orgId),
+        now: new Date(),
+      })
       const outcome = await computeBlock(parsed.data, {
         viewer,
         dashboardId: null,
+        range,
         ...(ctx.agentExecutionThreadId ? { threadId: ctx.agentExecutionThreadId } : {}),
         ...(ctx.abortSignal ? { signal: ctx.abortSignal } : {}),
       })
-      if (outcome.ok) return { ok: true, data: outcome.data }
+      if (outcome.ok) {
+        // A block that follows the dashboard range says which days the preview read.
+        return blockRangeMode(parsed.data) === "dashboard"
+          ? { ok: true, data: outcome.data, range }
+          : { ok: true, data: outcome.data }
+      }
       const source = parsed.data.source
       const words = source.kind === "tool" ? source.tool.replace(/[:_-]+/g, " ") : source.collection
       const alternatives =
@@ -422,6 +523,61 @@ export function registerDashboardTools(orgId: string): void {
     },
   })
   registerApprovalSummarizer(orgId, "kernel", "dashboards_update", summarizeUpdate)
+
+  toolRegistry.set([orgId, "kernel", "dashboards_edit"], {
+    appName: "kernel",
+    name: "dashboards_edit",
+    deferLoading: true,
+    description:
+      "Change a dashboard by a list of operations, applied in order and together (all or none): addBlock, updateBlock (partial), removeBlock, moveBlock, setTitle, setTimeRange (the default range and comparison), setVisibility. Put EVERY change the person asked for in ONE call: on an org dashboard the whole list waits for ONE approval; a personal one saves at once. Pass ifVersion from kernel__dashboards_get. Preview a new or changed block with kernel__dashboards_preview_block first.",
+    searchKeywords: ["dashboard", "modifier", "edit", "block", "bloc", "période"],
+    requiredScopes: [WRITE],
+    params: z.object({
+      dashboardId: z.string().uuid(),
+      ifVersion: z
+        .number()
+        .int()
+        .min(1)
+        .describe("The version kernel__dashboards_get returned: a newer save refuses the edit."),
+      operations: z
+        .array(editOperationSchema)
+        .min(1)
+        .max(MAX_EDIT_OPERATIONS)
+        .describe(
+          `1 to ${MAX_EDIT_OPERATIONS} operations, applied in order: {op:"addBlock", block, position?}, {op:"updateBlock", blockId, changes}, {op:"removeBlock", blockId}, {op:"moveBlock", blockId, position}, {op:"setTitle", title}, {op:"setTimeRange", timeRange?, compare?}, {op:"setVisibility", visibility}. A position is an index (0 = first) or {before: blockId} / {after: blockId}.`,
+        ),
+    }),
+    handler: (async (params: unknown, ctx: HandlerCtx) => {
+      const p = params as { dashboardId: string; ifVersion: number; operations: EditOperation[] }
+      return guarded(async () => {
+        const row = await editDashboard(
+          await viewerOf(ctx),
+          p.dashboardId,
+          { ifVersion: p.ifVersion, operations: p.operations },
+          ctx.db,
+        )
+        return {
+          id: row.id,
+          title: row.title,
+          visibility: row.visibility,
+          version: row.version,
+          blocks: row.spec.blocks.map((b) => b.id),
+        }
+      })
+    }) as (params: unknown, ctx: any) => Promise<unknown>,
+    writesToTable: SINK,
+    approveScope: ADMIN,
+    approvalImpact: "internal",
+    gatedWhen: async (params: unknown, { orgId: o }: { orgId: string }) => {
+      const p = (params ?? {}) as { dashboardId?: unknown; operations?: unknown }
+      const ops = Array.isArray(p.operations) ? p.operations : []
+      if (ops.some((op) => (op as { visibility?: unknown } | null)?.visibility === "org")) {
+        return true
+      }
+      return (await storedVisibility(o, p.dashboardId)) === "org"
+    },
+  })
+  registerApprovalSummarizer(orgId, "kernel", "dashboards_edit", summarizeEdit)
 
   toolRegistry.set([orgId, "kernel", "dashboards_delete"], {
     appName: "kernel",

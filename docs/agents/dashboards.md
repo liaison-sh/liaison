@@ -59,6 +59,23 @@ Your personal agent builds dashboards with your access. A named agent, such as a
 
 Nobody else sees a personal dashboard, administrators included. Your own changes are never held for approval: your scopes decide. When the **agent** creates an org dashboard, makes one org-visible, or changes or deletes an org dashboard, the change waits for a person who holds `kernel:dashboards:admin`. The approval card lists the title and each block with the tool or collection it reads, and the rolling dates it uses with the date each one stands for today. A personal dashboard the agent makes for you saves at once.
 
+## Ask your agent to change a dashboard
+
+Ask for the changes in plain words, for example: "Add Google spend by campaign after the orders, remove the stock table, and open the dashboard on last month." The agent sends everything you asked for in one go, applied in order: add, change, move or remove a block, rename the dashboard, set the period it opens on, or share it. Either every change is saved, or none is.
+
+On an org dashboard the whole request waits for **one** approval by a person who holds `kernel:dashboards:admin`. Its card numbers the changes, one line each: the block added, changed, moved or removed with its title and position, the tool or collection it reads with its settings, each date in them and what it stands for today, and the period the dashboard opens on. If someone saved the dashboard in the meantime, the change is refused and the agent reads it again. A change to your personal dashboard saves at once.
+
+## Time range and comparison
+
+A dashboard can follow a time range: last 7, 30 or 90 days, this month, quarter or year to date, last month, quarter or year, or two dates of your choice. The blocks that follow it are compared with another period: the same period last year by default, or the period just before. A metric then shows its previous value beside the current one, and a chart the previous values for each point.
+
+- Whoever builds the dashboard (usually your agent) sets the range it opens on. Without one, it is the last 30 days, compared with last year.
+- The range you choose on a dashboard is remembered for you alone, on that dashboard. Others keep their own choice.
+- A block that keeps its own dates (for example "open orders, last 90 days", or stock with no date) is not affected by the range and is not compared. It says the dates it reads.
+- Dashboards built before time ranges existed keep their blocks' own dates.
+
+A metric can also show a goal (its target) and its trend over the period as a small line.
+
 ## What a block can read
 
 Each block reads one source:
@@ -77,15 +94,20 @@ A block's source settings can hold a rolling date, so "this month" or "the last 
 | Written | Stands for |
 | --- | --- |
 | `{{today}}` | Today. |
+| `{{yesterday}}` | Yesterday. |
 | `{{startOfWeek}}` | Monday of this week. |
 | `{{startOfMonth}}` | The 1st of this month. |
+| `{{startOfQuarter}}` | The 1st day of this quarter. |
 | `{{startOfYear}}` | January 1st of this year. |
+| `{{endOfWeek}}`, `{{endOfMonth}}`, `{{endOfQuarter}}`, `{{endOfYear}}` | The last day of this week (Sunday), month, quarter or year. |
+| `{{range.from}}`, `{{range.to}}` | The first and last day of the dashboard's time range, as the viewer chose it. |
+| `{{range.fromTime}}`, `{{range.toTime}}` | The first and last second of that range, as a date and time with the organization's UTC offset. |
 
-Each may carry one offset: `+` or `-`, a number, and `d` (days), `w` (weeks), `M` (months) or `y` (years). For example `{{today-30d}}`, `{{startOfMonth-1M}}` (the 1st of last month) or `{{startOfMonth-1d}}` (the last day of last month). A month or year offset keeps the day, moved back to the month's last day when the month is shorter. A rolling date also works inside a longer text, such as a query's `BETWEEN '{{today-29d}}' AND '{{today}}'`. A date written out in full stays that date. Anything else between `{{` and `}}` is refused when the block is previewed or saved.
+Each may carry one offset (not the two date and time forms): `+` or `-`, a number, and `d` (days), `w` (weeks), `M` (months) or `y` (years). For example `{{today-30d}}`, `{{startOfMonth-1M}}` (the 1st of last month) or `{{endOfMonth-1M}}` (the last day of last month). A month or year offset keeps the day, moved back to the month's last day when the month is shorter; on an end-of date it moves the whole period, so `{{endOfMonth-1M}}` is always last month's last day. A rolling date also works inside a longer text, such as a query's `BETWEEN '{{today-29d}}' AND '{{today}}'`. A date written out in full stays that date. Anything else between `{{` and `}}` is refused when the block is previewed or saved.
 
 ## How long figures are kept
 
-A block's figures are kept for a minute, or for the block's own interval, set by whoever built it (at most 15 minutes, whatever the interval). They are kept per person and per set of access rights (scopes, dimension grants and roles), so a change to your access is never answered with figures read under the old one. A block with rolling dates reads again as soon as its dates move. A block runs at most four sources at once for one person; the rest wait their turn. One refresh per block per person every 30 seconds. A block whose source failed keeps that answer for 30 seconds too, so opening the dashboard again does not run the failing source again; **Refresh** reads it at once. Closing the tab stops its blocks' reads.
+A block's figures are kept for a minute, or for the block's own interval, set by whoever built it (at most 15 minutes, whatever the interval). They are kept per person and per set of access rights (scopes, dimension grants and roles), so a change to your access is never answered with figures read under the old one. A block with rolling dates reads again as soon as its dates move, and a block that follows the time range keeps its figures per range. A block runs at most four sources at once for one person; the rest wait their turn. One refresh per block per person every 30 seconds. A block whose source failed keeps that answer for 30 seconds too, so opening the dashboard again does not run the failing source again; **Refresh** reads it at once. Closing the tab stops its blocks' reads.
 
 ## The dashboards API
 
@@ -95,9 +117,12 @@ Signed-in requests, with the person's own access:
 | --- | --- |
 | `GET /api/dashboards` | Your dashboards and the org's. |
 | `POST /api/dashboards` | Create one: `{ title, visibility, spec }`. |
-| `GET /api/dashboards/:id` | One dashboard and its spec. |
+| `GET /api/dashboards/:id` | One dashboard and its spec, the range it opens on for you (`range`, with `saved` when it is your own choice), its default (`defaultRange`), and which blocks follow the range (`blockTimeRange`). |
 | `PATCH /api/dashboards/:id` | Change `title`, `visibility` or `spec`; `ifVersion` refuses to overwrite a newer save (409). |
 | `DELETE /api/dashboards/:id` | Delete it. |
-| `GET /api/dashboards/:id/blocks/:blockId/data` | One block's data, run as you. `?refresh=1` reads it again. |
+| `GET /api/dashboards/:id/blocks/:blockId/data` | One block's data, run as you. `?refresh=1` reads it again. `?range=<preset>` (`last7d`, `last30d`, `last90d`, `mtd`, `lastMonth`, `qtd`, `lastQuarter`, `ytd`, `lastYear`), or `?from=YYYY-MM-DD&to=YYYY-MM-DD`, and `?compare=lastYear\|previousPeriod\|none` set the range; without them, the dashboard's default. |
+| `GET /api/dashboards/:id/viewer-state` | The range you last chose on this dashboard, or `null`. |
+| `PUT /api/dashboards/:id/viewer-state` | Remember your range: `{ timeRange: { preset, from?, to? }, compare }`. |
+| `DELETE /api/dashboards/:id/viewer-state` | Forget it: the dashboard opens on its default again. |
 
-A block's data is the chart's shape (`kind`, then `value`, `rows` or `labels` and `series`, and `meta`), or the block's own refusal `{ error, message }` with `error` one of `no_access`, `not_allowed`, `unknown_tool`, `source_failed`, `invalid_map` or `rate_limited`. Both answer 200, so the other blocks still render. A spec the server refuses answers 422 with every problem named.
+A block's data is the chart's shape (`kind`, then `value`, `rows` or `labels` and `series`, and `meta`; with a comparison, `previous`; a metric's `target` and `sparkline`), with `computedAt`, `window` (the days it read, or its own dates) and `compareWindow`, or the block's own refusal `{ error, message }` with `error` one of `no_access`, `not_allowed`, `unknown_tool`, `source_failed`, `invalid_map` or `rate_limited`. Both answer 200, so the other blocks still render. A spec the server refuses answers 422 with every problem named.

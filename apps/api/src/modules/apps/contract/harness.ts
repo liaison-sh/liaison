@@ -18,6 +18,13 @@
 //                 be judged until its egress is recorded;
 //   missing-export / load  the manifest names an export the bundle lacks, or
 //                 the bundle does not evaluate.
+//
+// A passing entry is TRIVIAL when it has no recorded fixture and every run
+// rejected its (empty) input: it threw or answered `{ error }` before reaching
+// anything the contract checks (module state, waits, budget). Such a pass
+// proves nothing; apps.contract.test.ts counts them per app
+// (trivial-passes.json), and the count only shrinks: recording the entry's
+// fixture is what turns it into a real pass.
 
 import { join } from "node:path"
 import { type RunLimits, runLimits } from "~/modules/apps/run-limits"
@@ -50,6 +57,8 @@ export interface EntryVerdict {
   /** Empty: the entry keeps the contract. */
   reasons: ContractReason[]
   detail?: string
+  /** Passed only by rejecting empty input, with no fixture (see the header). */
+  trivial?: true
 }
 
 export type BridgeSurface = ReadonlyArray<readonly [string, "sync" | "async"]>
@@ -78,6 +87,13 @@ export function productionLimits(entry: ContractEntry): RunLimits {
 interface RunRecord {
   outcome: ContractRunOutcome
   stats: ReplayStats
+}
+
+/** The run refused its input: it threw, or answered with a top-level `error`. */
+function rejected(r: ContractRunOutcome): boolean {
+  if (!r.ok) return true
+  const res = r.result
+  return typeof res === "object" && res !== null && !Array.isArray(res) && "error" in res
 }
 
 function answerOf(r: ContractRunOutcome): string {
@@ -150,7 +166,15 @@ export async function runAppContract(
         const first = await runOnce()
         // A run stopped by a limit may leave the isolate unusable: judge, then start a new one.
         const second = first.outcome.overrun ? null : await runOnce()
-        verdicts.push(judge(entry, limits, first, second))
+        const verdict = judge(entry, limits, first, second)
+        if (
+          verdict.reasons.length === 0 &&
+          !fixture &&
+          [first, second].every((r) => r !== null && rejected(r.outcome))
+        ) {
+          verdict.trivial = true
+        }
+        verdicts.push(verdict)
         if (first.outcome.overrun || second?.outcome.overrun) {
           if (own) own.dispose()
           else {

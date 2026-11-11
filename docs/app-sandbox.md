@@ -103,6 +103,9 @@ The bridge surface is large and grows as apps need new host capabilities. Core c
 | Network | `fetch(url, opts)` — domain allowlist enforced. `opts.auth` (`{connection, identifier?, scheme: "header:<Name>" \| "bearer" \| "basic", fields?, exchange?}`) has the host add the connection's credential, only to that connection's own hosts, and redact it from the answer; `opts.configSecrets` (`{placeholder: configKey}`) has the host write a declared config secret exactly where the manifest's `secrets` places it (see below), else `secret_placement_refused` |
 | Data store | `store_get`, `store_set`, `store_update`, `store_delete`, `store_query`, `store_count` (`ctx.store.*`, the calling app's collections; the writes are refused on a read-only run) |
 | Connections | `connections_getToken(connName, identifier?)`, `connections_getAccounts(connName)`, `connections_describe(connName)` (owner, connected by, health, token expiry, whether a refresh token is stored; no secrets), `connections_getCredentials`, `connections_getSettings(connName, identifier?)` (the fields marked `readable`, and which fields are empty; no secrets), `connections_disconnect` |
+| SQL connections | `sql_query(connName, request)`, `sql_reads(connName)`, `sql_schema(connName, request)`, `sql_probe(connName, request)` (`ctx.sql.*`: a database the platform holds the connection to, see "Query a database"; read-only, no secrets) |
+| Accounts | `accounts_list(connName, opts)`, `accounts_setMetadata(accountId, patch)` (`ctx.accounts.*`: the app's own accounts, the organization's and the caller's own; `setMetadata` is refused on a read-only run) |
+| Directory | `kernel_findOne(entity, id)`, `kernel_findByIds(entity, ids)` (`ctx.kernel.*`: a user's directory fields or a contact of the caller's organization, up to 200 ids) |
 | Logging | `log_info`, `log_warn`, `log_error`, `log_debug` (`ctx.logger.*`; `console.*` lines arrive here too, see "Console output") |
 | Config | `config_get(key)`, `config_has(key)`, `crypto_hmacSha256Base64ForConfig(key, data)`, `crypto_verifyHmacForConfig(key, data, signature, "base64" \| "hex")` (sign or verify with a declared config secret, which stays on the host) |
 
@@ -497,6 +500,42 @@ export async function backfill(params, ctx) {
 **Wake up later with `ctx.timers.wakeIn(seconds, name, payload, { jobId })`.** Runs the job `name` in `seconds` (0 to 30 days). A wait past 15 minutes is kept: the job waits 15 minutes at a time until it is due. With `jobId`, a second timer of the same id is dropped while the first is pending; the woken job may arm the same id again.
 
 **Enqueue a job with `ctx.jobs.enqueue(name, payload, { delay, jobId })`.** `delay` is in milliseconds, at most 15 minutes (a longer one is cut to 15 minutes: use `timers.wakeIn`). `jobId` drops a second enqueue of that id while the first waits or runs. Both ids are scoped to your organization. The job runs as the person whose run enqueued it, or as the app.
+
+### Query a database (`ctx.sql`)
+
+An app that reads an organization's database declares a SQL connection: a `credentials` connection with an `sql` block. The organization stores either a Postgres or Redshift DSN (`connectionString`, with optional `dialect` and `statementTimeoutMs`) or a db-gate (`gateUrl` and `gateToken`). The server holds the connection pool and the credentials. App code names the connection and gets rows back, on every executor.
+
+```json
+"connections": {
+  "warehouse": {
+    "type": "credentials",
+    "allowedDomains": [],
+    "credentialFields": [{ "name": "connectionString", "type": "password", "label": "DSN" }],
+    "sql": { "rawQuery": { "scope": "my-app:query:read" } }
+  }
+}
+```
+
+```typescript
+const out = await ctx.sql.query("warehouse", { sql: "SELECT id, total FROM orders WHERE id = $1", params: [id] })
+if ("error" in out) return out             // { error: { code, message } }
+return out.rows                            // { rows, truncated, durationMs }
+```
+
+- `sql.catalog: "instance"` gives the connection the deployment's read catalog (`LIAISON_DATABASE_ADAPTER_PATH` or `LIAISON_DATABASE_ADAPTER`): `ctx.sql.query(name, { read, params })` runs a named read and `ctx.sql.reads(name)` lists them. The catalog is the deployment's, never the app's.
+- `sql.rawQuery.scope` allows a read-only `SELECT` of the app's own (`{ sql, params }`, `params` bind `$1`, `$2`, ...; a db-gate takes none). The person the run acts for must hold the scope. A deployment turns raw queries off with `LIAISON_DATABASE_ALLOW_RAW_QUERY=false`.
+- `sql.modes` (`["direct"]` or `["gate"]`) limits the credential modes the connection takes.
+- Every call runs in a read-only transaction, with a statement timeout set on the database (`timeoutMs`, default 10 s, at most 120 s) and cancelled there past it. It returns at most `maxRows` rows (default 500, at most 2000) and says `truncated` when more matched.
+- The credentials never reach the run: a failure is answered as `{ error: { code, message } }`, with no DSN or token in it (`not_connected`, `forbidden`, `unknown_read`, `invalid_params`, `statement_timeout`, `config_error`, ...). Every call writes an audit line (`sql.query`, `sql.schema`, `sql.probe`, `sql.reads`) with a hash of the SQL, never the SQL.
+- The account used is the organization's, never a member's personal one. The pool is per organization, connection and account. It is opened on first use, replaced when the credentials change, and closed when the account is disconnected, after 10 minutes unused, or past `LIAISON_SQL_POOLS_MAX` pools (32) per server process.
+- The `liaison-self` catalog reads this instance's own database through a login that bypasses row-level security. Its reads always take the caller's organization as `orgId`, whatever the app sends, and a read over tickets, knowledge, mail or the audit log needs that app's read scope. Raw SQL over it is refused outside the instance operator's organization.
+- `ctx.sql.schema(name, { table? })` lists readable tables and columns (secret columns removed; it needs the raw-query scope when the connection has one). `ctx.sql.probe(name)` reports write grants and catalog reads a gate is missing.
+
+### Read your own accounts (`ctx.accounts`)
+
+`ctx.accounts.list(connection, { identifier?, includeInactive? })` returns the app's accounts of one declared connection: the organization's and the caller's own, never another member's, another app's or another organization's, and never a token. Each has its `metadata` and `canManage`. `ctx.accounts.setMetadata(accountId, patch)` merges keys into an account's metadata (`null` removes a key, at most 32 KiB). A personal account is its owner's to change. The organization's account needs the connection's admin scope (`adminScope`, default `<app>:accounts:admin`), or a run of the app itself (a job). Every change is audited.
+
+`ctx.kernel.findByIds("users", ids)` returns the directory fields of up to 200 users of the caller's organization in one call, as `ctx.kernel.findOne` does for one.
 
 ### Commit an intent row before an outside call (`ctx.db.insertNow`)
 

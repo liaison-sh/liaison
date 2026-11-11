@@ -141,6 +141,8 @@ export interface AppManifestForBridge {
       webhookSecretConfigKey?: string
       /** Provider-minted secrets the app stores through `config_setSecret`. */
       appSecretConfigKeys?: string[]
+      /** A SQL connection the platform holds (`ctx.sql.*`, connections/sql/service.ts). */
+      sql?: import("~/modules/apps/connections/sql/service").SqlConnectionDeclaration
     }
   >
   network?: { allowedDomains?: string[]; allowPrivateHostsInTest?: boolean }

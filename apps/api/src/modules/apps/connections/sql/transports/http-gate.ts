@@ -275,7 +275,10 @@ export class HttpGate implements DbTransport {
     return { rows: body.rows, truncated: body.truncated, durationMs: Date.now() - start }
   }
 
-  async runQuery(sql: string, opts?: ExecOptions): Promise<RunQueryResult> {
+  async runQuery(sql: string, opts?: ExecOptions, params: unknown[] = []): Promise<RunQueryResult> {
+    if (params.length > 0) {
+      throw new DbTransportError("A db-gate query takes no bound parameters", "config")
+    }
     const start = Date.now()
     const res = await this.request(
       "/query",

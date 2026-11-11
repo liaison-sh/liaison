@@ -25,18 +25,31 @@
  */
 
 import { createHash } from "node:crypto"
-import {
-  getAdapter,
-  listAdapterNames,
-  type ReadCatalog,
-  redactDbError,
-  SECRET_COLUMNS,
-  validateCatalog,
-} from "@liaison/db-core"
+import { type ReadCatalog, redactDbError } from "@liaison/db-core"
 import type { DatabaseDomainAccess } from "@liaison/shared"
-import { parse as parseYaml } from "yaml"
 import { rootLogger } from "~/lib/logger"
-import { withOpenFileSync } from "~/lib/read-checked-file"
+import { type SqlCallBudget, withCallBounds } from "~/modules/apps/connections/sql/call-bounds"
+import {
+  filterSecretColumns,
+  missingLiaisonSelfScopes,
+  normalizeReadParams,
+  pinCallerOrg,
+  resolveOrgDatabaseCatalog,
+} from "~/modules/apps/connections/sql/catalog"
+import {
+  buildTransport,
+  DatabaseConfigError,
+  type DatabaseCredentials,
+  resolveCredentialMode,
+} from "~/modules/apps/connections/sql/credentials"
+import { withSqlTransport } from "~/modules/apps/connections/sql/pool"
+import type {
+  DbTransport,
+  ExecOptions,
+  ProbeReport,
+} from "~/modules/apps/connections/sql/transport"
+import { DbTransportError } from "~/modules/apps/connections/sql/transport"
+import { HttpGate } from "~/modules/apps/connections/sql/transports/http-gate"
 import { isInstanceOperatorOrg } from "~/modules/apps/operator-org"
 import { resolveToolTimeoutMs } from "~/modules/apps/run-limits"
 import type {
@@ -50,17 +63,8 @@ import {
   type DomainAccessCaller,
   resolveDomainRule,
 } from "./domain-access"
-import type { DbTransport, ExecOptions, ProbeReport } from "./transport"
-import { DbTransportError } from "./transport"
-import { HttpGate } from "./transports/http-gate"
-import { PostgresDirect } from "./transports/postgres-direct"
 
 const log = rootLogger.child({ module: "database-bridge" })
-
-// Ensure the default liaison-self catalog is registered even if nothing else
-// imported it yet (import for side effect: registers into db-core's static
-// registry at module load).
-import "./adapters/liaison-self"
 
 export const CONNECTION_IDENTIFIER = "default"
 
@@ -74,8 +78,6 @@ export const CONNECTION_IDENTIFIER = "default"
  */
 export const DATABASE_CONNECTIONS = ["default", "warehouse"] as const
 export type DatabaseConnectionKey = (typeof DATABASE_CONNECTIONS)[number]
-
-const MAX_STATEMENT_TIMEOUT_MS = 300_000
 
 /**
  * The sandbox budget app.manifest.json declares (`timeoutMs`) on every db_*
@@ -96,27 +98,12 @@ const STATEMENT_HEADROOM_MS = 5_000
  *  sandbox would kill the call. */
 const DEADLINE_HEADROOM_MS = 2_000
 
-/** After the deadline, how long the bridge waits for the cancelled statement to
- *  actually stop before answering anyway. Inside DEADLINE_HEADROOM_MS, so a
- *  cancel that cannot land never outlives the sandbox budget. */
-const CANCEL_GRACE_MS = 1_500
-
-export interface DatabaseCallBudget {
-  /** Upper bound on one call's statement timeout (a connection's own lower
-   *  setting still applies). */
-  statementTimeoutMs: number
-  /** When the bridge gives up on the call and cancels its statement. */
-  deadlineMs: number
-}
-
 /**
  * Derives one call's bounds from the budget the executor actually grants the
  * tool: `resolveToolTimeoutMs` applies the same env caps the sandbox does, so
  * a deployment that lowers LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS lowers these too.
  */
-export function resolveDatabaseCallBudget(
-  env: NodeJS.ProcessEnv = process.env,
-): DatabaseCallBudget {
+export function resolveDatabaseCallBudget(env: NodeJS.ProcessEnv = process.env): SqlCallBudget {
   const budget = resolveToolTimeoutMs(DATABASE_TOOL_TIMEOUT_MS, env) ?? DATABASE_TOOL_TIMEOUT_MS
   return {
     statementTimeoutMs: Math.max(1_000, budget - STATEMENT_HEADROOM_MS),
@@ -128,303 +115,7 @@ export function resolveDatabaseCallBudget(
  *  included: the schema of a production warehouse is not a curated read. */
 export const WAREHOUSE_SCOPE = "database:query:read"
 
-/** The pool scope every shared (demo warehouse) transport uses. */
-const DEMO_WAREHOUSE_POOL_SCOPE = "__demo_warehouse__"
-
 export type DatabaseToolOutcome = "success" | "error" | "blocked"
-
-// -------------------------------------------------------------- pool registry
-
-interface PoolEntry {
-  transport: DbTransport
-  /** Hash of the credentials the transport was built from. */
-  credsHash: string
-}
-
-const transportPool = new Map<string, PoolEntry>()
-
-/**
- * The `liaison-self` catalog reads a Liaison database through a read-only login
- * that bypasses row-level security, and every one of its reads is scoped by an
- * `orgId` parameter. That parameter is the caller's org, always: a value the
- * caller passes is replaced, so a read can never be pointed at another org's rows.
- */
-export function pinCallerOrg(
-  catalog: Pick<ReadCatalog, "adapter">,
-  params: Record<string, unknown>,
-  orgId: string,
-): Record<string, unknown> {
-  if (catalog.adapter !== "liaison-self") return params
-  return { ...params, orgId }
-}
-
-/** A numeric string ("10", " 0.5 ", "-3") as the number it spells, else null. */
-function numericString(value: string): number | null {
-  const trimmed = value.trim()
-  if (trimmed === "" || !/^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(trimmed)) return null
-  const n = Number(trimmed)
-  return Number.isFinite(n) ? n : null
-}
-
-/**
- * Check the declared params of a curated read against the call, coercing a
- * numeric string for a `number`/`integer` param to the number it spells (models
- * routinely send `"10"`). Every declared param is bound into the SQL
- * (`toOrdinalSql`), so a missing one reached the driver as `undefined` and
- * postgres.js refused the whole query ("UNDEFINED_VALUE: Undefined values are
- * not allowed"), an opaque 500 the agent could not act on. A JSON `null` is a
- * value (SQL NULL) and passes. Returns the params to bind and what is invalid.
- */
-export function normalizeReadParams(
-  declared: Record<string, { type: "string" | "number" | "boolean" | "integer" }>,
-  given: Record<string, unknown>,
-): {
-  params: Record<string, unknown>
-  invalid: Array<{ name: string; expected: string; problem: string }>
-} {
-  const params: Record<string, unknown> = { ...given }
-  const invalid: Array<{ name: string; expected: string; problem: string }> = []
-  for (const [name, { type }] of Object.entries(declared)) {
-    let value = given[name]
-    if (value === undefined) {
-      invalid.push({ name, expected: type, problem: `"${name}" (${type}), which is missing` })
-      continue
-    }
-    if (value === null) continue
-    if ((type === "number" || type === "integer") && typeof value === "string") {
-      const n = numericString(value)
-      if (n !== null) {
-        value = n
-        params[name] = n
-      }
-    }
-    const ok =
-      type === "integer"
-        ? typeof value === "number" && Number.isInteger(value)
-        : typeof value === type
-    if (!ok) {
-      invalid.push({
-        name,
-        expected: type,
-        problem: `"${name}" to be a ${type}, not ${Array.isArray(value) ? "an array" : typeof value === "number" ? "a fraction" : typeof value}`,
-      })
-    }
-  }
-  return { params, invalid }
-}
-
-/**
- * The read scope a caller must hold to run a `liaison-self` read over a table:
- * the login bypasses row-level security, so the read is held to at least the
- * scope the app itself demands for those rows. Tables not listed carry org
- * bookkeeping (tier, credits, outbox backlog, connection status).
- */
-const LIAISON_SELF_TABLE_SCOPES: Record<string, string> = {
-  app_tickets: "tickets:tickets:read",
-  app_knowledge: "knowledge:documents:read",
-  app_mail: "mail:conversations:read",
-  "kernel.audit_log": "kernel:audit:read",
-}
-
-/** The scopes a `liaison-self` read needs that the caller does not hold. */
-export function missingLiaisonSelfScopes(
-  catalog: Pick<ReadCatalog, "adapter">,
-  read: { tables: string[] },
-  callerScopes: string[],
-): string[] {
-  if (catalog.adapter !== "liaison-self") return []
-  const needed = new Set<string>()
-  for (const table of read.tables) {
-    const scope = LIAISON_SELF_TABLE_SCOPES[table] ?? LIAISON_SELF_TABLE_SCOPES[table.split(".")[0]]
-    if (scope) needed.add(scope)
-  }
-  return [...needed].filter((scope) => !hasScope(scope, callerScopes))
-}
-
-function poolKey(orgId: string, identifier: string): string {
-  return `${orgId}::${identifier}`
-}
-
-// ------------------------------------------------------------ credential mode
-
-export type CredentialMode = "direct" | "gate"
-
-export class DatabaseConfigError extends Error {
-  /** `agentSafe` marks a message fit for the agent verbatim (it names a field,
-   *  never a path, a DSN or a parser's output). Anything else is logged and
-   *  replaced by a generic hint. */
-  constructor(
-    message: string,
-    public readonly agentSafe = false,
-  ) {
-    super(message)
-    this.name = "DatabaseConfigError"
-  }
-}
-
-export interface DatabaseCredentials {
-  connectionString?: string
-  gateUrl?: string
-  gateToken?: string
-  /**
-   * NEVER read from a stored connection: it is set only by the host, after
-   * credential resolution, for the public demo box's analytics warehouse
-   * (`modules/demo/warehouse`). It marks a transport built on the warehouse's
-   * OWN dedicated login (a separate DSN, a role that is a member of no
-   * Liaison role), so every demo org shares one pool and the privileged-role
-   * opt-out never applies to it.
-   */
-  sharedPool?: string
-  /** Direct mode only: "postgres" (default) or "redshift". */
-  dialect?: string
-  /** Direct mode only: per-statement timeout, 1 s to 300 s (transport default 10 s). */
-  statementTimeoutMs?: string
-}
-
-/**
- * Exactly-one-mode validation: DSN-only -> direct mode (gate fields
- * untouched); gate-only -> gate mode (connectionString untouched); both or
- * neither -> typed config error.
- */
-export function resolveCredentialMode(creds: DatabaseCredentials): CredentialMode {
-  const hasDsn = Boolean(creds.connectionString)
-  const hasGate = Boolean(creds.gateUrl) || Boolean(creds.gateToken)
-  if (hasDsn && hasGate) {
-    throw new DatabaseConfigError(
-      "database connection has both connectionString and gateUrl/gateToken set — exactly one credential mode is required",
-      true,
-    )
-  }
-  if (!hasDsn && !hasGate) {
-    throw new DatabaseConfigError(
-      "database connection is missing credentials — set either connectionString (direct mode) or gateUrl+gateToken (gate mode)",
-      true,
-    )
-  }
-  if (hasGate && (!creds.gateUrl || !creds.gateToken)) {
-    throw new DatabaseConfigError("gate mode requires BOTH gateUrl and gateToken", true)
-  }
-  return hasDsn ? "direct" : "gate"
-}
-
-/**
- * `host:port` of this instance's own redis, search and object storage. A
- * connector DSN naming one is refused (see PostgresDirect `blockedEndpoints`).
- * Postgres is not listed: the liaison-self connection legitimately reaches the
- * instance's own database with a read-only login.
- */
-export function instanceServiceEndpoints(env: NodeJS.ProcessEnv = process.env): string[] {
-  const out: string[] = []
-  const defaults: Record<string, string> = {
-    REDIS_URL: "redis://localhost:6379",
-    MEILISEARCH_HOST: "http://localhost:7700",
-    OBJECT_STORAGE_ENDPOINT: "http://localhost:9000",
-  }
-  for (const [name, fallback] of Object.entries(defaults)) {
-    try {
-      const url = new URL(env[name] || fallback)
-      const port =
-        url.port || (url.protocol === "https:" ? "443" : url.protocol === "http:" ? "80" : "6379")
-      out.push(`${url.hostname.toLowerCase().replace(/^\[|\]$/g, "")}:${port}`)
-    } catch {
-      // An unparseable service URL cannot be matched; the server would not boot on it.
-    }
-  }
-  return out
-}
-
-/** LIAISON_DATABASE_ALLOWED_HOSTS: the operator's host allow-list, both modes. */
-function operatorAllowedHosts(): string[] {
-  return (process.env.LIAISON_DATABASE_ALLOWED_HOSTS ?? "")
-    .split(",")
-    .map((h) => h.trim())
-    .filter(Boolean)
-}
-
-export function buildTransport(creds: DatabaseCredentials): DbTransport {
-  const mode = resolveCredentialMode(creds)
-  if (mode === "direct") {
-    if (!creds.connectionString) {
-      throw new DatabaseConfigError("connectionString is required in direct mode", true)
-    }
-    const dialect = creds.dialect || "postgres"
-    if (dialect !== "postgres" && dialect !== "redshift") {
-      throw new DatabaseConfigError(
-        `dialect must be "postgres" or "redshift", got "${dialect}"`,
-        true,
-      )
-    }
-    let statementTimeoutMs: number | undefined
-    if (creds.statementTimeoutMs) {
-      statementTimeoutMs = Number(creds.statementTimeoutMs)
-      if (
-        !Number.isInteger(statementTimeoutMs) ||
-        statementTimeoutMs < 1000 ||
-        statementTimeoutMs > MAX_STATEMENT_TIMEOUT_MS
-      ) {
-        throw new DatabaseConfigError(
-          `statementTimeoutMs must be an integer between 1000 and ${MAX_STATEMENT_TIMEOUT_MS}`,
-          true,
-        )
-      }
-    }
-    return new PostgresDirect({
-      dsn: creds.connectionString,
-      dialect,
-      allowPlaintextLocal: process.env.LIAISON_DB_ALLOW_PLAINTEXT_LOCAL === "true",
-      ...(statementTimeoutMs ? { statementTimeoutMs } : {}),
-      allowedHosts: operatorAllowedHosts(),
-      blockedEndpoints: instanceServiceEndpoints(),
-      // The demo warehouse host comes from deployment config, not from the org.
-      ...(creds.sharedPool ? { trustedHost: true } : {}),
-      // The opt-out is for an operator's own single-tenant database; the demo
-      // warehouse (a host-built shared pool) can never use it.
-      allowPrivilegedSession:
-        !creds.sharedPool && process.env.LIAISON_DB_ALLOW_PRIVILEGED_SESSION === "true",
-    })
-  }
-  if (!creds.gateUrl || !creds.gateToken) {
-    throw new DatabaseConfigError("gateUrl and gateToken are required in gate mode", true)
-  }
-  return new HttpGate({
-    gateUrl: creds.gateUrl,
-    gateToken: creds.gateToken,
-    // A private or loopback gate (a sidecar next to the database) is the
-    // operator's choice: an allow-list entry, or the local-plaintext opt-in.
-    allowPrivate: process.env.LIAISON_DB_ALLOW_PLAINTEXT_LOCAL === "true",
-    allowedHosts: operatorAllowedHosts(),
-    blockedEndpoints: instanceServiceEndpoints(),
-  })
-}
-
-export async function getOrBuildTransport(
-  orgId: string,
-  creds: DatabaseCredentials,
-  factory: (creds: DatabaseCredentials) => DbTransport,
-  identifier = CONNECTION_IDENTIFIER,
-): Promise<DbTransport> {
-  // A shared-pool handle is the demo warehouse: the same DSN and the same login
-  // for every demo org on the box, so they share ONE pool. Keying it per org
-  // would open a fresh postgres.js pool for every visitor signup against a
-  // database that is identical for all of them.
-  const key = creds.sharedPool
-    ? poolKey(DEMO_WAREHOUSE_POOL_SCOPE, creds.sharedPool)
-    : poolKey(orgId, identifier)
-  // Credentials are resolved on every call, so a saved change (DSN, dialect,
-  // timeout, token) is seen on the very next one: the pooled transport is
-  // reused only while it was built from the same credentials, and replaced
-  // (the old pool closed) the moment they differ. No restart, and the
-  // post-connect probe runs against the new transport.
-  const credsHash = createHash("sha256")
-    .update(JSON.stringify(Object.entries(creds).sort(([a], [b]) => a.localeCompare(b))))
-    .digest("hex")
-  const existing = transportPool.get(key)
-  if (existing?.credsHash === credsHash) return existing.transport
-  const transport = factory(creds)
-  transportPool.set(key, { transport, credsHash })
-  if (existing) await existing.transport.close().catch(() => {})
-  return transport
-}
 
 // -------------------------------------------------------------------- audit
 
@@ -555,18 +246,6 @@ function configErrorEnvelope(err: DatabaseConfigError): {
   }
 }
 
-/** Defense-in-depth belt over db_describe: even though the grant allow-list already
- *  excludes secret columns from what the role can read, strip any SECRET_COLUMNS
- *  entry from described output so a mis-provisioned grant can't leak a column name. */
-function filterSecretColumns(table: string, columns: { column: string; dataType: string }[]) {
-  const secretCols = new Set(
-    SECRET_COLUMNS.filter((c) => c.table.toLowerCase() === table.toLowerCase()).map((c) =>
-      c.column.toLowerCase(),
-    ),
-  )
-  return columns.filter((c) => !secretCols.has(c.column.toLowerCase()))
-}
-
 // ------------------------------------------------------------ describe shape
 
 /**
@@ -664,7 +343,7 @@ export interface DatabaseBridgeDeps {
    *  paths (the connect-event probe) carry none. */
   signal?: AbortSignal
   /** Test seam; production derives it from the tool's declared budget. */
-  budget?: DatabaseCallBudget
+  budget?: SqlCallBudget
   /**
    * Per-domain read access (domain-access.ts): the org's stored rules, and the
    * caller (the person the call acts for, or the system), loaded only when a
@@ -678,64 +357,6 @@ export interface DatabaseBridgeDeps {
 
 /** One answer per tool call: which reads of a catalog the caller may run. */
 type ReadVisibility = (domain: string) => boolean
-
-/**
- * Runs one database call inside the tool's budget: the statement timeout is
- * capped below it, and at the deadline (or on the caller's abort) the
- * transport cancels the statement on the server and the bridge answers once
- * the call has settled, that is once the server has stopped the statement
- * (bounded by CANCEL_GRACE_MS). Answering at the abort itself left the
- * statement running after the tool had already said it was cancelled. The
- * call's own promise is always observed, so its late rejection is never an
- * unhandled one.
- */
-async function withCallBounds<T>(
-  deps: Pick<DatabaseBridgeDeps, "signal" | "budget">,
-  fn: (opts: ExecOptions) => Promise<T>,
-): Promise<T> {
-  const budget = deps.budget ?? resolveDatabaseCallBudget()
-  const deadline = new AbortController()
-  const timer = setTimeout(() => deadline.abort(), budget.deadlineMs)
-  const signal = deps.signal ? AbortSignal.any([deadline.signal, deps.signal]) : deadline.signal
-  const abortError = () =>
-    new DbTransportError(
-      deadline.signal.aborted
-        ? `The database did not answer within ${budget.deadlineMs} ms; the statement was cancelled on the database`
-        : "The tool call was cancelled; the statement was cancelled on the database",
-      "timeout",
-    )
-  try {
-    if (signal.aborted) throw abortError()
-    return await new Promise<T>((resolve, reject) => {
-      const call = fn({ statementTimeoutMs: budget.statementTimeoutMs, signal })
-      const settled = call.then(
-        () => undefined,
-        () => undefined,
-      )
-      const onAbort = () => {
-        const err = abortError()
-        const grace = setTimeout(() => reject(err), CANCEL_GRACE_MS)
-        void settled.then(() => {
-          clearTimeout(grace)
-          reject(err)
-        })
-      }
-      signal.addEventListener("abort", onAbort, { once: true })
-      call
-        .then(
-          (value) => {
-            if (!signal.aborted) resolve(value)
-          },
-          (err) => {
-            if (!signal.aborted) reject(err)
-          },
-        )
-        .finally(() => signal.removeEventListener("abort", onAbort))
-    })
-  } finally {
-    clearTimeout(timer)
-  }
-}
 
 /**
  * Builds the five `db_*` bridge methods against explicit dependencies —
@@ -808,17 +429,31 @@ export function buildDatabaseBridgeMethods(
         true,
       )
     }
-    const transport = await getOrBuildTransport(
-      deps.orgId,
-      creds,
-      deps.transportFactory,
-      connection === "default" ? CONNECTION_IDENTIFIER : connection,
-    )
     // Curated reads belong to the default connection; the warehouse never
     // depends on the catalog resolving.
     const catalog =
       connection === "default" ? await deps.resolveCatalog() : { adapter: connection, reads: {} }
-    return withCallBounds(deps, (opts) => fn(transport, catalog, opts))
+    // The platform's pool of this connection (connections/sql/pool.ts): reused
+    // while its credentials are unchanged, replaced when they change, closed
+    // when the account is disconnected or idle.
+    return withSqlTransport(
+      {
+        orgId: deps.orgId,
+        appName: "database",
+        connectionName: connection === "default" ? "database" : connection,
+        identifier: connection === "default" ? CONNECTION_IDENTIFIER : connection,
+      },
+      creds,
+      (transport) =>
+        withCallBounds(
+          {
+            ...(deps.signal ? { signal: deps.signal } : {}),
+            budget: deps.budget ?? resolveDatabaseCallBudget(),
+          },
+          (opts) => fn(transport, catalog, opts),
+        ),
+      deps.transportFactory,
+    )
   }
 
   return {
@@ -1149,72 +784,6 @@ export function buildDatabaseBridgeMethods(
   }
 }
 
-// ---------------------------------------------------------------- extension
-
-// Cache the file-loaded catalog by (path, mtime): parse + validate a mounted
-// YAML adapter once rather than on every tool call, while still picking up an
-// edited file after a redeploy (mtime changes).
-let cachedFileCatalog: { path: string; mtimeMs: number; catalog: ReadCatalog } | null = null
-function loadCatalogFromPath(path: string): ReadCatalog {
-  // The mtime and the text come from one open descriptor: the file whose
-  // mtime keys the cache is the file parsed.
-  let opened = false
-  try {
-    return withOpenFileSync(path, ({ mtimeMs }, read) => {
-      opened = true
-      if (cachedFileCatalog?.path === path && cachedFileCatalog.mtimeMs === mtimeMs) {
-        return cachedFileCatalog.catalog
-      }
-      let parsed: unknown
-      try {
-        parsed = parseYaml(read().toString("utf-8"))
-      } catch (err) {
-        throw new DatabaseConfigError(
-          `Failed to parse adapter catalog YAML at "${path}": ${err instanceof Error ? err.message : String(err)}`,
-        )
-      }
-      const catalog = validateCatalog(parsed)
-      cachedFileCatalog = { path, mtimeMs, catalog }
-      return catalog
-    })
-  } catch (err) {
-    if (opened) throw err
-    throw new DatabaseConfigError(
-      `LIAISON_DATABASE_ADAPTER_PATH="${path}" is not readable: ${err instanceof Error ? err.message : String(err)}`,
-    )
-  }
-}
-
-/**
- * Resolve the connected database's curated-reads catalog — the single source
- * of truth for BOTH the bridge tools and the app-to-app Knowledge read runner
- * (`knowledge-read-runner.ts`). A deployment reading a NON-liaison database
- * supplies its own catalog as a mounted YAML via LIAISON_DATABASE_ADAPTER_PATH;
- * otherwise a registered in-tree adapter (default liaison-self) is used.
- */
-export function resolveDatabaseCatalog(): ReadCatalog {
-  const path = process.env.LIAISON_DATABASE_ADAPTER_PATH
-  if (path) return loadCatalogFromPath(path)
-  const adapterName = process.env.LIAISON_DATABASE_ADAPTER ?? "liaison-self"
-  const catalog = getAdapter(adapterName)
-  if (!catalog) {
-    throw new DatabaseConfigError(
-      `Unknown database adapter "${adapterName}" (registered: ${listAdapterNames().join(", ") || "none"})`,
-    )
-  }
-  return catalog
-}
-
-/** The catalog an org's curated reads come from: the demo warehouse's for a
- *  demo org, the deployment's otherwise. */
-export async function resolveOrgDatabaseCatalog(orgId: string): Promise<ReadCatalog> {
-  const { isDemoWarehouseOrg, demoWarehouseReadCatalog } = await import(
-    "~/modules/demo/warehouse/resolve"
-  )
-  if (await isDemoWarehouseOrg(orgId)) return demoWarehouseReadCatalog()
-  return resolveDatabaseCatalog()
-}
-
 export function createDatabaseBridgeExtension(
   ctx: BridgeExtensionContext,
 ): Record<string, BridgeExtensionMethod> {
@@ -1307,15 +876,4 @@ export function createDatabaseBridgeExtension(
       }
     },
   })
-}
-
-/**
- * Test access to this module's private state, grouped in one object so the
- * production surface carries a single named door. Production code never calls it.
- */
-export const DatabaseBridgeTestAccess = {
-  /** Test-only: clears the whole pool. */
-  resetTransportPool(): void {
-    transportPool.clear()
-  },
 }

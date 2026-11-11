@@ -594,9 +594,13 @@ export class PostgresDirect implements DbTransport {
     })
   }
 
-  async runQuery(sqlText: string, opts?: ExecOptions): Promise<RunQueryResult> {
+  async runQuery(
+    sqlText: string,
+    opts?: ExecOptions,
+    params: unknown[] = [],
+  ): Promise<RunQueryResult> {
     await this.assertTlsPolicy()
-    const maxRows = DEFAULT_ROW_CAP
+    const maxRows = Math.min(opts?.maxRows ?? DEFAULT_ROW_CAP, HARD_ROW_CAP)
     const cappedText = wrapWithRowCap(sqlText, maxRows)
     return this.concurrency.run(async () => {
       const start = Date.now()
@@ -605,7 +609,7 @@ export class PostgresDirect implements DbTransport {
         // if the caller's sql-guard validation was somehow bypassed (this is
         // exactly what the "READ ONLY txn blocks an INSERT smuggled past the
         // validator" integration test proves, calling runQuery directly).
-        const rows = await this.begin((tx) => this.exec(tx, cappedText, [], opts?.signal), opts)
+        const rows = await this.begin((tx) => this.exec(tx, cappedText, params, opts?.signal), opts)
         const capped = capRows(rows as unknown as Record<string, unknown>[], maxRows)
         return { rows: capped.rows, truncated: capped.truncated, durationMs: Date.now() - start }
       } catch (err) {

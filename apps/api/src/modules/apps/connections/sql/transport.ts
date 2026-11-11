@@ -60,6 +60,11 @@ export interface ExecOptions {
    * busy and a pooled connection held until its own timeout.
    */
   signal?: AbortSignal
+  /**
+   * The most rows a raw query returns (bounded by the transport's own hard
+   * cap). A named read takes its cap from the read definition.
+   */
+  maxRows?: number
 }
 
 /** Transport-agnostic seam a bridge drives to execute reads/queries against a
@@ -73,7 +78,8 @@ export interface DbTransport {
     params: Record<string, unknown>,
     opts?: ExecOptions,
   ): Promise<RunReadResult>
-  runQuery(sql: string, opts?: ExecOptions): Promise<RunQueryResult>
+  /** A read-only query; `params` bind its `$1`, `$2`, ... placeholders (direct mode only). */
+  runQuery(sql: string, opts?: ExecOptions, params?: unknown[]): Promise<RunQueryResult>
   describe(catalog: ReadCatalog, table?: string, opts?: ExecOptions): Promise<SchemaInfo>
   close(): Promise<void>
 }

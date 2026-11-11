@@ -19,7 +19,6 @@ import { sql } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { flushEventHandlers, initEventBus } from "~/infra/events/event-bus"
-import { processOutboxBatch } from "~/infra/events/outbox-worker"
 import { decideApproval } from "~/modules/approvals/decide"
 import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
 import { executeTool } from "~/modules/apps/execute-tool"
@@ -35,6 +34,7 @@ import {
   seedScenarioStart,
 } from "~/seed/tiers/demo/seed-demo"
 import { SAAS_ARLON_SUBSCRIPTION } from "~/seed/worlds/saas/plan"
+import { drainOutbox } from "~/tests/helpers/outbox"
 import { installFromDist } from "../../../../../test-support/seed/install-dist-apps"
 import { paymentRecoveredInjector } from "./payment-recovered"
 import { settleDemoPaymentsDeliveries } from "./payments/deliver"
@@ -102,8 +102,9 @@ const routeDeliveries = async () =>
 async function drain(): Promise<void> {
   await settleDemoPaymentsDeliveries()
   await flushEventHandlers()
-  for (let i = 0; i < 20; i++) if (!(await processOutboxBatch())) break
-  await flushEventHandlers()
+  // Until the outbox is empty: run beside other seeded files in one process,
+  // their events sit ahead of this org's, far more than a few batches' worth.
+  await drainOutbox({ maxRounds: 2000 })
 }
 
 const pastDueCount = async () =>

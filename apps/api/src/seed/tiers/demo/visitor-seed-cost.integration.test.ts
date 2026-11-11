@@ -113,12 +113,16 @@ const PRODUCTS_BASELINE = {
 const SAAS_BASELINE = {
   // Measured 2026-11-11: 6 751 round trips in 630 transactions, 466 outbox
   // events (1.14 times the products world); set 5 above, as products is.
+  // Re-measured the same day at 6 826 in 644, once the card reminder pinned
+  // its own send check (the product's check reads the recipients, their
+  // opt-outs and the invoice it is about) and each card invoice's document
+  // names the processor invoice it was issued for.
   outboxEvents: 466,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 6_756,
-  transactions: 630,
+  statements: 6_831,
+  transactions: 644,
 }
 const BASELINE = { products: PRODUCTS_BASELINE, saas: SAAS_BASELINE } as const
 /** No world's seed costs more than this many times the products world's. */

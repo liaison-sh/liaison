@@ -1018,6 +1018,27 @@ describe("db import enforcement", () => {
     // kernel.demo_world_marks (an instance table liaison_rls cannot reach),
     // scoped to the demo org the store is answering for.
     "modules/demo/world/commerce-order.ts",
+    // The software world's beats, the same family as the ones above: each
+    // injector writes its fixed live event system-side, or finds the seeded
+    // teammate it acts as; the scenario start writes the visitor's routine,
+    // task and issuer through the seed factories. All are reached only through
+    // the registry, which refuses them outside a visitor demo org.
+    "modules/demo/worlds/saas/support-ticket.ts",
+    "modules/demo/worlds/saas/chat-question.ts",
+    "modules/demo/worlds/saas/sales-email.ts",
+    "modules/demo/worlds/saas/projects-comment.ts",
+    "modules/demo/worlds/saas/knowledge-asks.ts",
+    "modules/demo/worlds/saas/scenario-start.ts",
+    // The software world's card-payments stand-in: the demo seeder installs the
+    // org-owned connection row (sentinel key only, no caller input), and the
+    // stand-in reads the org's own mirror rows on the handle scoped to that org.
+    "modules/demo/worlds/saas/payments/connection.ts",
+    "modules/demo/worlds/saas/payments/mirror-source.ts",
+    // The software world's seed layer and the payments mirror factory write
+    // what the app's import and webhooks would have written, as the seed
+    // engine's other factories do (seed-org.ts refuses a non-demo org first).
+    "seed/worlds/saas/layer.ts",
+    "seed/factories/payments/mirror.ts",
     // The demo tier of the seed engine creates a demo org and fills it with the
     // whole world through the product's services, as its bootstrap register
     // and system jobs are privileged; every entry refuses an org that is not a

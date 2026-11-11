@@ -118,14 +118,14 @@ export async function insertTicketMessageHistory(
             from_email, from_name, to_emails, cc_emails,
             subject, html_body, text_body, snippet,
             external_message_id, in_reply_to, header_references,
-            sent_at, created_by, created_at, updated_at
+            sent_at, received_at, created_by, created_at, updated_at
           ) VALUES (
             ${messageId}::uuid, ${orgId}::uuid, ${ticketId}::uuid, ${msg.kind},
             ${msg.fromEmail}, ${msg.fromName},
             ${JSON.stringify(msg.toEmails)}::jsonb, '[]'::jsonb,
             ${msg.subject}, ${msg.htmlBody ?? null}, ${msg.textBody}, ${msg.textBody.slice(0, 160)},
             NULL, NULL, '[]'::jsonb,
-            ${msg.sentAt.toISOString()}, ${msg.createdBy}::uuid,
+            ${msg.sentAt.toISOString()}, ${msg.sentAt.toISOString()}, ${msg.createdBy}::uuid,
             ${msg.sentAt.toISOString()}, ${msg.sentAt.toISOString()}
           )
           ON CONFLICT (id) DO NOTHING
@@ -377,6 +377,19 @@ export async function seedTickets(
         { targetTicketId: target, sourceTicketIds: [source], note: merge.note },
         adminRef,
         { privilegedTx: tx },
+      )
+    }
+
+    // A seeded message came in when the story says it did, not when the seed
+    // ran: the ticket service stamps its first message received now, and a
+    // follow-up's send check reads a message received after it was staged as
+    // a late-arriving reply.
+    const ids = Object.values(byKey)
+    if (ids.length > 0) {
+      await tx.execute(
+        sql`UPDATE ${ticketsRel("messages")} SET received_at = sent_at
+            WHERE org_id = ${orgId}::uuid AND ticket_id = ANY(${`{${ids.join(",")}}`}::uuid[])
+              AND sent_at IS NOT NULL AND received_at > sent_at`,
       )
     }
   })

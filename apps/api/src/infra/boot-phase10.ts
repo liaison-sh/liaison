@@ -15,6 +15,7 @@ import { schemaRef } from "~/db/schema-ref"
 import { registerSingleton } from "~/infra/leadership"
 import { rootLogger as log } from "~/lib/logger"
 import { visitorPinUpstreamId } from "~/modules/agent/providers/openrouter"
+import { wireAttentionRefreshWakes } from "~/modules/apps/attention-store"
 import {
   type CatalogVersions,
   catalogFileParents,
@@ -477,6 +478,24 @@ export function registerFilesSelectPolicyCheck(): void {
 }
 
 /**
+ * The leader stores the summary of every approval that has none (written
+ * before summaries were stored, or outside executeTool), once per lease
+ * acquire: serving an approval reads the stored summary and runs no
+ * summarizer (modules/approvals/summary-backfill.ts).
+ */
+export function registerApprovalSummaryBackfill(): void {
+  registerSingleton({
+    name: "approval-summary-backfill",
+    onAcquired: () => {
+      void import("~/modules/approvals/summary-backfill")
+        .then(({ backfillApprovalSummaries }) => backfillApprovalSummaries())
+        .catch((err: unknown) => log.error({ err }, "Approval summary backfill failed"))
+    },
+    onLost: () => {},
+  })
+}
+
+/**
  * The durable consumers, workers and scheduled jobs of every process. It writes
  * no instance-wide derivation: the files SELECT policy and the search settings
  * come from the catalog and are applied by the locked setup step
@@ -545,6 +564,7 @@ export async function runPhase10Boot(): Promise<void> {
   // The leader re-checks the files SELECT policy against the catalog: the
   // fallback when the setup step could not apply it.
   registerFilesSelectPolicyCheck()
+  registerApprovalSummaryBackfill()
   // The leader resolves an org move whose freeze outlived its deadline, from
   // the control plane's decision (modules/org/transfer-state/resolver.ts); an
   // aborted move's incoming copy is purged (modules/org/transfer/purge.ts).
@@ -554,6 +574,8 @@ export async function runPhase10Boot(): Promise<void> {
   log.info("Phase 10 boot: search readiness probed, drift check armed on the leader")
 
   await registerStateMaterializerScheduledJob()
+  // An app's stored attention list is recomputed after the app was woken.
+  wireAttentionRefreshWakes()
   log.info("Phase 10 boot: state materializer registered")
   await registerDigestScheduledJobs()
   log.info("Phase 10 boot: digest jobs registered")

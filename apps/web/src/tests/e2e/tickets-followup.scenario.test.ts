@@ -4,6 +4,7 @@ import { api } from "@liaison/test-helpers"
 import { expect, loginAs, test } from "./fixtures/test"
 import { callToolAsAgent, ticketApprovalCardBodies } from "./helpers/approvals"
 import { freshAccessToken } from "./helpers/fresh-token"
+import { refreshStoredAttention } from "./helpers/projects-seed"
 import { triggerCronJob } from "./helpers/run-cron"
 import { grantTicketsScopes, seedInbox, seedOutboundMessage, seedTicket } from "./helpers/seed"
 
@@ -129,14 +130,22 @@ test("[SC7] tickets-followup: reply payload persists and followup-check reopens"
     `UPDATE ${ts(env)}.tickets SET followup_at = now() - interval '1 minute' WHERE id = $1`,
     [ticket.id],
   )
-  const before = await api(env.serverUrl, "/api/attention-items", { token })
-  expect(before.status, JSON.stringify(before.body)).toBe(200)
-  expect(
-    ((before.body.data?.items ?? []) as any[]).some(
-      (item) =>
-        item.app === "tickets" && item.entityId === ticket.id && item.kind === "followup_due",
-    ),
-  ).toBe(true)
+  // The tickets app's attention list is stored: the rows above, written
+  // straight into the table, wake nothing until the org's attention tick runs.
+  await refreshStoredAttention(env, orgId)
+  await expect
+    .poll(
+      async () => {
+        const before = await api(env.serverUrl, "/api/attention-items", { token })
+        expect(before.status, JSON.stringify(before.body)).toBe(200)
+        return ((before.body.data?.items ?? []) as any[]).some(
+          (item) =>
+            item.app === "tickets" && item.entityId === ticket.id && item.kind === "followup_due",
+        )
+      },
+      { timeout: 15_000 },
+    )
+    .toBe(true)
 
   await triggerCronJob(env, "app-tickets", "followupCheck")
   await expect

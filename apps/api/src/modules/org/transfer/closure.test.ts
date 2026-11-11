@@ -86,6 +86,7 @@ const EXPECTED_CLOSURE: Record<string, string> = {
   "kernel.app_build_artifacts": "direct",
   "kernel.app_documents": "direct",
   "kernel.app_usage_daily": "direct",
+  "kernel.app_attention_items": "direct",
   "kernel.app_draft_versions": "direct",
   "kernel.app_drafts": "direct",
   "kernel.app_logs": "direct",

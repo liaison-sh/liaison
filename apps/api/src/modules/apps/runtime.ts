@@ -298,6 +298,8 @@ export function buildJobBridge(
   payload: { _tx?: unknown; _session?: unknown },
   bridgeManifest: any,
   callerScopes: string[] | undefined,
+  /** The job run itself, for `ctx.steps.run` (bridge/steps.ts): its name and timeout. */
+  job?: { name: string; timeoutMs: number },
 ): Record<string, any> {
   // `ctx.requestApproval` from a job: a scheduled job may only ASK (an approval request for one
   // of its own app's tools, re-run with the payload once a person approves); it never decides.
@@ -332,6 +334,16 @@ export function buildJobBridge(
         input,
       })
     },
+    ...(job
+      ? {
+          currentJob: {
+            name: job.name,
+            payload: payload as Record<string, unknown>,
+            timeoutMs: job.timeoutMs,
+            atomic: !payload._session,
+          },
+        }
+      : {}),
   }
   if (payload._session) {
     return createSessionRpcBridge(
@@ -3986,6 +3998,7 @@ async function registerSingleApp(
                   payload,
                   bridgeManifest,
                   Array.isArray(payload._callerScopes) ? payload._callerScopes : undefined,
+                  { name: jobName, timeoutMs: jobDef.timeoutMs ?? 60_000 },
                 )
                 // Job handlers execute in the OUT-OF-PROCESS worker pool, like
                 // manifest event handlers: an in-process QuickJS job (e.g. a mail
@@ -4052,6 +4065,7 @@ async function registerSingleApp(
                   payload,
                   bridgeManifest,
                   Array.isArray(payload._callerScopes) ? payload._callerScopes : undefined,
+                  { name: jobName, timeoutMs: jobDef.timeoutMs ?? 60_000 },
                 )
                 // Out-of-process worker pool — see the scheduled-job branch.
                 // `_tx` / `_session` are host-only handles the bridge closes over;

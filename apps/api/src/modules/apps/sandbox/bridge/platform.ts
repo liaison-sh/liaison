@@ -6,15 +6,134 @@ import { emailBody } from "~/lib/email/email-body"
 import { quoteIdent } from "~/lib/sql-utils"
 import { civilTimeAt, instantOf } from "~/modules/apps/sandbox/bridge/civil-time"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
+import { typedError } from "~/modules/apps/sandbox/bridge/secret-free"
 import { snakeCase } from "~/modules/apps/sandbox/bridge/shared"
 
 /**
  * Job payload keys the host reads as the job's identity or as host handles:
  * the acting user and its scope snapshot (`infra/jobs/jobs.ts`, `runtime.ts`)
- * the injected transaction/session, and a cron fan-out run's epoch
- * (`infra/jobs/fanout.ts`). A sandbox never sets them.
+ * the injected transaction/session, a cron fan-out run's epoch
+ * (`infra/jobs/fanout.ts`), a resumable step's continuation marker
+ * (`bridge/steps.ts`) and a long timer's wake time (`infra/jobs/jobs.ts`
+ * `timerHoldUntil`). A sandbox never sets them.
  */
-const HOST_JOB_FIELDS = new Set(["_userId", "_callerScopes", "_tx", "_session", "_fanout"])
+const HOST_JOB_FIELDS = new Set([
+  "_userId",
+  "_callerScopes",
+  "_tx",
+  "_session",
+  "_fanout",
+  "_steps",
+  "_wakeAt",
+])
+
+/** The longest a job an app enqueues waits in the queue as one delayed job. */
+export const MAX_SANDBOX_JOB_DELAY_MS = 15 * 60 * 1000
+/** The longest `ctx.timers.wakeIn` (30 days); a wait past 15 min hops (`timerHoldUntil`). */
+export const MAX_WAKE_SECONDS = 30 * 24 * 60 * 60
+
+export interface AppJobEnqueueOptions {
+  /** Wait this long first. Past `MAX_SANDBOX_JOB_DELAY_MS` it is clamped, unless `longDelay`. */
+  delayMs?: number
+  /** The app's deduplication key, scoped to the org here. */
+  jobId?: string
+  /**
+   * Waits past 15 min are kept: the job waits 15 min at a time and its payload
+   * carries the wake time (`_wakeAt`), which the job worker holds it until.
+   */
+  longDelay?: boolean
+  /**
+   * `jobId` deduplicates while the wake is PENDING only (BullMQ throttle mode,
+   * the key lives `delayMs`): a job re-arming its own timer under the same id
+   * from inside its run is not dropped.
+   */
+  dedupUntilDue?: boolean
+  /** Host-only payload fields (`_steps`), set after the app's own were stripped. */
+  hostFields?: Record<string, unknown>
+}
+
+/**
+ * The one way app code enqueues a job (`enqueueJob`, `jobs_enqueue`,
+ * `timers_wakeIn`, a step's continuation): the payload loses every host field
+ * the app may have put in it, gets the bridge's own org pinned, and the acting
+ * user of the run (never one the app named).
+ */
+export function createAppJobEnqueuer(
+  ctx: Pick<BridgeContext, "appName" | "orgId" | "userId" | "callerScopes" | "bridgeOptions">,
+): (jobName: string, rawPayload: unknown, opts?: AppJobEnqueueOptions) => Promise<void> {
+  const { appName, orgId, userId, callerScopes, bridgeOptions } = ctx
+  return async (jobName, rawPayload, opts) => {
+    // SECURITY (cross-tenant escalation): pin the bridge's trusted `orgId`
+    // into the payload and forbid the sandbox from overriding it. Spread the
+    // sandbox-supplied payload FIRST so the trusted `orgId` always wins —
+    // mirrors how `emit` stamps `orgId`. The BullMQ worker (jobs.ts) and the
+    // on-demand sandbox handler (runtime.ts) both derive the RLS tenant from
+    // `payload.orgId`; without this pin a handler reached via a webhook
+    // (actorType "system") could enqueue a job against an arbitrary victim org
+    // with full `<app>:*` scopes.
+    const payload: Record<string, unknown> = {
+      ...withoutHostJobFields(rawPayload),
+      ...(opts?.hostFields ?? {}),
+      orgId,
+    }
+    // Propagate acting user so the job inherits their permissions.
+    // Exclude system actors (bare "system" used by webhook handlers, plus
+    // the "system:..." prefix used by scheduled/internal jobs). The identity
+    // fields are always the bridge's own: whatever the sandbox put under
+    // `_userId` / `_callerScopes` was dropped above, so a job runs as the
+    // user whose turn enqueued it, or as the app, never as a user the app
+    // named. A continuation job re-enqueued from a user's job is stamped here
+    // again from that job's own bridge identity.
+    if (
+      !bridgeOptions?.jobsAttributedToSystem &&
+      userId &&
+      userId !== "system" &&
+      !userId.startsWith("system:")
+    ) {
+      payload._userId = userId
+      if (callerScopes?.length) payload._callerScopes = callerScopes
+    }
+    // `delay` lets continuation chains PACE themselves. Clamped so a buggy or
+    // malicious handler can't park a job unreachably far in the future; a
+    // longer wait (`longDelay`, ctx.timers.wakeIn) hops 15 min at a time.
+    const wanted =
+      typeof opts?.delayMs === "number" && Number.isFinite(opts.delayMs) && opts.delayMs > 0
+        ? Math.round(opts.delayMs)
+        : 0
+    const delay = Math.min(wanted, MAX_SANDBOX_JOB_DELAY_MS)
+    if (opts?.longDelay && wanted > MAX_SANDBOX_JOB_DELAY_MS) payload._wakeAt = Date.now() + wanted
+    // The job id is a deduplication key on a queue every org shares, so it is
+    // scoped to this org: one org's handler can never collapse another org's
+    // job into its own by naming the same id.
+    const jobId =
+      typeof opts?.jobId === "string" && opts.jobId !== "" ? `${orgId}:${opts.jobId}` : undefined
+    await enqueueAppJob(
+      appName,
+      jobName,
+      payload,
+      opts
+        ? {
+            jobId,
+            ...(delay ? { delay } : {}),
+            ...(jobId && opts.dedupUntilDue && wanted > 0 ? { dedupTtlMs: wanted } : {}),
+          }
+        : undefined,
+    )
+  }
+}
+
+/** The app's `{ delay, jobId }` (JSON text from the shim, or the object). */
+function parseEnqueueOptions(raw: unknown): { delay?: unknown; jobId?: unknown } | undefined {
+  if (raw === undefined || raw === null || raw === "") return undefined
+  const value = typeof raw === "string" ? JSON.parse(raw) : raw
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined
+  return value as { delay?: unknown; jobId?: unknown }
+}
+
+function parsePayload(raw: unknown): unknown {
+  if (raw === undefined || raw === null || raw === "") return {}
+  return typeof raw === "string" ? JSON.parse(raw) : raw
+}
 
 export function withoutHostJobFields(raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {}
@@ -32,8 +151,6 @@ export function createPlatformMethods(ctx: BridgeContext): Record<string, any> {
     appTable,
     auditActorType,
     bridgeActingAgentId,
-    bridgeOptions,
-    callerScopes,
     errorEnvelope,
     manifest,
     orgId,
@@ -41,9 +158,9 @@ export function createPlatformMethods(ctx: BridgeContext): Record<string, any> {
     schemaName,
     stampDeclaredEmit,
     txDb,
-    userId,
     orgScopedAppChannel,
   } = ctx
+  const enqueueFromApp = createAppJobEnqueuer(ctx)
 
   /**
    * The file parent of a rendered PDF: one of the calling app's OWN registered fileParents. With
@@ -107,57 +224,59 @@ export function createPlatformMethods(ctx: BridgeContext): Record<string, any> {
     },
 
     // --- Jobs ---
-    enqueueJob: async (jobName: string, payloadJson: string, optsJson?: string) => {
-      const opts = optsJson ? JSON.parse(optsJson) : undefined
-      // SECURITY (cross-tenant escalation): pin the bridge's trusted `orgId`
-      // into the payload and forbid the sandbox from overriding it. Spread the
-      // sandbox-supplied payload FIRST so the trusted `orgId` always wins —
-      // mirrors how `emit` stamps `orgId` (see emit() above). The BullMQ worker
-      // (jobs.ts) and the on-demand sandbox handler (runtime.ts) both derive the
-      // RLS tenant from `payload.orgId`; without this pin a handler reached via
-      // a webhook (actorType "system") could enqueue a job against an arbitrary
-      // victim org with full `<app>:*` scopes.
-      const payload: Record<string, unknown> = {
-        ...withoutHostJobFields(JSON.parse(payloadJson || "{}")),
-        orgId,
-      }
-      // Propagate acting user so the job inherits their permissions.
-      // Exclude system actors (bare "system" used by webhook handlers, plus
-      // the "system:..." prefix used by scheduled/internal jobs). The identity
-      // fields are always the bridge's own: whatever the sandbox put under
-      // `_userId` / `_callerScopes` was dropped above, so a job runs as the
-      // user whose turn enqueued it, or as the app, never as a user the app
-      // named. A continuation job re-enqueued from a user's job is stamped here
-      // again from that job's own bridge identity.
-      if (
-        !bridgeOptions?.jobsAttributedToSystem &&
-        userId &&
-        userId !== "system" &&
-        !userId.startsWith("system:")
-      ) {
-        payload._userId = userId
-        if (callerScopes?.length) payload._callerScopes = callerScopes
-      }
-      // `delay` lets continuation chains PACE themselves (e.g. the mail
-      // initial sync sleeps between mailbox pages so a full-history import
-      // trickles instead of hammering the box for hours). Clamped so a buggy
-      // or malicious handler can't park a job unreachably far in the future.
-      const MAX_SANDBOX_JOB_DELAY_MS = 15 * 60 * 1000
-      const delay =
-        typeof opts?.delay === "number" && opts.delay > 0
-          ? Math.min(opts.delay, MAX_SANDBOX_JOB_DELAY_MS)
-          : undefined
-      // The job id is a deduplication key on a queue every org shares, so it is
-      // scoped to this org: one org's handler can never collapse another org's
-      // job into its own by naming the same id.
-      const jobId =
-        typeof opts?.jobId === "string" && opts.jobId !== "" ? `${orgId}:${opts.jobId}` : undefined
-      await enqueueAppJob(
-        appName,
+    // `enqueueJob(name, payload, opts)` is the flat name of `ctx.jobs.enqueue`.
+    enqueueJob: async (jobName: string, payloadJson: unknown, optsJson?: unknown) => {
+      const opts = parseEnqueueOptions(optsJson)
+      await enqueueFromApp(
         jobName,
-        payload,
-        opts ? { jobId, ...(delay ? { delay } : {}) } : undefined,
+        parsePayload(payloadJson),
+        opts
+          ? {
+              ...(typeof opts.delay === "number" ? { delayMs: opts.delay } : {}),
+              ...(typeof opts.jobId === "string" ? { jobId: opts.jobId } : {}),
+            }
+          : undefined,
       )
+    },
+    // `ctx.jobs.enqueue(name, payload, { delay, jobId })`: `delay` in ms (at
+    // most 15 min, clamped), `jobId` an org-scoped deduplication key while the
+    // job waits or runs. The target is a job the manifest declares.
+    jobs_enqueue: async (jobName: string, payloadJson?: unknown, optsJson?: unknown) => {
+      const opts = parseEnqueueOptions(optsJson)
+      await enqueueFromApp(jobName, parsePayload(payloadJson), {
+        ...(typeof opts?.delay === "number" ? { delayMs: opts.delay } : {}),
+        ...(typeof opts?.jobId === "string" ? { jobId: opts.jobId } : {}),
+      })
+    },
+    // `ctx.timers.wakeIn(seconds, name, payload, { jobId })`: run the job
+    // `seconds` from now (up to 30 days; past 15 min the job hops, see
+    // createAppJobEnqueuer). `jobId` drops a second timer of that id while the
+    // first is still pending.
+    timers_wakeIn: async (
+      seconds: unknown,
+      jobName: string,
+      payloadJson?: unknown,
+      optsJson?: unknown,
+    ) => {
+      if (
+        typeof seconds !== "number" ||
+        !Number.isFinite(seconds) ||
+        seconds < 0 ||
+        seconds > MAX_WAKE_SECONDS
+      ) {
+        throw typedError(
+          400,
+          "invalid_wake",
+          `ctx.timers.wakeIn: seconds is a number from 0 to ${MAX_WAKE_SECONDS}`,
+        )
+      }
+      const opts = parseEnqueueOptions(optsJson)
+      await enqueueFromApp(jobName, parsePayload(payloadJson), {
+        delayMs: seconds * 1000,
+        longDelay: true,
+        dedupUntilDue: true,
+        ...(typeof opts?.jobId === "string" ? { jobId: opts.jobId } : {}),
+      })
     },
 
     // --- Codec utilities ---

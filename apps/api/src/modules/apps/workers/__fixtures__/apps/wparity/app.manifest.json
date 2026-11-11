@@ -129,6 +129,13 @@
       "requiredScopes": ["wparity:items:write"]
     }
   },
+  "jobs": {
+    "pages": {
+      "onDemand": true,
+      "handler": "pages",
+      "timeoutMs": 30000
+    }
+  },
   "webhooks": {
     "ping": {
       "handler": "onPing",

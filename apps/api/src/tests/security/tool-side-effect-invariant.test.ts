@@ -57,6 +57,8 @@ const SELF_GUARDING = new Set([
  */
 const REVIEWED_NOT_REFUSED: Record<string, string> = {
   _approvalContext_get: "read",
+  // A step's saved cursor for a status view (bridge/steps.ts); its writes are refused.
+  steps_get: "read",
   agent_awaitRun: "read",
   approvals_pendingFor: "read",
   approvals_statusOf: "read",

@@ -39,6 +39,11 @@
  *  - `ctx.bulk.iterateJsonl(blobId, opts)` is an async iterator over the paged
  *    `bulk_iterateJsonl_next(blobId, batchSize)` method: it yields each
  *    page's `batch` until a page says `done`, and throws on an error envelope.
+ *  - `ctx.steps.run(name, opts, chunk)` is a guest-side loop over the hidden
+ *    `_steps_begin` / `_steps_save` methods (bridge/steps.ts): claim, call
+ *    `chunk(cursor)`, save its answer, repeat while the host says `run`. A
+ *    chunk that throws releases the claim and the error propagates.
+ *    STEPS_RUN_SOURCE (QuickJS) and `stepsRun` (native) are the two copies.
  */
 
 import { typedBridgeFailure } from "./bridge-rejection"
@@ -50,6 +55,15 @@ export interface ShimIteratorRule {
   nextMethod: string
 }
 
+/** `ctx.steps.run`: a guest loop over a claim method and a save method. */
+export interface ShimStepsRunRule {
+  group: string
+  member: string
+  /** Both present in bridgeMethods or the member is omitted. */
+  beginMethod: string
+  saveMethod: string
+}
+
 export interface ShimRules {
   reservedGroups: readonly string[]
   structuredReturnGroups: readonly string[]
@@ -57,19 +71,24 @@ export interface ShimRules {
   /** [source group, alias]: the alias mirrors the source unless it already exists. */
   groupAliases: ReadonlyArray<readonly [string, string]>
   iterators: readonly ShimIteratorRule[]
+  stepsRuns: readonly ShimStepsRunRule[]
 }
 
 export const SHIM_RULES: ShimRules = {
   reservedGroups: ["approval"],
-  structuredReturnGroups: ["kernel", "db", "bulk", "store"],
-  hiddenNames: ["_approvalContext_get"],
+  structuredReturnGroups: ["kernel", "db", "bulk", "store", "jobs", "timers", "steps"],
+  hiddenNames: ["_approvalContext_get", "_steps_begin", "_steps_save"],
   groupAliases: [["log", "logger"]],
   iterators: [{ group: "bulk", member: "iterateJsonl", nextMethod: "bulk_iterateJsonl_next" }],
+  stepsRuns: [
+    { group: "steps", member: "run", beginMethod: "_steps_begin", saveMethod: "_steps_save" },
+  ],
 }
 
 type MemberPlan =
   | { kind: "method"; member: string; method: string; structured: boolean }
   | { kind: "iterator"; member: string; nextMethod: string }
+  | { kind: "stepsRun"; member: string; beginMethod: string; saveMethod: string }
 
 interface ShimPlan {
   flat: string[]
@@ -99,6 +118,17 @@ function planShim(bridgeMethods: readonly string[], rules: ShimRules): ShimPlan 
     if (reserved.has(it.group) || !bridgeMethods.includes(it.nextMethod)) continue
     if (!groups.has(it.group)) groups.set(it.group, [])
     groups.get(it.group)!.push({ kind: "iterator", member: it.member, nextMethod: it.nextMethod })
+  }
+  for (const r of rules.stepsRuns) {
+    if (reserved.has(r.group)) continue
+    if (!bridgeMethods.includes(r.beginMethod) || !bridgeMethods.includes(r.saveMethod)) continue
+    if (!groups.has(r.group)) groups.set(r.group, [])
+    groups.get(r.group)!.push({
+      kind: "stepsRun",
+      member: r.member,
+      beginMethod: r.beginMethod,
+      saveMethod: r.saveMethod,
+    })
   }
   for (const [source, alias] of rules.groupAliases) {
     if (groups.has(source) && !groups.has(alias)) groups.set(alias, groups.get(source)!.slice())
@@ -206,6 +236,41 @@ function __jsonlIterator(next) {
 }`
 
 /**
+ * `__stepsRun(begin, save)`: the `ctx.steps.run` loop, as script source for
+ * the two QuickJS shims (this file's and executor.ts's). `begin` / `save` are
+ * structured-return wrappers of `_steps_begin` / `_steps_save`. Mirrors
+ * `stepsRun` below exactly.
+ */
+export const STEPS_RUN_SOURCE = `function __stepsRun(begin, save) {
+  function finish(answer, chunks) {
+    var ok = answer !== null && typeof answer === "object";
+    var state = ok && (answer.state === "done" || answer.state === "scheduled") ? answer.state : "skipped";
+    return { state: state, cursor: ok && answer.cursor !== undefined ? answer.cursor : null, chunks: chunks };
+  }
+  return async function (name, opts, chunk) {
+    if (typeof opts === "function" && chunk === undefined) { chunk = opts; opts = undefined; }
+    if (typeof chunk !== "function") throw new TypeError("ctx.steps.run(name, opts, chunk): chunk is a function");
+    var claim = await begin(name, opts === null || opts === undefined ? {} : opts);
+    if (claim === null || typeof claim !== "object" || claim.state !== "run") return finish(claim, 0);
+    var cursor = claim.cursor === undefined ? null : claim.cursor;
+    var chunks = 0;
+    for (;;) {
+      var out;
+      try {
+        out = await chunk(cursor);
+      } catch (e) {
+        try { await save(name, claim.token, { failed: true }); } catch (e2) {}
+        throw e;
+      }
+      chunks++;
+      var next = await save(name, claim.token, { result: out === undefined ? null : out });
+      if (next === null || typeof next !== "object" || next.state !== "run") return finish(next, chunks);
+      cursor = next.cursor === undefined ? null : next.cursor;
+    }
+  };
+}`
+
+/**
  * QuickJS source defining `var __ctx`. Requires a global `__bridge_<m>` per
  * method in `bridgeMethods`. `rules` is overridable for tests only.
  */
@@ -217,7 +282,9 @@ export function buildCtxShimSource(
   const memberSource = (p: MemberPlan): string =>
     p.kind === "method"
       ? `${p.member}: ${p.structured ? "__wrapStructured" : "__wrap"}(__bridge_${p.method})`
-      : `${p.member}: __jsonlIterator(__wrapStructured(__bridge_${p.nextMethod}))`
+      : p.kind === "iterator"
+        ? `${p.member}: __jsonlIterator(__wrapStructured(__bridge_${p.nextMethod}))`
+        : `${p.member}: __stepsRun(__wrapStructured(__bridge_${p.beginMethod}), __wrapStructured(__bridge_${p.saveMethod}))`
   const props = [
     `approval: ${JSON.stringify(opts.approval ?? null)}`,
     ...plan.flat.map((m) => `${m}: __wrap(__bridge_${m})`),
@@ -225,7 +292,7 @@ export function buildCtxShimSource(
       ([group, members]) => `${group}: { ${members.map(memberSource).join(", ")} }`,
     ),
   ].join(",\n    ")
-  return `${WRAP_HELPER}\nvar __ctx = {\n    ${props}\n  };\n${CONSOLE_SHIM}`
+  return `${WRAP_HELPER}\n${STEPS_RUN_SOURCE}\nvar __ctx = {\n    ${props}\n  };\n${CONSOLE_SHIM}`
 }
 
 // ---------------------------------------------------------------------------
@@ -296,6 +363,55 @@ function jsonlIterator(next: BridgeFn) {
   }
 }
 
+type StepsAnswer = { state?: unknown; cursor?: unknown; token?: unknown } | null | undefined
+
+/** The `ctx.steps.run` loop for an isolate; mirrors STEPS_RUN_SOURCE exactly. */
+function stepsRun(begin: BridgeFn, save: BridgeFn) {
+  const finish = (answer: StepsAnswer, chunks: number) => {
+    const ok = answer !== null && typeof answer === "object"
+    const state =
+      ok && (answer.state === "done" || answer.state === "scheduled") ? answer.state : "skipped"
+    return { state, cursor: ok && answer.cursor !== undefined ? answer.cursor : null, chunks }
+  }
+  return async (name: unknown, opts?: unknown, chunk?: unknown) => {
+    if (typeof opts === "function" && chunk === undefined) {
+      chunk = opts
+      opts = undefined
+    }
+    if (typeof chunk !== "function") {
+      throw new TypeError("ctx.steps.run(name, opts, chunk): chunk is a function")
+    }
+    const run = chunk as (cursor: unknown) => unknown
+    const claim = (await begin(
+      name,
+      opts === null || opts === undefined ? {} : opts,
+    )) as StepsAnswer
+    if (claim === null || typeof claim !== "object" || claim.state !== "run")
+      return finish(claim, 0)
+    let cursor = claim.cursor === undefined ? null : claim.cursor
+    let chunks = 0
+    for (;;) {
+      let out: unknown
+      try {
+        out = await run(cursor)
+      } catch (e) {
+        try {
+          await save(name, claim.token, { failed: true })
+        } catch {}
+        throw e
+      }
+      chunks++
+      const next = (await save(name, claim.token, {
+        result: out === undefined ? null : out,
+      })) as StepsAnswer
+      if (next === null || typeof next !== "object" || next.state !== "run") {
+        return finish(next, chunks)
+      }
+      cursor = next.cursor === undefined ? null : next.cursor
+    }
+  }
+}
+
 /**
  * What a failed bridge call rejects with inside the handler, as in the
  * subprocess (bridge-rejection.ts newBridgeRejection): the plain message
@@ -348,7 +464,9 @@ export function createCtx(
       obj[p.member] =
         p.kind === "method"
           ? (p.structured ? wrapStructured : wrapRaw)(bridge(p.method))
-          : jsonlIterator(wrapStructured(bridge(p.nextMethod)))
+          : p.kind === "iterator"
+            ? jsonlIterator(wrapStructured(bridge(p.nextMethod)))
+            : stepsRun(wrapStructured(bridge(p.beginMethod)), wrapStructured(bridge(p.saveMethod)))
     }
     ctx[group] = obj
   }

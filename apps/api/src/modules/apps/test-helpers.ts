@@ -22,7 +22,8 @@ export interface MockAppContext extends AppContext {
   resolveContact: Mock<(params: Parameters<AppContext["resolveContact"]>[0]) => Promise<unknown>>
   /** Tracked side-effects for assertions. */
   _dbInserts: Array<{ entity: string; data: Record<string, unknown> }>
-  _jobs: Array<{ name: string; payload: unknown }>
+  /** Jobs enqueued (`enqueueJob`, `jobs.enqueue`) and timers (`timers.wakeIn`, with `delaySeconds`). */
+  _jobs: Array<{ name: string; payload: unknown; opts?: unknown; delaySeconds?: number }>
 }
 
 export interface MockAppContextOpts {
@@ -46,7 +47,7 @@ export interface MockAppContextOpts {
 export function mockAppContext(opts: MockAppContextOpts): MockAppContext {
   const tables: Record<string, Array<Record<string, unknown>>> = {}
   const inserts: Array<{ entity: string; data: Record<string, unknown> }> = []
-  const jobs: Array<{ name: string; payload: unknown }> = []
+  const jobs: MockAppContext["_jobs"] = []
   const effects = new Map<string, { done: boolean; result: unknown }>()
 
   function matches(row: Record<string, unknown>, where?: Record<string, unknown>): boolean {
@@ -163,8 +164,55 @@ export function mockAppContext(opts: MockAppContextOpts): MockAppContext {
     db,
     store,
     emit: mock(async (_event: Parameters<AppContext["emit"]>[0]) => undefined),
-    enqueueJob: async (name: string, payload: unknown) => {
-      jobs.push({ name, payload })
+    enqueueJob: async (name: string, payload: unknown, o?: unknown) => {
+      jobs.push({ name, payload, ...(o !== undefined ? { opts: o } : {}) })
+    },
+    jobs: {
+      enqueue: async (name, payload, o) => {
+        jobs.push({ name, payload: payload ?? {}, ...(o !== undefined ? { opts: o } : {}) })
+      },
+    },
+    timers: {
+      wakeIn: async (seconds, name, payload, o) => {
+        jobs.push({
+          name,
+          payload: payload ?? {},
+          delaySeconds: seconds,
+          ...(o !== undefined ? { opts: o } : {}),
+        })
+      },
+    },
+    // In one process: the chunks run back to back until done (no budget), kept
+    // in the mock store's `liaison_steps` collection like the host does; a chunk
+    // that answers `wakeIn` stops the run as `scheduled`.
+    steps: {
+      run: async (name, _o, chunk) => {
+        const saved = await store.get<{ cursor: unknown; done: boolean }>("liaison_steps", name)
+        if (saved?.data.done)
+          return { state: "done", cursor: saved.data.cursor as never, chunks: 0 }
+        let cursor = (saved?.data.cursor ?? null) as never
+        let chunks = 0
+        for (;;) {
+          const out = await chunk(cursor)
+          chunks++
+          cursor = (out.cursor ?? null) as never
+          await store.set("liaison_steps", name, { cursor, done: out.done })
+          if (out.done) return { state: "done", cursor, chunks }
+          if (out.wakeIn !== undefined) return { state: "scheduled", cursor, chunks }
+        }
+      },
+      get: async (name) => {
+        const d = await store.get<{ cursor: unknown; done: boolean }>("liaison_steps", name)
+        return d
+          ? {
+              cursor: d.data.cursor as never,
+              done: d.data.done,
+              running: false,
+              updatedAt: d.updatedAt,
+            }
+          : null
+      },
+      reset: async (name) => ({ reset: (await store.delete("liaison_steps", name)).deleted }),
     },
     resolveContact: mock(async (_params: Parameters<AppContext["resolveContact"]>[0]) => undefined),
     listContactsByExternalId: mock(async (_limit?: number, _cursor?: string) => ({

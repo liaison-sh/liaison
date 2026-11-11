@@ -13,7 +13,12 @@ export interface AppContext {
   orgId: string
   db: RlsClient
   emit: (event: AppEvent) => Promise<void>
-  enqueueJob: (jobName: string, payload: unknown) => Promise<void>
+  /** `delay` in ms (at most 15 min), `jobId` an org-scoped deduplication key (as for app code). */
+  enqueueJob: (
+    jobName: string,
+    payload: unknown,
+    opts?: { delay?: number; jobId?: string },
+  ) => Promise<void>
   resolveContact: (params: any) => Promise<any>
   logger: pino.Logger
   /**
@@ -123,7 +128,11 @@ export function createAppContext(
         timestamp: event.timestamp ?? new Date().toISOString(),
       })
     },
-    enqueueJob: async (jobName: string, payload: unknown) => {
+    enqueueJob: async (
+      jobName: string,
+      payload: unknown,
+      opts?: { delay?: number; jobId?: string },
+    ) => {
       // SECURITY (cross-tenant escalation): pin the context's trusted `orgId`
       // into the payload and forbid an override. The BullMQ worker (jobs.ts)
       // derives the RLS tenant from `payload.orgId`; spreading the caller
@@ -131,9 +140,24 @@ export function createAppContext(
       // sandbox bridge enqueueJob pin (rpc-bridge.ts) and emit's orgId stamp.
       // The job's identity fields (`_userId`, `_callerScopes`) and host handles are
       // never taken from the payload: a job enqueued here runs as the app.
-      const { withoutHostJobFields } = await import("~/modules/apps/sandbox/bridge/platform")
+      const { MAX_SANDBOX_JOB_DELAY_MS, withoutHostJobFields } = await import(
+        "~/modules/apps/sandbox/bridge/platform"
+      )
       const merged = { ...withoutHostJobFields(payload), orgId }
-      await enqueueAppJob(appName, jobName, merged)
+      if (!opts) {
+        await enqueueAppJob(appName, jobName, merged)
+        return
+      }
+      const delay =
+        typeof opts.delay === "number" && Number.isFinite(opts.delay) && opts.delay > 0
+          ? Math.min(Math.round(opts.delay), MAX_SANDBOX_JOB_DELAY_MS)
+          : undefined
+      await enqueueAppJob(appName, jobName, merged, {
+        ...(typeof opts.jobId === "string" && opts.jobId !== ""
+          ? { jobId: `${orgId}:${opts.jobId}` }
+          : {}),
+        ...(delay ? { delay } : {}),
+      })
     },
     resolveContact: async (params: any) => {
       const { appBridgeManifest } = await import("~/modules/apps/app-registries")

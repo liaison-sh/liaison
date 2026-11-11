@@ -301,6 +301,12 @@ const CONNECTOR_PATHS = [
   "packages/shared/src/capability-categories.ts",
   "apps/api/test-support/index.e2e.ts",
   "apps/api/test-support/qa-seed-routes.ts",
+  // The connector's contract fixtures (its harness): the bridge calls each of
+  // its entries makes when woken, recorded for replay.
+  "apps/api/src/modules/apps/contract/fixtures/@@/**",
+  // Another app's entries the connector wakes, named for it (its event, the job
+  // that reconciles against it), recorded with the connector's own replies.
+  "apps/api/src/modules/apps/contract/fixtures/*/*@@*.json",
 ].map((g) => g.replace(/@@/g, FORBIDDEN))
 
 /** A path glob (`*` within a segment, `**` across segments) as a RegExp. */
@@ -345,7 +351,8 @@ function connectorDeclaredNames(): { bare: string[]; quoted: string[] } {
   }
   const named = (v: unknown): v is string =>
     typeof v === "string" && v.toLowerCase().includes(FORBIDDEN)
-  const schemaNames = [...JSON.stringify(manifest.schema ?? {}).matchAll(/"([a-z_]+)"/g)]
+  const schemaNames = [manifest.schema, ...otherAppSchemas()]
+    .flatMap((schema) => [...JSON.stringify(schema ?? {}).matchAll(/"([a-z_]+)"/g)])
     .map((m) => m[1] as string)
     .filter((n) => n !== FORBIDDEN && n.includes(FORBIDDEN))
   const hosts = Object.values(manifest.connections ?? {})
@@ -370,6 +377,22 @@ function connectorDeclaredNames(): { bare: string[]; quoted: string[] } {
     bare: [...new Set([...schemaNames, ...hosts])],
     quoted: [...new Set([...views, ...testIds])],
   }
+}
+
+/**
+ * The schemas the other bundled apps declare. A table another app keeps for the
+ * connector it feeds (`<app>_streams` in invoicing) is already an identifier in
+ * its qualified form (`app_invoicing.<app>_streams`); read from the manifests,
+ * its bare name is one too, and a name no manifest declares is still caught.
+ */
+function otherAppSchemas(): unknown[] {
+  const root = path.join(REPO_ROOT, "bundled-apps")
+  if (!existsSync(root)) return []
+  return readdirSync(root, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && d.name !== FORBIDDEN)
+    .map((d) => path.join(root, d.name, "app.manifest.json"))
+    .filter((p) => existsSync(p))
+    .map((p) => (JSON.parse(readFileSync(p, "utf8")) as { schema?: unknown }).schema)
 }
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
@@ -793,6 +816,9 @@ describe("extracted billing surface stays out of the repo", () => {
       "apps/api/src/modules/agent/tools/tool-bench/corpus.json",
       // The corpus's typed forms, as the bench last ranked them.
       "apps/api/src/modules/agent/tools/tool-bench/baseline.json",
+      // Its contract fixtures, and another app's entries it wakes.
+      `apps/api/src/modules/apps/contract/fixtures/${FORBIDDEN}/tool_connection_check.json`,
+      `apps/api/src/modules/apps/contract/fixtures/invoicing/job_reconcile-${FORBIDDEN}-payments.json`,
     ]) {
       expect(isConnectorPath(file), file).toBe(true)
       expect(nameViolation(file, `const ${FORBIDDEN}Client = 1`), file).toBe(false)

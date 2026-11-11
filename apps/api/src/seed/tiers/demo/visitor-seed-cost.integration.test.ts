@@ -92,14 +92,20 @@ const CATALOG_DEMO_APPS = [
  * round trips in 551 transactions (cold 5 942 in 552), 334 outbox events: the
  * app is installed for the org, with its roles and their events. The figure is
  * set 5 above the warm local one, as before.
+ * Re-measured 2026-11-11 once the seed stores the apps' attention lists (the
+ * Home feed reads only those and runs no app code): 6 532 round trips in 655
+ * transactions (cold 6 554 in 656, 6 544 in 656 beside four other seeds), 334
+ * outbox events. The lists alone cost 583 round trips in 101 transactions for
+ * the world's 8 people (each person's permissions read once for every app),
+ * the work the first minute tick would otherwise do; they queue no event.
  */
 const PRODUCTS_BASELINE = {
   outboxEvents: 334,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 5_928,
-  transactions: 551,
+  statements: 6_537,
+  transactions: 656,
 }
 /**
  * Round trips are deterministic up to a few cache reads (5 251-5 262 across
@@ -117,12 +123,15 @@ const SAAS_BASELINE = {
   // its own send check (the product's check reads the recipients, their
   // opt-outs and the invoice it is about) and each card invoice's document
   // names the processor invoice it was issued for.
-  outboxEvents: 466,
+  // Re-measured the same day at 8 172 in 863, 484 outbox events: 6 892 in 644
+  // before the attention lists (the Support handover channel and the merges
+  // since the last figure), and the lists of the world's 14 people 1 280 in 219.
+  outboxEvents: 484,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 6_831,
-  transactions: 644,
+  statements: 8_177,
+  transactions: 863,
 }
 const BASELINE = { products: PRODUCTS_BASELINE, saas: SAAS_BASELINE } as const
 /** No world's seed costs more than this many times the products world's. */

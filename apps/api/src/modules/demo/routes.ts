@@ -1035,7 +1035,7 @@ async function acquireVisitorWorkspace(input: {
   if (pooled) {
     // The pool seeds every need; the visitor sees the apps their picks need,
     // turned On, before their session exists.
-    await fitPooledDemoWorld(pooled.orgId, needs, pooled.worldId)
+    await fitPooledDemoWorld(pooled.orgId, needs, pooled.worldId, pooled.userId)
     const finishedAt = new Date().toISOString()
     await writeProvisioning({
       orgId: pooled.orgId,

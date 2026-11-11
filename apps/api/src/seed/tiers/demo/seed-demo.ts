@@ -73,6 +73,7 @@ import { approvalRequests, routines } from "~/db/schema/kernel"
 import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
 import { storeApprovalSummaries } from "~/modules/approvals/served-summary"
+import { refreshAllAppAttention } from "~/modules/apps/attention-store"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { setOrgAppAccess, setOrgAppStatus } from "~/modules/apps/org-app-service"
 import { getOrgAppState } from "~/modules/apps/org-apps"
@@ -158,6 +159,7 @@ export interface SeedLayerFailure {
     | "agent-native"
     | "accounts"
     | "support-routine"
+    | "attention"
   message: string
 }
 
@@ -197,6 +199,21 @@ async function storeSeededApprovalSummaries(orgId: string): Promise<number> {
   if (ids.length === 0) return 0
   await ensureAppsForOrg(orgId)
   return storeApprovalSummaries(orgId, ids)
+}
+
+/**
+ * Recompute the apps' stored attention lists of the org, every app provider for every active
+ * person (or only `userIds`), the way the minute tick does (`refreshAllAppAttention`). The Home
+ * feed reads only those stored lists for an app (attention-store.ts), so a workspace the seed just
+ * wrote shows empty queues until they are computed. The org's apps are registered in this process
+ * first, the way a server registers them at boot.
+ */
+export async function refreshSeededAttention(
+  orgId: string,
+  userIds?: readonly string[],
+): Promise<void> {
+  await ensureAppsForOrg(orgId)
+  await refreshAllAppAttention(orgId, userIds ? { userIds: [...userIds] } : {})
 }
 
 function message(err: unknown): string {
@@ -246,13 +263,17 @@ async function applyAppPlan(
  * which the full seed switches on, goes back Off unless they picked support,
  * so nothing in an app they never asked for runs behind their back. The other
  * seeded content of the apps turned Off stays in place, out of sight, which is
- * what an app turned Off already means. Cheap on purpose: a few row updates
- * inside the claim, never a seed.
+ * what an app turned Off already means. Last, the claiming owner's stored
+ * attention lists are recomputed (`ownerUserId`), so the Home they land on
+ * holds the queues as of the claim, not as of the pool's seed. Cheap on
+ * purpose: a few row updates and one person's lists inside the claim, never a
+ * seed.
  */
 export async function fitPooledWorldToNeeds(
   orgId: string,
   needs: readonly DemoNeed[],
   worldId: DemoWorldId = DEMO_DEFAULT_WORLD,
+  ownerUserId?: string,
 ): Promise<{ appsOff: string[]; supportRoutineOff: boolean }> {
   const fit = pooledFitPlan(needs, worldId)
   const appsOff = await applyAppPlan(orgId, fit)
@@ -281,6 +302,7 @@ export async function fitPooledWorldToNeeds(
       supportRoutineOff = true
     }
   }
+  if (ownerUserId) await refreshSeededAttention(orgId, [ownerUserId])
   return { appsOff, supportRoutineOff }
 }
 
@@ -473,6 +495,16 @@ async function seedDemoWorldLayers(opts: SeedDemoWorldOptions): Promise<SeedDemo
   } catch (err) {
     seedLog.error({ err, orgId: org.orgId }, "demo seed: storing approval summaries failed")
     log(`world: approval summaries not stored, they are filled when served: ${message(err)}`)
+  }
+
+  // The kernel's stored approval summaries are in; the apps' stored attention lists are computed
+  // now from what every layer wrote, so the workspace's Home opens with its queues full.
+  try {
+    await refreshSeededAttention(org.orgId)
+    log("world: the apps' attention lists are stored")
+  } catch (err) {
+    failures.push({ layer: "attention", message: message(err) })
+    log(`world: the apps' attention lists could not be stored: ${message(err)}`)
   }
 
   // The support scenario's routine goes on LAST, once every seeded ticket is

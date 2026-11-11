@@ -732,7 +732,7 @@ describe("a knowledge source kind on every executor: N pages over several jobs",
         { sourceId, trigger },
         {
           appSource: {
-            ensureOrg: async () => undefined,
+            setUpAppSourceOrg: async () => undefined,
             ownerScopes: async () => SCOPES,
             enqueueContinuation: async () => {
               queue.push("continue")

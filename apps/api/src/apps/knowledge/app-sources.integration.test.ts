@@ -151,7 +151,7 @@ async function drive(
       { sourceId, trigger: next.trigger },
       {
         appSource: {
-          ensureOrg: async () => undefined,
+          setUpAppSourceOrg: async () => undefined,
           ownerScopes: async () => opts.ownerScopes ?? [READ_SCOPE, DOC_READ],
           enqueueContinuation: async (id, generation) => {
             continuations.push(`sync:${id}:g${generation}`)
@@ -318,7 +318,7 @@ describe("an app source syncs into Knowledge", () => {
 
   it("refuses a page whose generation moved: nothing is written", async () => {
     const source = await newSource({ orgId: orgA, userId: alice })
-    const begun = await dbAppSourceStore.begin(source)
+    const begun = await dbAppSourceStore.beginAppSourcePass(source)
     const page = {
       upserts: [{ externalId: "x1", title: "X1", body: "x" }],
       deletes: [],
@@ -326,9 +326,9 @@ describe("an app source syncs into Knowledge", () => {
       done: false,
       prune: false,
     }
-    await dbAppSourceStore.applyPage(source, begun, page)
+    await dbAppSourceStore.applyAppSourcePage(source, begun, page)
     await expect(
-      dbAppSourceStore.applyPage(source, begun, {
+      dbAppSourceStore.applyAppSourcePage(source, begun, {
         ...page,
         upserts: [{ externalId: "x2", title: "X2", body: "x" }],
       }),

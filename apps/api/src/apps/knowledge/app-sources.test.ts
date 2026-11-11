@@ -52,7 +52,7 @@ function memoryStore() {
     pass: 0,
   }
   const store: AppSourceStore = {
-    async begin() {
+    async beginAppSourcePass() {
       db.status = "running"
       if (!db.passStartedAt) {
         db.pass += 1
@@ -60,7 +60,7 @@ function memoryStore() {
       }
       return { cursor: db.cursor, generation: db.generation, passStartedAt: db.passStartedAt }
     },
-    async applyPage(_source, from: AppSourceState, page: AppSourcePage) {
+    async applyAppSourcePage(_source, from: AppSourceState, page: AppSourcePage) {
       if (db.generation !== from.generation) throw new AppSourceConflictError(SOURCE.id)
       for (const doc of page.upserts)
         db.docs.set(doc.externalId, { doc, archived: false, pass: db.pass })
@@ -93,7 +93,7 @@ function memoryStore() {
         archived,
       }
     },
-    async fail(_source, message) {
+    async failAppSourceSync(_source, message) {
       db.status = "error"
       db.lastError = message
     },

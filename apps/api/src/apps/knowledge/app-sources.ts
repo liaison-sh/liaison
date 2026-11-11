@@ -330,34 +330,33 @@ export interface AppliedPage {
 /** Where the sync reads and writes; the database in production, memory in unit tests. */
 export interface AppSourceStore {
   /** Mark the source running, open a pass when none is open, and read its state. */
-  begin(source: SyncedSourceRow): Promise<AppSourceState>
+  beginAppSourcePass(source: SyncedSourceRow): Promise<AppSourceState>
   /**
    * Write one page and its cursor in one transaction, only while the source is
    * still at `from.generation` (else AppSourceConflictError, nothing written).
    * A done page closes the pass and stamps the source ok.
    */
-  applyPage(
+  applyAppSourcePage(
     source: SyncedSourceRow,
     from: AppSourceState,
     page: AppSourcePage,
   ): Promise<AppliedPage>
   /** Stamp a failed sync (cursor and pass kept: the next sync resumes). */
-  fail(source: SyncedSourceRow, message: string): Promise<void>
+  failAppSourceSync(source: SyncedSourceRow, message: string): Promise<void>
 }
 
 const toIso = (v: unknown): string | null =>
   v == null ? null : v instanceof Date ? v.toISOString() : String(v)
 
-/** The production store: `app_knowledge.synced_sources` and the documents of the source. */
-export const dbAppSourceStore: AppSourceStore = {
-  async begin(source) {
-    const rows = extractRows<{
-      sync_cursor: unknown
-      sync_generation: number | null
-      sync_pass_started_at: Date | string | null
-    }>(
-      await withPrivilegedDb(source.orgId, "knowledge-app-source-begin", (tx) =>
-        tx.execute(drizzleSql`
+/** Mark the source running and open a pass when none is open (the database store's begin). */
+async function beginAppSourcePass(source: SyncedSourceRow): Promise<AppSourceState> {
+  const rows = extractRows<{
+    sync_cursor: unknown
+    sync_generation: number | null
+    sync_pass_started_at: Date | string | null
+  }>(
+    await withPrivilegedDb(source.orgId, "knowledge-app-source-begin", (tx) =>
+      tx.execute(drizzleSql`
           UPDATE ${knowledgeRel("synced_sources")}
           SET last_sync_status = 'running',
               sync_pass_started_at = COALESCE(
@@ -367,24 +366,29 @@ export const dbAppSourceStore: AppSourceStore = {
           WHERE id = ${source.id}::uuid AND org_id = ${source.orgId}::uuid
           RETURNING sync_cursor, sync_generation, sync_pass_started_at
         `),
-      ),
-    )
-    const row = rows[0]
-    if (!row) throw new KnowledgeError("NOT_FOUND", `synced source ${source.id} not found`)
-    return {
-      cursor: row.sync_cursor ?? null,
-      generation: Number(row.sync_generation ?? 0),
-      passStartedAt: toIso(row.sync_pass_started_at),
-    }
-  },
+    ),
+  )
+  const row = rows[0]
+  if (!row) throw new KnowledgeError("NOT_FOUND", `synced source ${source.id} not found`)
+  return {
+    cursor: row.sync_cursor ?? null,
+    generation: Number(row.sync_generation ?? 0),
+    passStartedAt: toIso(row.sync_pass_started_at),
+  }
+}
 
-  async applyPage(source, from, page) {
-    return withPrivilegedDb(source.orgId, "knowledge-app-source-page", async (tx) => {
-      // The compare-and-set first: it locks the source row, so a concurrent
-      // run waits here and then finds the generation moved.
-      const cursorJson = JSON.stringify(page.nextCursor ?? null)
-      const moved = extractRows<{ sync_generation: number; at: Date | string }>(
-        await tx.execute(drizzleSql`
+/** Write one page and its cursor behind the generation compare-and-set (the database store's applyPage). */
+async function applyAppSourcePage(
+  source: SyncedSourceRow,
+  from: AppSourceState,
+  page: AppSourcePage,
+): Promise<AppliedPage> {
+  return withPrivilegedDb(source.orgId, "knowledge-app-source-page", async (tx) => {
+    // The compare-and-set first: it locks the source row, so a concurrent
+    // run waits here and then finds the generation moved.
+    const cursorJson = JSON.stringify(page.nextCursor ?? null)
+    const moved = extractRows<{ sync_generation: number; at: Date | string }>(
+      await tx.execute(drizzleSql`
           UPDATE ${knowledgeRel("synced_sources")}
           SET sync_cursor = ${cursorJson}::jsonb,
               sync_generation = sync_generation + 1,
@@ -402,43 +406,44 @@ export const dbAppSourceStore: AppSourceStore = {
             AND sync_generation = ${from.generation}
           RETURNING sync_generation, now() AS at
         `),
-      )
-      if (!moved[0]) throw new AppSourceConflictError(source.id)
-      const at = new Date(toIso(moved[0].at) ?? Date.now())
-      const upserted = await writeUpserts(tx, source, page.upserts, at)
-      const archivedIds = await archiveByExternalIds(tx, source, page.deletes)
-      if (page.done && page.prune && from.passStartedAt) {
-        archivedIds.push(...(await archiveNotSyncedSince(tx, source, from.passStartedAt)))
-      }
-      for (const id of archivedIds) {
-        await tx.queueEvent({
-          app: "knowledge",
-          entity: "document",
-          action: "archive",
-          entityId: id,
-          data: { id, syncedSourceId: source.id },
-          actorId: source.createdBy,
-          actorType: "system",
-          orgId: source.orgId,
-        })
-      }
-      return {
-        state: {
-          cursor: page.nextCursor ?? null,
-          generation: Number(moved[0].sync_generation),
-          passStartedAt: page.done ? null : from.passStartedAt,
-        },
-        upserted,
-        archived: archivedIds.length,
-      }
-    })
-  },
+    )
+    if (!moved[0]) throw new AppSourceConflictError(source.id)
+    const at = new Date(toIso(moved[0].at) ?? Date.now())
+    const upserted = await writeUpserts(tx, source, page.upserts, at)
+    const archivedIds = await archiveByExternalIds(tx, source, page.deletes)
+    if (page.done && page.prune && from.passStartedAt) {
+      archivedIds.push(...(await archiveNotSyncedSince(tx, source, from.passStartedAt)))
+    }
+    for (const id of archivedIds) {
+      await tx.queueEvent({
+        app: "knowledge",
+        entity: "document",
+        action: "archive",
+        entityId: id,
+        data: { id, syncedSourceId: source.id },
+        actorId: source.createdBy,
+        actorType: "system",
+        orgId: source.orgId,
+      })
+    }
+    return {
+      state: {
+        cursor: page.nextCursor ?? null,
+        generation: Number(moved[0].sync_generation),
+        passStartedAt: page.done ? null : from.passStartedAt,
+      },
+      upserted,
+      archived: archivedIds.length,
+    }
+  })
+}
 
-  async fail(source, message) {
-    // `last_sync_at` advances on a failure too, so a permanent failure waits a
-    // whole interval (sync-reconciler.ts says why).
-    await withPrivilegedDb(source.orgId, "knowledge-app-source-fail", (tx) =>
-      tx.execute(drizzleSql`
+/** Stamp a failed sync, keeping the cursor and the pass (the database store's fail). */
+async function failAppSourceSync(source: SyncedSourceRow, message: string): Promise<void> {
+  // `last_sync_at` advances on a failure too, so a permanent failure waits a
+  // whole interval (sync-reconciler.ts says why).
+  await withPrivilegedDb(source.orgId, "knowledge-app-source-fail", (tx) =>
+    tx.execute(drizzleSql`
         UPDATE ${knowledgeRel("synced_sources")}
         SET last_sync_at = now(),
             last_sync_status = 'error',
@@ -446,8 +451,14 @@ export const dbAppSourceStore: AppSourceStore = {
             updated_at = now()
         WHERE id = ${source.id}::uuid AND org_id = ${source.orgId}::uuid
       `),
-    )
-  },
+  )
+}
+
+/** The production store: `app_knowledge.synced_sources` and the documents of the source. */
+export const dbAppSourceStore: AppSourceStore = {
+  beginAppSourcePass,
+  applyAppSourcePage,
+  failAppSourceSync,
 }
 
 async function writeUpserts(
@@ -579,7 +590,7 @@ export async function runAppSourceSync(
   const now = deps.now ?? Date.now
   const startedAt = now()
   const totals = { pages: 0, upserted: 0, archived: 0 }
-  let state = await store.begin(source)
+  let state = await store.beginAppSourcePass(source)
   for (;;) {
     let page: AppSourcePage
     try {
@@ -592,7 +603,7 @@ export async function runAppSourceSync(
       page = parseSyncResult(raw, limits)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      await store.fail(
+      await store.failAppSourceSync(
         source,
         err instanceof AppSourceContractError ? `Sync page refused: ${message}` : message,
       )
@@ -600,13 +611,13 @@ export async function runAppSourceSync(
     }
     let applied: AppliedPage
     try {
-      applied = await store.applyPage(source, state, page)
+      applied = await store.applyAppSourcePage(source, state, page)
     } catch (err) {
       if (err instanceof AppSourceConflictError) {
         log.info({ sourceId: source.id }, "app source sync: another run moved the cursor; stopping")
         return { state: "conflict", ...totals }
       }
-      await store.fail(source, err instanceof Error ? err.message : String(err))
+      await store.failAppSourceSync(source, err instanceof Error ? err.message : String(err))
       throw err
     }
     state = applied.state
@@ -619,7 +630,7 @@ export async function runAppSourceSync(
         await deps.enqueueContinuation(source.id, state.generation)
       } catch (err) {
         // The pass stays open: the next scheduled sync resumes it from the cursor.
-        await store.fail(
+        await store.failAppSourceSync(
           source,
           `Could not schedule the next page: ${err instanceof Error ? err.message : String(err)}`,
         )
@@ -639,7 +650,7 @@ export async function runAppSourceSyncJob(
   source: SyncedSourceRow,
   opts: {
     enqueueContinuation: (sourceId: string, generation: number) => Promise<void>
-    ensureOrg?: (orgId: string) => Promise<void>
+    setUpAppSourceOrg?: (orgId: string) => Promise<void>
     ownerScopes?: (orgId: string, userId: string) => Promise<readonly string[]>
     dispatch?: AppSourceSyncDeps["dispatch"]
     store?: AppSourceStore
@@ -649,18 +660,18 @@ export async function runAppSourceSyncJob(
   const store = opts.store ?? dbAppSourceStore
   const kind = source.sourceKind ?? ""
   const userId = source.ownerUserId ?? source.createdBy
-  const ensureOrg =
-    opts.ensureOrg ??
+  const setUpOrg =
+    opts.setUpAppSourceOrg ??
     (async (orgId: string) => {
       const { awaitOrgApps } = await import("~/modules/apps/init")
       await awaitOrgApps(orgId)
     })
-  await ensureOrg(source.orgId)
+  await setUpOrg(source.orgId)
   const entry = knowledgeSourceKindRegistry.get([source.orgId, source.appName])
   const decl = entry?.kinds[kind]
   const refuse = async (reason: string) => {
     log.warn({ sourceId: source.id, app: source.appName, kind }, `app source sync: ${reason}`)
-    await store.fail(source, reason)
+    await store.failAppSourceSync(source, reason)
     return { state: "refused" as const, reason }
   }
   if (!entry || !decl) {

@@ -19,6 +19,7 @@ import {
   DateTokenError,
   type DayWindow,
   dateTokensIn,
+  filterTokensIn,
   hasRangeTokens,
   resolveDateTokens,
   resolveTimeRange,
@@ -339,6 +340,76 @@ function compact(value: unknown, max = 160): string {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s
 }
 
+/** A note shown inline on its operation's line when it is this short. */
+const NOTE_INLINE_MAX = 200
+/** The length of each line a longer note's text, or its links, run over. */
+const NOTE_CHUNK = 440
+
+/** Every link target a note's markdown holds: inline and reference links, autolinks, bare URLs. */
+export function noteLinkTargets(text: string): string[] {
+  const out = new Set<string>()
+  for (const m of text.matchAll(/\]\(\s*<?([^\s)>]+)/g)) out.add(m[1]!)
+  for (const m of text.matchAll(/^\s{0,3}\[[^\]]+\]:\s*<?([^\s>]+)/gm)) out.add(m[1]!)
+  for (const m of text.matchAll(/<((?:https?:|mailto:)[^\s>]+)>/gi)) out.add(m[1]!)
+  for (const m of text.matchAll(/(?:https?:\/\/|mailto:)[^\s<>()[\]"']+/gi)) {
+    if (![...out].some((t) => t.startsWith(m[0]))) out.add(m[0])
+  }
+  return [...out]
+}
+
+const oneLine = (text: string) => text.replace(/\s*\n\s*/g, " ↵ ")
+
+function chunks(text: string, size = NOTE_CHUNK): string[] {
+  const out: string[] = []
+  for (let i = 0; i < text.length; i += size) out.push(text.slice(i, i + size))
+  return out
+}
+
+/** A note on its operation's line: in full when short, else its length (the text follows). */
+function noteHead(text: string): string {
+  const links = noteLinkTargets(text).length
+  const linkWords = links ? `; ${links} link${links === 1 ? "" : "s"}, listed below` : ""
+  return text.length <= NOTE_INLINE_MAX
+    ? `the note "${oneLine(text)}"${linkWords}`
+    : `a note of ${text.length} characters, its full text below${linkWords}`
+}
+
+/**
+ * The lines a note adds under its operation: its full text when it is not on the line itself,
+ * then every link target it holds, so an admin sees all of it, links included.
+ */
+export function noteExtraLines(text: string): string[] {
+  const out: string[] = []
+  if (text.length > NOTE_INLINE_MAX) {
+    const parts = chunks(oneLine(text))
+    parts.forEach((part, i) => {
+      out.push(`   Note text (${i + 1}/${parts.length}): ${part}`)
+    })
+  }
+  const links = noteLinkTargets(text)
+  if (links.length) {
+    for (const part of chunks(links.join(" , "))) out.push(`   Links in the note: ${part}`)
+  }
+  return out
+}
+
+/** The note text an operation sets, if any. */
+function noteOf(op: EditOperation): string | null {
+  if (op.op === "addBlock" && op.block.type === "text" && typeof op.block.text === "string") {
+    return op.block.text
+  }
+  if (op.op === "updateBlock" && typeof op.changes.text === "string") return op.changes.text
+  return null
+}
+
+/** How many lines the approval card of `ops` lists: one per operation, plus each note's own. */
+export function cardLineCount(ops: EditOperation[]): number {
+  return ops.reduce((n, op) => {
+    const note = noteOf(op)
+    return n + 1 + (note === null ? 0 : noteExtraLines(note).length)
+  }, 0)
+}
+
 /** Params as written when short; else each one by name, its value cut (the tokens follow). */
 function paramWords(params: Record<string, unknown>): string {
   const whole = JSON.stringify(params)
@@ -391,6 +462,20 @@ function mapWords(rawMap: unknown, spec: Record<string, unknown> = {}): string {
     )
   }
   if (map.link !== undefined) parts.push(`each row links to ${compact(map.link, 80)}`)
+  if (isObject(map.sort)) {
+    parts.push(
+      `sorted by ${String(map.sort.field)} ${map.sort.dir === "asc" ? "ascending" : "descending"}`,
+    )
+  }
+  if (map.limit !== undefined) parts.push(`at most ${String(map.limit)} rows`)
+  if (map.format !== undefined) {
+    parts.push(`shown as ${String(map.format)}${map.currency ? ` (${String(map.currency)})` : ""}`)
+  }
+  if (Array.isArray(map.drillColumns)) {
+    parts.push(
+      `its rows open with the columns ${map.drillColumns.map((c) => String(isObject(c) ? (c.label ?? c.field) : c)).join(", ")}`,
+    )
+  }
   let out = parts.join(", ")
   if (Array.isArray(map.where) && map.where.length) {
     out += `; keeps only rows where ${whereWords(map.where, spec)}`
@@ -462,7 +547,7 @@ function blockSourceWords(
   window: DayWindow,
   ctx: DescribeContext,
 ): string {
-  if (b.type === "text") return `showing the note "${compact(String(b.text ?? ""), 100)}"`
+  if (b.type === "text") return `showing ${noteHead(String(b.text ?? ""))}`
   if (typeof b.dataset === "string") {
     const ds = isObject(spec.datasets) ? spec.datasets[b.dataset] : undefined
     return `reading the shared dataset '${b.dataset}' (${ds ? sourceWords(ds, window, ctx) : "not declared: this edit will be refused"})`
@@ -510,15 +595,31 @@ function filterWords(f: Record<string, unknown>, spec: Record<string, unknown>):
   if (Array.isArray(o)) options = `, options ${compact(o.join(", "), 100)}`
   else if (isObject(o) && typeof o.fromDataset === "string")
     options = `, options: the values of ${String(o.field)} in the dataset '${o.fromDataset}'`
-  else if (isObject(o) && isObject(o.fromSource))
-    options = `, options: the values of ${String(o.field)} read from ${String(o.fromSource.tool ?? o.fromSource.collection ?? "a source")}`
+  else if (isObject(o) && isObject(o.fromSource)) {
+    const src = o.fromSource
+    const how =
+      src.kind === "store"
+        ? `the ${String(src.app)} collection "${String(src.collection)}"${isObject(src.query) && Object.keys(src.query).length ? ` query ${compact(src.query, 200)}` : ""}`
+        : `${String(src.tool ?? "a source")}${isObject(src.params) && Object.keys(src.params).length ? ` with ${compact(src.params, 200)}` : " with no params"}`
+    options = `, options: the values of ${String(o.field)} read from ${how}`
+  }
   const def =
     f.default === undefined || (Array.isArray(f.default) && f.default.length === 0)
       ? ", default all"
       : `, default ${compact(f.default, 60)}`
-  const blocks = ((spec.blocks ?? []) as Record<string, unknown>[]).filter((b) =>
-    JSON.stringify([b.source, b.map]).includes(String(f.id)),
-  ).length
+  const datasets = isObject(spec.datasets) ? spec.datasets : {}
+  const reads = (source: unknown) =>
+    isObject(source) &&
+    filterTokensIn(source.kind === "store" ? source.query : source.params).includes(String(f.id))
+  const blocks = ((spec.blocks ?? []) as Record<string, unknown>[]).filter((b) => {
+    const map = isObject(b.map) ? b.map : {}
+    const where = Array.isArray(map.where) ? map.where : []
+    return (
+      reads(b.source) ||
+      (typeof b.dataset === "string" && reads(datasets[b.dataset])) ||
+      where.some((w) => isObject(w) && isObject(w.value) && w.value.filter === f.id)
+    )
+  }).length
   return `"${String(f.label ?? f.id)}" (id ${String(f.id)}, ${kind}${options}${def}${blocks ? `; read by ${blocks} block${blocks === 1 ? "" : "s"}` : ""})`
 }
 
@@ -557,7 +658,7 @@ function changeWords(
           ? "no longer reads a shared dataset"
           : `now reads the shared dataset '${String(v)}'`,
       )
-    } else if (k === "text") parts.push(`note now "${compact(v, 100)}"`)
+    } else if (k === "text") parts.push(`now shows ${noteHead(String(v ?? ""))}`)
     else if (k === "map") parts.push(`now shows ${mapWords(mergeKeys(before.map, v), spec)}`)
     else if (k === "timeRange") {
       parts.push(
@@ -694,7 +795,10 @@ export function describeOperations(
         const had =
           Array.isArray(specOf(state).filters) &&
           (specOf(state).filters as Record<string, unknown>[]).some((f) => f.id === op.filter.id)
-        line = `${had ? "Change" : "Add"} the filter ${filterWords(op.filter, specOf(next))}; each person picks their own value`
+        const list = (specOf(next).filters ?? []) as Record<string, unknown>[]
+        const at = list.findIndex((f) => f.id === op.filter.id)
+        const where = at >= 0 ? `, position ${at + 1} of ${list.length} in the filter bar` : ""
+        line = `${had ? "Change" : "Add"} the filter ${filterWords(op.filter, specOf(next))}${where}; each person picks their own value`
         break
       }
       case "removeFilter": {
@@ -706,6 +810,8 @@ export function describeOperations(
       }
     }
     lines.push(`${i + 1}. ${line}.`)
+    const note = noteOf(op)
+    if (note !== null) lines.push(...noteExtraLines(note))
     state = next
   })
   return lines

@@ -58,9 +58,21 @@ export function seriesDatasets(d: SeriesData, previousName: string): ChartDatase
 
 /**
  * What a pick on a series chart asks for: the category as the server labels it, and the series
- * when the chart splits into several (a comparison series names no series of its own).
+ * when the chart splits into several. A pick on a comparison series asks for the comparison
+ * window's rows (`previous`), under the comparison's own label for that place; null when that
+ * place has no previous value.
  */
-export function seriesPick(d: SeriesData, index: number, datasetIndex: number): DrillTarget {
+export function seriesPick(d: SeriesData, index: number, datasetIndex: number): DrillTarget | null {
+  if (datasetIndex >= d.series.length) {
+    // The order seriesDatasets draws them in: only comparison series that hold a value.
+    const drawn = (d.previous?.series ?? []).filter((p) => p.values.some((v) => v !== null))
+    const p = drawn[datasetIndex - d.series.length]
+    const label = d.previous?.labels[index]
+    if (!p || label === null || label === undefined || p.values[index] == null) return null
+    const target: DrillTarget = { category: String(label), previous: true }
+    if (d.series.length > 1 && p.name) target.series = p.name
+    return target
+  }
   const label = d.x[index]
   const target: DrillTarget = {
     category: label === null || label === undefined ? "" : String(label),
@@ -153,7 +165,10 @@ export const BlockRenderer: Component<BlockRendererProps> = (props) => {
               secondaryAxis={s().display?.secondaryAxis}
               onPick={
                 props.onDrill
-                  ? (index, datasetIndex) => props.onDrill?.(seriesPick(s(), index, datasetIndex))
+                  ? (index, datasetIndex) => {
+                      const target = seriesPick(s(), index, datasetIndex)
+                      if (target) props.onDrill?.(target)
+                    }
                   : undefined
               }
               pickLabel={(label) => i18n.t("kernel.dashboards.drillShowFor", { label })}

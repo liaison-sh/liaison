@@ -7632,7 +7632,6 @@ export const FR_BY_KEY: Record<string, string> = {
     "Bonjour,\n\nSans nouvelles de votre part, nous revenons vers vous : notre dernier message a-t-il répondu à votre question, ou pouvons-nous encore vous aider ?\n\nSans réponse de votre part d'ici {{days}} jours, nous clôturerons ce ticket. Vous pourrez toujours répondre à cet e-mail pour le rouvrir.\n\nMerci",
   // Dashboards (P3): the dashboard tab and its blocks.
   "kernel.nav.dashboard": "Tableau de bord",
-  "kernel.dashboards.sectionTitle": "Tableaux de bord",
   "kernel.nav.dashboards": "Tableaux de bord",
   "kernel.dashboards.indexEmptyTitle": "Aucun tableau de bord pour l'instant",
   "kernel.dashboards.indexEmptyBody":
@@ -7641,6 +7640,21 @@ export const FR_BY_KEY: Record<string, string> = {
     "Demandez à votre agent d'en créer un, par exemple : « Fais-moi un tableau de bord des commandes du mois, jour par jour. »",
   "kernel.dashboards.visibilityPersonal": "Personnel",
   "kernel.dashboards.visibilityOrg": "Organisation",
+  // The Dashboards sidebar and the page's cards.
+  "kernel.dashboards.allDashboards": "Tous les tableaux de bord",
+  "kernel.dashboards.filterLabel": "Filtrer les tableaux de bord",
+  "kernel.dashboards.sectionYours": "Les vôtres",
+  "kernel.dashboards.sectionTeam": "Partagés avec l'équipe",
+  "kernel.dashboards.sharedWithTeam": "Partagé avec l'équipe",
+  "kernel.dashboards.onlyYou": "Vous seul",
+  "kernel.dashboards.byOwner": "Par {{name}}",
+  "kernel.dashboards.titleByOwner": "{{title}}, par {{name}}",
+  "kernel.dashboards.blockCountOne": "{{count}} bloc",
+  "kernel.dashboards.blockCountMany": "{{count}} blocs",
+  "kernel.dashboards.updatedAgo": "mis à jour {{age}}",
+  "kernel.dashboards.noMatch": "Aucun tableau de bord ne correspond à « {{query}} ».",
+  "kernel.dashboards.sidebarHint":
+    "Votre agent crée et modifie les tableaux de bord. Demandez-le-lui dans le chat.",
   "kernel.dashboards.refreshAll": "Tout actualiser",
   "kernel.dashboards.refreshBlock": "Actualiser ce bloc",
   "kernel.dashboards.emptyTitle": "Ce tableau de bord n'a pas encore de bloc",

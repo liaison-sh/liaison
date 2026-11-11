@@ -7,6 +7,8 @@ import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { env } from "~/lib/env"
 import { attentionItemsRegistry } from "~/modules/apps/app-registries"
+import { refreshAllAppAttention } from "~/modules/apps/attention-store"
+import { ensureAppsForOrg } from "~/modules/apps/init"
 import { signAccessToken } from "~/modules/auth/jwt"
 
 const FIXTURE_PATH = new URL("../fixtures/attention-providers.ts", import.meta.url).pathname
@@ -25,6 +27,25 @@ function registerFakeKernelProvider(appName: string, handler: string): void {
     trusted: true,
   } as never)
   cleanupKeys.push(key)
+}
+
+/**
+ * The apps' attention lists are stored, recomputed after the app was woken
+ * (attention-store.ts): rows written straight into an app's tables wake
+ * nothing, so the test recomputes them, as the attention minute tick would.
+ */
+async function refreshStoredAttention(): Promise<void> {
+  await ensureAppsForOrg(orgId)
+  await refreshAllAppAttention(orgId, {
+    userIds: [userId],
+    loadPersonActor: async (o, u) => ({
+      actorType: "user",
+      userId: u,
+      orgId: o,
+      scopes: ["*"],
+      dimensionGrants: { "*": ["*"] },
+    }),
+  })
 }
 
 function authHeaders(): Record<string, string> {
@@ -184,6 +205,7 @@ describe("attention feed integration", () => {
     const projectTaskId = await seedProjectAttentionItem()
     const ticketId = await seedTicketAttentionItem()
     const approvalId = await seedApprovalAttentionItem()
+    await refreshStoredAttention()
 
     const res = await app.request("/api/attention-items", {
       headers: { Authorization: `Bearer ${token}` },
@@ -203,6 +225,7 @@ describe("attention feed integration", () => {
   it("attention.suppressed-inbox.tickets-excluded", async () => {
     const normalTicketId = await seedTicketAttentionItem()
     const suppressedTicketId = await seedSuppressedInboxTicket()
+    await refreshStoredAttention()
 
     const res = await app.request("/api/attention-items", {
       headers: { Authorization: `Bearer ${token}` },
@@ -259,6 +282,7 @@ describe("attention feed integration", () => {
     const staleTicketId = await seedInboxTicket("now() - INTERVAL '3 days'")
     // Last customer activity AFTER the cutoff: live work, must surface.
     const freshTicketId = await seedInboxTicket("now() - INTERVAL '5 minutes'")
+    await refreshStoredAttention()
 
     const res = await app.request("/api/attention-items", {
       headers: { Authorization: `Bearer ${token}` },

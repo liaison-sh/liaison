@@ -56,6 +56,10 @@ export interface DashboardSummary {
   title: string
   visibility: DashboardVisibility
   ownerUserId: string | null
+  /** The owner's display name (the list carries it; one dashboard's read does not). */
+  ownerName?: string | null
+  /** How many blocks it holds (the list carries it). */
+  blockCount?: number
   updatedAt?: string
 }
 

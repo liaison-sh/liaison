@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The viewer's dashboards as the shell knows them: the list the home sidebar
-// and the Dashboards page show, and each open tab's title (`resolveLabel`).
+// The viewer's dashboards as the shell knows them: the list the Dashboards
+// sidebar and page show, and each open tab's title (`resolveLabel`).
 // It stays live: a `kernel:dashboard` event (someone, or an agent acting for
 // them, created, changed, shared or deleted one) re-reads the list and makes an
 // open tab of that dashboard read it again (`handleDashboardEvent`).
@@ -12,6 +12,7 @@ import { openTab } from "~/modules/shell/tab-store"
 import { type DashboardSummary, type DashboardsApi, listDashboards } from "./dashboards-client"
 
 export const DASHBOARD_TAB_TYPE = "kernel:dashboard"
+export const DASHBOARDS_TAB_TYPE = "kernel:dashboards"
 
 const [list, setList] = createSignal<DashboardSummary[]>([])
 /** True once a list read has answered (an empty list then means none, not "not read yet"). */
@@ -34,6 +35,22 @@ export function sortDashboards(rows: DashboardSummary[]): DashboardSummary[] {
   )
 }
 
+/**
+ * The viewer's own dashboards (personal or shared by them) and the ones others share with the
+ * team, each by title: the two groups of the sidebar and the page.
+ */
+export function splitDashboards(
+  rows: DashboardSummary[],
+  userId: string,
+): { yours: DashboardSummary[]; team: DashboardSummary[] } {
+  const byTitle = (a: DashboardSummary, b: DashboardSummary) => a.title.localeCompare(b.title)
+  const own = (d: DashboardSummary) => d.visibility === "personal" || d.ownerUserId === userId
+  return {
+    yours: rows.filter(own).sort(byTitle),
+    team: rows.filter((d) => !own(d)).sort(byTitle),
+  }
+}
+
 export function dashboardsList(): DashboardSummary[] {
   return list()
 }
@@ -50,7 +67,7 @@ export function dashboardTitle(id: string): string | undefined {
 
 /**
  * One dashboard read by its page: its title names the tab, and the list carries it, added when
- * the list does not have it yet (one the agent just made and opened), so the Home sidebar shows
+ * the list does not have it yet (one the agent just made and opened), so the Dashboards sidebar shows
  * it without a reload.
  */
 export function rememberDashboard(d: DashboardSummary): void {

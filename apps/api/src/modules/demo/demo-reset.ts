@@ -284,6 +284,10 @@ export const KERNEL_RESET_RULES: Record<string, KernelResetRule> = {
   // caps are enforced from Redis counters, never from these rows, so keeping
   // them changes no limit, and a reset has no business rewriting the history.
   app_usage_daily: "keep",
+  // The apps' stored attention lists (0288): derived per person, recomputed
+  // after the next run of each app; a reset clears them with the data they
+  // were computed from.
+  app_attention_items: "clear",
   // A device's push address, registered once when App Review signs in on the
   // phone. Clearing it every night left the reviewer's device unreachable the
   // morning after, so "ask the agent to message you in one minute" (the push

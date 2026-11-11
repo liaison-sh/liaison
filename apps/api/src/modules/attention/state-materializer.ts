@@ -234,7 +234,7 @@ function threadOf(item: AttentionItem): string | null {
 /**
  * Materialize computed items from kernel-trusted state-derived attention
  * providers into `${K}.attention_events` as `email_only = true` rows (the feed
- * reads the provider live), at any urgency. An item seen for the first time
+ * reads the kernel providers live), at any urgency. An item seen for the first time
  * for a user (new `sourceKey`) is routed: its email state comes from the
  * router, and push and desktop go out if their cells are on. An item already
  * seen only refreshes its urgency and summary. Latency is this job's cadence:
@@ -504,6 +504,11 @@ export async function runStateMaterializeForOrg(
 export async function registerStateMaterializerScheduledJob(): Promise<void> {
   registerJobWorker<{ orgId: string }>("kernel", STATE_MATERIALIZER_ORG_JOB, async (payload) => {
     await runStateMaterializeForOrg(payload.orgId)
+    // The apps' stored attention lists follow time too (an SLA closing in, a
+    // task falling overdue): recomputed on the same cadence, the next minute
+    // for an org that changed, within HEARTBEAT_MINUTES otherwise.
+    const { refreshAllAppAttention } = await import("~/modules/apps/attention-store")
+    await refreshAllAppAttention(payload.orgId)
   })
   await registerScheduledJob(
     "kernel",

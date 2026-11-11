@@ -1140,6 +1140,9 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // own tools: pipeline, companies, team, agents, routines, MRR,
             // invoice numbers, schedules and the money decisions on Home.
             "src/seed/worlds/saas/stripe-world-reads.saas.integration.test.ts",
+            // The software world's workspace ended and reaped: nothing of it
+            // remains in any table, at the payments stand-in or in search.
+            "src/seed/worlds/saas/stripe-world-reset.saas.integration.test.ts",
             // The demo-instance org seeder: it seeds its own orgs and
             // truncates nothing.
             "src/seed/tiers/demo/seed-org.integration.test.ts",

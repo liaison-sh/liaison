@@ -63,7 +63,7 @@ export interface MirrorSubscription {
   trialEnd: Date | null
   canceledAt: Date | null
   pastDueSince: Date | null
-  /** When the subscription began. */
+  /** When the subscription began; the current period's start when omitted. */
   startedAt?: Date | null
   card: MirrorCard | null
 }
@@ -278,7 +278,8 @@ export function paymentsMirrorRows(
     canceled_at: iso(s.canceledAt),
     ...card(s.card),
     past_due_since: iso(s.pastDueSince),
-    started_at: s.startedAt ? iso(s.startedAt) : null,
+    // The processor always knows a subscription's start: the period's when the spec names none.
+    started_at: iso(s.startedAt ?? s.periodStart),
     stripe_updated: synced,
   }))
   const invoices: Row[] = spec.invoices.map((v) => ({

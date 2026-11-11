@@ -193,6 +193,8 @@ async function seedMirror(): Promise<void> {
       trial_end: null,
       cancel_at: null,
       canceled_at: null,
+      // As the mirror keeps it: the day the processor started the subscription.
+      started_at: iso(NOW - 400 * DAY),
     })
   }
   await row("stripe_invoices", {

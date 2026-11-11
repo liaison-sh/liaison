@@ -169,12 +169,12 @@ describe("filter options search", () => {
       spec: {
         v: 1,
         filters: [
-          { id: "market", label: "Market", type: "select", options: ["France", "Spain", "UK"] },
+          { id: "market", label: "Market", type: "select", options: ["France", "Spain", "UK", "Japan"] },
         ],
         blocks: [],
       },
     })
     const out = await getFilterOptions(as(owner, [WRITE]), d.id, "market", { q: "AN" })
-    expect(out).toMatchObject({ ok: true, options: ["France", "Spain"], truncated: false })
+    expect(out).toMatchObject({ ok: true, options: ["France", "Japan"], truncated: false })
   })
 })

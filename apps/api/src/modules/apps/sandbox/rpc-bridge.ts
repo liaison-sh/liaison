@@ -41,6 +41,7 @@ import {
   WORKERS_RUN_BRIDGE,
 } from "~/modules/apps/sandbox/bridge/secret-free"
 import { type AppManifestForBridge, withPgCause } from "~/modules/apps/sandbox/bridge/shared"
+import { createStepsMethods } from "~/modules/apps/sandbox/bridge/steps"
 import { createStoreMethods } from "~/modules/apps/sandbox/bridge/store"
 import { createTicketsMethods } from "~/modules/apps/sandbox/bridge/tickets"
 import { buildBridgeExtensions } from "~/modules/apps/sandbox/bridge-extensions"
@@ -107,6 +108,7 @@ export function createRpcBridge(
     createContractsMethods(ctx),
     createEffectsMethods(ctx),
     createStoreMethods(ctx),
+    createStepsMethods(ctx),
   )
 
   // Merge this app's own bridge methods (registered at install time). App-specific
@@ -217,6 +219,12 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   // Kernel-generic writes
   "emit",
   "enqueueJob",
+  "jobs_enqueue",
+  "timers_wakeIn",
+  // Resumable steps (bridge/steps.ts): claim, save, reset.
+  "_steps_begin",
+  "_steps_save",
+  "steps_reset",
   "realtime_publish",
   "grants_setUserScopes",
   "agent_run",
@@ -364,7 +372,9 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
 // (`<instance>:<run>`), and only the claimer that claimed a key may complete, release or
 // mark it. A per-call rebuild would hand `markUnknown` a stranger's claimer, leave the
 // claim pending, and the next run would see it in flight instead of asking the remote side.
-const SESSION_TXLESS_METHOD_PREFIXES = ["imap_", "smtp_", "codec_", "effects_"]
+// `_steps_*` (bridge/steps.ts) write their state through `commitNowTx`, each write its own
+// committed transaction, and enqueue the continuation after it: never on the call's tx.
+const SESSION_TXLESS_METHOD_PREFIXES = ["imap_", "smtp_", "codec_", "effects_", "_steps_"]
 // Exact-name tx-less methods. `fetch` is the workhorse external-HTTP surface
 // (domain-allowlist + pinned-host fetch, zero txDb use) — wrapping it would
 // pin a connection for every outbound HTTP roundtrip. connections_* are NOT

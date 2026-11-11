@@ -19,6 +19,8 @@ import { createRpcBridge, createSessionRpcBridge } from "~/modules/apps/sandbox/
 
 const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["_approvalContext_get", "sync"],
+  ["_steps_begin", "async"],
+  ["_steps_save", "async"],
   ["agent_awaitRun", "async"],
   ["agent_run", "async"],
   ["agent_spawn", "async"],
@@ -128,6 +130,7 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["imap_fetch", "async"],
   ["imap_writeBack", "async"],
   ["invalidateIdempotency", "async"],
+  ["jobs_enqueue", "async"],
   ["kernel_findContactsByExternalId", "async"],
   ["kernel_findOne", "async"],
   ["kernel_listApprovals", "async"],
@@ -214,6 +217,8 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["resolveContact", "async"],
   ["sequences_allocate", "async"],
   ["smtp_send", "async"],
+  ["steps_get", "async"],
+  ["steps_reset", "async"],
   ["store_count", "async"],
   ["store_delete", "async"],
   ["store_get", "async"],
@@ -250,6 +255,7 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["tickets_summary_runJob", "async"],
   ["tickets_validateAndApply", "async"],
   ["time_civil", "async"],
+  ["timers_wakeIn", "async"],
 ]
 
 const poisonTx = new Proxy(

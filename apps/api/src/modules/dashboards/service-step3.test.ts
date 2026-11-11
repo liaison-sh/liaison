@@ -169,7 +169,12 @@ describe("filter options search", () => {
       spec: {
         v: 1,
         filters: [
-          { id: "market", label: "Market", type: "select", options: ["France", "Spain", "UK", "Japan"] },
+          {
+            id: "market",
+            label: "Market",
+            type: "select",
+            options: ["France", "Spain", "UK", "Japan"],
+          },
         ],
         blocks: [],
       },

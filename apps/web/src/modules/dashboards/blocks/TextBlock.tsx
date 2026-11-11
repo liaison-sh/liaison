@@ -13,8 +13,13 @@ import { isAppPath } from "../dashboards-client"
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
 
+// The app paths of the note being rendered, in order. A link to one carries only its index
+// (`data-mention-ref="0"`): the path opened is always the one written in the note, never text
+// read back from the page.
+let collecting: string[] | null = null
+
 // Raw HTML (a block or inline) reads as the text it is. An app path cannot pass the sanitizer
-// as an href (web links only), so it rides `data-mention-ref` and is restored below.
+// as an href (web links only), so its link carries the index of the path instead.
 const noteMarked = new Marked({
   gfm: true,
   breaks: true,
@@ -25,8 +30,9 @@ const noteMarked = new Marked({
     link(token) {
       const text = this.parser.parseInline(token.tokens)
       const title = token.title ? ` title="${escapeHtml(token.title)}"` : ""
-      if (isAppPath(token.href)) {
-        return `<a data-mention-ref="${escapeHtml(token.href)}"${title}>${text}</a>`
+      if (collecting && isAppPath(token.href)) {
+        collecting.push(token.href)
+        return `<a data-mention-ref="${collecting.length - 1}"${title}>${text}</a>`
       }
       return `<a href="${escapeHtml(token.href)}"${title}>${text}</a>`
     },
@@ -36,15 +42,28 @@ const noteMarked = new Marked({
   },
 })
 
+export interface RenderedNote {
+  html: string
+  /** The note's app paths; a link names one by its index. */
+  paths: string[]
+}
+
 /**
  * The note as safe HTML: marked, then the app's sanitizer. An app path never becomes an href
- * (the sanitizer keeps web links only): it stays in `data-mention-ref`, and the link is made
- * reachable (focus, role) here, with the note's own handler opening it in place.
+ * (the sanitizer keeps web links only): its link is made reachable (focus, role) here, and the
+ * note's own handler opens the path it names.
  */
-export function renderNote(markdown: string): string {
-  const html = noteMarked.parse(markdown, { async: false }) as string
+export function renderNote(markdown: string): RenderedNote {
+  const paths: string[] = []
+  collecting = paths
+  let html: string
+  try {
+    html = noteMarked.parse(markdown, { async: false }) as string
+  } finally {
+    collecting = null
+  }
   const safe = sanitizeHtml(html)
-  if (typeof DOMParser === "undefined") return safe
+  if (typeof DOMParser === "undefined") return { html: safe, paths }
   const doc = new DOMParser().parseFromString(`<div>${safe}</div>`, "text/html")
   const root = doc.body.firstElementChild as HTMLElement
   for (const a of Array.from(root.querySelectorAll("a[data-mention-ref]"))) {
@@ -53,19 +72,20 @@ export function renderNote(markdown: string): string {
     a.setAttribute("role", "link")
     a.setAttribute("tabindex", "0")
   }
-  return root.innerHTML
-}
-
-/** The app path a click or a key landed on, checked, or null. */
-function appPathAt(target: EventTarget | null): string | null {
-  const a = (target as HTMLElement | null)?.closest?.("a[data-mention-ref]")
-  const path = a?.getAttribute("data-mention-ref") ?? ""
-  return isAppPath(path) ? path : null
+  return { html: root.innerHTML, paths }
 }
 
 export const TextBlock: Component<{ markdown: string }> = (props) => {
+  const note = () => renderNote(props.markdown)
+  /** The note's path the click or key landed on, or null. */
+  const pathAt = (target: EventTarget | null): string | null => {
+    const a = (target as HTMLElement | null)?.closest?.("a[data-mention-ref]")
+    const index = Number.parseInt(a?.getAttribute("data-mention-ref") ?? "", 10)
+    const path = Number.isInteger(index) ? note().paths[index] : undefined
+    return path !== undefined && isAppPath(path) ? path : null
+  }
   const open = (e: Event) => {
-    const path = appPathAt(e.target)
+    const path = pathAt(e.target)
     if (!path) return
     e.preventDefault()
     spaNavigate(path)
@@ -79,7 +99,7 @@ export const TextBlock: Component<{ markdown: string }> = (props) => {
       onKeyDown={(e) => {
         if (e.key === "Enter") open(e)
       }}
-      innerHTML={renderNote(props.markdown)}
+      innerHTML={note().html}
     />
   )
 }

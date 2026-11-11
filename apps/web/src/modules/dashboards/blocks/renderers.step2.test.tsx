@@ -153,7 +153,7 @@ describe("funnel", () => {
 
 describe("text note", () => {
   it("renders markdown and shows raw HTML as text, never as markup", () => {
-    const html = renderNote(
+    const { html } = renderNote(
       '**B2B** means dealers.\n\n<img src=x onerror="alert(1)"><script>x()</script>',
     )
     expect(html).toContain("<strong>B2B</strong>")
@@ -163,12 +163,13 @@ describe("text note", () => {
   })
 
   it("keeps web links, drops script links, and opens app paths in place", () => {
-    const html = renderNote(
+    const { html, paths } = renderNote(
       "[site](https://example.com) [bad](javascript:alert(1)) [orders](/projects)",
     )
     expect(html).toContain('href="https://example.com"')
     expect(html).not.toContain("javascript:")
-    expect(html).toContain('data-mention-ref="/projects"')
+    expect(html).toContain('data-mention-ref="0"')
+    expect(paths).toEqual(["/projects"])
     expect(html).not.toContain('href="/projects"')
     render(() => <TextBlock markdown="[orders](/projects) [evil](//evil.example)" />)
     const a = screen.getByText("orders") as HTMLAnchorElement

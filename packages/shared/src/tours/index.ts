@@ -13,6 +13,7 @@ import { kernelRoutinesTour } from "./kernel/routines"
 import { kernelSampleTour } from "./kernel/sample"
 import { kernelSessionsTour } from "./kernel/sessions"
 import { kernelThreadsTour } from "./kernel/threads"
+import { kernelWorldFixtureTour } from "./kernel/world-fixture"
 import { knowledgeBasicsTour } from "./knowledge/basics"
 import { mailBasicsTour } from "./mail/basics"
 import { projectsBasicsTour } from "./projects/basics"
@@ -40,7 +41,11 @@ export { PROSPECT_ROUTINE_NAME } from "./demo/sales"
 /** The demo scenarios (`demoOnly`: offered in demo orgs only). */
 export { SCENARIO_TOURS }
 
-export const TEST_TOURS: readonly Tour[] = [kernelSampleTour, kernelAutoplayFixtureTour]
+export const TEST_TOURS: readonly Tour[] = [
+  kernelSampleTour,
+  kernelAutoplayFixtureTour,
+  kernelWorldFixtureTour,
+]
 
 export interface FindTourOptions {
   includeTestTours?: boolean

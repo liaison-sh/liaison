@@ -412,6 +412,8 @@ function beatOfCurrentTour(beatId: string, phone: boolean): EffectiveBeat | unde
   const beat = effectiveBeats(tour, {
     installedApps: allApps,
     isDemo: true,
+    // The server only runs a tour the org's world is offered; its own world is the context here.
+    worldId: tour.world,
     features: TOUR_FEATURES,
     phone,
   }).find((b) => b.id === beatId)

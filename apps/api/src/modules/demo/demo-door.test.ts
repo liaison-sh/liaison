@@ -771,6 +771,20 @@ describe("the visitor's scenarios", () => {
     expect(body.data.every((i) => i.status === "new" && i.beatCount > 0)).toBe(true)
   })
 
+  it("lists the scenarios of the workspace's own world, never another world's", async () => {
+    const s = await startOk({ needs: ["sales", "support"] })
+    const marker = await loadDemoMarker(s.orgId)
+    expect(marker).not.toBeNull()
+    if (!marker) return
+    await markOrgAsDemo(s.orgId, { ...marker, worldId: "saas" })
+    invalidateDemoMarker(s.orgId)
+    const res = await demoApp.request("/api/demo/scenarios", { headers: authed(s.accessToken) })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: Array<{ tourId: string }> }
+    expect(body.data.map((i) => i.tourId)).not.toContain("kernel.scenario-sales")
+    expect(body.data.map((i) => i.tourId)).not.toContain("kernel.scenario-support")
+  })
+
   it("answers 404 for a regular org and for the reserved review org", async () => {
     const regular = await minimal.session((await createTestOrg()).id)
     const h = authed(regular.bearer)

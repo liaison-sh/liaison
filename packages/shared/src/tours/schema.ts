@@ -17,6 +17,7 @@
  * by the web (the engine) and the API (completion binding, routes, CLI).
  */
 import { z } from "zod"
+import { DEMO_DEFAULT_WORLD, DEMO_WORLDS, type DemoWorldId } from "../demo/worlds"
 
 /** A key in the `tours` i18n namespace. */
 const TourCopyKeySchema = z
@@ -574,6 +575,17 @@ export const TourSchema = z
      */
     demoOnly: z.literal(true).optional(),
     /**
+     * The demo world this tour belongs to: it is offered, startable and
+     * deep-linkable only in a workspace of that world. A tour without one
+     * belongs to no world (every org it is otherwise available in).
+     */
+    world: z.enum(DEMO_WORLDS).optional(),
+    /**
+     * The scenario is played once: it offers no "Start again" once played,
+     * only the visitor's whole "Start over".
+     */
+    singleRun: z.literal(true).optional(),
+    /**
      * The tour talks to the person's own agent, in the one conversation they
      * have with it (their DM, made when missing), recorded when the run starts
      * (`RUN_CONVERSATION`) so its events and guards bind to that thread. It
@@ -800,6 +812,8 @@ export interface EffectiveBeatsContext {
   features?: readonly TourFeature[]
   /** The person plays at phone width (anchorPhone / autoplayPhone apply). */
   phone?: boolean
+  /** The demo world of the org (read as the default world when absent). */
+  worldId?: DemoWorldId
 }
 
 /**
@@ -815,6 +829,8 @@ export function effectiveBeats(tour: Tour, ctx: EffectiveBeatsContext): Effectiv
       ? (ctx.installedApps as ReadonlySet<string>)
       : new Set(ctx.installedApps as readonly string[])
   const out: EffectiveBeat[] = []
+  // A tour of another world has no beats here, whatever else is installed.
+  if (tour.world !== undefined && (ctx.worldId ?? DEMO_DEFAULT_WORLD) !== tour.world) return out
   for (const beat of tour.beats) {
     if (beat.optional?.whenApp && !installed.has(beat.optional.whenApp)) continue
     if (beat.optional?.whenFeature && !ctx.features?.includes(beat.optional.whenFeature)) continue
@@ -872,6 +888,8 @@ export interface TourAvailabilityContext {
   scopes: ReadonlySet<string> | readonly string[]
   /** The org is a demo org (`demoOnly` tours exist only there). Absent = not a demo org. */
   isDemo?: boolean
+  /** The demo world of the org (read as the default world when absent); a tour of another world is not offered. */
+  worldId?: DemoWorldId
 }
 
 /**
@@ -880,6 +898,7 @@ export interface TourAvailabilityContext {
  */
 export function isTourAvailable(tour: Tour, ctx: TourAvailabilityContext): boolean {
   if (tour.demoOnly && ctx.isDemo !== true) return false
+  if (tour.world !== undefined && (ctx.worldId ?? DEMO_DEFAULT_WORLD) !== tour.world) return false
   const installed = new Set(ctx.installedApps as Iterable<string>)
   const scopes = new Set(ctx.scopes as Iterable<string>)
   if (tour.app !== "kernel" && !installed.has(tour.app)) return false

@@ -367,6 +367,7 @@
     "showMeHow": "Montrez-moi comment",
     "statusNew": "Nouvelle",
     "statusDone": "Terminée",
+    "statusPlayed": "Joué",
     "statusStopped": "Arrêtée",
     "statusInProgress": "Étape {{k}} sur {{n}}",
     "start": "Commencer",
@@ -385,6 +386,7 @@
     "scenarioStart": "Commencer",
     "scenarioResume": "Reprendre",
     "scenarioReplay": "Rejouer",
+    "scenarioPlayed": "Joué",
     "scenarioDone": "Terminé",
     "welcome": {
       "step": "Étape {{k}} sur {{n}}",

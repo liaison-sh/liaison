@@ -367,6 +367,7 @@
     "showMeHow": "Show me how",
     "statusNew": "New",
     "statusDone": "Done",
+    "statusPlayed": "Played",
     "statusStopped": "Stopped",
     "statusInProgress": "Step {{k}} of {{n}}",
     "start": "Start",
@@ -385,6 +386,7 @@
     "scenarioStart": "Start",
     "scenarioResume": "Resume",
     "scenarioReplay": "Replay",
+    "scenarioPlayed": "Played",
     "scenarioDone": "Done",
     "welcome": {
       "step": "Step {{k}} of {{n}}",

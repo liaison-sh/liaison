@@ -2,6 +2,7 @@
 // The demo scenarios: one demoOnly tour per need, never offered to a regular
 // org, each world beat naming its injector, every copy key present in en and fr.
 import { describe, expect, it } from "bun:test"
+import { z } from "zod"
 import { DEMO_WORLD_NEEDS, demoScenarioTourId } from "../../demo/worlds"
 import en from "../../i18n/locales/en/tours.json"
 import fr from "../../i18n/locales/fr/tours.json"
@@ -18,11 +19,20 @@ import {
   type Tour,
   type TourEventBinding,
   type TourPathHop,
+  TourSchema,
   type TourStep,
   tourCopyKeys,
 } from "../schema"
+import { buildChatTour } from "./chat"
+import { buildCommerceTour } from "./commerce"
+import { buildDevTour, PRODUCTS_DEV_CFG } from "./dev"
 import { SCENARIO_TOURS } from "./index"
-import { PROSPECT_ROUTINE_NAME } from "./sales"
+import { buildKnowledgeTour, PRODUCTS_KNOWLEDGE_CFG } from "./knowledge"
+import productsSnapshot from "./products-tours.snapshot.json"
+import { buildProjectsTour } from "./projects"
+import { buildSalesTour, PRODUCTS_SALES_CFG, PROSPECT_ROUTINE_NAME } from "./sales"
+import { PRODUCTS_CFG } from "./shared"
+import { buildSupportTour } from "./support"
 
 /** Each scenario's live event; the developer scenario has none (its agent dispatches for real). */
 const INJECTORS: Record<string, string | undefined> = {
@@ -1158,5 +1168,79 @@ describe("demo scenarios", () => {
         }),
       ]),
     ).toThrow(/only a show beat carries reach/)
+  })
+})
+
+describe("scenario builders", () => {
+  /** Each need's tour built for the products world, with that need's own values. */
+  const BUILT: Record<string, () => Tour> = {
+    support: () => buildSupportTour(PRODUCTS_CFG),
+    projects: () => buildProjectsTour(PRODUCTS_CFG),
+    chat: () => buildChatTour(PRODUCTS_CFG),
+    sales: () => buildSalesTour(PRODUCTS_SALES_CFG),
+    commerce: () => buildCommerceTour(PRODUCTS_CFG),
+    dev: () => buildDevTour(PRODUCTS_DEV_CFG),
+    knowledge: () => buildKnowledgeTour(PRODUCTS_KNOWLEDGE_CFG),
+  }
+
+  it("each products tour built from its builder equals today's tour beat by beat", () => {
+    const before = z.array(TourSchema).parse(productsSnapshot)
+    expect(before).toHaveLength(Object.keys(BUILT).length)
+    for (const [need, build] of Object.entries(BUILT)) {
+      const built = build()
+      const expected = before.find((t) => t.id === `kernel.scenario-${need}`)
+      if (!expected) throw new Error(`no snapshot of ${need}`)
+      expect(built.beats.map((b) => b.id)).toEqual(expected.beats.map((b) => b.id))
+      for (const [i, beat] of built.beats.entries()) expect(beat).toEqual(expected.beats[i])
+      const { world, ...rest } = built
+      expect(world).toBe("products")
+      expect(rest).toEqual(expected)
+    }
+  })
+
+  it("a world's extra beats are spliced after the beat they name and an unknown beat throws", () => {
+    const extra = {
+      id: "extra-look",
+      kind: "show",
+      title: "tours.scenarios.support.inbox.title",
+      body: "tours.scenarios.support.inbox.body",
+    } as const
+    const tour = buildSupportTour({
+      world: "saas",
+      singleRun: true,
+      extraBeats: [{ after: "inbox", beat: extra }],
+    })
+    expect(tour.id).toBe(demoScenarioTourId("saas", "support"))
+    expect(tour.world).toBe("saas")
+    expect(tour.singleRun).toBe(true)
+    expect(tour.beats.slice(0, 2).map((b) => b.id)).toEqual(["inbox", "extra-look"])
+    expect(tour.beats).toHaveLength(buildSupportTour(PRODUCTS_CFG).beats.length + 1)
+    expect(() =>
+      buildSupportTour({ world: "saas", extraBeats: [{ after: "nowhere", beat: extra }] }),
+    ).toThrow("nowhere")
+  })
+
+  it("a software world tour is unavailable, 404s its beats and is offered only in its own world", () => {
+    const saas = buildSupportTour({ world: "saas" })
+    const apps = saas.requires?.apps ?? []
+    const base = { installedApps: apps, scopes: ["*"], isDemo: true }
+    expect(isTourAvailable(saas, { ...base, worldId: "saas" })).toBe(true)
+    expect(isTourAvailable(saas, { ...base, worldId: "products" })).toBe(false)
+    expect(isTourAvailable(saas, base)).toBe(false)
+    expect(effectiveBeats(saas, { installedApps: apps, isDemo: true })).toEqual([])
+    expect(
+      effectiveBeats(saas, { installedApps: apps, isDemo: true, worldId: "saas" }).length,
+    ).toBeGreaterThan(0)
+    // The products scenarios keep playing where no world is named.
+    for (const tour of SCENARIO_TOURS) {
+      expect(tour.world).toBe("products")
+      expect(
+        isTourAvailable(tour, {
+          installedApps: tour.requires?.apps ?? [],
+          scopes: ["*"],
+          isDemo: true,
+        }),
+      ).toBe(true)
+    }
   })
 })

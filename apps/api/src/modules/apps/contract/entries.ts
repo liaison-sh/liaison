@@ -10,94 +10,119 @@
 import type { RunEntryKind } from "~/modules/apps/run-limits"
 
 export interface ContractEntry {
-  /** `<kind>:<name>`, unique within the app. */
+  /** `<tplKind>:<keyName>`, unique within the app. */
   entry: string
   kind: RunEntryKind
   exportName: string
-  /** The wall clock the manifest declares for it, when its kind honours one. */
+  /** The wall clock the manifest declares for it, when its tplKind honours one. */
   declaredMs?: number
-  /** A PDF template's source file (relative to the app), run as its own bundle. */
+  /** A PDF template's sourcePath file (relative to the app), run as its own bundle. */
   templateSource?: string
 }
 
 type Json = Record<string, unknown>
 
-const asObject = (v: unknown): Json | null =>
-  v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Json) : null
-const asString = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null)
-const asNumber = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined)
+function manifestObject(v: unknown): Json | null {
+  return v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Json) : null
+}
+function manifestString(v: unknown): string | null {
+  return typeof v === "string" && v.length > 0 ? v : null
+}
+function manifestNumber(v: unknown): number | undefined {
+  return typeof v === "number" ? v : undefined
+}
+// Fields are read by key (never `obj.handler`): a manifest field named like a
+// server function (`handler`, `preflight`) must not read as that function.
+function fieldObject(o: Json | null | undefined, key: string): Json | null {
+  return o ? manifestObject(o[key]) : null
+}
+function fieldString(o: Json | null | undefined, key: string): string | null {
+  return o ? manifestString(o[key]) : null
+}
+function fieldNumber(o: Json | null | undefined, key: string): number | undefined {
+  return o ? manifestNumber(o[key]) : undefined
+}
 
 export function contractEntries(manifest: Json): ContractEntry[] {
   const out: ContractEntry[] = []
-  const add = (e: ContractEntry) => out.push(e)
 
   // Tools: an object by name, or (older manifests) an array of tools with a `name`.
-  const tools = manifest.tools
-  const toolList: Array<[string, Json]> = Array.isArray(tools)
-    ? tools.flatMap((t) => {
-        const o = asObject(t)
-        const name = o && asString(o.name)
-        return o && name ? [[name, o] as [string, Json]] : []
+  const toolsDecl = manifest.tools
+  const toolList: Array<[string, Json]> = Array.isArray(toolsDecl)
+    ? toolsDecl.flatMap((item) => {
+        const obj = manifestObject(item)
+        const keyName = obj && fieldString(obj, "name")
+        return obj && keyName ? [[keyName, obj] as [string, Json]] : []
       })
-    : Object.entries(asObject(tools) ?? {}).flatMap(([name, t]) => {
-        const o = asObject(t)
-        return o ? [[name, o] as [string, Json]] : []
+    : Object.entries(manifestObject(toolsDecl) ?? {}).flatMap(([keyName, item]) => {
+        const obj = manifestObject(item)
+        return obj ? [[keyName, obj] as [string, Json]] : []
       })
-  for (const [name, tool] of toolList) {
-    const declaredMs = asNumber(tool.timeoutMs)
-    const handler = asString(tool.handler)
-    if (handler)
-      add({
-        entry: `tool:${name}`,
+  for (const [keyName, toolDef] of toolList) {
+    const declaredMs = fieldNumber(toolDef, "timeoutMs")
+    const handlerExport = fieldString(toolDef, "handler")
+    if (handlerExport)
+      out.push({
+        entry: `tool:${keyName}`,
         kind: "tool",
-        exportName: handler,
+        exportName: handlerExport,
         ...(declaredMs ? { declaredMs } : {}),
       })
-    const preflight = asString(tool.preflight)
-    if (preflight) add({ entry: `preflight:${name}`, kind: "preflight", exportName: preflight })
-    const summarizer = asString(tool.summarizer)
-    if (summarizer) add({ entry: `summarizer:${name}`, kind: "summarizer", exportName: summarizer })
-    const poll = asString(tool.pollHandler)
-    if (poll) add({ entry: `poll:${name}`, kind: "poll", exportName: poll })
-    const reconcile = asString(tool.reconcileHandler)
-    if (reconcile) add({ entry: `reconcile:${name}`, kind: "reconcile", exportName: reconcile })
+    const preflightExport = fieldString(toolDef, "preflight")
+    if (preflightExport)
+      out.push({ entry: `preflight:${keyName}`, kind: "preflight", exportName: preflightExport })
+    const summarizerExport = fieldString(toolDef, "summarizer")
+    if (summarizerExport)
+      out.push({ entry: `summarizer:${keyName}`, kind: "summarizer", exportName: summarizerExport })
+    const pollExport = fieldString(toolDef, "pollHandler")
+    if (pollExport) out.push({ entry: `poll:${keyName}`, kind: "poll", exportName: pollExport })
+    const reconcileExport = fieldString(toolDef, "reconcileHandler")
+    if (reconcileExport)
+      out.push({ entry: `reconcile:${keyName}`, kind: "reconcile", exportName: reconcileExport })
   }
 
-  const subscribes = asObject(asObject(manifest.events)?.subscribes) ?? {}
-  for (const [topic, ref] of Object.entries(subscribes)) {
-    const exportName = asString(ref) ?? asString(asObject(ref)?.handler)
-    if (exportName) add({ entry: `event:${topic}`, kind: "event", exportName })
+  const subscribes = fieldObject(fieldObject(manifest, "events"), "subscribes") ?? {}
+  for (const [topicName, subscriber] of Object.entries(subscribes)) {
+    const exportName =
+      manifestString(subscriber) ?? fieldString(manifestObject(subscriber), "handler")
+    if (exportName) out.push({ entry: `event:${topicName}`, kind: "event", exportName })
   }
 
-  for (const [name, job] of Object.entries(asObject(manifest.jobs) ?? {})) {
-    const o = asObject(job)
-    const exportName = o && asString(o.handler)
-    const declaredMs = o ? asNumber(o.timeoutMs) : undefined
+  for (const [keyName, jobDef] of Object.entries(fieldObject(manifest, "jobs") ?? {})) {
+    const obj = manifestObject(jobDef)
+    const exportName = obj && fieldString(obj, "handler")
+    const declaredMs = obj ? fieldNumber(obj, "timeoutMs") : undefined
     if (exportName)
-      add({ entry: `job:${name}`, kind: "job", exportName, ...(declaredMs ? { declaredMs } : {}) })
-  }
-
-  for (const [name, hook] of Object.entries(asObject(manifest.webhooks) ?? {})) {
-    const o = asObject(hook)
-    if (!o) continue
-    const declaredMs = asNumber(o.timeoutMs)
-    const handler = asString(o.handler)
-    if (handler)
-      add({
-        entry: `webhook:${name}`,
-        kind: "webhook",
-        exportName: handler,
+      out.push({
+        entry: `job:${keyName}`,
+        kind: "job",
+        exportName,
         ...(declaredMs ? { declaredMs } : {}),
       })
-    const verify = asString(o.verify)
-    if (verify) add({ entry: `webhook-verify:${name}`, kind: "webhook-verify", exportName: verify })
   }
 
-  const search = asObject(manifest.search)
-  const searchHandler = search && asString(search.handler)
-  if (search && searchHandler) {
-    const declaredMs = asNumber(search.timeoutMs)
-    add({
+  for (const [keyName, hookDef] of Object.entries(fieldObject(manifest, "webhooks") ?? {})) {
+    const obj = manifestObject(hookDef)
+    if (!obj) continue
+    const declaredMs = fieldNumber(obj, "timeoutMs")
+    const handlerExport = fieldString(obj, "handler")
+    if (handlerExport)
+      out.push({
+        entry: `webhook:${keyName}`,
+        kind: "webhook",
+        exportName: handlerExport,
+        ...(declaredMs ? { declaredMs } : {}),
+      })
+    const verify = fieldString(obj, "verify")
+    if (verify)
+      out.push({ entry: `webhook-verify:${keyName}`, kind: "webhook-verify", exportName: verify })
+  }
+
+  const searchDecl = fieldObject(manifest, "search")
+  const searchHandler = searchDecl && fieldString(searchDecl, "handler")
+  if (searchDecl && searchHandler) {
+    const declaredMs = fieldNumber(searchDecl, "timeoutMs")
+    out.push({
       entry: "search:search",
       kind: "search",
       exportName: searchHandler,
@@ -105,33 +130,39 @@ export function contractEntries(manifest: Json): ContractEntry[] {
     })
   }
 
-  const exportHandler = asString(asObject(manifest.export)?.handler)
-  if (exportHandler) add({ entry: "export:export", kind: "export", exportName: exportHandler })
+  const exportHandler = fieldString(fieldObject(manifest, "export"), "handler")
+  if (exportHandler) out.push({ entry: "export:export", kind: "export", exportName: exportHandler })
 
-  const attention = asString(asObject(asObject(manifest.views)?.attentionItems)?.handler)
-  if (attention) add({ entry: "attention:attention", kind: "attention", exportName: attention })
+  const attentionExport = fieldString(
+    fieldObject(fieldObject(manifest, "views"), "attentionItems"),
+    "handler",
+  )
+  if (attentionExport)
+    out.push({ entry: "attention:attention", kind: "attention", exportName: attentionExport })
 
-  for (const [kindName, def] of Object.entries(asObject(asObject(manifest.import)?.kinds) ?? {})) {
-    const exportName = asString(asObject(def)?.handler)
-    if (exportName) add({ entry: `import:${kindName}`, kind: "import", exportName })
+  for (const [kindName, kindDef] of Object.entries(
+    fieldObject(fieldObject(manifest, "import"), "kinds") ?? {},
+  )) {
+    const exportName = fieldString(manifestObject(kindDef), "handler")
+    if (exportName) out.push({ entry: `import:${kindName}`, kind: "import", exportName })
   }
 
-  for (const [conn, def] of Object.entries(asObject(manifest.connections) ?? {})) {
-    const exportName = asString(asObject(def)?.beforeDisconnect)
-    if (exportName) add({ entry: `disconnect:${conn}`, kind: "disconnect", exportName })
+  for (const [connName, kindDef] of Object.entries(fieldObject(manifest, "connections") ?? {})) {
+    const exportName = fieldString(manifestObject(kindDef), "beforeDisconnect")
+    if (exportName) out.push({ entry: `disconnect:${connName}`, kind: "disconnect", exportName })
   }
 
-  const templates = Array.isArray(manifest.pdf_templates) ? manifest.pdf_templates : []
-  for (const t of templates) {
-    const o = asObject(t)
-    const kind = o && asString(o.kind)
-    const source = o && asString(o.source)
-    if (kind && source) {
-      add({
-        entry: `pdf-template:${kind}`,
+  const templateDecls = Array.isArray(manifest.pdf_templates) ? manifest.pdf_templates : []
+  for (const item of templateDecls) {
+    const obj = manifestObject(item)
+    const tplKind = obj && fieldString(obj, "kind")
+    const sourcePath = obj && fieldString(obj, "source")
+    if (tplKind && sourcePath) {
+      out.push({
+        entry: `pdf-template:${tplKind}`,
         kind: "pdf-template",
         exportName: "renderTemplate",
-        templateSource: source,
+        templateSource: sourcePath,
       })
     }
   }

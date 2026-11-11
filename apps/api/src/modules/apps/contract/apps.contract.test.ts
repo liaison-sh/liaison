@@ -11,7 +11,7 @@
 // this run; the guard (expected-failures.guard.test.ts) refuses any row the
 // baseline does not hold.
 import { describe, expect, it } from "bun:test"
-import { appsUnderContract, loadAppUnderContract } from "./apps"
+import { appsUnderContract, loadAppUnderContract } from "./apps.test-helpers"
 import {
   EXPECTED_FAILURES_PATH,
   type ExpectedFailure,

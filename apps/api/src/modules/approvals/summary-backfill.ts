@@ -29,6 +29,7 @@ import { schemaRef } from "~/db/schema-ref"
 import { enqueueAppJob, registerJobWorker } from "~/infra/jobs/jobs"
 import { appsLogger as log } from "~/lib/logger"
 import { type SummaryRunner, storeApprovalSummaries } from "~/modules/approvals/served-summary"
+import { SKIPPED_MOVING, writeUnlessMoving } from "~/modules/org/transfer-state/skip-moving"
 
 const K = () => sql.raw(schemaRef("kernel"))
 
@@ -127,8 +128,12 @@ export async function backfillApprovalSummaryBatch(
   let stored = 0
   for (const [orgId, ids] of byOrg) {
     try {
-      await ensureOrgApps(orgId)
-      stored += await storeApprovalSummaries(orgId, ids, deps.run)
+      // An org being moved is left alone; the next pass finds its rows where it lives then.
+      const n = await writeUnlessMoving(orgId, async () => {
+        await ensureOrgApps(orgId)
+        return storeApprovalSummaries(orgId, ids, deps.run)
+      })
+      if (n !== SKIPPED_MOVING) stored += n
     } catch (err) {
       log.warn({ err, orgId }, "approval summary backfill: org failed, the next pass retries it")
     }

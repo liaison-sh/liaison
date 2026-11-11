@@ -65,6 +65,7 @@ import { exportOnlyBundle, useFullBundle } from "~/modules/apps/sandbox/bundle-s
 import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { runApp } from "~/modules/apps/sandbox/run-app"
 import { onRunSettled, type RunSettledInfo } from "~/modules/apps/workers/run-settled"
+import { writeUnlessMoving } from "~/modules/org/transfer-state/skip-moving"
 import { hasScope, loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { broadcastReadState } from "~/modules/threads/read-state-broadcast"
 
@@ -389,21 +390,6 @@ export async function refreshAppAttention(
   return { people: people.length, changed }
 }
 
-/** Every app provider of the org, refreshed one app after the other (the minute tick). */
-export async function refreshAllAppAttention(
-  orgId: string,
-  partial: Partial<AttentionStoreDeps> & { userIds?: string[] } = {},
-): Promise<void> {
-  for (const [[entryOrg, appName]] of attentionItemsRegistry.entriesOf(orgId)) {
-    if (entryOrg !== orgId) continue
-    try {
-      await refreshAppAttention(orgId, appName, partial)
-    } catch (err) {
-      log.warn({ err, orgId, app: appName }, "Attention refresh failed")
-    }
-  }
-}
-
 // --- Wakes: a queued job per (org, app) and interval -----------------------------
 
 /** One queued refresh: the job id deduplicates (BullMQ), the delay makes it due. */
@@ -555,7 +541,9 @@ export async function processAttentionRefreshJob(
     const { awaitOrgApps } = await import("~/modules/apps/init")
     await awaitOrgApps(orgId)
   }
-  await refreshAppAttention(orgId, appName, deps)
+  // An org being moved is left alone (the transfer hold keys on `orgId`, which
+  // this payload does not carry): its new home recomputes on its first read.
+  await writeUnlessMoving(orgId, () => refreshAppAttention(orgId, appName, deps))
 }
 
 /** Resolves once no enqueue (or, under a test double, no refresh) is in flight. */

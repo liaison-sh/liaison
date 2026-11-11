@@ -6,9 +6,11 @@
 // scenarios, and every other way out counts as browsing. The answer is the
 // server's, so a reload after it never opens the popup again; the banner's
 // scenario count always does.
+
 import { DEMO_WORLD_NEEDS, findTour, type TourListItem, type TourProgress } from "@liaison/shared"
 import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { _setDemoWorld } from "~/modules/demo/demo-world"
 import type { TourApi } from "~/modules/tours/tour-api"
 import type { DemoScenarioItem } from "./DemoScenarioRunner"
 
@@ -196,10 +198,11 @@ describe("DemoWelcome", () => {
 
   it("says the company is an example on the first view inside the world", async () => {
     setTourApi(tourApi())
+    _setDemoWorld("products")
     mount()
     await tourStore.load()
     await screen.findByTestId("demo-welcome")
-    expect(screen.getByTestId("demo-welcome-example").textContent).toContain("Resonant Audio Labs")
+    expect(screen.getByTestId("demo-example-line").textContent).toContain("Resonant Audio Labs")
   })
 
   it("skips step 1 when the email is already confirmed", async () => {

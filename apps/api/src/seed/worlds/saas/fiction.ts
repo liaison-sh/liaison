@@ -21,7 +21,7 @@ import type {
   DemoRole,
   DemoRoleAgent,
   DemoWorld,
-} from "~/seed/world/fiction"
+} from "../../world/fiction"
 
 /** The reserved domain the team lives under, one label per org below it. */
 export const SAAS_EMAIL_DOMAIN = "tideform.example"

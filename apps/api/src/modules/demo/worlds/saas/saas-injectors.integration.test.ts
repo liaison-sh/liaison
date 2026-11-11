@@ -10,6 +10,10 @@ import { markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
 import { RECORDING, recordingOf } from "~/modules/demo/replay/replay"
 import { worldInjectors } from "~/modules/demo/world/registry"
 import { demoWebFetchFixture } from "~/modules/demo/world/web-fetch-fixture"
+import { seedContext } from "~/seed/context"
+import { insertUnarmedMail } from "~/seed/factories/mail/conversations"
+import { seedUserRow } from "~/seed/factories/org/rows"
+import { ensureTicketInboxes } from "~/seed/factories/support/inboxes"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { SAAS_CHAT_CHANNEL, saasChatQuestionInjector } from "./chat-question"
@@ -24,9 +28,7 @@ let owner: string
 
 async function addUser(orgId: string, name: string): Promise<string> {
   const id = crypto.randomUUID()
-  await sql`INSERT INTO kernel.users (id, org_id, email, name)
-    VALUES (${id}, ${orgId}, ${`inj-${id}@test.com`}, ${name})`
-  return id
+  return seedUserRow({ id, orgId, email: `inj-${id}@test.com`, name })
 }
 
 const ctxOf = (over: Partial<{ run: number; beatId: string; tourId: string }> = {}) => ({
@@ -90,12 +92,20 @@ describe("the software world's injectors", () => {
   })
 
   it("the sales email is one inbound message from the group in the shared mailbox, once per run", async () => {
-    const accountId = crypto.randomUUID()
-    await sql`INSERT INTO app_mail.accounts (
-        id, org_id, connected_account_id, owner_type, owner_id, provider,
-        email_address, display_name, sync_status, created_at, updated_at)
-      VALUES (${accountId}, ${demoOrg}, ${crypto.randomUUID()}, 'org', NULL, 'imap',
-        'sales@tideform.example', 'Sales', 'idle', now(), now())`
+    const [accountId] = (
+      await insertUnarmedMail(seedContext({ orgId: demoOrg, now: new Date() }), {
+        domain: "tideform.example",
+        mailboxes: [
+          {
+            box: "sales",
+            ownerUserId: null,
+            email: "sales@tideform.example",
+            displayName: "Sales",
+          },
+        ],
+        conversations: [],
+      })
+    ).accountIds as [string]
     const ctx = ctxOf({ tourId: "kernel.scenario-saas-sales", beatId: "live-email" })
     await saasSalesEmailInjector.injectWorldEvent(ctx)
     await saasSalesEmailInjector.injectWorldEvent(ctx)
@@ -122,11 +132,16 @@ describe("the software world's injectors", () => {
   })
 
   it("the support ticket is one ticket per run, never the old one again", async () => {
-    await sql`INSERT INTO app_tickets.inboxes (
-        id, org_id, kind, connected_account_id, name, email_address,
-        default_team, default_sensitivity, is_default_for_create, created_at, updated_at)
-      VALUES (${crypto.randomUUID()}, ${demoOrg}, 'api', NULL, 'Support',
-        NULL, NULL, NULL, false, now(), now())`
+    await ensureTicketInboxes(
+      seedContext({ orgId: demoOrg, now: new Date() }),
+      owner,
+      [{ name: "Support", team: "support" }],
+      {
+        fromDisplayName: "Support",
+        replyFromEmail: "support@tideform.example",
+        slaPromisePhrase: "within a day",
+      },
+    )
     const ctx = ctxOf({ tourId: "kernel.scenario-saas-support", beatId: "live-ticket" })
     await saasSupportTicketInjector.injectWorldEvent(ctx)
     await saasSupportTicketInjector.injectWorldEvent(ctx)

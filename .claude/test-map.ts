@@ -61,6 +61,13 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   },
   // The client-row guard scans every privileged read of kernel.users, and the manifest
   // and tool-rule guards read the declarations: the pure scans run with the module.
+  // The demo worlds (their packs, seed plans, payments stand-in, scenarios and
+  // tours): the pure guards and the seeded reads run in demo-seed, the modules
+  // they reach in unit, the tour anchors against the web source in guards.
+  { glob: "apps/api/src/modules/demo/worlds/saas/payments/stripe-standin.integration.test.ts", suites: ["integration-extra", "unit", "demo-seed"] },
+  { glob: "apps/api/src/modules/demo/worlds/**", suites: ["demo-seed", "unit", "web-unit", "guards"] },
+  { glob: "apps/api/src/seed/worlds/**", suites: ["demo-seed", "unit", "web-unit", "guards"] },
+  { glob: "apps/api/src/seed/factories/payments/**", suites: ["demo-seed", "integration", "unit"] },
   { glob: "apps/api/src/modules/users/**", suites: ["unit", "integration", "api-guards"] },
   { glob: "apps/api/src/modules/mcp/**", suites: ["unit", "integration", "api-guards"] },
   { glob: "apps/api/src/modules/apps/**", suites: ["unit", "integration", "api-guards"] },
@@ -141,6 +148,8 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
     glob: "packages/host-sdk/**",
     suites: ["workspace-packages", "bundled-freeze", "web-unit", "playwright"],
   },
+  // The demo worlds' tours and scenarios: the world packs they read run in demo-seed.
+  { glob: "packages/shared/src/tours/demo/worlds/**", suites: ["demo-seed", "unit", "web-unit", "guards"] },
   // Tour definitions: their anchors are checked against the web source (guards).
   { glob: "packages/shared/src/tours/**", suites: ["unit", "web-unit", "integration", "guards"] },
   { glob: "packages/shared/**", suites: ["shared", "unit", "web-unit", "integration"] },
@@ -250,6 +259,7 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   { glob: "scripts/pr-land*.ts", suites: ["root"] },
   { glob: "scripts/lib/**", suites: ["root"] },
   { glob: ".claude/test-map.ts", suites: ["root"] },
+  { glob: "scripts/test-map*.ts", suites: ["root"] },
   // The docs map feeds check-docs (its test is in root) and ci-scope (guards).
   { glob: ".claude/docs-map.ts", suites: ["root", "guards"] },
   { glob: "knip.json", suites: ["guards", "root"] },

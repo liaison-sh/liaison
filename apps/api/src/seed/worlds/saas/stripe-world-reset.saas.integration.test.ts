@@ -29,9 +29,6 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 /** The residue query the year simulator's door run reads too. */
 const RESIDUE_SQL = readFileSync(path.join(import.meta.dir, "..", "org-residue.sql"), "utf8")
 
-/** The cross-process change signals the reaper writes last, by key. */
-const SIGNAL_KEY = /:demo:(marker-version|fixture-crm:epoch):[0-9a-f-]{36}$/
-
 /** Every Redis key naming the org (the queue library's own left out), as the purge scans them. */
 async function orgRedisKeysLeft(orgId: string): Promise<string[]> {
   const out: string[] = []
@@ -115,9 +112,7 @@ describe("the software world's workspace, ended and reaped", () => {
       rows: scan.rows,
       searchDocuments: scan.searchDocuments,
       objects: scan.objects,
-      // The reaper's last two writes tell the other processes the org's marker and
-      // fixture CRM changed: counters that expire by themselves, holding nothing of the org.
-      redisKeys: (await orgRedisKeysLeft(world.orgId)).filter((k) => !SIGNAL_KEY.test(k)).length,
+      redisKeys: (await orgRedisKeysLeft(world.orgId)).length,
       jobSchedulers: scan.jobSchedulers,
     }).toEqual({ rows: {}, searchDocuments: 0, objects: 0, redisKeys: 0, jobSchedulers: 0 })
   }, 600_000)

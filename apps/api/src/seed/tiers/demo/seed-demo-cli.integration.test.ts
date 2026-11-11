@@ -196,4 +196,38 @@ describe("demo:seed, the CLI", () => {
     expect(asked?.orgName).toBeUndefined()
     expect(asked?.owner).toBeUndefined()
   })
+
+  it("reads the persona password from the named environment variable", async () => {
+    const name = "DEMO_SEED_CLI_TEST_PASSWORDS"
+    process.env[name] = "from-the-environment-1"
+    try {
+      const { exitCode } = await runSeedDemoCli(
+        ["--slug", ORG_SLUG, "--world", "saas", "--variant", "visitor", "--passwords-env", name],
+        { seedWorld: stubWorld },
+      )
+      expect(exitCode).toBe(0)
+      expect(seen.at(-1)?.personaPassword).toBe("from-the-environment-1")
+    } finally {
+      delete process.env[name]
+    }
+  })
+
+  it("exits 2 before seeding when the named variable is not set", async () => {
+    const before = seen.length
+    const { exitCode, result } = await runSeedDemoCli(
+      ["--slug", ORG_SLUG, "--variant", "visitor", "--passwords-env", "DEMO_SEED_CLI_TEST_UNSET"],
+      { seedWorld: stubWorld },
+    )
+    expect(exitCode).toBe(2)
+    expect(result).toBeNull()
+    expect(seen.length).toBe(before)
+  })
+
+  it("keeps the password flag working beside it", async () => {
+    await runSeedDemoCli(
+      ["--slug", ORG_SLUG, "--variant", "visitor", "--no-reset", "--passwords", "literal-pw-1"],
+      { seedWorld: stubWorld },
+    )
+    expect(seen.at(-1)?.personaPassword).toBe("literal-pw-1")
+  })
 })

@@ -56,7 +56,12 @@ export {
   type KnowledgeScenarioCfg,
   PRODUCTS_KNOWLEDGE_CFG,
 } from "./knowledge"
-export { buildMoneyTour, MONEY_FIGURES_TOOL, type MoneyScenarioCfg } from "./money"
+export {
+  buildMoneyTour,
+  MONEY_FIGURES_TOOL,
+  MONEY_REMINDER_ROW,
+  type MoneyScenarioCfg,
+} from "./money"
 export { buildProjectsTour, PRODUCTS_PROJECT_NAME, type ProjectsScenarioCfg } from "./projects"
 export { buildSalesTour, PRODUCTS_SALES_CFG, type SalesScenarioCfg } from "./sales"
 export { PRODUCTS_CFG, type ScenarioCfg, type ScenarioExtraBeat } from "./shared"

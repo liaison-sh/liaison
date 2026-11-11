@@ -985,6 +985,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // decoration was decoration. Its dispatcher half lives here; the suite
             // routing half is a `guards` gate.
             "scripts/test-run.test.ts",
+            // The path-to-suite map for the demo worlds.
+            "scripts/test-map.test.ts",
             // The memory budget and the run lock: pure, fast, and in no other suite.
             "scripts/lib/mem-budget.test.ts",
             // The runtime guard spawns a real small process tree and kills it, so it
@@ -1115,6 +1117,11 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/seed/tiers/demo/seed-profile.test.ts",
             "src/seed/tiers/demo/seed-apps.test.ts",
             "src/seed/tiers/demo/seed-support.test.ts",
+            // The role scopes, the routines' scope sets and the recurring
+            // schedules the demo seed writes, pinned without a database.
+            "src/seed/tiers/demo/role-scopes.test.ts",
+            "src/seed/tiers/demo/seed-routine-scopes.test.ts",
+            "src/seed/factories/commerce/recurring-schedules.test.ts",
             // What a visitor's picks install and write, per world (the
             // products plan pinned), and the worlds' seed packs.
             "src/seed/tiers/demo/seed-plan.test.ts",
@@ -1209,6 +1216,11 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // and a reserved one never is, and that a table the rules do not
             // cover refuses the reset instead of leaking.
             "src/seed/tiers/demo/demo-reset.integration.test.ts",
+            // The persona passwords, the support seed's wait on a lock and the
+            // size of a visitor's first turn.
+            "src/seed/tiers/demo/seed-personas-password.integration.test.ts",
+            "src/seed/tiers/demo/seed-support-lock-wait.integration.test.ts",
+            "src/seed/tiers/demo/visitor-turn-size.integration.test.ts",
             // The lively tier: the plan's own rules, then ten people and
             // fourteen days of activity per domain (recency, no future rows),
             // a re-run that writes nothing, and a replace.

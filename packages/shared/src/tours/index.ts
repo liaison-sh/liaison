@@ -48,7 +48,7 @@ export {
 } from "./demo"
 export { DEV_BUGS_CHANNEL_TITLE } from "./demo/dev"
 export { KNOWLEDGE_SCENARIO_PL_TITLE } from "./demo/knowledge"
-export { MONEY_FIGURES_TOOL } from "./demo/money"
+export { MONEY_FIGURES_TOOL, MONEY_REMINDER_ROW } from "./demo/money"
 export { PROSPECT_ROUTINE_NAME } from "./demo/sales"
 export { SAAS_PAYMENT_RECOVERED_INJECTOR } from "./demo/worlds/saas/money"
 /** The demo scenarios (`demoOnly`: offered in demo orgs only), the products world's and the others'. */

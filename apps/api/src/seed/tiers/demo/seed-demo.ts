@@ -606,6 +606,10 @@ export async function seedScenarioStart(
 //
 //   liaison seed --tier demo --no-reset --passwords "<pw>"
 //
+// `--passwords-env <VAR>` reads the same password from that environment
+// variable, so it never shows in a process list or a shell history. A variable
+// that is not set exits 2 before anything is seeded.
+//
 // `--world <id>` seeds another demo world (`DEMO_WORLDS`) from its pack, as a
 // `visitor` org only: the reserved App Review org is always `products`, so a
 // world other than `products` on a reserved run is refused (exit 2), as is an
@@ -655,6 +659,12 @@ export async function runSeedDemoCli(
     console.error(`[demo-seed] the '${world}' world has no seed pack yet`)
     return { result: null, exitCode: 2 }
   }
+  const passwordsEnv = flag(argv, "passwords-env")
+  const personaPassword = passwordsEnv ? process.env[passwordsEnv] : flag(argv, "passwords")
+  if (passwordsEnv && !personaPassword) {
+    console.error(`[demo-seed] --passwords-env names ${passwordsEnv}, which is not set`)
+    return { result: null, exitCode: 2 }
+  }
   const resetContent = argv.includes("--no-reset")
     ? false
     : argv.includes("--reset") || variant === "reserved"
@@ -666,7 +676,7 @@ export async function runSeedDemoCli(
     variant,
     owner: variant === "reserved" ? reservedOwner() : undefined,
     locale: flag(argv, "locale"),
-    personaPassword: flag(argv, "passwords"),
+    personaPassword,
     resetContent,
     log: (msg) => console.log(`[demo-seed] ${msg}`),
   })

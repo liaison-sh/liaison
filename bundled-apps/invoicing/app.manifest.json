@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.20.90",
+  "version": "0.20.91",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -2239,7 +2239,7 @@
       "focusCore": true,
       "taintSource": true,
       "description": "Search invoices, quotes, credit notes, proformas and purchase orders issued here, by query, type, status, contact, date range, or tax treatment. The free-text `query` matches, word by word and in any case, the document NUMBER, the COUNTERPARTY NAME, ADDRESS and EMAIL (billing and shipping), the SHOPIFY ORDER (e.g. query='#1149'), the PO NUMBER, the notes and the line descriptions; best matches come first. To find a customer's invoices, search their name directly (e.g. query='Claudine Moreau'): a person named only in a company invoice's address is found too. `contact_id` also returns the documents made out to the contact's email or address. For a customer's earlier prices ('same price as last time') use customer_history.",
-      "searchKeywords": ["facture", "factures", "invoice", "invoices", "devis", "quote", "quotes", "avoir", "proforma", "chercher", "rechercher", "trouver", "retrouver", "find", "numéro", "number", "impayé", "impayée", "impayées", "unpaid", "overdue", "retard", "list", "liste", "issued", "relance", "paiement", "payment", "due", "failed", "paid", "payé"],
+      "searchKeywords": ["facture", "factures", "invoice", "invoices", "devis", "quote", "avoir", "proforma", "chercher", "rechercher", "trouver", "retrouver", "find", "numéro", "number", "impayé", "impayées", "unpaid", "overdue", "retard", "list", "liste", "issued", "relance", "paiement", "payment", "due", "failed", "paid", "payé"],
       "requiredScopes": ["invoicing:documents:read"],
       "handler": "documentsSearchHandler",
       "params": {

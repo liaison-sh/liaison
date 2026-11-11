@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { sql } from "drizzle-orm"
-import { check, index, integer, jsonb, text, timestamp, uuid } from "drizzle-orm/pg-core"
+import {
+  check,
+  index,
+  integer,
+  jsonb,
+  primaryKey,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core"
 import { kernel, organizations } from "./organizations"
 import { users } from "./users"
 
@@ -49,3 +58,33 @@ export const dashboards = kernel.table(
 )
 
 export type DashboardRow = typeof dashboards.$inferSelect
+
+/**
+ * The time range one person last chose on one dashboard (migration 0287), so it opens on it
+ * next time. FORCE RLS: a person reads and writes their own rows only, and only for a
+ * dashboard they can see.
+ */
+export const dashboardViewerStates = kernel.table(
+  "dashboard_viewer_states",
+  {
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    dashboardId: uuid("dashboard_id")
+      .notNull()
+      .references(() => dashboards.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    timeRange: jsonb("time_range").$type<Record<string, unknown>>().notNull(),
+    compare: text("compare").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.dashboardId, table.userId] }),
+    index("dashboard_viewer_states_user_fk_idx").on(table.userId),
+    index("dashboard_viewer_states_org_idx").on(table.orgId),
+  ],
+)
+
+export type DashboardViewerStateRow = typeof dashboardViewerStates.$inferSelect

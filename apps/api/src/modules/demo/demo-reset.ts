@@ -321,7 +321,7 @@ export const KERNEL_RESET_RULES: Record<string, KernelResetRule> = {
   agent_turns: "clear",
   agent_turn_events: "clear",
   effect_ledger: "clear",
-  // Inbound webhook deliveries of the visitor's connected apps (0287).
+  // Inbound webhook deliveries of the visitor's connected apps (0288).
   webhook_inbox: "clear",
   agent_skill_index: "clear",
   agent_thread_checkpoints: "clear",
@@ -375,6 +375,7 @@ export const KERNEL_RESET_RULES: Record<string, KernelResetRule> = {
   app_documents: "clear",
   app_document_usage: "clear",
   dashboards: "clear",
+  dashboard_viewer_states: "clear",
   // A visitor's app builder drafts, their versions and builds, and app logs (0276).
   app_drafts: "clear",
   app_draft_versions: "clear",

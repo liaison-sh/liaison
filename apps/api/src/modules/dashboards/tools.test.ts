@@ -9,11 +9,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql as drizzleSql, eq } from "drizzle-orm"
 import { z } from "zod"
-import { extractRows, type RlsClient } from "~/db"
+import { extractRows, type RlsClient, sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { userRoles } from "~/db/schema/kernel"
 import { isThreadTainted } from "~/modules/agent/scopes/taint"
+import { decideApproval } from "~/modules/approvals/decide"
+import { approvalPayloadHash } from "~/modules/approvals/payload-hash"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { generateApprovalSummary } from "~/modules/apps/approval-summarizers"
 import { executeTool } from "~/modules/apps/execute-tool"
@@ -367,5 +369,117 @@ describe("the approval's deciding scope", () => {
       spec: { v: 1, blocks: [] },
     })
     expect(res.blocked?.requesterCanApprove).toBe(true)
+  })
+})
+
+describe("dashboards_edit", () => {
+  const metric = (id: string, params: Record<string, unknown> = {}) => ({
+    id,
+    type: "metric",
+    title: `Tile ${id}`,
+    source: { kind: "tool", tool: `${APP}:orders_list`, params },
+    map: { value: "total", agg: "sum" },
+  })
+
+  async function approve(requestId: string, approver: string) {
+    const [row] =
+      await sql`SELECT tool_name, current_payload FROM kernel.approval_requests WHERE id = ${requestId}`
+    return decideApproval({
+      orgId,
+      requestId,
+      actor: as(approver, [WRITE, ADMIN, READ, "kernel:approve"]),
+      decision: "approve",
+      payloadHash: approvalPayloadHash(row!.tool_name as string, row!.current_payload),
+    })
+  }
+
+  it("a personal dashboard's edit applies at once, every operation together", async () => {
+    const mine = await createDashboard(as(owner, [WRITE, READ]), {
+      title: "Mine to edit",
+      visibility: "personal",
+      spec: { v: 1, blocks: [metric("a"), metric("b")] },
+    })
+    const res = await call(owner, [WRITE, READ], "dashboards_edit", {
+      dashboardId: mine.id,
+      ifVersion: mine.version,
+      operations: [
+        { op: "moveBlock", blockId: "b", position: 0 },
+        { op: "setTimeRange", timeRange: { preset: "lastMonth" } },
+      ],
+    })
+    expect(res.blocked).toBeUndefined()
+    expect(res.data).toMatchObject({ version: 2, blocks: ["b", "a"] })
+  })
+
+  it("an org dashboard's edit is ONE approval listing every change, and nothing changes until it is approved", async () => {
+    // An administrator who holds kernel:dashboards:admin, so the card reaches them.
+    const approver = (await minimal.person(orgId)).id
+    await minimal.grantScope(approver, ADMIN)
+    // The requester's own grants: the approved edit runs as them, and re-checks every source.
+    const author = (await minimal.person(orgId)).id
+    for (const scope of [WRITE, SHARE, READ]) await minimal.grantScope(author, scope)
+    const shared = await createDashboard(as(author, [WRITE, SHARE, READ]), {
+      title: "Direction",
+      visibility: "org",
+      spec: { v: 1, blocks: [metric("a"), metric("b")] },
+    })
+    const res = await call(author, [WRITE, SHARE, READ], "dashboards_edit", {
+      dashboardId: shared.id,
+      ifVersion: shared.version,
+      operations: [
+        {
+          op: "addBlock",
+          block: metric("spend", { status: "{{range.from}}", until: "{{range.to}}" }),
+          position: { after: "a" },
+        },
+        { op: "updateBlock", blockId: "b", changes: { title: "Open orders" } },
+        { op: "removeBlock", blockId: "a" },
+        { op: "setTitle", title: "Sales direction" },
+      ],
+    })
+    const summary = res.blocked?.summary
+    expect(res.blocked?.approvalRequestId).toBeString()
+    expect(summary?.kind).toBe("dashboard_edit")
+    expect(summary?.title).toBe('Change the org dashboard "Direction": 4 changes')
+    expect(summary?.lines).toHaveLength(4)
+    expect(summary?.lines[0]).toStartWith(
+      `1. Add a metric block "Tile spend" (width 1) at position 2 of 3 (after "Tile a"), reading ${APP}:orders_list`,
+    )
+    expect(summary?.lines[0]).toContain("{{range.from}} = the dashboard range's start")
+    expect(summary?.lines[1]).toBe('2. Change the block "Tile b": title "Tile b" → "Open orders".')
+    expect(summary?.lines[2]).toStartWith('3. Remove the metric block "Tile a"')
+    expect(summary?.lines[3]).toBe('4. Rename the dashboard "Direction" → "Sales direction".')
+    expect(await getDashboard(as(author, [WRITE]), shared.id)).toMatchObject({ version: 1 })
+
+    expect(res.blocked?.requesterCanApprove).toBe(false)
+    const requestId = res.blocked?.approvalRequestId
+    if (!requestId) throw new Error("the edit did not park an approval")
+    const decided = await approve(requestId, approver)
+    expect(decided.status).toBe("approved")
+    const after = await getDashboard(as(author, [WRITE]), shared.id)
+    expect(after.version).toBe(2)
+    expect(after.title).toBe("Sales direction")
+    expect(after.spec.blocks.map((b) => b.id)).toEqual(["spend", "b"])
+    expect(after.blockTimeRange).toEqual({ spend: "dashboard", b: "fixed" })
+  })
+
+  it("an edit written against an older version is refused, naming the conflict", async () => {
+    const mine = await createDashboard(as(owner, [WRITE, READ]), {
+      title: "Raced",
+      visibility: "personal",
+      spec: { v: 1, blocks: [metric("a")] },
+    })
+    await call(owner, [WRITE, READ], "dashboards_edit", {
+      dashboardId: mine.id,
+      ifVersion: 1,
+      operations: [{ op: "setTitle", title: "First" }],
+    })
+    await expect(
+      call(owner, [WRITE, READ], "dashboards_edit", {
+        dashboardId: mine.id,
+        ifVersion: 1,
+        operations: [{ op: "setTitle", title: "Second" }],
+      }),
+    ).rejects.toMatchObject({ code: "version_conflict" })
   })
 })

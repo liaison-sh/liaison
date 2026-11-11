@@ -323,6 +323,10 @@ export const KERNEL_USER_COLUMN_DISPOSITION: Record<string, KernelColumnDisposit
     reason: "delete (behavioral profile — personal data)",
   },
   "user_preferences.user_id": { kind: "handled", reason: "delete (per-user settings — personal)" },
+  "dashboard_viewer_states.user_id": {
+    kind: "handled",
+    reason: "delete (the person's chosen dashboard time ranges — personal)",
+  },
   "tour_progress.user_id": {
     kind: "handled",
     reason: "delete (the person's guided tour progress — personal)",
@@ -1141,6 +1145,9 @@ export async function eraseUser(
       `)
       await tx.execute(drizzleSql`DELETE FROM ${K}.user_preferences WHERE user_id = ${userId}`)
       await tx.execute(drizzleSql`DELETE FROM ${K}.tour_progress WHERE user_id = ${userId}`)
+      await tx.execute(
+        drizzleSql`DELETE FROM ${K}.dashboard_viewer_states WHERE user_id = ${userId}`,
+      )
       // Contacts the person owns (owner_user_id is ON DELETE RESTRICT).
       await releaseErasedUserContacts(tx as never, { orgId, userId, sentinelUserId: sentinelUid })
       await tx.execute(drizzleSql`DELETE FROM ${K}.routines WHERE owner_user_id = ${userId}`)

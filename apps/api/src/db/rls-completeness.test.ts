@@ -135,7 +135,7 @@ const DENY_ALL_LEDGERS = new Set<string>([
   // and read only by lib/effect-once.ts through the privileged pool.
   "kernel.effect_ledger",
   // Verified webhook deliveries stored before their handler runs (migration
-  // 0287): payloads and headers, written and read only by
+  // 0288): payloads and headers, written and read only by
   // modules/webhooks/inbox.ts through the privileged pool.
   "kernel.webhook_inbox",
   // An operator's org deletions and the legal-retention archives they wrote

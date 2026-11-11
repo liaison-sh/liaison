@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { MRR_RULES, mrrRuleLines } from "../mrr"
-import { howComputedLines, StripeHome } from "./StripeHome"
+import { evidenceDueLine, howComputedLines, StripeHome } from "./StripeHome"
 import {
   buildAttention,
   buildMrrView,
@@ -110,6 +110,11 @@ describe("attention", () => {
     expect(a.failed.map((r) => r.subscriptionId)).toEqual(["b", "a"])
     expect(a.disputes.map((d) => d.id)).toEqual(["dp_1", "dp_2"])
     expect(a.count).toBe(4)
+  })
+
+  it("a dispute's deadline reads as a short date, as the rest of the page", () => {
+    expect(evidenceDueLine("2026-11-14T00:00:00Z", "en")).toBe("Evidence is due in Stripe by Nov 14.")
+    expect(evidenceDueLine(null, "en")).toBe("Evidence is due in Stripe.")
   })
 
   it("Review expands only the pending approval", () => {

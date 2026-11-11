@@ -419,6 +419,7 @@
     "heldTitle": "Votre agent demande d'abord",
     "heldBody": "Votre agent demande avant d'utiliser {{tool}}. Lisez sa carte et appuyez sur Approuver pour continuer.",
     "workingRoutine": "La routine s'exécute. Cette étape avance quand elle a fini.",
+    "routineNotStarted": "La routine n'a pas démarré. Passez cette étape pour continuer.",
     "workingReplay": "La session enregistrée se déroule. Cette étape avance quand elle y arrive.",
     "routineRunning": "La routine « {{name}} » s'en occupe ({{elapsed}}). Cette étape avance quand elle a fini.",
     "routineRunningUnnamed": "La routine s'en occupe ({{elapsed}}). Cette étape avance quand elle a fini.",

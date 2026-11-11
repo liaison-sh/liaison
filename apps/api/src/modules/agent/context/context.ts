@@ -57,6 +57,8 @@ import {
   selectAppGuideParts,
 } from "~/modules/agent/context/app-guide"
 import {
+  CARRIED_GUIDE_NOTES_TYPE,
+  carriedGuideNotesRow,
   checkpointAsHistoryRow,
   loadBoundedHistory,
   reportRevokeRebuild,
@@ -2332,9 +2334,22 @@ Write numbers, amounts and dates the way that language writes them, never as a r
       "history_tail_trimmed_to_budget",
     )
   }
-  const historyMessages = bounded.checkpoint
-    ? [checkpointAsHistoryRow(bounded.checkpoint, { threadId, orgId }), ...trimmed.rows]
-    : trimmed.rows
+  // The guides the dropped rows were sent stay in the history, ahead of the kept tail, so a
+  // sliding window never sends them again (carriedGuideNotesRow).
+  const carriedNotes =
+    trimmed.droppedRows > 0
+      ? carriedGuideNotesRow(bounded.messages.slice(0, trimmed.droppedRows), trimmed.rows, {
+          threadId,
+          orgId,
+        })
+      : null
+  const historyMessages = [
+    ...(bounded.checkpoint
+      ? [checkpointAsHistoryRow(bounded.checkpoint, { threadId, orgId })]
+      : []),
+    ...(carriedNotes ? [carriedNotes] : []),
+    ...trimmed.rows,
+  ]
 
   // Fresh-context anchor (routine ticks) — history starts at the tick's own
   // trigger message; earlier ticks' transcripts stay in the thread for humans
@@ -3251,6 +3266,13 @@ export function convertToCoreMessages(
       handles && handles.size > 0 ? relabelAgentMentions(text, (id) => handles.get(id)) : text
     if (msg.authorType === "system") {
       const meta = msg.metadata as { type?: string } | null
+      // The guide notes of rows the raw tail cap dropped, as they were sent.
+      if (meta?.type === CARRIED_GUIDE_NOTES_TYPE) {
+        for (const note of readGuideNotes(msg.metadata)) {
+          result.push({ role: "user", content: note.content })
+        }
+        continue
+      }
       if (meta?.type === "compaction_summary" || meta?.type === "checkpoint_summary") {
         result.push({
           role: "user",

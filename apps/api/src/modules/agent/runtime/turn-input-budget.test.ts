@@ -3,7 +3,7 @@
 // A step budget (a demo visitor's turn): the last allowed step is the
 // check-in, tools off, so the turn ends with an answer at its cap.
 import { describe, expect, it } from "bun:test"
-import { createTurnInputBudget, stepBudgetPromptLine } from "./turn-input-budget"
+import { checkInFacts, createTurnInputBudget, stepBudgetPromptLine } from "./turn-input-budget"
 
 describe("a turn with a step budget", () => {
   it("checks in on its last step, however small its input", () => {
@@ -55,5 +55,40 @@ describe("the prompt line of a step budget", () => {
     expect(line).toContain("at most 6 steps")
     expect(line).toContain("5 that can call tools")
     expect(line).toContain("by step 5")
+  })
+})
+
+describe("the check-in's facts", () => {
+  it("names each call and how its result says it ended, and nothing the turn did not do", () => {
+    const facts = checkInFacts([
+      {
+        toolCalls: [
+          { toolName: "kernel__tool_search", toolCallId: "s1", input: { query: "stripe" } },
+          { toolName: "stripe__customers_get", toolCallId: "c1", input: {} },
+        ],
+        toolResults: [
+          { toolCallId: "s1", output: { tools: [] } },
+          { toolCallId: "c1", output: { type: "json", value: { customer: { id: "cus_1" } } } },
+        ],
+      },
+      {
+        toolCalls: [
+          {
+            toolName: "kernel__call_tool",
+            toolCallId: "m1",
+            input: { name: "mail__compose", arguments: {} },
+          },
+          { toolName: "invoicing__documents_get", toolCallId: "d1", input: {} },
+        ],
+        toolResults: [
+          { toolCallId: "m1", output: { blocked: true, status: "pending_approval" } },
+          { toolCallId: "d1", output: { error: "not_found" } },
+        ],
+      },
+    ])
+    expect(facts).toBe(
+      "What this turn's tool results show: stripe__customers_get ran; mail__compose waits for a person's approval; invoicing__documents_get failed. Nothing else was done.",
+    )
+    expect(checkInFacts([])).toBe("This turn called no tool: nothing was read, done or changed.")
   })
 })

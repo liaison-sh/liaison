@@ -159,7 +159,23 @@ export function subscriptionRow(obj: Obj, tally: MaskTally, now: Date = new Date
     trial_end: at(obj.trial_end),
     cancel_at: at(obj.cancel_at),
     canceled_at: at(obj.canceled_at),
+    // When the customer's subscription began at Stripe (not when this mirror first saw it).
+    started_at: at(obj.start_date),
+    ...subscriptionCardOf(obj),
   }
+}
+
+/**
+ * The card a subscription bills, from its expanded `default_payment_method`: a customer who adds
+ * a new card shows the new one. Not expanded (an id, or none): no card columns, so the row keeps
+ * the card it held.
+ */
+function subscriptionCardOf(obj: Obj): Partial<ReturnType<typeof cardOf>> {
+  const pm = obj.default_payment_method
+  if (!pm || typeof pm !== "object") return {}
+  const card = (pm as Obj).card
+  if (!card || typeof card !== "object") return {}
+  return cardOf({ payment_method_details: { card } })
 }
 
 export function invoiceRow(obj: Obj, tally: MaskTally): Obj {

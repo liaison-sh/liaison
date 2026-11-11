@@ -274,6 +274,41 @@ export type CreateTicketOptions = PrivilegedReadOptions & {
    * nothing. An option rather than a param, so no tool input can set it.
    */
   notNews?: boolean
+  /**
+   * The ticket's number, for a seed that tells a story with fixed ticket ids. The org must not
+   * hold it yet. An option rather than a param, so no tool input can set it.
+   */
+  handleNumber?: number
+}
+
+/**
+ * The next ticket handle of one org: the instance sequence's next value, or the number after the
+ * org's highest when the org already holds a higher one (a seeded story's fixed ids), so a new
+ * ticket never meets a number the org holds and numbers keep rising within the org.
+ */
+async function nextTicketHandle(
+  tx: SqlClient,
+  orgId: string,
+  privilegedTx: PrivilegedDb | undefined,
+): Promise<string> {
+  const drawn = await nextHandle(tx, `${schemaRef("app_tickets")}.tickets_handle_seq`, "ticket")
+  const drawnNumber = Number(drawn.slice("ticket-".length))
+  // Every ticket of the org, whatever the caller may read: a hidden one holds its number too.
+  const row = await onPrivilegedDb(
+    orgId,
+    "tickets-handle-top",
+    privilegedTx,
+    async (ptx) =>
+      extractRows<{ top: string | number | null }>(
+        await ptx.execute(drizzleSql`
+        SELECT max((substring(handle from '^ticket-([0-9]+)$'))::bigint) AS top
+        FROM ${ticketsRel("tickets")}
+        WHERE org_id = ${orgId}::uuid
+      `),
+      )[0],
+  )
+  const top = row?.top === null || row?.top === undefined ? 0 : Number(row.top)
+  return top >= drawnNumber ? `ticket-${top + 1}` : drawn
 }
 
 /** What a new-ticket notice calls the person who asked: name and address, whichever exist. */
@@ -728,7 +763,10 @@ export async function createTicket(
   const slaDeadlineValue = slaExempt ? null : slaDeadline.toISOString()
   const slaActiveStartedValue = slaExempt ? null : createdTs.toISOString()
 
-  const handle = await nextHandle(tx, `${schemaRef("app_tickets")}.tickets_handle_seq`, "ticket")
+  const handle =
+    opts.handleNumber !== undefined
+      ? `ticket-${opts.handleNumber}`
+      : await nextTicketHandle(tx, orgId, opts.privilegedTx)
 
   const initialForRequester = normalizeInitialMessage(params.initialMessage)
   const requesterEmail =

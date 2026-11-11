@@ -66,7 +66,7 @@ export const RESOURCES: readonly SyncResource[] = [
     list: "/v1/subscriptions",
     byId: "/v1/subscriptions/",
     row: subscriptionRow,
-    params: { status: "all", expand: ["data.discounts"] },
+    params: { status: "all", expand: ["data.discounts", "data.default_payment_method"] },
   },
   { resource: "invoices", entity: "stripe_invoices", list: "/v1/invoices", byId: "/v1/invoices/", row: invoiceRow },
   { resource: "charges", entity: "stripe_payments", list: "/v1/charges", byId: "/v1/charges/", row: paymentRow },

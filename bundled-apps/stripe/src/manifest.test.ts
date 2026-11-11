@@ -21,8 +21,8 @@ function referencedHandlers(m: any): string[] {
 const CARD_PARAM = /[cC]ard_?[nN]umber|[cC][vV][cC]|[cC][vV][vV]|(^|_)([pP]an|PAN)($|_|[A-Z])|Pan($|[A-Z_])|[eE]xpir/
 
 describe("stripe manifest", () => {
-  it("is at version 0.1.25", () => {
-    expect(load().version).toBe("0.1.25")
+  it("is at version 0.1.26", () => {
+    expect(load().version).toBe("0.1.26")
   })
 
   it("parses with the package manifest schema", () => {

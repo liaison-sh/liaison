@@ -36,6 +36,52 @@ export const TURN_BUDGET_FLOOR_TOKENS = 1_500_000
 export const TURN_BUDGET_CHECK_IN_NOTE =
   "This turn has used its budget for this message. Do not call any more tools now. In a few sentences, tell the person what you have done and found so far, what is left to do, and ask whether you should continue."
 
+type CheckInStep = {
+  toolCalls?: ReadonlyArray<{ toolName?: string; toolCallId?: string; input?: unknown }>
+  toolResults?: ReadonlyArray<{ toolCallId?: string; output?: unknown }>
+}
+
+/** How one call of the turn ended, read from its result. */
+function callOutcome(
+  output: unknown,
+): "ran" | "waits for a person's approval" | "failed" | "was not run" {
+  const o = (output && typeof output === "object" ? output : {}) as Record<string, unknown>
+  const value = (
+    o.type === "json" && o.value && typeof o.value === "object" ? o.value : o
+  ) as Record<string, unknown>
+  if (value.blocked === true || value.status === "pending_approval")
+    return "waits for a person's approval"
+  if (value.error !== undefined && value.error !== null) return "failed"
+  if (typeof output === "string" && output.startsWith("This call was not run")) return "was not run"
+  return "ran"
+}
+
+/**
+ * The facts the check-in step answers from: each tool the turn called and how it ended, read
+ * from the turn's own tool results, so the true account ("what is done, what is left") is the
+ * one at hand. Searches for tools are left out.
+ */
+export function checkInFacts(steps: ReadonlyArray<CheckInStep> | undefined): string {
+  const lines: string[] = []
+  for (const step of steps ?? []) {
+    const outputs = new Map((step.toolResults ?? []).map((r) => [r.toolCallId, r.output]))
+    for (const call of step.toolCalls ?? []) {
+      const input = (call.input && typeof call.input === "object" ? call.input : {}) as {
+        name?: unknown
+      }
+      const name =
+        call.toolName === "kernel__call_tool" && typeof input.name === "string"
+          ? input.name
+          : call.toolName
+      if (!name || name === "kernel__tool_search") continue
+      lines.push(`${name} ${callOutcome(outputs.get(call.toolCallId))}`)
+    }
+  }
+  return lines.length === 0
+    ? "This turn called no tool: nothing was read, done or changed."
+    : `What this turn's tool results show: ${lines.join("; ")}. Nothing else was done.`
+}
+
 /** What a tool call in the check-in step gets back: it was not run. */
 export const TURN_BUDGET_ANSWER_ONLY_RESULT =
   "This call was not run: this turn has used its budget for this message, so this step answers in words. Tell the person what you have done and found so far, what is left to do, and ask whether you should continue."

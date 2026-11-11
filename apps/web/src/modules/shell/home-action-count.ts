@@ -38,7 +38,12 @@ import {
 import { isDecisionInFlight } from "~/modules/approvals/decision-queue"
 import { hasScope, userFromToken } from "~/modules/auth/auth-store"
 import { isApprovalItem, partitionOthersRows } from "~/modules/shell/approval-facets"
-import { newestPromptPerChat, splitFeed, urgentStripItems } from "~/modules/shell/attention-groups"
+import {
+  clusterAlerts,
+  newestPromptPerChat,
+  splitFeed,
+  urgentStripItems,
+} from "~/modules/shell/attention-groups"
 import { attentionStore } from "~/modules/shell/attention-store"
 
 /** The rows Home's Approvals card lists, before its action facet: approvals,
@@ -151,6 +156,17 @@ export function homeActionItems(
 }
 
 /**
+ * The rows Needs you shows for `needItems` (homeActionItems' output), which is what Home and its
+ * badge count: each approval and each time-limited item is a row, and the other alerts of one
+ * kind fold into one row ("4 tickets approaching SLA" is one thing to look at, not four).
+ */
+export function homeNeedRowCount(needItems: AttentionItem[], nowMs: number = Date.now()): number {
+  const approvals = needItems.filter((item) => isApprovalItem(item))
+  const rest = needItems.filter((item) => !isApprovalItem(item))
+  return approvals.length + clusterAlerts(rest, nowMs).length
+}
+
+/**
  * The shared memo, built on the first read rather than at import: importing
  * this module must not read the token or the stores (a module that merely
  * imports the shell would otherwise read auth state before anything set it).
@@ -160,10 +176,10 @@ let count: (() => number) | null = null
 /** The number the Home entry shows. */
 export function homeActionCount(): number {
   count ??= createRoot(() =>
-    createMemo(
-      () =>
-        homeActionItems(newestPromptPerChat(attentionStore.items), false, currentHomeViewer())
-          .length,
+    createMemo(() =>
+      homeNeedRowCount(
+        homeActionItems(newestPromptPerChat(attentionStore.items), false, currentHomeViewer()),
+      ),
     ),
   )
   return count()

@@ -105,7 +105,7 @@ Open a document from **Documents** in the sidebar (**All**, **Invoices**, **Quot
 | Button | What it does |
 | --- | --- |
 | **Edit** | Edit the document. Saving re-renders its PDF. |
-| **Mark paid** | Record full payment. Not shown on credit notes. |
+| **Mark paid** | Record full payment. Not shown on credit notes, nor on an invoice Stripe collects: that one shows **Collected by Stripe** with its Stripe invoice, which opens the Stripe customer. |
 | **Send to customer** | Email the PDF to the customer. |
 | **Convert to invoice** | Quotes and proformas only, see above. |
 | **Preview PDF** / **Download PDF** | Open or download the rendered PDF. When it is not ready, they say so. |

@@ -25,6 +25,8 @@ export interface ApprovalFacet {
   /** A kind facet's catalog label (access requests, routine runs): rendered
    *  through i18n instead of `label`. */
   labelKey?: string
+  /** Named by the rows' pill: `label` is shown as it is. */
+  pill?: true
   count: number
 }
 
@@ -70,7 +72,23 @@ export function approvalActionKey(item: AttentionItem): string | null {
   if (item.kind === "scope_request") return ACCESS_REQUESTS_FACET
   if (item.kind === "routine_mailbox_wait") return ROUTINE_RUNS_FACET
   const tool = item.metadata?.toolName
-  return typeof tool === "string" && tool !== "" ? tool : null
+  if (typeof tool !== "string" || tool === "") return null
+  // A row the server names with a pill ("Stripe: payment reminder" on a mail draft) files under
+  // that name, so the count sits beside the name the row shows.
+  const pill = approvalRowPill(item)
+  return pill ? `${tool}${PILL_FACET_SEPARATOR}${pill.label}` : tool
+}
+
+/** Between a tool id and a pill's label in a pill facet's key. */
+export const PILL_FACET_SEPARATOR = "|pill:"
+
+/** The pill the server put on an approval row (attention.ts), when it has one. */
+export function approvalRowPill(item: AttentionItem): { label: string; labelKey?: string } | null {
+  const pill = item.metadata?.pill as { label?: unknown; labelKey?: unknown } | undefined
+  if (!pill || typeof pill.label !== "string" || pill.label === "") return null
+  return typeof pill.labelKey === "string" && pill.labelKey !== ""
+    ? { label: pill.label, labelKey: pill.labelKey }
+    : { label: pill.label }
 }
 
 function approvalActionLabel(item: AttentionItem): string | null {
@@ -125,10 +143,12 @@ export function approvalActionFacets(items: AttentionItem[]): ApprovalFacet[] {
       continue
     }
     const labelKey = kindFacetLabelKey(key)
+    const pill = approvalRowPill(item)
     byKey.set(key, {
       key,
-      label: labelKey ? key : (approvalActionLabel(item) ?? key),
-      ...(labelKey ? { labelKey } : {}),
+      label: labelKey ? key : (pill?.label ?? approvalActionLabel(item) ?? key),
+      ...(labelKey ? { labelKey } : pill?.labelKey ? { labelKey: pill.labelKey } : {}),
+      ...(pill ? { pill: true } : {}),
       count: 1,
     })
   }

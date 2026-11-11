@@ -419,6 +419,7 @@
     "heldTitle": "Your agent asks first",
     "heldBody": "Your agent asks before it uses {{tool}}. Read its card and press Approve to continue.",
     "workingRoutine": "The routine is running. This step moves on when it has finished.",
+    "routineNotStarted": "The routine has not started. Skip this step to go on.",
     "workingReplay": "The recorded session is playing. This step moves on when it gets there.",
     "routineRunning": "The routine “{{name}}” is working on it ({{elapsed}}). This step moves on when it is done.",
     "routineRunningUnnamed": "The routine is working on it ({{elapsed}}). This step moves on when it is done.",

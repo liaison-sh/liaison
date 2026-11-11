@@ -37,7 +37,7 @@ interface Loaded {
   subscriptions: SubItem[]
   suggestion: Suggestion | null
   contactSuggestion: { contactId: string; email: string } | null
-  invoices: Array<InvoiceItem & { number?: string | null; totalMinor?: number | null; issuer?: string | null; liaisonDocumentId?: string | null }>
+  invoices: Array<InvoiceItem & { number?: string | null; totalMinor?: number | null; issuer?: string | null; liaisonDocumentId?: string | null; liaisonDocumentNumber?: string | null }>
   payments: PaymentItem[]
   disputes: DisputeItem[]
   approvals: RefundApproval[]
@@ -224,7 +224,21 @@ export const StripeCustomerDetail: Component<{ entityId?: string }> = (props) =>
                     const v = () => invoiceView(i, locale)
                     return (
                       <Line testid={`stripe-customer-invoice-${i.id}`}>
-                        <span class="font-mono">{v().number ?? i.id}</span>
+                        <Show when={v().documentId} fallback={<span class="font-mono">{v().number ?? i.id}</span>}>
+                          {(doc) => (
+                            <a
+                              data-testid={`stripe-customer-invoice-document-${i.id}`}
+                              href={`/invoicing/document/${doc()}`}
+                              class="font-mono underline-offset-2 hover:underline"
+                              onClick={(e) => {
+                                e.preventDefault()
+                                navigate(`/invoicing/document/${doc()}`)
+                              }}
+                            >
+                              {v().number ?? i.id}
+                            </a>
+                          )}
+                        </Show>
                         <span class="text-[12.5px] text-text-secondary">{v().statusLabel}</span>
                         <span class="font-mono">{v().total}</span>
                         <span class="text-[12px] text-text-tertiary">{v().issuedLabel}</span>

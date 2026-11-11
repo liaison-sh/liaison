@@ -58,8 +58,9 @@ describe("NeedsPicker", () => {
     const pill = () => screen.getByTestId("demo-needs-all-pill")
     expect(tile().contains(pill())).toBe(true)
     expect(pill().textContent).toBe("Select all")
-    expect(tile().className.split(" ")).toEqual(expect.arrayContaining(["bg-text", "text-bg"]))
-    expect(screen.getByTestId("demo-needs-support").className).not.toContain("bg-text")
+    // Not selected, it looks like any tile that is off, never the filled, selected look.
+    expect(tile().className.split(" ")).toEqual(expect.arrayContaining(["bg-bg", "text-text"]))
+    expect(tile().className.split(" ")).not.toContain("bg-text")
     unmount()
 
     render(() => (

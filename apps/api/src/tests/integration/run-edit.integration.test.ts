@@ -321,6 +321,21 @@ describe("editing a month-end run on the real kernel", () => {
     expect(currency.error).toContain("schedule_has_no_currency")
   }, 120_000)
 
+  it("a run row's draft without its back reference is still the row's: a lines change asks how far and writes nothing", async () => {
+    const fx = await drafted(1)
+    const [item] = await itemsOf(fx.runId)
+    const draft = String(item?.document_id)
+    await sql`UPDATE app_invoicing.documents SET external_refs = '{}'::jsonb WHERE id = ${draft}::uuid`
+    const before = await docOf(draft)
+    const asked = await call(
+      "drafts_update",
+      { ...(await asRead(draft)), patch: { lines: LINES(65000) } },
+      "agent",
+    )
+    expect(asked.error).toContain("applies_required")
+    expect((await docOf(draft)).subtotal_minor).toBe(before.subtotal_minor)
+  }, 120_000)
+
   it("from now on is written to the schedule at approval and not when the run is rejected", async () => {
     const fx = await drafted(1)
     const [item] = await itemsOf(fx.runId)

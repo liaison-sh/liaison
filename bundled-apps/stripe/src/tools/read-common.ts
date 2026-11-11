@@ -141,6 +141,7 @@ export function invoiceItem(r: Obj) {
     paidAt: iso(r.paid_at),
     issuer: str(r.issuer),
     liaisonDocumentId: str(r.liaison_document_id),
+    liaisonDocumentNumber: str(r.liaison_document_number),
   }
 }
 

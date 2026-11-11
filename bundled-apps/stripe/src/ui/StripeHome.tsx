@@ -33,9 +33,15 @@ import {
   toggleReview,
   trialsEnding,
 } from "./home-model"
+import { shortDate } from "./customers-model"
 import { tr, uiLocale } from "./i18n"
 
 /** The lines of "How MRR is computed": the query's own, from the same constants. */
+/** A dispute's deadline, dated as the rest of the page dates ("Nov 14"), never as ISO. */
+export function evidenceDueLine(dueBy: string | null, locale: string): string {
+  return dueBy ? tr("Evidence is due in Stripe by {{date}}.", { date: shortDate(dueBy, locale) }) : tr("Evidence is due in Stripe.")
+}
+
 export function howComputedLines(locale: "en" | "fr"): string[] {
   return mrrRuleLines(locale)
 }
@@ -281,11 +287,7 @@ const AttentionSection: Component<{ data: HomeData; attention: Attention; names:
                 <Row
                   testid={`stripe-dispute-${d.id}`}
                   title={tr("Disputed {{amount}}", { amount: formatMoney(d.amountMinor ?? 0, d.currency ?? "eur", locale) })}
-                  detail={
-                    d.evidenceDueBy
-                      ? tr("Evidence is due in Stripe by {{date}}.", { date: d.evidenceDueBy.slice(0, 10) })
-                      : tr("Evidence is due in Stripe.")
-                  }
+                  detail={evidenceDueLine(d.evidenceDueBy, locale)}
                   side={days() === null ? null : daysLeftLabel(days() ?? 0)}
                 >
                   <Show when={dashboardShown(p.data.load)}>

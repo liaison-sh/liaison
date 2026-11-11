@@ -219,6 +219,8 @@ export interface InvoicingDocumentSpec {
   poNumber?: string
   notes?: string
   incoterm?: string
+  /** The document's links to records outside invoicing (a payment processor's invoice). */
+  externalRefs?: Record<string, string>
 }
 
 /** Prefix per document type: the issuer profile's own defaults. */
@@ -564,7 +566,7 @@ export async function seedInvoicingHistory(
         pdf_file_id: null,
         // The app's own "render me on demand" state: see the header note.
         pdf_status: issued ? "pending" : null,
-        external_refs: jsonCell({}),
+        external_refs: jsonCell(d.spec.externalRefs ?? {}),
         po_number: d.spec.poNumber ?? null,
         notes: d.spec.notes ?? null,
         lifecycle_log: jsonCell(buildLifecycleLog(d)),

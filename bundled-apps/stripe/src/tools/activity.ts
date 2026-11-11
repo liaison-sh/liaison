@@ -105,7 +105,7 @@ export async function activityRead(params: Obj | undefined, ctx: ReadCtx) {
   const subs = (await ctx.db.findMany("stripe_subscriptions", { where: { customer_id: { in: ids } }, limit: 1000 })) as Obj[]
   for (const s of subs) {
     const plan = String(s.plan_name ?? "Subscription")
-    push(String(s.customer_id), `${String(s.stripe_id)}:started`, iso(s.created_at) ?? iso(s.current_period_start), `${plan} started`, String(s.stripe_id))
+    push(String(s.customer_id), `${String(s.stripe_id)}:started`, iso(s.started_at) ?? iso(s.created_at) ?? iso(s.current_period_start), `${plan} started`, String(s.stripe_id))
     if (s.status === "canceled" || s.canceled_at) {
       push(String(s.customer_id), `${String(s.stripe_id)}:cancelled`, iso(s.canceled_at), `${plan} cancelled`, String(s.stripe_id))
     }

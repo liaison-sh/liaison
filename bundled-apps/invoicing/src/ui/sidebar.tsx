@@ -464,7 +464,8 @@ export const InvoicingSidebar: Component = () => {
       <div class="mt-auto border-t border-border-subtle px-4 py-2">
         <div class="flex items-center gap-1.5 text-[10.5px] text-text-tertiary">
           <GearIcon />
-          <span>{tr("Invoicing v0.1")}</span>
+          {/* No version number: a fixed one went stale as the app moved on. */}
+          <span>{tr("Invoicing")}</span>
         </div>
       </div>
     </nav>

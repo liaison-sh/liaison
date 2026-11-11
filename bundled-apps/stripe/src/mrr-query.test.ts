@@ -16,3 +16,17 @@ describe("mrr_query", () => {
     expect(out.summary).toContain("nothing was changed")
   })
 })
+
+describe("a subscription's card", () => {
+  it("follows its expanded default payment method, and is kept when the method is not expanded", () => {
+    const base = sub("sub_1", { unit: 4900 })
+    const withCard = subscriptionRow(
+      { ...base, default_payment_method: { id: "pm_1", object: "payment_method", card: { brand: "visa", last4: "4242", exp_month: 12, exp_year: 2029 } } },
+      newTally(),
+    )
+    expect([withCard.card_brand, withCard.card_last4, withCard.card_exp]).toEqual(["visa", "4242", "12/29"])
+    const idOnly = subscriptionRow({ ...base, default_payment_method: "pm_1" }, newTally())
+    expect("card_last4" in idOnly).toBe(false)
+    expect("card_last4" in subscriptionRow(base, newTally())).toBe(false)
+  })
+})

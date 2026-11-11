@@ -208,7 +208,7 @@ async function readBackAbsent(
     }
     const started = now().toISOString()
     try {
-      const obj = await stripeFetch<Obj>(ctx, `${res.byId}${encodeURIComponent(id)}`, res.entity === "stripe_subscriptions" ? { params: { expand: ["discounts"] } } : {}, { maxRetries: 3, sleep })
+      const obj = await stripeFetch<Obj>(ctx, `${res.byId}${encodeURIComponent(id)}`, res.entity === "stripe_subscriptions" ? { params: { expand: ["discounts", "default_payment_method"] } } : {}, { maxRetries: 3, sleep })
       if (obj?.deleted === true) {
         if (res.entity === "stripe_customers" && mayDelete) await markDeleted(ctx, id, started, result)
       } else if (obj) {

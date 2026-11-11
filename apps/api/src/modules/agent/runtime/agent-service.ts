@@ -235,6 +235,7 @@ import {
 } from "~/modules/agent/runtime/turn-focus"
 import { registerDurableTurn } from "~/modules/agent/runtime/turn-handoff"
 import {
+  checkInFacts,
   createTurnInputBudget,
   TURN_BUDGET_ANSWER_ONLY_RESULT,
   TURN_BUDGET_CHECK_IN_NOTE,
@@ -3524,8 +3525,16 @@ async function runAgentChatTurn(
       // request asks for go out now, not after another round of reading.
       const lastToolStep = !checkIn && !lastToolStepNoted && turnBudget?.lastToolStepDue() === true
       if (lastToolStep) lastToolStepNoted = true
+      // The check-in answers from the turn's own record: what ran, what waits, nothing else.
       const checkInMessages = checkIn
-        ? [{ role: "user" as const, content: TURN_BUDGET_CHECK_IN_NOTE }]
+        ? [
+            {
+              role: "user" as const,
+              content: `${TURN_BUDGET_CHECK_IN_NOTE}\n${checkInFacts(
+                (options as { steps?: Parameters<typeof checkInFacts>[0] } | undefined)?.steps,
+              )}`,
+            },
+          ]
         : routinePause
           ? [{ role: "user" as const, content: ROUTINE_RUN_PAUSE_NOTE }]
           : lastToolStep

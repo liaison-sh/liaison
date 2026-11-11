@@ -521,6 +521,16 @@ export function shopifyOrderUrl(refs: Record<string, unknown> | undefined): stri
   return `https://${host}/admin/orders/${orderId}`
 }
 
+/** The payment processor's records an invoice it collects names, or null for any other invoice. */
+export function stripeCollection(
+  refs: Record<string, unknown> | undefined,
+): { invoiceId: string; customerId: string | null } | null {
+  const invoiceId = refs?.stripe_invoice_id
+  if (typeof invoiceId !== "string" || !invoiceId) return null
+  const customerId = refs?.stripe_customer_id
+  return { invoiceId, customerId: typeof customerId === "string" && customerId ? customerId : null }
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Payment-status badge. `payment_status` is a separate axis from the
 // lifecycle `status` (an "issued" invoice can be paid/partial/refunded
@@ -1194,8 +1204,8 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                         </span>
                       </Show>
                     </Show>
-                    {/* Credit notes are never payable — no mark-paid. */}
-                    <Show when={doc().type !== "credit_note"}>
+                    {/* Credit notes are never payable, and Stripe settles an invoice it collects: no mark-paid. */}
+                    <Show when={doc().type !== "credit_note" && !stripeCollection(doc().external_refs)}>
                       <Button variant="ghost" testid="document-detail-action-mark-paid" onClick={markPaid}>
                         {tr(FOOTER_ACTIONS.mark_paid.label)}
                       </Button>
@@ -1260,6 +1270,48 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                       <span data-testid="document-detail-draft-order-ref">
                         {tr("Shopify draft order")}{" "}
                         <span class="text-text-secondary">{draftOrderName()}</span>
+                      </span>
+                    )}
+                  </Show>
+                  {/* The hops out: the customer's contact (their company is on it), and the Stripe
+                      customer whose invoice this one is, when Stripe collects it. */}
+                  <Show when={doc().counterparty_contact_id}>
+                    {(contactId) => (
+                      <a
+                        data-testid="document-detail-open-contact"
+                        class="inline-flex items-center gap-1 text-accent hover:underline"
+                        href={`/contacts/${encodeURIComponent(contactId())}`}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          navigate(`/contacts/${encodeURIComponent(contactId())}`)
+                        }}
+                      >
+                        {tr("Open the customer")}
+                      </a>
+                    )}
+                  </Show>
+                  <Show when={stripeCollection(doc().external_refs)}>
+                    {(stripe) => (
+                      <span data-testid="document-detail-stripe" class="inline-flex items-center gap-1">
+                        {tr("Collected by Stripe")}{" "}
+                        <Show
+                          when={stripe().customerId}
+                          fallback={<span class="font-mono text-text-secondary">{stripe().invoiceId}</span>}
+                        >
+                          {(customerId) => (
+                            <a
+                              data-testid="document-detail-open-stripe"
+                              class="font-mono text-accent hover:underline"
+                              href={`/stripe/customers/${encodeURIComponent(customerId())}`}
+                              onClick={(e) => {
+                                e.preventDefault()
+                                navigate(`/stripe/customers/${encodeURIComponent(customerId())}`)
+                              }}
+                            >
+                              {stripe().invoiceId}
+                            </a>
+                          )}
+                        </Show>
                       </span>
                     )}
                   </Show>

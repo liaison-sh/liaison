@@ -29,9 +29,12 @@
 // Sorting: `sort.field` names the category field (or "label"/"key") to order by
 // category, or the aggregated field (or "value") to order by value. Defaults:
 // line and bucketed bar by category ascending, bar and pie by value descending.
+// Date buckets are calendar days in the org's zone (`timeZone`), quarter `2026-Q4`, year `2026`.
 
 import { unwrapExternalContent } from "~/lib/external-content"
-import { applyWhere, type ResolvedWhere } from "~/modules/dashboards/filters"
+import { evaluateExpr } from "~/modules/dashboards/expr"
+import { applyWhere, type ResolvedWhere, resolveWhere } from "~/modules/dashboards/filters"
+import { dayIn, parseDay } from "~/modules/dashboards/relative-dates"
 import {
   type Aggregation,
   type BlockMap,
@@ -159,15 +162,51 @@ export function toDate(v: unknown): Date | null {
 
 const pad = (n: number) => String(n).padStart(2, "0")
 
-/** The bucket a date falls in, in UTC: `2026-11-07` (day), the Monday of its week, `2026-11` (month). */
-export function bucketKey(d: Date, bucket: DateBucket): string {
-  const y = d.getUTCFullYear()
-  const m = d.getUTCMonth()
-  if (bucket === "month") return `${y}-${pad(m + 1)}`
-  if (bucket === "day") return `${y}-${pad(m + 1)}-${pad(d.getUTCDate())}`
-  const monday = new Date(Date.UTC(y, m, d.getUTCDate()))
-  monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7))
-  return `${monday.getUTCFullYear()}-${pad(monday.getUTCMonth() + 1)}-${pad(monday.getUTCDate())}`
+/**
+ * The calendar day a value falls on in `timeZone` (YYYY-MM-DD): a date-only string is that day
+ * as written; a timestamp (ISO string, epoch, Date) is converted to the zone first. Null when
+ * the value is not a date.
+ */
+export function calendarDayOf(v: unknown, timeZone = "UTC"): string | null {
+  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v.trim())) {
+    return parseDay(v.trim()) ? v.trim() : null
+  }
+  const d = toDate(v)
+  if (!d) return null
+  try {
+    return dayIn(timeZone, d)
+  } catch {
+    return dayIn("UTC", d)
+  }
+}
+
+/**
+ * The bucket a calendar day (YYYY-MM-DD) falls in: the day itself, the Monday of its week,
+ * `2026-11` (month), `2026-Q4` (quarter), `2026` (year).
+ */
+export function bucketOfDay(day: string, bucket: DateBucket): string {
+  const y = day.slice(0, 4)
+  const m = Number(day.slice(5, 7))
+  switch (bucket) {
+    case "day":
+      return day
+    case "month":
+      return day.slice(0, 7)
+    case "quarter":
+      return `${y}-Q${Math.floor((m - 1) / 3) + 1}`
+    case "year":
+      return y
+    case "week": {
+      const monday = new Date(`${day}T00:00:00Z`)
+      monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7))
+      return `${monday.getUTCFullYear()}-${pad(monday.getUTCMonth() + 1)}-${pad(monday.getUTCDate())}`
+    }
+  }
+}
+
+/** The bucket a date falls in, in `timeZone` (default UTC): see bucketOfDay. */
+export function bucketKey(d: Date, bucket: DateBucket, timeZone = "UTC"): string {
+  return bucketOfDay(calendarDayOf(d, timeZone) ?? dayIn("UTC", d), bucket)
 }
 
 function keyOf(v: unknown): string {
@@ -286,18 +325,19 @@ function groupRows(
   keyField: string,
   bucket: DateBucket | undefined,
   meta: BlockMeta,
+  timeZone = "UTC",
 ): Group[] {
   const groups = new Map<string, Row[]>()
   for (const r of rows) {
     const raw = readPath(r, keyField)
     let key: string
     if (bucket) {
-      const d = toDate(raw)
-      if (!d) {
+      const day = calendarDayOf(raw, timeZone)
+      if (!day) {
         meta.skippedRows++
         continue
       }
-      key = bucketKey(d, bucket)
+      key = bucketOfDay(day, bucket)
     } else {
       key = keyOf(raw)
     }
@@ -334,6 +374,10 @@ export interface TransformOptions {
   linkApp?: string
   /** A text block's markdown. */
   text?: string
+  /** The org's zone: date buckets are its calendar days (default UTC). */
+  timeZone?: string
+  /** Other shared datasets' rows, by id, for calculated values and measures that read them. */
+  datasetRows?: Record<string, Row[] | null>
 }
 
 /** The rows a block aggregates: the source's rows (cut to MAX_SOURCE_ROWS), where applied. */
@@ -384,16 +428,69 @@ export function transformBlock(
     if (!rows) {
       if (!map.value)
         throw new TransformError("the source returned one object: map.value names its field")
-      return { kind: "metric", value: toNumber(readPath(object, map.value)), meta, ...extras }
+      return {
+        kind: "metric",
+        value: scaled(toNumber(readPath(object, map.value)), map.scale),
+        meta,
+        ...extras,
+      }
+    }
+    if (map.expr && map.values) {
+      const named: Record<string, number | null> = {}
+      for (const [name, v] of Object.entries(map.values)) {
+        let from: Row[] | null = rows
+        if (v.dataset) {
+          from = opts.datasetRows?.[v.dataset] ?? null
+          if (!from) throw new TransformError(`the dataset '${v.dataset}' returned no rows`)
+          from = from.slice(0, MAX_SOURCE_ROWS)
+        }
+        if (v.where?.length) from = applyWhere(from, resolveWhere(v.where, {}))
+        named[name] = aggregate(v.agg ?? (v.field ? "sum" : "count"), from, v.field)
+      }
+      return {
+        kind: "metric",
+        value: scaled(evaluateExpr(map.expr, named), map.scale),
+        meta,
+        ...extras,
+      }
     }
     const agg = map.agg ?? (map.value ? "sum" : "count")
+    if (map.scale !== undefined) {
+      const sparkline = map.sparkline
+        ? sparklineOf(rows, map.sparkline, agg, map.value, meta, opts.window, opts.timeZone)
+        : null
+      return {
+        kind: "metric",
+        value: scaled(aggregate(agg, rows, map.value), map.scale),
+        meta,
+        ...extras,
+        ...(sparkline
+          ? {
+              sparkline: {
+                ...sparkline,
+                values: sparkline.values.map((n) => scaled(n, map.scale)!),
+              },
+            }
+          : {}),
+      }
+    }
     return {
       kind: "metric",
       value: aggregate(agg, rows, map.value),
       meta,
       ...extras,
       ...(map.sparkline
-        ? { sparkline: sparklineOf(rows, map.sparkline, agg, map.value, meta, opts.window) }
+        ? {
+            sparkline: sparklineOf(
+              rows,
+              map.sparkline,
+              agg,
+              map.value,
+              meta,
+              opts.window,
+              opts.timeZone,
+            ),
+          }
         : {}),
     }
   }
@@ -412,7 +509,7 @@ export function transformBlock(
     return {
       kind: "funnel",
       labels: stages.map((st) => st.label),
-      series: [{ name: DEFAULT_SERIES, values }],
+      series: finishSeries([{ name: DEFAULT_SERIES, values }], map),
       meta,
     }
   }
@@ -447,7 +544,7 @@ export function transformBlock(
   const bucket = map.groupBy?.bucket
   const aggField = type === "pie" ? map.value : map.y
   const agg = map.agg ?? (aggField ? "sum" : "count")
-  const groups = groupRows(rows, keyField, bucket, meta)
+  const groups = groupRows(rows, keyField, bucket, meta, opts.timeZone)
   const measures = map.measures
   const firstMeasure = measures?.[0]
   const totalOf = (g: Group) =>
@@ -486,18 +583,102 @@ export function transformBlock(
 
   const seriesField = type === "pie" || type === "funnel" ? undefined : map.series
   const series = measures
-    ? measures.map((m) => ({
-        name: m.label,
-        values: kept.map(
-          (g) => aggregate(m.agg ?? (m.field ? "sum" : "count"), g.rows, m.field) ?? 0,
-        ),
-      }))
+    ? measureSeries(measures, kept, {
+        keyField,
+        bucket,
+        ...(opts.timeZone ? { timeZone: opts.timeZone } : {}),
+        ...(opts.datasetRows ? { datasetRows: opts.datasetRows } : {}),
+      })
     : seriesField
       ? splitSeries(rows, kept, seriesField, agg, aggField, meta)
       : [{ name: aggField ?? DEFAULT_SERIES, values: kept.map((g) => totals.get(g.key) ?? 0) }]
 
-  const display = displayOf(type, map, series)
-  return { kind: type, labels, series, meta, ...(display ? { display } : {}) }
+  const finished = finishSeries(series, map)
+  const display = displayOf(type, map, finished)
+  return { kind: type, labels, series: finished, meta, ...(display ? { display } : {}) }
+}
+
+/** `n` times `scale` (6 decimals), or `n` when there is no scale. */
+function scaled(n: number | null, scale: number | undefined): number | null {
+  if (n === null || scale === undefined) return n
+  return round(n * scale)
+}
+
+/** A chart's values after map.scale, then map.percentOfTotal (each value / its series' total). */
+function finishSeries(
+  series: { name: string; values: number[] }[],
+  map: BlockMap,
+): { name: string; values: number[] }[] {
+  let out = series
+  if (map.scale !== undefined) {
+    out = out.map((s) => ({ ...s, values: s.values.map((v) => scaled(v, map.scale)!) }))
+  }
+  if (map.percentOfTotal) {
+    out = out.map((s) => {
+      const total = s.values.reduce((a, b) => a + b, 0)
+      return { ...s, values: s.values.map((v) => (total === 0 ? 0 : round((v / total) * 100))) }
+    })
+  }
+  return out
+}
+
+/**
+ * One series per measure over the kept categories: an aggregation of the block's rows, of
+ * another dataset's rows grouped by the same category (measure.dataset), or a computation over
+ * the other measures of the same category (measure.expr, by name; no value is 0).
+ */
+function measureSeries(
+  measures: NonNullable<BlockMap["measures"]>,
+  kept: Group[],
+  ctx: {
+    keyField: string
+    bucket: DateBucket | undefined
+    timeZone?: string | undefined
+    datasetRows?: Record<string, Row[] | null>
+  },
+): { name: string; values: number[] }[] {
+  const byName: Record<string, (number | null)[]> = {}
+  const groupsOf = new Map<string, Map<string, Row[]>>()
+  const otherGroups = (m: NonNullable<BlockMap["measures"]>[number]) => {
+    const key = `${m.dataset}\u0000${m.categoryField ?? ctx.keyField}`
+    let groups = groupsOf.get(key)
+    if (!groups) {
+      const rows = ctx.datasetRows?.[m.dataset!]
+      if (!rows) throw new TransformError(`the dataset '${m.dataset}' returned no rows`)
+      const scratch: BlockMeta = { sourceRows: 0, truncated: false, skippedRows: 0 }
+      groups = new Map(
+        groupRows(
+          rows.slice(0, MAX_SOURCE_ROWS),
+          m.categoryField ?? ctx.keyField,
+          ctx.bucket,
+          scratch,
+          ctx.timeZone,
+        ).map((g) => [g.key, g.rows]),
+      )
+      groupsOf.set(key, groups)
+    }
+    return groups
+  }
+  const out = measures.map((m) => {
+    if (m.expr) return { m, values: [] as (number | null)[] }
+    const agg = m.agg ?? (m.field ? "sum" : "count")
+    const values = m.dataset
+      ? kept.map((g) => aggregate(agg, otherGroups(m).get(g.key) ?? [], m.field))
+      : kept.map((g) => aggregate(agg, g.rows, m.field))
+    if (m.name) byName[m.name] = values
+    return { m, values }
+  })
+  for (const o of out) {
+    if (!o.m.expr) continue
+    const expr = o.m.expr
+    o.values = kept.map((_g, i) => {
+      const named: Record<string, number | null> = {}
+      for (const [name, vals] of Object.entries(byName)) named[name] = vals[i] ?? null
+      return evaluateExpr(expr, named)
+    })
+    if (o.m.name) byName[o.m.name] = o.values
+  }
+  return out.map((o) => ({ name: o.m.label, values: o.values.map((v) => v ?? 0) }))
 }
 
 /** The field a chart's categories come from (groupBy, else x, else a pie's label). */
@@ -506,11 +687,16 @@ export function categoryField(type: BlockType, map: BlockMap): string {
 }
 
 /** The category a row falls in, as the chart labels it (null: no usable date for a bucket). */
-export function categoryOf(row: Row, field: string, bucket: DateBucket | undefined): string | null {
+export function categoryOf(
+  row: Row,
+  field: string,
+  bucket: DateBucket | undefined,
+  timeZone = "UTC",
+): string | null {
   const raw = readPath(row, field)
   if (bucket) {
-    const d = toDate(raw)
-    return d ? bucketKey(d, bucket) : null
+    const day = calendarDayOf(raw, timeZone)
+    return day ? bucketOfDay(day, bucket) : null
   }
   return keyOf(raw)
 }
@@ -653,10 +839,11 @@ function sparklineOf(
   valueField: string | undefined,
   meta: BlockMeta,
   window: TransformWindow | null | undefined,
+  timeZone = "UTC",
 ): { labels: string[]; values: number[] } {
   // Rows without a usable date are already counted by the metric: not skipped twice.
   const scratch: BlockMeta = { ...meta, skippedRows: 0 }
-  const groups = groupRows(rows, spec.field, spec.bucket, scratch)
+  const groups = groupRows(rows, spec.field, spec.bucket, scratch, timeZone)
   const byKey = new Map(groups.map((g) => [g.key, aggregate(agg, g.rows, valueField) ?? 0]))
   const fill =
     window && (agg === "sum" || agg === "count")
@@ -666,12 +853,17 @@ function sparklineOf(
   return { labels, values: labels.map((k) => byKey.get(k) ?? 0) }
 }
 
-/** A bucket key's position on its own scale: days, weeks or months since the epoch. */
+/** A bucket key's position on its own scale: days, weeks, months, quarters or years. */
 function bucketOrdinal(key: string, bucket: DateBucket): number | null {
   if (bucket === "month") {
     const m = /^(\d{4})-(\d{2})$/.exec(key)
     return m ? Number(m[1]) * 12 + Number(m[2]) - 1 : null
   }
+  if (bucket === "quarter") {
+    const m = /^(\d{4})-Q([1-4])$/.exec(key)
+    return m ? Number(m[1]) * 4 + Number(m[2]) - 1 : null
+  }
+  if (bucket === "year") return /^\d{4}$/.test(key) ? Number(key) : null
   const d = toDate(`${key}T00:00:00Z`)
   if (!d) return null
   const days = Math.round(d.getTime() / 86_400_000)

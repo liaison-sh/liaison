@@ -72,6 +72,18 @@ On an org dashboard the whole request waits for **one** approval by a person who
 
 The request is checked before anyone is asked: a block that is not there or already is, a block that cannot draw its data, or a source you cannot read is refused at once, and the agent corrects it, so an administrator never approves a change that then fails. If someone saved the dashboard in the meantime, the change is refused and the agent reads it again. Past 50 lines (a long note takes a line per 440 characters, and its links one more), the agent sends the changes in two requests, the second once the first is approved. A change to your personal dashboard saves at once.
 
+## Change a dashboard yourself
+
+Your own changes save at once, never held for approval: your scopes decide (the table above). You can move a block, make it wider (1 to 3 columns) or taller (1 or 2 rows), rename it, duplicate it or remove it, rename the dashboard and describe what it is for. The changes go through the same checks as the agent's: either all of them are saved, or none. If someone saved the dashboard in the meantime, the change is refused and the dashboard shows its new version.
+
+Any dashboard you can see can also be **duplicated**: the copy is your own personal dashboard, with the same blocks, named "<title> (copy)". Its blocks must read sources you may read yourself.
+
+## Go back to an earlier version
+
+Every save keeps the version it made, with who saved it and when: the last 20 versions of each dashboard. Anyone who sees the dashboard can list them and look at one. Going back to a version saves it again as a new version, so nothing is lost: you can always go forward again. A dashboard saved before version history existed keeps its versions from its next save.
+
+Ask your agent, for example "Put the sales dashboard back as it was on Monday": it lists the versions (`dashboards_history`) and reverts to the one you mean. On an org dashboard that revert waits for an approval like any other change, and its card says what the revert undoes: the blocks it removes, adds back or changes.
+
 ## Time range and comparison
 
 A dashboard can follow a time range: last 7, 30 or 90 days, this month, quarter or year to date, last month, quarter or year, or two dates of your choice. The blocks that follow it are compared with another period: the same period last year by default, or the period just before. A metric then shows its previous value beside the current one, and a chart the previous values for each point. A month, quarter or year compares with the whole same month, quarter or year (February 2028 with February 2027); a number of days, or dates of your choice, compares with as many days a year earlier, even across 29 February.
@@ -82,6 +94,8 @@ A dashboard can follow a time range: last 7, 30 or 90 days, this month, quarter 
 - Dashboards built before time ranges existed keep their blocks' own dates.
 
 A metric can also show a goal (its target) and its trend over the period as a small line.
+
+Days, weeks, months, quarters (`2026-Q4`) and years are always counted in the organization's time zone: an order placed at 00:30 in Paris on 1 November counts on 1 November, in the figures, the trend and the charts alike.
 
 ## Choose the period
 
@@ -147,6 +161,24 @@ The rows open in a panel on the right of the dashboard (over it on a phone), wit
 
 The rows are read from the figures already loaded, never by running the source again while those are fresh, with the same access as the block.
 
+## Calculated figures
+
+A block can compute its figures from others, for example a return on ad spend (revenue divided by ad spend, the spend read from another shared dataset), a difference between two counts, a share of a total, or amounts kept in cents shown in units. Your agent writes the calculation with numbers, `+ - * /`, parentheses, `min`, `max`, `abs` and `round`. A division by zero, or a figure that is missing, shows no value rather than a wrong number. A chart can also show each value as a percentage of its total.
+
+## Export a dashboard
+
+- A block's figures as a CSV file: one row per label and a column per series, the compared values beside them (`GET /api/dashboards/:id/blocks/:blockId/data.csv`).
+- The rows behind a block as a CSV file: every row it reads (up to 2,000), with the same columns as when you look at them (`GET /api/dashboards/:id/blocks/:blockId/rows.csv`).
+- The whole dashboard as a PDF, for the period and filters you show (`GET /api/dashboards/:id/export.pdf`): the title and description, the period and what it is compared with, each filter's value, then every block (a metric with its compared value, change and target, a chart's values as a table, a table's first 100 rows, a note's text, and for a block that cannot show, why).
+
+Everything is read with your own access, through the same figures as the dashboard. A text in a CSV file that a spreadsheet would run as a formula starts with `'`.
+
+## Send a dashboard on a schedule
+
+Ask your agent, for example "Every Monday at 8, send me the sales dashboard for last week". It sets up a routine ([Routines](routines.md)) that, each time, reads the dashboard for that period (`dashboards_snapshot`: each figure with its change), posts the key figures and, if you want it, the PDF (`dashboards_pdf`). The routine waits for your approval like any new routine.
+
+Nobody receives more than they could see themselves. The figures are read with the access of the routine's owner. Sent to several people (a shared conversation, an email), the agent first checks each person: an active member who can open the dashboard and read every source behind it. The others are left out, and the agent says who and why. Someone whose access to rows differs may still see other figures on the dashboard: to give each person their own figures, each gets a routine of their own.
+
 ## What a block can read
 
 Each block reads one source:
@@ -189,8 +221,15 @@ Signed-in requests, with the person's own access:
 | --- | --- |
 | `GET /api/dashboards` | Your dashboards and the org's. |
 | `POST /api/dashboards` | Create one: `{ title, visibility, spec }`. |
-| `GET /api/dashboards/:id` | One dashboard and its spec, the range it opens on for you (`range`, with `saved` when it is your own choice), its default (`defaultRange`), which blocks follow the range (`blockTimeRange`), and the filter values it opens on for you (`filters.values`, `filters.saved`) with their defaults (`defaultFilters`). |
+| `GET /api/dashboards/:id` | One dashboard and its spec, today's date and the time zone its dates are counted in (`today`, `timeZone`), the range it opens on for you (`range`, with `saved` when it is your own choice), its default (`defaultRange`), which blocks follow the range (`blockTimeRange`), and the filter values it opens on for you (`filters.values`, `filters.saved`) with their defaults (`defaultFilters`). |
 | `PATCH /api/dashboards/:id` | Change `title`, `visibility` or `spec`; `ifVersion` refuses to overwrite a newer save (409). |
+| `POST /api/dashboards/:id/edit` | Change it by a list of operations, all or none: `{ ifVersion, operations }` (1 to 50: `moveBlock`, `resizeBlock`, `updateBlock`, `duplicateBlock`, `removeBlock`, `addBlock`, `setTitle`, `setDescription`, `setTimeRange`, `revert`...). Never held for approval. Answers the dashboard as `GET` does. |
+| `POST /api/dashboards/:id/duplicate` | A copy as your own personal dashboard: `{ title? }`. |
+| `GET /api/dashboards/:id/versions` | Its kept versions, newest first (`version`, `title`, `savedAt`, `savedByName`, `blockCount`, `current`). |
+| `GET /api/dashboards/:id/versions/:version` | One kept version with its spec. |
+| `GET /api/dashboards/:id/blocks/:blockId/data.csv` | The block's figures as CSV (range, compare and filters as for the data). |
+| `GET /api/dashboards/:id/blocks/:blockId/rows.csv` | The rows behind it as CSV (as for the rows, every row). |
+| `GET /api/dashboards/:id/export.pdf` | The dashboard as a PDF (range, compare and filters as for the data). |
 | `DELETE /api/dashboards/:id` | Delete it. |
 | `GET /api/dashboards/:id/blocks/:blockId/data` | One block's data, run as you. `?refresh=1` reads it again. `?range=<preset>` (`last7d`, `last30d`, `last90d`, `mtd`, `lastMonth`, `qtd`, `lastQuarter`, `ytd`, `lastYear`), or `?from=YYYY-MM-DD&to=YYYY-MM-DD`, and `?compare=lastYear\|previousPeriod\|none` set the range; without them, the dashboard's default. `?f.<filterId>=<value>` (repeated for several values) sets a filter; an absent filter takes its default, an empty one means all. |
 | `GET /api/dashboards/:id/blocks/:blockId/rows` | The rows behind a figure, read-only: `?category=<label>` (and `?series=<name>`) for a chart, `?row=<index>` for a table row, nothing for a metric; `?offset=` and `?limit=` (at most 200) page them. Range and filters as for the data. Answers `columns`, `rows`, `links` (where each row leads), `total` and `nextOffset`. |

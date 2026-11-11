@@ -150,16 +150,33 @@ export function parseDay(s: string): CalendarDate | null {
   return c
 }
 
+/** One formatter per zone: building an Intl.DateTimeFormat is the slow part of a conversion. */
+const dayFormatters = new Map<string, Intl.DateTimeFormat>()
+
+function dayFormatter(timeZone: string): Intl.DateTimeFormat {
+  let f = dayFormatters.get(timeZone)
+  if (!f) {
+    f = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+    dayFormatters.set(timeZone, f)
+  }
+  return f
+}
+
 /** Today's calendar date in `timeZone` (an IANA name) at `now`. */
 export function todayIn(timeZone: string, now: Date): CalendarDate {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(now)
+  const parts = dayFormatter(timeZone).formatToParts(now)
   const part = (type: string) => Number(parts.find((p) => p.type === type)?.value)
   return { y: part("year"), m: part("month"), d: part("day") }
+}
+
+/** The calendar day (YYYY-MM-DD) an instant falls on in `timeZone`. */
+export function dayIn(timeZone: string, instant: Date): string {
+  return format(todayIn(timeZone, instant))
 }
 
 type Period = "week" | "month" | "quarter" | "year"

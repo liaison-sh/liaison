@@ -6,8 +6,10 @@
 // with. Nothing here re-implements a provisioner.
 //
 // Three passes, each idempotent, so a re-seed is the same run as a no-op:
-//   1. the org alone (`provisionOrgShell`), so a tier can stamp what it must on
-//      the org (a demo marker, say) before a single account exists in it;
+//   1. the org alone (`provisionOrgShell`), with its email section (the
+//      commercial identity its mail states) when the config has one, so a tier
+//      can stamp what it must on the org (a demo marker, say) before a single
+//      account exists in it;
 //   2. the admin and the roles (`provisionAdminAndRoles`);
 //   3. the people (`provisionPeople`). `runConfigApply` validates every
 //      `users[].role` before any provisioner writes, and for an org that does
@@ -20,6 +22,7 @@ import { eq, sql } from "drizzle-orm"
 import { runConfigApply } from "~/cli/config/apply"
 import type { ProvisioningConfig } from "~/cli/config/schema"
 import { adminProvisioner } from "~/cli/provisioners/admin"
+import { emailProvisioner } from "~/cli/provisioners/email"
 import { orgProvisioner } from "~/cli/provisioners/org"
 import { rolesProvisioner } from "~/cli/provisioners/roles"
 import { usersProvisioner } from "~/cli/provisioners/users"
@@ -119,7 +122,7 @@ export async function provisionOrgShell(
   const pass = await runConfigApply({
     ...applyOptions(log),
     config,
-    registry: { org: orgProvisioner },
+    registry: { org: orgProvisioner, email: emailProvisioner },
   })
   if (pass.exitCode !== 0) {
     throw new Error(

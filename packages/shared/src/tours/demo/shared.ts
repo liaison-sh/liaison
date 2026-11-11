@@ -183,6 +183,7 @@ type RailApp =
   | "Invoicing"
   | "Sessions"
   | "Knowledge"
+  | "Stripe"
 
 /** The first hop of a way into another app: its entry on the left bar (ringed from the beat's route). */
 export function railHop(app: RailApp): TourPathHop {

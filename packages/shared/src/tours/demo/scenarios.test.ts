@@ -26,7 +26,7 @@ import {
 import { buildChatTour } from "./chat"
 import { buildCommerceTour } from "./commerce"
 import { buildDevTour, PRODUCTS_DEV_CFG } from "./dev"
-import { SCENARIO_TOURS } from "./index"
+import { DEMO_SCENARIO_TOURS, SCENARIO_TOURS } from "./index"
 import { buildKnowledgeTour, PRODUCTS_KNOWLEDGE_CFG } from "./knowledge"
 import productsSnapshot from "./products-tours.snapshot.json"
 import { buildProjectsTour } from "./projects"
@@ -43,6 +43,7 @@ const INJECTORS: Record<string, string | undefined> = {
   "kernel.scenario-commerce": "commerce-order",
   "kernel.scenario-dev": undefined,
   "kernel.scenario-knowledge": "knowledge-lucas-asks",
+  "kernel.scenario-saas-money": "saas-payment-recovered",
 }
 
 function lookup(dict: unknown, key: string): unknown {
@@ -67,22 +68,25 @@ describe("demo scenarios", () => {
   })
 
   it("are demoOnly: a regular org is never offered one, a demo org is", () => {
-    for (const tour of SCENARIO_TOURS) {
+    for (const tour of DEMO_SCENARIO_TOURS) {
       expect(tour.demoOnly).toBe(true)
       const apps = tour.requires?.apps ?? []
-      expect(isTourAvailable(tour, { installedApps: apps, scopes: ["*"] })).toBe(false)
-      expect(isTourAvailable(tour, { installedApps: apps, scopes: ["*"], isDemo: false })).toBe(
-        false,
-      )
-      expect(isTourAvailable(tour, { installedApps: apps, scopes: ["*"], isDemo: true })).toBe(true)
+      const worldId = tour.world
+      expect(isTourAvailable(tour, { installedApps: apps, scopes: ["*"], worldId })).toBe(false)
+      expect(
+        isTourAvailable(tour, { installedApps: apps, scopes: ["*"], isDemo: false, worldId }),
+      ).toBe(false)
+      expect(
+        isTourAvailable(tour, { installedApps: apps, scopes: ["*"], isDemo: true, worldId }),
+      ).toBe(true)
     }
     // "Show me how" lists TOURS; the scenarios are only in the catalogue.
     for (const tour of TOURS) expect(tour.demoOnly).toBeUndefined()
-    expect(tourCatalogue().filter((t) => t.demoOnly)).toHaveLength(SCENARIO_TOURS.length)
+    expect(tourCatalogue().filter((t) => t.demoOnly)).toHaveLength(DEMO_SCENARIO_TOURS.length)
   })
 
   it("each has at most one world beat, naming its injector, played in a demo org only", () => {
-    for (const tour of SCENARIO_TOURS) {
+    for (const tour of DEMO_SCENARIO_TOURS) {
       const world = tour.beats.filter((b) => b.kind === "world")
       const injector = INJECTORS[tour.id]
       if (injector === undefined) {
@@ -91,11 +95,14 @@ describe("demo scenarios", () => {
       }
       expect(world.map((b) => b.injector)).toEqual([injector])
       const apps = [...(tour.requires?.apps ?? []), "projects", "invoicing"]
+      const worldId = tour.world
       expect(
-        effectiveBeats(tour, { installedApps: apps, isDemo: true }).some((b) => b.kind === "world"),
+        effectiveBeats(tour, { installedApps: apps, isDemo: true, worldId }).some(
+          (b) => b.kind === "world",
+        ),
       ).toBe(true)
       expect(
-        effectiveBeats(tour, { installedApps: apps, isDemo: false }).some(
+        effectiveBeats(tour, { installedApps: apps, isDemo: false, worldId }).some(
           (b) => b.kind === "world",
         ),
       ).toBe(false)
@@ -103,7 +110,7 @@ describe("demo scenarios", () => {
   })
 
   it("every do beat's autoplay ends waiting for its event", () => {
-    for (const tour of SCENARIO_TOURS) {
+    for (const tour of DEMO_SCENARIO_TOURS) {
       for (const beat of tour.beats.filter((b) => b.kind === "do")) {
         expect(beat.autoplay?.at(-1)).toEqual({ waitEvent: true })
       }
@@ -111,7 +118,7 @@ describe("demo scenarios", () => {
   })
 
   it("every copy key, typed text included, exists in en and fr", () => {
-    for (const tour of SCENARIO_TOURS) {
+    for (const tour of DEMO_SCENARIO_TOURS) {
       for (const key of tourCopyKeys(tour)) {
         expect({ key, en: typeof lookup(en, key) }).toEqual({ key, en: "string" })
         expect({ key, fr: typeof lookup(fr, key) }).toEqual({ key, fr: "string" })
@@ -217,13 +224,22 @@ describe("demo scenarios", () => {
       e?.causedBy !== undefined ||
       e?.sameEntityAs !== undefined ||
       Object.values(e?.match ?? {}).some((v) => typeof v === "string" && /^\{.+\}$/.test(v))
-    for (const tour of SCENARIO_TOURS) {
+    // A scenario played once may approve what its world seeded for it: one
+    // request, named by its recipient and what it is about.
+    const seededForRun = (tour: Tour, e: TourEventBinding | undefined) =>
+      tour.singleRun === true &&
+      typeof e?.match?.["currentPayload.to.0"] === "string" &&
+      typeof e?.match?.["currentPayload.followUp.refs.0.kind"] === "string"
+    for (const tour of DEMO_SCENARIO_TOURS) {
       for (const beat of tour.beats.filter((b) => b.kind === "do")) {
         const e = beat.event
         const agentDone = e?.actor === "user-or-agent"
         const approves = e?.entity === "approval_request"
         if (agentDone || approves)
-          expect({ beat: `${tour.id}/${beat.id}`, scoped: scoped(e) }).toEqual({
+          expect({
+            beat: `${tour.id}/${beat.id}`,
+            scoped: scoped(e) || seededForRun(tour, e),
+          }).toEqual({
             beat: `${tour.id}/${beat.id}`,
             scoped: true,
           })
@@ -451,7 +467,7 @@ describe("demo scenarios", () => {
       "message-row-routine-approval",
     ]
     const wrong: string[] = []
-    for (const tour of SCENARIO_TOURS.filter((t) => t.talksToAgent)) {
+    for (const tour of DEMO_SCENARIO_TOURS.filter((t) => t.talksToAgent)) {
       for (const beat of tour.beats) {
         const testid = beat.anchor?.replace(/\[.*$/, "")
         if (!testid || !TURN_CONTENT.includes(testid)) continue
@@ -889,7 +905,7 @@ describe("demo scenarios", () => {
   // dev's "It asks first" could not find their screen again (the page was on
   // Home). A beat that waits on what the run recorded always has a way back.
   it("every beat waiting on what the run recorded has a route back to it", () => {
-    for (const tour of SCENARIO_TOURS) {
+    for (const tour of DEMO_SCENARIO_TOURS) {
       for (const beat of tour.beats) {
         if (!beat.anchor) continue
         const refs = [
@@ -943,7 +959,7 @@ describe("demo scenarios", () => {
   // composer with no way back to it. Every beat that points at something in a
   // scenario names where it is.
   it("every beat pointing at something names its way back to it", () => {
-    for (const tour of SCENARIO_TOURS) {
+    for (const tour of DEMO_SCENARIO_TOURS) {
       for (const beat of tour.beats) {
         if (!beat.anchor) continue
         // The dev end card points at the pairing button on the same screen.

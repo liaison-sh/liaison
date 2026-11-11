@@ -142,6 +142,14 @@ export function setTourApi(next: TourApi | null): void {
   api = next
 }
 
+/**
+ * What a read tool answers the signed-in person, for a step's figures
+ * (`EffectiveBeat.figures`). Null with no API, or when the API reads no tools.
+ */
+export async function readTourTool(tool: string, params: Record<string, unknown>) {
+  return api?.readTool ? api.readTool(tool, params) : null
+}
+
 export function resetTourStore(): void {
   if (completedTimer) clearTimeout(completedTimer)
   completedTimer = null

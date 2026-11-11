@@ -412,6 +412,7 @@ export type ScenarioStartFn = (
   orgId: string,
   ownerUserId: string,
   need: DemoNeed,
+  worldId?: DemoWorldId,
 ) => Promise<string[]>
 
 let scenarioStart: ScenarioStartFn | null | undefined
@@ -439,10 +440,12 @@ export async function prepareDemoScenario(
   orgId: string,
   ownerUserId: string,
   need: DemoNeed,
+  worldId: DemoWorldId = DEMO_DEFAULT_WORLD,
 ): Promise<void> {
   // The developer scenario's recorded laptop is there before the visitor asks
-  // their agent to send it anything.
-  if (need === "dev") {
+  // their agent to send it anything. The recording is the products world's:
+  // another world brings its own with its developer scenario.
+  if (need === "dev" && worldId === DEMO_DEFAULT_WORLD) {
     try {
       await prepareRecordedLaptop(orgId, ownerUserId)
     } catch (err) {
@@ -452,8 +455,8 @@ export async function prepareDemoScenario(
   const start = await loadScenarioStart()
   if (!start) return
   try {
-    const ids = await start(orgId, ownerUserId, need)
-    log.info({ orgId, need, approvals: ids.length }, "demo scenario prepared")
+    const ids = await start(orgId, ownerUserId, need, worldId)
+    log.info({ orgId, need, worldId, approvals: ids.length }, "demo scenario prepared")
   } catch (err) {
     log.error({ err, orgId, need }, "demo scenario could not be prepared")
   }

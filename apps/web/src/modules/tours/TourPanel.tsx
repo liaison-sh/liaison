@@ -33,6 +33,7 @@ import { pluralFormFor } from "~/modules/projects/plural"
 import { refusalCodeInThread } from "~/modules/threads/turn-refusal"
 import { Button } from "~/ui/Button"
 import { PopupMenu } from "~/ui/PopupMenu"
+import { createBeatFigures } from "./beat-figures"
 import { tourBeatGate, tourCompletedAction, tourRefusalGate } from "./beat-gates"
 import { tourCopyVars } from "./copy-vars"
 import { createPanelLayout } from "./panel-layout"
@@ -403,8 +404,10 @@ export const TourPanel: Component<TourPanelProps> = (props) => {
   })
   /** The ⋯ menu holding the less used actions (Take me there, Play, Pause, Skip). */
   const [menuOpen, setMenuOpen] = createSignal(false)
-  /** Step copy in the person's language, with the names it may carry (their own agent's). */
-  const copy = (key: string) => i18n.t(key, tourCopyVars())
+  /** The figures the step's copy names, read from the tool the screen reads (`beat.figures`). */
+  const figures = createBeatFigures(() => props.beat)
+  /** Step copy in the person's language, with the names and figures it may carry. */
+  const copy = (key: string) => i18n.t(key, { ...tourCopyVars(), ...figures() })
   /** The approval waits out its undo window: what the step says meanwhile. */
   const undo = () => (props.undoing ? (props.beat.undo ?? null) : null)
   const stepNumber = () => Math.min(props.progress.beatIndex + 1, props.progress.beatCount)

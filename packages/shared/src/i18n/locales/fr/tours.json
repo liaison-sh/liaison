@@ -459,7 +459,8 @@
         "undo": "Laissez-la partir ou appuyez sur Annuler pour voir l'action revenir en demande.",
         "way1": "Ouvrez Discussions en bas de l'écran",
         "way3": "Appuyez sur Approuver sur sa carte"
-      }
+      },
+      "railStripe": "Ouvrez Stripe dans la barre de gauche"
     },
     "support": {
       "title": "Support",
@@ -904,6 +905,46 @@
         "title": "Une seule mémoire, cloisonnée par rôle",
         "body": "Vous, Henrik à la finance et tout agent que l'un de vous sollicite pouvez lire le compte de résultat du T3. Lucas au support, et tout agent qu'il sollicite, ne le peuvent pas.",
         "role": "Un agent lit avec les droits de la personne qui le sollicite. C'est pourquoi vous pouvez confier aux agents toutes les connaissances de l'entreprise : personne n'obtient par un agent plus que ce qu'il pourrait ouvrir lui-même."
+      }
+    },
+    "saasMoney": {
+      "title": "Abonnements et paiements",
+      "summary": "Une carte est refusée : votre agent lit Stripe, les factures et les tickets, puis rédige le message. Vous l'approuvez.",
+      "cardFailed": {
+        "title": "La carte de Maison Arlon a été refusée",
+        "role": "Vous dirigez Tideform. Leur Visa a expiré, donc 1 740,00 € ne sont pas passés. Votre agent l'a vu et a rédigé un message à Claire.",
+        "body": "Lisez la ligne mise en avant, puis appuyez sur Suivant. Rien n'est parti."
+      },
+      "askStanding": {
+        "title": "Demandez où vous en êtes",
+        "role": "Avant d'approuver, vous voulez tout voir : ce qu'ils paient, ce qu'ils attendent, ce qui est sur la table.",
+        "body": "Demandez à votre agent depuis Discussions. Il lit Stripe, les factures, les tickets et les affaires, et répond sur une seule carte.",
+        "say": "Demandez à votre agent :",
+        "text": "Où en sommes-nous avec Maison Arlon ?",
+        "way1": "Ouvrez Discussions en bas de l'écran"
+      },
+      "openCompany": {
+        "title": "Une carte, toutes les apps",
+        "role": "Leur offre, la facture impayée, le ticket ouvert et l'affaire pour 4 hôtels de plus, lus dans les apps qui les tiennent.",
+        "body": "Lisez la réponse de votre agent. Appuyez sur Ouvrir sur sa carte pour voir la page de Maison Arlon, puis sur Suivant.",
+        "way3": "Lisez la réponse, puis appuyez sur Ouvrir sur sa carte"
+      },
+      "approveNote": {
+        "title": "Approuvez le message à Claire",
+        "role": "Élodie s'occupe de Maison Arlon et elle est absente : vous êtes la personne suivante, le message attend donc votre décision.",
+        "body": "Ouvrez la ligne mise en avant sur l'Accueil et appuyez sur Approuver sur sa carte. Le message part à Claire avec un lien pour ajouter une nouvelle carte.",
+        "way2": "Ouvrez la ligne mise en avant",
+        "undo": "Laissez-le partir ou appuyez sur Annuler pour reprendre le message avant son envoi."
+      },
+      "cardUpdated": {
+        "title": "Claire a ajouté une nouvelle carte",
+        "role": "Claire a lu votre message et ajouté une carte. Stripe le dit à Liaison, comme pour un vrai compte.",
+        "body": "Rien à faire : le paiement passe sur la nouvelle carte et la page Stripe se met à jour. Appuyez sur Suivant une fois que c'est fait."
+      },
+      "figuresMoved": {
+        "title": "Les chiffres ont bougé",
+        "role": "La facture est payée, et Maison Arlon n'est plus en retard de paiement.",
+        "body": "Les impayés sont maintenant de {{pastDue}}. Le MRR reste à {{mrr}} : un abonnement impayé y était compté depuis le début. Les deux sont lus dans le miroir Stripe, comme cette page les lit."
       }
     }
   }

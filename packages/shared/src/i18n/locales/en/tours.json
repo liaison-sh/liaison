@@ -459,7 +459,8 @@
         "undo": "Let it go, or press Undo to see the action come back as a request.",
         "way1": "Open Chats at the bottom of the screen",
         "way3": "Press Approve on its card"
-      }
+      },
+      "railStripe": "Open Stripe on the left bar"
     },
     "support": {
       "title": "Support",
@@ -904,6 +905,46 @@
         "title": "One brain, walled by role",
         "body": "You, Henrik in finance and any agent either of you asks can read the Q3 P&L. Lucas in support, and any agent he asks, cannot.",
         "role": "An agent reads with the access of the person asking it. That's why you can give agents the whole company's knowledge: nobody gets more through an agent than they could open themselves."
+      }
+    },
+    "saasMoney": {
+      "title": "Subscriptions & payments",
+      "summary": "A card fails: your agent reads Stripe, invoices and tickets, then drafts the note. You approve it.",
+      "cardFailed": {
+        "title": "Maison Arlon's card failed",
+        "role": "You run Tideform. Their Visa expired, so €1,740.00 did not go through. Your agent noticed and drafted a note to Claire.",
+        "body": "Read the highlighted row, then press Next. Nothing has gone out."
+      },
+      "askStanding": {
+        "title": "Ask where you stand",
+        "role": "Before you approve, you want the whole picture: what they pay, what they are waiting for, what is on the table.",
+        "body": "Ask your agent from Chats. It reads Stripe, invoices, tickets and deals, and answers on one card.",
+        "say": "Ask your agent:",
+        "text": "Where do we stand with Maison Arlon?",
+        "way1": "Open Chats at the bottom of the screen"
+      },
+      "openCompany": {
+        "title": "One card, every app",
+        "role": "Their plan, the unpaid invoice, the open ticket and the deal for 4 more hotels, read from the apps that hold them.",
+        "body": "Read your agent's answer. Press Open on its card to see Maison Arlon's page, then press Next.",
+        "way3": "Read the answer, then press Open on its card"
+      },
+      "approveNote": {
+        "title": "Approve the note to Claire",
+        "role": "Élodie looks after Maison Arlon and is away: you are next in line, so the note waits on you.",
+        "body": "Open the highlighted row on Home and press Approve on its card. The note goes to Claire with a link to add a new card.",
+        "way2": "Open the highlighted row",
+        "undo": "Let it go, or press Undo to take the note back before it leaves."
+      },
+      "cardUpdated": {
+        "title": "Claire added a new card",
+        "role": "Claire read your note and added a card. Stripe tells Liaison, as it would for a real account.",
+        "body": "Nothing to do: the payment goes through on the new card and Stripe's page updates. Press Next once it has."
+      },
+      "figuresMoved": {
+        "title": "The figures moved",
+        "role": "The invoice is paid, and Maison Arlon is no longer past due.",
+        "body": "Past due is now {{pastDue}}. MRR stays at {{mrr}}: a past due plan was counted in it all along. Both read from Stripe's mirror, as this page reads them."
       }
     }
   }

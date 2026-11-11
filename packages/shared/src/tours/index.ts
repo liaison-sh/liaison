@@ -6,7 +6,7 @@
  * non-production build (`findTour(id, { includeTestTours })`).
  */
 import { apiConnectorSettingsTour } from "./api-connector/settings"
-import { SCENARIO_TOURS } from "./demo"
+import { DEMO_SCENARIO_TOURS, SCENARIO_TOURS, WORLD_SCENARIO_TOURS } from "./demo"
 import { kernelAgentsTour } from "./kernel/agents"
 import { kernelAutoplayFixtureTour } from "./kernel/autoplay-fixture"
 import { kernelRoutinesTour } from "./kernel/routines"
@@ -37,9 +37,11 @@ export const TOURS: readonly Tour[] = [
 export { heldRequestCard } from "./agent-steps"
 export { DEV_BUGS_CHANNEL_TITLE } from "./demo/dev"
 export { KNOWLEDGE_SCENARIO_PL_TITLE } from "./demo/knowledge"
+export { MONEY_FIGURES_TOOL } from "./demo/money"
 export { PROSPECT_ROUTINE_NAME } from "./demo/sales"
-/** The demo scenarios (`demoOnly`: offered in demo orgs only). */
-export { SCENARIO_TOURS }
+export { SAAS_PAYMENT_RECOVERED_INJECTOR } from "./demo/worlds/saas/money"
+/** The demo scenarios (`demoOnly`: offered in demo orgs only), the products world's and the others'. */
+export { DEMO_SCENARIO_TOURS, SCENARIO_TOURS, WORLD_SCENARIO_TOURS }
 
 export const TEST_TOURS: readonly Tour[] = [
   kernelSampleTour,
@@ -53,7 +55,7 @@ export interface FindTourOptions {
 
 /** The catalogue a caller sees: shipped tours and demo scenarios, plus fixtures when asked. */
 export function tourCatalogue(opts: FindTourOptions = {}): readonly Tour[] {
-  const shipped = [...TOURS, ...SCENARIO_TOURS]
+  const shipped = [...TOURS, ...DEMO_SCENARIO_TOURS]
   return opts.includeTestTours ? [...shipped, ...TEST_TOURS] : shipped
 }
 

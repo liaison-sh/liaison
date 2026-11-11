@@ -1136,6 +1136,10 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // own tools: pipeline, companies, team, agents, routines, MRR,
             // invoice numbers, schedules and the money decisions on Home.
             "src/seed/worlds/saas/stripe-world-reads.saas.integration.test.ts",
+            // The money scenario's recovered card: the outside state and the
+            // processor's events through the payments app's own handler, the
+            // figures moved, and the waiting reminder stopped by its own check.
+            "src/modules/demo/worlds/saas/stripe-payment-recovered.integration.test.ts",
             // The demo-instance org seeder: it seeds its own orgs and
             // truncates nothing.
             "src/seed/tiers/demo/seed-org.integration.test.ts",

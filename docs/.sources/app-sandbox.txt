@@ -117,3 +117,16 @@ The effect ledger claim commits on its own connection -> apps/api/src/lib/effect
 A write may ask for up to 30 s; reads keep the default -> apps/api/src/modules/apps/sandbox/bridge/egress.ts:75 ; apps/api/src/modules/apps/sandbox/bridge/egress.ts:280
 reconcileHandler declared per tool, called by the approvals reaper -> apps/api/src/modules/apps/manifest-schema.ts:590 ; apps/api/src/modules/apps/runtime.ts:3289 ; apps/api/src/modules/approvals/approving-reaper.ts:282
 executed / not_executed / unknown recorded on the execution row -> apps/api/src/modules/approvals/reconcile-outcome.ts:60
+A job's run is bounded by its timeoutMs, 60 s by default -> apps/api/src/modules/apps/runtime.ts:4001
+ctx.steps.run keeps the cursor in the app store, collection liaison_steps -> apps/api/src/modules/apps/sandbox/bridge/steps.ts:60
+Budget: default half the job timeout, at most 80% of it -> apps/api/src/modules/apps/sandbox/bridge/steps.ts:67 ; apps/api/src/modules/apps/sandbox/bridge/steps.ts:151
+A run takes chunks while the budget lasts, then re-enqueues the same job -> apps/api/src/modules/apps/sandbox/bridge/steps.ts:349
+A finished step does nothing until reset -> apps/api/src/modules/apps/sandbox/bridge/steps.ts:258
+A held step runs no chunk; a dead run's chunk is redone after its claim (timeout + 10 s) runs out -> apps/api/src/modules/apps/sandbox/bridge/steps.ts:277 ; apps/api/src/modules/apps/sandbox/bridge/steps.ts:63
+A chunk that throws gives the claim back and keeps the cursor -> apps/api/src/modules/apps/sandbox/bridge/steps.ts:327
+Only in a non-atomic job -> apps/api/src/modules/apps/sandbox/bridge/steps.ts:227 ; apps/api/src/modules/apps/sandbox/bridge/steps.ts:234
+ctx.steps.get / ctx.steps.reset -> apps/api/src/modules/apps/sandbox/bridge/steps.ts:444 ; apps/api/src/modules/apps/sandbox/bridge/steps.ts:458
+ctx.timers.wakeIn: 0 to 30 days, past 15 min the job hops 15 min at a time -> apps/api/src/modules/apps/sandbox/bridge/platform.ts:33 ; apps/api/src/modules/apps/sandbox/bridge/platform.ts:255 ; apps/api/src/modules/apps/sandbox/bridge/platform.ts:104 ; apps/api/src/infra/jobs/jobs.ts:137
+A timer's jobId deduplicates while pending -> apps/api/src/modules/apps/sandbox/bridge/platform.ts:118
+ctx.jobs.enqueue: delay at most 15 min (clamped), jobId org-scoped -> apps/api/src/modules/apps/sandbox/bridge/platform.ts:31 ; apps/api/src/modules/apps/sandbox/bridge/platform.ts:244 ; apps/api/src/modules/apps/sandbox/bridge/platform.ts:109
+SDK types of jobs, timers and steps -> packages/app-sdk/src/types.ts:112 ; packages/app-sdk/src/types.ts:124 ; packages/app-sdk/src/types.ts:185

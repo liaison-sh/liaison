@@ -108,3 +108,64 @@ describe("ctx.enqueueJob identity", () => {
     expect(enqueued[0].payload.page).toBe(2)
   })
 })
+
+describe("ctx.jobs.enqueue and ctx.timers.wakeIn", () => {
+  const systemBridge = () =>
+    createRpcBridge(APP, `system:${APP}:cron`, ORG, tx as never, manifest as never)
+  const hostForged = JSON.stringify({
+    page: 3,
+    _steps: { s: { epoch: "e", gen: 9 } },
+    _wakeAt: 1,
+    orgId: "00000000-0000-0000-0000-0000000e0999",
+  })
+
+  it("jobs.enqueue: host fields dropped, org pinned, delay clamped to 15 min, id org-scoped", async () => {
+    await systemBridge().jobs_enqueue(
+      "sync",
+      hostForged,
+      JSON.stringify({ delay: 3_600_000, jobId: "p3" }),
+    )
+    const { payload, opts } = enqueued[0]
+    expect(payload).toEqual({ page: 3, orgId: ORG })
+    expect(opts).toEqual({ jobId: `${ORG}:p3`, delay: 15 * 60 * 1000 })
+  })
+
+  it("jobs.enqueue: no options, no payload", async () => {
+    await systemBridge().jobs_enqueue("sync")
+    expect(enqueued[0].payload).toEqual({ orgId: ORG })
+    expect(enqueued[0].opts).toEqual({})
+  })
+
+  it("timers.wakeIn under 15 min: one delayed job, its id deduplicated while pending", async () => {
+    await systemBridge().timers_wakeIn(90, "poll", '{"r":1}', JSON.stringify({ jobId: "poll" }))
+    expect(enqueued[0].payload).toEqual({ r: 1, orgId: ORG })
+    expect(enqueued[0].opts).toEqual({ jobId: `${ORG}:poll`, delay: 90_000, dedupTtlMs: 90_000 })
+  })
+
+  it("timers.wakeIn past 15 min: waits 15 min at a time until _wakeAt", async () => {
+    const before = Date.now()
+    await systemBridge().timers_wakeIn(7_200, "poll", hostForged)
+    const { payload, opts } = enqueued[0]
+    expect(payload.page).toBe(3)
+    expect(payload._steps).toBeUndefined()
+    expect(payload._wakeAt as number).toBeGreaterThanOrEqual(before + 7_200_000)
+    expect(payload._wakeAt as number).toBeLessThanOrEqual(Date.now() + 7_200_000)
+    expect(opts).toEqual({ delay: 15 * 60 * 1000 })
+  })
+
+  it("timers.wakeIn refuses a negative, non-numeric or over-30-day wait", async () => {
+    for (const bad of [-1, "60", Number.NaN, 31 * 24 * 3600]) {
+      await expect(systemBridge().timers_wakeIn(bad, "poll")).rejects.toMatchObject({
+        code: "invalid_wake",
+        status: 400,
+      })
+    }
+    expect(enqueued).toHaveLength(0)
+  })
+
+  it("the host app context passes delay and an org-scoped id", async () => {
+    const ctx = createAppContext(APP, USER, ORG, tx as never)
+    await ctx.enqueueJob("sync", { page: 1 }, { delay: 2_000, jobId: "k" })
+    expect(enqueued[0].opts).toEqual({ jobId: `${ORG}:k`, delay: 2_000 })
+  })
+})

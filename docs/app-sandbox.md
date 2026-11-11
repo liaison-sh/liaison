@@ -92,7 +92,7 @@ The bridge surface is large and grows as apps need new host capabilities. Core c
 | Identity | `getUserId()`, `getOrgId()` |
 | Database | `db_findMany` (equality `where`, plus `{ col: { in: [...] } }` for a set lookup, up to 1000 values), `db_findOne`, `db_insert`, `db_update`, `db_updateMany`, `db_delete`, `db_count`, and `db_insertNow` / `db_updateNow` (committed at once, see "Commit an intent row before an outside call") |
 | Events | `emit(event)` — declared emits only |
-| Jobs | `enqueueJob(name, payload)` |
+| Jobs | `jobs_enqueue(name, payload, opts)` (`ctx.jobs.enqueue`; `enqueueJob` is its flat name), `timers_wakeIn(seconds, name, payload, opts)` (`ctx.timers.wakeIn`), `steps_get`, `steps_reset` and the hidden `_steps_begin` / `_steps_save` behind `ctx.steps.run` |
 | Contacts | `resolveContact(params)` (not the mail app: its host page write `mail_writePage` resolves senders under the mailbox's ownership, see `modules/mail/page-write.ts` and `sender-contacts.ts`; on a read-only run it only looks a contact up, returning it unchanged or null, and `clear` is refused) |
 | Network | `fetch(url, opts)` — domain allowlist enforced. `opts.auth` (`{connection, identifier?, scheme: "header:<Name>" \| "bearer" \| "basic", fields?, exchange?}`) has the host add the connection's credential, only to that connection's own hosts, and redact it from the answer; `opts.configSecrets` (`{placeholder: configKey}`) has the host write a declared config secret exactly where the manifest's `secrets` places it (see below), else `secret_placement_refused` |
 | Data store | `store_get`, `store_set`, `store_update`, `store_delete`, `store_query`, `store_count` (`ctx.store.*`, the calling app's collections; the writes are refused on a read-only run) |
@@ -412,7 +412,10 @@ export const { listItems, createItem } = defineHandlers({
 | `orgId` | `string` | Current organization |
 | `db` | `DbClient` | `findMany`, `findOne`, `insert`, `update`, `updateMany`, `delete`, `count`, `insertNow`, `updateNow` |
 | `emit(event)` | `Promise<void>` | Emit declared event |
-| `enqueueJob(name, payload)` | `Promise<void>` | Dispatch async job |
+| `enqueueJob(name, payload, opts?)` | `Promise<void>` | Same call as `jobs.enqueue` |
+| `jobs.enqueue(name, payload?, { delay?, jobId? })` | `Promise<void>` | Run a declared job now, or after `delay` ms (at most 15 min) |
+| `timers.wakeIn(seconds, name, payload?, { jobId? })` | `Promise<void>` | Run a declared job in `seconds` (up to 30 days) |
+| `steps.run(name, { budgetMs? }, chunk)` | `Promise<StepRunResult>` | Resumable work in bounded chunks across runs (below) |
 | `resolveContact(params)` | `Promise<unknown>` | Contact lookup |
 | `connections` | `Record<string, ConnectionClient>` | `getToken()`, `getAccounts()` |
 | `fetch(url, opts?)` | `Promise<Response>` | Domain-restricted HTTP |
@@ -460,6 +463,34 @@ To let anything else read a collection (the agent's data tools, dashboard blocks
 ```
 
 `readScope` must be one of the app's own scopes (in `scopes` or a tool's `requiredScopes`); a reader needs it. `agentReadable` defaults to `false`. A collection that is not declared stays reachable by its own app only.
+
+### Long work: come back later (`ctx.steps`, `ctx.timers`, `ctx.jobs`)
+
+A run is short and bounded: a job has `timeoutMs` (60 s unless the manifest says otherwise), a tool less. Never sleep or poll in a loop inside a run to wait for something, and never loop over a whole backlog in one run. Do one bounded piece of work, save where you are, and let a later run carry on.
+
+**Work in chunks with `ctx.steps.run`.** Inside a job handler:
+
+```typescript
+export async function backfill(params, ctx) {
+  return ctx.steps.run("backfill", { budgetMs: 20_000 }, async (cursor) => {
+    const page = await listOrders(ctx, cursor)        // one page from the provider
+    await saveOrders(ctx, page.orders)                // safe to run twice for the same page
+    return { done: page.next === null, cursor: page.next }
+  })
+}
+```
+
+- The step's cursor is kept in the app data store (collection `liaison_steps`, one document per step name). A run calls `chunk(cursor)` again and again, saving the cursor after each chunk, until `budgetMs` has passed (default half the job's `timeoutMs`, at most 80% of it). It then enqueues the same job with the same payload, and that run continues from the saved cursor.
+- `chunk` returns `{ done, cursor?, wakeIn? }`. `done: true` finishes the step: later runs of it do nothing until `ctx.steps.reset(name)`. `wakeIn: <seconds>` ends the run and continues that much later: use it when a provider says "not ready yet" (a report being built, a bulk export).
+- `run` answers `{ state, cursor, chunks }`: `done`, `scheduled` (a later run continues) or `skipped` (another run holds the step, or this run was an old continuation; nothing ran).
+- Two runs never run a chunk of the same step at the same time. If a run dies in the middle of a chunk (killed at its timeout, the process stopped), the chunk runs again from the last saved cursor once the run's claim runs out (the job's timeout plus 10 s). Write each chunk so that running it twice for the same cursor does no harm.
+- A chunk that throws gives the claim back, keeps the cursor and fails the run; the job's retry starts that chunk again.
+- Only in a job handler that is not `atomic`: the cursor commits on its own, never with the run's transaction. Start the work from a tool or a webhook with `ctx.jobs.enqueue`. Declare the job `onDemand: true` in the manifest, or call `steps.run` from a scheduled job.
+- `ctx.steps.get(name)` returns `{ cursor, done, running, updatedAt }` for a status view, `ctx.steps.reset(name)` starts the step over.
+
+**Wake up later with `ctx.timers.wakeIn(seconds, name, payload, { jobId })`.** Runs the job `name` in `seconds` (0 to 30 days). A wait past 15 minutes is kept: the job waits 15 minutes at a time until it is due. With `jobId`, a second timer of the same id is dropped while the first is pending; the woken job may arm the same id again.
+
+**Enqueue a job with `ctx.jobs.enqueue(name, payload, { delay, jobId })`.** `delay` is in milliseconds, at most 15 minutes (a longer one is cut to 15 minutes: use `timers.wakeIn`). `jobId` drops a second enqueue of that id while the first waits or runs. Both ids are scoped to your organization. The job runs as the person whose run enqueued it, or as the app.
 
 ### Commit an intent row before an outside call (`ctx.db.insertNow`)
 

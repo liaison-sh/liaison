@@ -6,7 +6,7 @@ import {
   newBridgeRejection,
   typedBridgeFailure,
 } from "~/modules/apps/sandbox/bridge-rejection"
-import { SHIM_RULES } from "~/modules/apps/sandbox/ctx-shim"
+import { SHIM_RULES, STEPS_RUN_SOURCE } from "~/modules/apps/sandbox/ctx-shim"
 import type { SandboxPool } from "~/modules/apps/sandbox/pool"
 
 export interface ExecuteOptions {
@@ -360,6 +360,7 @@ function isAsyncBridge(fn: unknown): boolean {
  * a prototype method cannot bend how its own calls reach the host.
  */
 const CTX_SHIM_SOURCE = `(function (dispatch, specJson) {
+  ${STEPS_RUN_SOURCE}
   var reflectApply = Reflect.apply;
   var parse = JSON.parse;
   var stringify = JSON.stringify;
@@ -432,6 +433,11 @@ const CTX_SHIM_SOURCE = `(function (dispatch, specJson) {
     }
     ctx[spec.groups[g][0]] = group;
   }
+  for (var r = 0; r < spec.stepsRuns.length; r++) {
+    var sr = spec.stepsRuns[r];
+    if (!ctx[sr[0]]) ctx[sr[0]] = {};
+    ctx[sr[0]][sr[1]] = __stepsRun(member("st", sr[2]), member("st", sr[3]));
+  }
   return ctx;
 })`
 
@@ -445,6 +451,8 @@ interface CtxSpec {
   flat: Array<[string, "a" | "s"]>
   /** Nested groups, `[group, [member, "a" | "st", bridgeName][]]`. */
   groups: Array<[string, Array<[string, "a" | "st", string]>]>
+  /** `ctx.<group>.<member>` step loops, `[group, member, beginMethod, saveMethod]` (ctx-shim.ts). */
+  stepsRuns: Array<[string, string, string, string]>
 }
 
 /**
@@ -615,7 +623,7 @@ function buildCtxSpec(bridge: Record<string, (...args: any[]) => unknown>): CtxS
   }
   // Filter the leading-underscore bridge method so it doesn't leak as a flat
   // bridge entry; the synchronous `approval` field is the SDK surface.
-  const HIDDEN_NAMES = new Set([APPROVAL_FIELD])
+  const HIDDEN_NAMES = new Set([APPROVAL_FIELD, ...SHIM_RULES.hiddenNames])
   // Sync host bridges (non-AsyncFunction, e.g. crypto digests, pure helpers)
   // must stay synchronous — handlers call them as `ctx.foo(...)` without await
   // per the SDK contract. Wrapping them in the async `__wrap` would return a
@@ -624,7 +632,12 @@ function buildCtxSpec(bridge: Record<string, (...args: any[]) => unknown>): CtxS
   const flat = names
     .filter((name) => !SYNC_GETTER_NAMES.has(name) && !HIDDEN_NAMES.has(name))
     .map((name): [string, "a" | "s"] => [name, isAsyncBridge(bridge[name]) ? "a" : "s"])
-  return { syncGetters, approval, flat, groups: Array.from(nested.entries()) }
+  const stepsRuns = SHIM_RULES.stepsRuns
+    .filter(
+      (r) => !RESERVED_GROUPS.has(r.group) && r.beginMethod in bridge && r.saveMethod in bridge,
+    )
+    .map((r): [string, string, string, string] => [r.group, r.member, r.beginMethod, r.saveMethod])
+  return { syncGetters, approval, flat, groups: Array.from(nested.entries()), stepsRuns }
 }
 
 function marshalToContext(ctx: QuickJSAsyncContext, value: unknown): QuickJSHandle {

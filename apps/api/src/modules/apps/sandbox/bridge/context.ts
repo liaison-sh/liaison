@@ -141,6 +141,18 @@ export type RpcBridgeOptions = {
    */
   jobsAttributedToSystem?: boolean
   /**
+   * The job this bridge serves (runtime.ts buildJobBridge): `ctx.steps.run`
+   * re-enqueues it (same name, same app payload) to continue, and reads its
+   * continuation marker from `payload._steps`. Absent outside a job run, where
+   * `ctx.steps.run` is refused. `atomic`: the run shares one transaction.
+   */
+  currentJob?: {
+    name: string
+    payload: Record<string, unknown>
+    timeoutMs: number
+    atomic: boolean
+  }
+  /**
    * The dispatch's cancellation signal (ExecuteToolParams.signal), handed to
    * app bridge extensions so host-side work a handler started (a database
    * statement) is stopped when the caller goes away, not left running.

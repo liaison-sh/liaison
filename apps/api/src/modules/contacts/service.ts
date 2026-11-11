@@ -294,9 +294,14 @@ async function mergeAndReturn(
 ) {
   const updates: Record<string, unknown> = {}
 
+  // A union equal to what is stored writes nothing, so resolving a known contact
+  // again (a re-seed, a repeated import) leaves its row and its events alone.
+  const changes = (current: Record<string, unknown>, next: Record<string, unknown>) =>
+    Object.keys(next).some((k) => JSON.stringify(current[k]) !== JSON.stringify(next[k]))
   if (params.externalId) {
     const currentIds = (existing.externalIds as Record<string, string>) ?? {}
-    updates.externalIds = { ...currentIds, ...params.externalId }
+    if (changes(currentIds, params.externalId))
+      updates.externalIds = { ...currentIds, ...params.externalId }
   }
   if (params.name && !existing.name) updates.name = params.name
   if (params.phone && !existing.phone) updates.phone = params.phone
@@ -306,7 +311,7 @@ async function mergeAndReturn(
     // union above — so resolving an existing contact with a new postal address accretes it rather than
     // dropping it. The CREATE path used to discard metadata entirely on a resolved-existing hit too.
     const current = (existing.metadata as Record<string, unknown> | null) ?? {}
-    updates.metadata = { ...current, ...params.metadata }
+    if (changes(current, params.metadata)) updates.metadata = { ...current, ...params.metadata }
   }
   if (params.tags && params.tags.length > 0) {
     const current = (existing.tags as string[] | null) ?? []

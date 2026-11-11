@@ -204,6 +204,26 @@ describe("company people and names", () => {
     )
     expect(result.linked).toEqual([person])
     expect(await contactRow(person)).toEqual({ company_id: company.id, company: "Maison Arlon" })
+
+    // Linking again reports the person linked and writes nothing: no second update event.
+    const updates = async () =>
+      (
+        await sql<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM kernel.pending_events
+           WHERE org_id = ${ORG_ID} AND payload->>'entity' = 'contact'
+             AND payload->>'action' = 'update' AND payload->>'entityId' = ${person}`
+      )[0]?.n
+    const before = await updates()
+    const again = await asAnna((tx) =>
+      linkContactsToCompany(tx, {
+        orgId: ORG_ID,
+        userId: ANNA,
+        companyId: company.id,
+        contactIds: [person],
+      }),
+    )
+    expect(again).toEqual({ companyId: company.id, linked: [person], skipped: [] })
+    expect(await updates()).toBe(before)
   })
 
   it("renaming a company rewrites the company name of all its people in one transaction", async () => {

@@ -399,10 +399,7 @@ export async function sqlQuery(
       refuse("raw_query_not_allowed", `Connection "${connection}" takes named reads only`)
     }
     if (!hasScope(rawScope, ctx.callerScopes)) {
-      refuse(
-        "forbidden",
-        `A query on "${connection}" needs the ${rawScope} scope`,
-      )
+      refuse("forbidden", `A query on "${connection}" needs the ${rawScope} scope`)
     }
     if (process.env.LIAISON_DATABASE_ALLOW_RAW_QUERY === "false") {
       refuse(
@@ -491,10 +488,7 @@ export async function sqlSchema(
     // same scope; a connection of named reads only describes its catalog.
     const rawScope = rawQueryScopeOf(declaration)
     if (rawScope !== null && !hasScope(rawScope, ctx.callerScopes)) {
-      refuse(
-        "forbidden",
-        `The schema of "${connection}" needs the ${rawScope} scope`,
-      )
+      refuse("forbidden", `The schema of "${connection}" needs the ${rawScope} scope`)
     }
     const catalog = (await catalogOf(ctx, declaration)) ?? { adapter: connection, reads: {} }
     const creds = await credentialsOf(ctx, connection, declaration, req.identifier)

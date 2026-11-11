@@ -498,6 +498,22 @@ export async function backfill(params, ctx) {
 
 **Enqueue a job with `ctx.jobs.enqueue(name, payload, { delay, jobId })`.** `delay` is in milliseconds, at most 15 minutes (a longer one is cut to 15 minutes: use `timers.wakeIn`). `jobId` drops a second enqueue of that id while the first waits or runs. Both ids are scoped to your organization. The job runs as the person whose run enqueued it, or as the app.
 
+### Event handlers and webhooks commit each call on its own
+
+An event handler (`events.subscribes`) and a webhook delivery (`webhooks`) of a sandboxed app hold no database transaction across their run. Each `ctx` call opens its own short transaction and commits it before it returns, so no connection or row lock is held while the handler calls a provider.
+
+So what a handler wrote before it failed stays written:
+
+- A failed event handler is run once more. A failed webhook delivery goes back to the inbox and is replayed with its backoff, and the provider may deliver it again too.
+- Write the handler so that running it again over its own earlier writes does the right thing: dedup on the provider's delivery or event id, upsert instead of insert, check the state before you change it.
+- Several writes that must land together go in one call that takes them together, or in a job with `ctx.steps`.
+- A delivery ledger row ("processing") written before the work must not block the replay if the run dies before it marks the row: give it an age after which it counts as failed.
+
+A few bundled handlers still rely on one transaction for their whole run (they issue a numbered document, or claim a delivery first). They keep it until they are split, and are listed with the reason in `apps/api/src/modules/apps/contract/run-wide-tx.allowlist.json`. That list only shrinks; a new handler is never added to it. Core apps keep one transaction per handler run.
+
+(`apps/api/src/modules/apps/run-wide-tx.ts`, `apps/api/src/modules/apps/runtime.ts`,
+`apps/api/src/modules/webhooks/handler-run.ts`.)
+
 ### Commit an intent row before an outside call (`ctx.db.insertNow`)
 
 Some runs share one transaction from start to end: an approved gated call (the approval claim, the handler and the "approved" mark), and a tool declared `atomic: true`. If the sandbox stops such a handler ("App execution timed out"), every write it made rolls back. A row written with `ctx.db.insert` just before a call you cannot undo (buying a label, charging a card) is lost with it, and the outside effect has no local record.
@@ -511,8 +527,8 @@ await ctx.db.updateNow("purchases", intent.id, { state: "done", provider_id: bou
 ```
 
 - The checks are the ones `insert` and `update` make: only the app's own declared tables and fields (no other app's tables, no kernel table, no `org_id`), the run's organization and RLS actor.
-- They are refused on a read-only run, and in a run that has no transaction of its own to commit in (a webhook or job handler); use `insert` and `update` there.
-- In a run whose bridge calls each commit on their own already (an ordinary tool call), they behave like `insert` and `update`.
+- They are refused on a read-only run, and in a run that shares its caller's transaction (an `atomic` job, a core app's webhook); use `insert` and `update` there.
+- In a run whose bridge calls each commit on their own already (an ordinary tool call, an event handler or a webhook delivery of a sandboxed app), they behave like `insert` and `update`.
 - The run's own transaction sees the committed row and can keep updating it. Do not commit-now a row the run already changed with a plain write: the second transaction waits for the run's lock, and gives up after 5 seconds with a lock timeout error.
 - Give the intent row a state that says the outside call has started, and a sweep that finds rows still in that state after a while and settles them: ask the provider what happened, or show them to a person with what to check. Boxtal's label reservation works this way (`bundled-apps/boxtal/src/link-store.ts`, `reconcile-tracking.ts`).
 - The effect ledger (`ctx.effects`, `@liaison/app-sdk/effects`) also commits its claim at once, and is the tool for "do this outside call once". An intent row is for a record the app itself has to list and act on later.

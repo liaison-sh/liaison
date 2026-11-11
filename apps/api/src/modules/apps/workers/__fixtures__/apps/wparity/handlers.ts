@@ -140,6 +140,19 @@ export async function onPing(payload: { title: string }, ctx: Ctx) {
   return { ok: true }
 }
 
+/** A delivery that writes, then fails: its write stays (no transaction spans the run). */
+export async function onPingFail(payload: { title: string }, ctx: Ctx) {
+  await ctx.db.insert("items", { title: payload.title })
+  throw new Error("webhook failed after its write")
+}
+
+/** An event handler that asks the carrier, then writes (no transaction across the call). */
+export async function onProbe(event: { data?: { marker?: string } }, ctx: Ctx) {
+  const marker = event?.data?.marker ?? "probe"
+  const res = await ctx.fetch(`https://api.carrier.test/event/${marker}`, { method: "GET" })
+  await ctx.db.insert("items", { title: `${marker}:${res.status}` })
+}
+
 export async function verifyPing(req: { body: string }) {
   return { valid: true, replayKey: `ping:${req.body}` }
 }

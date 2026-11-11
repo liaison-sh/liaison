@@ -175,6 +175,10 @@ const TREATED: Record<string, [Treatment, string]> = {
   "modules/database/routes.ts": ["walks-org", "the people a domain may be opened to"],
   "modules/demo/demo-pool.ts": ["one-row", "a demo org's own owner"],
   "modules/demo/demo-verification.ts": ["one-row", "a demo org's own visitor"],
+  "modules/demo/worlds/saas/scenario-start.ts": [
+    "member-filter",
+    "the world's own teammate a guided tour starts a routine for, by name, members only",
+  ],
   "modules/erasure/erase-user.ts": ["one-row", "the row being erased"],
   "modules/export/data-subject-export-tool.ts": ["by-address", "the subject's own personal agent"],
   "modules/export/org-archive/store.ts": ["stored-ids", "who asked for an export"],

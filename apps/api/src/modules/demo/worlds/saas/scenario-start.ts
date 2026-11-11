@@ -29,12 +29,13 @@ const PRODUCT_PROJECT_NAME = "Product"
 
 type Need = "support" | "projects" | "chat" | "sales" | "money" | "dev" | "knowledge" | string
 
+/** A teammate of the org's own world, by name: members only, never a client's account. */
 async function userIdByName(orgId: string, name: string): Promise<string> {
   const [row] = await withPrivilegedDb(orgId, "demo-saas-start:user", (tx) =>
     tx
       .select({ id: users.id })
       .from(users)
-      .where(and(eq(users.orgId, orgId), eq(users.name, name)))
+      .where(and(eq(users.orgId, orgId), eq(users.userType, "member"), eq(users.name, name)))
       .limit(1),
   )
   if (!row) throw new Error(`demo world: no teammate named ${name} in this org`)

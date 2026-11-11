@@ -351,8 +351,10 @@ export function withPriorSteps(
   const sum = (pick: (v: JournalStepView) => number) => prior.reduce((n, v) => n + pick(v), 0)
   const priorText = joinStepTexts(prior.map((v) => v.text))
   const priorReasoning = prior.map((v) => v.reasoning).join("")
-  // A retraction counts this attempt's streamed text only: the joined steps
-  // carry no stepTexts, so no retraction is cut from the earlier attempts' text.
+  // A retraction is measured on this attempt's streamed text, so it is cut from
+  // this attempt's output before the merge (`retractedAttempt`); nothing is cut
+  // after it. The merged reply carries no stepTexts: they would count from the
+  // attempt's start, not the turn's.
   const { stepTexts: _thisAttempt, ...rest } = input
   return {
     ...rest,
@@ -376,6 +378,21 @@ export function withPriorSteps(
       reasoningTokens: (input.usage.reasoningTokens ?? 0) + sum((v) => v.usage.reasoningTokens),
     },
   }
+}
+
+/**
+ * An attempt's output without its retracted false text, cut on the very text
+ * the retractions were measured on: this attempt's own streamed text, before a
+ * resumed turn joins the earlier attempts' steps in front of it
+ * (`withPriorSteps`). The later cut first, so the earlier one's offsets hold.
+ */
+export function retractedAttempt<T extends FinalizeInput>(
+  input: T,
+  retractions: { first: Retraction | null; second: Retraction | null },
+): T {
+  const cut = (out: T, r: Retraction | null): T =>
+    r ? { ...out, ...retractTurnOutput(out, r) } : out
+  return cut(cut(input, retractions.second), retractions.first)
 }
 
 /**
@@ -4200,15 +4217,10 @@ async function runAgentChatTurn(
     // A conversation other people read receives the turn's answer, never the
     // narration written between its tools (shared-thread-reply.ts). A private
     // chat keeps every line, drawn where it was written.
-    // A corrected false approval claim: the correction is the answer, so the
-    // stored reply drops the false text (false-approval-guard.ts).
-    // The later cut first, so the earlier one's offsets still hold.
-    const withoutSecond = secondRetraction
-      ? retractTurnOutput(finalParams, secondRetraction)
-      : finalParams
-    const turnOutput = falseApprovalRetraction
-      ? retractTurnOutput(withoutSecond, falseApprovalRetraction)
-      : withoutSecond
+    // A corrected false approval claim was cut already: the correction is the
+    // answer, so the stored reply drops the false text (`retractedAttempt`, in
+    // `finalize`, before a resumed turn's earlier steps are joined in front).
+    const turnOutput = finalParams
     const answer = replyForAudience({
       shared: context.sharedAudience !== null,
       text: turnOutput.text,
@@ -4739,8 +4751,12 @@ async function runAgentChatTurn(
           withheldCapabilities: [],
         }
       }
+      const ownOutput = retractedAttempt(finalParams, {
+        first: falseApprovalRetraction,
+        second: secondRetraction,
+      })
       return await finalizeReply(
-        withPriorSteps(finalParams, await withToolCardFieldsOnSteps(orgId, priorViews)),
+        withPriorSteps(ownOutput, await withToolCardFieldsOnSteps(orgId, priorViews)),
       )
     } finally {
       unregisterTurn()

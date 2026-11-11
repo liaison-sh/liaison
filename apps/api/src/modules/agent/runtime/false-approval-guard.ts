@@ -485,12 +485,17 @@ export function retractFromText(text: string, r: Retraction): string {
   return text.slice(0, start) + text.slice(r.end)
 }
 
-/** The timeline without the retracted characters of its text entries. */
+/**
+ * The timeline without the retracted characters of its text entries, or
+ * unchanged when its text does not hold them where expected (as `retractFromText`).
+ */
 export function retractFromTimeline(
   timeline: TurnTimelineEntry[],
   r: Retraction,
 ): TurnTimelineEntry[] {
   const start = r.end - r.text.length
+  const streamed = timeline.map((e) => (e.kind === "text" ? e.text : "")).join("")
+  if (start < 0 || streamed.slice(start, r.end) !== r.text) return timeline
   let offset = 0
   const out: TurnTimelineEntry[] = []
   for (const entry of timeline) {

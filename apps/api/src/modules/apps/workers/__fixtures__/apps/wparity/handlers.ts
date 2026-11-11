@@ -52,6 +52,25 @@ export async function fetchAuth(_p: unknown, ctx: Ctx) {
   return { status: res.status, body: res.body }
 }
 
+export async function limited(p: { ms?: number; connection?: string }, ctx: Ctx) {
+  let paused: unknown
+  try {
+    paused = await ctx.limiter.pause(p.connection ?? "carrier", p.ms ?? 300)
+  } catch (err) {
+    return { refused: (err as { code?: string }).code ?? String(err) }
+  }
+  const started = Date.now()
+  const res = await ctx.fetch("https://api.carrier.test/echo", {
+    method: "GET",
+    auth: { connection: "carrier", scheme: "header:X-Api-Key", fields: ["key"] },
+  })
+  return {
+    paused: typeof paused === "number" && paused > 0,
+    status: res.status,
+    held: Date.now() - started >= 200,
+  }
+}
+
 export async function stamp(p: { marker: string }, ctx: Ctx) {
   await ctx.logger.info("stamping", { marker: p.marker })
   await ctx.emit({

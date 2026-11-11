@@ -121,12 +121,12 @@ export async function runApprovalOutputPoll(payload: {
   )
   if (!exec || exec.status !== "awaiting_output") return // already resolved / failed
 
+  // The poll asks the provider: no transaction is open across it. The result is
+  // written afterwards in one guarded statement (resolveDeferredOutput), which is
+  // what kept a late or duplicate answer from resolving the step twice.
   let res: { ready: true; result: Record<string, unknown> } | { ready: false }
   try {
-    res = await withPrivilegedDb(orgId, "poll-call", (tx) =>
-      // biome-ignore lint/style/noNonNullAssertion: guarded above
-      tool.poll!({ orgId, userId: "system", tx }, exec.external_ref),
-    )
+    res = await tool.poll({ orgId, userId: "system" }, exec.external_ref)
   } catch (err) {
     await markExecutionFailed(orgId, approvalRequestId, toolName)
     await failBundle(orgId, approvalRequestId, `poll error: ${(err as Error).message}`)

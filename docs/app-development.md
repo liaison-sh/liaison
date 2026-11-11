@@ -108,6 +108,11 @@ handlers teaches exactly one thing.
   narrow as the handler allows: each run sets the workspace up in the process
   that runs it, and a workspace an hourly job reaches every hour stays set up
   there for good.
+  A job marked `atomic: true` runs in one database transaction from start to
+  end, so it may not call outside: `ctx.fetch`, `ctx.executeTool`, a contract
+  call, an agent run and the other outside calls fail with
+  `atomic_run_egress_refused`. Read, call the provider, then write in one
+  `ctx` call (or use `ctx.steps.run`) instead.
   A job marked `atomic: true`, an event-subscription handler and an import
   batch hold one database connection for their whole run, so each waits for
   a free slot before it starts, first come first served (the slots come from

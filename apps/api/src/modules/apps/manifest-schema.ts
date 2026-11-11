@@ -354,6 +354,18 @@ const connectionSchema = {
     // slug identifier (the credentials route then requires `identifier`).
     multiInstance: { type: "boolean" },
     allowedDomains: { type: "array", items: { type: "string" } },
+    // The shared per-connection limiter (connection-limiter.ts): how many calls
+    // to one account may be in flight, and how many may start per second, across
+    // every run and process. Meaning checked by contract.ts connectionLimitsErrors.
+    limits: {
+      type: "object",
+      properties: {
+        concurrency: { type: "integer" },
+        perSecond: { type: "number" },
+        burst: { type: "integer" },
+      },
+      additionalProperties: false,
+    },
     // Per-template-variable normalization rules (e.g. `{shop}` for per-store
     // providers). The kernel applies these generically during the OAuth flow.
     templateVars: {

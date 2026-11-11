@@ -23,7 +23,11 @@
           "label": "API key",
           "type": "password"
         }
-      ]
+      ],
+      "limits": {
+        "concurrency": 2,
+        "perSecond": 50
+      }
     }
   },
   "schema": {
@@ -127,6 +131,11 @@
       "description": "Wait, then insert",
       "handler": "slowCreate",
       "requiredScopes": ["wparity:items:write"]
+    },
+    "limited": {
+      "description": "Pause the carrier connection, then call it",
+      "handler": "limited",
+      "requiredScopes": ["wparity:items:read"]
     }
   },
   "jobs": {

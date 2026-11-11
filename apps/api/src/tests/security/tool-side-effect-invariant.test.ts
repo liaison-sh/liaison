@@ -83,6 +83,8 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   crypto_hmacSha256Base64ForConfig: "read",
   crypto_verifyHmacForConfig: "read",
   time_civil: "read",
+  // A provider throttle signal (connection-limiter.ts): delays later calls, writes no data.
+  limiter_pause: "throttle signal, no data written",
   connections_describe: "read",
   connections_getAccounts: "read",
   connections_getCredentials: "read",

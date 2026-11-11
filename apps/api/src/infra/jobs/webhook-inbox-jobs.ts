@@ -28,7 +28,7 @@ import {
   webhookHandlers,
 } from "~/modules/apps/app-registries"
 import { isAppOffForPathOrg } from "~/modules/apps/org-apps"
-import { resolveToolTimeoutMs } from "~/modules/apps/sandbox/executor"
+import { resolveToolTimeoutMs } from "~/modules/apps/run-limits"
 import { appRunHoldMs } from "~/modules/apps/usage/app-day-cap"
 import { writeUnlessMoving } from "~/modules/org/transfer-state/skip-moving"
 import {

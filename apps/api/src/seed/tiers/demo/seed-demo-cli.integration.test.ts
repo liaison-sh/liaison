@@ -242,13 +242,7 @@ describe("demo:seed --reset on a private box (demo mode off)", () => {
 
   it("deletes the visitor org an earlier seed made and seeds it fresh, with no content reset", async () => {
     // An earlier world seed's org: it carries the demo marker.
-    await withSystemDb("demo-cli-test-private-org", (tx) =>
-      tx.execute(
-        sql`INSERT INTO kernel.organizations (name, slug, settings)
-            SELECT 'Earlier world', ${PRIVATE_SLUG}, jsonb_build_object('demo', settings->'demo')
-              FROM kernel.organizations WHERE id = ${org.orgId}::uuid`,
-      ),
-    )
+    await seedDemoOrg({ orgSlug: PRIVATE_SLUG, variant: "visitor" })
     expect(await findOrgIdBySlug(PRIVATE_SLUG)).not.toBeNull()
 
     const { exitCode } = await runSeedDemoCli(
@@ -260,7 +254,7 @@ describe("demo:seed --reset on a private box (demo mode off)", () => {
     expect(await findOrgIdBySlug(PRIVATE_SLUG)).toBeNull()
     expect(seen.at(-1)?.orgSlug).toBe(PRIVATE_SLUG)
     expect(seen.at(-1)?.resetContent).toBe(false)
-  })
+  }, 600_000)
 
   it("seeds a slug no org holds yet without deleting anything", async () => {
     const fresh = `${PRIVATE_SLUG}-new`

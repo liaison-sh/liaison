@@ -30,6 +30,7 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { listOrgQueuedJobs } from "~/infra/jobs/jobs"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { DEMO_COMPANY_NAME, seedDemoOrgData } from "~/modules/demo/demo-seeder"
+import { demoWorldPack } from "~/seed/worlds/index"
 import { installFromDist } from "../../../../test-support/seed/install-dist-apps"
 
 const DB_URL = process.env.DATABASE_URL ?? ""
@@ -158,7 +159,7 @@ async function seedVisitorWorld(
   const t0 = performance.now()
   const seed = await seedDemoOrgData({
     orgSlug: slug,
-    ...(world === "products" ? { orgName: DEMO_COMPANY_NAME } : {}),
+    orgName: world === "products" ? DEMO_COMPANY_NAME : demoWorldPack(world).orgName,
     worldId: world,
     variant: "visitor",
     locale: "en",

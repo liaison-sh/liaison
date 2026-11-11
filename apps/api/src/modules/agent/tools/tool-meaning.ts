@@ -28,6 +28,7 @@
 import { toolMeaningEnabled } from "~/lib/edition"
 import { env } from "~/lib/env"
 import { defaultEmbedderSocketPath, EmbedderUnavailable, socketEmbedder } from "./embedder-socket"
+import { withoutCourtesy } from "./tool-lexicon"
 
 /** Weight of one standard deviation of meaning above the floor, in keyword-score points. */
 export const MEANING_WEIGHT = 4
@@ -226,7 +227,7 @@ export class ToolMeaningIndex {
       timer = setTimeout(() => r(null), budgetMs)
     })
     const vector = await Promise.race([
-      this.embedder.embed([query], "query").then(
+      this.embedder.embed([withoutCourtesy(query)], "query").then(
         (v) => v[0] ?? null,
         () => null,
       ),

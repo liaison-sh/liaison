@@ -31,6 +31,7 @@ import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { withRlsContext } from "~/db/rls"
 import { knowledgeSourceKindRegistry } from "~/modules/apps/app-registries"
+import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -101,28 +102,6 @@ function registerKind(orgId: string) {
 
 function actorOf(orgId: string, userId: string, scopes: string[]): KnowledgeActor {
   return knowledgeActorFromContext({ orgId, userId, scopes, dimensionGrants: {} })
-}
-
-async function newUser(orgId: string, name: string): Promise<string> {
-  const [row] = extractRows<{ id: string }>(
-    await db.execute(
-      sql`INSERT INTO kernel.users (id, org_id, email, name, status, password_hash, auth_version, permission_version)
-          VALUES (gen_random_uuid(), ${orgId}::uuid, ${`${name}-${crypto.randomUUID()}@app-sources.test`}, ${name}, 'active', 'h', 1, 1)
-          RETURNING id`,
-    ),
-  )
-  return row!.id
-}
-
-async function newOrg(name: string): Promise<string> {
-  const [row] = extractRows<{ id: string }>(
-    await db.execute(
-      sql`INSERT INTO kernel.organizations (id, name, slug)
-          VALUES (gen_random_uuid(), ${name}, ${`${name.toLowerCase()}-${Date.now()}`})
-          RETURNING id`,
-    ),
-  )
-  return row!.id
 }
 
 async function newSource(opts: {
@@ -228,12 +207,12 @@ async function docsOf(sourceId: string) {
 
 beforeAll(async () => {
   await acquireTestLock()
-  await createTestOrg()
-  orgA = await newOrg("AppSourcesA")
-  orgB = await newOrg("AppSourcesB")
-  alice = await newUser(orgA, "Alice")
-  bob = await newUser(orgA, "Bob")
-  carol = await newUser(orgB, "Carol")
+  orgA = (await createTestOrg()).id
+  alice = (await minimal.orgAdmin(orgA)).id
+  bob = (await minimal.person(orgA)).id
+  const second = await minimal.secondOrg({ name: "App sources B" })
+  orgB = second.orgId
+  carol = second.adminUserId
   registerKind(orgA)
   registerKind(orgB)
 })

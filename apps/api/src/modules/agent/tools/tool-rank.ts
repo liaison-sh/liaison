@@ -6,7 +6,7 @@
  * no server.
  */
 
-import { NAME_WORD_SYNONYMS, withoutCourtesy } from "./tool-lexicon"
+import { ENGLISH_LEXICON_WORDS, NAME_WORD_SYNONYMS, withoutCourtesy } from "./tool-lexicon"
 import { meaningPoints, type ToolMeaning } from "./tool-meaning"
 
 /** Meaning points a tool no word matched needs to join the list: past the floor, not the tie trace. */
@@ -285,12 +285,58 @@ function frenchVerbSynonyms(term: string): readonly string[] {
     if (!term.endsWith(ending)) continue
     const root = term.slice(0, term.length - ending.length)
     if (root.length < 3) continue
+    // A short word with no ending at all ("met") is too often a word of
+    // another language to be read as a French verb.
+    if (ending === "" && root.length < MIN_BARE_FRENCH_ROOT) continue
     for (const infinitive of FRENCH_INFINITIVES) {
       const names = NAME_WORD_SYNONYMS[`${root}${infinitive}`]
       if (names) return names
     }
   }
   return []
+}
+
+/** Shortest French verb form read with no ending ("répond" is "répondre"; "met" is not read). */
+const MIN_BARE_FRENCH_ROOT = 5
+
+/** Every word of the lexicon, the words people type and the name words they stand for. */
+const LEXICON_WORDS = new Set([
+  ...Object.keys(NAME_WORD_SYNONYMS),
+  ...Object.values(NAME_WORD_SYNONYMS).flat(),
+])
+
+/** The regular English forms of a word the catalog may hold instead ("defined" for "define"). */
+function englishFormsOf(term: string): string[] {
+  const forms = [`${term}d`, `${term}ed`, `${term}ing`]
+  if (term.endsWith("e")) forms.push(`${term.slice(0, -1)}ing`)
+  if (term.endsWith("s")) {
+    const singular = term.slice(0, -1)
+    forms.push(`${singular}d`, `${singular}ed`, `${singular}ing`)
+  }
+  return forms
+}
+
+/**
+ * True when `term` is an English word: one of the lexicon's English words, or
+ * a word the catalog holds in a regular English form ("define" for
+ * "defined"). Such a word is never read as a French verb form: "define" is not
+ * "définir". (The catalog also holds French words, so a word it holds as
+ * typed says nothing of its language.)
+ */
+function isEnglishWord(term: string, vocab: ReadonlySet<string>): boolean {
+  if (ENGLISH_LEXICON_WORDS.has(term)) return true
+  return englishFormsOf(term).some((form) => ENGLISH_LEXICON_WORDS.has(form) || vocab.has(form))
+}
+
+/**
+ * True when `term` is a word in its own right: a lexicon word, or a word the
+ * catalog holds as typed, without its final "s" ("lit" for "lits") or in a
+ * regular English form. Such a word is never read as a swap of another.
+ */
+function isKnownWord(term: string, vocab: ReadonlySet<string>): boolean {
+  if (LEXICON_WORDS.has(term) || vocab.has(term)) return true
+  if (term.endsWith("s") && vocab.has(term.slice(0, -1))) return true
+  return isEnglishWord(term, vocab)
 }
 
 /** Every word the catalog holds: name parts, keywords, app parts, description words. */
@@ -411,13 +457,21 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
   const vocab = vocabularyOf(opts?.vocabularyOf ?? tools)
   // A word no tool's name, keyword, app or description holds is read as a typo
   // of the closest such word; a word the catalog knows is never "corrected".
-  const unknown = new Set(terms.filter((term) => !vocab.has(term)))
+  // A four-letter word read as a swap ("mial") must not be a word itself ("lits").
+  const unknown = new Set(
+    terms.filter(
+      (term) =>
+        !vocab.has(term) && !(term.length === MIN_TYPO_TERM - 1 && isKnownWord(term, vocab)),
+    ),
+  )
   const termStems = terms.map(wordStem)
   // A stem too short to tell words apart ("cre") is not compared.
   const stemOk = termStems.map((stem) => stem.length >= MIN_STEM)
   const termSynonyms = terms.map(
     (term, i) =>
-      SYNONYMS_BY_STEM.get(termStems[i]) ?? SYNONYMS_BY_STEM.get(term) ?? frenchVerbSynonyms(term),
+      SYNONYMS_BY_STEM.get(termStems[i]) ??
+      SYNONYMS_BY_STEM.get(term) ??
+      (isEnglishWord(term, vocab) ? [] : frenchVerbSynonyms(term)),
   )
   // The plural of each word, and the word less its final "s", built once rather than per tool.
   const termPlurals = terms.map((term) => `${term}s`)

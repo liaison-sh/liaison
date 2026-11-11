@@ -118,4 +118,26 @@ describe("short misspellings", () => {
         q,
       ).toEqual([])
   })
+
+  it("a four-letter word that is a word itself is not read as the word it would misspell", () => {
+    // "lits" is "lit" (a catalog word) plus "s"; "sign" is a lexicon word, not a swap of "sing".
+    const catalog: Row[] = [
+      ...CATALOG,
+      row("lights", "list", "List the lights that are lit right now."),
+      row("choir", "sing", "Play a song for the choir."),
+    ]
+    const strong = (q: string) =>
+      [
+        ...rankDeferredTools(catalog, q, {
+          cap: 5,
+          appNames: new Set(catalog.map((t) => t.appName)),
+        }).strongNames,
+      ].sort()
+    expect(strong("lits")).toEqual([])
+    expect(
+      scoreDeferredTools(catalog, "sign").filter((s) => s.tool.toolName === "sing" && s.score > 0),
+    ).toEqual([])
+    // A swap that is no word at all still reads as the word it misspells.
+    expect(strong("lsit")).toContain("lights__list")
+  })
 })

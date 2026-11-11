@@ -274,21 +274,18 @@ export function formatDay(day: string, locale: string, withYear = true): string 
   })
 }
 
-/** A window as it reads: "1–11 Nov 2026" (the locale's own range form). */
+/** A window as it reads, in the locale's own range form (Intl's `formatRange`). */
 export function formatWindow(w: DayWindow, locale: string): string {
   const from = utc(w.from)
   const to = utc(w.to)
-  if (!from || !to) return `${w.from} – ${w.to}`
-  const fmt = new Intl.DateTimeFormat(locale, {
+  // Never two bad days from the server; shown as the contract writes a window.
+  if (!from || !to) return `${w.from}..${w.to}`
+  return new Intl.DateTimeFormat(locale, {
     day: "numeric",
     month: "short",
     year: "numeric",
     timeZone: "UTC",
-  })
-  const range = (fmt as Intl.DateTimeFormat & { formatRange?: (a: Date, b: Date) => string })
-    .formatRange
-  if (typeof range === "function") return range.call(fmt, from, to)
-  return w.from === w.to ? fmt.format(from) : `${fmt.format(from)} – ${fmt.format(to)}`
+  }).formatRange(from, to)
 }
 
 /**

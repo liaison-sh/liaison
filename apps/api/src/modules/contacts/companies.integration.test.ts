@@ -15,6 +15,7 @@ import { signAccessToken } from "~/modules/auth/jwt"
 import {
   armAfterCompanyRenameFailpoint,
   companyNameKey,
+  createCompanies,
   createCompany,
   deleteCompany,
   getCompany,
@@ -152,6 +153,39 @@ afterAll(async () => {
   await sql`DELETE FROM kernel.roles WHERE org_id = ${ORG_ID}`
   await sql`DELETE FROM kernel.users WHERE org_id = ${ORG_ID}`
   await sql`DELETE FROM kernel.organizations WHERE id = ${ORG_ID}`
+})
+
+describe("many companies at once", () => {
+  it("writes each company with its own handle and event in one batch, numbering a taken handle", async () => {
+    const { company: older } = await asAnna((tx) =>
+      createCompany(tx, { orgId: ORG_ID, userId: ANNA, input: { name: "Brasserie Ombre" } }),
+    )
+    const created = await asAnna((tx) =>
+      createCompanies(tx, {
+        orgId: ORG_ID,
+        userId: ANNA,
+        inputs: [
+          { name: "Cantines du Quai", domain: "https://quai.example/", tags: ["prospect"] },
+          { name: "Brasserie Ombre SAS" },
+          { name: "Cantines du Quai SARL" },
+        ],
+      }),
+    )
+    expect(created.map((c) => [c.name, c.domain, c.tags])).toEqual([
+      ["Cantines du Quai", "quai.example", ["prospect"]],
+      ["Brasserie Ombre SAS", null, []],
+      ["Cantines du Quai SARL", null, []],
+    ])
+    const handles = created.map((c) => c.handle)
+    expect(new Set([...handles, older.handle]).size).toBe(4)
+    expect(handles[0]).toBe("@company-cantines-du-quai")
+    const events = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM kernel.pending_events
+       WHERE org_id = ${ORG_ID} AND payload->>'entity' = 'company'
+         AND payload->>'action' = 'create'
+         AND payload->>'entityId' = ANY(${created.map((c) => c.id)}::text[])`
+    expect(events[0]?.n).toBe(3)
+  })
 })
 
 describe("company people and names", () => {

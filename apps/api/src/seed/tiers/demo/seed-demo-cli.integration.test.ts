@@ -182,4 +182,18 @@ describe("demo:seed, the CLI", () => {
     await runSeedDemoCli(["--slug", ORG_SLUG, "--no-reset"], { seedWorld: stubWorld })
     expect(seen.at(-1)?.worldId).toBe("products")
   })
+
+  it("the software world seeds as a visitor org under its pack's own name", async () => {
+    const { exitCode } = await runSeedDemoCli(
+      ["--slug", ORG_SLUG, "--world", "saas", "--variant", "visitor", "--no-reset"],
+      { seedWorld: stubWorld },
+    )
+    expect(exitCode).toBe(0)
+    const asked = seen.at(-1)
+    expect(asked?.worldId).toBe("saas")
+    expect(asked?.variant).toBe("visitor")
+    // No name flag: the world's pack names the company, not the products default.
+    expect(asked?.orgName).toBeUndefined()
+    expect(asked?.owner).toBeUndefined()
+  })
 })

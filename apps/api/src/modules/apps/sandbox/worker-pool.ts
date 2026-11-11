@@ -15,8 +15,12 @@ import type { Subprocess } from "bun"
 import { sandboxCancelledError } from "~/lib/failure-severity"
 import { appsLogger as log } from "~/lib/logger"
 import { sandboxTenantKey } from "~/modules/apps/custom-app-name"
+import {
+  resolveSandboxDefaultTimeoutMs,
+  resolveSandboxMemoryLimit,
+} from "~/modules/apps/run-limits"
 import { typedBridgeFailure } from "./bridge-rejection"
-import { QUICKJS_HOST_JSC_ENV, resolveSandboxMemoryLimit } from "./pool"
+import { QUICKJS_HOST_JSC_ENV } from "./pool"
 
 const WORKER_SCRIPT = join(import.meta.dir, "sandbox-worker.ts")
 const STARTUP_TIMEOUT_MS = 15_000
@@ -47,7 +51,9 @@ export function resolveSandboxPoolWarmSize(
 // Shared QuickJS heap default with the trusted in-process pool (32MB — see
 // pool.ts's rationale: 8MB OOM-looped a gmail incremental sync in prod).
 const DEFAULT_MEMORY_LIMIT = resolveSandboxMemoryLimit()
-const DEFAULT_TIMEOUT = process.env.NODE_ENV === "production" ? 5_000 : 60_000
+// The sandbox default wall clock (run-limits.ts). Outside production it now
+// honours LIAISON_SANDBOX_TIMEOUT_MS as the in-process pool always did.
+const DEFAULT_TIMEOUT = resolveSandboxDefaultTimeoutMs()
 // Workers reserved for INTERACTIVE (user/agent-initiated) executions. Background
 // work (webhooks, event handlers, scheduled jobs, routines) may occupy at most
 // `maxSize - reserved` workers at once, so a burst of background executions can

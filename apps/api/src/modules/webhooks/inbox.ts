@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 /**
- * The durable webhook inbox (`kernel.webhook_inbox`, migration 0288).
+ * The durable webhook inbox (`kernel.webhook_inbox`, migration 0289).
  *
  * Every verified delivery is stored here before its handler runs:
  *

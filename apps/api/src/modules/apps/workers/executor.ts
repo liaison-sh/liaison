@@ -29,6 +29,7 @@
 
 import { sandboxCancelledError } from "~/lib/failure-severity"
 import { rootLogger } from "~/lib/logger"
+import { type RunEntryKind, runLimits, workersLoaderLimits } from "~/modules/apps/run-limits"
 import { type WorkersAdmission, workersAdmission } from "./admission"
 import { bridgeUrlFor, type WorkersConfig } from "./config"
 import {
@@ -52,14 +53,8 @@ import { parseWorkerLogs, type WorkerLogLine } from "./worker-logs"
 
 const log = rootLogger.child({ module: "apps-workers-executor" })
 
-/** Same default as the worker pool's (worker-pool.ts DEFAULT_TIMEOUT). */
-export function defaultWorkersTimeoutMs(): number {
-  return process.env.NODE_ENV === "production" ? 5_000 : 60_000
-}
 /** The cell's own fetch to the loader outlives the run's deadline by this much. */
 export const LOADER_FETCH_GRACE_MS = 5_000
-/** Fixed per-run limits the loader applies (it caps them itself too). */
-export const WORKERS_RUN_LIMITS = { cpuMs: 30_000, subRequests: 10_000 } as const
 
 export interface WorkersRunOptions {
   config: WorkersConfig
@@ -77,7 +72,10 @@ export interface WorkersRunOptions {
   /** The K6 approval literal (`ctx.approval`). */
   approval?: unknown
   bridge: RunBridge
+  /** Default: the wall clock of the run's entry kind (run-limits.ts). */
   timeoutMs?: number
+  /** The run's entry kind, whose row of the limit table the loader gets (default `tool`). */
+  entryKind?: RunEntryKind
   signal?: AbortSignal
   holdsTx: boolean
   nested?: boolean
@@ -227,7 +225,8 @@ export async function executeOnWorkers(
   const breaker = opts.breaker ?? defaultLoaderBreaker
   const fallbacks = opts.appFallbacks ?? defaultAppFallbacks
   const now = opts.now ?? Date.now
-  const timeoutMs = opts.timeoutMs ?? defaultWorkersTimeoutMs()
+  const limits = runLimits(opts.entryKind ?? "tool")
+  const timeoutMs = opts.timeoutMs ?? limits.wallMs
   const deadlineAt = now() + timeoutMs
   const info: WorkersRunInfo = { attempts: 0, bridgeCalls: 0 }
 
@@ -353,7 +352,7 @@ async function attemptOnWorkers(
       bridgeUrl: bridgeUrlFor(opts.config, run.runId),
       runToken: run.runToken,
       deadlineMs: timeoutMs,
-      limits: WORKERS_RUN_LIMITS,
+      limits: workersLoaderLimits(runLimits(opts.entryKind ?? "tool")),
     })
     const runUrl = `${opts.config.loaderUrl}/run`
     const headers = {

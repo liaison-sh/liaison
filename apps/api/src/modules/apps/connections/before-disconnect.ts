@@ -32,8 +32,7 @@ import {
   appBridgeManifestRegistry,
   connectionBeforeDisconnectRegistry,
 } from "~/modules/apps/app-registries"
-
-const HOOK_TIMEOUT_MS = 20_000
+import { runLimits } from "~/modules/apps/run-limits"
 
 /** What the hook handler receives as its params. */
 export interface BeforeDisconnectEvent {
@@ -116,7 +115,7 @@ const defaultExecutor: HookExecutor = async ({
     entry: `disconnect:${exportName}`,
     params,
     bridge,
-    timeoutMs: HOOK_TIMEOUT_MS,
+    timeoutMs: runLimits("disconnect").wallMs,
     priority: "background",
     appId: appName,
     holdsTx: false,

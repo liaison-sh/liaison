@@ -8,6 +8,7 @@ import type {
 } from "quickjs-emscripten"
 import { newQuickJSAsyncWASMModuleFromVariant, newVariant, RELEASE_ASYNC } from "quickjs-emscripten"
 import { appsLogger as log } from "~/lib/logger"
+import { resolveSandboxMemoryLimit } from "~/modules/apps/run-limits"
 
 /**
  * The 1MB asyncify QuickJS WASM binary is compiled ONCE per process and the
@@ -91,11 +92,6 @@ export interface SandboxPool {
 // (24 slots x 32MB = 768MB) stays within the worker RSS recycling envelope.
 // Env-overridable for emergency tuning without a redeploy.
 const DEFAULT_MEMORY_LIMIT = resolveSandboxMemoryLimit()
-export function resolveSandboxMemoryLimit(env: NodeJS.ProcessEnv = process.env): number {
-  const overrideMb = Number(env.SANDBOX_MEMORY_LIMIT_MB)
-  if (Number.isFinite(overrideMb) && overrideMb > 0) return Math.floor(overrideMb) * 1024 * 1024
-  return 32 * 1024 * 1024
-}
 const DEFAULT_MAX_STACK_SIZE = 256 * 1024 // 256KB stack
 
 /**

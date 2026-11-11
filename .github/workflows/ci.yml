@@ -218,6 +218,16 @@ jobs:
       - name: Raw base URL reads, entrypoint, prompt-size probe, imports
         working-directory: apps/api
         run: bun test src/tests/no-raw-base-url.test.ts scripts/entrypoint.test.ts scripts/measure-prompt-size.test.ts src/tests/imports.test.ts
+      # The app wake-up contract (api-guards): every bundled and in-tree sandboxed
+      # app's entry points run twice in one reused isolate on recorded egress,
+      # under the per-run limit table, plus the wait lint and the guard that the
+      # expected-failure list only shrinks. Pure, seconds; config placeholders only.
+      - name: App wake-up contract and run limits
+        working-directory: apps/api
+        env:
+          JWT_SECRET: replace-with-at-least-32-char-secret
+          ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+        run: bun test src/modules/apps/contract src/modules/apps/run-limits.test.ts
       # Erasing a user refuses to run while a kernel user column has no rule, and
       # the live check needs a database. This reads the migrations instead.
       - name: Erasure rules

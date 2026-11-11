@@ -16,7 +16,7 @@ export type WebhookInboxStatus = (typeof WEBHOOK_INBOX_STATUSES)[number]
 
 /**
  * Every verified app webhook delivery, stored before its handler runs
- * (migration 0288, modules/webhooks/inbox.ts). Reached only through the
+ * (migration 0289, modules/webhooks/inbox.ts). Reached only through the
  * privileged connection.
  */
 export const webhookInbox = kernel.table(

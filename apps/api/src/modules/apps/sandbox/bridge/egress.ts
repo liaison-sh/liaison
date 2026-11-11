@@ -4,6 +4,7 @@ import { z } from "zod"
 import { UPSTREAM_CONNECTION_CLOSED } from "~/lib/failure-severity"
 import { rootLogger } from "~/lib/logger"
 import { fetchWithPinnedHost, UnsafeOutboundUrlError } from "~/lib/outbound-fetch"
+import { egressLimits } from "~/modules/apps/run-limits"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import {
   dropBearer,
@@ -53,26 +54,21 @@ import {
 import { demoFixtureMessageId, isDemoFixtureDelivery } from "~/modules/demo/fixture-delivery"
 import { maybeDemoShopifyResponse } from "~/modules/demo/shopify/provider"
 
-// Per-fetch cap for a sandboxed `ctx.fetch`. Default 10s (tight, prod-safe). A
-// deployment whose apps legitimately call a slow upstream — e.g. the KPI app
-// proxying a warehouse-backed `kpi_run` that takes ~10-15s — can raise it via
-// LIAISON_SANDBOX_FETCH_TIMEOUT_MS. Clamped to 120s so a hung upstream can't pin
-// a worker indefinitely; in practice a fetch is also bounded by the tool's own
-// execution budget (a 5s-default tool's handler is killed long before this).
-const SANDBOX_FETCH_TIMEOUT_MS = (() => {
-  const override = Number(process.env.LIAISON_SANDBOX_FETCH_TIMEOUT_MS)
-  return Number.isFinite(override) && override > 0 ? Math.min(override, 120_000) : 10_000
-})()
-const SANDBOX_FETCH_MAX_RESPONSE_BYTES = 1_000_000
-const SANDBOX_FETCH_MAX_REQUEST_BYTES = 1_000_000
-/** A multipart upload (a file the app may read, sent to an allowed host) may carry up to 25 MB and
- *  ask for up to the egress maximum of 120 s: a provider ingesting a legal PDF is slower than a JSON
- *  call, and the bytes never cross into the sandbox, so the 1 MB string cap does not apply. */
-export const SANDBOX_MULTIPART_MAX_REQUEST_BYTES = 25 * 1024 * 1024
-const SANDBOX_EGRESS_MAX_TIMEOUT_MS = 120_000
+// Per-call egress limits of a sandboxed `ctx.fetch`, from the limit table
+// (run-limits.ts `egressLimits`): a read waits 10 s by default
+// (LIAISON_SANDBOX_FETCH_TIMEOUT_MS raises it for a slow upstream, clamped to
+// 120 s), a write may ask for up to 30 s, a multipart upload (a file the app may
+// read, the bytes never crossing into the sandbox) up to 120 s and 25 MB. A
+// fetch is also bounded by its run's own wall clock.
+const EGRESS = egressLimits()
+const SANDBOX_FETCH_TIMEOUT_MS = EGRESS.fetchTimeoutMs
+const SANDBOX_FETCH_MAX_RESPONSE_BYTES = EGRESS.maxResponseBytes
+const SANDBOX_FETCH_MAX_REQUEST_BYTES = EGRESS.maxRequestBytes
+const SANDBOX_MULTIPART_MAX_REQUEST_BYTES = EGRESS.multipartMaxRequestBytes
+const SANDBOX_EGRESS_MAX_TIMEOUT_MS = EGRESS.maxTimeoutMs
 /** The longest a non-multipart WRITE (POST, PUT, PATCH, DELETE) may ask to wait for its
  *  answer through `timeoutMs` (see the clamp in `fetch` below). */
-export const SANDBOX_WRITE_MAX_TIMEOUT_MS = 30_000
+const SANDBOX_WRITE_MAX_TIMEOUT_MS = EGRESS.writeMaxTimeoutMs
 
 const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS"])
 

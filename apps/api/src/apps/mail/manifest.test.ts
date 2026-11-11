@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
 import { validateAppManifest } from "~/modules/apps/contract"
-import { resolveToolTimeoutMs } from "~/modules/apps/sandbox/executor"
+import { resolveToolTimeoutMs } from "~/modules/apps/run-limits"
 import mailManifest from "./app.manifest.json"
 
 // The app guide is a short core plus sections keyed by the tools they are

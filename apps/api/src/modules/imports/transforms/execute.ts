@@ -10,6 +10,7 @@
  * backoff after a 429 and the deferred downloads all happen between calls,
  * outside the sandbox deadline.
  */
+import { resolveTransformCallBudgetMs } from "~/modules/apps/run-limits"
 import type { SandboxWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import type { TransformBatch } from "./batch"
 import {
@@ -19,11 +20,7 @@ import {
   type RecordIssue,
   type TransformBridgeHost,
 } from "./bridge"
-import {
-  getTransformPool,
-  resolveTransformCallBudgetMs,
-  TRANSFORM_MEMORY_LIMIT_BYTES,
-} from "./pool"
+import { getTransformPool, TRANSFORM_MEMORY_LIMIT_BYTES } from "./pool"
 import { type TransformEntry, validateTransformSource, wrapTransformSource } from "./source"
 
 /**

@@ -463,7 +463,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `counterparty_territory_set` | Administrator decision for a buyer whose territory is not decided automatically (Monaco, overseas departments and collectivities): treat it as French (as_fr) or foreign (as_foreign), with the reason. | yes | `invoicing:contacts:write` |
 | `credit_note_create_and_issue` | Create a credit note, a legal document, and issue it in one call. |  | `invoicing:documents:write` |
 | `credit_note_issue` | Issue a credit note from a draft (drafts_create with type='credit_note'). |  | `invoicing:documents:write` |
-| `customer_history` | A customer's past sales with each line's unit price, the latest sale of a product (last_sale) and their Shopify orders. |  | `invoicing:documents:read` |
+| `customer_history` | A customer's past sales with each line's unit price, the latest sale of a product (last_sale), the recurring schedules that bill them and their Shopify orders. |  | `invoicing:documents:read` |
 | `deferred_list` | List parked/deferred auto-flow events for the org: Shopify orders whose invoice did not issue automatically. |  | `invoicing:documents:read` |
 | `deferred_tax_override` | Resolve a TAX REVIEW park (deferred_list items whose reason is shopify_tax_mismatch, tax_on_exempt_treatment, tax_rate_placeholder or buyer_vat_missing; they carry resolution_options) by issuing the order with an explicit tax decision. | yes | `invoicing:documents:write` |
 | `document_send_state` | Whether a payment reminder about an invoice issued by Liaison may still go out, read from the document at send time: stops on paid, credited or voided. |  | `invoicing:documents:read` |
@@ -479,12 +479,12 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `documents_retry_pdf` | Re-render a document's PDF (when pdf_status is failed). |  | `invoicing:documents:write` |
 | `documents_search` | Search invoices, quotes, credit notes, proformas and purchase orders issued here, by query, type, status, contact, date range, or tax treatment. |  | `invoicing:documents:read` |
 | `documents_send_to_customer` | Email a document PDF to the counterparty. | yes | `invoicing:documents:write` |
-| `documents_update` | Edit a document. | yes | `invoicing:documents:write` |
+| `documents_update` | Edit an issued document. | yes | `invoicing:documents:write` |
 | `documents_update_preview` | The document plus the VAT status a documents_update would give its buyer (evidence when the agent declares a private consumer). |  | `invoicing:documents:read` |
 | `draft_issue_preview` | What an approval card reads for a saved draft: the document and the total issuing it would write. |  | `invoicing:documents:read` |
 | `drafts_create` | Create an unissued draft. |  | `invoicing:documents:write` |
 | `drafts_discard` | Discard an unissued draft; no number is used. |  | `invoicing:documents:write` |
-| `drafts_update` | Update an unissued draft, including one from a source. |  | `invoicing:documents:write` |
+| `drafts_update` | Update an unissued draft, including one from a source or a month-end run's row. |  | `invoicing:documents:write` |
 | `einvoice_book_batch` | Book one day's batch of reported sales (consumers, exports, EU customers, internal cancellations) in the e-invoicing platform's ledger: ledger entries only, nothing is transmitted to any customer. | yes | `invoicing:documents:write` |
 | `einvoice_send` | Send one issued e-invoice through the e-invoicing platform (PA). | yes | `invoicing:documents:write` |
 | `einvoice_send_batch` | Send one day's batch of e-invoices issued with no person (a month-end run issuing by itself) through the e-invoicing platform. | yes | `invoicing:documents:write` |

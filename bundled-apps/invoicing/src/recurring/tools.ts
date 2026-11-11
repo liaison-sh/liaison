@@ -24,6 +24,8 @@ import {
 
 export type RecurringCtx = Pick<MutationsCtx, "getUserId" | "db"> & {
   time: TimeSurface["time"]
+  /** Announces a change, so open views of the record read it again. Absent on bare test contexts. */
+  emit?: (event: { entity: string; action: string; entityId: string; data: Record<string, unknown> }) => Promise<void>
   approval?: MutationsCtx["approval"] | null
   executeTool?: MutationsCtx["executeTool"]
   turn?: { get(): Promise<unknown> }
@@ -69,6 +71,8 @@ export type ScheduleUpdateInput = Partial<ScheduleFields> & {
   id: string
   /** `active` resumes a paused or draft schedule from today, `ended` stops it for good. */
   status?: "active" | "ended"
+  /** The version the change was made from: a schedule saved since then refuses it. */
+  expected_version?: number
 }
 
 export interface ScheduleRow extends Cadence {
@@ -290,13 +294,30 @@ export async function checkScheduleUpdate(
   if (current.status === "ended") {
     return fail("schedule_ended", `Schedule ${current.id} has ended and cannot be changed. Save a new schedule instead.`)
   }
-  const { id: _id, status: _status, billsOtherThanStripe, ...patch } = input
+  const stale = staleVersion(current, input.expected_version)
+  if (stale) return stale
+  const { id: _id, status: _status, expected_version: _expected, billsOtherThanStripe, ...patch } = input
   const next = merged(current, patch)
   const errors = [...validateSchedule(next), ...extraErrors(next)]
   if (errors.length > 0) return invalid(errors)
   // Ending a schedule bills nothing more, so it never meets the guard.
   if (raw.status === "ended") return null
   return scheduleGuard(ctx, next, billsOtherThanStripe ?? current.bills_other_than_stripe, stage)
+}
+
+/** Tell open views of the schedule that it changed (they read it again). */
+async function announceScheduleChange(ctx: RecurringCtx, id: string, version: number): Promise<void> {
+  if (!ctx.emit) return
+  await ctx.emit({ entity: "recurring_schedule", action: "updated", entityId: id, data: { schedule_id: id, version } })
+}
+
+/** A change made from an older version than the schedule now holds: refused, never written over. */
+function staleVersion(current: ScheduleRow, expected: number | undefined): Fail | null {
+  if (expected === undefined || expected === current.version) return null
+  return fail(
+    "schedule_changed",
+    `Schedule ${current.id} was changed by someone else: it is now at version ${current.version}, and this change was made from version ${expected}. Nothing was saved. Read it again with recurring_list, then make the change on what it holds now.`,
+  )
 }
 
 export async function recurringScheduleUpdate(
@@ -314,7 +335,7 @@ export async function recurringScheduleUpdate(
   const now = await today(ctx, issuer)
   if (!now.ok) return now.error
 
-  const { id: _id, status: wanted, billsOtherThanStripe, ...patch } = input
+  const { id: _id, status: wanted, expected_version: _expected, billsOtherThanStripe, ...patch } = input
   const next = merged(current, patch)
   const data: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(patch)) if (v !== undefined) data[k] = v
@@ -352,6 +373,7 @@ export async function recurringScheduleUpdate(
   data.status = status
   data.version = current.version + 1
   await ctx.db.update(ENTITY, current.id, data)
+  await announceScheduleChange(ctx, current.id, current.version + 1)
   const issueMode = String(data.issue_mode ?? current.issue_mode)
   const nextIssueOn = (data.next_issue_on as string | null | undefined) ?? (status === "ended" ? null : (current.next_issue_on ?? null))
   return {
@@ -414,6 +436,7 @@ export async function recurringSchedulePause(
     paused_until: input.until ?? null,
     version: current.version + 1,
   })
+  await announceScheduleChange(ctx, current.id, current.version + 1)
   const leftOut = await leaveOutOpenRows(ctx, current.id)
   const runNote = leftOut > 0
     ? ` Its row in the open month-end run is left out (note "${SCHEDULE_PAUSED}"), so approving the run does not issue it; resuming does not put it back (drafts_update with put_back does).`

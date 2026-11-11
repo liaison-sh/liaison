@@ -14,6 +14,7 @@ import {
   recurringList,
   recurringSchedulePause,
   recurringScheduleCreate,
+  checkScheduleUpdate,
   recurringScheduleUpdate,
   type RecurringCtx,
 } from "./tools"
@@ -189,6 +190,45 @@ describe("issue by itself", () => {
       error: { code: "invalid_schedule" },
     })
     expect(writes).toEqual([])
+  })
+
+  test("a save made from a version someone else has since changed is refused, names both versions, and writes nothing", async () => {
+    const { ctx, db, writes } = makeCtx("2026-11-10", { extra: [seeded()] })
+    const first = await recurringScheduleUpdate(ctx, {
+      id: "sched-1",
+      expected_version: 1,
+      lines: [{ ...(lines[0] as (typeof lines)[number]), unit_price_minor: 65000 }],
+    })
+    expect(first).toMatchObject({ status: "completed", version: 2 })
+    writes.length = 0
+    // A second window still holds version 1 and saves its own price.
+    const stale = await recurringScheduleUpdate(ctx, {
+      id: "sched-1",
+      expected_version: 1,
+      lines: [{ ...(lines[0] as (typeof lines)[number]), unit_price_minor: 50000 }],
+    })
+    expect(stale).toMatchObject({ status: "error", error: { code: "schedule_changed" } })
+    const message = (stale as { error: { message: string } }).error.message
+    expect(message).toContain("version 2")
+    expect(message).toContain("version 1")
+    expect(message).toContain("Nothing was saved")
+    expect(writes).toEqual([])
+    expect(db.__all("recurring_schedules")[0]).toMatchObject({ version: 2 })
+    expect((db.__all("recurring_schedules")[0]?.lines as Array<{ unit_price_minor: number }>)[0]?.unit_price_minor).toBe(65000)
+    // The stage-time check refuses it as well, so no approval is ever asked for a stale change.
+    expect(await checkScheduleUpdate(ctx, { id: "sched-1", expected_version: 1, notes: "x" }, "preflight")).toMatchObject({
+      error: { code: "schedule_changed" },
+    })
+  })
+
+  test("a saved change is announced, so every open window of the schedule reads it again", async () => {
+    const { ctx } = makeCtx("2026-11-10", { extra: [seeded()] })
+    const emitted: Array<Record<string, unknown>> = []
+    const withEmit = { ...ctx, emit: async (e: Record<string, unknown>) => void emitted.push(e) } as RecurringCtx
+    await recurringScheduleUpdate(withEmit, { id: "sched-1", expected_version: 1, notes: "Paid by transfer" })
+    expect(emitted).toEqual([
+      { entity: "recurring_schedule", action: "updated", entityId: "sched-1", data: { schedule_id: "sched-1", version: 2 } },
+    ])
   })
 
   test("an update of the billing day moves the next dates from today", async () => {

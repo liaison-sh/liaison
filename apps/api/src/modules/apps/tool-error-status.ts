@@ -311,8 +311,10 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   resolved: 409,
   // Recurring schedules: a schedule that does not exist, has ended or has not started, a repeat
   // or end date it cannot take, and issuing by itself asked for at creation (it is set by an update).
+  // A change made from an older version than the schedule now holds is refused, never written over.
   schedule_not_found: 404,
   schedule_ended: 409,
+  schedule_changed: 409,
   schedule_not_started: 409,
   invalid_schedule: 422,
   invalid_until: 422,

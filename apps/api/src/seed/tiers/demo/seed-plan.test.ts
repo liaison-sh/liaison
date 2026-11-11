@@ -10,7 +10,7 @@ import {
   DEMO_ENTRIES,
   DEMO_ENTRY_NEEDS,
   DEMO_NEED_SPECS,
-  DEMO_NEEDS,
+  DEMO_WORLD_NEEDS,
   type DemoNeed,
   isTourAvailable,
   SCENARIO_TOURS,
@@ -52,28 +52,31 @@ describe("demoSeedPlan", () => {
     const plan = demoSeedPlan(undefined, ON)
     expect(plan.tailored).toBe(false)
     expect(plan.apps).toEqual(DEMO_APPS)
-    for (const need of DEMO_NEEDS) {
+    for (const need of DEMO_WORLD_NEEDS.products) {
       for (const part of DEMO_NEED_SPECS[need].seedParts) expect(plan.parts.has(part)).toBe(true)
     }
   })
 
   it("everything (all six, any order): every app and part, tailored", () => {
-    const plan = demoSeedPlan([...DEMO_NEEDS].reverse(), ON)
+    const plan = demoSeedPlan([...DEMO_WORLD_NEEDS.products].reverse(), ON)
     expect(plan.tailored).toBe(true)
     expect(plan.apps).toEqual(DEMO_APPS)
     expect(plan.parts).toEqual(demoSeedPlan(undefined, ON).parts)
   })
 
-  it.each(DEMO_NEEDS.map((n) => [n]))("%s alone: baseline + its own apps and parts", (need) => {
-    const plan = demoSeedPlan([need as DemoNeed], ON)
-    const spec = DEMO_NEED_SPECS[need as DemoNeed]
-    for (const app of [...DEMO_BASELINE_APPS, ...spec.apps]) expect(plan.apps).toContain(app)
-    expect([...plan.parts].sort()).toEqual([...spec.seedParts].sort())
-    // Unguided apps (social) only with Everything.
-    expect(plan.apps).not.toContain("social")
-    // Every app installed is a demo app, in the demo order.
-    expect(plan.apps).toEqual(DEMO_APPS.filter((a) => plan.apps.includes(a)))
-  })
+  it.each(DEMO_WORLD_NEEDS.products.map((n) => [n]))(
+    "%s alone: baseline + its own apps and parts",
+    (need) => {
+      const plan = demoSeedPlan([need as DemoNeed], ON)
+      const spec = DEMO_NEED_SPECS[need as DemoNeed]
+      for (const app of [...DEMO_BASELINE_APPS, ...spec.apps]) expect(plan.apps).toContain(app)
+      expect([...plan.parts].sort()).toEqual([...spec.seedParts].sort())
+      // Unguided apps (social) only with Everything.
+      expect(plan.apps).not.toContain("social")
+      // Every app installed is a demo app, in the demo order.
+      expect(plan.apps).toEqual(DEMO_APPS.filter((a) => plan.apps.includes(a)))
+    },
+  )
 
   it("support alone installs no shop, no projects; commerce installs the whole commerce layer", () => {
     const support = demoSeedPlan(["support"], ON)
@@ -95,7 +98,7 @@ describe("demoSeedPlan", () => {
     }
     // Sales quotes from invoicing (its routine's one request: record, quote, reply).
     expect(plan.apps).toContain("invoicing")
-    expect(demoSeedPlan([...DEMO_NEEDS], ON).offApps).toEqual([])
+    expect(demoSeedPlan([...DEMO_WORLD_NEEDS.products], ON).offApps).toEqual([])
     expect(demoSeedPlan(undefined, ON).offApps).toEqual([])
   })
 })
@@ -124,7 +127,7 @@ function appsUsedBy(beat: TourBeat): string[] {
 // need installs, picked alone.
 describe("demoSeedPlan: opt-in parts", () => {
   it("the warehouse is seeded only when the deployment turns it on, and named when it is off", () => {
-    for (const needs of [undefined, [...DEMO_NEEDS], ["commerce"] as DemoNeed[]]) {
+    for (const needs of [undefined, [...DEMO_WORLD_NEEDS.products], ["commerce"] as DemoNeed[]]) {
       const on = demoSeedPlan(needs, { warehouse: true })
       const off = demoSeedPlan(needs, { warehouse: false })
       expect(on.parts.has("warehouse")).toBe(true)
@@ -143,19 +146,22 @@ describe("demoSeedPlan: opt-in parts", () => {
 })
 
 describe("each scenario picked alone", () => {
-  it.each(DEMO_NEEDS.map((n) => [n]))("%s: its steps use only the apps it installs", (need) => {
-    const tour = SCENARIO_TOURS.find(
-      (t) => t.id === DEMO_NEED_SPECS[need as DemoNeed].scenarioTourId,
-    )
-    expect(tour).toBeDefined()
-    const installed = new Set(demoSeedPlan([need as DemoNeed], ON).apps)
-    const missing = (tour?.beats ?? []).flatMap((beat) =>
-      appsUsedBy(beat)
-        .filter((app) => !installed.has(app))
-        .map((app) => `${beat.id}: ${app}`),
-    )
-    expect(missing).toEqual([])
-  })
+  it.each(DEMO_WORLD_NEEDS.products.map((n) => [n]))(
+    "%s: its steps use only the apps it installs",
+    (need) => {
+      const tour = SCENARIO_TOURS.find(
+        (t) => t.id === DEMO_NEED_SPECS[need as DemoNeed].scenarioTourId,
+      )
+      expect(tour).toBeDefined()
+      const installed = new Set(demoSeedPlan([need as DemoNeed], ON).apps)
+      const missing = (tour?.beats ?? []).flatMap((beat) =>
+        appsUsedBy(beat)
+          .filter((app) => !installed.has(app))
+          .map((app) => `${beat.id}: ${app}`),
+      )
+      expect(missing).toEqual([])
+    },
+  )
 
   it("Team chat seeds a project for its task to go in, and not the Projects scenario's task", () => {
     const chat = demoSeedPlan(["chat"], ON)

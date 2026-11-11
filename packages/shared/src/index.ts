@@ -77,6 +77,7 @@ export {
 export * from "./connect-failures"
 export { csvCell } from "./csv"
 export * from "./demo/needs"
+export * from "./demo/worlds"
 export * from "./emoji-shortcodes"
 export type { HtmlToTextOptions } from "./html-to-text"
 export { htmlToText } from "./html-to-text"

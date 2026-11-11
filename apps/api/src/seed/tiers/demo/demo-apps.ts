@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { DEMO_NEED_SPECS, DEMO_NEEDS, type DemoNeed, type DemoSeedPart } from "@liaison/shared"
+import {
+  DEMO_NEED_SPECS,
+  DEMO_WORLD_NEEDS,
+  type DemoNeed,
+  type DemoSeedPart,
+} from "@liaison/shared"
 
 /**
  * The demo app surface. `ads`, `calls` and `kpi` are excluded on purpose: one
@@ -83,7 +88,9 @@ export interface DemoSeedPlanOptions {
 /** Parts that run only when the deployment opts in (`DemoSeedPlanOptions`). */
 export const OPT_IN_PARTS = ["warehouse"] as const satisfies readonly DemoSeedPart[]
 
-const ALL_PARTS: readonly DemoSeedPart[] = DEMO_NEEDS.flatMap((n) => DEMO_NEED_SPECS[n].seedParts)
+const ALL_PARTS: readonly DemoSeedPart[] = DEMO_WORLD_NEEDS.products.flatMap(
+  (n) => DEMO_NEED_SPECS[n].seedParts,
+)
 
 /**
  * The seed a list of needs asks for. No needs: the whole world, untailored (the
@@ -107,7 +114,7 @@ function needsPlan(needs?: readonly DemoNeed[]): Omit<DemoSeedPlan, "partsOff"> 
     return { tailored: false, apps: DEMO_APPS, offApps: [], parts: new Set(ALL_PARTS) }
   }
   const picked = new Set(needs)
-  if (DEMO_NEEDS.every((n) => picked.has(n))) {
+  if (DEMO_WORLD_NEEDS.products.every((n) => picked.has(n))) {
     return { tailored: true, apps: DEMO_APPS, offApps: [], parts: new Set(ALL_PARTS) }
   }
   const apps = new Set<string>(DEMO_BASELINE_APPS)

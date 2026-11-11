@@ -2,7 +2,7 @@
 // The demo scenarios: one demoOnly tour per need, never offered to a regular
 // org, each world beat naming its injector, every copy key present in en and fr.
 import { describe, expect, it } from "bun:test"
-import { DEMO_NEED_SPECS, DEMO_NEEDS } from "../../demo/needs"
+import { DEMO_WORLD_NEEDS, demoScenarioTourId } from "../../demo/worlds"
 import en from "../../i18n/locales/en/tours.json"
 import fr from "../../i18n/locales/fr/tours.json"
 import { findTour, TOURS, tourCatalogue } from "../index"
@@ -51,7 +51,7 @@ function lookup(dict: unknown, key: string): unknown {
 describe("demo scenarios", () => {
   it("one per need, in need order, each the need's scenario tour", () => {
     expect(SCENARIO_TOURS.map((t) => t.id)).toEqual(
-      DEMO_NEEDS.map((n) => DEMO_NEED_SPECS[n].scenarioTourId),
+      DEMO_WORLD_NEEDS.products.map((n) => demoScenarioTourId("products", n)),
     )
     for (const tour of SCENARIO_TOURS) expect(findTour(tour.id)).toBe(tour)
   })

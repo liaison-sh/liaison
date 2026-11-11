@@ -23,7 +23,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { DEMO_NEEDS } from "@liaison/shared"
+import { DEMO_WORLD_NEEDS } from "@liaison/shared"
 import { sql } from "drizzle-orm"
 import { startStatementCount } from "~/db/connection"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -135,7 +135,7 @@ async function seedVisitorWorld(): Promise<{ ok: boolean; orgId: string; wallMs:
       name: "Unclaimed",
       password: "VisitorOwner1!Seed",
     },
-    needs: [...DEMO_NEEDS],
+    needs: [...DEMO_WORLD_NEEDS.products],
   })
   return { ok: seed.ok, orgId: seed.orgId ?? "", wallMs: Math.round(performance.now() - t0) }
 }

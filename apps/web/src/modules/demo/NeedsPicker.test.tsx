@@ -4,7 +4,7 @@
 // from lg up, one line on what it shows); picked tiles show their rank;
 // "Everything" is set apart (inverted, with a "Select all" pill) and, once
 // every need is picked, reads as selected too.
-import { DEMO_NEEDS, type DemoNeed } from "@liaison/shared"
+import { DEMO_WORLD_NEEDS, type DemoNeed } from "@liaison/shared"
 import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library"
 import { afterEach, describe, expect, it } from "vitest"
 import { I18nProvider } from "~/modules/i18n/i18n-context"
@@ -20,7 +20,7 @@ describe("NeedsPicker", () => {
     expect(screen.getByTestId("demo-needs-all").getAttribute("aria-pressed")).toBe("false")
     expect(screen.queryByTestId("demo-needs-all-check")).toBeNull()
     unmount()
-    render(() => <NeedsPicker value={[...DEMO_NEEDS]} onChange={() => {}} />)
+    render(() => <NeedsPicker value={[...DEMO_WORLD_NEEDS.products]} onChange={() => {}} />)
     expect(screen.getByTestId("demo-needs-all").getAttribute("aria-pressed")).toBe("true")
     expect(screen.getByTestId("demo-needs-all-check")).toBeTruthy()
   })
@@ -36,7 +36,7 @@ describe("NeedsPicker", () => {
     ))
     const list = screen.getByTestId("demo-needs-list")
     expect(list.tagName).toBe("UL")
-    for (const need of DEMO_NEEDS) {
+    for (const need of DEMO_WORLD_NEEDS.products) {
       const tile = screen.getByTestId(`demo-needs-${need}`)
       expect(list.contains(tile)).toBe(true)
       expect(screen.getByTestId(`demo-needs-name-${need}`).textContent).not.toMatch(/^Agentic /)
@@ -64,7 +64,7 @@ describe("NeedsPicker", () => {
 
     render(() => (
       <I18nProvider initialLocale="en">
-        <NeedsPicker value={[...DEMO_NEEDS]} onChange={() => {}} />
+        <NeedsPicker value={[...DEMO_WORLD_NEEDS.products]} onChange={() => {}} />
       </I18nProvider>
     ))
     expect(pill().textContent).toBe("All selected")
@@ -82,8 +82,10 @@ describe("NeedsPicker", () => {
     ))
     fireEvent.click(screen.getByTestId("demo-needs-all"))
     unmount()
-    render(() => <NeedsPicker value={[...DEMO_NEEDS]} onChange={(next) => seen.push(next)} />)
+    render(() => (
+      <NeedsPicker value={[...DEMO_WORLD_NEEDS.products]} onChange={(next) => seen.push(next)} />
+    ))
     fireEvent.click(screen.getByTestId("demo-needs-all"))
-    expect(seen).toEqual([[...DEMO_NEEDS], []])
+    expect(seen).toEqual([[...DEMO_WORLD_NEEDS.products], []])
   })
 })

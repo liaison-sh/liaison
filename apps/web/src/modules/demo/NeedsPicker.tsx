@@ -7,17 +7,19 @@
 // one-line description shows from lg up only, so a phone sees a calm two-column
 // grid. Several may be picked; the ORDER of the picks is the order the guided
 // scenarios run in, so each picked tile shows its rank (1, 2, 3...).
-// "Everything" picks every need in the canonical order (`DEMO_NEEDS`), and
+// "Everything" picks every need in the canonical order (`DEMO_WORLD_NEEDS.products`), and
 // pressing it again clears them. It is the same size as the other tiles but
 // inverted (a dark fill, its icon square inverted too, and a "Select all" pill
 // in its top-right corner), so it reads as a control over the other tiles
 // rather than as an eighth scenario. Once picked it takes the accent fill and
 // the pill reads "All selected" with a check.
-import { DEMO_NEEDS, type DemoNeed } from "@liaison/shared"
+import { DEMO_WORLD_NEEDS, type DemoNeed } from "@liaison/shared"
 import {
   BookOpen,
+  Briefcase,
   Check,
   Code,
+  CreditCard,
   FolderKanban,
   Layers,
   Mail,
@@ -41,7 +43,7 @@ export function toggleNeed(current: readonly DemoNeed[], need: DemoNeed): DemoNe
 
 /** "Everything": every need in canonical order, or none when all are picked. */
 export function toggleEverything(current: readonly DemoNeed[]): DemoNeed[] {
-  return current.length === DEMO_NEEDS.length ? [] : [...DEMO_NEEDS]
+  return current.length === DEMO_WORLD_NEEDS.products.length ? [] : [...DEMO_WORLD_NEEDS.products]
 }
 
 /** About how long each guided scenario takes, in minutes. */
@@ -51,6 +53,8 @@ export const NEED_MINUTES: Readonly<Record<DemoNeed, number>> = {
   chat: 3,
   sales: 4,
   commerce: 3,
+  money: 3,
+  client: 3,
   dev: 3,
   knowledge: 3,
 }
@@ -69,6 +73,8 @@ export const NEED_LOOK: Readonly<
   chat: { app: "chat", icon: MessageSquare },
   sales: { app: "crm", icon: Mail },
   commerce: { app: "shopify", icon: ShoppingBag },
+  money: { app: "stripe", icon: CreditCard },
+  client: { app: "agreements", icon: Briefcase },
   dev: { app: "dev-sessions", icon: Code },
   knowledge: { app: "knowledge", icon: BookOpen },
 }
@@ -128,7 +134,7 @@ const Tile: Component<{
 export const NeedsPicker: Component<NeedsPickerProps> = (props) => {
   const i18n = useI18n()
   const rank = (need: DemoNeed) => props.value.indexOf(need) + 1
-  const everything = () => props.value.length === DEMO_NEEDS.length
+  const everything = () => props.value.length === DEMO_WORLD_NEEDS.products.length
 
   return (
     <ul
@@ -136,7 +142,7 @@ export const NeedsPicker: Component<NeedsPickerProps> = (props) => {
       aria-label={i18n.t("kernel.demo.entryTitle")}
       class="grid min-w-0 grid-cols-2 gap-2 lg:grid-cols-4 lg:gap-2.5"
     >
-      <For each={DEMO_NEEDS}>
+      <For each={DEMO_WORLD_NEEDS.products}>
         {(need) => {
           const look = NEED_LOOK[need]
           const Icon = look.icon
@@ -183,7 +189,9 @@ export const NeedsPicker: Component<NeedsPickerProps> = (props) => {
         onPress={() => props.onChange(toggleEverything(props.value))}
         name={i18n.t("kernel.demo.needEverything")}
         desc={i18n.t("kernel.demo.needDesc.everything")}
-        minutes={i18n.t("kernel.demo.pickMinutes", { minutes: needsMinutes(DEMO_NEEDS) })}
+        minutes={i18n.t("kernel.demo.pickMinutes", {
+          minutes: needsMinutes(DEMO_WORLD_NEEDS.products),
+        })}
         class={
           everything()
             ? "border-accent bg-accent text-accent-foreground"

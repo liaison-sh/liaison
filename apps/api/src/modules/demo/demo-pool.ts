@@ -89,7 +89,12 @@
 import crypto from "node:crypto"
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import path from "node:path"
-import { DEMO_NEEDS, type DemoNeed, type DemoOrgMarker, type ShippedLocale } from "@liaison/shared"
+import {
+  DEMO_WORLD_NEEDS,
+  type DemoNeed,
+  type DemoOrgMarker,
+  type ShippedLocale,
+} from "@liaison/shared"
 import { and, sql as drizzleSql, eq } from "drizzle-orm"
 import type { PrivilegedDb } from "~/db"
 import { withSystemDb } from "~/db/privileged"
@@ -882,7 +887,7 @@ async function seedPooledShell(shell: PooledShell): Promise<PooledSeedResult> {
       variant: "visitor",
       locale: POOL_SEED_LOCALE,
       owner: { email: shell.login, name: DEMO_POOL_OWNER_NAME, password: shell.password },
-      needs: [...DEMO_NEEDS],
+      needs: [...DEMO_WORLD_NEEDS.products],
     })
     ok = seed.ok
     detail = seed.detail

@@ -135,6 +135,17 @@ export async function provisionOrgShell(
   }
 }
 
+/**
+ * The config of a pass after the first: without the email section, which pass 1
+ * wrote. A pass whose registry has no email provisioner never writes it, and
+ * carrying it would only make the apply's drift record read the org's email
+ * settings back twice per pass, on the visitor seed's load path.
+ */
+function laterPass(config: OrgConfig): OrgConfig {
+  const { email: _written, ...rest } = config
+  return rest
+}
+
 /** Pass 2: the org's admin and its custom roles. */
 export async function provisionAdminAndRoles(
   config: OrgConfig,
@@ -143,7 +154,7 @@ export async function provisionAdminAndRoles(
 ): Promise<void> {
   const pass = await runConfigApply({
     ...applyOptions(log),
-    config,
+    config: laterPass(config),
     registry: { org: orgProvisioner, admin: adminProvisioner, roles: rolesProvisioner },
   })
   if (pass.exitCode !== 0) {
@@ -162,7 +173,7 @@ export async function provisionPeople(
 ): Promise<void> {
   const pass = await runConfigApply({
     ...applyOptions(log),
-    config: { ...config, users: people },
+    config: { ...laterPass(config), users: people },
     registry: { org: orgProvisioner, admin: adminProvisioner, users: usersProvisioner },
   })
   if (pass.exitCode !== 0) {

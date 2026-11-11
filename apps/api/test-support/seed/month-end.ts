@@ -9,14 +9,17 @@ import { withSystemDb } from "~/db/privileged"
 import type { SeedContext } from "~/seed/context"
 import { jsonCell, upsertAppRow } from "~/seed/factories/app-tables"
 import { recurringScheduleRows } from "~/seed/factories/commerce/invoicing"
+import { contact, contactAddress } from "~/seed/tiers/minimal"
 
 export interface MonthEndClientInput {
   issuerId: string
-  contactId: string
   previousDocumentId: string
   scheduleKey: string
   name: string
-  address: string
+  /** The billing address, field by field (a French address: country FR). */
+  street: string
+  postalCode: string
+  city: string
   email: string
   priceMinor: number
   taxRateBp: number
@@ -28,12 +31,20 @@ export interface MonthEndClientInput {
 export async function seedMonthEndClient(
   ctx: SeedContext,
   a: MonthEndClientInput,
-): Promise<{ documentId: string; scheduleId: string }> {
+): Promise<{ contactId: string; documentId: string; scheduleId: string }> {
+  const contactId = await contact(ctx.orgId, a.email, { name: a.name })
+  await contactAddress(ctx.orgId, contactId, {
+    role: "billing",
+    street1: a.street,
+    postalCode: a.postalCode,
+    city: a.city,
+    countryIso2: "FR",
+  })
   const tax = Math.round((a.priceMinor * a.taxRateBp) / 10000)
   const [schedule] = recurringScheduleRows(ctx, a.issuerId, [
     {
       key: a.scheduleKey,
-      contactId: a.contactId,
+      contactId,
       repeats: "month",
       billingDay: "last",
       status: "active",
@@ -57,9 +68,9 @@ export async function seedMonthEndClient(
       type: "invoice",
       status: "issued",
       issuer_profile_id: a.issuerId,
-      counterparty_contact_id: a.contactId,
+      counterparty_contact_id: contactId,
       counterparty_name: a.name,
-      counterparty_address: a.address,
+      counterparty_address: `${a.street}, ${a.postalCode} ${a.city}`,
       counterparty_country: "FR",
       customer_kind: "individual",
       counterparty_email: a.email,
@@ -89,5 +100,5 @@ export async function seedMonthEndClient(
       created_by: a.createdBy,
     })
   })
-  return { documentId: a.previousDocumentId, scheduleId: schedule.id }
+  return { contactId, documentId: a.previousDocumentId, scheduleId: schedule.id }
 }

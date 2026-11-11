@@ -68,7 +68,7 @@ const GOOGLE_DRIVE_PHRASE = "Google Drive is a headless connector for working wi
 const SOCIAL_PHRASE = "Use the Social tools to triage findings"
 const BOXTAL_PHRASE = "Boxtal is shipping: carrier rates, labels, shipments, and tracking."
 const INVOICING_PHRASE =
-  "Invoicing issues financial documents: invoices, quotes, proformas, purchase orders"
+  "Invoicing issues and reconciles invoices, quotes, proformas, purchase orders"
 
 // Starter skills authored/grown in Module K's catalog (verified app skills).
 const PROJECTS_SKILL = "diagnose-routine-state" // projects (host) app skill, no requiredScopes

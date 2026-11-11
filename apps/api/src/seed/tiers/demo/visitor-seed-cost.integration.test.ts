@@ -72,14 +72,21 @@ const CATALOG_DEMO_APPS = ["invoicing", "social", "pennylane", "boxtal", "shopif
  * countries are written in one statement per contacts batch (one per contact
  * cost 5 926 on Linux), and the round trips also count the dealer links above,
  * whose re-measure left the statement figure as it was.
+ * Re-measured 2026-11-11 once a seeded org carries the world company's
+ * commercial identity: 5 903 round trips in 547 transactions (cold 5 920 in
+ * 548), 330 outbox events. The identity costs two transactions: its read and
+ * write in one, and the apply's drift record reading it back. The org pass
+ * alone carries the email section; the later passes, which never write it,
+ * read it back four more times when they carried it too (5 932 in 553 on
+ * Linux).
  */
 const BASELINE = {
   outboxEvents: 330,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 5_897,
-  transactions: 545,
+  statements: 5_908,
+  transactions: 547,
 }
 /**
  * Round trips are deterministic up to a few cache reads (5 251-5 262 across

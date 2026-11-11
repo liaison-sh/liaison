@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// A real month-end run for browser tests: a fresh issuer, `count` monthly schedules each with a
+// A real month-end run for browser tests: a fresh issuer, `count` customers (a contact with a
+// billing address, which the draft reads on the draft day), each with a monthly schedule and a
 // paid previous invoice billing the same line, and the app's own draft job run once, which drafts
 // the rows and stages the run's one approval card. The schedules and their previous invoices are
 // written as rows, as the run's integration test does; everything after that is the app's code.
@@ -79,18 +80,20 @@ export async function draftMonthEndRun(
   ])
   const { today, monthEnd } = days()
   const name = opts.customer ?? ((i: number) => `Maison Client ${i}`)
+  // Contacts are deduped on email: each run's customers are its own.
+  const tag = randomUUID().slice(0, 8)
   for (let i = 1; i <= opts.count; i++) {
-    const contact = randomUUID()
     const prev = randomUUID()
     const price = 49000
     await seedFactory(env, opts.orgId, "invoicing.monthEndClient", {
       issuerId,
-      contactId: contact,
       previousDocumentId: prev,
       scheduleKey: prev,
       name: name(i),
-      address: `${i} rue des Tests, 75011 Paris`,
-      email: `client${i}@e2e.test`,
+      street: `${i} rue des Tests`,
+      postalCode: "75011",
+      city: "Paris",
+      email: `client${i}-${tag}@e2e.test`,
       priceMinor: price,
       taxRateBp: 2000,
       nextIssueOn: monthEnd,

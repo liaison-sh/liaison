@@ -847,16 +847,17 @@ export const SEED_FACTORIES: Record<string, SeedRouteFactory> = {
     },
   ),
 
-  /** One subscription customer of an issuer: a paid invoice and the active monthly schedule continuing it. */
+  /** One subscription customer of an issuer: its contact and billing address, a paid invoice and the active monthly schedule continuing it. */
   "invoicing.monthEndClient": factory(
     zod.object({
       issuerId: uuid,
-      contactId: uuid,
       previousDocumentId: uuid,
       scheduleKey: zod.string().min(1),
       name: zod.string().min(1),
-      address: zod.string().min(1),
-      email: zod.string().min(1),
+      street: zod.string().min(1),
+      postalCode: zod.string().min(1),
+      city: zod.string().min(1),
+      email: zod.string().min(3),
       priceMinor: zod.number().int().positive(),
       taxRateBp: zod.number().int().min(0),
       nextIssueOn: zod.string().regex(/^\d{4}-\d{2}-\d{2}$/),

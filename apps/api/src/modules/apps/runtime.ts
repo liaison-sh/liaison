@@ -80,6 +80,7 @@ import {
   viewRegistry,
   webhookHandlers,
 } from "~/modules/apps/app-registries"
+import { appSurfaceRegistry, buildAppSurface } from "~/modules/apps/app-surface"
 import {
   registerApprovalSummarizer,
   templateApprovalSummarizer,
@@ -3707,6 +3708,12 @@ async function registerSingleApp(
         ? projection.settings.value
         : buildAppSettingsEntry(desc)
       if (settingsEntry) appSettingsRegistry.set([orgId, desc.name], settingsEntry)
+
+      // Pages, the routes they call, and declarative provisioning (app-surface.ts).
+      if (isManifestFormat && bundlePath) {
+        const surface = buildAppSurface(desc as Parameters<typeof buildAppSurface>[0], bundlePath)
+        if (surface) appSurfaceRegistry.set([orgId, desc.name], surface)
+      }
 
       // Per-app attention items provider hook.
       const attDecl = (desc as any).views?.attentionItems

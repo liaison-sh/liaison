@@ -15,7 +15,7 @@
 // is asked for directly with mode personal.
 
 import { connectionConfigRegistry } from "~/modules/apps/app-registries"
-import { oauthConnectionKey, resolveOAuthClient } from "~/modules/apps/connections/oauth-client"
+import { oauthClientKey, resolveOAuthClient } from "~/modules/apps/connections/oauth-client"
 import { connectionTurnedOff } from "~/modules/apps/connections/oauth-client-config"
 import {
   type PendingSecretItem,
@@ -42,7 +42,7 @@ export async function needsClientCard(
   app: string,
   connection: string,
 ): Promise<boolean> {
-  return (await resolveOAuthClient(orgId, oauthConnectionKey(app, connection))).source === "none"
+  return (await resolveOAuthClient(orgId, oauthClientKey(orgId, app, connection))).source === "none"
 }
 
 /**

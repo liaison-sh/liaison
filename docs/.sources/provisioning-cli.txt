@@ -105,3 +105,5 @@ connect --token-env: no client recorded, nothing refreshes the token -> apps/api
 connect --org takes a slug or an id -> apps/api/src/cli/lib/resolve-org-id.ts:20-26
 app run-job: enqueueAppJob with one attempt, params may not set orgId or _ keys, --wait prints {jobId, ok, ms, error}, timeout default 600 -> apps/api/src/cli/app/run-job.ts:59 ; apps/api/src/cli/app/run-job.ts:78-160
 app run-job example: shopify backfill-customers is a declared job -> bundled-apps/shopify/app.manifest.json:1
+apps[].provision: the app's own setup, checked against its manifest schema (exit 2 before any write), run after the connection, changed lines or unchanged -> apps/api/src/cli/config/schema.ts:338 ; apps/api/src/cli/provisioners/app-provision.ts ; apps/api/src/cli/provisioners/apps.ts:454
+config verify: provision dry run DRIFT, then the app's verify PASS/FAIL -> apps/api/src/cli/config/verify.ts:128

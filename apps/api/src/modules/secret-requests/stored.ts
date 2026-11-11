@@ -37,10 +37,8 @@ import type { PrivilegedDb } from "~/db"
 import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { connectedAccounts, oauthProviders, organizations } from "~/db/schema/kernel"
-import {
-  connectionProviderName,
-  oauthClientIdHint,
-} from "~/modules/apps/connections/oauth-client-provisioning"
+import { oauthClientKey } from "~/modules/apps/connections/oauth-client"
+import { oauthClientIdHint } from "~/modules/apps/connections/oauth-client-provisioning"
 import type { SecretTarget } from "~/modules/secret-requests/targets"
 
 export interface StoredSecretState {
@@ -133,7 +131,7 @@ async function readState(
         .where(
           and(
             eq(oauthProviders.orgId, orgId),
-            eq(oauthProviders.name, connectionProviderName(target.app, target.connection)),
+            eq(oauthProviders.name, oauthClientKey(orgId, target.app, target.connection)),
           ),
         )
       for (const row of rows) add(sha256(row.secret), oauthClientIdHint(row.clientId))

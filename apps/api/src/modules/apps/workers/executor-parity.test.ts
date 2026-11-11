@@ -627,6 +627,22 @@ describe("ctx.store on every executor", () => {
   }, 60_000)
 })
 
+describe("ctx.pages on every executor", () => {
+  it("a link for the run's person, and an unknown page refused: equal answers", async () => {
+    const answers: Record<string, unknown> = {}
+    for (const ex of STORE_EXECUTORS) {
+      answers[ex] = await runStore(ex, "wparity", "pageLink", {})
+    }
+    expect(answers.inprocess).toEqual({
+      url: true,
+      expiresInSeconds: 900,
+      missing: { thrown: true, code: "page_not_found", status: 404 },
+    })
+    expect(answers.pool).toEqual(answers.inprocess)
+    expect(answers.workers).toEqual(answers.inprocess)
+  }, 60_000)
+})
+
 describe("ctx.steps on every executor: a job processes N pages over several runs", () => {
   /**
    * Run the fixture's `pages` job the way the job worker does (a session job

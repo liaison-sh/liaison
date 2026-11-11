@@ -10,7 +10,11 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { z } from "zod"
 import type { UserContext } from "~/db/rls"
 import { toolRegistry } from "~/modules/apps/app-registries"
-import { type BlockCacheStore, BlockCacheTestAccess } from "~/modules/dashboards/cache"
+import {
+  type BlockCacheStore,
+  BlockCacheTestAccess,
+  CUSTOM_WINDOW_RUNS,
+} from "~/modules/dashboards/cache"
 import {
   createDashboard,
   type DashboardError,
@@ -223,6 +227,22 @@ describe("filters", () => {
     expect(runs).toHaveLength(1)
     await getBlockData(viewer, id, "count", { filters: { market: ["DE"] } })
     expect(runs).toHaveLength(2)
+  })
+
+  it("new filter values a param reads count toward the per-minute budget; a where-only one never", async () => {
+    BlockCacheTestAccess.setStore(fakeStore())
+    const id = await dashboard()
+    const viewer = as(owner, [WRITE, READ])
+    const outcomes: unknown[] = []
+    for (let i = 0; i < CUSTOM_WINDOW_RUNS + 1; i++) {
+      outcomes.push(await getBlockData(viewer, id, "count", { filters: { market: [`M${i}`] } }))
+    }
+    expect(outcomes.slice(0, CUSTOM_WINDOW_RUNS).every((o) => (o as { ok: boolean }).ok)).toBe(true)
+    expect(outcomes[CUSTOM_WINDOW_RUNS]).toMatchObject({ ok: false, error: "rate_limited" })
+    // A where-only filter, and the default values, read the cache or run unbudgeted.
+    expect(
+      await getBlockData(viewer, id, "count", { filters: { channel: ["b2b"] } }),
+    ).toMatchObject({ ok: true })
   })
 
   it("refuses an unknown filter or a value outside its list", async () => {

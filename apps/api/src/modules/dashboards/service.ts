@@ -59,6 +59,7 @@ import {
   DateTokenError,
   type DayWindow,
   dateTokensIn,
+  filterTokensIn,
   hasRangeTokens,
   resolveDateTokens,
   resolveTimeRange,
@@ -926,7 +927,7 @@ async function readSourceCached(
   sourceKey: SourceKey,
   source: BlockSource,
   range: DayWindow | null,
-  opts: { refresh?: boolean; signal?: AbortSignal; range?: TimeRange },
+  opts: { refresh?: boolean; signal?: AbortSignal; range?: TimeRange; budgeted?: boolean },
   ttlOverride?: number,
 ): Promise<SourceReadResult> {
   const key = sourceCacheKey(viewer, {
@@ -949,16 +950,18 @@ async function readSourceCached(
     const failed = await readCachedBlock<CachedFailure>(failedKey)
     if (failed) return { ok: false, error: failed.error, message: failed.message }
   }
-  // A custom range is a new run for every new pair of days: a budget per viewer and source, so
-  // walking the calendar cannot run the source without end. Presets and the default never count.
+  // A custom range, or a filter value a param reads, is a new run for every new value: a budget
+  // per viewer and source, so walking the calendar or a filter's values cannot run the source
+  // without end. Presets, the default and the default filter values never count.
   if (
-    opts.range?.preset === "custom" &&
+    (opts.range?.preset === "custom" || opts.budgeted) &&
     !(await takeCustomWindowRun(viewer, dashboard.row.id, sourceKey))
   ) {
     return {
       ok: false,
       error: "rate_limited",
-      message: "too many different custom ranges for this block in the last minute",
+      message:
+        "too many different custom ranges or filter values for this block in the last minute",
     }
   }
   const ttl = ttlOverride ?? sourceTtlSec(dashboard.spec, sourceKey)
@@ -1003,6 +1006,8 @@ interface PlannedSource {
   filtered: BlockSource
   /** Fully resolved: what runs and what keys the cache. */
   resolved: BlockSource
+  /** A param reads a filter value other than its default: a new run counts toward the budget. */
+  budgeted: boolean
   range: DayWindow | null
   window: BlockWindow
   compareRange: BlockCompareWindow | null
@@ -1046,7 +1051,11 @@ async function planSource(
     }
   }
   const resolved = await resolveSourceDates(filtered, viewer.orgId, now, range)
-  return { sourceKey, saved, filtered, resolved, range, window, compareRange }
+  const defaults = defaultFilterValues(spec)
+  const budgeted = filterTokensIn(sourceValue(saved)).some(
+    (id) => JSON.stringify(values[id] ?? []) !== JSON.stringify(defaults[id] ?? []),
+  )
+  return { sourceKey, saved, filtered, resolved, budgeted, range, window, compareRange }
 }
 
 /** Eligibility, every time: a tool turned gated or an app turned off after the save refuses. */
@@ -1146,14 +1155,10 @@ export async function getBlockData(
   const where = resolveWhere(block.map.where, values)
   const linkApp = sourceApp(plan.resolved)
   const mapOpts = { window: range, where, ...(linkApp ? { linkApp } : {}) }
-  const current = await readSourceCached(
-    viewer,
-    dashboard,
-    plan.sourceKey,
-    plan.resolved,
-    range,
-    opts,
-  )
+  const current = await readSourceCached(viewer, dashboard, plan.sourceKey, plan.resolved, range, {
+    ...opts,
+    budgeted: plan.budgeted,
+  })
   if (!current.ok) return { ...current, blockId, window, compareWindow: compareRange }
   const mapped = mapBlock(block, current.read, mapOpts)
   if (!mapped.ok) return { ...mapped, blockId, window, compareWindow: compareRange }
@@ -1176,7 +1181,7 @@ export async function getBlockData(
         plan.sourceKey,
         previousSource,
         compareRange,
-        { ...opts, refresh: false },
+        { ...opts, refresh: false, budgeted: plan.budgeted },
         PAST_WINDOW_TTL_SEC,
       )
       const prevMapped = previous.ok
@@ -1306,6 +1311,8 @@ export async function getBlockRows(
   const refused = await sourceRefusal(viewer, plan.resolved)
   if (refused) return { ...refused, blockId, window }
   const read = await readSourceCached(viewer, dashboard, plan.sourceKey, plan.resolved, range, {
+    budgeted: plan.budgeted,
+    ...(opts.range ? { range: opts.range } : {}),
     ...(opts.signal ? { signal: opts.signal } : {}),
   })
   if (!read.ok) return { ...read, blockId, window }
@@ -1450,6 +1457,8 @@ export async function getFilterOptions(
   const refused = await sourceRefusal(viewer, plan.resolved)
   if (refused) return { ...refused, filterId }
   const read = await readSourceCached(viewer, dashboard, sourceKey, plan.resolved, plan.range, {
+    budgeted: plan.budgeted,
+    ...(opts.range ? { range: opts.range } : {}),
     ...(opts.signal ? { signal: opts.signal } : {}),
   })
   if (!read.ok) return { ...read, filterId }

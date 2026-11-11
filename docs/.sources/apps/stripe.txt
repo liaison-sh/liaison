@@ -110,3 +110,6 @@ candidates: 35 days invoices without document, 3 days paid, 35 days succeeded re
 connect form on Settings > Apps > Stripe and Connect Stripe on Home -> bundled-apps/stripe/app.manifest.json:116 ; bundled-apps/stripe/src/ui/HomeStates.tsx:52
 a refused key is not stored and the form shows the reason -> apps/web/src/modules/secret-request/SecretRequestToolCard.tsx:384 ; bundled-apps/stripe/src/connection.ts:364
 Activity timeline row for a linked customer: customer created -> bundled-apps/stripe/src/tools/activity.ts:82
+subscription started is dated when Stripe started it -> bundled-apps/stripe/src/tools/activity.ts:108 ; bundled-apps/stripe/src/mirror.ts:163
+the card shown is the one the subscription bills; a new card shows -> bundled-apps/stripe/src/mirror.ts:173
+an invoice Liaison issued shows Liaison's number and opens the Liaison invoice -> bundled-apps/stripe/src/ui/customers-model.ts:234 ; bundled-apps/stripe/src/ui/CustomerDetail.tsx:230

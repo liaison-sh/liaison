@@ -270,3 +270,4 @@ standing authorization Turn on confirms, no platform offers no Turn on, countdow
 run detail before issue: status word, drafts with no number, nothing billed yet; approval day in the issuer's zone -> bundled-apps/invoicing/src/ui/RunDetail.tsx:76 ; bundled-apps/invoicing/src/ui/RunDetail.tsx:332 ; bundled-apps/invoicing/src/ui/RunDetail.tsx:98
 Approve N for everyone who decides; card lines name period, customers, total; a job's card names the job -> bundled-apps/invoicing/src/ui/MonthEndRunPanel.tsx:339 ; bundled-apps/invoicing/src/summarizers.ts:1119 ; apps/api/src/modules/approvals/requester.ts:59
 a schedule shows on its customer's Activity timeline with cadence and amount before VAT -> bundled-apps/invoicing/src/activity.ts:172
+no Mark paid on an invoice Stripe collects; Collected by Stripe opens the Stripe customer -> bundled-apps/invoicing/src/ui/DocumentDetail.tsx:1208 ; bundled-apps/invoicing/src/ui/DocumentDetail.tsx:1293

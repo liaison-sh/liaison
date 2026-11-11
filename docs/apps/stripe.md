@@ -126,7 +126,7 @@ The agent reads the mirror, never Stripe directly. Each answer names its records
 
 Answers are masked: no address and no tax id, and a card shows only its brand, last 4 digits and expiry. Customer names, plans and dispute reasons are written by people outside your company, so a turn that reads them is marked as having read outside text, and a later action that leaves Liaison (including `customer_link`) waits for a person's approval.
 
-On a ticket from a linked contact, and on a linked contact's or company's page, the agent also gets a few lines: the plan and its status, the card's brand and last 4 digits, and the unpaid invoices with the next retry date. A company's and a contact's **Activity** timeline shows Stripe rows: customer created, payment failed, retry failed, subscription started, subscription cancelled, refund and dispute.
+On a ticket from a linked contact, and on a linked contact's or company's page, the agent also gets a few lines: the plan and its status, the card's brand and last 4 digits, and the unpaid invoices with the next retry date. A company's and a contact's **Activity** timeline shows Stripe rows: customer created, payment failed, retry failed, subscription started (dated when Stripe started it), subscription cancelled, refund and dispute. The card shown is the one the subscription bills: when the customer adds a new card, the new one shows. On a customer's page, an invoice Liaison issued shows Liaison's number and opens the Liaison invoice.
 
 ## Refund, cancel and send a card link
 

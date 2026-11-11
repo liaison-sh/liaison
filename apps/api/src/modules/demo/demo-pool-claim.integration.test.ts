@@ -35,7 +35,7 @@ const saved = {
 async function drainPool(): Promise<void> {
   await sql`
     UPDATE kernel.organizations
-    SET settings = jsonb_set(settings #- '{demo,pool}', '{demo,expiresAt}', '"2000-01-01T00:00:00.000Z"')
+    SET settings = jsonb_set(settings #- '{demo,pool}', '{demo,expiresAt}', '"2000-01-01T01:00:00.000Z"')
     WHERE settings->'demo'->>'pool' IS NOT NULL`
   invalidateDemoMarker()
 }

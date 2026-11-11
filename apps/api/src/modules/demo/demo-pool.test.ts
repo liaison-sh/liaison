@@ -1104,7 +1104,7 @@ describe("demo warm pool", () => {
     // Every world short is backing off: the run says so and seeds nothing.
     await sql`
       UPDATE kernel.organizations
-      SET settings = jsonb_set(settings, '{demo,expiresAt}', '"2000-01-01T00:00:00.000Z"') #- '{demo,pool}'
+      SET settings = jsonb_set(settings, '{demo,expiresAt}', '"2000-01-01T01:00:00.000Z"') #- '{demo,pool}'
       WHERE settings->'demo'->>'pool' IS NOT NULL AND settings->'demo'->>'worldId' = 'saas'`
     invalidateDemoMarker()
     poolSeedCalls = 0

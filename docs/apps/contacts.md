@@ -92,7 +92,7 @@ See the [scope reference](../reference/scopes.md).
 | Tool | What it does | Approval |
 |---|---|---|
 | `contacts_search` | Search contacts by name, email or company | No |
-| `contacts_read` | Read a contact with recent mail and timeline | No |
+| `contacts_read` | Read a contact with recent mail and timeline, and one line per other app that holds records for them (only what you may read there) | No |
 | `contacts_write` | Create or update a contact | Yes, unless an auto-approve policy covers it |
 | `threads_reply` with `contactId` | Post in a contact's discussion, as the agent | No |
 | `threads_create` with `createdFrom` naming the contact | Post in the contact's discussion, as the agent: the same conversation, never a second one | No |

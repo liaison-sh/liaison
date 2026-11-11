@@ -2,7 +2,9 @@
 /**
  * Invoicing's rows for a company's or a contact's timeline (the `activity_read`
  * source the kernel calls): a document issued, an invoice paid, a credit note
- * issued. Never a draft. Read live, so a deleted document is gone at once.
+ * issued, a recurring schedule that bills the person (at its creation, with its
+ * cadence and amount, opening the schedule). Never a draft document. Read live,
+ * so a deleted document is gone at once.
  *
  * Rows are ordered newest first by (time, `<prefix><id>`), and only rows
  * strictly older than the cursor come back. A document's issue date is a day,
@@ -75,6 +77,29 @@ function amount(minor: unknown, currency: unknown): string {
   return `, ${(n / 100).toFixed(2)} ${typeof currency === "string" ? currency : ""}`.trimEnd()
 }
 
+const CADENCE: Record<string, string> = { month: "monthly", quarter: "quarterly", year: "yearly" }
+
+/** A schedule's lines summed before VAT: what each of its invoices bills. */
+function scheduleAmount(raw: unknown): string {
+  let lines: unknown = raw
+  if (typeof raw === "string") {
+    try {
+      lines = JSON.parse(raw)
+    } catch {
+      return ""
+    }
+  }
+  if (!Array.isArray(lines) || lines.length === 0) return ""
+  let total = 0
+  for (const l of lines as Array<Record<string, unknown>>) {
+    const qty = Number(l?.qty ?? l?.quantity ?? 1)
+    const unit = Number(l?.unit_price_minor)
+    if (!Number.isFinite(qty) || !Number.isFinite(unit)) return ""
+    total += qty * unit
+  }
+  return `, ${(total / 100).toFixed(2)} before VAT`
+}
+
 const LABEL: Record<string, string> = {
   invoice: "Invoice",
   quote: "Quote",
@@ -128,6 +153,29 @@ export async function activityRead(ctx: { db: ReadsDb }, raw: unknown, page = AC
         title: `${name} paid`,
       })
     }
+  }
+  for (let offset = 0; ; offset += size) {
+    const batch = (await ctx.db.findMany("recurring_schedules", {
+      where: { contact_id: { in: input.contactIds } },
+      orderBy: { id: "asc" },
+      limit: size,
+      offset,
+    })) as Array<Record<string, unknown>>
+    for (const s of batch) {
+      const id = String(s.id)
+      const at = s.created_at instanceof Date ? s.created_at.toISOString() : s.created_at
+      if (typeof at !== "string" || Number.isNaN(Date.parse(at))) continue
+      const status = String(s.status ?? "active")
+      push({
+        id: `${id}:schedule`,
+        at: new Date(at).toISOString(),
+        title: `Recurring schedule, ${CADENCE[String(s.repeats)] ?? String(s.repeats ?? "")}${scheduleAmount(s.lines)}${status === "active" ? "" : ` (${status})`}`,
+        who: null,
+        contactId: typeof s.contact_id === "string" ? s.contact_id : null,
+        href: { app: "invoicing", entityType: "schedule", entityId: id },
+      })
+    }
+    if (batch.length < size) break
   }
   rows.sort((a, b) =>
     compare({ at: a.at, id: `${input.prefix}${a.id}` }, { at: b.at, id: `${input.prefix}${b.id}` }),

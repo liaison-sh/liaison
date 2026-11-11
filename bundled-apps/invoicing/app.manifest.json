@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.20.96",
+  "version": "0.20.97",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1795,7 +1795,7 @@
     "approval_route_read": {"description": "Who a month-end run's card is for: its account manager when every row has the same one. Read by the kernel when the card is staged.", "readOnly": true, "agentVisible": false, "timeoutMs": 5000, "requiredScopes": ["invoicing:documents:read"], "handler": "approvalRouteReadHandler", "params": {"type": "object", "properties": {"entityType": {"type": "string"}, "entityId": {"type": "string"}}, "required": ["entityType", "entityId"]}},
     "recurring_draft_write": {"description": "Write one month-end run draft and its lines in one transaction. Called by the run's draft job only.", "requiredScopes": ["invoicing:documents:write"], "handler": "recurringDraftWriteHandler", "agentVisible": false, "trustBoundary": "internal", "atomic": true, "timeoutMs": 20000, "writesToTable": "app_invoicing.documents", "params": {"type": "object", "properties": {"document": {"type": "object"}, "lines": {"type": "array", "maxItems": 500, "items": {"type": "object"}}}, "required": ["document", "lines"], "additionalProperties": false}},
     "recurring_item_issue": {"summarizer": "summarizeRecurringItemIssue", "description": "Issue one approved row of a month-end run. Called by the run's issue job only.", "requiredScopes": ["invoicing:documents:write"], "handler": "recurringItemIssueHandler", "agentVisible": false, "trustBoundary": "internal", "atomic": true, "timeoutMs": 20000, "writesToTable": "app_invoicing.documents", "params": {"type": "object", "properties": {"item_id": {"type": "string"}}, "required": ["item_id"], "additionalProperties": false}},
-    "activity_read": {"description": "A company's or a contact's documents issued, paid and credited, newest first, for their timeline. Never drafts. Read by the kernel.", "readOnly": true, "agentVisible": false, "timeoutMs": 2000, "requiredScopes": ["invoicing:documents:read"], "handler": "activityReadHandler", "params": {"type": "object", "properties": {"contactIds": {"type": "array", "items": {"type": "string"}}, "companyId": {"type": ["string", "null"]}, "dealIds": {"type": "array", "items": {"type": "string"}}, "before": {"type": ["object", "null"]}, "limit": {"type": "integer"}, "prefix": {"type": "string"}}}},
+    "activity_read": {"description": "A company's or a contact's documents issued, paid and credited, and the recurring schedules that bill them, newest first, for their timeline. Never drafts. Read by the kernel.", "readOnly": true, "agentVisible": false, "timeoutMs": 2000, "requiredScopes": ["invoicing:documents:read"], "handler": "activityReadHandler", "params": {"type": "object", "properties": {"contactIds": {"type": "array", "items": {"type": "string"}}, "companyId": {"type": ["string", "null"]}, "dealIds": {"type": "array", "items": {"type": "string"}}, "before": {"type": ["object", "null"]}, "limit": {"type": "integer"}, "prefix": {"type": "string"}}}},
     "einvoicing_settings_values": {
       "description": "The settings page's own read of the four e-invoicing fields (platform, cut-over date, send and booking switches), in the shape einvoicing_settings_set takes back. Not for agents (einvoicing_settings_get is).",
       "requiredScopes": [

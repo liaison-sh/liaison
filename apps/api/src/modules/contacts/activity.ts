@@ -582,3 +582,111 @@ export async function withReadOnlySource<T>(
   }
   throw new Error("activity source: no answer")
 }
+
+/** The records one app holds for a contact, by kind, as its timeline source answers them. */
+export interface LinkedRecordKind {
+  kind: string
+  /** Distinct records seen; with `more`, the source had more rows than it was asked for. */
+  count: number
+  more: boolean
+  newest: { title: string; entityId: string; at: string }
+}
+
+export interface LinkedApp {
+  app: string
+  source: string
+  label: string
+  kinds: LinkedRecordKind[]
+}
+
+export interface LinkedRecords {
+  apps: LinkedApp[]
+  unavailable: ActivityUnavailable[]
+}
+
+/**
+ * The records other apps hold for one contact, under the caller's own scopes:
+ * the timeline's sources, each asked as the caller in a read-only run under one
+ * deadline (`readActivity`'s rules), grouped by the record each row opens. A
+ * source the caller has no scope for, or whose app is off, is never asked and
+ * never named; a record the caller's row security hides is never returned by
+ * its source. `skip` leaves out sources (by filter key) the caller shows itself.
+ * Null when the contact is not visible to the caller.
+ */
+export async function readLinkedRecords(input: {
+  orgId: string
+  actor: UserContext
+  contactId: string
+  skip?: readonly string[]
+  deadlineMs?: number
+}): Promise<LinkedRecords | null> {
+  const { orgId, actor } = input
+  const subject = await withRlsContext(actor, (tx) =>
+    readSubject(tx, orgId, { contactId: input.contactId }),
+  )
+  if (!subject) return null
+  const skip = new Set(input.skip ?? [])
+  const sources = sourcesFor(orgId, actor, null, subject).filter((d) => !skip.has(d.filterKey))
+  if (sources.length === 0) return { apps: [], unavailable: [] }
+  const controller = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort()
+      resolve("timeout")
+    }, input.deadlineMs ?? ACTIVITY_DEADLINE_MS)
+  })
+  const limit = ACTIVITY_LIMIT_MAX
+  const asked = await Promise.all(
+    sources.map((decl) =>
+      ask(
+        orgId,
+        actor,
+        decl,
+        {
+          contactIds: subject.contactIds,
+          companyId: null,
+          dealIds: subject.dealIds,
+          before: null,
+          limit,
+        },
+        controller.signal,
+        deadline,
+      ),
+    ),
+  )
+  clearTimeout(timer)
+
+  const apps: LinkedApp[] = []
+  const unavailable: ActivityUnavailable[] = []
+  for (const a of asked) {
+    if (!a.ok) {
+      unavailable.push({ source: a.decl.filterKey, label: a.decl.label, reason: a.reason })
+      continue
+    }
+    const rows = a.answer.rows
+      .filter((r) => r.href)
+      .map((r) => ({ ...r, id: `${a.decl.filterKey}:${r.id}` }))
+      .sort(compareActivity)
+    const kinds = new Map<string, { ids: Set<string>; newest: LinkedRecordKind["newest"] }>()
+    for (const r of rows) {
+      const href = r.href as NonNullable<ActivityRow["href"]>
+      const k = kinds.get(href.entityType)
+      if (k) k.ids.add(href.entityId)
+      else
+        kinds.set(href.entityType, {
+          ids: new Set([href.entityId]),
+          newest: { title: r.title, entityId: href.entityId, at: r.at },
+        })
+    }
+    if (kinds.size === 0) continue
+    const more = a.answer.rows.length >= limit
+    apps.push({
+      app: a.decl.app,
+      source: a.decl.filterKey,
+      label: a.decl.label,
+      kinds: [...kinds].map(([kind, k]) => ({ kind, count: k.ids.size, more, newest: k.newest })),
+    })
+  }
+  return { apps, unavailable }
+}

@@ -56,3 +56,4 @@ The previous manager gets one Home row naming who gave which companies to whom -
 Deactivating a manager asks who takes their companies -> apps/api/src/modules/apps/kernel-bulk.ts:157
 Activity timeline, Follow-ups block and company link on the person's page -> apps/web/src/modules/contacts/ContactDetail.tsx:436-492
 Companies in the Contacts sidebar -> apps/web/src/modules/contacts/ContactsSidebar.tsx:352-400
+contacts_read: one line per other app with records for the person, only what the caller may read -> apps/api/src/modules/agent/tools/contact-tools.ts:332 ; apps/api/src/modules/contacts/activity.ts:616

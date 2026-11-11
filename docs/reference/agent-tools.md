@@ -452,7 +452,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 
 | Tool | Description | Approval-gated | Required scopes |
 | --- | --- | --- | --- |
-| `activity_read` | A company's or a contact's documents issued, paid and credited, newest first, for their timeline. |  | `invoicing:documents:read` |
+| `activity_read` | A company's or a contact's documents issued, paid and credited, and the recurring schedules that bill them, newest first, for their timeline. |  | `invoicing:documents:read` |
 | `approval_route_read` | Who a month-end run's card is for: its account manager when every row has the same one. |  | `invoicing:documents:read` |
 | `card_stream_issuer` | Who issues the invoices of card payments on Stripe for the org. |  | `invoicing:internal` |
 | `contact_relationships_get` | Get a contact's invoicing relationship classification (customer/vendor). |  | `invoicing:contacts:read` |
@@ -823,7 +823,7 @@ Stripe: customers, subscriptions, invoices and payments from your Stripe account
 
 | Tool | Description | Approval-gated | Required scopes |
 | --- | --- | --- | --- |
-| `activity_read` | A company's or a contact's Stripe rows for their timeline: payment failed, retry failed, subscription started or cancelled, refund, dispute. |  | `stripe:customers:read` |
+| `activity_read` | A company's or a contact's Stripe rows for their timeline: customer created, payment failed, retry failed, subscription started or cancelled, refund, dispute. |  | `stripe:customers:read` |
 | `approval_route_read` | Which company a pending approval about a Stripe customer, subscription or charge is for. |  | `stripe:customers:read` |
 | `billing_status_for_counterparty` | Whether a contact or company, or a Stripe customer with one of their emails, pays a live Stripe subscription; unavailable until the import is complete. |  | `stripe:internal` |
 | `card_update_link` | A Stripe page where a customer can pay with a new card: the customer portal login link when set, else their open invoice's page. |  | `stripe:customers:read` |

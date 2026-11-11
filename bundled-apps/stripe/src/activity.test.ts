@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The Stripe rows of a company's timeline: each of the six kinds, newest first,
+// The Stripe rows of a company's timeline: each of the seven kinds, newest first,
 // and a cursor that returns only older rows.
 import { describe, expect, it } from "bun:test"
 import { MemDb } from "./mem-db.testkit"
@@ -50,5 +50,16 @@ describe("the Stripe timeline rows", () => {
     )
     expect(older.rows.map((r) => r.title)).toEqual(["Dispute opened, 39.00 EUR", "Refund, 10.00 EUR", "Studio Pro started"])
     expect(await activityRead({ companyId: "77777777-7777-4777-8777-777777777777" }, { db })).toEqual({ rows: [] })
+  })
+
+  it("a contact's linked customer with no payment or subscription still gives one row opening the customer", async () => {
+    const PERSON = "22222222-2222-4222-8222-222222222222"
+    const db = new MemDb()
+    db.seed("stripe_customers", [
+      { stripe_id: "cus_B", name: "Maison Brume", contact_id: PERSON, created_at_stripe: "2026-04-01T09:00:00.000Z" },
+      { stripe_id: "cus_C", name: "Gone", contact_id: PERSON, created_at_stripe: "2026-04-02T09:00:00.000Z", deleted_at: "2026-05-01T09:00:00.000Z" },
+    ])
+    const { rows } = await activityRead({ contactIds: [PERSON], prefix: "stripe:" }, { db })
+    expect(rows.map((r) => [r.title, r.href?.entityId, r.contactId])).toEqual([["Customer created", "cus_B", PERSON]])
   })
 })

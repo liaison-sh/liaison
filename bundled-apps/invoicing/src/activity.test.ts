@@ -104,6 +104,24 @@ describe("invoicing timeline source", () => {
     expect(out.rows.some((r) => r.id.startsWith(String(draft.id)))).toBe(false)
   })
 
+  test("a recurring schedule billing the person is a row opening the schedule, with its cadence and amount", async () => {
+    const schedule = {
+      id: "55555555-5555-4555-8555-555555555555",
+      contact_id: BOB,
+      status: "active",
+      repeats: "month",
+      lines: JSON.stringify([{ description: "Retainer", qty: 1, unit_price_minor: 65000 }]),
+      created_at: "2026-02-01T08:00:00.000Z",
+    }
+    const paused = { ...schedule, id: "66666666-6666-4666-8666-666666666666", status: "paused", repeats: "quarter", lines: [], created_at: "2026-01-01T08:00:00.000Z" }
+    const out = await activityRead({ db: store([doc({}), schedule, paused]) }, input())
+    const rows = out.rows.filter((r) => r.href?.entityType === "schedule")
+    expect(rows.map((r) => [r.title, r.href?.entityId, r.contactId])).toEqual([
+      ["Recurring schedule, monthly, 650.00 before VAT", schedule.id, BOB],
+      ["Recurring schedule, quarterly (paused)", paused.id, BOB],
+    ])
+  })
+
   test("a deleted invoice is gone on the next call", async () => {
     const kept = doc({})
     const gone = doc({})

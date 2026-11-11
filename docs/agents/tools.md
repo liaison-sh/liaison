@@ -155,7 +155,7 @@ The agent builds dashboards from read tools and data store collections, and prev
 | Tool | What it does | Scope | Approval |
 | --- | --- | --- | --- |
 | `contacts_search` | Search contacts by name, email or company. | `kernel:contacts:read` | No |
-| `contacts_read` | Read a contact with recent mail and timeline. | `kernel:contacts:read` | No |
+| `contacts_read` | Read a contact with recent mail and timeline, and one line per other app that holds records for them, such as a recurring schedule or an invoice, with its id. Only what you may read there is named. | `kernel:contacts:read` | No |
 | `contacts_write` | Create or update a contact. | `kernel:contacts:write` | Yes |
 | `contacts_export` | Export contacts to a CSV file. | `kernel:contacts:export`, `kernel:contacts:read` | Yes |
 | `contacts_find_duplicates` | Find likely duplicate contacts. | `kernel:contacts:read` | No |

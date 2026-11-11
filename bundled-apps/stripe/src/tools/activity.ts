@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // `activity_read` (hidden, an activity source): the Stripe rows of a company's
-// or a contact's timeline. Six kinds: a payment failed, a retry failed (a later
-// failed charge on the same invoice), a subscription started, a subscription
-// cancelled, a refund, a dispute. Newest first by (time, `<prefix><id>`), only
+// or a contact's timeline. Seven kinds: the customer created upstream (so a
+// linked customer with nothing else still shows), a payment failed, a retry
+// failed (a later failed charge on the same invoice), a subscription started, a
+// subscription cancelled, a refund, a dispute. Newest first by (time, `<prefix><id>`), only
 // rows strictly older than the cursor, as the kernel merges sources.
 import { iso, type ReadCtx, UUID } from "./read-common"
 
@@ -74,6 +75,11 @@ export async function activityRead(params: Obj | undefined, ctx: ReadCtx) {
       href: { app: "stripe", entityType: "customer", entityId: customerId },
     })
     void entityId
+  }
+
+  for (const [customerId, c] of byId) {
+    if (c.deleted_at) continue
+    push(customerId, `${customerId}:customer`, iso(c.created_at_stripe), "Customer created", customerId)
   }
 
   const payments = (await ctx.db.findMany("stripe_payments", {

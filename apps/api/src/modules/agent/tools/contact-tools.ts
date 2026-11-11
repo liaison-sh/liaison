@@ -5,6 +5,7 @@ import { HTTPException } from "hono/http-exception"
 import type { RlsClient, RlsTx } from "~/db"
 import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
+import type { UserContext } from "~/db/rls"
 import {
   type ContactAddressRole,
   type ContactAddressSource,
@@ -14,8 +15,10 @@ import {
   users as usersTable,
 } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
+import { rootLogger } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
 import { UUID_RE } from "~/lib/uuid"
+import { type LinkedApp, readLinkedRecords } from "~/modules/contacts/activity"
 import {
   type AddressFields,
   addAddress,
@@ -52,6 +55,8 @@ import { getContactSharing, setContactSharing } from "~/modules/contacts/sharing
 import { loadOrgSettings, wouldExceedOrgQuota } from "~/modules/files/service"
 import { actorGrantRole } from "~/modules/sharing/service"
 
+const log = rootLogger.child({ module: "contact-tools" })
+
 interface ContactToolContext {
   userId: string
   orgId: string
@@ -59,6 +64,9 @@ interface ContactToolContext {
   scopes?: string[]
   /** The agent the call acts as, when an agent drafted it (execute-tool sets it). */
   actingAgentId?: string | null
+  /** The app that called app-to-app, when one did (execute-tool sets it). */
+  callerApp?: string
+  dimensionGrants?: UserContext["dimensionGrants"]
 }
 
 /**
@@ -272,6 +280,9 @@ export async function handleContactsRead(
   `),
   )
 
+  // An app reading a contact app-to-app (a recipient prefill) gets the contact alone.
+  const linkedRecords = ctx.callerApp ? [] : await linkedRecordLines(params.contactId, ctx)
+
   return {
     contact: {
       id: contact.id,
@@ -298,6 +309,53 @@ export async function handleContactsRead(
       summary: entry.summary,
       occurredAt: entry.created_at,
     })),
+    ...(linkedRecords.length > 0 ? { linkedRecords } : {}),
+  }
+}
+
+/** Mail is already in the result as its backlinks. */
+const LINKED_SKIP = ["mail"]
+
+function linkedAppLine(app: LinkedApp): string {
+  const kinds = app.kinds.map((k) => {
+    const n = `${k.count}${k.more ? "+" : ""} ${k.kind}${k.count === 1 && !k.more ? "" : "s"}`
+    return `${n}, newest "${k.newest.title}" (${app.app} ${k.kind} ${k.newest.entityId})`
+  })
+  return `${app.label}: ${kinds.join("; ")}`
+}
+
+/**
+ * One line per other app that holds records for the contact, read as the
+ * caller through each app's timeline source: what the caller may not read is
+ * absent, never named. A source that did not answer says so.
+ */
+async function linkedRecordLines(contactId: string, ctx: ContactToolContext): Promise<string[]> {
+  // Always the person: the call's provenance (agent, mcp) is not a row-security actor, and a
+  // non-person actor would read with every dimension.
+  const actor: UserContext = {
+    actorType: "user",
+    userId: ctx.userId,
+    orgId: ctx.orgId,
+    scopes: ctx.scopes ?? [],
+    dimensionGrants: ctx.dimensionGrants ?? {},
+  }
+  try {
+    const linked = await readLinkedRecords({
+      orgId: ctx.orgId,
+      actor,
+      contactId,
+      skip: LINKED_SKIP,
+    })
+    if (!linked) return []
+    return [
+      ...linked.apps.map(linkedAppLine),
+      ...linked.unavailable.map(
+        (u) => `${u.label}: not read (${u.reason === "timeout" ? "no answer in time" : "error"}).`,
+      ),
+    ]
+  } catch (err) {
+    log.warn({ err, contactId }, "contact read: other apps' records not read")
+    return ["Other apps' records for this contact were not read (error)."]
   }
 }
 

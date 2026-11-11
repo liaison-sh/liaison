@@ -171,6 +171,7 @@ import { resolveEffectiveAgentModel } from "~/modules/agent/runtime/model-overri
 import { connectionClaimVerdict } from "~/modules/agent/runtime/open-cards"
 import { persistAgentTurn } from "~/modules/agent/runtime/persist-agent-turn"
 import { failureContextRequiredScopes } from "~/modules/agent/runtime/reinvoke"
+import { createReplyText, joinStepText, joinStepTexts } from "~/modules/agent/runtime/reply-flatten"
 import { clipAndMarkStepMessages } from "~/modules/agent/runtime/rolling-cache-breakpoints"
 import {
   currentRunContext,
@@ -348,11 +349,11 @@ export function withPriorSteps(
 ): FinalizeInput {
   if (prior.length === 0) return input
   const sum = (pick: (v: JournalStepView) => number) => prior.reduce((n, v) => n + pick(v), 0)
-  const priorText = prior.map((v) => v.text).join("")
+  const priorText = joinStepTexts(prior.map((v) => v.text))
   const priorReasoning = prior.map((v) => v.reasoning).join("")
   return {
     ...input,
-    text: priorText + input.text,
+    text: joinStepText(priorText, input.text),
     ...(input.reasoning !== undefined || priorReasoning
       ? { reasoning: priorReasoning + (input.reasoning ?? "") }
       : {}),
@@ -5243,6 +5244,8 @@ async function runThreadTurn(
   // Returned to this function's caller only; never broadcast to the room.
   let withheldCapabilities: string[] = []
   let text = ""
+  // The stored reply: each step's text a paragraph of its own (reply-flatten.ts).
+  const replyText = createReplyText()
   let reasoning = ""
   // What the room's sockets receive of the turn's text: in a shared thread only
   // the answer, never a step's notes before its tools (shared-thread-reply.ts).
@@ -5373,7 +5376,8 @@ async function runThreadTurn(
 
     for await (const chunk of result.fullStream) {
       if (chunk.type === "text-delta") {
-        text += chunk.text
+        replyText.add(chunk.text)
+        text = replyText.text
         const lastText = timeline[timeline.length - 1]
         if (lastText?.kind === "text") lastText.text += chunk.text
         else timeline.push({ kind: "text", text: chunk.text })
@@ -5489,6 +5493,7 @@ async function runThreadTurn(
           ...errorCardFields,
         })
       } else if (chunk.type === "finish-step") {
+        replyText.endStep()
         const step = readStepUsage(chunk.usage)
         usage.promptTokens += step.inputTokens ?? 0
         usage.completionTokens += step.outputTokens ?? 0
@@ -5694,6 +5699,7 @@ export async function rerunAgentTurn(input: {
   })
 
   let text = ""
+  const replyText = createReplyText()
   // The text after the last tool call: what a shared room receives (shared-thread-reply.ts).
   let finalStepText = ""
   let finishReason = "stop"
@@ -5723,7 +5729,8 @@ export async function rerunAgentTurn(input: {
   try {
     for await (const chunk of chat.fullStream) {
       if (chunk.type === "text-delta") {
-        text += chunk.text
+        replyText.add(chunk.text)
+        text = replyText.text
         finalStepText += chunk.text
       } else if (chunk.type === "tool-call") {
         finalStepText = ""
@@ -5747,6 +5754,7 @@ export async function rerunAgentTurn(input: {
           ...(await toolCardFieldsForResult(orgId, toolName, redacted, chunk.output)),
         })
       } else if (chunk.type === "finish-step") {
+        replyText.endStep()
         const step = readStepUsage(chunk.usage)
         usage.promptTokens += step.inputTokens ?? 0
         usage.completionTokens += step.outputTokens ?? 0

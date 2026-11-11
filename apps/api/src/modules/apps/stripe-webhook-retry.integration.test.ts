@@ -236,8 +236,15 @@ afterAll(async () => {
   await sql`DELETE FROM kernel.organizations WHERE id = ${ORG}`
 })
 
+/** The stored deliveries of the test org, oldest first. */
+async function inboxStatuses(): Promise<string[]> {
+  const rows = await sql<{ status: string }[]>`
+    SELECT status FROM kernel.webhook_inbox WHERE org_id = ${ORG} ORDER BY created_at`
+  return rows.map((r) => r.status)
+}
+
 describe("stripe deliveries through the webhook route", () => {
-  it("a handler failure releases the claim, queues a retry, answers 500 and the retry converges with no duplicate row", async () => {
+  it("a handler failure releases the claim, queues the stored delivery's replay, answers 500 and the retry converges with no duplicate row", async () => {
     const enqueue = spyOn(jobsModule, "enqueueAppJob").mockResolvedValue(undefined as never)
     try {
       failNext.push(500)
@@ -245,11 +252,14 @@ describe("stripe deliveries through the webhook route", () => {
       const res = await first.res
       expect(res.status).toBe(500)
       expect(await redis.exists(first.key)).toBe(0)
+      // The delivery is stored before the handler runs; its replay is woken.
       expect(enqueue).toHaveBeenCalledWith(
         "kernel",
-        "retry-webhook",
-        expect.objectContaining({ orgId: ORG, appName: APP, endpointName: ENDPOINT }),
+        "webhook-inbox-replay",
+        expect.objectContaining({ orgId: ORG, inboxId: expect.any(String) }),
+        expect.anything(),
       )
+      expect(await inboxStatuses()).toEqual(["pending"])
       expect(await deliveries()).toEqual([
         { event_id: "evt_retry1", status: "failed", failure_count: 1 },
       ])
@@ -263,6 +273,7 @@ describe("stripe deliveries through the webhook route", () => {
       ])
       expect(await count("stripe_invoices")).toBe(1)
       expect(handlerRuns).toBe(2)
+      expect(await inboxStatuses()).toEqual(["done"])
     } finally {
       enqueue.mockRestore()
     }
@@ -281,7 +292,21 @@ describe("stripe deliveries through the webhook route", () => {
     expect(await count("stripe_invoices")).toBe(0)
   })
 
-  it("a duplicate event changes nothing once the replay claim is gone, because the ledger stops it", async () => {
+  it("a duplicate event within its window is answered as a duplicate from the stored delivery, with no claim and no handler run", async () => {
+    const first = deliver("evt_dup1")
+    expect((await first.res).status).toBe(200)
+    await redis.del(first.key)
+    const second = await deliver("evt_dup1").res
+    expect(second.status).toBe(200)
+    expect(((await second.json()) as { data: unknown }).data).toEqual({
+      received: true,
+      duplicate: true,
+    })
+    expect(handlerRuns).toBe(1)
+    expect(await count("stripe_invoices")).toBe(1)
+  })
+
+  it("a duplicate event changes nothing once the replay claim and the stored delivery are gone, because the ledger stops it", async () => {
     const first = deliver("evt_dup2")
     expect((await first.res).status).toBe(200)
     const mirror = await sql.unsafe(`SELECT * FROM app_stripe.stripe_invoices WHERE org_id = $1`, [
@@ -293,8 +318,10 @@ describe("stripe deliveries through the webhook route", () => {
       (await sql`SELECT count(*)::int AS n FROM kernel.pending_events WHERE org_id = ${ORG}`)[0]?.n,
     )
 
-    // The claim expires (or the cache is reset): the second delivery reaches the handler.
+    // The claim expires (or the cache is reset) and the stored delivery is past its
+    // dedup window: the second delivery reaches the handler.
     await redis.del(first.key)
+    await sql`DELETE FROM kernel.webhook_inbox WHERE org_id = ${ORG}`
     invoiceTotal = 999
     const second = await deliver("evt_dup2").res
     expect(second.status).toBe(200)

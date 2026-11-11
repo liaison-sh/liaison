@@ -18,6 +18,7 @@ import {
   APPROVED_EVENT,
   dockToRunConversation,
   hop,
+  PAYMENTS_RAIL_APP,
   RUN_COMPOSER_ANCHOR,
   RUN_CONVERSATION_EVENT,
   RUN_CONVERSATION_ROUTE,
@@ -151,7 +152,7 @@ export function buildMoneyTour(cfg: MoneyScenarioCfg): Tour {
         role: k("cardUpdated.role"),
         injector: cfg.injector,
         anchor: "stripe-home",
-        path: [railHop("Stripe")],
+        path: [railHop(PAYMENTS_RAIL_APP)],
         route: PAYMENTS_ROUTE,
       },
       {
@@ -162,7 +163,7 @@ export function buildMoneyTour(cfg: MoneyScenarioCfg): Tour {
         body: k("figuresMoved.body"),
         role: k("figuresMoved.role"),
         anchor: "stripe-mrr",
-        path: [railHop("Stripe")],
+        path: [railHop(PAYMENTS_RAIL_APP)],
         route: PAYMENTS_ROUTE,
         figures: {
           tool: MONEY_FIGURES_TOOL,

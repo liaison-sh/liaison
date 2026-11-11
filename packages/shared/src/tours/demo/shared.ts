@@ -185,6 +185,9 @@ type RailApp =
   | "Knowledge"
   | "Stripe"
 
+/** The payments app's entry on the left bar: its own label. */
+export const PAYMENTS_RAIL_APP = "Stripe" satisfies RailApp
+
 /** The first hop of a way into another app: its entry on the left bar (ringed from the beat's route). */
 export function railHop(app: RailApp): TourPathHop {
   return { label: `tours.scenarios.common.rail${app}`, rail: true }

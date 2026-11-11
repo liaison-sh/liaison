@@ -20,7 +20,7 @@
 //       inside the connector's own test, harness, i18n and corpus files.
 import { describe, expect, test } from "bun:test"
 import { spawnSync } from "node:child_process"
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync } from "node:fs"
 import path, { resolve } from "node:path"
 
 const REPO_ROOT = resolve(new URL("../../../..", import.meta.url).pathname)
@@ -325,6 +325,57 @@ const isBillingPath = (file: string) => matchesAny(file, BILLING_PATHS)
 const isConnectorPath = (file: string) => matchesAny(file, CONNECTOR_PATHS)
 
 /**
+ * What the connector's own bundle declares under its name: the names in its
+ * manifest's schema (tables and columns: `<app>_id`, `created_at_<app>`), the
+ * hosts its connection may reach, its views' labels and routes, and the test
+ * ids its screens carry. Read from the bundle itself, so a name the bundle does
+ * not declare is still caught, and each is matched whole.
+ */
+function connectorDeclaredNames(): { bare: string[]; quoted: string[] } {
+  const appDir = path.join(REPO_ROOT, "bundled-apps", FORBIDDEN)
+  const manifestPath = path.join(appDir, "app.manifest.json")
+  if (!existsSync(manifestPath)) return { bare: [], quoted: [] }
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+    schema?: unknown
+    connections?: Record<string, { allowedDomains?: string[] }>
+    views?: {
+      activityBar?: { label?: string }
+      tabTypes?: Record<string, { label?: string; urlPattern?: string }>
+    }
+  }
+  const named = (v: unknown): v is string =>
+    typeof v === "string" && v.toLowerCase().includes(FORBIDDEN)
+  const schemaNames = [...JSON.stringify(manifest.schema ?? {}).matchAll(/"([a-z_]+)"/g)]
+    .map((m) => m[1] as string)
+    .filter((n) => n !== FORBIDDEN && n.includes(FORBIDDEN))
+  const hosts = Object.values(manifest.connections ?? {})
+    .flatMap((c) => c.allowedDomains ?? [])
+    .filter(named)
+  const views = [
+    manifest.views?.activityBar?.label,
+    ...Object.values(manifest.views?.tabTypes ?? {}).flatMap((t) => [t.label, t.urlPattern]),
+  ].filter(named)
+  const testIds: string[] = []
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) walk(full)
+      else if (/\.tsx?$/.test(entry.name))
+        for (const m of readFileSync(full, "utf8").matchAll(/data-testid="([a-z0-9-]+)"/g))
+          if (named(m[1])) testIds.push(m[1] as string)
+    }
+  }
+  if (existsSync(path.join(appDir, "src"))) walk(path.join(appDir, "src"))
+  return {
+    bare: [...new Set([...schemaNames, ...hosts])],
+    quoted: [...new Set([...views, ...testIds])],
+  }
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+const DECLARED = connectorDeclaredNames()
+
+/**
  * The connector's identifiers: an `<app>:` scope, an `app_<app>.<table>` table, an
  * `<app>__` tool name, an `<app>/` event name, the bundled app folder and the
  * app's own name in quotes. Removing them leaves what is NOT an identifier.
@@ -343,6 +394,12 @@ const CONNECTOR_IDENTIFIERS = new RegExp(
     `(?<![A-Za-z@/])${FORBIDDEN}/`,
     `(?<![A-Za-z])${FORBIDDEN}:`,
     `"${FORBIDDEN}"`,
+    // A path to one of the connector's own test files (`**/<app>-*.test.ts`).
+    `[A-Za-z0-9_./-]*(?<![A-Za-z])${FORBIDDEN}-[A-Za-z0-9_.-]*\\.test\\.ts`,
+    // What its bundle declares: schema names and hosts whole, view labels,
+    // routes and test ids as quoted strings.
+    ...DECLARED.bare.map((n) => `(?<![A-Za-z0-9_])${escapeRe(n)}(?![A-Za-z0-9_])`),
+    ...DECLARED.quoted.map((n) => `"${escapeRe(n)}"`),
   ].join("|"),
   "g",
 )
@@ -698,6 +755,15 @@ describe("extracted billing surface stays out of the repo", () => {
       `import { run } from "bundled-apps/${FORBIDDEN}/handlers"`,
       `"bundled-apps/invoicing/src/handlers/${FORBIDDEN}-refund-created.ts",`,
       `{ name: "${FORBIDDEN}", enabled: true }`,
+      // What the connector's bundle declares: its columns, its host, its route,
+      // its rail label and its screens' test ids; and a path to its own test file.
+      `    ${FORBIDDEN}_id: c.id,`,
+      `    created_at_${FORBIDDEN}: iso(c.createdAt),`,
+      `const HOSTS = ["api.${FORBIDDEN}.com"]`,
+      `const ROUTE = "/${FORBIDDEN}"`,
+      `  | "${FORBIDDEN_UPPER[0]}${FORBIDDEN.slice(1)}"`,
+      `anchor: "${FORBIDDEN}-home",`,
+      `const READS = "saas/${FORBIDDEN}-world-reads.saas.integration.test.ts"`,
     ]) {
       expect(nameViolation(other, line), line).toBe(false)
     }
@@ -708,6 +774,11 @@ describe("extracted billing surface stays out of the repo", () => {
       `row.${FORBIDDEN}_customer_id`,
       `import x from "@${FORBIDDEN}/${FORBIDDEN}-js"`,
       `"apps/api/src/billing/${FORBIDDEN}-refund.ts"`,
+      // Not declared by the bundle: a made-up column, host, test id or label.
+      `row.${FORBIDDEN}_secret_key`,
+      `fetch("https://dashboard.${FORBIDDEN}.com")`,
+      `anchor: "${FORBIDDEN}-checkout-button",`,
+      `It reads ${FORBIDDEN_UPPER[0]}${FORBIDDEN.slice(1)}, invoices and deals`,
     ]) {
       expect(nameViolation(other, line), line).toBe(true)
     }

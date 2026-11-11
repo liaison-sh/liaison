@@ -8,6 +8,7 @@ import fr from "../../../../i18n/locales/fr/tours.json"
 import { findTour } from "../../../index"
 import { effectiveBeats, isTourAvailable, pickTourFigures, tourCopyKeys } from "../../../schema"
 import { MONEY_FIGURES_TOOL, MONEY_REMINDER_ROW } from "../../money"
+import { PAYMENTS_RAIL_APP } from "../../shared"
 import { SAAS_MONEY_CFG, scenarioSaasMoneyTour } from "./money"
 
 const tour = scenarioSaasMoneyTour
@@ -80,7 +81,7 @@ describe("the money scenario", () => {
       "Before you approve, you want the whole picture: what they pay, what they are waiting for, what is on the table.",
     )
     expect(say(beat("ask-standing").body)).toBe(
-      "Ask your agent from Chats. It reads Stripe, invoices, tickets and deals, and answers on one card.",
+      `Ask your agent from Chats. It reads ${PAYMENTS_RAIL_APP}, invoices, tickets and deals, and answers on one card.`,
     )
     expect(say(beat("ask-standing").say?.text as string)).toBe(
       "Where do we stand with Maison Arlon?",

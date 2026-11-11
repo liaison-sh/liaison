@@ -6433,7 +6433,6 @@
     "gone": "Son application est désactivée, impossible de l’ouvrir"
   },
   "dashboards": {
-    "sectionTitle": "Tableaux de bord",
     "visibilityPersonal": "Personnel",
     "visibilityOrg": "Organisation",
     "refreshAll": "Tout actualiser",
@@ -6455,7 +6454,20 @@
     "blockTruncated": "Certaines lignes sont omises : le bloc montre les premières.",
     "indexEmptyTitle": "Aucun tableau de bord pour l'instant",
     "indexEmptyBody": "Un tableau de bord réunit sur une page des graphiques, des tableaux et des chiffres tirés de vos apps, et les tient à jour. Gardez-le pour vous ou partagez-le avec votre organisation.",
-    "indexEmptyHint": "Demandez à votre agent d'en créer un, par exemple : « Fais-moi un tableau de bord des commandes du mois, jour par jour. »"
+    "indexEmptyHint": "Demandez à votre agent d'en créer un, par exemple : « Fais-moi un tableau de bord des commandes du mois, jour par jour. »",
+    "allDashboards": "Tous les tableaux de bord",
+    "filterLabel": "Filtrer les tableaux de bord",
+    "sectionYours": "Les vôtres",
+    "sectionTeam": "Partagés avec l'équipe",
+    "sharedWithTeam": "Partagé avec l'équipe",
+    "onlyYou": "Vous seul",
+    "byOwner": "Par {{name}}",
+    "titleByOwner": "{{title}}, par {{name}}",
+    "blockCountOne": "{{count}} bloc",
+    "blockCountMany": "{{count}} blocs",
+    "updatedAgo": "mis à jour {{age}}",
+    "noMatch": "Aucun tableau de bord ne correspond à « {{query}} ».",
+    "sidebarHint": "Votre agent crée et modifie les tableaux de bord. Demandez-le-lui dans le chat."
   },
   "appBuilder": {
     "check": "Vérifier",

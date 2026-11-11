@@ -1,6 +1,14 @@
-Dashboards section on Home, only once one exists -> apps/web/src/modules/shell/HomeAttentionSidebar.tsx:559
-Section label Dashboards -> packages/shared/src/i18n/locales/en/kernel.json:6407
-Own dashboards first, then the org's -> apps/web/src/modules/dashboards/dashboards-store.ts:17
+Dashboards page shows cards: who sees it, blocks, last change -> apps/web/src/modules/dashboards/DashboardsIndex.tsx:32
+Dashboards sidebar beside the page and every dashboard tab -> apps/web/src/framework/bootstrap.ts:536
+Filter dashboards label -> packages/shared/src/i18n/locales/en/kernel.json:6462
+Filter by title -> apps/web/src/modules/dashboards/DashboardsSidebar.tsx:77
+All dashboards row opens the page -> apps/web/src/modules/dashboards/DashboardsSidebar.tsx:120
+Yours / Shared with the team labels -> packages/shared/src/i18n/locales/en/kernel.json:6463
+Own dashboards (personal or shared by you) vs others' -> apps/web/src/modules/dashboards/dashboards-store.ts:42
+People icon on your shared ones -> apps/web/src/modules/dashboards/DashboardsSidebar.tsx:148
+Owner's first name on others' -> apps/web/src/modules/dashboards/DashboardsSidebar.tsx:186
+Open dashboard highlighted -> apps/web/src/modules/dashboards/DashboardsSidebar.tsx:83
+Owner name comes from the list API -> apps/api/src/modules/dashboards/service.ts:241
 Org marker label -> packages/shared/src/i18n/locales/en/kernel.json:6409
 Dashboard tab address /dashboard/<id>, named by its title -> apps/web/src/framework/bootstrap.ts:545
 Agent opens a dashboard (entity opener) -> apps/web/src/framework/bootstrap.ts:1333

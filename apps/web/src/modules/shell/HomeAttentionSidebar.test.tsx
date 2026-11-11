@@ -21,7 +21,6 @@ vi.mock("~/modules/shell/ApiContext", () => ({
 }))
 
 import HomeIconWithDot from "~/modules/approvals/HomeIconWithDot"
-import { resetDashboardsStore } from "~/modules/dashboards/dashboards-store"
 import { attentionStore } from "~/modules/shell/attention-store"
 import { HomeAgentsTestAccess, resetHomeAgents } from "~/modules/shell/home-agents-store"
 import { homeFilter, setHomeFilter } from "~/modules/shell/home-filter"
@@ -78,7 +77,6 @@ beforeEach(() => {
   attentionStore._setForTest({ items: [], errors: [], loading: false, lastFetchedAt: null })
   resetHomeAgents()
   resetSidebarSections()
-  resetDashboardsStore()
   setHomeFilter("overview")
   try {
     localStorage.clear()
@@ -243,36 +241,10 @@ describe("HomeAttentionSidebar", () => {
     expect(time.className).not.toMatch(/(^|\s)w-\[52px\]/)
   })
 
-  it("Dashboards: the viewer's own first, then the org's; a row opens the tab", async () => {
-    apiGet.mockImplementation(async (path: string) => {
-      if (path === "/dashboards")
-        return [
-          { id: "o1", title: "Team sales", visibility: "org", ownerUserId: null },
-          { id: "p1", title: "My numbers", visibility: "personal", ownerUserId: "me" },
-        ]
-      if (path.startsWith("/agent/routines/latest-brief")) return null
-      if (path.startsWith("/nodes/me")) return { nodes: [] }
-      return []
-    })
-    render(() => <HomeAttentionSidebar />)
-    await screen.findByTestId("home-side-dashboards")
-    const rows = screen.getAllByTestId(/^home-side-dashboard-(o1|p1)$/)
-    expect(rows.map((r) => r.dataset.testid)).toEqual([
-      "home-side-dashboard-p1",
-      "home-side-dashboard-o1",
-    ])
-    expect(screen.getByTestId("home-side-dashboard-o1-org").textContent).toBe("Org")
-    expect(screen.queryByTestId("home-side-dashboard-p1-org")).toBeNull()
-    fireEvent.click(screen.getByTestId("home-side-dashboard-o1"))
-    const active = tabStore.tabs.find((t) => t.id === tabStore.activeTabId)
-    expect(active?.type).toBe("kernel:dashboard")
-    expect(active?.entityId).toBe("o1")
-    expect(active?.label).toBe("Team sales")
-  })
-
-  it("Dashboards: no section while the viewer has none", async () => {
+  it("Dashboards live in their own sidebar: Home neither reads nor lists them", async () => {
     render(() => <HomeAttentionSidebar />)
     await Promise.resolve()
+    expect(apiGet).not.toHaveBeenCalledWith("/dashboards")
     expect(screen.queryByTestId("home-side-dashboards")).toBeNull()
   })
 })

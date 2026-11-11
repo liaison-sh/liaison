@@ -212,7 +212,7 @@ function fakeStore() {
 beforeAll(async () => {
   await acquireTestLock()
   orgId = (await minimal.secondOrg({ name: "Dashboards Service Org" })).orgId
-  owner = (await minimal.person(orgId)).id
+  owner = (await minimal.person(orgId, { name: "Dana Owner" })).id
   other = (await minimal.person(orgId)).id
   registerTestTools()
 })
@@ -249,8 +249,11 @@ describe("who creates, sees and edits", () => {
       canEdit: true,
     })
 
-    const seen = (await listDashboards(as(other, [WRITE]))).map((d) => d.id)
+    const listed = await listDashboards(as(other, [WRITE]))
+    const seen = listed.map((d) => d.id)
     expect(seen).toContain(shared.id)
+    // The list names each dashboard's owner, for "by <name>" in the sidebar.
+    expect(listed.find((d) => d.id === shared.id)?.ownerName).toBe("Dana Owner")
     expect(seen).not.toContain(personal.id)
     await expect(getDashboard(as(other, [ADMIN]), personal.id)).rejects.toMatchObject({
       code: "NOT_FOUND",

@@ -16,7 +16,7 @@ Manifest-driven apps that accept external webhooks declare two bundle exports pe
 
 Webhook keys must match `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`: lowercase alphanumerics and hyphens only, no slashes.
 
-A handler that makes several provider calls can declare a budget, `timeoutMs` (1000 to 29000), next to `bodyLimitBytes`. Its run is stopped at that budget, on the delivery and on the retry alike. `LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS` caps it, as it caps a tool's. Without one the handler has the sandbox default (5 s in production). A delivery with a budget waits for a free slot on the background connections first, within what the budget leaves of `REQUEST_TIMEOUT_MS`; if none frees up, it is answered `500` and stays in the inbox for a replay, unrun.
+A handler that makes several provider calls can declare a budget, `timeoutMs` (1000 to 29000), next to `bodyLimitBytes`. Its run is stopped at that budget, on the delivery and on the retry alike. `LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS` caps it, as it caps a tool's. Without one the handler has the sandbox default (5 s in production). A sandboxed app's handler holds no database transaction across its run: each `ctx` call commits on its own, so what it wrote before it failed stays written and the replay runs it again over those writes ([Event handlers and webhooks commit each call on its own](app-sandbox.md#event-handlers-and-webhooks-commit-each-call-on-its-own)). A delivery that does hold one for its whole run (a core app's, or a listed exception's) and declares a budget waits for a free slot on the background connections first, within what the budget leaves of `REQUEST_TIMEOUT_MS`; if none frees up, it is answered `500` and stays in the inbox for a replay, unrun.
 
 ## Verifier signature
 

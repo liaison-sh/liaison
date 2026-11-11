@@ -193,7 +193,8 @@ const HomeAttentionSidebar: Component = () => {
     alertClusterLabel(kind, count, rowLocale()).replace(/^\d+\s+/, "")
 
   const briefTime = () => {
-    const at = homeAgents.brief()?.lastRunAt
+    // The brief's own time (its newest message), as Home's brief card shows it.
+    const at = homeAgents.brief()?.messageAt
     if (!at) return undefined
     return new Date(at).toLocaleTimeString(i18n.locale(), { hour: "2-digit", minute: "2-digit" })
   }

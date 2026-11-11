@@ -834,6 +834,7 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
         const result: SmtpSendResult = {
           messageId: message.messageId ?? demoFixtureMessageId(),
           deliveryState: "delivered",
+          captured: true,
         }
         return JSON.stringify(result)
       }

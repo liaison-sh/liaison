@@ -3,8 +3,8 @@
 // The Stripe rail: Home, Customers, and the Stripe dashboard as an external link, under a dot that says
 // whether the connection is healthy. Calm: green, amber or grey, never a count or an alarm.
 import { app, currentPath } from "@liaison/host"
-import { type Component, createSignal, For, onCleanup, onMount } from "solid-js"
-import { dashboardUrl, dotTone, type DotTone, dotWord, type HomeLoad, pageKind, type PageKind } from "./home-model"
+import { type Component, createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { dashboardShown, dashboardUrl, dotTone, type DotTone, dotWord, type HomeLoad, pageKind, type PageKind } from "./home-model"
 import { tr } from "./i18n"
 
 export { dotTone }
@@ -26,6 +26,8 @@ const isActive = (path: string, href: string) => (href === "/stripe" ? path === 
 export const StripeSidebar: Component = () => {
   const [kind, setKind] = createSignal<PageKind>("not_connected")
   const [mode, setMode] = createSignal<string | undefined>(undefined)
+  // The demo's stand-in install has no Stripe dashboard: the link is not rendered.
+  const [standIn, setStandIn] = createSignal(false)
   const [path, setPath] = createSignal(currentPath().replace(/\?.*$/, ""))
   onMount(() => {
     void app
@@ -33,6 +35,7 @@ export const StripeSidebar: Component = () => {
       .then((l) => {
         setKind(pageKind(l))
         setMode(l?.connection.mode)
+        setStandIn(!dashboardShown(l))
       })
       .catch(() => {})
     const onChange = () => setPath(currentPath().replace(/\?.*$/, ""))
@@ -68,7 +71,8 @@ export const StripeSidebar: Component = () => {
             )}
           </For>
         </ul>
-        <div class="mt-3 border-t border-border-subtle pt-3">
+<Show when={!standIn()}>
+                <div class="mt-3 border-t border-border-subtle pt-3">
           <a
             href={rows().external.href}
             target="_blank"
@@ -80,6 +84,7 @@ export const StripeSidebar: Component = () => {
             <span aria-hidden="true">{"↗"}</span>
           </a>
         </div>
+        </Show>
       </div>
     </nav>
   )

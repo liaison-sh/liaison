@@ -96,6 +96,7 @@ import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
 import { demoPoolStateOf, invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { reservedOwner, seedDemoOrgData } from "~/modules/demo/demo-seeder"
 import { ReapPacer, type ReapPacerOptions, type ReapPressure } from "~/modules/demo/reap-pacer"
+import { forgetDemoPaymentsOutside } from "~/modules/demo/worlds/saas/payments/overlay"
 import { forwardPlayedScenarios } from "~/modules/liaison-team/lead-forwarding"
 import type { OrgExternalStateDeps } from "~/modules/org/purge/external"
 import { purgeOrg } from "~/modules/org/purge/purge-org"
@@ -587,6 +588,8 @@ export async function resetDemoOrgContent(orgId: string): Promise<Record<string,
   await sweepOrgSearchIndex(orgId, "demo-reset-content")
   // The fixture CRM's records written before the reset go with the rest.
   await forgetDemoFixtureCrm(orgId)
+  // So do the card-payments stand-in's outside objects (refunds, cancellations).
+  await forgetDemoPaymentsOutside(orgId)
   return deleted
 }
 
@@ -667,6 +670,7 @@ export async function purgeDemoOrg(
   })
   await invalidateDemoMarker(orgId)
   await forgetDemoFixtureCrm(orgId)
+  await forgetDemoPaymentsOutside(orgId)
   log.warn(
     { orgId, slug: stored.slug, deleted, ms: Date.now() - started, stepMs },
     "collected an expired demo workspace",

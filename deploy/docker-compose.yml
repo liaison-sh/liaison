@@ -448,6 +448,7 @@ services:
       # Private QA box only: answers a demo marked org Shopify calls from the
       # demo fixtures while demo mode itself stays off. See apps/api/src/lib/env.ts.
       LIAISON_DEMO_SHOPIFY_FIXTURES: ${LIAISON_DEMO_SHOPIFY_FIXTURES:-}
+      LIAISON_DEMO_PAYMENTS_FIXTURES: ${LIAISON_DEMO_PAYMENTS_FIXTURES:-}
       LIAISON_DEMO_REVIEWER_PASSWORD: ${LIAISON_DEMO_REVIEWER_PASSWORD:-}
       # Optional privacy policy link for the notice under the demo signup button.
       LIAISON_PRIVACY_URL: ${LIAISON_PRIVACY_URL:-}

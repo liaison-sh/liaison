@@ -23,6 +23,7 @@
 // holds for a key of the other mode (`mode_changed`).
 import { refuseTool, type ToolRefusal } from "@liaison/app-sdk/errors"
 import { type StripeHttpCtx, StripeApiError, stripeFetch } from "./http"
+import { isStandInInstall, STANDIN_MARKER } from "./standin"
 
 export const BASE_STATES = [
   "not_connected",
@@ -130,6 +131,8 @@ export interface StoredPermissions {
   mode: "live" | "test" | null
   checks: Array<{ resource: string; level: "read" | "write"; state: CheckRowState }>
   checkedAt: string
+  /** Set by the demo seeder on a stand-in install only (standin.ts). */
+  demoStandIn?: true
 }
 
 export interface ConnectionCheckResult {
@@ -296,6 +299,8 @@ export async function runConnectionCheck(
       { resource: "refunds", level: "write" as const, state: (rows[rows.length - 1] as CheckRow).state },
     ],
     checkedAt: now.toISOString(),
+    // A stand-in install keeps its mark through a check; the check never adds it.
+    ...(isStandInInstall(install) ? { [STANDIN_MARKER]: true } : {}),
   }
   const data = {
     state: encodeState(next),

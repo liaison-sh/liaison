@@ -52,6 +52,7 @@ import {
 } from "~/modules/demo/demo-egress"
 import { demoFixtureMessageId, isDemoFixtureDelivery } from "~/modules/demo/fixture-delivery"
 import { maybeDemoShopifyResponse } from "~/modules/demo/shopify/provider"
+import { maybeDemoPaymentsResponse } from "~/modules/demo/worlds/saas/payments/provider"
 
 // Per-fetch cap for a sandboxed `ctx.fetch`. Default 10s (tight, prod-safe). A
 // deployment whose apps legitimately call a slow upstream — e.g. the KPI app
@@ -389,15 +390,34 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
             headers: headersWithActor,
           })
 
+      // DEMO INSTANCE ONLY, the same gate for card payments: a demo org's
+      // payments calls are answered by the stand-in from its own mirror and
+      // outside state (or refused), so no real account is ever reached.
+      const demoPayments =
+        demoShopify || demoBoxtal
+          ? null
+          : await maybeDemoPaymentsResponse({
+              url: wireUrl,
+              method,
+              body: typeof body === "string" ? body : undefined,
+              orgId,
+              appName,
+              allowedDomains,
+              headers: headersWithActor,
+            })
+
       // TEST STACKS ONLY (LIAISON_TEST_VIES_STUB=1 under NODE_ENV test): the EU VIES VAT check
       // is answered by a stand-in, so a test never depends on the live service (test-vies.ts).
-      const testVies = demoShopify || demoBoxtal ? null : maybeTestViesResponse(wireUrl)
+      const testVies =
+        demoShopify || demoBoxtal || demoPayments ? null : maybeTestViesResponse(wireUrl)
 
       let response: Response
       if (demoShopify) {
         response = demoShopify
       } else if (demoBoxtal) {
         response = demoBoxtal
+      } else if (demoPayments) {
+        response = demoPayments
       } else if (testVies) {
         response = testVies
       } else {

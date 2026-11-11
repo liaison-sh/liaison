@@ -16,6 +16,7 @@ import {
   buildAttention,
   buildMrrView,
   canReview,
+  dashboardShown,
   dashboardUrl,
   type DisputeItem,
   daysLateLabel,
@@ -287,15 +288,17 @@ const AttentionSection: Component<{ data: HomeData; attention: Attention; names:
                   }
                   side={days() === null ? null : daysLeftLabel(days() ?? 0)}
                 >
-                  <a
-                    href={dashboardUrl(p.data.load?.connection.mode, `/disputes/${encodeURIComponent(d.id)}`)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    data-testid={`stripe-dispute-open-${d.id}`}
-                    class={`${CONTROL} border border-border bg-surface text-text hover:bg-surface-hover`}
-                  >
-                    {tr("Open in Stripe")}
-                  </a>
+                  <Show when={dashboardShown(p.data.load)}>
+                    <a
+                      href={dashboardUrl(p.data.load?.connection.mode, `/disputes/${encodeURIComponent(d.id)}`)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-testid={`stripe-dispute-open-${d.id}`}
+                      class={`${CONTROL} border border-border bg-surface text-text hover:bg-surface-hover`}
+                    >
+                      {tr("Open in Stripe")}
+                    </a>
+                  </Show>
                 </Row>
               )
             }}
@@ -433,15 +436,17 @@ export const StripeHome: Component<{ entityId?: string }> = () => {
                       : tr("Not connected.")}
                   </p>
                 </div>
-                <a
-                  href={dashboardUrl(mode())}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  data-testid="stripe-open-stripe"
-                  class={`${CONTROL} border border-border bg-surface text-text hover:bg-surface-hover`}
-                >
-                  {tr("Open Stripe")}
-                </a>
+                <Show when={dashboardShown(d().load)}>
+                  <a
+                    href={dashboardUrl(mode())}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid="stripe-open-stripe"
+                    class={`${CONTROL} border border-border bg-surface text-text hover:bg-surface-hover`}
+                  >
+                    {tr("Open Stripe")}
+                  </a>
+                </Show>
               </header>
               <HomeStates load={d().load} kind={d().kind} now={d().now} onChecked={() => refetch()} />
               <Show when={d().load && isFrozen(d().kind)}>

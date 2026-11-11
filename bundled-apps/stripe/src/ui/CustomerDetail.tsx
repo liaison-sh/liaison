@@ -24,7 +24,7 @@ import {
   whatHappensNext,
 } from "./customers-model"
 import { postToDiscussion } from "./discussion"
-import { type ApprovalItem, dashboardUrl, type DisputeItem, formatMoney, type HomeLoad, type InvoiceItem, type SubItem } from "./home-model"
+import { type ApprovalItem, dashboardShown, dashboardUrl, type DisputeItem, formatMoney, type HomeLoad, type InvoiceItem, type SubItem } from "./home-model"
 import { tr, uiLocale } from "./i18n"
 import { RefundCard } from "./RefundCards"
 import { type RefundApproval, refundsOf } from "./refund-model"
@@ -150,7 +150,9 @@ export const StripeCustomerDetail: Component<{ entityId?: string }> = (props) =>
                 <div class="flex flex-wrap gap-2">
                   <button type="button" data-testid="stripe-customer-refund" disabled={busy()} class={SECONDARY} onClick={() => request("refund")}>{tr("Refund")}</button>
                   <button type="button" data-testid="stripe-customer-cancel" disabled={busy()} class={SECONDARY} onClick={() => request("cancel", sub() ? { id: sub()!.id, label: sub()!.plan ?? sub()!.id } : undefined)}>{tr("Cancel subscription")}</button>
-                  <button type="button" data-testid="stripe-customer-open" class={SECONDARY} onClick={() => void app.openExternal(dashboardUrl(d().load?.connection.mode, `/customers/${c().id}`))}>{tr("Open in Stripe")}</button>
+                  <Show when={dashboardShown(d().load)}>
+                    <button type="button" data-testid="stripe-customer-open" class={SECONDARY} onClick={() => void app.openExternal(dashboardUrl(d().load?.connection.mode, `/customers/${c().id}`))}>{tr("Open in Stripe")}</button>
+                  </Show>
                 </div>
               </header>
               <p class="text-[12px] text-text-tertiary">{tr("The agent prepares a refund or cancellation for your approval.")}</p>
@@ -258,7 +260,7 @@ export const StripeCustomerDetail: Component<{ entityId?: string }> = (props) =>
               <Show when={pending().length > 0}>
                 <Section id="refunds" title={tr("Refunds waiting")}>
                   <div class="flex flex-col gap-3">
-                    <For each={pending()}>{(r) => <RefundCard approval={r.approval} payment={r.payment} held={held()} mode={d().load?.connection.mode} onAsk={ask} onChanged={refresh} />}</For>
+                    <For each={pending()}>{(r) => <RefundCard approval={r.approval} payment={r.payment} held={held()} mode={d().load?.connection.mode} standIn={!dashboardShown(d().load)} onAsk={ask} onChanged={refresh} />}</For>
                   </div>
                 </Section>
               </Show>

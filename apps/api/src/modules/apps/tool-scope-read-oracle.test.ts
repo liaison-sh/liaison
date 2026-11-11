@@ -775,6 +775,16 @@ const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, 
   ],
   ["apps/api/src/modules/apps/attention-aggregator.ts", "if (reg.scope) {", REASONS.ATTN],
   [
+    "apps/api/src/modules/apps/attention-store.ts",
+    "!isAppUnavailableFor(orgId, appName, userId) && (!reg.scope || hasScope(reg.scope, scopes))",
+    REASONS.ATTN,
+  ],
+  [
+    "apps/api/src/modules/apps/attention-store.ts",
+    "!isAppUnavailableFor(orgId, appName, userId) && (!reg.scope || hasScope(reg.scope, scopes))",
+    REASONS.ATTN,
+  ],
+  [
     "apps/api/src/modules/apps/attention-aggregator.ts",
     "if (!hasScope(reg.scope, aliasedScopes ?? callerScopes)) continue",
     REASONS.ATTN,

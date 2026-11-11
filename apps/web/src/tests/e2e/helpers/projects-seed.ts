@@ -10,6 +10,7 @@ import { api, createUserWithScopes } from "@liaison/test-helpers"
 import type { Page } from "@playwright/test"
 import { seedGatedApproval } from "./approvals-seed"
 import { getActiveUsersNamed, getTicketSlaTargetSeconds } from "./db-reads"
+import { triggerCronJob } from "./run-cron"
 import { seedFactory, seedTicket, seedTicketMessages } from "./seed"
 
 const PROJECT_SCOPES = [
@@ -294,6 +295,18 @@ export async function resetAttentionForUser(
       body: { items: markRead.slice(i, i + 50) },
     })
   }
+  // The apps' attention lists are stored and recomputed after a wake or on the
+  // attention minute tick: run the org's tick now so the cleared rows leave.
+  await refreshStoredAttention(env, orgId)
+}
+
+/**
+ * Recompute the org's stored app attention lists now, as the attention minute
+ * tick does (rows written straight into an app's tables wake nothing). The job
+ * runs in the server; callers poll the feed for its result.
+ */
+export async function refreshStoredAttention(env: WorkerEnv, orgId: string): Promise<void> {
+  await triggerCronJob(env, "kernel-cron", "attention-state-email-materialize-org", { orgId })
 }
 
 interface SeededAttentionFixtures {

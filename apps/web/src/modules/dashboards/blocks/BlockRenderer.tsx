@@ -2,7 +2,7 @@
 import { type Component, Match, Switch } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import type { BlockData, DashboardBlockMap, PieData, SeriesData } from "../dashboards-client"
-import { Chart } from "./Chart"
+import { Chart, type ChartDataset } from "./Chart"
 import { MetricBlock } from "./MetricBlock"
 import { TableBlock } from "./TableBlock"
 
@@ -12,20 +12,44 @@ export interface BlockRendererProps {
   map?: DashboardBlockMap
   title?: string
   locale?: string
+  /** What the comparison is, when the data carries one. */
+  compareMode?: "lastYear" | "previousPeriod"
+  /** The empty state's copy when the block follows the dashboard's range ("No data between …"). */
+  emptyText?: string
 }
 
 function seriesEmpty(d: SeriesData): boolean {
   return d.x.length === 0 || d.series.length === 0
 }
 
+/**
+ * A bar or line block's datasets: its series, then, when the server sent a comparison, each
+ * series' previous values (drawn lighter) named "<series> · <comparison>".
+ */
+export function seriesDatasets(d: SeriesData, previousName: string): ChartDataset[] {
+  const current: ChartDataset[] = d.series.map((x) => ({ label: x.name, values: x.values }))
+  const previous: ChartDataset[] = (d.previous?.series ?? [])
+    .filter((p) => p.values.some((v) => v !== null))
+    .map((p) => ({
+      label: d.series.length > 1 && p.name ? `${p.name} · ${previousName}` : previousName,
+      values: p.values,
+      previous: true,
+    }))
+  return [...current, ...previous]
+}
+
 /** Draws one block's mapped data, whatever its kind. */
 export const BlockRenderer: Component<BlockRendererProps> = (props) => {
   const i18n = useI18n()
+  const previousName = () =>
+    props.compareMode === "previousPeriod"
+      ? i18n.t("kernel.dashboards.comparePrevious")
+      : i18n.t("kernel.dashboards.compareLastYear")
   const format = () => props.map?.format
   const currency = () => props.map?.currency
   const empty = (
     <p data-testid="block-empty" class="py-4 text-[13px] text-text-tertiary">
-      {i18n.t("kernel.dashboards.noData")}
+      {props.emptyText ?? i18n.t("kernel.dashboards.noData")}
     </p>
   )
   return (
@@ -37,6 +61,8 @@ export const BlockRenderer: Component<BlockRendererProps> = (props) => {
             format={format()}
             currency={currency()}
             locale={props.locale}
+            compareMode={props.compareMode}
+            emptyText={props.emptyText}
           />
         )}
       </Match>
@@ -46,6 +72,7 @@ export const BlockRenderer: Component<BlockRendererProps> = (props) => {
             data={d() as Extract<BlockData, { kind: "table" }>}
             currency={currency()}
             locale={props.locale}
+            emptyText={props.emptyText}
           />
         )}
       </Match>
@@ -58,7 +85,7 @@ export const BlockRenderer: Component<BlockRendererProps> = (props) => {
             <Chart
               type={s().kind}
               labels={s().x}
-              datasets={s().series.map((x) => ({ label: x.name, values: x.values }))}
+              datasets={seriesDatasets(s(), previousName())}
               format={s().format ?? format()}
               currency={s().currency ?? currency()}
               locale={props.locale}

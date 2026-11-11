@@ -9,6 +9,8 @@ export interface TableBlockProps {
   data: TableData
   currency?: string
   locale?: string
+  /** Shown instead of "No data for this block yet" (names the range the block follows). */
+  emptyText?: string
 }
 
 interface KeyedRow {
@@ -64,7 +66,7 @@ export const TableBlock: Component<TableBlockProps> = (props) => {
         rowTestid={(r) => `block-table-row-${r.key}`}
         emptyState={
           <p data-testid="block-empty" class="py-4 text-[13px] text-text-tertiary">
-            {i18n.t("kernel.dashboards.noData")}
+            {props.emptyText ?? i18n.t("kernel.dashboards.noData")}
           </p>
         }
       />

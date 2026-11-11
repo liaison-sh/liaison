@@ -552,6 +552,8 @@ export function bootstrapKernelApps(): void {
         defaultLabelKey: "kernel.nav.dashboard",
         resolveLabel: (entityId) => dashboardTitle(entityId),
         referenceable: false,
+        // The time range rides in the URL (`?range=&compare=`), so a link carries it.
+        preserveSubRoutes: true,
       },
       // P4: one app draft in the builder (`/apps/builder/:id`), named by its title.
       "app-builder": {

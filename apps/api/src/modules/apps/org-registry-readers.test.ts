@@ -34,6 +34,7 @@ const READERS: Record<string, string> = {
   "apps/api-connector/authoring-tools.ts": AGENT,
   "apps/mcp-manager/routes.ts": REQUEST,
   "cli/search/reindex.ts": CLI,
+  "infra/jobs/webhook-inbox-jobs.ts": JOB,
   "infra/jobs/webhook-worker.ts": JOB,
   "modules/agent/context/connected-systems.ts": AGENT,
   "modules/agent/context/context.ts": AGENT,
@@ -104,6 +105,8 @@ const READERS: Record<string, string> = {
   "modules/search/searchable-entities.ts": JOB,
   "modules/secret-requests/targets.ts": REQUEST,
   "modules/threads/reference-display.ts": REQUEST,
+  "modules/webhooks/handler-run.ts":
+    "reads no registry itself: the type of the registration its caller (the webhook route or the inbox replay job) looked up",
   "modules/webhooks/routes.ts": WEBHOOK,
 }
 

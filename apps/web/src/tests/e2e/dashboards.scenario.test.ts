@@ -2,7 +2,9 @@
 // Dashboards: a dashboard with one block read from the data store and one read
 // from a kernel tool opens in its tab from Home's Dashboards section, and both
 // blocks draw their data. The rail's Dashboards entry lists them, and one
-// shared with the org while the page is open shows up without a reload.
+// shared with the org while the page is open shows up without a reload. A
+// block that follows the dashboard's time range reads again when a period is
+// picked, and the link carries the period.
 import { api, login } from "@liaison/test-helpers"
 import { expect, test } from "./fixtures/test"
 import { seedFactory } from "./helpers/seed"
@@ -121,4 +123,80 @@ test("the rail's Dashboards page lists dashboards and shows a new one without a 
   })
   expect([200, 204]).toContain(removed.status)
   await expect(page.getByTestId("dashboard-not-found")).toBeVisible({ timeout: 15_000 })
+})
+
+test("picking a period re-reads a block that follows the dashboard's range", async ({
+  authenticatedPage,
+  env,
+  world,
+}) => {
+  const page = authenticatedPage
+  const { accessToken } = await login(env.serverUrl, "admin@test.com", "12345678")
+
+  // Two orders dated yesterday: inside the last 30 days, outside last year.
+  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)
+  for (const [id, total] of [
+    ["r1", 20],
+    ["r2", 22],
+  ] as const) {
+    await seedFactory(env, world.org.id, "appDocument", {
+      app: "agent",
+      collection: "e2e_range_orders",
+      id,
+      data: { title: `Order ${id}`, total, day: yesterday },
+    })
+  }
+
+  const created = await api(env.serverUrl, "/api/dashboards", {
+    method: "POST",
+    token: accessToken,
+    body: {
+      title: "E2E range",
+      visibility: "personal",
+      spec: {
+        v: 1,
+        layout: "grid",
+        timeRange: { preset: "last30d" },
+        compare: "lastYear",
+        blocks: [
+          {
+            id: "revenue",
+            type: "metric",
+            title: "Revenue",
+            width: 1,
+            source: {
+              kind: "store",
+              app: "agent",
+              collection: "e2e_range_orders",
+              query: { where: { day: { gte: "{{range.from}}", lte: "{{range.to}}" } } },
+            },
+            map: { value: "total", agg: "sum", format: "number" },
+          },
+        ],
+      },
+    },
+  })
+  expect([200, 201]).toContain(created.status)
+  const id = (created.body.data ?? created.body).id as string
+
+  await page.goto(`http://localhost:${env.ports[1]}/dashboard/${id}`)
+  await page.waitForSelector("[data-shell]", { timeout: 30_000 })
+  const revenue = page.getByTestId("dashboard-block-revenue")
+  await expect(revenue).toHaveAttribute("data-state", "ready", { timeout: 20_000 })
+  await expect(revenue.getByTestId("block-metric-value")).toHaveText("42")
+  await expect(page.getByTestId("dashboard-range-label")).toContainText("vs")
+  await expect(page.getByTestId("dashboard-block-updated-revenue")).toBeVisible()
+
+  // Last year: the block reads again, for that year, and finds no order (a sum of none is 0).
+  const reread = page.waitForRequest(
+    (r) => r.url().includes(`/blocks/revenue/data`) && r.url().includes("range=lastYear"),
+  )
+  await page.getByTestId("dashboard-range-trigger").click()
+  await page.getByTestId("dashboard-range-preset-lastYear").click()
+  await reread
+  await expect(revenue.getByTestId("block-metric-value")).toHaveText("0", { timeout: 20_000 })
+  await expect(page.getByTestId("dashboard-range-label")).toContainText(
+    String(new Date().getFullYear() - 1),
+  )
+  await expect(page).toHaveURL(/range=lastYear&compare=lastYear/)
 })

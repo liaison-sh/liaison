@@ -330,6 +330,10 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
     reason: "once-only ledger of outside effects (agent runtime state)",
   },
   "kernel.file_upload_sessions": { exempt: "system", reason: "transient upload state" },
+  "kernel.webhook_inbox": {
+    exempt: "system",
+    reason: "inbound webhook deliveries awaiting or past their handler (delivery bookkeeping)",
+  },
   "kernel.import_ledger": { exempt: "system", reason: "import framework bookkeeping" },
   "kernel.import_transforms": { exempt: "system", reason: "import framework bookkeeping" },
   "kernel.import_uploads": { exempt: "system", reason: "import framework bookkeeping" },

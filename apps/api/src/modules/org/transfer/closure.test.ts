@@ -194,6 +194,7 @@ const EXPECTED_CLOSURE: Record<string, string> = {
   "kernel.user_scope_grants": "direct",
   "kernel.user_thread_state": "direct",
   "kernel.users": "direct",
+  "kernel.webhook_inbox": "direct",
 }
 
 const sql = postgres(process.env.DATABASE_URL_SUPERUSER as string, { max: 1, onnotice: () => {} })

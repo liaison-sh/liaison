@@ -838,14 +838,22 @@ tasks, the tickets close to their SLA), with an attention provider: an export
 named in `views.attentionItems` of the manifest, `{ "handler": "...", "scope": "..." }`.
 It returns attention items for the person in `ctx.actor`.
 
-The feed never calls the provider. Liaison runs it when the app is woken, and
-stores what it returns, one list per person:
+The feed never calls the provider. Liaison runs it in the background when what
+it lists may have changed, and stores what it returns, one list per person:
 
-- after any run of the app (a tool, an event handler, a job, a webhook),
+- after a run of the app that may write (an event handler, a job, a webhook, a
+  tool not declared `readOnly`); a read-only tool, a search, an export or a
+  preview wakes nothing,
 - after an event of the app is delivered,
 - on the attention minute tick: the next minute in a workspace where something
   changed, at least every 10 minutes otherwise. Items that only time changes
   (a deadline coming closer) appear on that tick.
+
+These runs are background jobs on their own queue, never part of a request.
+Wakes of one app in one workspace are grouped: the provider runs at most once
+every 15 seconds for them, after the writes they follow, and a workspace runs a
+limited number of refreshes a minute. A newer list is never replaced by an
+older run that finished later.
 
 Each run replaces the person's whole list, so an item the provider no longer
 returns is cleared. A person without the provider's scope gets an empty list. A
@@ -858,8 +866,9 @@ request is made, and again when the request's parameters are edited
 (`approval_update_payload` or the card's editor). The summary is stored with the
 request; the card, the approvals list, Home and the agent read the stored text
 and never run the summarizer. A request with no stored summary (an older one)
-shows a generic summary of its parameters until the server stores the real one,
-which it does in the background.
+shows a generic summary of its parameters. While it still awaits a decision,
+the server stores the real one in the background, a few at a time; a decided
+request keeps the generic summary.
 
 ## See also
 

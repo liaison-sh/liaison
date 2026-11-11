@@ -76,9 +76,10 @@ ctx.fetch timeoutMs: shortens the 10 s default, a write may ask for up to 30 s -
 ctx.jobs.enqueue / ctx.timers.wakeIn / ctx.steps.run -> packages/app-sdk/src/types.ts:112 ; packages/app-sdk/src/types.ts:124 ; packages/app-sdk/src/types.ts:185
 ctx.sql / ctx.accounts in the SDK -> packages/app-sdk/src/types.ts:249 ; packages/app-sdk/src/types.ts:299
 An atomic job may not call outside (atomic_run_egress_refused) -> apps/api/src/modules/apps/atomic-egress.ts:1 ; apps/api/src/modules/apps/sandbox/rpc-bridge.ts:149
-Attention provider in views.attentionItems, run as ctx.actor -> apps/api/src/modules/apps/runtime.ts:3701-3714 ; apps/api/src/modules/apps/attention-store.ts:85-142
-The feed reads stored lists and runs no app code -> apps/api/src/modules/apps/attention-aggregator.ts:205-225 ; apps/api/src/modules/apps/attention-store.ts:480
-Provider runs after any run of the app, after an app event, and on the minute tick (heartbeat 10 min) -> apps/api/src/modules/apps/attention-store.ts:452-470 ; apps/api/src/modules/attention/state-materializer.ts:506-512 ; apps/api/src/modules/attention/org-changes.ts:44
-Each run replaces the list; no scope = empty; a failed run keeps the last list with its error -> apps/api/src/modules/apps/attention-store.ts:293-355
+Attention provider in views.attentionItems, run as ctx.actor -> apps/api/src/modules/apps/runtime.ts:3701-3714 ; apps/api/src/modules/apps/attention-store.ts:112-169
+The feed reads stored lists and runs no app code -> apps/api/src/modules/apps/attention-aggregator.ts:205-225 ; apps/api/src/modules/apps/attention-store.ts:651
+Provider runs after a run that may write (not read-only tools, searches, exports, previews), after an app event, and on the minute tick (heartbeat 10 min) -> apps/api/src/modules/apps/attention-store.ts:588-631 ; apps/api/src/modules/attention/state-materializer.ts:506-513 ; apps/api/src/modules/attention/org-changes.ts:44
+Each run replaces the list; no scope = empty; a failed run keeps the last list with its error; an older run never replaces a newer list -> apps/api/src/modules/apps/attention-store.ts:289-385
 Summaries computed at request time and on edit, stored; reads serve stored text, generic while missing -> apps/api/src/modules/apps/execute-tool.ts:4954 ; apps/api/src/modules/approvals/edit.ts:641 ; apps/api/src/modules/approvals/served-summary.ts:1-15
-Background backfill of missing summaries -> apps/api/src/modules/approvals/summary-backfill.ts:1-15 ; apps/api/src/infra/boot-phase10.ts:486
+Refreshes are background jobs on their own queue, one per app and workspace per 15 s, capped per workspace per minute -> apps/api/src/modules/apps/attention-store.ts:489-560
+Background backfill of missing summaries, pending requests only, a few at a time -> apps/api/src/modules/approvals/summary-backfill.ts:1-22 ; apps/api/src/infra/boot-phase10.ts:487

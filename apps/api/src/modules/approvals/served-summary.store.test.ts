@@ -9,7 +9,11 @@ import type { RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { approvalRequests } from "~/db/schema/kernel"
 import { type SummaryRunner, storeApprovalSummaries } from "~/modules/approvals/served-summary"
-import { backfillApprovalSummaries } from "~/modules/approvals/summary-backfill"
+import {
+  type BackfillJob,
+  backfillApprovalSummaryBatch,
+  processApprovalSummaryBackfillJob,
+} from "~/modules/approvals/summary-backfill"
 import { approvalSummarizerRegistry } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
 import * as minimal from "~/seed/tiers/minimal"
@@ -82,7 +86,71 @@ describe("storeApprovalSummaries", () => {
     expect(await summaryOf(noSummarizer)).toBeNull()
   })
 
-  it("the backfill stores the summary of rows that have none, once, and serving them then runs nothing", async () => {
+  it("the backfill summarizes only pending rows: a decided, auto-approved or expired row runs no summarizer", async () => {
+    const u = await minimal.orgAdmin((await createTestOrg()).id)
+    const threadId = await minimal.thread(u.orgId, u.id)
+    let calls = 0
+    registerApprovalSummarizer(u.orgId, "tickets", "reply", async (params) => {
+      calls++
+      return {
+        kind: "tickets.reply",
+        title: `Reply on ${(params as { ticketId: string }).ticketId}`,
+        lines: [],
+      }
+    })
+    const decided: Array<{ status: string; reason?: string }> = [
+      { status: "approved", reason: "auto_approved_by_policy" },
+      { status: "approved", reason: "auto_approved_by_capability" },
+      { status: "approved" },
+      { status: "denied" },
+      { status: "expired" },
+      { status: "approved", reason: "auto_approved_by_policy" },
+    ]
+    const ids = await withPrivilegedDb(u.orgId, "t", async (tx) =>
+      (
+        await tx
+          .insert(approvalRequests)
+          .values(
+            decided.map((d, i) => ({
+              orgId: u.orgId,
+              handle: `h-${crypto.randomUUID()}`,
+              threadId,
+              originatingThreadId: threadId,
+              toolName: "tickets:reply",
+              toolParams: { ticketId: `d-${i}` },
+              currentPayload: { ticketId: `d-${i}` },
+              expiresAt: new Date(Date.now() + 3_600_000),
+              requestedBy: u.id,
+              summary: i % 2 === 0 ? null : { kind: "k", title: "tickets:reply", lines: [] },
+              status: d.status,
+              ...(d.reason ? { reason: d.reason } : {}),
+            })),
+          )
+          .returning({ id: approvalRequests.id })
+      ).map((r) => r.id),
+    )
+    const res = await backfillApprovalSummaryBatch({
+      orgIds: [u.orgId],
+      ensureOrgApps: async () => {},
+      run,
+      cap: 50,
+    })
+    expect(res.stored).toBe(0)
+    expect(res.next).toBeNull()
+    expect(calls).toBe(0)
+    const summaries = await withPrivilegedDb(u.orgId, "t", async (tx) =>
+      (
+        await tx
+          .select({ summary: approvalRequests.summary })
+          .from(approvalRequests)
+          .where(inArray(approvalRequests.id, ids))
+      ).map((r) => r.summary),
+    )
+    // They keep what they had: served with the generic summary of their payload.
+    expect(summaries.filter((x) => x === null).length).toBe(3)
+  })
+
+  it("the backfill job summarizes pending rows in paced batches of its cap, then stops", async () => {
     const u = await minimal.orgAdmin((await createTestOrg()).id)
     const threadId = await minimal.thread(u.orgId, u.id)
     let calls = 0
@@ -99,29 +167,46 @@ describe("storeApprovalSummaries", () => {
         await tx
           .insert(approvalRequests)
           .values(
-            [null, { kind: "k", title: "tickets:reply", lines: [] }].map((summary, i) => ({
+            [0, 1, 2, 3, 4].map((i) => ({
               orgId: u.orgId,
               handle: `h-${crypto.randomUUID()}`,
               threadId,
               originatingThreadId: threadId,
               toolName: "tickets:reply",
-              toolParams: { ticketId: `b-${i}` },
-              currentPayload: { ticketId: `b-${i}` },
+              toolParams: { ticketId: `p-${i}` },
+              currentPayload: { ticketId: `p-${i}` },
               expiresAt: new Date(Date.now() + 3_600_000),
               requestedBy: u.id,
-              summary,
+              summary: i === 0 ? { kind: "k", title: "tickets:reply", lines: [] } : null,
             })),
           )
           .returning({ id: approvalRequests.id })
       ).map((r) => r.id),
     )
-    const first = await backfillApprovalSummaries({
+    const queued: BackfillJob[] = []
+    const deps = {
       orgIds: [u.orgId],
       ensureOrgApps: async () => {},
       run,
-    })
-    expect(first.stored).toBe(2)
-    expect(calls).toBe(2)
+      cap: 2,
+      enqueue: async (job: BackfillJob) => {
+        queued.push(job)
+      },
+    }
+    const perJob: number[] = []
+    let payload: BackfillJob["payload"] = {}
+    for (let jobs = 0; jobs < 10; jobs++) {
+      const before = calls
+      await processApprovalSummaryBackfillJob(payload, deps)
+      perJob.push(calls - before)
+      const next = queued.shift()
+      if (!next) break
+      // Paced: the next batch waits before it runs.
+      expect(next.delay).toBeGreaterThan(0)
+      payload = next.payload
+    }
+    expect(perJob).toEqual([2, 2, 1])
+    expect(calls).toBe(5)
     const titles = await withPrivilegedDb(u.orgId, "t", async (tx) =>
       (
         await tx
@@ -130,14 +215,10 @@ describe("storeApprovalSummaries", () => {
           .where(inArray(approvalRequests.id, ids))
       ).map((r) => (r.summary as { title?: string } | null)?.title),
     )
-    expect(titles.sort()).toEqual(["Reply on b-0", "Reply on b-1"])
-    // Every row now has its summary: a second pass computes nothing.
-    const second = await backfillApprovalSummaries({
-      orgIds: [u.orgId],
-      ensureOrgApps: async () => {},
-      run,
-    })
-    expect(second.stored).toBe(0)
-    expect(calls).toBe(2)
+    expect(titles.sort()).toEqual([0, 1, 2, 3, 4].map((i) => `Reply on p-${i}`))
+    // Every pending row has its summary: a new pass computes nothing.
+    await processApprovalSummaryBackfillJob({}, deps)
+    expect(calls).toBe(5)
+    expect(queued).toEqual([])
   })
 })

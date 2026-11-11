@@ -390,6 +390,14 @@ export interface Attention {
 
 const MONEY_REQUESTS = new Set(["stripe:refunds_create", "stripe:subscription_cancel"])
 
+/** True when the card is past its expiry month. */
+export function cardExpired(card: { exp: string | null } | null | undefined, now: Date): boolean {
+  const m = /^(\d{1,2})\/(\d{2}|\d{4})$/.exec(card?.exp ?? "")
+  if (!m) return false
+  const year = m[2]!.length === 2 ? 2000 + Number(m[2]) : Number(m[2])
+  return year * 12 + Number(m[1]) - 1 < now.getUTCFullYear() * 12 + now.getUTCMonth()
+}
+
 export function buildAttention(input: {
   pastDue: SubItem[]
   openInvoices: InvoiceItem[]
@@ -408,7 +416,9 @@ export function buildAttention(input: {
   for (const s of input.pastDue) {
     if (s.status !== "past_due") continue
     const currency = (s.currency ?? "eur").toLowerCase()
-    if (retryBySub.has(s.id)) {
+    // A retry on an expired card cannot succeed, so it is a failed payment to look at
+    // (someone has to get a new card), never "in Stripe's retries".
+    if (retryBySub.has(s.id) && !cardExpired(s.card, now)) {
       retrying.count++
       retrying.mrrByCurrency[currency] = (retrying.mrrByCurrency[currency] ?? 0) + (s.mrrMinor ?? 0)
       continue

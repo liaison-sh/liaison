@@ -24,6 +24,11 @@ import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { seedContext } from "~/seed/context"
 import { actorFor, asUser } from "~/seed/factories/people/actors"
 import { type SeedDemoWorldResult, seedDemoWorld } from "~/seed/tiers/demo/seed-demo"
+import {
+  buildAttention,
+  type InvoiceItem as HomeInvoiceItem,
+  type SubItem as HomeSubItem,
+} from "../../../../../../bundled-apps/stripe/src/ui/home-model"
 import { installFromDist } from "../../../../test-support/seed/install-dist-apps"
 import { saasMorningBrief } from "./brief"
 
@@ -665,6 +670,28 @@ describe("the software world's figures, read through the payments app", () => {
     // Counted in MRR: without them, 81,341 a month.
     const line = (await mrr()).lines[0] as MrrLine
     expect(line.mrrMinor - total).toBe(8_134_100)
+  })
+
+  it("the payments home's failed payments are the card reminder Home holds: the expired card, with the other six in retries", async () => {
+    const page = async <T>(tool: string, args: Record<string, unknown>): Promise<T[]> =>
+      (await appCall<{ items: T[] }>(tool, { ...args, limit: 50 })).items
+    // The very reads the payments home makes, then its own attention rule.
+    const attention = buildAttention({
+      pastDue: await page<HomeSubItem>("stripe:subscriptions_search", { status: "past_due" }),
+      openInvoices: await page<HomeInvoiceItem>("stripe:invoices_search", { status: "open" }),
+      disputes: [],
+      approvals: [],
+      now: BOARD_DATE,
+    })
+    expect(attention.failed.map((f) => f.subscriptionId)).toEqual(["sub_1Q8XarlonGroup"])
+    expect(attention.retrying.count).toBe(6)
+    // Home's failed-payment reminder is for the same customer, and it is the only one.
+    const reminders = await rows(
+      world.orgId,
+      sql`SELECT handle FROM kernel.approval_requests
+          WHERE org_id = ${world.orgId} AND handle LIKE '%card-reminder'`,
+    )
+    expect(reminders.map((r) => r.handle)).toEqual(["demo-arlon-card-reminder"])
   })
 
   it("four trials, each ending within seven days of the board date, in no MRR figure", async () => {

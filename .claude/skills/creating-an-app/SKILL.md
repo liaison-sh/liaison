@@ -49,6 +49,7 @@ first real tool. Patterns (each maps to a handler in
 - **Mutation tool** — `ctx.db.insert(...)` then `await ctx.emit({ entity, action: "created", entityId })`
 - **External-API tool** — `const token = await ctx.connections.<name>.getToken(); const res = await ctx.fetch(...)`
 - **Scheduled job** — declare it under `jobs` in `app.manifest.json` with a cron `schedule`; the handler runs on that schedule
+- **Long work** (a backfill, a big import, waiting on a provider) — never sleep or loop past the run's limit. Declare an `onDemand` job, start it with `ctx.jobs.enqueue(name, payload)`, and inside it use `ctx.steps.run(name, { budgetMs }, async (cursor) => ({ done, cursor, wakeIn? }))`: it saves the cursor and continues in a later run. `ctx.timers.wakeIn(seconds, name, payload)` runs a job later. See REFERENCE.md, "Long work"
 - **Contacts** — `await ctx.resolveContact({ email })`
 
 Every tool declares `requiredScopes` in the manifest, a non-empty list of `<app>:resource:action` scopes; the caller must hold all of them. The old single `scope` key is refused.

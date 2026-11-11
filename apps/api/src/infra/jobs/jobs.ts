@@ -122,6 +122,25 @@ export class OrgTransferHeldJobError extends Error {
   }
 }
 
+/** The longest one hop of a long timer waits (the delay an app job may ask for). */
+export const TIMER_HOP_MAX_MS = 15 * 60 * 1000
+/** A timer due within this is run now rather than held again. */
+const TIMER_DUE_TOLERANCE_MS = 1_000
+
+/**
+ * A long timer's job (`ctx.timers.wakeIn` past 15 min, bridge/platform.ts)
+ * carries its wake time as `_wakeAt`: until then the worker puts it back as
+ * delayed, 15 min at a time, unrun and without spending an attempt, so it
+ * keeps its id (and its deduplication) through every hop. Returns when to look
+ * at it again, or null once it is due.
+ */
+export function timerHoldUntil(data: unknown, now: number): number | null {
+  const wakeAt = (data as { _wakeAt?: unknown } | null | undefined)?._wakeAt
+  if (typeof wakeAt !== "number" || !Number.isFinite(wakeAt)) return null
+  if (wakeAt - now <= TIMER_DUE_TOLERANCE_MS) return null
+  return Math.min(wakeAt, now + TIMER_HOP_MAX_MS)
+}
+
 /** How long a held job waits before it is looked at again. */
 export const TRANSFER_HELD_JOB_DELAY_MS = 5_000
 /** Once the org has moved away its jobs only wait for the export to take them. */
@@ -722,6 +741,12 @@ function ensureWorker(queueName: string): void {
         await job.moveToDelayed(Date.now() + (closingQueues ? 0 : GATED_JOB_REQUEUE_MS), token)
         throw new DelayedError()
       }
+      // A long timer not yet due hops again (timerHoldUntil).
+      const holdUntil = token ? timerHoldUntil(job.data, Date.now()) : null
+      if (holdUntil !== null && token) {
+        await job.moveToDelayed(holdUntil, token)
+        throw new DelayedError()
+      }
       // An org moving to another instance (modules/org/transfer-state/): its
       // job is put back, kept, unrun and without spending an attempt.
       const movingOrg = orgOfJobData(job.data)
@@ -886,6 +911,13 @@ export type EnqueueOptions = {
    *  by it, so a caller that re-arms a sliding deadline on every event (the
    *  episode quiet close) moves the deadline to the newest arm. */
   replaceDelayed?: boolean
+  /**
+   * `jobId` deduplicates for this long from the enqueue, whatever the job's
+   * state (BullMQ throttle mode), instead of until the job finishes: a timer
+   * deduplicates while it is pending, and the job it wakes may re-arm itself
+   * under the same id.
+   */
+  dedupTtlMs?: number
 }
 
 function buildJobOptions(route: { priority?: number }, opts?: EnqueueOptions): JobsOptions {
@@ -895,6 +927,9 @@ function buildJobOptions(route: { priority?: number }, opts?: EnqueueOptions): J
           deduplication: {
             id: opts.jobId,
             ...(opts.replaceDelayed ? { replace: true } : {}),
+            ...(typeof opts.dedupTtlMs === "number" && opts.dedupTtlMs > 0
+              ? { ttl: Math.round(opts.dedupTtlMs) }
+              : {}),
           },
         }
       : {}),

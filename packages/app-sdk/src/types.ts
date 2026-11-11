@@ -99,6 +99,101 @@ export interface StoreClient {
   count(collection: string, where?: StoreWhere): Promise<number>
 }
 
+export interface EnqueueJobOptions {
+  /** Wait this many milliseconds first; at most 15 min (longer is clamped: use `ctx.timers.wakeIn`). */
+  delay?: number
+  /**
+   * Deduplication key, scoped to your org: while a job enqueued with this id waits or runs,
+   * another enqueue with the same id is dropped.
+   */
+  jobId?: string
+}
+
+export interface JobsClient {
+  /**
+   * Enqueue `jobName`, a job declared in the manifest (an `onDemand` job, or a scheduled one).
+   * The job runs as the user whose run enqueued it, or as the app.
+   */
+  enqueue(
+    jobName: string,
+    payload?: Record<string, unknown>,
+    opts?: EnqueueJobOptions,
+  ): Promise<void>
+}
+
+export interface TimersClient {
+  /**
+   * Run `jobName` with `payload` in `seconds` (0 to 30 days). Use it instead of waiting in a run:
+   * a provider that answers "not ready yet" is asked again by a later run. With `jobId`, a second
+   * timer of that id is dropped while the first is pending; the woken job may re-arm the same id.
+   */
+  wakeIn(
+    seconds: number,
+    jobName: string,
+    payload?: Record<string, unknown>,
+    opts?: { jobId?: string },
+  ): Promise<void>
+}
+
+/** What one chunk of a step returns. */
+export interface StepChunkResult<C> {
+  /** True once the work is finished: the step is then `done` until `reset`. */
+  done: boolean
+  /** Where the next chunk starts (JSON). Saved before the next chunk runs. */
+  cursor?: C | null
+  /** Stop this run and continue in this many seconds (e.g. a provider's report is not ready). */
+  wakeIn?: number
+}
+
+export interface StepRunResult<C> {
+  /**
+   * `done`: finished (now or before). `scheduled`: the run's budget ran out (or a chunk asked
+   * `wakeIn`) and a later run of the same job continues. `skipped`: another run holds the step,
+   * or this run was a stale continuation; nothing ran.
+   */
+  state: "done" | "scheduled" | "skipped"
+  cursor: C | null
+  /** Chunks this run completed. */
+  chunks: number
+}
+
+export interface StepState<C> {
+  cursor: C | null
+  done: boolean
+  /** A run holds the step right now. */
+  running: boolean
+  updatedAt: string
+}
+
+/**
+ * Resumable work. Inside a job handler (not an `atomic` one):
+ *
+ * ```ts
+ * await ctx.steps.run("backfill", { budgetMs: 20_000 }, async (cursor) => {
+ *   const page = await fetchPage(cursor)
+ *   await savePage(page)
+ *   return { done: !page.next, cursor: page.next }
+ * })
+ * ```
+ *
+ * The cursor lives in the app data store. Each run claims the step, calls `chunk` again and again
+ * while `budgetMs` lasts (default half the job's timeout, at most 80% of it), saving the cursor
+ * after every chunk, then re-enqueues the same job to continue. Two runs never run a chunk of the
+ * same step at once; a chunk whose run crashed is run again from the last saved cursor, so make a
+ * chunk safe to repeat.
+ */
+export interface StepsClient {
+  run<C = unknown>(
+    name: string,
+    opts: { budgetMs?: number },
+    chunk: (cursor: C | null) => Promise<StepChunkResult<C>>,
+  ): Promise<StepRunResult<C>>
+  /** The step's saved state, or null before its first run (or after a reset). */
+  get<C = unknown>(name: string): Promise<StepState<C> | null>
+  /** Forget the step, so its next run starts again from a null cursor. */
+  reset(name: string): Promise<{ reset: boolean }>
+}
+
 export interface ConnectionClient {
   getToken(identifier?: string): Promise<string>
   getAccounts(): Promise<
@@ -206,7 +301,14 @@ export interface AppContext {
      */
     metadata?: Record<string, unknown>
   }): Promise<void>
-  enqueueJob(jobName: string, payload: unknown): Promise<void>
+  /** The flat name of {@link AppContext.jobs}`.enqueue` (same call, same options). */
+  enqueueJob(jobName: string, payload: unknown, opts?: EnqueueJobOptions): Promise<void>
+  /** Background jobs: run a job the manifest declares, now or a little later. */
+  jobs: JobsClient
+  /** Wake-ups: run a job in N seconds, without sleeping in the current run. */
+  timers: TimersClient
+  /** Work longer than one run, done as bounded chunks across runs (see {@link StepsClient}). */
+  steps: StepsClient
   resolveContact(params: {
     email?: string
     name?: string

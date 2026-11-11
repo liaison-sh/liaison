@@ -202,3 +202,13 @@ export async function storePut(
 ) {
   return stripTime(await ctx.store.set(p.c, p.id, p.data))
 }
+
+// A resumable job (ctx.steps.run): one page per chunk, `budgetMs: 1` so every
+// run hands the rest to a continuation. Each page inserts one item.
+export async function pages(p: { total: number; tag: string }, ctx: Ctx) {
+  return ctx.steps.run(`pages-${p.tag}`, { budgetMs: 1 }, async (cursor: number | null) => {
+    const page = cursor ?? 0
+    await ctx.db.insert("items", { title: `${p.tag}-page-${page}` })
+    return { done: page + 1 >= p.total, cursor: page + 1 }
+  })
+}

@@ -41,18 +41,54 @@ type CheckInStep = {
   toolResults?: ReadonlyArray<{ toolCallId?: string; output?: unknown }>
 }
 
-/** How one call of the turn ended, read from its result. */
-function callOutcome(
-  output: unknown,
-): "ran" | "waits for a person's approval" | "failed" | "was not run" {
+/** Statuses a result gives for work that was asked for and refused: nothing was done. */
+const REFUSED_STATUSES = new Set(["refused", "rejected", "denied", "not_run", "skipped"])
+/** Statuses a result gives for work that started and has not finished yet. */
+const STARTED_STATUSES = new Set([
+  "started",
+  "queued",
+  "running",
+  "in_progress",
+  "dispatched",
+  "scheduled",
+])
+
+/**
+ * A gated call's parked answer: its own status, or a parked envelope inside its
+ * result (`{ blocked: {...} }`, as false-approval-guard.ts reads it).
+ */
+function parked(value: unknown, depth = 0): boolean {
+  if (value === null || typeof value !== "object" || depth > 4) return false
+  const v = value as Record<string, unknown>
+  if (depth === 0 && (v.status === "pending_approval" || v.blocked === true)) return true
+  if (v.blocked !== null && typeof v.blocked === "object") return true
+  if (v.blocked === true && v.status === "pending_approval") return true
+  const children = Array.isArray(value) ? value : Object.values(v)
+  return children.some((child) => parked(child, depth + 1))
+}
+
+/**
+ * How one call of the turn ended, read from its result. A call that started
+ * work (a session on a computer, a job) says it has not finished, and a status
+ * the result names is passed on as it is, so the wrap-up claims no more than
+ * the result shows.
+ */
+export function callOutcome(output: unknown): string {
+  if (typeof output === "string" && output.startsWith("This call was not run")) return "was not run"
   const o = (output && typeof output === "object" ? output : {}) as Record<string, unknown>
   const value = (
     o.type === "json" && o.value && typeof o.value === "object" ? o.value : o
   ) as Record<string, unknown>
-  if (value.blocked === true || value.status === "pending_approval")
-    return "waits for a person's approval"
-  if (value.error !== undefined && value.error !== null) return "failed"
-  if (typeof output === "string" && output.startsWith("This call was not run")) return "was not run"
+  if (parked(value)) return "waits for a person's approval"
+  if ((value.error !== undefined && value.error !== null) || value.ok === false) return "failed"
+  // A status word only (a record's own field could hold any text).
+  const status =
+    typeof value.status === "string" && /^[a-z_]{1,32}$/.test(value.status) ? value.status : null
+  if (status && REFUSED_STATUSES.has(status)) return "was refused: nothing was done"
+  if (status && STARTED_STATUSES.has(status)) return `started and has not finished (${status})`
+  if (status && status !== "ok" && status !== "done" && status !== "success") {
+    return `ran (its result says: ${status})`
+  }
   return "ran"
 }
 
@@ -116,6 +152,12 @@ export interface TurnInputBudget {
   /** Marks the check-in step as sent; true from then on. */
   markCheckInSent(): void
   readonly checkInSent: boolean
+  /**
+   * The steps this turn may still take under its step budget (null without
+   * one). Every model step of the turn counts: a resumed attempt's earlier
+   * steps, a correction continuation's, and the check-in itself.
+   */
+  stepsLeft(): number | null
 }
 
 /** The budget for a turn whose first step sent `firstStepInputTokens`. */
@@ -163,6 +205,9 @@ export function createTurnInputBudget(opts: { maxSteps?: number } = {}): TurnInp
     },
     get checkInSent() {
       return checkInSent
+    },
+    stepsLeft() {
+      return maxSteps === undefined ? null : Math.max(0, maxSteps - steps)
     },
   }
 }

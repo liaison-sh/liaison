@@ -124,3 +124,4 @@ computer_session_answer -> apps/api/src/modules/agent/tools/kernel-tools.ts:1175
 computer_session_settings -> apps/api/src/modules/agent/tools/kernel-tools.ts:1203
 Auto asks after outside text; own-server downloads do not count -> apps/desktop/sidecar/outside-text.ts:139
 Reconnect within 5 s keeps sessions running; 30 s after a server restart (close 1012) -> apps/api/src/modules/node-sessions/lifecycle.ts:140-156 ; apps/api/src/lib/server.ts:810-813
+A read of a session with no pull request says so -> apps/api/src/modules/node-sessions/agent-tools.ts:402-407

@@ -4,7 +4,14 @@ import { z } from "zod"
 import { UPSTREAM_CONNECTION_CLOSED } from "~/lib/failure-severity"
 import { rootLogger } from "~/lib/logger"
 import { fetchWithPinnedHost, UnsafeOutboundUrlError } from "~/lib/outbound-fetch"
-import { egressLimits } from "~/modules/apps/run-limits"
+import {
+  acquireConnectionPermit,
+  type ConnectionLimiterKey,
+  pauseConnection,
+  retryAfterPauseMs,
+} from "~/modules/apps/connection-limiter"
+import { declaredConnectionLimits } from "~/modules/apps/connection-limits"
+import { connectionLimiterLimits, egressLimits } from "~/modules/apps/run-limits"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import {
   dropBearer,
@@ -390,138 +397,171 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
       const testVies = demoShopify || demoBoxtal ? null : maybeTestViesResponse(wireUrl)
 
       let response: Response
-      if (demoShopify) {
-        response = demoShopify
-      } else if (demoBoxtal) {
-        response = demoBoxtal
-      } else if (testVies) {
-        response = testVies
-      } else {
-        // Everything the fixture provider did NOT answer. A demo org's app
-        // traffic to Pennylane, Boxtal, Meta, the VIES VAT service or anything
-        // else a shipped manifest declares is refused HERE, before a connection
-        // is opened, rather than leaving the box with a sentinel credential and
-        // coming back as a confusing 401. Shopify never reaches this line: it
-        // was answered above, so the fixture path is untouched and nothing is
-        // checked twice. One module-local boolean on a normal deployment.
-        await assertDemoAppFetchAllowed(orgId, wireUrl)
-        // An idempotent read whose connection the upstream dropped mid-flight
-        // ("The socket connection was closed unexpectedly") is retried once: a
-        // pooled keep-alive socket the far end had already closed fails the
-        // first use and succeeds on a fresh one. A write is never replayed.
-        const idempotent = IDEMPOTENT_METHODS.has(String(method).toUpperCase())
-        for (let attempt = 1; ; attempt++) {
-          try {
-            if (
-              sandboxEgressOverrides.fetch &&
-              sandboxEgressOverrides.fetchInterceptsHost?.(new URL(url).hostname)
-            ) {
-              // TEST-ONLY: a test fetch-impl is installed (see `SandboxBridgeTestAccess.setFetch`,
-              // null in production) AND it has claimed this host. The URL already passed
-              // `validateSandboxFetchUrl` above (allowlist + HTTPS), so call the mock
-              // DIRECTLY — `fetchWithPinnedHost` does a real DNS `lookup()` before
-              // invoking `fetchImpl`, which fails for unreachable third-party sandbox
-              // hosts (e.g. Boxtal's `api.boxtal.build`) and would never reach the mock.
-              // Hosts the mock does NOT claim (e.g. Shopify's live `*.myshopify.com`)
-              // fall through to the real pinned-host path below, byte-identical to prod.
-              response = await sandboxEgressOverrides.fetch(wireUrl, {
-                method,
-                headers: headersWithActor,
-                body,
-                signal: AbortSignal.timeout(fetchTimeoutMs),
-              } as RequestInit)
-            } else {
-              response = await fetchWithPinnedHost(
-                wireUrl,
-                {
+      let responseBody: string
+      let limiterKey: ConnectionLimiterKey | null = null
+      let releasePermit: (() => Promise<void>) | null = null
+      try {
+        if (demoShopify) {
+          response = demoShopify
+        } else if (demoBoxtal) {
+          response = demoBoxtal
+        } else if (testVies) {
+          response = testVies
+        } else {
+          // Everything the fixture provider did NOT answer. A demo org's app
+          // traffic to Pennylane, Boxtal, Meta, the VIES VAT service or anything
+          // else a shipped manifest declares is refused HERE, before a connection
+          // is opened, rather than leaving the box with a sentinel credential and
+          // coming back as a confusing 401. Shopify never reaches this line: it
+          // was answered above, so the fixture path is untouched and nothing is
+          // checked twice. One module-local boolean on a normal deployment.
+          await assertDemoAppFetchAllowed(orgId, wireUrl)
+          // The shared per-connection limiter (connection-limiter.ts): a call on a
+          // connection whose manifest declares `limits` takes a permit right before
+          // it goes on the wire, held until its answer is read below.
+          const limits = auth ? declaredConnectionLimits(manifest, auth.connection) : null
+          if (auth && limits) {
+            limiterKey = {
+              orgId,
+              app: appName,
+              connection: auth.connection,
+              identifier: auth.identifier ?? "",
+            }
+            const waits = connectionLimiterLimits().maxWaitMs
+            releasePermit = await acquireConnectionPermit(limiterKey, limits, {
+              maxWaitMs: ctx.bridgeOptions?.currentJob ? waits.background : waits.interactive,
+              ...(ctx.bridgeOptions?.signal ? { signal: ctx.bridgeOptions.signal } : {}),
+            })
+          }
+          // An idempotent read whose connection the upstream dropped mid-flight
+          // ("The socket connection was closed unexpectedly") is retried once: a
+          // pooled keep-alive socket the far end had already closed fails the
+          // first use and succeeds on a fresh one. A write is never replayed.
+          const idempotent = IDEMPOTENT_METHODS.has(String(method).toUpperCase())
+          for (let attempt = 1; ; attempt++) {
+            try {
+              if (
+                sandboxEgressOverrides.fetch &&
+                sandboxEgressOverrides.fetchInterceptsHost?.(new URL(url).hostname)
+              ) {
+                // TEST-ONLY: a test fetch-impl is installed (see `SandboxBridgeTestAccess.setFetch`,
+                // null in production) AND it has claimed this host. The URL already passed
+                // `validateSandboxFetchUrl` above (allowlist + HTTPS), so call the mock
+                // DIRECTLY — `fetchWithPinnedHost` does a real DNS `lookup()` before
+                // invoking `fetchImpl`, which fails for unreachable third-party sandbox
+                // hosts (e.g. Boxtal's `api.boxtal.build`) and would never reach the mock.
+                // Hosts the mock does NOT claim (e.g. Shopify's live `*.myshopify.com`)
+                // fall through to the real pinned-host path below, byte-identical to prod.
+                response = await sandboxEgressOverrides.fetch(wireUrl, {
                   method,
                   headers: headersWithActor,
                   body,
                   signal: AbortSignal.timeout(fetchTimeoutMs),
-                },
-                {
-                  maxRedirects: SANDBOX_FETCH_MAX_REDIRECTS,
-                  fetchImpl: sandboxEgressOverrides.fetch ?? undefined,
-                  ...sandboxEgressPolicy(appName),
-                  allowPrivateHostsInTest,
-                  onHopValidate: async (next) => {
-                    await validateSandboxFetchUrl(
-                      next,
-                      allowedDomains,
-                      allowPrivateHostsInTest,
-                      appName,
-                    )
-                    // An injected credential follows a redirect only to its own connection's hosts.
-                    if (injectedFor && !matchesConnectionHost(granted, injectedFor, next)) {
-                      throw new Error(
-                        `Redirect to ${new URL(next).hostname} refused: not a host of connection "${injectedFor}"`,
-                      )
-                    }
-                    // A placed config secret follows a redirect only to its declared hosts.
-                    for (const hosts of secretHosts) {
-                      if (!matchesDomain(next, hosts)) {
-                        const err = new Error(
-                          `Redirect to ${new URL(next).hostname} refused: not a host the placed config secret may go to`,
-                        ) as Error & { status: number; code: string }
-                        err.status = 403
-                        err.code = SECRET_PLACEMENT_REFUSED
-                        throw err
-                      }
-                    }
-                    // A credential bound to its account's own host follows no redirect elsewhere.
-                    if (injectedHost && new URL(next).hostname.toLowerCase() !== injectedHost) {
-                      throw new Error(
-                        `Redirect to ${new URL(next).hostname} refused: not the host of this "${injectedFor}" account`,
-                      )
-                    }
+                } as RequestInit)
+              } else {
+                response = await fetchWithPinnedHost(
+                  wireUrl,
+                  {
+                    method,
+                    headers: headersWithActor,
+                    body,
+                    signal: AbortSignal.timeout(fetchTimeoutMs),
                   },
-                },
-              )
-            }
-          } catch (err) {
-            // Nothing the host placed comes back in an error either (a query secret is in the URL).
-            if (err instanceof Error && injected.secrets.length > 0) {
-              const redacted = redactSecrets(err.message, injected.secrets)
-              if (redacted !== err.message) {
-                const copy = new Error(redacted) as Error & { status?: unknown; code?: unknown }
-                copy.name = err.name
-                const typed = err as Error & { status?: unknown; code?: unknown }
-                if (typed.status !== undefined) copy.status = typed.status
-                if (typed.code !== undefined) copy.code = typed.code
-                throw copy
+                  {
+                    maxRedirects: SANDBOX_FETCH_MAX_REDIRECTS,
+                    fetchImpl: sandboxEgressOverrides.fetch ?? undefined,
+                    ...sandboxEgressPolicy(appName),
+                    allowPrivateHostsInTest,
+                    onHopValidate: async (next) => {
+                      await validateSandboxFetchUrl(
+                        next,
+                        allowedDomains,
+                        allowPrivateHostsInTest,
+                        appName,
+                      )
+                      // An injected credential follows a redirect only to its own connection's hosts.
+                      if (injectedFor && !matchesConnectionHost(granted, injectedFor, next)) {
+                        throw new Error(
+                          `Redirect to ${new URL(next).hostname} refused: not a host of connection "${injectedFor}"`,
+                        )
+                      }
+                      // A placed config secret follows a redirect only to its declared hosts.
+                      for (const hosts of secretHosts) {
+                        if (!matchesDomain(next, hosts)) {
+                          const err = new Error(
+                            `Redirect to ${new URL(next).hostname} refused: not a host the placed config secret may go to`,
+                          ) as Error & { status: number; code: string }
+                          err.status = 403
+                          err.code = SECRET_PLACEMENT_REFUSED
+                          throw err
+                        }
+                      }
+                      // A credential bound to its account's own host follows no redirect elsewhere.
+                      if (injectedHost && new URL(next).hostname.toLowerCase() !== injectedHost) {
+                        throw new Error(
+                          `Redirect to ${new URL(next).hostname} refused: not the host of this "${injectedFor}" account`,
+                        )
+                      }
+                    },
+                  },
+                )
               }
+            } catch (err) {
+              // Nothing the host placed comes back in an error either (a query secret is in the URL).
+              if (err instanceof Error && injected.secrets.length > 0) {
+                const redacted = redactSecrets(err.message, injected.secrets)
+                if (redacted !== err.message) {
+                  const copy = new Error(redacted) as Error & { status?: unknown; code?: unknown }
+                  copy.name = err.name
+                  const typed = err as Error & { status?: unknown; code?: unknown }
+                  if (typed.status !== undefined) copy.status = typed.status
+                  if (typed.code !== undefined) copy.code = typed.code
+                  throw copy
+                }
+              }
+              if (
+                err instanceof Error &&
+                (err.name === "TimeoutError" || err.name === "AbortError")
+              ) {
+                throw new Error(`Fetch timed out after ${fetchTimeoutMs}ms`)
+              }
+              if (
+                err instanceof UnsafeOutboundUrlError &&
+                /too many redirects/i.test(err.message)
+              ) {
+                throw new Error(`Too many redirects (max ${SANDBOX_FETCH_MAX_REDIRECTS})`)
+              }
+              if (isConnectionDropped(err)) {
+                if (idempotent && attempt === 1) continue
+                // Still dropped (or a write we must not replay): an upstream
+                // outage, not our fault. Typed so it logs at warn and the caller
+                // reads it as retryable.
+                throw upstreamConnectionClosed(url, err)
+              }
+              throw err
             }
-            if (
-              err instanceof Error &&
-              (err.name === "TimeoutError" || err.name === "AbortError")
-            ) {
-              throw new Error(`Fetch timed out after ${fetchTimeoutMs}ms`)
-            }
-            if (err instanceof UnsafeOutboundUrlError && /too many redirects/i.test(err.message)) {
-              throw new Error(`Too many redirects (max ${SANDBOX_FETCH_MAX_REDIRECTS})`)
-            }
-            if (isConnectionDropped(err)) {
-              if (idempotent && attempt === 1) continue
-              // Still dropped (or a write we must not replay): an upstream
-              // outage, not our fault. Typed so it logs at warn and the caller
-              // reads it as retryable.
-              throw upstreamConnectionClosed(url, err)
-            }
-            throw err
+            break
           }
-          break
         }
-      }
 
-      // The run's last upstream answer, host and status only (see upstream-trace.ts).
-      const trace = ctx.bridgeOptions?.upstreamTrace
-      if (trace) trace.last = { host: new URL(url).host, status: response.status }
-      if (response.status === 401) dropBearer(injected.bearerKey)
-      // Nothing the host injected comes back to the app, even when the upstream echoes it.
-      const responseBody = redactSecrets(
-        await readResponseBody(response, SANDBOX_FETCH_MAX_RESPONSE_BYTES),
-        injected.secrets,
-      )
+        // The run's last upstream answer, host and status only (see upstream-trace.ts).
+        const trace = ctx.bridgeOptions?.upstreamTrace
+        if (trace) trace.last = { host: new URL(url).host, status: response.status }
+        if (response.status === 401) dropBearer(injected.bearerKey)
+        // A limited connection's provider asked everyone to slow down: pause the
+        // connection for every caller, on every process.
+        if (limiterKey) {
+          const pauseMs = retryAfterPauseMs(response.status, response.headers)
+          if (pauseMs !== null) await pauseConnection(limiterKey, pauseMs)
+        }
+        // Nothing the host injected comes back to the app, even when the upstream echoes it.
+        responseBody = redactSecrets(
+          await readResponseBody(response, SANDBOX_FETCH_MAX_RESPONSE_BYTES),
+          injected.secrets,
+        )
+      } finally {
+        await releasePermit?.()
+      }
       const headers: Record<string, string> = {}
       response.headers.forEach((v, k) => {
         headers[k] = redactSecrets(v, injected.secrets)
@@ -548,6 +588,46 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
         })
       }
       return JSON.stringify({ status: response.status, headers, body: responseBody })
+    },
+
+    // --- The shared per-connection limiter (connection-limiter.ts) ---
+    // `ctx.limiter.pause(connection, ms, identifier?)`: the provider reported a
+    // throttle the host cannot see in the status line (a GraphQL cost in the
+    // body), so every call to that account waits `ms` (capped), on every
+    // process. Only for a connection whose manifest declares `limits`: its
+    // calls are the ones that honour the pause. Answers the pause in force, or
+    // null when the limiter is unavailable (it fails open).
+    limiter_pause: async (connectionName: string, ms: number, identifier?: string) => {
+      if (
+        typeof connectionName !== "string" ||
+        !declaredConnectionLimits(manifest, connectionName)
+      ) {
+        const err = new Error(
+          `ctx.limiter.pause: connection "${String(connectionName)}" declares no limits in the manifest`,
+        ) as Error & { status: number; code: string }
+        err.status = 400
+        err.code = "limiter_connection_not_limited"
+        throw err
+      }
+      const wait = Number(ms)
+      if (!Number.isFinite(wait) || wait <= 0) {
+        const err = new Error("ctx.limiter.pause: ms must be a positive number") as Error & {
+          status: number
+          code: string
+        }
+        err.status = 400
+        err.code = "invalid_params"
+        throw err
+      }
+      return pauseConnection(
+        {
+          orgId,
+          app: appName,
+          connection: connectionName,
+          identifier: typeof identifier === "string" ? identifier : "",
+        },
+        wait,
+      )
     },
 
     // --- Connections ---

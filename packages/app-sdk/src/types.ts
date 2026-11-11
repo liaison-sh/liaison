@@ -194,6 +194,17 @@ export interface StepsClient {
   reset(name: string): Promise<{ reset: boolean }>
 }
 
+export interface LimiterClient {
+  /**
+   * Hold every call to `connection` (the account `identifier`, default the
+   * connection's default account) for `ms` (at most 60 s), on every process.
+   * Only for a connection whose manifest declares `limits`. Resolves to the
+   * pause in force, or null when the limiter is unavailable (calls then go out
+   * unlimited).
+   */
+  pause(connection: string, ms: number, identifier?: string): Promise<number | null>
+}
+
 export interface ConnectionClient {
   getToken(identifier?: string): Promise<string>
   getAccounts(): Promise<
@@ -309,6 +320,15 @@ export interface AppContext {
   timers: TimersClient
   /** Work longer than one run, done as bounded chunks across runs (see {@link StepsClient}). */
   steps: StepsClient
+  /**
+   * The shared per-connection limiter. A `ctx.fetch` that names a connection
+   * (`auth.connection`) whose manifest declares `limits` (`concurrency`,
+   * `perSecond`, `burst`) waits for its slot by itself, across every run and
+   * process; a 429 or 503 with `Retry-After` pauses that connection for every
+   * caller. `pause` does the same for a throttle the provider reports in the
+   * response body (a GraphQL cost).
+   */
+  limiter: LimiterClient
   resolveContact(params: {
     email?: string
     name?: string

@@ -110,6 +110,7 @@ export type {
   FetchAuth,
   FetchMultipartPart,
   JobsClient,
+  LimiterClient,
   Logger,
   StepChunkResult,
   StepRunResult,

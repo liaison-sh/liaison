@@ -69,6 +69,7 @@
 // the notice the form shows.
 import crypto from "node:crypto"
 import {
+  DEMO_DEFAULT_WORLD,
   type DemoEntry,
   type DemoNeed,
   demoEntrySchema,
@@ -975,6 +976,7 @@ async function acquireVisitorWorkspace(input: {
   // A synthetic visitor takes the pool exactly like a person (spec A29), so a
   // stress run measures its hit rate; the claim flags it a load org at once.
   const pooled = await claimPooledOrg({
+    worldId: DEMO_DEFAULT_WORLD,
     name,
     locale,
     needs,
@@ -1007,7 +1009,7 @@ async function acquireVisitorWorkspace(input: {
     }
   }
   if (env.LIAISON_DEMO_POOL_SIZE > 0) {
-    await recordDemoPoolMiss()
+    await recordDemoPoolMiss(DEMO_DEFAULT_WORLD)
     void kickDemoPoolRefill()
   }
 

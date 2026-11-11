@@ -93,6 +93,7 @@ import {
   DEMO_WORLD_NEEDS,
   type DemoNeed,
   type DemoOrgMarker,
+  type DemoWorldId,
   type ShippedLocale,
 } from "@liaison/shared"
 import { and, sql as drizzleSql, eq } from "drizzle-orm"
@@ -933,6 +934,8 @@ export interface ClaimedPooledOrg {
  * attached the world to takes the visitor's name. Null on an empty pool.
  */
 export async function claimPooledOrg(input: {
+  /** The world the visitor's workspace must hold; an org of any other world is never handed out. */
+  worldId: DemoWorldId
   name: string
   locale: ShippedLocale
   needs: readonly DemoNeed[]
@@ -1177,7 +1180,7 @@ async function handOverOwnerAgent(
  * Count a signup that found the pool empty, and say so at WARN with the
  * running count, so an operator reading a warn-level log can size the pool.
  */
-export async function recordDemoPoolMiss(): Promise<void> {
+export async function recordDemoPoolMiss(_worldId: DemoWorldId): Promise<void> {
   let misses = 0
   try {
     misses = await redis.incr(EMPTY_COUNT_KEY)

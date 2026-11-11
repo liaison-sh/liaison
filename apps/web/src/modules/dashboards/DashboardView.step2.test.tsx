@@ -196,18 +196,23 @@ describe("DashboardView filters", () => {
     )
   })
 
-  it("a multi sends each value picked", async () => {
-    const { get } = mount({ values: { market: [], channel: [] }, saved: false })
+  it("a multi's ticks apply together when its menu closes: one menu session, one read", async () => {
+    const { get, put } = mount({ values: { market: [], channel: [] }, saved: false })
     await waitFor(() => expect(reads(get, "m").length).toBe(1))
     await openFilter("channel")
-    choose("dashboard-filter-option-channel-0")
-    await waitFor(() => expect(reads(get, "m").length).toBe(2))
     choose("dashboard-filter-option-channel-1")
-    await waitFor(() => expect(reads(get, "m").length).toBe(3))
-    expect(new URLSearchParams(reads(get, "m")[2]!.split("?")[1]).getAll("f.channel")).toEqual([
+    choose("dashboard-filter-option-channel-0")
+    // Ticked, not yet applied: no read, nothing remembered.
+    await new Promise((r) => setTimeout(r, 30))
+    expect(reads(get, "m").length).toBe(1)
+    expect(put).not.toHaveBeenCalled()
+    fireEvent.keyDown(screen.getByTestId("dashboard-filter-menu-channel"), { key: "Escape" })
+    await waitFor(() => expect(reads(get, "m").length).toBe(2))
+    expect(new URLSearchParams(reads(get, "m")[1]!.split("?")[1]).getAll("f.channel")).toEqual([
       "b2b",
       "dtc",
     ])
+    expect(put).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -239,6 +244,40 @@ describe("DashboardView drill-down", () => {
 
     fireEvent.keyDown(screen.getByTestId("dashboard-drill-panel"), { key: "Escape" })
     await waitFor(() => expect(screen.queryByTestId("dashboard-drill-panel")).toBeNull())
+  })
+
+  it("a filter change while the rows are open reads them again from the first page", async () => {
+    const { get } = mount({ values: { market: [], channel: [] }, saved: false })
+    await waitFor(() => expect(screen.getByTestId("dashboard-chart-pick-1")).toBeTruthy())
+    fireEvent.click(screen.getByTestId("dashboard-chart-pick-1"))
+    await waitFor(() => expect(screen.getByTestId("dashboard-drill-row-0")).toBeTruthy())
+    fireEvent.click(screen.getByTestId("dashboard-drill-next"))
+    await waitFor(() => expect(rowReads(get).length).toBe(2))
+    await openFilter("channel")
+    choose("dashboard-filter-option-channel-0")
+    fireEvent.keyDown(screen.getByTestId("dashboard-filter-menu-channel"), { key: "Escape" })
+    await waitFor(() => expect(rowReads(get).length).toBe(3))
+    const q = new URLSearchParams(rowReads(get)[2]!.split("?")[1])
+    expect(q.get("offset")).toBe("0")
+    expect(q.getAll("f.channel")).toEqual(["b2b"])
+    await waitFor(() =>
+      expect(screen.getByTestId("dashboard-drill-count").textContent).toBe("1 to 2 of 52"),
+    )
+  })
+
+  it("Escape closes the rows from the grid, and focus goes back to what opened them", async () => {
+    mount({ values: { market: [], channel: [] }, saved: false })
+    await waitFor(() => expect(screen.getByTestId("dashboard-chart-pick-1")).toBeTruthy())
+    const pick = screen.getByTestId("dashboard-chart-pick-1")
+    pick.focus()
+    fireEvent.click(pick)
+    await waitFor(() => expect(screen.getByTestId("dashboard-drill-row-0")).toBeTruthy())
+    // Focus back on the grid (another bar), then Escape there.
+    const other = screen.getByTestId("dashboard-chart-pick-0")
+    other.focus()
+    fireEvent.keyDown(other, { key: "Escape" })
+    await waitFor(() => expect(screen.queryByTestId("dashboard-drill-panel")).toBeNull())
+    expect(document.activeElement).toBe(pick)
   })
 
   it("a metric opens every row it adds up", async () => {

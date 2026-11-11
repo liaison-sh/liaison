@@ -695,11 +695,16 @@ export async function saveViewerRange(
 }
 
 /** Remembers this person's filter values on this dashboard; `{}` forgets them. */
+/** The most the server remembers of a person's filter values (with room for its own encoding). */
+export const MAX_SAVED_FILTERS_BYTES = 15_000
+
 export async function saveViewerFilters(
   api: DashboardsWriteApi,
   dashboardId: string,
   filters: FilterValues,
 ): Promise<void> {
+  // Values too long to remember stay in this tab and its link only.
+  if (new TextEncoder().encode(JSON.stringify(filters)).length > MAX_SAVED_FILTERS_BYTES) return
   await api.put(viewerStatePath(dashboardId), { filters }, { suppressGlobalError: true })
 }
 
@@ -721,6 +726,8 @@ export interface DrillTarget {
   series?: string
   /** A table's row index. */
   row?: number
+  /** A comparison series was picked: the rows come from the comparison window. */
+  previous?: boolean
 }
 
 export interface BlockRowsPage {

@@ -4,10 +4,13 @@
 // reach a block. Pure: no I/O.
 //
 // - Source tokens: `{{filter.<id>}}` in a source's params (or a store query). A whole-string
-//   token becomes the value (a multi filter's list stays a list); inside a longer string the
-//   value is spliced in (a list joined by ","). An empty or unset value DROPS the param that
-//   holds it (an object key, an array element): no value means "all", and a tool told nothing
-//   reads everything. Filter tokens resolve before the date tokens (relative-dates.ts).
+//   token becomes the value: a multi filter's is always a list (one value picked is a list of
+//   one), a select's or a text's is one string. Inside a longer string the value is spliced in
+//   as written (a list joined by ","; a value never holds "{{" or "}}"). An empty or unset value
+//   DROPS the param that holds it (an object key, an array element), and an object or list left
+//   empty by that drop goes too, up to the nearest param (`where: {market: {in: token}}` with
+//   "All" loses the whole clause): no value means "all", and a tool told nothing reads
+//   everything. Filter tokens resolve before the date tokens (relative-dates.ts).
 // - Row conditions: `map.where` runs on the source's rows before any aggregation, so a filter
 //   works even when the tool has no param for it. A clause whose value is `{filter: id}` is
 //   dropped while that filter is empty; a multi value turns eq into "in" and neq into "not in".
@@ -55,7 +58,9 @@ export function normalizeFilterValues(
   for (const [id, raw] of Object.entries(asked ?? {})) {
     const def = defs.get(id)
     if (!def) throw new FilterValueError(`no filter '${id}' on this dashboard`)
-    const values = [...new Set(raw.map((v) => v.trim()).filter((v) => v !== ""))]
+    // A multi's values sorted: the same choice in another order is the same cache key and run.
+    const unique = [...new Set(raw.map((v) => v.trim()).filter((v) => v !== ""))]
+    const values = def.type === "multi" ? unique.sort() : unique
     if (values.length > MAX_FILTER_VALUES) {
       throw new FilterValueError(`filter '${id}' takes at most ${MAX_FILTER_VALUES} values`)
     }
@@ -63,6 +68,10 @@ export function normalizeFilterValues(
       throw new FilterValueError(
         `a value of filter '${id}' is longer than ${MAX_FILTER_VALUE_LENGTH}`,
       )
+    }
+    // A value is spliced into params as written: braces would read as another token there.
+    if (values.some((v) => v.includes("{{") || v.includes("}}"))) {
+      throw new FilterValueError(`a value of filter '${id}' holds braces ({{ or }})`)
     }
     if (def.type !== "multi" && values.length > 1) {
       throw new FilterValueError(`filter '${id}' takes one value`)
@@ -100,17 +109,27 @@ export function sanitizeSavedFilterValues(
   return out
 }
 
-/** `value` with every filter token resolved; a param whose filter is empty is dropped. */
-export function resolveFilterTokens<T>(value: T, values: FilterValues): T {
+/**
+ * `value` with every filter token resolved (`spec` says which filters are multi: their whole
+ * token is always a list); a param whose filter is empty is dropped, and so is an object or a
+ * list that drop leaves empty. The top level stays (an empty object at worst).
+ */
+export function resolveFilterTokens<T>(
+  value: T,
+  values: FilterValues,
+  spec: Pick<DashboardSpec, "filters">,
+): T {
+  const multi = new Set((spec.filters ?? []).filter((f) => f.type === "multi").map((f) => f.id))
   const DROP = Symbol("drop")
   const visit = (v: unknown): unknown => {
     if (typeof v === "string") {
       if (!v.includes("{{filter.")) return v
       const whole = WHOLE_TOKEN.exec(v)
       if (whole) {
-        const got = values[whole[1]!] ?? []
+        const id = whole[1]!
+        const got = values[id] ?? []
         if (got.length === 0) return DROP
-        return got.length === 1 ? got[0] : got
+        return multi.has(id) ? [...got] : got.length === 1 ? got[0] : got
       }
       let empty = false
       const out = v.replace(TOKEN, (_raw, id: string) => {
@@ -120,19 +139,22 @@ export function resolveFilterTokens<T>(value: T, values: FilterValues): T {
       })
       return empty ? DROP : out
     }
-    if (Array.isArray(v)) return v.map(visit).filter((x) => x !== DROP)
+    if (Array.isArray(v)) {
+      const kept = v.map(visit).filter((x) => x !== DROP)
+      return kept.length === 0 && v.length > 0 ? DROP : kept
+    }
     if (v && typeof v === "object") {
       const entries: [string, unknown][] = []
       for (const [k, x] of Object.entries(v)) {
         const r = visit(x)
         if (r !== DROP) entries.push([k, r])
       }
-      return Object.fromEntries(entries)
+      return entries.length === 0 && Object.keys(v).length > 0 ? DROP : Object.fromEntries(entries)
     }
     return v
   }
   const out = visit(value)
-  return (out === DROP ? {} : out) as T
+  return (out === DROP ? (Array.isArray(value) ? [] : {}) : out) as T
 }
 
 /** A where clause with its value decided: ready for the rows. */
@@ -181,9 +203,12 @@ function readPath(source: unknown, path: string): unknown {
   return cur
 }
 
+/** A plain decimal: no leading zero, no exponent, no hex ("007", "0x7" and "1e3" are text). */
+const DECIMAL = /^-?(0|[1-9]\d*)(\.\d+)?$/
+
 const asNumber = (v: unknown): number | null => {
   if (typeof v === "number") return Number.isFinite(v) ? v : null
-  if (typeof v === "string" && v.trim() !== "") {
+  if (typeof v === "string" && DECIMAL.test(v.trim())) {
     const n = Number(v.trim())
     return Number.isFinite(n) ? n : null
   }

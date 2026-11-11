@@ -26,6 +26,7 @@ import { dashboards, userRoles } from "~/db/schema/kernel"
 import { type ApprovalSummarizer, toolRegistry } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
 import {
+  cardLineCount,
   describeOperations,
   diffDashboards,
   type EditOperation,
@@ -224,9 +225,8 @@ function tokenDates(source: Record<string, unknown>, timeZone: string, range: Da
 
 /** The zone a card's token dates are shown in: the org's, looked up only when a block has tokens. */
 async function cardTimezone(spec: unknown, orgId: string): Promise<string> {
-  return hasDateTokens((spec as { blocks?: unknown } | null)?.blocks)
-    ? dashboardTimezone(orgId)
-    : "UTC"
+  const s = spec as { blocks?: unknown; datasets?: unknown } | null
+  return hasDateTokens([s?.blocks, s?.datasets]) ? dashboardTimezone(orgId) : "UTC"
 }
 
 /** One block's lines for an approval card: what it draws and from where. */
@@ -253,25 +253,42 @@ function blockLines(spec: unknown, timeZone: string, max = 6): string[] {
   return lines
 }
 
+/** A new dashboard's spec as operations from an empty one: datasets, filters, then blocks. */
+function createOperations(spec: unknown): EditOperation[] {
+  return diffDashboards(EMPTY_DASHBOARD, { spec })
+}
+const EMPTY_DASHBOARD = {
+  title: "",
+  visibility: "personal" as const,
+  spec: { v: 1, blocks: [] } as unknown as DashboardSpec,
+}
+
 // A create parks for an org dashboard, and also for a personal one when the turn's taint parks it
-// (scope-taint rule 8b): the card says which, from the visibility the call carries.
+// (scope-taint rule 8b): the card says which, from the visibility the call carries, then lists the
+// dashboard as dashboards_edit's card lists changes, one numbered line per dataset, filter and
+// block (sources, params, date tokens, every note's full text and links).
 const summarizeCreate: ApprovalSummarizer = async (raw, ctx) => {
   const p = (raw ?? {}) as { title?: string; spec?: unknown; visibility?: string }
-  const tz = await cardTimezone(p.spec, ctx.orgId)
+  const ops = createOperations(p.spec)
+  const lines = ops.length
+    ? describeOperations(EMPTY_DASHBOARD, ops, {
+        timeZone: await cardTimezone(p.spec, ctx.orgId),
+        now: new Date(),
+      })
+    : ["No blocks."]
   if (p.visibility !== "org") {
     return {
       kind: "dashboard_create",
       title: `Save the personal dashboard "${p.title ?? ""}"`,
-      lines: ["Only its author will see it.", ...blockLines(p.spec, tz)],
+      subtitle: "Only its author will see it.",
+      lines,
     }
   }
   return {
     kind: "dashboard_create",
     title: `Share the dashboard "${p.title ?? ""}" with the organisation`,
-    lines: [
-      "Everyone in the organisation will see it, each with their own access.",
-      ...blockLines(p.spec, tz),
-    ],
+    subtitle: "Everyone in the organisation will see it, each with their own access.",
+    lines,
   }
 }
 
@@ -484,8 +501,8 @@ export function registerDashboardTools(orgId: string): void {
       const saved = blockSourceOf(block, spec.datasets)
       const withValues = saved
         ? saved.kind === "tool"
-          ? { ...saved, params: resolveFilterTokens(saved.params, values) }
-          : { ...saved, query: resolveFilterTokens(saved.query, values) }
+          ? { ...saved, params: resolveFilterTokens(saved.params, values, spec) }
+          : { ...saved, query: resolveFilterTokens(saved.query, values, spec) }
         : null
       const outcome = await computeBlock(
         withValues ? { ...block, source: withValues, dataset: undefined } : block,
@@ -578,6 +595,11 @@ export function registerDashboardTools(orgId: string): void {
     approvalImpact: "internal",
     gatedWhen: async (params: unknown) =>
       (params as { visibility?: string } | null)?.visibility === "org",
+    // One approval card lists the whole new dashboard: more than it lists is refused.
+    refuseBeforeGate: async (params: unknown) => {
+      const count = cardLineCount(createOperations((params as { spec?: unknown } | null)?.spec))
+      return count > MAX_CARD_CHANGES ? tooManyChanges(count) : null
+    },
   })
   registerApprovalSummarizer(orgId, "kernel", "dashboards_create", summarizeCreate)
 
@@ -642,14 +664,16 @@ export function registerDashboardTools(orgId: string): void {
       const carded =
         row?.visibility === "org" || (p.visibility === "org" && row?.ownerUserId === userId)
       if (!row || !carded) return null
-      const count = diffDashboards(
-        {
-          title: row.title,
-          visibility: row.visibility,
-          spec: row.spec as unknown as DashboardSpec,
-        },
-        p,
-      ).length
+      const count = cardLineCount(
+        diffDashboards(
+          {
+            title: row.title,
+            visibility: row.visibility,
+            spec: row.spec as unknown as DashboardSpec,
+          },
+          p,
+        ),
+      )
       return count > MAX_CARD_CHANGES ? tooManyChanges(count) : null
     },
   })
@@ -712,7 +736,8 @@ export function registerDashboardTools(orgId: string): void {
     // read, a stale ifVersion), and one card lists every operation.
     refuseBeforeGate: async (params: unknown, ctx) => {
       const p = params as { dashboardId: string; ifVersion: number; operations: EditOperation[] }
-      if (p.operations.length > MAX_CARD_CHANGES) return tooManyChanges(p.operations.length)
+      const lines = cardLineCount(p.operations)
+      if (lines > MAX_CARD_CHANGES) return tooManyChanges(lines)
       if (ctx.userId === "system") return null
       const viewer = await viewerOf({ ...ctx, scopes: [...ctx.scopes] })
       return guarded(async () => {

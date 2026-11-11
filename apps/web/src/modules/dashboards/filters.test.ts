@@ -29,6 +29,14 @@ describe("filters in a URL", () => {
     expect(filtersFromQuery("f.channel=b2b&f.channel=b2b", defs)).toEqual({ channel: ["b2b"] })
   })
 
+  it("a stale or edited link loses the values the server would refuse, never the blocks", () => {
+    const long = "x".repeat(201)
+    expect(
+      filtersFromQuery(`f.market=JP&f.channel=dtc&f.channel=gone&f.channel=b2b&f.q=${long}`, defs),
+    ).toEqual({ market: [], channel: ["b2b", "dtc"], q: [] })
+    expect(filtersFromQuery("f.q=%7B%7Brange.from%7D%7D", defs)).toEqual({ q: [] })
+  })
+
   it("writes every filter, an empty one as `f.<id>=`, and keeps the range parameters", () => {
     const path = withFiltersInPath("/dashboard/d1?range=ytd&f.old=1", {
       market: [],

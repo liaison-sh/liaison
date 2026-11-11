@@ -8,6 +8,7 @@ import { appSettingsSchema, type StoreCollectionDeclaration } from "@liaison/app
 import { sql as drizzleSql, inArray, type SQL } from "drizzle-orm"
 import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
 import { withPrivilegedDb, withSchemaAdmin } from "~/db/privileged"
+import type { RlsSession } from "~/db/rls"
 import { apps } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
 import {
@@ -289,6 +290,45 @@ export async function resolveJobApprovalRequester(
 export function hasPrivilegedBridge(desc: object): boolean {
   const d = desc as { trusted?: unknown; _firstParty?: unknown }
   return d.trusted !== false || d._firstParty === true
+}
+
+/**
+ * The session of a background run that holds no transaction (an async-output
+ * poll, an outcome reconcile): every bridge call opens one short transaction on
+ * the jobs pool, as the app. Privileged for an app the platform vouches for
+ * (its manifest's scopes become the transaction's, so a scope check in the
+ * database reads them, db/privileged.ts setPrivilegedContext), else under RLS
+ * with the app's own scopes. Nothing stays open across a provider call.
+ */
+export function backgroundAppSession(opts: {
+  appName: string
+  orgId: string
+  privileged: boolean
+  scopes: readonly string[]
+  label: string
+}): Pick<RlsSession, "run"> {
+  if (opts.privileged) {
+    return {
+      run: (fn) =>
+        withPrivilegedDb(opts.orgId, opts.label, (tx) => fn(tx as unknown as RlsClient), {
+          pool: "jobs",
+          actor: { scopes: opts.scopes },
+        }),
+    }
+  }
+  return {
+    run: async (fn) =>
+      (await import("~/db/rls")).withRlsContext(
+        {
+          actorType: "system",
+          orgId: opts.orgId,
+          purpose: "job",
+          scopes: [`${opts.appName}:*`],
+        },
+        fn,
+        { pool: "jobs" },
+      ),
+  }
 }
 
 /** Bridge for a manifest job run: session-owned per-call transactions when the
@@ -3231,7 +3271,7 @@ async function registerSingleApp(
               const pollManifest = manifestForBridge
               const pollPrivileged = hasPrivilegedBridge(desc)
               entry.poll = async (
-                pollCtx: { orgId: string; userId: string; tx: unknown },
+                pollCtx: { orgId: string; userId: string },
                 externalRef: unknown,
               ): Promise<{ ready: boolean; result?: Record<string, unknown> }> => {
                 // At an app day cap the output is "not ready": the poll job asks
@@ -3241,21 +3281,29 @@ async function registerSingleApp(
                   return { ready: false }
                 }
                 const { runApp } = await import("~/modules/apps/sandbox/run-app")
-                const { createSandboxRpcBridge } = await import("~/modules/apps/sandbox/rpc-bridge")
+                const { createSessionRpcBridge } = await import("~/modules/apps/sandbox/rpc-bridge")
                 const source = await loadBundle(pollBundlePath)
-                const runPoll = async (tx: unknown) => {
-                  const bridge = createSandboxRpcBridge(
+                // No transaction held across the run (it calls the provider): each
+                // bridge call opens its own short one, as the app (backgroundAppSession).
+                const runPoll = (orgId: string) => {
+                  const bridge = createSessionRpcBridge(
                     pollAppName,
                     `system:${pollAppName}:poll`,
-                    pollCtx.orgId,
-                    tx as never,
+                    orgId,
+                    backgroundAppSession({
+                      appName: pollAppName,
+                      orgId,
+                      privileged: pollPrivileged,
+                      scopes: pollManifest?.scopes ?? [],
+                      label: `poll:${pollAppName}:${pollExport}`,
+                    }),
                     pollManifest as never,
                   )
-                  // Always the worker pool; the bridge holds the poll's transaction.
+                  // Always the worker pool.
                   return runApp({
                     trusted: false,
                     appName: pollAppName,
-                    orgId: pollCtx.orgId,
+                    orgId,
                     bundlePath: pollBundlePath,
                     bundleSource: source,
                     exportName: pollExport,
@@ -3265,35 +3313,10 @@ async function registerSingleApp(
                     timeoutMs: runLimits("poll").wallMs,
                     priority: "background",
                     appId: pollAppName,
-                    holdsTx: true,
+                    holdsTx: false,
                   })
                 }
-                // The poll job hands over a privileged transaction. An app the
-                // platform does not vouch for polls as itself, under RLS.
-                const out = pollPrivileged
-                  ? await (async () => {
-                      // As the app, like its privileged event handlers: a scope
-                      // check in the database reads the scopes its manifest declares.
-                      const { setPrivilegedContext } = await import("~/db/privileged")
-                      await setPrivilegedContext(
-                        pollCtx.tx as Pick<RlsClient, "execute">,
-                        pollCtx.orgId,
-                        {
-                          scopes: pollManifest?.scopes ?? [],
-                        },
-                      )
-                      return runPoll(pollCtx.tx)
-                    })()
-                  : await (await import("~/db/rls")).withRlsContext(
-                      {
-                        actorType: "system",
-                        orgId: pollCtx.orgId,
-                        purpose: "job",
-                        scopes: [`${pollAppName}:*`],
-                      },
-                      runPoll,
-                      { pool: "jobs" },
-                    )
+                const out = await runPoll(pollCtx.orgId)
                 const r = out as { ready?: unknown; result?: unknown } | null
                 return r && r.ready === true
                   ? { ready: true, result: (r.result ?? {}) as Record<string, unknown> }
@@ -3303,8 +3326,8 @@ async function registerSingleApp(
             // Outcome reconciliation for SANDBOXED manifest tools: `reconcileHandler`
             // names a bundle export the approving reaper calls for an approved
             // execution whose outcome is unknown (approving-reaper.ts). Same
-            // execution shape as `pollHandler` above: the worker pool, the
-            // reaper's transaction, as the app.
+            // execution shape as `pollHandler` above: the worker pool, a short
+            // transaction per bridge call, as the app.
             if (
               isManifestFormat &&
               typeof tool.reconcileHandler === "string" &&
@@ -3316,7 +3339,7 @@ async function registerSingleApp(
               const reconcileManifest = manifestForBridge
               const reconcilePrivileged = hasPrivilegedBridge(desc)
               entry.reconcile = async (
-                rCtx: { orgId: string; tx: unknown },
+                rCtx: { orgId: string },
                 input: { approvalRequestId: string; payload: unknown; externalRef: unknown },
               ): Promise<ReconcileOutcome> => {
                 const { appRunHoldMs } = await import("~/modules/apps/usage/app-day-cap")
@@ -3324,20 +3347,26 @@ async function registerSingleApp(
                   return { outcome: "unknown", reason: "app_day_cap" }
                 }
                 const { runApp } = await import("~/modules/apps/sandbox/run-app")
-                const { createSandboxRpcBridge } = await import("~/modules/apps/sandbox/rpc-bridge")
+                const { createSessionRpcBridge } = await import("~/modules/apps/sandbox/rpc-bridge")
                 const source = await loadBundle(reconcileBundlePath)
-                const runReconcile = async (tx: unknown) => {
-                  const bridge = createSandboxRpcBridge(
+                const runReconcile = (orgId: string) => {
+                  const bridge = createSessionRpcBridge(
                     reconcileAppName,
                     `system:${reconcileAppName}:reconcile`,
-                    rCtx.orgId,
-                    tx as never,
+                    orgId,
+                    backgroundAppSession({
+                      appName: reconcileAppName,
+                      orgId,
+                      privileged: reconcilePrivileged,
+                      scopes: reconcileManifest?.scopes ?? [],
+                      label: `reconcile:${reconcileAppName}:${reconcileExport}`,
+                    }),
                     reconcileManifest as never,
                   )
                   return runApp({
                     trusted: false,
                     appName: reconcileAppName,
-                    orgId: rCtx.orgId,
+                    orgId,
                     bundlePath: reconcileBundlePath,
                     bundleSource: source,
                     exportName: reconcileExport,
@@ -3351,29 +3380,10 @@ async function registerSingleApp(
                     timeoutMs: runLimits("reconcile").wallMs,
                     priority: "background",
                     appId: reconcileAppName,
-                    holdsTx: true,
+                    holdsTx: false,
                   })
                 }
-                const out = reconcilePrivileged
-                  ? await (async () => {
-                      const { setPrivilegedContext } = await import("~/db/privileged")
-                      await setPrivilegedContext(
-                        rCtx.tx as Pick<RlsClient, "execute">,
-                        rCtx.orgId,
-                        { scopes: reconcileManifest?.scopes ?? [] },
-                      )
-                      return runReconcile(rCtx.tx)
-                    })()
-                  : await (await import("~/db/rls")).withRlsContext(
-                      {
-                        actorType: "system",
-                        orgId: rCtx.orgId,
-                        purpose: "job",
-                        scopes: [`${reconcileAppName}:*`],
-                      },
-                      runReconcile,
-                      { pool: "jobs" },
-                    )
+                const out = await runReconcile(rCtx.orgId)
                 return normalizeReconcileOutcome(out)
               }
             }

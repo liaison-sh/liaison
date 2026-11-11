@@ -61,6 +61,16 @@ async function recordAwaitingSelf(toolName: string, partial: unknown) {
 }
 
 let pollCalls = 0
+/** Transactions open on this database while each poll ran (the poll asks a provider). */
+const openTxDuringPoll: number[] = []
+
+/** Backends of this database sitting inside an open transaction, this query's own excepted. */
+async function openTransactions(): Promise<number> {
+  const [r] = await sql`SELECT count(*)::int AS n FROM pg_stat_activity
+    WHERE datname = current_database() AND pid <> pg_backend_pid()
+      AND state LIKE 'idle in transaction%'`
+  return r.n as number
+}
 
 beforeAll(async () => {
   await acquireTestLock()
@@ -90,7 +100,9 @@ beforeAll(async () => {
       await recordAwaitingSelf("seq_test:step1_async", { ticket: "T-1" })
       return {}
     },
-    poll: async () => {
+    poll: async (ctx: Record<string, unknown>) => {
+      expect("tx" in ctx).toBe(false)
+      openTxDuringPoll.push(await openTransactions())
       pollCalls++
       return pollCalls >= 2 ? { ready: true, result: { value: "label-123" } } : { ready: false }
     },
@@ -171,6 +183,9 @@ describe("async output polling", () => {
     expect(await readDecidedResult(ORG, a1)).toEqual({ value: "label-123" })
     expect(await statusOf(a2)).toBe("approved")
     expect(await readDecidedResult(ORG, a2)).toEqual({ sent: "label-123" })
+    // No pooled connection was held in a transaction while the poll ran.
+    expect(openTxDuringPoll.length).toBeGreaterThan(0)
+    expect(openTxDuringPoll.every((n) => n === 0)).toBe(true)
   })
 
   it("duplicate output resolution cascades exactly once", async () => {

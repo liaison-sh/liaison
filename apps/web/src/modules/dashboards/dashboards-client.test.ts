@@ -278,3 +278,86 @@ describe("block read slots", () => {
     expect(ran).toBe(false)
   })
 })
+
+describe("the time range on the wire", () => {
+  it("sends the range the viewer looks at, custom days included", async () => {
+    const { blockDataQuery } = await import("./dashboards-client")
+    expect(blockDataQuery()).toBe("")
+    expect(blockDataQuery({ refresh: true })).toBe("?refresh=1")
+    expect(blockDataQuery({ range: { timeRange: { preset: "mtd" }, compare: "lastYear" } })).toBe(
+      "?range=mtd&compare=lastYear",
+    )
+    expect(
+      blockDataQuery({
+        refresh: true,
+        range: {
+          timeRange: { preset: "custom", from: "2026-11-01", to: "2026-11-11" },
+          compare: "none",
+        },
+      }),
+    ).toBe("?refresh=1&range=custom&from=2026-11-01&to=2026-11-11&compare=none")
+  })
+
+  it("reads a metric's comparison, target and sparkline, and the read's context", async () => {
+    const { parseBlockResponse } = await import("./dashboards-client")
+    const r = parseBlockResponse({
+      kind: "metric",
+      value: 12,
+      previous: 10,
+      target: 40,
+      sparkline: { labels: ["2026-11-01"], values: [3] },
+      meta: { truncated: false, skippedRows: 2, sourceRows: 9 },
+      computedAt: "2026-11-11T10:00:00.000Z",
+      window: { mode: "dashboard", preset: "mtd", from: "2026-11-01", to: "2026-11-11" },
+      compareWindow: { mode: "lastYear", from: "2025-11-01", to: "2025-11-11" },
+      previousError: { error: "source_error", message: "boom" },
+    })
+    expect(r).toEqual({
+      ok: true,
+      data: {
+        kind: "metric",
+        value: 12,
+        previous: 10,
+        target: 40,
+        sparkline: { labels: ["2026-11-01"], values: [3] },
+      },
+      info: {
+        computedAt: "2026-11-11T10:00:00.000Z",
+        window: { mode: "dashboard", preset: "mtd", from: "2026-11-01", to: "2026-11-11" },
+        compareWindow: { mode: "lastYear", from: "2025-11-01", to: "2025-11-11" },
+        skippedRows: 2,
+        previousError: { error: "source_error", message: "boom" },
+      },
+    })
+  })
+
+  it("reads a chart's previous series and a refusal's window", async () => {
+    const { parseBlockResponse } = await import("./dashboards-client")
+    const chart = parseBlockResponse({
+      kind: "bar",
+      labels: ["a"],
+      series: [{ name: "s", values: [1] }],
+      previous: { labels: ["a"], series: [{ name: "s", values: [null] }] },
+      meta: {},
+    })
+    expect(chart.ok && chart.data.kind === "bar" && chart.data.previous).toEqual({
+      labels: ["a"],
+      series: [{ name: "s", values: [null] }],
+    })
+    const refused = parseBlockResponse({
+      blockId: "b",
+      error: "no_access",
+      message: "no",
+      window: { mode: "fixed", dates: [{ token: "{{today}}", date: "2026-11-11" }] },
+      compareWindow: null,
+    })
+    expect(refused).toMatchObject({
+      ok: false,
+      error: "no_access",
+      info: {
+        window: { mode: "fixed", dates: [{ token: "{{today}}", date: "2026-11-11" }] },
+        compareWindow: null,
+      },
+    })
+  })
+})

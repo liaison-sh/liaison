@@ -113,6 +113,7 @@ export type {
   KnowledgeSyncDocument,
   KnowledgeSyncInput,
   KnowledgeSyncResult,
+  LimiterClient,
   Logger,
   StepChunkResult,
   StepRunResult,

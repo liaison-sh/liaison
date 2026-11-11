@@ -182,6 +182,10 @@ export function mockAppContext(opts: MockAppContextOpts): MockAppContext {
         })
       },
     },
+    // No shared limiter in a unit test: a pause is answered as set, nothing waits.
+    limiter: {
+      pause: async (_connection, ms) => ms,
+    },
     // In one process: the chunks run back to back until done (no budget), kept
     // in the mock store's `liaison_steps` collection like the host does; a chunk
     // that answers `wakeIn` stops the run as `scheduled`.

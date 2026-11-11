@@ -286,3 +286,33 @@ export function egressLimits(env: Env = process.env): EgressLimits {
     multipartMaxRequestBytes: 25 * 1024 * 1024,
   }
 }
+
+// -- The shared per-connection limiter (connection-limiter.ts) ---------------------
+
+export interface ConnectionLimiterLimits {
+  /**
+   * The longest a call waits for its connection's permit before it fails with
+   * `provider_rate_limited` (429): an interactive run (a tool, whose default
+   * wall clock is 5 s in production) waits briefly, a job longer.
+   */
+  maxWaitMs: { interactive: number; background: number }
+  /** The longest pause one provider answer (`Retry-After`, `ctx.limiter.pause`) may set. */
+  maxPauseMs: number
+  /**
+   * A concurrency permit's lease: freed after this long even if its holder
+   * died without releasing it. Above the longest egress call.
+   */
+  leaseTtlMs: number
+  /** One Redis round trip of the limiter; past it the limiter fails open. */
+  redisTimeoutMs: number
+}
+
+/** The limits of the shared per-connection limiter. */
+export function connectionLimiterLimits(env: Env = process.env): ConnectionLimiterLimits {
+  return {
+    maxWaitMs: { interactive: 2_000, background: 20_000 },
+    maxPauseMs: 60_000,
+    leaseTtlMs: egressLimits(env).maxTimeoutMs + 10_000,
+    redisTimeoutMs: 250,
+  }
+}

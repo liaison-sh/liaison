@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+
 import { z } from "zod"
 import { runsForErrors } from "~/infra/jobs/fanout-runs-for"
+import { connectionLimitsErrors } from "~/modules/apps/connection-limits"
 import { createParamValidatorCache } from "~/modules/apps/param-validator"
 import { pinnedOverlap } from "~/modules/apps/pinned-params"
 import { validateProviderContracts } from "~/modules/apps/provider-contracts/validate"
@@ -1067,6 +1069,9 @@ export function validateAppManifest(manifest: any): ValidationResult {
   errors.push(...storeErrors(manifest))
   errors.push(...secretsErrors(manifest))
   errors.push(...connectionAdminScopeErrors(manifest))
+  for (const [name, conn] of Object.entries((manifest.connections ?? {}) as Record<string, any>)) {
+    for (const e of connectionLimitsErrors(conn?.limits)) errors.push(`connections.${name}.${e}`)
+  }
   errors.push(...dimensionReferenceErrors(manifest))
   errors.push(...oauthManifestKnobErrors(manifest))
   errors.push(...listingDeclarationErrors(manifest))

@@ -137,3 +137,10 @@ Contract: each entry twice in one reused isolate, recorded answers, production l
 Waits over 2 s and the source scan -> apps/api/src/modules/apps/contract/wait-lint.ts:20 ; apps/api/src/modules/apps/contract/wait-lint.ts:111
 Expected failures only shrink -> apps/api/src/modules/apps/contract/expected-failures.guard.test.ts:1
 A knowledge source sync page: 60 s unless its kind declares timeoutMs (at most 120 s) -> apps/api/src/modules/apps/run-limits.ts ("knowledge-sync" row) ; apps/api/src/modules/apps/manifest-schema.ts (knowledgeSources.timeoutMs)
+Connection limits declared in the manifest, concurrency/perSecond/burst bounds -> apps/api/src/modules/apps/manifest-schema.ts:360 ; apps/api/src/modules/apps/connection-limits.ts:1
+ctx.fetch with auth.connection takes a permit, key per org/app/connection/identifier -> apps/api/src/modules/apps/sandbox/bridge/egress.ts:419 ; apps/api/src/modules/apps/connection-limiter.ts:1
+Waits 2 s in a tool, 20 s in a job, then provider_rate_limited 429 -> apps/api/src/modules/apps/run-limits.ts:309 ; apps/api/src/modules/apps/connection-limiter.ts:54
+Retry-After on 429/503 pauses the account, at most 60 s -> apps/api/src/modules/apps/connection-limiter.ts:282 ; apps/api/src/modules/apps/run-limits.ts:310
+ctx.limiter.pause only for a connection with limits -> apps/api/src/modules/apps/sandbox/bridge/egress.ts:600
+Limiter fails open when Redis fails -> apps/api/src/modules/apps/connection-limiter.ts:221
+Poll and reconcile runs hold no transaction; answer recorded in one guarded write -> apps/api/src/modules/apps/runtime.ts:3314 ; apps/api/src/modules/apps/runtime.ts:3378 ; apps/api/src/modules/approvals/poll-output.ts:129 ; apps/api/src/modules/approvals/approving-reaper.ts:334 ; apps/api/src/modules/approvals/reconcile-outcome.ts:60

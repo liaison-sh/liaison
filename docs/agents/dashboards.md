@@ -26,7 +26,7 @@ To get a dashboard, ask your agent, for example: "Build me a dashboard of last m
 
 ## Read and refresh the figures
 
-The bar at the top of the dashboard shows its title, who sees it (**Personal** or **Org**) and **Refresh all**.
+The bar at the top of the dashboard shows its title, the period it shows when a block follows one, who sees it (**Personal** or **Org**) and **Refresh all**.
 
 - Blocks keep their figures for a short while. **Refresh all** reads every block again from its source.
 - Each block also has its own refresh button, next to its title.
@@ -80,6 +80,27 @@ A dashboard can follow a time range: last 7, 30 or 90 days, this month, quarter 
 - Dashboards built before time ranges existed keep their blocks' own dates.
 
 A metric can also show a goal (its target) and its trend over the period as a small line.
+
+## Choose the period
+
+When at least one block follows the time range, the bar at the top shows the period as days, with the period it is compared with: for example "1–11 Nov 2026 · vs 1–11 Nov 2025". Click it to change it:
+
+- Under **Period**: **Last 7 days**, **Last 30 days**, **Last 90 days**, **Month to date**, **Last month**, **Quarter to date**, **Last quarter**, **Year to date**, **Last year**, or **Custom range…**, which asks for a **From** and a **To** day and applies them with **Apply**.
+- Under **Compare to**: **Same period last year**, **Previous period** or **No comparison**.
+- **Back to the dashboard's default** forgets your choice. It shows once you have picked a period on that dashboard.
+
+The blocks that follow the period read again at once. Your choice is remembered for you on that dashboard, and it goes into the tab's address (`?range=lastMonth&compare=lastYear`, or `?range=custom&from=2026-11-01&to=2026-11-11`), so a link you copy opens on the same period. A dashboard opens on the period in its link, else on the one you last chose there, else on its default.
+
+A block that keeps its own dates says them in a small label next to its title, such as "Since 13 Aug 2026", or **Own period** when it reads no dates at all.
+
+## What the figures show
+
+- A metric that is compared shows the change under the figure, with an arrow and its sign, for example "+12% vs same period last year". It is never coloured red or green: up is not always good news.
+- A metric with a target shows "30 of 40" and a thin bar of the progress toward it, and a metric with a trend shows it as a small line beside the figure.
+- A chart draws the compared period's values lighter (dashed for a line), named **Same period last year** or **Previous period**.
+- Under each block, "Updated 4 min. ago" says when its figures were read. A block built with its own refresh interval reads again on that interval, but only while its tab is on screen.
+- A block that follows the period and finds nothing says which days it read: "No data between 1 Nov and 11 Nov".
+- "3 rows are left out: a field they need is missing or unreadable." means some of the source's rows lacked a date or a number the block needs. "The comparison could not be read this time." means the compared period failed while the current figures still show.
 
 ## What a block can read
 

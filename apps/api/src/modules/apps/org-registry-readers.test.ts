@@ -90,6 +90,7 @@ const READERS: Record<string, string> = {
     "CLI, agent turn or request: each caller sets the org up first",
   "modules/contacts/activity.ts": AGENT,
   "modules/demo/world/commerce-order.ts": ENSURES,
+  "modules/demo/worlds/saas/payments/deliver.ts": ENSURES,
   // A source lookup fills the org's registries on a miss (ensureAppsForOrg); the source
   // listing runs from the dashboards routes and tools, each set up first.
   "modules/dashboards/sources.ts":

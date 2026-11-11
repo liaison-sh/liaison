@@ -38,6 +38,15 @@ const log = rootLogger.child({ module: "activity" })
 
 /** One deadline for every source together. */
 export const ACTIVITY_DEADLINE_MS = 800
+let defaultDeadlineMs = ACTIVITY_DEADLINE_MS
+
+/** Test seam: a run whose callers pass no deadline of their own (an agent tool's read). */
+export const ActivityTestAccess = {
+  /** The deadline a read without its own `deadlineMs` waits (null: the shipped one). */
+  setDefaultDeadlineMs(ms: number | null): void {
+    defaultDeadlineMs = ms ?? ACTIVITY_DEADLINE_MS
+  },
+}
 /** The people of a company each source is asked about, most recently active first. */
 export const ACTIVITY_CONTACT_CAP = 50
 /** The deals of a company each source is asked about, most recently active first. */
@@ -444,7 +453,7 @@ export async function readActivity(input: ReadActivityInput): Promise<ActivityRe
     timer = setTimeout(() => {
       controller.abort()
       resolve("timeout")
-    }, input.deadlineMs ?? ACTIVITY_DEADLINE_MS)
+    }, input.deadlineMs ?? defaultDeadlineMs)
   })
   const asked = await Promise.all(
     sources.map((decl) =>
@@ -634,7 +643,7 @@ export async function readLinkedRecords(input: {
     timer = setTimeout(() => {
       controller.abort()
       resolve("timeout")
-    }, input.deadlineMs ?? ACTIVITY_DEADLINE_MS)
+    }, input.deadlineMs ?? defaultDeadlineMs)
   })
   const limit = ACTIVITY_LIMIT_MAX
   const asked = await Promise.all(

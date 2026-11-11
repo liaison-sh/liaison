@@ -36,9 +36,14 @@ export function enabledDemoWorlds(): DemoWorldId[] {
   return enabled.length > 0 ? enabled : [DEMO_DEFAULT_WORLD]
 }
 
-/** The workspace name a world's org carries: its pack's company, or the default world's. */
+/**
+ * The workspace name a visitor's org carries: its world's company as people
+ * call it (never the legal entity's name), or the default world's.
+ */
 export function demoWorldOrgName(worldId: DemoWorldId): string {
-  return (findDemoWorldPack(worldId) ?? findDemoWorldPack(DEMO_DEFAULT_WORLD))?.orgName ?? ""
+  return (
+    (findDemoWorldPack(worldId) ?? findDemoWorldPack(DEMO_DEFAULT_WORLD))?.world.company.name ?? ""
+  )
 }
 
 /** Test seams. */

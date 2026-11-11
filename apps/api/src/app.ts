@@ -659,9 +659,11 @@ if (env.LIAISON_DEMO_MODE) {
 }
 
 // The card-payments stand-in's signed QA write (outside objects of a demo org).
-// Every request 404s unless LIAISON_DEMO_PAYMENTS_FIXTURES is set, the harness
-// signature is valid and the org is demo marked (modules/demo/worlds/saas/payments/harness-route.ts).
-{
+// Mounted ONLY when LIAISON_DEMO_PAYMENTS_FIXTURES is set, like the demo
+// routes above: with the flag off the route does not exist. Mounted, every
+// request still 404s unless the harness signature is valid and the org is demo
+// marked (modules/demo/worlds/saas/payments/harness-route.ts).
+if (env.LIAISON_DEMO_PAYMENTS_FIXTURES) {
   const { demoPaymentsHarnessRoutes } = await import(
     "~/modules/demo/worlds/saas/payments/harness-route"
   )

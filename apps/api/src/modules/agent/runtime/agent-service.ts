@@ -351,8 +351,11 @@ export function withPriorSteps(
   const sum = (pick: (v: JournalStepView) => number) => prior.reduce((n, v) => n + pick(v), 0)
   const priorText = joinStepTexts(prior.map((v) => v.text))
   const priorReasoning = prior.map((v) => v.reasoning).join("")
+  // A retraction counts this attempt's streamed text only: the joined steps
+  // carry no stepTexts, so no retraction is cut from the earlier attempts' text.
+  const { stepTexts: _thisAttempt, ...rest } = input
   return {
-    ...input,
+    ...rest,
     text: joinStepText(priorText, input.text),
     ...(input.reasoning !== undefined || priorReasoning
       ? { reasoning: priorReasoning + (input.reasoning ?? "") }
@@ -1333,6 +1336,10 @@ interface RunAgentChatResult {
     }
     finishReason: string
     text: string
+    /** Each step's text exactly as streamed, in order, when `text` joins the steps as
+     *  paragraphs (reply-flatten.ts): a retraction, counted on the streamed text, is
+     *  cut from these and the steps joined again. */
+    stepTexts?: readonly string[]
     reasoning?: string
     /** Ordered reasoning/tool interleave — see TurnTimelineEntry. */
     timeline?: TurnTimelineEntry[]
@@ -4154,6 +4161,10 @@ async function runAgentChatTurn(
     }
     finishReason: string
     text: string
+    /** Each step's text exactly as streamed, in order, when `text` joins the steps as
+     *  paragraphs (reply-flatten.ts): a retraction, counted on the streamed text, is
+     *  cut from these and the steps joined again. */
+    stepTexts?: readonly string[]
     /** Accumulated reasoning/thinking text (full or summary, per the provider). */
     reasoning?: string
     /** Ordered interleave of reasoning segments and tool calls in the exact order
@@ -5347,6 +5358,7 @@ async function runThreadTurn(
         ...(streamErrorNotice ? { errorNotice: streamErrorNotice } : {}),
         reasoning,
         timeline,
+        stepTexts: replyText.steps,
       })
       withheldCapabilities = done?.withheldCapabilities ?? []
       if (done?.finishReason === HANDOFF_FINISH_REASON) turnHandedOff = true
@@ -5797,6 +5809,7 @@ export async function rerunAgentTurn(input: {
     usage,
     finishReason,
     text,
+    stepTexts: replyText.steps,
     finalStepText,
     steps,
     errorDetail,

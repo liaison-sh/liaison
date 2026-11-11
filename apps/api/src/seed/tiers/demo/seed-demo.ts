@@ -529,12 +529,18 @@ async function seedDemoWorldLayers(opts: SeedDemoWorldOptions): Promise<SeedDemo
  *
  * A world never writes another world's approvals.
  */
-export const SCENARIO_START_BY_WORLD: Readonly<
-  Record<DemoWorldId, (orgId: string, need: DemoNeed) => Promise<string[]>>
-> = {
-  products: (orgId, need) => seedScenarioApprovals(orgId, need),
-  saas: async () => [],
-  studio: async () => [],
+async function startWorldScenario(
+  worldId: DemoWorldId,
+  orgId: string,
+  need: DemoNeed,
+): Promise<string[]> {
+  switch (worldId) {
+    case "products":
+      return seedScenarioApprovals(orgId, need)
+    case "saas":
+    case "studio":
+      return []
+  }
 }
 
 /**
@@ -549,7 +555,7 @@ export async function seedScenarioStart(
   need: DemoNeed,
   worldId: DemoWorldId = DEMO_DEFAULT_WORLD,
 ): Promise<string[]> {
-  const ids = await SCENARIO_START_BY_WORLD[worldId](orgId, need)
+  const ids = await startWorldScenario(worldId, orgId, need)
   if (ids.length === 0) return ids
   await joinPendingApprovals(orgId, ownerUserId)
   await ensureAppsForOrg(orgId)

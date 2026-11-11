@@ -140,6 +140,8 @@ const ROUTE_NON_READERS: Record<string, string> = {
     "repoints the column when two companies merge, and names the kept company's manager",
   "apps/api/src/modules/agent/tools/company-tools.ts":
     "the merge result names the kept company's manager",
+  "apps/api/src/seed/worlds/saas/layer.ts":
+    "the demo seed stores the person one seeded request routes to, as a proposal would; it reads no placement",
 }
 const ROUTE_INPUT = /\b(route_person_id|routePersonId|route_company_id|routeCompanyId|managerId)\b/
 

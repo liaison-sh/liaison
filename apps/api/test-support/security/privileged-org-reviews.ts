@@ -63,8 +63,6 @@ export const TRUSTED_SOURCES: Record<string, string> = {
     "the pooled org the demo pool's refill itself just created (createVisitorOrgShell on a slug the pool generated, demo-pool.ts createPooledShell)",
   acquireVisitorWorkspace:
     "the workspace this request just made the visitor's (demo/routes.ts acquireVisitorWorkspace): a ready pooled org claimPooledOrg handed over in one locked transaction, or the shell createVisitorOrgShell just created; reached from a signup and from POST /start-over, whose own org is requireVisitorOrg's",
-  pooledRows:
-    "the demo pool's own visitor orgs: kernel.organizations rows its marker names as pooled (demo-pool.ts pooledRows)",
   provisionOrgShell:
     "the org the seed engine's org factory just created, or found under the slug its caller chose, through the provisioning CLI's org provisioner (seed/factories/org/org.ts); the demo tier writes into it only once it carries the demo marker or this run created it (seed/tiers/demo/seed-org.ts demoMarkRefusal)",
   requireVisitorOrg:
@@ -689,6 +687,10 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "approval summarizer named in the tickets manifest (its summarizer field): registered per org and called for an approval of that org",
   "apps/api/src/modules/demo/routes.ts#GET /orgs/:orgId/status":
     "public demo status by design (demo/routes.ts:315-345): the URL org id is the v4 uuid the visitor was handed, a non-demo org is a 404, the body is a state word and timestamps",
+  "apps/api/src/modules/demo/worlds/saas/payments/deliver.ts#deliverDemoPaymentsEvent":
+    "the payments stand-in's event delivery: the org is either the one whose own sandbox call the stand-in just answered (provider.ts maybeDemoPaymentsResponse, past loadDemoOrg finding its demo marker, through standInDeps and scheduleDemoPaymentsEvent) or the visitor demo org a world beat runs for (payment-recovered.ts injectWorldEvent, ctx.orgId from runWorldBeatOnce); the bridge it builds runs inside withRlsContext for that same org",
+  "apps/api/src/modules/demo/worlds/saas/payments/harness-route.ts#demoPaymentsHarnessRoutes.POST /outside":
+    "the stand-in's QA write, mounted only when LIAISON_DEMO_PAYMENTS_FIXTURES is set (app.ts): the body's org id is read only after verifyHarnessContext accepts the box's harness signature, loadDemoOrg reads its demo marker, and nothing is written unless the org carries it",
 }
 
 /**

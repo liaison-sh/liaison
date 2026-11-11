@@ -28,7 +28,7 @@ function target(table: string) {
   return sql`${sql.identifier(schemaRef(`app_${PAYMENTS_APP}`))}.${sql.identifier(table)}`
 }
 
-async function select(
+async function readMirrorRows(
   orgId: string,
   table: string,
   where: ReturnType<typeof sql> | null,
@@ -46,16 +46,16 @@ async function select(
 /** The mirror of `orgId`, read from Postgres. */
 export function dbMirrorSource(orgId: string): MirrorSource {
   return {
-    rows: (table) => select(orgId, `${PAYMENTS_APP}_${table}`, null, MIRROR_READ_CAP),
+    rows: (table) => readMirrorRows(orgId, `${PAYMENTS_APP}_${table}`, null, MIRROR_READ_CAP),
     row: async (table, processorId) =>
       (
-        await select(
+        await readMirrorRows(
           orgId,
           `${PAYMENTS_APP}_${table}`,
           sql`${sql.identifier(`${PAYMENTS_APP}_id`)} = ${processorId}`,
           1,
         )
       )[0] ?? null,
-    install: async () => (await select(orgId, "install_metadata", null, 1))[0] ?? null,
+    install: async () => (await readMirrorRows(orgId, "install_metadata", null, 1))[0] ?? null,
   }
 }

@@ -19,7 +19,7 @@ import { resetAppRegistries } from "~/modules/apps/app-registries"
 import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
-import { readActivity } from "~/modules/contacts/activity"
+import { ActivityTestAccess, readActivity } from "~/modules/contacts/activity"
 import { insertSql, type RowValue } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
@@ -194,6 +194,10 @@ describe("the agent's contact read names other apps' records for the person", ()
       issued_at: new Date().toISOString(),
       grand_total_minor: 78000,
     })
+    // These tests read what the sources answer, not how fast: the agent's read
+    // passes no deadline of its own, so on a loaded machine the shipped one
+    // would turn an answer into "no answer in time".
+    ActivityTestAccess.setDefaultDeadlineMs(60_000)
     // The sandbox's first call loads the app: done once here, with time to spare.
     await readActivity({
       orgId: world.org,
@@ -204,6 +208,7 @@ describe("the agent's contact read names other apps' records for the person", ()
   }, 180_000)
 
   afterAll(async () => {
+    ActivityTestAccess.setDefaultDeadlineMs(null)
     await shutdownWorkerPool()
     await shutdownSandboxPool()
     resetAppRegistries()

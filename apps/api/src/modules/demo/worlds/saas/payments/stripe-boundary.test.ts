@@ -83,23 +83,26 @@ describe("the payments stand-in's boundary", () => {
     }
   })
 
-  it("the egress bridge reaches the stand-in only past the process gate, through a dynamic import", () => {
+  it("the egress bridge reaches the stand-in only past the request gate and the demo marker, through a dynamic import", () => {
     const src = readFileSync(path.join(import.meta.dir, "provider.ts"), "utf8")
     const staticImports = [...src.matchAll(/^\s*import[^;]*?from\s+"([^"]+)"/gm)].map((m) => m[1])
     expect(staticImports.sort()).toEqual([
       "./sentinel",
-      "~/lib/env",
       "~/modules/demo/demo-egress",
-      "~/modules/demo/demo-mode",
       "~/modules/demo/demo-org",
       "~/modules/demo/fixture-credential",
     ])
     expect(src).toContain('await import("./standin")')
     const body = src.slice(src.indexOf("export async function maybeDemoPaymentsResponse"))
-    const gate = body.indexOf("isDemoModeEnabled()")
-    expect(gate).toBeGreaterThan(-1)
-    expect(gate).toBeLessThan(body.indexOf("new URL("))
-    expect(gate).toBeLessThan(body.indexOf("loadDemoOrg("))
+    // A call that is neither for the payments host nor carries the sentinel
+    // returns before any read of the org.
+    const requestGate = body.indexOf("if (!paymentsHost && !fixture) return null")
+    expect(requestGate).toBeGreaterThan(-1)
+    expect(requestGate).toBeLessThan(body.indexOf("loadDemoOrg("))
+    // An org without the demo marker never reaches the stand-in.
+    const markerGate = body.indexOf("if (!marker) return")
+    expect(markerGate).toBeGreaterThan(body.indexOf("loadDemoOrg("))
+    expect(markerGate).toBeLessThan(body.indexOf('await import("./standin")'))
     const egress = readFileSync(
       path.join(SRC, "modules", "apps", "sandbox", "bridge", "egress.ts"),
       "utf8",

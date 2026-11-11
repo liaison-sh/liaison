@@ -3057,8 +3057,10 @@ function replayedToolResultPart(tc: ToolCallMetadata, replayId: (id: string) => 
  *
  * Null (the caller replays the one-message form) when the timeline cannot be
  * trusted to say the same thing as the row: absent or malformed, its words not
- * exactly the stored text (a guard rewrote the text after the turn), or a
- * stored call it does not place. Calls the replay leaves out (retrieval
+ * the stored text (a guard rewrote the text after the turn), or a stored call
+ * it does not place. The words are compared without their whitespace: the
+ * stored text sets each step's words apart as a paragraph (reply-flatten.ts),
+ * the timeline keeps them as streamed. Calls the replay leaves out (retrieval
  * calls on a dropRetrievalToolParts replay) are skipped where they stood.
  */
 export function stepsFromTimeline(
@@ -3106,7 +3108,9 @@ export function stepsFromTimeline(
     }
   }
   steps.push(current)
-  if (toolEntries === 0 || words !== storedText || placed.size !== calls.length) return null
+  const unspaced = (t: string) => t.replace(/\s+/g, "")
+  if (toolEntries === 0 || placed.size !== calls.length) return null
+  if (words !== storedText && unspaced(words) !== unspaced(storedText)) return null
   return steps.filter((step) => step.calls.length > 0 || step.text !== "")
 }
 

@@ -11,7 +11,8 @@
 // not go out" are read off that recorder.
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { randomBytes } from "node:crypto"
-import { app } from "~/app"
+import { Hono } from "hono"
+import { type AppEnv, app } from "~/app"
 import { withPrivilegedDb } from "~/db/privileged"
 import { env } from "~/lib/env"
 import { LoadHarnessTestAccess, signHarnessRequest } from "~/lib/load-harness"
@@ -35,6 +36,7 @@ import {
   subscriptionRow,
 } from "../../../../../../../../bundled-apps/stripe/src/mirror"
 import { answerStandIn, type OutsideStore, type StandInDeps } from "./answer"
+import { demoPaymentsHarnessRoutes } from "./harness-route"
 import { ID } from "./objects"
 import {
   countOutsideObjects,
@@ -616,7 +618,15 @@ describe("the stand-in's gates", () => {
     expect(await countOutsideObjects(demoOrgId)).toBe(0)
   })
 
+  it("the outside-state route is not mounted without the flag", () => {
+    expect(env.LIAISON_DEMO_PAYMENTS_FIXTURES).toBe(false)
+    expect(app.routes.filter((r) => r.path.startsWith("/api/demo-payments"))).toEqual([])
+  })
+
   it("the outside-state route answers 404 without the flag, without a signature or for a non-demo org", async () => {
+    // Mounted as app.ts mounts it on a box with the flag set at boot; the
+    // route still checks the flag on every request.
+    const mounted = new Hono<AppEnv>().route("/api/demo-payments", demoPaymentsHarnessRoutes)
     const key = randomBytes(32).toString("hex")
     LoadHarnessTestAccess.setKey(key)
     const send = async (orgId: string, signed: boolean) => {
@@ -636,7 +646,7 @@ describe("the stand-in's gates", () => {
           key,
         )
       }
-      return (await app.request(path, { method: "POST", headers, body })).status
+      return (await mounted.request(path, { method: "POST", headers, body })).status
     }
     const before = env.LIAISON_DEMO_PAYMENTS_FIXTURES
     try {

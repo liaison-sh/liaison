@@ -30,17 +30,27 @@ export function joinStepTexts(texts: readonly string[]): string {
  */
 export function createReplyText(): {
   readonly text: string
+  /** Each step's text exactly as streamed (their concatenation is the streamed text). */
+  readonly steps: readonly string[]
   add: (delta: string) => void
   endStep: () => void
 } {
   let text = ""
   let stepStarted = true
+  const steps: string[] = []
+  let rawStepStarted = true
   return {
     get text() {
       return text
     },
+    get steps() {
+      return steps
+    },
     add(delta: string) {
       if (!delta) return
+      if (rawStepStarted) steps.push(delta)
+      else steps[steps.length - 1] += delta
+      rawStepStarted = false
       if (stepStarted) {
         if (!/\S/.test(delta)) {
           if (!/\S/.test(text)) text += delta
@@ -54,6 +64,17 @@ export function createReplyText(): {
     },
     endStep() {
       stepStarted = true
+      rawStepStarted = true
     },
   }
+}
+
+/** The stored reply of steps streamed as `steps`, built as `createReplyText` builds it. */
+export function replyTextOfSteps(steps: readonly string[]): string {
+  const reply = createReplyText()
+  for (const step of steps) {
+    reply.add(step)
+    reply.endStep()
+  }
+  return reply.text
 }

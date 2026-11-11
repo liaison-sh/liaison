@@ -5,8 +5,13 @@
 // variables are read and refused.
 import { afterEach, describe, expect, it } from "bun:test"
 import { env, envSchema, parseDemoPoolSizes, parseDemoWorldList } from "~/lib/env"
-import { DemoWorldsTestAccess, enabledDemoWorlds } from "~/modules/demo/demo-worlds"
-import { seedableDemoWorlds } from "~/seed/worlds"
+import { DEMO_COMPANY_NAME } from "~/modules/demo/demo-seeder"
+import {
+  DemoWorldsTestAccess,
+  demoWorldOrgName,
+  enabledDemoWorlds,
+} from "~/modules/demo/demo-worlds"
+import { findDemoWorldPack, seedableDemoWorlds } from "~/seed/worlds"
 
 const saved = env.LIAISON_DEMO_WORLDS
 
@@ -78,5 +83,16 @@ describe("the demo world env variables", () => {
     expect(good.success).toBe(true)
     expect(good.data?.LIAISON_DEMO_WORLDS).toBe("products")
     expect(good.data?.LIAISON_DEMO_POOL_MAX_AGE_HOURS).toBe(12)
+  })
+})
+
+describe("a demo world's workspace name", () => {
+  it("is the company's name as people call it, never its legal entity's", () => {
+    expect(demoWorldOrgName("products")).toBe(DEMO_COMPANY_NAME)
+    for (const id of seedableDemoWorlds()) {
+      const company = findDemoWorldPack(id)?.world.company
+      expect(demoWorldOrgName(id)).toBe(company?.name ?? "")
+      expect(demoWorldOrgName(id)).not.toBe(company?.legalName)
+    }
   })
 })

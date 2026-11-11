@@ -17,9 +17,12 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Server } from "bun"
 import { app } from "~/app"
+import { runSyncWorker } from "~/apps/knowledge/knowledge-jobs"
+import { knowledgeActorFromContext } from "~/apps/knowledge/service"
+import { createSyncedSource } from "~/apps/knowledge/synced-sources"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
-import { createRlsSession } from "~/db/rls"
+import { createRlsSession, withRlsContext } from "~/db/rls"
 import * as jobsModule from "~/infra/jobs/jobs"
 import { env } from "~/lib/env"
 import { appBridgeManifestRegistry, connectionConfigRegistry } from "~/modules/apps/app-registries"
@@ -664,6 +667,101 @@ describe("ctx.steps on every executor: a job processes N pages over several runs
       WHERE org_id = ${orgId} AND app = 'wparity' AND collection = 'liaison_steps'
         AND (data->>'done')::boolean AND data->'lease' = 'null'::jsonb`
     expect(state?.n).toBe(3)
+  }, 120_000)
+})
+
+describe("a knowledge source kind on every executor: N pages over several jobs", () => {
+  const SCOPES = ["knowledge:sources:manage", "knowledge:documents:read", "wparity:items:read"]
+
+  async function newSource(tag: string, total: number) {
+    return withRlsContext(
+      { actorType: "user", orgId, userId: userA.id, scopes: SCOPES, dimensionGrants: {} },
+      (tx) =>
+        createSyncedSource(
+          tx,
+          {
+            appName: "wparity",
+            folderRef: "app-source:notes",
+            sourceKind: "notes",
+            sourceConfig: { total, tag },
+            displayName: `Parity notes ${tag}`,
+            syncIntervalSeconds: 3600,
+            scope: "organization",
+            defaultSensitivity: "internal",
+          },
+          knowledgeActorFromContext({
+            orgId,
+            userId: userA.id,
+            scopes: SCOPES,
+            dimensionGrants: {},
+          }),
+        ),
+    )
+  }
+
+  /**
+   * The sync job, then each continuation it enqueued (one page per job). The
+   * pool and Workers run the registered dispatch (runApp picks the executor);
+   * in-process QuickJS runs the same export through runApp as trusted code.
+   */
+  async function drive(executor: StoreExecutor, sourceId: string) {
+    if (executor === "workers") workersOn()
+    else workersOff()
+    const queue: Array<"schedule" | "continue"> = ["schedule"]
+    let jobs = 0
+    while (queue.length > 0) {
+      const trigger = queue.shift()!
+      jobs++
+      await runSyncWorker(
+        { sourceId, trigger },
+        {
+          appSource: {
+            ensureOrg: async () => undefined,
+            ownerScopes: async () => SCOPES,
+            enqueueContinuation: async () => {
+              queue.push("continue")
+            },
+            limits: { maxPagesPerJob: 1 },
+            ...(executor === "inprocess"
+              ? { dispatch: (input) => runStore("inprocess", "wparity", "syncNotes", input) }
+              : {}),
+          },
+        },
+      )
+      if (executor !== "inprocess") {
+        expect(lastRun("knowledge-sync:notes")?.executor).toBe(
+          executor === "workers" ? "workers" : "quickjs",
+        )
+      }
+    }
+    return jobs
+  }
+
+  it("four pages, four jobs, the same documents on in-process QuickJS, the pool and Workers", async () => {
+    const answers: Record<string, unknown> = {}
+    for (const ex of STORE_EXECUTORS) {
+      const tag = `ks_${ex}`
+      const source = await newSource(tag, 4)
+      expect(await drive(ex, source.id)).toBe(4)
+      const rows = await sql.unsafe<{ title: string; body: string; archived: boolean }[]>(
+        `SELECT replace(title, $2, 'TAG') AS title, body, archived_at IS NOT NULL AS archived
+         FROM app_knowledge.documents WHERE synced_source_id = $1 ORDER BY title`,
+        [source.id, tag],
+      )
+      expect([...rows]).toEqual([
+        { title: "TAG note 0", body: "page 0", archived: true },
+        { title: "TAG note 1", body: "page 1", archived: false },
+        { title: "TAG note 2", body: "page 2", archived: false },
+        { title: "TAG note 3", body: "page 3", archived: false },
+      ])
+      const [state] = await sql<{ status: string; cursor: unknown; generation: number }[]>`
+        SELECT last_sync_status AS status, sync_cursor AS cursor, sync_generation AS generation
+        FROM app_knowledge.synced_sources WHERE id = ${source.id}`
+      expect(state).toEqual({ status: "ok", cursor: 4, generation: 4 })
+      answers[ex] = rows
+    }
+    expect(answers.pool).toEqual(answers.inprocess)
+    expect(answers.workers).toEqual(answers.inprocess)
   }, 120_000)
 })
 

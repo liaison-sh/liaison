@@ -9,7 +9,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { runLimits } from "~/modules/apps/run-limits"
-import type { ContractEntry } from "./entries"
+import { type ContractEntry, contractEntries } from "./entries"
 import { type AppUnderContract, runAppContract } from "./harness"
 import { quickJsContractExecutor } from "./quickjs-isolate"
 import { lintAppWaits } from "./wait-lint"
@@ -124,6 +124,61 @@ export async function pure(params) { return { n: (params.n || 0) + 1 } }
     expect(out.map((v) => [v.entry, v.reasons])).toEqual([
       ["tool:cached", ["module-state"]],
       ["tool:pure", []],
+    ])
+  })
+})
+
+describe("knowledge source sync entries", () => {
+  it("lists each declared kind's sync handler as a knowledge-sync entry under its own limit row", () => {
+    const entries = contractEntries({
+      knowledgeSources: {
+        notes: { title: "Notes", handler: "syncNotes", timeoutMs: 30_000 },
+        pages: { title: "Pages", handler: "syncPages" },
+        broken: { title: "No handler" },
+      },
+    })
+    expect(entries).toEqual([
+      {
+        entry: "knowledge-sync:notes",
+        kind: "knowledge-sync",
+        exportName: "syncNotes",
+        declaredMs: 30_000,
+      },
+      { entry: "knowledge-sync:pages", kind: "knowledge-sync", exportName: "syncPages" },
+    ])
+    expect(runLimits("knowledge-sync", { declaredMs: 30_000 }).wallMs).toBe(30_000)
+  })
+
+  const SYNC_SCRIPT = `
+async function syncPure(input) {
+  var page = input.cursor || 0
+  return { documents: { upsert: [{ externalId: "n-" + page, title: "Note " + page, body: "b" }], delete: [] }, nextCursor: page + 1, done: page >= 2 }
+}
+var pagesSeen = 0
+async function syncModuleCursor(input) {
+  pagesSeen++
+  return { documents: { upsert: [] }, nextCursor: pagesSeen, done: false }
+}
+globalThis.syncPure = syncPure;
+globalThis.syncModuleCursor = syncModuleCursor;`
+  const syncEntry = (name: string): ContractEntry => ({
+    entry: `knowledge-sync:${name}`,
+    kind: "knowledge-sync",
+    exportName: name,
+  })
+
+  it("keeps a page that reads only its input green, and is red on a cursor kept in module state", async () => {
+    const app: AppUnderContract = {
+      app: "sync-mutants",
+      dir: "/nonexistent",
+      entries: [syncEntry("syncPure"), syncEntry("syncModuleCursor")],
+      source: { script: SYNC_SCRIPT },
+      surface: SURFACE,
+    }
+    const out = await runAppContract(app, quickJsContractExecutor, { limitsFor: fastLimits })
+    expect(out.map((v) => [v.entry, v.reasons])).toEqual([
+      ["knowledge-sync:syncPure", []],
+      ["knowledge-sync:syncModuleCursor", ["module-state"]],
     ])
   })
 })

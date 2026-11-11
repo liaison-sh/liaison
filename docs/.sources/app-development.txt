@@ -80,3 +80,11 @@ Provider runs after any run of the app, after an app event, and on the minute ti
 Each run replaces the list; no scope = empty; a failed run keeps the last list with its error -> apps/api/src/modules/apps/attention-store.ts:293-355
 Summaries computed at request time and on edit, stored; reads serve stored text, generic while missing -> apps/api/src/modules/apps/execute-tool.ts:4954 ; apps/api/src/modules/approvals/edit.ts:641 ; apps/api/src/modules/approvals/served-summary.ts:1-15
 Background backfill of missing summaries -> apps/api/src/modules/approvals/summary-backfill.ts:1-15 ; apps/api/src/infra/boot-phase10.ts:486
+Knowledge source kinds: manifest knowledgeSources (title, handler, readScope, configSchema, timeoutMs) -> apps/api/src/modules/apps/manifest-schema.ts (knowledgeSources) ; apps/api/src/modules/apps/contract.ts (knowledgeSourceErrors) ; apps/api/src/modules/apps/knowledge-sync-dispatch.ts:1-30
+Add a source with appName, sourceKind, sourceConfig; kinds listed at /synced-sources/kinds; kind, scope and config checked at creation -> apps/api/src/apps/knowledge/routes.ts (synced-sources) ; apps/api/src/apps/knowledge/app-sources.ts (checkAppSourceKind, listAppSourceKinds)
+Owner's read scope re-checked before every sync -> apps/api/src/apps/knowledge/app-sources.ts (runAppSourceSyncJob)
+One page per run, 60 s default, at most 120 s -> apps/api/src/modules/apps/run-limits.ts (knowledge-sync) ; apps/api/src/modules/apps/manifest-schema.ts (knowledgeSources.timeoutMs)
+Page and cursor written in one transaction behind a generation compare-and-set; failed page retried from the same cursor -> apps/api/src/apps/knowledge/app-sources.ts (dbAppSourceStore.applyPage, runAppSourceSync)
+25 pages or 60 s per job, then a continuation job -> apps/api/src/apps/knowledge/app-sources.ts (APP_SOURCE_LIMITS) ; apps/api/src/apps/knowledge/knowledge-jobs.ts (enqueueAppSourceContinuation)
+Last cursor kept for the next pass; delete archives by externalId; prune archives what the pass did not return -> apps/api/src/apps/knowledge/app-sources.ts (dbAppSourceStore)
+Page limits: 200 upserts, 1000 deletes, 1,000,000-character body, 16 KB cursor -> apps/api/src/apps/knowledge/app-sources.ts (APP_SOURCE_LIMITS, parseSyncResult)

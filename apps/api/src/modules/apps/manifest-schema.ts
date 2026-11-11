@@ -1416,6 +1416,32 @@ export const appManifestJsonSchema = {
       required: ["handler", "entities"],
       additionalProperties: false,
     },
+    // Knowledge source kinds (apps/knowledge/app-sources.ts): the Knowledge sync
+    // job wakes `handler` with `{ sourceId, kind, config, cursor }`, one page per
+    // run, and writes the documents it returns. `readScope`: the scope a
+    // source's owner must hold (checked at creation and before every sync);
+    // `configSchema`: the JSON Schema of a source's config; `timeoutMs`: one
+    // page's wall clock (run-limits.ts "knowledge-sync", default 60 s).
+    knowledgeSources: {
+      type: "object",
+      maxProperties: 20,
+      patternProperties: {
+        [WEBHOOK_NAME_PATTERN]: {
+          type: "object",
+          properties: {
+            title: { type: "string", minLength: 1, maxLength: 100 },
+            description: { type: "string", maxLength: 500 },
+            handler: { type: "string", minLength: 1 },
+            readScope: { type: "string", pattern: SCOPE_PATTERN },
+            configSchema: { type: "object" },
+            timeoutMs: { type: "integer", minimum: 1000, maximum: 120000 },
+          },
+          required: ["title", "handler"],
+          additionalProperties: false,
+        },
+      },
+      additionalProperties: false,
+    },
     skills: {
       type: "object",
       additionalProperties: {

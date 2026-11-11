@@ -145,5 +145,27 @@
   "webhookHealth": {
     "probe": null,
     "reason": "test fixture"
+  },
+  "knowledgeSources": {
+    "notes": {
+      "title": "Parity notes",
+      "handler": "syncNotes",
+      "readScope": "wparity:items:read",
+      "configSchema": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "tag": {
+            "type": "string"
+          }
+        },
+        "required": ["total", "tag"],
+        "additionalProperties": false
+      },
+      "timeoutMs": 30000
+    }
   }
 }

@@ -49,10 +49,10 @@ const MAX_PAGES_PER_FOLDER = 50
 // I5: Drive returns filenames up to 32 KB and we forward them into title +
 // external_path. Cap to a sane bound and strip control characters so they
 // can't blow up storage or smuggle ANSI/escape sequences into UI or logs.
-const TITLE_MAX = 512
+export const TITLE_MAX = 512
 const PATH_MAX = 1024
 
-function sanitizeExternalString(value: string, max: number): string {
+export function sanitizeExternalString(value: string, max: number): string {
   // Strip ASCII control chars (U+0000–U+001F + U+007F) — no legitimate place
   // in a filename, and they could corrupt UI rendering or log lines.
   // biome-ignore lint/suspicious/noControlCharactersInRegex: deliberate strip of untrusted Drive metadata
@@ -120,7 +120,7 @@ async function walkFolder(
   return results
 }
 
-async function upsertSourceIdentity(
+export async function upsertSourceIdentity(
   tx: PrivilegedDb,
   orgId: string,
   source: string,
@@ -233,7 +233,7 @@ interface UpsertSyncedDocumentInput {
  * `bodyChanged` also reports a reclassification, so the caller's update event
  * refreshes the search index's ACL fields.
  */
-async function upsertSyncedDocument(
+export async function upsertSyncedDocument(
   tx: PrivilegedDb,
   input: UpsertSyncedDocumentInput,
 ): Promise<{ id: string; bodyChanged: boolean }> {
@@ -368,7 +368,7 @@ async function ensureCollectionMembership(
  * within this source that don't match the new parent, then inserts the new
  * one (idempotent via the ON CONFLICT in ensureCollectionMembership).
  */
-async function reparentMembership(
+export async function reparentMembership(
   tx: PrivilegedDb,
   orgId: string,
   sourceId: string,

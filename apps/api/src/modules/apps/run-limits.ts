@@ -43,6 +43,7 @@ export const RUN_ENTRY_KINDS = [
   "import-transform",
   "pdf-template",
   "summarizer",
+  "knowledge-sync",
 ] as const
 
 export type RunEntryKind = (typeof RUN_ENTRY_KINDS)[number]
@@ -127,6 +128,9 @@ export const RUN_LIMIT_TABLE: Readonly<Record<RunEntryKind, KindRow>> = Object.f
   "pdf-template": { wall: { rule: "fixed", ms: 30_000 }, memory: SANDBOX },
   // runtime.ts: an app's approval summarizer, 5 s.
   summarizer: { wall: { rule: "fixed", ms: 5_000 }, memory: SANDBOX },
+  // apps/knowledge/app-sources.ts: one page of an app's knowledge source sync,
+  // the kind's declared `timeoutMs` (the manifest bounds it to 120 s), else 60 s.
+  "knowledge-sync": { wall: { rule: "declared-or", ms: 60_000 }, memory: SANDBOX },
 })
 
 type Env = NodeJS.ProcessEnv

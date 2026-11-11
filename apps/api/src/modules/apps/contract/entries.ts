@@ -5,7 +5,8 @@
 // Kinds follow the manifest: tools (handler, preflight, summarizer,
 // pollHandler, reconcileHandler), event subscriptions, jobs, webhooks (handler
 // and verifier), search, export, the attention provider, import kinds,
-// connection before-disconnect hooks and PDF templates.
+// knowledge source kinds (their sync handler), connection before-disconnect
+// hooks and PDF templates.
 
 import type { RunEntryKind } from "~/modules/apps/run-limits"
 
@@ -145,6 +146,21 @@ export function contractEntries(manifest: Json): ContractEntry[] {
   )) {
     const exportName = fieldString(manifestObject(kindDef), "handler")
     if (exportName) out.push({ entry: `import:${kindName}`, kind: "import", exportName })
+  }
+
+  for (const [kindName, kindDef] of Object.entries(
+    fieldObject(manifest, "knowledgeSources") ?? {},
+  )) {
+    const obj = manifestObject(kindDef)
+    const exportName = obj && fieldString(obj, "handler")
+    const declaredMs = obj ? fieldNumber(obj, "timeoutMs") : undefined
+    if (exportName)
+      out.push({
+        entry: `knowledge-sync:${kindName}`,
+        kind: "knowledge-sync",
+        exportName,
+        ...(declaredMs ? { declaredMs } : {}),
+      })
   }
 
   for (const [connName, kindDef] of Object.entries(fieldObject(manifest, "connections") ?? {})) {

@@ -212,3 +212,24 @@ export async function pages(p: { total: number; tag: string }, ctx: Ctx) {
     return { done: page + 1 >= p.total, cursor: page + 1 }
   })
 }
+
+// A knowledge source kind (manifest `knowledgeSources.notes`): one note per
+// page, the cursor is the next page; page 2 deletes the first note.
+export async function syncNotes(
+  input: { sourceId: string; cursor: number | null; config: { total: number; tag: string } },
+  ctx: Ctx,
+) {
+  const page = input.cursor ?? 0
+  const tag = input.config.tag
+  await ctx.logger.info("sync page", { page })
+  return {
+    documents: {
+      upsert: [
+        { externalId: `${tag}-${page}`, title: `${tag} note ${page}`, body: `page ${page}` },
+      ],
+      delete: page === 2 ? [`${tag}-0`] : [],
+    },
+    nextCursor: page + 1,
+    done: page + 1 >= input.config.total,
+  }
+}

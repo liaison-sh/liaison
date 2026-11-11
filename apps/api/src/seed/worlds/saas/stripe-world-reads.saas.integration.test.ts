@@ -314,6 +314,7 @@ describe("the software world, seeded and read back", () => {
 
 interface MrrLine {
   currency: string
+  monthStart: string
   mrrMinor: number
   pastDueMinor: number
   activeCount: number
@@ -368,6 +369,46 @@ describe("the software world's money, read through the apps", () => {
       294_000, 96_000, -34_100, -127_800,
     ])
     expect(mv.startMinor).toBe(8_242_700)
+  })
+
+  it("a workspace live across a month's end shows this month's movements empty and nothing rewritten", async () => {
+    // The host's clock, not the sandbox's, names the month: two days into the next one.
+    const nextMonth = new Date(BOARD_DATE.getTime() + 24 * 86_400_000)
+    const before = await rows(
+      world.orgId,
+      sql`SELECT count(*)::int AS n FROM app_stripe.stripe_mrr_events WHERE org_id = ${world.orgId}`,
+    )
+    const actor = await ownerActor()
+    setSystemTime(nextMonth)
+    let line: MrrLine
+    try {
+      const r = await executeTool<{ lines: MrrLine[] }>({
+        toolName: "stripe:mrr_query",
+        orgId: world.orgId,
+        actor,
+        params: { breakdown: true },
+        origin: "human-ui",
+      })
+      line = (r.data as { lines: MrrLine[] }).lines[0] as MrrLine
+    } finally {
+      setSystemTime()
+    }
+    expect(line.monthStart).toBe("2026-12-01")
+    expect(line.mrrMinor).toBe(8_470_800)
+    const mv = line.movements
+    expect([
+      mv.newMinor,
+      mv.upgradeMinor,
+      mv.downgradeMinor,
+      mv.cancelledMinor,
+      mv.netMinor,
+    ]).toEqual([0, 0, 0, 0, 0])
+    expect(mv.startMinor).toBe(8_470_800)
+    const after = await rows(
+      world.orgId,
+      sql`SELECT count(*)::int AS n FROM app_stripe.stripe_mrr_events WHERE org_id = ${world.orgId}`,
+    )
+    expect(after).toEqual(before)
   })
 
   it("changing one seeded subscription's status moves the MRR query", async () => {
@@ -558,6 +599,46 @@ describe("the software world's money, read through the apps", () => {
       expect(item("demo-arlon-card-reminder")?.kind).toBe("approval_pending")
       expect(item("demo-arlon-card-reminder")?.metadata?.placement).toBe("standing_in")
       expect(item("demo-ombre-refund")?.kind).toBe("approval_pending")
+    } finally {
+      setSystemTime()
+    }
+  })
+})
+
+describe("the visitor's Home at the board date", () => {
+  it("Home's groups read Needs you with the card reminder, the follow-up and the refund, then Support 6, Tasks 2 and Knowledge 1", async () => {
+    const actor = await ownerActor()
+    setSystemTime(BOARD_DATE)
+    try {
+      const feed = await aggregateAttentionItems({ orgId: world.orgId, actor })
+      expect(feed.errors ?? []).toEqual([])
+      const byApp = (app: string) => feed.items.filter((i) => i.app === app)
+      expect(byApp("tickets")).toHaveLength(6)
+      expect(byApp("knowledge")).toHaveLength(1)
+      // The Arlon expansion's two subtasks are the owner's, due within the week.
+      expect(
+        byApp("projects")
+          .map((i) => i.summary)
+          .sort(),
+      ).toEqual([
+        "Draft the rollout plan for the 4 hotels",
+        "Send the pricing sheet for the 4 hotels",
+      ])
+      // Needs you: the decisions waiting on the owner and counted. Sauvan's
+      // (replied) and Kora's (held) are shown but not counted.
+      const counted = feed.items
+        .filter(
+          (i) =>
+            i.kind === "approval_pending" &&
+            i.metadata?.uncounted !== true &&
+            (i.metadata?.sendGuard as { state?: string } | undefined)?.state !== "held",
+        )
+        .map((i) => i.metadata?.requestHandle)
+      expect(counted.sort()).toEqual([
+        "demo-arlon-card-reminder",
+        "demo-lumen-followup",
+        "demo-ombre-refund",
+      ])
     } finally {
       setSystemTime()
     }

@@ -252,7 +252,7 @@ describe("pausing", () => {
   // A pause during an open month-end run: the schedule's row must not stay ready, or approving
   // the run would still issue that customer's invoice.
   test("a pause takes the schedule's row out of an open month-end run, saying why, and leaves issued rows alone", async () => {
-    const draft = (id: string, status = "draft") => ({ id, type: "invoice", status, counterparty_name: "Atelier Sud", currency: "EUR" })
+    const draft = (id: string, status = "draft") => ({ id, type: "invoice", status, counterparty_name: "Studio Sud", currency: "EUR" })
     const item = (id: string, runId: string, documentId: string, state: string, extra: Record<string, unknown> = {}) => ({
       id,
       run_id: runId,
@@ -314,7 +314,7 @@ describe("pausing", () => {
             send_grant: "g1",
           },
         ],
-        documents: [{ id: "doc-dec", type: "invoice", status: "draft", counterparty_name: "Atelier Sud" }],
+        documents: [{ id: "doc-dec", type: "invoice", status: "draft", counterparty_name: "Studio Sud" }],
       },
     })
     await recurringSchedulePause(ctx, { id: "sched-1", until: "2027-02-01" })
@@ -329,7 +329,7 @@ describe("pausing", () => {
         recurring_run_items: [
           { id: "item-dec", run_id: "run-dec", source: "schedule", schedule_id: "sched-1", period_key: "2026-12", period_start: "2026-12-01", period_end: "2026-12-31", document_id: "doc-dec", position: 0, state: "ready" },
         ],
-        documents: [{ id: "doc-dec", type: "invoice", status: "draft", counterparty_name: "Atelier Sud" }],
+        documents: [{ id: "doc-dec", type: "invoice", status: "draft", counterparty_name: "Studio Sud" }],
       },
     })
     await recurringSchedulePause(ctx, { id: "sched-1" }, true)

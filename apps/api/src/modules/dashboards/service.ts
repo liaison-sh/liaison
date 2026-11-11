@@ -16,10 +16,16 @@
 // source the author cannot read is refused at save. The same check runs again
 // on every view, as the viewer.
 
-import { and, desc, eq } from "drizzle-orm"
+import { and, desc, eq, inArray, lte } from "drizzle-orm"
 import type { RlsClient } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
-import { type DashboardRow, dashboards, dashboardViewerStates, users } from "~/db/schema/kernel"
+import {
+  type DashboardRow,
+  dashboards,
+  dashboardVersions,
+  dashboardViewerStates,
+  users,
+} from "~/db/schema/kernel"
 import {
   FAILED_BLOCK_TTL_SEC,
   failedBlockCacheKey,
@@ -35,7 +41,14 @@ import {
   withViewerSlot,
   writeCachedBlock,
 } from "~/modules/dashboards/cache"
-import { applyOperations, type EditOperation, EditOperationError } from "~/modules/dashboards/edit"
+import {
+  applyOperations,
+  type EditOperation,
+  EditOperationError,
+  revertTargets,
+  type SavedVersion,
+  type VersionLookup,
+} from "~/modules/dashboards/edit"
 import {
   type BlockErrorCode,
   dashboardTimezone,
@@ -61,6 +74,7 @@ import {
   DateTokenError,
   type DayWindow,
   dateTokensIn,
+  dayIn,
   filterTokensIn,
   hasRangeTokens,
   resolveDateTokens,
@@ -75,10 +89,12 @@ import {
   blockRangeMode,
   blockSourceOf,
   blockTtlSec,
+  calcDatasets,
   type DashboardBlock,
   type DashboardSpec,
   dashboardDefaultRange,
   dashboardSpecSchema,
+  MAX_SOURCE_ROWS,
   MAX_SOURCE_TTL_SEC,
   sourceValue,
   specIssues,
@@ -150,6 +166,8 @@ export interface DashboardSummary {
   ownerUserId: string | null
   /** The owner's display name, for "by <name>" in the list (null when the owner is gone). */
   ownerName: string | null
+  /** The spec's description, or null. */
+  description: string | null
   version: number
   blockCount: number
   updatedAt: string
@@ -305,6 +323,10 @@ export async function listDashboards(
     visibility: r.visibility,
     ownerUserId: r.ownerUserId,
     ownerName: ownerName ?? null,
+    description:
+      typeof (r.spec as { description?: unknown }).description === "string"
+        ? ((r.spec as { description: string }).description ?? null)
+        : null,
     version: r.version,
     blockCount: Array.isArray((r.spec as { blocks?: unknown }).blocks)
       ? (r.spec as { blocks: unknown[] }).blocks.length
@@ -342,6 +364,10 @@ export interface DashboardView extends DashboardRecord {
   /** The filter values the viewer opens on: their remembered ones, else the defaults. */
   filters: { values: FilterValues; saved: boolean }
   defaultFilters: FilterValues
+  /** Today in the org's zone (YYYY-MM-DD): what the presets resolve from. */
+  today: string
+  /** The org's IANA zone (UTC when unset): dates and buckets are its calendar days. */
+  timeZone: string
 }
 
 /** One person's remembered state on one dashboard, as stored (any part may be unset). */
@@ -439,6 +465,8 @@ export async function getDashboard(
     usesTimeRange: Object.values(blockTimeRange).includes("dashboard"),
     filters: { values: { ...defaultFilters, ...savedFilters }, saved: filtersSaved },
     defaultFilters,
+    today: dayIn(timeZone, now),
+    timeZone,
   }
 }
 
@@ -577,6 +605,154 @@ export async function clearViewerRange(
   })
 }
 
+// ── version history ────────────────────────────────────────────────────────
+
+/** Saved versions kept per dashboard (older ones are deleted with the save that passes it). */
+export const KEPT_VERSIONS = 20
+
+/** Keeps `row`'s title and spec as its version, and prunes past KEPT_VERSIONS. */
+async function recordVersion(
+  t: RlsClient,
+  viewer: DashboardViewer,
+  row: DashboardRow,
+  opts: { ifMissing?: boolean } = {},
+): Promise<void> {
+  await t
+    .insert(dashboardVersions)
+    .values({
+      orgId: viewer.orgId,
+      dashboardId: row.id,
+      version: row.version,
+      title: row.title,
+      spec: row.spec,
+      savedBy: opts.ifMissing ? row.updatedBy : viewer.userId,
+      savedAt: opts.ifMissing ? new Date(row.updatedAt) : new Date(),
+    })
+    .onConflictDoNothing()
+  if (opts.ifMissing) return
+  await t
+    .delete(dashboardVersions)
+    .where(
+      and(
+        eq(dashboardVersions.dashboardId, row.id),
+        lte(dashboardVersions.version, row.version - KEPT_VERSIONS),
+      ),
+    )
+}
+
+export interface DashboardVersionSummary {
+  version: number
+  title: string
+  savedAt: string
+  savedBy: string | null
+  savedByName: string | null
+  blockCount: number
+  /** The version the dashboard is at now. */
+  current: boolean
+}
+
+/** The kept versions of a dashboard `viewer` sees, newest first. NOT_FOUND when they cannot. */
+export async function listVersions(
+  viewer: DashboardViewer,
+  dashboardId: string,
+  tx?: RlsClient,
+): Promise<DashboardVersionSummary[]> {
+  return inTx(viewer, tx, async (t) => {
+    const row = await loadRow(viewer, dashboardId, t)
+    const rows = await t
+      .select({ v: dashboardVersions, savedByName: users.name })
+      .from(dashboardVersions)
+      .leftJoin(users, eq(users.id, dashboardVersions.savedBy))
+      .where(eq(dashboardVersions.dashboardId, dashboardId))
+      .orderBy(desc(dashboardVersions.version))
+      .limit(KEPT_VERSIONS + 1)
+    return rows.map(({ v, savedByName }) => ({
+      version: v.version,
+      title: v.title,
+      savedAt: iso(v.savedAt),
+      savedBy: v.savedBy,
+      savedByName: savedByName ?? null,
+      blockCount: Array.isArray((v.spec as { blocks?: unknown }).blocks)
+        ? (v.spec as { blocks: unknown[] }).blocks.length
+        : 0,
+      current: v.version === row.version,
+    }))
+  })
+}
+
+export interface DashboardVersionDetail {
+  version: number
+  title: string
+  spec: Record<string, unknown>
+  savedAt: string
+  savedBy: string | null
+  savedByName: string | null
+}
+
+/** One kept version (its whole spec). NOT_FOUND when the dashboard is not visible or it was pruned. */
+export async function getVersion(
+  viewer: DashboardViewer,
+  dashboardId: string,
+  version: number,
+  tx?: RlsClient,
+): Promise<DashboardVersionDetail> {
+  const found = await inTx(viewer, tx, async (t) => {
+    await loadRow(viewer, dashboardId, t)
+    return readVersions(t, dashboardId, [version])
+  })
+  const v = found.get(version)
+  if (!v) throw new DashboardError("NOT_FOUND", `version ${version} is not kept`)
+  return { ...v, savedBy: v.savedBy }
+}
+
+/** The kept versions `numbers` of a dashboard, read on `t` (the caller's RLS, or a summarizer's). */
+export async function readVersions(
+  t: Pick<RlsClient, "select">,
+  dashboardId: string,
+  numbers: number[],
+): Promise<Map<number, SavedVersion & { savedBy: string | null }>> {
+  const out = new Map<number, SavedVersion & { savedBy: string | null }>()
+  if (numbers.length === 0) return out
+  const rows = await t
+    .select({ v: dashboardVersions, savedByName: users.name })
+    .from(dashboardVersions)
+    .leftJoin(users, eq(users.id, dashboardVersions.savedBy))
+    .where(
+      and(
+        eq(dashboardVersions.dashboardId, dashboardId),
+        inArray(dashboardVersions.version, numbers),
+      ),
+    )
+  for (const { v, savedByName } of rows) {
+    out.set(v.version, {
+      version: v.version,
+      title: v.title,
+      spec: v.spec,
+      savedAt: iso(v.savedAt),
+      savedBy: v.savedBy,
+      savedByName: savedByName ?? null,
+    })
+  }
+  return out
+}
+
+/**
+ * A copy of a dashboard `viewer` sees, as their own new PERSONAL dashboard: same spec, title
+ * "<title> (copy)" unless given. Needs kernel:dashboards:write, and every source must be one the
+ * viewer may read (validated as for any save).
+ */
+export async function duplicateDashboard(
+  viewer: DashboardViewer,
+  id: string,
+  input: { title?: string } = {},
+  tx?: RlsClient,
+): Promise<DashboardRecord> {
+  const source = await loadRow(viewer, id, tx)
+  const suffix = " (copy)"
+  const title = input.title ?? `${source.title.slice(0, 200 - suffix.length)}${suffix}`
+  return createDashboard(viewer, { title, visibility: "personal", spec: source.spec }, tx)
+}
+
 export interface CreateDashboardInput {
   title: string
   visibility: DashboardVisibility
@@ -610,6 +786,7 @@ export async function createDashboard(
         updatedBy: viewer.userId,
       })
       .returning()
+    await recordVersion(t, viewer, inserted!)
     await queueDashboardEvent(t, viewer, "created", inserted!)
     return inserted!
   })
@@ -671,7 +848,12 @@ export async function updateDashboard(
       })
       .where(and(eq(dashboards.id, id), eq(dashboards.version, current.version)))
       .returning()
-    if (updated) await queueDashboardEvent(t, viewer, "updated", updated, current.visibility)
+    if (updated) {
+      // The version it replaces is kept too when it predates the history (saved before it).
+      await recordVersion(t, viewer, current, { ifMissing: true })
+      await recordVersion(t, viewer, updated)
+      await queueDashboardEvent(t, viewer, "updated", updated, current.visibility)
+    }
     return updated
   })
   if (!row)
@@ -740,6 +922,10 @@ async function planEdit(
       `the dashboard is at version ${current.version}, not ${input.ifVersion}: read it again`,
     )
   }
+  const targets = revertTargets(input.operations)
+  const versions: VersionLookup = targets.length
+    ? await inTx(viewer, tx, (t) => readVersions(t, id, targets))
+    : new Map()
   let next: ReturnType<typeof applyOperations>
   try {
     next = applyOperations(
@@ -749,6 +935,7 @@ async function planEdit(
         spec: current.spec as unknown as DashboardSpec,
       },
       input.operations,
+      versions,
     )
   } catch (err) {
     if (err instanceof EditOperationError) {
@@ -909,6 +1096,27 @@ function projectionFields(spec: DashboardSpec, sourceKey: SourceKey): Set<string
     for (const w of m.where ?? []) add(w.field)
     for (const x of [...(m.measures ?? []), ...(m.stages ?? [])]) add(x.field)
     for (const f of linkFields(m.link)) add(f)
+    for (const v of Object.values(m.values ?? {})) {
+      if (v.dataset) continue
+      add(v.field)
+      for (const w of v.where ?? []) add(w.field)
+    }
+  }
+  // Calculated values and measures of any block that read this dataset by name.
+  if (sourceKey.startsWith("ds:")) {
+    for (const b of spec.blocks) {
+      const m = b.map
+      for (const v of Object.values(m.values ?? {})) {
+        if (`ds:${v.dataset}` !== sourceKey) continue
+        add(v.field)
+        for (const w of v.where ?? []) add(w.field)
+      }
+      for (const x of m.measures ?? []) {
+        if (`ds:${x.dataset}` !== sourceKey) continue
+        add(x.field)
+        add(x.categoryField ?? m.groupBy?.field ?? m.x)
+      }
+    }
   }
   for (const f of spec.filters ?? []) {
     const o = f.options
@@ -1047,6 +1255,8 @@ interface PlannedSource {
   range: DayWindow | null
   window: BlockWindow
   compareRange: BlockCompareWindow | null
+  /** The org's zone: date buckets are its calendar days. */
+  timeZone: string
 }
 
 /**
@@ -1091,7 +1301,56 @@ async function planSource(
   const budgeted = filterTokensIn(sourceValue(saved)).some(
     (id) => JSON.stringify(values[id] ?? []) !== JSON.stringify(defaults[id] ?? []),
   )
-  return { sourceKey, saved, filtered, resolved, budgeted, range, window, compareRange }
+  return { sourceKey, saved, filtered, resolved, budgeted, range, window, compareRange, timeZone }
+}
+
+/**
+ * The rows of the other shared datasets a block's calculated values or measures read, for the
+ * current window or the comparison one, each read as the viewer through the same cache as any
+ * dataset (one run shared with the blocks that read it). A refusal of one refuses the block.
+ */
+async function readCalcDatasets(
+  viewer: DashboardViewer,
+  dashboard: LoadedDashboard,
+  block: DashboardBlock,
+  values: FilterValues,
+  opts: BlockDataOptions,
+  now: Date,
+  which: "current" | "previous",
+): Promise<{ ok: true; rows: Record<string, Record<string, unknown>[] | null> } | Refusal> {
+  const rows: Record<string, Record<string, unknown>[] | null> = {}
+  for (const id of calcDatasets(block)) {
+    const saved = dashboard.spec.datasets?.[id]
+    if (!saved) return { ok: false, error: "invalid_map", message: `no dataset '${id}'` }
+    const mode = hasRangeTokens(sourceValue(saved)) ? "dashboard" : "fixed"
+    let plan: PlannedSource
+    try {
+      plan = await planSource(viewer, dashboard.spec, `ds:${id}`, saved, mode, values, opts, now)
+    } catch (err) {
+      if (!(err instanceof DateTokenError)) throw err
+      return { ok: false, error: "invalid_map", message: err.message }
+    }
+    const refused = await sourceRefusal(viewer, plan.resolved)
+    if (refused) return refused
+    let source = plan.resolved
+    let range = plan.range
+    if (which === "previous" && plan.compareRange) {
+      source = await resolveSourceDates(plan.filtered, viewer.orgId, now, plan.compareRange)
+      range = plan.compareRange
+    }
+    const read = await readSourceCached(
+      viewer,
+      dashboard,
+      `ds:${id}`,
+      source,
+      range,
+      { ...opts, ...(which === "previous" ? { refresh: false } : {}), budgeted: plan.budgeted },
+      which === "previous" ? PAST_WINDOW_TTL_SEC : undefined,
+    )
+    if (!read.ok) return read
+    rows[id] = read.read.rows
+  }
+  return { ok: true, rows }
 }
 
 /** Eligibility, every time: a tool turned gated or an app turned off after the save refuses. */
@@ -1190,12 +1449,22 @@ export async function getBlockData(
 
   const where = resolveWhere(block.map.where, values)
   const linkApp = sourceApp(plan.resolved)
-  const mapOpts = { window: range, where, ...(linkApp ? { linkApp } : {}) }
+  const mapOpts: Parameters<typeof mapBlock>[2] = {
+    window: range,
+    where,
+    timeZone: plan.timeZone,
+    ...(linkApp ? { linkApp } : {}),
+  }
   const current = await readSourceCached(viewer, dashboard, plan.sourceKey, plan.resolved, range, {
     ...opts,
     budgeted: plan.budgeted,
   })
   if (!current.ok) return { ...current, blockId, window, compareWindow: compareRange }
+  const extra = calcDatasets(block).length
+    ? await readCalcDatasets(viewer, dashboard, block, values, opts, now, "current")
+    : null
+  if (extra && !extra.ok) return { ...extra, blockId, window, compareWindow: compareRange }
+  if (extra) Object.assign(mapOpts, { datasetRows: extra.rows })
   const mapped = mapBlock(block, current.read, mapOpts)
   if (!mapped.ok) return { ...mapped, blockId, window, compareWindow: compareRange }
   let data = mapped.data
@@ -1220,9 +1489,19 @@ export async function getBlockData(
         { ...opts, refresh: false, budgeted: plan.budgeted },
         PAST_WINDOW_TTL_SEC,
       )
-      const prevMapped = previous.ok
-        ? mapBlock(block, previous.read, { ...mapOpts, window: compareRange })
-        : previous
+      const prevExtra =
+        previous.ok && extra
+          ? await readCalcDatasets(viewer, dashboard, block, values, opts, now, "previous")
+          : null
+      const prevMapped = !previous.ok
+        ? previous
+        : prevExtra && !prevExtra.ok
+          ? prevExtra
+          : mapBlock(block, previous.read, {
+              ...mapOpts,
+              window: compareRange,
+              ...(prevExtra?.ok ? { datasetRows: prevExtra.rows } : {}),
+            })
       if (prevMapped.ok) {
         data = attachPrevious(data, prevMapped.data, {
           ...(block.map.groupBy?.bucket ? { bucket: block.map.groupBy.bucket } : {}),
@@ -1250,6 +1529,8 @@ export async function getBlockData(
 
 export const DRILL_DEFAULT_LIMIT = 50
 export const DRILL_MAX_LIMIT = 200
+/** A CSV export of the rows takes every row read (`exportAll`). */
+export const DRILL_EXPORT_LIMIT = MAX_SOURCE_ROWS
 
 export interface BlockRowsOptions extends Omit<BlockDataOptions, "refresh" | "compare"> {
   /** A chart's category label (a bar, a slice, a point, a funnel stage). */
@@ -1260,6 +1541,8 @@ export interface BlockRowsOptions extends Omit<BlockDataOptions, "refresh" | "co
   row?: number
   offset?: number
   limit?: number
+  /** A CSV export: the limit may reach every row read (DRILL_EXPORT_LIMIT). */
+  exportAll?: boolean
 }
 
 type DrillColumn = { field: string; label: string; format?: BlockMap["format"] }
@@ -1392,7 +1675,7 @@ export async function getBlockRows(
     const field = categoryField(block.type, m)
     const bucket = m.groupBy?.bucket
     const want = opts.category === "" ? NONE_LABEL : opts.category
-    rows = rows.filter((r) => categoryOf(r, field, bucket) === want)
+    rows = rows.filter((r) => categoryOf(r, field, bucket, plan.timeZone) === want)
   }
   if (opts.series !== undefined && m.series && !m.measures) {
     const field = m.series
@@ -1401,7 +1684,10 @@ export async function getBlockRows(
 
   const columns = drillColumnsOf(block, read.read.rows?.[0])
   const offset = Math.max(0, opts.offset ?? 0)
-  const limit = Math.min(Math.max(1, opts.limit ?? DRILL_DEFAULT_LIMIT), DRILL_MAX_LIMIT)
+  const limit = Math.min(
+    Math.max(1, opts.limit ?? DRILL_DEFAULT_LIMIT),
+    opts.exportAll ? DRILL_EXPORT_LIMIT : DRILL_MAX_LIMIT,
+  )
   const page = rows.slice(offset, offset + limit)
   const linkApp = sourceApp(plan.resolved)
   return {

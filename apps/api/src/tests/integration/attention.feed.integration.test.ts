@@ -7,7 +7,7 @@ import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { env } from "~/lib/env"
 import { attentionItemsRegistry } from "~/modules/apps/app-registries"
-import { refreshAllAppAttention } from "~/modules/apps/attention-store"
+import { refreshAppAttention } from "~/modules/apps/attention-store"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { signAccessToken } from "~/modules/auth/jwt"
 
@@ -36,16 +36,19 @@ function registerFakeKernelProvider(appName: string, handler: string): void {
  */
 async function refreshStoredAttention(): Promise<void> {
   await ensureAppsForOrg(orgId)
-  await refreshAllAppAttention(orgId, {
-    userIds: [userId],
-    loadPersonActor: async (o, u) => ({
-      actorType: "user",
-      userId: u,
-      orgId: o,
-      scopes: ["*"],
-      dimensionGrants: { "*": ["*"] },
-    }),
-  })
+  for (const [[entryOrg, appName]] of attentionItemsRegistry.entriesOf(orgId)) {
+    if (entryOrg !== orgId) continue
+    await refreshAppAttention(orgId, appName, {
+      userIds: [userId],
+      loadPersonActor: async (o, u) => ({
+        actorType: "user",
+        userId: u,
+        orgId: o,
+        scopes: ["*"],
+        dimensionGrants: { "*": ["*"] },
+      }),
+    })
+  }
 }
 
 function authHeaders(): Record<string, string> {

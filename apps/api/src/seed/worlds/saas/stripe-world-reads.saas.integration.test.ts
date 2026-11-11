@@ -9,7 +9,7 @@
 //
 //   bun run scripts/test-run.ts demo-seed --file src/seed/worlds/saas/stripe-world-reads.saas.integration.test.ts
 import { afterAll, beforeAll, describe, expect, it, setSystemTime } from "bun:test"
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { and, desc, eq, isNull, sql } from "drizzle-orm"
@@ -663,6 +663,36 @@ describe("the software world's figures, read through the payments app", () => {
     )
     const line = (await mrr()).lines[0] as MrrLine
     expect(line.activeCount).toBe(169)
+  })
+})
+
+/** The apps each door line about the company's operations speaks for. */
+const DOOR_OPS_APPS: Record<string, readonly string[]> = {
+  payments: ["stripe"],
+  invoicing: ["invoicing"],
+  support: ["tickets"],
+  sales: ["projects"],
+  product: ["projects"],
+  knowledge: ["knowledge"],
+}
+
+describe("the door's lines, held to the seeded world", () => {
+  it("every operations line the door shows names an app that is on in the world", () => {
+    const kernel = JSON.parse(
+      readFileSync(
+        path.join(
+          import.meta.dir,
+          "../../../../../../packages/shared/src/i18n/locales/en/kernel.json",
+        ),
+        "utf8",
+      ),
+    ) as { demo: { world: { saas: { companyOps: Record<string, unknown> } } } }
+    const lines = Object.keys(kernel.demo.world.saas.companyOps).sort()
+    expect(lines).toEqual(Object.keys(DOOR_OPS_APPS).sort())
+    const off = lines.flatMap((line) =>
+      (DOOR_OPS_APPS[line] ?? []).filter((app) => !world.org.appsByName[app]?.enabled),
+    )
+    expect(off).toEqual([])
   })
 })
 

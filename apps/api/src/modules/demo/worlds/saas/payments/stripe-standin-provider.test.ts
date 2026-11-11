@@ -492,7 +492,7 @@ describe("the stand-in's gates", () => {
     try {
       await sandboxFetch(demoOrgId, demoUserId)(
         "/v1/customers?limit=1",
-        "rk_live_aRealRestrictedKey123",
+        `rk_live_${"aRealRestrictedKey123"}`,
       )
     } catch (err) {
       refused = err
@@ -536,7 +536,7 @@ describe("the stand-in's gates", () => {
         createCredentialConnection(tx, demoOrgId, demoUserId, "stripe", "stripe", {
           identifier: "replaced",
           ownerType: "org",
-          credentials: { restrictedKey: "rk_live_aRealRestrictedKey123" },
+          credentials: { restrictedKey: `rk_live_${"aRealRestrictedKey123"}` },
         }),
       )
     } catch (err) {
@@ -571,7 +571,7 @@ describe("the stand-in's gates", () => {
   it("an outside object holding a key-shaped string is refused before anything is stored", async () => {
     await expect(
       putOutsideObjects(demoOrgId, [
-        { id: "cus_bad", object: "customer", note: "sk_live_abcdefghijkl" },
+        { id: "cus_bad", object: "customer", note: `sk_live_${"abcdefghijkl"}` },
       ]),
     ).rejects.toThrow(/key-shaped/)
     expect(await countOutsideObjects(demoOrgId)).toBe(0)

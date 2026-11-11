@@ -834,7 +834,7 @@ describe("the transfer schedules' runs", () => {
     if (!handler) throw new Error("recurring-draft is not registered")
     for (const day of draftDays) {
       // Mid-morning in Paris on the schedule's draft day.
-      setSystemTime(new Date(`${day}T09:00:00Z`))
+      setSystemTime(new Date(Date.parse(day) + 9 * 3_600_000))
       try {
         await dispatchAppJobWithContext(
           handler,

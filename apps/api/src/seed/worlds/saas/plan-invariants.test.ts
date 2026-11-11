@@ -11,15 +11,27 @@ import { parisCivil, SAAS_COMPANY_COUNTS, SAAS_VAT_BP, saasMoneyPlan, saasPlan }
 
 const BOARD_DATE = new Date("2026-11-09T08:30:00Z")
 
+/**
+ * The sweep: one anchor a week for 13 months from the board date, every month's
+ * 1st (at 00:30 Paris, just after the month turns, and mid-morning), a Sunday
+ * the 1st, the 28th to the 31st, 1 January and 29 February 2028.
+ */
 function anchors(): Date[] {
-  const out = [BOARD_DATE]
-  for (let m = 0; m < 13; m++) {
-    for (const day of [1, 2, 15, 28, 31]) {
+  const out = new Map<number, Date>([[BOARD_DATE.getTime(), BOARD_DATE]])
+  const add = (d: Date) => out.set(d.getTime(), d)
+  for (let w = 1; w <= 57; w++) add(new Date(BOARD_DATE.getTime() + w * 7 * 86_400_000))
+  for (let m = 0; m < 14; m++) {
+    // 00:30 Paris on the 1st is 23:30 or 22:30 UTC the day before.
+    add(new Date(Date.UTC(2026, 10 + m, 1, 0, 30) - 3_600_000))
+    for (const day of [1, 28, 29, 30, 31]) {
       const at = new Date(Date.UTC(2026, 10 + m, day, 7, 15))
-      if (at.getUTCDate() === day) out.push(at)
+      if (at.getUTCDate() === day) add(at)
     }
   }
-  return out
+  add(new Date(Date.UTC(2027, 7, 1, 10, 0))) // Sunday 1 August 2027
+  add(new Date(Date.UTC(2028, 0, 1, 10, 0)))
+  add(new Date(Date.UTC(2028, 1, 29, 10, 0)))
+  return [...out.values()]
 }
 
 const monthOf = (d: Date) =>
@@ -28,6 +40,15 @@ const monthOf = (d: Date) =>
     .slice(0, 7)
 
 describe("software world plan", () => {
+  it("the sweep covers a week at a time for 13 months, a Sunday the 1st, 1 January and 29 February", () => {
+    const days = anchors().map((d) => d.toISOString().slice(0, 10))
+    expect(anchors().filter((d) => d.getTime() > BOARD_DATE.getTime()).length).toBeGreaterThan(57)
+    expect(days).toContain("2027-08-01")
+    expect(new Date("2027-08-01T10:00:00Z").getUTCDay()).toBe(0)
+    expect(days).toContain("2028-01-01")
+    expect(days).toContain("2028-02-29")
+  })
+
   for (const anchor of anchors()) {
     const at = anchor.toISOString()
     const plan = saasPlan(anchor)

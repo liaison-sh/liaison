@@ -337,6 +337,8 @@ const CONNECTOR_IDENTIFIERS = new RegExp(
     `bundled-apps/[a-z0-9-]+/[A-Za-z0-9_./-]*${FORBIDDEN}[A-Za-z0-9_.-]*\\.tsx?`,
     // The schema and its table together: app_<app>.<app>_customers is one identifier.
     `app_${FORBIDDEN}\\.[a-z_]+`,
+    // Another app's table named for the connector it feeds: app_invoicing.<app>_streams.
+    `app_[a-z_]+\\.${FORBIDDEN}_[a-z_]+`,
     `(?<![A-Za-z@/])${FORBIDDEN}__`,
     `(?<![A-Za-z@/])${FORBIDDEN}/`,
     `(?<![A-Za-z])${FORBIDDEN}:`,

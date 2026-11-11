@@ -9,13 +9,15 @@
 //
 //   bun run scripts/test-run.ts demo-seed --file src/seed/worlds/saas/stripe-world-reads.saas.integration.test.ts
 import { afterAll, beforeAll, describe, expect, it, setSystemTime } from "bun:test"
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { sql } from "drizzle-orm"
+import { and, desc, eq, isNull, sql } from "drizzle-orm"
 import { dealsRollup } from "~/apps/projects/service/deals"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
+import { messages, routines } from "~/db/schema/kernel"
+import { MORNING_BRIEF_TEMPLATE_KEY } from "~/modules/agent/routines/kernel-routine-templates"
 import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
@@ -23,6 +25,7 @@ import { seedContext } from "~/seed/context"
 import { actorFor, asUser } from "~/seed/factories/people/actors"
 import { type SeedDemoWorldResult, seedDemoWorld } from "~/seed/tiers/demo/seed-demo"
 import { installFromDist } from "../../../../test-support/seed/install-dist-apps"
+import { saasMorningBrief } from "./brief"
 
 /** The software world's catalog apps, installed the way a demo box has them. */
 const CATALOG_WORLD_APPS = ["invoicing", "stripe"]
@@ -314,6 +317,7 @@ describe("the software world, seeded and read back", () => {
 
 interface MrrLine {
   currency: string
+  monthStart: string
   mrrMinor: number
   pastDueMinor: number
   activeCount: number
@@ -368,6 +372,46 @@ describe("the software world's money, read through the apps", () => {
       294_000, 96_000, -34_100, -127_800,
     ])
     expect(mv.startMinor).toBe(8_242_700)
+  })
+
+  it("a workspace live across a month's end shows this month's movements empty and nothing rewritten", async () => {
+    // The host's clock, not the sandbox's, names the month: two days into the next one.
+    const nextMonth = new Date(BOARD_DATE.getTime() + 24 * 86_400_000)
+    const before = await rows(
+      world.orgId,
+      sql`SELECT count(*)::int AS n FROM app_stripe.stripe_mrr_events WHERE org_id = ${world.orgId}`,
+    )
+    const actor = await ownerActor()
+    setSystemTime(nextMonth)
+    let line: MrrLine
+    try {
+      const r = await executeTool<{ lines: MrrLine[] }>({
+        toolName: "stripe:mrr_query",
+        orgId: world.orgId,
+        actor,
+        params: { breakdown: true },
+        origin: "human-ui",
+      })
+      line = (r.data as { lines: MrrLine[] }).lines[0] as MrrLine
+    } finally {
+      setSystemTime()
+    }
+    expect(line.monthStart).toBe("2026-12-01")
+    expect(line.mrrMinor).toBe(8_470_800)
+    const mv = line.movements
+    expect([
+      mv.newMinor,
+      mv.upgradeMinor,
+      mv.downgradeMinor,
+      mv.cancelledMinor,
+      mv.netMinor,
+    ]).toEqual([0, 0, 0, 0, 0])
+    expect(mv.startMinor).toBe(8_470_800)
+    const after = await rows(
+      world.orgId,
+      sql`SELECT count(*)::int AS n FROM app_stripe.stripe_mrr_events WHERE org_id = ${world.orgId}`,
+    )
+    expect(after).toEqual(before)
   })
 
   it("changing one seeded subscription's status moves the MRR query", async () => {
@@ -561,5 +605,167 @@ describe("the software world's money, read through the apps", () => {
     } finally {
       setSystemTime()
     }
+  })
+})
+
+interface SubItem {
+  id: string
+  customerId: string
+  status: string
+  plan: string | null
+  mrrMinor: number
+  trialEnd: string | null
+}
+/** Every subscription in one status, through the payments app's search, page by page. */
+async function subscriptionsIn(status: string): Promise<SubItem[]> {
+  const out: SubItem[] = []
+  let cursor: string | null = null
+  do {
+    const page: { items: SubItem[]; nextCursor: string | null } = await appCall(
+      "stripe:subscriptions_search",
+      { status, limit: 50, ...(cursor ? { cursor } : {}) },
+    )
+    out.push(...page.items)
+    cursor = page.nextCursor
+  } while (cursor)
+  return out
+}
+
+describe("the software world's figures, read through the payments app", () => {
+  it("seven past due subscriptions, one Group, three Team, three Starter, 3,367 a month of which 1,917 beside Maison Arlon's", async () => {
+    const pastDue = await subscriptionsIn("past_due")
+    const count = (plan: string) => pastDue.filter((s) => s.plan === plan).length
+    expect([pastDue.length, count("Group"), count("Team"), count("Starter")]).toEqual([7, 1, 3, 3])
+    const total = pastDue.reduce((n, s) => n + s.mrrMinor, 0)
+    expect(total).toBe(336_700)
+    const arlon = pastDue.find((s) => s.id === "sub_1Q8XarlonGroup")
+    expect(arlon?.mrrMinor).toBe(145_000)
+    expect(total - (arlon?.mrrMinor ?? 0)).toBe(191_700)
+    // Counted in MRR: without them, 81,341 a month.
+    const line = (await mrr()).lines[0] as MrrLine
+    expect(line.mrrMinor - total).toBe(8_134_100)
+  })
+
+  it("four trials, each ending within seven days of the board date, in no MRR figure", async () => {
+    const trials = await subscriptionsIn("trialing")
+    expect(trials).toHaveLength(4)
+    for (const t of trials) {
+      const days = (Date.parse(t.trialEnd ?? "") - BOARD_DATE.getTime()) / 86_400_000
+      expect(days).toBeGreaterThan(0)
+      expect(days).toBeLessThanOrEqual(7)
+    }
+    const customers = await appCall<{ items: Array<{ id: string }> }>("stripe:customers_search", {
+      filter: "trial",
+      limit: 50,
+    })
+    expect(customers.items.map((c) => c.id).sort()).toEqual(
+      [...new Set(trials.map((t) => t.customerId))].sort(),
+    )
+    const line = (await mrr()).lines[0] as MrrLine
+    expect(line.activeCount).toBe(169)
+  })
+})
+
+/** The apps each door line about the company's operations speaks for. */
+const DOOR_OPS_APPS: Record<string, readonly string[]> = {
+  payments: ["stripe"],
+  invoicing: ["invoicing"],
+  support: ["tickets"],
+  sales: ["projects"],
+  product: ["projects"],
+  knowledge: ["knowledge"],
+}
+
+describe("the door's lines, held to the seeded world", () => {
+  it("every operations line the door shows names an app that is on in the world", () => {
+    const kernel = JSON.parse(
+      readFileSync(
+        path.join(
+          import.meta.dir,
+          "../../../../../../packages/shared/src/i18n/locales/en/kernel.json",
+        ),
+        "utf8",
+      ),
+    ) as { demo: { world: { saas: { companyOps: Record<string, unknown> } } } }
+    const lines = Object.keys(kernel.demo.world.saas.companyOps).sort()
+    expect(lines).toEqual(Object.keys(DOOR_OPS_APPS).sort())
+    const off = lines.flatMap((line) =>
+      (DOOR_OPS_APPS[line] ?? []).filter((app) => !world.org.appsByName[app]?.enabled),
+    )
+    expect(off).toEqual([])
+  })
+})
+
+describe("the visitor's Home at the board date", () => {
+  it("Home's groups read Needs you with the card reminder, the follow-up and the refund, then Support 6, Tasks 2 and Knowledge 1", async () => {
+    const actor = await ownerActor()
+    setSystemTime(BOARD_DATE)
+    try {
+      const feed = await aggregateAttentionItems({ orgId: world.orgId, actor })
+      expect(feed.errors ?? []).toEqual([])
+      const byApp = (app: string) => feed.items.filter((i) => i.app === app)
+      expect(byApp("tickets")).toHaveLength(6)
+      expect(byApp("knowledge")).toHaveLength(1)
+      // The Arlon expansion's two subtasks are the owner's, due within the week.
+      expect(
+        byApp("projects")
+          .map((i) => i.summary)
+          .sort(),
+      ).toEqual([
+        "Draft the rollout plan for the 4 hotels",
+        "Send the pricing sheet for the 4 hotels",
+      ])
+      // Needs you: the decisions waiting on the owner and counted. Sauvan's
+      // (replied) and Kora's (held) are shown but not counted.
+      const counted = feed.items
+        .filter(
+          (i) =>
+            i.kind === "approval_pending" &&
+            i.metadata?.uncounted !== true &&
+            (i.metadata?.sendGuard as { state?: string } | undefined)?.state !== "held",
+        )
+        .map((i) => i.metadata?.requestHandle)
+      expect(counted.sort()).toEqual([
+        "demo-arlon-card-reminder",
+        "demo-lumen-followup",
+        "demo-ombre-refund",
+      ])
+    } finally {
+      setSystemTime()
+    }
+  })
+
+  it("the brief card shows the seeded Morning brief, the owner's own, with the board's text", async () => {
+    const actor = await ownerActor()
+    const brief = await asUser(actor, async (tx) => {
+      const [routine] = await tx
+        .select({ name: routines.name, outputThreadId: routines.outputThreadId })
+        .from(routines)
+        .where(
+          and(
+            eq(routines.orgId, world.orgId),
+            eq(routines.ownerUserId, actor.userId),
+            eq(routines.templateKey, MORNING_BRIEF_TEMPLATE_KEY),
+          ),
+        )
+      if (!routine?.outputThreadId) return null
+      const [latest] = await tx
+        .select({ content: messages.content })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.threadId, routine.outputThreadId),
+            eq(messages.authorType, "agent"),
+            isNull(messages.deletedAt),
+          ),
+        )
+        .orderBy(desc(messages.createdAt))
+        .limit(1)
+      return { name: routine.name, text: latest?.content ?? null }
+    })
+    expect(brief).toEqual({ name: "Morning brief", text: saasMorningBrief(BOARD_DATE) })
+    expect(brief?.text).toContain(
+      "Hôtels Sauvan answered, so the follow-up drafted for Marc will not go out.",
+    )
   })
 })

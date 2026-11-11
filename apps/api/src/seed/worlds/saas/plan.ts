@@ -478,6 +478,11 @@ function deals(clock: StoryClock, rows: readonly SaasCompanyRow[]): SaasDealRow[
   return [...named, ...history].sort((a, b) => a.number - b.number)
 }
 
+/**
+ * The Arlon expansion's two subtasks, the owner's: they are the Tasks group of
+ * the owner's Home (the projects app raises a task due within the week, or past
+ * due, for its assignee only).
+ */
 function subtasks(clock: StoryClock): SaasDealSubtask[] {
   return [
     {
@@ -485,7 +490,7 @@ function subtasks(clock: StoryClock): SaasDealSubtask[] {
       key: "arlon-rollout-plan",
       parentNumber: 14,
       title: "Draft the rollout plan for the 4 hotels",
-      owner: "tom",
+      owner: "owner",
       dueAt: clock.d(4),
     },
     {
@@ -493,7 +498,7 @@ function subtasks(clock: StoryClock): SaasDealSubtask[] {
       key: "arlon-pricing-sheet",
       parentNumber: 14,
       title: "Send the pricing sheet for the 4 hotels",
-      owner: "tom",
+      owner: "owner",
       dueAt: clock.d(4),
     },
   ]

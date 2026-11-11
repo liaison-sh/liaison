@@ -984,13 +984,29 @@ export async function linkContactsToCompany(
     )
   }
   const company = await loadVisible(tx, orgId, companyId)
+  const idList = drizzleSql`${contacts.id} = ANY(${`{${ids.filter((i) => UUID_RE.test(i)).join(",")}}`}::uuid[])`
+  // People already linked to this company under its name are linked: nothing is
+  // written for them and no event says they changed.
+  const already = await tx
+    .select({ id: contacts.id })
+    .from(contacts)
+    .where(
+      and(
+        eq(contacts.orgId, orgId),
+        idList,
+        eq(contacts.companyId, company.id),
+        eq(contacts.company, company.name),
+      ),
+    )
+  const unchanged = new Set(already.map((r) => r.id))
   const updated = await tx
     .update(contacts)
     .set({ companyId: company.id, company: company.name, updatedAt: new Date() })
     .where(
       and(
         eq(contacts.orgId, orgId),
-        drizzleSql`${contacts.id} = ANY(${`{${ids.filter((i) => UUID_RE.test(i)).join(",")}}`}::uuid[])`,
+        idList,
+        drizzleSql`(${contacts.companyId} IS DISTINCT FROM ${company.id}::uuid OR ${contacts.company} IS DISTINCT FROM ${company.name})`,
       ),
     )
     .returning()
@@ -1005,8 +1021,12 @@ export async function linkContactsToCompany(
       data: row,
     })
   }
-  const linked = new Set(updated.map((r) => r.id))
-  return { companyId, linked: [...linked], skipped: ids.filter((i) => !linked.has(i)) }
+  const linked = new Set([...unchanged, ...updated.map((r) => r.id)])
+  return {
+    companyId,
+    linked: ids.filter((i) => linked.has(i)),
+    skipped: ids.filter((i) => !linked.has(i)),
+  }
 }
 
 /**

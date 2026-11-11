@@ -154,6 +154,18 @@ describe("movements", () => {
     expect(after[1]).toMatchObject({ stripe_event_id: "evt_up", kind: "upgrade", delta_minor: 4900, before_minor: 4900, after_minor: 9800, source: "webhook" })
   })
 
+  it("with no clock of its own, the month is the one the host's clock answers", async () => {
+    // The host reads 3 March 2027 for an instant left unnamed; any named instant is converted as usual.
+    const hostCivil = (p: { timezone: string; at?: string | number }) =>
+      civil({ ...p, at: p.at ?? "2027-03-03T10:00:00.000Z" })
+    stored(sub("sub_1", { unit: 3000 }))
+    movement("sub_1", "2026-11-05T09:00:00.000Z", "new", 0, 3000)
+    const out = (await mrrQuery({}, { db, time: { civil: hostCivil } })) as { lines: Array<Obj & { movements: Obj }> }
+    expect(out.lines[0]?.monthStart).toBe("2027-03-01")
+    // November's movement is before March: nothing moved this month.
+    expect(out.lines[0]?.movements).toMatchObject({ newMinor: 0, netMinor: 0 })
+  })
+
   it("past due and \"without it\" equal the rule; a trial conversion is new on conversion; a cancel at period end counts on its date; a second currency gets its own line", async () => {
     connect()
     stored(sub("sub_past", { unit: 4900, status: "past_due" }))

@@ -83,5 +83,5 @@ export function capabilityLabel(
   if (scope === "*") return WILDCARD_CAPABILITY_CATEGORY
   const colon = scope.indexOf(":")
   const app = colon === -1 ? scope : scope.slice(0, colon)
-  return Object.hasOwn(labels, app) ? labels[app] : GENERIC_CAPABILITY_LABEL
+  return (Object.hasOwn(labels, app) ? labels[app] : undefined) ?? GENERIC_CAPABILITY_LABEL
 }

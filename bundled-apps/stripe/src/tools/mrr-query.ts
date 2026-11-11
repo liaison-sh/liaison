@@ -15,16 +15,23 @@ type Obj = Record<string, unknown>
 
 export interface MrrCtx extends ReadCtx {
   time: { civil(p: { timezone: string; at?: string | number }): Promise<{ date: string; year: number; month: number; day: number }> }
-  /** Test seam: the clock. */
+  /**
+   * Test seam: the clock. Unset, the host's clock answers through
+   * `ctx.time.civil`, so the month is the one the product reads, never the
+   * sandbox's own wall clock.
+   */
   now?: () => Date
 }
 
 const PAGE = 500
 const PLANS_SHOWN = 10
 
-/** The instant a month starts in a zone: the first minute whose local date is the first of it. */
-export async function monthStartInstant(ctx: Pick<MrrCtx, "time">, zone: string, now: Date): Promise<{ at: Date; date: string }> {
-  const local = await ctx.time.civil({ timezone: zone, at: now.getTime() })
+/**
+ * The instant a month starts in a zone: the first minute whose local date is the first of it.
+ * `now` unset: the month of the host's current instant.
+ */
+export async function monthStartInstant(ctx: Pick<MrrCtx, "time">, zone: string, now?: Date): Promise<{ at: Date; date: string }> {
+  const local = await ctx.time.civil(now ? { timezone: zone, at: now.getTime() } : { timezone: zone })
   const date = `${String(local.year).padStart(4, "0")}-${String(local.month).padStart(2, "0")}-01`
   const base = Date.UTC(local.year, local.month - 1, 1)
   // Every zone's offset is within +/- 15 hours, so the answer lies in this window, a minute at a time.
@@ -73,7 +80,7 @@ export async function mrrQuery(params: Obj | undefined, ctx: MrrCtx) {
     }
   }
 
-  const now = (ctx.now ?? (() => new Date()))()
+  const now = ctx.now?.()
   // "UTC" is the unset value of a zone: the host answers with the organization's own zone.
   const { at: monthStart, date: monthStartDate } = await monthStartInstant(ctx, "UTC", now)
   const subs = await readAll(

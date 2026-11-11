@@ -1129,6 +1129,14 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // The software world's plan held to its invariants at anchors
             // across a year, with no database.
             "src/seed/worlds/saas/plan-invariants.test.ts",
+            // Its desks' prompts against the products desks they are built from.
+            "src/seed/worlds/saas/desk-prompts.test.ts",
+            // The owner's Morning brief, computed from the plan.
+            "src/seed/worlds/saas/brief.test.ts",
+            // No world's text holds another world's names.
+            "src/seed/worlds/literals.test.ts",
+            // Every door claim about a world maps to a criterion.
+            "src/seed/worlds/world-claims.test.ts",
             // The software world's card mirror read back through the
             // payments stand-in rebuilds to the rows it was seeded with.
             "src/seed/factories/payments/stripe-mirror-roundtrip.test.ts",
@@ -1140,6 +1148,9 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // processor's events through the payments app's own handler, the
             // figures moved, and the waiting reminder stopped by its own check.
             "src/modules/demo/worlds/saas/stripe-payment-recovered.integration.test.ts",
+            // The software world's workspace ended and reaped: nothing of it
+            // remains in any table, at the payments stand-in or in search.
+            "src/seed/worlds/saas/stripe-world-reset.saas.integration.test.ts",
             // The demo-instance org seeder: it seeds its own orgs and
             // truncates nothing.
             "src/seed/tiers/demo/seed-org.integration.test.ts",

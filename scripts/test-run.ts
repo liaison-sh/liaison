@@ -1135,6 +1135,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/seed/worlds/saas/brief.test.ts",
             // No world's text holds another world's names.
             "src/seed/worlds/literals.test.ts",
+            // Every door claim about a world maps to a criterion.
+            "src/seed/worlds/world-claims.test.ts",
             // The software world's card mirror read back through the
             // payments stand-in rebuilds to the rows it was seeded with.
             "src/seed/factories/payments/stripe-mirror-roundtrip.test.ts",

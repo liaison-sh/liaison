@@ -1,0 +1,17 @@
+{
+  "entry": "preflight:issuer_emails_confirm",
+  "params": {
+    "issuerProfileId": "00000000-0000-4000-8000-000000000104"
+  },
+  "calls": [
+    {
+      "method": "db_findOne",
+      "args": [
+        "issuer_profiles",
+        "00000000-0000-4000-8000-000000000104"
+      ],
+      "reply": "null"
+    }
+  ],
+  "recordedFrom": "an install with no rows yet: every read answers empty (contract replay, no provider call)"
+}

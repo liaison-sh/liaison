@@ -1,0 +1,17 @@
+{
+  "entry": "tool:customers_search",
+  "params": {
+    "query": "example"
+  },
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "stripe_customers",
+        "{\"where\":{},\"orderBy\":{\"name\":\"asc\",\"id\":\"asc\"},\"limit\":1000,\"offset\":0}"
+      ],
+      "reply": "[]"
+    }
+  ],
+  "recordedFrom": "an install with no rows yet: every read answers empty (contract replay, no provider call)"
+}

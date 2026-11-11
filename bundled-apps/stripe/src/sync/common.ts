@@ -38,7 +38,7 @@ export interface SyncCtx extends StripeHttpCtx {
   emit(event: { entity: string; action: string; entityId?: string; data?: unknown }): Promise<void>
 }
 
-/** Test seams: the clock and the pause between requests. */
+/** Test seams: the clock and the pause before a rate-limited request is retried. */
 export interface SyncOptions {
   now?: () => Date
   sleep?: (ms: number) => Promise<void>
@@ -74,8 +74,6 @@ export const RESOURCES: readonly SyncResource[] = [
   { resource: "disputes", entity: "stripe_disputes", list: "/v1/disputes", byId: "/v1/disputes/", row: disputeRow },
 ]
 
-/** About 10 requests a second (Stripe's own limit is far above it). */
-export const REQUEST_GAP_MS = 100
 /** A list page: Stripe's largest. */
 export const PAGE_SIZE = 100
 /** One run's working time; the jobs' `timeoutMs` leaves room above it. */

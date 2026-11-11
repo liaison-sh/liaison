@@ -30,7 +30,6 @@ import {
   PAGE_SIZE,
   pause,
   readAllSyncState,
-  REQUEST_GAP_MS,
   RESOURCES,
   type SyncCtx,
   type SyncOptions,
@@ -179,7 +178,6 @@ async function reconcileList(
     const last = page.data[page.data.length - 1]
     if (!page.has_more || typeof last?.id !== "string") return seen
     cursor = last.id
-    await sleep(REQUEST_GAP_MS)
   }
 }
 
@@ -222,7 +220,6 @@ async function readBackAbsent(
       }
       // Anything else: the row stays as it is.
     }
-    await sleep(REQUEST_GAP_MS)
   }
 }
 

@@ -1,0 +1,18 @@
+{
+  "entry": "tool:subscription_cancel_effect",
+  "params": {
+    "subscriptionId": "sub_contract_1",
+    "atPeriodEnd": true
+  },
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "stripe_subscriptions",
+        "{\"where\":{\"stripe_id\":\"sub_contract_1\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    }
+  ],
+  "recordedFrom": "an install with no rows yet: every read answers empty (contract replay, no provider call)"
+}

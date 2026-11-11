@@ -1,0 +1,15 @@
+{
+  "entry": "job:prune-webhook-deliveries",
+  "params": {},
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "webhook_deliveries",
+        "{\"orderBy\":{\"received_at\":\"asc\"},\"limit\":200}"
+      ],
+      "reply": "[]"
+    }
+  ],
+  "recordedFrom": "an install with no rows yet: every read answers empty (contract replay, no provider call)"
+}

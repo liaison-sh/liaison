@@ -159,7 +159,9 @@ export async function stripeFetch<T = unknown>(
     const detail = stripeMessage(res.body)
     if (res.status === 429) {
       if (attempt < maxRetries) {
-        await sleep(500 * 2 ** attempt)
+        // A short fixed pause: a run never waits long (3 retries stay under 2 s);
+        // past them `rate_limited` stops the run and its next wake-up resumes.
+        await sleep(500)
         continue
       }
       throw new StripeApiError(

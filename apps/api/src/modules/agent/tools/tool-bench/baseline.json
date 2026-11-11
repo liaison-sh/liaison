@@ -1264,6 +1264,10 @@
       "desc": 99,
       "schema": 9
     },
+    "kernel__dashboards_edit": {
+      "desc": 479,
+      "schema": 186
+    },
     "kernel__dashboards_get": {
       "desc": 139,
       "schema": 9
@@ -1274,7 +1278,7 @@
     },
     "kernel__dashboards_preview_block": {
       "desc": 272,
-      "schema": 39
+      "schema": 98
     },
     "kernel__dashboards_sources": {
       "desc": 257,

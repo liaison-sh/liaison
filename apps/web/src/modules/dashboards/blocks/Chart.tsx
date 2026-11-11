@@ -14,6 +14,8 @@ export type ChartKind = "bar" | "line" | "pie"
 export interface ChartDataset {
   label: string
   values: Array<number | null>
+  /** A comparison series: drawn lighter (muted, dashed for a line), behind the current one. */
+  previous?: boolean
 }
 
 export interface ChartProps {
@@ -104,21 +106,31 @@ export function chartConfig(props: ChartProps, locale: string): Record<string, u
       },
     }
   }
-  const colors = chartPalette(props.datasets.length)
+  const current = props.datasets.filter((d) => !d.previous)
+  const colors = chartPalette(current.length)
+  const muted = cssVar("--color-border", "#3a3a42")
+  let next = 0
   return {
     type: props.type,
     data: {
       labels,
-      datasets: props.datasets.map((d, i) => ({
-        label: d.label,
-        data: d.values,
-        backgroundColor: colors[i],
-        borderColor: colors[i],
-        borderRadius: props.type === "bar" ? 3 : undefined,
-        maxBarThickness: props.type === "bar" ? 40 : undefined,
-        tension: props.type === "line" ? 0.25 : undefined,
-        pointRadius: props.type === "line" ? 2 : undefined,
-      })),
+      datasets: props.datasets.map((d) => {
+        const color = d.previous ? muted : colors[next++]
+        return {
+          label: d.label,
+          data: d.values,
+          backgroundColor: color,
+          borderColor: d.previous && props.type === "line" ? text : color,
+          borderRadius: props.type === "bar" ? 3 : undefined,
+          maxBarThickness: props.type === "bar" ? 40 : undefined,
+          tension: props.type === "line" ? 0.25 : undefined,
+          pointRadius: props.type === "line" ? (d.previous ? 0 : 2) : undefined,
+          borderWidth: props.type === "line" && d.previous ? 1.5 : undefined,
+          borderDash: props.type === "line" && d.previous ? [4, 4] : undefined,
+          // Drawn behind the current series.
+          order: d.previous ? 1 : 0,
+        }
+      }),
     },
     options: {
       responsive: true,

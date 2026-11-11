@@ -19,6 +19,8 @@ import {
 } from "./restage"
 
 export const LAST_INVOICE = "Last invoice"
+/** The note on a row left out because its schedule was paused while the run was open. */
+export const SCHEDULE_PAUSED = "Schedule paused"
 
 export interface DiscardResult {
   ok: true

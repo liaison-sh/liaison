@@ -2,7 +2,14 @@
 //
 // Invoicing mutations: drafts (create, update, discard).
 
-import { discardRunDraft, type DiscardParked, type DiscardResult, putBack } from "../recurring/end-schedule"
+import {
+  discardRunDraft,
+  type DiscardParked,
+  type DiscardResult,
+  LAST_INVOICE,
+  putBack,
+  SCHEDULE_PAUSED,
+} from "../recurring/end-schedule"
 import { dayOf, draftLines as runDraftLines, type Row } from "../recurring/run-card"
 import {
   afterRunWrite,
@@ -802,7 +809,7 @@ async function updateRunDraft(
   const r = await afterRunWrite(ectx, String(rd.item.id), {
     putBack: input.put_back === true,
     extraNotes: notes,
-    ...(input.put_back ? { noteRemove: ["Last invoice"] } : {}),
+    ...(input.put_back ? { noteRemove: [LAST_INVOICE, SCHEDULE_PAUSED] } : {}),
   })
   const draft = await getDraft(ctx.db, draftId)
   if (!draft) throw new Error(`not_found: draft ${draftId}`)

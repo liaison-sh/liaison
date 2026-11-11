@@ -534,7 +534,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `recurring_run_issue` | Stage a month-end run's card when it has none: approving records each row and takes no number; the invoices issue on the issue day from 08:00. | yes | `invoicing:documents:write` |
 | `recurring_run_unapprove` | Undo a month-end run's approval before its first number: the run returns to drafted, edits are kept, and a new card asks again. |  | `invoicing:documents:write` |
 | `recurring_schedule_create` | Save a recurring invoice schedule for one customer: cadence, billing day and lines. | yes | `invoicing:documents:write` |
-| `recurring_schedule_pause` | Pause a recurring schedule: it drafts nothing while paused. |  | `invoicing:documents:write` |
+| `recurring_schedule_pause` | Pause a recurring schedule: it drafts nothing while paused, and its row in an open month-end run is left out. |  | `invoicing:documents:write` |
 | `recurring_schedule_update` | Change a recurring schedule, resume a paused one (status active), end it (status ended) or turn issue_mode auto on or off. | yes | `invoicing:documents:write` |
 | `settings_hs_code_list` | List the org's HS-code library entries. |  | `invoicing:settings:read` |
 | `settings_issuer_profile_create` | Create an issuer profile. | yes | `invoicing:settings:write` |

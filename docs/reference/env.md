@@ -351,4 +351,4 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `WEBHOOK_PROBE_STALE_SEC` | `apps/api/src/modules/webhooks/ingest-health.ts:157` |
 | `WEBHOOK_REJECT_SPAN_SEC` | `apps/api/src/modules/webhooks/ingest-health.ts:150` |
 | `WEBHOOK_REJECT_WARMUP_SEC` | `apps/api/src/modules/webhooks/ingest-health.ts:141` |
-| `XDG_RUNTIME_DIR` | `apps/api/src/modules/agent/tools/embedder-main.ts:22`, `apps/api/src/modules/agent/tools/tool-meaning.ts:267` |
+| `XDG_RUNTIME_DIR` | `apps/api/src/modules/agent/tools/embedder-main.ts:22`, `apps/api/src/modules/agent/tools/tool-meaning.ts:268` |

@@ -331,7 +331,7 @@ const SecretRequestToolCard: Component<{ requestId: string }> = (props) => {
 
   const title = (r: SecretRequestRow) => {
     const t = r.target
-    // An app with one connection of its own name reads "Sign-in for Stripe", never "(stripe)".
+    // An app with one connection of its own name reads "Sign-in for Shop", never "(shop)".
     const sameName =
       (r.kind === "connection_credentials" ||
         r.kind === "oauth_client" ||

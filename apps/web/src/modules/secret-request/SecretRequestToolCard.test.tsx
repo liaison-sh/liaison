@@ -259,18 +259,18 @@ describe("SecretRequestToolCard", () => {
   it("a refused key shows the server's own reason, and the app reads by its name, never its ids", async () => {
     const r = row({
       kind: "connection_credentials",
-      target: { app: "stripe", connection: "stripe" },
-      title: "stripe stripe credentials",
+      target: { app: "boxtal", connection: "boxtal" },
+      title: "boxtal boxtal credentials",
       fields: [{ name: "apiKey", label: "Restricted key", secret: true, required: true }],
       destination: [
-        { name: "app", value: "stripe" },
-        { name: "connection", value: "stripe" },
+        { name: "app", value: "boxtal" },
+        { name: "connection", value: "boxtal" },
       ],
     })
     mount(r)
     await screen.findByTestId("secret-request-field-apiKey")
     expect(screen.queryByTestId("secret-request-destination-connection")).toBeNull()
-    expect(screen.getByTestId("secret-request-destination-app").textContent).not.toBe("stripe")
+    expect(screen.getByTestId("secret-request-destination-app").textContent).not.toBe("boxtal")
     apiMocks.post.mockRejectedValue(
       new ApiError(
         "That is your secret key, so I did not keep it. Paste a restricted key: it starts with rk_.",

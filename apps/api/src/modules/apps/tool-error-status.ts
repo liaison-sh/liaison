@@ -227,6 +227,8 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   einvoice_approval_stale: 409,
   einvoice_already_sent: 409,
   einvoice_send_disabled: 409,
+  // Standing authorization asked for before an e-invoicing platform is chosen.
+  einvoicing_platform_not_set: 409,
   einvoice_before_cutover: 409,
   einvoice_retry_not_allowed: 409,
   // A send prepared under a stream's standing grant or a month-end row's grant whose document is no

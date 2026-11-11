@@ -36,7 +36,7 @@ import {
 import { SAAS_ARLON_SUBSCRIPTION } from "~/seed/worlds/saas/plan"
 import { drainOutbox } from "~/tests/helpers/outbox"
 import { installFromDist } from "../../../../../test-support/seed/install-dist-apps"
-import { paymentRecoveredInjector } from "./payment-recovered"
+import { paymentRecoveredInjector, recoveredCard } from "./payment-recovered"
 import { settleDemoPaymentsDeliveries } from "./payments/deliver"
 import { forgetDemoPaymentsOutside } from "./payments/overlay"
 
@@ -221,11 +221,17 @@ describe("the money scenario's recovered card", () => {
       8_470_800, 191_700, 169,
     ])
     const [sub] = await rows(
-      sql`SELECT status FROM app_stripe.stripe_subscriptions
+      sql`SELECT status, card_last4, card_exp FROM app_stripe.stripe_subscriptions
           WHERE org_id = ${world.orgId} AND stripe_id = ${SAAS_ARLON_SUBSCRIPTION}`,
     )
     // Its row leaves the payments home's failed payments.
     expect(sub?.status).toBe("active")
+    // The card it bills is the new one, no longer the expired card.
+    const card = recoveredCard(new Date())
+    expect([sub?.card_last4, sub?.card_exp]).toEqual([
+      card.last4,
+      `12/${String((card.exp_year as number) % 100).padStart(2, "0")}`,
+    ])
     const [invoice] = await rows(
       sql`SELECT status, amount_paid_minor FROM app_stripe.stripe_invoices
           WHERE org_id = ${world.orgId} AND subscription_id = ${SAAS_ARLON_SUBSCRIPTION}

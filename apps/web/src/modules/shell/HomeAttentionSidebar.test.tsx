@@ -97,7 +97,8 @@ describe("HomeAttentionSidebar", () => {
   it("lists Needs you, Your queues and Agents with the feed's counts", () => {
     attentionStore._setForTest({ items: busy })
     render(() => <HomeAttentionSidebar />)
-    expect(screen.getByTestId("home-side-needs-total").textContent).toBe("6")
+    // The two system alerts are one row: 4 approvals + 1 alert row.
+    expect(screen.getByTestId("home-side-needs-total").textContent).toBe("5")
     // The access request is in Approvals (its own facet), not a row apart.
     expect(count("home-side-approvals")).toBe("4")
     expect(count("home-side-approvals-contacts:group_delete")).toBe("2")
@@ -107,7 +108,7 @@ describe("HomeAttentionSidebar", () => {
       "Access requests",
     )
     expect(screen.queryByTestId("home-side-access")).toBeNull()
-    expect(count("home-side-alerts")).toBe("2")
+    expect(count("home-side-alerts")).toBe("1")
     // Tickets awaiting a reply are Support queue volume, with the nudge.
     expect(count("home-side-queue-tickets")).toBe("3")
     expect(count("home-side-queue-tickets-awaiting_agent")).toBe("2")
@@ -130,8 +131,8 @@ describe("HomeAttentionSidebar", () => {
         <HomeAttentionSidebar />
       </>
     ))
-    expect(screen.getByTestId("home-side-needs-total").textContent).toBe("6")
-    expect(screen.getByTestId("activity-bar-home-badge").textContent).toBe("6")
+    expect(screen.getByTestId("home-side-needs-total").textContent).toBe("5")
+    expect(screen.getByTestId("activity-bar-home-badge").textContent).toBe("5")
   })
 
   it("shows a member no access requests, and the badge agrees", () => {
@@ -145,8 +146,8 @@ describe("HomeAttentionSidebar", () => {
     ))
     expect(screen.queryByTestId("home-side-approvals-kernel:access_requests")).toBeNull()
     expect(count("home-side-approvals")).toBe("3")
-    expect(screen.getByTestId("home-side-needs-total").textContent).toBe("5")
-    expect(screen.getByTestId("activity-bar-home-badge").textContent).toBe("5")
+    expect(screen.getByTestId("home-side-needs-total").textContent).toBe("4")
+    expect(screen.getByTestId("activity-bar-home-badge").textContent).toBe("4")
   })
 
   it("says Nothing needs you, and hides the empty sections", () => {

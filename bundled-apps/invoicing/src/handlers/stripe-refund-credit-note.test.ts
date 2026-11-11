@@ -85,7 +85,9 @@ describe("Stripe refunds and credit notes", () => {
     const { db, ctx } = await issued()
     const links = () => ctx.calls.filter((c) => c.tool.endsWith("_document_link")).map((c) => [c.tool, c.params])
     // Issued, a free trial's zero invoice, and a refund's credit note.
-    expect(links()).toContainEqual(["stripe:invoice_document_link", { stripeInvoiceId: "in_1", documentId: String((db.__all("documents")[0] as Row).id) }])
+    const issuedDoc = db.__all("documents")[0] as Row
+    // The link carries the document's number, which the Stripe side shows on the invoice's row.
+    expect(links()).toContainEqual(["stripe:invoice_document_link", { stripeInvoiceId: "in_1", documentId: String(issuedDoc.id), documentNumber: String(issuedDoc.number) }])
     await onStripeInvoiceFinalized(finalized({ stripe_invoice_id: "in_0", total_minor: "0", tax_minor: "0" }), ctx)
     expect(links()).toContainEqual(["stripe:invoice_document_link", { stripeInvoiceId: "in_0", issuedBy: "stripe" }])
     await onStripeRefundCreated({ charge_id: "ch_1", invoice_id: "in_1", refunds: [refund("re_7", "6000", "succeeded")] }, ctx)

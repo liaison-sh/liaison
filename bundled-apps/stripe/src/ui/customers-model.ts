@@ -224,13 +224,14 @@ export interface InvoiceView {
 }
 
 /** Invoices: "Issued by Liaison, collected by Stripe" or "Issued by Stripe" with no Liaison number. */
-export function invoiceView(i: InvoiceItem & { number?: string | null; totalMinor?: number | null; issuer?: string | null; liaisonDocumentId?: string | null }, locale: string): InvoiceView {
+export function invoiceView(i: InvoiceItem & { number?: string | null; totalMinor?: number | null; issuer?: string | null; liaisonDocumentId?: string | null; liaisonDocumentNumber?: string | null }, locale: string): InvoiceView {
   const byLiaison = i.issuer === "liaison" && !!i.liaisonDocumentId
   const total = i.totalMinor ?? i.amountDueMinor ?? 0
   const status: Record<string, string> = { paid: tr("Paid"), open: tr("Unpaid"), draft: tr("Draft"), void: tr("Void"), uncollectible: tr("Uncollectible") }
   return {
     id: i.id,
-    number: i.number ?? null,
+    // Issued by Liaison: the number the customer reads is Liaison's.
+    number: (byLiaison ? i.liaisonDocumentNumber : null) ?? i.number ?? null,
     issuedBy: byLiaison ? "liaison" : "stripe",
     issuedLabel: byLiaison ? tr("Issued by Liaison, collected by Stripe") : tr("Issued by Stripe"),
     documentId: byLiaison ? (i.liaisonDocumentId ?? null) : null,

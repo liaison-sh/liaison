@@ -1201,7 +1201,29 @@ function invoicesAndSchedules(
     slots.push({ at: instantOf(n), seq: n.number, named: n })
     prev = { number: n.number, days }
   }
-  slots.sort((a, b) => a.at.getTime() - b.at.getTime() || a.seq - b.seq)
+  // Numbers follow the day, then the slot's place: a named invoice issued later in the day than
+  // the anchor's 10:00 fillers keeps the board's number at any time of day. Within a day a
+  // filler's time moves to sit beside its named neighbour, so issue times still follow numbers.
+  const dayKey = (d: Date) => parisCivil(d)
+  slots.sort((a, b) => dayKey(a.at).localeCompare(dayKey(b.at)) || a.seq - b.seq)
+  for (let i = slots.length - 2; i >= 0; i--) {
+    const s = slots[i] as Slot
+    const next = slots[i + 1] as Slot
+    if (!s.named && dayKey(s.at) === dayKey(next.at) && s.at.getTime() > next.at.getTime()) {
+      s.at = new Date(next.at.getTime() - 60_000)
+    }
+  }
+  for (let i = 1; i < slots.length; i++) {
+    const s = slots[i] as Slot
+    const prevSlot = slots[i - 1] as Slot
+    if (
+      !s.named &&
+      dayKey(s.at) === dayKey(prevSlot.at) &&
+      s.at.getTime() < prevSlot.at.getTime()
+    ) {
+      s.at = new Date(prevSlot.at.getTime() + 60_000)
+    }
+  }
 
   const fillers = rows.filter((r) => r.kind === "paying" && r.plan && r.name !== "Maison Arlon")
   const counters = new Map<number, number>()

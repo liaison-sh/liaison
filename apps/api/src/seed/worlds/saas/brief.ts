@@ -61,7 +61,7 @@ export function saasMorningBrief(anchor: Date): string {
 
   return [
     `Monthly recurring revenue is ${euros(mrr)}, ${net >= 0 ? "up" : "down"} ${euros(Math.abs(net))} since ${clock.fmt(monthStart, "en", "dayMonth")}: ${movementLine}.`,
-    `${plural(pastDue.length, "subscription is", "subscriptions are")} past due, ${euros(pastDueMinor)} of MRR. Maison Arlon is the largest, and it also has ticket TICK-412 open with Inès and a proposal with Tom.`,
+    `${plural(pastDue.length, "subscription is", "subscriptions are")} past due, ${euros(pastDueMinor)} of MRR. Maison Arlon is the largest, and it also has ticket-412 open with Inès and a proposal with Tom.`,
     first
       ? `${plural(trials.length, "trial ends", "trials end")} within the week, ${nameOf(first.companyKey)} first, in ${plural(daysLeft, "day", "days")}.`
       : "",

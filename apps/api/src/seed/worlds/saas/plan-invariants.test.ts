@@ -300,6 +300,28 @@ describe("software world money plan", () => {
     )
   })
 
+  it("the named invoices keep their numbers whatever the time of day, and issue times follow numbers", () => {
+    const board = (anchor: Date) =>
+      Object.fromEntries(
+        saasMoneyPlan(anchor)
+          .invoices.filter((i) => !i.key.startsWith("renewal-"))
+          .map((i) => [i.key, i.number]),
+      )
+    const expected = board(BOARD_DATE)
+    for (const at of ["2026-11-11T13:30:00Z", "2026-11-11T21:45:00Z", "2026-11-12T06:10:00Z"]) {
+      const anchor = new Date(at)
+      expect(board(anchor)).toEqual(expected)
+      const ofYear = saasMoneyPlan(anchor)
+        .invoices.filter((i) => i.year === 2026)
+        .sort((a, b) => a.numberInt - b.numberInt)
+      for (let i = 1; i < ofYear.length; i++) {
+        expect(ofYear[i]?.issuedAt.getTime()).toBeGreaterThanOrEqual(
+          ofYear[i - 1]?.issuedAt.getTime() ?? 0,
+        )
+      }
+    }
+  })
+
   it("prices with VAT are the plan prices at 20% and the refund splits back to them", () => {
     const vat = (minor: number) => minor + (minor * SAAS_VAT_BP) / 10_000
     expect([vat(14_900), vat(49_000), vat(145_000)]).toEqual([17_880, 58_800, 174_000])

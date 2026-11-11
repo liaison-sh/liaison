@@ -265,6 +265,63 @@ export const SAAS_CUSTOMERS: DemoCustomer[] = [
     email: "louise@groupe-verrieres.example",
     country: "FR",
     isVip: false,
+  }, // The colleagues at the named companies (3 at Arlon, 2 at Sauvan, Pont Neuf and Vauban, 4 at
+  // Verrières), after each company's first contact, who stays the one the boards write to.
+  {
+    key: "lea-arlon",
+    name: "Léa Fontaine",
+    email: "lea@maison-arlon.example",
+    country: "FR",
+    isVip: false,
+  },
+  {
+    key: "herve-arlon",
+    name: "Hervé Dumas",
+    email: "herve@maison-arlon.example",
+    country: "FR",
+    isVip: false,
+  },
+  {
+    key: "chloe-sauvan",
+    name: "Chloé Garcia",
+    email: "chloe@hotels-sauvan.example",
+    country: "FR",
+    isVip: false,
+  },
+  {
+    key: "karim-pont-neuf",
+    name: "Karim Haddou",
+    email: "karim@pont-neuf-bistrots.example",
+    country: "FR",
+    isVip: false,
+  },
+  {
+    key: "julie-ferran",
+    name: "Julie Ferran",
+    email: "julie@tables-vauban.example",
+    country: "FR",
+    isVip: false,
+  },
+  {
+    key: "marion-verrieres",
+    name: "Marion Leclerc",
+    email: "marion@groupe-verrieres.example",
+    country: "FR",
+    isVip: false,
+  },
+  {
+    key: "antoine-verrieres",
+    name: "Antoine Roux",
+    email: "antoine@groupe-verrieres.example",
+    country: "FR",
+    isVip: false,
+  },
+  {
+    key: "sophie-verrieres",
+    name: "Sophie Girard",
+    email: "sophie@groupe-verrieres.example",
+    country: "FR",
+    isVip: false,
   },
 ]
 
@@ -284,6 +341,14 @@ export const SAAS_CUSTOMER_COMPANIES: Readonly<Record<string, string>> = {
   "emma-ombre": "Café Ombre",
   "theo-saint-cyr": "Relais Saint-Cyr",
   "louise-verrieres": "Groupe Verrières",
+  "lea-arlon": "Maison Arlon",
+  "herve-arlon": "Maison Arlon",
+  "chloe-sauvan": "Hôtels Sauvan",
+  "karim-pont-neuf": "Pont Neuf Bistrots",
+  "julie-ferran": "Les Tables Vauban",
+  "marion-verrieres": "Groupe Verrières",
+  "antoine-verrieres": "Groupe Verrières",
+  "sophie-verrieres": "Groupe Verrières",
 }
 
 export const SAAS_WORLD: DemoWorld = {

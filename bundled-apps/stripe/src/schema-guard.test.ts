@@ -24,14 +24,14 @@ const ALLOWED: Record<string, string[]> = {
   stripe_subscriptions: [
     "stripe_id", "customer_id", "status", "plan_name", "items", "discount_percent",
     "discount_amount_minor", "mrr_minor", "currency", "current_period_start", "current_period_end",
-    "trial_end", "cancel_at", "canceled_at", "card_brand", "card_last4", "card_exp", "past_due_since",
+    "trial_end", "cancel_at", "canceled_at", "card_brand", "card_last4", "card_exp", "past_due_since", "started_at",
     "stripe_updated",
   ],
   stripe_invoices: [
     "stripe_id", "customer_id", "subscription_id", "number", "status", "total_minor", "tax_minor",
     "amount_paid_minor", "amount_due_minor", "currency", "period_start", "period_end", "billing_reason",
     "hosted_invoice_url", "next_payment_attempt", "finalized_at", "paid_at", "issuer",
-    "liaison_document_id", "stripe_updated",
+    "liaison_document_id", "liaison_document_number", "stripe_updated",
   ],
   stripe_payments: [
     "stripe_id", "payment_intent", "invoice_id", "customer_id", "amount_minor", "refunded_minor",

@@ -103,7 +103,17 @@ export async function recoverCustomerCard(
       paid_at: paidAt,
     },
   }
-  const subscription: Obj = { ...subscriptionObject(subRow, livemode), status: "active" }
+  // The subscription bills the new card from now on, as its default payment method says.
+  const subscription: Obj = {
+    ...subscriptionObject(subRow, livemode),
+    status: "active",
+    default_payment_method: {
+      id: `pm_recovered_${subscriptionId.replace(/^sub_/, "")}`,
+      object: "payment_method",
+      type: "card",
+      card: recoveredCard(now),
+    },
+  }
   await putOutsideObjects(orgId, [charge, invoice, subscription])
   // In the processor's order: the charge, the invoice it paid, the subscription it revived.
   for (const [type, object] of [

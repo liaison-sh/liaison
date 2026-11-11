@@ -14,7 +14,7 @@ describe("software world morning brief", () => {
     expect(saasMorningBrief(BOARD_DATE)).toBe(
       [
         "Monthly recurring revenue is €84,708, up €2,281 since 1 Nov: 6 new on Team, 1 upgrade to Group, 1 downgrade, 4 cancellations.",
-        "7 subscriptions are past due, €3,367 of MRR. Maison Arlon is the largest, and it also has ticket TICK-412 open with Inès and a proposal with Tom.",
+        "7 subscriptions are past due, €3,367 of MRR. Maison Arlon is the largest, and it also has ticket-412 open with Inès and a proposal with Tom.",
         "4 trials end within the week, Auberge Tilleul first, in 3 days.",
         "9 deals are open, €68,660. Hôtels Sauvan answered, so the follow-up drafted for Marc will not go out.",
         "Sources: card payments, Projects, Tickets, Mail.",

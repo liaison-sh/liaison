@@ -187,10 +187,14 @@ const HomeAttentionSidebar: Component = () => {
     return t("kernel.homeSidebar.minutesLeft", { count: mins })
   }
 
-  const facetLabel = (key: string, label: string, labelKey?: string) =>
-    labelKey
-      ? i18n.t(labelKey)
-      : (approvalActionLabel(key, label, { t: i18n.t, locale: i18n.locale() }) ?? label)
+  const facetLabel = (key: string, label: string, labelKey?: string, pill?: true) => {
+    if (labelKey) {
+      const said = i18n.t(labelKey)
+      if (said !== labelKey || !pill) return said
+    }
+    if (pill) return label
+    return approvalActionLabel(key, label, { t: i18n.t, locale: i18n.locale() }) ?? label
+  }
 
   const clusterRowLabel = (kind: string, count: number) =>
     alertClusterLabel(kind, count, rowLocale()).replace(/^\d+\s+/, "")
@@ -312,7 +316,7 @@ const HomeAttentionSidebar: Component = () => {
                   <Row
                     sub
                     testid={`home-side-approvals-${facet.key}`}
-                    label={facetLabel(facet.key, facet.label, facet.labelKey)}
+                    label={facetLabel(facet.key, facet.label, facet.labelKey, facet.pill)}
                     count={facet.count}
                     tone="muted"
                     active={filter() === `needs:approvals:${facet.key}`}
@@ -339,7 +343,8 @@ const HomeAttentionSidebar: Component = () => {
               testid="home-side-alerts"
               label={i18n.t("kernel.homeSectionAlerts")}
               icon={AlertTriangle}
-              count={sections().needs.alerts.length}
+              // Rows, as Needs you shows them: alerts of one kind fold into one.
+              count={sections().needs.alertEntries.length}
               tone="accent"
               active={filter() === "needs:alerts"}
               onClick={() => pick("needs:alerts")}

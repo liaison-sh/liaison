@@ -35,6 +35,7 @@ import {
   type HomeViewer,
   homeActionItems,
   homeApprovalItems,
+  homeNeedRowCount,
   isRoutineAlertItem,
   isUncountedItem,
 } from "~/modules/shell/home-action-count"
@@ -52,7 +53,7 @@ function isConversation(item: AttentionItem): boolean {
 
 export interface HomeSections {
   needs: {
-    /** === homeActionItems(...).length === the Home badge. */
+    /** Needs you's rows (homeNeedRowCount: an alert kind's cluster is one) === the Home badge. */
     total: number
     timeLimited: AttentionItem[]
     approvals: AttentionItem[]
@@ -141,7 +142,7 @@ export function buildHomeSections(
 
   return {
     needs: {
-      total: needItems.length,
+      total: homeNeedRowCount(needItems, nowMs),
       timeLimited,
       approvals,
       approvalFacets: approvalActionFacets(approvals),

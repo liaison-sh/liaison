@@ -283,7 +283,7 @@ export async function onStripeInvoiceFinalized(
   //    this event names the same invoice key (stripeDocumentRef).
   const existing = await documentByRef(ctx, ref)
   if (existing) {
-    await linkBack(ctx, p.stripe_invoice_id, String(existing.id))
+    await linkBack(ctx, p.stripe_invoice_id, String(existing.id), typeof existing.number === "string" ? existing.number : null)
     await resolveOpenParks(ctx, ref, "already_issued")
     return { status: "skipped", reason: "duplicate_document", document_id: String(existing.id) }
   }
@@ -488,13 +488,14 @@ export async function onStripeInvoiceFinalized(
         ...(p.number ? { stripe_invoice_number: p.number } : {}),
         ...(p.charge_id ? { stripe_charge_id: p.charge_id } : {}),
         ...(p.subscription_id ? { stripe_subscription_id: p.subscription_id } : {}),
+        ...(p.customer_id ? { stripe_customer_id: p.customer_id } : {}),
       },
       lines,
     },
   })
   if (!issued.ok) return { status: "error", error: issued.error.error }
   await resolveOpenParks(ctx, ref, "issued")
-  await linkBack(ctx, p.stripe_invoice_id, issued.result.document_id)
+  await linkBack(ctx, p.stripe_invoice_id, issued.result.document_id, issued.result.number ?? null)
   return { status: "ok", document_id: issued.result.document_id, number: issued.result.number }
 }
 
@@ -510,10 +511,19 @@ async function markIssuedBy(ctx: StripeCtx, stripeInvoiceId: string, issuedBy: "
 }
 
 /** Tell the Stripe app which document its invoice became (`liaison_document_id`, set once). Best effort. */
-export async function linkBack(ctx: StripeCtx, stripeInvoiceId: string, documentId: string): Promise<void> {
+export async function linkBack(
+  ctx: StripeCtx,
+  stripeInvoiceId: string,
+  documentId: string,
+  documentNumber: string | null = null,
+): Promise<void> {
   if (!ctx.executeTool) return
   try {
-    await ctx.executeTool("stripe:invoice_document_link", { stripeInvoiceId, documentId })
+    await ctx.executeTool("stripe:invoice_document_link", {
+      stripeInvoiceId,
+      documentId,
+      ...(documentNumber ? { documentNumber } : {}),
+    })
   } catch {
     // The safety job finds it again; the document itself is what counts.
   }

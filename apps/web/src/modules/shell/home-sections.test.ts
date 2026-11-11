@@ -3,7 +3,7 @@
 // queues and agents hold the rest; conversations are not Home's.
 import type { AttentionItem } from "@liaison/shared"
 import { describe, expect, it } from "vitest"
-import { homeActionItems } from "~/modules/shell/home-action-count"
+import { homeActionItems, homeNeedRowCount } from "~/modules/shell/home-action-count"
 import { buildHomeSections, filterSection, queueOf } from "~/modules/shell/home-sections"
 
 const item = (over: Partial<AttentionItem> & { id: string }): AttentionItem => ({
@@ -71,6 +71,30 @@ describe("buildHomeSections", () => {
     // The access request is a decision: it is in the approvals list, not the alerts.
     expect(s.needs.approvals.map((i) => i.id)).toEqual(["a1", "a2", "scope"])
     expect(s.needs.alerts.map((i) => i.id).sort()).toEqual(["sla", "sys", "wait-mine"])
+  })
+
+  it("counts several tickets approaching their SLA as one row of Needs you, as Home shows them", () => {
+    const slas = ["s1", "s2", "s3", "s4"].map((id) => item({ id, kind: "sla_risk", urgency: 80 }))
+    const s = buildHomeSections([approval("a1"), approval("a2"), approval("a3"), ...slas], {
+      viewer: admin,
+    })
+    expect(s.needs.alertEntries).toHaveLength(1)
+    expect(s.needs.total).toBe(4)
+    expect(homeNeedRowCount(homeActionItems([approval("a1"), ...slas], false, admin))).toBe(2)
+  })
+
+  it("files a mail draft named by a pill under that pill's facet, apart from plain mail drafts", () => {
+    const reminder: AttentionItem = {
+      ...approval("r1", "mail:compose"),
+      metadata: { toolName: "mail:compose", pill: { label: "Stripe: payment reminder" } },
+    }
+    const s = buildHomeSections([reminder, approval("m1", "mail:compose")], { viewer: admin })
+    const labels = s.needs.approvalFacets.map((f) => [f.label, f.count])
+    expect(labels).toContainEqual(["Stripe: payment reminder", 1])
+    expect(s.needs.approvalFacets.find((f) => f.label === "Stripe: payment reminder")?.pill).toBe(
+      true,
+    )
+    expect(s.needs.approvalFacets).toHaveLength(2)
   })
 
   it("files a ticket awaiting a reply under Your queues unless it is assigned to the viewer", () => {

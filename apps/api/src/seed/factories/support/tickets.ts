@@ -40,6 +40,8 @@ export interface TicketFollowup {
 
 export interface TicketSpec {
   key: string
+  /** The ticket's fixed number (`ticket-<n>`), for a world whose story names its tickets. */
+  number?: number
   subject: string
   /** Key of the contact the ticket comes from (the caller's contact map). */
   contactKey: string
@@ -256,7 +258,7 @@ export async function seedTickets(
           adminRef,
           // Every read createTicket makes runs on this transaction. On a second
           // connection it would wait behind policy DDL that waits for this one.
-          { privilegedTx: tx },
+          { privilegedTx: tx, ...(spec.number !== undefined ? { handleNumber: spec.number } : {}) },
         )
         if ("error" in created) {
           throw new Error(`tickets seed: ticket '${spec.key}' refused: ${created.error.message}`)

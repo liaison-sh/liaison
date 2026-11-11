@@ -12,6 +12,7 @@ import {
   dayOf,
   draftLines,
   draftTotals,
+  findOneWhere,
   jsonOf,
   type Row,
   type RunCtx,
@@ -90,8 +91,13 @@ export async function runDraftOf(ctx: Pick<RunCtx, "db">, documentId: string | u
   if (!draft) return null
   const refs = jsonOf<Row>(draft.external_refs, {})
   const itemId = refs.recurring_run_item_id
-  if (typeof itemId !== "string" || itemId === "") return null
-  const item = (await ctx.db.findOne("recurring_run_items", itemId)) as Row | null
+  // A row's draft is the row's whether or not the draft carries its back reference (an imported
+  // or hand-made run holds only the row's document_id): without it, a change would skip every
+  // run check and land as a plain draft's.
+  const item =
+    (typeof itemId === "string" && itemId !== ""
+      ? ((await ctx.db.findOne("recurring_run_items", itemId)) as Row | null)
+      : null) ?? (await findOneWhere(ctx, "recurring_run_items", { document_id: String(draft.id) }))
   if (!item) return null
   const run = (await ctx.db.findOne("recurring_runs", String(item.run_id))) as Row | null
   if (!run) return null

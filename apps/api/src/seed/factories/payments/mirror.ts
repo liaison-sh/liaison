@@ -63,6 +63,8 @@ export interface MirrorSubscription {
   trialEnd: Date | null
   canceledAt: Date | null
   pastDueSince: Date | null
+  /** When the subscription began. */
+  startedAt?: Date | null
   card: MirrorCard | null
 }
 
@@ -81,6 +83,8 @@ export interface MirrorInvoice {
   billingReason: string
   /** The issued invoice that invoices this one, when the org issues its own. */
   documentId: string | null
+  /** That invoice's number, shown on the processor's invoice row. */
+  documentNumber?: string | null
 }
 
 export interface MirrorPayment {
@@ -274,6 +278,7 @@ export function paymentsMirrorRows(
     canceled_at: iso(s.canceledAt),
     ...card(s.card),
     past_due_since: iso(s.pastDueSince),
+    started_at: s.startedAt ? iso(s.startedAt) : null,
     stripe_updated: synced,
   }))
   const invoices: Row[] = spec.invoices.map((v) => ({
@@ -298,6 +303,7 @@ export function paymentsMirrorRows(
     paid_at: iso(v.paidAt),
     issuer: "liaison",
     liaison_document_id: v.documentId,
+    liaison_document_number: v.documentNumber ?? null,
     stripe_updated: synced,
   }))
   const payments: Row[] = spec.payments.map((p) => ({

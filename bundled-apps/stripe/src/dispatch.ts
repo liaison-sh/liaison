@@ -375,7 +375,7 @@ export async function handleStripeEvent(
       obj = await stripeFetch<Obj>(
         ctx,
         `${route.path}${encodeURIComponent(event.objectId)}`,
-        route === SUBSCRIPTION ? { params: { expand: ["discounts"] } } : {},
+        route === SUBSCRIPTION ? { params: { expand: ["discounts", "default_payment_method"] } } : {},
         { maxRetries: 0 },
       )
     } catch (err) {

@@ -32,6 +32,7 @@ export const SAAS_TICKET_KEYS = {
 export const SAAS_TICKETS: readonly TicketSpec[] = [
   {
     key: SAAS_TICKET_KEYS.arlonExport,
+    number: 412,
     subject: "Export of last month's rotas",
     contactKey: "customer:claire-vidal",
     category: "Exports and payroll",
@@ -48,6 +49,7 @@ export const SAAS_TICKETS: readonly TicketSpec[] = [
   },
   {
     key: SAAS_TICKET_KEYS.arlonOlder,
+    number: 377,
     subject: "Shift swap notifications arrive late",
     contactKey: "customer:claire-vidal",
     category: "Mobile app",
@@ -71,6 +73,7 @@ export const SAAS_TICKETS: readonly TicketSpec[] = [
   },
   {
     key: SAAS_TICKET_KEYS.ombreCharge,
+    number: 398,
     subject: "Charged after cancelling",
     contactKey: "customer:emma-ombre",
     category: "Billing",
@@ -87,6 +90,7 @@ export const SAAS_TICKETS: readonly TicketSpec[] = [
   },
   {
     key: "vauban-onboarding",
+    number: 415,
     subject: "Adding our second restaurant",
     contactKey: "customer:paul-vauban",
     category: "Onboarding",
@@ -103,6 +107,7 @@ export const SAAS_TICKETS: readonly TicketSpec[] = [
   },
   {
     key: "vauban-mobile-login",
+    number: 416,
     subject: "Staff cannot sign in to the app",
     contactKey: "customer:paul-vauban",
     category: "Mobile app",
@@ -117,6 +122,7 @@ export const SAAS_TICKETS: readonly TicketSpec[] = [
   },
   {
     key: "verrieres-sso",
+    number: 409,
     subject: "Single sign-on for the group",
     contactKey: "customer:louise-verrieres",
     category: "Account",
@@ -131,6 +137,7 @@ export const SAAS_TICKETS: readonly TicketSpec[] = [
   },
   {
     key: "saint-cyr-invoice-copy",
+    number: 405,
     subject: "Copy of an invoice",
     contactKey: "customer:theo-saint-cyr",
     category: "Billing",
@@ -144,6 +151,7 @@ export const SAAS_TICKETS: readonly TicketSpec[] = [
   },
   {
     key: "selene-trial-question",
+    number: 386,
     subject: "How long is the trial?",
     contactKey: "customer:anais-selene",
     category: "Onboarding",

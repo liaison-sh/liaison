@@ -32,7 +32,7 @@ import {
   toLoadedDocument,
 } from "./DocumentDetail"
 import manifest from "../../app.manifest.json"
-import { moneyChips } from "./DocumentDetail"
+import { moneyChips, stripeCollection } from "./DocumentDetail"
 import { einvoiceStatusWord } from "./RecurringStates"
 import { FR as fr } from "./i18n-fr"
 
@@ -226,6 +226,19 @@ describe("DocumentDetail (Phase 17 F3)", () => {
     expect(invoicingSlot).toBeDefined()
     expect(invoicingSlot?.document_detail).toBeDefined()
     expect(Array.isArray(invoicingSlot?.document_detail?.tabs)).toBe(true)
+  })
+
+  it("an invoice Stripe collects names its Stripe invoice and customer, and offers no Mark paid", () => {
+    expect(stripeCollection({ stripe_invoice_id: "in_1", stripe_customer_id: "cus_1" })).toEqual({
+      invoiceId: "in_1",
+      customerId: "cus_1",
+    })
+    expect(stripeCollection({ stripe_invoice_id: "in_1" })).toEqual({ invoiceId: "in_1", customerId: null })
+    expect(stripeCollection({})).toBeNull()
+    expect(stripeCollection(undefined)).toBeNull()
+    expect(source).toContain('doc().type !== "credit_note" && !stripeCollection(doc().external_refs)')
+    expect(source).toContain("document-detail-open-stripe")
+    expect(source).toContain("document-detail-open-contact")
   })
 
   it("renders footer-action testids in source for E2E pickup", () => {

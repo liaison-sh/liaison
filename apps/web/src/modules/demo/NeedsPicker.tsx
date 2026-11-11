@@ -213,12 +213,13 @@ export const NeedsPicker: Component<NeedsPickerProps> = (props) => {
         class={
           everything()
             ? "border-accent bg-accent text-accent-foreground"
-            : "border-text bg-text text-bg hover:opacity-90"
+            : // Not selected, it reads as every other tile off: never the inverted, selected look.
+              `${tileOff} text-text`
         }
         icon={
           <span
             aria-hidden="true"
-            class={`${iconBase} ${everything() ? "bg-accent-foreground text-accent" : "bg-bg text-text"}`}
+            class={`${iconBase} ${everything() ? "bg-accent-foreground text-accent" : "bg-surface-sunken text-text"}`}
           >
             <Layers size={16} />
           </span>

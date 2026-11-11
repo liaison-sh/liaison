@@ -38,6 +38,13 @@ describe("the customer page", () => {
     expect(ours.statusLabel).toBe("Unpaid")
   })
 
+  it("an invoice Liaison issued reads Liaison's number, not the Stripe id", () => {
+    const ours = invoiceView({ id: "in_TFarlon", customerId: "cus_a", subscriptionId: null, status: "open", amountDueMinor: 174000, totalMinor: 174000, currency: "eur", nextPaymentAttempt: null, number: null, issuer: "liaison", liaisonDocumentId: "doc-1", liaisonDocumentNumber: "F-2026-0418" }, "en")
+    expect([ours.number, ours.documentId]).toEqual(["F-2026-0418", "doc-1"])
+    const theirs = invoiceView({ id: "in_3", customerId: "cus_a", subscriptionId: null, status: "paid", amountDueMinor: 0, totalMinor: 100, currency: "eur", nextPaymentAttempt: null, number: "ABC-0002", issuer: "stripe", liaisonDocumentId: null, liaisonDocumentNumber: "F-2026-0001" }, "en")
+    expect(theirs.number).toBe("ABC-0002")
+  })
+
   it("Cancel posts to the discussion and runs nothing", async () => {
     const tools: string[] = []
     const fetched: Array<{ path: string; body: any }> = []

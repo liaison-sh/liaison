@@ -676,7 +676,8 @@ async function seedSaasMoney(
   const billing = await resolveContacts(
     ctx,
     actor,
-    SAAS_TRANSFER_KEYS.filter((key) => companyOf(key).contactKeys.length === 0).map((key) => {
+    // Every company billed by transfer has one, so the recurring list reads "<Company> accounts".
+    SAAS_TRANSFER_KEYS.map((key) => {
       const c = companyOf(key)
       return {
         key: `billing:${key}`,
@@ -690,6 +691,7 @@ async function seedSaasMoney(
   const contactOfCompany: Record<string, string> = {}
   for (const [key, c] of billing) contactOfCompany[key.replace(/^billing:/, "")] = c.id
   for (const c of plan.companies) {
+    if (contactOfCompany[c.key]) continue
     const first = c.contactKeys[0]
     const id = first ? contactIds[first] : undefined
     if (id) contactOfCompany[c.key] = id
@@ -711,8 +713,24 @@ async function seedSaasMoney(
       address: dutch ? `${c.name}, Amsterdam, Netherlands` : `${c.name}, France`,
     })
   }
+  // An invoice a card charge collects names the processor's invoice, charge and customer, as an
+  // invoice issued for the processor's does.
+  const collectedBy = new Map(
+    money.charges
+      .filter((c) => c.invoiceKey !== null)
+      .map((c) => [
+        c.invoiceKey as string,
+        {
+          stripe_invoice_id: c.invoiceId,
+          stripe_charge_id: c.chargeId,
+          stripe_customer_id: c.customerId,
+          ...(c.subscriptionId ? { stripe_subscription_id: c.subscriptionId } : {}),
+        },
+      ]),
+  )
   const specs: InvoicingDocumentSpec[] = money.invoices.map((inv) => ({
     key: inv.key,
+    ...(collectedBy.has(inv.key) ? { externalRefs: collectedBy.get(inv.key) } : {}),
     type: "invoice",
     status: inv.paidAt ? "paid" : "issued",
     paymentStatus: inv.paidAt ? "paid" : "unpaid",
@@ -895,6 +913,7 @@ export function saasPaymentsMirrorSpec(
       trialEnd: s.trialEnd,
       canceledAt: s.canceledAt,
       pastDueSince: s.pastDueSince,
+      startedAt: s.customerSince,
       card: s.card,
     })),
     invoices: money.charges.map((c) => ({
@@ -915,6 +934,9 @@ export function saasPaymentsMirrorSpec(
           ? "subscription_create"
           : "subscription_cycle",
       documentId: c.invoiceKey ? ids.documentId(c.invoiceKey) : null,
+      documentNumber: c.invoiceKey
+        ? (money.invoices.find((i) => i.key === c.invoiceKey)?.number ?? null)
+        : null,
     })),
     payments: money.charges.map((c) => ({
       id: c.chargeId,
@@ -967,9 +989,10 @@ function customerKeyOf(money: SaasMoneyPlan, customerId: string): string {
 }
 
 function emailOfCompany(key: string, domain: string, contactKeys: readonly string[]): string {
+  if (SAAS_TRANSFER_KEYS.includes(key)) return `compta@${domain}`
   const first = contactKeys[0]?.replace(/^customer:/, "")
   const named = first ? SAAS_CUSTOMERS.find((c) => c.key === first)?.email : undefined
-  return named ?? (SAAS_TRANSFER_KEYS.includes(key) ? `compta@${domain}` : `billing@${domain}`)
+  return named ?? `billing@${domain}`
 }
 
 /**

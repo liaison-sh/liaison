@@ -21,7 +21,7 @@
   },
   "app_invoicing.documents": {
     "rows": 418,
-    "digest": "cabb915370bc41a7"
+    "digest": "aab6c145fb35a31a"
   },
   "app_invoicing.issuer_profiles": {
     "rows": 1,
@@ -105,7 +105,7 @@
   },
   "app_stripe.stripe_invoices": {
     "rows": 172,
-    "digest": "7afaff135f4dae28"
+    "digest": "3777cd32ec6d9542"
   },
   "app_stripe.stripe_mrr_events": {
     "rows": 13,
@@ -117,7 +117,7 @@
   },
   "app_stripe.stripe_subscriptions": {
     "rows": 178,
-    "digest": "c956fc5bbfdad1d6"
+    "digest": "89bd46162c9469cb"
   },
   "app_stripe.sync_state": {
     "rows": 7,
@@ -180,8 +180,8 @@
     "digest": "adcbfcc61e0b4b41"
   },
   "kernel.contacts": {
-    "rows": 23,
-    "digest": "c9a10ad0bf16d76e"
+    "rows": 32,
+    "digest": "c793b206b978aca0"
   },
   "kernel.credit_balances": {
     "rows": 1,
@@ -193,11 +193,11 @@
   },
   "kernel.messages": {
     "rows": 10,
-    "digest": "1d831009999109f6"
+    "digest": "8b59c9fe4bb9015b"
   },
   "kernel.pending_events": {
-    "rows": 466,
-    "digest": "e1adcb21b81fe9cd"
+    "rows": 483,
+    "digest": "93255a2a7e25ef9b"
   },
   "kernel.roles": {
     "rows": 37,

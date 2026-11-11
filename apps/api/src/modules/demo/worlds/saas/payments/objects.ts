@@ -103,7 +103,7 @@ export function subscriptionObject(row: Obj, livemode: boolean): Obj {
     customer: String(row.customer_id ?? ""),
     status: String(row.status ?? "active"),
     currency: str(row.currency),
-    start_date: start,
+    start_date: unixOf(row.started_at) ?? start,
     trial_end: unixOf(row.trial_end),
     cancel_at: cancelAt,
     cancel_at_period_end: cancelAt !== null && end !== null && cancelAt === end,

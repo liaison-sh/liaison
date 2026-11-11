@@ -146,8 +146,13 @@ export async function invoiceDocumentLink(params: Obj | undefined, ctx: DocLinkC
     await ctx.db.update("stripe_invoices", String(row.id), { issuer: issuedBy })
     return { ok: true, summary: `Stripe invoice ${stripeInvoiceId} is recorded as issued by ${issuedBy === "stripe" ? "Stripe" : "Stripe before the connection"}; no Liaison document follows it.` }
   }
-  await ctx.db.update("stripe_invoices", String(row.id), { liaison_document_id: documentId, issuer: "liaison" })
-  return { ok: true, summary: `Stripe invoice ${stripeInvoiceId} now names document ${documentId}.` }
+  const documentNumber = typeof p.documentNumber === "string" && p.documentNumber.trim() ? p.documentNumber.trim().slice(0, 64) : null
+  await ctx.db.update("stripe_invoices", String(row.id), {
+    liaison_document_id: documentId,
+    issuer: "liaison",
+    ...(documentNumber ? { liaison_document_number: documentNumber } : {}),
+  })
+  return { ok: true, summary: `Stripe invoice ${stripeInvoiceId} now names document ${documentNumber ?? documentId}.` }
 }
 
 /** Record the credit note a Stripe refund became, or that invoicing makes none for it. */

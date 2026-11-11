@@ -152,7 +152,7 @@ describe("writes", () => {
     })
     expect(res.blocked?.approvalRequestId).toBeString()
     expect(res.blocked?.summary?.title).toContain("Team orders")
-    expect(res.blocked?.summary?.lines.join("\n")).toContain(`from ${APP}:orders_list`)
+    expect(res.blocked?.summary?.lines.join("\n")).toContain(`reading ${APP}:orders_list`)
     // The owner holds share, not admin: the card is not theirs to decide.
     expect(res.blocked?.requesterCanApprove).toBe(false)
     expect((await listDashboards(as(other, [WRITE]))).length).toBe(before)
@@ -170,9 +170,7 @@ describe("writes", () => {
     })
     // The test org's timezone is the default, UTC.
     const month = new Date().toISOString().slice(0, 7)
-    expect(res.blocked?.summary?.lines.join("\n")).toContain(
-      `dates {{startOfMonth}} = ${month}-01 (today, rolling)`,
-    )
+    expect(res.blocked?.summary?.lines.join("\n")).toContain(`{{startOfMonth}} = ${month}-01 today`)
   })
 
   it("an agent's edit or delete of an org dashboard always stages, even for its owner with share", async () => {
@@ -236,6 +234,31 @@ describe("preview and sources", () => {
       },
     })
     expect((await listDashboards(as(owner, [WRITE]))).length).toBe(before)
+  })
+
+  it("preview_block reads a dataset and applies filter values to the rows", async () => {
+    const res = await call(owner, [WRITE, READ], "dashboards_preview_block", {
+      block: {
+        id: "by-status",
+        type: "metric",
+        title: "Completed",
+        dataset: "orders",
+        map: {
+          value: "total",
+          where: [{ field: "status", op: "eq", value: { filter: "status" } }],
+        },
+      },
+      datasets: { orders: { kind: "tool", tool: `${APP}:orders_list` } },
+      filters: [
+        { id: "status", label: "Status", type: "select", options: ["completed", "refunded"] },
+      ],
+      filterValues: { status: ["refunded"] },
+    })
+    expect(res.data).toMatchObject({ ok: true, data: { kind: "metric", value: 5 } })
+    const missing = await call(owner, [WRITE, READ], "dashboards_preview_block", {
+      block: { id: "x", type: "metric", title: "X", dataset: "nope", map: { agg: "count" } },
+    })
+    expect(missing.data).toMatchObject({ ok: false, reason: "invalid_block" })
   })
 
   it("a refused preview names why and the eligible alternatives", async () => {
@@ -305,6 +328,32 @@ describe("preview and sources", () => {
     expect(personal.lines.join("\n")).not.toContain("Everyone in the organisation")
     const org = await card("org")
     expect(org.title).toBe('Share the dashboard "Leads" with the organisation')
+  })
+
+  it("a new org dashboard's card lists its datasets, filters and notes in full", async () => {
+    const text = `${"Harmless intro. ".repeat(20)}[Renew your access](https://phish.example/x)`
+    const card = await generateApprovalSummary(
+      orgId,
+      "kernel",
+      "dashboards_create",
+      {
+        title: "Leads",
+        visibility: "org",
+        spec: {
+          v: 1,
+          datasets: { orders: { kind: "tool", tool: `${APP}:orders_list` } },
+          filters: [{ id: "market", label: "Market", type: "select", options: ["FR", "DE"] }],
+          blocks: [pieBlock(), { id: "n", type: "text", title: "Notes", text }],
+        },
+      },
+      {} as never,
+      "kernel:dashboards_create",
+    )
+    const all = card.lines.join("\n")
+    expect(all).toContain("Add the shared dataset 'orders'")
+    expect(all).toContain('Add the filter "Market"')
+    expect(all).toContain("Links in the note: https://phish.example/x")
+    expect(all.replace(/\n\s+Note text \(\d\/\d\): /g, "")).toContain("[Renew your access]")
   })
 
   it("preview runs with the caller's roles, as the saved dashboard will for them", async () => {

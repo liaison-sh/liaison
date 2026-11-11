@@ -76,8 +76,11 @@ export const dashboardViewerStates = kernel.table(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    timeRange: jsonb("time_range").$type<Record<string, unknown>>().notNull(),
-    compare: text("compare").notNull(),
+    /** NULL: the person never chose a range (migration 0290). */
+    timeRange: jsonb("time_range").$type<Record<string, unknown>>(),
+    compare: text("compare"),
+    /** The filter values the person last chose: {filterId: [values]}. */
+    filters: jsonb("filters").$type<Record<string, string[]>>().notNull().default({}),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -88,3 +91,33 @@ export const dashboardViewerStates = kernel.table(
 )
 
 export type DashboardViewerStateRow = typeof dashboardViewerStates.$inferSelect
+
+/**
+ * The title and spec of each saved version of a dashboard (migration 0291), the last 20 kept,
+ * for history and revert. FORCE RLS: readable, addable and prunable with the dashboard itself.
+ */
+export const dashboardVersions = kernel.table(
+  "dashboard_versions",
+  {
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    dashboardId: uuid("dashboard_id")
+      .notNull()
+      .references(() => dashboards.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    title: text("title").notNull(),
+    spec: jsonb("spec").$type<Record<string, unknown>>().notNull(),
+    savedBy: uuid("saved_by").references(() => users.id, { onDelete: "set null" }),
+    savedAt: timestamp("saved_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.dashboardId, table.version] }),
+    index("dashboard_versions_org_idx").on(table.orgId),
+    index("dashboard_versions_saved_by_fk_idx")
+      .on(table.savedBy)
+      .where(sql`${table.savedBy} IS NOT NULL`),
+  ],
+)
+
+export type DashboardVersionRow = typeof dashboardVersions.$inferSelect

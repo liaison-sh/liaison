@@ -506,9 +506,10 @@ export async function registerStateMaterializerScheduledJob(): Promise<void> {
     await runStateMaterializeForOrg(payload.orgId)
     // The apps' stored attention lists follow time too (an SLA closing in, a
     // task falling overdue): recomputed on the same cadence, the next minute
-    // for an org that changed, within HEARTBEAT_MINUTES otherwise.
-    const { refreshAllAppAttention } = await import("~/modules/apps/attention-store")
-    await refreshAllAppAttention(payload.orgId)
+    // for an org that changed, within HEARTBEAT_MINUTES otherwise. Queued on
+    // the attention queue, never run here: this job shares the cron class.
+    const { scheduleAllAppAttentionRefresh } = await import("~/modules/apps/attention-store")
+    await scheduleAllAppAttentionRefresh(payload.orgId)
   })
   await registerScheduledJob(
     "kernel",

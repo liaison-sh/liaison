@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
-import { sharedSurfaceDraftReadScope } from "@liaison/shared"
+import {
+  type ApprovalSummary,
+  approvalSummaryLinesMax,
+  sharedSurfaceDraftReadScope,
+} from "@liaison/shared"
 import type { SchemaObject, ValidateFunction } from "ajv"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows } from "~/db"
@@ -631,6 +635,20 @@ export async function updatePayload(args: UpdatePayloadArgs): Promise<UpdatePayl
 }
 
 /**
+ * The rebuilt summary with the edit's disclosure line last. It keeps as many of the summary's
+ * own lines as its kind of card lists, less one for the disclosure: a dashboard edit card lists
+ * every change (up to 50 lines), any other card 8.
+ */
+export function withDisclosureLine(
+  summary: ApprovalSummary,
+  disclosureLine: string | null,
+): ApprovalSummary {
+  if (!disclosureLine) return summary
+  const keep = approvalSummaryLinesMax(summary.kind) - 1
+  return { ...summary, lines: [...summary.lines.slice(0, keep), disclosureLine] }
+}
+
+/**
  * The card's headline lines (recipient, amount, subject) come from the summary written when the
  * request was made. After an edit they would describe the old payload while the new one runs, so
  * the summary is rebuilt from the edited payload, under the requester's own access exactly as at
@@ -665,9 +683,7 @@ async function refreshSummaryAfterEdit(
     // A sequenced step's payload still cites earlier steps with @ref tokens:
     // the rebuilt summary reads them as those steps, as at propose time.
     const readable = await humanizeStepSummary(args.orgId, row.requested_by, payload, generated)
-    const summary = disclosureLine
-      ? { ...readable, lines: [...readable.lines.slice(0, 7), disclosureLine] }
-      : readable
+    const summary = withDisclosureLine(readable, disclosureLine)
     await withPrivilegedDb(args.orgId, "approval-edit-summary", async (tx) => {
       const refreshed = extractRows<{ id: string }>(
         await tx.execute(drizzleSql`

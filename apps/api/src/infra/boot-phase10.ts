@@ -478,18 +478,25 @@ export function registerFilesSelectPolicyCheck(): void {
 }
 
 /**
- * The leader stores the summary of every approval that has none (written
- * before summaries were stored, or outside executeTool), once per lease
- * acquire: serving an approval reads the stored summary and runs no
- * summarizer (modules/approvals/summary-backfill.ts).
+ * The leader starts a backfill pass of the summaries of PENDING approvals that
+ * have none (written before summaries were stored, or outside executeTool),
+ * once per lease acquire: serving an approval reads the stored summary and
+ * runs no summarizer. The pass is a paced background job on the bulk class,
+ * never the boot path (modules/approvals/summary-backfill.ts).
  */
 export function registerApprovalSummaryBackfill(): void {
+  void import("~/modules/approvals/summary-backfill")
+    .then(({ registerApprovalSummaryBackfillJob }) => registerApprovalSummaryBackfillJob())
+    .catch((err: unknown) => log.error({ err }, "Approval summary backfill job not registered"))
   registerSingleton({
     name: "approval-summary-backfill",
     onAcquired: () => {
       void import("~/modules/approvals/summary-backfill")
-        .then(({ backfillApprovalSummaries }) => backfillApprovalSummaries())
-        .catch((err: unknown) => log.error({ err }, "Approval summary backfill failed"))
+        .then(({ registerApprovalSummaryBackfillJob, kickApprovalSummaryBackfill }) => {
+          registerApprovalSummaryBackfillJob()
+          return kickApprovalSummaryBackfill()
+        })
+        .catch((err: unknown) => log.error({ err }, "Approval summary backfill not queued"))
     },
     onLost: () => {},
   })

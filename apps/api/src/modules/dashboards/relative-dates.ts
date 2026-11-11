@@ -46,6 +46,9 @@ const TOKEN_BODY = new RegExp(
 )
 const DATETIME_BODY = /^range\.(fromTime|toTime|endExclusive)$/
 const RANGE_TOKEN = /\{\{range\.[^{}]*\}\}/
+/** A dashboard filter's value (filters.ts resolves it before the dates): `{{filter.market}}`. */
+export const FILTER_TOKEN_BODY = /^filter\.([A-Za-z][A-Za-z0-9_]{0,39})$/
+const isFilterToken = (body: string) => FILTER_TOKEN_BODY.test(body)
 
 export const DATE_TOKEN_HELP =
   "a date token is {{today}}, {{yesterday}}, {{startOfWeek}}, {{startOfMonth}}, {{startOfQuarter}}, {{startOfYear}}, {{endOfWeek}}, {{endOfMonth}}, {{endOfQuarter}}, {{endOfYear}}, or the dashboard range {{range.from}} / {{range.to}}, optionally with one offset such as {{today-30d}}, {{startOfMonth-1M}}, {{today+1w}} or {{startOfYear-1y}} (d days, w weeks, M months, y years); {{range.fromTime}} and {{range.toTime}} give the range's first and last second as date-times, {{range.endExclusive}} the first instant after it (filter with < on it)"
@@ -147,16 +150,33 @@ export function parseDay(s: string): CalendarDate | null {
   return c
 }
 
+/** One formatter per zone: building an Intl.DateTimeFormat is the slow part of a conversion. */
+const dayFormatters = new Map<string, Intl.DateTimeFormat>()
+
+function dayFormatter(timeZone: string): Intl.DateTimeFormat {
+  let f = dayFormatters.get(timeZone)
+  if (!f) {
+    f = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+    dayFormatters.set(timeZone, f)
+  }
+  return f
+}
+
 /** Today's calendar date in `timeZone` (an IANA name) at `now`. */
 export function todayIn(timeZone: string, now: Date): CalendarDate {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(now)
+  const parts = dayFormatter(timeZone).formatToParts(now)
   const part = (type: string) => Number(parts.find((p) => p.type === type)?.value)
   return { y: part("year"), m: part("month"), d: part("day") }
+}
+
+/** The calendar day (YYYY-MM-DD) an instant falls on in `timeZone`. */
+export function dayIn(timeZone: string, instant: Date): string {
+  return format(todayIn(timeZone, instant))
 }
 
 type Period = "week" | "month" | "quarter" | "year"
@@ -285,7 +305,9 @@ function stringProblems(s: string): string[] {
   if (!s.includes("{{") && !s.includes("}}")) return []
   const out: string[] = []
   for (const m of s.matchAll(TOKEN)) {
-    if (!parseToken(m[1]!)) out.push(`unknown date token ${m[0]}: ${DATE_TOKEN_HELP}`)
+    if (!parseToken(m[1]!) && !isFilterToken(m[1]!)) {
+      out.push(`unknown date token ${m[0]}: ${DATE_TOKEN_HELP}`)
+    }
   }
   const rest = s.replace(TOKEN, "")
   if (rest.includes("{{") || rest.includes("}}")) {
@@ -331,11 +353,23 @@ export function hasRangeTokens(value: unknown): boolean {
   return found
 }
 
-/** The distinct tokens in `value`, in order of appearance (`{{today-30d}}`). */
+/** The distinct date tokens in `value`, in order of appearance (`{{today-30d}}`); filter tokens are not. */
 export function dateTokensIn(value: unknown): string[] {
   const seen = new Set<string>()
   walk(value, "", (s) => {
-    for (const m of s.matchAll(TOKEN)) seen.add(m[0])
+    for (const m of s.matchAll(TOKEN)) if (!isFilterToken(m[1]!)) seen.add(m[0])
+  })
+  return [...seen]
+}
+
+/** The distinct filter ids `value` reads through `{{filter.<id>}}`, in order of appearance. */
+export function filterTokensIn(value: unknown): string[] {
+  const seen = new Set<string>()
+  walk(value, "", (s) => {
+    for (const m of s.matchAll(TOKEN)) {
+      const f = FILTER_TOKEN_BODY.exec(m[1]!)
+      if (f) seen.add(f[1]!)
+    }
   })
   return [...seen]
 }
@@ -360,7 +394,12 @@ export function resolveDateTokens<T>(
     if (!s.includes("{{") && !s.includes("}}")) return s
     const problems = stringProblems(s)
     if (problems.length) throw new DateTokenError(problems.join("; "))
-    return s.replace(TOKEN, (raw, body: string) => resolveToken(parseToken(body)!, ctx, raw))
+    return s.replace(TOKEN, (raw, body: string) => {
+      const t = parseToken(body)
+      // A filter token is resolved before the dates (filters.ts); one left here never reaches a tool.
+      if (!t) throw new DateTokenError(`${raw} is a filter token that was not resolved`)
+      return resolveToken(t, ctx, raw)
+    })
   }
   const visit = (v: unknown): unknown => {
     if (typeof v === "string") return resolveString(v)

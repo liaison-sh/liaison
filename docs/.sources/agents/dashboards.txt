@@ -118,3 +118,61 @@ range.endExclusive, a skipped midnight starts the day at the change -> apps/api/
 Rolling and custom ranges keep their day count against last year -> apps/api/src/modules/dashboards/relative-dates.ts:479
 Compared period kept 6 h, not re-read by Refresh -> apps/api/src/modules/dashboards/service.ts:830
 At most 12 new custom ranges per block per person per minute -> apps/api/src/modules/dashboards/cache.ts:29 ; apps/api/src/modules/dashboards/service.ts:859
+Block types area, combo, funnel, text -> apps/api/src/modules/dashboards/spec.ts:36 ; apps/api/src/modules/dashboards/spec.ts:39 ; apps/api/src/modules/dashboards/transform.ts:552
+Stacked, horizontal, combo lines on their own axis, funnel stages -> apps/api/src/modules/dashboards/spec.ts:255 ; apps/api/src/modules/dashboards/spec.ts:257 ; apps/api/src/modules/dashboards/spec.ts:261 ; apps/api/src/modules/dashboards/spec.ts:265
+Text note: no source, at most 4,000 characters -> apps/api/src/modules/dashboards/spec.ts:71 ; apps/api/src/modules/dashboards/spec.ts:481
+Filters: at most 8, select/multi/text, list or values from the data -> apps/api/src/modules/dashboards/spec.ts:65 ; apps/api/src/modules/dashboards/spec.ts:393
+A filter reaches the source param (empty = all) or keeps rows -> apps/api/src/modules/dashboards/filters.ts:104 ; apps/api/src/modules/dashboards/filters.ts:146 ; apps/api/src/modules/dashboards/filters.ts:254
+A block keeps only some rows before counting -> apps/api/src/modules/dashboards/spec.ts:249 ; apps/api/src/modules/dashboards/transform.ts:552
+Filter values remembered per person -> apps/api/src/modules/dashboards/service.ts:482 ; apps/api/src/modules/dashboards/service.ts:416
+Shared dataset read once for its blocks; loaded together wait on one read -> apps/api/src/modules/dashboards/spec.ts:550 ; apps/api/src/modules/dashboards/service.ts:895 ; apps/api/src/modules/dashboards/service.ts:924 ; apps/api/src/modules/dashboards/cache.ts:1
+Rows behind a figure from the loaded figures, same access, links to records -> apps/api/src/modules/dashboards/service.ts:1228 ; apps/api/src/modules/dashboards/spec.ts:251 ; apps/api/src/modules/dashboards/transform.ts:552
+Dataset and filter-option sources checked like block sources -> apps/api/src/modules/dashboards/service.ts:1351 ; apps/api/src/modules/dashboards/service.ts:895
+Audit row names block, dataset or filter -> apps/api/src/modules/dashboards/execute.ts:229
+Dataset cache follows the shortest block interval; where-only filter never re-reads; refreshes within 30 s read once -> apps/api/src/modules/dashboards/service.ts:873 ; apps/api/src/modules/dashboards/service.ts:913 ; apps/api/src/modules/dashboards/service.ts:831
+Agent edit ops for datasets and filters, plain lines on the card -> apps/api/src/modules/dashboards/edit.ts:244 ; apps/api/src/modules/dashboards/edit.ts:255 ; apps/api/src/modules/dashboards/edit.ts:602 ; apps/api/src/modules/dashboards/edit.ts:617
+API: rows route, options route, f.<id> params, 400 on a bad filter -> apps/api/src/modules/dashboards/routes.ts:304 ; apps/api/src/modules/dashboards/routes.ts:347 ; apps/api/src/modules/dashboards/routes.ts:125 ; apps/api/src/modules/dashboards/routes.ts:159 ; apps/api/src/modules/dashboards/service.ts:1168 ; apps/api/src/modules/dashboards/service.ts:1340
+New filter values a source reads share the per-minute budget; defaults never count -> apps/api/src/modules/dashboards/service.ts:957 ; apps/api/src/modules/dashboards/service.ts:1055
+Funnel: bars as wide as their share of the first stage, "% of the step before", calm colours -> apps/web/src/modules/dashboards/blocks/FunnelBlock.tsx:32 ; apps/web/src/modules/dashboards/blocks/FunnelBlock.tsx:96 ; packages/shared/src/i18n/locales/en/kernel.json:6519
+Combo lines on a right-hand axis -> apps/web/src/modules/dashboards/blocks/Chart.tsx:161 ; apps/web/src/modules/dashboards/blocks/Chart.tsx:203
+Text note: HTML shown as text, web links new tab, app paths open in place -> apps/web/src/modules/dashboards/blocks/TextBlock.tsx:22 ; apps/web/src/modules/dashboards/blocks/TextBlock.tsx:91
+Filter row under the bar, one button per filter, wraps on a phone -> apps/web/src/modules/dashboards/FilterBar.tsx:31 ; apps/web/src/modules/dashboards/FilterBar.tsx:34
+Filter menu: All, one value closes, several keep the menu open -> apps/web/src/modules/dashboards/FilterBar.tsx:155 ; apps/web/src/modules/dashboards/FilterBar.tsx:170 ; packages/shared/src/i18n/locales/en/kernel.json:6514
+Text filter applied on Enter or leaving the field -> apps/web/src/modules/dashboards/FilterBar.tsx:236
+Options read when the menu opens, first 200 listed -> apps/web/src/modules/dashboards/FilterBar.tsx:129 ; apps/web/src/modules/dashboards/FilterBar.tsx:206 ; packages/shared/src/i18n/locales/en/kernel.json:6518
+Reset filters back to defaults, forgets the person's -> apps/web/src/modules/dashboards/FilterBar.tsx:62 ; apps/web/src/modules/dashboards/DashboardView.tsx:306 ; packages/shared/src/i18n/locales/en/kernel.json:6513
+Filter pick remembered, in the address f.<id>; link > remembered > default per filter -> apps/web/src/modules/dashboards/DashboardView.tsx:293 ; apps/web/src/modules/dashboards/filters.ts:42 ; apps/web/src/modules/dashboards/filters.ts:77
+New values refused as just refreshed keep the figures -> apps/web/src/modules/dashboards/blocks/BlockCard.tsx:190
+Drill: click a bar/point/slice, keyboard picks, table first cell, metric figure, rows button -> apps/web/src/modules/dashboards/blocks/Chart.tsx:220 ; apps/web/src/modules/dashboards/blocks/Chart.tsx:277 ; apps/web/src/modules/dashboards/blocks/TableBlock.tsx:44 ; apps/web/src/modules/dashboards/blocks/BlockRenderer.tsx:107 ; apps/web/src/modules/dashboards/blocks/BlockCard.tsx:228 ; packages/shared/src/i18n/locales/en/kernel.json:6521
+Drill panel on the right (over the grid on a phone), dock clearance -> apps/web/src/modules/dashboards/BlockDrillPanel.tsx:169 ; apps/web/src/modules/dashboards/BlockDrillPanel.tsx:173 ; apps/web/src/modules/dashboards/BlockDrillPanel.tsx:174
+Drill panel top: count, Previous/Next page, Close, Escape; All rows -> apps/web/src/modules/dashboards/BlockDrillPanel.tsx:113 ; apps/web/src/modules/dashboards/BlockDrillPanel.tsx:202 ; apps/web/src/modules/dashboards/BlockDrillPanel.tsx:221 ; apps/web/src/modules/dashboards/BlockDrillPanel.tsx:176 ; packages/shared/src/i18n/locales/en/kernel.json:6526 ; packages/shared/src/i18n/locales/en/kernel.json:6523 ; packages/shared/src/i18n/locales/en/kernel.json:6527 ; packages/shared/src/i18n/locales/en/kernel.json:6528
+Drill rows follow the period and filters shown -> apps/web/src/modules/dashboards/DashboardView.tsx:478
+Open: app path in place, a record through its app's opener; 2,000-row note -> apps/web/src/modules/dashboards/BlockDrillPanel.tsx:30 ; apps/web/src/modules/dashboards/BlockDrillPanel.tsx:299 ; packages/shared/src/i18n/locales/en/kernel.json:6530 ; packages/shared/src/i18n/locales/en/kernel.json:6532
+A new dashboard's card lists its datasets, filters and blocks as operations -> apps/api/src/modules/dashboards/tools.ts:270 ; packages/shared/src/types/approvals.ts:43
+A note shows in full on the card, its links listed below -> apps/api/src/modules/dashboards/edit.ts:349 ; apps/api/src/modules/dashboards/edit.ts:369 ; apps/api/src/modules/dashboards/edit.ts:381
+Card capped at 50 lines, a long note's lines counted; a create past it is refused -> apps/api/src/modules/dashboards/edit.ts:406 ; apps/api/src/modules/dashboards/tools.ts:599
+A stacked combo's lines go on their own right-hand axis -> apps/web/src/modules/dashboards/blocks/Chart.tsx:138
+A multi applies its ticks when the menu closes -> apps/web/src/modules/dashboards/FilterBar.tsx:93
+A multi token is a list; "All" drops the clause up to the param; values sorted -> apps/api/src/modules/dashboards/filters.ts:122 ; apps/api/src/modules/dashboards/filters.ts:152 ; apps/api/src/modules/dashboards/filters.ts:63
+Values with {{ or }} refused; a link's refused values left out -> apps/api/src/modules/dashboards/filters.ts:74 ; apps/web/src/modules/dashboards/filters.ts:33
+Filter values over 16 KB: 400, the web does not save them -> apps/api/src/modules/dashboards/service.ts:372 ; apps/api/src/modules/dashboards/service.ts:538 ; apps/web/src/modules/dashboards/dashboards-client.ts:707
+Rows panel reads again on a range or filter change; Escape anywhere; focus back -> apps/web/src/modules/dashboards/BlockDrillPanel.tsx:98 ; apps/web/src/modules/dashboards/DashboardView.tsx:162 ; apps/web/src/modules/dashboards/DashboardView.tsx:179
+A compared bar opens the compared period's rows -> apps/web/src/modules/dashboards/blocks/BlockRenderer.tsx:65 ; apps/web/src/modules/dashboards/DashboardView.tsx:518
+Uncacheable reads budgeted, 60 per person per minute across blocks -> apps/api/src/modules/dashboards/cache.ts:36 ; apps/api/src/modules/dashboards/cache.ts:265 ; apps/api/src/modules/dashboards/service.ts:992
+Own changes save at once, all or none, same checks -> apps/api/src/modules/dashboards/routes.ts:257 ; apps/api/src/modules/dashboards/service.ts:878 ; apps/api/src/modules/dashboards/service.ts:912
+Move, resize width 1-3 height 1-2, rename, duplicate, remove, describe -> apps/api/src/modules/dashboards/edit.ts:127 ; apps/api/src/modules/dashboards/edit.ts:142 ; apps/api/src/modules/dashboards/edit.ts:163 ; apps/api/src/modules/dashboards/spec.ts:561
+Stale version refused -> apps/api/src/modules/dashboards/service.ts:922
+Duplicate: personal copy, (copy) title, sources validated -> apps/api/src/modules/dashboards/service.ts:744 ; apps/api/src/modules/dashboards/routes.ts:269
+Version history: every save kept, last 20, who and when, readable with the dashboard -> apps/api/src/modules/dashboards/service.ts:611 ; apps/api/src/modules/dashboards/service.ts:614 ; apps/api/src/db/migrations/0291_dashboard_versions.sql:43
+Revert is a new version; older dashboards keep history from next save -> apps/api/src/modules/dashboards/edit.ts:420 ; apps/api/src/modules/dashboards/service.ts:853
+Agent revert via dashboards_history + edit, card says what it undoes -> apps/api/src/modules/dashboards/tools.ts:595 ; apps/api/src/modules/dashboards/edit.ts:836
+Days, weeks, months, quarters, years in the org time zone -> apps/api/src/modules/dashboards/transform.ts:170 ; apps/api/src/modules/dashboards/transform.ts:187 ; apps/api/src/modules/dashboards/spec.ts:45
+Calculated figures: expr grammar, division by zero no value, percent of total, scale -> apps/api/src/modules/dashboards/expr.ts:237 ; apps/api/src/modules/dashboards/expr.ts:211 ; apps/api/src/modules/dashboards/transform.ts:608 ; apps/api/src/modules/dashboards/transform.ts:630
+Block CSV: label rows, series columns, previous -> apps/api/src/modules/dashboards/export.ts:59 ; apps/api/src/modules/dashboards/routes.ts:390
+Rows CSV: every row up to 2,000, drill columns -> apps/api/src/modules/dashboards/routes.ts:427 ; apps/api/src/modules/dashboards/service.ts:1533
+PDF: title, description, period, filters, blocks, failed block reason, first 100 rows -> apps/api/src/modules/dashboards/routes.ts:472 ; apps/api/src/modules/dashboards/export.ts:429 ; apps/api/src/modules/dashboards/export.ts:420
+Formula-looking CSV text prefixed with ' -> apps/api/src/modules/dashboards/export.ts:50
+Scheduled send is a routine calling dashboards_snapshot / dashboards_pdf -> apps/api/src/modules/dashboards/tools.ts:650 ; apps/api/src/modules/dashboards/tools.ts:698 ; apps/api/src/modules/agent/prompts/kernel/build-dashboard.md:110
+Recipients checked: active member, opens the dashboard, reads every source -> apps/api/src/modules/dashboards/export.ts:340 ; apps/api/src/modules/dashboards/export.ts:385
+API: today and timeZone on GET -> apps/api/src/modules/dashboards/service.ts:468
+API: versions routes -> apps/api/src/modules/dashboards/routes.ts:285 ; apps/api/src/modules/dashboards/routes.ts:293

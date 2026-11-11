@@ -1,21 +1,27 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// A dashboard block's data, cached per VIEWER: the key carries the org, the
-// dashboard and its version, the block, a hash of its source as run (date tokens
-// resolved, so a rolling range is a new key the day its dates move), the viewer
+// A dashboard source's rows, cached per VIEWER (a block's own source, a shared dataset, a
+// filter's option source): blocks are mapped from them on every request (transform is cheap),
+// so blocks sharing a dataset share one entry and one run. The key carries the org, the
+// dashboard and its version, the source (block, dataset or filter id), a hash of the source as
+// run (filter and date tokens resolved, so a rolling range is a new key the day its dates move,
+// and a filter value a param reads is a new key), the range, the viewer
 // and a hash of the viewer's scopes and dimension grants, so a revoked scope or
 // grant is a new key and never serves what the viewer could read before. TTL: the block's refreshSec
 // (spec.blockTtlSec, at most 900 s for any source).
 //
 // Bounds, per viewer: at most MAX_IN_FLIGHT block runs at once (the rest wait
 // their turn), one forced refresh per block per REFRESH_WINDOW_SEC (a
-// second one is refused, 429 for that block only), and at most CUSTOM_WINDOW_RUNS
-// uncached runs of a custom range per block per minute: a preset or the default never
-// counts, so normal use never meets it, but a script walking day after day does.
+// second one is refused, 429 for that block only), and a budget of runs the cache cannot
+// absorb: a custom range, a filter value a param reads, and any read whose result could not be
+// kept (too large, or Redis down). Each counts toward CUSTOM_WINDOW_RUNS per source and
+// VIEWER_WINDOW_RUNS across all of the viewer's sources, per minute: a preset, the default and
+// a cached read never count, so normal use never meets it, but a script walking day after day,
+// or paging a large uncacheable read, does.
 //
 // Redis down: the block is computed uncached, with a warning. Every Redis call
-// is bounded (REDIS_TIMEOUT_MS), and the refresh limit falls back to this
-// process's own memory.
+// is bounded (REDIS_TIMEOUT_MS); the refresh limit, the budget and the "could not be kept"
+// marks fall back to this process's own memory (bounded maps), so the runs stay budgeted.
 
 import { createHash } from "node:crypto"
 import { rootLogger } from "~/lib/logger"
@@ -27,7 +33,10 @@ export const MAX_IN_FLIGHT = 4
 export const REFRESH_WINDOW_SEC = 30
 export const REDIS_TIMEOUT_MS = 300
 export const CUSTOM_WINDOW_RUNS = 12
+export const VIEWER_WINDOW_RUNS = 60
 export const CUSTOM_WINDOW_SEC = 60
+/** At most this many keys in each in-process fallback map (the oldest go first). */
+const LOCAL_MAX_KEYS = 10_000
 
 /** The few Redis operations the cache needs; tests inject a fake. */
 export interface BlockCacheStore {
@@ -81,6 +90,11 @@ export const BlockCacheTestAccess = {
   setStore(next: BlockCacheStore | null): void {
     store = next ?? redisBlockCacheStore
   },
+  /** Forgets this process's fallback counts and marks. */
+  resetLocal(): void {
+    localWindowRuns.clear()
+    localUncacheable.clear()
+  },
 }
 
 export interface CacheViewer {
@@ -124,19 +138,38 @@ export function sourceHash(source: unknown): string {
   return createHash("sha256").update(canonicalJson(source)).digest("hex").slice(0, 16)
 }
 
-export function blockCacheKey(
+/** Which source of a dashboard: a block's own, a dataset, a filter's option source. */
+export type SourceKey = `blk:${string}` | `ds:${string}` | `opt:${string}`
+
+export function sourceCacheKey(
   viewer: CacheViewer,
-  block: {
+  entry: {
     dashboardId: string
     version: number
-    blockId: string
+    sourceKey: SourceKey
     resolvedSource: unknown
-    /** The dashboard range the run read (a block that follows it), else null. */
+    /** The dashboard range the run read (a source that follows it), else null. */
     range?: { from: string; to: string } | null
   },
 ): string {
-  const range = block.range ? `${block.range.from}..${block.range.to}` : "fixed"
-  return `dash:block:${viewer.orgId}:${block.dashboardId}:${block.version}:${block.blockId}:${sourceHash(block.resolvedSource)}:${range}:${viewer.userId}:${permissionHash(viewer)}`
+  const range = entry.range ? `${entry.range.from}..${entry.range.to}` : "fixed"
+  return `dash:src:${viewer.orgId}:${entry.dashboardId}:${entry.version}:${entry.sourceKey}:${sourceHash(entry.resolvedSource)}:${range}:${viewer.userId}:${permissionHash(viewer)}`
+}
+
+const inFlight = new Map<string, Promise<unknown>>()
+
+/**
+ * Runs `fn` once for concurrent callers of the same `key` in this process: blocks that share
+ * a dataset load together, and the second waits on the first's run instead of starting its own.
+ */
+export async function singleFlight<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const running = inFlight.get(key)
+  if (running) return running as Promise<T>
+  const p = fn().finally(() => {
+    inFlight.delete(key)
+  })
+  inFlight.set(key, p)
+  return p
 }
 
 /**
@@ -184,29 +217,71 @@ export async function takeRefresh(
   }
 }
 
-/** The custom-range budget's fallback while Redis is down: this process only. */
+/** The budget's fallback while Redis is down: this process only. */
 const localWindowRuns = new Map<string, { count: number; until: number }>()
 
+function trim<V>(map: Map<string, V>): void {
+  while (map.size > LOCAL_MAX_KEYS) map.delete(map.keys().next().value as string)
+}
+
+/** One more count on `key` this window: the count now (Redis, else this process). */
+async function countRun(key: string): Promise<number> {
+  try {
+    return await store.increment(key, CUSTOM_WINDOW_SEC)
+  } catch (err) {
+    log.warn({ err, key }, "dashboard run budget: redis unavailable, counting in this process")
+    const now = Date.now()
+    for (const [k, v] of localWindowRuns) if (v.until <= now) localWindowRuns.delete(k)
+    const entry = localWindowRuns.get(key) ?? { count: 0, until: now + CUSTOM_WINDOW_SEC * 1000 }
+    entry.count++
+    localWindowRuns.set(key, entry)
+    trim(localWindowRuns)
+    return entry.count
+  }
+}
+
 /**
- * May this viewer run this block over one more custom range not in the cache? At most
- * CUSTOM_WINDOW_RUNS a CUSTOM_WINDOW_SEC (its comparison run counts too).
+ * May this viewer make one more run the cache cannot absorb (a custom range, a filter value a
+ * param reads, a read that could not be kept) of this source? At most CUSTOM_WINDOW_RUNS per
+ * source and VIEWER_WINDOW_RUNS across every source of the viewer, a CUSTOM_WINDOW_SEC (a
+ * comparison run counts too).
  */
 export async function takeCustomWindowRun(
   viewer: CacheViewer,
   dashboardId: string,
   blockId: string,
 ): Promise<boolean> {
-  const key = `dash:windows:${viewer.orgId}:${dashboardId}:${blockId}:${viewer.userId}`
+  const perSource = await countRun(
+    `dash:windows:${viewer.orgId}:${dashboardId}:${blockId}:${viewer.userId}`,
+  )
+  if (perSource > CUSTOM_WINDOW_RUNS) return false
+  return (await countRun(`dash:windows:${viewer.orgId}:${viewer.userId}`)) <= VIEWER_WINDOW_RUNS
+}
+
+/** Keys whose last result could not be kept, while Redis is down (this process only). */
+const localUncacheable = new Map<string, number>()
+
+/** Marks `key`'s result as one the cache could not keep: its next runs are budgeted. */
+export async function markUncacheable(key: string, ttlSec: number): Promise<void> {
+  const now = Date.now()
+  for (const [k, until] of localUncacheable) if (until <= now) localUncacheable.delete(k)
+  localUncacheable.set(key, now + ttlSec * 1000)
+  trim(localUncacheable)
   try {
-    return (await store.increment(key, CUSTOM_WINDOW_SEC)) <= CUSTOM_WINDOW_RUNS
-  } catch (err) {
-    log.warn({ err, dashboardId, blockId }, "dashboard window budget: redis unavailable")
-    const now = Date.now()
-    for (const [k, v] of localWindowRuns) if (v.until <= now) localWindowRuns.delete(k)
-    const entry = localWindowRuns.get(key) ?? { count: 0, until: now + CUSTOM_WINDOW_SEC * 1000 }
-    entry.count++
-    localWindowRuns.set(key, entry)
-    return entry.count <= CUSTOM_WINDOW_RUNS
+    await store.set(`${key}:uncached`, "1", ttlSec)
+  } catch {
+    // Redis down: the process's own mark stands.
+  }
+}
+
+/** Was `key`'s last result one the cache could not keep (here, or in Redis)? */
+export async function isUncacheable(key: string): Promise<boolean> {
+  if ((localUncacheable.get(key) ?? 0) > Date.now()) return true
+  try {
+    return (await store.get(`${key}:uncached`)) !== null
+  } catch {
+    // Redis down: nothing it marked can be read, and every result is uncached here.
+    return false
   }
 }
 
@@ -220,11 +295,18 @@ export async function readCachedBlock<T>(key: string): Promise<T | null> {
   }
 }
 
-export async function writeCachedBlock(key: string, value: unknown, ttlSec: number): Promise<void> {
+/** Caches `value`: true when it was kept. */
+export async function writeCachedBlock(
+  key: string,
+  value: unknown,
+  ttlSec: number,
+): Promise<boolean> {
   try {
     await store.set(key, JSON.stringify(value), ttlSec)
+    return true
   } catch (err) {
     log.warn({ err, key }, "dashboard block cache unavailable: result not cached")
+    return false
   }
 }
 

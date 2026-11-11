@@ -3,7 +3,7 @@
     "id": "C01",
     "set": "seed",
     "lang": "fr",
-    "say": "NNN a annulé, enlève les du mois",
+    "say": "Belcour a annulé, enlève-les du mois",
     "typed": [
       "annuler abonnement mois",
       "enlever facture du mois",

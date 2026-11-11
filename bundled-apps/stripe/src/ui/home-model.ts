@@ -391,7 +391,10 @@ export interface Attention {
 const MONEY_REQUESTS = new Set(["stripe:refunds_create", "stripe:subscription_cancel"])
 
 /** True when the card is past its expiry month. */
-export function cardExpired(card: { exp: string | null } | null | undefined, now: Date): boolean {
+export function cardExpired(
+  card: { brand?: string | null; last4?: string | null; exp: string | null } | null | undefined,
+  now: Date,
+): boolean {
   const m = /^(\d{1,2})\/(\d{2}|\d{4})$/.exec(card?.exp ?? "")
   if (!m) return false
   const year = m[2]!.length === 2 ? 2000 + Number(m[2]) : Number(m[2])

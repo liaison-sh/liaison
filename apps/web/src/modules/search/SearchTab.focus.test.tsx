@@ -103,6 +103,6 @@ describe("Search tab registration", () => {
     bootstrapKernelApps()
     const reg = getTabType("kernel:search")
     expect(reg).toBeDefined()
-    expect(reg?.sidebar).toBeUndefined()
+    expect(reg?.sidebar).toBeNull()
   })
 })

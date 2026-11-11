@@ -97,3 +97,4 @@ ctx.fetch timeoutMs: shortens the 10 s default, a write may ask for up to 30 s -
 approval:detail:panel: a contribution's for_tool shows it only on that tool's approval card; the card asks with ?for_tool= and passes approvalId, toolName, status, payload, payloadHash, threadId, canDecide, viewerScopes -> apps/api/src/modules/slots/registry.ts:108 ; apps/api/src/modules/slots/routes.ts:23 ; apps/web/src/modules/approvals/ApprovalDetailPanels.tsx:34-42
 mountEntityDiscussion prefill puts text in the box, never sent -> packages/host-sdk/src/index.ts:151 ; apps/web/src/modules/threads/EntityDiscussionPanel.tsx:107
 app.tabLabel names the tab after the record; null keeps the view's label -> packages/host-sdk/src/index.ts:717 ; apps/web/src/modules/shell/open-record.ts:75
+ctx.jobs.enqueue / ctx.timers.wakeIn / ctx.steps.run -> packages/app-sdk/src/types.ts:112 ; packages/app-sdk/src/types.ts:124 ; packages/app-sdk/src/types.ts:185

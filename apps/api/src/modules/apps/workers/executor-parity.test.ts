@@ -11,7 +11,7 @@
 // their own run, a nested hop under a breadth cap of 1 completes, a replayed
 // /run body drives no second effect, and every fallback to QuickJS is tagged.
 
-import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -20,11 +20,13 @@ import { app } from "~/app"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { createRlsSession } from "~/db/rls"
+import * as jobsModule from "~/infra/jobs/jobs"
 import { env } from "~/lib/env"
 import { appBridgeManifestRegistry, connectionConfigRegistry } from "~/modules/apps/app-registries"
 import { createCredentialConnection } from "~/modules/apps/connections/service"
 import { reloadInstalledApps } from "~/modules/apps/init"
 import { installAppFromTarball, uninstallApp } from "~/modules/apps/install-service"
+import { buildJobBridge } from "~/modules/apps/runtime"
 import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
 import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { clearInstalledIdentityCache, runApp } from "~/modules/apps/sandbox/run-app"
@@ -557,6 +559,112 @@ describe("ctx.store on every executor", () => {
       expect(await runStore(ex, "wparityb", "storeGet", { c: "shared", id: "kept" })).toBeNull()
     }
   }, 60_000)
+})
+
+describe("ctx.steps on every executor: a job processes N pages over several runs", () => {
+  /**
+   * Run the fixture's `pages` job the way the job worker does (a session job
+   * bridge from buildJobBridge, runApp), with the queue captured: each run's
+   * continuation is run next, until none is left.
+   */
+  async function drive(executor: StoreExecutor, tag: string, total: number) {
+    if (executor === "workers") workersOn()
+    else workersOff()
+    const manifest = appBridgeManifestRegistry.get([orgId, "wparity"])
+    if (!manifest) throw new Error("wparity is not registered")
+    const scopes = ["wparity:*"]
+    const queued: Array<{ job: string; payload: Record<string, unknown>; opts: any }> = []
+    const spy = spyOn(jobsModule, "enqueueAppJob").mockImplementation((async (
+      _app: string,
+      job: string,
+      payload: unknown,
+      opts?: unknown,
+    ) => {
+      queued.push({ job, payload: payload as Record<string, unknown>, opts })
+      return "id"
+    }) as never)
+    const results: unknown[] = []
+    const jobIds: string[] = []
+    try {
+      let payload: Record<string, unknown> = { total, tag, orgId }
+      for (let run = 0; run < total + 2; run++) {
+        const session = createRlsSession({
+          actorType: "user",
+          userId: userA.id,
+          orgId,
+          scopes,
+          dimensionGrants: {},
+        })
+        const bridge = buildJobBridge(
+          "wparity",
+          userA.id,
+          orgId,
+          { ...payload, _session: session } as never,
+          manifest,
+          scopes,
+          { name: "pages", timeoutMs: 30_000 },
+        )
+        results.push(
+          await runApp({
+            trusted: executor === "inprocess",
+            appName: "wparity",
+            orgId,
+            bundlePath: join(process.env.LIAISON_APPS_DIR ?? "", "wparity", "1.0.0", "bundle.js"),
+            exportName: "pages",
+            entry: "job:pages",
+            params: payload,
+            bridge,
+            holdsTx: false,
+          }),
+        )
+        if (executor !== "inprocess") {
+          expect(lastRun("job:pages")?.executor).toBe(
+            executor === "workers" ? "workers" : "quickjs",
+          )
+        }
+        const next = queued.shift()
+        if (!next) break
+        expect(next.job).toBe("pages")
+        jobIds.push(next.opts.jobId)
+        payload = next.payload
+      }
+    } finally {
+      spy.mockRestore()
+    }
+    return { results, jobIds }
+  }
+
+  it("three pages, three runs, one row per page, on QuickJS (both) and Workers", async () => {
+    const answers: Record<string, unknown> = {}
+    for (const ex of STORE_EXECUTORS) {
+      const tag = `steps_${ex}`
+      const { results, jobIds } = await drive(ex, tag, 3)
+      expect(results).toEqual([
+        { state: "scheduled", cursor: 1, chunks: 1 },
+        { state: "scheduled", cursor: 2, chunks: 1 },
+        { state: "done", cursor: 3, chunks: 1 },
+      ])
+      // One continuation per generation, deduplicated by an org-scoped id.
+      expect(jobIds).toHaveLength(2)
+      expect(jobIds[0]).toMatch(new RegExp(`^${orgId}:steps:pages-${tag}:[0-9a-f-]+:1$`))
+      expect(jobIds[1]).toMatch(new RegExp(`^${orgId}:steps:pages-${tag}:[0-9a-f-]+:2$`))
+      const rows = await sql<{ title: string }[]>`
+        SELECT title FROM app_wparity.items
+        WHERE org_id = ${orgId} AND title LIKE ${`${tag}-page-%`} ORDER BY title`
+      expect(rows.map((r) => r.title)).toEqual([0, 1, 2].map((n) => `${tag}-page-${n}`))
+      // A later trigger of a finished step runs nothing.
+      const again = await drive(ex, tag, 3)
+      expect(again.results).toEqual([{ state: "done", cursor: 3, chunks: 0 }])
+      answers[ex] = results
+    }
+    expect(answers.pool).toEqual(answers.inprocess)
+    expect(answers.workers).toEqual(answers.inprocess)
+    const [state] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM kernel.app_documents
+      WHERE org_id = ${orgId} AND app = 'wparity' AND collection = 'liaison_steps'
+        AND (data->>'done')::boolean AND data->'lease' = 'null'::jsonb`
+    expect(state?.n).toBe(3)
+  }, 120_000)
 })
 
 describe("Workers-only properties", () => {

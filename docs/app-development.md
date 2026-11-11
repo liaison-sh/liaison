@@ -223,7 +223,9 @@ export async function items_create(
 |---|---|
 | `ctx.db` | Read/write your app's entity rows, scoped to the org. `insertNow` / `updateNow` commit at once, for a record written before an outside call you cannot undo ([Sandboxing](app-sandbox.md#commit-an-intent-row-before-an-outside-call-ctxdbinsertnow)) |
 | `ctx.emit` | Emit a domain event other apps can subscribe to |
-| `ctx.enqueueJob` | Enqueue a background job |
+| `ctx.jobs.enqueue` | Enqueue a background job (`delay` up to 15 min, `jobId` to deduplicate); `ctx.enqueueJob` is the same call |
+| `ctx.timers.wakeIn` | Run a job in N seconds instead of waiting inside a run |
+| `ctx.steps.run` | Long work in bounded chunks across runs, the cursor saved for you ([Sandboxing](app-sandbox.md#long-work-come-back-later-ctxsteps-ctxtimers-ctxjobs)) |
 | `ctx.connections` | Per-connection OAuth/credential tokens |
 | `ctx.fetch` | Call an external API (kernel-mediated, allowlist-checked). `timeoutMs` shortens the 10 s deadline; a write may ask for up to 30 s |
 | `ctx.time.civil` | The date and clock of an instant in a named IANA zone. The sandbox has no `Intl`, so `new Date()` only knows UTC. `UTC`, the column default, follows the organization's zone; `Etc/UTC` is UTC exactly; an unknown zone rejects with `invalid_timezone` |

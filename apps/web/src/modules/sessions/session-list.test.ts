@@ -83,6 +83,7 @@ function fakeApi(pages: Pages, fail: NodeSessionGroup[] = []) {
 }
 
 afterEach(() => {
+  vi.useRealTimers()
   resetSessionList()
   resetSessionStore()
 })
@@ -103,6 +104,10 @@ describe("session list", () => {
   })
 
   it("S9: a needs_you row is in the Needs-you group, failed in Failed, the badge counts waiting + needs_you", () => {
+    // needsYouCount / countsByNode group by the real clock: pin it to NOW, or
+    // the row ended a day before NOW turns "older" a month after NOW.
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(NOW)
     const ended = iso(NOW - DAY)
     // As the API serves it (D14): status waiting for older clients, the true state beside it.
     applyRow(row({ id: "n", status: "waiting", state: "needs_you", endedAt: ended }))

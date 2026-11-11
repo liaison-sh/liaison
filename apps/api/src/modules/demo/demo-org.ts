@@ -12,10 +12,12 @@ import {
   type DemoNeed,
   type DemoOrgMarker,
   type DemoWelcomeChoice,
+  type DemoWorldId,
   demoEntrySchema,
   demoMarker,
   demoOrgMarkerSchema,
   demoWelcomeChoiceSchema,
+  demoWorldIdOf,
   resolveLocale,
   type ShippedLocale,
 } from "@liaison/shared"
@@ -264,6 +266,17 @@ export function demoEntryOf(marker: DemoOrgMarker | null): DemoEntry | null {
   return parsed.success ? parsed.data : null
 }
 
+/**
+ * The demo world a marker's workspace holds (`marker.worldId`). A marker that
+ * names none, or names something that is not a world, reads as the default
+ * world: never as "not a demo", which only the marker's absence means. The
+ * visitor administers the org, so a caller that acts on the world still checks
+ * it against the worlds the box runs.
+ */
+export function demoWorldOf(marker: DemoOrgMarker | null): DemoWorldId {
+  return demoWorldIdOf(marker?.worldId)
+}
+
 /** Record the answer to the door's company question on the marker. */
 export async function recordDemoEntry(orgId: string, entry: DemoEntry): Promise<void> {
   await setDemoMarkerHint(orgId, "entry", entry)
@@ -332,18 +345,24 @@ export async function endVisitorOrg(orgId: string, now: Date = new Date()): Prom
  * Build a visitor marker expiring `ttlHours` from now. `needs` (pick order)
  * rides along as a passthrough field the web reads to order the scenarios: a
  * UI hint only, since the visitor administers the org and could rewrite it.
- * The lead row is the record of what was picked.
+ * The lead row is the record of what was picked. `world` names the demo world
+ * the workspace holds and, for a world that follows the month, the Paris month
+ * it was seeded for (`worldMonth`, `YYYY-MM`); neither is declared in the
+ * marker schema, and `demoWorldOf` reads the world back.
  */
 export function visitorMarker(
   ttlHours: number,
   now: Date = new Date(),
   needs?: readonly DemoNeed[],
+  world?: { worldId: DemoWorldId; worldMonth?: string | null },
 ): DemoOrgMarker {
   return {
     variant: "visitor",
     createdAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + ttlHours * 60 * 60 * 1000).toISOString(),
     ...(needs ? { needs: [...needs] } : {}),
+    ...(world ? { worldId: world.worldId } : {}),
+    ...(world?.worldMonth ? { worldMonth: world.worldMonth } : {}),
   }
 }
 

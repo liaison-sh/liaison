@@ -1028,6 +1028,7 @@
     "errTurnstile": "We could not confirm this browser. Reload the page and try again.",
     "errDisposable": "That address is a throwaway inbox. Use an address you keep.",
     "errDomainCap": "Enough demos have been confirmed from that email domain today. Try again tomorrow, or use another address.",
+    "needsNotInWorld": "None of the picked topics is in this company's demo. Pick at least one of the topics shown.",
     "verifyTitle": "Confirm your email so the agents can run",
     "verifyBody": "We sent a 6-digit code to {{email}}. Paste it here, or open the link in that email.",
     "verifyYourAddress": "your address",

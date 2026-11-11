@@ -11,6 +11,7 @@
 // (tools.ts): what changes, from where a block reads (tool or collection, its params with
 // each date token and what it is today), its position, the range.
 
+import { APPROVAL_SUMMARY_LONG_LINES_MAX } from "@liaison/shared"
 import { z } from "zod"
 import {
   COMPARE_MODES,
@@ -18,6 +19,7 @@ import {
   DateTokenError,
   type DayWindow,
   dateTokensIn,
+  hasRangeTokens,
   resolveDateTokens,
   resolveTimeRange,
   type TimeRange,
@@ -25,13 +27,24 @@ import {
 import {
   type DashboardSpec,
   dashboardDefaultRange,
+  dashboardSpecSchema,
   MAX_DASHBOARD_BLOCKS,
   MAX_FILTERS,
   timeRangeSchema,
 } from "~/modules/dashboards/spec"
 
-/** The most operations one edit takes: each one is one line of its approval card. */
-export const MAX_EDIT_OPERATIONS = 8
+/**
+ * The most changes one dashboard approval card lists, one numbered line each: the bound of
+ * dashboards_edit's operations and of the changes one dashboards_update makes to an org
+ * dashboard. One request is one card however many changes it pools (owner, 2026-11-11);
+ * this bounds it against abuse, as the shared summary schema does for these card kinds.
+ */
+export const MAX_CARD_CHANGES = APPROVAL_SUMMARY_LONG_LINES_MAX
+
+/** The refusal of a request with more changes than one card lists. */
+export function tooManyChangesMessage(count: number): string {
+  return `${count} changes is more than one approval card lists (${MAX_CARD_CHANGES}). Split the request: send the first ${MAX_CARD_CHANGES} changes now, and send the rest only once that approval is decided and applied, reading the dashboard again (kernel__dashboards_get) for its new version.`
+}
 
 const blockId = z.string().min(1).max(40)
 const blockRecord = z.record(z.string(), z.unknown())
@@ -326,10 +339,86 @@ function compact(value: unknown, max = 160): string {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s
 }
 
+/** Params as written when short; else each one by name, its value cut (the tokens follow). */
+function paramWords(params: Record<string, unknown>): string {
+  const whole = JSON.stringify(params)
+  if (whole.length <= 300) return whole
+  return Object.entries(params)
+    .map(([k, v]) => `${k}: ${compact(v, 50)}`)
+    .join(", ")
+}
+
+/** One aggregation in words: "sum of total", "a count of rows". */
+function aggWords(field: unknown, agg: unknown): string {
+  const a = agg ?? (field ? "sum" : "count")
+  return a === "count" && !field ? "a count of rows" : `${String(a)} of ${String(field)}`
+}
+
+/**
+ * What a block's map draws, in words: "sum of total by status, target 5000; keeps only rows
+ * where status is not cancelled". `spec` names the filters a where clause reads.
+ */
+function mapWords(rawMap: unknown, spec: Record<string, unknown> = {}): string {
+  const map = isObject(rawMap) ? rawMap : {}
+  const field = map.value ?? map.y
+  const parts: string[] = []
+  const measureList = (list: unknown) =>
+    (Array.isArray(list) ? list : [])
+      .filter(isObject)
+      .map((m) => `${String(m.label)} (${aggWords(m.field, m.agg)})`)
+      .join(", ")
+  if (Array.isArray(map.columns)) {
+    parts.push(
+      `columns ${map.columns.map((c) => String(isObject(c) ? (c.label ?? c.field) : c)).join(", ")}`,
+    )
+  } else if (Array.isArray(map.stages)) parts.push(`the stages ${measureList(map.stages)}`)
+  else if (Array.isArray(map.measures)) parts.push(measureList(map.measures))
+  else parts.push(aggWords(field, map.agg))
+  if (isObject(map.groupBy)) {
+    const bucket = map.groupBy.bucket ? ` per ${String(map.groupBy.bucket)}` : ""
+    parts[0] += ` by ${String(map.groupBy.field)}${bucket}`
+  } else if (map.x ?? map.label) parts[0] += ` by ${String(map.x ?? map.label)}`
+  if (Array.isArray(map.order)) parts.push(`stages in the order ${map.order.join(", ")}`)
+  if (map.series) parts.push(`split by ${String(map.series)}`)
+  if (map.stacked) parts.push("stacked")
+  if (map.horizontal) parts.push("horizontal bars")
+  if (Array.isArray(map.lineSeries)) parts.push(`drawn as lines: ${map.lineSeries.join(", ")}`)
+  if (map.secondaryAxis) parts.push("lines on their own axis")
+  if (map.target !== undefined) parts.push(`target ${String(map.target)}`)
+  if (isObject(map.sparkline)) {
+    parts.push(
+      `sparkline of ${String(map.sparkline.field)} per ${String(map.sparkline.bucket ?? "day")}`,
+    )
+  }
+  if (map.link !== undefined) parts.push(`each row links to ${compact(map.link, 80)}`)
+  let out = parts.join(", ")
+  if (Array.isArray(map.where) && map.where.length) {
+    out += `; keeps only rows where ${whereWords(map.where, spec)}`
+  }
+  return out
+}
+
+/** Whether a block follows the dashboard range (spec.ts blockRangeMode, on an unchecked block). */
+function rangeModeWords(
+  block: Record<string, unknown>,
+  spec: Record<string, unknown> = {},
+): string {
+  if (block.type === "text") return "no dates"
+  const shared =
+    typeof block.dataset === "string" && isObject(spec.datasets)
+      ? spec.datasets[block.dataset]
+      : undefined
+  const s = isObject(block.source) ? block.source : isObject(shared) ? shared : {}
+  const follows =
+    block.timeRange === "dashboard" ||
+    (block.timeRange !== "fixed" && hasRangeTokens(s.kind === "store" ? s.query : s.params))
+  return follows ? "follows the dashboard range" : "keeps its own dates"
+}
+
 /** Each date token of `value` and what it means today. */
 function tokenMeanings(value: unknown, window: DayWindow, ctx: DescribeContext): string {
   const out = dateTokensIn(value)
-    .slice(0, 4)
+    .slice(0, 8)
     .map((token) => {
       if (token.startsWith("{{range.")) {
         const today = (() => {
@@ -361,7 +450,7 @@ function sourceWords(source: unknown, window: DayWindow, ctx: DescribeContext): 
   }
   const params =
     isObject(s.params) && Object.keys(s.params).length
-      ? ` with ${compact(s.params)}`
+      ? ` with ${paramWords(s.params)}`
       : " with no params"
   return `${String(s.tool ?? "(no source)")}${params}${tokenMeanings(s.params, window, ctx)}`
 }
@@ -411,21 +500,6 @@ function whereWords(where: unknown, spec: Record<string, unknown>): string {
       return `${String(c.field)} ${op}${value}`
     })
     .join(", ")
-}
-
-/** A map change in words, key by key (null removes). */
-function mapWords(change: unknown, spec: Record<string, unknown>): string {
-  if (!isObject(change)) return `map ${compact(change, 120)}`
-  const parts: string[] = []
-  for (const [k, v] of Object.entries(change)) {
-    if (v === null) parts.push(`no more map.${k}`)
-    else if (k === "where") parts.push(`keeps only rows where ${whereWords(v, spec)}`)
-    else if (k === "stacked") parts.push(v ? "stacked" : "not stacked")
-    else if (k === "horizontal") parts.push(v ? "horizontal bars" : "vertical bars")
-    else if (k === "link") parts.push(`each row links to ${compact(v, 80)}`)
-    else parts.push(`map.${k} ${compact(v, 80)}`)
-  }
-  return parts.join("; ")
 }
 
 /** A filter in words: its label, kind, options and default. */
@@ -484,7 +558,7 @@ function changeWords(
           : `now reads the shared dataset '${String(v)}'`,
       )
     } else if (k === "text") parts.push(`note now "${compact(v, 100)}"`)
-    else if (k === "map") parts.push(mapWords(v, spec))
+    else if (k === "map") parts.push(`now shows ${mapWords(mergeKeys(before.map, v), spec)}`)
     else if (k === "timeRange") {
       parts.push(
         v === "fixed"
@@ -536,11 +610,13 @@ export function describeOperations(
       case "addBlock": {
         const b = op.block
         const at = indexOf(nextBlocks, String(b.id))
-        const where =
-          isObject(b.map) && Array.isArray(b.map.where) && b.map.where.length
-            ? `, keeping only rows where ${whereWords(b.map.where, specOf(next))}`
-            : ""
-        line = `Add a ${String(b.type ?? "")} block "${String(b.title ?? b.id)}" (width ${String(b.width ?? 1)})${at >= 0 ? ` at ${positionWords(nextBlocks, at)}` : ""}, ${blockSourceWords(b, specOf(next), window, ctx)}${where}`
+        const refresh =
+          b.refreshSec !== undefined ? `, refreshed every ${String(b.refreshSec)} s` : ""
+        const shows =
+          b.type === "text"
+            ? ""
+            : `; it shows ${mapWords(b.map, specOf(next))}, ${rangeModeWords(b, specOf(next))}`
+        line = `Add a ${String(b.type ?? "")} block "${String(b.title ?? b.id)}" (width ${String(b.width ?? 1)})${at >= 0 ? ` at ${positionWords(nextBlocks, at)}` : ""}, ${blockSourceWords(b, specOf(next), window, ctx)}${shows}${refresh}`
         break
       }
       case "updateBlock": {
@@ -633,4 +709,167 @@ export function describeOperations(
     state = next
   })
   return lines
+}
+
+// ── a whole new spec, as operations ────────────────────────────────────────
+// (title, visibility, range, datasets, filters, then blocks; removed datasets and filters last)
+
+/** JSON with object keys sorted: two values are the same when this is. */
+function stable(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`
+  if (isObject(value)) {
+    return `{${Object.keys(value)
+      .filter((k) => value[k] !== undefined)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stable(value[k])}`)
+      .join(",")}}`
+  }
+  return JSON.stringify(value) ?? "null"
+}
+const same = (a: unknown, b: unknown) => stable(a) === stable(b)
+
+/** The keys of `next` that differ from `base`: the new value, or null where a key went. */
+function patchOf(base: unknown, next: unknown): Record<string, unknown> {
+  const b = isObject(base) ? base : {}
+  const n = isObject(next) ? next : {}
+  const out: Record<string, unknown> = {}
+  for (const k of new Set([...Object.keys(b), ...Object.keys(n)])) {
+    if (n[k] === undefined) {
+      if (b[k] !== undefined) out[k] = null
+    } else if (!same(b[k], n[k])) out[k] = n[k]
+  }
+  return out
+}
+
+/** An updateBlock's `changes` turning `before` into `after` (mergeBlock's rules, reversed). */
+function blockChanges(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+): Record<string, unknown> {
+  const changes: Record<string, unknown> = {}
+  for (const k of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    if (k === "id" || same(before[k], after[k])) continue
+    const was = before[k]
+    const now = after[k]
+    if (now === undefined) changes[k] = null
+    else if (k === "map") changes.map = patchOf(was, now)
+    else if (k === "source" && isObject(was) && isObject(now) && was.kind === now.kind) {
+      const source: Record<string, unknown> = {}
+      for (const sk of new Set([...Object.keys(was), ...Object.keys(now)])) {
+        if (same(was[sk], now[sk])) continue
+        if (sk === "params" || sk === "query") source[sk] = patchOf(was[sk], now[sk])
+        else source[sk] = now[sk] === undefined ? null : now[sk]
+      }
+      changes.source = source
+    } else changes[k] = now
+  }
+  return changes
+}
+
+/** The indexes of a longest increasing run of `values` (the blocks that need not move). */
+function longestIncreasing(values: number[]): Set<number> {
+  const length = values.map(() => 1)
+  const prev = values.map(() => -1)
+  for (let i = 0; i < values.length; i++) {
+    for (let j = 0; j < i; j++) {
+      if (values[j]! < values[i]! && length[j]! + 1 > length[i]!) {
+        length[i] = length[j]! + 1
+        prev[i] = j
+      }
+    }
+  }
+  let at = length.indexOf(Math.max(0, ...length))
+  const out = new Set<number>()
+  while (at >= 0) {
+    out.add(at)
+    at = prev[at]!
+  }
+  return out
+}
+
+/**
+ * The operations that turn `current` into `next` (a whole-spec save, dashboards_update),
+ * so its approval card lists each change as dashboards_edit's does: title, visibility,
+ * the default range and comparison, each block removed, changed (with what changed),
+ * added or moved. Applying them to `current` gives `next`'s blocks in `next`'s order.
+ */
+export function diffDashboards(
+  current: EditableDashboard,
+  next: { title?: string; visibility?: "personal" | "org"; spec?: unknown },
+): EditOperation[] {
+  const ops: EditOperation[] = []
+  if (next.title !== undefined && next.title !== current.title) {
+    ops.push({ op: "setTitle", title: next.title })
+  }
+  if (next.visibility !== undefined && next.visibility !== current.visibility) {
+    ops.push({ op: "setVisibility", visibility: next.visibility })
+  }
+  if (!isObject(next.spec)) return ops
+  const was = current.spec as unknown as Record<string, unknown>
+  // Compared as it would be saved (its defaults filled in), so a default is not a change.
+  const parsed = dashboardSpecSchema.safeParse(next.spec)
+  const now = parsed.success ? (parsed.data as unknown as Record<string, unknown>) : next.spec
+  const rangeChanged = !same(was.timeRange, now.timeRange)
+  const compareChanged = !same(was.compare, now.compare)
+  if (rangeChanged || compareChanged) {
+    ops.push({
+      op: "setTimeRange",
+      ...(rangeChanged ? { timeRange: (now.timeRange ?? null) as TimeRange | null } : {}),
+      ...(compareChanged ? { compare: (now.compare ?? null) as CompareMode | null } : {}),
+    })
+  }
+  // Shared datasets and filters first (a block may read a new one), their removals last.
+  const removals: EditOperation[] = []
+  const oldDatasets = isObject(was.datasets) ? was.datasets : {}
+  const newDatasets = isObject(now.datasets) ? now.datasets : {}
+  for (const [id, source] of Object.entries(newDatasets)) {
+    if (!same(oldDatasets[id], source) && isObject(source)) {
+      ops.push({ op: "setDataset", id, source })
+    }
+  }
+  for (const id of Object.keys(oldDatasets)) {
+    if (!(id in newDatasets)) removals.push({ op: "removeDataset", id })
+  }
+  const filtersOf = (spec: Record<string, unknown>) =>
+    (Array.isArray(spec.filters) ? spec.filters : []).filter(isObject)
+  const oldFilters = filtersOf(was)
+  const newFilters = filtersOf(now)
+  const newFilterIds = new Set(newFilters.map((f) => String(f.id)))
+  for (const f of oldFilters) {
+    if (!newFilterIds.has(String(f.id))) removals.push({ op: "removeFilter", id: String(f.id) })
+  }
+  const keptFilterOrder = oldFilters
+    .filter((f) => newFilterIds.has(String(f.id)))
+    .map((f) => String(f.id))
+  newFilters.forEach((f, i) => {
+    const at = oldFilters.find((o) => o.id === f.id)
+    const sameOrder = keptFilterOrder.indexOf(String(f.id)) === i
+    if (!at || !same(at, f) || !sameOrder) ops.push({ op: "setFilter", filter: f, position: i })
+  })
+  const blocksOf = (spec: Record<string, unknown>) =>
+    (Array.isArray(spec.blocks) ? spec.blocks : []).filter(isObject)
+  const oldBlocks = blocksOf(was)
+  const newBlocks = blocksOf(now)
+  const newIndex = new Map(newBlocks.map((b, i) => [String(b.id), i]))
+  const oldById = new Map(oldBlocks.map((b) => [String(b.id), b]))
+  for (const b of oldBlocks) {
+    if (!newIndex.has(String(b.id))) ops.push({ op: "removeBlock", blockId: String(b.id) })
+  }
+  const kept = oldBlocks.filter((b) => newIndex.has(String(b.id)))
+  for (const b of kept) {
+    const changes = blockChanges(b, newBlocks[newIndex.get(String(b.id))!]!)
+    if (Object.keys(changes).length) {
+      ops.push({ op: "updateBlock", blockId: String(b.id), changes })
+    }
+  }
+  const staying = longestIncreasing(kept.map((b) => newIndex.get(String(b.id))!))
+  const stays = new Set([...staying].map((i) => String(kept[i]!.id)))
+  newBlocks.forEach((b, i) => {
+    const id = String(b.id)
+    const position: BlockPosition = i === 0 ? 0 : { after: String(newBlocks[i - 1]!.id) }
+    if (!oldById.has(id)) ops.push({ op: "addBlock", block: b, position })
+    else if (!stays.has(id)) ops.push({ op: "moveBlock", blockId: id, position })
+  })
+  ops.push(...removals)
+  return ops
 }

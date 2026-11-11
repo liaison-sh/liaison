@@ -63,16 +63,16 @@ describe("filter tokens in a source's params", () => {
       list: ["a", "{{filter.q}}"],
       since: "{{today-30d}}",
     }
-    expect(resolveFilterTokens(params, { market: ["FR"], channel: ["b2b", "dtc"], q: [] })).toEqual(
-      {
-        market: "FR",
-        channels: ["b2b", "dtc"],
-        query: "tag:b2b,dtc status:open",
-        list: ["a"],
-        since: "{{today-30d}}",
-      },
-    )
-    expect(resolveFilterTokens(params, { market: [], channel: [], q: ["x"] })).toEqual({
+    expect(
+      resolveFilterTokens<unknown>(params, { market: ["FR"], channel: ["b2b", "dtc"], q: [] }),
+    ).toEqual({
+      market: "FR",
+      channels: ["b2b", "dtc"],
+      query: "tag:b2b,dtc status:open",
+      list: ["a"],
+      since: "{{today-30d}}",
+    })
+    expect(resolveFilterTokens<unknown>(params, { market: [], channel: [], q: ["x"] })).toEqual({
       list: ["a", "x"],
       since: "{{today-30d}}",
     })

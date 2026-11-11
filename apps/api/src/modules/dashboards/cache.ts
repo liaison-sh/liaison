@@ -11,8 +11,10 @@
 // (spec.blockTtlSec, at most 900 s for any source).
 //
 // Bounds, per viewer: at most MAX_IN_FLIGHT block runs at once (the rest wait
-// their turn), and one forced refresh per block per REFRESH_WINDOW_SEC (a
-// second one is refused, 429 for that block only).
+// their turn), one forced refresh per block per REFRESH_WINDOW_SEC (a
+// second one is refused, 429 for that block only), and at most CUSTOM_WINDOW_RUNS
+// uncached runs of a custom range per block per minute: a preset or the default never
+// counts, so normal use never meets it, but a script walking day after day does.
 //
 // Redis down: the block is computed uncached, with a warning. Every Redis call
 // is bounded (REDIS_TIMEOUT_MS), and the refresh limit falls back to this
@@ -27,6 +29,8 @@ const log = rootLogger.child({ module: "dashboards-cache" })
 export const MAX_IN_FLIGHT = 4
 export const REFRESH_WINDOW_SEC = 30
 export const REDIS_TIMEOUT_MS = 300
+export const CUSTOM_WINDOW_RUNS = 12
+export const CUSTOM_WINDOW_SEC = 60
 
 /** The few Redis operations the cache needs; tests inject a fake. */
 export interface BlockCacheStore {
@@ -34,6 +38,8 @@ export interface BlockCacheStore {
   set(key: string, value: string, ttlSec: number): Promise<void>
   /** SET NX EX: true when the key was not there and is now set. */
   setIfAbsent(key: string, ttlSec: number): Promise<boolean>
+  /** INCR, the key expiring `ttlSec` after its first count: the count now. */
+  increment(key: string, ttlSec: number): Promise<number>
 }
 
 function bounded<T>(op: Promise<T>): Promise<T> {
@@ -62,6 +68,12 @@ export const redisBlockCacheStore: BlockCacheStore = {
   async setIfAbsent(key, ttlSec) {
     ready()
     return (await bounded(redis.set(key, "1", "EX", ttlSec, "NX"))) === "OK"
+  },
+  async increment(key, ttlSec) {
+    ready()
+    const n = await bounded(redis.incr(key))
+    if (n === 1) await bounded(redis.expire(key, ttlSec))
+    return n
   },
 }
 
@@ -191,6 +203,32 @@ export async function takeRefresh(
     if ((localRefreshes.get(key) ?? 0) > now) return false
     localRefreshes.set(key, now + REFRESH_WINDOW_SEC * 1000)
     return true
+  }
+}
+
+/** The custom-range budget's fallback while Redis is down: this process only. */
+const localWindowRuns = new Map<string, { count: number; until: number }>()
+
+/**
+ * May this viewer run this block over one more custom range not in the cache? At most
+ * CUSTOM_WINDOW_RUNS a CUSTOM_WINDOW_SEC (its comparison run counts too).
+ */
+export async function takeCustomWindowRun(
+  viewer: CacheViewer,
+  dashboardId: string,
+  blockId: string,
+): Promise<boolean> {
+  const key = `dash:windows:${viewer.orgId}:${dashboardId}:${blockId}:${viewer.userId}`
+  try {
+    return (await store.increment(key, CUSTOM_WINDOW_SEC)) <= CUSTOM_WINDOW_RUNS
+  } catch (err) {
+    log.warn({ err, dashboardId, blockId }, "dashboard window budget: redis unavailable")
+    const now = Date.now()
+    for (const [k, v] of localWindowRuns) if (v.until <= now) localWindowRuns.delete(k)
+    const entry = localWindowRuns.get(key) ?? { count: 0, until: now + CUSTOM_WINDOW_SEC * 1000 }
+    entry.count++
+    localWindowRuns.set(key, entry)
+    return entry.count <= CUSTOM_WINDOW_RUNS
   }
 }
 

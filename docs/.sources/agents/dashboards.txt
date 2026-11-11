@@ -77,7 +77,12 @@ Org dashboard events reach every reader, personal ones only their owner, a switc
 Lists re-read on an event; a deleted one leaves at once; an open tab reads again -> apps/web/src/framework/bootstrap.ts:1124 ; apps/web/src/modules/dashboards/dashboards-store.ts:119 ; apps/web/src/modules/dashboards/dashboards-store.ts:126
 Deleted or no longer shared message -> packages/shared/src/i18n/locales/en/kernel.json:6444
 Agent edits by an ordered list of operations, all or none -> apps/api/src/modules/dashboards/service.ts:547 ; apps/api/src/modules/dashboards/edit.ts:161
-At most 8 operations, one card line each -> apps/api/src/modules/dashboards/edit.ts:32 ; apps/api/src/modules/dashboards/edit.ts:347
+One card however many changes, at most 50, a refusal past that says to split and wait -> apps/api/src/modules/dashboards/edit.ts:39 ; packages/shared/src/types/approvals.ts:48
+Long card lists scroll -> apps/web/src/modules/approvals/ApprovalCard.tsx:2014
+Card line of an added block: what it shows, its dates, its refresh; params whole when short, else by name -> apps/api/src/modules/dashboards/edit.ts:287 ; apps/api/src/modules/dashboards/edit.ts:278 ; apps/api/src/modules/dashboards/edit.ts:402
+An edit is checked before an approval is staged -> apps/api/src/modules/dashboards/tools.ts:640 ; apps/api/src/modules/dashboards/service.ts:581
+A whole rebuild's card lists the differences -> apps/api/src/modules/dashboards/tools.ts:269 ; apps/api/src/modules/dashboards/edit.ts:577
+Sharing a personal dashboard reads "Share the dashboard" -> apps/api/src/modules/dashboards/tools.ts:339
 Org dashboard edit: one approval by kernel:dashboards:admin, numbered card -> apps/api/src/modules/dashboards/tools.ts:527 ; apps/api/src/modules/dashboards/tools.ts:282
 Version conflict refuses the edit -> apps/api/src/modules/dashboards/service.ts:547
 Agent puts every change of one request in one call -> apps/api/src/modules/agent/prompts/kernel/build-dashboard.md:28
@@ -109,6 +114,10 @@ Updated N min ago under each block -> apps/web/src/modules/dashboards/blocks/Blo
 Auto-refresh on the block's own interval while on screen -> apps/web/src/modules/dashboards/blocks/BlockCard.tsx:149 ; apps/web/src/modules/dashboards/DashboardView.tsx:232
 Empty block names the days it read -> apps/web/src/modules/dashboards/blocks/BlockCard.tsx:161 ; packages/shared/src/i18n/locales/en/kernel.json:6508
 Rows left out, comparison failed notes -> apps/web/src/modules/dashboards/blocks/BlockCard.tsx:264 ; apps/web/src/modules/dashboards/blocks/BlockCard.tsx:275 ; packages/shared/src/i18n/locales/en/kernel.json:6510 ; packages/shared/src/i18n/locales/en/kernel.json:6511
+range.endExclusive, a skipped midnight starts the day at the change -> apps/api/src/modules/dashboards/relative-dates.ts:47 ; apps/api/src/modules/dashboards/relative-dates.ts:259
+Rolling and custom ranges keep their day count against last year -> apps/api/src/modules/dashboards/relative-dates.ts:479
+Compared period kept 6 h, not re-read by Refresh -> apps/api/src/modules/dashboards/service.ts:830
+At most 12 new custom ranges per block per person per minute -> apps/api/src/modules/dashboards/cache.ts:29 ; apps/api/src/modules/dashboards/service.ts:859
 Block types area, combo, funnel, text -> apps/api/src/modules/dashboards/spec.ts:36 ; apps/api/src/modules/dashboards/spec.ts:39 ; apps/api/src/modules/dashboards/transform.ts:552
 Stacked, horizontal, combo lines on their own axis, funnel stages -> apps/api/src/modules/dashboards/spec.ts:255 ; apps/api/src/modules/dashboards/spec.ts:257 ; apps/api/src/modules/dashboards/spec.ts:261 ; apps/api/src/modules/dashboards/spec.ts:265
 Text note: no source, at most 4,000 characters -> apps/api/src/modules/dashboards/spec.ts:71 ; apps/api/src/modules/dashboards/spec.ts:481

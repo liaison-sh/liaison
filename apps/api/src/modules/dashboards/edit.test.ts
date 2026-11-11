@@ -7,8 +7,11 @@ import { describe, expect, it } from "bun:test"
 import {
   applyOperations,
   describeOperations,
+  diffDashboards,
   type EditableDashboard,
   EditOperationError,
+  MAX_CARD_CHANGES,
+  tooManyChangesMessage,
 } from "~/modules/dashboards/edit"
 import type { DashboardSpec } from "~/modules/dashboards/spec"
 
@@ -154,6 +157,56 @@ describe("describeOperations", () => {
     )
   })
 
+  it("says what an added block aggregates, its target, its dates and its refresh", () => {
+    const [line] = describeOperations(
+      dashboard(),
+      [
+        {
+          op: "addBlock",
+          block: block("rev", {
+            title: "Revenue",
+            refreshSec: 600,
+            source: {
+              kind: "tool",
+              tool: "shop:orders_search",
+              params: { since: "{{range.from}}" },
+            },
+            map: { value: "total", agg: "sum", target: 5000, sparkline: { field: "day" } },
+          }),
+        },
+      ],
+      ctx,
+    )
+    expect(line).toContain(
+      "it shows sum of total, target 5000, sparkline of day per day, follows the dashboard range, refreshed every 600 s",
+    )
+    const [fixed] = describeOperations(dashboard(), [{ op: "addBlock", block: block("n") }], ctx)
+    expect(fixed).toContain("it shows a count of rows, keeps its own dates")
+  })
+
+  it("keeps short params whole, and names each one of long params", () => {
+    const long = "x".repeat(400)
+    const [line] = describeOperations(
+      dashboard(),
+      [
+        {
+          op: "addBlock",
+          block: block("q", {
+            source: {
+              kind: "tool",
+              tool: "db:query",
+              params: { sql: long, since: "{{range.from}}", until: "{{range.to}}" },
+            },
+          }),
+        },
+      ],
+      ctx,
+    )
+    expect(line).toContain("with sql: xxxxx")
+    expect(line).toContain("since: {{range.from}}, until: {{range.to}}")
+    expect(line).toContain("{{range.to}} = the dashboard range's end")
+  })
+
   it("says plainly when an operation names a block that is not there", () => {
     const [line] = describeOperations(dashboard(), [{ op: "removeBlock", blockId: "x" }], ctx)
     expect(line).toBe("1. Remove the block 'x' (not on the dashboard: this edit will be refused).")
@@ -231,11 +284,97 @@ describe("datasets and filters by operation", () => {
       'Add the filter "Market" (id market, one value, options FR, DE, default FR',
     )
     expect(lines[2]).toContain("reading the shared dataset 'orders'")
-    expect(lines[2]).toContain("keeping only rows where status is not cancelled")
+    expect(lines[2]).toContain("keeps only rows where status is not cancelled")
     expect(lines[3]).toContain('showing the note "B2B = tagged b2b"')
     expect(lines[4]).toContain(
       'keeps only rows where market is the "Market" filter\'s value (all rows while it is empty)',
     )
     expect(lines[5]).toBe('6. Remove the filter "Market".')
+  })
+})
+
+describe("diffDashboards", () => {
+  const ctx = { timeZone: "UTC", now: new Date("2026-11-10T12:00:00Z") }
+
+  it("lists a whole new spec as operations that rebuild it exactly", () => {
+    const current = dashboard()
+    const next = {
+      v: 1,
+      layout: "grid",
+      timeRange: { preset: "lastMonth" },
+      blocks: [
+        block("d", { title: "New" }),
+        block("c"),
+        block("a", {
+          map: { agg: "sum", value: "total" },
+          source: { kind: "tool", tool: "shop:orders_search", params: { status: "paid" } },
+        }),
+      ],
+    }
+    const ops = diffDashboards(current, { title: "Direction", spec: next })
+    expect(ops.map((o) => o.op)).toEqual([
+      "setTitle",
+      "setTimeRange",
+      "removeBlock",
+      "updateBlock",
+      "addBlock",
+      "moveBlock",
+    ])
+    const out = applyOperations(current, ops)
+    expect(out.title).toBe("Direction")
+    expect(out.spec.timeRange).toEqual({ preset: "lastMonth" })
+    expect(out.spec.blocks).toEqual(next.blocks)
+
+    const lines = describeOperations(current, ops, ctx)
+    expect(lines[2]).toStartWith('3. Remove the metric block "Block b"')
+    expect(lines[3]).toContain(
+      'Change the block "Block a": source now shop:orders_search with {"status":"paid"}',
+    )
+    expect(lines[3]).toContain("now shows sum of total")
+    expect(lines[4]).toStartWith('5. Add a metric block "New" (width 1) at position 1 of')
+    expect(lines[5]).toStartWith('6. Move the block "Block c"')
+  })
+
+  it("finds nothing to change in the same spec, and only a visibility switch", () => {
+    const current = dashboard()
+    expect(diffDashboards(current, { spec: current.spec })).toEqual([])
+    expect(diffDashboards(current, { visibility: "personal" })).toEqual([
+      { op: "setVisibility", visibility: "personal" },
+    ])
+  })
+
+  it("the refusal past one card says to split and wait for the first approval", () => {
+    expect(MAX_CARD_CHANGES).toBe(50)
+    expect(tooManyChangesMessage(60)).toContain("send the rest only once that approval is decided")
+  })
+})
+
+describe("diffDashboards with datasets and filters", () => {
+  it("adds them before the blocks that read them and removes them after", () => {
+    const src = { kind: "tool", tool: "shop:orders_search", params: {} }
+    const current = dashboard()
+    const withShared = {
+      ...current.spec,
+      datasets: { orders: src },
+      filters: [{ id: "market", label: "Market", type: "text" }],
+      blocks: [block("a", { source: undefined, dataset: "orders" }), block("b"), block("c")],
+    } as unknown as Record<string, unknown>
+    const ops = diffDashboards(current, { spec: withShared })
+    expect(ops.map((o) => o.op)).toEqual(["setDataset", "setFilter", "updateBlock"])
+    const out = applyOperations(current, ops)
+    expect(out.spec.datasets).toEqual({ orders: src })
+    expect(out.spec.filters).toEqual(withShared.filters)
+
+    const back = diffDashboards(
+      { ...current, spec: out.spec as unknown as DashboardSpec },
+      { spec: current.spec },
+    )
+    expect(back.map((o) => o.op)).toEqual(["updateBlock", "removeDataset", "removeFilter"])
+    const restored = applyOperations(
+      { ...current, spec: out.spec as unknown as DashboardSpec },
+      back,
+    )
+    expect(restored.spec.datasets).toBeUndefined()
+    expect(restored.spec.filters).toBeUndefined()
   })
 })

@@ -28,6 +28,7 @@ import {
   type SourceKey,
   singleFlight,
   sourceCacheKey,
+  takeCustomWindowRun,
   takeRefresh,
   withViewerSlot,
   writeCachedBlock,
@@ -668,6 +669,40 @@ export async function editDashboard(
   input: EditDashboardInput,
   tx?: RlsClient,
 ): Promise<DashboardRecord> {
+  const { current, next } = await planEdit(viewer, id, input, tx)
+  return updateDashboard(
+    viewer,
+    id,
+    {
+      ifVersion: input.ifVersion,
+      spec: next.spec,
+      ...(next.title !== current.title ? { title: next.title } : {}),
+      ...(next.visibility !== current.visibility ? { visibility: next.visibility } : {}),
+    },
+    tx,
+  )
+}
+
+/**
+ * An edit checked without saving anything, before it waits for an approval: the version,
+ * every operation applying in order, and the resulting spec whole (blocks, maps, and each
+ * source one `viewer` may read). Throws as the save would.
+ */
+export async function checkEdit(
+  viewer: DashboardViewer,
+  id: string,
+  input: EditDashboardInput,
+): Promise<void> {
+  const { next } = await planEdit(viewer, id, input)
+  await validateSpec(viewer, next.spec)
+}
+
+async function planEdit(
+  viewer: DashboardViewer,
+  id: string,
+  input: EditDashboardInput,
+  tx?: RlsClient,
+): Promise<{ current: DashboardRow; next: ReturnType<typeof applyOperations> }> {
   const current = await loadRow(viewer, id, tx)
   if (input.ifVersion !== current.version) {
     throw new DashboardError(
@@ -691,17 +726,7 @@ export async function editDashboard(
     }
     throw err
   }
-  return updateDashboard(
-    viewer,
-    id,
-    {
-      ifVersion: input.ifVersion,
-      spec: next.spec,
-      ...(next.title !== current.title ? { title: next.title } : {}),
-      ...(next.visibility !== current.visibility ? { visibility: next.visibility } : {}),
-    },
-    tx,
-  )
+  return { current, next }
 }
 
 export async function deleteDashboard(
@@ -755,6 +780,9 @@ export type BlockDataResponse =
       window?: BlockWindow
       compareWindow?: BlockCompareWindow | null
     }
+
+/** How long a comparison read is kept: its window is wholly in the past. */
+const PAST_WINDOW_TTL_SEC = 6 * 3600
 
 /** A source's rows as cached (sourceCacheKey). `forced`: written by a refresh. */
 interface CachedSource {
@@ -898,7 +926,8 @@ async function readSourceCached(
   sourceKey: SourceKey,
   source: BlockSource,
   range: DayWindow | null,
-  opts: { refresh?: boolean; signal?: AbortSignal },
+  opts: { refresh?: boolean; signal?: AbortSignal; range?: TimeRange },
+  ttlOverride?: number,
 ): Promise<SourceReadResult> {
   const key = sourceCacheKey(viewer, {
     dashboardId: dashboard.row.id,
@@ -920,7 +949,19 @@ async function readSourceCached(
     const failed = await readCachedBlock<CachedFailure>(failedKey)
     if (failed) return { ok: false, error: failed.error, message: failed.message }
   }
-  const ttl = sourceTtlSec(dashboard.spec, sourceKey)
+  // A custom range is a new run for every new pair of days: a budget per viewer and source, so
+  // walking the calendar cannot run the source without end. Presets and the default never count.
+  if (
+    opts.range?.preset === "custom" &&
+    !(await takeCustomWindowRun(viewer, dashboard.row.id, sourceKey))
+  ) {
+    return {
+      ok: false,
+      error: "rate_limited",
+      message: "too many different custom ranges for this block in the last minute",
+    }
+  }
+  const ttl = ttlOverride ?? sourceTtlSec(dashboard.spec, sourceKey)
   return singleFlight(`${key}${opts.refresh ? ":refresh" : ""}`, async () => {
     const outcome = await withViewerSlot(viewer, () =>
       runSource(
@@ -1128,13 +1169,15 @@ export async function getBlockData(
       previousError = { error: "invalid_map", message: err.message }
     }
     if (previousSource) {
+      // A past window rarely changes: kept for hours, and Refresh re-reads only the current one.
       const previous = await readSourceCached(
         viewer,
         dashboard,
         plan.sourceKey,
         previousSource,
         compareRange,
-        opts,
+        { ...opts, refresh: false },
+        PAST_WINDOW_TTL_SEC,
       )
       const prevMapped = previous.ok
         ? mapBlock(block, previous.read, { ...mapOpts, window: compareRange })

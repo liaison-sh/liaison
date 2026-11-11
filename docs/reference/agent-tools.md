@@ -91,7 +91,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `dashboards_list` | List the dashboards you can see: yours and the organisation's, with their ids and visibility. |  | `kernel:dashboards:read` |
 | `dashboards_preview_block` | Run one dashboard block as you, without saving anything, and return exactly what the chart would draw. |  | `kernel:dashboards:write` |
 | `dashboards_sources` | List the read tools you can put on a dashboard (each block reads one), with their params and the fields of their result when declared. |  | `kernel:dashboards:write` |
-| `dashboards_update` | Change a dashboard's title, blocks (the whole spec) or visibility. |  | `kernel:dashboards:write` |
+| `dashboards_update` | Replace a dashboard's whole spec (and its title or visibility): for a wholesale rebuild only. |  | `kernel:dashboards:write` |
 | `data_collections_list` | List the data collections you can read: records apps keep (e.g. |  | `kernel:data:read` |
 | `data_delete` | Delete a document from one of your own data collections. |  | `kernel:data:write` |
 | `data_get` | Read one document of a data collection by id. |  | `kernel:data:read` |

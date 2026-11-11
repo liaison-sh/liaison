@@ -64,6 +64,11 @@ function fakeStore(): BlockCacheStore {
       data.set(k, "1")
       return true
     },
+    async increment(k) {
+      const n = Number(data.get(k) ?? 0) + 1
+      data.set(k, String(n))
+      return n
+    },
   }
 }
 
@@ -223,7 +228,10 @@ describe("filters", () => {
   it("refuses an unknown filter or a value outside its list", async () => {
     const id = await dashboard()
     const viewer = as(owner, [WRITE, READ])
-    for (const filters of [{ nope: ["x"] }, { channel: ["retail"] }]) {
+    for (const filters of [{ nope: ["x"] }, { channel: ["retail"] }] as Record<
+      string,
+      string[]
+    >[]) {
       const err = await getBlockData(viewer, id, "count", { filters }).catch((e: unknown) => e)
       expect((err as DashboardError).code).toBe("INVALID_REQUEST")
     }
@@ -340,7 +348,7 @@ describe("editing datasets and filters", () => {
         { op: "updateBlock", blockId: "a", changes: { source: null, dataset: "orders" } },
       ],
     })
-    expect(after.spec.datasets).toEqual({ orders: { ...SOURCE } })
+    expect(after.spec.datasets as unknown).toEqual({ orders: { ...SOURCE } })
     expect(after.spec.blocks[0]).toMatchObject({ dataset: "orders" })
     // Removing a dataset a block still reads refuses the whole edit.
     const err = await editDashboard(author, id, {

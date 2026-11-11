@@ -813,7 +813,7 @@ describe("home decisions", () => {
           holdUntil: "2026-11-17T08:00:00.000Z",
         },
       }),
-      summary: "Rota planning",
+      summary: "Shift planning",
     }
     attentionStore._setForTest({ items: [waiting, held, other], errors: [] })
     render(() => <Home entityId="home" />)

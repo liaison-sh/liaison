@@ -10,6 +10,7 @@
 import type { MailConversationSpec } from "~/seed/factories/mail/conversations"
 import type { TicketSpec } from "~/seed/factories/support/tickets"
 import type { DemoSupportSpecs } from "~/seed/tiers/demo/seed-support"
+import { STORY_TIME_ZONE, storyClock } from "~/seed/worlds/story-clock"
 import { SAAS_CUSTOMER_COMPANIES, SAAS_EMAIL_DOMAIN } from "./fiction"
 import { SAAS_PIPELINE_KEY } from "./plan"
 
@@ -162,8 +163,9 @@ const SALES_BOX = `sales@${SAAS_EMAIL_DOMAIN}`
 
 /**
  * The prospects' last words, in the shared mailbox: Marc's question two hours
- * before the anchor (the guard closes the follow-up queued before it), Anaïs's
- * reply the day before, and the auto-reply that holds Samir's follow-up.
+ * before the anchor (the guard closes the follow-up queued before it) and
+ * Anaïs's reply the day before. Samir's thread, whose auto-reply names a date,
+ * is `saasKoraConversation`.
  */
 export const SAAS_MAIL: readonly MailConversationSpec[] = [
   {
@@ -224,7 +226,25 @@ export const SAAS_MAIL: readonly MailConversationSpec[] = [
       },
     ],
   },
-  {
+]
+
+/** A Paris calendar day as an out-of-office writes it: "12 November". */
+function dayMonth(at: Date): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "long",
+    timeZone: STORY_TIME_ZONE,
+  }).format(at)
+}
+
+/**
+ * Samir's thread: the intro, then his out-of-office, which names the last day
+ * he is away. The pack's layer writes it, since its date comes from the anchor;
+ * the send check holds his follow-up until the morning after that day.
+ */
+export function saasKoraConversation(anchor: Date): MailConversationSpec {
+  const clock = storyClock(anchor)
+  return {
     key: "kora-intro",
     box: "org",
     subject: "Rota planning for Kora",
@@ -242,7 +262,81 @@ export const SAAS_MAIL: readonly MailConversationSpec[] = [
         hoursAgo: 240,
         body: "Following our call, here is how teams plan a week of shifts in Tideform.",
       },
+      {
+        direction: "inbound",
+        fromName: "Samir Aït",
+        fromEmail: "samir@kora-hospitality.example",
+        toName: "Tideform",
+        toEmail: SALES_BOX,
+        hoursAgo: 30,
+        body:
+          `Thank you for your message. I am out of the office until ${dayMonth(clock.d(3))}, ` +
+          "with no access to my mail. I will answer when I am back.",
+        headers: { "auto-submitted": "auto-replied" },
+      },
     ],
+  }
+}
+
+/** A follow-up the deal follow-ups routine drafted, and what its send check reads now. */
+export interface SaasFollowupSpec {
+  key: string
+  /** The deal it follows up on (`plan.ts` key). */
+  dealKey: string
+  /** The person it goes to (`customer:<key>`). */
+  contactKey: string
+  subject: string
+  body: string
+  /** When the routine staged it. */
+  hoursAgo: number
+  /** Whose opt-out arrives after it was staged, which withdraws it. */
+  optOutAfter?: true
+}
+
+/**
+ * The four follow-ups of the morning run: Lumen's waits on the owner; Sauvan's
+ * was staged before Marc answered, so the check stops it; Hugo opted out after
+ * Tilleul's was staged, which withdrew it; Samir's out-of-office holds Kora's.
+ */
+export const SAAS_FOLLOWUPS: readonly SaasFollowupSpec[] = [
+  {
+    key: "lumen-followup",
+    dealKey: "lumen-team",
+    contactKey: "customer:noor-haddad",
+    subject: "Your Team annual proposal",
+    body:
+      "Hello Noor,\n\nI am following up on the Team annual proposal for Brasserie Lumen. " +
+      "Is there anything you would like changed before you decide?\n\nBest regards",
+    hoursAgo: 1,
+  },
+  {
+    key: "sauvan-followup",
+    dealKey: "sauvan-group",
+    contactKey: "customer:marc-sauvan",
+    subject: "Following up on the demo",
+    body:
+      "Hello Marc,\n\nI am following up on the demo we gave your managers. " +
+      "Would a call about the Group plan be useful?\n\nBest regards",
+    hoursAgo: 26,
+  },
+  {
+    key: "tilleul-followup",
+    dealKey: "tilleul-team",
+    contactKey: "customer:hugo-perrin",
+    subject: "After your trial",
+    body: "Hello Hugo,\n\nYour trial has ended. Would you like to continue on the Team plan?\n\nBest regards",
+    hoursAgo: 25,
+    optOutAfter: true,
+  },
+  {
+    key: "kora-followup",
+    dealKey: "kora-team",
+    contactKey: "customer:samir-ait",
+    subject: "Rota planning for Kora",
+    body:
+      "Hello Samir,\n\nI am following up on how teams plan a week of shifts in Tideform. " +
+      "Would a short demo for your managers help?\n\nBest regards",
+    hoursAgo: 1,
   },
 ]
 

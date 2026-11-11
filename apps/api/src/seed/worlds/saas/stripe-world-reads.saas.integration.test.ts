@@ -6,13 +6,16 @@
 // routines and the channels.
 //
 //   bun run scripts/test-run.ts demo-seed --file src/seed/worlds/saas/stripe-world-reads.saas.integration.test.ts
-import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { afterAll, beforeAll, describe, expect, it, setSystemTime } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { sql } from "drizzle-orm"
 import { dealsRollup } from "~/apps/projects/service/deals"
 import { withPrivilegedDb } from "~/db/privileged"
+import type { UserContext } from "~/db/rls"
+import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
+import { executeTool } from "~/modules/apps/execute-tool"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { seedContext } from "~/seed/context"
 import { actorFor, asUser } from "~/seed/factories/people/actors"
@@ -23,9 +26,10 @@ import { installFromDist } from "../../../../test-support/seed/install-dist-apps
 const CATALOG_WORLD_APPS = ["invoicing", "stripe"]
 
 const BOARD_DATE = new Date("2026-11-09T08:30:00.000Z")
-const ORG_SLUG = "saas-world-reads"
+// A new org every run: the namespace database outlives a run, and a re-seed adopts what it finds.
+const ORG_SLUG = `saas-world-reads-${Date.now().toString(36)}`
 const OWNER = {
-  email: "owner@saas-world-reads.example",
+  email: `owner@${ORG_SLUG}.example`,
   name: "Visitor Owner",
   password: "SaasWorld1!Owner",
 }
@@ -39,6 +43,41 @@ async function rows(orgId: string, query: ReturnType<typeof sql>): Promise<Row[]
 }
 
 let world: SeedDemoWorldResult
+
+/** The owner, as the product's reads see them. */
+async function ownerActor(): Promise<UserContext> {
+  return actorFor(
+    seedContext({ orgId: world.orgId, now: BOARD_DATE }),
+    world.org.ownerUserId as string,
+  )
+}
+
+/** A kernel tool called by the owner at the board date: the reads that use today read the board's. */
+async function ownerCall<T>(tool: string, params: Record<string, unknown>): Promise<T> {
+  const actor = await ownerActor()
+  setSystemTime(BOARD_DATE)
+  try {
+    const r = await executeTool<T>({
+      toolName: `kernel:${tool}`,
+      orgId: world.orgId,
+      actor,
+      params,
+      origin: "human-ui",
+    })
+    return r.data as T
+  } finally {
+    setSystemTime()
+  }
+}
+
+async function companyId(name: string): Promise<string> {
+  const [row] = await rows(
+    world.orgId,
+    sql`SELECT id FROM kernel.companies WHERE org_id = ${world.orgId} AND name = ${name}`,
+  )
+  if (!row) throw new Error(`no company ${name}`)
+  return row.id as string
+}
 let appsRoot: string | null = null
 
 beforeAll(async () => {
@@ -94,6 +133,85 @@ describe("the software world, seeded and read back", () => {
     )
     expect(away.length).toBeGreaterThan(0)
     for (const range of away) expect(range.next_in_line_id).toBe(world.org.ownerUserId)
+    // The product's own read says the same: Élodie, away, the visitor next in line.
+    const read = await ownerCall<{
+      accountManager: {
+        id: string
+        name: string
+        away: { until: string; nextInLine: { id: string } | null } | null
+      } | null
+    }>("companies_read", { companyId: await companyId("Maison Arlon") })
+    expect(read.accountManager?.name).toBe("Élodie Renard")
+    expect(read.accountManager?.away?.nextInLine?.id).toBe(world.org.ownerUserId as string)
+  })
+
+  it("the timeline of the hotel group with the past due card returns its tickets, deal and last meeting from their apps and stores nothing", async () => {
+    const audit = sql`SELECT count(*)::int AS n FROM kernel.audit_log WHERE org_id = ${world.orgId}`
+    const [before] = await rows(world.orgId, audit)
+    const timeline = await ownerCall<{
+      items: Array<{ source: string; title: string }>
+      unavailable: unknown[]
+    }>("company_timeline", { companyId: await companyId("Maison Arlon"), limit: 100 })
+    expect(timeline.unavailable).toEqual([])
+    const titles = (source: string) =>
+      timeline.items.filter((i) => i.source === source).map((i) => i.title)
+    expect(titles("calendar")).toEqual(["Maison Arlon, rollout review"])
+    const tickets = titles("tickets").join("\n")
+    expect(tickets).toContain("Export of last month's rotas")
+    expect(tickets).toContain("Shift swap notifications arrive late")
+    expect(titles("projects").some((t) => t.includes("Maison Arlon, 4 more hotels"))).toBe(true)
+    const [after] = await rows(world.orgId, audit)
+    expect(after?.n).toBe(before?.n)
+  })
+
+  it("the visitor's support and knowledge queues hold the seeded six tickets and one article to review", async () => {
+    const actor = await ownerActor()
+    setSystemTime(BOARD_DATE)
+    try {
+      const feed = await aggregateAttentionItems({ orgId: world.orgId, actor })
+      expect(feed.errors ?? []).toEqual([])
+      const count = (app: string) => feed.items.filter((i) => i.app === app).length
+      expect(count("tickets")).toBe(6)
+      expect(count("knowledge")).toBe(1)
+    } finally {
+      setSystemTime()
+    }
+  })
+
+  it("the four follow-up rows exist as real approvals in their guard states and held or stopped rows are not counted", async () => {
+    const drafts = await rows(
+      world.orgId,
+      sql`SELECT id, handle, status, tool_name, current_payload->'sendGuard'->>'mode' AS mode
+          FROM kernel.approval_requests
+          WHERE org_id = ${world.orgId} AND handle LIKE 'demo-%-followup' ORDER BY handle`,
+    )
+    expect(drafts.map((d) => [d.handle, d.tool_name, d.mode, d.status])).toEqual([
+      ["demo-kora-followup", "mail:compose", "followup", "pending"],
+      ["demo-lumen-followup", "mail:compose", "followup", "pending"],
+      ["demo-sauvan-followup", "mail:compose", "followup", "pending"],
+      ["demo-tilleul-followup", "mail:compose", "followup", "cancelled"],
+    ])
+    const idOf = (handle: string) => drafts.find((d) => d.handle === handle)?.id as string
+    const actor = await ownerActor()
+    setSystemTime(BOARD_DATE)
+    try {
+      const feed = await aggregateAttentionItems({ orgId: world.orgId, actor })
+      const item = (handle: string) => feed.items.find((i) => i.entityId === idOf(handle))
+      const state = (handle: string) =>
+        (item(handle)?.metadata?.sendGuard as { state?: string } | undefined)?.state ?? "clear"
+      // Lumen waits on the owner and counts.
+      expect(item("demo-lumen-followup")?.kind).toBe("approval_pending")
+      expect(state("demo-lumen-followup")).toBe("clear")
+      expect(item("demo-lumen-followup")?.metadata?.uncounted).not.toBe(true)
+      // Marc answered after Sauvan's was staged: stopped, shown, not counted.
+      expect(state("demo-sauvan-followup")).toBe("replied")
+      // Samir's out-of-office holds Kora's until the morning after the day it names.
+      expect(state("demo-kora-followup")).toBe("held")
+      // Hugo's opt-out withdrew Tilleul's: it is not on Home at all.
+      expect(item("demo-tilleul-followup")).toBeUndefined()
+    } finally {
+      setSystemTime()
+    }
   })
 
   it("214 companies and the duplicate pair found by domain", async () => {

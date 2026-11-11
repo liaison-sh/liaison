@@ -14,10 +14,14 @@ import { schemaRef } from "~/db/schema-ref"
 import { routineTemplateRegistry } from "~/modules/apps/app-registries"
 import { awaitOrgApps } from "~/modules/apps/init"
 import { setCompanyManager } from "~/modules/contacts/companies"
+import { buildSendGuard } from "~/modules/mail/send-guard"
+import { addSuppression } from "~/modules/mail/suppressions"
 import { setAway } from "~/modules/users/away"
 import { type SeedContext, seedContext } from "~/seed/context"
 import { scopeReader, seedRoutine } from "~/seed/factories/agent/routines"
+import { type ApprovalRequestSeed, seedApprovalRequests } from "~/seed/factories/approvals/requests"
 import { type EventSpec, seedTeamCalendar } from "~/seed/factories/calendar/events"
+import { insertUnarmedMail } from "~/seed/factories/mail/conversations"
 import { actorFor, asUser, rowsOf } from "~/seed/factories/people/actors"
 import { seedCompanies } from "~/seed/factories/people/companies"
 import { resolveContacts } from "~/seed/factories/people/contacts"
@@ -28,7 +32,8 @@ import type { DemoWorldLayerInput } from "../index"
 import { SAAS_ROUTINES } from "./agent-native"
 import { SAAS_AWAY, SAAS_CUSTOMERS } from "./fiction"
 import { SAAS_PIPELINE_KEY, type SaasPlanResult, saasPlan } from "./plan"
-import { SAAS_SUPPORT_SPECS } from "./support-specs"
+import { SAAS_FOLLOWUPS, SAAS_SUPPORT_SPECS, saasKoraConversation } from "./support-specs"
+import { SAAS_CHANNEL_TITLES } from "./threads-specs"
 
 type ExecTx = { execute: (q: unknown) => Promise<unknown> }
 
@@ -92,6 +97,29 @@ async function seedSaasCompanies(
     })),
     contactIds,
   )
+  // Each person's lawful basis, as a person records it on the contact: a paying
+  // company's people are customers, everyone else was met in the course of business.
+  const clock = storyClock(ctx.now)
+  const paying = new Set(["paying", "transfer"])
+  const byBasis = new Map<string, string[]>()
+  for (const c of plan.companies) {
+    const basis = paying.has(c.kind) ? "customer" : "professional_interest"
+    for (const key of c.contactKeys) {
+      const id = contactIds[key]
+      if (id) byBasis.set(basis, [...(byBasis.get(basis) ?? []), id])
+    }
+  }
+  await withPrivilegedDb(ctx.orgId, "saas-seed-lawful-basis", async (tx) => {
+    for (const [basis, ids] of byBasis) {
+      await tx.execute(
+        sql`UPDATE ${sql.raw(schemaRef("kernel"))}.contacts
+            SET lawful_basis = ${basis}, lawful_basis_at = ${clock.d(-30).toISOString()}::timestamptz,
+                lawful_basis_source = 'Recorded when the contact was added', is_consumer = false
+            WHERE org_id = ${ctx.orgId}::uuid AND id = ANY(${`{${ids.join(",")}}`}::uuid[])
+              AND lawful_basis IS NULL`,
+      )
+    }
+  })
   // Account managers, one call per manager.
   const byManager = new Map<string, string[]>()
   for (const c of plan.companies) {
@@ -246,6 +274,12 @@ async function seedSaasAway(ctx: SeedContext, org: SeedDemoOrgResult): Promise<v
   ctx.log(`away: ${SAAS_AWAY.map((a) => a.key).join(", ")}`)
 }
 
+function customerEmail(key: string): string {
+  const email = SAAS_CUSTOMERS.find((c) => c.key === key)?.email
+  if (!email) throw new Error(`saas layer: no customer '${key}'`)
+  return email
+}
+
 /** The meetings the named rows hold: Arlon's last one, and Sauvan's pricing call. */
 async function seedSaasMeetings(
   ctx: SeedContext,
@@ -279,7 +313,8 @@ async function seedSaasMeetings(
       day: isoDow - 4,
       startHour: 11,
       durationMinutes: 45,
-      attendees: ["tom", "elodie"],
+      // Claire attends, so the meeting is on Maison Arlon's timeline.
+      attendees: ["tom", "elodie", customerEmail("claire-vidal")],
     },
     workingNow
       ? {
@@ -307,6 +342,105 @@ async function seedSaasMeetings(
     people: org.peopleByKey,
     events,
   })
+}
+
+/** Samir's thread, whose out-of-office names a date from the anchor. */
+async function seedSaasMail(ctx: SeedContext, org: SeedDemoOrgResult): Promise<void> {
+  const domain = org.world.company.supportEmail.split("@")[1] as string
+  await insertUnarmedMail(ctx, {
+    domain,
+    // The shared mailbox the support layer wrote: adopted, never rewritten.
+    mailboxes: [
+      { box: "org", ownerUserId: null, email: `support@${domain}`, displayName: org.orgName },
+    ],
+    conversations: [saasKoraConversation(ctx.now)],
+  })
+}
+
+/**
+ * The morning's follow-ups, as the deal follow-ups routine stages them: each
+ * one's send check is the product's own (`buildSendGuard`, pinned when it was
+ * staged), so the card reads what the check says now. Hugo's opt-out is then
+ * recorded the way a person records one, which withdraws the draft to him.
+ */
+async function seedSaasFollowups(
+  ctx: SeedContext,
+  org: SeedDemoOrgResult,
+  dealIds: Record<string, string>,
+  contactIds: Record<string, string>,
+): Promise<void> {
+  const clock = storyClock(ctx.now)
+  const ownerId = ownerIdOf(org)
+  const agentId = org.agentsByHandle["@sales"]?.agentId
+  if (!agentId) throw new Error("saas layer: no @sales agent for the follow-ups")
+  const [thread] = await withPrivilegedDb(ctx.orgId, "saas-seed-followup-thread", async (tx) =>
+    rowsOf<{ id: string }>(
+      await tx.execute(
+        sql`SELECT id FROM ${sql.raw(schemaRef("kernel"))}.threads
+            WHERE org_id = ${ctx.orgId}::uuid AND title = ${SAAS_CHANNEL_TITLES.pipeline} LIMIT 1`,
+      ),
+    ),
+  )
+  if (!thread) throw new Error("saas layer: no Pipeline channel for the follow-ups")
+  const rows: ApprovalRequestSeed[] = []
+  for (const f of SAAS_FOLLOWUPS) {
+    const dealId = dealIds[f.dealKey]
+    const contactId = contactIds[f.contactKey]
+    const email = SAAS_CUSTOMERS.find((c) => `customer:${c.key}` === f.contactKey)?.email
+    if (!dealId || !contactId || !email) {
+      throw new Error(`saas layer: follow-up ${f.key} names no deal, contact or address`)
+    }
+    const stagedAt = clock.h(-f.hoursAgo)
+    const refs = [{ kind: "projects:deal", id: dealId }]
+    const built = await buildSendGuard({
+      orgId: ctx.orgId,
+      toolName: "mail:compose",
+      followUpRun: true,
+      followUp: { refs },
+      recipients: [email],
+      contactIds: [contactId],
+      agentStaged: true,
+      now: stagedAt,
+      timeZone: org.timezone,
+    })
+    if (!("sendGuard" in built)) {
+      throw new Error(`saas layer: follow-up ${f.key} not staged: ${JSON.stringify(built)}`)
+    }
+    rows.push({
+      id: ctx.id("approval", f.key),
+      handle: `demo-${f.key}`,
+      threadId: thread.id,
+      toolName: "mail:compose",
+      payload: {
+        accountId: ctx.id("mail-account", "org"),
+        to: [email],
+        subject: f.subject,
+        textBody: f.body,
+        followUp: { refs },
+        sendGuard: built.sendGuard,
+        ...(built.guardKey ? { guardKey: built.guardKey } : {}),
+      },
+      requestedBy: ownerId,
+      agentId,
+      notifyUserIds: [ownerId],
+      status: "pending",
+      createdAt: stagedAt,
+    })
+  }
+  await seedApprovalRequests(ctx, rows)
+  // The opt-out arrives after the draft: recording it withdraws the draft, as it does live.
+  for (const f of SAAS_FOLLOWUPS.filter((x) => x.optOutAfter)) {
+    const email = SAAS_CUSTOMERS.find((c) => `customer:${c.key}` === f.contactKey)?.email as string
+    await addSuppression(null, {
+      orgId: ctx.orgId,
+      email,
+      reason: "reply",
+      source: "Asked by reply to stop receiving sales mail",
+      createdBy: ownerId,
+      actorType: "user",
+    })
+  }
+  ctx.log(`follow-ups: ${rows.length} drafts staged with their send check`)
 }
 
 /** The three routines, on, each from its product template. */
@@ -369,8 +503,10 @@ export async function seedSaasLayer(input: DemoWorldLayerInput): Promise<void> {
   const plan = saasPlan(baseTime)
   const actor = await actorFor(ctx, ownerIdOf(org))
   const { companyIds, contactIds } = await seedSaasCompanies(ctx, org, actor, plan)
-  await seedSaasDeals(ctx, org, actor, plan, companyIds, contactIds)
+  const dealIds = await seedSaasDeals(ctx, org, actor, plan, companyIds, contactIds)
   await seedSaasAway(ctx, org)
   await seedSaasMeetings(ctx, org, actor)
+  await seedSaasMail(ctx, org)
+  await seedSaasFollowups(ctx, org, dealIds, contactIds)
   await seedSaasRoutines(ctx, org)
 }

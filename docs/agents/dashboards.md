@@ -104,7 +104,7 @@ A block that keeps its own dates says them in a small label next to its title, s
 - A block that follows the period and finds nothing says which days it read: "No data between 1 Nov and 11 Nov".
 - "3 rows are left out: a field they need is missing or unreadable." means some of the source's rows lacked a date or a number the block needs. "The comparison could not be read this time." means the compared period failed while the current figures still show.
 
-## Chart types, notes and filters
+## Chart types and notes
 
 Besides metrics, tables, bars, lines and pies, your agent can build:
 
@@ -114,7 +114,22 @@ Besides metrics, tables, bars, lines and pies, your agent can build:
 - a **funnel**: ordered stages, such as cart, paid, shipped, from one field per stage or from the values of one field;
 - a **text** note: a few lines of formatted text with no data behind it, for definitions ("B2B means orders tagged b2b"), targets and caveats.
 
-A dashboard can also have **filters** (at most 8), such as a market, a channel or a campaign: pick one value, several, or type a text. Each block that reads a filter shows only the matching data: either the source is asked for that value, or the block keeps only the rows that match. A filter left empty means everything. The values you pick are remembered for you alone, on that dashboard, like the time range. A filter's choices are a fixed list, or the values found in the dashboard's own data.
+How each one reads on the dashboard:
+
+- A **funnel** shows its stages top to bottom, each bar as wide as its share of the first stage, and between two stages the share that went on, for example "25% of the step before". It uses calm colours, never red or green.
+- A **combo** chart draws its bars and its lines together; when the lines have their own axis, it is on the right.
+- A **text** note shows its formatting (bold, lists, links). Any HTML written in it shows as plain text. A link to a web page opens in a new tab; a link to a page of Liaison (such as `/projects`) opens it in place.
+
+## Filter a dashboard
+
+A dashboard can also have **filters** (at most 8), such as a market, a channel or a campaign. They sit in a row under the bar at the top, one button per filter, which reads its name and its value: "Market: All", "Market: FR", or "Channel: b2b, dtc". On a phone the row wraps.
+
+- Click a filter to see its values. **All** shows everything. A filter that takes one value closes on your pick; one that takes several keeps its menu open, and each click adds or removes a value.
+- A text filter is a small field: type a value and press Enter, or leave the field. Empty it to show everything again.
+- A filter's values are a fixed list, or the values found in the dashboard's own data for the period shown, read when you open the menu. A long list shows its first 200 values and says so.
+- **Reset filters** goes back to the dashboard's default values and forgets yours.
+
+Each block that reads a filter shows only the matching data: either the source is asked for that value, or the block keeps only the rows that match. Your values are remembered for you alone, on that dashboard, like the period, and they go into the tab's address (`?f.market=FR&f.channel=b2b&f.channel=dtc`; `f.market=` with nothing after it means all), so a link you copy opens with the same filters. A dashboard opens, filter by filter, on the value in its link, else on the one you last chose there, else on its default. A block asked for new values a moment ago may keep the figures it shows and say "Just refreshed. Try again in a few seconds."
 
 A block can keep only some rows of its source ("only the ad sets that spent", "without cancelled orders") before anything is counted.
 
@@ -122,7 +137,14 @@ When several blocks show the same data (a count and the list of the same orders,
 
 ## See the records behind a figure
 
-A block's figures come from rows of its source, and you can see those rows: the orders behind a bar, the ad sets in a slice, the rows a metric adds up. They are read from the figures already loaded, never by running the source again while those are fresh, with the same access as the block. When the block says where a row leads (an order, a ticket, a contact), each row opens that record in Liaison.
+A block's figures come from rows of its source, and you can see those rows: the orders behind a bar, the ad sets in a slice, the rows a metric adds up.
+
+- Click a bar, a point, a slice, a funnel stage, a table row's first cell or a metric's figure. With the keyboard, each chart's categories can also be reached with Tab.
+- The button with rows lines next to a block's title (**Show the rows behind this block**) lists every row the block counts.
+
+The rows open in a panel on the right of the dashboard (over it on a phone), with the block's title and the figure you picked ("FR", or **All rows**). At its top: "1 to 50 of 230", **Previous page** and **Next page**, and **Close** (or press Escape). The rows follow the period and the filters the dashboard shows. When the block says where a row leads (an order, a ticket, a contact), each row has **Open**, which opens that record in Liaison. When the source holds more rows than are searched, the panel says "The source has more rows: only its first 2,000 are searched."
+
+The rows are read from the figures already loaded, never by running the source again while those are fresh, with the same access as the block.
 
 ## What a block can read
 

@@ -8,16 +8,29 @@
 //   GET /dashboards/:id/blocks/:blockId/data[?refresh=1&range=&from=&to=&compare=]
 //                                                    one block's mapped data, run as the viewer,
 //                                                    for the range the viewer looks at
-//   GET|PUT|DELETE /dashboards/:id/viewer-state      the range this person last chose
+//   GET|PUT|DELETE /dashboards/:id/viewer-state      the range and filters this person last chose
+//   GET /dashboards/:id/blocks/:blockId/rows         the rows behind one figure (drill-down)
+//   GET /dashboards/:id/filters/:filterId/options    the values a filter offers
 //
-// A block's data is either one of the four shapes below, or a refusal
+// Filter values ride every read as `f.<id>=<value>` (repeated for a multi; `f.<id>=` = all).
+//
+// A block's data is either one of the shapes below, or a refusal
 // `{error: "no_access" | "not_allowed" | "rate_limited" | "source_error"}`
 // that concerns that block alone. The rest of the dashboard renders.
 import { ApiError } from "~/lib/api-error"
 import type { CompareMode, DayWindow, RangeChoice, TimePreset, TimeRange } from "./time-range"
 
 export type DashboardVisibility = "personal" | "org"
-export type DashboardBlockType = "metric" | "table" | "bar" | "line" | "pie"
+export type DashboardBlockType =
+  | "metric"
+  | "table"
+  | "bar"
+  | "line"
+  | "pie"
+  | "area"
+  | "combo"
+  | "funnel"
+  | "text"
 export type ValueFormat = "number" | "currency" | "percent" | "date"
 
 export interface DashboardColumn {
@@ -46,7 +59,11 @@ export interface DashboardBlockSpec {
   type: DashboardBlockType
   title: string
   width: 1 | 2 | 3
-  source: Record<string, unknown>
+  /** Absent on a text block, and on a block reading a shared dataset. */
+  source?: Record<string, unknown>
+  dataset?: string
+  /** A text block's markdown. */
+  text?: string
   map?: DashboardBlockMap
   refreshSec?: number
   /** Follows the dashboard's range, or keeps its own window. The server says which (`blockTimeRange`). */
@@ -55,12 +72,28 @@ export interface DashboardBlockSpec {
 
 export type BlockRangeMode = "dashboard" | "fixed"
 
+export type FilterType = "select" | "multi" | "text"
+
+/** A dashboard filter as its spec declares it. Options: a static list, or read from a source. */
+export interface DashboardFilterDef {
+  id: string
+  label: string
+  type: FilterType
+  options?: string[] | Record<string, unknown>
+  default?: string | string[]
+}
+
+/** Each filter's values: [] = all, one item for a select or a text filter. */
+export type FilterValues = Record<string, string[]>
+
 export interface DashboardSpec {
   v: 1
   layout: "grid"
   blocks: DashboardBlockSpec[]
   timeRange?: TimeRange
   compare?: CompareMode
+  filters?: DashboardFilterDef[]
+  datasets?: Record<string, unknown>
 }
 
 /** The range a dashboard opens on for this viewer, as the server resolved it today. */
@@ -92,6 +125,9 @@ export interface Dashboard extends DashboardSummary {
   blockTimeRange?: Record<string, BlockRangeMode>
   /** At least one block follows the dashboard's range: the picker shows only then. */
   usesTimeRange?: boolean
+  /** The viewer's remembered filter values (else the defaults), and whether they are theirs. */
+  filters?: { values: FilterValues; saved: boolean }
+  defaultFilters?: FilterValues
 }
 
 /** The window a block's data covers, as the server reports it. */
@@ -134,22 +170,57 @@ export interface MetricData {
   sparkline?: { labels: string[]; values: number[] }
 }
 
+/** Where a row leads: an in-app path, or a record opened with its app's entity opener. */
+export type RecordLink =
+  | { kind: "path"; href: string }
+  | { kind: "entity"; app: string; entityType: string; id: string }
+
 export interface TableData {
   kind: "table"
   columns: DashboardColumn[]
   rows: Array<Record<string, unknown>>
   /** The server left rows out past its limit. */
   truncated?: boolean
+  /** Each row's record link, index by index (when the block declares one). */
+  links?: Array<RecordLink | null>
+}
+
+/** How a chart is drawn (absent keys: the default). */
+export interface ChartDisplay {
+  stacked?: boolean
+  horizontal?: boolean
+  /** A combo's series drawn as lines; the rest are bars. */
+  lineSeries?: string[]
+  /** A combo's lines read against a right-hand axis. */
+  secondaryAxis?: boolean
 }
 
 export interface SeriesData {
-  kind: "bar" | "line"
+  kind: "bar" | "line" | "area" | "combo"
   x: Array<string | number>
   series: Array<{ name: string; values: Array<number | null> }>
   format?: ValueFormat
   currency?: string
   truncated?: boolean
   previous?: PreviousSeries
+  display?: ChartDisplay
+}
+
+/** Stages in order and each one's value: the conversion between steps is worked out here. */
+export interface FunnelData {
+  kind: "funnel"
+  labels: string[]
+  values: number[]
+  format?: ValueFormat
+  currency?: string
+  truncated?: boolean
+}
+
+/** A note: markdown, rendered sanitized (never trusted as HTML). */
+export interface TextData {
+  kind: "text"
+  markdown: string
+  truncated?: undefined
 }
 
 export interface PieData {
@@ -161,7 +232,7 @@ export interface PieData {
   truncated?: boolean
 }
 
-export type BlockData = MetricData | TableData | SeriesData | PieData
+export type BlockData = MetricData | TableData | SeriesData | PieData | FunnelData | TextData
 
 /**
  * Why a block shows no data. The server's: `no_access`, `not_allowed`, `rate_limited`,
@@ -307,6 +378,48 @@ function previousSeriesFrom(v: unknown): PreviousSeries | undefined {
   }
 }
 
+function displayFrom(v: unknown): ChartDisplay | undefined {
+  if (!isRecord(v)) return undefined
+  const d: ChartDisplay = {}
+  if (v.stacked === true) d.stacked = true
+  if (v.horizontal === true) d.horizontal = true
+  if (Array.isArray(v.lineSeries)) {
+    d.lineSeries = v.lineSeries.filter((n): n is string => typeof n === "string")
+  }
+  if (v.secondaryAxis === true) d.secondaryAxis = true
+  return Object.keys(d).length ? d : undefined
+}
+
+/**
+ * A record link as the server sent it, checked: a path stays inside the app (starts with one
+ * "/", never "//" or a URL); an entity names its app, type and id. Anything else is no link.
+ */
+export function recordLinkFrom(v: unknown): RecordLink | null {
+  if (!isRecord(v)) return null
+  if (v.kind === "path" && typeof v.href === "string" && isAppPath(v.href)) {
+    return { kind: "path", href: v.href }
+  }
+  if (
+    v.kind === "entity" &&
+    typeof v.app === "string" &&
+    v.app !== "" &&
+    typeof v.entityType === "string" &&
+    v.entityType !== "" &&
+    typeof v.id === "string" &&
+    v.id !== ""
+  ) {
+    return { kind: "entity", app: v.app, entityType: v.entityType, id: v.id }
+  }
+  return null
+}
+
+/** An in-app path: "/" then anything but a second "/" or a backslash (never another origin). */
+export function isAppPath(href: string): boolean {
+  if (!/^\/(?![/\\])/.test(href) || /\s/.test(href)) return false
+  for (let i = 0; i < href.length; i++) if (href.charCodeAt(i) < 0x20) return false
+  return true
+}
+
 /** What the server answered for a block, checked: an unknown shape is a source error. */
 export function parseBlockResponse(body: unknown): BlockResult {
   if (!isRecord(body)) return { ok: false, error: "source_error" }
@@ -363,6 +476,7 @@ export function parseBlockResponse(body: unknown): BlockResult {
     }
     case "table":
       if (Array.isArray(body.columns) && Array.isArray(body.rows)) {
+        const links = Array.isArray(body.links) ? body.links.map(recordLinkFrom) : undefined
         return {
           ok: true,
           data: {
@@ -370,16 +484,20 @@ export function parseBlockResponse(body: unknown): BlockResult {
             columns: body.columns as DashboardColumn[],
             rows: body.rows as TableData["rows"],
             ...truncated,
+            ...(links ? { links } : {}),
           },
           ...withInfo,
         }
       }
       return { ok: false, error: "source_error" }
     case "bar":
-    case "line": {
+    case "line":
+    case "area":
+    case "combo": {
       const x = Array.isArray(body.x) ? body.x : body.labels
       if (Array.isArray(x) && Array.isArray(body.series)) {
         const previous = previousSeriesFrom(body.previous)
+        const display = displayFrom(body.display)
         return {
           ok: true,
           data: {
@@ -388,12 +506,34 @@ export function parseBlockResponse(body: unknown): BlockResult {
             series: body.series as SeriesData["series"],
             ...shown,
             ...(previous ? { previous } : {}),
+            ...(display ? { display } : {}),
           },
           ...withInfo,
         }
       }
       return { ok: false, error: "source_error" }
     }
+    case "funnel": {
+      const first = Array.isArray(body.series) && isRecord(body.series[0]) ? body.series[0] : null
+      if (Array.isArray(body.labels) && Array.isArray(first?.values)) {
+        return {
+          ok: true,
+          data: {
+            kind: "funnel",
+            labels: body.labels.map((l) => String(l)),
+            values: (first.values as unknown[]).map((v) => (typeof v === "number" ? v : 0)),
+            ...shown,
+          },
+          ...withInfo,
+        }
+      }
+      return { ok: false, error: "source_error" }
+    }
+    case "text":
+      if (typeof body.markdown === "string") {
+        return { ok: true, data: { kind: "text", markdown: body.markdown }, ...withInfo }
+      }
+      return { ok: false, error: "source_error" }
     case "pie": {
       const first = Array.isArray(body.series) && isRecord(body.series[0]) ? body.series[0] : null
       const values = Array.isArray(body.values) ? body.values : first?.values
@@ -482,19 +622,39 @@ export const DashboardsClientTestAccess = {
   withSlot,
 }
 
-/** The block-data query: refresh, and the range the viewer looks at (always sent when given). */
-export function blockDataQuery(opts?: { refresh?: boolean; range?: RangeChoice }): string {
+/** Each filter's values as query parameters: `f.<id>=v` per value, `f.<id>=` for all. */
+export function appendFilterParams(q: URLSearchParams, filters: FilterValues | undefined): void {
+  if (!filters) return
+  for (const id of Object.keys(filters).sort()) {
+    const values = filters[id] ?? []
+    if (values.length === 0) q.append(`f.${id}`, "")
+    else for (const v of values) q.append(`f.${id}`, v)
+  }
+}
+
+function appendRange(q: URLSearchParams, r: RangeChoice | undefined, withCompare: boolean): void {
+  if (!r) return
+  q.set("range", r.timeRange.preset)
+  if (r.timeRange.preset === "custom") {
+    q.set("from", r.timeRange.from ?? "")
+    q.set("to", r.timeRange.to ?? "")
+  }
+  if (withCompare) q.set("compare", r.compare)
+}
+
+/**
+ * The block-data query: refresh, the range the viewer looks at and the filter values shown
+ * (always sent when given).
+ */
+export function blockDataQuery(opts?: {
+  refresh?: boolean
+  range?: RangeChoice
+  filters?: FilterValues
+}): string {
   const q = new URLSearchParams()
   if (opts?.refresh) q.set("refresh", "1")
-  const r = opts?.range
-  if (r) {
-    q.set("range", r.timeRange.preset)
-    if (r.timeRange.preset === "custom") {
-      q.set("from", r.timeRange.from ?? "")
-      q.set("to", r.timeRange.to ?? "")
-    }
-    q.set("compare", r.compare)
-  }
+  appendRange(q, opts?.range, true)
+  appendFilterParams(q, opts?.filters)
   const s = q.toString()
   return s ? `?${s}` : ""
 }
@@ -504,7 +664,7 @@ export function getBlockData(
   api: DashboardsApi,
   dashboardId: string,
   blockId: string,
-  opts?: { refresh?: boolean; signal?: AbortSignal; range?: RangeChoice },
+  opts?: { refresh?: boolean; signal?: AbortSignal; range?: RangeChoice; filters?: FilterValues },
 ): Promise<BlockResult> {
   const path = `/dashboards/${encodeURIComponent(dashboardId)}/blocks/${encodeURIComponent(blockId)}/data${blockDataQuery(opts)}`
   const read = withSlot(async () => {
@@ -534,10 +694,161 @@ export async function saveViewerRange(
   await api.put(viewerStatePath(dashboardId), choice, { suppressGlobalError: true })
 }
 
-/** Forgets this person's range: the dashboard opens on its default again. */
+/** Remembers this person's filter values on this dashboard; `{}` forgets them. */
+export async function saveViewerFilters(
+  api: DashboardsWriteApi,
+  dashboardId: string,
+  filters: FilterValues,
+): Promise<void> {
+  await api.put(viewerStatePath(dashboardId), { filters }, { suppressGlobalError: true })
+}
+
+/** Forgets this person's range AND filters: the dashboard opens on its defaults again. */
 export async function clearViewerRange(
   api: DashboardsWriteApi,
   dashboardId: string,
 ): Promise<void> {
   await api.delete(viewerStatePath(dashboardId), undefined, { suppressGlobalError: true })
+}
+
+// ── drill-down ───────────────────────────────────────────────────────────────
+
+/** Which figure of a block the rows are asked for. None: every row the block aggregates. */
+export interface DrillTarget {
+  /** A chart's category, as in its `labels`. */
+  category?: string
+  /** A split series' name. */
+  series?: string
+  /** A table's row index. */
+  row?: number
+}
+
+export interface BlockRowsPage {
+  columns: DashboardColumn[]
+  rows: Array<Record<string, unknown>>
+  links: Array<RecordLink | null> | null
+  total: number
+  offset: number
+  limit: number
+  nextOffset: number | null
+  /** The source had more rows than the server searches. */
+  truncated: boolean
+  computedAt?: string
+}
+
+export type BlockRowsResult =
+  | { ok: true; page: BlockRowsPage }
+  | { ok: false; error: BlockErrorKind; message?: string }
+
+export const DRILL_PAGE_SIZE = 50
+
+/** The rows query: the figure, the page, the range (no comparison) and the filter values. */
+export function blockRowsQuery(opts: {
+  target?: DrillTarget
+  offset?: number
+  limit?: number
+  range?: RangeChoice
+  filters?: FilterValues
+}): string {
+  const q = new URLSearchParams()
+  const t = opts.target
+  if (t?.category !== undefined) q.set("category", t.category)
+  if (t?.series !== undefined) q.set("series", t.series)
+  if (t?.row !== undefined) q.set("row", String(t.row))
+  q.set("offset", String(opts.offset ?? 0))
+  q.set("limit", String(opts.limit ?? DRILL_PAGE_SIZE))
+  appendRange(q, opts.range, false)
+  appendFilterParams(q, opts.filters)
+  return `?${q.toString()}`
+}
+
+/** The server's rows answer, checked. */
+export function parseRowsResponse(body: unknown): BlockRowsResult {
+  if (!isRecord(body)) return { ok: false, error: "source_error" }
+  if (typeof body.error === "string") {
+    return {
+      ok: false,
+      error: SERVER_ERRORS.has(body.error) ? (body.error as BlockErrorKind) : "source_error",
+      message: typeof body.message === "string" ? body.message : undefined,
+    }
+  }
+  if (!Array.isArray(body.columns) || !Array.isArray(body.rows)) {
+    return { ok: false, error: "source_error" }
+  }
+  const rows = body.rows as Array<Record<string, unknown>>
+  const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d)
+  return {
+    ok: true,
+    page: {
+      columns: body.columns as DashboardColumn[],
+      rows,
+      links: Array.isArray(body.links) ? body.links.map(recordLinkFrom) : null,
+      total: num(body.total, rows.length),
+      offset: num(body.offset, 0),
+      limit: num(body.limit, DRILL_PAGE_SIZE),
+      nextOffset: typeof body.nextOffset === "number" ? body.nextOffset : null,
+      truncated: body.truncated === true,
+      ...(typeof body.computedAt === "string" ? { computedAt: body.computedAt } : {}),
+    },
+  }
+}
+
+/** One page of the rows behind a figure, read as the viewer. Never rejects. */
+export async function getBlockRows(
+  api: DashboardsApi,
+  dashboardId: string,
+  blockId: string,
+  opts: {
+    target?: DrillTarget
+    offset?: number
+    limit?: number
+    range?: RangeChoice
+    filters?: FilterValues
+    signal?: AbortSignal
+  },
+): Promise<BlockRowsResult> {
+  const path = `/dashboards/${encodeURIComponent(dashboardId)}/blocks/${encodeURIComponent(blockId)}/rows${blockRowsQuery(opts)}`
+  try {
+    const body = await api.get<unknown>(path, { signal: opts.signal, suppressGlobalError: true })
+    return parseRowsResponse(body)
+  } catch (err) {
+    return blockErrorFrom(err)
+  }
+}
+
+// ── filter options ───────────────────────────────────────────────────────────
+
+export type FilterOptionsResult =
+  | { ok: true; options: string[]; truncated: boolean }
+  | { ok: false; error: BlockErrorKind; message?: string }
+
+/** The values a filter offers, for the range and the other filters' values shown. */
+export async function getFilterOptions(
+  api: DashboardsApi,
+  dashboardId: string,
+  filterId: string,
+  opts: { range?: RangeChoice; filters?: FilterValues; signal?: AbortSignal },
+): Promise<FilterOptionsResult> {
+  const q = new URLSearchParams()
+  appendRange(q, opts.range, false)
+  appendFilterParams(q, opts.filters)
+  const s = q.toString()
+  const path = `/dashboards/${encodeURIComponent(dashboardId)}/filters/${encodeURIComponent(filterId)}/options${s ? `?${s}` : ""}`
+  try {
+    const body = await api.get<unknown>(path, { signal: opts.signal, suppressGlobalError: true })
+    if (!isRecord(body)) return { ok: false, error: "source_error" }
+    if (typeof body.error === "string") {
+      return {
+        ok: false,
+        error: SERVER_ERRORS.has(body.error) ? (body.error as BlockErrorKind) : "source_error",
+        message: typeof body.message === "string" ? body.message : undefined,
+      }
+    }
+    const options = Array.isArray(body.options)
+      ? body.options.filter((o): o is string => typeof o === "string")
+      : []
+    return { ok: true, options, truncated: body.truncated === true }
+  } catch (err) {
+    return blockErrorFrom(err)
+  }
 }

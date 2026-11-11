@@ -27,6 +27,7 @@ vi.mock("chart.js", () => {
     "LineController",
     "LineElement",
     "PointElement",
+    "Filler",
     "PieController",
     "ArcElement",
     "CategoryScale",
@@ -123,7 +124,7 @@ describe("TableBlock", () => {
 })
 
 describe("Chart", () => {
-  it("draws through chart.js with only bar, line and pie registered", async () => {
+  it("draws through chart.js with only the pieces its kinds use registered (area fill included)", async () => {
     render(() => (
       <Chart
         type="bar"
@@ -139,6 +140,7 @@ describe("Chart", () => {
       "LineController",
       "LineElement",
       "PointElement",
+      "Filler",
       "PieController",
       "ArcElement",
       "CategoryScale",

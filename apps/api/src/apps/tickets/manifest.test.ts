@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { validateAppManifest } from "~/modules/apps/contract"
 import { generateSequenceDdl, generateTableDdl } from "~/modules/apps/ddl"
-import { resolveToolTimeoutMs } from "~/modules/apps/sandbox/executor"
+import { resolveToolTimeoutMs } from "~/modules/apps/run-limits"
 import ticketsManifest from "./app.manifest.json"
 
 // The app guide is a short core plus sections keyed by the tools they are

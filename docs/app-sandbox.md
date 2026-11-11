@@ -60,6 +60,12 @@ Each invocation gets a **fresh context** — no state leaks between calls. The h
 
 **Marshalling:** Complex values cross the WASM boundary via JSON serialization. Bridge return values are marshalled back into QuickJS handles (strings, numbers, booleans natively; objects/arrays via `evalCode("(" + json + ")")`).
 
+### Run limits and the app contract
+
+One table sets what a run of app code may spend, per kind of entry point (tool, preflight, webhook, webhook verifier, job, event, poll, reconcile, search, export, attention, import, before-disconnect hook, builder preview, import transform, PDF template, summarizer): its wall clock, CPU time, heap, outbound calls and bridge calls (`apps/api/src/modules/apps/run-limits.ts`). Both executors read it. In production a tool, webhook or export gets 5 s unless its manifest declares more (up to 120 s), a job 60 s unless it declares its own, an event handler 30 s, a poll or reconcile 60 s, a search 5 s, a summarizer 5 s, a PDF template 30 s, a before-disconnect hook 20 s; every run gets 30 s of CPU on Workers, 32 MB of heap, and at most 10,000 outbound and bridge calls. A single `ctx.fetch` waits 10 s for a read (`LIAISON_SANDBOX_FETCH_TIMEOUT_MS`, up to 120 s) and up to 30 s for a write.
+
+Every bundled app is checked against the wake-up contract (`apps/api/src/modules/apps/contract/`): each entry point its manifest declares runs twice in one reused isolate, on recorded provider answers, under its production limits. It fails when the second run answers differently from the first (state kept in the module between runs), when a run waits in its own timers for more than 2 s, or when a run goes past its limits. A scan of the app's sources also flags every timer, sleep or poll loop that may wait past 2 s inside a run: wait for something later with a job instead. Known failures are listed in `contract/expected-failures.json`, which may only shrink.
+
 ### RPC Bridge
 
 **Files:** `modules/apps/sandbox/rpc-bridge.ts`

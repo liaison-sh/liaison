@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
-import { esmExportsToGlobalThis } from "~/modules/apps/sandbox/bundle-loader"
 import {
-  executeInSandbox,
   resolveSandboxDefaultTimeoutMs,
   resolveSandboxMaxToolTimeoutMs,
   resolveToolTimeoutMs,
-} from "~/modules/apps/sandbox/executor"
+} from "~/modules/apps/run-limits"
+import { esmExportsToGlobalThis } from "~/modules/apps/sandbox/bundle-loader"
+import { executeInSandbox } from "~/modules/apps/sandbox/executor"
 import {
   createSandboxPool,
   resolveSandboxPoolMaxSize,

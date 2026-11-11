@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { QuickJSAsyncContext, QuickJSHandle } from "quickjs-emscripten"
 import { sandboxCancelledError } from "~/lib/failure-severity"
+import { resolveSandboxDefaultTimeoutMs } from "~/modules/apps/run-limits"
 import {
   applyTypedFailure,
   newBridgeRejection,
@@ -31,57 +32,8 @@ export interface ExecuteOptions {
   signal?: AbortSignal
 }
 
-/**
- * Per-handler sandbox execution ceiling. Production pins a tight 5s (and IGNORES the env override — a
- * hung/abusive third-party handler must never hold a worker). Non-production defaults to 60s but
- * honours LIAISON_SANDBOX_TIMEOUT_MS: the chaos `agent_run` handler runs an ENTIRE multi-turn agent
- * conversation inside ONE sandboxed execution, so a long export/customs scenario (10-15 Flash-Lite
- * turns) legitimately exceeds 60s and was being cut off ("App execution timed out") BEFORE its
- * turnBudget — the conductor's real completion boundary. Chaos sets a generous value so the agent
- * runs to its turnBudget instead of an arbitrary wall-clock.
- */
-export function resolveSandboxDefaultTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
-  if (env.NODE_ENV === "production") return 5_000
-  const override = Number(env.LIAISON_SANDBOX_TIMEOUT_MS)
-  return Number.isFinite(override) && override > 0 ? override : 60_000
-}
-
+/** The sandbox default wall clock (run-limits.ts); a run that names none gets it. */
 const DEFAULT_TIMEOUT_MS = resolveSandboxDefaultTimeoutMs()
-
-/**
- * Hard upper bound on a manifest-declared per-tool `timeoutMs`. A known-heavy
- * fan-out read (shopify `home_load`, tickets `get`) legitimately needs more than
- * the tight 5s prod default, so the executor honours the tool's declared budget
- * unclamped by NODE_ENV — but a third-party manifest must never be able to pin a
- * worker for minutes, so the declared value is capped here. Env-overridable for
- * an exceptional deployment. Tools that declare nothing keep the tight default.
- * The bound is 120s: high enough not to reduce the legitimate long-running
- * declarations already shipped (invoicing PDF render 120s, boxtal label buys
- * 60s), low enough that a runaway third-party manifest can't pin a worker for
- * minutes on end.
- */
-export function resolveSandboxMaxToolTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
-  const override = Number(env.LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS)
-  return Number.isFinite(override) && override > 0 ? override : 120_000
-}
-
-/**
- * Resolve the effective execution budget for a tool. `declared` is the manifest
- * `timeoutMs` (undefined when the tool declares nothing). A declared value is
- * honoured up to `resolveSandboxMaxToolTimeoutMs()` (and never below the base
- * default); undefined falls through to the base default. This is the single
- * chokepoint that lets a heavy tool raise its own ceiling in prod without
- * letting an arbitrary manifest hold a worker indefinitely.
- */
-export function resolveToolTimeoutMs(
-  declared: number | undefined,
-  env: NodeJS.ProcessEnv = process.env,
-): number | undefined {
-  if (typeof declared !== "number" || !Number.isFinite(declared) || declared <= 0) return undefined
-  const base = resolveSandboxDefaultTimeoutMs(env)
-  const max = resolveSandboxMaxToolTimeoutMs(env)
-  return Math.min(Math.max(declared, base), max)
-}
 
 export async function executeInSandbox(opts: ExecuteOptions): Promise<unknown> {
   const {
@@ -466,7 +418,7 @@ interface CtxSpec {
  * before, one per name. It is passed to the shim as an argument and never
  * stored on the global object.
  */
-function installBridgeAndCtx(
+export function installBridgeAndCtx(
   ctx: QuickJSAsyncContext,
   bridge: Record<string, (...args: any[]) => any>,
   handles: QuickJSHandle[],
@@ -640,7 +592,7 @@ function buildCtxSpec(bridge: Record<string, (...args: any[]) => unknown>): CtxS
   return { syncGetters, approval, flat, groups: Array.from(nested.entries()), stepsRuns }
 }
 
-function marshalToContext(ctx: QuickJSAsyncContext, value: unknown): QuickJSHandle {
+export function marshalToContext(ctx: QuickJSAsyncContext, value: unknown): QuickJSHandle {
   if (value === undefined || value === null) return ctx.undefined
   if (typeof value === "string") return ctx.newString(value)
   if (typeof value === "number") return ctx.newNumber(value)

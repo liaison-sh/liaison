@@ -57,6 +57,7 @@ import {
   type RunLogLine,
   UNKNOWN_TAINT_TAGS,
 } from "~/modules/app-builder/logs"
+import { runLimits } from "~/modules/apps/run-limits"
 import { forWorkersRun, typedError } from "~/modules/apps/sandbox/bridge/secret-free"
 import { createStoreMethods } from "~/modules/apps/sandbox/bridge/store"
 import { esmExportsToGlobalThis } from "~/modules/apps/sandbox/bundle-loader"
@@ -67,9 +68,6 @@ import {
 import { runApp } from "~/modules/apps/sandbox/run-app"
 import { draftStoreApp } from "~/modules/data-store/service"
 import { hasScope } from "~/modules/permissions/permissions"
-
-/** A preview run lasts this long at most. */
-export const PREVIEW_TIMEOUT_MS = 30_000
 
 export type PreviewEntryKind = "tool" | "job" | "webhook"
 
@@ -486,7 +484,7 @@ async function runPreview(args: {
       params: input.params ?? {},
       ...(input.entry.kind === "webhook" ? { extraArgs: [{}] } : {}),
       bridge,
-      timeoutMs: PREVIEW_TIMEOUT_MS,
+      timeoutMs: runLimits("preview").wallMs,
       holdsTx: false,
       priority: "interactive",
       // The org's share of the pool: a draft runs under its custom app name.

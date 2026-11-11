@@ -78,9 +78,9 @@ import {
   refUnknownOutputMessage,
   sequencingHint,
 } from "~/modules/apps/ref-messages"
+import { resolveToolTimeoutMs } from "~/modules/apps/run-limits"
 import { withAppDimensionAliases } from "~/modules/apps/runtime-helpers"
 import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { resolveToolTimeoutMs } from "~/modules/apps/sandbox/executor"
 import {
   createSandboxRpcBridge,
   createSessionRpcBridge,

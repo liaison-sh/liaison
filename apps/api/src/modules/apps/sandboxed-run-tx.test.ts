@@ -25,6 +25,7 @@ import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/poo
 import { shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { runWebhookHandler } from "~/modules/webhooks/handler-run"
 import { storeDelivery } from "~/modules/webhooks/inbox"
+import { seedOrgRow } from "~/seed/factories/org/rows"
 import testManifest from "../../../test-support/apps/test/app.manifest.json"
 
 const ORG = "00000000-0000-0000-0000-000000217b02"
@@ -91,8 +92,10 @@ describe("a sandboxed event handler or webhook delivery holds no transaction", (
   const openDuringFetch: number[] = []
 
   beforeAll(async () => {
-    await sql`INSERT INTO kernel.organizations (id, name, slug)
-      VALUES (${ORG}, 'Short Tx Org', 'short-tx-org') ON CONFLICT (id) DO NOTHING`
+    await seedOrgRow(
+      { id: ORG, name: "Short Tx Org", slug: "short-tx-org" },
+      { onConflict: "skip" },
+    )
     resetEventBus()
     initEventBus()
     await initSandboxPool()

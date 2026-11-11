@@ -599,7 +599,12 @@ export interface LinkedRecordKind {
   count: number
   more: boolean
   newest: { title: string; entityId: string; at: string }
+  /** Up to three distinct row titles of this kind, newest first (the newest's among them). */
+  recent: string[]
 }
+
+/** Distinct row titles kept per kind of linked record. */
+const LINKED_RECENT = 3
 
 export interface LinkedApp {
   app: string
@@ -620,22 +625,27 @@ export interface LinkedRecords {
  * source the caller has no scope for, or whose app is off, is never asked and
  * never named; a record the caller's row security hides is never returned by
  * its source. `skip` leaves out sources (by filter key) the caller shows itself.
- * Null when the contact is not visible to the caller.
+ * With `companyId` instead, the records of the company and its people (the
+ * company's timeline sources, its own account manager source left out).
+ * Null when the contact or company is not visible to the caller.
  */
-export async function readLinkedRecords(input: {
-  orgId: string
-  actor: UserContext
-  contactId: string
-  skip?: readonly string[]
-  deadlineMs?: number
-}): Promise<LinkedRecords | null> {
+export async function readLinkedRecords(
+  input: {
+    orgId: string
+    actor: UserContext
+    skip?: readonly string[]
+    deadlineMs?: number
+  } & ({ contactId: string } | { companyId: string }),
+): Promise<LinkedRecords | null> {
   const { orgId, actor } = input
-  const subject = await withRlsContext(actor, (tx) =>
-    readSubject(tx, orgId, { contactId: input.contactId }),
-  )
+  const target =
+    "companyId" in input ? { companyId: input.companyId } : { contactId: input.contactId }
+  const subject = await withRlsContext(actor, (tx) => readSubject(tx, orgId, target))
   if (!subject) return null
   const skip = new Set(input.skip ?? [])
-  const sources = sourcesFor(orgId, actor, null, subject).filter((d) => !skip.has(d.filterKey))
+  const sources = sourcesFor(orgId, actor, null, subject).filter(
+    (d) => d !== COMPANY_SOURCE && !skip.has(d.filterKey),
+  )
   if (sources.length === 0) return { apps: [], unavailable: [] }
   const controller = new AbortController()
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -654,7 +664,7 @@ export async function readLinkedRecords(input: {
         decl,
         {
           contactIds: subject.contactIds,
-          companyId: null,
+          companyId: subject.companyId,
           dealIds: subject.dealIds,
           before: null,
           limit,
@@ -677,15 +687,21 @@ export async function readLinkedRecords(input: {
       .filter((r) => r.href)
       .map((r) => ({ ...r, id: `${a.decl.filterKey}:${r.id}` }))
       .sort(compareActivity)
-    const kinds = new Map<string, { ids: Set<string>; newest: LinkedRecordKind["newest"] }>()
+    const kinds = new Map<
+      string,
+      { ids: Set<string>; newest: LinkedRecordKind["newest"]; recent: string[] }
+    >()
     for (const r of rows) {
       const href = r.href as NonNullable<ActivityRow["href"]>
       const k = kinds.get(href.entityType)
-      if (k) k.ids.add(href.entityId)
-      else
+      if (k) {
+        k.ids.add(href.entityId)
+        if (k.recent.length < LINKED_RECENT && !k.recent.includes(r.title)) k.recent.push(r.title)
+      } else
         kinds.set(href.entityType, {
           ids: new Set([href.entityId]),
           newest: { title: r.title, entityId: href.entityId, at: r.at },
+          recent: [r.title],
         })
     }
     if (kinds.size === 0) continue
@@ -694,8 +710,28 @@ export async function readLinkedRecords(input: {
       app: a.decl.app,
       source: a.decl.filterKey,
       label: a.decl.label,
-      kinds: [...kinds].map(([kind, k]) => ({ kind, count: k.ids.size, more, newest: k.newest })),
+      kinds: [...kinds].map(([kind, k]) => ({
+        kind,
+        count: k.ids.size,
+        more,
+        newest: k.newest,
+        recent: k.recent,
+      })),
     })
   }
   return { apps, unavailable }
+}
+
+/**
+ * One line per app of a linked-records read: how many records of each kind, the
+ * newest with the id that opens it, and the other recent row titles.
+ */
+export function linkedAppLine(app: LinkedApp): string {
+  const kinds = app.kinds.map((k) => {
+    const n = `${k.count}${k.more ? "+" : ""} ${k.kind}${k.count === 1 && !k.more ? "" : "s"}`
+    const also = k.recent.filter((t) => t !== k.newest.title)
+    const rest = also.length > 0 ? `, also ${also.map((t) => `"${t}"`).join(", ")}` : ""
+    return `${n}, newest "${k.newest.title}" (${app.app} ${k.kind} ${k.newest.entityId})${rest}`
+  })
+  return `${app.label}: ${kinds.join("; ")}`
 }

@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+
+import { DEMO_WORLDS, type DemoWorldId, isDemoWorldId } from "@liaison/shared"
 import { Encrypter } from "age-encryption"
 import { z } from "zod"
 import { DEFAULT_APP_ORIGINS } from "~/lib/app-origins"
@@ -98,6 +100,38 @@ export function isBareHttpsOrigin(v: string): boolean {
 /** Compose passes a variable nobody set as the empty string: read it as unset. */
 function unsetIfEmpty(v: unknown): unknown {
   return typeof v === "string" && v.trim() === "" ? undefined : v
+}
+
+/**
+ * `LIAISON_DEMO_WORLDS`: demo world ids (`DEMO_WORLDS` in `@liaison/shared`),
+ * comma separated. Null when an entry is not a world or repeats one.
+ */
+export function parseDemoWorldList(raw: string): DemoWorldId[] | null {
+  const out: DemoWorldId[] = []
+  for (const part of raw.split(",")) {
+    const id = part.trim()
+    if (!isDemoWorldId(id) || out.includes(id)) return null
+    out.push(id)
+  }
+  return out
+}
+
+/**
+ * `LIAISON_DEMO_POOL_SIZES`: `<world>=<count>` pairs, comma separated
+ * (`products=2,saas=2,studio=1`). Empty reads as `{}` (no split given). Null
+ * when a pair is malformed, names no world, repeats one or counts past 100.
+ */
+export function parseDemoPoolSizes(raw: string): Partial<Record<DemoWorldId, number>> | null {
+  const out: Partial<Record<DemoWorldId, number>> = {}
+  if (raw.trim() === "") return out
+  for (const part of raw.split(",")) {
+    const match = /^\s*([a-z]+)\s*=\s*(\d{1,3})\s*$/.exec(part)
+    const id = match?.[1]
+    const count = Number(match?.[2])
+    if (!isDemoWorldId(id) || id in out || !(count <= 100)) return null
+    out[id] = count
+  }
+  return out
 }
 
 /** The instance-provided OAuth clients, each a client id and its secret. */
@@ -523,6 +557,41 @@ export const envSchema = z
     LIAISON_DEMO_POOL_SIZE: z.preprocess(
       (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
       z.coerce.number().int().min(0).max(100).default(5),
+    ),
+    // The demo worlds this box runs, comma separated: products, saas, studio.
+    // A visitor's answer at the door picks one of them; the warm pool keeps
+    // workspaces of each. A world with no seed pack yet is dropped with one
+    // log line. Unset: products only. An unknown or repeated id fails boot.
+    LIAISON_DEMO_WORLDS: z.preprocess(
+      unsetIfEmpty,
+      z
+        .string()
+        .default("products")
+        .refine((v) => parseDemoWorldList(v) !== null, {
+          message: `a comma separated list of demo worlds, each once, from: ${DEMO_WORLDS.join(", ")}`,
+        }),
+    ),
+    // How the warm pool's workspaces split across the demo worlds, as
+    // world=count pairs (products=2,saas=2,studio=1). A world it leaves out,
+    // or one this box does not run, keeps none. Unset: LIAISON_DEMO_POOL_SIZE
+    // split evenly over the worlds the box runs, the remainder in the order
+    // products, saas, studio. A malformed value fails boot.
+    LIAISON_DEMO_POOL_SIZES: z.preprocess(
+      unsetIfEmpty,
+      z
+        .string()
+        .default("")
+        .refine((v) => parseDemoPoolSizes(v) !== null, {
+          message: "world=count pairs, comma separated, each world once, counts 0 to 100",
+        }),
+    ),
+    // The oldest a ready pooled workspace may be, in hours: an older one is
+    // never handed to a visitor and the next refill retires it. A workspace of
+    // a world whose story follows the month (saas, studio) also retires when
+    // the month turns in Europe/Paris.
+    LIAISON_DEMO_POOL_MAX_AGE_HOURS: z.preprocess(
+      unsetIfEmpty,
+      z.coerce.number().int().min(1).max(720).default(12),
     ),
     // How many demo workspaces may be SEEDED at once on this box, across every
     // API process (a Redis-backed gate, demo-seed-gate.ts). Shared by the warm

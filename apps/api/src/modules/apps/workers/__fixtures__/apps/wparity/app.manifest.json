@@ -23,7 +23,11 @@
           "label": "API key",
           "type": "password"
         }
-      ]
+      ],
+      "limits": {
+        "concurrency": 2,
+        "perSecond": 50
+      }
     },
     "warehouse": {
       "type": "credentials",
@@ -144,6 +148,11 @@
     "platformReads": {
       "description": "A query on a platform-held SQL connection, the app's accounts, kernel users",
       "handler": "platformReads",
+      "requiredScopes": ["wparity:items:read"]
+    },
+    "limited": {
+      "description": "Pause the carrier connection, then call it",
+      "handler": "limited",
       "requiredScopes": ["wparity:items:read"]
     }
   },

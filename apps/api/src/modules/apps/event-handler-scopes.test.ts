@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// A vouched-for app's system event handler and approval poll run on a
-// privileged transaction, as the app: a scope check in the database (a task
-// number's `app_projects.app_has_scope('projects:tasks:write')`) reads the
-// scopes the app's manifest declares, and refuses when it declares none
-// (runtime.ts: the privileged event branch and the poll wrapper; db/privileged.ts
+// A vouched-for app's system event handler and approval poll run privileged,
+// as the app: a scope check in the database (a task number's
+// `app_projects.app_has_scope('projects:tasks:write')`) reads the scopes the
+// app's manifest declares, and refuses when it declares none (runtime.ts: the
+// privileged event branch and backgroundAppSession; db/privileged.ts
 // setPrivilegedContext; migration 0210). Each check runs on the very
-// transaction the handler gets.
+// transaction the handler's bridge call gets: the event handler's whole-run
+// one, and for a poll each bridge call's own short one (no transaction is held
+// across the poll's provider call).
 import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows } from "~/db"
@@ -18,6 +20,7 @@ import {
 } from "~/infra/events/event-bus"
 import { resetAppRegistries, toolRegistry } from "~/modules/apps/app-registries"
 import { registerApps, teardownAppRegistrations } from "~/modules/apps/runtime"
+import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import testManifest from "../../../test-support/apps/test/app.manifest.json"
@@ -67,16 +70,17 @@ function systemEvent(entityId: string) {
 }
 
 /** The fixture app as a first-party install (privileged), declaring `scopes`, with a polled tool. */
-async function register(scopes: string[] | undefined) {
+async function register(scopes: string[] | undefined, pollHandler = "listItems") {
   const tools = {
     ...testManifest.tools,
-    gatedProduce: { ...testManifest.tools.gatedProduce, pollHandler: "listItems" },
+    gatedProduce: { ...testManifest.tools.gatedProduce, pollHandler },
   }
   await registerApps(
     [
       {
         ...testManifest,
         tools,
+        network: { allowedDomains: ["poll.provider.test"] },
         ...(scopes ? { scopes } : {}),
         trusted: false,
         _installed: true,
@@ -111,7 +115,9 @@ describe("a privileged app handler acts with the scopes its manifest declares", 
         orgId,
         reason,
         async (tx) => {
-          if (reason.startsWith("event:test:")) seen.push(await readScopes(tx as never))
+          if (reason.startsWith("event:test:") || reason.startsWith("poll:test:")) {
+            seen.push(await readScopes(tx as never))
+          }
           return fn(tx as never)
         },
         opts,
@@ -149,14 +155,13 @@ describe("a privileged app handler acts with the scopes its manifest declares", 
 
   async function pollAndRead(): Promise<Seen> {
     const entry = toolRegistry.get([ORG, "test", "gatedProduce"]) as {
-      poll?: (ctx: { orgId: string; userId: string; tx: unknown }, ref: unknown) => Promise<unknown>
+      poll?: (ctx: { orgId: string; userId: string }, ref: unknown) => Promise<unknown>
     }
     expect(typeof entry?.poll).toBe("function")
-    // The approval-poll job hands the poll a privileged transaction (poll-output.ts).
-    return privilegedModule.withPrivilegedDb(ORG, "test-poll-call", async (tx) => {
-      await entry.poll!({ orgId: ORG, userId: "system", tx }, "ext-1")
-      return readScopes(tx as never)
-    })
+    // The poll opens its own transaction per bridge call (listItems reads once).
+    await entry.poll!({ orgId: ORG, userId: "system" }, "ext-1")
+    expect(seen.length).toBeGreaterThan(0)
+    return seen[0]!
   }
 
   it("the poll reads the declared scopes", async () => {
@@ -167,5 +172,31 @@ describe("a privileged app handler acts with the scopes its manifest declares", 
   it("the poll of an app that declares no scope is refused", async () => {
     await register(undefined)
     expect(await pollAndRead()).toEqual({ ok: false, scopes: "__none__" })
+  }, 30_000)
+
+  it("a sandboxed poll holds no transaction while it asks its provider", async () => {
+    await register(DECLARED, "pollProbe")
+    const openDuringFetch: number[] = []
+    SandboxBridgeTestAccess.setFetchInterceptsHost((h) => h === "poll.provider.test")
+    SandboxBridgeTestAccess.setFetch((async () => {
+      const [r] = await sql`SELECT count(*)::int AS n FROM pg_stat_activity
+        WHERE datname = current_database() AND pid <> pg_backend_pid()
+          AND state LIKE 'idle in transaction%'`
+      openDuringFetch.push(r!.n as number)
+      return Response.json({ value: "label-1" })
+    }) as unknown as typeof fetch)
+    try {
+      const entry = toolRegistry.get([ORG, "test", "gatedProduce"]) as {
+        poll: (ctx: { orgId: string; userId: string }, ref: unknown) => Promise<unknown>
+      }
+      const out = await entry.poll({ orgId: ORG, userId: "system" }, "ext-2")
+      expect(out).toEqual({ ready: true, result: { value: "label-1" } })
+      expect(openDuringFetch).toEqual([0])
+      // Its read after the provider call still ran as the app, on its own transaction.
+      expect(seen[0]).toEqual({ ok: true, scopes: DECLARED.join(",") })
+    } finally {
+      SandboxBridgeTestAccess.setFetch(null)
+      SandboxBridgeTestAccess.setFetchInterceptsHost(null)
+    }
   }, 30_000)
 })

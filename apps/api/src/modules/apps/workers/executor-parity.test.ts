@@ -362,6 +362,22 @@ describe("Workers executor parity with the QuickJS pool", () => {
     assertNoSecretsIn(r.quickjs, SECRETS)
   })
 
+  it("ctx.limiter.pause holds the connection's next ctx.fetch, the same on both", async () => {
+    injectedKeys.length = 0
+    const r = await both("tool:limited", () => callTool("limited", { ms: 300 }))
+    expect(r.quickjs.status).toBe(200)
+    expect(r.quickjs.body.data).toEqual({ paused: true, status: 200, held: true })
+    expect(r.workers).toEqual(r.quickjs)
+    // The credential still went on host-side, after the wait.
+    expect(injectedKeys).toEqual([CARRIER_KEY, CARRIER_KEY])
+  })
+
+  it("ctx.limiter.pause of a connection without limits is refused the same way", async () => {
+    const r = await both("tool:limited", () => callTool("limited", { ms: 300, connection: "nope" }))
+    expect(r.quickjs.body.data).toEqual({ refused: "limiter_connection_not_limited" })
+    expect(r.workers).toEqual(r.quickjs)
+  })
+
   it("ctx.config.get of a declared secret: QuickJS reads it, Workers refuses it, even with the registry cleared", async () => {
     // The refusal must come from the bridge's own manifest (what config_get
     // decrypts), never the in-memory connection registry, which can be empty.

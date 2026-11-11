@@ -156,6 +156,7 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["knowledge_update", "async"],
   ["knowledge_update_validate", "async"],
   ["knowledge_verify", "async"],
+  ["limiter_pause", "async"],
   ["listContactsByExternalId", "async"],
   ["log_debug", "sync"],
   ["log_error", "sync"],

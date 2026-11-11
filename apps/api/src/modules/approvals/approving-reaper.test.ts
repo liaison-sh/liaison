@@ -182,6 +182,8 @@ describe("approval approving reaper", () => {
   describe("a tool that declares a reconciler", () => {
     let answer: ReconcileOutcome = { outcome: "unknown" }
     const asked: Array<{ approvalRequestId: string; payload: unknown }> = []
+    /** Transactions open on this database while each reconciler ran (it asks a provider). */
+    const openTx: number[] = []
 
     beforeAll(async () => {
       await awaitOrgApps(ORG)
@@ -194,9 +196,14 @@ describe("approval approving reaper", () => {
         approvalImpact: "external",
         handler: async () => ({ ok: true }),
         reconcile: async (
-          _ctx: unknown,
+          ctx: Record<string, unknown>,
           input: { approvalRequestId: string; payload: unknown },
         ) => {
+          expect("tx" in ctx).toBe(false)
+          const [open] = await sql`SELECT count(*)::int AS n FROM pg_stat_activity
+            WHERE datname = current_database() AND pid <> pg_backend_pid()
+              AND state LIKE 'idle in transaction%'`
+          openTx.push(open.n as number)
           asked.push(input)
           return answer
         },
@@ -204,6 +211,9 @@ describe("approval approving reaper", () => {
     })
 
     afterEach(() => {
+      // No pooled connection is held in a transaction while the provider is asked.
+      expect(openTx.every((n) => n === 0)).toBe(true)
+      openTx.length = 0
       asked.length = 0
       answer = { outcome: "unknown" }
     })

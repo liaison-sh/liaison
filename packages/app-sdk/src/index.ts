@@ -113,6 +113,7 @@ export type {
   FetchMultipartPart,
   JobsClient,
   KernelClient,
+  LimiterClient,
   Logger,
   SqlClient,
   SqlError,

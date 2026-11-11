@@ -11,6 +11,7 @@ import {
 } from "~/modules/agent/runtime/run-context"
 import { UNDECLARED_WRITE_TARGET } from "~/modules/agent/scopes/scope-taint"
 import { attachRunLogSink } from "~/modules/app-builder/logs"
+import { guardAtomicJobEgress } from "~/modules/apps/atomic-egress"
 import { isCustomAppName } from "~/modules/apps/custom-app-name"
 import { createAccountsMethods } from "~/modules/apps/sandbox/bridge/accounts"
 import { createAgentMethods } from "~/modules/apps/sandbox/bridge/agent"
@@ -145,6 +146,11 @@ export function createRpcBridge(
       }
     }
   }
+
+  // An atomic job (one transaction for its whole run) may not call outside
+  // (atomic-egress.ts); applied after the extensions, like the read-only marks.
+  const job = bridgeOptions?.currentJob
+  if (job?.atomic) guardAtomicJobEgress(rpcBridge, appName, job.name)
 
   // The keys this bridge's config_get decrypts, from the same call it decrypts
   // with (bridge/identity.ts readAppConfigValue), so a Workers run refuses
@@ -382,7 +388,16 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
 // `sql_*` (bridge/sql.ts) run a statement on a database the platform holds a pool
 // for, which can take seconds: their credential lookup and audit line take short
 // transactions of their own (`withShortTx`), never the call's.
-const SESSION_TXLESS_METHOD_PREFIXES = ["imap_", "smtp_", "codec_", "effects_", "_steps_", "sql_"]
+// `limiter_*` (connection-limiter.ts) touch Redis only.
+const SESSION_TXLESS_METHOD_PREFIXES = [
+  "imap_",
+  "smtp_",
+  "codec_",
+  "effects_",
+  "_steps_",
+  "limiter_",
+  "sql_",
+]
 // Exact-name tx-less methods. `fetch` is the workhorse external-HTTP surface
 // (domain-allowlist + pinned-host fetch, zero txDb use) — wrapping it would
 // pin a connection for every outbound HTTP roundtrip. connections_* are NOT

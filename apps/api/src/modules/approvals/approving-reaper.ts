@@ -304,42 +304,48 @@ export async function reconcileUnknownOutcome(row: {
   if (!tool?.reconcile) return null
   const reconcile = tool.reconcile
   try {
-    return await withPrivilegedDb(row.org_id, "approving-reaper-reconcile", async (tx) => {
-      const [current] = extractRows<{ external_ref: unknown }>(
-        await tx.execute(drizzleSql`
+    // No transaction is open while the reconciler asks the provider: the
+    // reference is read in one short transaction, the answer recorded in
+    // another. applyReconcileOutcome's write is guarded on the row's state
+    // (started / ambiguous, no landed effect), so a change in between wins.
+    const [current] = extractRows<{ external_ref: unknown }>(
+      await withPrivilegedDb(row.org_id, "approving-reaper-reconcile-read", (tx) =>
+        tx.execute(drizzleSql`
           SELECT external_ref FROM ${K}.approved_handler_executions
           WHERE approval_request_id = ${row.id} AND tool_name = ${row.tool_name}
         `),
+      ),
+    )
+    const answer = await reconcile(
+      { orgId: row.org_id },
+      {
+        approvalRequestId: row.id,
+        payload: row.current_payload,
+        externalRef: current?.external_ref ?? null,
+      },
+    )
+    if (answer.outcome === "unknown") {
+      log.info(
+        { requestId: row.id, tool: row.tool_name, reason: answer.reason },
+        "Reconciler could not tell whether the approved action happened",
       )
-      const answer = await reconcile(
-        { orgId: row.org_id, tx },
-        {
-          approvalRequestId: row.id,
-          payload: row.current_payload,
-          externalRef: current?.external_ref ?? null,
-        },
-      )
-      if (answer.outcome === "unknown") {
-        log.info(
-          { requestId: row.id, tool: row.tool_name, reason: answer.reason },
-          "Reconciler could not tell whether the approved action happened",
-        )
-        return null
-      }
-      const applied = await applyReconcileOutcome(tx, {
+      return null
+    }
+    const applied = await withPrivilegedDb(row.org_id, "approving-reaper-reconcile-apply", (tx) =>
+      applyReconcileOutcome(tx, {
         orgId: row.org_id,
         approvalRequestId: row.id,
         toolName: row.tool_name,
         actorId: row.decided_by ?? row.requested_by,
         outcome: answer,
-      })
-      if (!applied) return null
-      log.warn(
-        { requestId: row.id, tool: row.tool_name, outcome: answer.outcome },
-        "Approved execution with an unknown outcome reconciled with the provider",
-      )
-      return answer.outcome
-    })
+      }),
+    )
+    if (!applied) return null
+    log.warn(
+      { requestId: row.id, tool: row.tool_name, outcome: answer.outcome },
+      "Approved execution with an unknown outcome reconciled with the provider",
+    )
+    return answer.outcome
   } catch (err) {
     log.error(
       { err, requestId: row.id, tool: row.tool_name },

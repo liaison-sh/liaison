@@ -824,6 +824,46 @@ on our side is often still applied upstream. A multipart upload can ask for up t
 seconds. The tool's own `timeoutMs` still bounds the whole call
 (`apps/api/src/modules/apps/sandbox/bridge/egress.ts`).
 
+### Share a provider's rate limit across runs (`limits`, `ctx.limiter`)
+
+A provider limits how hard one account may call it: so many calls at once, or so
+many per second. Declare that limit on the connection in the manifest, and every
+`ctx.fetch` that names the connection (`auth: { connection }`) keeps to it, across
+every run, process and executor (QuickJS or Workers). Do not keep your own counter
+or semaphore in module state: it is per process, and a Workers isolate does not
+share it.
+
+```json
+"connections": {
+  "shop": {
+    "type": "oauth2",
+    "limits": { "concurrency": 4, "perSecond": 2, "burst": 40 }
+  }
+}
+```
+
+- `concurrency`: calls to one account in flight at once (1 to 1000).
+- `perSecond`: calls started per second, on average; `burst`: how many may start at
+  once when there is room (default: `perSecond` rounded up). Give `concurrency`,
+  `perSecond` or both.
+- The limit is per account: the organization, the app, the connection and the
+  `identifier` the call names (none: the connection's default account).
+- A call waits for its turn before it goes out, at most 2 seconds in a tool and 20
+  seconds in a job. Past that it fails with `provider_rate_limited` (status 429), which
+  the caller can retry later.
+- When the provider answers a limited connection's call with 429 or 503 and a
+  `Retry-After` header, every call to that account waits that long (at most 60
+  seconds).
+- A provider that reports its throttle in the response body (a GraphQL cost):
+  call `await ctx.limiter.pause("shop", ms)` (or `pause("shop", ms, identifier)`),
+  and every call to that account waits `ms`, at most 60 seconds. It answers the pause
+  in force. Only for a connection that declares `limits`.
+- When the limiter cannot reach its store, calls go out without a limit (the
+  provider's own 429 still applies) and the server logs it.
+
+(`apps/api/src/modules/apps/connection-limiter.ts`,
+`apps/api/src/modules/apps/run-limits.ts` `connectionLimiterLimits`.)
+
 ### Unknown outcomes of approved writes
 
 An approved tool with an outside effect records its progress with the approval
@@ -845,8 +885,15 @@ never recorded an outcome:
 - `not_executed`: the approval goes back to pending, so a person can approve it again.
 - `unknown`: nothing changes; the approval stays for a person to decide.
 
+A `reconcileHandler`, like a `pollHandler` (an approved tool's output that is not
+ready yet), runs with no transaction held for its whole run: each `ctx` call opens and
+commits its own, so it may call the provider. The reaper and the poll job record the
+answer afterwards, in one write that only applies if nobody settled the approval in
+between.
+
 (`apps/api/src/modules/approvals/approving-reaper.ts`,
-`apps/api/src/modules/approvals/reconcile-outcome.ts`.)
+`apps/api/src/modules/approvals/reconcile-outcome.ts`,
+`apps/api/src/modules/approvals/poll-output.ts`.)
 
 ### Tiering model (Phase 14+)
 

@@ -1155,6 +1155,9 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // real agent loop with a scripted model: it reaches the company,
             // customer, documents, tickets and deals reads, and the company card.
             "src/seed/worlds/saas/owner-question-reach.saas.integration.test.ts",
+            // A visitor's first turn on a prospect with no card customer, played
+            // through the real agent loop with a scripted model: every read answers.
+            "src/seed/worlds/saas/visitor-first-turn.saas.integration.test.ts",
             "src/seed/worlds/saas/seed-without-owner.saas.integration.test.ts",
             // The money scenario's recovered card: the outside state and the
             // processor's events through the payments app's own handler, the

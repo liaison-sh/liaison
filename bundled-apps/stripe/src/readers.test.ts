@@ -39,6 +39,31 @@ describe("a customer page's address", () => {
   })
 })
 
+describe("a contact or company with no Stripe customer", () => {
+  const PROSPECT = "0b6a7c1e-3f52-4d8e-9a10-5c2e4b7d9f11"
+  it("a company with no Stripe customer is an answer that says so, not a failed read", async () => {
+    const { db } = world()
+    const r = (await customersGet({ companyId: PROSPECT }, { db })) as Record<string, unknown>
+    expect(r.error).toBeUndefined()
+    expect(r.customer).toBeNull()
+    expect(r.subscriptions).toEqual([])
+    expect(String(r.summary)).toStartWith("No Stripe customer is linked to this company")
+  })
+
+  it("a contact with no Stripe customer says so too", async () => {
+    const { db } = world()
+    const r = (await customersGet({ contactId: PROSPECT }, { db })) as Record<string, unknown>
+    expect(r.customer).toBeNull()
+    expect(String(r.summary)).toStartWith("No Stripe customer is linked to this contact")
+  })
+
+  it("a named Stripe id that matches nothing is still refused", async () => {
+    const { db } = world()
+    const r = (await customersGet({ id: "cus_missing" }, { db })) as { error?: { code?: string } }
+    expect(r.error?.code).toBe("customer_not_found")
+  })
+})
+
 describe("the Stripe mirror readers", () => {
   it("a reader's result names its record and says when the mirror was last synced", async () => {
     const ctx = world()

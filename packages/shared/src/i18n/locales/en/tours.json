@@ -548,7 +548,7 @@
       "askAgent": {
         "title": "Hand it to your agent",
         "body": "Open Chats at the bottom of the screen, beside the task, pick your conversation with {{agent}}, write the request below and press Send.",
-        "text": "Tobias needs help on PREAMP-11 \"Prepare the trade-show demo\". Break it into subtasks for next week and create them now as its subtasks, then reply to Tobias in the task's discussion. No need to check with me first.",
+        "text": "Break Tobias's task PREAMP-11 \"Prepare the trade-show demo\" into three subtasks and create them, then reply to Tobias in its discussion. No need to check with me first.",
         "role": "You don't have time to plan the demo units yourself. You ask {{agent}}, the way you'd ask an assistant: it splits the task and answers Tobias for you.",
         "way1": "Open Chats at the bottom of the screen, beside the task",
         "say": "Write to {{agent}}:"
@@ -607,7 +607,7 @@
       "askAgent": {
         "title": "Ask your agent to research it",
         "body": "Open Chats at the bottom of the screen, beside the channel, pick your conversation with {{agent}} and send the battery passport question below with Send. It searches the web live and cites its sources.",
-        "text": "Tobias is asking which EU battery passport rules apply to us from 2027 and what we need to change. Can you look it up on the web and give me the answer with links to your sources?",
+        "text": "Which EU battery passport rules apply to us from 2027? Look it up on the web and answer in a few lines, with links to your sources.",
         "role": "You don't know the answer, but {{agent}} can search the web and cite its sources.",
         "say": "Ask {{agent}}:",
         "way1": "Open Chats at the bottom of the screen, beside the channel"
@@ -1033,7 +1033,7 @@
       "askAgent": {
         "title": "Hand it to your agent",
         "body": "Open Chats at the bottom of the screen, beside the task, pick your conversation with {{agent}}, write the request below and press Send.",
-        "text": "Baptiste needs help on \"Import rotas from a CSV file\". Break it into subtasks for next week and create them now as its subtasks, then reply to Baptiste in the task's discussion. No need to check with me first.",
+        "text": "Break Baptiste's task \"Import rotas from a CSV file\" into three subtasks and create them, then reply to Baptiste in its discussion. No need to check with me first.",
         "role": "You don't have time to plan the import yourself. You ask {{agent}}, the way you'd ask an assistant: it splits the task and answers Baptiste for you.",
         "way1": "Open Chats at the bottom of the screen, beside the task",
         "say": "Write to {{agent}}:"
@@ -1092,7 +1092,7 @@
       "askAgent": {
         "title": "Ask your agent to research it",
         "body": "Open Chats at the bottom of the screen, beside the channel, pick your conversation with {{agent}} and send the question below with Send. It reads the page Lucie points to and cites it. The source is a fictional page in this demo.",
-        "text": "Lucie is asking how hotels plan their seasonal staffing and what that means for our rota features. Can you read the page she links and give me the answer with a link to your source?",
+        "text": "Read the page Lucie linked in the Seasonal staffing channel and tell me in a few lines how hotels plan their seasonal staff, with the link.",
         "role": "You don't know the answer, but {{agent}} can read the page and cite it.",
         "say": "Ask {{agent}}:",
         "way1": "Open Chats at the bottom of the screen, beside the channel"
@@ -1112,7 +1112,7 @@
       "followUp": {
         "title": "Turn it into a task",
         "body": "In the same conversation, send the request below: type it and press Send, or press the microphone beside Send and say it. It turns the answer into a task in the Product project.",
-        "text": "Please make this answer a task for Lucie in our \"Product\" project, with the source in its description.",
+        "text": "Make this answer a task for Lucie in the \"Product\" project, with the link in its description.",
         "role": "Lucie will act on the answer, so it should become a task in the Product project.",
         "say": "Ask {{agent}}:"
       },
@@ -1140,7 +1140,7 @@
       "replyTobias": {
         "title": "Answer Lucie in the channel",
         "body": "In the same conversation, send the request below with Send. {{agent}} posts the answer in #seasonal-staffing for Lucie, signed as your agent, with its source and the task.",
-        "text": "Now reply to Lucie in #seasonal-staffing: tell her what you found, with the source, and point her to the task you created for her.",
+        "text": "Reply to Lucie in #seasonal-staffing with what you found and the link, and point her to her new task.",
         "role": "Lucie asked in the channel, so the answer belongs there, where the team sees it.",
         "say": "Ask {{agent}}:"
       }
@@ -1229,7 +1229,7 @@
       "askBugs": {
         "title": "Ask your agent for the recent bugs",
         "body": "Open Chats at the bottom of the screen, pick your conversation with {{agent}} and send the question below with Send. It reads the team's Rota bugs channel.",
-        "text": "Read the Rota bugs channel and the support handover, and list the bugs reported there, newest first, one line each.",
+        "text": "Read the Rota bugs and Support handover channels and list the bugs reported there, newest first, one line each.",
         "role": "Support reports bugs to the developers in team channels. {{agent}} can read them for you.",
         "say": "Ask {{agent}}:",
         "way1": "Open Chats at the bottom of the screen"
@@ -1278,7 +1278,7 @@
       "askTell": {
         "title": "Tell the customer",
         "body": "Send the request below with Send. {{agent}} drafts the reply to the customer whose ticket this was; it waits for your approval.",
-        "text": "Draft a reply to Claire on her ticket about the payroll export: tell her the fix is ready and link the pull request. Don't send it, I want to read it first.",
+        "text": "Draft a reply to Claire on her payroll export ticket saying where the fix stands, with the pull request link if there is one. Don't send it, I want to read it first.",
         "role": "The ticket, the fix and the customer are one thread. Your agent can close it.",
         "say": "Ask {{agent}}:",
         "way1": "Open Chats at the bottom of the screen, beside the session"

@@ -548,7 +548,7 @@
       "askAgent": {
         "title": "Confiez-la à votre agent",
         "body": "Ouvrez Discussions en bas de l'écran, à côté de la tâche, choisissez votre discussion avec {{agent}}, écrivez la demande ci-dessous et appuyez sur Envoyer.",
-        "text": "Tobias a besoin d'aide sur PREAMP-11 « Prepare the trade-show demo ». Découpez-la en sous-tâches pour la semaine prochaine et créez-les maintenant comme ses sous-tâches, puis répondez à Tobias dans la discussion de la tâche. Inutile de me demander confirmation.",
+        "text": "Découpez la tâche PREAMP-11 « Prepare the trade-show demo » de Tobias en trois sous-tâches et créez-les, puis répondez à Tobias dans sa discussion. Inutile de me demander confirmation.",
         "role": "Vous n'avez pas le temps de planifier vous-même les unités de démo. Vous le demandez à {{agent}}, comme à un assistant : il découpe la tâche et répond à Tobias pour vous.",
         "way1": "Ouvrez Discussions en bas de l'écran, à côté de la tâche",
         "say": "Écrivez à {{agent}} :"
@@ -607,7 +607,7 @@
       "askAgent": {
         "title": "Demandez à votre agent de chercher",
         "body": "Ouvrez Discussions en bas de l'écran, à côté du canal, choisissez votre discussion avec {{agent}} et envoyez la question ci-dessous sur le passeport batterie avec Envoyer. Il cherche sur le web en direct et cite ses sources.",
-        "text": "Tobias demande quelles règles européennes sur le passeport batterie s'appliquent à nous dès 2027 et ce qu'il faut changer. Pouvez-vous chercher sur le web et me donner la réponse avec les liens vers vos sources ?",
+        "text": "Quelles règles européennes sur le passeport batterie s'appliquent à nous dès 2027 ? Cherchez sur le web et répondez en quelques lignes, avec les liens vers vos sources.",
         "role": "Vous ne connaissez pas la réponse, mais {{agent}} peut chercher sur le web et citer ses sources.",
         "say": "Demandez à {{agent}} :",
         "way1": "Ouvrez Discussions en bas de l'écran, à côté du canal"
@@ -1033,7 +1033,7 @@
       "askAgent": {
         "title": "Confiez-la à votre agent",
         "body": "Ouvrez Discussions en bas de l'écran, à côté de la tâche, choisissez votre conversation avec {{agent}}, écrivez la demande ci-dessous et appuyez sur Envoyer.",
-        "text": "Baptiste a besoin d'aide sur « Import rotas from a CSV file ». Découpez-la en sous-tâches pour la semaine prochaine et créez-les maintenant comme ses sous-tâches, puis répondez à Baptiste dans la discussion de la tâche. Inutile de me demander confirmation.",
+        "text": "Découpez la tâche « Import rotas from a CSV file » de Baptiste en trois sous-tâches et créez-les, puis répondez à Baptiste dans sa discussion. Inutile de me demander confirmation.",
         "role": "Vous n'avez pas le temps de planifier l'import vous-même. Vous demandez à {{agent}}, comme à un assistant : il découpe la tâche et répond à Baptiste à votre place.",
         "way1": "Ouvrez Discussions en bas de l'écran, à côté de la tâche",
         "say": "Écrivez à {{agent}} :"
@@ -1092,7 +1092,7 @@
       "askAgent": {
         "title": "Demandez à votre agent de chercher",
         "body": "Ouvrez Discussions en bas de l'écran, à côté du canal, choisissez votre conversation avec {{agent}} et envoyez la question ci-dessous avec Envoyer. Il lit la page que Lucie indique et la cite. La source est une page fictive de cette démo.",
-        "text": "Lucie demande comment les hôtels organisent leur personnel saisonnier et ce que cela change pour nos fonctions de planning. Pouvez-vous lire la page qu'elle indique et me donner la réponse avec un lien vers votre source ?",
+        "text": "Lisez la page que Lucie a partagée dans le canal Seasonal staffing et dites-moi en quelques lignes comment les hôtels organisent leur personnel saisonnier, avec le lien.",
         "role": "Vous ne connaissez pas la réponse, mais {{agent}} peut lire la page et la citer.",
         "say": "Demandez à {{agent}} :",
         "way1": "Ouvrez Discussions en bas de l'écran, à côté du canal"
@@ -1112,7 +1112,7 @@
       "followUp": {
         "title": "Transformez-la en tâche",
         "body": "Dans la même conversation, envoyez la demande ci-dessous : tapez-la et appuyez sur Envoyer ou appuyez sur le micro à côté d'Envoyer et dites-la. Elle transforme la réponse en tâche dans le projet Produit.",
-        "text": "Faites de cette réponse une tâche pour Lucie dans notre projet « Product », avec la source dans sa description.",
+        "text": "Faites de cette réponse une tâche pour Lucie dans le projet « Product », avec le lien dans sa description.",
         "role": "Lucie va agir sur la réponse : elle doit devenir une tâche du projet Produit.",
         "say": "Demandez à {{agent}} :"
       },
@@ -1140,7 +1140,7 @@
       "replyTobias": {
         "title": "Répondez à Lucie dans le canal",
         "body": "Dans la même conversation, envoyez la demande ci-dessous avec Envoyer. {{agent}} poste la réponse dans #seasonal-staffing pour Lucie, signée de votre agent, avec sa source et la tâche.",
-        "text": "Répondez maintenant à Lucie dans #seasonal-staffing : dites-lui ce que vous avez trouvé, avec la source, et indiquez-lui la tâche que vous avez créée pour elle.",
+        "text": "Répondez à Lucie dans #seasonal-staffing avec ce que vous avez trouvé et le lien, et indiquez-lui sa nouvelle tâche.",
         "role": "Lucie a demandé dans le canal : la réponse a sa place là, où l'équipe la voit.",
         "say": "Demandez à {{agent}} :"
       }
@@ -1229,7 +1229,7 @@
       "askBugs": {
         "title": "Demandez les bugs récents à votre agent",
         "body": "Ouvrez Discussions en bas de l'écran, choisissez votre conversation avec {{agent}} et envoyez la question ci-dessous avec Envoyer. Il lit le canal Rota bugs de l'équipe.",
-        "text": "Lisez le canal Rota bugs et le canal de passation du support, et listez les bugs signalés, du plus récent au plus ancien, une ligne chacun.",
+        "text": "Lisez les canaux Rota bugs et Support handover et listez les bugs qui y sont signalés, du plus récent au plus ancien, une ligne chacun.",
         "role": "Le support signale les bugs aux développeurs dans des canaux d'équipe. {{agent}} peut les lire pour vous.",
         "say": "Demandez à {{agent}} :",
         "way1": "Ouvrez Discussions en bas de l'écran"
@@ -1278,7 +1278,7 @@
       "askTell": {
         "title": "Prévenez la cliente",
         "body": "Envoyez la demande ci-dessous avec Envoyer. {{agent}} rédige la réponse à la cliente dont c'était le ticket ; elle attend votre approbation.",
-        "text": "Rédigez une réponse à Claire sur son ticket concernant l'export de paie : dites-lui que le correctif est prêt et indiquez le lien de la pull request. Ne l'envoyez pas, je veux d'abord la relire.",
+        "text": "Rédigez une réponse à Claire sur son ticket d'export de paie qui dit où en est le correctif, avec le lien de la pull request s'il y en a une. Ne l'envoyez pas, je veux d'abord la relire.",
         "role": "Le ticket, le correctif et la cliente forment un seul fil. Votre agent peut le boucler.",
         "say": "Demandez à {{agent}} :",
         "way1": "Ouvrez Discussions en bas de l'écran, à côté de la session"

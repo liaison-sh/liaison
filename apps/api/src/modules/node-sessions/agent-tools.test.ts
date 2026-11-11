@@ -399,6 +399,10 @@ describe("the agent steers the person's own sessions", () => {
     ])
     const res = (await as(owner, handleComputerSessionRead, { sessionId: s.sessionId })) as any
     expect(res).toMatchObject({ sessionId: s.sessionId, status: "running" })
+    // A session with no pull request says so, so an answer never links one.
+    expect(res.pullRequest).toBe(
+      "none yet: this session has opened no pull request (status running)",
+    )
     expect(res.waitingOn).toEqual([
       {
         requestId: "req-1",

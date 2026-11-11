@@ -21,7 +21,7 @@ import {
   RetryError,
   streamText,
 } from "ai"
-import { and, asc, desc, eq, isNull } from "drizzle-orm"
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm"
 import { HTTPException } from "hono/http-exception"
 import type { PrivilegedDb, RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -82,10 +82,13 @@ import {
   indexedToolPart,
   lastToolResultCallId,
   loadedToolPart,
+  noteTokens,
   renderGuideNote,
   renderIndexedToolsBlock,
   renderLoadedToolsBlock,
   skillNotePart,
+  storedNotesTokens,
+  THREAD_GUIDE_NOTES_TOKEN_CAP,
   withGuideNotes,
 } from "~/modules/agent/context/guide-notes"
 import { replyLanguage } from "~/modules/agent/context/reply-language"
@@ -1585,6 +1588,24 @@ async function resolveScopeOverride(
   }
 }
 
+/** The tokens of the guide notes the thread's replies stored so far (THREAD_GUIDE_NOTES_TOKEN_CAP). */
+export async function getThreadNotesTokens(threadId: string, orgId: string): Promise<number> {
+  const rows = await withPrivilegedDb(orgId, "get-thread-notes-tokens", async (tx) =>
+    tx
+      .select({ metadata: messages.metadata })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.threadId, threadId),
+          eq(messages.orgId, orgId),
+          eq(messages.authorType, "agent"),
+          sql`${messages.metadata} ? ${GUIDE_NOTES_META_KEY}`,
+        ),
+      ),
+  )
+  return storedNotesTokens(rows.map((r) => r.metadata))
+}
+
 export async function getLastInputTokens(threadId: string, orgId: string): Promise<number> {
   const row = await withPrivilegedDb(orgId, "get-last-input-tokens", async (tx) => {
     const [r] = await tx
@@ -2893,7 +2914,22 @@ async function runAgentChatTurn(
     !focusPreloaded.has(name) &&
     !guidePartsDelivered.has(loadedToolPart(name)) &&
     (speculativeTools.has(name) || guidePartsDelivered.has(indexedToolPart(name)))
+  // THE CONVERSATION'S NOTES BUDGET (THREAD_GUIDE_NOTES_TOKEN_CAP): what the
+  // thread's replies stored, plus this turn's notes so far, against the cap,
+  // after every turn whether or not the thread was compacted. A routine run's
+  // history starts at its own trigger, so its notes are counted from there:
+  // it is not capped by the earlier ticks'.
+  const threadNotesTokens = anchoredHistory ? 0 : await getThreadNotesTokens(threadId, orgId)
+  const notesBudgetLeft = (): number | null =>
+    anchoredHistory
+      ? null
+      : THREAD_GUIDE_NOTES_TOKEN_CAP -
+        threadNotesTokens -
+        guideNotes.reduce((n, note) => n + noteTokens(note.content), 0)
+  // Parts a note past the budget left out: not offered again this turn.
+  const notesWithheld = new Set<string>()
   const takeGuideNote = (): string | null => {
+    const known = new Set([...guidePartsDelivered, ...notesWithheld])
     const blocks: string[] = []
     const parts: string[] = []
     const skillBlocks = pendingSkillNotes.map((note) => note.text)
@@ -2904,7 +2940,7 @@ async function runAgentChatTurn(
     const guidedTools = new Set([...discoveredTools].filter((name) => !isIndexOnly(name)))
     // A guide that names its tools (kernel-config, ...) arrives with the
     // first of them, like an app's guide arrives with the app's first tool.
-    const guides = undeliveredGuideBlocks(orgId, guidedTools, guidePartsDelivered)
+    const guides = undeliveredGuideBlocks(orgId, guidedTools, known)
     blocks.push(...guides.blocks)
     parts.push(...guides.parts)
     // A loaded tool the thread's fixed list leaves out: its description and
@@ -2915,13 +2951,7 @@ async function runAgentChatTurn(
       indexed,
       parts: toolParts,
     } = fixedToolList
-      ? undeliveredLoadedTools(
-          computeActiveTools(),
-          fixedToolList,
-          tools,
-          guidePartsDelivered,
-          isIndexOnly,
-        )
+      ? undeliveredLoadedTools(computeActiveTools(), fixedToolList, tools, known, isIndexOnly)
       : { loaded: [], indexed: [], parts: [] }
     parts.push(...toolParts)
     if (
@@ -2932,17 +2962,45 @@ async function runAgentChatTurn(
     ) {
       return null
     }
-    for (const part of parts) guidePartsDelivered.add(part)
     const toolBlocks = [
       ...(loaded.length > 0 ? [renderLoadedToolsBlock(loaded)] : []),
       ...(indexed.length > 0 ? [renderIndexedToolsBlock(indexed)] : []),
     ]
-    return renderGuideNote(
+    const full = renderGuideNote(
       blocks,
       parts,
       toolBlocks.length > 0 ? toolBlocks.join("\n\n") : undefined,
       skillBlocks,
     )
+    const left = notesBudgetLeft()
+    if (left === null || noteTokens(full) <= left) {
+      for (const part of parts) guidePartsDelivered.add(part)
+      return full
+    }
+    // Past the budget: the tools it loads, by name only, when that fits; the
+    // guides and schemas are left out (a misfit call answers with the
+    // parameters, fixedToolListRepair).
+    for (const part of parts) notesWithheld.add(part)
+    const byName = [
+      ...loaded.map((t) => ({ name: t.name, description: t.description })),
+      ...indexed,
+    ].filter((t) => !known.has(indexedToolPart(t.name)))
+    const indexParts = byName.map((t) => indexedToolPart(t.name))
+    const slim =
+      byName.length > 0 ? renderGuideNote([], indexParts, renderIndexedToolsBlock(byName)) : null
+    log.info(
+      {
+        threadId,
+        orgId,
+        noteTokens: noteTokens(full),
+        left,
+        listedByName: slim && noteTokens(slim) <= left ? byName.length : 0,
+      },
+      "guide_notes_over_thread_budget",
+    )
+    if (!slim || noteTokens(slim) > left) return null
+    for (const part of indexParts) guidePartsDelivered.add(part)
+    return slim
   }
   // The turn's own note goes after the person's message, before the turn's
   // runtime context (which is never replayed): the next turn's history
@@ -3092,6 +3150,10 @@ async function runAgentChatTurn(
       : params.background || params.routineId || params.coordination || params.agentDispatched
         ? null
         : createTurnInputBudget()
+  // Every step of the turn, whichever stream ran it (the turn's own, a
+  // correction continuation, an earlier attempt of a resumed turn): the
+  // check-in answers from all of them (checkInFacts).
+  const turnSteps: Array<NonNullable<Parameters<typeof checkInFacts>[0]>[number]> = []
   // Run-scoped clip-once ledger for intra-run micro-compaction (prepareStep).
   const clippedResultIds: ClipLedger = new Map()
   // A repeat fetch pins the earlier result through it (web-fetch-repeat.ts).
@@ -3189,6 +3251,24 @@ async function runAgentChatTurn(
   }
   // The finalize's view of the earlier attempts' steps.
   const priorViews: JournalStepView[] = journaledSteps.map((step) => step.view)
+  // A resumed turn's earlier attempts took steps: they count against its
+  // budget, a visitor's step cap included, so a resume never starts the count
+  // again (a visitor turn handed off mid-step ran up to twice its cap), and the
+  // check-in lists their calls with this attempt's.
+  for (const view of priorViews) {
+    turnBudget?.recordStep(view.usage.inputTokens)
+    turnSteps.push({
+      toolCalls: view.toolCalls.map((c) => ({
+        toolName: c.toolName,
+        toolCallId: c.toolCallId,
+        input: c.args,
+      })),
+      toolResults: view.toolResults.map((r) => ({ toolCallId: r.toolCallId, output: r.result })),
+    })
+  }
+  if (visitorStepBudget !== null && creditCheck.demo && priorViews.length > 0) {
+    creditCheck.demo.maxSteps = Math.max(1, visitorStepBudget - priorViews.length)
+  }
   let stepsJournaled = params.resume?.turn.stepCount ?? 0
   const effectKeysSeed = priorPrep?.effectKeys ?? {}
   // The journal stores each step's ADDITIONS to the growing prepareStep state
@@ -3416,6 +3496,9 @@ async function runAgentChatTurn(
         ]
       : []),
     ...(turnBudget ? [() => turnBudget.checkInSent] : []),
+    // A step budget (a visitor's turn) is a hard cap on the whole turn,
+    // whichever stream reaches it.
+    ...(turnBudget ? [() => turnBudget.stepsLeft() === 0] : []),
     ...(params.routineId ? [() => routinePauseSent] : []),
     // A draining process stops the turn at the next step boundary (M2).
     () => handoffRequested,
@@ -3530,9 +3613,7 @@ async function runAgentChatTurn(
         ? [
             {
               role: "user" as const,
-              content: `${TURN_BUDGET_CHECK_IN_NOTE}\n${checkInFacts(
-                (options as { steps?: Parameters<typeof checkInFacts>[0] } | undefined)?.steps,
-              )}`,
+              content: `${TURN_BUDGET_CHECK_IN_NOTE}\n${checkInFacts(turnSteps)}`,
             },
           ]
         : routinePause
@@ -3751,6 +3832,13 @@ async function runAgentChatTurn(
       turnBudget?.recordStep(
         readStepUsage((step as { usage?: unknown } | undefined)?.usage).inputTokens ?? 0,
       )
+      {
+        const done = step as {
+          toolCalls?: Array<{ toolName?: string; toolCallId?: string; input?: unknown }>
+          toolResults?: Array<{ toolCallId?: string; output?: unknown }>
+        }
+        turnSteps.push({ toolCalls: done.toolCalls ?? [], toolResults: done.toolResults ?? [] })
+      }
       // Runaway guard: cumulative input tokens across this run's steps. Checked
       // here (not in the chunk loop) so the abort fires between steps — the
       // model never starts another full-context step past the cap.
@@ -4036,10 +4124,12 @@ async function runAgentChatTurn(
       : withFalseApprovalGuard({
           first: result,
           shouldCorrect: async (run) => {
+            // A continuation is more steps: none once the turn's step budget is spent.
             if (
               abortController.signal.aborted ||
               stoppedAtHardTokenLimit ||
-              turnBudget?.checkInSent === true
+              turnBudget?.checkInSent === true ||
+              turnBudget?.stepsLeft() === 0
             ) {
               return false
             }
@@ -4101,6 +4191,9 @@ async function runAgentChatTurn(
           correctAgain: {
             shouldCorrect: async (cont) => {
               if (correction !== "announced_action" || abortController.signal.aborted) return false
+              // The correction already answered at the step budget's check-in, or spent
+              // the last step: a further continuation would run past the cap.
+              if (turnBudget?.checkInSent === true || turnBudget?.stepsLeft() === 0) return false
               if (!announcesImminentAction(cont.finalText)) return false
               const lookups = falseApprovalLookups({
                 orgId,

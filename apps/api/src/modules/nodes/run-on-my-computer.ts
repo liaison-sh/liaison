@@ -50,7 +50,7 @@ import { rootLogger } from "~/lib/logger"
 import { persistAgentTurn } from "~/modules/agent/runtime/persist-agent-turn"
 import { currentRunContext } from "~/modules/agent/runtime/run-context"
 import { agentPostRequiredScopes } from "~/modules/agent/tools/chat-tools"
-import { RECORDING, recordedLaptopOf, startReplay } from "~/modules/demo/replay/replay"
+import { recordedLaptopOf, recordingOf, startReplay } from "~/modules/demo/replay/replay"
 import {
   type FolderRef,
   loadNodeCandidates,
@@ -435,13 +435,14 @@ async function runOnRecordedLaptop(
     ownerUserId: ctx.userId,
     dispatch: { agentId, threadId, sourceRequiredScopes },
   })
+  const recording = await recordingOf(ctx.orgId)
   const answer: RunOnMyComputerResult = {
     status: "started",
     sessionId: started.sessionId,
     on: laptop.name,
     nodeOnline: true,
-    folder: RECORDING.repo,
-    model: RECORDING.model,
+    folder: recording.repo,
+    model: recording.model,
     level: "strict",
     say: `Started on ${laptop.name}. Follow it in the card above.`,
     instruction: STARTED,
@@ -461,7 +462,7 @@ async function runOnRecordedLaptop(
     orgId: ctx.orgId,
     userId: ctx.userId,
     threadId,
-    content: `Started on ${laptop.name}: ${RECORDING.title}`,
+    content: `Started on ${laptop.name}: ${recording.title}`,
     agentId,
     ...(agent?.displayName ? { agentAuthorLabel: agent.displayName } : {}),
     requiredScopes: sourceRequiredScopes,

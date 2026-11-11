@@ -27,12 +27,15 @@ import {
   WAIT_FOR_AGENT_STEPS,
 } from "./shared"
 
-const k = scenarioKey("sales")
-
 /** What the sales scenario takes from its world besides the base configuration. */
 export interface SalesScenarioCfg extends ScenarioCfg {
   /** The seeded routine the scenario switches on (demo seed, prospect routine). */
   prospectRoutineName: string
+  /**
+   * The tools the one request's first step can run (its row on Home is found
+   * by them). Default: the CRM record or the quote.
+   */
+  bundleHeadTools?: readonly string[]
 }
 
 export const PRODUCTS_SALES_CFG: SalesScenarioCfg = {
@@ -67,10 +70,6 @@ export const HOME_ROUTE = "/"
 const homeRow = (tools: string | readonly string[]) =>
   `attention-row-*[data-tool-name=${typeof tools === "string" ? tools : tools.join("|")}]`
 
-/** The request's expanded card in Home, and its Approve button. */
-const headCard = `approval-card[data-tool-name=${BUNDLE_HEAD_TOOLS.join("|")}]`
-const headApprove = `approval-card-action-approve[data-tool-name=${BUNDLE_HEAD_TOOLS.join("|")}]`
-
 /** Wait for the request's row in Home, then open it unless its card is open already. */
 const openInHome = (tools: readonly string[]): TourStep[] => {
   const value = [...tools]
@@ -96,15 +95,19 @@ const approveInHome = (tools: readonly string[]): TourStep[] => {
   ]
 }
 
-/** From the Agents app to the person's own agent's Routines tab, each hop ringed. */
-const toOwnRoutines = (beat: string) => [
-  railHop("Agents"),
-  hop(k(`${beat}.way2`), "agent-sidebar-row-*[data-agent-mine=true]"),
-  hop(k(`${beat}.way3`), "agent-page-tab-routines"),
-]
-
 export function buildSalesTour(cfg: SalesScenarioCfg): Tour {
+  const k = scenarioKey(cfg.copy ?? "sales")
   const routineName = cfg.prospectRoutineName
+  const head = cfg.bundleHeadTools ?? BUNDLE_HEAD_TOOLS
+  /** The request's expanded card in Home, and its Approve button. */
+  const headCard = `approval-card[data-tool-name=${head.join("|")}]`
+  const headApprove = `approval-card-action-approve[data-tool-name=${head.join("|")}]`
+  /** From the Agents app to the person's own agent's Routines tab, each hop ringed. */
+  const toOwnRoutines = (beat: string) => [
+    railHop("Agents"),
+    hop(k(`${beat}.way2`), "agent-sidebar-row-*[data-agent-mine=true]"),
+    hop(k(`${beat}.way3`), "agent-page-tab-routines"),
+  ]
   return scenarioTour("sales", cfg, {
     app: "kernel",
     demoOnly: true,
@@ -164,7 +167,7 @@ export function buildSalesTour(cfg: SalesScenarioCfg): Tour {
         title: k("liveEmail.title"),
         body: k("liveEmail.body"),
         role: k("liveEmail.role"),
-        injector: "sales-email",
+        injector: cfg.injector ?? "sales-email",
         // Where it lands: that stays bright while the rest dims.
         anchor: "mail-inbox",
         path: [railHop("Mail")],
@@ -197,7 +200,7 @@ export function buildSalesTour(cfg: SalesScenarioCfg): Tour {
         title: k("bundle.title"),
         body: k("bundle.body"),
         role: k("bundle.role"),
-        anchor: homeRow(BUNDLE_HEAD_TOOLS),
+        anchor: homeRow(head),
         path: [railHop("Home")],
         route: HOME_ROUTE,
         waitsOn: "routine",
@@ -210,9 +213,9 @@ export function buildSalesTour(cfg: SalesScenarioCfg): Tour {
         body: k("bundleSteps.body"),
         role: k("bundleSteps.role"),
         anchor: headCard,
-        path: [railHop("Home"), hop(k("bundleSteps.way2"), homeRow(BUNDLE_HEAD_TOOLS))],
+        path: [railHop("Home"), hop(k("bundleSteps.way2"), homeRow(head))],
         route: HOME_ROUTE,
-        reach: openInHome(BUNDLE_HEAD_TOOLS),
+        reach: openInHome(head),
         waitsOn: "routine",
       },
       {
@@ -226,7 +229,7 @@ export function buildSalesTour(cfg: SalesScenarioCfg): Tour {
         body: k("approve.body"),
         role: k("approve.role"),
         anchor: headApprove,
-        path: [railHop("Home"), hop(k("approve.way2"), homeRow(BUNDLE_HEAD_TOOLS))],
+        path: [railHop("Home"), hop(k("approve.way2"), homeRow(head))],
         route: HOME_ROUTE,
         event: {
           ...APPROVED_EVENT,
@@ -237,7 +240,7 @@ export function buildSalesTour(cfg: SalesScenarioCfg): Tour {
           },
         },
         waitsOn: "routine",
-        autoplay: approveInHome(BUNDLE_HEAD_TOOLS),
+        autoplay: approveInHome(head),
         undo: undoWindow(k("approve.undo")),
       },
       {

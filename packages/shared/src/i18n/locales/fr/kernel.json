@@ -1205,7 +1205,7 @@
             "body": "Liaison émet chaque facture, sans aucun trou, y compris pour les groupes qui paient par virement."
           },
           "support": {
-            "title": "Support",
+            "title": "Assistance",
             "body": "Les mails des clients arrivent dans Tickets. L'agent Support Desk rédige chaque réponse."
           },
           "sales": {
@@ -1227,14 +1227,14 @@
           "tom": "Ventes",
           "elodie": "Responsable de comptes",
           "ines": "Responsable du support",
-          "yann": "CTO",
-          "sara": "Finance",
+          "yann": "Directeur technique",
+          "sara": "Finances",
           "lucie": "Responsable produit",
           "baptiste": "Développement",
           "amel": "Développement",
           "jonas": "Développement",
-          "clemence": "Support",
-          "nolan": "Support",
+          "clemence": "Assistance",
+          "nolan": "Assistance",
           "maxime": "Ventes",
           "rose": "Responsable du bureau"
         },

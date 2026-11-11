@@ -37,6 +37,10 @@ export interface ScenarioCfg {
   /** Played once: the tour offers no "Start again", only "Start over". */
   singleRun?: true
   extraBeats?: readonly ScenarioExtraBeat[]
+  /** The copy namespace under `tours.scenarios` (default: the need's own, `support`). */
+  copy?: string
+  /** The injector of the scenario's world beat (default: the products world's). */
+  injector?: string
 }
 
 /** The configuration every scenario shipped before there were several worlds is built from. */

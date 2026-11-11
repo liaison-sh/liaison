@@ -84,6 +84,7 @@ import {
   ensureReservedSecondAdmin,
   reservedOwner,
 } from "~/modules/demo/demo-seeder"
+import { saasScenarioStart } from "~/modules/demo/worlds/saas/scenario-start"
 import { runAsSeed } from "~/modules/notifications/seeded"
 import { joinPendingApprovals } from "~/seed/factories/people/membership"
 import { demoWorldPack, findDemoWorldPack } from "~/seed/worlds"
@@ -524,7 +525,10 @@ async function seedDemoWorldLayers(opts: SeedDemoWorldOptions): Promise<SeedDemo
  * - `products`: each scenario's seeded approvals (`seedScenarioApprovals`).
  * - `saas`: the money decisions (the card reminder, the refund) are seeded with
  *   the workspace, on Home from the start, so the money scenario brings
- *   nothing more. Its other scenarios bring what their configuration names.
+ *   nothing more. The support, projects and sales scenarios write what they
+ *   need when they start (`modules/demo/worlds/saas/scenario-start.ts`: the
+ *   support routine, the visitor's task, the sales routine); the others bring
+ *   nothing. None seeds an approval.
  * - `studio`: no scenario yet.
  *
  * A world never writes another world's approvals.
@@ -533,11 +537,13 @@ async function startWorldScenario(
   worldId: DemoWorldId,
   orgId: string,
   need: DemoNeed,
+  ownerUserId: string,
 ): Promise<string[]> {
   switch (worldId) {
     case "products":
       return seedScenarioApprovals(orgId, need)
     case "saas":
+      return saasScenarioStart(orgId, need, ownerUserId)
     case "studio":
       return []
   }
@@ -555,7 +561,7 @@ export async function seedScenarioStart(
   need: DemoNeed,
   worldId: DemoWorldId = DEMO_DEFAULT_WORLD,
 ): Promise<string[]> {
-  const ids = await startWorldScenario(worldId, orgId, need)
+  const ids = await startWorldScenario(worldId, orgId, need, ownerUserId)
   if (ids.length === 0) return ids
   await joinPendingApprovals(orgId, ownerUserId)
   await ensureAppsForOrg(orgId)

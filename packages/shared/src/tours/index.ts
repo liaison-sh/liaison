@@ -35,6 +35,17 @@ export const TOURS: readonly Tour[] = [
 
 /** The seeded routine the sales scenario switches on. */
 export { heldRequestCard } from "./agent-steps"
+export {
+  SAAS_BUGS_CHANNEL_TITLE,
+  SAAS_CHAT_QUESTION_INJECTOR,
+  SAAS_KNOWLEDGE_ASKS_INJECTOR,
+  SAAS_KNOWLEDGE_DOC_TITLE,
+  SAAS_PROJECT_NAME,
+  SAAS_PROJECTS_COMMENT_INJECTOR,
+  SAAS_PROSPECT_ROUTINE_NAME,
+  SAAS_SALES_EMAIL_INJECTOR,
+  SAAS_SUPPORT_TICKET_INJECTOR,
+} from "./demo"
 export { DEV_BUGS_CHANNEL_TITLE } from "./demo/dev"
 export { KNOWLEDGE_SCENARIO_PL_TITLE } from "./demo/knowledge"
 export { MONEY_FIGURES_TOOL } from "./demo/money"

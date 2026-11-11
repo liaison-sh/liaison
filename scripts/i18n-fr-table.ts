@@ -4961,6 +4961,74 @@ export const FR: Record<string, string> = {
  * and "Désactivée" for a cadence. Keyed `namespace.key.path`.
  */
 export const FR_BY_KEY: Record<string, string> = {
+  "kernel.demo.paymentsUnsupported":
+    "Ceci est une instance de démonstration : le simulateur de paiements par carte ne reproduit pas {{what}}. Les clients, abonnements, factures, paiements, remboursements et litiges peuvent être lus, et les remboursements et résiliations en fin de période n'agissent que sur le simulateur.",
+  "kernel.demo.need.money":
+    "Abonnements et paiements par IA",
+  "kernel.demo.need.client":
+    "Travail client par IA",
+  "kernel.demo.needShort.money":
+    "Abonnements et paiements",
+  "kernel.demo.needShort.client":
+    "Travail client",
+  "kernel.demo.needDesc.money":
+    "Un paiement par carte échoue : une routine rédige la note au client, vous l'approuvez.",
+  "kernel.demo.needDesc.client":
+    "Un client demande plus : votre agent vérifie le contrat, puis rédige la réponse.",
+  "kernel.demo.needsNotInWorld":
+    "Aucun des sujets choisis ne fait partie de la démo de cette entreprise. Choisissez au moins un des sujets proposés.",
+  "kernel.demo.world.saas.companyFacts":
+    "Entreprise fictive · Paris · 14 personnes",
+  "kernel.demo.world.saas.companyExample":
+    "Ceci est une entreprise d'exemple : Tideform, qui édite un logiciel de planning pour les groupes d'hôtellerie-restauration. Votre propre espace contiendrait vos données.",
+  "kernel.demo.world.saas.companyAbout":
+    "Tideform édite un logiciel de planning et de gestion des équipes pour les hôtels, les restaurants et les cantines, vendu par abonnement de 149 € à 1 450 € par mois. 169 clients paient par carte via Stripe, et quelques grands groupes paient par virement.",
+  "kernel.demo.world.saas.companyOps.payments.title":
+    "Abonnements et paiements",
+  "kernel.demo.world.saas.companyOps.payments.body":
+    "169 clients paient par carte via Stripe. L'agent Finance Desk surveille les paiements échoués et rédige la note ; Sara l'approuve.",
+  "kernel.demo.world.saas.companyOps.invoicing.body":
+    "Liaison émet chaque facture, sans aucun trou, y compris pour les groupes qui paient par virement.",
+  "kernel.demo.world.saas.companyOps.support.body":
+    "Les mails des clients arrivent dans Tickets. L'agent Support Desk rédige chaque réponse.",
+  "kernel.demo.world.saas.companyOps.sales.title":
+    "Ventes",
+  "kernel.demo.world.saas.companyOps.sales.body":
+    "Les affaires de Tom sont sur un tableau. Une routine rédige les relances.",
+  "kernel.demo.world.saas.companyOps.product.title":
+    "Produit et messagerie",
+  "kernel.demo.world.saas.companyOps.product.body":
+    "L'équipe planifie le travail produit dans Projets et échange dans la messagerie.",
+  "kernel.demo.world.saas.companyOps.knowledge.title":
+    "Connaissances de l'entreprise",
+  "kernel.demo.world.saas.companyOps.knowledge.body":
+    "Chaque agent ne lit que ce que la personne qu'il sert peut ouvrir.",
+  "kernel.demo.world.saas.companyYou":
+    "Vous la dirigez en tant que PDG, avec votre propre agent. Demandez-lui ce que vous demanderiez pour diriger l'entreprise, et regardez les équipes travailler.",
+  "kernel.demo.world.saas.companySimulated":
+    "Seul le monde extérieur est simulé : aucun mail ne part, et le compte Stripe et ses paiements sont fictifs.",
+  "kernel.demo.world.saas.teamRole.tom":
+    "Ventes",
+  "kernel.demo.world.saas.teamRole.elodie":
+    "Responsable de comptes",
+  "kernel.demo.world.saas.teamRole.ines":
+    "Responsable du support",
+  "kernel.demo.world.saas.teamRole.yann":
+    "Directeur technique",
+  "kernel.demo.world.saas.teamRole.lucie":
+    "Responsable produit",
+  "kernel.demo.world.saas.teamRole.baptiste":
+    "Développement",
+  "kernel.demo.world.saas.teamRole.amel":
+    "Développement",
+  "kernel.demo.world.saas.teamRole.jonas":
+    "Développement",
+  "kernel.demo.world.saas.teamRole.maxime":
+    "Ventes",
+  "kernel.demo.world.saas.teamRole.rose":
+    "Responsable du bureau",
+  "kernel.demo.world.saas.limitConnectors":
+    "Le compte Stripe et ses paiements sont fictifs. Connecter un vrai compte est refusé. Les remboursements et les résiliations ne touchent que ce compte fictif.",
   "projects.deals.subline":
     "{{count}} affaires en cours, {{amount}}. Les affaires calmes viennent en premier dans chaque colonne.",
   "projects.deals.sublineOne":

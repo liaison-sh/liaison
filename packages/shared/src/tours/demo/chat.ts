@@ -29,8 +29,6 @@ import {
   WAIT_FOR_AGENT_STEPS,
 } from "./shared"
 
-const k = scenarioKey("chat")
-
 /** The channel Tobias asks in (what the question beat recorded). */
 const CHANNEL_ROUTE = "/threads/{question}"
 
@@ -51,10 +49,10 @@ function channelPostBy(askBeat: string): TourEventBinding {
   }
 }
 
-/** From Chats in the dock, beside the channel, to the person's conversation with their agent. */
-const toAgent = (last: string) => dockToRunConversation(k("askAgent.way1"), last)
-
 export function buildChatTour(cfg: ScenarioCfg): Tour {
+  const k = scenarioKey(cfg.copy ?? "chat")
+  /** From Chats in the dock, beside the channel, to the person's conversation with their agent. */
+  const toAgent = (last: string) => dockToRunConversation(k("askAgent.way1"), last)
   return scenarioTour("chat", cfg, {
     app: "kernel",
     demoOnly: true,
@@ -82,7 +80,7 @@ export function buildChatTour(cfg: ScenarioCfg): Tour {
         body: k("question.body"),
         role: k("question.role"),
         // Records the channel, so the beats below open it.
-        injector: "chat-question",
+        injector: cfg.injector ?? "chat-question",
         // Where it lands: that stays bright while the rest dims.
         anchor: "activity-messages",
         anchorPhone: "phone-tab-chats",

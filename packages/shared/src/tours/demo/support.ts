@@ -32,9 +32,8 @@ import {
   WAIT_FOR_AGENT_STEPS,
 } from "./shared"
 
-const k = scenarioKey("support")
-
 export function buildSupportTour(cfg: ScenarioCfg): Tour {
+  const k = scenarioKey(cfg.copy ?? "support")
   return scenarioTour("support", cfg, {
     app: "kernel",
     demoOnly: true,
@@ -58,7 +57,7 @@ export function buildSupportTour(cfg: ScenarioCfg): Tour {
         title: k("liveTicket.title"),
         body: k("liveTicket.body"),
         role: k("liveTicket.role"),
-        injector: "support-ticket",
+        injector: cfg.injector ?? "support-ticket",
         // Where the ticket lands: the list stays bright while the rest dims.
         anchor: "tickets-list",
         route: "/tickets",

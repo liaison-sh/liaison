@@ -443,9 +443,8 @@ export async function prepareDemoScenario(
   worldId: DemoWorldId = DEMO_DEFAULT_WORLD,
 ): Promise<void> {
   // The developer scenario's recorded laptop is there before the visitor asks
-  // their agent to send it anything. The recording is the products world's:
-  // another world brings its own with its developer scenario.
-  if (need === "dev" && worldId === DEMO_DEFAULT_WORLD) {
+  // their agent to send it anything. Each world plays its own recording.
+  if (need === "dev") {
     try {
       await prepareRecordedLaptop(orgId, ownerUserId)
     } catch (err) {

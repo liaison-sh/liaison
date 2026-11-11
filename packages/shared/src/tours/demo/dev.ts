@@ -27,8 +27,6 @@ import {
   WAIT_FOR_AGENT_STEPS,
 } from "./shared"
 
-const k = scenarioKey("dev")
-
 /** What the developer scenario takes from its world besides the base configuration. */
 export interface DevScenarioCfg extends ScenarioCfg {
   /** The seeded team room the agent reads the recent bugs from (the seed reads it too). */
@@ -55,13 +53,13 @@ const THIS_RUN_SESSION = {
   created: { beat: "dispatch", attr: "data-id" },
 } as const
 
-/** From Chats in the dock, beside Sessions, to the person's conversation with their agent. */
-const toAgent = (last: string) => dockToRunConversation(k("askBugs.way1"), last)
-
 /** The tool the agent hands the request to the computer with. */
 const DISPATCH_TOOL = "kernel:run_on_my_computer"
 
 export function buildDevTour(cfg: DevScenarioCfg): Tour {
+  const k = scenarioKey(cfg.copy ?? "dev")
+  /** From Chats in the dock, beside Sessions, to the person's conversation with their agent. */
+  const toAgent = (last: string) => dockToRunConversation(k("askBugs.way1"), last)
   return scenarioTour("dev", cfg, {
     app: "kernel",
     demoOnly: true,

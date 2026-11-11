@@ -43,7 +43,13 @@ const INJECTORS: Record<string, string | undefined> = {
   "kernel.scenario-commerce": "commerce-order",
   "kernel.scenario-dev": undefined,
   "kernel.scenario-knowledge": "knowledge-lucas-asks",
+  "kernel.scenario-saas-support": "saas-support-ticket",
+  "kernel.scenario-saas-projects": "saas-projects-comment",
+  "kernel.scenario-saas-chat": "saas-chat-question",
+  "kernel.scenario-saas-sales": "saas-sales-email",
   "kernel.scenario-saas-money": "saas-payment-recovered",
+  "kernel.scenario-saas-dev": undefined,
+  "kernel.scenario-saas-knowledge": "saas-knowledge-asks",
 }
 
 function lookup(dict: unknown, key: string): unknown {
@@ -660,6 +666,7 @@ describe("demo scenarios", () => {
         isDemo: true,
         features: ["customer-card", "connector-add"],
         phone: true,
+        worldId: t.world,
       }).find((x) => x.id === b.id)
       // What a 390 px visitor plays never needs the dock (the Chats tab, or
       // the screen's own composer, as the tickets note does).

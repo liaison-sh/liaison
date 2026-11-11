@@ -28,8 +28,6 @@ import {
   WAIT_FOR_AGENT_STEPS,
 } from "./shared"
 
-const k = scenarioKey("projects")
-
 /** The agent's reply in the task's discussion, written by the turn answering `askBeat`. */
 function taskCommentBy(askBeat: string): TourEventBinding {
   return {
@@ -42,26 +40,35 @@ function taskCommentBy(askBeat: string): TourEventBinding {
   }
 }
 
-/** From the rail to the visitor's task: the project, then the task. */
-const toTask = (last: string) => [
-  railHop("Projects"),
-  hop(k("myTask.way2"), "projects-home-row-*[data-project-name=Kestrel Field Preamp launch]"),
-  hop(k("myTask.way3"), "project-list-view.row[data-task-id={teammate}]"),
-  lastHop(last),
-]
+/** What the projects scenario takes from its world besides the base configuration. */
+export interface ProjectsScenarioCfg extends ScenarioCfg {
+  /** The project the visitor's task sits in, by its name on the Projects home. */
+  projectName?: string
+}
 
-/** From Chats in the dock (a phone's Chats tab) to the person's conversation with their agent. */
-const toRunConversation = (last: string) => [
-  hop(k("askAgent.way1"), "dock-chats", "phone-tab-chats"),
-  hop(
-    "tours.scenarios.common.openRunConversation",
-    RUN_CONVERSATION_ROW,
-    RUN_CONVERSATION_ROW_PHONE,
-  ),
-  lastHop(last),
-]
+/** The products world's project (the default). */
+export const PRODUCTS_PROJECT_NAME = "Kestrel Field Preamp launch"
 
-export function buildProjectsTour(cfg: ScenarioCfg): Tour {
+export function buildProjectsTour(cfg: ProjectsScenarioCfg): Tour {
+  const k = scenarioKey(cfg.copy ?? "projects")
+  const projectName = cfg.projectName ?? PRODUCTS_PROJECT_NAME
+  /** From the rail to the visitor's task: the project, then the task. */
+  const toTask = (last: string) => [
+    railHop("Projects"),
+    hop(k("myTask.way2"), `projects-home-row-*[data-project-name=${projectName}]`),
+    hop(k("myTask.way3"), "project-list-view.row[data-task-id={teammate}]"),
+    lastHop(last),
+  ]
+  /** From Chats in the dock (a phone's Chats tab) to the person's conversation with their agent. */
+  const toRunConversation = (last: string) => [
+    hop(k("askAgent.way1"), "dock-chats", "phone-tab-chats"),
+    hop(
+      "tours.scenarios.common.openRunConversation",
+      RUN_CONVERSATION_ROW,
+      RUN_CONVERSATION_ROW_PHONE,
+    ),
+    lastHop(last),
+  ]
   return scenarioTour("projects", cfg, {
     app: "kernel",
     demoOnly: true,
@@ -88,7 +95,7 @@ export function buildProjectsTour(cfg: ScenarioCfg): Tour {
         body: k("teammate.body"),
         role: k("teammate.role"),
         // Records the visitor's task, so the beats below open that task.
-        injector: "projects-comment",
+        injector: cfg.injector ?? "projects-comment",
         // Where it lands: that stays bright while the rest dims.
         anchor: "projects-home",
         route: "/projects",

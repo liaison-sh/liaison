@@ -325,6 +325,8 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "loaded by demo-seeder.ts (loadFitPooledWorld) and called only from fitPooledDemoWorld, which demo/routes.ts calls with pooled.orgId, the pooled visitor demo org claimPooledOrg just handed over in one locked transaction",
   "apps/api/src/seed/tiers/demo/seed-demo.ts#seedScenarioStart":
     "loaded by demo-seeder.ts (loadScenarioStart) and called only from prepareDemoScenario, which tours/routes.ts calls for the session's own org (c.get('orgId')) after isVisitorDemoOrgId confirms it is a visitor demo org",
+  "apps/api/src/seed/tiers/demo/seed-demo.ts#saas":
+    "the software world's entry of SCENARIO_START_BY_WORLD, called only from seedScenarioStart (reviewed above: the session's own visitor demo org); it hands that org to saasScenarioStart, which pins every read and write to it",
   "apps/api/src/seed/tiers/demo/seed-commerce.ts#seedDemoCommerce":
     "the demo tier's commerce layer: every write goes to opts.org.orgId, the org seedDemoOrg (a reviewed origin) returned after provisioning it and stamping its demo marker; the commerce factories receive it through the layer's SeedContext",
   "apps/api/src/seed/tiers/demo/seed-org.ts#seedDemoOrg":

@@ -65,7 +65,7 @@ export const NEED_MINUTES: Readonly<Record<DemoNeed, number>> = {
   chat: 3,
   sales: 4,
   commerce: 3,
-  money: 4,
+  money: 3,
   client: 4,
   dev: 3,
   knowledge: 3,

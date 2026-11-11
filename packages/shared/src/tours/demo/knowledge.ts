@@ -26,8 +26,6 @@ import {
   WAIT_FOR_AGENT_STEPS,
 } from "./shared"
 
-const k = scenarioKey("knowledge")
-
 /** What the knowledge scenario takes from its world besides the base configuration. */
 export interface KnowledgeScenarioCfg extends ScenarioCfg {
   /** The seeded document the scenario opens (the products world's: the Q3 P&L synced from the Finance folder in Google Drive), by its title. */
@@ -42,6 +40,7 @@ export const PRODUCTS_KNOWLEDGE_CFG: KnowledgeScenarioCfg = {
 export const KNOWLEDGE_SCENARIO_PL_TITLE = PRODUCTS_KNOWLEDGE_CFG.plTitle
 
 export function buildKnowledgeTour(cfg: KnowledgeScenarioCfg): Tour {
+  const k = scenarioKey(cfg.copy ?? "knowledge")
   const plTitle = cfg.plTitle
   /** The document's row in the Knowledge home's recent documents. */
   const PL_RECENT_ROW = {
@@ -136,7 +135,7 @@ export function buildKnowledgeTour(cfg: KnowledgeScenarioCfg): Tour {
         title: k("lucasAsks.title"),
         body: k("lucasAsks.body"),
         role: k("lucasAsks.role"),
-        injector: "knowledge-lucas-asks",
+        injector: cfg.injector ?? "knowledge-lucas-asks",
         // Where it lands: that stays bright while the rest dims.
         anchor: "activity-messages",
         anchorPhone: "phone-tab-chats",

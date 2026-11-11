@@ -6736,6 +6736,7 @@
   },
   "homeRouting": {
     "othersGroup": "For others, you can also approve",
+    "heldGroup": "Held until they come back",
     "someone": "a colleague",
     "standingIn": "For {{name}}, away until {{date}}. You are next in line.",
     "othersAsked": "For {{name}}, who asked for it and can approve it. You can too: you hold the approval right.",

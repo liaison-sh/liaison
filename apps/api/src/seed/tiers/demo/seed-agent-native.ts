@@ -156,6 +156,11 @@ export interface DemoAgentNativeSpecs {
   ownerAgentChannelTitles: readonly string[]
   /** The `products` world's scenario routines (support, prospect) join a tailored seed. */
   scenarioRoutines: boolean
+  /**
+   * Routines the world's own layer writes (from product templates), which this
+   * layer's retirement pass must keep: they are current, not retired.
+   */
+  layerRoutineNames?: readonly string[]
 }
 
 export interface SeedDemoAgentNativeResult {
@@ -2197,7 +2202,7 @@ async function pruneRetiredRows(
   const removed = await pruneRetiredSkillsAndRoutines(ctx, {
     createdByUserId: org.adminUserId,
     skillNames: specs.skills.map((s) => s.name),
-    routineNames: specs.routines.map((r) => r.name),
+    routineNames: [...specs.routines.map((r) => r.name), ...(specs.layerRoutineNames ?? [])],
   })
   if (removed.length > 0)
     log(`agent native: retired ${removed.length} row(s): ${removed.join(", ")}`)

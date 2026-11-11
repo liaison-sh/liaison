@@ -1124,6 +1124,12 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // relative day words out of pack prose.
             "src/seed/worlds/story-clock.test.ts",
             "src/seed/worlds/prose-guard.test.ts",
+            // The software world's plan held to its invariants at anchors
+            // across a year, with no database.
+            "src/seed/worlds/saas/plan-invariants.test.ts",
+            // The software world seeded once and read through the product's
+            // own tools: pipeline, companies, team, agents and routines.
+            "src/seed/worlds/saas/stripe-world-reads.saas.integration.test.ts",
             // The demo-instance org seeder: it seeds its own orgs and
             // truncates nothing.
             "src/seed/tiers/demo/seed-org.integration.test.ts",

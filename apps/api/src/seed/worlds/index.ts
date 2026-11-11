@@ -26,6 +26,7 @@ import type {
 } from "~/seed/tiers/demo/seed-support"
 import type { DemoPerson, DemoRole, DemoRoleAgent, DemoWorld } from "~/seed/world/fiction"
 import { PRODUCTS_WORLD_PACK } from "./products"
+import { SAAS_WORLD_PACK } from "./saas"
 
 /** What a world's own layer is handed: the org the shared layers seeded, at the seed's base time. */
 export interface DemoWorldLayerInput {
@@ -66,6 +67,7 @@ export interface DemoWorldPack {
 
 const PACKS: Readonly<Partial<Record<DemoWorldId, DemoWorldPack>>> = {
   products: PRODUCTS_WORLD_PACK,
+  saas: SAAS_WORLD_PACK,
 }
 
 /** The worlds with a seed pack, in `DEMO_WORLDS` order. */

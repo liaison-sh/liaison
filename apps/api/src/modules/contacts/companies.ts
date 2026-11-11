@@ -701,6 +701,72 @@ export async function createCompany(
 }
 
 /**
+ * Many companies at once, for an import or a seed: one multi-row insert and one
+ * batch of `company:create` events, the same rows and events `createCompany`
+ * writes one by one. A company whose handle is already taken (by an older
+ * company or by an earlier one of the batch) goes through `createCompany`,
+ * which numbers it. Returns each created company in input order.
+ */
+export async function createCompanies(
+  tx: RlsClient,
+  params: { orgId: string; userId: string; inputs: readonly CompanyInput[] },
+): Promise<Company[]> {
+  const { orgId, userId, inputs } = params
+  if (inputs.length === 0) return []
+  const values = inputs.map((input) => {
+    const name = cleanName(input.name)
+    const tags = cleanTags(input.tags)
+    return {
+      orgId,
+      handle: handleBase(name),
+      name,
+      domain: normaliseCompanyDomain(input.domain).domain,
+      description: input.description?.trim() || null,
+      ...(tags?.length ? { tags } : {}),
+      createdBy: actorUuid(userId),
+    }
+  })
+  const inserted = await tx
+    .insert(companies)
+    .values(values)
+    .onConflictDoNothing({ target: [companies.orgId, companies.handle] })
+    .returning()
+  const byHandle = new Map(inserted.map((c) => [c.handle, c]))
+  const out: Company[] = []
+  for (const [i, v] of values.entries()) {
+    const row = byHandle.get(v.handle)
+    if (row && row.name === v.name) {
+      byHandle.delete(v.handle)
+      out.push(row)
+    } else {
+      // Its handle went to another company: numbered one at a time, with its own event.
+      out.push(
+        (await createCompany(tx, { orgId, userId, input: inputs[i] as CompanyInput })).company,
+      )
+    }
+  }
+  await tx.queueEvents(
+    inserted.map((created) => ({
+      app: "kernel",
+      entity: "company",
+      action: "create",
+      orgId,
+      actorId: userId,
+      entityId: created.id,
+      data: {
+        id: created.id,
+        name: created.name,
+        handle: created.handle,
+        domain: created.domain,
+        audience: companyEventAudience(created),
+      },
+    })),
+  )
+  log.info({ orgId, count: out.length }, "Companies created")
+  return out
+}
+
+/**
  * Change a company. A rename rewrites the company name carried by every linked
  * person in the same transaction (elevated: a private person's row is not the
  * renamer's to edit under RLS, but the name it carries is the company's).

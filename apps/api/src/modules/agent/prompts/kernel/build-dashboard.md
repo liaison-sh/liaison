@@ -23,7 +23,16 @@ Always in this order:
 3. **Save** with `kernel__dashboards_create({ title, visibility, spec })`. `personal` (only the person) saves at once. `org` (everyone) waits for a person's approval: say it is waiting, never that it exists. Editing or deleting an org dashboard waits for an approval too.
 4. **Open it** for the person: `kernel__open_app({ app: "kernel", view: "dashboard", id })`.
 
-To change one: `kernel__dashboards_get` (note its `version`), then `kernel__dashboards_update({ id, spec, ifVersion })` with the WHOLE spec.
+### Changing a dashboard
+
+`kernel__dashboards_get` (note its `version`), then ONE `kernel__dashboards_edit({ dashboardId, ifVersion, operations })` with every change the person asked for, in order (at most 8):
+
+- `{ "op": "addBlock", "block": {...}, "position": 2 }` (`position`: an index, 0 = first, or `{ "before": "<blockId>" }` / `{ "after": "<blockId>" }`; default the end)
+- `{ "op": "updateBlock", "blockId": "orders", "changes": { "title": "...", "source": { "params": { "since": "{{range.from}}" } } } }`: `map` and `source.params` merge key by key (`null` removes a key), other fields are replaced
+- `{ "op": "removeBlock", "blockId": "..." }`, `{ "op": "moveBlock", "blockId": "...", "position": { "after": "..." } }`
+- `{ "op": "setTitle", "title": "..." }`, `{ "op": "setTimeRange", "timeRange": { "preset": "lastMonth" }, "compare": "previousPeriod" }`, `{ "op": "setVisibility", "visibility": "org" }`
+
+The operations apply together or not at all. On an org dashboard the whole call waits for ONE approval, whose card lists each change: never split one request into several calls (each would be its own approval), never send changes the person did not ask for. Preview a new or changed block first. A `version_conflict` means someone saved meanwhile: read it again and redo the call. Rebuilding most of a dashboard: `kernel__dashboards_update({ id, spec, ifVersion })` with the whole spec.
 
 ### The map
 
@@ -44,15 +53,28 @@ To change one: `kernel__dashboards_get` (note its `version`), then `kernel__dash
 
 The source below is a connector read of a shop's orders; use the tool and params `kernel__dashboards_sources` gave you.
 
+### The dashboard time range
+
+A dashboard has a time range the viewer picks (last 7, 30 or 90 days, month, quarter or year to date, last month, quarter or year, or custom dates) and a comparison (same period last year by default, or the previous period). Each person's choice is remembered for them.
+
+- A block that should follow it (sales, spend, orders over a period) uses `{{range.from}}` and `{{range.to}}` (days, inclusive) in its params instead of its own dates; `{{range.fromTime}}` / `{{range.toTime}}` give the first and last instant as date-times for APIs that need one. Offsets work: `{{range.from-1d}}`. Title it without a period ("Revenue"): the dashboard names the range.
+- Such a block is also run over the comparison window: a metric shows the change, a chart the previous values.
+- A block about a fixed window or no window ("open orders, last 90 days", "stock") keeps its own tokens: it says its own dates and is not compared. Set `"timeRange": "fixed"` on it to make that explicit.
+- The dashboard's default: root `"timeRange": { "preset": "mtd" }` (presets `last7d`, `last30d`, `last90d`, `mtd`, `lastMonth`, `qtd`, `lastQuarter`, `ytd`, `lastYear`, or `custom` with `from` and `to`) and `"compare": "lastYear" | "previousPeriod" | "none"`. Without them: the last 30 days, compared with last year.
+- Preview a range block with `kernel__dashboards_preview_block({ block, timeRange })` (default the last 30 days).
+
+A metric can carry `map.target` (a number, the goal: "objective 40" belongs here, not in the title) and `map.sparkline: { field, bucket }` (its trend by `day`, `week` or `month` of a date field of the same rows).
+
 ### Rolling dates
 
 For a range that should move with the calendar ("this month", "last 30 days"), write a date token in the params, never today's date. Each token becomes a `YYYY-MM-DD` date in the org's timezone every time the block runs. A literal date stays that date forever.
 
-- Anchors: `{{today}}`, `{{startOfWeek}}` (Monday), `{{startOfMonth}}`, `{{startOfYear}}`.
+- Anchors: `{{today}}`, `{{yesterday}}`, `{{startOfWeek}}` (Monday), `{{startOfMonth}}`, `{{startOfQuarter}}`, `{{startOfYear}}`, `{{endOfWeek}}`, `{{endOfMonth}}`, `{{endOfQuarter}}`, `{{endOfYear}}`.
 - One optional offset: `+` or `-`, a number, a unit `d` days, `w` weeks, `M` months (capital M), `y` years.
-- Last 30 days: `{ "since": "{{today-30d}}", "until": "{{today}}" }`. This month: `{{startOfMonth}}` to `{{today}}`. Last month: `{{startOfMonth-1M}}` to `{{startOfMonth-1d}}`. This year: `{{startOfYear}}` to `{{today}}`.
+- Last 30 days: `{ "since": "{{today-30d}}", "until": "{{today}}" }`. This month: `{{startOfMonth}}` to `{{today}}`. Last month: `{{startOfMonth-1M}}` to `{{endOfMonth-1M}}`. This year: `{{startOfYear}}` to `{{today}}`.
 - Tokens work inside a text too: `"query": "... WHERE segments.date BETWEEN '{{today-29d}}' AND '{{today}}'"`.
-- Nothing else goes between `{{` and `}}` (no `{{yesterday}}`, no spaces): the preview refuses it and names the allowed forms.
+- Nothing else goes between `{{` and `}}` (no `{{tomorrow}}`, no spaces): the preview refuses it and names the allowed forms.
+- A period the viewer should be able to change is the dashboard range above, not a rolling token.
 - Title the block for the range it covers ("Revenue, last 30 days"); with a literal date, name that date.
 
 ```

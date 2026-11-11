@@ -12,7 +12,7 @@ import { z } from "zod"
 import type { RlsClient } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
-import { pendingEvents } from "~/db/schema/kernel"
+import { dashboardViewerStates, pendingEvents } from "~/db/schema/kernel"
 import { READ_ONLY_RUN_BLOCKED_CODE } from "~/modules/agent/runtime/read-only-run"
 import { customAppOrgKey } from "~/modules/apps/app-org-scope"
 import { toolRegistry } from "~/modules/apps/app-registries"
@@ -28,9 +28,12 @@ import {
   createDashboard,
   DashboardError,
   deleteDashboard,
+  editDashboard,
   getBlockData,
   getDashboard,
+  getViewerRange,
   listDashboards,
+  setViewerRange,
   updateDashboard,
 } from "~/modules/dashboards/service"
 import { setDocument } from "~/modules/data-store/service"
@@ -694,13 +697,13 @@ describe("the block cache", () => {
       visibility: "personal",
       spec: spec(
         toolBlock("bad", `${APP}:dated_read`, {
-          source: { kind: "tool", tool: `${APP}:dated_read`, params: { since: "{{yesterday}}" } },
+          source: { kind: "tool", tool: `${APP}:dated_read`, params: { since: "{{tomorrow}}" } },
         }),
       ),
     }).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(DashboardError)
     expect((err as DashboardError).code).toBe("INVALID_SPEC")
-    expect((err as DashboardError).problems.join(" ")).toContain("unknown date token {{yesterday}}")
+    expect((err as DashboardError).problems.join(" ")).toContain("unknown date token {{tomorrow}}")
   })
 
   it("at most MAX_IN_FLIGHT block runs at once", async () => {
@@ -718,5 +721,259 @@ describe("the block cache", () => {
       ),
     )
     expect(peak).toBe(MAX_IN_FLIGHT)
+  })
+})
+
+/** A failed query's database message (drizzle wraps it as the cause). */
+const dbError = (e: unknown) => String((e as { cause?: unknown } | null)?.cause ?? e)
+
+describe("the dashboard time range", () => {
+  const rangeParams = {
+    period: { since: "{{range.from}}" },
+    query: "WHERE date BETWEEN '{{range.from}}' AND '{{range.to}}'",
+  }
+  const fixedParams = { period: { since: "{{today-90d}}" }, query: "open" }
+  const metric = (id: string, params: Record<string, unknown>) => ({
+    id,
+    type: "metric",
+    title: id,
+    source: { kind: "tool", tool: `${APP}:dated_read`, params },
+    map: { value: "total", agg: "sum", target: 40 },
+  })
+  const now = new Date("2026-11-10T12:00:00Z")
+  let dashboardId = ""
+  beforeAll(async () => {
+    dashboardId = (
+      await createDashboard(as(owner, [WRITE, SHARE, ALPHA]), {
+        title: "Ranged",
+        visibility: "org",
+        spec: { v: 1, blocks: [metric("sales", rangeParams), metric("open", fixedParams)] },
+      })
+    ).id
+  })
+
+  it("a range block reads the default range and once more the same period last year", async () => {
+    const { store, data } = fakeStore()
+    BlockCacheTestAccess.setStore(store)
+    const viewer = as(owner, [WRITE, ALPHA])
+    datedParams.length = 0
+    const out = await getBlockData(viewer, dashboardId, "sales", { now })
+    expect(out).toMatchObject({
+      ok: true,
+      cached: false,
+      window: { mode: "dashboard", preset: "last30d", from: "2026-10-12", to: "2026-11-10" },
+      compareWindow: { mode: "lastYear", from: "2025-10-12", to: "2025-11-10" },
+      data: { kind: "metric", value: 22, previous: 22, target: 40 },
+    })
+    expect(datedParams).toEqual([
+      {
+        period: { since: "2026-10-12" },
+        query: "WHERE date BETWEEN '2026-10-12' AND '2026-11-10'",
+      },
+      {
+        period: { since: "2025-10-12" },
+        query: "WHERE date BETWEEN '2025-10-12' AND '2025-11-10'",
+      },
+    ])
+    // Both runs are cached apart, each under a key naming its range.
+    const keys = [...data.keys()].filter((k) => k.includes(`:${dashboardId}:`))
+    expect(keys.some((k) => k.includes(":2026-10-12..2026-11-10:"))).toBe(true)
+    expect(keys.some((k) => k.includes(":2025-10-12..2025-11-10:"))).toBe(true)
+    // A second view reads both from the cache.
+    datedParams.length = 0
+    expect(await getBlockData(viewer, dashboardId, "sales", { now })).toMatchObject({
+      ok: true,
+      cached: true,
+      data: { previous: 22 },
+    })
+    expect(datedParams).toEqual([])
+  })
+
+  it("the viewer's range and comparison change the run; none runs once", async () => {
+    BlockCacheTestAccess.setStore(fakeStore().store)
+    const viewer = as(owner, [WRITE, ALPHA])
+    datedParams.length = 0
+    const out = await getBlockData(viewer, dashboardId, "sales", {
+      now,
+      range: { preset: "lastMonth" },
+      compare: "none",
+    })
+    expect(out).toMatchObject({
+      ok: true,
+      window: { mode: "dashboard", preset: "lastMonth", from: "2026-10-01", to: "2026-10-31" },
+      compareWindow: null,
+    })
+    expect(out.ok && out.data.kind === "metric" && out.data.previous).toBeUndefined()
+    expect(datedParams).toHaveLength(1)
+    datedParams.length = 0
+    await getBlockData(viewer, dashboardId, "sales", {
+      now,
+      range: { preset: "custom", from: "2026-11-01", to: "2026-11-07" },
+      compare: "previousPeriod",
+    })
+    expect(datedParams.map((p) => (p.period as { since: string }).since)).toEqual([
+      "2026-11-01",
+      "2026-10-25",
+    ])
+  })
+
+  it("a fixed block keeps its own dates, names them, and is never compared", async () => {
+    BlockCacheTestAccess.setStore(fakeStore().store)
+    datedParams.length = 0
+    const out = await getBlockData(as(owner, [WRITE, ALPHA]), dashboardId, "open", {
+      now,
+      range: { preset: "lastMonth" },
+    })
+    expect(out).toMatchObject({
+      ok: true,
+      window: { mode: "fixed", dates: [{ token: "{{today-90d}}", date: "2026-08-12" }] },
+      compareWindow: null,
+    })
+    expect(datedParams).toHaveLength(1)
+  })
+
+  it("the record names each block's mode and the range the viewer opens on", async () => {
+    const view = await getDashboard(as(other, [ALPHA]), dashboardId, undefined, now)
+    expect(view.blockTimeRange).toEqual({ sales: "dashboard", open: "fixed" })
+    expect(view.usesTimeRange).toBe(true)
+    expect(view.defaultRange).toEqual({ timeRange: { preset: "last30d" }, compare: "lastYear" })
+    expect(view.range).toMatchObject({
+      saved: false,
+      window: { from: "2026-10-12", to: "2026-11-10" },
+      compareWindow: { from: "2025-10-12", to: "2025-11-10" },
+    })
+  })
+
+  it("each person's remembered range is theirs alone (RLS)", async () => {
+    const mine = as(owner, [WRITE, ALPHA])
+    const theirs = as(other, [ALPHA])
+    await setViewerRange(mine, dashboardId, { timeRange: { preset: "qtd" }, compare: "none" })
+    await setViewerRange(theirs, dashboardId, {
+      timeRange: { preset: "custom", from: "2026-01-01", to: "2026-03-31" },
+      compare: "previousPeriod",
+    })
+    // An upsert, not a second row.
+    await setViewerRange(mine, dashboardId, { timeRange: { preset: "ytd" }, compare: "none" })
+    expect(await getViewerRange(mine, dashboardId)).toEqual({
+      timeRange: { preset: "ytd" },
+      compare: "none",
+    })
+    const view = await getDashboard(theirs, dashboardId, undefined, now)
+    expect(view.range).toMatchObject({
+      saved: true,
+      compare: "previousPeriod",
+      window: { from: "2026-01-01", to: "2026-03-31" },
+      compareWindow: { from: "2025-10-03", to: "2025-12-31" },
+    })
+    // The row policies: each person reads only their own row, and cannot write another's.
+    const seen = await withRlsContext(theirs, (t) => t.select().from(dashboardViewerStates))
+    expect(seen.map((r) => r.userId)).toEqual([other])
+    const forged = await withRlsContext(theirs, (t) =>
+      t.insert(dashboardViewerStates).values({
+        orgId,
+        dashboardId,
+        userId: owner,
+        timeRange: { preset: "mtd" },
+        compare: "none",
+      }),
+    ).catch((e: unknown) => e)
+    expect(dbError(forged)).toContain("row-level security")
+    const touched = await withRlsContext(theirs, (t) =>
+      t
+        .update(dashboardViewerStates)
+        .set({ compare: "lastYear" })
+        .where(eq(dashboardViewerStates.userId, owner))
+        .returning(),
+    )
+    expect(touched).toEqual([])
+  })
+
+  it("no remembered range on a dashboard one cannot see", async () => {
+    const personal = await createDashboard(as(owner, [WRITE, ALPHA]), {
+      title: "Mine only",
+      visibility: "personal",
+      spec: spec(),
+    })
+    const err = await setViewerRange(as(other, [ALPHA]), personal.id, {
+      timeRange: { preset: "mtd" },
+      compare: "none",
+    }).catch((e: unknown) => e)
+    expect((err as DashboardError).code).toBe("NOT_FOUND")
+    const forged = await withRlsContext(as(other, [ALPHA]), (t) =>
+      t.insert(dashboardViewerStates).values({
+        orgId,
+        dashboardId: personal.id,
+        userId: other,
+        timeRange: { preset: "mtd" },
+        compare: "none",
+      }),
+    ).catch((e: unknown) => e)
+    expect(dbError(forged)).toContain("row-level security")
+  })
+})
+
+describe("editing by operations", () => {
+  const metric = (id: string) => ({
+    id,
+    type: "metric",
+    title: id,
+    source: { kind: "tool", tool: `${APP}:alpha_read` },
+    map: { agg: "count" },
+  })
+
+  it("applies the whole list as one new version, or nothing", async () => {
+    const author = as(owner, [WRITE, ALPHA])
+    const d = await createDashboard(author, {
+      title: "Edited",
+      visibility: "personal",
+      spec: spec(metric("a"), metric("b")),
+    })
+    const edited = await editDashboard(author, d.id, {
+      ifVersion: d.version,
+      operations: [
+        { op: "addBlock", block: metric("c"), position: 0 },
+        { op: "removeBlock", blockId: "a" },
+        { op: "setTitle", title: "Edited twice" },
+        { op: "setTimeRange", timeRange: { preset: "mtd" } },
+      ],
+    })
+    expect(edited.version).toBe(d.version + 1)
+    expect(edited.title).toBe("Edited twice")
+    expect(edited.spec.blocks.map((b) => b.id)).toEqual(["c", "b"])
+    expect(edited.spec.timeRange).toEqual({ preset: "mtd" })
+
+    // An operation that cannot apply, or a result that is not a valid spec: nothing changes.
+    const unknown = await editDashboard(author, d.id, {
+      ifVersion: edited.version,
+      operations: [
+        { op: "setTitle", title: "Never" },
+        { op: "removeBlock", blockId: "zz" },
+      ],
+    }).catch((e: unknown) => e)
+    expect((unknown as DashboardError).code).toBe("INVALID_SPEC")
+    expect((unknown as DashboardError).problems).toEqual(["operations.1: no block 'zz'"])
+    const invalid = await editDashboard(author, d.id, {
+      ifVersion: edited.version,
+      operations: [{ op: "updateBlock", blockId: "b", changes: { type: "table" } }],
+    }).catch((e: unknown) => e)
+    expect((invalid as DashboardError).code).toBe("INVALID_SPEC")
+    const after = await getDashboard(author, d.id)
+    expect(after.version).toBe(edited.version)
+    expect(after.title).toBe("Edited twice")
+  })
+
+  it("refuses an edit written against an older version", async () => {
+    const author = as(owner, [WRITE, ALPHA])
+    const d = await createDashboard(author, {
+      title: "Raced",
+      visibility: "personal",
+      spec: spec(metric("a")),
+    })
+    await updateDashboard(author, d.id, { title: "Someone else saved" })
+    const err = await editDashboard(author, d.id, {
+      ifVersion: d.version,
+      operations: [{ op: "setTitle", title: "Late" }],
+    }).catch((e: unknown) => e)
+    expect((err as DashboardError).code).toBe("VERSION_CONFLICT")
   })
 })

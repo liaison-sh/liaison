@@ -8,7 +8,17 @@
 // dashboard at all is sources.ts's question, asked at save and at every run.
 
 import { z } from "zod"
-import { dateTokenProblems } from "~/modules/dashboards/relative-dates"
+import {
+  COMPARE_MODES,
+  type CompareMode,
+  DEFAULT_COMPARE,
+  DEFAULT_TIME_RANGE,
+  dateTokenProblems,
+  hasRangeTokens,
+  TIME_PRESETS,
+  type TimeRange,
+  timeRangeProblems,
+} from "~/modules/dashboards/relative-dates"
 
 export const DASHBOARD_SPEC_VERSION = 1
 export const MAX_DASHBOARD_BLOCKS = 24
@@ -34,6 +44,22 @@ export const MAX_BLOCK_OUTPUT = 100
 /** Most series (lines or bar groups) one chart draws: the largest by total are kept. */
 export const MAX_BLOCK_SERIES = 20
 export const MAX_TABLE_COLUMNS = 20
+
+/** How a block takes its dates: the dashboard's range, or its own. */
+export const BLOCK_RANGE_MODES = ["dashboard", "fixed"] as const
+export type BlockRangeMode = (typeof BLOCK_RANGE_MODES)[number]
+
+/** A dashboard time range: a preset, or "custom" with from and to (YYYY-MM-DD, inclusive). */
+export const timeRangeSchema = z
+  .object({
+    preset: z.enum(TIME_PRESETS),
+    from: z.string().max(10).optional(),
+    to: z.string().max(10).optional(),
+  })
+  .strict()
+  .superRefine((tr, ctx) => {
+    for (const message of timeRangeProblems(tr)) ctx.addIssue({ code: "custom", message })
+  })
 
 /** A field of a source row: a key, or a dotted path into nested objects (`billing.country`). */
 const fieldPath = z
@@ -102,6 +128,13 @@ export const blockMapSchema = z
       .strict()
       .optional(),
     limit: z.number().int().min(1).max(MAX_BLOCK_OUTPUT).optional(),
+    /** A metric's goal, shown beside its value. */
+    target: z.number().finite().optional(),
+    /** A metric's trend: the same aggregation per date bucket of `field`, from the same rows. */
+    sparkline: z
+      .object({ field: fieldPath, bucket: z.enum(DATE_BUCKETS).default("day") })
+      .strict()
+      .optional(),
   })
   .strict()
 
@@ -120,7 +153,7 @@ export function mapProblems(type: BlockType, map: BlockMap): string[] {
         out.push('a metric needs map.value (the field to aggregate), or map.agg "count"')
       }
       if (map.groupBy || map.x || map.series || map.columns) {
-        out.push("a metric takes map.value and map.agg only")
+        out.push("a metric takes map.value, map.agg, map.target and map.sparkline only")
       }
       break
     case "table":
@@ -146,6 +179,9 @@ export function mapProblems(type: BlockType, map: BlockMap): string[] {
       if (map.series) out.push("a pie chart has no series")
       break
   }
+  if (type !== "metric" && (map.target !== undefined || map.sparkline)) {
+    out.push("map.target and map.sparkline are for a metric only")
+  }
   if (map.groupBy && map.x && map.groupBy.field !== map.x) {
     out.push("map.groupBy.field and map.x name the same thing: give one of them")
   }
@@ -163,6 +199,12 @@ export const dashboardBlockSchema = z
     source: blockSourceSchema,
     map: blockMapSchema.default({}),
     refreshSec: z.number().int().min(MIN_REFRESH_SEC).max(MAX_REFRESH_SEC).optional(),
+    /**
+     * "dashboard": the block follows the dashboard's time range through its {{range.*}} tokens
+     * (and is compared). "fixed": its own dates. Absent: "dashboard" when its source uses a
+     * range token, else "fixed" (every block saved before ranges existed).
+     */
+    timeRange: z.enum(BLOCK_RANGE_MODES).optional(),
   })
   .strict()
   .superRefine((block, ctx) => {
@@ -178,6 +220,22 @@ export const dashboardBlockSchema = z
     for (const message of dateTokenProblems(value, "")) {
       ctx.addIssue({ code: "custom", path: ["source", field], message })
     }
+    const usesRange = hasRangeTokens(value)
+    if (block.timeRange === "fixed" && usesRange) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["timeRange"],
+        message:
+          'a "fixed" block cannot use {{range.from}} / {{range.to}}: use your own dates, or timeRange "dashboard"',
+      })
+    }
+    if (block.timeRange === "dashboard" && !usesRange) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["timeRange"],
+        message: `a block that follows the dashboard range puts {{range.from}} and {{range.to}} in its source ${field}`,
+      })
+    }
   })
 
 export type DashboardBlock = z.infer<typeof dashboardBlockSchema>
@@ -186,6 +244,10 @@ export const dashboardSpecSchema = z
   .object({
     v: z.literal(DASHBOARD_SPEC_VERSION),
     layout: z.literal("grid").default("grid"),
+    /** The range a viewer sees first (each person's own choice is remembered apart). */
+    timeRange: timeRangeSchema.optional(),
+    /** What the blocks that follow the range are compared with by default. */
+    compare: z.enum(COMPARE_MODES).optional(),
     blocks: z.array(dashboardBlockSchema).max(MAX_DASHBOARD_BLOCKS),
   })
   .strict()
@@ -213,4 +275,24 @@ export function specIssues(error: z.ZodError): string[] {
 /** How long a block's data is cached: its interval, capped for every source. */
 export function blockTtlSec(block: Pick<DashboardBlock, "refreshSec">): number {
   return Math.min(block.refreshSec ?? DEFAULT_REFRESH_SEC, MAX_SOURCE_TTL_SEC)
+}
+
+/** How a block takes its dates (see dashboardBlockSchema.timeRange). */
+export function blockRangeMode(
+  block: Pick<DashboardBlock, "timeRange" | "source">,
+): BlockRangeMode {
+  if (block.timeRange) return block.timeRange
+  const value = block.source.kind === "tool" ? block.source.params : block.source.query
+  return hasRangeTokens(value) ? "dashboard" : "fixed"
+}
+
+/** The range and comparison a dashboard opens on: its spec's, else the defaults. */
+export function dashboardDefaultRange(spec: Pick<DashboardSpec, "timeRange" | "compare">): {
+  timeRange: TimeRange
+  compare: CompareMode
+} {
+  return {
+    timeRange: spec.timeRange ?? DEFAULT_TIME_RANGE,
+    compare: spec.compare ?? DEFAULT_COMPARE,
+  }
 }

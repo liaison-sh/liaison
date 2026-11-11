@@ -133,6 +133,10 @@ const TREATED: Record<string, [Treatment, string]> = {
     "member-filter",
     "who on an approval's route is an active member; next in line by stored ids",
   ],
+  "modules/apps/attention-store.ts": [
+    "walks-org",
+    "every active row, to rebuild each person's stored attention list",
+  ],
   "modules/apps/connections/connect-links.ts": ["by-address", "the address a connect link goes to"],
   "modules/apps/connections/disconnect-account.ts": ["stored-ids", "a connected account's owner"],
   "modules/apps/connections/service.ts": ["stored-ids", "a connected account's owner"],
@@ -240,7 +244,10 @@ const TREATED: Record<string, [Treatment, string]> = {
     "people named by id, refused when external; the deciders list skips external users",
   ],
   "modules/users/service.ts": ["one-row", "reads run on RLS; the merge target by id"],
-  "modules/webhooks/routes.ts": ["one-row", "the org of a verified webhook"],
+  "modules/webhooks/handler-run.ts": [
+    "walks-org",
+    "the oldest active row as a stored webhook's acting user",
+  ],
   "seed/factories/org/rows.ts": ["creates-member", "seed data"],
   "seed/factories/people/people.ts": ["creates-member", "seed data"],
   "seed/tiers/demo/seed-org.ts": ["creates-member", "seed data"],

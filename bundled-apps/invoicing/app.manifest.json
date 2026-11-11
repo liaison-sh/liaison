@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.20.95",
+  "version": "0.20.96",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -2843,7 +2843,7 @@
     },
     "recurring_schedule_pause": {
       "summarizer": "summarizeRecurringSchedulePause",
-      "description": "Pause a recurring schedule: it drafts nothing while paused, and its row in an open month-end run is left out. With until it resumes on that date; the days inside the pause are not billed afterwards. Pausing a paused schedule changes nothing.",
+      "description": "Pause a recurring schedule: it drafts nothing while paused, and its row in a run not yet issued is left out. With until it resumes on that date; the days inside the pause are not billed afterwards. Pausing a paused schedule changes nothing.",
       "searchKeywords": ["pause", "suspendre", "récurrent", "abonnement"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "recurringSchedulePauseHandler",

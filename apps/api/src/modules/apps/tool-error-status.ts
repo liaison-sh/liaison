@@ -153,6 +153,8 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   already_in_run: 409,
   run_closed: 409,
   schedule_issues_by_itself: 409,
+  // No row of the run is ready to issue, so approving it would issue nothing: fix a row first.
+  nothing_ready: 409,
   no_schedule: 422,
   schedule_has_no_currency: 422,
   draft_order_not_found: 404,

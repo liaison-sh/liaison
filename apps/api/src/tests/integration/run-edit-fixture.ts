@@ -173,8 +173,13 @@ export async function monthEnd(
     )
     // Each draft is made out to the contact as it reads on the draft day.
     if (opts.withAddress !== false) {
-      await sql`INSERT INTO kernel.contact_addresses (org_id, contact_id, role, street1, postal_code, city, country_iso2)
-        VALUES (${world.org}, ${contact}, 'billing', ${`Hauptstrasse ${i}`}, '10115', 'Berlin', 'DE')`
+      await minimal.contactAddress(world.org, contact, {
+        role: "billing",
+        street1: `Hauptstrasse ${i}`,
+        postalCode: "10115",
+        city: "Berlin",
+        countryIso2: "DE",
+      })
     }
     const prev = randomUUID()
     const id = randomUUID()

@@ -10,6 +10,8 @@
 //               seeds its people;
 //   thread      `createThread` in an RLS transaction as the person;
 //   contact     `resolveContact` as the person (the resolved-contacts factory);
+//   contactAddress
+//               `addAddress` as the org's admin (the address book's add);
 //   grantScope, revokeScope, assignRole, revokeRole
 //               the admin role editor's own services (`grantUserScope`,
 //               `revokeUserScope`, `assignRole`, `unassignRole`) as the org's
@@ -33,6 +35,7 @@ import { env } from "~/lib/env"
 import { inviteRegister } from "~/modules/auth/auth"
 import { invalidateAuthCache } from "~/modules/auth/auth-state"
 import { signAccessToken } from "~/modules/auth/jwt"
+import { type AddressFields, addAddress } from "~/modules/contacts/addresses"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import {
   assignRole as assignRoleService,
@@ -255,6 +258,19 @@ export async function contact(
   ])
   if (!entry) throw new Error(`minimal seed: contact ${email} was not resolved`)
   return entry[1].id
+}
+
+/** An address on `contactId` (default role `delivery`), added by the org's admin. Returns its id. */
+export async function contactAddress(
+  orgId: string,
+  contactId: string,
+  fields: AddressFields,
+): Promise<string> {
+  const admin = await adminActor(orgId)
+  const { address } = await asUser(admin, (tx) =>
+    addAddress(tx, { orgId, userId: admin.userId, contactId, fields }),
+  )
+  return address.id
 }
 
 type Admin = Awaited<ReturnType<typeof adminActor>>

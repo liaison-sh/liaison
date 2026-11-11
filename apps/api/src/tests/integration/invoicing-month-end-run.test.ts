@@ -154,8 +154,13 @@ async function monthEnd(
       `client${i}-${randomUUID().slice(0, 8)}@example.com`,
       { name: `Client ${i}` },
     )
-    await sql`INSERT INTO kernel.contact_addresses (org_id, contact_id, role, street1, postal_code, city, country_iso2)
-      VALUES (${ORG}, ${contact}, 'billing', ${`Hauptstrasse ${i}`}, '10115', 'Berlin', 'DE')`
+    await minimal.contactAddress(ORG, contact, {
+      role: "billing",
+      street1: `Hauptstrasse ${i}`,
+      postalCode: "10115",
+      city: "Berlin",
+      countryIso2: "DE",
+    })
     const prev = randomUUID()
     const id = randomUUID()
     await sql.unsafe(

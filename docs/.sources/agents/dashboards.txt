@@ -8,7 +8,7 @@ Own dashboards (personal or shared by you) vs others' -> apps/web/src/modules/da
 People icon on your shared ones -> apps/web/src/modules/dashboards/DashboardsSidebar.tsx:148
 Owner's first name on others' -> apps/web/src/modules/dashboards/DashboardsSidebar.tsx:186
 Open dashboard highlighted -> apps/web/src/modules/dashboards/DashboardsSidebar.tsx:83
-Owner name comes from the list API -> apps/api/src/modules/dashboards/service.ts:221
+Owner name comes from the list API -> apps/api/src/modules/dashboards/service.ts:241
 Org marker label -> packages/shared/src/i18n/locales/en/kernel.json:6409
 Dashboard tab address /dashboard/<id>, named by its title -> apps/web/src/framework/bootstrap.ts:545
 Agent opens a dashboard (entity opener) -> apps/web/src/framework/bootstrap.ts:1333

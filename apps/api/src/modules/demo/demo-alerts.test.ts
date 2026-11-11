@@ -149,7 +149,7 @@ describe("the demo owner alert", () => {
     restores.push(setEnv("LIAISON_DEMO_ALERT_EMAIL", "owner@example.com"))
     restores.push(setEnv("LIAISON_DEMO_MAIL_CAPTURE", false))
     restores.push(setEnv("LIAISON_DEMO_MAIL_RESEND_API_KEY", undefined))
-    restores.push(setEnv("SYSTEM_RESEND_API_KEY", undefined))
+    restores.push(setEnv("SYSTEM_RESEND_API_KEY", ""))
     restores.push(setEnv("SMTP_HOST", "smtp.example.test"))
     registerDemoAlertChannel()
     expect(isDemoSystemMailConfigured()).toBe(true)

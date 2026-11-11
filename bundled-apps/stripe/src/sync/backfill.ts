@@ -39,7 +39,6 @@ import {
   PAGE_SIZE,
   pause,
   readAllSyncState,
-  REQUEST_GAP_MS,
   RESOURCES,
   type SyncCtx,
   type SyncOptions,
@@ -125,7 +124,6 @@ export async function runBackfill(ctx: SyncCtx, opts: SyncOptions = {}): Promise
       }
       row = { ...row, ...next }
       if (row.status === "done") break
-      await sleep(REQUEST_GAP_MS)
     }
   }
 
@@ -199,7 +197,6 @@ export async function releaseHeld(
     await ctx.db.update("webhook_deliveries", d.id, { status: "failed" })
     await handleStripeEvent(event, ctx as unknown as IngestCtx)
     released++
-    await sleep(REQUEST_GAP_MS)
   }
   return released
 }

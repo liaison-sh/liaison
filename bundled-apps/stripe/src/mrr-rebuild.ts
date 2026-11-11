@@ -23,7 +23,7 @@ import { newTally, subscriptionRow } from "./mirror"
 import { discountsOfRow } from "./mrr"
 import { appendMovement, chainAfter } from "./mrr-events"
 import type { Install } from "./states"
-import { asPage, type Budget, PAGE_SIZE, REQUEST_GAP_MS, type SyncCtx } from "./sync/common"
+import { asPage, type Budget, PAGE_SIZE, type SyncCtx } from "./sync/common"
 
 type Obj = Record<string, unknown>
 
@@ -103,7 +103,6 @@ export async function runMrrRebuild(
     const last = page.data[page.data.length - 1]
     if (!page.has_more || typeof last?.id !== "string") break
     cursor = last.id
-    await opts.sleep(REQUEST_GAP_MS)
   }
 
   events.sort((a, b) => Number(a.created) - Number(b.created) || String(a.id).localeCompare(String(b.id)))

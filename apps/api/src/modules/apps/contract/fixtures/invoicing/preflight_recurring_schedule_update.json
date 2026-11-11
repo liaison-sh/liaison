@@ -1,0 +1,19 @@
+{
+  "entry": "preflight:recurring_schedule_update",
+  "params": {
+    "id": "00000000-0000-4000-8000-000000000103",
+    "expected_version": 1,
+    "status": "active"
+  },
+  "calls": [
+    {
+      "method": "db_findOne",
+      "args": [
+        "recurring_schedules",
+        "00000000-0000-4000-8000-000000000103"
+      ],
+      "reply": "null"
+    }
+  ],
+  "recordedFrom": "an install with no rows yet: every read answers empty (contract replay, no provider call)"
+}

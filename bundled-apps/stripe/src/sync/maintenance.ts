@@ -22,7 +22,7 @@
 import { handleStripeEvent, type IngestCtx } from "../dispatch"
 import { StripeApiError, stripeFetch } from "../http"
 import { blockedOverlay, holdWhileImporting, readInstall } from "../states"
-import { Budget, DEFAULT_BUDGET_MS, pause, REQUEST_GAP_MS, type SyncCtx, type SyncOptions } from "./common"
+import { Budget, DEFAULT_BUDGET_MS, pause, type SyncCtx, type SyncOptions } from "./common"
 
 type Obj = Record<string, unknown>
 
@@ -63,7 +63,6 @@ export async function runCatchup(
     replayed++
     const fresh = await readInstall(ctx.db)
     if (fresh && blockedOverlay(fresh)) return { replayed, cleared: false, detail: String(fresh.state) }
-    await sleep(REQUEST_GAP_MS)
   }
   const left = await ctx.db.findMany("webhook_deliveries", { where: { status: "failed" }, limit: 1 })
   if (left.length > 0) return { replayed, cleared: false }

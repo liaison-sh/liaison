@@ -23,7 +23,7 @@ import { decodeState } from "../connection"
 import { handleStripeEvent, type IngestCtx } from "../dispatch"
 import { StripeApiError, stripeFetch } from "../http"
 import { blockedOverlay, importInProgress, type Install, moveState, readInstall } from "../states"
-import { Budget, DEFAULT_BUDGET_MS, pause, REQUEST_GAP_MS, type SyncCtx, type SyncOptions } from "./common"
+import { Budget, DEFAULT_BUDGET_MS, pause, type SyncCtx, type SyncOptions } from "./common"
 
 type Obj = Record<string, unknown>
 
@@ -134,7 +134,6 @@ export async function replayEvents(
     if (budget.spent) break
     await handleStripeEvent(event, replayCtx)
     n++
-    await sleep(REQUEST_GAP_MS)
   }
   return n
 }

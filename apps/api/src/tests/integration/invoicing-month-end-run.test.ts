@@ -148,7 +148,14 @@ async function monthEnd(
   const schedules: string[] = []
   const previous: string[] = []
   for (let i = 1; i <= n; i++) {
-    const contact = randomUUID()
+    // A real contact with a billing address: each draft is made out to the contact as it reads now.
+    const contact = await minimal.contact(
+      ORG,
+      `client${i}-${randomUUID().slice(0, 8)}@example.com`,
+      { name: `Client ${i}` },
+    )
+    await sql`INSERT INTO kernel.contact_addresses (org_id, contact_id, role, street1, postal_code, city, country_iso2)
+      VALUES (${ORG}, ${contact}, 'billing', ${`Hauptstrasse ${i}`}, '10115', 'Berlin', 'DE')`
     const prev = randomUUID()
     const id = randomUUID()
     await sql.unsafe(

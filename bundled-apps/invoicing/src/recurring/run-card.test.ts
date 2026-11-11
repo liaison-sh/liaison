@@ -8,7 +8,7 @@ import { harness, previousDoc, schedule } from "./draft-job.test"
 import { recurringDraftJob } from "./draft-job"
 import { recurringIssueJob } from "./issue-job"
 import { recurringLegalDateJob, urgencyOf } from "./legal-date-job"
-import { cardItems, recurringRunIssue, recurringRunUnapprove } from "./run-card"
+import { cardItems, recurringRunIssue, recurringRunIssuePreflight, recurringRunUnapprove } from "./run-card"
 import { recurringRunGet } from "./run-get"
 import { summarizeRecurringRunIssue } from "../summarizers"
 
@@ -104,7 +104,8 @@ describe("the month-end run card", () => {
     h.decided.add("approval-1")
     const undone = await recurringRunUnapprove(h.ctx, { run_id: runId })
     expect(undone).toMatchObject({ status: "completed", approval_id: "approval-2" })
-    expect(h.db.__all("recurring_runs")[0]).toMatchObject({ status: "drafted", approved_by: null })
+    expect(h.db.__all("recurring_runs")[0]).toMatchObject({ status: "drafted" })
+    expect(h.db.__all("recurring_runs")[0]?.approved_by ?? null).toBeNull()
     expect(h.db.__all("recurring_run_items").every((i) => i.state === "ready" && i.approved_hash === null)).toBe(true)
     await recurringRunIssue(h.ctx, (h.approvals[1] as { current_payload: never }).current_payload)
     const [first] = h.db.__all("recurring_run_items")
@@ -160,6 +161,34 @@ describe("the month-end run card", () => {
     await h.db.update("recurring_runs", String(h.db.__all("recurring_runs")[0]?.id), { status: "approved" })
     await recurringIssueJob(h.ctx)
     expect(issueCalls).toBe(0)
+  })
+
+  test("approving a run with no row ready is refused with the reason, and nothing changes", async () => {
+    const { h, runId } = await drafted("2026-11-27", { kernel: { "kernel:contacts_addresses_list": () => ({ addresses: [] }) } })
+    expect(h.db.__all("recurring_run_items").map((i) => i.state)).toEqual(["needs_fix", "needs_fix"])
+    const res = await recurringRunIssue(h.ctx, { run_id: runId })
+    expect(res).toMatchObject({ status: "error", error: { code: "nothing_ready" } })
+    expect((res as { error: { message: string } }).error.message).toContain("No billing address")
+    expect(await recurringRunIssuePreflight(h.ctx, { run_id: runId })).toMatchObject({ error: { code: "nothing_ready" } })
+    expect(h.db.__all("recurring_runs")[0]).toMatchObject({ status: "drafted" })
+    expect(h.db.__all("recurring_runs")[0]?.approved_by ?? null).toBeNull()
+    expect(h.db.__all("recurring_run_items").map((i) => i.state)).toEqual(["needs_fix", "needs_fix"])
+  })
+
+  test("an approved run left with no invoice to issue closes as nothing to issue, never as issued", async () => {
+    const { h, runId } = await drafted()
+    await recurringRunIssue(h.ctx, { run_id: runId })
+    // Both rows are taken out after the approval: nothing is left to number.
+    for (const item of h.db.__all("recurring_run_items")) await h.db.update("recurring_run_items", String(item.id), { state: "left_out", approved_hash: null })
+    const events: Array<{ action: string }> = []
+    h.ctx.emit = async (e) => {
+      events.push(e as never)
+    }
+    Object.assign(h.ctx, { time: harness("2026-11-30").ctx.time })
+    const res = await recurringIssueJob(h.ctx)
+    expect(res.issued).toBe(0)
+    expect(h.db.__all("recurring_runs")[0]).toMatchObject({ id: runId, status: "nothing_to_issue" })
+    expect(events.some((e) => e.action === "issued")).toBe(false)
   })
 
   test("issue by itself under, at and over the threshold: no card, no card, card", async () => {

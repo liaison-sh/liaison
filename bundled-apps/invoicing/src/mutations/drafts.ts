@@ -23,6 +23,7 @@ import type { DraftLine, DraftLineInput } from "../issue"
 import { type BuyerVatFacts, checkBuyerVat, consumerDeclaredAgainstEvidence } from "../buyer-vat"
 import { asHandlerSummary } from "../approval-cards"
 import { checkIssuerGuard, type GuardCtx } from "../issuer-guard"
+import { recipientOf } from "../recipient"
 import { assertNoLiveInvoiceForOrder } from "./credit-coverage"
 import {
   resolveIssuerProfileOrError,
@@ -250,7 +251,7 @@ type DraftCreated = { draft_id: string } & ReturnType<typeof serializeDraftRow> 
 async function runToJoin(ctx: MutationsCtx, runId: string): Promise<Row> {
   const run = (await ctx.db.findOne("recurring_runs", runId)) as Row | null
   if (!run) refuse("run_not_found", `No month-end run ${runId}, so nothing was added. Read the runs with recurring_run_get.`)
-  if (run.status === "issued" || run.status === "late") {
+  if (run.status === "issued" || run.status === "late" || run.status === "nothing_to_issue") {
     refuse("run_closed", `Month-end run ${runId} is ${String(run.status)}, so nothing was added to it. Make a separate invoice instead.`)
   }
   return run
@@ -314,14 +315,46 @@ export async function draftsCreate(ctx: MutationsCtx, input: DraftsCreateInput):
   return r
 }
 
+const blankText = (v: unknown): boolean => typeof v !== "string" || v.trim() === ""
+
+/**
+ * A draft that names its customer by contact takes the recipient from that contact, as the
+ * editor's contact picker does: its company or name, email, billing address and country, and the
+ * VAT number recorded for it. A value the caller passed is never overwritten. Nothing is read when
+ * every field is already given.
+ */
+async function withContactRecipient(ctx: MutationsCtx, input: DraftsCreateInput): Promise<DraftsCreateInput> {
+  const contactId = input.counterparty_contact_id
+  if (!contactId) return input
+  const noAddress = blankText(input.counterparty_address) && blankText(input.billing_line1)
+  const noCountry = blankText(input.counterparty_country) && blankText(input.billing_country_code)
+  const wanted =
+    blankText(input.counterparty_name) || blankText(input.counterparty_email) || blankText(input.counterparty_vat_id) || noAddress || noCountry
+  if (!wanted) return input
+  const r = await recipientOf(ctx, { contactId, companyId: null })
+  return {
+    ...input,
+    counterparty_name: blankText(input.counterparty_name) ? r.counterparty_name : input.counterparty_name,
+    counterparty_email: blankText(input.counterparty_email) ? r.counterparty_email : input.counterparty_email,
+    counterparty_vat_id: blankText(input.counterparty_vat_id) ? r.counterparty_vat_id : input.counterparty_vat_id,
+    counterparty_address: noAddress ? r.counterparty_address : input.counterparty_address,
+    counterparty_country: noCountry ? r.counterparty_country : input.counterparty_country,
+    ...(noAddress
+      ? { billing_line1: r.billing_line1, billing_line2: r.billing_line2, billing_postcode: r.billing_postcode, billing_city: r.billing_city }
+      : {}),
+    ...(noCountry || (noAddress && blankText(input.billing_country_code)) ? { billing_country_code: r.billing_country_code } : {}),
+  }
+}
+
 async function createDraft(
   ctx: MutationsCtx,
-  input: DraftsCreateInput,
+  given: DraftsCreateInput,
   mode: DraftRunMode,
 ): Promise<DraftCreated | DraftParked | PreflightPassed> {
-  if (!VALID_TYPES.includes(input.type)) {
-    throw new Error(`invalid_type: ${input.type}`)
+  if (!VALID_TYPES.includes(given.type)) {
+    throw new Error(`invalid_type: ${given.type}`)
   }
+  const input = await withContactRecipient(ctx, given)
   // Resolve the issuer profile up front — `documents.issuer_profile_id` is NOT
   // NULL, so an absent id must be defaulted (single-issuer org) or turned into a
   // TYPED error BEFORE the insert, never let through as a raw 23502 the agent

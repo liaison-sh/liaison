@@ -274,7 +274,7 @@ export async function afterRunWrite(
   // The run's card: rewritten in place while it waits, or one new card after the decision. A
   // rejected run asks again on its issue day by itself.
   let approvalId: string | null = typeof run.approval_request_id === "string" ? run.approval_request_id : null
-  if (run.status !== "rejected" && run.status !== "issued" && run.status !== "late") {
+  if (run.status !== "rejected" && run.status !== "issued" && run.status !== "late" && run.status !== "nothing_to_issue") {
     const card = await stageRunCard(ctx, String(run.id))
     const fresh = (await ctx.db.findOne("recurring_runs", String(run.id))) as Row | null
     approvalId = card.approval_id ?? (typeof fresh?.approval_request_id === "string" ? fresh.approval_request_id : null)
@@ -334,7 +334,7 @@ export async function stageRunCardAfterRemoval(
 ): Promise<{ run_id: string; approve_count: number; approve_total_minor: string; approval_id: string | null }> {
   const run = (await ctx.db.findOne("recurring_runs", runId)) as Row | null
   let approvalId: string | null = typeof run?.approval_request_id === "string" ? run.approval_request_id : null
-  if (run && run.status !== "rejected" && run.status !== "issued" && run.status !== "late") {
+  if (run && run.status !== "rejected" && run.status !== "issued" && run.status !== "late" && run.status !== "nothing_to_issue") {
     const card = await stageRunCard(ctx, runId)
     approvalId = card.owed ? null : (card.approval_id ?? approvalId)
   }

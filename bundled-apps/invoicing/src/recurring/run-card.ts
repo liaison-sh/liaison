@@ -232,6 +232,23 @@ export async function stageRunCard(ctx: RunCtx, runId: string): Promise<{ approv
   }
 }
 
+/**
+ * Why a run cannot be approved because none of its rows is ready, or null. Approving it would
+ * issue nothing, so it is refused with the rows that need a fix and why.
+ */
+function nothingReadyRefusal(runId: string, items: Row[]): ErrorEnvelope | null {
+  if (items.some((i) => i.state === "ready" || i.state === "waiting_reapproval")) return null
+  const fixes = items.filter((i) => i.state === "needs_fix")
+  const why = [...new Set(fixes.map((i) => String(i.note ?? "").trim()).filter(Boolean))].slice(0, 3)
+  return fail(
+    "nothing_ready",
+    `Run ${runId} has no row ready to issue, so it was not approved and nothing changed.` +
+      (fixes.length > 0
+        ? ` ${fixes.length} row${fixes.length === 1 ? " needs" : "s need"} a fix first${why.length > 0 ? ` (${why.join("; ")})` : ""}: change ${fixes.length === 1 ? "it" : "them"} with drafts_update, then approve.`
+        : " Every row is taken out or already issued."),
+  )
+}
+
 /** What approving the card records: each row's hash and the approver. No number is taken. */
 export async function recurringRunIssue(
   ctx: RunCtx,
@@ -246,6 +263,10 @@ export async function recurringRunIssue(
   const all = await runItems(ctx, input.run_id)
   if (reask ? !all.some((i) => i.state === "waiting_reapproval") : run.status !== "drafted" && run.status !== "rejected") {
     return fail("run_not_drafted", `Run ${input.run_id} is ${String(run.status)}, so there is nothing to approve. Read it with recurring_run_get.`)
+  }
+  if (!reask) {
+    const refused = nothingReadyRefusal(input.run_id, all)
+    if (refused) return refused
   }
   const decider = ctx.approval?.approvalDeciderId ?? (await ctx.getUserId())
   const wanted = new Map((input.items ?? []).map((i) => [i.item_id, i.content_hash]))
@@ -398,9 +419,11 @@ export async function runItemDraftRefusal(
 export async function recurringRunIssuePreflight(ctx: RunCtx, input: { run_id: string }): Promise<{ ok: true } | { error: { code: string; message: string } }> {
   const run = (await ctx.db.findOne("recurring_runs", input.run_id)) as Row | null
   if (!run) return { error: { code: "run_not_found", message: `No month-end run ${input.run_id}. Read it with recurring_run_get.` } }
-  const reask = runDecided(run) && (await runItems(ctx, input.run_id)).some((i) => i.state === "waiting_reapproval")
+  const items = await runItems(ctx, input.run_id)
+  const reask = runDecided(run) && items.some((i) => i.state === "waiting_reapproval")
   if (!reask && run.status !== "drafted" && run.status !== "rejected") {
     return { error: { code: "run_not_drafted", message: `Run ${input.run_id} is ${String(run.status)}, so there is nothing to approve.` } }
   }
-  return { ok: true }
+  const refused = reask ? null : nothingReadyRefusal(input.run_id, items)
+  return refused ? { error: refused.error } : { ok: true }
 }

@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.20.93",
+  "version": "0.20.94",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1355,7 +1355,7 @@
         "latest_issue_on": "day",
         "status": {
           "type": "string",
-          "enum": ["drafted", "approved", "issuing", "issued", "partial", "rejected", "late"],
+          "enum": ["drafted", "approved", "issuing", "issued", "partial", "rejected", "late", "nothing_to_issue"],
           "default": "drafted"
         },
         "approval_request_id": "text?",
@@ -6829,7 +6829,7 @@
     },
     {
       "target": "kernel:contacts_read",
-      "reason": "resolve the counterparty contact's email to address documents.send_to_customer, and to find the documents made out to it in documents_search by contact_id (the invoicing app cannot read kernel.contacts directly)"
+      "reason": "fill a new draft's recipient (name, email) from its contact, resolve the counterparty contact's email to address documents.send_to_customer, and to find the documents made out to it in documents_search by contact_id (the invoicing app cannot read kernel.contacts directly)"
     },
     {
       "target": "kernel:contacts_identity",
@@ -6861,7 +6861,7 @@
     },
     {
       "target": "kernel:contacts_addresses_list",
-      "reason": "documents_search by contact_id also returns the documents made out to one of the contact's addresses"
+      "reason": "documents_search by contact_id also returns the documents made out to one of the contact's addresses, and a new draft or month-end draft takes its recipient's billing address from the contact"
     },
     {
       "target": "kernel:web_search",

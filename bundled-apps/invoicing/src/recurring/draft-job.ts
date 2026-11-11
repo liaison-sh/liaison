@@ -31,6 +31,7 @@ import {
   stageRunCard,
 } from "./run-card"
 import { addDays, datesFrom, daysInMonth, latestIssueOn, periodKey, periodStart, type Repeats } from "./schedule"
+import { recipientOf } from "../recipient"
 import { rowIssuerHold, runItemState } from "./item-state"
 import { draftCandidates, type ScheduleLineInput, type ScheduleRow } from "./tools"
 
@@ -73,72 +74,14 @@ async function insertOnce(ctx: RunCtx, entity: string, where: Row, data: Row): P
   }
 }
 
-/** A kernel read through the app's tool bridge; null when it is absent or fails. */
-async function kernelRead(ctx: RunCtx, tool: string, params: Record<string, unknown>): Promise<Row | null> {
-  if (!ctx.executeTool) return null
-  try {
-    const env = await ctx.executeTool(tool, params)
-    return env.status === "completed" ? ((env.result ?? null) as Row | null) : null
-  } catch {
-    return null
-  }
-}
-
-const text = (v: unknown): string | null => (typeof v === "string" && v.trim() !== "" ? v.trim() : null)
-
-/** A contact's billing address (else its first one) as the draft's one-line address and country. */
-async function billingAddress(ctx: RunCtx, contactId: string): Promise<{ line: string; country: string | null } | null> {
-  const list = (await kernelRead(ctx, "kernel:contacts_addresses_list", { contactId }))?.addresses
-  const all = (Array.isArray(list) ? list : []) as Row[]
-  const a = all.find((x) => x.role === "billing") ?? all[0]
-  if (!a) return null
-  const city = [text(a.postalCode), text(a.city)].filter(Boolean).join(" ")
-  const line = [text(a.street1), text(a.street2), city].filter(Boolean).join(", ")
-  return line ? { line, country: text(a.countryIso2)?.toUpperCase() ?? null } : null
-}
-
 /**
- * Who the customer is on the draft: the snapshot of the schedule's last invoice to that contact.
- * With none, the schedule's company when it names one (its name, the contact's billing address,
- * the VAT number recorded for the contact), else the contact's name and email. A schedule whose
- * person was deleted has no contact: it never looks up invoices or details by an empty contact.
+ * Who the customer is on the draft: the schedule's customer as its records read on the draft day
+ * (its company, else its contact), never an earlier draft or invoice, so an address added since
+ * the last month reaches this month's draft. A schedule whose person was deleted has no contact:
+ * it never reads details by an empty contact.
  */
 async function counterpartySnapshot(ctx: RunCtx, s: ScheduleRow): Promise<Row> {
-  const last = s.last_document_id ? ((await ctx.db.findOne("documents", s.last_document_id)) as Row | null) : null
-  const contactId = text(s.contact_id)
-  const source =
-    last ??
-    (contactId
-      ? ((await ctx.db.findMany("documents", { where: { counterparty_contact_id: contactId, type: "invoice" }, orderBy: { createdAt: "desc" }, limit: 1 })) as Row[])[0]
-      : null) ??
-    null
-  if (source) {
-    return {
-      counterparty_name: source.counterparty_name ?? null,
-      counterparty_address: source.counterparty_address ?? null,
-      counterparty_country: source.counterparty_country ?? null,
-      counterparty_vat_id: source.counterparty_vat_id ?? null,
-      counterparty_email: source.counterparty_email ?? null,
-      customer_kind: source.customer_kind ?? null,
-    }
-  }
-  const snapshot: Row = { counterparty_name: null, counterparty_address: null, counterparty_country: null, counterparty_vat_id: null, counterparty_email: null }
-  // An unreadable contact or company leaves the row to fix; the draft is still made.
-  const c = (contactId ? ((await kernelRead(ctx, "kernel:contacts_read", { contactId }))?.contact ?? {}) : {}) as Row
-  snapshot.counterparty_name = c.name ?? c.displayName ?? null
-  snapshot.counterparty_email = c.email ?? null
-  const companyName = s.company_id ? text(((await kernelRead(ctx, "kernel:companies_read", { companyId: s.company_id }))?.company as Row | undefined)?.name) : null
-  if (!companyName) return snapshot
-  const identity = contactId ? ((await ctx.db.findMany("counterparty_identities", { where: { contact_id: contactId }, limit: 1 })) as Row[]) : []
-  const address = contactId ? await billingAddress(ctx, contactId) : null
-  return {
-    ...snapshot,
-    counterparty_name: companyName,
-    counterparty_address: address?.line ?? null,
-    counterparty_country: address?.country ?? text(identity[0]?.establishment_country) ?? null,
-    counterparty_vat_id: text(identity[0]?.vat_id),
-    customer_kind: text(identity[0]?.customer_kind) ?? "business",
-  }
+  return { ...(await recipientOf(ctx, { contactId: s.contact_id ?? null, companyId: s.company_id ?? null })) }
 }
 
 /** The previous invoice of the schedule, for the row's flags. */

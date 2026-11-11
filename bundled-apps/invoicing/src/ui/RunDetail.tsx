@@ -89,6 +89,8 @@ export function runStatusWord(status: string): string {
       return tr("Not approved")
     case "late":
       return tr("Past its last day, not issued")
+    case "nothing_to_issue":
+      return tr("Closed, nothing to issue")
     default:
       return status
   }

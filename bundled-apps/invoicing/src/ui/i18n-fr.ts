@@ -676,6 +676,7 @@ export const FR: Record<string, string> = {
   "Issuing": "Émission en cours",
   "Not approved": "Non approuvée",
   "Past its last day, not issued": "Dernier jour dépassé, non émise",
+  "Closed, nothing to issue": "Clôturée, rien à émettre",
   "Not approved yet": "Pas encore approuvée",
   "Issues on": "Émise le",
   "Given when the invoices issue": "Attribués à l'émission des factures",

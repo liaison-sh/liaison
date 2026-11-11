@@ -124,8 +124,8 @@ describe("session list", () => {
     ).toEqual(["f", "s"])
     expect(groupRows("done", NOW).map((r) => r.id)).toEqual(["d"])
     expect(groupRows("running", NOW).map((r) => r.id)).toEqual(["r"])
-    expect(needsYouCount()).toBe(2)
-    expect(countsByNode("n1")).toEqual({ running: 1, needsYou: 2 })
+    expect(needsYouCount(NOW)).toBe(2)
+    expect(countsByNode("n1", NOW)).toEqual({ running: 1, needsYou: 2 })
   })
 
   it("S9: an unknown state files the row in Running", () => {
@@ -143,12 +143,12 @@ describe("session list", () => {
 
   it("a session moving to waiting moves group and needsYouCount goes 0 → 1", () => {
     applyRow(row({ id: "s1", status: "running" }))
-    expect(needsYouCount()).toBe(0)
+    expect(needsYouCount(NOW)).toBe(0)
     applyRow(row({ id: "s1", status: "waiting", pendingCount: 1 }))
-    expect(needsYouCount()).toBe(1)
+    expect(needsYouCount(NOW)).toBe(1)
     expect(groupRows("needs_you", NOW).map((r) => r.id)).toEqual(["s1"])
     expect(groupRows("running", NOW)).toEqual([])
-    expect(countsByNode("n1")).toEqual({ running: 0, needsYou: 1 })
+    expect(countsByNode("n1", NOW)).toEqual({ running: 0, needsYou: 1 })
   })
 
   it("sorts needs-you oldest first, running newest first, done and failed by end", () => {

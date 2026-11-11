@@ -64,7 +64,7 @@ export interface SaasDealSubtask {
   dueAt: Date
 }
 
-/** What the owner's Home leads with, in order (S438): approvals and attention rows. */
+/** What the owner's Home leads with, in order: approvals and attention rows. */
 export interface SaasNeedsYouRow {
   key: string
   kind: "approval" | "attention"

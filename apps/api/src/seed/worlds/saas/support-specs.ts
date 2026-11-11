@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // The `saas` world's support desk: its inboxes, the ticket queue the owner
-// opens on (six open tickets, S438), the shared mailbox's conversations with
+// opens on (six open tickets), the shared mailbox's conversations with
 // the prospects who wrote in, and the team calendar. Companies and deals are
 // the pack's layer's (`plan.ts`, `layer.ts`), so the support layer seeds none.
 //

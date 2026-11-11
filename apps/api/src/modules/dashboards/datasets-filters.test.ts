@@ -300,6 +300,55 @@ describe("filters", () => {
   })
 })
 
+describe("budget and remembered state", () => {
+  it("a read too large to cache counts toward the budget on every run after the first", async () => {
+    // Redis down for writes: no result is kept, so each read runs again and is budgeted.
+    const store = fakeStore()
+    BlockCacheTestAccess.setStore({ ...store, set: async () => Promise.reject(new Error("down")) })
+    BlockCacheTestAccess.resetLocal()
+    const id = await dashboard()
+    const viewer = as(owner, [WRITE, READ])
+    runs.length = 0
+    const outcomes: unknown[] = []
+    for (let i = 0; i < CUSTOM_WINDOW_RUNS + 3; i++) {
+      outcomes.push(await getBlockData(viewer, id, "by-market"))
+    }
+    expect(runs).toHaveLength(CUSTOM_WINDOW_RUNS + 1)
+    expect(outcomes.at(-1)).toMatchObject({ ok: false, error: "rate_limited" })
+    BlockCacheTestAccess.resetLocal()
+  })
+
+  it("refuses filter values too long to remember, and keeps a comparison remembered alone", async () => {
+    const id = await dashboard({
+      ...SPEC,
+      filters: [
+        ...SPEC.filters,
+        ...["sku", "ref"].map((fid) => ({
+          id: fid,
+          label: fid,
+          type: "multi",
+          options: { fromDataset: "orders", field: "id" },
+        })),
+      ],
+    })
+    const mine = as(owner, [WRITE, READ])
+    const sku = Array.from(
+      { length: 50 },
+      (_, i) => `${String(i).padStart(3, "0")}${"x".repeat(197)}`,
+    )
+    const err = await setViewerRange(mine, id, { filters: { sku, ref: sku } }).catch(
+      (e: unknown) => e,
+    )
+    expect((err as DashboardError).code).toBe("INVALID_REQUEST")
+    expect((err as DashboardError).message).toMatch(/too long to remember/)
+    await setViewerRange(mine, id, { compare: "previousPeriod" })
+    expect((await getDashboard(mine, id)).range).toMatchObject({
+      compare: "previousPeriod",
+      saved: true,
+    })
+  })
+})
+
 describe("drill-down", () => {
   it("the rows behind a bar come from the cached read, with their links", async () => {
     BlockCacheTestAccess.setStore(fakeStore())

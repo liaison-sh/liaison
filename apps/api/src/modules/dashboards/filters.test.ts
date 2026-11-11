@@ -64,7 +64,11 @@ describe("filter tokens in a source's params", () => {
       since: "{{today-30d}}",
     }
     expect(
-      resolveFilterTokens<unknown>(params, { market: ["FR"], channel: ["b2b", "dtc"], q: [] }),
+      resolveFilterTokens<unknown>(
+        params,
+        { market: ["FR"], channel: ["b2b", "dtc"], q: [] },
+        spec,
+      ),
     ).toEqual({
       market: "FR",
       channels: ["b2b", "dtc"],
@@ -72,10 +76,60 @@ describe("filter tokens in a source's params", () => {
       list: ["a"],
       since: "{{today-30d}}",
     })
-    expect(resolveFilterTokens<unknown>(params, { market: [], channel: [], q: ["x"] })).toEqual({
+    expect(
+      resolveFilterTokens<unknown>(params, { market: [], channel: [], q: ["x"] }, spec),
+    ).toEqual({
       list: ["a", "x"],
       since: "{{today-30d}}",
     })
+  })
+
+  it("a multi token is a list even with one value picked", () => {
+    expect(
+      resolveFilterTokens<unknown>(
+        { channels: "{{filter.channel}}", where: { channel: { in: "{{filter.channel}}" } } },
+        { channel: ["b2b"] },
+        spec,
+      ),
+    ).toEqual({ channels: ["b2b"], where: { channel: { in: ["b2b"] } } })
+    // A select's whole token stays one value.
+    expect(
+      resolveFilterTokens<unknown>({ m: "{{filter.market}}" }, { market: ["DE"] }, spec),
+    ).toEqual({ m: "DE" })
+  })
+
+  it("'All' drops the clause up to the nearest param, never leaving an empty object", () => {
+    const query = {
+      where: { channel: { in: "{{filter.channel}}" }, status: "open" },
+      orderBy: "createdAt",
+    }
+    expect(resolveFilterTokens<unknown>(query, { channel: [] }, spec)).toEqual({
+      where: { status: "open" },
+      orderBy: "createdAt",
+    })
+    expect(
+      resolveFilterTokens<unknown>(
+        { where: { channel: { in: "{{filter.channel}}" } }, limit: 10 },
+        { channel: [] },
+        spec,
+      ),
+    ).toEqual({ limit: 10 })
+    expect(
+      resolveFilterTokens<unknown>({ tags: ["{{filter.q}}"], keep: {} }, { q: [] }, spec),
+    ).toEqual({ keep: {} })
+  })
+
+  it("multi values are sorted and deduplicated, so their order never makes a new run", () => {
+    expect(normalizeFilterValues(spec, { channel: ["dtc", "b2b", "dtc"] }).channel).toEqual([
+      "b2b",
+      "dtc",
+    ])
+  })
+
+  it("refuses a value holding a token's braces", () => {
+    expect(() => normalizeFilterValues(spec, { q: ["{{range.from}}"] })).toThrow(FilterValueError)
+    expect(() => normalizeFilterValues(spec, { q: ["a}}b"] })).toThrow(/braces/)
+    expect(sanitizeSavedFilterValues(spec, { q: ["{{x}}"] })).toEqual({})
   })
 
   it("is a valid token for the date grammar, but never resolved as a date", () => {
@@ -117,5 +171,23 @@ describe("map.where", () => {
     expect(ids(where, { market: ["DE", "FR"] })).toEqual([1, 2, 3])
     const not = [{ field: "market", op: "neq" as const, value: { filter: "market" } }]
     expect(ids(not, { market: ["DE", "FR"] })).toEqual([4])
+  })
+
+  it("strings with leading zeros or another notation are not numbers", () => {
+    const skus = [
+      { id: 1, sku: "007" },
+      { id: 2, sku: "7" },
+      { id: 3, sku: "0x7" },
+      { id: 4, sku: 7 },
+      { id: 5, sku: "7.0" },
+      { id: 6, sku: "1e3" },
+    ]
+    const pick = (op: "eq" | "gt", value: unknown) =>
+      applyWhere(skus, resolveWhere([{ field: "sku", op, value } as never], {})).map((r) => r.id)
+    expect(pick("eq", "007")).toEqual([1])
+    expect(pick("eq", "7")).toEqual([2, 4, 5])
+    expect(pick("eq", 7)).toEqual([2, 4, 5])
+    expect(pick("eq", "1000")).toEqual([])
+    expect(pick("gt", "6")).toEqual([2, 4, 5])
   })
 })

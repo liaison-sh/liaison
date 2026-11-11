@@ -45,6 +45,10 @@ export interface BlockDrillPanelProps {
   open: (link: RecordLink) => void
   onClose: () => void
   locale?: string
+  /** The range and filters the rows are read under: a change goes back to the first page. */
+  contextKey?: string
+  /** The days a comparison bar's rows come from, shown under the title. */
+  windowNote?: string
 }
 
 interface KeyedRow {
@@ -80,13 +84,23 @@ export const BlockDrillPanel: Component<BlockDrillPanelProps> = (props) => {
     }
   }
 
-  // Another figure picked while the panel is open: back to its first page.
+  // Another figure picked while the panel is open, or the range or a filter changed: back to
+  // the first page, the rows shown before dropped (they were read under the old choice).
   createEffect(
     on(
-      () => [props.blockId, props.target.category, props.target.series, props.target.row] as const,
+      () =>
+        [
+          props.blockId,
+          props.target.category,
+          props.target.series,
+          props.target.row,
+          props.target.previous,
+          props.contextKey,
+        ] as const,
       () => {
         setPage(null)
         setError(null)
+        setOffset(0)
         void read(0)
       },
     ),
@@ -103,7 +117,8 @@ export const BlockDrillPanel: Component<BlockDrillPanelProps> = (props) => {
     if (t.row !== undefined) return i18n.t("kernel.dashboards.drillRow", { n: t.row + 1 })
     if (t.category !== undefined) {
       const label = t.category === "" ? i18n.t("kernel.dashboards.drillNone") : t.category
-      return t.series ? `${label} · ${t.series}` : label
+      const named = t.series ? `${label} · ${t.series}` : label
+      return props.windowNote ? `${named} · ${props.windowNote}` : named
     }
     return i18n.t("kernel.dashboards.drillAllRows")
   }

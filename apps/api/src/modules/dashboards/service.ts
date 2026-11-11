@@ -29,6 +29,8 @@ import {
 import {
   FAILED_BLOCK_TTL_SEC,
   failedBlockCacheKey,
+  isUncacheable,
+  markUncacheable,
   REFRESH_WINDOW_SEC,
   readCachedBlock,
   type SourceKey,
@@ -375,16 +377,31 @@ interface StoredViewerState {
   filters: unknown
 }
 
-/** A remembered range read back: a row another release wrote in a shape this one refuses is ignored. */
+/**
+ * A remembered range and comparison read back, each on its own (a comparison remembered without
+ * a range still counts): a part another release wrote in a shape this one refuses is ignored.
+ */
 function parseViewerState(
   row: { timeRange: unknown; compare: string | null } | undefined,
-): { timeRange: TimeRange; compare: CompareMode } | null {
-  if (!row || row.timeRange === null || row.compare === null) return null
-  const tr = timeRangeSchema.safeParse(row.timeRange)
-  const compare = ["lastYear", "previousPeriod", "none"].includes(row.compare)
-    ? (row.compare as CompareMode)
-    : null
-  return tr.success && compare ? { timeRange: tr.data, compare } : null
+): { timeRange?: TimeRange; compare?: CompareMode } | null {
+  if (!row) return null
+  const tr = row.timeRange === null ? null : timeRangeSchema.safeParse(row.timeRange)
+  const compare =
+    row.compare !== null && ["lastYear", "previousPeriod", "none"].includes(row.compare)
+      ? (row.compare as CompareMode)
+      : undefined
+  const out = { ...(tr?.success ? { timeRange: tr.data } : {}), ...(compare ? { compare } : {}) }
+  return Object.keys(out).length ? out : null
+}
+
+/** What 0290's CHECK measures: the jsonb text of the remembered filters (`{"a": ["x", "y"]}`). */
+export const MAX_VIEWER_FILTERS_BYTES = 16_384
+
+function jsonbTextBytes(filters: FilterValues): number {
+  const entries = Object.values(filters)
+  const separators =
+    2 * entries.length + entries.reduce((n, list) => n + Math.max(list.length - 1, 0), 0)
+  return Buffer.byteLength(JSON.stringify(filters)) + separators
 }
 
 export async function getDashboard(
@@ -418,7 +435,12 @@ export async function getDashboard(
   const savedFilters = sanitizeSavedFilterValues(spec ?? {}, stored?.filters)
   const filtersSaved = Object.keys(savedFilters).length > 0
   const defaults = dashboardDefaultRange(spec ?? {})
-  const chosen = state ?? defaults
+  const chosen = state
+    ? {
+        timeRange: state.timeRange ?? defaults.timeRange,
+        compare: state.compare ?? defaults.compare,
+      }
+    : defaults
   const timeZone = await dashboardTimezone(viewer.orgId)
   const window = resolveTimeRange(chosen.timeRange, { timeZone, now })
   const blockTimeRange: Record<string, BlockRangeMode> = {}
@@ -539,6 +561,13 @@ export async function setViewerRange(
           throw new DashboardError("INVALID_REQUEST", err.message)
         }
         throw err
+      }
+      const bytes = jsonbTextBytes(filters)
+      if (bytes > MAX_VIEWER_FILTERS_BYTES) {
+        throw new DashboardError(
+          "INVALID_REQUEST",
+          `the filter values are too long to remember (${bytes} bytes, at most ${MAX_VIEWER_FILTERS_BYTES})`,
+        )
       }
     }
     const [before] = await selectState(t, viewer, dashboardId)
@@ -1034,8 +1063,12 @@ function filterValuesFor(spec: DashboardSpec, asked: BlockDataOptions["filters"]
 }
 
 /** `source` with its filter tokens resolved (dates come later). */
-function withFilterValues(source: BlockSource, values: FilterValues): BlockSource {
-  const value = resolveFilterTokens(sourceValue(source), values)
+function withFilterValues(
+  source: BlockSource,
+  values: FilterValues,
+  spec: Pick<DashboardSpec, "filters">,
+): BlockSource {
+  const value = resolveFilterTokens(sourceValue(source), values, spec)
   return source.kind === "tool" ? { ...source, params: value } : { ...source, query: value }
 }
 
@@ -1158,18 +1191,20 @@ async function readSourceCached(
     const failed = await readCachedBlock<CachedFailure>(failedKey)
     if (failed) return { ok: false, error: failed.error, message: failed.message }
   }
-  // A custom range, or a filter value a param reads, is a new run for every new value: a budget
-  // per viewer and source, so walking the calendar or a filter's values cannot run the source
-  // without end. Presets, the default and the default filter values never count.
+  // A custom range, or a filter value a param reads, is a new run for every new value, and a
+  // read the cache could not keep (too large, or Redis down) runs again on every request: a
+  // budget per source and per viewer, so walking the calendar, a filter's values or the pages
+  // of a large read cannot run sources without end. Presets, the default and the default filter
+  // values of a read the cache keeps never count.
   if (
-    (opts.range?.preset === "custom" || opts.budgeted) &&
+    (opts.range?.preset === "custom" || opts.budgeted || (await isUncacheable(key))) &&
     !(await takeCustomWindowRun(viewer, dashboard.row.id, sourceKey))
   ) {
     return {
       ok: false,
       error: "rate_limited",
       message:
-        "too many different custom ranges or filter values for this block in the last minute",
+        "too many reads the cache cannot answer (custom ranges, filter values, or results too large to keep) in the last minute: try again in a minute",
     }
   }
   const ttl = ttlOverride ?? sourceTtlSec(dashboard.spec, sourceKey)
@@ -1201,7 +1236,8 @@ async function readSourceCached(
     const computedAt = new Date().toISOString()
     const entry: CachedSource = { read, computedAt, ...(opts.refresh ? { forced: true } : {}) }
     const json = JSON.stringify(entry)
-    if (json.length <= MAX_CACHED_SOURCE_BYTES) await writeCachedBlock(key, entry, ttl)
+    const kept = json.length <= MAX_CACHED_SOURCE_BYTES && (await writeCachedBlock(key, entry, ttl))
+    if (!kept) await markUncacheable(key, ttl)
     return { ok: true, read, cached: false, computedAt }
   })
 }
@@ -1239,7 +1275,7 @@ async function planSource(
   now: Date,
 ): Promise<PlannedSource> {
   const timeZone = await dashboardTimezone(viewer.orgId)
-  const filtered = withFilterValues(saved, values)
+  const filtered = withFilterValues(saved, values, spec)
   let window: BlockWindow
   let range: DayWindow | null = null
   let compareRange: BlockCompareWindow | null = null

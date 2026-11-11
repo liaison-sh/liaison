@@ -84,6 +84,28 @@ describe("chart kinds", () => {
     expect(c.options.scales.y1!.position).toBe("right")
   })
 
+  it("a stacked combo stacks its bars only: its lines sit on their own unstacked axis", () => {
+    const c = chartConfig(
+      {
+        type: "combo",
+        stacked: true,
+        labels: ["a"],
+        datasets: [
+          { label: "Revenue", values: [10] },
+          { label: "Cost", values: [4] },
+          { label: "Margin", values: [6], asLine: true },
+        ],
+      },
+      "en",
+    ) as unknown as Cfg
+    expect(c.data.datasets[0]).toMatchObject({ stack: "current" })
+    expect(c.data.datasets[1]).toMatchObject({ stack: "current" })
+    expect(c.data.datasets[2]!.stack).toBeUndefined()
+    expect(c.data.datasets[2]).toMatchObject({ type: "line", yAxisID: "y1" })
+    expect(c.options.scales.y!.stacked).toBe(true)
+    expect(c.options.scales.y1!.stacked).toBeFalsy()
+  })
+
   it("a combo marks the series the server names as lines", () => {
     render(() => (
       <BlockRenderer
@@ -112,6 +134,20 @@ describe("chart kinds", () => {
     }
     expect(seriesPick(d, 1, 1)).toEqual({ category: "2026-11-02", series: "dtc" })
     expect(seriesPick({ ...d, series: [d.series[0]!] }, 0, 0)).toEqual({ category: "2026-11-01" })
+  })
+
+  it("a pick on a comparison bar asks for the comparison window's rows, under its own label", () => {
+    const d = {
+      kind: "bar" as const,
+      x: ["2026-11-01", "2026-11-02"],
+      series: [{ name: "value", values: [1, 2] }],
+      previous: {
+        labels: ["2025-11-01", null],
+        series: [{ name: "value", values: [5, null] }],
+      },
+    }
+    expect(seriesPick(d, 0, 1)).toEqual({ category: "2025-11-01", previous: true })
+    expect(seriesPick(d, 1, 1)).toBeNull()
   })
 
   it("each category is a keyboard pick inside the canvas", () => {

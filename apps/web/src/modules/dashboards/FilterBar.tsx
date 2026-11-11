@@ -3,8 +3,9 @@
 // THE DASHBOARD'S FILTERS, under its toolbar: one control per filter the
 // dashboard declares. A select or a multi is a button reading "Market: All" /
 // "Market: FR" that opens a menu of the values (a static list, or the values
-// the source holds, read when the menu opens); a text filter is a small field,
-// applied on Enter or when it loses focus. "All" is the empty state. A reset
+// the source holds, read when the menu opens); a multi's ticks apply together
+// when its menu closes, so one menu session is one read of the blocks; a text
+// filter is a small field, applied on Enter or when it loses focus. "All" is the empty state. A reset
 // goes back to the dashboard's defaults. The row wraps on a phone.
 import { Check, ListFilter, RotateCcw } from "lucide-solid"
 import { type Component, createSignal, For, Show } from "solid-js"
@@ -86,6 +87,16 @@ const ChoiceFilter: Component<{
   const [state, setState] = createSignal<OptionsState>({ status: "idle" })
   const multi = () => props.def.type === "multi"
   const all = () => i18n.t("kernel.dashboards.filterAll")
+  // A multi's ticks while its menu is open: applied once, when it closes.
+  const [draft, setDraft] = createSignal<string[] | null>(null)
+  const current = () => draft() ?? props.values
+  const commit = () => {
+    const d = draft()
+    setDraft(null)
+    if (!d) return
+    const same = d.length === props.values.length && d.every((v) => props.values.includes(v))
+    if (!same) props.onChange(d)
+  }
   let seq = 0
 
   const load = async () => {
@@ -107,7 +118,7 @@ const ChoiceFilter: Component<{
   const options = () => {
     const s = state()
     const listed = s.status === "ready" ? s.options : []
-    const missing = props.values.filter((v) => !listed.includes(v))
+    const missing = current().filter((v) => !listed.includes(v))
     return [...missing, ...listed]
   }
   const toggle = (v: string) => {
@@ -115,11 +126,10 @@ const ChoiceFilter: Component<{
       props.onChange([v])
       return
     }
-    props.onChange(
-      props.values.includes(v) ? props.values.filter((x) => x !== v) : [...props.values, v],
-    )
+    const now = current()
+    setDraft(now.includes(v) ? now.filter((x) => x !== v) : [...now, v])
   }
-  const text = () => valueText(props.values, all())
+  const text = () => valueText(current(), all())
 
   return (
     <PopupMenu
@@ -127,17 +137,18 @@ const ChoiceFilter: Component<{
       onOpenChange={(o) => {
         setOpen(o)
         if (o) void load()
+        else commit()
       }}
     >
       <PopupMenu.Trigger
         data-testid={`dashboard-filter-${props.def.id}`}
         data-filter-type={props.def.type}
-        data-value={props.values.join(",")}
+        data-value={current().join(",")}
         aria-label={i18n.t("kernel.dashboards.filterAria", {
           label: props.def.label,
           value: text(),
         })}
-        title={`${props.def.label}: ${props.values.join(", ") || all()}`}
+        title={`${props.def.label}: ${current().join(", ") || all()}`}
         class="flex h-8 min-w-0 max-w-full items-center gap-1 rounded-md border border-border px-2.5 text-[12.5px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text"
       >
         <span class="shrink-0 text-text-tertiary">{props.def.label}:</span>
@@ -153,13 +164,16 @@ const ChoiceFilter: Component<{
           <PopupMenu.Label>{props.def.label}</PopupMenu.Label>
           <PopupMenu.Item
             data-testid={`dashboard-filter-all-${props.def.id}`}
-            onSelect={() => props.onChange([])}
+            onSelect={() => {
+              if (!multi()) {
+                props.onChange([])
+                return
+              }
+              setDraft([])
+              commit()
+            }}
           >
-            <Check
-              size={13}
-              aria-hidden="true"
-              class={props.values.length === 0 ? "" : "invisible"}
-            />
+            <Check size={13} aria-hidden="true" class={current().length === 0 ? "" : "invisible"} />
             {all()}
           </PopupMenu.Item>
           <For each={options()}>
@@ -173,7 +187,7 @@ const ChoiceFilter: Component<{
                 <Check
                   size={13}
                   aria-hidden="true"
-                  class={props.values.includes(option) ? "" : "invisible"}
+                  class={current().includes(option) ? "" : "invisible"}
                 />
                 <span class="truncate">{option}</span>
               </PopupMenu.Item>

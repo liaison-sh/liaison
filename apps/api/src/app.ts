@@ -658,6 +658,16 @@ if (env.LIAISON_DEMO_MODE) {
   mountDemoRoutes(app)
 }
 
+// The card-payments stand-in's signed QA write (outside objects of a demo org).
+// Every request 404s unless LIAISON_DEMO_PAYMENTS_FIXTURES is set, the harness
+// signature is valid and the org is demo marked (modules/demo/worlds/saas/payments/harness-route.ts).
+{
+  const { demoPaymentsHarnessRoutes } = await import(
+    "~/modules/demo/worlds/saas/payments/harness-route"
+  )
+  app.route("/api/demo-payments", demoPaymentsHarnessRoutes)
+}
+
 // Phase 14: top-level /healthz (outside /api/) — version + migration head +
 // dependency status. Consumed by load balancers, `liaison.sh upgrade` health
 // gate, and `validate-compose`.

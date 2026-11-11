@@ -18,6 +18,8 @@ export interface HomeLoad {
     lastEventAt?: string | null
     lastEventType?: string | null
     connectedAt?: string | null
+    /** The demo's stand-in install: no link out to the Stripe dashboard is rendered. */
+    standIn?: boolean
   }
   sync: SyncView
   counts: Record<string, number> | null
@@ -136,6 +138,9 @@ export function daysFromNow(iso: string | null | undefined, now: Date): number |
 export const daysLateLabel = (n: number) => (n === 1 ? tr("1 day late") : tr("{{n}} days late", { n }))
 export const daysLeftLabel = (n: number) => (n === 1 ? tr("1 day left") : tr("{{n}} days left", { n }))
 export const inDaysLabel = (n: number) => (n === 0 ? tr("today") : n === 1 ? tr("in 1 day") : tr("in {{n}} days", { n }))
+
+/** Whether the page may link out to the Stripe dashboard: never for the demo's stand-in install. */
+export const dashboardShown = (load: HomeLoad | null | undefined): boolean => load?.connection.standIn !== true
 
 /** A page of the Stripe dashboard, in the mode of the key. */
 export const dashboardUrl = (mode: string | undefined, path = "") =>

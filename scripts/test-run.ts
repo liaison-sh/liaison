@@ -615,6 +615,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/stripe-invoicing-money.test.ts",
             // A signed Stripe refund through the webhook route to one credit note, and the safety job.
             "src/tests/integration/stripe-refund-to-credit-note.test.ts",
+            // The demo's card-payments stand-in: reads from the mirror, modelled writes through the app's handler.
+            "src/modules/demo/worlds/saas/payments/stripe-standin.integration.test.ts",
             // Minor-unit money through the real sandbox: refused before parking, card equals issue.
             "src/tests/integration/invoicing-minor-amounts.test.ts",
             // E-invoice send through the einvoicing-pa@1 provider contract (Pennylane fake behind
@@ -1927,6 +1929,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/money-events-company.test.ts",
             "src/money-logs.test.ts",
             "src/card-link.test.ts",
+            // A stand-in install (the demo's): its links, its hidden dashboard, its unset-able mark.
+            "src/standin.test.ts",
             "src/send-state.test.ts",
             // Every tool answer is masked: no address, tax id, card number or metadata (pure).
             "src/results.test.ts",

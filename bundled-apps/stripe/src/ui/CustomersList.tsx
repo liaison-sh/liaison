@@ -22,7 +22,7 @@ import {
   statusOf,
   whatHappensNext,
 } from "./customers-model"
-import { type HomeLoad, dashboardUrl, formatMoney, type InvoiceItem, type MrrResult, pageKind, type SubItem } from "./home-model"
+import { type HomeLoad, dashboardShown, dashboardUrl, formatMoney, type InvoiceItem, type MrrResult, pageKind, type SubItem } from "./home-model"
 import { tr, uiLocale } from "./i18n"
 
 interface Page {
@@ -192,9 +192,11 @@ export const StripeCustomersList: Component = () => {
         <h1 class="text-[18px] font-semibold text-text">
           {tr("Customers")} <span class="text-[13px] font-normal text-text-tertiary">{home()?.counts?.customers ?? ""}</span>
         </h1>
-        <button type="button" data-testid="stripe-open-dashboard" class={SECONDARY} onClick={() => void app.openExternal(dashboardUrl(home()?.connection.mode, "/customers"))}>
-          {tr("Open in Stripe")}
-        </button>
+        <Show when={dashboardShown(home())}>
+          <button type="button" data-testid="stripe-open-dashboard" class={SECONDARY} onClick={() => void app.openExternal(dashboardUrl(home()?.connection.mode, "/customers"))}>
+            {tr("Open in Stripe")}
+          </button>
+        </Show>
       </header>
       <Show
         when={!notConnected()}

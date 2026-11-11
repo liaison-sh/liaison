@@ -7,6 +7,7 @@ import { app, navigate } from "@liaison/host"
 import { type Component, createSignal, For, Show } from "solid-js"
 import {
   type CardAction,
+  dashboardShown,
   dashboardUrl,
   type HomeLoad,
   importingView,
@@ -30,7 +31,13 @@ const RESOURCE_LABEL: Record<string, string> = {
   disputes: "Disputes",
 }
 
-function actionHref(id: CardAction["id"], mode: string | undefined): string | null {
+/** The card actions that open the Stripe dashboard: absent on the demo's stand-in install. */
+const DASHBOARD_ACTIONS: ReadonlySet<string> = new Set(["stripe", "stripe_keys", "stripe_webhooks"])
+
+function actionHref(id: CardAction["id"], load: HomeLoad | null): string | null {
+  // The demo's stand-in has no Stripe dashboard to send anybody to.
+  if (!dashboardShown(load)) return null
+  const mode = load?.connection.mode
   if (id === "stripe") return dashboardUrl(mode)
   if (id === "stripe_keys") return dashboardUrl(mode, "/apikeys")
   if (id === "stripe_webhooks") return dashboardUrl(mode, "/webhooks")
@@ -90,9 +97,9 @@ export const HomeStates: Component<{
             </p>
           </Show>
           <div class="mt-4 flex flex-wrap gap-2">
-            <For each={c().actions}>
+            <For each={c().actions.filter((a) => dashboardShown(props.load) || !DASHBOARD_ACTIONS.has(a.id))}>
               {(a) => {
-                const href = actionHref(a.id, props.load?.connection.mode)
+                const href = actionHref(a.id, props.load)
                 return href ? (
                   <a
                     href={href}

@@ -933,6 +933,7 @@
     "mediaAnalysisOff": "Ceci est l'espace de démonstration App Review, qui fonctionne avec un budget quotidien fixe : il n'analyse pas les images, les sons, les vidéos ni les documents. Tout le reste de la démonstration fonctionne sans cela.",
     "signupRateLimited": "Trop d'espaces de démonstration depuis cette adresse. Réessayez plus tard.",
     "shopifyUnsupported": "Ceci est une instance de démonstration : la boutique de démonstration ne reproduit pas cette partie de Shopify. Essayez les commandes, les clients, les produits, les devis ou les retours.",
+    "paymentsUnsupported": "Ceci est une instance de démonstration : le simulateur de paiements par carte ne reproduit pas {{what}}. Les clients, abonnements, factures, paiements, remboursements et litiges peuvent être lus, et les remboursements et résiliations en fin de période n'agissent que sur le simulateur.",
     "shopifyWriteBlocked": "Ceci est une instance de démonstration : cette modification ne peut pas être appliquée à la boutique de démonstration. L'ajout de balises, les notes, l'expédition, les remboursements et la validation d'un devis fonctionnent.",
     "signupInProgress": "Votre espace de démonstration est en cours de préparation. Réessayez dans un instant.",
     "workspaceExpired": "Cet espace de démonstration a expiré. Lancez une nouvelle démonstration pour continuer.",

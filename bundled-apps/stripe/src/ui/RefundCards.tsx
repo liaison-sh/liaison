@@ -19,6 +19,8 @@ export const RefundCard: Component<{
   payment: PaymentItem
   held?: boolean
   mode?: string
+  /** The demo's stand-in install: no link out to the Stripe dashboard. */
+  standIn?: boolean
   /** Posts a request to the customer's discussion (the credit note). */
   onAsk: (text: string) => Promise<void>
   onChanged: () => void
@@ -124,7 +126,7 @@ export const RefundCard: Component<{
         </div>
       </Show>
       <div class="mt-3 flex flex-wrap items-center gap-2">
-        <For each={view().actions}>
+        <For each={view().actions.filter((a) => !(p.standIn && a.id === "open_stripe"))}>
           {(a) => (
             <button
               type="button"

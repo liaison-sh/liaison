@@ -933,6 +933,7 @@
     "mediaAnalysisOff": "This is the App Review demo workspace, which runs on a fixed daily budget, so it does not analyse images, audio, video or documents. Everything else in the demo works without it.",
     "signupRateLimited": "Too many demo workspaces from this address. Try again later.",
     "shopifyUnsupported": "This is a demo instance, so the demo store does not model that part of Shopify. Try orders, customers, products, quotes or returns.",
+    "paymentsUnsupported": "This is a demo instance, so the card-payments stand-in does not model {{what}}. Customers, subscriptions, invoices, payments, refunds and disputes can be read, and refunds and cancellations at the period's end act on the stand-in only.",
     "shopifyWriteBlocked": "This is a demo instance, so that change cannot be made to the demo store. Tagging, notes, fulfilment, refunds and completing a quote all work.",
     "signupInProgress": "Your demo workspace is being prepared. Try again in a moment.",
     "workspaceExpired": "This demo workspace has expired. Start a new demo to continue.",

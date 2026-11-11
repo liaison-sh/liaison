@@ -11,8 +11,10 @@
 //   3. none, with the reason.
 // `effect` is the sentence that is true for the rung used, so a reminder says
 // exactly what the link does. Only Stripe's own hosts are returned, and the
-// link is never written anywhere: not to the mirror, not to a log.
+// link is never written anywhere: not to the mirror, not to a log. A stand-in
+// install (the demo's, `standin.ts`) returns its own host instead, and only it.
 import { stripeFetch } from "../http"
+import { readStandIn, STANDIN_HOSTED_INVOICE, STANDIN_PORTAL_LOGIN } from "../standin"
 import { str, type ReadCtx } from "./read-common"
 
 type Obj = Record<string, unknown>
@@ -35,10 +37,14 @@ export const EFFECT = {
 export async function cardUpdateLink(params: Obj | undefined, ctx: CardLinkCtx) {
   const customerId = typeof params?.customerId === "string" ? params.customerId.trim() : ""
   if (!/^cus_[A-Za-z0-9_]+$/.test(customerId)) {
-    return { url: null, kind: null, effect: null, why: "No Stripe customer (cus_...) was named. Next step: find it with customers_search." }
+    const why = "No Stripe customer (cus_...) was named. Next step: find it with customers_search."
+    return { url: null, kind: null, effect: null, why, summary: why }
   }
+  const standIn = await readStandIn(ctx.db)
+  const portalHost = standIn ? STANDIN_PORTAL_LOGIN : PORTAL_LOGIN
+  const invoiceHost = standIn ? STANDIN_HOSTED_INVOICE : HOSTED_INVOICE
   const portal = str(await ctx.config?.get("portalLoginUrl").catch(() => null))
-  if (portal && PORTAL_LOGIN.test(portal)) {
+  if (portal && portalHost.test(portal)) {
     return {
       url: portal,
       kind: "portal_login",
@@ -66,7 +72,7 @@ export async function cardUpdateLink(params: Obj | undefined, ctx: CardLinkCtx) 
     }
   }
   const hosted = str(invoice?.hosted_invoice_url)
-  if (invoice && hosted && HOSTED_INVOICE.test(hosted)) {
+  if (invoice && hosted && invoiceHost.test(hosted)) {
     const number = String(invoice.number ?? invoice.stripe_id)
     return {
       url: hosted,
@@ -76,10 +82,7 @@ export async function cardUpdateLink(params: Obj | undefined, ctx: CardLinkCtx) 
       summary: `The link is the Stripe page of open invoice ${number}. ${EFFECT.hosted_invoice}`,
     }
   }
-  return {
-    url: null,
-    kind: null,
-    effect: null,
-    why: `No link for customer ${customerId}: no customer portal login link is set and the customer has no open invoice with a Stripe page. Next step: turn on the customer portal in Stripe and paste its login link in the Stripe settings.`,
-  }
+  const why = `No link for customer ${customerId}: no customer portal login link is set and the customer has no open invoice with a Stripe page. Next step: turn on the customer portal in Stripe and paste its login link in the Stripe settings.`
+  // Every answer carries the same fields (the manifest's `returns`), a "no link" one too.
+  return { url: null, kind: null, effect: null, why, summary: why }
 }

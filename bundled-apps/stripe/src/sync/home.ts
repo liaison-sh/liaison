@@ -5,6 +5,7 @@
 // table, and the counts that need a person. No figure is given while the first
 // import runs or a permission is missing (`sync.partial`): the page says so.
 import { decodeState } from "../connection"
+import { isStandInInstall } from "../standin"
 import { readInstall, type StateDb, syncProgress } from "../states"
 
 export interface HomeDb extends StateDb {
@@ -53,6 +54,8 @@ export async function homeLoad(_params: Record<string, never>, ctx: { db: HomeDb
       lastEventAt: at(install.last_event_at),
       lastEventType: typeof install.last_event_type === "string" ? install.last_event_type : null,
       connectedAt: at(install.connected_at),
+      // The demo's stand-in: the pages render no link out to the Stripe dashboard.
+      standIn: isStandInInstall(install),
     },
     sync,
     counts,

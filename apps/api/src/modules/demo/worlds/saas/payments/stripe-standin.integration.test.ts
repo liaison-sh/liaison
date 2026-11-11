@@ -18,7 +18,6 @@ import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { type SystemContext, type UserContext, withRlsContext } from "~/db/rls"
 import { flushEventHandlers, initEventBus } from "~/infra/events/event-bus"
-import { processOutboxBatch } from "~/infra/events/outbox-worker"
 import { dispatchAppJobWithContext } from "~/infra/jobs/job-context"
 import { JobsTestAccess } from "~/infra/jobs/jobs"
 import { ObjectStorageTestAccess } from "~/infra/storage/object-storage"
@@ -41,6 +40,7 @@ import { registerTemplate } from "~/modules/pdf/registry"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
+import { drainOutbox } from "~/tests/helpers/outbox"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
   type MoneyCtx,
@@ -374,8 +374,9 @@ function asSystem<T>(fn: (tx: unknown) => Promise<T>): Promise<T> {
 async function drain(): Promise<void> {
   await settleDemoPaymentsDeliveries()
   await flushEventHandlers()
-  for (let i = 0; i < 20; i++) if (!(await processOutboxBatch())) break
-  await flushEventHandlers()
+  // Until the outbox is empty: run beside other seeded files in one process,
+  // their events sit ahead of this org's, far more than a few batches' worth.
+  await drainOutbox({ maxRounds: 2000 })
 }
 
 async function runJob(job: string): Promise<void> {

@@ -20,6 +20,7 @@ import {
   tourBeats,
   updateTour,
 } from "~/modules/tours/service"
+import { seedUserRow } from "~/seed/factories/org/rows"
 import { createTestOrg } from "~/tests/helpers/org"
 
 let orgId: string
@@ -56,8 +57,7 @@ beforeAll(async () => {
   declaredEmits.set("kernel", new Set(KERNEL_DECLARED_EMITS))
   orgId = (await createTestOrg()).id
   alice = crypto.randomUUID()
-  await sql`INSERT INTO kernel.users (id, org_id, email, name)
-    VALUES (${alice}, ${orgId}, ${`single-run-${alice}@test.com`}, 'Alice')`
+  await seedUserRow({ id: alice, orgId, email: `single-run-${alice}@test.com`, name: "Alice" })
   await markOrgAsDemo(
     orgId,
     visitorMarker(24, new Date(), undefined, { worldId: tour.world ?? "saas" }),

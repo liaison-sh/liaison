@@ -20,9 +20,10 @@ import { invokeAgentForThread } from "~/modules/agent/runtime/agent-service"
 import { registerDemoAlertMailer } from "~/modules/demo/demo-alerts"
 import { DemoBudgetTestAccess } from "~/modules/demo/demo-budget"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
+import { sendMessage } from "~/modules/threads/message"
 import { createOrGetAgentDm, resolvePersonalAgentId } from "~/modules/threads/thread"
 import { seedContext } from "~/seed/context"
-import { actorFor } from "~/seed/factories/people/actors"
+import { actorFor, asUser } from "~/seed/factories/people/actors"
 import { type SeedDemoWorldResult, seedDemoWorld } from "~/seed/tiers/demo/seed-demo"
 import { clearRedisPatterns } from "~/tests/route-test-setup"
 import { installFromDist } from "../../../../test-support/seed/install-dist-apps"
@@ -304,13 +305,21 @@ describe("the owner's question about the hotel group, with a scripted model", ()
       return createOrGetAgentDm(tx as never, { orgId, userId: ownerId, agentId })
     })
     if (!dm) throw new Error("no conversation with the personal agent")
-    const messageId = crypto.randomUUID()
-    await rows(
-      orgId,
-      sql`INSERT INTO kernel.messages (id, org_id, thread_id, author_id, author_type, content, required_scopes)
-          VALUES (${messageId}::uuid, ${orgId}::uuid, ${dm.id}::uuid, ${ownerId}::uuid, 'user', ${QUESTION}, '{}'::text[])
-          RETURNING id`,
+    const posted = await asUser(actor, (tx) =>
+      sendMessage(
+        tx as never,
+        {
+          orgId,
+          userId: ownerId,
+          threadId: dm.id,
+          content: QUESTION,
+          authorType: "user",
+          requiredScopes: [],
+        } as never,
+      ),
     )
+    if (!posted) throw new Error("the owner's question was not posted")
+    const messageId = posted.id
     const outcome = await invokeAgentForThread(dm.id, messageId, actor, orgId)
 
     console.log(

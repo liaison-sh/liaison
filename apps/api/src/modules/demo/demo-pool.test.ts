@@ -167,7 +167,7 @@ function installStubSeeder(): void {
   })
 }
 
-const fitCalls: Array<{ orgId: string; needs: readonly DemoNeed[] }> = []
+const fitCalls: Array<{ orgId: string; needs: readonly DemoNeed[]; ownerUserId?: string }> = []
 let kicks = 0
 
 /** Take every pooled org out of the pool, so each test starts from an empty one. */
@@ -286,8 +286,8 @@ describe("demo warm pool", () => {
     DemoPoolTestAccess.setKick(async () => {
       kicks++
     })
-    DemoSeederTestAccess.setFitPooledWorld(async (orgId, needs) => {
-      fitCalls.push({ orgId, needs })
+    DemoSeederTestAccess.setFitPooledWorld(async (orgId, needs, _worldId, ownerUserId) => {
+      fitCalls.push({ orgId, needs, ownerUserId })
       return { appsOff: [], supportRoutineOff: false }
     })
   })
@@ -441,11 +441,13 @@ describe("demo warm pool", () => {
       SELECT count(*) AS n FROM kernel.agents WHERE org_id = ${data.orgId} AND handle LIKE '@unclaimed%'`
     expect(Number(placeholders[0]?.n)).toBe(0)
 
-    // The visitor's language, and the world fitted to their picks.
+    // The visitor's language, and the world fitted to their picks, the owner's attention with it.
     const [org] = await sql<{ locale: string }[]>`
       SELECT default_locale AS locale FROM kernel.organizations WHERE id = ${data.orgId}`
     expect(org?.locale).toBe("fr")
-    expect(fitCalls).toEqual([{ orgId: data.orgId, needs: ["support", "sales"] }])
+    expect(fitCalls).toEqual([
+      { orgId: data.orgId, needs: ["support", "sales"], ownerUserId: data.userId },
+    ])
 
     // The lead, as typed.
     const leads = await sql<{ email: string; name: string }[]>`

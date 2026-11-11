@@ -901,6 +901,9 @@ const anyPreflight = <P>(fn: (p: P, c: Requester) => Promise<unknown>) =>
 
 const uuidOrNull = z.string().uuid().nullable()
 
+/** The payments connector's app id: its linked records are keyed by it. */
+const PAYMENTS_APP = "stripe"
+
 /** Card of `companies_read`: the company, opening its page. */
 const COMPANY_CARD = {
   kind: "entity",
@@ -912,7 +915,7 @@ const COMPANY_CARD = {
     { label: { label: "Account manager" }, value: "{{result.accountManager.name}}" },
     { label: { label: "People" }, value: "{{result.company.peopleCount}}" },
     // What the other apps hold for them, each row only when that app answered with records.
-    { label: { label: "Stripe" }, value: "{{result.linked.stripe}}" },
+    { label: { label: "Stripe" }, value: `{{result.linked.${PAYMENTS_APP}}}` },
     { label: { label: "Invoices" }, value: "{{result.linked.invoicing}}" },
     { label: { label: "Tickets" }, value: "{{result.linked.tickets}}" },
     { label: { label: "Deals and projects" }, value: "{{result.linked.projects}}" },

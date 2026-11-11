@@ -468,6 +468,7 @@ export type FitPooledWorldFn = (
   orgId: string,
   needs: readonly DemoNeed[],
   worldId?: DemoWorldId,
+  ownerUserId?: string,
 ) => Promise<{ appsOff: string[]; supportRoutineOff: boolean }>
 
 let fitPooledWorld: FitPooledWorldFn | null | undefined
@@ -488,18 +489,19 @@ async function loadFitPooledWorld(): Promise<FitPooledWorldFn | null> {
 
 /**
  * Fit a claimed pooled workspace to the visitor's needs (the apps they did not
- * pick turned Off). Never throws: a workspace showing an app too many is still
- * a working demo.
+ * pick turned Off) and recompute the owner's stored attention lists. Never
+ * throws: a workspace showing an app too many is still a working demo.
  */
 export async function fitPooledDemoWorld(
   orgId: string,
   needs: readonly DemoNeed[],
   worldId: DemoWorldId = DEMO_DEFAULT_WORLD,
+  ownerUserId?: string,
 ): Promise<void> {
   const fit = await loadFitPooledWorld()
   if (!fit) return
   try {
-    const result = await fit(orgId, needs, worldId)
+    const result = await fit(orgId, needs, worldId, ownerUserId)
     log.info(
       { orgId, needs, worldId, ...result },
       "pooled demo workspace fitted to the visitor's needs",

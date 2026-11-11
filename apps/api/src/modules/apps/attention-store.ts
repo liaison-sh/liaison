@@ -381,15 +381,42 @@ export async function refreshAppAttention(
   return { people: people.length, changed }
 }
 
-/** Every app provider of the org, refreshed one app after the other (the minute tick). */
+/**
+ * Every app provider of the org, refreshed one app after the other (the minute
+ * tick, a seeded workspace). The people and each one's permissions are read
+ * once for the whole pass, not once per app.
+ */
 export async function refreshAllAppAttention(
   orgId: string,
   partial: Partial<AttentionStoreDeps> & { userIds?: string[] } = {},
 ): Promise<void> {
-  for (const [[entryOrg, appName]] of attentionItemsRegistry.entriesOf(orgId)) {
-    if (entryOrg !== orgId) continue
+  const apps = [...attentionItemsRegistry.entriesOf(orgId)]
+    .map(([[entryOrg, appName]]) => (entryOrg === orgId ? appName : null))
+    .filter((a): a is string => a !== null)
+  if (apps.length === 0) return
+  let userIds: string[]
+  try {
+    userIds =
+      partial.userIds ?? (await (partial.listActiveUsers ?? defaultDeps.listActiveUsers)(orgId))
+  } catch (err) {
+    log.warn({ err, orgId }, "Attention refresh failed: the org's people could not be read")
+    return
+  }
+  const loadOnce = partial.loadPersonActor ?? defaultDeps.loadPersonActor
+  const actors = new Map<string, Promise<UserContext>>()
+  const loadPersonActor = (o: string, userId: string): Promise<UserContext> => {
+    let loaded = actors.get(userId)
+    if (!loaded) {
+      loaded = loadOnce(o, userId)
+      // A failed read is not kept: the next app asks again.
+      loaded.catch(() => actors.delete(userId))
+      actors.set(userId, loaded)
+    }
+    return loaded
+  }
+  for (const appName of apps) {
     try {
-      await refreshAppAttention(orgId, appName, partial)
+      await refreshAppAttention(orgId, appName, { ...partial, userIds, loadPersonActor })
     } catch (err) {
       log.warn({ err, orgId, app: appName }, "Attention refresh failed")
     }

@@ -721,10 +721,10 @@ async function seedSaasMoney(
       .map((c) => [
         c.invoiceKey as string,
         {
-          stripe_invoice_id: c.invoiceId,
-          stripe_charge_id: c.chargeId,
-          stripe_customer_id: c.customerId,
-          ...(c.subscriptionId ? { stripe_subscription_id: c.subscriptionId } : {}),
+          [`${PAYMENTS_APP}_invoice_id`]: c.invoiceId,
+          [`${PAYMENTS_APP}_charge_id`]: c.chargeId,
+          [`${PAYMENTS_APP}_customer_id`]: c.customerId,
+          ...(c.subscriptionId ? { [`${PAYMENTS_APP}_subscription_id`]: c.subscriptionId } : {}),
         },
       ]),
   )

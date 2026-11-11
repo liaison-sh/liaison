@@ -15,6 +15,7 @@ import {
   replayInboxDelivery,
   sweepWebhookInbox,
 } from "~/infra/jobs/webhook-inbox-jobs"
+import { effectOnce } from "~/lib/effect-once"
 import { webhookHandlers } from "~/modules/apps/app-registries"
 import * as appDayCapModule from "~/modules/apps/usage/app-day-cap"
 import { WebhookHandlerRunTestAccess } from "~/modules/webhooks/handler-run"
@@ -23,6 +24,7 @@ import {
   storeDelivery,
   WEBHOOK_INBOX_MAX_ATTEMPTS,
 } from "~/modules/webhooks/inbox"
+import { seedOrgRow } from "~/seed/factories/org/rows"
 
 const ORG = "00000000-0000-0000-0000-0000000000c7"
 const APP = "inboxapp"
@@ -38,8 +40,10 @@ beforeAll(async () => {
   tmpDir = mkdtempSync(join(tmpdir(), "webhook-inbox-"))
   bundlePath = join(tmpDir, "bundle.js")
   writeFileSync(bundlePath, "globalThis.onOrder = async () => {}\n")
-  await sql`INSERT INTO kernel.organizations (id, name, slug)
-    VALUES (${ORG}, 'Webhook Inbox Org', 'webhook-inbox-org') ON CONFLICT (id) DO NOTHING`
+  await seedOrgRow(
+    { id: ORG, name: "Webhook Inbox Org", slug: "webhook-inbox-org" },
+    { onConflict: "skip" },
+  )
   WebhookHandlerRunTestAccess.setManifestExecutor(async (opts) => {
     calls.push({ params: opts.params, headers: opts.extraArgs?.[0] })
     return answer()
@@ -294,9 +298,10 @@ describe("legacy retry-webhook jobs drained into the inbox", () => {
 
   it("a delivery the previous release's retry already applied is not applied again", async () => {
     const deliveryId = randomUUID()
-    await sql`INSERT INTO kernel.effect_ledger (org_id, key, state, claimed_by, done_at, result)
-      VALUES (${ORG}, ${`webhook:${APP}:${ENDPOINT}:${deliveryId}`}, 'done', 'old-release', now(),
-        '{"applied":true}'::jsonb)`
+    // The previous release's retry ran it: its effect-ledger key is done.
+    await effectOnce(ORG, `webhook:${APP}:${ENDPOINT}:${deliveryId}`, async () => ({
+      applied: true,
+    }))
     const job = await queue().add("retry-webhook", legacyJob(deliveryId), { delay: 1 })
     added.push(job.id as string)
     await drainLegacyRetryJobs(Date.now() + 10_000)

@@ -824,6 +824,36 @@ An app raises items in the attention feed from its own events, in `attention.tra
 - `recipients.kind` is `field`, `participants`, `mentions`, `actor` or `scope_holders`. `excludeActor` (on `participants` and `scope_holders`) leaves out the person who caused the event.
 - `resolveWhen` makes the translation end an item instead of raising one, for an event that means the condition is over: `{ "always": true }`, or `{ "field": ..., "equals": ... }`.
 
+## 13. List what needs attention
+
+An app can also list what needs a person's attention right now (their overdue
+tasks, the tickets close to their SLA), with an attention provider: an export
+named in `views.attentionItems` of the manifest, `{ "handler": "...", "scope": "..." }`.
+It returns attention items for the person in `ctx.actor`.
+
+The feed never calls the provider. Liaison runs it when the app is woken, and
+stores what it returns, one list per person:
+
+- after any run of the app (a tool, an event handler, a job, a webhook),
+- after an event of the app is delivered,
+- on the attention minute tick: the next minute in a workspace where something
+  changed, at least every 10 minutes otherwise. Items that only time changes
+  (a deadline coming closer) appear on that tick.
+
+Each run replaces the person's whole list, so an item the provider no longer
+returns is cleared. A person without the provider's scope gets an empty list. A
+failed run keeps the last list and shows the error in the feed.
+
+## 14. Approval card summaries
+
+A gated tool's `summarizer` builds the approval card. It runs once when the
+request is made, and again when the request's parameters are edited
+(`approval_update_payload` or the card's editor). The summary is stored with the
+request; the card, the approvals list, Home and the agent read the stored text
+and never run the summarizer. A request with no stored summary (an older one)
+shows a generic summary of its parameters until the server stores the real one,
+which it does in the background.
+
 ## See also
 
 - [`docs/app-package-format.md`](app-package-format.md) — the `.liaisonapp` spec

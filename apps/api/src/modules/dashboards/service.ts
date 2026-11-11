@@ -19,7 +19,7 @@
 import { and, desc, eq } from "drizzle-orm"
 import type { RlsClient } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
-import { type DashboardRow, dashboards, dashboardViewerStates } from "~/db/schema/kernel"
+import { type DashboardRow, dashboards, dashboardViewerStates, users } from "~/db/schema/kernel"
 import {
   blockCacheKey,
   FAILED_BLOCK_TTL_SEC,
@@ -102,6 +102,8 @@ export interface DashboardSummary {
   title: string
   visibility: DashboardVisibility
   ownerUserId: string | null
+  /** The owner's display name, for "by <name>" in the list (null when the owner is gone). */
+  ownerName: string | null
   version: number
   blockCount: number
   updatedAt: string
@@ -233,13 +235,19 @@ export async function listDashboards(
   tx?: RlsClient,
 ): Promise<DashboardSummary[]> {
   const rows = await inTx(viewer, tx, (t) =>
-    t.select().from(dashboards).orderBy(desc(dashboards.updatedAt)).limit(200),
+    t
+      .select({ d: dashboards, ownerName: users.name })
+      .from(dashboards)
+      .leftJoin(users, eq(users.id, dashboards.ownerUserId))
+      .orderBy(desc(dashboards.updatedAt))
+      .limit(200),
   )
-  return rows.map((r) => ({
+  return rows.map(({ d: r, ownerName }) => ({
     id: r.id,
     title: r.title,
     visibility: r.visibility,
     ownerUserId: r.ownerUserId,
+    ownerName: ownerName ?? null,
     version: r.version,
     blockCount: Array.isArray((r.spec as { blocks?: unknown }).blocks)
       ? (r.spec as { blocks: unknown[] }).blocks.length

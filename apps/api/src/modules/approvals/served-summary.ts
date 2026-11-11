@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Wherever approval summaries are SERVED (list, detail, the Home attention
-// rows), a row that carries no usable summary gets the one its tool's
-// summarizer writes, computed for this response. A row written outside
-// executeTool (a seed, an import, a fixture) has a NULL summary, and an older
-// fallback stored the raw tool id as the title: the card then led with
-// "tickets:reply" and showed the raw payload as its body. The stored row is
-// never rewritten: this is a read-time view, like `withLiveTicketRefs`.
+// Approval summaries are STORED STATE. A summary is computed once, when the
+// request is made (executeTool stages it) and again when its payload is edited
+// (edit.ts, approval_update_payload); every read (list, detail, the Home
+// attention rows, the agent's approvals_list) serves the stored text. No
+// summarizer runs on a read path: an app's summarizer is app code (a sandbox
+// run for a sandboxed app), and a card render must not pay for one.
 //
-// A writer that skips executeTool stores the summary itself where it can: the
-// demo seed calls `storeApprovalSummaries` on the rows it wrote, so serving them
-// runs no summarizer. The read-time fill stays as the fallback for older rows
-// and for a tool whose summarizer was not registered when the row was written.
+// A row that has no usable summary (written outside executeTool by a seed or
+// an import, or an older fallback that stored the raw tool id as the title) is
+// served the generic summary of its payload, computed host-side, and the
+// backfill (`backfillApprovalSummaries`, run by the leader) stores the real one
+// with the tool's summarizer. A writer that skips executeTool stores the
+// summary itself where it can: the demo seed calls `storeApprovalSummaries` on
+// the rows it wrote.
 import type { ApprovalSummary } from "@liaison/shared"
 import { sql } from "drizzle-orm"
 import { extractRows, type RlsClient } from "~/db"
@@ -22,7 +24,10 @@ import { loadRequesterContext } from "~/modules/approvals/event-data"
 import { withLiveTicketRefs } from "~/modules/approvals/live-ticket-ref"
 import { splitToolName } from "~/modules/approvals/tool-name"
 import { approvalSummarizerRegistry } from "~/modules/apps/app-registries"
-import { generateApprovalSummary } from "~/modules/apps/approval-summarizers"
+import {
+  generateApprovalSummary,
+  genericApprovalSummary,
+} from "~/modules/apps/approval-summarizers"
 
 const K = () => sql.raw(schemaRef("kernel"))
 
@@ -64,15 +69,33 @@ const asRequester =
   }
 
 /**
- * The rows with every missing summary filled in (copies; the inputs are not
- * mutated). A failure leaves that row as it was.
+ * The rows as served: a row whose tool has a summarizer but whose stored
+ * summary is missing or unusable gets the generic summary of its payload
+ * (copies; the inputs are not mutated). Runs no summarizer. A row whose tool
+ * has no summarizer is left as it is: the feed derives a title from the
+ * payload (payload-title.ts) and the card humanizes the tool id.
  */
-export async function withFilledSummaries<T extends RowWithPayload>(
+export function withGenericSummaries<T extends RowWithPayload>(orgId: string, rows: T[]): T[] {
+  if (rows.every(hasUsableSummary)) return rows
+  return rows.map((row) => {
+    if (hasUsableSummary(row)) return row
+    const { appName, toolShortName } = splitToolName(row.tool_name)
+    if (!approvalSummarizerRegistry.get([orgId, appName, toolShortName])) return row
+    return { ...row, summary: genericApprovalSummary(row.tool_name, row.current_payload ?? {}) }
+  })
+}
+
+/**
+ * The rows with every missing summary computed by its tool's summarizer
+ * (copies; the inputs are not mutated). A failure, or a tool with no
+ * summarizer, leaves that row as it was. Runs summarizers: for the writers
+ * that store summaries (`storeApprovalSummaries`, the backfill), never a read.
+ */
+async function computeMissingSummaries<T extends RowWithPayload>(
   orgId: string,
   rows: T[],
-  run: SummaryRunner = asRequester(orgId),
+  run: SummaryRunner,
 ): Promise<T[]> {
-  if (rows.every(hasUsableSummary)) return rows
   const out: T[] = []
   for (const row of rows) {
     if (hasUsableSummary(row)) {
@@ -80,8 +103,6 @@ export async function withFilledSummaries<T extends RowWithPayload>(
       continue
     }
     const { appName, toolShortName } = splitToolName(row.tool_name)
-    // Only a tool's own summarizer: with none, the feed derives a title from
-    // the payload (payload-title.ts) and the card humanizes the tool id.
     if (!approvalSummarizerRegistry.get([orgId, appName, toolShortName])) {
       out.push(row)
       continue
@@ -99,21 +120,20 @@ export async function withFilledSummaries<T extends RowWithPayload>(
       )
       out.push({ ...row, summary })
     } catch (err) {
-      log.warn({ err, orgId, tool: row.tool_name }, "approval summary: read-time fill failed")
+      log.warn({ err, orgId, tool: row.tool_name }, "approval summary: compute failed")
       out.push(row)
     }
   }
   return out
 }
 
-/** Missing summaries filled, then each ticket ref brought to the ticket's current handle. */
+/** Stored summaries (generic where missing), then each ticket ref brought to the ticket's current handle. */
 export async function withServedSummaries<T extends RowWithPayload>(
   tx: RlsClient,
   orgId: string,
   rows: T[],
-  run?: SummaryRunner,
 ): Promise<T[]> {
-  return withLiveTicketRefs(tx, orgId, await withFilledSummaries(orgId, rows, run))
+  return withLiveTicketRefs(tx, orgId, withGenericSummaries(orgId, rows))
 }
 
 /**
@@ -146,7 +166,7 @@ export async function storeApprovalSummaries(
   })
   // Recomputed from the current payload even when a summary is stored: a reseed may have brought
   // the payload to a newer spec.
-  const filled = await withFilledSummaries(
+  const filled = await computeMissingSummaries(
     orgId,
     rows.map((r) => ({ ...r, summary: null as unknown })),
     run,

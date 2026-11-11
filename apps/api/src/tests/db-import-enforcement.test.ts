@@ -474,6 +474,13 @@ describe("db import enforcement", () => {
     "infra/boot-phase10.ts",
     "modules/attention/translator.ts",
     "modules/attention/state-materializer.ts",
+    // The apps' stored attention lists (0288): the refresh lists the org's
+    // active people, loads each one's permissions and writes their list, all
+    // bound to org_id (the feed reads them under the reader's RLS).
+    "modules/apps/attention-store.ts",
+    // The approval summary backfill: lists the orgs with approvals lacking a
+    // stored summary (a system read, no org yet), then pages one org's ids.
+    "modules/approvals/summary-backfill.ts",
     "modules/attention/digest-jobs.ts",
     // Cron fan-out: the tick lists every org with the app's per-org state (a
     // system read, no org yet) and the reconcile reads active app versions.

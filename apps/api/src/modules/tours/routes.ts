@@ -117,7 +117,10 @@ export const tourRoutes = new Hono<AppEnv>()
     // A visitor's scenario brings its own seeded approvals in as it starts:
     // the workspace opened with none waiting.
     const need = tour.demoOnly ? scenarioNeedOf(tour.id) : null
-    if (need && (await isVisitorDemoOrgId(orgId))) await prepareDemoScenario(orgId, userId, need)
+    // What it brings is its own world's, never another world's.
+    if (need && (await isVisitorDemoOrgId(orgId))) {
+      await prepareDemoScenario(orgId, userId, need, tour.world ?? ctx.worldId)
+    }
     // A tour that asks the agent does so in the person's DM with it.
     const conversationId = await runConversationId(orgId, userId, tour)
     const beats = tourBeats(tour, ctx)

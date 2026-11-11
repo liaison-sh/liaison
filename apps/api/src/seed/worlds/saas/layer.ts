@@ -676,6 +676,18 @@ async function seedSaasMoney(
   const documentId = (key: string) => ctx.id("document", key)
 
   await withPrivilegedDb(ctx.orgId, "saas-seed-invoicing", async (tx) => {
+    // Each card invoice's document names the processor's invoice it was issued for, as
+    // the card stream issues them (`external_ref`): a later paid event finds it.
+    const linked = new Map<string, string>()
+    for (const c of money.charges) if (c.invoiceKey) linked.set(c.invoiceKey, c.invoiceId)
+    for (const [key, invoiceId] of linked) {
+      await tx.execute(
+        sql`UPDATE ${sql.raw(schemaRef(`app_${INVOICING_APP}`))}.documents
+            SET external_ref = ${`${PAYMENTS_APP}:${invoiceId}`}
+            WHERE org_id = ${ctx.orgId}::uuid AND id = ${documentId(key)}::uuid
+              AND external_ref IS NULL`,
+      )
+    }
     // Who issues what: card subscriptions are invoiced by Liaison, the processor only collects.
     await upsertAppRow(tx as never, INVOICING_APP, `${PAYMENTS_APP}_streams`, {
       id: ctx.id("issuer-stream", ISSUER_KEY),
@@ -734,7 +746,7 @@ async function seedSaasMoney(
       nextAttempt: sec(clock.d(1)),
     }),
   )
-  await seedSaasMoneyDecisions(ctx, org, money)
+  await seedSaasMoneyDecisions(ctx, org, money, contactIds)
   ctx.log(
     `money: ${money.subscriptions.length} card subscriptions, ${money.invoices.length} invoices, ${money.schedules.length} schedules`,
   )
@@ -868,6 +880,7 @@ async function seedSaasMoneyDecisions(
   ctx: SeedContext,
   org: SeedDemoOrgResult,
   money: SaasMoneyPlan,
+  contactIds: Record<string, string>,
 ): Promise<void> {
   const clock = storyClock(ctx.now)
   const ownerId = ownerIdOf(org)
@@ -908,6 +921,25 @@ async function seedSaasMoneyDecisions(
   const elodie = userIdOf(org, "elodie")
   const ines = userIdOf(org, "ines")
   const arlonId = ctx.id("approval", "arlon-card-reminder")
+  // The reminder's send check is the product's own, pinned when the routine
+  // staged it: the invoice it is about is asked again at the moment it would
+  // leave, so once that invoice is paid it never goes.
+  const reminderRefs = [{ kind: `${PAYMENTS_APP}:invoice`, id: arlonOpen.invoiceId }]
+  const claireContact = contactIds["customer:claire-vidal"]
+  const reminderGuard = await buildSendGuard({
+    orgId: ctx.orgId,
+    toolName: "mail:compose",
+    followUpRun: true,
+    followUp: { refs: reminderRefs, classification: "service" },
+    recipients: [claire],
+    contactIds: claireContact ? [claireContact] : [],
+    agentStaged: true,
+    now: sec(clock.h(-1)),
+    timeZone: org.timezone,
+  })
+  if (!("sendGuard" in reminderGuard)) {
+    throw new Error(`saas layer: the card reminder not staged: ${JSON.stringify(reminderGuard)}`)
+  }
   await seedApprovalRequests(ctx, [
     {
       id: arlonId,
@@ -919,10 +951,9 @@ async function seedSaasMoneyDecisions(
         to: [claire],
         subject: "Your card for the Group plan needs updating",
         textBody: `Hello Claire,\n\nThe payment for your Group plan did not go through: the Visa ending 4242 on file has expired. You can add a new card on the secure page linked below. Your rotas keep running while you do.\n\nThank you,\n${SAAS_COMPANY.name}`,
-        followUp: {
-          refs: [{ kind: `${PAYMENTS_APP}:invoice`, id: arlonOpen.invoiceId }],
-          classification: "service",
-        },
+        followUp: { refs: reminderRefs, classification: "service" },
+        sendGuard: reminderGuard.sendGuard,
+        ...(reminderGuard.guardKey ? { guardKey: reminderGuard.guardKey } : {}),
       },
       requestedBy: userIdOf(org, "sara"),
       agentId: finance,

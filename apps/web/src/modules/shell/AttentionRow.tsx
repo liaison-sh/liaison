@@ -623,6 +623,11 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
     const tool = props.item.metadata?.toolName
     return isApproval() && typeof tool === "string" ? tool : undefined
   }
+  /** Why the row is the reader's (`standing_in`: they hold it for someone away), for a tour to ring it. */
+  const placement = (): string | undefined => {
+    const p = props.item.metadata?.placement
+    return typeof p === "string" ? p : undefined
+  }
 
   const testId = (): string =>
     `attention-row-${props.item.app}-${props.item.entity}-${props.item.entityId}`
@@ -718,6 +723,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
           /* Which tool an approval runs, so a guided tour can ring one kind of
              request in Home (the routine's web lookup), as on its card. */
           data-tool-name={approvalToolName()}
+          data-placement={placement()}
           data-compact="true"
           onClick={handleClick}
         >
@@ -919,6 +925,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
           /* Which tool an approval runs, so a guided tour can ring one kind of
              request in Home (the routine's web lookup), as on its card. */
           data-tool-name={approvalToolName()}
+          data-placement={placement()}
           onClick={handleClick}
         >
           {/* Accent rail — appears only on row hover, anchored to the left edge. */}

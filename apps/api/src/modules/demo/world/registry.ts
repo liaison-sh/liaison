@@ -58,6 +58,7 @@ import { knowledgeLucasAsksInjector } from "~/modules/demo/world/knowledge-lucas
 import { projectsCommentInjector } from "~/modules/demo/world/projects-comment"
 import { salesEmailInjector } from "~/modules/demo/world/sales-email"
 import { supportTicketInjector } from "~/modules/demo/world/support-ticket"
+import { paymentRecoveredInjector } from "~/modules/demo/worlds/saas/payment-recovered"
 import {
   assertWorldBeatAllowed,
   completeDoBeat,
@@ -132,6 +133,7 @@ function injectors(): Map<string, WorldInjector> {
       projectsCommentInjector,
       commerceOrderInjector,
       knowledgeLucasAsksInjector,
+      paymentRecoveredInjector,
     ].map((injector) => [injector.id, injector]),
   )
   return injectorMap

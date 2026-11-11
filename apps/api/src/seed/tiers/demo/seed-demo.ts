@@ -519,6 +519,25 @@ async function seedDemoWorldLayers(opts: SeedDemoWorldOptions): Promise<SeedDemo
 }
 
 /**
+ * What starting a scenario writes, per world: the approval ids written.
+ *
+ * - `products`: each scenario's seeded approvals (`seedScenarioApprovals`).
+ * - `saas`: the money decisions (the card reminder, the refund) are seeded with
+ *   the workspace, on Home from the start, so the money scenario brings
+ *   nothing more. Its other scenarios bring what their configuration names.
+ * - `studio`: no scenario yet.
+ *
+ * A world never writes another world's approvals.
+ */
+export const SCENARIO_START_BY_WORLD: Readonly<
+  Record<DemoWorldId, (orgId: string, need: DemoNeed) => Promise<string[]>>
+> = {
+  products: (orgId, need) => seedScenarioApprovals(orgId, need),
+  saas: async () => [],
+  studio: async () => [],
+}
+
+/**
  * What a visitor's scenario brings into their workspace when they start it:
  * that scenario's seeded approvals, waiting on them (`seedScenarioApprovals`).
  * The signup seed writes none pending, so the queue holds at most the
@@ -528,8 +547,9 @@ export async function seedScenarioStart(
   orgId: string,
   ownerUserId: string,
   need: DemoNeed,
+  worldId: DemoWorldId = DEMO_DEFAULT_WORLD,
 ): Promise<string[]> {
-  const ids = await seedScenarioApprovals(orgId, need)
+  const ids = await SCENARIO_START_BY_WORLD[worldId](orgId, need)
   if (ids.length === 0) return ids
   await joinPendingApprovals(orgId, ownerUserId)
   await ensureAppsForOrg(orgId)

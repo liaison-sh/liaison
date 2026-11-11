@@ -34,6 +34,13 @@ function anchors(): Date[] {
   return [...out.values()]
 }
 
+/** Before VAT, VAT and total of a batch, in minor units. */
+function batchTotals(batch: readonly { quantity: number; unitMinor: number; vatBp: number }[]) {
+  const ex = batch.reduce((n, s) => n + s.quantity * s.unitMinor, 0)
+  const vat = batch.reduce((n, s) => n + (s.quantity * s.unitMinor * s.vatBp) / 10_000, 0)
+  return [ex, vat, ex + vat]
+}
+
 const monthOf = (d: Date) =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit" })
     .format(d)
@@ -211,17 +218,48 @@ describe("software world money plan", () => {
       }
     })
 
-    it(`ten schedules, seven monthly due at this month's end, at ${at}`, () => {
+    it(`the month-end batch is every schedule due on this month's last day, at ${at}`, () => {
       expect(plan.schedules).toHaveLength(10)
-      const monthEnd = plan.schedules.filter((s) => s.repeats === "month" && s.status === "active")
-      expect(monthEnd).toHaveLength(7)
-      expect(new Set(monthEnd.map((s) => s.nextIssueOn)).size).toBe(1)
-      expect(monthEnd[0]?.nextIssueOn?.slice(0, 7)).toBe(monthOf(anchor))
-      const ex = monthEnd.reduce((n, s) => n + s.quantity * s.unitMinor, 0)
-      const vat = monthEnd.reduce((n, s) => n + (s.quantity * s.unitMinor * s.vatBp) / 10_000, 0)
-      expect([ex, vat, ex + vat]).toEqual([370_800, 64_360, 435_160])
+      const monthly = plan.schedules.filter((s) => s.repeats === "month" && s.status === "active")
+      expect(monthly).toHaveLength(7)
+      expect(new Set(monthly.map((s) => s.nextIssueOn)).size).toBe(1)
+      const monthEnd = monthly[0]?.nextIssueOn
+      expect(monthEnd?.slice(0, 7)).toBe(monthOf(anchor))
+      // Selected by the day, not by how often a schedule repeats: in a quarter's
+      // last month the quarterly run falls on the same day and joins the batch.
+      const batch = plan.schedules.filter((s) => s.nextIssueOn === monthEnd)
+      const quarterMonth = ["03", "06", "09", "12"].includes(monthOf(anchor).slice(5))
+      expect(batch.filter((s) => s.repeats !== "month").map((s) => s.key)).toEqual(
+        quarterMonth ? ["domaine-ferrand-schedule"] : [],
+      )
+      const [ex, vat, total] = batchTotals(batch)
+      expect(total).toBe(ex + vat)
+      expect([ex, vat, total]).toEqual(
+        quarterMonth ? [517_800, 93_760, 611_560] : [370_800, 64_360, 435_160],
+      )
     })
   }
+
+  it("the board month's batch is the seven monthly schedules: 3,708 before VAT, 643.60 VAT, 4,351.60", () => {
+    const { schedules } = saasMoneyPlan(BOARD_DATE)
+    const batch = schedules.filter((s) => s.nextIssueOn === "2026-11-30")
+    expect(batch.map((s) => s.repeats)).toEqual(Array(7).fill("month"))
+    expect(batchTotals(batch)).toEqual([370_800, 64_360, 435_160])
+  })
+
+  it("in a quarter's last month the quarterly run joins the month-end batch", () => {
+    for (const [at, day] of [
+      ["2026-12-09T09:00:00Z", "2026-12-31"],
+      ["2027-03-15T09:00:00Z", "2027-03-31"],
+      ["2027-06-10T09:00:00Z", "2027-06-30"],
+    ] as const) {
+      const { schedules } = saasMoneyPlan(new Date(at))
+      const batch = schedules.filter((s) => s.nextIssueOn === day)
+      expect(batch).toHaveLength(8)
+      expect(batch.find((s) => s.repeats === "quarter")?.key).toBe("domaine-ferrand-schedule")
+      expect(batchTotals(batch)).toEqual([517_800, 93_760, 611_560])
+    }
+  })
 
   it("the named invoices carry the board's numbers at the board date", () => {
     const plan = saasMoneyPlan(BOARD_DATE)

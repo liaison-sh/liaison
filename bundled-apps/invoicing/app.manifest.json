@@ -87,7 +87,7 @@
           "order_reissue_apply",
           "documents_for_orders"
         ],
-        "text": "On a DRAFT, documents_update can change anything (counterparty details, dates, incoterm, tax_treatment, and a full line replacement; totals recompute and the PDF re-renders; every edit is logged). Once a document is ISSUED its NUMBER, TYPE, STATUS, ISSUER, and CURRENCY are immutable AND its FINANCIAL SUBSTANCE is FROZEN: on an issued invoice you can no longer edit lines, tax_treatment, counterparty_name, or counterparty_vat_id in place (documents_update returns issued_document_immutable). An issued invoice is legally immutable. That freeze is for invoices and credit notes ONLY: an issued PROFORMA, QUOTE or PURCHASE ORDER is not an accounting document, so documents_update edits its lines, tax_treatment and recipient in place like a draft, and that is how you change an issued proforma's amount. On an issued invoice, only harmless metadata (address, email, linked contact, incoterm, issued_at/due_at) stays editable post-issue for a typo fix, still via documents_update; it works on any status except voided/cancelled. An issued document's date stays in its number's year: a refusal with issue_date_crosses_number_year means offer a credit note and a new invoice, never another date. To correct an issued invoice's amounts, tax treatment, or the counterparty's legal identity, issue a CREDIT NOTE with credit_note_create_and_issue (original_document_id = that invoice, negative lines mirroring the correction), NEVER an in-place edit. For a FINANCIAL reversal (customer returns goods, order cancelled, overcharge), record a refund (documents_record_refund) alongside the credit note; do not edit an invoice's amounts to simulate a refund that actually happened. When the correction comes from a Shopify ORDER EDIT that changed the line set or the amounts, use order_reissue_apply, never a hand built credit note plus a hand built invoice: one human approval covers both documents together, the payment stays on the ORIGINAL and the replacement issues UNPAID. An issued invoice stays immutable throughout, so stop offering to edit one and offer the credit note or the reissue path instead. A Shopify refund or cancellation ALREADY auto issues its credit note, so check documents_for_orders before issuing one by hand or you will credit the customer twice."
+        "text": "A DRAFT is edited with drafts_update. Once a document is ISSUED its NUMBER, TYPE, STATUS, ISSUER, and CURRENCY are immutable AND its FINANCIAL SUBSTANCE is FROZEN: on an issued invoice you can no longer edit lines, tax_treatment, counterparty_name, or counterparty_vat_id in place (documents_update returns issued_document_immutable). An issued invoice is legally immutable. That freeze is for invoices and credit notes ONLY: an issued PROFORMA, QUOTE or PURCHASE ORDER is not an accounting document, so documents_update edits its lines, tax_treatment and recipient in place like a draft, and that is how you change an issued proforma's amount. On an issued invoice, only harmless metadata (address, email, linked contact, incoterm, issued_at/due_at) stays editable post-issue for a typo fix, still via documents_update; it works on any status except voided/cancelled. An issued document's date stays in its number's year: a refusal with issue_date_crosses_number_year means offer a credit note and a new invoice, never another date. To correct an issued invoice's amounts, tax treatment, or the counterparty's legal identity, issue a CREDIT NOTE with credit_note_create_and_issue (original_document_id = that invoice, negative lines mirroring the correction), NEVER an in-place edit. For a FINANCIAL reversal (customer returns goods, order cancelled, overcharge), record a refund (documents_record_refund) alongside the credit note; do not edit an invoice's amounts to simulate a refund that actually happened. When the correction comes from a Shopify ORDER EDIT that changed the line set or the amounts, use order_reissue_apply, never a hand built credit note plus a hand built invoice: one human approval covers both documents together, the payment stays on the ORIGINAL and the replacement issues UNPAID. An issued invoice stays immutable throughout, so stop offering to edit one and offer the credit note or the reissue path instead. A Shopify refund or cancellation ALREADY auto issues its credit note, so check documents_for_orders before issuing one by hand or you will credit the customer twice."
       },
       {
         "tools": [
@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.20.91",
+  "version": "0.20.92",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -2323,7 +2323,7 @@
     "customer_history": {
       "focusCore": true,
       "taintSource": true,
-      "description": "A customer's past sales with each line's unit price, the latest sale of a product (last_sale) and their Shopify orders. Use this to answer 'same price as last time'. Finds the customer by name, company, email, address or contact.",
+      "description": "A customer's past sales with each line's unit price, the latest sale of a product (last_sale), the recurring schedules that bill them and their Shopify orders. Use this to answer 'same price as last time'. Finds them by name, company, email, address or contact.",
       "searchKeywords": ["historique", "client"],
       "requiredScopes": ["invoicing:documents:read"],
       "handler": "customerHistoryHandler",
@@ -3304,7 +3304,7 @@
       "focusCore": "document",
       "summarizer": "summarizeDraftUpdate",
       "summarizerContext": { "tool": "documents_get", "params": { "id": "draft_id" } },
-      "description": "Update an unissued draft, including one from a source. Issued documents use documents_update.",
+      "description": "Update an unissued draft, including one from a source or a month-end run's row. Issued documents use documents_update.",
       "searchKeywords": ["brouillon", "modifier", "edit", "corriger", "ligne", "line", "row", "ajouter", "add"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "draftsUpdateHandler",
@@ -5428,7 +5428,7 @@
     },
     "documents_update": {
       "focusCore": true,
-      "description": "Edit a document. On a DRAFT, every field is editable: counterparty snapshot fields (name/address/VAT id/email/country/linked contact), incoterm, issued_at/due_at, po_number, notes, tax_treatment, and a full LINE REPLACEMENT (when `lines` is passed it REPLACES every line and totals, subtotal/tax/grand total, are recomputed exactly like issuance). Once an INVOICE or a CREDIT NOTE is ISSUED its FINANCIAL SUBSTANCE is FROZEN: `lines`, `tax_treatment`, `counterparty_name`, and `counterparty_vat_id` can no longer be changed in place (the call fails `issued_document_immutable`).",
+      "description": "Edit an issued document. A draft, including one in the month-end run, is edited with drafts_update. Once an INVOICE or a CREDIT NOTE is ISSUED its FINANCIAL SUBSTANCE is FROZEN: `lines`, `tax_treatment`, `counterparty_name`, and `counterparty_vat_id` can no longer be changed in place (the call fails `issued_document_immutable`).",
       "searchKeywords": ["modifier", "corriger", "edit", "fix", "correct", "invoice"],
       "requiredScopes": ["invoicing:documents:write"],
       "gated": true,

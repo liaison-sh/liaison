@@ -159,3 +159,83 @@ describe("describeOperations", () => {
     expect(line).toBe("1. Remove the block 'x' (not on the dashboard: this edit will be refused).")
   })
 })
+
+describe("datasets and filters by operation", () => {
+  const src = { kind: "tool", tool: "shop:orders_search", params: { market: "{{filter.market}}" } }
+  const filter = { id: "market", label: "Market", type: "select", options: ["FR", "DE"] }
+
+  it("sets, replaces and removes a dataset and a filter", () => {
+    const out = applyOperations(dashboard(), [
+      { op: "setDataset", id: "orders", source: src },
+      { op: "setFilter", filter },
+      { op: "setFilter", filter: { id: "channel", label: "Channel", type: "text" }, position: 0 },
+      { op: "setFilter", filter: { ...filter, label: "Pays" } },
+      {
+        op: "addBlock",
+        block: { id: "d", type: "metric", title: "D", dataset: "orders", map: { agg: "count" } },
+      },
+    ])
+    expect(out.spec.datasets).toEqual({ orders: src })
+    expect(
+      (out.spec.filters as { id: string; label: string }[]).map((f) => `${f.id}:${f.label}`),
+    ).toEqual(["channel:Channel", "market:Pays"])
+    const back = applyOperations({ ...dashboard(), spec: out.spec as unknown as DashboardSpec }, [
+      { op: "removeBlock", blockId: "d" },
+      { op: "removeDataset", id: "orders" },
+      { op: "removeFilter", id: "channel" },
+      { op: "removeFilter", id: "market" },
+    ])
+    expect(back.spec.datasets).toBeUndefined()
+    expect(back.spec.filters).toBeUndefined()
+    expect(() => applyOperations(dashboard(), [{ op: "removeDataset", id: "x" }])).toThrow(
+      EditOperationError,
+    )
+  })
+
+  it("describes each in plain words: where a dataset reads and who uses it, a filter's options", () => {
+    const lines = describeOperations(
+      dashboard(),
+      [
+        { op: "setDataset", id: "orders", source: src },
+        { op: "setFilter", filter: { ...filter, default: "FR" } },
+        {
+          op: "addBlock",
+          block: {
+            id: "d",
+            type: "bar",
+            title: "By channel",
+            dataset: "orders",
+            map: {
+              x: "channel",
+              agg: "count",
+              where: [{ field: "status", op: "neq", value: "cancelled" }],
+            },
+          },
+        },
+        {
+          op: "addBlock",
+          block: { id: "n", type: "text", title: "Notes", text: "B2B = tagged b2b" },
+        },
+        {
+          op: "updateBlock",
+          blockId: "a",
+          changes: { map: { where: [{ field: "market", op: "eq", value: { filter: "market" } }] } },
+        },
+        { op: "removeFilter", id: "market" },
+      ],
+      { timeZone: "UTC", now: new Date("2026-11-11T12:00:00Z") },
+    )
+    expect(lines[0]).toContain("Add the shared dataset 'orders': it reads shop:orders_search")
+    expect(lines[0]).toContain("no block uses it yet")
+    expect(lines[1]).toContain(
+      'Add the filter "Market" (id market, one value, options FR, DE, default "FR"',
+    )
+    expect(lines[2]).toContain("reading the shared dataset 'orders'")
+    expect(lines[2]).toContain('keeping only rows where status is not "cancelled"')
+    expect(lines[3]).toContain('showing the note "B2B = tagged b2b"')
+    expect(lines[4]).toContain(
+      'keeps only rows where market is the "Market" filter\'s value (all rows while it is empty)',
+    )
+    expect(lines[5]).toBe('6. Remove the filter "Market".')
+  })
+})

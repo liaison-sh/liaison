@@ -19,7 +19,9 @@ import {
   DashboardError,
   deleteDashboard,
   getBlockData,
+  getBlockRows,
   getDashboard,
+  getFilterOptions,
   getViewerRange,
   listDashboards,
   setViewerRange,
@@ -82,13 +84,79 @@ const blockDataQuery = z
     return { refresh: q.refresh === "1", timeRange, compare: q.compare }
   })
 
-const viewerStateBody = z.object({ timeRange: timeRangeSchema, compare: z.enum(COMPARE_MODES) })
+const filterValuesBody = z.record(z.string().max(40), z.array(z.string().max(200)).max(50))
+const viewerStateBody = z
+  .object({
+    timeRange: timeRangeSchema.optional(),
+    compare: z.enum(COMPARE_MODES).optional(),
+    filters: filterValuesBody.optional(),
+  })
+  .refine((b) => b.timeRange !== undefined || b.compare !== undefined || b.filters !== undefined, {
+    message: "nothing to remember",
+  })
+
+/** The range part of a query (`range`, `from`/`to`), checked, as a TimeRange or undefined. */
+const rangeQuery = z
+  .object({
+    range: z.enum(TIME_PRESETS).optional(),
+    from: day.optional(),
+    to: day.optional(),
+  })
+  .passthrough()
+  .transform((q, ctx) => {
+    const custom = q.range === "custom" || (q.range === undefined && (q.from || q.to))
+    if (!custom && (q.from || q.to)) {
+      ctx.addIssue({ code: "custom", message: "from and to go with range=custom only" })
+      return z.NEVER
+    }
+    if (!custom && !q.range) return { timeRange: undefined }
+    const parsed = timeRangeSchema.safeParse(
+      custom ? { preset: "custom", from: q.from, to: q.to } : { preset: q.range },
+    )
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues)
+        ctx.addIssue({ code: "custom", message: issue.message })
+      return z.NEVER
+    }
+    return { timeRange: parsed.data }
+  })
+
+/** Filter values from `f.<id>=value` query params (repeated for a multi filter). */
+function filterValuesOf(c: Context<AppEnv>): Record<string, string[]> | undefined {
+  const all = c.req.queries()
+  let out: Record<string, string[]> | undefined
+  for (const [k, v] of Object.entries(all)) {
+    if (!k.startsWith("f.")) continue
+    out ??= {}
+    out[k.slice(2)] = v
+  }
+  return out
+}
+
+const intParam = z
+  .string()
+  .regex(/^\d{1,5}$/, "a whole number")
+  .transform(Number)
+
+const rowsQuery = z
+  .object({
+    category: z.string().max(200).optional(),
+    series: z.string().max(200).optional(),
+    row: intParam.optional(),
+    offset: intParam.optional(),
+    limit: intParam.optional(),
+  })
+  .passthrough()
+
+const optionsQuery = z.object({ q: z.string().max(100).optional() }).passthrough()
+const filterParam = z.object({ id: z.string().uuid(), filterId: z.string().min(1).max(40) })
 
 const STATUS = {
   NOT_FOUND: 404,
   SCOPE_DENIED: 403,
   INVALID_SPEC: 422,
   VERSION_CONFLICT: 409,
+  INVALID_REQUEST: 400,
 } as const
 
 function failure(c: Context<AppEnv>, err: unknown) {
@@ -195,9 +263,11 @@ dashboardsRoutes
       const { id, blockId } = c.req.valid("param")
       const q = c.req.valid("query")
       try {
+        const filters = filterValuesOf(c)
         const out = await getBlockData(extractRlsContext(c), id, blockId, {
           refresh: q.refresh,
           signal: getRequestSignal(c),
+          ...(filters ? { filters } : {}),
           ...(q.timeRange ? { range: q.timeRange } : {}),
           ...(q.compare ? { compare: q.compare } : {}),
         })
@@ -223,6 +293,85 @@ dashboardsRoutes
                   : {}),
               },
         )
+      } catch (err) {
+        return failure(c, err)
+      }
+    },
+  )
+  // The rows behind one figure of a block (a bar, a slice, a table row, a metric), read-only,
+  // from the same cached read as its data; refusals as for the data route.
+  .get(
+    "/:id/blocks/:blockId/rows",
+    zValidator("param", blockParam),
+    zValidator("query", rowsQuery),
+    async (c) => {
+      const { id, blockId } = c.req.valid("param")
+      const q = c.req.valid("query")
+      const range = rangeQuery.safeParse(c.req.query())
+      if (!range.success) {
+        return c.json(
+          {
+            error: {
+              code: "INVALID_REQUEST",
+              message: range.error.issues[0]?.message ?? "bad range",
+            },
+          },
+          400,
+        )
+      }
+      try {
+        const filters = filterValuesOf(c)
+        const out = await getBlockRows(extractRlsContext(c), id, blockId, {
+          signal: getRequestSignal(c),
+          ...(range.data.timeRange ? { range: range.data.timeRange } : {}),
+          ...(filters ? { filters } : {}),
+          ...(q.category !== undefined ? { category: q.category } : {}),
+          ...(q.series !== undefined ? { series: q.series } : {}),
+          ...(q.row !== undefined ? { row: q.row } : {}),
+          ...(q.offset !== undefined ? { offset: q.offset } : {}),
+          ...(q.limit !== undefined ? { limit: q.limit } : {}),
+        })
+        if (!out.ok) {
+          const { ok: _ok, ...refusal } = out
+          return success(c, refusal)
+        }
+        const { ok: _ok, ...rows } = out
+        return success(c, rows)
+      } catch (err) {
+        return failure(c, err)
+      }
+    },
+  )
+  // A filter's options (its static list, or the distinct values of a field of its source).
+  .get(
+    "/:id/filters/:filterId/options",
+    zValidator("param", filterParam),
+    zValidator("query", optionsQuery),
+    async (c) => {
+      const { id, filterId } = c.req.valid("param")
+      const range = rangeQuery.safeParse(c.req.query())
+      if (!range.success) {
+        return c.json(
+          {
+            error: {
+              code: "INVALID_REQUEST",
+              message: range.error.issues[0]?.message ?? "bad range",
+            },
+          },
+          400,
+        )
+      }
+      try {
+        const filters = filterValuesOf(c)
+        const q = c.req.valid("query").q
+        const out = await getFilterOptions(extractRlsContext(c), id, filterId, {
+          signal: getRequestSignal(c),
+          ...(range.data.timeRange ? { range: range.data.timeRange } : {}),
+          ...(filters ? { filters } : {}),
+          ...(q ? { q } : {}),
+        })
+        const { ok: _ok, ...rest } = out
+        return success(c, rest)
       } catch (err) {
         return failure(c, err)
       }

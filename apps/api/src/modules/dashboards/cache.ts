@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// A dashboard block's data, cached per VIEWER: the key carries the org, the
-// dashboard and its version, the block, a hash of its source as run (date tokens
-// resolved, so a rolling range is a new key the day its dates move), the viewer
+// A dashboard source's rows, cached per VIEWER (a block's own source, a shared dataset, a
+// filter's option source): blocks are mapped from them on every request (transform is cheap),
+// so blocks sharing a dataset share one entry and one run. The key carries the org, the
+// dashboard and its version, the source (block, dataset or filter id), a hash of the source as
+// run (filter and date tokens resolved, so a rolling range is a new key the day its dates move,
+// and a filter value a param reads is a new key), the range, the viewer
 // and a hash of the viewer's scopes and dimension grants, so a revoked scope or
 // grant is a new key and never serves what the viewer could read before. TTL: the block's refreshSec
 // (spec.blockTtlSec, at most 900 s for any source).
@@ -112,19 +115,38 @@ export function sourceHash(source: unknown): string {
   return createHash("sha256").update(canonicalJson(source)).digest("hex").slice(0, 16)
 }
 
-export function blockCacheKey(
+/** Which source of a dashboard: a block's own, a dataset, a filter's option source. */
+export type SourceKey = `blk:${string}` | `ds:${string}` | `opt:${string}`
+
+export function sourceCacheKey(
   viewer: CacheViewer,
-  block: {
+  entry: {
     dashboardId: string
     version: number
-    blockId: string
+    sourceKey: SourceKey
     resolvedSource: unknown
-    /** The dashboard range the run read (a block that follows it), else null. */
+    /** The dashboard range the run read (a source that follows it), else null. */
     range?: { from: string; to: string } | null
   },
 ): string {
-  const range = block.range ? `${block.range.from}..${block.range.to}` : "fixed"
-  return `dash:block:${viewer.orgId}:${block.dashboardId}:${block.version}:${block.blockId}:${sourceHash(block.resolvedSource)}:${range}:${viewer.userId}:${permissionHash(viewer)}`
+  const range = entry.range ? `${entry.range.from}..${entry.range.to}` : "fixed"
+  return `dash:src:${viewer.orgId}:${entry.dashboardId}:${entry.version}:${entry.sourceKey}:${sourceHash(entry.resolvedSource)}:${range}:${viewer.userId}:${permissionHash(viewer)}`
+}
+
+const inFlight = new Map<string, Promise<unknown>>()
+
+/**
+ * Runs `fn` once for concurrent callers of the same `key` in this process: blocks that share
+ * a dataset load together, and the second waits on the first's run instead of starting its own.
+ */
+export async function singleFlight<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const running = inFlight.get(key)
+  if (running) return running as Promise<T>
+  const p = fn().finally(() => {
+    inFlight.delete(key)
+  })
+  inFlight.set(key, p)
+  return p
 }
 
 /**

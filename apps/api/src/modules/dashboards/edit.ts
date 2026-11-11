@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // Editing a dashboard by operations: an ordered list (add, change, remove or move a
-// block, set the title, the default time range or the visibility) applied to the saved
+// block, set the title, the default time range or the visibility, set or remove a shared
+// dataset or a filter) applied to the saved
 // dashboard in one go (service.ts editDashboard), so an agent's request changes exactly
 // what it names and one approval covers it. applyOperations is pure; the result is
 // validated as a whole spec by the service, so a list either applies entirely or not at all.
@@ -25,6 +26,7 @@ import {
   type DashboardSpec,
   dashboardDefaultRange,
   MAX_DASHBOARD_BLOCKS,
+  MAX_FILTERS,
   timeRangeSchema,
 } from "~/modules/dashboards/spec"
 
@@ -79,6 +81,32 @@ export const editOperationSchema = z.discriminatedUnion("op", [
     })
     .strict(),
   z.object({ op: z.literal("setVisibility"), visibility: z.enum(["personal", "org"]) }).strict(),
+  z
+    .object({
+      op: z.literal("setDataset"),
+      id: z.string().min(1).max(40),
+      source: blockRecord.describe(
+        'The shared source, as a block\'s: {kind:"tool", tool, params, rowsPath?} or {kind:"store", app, collection, query}. Adds it, or replaces the one with this id.',
+      ),
+    })
+    .strict(),
+  z.object({ op: z.literal("removeDataset"), id: z.string().min(1).max(40) }).strict(),
+  z
+    .object({
+      op: z.literal("setFilter"),
+      filter: blockRecord.describe(
+        "The whole filter: {id, label, type: select|multi|text, options?, default?}. Adds it, or replaces the one with this id.",
+      ),
+      position: z
+        .number()
+        .int()
+        .min(0)
+        .max(MAX_FILTERS)
+        .optional()
+        .describe("Its place in the filter bar (0 = first). Default: where it was, or the end."),
+    })
+    .strict(),
+  z.object({ op: z.literal("removeFilter"), id: z.string().min(1).max(40) }).strict(),
 ])
 export type EditOperation = z.infer<typeof editOperationSchema>
 
@@ -213,6 +241,42 @@ export function applyOperations(
       case "setVisibility":
         visibility = op.visibility
         return
+      case "setDataset":
+        spec.datasets = { ...(isObject(spec.datasets) ? spec.datasets : {}), [op.id]: op.source }
+        return
+      case "removeDataset": {
+        const datasets = isObject(spec.datasets) ? { ...spec.datasets } : {}
+        if (!(op.id in datasets)) throw new EditOperationError(i, `no dataset '${op.id}'`)
+        delete datasets[op.id]
+        if (Object.keys(datasets).length) spec.datasets = datasets
+        else delete spec.datasets
+        return
+      }
+      case "setFilter": {
+        const filters = (Array.isArray(spec.filters) ? [...spec.filters] : []) as Record<
+          string,
+          unknown
+        >[]
+        const at = filters.findIndex((f) => f.id === op.filter.id)
+        if (at >= 0) filters.splice(at, 1)
+        const to = op.position ?? (at >= 0 ? at : filters.length)
+        filters.splice(Math.min(to, filters.length), 0, { ...op.filter })
+        spec.filters = filters
+        return
+      }
+      case "removeFilter": {
+        const filters = (Array.isArray(spec.filters) ? spec.filters : []) as Record<
+          string,
+          unknown
+        >[]
+        if (!filters.some((f) => f.id === op.id)) {
+          throw new EditOperationError(i, `no filter '${op.id}'`)
+        }
+        const rest = filters.filter((f) => f.id !== op.id)
+        if (rest.length) spec.filters = rest
+        else delete spec.filters
+        return
+      }
     }
   })
   spec.blocks = blocks
@@ -302,6 +366,90 @@ function sourceWords(source: unknown, window: DayWindow, ctx: DescribeContext): 
   return `${String(s.tool ?? "(no source)")}${params}${tokenMeanings(s.params, window, ctx)}`
 }
 
+/** Where a block reads, in words: its own source, a shared dataset, or nothing (a note). */
+function blockSourceWords(
+  b: Record<string, unknown>,
+  spec: Record<string, unknown>,
+  window: DayWindow,
+  ctx: DescribeContext,
+): string {
+  if (b.type === "text") return `showing the note "${compact(String(b.text ?? ""), 100)}"`
+  if (typeof b.dataset === "string") {
+    const ds = isObject(spec.datasets) ? spec.datasets[b.dataset] : undefined
+    return `reading the shared dataset '${b.dataset}' (${ds ? sourceWords(ds, window, ctx) : "not declared: this edit will be refused"})`
+  }
+  return `reading ${sourceWords(b.source, window, ctx)}`
+}
+
+const OP_WORDS: Record<string, string> = {
+  eq: "is",
+  neq: "is not",
+  in: "is one of",
+  contains: "contains",
+  gt: "is above",
+  gte: "is at least",
+  lt: "is below",
+  lte: "is at most",
+  empty: "is empty",
+  notEmpty: "is not empty",
+}
+
+/** A where list in words: `market is the "Market" filter's value, total is above 0`. */
+function whereWords(where: unknown, spec: Record<string, unknown>): string {
+  if (!Array.isArray(where) || where.length === 0) return "all rows"
+  const filters = (Array.isArray(spec.filters) ? spec.filters : []) as Record<string, unknown>[]
+  return where
+    .map((w) => {
+      const c = isObject(w) ? w : {}
+      const op = OP_WORDS[String(c.op)] ?? String(c.op)
+      const v = c.value
+      let value = ""
+      if (isObject(v) && typeof v.filter === "string") {
+        const f = filters.find((x) => x.id === v.filter)
+        value = ` the "${String(f?.label ?? v.filter)}" filter's value (all rows while it is empty)`
+      } else if (v !== undefined) value = ` ${compact(v, 60)}`
+      return `${String(c.field)} ${op}${value}`
+    })
+    .join(", ")
+}
+
+/** A map change in words, key by key (null removes). */
+function mapWords(change: unknown, spec: Record<string, unknown>): string {
+  if (!isObject(change)) return `map ${compact(change, 120)}`
+  const parts: string[] = []
+  for (const [k, v] of Object.entries(change)) {
+    if (v === null) parts.push(`no more map.${k}`)
+    else if (k === "where") parts.push(`keeps only rows where ${whereWords(v, spec)}`)
+    else if (k === "stacked") parts.push(v ? "stacked" : "not stacked")
+    else if (k === "horizontal") parts.push(v ? "horizontal bars" : "vertical bars")
+    else if (k === "link") parts.push(`each row links to ${compact(v, 80)}`)
+    else parts.push(`map.${k} ${compact(v, 80)}`)
+  }
+  return parts.join("; ")
+}
+
+/** A filter in words: its label, kind, options and default. */
+function filterWords(f: Record<string, unknown>, spec: Record<string, unknown>): string {
+  const kind = f.type === "multi" ? "several values" : f.type === "text" ? "free text" : "one value"
+  const o = f.options
+  let options = ""
+  if (Array.isArray(o)) options = `, options ${compact(o.join(", "), 100)}`
+  else if (isObject(o) && typeof o.fromDataset === "string")
+    options = `, options: the values of ${String(o.field)} in the dataset '${o.fromDataset}'`
+  else if (isObject(o) && isObject(o.fromSource))
+    options = `, options: the values of ${String(o.field)} read from ${String(o.fromSource.tool ?? o.fromSource.collection ?? "a source")}`
+  const def =
+    f.default === undefined || (Array.isArray(f.default) && f.default.length === 0)
+      ? ", default all"
+      : `, default ${compact(f.default, 60)}`
+  const blocks = ((spec.blocks ?? []) as Record<string, unknown>[]).filter((b) =>
+    JSON.stringify([b.source, b.map]).includes(String(f.id)),
+  ).length
+  return `"${String(f.label ?? f.id)}" (id ${String(f.id)}, ${kind}${options}${def}${blocks ? `; read by ${blocks} block${blocks === 1 ? "" : "s"}` : ""})`
+}
+
+const specOf = (d: EditableDashboard) => d.spec as unknown as Record<string, unknown>
+
 const blockName = (b: Record<string, unknown> | undefined, id: string) =>
   b ? `"${String(b.title ?? id)}"` : `'${id}'`
 
@@ -315,6 +463,7 @@ function positionWords(blocks: Record<string, unknown>[], at: number): string {
 function changeWords(
   before: Record<string, unknown>,
   changes: Record<string, unknown>,
+  spec: Record<string, unknown>,
   window: DayWindow,
   ctx: DescribeContext,
 ): string {
@@ -323,9 +472,19 @@ function changeWords(
     if (k === "id") continue
     if (k === "title") parts.push(`title "${String(before.title)}" → "${String(v)}"`)
     else if (k === "source") {
-      const after = mergeBlock(before, { source: v }).source
-      parts.push(`source now ${sourceWords(after, window, ctx)}`)
-    } else if (k === "map") parts.push(`map ${compact(v, 120)} (null removes)`)
+      if (v === null) parts.push("no own source any more")
+      else {
+        const after = mergeBlock(before, { source: v }).source
+        parts.push(`source now ${sourceWords(after, window, ctx)}`)
+      }
+    } else if (k === "dataset") {
+      parts.push(
+        v === null
+          ? "no longer reads a shared dataset"
+          : `now reads the shared dataset '${String(v)}'`,
+      )
+    } else if (k === "text") parts.push(`note now "${compact(v, 100)}"`)
+    else if (k === "map") parts.push(mapWords(v, spec))
     else if (k === "timeRange") {
       parts.push(
         v === "fixed"
@@ -377,20 +536,31 @@ export function describeOperations(
       case "addBlock": {
         const b = op.block
         const at = indexOf(nextBlocks, String(b.id))
-        line = `Add a ${String(b.type ?? "")} block "${String(b.title ?? b.id)}" (width ${String(b.width ?? 1)})${at >= 0 ? ` at ${positionWords(nextBlocks, at)}` : ""}, reading ${sourceWords(b.source, window, ctx)}`
+        const where =
+          isObject(b.map) && Array.isArray(b.map.where) && b.map.where.length
+            ? `, keeping only rows where ${whereWords(b.map.where, specOf(next))}`
+            : ""
+        line = `Add a ${String(b.type ?? "")} block "${String(b.title ?? b.id)}" (width ${String(b.width ?? 1)})${at >= 0 ? ` at ${positionWords(nextBlocks, at)}` : ""}, ${blockSourceWords(b, specOf(next), window, ctx)}${where}`
         break
       }
       case "updateBlock": {
         const before = blocks[indexOf(blocks, op.blockId)]
         line = before
-          ? `Change the block ${blockName(before, op.blockId)}: ${changeWords(before, op.changes, window, ctx)}`
+          ? `Change the block ${blockName(before, op.blockId)}: ${changeWords(before, op.changes, specOf(state), window, ctx)}`
           : `Change the block '${op.blockId}' (not on the dashboard: this edit will be refused)`
         break
       }
       case "removeBlock": {
         const before = blocks[indexOf(blocks, op.blockId)]
         line = before
-          ? `Remove the ${String(before.type)} block ${blockName(before, op.blockId)} (it read ${sourceWords(before.source, window, ctx)})`
+          ? `Remove the ${String(before.type)} block ${blockName(before, op.blockId)} (${blockSourceWords(
+              before,
+              specOf(state),
+              window,
+              ctx,
+            )
+              .replace(/^reading/, "it read")
+              .replace(/^showing/, "it showed")})`
           : `Remove the block '${op.blockId}' (not on the dashboard: this edit will be refused)`
         break
       }
@@ -429,6 +599,35 @@ export function describeOperations(
             ? "Share the dashboard with the whole organisation"
             : "Make the dashboard personal: only its owner sees it"
         break
+      case "setDataset": {
+        const had = isObject(specOf(state).datasets) && op.id in (specOf(state).datasets as object)
+        const users = nextBlocks
+          .filter((b) => b.dataset === op.id)
+          .map((b) => blockName(b, String(b.id)))
+        line = `${had ? "Change" : "Add"} the shared dataset '${op.id}': it reads ${sourceWords(op.source, window, ctx)}, once per view for every block that uses it${users.length ? ` (${users.join(", ")})` : " (no block uses it yet)"}`
+        break
+      }
+      case "removeDataset":
+        line = `Remove the shared dataset '${op.id}'${
+          blocks.some((b) => b.dataset === op.id)
+            ? " (blocks still read it: this edit will be refused unless they change too)"
+            : ""
+        }`
+        break
+      case "setFilter": {
+        const had =
+          Array.isArray(specOf(state).filters) &&
+          (specOf(state).filters as Record<string, unknown>[]).some((f) => f.id === op.filter.id)
+        line = `${had ? "Change" : "Add"} the filter ${filterWords(op.filter, specOf(next))}; each person picks their own value`
+        break
+      }
+      case "removeFilter": {
+        const f = ((specOf(state).filters ?? []) as Record<string, unknown>[]).find(
+          (x) => x.id === op.id,
+        )
+        line = `Remove the filter ${f ? `"${String(f.label ?? op.id)}"` : `'${op.id}' (not on the dashboard: this edit will be refused)`}`
+        break
+      }
     }
     lines.push(`${i + 1}. ${line}.`)
     state = next

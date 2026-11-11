@@ -16,11 +16,22 @@
 //   aggregation per date bucket (zero-filled over the dashboard window for sum/count).
 // - compare: attachPrevious puts a second run's numbers (the comparison window) beside
 //   the first, aligned: a metric's value, a chart's values per label and series.
+// - area: a line chart filled; combo: bars and lines over the same categories (`lineSeries`
+//   names the lines, default the last series); `stacked`, `horizontal`, `secondaryAxis` are
+//   echoed in `display`. `measures` gives a chart several values per category (one series each,
+//   its own field and agg) instead of `y` + `series`.
+// - funnel: `stages` (each one aggregation over all rows, or a path into a one-object result),
+//   or categories (`groupBy`/`x` with `y`/`agg`) ordered by `order`, else by value descending.
+// - text: the markdown, no rows.
+// - where: rows that fail `map.where` (resolved with the filter values, filters.ts) are left out
+//   before anything is counted; `meta.filteredRows` says how many.
+// - links: a table's rows carry their record link (`map.link`), drill-down rows too.
 // Sorting: `sort.field` names the category field (or "label"/"key") to order by
 // category, or the aggregated field (or "value") to order by value. Defaults:
 // line and bucketed bar by category ascending, bar and pie by value descending.
 
 import { unwrapExternalContent } from "~/lib/external-content"
+import { applyWhere, type ResolvedWhere } from "~/modules/dashboards/filters"
 import {
   type Aggregation,
   type BlockMap,
@@ -30,6 +41,21 @@ import {
   MAX_BLOCK_SERIES,
   MAX_SOURCE_ROWS,
 } from "~/modules/dashboards/spec"
+
+export type ChartKind = "bar" | "line" | "pie" | "area" | "combo" | "funnel"
+
+/** Where a row leads: an app path, or a record the web opens with its entity opener. */
+export type RecordLink =
+  | { kind: "path"; href: string }
+  | { kind: "entity"; app: string; entityType: string; id: string }
+
+/** How a chart is drawn, from its map (absent keys: the default). */
+export interface ChartDisplay {
+  stacked?: true
+  horizontal?: true
+  lineSeries?: string[]
+  secondaryAxis?: true
+}
 
 type Row = Record<string, unknown>
 type Scalar = string | number | boolean | null
@@ -43,6 +69,8 @@ export interface BlockMeta {
   skippedRows: number
   format?: BlockMap["format"]
   currency?: string
+  /** Rows map.where left out (absent when no where clause applied). */
+  filteredRows?: number
 }
 
 /** A chart's comparison values, index by index with its labels and series (null: none matches). */
@@ -66,14 +94,18 @@ export type BlockData =
       columns: { field: string; label: string; format?: BlockMap["format"] }[]
       rows: Record<string, Scalar>[]
       meta: BlockMeta
+      /** Each row's record link, index by index (when map.link). */
+      links?: (RecordLink | null)[]
     }
   | {
-      kind: "bar" | "line" | "pie"
+      kind: ChartKind
       labels: string[]
       series: { name: string; values: number[] }[]
       meta: BlockMeta
       previous?: PreviousSeries
+      display?: ChartDisplay
     }
+  | { kind: "text"; markdown: string; meta: BlockMeta }
 
 /** Two calendar days (YYYY-MM-DD), inclusive. */
 export interface TransformWindow {
@@ -291,23 +323,61 @@ function sortDirection(
   )
 }
 
+export interface TransformOptions {
+  rowsPath?: string
+  window?: TransformWindow | null
+  /** Rows the source returned when `result` is already cut to MAX_SOURCE_ROWS (a cached read). */
+  totalRows?: number
+  /** map.where with the filter values in (filters.ts resolveWhere). */
+  where?: ResolvedWhere[]
+  /** The source tool's app: an entity link names it when map.link does not. */
+  linkApp?: string
+  /** A text block's markdown. */
+  text?: string
+}
+
+/** The rows a block aggregates: the source's rows (cut to MAX_SOURCE_ROWS), where applied. */
+export function blockRows(
+  result: unknown,
+  opts: Pick<TransformOptions, "rowsPath" | "totalRows" | "where">,
+): { rows: Row[] | null; object: unknown; meta: BlockMeta } {
+  const { rows: allRows, object } = extractRows(result, opts.rowsPath)
+  const sourceRows = Math.max(opts.totalRows ?? 0, allRows?.length ?? 0)
+  const meta: BlockMeta = {
+    sourceRows,
+    truncated: sourceRows > MAX_SOURCE_ROWS,
+    skippedRows: 0,
+  }
+  let rows = allRows ? allRows.slice(0, MAX_SOURCE_ROWS) : null
+  const where = opts.where ?? []
+  if (where.length) {
+    if (!rows) {
+      throw new TransformError("map.where needs rows: the source returned one object")
+    }
+    const kept = applyWhere(rows, where)
+    meta.filteredRows = rows.length - kept.length
+    rows = kept
+  }
+  return { rows, object, meta }
+}
+
 /** Applies a block's map to its source's result. */
 export function transformBlock(
   type: BlockType,
   map: BlockMap,
   result: unknown,
-  opts: { rowsPath?: string; window?: TransformWindow | null } = {},
+  opts: TransformOptions = {},
 ): BlockData {
-  const { rows: allRows, object } = extractRows(result, opts.rowsPath)
-  const sourceRows = allRows?.length ?? 0
-  const meta: BlockMeta = {
-    sourceRows,
-    truncated: sourceRows > MAX_SOURCE_ROWS,
-    skippedRows: 0,
-    ...(map.format ? { format: map.format } : {}),
-    ...(map.currency ? { currency: map.currency } : {}),
+  if (type === "text") {
+    return {
+      kind: "text",
+      markdown: opts.text ?? "",
+      meta: { sourceRows: 0, truncated: false, skippedRows: 0 },
+    }
   }
-  const rows = allRows ? allRows.slice(0, MAX_SOURCE_ROWS) : null
+  const { rows, object, meta } = blockRows(result, opts)
+  if (map.format) meta.format = map.format
+  if (map.currency) meta.currency = map.currency
 
   if (type === "metric") {
     const extras = map.target !== undefined ? { target: map.target } : {}
@@ -328,6 +398,25 @@ export function transformBlock(
     }
   }
 
+  if (type === "funnel" && map.stages) {
+    const stages = map.stages
+    const values = stages.map((st) => {
+      const agg = st.agg ?? (st.field ? "sum" : "count")
+      if (!rows) {
+        if (!st.field)
+          throw new TransformError("the source returned one object: each stage names its field")
+        return toNumber(readPath(object, st.field)) ?? 0
+      }
+      return aggregate(agg, rows, st.field) ?? 0
+    })
+    return {
+      kind: "funnel",
+      labels: stages.map((st) => st.label),
+      series: [{ name: DEFAULT_SERIES, values }],
+      meta,
+    }
+  }
+
   if (!rows) {
     throw new TransformError(
       "the source returned no list of rows: set source.rowsPath to the field that holds them",
@@ -336,15 +425,10 @@ export function transformBlock(
 
   if (type === "table") {
     const columns = map.columns ?? []
-    let out = rows
-    if (map.sort) {
-      const { field, dir } = map.sort
-      out = [...rows].sort(
-        (a, b) => compare(readPath(a, field), readPath(b, field)) * (dir === "desc" ? -1 : 1),
-      )
-    }
+    const out = sortedTableRows(rows, map)
     const limit = map.limit ?? MAX_BLOCK_OUTPUT
     if (out.length > limit) meta.truncated = true
+    const kept = out.slice(0, limit)
     return {
       kind: "table",
       columns: columns.map((c) => ({
@@ -352,45 +436,155 @@ export function transformBlock(
         label: c.label,
         ...(c.format ? { format: c.format } : {}),
       })),
-      rows: out.slice(0, limit).map((r) => {
-        const o: Record<string, Scalar> = {}
-        for (const c of columns) o[c.field] = toScalar(readPath(r, c.field))
-        return o
-      }),
+      rows: kept.map((r) => projectRow(r, columns)),
       meta,
+      ...(map.link ? { links: kept.map((r) => recordLink(r, map.link, opts.linkApp)) } : {}),
     }
   }
 
-  // bar | line | pie
-  const keyField = (map.groupBy?.field ?? (type === "pie" ? map.label : map.x)) as string
+  // bar | line | area | combo | pie | funnel (from categories)
+  const keyField = categoryField(type, map)
   const bucket = map.groupBy?.bucket
   const aggField = type === "pie" ? map.value : map.y
   const agg = map.agg ?? (aggField ? "sum" : "count")
   const groups = groupRows(rows, keyField, bucket, meta)
+  const measures = map.measures
+  const firstMeasure = measures?.[0]
+  const totalOf = (g: Group) =>
+    firstMeasure
+      ? (aggregate(
+          firstMeasure.agg ?? (firstMeasure.field ? "sum" : "count"),
+          g.rows,
+          firstMeasure.field,
+        ) ?? 0)
+      : (aggregate(agg, g.rows, aggField) ?? 0)
 
-  const byCategory = type === "line" || (type === "bar" && bucket !== undefined)
-  const { by, dir } = sortDirection(map, keyField, aggField, {
+  const byCategory =
+    type === "line" ||
+    type === "area" ||
+    ((type === "bar" || type === "combo") && bucket !== undefined)
+  const sortValueField = firstMeasure ? firstMeasure.field : aggField
+  const { by, dir } = sortDirection(map, keyField, sortValueField, {
     by: byCategory ? "key" : "value",
     dir: byCategory ? "asc" : "desc",
   })
 
-  const seriesField = type === "pie" ? undefined : map.series
-  const totals = new Map(groups.map((g) => [g.key, aggregate(agg, g.rows, aggField) ?? 0]))
-  const sorted = [...groups].sort((a, b) => {
+  const totals = new Map(groups.map((g) => [g.key, totalOf(g)]))
+  let sorted = [...groups].sort((a, b) => {
     const c =
       by === "key" ? compare(a.key, b.key) : (totals.get(a.key) ?? 0) - (totals.get(b.key) ?? 0)
     return dir === "desc" ? -c : c
   })
+  if (type === "funnel" && map.order) {
+    const byKey = new Map(groups.map((g) => [g.key, g]))
+    sorted = map.order.map((label) => byKey.get(label) ?? { key: label, rows: [] })
+  }
   const limit = map.limit ?? MAX_BLOCK_OUTPUT
   if (sorted.length > limit) meta.truncated = true
   const kept = sorted.slice(0, limit)
   const labels = kept.map((g) => g.key)
 
-  const series = seriesField
-    ? splitSeries(rows, kept, seriesField, agg, aggField, meta)
-    : [{ name: aggField ?? DEFAULT_SERIES, values: kept.map((g) => totals.get(g.key) ?? 0) }]
+  const seriesField = type === "pie" || type === "funnel" ? undefined : map.series
+  const series = measures
+    ? measures.map((m) => ({
+        name: m.label,
+        values: kept.map(
+          (g) => aggregate(m.agg ?? (m.field ? "sum" : "count"), g.rows, m.field) ?? 0,
+        ),
+      }))
+    : seriesField
+      ? splitSeries(rows, kept, seriesField, agg, aggField, meta)
+      : [{ name: aggField ?? DEFAULT_SERIES, values: kept.map((g) => totals.get(g.key) ?? 0) }]
 
-  return { kind: type, labels, series, meta }
+  const display = displayOf(type, map, series)
+  return { kind: type, labels, series, meta, ...(display ? { display } : {}) }
+}
+
+/** The field a chart's categories come from (groupBy, else x, else a pie's label). */
+export function categoryField(type: BlockType, map: BlockMap): string {
+  return (map.groupBy?.field ?? (type === "pie" ? map.label : map.x)) as string
+}
+
+/** The category a row falls in, as the chart labels it (null: no usable date for a bucket). */
+export function categoryOf(row: Row, field: string, bucket: DateBucket | undefined): string | null {
+  const raw = readPath(row, field)
+  if (bucket) {
+    const d = toDate(raw)
+    return d ? bucketKey(d, bucket) : null
+  }
+  return keyOf(raw)
+}
+
+/** A row's split-series name, as the chart labels it. */
+export function seriesNameOf(row: Row, field: string): string {
+  return keyOf(readPath(row, field))
+}
+
+/** A table's rows in the order it shows them (map.sort), before the limit. */
+export function sortedTableRows(rows: Row[], map: BlockMap): Row[] {
+  if (!map.sort) return rows
+  const { field, dir } = map.sort
+  return [...rows].sort(
+    (a, b) => compare(readPath(a, field), readPath(b, field)) * (dir === "desc" ? -1 : 1),
+  )
+}
+
+/** A row reduced to its columns' values. */
+export function projectRow(r: Row, columns: { field: string }[]): Record<string, Scalar> {
+  const o: Record<string, Scalar> = {}
+  for (const c of columns) o[c.field] = toScalar(readPath(r, c.field))
+  return o
+}
+
+const LINK_TOKEN = /\{\{([A-Za-z_$][A-Za-z0-9_$-]*(?:\.[A-Za-z0-9_$-]+)*)\}\}/g
+
+/** The fields a link reads. */
+export function linkFields(link: BlockMap["link"]): string[] {
+  if (!link) return []
+  if (typeof link !== "string") return [link.idField]
+  return [...link.matchAll(LINK_TOKEN)].map((m) => m[1]!)
+}
+
+/**
+ * A row's record link: the path template with each {{field}} URL-encoded (null when one is
+ * empty), or the entity named with the row's id. Never anything but an app path.
+ */
+export function recordLink(row: Row, link: BlockMap["link"], linkApp?: string): RecordLink | null {
+  if (!link) return null
+  if (typeof link !== "string") {
+    const id = readPath(row, link.idField)
+    const app = link.app ?? linkApp
+    if (!app || id === null || id === undefined || id === "" || typeof id === "object") return null
+    return { kind: "entity", app, entityType: link.entity, id: String(id) }
+  }
+  let missing = false
+  const href = link.replace(LINK_TOKEN, (_raw, field: string) => {
+    const v = readPath(row, field)
+    if (v === null || v === undefined || v === "" || typeof v === "object") {
+      missing = true
+      return ""
+    }
+    return encodeURIComponent(String(v))
+  })
+  if (missing || !href.startsWith("/") || href.startsWith("//")) return null
+  return { kind: "path", href }
+}
+
+function displayOf(
+  type: ChartKind,
+  map: BlockMap,
+  series: { name: string }[],
+): ChartDisplay | null {
+  const d: ChartDisplay = {}
+  if (map.stacked && (type === "bar" || type === "area" || type === "combo")) d.stacked = true
+  if (map.horizontal && type === "bar") d.horizontal = true
+  if (type === "combo") {
+    const names = new Set(series.map((s) => s.name))
+    const asked = (map.lineSeries ?? []).filter((n) => names.has(n))
+    d.lineSeries = asked.length ? asked : series.length ? [series[series.length - 1]!.name] : []
+    if (map.secondaryAxis) d.secondaryAxis = true
+  }
+  return Object.keys(d).length ? d : null
 }
 
 /**
@@ -499,7 +693,9 @@ export function attachPrevious(
   if (current.kind === "metric") {
     return previous.kind === "metric" ? { ...current, previous: previous.value } : current
   }
-  if (current.kind === "table" || previous.kind !== current.kind) return current
+  if (current.kind === "table" || current.kind === "text" || previous.kind !== current.kind) {
+    return current
+  }
   const prevIndex = new Map<string, number>()
   previous.labels.forEach((l, i) => {
     prevIndex.set(l, i)

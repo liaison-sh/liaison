@@ -108,7 +108,10 @@ describe("a person's remembered range", () => {
       timeRange: { preset: "custom", from: "2026-01-01", to: "2026-01-31" },
       compare: "lastYear",
     }
-    expect((await req(owner, "PUT", `${base}/viewer-state`, choice)).body.data).toEqual(choice)
+    expect((await req(owner, "PUT", `${base}/viewer-state`, choice)).body.data).toEqual({
+      ...choice,
+      filters: {},
+    })
     expect((await req(owner, "GET", base)).body.data.range).toEqual({
       ...choice,
       saved: true,
@@ -170,5 +173,55 @@ describe("a block's data for a range", () => {
     expect((await req(owner, "GET", `${path}?range=lastWeek`)).status).toBe(400)
     expect((await req(owner, "GET", `${path}?compare=sometimes`)).status).toBe(400)
     expect(seen).toEqual([])
+  })
+})
+
+describe("filters and drill-down over HTTP", () => {
+  it("refuses an unknown filter in the query, before any run", async () => {
+    seen.length = 0
+    const res = await req(
+      owner,
+      "GET",
+      `/api/dashboards/${dashboardId}/blocks/sales/data?f.market=FR`,
+    )
+    expect(res.status).toBe(400)
+    expect(res.body.error.code).toBe("INVALID_REQUEST")
+    expect(seen).toEqual([])
+  })
+
+  it("answers the rows behind a metric, paged, for the range in the query", async () => {
+    seen.length = 0
+    const res = await req(
+      owner,
+      "GET",
+      `/api/dashboards/${dashboardId}/blocks/sales/rows?from=2026-04-01&to=2026-04-10&limit=1`,
+    )
+    expect(res.status).toBe(200)
+    expect(res.body.data).toMatchObject({
+      blockId: "sales",
+      columns: [{ field: "total", label: "total" }],
+      rows: [{ total: 2 }],
+      links: null,
+      total: 2,
+      offset: 0,
+      limit: 1,
+      nextOffset: 1,
+      window: { mode: "dashboard", from: "2026-04-01", to: "2026-04-10" },
+    })
+    expect(seen).toEqual([{ since: "2026-04-01", until: "2026-04-10" }])
+    expect(
+      (await req(owner, "GET", `/api/dashboards/${dashboardId}/blocks/sales/rows?limit=abc`))
+        .status,
+    ).toBe(400)
+  })
+
+  it("remembers filter values with PUT and refuses a filter the dashboard lacks", async () => {
+    const bad = await req(owner, "PUT", `/api/dashboards/${dashboardId}/viewer-state`, {
+      filters: { market: ["FR"] },
+    })
+    expect(bad.status).toBe(400)
+    expect(
+      (await req(owner, "PUT", `/api/dashboards/${dashboardId}/viewer-state`, {})).status,
+    ).toBe(400)
   })
 })

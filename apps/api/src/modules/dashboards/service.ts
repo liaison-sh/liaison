@@ -21,10 +21,13 @@ import type { RlsClient } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { type DashboardRow, dashboards, dashboardViewerStates, users } from "~/db/schema/kernel"
 import {
-  blockCacheKey,
   FAILED_BLOCK_TTL_SEC,
   failedBlockCacheKey,
+  REFRESH_WINDOW_SEC,
   readCachedBlock,
+  type SourceKey,
+  singleFlight,
+  sourceCacheKey,
   takeRefresh,
   withViewerSlot,
   writeCachedBlock,
@@ -32,16 +35,30 @@ import {
 import { applyOperations, type EditOperation, EditOperationError } from "~/modules/dashboards/edit"
 import {
   type BlockErrorCode,
-  computeBlock,
   dashboardTimezone,
-  resolveBlockDates,
+  mapBlock,
+  type RunTarget,
+  resolveSourceDates,
+  runSource,
+  type SourceRows,
+  sourceApp,
 } from "~/modules/dashboards/execute"
+import {
+  defaultFilterValues,
+  FilterValueError,
+  type FilterValues,
+  normalizeFilterValues,
+  resolveFilterTokens,
+  resolveWhere,
+  sanitizeSavedFilterValues,
+} from "~/modules/dashboards/filters"
 import {
   type CompareMode,
   compareWindow,
   DateTokenError,
   type DayWindow,
   dateTokensIn,
+  hasRangeTokens,
   resolveDateTokens,
   resolveTimeRange,
   type TimePreset,
@@ -50,20 +67,45 @@ import {
 import { checkStoreSource, checkToolSource } from "~/modules/dashboards/sources"
 import {
   type BlockRangeMode,
+  type BlockSource,
   blockRangeMode,
+  blockSourceOf,
   blockTtlSec,
+  type DashboardBlock,
   type DashboardSpec,
   dashboardDefaultRange,
   dashboardSpecSchema,
+  MAX_SOURCE_TTL_SEC,
+  sourceValue,
   specIssues,
   timeRangeSchema,
 } from "~/modules/dashboards/spec"
-import { attachPrevious, type BlockData } from "~/modules/dashboards/transform"
+import {
+  attachPrevious,
+  type BlockData,
+  blockRows,
+  categoryField,
+  categoryOf,
+  linkFields,
+  NONE_LABEL,
+  projectRow,
+  type RecordLink,
+  readPath,
+  recordLink,
+  seriesNameOf,
+  sortedTableRows,
+  TransformError,
+} from "~/modules/dashboards/transform"
 import { hasScope } from "~/modules/permissions/permissions"
 
 export type DashboardVisibility = "personal" | "org"
 
-export type DashboardErrorCode = "NOT_FOUND" | "SCOPE_DENIED" | "INVALID_SPEC" | "VERSION_CONFLICT"
+export type DashboardErrorCode =
+  | "NOT_FOUND"
+  | "SCOPE_DENIED"
+  | "INVALID_SPEC"
+  | "VERSION_CONFLICT"
+  | "INVALID_REQUEST"
 
 export class DashboardError extends Error {
   constructor(
@@ -213,12 +255,23 @@ export async function validateSpec(author: DashboardViewer, raw: unknown): Promi
     )
   }
   const problems: string[] = []
+  const sourceCheck = (source: BlockSource) =>
+    source.kind === "tool"
+      ? checkToolSource(author.orgId, source.tool, author)
+      : checkStoreSource(author.orgId, source.app, source.collection, author)
+  for (const [id, source] of Object.entries(parsed.data.datasets ?? {})) {
+    const check = await sourceCheck(source)
+    if (!check.ok) problems.push(`datasets.${id}: ${check.code}: ${check.message}`)
+  }
   for (const [i, block] of parsed.data.blocks.entries()) {
-    const check =
-      block.source.kind === "tool"
-        ? await checkToolSource(author.orgId, block.source.tool, author)
-        : await checkStoreSource(author.orgId, block.source.app, block.source.collection, author)
+    if (!block.source) continue
+    const check = await sourceCheck(block.source)
     if (!check.ok) problems.push(`blocks.${i} (${block.id}): ${check.code}: ${check.message}`)
+  }
+  for (const [i, f] of (parsed.data.filters ?? []).entries()) {
+    if (!f.options || Array.isArray(f.options) || !("fromSource" in f.options)) continue
+    const check = await sourceCheck(f.options.fromSource)
+    if (!check.ok) problems.push(`filters.${i} (${f.id}): ${check.code}: ${check.message}`)
   }
   if (problems.length) {
     throw new DashboardError(
@@ -282,13 +335,23 @@ export interface DashboardView extends DashboardRecord {
   blockTimeRange: Record<string, BlockRangeMode>
   /** At least one block follows the dashboard range (the range picker is worth showing). */
   usesTimeRange: boolean
+  /** The filter values the viewer opens on: their remembered ones, else the defaults. */
+  filters: { values: FilterValues; saved: boolean }
+  defaultFilters: FilterValues
+}
+
+/** One person's remembered state on one dashboard, as stored (any part may be unset). */
+interface StoredViewerState {
+  timeRange: unknown
+  compare: string | null
+  filters: unknown
 }
 
 /** A remembered range read back: a row another release wrote in a shape this one refuses is ignored. */
 function parseViewerState(
-  row: { timeRange: unknown; compare: string } | undefined,
+  row: { timeRange: unknown; compare: string | null } | undefined,
 ): { timeRange: TimeRange; compare: CompareMode } | null {
-  if (!row) return null
+  if (!row || row.timeRange === null || row.compare === null) return null
   const tr = timeRangeSchema.safeParse(row.timeRange)
   const compare = ["lastYear", "previousPeriod", "none"].includes(row.compare)
     ? (row.compare as CompareMode)
@@ -302,13 +365,14 @@ export async function getDashboard(
   tx?: RlsClient,
   now: Date = new Date(),
 ): Promise<DashboardView> {
-  const { row, state } = await inTx(viewer, tx, async (t) => {
+  const { row, state, stored } = await inTx(viewer, tx, async (t) => {
     const [found] = await t.select().from(dashboards).where(eq(dashboards.id, id)).limit(1)
     if (!found) throw new DashboardError("NOT_FOUND", "no such dashboard")
     const [saved] = await t
       .select({
         timeRange: dashboardViewerStates.timeRange,
         compare: dashboardViewerStates.compare,
+        filters: dashboardViewerStates.filters,
       })
       .from(dashboardViewerStates)
       .where(
@@ -318,10 +382,13 @@ export async function getDashboard(
         ),
       )
       .limit(1)
-    return { row: found, state: parseViewerState(saved) }
+    return { row: found, state: parseViewerState(saved), stored: saved }
   })
   const record = toRecord(viewer, row)
   const spec = record.spec
+  const defaultFilters = defaultFilterValues(spec ?? {})
+  const savedFilters = sanitizeSavedFilterValues(spec ?? {}, stored?.filters)
+  const filtersSaved = Object.keys(savedFilters).length > 0
   const defaults = dashboardDefaultRange(spec ?? {})
   const chosen = state ?? defaults
   const timeZone = await dashboardTimezone(viewer.orgId)
@@ -330,7 +397,7 @@ export async function getDashboard(
   for (const b of spec?.blocks ?? []) {
     // A saved block of a shape this release does not know reads as fixed.
     try {
-      blockTimeRange[b.id] = blockRangeMode(b)
+      blockTimeRange[b.id] = blockRangeMode(b, spec.datasets)
     } catch {
       blockTimeRange[b.id] = "fixed"
     }
@@ -346,79 +413,122 @@ export async function getDashboard(
     defaultRange: defaults,
     blockTimeRange,
     usesTimeRange: Object.values(blockTimeRange).includes("dashboard"),
+    filters: { values: { ...defaultFilters, ...savedFilters }, saved: filtersSaved },
+    defaultFilters,
   }
 }
 
-// ── a person's remembered range ─────────────────────────────────────────────
+// ── a person's remembered range and filters ─────────────────────────────────
 
-export interface ViewerRange {
-  timeRange: TimeRange
-  compare: CompareMode
+export interface ViewerState {
+  timeRange: TimeRange | null
+  compare: CompareMode | null
+  filters: FilterValues
 }
 
-/** The range `viewer` last chose on this dashboard, or null. NOT_FOUND when they cannot see it. */
+/** What a PUT changes: any of the three (filters replaces the whole remembered map). */
+export interface ViewerStateInput {
+  timeRange?: TimeRange
+  compare?: CompareMode
+  filters?: Record<string, string[]>
+}
+
+function viewerStateOf(spec: Pick<DashboardSpec, "filters">, row: StoredViewerState): ViewerState {
+  const tr = row.timeRange === null ? null : timeRangeSchema.safeParse(row.timeRange)
+  const compare =
+    row.compare !== null && ["lastYear", "previousPeriod", "none"].includes(row.compare)
+      ? (row.compare as CompareMode)
+      : null
+  return {
+    timeRange: tr?.success ? tr.data : null,
+    compare,
+    filters: sanitizeSavedFilterValues(spec, row.filters),
+  }
+}
+
+function selectState(t: RlsClient, viewer: DashboardViewer, dashboardId: string) {
+  return t
+    .select({
+      timeRange: dashboardViewerStates.timeRange,
+      compare: dashboardViewerStates.compare,
+      filters: dashboardViewerStates.filters,
+    })
+    .from(dashboardViewerStates)
+    .where(
+      and(
+        eq(dashboardViewerStates.dashboardId, dashboardId),
+        eq(dashboardViewerStates.userId, viewer.userId),
+      ),
+    )
+    .limit(1)
+}
+
+/** What `viewer` last chose on this dashboard, or null. NOT_FOUND when they cannot see it. */
 export async function getViewerRange(
   viewer: DashboardViewer,
   dashboardId: string,
-): Promise<ViewerRange | null> {
+): Promise<ViewerState | null> {
   return withRlsContext(viewer, async (t) => {
-    await loadRow(viewer, dashboardId, t)
-    const [row] = await t
-      .select({
-        timeRange: dashboardViewerStates.timeRange,
-        compare: dashboardViewerStates.compare,
-      })
-      .from(dashboardViewerStates)
-      .where(
-        and(
-          eq(dashboardViewerStates.dashboardId, dashboardId),
-          eq(dashboardViewerStates.userId, viewer.userId),
-        ),
-      )
-      .limit(1)
-    return parseViewerState(row)
+    const dashboard = await loadRow(viewer, dashboardId, t)
+    const [row] = await selectState(t, viewer, dashboardId)
+    return row ? viewerStateOf(dashboard.spec as unknown as DashboardSpec, row) : null
   })
 }
 
-/** Remembers `range` as this person's choice on this dashboard (only they ever read it). */
+/**
+ * Remembers this person's choice on this dashboard (only they ever read it), merged into what
+ * was remembered: a range, a comparison, the filter values (the whole map at once).
+ */
 export async function setViewerRange(
   viewer: DashboardViewer,
   dashboardId: string,
-  range: ViewerRange,
-): Promise<ViewerRange> {
-  const parsed = timeRangeSchema.safeParse(range.timeRange)
-  if (!parsed.success) {
-    throw new DashboardError(
-      "INVALID_SPEC",
-      "the time range is not valid",
-      specIssues(parsed.error),
-    )
+  input: ViewerStateInput,
+): Promise<ViewerState> {
+  let timeRange: TimeRange | undefined
+  if (input.timeRange !== undefined) {
+    const parsed = timeRangeSchema.safeParse(input.timeRange)
+    if (!parsed.success) {
+      throw new DashboardError(
+        "INVALID_SPEC",
+        "the time range is not valid",
+        specIssues(parsed.error),
+      )
+    }
+    timeRange = parsed.data
   }
-  const timeRange = parsed.data
-  await withRlsContext(viewer, async (t) => {
-    await loadRow(viewer, dashboardId, t)
+  return withRlsContext(viewer, async (t) => {
+    const dashboard = await loadRow(viewer, dashboardId, t)
+    const spec = dashboard.spec as unknown as DashboardSpec
+    let filters: FilterValues | undefined
+    if (input.filters !== undefined) {
+      try {
+        const all = normalizeFilterValues(spec, input.filters)
+        filters = Object.fromEntries(Object.keys(input.filters).map((id) => [id, all[id] ?? []]))
+      } catch (err) {
+        if (err instanceof FilterValueError) {
+          throw new DashboardError("INVALID_REQUEST", err.message)
+        }
+        throw err
+      }
+    }
+    const [before] = await selectState(t, viewer, dashboardId)
+    const next = {
+      timeRange: (timeRange ?? before?.timeRange ?? null) as Record<string, unknown> | null,
+      compare: input.compare ?? before?.compare ?? null,
+      filters: filters ?? (before?.filters as Record<string, string[]> | undefined) ?? {},
+    }
     await t
       .insert(dashboardViewerStates)
-      .values({
-        orgId: viewer.orgId,
-        dashboardId,
-        userId: viewer.userId,
-        timeRange: timeRange as unknown as Record<string, unknown>,
-        compare: range.compare,
-      })
+      .values({ orgId: viewer.orgId, dashboardId, userId: viewer.userId, ...next })
       .onConflictDoUpdate({
         target: [dashboardViewerStates.dashboardId, dashboardViewerStates.userId],
-        set: {
-          timeRange: timeRange as unknown as Record<string, unknown>,
-          compare: range.compare,
-          updatedAt: new Date(),
-        },
+        set: { ...next, updatedAt: new Date() },
       })
+    return viewerStateOf(spec, next)
   })
-  return { timeRange, compare: range.compare }
 }
 
-/** Forgets this person's choice: the dashboard opens on its default again. */
+/** Forgets this person's choices: the dashboard opens on its defaults again. */
 export async function clearViewerRange(
   viewer: DashboardViewer,
   dashboardId: string,
@@ -646,9 +756,11 @@ export type BlockDataResponse =
       compareWindow?: BlockCompareWindow | null
     }
 
-interface CachedBlock {
-  data: BlockData
+/** A source's rows as cached (sourceCacheKey). `forced`: written by a refresh. */
+interface CachedSource {
+  read: SourceRows
   computedAt: string
+  forced?: boolean
 }
 
 /** A block's failed outcome as cached (failedBlockCacheKey). */
@@ -657,9 +769,11 @@ interface CachedFailure {
   message: string
 }
 
-type BlockRunResult =
-  | { ok: true; data: BlockData; cached: boolean; computedAt: string }
+type SourceReadResult =
+  | { ok: true; read: SourceRows; cached: boolean; computedAt: string }
   | { ok: false; error: BlockErrorCode; message: string }
+
+type Refusal = { ok: false; error: BlockErrorCode; message: string }
 
 export interface BlockDataOptions {
   refresh?: boolean
@@ -669,17 +783,264 @@ export interface BlockDataOptions {
   range?: TimeRange
   /** The comparison the viewer shows; absent: the dashboard's default. */
   compare?: CompareMode
+  /** The filter values the viewer shows, by filter id; an absent filter takes its default. */
+  filters?: Record<string, string[]>
+}
+
+/** The most a source's cached rows may weigh (JSON): a larger read is used, not cached. */
+const MAX_CACHED_SOURCE_BYTES = 4_000_000
+/** How long a filter option source is cached. */
+const OPTION_SOURCE_TTL_SEC = 300
+
+interface LoadedDashboard {
+  row: DashboardRow
+  spec: DashboardSpec
+}
+
+async function loadDashboard(viewer: DashboardViewer, id: string): Promise<LoadedDashboard> {
+  const row = await loadRow(viewer, id)
+  return { row, spec: row.spec as unknown as DashboardSpec }
+}
+
+function findBlock(spec: DashboardSpec, blockId: string): DashboardBlock {
+  const block = spec.blocks?.find((b) => b.id === blockId)
+  if (!block) throw new DashboardError("NOT_FOUND", `no block '${blockId}' on this dashboard`)
+  return block
+}
+
+function filterValuesFor(spec: DashboardSpec, asked: BlockDataOptions["filters"]): FilterValues {
+  try {
+    return normalizeFilterValues(spec, asked)
+  } catch (err) {
+    if (err instanceof FilterValueError) throw new DashboardError("INVALID_REQUEST", err.message)
+    throw err
+  }
+}
+
+/** `source` with its filter tokens resolved (dates come later). */
+function withFilterValues(source: BlockSource, values: FilterValues): BlockSource {
+  const value = resolveFilterTokens(sourceValue(source), values)
+  return source.kind === "tool" ? { ...source, params: value } : { ...source, query: value }
 }
 
 /**
- * One block's data for `viewer`: from the cache (per viewer, per permissions,
- * per dashboard version, per resolved dates and range), else run as the viewer. `refresh`
- * bypasses the cache, at most once per block per viewer per 30 s (`rate_limited` otherwise).
+ * The fields a source's consumers read, by their top-level key (the rest of a row is not kept
+ * in the cache): every map field of the blocks that read it, link and drill fields, the filters
+ * that list its values, plus id/name/title for a drill-down's default columns.
+ */
+function projectionFields(spec: DashboardSpec, sourceKey: SourceKey): Set<string> | null {
+  const fields = new Set<string>(["id", "name", "title"])
+  const add = (f: string | undefined) => {
+    if (f) fields.add(f.split(".")[0]!)
+  }
+  const blocks = sourceKey.startsWith("blk:")
+    ? spec.blocks.filter((b) => `blk:${b.id}` === sourceKey)
+    : sourceKey.startsWith("ds:")
+      ? spec.blocks.filter((b) => b.dataset && `ds:${b.dataset}` === sourceKey)
+      : []
+  for (const b of blocks) {
+    const m = b.map
+    for (const f of [m.x, m.y, m.series, m.value, m.label, m.groupBy?.field, m.sparkline?.field])
+      add(f)
+    if (m.sort) add(m.sort.field)
+    for (const c of [...(m.columns ?? []), ...(m.drillColumns ?? [])]) add(c.field)
+    for (const w of m.where ?? []) add(w.field)
+    for (const x of [...(m.measures ?? []), ...(m.stages ?? [])]) add(x.field)
+    for (const f of linkFields(m.link)) add(f)
+  }
+  for (const f of spec.filters ?? []) {
+    const o = f.options
+    if (!o || Array.isArray(o)) continue
+    if ("fromDataset" in o && `ds:${o.fromDataset}` === sourceKey) add(o.field)
+    if ("fromSource" in o && `opt:${f.id}` === sourceKey) add(o.field)
+  }
+  return fields
+}
+
+function project(read: SourceRows, fields: Set<string> | null): SourceRows {
+  if (!fields || !read.rows) return read
+  return {
+    ...read,
+    rows: read.rows.map((r) => {
+      const o: Record<string, unknown> = {}
+      for (const k of fields) if (k in r) o[k] = r[k]
+      return o
+    }),
+  }
+}
+
+/** How long a source is cached: the shortest interval of the blocks that read it. */
+function sourceTtlSec(spec: DashboardSpec, sourceKey: SourceKey): number {
+  if (sourceKey.startsWith("opt:")) return OPTION_SOURCE_TTL_SEC
+  const ttls = spec.blocks
+    .filter((b) =>
+      sourceKey.startsWith("blk:") ? `blk:${b.id}` === sourceKey : `ds:${b.dataset}` === sourceKey,
+    )
+    .map((b) => blockTtlSec(b))
+  return ttls.length ? Math.min(...ttls) : MAX_SOURCE_TTL_SEC
+}
+
+function runTargetOf(sourceKey: SourceKey): RunTarget {
+  const id = sourceKey.slice(sourceKey.indexOf(":") + 1)
+  if (sourceKey.startsWith("ds:")) return { datasetId: id }
+  if (sourceKey.startsWith("opt:")) return { filterId: id }
+  return { blockId: id }
+}
+
+/**
+ * One source's rows for `viewer`: from the cache, else read once (concurrent callers wait on the
+ * same read) and cached. A refresh reads again, unless another refresh read it in the last
+ * REFRESH_WINDOW_SEC (two blocks of one dataset refreshed together run it once).
+ */
+async function readSourceCached(
+  viewer: DashboardViewer,
+  dashboard: LoadedDashboard,
+  sourceKey: SourceKey,
+  source: BlockSource,
+  range: DayWindow | null,
+  opts: { refresh?: boolean; signal?: AbortSignal },
+): Promise<SourceReadResult> {
+  const key = sourceCacheKey(viewer, {
+    dashboardId: dashboard.row.id,
+    version: dashboard.row.version,
+    sourceKey,
+    resolvedSource: source,
+    range,
+  })
+  const failedKey = failedBlockCacheKey(key)
+  const hit = await readCachedBlock<CachedSource>(key)
+  if (hit) {
+    const recentRefresh =
+      hit.forced && Date.now() - Date.parse(hit.computedAt) < REFRESH_WINDOW_SEC * 1000
+    if (!opts.refresh || recentRefresh) {
+      return { ok: true, read: hit.read, cached: true, computedAt: hit.computedAt }
+    }
+  }
+  if (!opts.refresh) {
+    const failed = await readCachedBlock<CachedFailure>(failedKey)
+    if (failed) return { ok: false, error: failed.error, message: failed.message }
+  }
+  const ttl = sourceTtlSec(dashboard.spec, sourceKey)
+  return singleFlight(`${key}${opts.refresh ? ":refresh" : ""}`, async () => {
+    const outcome = await withViewerSlot(viewer, () =>
+      runSource(
+        source,
+        {
+          viewer,
+          dashboardId: dashboard.row.id,
+          range,
+          ...(opts.signal ? { signal: opts.signal } : {}),
+        },
+        runTargetOf(sourceKey),
+      ),
+    )
+    if (!outcome.ok) {
+      // A read the viewer abandoned says nothing about the source: never cached.
+      if (!opts.signal?.aborted) {
+        await writeCachedBlock(
+          failedKey,
+          { error: outcome.error, message: outcome.message } satisfies CachedFailure,
+          Math.min(FAILED_BLOCK_TTL_SEC, ttl),
+        )
+      }
+      return { ok: false, error: outcome.error, message: outcome.message }
+    }
+    const read = project(outcome.read, projectionFields(dashboard.spec, sourceKey))
+    const computedAt = new Date().toISOString()
+    const entry: CachedSource = { read, computedAt, ...(opts.refresh ? { forced: true } : {}) }
+    const json = JSON.stringify(entry)
+    if (json.length <= MAX_CACHED_SOURCE_BYTES) await writeCachedBlock(key, entry, ttl)
+    return { ok: true, read, cached: false, computedAt }
+  })
+}
+
+/** A source with this request's filters and dates in, and the windows it reads. */
+interface PlannedSource {
+  sourceKey: SourceKey
+  saved: BlockSource
+  /** Filter tokens resolved, dates not yet. */
+  filtered: BlockSource
+  /** Fully resolved: what runs and what keys the cache. */
+  resolved: BlockSource
+  range: DayWindow | null
+  window: BlockWindow
+  compareRange: BlockCompareWindow | null
+}
+
+/**
+ * Resolves one source for a request: filter tokens, then dates (org timezone), the dashboard
+ * range when it follows it. `mode` "dashboard" reads `opts.range` (else the default) and its
+ * comparison. Throws DateTokenError on a token that cannot resolve.
+ */
+async function planSource(
+  viewer: DashboardViewer,
+  spec: DashboardSpec,
+  sourceKey: SourceKey,
+  saved: BlockSource,
+  mode: BlockRangeMode,
+  values: FilterValues,
+  opts: BlockDataOptions,
+  now: Date,
+): Promise<PlannedSource> {
+  const timeZone = await dashboardTimezone(viewer.orgId)
+  const filtered = withFilterValues(saved, values)
+  let window: BlockWindow
+  let range: DayWindow | null = null
+  let compareRange: BlockCompareWindow | null = null
+  if (mode === "dashboard") {
+    const defaults = dashboardDefaultRange(spec)
+    const tr = opts.range ?? defaults.timeRange
+    const cmpMode = opts.compare ?? defaults.compare
+    range = resolveTimeRange(tr, { timeZone, now })
+    window = { mode: "dashboard", preset: tr.preset, ...range }
+    const cmp = compareWindow(tr.preset, range, cmpMode)
+    if (cmp && cmpMode !== "none") compareRange = { mode: cmpMode, ...cmp }
+  } else {
+    window = {
+      mode: "fixed",
+      dates: dateTokensIn(sourceValue(saved)).map((token) => ({
+        token,
+        date: resolveDateTokens(token, { timeZone, now }),
+      })),
+    }
+  }
+  const resolved = await resolveSourceDates(filtered, viewer.orgId, now, range)
+  return { sourceKey, saved, filtered, resolved, range, window, compareRange }
+}
+
+/** Eligibility, every time: a tool turned gated or an app turned off after the save refuses. */
+async function sourceRefusal(
+  viewer: DashboardViewer,
+  source: BlockSource,
+): Promise<Refusal | null> {
+  const check =
+    source.kind === "tool"
+      ? await checkToolSource(viewer.orgId, source.tool, viewer)
+      : await checkStoreSource(viewer.orgId, source.app, source.collection, viewer)
+  return check.ok ? null : { ok: false, error: check.code, message: check.message }
+}
+
+/** The block's source and how it is keyed: its own, or its dataset's (shared). */
+function blockSourcePlan(
+  spec: DashboardSpec,
+  block: DashboardBlock,
+): { sourceKey: SourceKey; saved: BlockSource } | null {
+  const saved = blockSourceOf(block, spec.datasets)
+  if (!saved) return null
+  return { sourceKey: block.dataset ? `ds:${block.dataset}` : `blk:${block.id}`, saved }
+}
+
+/**
+ * One block's data for `viewer`. Its source (its own or a shared dataset) is read from the
+ * cache (per viewer, per permissions, per dashboard version, per resolved params and range),
+ * else run as the viewer, once for every block that shares it; the block's map (where
+ * included) is applied on every request. `refresh` reads the source again, at most once per
+ * block per viewer per 30 s (`rate_limited` otherwise).
  *
- * A block that follows the dashboard range reads `opts.range` (else the dashboard's
- * default) and, unless the comparison is "none", runs once more over the comparison window
- * (its own cache entry): the data carries `previous` beside the current values. A fixed
- * block reads its own dates and is never compared.
+ * A block that follows the dashboard range reads `opts.range` (else the dashboard's default)
+ * and, unless the comparison is "none", its source once more over the comparison window (its
+ * own cache entry): the data carries `previous`. A fixed block reads its own dates and is never
+ * compared. A text block reads nothing.
  */
 export async function getBlockData(
   viewer: DashboardViewer,
@@ -687,60 +1048,48 @@ export async function getBlockData(
   blockId: string,
   opts: BlockDataOptions = {},
 ): Promise<BlockDataResponse> {
-  const dashboard = await loadRow(viewer, dashboardId)
-  const spec = dashboard.spec as unknown as DashboardSpec
-  const saved = spec.blocks?.find((b) => b.id === blockId)
-  if (!saved) throw new DashboardError("NOT_FOUND", `no block '${blockId}' on this dashboard`)
+  const dashboard = await loadDashboard(viewer, dashboardId)
+  const { spec } = dashboard
+  const block = findBlock(spec, blockId)
+  const values = filterValuesFor(spec, opts.filters)
   const now = opts.now ?? new Date()
 
-  // Date tokens become this run's dates (org timezone) before anything else: the cache key and
-  // the run below both see them. A range block's {{range.*}} become the chosen window.
-  let block: typeof saved
-  let window: BlockWindow
-  let range: DayWindow | null = null
-  let compareRange: BlockCompareWindow | null = null
-  try {
-    const timeZone = await dashboardTimezone(viewer.orgId)
-    if (blockRangeMode(saved) === "dashboard") {
-      const defaults = dashboardDefaultRange(spec)
-      const tr = opts.range ?? defaults.timeRange
-      const mode = opts.compare ?? defaults.compare
-      range = resolveTimeRange(tr, { timeZone, now })
-      window = { mode: "dashboard", preset: tr.preset, ...range }
-      const cmp = compareWindow(tr.preset, range, mode)
-      if (cmp && mode !== "none") compareRange = { mode, ...cmp }
-    } else {
-      const value = saved.source.kind === "tool" ? saved.source.params : saved.source.query
-      window = {
-        mode: "fixed",
-        dates: dateTokensIn(value).map((token) => ({
-          token,
-          date: resolveDateTokens(token, { timeZone, now }),
-        })),
-      }
+  if (block.type === "text") {
+    const out = mapBlock(block, { rows: [], object: null, totalRows: 0 }, {})
+    if (!out.ok) return { ...out, blockId }
+    return {
+      blockId,
+      ok: true,
+      data: out.data,
+      cached: false,
+      computedAt: now.toISOString(),
+      window: { mode: "fixed", dates: [] },
+      compareWindow: null,
     }
-    block = await resolveBlockDates(saved, viewer.orgId, now, range)
+  }
+  const sp = blockSourcePlan(spec, block)
+  if (!sp) {
+    return { blockId, ok: false, error: "invalid_map", message: `no dataset '${block.dataset}'` }
+  }
+  let plan: PlannedSource
+  try {
+    plan = await planSource(
+      viewer,
+      spec,
+      sp.sourceKey,
+      sp.saved,
+      blockRangeMode(block, spec.datasets),
+      values,
+      opts,
+      now,
+    )
   } catch (err) {
     if (!(err instanceof DateTokenError)) throw err
     return { blockId, ok: false, error: "invalid_map", message: err.message }
   }
-
-  // Eligibility first, every time: a tool turned gated or an app turned off after the
-  // save refuses even while an older answer is still cached.
-  const check =
-    block.source.kind === "tool"
-      ? await checkToolSource(viewer.orgId, block.source.tool, viewer)
-      : await checkStoreSource(viewer.orgId, block.source.app, block.source.collection, viewer)
-  if (!check.ok) {
-    return {
-      blockId,
-      ok: false,
-      error: check.code,
-      message: check.message,
-      window,
-      compareWindow: compareRange,
-    }
-  }
+  const { window, compareRange, range } = plan
+  const refused = await sourceRefusal(viewer, plan.resolved)
+  if (refused) return { ...refused, blockId, window, compareWindow: compareRange }
 
   if (opts.refresh && !(await takeRefresh(viewer, dashboardId, blockId))) {
     return {
@@ -753,31 +1102,51 @@ export async function getBlockData(
     }
   }
 
-  const current = await runBlockCached(viewer, dashboard, block, range, opts)
-  if (!current.ok) {
-    return { ...current, blockId, window, compareWindow: compareRange }
-  }
-  let data = current.data
+  const where = resolveWhere(block.map.where, values)
+  const linkApp = sourceApp(plan.resolved)
+  const mapOpts = { window: range, where, ...(linkApp ? { linkApp } : {}) }
+  const current = await readSourceCached(
+    viewer,
+    dashboard,
+    plan.sourceKey,
+    plan.resolved,
+    range,
+    opts,
+  )
+  if (!current.ok) return { ...current, blockId, window, compareWindow: compareRange }
+  const mapped = mapBlock(block, current.read, mapOpts)
+  if (!mapped.ok) return { ...mapped, blockId, window, compareWindow: compareRange }
+  let data = mapped.data
   let previousError: { error: BlockErrorCode; message: string } | undefined
   if (compareRange && range) {
-    // The comparison: the saved block over the comparison window, one more run (cached apart).
-    let previousBlock: typeof saved | null = null
+    // The comparison: the same source over the comparison window, one more read (cached apart).
+    let previousSource: BlockSource | null = null
     try {
-      previousBlock = await resolveBlockDates(saved, viewer.orgId, now, compareRange)
+      previousSource = await resolveSourceDates(plan.filtered, viewer.orgId, now, compareRange)
     } catch (err) {
       if (!(err instanceof DateTokenError)) throw err
       previousError = { error: "invalid_map", message: err.message }
     }
-    if (previousBlock) {
-      const previous = await runBlockCached(viewer, dashboard, previousBlock, compareRange, opts)
-      if (previous.ok) {
-        data = attachPrevious(data, previous.data, {
-          ...(saved.map.groupBy?.bucket ? { bucket: saved.map.groupBy.bucket } : {}),
+    if (previousSource) {
+      const previous = await readSourceCached(
+        viewer,
+        dashboard,
+        plan.sourceKey,
+        previousSource,
+        compareRange,
+        opts,
+      )
+      const prevMapped = previous.ok
+        ? mapBlock(block, previous.read, { ...mapOpts, window: compareRange })
+        : previous
+      if (prevMapped.ok) {
+        data = attachPrevious(data, prevMapped.data, {
+          ...(block.map.groupBy?.bucket ? { bucket: block.map.groupBy.bucket } : {}),
           window: range,
           compareWindow: compareRange,
         })
       } else {
-        previousError = { error: previous.error, message: previous.message }
+        previousError = { error: prevMapped.error, message: prevMapped.message }
       }
     }
   }
@@ -793,52 +1162,262 @@ export async function getBlockData(
   }
 }
 
-/** One run of a block whose dates are resolved: from the cache, else computed and cached. */
-async function runBlockCached(
-  viewer: DashboardViewer,
-  dashboard: DashboardRow,
-  block: DashboardSpec["blocks"][number],
-  range: DayWindow | null,
-  opts: BlockDataOptions,
-): Promise<BlockRunResult> {
-  const key = blockCacheKey(viewer, {
-    dashboardId: dashboard.id,
-    version: dashboard.version,
-    blockId: block.id,
-    resolvedSource: block.source,
-    range,
-  })
-  const failedKey = failedBlockCacheKey(key)
-  if (!opts.refresh) {
-    const hit = await readCachedBlock<CachedBlock>(key)
-    if (hit) return { ok: true, data: hit.data, cached: true, computedAt: hit.computedAt }
-    const failed = await readCachedBlock<CachedFailure>(failedKey)
-    if (failed) return { ok: false, error: failed.error, message: failed.message }
-  }
-  const outcome = await withViewerSlot(viewer, () =>
-    computeBlock(block, {
-      viewer,
-      dashboardId: dashboard.id,
-      range,
-      ...(opts.signal ? { signal: opts.signal } : {}),
-    }),
-  )
-  if (!outcome.ok) {
-    // A read the viewer abandoned says nothing about the source: never cached.
-    if (!opts.signal?.aborted) {
-      await writeCachedBlock(
-        failedKey,
-        { error: outcome.error, message: outcome.message } satisfies CachedFailure,
-        Math.min(FAILED_BLOCK_TTL_SEC, blockTtlSec(block)),
-      )
+// ── drill-down: the rows behind a figure ────────────────────────────────────
+
+export const DRILL_DEFAULT_LIMIT = 50
+export const DRILL_MAX_LIMIT = 200
+
+export interface BlockRowsOptions extends Omit<BlockDataOptions, "refresh" | "compare"> {
+  /** A chart's category label (a bar, a slice, a point, a funnel stage). */
+  category?: string
+  /** A split series' name. */
+  series?: string
+  /** A table row's index in the block's data rows. */
+  row?: number
+  offset?: number
+  limit?: number
+}
+
+type DrillColumn = { field: string; label: string; format?: BlockMap["format"] }
+type BlockMap = DashboardBlock["map"]
+
+export type BlockRowsResponse =
+  | {
+      blockId: string
+      ok: true
+      columns: DrillColumn[]
+      rows: Record<string, string | number | boolean | null>[]
+      links: (RecordLink | null)[] | null
+      total: number
+      offset: number
+      limit: number
+      nextOffset: number | null
+      truncated: boolean
+      cached: boolean
+      computedAt: string
+      window: BlockWindow
     }
-    return { ok: false, error: outcome.error, message: outcome.message }
+  | { blockId: string; ok: false; error: BlockErrorCode; message: string; window?: BlockWindow }
+
+/** What a drill-down shows per row: drillColumns, a table's columns, else the fields it uses. */
+function drillColumnsOf(
+  block: DashboardBlock,
+  sample: Record<string, unknown> | undefined,
+): DrillColumn[] {
+  const m = block.map
+  if (m.drillColumns) return m.drillColumns
+  if (m.columns) return m.columns
+  const fields: string[] = []
+  const add = (f: string | undefined) => {
+    if (f && !fields.includes(f)) fields.push(f)
   }
-  const computedAt = new Date().toISOString()
-  await writeCachedBlock(
-    key,
-    { data: outcome.data, computedAt } satisfies CachedBlock,
-    blockTtlSec(block),
-  )
-  return { ok: true, data: outcome.data, cached: false, computedAt }
+  for (const f of ["name", "title", "id"]) if (sample && f in sample) add(f)
+  if (block.type !== "metric" && !m.stages) add(categoryField(block.type, m))
+  add(m.series)
+  for (const f of [m.value, m.y, m.sparkline?.field]) add(f)
+  for (const x of [...(m.measures ?? []), ...(m.stages ?? [])]) add(x.field)
+  if (fields.length === 0 && sample) for (const k of Object.keys(sample).slice(0, 8)) add(k)
+  return fields.slice(0, 20).map((field) => ({ field, label: field }))
+}
+
+/**
+ * The rows behind one figure of a block: a chart's category (and series), a table's row, or
+ * every row a metric or a funnel of stages aggregates; read-only, from the same cached source
+ * read as the block's data (no run when it is cached), under the same access as the block.
+ */
+export async function getBlockRows(
+  viewer: DashboardViewer,
+  dashboardId: string,
+  blockId: string,
+  opts: BlockRowsOptions = {},
+): Promise<BlockRowsResponse> {
+  const dashboard = await loadDashboard(viewer, dashboardId)
+  const { spec } = dashboard
+  const block = findBlock(spec, blockId)
+  if (block.type === "text") {
+    throw new DashboardError("INVALID_REQUEST", "a text block has no rows")
+  }
+  const values = filterValuesFor(spec, opts.filters)
+  const now = opts.now ?? new Date()
+  const sp = blockSourcePlan(spec, block)
+  if (!sp) {
+    return { blockId, ok: false, error: "invalid_map", message: `no dataset '${block.dataset}'` }
+  }
+  let plan: PlannedSource
+  try {
+    plan = await planSource(
+      viewer,
+      spec,
+      sp.sourceKey,
+      sp.saved,
+      blockRangeMode(block, spec.datasets),
+      values,
+      opts,
+      now,
+    )
+  } catch (err) {
+    if (!(err instanceof DateTokenError)) throw err
+    return { blockId, ok: false, error: "invalid_map", message: err.message }
+  }
+  const { window, range } = plan
+  const refused = await sourceRefusal(viewer, plan.resolved)
+  if (refused) return { ...refused, blockId, window }
+  const read = await readSourceCached(viewer, dashboard, plan.sourceKey, plan.resolved, range, {
+    ...(opts.signal ? { signal: opts.signal } : {}),
+  })
+  if (!read.ok) return { ...read, blockId, window }
+
+  let rows: Record<string, unknown>[]
+  let truncated: boolean
+  try {
+    const got = blockRows(read.read.rows ?? read.read.object, {
+      totalRows: read.read.totalRows,
+      where: resolveWhere(block.map.where, values),
+    })
+    if (!got.rows) {
+      return {
+        blockId,
+        ok: false,
+        error: "invalid_map",
+        message: "the source returned one object: there are no rows to show",
+        window,
+      }
+    }
+    rows = got.rows
+    truncated = got.meta.truncated
+  } catch (err) {
+    if (err instanceof TransformError) {
+      return { blockId, ok: false, error: "invalid_map", message: err.message, window }
+    }
+    throw err
+  }
+
+  const m = block.map
+  if (block.type === "table") {
+    const ordered = sortedTableRows(rows, m).slice(0, m.limit ?? 100)
+    if (opts.row !== undefined) {
+      const one = ordered[opts.row]
+      if (!one) throw new DashboardError("INVALID_REQUEST", `no row ${opts.row} in this block`)
+      rows = [one]
+    } else rows = ordered
+  } else if (opts.row !== undefined) {
+    throw new DashboardError("INVALID_REQUEST", "row is for a table block; a chart takes category")
+  } else if (opts.category !== undefined && block.type !== "metric" && !m.stages) {
+    const field = categoryField(block.type, m)
+    const bucket = m.groupBy?.bucket
+    const want = opts.category === "" ? NONE_LABEL : opts.category
+    rows = rows.filter((r) => categoryOf(r, field, bucket) === want)
+  }
+  if (opts.series !== undefined && m.series && !m.measures) {
+    const field = m.series
+    rows = rows.filter((r) => seriesNameOf(r, field) === opts.series)
+  }
+
+  const columns = drillColumnsOf(block, read.read.rows?.[0])
+  const offset = Math.max(0, opts.offset ?? 0)
+  const limit = Math.min(Math.max(1, opts.limit ?? DRILL_DEFAULT_LIMIT), DRILL_MAX_LIMIT)
+  const page = rows.slice(offset, offset + limit)
+  const linkApp = sourceApp(plan.resolved)
+  return {
+    blockId,
+    ok: true,
+    columns,
+    rows: page.map((r) => projectRow(r, columns)),
+    links: m.link ? page.map((r) => recordLink(r, m.link, linkApp)) : null,
+    total: rows.length,
+    offset,
+    limit,
+    nextOffset: offset + limit < rows.length ? offset + limit : null,
+    truncated,
+    cached: read.cached,
+    computedAt: read.computedAt,
+    window,
+  }
+}
+
+// ── a filter's options ─────────────────────────────────────────────────────
+
+export const MAX_OPTION_VALUES = 200
+
+export type FilterOptionsResponse =
+  | { filterId: string; ok: true; options: string[]; truncated: boolean }
+  | { filterId: string; ok: false; error: BlockErrorCode; message: string }
+
+/**
+ * The values a filter offers: its static list, or the distinct non-empty values of a field over
+ * a dataset's (or its own source's) rows, read as the viewer, the filter's own value left out
+ * (so its options never narrow to the value already picked). Sorted, at most MAX_OPTION_VALUES.
+ */
+export async function getFilterOptions(
+  viewer: DashboardViewer,
+  dashboardId: string,
+  filterId: string,
+  opts: Omit<BlockDataOptions, "refresh" | "compare"> & { q?: string } = {},
+): Promise<FilterOptionsResponse> {
+  const dashboard = await loadDashboard(viewer, dashboardId)
+  const { spec } = dashboard
+  const def = spec.filters?.find((f) => f.id === filterId)
+  if (!def) throw new DashboardError("NOT_FOUND", `no filter '${filterId}' on this dashboard`)
+  if (def.type === "text" || !def.options) {
+    throw new DashboardError("INVALID_REQUEST", "a text filter has no options")
+  }
+  const q = opts.q?.trim().toLowerCase()
+  const finish = (all: string[]): FilterOptionsResponse => {
+    const matching = q ? all.filter((v) => v.toLowerCase().includes(q)) : all
+    return {
+      filterId,
+      ok: true,
+      options: matching.slice(0, MAX_OPTION_VALUES),
+      truncated: matching.length > MAX_OPTION_VALUES,
+    }
+  }
+  if (Array.isArray(def.options)) return finish(def.options)
+
+  const values = { ...filterValuesFor(spec, opts.filters), [filterId]: [] }
+  const o = def.options
+  let sourceKey: SourceKey
+  let saved: BlockSource | undefined
+  if ("fromDataset" in o) {
+    sourceKey = `ds:${o.fromDataset}`
+    saved = spec.datasets?.[o.fromDataset]
+  } else {
+    sourceKey = `opt:${filterId}`
+    saved = o.fromSource
+  }
+  if (!saved) {
+    return { filterId, ok: false, error: "invalid_map", message: "the filter's dataset is gone" }
+  }
+  let plan: PlannedSource
+  try {
+    const mode = hasRangeTokens(sourceValue(saved)) ? "dashboard" : "fixed"
+    plan = await planSource(
+      viewer,
+      spec,
+      sourceKey,
+      saved,
+      mode,
+      values,
+      opts,
+      opts.now ?? new Date(),
+    )
+  } catch (err) {
+    if (!(err instanceof DateTokenError)) throw err
+    return { filterId, ok: false, error: "invalid_map", message: err.message }
+  }
+  const refused = await sourceRefusal(viewer, plan.resolved)
+  if (refused) return { ...refused, filterId }
+  const read = await readSourceCached(viewer, dashboard, sourceKey, plan.resolved, plan.range, {
+    ...(opts.signal ? { signal: opts.signal } : {}),
+  })
+  if (!read.ok) return { ...read, filterId }
+  const seen = new Set<string>()
+  for (const r of read.read.rows ?? []) {
+    const v = readPath(r, o.field)
+    for (const x of Array.isArray(v) ? v : [v]) {
+      if (x === null || x === undefined || x === "" || typeof x === "object") continue
+      const sx = String(x)
+      if (sx.length <= 200) seen.add(sx)
+    }
+  }
+  return finish([...seen].sort((a, b) => a.localeCompare(b)))
 }

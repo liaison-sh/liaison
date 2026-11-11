@@ -857,6 +857,7 @@ describe("the dashboard time range", () => {
     expect(await getViewerRange(mine, dashboardId)).toEqual({
       timeRange: { preset: "ytd" },
       compare: "none",
+      filters: {},
     })
     const view = await getDashboard(theirs, dashboardId, undefined, now)
     expect(view.range).toMatchObject({

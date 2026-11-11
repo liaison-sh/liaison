@@ -4,7 +4,9 @@
 // blocks draw their data. The rail's Dashboards entry lists them, and one
 // shared with the org while the page is open shows up without a reload. A
 // block that follows the dashboard's time range reads again when a period is
-// picked, and the link carries the period.
+// picked, and the link carries the period. A filter narrows the blocks of a
+// shared dataset and goes into the link; a figure opens the rows behind it in
+// the side panel, and a row's link opens its page.
 import { api, login } from "@liaison/test-helpers"
 import { expect, test } from "./fixtures/test"
 import { seedFactory } from "./helpers/seed"
@@ -199,4 +201,103 @@ test("picking a period re-reads a block that follows the dashboard's range", asy
     String(new Date().getFullYear() - 1),
   )
   await expect(page).toHaveURL(/range=lastYear&compare=lastYear/)
+})
+
+test("a filter narrows the blocks, and a figure opens its rows in the side panel", async ({
+  authenticatedPage,
+  env,
+  world,
+}) => {
+  const page = authenticatedPage
+  const { accessToken } = await login(env.serverUrl, "admin@test.com", "12345678")
+
+  for (const [id, total, region] of [
+    ["f1", 10, "north"],
+    ["f2", 15, "south"],
+    ["f3", 17, "south"],
+  ] as const) {
+    await seedFactory(env, world.org.id, "appDocument", {
+      app: "agent",
+      collection: "e2e_filter_orders",
+      id,
+      data: { title: `Order ${id}`, total, region },
+    })
+  }
+
+  const created = await api(env.serverUrl, "/api/dashboards", {
+    method: "POST",
+    token: accessToken,
+    body: {
+      title: "E2E filters",
+      visibility: "personal",
+      spec: {
+        v: 1,
+        layout: "grid",
+        datasets: {
+          orders: { kind: "store", app: "agent", collection: "e2e_filter_orders", query: {} },
+        },
+        filters: [{ id: "region", label: "Region", type: "select", options: ["north", "south"] }],
+        blocks: [
+          {
+            id: "revenue",
+            type: "metric",
+            title: "Revenue",
+            width: 1,
+            dataset: "orders",
+            map: {
+              value: "total",
+              agg: "sum",
+              format: "number",
+              where: [{ field: "region", op: "eq", value: { filter: "region" } }],
+              link: "/dashboards",
+              drillColumns: [
+                { field: "title", label: "Order" },
+                { field: "total", label: "Total", format: "number" },
+              ],
+            },
+          },
+          {
+            id: "byregion",
+            type: "bar",
+            title: "By region",
+            width: 2,
+            dataset: "orders",
+            map: {
+              groupBy: { field: "region" },
+              y: "total",
+              agg: "sum",
+              where: [{ field: "region", op: "eq", value: { filter: "region" } }],
+            },
+          },
+        ],
+      },
+    },
+  })
+  expect([200, 201]).toContain(created.status)
+  const id = (created.body.data ?? created.body).id as string
+
+  await page.goto(`http://localhost:${env.ports[1]}/dashboard/${id}`)
+  await page.waitForSelector("[data-shell]", { timeout: 30_000 })
+  const revenue = page.getByTestId("dashboard-block-revenue")
+  await expect(revenue.getByTestId("block-metric-value")).toHaveText("42", { timeout: 20_000 })
+  await expect(page.getByTestId("dashboard-filter-value-region")).toHaveText("All")
+
+  // North only: the blocks read again with the value, and the link carries it.
+  const reread = page.waitForRequest(
+    (r) => r.url().includes("/blocks/revenue/data") && r.url().includes("f.region=north"),
+  )
+  await page.getByTestId("dashboard-filter-region").click()
+  await page.getByTestId("dashboard-filter-option-region-0").click()
+  await reread
+  await expect(revenue.getByTestId("block-metric-value")).toHaveText("10", { timeout: 20_000 })
+  await expect(page).toHaveURL(/f\.region=north/)
+
+  // The figure opens the rows it adds up, on the right, and a row opens its page.
+  await revenue.getByTestId("block-metric-drill").click()
+  const panel = page.getByTestId("dashboard-drill-panel")
+  await expect(panel).toBeVisible()
+  await expect(panel.getByTestId("dashboard-drill-row-0")).toContainText("Order f1")
+  await expect(panel.getByTestId("dashboard-drill-row-1")).toHaveCount(0)
+  await panel.getByTestId("dashboard-drill-open-0").click()
+  await expect(page).toHaveURL(/\/dashboards$/)
 })

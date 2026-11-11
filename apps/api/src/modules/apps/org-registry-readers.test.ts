@@ -66,6 +66,10 @@ const READERS: Record<string, string> = {
   "modules/approvals/result-notice.ts": JOB,
   "modules/apps/activation.ts": SETUP,
   "modules/apps/app-registries.ts": SETUP,
+  // Reads the tool registry of the app whose run just settled in this process
+  // (run-settled.ts), so that org is set up; the refresh job awaits awaitOrgApps.
+  "modules/apps/attention-store.ts":
+    "run settled: the org of a run this process just made, set up for that run",
   "modules/apps/bulk-agent-tools.ts": AGENT,
   "modules/apps/bulk-dispatch.ts": JOB,
   "modules/apps/catalog-derivations.ts": ALL_ORGS,

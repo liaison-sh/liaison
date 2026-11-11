@@ -190,6 +190,9 @@ export const KERNEL_JOBS: Readonly<Record<string, KernelJobSpec>> = {
   "search-reindex-full": { queueClass: "bulk", priority: YIELD },
   "search-embedding-backfill": { queueClass: "bulk", priority: YIELD },
   "search-near-duplicate-clusters": { queueClass: "bulk", priority: YIELD },
+  // Summaries of pending approvals that have none, a paced batch per job
+  // (modules/approvals/summary-backfill.ts).
+  "approval-summary-backfill": { queueClass: "bulk", priority: YIELD },
   "mailbox-purge": { queueClass: "bulk" },
   "imports-run": { queueClass: "bulk" },
   // One whole-org export archive (modules/export/org-archive/job.ts).

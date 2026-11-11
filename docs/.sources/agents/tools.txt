@@ -350,3 +350,7 @@ build-dashboard kernel skill -> apps/api/src/modules/agent/prompts/kernel/build-
 report_bug attachments param (up to 5 readable file ids) -> apps/api/src/modules/bug-reports/tool.ts:88-96
 Document tools: rules by attribute, writes wait for approval -> apps/api/src/modules/agent/tools/kernel-tools.ts:2580
 open_app opens the kernel Dashboards page -> apps/api/src/modules/agent/tools/open-targets.ts:110
+dashboards_history tool: read scope, no approval -> apps/api/src/modules/dashboards/tools.ts:595
+dashboards_snapshot tool: read scope, recipients -> apps/api/src/modules/dashboards/tools.ts:650
+dashboards_pdf tool: staged file only the caller reads -> apps/api/src/modules/dashboards/tools.ts:698 ; apps/api/src/modules/dashboards/export.ts:587
+dashboards_edit tool: resize, duplicate, description, revert ops -> apps/api/src/modules/dashboards/edit.ts:175

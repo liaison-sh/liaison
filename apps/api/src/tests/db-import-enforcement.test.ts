@@ -629,6 +629,10 @@ describe("db import enforcement", () => {
     // caller's org, before the handler's RLS session exists (personal vs org approval).
     "modules/dashboards/execute.ts",
     "modules/dashboards/tools.ts",
+    // A dashboard PDF is staged for the caller like a merged PDF (pdf/merge.ts): the quota check
+    // and the file row in a privileged tx pinned to the caller's org; a snapshot's recipient
+    // check reads each recipient's status and permissions, pinned to the org, to judge them.
+    "modules/dashboards/export.ts",
     "modules/pdf/registry-rehydrate.ts",
     // Message post exposes a `privileged` capability to handlers — system-level
     // writes scoped by org via withPrivilegedDb.

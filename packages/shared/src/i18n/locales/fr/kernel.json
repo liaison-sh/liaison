@@ -1003,7 +1003,9 @@
       "sales": "Ventes et CRM agentiques",
       "commerce": "Opérations e-commerce agentiques",
       "dev": "Sessions de développement agentiques",
-      "knowledge": "Connaissances d'entreprise agentiques"
+      "knowledge": "Connaissances d'entreprise agentiques",
+      "money": "Abonnements et paiements par IA",
+      "client": "Travail client par IA"
     },
     "needShort": {
       "support": "Support client",
@@ -1012,7 +1014,9 @@
       "sales": "Ventes et CRM",
       "commerce": "Commandes et expéditions",
       "dev": "Sessions de développement",
-      "knowledge": "Connaissances de l'entreprise"
+      "knowledge": "Connaissances de l'entreprise",
+      "money": "Abonnements et paiements",
+      "client": "Travail client"
     },
     "needDesc": {
       "support": "Un client écrit : une routine prépare la réponse, vous l'approuvez.",
@@ -1022,7 +1026,9 @@
       "commerce": "Une commande arrive : sa facture est émise, votre agent prépare l'expédition.",
       "dev": "Un agent de code travaille sur un ordinateur portable, et vous approuvez ce qu'il demande.",
       "knowledge": "Manuels, finances et procédures au même endroit : chaque agent ne lit que ce que la personne qui le sollicite peut ouvrir.",
-      "everything": "Les sept, l'un après l'autre."
+      "everything": "Les sept, l'un après l'autre.",
+      "money": "Un paiement par carte échoue : une routine rédige la note au client, vous l'approuvez.",
+      "client": "Un client demande plus : votre agent vérifie le contrat, puis rédige la réponse."
     },
     "needEverything": "Tout",
     "errTurnstile": "Nous n'avons pas pu vérifier ce navigateur. Rechargez la page et réessayez.",
@@ -1182,6 +1188,57 @@
       "continue": "Continuer à explorer",
       "close": "Fermer",
       "bannerLink": "Envie de Liaison pour votre entreprise ?"
+    },
+    "world": {
+      "saas": {
+        "companyFacts": "Entreprise fictive · Paris · 14 personnes",
+        "companyExample": "Ceci est une entreprise d'exemple : Tideform, qui édite un logiciel de planning pour les groupes d'hôtellerie-restauration. Votre propre espace contiendrait vos données.",
+        "companyAbout": "Tideform édite un logiciel de planning et de gestion des équipes pour les hôtels, les restaurants et les cantines, vendu par abonnement de 149 € à 1 450 € par mois. 169 clients paient par carte via Stripe, et quelques grands groupes paient par virement.",
+        "companyOps": {
+          "payments": {
+            "title": "Abonnements et paiements",
+            "body": "169 clients paient par carte via Stripe. L'agent Finance Desk surveille les paiements échoués et rédige la note ; Sara l'approuve."
+          },
+          "invoicing": {
+            "title": "Facturation",
+            "body": "Liaison émet chaque facture, sans aucun trou, y compris pour les groupes qui paient par virement."
+          },
+          "support": {
+            "title": "Support",
+            "body": "Les mails des clients arrivent dans Tickets. L'agent Support Desk rédige chaque réponse."
+          },
+          "sales": {
+            "title": "Ventes",
+            "body": "Les affaires de Tom sont sur un tableau. Une routine rédige les relances."
+          },
+          "product": {
+            "title": "Produit et messagerie",
+            "body": "L'équipe planifie le travail produit dans Projets et échange dans la messagerie."
+          },
+          "knowledge": {
+            "title": "Connaissances de l'entreprise",
+            "body": "Chaque agent ne lit que ce que la personne qu'il sert peut ouvrir."
+          }
+        },
+        "companyYou": "Vous la dirigez en tant que PDG, avec votre propre agent. Demandez-lui ce que vous demanderiez pour diriger l'entreprise, et regardez les équipes travailler.",
+        "companySimulated": "Seul le monde extérieur est simulé : aucun mail ne part, et le compte Stripe et ses paiements sont fictifs.",
+        "teamRole": {
+          "tom": "Ventes",
+          "elodie": "Responsable de comptes",
+          "ines": "Responsable du support",
+          "yann": "CTO",
+          "sara": "Finance",
+          "lucie": "Responsable produit",
+          "baptiste": "Développement",
+          "amel": "Développement",
+          "jonas": "Développement",
+          "clemence": "Support",
+          "nolan": "Support",
+          "maxime": "Ventes",
+          "rose": "Responsable du bureau"
+        },
+        "limitConnectors": "Le compte Stripe et ses paiements sont fictifs. Connecter un vrai compte est refusé. Les remboursements et les résiliations ne touchent que ce compte fictif."
+      }
     }
   },
   "deny": "Refuser",

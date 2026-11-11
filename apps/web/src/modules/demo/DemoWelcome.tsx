@@ -34,6 +34,7 @@ import { type Component, createEffect, createMemo, createSignal, For, on, Show }
 import { spaNavigate } from "~/framework/spa-navigate"
 import { sessionOrgId } from "~/modules/auth/auth-store"
 import { DemoByokPrompt } from "~/modules/demo/DemoByokPrompt"
+import { DemoExampleLine } from "~/modules/demo/DemoExampleLine"
 import {
   type DemoScenarioItem,
   demoScenarioQueue,
@@ -453,12 +454,7 @@ export const DemoWelcome: Component<{ quiet?: boolean }> = (props) => {
             </Show>
             {/* The first view inside the world: what it is, in one quiet line. */}
             <Show when={step() !== "startOver"}>
-              <p
-                data-testid="demo-welcome-example"
-                class="mx-1 mt-3 text-[12px] text-text-secondary"
-              >
-                {i18n.t("kernel.demo.companyExample")}
-              </p>
+              <DemoExampleLine class="mx-1 mt-3 text-[12px] text-text-secondary" />
             </Show>
           </div>
           <Show when={step() !== "startOver"}>

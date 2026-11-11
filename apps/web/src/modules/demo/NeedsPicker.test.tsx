@@ -4,11 +4,11 @@
 // from lg up, one line on what it shows); picked tiles show their rank;
 // "Everything" is set apart (inverted, with a "Select all" pill) and, once
 // every need is picked, reads as selected too.
-import { DEMO_WORLD_NEEDS, type DemoNeed } from "@liaison/shared"
+import { DEMO_WORLD_NEEDS, type DemoNeed, type DemoWorldId } from "@liaison/shared"
 import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library"
 import { afterEach, describe, expect, it } from "vitest"
 import { I18nProvider } from "~/modules/i18n/i18n-context"
-import { NeedsPicker } from "./NeedsPicker"
+import { NeedsPicker, needsMinutes } from "./NeedsPicker"
 
 afterEach(() => cleanup())
 
@@ -87,5 +87,48 @@ describe("NeedsPicker", () => {
     ))
     fireEvent.click(screen.getByTestId("demo-needs-all"))
     expect(seen).toEqual([[...DEMO_WORLD_NEEDS.products], []])
+  })
+})
+
+describe("NeedsPicker by world", () => {
+  const worlds: DemoWorldId[] = ["products", "saas", "studio"]
+
+  it("each world lists seven tiles with its own commerce seat and Everything picks those seven", () => {
+    for (const world of worlds) {
+      const seen: DemoNeed[][] = []
+      const { unmount } = render(() => (
+        <I18nProvider initialLocale="en">
+          <NeedsPicker world={world} value={[]} onChange={(next) => seen.push(next)} />
+        </I18nProvider>
+      ))
+      const listed = screen
+        .getAllByTestId(/^demo-needs-(?!list|name-|desc-|rank-|all)/)
+        .map((tile) => tile.getAttribute("data-testid")?.replace("demo-needs-", ""))
+      expect(listed).toEqual([...DEMO_WORLD_NEEDS[world]])
+      expect(listed).toHaveLength(7)
+      // Commerce's seat holds the world's own need, and no other world's.
+      const seat = DEMO_WORLD_NEEDS[world][4]
+      expect(screen.getByTestId(`demo-needs-${seat}`)).toBeTruthy()
+      for (const other of worlds.filter((w) => w !== world)) {
+        const foreign = DEMO_WORLD_NEEDS[other][4]
+        if (foreign !== seat) expect(screen.queryByTestId(`demo-needs-${foreign}`)).toBeNull()
+      }
+      expect(screen.getByTestId("demo-needs-all").textContent).toContain(
+        `about ${needsMinutes(DEMO_WORLD_NEEDS[world])} min`,
+      )
+      fireEvent.click(screen.getByTestId("demo-needs-all"))
+      expect(seen).toEqual([[...DEMO_WORLD_NEEDS[world]]])
+      unmount()
+    }
+  })
+
+  it("names the software world's own tile in the shared strings", () => {
+    render(() => (
+      <I18nProvider initialLocale="en">
+        <NeedsPicker world="saas" value={["money"]} onChange={() => {}} />
+      </I18nProvider>
+    ))
+    expect(screen.getByTestId("demo-needs-name-money").textContent).toBe("Subscriptions & payments")
+    expect(screen.getByTestId("demo-needs-money").getAttribute("aria-pressed")).toBe("true")
   })
 })

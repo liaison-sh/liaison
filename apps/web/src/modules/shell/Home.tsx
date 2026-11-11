@@ -39,6 +39,7 @@ import { cn } from "~/lib/cn"
 import { isHeldKept } from "~/modules/approvals/held-kept"
 import { userFromToken } from "~/modules/auth/auth-store"
 import { setFocusedDate } from "~/modules/calendar/calendar-store"
+import { DemoExampleLine } from "~/modules/demo/DemoExampleLine"
 import { englishT, useI18n } from "~/modules/i18n/i18n-context"
 import NotificationBanner from "~/modules/notifications/NotificationBanner"
 import { pluralFormFor } from "~/modules/projects/plural"
@@ -62,6 +63,7 @@ import {
 } from "~/modules/shell/attention-groups"
 import { formatRelativeTime, rowLocaleFrom } from "~/modules/shell/attention-row-format"
 import { attentionStore } from "~/modules/shell/attention-store"
+import { demoOrgSurfaces } from "~/modules/shell/branding-store"
 import HomeBriefCard from "~/modules/shell/HomeBriefCard"
 import HomeCard from "~/modules/shell/HomeCard"
 import {
@@ -394,6 +396,10 @@ const AttentionFeedView: Component<AttentionFeedViewProps> = (props) => {
             </span>
           </Show>
         </p>
+        {/* A demo visitor's workspace says once that the company is an example. */}
+        <Show when={demoOrgSurfaces()}>
+          <DemoExampleLine class="mt-1.5 text-[12px] text-text-secondary" />
+        </Show>
         <StandingInLine onShow={setHomeFilter} />
         <Show when={isPhone()}>
           <HomeSectionChips sections={sections()} />

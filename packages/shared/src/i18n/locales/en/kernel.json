@@ -1003,7 +1003,9 @@
       "sales": "Agentic sales & CRM",
       "commerce": "Agentic commerce operations",
       "dev": "Agentic dev sessions",
-      "knowledge": "Agentic company knowledge"
+      "knowledge": "Agentic company knowledge",
+      "money": "Agentic subscriptions & payments",
+      "client": "Agentic client work"
     },
     "needShort": {
       "support": "Customer support",
@@ -1012,7 +1014,9 @@
       "sales": "Sales & CRM",
       "commerce": "Orders & shipping",
       "dev": "Dev sessions",
-      "knowledge": "Company knowledge"
+      "knowledge": "Company knowledge",
+      "money": "Subscriptions & payments",
+      "client": "Client work"
     },
     "needDesc": {
       "support": "A customer writes in: a routine drafts the reply, you approve it.",
@@ -1022,7 +1026,9 @@
       "commerce": "An order arrives: its invoice is issued, your agent prepares the shipment.",
       "dev": "A coding agent works on a laptop, and you approve what it asks.",
       "knowledge": "Manuals, finance and playbooks in one place: each agent reads only what the person asking may open.",
-      "everything": "All seven, one after the other."
+      "everything": "All seven, one after the other.",
+      "money": "A card payment fails: a routine drafts the note to the customer, you approve it.",
+      "client": "A client asks for more: your agent checks the agreement, then drafts the answer."
     },
     "needEverything": "Everything",
     "errTurnstile": "We could not confirm this browser. Reload the page and try again.",
@@ -1182,6 +1188,57 @@
       "continue": "Keep exploring",
       "close": "Close",
       "bannerLink": "Want this for your company?"
+    },
+    "world": {
+      "saas": {
+        "companyFacts": "Fictional company · Paris · 14 people",
+        "companyExample": "This is an example company: Tideform, which makes rota software for hospitality groups. Your own workspace would hold your data.",
+        "companyAbout": "Tideform makes rota and shift planning software for hotels, restaurants and canteens, sold by subscription from €149 to €1,450 a month. 169 customers pay by card through Stripe, and a few larger groups pay by bank transfer.",
+        "companyOps": {
+          "payments": {
+            "title": "Subscriptions and payments",
+            "body": "169 customers pay by card through Stripe. The Finance Desk agent watches failed payments and drafts the note; Sara approves it."
+          },
+          "invoicing": {
+            "title": "Invoicing",
+            "body": "Liaison issues every invoice, with no gaps, including for the groups that pay by bank transfer."
+          },
+          "support": {
+            "title": "Support",
+            "body": "Customer mail lands in Tickets. The Support Desk agent drafts each reply."
+          },
+          "sales": {
+            "title": "Sales",
+            "body": "Tom's deals live on a board. A routine drafts the follow-ups."
+          },
+          "product": {
+            "title": "Product and chat",
+            "body": "The team plans product work in Projects and talks in Chat."
+          },
+          "knowledge": {
+            "title": "Company knowledge",
+            "body": "Each agent reads only what its person may open."
+          }
+        },
+        "companyYou": "You run it as the CEO, with your own agent. Ask it what you'd ask to run the company, and watch the desks work.",
+        "companySimulated": "Only the outside world is simulated: no mail leaves, and the Stripe account and its payments are stand-ins.",
+        "teamRole": {
+          "tom": "Sales",
+          "elodie": "Account Manager",
+          "ines": "Support Lead",
+          "yann": "CTO",
+          "sara": "Finance",
+          "lucie": "Product Manager",
+          "baptiste": "Developer",
+          "amel": "Developer",
+          "jonas": "Developer",
+          "clemence": "Support",
+          "nolan": "Support",
+          "maxime": "Sales",
+          "rose": "Office Manager"
+        },
+        "limitConnectors": "The Stripe account and its payments are stand-ins. Connecting a real account is refused. Refunds and cancellations act on the stand-in only."
+      }
     }
   },
   "deny": "Deny",

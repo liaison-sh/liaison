@@ -187,15 +187,16 @@ test("picking a period re-reads a block that follows the dashboard's range", asy
   await expect(page.getByTestId("dashboard-range-label")).toContainText("vs")
   await expect(page.getByTestId("dashboard-block-updated-revenue")).toBeVisible()
 
-  // Last year: the block reads again, for that year, and finds nothing.
+  // Last year: the block reads again, for that year, and finds no order (a sum of none is 0).
   const reread = page.waitForRequest(
     (r) => r.url().includes(`/blocks/revenue/data`) && r.url().includes("range=lastYear"),
   )
   await page.getByTestId("dashboard-range-trigger").click()
   await page.getByTestId("dashboard-range-preset-lastYear").click()
   await reread
-  await expect(revenue.getByTestId("block-metric-empty")).toContainText("No data between", {
-    timeout: 20_000,
-  })
+  await expect(revenue.getByTestId("block-metric-value")).toHaveText("0", { timeout: 20_000 })
+  await expect(page.getByTestId("dashboard-range-label")).toContainText(
+    String(new Date().getFullYear() - 1),
+  )
   await expect(page).toHaveURL(/range=lastYear&compare=lastYear/)
 })

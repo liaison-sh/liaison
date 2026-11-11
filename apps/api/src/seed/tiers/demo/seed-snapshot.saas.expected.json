@@ -196,8 +196,8 @@
     "digest": "8b59c9fe4bb9015b"
   },
   "kernel.pending_events": {
-    "rows": 483,
-    "digest": "93255a2a7e25ef9b"
+    "rows": 484,
+    "digest": "a46b67767bfce248"
   },
   "kernel.roles": {
     "rows": 37,
@@ -220,12 +220,12 @@
     "digest": "2cb3e9b8f4bcafac"
   },
   "kernel.thread_participants": {
-    "rows": 65,
-    "digest": "170cd2902b8ee52a"
+    "rows": 67,
+    "digest": "c737c60b36159437"
   },
   "kernel.threads": {
     "rows": 41,
-    "digest": "3796068290b12d0f"
+    "digest": "713d73f9442100df"
   },
   "kernel.user_dimension_grants": {
     "rows": 14,
@@ -240,8 +240,8 @@
     "digest": "44de98b9eed0c168"
   },
   "kernel.user_thread_state": {
-    "rows": 58,
-    "digest": "dd881351d68f3fb5"
+    "rows": 60,
+    "digest": "6f6fb8b7eec1ed46"
   },
   "kernel.users": {
     "rows": 14,

@@ -57,8 +57,10 @@ export const SAAS_THREAD_SPECS: DemoThreadSpecs = {
       key: "support-handover",
       title: SAAS_CHANNEL_TITLES.handover,
       creator: "ines",
-      participants: ["ines", "clemence", "nolan", "baptiste", "jonas"],
-      discoverable: true,
+      // Not discoverable: a conversation the owner has not joined cannot be read, and the
+      // demo's accounts layer seats the owner in every channel that is not a browsable one
+      // (like the developers' room). The founder is named so he holds a seat too.
+      participants: ["ines", "clemence", "nolan", "baptiste", "jonas", "yann"],
       topic: "Bugs and blocked customers handed to the developers",
       messages: [
         {

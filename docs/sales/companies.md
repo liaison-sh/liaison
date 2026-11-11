@@ -31,7 +31,7 @@ On a phone the page has three tabs: **Overview**, **Timeline** and **Discussion*
 
 ## The timeline
 
-The **Timeline** lists, newest first, what happened with the company's people and its deals: **Mail**, **Tickets**, **Invoicing**, **Calendar** meetings and **Deals** opened and closed. Each app answers for what you may read there. The filter lists only the apps that returned something; **All activity** clears it.
+The **Timeline** lists, newest first, what happened with the company's people and its deals: **Mail**, **Tickets**, **Invoicing** (documents issued, paid and credited, and the recurring schedules that bill them), **Calendar** meetings and **Deals** opened and closed. Each app answers for what you may read there. The filter lists only the apps that returned something; **All activity** clears it.
 
 If one app does not answer, the page says "<app> did not answer, so its activity is missing here. The rest is up to date." The page asks that app once more on its own a moment later, and its activity replaces the notice when it answers; **Retry** asks again by hand. For a company with many people, the page says it shows the most recently active people, and older deals are said to be missing from the timeline. **Show older activity** loads the next page.
 

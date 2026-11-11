@@ -41,3 +41,4 @@ Others see the dialog read only -> apps/web/src/modules/sharing/ShareDialog.tsx:
 A company nobody created stays visible to the organisation -> apps/api/src/modules/contacts/companies.ts:1944-1949 ; apps/api/src/db/migrations/0293_companies.sql:51
 merge moves recurring schedules and linked billing customers -> apps/api/src/modules/contacts/companies.ts:273
 Delete refused while a recurring invoice schedule not ended bills the company; Stripe customers and ended schedules lose the link -> apps/api/src/modules/contacts/companies.ts:824-837 ; apps/api/src/modules/contacts/companies.ts:878
+Invoicing timeline rows include the recurring schedules that bill the people -> bundled-apps/invoicing/src/activity.ts:172

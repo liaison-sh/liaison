@@ -134,6 +134,10 @@ const DENY_ALL_LEDGERS = new Set<string>([
   // Outside effects claimed by key (migration 0226): effect results, written
   // and read only by lib/effect-once.ts through the privileged pool.
   "kernel.effect_ledger",
+  // Verified webhook deliveries stored before their handler runs (migration
+  // 0287): payloads and headers, written and read only by
+  // modules/webhooks/inbox.ts through the privileged pool.
+  "kernel.webhook_inbox",
   // An operator's org deletions and the legal-retention archives they wrote
   // (migration 0236): instance level, they outlive the org (no org_id, the org
   // is deleted_org_id); read and written by modules/org/delete through the

@@ -300,3 +300,9 @@ export { timelineEntries } from "./timeline-entries"
 export { type TourProgressRow, tourProgress } from "./tour-progress"
 export { userPreferences } from "./user-preferences"
 export { userStatusEnum, users } from "./users"
+export {
+  WEBHOOK_INBOX_STATUSES,
+  type WebhookInboxRow,
+  type WebhookInboxStatus,
+  webhookInbox,
+} from "./webhook-inbox"

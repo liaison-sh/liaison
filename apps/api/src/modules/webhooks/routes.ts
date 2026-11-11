@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { createHash, timingSafeEqual } from "node:crypto"
 import { APP_DISABLED_CODE, ORG_SUSPENDED_CODE } from "@liaison/shared"
-import { and, asc, eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { type Context, Hono } from "hono"
 import { HTTPException } from "hono/http-exception"
 import type { AppEnv } from "~/app"
 import { withPrivilegedDb } from "~/db/privileged"
-import type { ActorContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
-import { apps, users } from "~/db/schema/kernel"
-import { enqueueAppJob } from "~/infra/jobs/jobs"
+import { apps } from "~/db/schema/kernel"
 import { withPinnedJobSlot } from "~/infra/jobs/pinned-jobs-gate"
 import { isManagedEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
@@ -29,11 +27,9 @@ import {
   type ConnectionSecretKeySource,
   decryptConnectionConfigValue,
 } from "~/modules/apps/connections/service"
-import { createAppContext } from "~/modules/apps/context"
 import { getInstallTrust } from "~/modules/apps/install-trust"
 import { APP_STATE_UNAVAILABLE_CODE, pathOrgAppState } from "~/modules/apps/org-apps"
 import { isBundleLoadError, isSandboxFault, loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { createSandboxRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { appRunHoldMs } from "~/modules/apps/usage/app-day-cap"
 import { writeAuditLog } from "~/modules/audit/service"
 import { orgSuspendedOrClosed } from "~/modules/cloud/billing-status"
@@ -45,6 +41,21 @@ import {
 import { ORG_DELETED_CODE } from "~/modules/org/purge/deleting"
 import { assertOrgAcceptsWrites } from "~/modules/org/transfer-state/gate"
 import { assertCustomAppWebhookRate } from "~/modules/webhooks/custom-app-webhook-limit"
+import {
+  classifyHandlerResult,
+  resolveWebhookUserActorId,
+  runWebhookHandler,
+  type WebhookRegistration,
+  webhookActorFor,
+} from "~/modules/webhooks/handler-run"
+import {
+  type ClaimedDelivery,
+  type InboxDelivery,
+  settleDeliveryQuietly,
+  storeDelivery,
+  wakeAfterSettle,
+  wakeReplay,
+} from "~/modules/webhooks/inbox"
 import { recordWebhookAccepted, recordWebhookRejected } from "~/modules/webhooks/ingest-health"
 import { deliveryBudget, executeManifestWebhook } from "~/modules/webhooks/manifest-execution"
 import { setUpOrgForInboundWebhook } from "~/modules/webhooks/org-setup"
@@ -57,40 +68,15 @@ import { createWebhookVerifyBridge } from "~/modules/webhooks/verify-bridge"
 
 export const webhookRoutes = new Hono<AppEnv>()
 
-// Webhook flow: receive POST -> check body size -> verify signature -> invoke handler
+// Webhook flow: receive POST -> check body size -> verify signature -> store the
+// delivery in the inbox (inbox.ts) -> invoke the handler -> settle the row.
 // If verification fails -> 401 (a forged/missing signature is failed
 // authentication; the b13 webhook-signature security contract asserts 401).
-// If the handler reports a transient failure -> propagate its
-// status (e.g. 5xx) so the provider retries, and release the replay key so the
-// retry re-reaches the handler.
+// If the handler reports a transient failure -> the inbox replays the delivery
+// with backoff, and its status (e.g. 5xx) reaches the provider so it retries
+// too; the replay key is released so that retry re-reaches the route.
 
 const MAX_WEBHOOK_BODY_SIZE = 1024 * 1024 // 1MB default (spec section 13)
-
-/**
- * U4.12 (CI→projects webhook): a webhook whose manifest entry sets
- * `requiresUserActor: true` needs its RLS session's `app.current_user_id` to
- * be a REAL user — some kernel-owned, user-scoped tables (e.g.
- * `kernel.thread_participants`, which `projects`' `createTask` writes to via
- * `kernel.threads`) have a `WITH CHECK (user_id =
- * current_setting('app.current_user_id')::uuid OR ...)` RLS policy that a
- * `SystemContext` actor (no user id, by design — a webhook's HMAC trust
- * boundary is not a specific human) can never satisfy. Resolve the org's
- * oldest ACTIVE user as the acting identity — the same "admin fallback until
- * personas are active" convention the ops provisioners already
- * use for RJ/DSP2/compliance tasks. Every OTHER webhook (monitoring/tickets/
- * shopify/boxtal/invoicing) never sets the flag and is unaffected.
- */
-async function resolveWebhookUserActorId(orgId: string): Promise<string | null> {
-  const [row] = await withPrivilegedDb(orgId, "webhook-user-actor-fallback", (db) =>
-    db
-      .select({ id: users.id })
-      .from(users)
-      .where(and(eq(users.orgId, orgId), eq(users.status, "active")))
-      .orderBy(asc(users.createdAt))
-      .limit(1),
-  )
-  return row?.id ?? null
-}
 
 /** Third-party deliveries dropped because their app is Off for the org (S19, D24). */
 let webhooksDroppedAppDisabled = 0
@@ -434,12 +420,13 @@ webhookRoutes.post("/:orgId/:appName/:endpointName", async (c) => {
   })
 })
 
-type WebhookRegistration = NonNullable<ReturnType<typeof webhookHandlers.get>>
+/** A delivery's inbox claim outlives the request ceiling by this much. */
+const INLINE_LEASE_MARGIN_MS = 120_000
 
 /**
  * Everything after a delivery's verification: replay claim, handler scopes, the
- * acting identity, the handler run in the background pool, status mapping and
- * retries, the audit row. Shared by the per-org endpoint (the app's verifier
+ * acting identity, the inbox row stored before the handler runs, the handler
+ * run in the background pool, status mapping and the replay, the audit row. Shared by the per-org endpoint (the app's verifier
  * accepted) and the server-level callbacks (cloud/cell-webhooks.ts: the kernel
  * verified the provider's signature once for the whole server).
  */
@@ -513,7 +500,7 @@ async function dispatchVerifiedWebhook(
       "Webhook verifier requested scopes beyond the app's grant; narrowed",
     )
   }
-  // requiresUserActor opt-in (see resolveWebhookUserActorId doc comment) —
+  // requiresUserActor opt-in (see resolveWebhookUserActorId, handler-run.ts) —
   // every existing webhook leaves this unset and keeps the SystemContext path.
   const webhookUserActorId = registration.requiresUserActor
     ? await resolveWebhookUserActorId(appOrgId)
@@ -525,33 +512,20 @@ async function dispatchVerifiedWebhook(
     )
     throw new HTTPException(503, { message: "No active user available to process this webhook" })
   }
-  const webhookActor: ActorContext = webhookUserActorId
-    ? {
-        actorType: "user",
-        userId: webhookUserActorId,
-        orgId: appOrgId,
-        scopes: handlerScopes,
-        dimensionGrants: { "*": ["*"] },
-      }
-    : {
-        actorType: "system",
-        orgId: appOrgId,
-        purpose: "webhook",
-        scopes: handlerScopes,
-      }
+  const webhookActor = webhookActorFor(appOrgId, handlerScopes, webhookUserActorId)
 
   // Lowercased inbound header dict — passed as the 3rd handler arg (the manifest
   // webhook signature is `(payload, ctx, headers)`; bundle code reads e.g.
-  // `x-shopify-webhook-id` for dedup) and persisted in the retry job payload so
-  // the kernel retry path can re-supply the same headers. Headers are lowercased
-  // + JSON-cloned so the sandbox sees a plain dict.
+  // `x-shopify-webhook-id` for dedup) and stored in the inbox so a replay
+  // re-supplies the same headers. Lowercased + JSON-cloned so the sandbox sees
+  // a plain dict.
   const headerDict: Record<string, string> = {}
   for (const [k, v] of c.req.raw.headers.entries()) {
     headerDict[k.toLowerCase()] = v
   }
 
-  // Release the replay claim so a provider retry (or the kernel retry job)
-  // re-reaches the handler. Called when the delivery did NOT durably succeed.
+  // Release the replay claim so a provider retry re-reaches the route. Called
+  // when the delivery did NOT durably succeed.
   const releaseReplayClaim = async () => {
     try {
       await redis.del(dedupeKey)
@@ -560,110 +534,98 @@ async function dispatchVerifiedWebhook(
     }
   }
 
+  const delivery: InboxDelivery = {
+    orgId: appOrgId,
+    appName,
+    endpointName,
+    deliveryHash: replayHash,
+    dedupTtlSeconds: normalizeReplayTtlSeconds(outcome.replayTtlSeconds),
+    payload,
+    headers: headerDict,
+    scopes: handlerScopes,
+  }
+
   // The org reached an app day cap (modules/apps/usage/app-day-cap.ts): the
-  // app's verify has run (above), the handler waits for the next UTC day as
-  // the kernel retry job holding the payload and headers, and the provider
-  // gets a 2xx so it neither retries nor drops the subscription.
+  // app's verify has run (above), the delivery is stored `held` in the inbox
+  // until the next UTC day, unrun, and the provider gets a 2xx so it neither
+  // retries nor drops the subscription.
   if (isManifestHandler(registration.handler)) {
     const holdMs = await appRunHoldMs({
       orgId: appOrgId,
       trusted: (registration.handler as ManifestHandlerRef).trusted === true,
     })
     if (holdMs !== null) {
+      let held: ClaimedDelivery | null
       try {
-        await enqueueAppJob(
-          "kernel",
-          "retry-webhook",
-          {
-            orgId: appOrgId,
-            appName,
-            endpointName,
-            payload,
-            headers: headerDict,
-            deliveryId: crypto.randomUUID(),
-          },
-          { delay: holdMs },
-        )
-      } catch (enqErr) {
+        held = await storeDelivery(delivery, { holdMs })
+      } catch (storeErr) {
         // Not held: release the claim and ask the provider to deliver again.
-        log.error({ enqErr, appName, endpointName }, "Failed to hold a capped webhook delivery")
+        log.error({ storeErr, appName, endpointName }, "Failed to hold a capped webhook delivery")
         await releaseReplayClaim()
         return c.json({ error: { message: "Webhook processing failed" } }, 503)
       }
+      if (!held) return success(c, { received: true, duplicate: true })
+      await wakeReplay(appOrgId, held.id, held.attempts, holdMs)
       log.info(
-        { appName, endpointName, payloadHash },
+        { appName, endpointName, payloadHash, inboxId: held.id },
         "Webhook held until the next UTC day: the org reached an app day cap",
       )
       return success(c, { received: true, held: true })
     }
   }
 
+  // Stored before the handler runs: from here a crash, a failure or a lost
+  // slot leaves the delivery in the inbox, which replays it (inbox.ts). The
+  // claim's lease outlives the request ceiling, so only a dead process lets it
+  // lapse.
+  let claimed: ClaimedDelivery | null
+  try {
+    claimed = await storeDelivery(delivery, {
+      claimLeaseMs: env.REQUEST_TIMEOUT_MS + INLINE_LEASE_MARGIN_MS,
+    })
+  } catch (storeErr) {
+    log.error({ storeErr, appName, endpointName }, "Failed to store a webhook delivery")
+    await releaseReplayClaim()
+    return c.json({ error: { message: "Webhook processing failed" } }, 503)
+  }
+  if (!claimed) {
+    log.warn({ replayHash, app: appName, endpoint: endpointName }, "Duplicate webhook rejected")
+    return success(c, { received: true, duplicate: true })
+  }
+  const inboxRow = claimed
+
+  // The delivery did not durably succeed: back to `pending` with its backoff,
+  // and the replay job woken for that time. Never changes the response.
+  const scheduleReplay = async (error: string) => {
+    await releaseReplayClaim()
+    await wakeAfterSettle(
+      inboxRow,
+      await settleDeliveryQuietly(inboxRow, { status: "failed", error }),
+    )
+  }
+
   let handlerResult: unknown
   try {
-    // Primary inbound webhook delivery runs the app's manifest handler inside
-    // this RLS transaction, which for Shopify (etc.) makes an external HTTP
-    // round-trip via ctx.fetch() while the connection sits "idle in
-    // transaction" for the whole executeInSandbox run. Draw from the dedicated
-    // background pool -- NOT the interactive request pool -- so a burst of
-    // inbound webhooks (e.g. a provider replay after an endpoint repoint, as at
-    // the 2026-07-08 cutover) can never starve MCP/HTTP/agent traffic into
-    // DbAcquireTimeoutError. Webhook retries (webhook-worker.ts) and
-    // event-subscription handlers already draw from "jobs"; the primary
-    // delivery was the one long-held-across-HTTP path still on the request pool.
+    // The handler runs in its own RLS transaction on the background pool
+    // (handler-run.ts), never the interactive request pool.
     //
     // A handler that declares a budget may hold that connection for up to
     // 29 s, against 5 s for the rest: it waits for a pinned slot first, as the
-    // retry job does (infra/jobs/pinned-jobs-gate.ts), so a burst of them cannot
+    // replay job does (infra/jobs/pinned-jobs-gate.ts), so a burst of them cannot
     // starve the jobs pool. The wait is bounded so the run still ends inside the
-    // request ceiling; past it the delivery goes to the retry job below, unrun.
+    // request ceiling; past it the delivery stays in the inbox for the replay, unrun.
     const budget = deliveryBudget(registration.timeoutMs, env.REQUEST_TIMEOUT_MS)
     const runDelivery = () =>
-      withRlsContext(
-        webhookActor,
-        async (tx) => {
-          if (isManifestHandler(registration.handler)) {
-            const handlerRef = registration.handler as ManifestHandlerRef
-            const manifest = registration._manifest ?? {
-              name: appName,
-              schema: {},
-              events: {},
-              connections: {},
-              network: {},
-            }
-            const bridge = createSandboxRpcBridge(
-              appName,
-              webhookUserActorId ?? "system",
-              appOrgId,
-              tx,
-              manifest,
-              handlerScopes,
-              webhookUserActorId ? "user" : "system",
-              undefined,
-              { actor: webhookActor },
-            )
-            const source = await loadBundle(handlerRef.bundlePath)
-            // Pass the hoisted header dict as the 3rd handler arg.
-            return executeManifestWebhook({
-              appName,
-              orgId: appOrgId,
-              // Inside the delivery's withRlsContext transaction.
-              holdsTx: true,
-              handlerRef,
-              bundleSource: source,
-              params: payload,
-              bridge,
-              extraArgs: [headerDict],
-              ...(budget ? { timeoutMs: budget.timeoutMs } : {}),
-            })
-          }
-          const ctx = createAppContext(appName, "system", appOrgId, tx)
-          return (registration.handler as (payload: unknown, ctx: any) => Promise<unknown>)(
-            payload,
-            ctx,
-          )
-        },
-        { pool: "jobs" },
-      )
+      runWebhookHandler({
+        registration,
+        appName,
+        orgId: appOrgId,
+        scopes: handlerScopes,
+        userActorId: webhookUserActorId,
+        payload,
+        headers: headerDict,
+        ...(budget ? { timeoutMs: budget.timeoutMs } : {}),
+      })
     handlerResult = budget
       ? await withPinnedJobSlot(
           `webhook:${appName}`,
@@ -673,86 +635,51 @@ async function dispatchVerifiedWebhook(
       : await runDelivery()
   } catch (err) {
     // The handler threw (vs. returning a status). Treat as transient: release
-    // the replay claim and schedule the kernel retry. Surface 500 so providers
-    // that key retries on the HTTP status (Shopify) also re-deliver.
+    // the replay claim and leave the delivery to the inbox replay. Surface 500
+    // so providers that key retries on the HTTP status (Shopify) also
+    // re-deliver; a redelivery takes the waiting row over and runs it then.
     log.error({ err, appName, endpointName }, "Webhook handler threw -- scheduling retry")
-    await releaseReplayClaim()
-    // Best-effort: a retry-queue hiccup must NOT override the HTTP status the
-    // provider keys re-delivery on (the retriable 5xx below already triggers
-    // re-delivery, which re-runs the handler). Never let it surface as a 500.
-    try {
-      await enqueueAppJob("kernel", "retry-webhook", {
-        orgId: appOrgId,
-        appName,
-        endpointName,
-        payload,
-        headers: headerDict,
-        // The retry's key in the effect ledger (webhook-worker.ts): a retry
-        // re-run after a crash or a hand-back does not apply it twice.
-        deliveryId: crypto.randomUUID(),
-      })
-    } catch (enqErr) {
-      log.error({ enqErr, appName, endpointName }, "Failed to schedule webhook retry (best-effort)")
-    }
+    await scheduleReplay(err instanceof Error ? err.message : String(err))
     return c.json({ error: { message: "Webhook handler error" } }, 500)
   }
 
-  // Manifest webhook handlers report success/failure via a returned
-  // `{ status, body? }` (they do NOT throw on transient downstream failure —
-  // e.g. an emit/DB error returns `{ status: 503 }`). The route MUST honor that
-  // status: a 5xx (or 408/429, or any other non-2xx that is not a 4xx
-  // rejection) is a transient failure where the side effect did not durably complete, so release the replay claim and propagate the status so
-  // the provider retries. Handlers that return nothing (legacy `Promise<void>`)
-  // are treated as success.
-  const handlerStatus = extractHandlerStatus(handlerResult)
+  const handled = classifyHandlerResult(handlerResult)
   // A 4xx is the handler REJECTING the delivery (malformed envelope, unknown
   // value, auth mismatch): nothing was written and re-sending the same payload
   // can only fail the same way. Answer that status with the handler's own
-  // message and do NOT retry. 408/429 are the transient 4xx and keep the retry
-  // path below. The replay claim is released so a corrected re-send is not
-  // short-circuited as a duplicate.
-  if (handlerStatus !== null && isPermanentRejection(handlerStatus)) {
+  // message and do NOT retry. The replay claim is released and the row settled
+  // `rejected`, so a corrected re-send is not short-circuited as a duplicate.
+  if (handled.kind === "rejected") {
     log.warn(
-      { appName, endpointName, payloadHash, status: handlerStatus },
+      { appName, endpointName, payloadHash, status: handled.status },
       "Webhook handler rejected the delivery -- not retrying",
     )
     await releaseReplayClaim()
-    return new Response(
-      JSON.stringify({ error: { message: extractRejectionMessage(handlerResult) } }),
-      { status: handlerStatus, headers: { "content-type": "application/json" } },
-    )
+    await settleDeliveryQuietly(inboxRow, { status: "rejected", error: handled.message })
+    return new Response(JSON.stringify({ error: { message: handled.message } }), {
+      status: handled.status,
+      headers: { "content-type": "application/json" },
+    })
   }
-  if (handlerStatus !== null && (handlerStatus < 200 || handlerStatus >= 300)) {
+  // A 5xx (or 408/429, or another non-2xx) is a transient failure where the
+  // side effect did not durably complete: the inbox replays it, and the status
+  // reaches the provider so it retries as well.
+  if (handled.kind === "transient") {
     log.warn(
-      { appName, endpointName, payloadHash, status: handlerStatus },
+      { appName, endpointName, payloadHash, status: handled.status },
       "Webhook handler reported non-2xx -- scheduling retry",
     )
-    await releaseReplayClaim()
-    // Best-effort retry scheduling — see note above; a queue failure must not
-    // turn the intended retriable 5xx into a 500.
-    try {
-      await enqueueAppJob("kernel", "retry-webhook", {
-        orgId: appOrgId,
-        appName,
-        endpointName,
-        payload,
-        headers: headerDict,
-        // The retry's key in the effect ledger (webhook-worker.ts): a retry
-        // re-run after a crash or a hand-back does not apply it twice.
-        deliveryId: crypto.randomUUID(),
-      })
-    } catch (enqErr) {
-      log.error({ enqErr, appName, endpointName }, "Failed to schedule webhook retry (best-effort)")
-    }
+    await scheduleReplay(`handler returned ${handled.status}`)
     // Coerce to a retriable 5xx so the provider re-delivers (Shopify only
     // retries on 5xx/timeout). Preserve an explicit 5xx the handler chose.
-    const responseStatus = handlerStatus >= 500 ? handlerStatus : 503
+    const responseStatus = handled.status >= 500 ? handled.status : 503
     return new Response(JSON.stringify({ error: { message: "Webhook processing failed" } }), {
       status: responseStatus,
       headers: { "content-type": "application/json" },
     })
   }
 
+  await settleDeliveryQuietly(inboxRow, { status: "done" })
   log.info({ appName, endpointName, payloadHash }, "Webhook processed successfully")
   // Audit write is best-effort: a failure here must not roll back the already-
   // committed delivery or change the HTTP response the provider receives.
@@ -780,58 +707,7 @@ async function dispatchVerifiedWebhook(
   // The handler's own JSON object body reaches the sender (e.g. what the
   // delivery did); a handler that returns no body, or a non-JSON one, keeps the
   // default acknowledgement.
-  return success(c, extractHandlerJsonBody(handlerResult) ?? { received: true })
-}
-
-const MAX_REJECTION_MESSAGE_LENGTH = 500
-
-function isPermanentRejection(status: number): boolean {
-  return status >= 400 && status < 500 && status !== 408 && status !== 429
-}
-
-/** The handler's rejection text (its `body` string), bounded; a generic message when it gave none. */
-function extractRejectionMessage(result: unknown): string {
-  if (result && typeof result === "object" && "body" in result) {
-    const body = (result as { body: unknown }).body
-    if (typeof body === "string" && body.trim().length > 0) {
-      return body.trim().slice(0, MAX_REJECTION_MESSAGE_LENGTH)
-    }
-  }
-  return "Webhook rejected"
-}
-
-/**
- * The handler's 2xx body when it is a JSON object (a JSON-encoded string, the
- * manifest handler shape, or a plain object). Anything else yields `null`.
- */
-function extractHandlerJsonBody(result: unknown): Record<string, unknown> | null {
-  if (!result || typeof result !== "object" || !("body" in result)) return null
-  let body: unknown = (result as { body: unknown }).body
-  if (typeof body === "string") {
-    try {
-      body = JSON.parse(body)
-    } catch {
-      return null
-    }
-  }
-  if (body && typeof body === "object" && !Array.isArray(body)) {
-    return body as Record<string, unknown>
-  }
-  return null
-}
-
-/**
- * Extract a numeric HTTP-like status from a manifest webhook handler's return
- * value. Manifest handlers return `{ status: number, body?: string }`; legacy
- * void handlers return `undefined`. Returns `null` when no status is present
- * (treated as success by the caller).
- */
-function extractHandlerStatus(result: unknown): number | null {
-  if (result && typeof result === "object" && "status" in result) {
-    const status = (result as { status: unknown }).status
-    if (typeof status === "number" && Number.isFinite(status)) return status
-  }
-  return null
+  return success(c, handled.body ?? { received: true })
 }
 
 // Subscription handshake used by Meta (Facebook / Instagram) webhooks: before it

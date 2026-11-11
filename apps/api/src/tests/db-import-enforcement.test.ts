@@ -298,6 +298,13 @@ describe("db import enforcement", () => {
     // claims and results are written through the privileged pool for the
     // org whose effect it is.
     "lib/effect-once.ts",
+    // The webhook inbox: kernel.webhook_inbox is deny-all to the request
+    // roles; deliveries are stored, claimed and settled through the
+    // privileged pool for the org they were delivered to.
+    "modules/webhooks/inbox.ts",
+    // A webhook handler's fallback acting user (requiresUserActor): the org's
+    // oldest active user, read by the delivery's own org id.
+    "modules/webhooks/handler-run.ts",
     // The load harness: reads (and, for its own signed paths, sets) one org's
     // `settings.loadHarness` flag, matched on that org's id.
     "lib/load-harness.ts",

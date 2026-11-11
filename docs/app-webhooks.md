@@ -16,7 +16,7 @@ Manifest-driven apps that accept external webhooks declare two bundle exports pe
 
 Webhook keys must match `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`: lowercase alphanumerics and hyphens only, no slashes.
 
-A handler that makes several provider calls can declare a budget, `timeoutMs` (1000 to 29000), next to `bodyLimitBytes`. Its run is stopped at that budget, on the delivery and on the retry alike. `LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS` caps it, as it caps a tool's. Without one the handler has the sandbox default (5 s in production). A delivery with a budget waits for a free slot on the background connections first, within what the budget leaves of `REQUEST_TIMEOUT_MS`; if none frees up, it is answered `500` and goes to the retry job, unrun.
+A handler that makes several provider calls can declare a budget, `timeoutMs` (1000 to 29000), next to `bodyLimitBytes`. Its run is stopped at that budget, on the delivery and on the retry alike. `LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS` caps it, as it caps a tool's. Without one the handler has the sandbox default (5 s in production). A delivery with a budget waits for a free slot on the background connections first, within what the budget leaves of `REQUEST_TIMEOUT_MS`; if none frees up, it is answered `500` and stays in the inbox for a replay, unrun.
 
 ## Verifier signature
 
@@ -52,9 +52,26 @@ The kernel runs, in strict order:
 1. Body-size check (default 1 MiB; override via `bodyLimitBytes` in the manifest, range 1 KiB to 10 MiB).
 2. `verify(request)` resolved against the built bundle's named export (sandboxed for installed apps; in-process for in-tree trusted apps).
 3. On an unrecognized return value or a thrown error: HTTP 401, no handler invoked.
-4. On accept: replay-protection lookup; if first delivery, the topic handler runs under the same bundle. On reject or drop, the verifier's own status (and, for reject, `retry-after`) is returned instead of running the handler.
+4. On accept: replay-protection lookup; if first delivery, it is stored in the webhook inbox, then the topic handler runs under the same bundle. On reject or drop, the verifier's own status (and, for reject, `retry-after`) is returned instead of running the handler.
 
-Before step 1, a delivery under an org that may not see the app (another organization's custom app) is answered `404`, like an unknown endpoint. A delivery to an organization's custom app past its budget (120 a minute per organization and app) is answered `429` with `Retry-After` and code `custom_app_rate_limited`, before its `verify` runs. A delivery for an org whose app is Off, an org being deleted, or (managed instances) an org suspended or closed for billing is answered `200` with `{ "ok": true, "dropped": "<code>" }` and no handler runs, so the provider keeps the subscription. A suspended org's deliveries are not replayed after it resumes. While an organization is being moved to another server, its deliveries are answered `503` with `Retry-After` and code `org_moving`, and no handler runs: providers that retry deliver again once the move is over.
+### The webhook inbox
+
+Every accepted delivery is written to the inbox (`kernel.webhook_inbox`) before its handler runs, with its payload, its lowercased headers and the handler's scopes (`modules/webhooks/inbox.ts`). What happens next depends on the handler:
+
+- It succeeds (2xx, or returns nothing): the delivery is marked done and its payload and headers are cleared.
+- It returns a 4xx other than 408 or 429: the delivery is refused, not retried; the status and the handler's message go back to the sender.
+- It throws, returns another status, or cannot get a slot in time: the sender gets a 5xx, and the inbox replays the delivery with the `webhook-inbox-replay` job, calling the handler the same way (same payload, headers and scopes). Retries wait 5 s, 30 s, 2 min, 10 min, 30 min, 1 h, then 3 h; after 8 attempts the delivery is marked dead.
+- The server stops before the handler finishes: the delivery's claim lapses (`REQUEST_TIMEOUT_MS` plus 2 minutes) and the `webhook-inbox-sweep` job, every minute, replays it.
+
+A second delivery with the same replay key is not processed again while the verifier's replay window (`replayTtlSeconds`, default 24 h) lasts, even if the replay lookup missed it. A redelivery of a delivery that is waiting for a retry, was refused or is dead runs it at once. When the app is turned Off before a replay, the replay is dropped.
+
+Done and refused deliveries are deleted 2 days after their replay window; dead ones, which keep their payload for diagnosis, after 30 days (`webhook-inbox-retention`). A deleted organization's deliveries go with it.
+
+A handler may therefore see a delivery more than once (a replay after a server stopped mid-run): keep dedup on the provider's own event id.
+
+On upgrade from a version that kept failed deliveries as delayed `retry-webhook` jobs, those jobs are moved into the inbox when the server starts; one that was already about to run still runs as before.
+
+Before step 1, a delivery under an org that may not see the app (another organization's custom app) is answered `404`, like an unknown endpoint. A delivery to an organization's custom app past its budget (120 a minute per organization and app) is answered `429` with `Retry-After` and code `custom_app_rate_limited`, before its `verify` runs. A delivery for an org that has reached an app day cap (see [Limit an organization](provisioning-cli.md#limit-an-organization)) runs its `verify`, then waits in the inbox until the next UTC day, unrun, and is answered `200` with `{ "received": true, "held": true }`. A delivery for an org whose app is Off, an org being deleted, or (managed instances) an org suspended or closed for billing is answered `200` with `{ "ok": true, "dropped": "<code>" }` and no handler runs, so the provider keeps the subscription. A suspended org's deliveries are not replayed after it resumes. While an organization is being moved to another server, its deliveries are answered `503` with `Retry-After` and code `org_moving`, and no handler runs: providers that retry deliver again once the move is over.
 
 ## Server-level callbacks (managed edition)
 

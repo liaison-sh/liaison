@@ -735,7 +735,7 @@ async function buildKernelAgentTools(orgId: string): Promise<void> {
     appName: "kernel",
     name: "memory_create",
     description:
-      "Create a memory file at <type>/<slug>.md (user, feedback, project or reference). ONLY when the user asks you to remember something or corrects how you work; never as part of a task, never for data an app holds (contacts, orders, prices).",
+      "Create a memory file at <type>/<slug>.md (user, feedback, project or reference). ONLY when the user asks you to remember something or corrects how you work; never during a task, never for an app's data or settings (prices, who bills what).",
     requiredScopes: ["kernel:agent:memory"],
     approvalImpact: "internal",
     trustBoundary: "user",

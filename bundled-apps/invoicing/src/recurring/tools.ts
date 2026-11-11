@@ -9,6 +9,8 @@
 import { civilDateOf, type TimeSurface } from "../issue-date"
 import { billsOtherOf, checkIssuerGuard } from "../issuer-guard"
 import type { ErrorEnvelope, MutationsCtx } from "../mutations/shared"
+import { SCHEDULE_PAUSED } from "./end-schedule"
+import { type EditCtx, logRunEdit, stageRunCardAfterRemoval } from "./restage"
 import {
   type Cadence,
   datesFrom,
@@ -412,15 +414,57 @@ export async function recurringSchedulePause(
     paused_until: input.until ?? null,
     version: current.version + 1,
   })
+  const leftOut = await leaveOutOpenRows(ctx, current.id)
+  const runNote = leftOut > 0
+    ? ` Its row in the open month-end run is left out (note "${SCHEDULE_PAUSED}"), so approving the run does not issue it; resuming does not put it back (drafts_update with put_back does).`
+    : ""
   return {
     status: "completed",
     id: current.id,
     scheduleStatus: "paused",
     until: input.until ?? null,
-    message: input.until
-      ? `Schedule ${current.id} is paused until ${input.until}. No draft is made while it is paused, and the days inside the pause are not billed afterwards.`
-      : `Schedule ${current.id} is paused and bills nothing until someone resumes it with recurring_schedule_update status active.`,
+    message:
+      (input.until
+        ? `Schedule ${current.id} is paused until ${input.until}. No draft is made while it is paused, and the days inside the pause are not billed afterwards.`
+        : `Schedule ${current.id} is paused and bills nothing until someone resumes it with recurring_schedule_update status active.`) + runNote,
   }
+}
+
+/** Row states of a month-end run that can still become an invoice. */
+const OPEN_ROW_STATES = new Set(["ready", "needs_fix", "approved", "waiting_reapproval"])
+
+/**
+ * A pause reaches the month-end run already drafted: the schedule's rows that are not issued yet
+ * are left out (their drafts kept, so a person can put one back), and each run's card follows.
+ * Returns how many rows were left out.
+ */
+async function leaveOutOpenRows(ctx: RecurringCtx, scheduleId: string): Promise<number> {
+  const items = (await ctx.db.findMany("recurring_run_items", { where: { schedule_id: scheduleId }, limit: 500 })) as Array<Record<string, unknown>>
+  const runs = new Set<string>()
+  let leftOut = 0
+  for (const item of items) {
+    if (!OPEN_ROW_STATES.has(String(item.state))) continue
+    const draft = (await ctx.db.findOne("documents", String(item.document_id))) as Record<string, unknown> | null
+    if (draft && draft.status !== "draft") continue
+    const notes = typeof item.note === "string" && item.note ? item.note.split(" · ") : []
+    if (!notes.includes(SCHEDULE_PAUSED)) notes.push(SCHEDULE_PAUSED)
+    await ctx.db.update("recurring_run_items", String(item.id), { state: "left_out", approved_hash: null, send_grant: null, note: notes.join(" · ") })
+    if (draft) {
+      await logRunEdit(ctx as EditCtx, String(draft.id), {
+        kind: "take_out",
+        fields: [{ field: "state", from: item.state, to: "left_out" }],
+        applies: "this_month",
+      })
+    }
+    runs.add(String(item.run_id))
+    leftOut += 1
+  }
+  // The card waiting on each run drops the row; without the approval surface (a bare ctx) the
+  // run's next job restages it.
+  if ("requestApproval" in ctx && typeof (ctx as Partial<EditCtx>).requestApproval === "function") {
+    for (const runId of runs) await stageRunCardAfterRemoval(ctx as EditCtx, runId)
+  }
+  return leftOut
 }
 
 /**

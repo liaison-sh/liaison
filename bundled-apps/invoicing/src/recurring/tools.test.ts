@@ -6,6 +6,7 @@
 import { describe, expect, test } from "bun:test"
 import type { CivilTime } from "../issue-date"
 import { createMockDb, type MockDb } from "../test-db"
+import { cardItems } from "./run-card"
 import { weekdayOf } from "./schedule"
 import {
   type ScheduleCreateInput,
@@ -26,13 +27,17 @@ function civilOf(date: string, zone: string): CivilTime {
   return { date, year: y, month: m, day: d, hour: 8, minute: 0, weekday: weekdayOf(date), zone }
 }
 
-function makeCtx(today: string, opts?: { approvalDecider?: string; issuerZone?: string; extra?: Array<Record<string, unknown>> }) {
+function makeCtx(
+  today: string,
+  opts?: { approvalDecider?: string; issuerZone?: string; extra?: Array<Record<string, unknown>>; seed?: Record<string, Array<Record<string, unknown>>> },
+) {
   const db = createMockDb({
     seed: {
       issuer_profiles: [
         { id: ISSUER, legal_name: "Maison Nord SARL", country: "FR", default_currency: "EUR", default_language: "fr", timezone: opts?.issuerZone ?? "Europe/Paris" },
       ],
       ...(opts?.extra ? { recurring_schedules: opts.extra } : {}),
+      ...(opts?.seed ?? {}),
     },
   })
   const writes: string[] = []
@@ -242,6 +247,93 @@ describe("pausing", () => {
     expect(await draftCandidates(ctx, "2027-06-30")).toEqual([])
     await recurringScheduleUpdate(ctx, { id: "sched-1", status: "active" })
     expect(db.__all("recurring_schedules")[0]).toMatchObject({ status: "active", next_issue_on: "2026-12-31" })
+  })
+
+  // A pause during an open month-end run: the schedule's row must not stay ready, or approving
+  // the run would still issue that customer's invoice.
+  test("a pause takes the schedule's row out of an open month-end run, saying why, and leaves issued rows alone", async () => {
+    const draft = (id: string, status = "draft") => ({ id, type: "invoice", status, counterparty_name: "Atelier Sud", currency: "EUR" })
+    const item = (id: string, runId: string, documentId: string, state: string, extra: Record<string, unknown> = {}) => ({
+      id,
+      run_id: runId,
+      source: "schedule",
+      schedule_id: "sched-1",
+      schedule_version: 1,
+      period_key: id,
+      period_start: "2026-12-01",
+      period_end: "2026-12-31",
+      document_id: documentId,
+      position: 0,
+      state,
+      ...extra,
+    })
+    const { ctx, db } = makeCtx("2026-12-30", {
+      extra: [active()],
+      seed: {
+        recurring_runs: [
+          { id: "run-nov", issuer_profile_id: ISSUER, issue_on: "2026-11-30", status: "issued", period_label: "November 2026" },
+          { id: "run-dec", issuer_profile_id: ISSUER, issue_on: "2026-12-31", status: "drafted", period_label: "December 2026" },
+        ],
+        recurring_run_items: [
+          item("item-nov", "run-nov", "doc-nov", "issued", { issued_number: "F-2026-0101" }),
+          item("item-dec", "run-dec", "doc-dec", "ready", { note: "Ask for the PO number" }),
+        ],
+        documents: [draft("doc-nov", "issued"), draft("doc-dec")],
+        document_lines: [{ id: "line-dec", document_id: "doc-dec", position: 0, description: "Retainer", qty: 1, unit_price_minor: 150000, vat_bp: 2000 }],
+      },
+    })
+    const res = await recurringSchedulePause(ctx, { id: "sched-1" })
+    expect(res).toMatchObject({ status: "completed", scheduleStatus: "paused" })
+    const byId = new Map(db.__all("recurring_run_items").map((r) => [r.id, r]))
+    expect(byId.get("item-dec")).toMatchObject({ state: "left_out", approved_hash: null })
+    expect(String(byId.get("item-dec")?.note)).toContain("Schedule paused")
+    expect(String(byId.get("item-dec")?.note)).toContain("Ask for the PO number")
+    expect(byId.get("item-nov")).toMatchObject({ state: "issued", issued_number: "F-2026-0101" })
+    await expect(cardItems(ctx, "run-dec")).resolves.toMatchObject({ items: [] })
+    expect(res.status === "completed" ? res.message : "").toContain("left out")
+  })
+
+  test("a pause also takes out a row already approved but not yet issued", async () => {
+    const { ctx, db } = makeCtx("2026-12-30", {
+      extra: [active()],
+      seed: {
+        recurring_runs: [{ id: "run-dec", issuer_profile_id: ISSUER, issue_on: "2026-12-31", status: "approved", period_label: "December 2026" }],
+        recurring_run_items: [
+          {
+            id: "item-dec",
+            run_id: "run-dec",
+            source: "schedule",
+            schedule_id: "sched-1",
+            period_key: "2026-12",
+            period_start: "2026-12-01",
+            period_end: "2026-12-31",
+            document_id: "doc-dec",
+            position: 0,
+            state: "approved",
+            approved_hash: "h1",
+            send_grant: "g1",
+          },
+        ],
+        documents: [{ id: "doc-dec", type: "invoice", status: "draft", counterparty_name: "Atelier Sud" }],
+      },
+    })
+    await recurringSchedulePause(ctx, { id: "sched-1", until: "2027-02-01" })
+    expect(db.__all("recurring_run_items")[0]).toMatchObject({ state: "left_out", approved_hash: null, send_grant: null, note: "Schedule paused" })
+  })
+
+  test("a paused schedule checked before the pause writes nothing to its run", async () => {
+    const { ctx, writes } = makeCtx("2026-12-30", {
+      extra: [active()],
+      seed: {
+        recurring_runs: [{ id: "run-dec", issuer_profile_id: ISSUER, issue_on: "2026-12-31", status: "drafted", period_label: "December 2026" }],
+        recurring_run_items: [
+          { id: "item-dec", run_id: "run-dec", source: "schedule", schedule_id: "sched-1", period_key: "2026-12", period_start: "2026-12-01", period_end: "2026-12-31", document_id: "doc-dec", position: 0, state: "ready" },
+        ],
+        documents: [{ id: "doc-dec", type: "invoice", status: "draft", counterparty_name: "Atelier Sud" }],
+      },
+    })
+    await recurringSchedulePause(ctx, { id: "sched-1" }, true)
+    expect(writes).toEqual([])
   })
 
   test("pausing a paused schedule writes nothing and says it was already paused", async () => {

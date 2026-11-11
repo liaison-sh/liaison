@@ -449,7 +449,7 @@ describe("editing a month-end run on the real kernel", () => {
     const items = await itemsOf(fx.runId)
     // Before the decision: one row needs a fix (no address), one is taken out.
     const [fixme, out] = [String(items[0]?.document_id), String(items[1]?.document_id)]
-    await sql`UPDATE app_invoicing.documents SET counterparty_address = NULL WHERE id = ${fixme}`
+    await sql`UPDATE app_invoicing.documents SET counterparty_address = NULL, billing_line1 = NULL WHERE id = ${fixme}`
     await call("drafts_update", { ...(await asRead(fixme)), patch: { notes: "Needs address" } })
     expect((await itemsOf(fx.runId))[0]?.state).toBe("needs_fix")
     await call("drafts_discard", { draft_id: out, applies: "this_month" })

@@ -791,8 +791,10 @@ export async function handleCompanyTimeline(
   if (!target) {
     return fail("invalid_params", "Nothing was read. Pass companyId or contactId.")
   }
+  // Always the person: the call's provenance (agent, mcp) is not a row-security actor, and a
+  // non-person actor would read with every dimension.
   const actor = {
-    actorType: ctx.actorType ?? "user",
+    actorType: "user",
     userId: ctx.userId,
     orgId: ctx.orgId,
     scopes: ctx.scopes ?? [],

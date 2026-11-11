@@ -563,9 +563,35 @@ export const DEMO_FIXED_ORDER = {
   daysAgo: 12,
 } as const
 
+/**
+ * A world's company: what an invoice, a signature block, the mail footer or an
+ * About page states about it. Every world pack fills the same fields.
+ */
+export interface DemoCompany {
+  readonly name: string
+  readonly legalName: string
+  /** All-zero body, like every declared VAT number in a pack. */
+  readonly vat: string
+  readonly about: string
+  readonly addressLine1: string
+  readonly postalCode: string
+  readonly city: string
+  /** ISO 3166-1 alpha-2. */
+  readonly country: string
+  /** All-zero body: never a payable account. */
+  readonly iban: string
+  readonly swiftBic: string
+  readonly bankName: string
+  readonly supportEmail: string
+  readonly billingEmail: string
+  readonly salesEmail: string
+  readonly websiteUrl: string
+  readonly defaultCurrency: string
+}
+
 /** The whole world in one value, so a seeder takes a single argument. */
 export interface DemoWorld {
-  company: typeof DEMO_COMPANY
+  company: DemoCompany
   catalog: DemoSku[]
   team: DemoPerson[]
   dealers: DemoDealer[]

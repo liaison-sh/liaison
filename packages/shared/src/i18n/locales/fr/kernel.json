@@ -1028,6 +1028,7 @@
     "errTurnstile": "Nous n'avons pas pu vérifier ce navigateur. Rechargez la page et réessayez.",
     "errDisposable": "Cette adresse est jetable. Utilisez une adresse que vous consultez.",
     "errDomainCap": "Le nombre maximal de démos confirmées avec ce domaine est atteint pour aujourd'hui. Réessayez demain, ou utilisez une autre adresse.",
+    "needsNotInWorld": "Aucun des sujets choisis ne fait partie de la démo de cette entreprise. Choisissez au moins un des sujets proposés.",
     "verifyTitle": "Confirmez votre mail pour que les agents puissent travailler",
     "verifyBody": "Nous avons envoyé un code à 6 chiffres à {{email}}. Collez-le ici, ou ouvrez le lien de ce mail.",
     "verifyYourAddress": "votre adresse",

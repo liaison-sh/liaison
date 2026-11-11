@@ -22,7 +22,9 @@ import { sql } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import { hashPassword, verifyPassword } from "~/lib/crypto"
 import { env } from "~/lib/env"
+import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { DEMO_REVIEWER_EMAIL, reservedOwner } from "~/modules/demo/demo-seeder"
+import { findOrgIdBySlug } from "~/seed/factories/org/org"
 import { runSeedDemoCli, type SeedDemoWorldOptions, type SeedDemoWorldResult } from "./seed-demo"
 import { type SeedDemoOrgResult, seedDemoOrg } from "./seed-org"
 
@@ -229,5 +231,45 @@ describe("demo:seed, the CLI", () => {
       { seedWorld: stubWorld },
     )
     expect(seen.at(-1)?.personaPassword).toBe("literal-pw-1")
+  })
+})
+
+describe("demo:seed --reset on a private box (demo mode off)", () => {
+  const PRIVATE_SLUG = `${ORG_SLUG}-private-${Date.now().toString(36)}`
+
+  beforeAll(() => DemoModeTestAccess.set(false))
+  afterAll(() => DemoModeTestAccess.set(null))
+
+  it("deletes the visitor org an earlier seed made and seeds it fresh, with no content reset", async () => {
+    // An earlier world seed's org: it carries the demo marker.
+    await withSystemDb("demo-cli-test-private-org", (tx) =>
+      tx.execute(
+        sql`INSERT INTO kernel.organizations (name, slug, settings)
+            SELECT 'Earlier world', ${PRIVATE_SLUG}, jsonb_build_object('demo', settings->'demo')
+              FROM kernel.organizations WHERE id = ${org.orgId}::uuid`,
+      ),
+    )
+    expect(await findOrgIdBySlug(PRIVATE_SLUG)).not.toBeNull()
+
+    const { exitCode } = await runSeedDemoCli(
+      ["--slug", PRIVATE_SLUG, "--world", "saas", "--variant", "visitor", "--reset"],
+      { seedWorld: stubWorld },
+    )
+
+    expect(exitCode).toBe(0)
+    expect(await findOrgIdBySlug(PRIVATE_SLUG)).toBeNull()
+    expect(seen.at(-1)?.orgSlug).toBe(PRIVATE_SLUG)
+    expect(seen.at(-1)?.resetContent).toBe(false)
+  })
+
+  it("seeds a slug no org holds yet without deleting anything", async () => {
+    const fresh = `${PRIVATE_SLUG}-new`
+    const { exitCode } = await runSeedDemoCli(
+      ["--slug", fresh, "--world", "saas", "--variant", "visitor", "--reset"],
+      { seedWorld: stubWorld },
+    )
+    expect(exitCode).toBe(0)
+    expect(seen.at(-1)?.orgSlug).toBe(fresh)
+    expect(seen.at(-1)?.resetContent).toBe(false)
   })
 })

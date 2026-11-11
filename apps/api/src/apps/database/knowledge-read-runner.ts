@@ -6,25 +6,20 @@
 // catalog. This is the production wiring `createDatabaseKnowledgeAdapter`
 // consumes — the app-to-app seam.
 //
-// It REUSES the database app's existing code (buildTransport / getOrBuildTransport
-// pool, getCredentialsForConnection, resolveDatabaseCatalog) — it does NOT open
+// It REUSES the platform's SQL connection code (the connections/sql pool, getCredentialsForConnection, resolveDatabaseCatalog) — it does NOT open
 // a bespoke `pg` client, and it never interpolates a schema identifier into SQL
 // (curated reads own all SQL). If no database connection exists for the org,
 // `hasRead` returns false and `runRead` throws NOT_CONNECTED — which the adapter
 // swallows into an empty/unsupported result (non-throwing IO contract).
 
-import {
-  buildTransport,
-  CONNECTION_IDENTIFIER,
-  type DatabaseCredentials,
-  getOrBuildTransport,
-  pinCallerOrg,
-  resolveDatabaseCatalog,
-} from "~/apps/database/bridge"
-import { DbTransportError } from "~/apps/database/transport"
+import { CONNECTION_IDENTIFIER } from "~/apps/database/bridge"
 import type { PrivilegedDb, RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { rootLogger } from "~/lib/logger"
+import { pinCallerOrg, resolveDatabaseCatalog } from "~/modules/apps/connections/sql/catalog"
+import type { DatabaseCredentials } from "~/modules/apps/connections/sql/credentials"
+import { withSqlTransport } from "~/modules/apps/connections/sql/pool"
+import { DbTransportError } from "~/modules/apps/connections/sql/transport"
 
 const log = rootLogger.child({ module: "database-knowledge-read-runner" })
 
@@ -105,8 +100,11 @@ export function createDatabaseKnowledgeReadRunner(
       gateUrl: raw.gateUrl,
       gateToken: raw.gateToken,
     }
-    const transport = await getOrBuildTransport(orgId, creds, buildTransport, identifier)
-    const result = await transport.runRead(read, name, pinCallerOrg(catalog, params, orgId))
+    const result = await withSqlTransport(
+      { orgId, appName: "database", connectionName: "database", identifier },
+      creds,
+      (transport) => transport.runRead(read, name, pinCallerOrg(catalog, params, orgId)),
+    )
     return { rows: result.rows }
   }
 

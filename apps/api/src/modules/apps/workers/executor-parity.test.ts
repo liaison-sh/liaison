@@ -362,6 +362,22 @@ describe("Workers executor parity with the QuickJS pool", () => {
     assertNoSecretsIn(r.quickjs, SECRETS)
   })
 
+  it("ctx.limiter.pause holds the connection's next ctx.fetch, the same on both", async () => {
+    injectedKeys.length = 0
+    const r = await both("tool:limited", () => callTool("limited", { ms: 300 }))
+    expect(r.quickjs.status).toBe(200)
+    expect(r.quickjs.body.data).toEqual({ paused: true, status: 200, held: true })
+    expect(r.workers).toEqual(r.quickjs)
+    // The credential still went on host-side, after the wait.
+    expect(injectedKeys).toEqual([CARRIER_KEY, CARRIER_KEY])
+  })
+
+  it("ctx.limiter.pause of a connection without limits is refused the same way", async () => {
+    const r = await both("tool:limited", () => callTool("limited", { ms: 300, connection: "nope" }))
+    expect(r.quickjs.body.data).toEqual({ refused: "limiter_connection_not_limited" })
+    expect(r.workers).toEqual(r.quickjs)
+  })
+
   it("ctx.config.get of a declared secret: QuickJS reads it, Workers refuses it, even with the registry cleared", async () => {
     // The refusal must come from the bridge's own manifest (what config_get
     // decrypts), never the in-memory connection registry, which can be empty.
@@ -457,6 +473,56 @@ describe("Workers executor parity with the QuickJS pool", () => {
     expect(run?.runId).toBeDefined()
     expect(runRegistry.authenticate(run?.runId as string, "x", "n").kind).toBe("bad_token")
   }, 30_000)
+
+  it("ctx.sql, ctx.accounts and ctx.kernel.findByIds: equal answers, no credential crosses", async () => {
+    const dsn =
+      process.env.DATABASE_URL ?? "postgres://liaison_app:liaison_app@localhost:5432/liaison_test"
+    const saved = {
+      privileged: process.env.LIAISON_DB_ALLOW_PRIVILEGED_SESSION,
+      plaintext: process.env.LIAISON_DB_ALLOW_PLAINTEXT_LOCAL,
+    }
+    // The test database's own login (see database-app.integration.test.ts).
+    process.env.LIAISON_DB_ALLOW_PRIVILEGED_SESSION = "true"
+    process.env.LIAISON_DB_ALLOW_PLAINTEXT_LOCAL = "true"
+    try {
+      await withPrivilegedDb(orgId, "parity-sql-connection", (tx) =>
+        createCredentialConnection(tx as never, orgId, userA.id, "wparity", "warehouse", {
+          identifier: "warehouse",
+          credentials: { connectionString: dsn },
+          displayName: "Warehouse",
+          ownerType: "org",
+        }),
+      )
+      const bridgeTextsBefore = loader.bridgeResponses.length
+      const r = await both("tool:platformReads", () =>
+        callTool("platformReads", { n: 7, userIds: [userA.id, userB.id] }),
+      )
+      expect(r.quickjs.status).toBe(200)
+      expect(r.quickjs.body.data ?? r.quickjs.body).toMatchObject({
+        rows: [{ n: 7 }],
+        cappedRows: 5,
+        cappedTruncated: true,
+        refused: "not_sql_connection",
+        accounts: [["carrier-1", "org"]],
+        users: 2,
+      })
+      expect(r.workers).toEqual(r.quickjs)
+      // The DSN never reaches the isolate, not even inside a bridge answer.
+      const password = new URL(dsn).password
+      for (const text of [JSON.stringify(r), ...loader.bridgeResponses.slice(bridgeTextsBefore)]) {
+        expect(text).not.toContain(dsn)
+        if (password.length >= 6) assertNoSecretsIn(text, { dsnPassword: password })
+      }
+    } finally {
+      for (const [k, v] of [
+        ["LIAISON_DB_ALLOW_PRIVILEGED_SESSION", saved.privileged],
+        ["LIAISON_DB_ALLOW_PLAINTEXT_LOCAL", saved.plaintext],
+      ] as const) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+    }
+  }, 60_000)
 
   it("a webhook delivery inside its transaction", async () => {
     const post = (title: string) =>

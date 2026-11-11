@@ -11,7 +11,9 @@ import {
 } from "~/modules/agent/runtime/run-context"
 import { UNDECLARED_WRITE_TARGET } from "~/modules/agent/scopes/scope-taint"
 import { attachRunLogSink } from "~/modules/app-builder/logs"
+import { guardAtomicJobEgress } from "~/modules/apps/atomic-egress"
 import { isCustomAppName } from "~/modules/apps/custom-app-name"
+import { createAccountsMethods } from "~/modules/apps/sandbox/bridge/accounts"
 import { createAgentMethods } from "~/modules/apps/sandbox/bridge/agent"
 import { createApprovalsMethods } from "~/modules/apps/sandbox/bridge/approvals"
 import { createCalendarMethods } from "~/modules/apps/sandbox/bridge/calendar"
@@ -41,6 +43,7 @@ import {
   WORKERS_RUN_BRIDGE,
 } from "~/modules/apps/sandbox/bridge/secret-free"
 import { type AppManifestForBridge, withPgCause } from "~/modules/apps/sandbox/bridge/shared"
+import { createSqlMethods } from "~/modules/apps/sandbox/bridge/sql"
 import { createStepsMethods } from "~/modules/apps/sandbox/bridge/steps"
 import { createStoreMethods } from "~/modules/apps/sandbox/bridge/store"
 import { createTicketsMethods } from "~/modules/apps/sandbox/bridge/tickets"
@@ -109,6 +112,8 @@ export function createRpcBridge(
     createEffectsMethods(ctx),
     createStoreMethods(ctx),
     createStepsMethods(ctx),
+    createSqlMethods(ctx),
+    createAccountsMethods(ctx),
   )
 
   // Merge this app's own bridge methods (registered at install time). App-specific
@@ -141,6 +146,11 @@ export function createRpcBridge(
       }
     }
   }
+
+  // An atomic job (one transaction for its whole run) may not call outside
+  // (atomic-egress.ts); applied after the extensions, like the read-only marks.
+  const job = bridgeOptions?.currentJob
+  if (job?.atomic) guardAtomicJobEgress(rpcBridge, appName, job.name)
 
   // The keys this bridge's config_get decrypts, from the same call it decrypts
   // with (bridge/identity.ts readAppConfigValue), so a Workers run refuses
@@ -254,6 +264,7 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   "files_attachToParent",
   "files_reparent",
   "connections_disconnect",
+  "accounts_setMetadata",
   "mcp_createConnection",
   "approval_recordStarted",
   "approval_recordSucceeded",
@@ -374,7 +385,19 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
 // claim pending, and the next run would see it in flight instead of asking the remote side.
 // `_steps_*` (bridge/steps.ts) write their state through `commitNowTx`, each write its own
 // committed transaction, and enqueue the continuation after it: never on the call's tx.
-const SESSION_TXLESS_METHOD_PREFIXES = ["imap_", "smtp_", "codec_", "effects_", "_steps_"]
+// `sql_*` (bridge/sql.ts) run a statement on a database the platform holds a pool
+// for, which can take seconds: their credential lookup and audit line take short
+// transactions of their own (`withShortTx`), never the call's.
+// `limiter_*` (connection-limiter.ts) touch Redis only.
+const SESSION_TXLESS_METHOD_PREFIXES = [
+  "imap_",
+  "smtp_",
+  "codec_",
+  "effects_",
+  "_steps_",
+  "limiter_",
+  "sql_",
+]
 // Exact-name tx-less methods. `fetch` is the workhorse external-HTTP surface
 // (domain-allowlist + pinned-host fetch, zero txDb use) — wrapping it would
 // pin a connection for every outbound HTTP roundtrip. connections_* are NOT

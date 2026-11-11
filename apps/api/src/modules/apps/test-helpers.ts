@@ -182,6 +182,10 @@ export function mockAppContext(opts: MockAppContextOpts): MockAppContext {
         })
       },
     },
+    // No shared limiter in a unit test: a pause is answered as set, nothing waits.
+    limiter: {
+      pause: async (_connection, ms) => ms,
+    },
     // In one process: the chunks run back to back until done (no budget), kept
     // in the mock store's `liaison_steps` collection like the host does; a chunk
     // that answers `wakeIn` stops the run as `scheduled`.
@@ -213,6 +217,24 @@ export function mockAppContext(opts: MockAppContextOpts): MockAppContext {
           : null
       },
       reset: async (name) => ({ reset: (await store.delete("liaison_steps", name)).deleted }),
+    },
+    // The platform-held reads answer "nothing connected" by default; a test that
+    // needs rows replaces the member it calls.
+    sql: {
+      query: async () => ({ error: { code: "not_connected", message: "No connection (mock)" } }),
+      reads: async () => ({ adapter: "none", reads: {} }),
+      schema: async () => ({ tables: [] }),
+      probe: async () => ({ ok: true, mode: "direct", warnings: [] }),
+    },
+    accounts: {
+      list: async () => [],
+      setMetadata: async () => {
+        throw Object.assign(new Error("no such account (mock)"), { status: 404, code: "not_found" })
+      },
+    },
+    kernel: {
+      findOne: async () => null,
+      findByIds: async () => [],
     },
     resolveContact: mock(async (_params: Parameters<AppContext["resolveContact"]>[0]) => undefined),
     listContactsByExternalId: mock(async (_limit?: number, _cursor?: string) => ({

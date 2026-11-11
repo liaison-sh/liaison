@@ -282,3 +282,68 @@ export function egressLimits(env: Env = process.env): EgressLimits {
     multipartMaxRequestBytes: 25 * 1024 * 1024,
   }
 }
+
+// -- SQL connections (one `ctx.sql` call of a run) -------------------------------
+
+export interface SqlCallLimits {
+  /** A call's statement timeout when it asks for none. */
+  defaultTimeoutMs: number
+  /** The longest statement timeout a call may ask for (also bounded by its run). */
+  maxTimeoutMs: number
+  /** Rows a call returns when it asks for no cap. */
+  defaultMaxRows: number
+  /** The most rows any call returns. */
+  maxRows: number
+  /** Host-held connection pools per server process (least recently used closed first). */
+  poolsMax: number
+  /** A pool unused this long is closed. */
+  poolIdleMs: number
+}
+
+/**
+ * The per-call limits of the platform-held SQL connections
+ * (connections/sql/service.ts). The statement timeout is set on the database
+ * and the call is cancelled there at its deadline; rows beyond the cap are
+ * never sent to the run. LIAISON_SQL_POOLS_MAX overrides the pool bound.
+ */
+export function sqlCallLimits(env: Env = process.env): SqlCallLimits {
+  const pools = Number(env.LIAISON_SQL_POOLS_MAX)
+  return {
+    defaultTimeoutMs: 10_000,
+    maxTimeoutMs: Math.min(120_000, resolveSandboxMaxToolTimeoutMs(env)),
+    defaultMaxRows: 500,
+    maxRows: 2_000,
+    poolsMax: Number.isInteger(pools) && pools > 0 ? pools : 32,
+    poolIdleMs: 10 * 60_000,
+  }
+}
+
+// -- The shared per-connection limiter (connection-limiter.ts) ---------------------
+
+export interface ConnectionLimiterLimits {
+  /**
+   * The longest a call waits for its connection's permit before it fails with
+   * `provider_rate_limited` (429): an interactive run (a tool, whose default
+   * wall clock is 5 s in production) waits briefly, a job longer.
+   */
+  maxWaitMs: { interactive: number; background: number }
+  /** The longest pause one provider answer (`Retry-After`, `ctx.limiter.pause`) may set. */
+  maxPauseMs: number
+  /**
+   * A concurrency permit's lease: freed after this long even if its holder
+   * died without releasing it. Above the longest egress call.
+   */
+  leaseTtlMs: number
+  /** One Redis round trip of the limiter; past it the limiter fails open. */
+  redisTimeoutMs: number
+}
+
+/** The limits of the shared per-connection limiter. */
+export function connectionLimiterLimits(env: Env = process.env): ConnectionLimiterLimits {
+  return {
+    maxWaitMs: { interactive: 2_000, background: 20_000 },
+    maxPauseMs: 60_000,
+    leaseTtlMs: egressLimits(env).maxTimeoutMs + 10_000,
+    redisTimeoutMs: 250,
+  }
+}

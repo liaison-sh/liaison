@@ -52,6 +52,25 @@ export async function fetchAuth(_p: unknown, ctx: Ctx) {
   return { status: res.status, body: res.body }
 }
 
+export async function limited(p: { ms?: number; connection?: string }, ctx: Ctx) {
+  let paused: unknown
+  try {
+    paused = await ctx.limiter.pause(p.connection ?? "carrier", p.ms ?? 300)
+  } catch (err) {
+    return { refused: (err as { code?: string }).code ?? String(err) }
+  }
+  const started = Date.now()
+  const res = await ctx.fetch("https://api.carrier.test/echo", {
+    method: "GET",
+    auth: { connection: "carrier", scheme: "header:X-Api-Key", fields: ["key"] },
+  })
+  return {
+    paused: typeof paused === "number" && paused > 0,
+    status: res.status,
+    held: Date.now() - started >= 200,
+  }
+}
+
 export async function stamp(p: { marker: string }, ctx: Ctx) {
   await ctx.logger.info("stamping", { marker: p.marker })
   await ctx.emit({
@@ -106,6 +125,29 @@ export async function configSecret(p: { value: string }, ctx: Ctx) {
   } catch (e) {
     const err = e as { code?: string; status?: number }
     return { refused: true, code: err?.code ?? null, status: err?.status ?? null }
+  }
+}
+
+// ctx.sql / ctx.accounts / ctx.kernel.findByIds: the generic platform reads.
+export async function platformReads(p: { n: number; userIds: string[] }, ctx: Ctx) {
+  const q = await ctx.sql.query("warehouse", { sql: "SELECT $1::int AS n", params: [p.n] })
+  const capped = await ctx.sql.query("warehouse", {
+    sql: "SELECT generate_series(1, 20) AS n",
+    maxRows: 5,
+  })
+  const refused = await ctx.sql.query("carrier", { sql: "SELECT 1" })
+  const accounts = await ctx.accounts.list("carrier")
+  const users = await ctx.kernel.findByIds("users", p.userIds)
+  return {
+    rows: q.rows,
+    cappedRows: capped.rows.length,
+    cappedTruncated: capped.truncated,
+    refused: refused.error.code,
+    accounts: accounts.map((a: { identifier: string; ownerType: string }) => [
+      a.identifier,
+      a.ownerType,
+    ]),
+    users: users.length,
   }
 }
 

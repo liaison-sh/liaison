@@ -11,7 +11,6 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
 import postgres from "postgres"
 import databaseManifest from "~/apps/database/app.manifest.json"
-import { DatabaseBridgeTestAccess } from "~/apps/database/bridge"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { CryptoContext, encryptSecret } from "~/lib/crypto"
@@ -21,6 +20,7 @@ import {
   resetAppRegistries,
   toolRegistry,
 } from "~/modules/apps/app-registries"
+import { SqlPoolTestAccess } from "~/modules/apps/connections/sql/pool"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
@@ -686,7 +686,7 @@ describe("database app — second connection (warehouse)", () => {
 
   it("a member's personal `warehouse` connection never shadows the org's", async () => {
     // A cold pool, so the lookup really runs for this call.
-    DatabaseBridgeTestAccess.resetTransportPool()
+    SqlPoolTestAccess.reset()
     // What POST /connections/database/warehouse saves for a member in personal
     // mode (identifier = their user id), newest-updated so a newest-wins lookup
     // would pick it. Its DSN points nowhere useful. (A second active row with

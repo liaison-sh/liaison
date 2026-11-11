@@ -452,7 +452,9 @@ describe("dashboards_edit", () => {
     expect(await getDashboard(as(author, [WRITE]), shared.id)).toMatchObject({ version: 1 })
 
     expect(res.blocked?.requesterCanApprove).toBe(false)
-    const decided = await approve(res.blocked!.approvalRequestId, approver)
+    const requestId = res.blocked?.approvalRequestId
+    if (!requestId) throw new Error("the edit did not park an approval")
+    const decided = await approve(requestId, approver)
     expect(decided.status).toBe("approved")
     const after = await getDashboard(as(author, [WRITE]), shared.id)
     expect(after.version).toBe(2)

@@ -45,6 +45,13 @@ function scheduleMoved(item: Row, schedule: Row | null): string[] {
   return now > Number(item.schedule_version) && now !== own ? ["The schedule changed after this draft"] : []
 }
 
+/** A card staged for the run and not yet decided: the run still waits for it. */
+function cardWaiting(run: Row, rows: readonly { state: string }[]): boolean {
+  const id = run.approval_request_id
+  if (typeof id !== "string" || id === "" || id === "staging") return false
+  return run.status === "drafted" || rows.some((r) => r.state === "waiting_reapproval")
+}
+
 function suggestionOf(item: Row): { fix_suggestion?: Record<string, unknown> } {
   const found = jsonOf<Record<string, unknown> | null>(item.fix_suggestion, null)
   return found && typeof found === "object" ? { fix_suggestion: found } : {}
@@ -105,6 +112,8 @@ export async function recurringRunGet(
     status: "completed",
     run: runOut,
     rows,
-    message: `Run ${String(run.id)} for ${String(run.period_label)} is ${String(run.status)}, ${rows.length} row${rows.length === 1 ? "" : "s"}. Change a row with drafts_update on its draft_id.`,
+    message:
+      `Run ${String(run.id)} for ${String(run.period_label)} is ${String(run.status)}, ${rows.length} row${rows.length === 1 ? "" : "s"}. Change a row with drafts_update on its draft_id.` +
+      (cardWaiting(run, rows) ? ` Its card (approval ${String(run.approval_request_id)}) waits for a person, who approves or rejects it on the card; no tool approves it.` : ""),
   }
 }

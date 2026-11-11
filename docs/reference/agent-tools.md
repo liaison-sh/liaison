@@ -531,7 +531,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `recurring_item_issue` | Issue one approved row of a month-end run. |  | `invoicing:documents:write` |
 | `recurring_list` | List recurring schedules with their next issue day and draft day. |  | `invoicing:documents:read` |
 | `recurring_run_get` | Read a month-end run: its state, issue and last days, and each row with its draft_id, amounts, account manager, latest change and flags. |  | `invoicing:documents:read` |
-| `recurring_run_issue` | Approve a month-end run's card: records each row as approved and takes no number; the invoices issue on the issue day from 08:00. | yes | `invoicing:documents:write` |
+| `recurring_run_issue` | Stage a month-end run's card when it has none: approving records each row and takes no number; the invoices issue on the issue day from 08:00. | yes | `invoicing:documents:write` |
 | `recurring_run_unapprove` | Undo a month-end run's approval before its first number: the run returns to drafted, edits are kept, and a new card asks again. |  | `invoicing:documents:write` |
 | `recurring_schedule_create` | Save a recurring invoice schedule for one customer: cadence, billing day and lines. | yes | `invoicing:documents:write` |
 | `recurring_schedule_pause` | Pause a recurring schedule: it drafts nothing while paused. |  | `invoicing:documents:write` |

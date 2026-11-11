@@ -44,6 +44,8 @@ describe("the month-end run card", () => {
     if (got.status !== "completed") throw new Error("run not read")
     expect(got.rows.map((r) => r.account_manager)).toEqual(["user-am", "user-am-2"])
     expect(got.rows.every((r) => r.draft_id !== null)).toBe(true)
+    // The read points at the waiting card: a person decides it there, never a tool call.
+    expect(got.message).toContain(`Its card (approval ${String(got.run.approval_request_id)}) waits for a person`)
     const before = (await cardItems(h.ctx, runId)).items[0]?.content_hash
     const firstDraft = card.current_payload.items[0]?.document_id as string
     const line = h.db.__all("document_lines").find((l) => l.document_id === firstDraft)
@@ -73,6 +75,14 @@ describe("the month-end run card", () => {
     expect(got.rows[0]?.fix_suggestion).toEqual(found)
     // A row with nothing found says nothing about it.
     expect("fix_suggestion" in (got.rows[1] ?? {})).toBe(false)
+  })
+
+  test("a run with no card says nothing about one", async () => {
+    const { h, runId } = await drafted()
+    await h.db.update("recurring_runs", runId, { approval_request_id: null })
+    const got = await recurringRunGet(h.ctx, { run_id: runId })
+    if (got.status !== "completed") throw new Error("run not read")
+    expect(got.message).not.toContain("Its card")
   })
 
   test("approval records each item's hash and the approver and takes no number", async () => {

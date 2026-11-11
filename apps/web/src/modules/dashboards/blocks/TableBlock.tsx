@@ -11,6 +11,8 @@ export interface TableBlockProps {
   locale?: string
   /** Shown instead of "No data for this block yet" (names the range the block follows). */
   emptyText?: string
+  /** A row picked: the dashboard opens the rows behind it. Its first cell is then a button. */
+  onPickRow?: (index: number) => void
 }
 
 interface KeyedRow {
@@ -26,13 +28,31 @@ const VISIBLE_COLUMNS = 4
 export function tableColumns(
   columns: DashboardColumn[],
   fmt: (value: unknown, column: DashboardColumn) => string,
+  pick?: { onPick: (index: number) => void; label: (text: string) => string },
 ): Array<CardTableColumn<KeyedRow>> {
   return columns.map((c, i) => {
     const numeric = c.format !== undefined && NUMERIC.has(c.format)
     return {
       key: c.field,
       header: c.label,
-      cell: (r: KeyedRow) => fmt(r.row[c.field], c),
+      cell: (r: KeyedRow) => {
+        const text = fmt(r.row[c.field], c)
+        if (i !== 0 || !pick) return text
+        return (
+          <button
+            type="button"
+            data-testid={`block-table-pick-${r.key}`}
+            aria-label={pick.label(text)}
+            onClick={(e) => {
+              e.stopPropagation()
+              pick.onPick(Number(r.key))
+            }}
+            class="max-w-full truncate text-left underline decoration-border underline-offset-2 hover:text-text hover:decoration-text-tertiary"
+          >
+            {text}
+          </button>
+        )
+      },
       role:
         i === 0
           ? "anchor"
@@ -53,8 +73,16 @@ export const TableBlock: Component<TableBlockProps> = (props) => {
   const locale = () => props.locale ?? i18n.locale()
   const rows = (): KeyedRow[] => props.data.rows.map((row, i) => ({ key: String(i), row }))
   const columns = () =>
-    tableColumns(props.data.columns, (value, c) =>
-      formatValue(value, { format: c.format, currency: props.currency, locale: locale() }),
+    tableColumns(
+      props.data.columns,
+      (value, c) =>
+        formatValue(value, { format: c.format, currency: props.currency, locale: locale() }),
+      props.onPickRow
+        ? {
+            onPick: props.onPickRow,
+            label: (label) => i18n.t("kernel.dashboards.drillShowFor", { label }),
+          }
+        : undefined,
     )
   return (
     <div data-testid="block-table" class="min-w-0 overflow-x-auto">
@@ -64,6 +92,7 @@ export const TableBlock: Component<TableBlockProps> = (props) => {
         columns={columns()}
         floor="flexible"
         rowTestid={(r) => `block-table-row-${r.key}`}
+        onRowClick={props.onPickRow ? (r) => props.onPickRow?.(Number(r.key)) : undefined}
         emptyState={
           <p data-testid="block-empty" class="py-4 text-[13px] text-text-tertiary">
             {props.emptyText ?? i18n.t("kernel.dashboards.noData")}

@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: FSL-1.1-ALv2
 #
-# Installs Ubuntu packages on a hosted runner. The runner's apt sources go
-# through Azure's mirror list; when that mirror does not resolve, the install
-# switches the sources to archive.ubuntu.com and tries again instead of failing.
+# Installs Ubuntu packages on a hosted runner. When the install fails because
+# the runner's own DNS resolver cannot resolve the Ubuntu mirrors, it points
+# the runner at public resolvers and tries once more instead of failing the job.
 name: apt-install
-description: Install Ubuntu packages, falling back to archive.ubuntu.com when the runner mirror is down
+description: Install Ubuntu packages, retrying through public DNS when the runner resolver fails
 inputs:
   packages:
     description: Space-separated package names
@@ -24,7 +24,9 @@ runs:
           apt_get update && apt_get install -y --no-install-recommends $PACKAGES
         }
         if ! install; then
-          echo "::warning::apt mirror unreachable; using archive.ubuntu.com"
-          sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://archive.ubuntu.com/ubuntu/#g' /etc/apt/sources.list.d/ubuntu.sources
+          echo "::warning::apt install failed; retrying with public DNS resolvers"
+          sudo mkdir -p /etc/systemd/resolved.conf.d
+          printf '[Resolve]\nDNS=1.1.1.1 8.8.8.8\nDomains=~.\n' | sudo tee /etc/systemd/resolved.conf.d/public-dns.conf >/dev/null
+          sudo systemctl restart systemd-resolved
           install
         fi

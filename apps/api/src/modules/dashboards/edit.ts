@@ -26,6 +26,7 @@ import {
 import {
   type DashboardSpec,
   dashboardDefaultRange,
+  dashboardSpecSchema,
   MAX_DASHBOARD_BLOCKS,
   timeRangeSchema,
 } from "~/modules/dashboards/spec"
@@ -587,7 +588,9 @@ export function diffDashboards(
   }
   if (!isObject(next.spec)) return ops
   const was = current.spec as unknown as Record<string, unknown>
-  const now = next.spec
+  // Compared as it would be saved (its defaults filled in), so a default is not a change.
+  const parsed = dashboardSpecSchema.safeParse(next.spec)
+  const now = parsed.success ? (parsed.data as unknown as Record<string, unknown>) : next.spec
   const rangeChanged = !same(was.timeRange, now.timeRange)
   const compareChanged = !same(was.compare, now.compare)
   if (rangeChanged || compareChanged) {

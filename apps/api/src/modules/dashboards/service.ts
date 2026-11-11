@@ -19,7 +19,7 @@
 import { and, desc, eq } from "drizzle-orm"
 import type { RlsClient } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
-import { type DashboardRow, dashboards } from "~/db/schema/kernel"
+import { type DashboardRow, dashboards, dashboardViewerStates } from "~/db/schema/kernel"
 import {
   blockCacheKey,
   FAILED_BLOCK_TTL_SEC,
@@ -29,16 +29,36 @@ import {
   withViewerSlot,
   writeCachedBlock,
 } from "~/modules/dashboards/cache"
-import { type BlockErrorCode, computeBlock, resolveBlockDates } from "~/modules/dashboards/execute"
-import { DateTokenError } from "~/modules/dashboards/relative-dates"
+import { applyOperations, type EditOperation, EditOperationError } from "~/modules/dashboards/edit"
+import {
+  type BlockErrorCode,
+  computeBlock,
+  dashboardTimezone,
+  resolveBlockDates,
+} from "~/modules/dashboards/execute"
+import {
+  type CompareMode,
+  compareWindow,
+  DateTokenError,
+  type DayWindow,
+  dateTokensIn,
+  resolveDateTokens,
+  resolveTimeRange,
+  type TimePreset,
+  type TimeRange,
+} from "~/modules/dashboards/relative-dates"
 import { checkStoreSource, checkToolSource } from "~/modules/dashboards/sources"
 import {
+  type BlockRangeMode,
+  blockRangeMode,
   blockTtlSec,
   type DashboardSpec,
+  dashboardDefaultRange,
   dashboardSpecSchema,
   specIssues,
+  timeRangeSchema,
 } from "~/modules/dashboards/spec"
-import type { BlockData } from "~/modules/dashboards/transform"
+import { attachPrevious, type BlockData } from "~/modules/dashboards/transform"
 import { hasScope } from "~/modules/permissions/permissions"
 
 export type DashboardVisibility = "personal" | "org"
@@ -236,12 +256,176 @@ async function loadRow(viewer: DashboardViewer, id: string, tx?: RlsClient): Pro
   return row
 }
 
+/** A dashboard's range as one person sees it: their remembered choice, else its default. */
+export interface DashboardRangeView {
+  timeRange: TimeRange
+  compare: CompareMode
+  /** True when this is the viewer's own remembered choice. */
+  saved: boolean
+  /** The range's days today, in the org's timezone. */
+  window: DayWindow
+  compareWindow: DayWindow | null
+}
+
+export interface DashboardView extends DashboardRecord {
+  range: DashboardRangeView
+  defaultRange: { timeRange: TimeRange; compare: CompareMode }
+  /** Each block: does it follow the dashboard range, or keep its own dates. */
+  blockTimeRange: Record<string, BlockRangeMode>
+  /** At least one block follows the dashboard range (the range picker is worth showing). */
+  usesTimeRange: boolean
+}
+
+/** A remembered range read back: a row another release wrote in a shape this one refuses is ignored. */
+function parseViewerState(
+  row: { timeRange: unknown; compare: string } | undefined,
+): { timeRange: TimeRange; compare: CompareMode } | null {
+  if (!row) return null
+  const tr = timeRangeSchema.safeParse(row.timeRange)
+  const compare = ["lastYear", "previousPeriod", "none"].includes(row.compare)
+    ? (row.compare as CompareMode)
+    : null
+  return tr.success && compare ? { timeRange: tr.data, compare } : null
+}
+
 export async function getDashboard(
   viewer: DashboardViewer,
   id: string,
   tx?: RlsClient,
-): Promise<DashboardRecord> {
-  return toRecord(viewer, await loadRow(viewer, id, tx))
+  now: Date = new Date(),
+): Promise<DashboardView> {
+  const { row, state } = await inTx(viewer, tx, async (t) => {
+    const [found] = await t.select().from(dashboards).where(eq(dashboards.id, id)).limit(1)
+    if (!found) throw new DashboardError("NOT_FOUND", "no such dashboard")
+    const [saved] = await t
+      .select({
+        timeRange: dashboardViewerStates.timeRange,
+        compare: dashboardViewerStates.compare,
+      })
+      .from(dashboardViewerStates)
+      .where(
+        and(
+          eq(dashboardViewerStates.dashboardId, id),
+          eq(dashboardViewerStates.userId, viewer.userId),
+        ),
+      )
+      .limit(1)
+    return { row: found, state: parseViewerState(saved) }
+  })
+  const record = toRecord(viewer, row)
+  const spec = record.spec
+  const defaults = dashboardDefaultRange(spec ?? {})
+  const chosen = state ?? defaults
+  const timeZone = await dashboardTimezone(viewer.orgId)
+  const window = resolveTimeRange(chosen.timeRange, { timeZone, now })
+  const blockTimeRange: Record<string, BlockRangeMode> = {}
+  for (const b of spec?.blocks ?? []) {
+    // A saved block of a shape this release does not know reads as fixed.
+    try {
+      blockTimeRange[b.id] = blockRangeMode(b)
+    } catch {
+      blockTimeRange[b.id] = "fixed"
+    }
+  }
+  return {
+    ...record,
+    range: {
+      ...chosen,
+      saved: state !== null,
+      window,
+      compareWindow: compareWindow(chosen.timeRange.preset, window, chosen.compare),
+    },
+    defaultRange: defaults,
+    blockTimeRange,
+    usesTimeRange: Object.values(blockTimeRange).includes("dashboard"),
+  }
+}
+
+// ── a person's remembered range ─────────────────────────────────────────────
+
+export interface ViewerRange {
+  timeRange: TimeRange
+  compare: CompareMode
+}
+
+/** The range `viewer` last chose on this dashboard, or null. NOT_FOUND when they cannot see it. */
+export async function getViewerRange(
+  viewer: DashboardViewer,
+  dashboardId: string,
+): Promise<ViewerRange | null> {
+  return withRlsContext(viewer, async (t) => {
+    await loadRow(viewer, dashboardId, t)
+    const [row] = await t
+      .select({
+        timeRange: dashboardViewerStates.timeRange,
+        compare: dashboardViewerStates.compare,
+      })
+      .from(dashboardViewerStates)
+      .where(
+        and(
+          eq(dashboardViewerStates.dashboardId, dashboardId),
+          eq(dashboardViewerStates.userId, viewer.userId),
+        ),
+      )
+      .limit(1)
+    return parseViewerState(row)
+  })
+}
+
+/** Remembers `range` as this person's choice on this dashboard (only they ever read it). */
+export async function setViewerRange(
+  viewer: DashboardViewer,
+  dashboardId: string,
+  range: ViewerRange,
+): Promise<ViewerRange> {
+  const parsed = timeRangeSchema.safeParse(range.timeRange)
+  if (!parsed.success) {
+    throw new DashboardError(
+      "INVALID_SPEC",
+      "the time range is not valid",
+      specIssues(parsed.error),
+    )
+  }
+  const timeRange = parsed.data
+  await withRlsContext(viewer, async (t) => {
+    await loadRow(viewer, dashboardId, t)
+    await t
+      .insert(dashboardViewerStates)
+      .values({
+        orgId: viewer.orgId,
+        dashboardId,
+        userId: viewer.userId,
+        timeRange: timeRange as unknown as Record<string, unknown>,
+        compare: range.compare,
+      })
+      .onConflictDoUpdate({
+        target: [dashboardViewerStates.dashboardId, dashboardViewerStates.userId],
+        set: {
+          timeRange: timeRange as unknown as Record<string, unknown>,
+          compare: range.compare,
+          updatedAt: new Date(),
+        },
+      })
+  })
+  return { timeRange, compare: range.compare }
+}
+
+/** Forgets this person's choice: the dashboard opens on its default again. */
+export async function clearViewerRange(
+  viewer: DashboardViewer,
+  dashboardId: string,
+): Promise<void> {
+  await withRlsContext(viewer, async (t) => {
+    await loadRow(viewer, dashboardId, t)
+    await t
+      .delete(dashboardViewerStates)
+      .where(
+        and(
+          eq(dashboardViewerStates.dashboardId, dashboardId),
+          eq(dashboardViewerStates.userId, viewer.userId),
+        ),
+      )
+  })
 }
 
 export interface CreateDashboardInput {
@@ -349,6 +533,59 @@ export async function updateDashboard(
   return toRecord(viewer, row)
 }
 
+export interface EditDashboardInput {
+  /** The version the operations were written against: a newer save refuses with VERSION_CONFLICT. */
+  ifVersion: number
+  operations: EditOperation[]
+}
+
+/**
+ * Applies `operations` in order to the saved dashboard and saves the result as one new
+ * version, or nothing: the resulting spec is validated whole (spec.ts, and every block's
+ * source for `viewer`), and an operation that cannot apply refuses the whole edit.
+ */
+export async function editDashboard(
+  viewer: DashboardViewer,
+  id: string,
+  input: EditDashboardInput,
+  tx?: RlsClient,
+): Promise<DashboardRecord> {
+  const current = await loadRow(viewer, id, tx)
+  if (input.ifVersion !== current.version) {
+    throw new DashboardError(
+      "VERSION_CONFLICT",
+      `the dashboard is at version ${current.version}, not ${input.ifVersion}: read it again`,
+    )
+  }
+  let next: ReturnType<typeof applyOperations>
+  try {
+    next = applyOperations(
+      {
+        title: current.title,
+        visibility: current.visibility,
+        spec: current.spec as unknown as DashboardSpec,
+      },
+      input.operations,
+    )
+  } catch (err) {
+    if (err instanceof EditOperationError) {
+      throw new DashboardError("INVALID_SPEC", "an operation cannot apply", [err.message])
+    }
+    throw err
+  }
+  return updateDashboard(
+    viewer,
+    id,
+    {
+      ifVersion: input.ifVersion,
+      spec: next.spec,
+      ...(next.title !== current.title ? { title: next.title } : {}),
+      ...(next.visibility !== current.visibility ? { visibility: next.visibility } : {}),
+    },
+    tx,
+  )
+}
+
 export async function deleteDashboard(
   viewer: DashboardViewer,
   id: string,
@@ -369,9 +606,37 @@ export async function deleteDashboard(
   })
 }
 
+/** The days a block read: the dashboard range, or its own dates as tokens and what they were. */
+export type BlockWindow =
+  | { mode: "dashboard"; preset: TimePreset; from: string; to: string }
+  | { mode: "fixed"; dates: { token: string; date: string }[] }
+
+export interface BlockCompareWindow {
+  mode: Exclude<CompareMode, "none">
+  from: string
+  to: string
+}
+
 export type BlockDataResponse =
-  | { blockId: string; ok: true; data: BlockData; cached: boolean; computedAt: string }
-  | { blockId: string; ok: false; error: BlockErrorCode; message: string }
+  | {
+      blockId: string
+      ok: true
+      data: BlockData
+      cached: boolean
+      computedAt: string
+      window: BlockWindow
+      compareWindow: BlockCompareWindow | null
+      /** The comparison run failed: the current data stands alone. */
+      previousError?: { error: BlockErrorCode; message: string }
+    }
+  | {
+      blockId: string
+      ok: false
+      error: BlockErrorCode
+      message: string
+      window?: BlockWindow
+      compareWindow?: BlockCompareWindow | null
+    }
 
 interface CachedBlock {
   data: BlockData
@@ -384,27 +649,69 @@ interface CachedFailure {
   message: string
 }
 
+type BlockRunResult =
+  | { ok: true; data: BlockData; cached: boolean; computedAt: string }
+  | { ok: false; error: BlockErrorCode; message: string }
+
+export interface BlockDataOptions {
+  refresh?: boolean
+  signal?: AbortSignal
+  now?: Date
+  /** The range the viewer shows; absent: the dashboard's default. Ignored by a fixed block. */
+  range?: TimeRange
+  /** The comparison the viewer shows; absent: the dashboard's default. */
+  compare?: CompareMode
+}
+
 /**
  * One block's data for `viewer`: from the cache (per viewer, per permissions,
- * per dashboard version, per resolved dates), else run as the viewer. `refresh` bypasses the cache,
- * at most once per block per viewer per 30 s (`rate_limited` otherwise).
+ * per dashboard version, per resolved dates and range), else run as the viewer. `refresh`
+ * bypasses the cache, at most once per block per viewer per 30 s (`rate_limited` otherwise).
+ *
+ * A block that follows the dashboard range reads `opts.range` (else the dashboard's
+ * default) and, unless the comparison is "none", runs once more over the comparison window
+ * (its own cache entry): the data carries `previous` beside the current values. A fixed
+ * block reads its own dates and is never compared.
  */
 export async function getBlockData(
   viewer: DashboardViewer,
   dashboardId: string,
   blockId: string,
-  opts: { refresh?: boolean; signal?: AbortSignal; now?: Date } = {},
+  opts: BlockDataOptions = {},
 ): Promise<BlockDataResponse> {
   const dashboard = await loadRow(viewer, dashboardId)
   const spec = dashboard.spec as unknown as DashboardSpec
   const saved = spec.blocks?.find((b) => b.id === blockId)
   if (!saved) throw new DashboardError("NOT_FOUND", `no block '${blockId}' on this dashboard`)
+  const now = opts.now ?? new Date()
 
-  // Date tokens become today's dates (org timezone) before anything else: the cache key and
-  // the run below both see this run's dates.
+  // Date tokens become this run's dates (org timezone) before anything else: the cache key and
+  // the run below both see them. A range block's {{range.*}} become the chosen window.
   let block: typeof saved
+  let window: BlockWindow
+  let range: DayWindow | null = null
+  let compareRange: BlockCompareWindow | null = null
   try {
-    block = await resolveBlockDates(saved, viewer.orgId, opts.now ?? new Date())
+    const timeZone = await dashboardTimezone(viewer.orgId)
+    if (blockRangeMode(saved) === "dashboard") {
+      const defaults = dashboardDefaultRange(spec)
+      const tr = opts.range ?? defaults.timeRange
+      const mode = opts.compare ?? defaults.compare
+      range = resolveTimeRange(tr, { timeZone, now })
+      window = { mode: "dashboard", preset: tr.preset, ...range }
+      const cmp = compareWindow(tr.preset, range, mode)
+      if (cmp && mode !== "none") compareRange = { mode, ...cmp }
+    } else {
+      const value = saved.source.kind === "tool" ? saved.source.params : saved.source.query
+      window = {
+        mode: "fixed",
+        dates: dateTokensIn(value).map((token) => ({
+          token,
+          date: resolveDateTokens(token, { timeZone, now }),
+        })),
+      }
+    }
+    block = await resolveBlockDates(saved, viewer.orgId, now, range)
   } catch (err) {
     if (!(err instanceof DateTokenError)) throw err
     return { blockId, ok: false, error: "invalid_map", message: err.message }
@@ -416,7 +723,16 @@ export async function getBlockData(
     block.source.kind === "tool"
       ? await checkToolSource(viewer.orgId, block.source.tool, viewer)
       : await checkStoreSource(viewer.orgId, block.source.app, block.source.collection, viewer)
-  if (!check.ok) return { blockId, ok: false, error: check.code, message: check.message }
+  if (!check.ok) {
+    return {
+      blockId,
+      ok: false,
+      error: check.code,
+      message: check.message,
+      window,
+      compareWindow: compareRange,
+    }
+  }
 
   if (opts.refresh && !(await takeRefresh(viewer, dashboardId, blockId))) {
     return {
@@ -424,23 +740,80 @@ export async function getBlockData(
       ok: false,
       error: "rate_limited",
       message: "this block was refreshed less than 30 seconds ago",
+      window,
+      compareWindow: compareRange,
     }
   }
-  const key = blockCacheKey(viewer, {
-    dashboardId,
-    version: dashboard.version,
+
+  const current = await runBlockCached(viewer, dashboard, block, range, opts)
+  if (!current.ok) {
+    return { ...current, blockId, window, compareWindow: compareRange }
+  }
+  let data = current.data
+  let previousError: { error: BlockErrorCode; message: string } | undefined
+  if (compareRange && range) {
+    // The comparison: the saved block over the comparison window, one more run (cached apart).
+    let previousBlock: typeof saved | null = null
+    try {
+      previousBlock = await resolveBlockDates(saved, viewer.orgId, now, compareRange)
+    } catch (err) {
+      if (!(err instanceof DateTokenError)) throw err
+      previousError = { error: "invalid_map", message: err.message }
+    }
+    if (previousBlock) {
+      const previous = await runBlockCached(viewer, dashboard, previousBlock, compareRange, opts)
+      if (previous.ok) {
+        data = attachPrevious(data, previous.data, {
+          ...(saved.map.groupBy?.bucket ? { bucket: saved.map.groupBy.bucket } : {}),
+          window: range,
+          compareWindow: compareRange,
+        })
+      } else {
+        previousError = { error: previous.error, message: previous.message }
+      }
+    }
+  }
+  return {
     blockId,
+    ok: true,
+    data,
+    cached: current.cached,
+    computedAt: current.computedAt,
+    window,
+    compareWindow: compareRange,
+    ...(previousError ? { previousError } : {}),
+  }
+}
+
+/** One run of a block whose dates are resolved: from the cache, else computed and cached. */
+async function runBlockCached(
+  viewer: DashboardViewer,
+  dashboard: DashboardRow,
+  block: DashboardSpec["blocks"][number],
+  range: DayWindow | null,
+  opts: BlockDataOptions,
+): Promise<BlockRunResult> {
+  const key = blockCacheKey(viewer, {
+    dashboardId: dashboard.id,
+    version: dashboard.version,
+    blockId: block.id,
     resolvedSource: block.source,
+    range,
   })
   const failedKey = failedBlockCacheKey(key)
   if (!opts.refresh) {
     const hit = await readCachedBlock<CachedBlock>(key)
-    if (hit) return { blockId, ok: true, data: hit.data, cached: true, computedAt: hit.computedAt }
+    if (hit) return { ok: true, data: hit.data, cached: true, computedAt: hit.computedAt }
     const failed = await readCachedBlock<CachedFailure>(failedKey)
-    if (failed) return { blockId, ok: false, error: failed.error, message: failed.message }
+    if (failed) return { ok: false, error: failed.error, message: failed.message }
   }
   const outcome = await withViewerSlot(viewer, () =>
-    computeBlock(block, { viewer, dashboardId, ...(opts.signal ? { signal: opts.signal } : {}) }),
+    computeBlock(block, {
+      viewer,
+      dashboardId: dashboard.id,
+      range,
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    }),
   )
   if (!outcome.ok) {
     // A read the viewer abandoned says nothing about the source: never cached.
@@ -451,7 +824,7 @@ export async function getBlockData(
         Math.min(FAILED_BLOCK_TTL_SEC, blockTtlSec(block)),
       )
     }
-    return { blockId, ok: false, error: outcome.error, message: outcome.message }
+    return { ok: false, error: outcome.error, message: outcome.message }
   }
   const computedAt = new Date().toISOString()
   await writeCachedBlock(
@@ -459,5 +832,5 @@ export async function getBlockData(
     { data: outcome.data, computedAt } satisfies CachedBlock,
     blockTtlSec(block),
   )
-  return { blockId, ok: true, data: outcome.data, cached: false, computedAt }
+  return { ok: true, data: outcome.data, cached: false, computedAt }
 }

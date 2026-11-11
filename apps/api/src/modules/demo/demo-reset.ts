@@ -373,6 +373,7 @@ export const KERNEL_RESET_RULES: Record<string, KernelResetRule> = {
   app_documents: "clear",
   app_document_usage: "clear",
   dashboards: "clear",
+  dashboard_viewer_states: "clear",
   // A visitor's app builder drafts, their versions and builds, and app logs (0276).
   app_drafts: "clear",
   app_draft_versions: "clear",

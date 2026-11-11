@@ -38,6 +38,7 @@ import { DASHBOARD_NOT_ALLOWED_CODE, executeToolCore } from "~/modules/apps/exec
 import { writeAuditLog } from "~/modules/audit/service"
 import {
   DateTokenError,
+  type DayWindow,
   hasDateTokens,
   resolveDateTokens,
 } from "~/modules/dashboards/relative-dates"
@@ -77,6 +78,11 @@ export interface BlockRunContext {
   viewer: UserContext
   /** The saved dashboard, or null for a preview. */
   dashboardId: string | null
+  /**
+   * The dashboard range this run reads (a block that follows it): its {{range.*}} tokens
+   * become these days, and a metric's sparkline is filled over them.
+   */
+  range?: DayWindow | null
   /** The conversation a preview runs in: a source's outside text marks it, as a direct read would. */
   threadId?: string
   signal?: AbortSignal
@@ -265,18 +271,23 @@ export async function dashboardTimezone(orgId: string): Promise<string> {
 
 /**
  * The block with its source's date tokens replaced by the dates of `now` in the org's
- * timezone. A block without tokens is returned as it is (no lookup). Throws DateTokenError
- * on an unknown token.
+ * timezone, its range tokens by `range`. A block without tokens is returned as it is (no
+ * lookup). Throws DateTokenError on an unknown token, or a range token without a range.
  */
 export async function resolveBlockDates<B extends DashboardBlock>(
   block: B,
   orgId: string,
   now: Date = new Date(),
+  range: DayWindow | null = null,
 ): Promise<B> {
   const source = block.source
   const value = source.kind === "tool" ? source.params : source.query
   if (!hasDateTokens(value)) return block
-  const resolved = resolveDateTokens(value, { timeZone: await dashboardTimezone(orgId), now })
+  const resolved = resolveDateTokens(value, {
+    timeZone: await dashboardTimezone(orgId),
+    now,
+    range,
+  })
   return {
     ...block,
     source:
@@ -292,7 +303,7 @@ export async function computeBlock(
   let outcome: BlockOutcome
   try {
     // A no-op when the caller resolved it already (service.ts, for the cache key).
-    const run = await resolveBlockDates(block, ctx.viewer.orgId)
+    const run = await resolveBlockDates(block, ctx.viewer.orgId, new Date(), ctx.range ?? null)
     const runId = `dashboard:${ctx.dashboardId ?? "preview"}:${run.id}`
     const read =
       run.source.kind === "tool"
@@ -303,7 +314,13 @@ export async function computeBlock(
     } else {
       const paged = "paged" in read && read.paged === true
       const rowsPath = run.source.kind === "tool" && !paged ? run.source.rowsPath : undefined
-      outcome = { ok: true, data: transformBlock(run.type, run.map, read.result, { rowsPath }) }
+      outcome = {
+        ok: true,
+        data: transformBlock(run.type, run.map, read.result, {
+          rowsPath,
+          window: ctx.range ?? null,
+        }),
+      }
     }
   } catch (err) {
     if (err instanceof TransformError || err instanceof DateTokenError) {

@@ -68,3 +68,22 @@ Server emits created, updated and deleted events (ids and visibility, no title) 
 Org dashboard events reach every reader, personal ones only their owner, a switch to personal reaches those who saw it -> apps/api/src/infra/websocket.ts:1559
 Lists re-read on an event; a deleted one leaves at once; an open tab reads again -> apps/web/src/framework/bootstrap.ts:1124 ; apps/web/src/modules/dashboards/dashboards-store.ts:119 ; apps/web/src/modules/dashboards/dashboards-store.ts:126
 Deleted or no longer shared message -> packages/shared/src/i18n/locales/en/kernel.json:6444
+Agent edits by an ordered list of operations, all or none -> apps/api/src/modules/dashboards/service.ts:547 ; apps/api/src/modules/dashboards/edit.ts:161
+At most 8 operations, one card line each -> apps/api/src/modules/dashboards/edit.ts:32 ; apps/api/src/modules/dashboards/edit.ts:347
+Org dashboard edit: one approval by kernel:dashboards:admin, numbered card -> apps/api/src/modules/dashboards/tools.ts:527 ; apps/api/src/modules/dashboards/tools.ts:282
+Version conflict refuses the edit -> apps/api/src/modules/dashboards/service.ts:547
+Agent puts every change of one request in one call -> apps/api/src/modules/agent/prompts/kernel/build-dashboard.md:28
+Time range presets and custom -> apps/api/src/modules/dashboards/relative-dates.ts:53 ; apps/api/src/modules/dashboards/relative-dates.ts:390
+Default range last 30 days, compare same period last year -> apps/api/src/modules/dashboards/relative-dates.ts:83
+Comparison windows (last year, previous period) -> apps/api/src/modules/dashboards/relative-dates.ts:453
+Range and compare defaults in the spec -> apps/api/src/modules/dashboards/spec.ts:248
+Block follows the range or keeps its own dates; old specs fixed -> apps/api/src/modules/dashboards/spec.ts:207 ; apps/api/src/modules/dashboards/spec.ts:281
+Range block run again over the comparison window -> apps/api/src/modules/dashboards/service.ts:676 ; apps/api/src/modules/dashboards/service.ts:703
+Previous values aligned to the chart -> apps/api/src/modules/dashboards/transform.ts:494
+Metric target and sparkline -> apps/api/src/modules/dashboards/spec.ts:132 ; apps/api/src/modules/dashboards/transform.ts:455
+Remembered range per person per dashboard -> apps/api/src/modules/dashboards/service.ts:376 ; apps/api/src/db/migrations/0287_dashboard_viewer_states.sql:43
+Viewer-state routes -> apps/api/src/modules/dashboards/routes.ts:155
+Block data range query -> apps/api/src/modules/dashboards/routes.ts:56
+Cache keyed by the range -> apps/api/src/modules/dashboards/cache.ts:126
+New anchors yesterday, startOfQuarter, endOf* -> apps/api/src/modules/dashboards/relative-dates.ts:26 ; apps/api/src/modules/dashboards/relative-dates.ts:211
+range.fromTime / range.toTime with the org offset -> apps/api/src/modules/dashboards/relative-dates.ts:46 ; apps/api/src/modules/dashboards/relative-dates.ts:253

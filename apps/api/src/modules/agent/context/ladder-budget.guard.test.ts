@@ -19,6 +19,7 @@ import { beforeAll, describe, expect, it } from "bun:test"
 import { join } from "node:path"
 import type { LadderMeasure, LadderReason, LadderTargets, LadderWorld } from "./ladder-budget"
 
+const { DEMO_WORLD_APPS } = await import("~/seed/tiers/demo/demo-apps")
 const { estimateTokens } = await import("./compaction")
 const { renderClientSurfaceLine } = await import("./context")
 const { ladderReport, loadLadderTools, measureLadder, overTarget, readLadderReasons, unexplained } =
@@ -33,6 +34,8 @@ const WORLDS: LadderWorld[] = [
   { name: "all-apps", scopes: ["*"], surface: "web" },
   { name: "few-scopes", scopes: FEW_SCOPES, surface: "web" },
   { name: "phone", scopes: ["*"], surface: "mobile" },
+  // The software demo world: the apps its pack installs, read from the pack's own list.
+  { name: "software-demo", apps: DEMO_WORLD_APPS.saas, scopes: ["*"], surface: "web" },
 ]
 
 /** Targets, not caps. Moving one needs a decision on record. */
@@ -52,6 +55,12 @@ const TARGETS: Record<string, LadderTargets> = {
   "few-scopes": { announcementTokens: 900, appSchemaTokens: {} },
   // The phone is the same catalog (asserted below), so only the prompt is its own number.
   phone: { visibleTools: EVERY_APP.visibleTools, appSchemaTokens: {} },
+  // A world that shows fewer apps announces fewer tools than every app on.
+  "software-demo": {
+    visibleTools: EVERY_APP.visibleTools,
+    announcementTokens: 3_500,
+    appSchemaTokens: {},
+  },
 }
 
 /** A world measured over its target by a known amount. */
@@ -149,6 +158,16 @@ describe("the neutral worlds", () => {
     const [all, few] = measures
     expect(few.announcedTools).toBeGreaterThan(0)
     expect(few.announcedTools).toBeLessThan(all.announcedTools)
+  })
+
+  it("the software demo world measures only the apps its pack installs", () => {
+    const [all, , , world] = measures
+    expect(
+      Object.keys(world.appSchemaTokens)
+        .filter((a) => a !== "kernel")
+        .sort(),
+    ).toEqual([...DEMO_WORLD_APPS.saas].filter((app) => app in all.appSchemaTokens).sort())
+    expect(world.visibleTools).toBeLessThan(all.visibleTools)
   })
 
   it("same catalog on a phone, prompt +40 at most", () => {

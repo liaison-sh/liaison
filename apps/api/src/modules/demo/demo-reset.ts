@@ -655,6 +655,13 @@ export async function purgeDemoOrg(
   const stepMs: Record<string, number> = {}
   let stepAt = Date.now()
   const started = stepAt
+  // Tell the other processes the marker and the fixture CRM are gone BEFORE the
+  // purge: it sweeps every Redis key naming the org, so the version and epoch
+  // counters written here go with it, and a process that read the org in the
+  // meantime finds the counters changed (or absent) and reads again. Written
+  // after the purge they would outlive it until they expire.
+  await invalidateDemoMarker(orgId)
+  await forgetDemoFixtureCrm(orgId)
   const { deleted } = await purgeOrg(orgId, {
     reason: "demo-reset-purge",
     assertAllowed: assertDestructionAllowed,
@@ -668,8 +675,6 @@ export async function purgeDemoOrg(
       stepAt = at
     },
   })
-  await invalidateDemoMarker(orgId)
-  await forgetDemoFixtureCrm(orgId)
   await forgetDemoPaymentsOutside(orgId)
   log.warn(
     { orgId, slug: stored.slug, deleted, ms: Date.now() - started, stepMs },

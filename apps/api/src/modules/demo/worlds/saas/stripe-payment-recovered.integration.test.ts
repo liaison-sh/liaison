@@ -24,6 +24,7 @@ import { decideApproval } from "~/modules/approvals/decide"
 import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
+import { writeAuditLog } from "~/modules/audit/service"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { worldInjectors } from "~/modules/demo/world/registry"
 import { seedContext } from "~/seed/context"
@@ -82,6 +83,21 @@ async function mrr(): Promise<MrrLine> {
   })
   return (r.data as { lines: MrrLine[] }).lines[0] as MrrLine
 }
+
+/**
+ * What the public webhook route leaves behind: it writes one audit row per
+ * delivery, named for the endpoint. The app's own handler, called directly,
+ * writes none, so a recovery that went through the route shows up here.
+ */
+const routeDeliveries = async () =>
+  Number(
+    (
+      await rows(
+        sql`SELECT count(*)::int AS n FROM kernel.audit_log
+            WHERE org_id = ${world.orgId} AND app = 'stripe' AND entity_type = 'webhook'`,
+      )
+    )[0]?.n,
+  )
 
 async function drain(): Promise<void> {
   await settleDemoPaymentsDeliveries()
@@ -246,6 +262,8 @@ describe("the money scenario's recovered card", () => {
     })
     expect(await homeItem(waiting.id)).toBeUndefined()
     expect(onTheWire).toEqual([])
+    // The events reached the app's handler directly: the public route saw none.
+    expect(await routeDeliveries()).toBe(0)
   }, 300_000)
 
   it("a second pass of the recovery changes nothing more", async () => {
@@ -261,4 +279,21 @@ describe("the money scenario's recovered card", () => {
     expect(await pastDueCount()).toBe(6)
     expect((await mrr()).pastDueMinor).toBe(191_700)
   }, 120_000)
+
+  it("notices a delivery that went through the public webhook route", async () => {
+    // The route's own audit write, as it makes it after a delivery.
+    const before = await routeDeliveries()
+    await withPrivilegedDb(world.orgId, "saas-card-recovered-test-route", (tx) =>
+      writeAuditLog(tx, {
+        orgId: world.orgId,
+        actorType: "system",
+        actorId: null,
+        app: "stripe",
+        entityType: "webhook",
+        action: "webhook.events",
+        metadata: { endpointName: "events" },
+      }),
+    )
+    expect(await routeDeliveries()).toBe(before + 1)
+  })
 })

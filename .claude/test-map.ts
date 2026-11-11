@@ -67,6 +67,7 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   { glob: "apps/api/src/modules/demo/worlds/saas/payments/stripe-standin.integration.test.ts", suites: ["integration-extra", "unit", "demo-seed"] },
   // The owner's question played through the agent loop on the seeded world: seeded, so demo-seed only.
   { glob: "apps/api/src/seed/worlds/saas/owner-question-reach.saas.integration.test.ts", suites: ["demo-seed"] },
+  { glob: "apps/api/src/seed/worlds/saas/seed-without-owner.saas.integration.test.ts", suites: ["demo-seed"] },
   { glob: "apps/api/src/modules/demo/worlds/**", suites: ["demo-seed", "unit", "web-unit", "guards"] },
   { glob: "apps/api/src/seed/worlds/**", suites: ["demo-seed", "unit", "web-unit", "guards"] },
   { glob: "apps/api/src/seed/factories/payments/**", suites: ["demo-seed", "integration", "unit"] },

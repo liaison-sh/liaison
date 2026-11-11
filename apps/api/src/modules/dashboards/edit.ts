@@ -10,6 +10,7 @@
 // (tools.ts): what changes, from where a block reads (tool or collection, its params with
 // each date token and what it is today), its position, the range.
 
+import { APPROVAL_SUMMARY_LONG_LINES_MAX } from "@liaison/shared"
 import { z } from "zod"
 import {
   COMPARE_MODES,
@@ -17,6 +18,7 @@ import {
   DateTokenError,
   type DayWindow,
   dateTokensIn,
+  hasRangeTokens,
   resolveDateTokens,
   resolveTimeRange,
   type TimeRange,
@@ -24,12 +26,23 @@ import {
 import {
   type DashboardSpec,
   dashboardDefaultRange,
+  dashboardSpecSchema,
   MAX_DASHBOARD_BLOCKS,
   timeRangeSchema,
 } from "~/modules/dashboards/spec"
 
-/** The most operations one edit takes: each one is one line of its approval card. */
-export const MAX_EDIT_OPERATIONS = 8
+/**
+ * The most changes one dashboard approval card lists, one numbered line each: the bound of
+ * dashboards_edit's operations and of the changes one dashboards_update makes to an org
+ * dashboard. One request is one card however many changes it pools (owner, 2026-11-11);
+ * this bounds it against abuse, as the shared summary schema does for these card kinds.
+ */
+export const MAX_CARD_CHANGES = APPROVAL_SUMMARY_LONG_LINES_MAX
+
+/** The refusal of a request with more changes than one card lists. */
+export function tooManyChangesMessage(count: number): string {
+  return `${count} changes is more than one approval card lists (${MAX_CARD_CHANGES}). Split the request: send the first ${MAX_CARD_CHANGES} changes now, and send the rest only once that approval is decided and applied, reading the dashboard again (kernel__dashboards_get) for its new version.`
+}
 
 const blockId = z.string().min(1).max(40)
 const blockRecord = z.record(z.string(), z.unknown())
@@ -262,10 +275,53 @@ function compact(value: unknown, max = 160): string {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s
 }
 
+/** Params as written when short; else each one by name, its value cut (the tokens follow). */
+function paramWords(params: Record<string, unknown>): string {
+  const whole = JSON.stringify(params)
+  if (whole.length <= 300) return whole
+  return Object.entries(params)
+    .map(([k, v]) => `${k}: ${compact(v, 50)}`)
+    .join(", ")
+}
+
+/** What a block's map draws, in words: "sum of total by status, target 5000". */
+function mapWords(rawMap: unknown): string {
+  const map = isObject(rawMap) ? rawMap : {}
+  const field = map.value ?? map.y
+  const agg = map.agg ?? (field ? "sum" : "count")
+  const parts: string[] = []
+  if (Array.isArray(map.columns)) {
+    parts.push(
+      `columns ${map.columns.map((c) => String(isObject(c) ? (c.label ?? c.field) : c)).join(", ")}`,
+    )
+  } else parts.push(agg === "count" && !field ? "a count of rows" : `${agg} of ${String(field)}`)
+  if (isObject(map.groupBy)) {
+    const bucket = map.groupBy.bucket ? ` per ${String(map.groupBy.bucket)}` : ""
+    parts[0] += ` by ${String(map.groupBy.field)}${bucket}`
+  } else if (map.x ?? map.label) parts[0] += ` by ${String(map.x ?? map.label)}`
+  if (map.series) parts.push(`split by ${String(map.series)}`)
+  if (map.target !== undefined) parts.push(`target ${String(map.target)}`)
+  if (isObject(map.sparkline)) {
+    parts.push(
+      `sparkline of ${String(map.sparkline.field)} per ${String(map.sparkline.bucket ?? "day")}`,
+    )
+  }
+  return parts.join(", ")
+}
+
+/** Whether a block follows the dashboard range (spec.ts blockRangeMode, on an unchecked block). */
+function rangeModeWords(block: Record<string, unknown>): string {
+  const s = isObject(block.source) ? block.source : {}
+  const follows =
+    block.timeRange === "dashboard" ||
+    (block.timeRange !== "fixed" && hasRangeTokens(s.kind === "store" ? s.query : s.params))
+  return follows ? "follows the dashboard range" : "keeps its own dates"
+}
+
 /** Each date token of `value` and what it means today. */
 function tokenMeanings(value: unknown, window: DayWindow, ctx: DescribeContext): string {
   const out = dateTokensIn(value)
-    .slice(0, 4)
+    .slice(0, 8)
     .map((token) => {
       if (token.startsWith("{{range.")) {
         const today = (() => {
@@ -297,7 +353,7 @@ function sourceWords(source: unknown, window: DayWindow, ctx: DescribeContext): 
   }
   const params =
     isObject(s.params) && Object.keys(s.params).length
-      ? ` with ${compact(s.params)}`
+      ? ` with ${paramWords(s.params)}`
       : " with no params"
   return `${String(s.tool ?? "(no source)")}${params}${tokenMeanings(s.params, window, ctx)}`
 }
@@ -325,7 +381,7 @@ function changeWords(
     else if (k === "source") {
       const after = mergeBlock(before, { source: v }).source
       parts.push(`source now ${sourceWords(after, window, ctx)}`)
-    } else if (k === "map") parts.push(`map ${compact(v, 120)} (null removes)`)
+    } else if (k === "map") parts.push(`now shows ${mapWords(mergeKeys(before.map, v))}`)
     else if (k === "timeRange") {
       parts.push(
         v === "fixed"
@@ -377,7 +433,9 @@ export function describeOperations(
       case "addBlock": {
         const b = op.block
         const at = indexOf(nextBlocks, String(b.id))
-        line = `Add a ${String(b.type ?? "")} block "${String(b.title ?? b.id)}" (width ${String(b.width ?? 1)})${at >= 0 ? ` at ${positionWords(nextBlocks, at)}` : ""}, reading ${sourceWords(b.source, window, ctx)}`
+        const refresh =
+          b.refreshSec !== undefined ? `, refreshed every ${String(b.refreshSec)} s` : ""
+        line = `Add a ${String(b.type ?? "")} block "${String(b.title ?? b.id)}" (width ${String(b.width ?? 1)})${at >= 0 ? ` at ${positionWords(nextBlocks, at)}` : ""}, reading ${sourceWords(b.source, window, ctx)}; it shows ${mapWords(b.map)}, ${rangeModeWords(b)}${refresh}`
         break
       }
       case "updateBlock": {
@@ -434,4 +492,137 @@ export function describeOperations(
     state = next
   })
   return lines
+}
+
+// ── a whole new spec, as operations ────────────────────────────────────────
+
+/** JSON with object keys sorted: two values are the same when this is. */
+function stable(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`
+  if (isObject(value)) {
+    return `{${Object.keys(value)
+      .filter((k) => value[k] !== undefined)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stable(value[k])}`)
+      .join(",")}}`
+  }
+  return JSON.stringify(value) ?? "null"
+}
+const same = (a: unknown, b: unknown) => stable(a) === stable(b)
+
+/** The keys of `next` that differ from `base`: the new value, or null where a key went. */
+function patchOf(base: unknown, next: unknown): Record<string, unknown> {
+  const b = isObject(base) ? base : {}
+  const n = isObject(next) ? next : {}
+  const out: Record<string, unknown> = {}
+  for (const k of new Set([...Object.keys(b), ...Object.keys(n)])) {
+    if (n[k] === undefined) {
+      if (b[k] !== undefined) out[k] = null
+    } else if (!same(b[k], n[k])) out[k] = n[k]
+  }
+  return out
+}
+
+/** An updateBlock's `changes` turning `before` into `after` (mergeBlock's rules, reversed). */
+function blockChanges(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+): Record<string, unknown> {
+  const changes: Record<string, unknown> = {}
+  for (const k of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    if (k === "id" || same(before[k], after[k])) continue
+    const was = before[k]
+    const now = after[k]
+    if (now === undefined) changes[k] = null
+    else if (k === "map") changes.map = patchOf(was, now)
+    else if (k === "source" && isObject(was) && isObject(now) && was.kind === now.kind) {
+      const source: Record<string, unknown> = {}
+      for (const sk of new Set([...Object.keys(was), ...Object.keys(now)])) {
+        if (same(was[sk], now[sk])) continue
+        if (sk === "params" || sk === "query") source[sk] = patchOf(was[sk], now[sk])
+        else source[sk] = now[sk] === undefined ? null : now[sk]
+      }
+      changes.source = source
+    } else changes[k] = now
+  }
+  return changes
+}
+
+/** The indexes of a longest increasing run of `values` (the blocks that need not move). */
+function longestIncreasing(values: number[]): Set<number> {
+  const length = values.map(() => 1)
+  const prev = values.map(() => -1)
+  for (let i = 0; i < values.length; i++) {
+    for (let j = 0; j < i; j++) {
+      if (values[j]! < values[i]! && length[j]! + 1 > length[i]!) {
+        length[i] = length[j]! + 1
+        prev[i] = j
+      }
+    }
+  }
+  let at = length.indexOf(Math.max(0, ...length))
+  const out = new Set<number>()
+  while (at >= 0) {
+    out.add(at)
+    at = prev[at]!
+  }
+  return out
+}
+
+/**
+ * The operations that turn `current` into `next` (a whole-spec save, dashboards_update),
+ * so its approval card lists each change as dashboards_edit's does: title, visibility,
+ * the default range and comparison, each block removed, changed (with what changed),
+ * added or moved. Applying them to `current` gives `next`'s blocks in `next`'s order.
+ */
+export function diffDashboards(
+  current: EditableDashboard,
+  next: { title?: string; visibility?: "personal" | "org"; spec?: unknown },
+): EditOperation[] {
+  const ops: EditOperation[] = []
+  if (next.title !== undefined && next.title !== current.title) {
+    ops.push({ op: "setTitle", title: next.title })
+  }
+  if (next.visibility !== undefined && next.visibility !== current.visibility) {
+    ops.push({ op: "setVisibility", visibility: next.visibility })
+  }
+  if (!isObject(next.spec)) return ops
+  const was = current.spec as unknown as Record<string, unknown>
+  // Compared as it would be saved (its defaults filled in), so a default is not a change.
+  const parsed = dashboardSpecSchema.safeParse(next.spec)
+  const now = parsed.success ? (parsed.data as unknown as Record<string, unknown>) : next.spec
+  const rangeChanged = !same(was.timeRange, now.timeRange)
+  const compareChanged = !same(was.compare, now.compare)
+  if (rangeChanged || compareChanged) {
+    ops.push({
+      op: "setTimeRange",
+      ...(rangeChanged ? { timeRange: (now.timeRange ?? null) as TimeRange | null } : {}),
+      ...(compareChanged ? { compare: (now.compare ?? null) as CompareMode | null } : {}),
+    })
+  }
+  const blocksOf = (spec: Record<string, unknown>) =>
+    (Array.isArray(spec.blocks) ? spec.blocks : []).filter(isObject)
+  const oldBlocks = blocksOf(was)
+  const newBlocks = blocksOf(now)
+  const newIndex = new Map(newBlocks.map((b, i) => [String(b.id), i]))
+  const oldById = new Map(oldBlocks.map((b) => [String(b.id), b]))
+  for (const b of oldBlocks) {
+    if (!newIndex.has(String(b.id))) ops.push({ op: "removeBlock", blockId: String(b.id) })
+  }
+  const kept = oldBlocks.filter((b) => newIndex.has(String(b.id)))
+  for (const b of kept) {
+    const changes = blockChanges(b, newBlocks[newIndex.get(String(b.id))!]!)
+    if (Object.keys(changes).length) {
+      ops.push({ op: "updateBlock", blockId: String(b.id), changes })
+    }
+  }
+  const staying = longestIncreasing(kept.map((b) => newIndex.get(String(b.id))!))
+  const stays = new Set([...staying].map((i) => String(kept[i]!.id)))
+  newBlocks.forEach((b, i) => {
+    const id = String(b.id)
+    const position: BlockPosition = i === 0 ? 0 : { after: String(newBlocks[i - 1]!.id) }
+    if (!oldById.has(id)) ops.push({ op: "addBlock", block: b, position })
+    else if (!stays.has(id)) ops.push({ op: "moveBlock", blockId: id, position })
+  })
+  return ops
 }

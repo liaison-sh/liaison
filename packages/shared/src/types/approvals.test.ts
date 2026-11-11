@@ -50,6 +50,22 @@ describe("approvalSummarySchema", () => {
     expect(approvalSummarySchema.safeParse({ kind: "x", title: "x", lines }).success).toBe(true)
   })
 
+  it("lets a dashboard card list one line per change, up to 50, truncating past that", () => {
+    const lines = (n: number) => Array.from({ length: n }, (_, i) => `${i + 1}. change`)
+    for (const kind of ["dashboard_edit", "dashboard_update"]) {
+      expect(approvalSummarySchema.safeParse({ kind, title: "x", lines: lines(50) }).success).toBe(
+        true,
+      )
+      expect(approvalSummarySchema.safeParse({ kind, title: "x", lines: lines(51) }).success).toBe(
+        false,
+      )
+      expect(truncateApprovalSummary({ kind, title: "x", lines: lines(60) }).lines).toHaveLength(50)
+    }
+    expect(truncateApprovalSummary({ kind: "x", title: "x", lines: lines(20) }).lines).toHaveLength(
+      8,
+    )
+  })
+
   it("accepts a 500-character line", () => {
     expect(
       approvalSummarySchema.safeParse({ kind: "x", title: "x", lines: ["a".repeat(500)] }).success,

@@ -25,14 +25,16 @@ Always in this order:
 
 ### Changing a dashboard
 
-`kernel__dashboards_get` (note its `version`), then ONE `kernel__dashboards_edit({ dashboardId, ifVersion, operations })` with every change the person asked for, in order (at most 8):
+`kernel__dashboards_get` (note its `version`), then ONE `kernel__dashboards_edit({ dashboardId, ifVersion, operations })` with every change the person asked for, in order (at most 50):
 
 - `{ "op": "addBlock", "block": {...}, "position": 2 }` (`position`: an index, 0 = first, or `{ "before": "<blockId>" }` / `{ "after": "<blockId>" }`; default the end)
 - `{ "op": "updateBlock", "blockId": "orders", "changes": { "title": "...", "source": { "params": { "since": "{{range.from}}" } } } }`: `map` and `source.params` merge key by key (`null` removes a key), other fields are replaced
 - `{ "op": "removeBlock", "blockId": "..." }`, `{ "op": "moveBlock", "blockId": "...", "position": { "after": "..." } }`
 - `{ "op": "setTitle", "title": "..." }`, `{ "op": "setTimeRange", "timeRange": { "preset": "lastMonth" }, "compare": "previousPeriod" }`, `{ "op": "setVisibility", "visibility": "org" }`
 
-The operations apply together or not at all. On an org dashboard the whole call waits for ONE approval, whose card lists each change: never split one request into several calls (each would be its own approval), never send changes the person did not ask for. Preview a new or changed block first. A `version_conflict` means someone saved meanwhile: read it again and redo the call. Rebuilding most of a dashboard: `kernel__dashboards_update({ id, spec, ifVersion })` with the whole spec.
+The operations apply together or not at all, and are checked before anything waits for a person: an unknown block, a duplicate id, a map that does not fit or a source the person cannot read is refused at once, naming it. Fix the call and send it again. On an org dashboard the whole call waits for ONE approval, whose card lists each change: never split one request into several calls (each would be its own approval), never send changes the person did not ask for. Preview a new or changed block first. A `version_conflict` means someone saved meanwhile: read it again and redo the call. `too_many_changes` (over 50): send the first part, and the rest only once that approval is decided and applied, after reading the dashboard again for its new version.
+
+Changes always go through `kernel__dashboards_edit`. `kernel__dashboards_update({ id, spec, ifVersion })` replaces the whole spec: keep it for a wholesale rebuild the person asked for (its card lists every difference from the saved dashboard, the same way).
 
 ### The map
 
@@ -57,7 +59,7 @@ The source below is a connector read of a shop's orders; use the tool and params
 
 A dashboard has a time range the viewer picks (last 7, 30 or 90 days, month, quarter or year to date, last month, quarter or year, or custom dates) and a comparison (same period last year by default, or the previous period). Each person's choice is remembered for them.
 
-- A block that should follow it (sales, spend, orders over a period) uses `{{range.from}}` and `{{range.to}}` (days, inclusive) in its params instead of its own dates; `{{range.fromTime}}` / `{{range.toTime}}` give the first and last instant as date-times for APIs that need one. Offsets work: `{{range.from-1d}}`. Title it without a period ("Revenue"): the dashboard names the range.
+- A block that should follow it (sales, spend, orders over a period) uses `{{range.from}}` and `{{range.to}}` (days, inclusive) in its params instead of its own dates; `{{range.fromTime}}` / `{{range.toTime}}` give the first and last second as date-times for APIs that need one; `{{range.endExclusive}}` is the first instant after the range (midnight of the next day), for a filter written `< end` that must not lose the last second. Offsets work: `{{range.from-1d}}`. Title it without a period ("Revenue"): the dashboard names the range.
 - Such a block is also run over the comparison window: a metric shows the change, a chart the previous values.
 - A block about a fixed window or no window ("open orders, last 90 days", "stock") keeps its own tokens: it says its own dates and is not compared. Set `"timeRange": "fixed"` on it to make that explicit.
 - The dashboard's default: root `"timeRange": { "preset": "mtd" }` (presets `last7d`, `last30d`, `last90d`, `mtd`, `lastMonth`, `qtd`, `lastQuarter`, `ytd`, `lastYear`, or `custom` with `from` and `to`) and `"compare": "lastYear" | "previousPeriod" | "none"`. Without them: the last 30 days, compared with last year.

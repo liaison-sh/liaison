@@ -7726,7 +7726,8 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.dashboards.filterAll": "Tous",
   "kernel.dashboards.filterAria": "{{label}} : {{value}}",
   "kernel.dashboards.filterLoading": "Chargement des valeurs…",
-  "kernel.dashboards.filterOptionsFailed": "Les valeurs n'ont pas pu être lues. Réessayez dans un instant.",
+  "kernel.dashboards.filterOptionsFailed":
+    "Les valeurs n'ont pas pu être lues. Réessayez dans un instant.",
   "kernel.dashboards.filterTruncated": "Seules les 200 premières valeurs sont listées.",
   "kernel.dashboards.funnelConversion": "{{percent}} de l'étape précédente",
   "kernel.dashboards.drillShowFor": "Afficher les lignes de {{label}}",
@@ -7741,7 +7742,8 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.dashboards.drillNext": "Page suivante",
   "kernel.dashboards.drillOpen": "Ouvrir",
   "kernel.dashboards.drillEmpty": "Aucune ligne derrière ce chiffre.",
-  "kernel.dashboards.drillTruncated": "La source a plus de lignes : seules les 2 000 premières sont parcourues.",
+  "kernel.dashboards.drillTruncated":
+    "La source a plus de lignes : seules les 2 000 premières sont parcourues.",
   "kernel.dashboards.blockNetwork":
     "Impossible de joindre le serveur pour le moment. Réessayez dans un instant.",
   "kernel.appBuilder.check": "Vérifier",

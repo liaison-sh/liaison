@@ -1129,6 +1129,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // The software world's plan held to its invariants at anchors
             // across a year, with no database.
             "src/seed/worlds/saas/plan-invariants.test.ts",
+            // Its desks' prompts against the products desks they are built from.
+            "src/seed/worlds/saas/desk-prompts.test.ts",
             // The software world's card mirror read back through the
             // payments stand-in rebuilds to the rows it was seeded with.
             "src/seed/factories/payments/stripe-mirror-roundtrip.test.ts",

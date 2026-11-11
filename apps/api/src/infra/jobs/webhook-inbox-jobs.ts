@@ -8,8 +8,11 @@
  *   was lost (a process that died between store and handle leaves its row
  *   `processing` until the lease ends, then it is due), and moves the previous
  *   release's queued `retry-webhook` jobs into the inbox;
- * - `webhook-inbox-retention` (daily): deletes settled and dead rows past
+ * - `webhook-inbox-retention` (hourly): deletes settled and dead rows past
  *   their windows.
+ *
+ * All three run on their own queue class (`webhook`, queue-classes.ts), never
+ * on `kernel-cron`: a burst of replays waits behind itself only.
  *
  * Upgrade: the previous release kept a failed or capped delivery as a delayed
  * `retry-webhook` job. The leader drains those into the inbox when it takes
@@ -52,10 +55,12 @@ import {
   enqueueAppJobs,
   getJobQueue,
   getLegacyKernelQueue,
+  getPhysicalQueue,
   registerJobWorker,
   registerScheduledJob,
 } from "./jobs"
 import { withPinnedJobSlot } from "./pinned-jobs-gate"
+import { KERNEL_QUEUE_CLASSES } from "./queue-classes"
 
 const log = rootLogger.child({ module: "webhook-inbox-jobs" })
 
@@ -284,10 +289,16 @@ export async function drainLegacyRetryJobs(now: number = Date.now()): Promise<{ 
   return { moved }
 }
 
-/** One sweep: drain legacy jobs, then wake every due row. */
+/**
+ * Due rows one sweep wakes at most: a backlog (every held delivery comes due
+ * at UTC midnight) drains over a few minutes instead of flooding the queue.
+ */
+export const SWEEP_MAX_WAKES = 100
+
+/** One sweep: drain legacy jobs, then wake the due rows, oldest first. */
 export async function sweepWebhookInbox(): Promise<{ woken: number; moved: number }> {
   const { moved } = await drainLegacyRetryJobs()
-  const due = await listDueDeliveries()
+  const due = await listDueDeliveries(SWEEP_MAX_WAKES)
   if (due.length > 0) {
     await enqueueAppJobs(
       "kernel",
@@ -312,7 +323,7 @@ export async function registerWebhookInboxJobs(): Promise<void> {
     const r = await sweepWebhookInbox()
     if (r.woken + r.moved > 0) log.info(r, "webhook_inbox_sweep")
   })
-  await registerScheduledJob("kernel", "webhook-inbox-retention", "37 4 * * *", async () => {
+  await registerScheduledJob("kernel", "webhook-inbox-retention", "37 * * * *", async () => {
     log.info(await pruneWebhookInbox(), "webhook_inbox_retention")
   })
   // Boot drain: the leader moves the previous release's queued retries into
@@ -324,4 +335,24 @@ export async function registerWebhookInboxJobs(): Promise<void> {
     )
   }
   registerSingleton({ name: "webhook-inbox-legacy-drain", onAcquired: drain, onLost: () => {} })
+  await removeCronLaneSchedulers()
+}
+
+/**
+ * The inbox's schedulers as a build that ran them on `kernel-cron` left them:
+ * removed, so the sweep does not tick twice a minute. Its replays already
+ * queued there still run (a job host runs a kernel job by its name).
+ */
+async function removeCronLaneSchedulers(): Promise<void> {
+  const cron = getPhysicalQueue(KERNEL_QUEUE_CLASSES.cron.queueName)
+  for (const id of ["webhook-inbox-sweep-scheduler", "webhook-inbox-retention-scheduler"]) {
+    try {
+      await cron.removeJobScheduler(id)
+    } catch (err) {
+      log.warn(
+        { err, schedulerId: id },
+        "could not remove a webhook inbox scheduler from kernel-cron",
+      )
+    }
+  }
 }

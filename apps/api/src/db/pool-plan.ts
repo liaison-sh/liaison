@@ -88,13 +88,13 @@ const ALL_REQUEST_MAX = 25
 const ALL_PRIVILEGED_MAX = 15
 const ALL_JOBS_MAX = 30
 
-/** What the kernel queue classes want: every slot (classes + legacy drain), and agent + cron. */
+/** What the kernel queue classes want: every slot (classes + legacy drain), and agent + cron + webhook. */
 export interface KernelNeed {
   total: number
   requestSlots: number
 }
 
-/** The default kernel classes: cron 3 + agent 4 + media 2 + bulk 1 + legacy drain 1; agent + cron 7. */
+/** The default kernel classes: cron 2 + agent 4 + media 2 + bulk 1 + webhook 1 + legacy drain 1; agent + cron + webhook 7. */
 export const DEFAULT_KERNEL_NEED: KernelNeed = { total: 11, requestSlots: 7 }
 
 /** Env pool sizes an operator set (DB_POOL_MAX, DB_PRIVILEGED_POOL_MAX, DB_JOBS_POOL_MAX, DB_PRIVILEGED_JOBS_POOL_MAX). */

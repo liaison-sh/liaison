@@ -53,6 +53,7 @@ import {
   type InboxDelivery,
   settleDeliveryQuietly,
   storeDelivery,
+  storedWebhookHeaders,
   wakeAfterSettle,
   wakeReplay,
 } from "~/modules/webhooks/inbox"
@@ -517,12 +518,14 @@ async function dispatchVerifiedWebhook(
   // Lowercased inbound header dict — passed as the 3rd handler arg (the manifest
   // webhook signature is `(payload, ctx, headers)`; bundle code reads e.g.
   // `x-shopify-webhook-id` for dedup) and stored in the inbox so a replay
-  // re-supplies the same headers. Lowercased + JSON-cloned so the sandbox sees
-  // a plain dict.
-  const headerDict: Record<string, string> = {}
+  // re-supplies the same headers. Only the provider's event headers
+  // (storedWebhookHeaders: no credentials, cookies, signatures or client
+  // address), the same set inline and on a replay. A plain dict for the sandbox.
+  const rawHeaders: Record<string, string> = {}
   for (const [k, v] of c.req.raw.headers.entries()) {
-    headerDict[k.toLowerCase()] = v
+    rawHeaders[k.toLowerCase()] = v
   }
+  const headerDict = storedWebhookHeaders(rawHeaders)
 
   // Release the replay claim so a provider retry re-reaches the route. Called
   // when the delivery did NOT durably succeed.

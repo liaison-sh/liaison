@@ -29,7 +29,12 @@
 // There is exactly ONE call site (routes.ts, POST /api/demo/orgs) and exactly
 // one place the real implementation is resolved (`loadSeeder` below).
 import path from "node:path"
-import type { DemoNeed, DemoVariant } from "@liaison/shared"
+import {
+  DEMO_DEFAULT_WORLD,
+  type DemoNeed,
+  type DemoVariant,
+  type DemoWorldId,
+} from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { schemaRef } from "~/db/schema-ref"
 import { env } from "~/lib/env"
@@ -221,6 +226,8 @@ export interface DemoSeedRequest {
   orgSlug: string
   /** Display name for the new workspace. Always the fictional company's. */
   orgName: string
+  /** The demo world to seed. Absent: `products`. */
+  worldId?: DemoWorldId
   variant: DemoVariant
   /** BCP 47 tag; the seeder has its own default when this is omitted. */
   locale?: string
@@ -301,6 +308,7 @@ async function loadSeeder(): Promise<SeederFn | null> {
       seedDemoWorld?: (opts: {
         orgSlug: string
         orgName?: string
+        worldId?: DemoWorldId
         variant: DemoVariant
         locale?: string
         owner?: { email: string; name: string; password: string }
@@ -319,9 +327,11 @@ async function loadSeeder(): Promise<SeederFn | null> {
     }
     const seedDemoWorld = mod.seedDemoWorld
     resolved = async (req) => {
+      const worldId = req.worldId ?? DEMO_DEFAULT_WORLD
       const result = await seedDemoWorld({
         orgSlug: req.orgSlug,
         orgName: req.orgName,
+        worldId,
         variant: req.variant,
         locale: req.locale,
         owner: req.owner,
@@ -455,6 +465,7 @@ export async function prepareDemoScenario(
 export type FitPooledWorldFn = (
   orgId: string,
   needs: readonly DemoNeed[],
+  worldId?: DemoWorldId,
 ) => Promise<{ appsOff: string[]; supportRoutineOff: boolean }>
 
 let fitPooledWorld: FitPooledWorldFn | null | undefined
@@ -478,12 +489,19 @@ async function loadFitPooledWorld(): Promise<FitPooledWorldFn | null> {
  * pick turned Off). Never throws: a workspace showing an app too many is still
  * a working demo.
  */
-export async function fitPooledDemoWorld(orgId: string, needs: readonly DemoNeed[]): Promise<void> {
+export async function fitPooledDemoWorld(
+  orgId: string,
+  needs: readonly DemoNeed[],
+  worldId: DemoWorldId = DEMO_DEFAULT_WORLD,
+): Promise<void> {
   const fit = await loadFitPooledWorld()
   if (!fit) return
   try {
-    const result = await fit(orgId, needs)
-    log.info({ orgId, needs, ...result }, "pooled demo workspace fitted to the visitor's needs")
+    const result = await fit(orgId, needs, worldId)
+    log.info(
+      { orgId, needs, worldId, ...result },
+      "pooled demo workspace fitted to the visitor's needs",
+    )
   } catch (err) {
     log.error({ err, orgId, needs }, "pooled demo workspace could not be fitted to the needs")
   }

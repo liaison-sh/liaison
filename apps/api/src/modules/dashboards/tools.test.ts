@@ -238,6 +238,31 @@ describe("preview and sources", () => {
     expect((await listDashboards(as(owner, [WRITE]))).length).toBe(before)
   })
 
+  it("preview_block reads a dataset and applies filter values to the rows", async () => {
+    const res = await call(owner, [WRITE, READ], "dashboards_preview_block", {
+      block: {
+        id: "by-status",
+        type: "metric",
+        title: "Completed",
+        dataset: "orders",
+        map: {
+          value: "total",
+          where: [{ field: "status", op: "eq", value: { filter: "status" } }],
+        },
+      },
+      datasets: { orders: { kind: "tool", tool: `${APP}:orders_list` } },
+      filters: [
+        { id: "status", label: "Status", type: "select", options: ["completed", "refunded"] },
+      ],
+      filterValues: { status: ["refunded"] },
+    })
+    expect(res.data).toMatchObject({ ok: true, data: { kind: "metric", value: 5 } })
+    const missing = await call(owner, [WRITE, READ], "dashboards_preview_block", {
+      block: { id: "x", type: "metric", title: "X", dataset: "nope", map: { agg: "count" } },
+    })
+    expect(missing.data).toMatchObject({ ok: false, reason: "invalid_block" })
+  })
+
   it("a refused preview names why and the eligible alternatives", async () => {
     const res = await call(owner, [WRITE, READ], "dashboards_preview_block", {
       block: pieBlock(`${APP}:orders_cancel`),

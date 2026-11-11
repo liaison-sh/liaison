@@ -45,7 +45,7 @@ describe("chart types", () => {
     const combo = transformBlock(
       "combo",
       {
-        groupBy: { field: "day" },
+        groupBy: { field: "day", bucket: "day" },
         measures: [
           { label: "Revenue", field: "total", agg: "sum" },
           { label: "Orders", agg: "count" },

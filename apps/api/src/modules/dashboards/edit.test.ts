@@ -228,10 +228,10 @@ describe("datasets and filters by operation", () => {
     expect(lines[0]).toContain("Add the shared dataset 'orders': it reads shop:orders_search")
     expect(lines[0]).toContain("no block uses it yet")
     expect(lines[1]).toContain(
-      'Add the filter "Market" (id market, one value, options FR, DE, default "FR"',
+      'Add the filter "Market" (id market, one value, options FR, DE, default FR',
     )
     expect(lines[2]).toContain("reading the shared dataset 'orders'")
-    expect(lines[2]).toContain('keeping only rows where status is not "cancelled"')
+    expect(lines[2]).toContain("keeping only rows where status is not cancelled")
     expect(lines[3]).toContain('showing the note "B2B = tagged b2b"')
     expect(lines[4]).toContain(
       'keeps only rows where market is the "Market" filter\'s value (all rows while it is empty)',

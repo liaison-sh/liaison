@@ -37,6 +37,7 @@ export {
 } from "./agent-turns"
 export type { Agent, AgentKind, NewAgent } from "./agents"
 export { agentKindEnum, agents } from "./agents"
+export { type AppAttentionItemsRow, appAttentionItems } from "./app-attention"
 export {
   type AppBuildArtifactKind,
   type AppBuildArtifactRow,

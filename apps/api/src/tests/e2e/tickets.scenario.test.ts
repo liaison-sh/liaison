@@ -362,6 +362,14 @@ describe("Tickets Scenario", () => {
 
   // ─── S5/S6: Attention items ───
 
+  // The apps' attention lists are stored, recomputed after the app was woken
+  // and on the attention minute tick. Tickets seeded straight into the table
+  // wake nothing: run the org's tick job, as the next minute would.
+  const refreshStoredAttention = () =>
+    runCronJobToCompletion(env, "kernel-cron", "attention-state-email-materialize-org", {
+      orgId: world.org.id,
+    })
+
   it("S5: attention items returns shared contract for mixed-state tickets", async () => {
     // T1 — sla_risk: backdate deadline to within 25% of total
     const t1 = await seedTicket(env, {
@@ -401,6 +409,7 @@ describe("Tickets Scenario", () => {
       followupAt: new Date(Date.now() - 60_000).toISOString(),
       followupReason: "ping back",
     })
+    await refreshStoredAttention()
 
     const res = await api(url, "/api/attention-items", { token: writeUser.token })
     expect(res.status).toBe(200)
@@ -884,6 +893,7 @@ describe("Tickets Scenario", () => {
       followupAt: new Date(Date.now() - 60_000).toISOString(),
       followupReason: "ping back",
     })
+    await refreshStoredAttention()
 
     const before = await api(url, "/api/attention-items", { token: writeUser.token })
     expect(
@@ -914,12 +924,14 @@ describe("Tickets Scenario", () => {
     )
     expect(labels.some((l: any) => l.action_label === "followup_due")).toBe(true)
 
-    const after = await api(url, "/api/attention-items", { token: writeUser.token })
-    expect(
-      ((after.body.data?.items ?? []) as any[]).some(
-        (i) => i.entityId === seed.id && i.kind === "followup_due",
-      ),
-    ).toBe(false)
+    // The job run woke the app: its stored list is recomputed right after.
+    const stillDue = async () =>
+      (
+        (await api(url, "/api/attention-items", { token: writeUser.token })).body.data?.items ?? []
+      ).filter((i: any) => i.entityId === seed.id && i.kind === "followup_due").length > 0
+    const clearBy = Date.now() + 5000
+    while ((await stillDue()) && Date.now() < clearBy) await Bun.sleep(100)
+    expect(await stillDue()).toBe(false)
   }, 20_000)
 
   // ─── S19: Categories CRUD with depth limit ───

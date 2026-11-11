@@ -20,7 +20,9 @@
 //     own (a hash of its id), which bounds what time alone changes, and any
 //     write a provider reads that sends no event.
 //
-// What users see: the feed reads providers live and does not depend on this.
+// What users see: the feed reads the kernel's providers live; the apps' stored
+// attention lists (apps/attention-store.ts) are also recomputed on this tick,
+// besides after every run of the app.
 // An item caused by an event is emailed and pushed as fast as before (the next
 // minute). An item that appears with no event in an org where nothing else
 // happened (an expiry passing on its own) goes out within HEARTBEAT_MINUTES

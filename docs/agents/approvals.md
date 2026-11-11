@@ -192,7 +192,7 @@ Starting work on your own computer, sharing a folder, cloning a repository and i
 
 ## Preview details for approvers
 
-An approval card shows a summary built by the app that owns the action, for example a before and after of the record. Apps that run in the sandbox cannot read the record to build it, so the card then shows the raw parameters. A self-hosting operator can name host-reviewed bundled apps in `LIAISON_TRUSTED_SUMMARIZER_APPS` (comma-separated app names, empty by default) to run their summarizers on the host, which restores those previews.
+An approval card shows a summary built by the app that owns the action, for example a before and after of the record. The summary is built once, when the request is made, and again when its details are edited; opening the card reads the stored summary. Apps that run in the sandbox cannot read the record to build it, so the card then shows the raw parameters. A self-hosting operator can name host-reviewed bundled apps in `LIAISON_TRUSTED_SUMMARIZER_APPS` (comma-separated app names, empty by default) to run their summarizers on the host, which restores those previews.
 
 A call to an MCP server's tool has a card of its own: the server's name and the action as its title, for example **CRM · Manage CRM objects**, the tool's short description, then the call's arguments as lines, the text to be written first, each up to 500 characters. Argument text shows as plain text, never as formatting or links.
 

@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.20.97",
+  "version": "0.20.98",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -2808,6 +2808,7 @@
         "type": "object",
         "properties": { "billsOtherThanStripe": { "type": "string", "minLength": 5 }, 
           "id": { "type": "string" },
+          "expected_version": { "type": "integer" },
           "status": { "type": "string", "enum": ["active", "ended"] },
           "issue_mode": { "type": "string", "enum": ["review", "auto"], "description": "auto issues without a card; a person turns it on." },
           "company_id": { "type": ["string", "null"] },
@@ -6279,6 +6280,7 @@
       "recurring_run:due",
       "recurring_run:late",
       "recurring_run:held",
+      "recurring_schedule:updated",
       "einvoicing:transmission_refused",
       "einvoicing:transmission_failed",
       "einvoicing:not_in_directory",

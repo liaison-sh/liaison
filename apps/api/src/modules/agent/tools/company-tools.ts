@@ -18,12 +18,13 @@ import type { RlsClient } from "~/db"
 import type { UserContext } from "~/db/rls"
 import { companies as companiesTable, contacts as contactsTable } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
+import { rootLogger } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
 import { UUID_RE } from "~/lib/uuid"
 import { safeEnrichmentRows } from "~/modules/agent/tools/contact-tools"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
-import { readActivity } from "~/modules/contacts/activity"
+import { linkedAppLine, readActivity, readLinkedRecords } from "~/modules/contacts/activity"
 import {
   COMPANY_LINK_BATCH_MAX,
   CompanyMergedError,
@@ -145,7 +146,69 @@ export async function handleCompaniesSearch(
 const PEOPLE_SHOWN = 50
 const MAIL = drizzleSql.raw(quoteIdent(schemaRef("app_mail")))
 
-export async function handleCompaniesRead(params: { companyId: string }, ctx: CompanyToolContext) {
+const log = rootLogger.child({ module: "company-tools" })
+
+/** Mail is already in the read as each person's last mail. */
+const COMPANY_LINKED_SKIP = ["mail"]
+
+/**
+ * What the other apps hold for a company and its people, read as the caller:
+ * one line per app for the agent, and per app the recent row titles the card
+ * shows. A source the caller cannot read is absent; one that did not answer
+ * says so.
+ */
+async function companyLinkedRecords(
+  companyId: string,
+  ctx: CompanyToolContext & {
+    dimensionGrants?: UserContext["dimensionGrants"]
+    roles?: UserContext["roles"]
+  },
+): Promise<{ lines: string[]; byApp: Record<string, string> }> {
+  // Always the person: the call's provenance (agent, mcp) is not a row-security actor.
+  const actor: UserContext = {
+    actorType: "user",
+    userId: ctx.userId,
+    orgId: ctx.orgId,
+    scopes: ctx.scopes ?? [],
+    dimensionGrants: ctx.dimensionGrants ?? {},
+    roles: ctx.roles,
+  }
+  try {
+    const linked = await readLinkedRecords({
+      orgId: ctx.orgId,
+      actor,
+      companyId,
+      skip: COMPANY_LINKED_SKIP,
+    })
+    if (!linked) return { lines: [], byApp: {} }
+    const byApp: Record<string, string> = {}
+    for (const app of linked.apps) {
+      byApp[app.source] = app.kinds.flatMap((k) => k.recent).join("; ")
+    }
+    return {
+      lines: [
+        ...linked.apps.map(linkedAppLine),
+        ...linked.unavailable.map(
+          (u) =>
+            `${u.label}: not read (${u.reason === "timeout" ? "no answer in time" : "error"}).`,
+        ),
+      ],
+      byApp,
+    }
+  } catch (err) {
+    log.warn({ err, companyId }, "company read: other apps' records not read")
+    return { lines: ["Other apps' records for this company were not read (error)."], byApp: {} }
+  }
+}
+
+export async function handleCompaniesRead(
+  params: { companyId: string },
+  ctx: CompanyToolContext & {
+    dimensionGrants?: UserContext["dimensionGrants"]
+    roles?: UserContext["roles"]
+    callerApp?: string
+  },
+) {
   const row = await getCompany(ctx.db, { orgId: ctx.orgId, companyId: params.companyId })
   if (!row) {
     return fail(
@@ -179,6 +242,8 @@ export async function handleCompaniesRead(params: { companyId: string }, ctx: Co
              GROUP BY c.contact_id`),
         )
   const lastInbound = new Map(inbound.map((r) => [r.contact_id, r.at]))
+  // An app reading a company app-to-app gets the company alone.
+  const linked = ctx.callerApp ? { lines: [], byApp: {} } : await companyLinkedRecords(row.id, ctx)
   return {
     company: {
       id: row.id,
@@ -203,6 +268,7 @@ export async function handleCompaniesRead(params: { companyId: string }, ctx: Co
     ...(row.peopleCount > PEOPLE_SHOWN
       ? { peopleNote: `Showing ${PEOPLE_SHOWN} of ${row.peopleCount} people.` }
       : {}),
+    ...(linked.lines.length > 0 ? { linkedRecords: linked.lines, linked: linked.byApp } : {}),
   }
 }
 
@@ -845,6 +911,11 @@ const COMPANY_CARD = {
   rows: [
     { label: { label: "Account manager" }, value: "{{result.accountManager.name}}" },
     { label: { label: "People" }, value: "{{result.company.peopleCount}}" },
+    // What the other apps hold for them, each row only when that app answered with records.
+    { label: { label: "Stripe" }, value: "{{result.linked.stripe}}" },
+    { label: { label: "Invoices" }, value: "{{result.linked.invoicing}}" },
+    { label: { label: "Tickets" }, value: "{{result.linked.tickets}}" },
+    { label: { label: "Deals and projects" }, value: "{{result.linked.projects}}" },
   ],
 }
 

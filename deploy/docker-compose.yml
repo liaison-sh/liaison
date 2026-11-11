@@ -432,6 +432,12 @@ services:
       LIAISON_DEMO_SYNTHETIC_MAX_ORGS: ${LIAISON_DEMO_SYNTHETIC_MAX_ORGS:-}
       # Pre-seeded visitor workspaces kept ready (empty: 5; 0 turns the pool off).
       LIAISON_DEMO_POOL_SIZE: ${LIAISON_DEMO_POOL_SIZE:-}
+      # The demo worlds this box runs (empty: products only), how the pool splits
+      # across them (world=count pairs; empty: POOL_SIZE shared evenly), and the
+      # oldest a ready pooled workspace may be, in hours (empty: 12).
+      LIAISON_DEMO_WORLDS: ${LIAISON_DEMO_WORLDS:-}
+      LIAISON_DEMO_POOL_SIZES: ${LIAISON_DEMO_POOL_SIZES:-}
+      LIAISON_DEMO_POOL_MAX_AGE_HOURS: ${LIAISON_DEMO_POOL_MAX_AGE_HOURS:-}
       # Demo workspaces seeded at once, pool refill and empty-pool signups alike (empty: 2).
       LIAISON_DEMO_SEED_CONCURRENCY: ${LIAISON_DEMO_SEED_CONCURRENCY:-}
       # Minutes after which an org unused in a process has its in-memory setup

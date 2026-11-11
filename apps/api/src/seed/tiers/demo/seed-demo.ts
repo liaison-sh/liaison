@@ -76,6 +76,7 @@ import { storeApprovalSummaries } from "~/modules/approvals/served-summary"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { setOrgAppAccess, setOrgAppStatus } from "~/modules/apps/org-app-service"
 import { getOrgAppState } from "~/modules/apps/org-apps"
+import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
 import { completeDemoOrgReset, resetDemoOrgContent } from "~/modules/demo/demo-reset"
 import {
   DEMO_COMPANY_NAME,
@@ -89,6 +90,7 @@ import { runAsSeed } from "~/modules/notifications/seeded"
 import { joinPendingApprovals } from "~/seed/factories/people/membership"
 import { demoWorldPack, findDemoWorldPack } from "~/seed/worlds"
 import { DEMO_APPS, type DemoSeedPlan, demoSeedPlan } from "./demo-apps"
+import { replaceSeededDemoOrg } from "./replace-demo-org"
 import { type SeedDemoAccountsResult, seedDemoAccounts } from "./seed-accounts"
 import {
   enableScenarioRoutine,
@@ -665,10 +667,21 @@ export async function runSeedDemoCli(
     console.error(`[demo-seed] --passwords-env names ${passwordsEnv}, which is not set`)
     return { result: null, exitCode: 2 }
   }
-  const resetContent = argv.includes("--no-reset")
+  let resetContent = argv.includes("--no-reset")
     ? false
     : argv.includes("--reset") || variant === "reserved"
   const slug = flag(argv, "slug") ?? DEMO_RESERVED_SLUG
+  // A private box (demo mode off) has no visitors and no reaper, and the
+  // in-place content reset is a demo box's own: a visitor org it seeded before
+  // is deleted and seeded fresh instead, as the lively tier's --replace does.
+  // An org without the demo marker is refused there, before anything is deleted.
+  if (resetContent && variant === "visitor" && !isDemoModeEnabled()) {
+    await replaceSeededDemoOrg(slug, (msg) => console.log(`[demo-seed] ${msg}`), {
+      who: "demo-seed",
+      tier: "demo",
+    })
+    resetContent = false
+  }
   const result = await seedWorld({
     orgSlug: slug,
     orgName: flag(argv, "name") ?? (world === "products" ? DEMO_COMPANY_NAME : undefined),

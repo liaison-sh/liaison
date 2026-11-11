@@ -332,6 +332,25 @@ describe("demoSeedPlan per world", () => {
     expect(plan.parts.has("support-routine")).toBe(false)
   })
 
+  it("a software workspace keeps Projects on whatever the picks: its deals board and product work live there", () => {
+    const door = DEMO_ENTRY_NEEDS.software
+    for (const needs of [
+      door,
+      ["money", "support", "dev"],
+      ["money"],
+      ["support"],
+      ["dev"],
+      ["knowledge"],
+    ] as DemoNeed[][]) {
+      const fit = pooledFitPlan(needs, "saas")
+      expect(fit.apps).toContain("projects")
+      expect(fit.offApps).not.toContain("projects")
+      expect(demoSeedPlan(needs, ON, "saas").apps).toContain("projects")
+    }
+    // The products world still turns Projects Off when no pick needs it.
+    expect(pooledFitPlan(["support"], "products").offApps).toContain("projects")
+  })
+
   it("a pooled products workspace fits as it always did", () => {
     const fit = pooledFitPlan(["support"], "products")
     expect(fit.offApps).toEqual(demoSeedPlan(["support"], ON).offApps)

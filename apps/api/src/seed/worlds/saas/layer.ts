@@ -83,6 +83,21 @@ function userIdOf(org: SeedDemoOrgResult, key: string): string {
   return id
 }
 
+/**
+ * The personal agent of the person a routine runs as: the signed-in owner's own
+ * when the org has one, else the seeded teammate's (an org seeded with no owner
+ * runs the owner's routines as its admin, `ownerIdOf`).
+ */
+function personalAgentOf(org: SeedDemoOrgResult, userId: string) {
+  const personal = org.agents.filter((a) => a.kind === "personal")
+  if (org.ownerUserId === userId) {
+    const own = personal.find((a) => (a as { ownerKey?: string }).ownerKey === undefined)
+    if (own) return own
+  }
+  const person = org.people.find((p) => p.userId === userId)
+  return person ? personal.find((a) => a.agentId === person.personalAgentId) : undefined
+}
+
 /** A Paris calendar date, `YYYY-MM-DD`. */
 function parisDate(at: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: STORY_TIME_ZONE }).format(at)
@@ -576,9 +591,7 @@ async function seedSaasRoutines(ctx: SeedContext, org: SeedDemoOrgResult): Promi
     const ownerUserId = userIdOf(org, spec.ownerKey)
     const agent =
       spec.ownerHandle === "personal"
-        ? org.agents.find(
-            (a) => a.kind === "personal" && (a as { ownerKey?: string }).ownerKey === undefined,
-          )
+        ? personalAgentOf(org, ownerUserId)
         : org.agentsByHandle[spec.ownerHandle]
     if (!agent) throw new Error(`saas layer: no agent ${spec.ownerHandle} for '${spec.name}'`)
     ids.push(

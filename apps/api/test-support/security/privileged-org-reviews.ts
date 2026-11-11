@@ -327,8 +327,8 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "the demo tier's commerce layer: every write goes to opts.org.orgId, the org seedDemoOrg (a reviewed origin) returned after provisioning it and stamping its demo marker; the commerce factories receive it through the layer's SeedContext",
   "apps/api/src/seed/tiers/demo/seed-org.ts#seedDemoOrg":
     "the demo tier's org entry: an org already under the caller's slug is only read (its demo marker, fresh) to refuse it unless it is a demo org (demoMarkRefusal); every write uses the org the org factory's provisioning pass returns (provisionOrgShell), stamped with the demo marker before any account exists",
-  "apps/api/src/seed/tiers/lively/seed-lively.ts#replaceLivelyOrg":
-    "an operator's `liaison seed --tier lively --replace` (a private box, refused in demo mode): the org under the slug the operator named is purged only when its row carries the demo marker, re-read fresh before the purge and again by purgeOrg's assertAllowed before every destructive step",
+  "apps/api/src/seed/tiers/demo/replace-demo-org.ts#replaceSeededDemoOrg":
+    "an operator's `liaison seed --tier lively --replace` or `seed --tier demo --variant visitor --reset` on a private box (refused in demo mode): the org under the slug the operator named is purged only when its row carries the demo marker, re-read fresh before the purge and again by purgeOrg's assertAllowed before every destructive step",
   "apps/api/src/seed/tiers/lively/seed-lively.ts#seedLivelyLayers":
     "the lively tier's entry: every activity write goes to world.orgId, the org seedDemoWorld (whose seedDemoOrg is a reviewed origin) just provisioned or adopted under the caller's slug and stamped with the demo marker",
   "apps/api/src/seed/tiers/standard/seed-standard.ts#seedStandardWorld":

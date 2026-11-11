@@ -12,7 +12,7 @@
 // subscription, Pick another customer, or Bill something else, which asks one required line
 // (what this schedule bills instead). Start stays disabled while the conflict is open and that
 // line is not said. No invoice number shows before an invoice issues.
-import { app, navigate } from "@liaison/host"
+import { app, navigate, onEntityChange } from "@liaison/host"
 import { type Component, createResource, createSignal, For, Show } from "solid-js"
 import { periodLabel } from "../recurring/flags"
 import { datesFrom, draftOn, periodKey, type Repeats, validateSchedule } from "../recurring/schedule"
@@ -48,6 +48,8 @@ export interface ScheduleDraft {
   lines: ScheduleLineDraft[]
   notes: string | null
   billsOtherThanStripe: string | null
+  /** The version this draft was read at: a save says it, and a schedule saved since refuses it. */
+  version: number
 }
 
 export function defaultSchedule(): ScheduleDraft {
@@ -68,6 +70,7 @@ export function defaultSchedule(): ScheduleDraft {
     lines: [{ description: "", qty: 1, unit_price_minor: 0, vat_bp: 2000 }],
     notes: null,
     billsOtherThanStripe: null,
+    version: 1,
   }
 }
 
@@ -223,8 +226,25 @@ export function draftFromRow(id: string, row: Record<string, unknown>): Schedule
     lines: Array.isArray(row.lines) ? (row.lines as ScheduleLineDraft[]).map((l) => ({ ...l, unit_price_minor: Number(l.unit_price_minor) })) : base.lines,
     notes: (row.notes as string | null) ?? null,
     billsOtherThanStripe: (row.bills_other_than_stripe as string | null) ?? null,
+    version: Number(row.version ?? 1),
   }
 }
+
+/** Whether the person has changed anything since the schedule was last read. */
+export function hasEdits(saved: ScheduleDraft, draft: ScheduleDraft): boolean {
+  return Object.keys(changedParams(saved, draft)).length > 0 || saved.billsOtherThanStripe !== draft.billsOtherThanStripe
+}
+
+/** A save refused because someone else saved the schedule after it was opened. */
+export function staleSaveFrom(result: unknown): boolean {
+  const r = result as { status?: string; error?: { code?: string } } | null
+  return r?.status === "error" && r.error?.code === "schedule_changed"
+}
+
+/** What the page says when another window saved the schedule: the new version, or the edits kept. */
+export const CHANGED_ELSEWHERE = "Someone else just saved this schedule. The page shows what they saved."
+export const CHANGED_UNDER_EDITS = "Someone else just saved this schedule. Your changes are still here; saving them will be refused and show what they saved."
+export const STALE_SAVE = "Not saved: someone else saved this schedule after you opened it. The page now shows what they saved; make your change again on it."
 
 function Section(p: { title: string; children: import("solid-js").JSX.Element; testid?: string }) {
   return (
@@ -313,6 +333,28 @@ export const ScheduleEditor: Component<{ initial: ScheduleDraft }> = (props) => 
     setD(fresh)
   }
 
+  // Another window (or an approved agent change) saved this schedule: show it, or keep the
+  // person's own edits and say a save of them would be refused.
+  // While this window saves, its own change is read back by the save itself.
+  let saving = false
+  onEntityChange("invoicing:recurring_schedule", (events) => {
+    const id = d().id
+    if (!id || saving) return
+    const ours = events.some((e) => e.resync || (e.data as { schedule_id?: string } | null)?.schedule_id === id)
+    if (!ours) return
+    void (async () => {
+      const fresh = await loadSchedule(id).catch(() => null)
+      if (saving || !fresh || fresh.version === saved().version) return
+      if (hasEdits(saved(), d())) {
+        setNote(tr(CHANGED_UNDER_EDITS))
+        return
+      }
+      setSaved(fresh)
+      setD(fresh)
+      setNote(tr(CHANGED_ELSEWHERE))
+    })()
+  })
+
   const outcome = (r: unknown): boolean => {
     const c = conflictFrom(r)
     if (c) {
@@ -334,13 +376,20 @@ export const ScheduleEditor: Component<{ initial: ScheduleDraft }> = (props) => 
   }
   const save = async () => {
     setNote(null)
+    saving = true
     try {
       if (isNew()) outcome(await app.invokeTool("recurring_schedule_create", scheduleParams(d(), "active")))
       else {
-        if (outcome(await app.invokeTool("recurring_schedule_update", { id: d().id, ...changedParams(saved(), d()) }))) await reload()
+        const r = await app.invokeTool("recurring_schedule_update", { id: d().id, expected_version: saved().version, ...changedParams(saved(), d()) })
+        if (staleSaveFrom(r)) {
+          await reload()
+          setNote(tr(STALE_SAVE))
+        } else if (outcome(r)) await reload()
       }
     } catch (e) {
       setNote(e instanceof Error ? e.message : tr("Nothing was saved."))
+    } finally {
+      saving = false
     }
   }
   const pause = async () => {

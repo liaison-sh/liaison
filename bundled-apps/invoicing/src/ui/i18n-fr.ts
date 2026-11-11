@@ -327,6 +327,12 @@ export const FR: Record<string, string> = {
   "The registry could not be reached. Try again in a moment.": "Le registre est injoignable. Réessayez dans un instant.",
   "Sent for a person to confirm. Nothing is recorded until then.": "Envoyé pour confirmation par une personne. Rien n'est enregistré d'ici là.",
   "Saved.": "Enregistré.",
+  "Someone else just saved this schedule. The page shows what they saved.":
+    "Quelqu'un d'autre vient d'enregistrer cet échéancier. La page affiche ce qu'il a enregistré.",
+  "Someone else just saved this schedule. Your changes are still here; saving them will be refused and show what they saved.":
+    "Quelqu'un d'autre vient d'enregistrer cet échéancier. Vos modifications sont toujours là ; leur enregistrement sera refusé et affichera ce qu'il a enregistré.",
+  "Not saved: someone else saved this schedule after you opened it. The page now shows what they saved; make your change again on it.":
+    "Non enregistré : quelqu'un d'autre a enregistré cet échéancier après que vous l'avez ouvert. La page affiche maintenant ce qu'il a enregistré ; refaites votre modification dessus.",
   "not confirmed yet": "pas encore confirmé",
   ", checked {{date}}": ", vérifié le {{date}}",
   "The identity could not be loaded.": "L'identité n'a pas pu être chargée.",

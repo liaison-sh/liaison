@@ -18,7 +18,7 @@ import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
 import { UUID_RE } from "~/lib/uuid"
-import { type LinkedApp, readLinkedRecords } from "~/modules/contacts/activity"
+import { linkedAppLine, readLinkedRecords } from "~/modules/contacts/activity"
 import {
   type AddressFields,
   addAddress,
@@ -317,14 +317,6 @@ export async function handleContactsRead(
 
 /** Mail is already in the result as its backlinks. */
 const LINKED_SKIP = ["mail"]
-
-function linkedAppLine(app: LinkedApp): string {
-  const kinds = app.kinds.map((k) => {
-    const n = `${k.count}${k.more ? "+" : ""} ${k.kind}${k.count === 1 && !k.more ? "" : "s"}`
-    return `${n}, newest "${k.newest.title}" (${app.app} ${k.kind} ${k.newest.entityId})`
-  })
-  return `${app.label}: ${kinds.join("; ")}`
-}
 
 /**
  * One line per other app that holds records for the contact, read as the

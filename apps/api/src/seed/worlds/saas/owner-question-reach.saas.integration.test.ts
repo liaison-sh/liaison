@@ -101,6 +101,21 @@ const READ_CALLS: Record<(typeof READS)[number], ScriptCall> = {
 }
 const ANSWER_TEXT = "Here is where we stand with Maison Arlon."
 
+/** What the scripted model does this turn: its searches, then the reads it calls. */
+const script: { searches: ScriptCall[]; reads: readonly (typeof READS)[number][] } = {
+  searches: SEARCHES,
+  reads: READS,
+}
+
+/** Clear what the stub saw, for a new turn. */
+function resetStub(): void {
+  offeredPerStep.length = 0
+  called.length = 0
+  skipped.length = 0
+  results.clear()
+  cursor = 0
+}
+
 /** A call's result said the tool was only loaded, not run. */
 const notRun = (result: string) => result.includes("did not run")
 
@@ -163,10 +178,10 @@ function answer(body: {
   const ran = new Set(
     called.filter((c) => results.has(c.id) && !notRun(results.get(c.id) ?? "")).map((c) => c.name),
   )
-  const pending = READS.filter((r) => !ran.has(r))
+  const pending = script.reads.filter((r) => !ran.has(r))
   const step: ScriptCall[] | null =
     cursor === 1
-      ? SEARCHES
+      ? script.searches
       : pending.length > 0 && cursor < VISITOR_STEPS
         ? pending.map((r) => READ_CALLS[r])
         : null
@@ -359,5 +374,95 @@ describe("the owner's question about the hotel group, with a scripted model", ()
       )
       .filter((c) => c?.kind === "entity" && c.pill?.label === "Company")
     expect(cards.map((c) => c?.title)).toEqual(["Maison Arlon"])
+  }, 600_000)
+})
+
+describe("the company read alone, with a scripted model", () => {
+  it("one company read carries the plan, the unpaid invoice, the open ticket and the deal, on one company card", async () => {
+    expect(world.failures).toEqual([])
+    const orgId = world.orgId
+    const ownerId = world.org.ownerUserId as string
+    const [company] = await rows(
+      orgId,
+      sql`SELECT id::text AS id FROM kernel.companies WHERE org_id = ${orgId} AND name = 'Maison Arlon'`,
+    )
+    ids.company = String(company?.id ?? "")
+    expect(ids.company).not.toBe("")
+    resetStub()
+    script.searches = [SEARCH("company account manager")]
+    script.reads = ["kernel__companies_read"]
+
+    const actor = await actorFor(seedContext({ orgId, now: BOARD_DATE }), ownerId)
+    const thread = await withPrivilegedDb(orgId, "saas-owner-question-dm", async (tx) => {
+      const agentId = await resolvePersonalAgentId(tx as never, { orgId, userId: ownerId })
+      if (!agentId) throw new Error("the owner has no personal agent")
+      return createOrGetAgentDm(tx as never, { orgId, userId: ownerId, agentId })
+    })
+    if (!thread) throw new Error("no conversation with the personal agent")
+    const posted = await asUser(actor, (tx) =>
+      sendMessage(
+        tx as never,
+        {
+          orgId,
+          userId: ownerId,
+          threadId: thread.id,
+          content: QUESTION,
+          authorType: "user",
+          requiredScopes: [],
+        } as never,
+      ),
+    )
+    if (!posted) throw new Error("the owner's question was not posted")
+    const outcome = await invokeAgentForThread(thread.id, posted.id, actor, orgId)
+    expect(outcome.finishReason).toBe("stop")
+    expect(skipped).toEqual([])
+
+    const read = called.find(
+      (c) => c.name === "kernel__companies_read" && !notRun(results.get(c.id) ?? ""),
+    )
+    if (!read) throw new Error("the company read never ran")
+    const result = results.get(read.id) ?? ""
+    // The one read names what each other app holds for the group: the plan and
+    // the failed payment from Stripe, its invoices, its open ticket, its deal.
+    const listed = /"linkedRecords":(\[[^\]]*\])/.exec(result)?.[1]
+    const lines = listed ? (JSON.parse(listed) as string[]) : []
+    console.log(`LINKED ${lines.join(" | ")}`)
+    const line = (label: string) => lines.find((l) => l.startsWith(`${label}:`)) ?? ""
+    expect(line("Stripe")).toMatch(/started/)
+    expect(line("Stripe")).toMatch(/Payment failed|Retry failed/)
+    expect(line("Invoices")).not.toBe("")
+    expect(line("Tickets")).not.toBe("")
+    expect(line("Deals and projects")).toContain("4 more hotels")
+
+    // And its card is the company card, with a row per app that holds records.
+    const stored = await rows(
+      orgId,
+      sql`SELECT metadata->'toolCalls' AS calls FROM kernel.messages
+          WHERE org_id = ${orgId} AND thread_id = ${thread.id}::uuid AND author_type <> 'user'
+            AND created_at >= (SELECT created_at FROM kernel.messages WHERE id = ${posted.id}::uuid)`,
+    )
+    const cards = stored
+      .flatMap((r) => (Array.isArray(r.calls) ? r.calls : []))
+      .map(
+        (c) =>
+          (
+            c as {
+              card?: {
+                kind?: string
+                title?: string
+                pill?: { label?: string }
+                rows?: Array<{ label?: { label?: string }; value?: unknown }>
+                open?: unknown
+              }
+            }
+          ).card,
+      )
+      .filter((c) => c?.kind === "entity" && c.pill?.label === "Company")
+    expect(cards.map((c) => c?.title)).toEqual(["Maison Arlon"])
+    const labels = (cards[0]?.rows ?? []).map((r) => r.label?.label)
+    for (const label of ["Stripe", "Invoices", "Tickets", "Deals and projects"]) {
+      expect(labels).toContain(label)
+    }
+    expect(cards[0]?.open).toBeDefined()
   }, 600_000)
 })

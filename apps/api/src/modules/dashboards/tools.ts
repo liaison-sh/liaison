@@ -531,8 +531,8 @@ export function registerDashboardTools(orgId: string): void {
           ...(spec.datasets ? { datasets: spec.datasets } : {}),
           resolveDataset: (src) =>
             src.kind === "tool"
-              ? { ...src, params: resolveFilterTokens(src.params, values) }
-              : { ...src, query: resolveFilterTokens(src.query, values) },
+              ? { ...src, params: resolveFilterTokens(src.params, values, spec) }
+              : { ...src, query: resolveFilterTokens(src.query, values, spec) },
           ...(ctx.agentExecutionThreadId ? { threadId: ctx.agentExecutionThreadId } : {}),
           ...(ctx.abortSignal ? { signal: ctx.abortSignal } : {}),
         },

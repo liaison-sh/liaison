@@ -36,7 +36,11 @@ const noteMarked = new Marked({
   },
 })
 
-/** The note as safe HTML: marked, then the app's sanitizer, then app paths made links again. */
+/**
+ * The note as safe HTML: marked, then the app's sanitizer. An app path never becomes an href
+ * (the sanitizer keeps web links only): it stays in `data-mention-ref`, and the link is made
+ * reachable (focus, role) here, with the note's own handler opening it in place.
+ */
 export function renderNote(markdown: string): string {
   const html = noteMarked.parse(markdown, { async: false }) as string
   const safe = sanitizeHtml(html)
@@ -44,34 +48,37 @@ export function renderNote(markdown: string): string {
   const doc = new DOMParser().parseFromString(`<div>${safe}</div>`, "text/html")
   const root = doc.body.firstElementChild as HTMLElement
   for (const a of Array.from(root.querySelectorAll("a[data-mention-ref]"))) {
-    const path = a.getAttribute("data-mention-ref") ?? ""
-    a.removeAttribute("data-mention-ref")
     a.removeAttribute("target")
     a.removeAttribute("rel")
-    if (isAppPath(path)) {
-      a.setAttribute("href", path)
-      a.setAttribute("data-app-path", "true")
-    }
+    a.setAttribute("role", "link")
+    a.setAttribute("tabindex", "0")
   }
   return root.innerHTML
 }
 
+/** The app path a click or a key landed on, checked, or null. */
+function appPathAt(target: EventTarget | null): string | null {
+  const a = (target as HTMLElement | null)?.closest?.("a[data-mention-ref]")
+  const path = a?.getAttribute("data-mention-ref") ?? ""
+  return isAppPath(path) ? path : null
+}
+
 export const TextBlock: Component<{ markdown: string }> = (props) => {
-  const onClick = (e: MouseEvent) => {
-    const a = (e.target as HTMLElement | null)?.closest?.("a[data-app-path]")
-    if (!a || e.metaKey || e.ctrlKey || e.shiftKey) return
-    const href = a.getAttribute("href")
-    if (!href || !isAppPath(href)) return
+  const open = (e: Event) => {
+    const path = appPathAt(e.target)
+    if (!path) return
     e.preventDefault()
-    spaNavigate(href)
+    spaNavigate(path)
   }
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: delegation only; the links inside take the keyboard
-    // biome-ignore lint/a11y/useKeyWithClickEvents: Enter on a link inside fires this same click
     <div
       data-testid="block-text"
       class="prose-thread min-w-0 text-[13px] text-text-secondary"
-      onClick={onClick}
+      onClick={open}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") open(e)
+      }}
       innerHTML={renderNote(props.markdown)}
     />
   )

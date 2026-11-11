@@ -125,17 +125,20 @@ export function groupState(group: NodeSessionGroup): GroupState {
 }
 
 /** Sessions in the Needs-you group (waiting and needs_you): the rail badge. */
-export function needsYouCount(): number {
-  return sessionStore.rows().filter((r) => groupOf(r) === "needs_you").length
+export function needsYouCount(now: number = Date.now()): number {
+  return sessionStore.rows().filter((r) => groupOf(r, now) === "needs_you").length
 }
 
 /** One computer's sessions running and in Needs you (the Computers page line). */
-export function countsByNode(nodeId: string): { running: number; needsYou: number } {
+export function countsByNode(
+  nodeId: string,
+  now: number = Date.now(),
+): { running: number; needsYou: number } {
   let running = 0
   let needsYou = 0
   for (const r of sessionStore.rows()) {
     if (r.nodeId !== nodeId) continue
-    const g = groupOf(r)
+    const g = groupOf(r, now)
     if (g === "running") running++
     else if (g === "needs_you") needsYou++
   }

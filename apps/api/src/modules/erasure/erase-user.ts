@@ -381,6 +381,10 @@ export const KERNEL_USER_COLUMN_DISPOSITION: Record<string, KernelColumnDisposit
     kind: "handled",
     reason: "delete (per-user attention deliveries)",
   },
+  "app_attention_items.user_id": {
+    kind: "handled",
+    reason: "delete (the apps' stored attention lists computed for the user)",
+  },
   "attention_events.actor_id": {
     kind: "handled",
     reason:
@@ -1188,6 +1192,7 @@ export async function eraseUser(
         drizzleSql`DELETE FROM ${K}.attention_subscriptions WHERE user_id = ${userId}`,
       )
       await tx.execute(drizzleSql`DELETE FROM ${K}.attention_events WHERE user_id = ${userId}`)
+      await tx.execute(drizzleSql`DELETE FROM ${K}.app_attention_items WHERE user_id = ${userId}`)
       await tx.execute(drizzleSql`DELETE FROM ${K}.disabled_app_skills WHERE user_id = ${userId}`)
       await tx.execute(
         drizzleSql`DELETE FROM ${K}.file_upload_sessions WHERE created_by = ${userId}`,

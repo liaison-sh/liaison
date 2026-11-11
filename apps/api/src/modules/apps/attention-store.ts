@@ -35,7 +35,7 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { type ActorContext, createRlsSession } from "~/db/rls"
 import { appAttentionItems } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
-import { onEvent } from "~/infra/events/event-bus"
+import { type AppEvent, onEvent } from "~/infra/events/event-bus"
 import { appsLogger as log } from "~/lib/logger"
 import { appBridgeManifest, attentionItemsRegistry } from "~/modules/apps/app-registries"
 import { isAppUnavailableFor, primeOrgApps } from "~/modules/apps/org-apps"
@@ -44,7 +44,7 @@ import { isBundleLoadError, loadBundle } from "~/modules/apps/sandbox/bundle-loa
 import { exportOnlyBundle, useFullBundle } from "~/modules/apps/sandbox/bundle-shake"
 import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { runApp } from "~/modules/apps/sandbox/run-app"
-import { onRunSettled } from "~/modules/apps/workers/run-settled"
+import { onRunSettled, type RunSettledInfo } from "~/modules/apps/workers/run-settled"
 import { hasScope, loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { broadcastReadState } from "~/modules/threads/read-state-broadcast"
 
@@ -186,7 +186,7 @@ export function normalizeProviderItems(raw: unknown): {
 
 export interface AttentionStoreDeps {
   listActiveUsers: (orgId: string) => Promise<string[]>
-  loadActor: (orgId: string, userId: string) => Promise<ActorContext>
+  loadPersonActor: (orgId: string, userId: string) => Promise<ActorContext>
   invoke: (
     reg: ProviderRegistration,
     appName: string,
@@ -206,7 +206,7 @@ async function defaultListActiveUsers(orgId: string): Promise<string[]> {
   })
 }
 
-async function defaultLoadActor(orgId: string, userId: string): Promise<ActorContext> {
+async function defaultLoadPersonActor(orgId: string, userId: string): Promise<ActorContext> {
   const { scopes, dimensionGrants } = await withPrivilegedDb(
     orgId,
     "attention-store:load-scopes",
@@ -217,7 +217,7 @@ async function defaultLoadActor(orgId: string, userId: string): Promise<ActorCon
 
 const defaultDeps: AttentionStoreDeps = {
   listActiveUsers: defaultListActiveUsers,
-  loadActor: defaultLoadActor,
+  loadPersonActor: defaultLoadPersonActor,
   invoke: invokeAppProvider,
   notify: (orgId, userId, appName) =>
     broadcastReadState(orgId, userId, { kind: "attention", app: appName }),
@@ -306,7 +306,9 @@ export async function refreshAppAttention(
     let items: AttentionItem[] | null = []
     let error: Omit<AttentionProviderError, "app"> | null = null
     try {
-      const actor = await deps.loadActor(orgId, userId)
+      const loaded = await deps.loadPersonActor(orgId, userId)
+      // The run is always this org's and this person's, whatever was loaded.
+      const actor: ActorContext = { ...loaded, actorType: "user", userId, orgId }
       const scopes = withAppDimensionAliases(actor, appName).scopes ?? []
       const allowed =
         !isAppUnavailableFor(orgId, appName, userId) && (!reg.scope || hasScope(reg.scope, scopes))
@@ -444,25 +446,29 @@ export function attentionRefreshesSettled(): Promise<void> {
 
 let wired = false
 
+/** A run of an app settled (any executor): its stored attention may have changed. */
+function wakeOnRunSettled(info: RunSettledInfo): void {
+  // The org and app of the run itself, as runApp reported it.
+  if (info.entry.startsWith(ATTENTION_ENTRY_PREFIX)) return
+  scheduleAttentionRefresh(info.orgId, info.app)
+}
+
+/** An event of an app was delivered (once, in the outbox leader). */
+async function wakeOnAppEvent(event: AppEvent): Promise<void> {
+  // The event's own org and app.
+  if (event.ephemeral || !event.orgId || !event.app || event.app === "kernel") return
+  scheduleAttentionRefresh(event.orgId, event.app)
+}
+
 /**
  * Wake the refresh after every run of an app (other than an attention run)
- * and after every delivered event of an app. Idempotent; called once at
- * module load.
+ * and after every delivered event of an app. Idempotent.
  */
 export function wireAttentionRefreshWakes(): void {
   if (wired) return
   wired = true
-  onRunSettled((info) => {
-    if (info.entry.startsWith(ATTENTION_ENTRY_PREFIX)) return
-    scheduleAttentionRefresh(info.orgId, info.app)
-  })
-  onEvent(
-    async (event) => {
-      if (event.ephemeral || !event.orgId || !event.app || event.app === "kernel") return
-      scheduleAttentionRefresh(event.orgId, event.app)
-    },
-    { delivery: "once", name: "app-attention-refresh" },
-  )
+  onRunSettled(wakeOnRunSettled)
+  onEvent(wakeOnAppEvent, { delivery: "once", name: "app-attention-refresh" })
 }
 
 // --- The feed's read -----------------------------------------------------------

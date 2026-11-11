@@ -1,0 +1,1437 @@
+[
+  {
+    "app": "ads",
+    "entry": "lint:src/lib/meta-client.ts",
+    "reason": "wait"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:account_info",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:ad_preview",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:ads_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:adsets_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:audience_erasure_sweep",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:audiences_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:campaigns_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:counts",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:create_ad",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:create_adset",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:create_campaign",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:create_creative",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:create_lookalike_audience",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:creative_get",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:dealer_profiles_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:experiment_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:google_account_info",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:google_adgroups_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:google_ads_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:google_campaigns_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:google_create_ad",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:google_create_adgroup",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:google_create_campaign",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:google_create_conversion_action",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:google_recommendations_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:google_search_terms",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:google_update_budget",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:graph_get",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:insights_query",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:manual_spend_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:media_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:merchant_feed_status",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:merchant_product_issues",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:pages_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:pending_approvals_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:set_status",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:targeting_search",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "ads",
+    "entry": "tool:upload_image",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "api-connector",
+    "entry": "preflight:connector_write",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "api-connector",
+    "entry": "tool:connector_adapter_get",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "api-connector",
+    "entry": "tool:connector_adapter_reference",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "api-connector",
+    "entry": "tool:connector_adapter_test",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "api-connector",
+    "entry": "tool:connector_adapter_versions",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "api-connector",
+    "entry": "tool:connector_list_operations",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "api-connector",
+    "entry": "tool:connector_read",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "api-connector",
+    "entry": "tool:connector_write",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "job:backfill-queue-facts",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "job:generate-order-documents",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "job:migrate-shipping-profiles",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "job:probe-webhook-upstream",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "job:reconcile-tracking",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "job:sync-product-codes",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "lint:src/shipment.ts",
+    "reason": "wait"
+  },
+  {
+    "app": "boxtal",
+    "entry": "preflight:cancel_shipment",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "preflight:claim_open",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "preflight:create_shipment",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "search:search",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:attention_rules_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:cancel_shipment",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:claim_open",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:create_shipment",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:exceptions_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:get_documents",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:get_shipment",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:import_label_document",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:import_shipments",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:list_content_categories",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:local_product_upsert",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:pack_delete",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:pack_upsert",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:packages_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:prep_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:prep_select_offer",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:prep_sync",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:prep_unlinked_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:product_profile_delete",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:product_profile_unlink",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:queue_counts",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:quote",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:quote_batch",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:ready_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:returns_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:search",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:settings_carrier_allowlist_get",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:settings_carrier_allowlist_set",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:settings_form_get",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:settings_form_set",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:settings_label_format_get",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:settings_packaging_policy_get",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:settings_packaging_policy_set",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:settings_product_codes_get",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:settings_product_codes_set",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:settings_sender_address_get",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:settings_sender_address_set",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:settings_sender_form_get",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:shipment_draft_create",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:shipment_draft_get",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:stuck_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:to_prepare_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:track",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "tool:webhooks_repair",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "webhook:document-created",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "boxtal",
+    "entry": "webhook:tracking-changed",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "calls",
+    "entry": "tool:calls_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "calls",
+    "entry": "tool:calls_segments_since",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "calls",
+    "entry": "tool:calls_set_links",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "calls",
+    "entry": "tool:webhook_info",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "calls",
+    "entry": "webhook-verify:segment",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "database",
+    "entry": "tool:db_describe",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "database",
+    "entry": "tool:db_list_reads",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "database",
+    "entry": "tool:db_probe",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "database",
+    "entry": "tool:db_query",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "database",
+    "entry": "tool:db_read",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "gitlab",
+    "entry": "tool:gitlab_get_commit",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "gitlab",
+    "entry": "tool:gitlab_get_merge_request",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "gitlab",
+    "entry": "tool:gitlab_list_commits",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "gitlab",
+    "entry": "tool:gitlab_list_issues",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "gitlab",
+    "entry": "tool:gitlab_list_labels",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "gitlab",
+    "entry": "tool:gitlab_list_merge_requests",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "gitlab",
+    "entry": "tool:gitlab_list_milestones",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "gitlab",
+    "entry": "tool:gitlab_list_projects",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "gitlab",
+    "entry": "tool:gitlab_list_releases",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "gitlab",
+    "entry": "tool:gitlab_list_tags",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "gitlab",
+    "entry": "tool:gitlab_list_tree",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "gitlab",
+    "entry": "tool:gitlab_read_file",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "gitlab",
+    "entry": "tool:gitlab_search",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "google-drive",
+    "entry": "export:export",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "google-drive",
+    "entry": "tool:choose_shared_drives",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "google-drive",
+    "entry": "tool:import",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "google-drive",
+    "entry": "tool:read",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "google-drive",
+    "entry": "tool:search",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "google-drive",
+    "entry": "tool:shared_drives",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "google-drive",
+    "entry": "tool:upload",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "event:shopify/order:cancelled",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "event:shopify/order:created",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "event:shopify/order:updated",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "event:shopify/refund:created",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "export:export",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "job:backfill-order-numbers",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "job:deferred-retry",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "job:einvoicing-book-daily",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "job:einvoicing-booking-invariant",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "job:einvoicing-received-catchup",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "job:einvoicing-status-catchup",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "job:einvoicing-transmit",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "job:identity-confirm",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "job:link-shipments",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "job:overdue-scan",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "job:reconcile-shopify-payments",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "lint:src/einvoicing/lookup.ts",
+    "reason": "wait"
+  },
+  {
+    "app": "invoicing",
+    "entry": "preflight:credit_note_issue",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "preflight:invoice_issue",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "preflight:proforma_issue",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "preflight:quote_issue",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "preflight:settings_issuer_profile_delete",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:credit_note_issue",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:deferred_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:documents_issue_preview",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:documents_search",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:drafts_discard",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:einvoicing_backfill_identities",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:einvoicing_backfill_legacy_originals",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:einvoicing_provider_options",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:einvoicing_readiness",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:einvoicing_settings_get",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:einvoicing_settings_values",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:invoice_issue",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:legal_originals_verify",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:pending_approvals_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:po_issue",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:proforma_issue",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:quote_create_and_issue",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:quote_issue",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:received_einvoices_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:received_einvoices_refresh",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:settings_hs_code_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:settings_issuer_profile_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:settings_shop_mapping_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:settings_tax_regime_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "invoicing",
+    "entry": "tool:viewer_access",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "monitoring",
+    "entry": "job:assign-refs",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "monitoring",
+    "entry": "tool:incidents_ack",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "monitoring",
+    "entry": "tool:incidents_comment",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "monitoring",
+    "entry": "tool:incidents_get",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "monitoring",
+    "entry": "tool:incidents_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "monitoring",
+    "entry": "tool:incidents_resolve",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "monitoring",
+    "entry": "tool:incidents_summary",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "monitoring",
+    "entry": "tool:webhook_info",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "pennylane",
+    "entry": "job:probe-webhook-upstream",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "pennylane",
+    "entry": "job:refresh-snapshots",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "pennylane",
+    "entry": "tool:cash_position",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "pennylane",
+    "entry": "tool:customer_invoices_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "pennylane",
+    "entry": "tool:einvoicing_advance",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "pennylane",
+    "entry": "tool:einvoicing_book",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "pennylane",
+    "entry": "tool:einvoicing_find",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "pennylane",
+    "entry": "tool:einvoicing_find_booking",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "pennylane",
+    "entry": "tool:einvoicing_received_get",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "pennylane",
+    "entry": "tool:einvoicing_received_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "pennylane",
+    "entry": "tool:einvoicing_registration_status",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "pennylane",
+    "entry": "tool:einvoicing_status",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "pennylane",
+    "entry": "tool:einvoicing_status_changes",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "pennylane",
+    "entry": "tool:einvoicing_submit",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "pennylane",
+    "entry": "tool:home_load",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "pennylane",
+    "entry": "tool:pnl_summary",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "pennylane",
+    "entry": "tool:runway_estimate",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "pennylane",
+    "entry": "tool:spend_by_category",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "pennylane",
+    "entry": "tool:supplier_invoice_get",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "pennylane",
+    "entry": "tool:supplier_invoices_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "pennylane",
+    "entry": "tool:transactions_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "pennylane",
+    "entry": "tool:trial_balance_get",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "pennylane",
+    "entry": "tool:webhooks_setup",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "event:invoicing/document:cancelled",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "event:invoicing/document:created",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "event:invoicing/document:credited",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "event:invoicing/document:issued",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "event:invoicing/document:paid",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "event:invoicing/document:updated",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "job:backfill-customers",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "job:probe-webhook-upstream",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "job:prune-webhook-deliveries",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "job:reconcile-customers",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "job:scan-unfulfilled-orders",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "job:scope-seed",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "lint:src/lib/shopify-client.ts",
+    "reason": "wait"
+  },
+  {
+    "app": "shopify",
+    "entry": "lint:src/lib/timers.ts",
+    "reason": "wait"
+  },
+  {
+    "app": "shopify",
+    "entry": "preflight:draft_orders_create",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "preflight:inventory_set_on_hand",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "preflight:products_publish",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "preflight:products_unpublish",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:abandoned_checkouts_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:companies_search",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:connection_disconnect",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:customers_search",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:discounts_bulk_create",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:discounts_create",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:discounts_search",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:draft_orders_create",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:draft_orders_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:home_load",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:inventory_adjust",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:inventory_set_on_hand",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:inventory_value",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:locations_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:markets_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:orders_search",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:products_create",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:products_publish",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:products_search",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:products_unpublish",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:repeat_rate",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:returns_request",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:returns_search",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:settings_load",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:variants_search",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "shopify",
+    "entry": "tool:webhooks_repair",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "attention:attention",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "job:discovery-sync",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "job:dm-sync",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "job:probe-webhook-upstream",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "job:watch-poller",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "preflight:like_item",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "preflight:reply_to_finding",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "preflight:send_dm",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "preflight:webhooks_setup",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "search:search",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "tool:connections_status",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "tool:correct_triage",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "tool:counts",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "tool:dismiss_finding",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "tool:dm_get",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "tool:dm_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "tool:findings_get",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "tool:findings_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "tool:like_item",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "tool:monitor_terms_add",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "tool:monitor_terms_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "tool:quota_status",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "tool:reply_to_finding",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "tool:send_dm",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "tool:set_triage",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "tool:unwatch_object",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "tool:watch_object",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "tool:watched_list",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "tool:webhooks_setup",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "webhook-verify:meta",
+    "reason": "no-fixture"
+  },
+  {
+    "app": "social",
+    "entry": "webhook:meta",
+    "reason": "no-fixture"
+  }
+]

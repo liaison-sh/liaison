@@ -330,6 +330,10 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
     exempt: "config",
     reason: "dashboards made in the workspace or by an agent",
   },
+  "kernel.dashboard_viewer_states": {
+    exempt: "config",
+    reason: "the time range each person last chose on a dashboard, set in the workspace",
+  },
   "kernel.credit_transactions": {
     exempt: "system",
     reason: "audit, credits, demo and search bookkeeping",

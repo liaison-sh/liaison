@@ -12,6 +12,7 @@ import {
   MAX_SOURCE_TTL_SEC,
 } from "~/modules/dashboards/spec"
 import {
+  attachPrevious,
   bucketKey,
   extractRows,
   TransformError,
@@ -280,5 +281,120 @@ describe("unfenceSourceResult", () => {
     expect(unfenceSourceResult(plain)).toBe(plain)
     const text = { note: wrapExternalContent("hello") }
     expect(unfenceSourceResult(text)).toBe(text)
+  })
+})
+
+describe("metric extras and the comparison", () => {
+  const rows = [
+    { day: "2026-11-01T10:00:00Z", total: 10 },
+    { day: "2026-11-01T18:00:00Z", total: 5 },
+    { day: "2026-11-03T09:00:00Z", total: 7 },
+    { day: "not a date", total: 1 },
+  ]
+
+  test("a metric echoes its target and draws a sparkline from the same rows", () => {
+    const out = transformBlock(
+      "metric",
+      { value: "total", agg: "sum", target: 40, sparkline: { field: "day", bucket: "day" } },
+      rows,
+    )
+    expect(out).toMatchObject({ kind: "metric", value: 23, target: 40 })
+    if (out.kind !== "metric") throw new Error("metric")
+    expect(out.sparkline).toEqual({ labels: ["2026-11-01", "2026-11-03"], values: [15, 7] })
+    // The undated row counts in the value and is not reported skipped twice.
+    expect(out.meta.skippedRows).toBe(0)
+  })
+
+  test("a sum sparkline is filled with zeros over the dashboard window", () => {
+    const out = transformBlock(
+      "metric",
+      { value: "total", sparkline: { field: "day", bucket: "day" } },
+      rows,
+      { window: { from: "2026-10-31", to: "2026-11-03" } },
+    )
+    if (out.kind !== "metric") throw new Error("metric")
+    expect(out.sparkline).toEqual({
+      labels: ["2026-10-31", "2026-11-01", "2026-11-02", "2026-11-03"],
+      values: [0, 15, 0, 7],
+    })
+  })
+
+  test("the spec keeps target and sparkline to metrics", () => {
+    const spec = (map: Record<string, unknown>, type = "bar") =>
+      dashboardSpecSchema.safeParse({
+        v: 1,
+        blocks: [{ id: "a", type, title: "A", source: { kind: "tool", tool: "x:y" }, map }],
+      }).success
+    expect(spec({ x: "status", agg: "count", target: 3 })).toBe(false)
+    expect(spec({ agg: "count", target: 3, sparkline: { field: "day" } }, "metric")).toBe(true)
+  })
+
+  test("a metric takes the previous value", () => {
+    const cur = transformBlock("metric", { agg: "count" }, rows)
+    const prev = transformBlock("metric", { agg: "count" }, rows.slice(0, 2))
+    expect(attachPrevious(cur, prev)).toMatchObject({ value: 4, previous: 2 })
+  })
+
+  test("categories match by label and series by name", () => {
+    const cur = transformBlock("bar", { x: "sku", y: "n" }, [
+      { sku: "A", n: 5 },
+      { sku: "B", n: 3 },
+    ])
+    const prev = transformBlock("bar", { x: "sku", y: "n" }, [
+      { sku: "B", n: 2 },
+      { sku: "C", n: 9 },
+    ])
+    const out = attachPrevious(cur, prev)
+    if (out.kind !== "bar") throw new Error("bar")
+    expect(out.labels).toEqual(["A", "B"])
+    expect(out.previous).toEqual({
+      labels: [null, "B"],
+      series: [{ name: "n", values: [null, 2] }],
+    })
+  })
+
+  test("date buckets match by their distance from each window's start", () => {
+    const line = (data: { d: string; n: number }[]) =>
+      transformBlock("line", { groupBy: { field: "d", bucket: "day" }, y: "n" }, data)
+    const cur = line([
+      { d: "2026-11-01", n: 1 },
+      { d: "2026-11-03", n: 3 },
+    ])
+    const prev = line([
+      { d: "2025-11-01", n: 10 },
+      { d: "2025-11-02", n: 20 },
+      { d: "2025-11-03", n: 30 },
+    ])
+    const out = attachPrevious(cur, prev, {
+      bucket: "day",
+      window: { from: "2026-11-01", to: "2026-11-03" },
+      compareWindow: { from: "2025-11-01", to: "2025-11-03" },
+    })
+    if (out.kind !== "line") throw new Error("line")
+    expect(out.previous).toEqual({
+      labels: ["2025-11-01", "2025-11-03"],
+      series: [{ name: "n", values: [10, 30] }],
+    })
+    const months = (data: { d: string; n: number }[]) =>
+      transformBlock("bar", { groupBy: { field: "d", bucket: "month" }, y: "n" }, data)
+    const byMonth = attachPrevious(
+      months([{ d: "2026-11-05", n: 1 }]),
+      months([
+        { d: "2026-10-05", n: 7 },
+        { d: "2026-09-05", n: 9 },
+      ]),
+      {
+        bucket: "month",
+        window: { from: "2026-11-01", to: "2026-11-30" },
+        compareWindow: { from: "2026-10-01", to: "2026-10-31" },
+      },
+    )
+    if (byMonth.kind !== "bar") throw new Error("bar")
+    expect(byMonth.previous?.series[0]?.values).toEqual([7])
+  })
+
+  test("a table is never compared", () => {
+    const t = transformBlock("table", { columns: [{ field: "total", label: "Total" }] }, rows)
+    expect(attachPrevious(t, t)).toEqual(t)
   })
 })

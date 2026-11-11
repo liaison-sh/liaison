@@ -148,6 +148,7 @@ The agent builds dashboards from read tools and data store collections, and prev
 | `dashboards_get` | Read one dashboard and its blocks. | `kernel:dashboards:read` (every member) | No |
 | `dashboards_create` | Save a new dashboard. | `kernel:dashboards:write` | For an org dashboard (decided by `kernel:dashboards:admin`) |
 | `dashboards_update` | Change a dashboard's title, blocks or visibility. | `kernel:dashboards:write` | For an org dashboard, or to make one org-visible |
+| `dashboards_edit` | Change a dashboard by a list of operations (add, change, move or remove a block; title, default time range, visibility), all applied or none. | `kernel:dashboards:write` | For an org dashboard, or to make one org-visible: one approval for the whole list |
 | `dashboards_delete` | Delete a dashboard. | `kernel:dashboards:write` | For an org dashboard |
 
 ### Contacts

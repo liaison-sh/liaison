@@ -272,10 +272,10 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | --- | --- |
 | `ALLOW_PRIVATE_MAIL_HOSTS` | `apps/api/src/modules/apps/sandbox/host-validation.ts:20`, `apps/api/src/modules/apps/sandbox/smtp-bridge.ts:153` |
 | `APP_REGISTRATION_CONCURRENCY` | `apps/api/src/modules/apps/init.ts:787` |
-| `APP_WORKER_MAX_EXECS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:69` |
-| `APP_WORKER_MAX_RSS_MB` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:68` |
-| `APP_WORKER_POOL_MAX` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:28`, `apps/api/src/modules/apps/workers/admission.ts:33` |
-| `APP_WORKER_POOL_RESERVED_INTERACTIVE` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:58`, `apps/api/src/modules/apps/workers/admission.ts:34` |
+| `APP_WORKER_MAX_EXECS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:75` |
+| `APP_WORKER_MAX_RSS_MB` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:74` |
+| `APP_WORKER_POOL_MAX` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:32`, `apps/api/src/modules/apps/workers/admission.ts:33` |
+| `APP_WORKER_POOL_RESERVED_INTERACTIVE` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:64`, `apps/api/src/modules/apps/workers/admission.ts:34` |
 | `BULK_BLOB_DIR` | `apps/api/src/modules/apps/sandbox/bulk-blob.ts:169` |
 | `BULK_BLOB_QUOTA_BYTES` | `apps/api/src/modules/apps/sandbox/bulk-blob.ts:162` |
 | `BUN_INSTALL` | `apps/desktop/sidecar/build.ts:193` |
@@ -307,8 +307,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1773` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
 | `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:517`, `apps/api/src/modules/apps/app-frame.ts:35` |
-| `LIAISON_SANDBOX_FETCH_TIMEOUT_MS` | `apps/api/src/modules/apps/sandbox/bridge/egress.ts:64` |
-| `LIAISON_TRUSTED_SUMMARIZER_APPS` | `apps/api/src/modules/apps/runtime.ts:1437` |
+| `LIAISON_TRUSTED_SUMMARIZER_APPS` | `apps/api/src/modules/apps/runtime.ts:1438` |
 | `LIAISON_WEB_TOOLS_ALLOW_PRIVATE` | `apps/api/src/modules/agent/tools/web-tools.ts:160`, `apps/api/src/modules/agent/tools/web-tools.ts:253` |
 | `MAIL_INGEST_STALE_SEC` | `apps/api/src/modules/monitor/index.ts:306` |
 | `MAILBOX_DECRYPT_WAIT_BUDGET_MS` | `apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:102` |
@@ -338,9 +337,9 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `ROUTINE_OVERLAP_DEFER_DELAY_MS` | `apps/api/src/infra/jobs/kernel-jobs.ts:70` |
 | `ROUTINE_OVERLAP_MAX_DEFERRALS` | `apps/api/src/infra/jobs/kernel-jobs.ts:74` |
 | `SANDBOX_BOOT_RAMP_MS` | `apps/api/src/index.ts:422` |
-| `SANDBOX_POOL_REPORT_INTERVAL_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:92` |
-| `SANDBOX_QUEUE_WAIT_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:89` |
-| `SANDBOX_WORKER_HOLD_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:90` |
+| `SANDBOX_POOL_REPORT_INTERVAL_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:98` |
+| `SANDBOX_QUEUE_WAIT_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:95` |
+| `SANDBOX_WORKER_HOLD_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:96` |
 | `TICKETS_GMAIL_PUSH_ISSUER` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1325`, `apps/api/src/modules/webhooks/routes.ts:180`, `apps/api/src/modules/webhooks/verify-bridge.ts:150` |
 | `TICKETS_GMAIL_PUSH_JWKS_URL` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1326`, `apps/api/src/modules/webhooks/routes.ts:181`, `apps/api/src/modules/webhooks/verify-bridge.ts:149` |
 | `TICKETS_GMAIL_SYNC_SINCE` | `apps/api/src/apps/tickets/sync.ts:310` |

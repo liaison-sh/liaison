@@ -114,9 +114,17 @@ export function sourceHash(source: unknown): string {
 
 export function blockCacheKey(
   viewer: CacheViewer,
-  block: { dashboardId: string; version: number; blockId: string; resolvedSource: unknown },
+  block: {
+    dashboardId: string
+    version: number
+    blockId: string
+    resolvedSource: unknown
+    /** The dashboard range the run read (a block that follows it), else null. */
+    range?: { from: string; to: string } | null
+  },
 ): string {
-  return `dash:block:${viewer.orgId}:${block.dashboardId}:${block.version}:${block.blockId}:${sourceHash(block.resolvedSource)}:${viewer.userId}:${permissionHash(viewer)}`
+  const range = block.range ? `${block.range.from}..${block.range.to}` : "fixed"
+  return `dash:block:${viewer.orgId}:${block.dashboardId}:${block.version}:${block.blockId}:${sourceHash(block.resolvedSource)}:${range}:${viewer.userId}:${permissionHash(viewer)}`
 }
 
 /**

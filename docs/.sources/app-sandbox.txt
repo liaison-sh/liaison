@@ -132,3 +132,9 @@ ctx.timers.wakeIn: 0 to 30 days, past 15 min the job hops 15 min at a time -> ap
 A timer's jobId deduplicates while pending -> apps/api/src/modules/apps/sandbox/bridge/platform.ts:118
 ctx.jobs.enqueue: delay at most 15 min (clamped), jobId org-scoped -> apps/api/src/modules/apps/sandbox/bridge/platform.ts:31 ; apps/api/src/modules/apps/sandbox/bridge/platform.ts:244 ; apps/api/src/modules/apps/sandbox/bridge/platform.ts:109
 SDK types of jobs, timers and steps -> packages/app-sdk/src/types.ts:112 ; packages/app-sdk/src/types.ts:124 ; packages/app-sdk/src/types.ts:185
+One limit table per entry kind, read by both executors -> apps/api/src/modules/apps/run-limits.ts:94 ; apps/api/src/modules/apps/run-limits.ts:221 ; apps/api/src/modules/apps/sandbox/run-app.ts:260 ; apps/api/src/modules/apps/workers/executor.ts:228
+Production wall clocks per kind, CPU, heap, call caps -> apps/api/src/modules/apps/run-limits.ts:94 ; apps/api/src/modules/apps/run-limits.ts:81
+Per-fetch read 10 s (env up to 120 s), write up to 30 s -> apps/api/src/modules/apps/run-limits.ts:274 ; apps/api/src/modules/apps/run-limits.ts:278
+Contract: each entry twice in one reused isolate, recorded answers, production limits -> apps/api/src/modules/apps/contract/harness.ts:71 ; apps/api/src/modules/apps/contract/harness.ts:88
+Waits over 2 s and the source scan -> apps/api/src/modules/apps/contract/wait-lint.ts:20 ; apps/api/src/modules/apps/contract/wait-lint.ts:111
+Expected failures only shrink -> apps/api/src/modules/apps/contract/expected-failures.guard.test.ts:1

@@ -348,6 +348,7 @@ dashboards_get tool: scope and approval flag -> apps/api/src/modules/dashboards/
 kernel:dashboards:read held by every member -> apps/api/src/modules/permissions/every-member-scopes.ts:38
 dashboards_create tool: gated for org, decided by kernel:dashboards:admin -> apps/api/src/modules/dashboards/tools.ts:289
 dashboards_update tool: gated for an org dashboard or a switch to org -> apps/api/src/modules/dashboards/tools.ts:317
+dashboards_edit tool: gated for an org dashboard or a switch to org, one approval per call -> apps/api/src/modules/dashboards/tools.ts:527
 dashboards_delete tool: gated for an org dashboard -> apps/api/src/modules/dashboards/tools.ts:356
 build-dashboard kernel skill -> apps/api/src/modules/agent/prompts/kernel/build-dashboard.md:2
 The search reads other forms of a word, misspellings of 5+ letters, French words and plain synonyms of name words; a rare word counts more in a query of several words -> apps/api/src/modules/agent/tools/tool-rank.ts:104-235 ; apps/api/src/modules/agent/tools/tool-lexicon.ts:1-15

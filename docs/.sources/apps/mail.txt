@@ -77,7 +77,7 @@ mail:drafts:read reads drafts -> apps/api/src/apps/mail/app.manifest.json:566
 mail:approve derived approver scope for gated tools -> apps/api/src/modules/permissions/scope-catalog.ts:239
 mail:suppressions:read and :write -> apps/api/src/modules/permissions/scope-catalog.ts:39-44
 Role member holds mail:suppressions:read, Full Member inherits it -> apps/api/src/apps/mail/app.manifest.json:1767
-mail:suppressions:write for mail admins -> apps/api/src/db/migrations/0294_suppressions.sql:94
+mail:suppressions:write for mail admins -> apps/api/src/db/migrations/0296_suppressions.sql:94
 mail:accounts:admin, mail admin connects org mailboxes -> apps/web/src/modules/mail/MailAccounts.tsx:573
 A failed sync shows its error on the row -> apps/api/src/apps/mail/handlers.ts:3641
 Retry after 15 min, doubling, capped at 6 h -> apps/api/src/apps/mail/handlers.ts:3617
@@ -181,7 +181,7 @@ org IMAP mailbox polled on schedule with nobody online; a personal one waits -> 
 mailbox address matches its row in any case; another address is another mailbox -> apps/api/src/modules/apps/connections/service.ts:1394
 A held draft leaves Home and a stopped one is uncounted -> apps/api/src/modules/approvals/attention.ts:635
 Provider pill on a mail row -> apps/api/src/modules/mail/send-guard.ts:395
-Record an opt-out: mail:suppression_add, scope mail:conversations:write, fingerprint only -> apps/api/src/apps/mail/app.manifest.json:1292 ; apps/api/src/modules/mail/suppressions.ts:43 ; apps/api/src/db/migrations/0294_suppressions.sql:77
+Record an opt-out: mail:suppression_add, scope mail:conversations:write, fingerprint only -> apps/api/src/apps/mail/app.manifest.json:1292 ; apps/api/src/modules/mail/suppressions.ts:43 ; apps/api/src/db/migrations/0296_suppressions.sql:77
 Waiting commercial drafts withdrawn at once; the check refuses new ones; service messages still go -> apps/api/src/modules/mail/suppressions.ts:159
 336 ; apps/api/src/modules/approvals/withdraw-on-events.ts:43 ; apps/api/src/modules/mail/send-guard.ts:647
 Check up to 50 addresses, scope mail:suppressions:read, with when and how -> apps/api/src/apps/mail/app.manifest.json:1284 ; apps/api/src/modules/apps/sandbox/bridge/mail.ts:805 ; apps/api/src/modules/mail/suppressions.ts:391

@@ -117,6 +117,7 @@ const EXPECTED_CLOSURE: Record<string, string> = {
   "kernel.credit_balances": "direct",
   "kernel.credit_transactions": "direct",
   "kernel.dashboards": "direct",
+  "kernel.dashboard_viewer_states": "direct",
   "kernel.demo_world_marks": "direct",
   "kernel.desktop_devices": "direct",
   "kernel.device_flow_requests": "direct",

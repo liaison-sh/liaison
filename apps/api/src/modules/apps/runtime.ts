@@ -120,6 +120,7 @@ import {
   resumeAppRoutinesForOrg,
 } from "~/modules/apps/reconcile-assets"
 import { APP_REGISTRATION_CODE_FILES } from "~/modules/apps/registration-code-files"
+import { runLimits } from "~/modules/apps/run-limits"
 import {
   buildManifestSettingsEntry,
   materialiseSections,
@@ -3402,7 +3403,7 @@ async function registerSingleApp(
                     entry: `poll:${pollExport}`,
                     params: { external_ref: externalRef },
                     bridge,
-                    timeoutMs: 60_000,
+                    timeoutMs: runLimits("poll").wallMs,
                     priority: "background",
                     appId: pollAppName,
                     holdsTx: true,
@@ -3488,7 +3489,7 @@ async function registerSingleApp(
                       external_ref: input.externalRef,
                     },
                     bridge,
-                    timeoutMs: 60_000,
+                    timeoutMs: runLimits("reconcile").wallMs,
                     priority: "background",
                     appId: reconcileAppName,
                     holdsTx: true,
@@ -3628,7 +3629,7 @@ async function registerSingleApp(
                   params,
                   extraArgs: [meta],
                   bridge: {},
-                  timeoutMs: 5_000,
+                  timeoutMs: runLimits("summarizer").wallMs,
                 })) as Awaited<ReturnType<ApprovalSummarizer>>
               }
               registerApprovalSummarizer(orgId, desc.name, toolName, summarize)
@@ -3968,7 +3969,7 @@ async function registerSingleApp(
                   entry: `event:${exportName}`,
                   params: event,
                   bridge,
-                  timeoutMs: 30_000,
+                  timeoutMs: runLimits("event").wallMs,
                   priority: "background",
                   appId: appName,
                   // The bridge runs on the handler's ambient transaction (txDb).
@@ -4179,7 +4180,7 @@ async function registerSingleApp(
                   entry: `job:${jobName}`,
                   params: sandboxPayload,
                   bridge,
-                  timeoutMs: jobDef.timeoutMs ?? 60_000,
+                  timeoutMs: runLimits("job", { declaredMs: jobDef.timeoutMs }).wallMs,
                   priority: "background",
                   // One app's jobs hold at most half the background workers.
                   backgroundGroup: `job:${appName}`,
@@ -4241,7 +4242,7 @@ async function registerSingleApp(
                   entry: `job:${jobName}`,
                   params: sandboxPayload,
                   bridge,
-                  timeoutMs: jobDef.timeoutMs ?? 60_000,
+                  timeoutMs: runLimits("job", { declaredMs: jobDef.timeoutMs }).wallMs,
                   priority: "background",
                   // One app's jobs hold at most half the background workers.
                   backgroundGroup: `job:${appName}`,
@@ -4334,7 +4335,7 @@ async function registerSingleApp(
         const bridgeManifest = manifestForBridge!
         const { makeSandboxSearchHandler } = await import("~/modules/search/external-bridge")
         const { registerExternalSearchHandler } = await import("~/modules/search/external-handlers")
-        const timeoutMs = searchDef.timeoutMs ?? 5000
+        const timeoutMs = runLimits("search", { declaredMs: searchDef.timeoutMs }).wallMs
         const handler = makeSandboxSearchHandler({
           appName: appNameLocal,
           handlerName: searchDef.handler,

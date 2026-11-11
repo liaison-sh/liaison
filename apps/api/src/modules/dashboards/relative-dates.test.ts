@@ -6,11 +6,15 @@
 import { describe, expect, it } from "bun:test"
 import { sourceHash } from "~/modules/dashboards/cache"
 import {
+  compareWindow,
   DateTokenError,
   dateTokenProblems,
   dateTokensIn,
   hasDateTokens,
+  hasRangeTokens,
   resolveDateTokens,
+  resolveTimeRange,
+  timeRangeProblems,
 } from "~/modules/dashboards/relative-dates"
 import { dashboardBlockSchema, specIssues } from "~/modules/dashboards/spec"
 
@@ -83,7 +87,7 @@ describe("resolveDateTokens", () => {
   })
 
   it("throws on an unknown token, never passing it through", () => {
-    expect(() => r("{{yesterday}}", "2026-11-10T12:00:00Z")).toThrow(DateTokenError)
+    expect(() => r("{{tomorrow}}", "2026-11-10T12:00:00Z")).toThrow(DateTokenError)
     expect(() => r("{{today-1m}}", "2026-11-10T12:00:00Z")).toThrow(DateTokenError)
     expect(() => r("{{today-1d}", "2026-11-10T12:00:00Z")).toThrow(DateTokenError)
   })
@@ -95,14 +99,14 @@ describe("dateTokenProblems", () => {
       {
         ok: "{{today-7d}}",
         period: { since: "{{ today }}" },
-        q: ["a {{startOfQuarter}} b", "{{today-1m}}"],
+        q: ["a {{startOfDecade}} b", "{{today-1m}}"],
         open: "{{today",
       },
       "params",
     )
     expect(problems).toHaveLength(4)
     expect(problems[0]).toStartWith("params.period.since: unknown date token {{ today }}")
-    expect(problems[1]).toStartWith("params.q.0: unknown date token {{startOfQuarter}}")
+    expect(problems[1]).toStartWith("params.q.0: unknown date token {{startOfDecade}}")
     expect(problems[2]).toStartWith("params.q.1: unknown date token {{today-1m}}")
     expect(problems[3]).toStartWith('params.open: a "{{" or "}}"')
     expect(problems[0]).toContain("{{startOfMonth-1M}}")
@@ -144,5 +148,148 @@ describe("sourceHash", () => {
     const b = { params: { n: 1, since: "2026-11-01" }, tool: "x:y", kind: "tool" }
     expect(sourceHash(a)).toBe(sourceHash(b))
     expect(sourceHash({ ...a, params: { since: "2026-11-02", n: 1 } })).not.toBe(sourceHash(a))
+  })
+})
+
+describe("the new anchors", () => {
+  const now = "2026-11-10T12:00:00Z" // a Tuesday
+  it("resolves yesterday, quarter starts and period ends", () => {
+    expect(r("{{yesterday}}", now)).toBe("2026-11-09")
+    expect(r("{{startOfQuarter}}", now)).toBe("2026-10-01")
+    expect(r("{{startOfQuarter-3M}}", now)).toBe("2026-07-01")
+    expect(r("{{endOfWeek}}", now)).toBe("2026-11-15")
+    expect(r("{{endOfMonth}}", now)).toBe("2026-11-30")
+    expect(r("{{endOfQuarter}}", now)).toBe("2026-12-31")
+    expect(r("{{endOfYear}}", now)).toBe("2026-12-31")
+  })
+
+  it("moves an end-of anchor by whole periods, so last month ends on its last day", () => {
+    expect(r("{{endOfMonth-1M}}", now)).toBe("2026-10-31")
+    expect(r("{{endOfMonth-9M}}", now)).toBe("2026-02-28")
+    expect(r("{{endOfQuarter-3M}}", now)).toBe("2026-09-30")
+    expect(r("{{endOfYear-1y}}", now)).toBe("2025-12-31")
+    expect(r("{{endOfMonth+1d}}", now)).toBe("2026-12-01")
+  })
+})
+
+describe("range tokens", () => {
+  const opts = (timeZone = "UTC") => ({
+    now: new Date("2026-11-10T12:00:00Z"),
+    timeZone,
+    range: { from: "2026-10-01", to: "2026-10-31" },
+  })
+  it("become the range's days, with offsets, and its instants with the org's offset", () => {
+    const params = {
+      since: "{{range.from}}",
+      until: "{{range.to}}",
+      before: "{{range.from-1d}}",
+      q: "created_at:>='{{range.fromTime}}' AND created_at:<='{{range.toTime}}'",
+    }
+    expect(resolveDateTokens(params, opts("Europe/Paris"))).toEqual({
+      since: "2026-10-01",
+      until: "2026-10-31",
+      before: "2026-09-30",
+      // Oct 1 is summer time in Paris (+02:00), Oct 31 is winter time (+01:00).
+      q: "created_at:>='2026-10-01T00:00:00+02:00' AND created_at:<='2026-10-31T23:59:59+01:00'",
+    })
+    expect(resolveDateTokens("{{range.fromTime}}", opts("America/New_York"))).toBe(
+      "2026-10-01T00:00:00-04:00",
+    )
+  })
+
+  it("refuses a range token with no range, and finds range tokens", () => {
+    expect(() => resolveDateTokens("{{range.from}}", { ...opts(), range: null })).toThrow(
+      DateTokenError,
+    )
+    expect(hasRangeTokens({ a: { b: "x {{range.to}}" } })).toBe(true)
+    expect(hasRangeTokens({ a: "{{today}}" })).toBe(false)
+    expect(dateTokenProblems({ a: "{{range.middle}}" }, "params")).toHaveLength(1)
+  })
+})
+
+describe("resolveTimeRange", () => {
+  const at = { timeZone: "UTC", now: new Date("2026-11-10T12:00:00Z") }
+  it("resolves every preset to inclusive days", () => {
+    const w = (preset: Parameters<typeof resolveTimeRange>[0]["preset"]) =>
+      resolveTimeRange({ preset }, at)
+    expect(w("last7d")).toEqual({ from: "2026-11-04", to: "2026-11-10" })
+    expect(w("last30d")).toEqual({ from: "2026-10-12", to: "2026-11-10" })
+    expect(w("last90d")).toEqual({ from: "2026-08-13", to: "2026-11-10" })
+    expect(w("mtd")).toEqual({ from: "2026-11-01", to: "2026-11-10" })
+    expect(w("lastMonth")).toEqual({ from: "2026-10-01", to: "2026-10-31" })
+    expect(w("qtd")).toEqual({ from: "2026-10-01", to: "2026-11-10" })
+    expect(w("lastQuarter")).toEqual({ from: "2026-07-01", to: "2026-09-30" })
+    expect(w("ytd")).toEqual({ from: "2026-01-01", to: "2026-11-10" })
+    expect(w("lastYear")).toEqual({ from: "2025-01-01", to: "2025-12-31" })
+    expect(
+      resolveTimeRange({ preset: "custom", from: "2026-01-05", to: "2026-02-01" }, at),
+    ).toEqual({ from: "2026-01-05", to: "2026-02-01" })
+  })
+
+  it("names what is wrong with a range", () => {
+    expect(timeRangeProblems({ preset: "custom" })).toHaveLength(1)
+    expect(timeRangeProblems({ preset: "custom", from: "2026-02-30", to: "2026-03-01" })).toEqual([
+      "from '2026-02-30' is not a day (YYYY-MM-DD)",
+    ])
+    expect(timeRangeProblems({ preset: "custom", from: "2026-03-02", to: "2026-03-01" })).toEqual([
+      "from is after to",
+    ])
+    expect(timeRangeProblems({ preset: "mtd", from: "2026-03-01" })).toHaveLength(1)
+    expect(timeRangeProblems({ preset: "mtd" })).toEqual([])
+  })
+})
+
+describe("compareWindow", () => {
+  it("compares with the same days a year earlier, month ends kept", () => {
+    expect(compareWindow("last30d", { from: "2026-10-12", to: "2026-11-10" }, "lastYear")).toEqual({
+      from: "2025-10-12",
+      to: "2025-11-10",
+    })
+    expect(
+      compareWindow("lastMonth", { from: "2028-02-01", to: "2028-02-29" }, "lastYear"),
+    ).toEqual({ from: "2027-02-01", to: "2027-02-28" })
+    expect(
+      compareWindow("lastMonth", { from: "2027-02-01", to: "2027-02-28" }, "lastYear"),
+    ).toEqual({ from: "2026-02-01", to: "2026-02-28" })
+  })
+
+  it("compares a calendar preset with the period before, the same day span", () => {
+    expect(
+      compareWindow("mtd", { from: "2026-11-01", to: "2026-11-10" }, "previousPeriod"),
+    ).toEqual({ from: "2026-10-01", to: "2026-10-10" })
+    expect(
+      compareWindow("lastMonth", { from: "2026-10-01", to: "2026-10-31" }, "previousPeriod"),
+    ).toEqual({ from: "2026-09-01", to: "2026-09-30" })
+    expect(
+      compareWindow("lastQuarter", { from: "2026-07-01", to: "2026-09-30" }, "previousPeriod"),
+    ).toEqual({ from: "2026-04-01", to: "2026-06-30" })
+  })
+
+  it("compares a rolling or custom range with the equal span just before, and none with nothing", () => {
+    expect(
+      compareWindow("last7d", { from: "2026-11-04", to: "2026-11-10" }, "previousPeriod"),
+    ).toEqual({ from: "2026-10-28", to: "2026-11-03" })
+    expect(
+      compareWindow("custom", { from: "2026-03-01", to: "2026-03-01" }, "previousPeriod"),
+    ).toEqual({ from: "2026-02-28", to: "2026-02-28" })
+    expect(compareWindow("last7d", { from: "2026-11-04", to: "2026-11-10" }, "none")).toBeNull()
+  })
+})
+
+describe("a block's range mode in the schema", () => {
+  const block = (extra: Record<string, unknown>, params: Record<string, unknown>) =>
+    dashboardBlockSchema.safeParse({
+      id: "b",
+      type: "metric",
+      title: "B",
+      source: { kind: "tool", tool: "shop:orders_search", params },
+      map: { agg: "count" },
+      ...extra,
+    })
+  it("refuses range tokens in a fixed block, and a dashboard block without them", () => {
+    expect(block({}, { since: "{{range.from}}" }).success).toBe(true)
+    expect(block({ timeRange: "dashboard" }, { since: "{{range.from}}" }).success).toBe(true)
+    expect(block({ timeRange: "fixed" }, { since: "{{range.from}}" }).success).toBe(false)
+    expect(block({ timeRange: "dashboard" }, { since: "{{today}}" }).success).toBe(false)
   })
 })

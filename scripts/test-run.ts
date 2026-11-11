@@ -2263,6 +2263,14 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // so a manifest-only edit, which the test map sends to this suite,
             // still runs the drift guard.
             "src/modules/notifications/monitoring-group.test.ts",
+            // The app wake-up contract: every bundled and in-tree sandboxed
+            // app's entry points run twice in one reused isolate on recorded
+            // egress, under the per-run limit table, plus the wait lint and
+            // the only-shrinks guard of its expected-failure list. Pure (no
+            // database, no Redis), seconds; the test map sends bundled-apps/**
+            // and the app runtime here.
+            "src/modules/apps/contract",
+            "src/modules/apps/run-limits.test.ts",
           ]),
     ],
     cwd: path.join(ROOT, "apps/api"),

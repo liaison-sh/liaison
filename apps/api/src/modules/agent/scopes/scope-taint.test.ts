@@ -294,6 +294,7 @@ describe("writesToTable annotations on kernel tools", () => {
       // Dashboards: the saved dashboard row (personal, or org-wide after an approval).
       dashboards_create: "kernel.dashboards",
       dashboards_update: "kernel.dashboards",
+      dashboards_edit: "kernel.dashboards",
       dashboards_delete: "kernel.dashboards",
       // The app data store: a document of an app's declared collection.
       data_set: "kernel.app_documents",

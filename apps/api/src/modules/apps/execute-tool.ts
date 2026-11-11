@@ -78,6 +78,7 @@ import {
   refUnknownOutputMessage,
   sequencingHint,
 } from "~/modules/apps/ref-messages"
+import { resolveToolTimeoutMs } from "~/modules/apps/run-limits"
 import { withAppDimensionAliases } from "~/modules/apps/runtime-helpers"
 import { isBundleLoadError, loadBundle } from "~/modules/apps/sandbox/bundle-loader"
 import {
@@ -86,7 +87,6 @@ import {
   useFullBundle,
   watchBridgeCalls,
 } from "~/modules/apps/sandbox/bundle-shake"
-import { resolveToolTimeoutMs } from "~/modules/apps/sandbox/executor"
 import {
   createSandboxRpcBridge,
   createSessionRpcBridge,

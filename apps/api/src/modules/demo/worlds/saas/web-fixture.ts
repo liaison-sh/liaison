@@ -16,7 +16,7 @@ export const SAAS_TRENDS_HOST = "hospitality-trends.example"
 export const SAAS_TRENDS_URL = `https://${SAAS_TRENDS_HOST}/seasonal-staffing`
 
 /** The sales scenario's prospect. */
-export const SAAS_PROSPECT_SITE_HOST = "residence-olympe.example"
+const SAAS_PROSPECT_SITE_HOST = "residence-olympe.example"
 
 const TRENDS_SITE = "Hospitality Trends (fictional)"
 const PROSPECT_SITE = "Résidence Olympe"

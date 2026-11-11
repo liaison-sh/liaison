@@ -32,8 +32,6 @@ export const SAAS_KNOWLEDGE_ASKER = "Clémence Roy"
 export const SAAS_KNOWLEDGE_AGENT = "Support Desk"
 /** The channel he asks in (shown as #support). */
 export const SAAS_KNOWLEDGE_CHANNEL = "Support"
-export const SAAS_KNOWLEDGE_CHANNEL_TOPIC =
-  "Customer questions, refunds and the help articles, with Support Desk on hand"
 export const SAAS_KNOWLEDGE_QUESTION =
   "can a customer get a refund on a yearly plan, and who approves it?"
 

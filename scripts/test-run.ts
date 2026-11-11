@@ -1151,6 +1151,10 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // own tools: pipeline, companies, team, agents, routines, MRR,
             // invoice numbers, schedules and the money decisions on Home.
             "src/seed/worlds/saas/stripe-world-reads.saas.integration.test.ts",
+            // The owner's question about the hotel group, played through the
+            // real agent loop with a scripted model: it reaches the company,
+            // customer, documents, tickets and deals reads, and the company card.
+            "src/seed/worlds/saas/owner-question-reach.saas.integration.test.ts",
             // The money scenario's recovered card: the outside state and the
             // processor's events through the payments app's own handler, the
             // figures moved, and the waiting reminder stopped by its own check.

@@ -44,6 +44,11 @@ export const ORGLESS_JOB_AUDIT: Readonly<Record<string, OrglessJobEntry>> = {
   "kernel:app-draft-store-retention": skips("modules/app-builder/installed.ts"),
   "kernel:notification-deliveries-retention": skips("modules/notifications/delivery-log.ts"),
   "kernel:effect-ledger-retention": skips("lib/effect-once.ts"),
+  "kernel:webhook-inbox-sweep": skips(
+    "modules/webhooks/inbox.ts",
+    "infra/jobs/webhook-inbox-jobs.ts",
+  ),
+  "kernel:webhook-inbox-retention": skips("modules/webhooks/inbox.ts"),
   "kernel:agent-turn-retention": skips("modules/agent/runtime/turn-ledger.ts"),
   "kernel:approval-expiry-sweep": skips("modules/approvals/expiry.ts"),
   "kernel:approval-reminder-sweep": skips("modules/approvals/reminders.ts"),
@@ -126,6 +131,10 @@ export const ORGLESS_WORKER_AUDIT: Readonly<Record<string, OrglessJobEntry>> = {
   ),
   "infra/jobs/load-synthetic.ts": audited(PAYLOAD_HOLD),
   "infra/jobs/near-duplicate-clusters.ts": audited(PAYLOAD_HOLD),
+  "infra/jobs/webhook-inbox-jobs.ts": skips(
+    "modules/webhooks/inbox.ts",
+    "infra/jobs/webhook-inbox-jobs.ts",
+  ),
   "infra/jobs/webhook-worker.ts": audited(PAYLOAD_HOLD),
   "modules/agent/context/warm-compaction.ts": audited(PAYLOAD_HOLD),
   "modules/agent/memory/consolidation.ts": audited(PAYLOAD_HOLD),

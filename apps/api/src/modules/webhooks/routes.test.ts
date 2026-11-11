@@ -35,6 +35,7 @@ import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import * as appDayCapModule from "~/modules/apps/usage/app-day-cap"
 import * as googleOidcModule from "~/modules/webhooks/google-oidc"
+import * as inboxModule from "~/modules/webhooks/inbox"
 
 const REPLAY_PREFIX = "webhook:replay:"
 const TEST_ORG = "00000000-0000-0000-0000-000000000311"
@@ -485,7 +486,22 @@ describe("webhook routes", () => {
       mock.restore()
       webhookHandlers.delete([TEST_ORG, APP, ENDPOINT])
       await sql`DELETE FROM kernel.apps WHERE org_id = ${TEST_ORG} AND name = ${APP}`
+      await sql`DELETE FROM kernel.webhook_inbox WHERE org_id = ${TEST_ORG} AND app_name = ${APP}`
     })
+
+    type InboxRow = {
+      status: string
+      attempts: number
+      payload: unknown
+      headers: Record<string, string> | null
+      due_in_ms: number
+    }
+    async function inboxRows(): Promise<InboxRow[]> {
+      return sql<InboxRow[]>`
+        SELECT status, attempts, payload, headers,
+          (extract(epoch FROM due_at - now()) * 1000)::float8 AS due_in_ms
+        FROM kernel.webhook_inbox WHERE org_id = ${TEST_ORG} AND app_name = ${APP}`
+    }
 
     function registerHostHandler(handler: (payload: unknown, ctx: any) => Promise<unknown>): void {
       webhookHandlers.set([TEST_ORG, APP, ENDPOINT], {
@@ -588,7 +604,7 @@ describe("webhook routes", () => {
         expect(Date.now() - started).toBeLessThan(10_000)
       }, 20_000)
 
-      it("a delivery that cannot get a slot in time is handed to the retry job, unrun", async () => {
+      it("a delivery that cannot get a slot in time stays in the inbox for the replay, unrun", async () => {
         await seedAppRow()
         const savedCeiling = env.REQUEST_TIMEOUT_MS
         ;(env as { REQUEST_TIMEOUT_MS: number }).REQUEST_TIMEOUT_MS = 30_000
@@ -614,7 +630,9 @@ describe("webhook routes", () => {
           expect(res.status).toBe(500)
           expect(Date.now() - started).toBeLessThan(10_000)
           expect(handlerRan).not.toHaveBeenCalled()
-          expect(enqueue.mock.calls.some((c) => c[1] === "retry-webhook")).toBe(true)
+          expect(enqueue.mock.calls.some((c) => c[1] === "webhook-inbox-replay")).toBe(true)
+          const [row] = await inboxRows()
+          expect(row?.status).toBe("pending")
         } finally {
           ;(env as { REQUEST_TIMEOUT_MS: number }).REQUEST_TIMEOUT_MS = savedCeiling
           free()
@@ -751,12 +769,13 @@ describe("webhook routes", () => {
     }
 
     function retryCalls(spy: ReturnType<typeof spyRetryEnqueue>): number {
-      return spy.mock.calls.filter((call) => call[0] === "kernel" && call[1] === "retry-webhook")
-        .length
+      return spy.mock.calls.filter(
+        (call) => call[0] === "kernel" && call[1] === "webhook-inbox-replay",
+      ).length
     }
 
     // The org reached an app day cap: the app's verify runs, its handler waits for
-    // the next UTC day as the retry job (payload and headers kept), and the
+    // the next UTC day in the inbox (payload and headers kept, `held`), and the
     // provider gets a 2xx so it neither retries nor drops the subscription.
     describe("an org at an app day cap", () => {
       const HOLD_MS = 3_600_000
@@ -780,7 +799,7 @@ describe("webhook routes", () => {
           body: JSON.stringify({ order: 42 }),
         })
 
-      it("holds the delivery as a delayed retry job and answers 2xx {held:true}", async () => {
+      it("holds the delivery in the inbox and answers 2xx {held:true}", async () => {
         await seedAppRow()
         const key = replayKeyFor("capped-replay-key")
         await redis.del(key)
@@ -798,36 +817,39 @@ describe("webhook routes", () => {
         })
         expect(verify).toHaveBeenCalledTimes(1)
         expect(hold).toHaveBeenCalledTimes(1)
-        const held = enqueue.mock.calls.filter((c) => c[1] === "retry-webhook")
-        // One job, the held one: nothing ran, so no failure retry was added.
-        expect(held).toHaveLength(1)
-        const [queue, , data, opts] = held[0] as unknown as [
+        // Stored held, unrun, with its payload and headers, due at the hold's end.
+        const rows = await inboxRows()
+        expect(rows).toHaveLength(1)
+        const [row] = rows as [InboxRow]
+        expect(row.status).toBe("held")
+        expect(row.attempts).toBe(0)
+        expect(row.payload).toEqual({ order: 42 })
+        expect(row.headers?.["x-topic-id"]).toBe("t-1")
+        expect(Math.abs(row.due_in_ms - HOLD_MS)).toBeLessThan(60_000)
+        // One wake, at the hold's end: nothing ran, so no failure retry was added.
+        const wakes = enqueue.mock.calls.filter((c) => c[1] === "webhook-inbox-replay")
+        expect(wakes).toHaveLength(1)
+        const [queue, , data, opts] = wakes[0] as unknown as [
           string,
           string,
           Record<string, unknown>,
           { delay: number },
         ]
         expect(queue).toBe("kernel")
-        expect(data).toMatchObject({
-          orgId: TEST_ORG,
-          appName: APP,
-          endpointName: ENDPOINT,
-          payload: { order: 42 },
-        })
-        expect((data.headers as Record<string, string>)["x-topic-id"]).toBe("t-1")
-        expect(opts).toEqual({ delay: HOLD_MS })
+        expect(data.orgId).toBe(TEST_ORG)
+        expect(opts.delay).toBe(HOLD_MS)
         // Held durably: the replay claim stays, so a provider retry is a duplicate.
         expect(await redis.exists(key)).toBe(1)
       })
 
-      it("answers 503 and releases the replay claim when the hold cannot be enqueued", async () => {
+      it("answers 503 and releases the replay claim when the hold cannot be stored", async () => {
         await seedAppRow()
         const key = replayKeyFor("capped-replay-key")
         await redis.del(key)
         redisKeysToClean.push(key)
         registerCapped()
         spyOn(appDayCapModule, "appRunHoldMs").mockResolvedValue(HOLD_MS)
-        spyOn(jobsModule, "enqueueAppJob").mockRejectedValue(new Error("redis down"))
+        spyOn(inboxModule, "storeDelivery").mockRejectedValue(new Error("database down"))
 
         const res = await post()
 
@@ -856,6 +878,7 @@ describe("webhook routes", () => {
       expect(retryCalls(enqueue)).toBe(0)
       // Nothing happened: a corrected or repeated delivery re-reaches the handler.
       expect(await redis.exists(key)).toBe(0)
+      expect((await inboxRows()).map((r) => [r.status, r.payload])).toEqual([["rejected", null]])
     })
 
     it("still schedules a retry for a handler 5xx", async () => {
@@ -875,6 +898,11 @@ describe("webhook routes", () => {
       expect(res.status).toBe(503)
       expect(await res.json()).toEqual({ error: { message: "Webhook processing failed" } })
       expect(retryCalls(enqueue)).toBe(1)
+      // Kept in the inbox for the replay, after the first backoff.
+      const [row] = await inboxRows()
+      expect(row?.status).toBe("pending")
+      expect(row?.attempts).toBe(1)
+      expect(row?.payload).toEqual({ hello: "world" })
     })
 
     it("passes the handler's JSON body through on 2xx", async () => {
@@ -912,6 +940,84 @@ describe("webhook routes", () => {
 
       expect(res.status).toBe(200)
       expect(await res.json()).toEqual({ data: { received: true } })
+    })
+
+    // The durable inbox (inbox.ts): stored before the handler runs, processed
+    // once per verified identity, a waiting delivery taken over by a redelivery.
+    describe("the webhook inbox", () => {
+      const postOnce = () =>
+        app.request(`/webhooks/${TEST_ORG}/${APP}/${ENDPOINT}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Delivery": "d-1" },
+          body: JSON.stringify({ hello: "inbox" }),
+        })
+
+      it("stores the delivery before the handler runs, then settles it done without its payload", async () => {
+        await seedAppRow()
+        const key = replayKeyFor("fixed-replay-key")
+        await redis.del(key)
+        redisKeysToClean.push(key)
+        let seen: InboxRow[] = []
+        registerHostHandler(async () => {
+          seen = await inboxRows()
+          return { status: 200 }
+        })
+
+        const res = await postOnce()
+
+        expect(res.status).toBe(200)
+        expect(seen).toHaveLength(1)
+        expect(seen[0]?.status).toBe("processing")
+        expect(seen[0]?.payload).toEqual({ hello: "inbox" })
+        expect(seen[0]?.headers?.["x-delivery"]).toBe("d-1")
+        // The claim's lease outlives the request ceiling.
+        expect(seen[0]?.due_in_ms ?? 0).toBeGreaterThan(env.REQUEST_TIMEOUT_MS)
+        const [row] = await inboxRows()
+        expect([row?.status, row?.payload, row?.headers]).toEqual(["done", null, null])
+      })
+
+      it("processes a verified identity once, even when the replay claim is gone", async () => {
+        await seedAppRow()
+        const key = replayKeyFor("fixed-replay-key")
+        redisKeysToClean.push(key)
+        const handler = mock(async () => ({ status: 200 }))
+        registerHostHandler(handler)
+
+        await redis.del(key)
+        expect((await postOnce()).status).toBe(200)
+        // The Redis claim lost (eviction, failover): the inbox still dedups.
+        await redis.del(key)
+        const second = await postOnce()
+
+        expect(second.status).toBe(200)
+        expect(((await second.json()) as { data: unknown }).data).toEqual({
+          received: true,
+          duplicate: true,
+        })
+        expect(handler).toHaveBeenCalledTimes(1)
+      })
+
+      it("a redelivery of a delivery waiting for its replay takes it over and runs it now", async () => {
+        await seedAppRow()
+        const key = replayKeyFor("fixed-replay-key")
+        await redis.del(key)
+        redisKeysToClean.push(key)
+        spyRetryEnqueue()
+        let calls = 0
+        registerHostHandler(async () => {
+          calls++
+          return calls === 1 ? { status: 503 } : { status: 200 }
+        })
+
+        expect((await postOnce()).status).toBe(503)
+        expect((await inboxRows())[0]?.status).toBe("pending")
+        const res = await postOnce()
+
+        expect(res.status).toBe(200)
+        expect(calls).toBe(2)
+        const [row] = await inboxRows()
+        expect([row?.status, row?.attempts]).toEqual(["done", 2])
+      })
     })
   })
 })

@@ -165,6 +165,37 @@ describe("webhook retry worker — header re-supply (B18)", () => {
     expect(row?.state).toBe("done")
   })
 
+  // Upgrade (rolling deploy): a `retry-webhook` job written by the previous
+  // release's route, already waiting when this release starts (the inbox drain
+  // moves only delayed ones), runs unchanged: the same handler, payload and
+  // headers, under the same effect-ledger key.
+  it("a job in the previous release's shape still runs unchanged", async () => {
+    const deliveryId = "6f1c2a8e-3b7d-4c55-9a0e-1d2b3c4d5e6f"
+    // Frozen copy of what the previous release enqueued (routes.ts, retry-webhook).
+    const previousReleaseJob = JSON.parse(
+      JSON.stringify({
+        orgId: RORG,
+        appName: RAPP,
+        endpointName: RENDPOINT,
+        payload: { id: 42, line_items: [{ sku: "A-1" }] },
+        headers: { "x-shopify-webhook-id": "evt-42", "content-type": "application/json" },
+        deliveryId,
+      }),
+    )
+    await processWebhookRetry(previousReleaseJob)
+    expect(captured).toEqual([
+      {
+        extraArgs: [{ "x-shopify-webhook-id": "evt-42", "content-type": "application/json" }],
+        params: { id: 42, line_items: [{ sku: "A-1" }] },
+      },
+    ])
+    const [row] = await sql<{ state: string }[]>`SELECT state FROM kernel.effect_ledger
+      WHERE org_id = ${RORG} AND key = ${`webhook:${RAPP}:${RENDPOINT}:${deliveryId}`}`
+    expect(row?.state).toBe("done")
+    await sql`DELETE FROM kernel.effect_ledger WHERE org_id = ${RORG}
+      AND key = ${`webhook:${RAPP}:${RENDPOINT}:${deliveryId}`}`
+  })
+
   it("skips silently when no handler is registered", async () => {
     await processWebhookRetry({
       orgId: RORG,

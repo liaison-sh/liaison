@@ -12,18 +12,31 @@ import { extractRlsContext } from "~/lib/request-rls"
 import { success } from "~/lib/response"
 import { zValidator } from "~/lib/validate"
 import { getRequestSignal } from "~/middleware/request-timeout"
+import { editOperationSchema, MAX_CARD_CHANGES } from "~/modules/dashboards/edit"
+import {
+  blockDataCsv,
+  computeDashboard,
+  exportFilename,
+  renderDashboardPdf,
+  rowsCsv,
+} from "~/modules/dashboards/export"
 import { COMPARE_MODES, TIME_PRESETS } from "~/modules/dashboards/relative-dates"
 import {
   clearViewerRange,
   createDashboard,
   DashboardError,
+  DRILL_EXPORT_LIMIT,
   deleteDashboard,
+  duplicateDashboard,
+  editDashboard,
   getBlockData,
   getBlockRows,
   getDashboard,
   getFilterOptions,
+  getVersion,
   getViewerRange,
   listDashboards,
+  listVersions,
   setViewerRange,
   updateDashboard,
 } from "~/modules/dashboards/service"
@@ -51,6 +64,20 @@ const updateBody = z
   .refine((b) => b.title !== undefined || b.visibility !== undefined || b.spec !== undefined, {
     message: "nothing to change",
   })
+
+/** A person's edit: the same ordered operations as the agent's dashboards_edit. */
+const editBody = z.object({
+  ifVersion: z.number().int().min(1),
+  operations: z.array(editOperationSchema).min(1).max(MAX_CARD_CHANGES),
+})
+const duplicateBody = z.object({ title: title.optional() })
+const versionParam = z.object({
+  id: z.string().uuid(),
+  version: z
+    .string()
+    .regex(/^\d{1,9}$/, "a version number")
+    .transform(Number),
+})
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "a day is YYYY-MM-DD")
 
@@ -159,6 +186,20 @@ const STATUS = {
   INVALID_REQUEST: 400,
 } as const
 
+/** A file answer: the bytes, their type, and a download name. */
+function download(c: Context<AppEnv>, body: string | Uint8Array, type: string, filename: string) {
+  return c.body(typeof body === "string" ? body : (body as Uint8Array<ArrayBuffer>), 200, {
+    "Content-Type": type,
+    "Content-Disposition": `attachment; filename="${filename}"`,
+    "Cache-Control": "no-store",
+  })
+}
+
+/** A block that cannot export (no_access, rate_limited, ...): 422 naming its reason. */
+function blockRefused(c: Context<AppEnv>, error: string, message: string) {
+  return c.json({ error: { code: error, message } }, 422)
+}
+
 function failure(c: Context<AppEnv>, err: unknown) {
   if (err instanceof DashboardError) {
     return c.json(
@@ -207,6 +248,52 @@ dashboardsRoutes
         c.req.valid("json"),
       )
       return success(c, row)
+    } catch (err) {
+      return failure(c, err)
+    }
+  })
+  // A person's edit by operations (reorder, resize, rename, duplicate, remove, revert...):
+  // their scopes decide, never an approval. Answers the dashboard as GET /:id does.
+  .post("/:id/edit", zValidator("param", idParam), zValidator("json", editBody), async (c) => {
+    const viewer = extractRlsContext(c)
+    const { id } = c.req.valid("param")
+    try {
+      await editDashboard(viewer, id, c.req.valid("json"))
+      return success(c, await getDashboard(viewer, id))
+    } catch (err) {
+      return failure(c, err)
+    }
+  })
+  // A copy as the caller's own personal dashboard.
+  .post(
+    "/:id/duplicate",
+    zValidator("param", idParam),
+    zValidator("json", duplicateBody),
+    async (c) => {
+      try {
+        const row = await duplicateDashboard(
+          extractRlsContext(c),
+          c.req.valid("param").id,
+          c.req.valid("json"),
+        )
+        return success(c, row, undefined, 201)
+      } catch (err) {
+        return failure(c, err)
+      }
+    },
+  )
+  .get("/:id/versions", zValidator("param", idParam), async (c) => {
+    try {
+      const versions = await listVersions(extractRlsContext(c), c.req.valid("param").id)
+      return success(c, { versions })
+    } catch (err) {
+      return failure(c, err)
+    }
+  })
+  .get("/:id/versions/:version", zValidator("param", versionParam), async (c) => {
+    const { id, version } = c.req.valid("param")
+    try {
+      return success(c, await getVersion(extractRlsContext(c), id, version))
     } catch (err) {
       return failure(c, err)
     }
@@ -298,6 +385,119 @@ dashboardsRoutes
       }
     },
   )
+  // The block's figures as CSV (what the chart draws), same query as the data.
+  .get(
+    "/:id/blocks/:blockId/data.csv",
+    zValidator("param", blockParam),
+    zValidator("query", blockDataQuery),
+    async (c) => {
+      const { id, blockId } = c.req.valid("param")
+      const q = c.req.valid("query")
+      const viewer = extractRlsContext(c)
+      try {
+        const filters = filterValuesOf(c)
+        const out = await getBlockData(viewer, id, blockId, {
+          signal: getRequestSignal(c),
+          ...(filters ? { filters } : {}),
+          ...(q.timeRange ? { range: q.timeRange } : {}),
+          ...(q.compare ? { compare: q.compare } : {}),
+        })
+        if (!out.ok) return blockRefused(c, out.error, out.message)
+        if (out.data.kind === "text") {
+          return c.json(
+            { error: { code: "INVALID_REQUEST", message: "a text block has no data" } },
+            400,
+          )
+        }
+        const view = await getDashboard(viewer, id)
+        const title = view.spec.blocks.find((b) => b.id === blockId)?.title ?? blockId
+        return download(
+          c,
+          blockDataCsv(title, out.data),
+          "text/csv; charset=utf-8",
+          exportFilename(title, "csv"),
+        )
+      } catch (err) {
+        return failure(c, err)
+      }
+    },
+  )
+  // The rows behind a block (or one of its figures) as CSV: every row, up to the rows read.
+  .get(
+    "/:id/blocks/:blockId/rows.csv",
+    zValidator("param", blockParam),
+    zValidator("query", rowsQuery),
+    async (c) => {
+      const { id, blockId } = c.req.valid("param")
+      const q = c.req.valid("query")
+      const range = rangeQuery.safeParse(c.req.query())
+      if (!range.success) {
+        return c.json(
+          {
+            error: {
+              code: "INVALID_REQUEST",
+              message: range.error.issues[0]?.message ?? "bad range",
+            },
+          },
+          400,
+        )
+      }
+      const viewer = extractRlsContext(c)
+      try {
+        const filters = filterValuesOf(c)
+        const out = await getBlockRows(viewer, id, blockId, {
+          signal: getRequestSignal(c),
+          ...(range.data.timeRange ? { range: range.data.timeRange } : {}),
+          ...(filters ? { filters } : {}),
+          ...(q.category !== undefined ? { category: q.category } : {}),
+          ...(q.series !== undefined ? { series: q.series } : {}),
+          ...(q.row !== undefined ? { row: q.row } : {}),
+          offset: 0,
+          limit: DRILL_EXPORT_LIMIT,
+          exportAll: true,
+        })
+        if (!out.ok) return blockRefused(c, out.error, out.message)
+        return download(
+          c,
+          rowsCsv(out.columns, out.rows),
+          "text/csv; charset=utf-8",
+          exportFilename(`${blockId}-rows`, "csv"),
+        )
+      } catch (err) {
+        return failure(c, err)
+      }
+    },
+  )
+  // The whole dashboard as a PDF, for the range and filters in the query (else the defaults).
+  .get("/:id/export.pdf", zValidator("param", idParam), async (c) => {
+    const parsed = blockDataQuery.safeParse(c.req.query())
+    if (!parsed.success) {
+      return c.json(
+        {
+          error: {
+            code: "INVALID_REQUEST",
+            message: parsed.error.issues[0]?.message ?? "bad range",
+          },
+        },
+        400,
+      )
+    }
+    const q = parsed.data
+    const { id } = c.req.valid("param")
+    try {
+      const filters = filterValuesOf(c)
+      const computed = await computeDashboard(extractRlsContext(c), id, {
+        signal: getRequestSignal(c),
+        ...(filters ? { filters } : {}),
+        ...(q.timeRange ? { range: q.timeRange } : {}),
+        ...(q.compare ? { compare: q.compare } : {}),
+      })
+      const bytes = await renderDashboardPdf(computed, filters)
+      return download(c, bytes, "application/pdf", exportFilename(computed.view.title, "pdf"))
+    } catch (err) {
+      return failure(c, err)
+    }
+  })
   // The rows behind one figure of a block (a bar, a slice, a table row, a metric), read-only,
   // from the same cached read as its data; refusals as for the data route.
   .get(

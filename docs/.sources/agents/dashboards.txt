@@ -148,3 +148,20 @@ Drill panel on the right (over the grid on a phone), dock clearance -> apps/web/
 Drill panel top: count, Previous/Next page, Close, Escape; All rows -> apps/web/src/modules/dashboards/BlockDrillPanel.tsx:113 ; apps/web/src/modules/dashboards/BlockDrillPanel.tsx:202 ; apps/web/src/modules/dashboards/BlockDrillPanel.tsx:221 ; apps/web/src/modules/dashboards/BlockDrillPanel.tsx:176 ; packages/shared/src/i18n/locales/en/kernel.json:6526 ; packages/shared/src/i18n/locales/en/kernel.json:6523 ; packages/shared/src/i18n/locales/en/kernel.json:6527 ; packages/shared/src/i18n/locales/en/kernel.json:6528
 Drill rows follow the period and filters shown -> apps/web/src/modules/dashboards/DashboardView.tsx:478
 Open: app path in place, a record through its app's opener; 2,000-row note -> apps/web/src/modules/dashboards/BlockDrillPanel.tsx:30 ; apps/web/src/modules/dashboards/BlockDrillPanel.tsx:299 ; packages/shared/src/i18n/locales/en/kernel.json:6530 ; packages/shared/src/i18n/locales/en/kernel.json:6532
+Own changes save at once, all or none, same checks -> apps/api/src/modules/dashboards/routes.ts:257 ; apps/api/src/modules/dashboards/service.ts:849 ; apps/api/src/modules/dashboards/service.ts:883
+Move, resize width 1-3 height 1-2, rename, duplicate, remove, describe -> apps/api/src/modules/dashboards/edit.ts:126 ; apps/api/src/modules/dashboards/edit.ts:141 ; apps/api/src/modules/dashboards/edit.ts:162 ; apps/api/src/modules/dashboards/spec.ts:561
+Stale version refused -> apps/api/src/modules/dashboards/service.ts:893
+Duplicate: personal copy, (copy) title, sources validated -> apps/api/src/modules/dashboards/service.ts:715 ; apps/api/src/modules/dashboards/routes.ts:269
+Version history: every save kept, last 20, who and when, readable with the dashboard -> apps/api/src/modules/dashboards/service.ts:582 ; apps/api/src/modules/dashboards/service.ts:585 ; apps/api/src/db/migrations/0291_dashboard_versions.sql:43
+Revert is a new version; older dashboards keep history from next save -> apps/api/src/modules/dashboards/edit.ts:419 ; apps/api/src/modules/dashboards/service.ts:824
+Agent revert via dashboards_history + edit, card says what it undoes -> apps/api/src/modules/dashboards/tools.ts:578 ; apps/api/src/modules/dashboards/edit.ts:735
+Days, weeks, months, quarters, years in the org time zone -> apps/api/src/modules/dashboards/transform.ts:170 ; apps/api/src/modules/dashboards/transform.ts:187 ; apps/api/src/modules/dashboards/spec.ts:45
+Calculated figures: expr grammar, division by zero no value, percent of total, scale -> apps/api/src/modules/dashboards/expr.ts:237 ; apps/api/src/modules/dashboards/expr.ts:211 ; apps/api/src/modules/dashboards/transform.ts:608 ; apps/api/src/modules/dashboards/transform.ts:630
+Block CSV: label rows, series columns, previous -> apps/api/src/modules/dashboards/export.ts:59 ; apps/api/src/modules/dashboards/routes.ts:390
+Rows CSV: every row up to 2,000, drill columns -> apps/api/src/modules/dashboards/routes.ts:427 ; apps/api/src/modules/dashboards/service.ts:1497
+PDF: title, description, period, filters, blocks, failed block reason, first 100 rows -> apps/api/src/modules/dashboards/routes.ts:472 ; apps/api/src/modules/dashboards/export.ts:429 ; apps/api/src/modules/dashboards/export.ts:420
+Formula-looking CSV text prefixed with ' -> apps/api/src/modules/dashboards/export.ts:50
+Scheduled send is a routine calling dashboards_snapshot / dashboards_pdf -> apps/api/src/modules/dashboards/tools.ts:633 ; apps/api/src/modules/dashboards/tools.ts:681 ; apps/api/src/modules/agent/prompts/kernel/build-dashboard.md:110
+Recipients checked: active member, opens the dashboard, reads every source -> apps/api/src/modules/dashboards/export.ts:340 ; apps/api/src/modules/dashboards/export.ts:385
+API: today and timeZone on GET -> apps/api/src/modules/dashboards/service.ts:446
+API: versions routes -> apps/api/src/modules/dashboards/routes.ts:285 ; apps/api/src/modules/dashboards/routes.ts:293

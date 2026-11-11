@@ -12,6 +12,7 @@
 // question, asked at save and at every run.
 
 import { z } from "zod"
+import { EXPR_NAME, exprProblems, MAX_EXPR_LENGTH } from "~/modules/dashboards/expr"
 import {
   COMPARE_MODES,
   type CompareMode,
@@ -41,7 +42,7 @@ export const BLOCK_TYPES = [
 export type BlockType = (typeof BLOCK_TYPES)[number]
 export const AGGREGATIONS = ["sum", "count", "avg", "min", "max"] as const
 export type Aggregation = (typeof AGGREGATIONS)[number]
-export const DATE_BUCKETS = ["day", "week", "month"] as const
+export const DATE_BUCKETS = ["day", "week", "month", "quarter", "year"] as const
 export type DateBucket = (typeof DATE_BUCKETS)[number]
 export const VALUE_FORMATS = ["number", "currency", "percent", "date"] as const
 
@@ -71,6 +72,8 @@ export const MAX_WHERE = 10
 export const MAX_TEXT_LENGTH = 4_000
 export const MAX_MEASURES = 6
 export const MAX_FUNNEL_STAGES = 12
+/** A dashboard's description (plain text under its title). */
+export const MAX_DESCRIPTION_LENGTH = 500
 
 /** How a block takes its dates: the dashboard's range, or its own. */
 export const BLOCK_RANGE_MODES = ["dashboard", "fixed"] as const
@@ -202,18 +205,66 @@ export const linkSchema = z.union([
     .strict(),
 ])
 
+const calcName = z
+  .string()
+  .regex(EXPR_NAME, "a name is a letter or _ then up to 39 letters, digits or _")
+const exprText = z.string().min(1).max(MAX_EXPR_LENGTH)
+
 const measureSchema = z
   .object({
     label: z.string().min(1).max(80),
     field: fieldPath.optional(),
     agg: z.enum(AGGREGATIONS).optional(),
+    /** The name other measures' expr reads this one by. */
+    name: calcName.optional(),
+    /** Computed per category from other measures (by name): "revenue / spend". */
+    expr: exprText.optional(),
+    /** Read from another shared dataset, grouped by the same category. */
+    dataset: datasetId.optional(),
+    /** The category's field in that dataset (default the block's category field). */
+    categoryField: fieldPath.optional(),
   })
   .strict()
   .superRefine((m, ctx) => {
     if (!m.field && m.agg && m.agg !== "count") {
       ctx.addIssue({ code: "custom", message: `"${m.label}" needs a field for agg ${m.agg}` })
     }
+    if (m.expr && (m.field || m.agg || m.dataset || m.categoryField)) {
+      ctx.addIssue({
+        code: "custom",
+        message: `"${m.label}" is computed (expr): it takes no field, agg, dataset or categoryField`,
+      })
+    }
+    if (m.categoryField && !m.dataset) {
+      ctx.addIssue({ code: "custom", message: `"${m.label}": categoryField goes with dataset` })
+    }
   })
+
+/** One named value a metric's expr reads: an aggregation over its rows, or a dataset's. */
+const calcValueSchema = z
+  .object({
+    field: fieldPath.optional(),
+    agg: z.enum(AGGREGATIONS).optional(),
+    /** Another shared dataset's rows instead of the block's own. */
+    dataset: datasetId.optional(),
+    /** Only the rows that meet these (fixed values: a filter reaches them through the source). */
+    where: z
+      .array(whereClauseSchema)
+      .max(MAX_WHERE)
+      .refine(
+        (w) => w.every((c) => !(c.value && typeof c.value === "object" && !Array.isArray(c.value))),
+        "a calculated value's where takes fixed values (no {filter})",
+      )
+      .optional(),
+  })
+  .strict()
+  .superRefine((v, ctx) => {
+    if (!v.field && v.agg && v.agg !== "count") {
+      ctx.addIssue({ code: "custom", message: `agg ${v.agg} needs a field` })
+    }
+  })
+export type CalcValue = z.infer<typeof calcValueSchema>
+export const MAX_CALC_VALUES = 8
 
 export const blockMapSchema = z
   .object({
@@ -265,6 +316,24 @@ export const blockMapSchema = z
     stages: z.array(measureSchema).min(2).max(MAX_FUNNEL_STAGES).optional(),
     /** funnel from categories: the stages in order (the category labels). */
     order: z.array(z.string().min(1).max(200)).min(1).max(MAX_FUNNEL_STAGES).optional(),
+    /** metric: named values its expr reads. */
+    values: z
+      .record(calcName, calcValueSchema)
+      .refine(
+        (v) => Object.keys(v).length >= 1 && Object.keys(v).length <= MAX_CALC_VALUES,
+        `1 to ${MAX_CALC_VALUES} values`,
+      )
+      .optional(),
+    /** metric: its figure computed from map.values ("revenue / spend"). */
+    expr: exprText.optional(),
+    /** Multiplies every value (0.01: cents to units). */
+    scale: z
+      .number()
+      .finite()
+      .refine((n) => n !== 0, "a scale of 0 erases every value")
+      .optional(),
+    /** bar, line, area, pie, funnel: each value as a percentage of its series' total. */
+    percentOfTotal: z.boolean().optional(),
   })
   .strict()
 
@@ -280,7 +349,14 @@ export function mapProblems(type: BlockType, map: BlockMap): string[] {
   const chart = type === "bar" || type === "line" || type === "area" || type === "combo"
   switch (type) {
     case "metric":
-      if (!map.value && agg !== "count") {
+      if (map.expr) {
+        if (!map.values) out.push("map.expr reads map.values: name each value it uses")
+        else
+          out.push(...exprProblems(map.expr, Object.keys(map.values)).map((p) => `map.expr: ${p}`))
+        if (map.sparkline) out.push("a calculated metric (map.expr) has no sparkline")
+      } else if (map.values) {
+        out.push("map.values goes with map.expr (the calculation over them)")
+      } else if (!map.value && agg !== "count") {
         out.push('a metric needs map.value (the field to aggregate), or map.agg "count"')
       }
       if (map.groupBy || map.x || map.series || map.columns) {
@@ -356,6 +432,28 @@ export function mapProblems(type: BlockType, map: BlockMap): string[] {
     case "text":
       if (Object.keys(map).length) out.push("a text block has no map")
       break
+  }
+  if (type !== "metric" && (map.values || map.expr)) {
+    out.push("map.values and map.expr are for a metric (a chart computes with measures[].expr)")
+  }
+  if (map.measures) {
+    const names = map.measures.flatMap((m) => (m.name ? [m.name] : []))
+    if (new Set(names).size !== names.length) out.push("each measure name is used once")
+    for (const m of map.measures) {
+      if (!m.expr) continue
+      for (const p of exprProblems(m.expr, names)) out.push(`measure "${m.label}" expr: ${p}`)
+    }
+  }
+  if (map.scale !== undefined && type === "table") out.push("map.scale is for a metric or a chart")
+  if (
+    map.percentOfTotal &&
+    type !== "bar" &&
+    type !== "line" &&
+    type !== "area" &&
+    type !== "pie" &&
+    type !== "funnel"
+  ) {
+    out.push("map.percentOfTotal is for a bar, line, area, pie or funnel chart")
   }
   if (type !== "metric" && (map.target !== undefined || map.sparkline)) {
     out.push("map.target and map.sparkline are for a metric only")
@@ -459,6 +557,8 @@ export const dashboardBlockSchema = z
     type: z.enum(BLOCK_TYPES),
     title: z.string().min(1).max(120),
     width: z.union([z.literal(1), z.literal(2), z.literal(3)]).default(1),
+    /** Rows of the grid the block spans (default 1). */
+    height: z.union([z.literal(1), z.literal(2)]).optional(),
     /** The block's own source; or `dataset`, a shared one; a text block has neither. */
     source: blockSourceSchema.optional(),
     dataset: datasetId.optional(),
@@ -542,6 +642,8 @@ export const dashboardSpecSchema = z
   .object({
     v: z.literal(DASHBOARD_SPEC_VERSION),
     layout: z.literal("grid").default("grid"),
+    /** Plain text under the title: what the dashboard is for. */
+    description: z.string().trim().min(1).max(MAX_DESCRIPTION_LENGTH).optional(),
     /** The range a viewer sees first (each person's own choice is remembered apart). */
     timeRange: timeRangeSchema.optional(),
     /** What the blocks that follow the range are compared with by default. */
@@ -620,6 +722,15 @@ export const dashboardSpecSchema = z
           })
         }
       }
+      for (const id of calcDatasets(block)) {
+        if (!datasets[id]) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["blocks", i, "map"],
+            message: `a calculated value reads no dataset '${id}' in spec.datasets`,
+          })
+        }
+      }
       if (!block.dataset) return
       used.add(block.dataset)
       const source = datasets[block.dataset]
@@ -652,6 +763,14 @@ export function specIssues(error: z.ZodError): string[] {
 /** How long a block's data is cached: its interval, capped for every source. */
 export function blockTtlSec(block: Pick<DashboardBlock, "refreshSec">): number {
   return Math.min(block.refreshSec ?? DEFAULT_REFRESH_SEC, MAX_SOURCE_TTL_SEC)
+}
+
+/** The other shared datasets a block's calculated values or measures read. */
+export function calcDatasets(block: Pick<DashboardBlock, "map">): string[] {
+  const out = new Set<string>()
+  for (const v of Object.values(block.map.values ?? {})) if (v.dataset) out.add(v.dataset)
+  for (const m of block.map.measures ?? []) if (m.dataset) out.add(m.dataset)
+  return [...out]
 }
 
 /** How a block takes its dates (see dashboardBlockSchema.timeRange). */

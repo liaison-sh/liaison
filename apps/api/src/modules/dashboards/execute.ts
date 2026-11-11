@@ -54,6 +54,7 @@ import {
 import {
   type BlockSource,
   blockSourceOf,
+  calcDatasets,
   type DashboardBlock,
   type DashboardSpec,
   MAX_SOURCE_ROWS,
@@ -378,7 +379,13 @@ export function sourceApp(source: BlockSource | null): string | undefined {
 export function mapBlock(
   block: DashboardBlock,
   read: SourceRows,
-  opts: { window?: DayWindow | null; where?: ResolvedWhere[]; linkApp?: string },
+  opts: {
+    window?: DayWindow | null
+    where?: ResolvedWhere[]
+    linkApp?: string
+    timeZone?: string
+    datasetRows?: Record<string, Record<string, unknown>[] | null>
+  },
 ): BlockOutcome {
   try {
     return {
@@ -388,6 +395,8 @@ export function mapBlock(
         totalRows: read.totalRows,
         ...(opts.where ? { where: opts.where } : {}),
         ...(opts.linkApp ? { linkApp: opts.linkApp } : {}),
+        ...(opts.timeZone ? { timeZone: opts.timeZone } : {}),
+        ...(opts.datasetRows ? { datasetRows: opts.datasetRows } : {}),
         ...(block.text !== undefined ? { text: block.text } : {}),
       }),
     }
@@ -406,6 +415,8 @@ export async function computeBlock(
   ctx: BlockRunContext & {
     datasets?: DashboardSpec["datasets"]
     where?: ResolvedWhere[]
+    /** A dataset with this request's filter values in (a preview resolves its filter tokens). */
+    resolveDataset?: (source: BlockSource) => BlockSource
   },
 ): Promise<BlockOutcome> {
   if (block.type === "text") {
@@ -422,8 +433,30 @@ export async function computeBlock(
   }
   const outcome = await runSource(source, ctx, { blockId: block.id })
   if (!outcome.ok) return outcome
+  const datasetRows: Record<string, Record<string, unknown>[] | null> = {}
+  for (const id of calcDatasets(block)) {
+    const ds = ctx.datasets?.[id]
+    if (!ds) return fail("invalid_map", `no dataset '${id}' for this block`)
+    let resolved: BlockSource
+    try {
+      resolved = await resolveSourceDates(
+        ctx.resolveDataset ? ctx.resolveDataset(ds) : ds,
+        ctx.viewer.orgId,
+        new Date(),
+        ctx.range ?? null,
+      )
+    } catch (err) {
+      if (err instanceof DateTokenError) return fail("invalid_map", err.message)
+      throw err
+    }
+    const read = await runSource(resolved, ctx, { datasetId: id })
+    if (!read.ok) return read
+    datasetRows[id] = read.read.rows
+  }
   return mapBlock(block, outcome.read, {
+    ...(Object.keys(datasetRows).length ? { datasetRows } : {}),
     window: ctx.range ?? null,
+    timeZone: await dashboardTimezone(ctx.viewer.orgId),
     ...(ctx.where ? { where: ctx.where } : {}),
     ...(sourceApp(source) ? { linkApp: sourceApp(source)! } : {}),
   })

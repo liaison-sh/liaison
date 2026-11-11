@@ -93,7 +93,12 @@ import { forgetDemoFixtureCrm } from "~/modules/demo/api-connector/responder"
 import { countVisitorOrgs, listExpiredDemoOrgs } from "~/modules/demo/demo-expiry"
 import { leadForDemoOrg } from "~/modules/demo/demo-leads"
 import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
-import { demoPoolStateOf, invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
+import {
+  demoPoolStateOf,
+  forgetPurgedDemoMarker,
+  invalidateDemoMarker,
+  visitorMarker,
+} from "~/modules/demo/demo-org"
 import { reservedOwner, seedDemoOrgData } from "~/modules/demo/demo-seeder"
 import { ReapPacer, type ReapPacerOptions, type ReapPressure } from "~/modules/demo/reap-pacer"
 import { forgetDemoPaymentsOutside } from "~/modules/demo/worlds/saas/payments/overlay"
@@ -659,7 +664,8 @@ export async function purgeDemoOrg(
   // purge: it sweeps every Redis key naming the org, so the version and epoch
   // counters written here go with it, and a process that read the org in the
   // meantime finds the counters changed (or absent) and reads again. Written
-  // after the purge they would outlive it until they expire.
+  // after the purge they would outlive it until they expire. The marker is
+  // dropped once more after the purge (below), through a key naming no org.
   await invalidateDemoMarker(orgId)
   await forgetDemoFixtureCrm(orgId)
   const { deleted } = await purgeOrg(orgId, {
@@ -675,6 +681,9 @@ export async function purgeDemoOrg(
       stepAt = at
     },
   })
+  // A process that read the marker between the purge's Redis sweep and its row
+  // delete cached it under the swept (absent) counter: drop it everywhere.
+  await forgetPurgedDemoMarker(orgId)
   await forgetDemoPaymentsOutside(orgId)
   log.warn(
     { orgId, slug: stored.slug, deleted, ms: Date.now() - started, stepMs },

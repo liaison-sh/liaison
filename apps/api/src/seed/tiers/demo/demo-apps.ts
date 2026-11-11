@@ -64,6 +64,18 @@ function governedApps(world: DemoWorldId): readonly DemoApp[] {
 export const DEMO_BASELINE_APPS = ["mail", "knowledge", "contacts", "calendar"] as const
 
 /**
+ * Each world's baseline: the apps its story needs whatever the visitor picked.
+ * The software company's sales deals sit on the Projects board and its team
+ * plans product work there, so its door and company pages point into Projects:
+ * it stays On for every software visitor.
+ */
+export const DEMO_WORLD_BASELINE_APPS: Readonly<Record<DemoWorldId, readonly string[]>> = {
+  products: DEMO_BASELINE_APPS,
+  saas: [...DEMO_BASELINE_APPS, "projects"],
+  studio: DEMO_BASELINE_APPS,
+}
+
+/**
  * The commerce layer writes the shop, its invoices, the carrier, the books and
  * the monitoring rail together, so the commerce need installs all of them.
  */
@@ -153,7 +165,7 @@ function needsPlan(
   if (!needs) return whole(false)
   const picked = new Set(needs)
   if (DEMO_WORLD_NEEDS[world].every((n) => picked.has(n))) return whole(true)
-  const apps = new Set<string>(DEMO_BASELINE_APPS)
+  const apps = new Set<string>(DEMO_WORLD_BASELINE_APPS[world])
   const parts = new Set<DemoSeedPart>()
   for (const need of needs) {
     for (const app of DEMO_NEED_SPECS[need].apps) apps.add(app)

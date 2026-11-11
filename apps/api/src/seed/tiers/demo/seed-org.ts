@@ -67,6 +67,7 @@
 //  * `ads` and `calls` are deliberately not part of the demo surface.
 
 import { randomBytes } from "node:crypto"
+import type { CommercialIdentity } from "@liaison/shared"
 import { and, eq } from "drizzle-orm"
 import type { ProvisioningConfig } from "~/cli/config/schema"
 import { writeApproveRepliesFromHome } from "~/cli/provisioners/ticket-inboxes"
@@ -353,6 +354,11 @@ function buildConfig(
     emailOf: (key: string) => string
     /** Role names the org already has: never provisioned (so never rewritten). */
     existingRoles?: ReadonlySet<string>
+    /**
+     * Write the world company's commercial identity on the org. Only for an org
+     * the seed owns: an existing org's identity is its owner's to state.
+     */
+    commercialIdentity?: boolean
   },
 ): { config: ProvisioningConfig; admin: DemoPerson } {
   const admin = opts.world.team.find((p) => p.role === "founder_admin")
@@ -381,6 +387,9 @@ function buildConfig(
       // other provisioning path already funded.
       credits: { currency: "EUR", initial: "0" },
     },
+    ...(opts.commercialIdentity
+      ? { email: { commercialIdentity: demoCommercialIdentity(opts.world.company) } }
+      : {}),
     admin: opts.owner
       ? { email: opts.owner.email, name: opts.owner.name, password: opts.owner.password }
       : {
@@ -400,6 +409,20 @@ function buildConfig(
       })),
   }
   return { config, admin }
+}
+
+/**
+ * What the world company's mail states about its sender (the commercial
+ * footer): its legal name and postal address, as a real company records them.
+ * Without them the mail app refuses to stage any business mail, so a seeded
+ * org that should behave like a company carries them.
+ */
+export function demoCommercialIdentity(company: DemoWorld["company"]): CommercialIdentity {
+  const country = new Intl.DisplayNames(["en"], { type: "region" }).of(company.country)
+  return {
+    legalName: company.legalName,
+    postalAddress: `${company.addressLine1}, ${company.postalCode} ${company.city}, ${country ?? company.country}`,
+  }
 }
 
 /** The ticket team dimension a desk's grant is written under. */
@@ -648,7 +671,7 @@ export async function seedDemoOrg(opts: SeedDemoOrgOptions): Promise<SeedDemoOrg
     owner: target ? { ...target.admin, password } : owner,
     password,
     emailOf,
-    ...(target ? { existingRoles: target.roleNames } : {}),
+    ...(target ? { existingRoles: target.roleNames } : { commercialIdentity: true }),
   })
 
   // org, then admin and roles, then people, through the org factory (the

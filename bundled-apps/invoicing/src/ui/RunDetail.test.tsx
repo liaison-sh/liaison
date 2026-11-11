@@ -93,6 +93,10 @@ describe("a run that has not issued yet", () => {
     expect(v.statusWord).toBe("Drafted, waiting for approval")
     expect(v.approvalWord).toBe("Not approved yet")
     expect(v.range).toBeNull()
+    // A run closed with no invoice issued never reads as issued.
+    const none = runDetailView({ ...run, status: "nothing_to_issue" }, rows, null)
+    expect(none.issued).toBe(false)
+    expect(none.statusWord).toBe("Closed, nothing to issue")
     expect(v.rows.map((r) => [r.key, r.number, r.href])).toEqual([
       ["a", null, "/invoicing/editor/da"],
       ["b", null, "/invoicing/editor/db"],

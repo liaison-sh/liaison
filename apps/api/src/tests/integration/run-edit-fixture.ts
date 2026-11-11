@@ -140,7 +140,7 @@ export interface MonthEnd {
 
 /**
  * An issuer in Paris with `n` monthly schedules due for their draft on Friday 27 November 2026.
- * `withAddress: false` leaves the customers' last invoices with no address.
+ * `withAddress: false` leaves the customers with no billing address (nor their last invoices).
  */
 export async function monthEnd(
   n: number,
@@ -171,6 +171,11 @@ export async function monthEnd(
       `client-${randomUUID().slice(0, 8)}@example.com`,
       { name: `Client ${i}` },
     )
+    // Each draft is made out to the contact as it reads on the draft day.
+    if (opts.withAddress !== false) {
+      await sql`INSERT INTO kernel.contact_addresses (org_id, contact_id, role, street1, postal_code, city, country_iso2)
+        VALUES (${world.org}, ${contact}, 'billing', ${`Hauptstrasse ${i}`}, '10115', 'Berlin', 'DE')`
+    }
     const prev = randomUUID()
     const id = randomUUID()
     await sql.unsafe(

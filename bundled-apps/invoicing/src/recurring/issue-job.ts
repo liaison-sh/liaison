@@ -19,6 +19,9 @@ import { BILLED_BY_STRIPE } from "../issuer-guard"
 import { rowIssuerHold } from "./item-state"
 import { currentItemHash, dayOf, endHold, jsonOf, type Row, type RunCtx, runItems, stageRunCard, workingDayFrom } from "./run-card"
 
+/** The end state of a run whose approval left no invoice to issue: never "issued" with none issued. */
+export const NOTHING_TO_ISSUE = "nothing_to_issue"
+
 /** Items a tick starts at most. */
 export const ITEMS_PER_TICK = 25
 /** The item tool's own timeout (manifest `recurring_item_issue.timeoutMs`). */
@@ -196,8 +199,11 @@ async function issueRun(ctx: RunCtx, run: Row, started: number): Promise<{ issue
   const items = await runItems(ctx, runId)
   const left = items.filter((i) => i.state === "approved").length
   const stuck = items.filter((i) => i.state === "failed" || i.state === "waiting_reapproval").length
-  if (left === 0) {
-    const status = stuck > 0 ? "partial" : "issued"
+  const numbered = items.filter((i) => i.state === "issued").length
+  // A run reads "issued" only when it issued at least one invoice. With none issued and rows still
+  // waiting it keeps issuing; with nothing left at all it closes as nothing to issue.
+  if (left === 0 && (numbered > 0 || stuck === 0)) {
+    const status = numbered === 0 ? NOTHING_TO_ISSUE : stuck > 0 ? "partial" : "issued"
     await ctx.db.update("recurring_runs", runId, { status })
     if (status === "issued" && ctx.emit) {
       await ctx.emit({ entity: "recurring_run", action: "issued", entityId: runId, data: { run_id: runId, issue_on: dayOf(run.issue_on), resolved: true } })

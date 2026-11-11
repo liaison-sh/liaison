@@ -1564,7 +1564,7 @@ describe("invoicing manifest", () => {
     // 0.20.79: above the 0.20.57 main took meanwhile, merged.
     // 0.20.83: the source repository link names the repository where the code now lives.
     // 0.20.84: the schedule page names its entity, so a turn sent from it knows the open schedule.
-    expect(m.version).toBe("0.20.92")
+    expect(m.version).toBe("0.20.93")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

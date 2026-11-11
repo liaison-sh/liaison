@@ -48,6 +48,12 @@ export function previousDoc(id: string, paid: boolean): Record<string, unknown> 
   }
 }
 
+/** The contact's own records, as the kernel reads them: who a draft is made out to. */
+const CONTACT_RECORDS: Record<string, (params: Record<string, unknown>) => unknown> = {
+  "kernel:contacts_read": () => ({ contact: { id: CONTACT, name: "Maison Sauvan", email: "compta@sauvan.example" } }),
+  "kernel:contacts_addresses_list": () => ({ addresses: [{ role: "billing", street1: "3 rue des Lilas", postalCode: "69001", city: "Lyon", countryIso2: "FR" }] }),
+}
+
 export interface Harness {
   ctx: RunCtx
   db: MockDb
@@ -112,7 +118,7 @@ export function harness(today: string, opts: { schedules?: Array<Record<string, 
         h.draftWrites += 1
         return { status: "completed", result: await recurringDraftWrite(h.ctx, params as never) }
       }
-      const kernel = opts.kernel?.[target]
+      const kernel = opts.kernel?.[target] ?? CONTACT_RECORDS[target]
       if (kernel) return { status: "completed", result: kernel(params) }
       // No Stripe app here: the kernel answers an absent app's tool as not found.
       if (target.startsWith("stripe:")) return { status: "error", error: { code: "tool_not_found", message: `tool ${target} not registered` } }
@@ -152,9 +158,7 @@ describe("the month-end draft job", () => {
     expect(h.db.__all("recurring_schedules")[0]).toMatchObject({ next_issue_on: "2026-12-31" })
   })
 
-  test("a company buyer's last invoice carries the company, its location address and its VAT number onto the draft", async () => {
-    // The last invoice named a B2B company: its name as legal name, the location's billing
-    // address and the location's tax registration id. The month-end draft bills the same company.
+  test("the draft is made out to the customer as its records read now, never copied from an earlier invoice", async () => {
     const prevId = "44444444-4444-4444-8444-444444444441"
     const prev = {
       ...previousDoc(prevId, true),
@@ -171,13 +175,34 @@ describe("the month-end draft job", () => {
     await recurringDraftJob(h.ctx)
     const [draft] = h.db.__all("documents").filter((d) => d.status === "draft")
     expect(draft).toMatchObject({
-      counterparty_name: "Maison Brume SAS",
-      counterparty_address: "Site Lyon, 12 quai Perrache, 69002 Lyon",
-      counterparty_vat_id: "FR40123456789",
+      counterparty_name: "Maison Sauvan",
+      counterparty_address: "3 rue des Lilas, 69001 Lyon",
+      counterparty_vat_id: null,
       counterparty_country: "FR",
-      counterparty_email: "achats@brume.example",
-      customer_kind: "business",
+      counterparty_email: "compta@sauvan.example",
     })
+  })
+
+  test("a contact's billing address added after a draft that needed a fix reaches the next month's draft, which is ready", async () => {
+    const addresses: Array<Record<string, unknown>> = []
+    const h = harness("2026-11-27", {
+      kernel: { "kernel:contacts_addresses_list": () => ({ addresses }) },
+    })
+    await recurringDraftJob(h.ctx)
+    const [first] = h.db.__all("recurring_run_items")
+    expect(first).toMatchObject({ period_key: "2026-11", state: "needs_fix" })
+    expect(String(first?.note)).toContain("No billing address")
+    expect(h.db.__all("documents")[0]).toMatchObject({ counterparty_address: null, status: "draft" })
+
+    // The address is added to the contact; the November draft stays as it is, unissued.
+    addresses.push({ role: "billing", street1: "3 rue des Lilas", postalCode: "69001", city: "Lyon", countryIso2: "FR" })
+    const nextDraftOn = String(h.db.__all("recurring_schedules")[0]?.next_draft_on)
+    Object.assign(h.ctx, { time: harness(nextDraftOn).ctx.time })
+    await recurringDraftJob(h.ctx)
+    const december = h.db.__all("recurring_run_items").find((i) => i.period_key === "2026-12")
+    expect(december).toMatchObject({ state: "ready" })
+    const draft = h.db.__all("documents").find((d) => d.id === december?.document_id)
+    expect(draft).toMatchObject({ counterparty_name: "Maison Sauvan", counterparty_address: "3 rue des Lilas, 69001 Lyon", counterparty_country: "FR" })
   })
 
   test("a company schedule with no previous invoice bills the company: its name, billing address and VAT number", async () => {
@@ -233,7 +258,7 @@ describe("the month-end draft job", () => {
     expect(asked).toEqual([])
   })
 
-  test("a schedule with no person takes the buyer from its last invoice", async () => {
+  test("a schedule with neither a person nor a company never borrows its last invoice's buyer and needs a fix", async () => {
     const prev = previousDoc("44444444-4444-4444-8444-444444444441", true)
     const h = harness("2026-11-27", {
       schedules: [schedule("33333333-3333-4333-8333-333333333331", { contact_id: null, last_document_id: prev.id })],
@@ -241,7 +266,8 @@ describe("the month-end draft job", () => {
     })
     await recurringDraftJob(h.ctx)
     const [draft] = h.db.__all("documents").filter((d) => d.status === "draft")
-    expect(draft).toMatchObject({ counterparty_name: "Maison Sauvan", counterparty_address: "3 rue des Lilas, 69001 Lyon" })
+    expect(draft).toMatchObject({ counterparty_name: null, counterparty_address: null })
+    expect(h.db.__all("recurring_run_items")[0]).toMatchObject({ state: "needs_fix" })
   })
 
   test("a schedule whose draft day has not come drafts nothing", async () => {

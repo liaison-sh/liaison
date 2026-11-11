@@ -272,6 +272,68 @@ describe("draft-based issuance carries the draft's recipient", () => {
     expect(doc?.counterparty_country).toBe("DE")
   })
 
+  test("drafts_create given only a contact takes the recipient from that contact, and the draft issues", async () => {
+    const { ctx, db } = makeCtx()
+    // A German company: its VAT number is checked in VIES (stubbed valid).
+    ctx.fetch = async () => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ isValid: true, userError: "VALID", name: "KLANGWERK GMBH", address: "---" }),
+    })
+    await db.insert("counterparty_identities", { contact_id: "contact-9", customer_kind: "business", vat_id: "DE298765432" })
+    const reads: Record<string, unknown> = {
+      "kernel:contacts_read": { contact: { id: "contact-9", name: "Lena Vogel", company: "Klangwerk GmbH", email: "billing@klangwerk.example" } },
+      "kernel:contacts_addresses_list": {
+        addresses: [
+          { role: "delivery", street1: "Lagerweg 2", postalCode: "40549", city: "Duesseldorf", countryIso2: "DE" },
+          { role: "billing", street1: "Rheinallee 4", postalCode: "40545", city: "Duesseldorf", countryIso2: "de" },
+        ],
+      },
+    }
+    const base = ctx.executeTool
+    ctx.executeTool = async (name, args) => (name in reads ? { status: "completed", result: reads[name] } : base(name, args))
+    const created = await draftsCreate(ctx, {
+      type: "invoice",
+      issuer_profile_id: issuer.id,
+      currency: "EUR",
+      items: sampleItems,
+      counterparty_contact_id: "contact-9",
+    } as never)
+    const draft = db.__all("documents").find((d) => d.id === created.draft_id)
+    expect(draft).toMatchObject({
+      counterparty_name: "Klangwerk GmbH",
+      counterparty_address: "Rheinallee 4, 40545 Duesseldorf",
+      counterparty_country: "DE",
+      counterparty_email: "billing@klangwerk.example",
+      counterparty_vat_id: "DE298765432",
+    })
+    const result = await invoiceIssue(ctx, { draft_id: created.draft_id })
+    expect(result).toMatchObject({ status: "completed" })
+    expect(issued(db)[0]).toMatchObject({ counterparty_name: "Klangwerk GmbH", counterparty_address: "Rheinallee 4, 40545 Duesseldorf" })
+  })
+
+  test("drafts_create keeps what the caller typed and fills only what is missing from the contact", async () => {
+    const { ctx, db } = makeCtx()
+    const base = ctx.executeTool
+    ctx.executeTool = async (name, args) =>
+      name === "kernel:contacts_read"
+        ? { status: "completed", result: { contact: { id: "contact-9", name: "Lucie Brume", email: "lucie@brume.example" } } }
+        : base(name, args)
+    const created = await draftsCreate(ctx, {
+      type: "invoice",
+      issuer_profile_id: issuer.id,
+      currency: "EUR",
+      items: sampleItems,
+      counterparty_contact_id: "contact-9",
+      counterparty_name: "Brume Holding",
+    } as never)
+    expect(db.__all("documents").find((d) => d.id === created.draft_id)).toMatchObject({
+      counterparty_name: "Brume Holding",
+      counterparty_email: "lucie@brume.example",
+      counterparty_address: null,
+    })
+  })
+
   test("invoice_issue REFUSES a draft with no recipient name, and issues nothing", async () => {
     const { ctx, db } = makeCtx()
     const created = await draftsCreate(ctx, {

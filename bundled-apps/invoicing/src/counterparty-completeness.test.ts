@@ -310,6 +310,7 @@ describe("draft-based issuance carries the draft's recipient", () => {
     const result = await invoiceIssue(ctx, { draft_id: created.draft_id })
     expect(result).toMatchObject({ status: "completed" })
     expect(issued(db)[0]).toMatchObject({ counterparty_name: "Klangwerk GmbH", counterparty_address: "Rheinallee 4, 40545 Duesseldorf" })
+    expect(issued(db)[0]).toMatchObject({ billing_line1: "Rheinallee 4", billing_postcode: "40545", billing_city: "Duesseldorf", billing_country_code: "DE" })
   })
 
   test("drafts_create keeps what the caller typed and fills only what is missing from the contact", async () => {

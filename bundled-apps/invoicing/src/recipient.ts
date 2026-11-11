@@ -20,6 +20,12 @@ export interface Recipient {
   counterparty_vat_id: string | null
   counterparty_email: string | null
   customer_kind: string | null
+  /** The same address, field by field: the e-invoice (its Factur-X and its gate) reads these. */
+  billing_line1: string | null
+  billing_line2: string | null
+  billing_postcode: string | null
+  billing_city: string | null
+  billing_country_code: string | null
 }
 
 type Row = Record<string, unknown>
@@ -38,14 +44,31 @@ async function kernelRead(ctx: RecipientCtx, tool: string, params: Record<string
 }
 
 /** A contact's billing address (else its first one) as a one-line address and its country. */
-async function billingAddress(ctx: RecipientCtx, contactId: string): Promise<{ line: string; country: string | null } | null> {
+interface BillingAddress {
+  line: string
+  country: string | null
+  line1: string | null
+  line2: string | null
+  postcode: string | null
+  city: string | null
+}
+
+async function billingAddress(ctx: RecipientCtx, contactId: string): Promise<BillingAddress | null> {
   const list = (await kernelRead(ctx, "kernel:contacts_addresses_list", { contactId }))?.addresses
   const all = (Array.isArray(list) ? list : []) as Row[]
   const a = all.find((x) => x.role === "billing") ?? all[0]
   if (!a) return null
   const city = [text(a.postalCode), text(a.city)].filter(Boolean).join(" ")
   const line = [text(a.street1), text(a.street2), city].filter(Boolean).join(", ")
-  return line ? { line, country: text(a.countryIso2)?.toUpperCase() ?? null } : null
+  if (!line) return null
+  return {
+    line,
+    country: text(a.countryIso2)?.toUpperCase() ?? null,
+    line1: text(a.street1),
+    line2: text(a.street2),
+    postcode: text(a.postalCode),
+    city: text(a.city),
+  }
 }
 
 /**
@@ -66,5 +89,10 @@ export async function recipientOf(ctx: RecipientCtx, who: { contactId: string | 
     counterparty_vat_id: text(identity?.vat_id),
     counterparty_email: text(contact.email),
     customer_kind: text(identity?.customer_kind) ?? (companyName ? "business" : null),
+    billing_line1: address?.line1 ?? null,
+    billing_line2: address?.line2 ?? null,
+    billing_postcode: address?.postcode ?? null,
+    billing_city: address?.city ?? null,
+    billing_country_code: address?.country ?? null,
   }
 }

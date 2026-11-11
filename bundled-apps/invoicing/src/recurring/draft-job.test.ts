@@ -203,6 +203,8 @@ describe("the month-end draft job", () => {
     expect(december).toMatchObject({ state: "ready" })
     const draft = h.db.__all("documents").find((d) => d.id === december?.document_id)
     expect(draft).toMatchObject({ counterparty_name: "Maison Sauvan", counterparty_address: "3 rue des Lilas, 69001 Lyon", counterparty_country: "FR" })
+    // Field by field too: an e-invoice's Factur-X and its gate read these, not the one-line address.
+    expect(draft).toMatchObject({ billing_line1: "3 rue des Lilas", billing_postcode: "69001", billing_city: "Lyon", billing_country_code: "FR" })
   })
 
   test("a company schedule with no previous invoice bills the company: its name, billing address and VAT number", async () => {

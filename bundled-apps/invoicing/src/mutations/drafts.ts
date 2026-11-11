@@ -339,6 +339,10 @@ async function withContactRecipient(ctx: MutationsCtx, input: DraftsCreateInput)
     counterparty_vat_id: blankText(input.counterparty_vat_id) ? r.counterparty_vat_id : input.counterparty_vat_id,
     counterparty_address: noAddress ? r.counterparty_address : input.counterparty_address,
     counterparty_country: noCountry ? r.counterparty_country : input.counterparty_country,
+    ...(noAddress
+      ? { billing_line1: r.billing_line1, billing_line2: r.billing_line2, billing_postcode: r.billing_postcode, billing_city: r.billing_city }
+      : {}),
+    ...(noCountry || (noAddress && blankText(input.billing_country_code)) ? { billing_country_code: r.billing_country_code } : {}),
   }
 }
 

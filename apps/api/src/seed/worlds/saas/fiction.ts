@@ -540,3 +540,72 @@ export const SAAS_ROLE_AGENTS: DemoRoleAgent[] = [
     modelPreference: "claude-opus-4-6",
   },
 ]
+
+/**
+ * Where each company billed by bank transfer receives its invoices: its accounts desk's
+ * billing address, field by field as an invoice draft carries it. Fictional streets.
+ */
+export const SAAS_BILLING_ADDRESSES: Readonly<
+  Record<string, { street1: string; postalCode: string; city: string; countryIso2: string }>
+> = {
+  "Hôtels Belcour": {
+    street1: "21 avenue des Tilleuls",
+    postalCode: "33000",
+    city: "Bordeaux",
+    countryIso2: "FR",
+  },
+  "Résidence Alizé": {
+    street1: "5 promenade des Embruns",
+    postalCode: "06400",
+    city: "Cannes",
+    countryIso2: "FR",
+  },
+  "Le Comptoir Sud": {
+    street1: "17 rue du Vieux Bassin",
+    postalCode: "13002",
+    city: "Marseille",
+    countryIso2: "FR",
+  },
+  "Stadshotel Noord BV": {
+    street1: "Havenkade 12",
+    postalCode: "1013 AB",
+    city: "Amsterdam",
+    countryIso2: "NL",
+  },
+  "Cantines du Port": {
+    street1: "3 quai des Chais",
+    postalCode: "44000",
+    city: "Nantes",
+    countryIso2: "FR",
+  },
+  "Bistrot Marceau": {
+    street1: "9 rue des Lavandières",
+    postalCode: "69002",
+    city: "Lyon",
+    countryIso2: "FR",
+  },
+  "Hôtel Mirabel": {
+    street1: "14 boulevard des Platanes",
+    postalCode: "34000",
+    city: "Montpellier",
+    countryIso2: "FR",
+  },
+  "Domaine Ferrand": {
+    street1: "2 chemin des Vignes",
+    postalCode: "21200",
+    city: "Beaune",
+    countryIso2: "FR",
+  },
+  "Camping Les Pins": {
+    street1: "1 route des Dunes",
+    postalCode: "40510",
+    city: "Seignosse",
+    countryIso2: "FR",
+  },
+  "Groupe Verrières": {
+    street1: "40 rue des Verriers",
+    postalCode: "67000",
+    city: "Strasbourg",
+    countryIso2: "FR",
+  },
+}

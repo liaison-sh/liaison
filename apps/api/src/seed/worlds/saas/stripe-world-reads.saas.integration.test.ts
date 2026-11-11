@@ -17,6 +17,8 @@ import { dealsRollup } from "~/apps/projects/service/deals"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { messages, routines } from "~/db/schema/kernel"
+import { dispatchAppJobWithContext } from "~/infra/jobs/job-context"
+import { JobsTestAccess } from "~/infra/jobs/jobs"
 import { MORNING_BRIEF_TEMPLATE_KEY } from "~/modules/agent/routines/kernel-routine-templates"
 import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
 import { executeTool } from "~/modules/apps/execute-tool"
@@ -815,5 +817,59 @@ describe("the visitor's Home at the board date", () => {
     expect(brief?.text).toContain(
       "Hôtels Sauvan answered, so the follow-up drafted for Marc will not go out.",
     )
+  })
+})
+
+// Last in this file: it runs the month-end draft job, which writes runs the reads above assert absent.
+describe("the transfer schedules' runs", () => {
+  it("every active schedule's next run row is ready, the yearly group schedule on its due date included", async () => {
+    const list = await appCall<{ rows: Array<Record<string, unknown>> }>(
+      "invoicing:recurring_list",
+      { limit: 50 },
+    )
+    const active = list.rows.filter((s) => s.status === "active")
+    expect(active.length).toBe(9)
+    const draftDays = [...new Set(active.map((s) => String(s.next_draft_on)))].sort()
+    const handler = JobsTestAccess.getHandler("invoicing", "recurring-draft")
+    if (!handler) throw new Error("recurring-draft is not registered")
+    for (const day of draftDays) {
+      // Mid-morning in Paris on the schedule's draft day.
+      setSystemTime(new Date(`${day}T09:00:00Z`))
+      try {
+        await dispatchAppJobWithContext(
+          handler,
+          { orgId: world.orgId },
+          { actorType: "system", orgId: world.orgId, purpose: "job", scopes: ["invoicing:*"] },
+          "session",
+        )
+      } finally {
+        setSystemTime()
+      }
+    }
+    const items = await rows(
+      world.orgId,
+      sql`SELECT i.schedule_id::text AS schedule_id, i.state, i.note, r.issue_on::text AS issue_on
+          FROM app_invoicing.recurring_run_items i
+          JOIN app_invoicing.recurring_runs r ON r.id = i.run_id
+          WHERE i.org_id = ${world.orgId}
+          ORDER BY r.issue_on`,
+    )
+    const firstOf = new Map<string, Row>()
+    for (const i of items)
+      if (!firstOf.has(String(i.schedule_id))) firstOf.set(String(i.schedule_id), i)
+    const notReady = active
+      .map((s) => ({ name: s.company_name ?? s.id, item: firstOf.get(String(s.id)) }))
+      .filter(({ item }) => item?.state !== "ready")
+      .map(
+        ({ name, item }) => `${String(name)}: ${String(item?.state)} ${String(item?.note ?? "")}`,
+      )
+    expect(notReady).toEqual([])
+    const verrieres = active.find((s) => String(s.next_issue_on).endsWith("-01-05"))
+    if (!verrieres) throw new Error("no yearly schedule due on 5 January")
+    const row = firstOf.get(String(verrieres.id))
+    expect([row?.state, String(row?.issue_on).slice(0, 10)]).toEqual([
+      "ready",
+      String(verrieres.next_issue_on),
+    ])
   })
 })

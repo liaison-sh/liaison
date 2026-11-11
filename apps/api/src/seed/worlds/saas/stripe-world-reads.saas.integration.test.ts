@@ -3,7 +3,9 @@
 // The software world seeded once, as a visitor org at the board date, then
 // read back through the product's own reads: the pipeline rollup, the
 // companies and their duplicate, the team and who is away, the desks, the
-// routines and the channels.
+// routines and the channels, and the money: MRR from the card mirror, the
+// year's invoice numbers, the schedules billed by transfer, who issues what,
+// and the money decisions waiting on Home.
 //
 //   bun run scripts/test-run.ts demo-seed --file src/seed/worlds/saas/stripe-world-reads.saas.integration.test.ts
 import { afterAll, beforeAll, describe, expect, it, setSystemTime } from "bun:test"
@@ -59,6 +61,24 @@ async function ownerCall<T>(tool: string, params: Record<string, unknown>): Prom
   try {
     const r = await executeTool<T>({
       toolName: `kernel:${tool}`,
+      orgId: world.orgId,
+      actor,
+      params,
+      origin: "human-ui",
+    })
+    return r.data as T
+  } finally {
+    setSystemTime()
+  }
+}
+
+/** An app's tool called by the owner at the board date, through the sandbox. */
+async function appCall<T>(toolName: string, params: Record<string, unknown>): Promise<T> {
+  const actor = await ownerActor()
+  setSystemTime(BOARD_DATE)
+  try {
+    const r = await executeTool<T>({
+      toolName,
       orgId: world.orgId,
       actor,
       params,
@@ -289,5 +309,257 @@ describe("the software world, seeded and read back", () => {
       "Rota bugs",
       "Support handover",
     ])
+  })
+})
+
+interface MrrLine {
+  currency: string
+  mrrMinor: number
+  pastDueMinor: number
+  activeCount: number
+  byPlan: Array<{ plan: string; mrrMinor: number; count: number }>
+  movements: {
+    newMinor: number
+    upgradeMinor: number
+    downgradeMinor: number
+    cancelledMinor: number
+    netMinor: number
+    startMinor: number
+  }
+}
+const mrr = async () =>
+  await appCall<{ partial: boolean; lines: MrrLine[] }>("stripe:mrr_query", { breakdown: true })
+
+interface DocRow {
+  id: string
+  number: string | null
+  issued_at?: string
+  issuedAt?: string
+  counterparty_name?: string
+}
+/** Every invoice, oldest first, through the invoicing app's own search. */
+async function allInvoices(): Promise<DocRow[]> {
+  const out: DocRow[] = []
+  for (let offset = 0; ; offset += 100) {
+    const page = await appCall<{ results?: DocRow[] } | DocRow[]>("invoicing:documents_search", {
+      type: "invoice",
+      sort: "oldest",
+      limit: 100,
+      offset,
+    })
+    const rows = Array.isArray(page) ? page : (page.results ?? [])
+    out.push(...rows)
+    if (rows.length < 100) return out
+  }
+}
+
+describe("the software world's money, read through the apps", () => {
+  it("the MRR query at the board date returns 8,470,800 minor, past due 336,700, 169 active, split 62, 83, 24, and the four movements", async () => {
+    const r = await mrr()
+    expect(r.partial).toBe(false)
+    expect(r.lines).toHaveLength(1)
+    const line = r.lines[0] as MrrLine
+    expect(line.currency).toBe("eur")
+    expect([line.mrrMinor, line.pastDueMinor, line.activeCount]).toEqual([8_470_800, 336_700, 169])
+    const count = (plan: string) => line.byPlan.find((p) => p.plan === plan)?.count
+    expect([count("Starter"), count("Team"), count("Group")]).toEqual([62, 83, 24])
+    const mv = line.movements
+    expect([mv.newMinor, mv.upgradeMinor, mv.downgradeMinor, mv.cancelledMinor]).toEqual([
+      294_000, 96_000, -34_100, -127_800,
+    ])
+    expect(mv.startMinor).toBe(8_242_700)
+  })
+
+  it("changing one seeded subscription's status moves the MRR query", async () => {
+    const [row] = await rows(
+      world.orgId,
+      sql`SELECT id FROM app_stripe.stripe_subscriptions
+          WHERE org_id = ${world.orgId} AND status = 'past_due' AND plan_name = 'Starter' LIMIT 1`,
+    )
+    const id = row?.id as string
+    const set = (status: string, mrrMinor: number) =>
+      rows(
+        world.orgId,
+        sql`UPDATE app_stripe.stripe_subscriptions SET status = ${status}, mrr_minor = ${mrrMinor}
+            WHERE org_id = ${world.orgId} AND id = ${id}::uuid RETURNING id`,
+      )
+    await set("canceled", 0)
+    try {
+      const line = (await mrr()).lines[0] as MrrLine
+      expect([line.mrrMinor, line.pastDueMinor, line.activeCount]).toEqual([
+        8_470_800 - 14_900,
+        336_700 - 14_900,
+        168,
+      ])
+    } finally {
+      await set("past_due", 14_900)
+    }
+    expect(((await mrr()).lines[0] as MrrLine).mrrMinor).toBe(8_470_800)
+  })
+
+  it("document numbers run from 0001 with no gap in date order per series and equal the board numbers", async () => {
+    const docs = await allInvoices()
+    const year = docs.filter((d) => d.number?.startsWith("F-2026-"))
+    expect(year).toHaveLength(418)
+    expect(year.map((d) => Number(d.number?.slice(-4)))).toEqual(
+      Array.from({ length: 418 }, (_, i) => i + 1),
+    )
+    const named = await rows(
+      world.orgId,
+      sql`SELECT number, counterparty_name FROM app_invoicing.documents
+          WHERE org_id = ${world.orgId} AND number IN ('F-2026-0007', 'F-2026-0284', 'F-2026-0298',
+            'F-2026-0362', 'F-2026-0369', 'F-2026-0391', 'F-2026-0411', 'F-2026-0412', 'F-2026-0413',
+            'F-2026-0414', 'F-2026-0415', 'F-2026-0416', 'F-2026-0418')
+          ORDER BY number`,
+    )
+    expect(named.map((d) => d.counterparty_name)).toEqual([
+      "Groupe Verrières",
+      "Camping Les Pins",
+      "Domaine Ferrand",
+      "Maison Arlon",
+      "Relais Saint-Cyr",
+      "Café Ombre",
+      "Hôtels Belcour",
+      "Résidence Alizé",
+      "Cantines du Port",
+      "Bistrot Marceau",
+      "Le Comptoir Sud",
+      "Stadshotel Noord BV",
+      "Maison Arlon",
+    ])
+  })
+
+  it("the next number issued is one above the last seeded", async () => {
+    const seq = await rows(
+      world.orgId,
+      sql`SELECT key, value FROM kernel.app_sequences
+          WHERE org_id = ${world.orgId} AND app_id = 'invoicing' AND key LIKE '%:invoice:2026'`,
+    )
+    expect(seq).toHaveLength(1)
+    expect(Number(seq[0]?.value)).toBe(418)
+    const [max] = await rows(
+      world.orgId,
+      sql`SELECT max(number_int)::int AS n FROM app_invoicing.documents
+          WHERE org_id = ${world.orgId} AND type = 'invoice' AND year_of_issue = 2026`,
+    )
+    expect(max?.n).toBe(418)
+  })
+
+  it("ten schedules, seven monthly due at this month's end, no run fired, the yearly transfer customer outside MRR", async () => {
+    const list = await appCall<{ rows: Array<Record<string, unknown>> }>(
+      "invoicing:recurring_list",
+      { limit: 50 },
+    )
+    const schedules = list.rows
+    expect(schedules).toHaveLength(10)
+    const nextOf = (s: Record<string, unknown>) => String(s.next_issue_on ?? s.nextIssueOn ?? "")
+    const monthEnd = schedules.filter(
+      (s) => (s.repeats ?? s.every) === "month" && s.status === "active",
+    )
+    expect(monthEnd).toHaveLength(7)
+    expect(new Set(monthEnd.map(nextOf))).toEqual(new Set(["2026-11-30"]))
+    const [runs] = await rows(
+      world.orgId,
+      sql`SELECT count(*)::int AS n FROM app_invoicing.recurring_runs WHERE org_id = ${world.orgId}`,
+    ).catch(() => [{ n: 0 }])
+    expect(runs?.n).toBe(0)
+    const verrieres = await rows(
+      world.orgId,
+      sql`SELECT count(*)::int AS n FROM app_stripe.stripe_customers
+          WHERE org_id = ${world.orgId} AND name = 'Groupe Verrières'`,
+    )
+    expect(verrieres[0]?.n).toBe(0)
+    const streams = await appCall<{
+      issuers: Array<{ streams: Array<{ stream: string; issuer: string }> }>
+    }>("invoicing:issuer_stream_get", {})
+    const stream = (name: string) =>
+      streams.issuers[0]?.streams.find((s) => s.stream === name)?.issuer
+    expect([stream("card"), stream("transfer")]).toEqual(["liaison", "liaison"])
+  })
+
+  it("every total equals its lines at the rounding rule, the Dutch customer at reverse charge", async () => {
+    const mismatched = await rows(
+      world.orgId,
+      sql`SELECT d.number FROM app_invoicing.documents d
+          JOIN app_invoicing.document_lines l ON l.document_id = d.id AND l.org_id = d.org_id
+          WHERE d.org_id = ${world.orgId}
+          GROUP BY d.id, d.number, d.subtotal_minor, d.tax_total_minor, d.grand_total_minor
+          HAVING sum(l.subtotal_minor) <> d.subtotal_minor OR sum(l.tax_minor) <> d.tax_total_minor
+             OR d.subtotal_minor + d.tax_total_minor <> d.grand_total_minor
+             OR sum(round(l.subtotal_minor * l.tax_rate_bp / 10000.0)) <> d.tax_total_minor`,
+    )
+    expect(mismatched).toEqual([])
+    const [noord] = await rows(
+      world.orgId,
+      sql`SELECT id FROM app_invoicing.documents
+          WHERE org_id = ${world.orgId} AND number = 'F-2026-0416'`,
+    )
+    const doc = await appCall<Record<string, unknown>>("invoicing:documents_get", {
+      id: noord?.id as string,
+    })
+    const d = (doc.document ?? doc) as Record<string, unknown>
+    expect(d.tax_treatment).toBe("eu_reverse_charge")
+    expect([
+      Number(d.subtotal_minor),
+      Number(d.tax_total_minor),
+      Number(d.grand_total_minor),
+    ]).toEqual([49_000, 0, 49_000])
+    const [arlon] = await rows(
+      world.orgId,
+      sql`SELECT grand_total_minor, tax_total_minor, payment_status FROM app_invoicing.documents
+          WHERE org_id = ${world.orgId} AND number = 'F-2026-0418'`,
+    )
+    expect([
+      Number(arlon?.grand_total_minor),
+      Number(arlon?.tax_total_minor),
+      arlon?.payment_status,
+    ]).toEqual([174_000, 29_000, "unpaid"])
+  })
+
+  it("the last webhook line shows its true age without an alarm", async () => {
+    const home = await appCall<{
+      connection?: { state?: string; overlay?: string | null; lastEventAt?: string | null }
+    }>("stripe:home_load", {})
+    expect(home.connection?.state).toBe("connected")
+    expect(home.connection?.overlay ?? null).toBeNull()
+    expect(Date.parse(home.connection?.lastEventAt ?? "")).toBe(BOARD_DATE.getTime() - 2 * 60_000)
+  })
+
+  it("the hotel group's timeline shows its invoices from the invoicing app", async () => {
+    const timeline = await ownerCall<{ items: Array<{ source: string; title: string }> }>(
+      "company_timeline",
+      { companyId: await companyId("Maison Arlon"), limit: 100 },
+    )
+    const invoices = timeline.items
+      .filter((i) => i.source === "invoicing")
+      .map((i) => i.title)
+      .join("\n")
+    expect(invoices).toContain("F-2026-0418")
+    expect(invoices).toContain("F-2026-0362")
+  })
+
+  it("Home holds the card reminder for the away account manager and the refund, with the follow-up and the quiet deal", async () => {
+    const actor = await ownerActor()
+    setSystemTime(BOARD_DATE)
+    try {
+      const feed = await aggregateAttentionItems({ orgId: world.orgId, actor })
+      const approvals = await rows(
+        world.orgId,
+        sql`SELECT id, handle, tool_name FROM kernel.approval_requests
+            WHERE org_id = ${world.orgId} AND handle IN ('demo-arlon-card-reminder', 'demo-ombre-refund')
+            ORDER BY handle`,
+      )
+      expect(approvals.map((a) => [a.handle, a.tool_name])).toEqual([
+        ["demo-arlon-card-reminder", "mail:compose"],
+        ["demo-ombre-refund", "stripe:refunds_create"],
+      ])
+      const item = (handle: string) =>
+        feed.items.find((i) => i.entityId === approvals.find((a) => a.handle === handle)?.id)
+      expect(item("demo-arlon-card-reminder")?.kind).toBe("approval_pending")
+      expect(item("demo-arlon-card-reminder")?.metadata?.placement).toBe("standing_in")
+      expect(item("demo-ombre-refund")?.kind).toBe("approval_pending")
+    } finally {
+      setSystemTime()
+    }
   })
 })

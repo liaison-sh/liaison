@@ -17,8 +17,6 @@
 // Customer-facing links of a stand-in install (the billing portal login, the
 // hosted invoice pages) live on a reserved `.example` host, so nobody is ever
 // sent to a real billing page that does not know the fictional customer.
-import type { ShippedLocale } from "@liaison/shared"
-import { serverT } from "~/modules/i18n/server-i18n"
 
 /** The payments app, and its one connection, by the name the app declares. */
 export const PAYMENTS_APP = "stripe"
@@ -38,16 +36,11 @@ export const PAYMENTS_STANDIN_HOST = "billing.payments-standin.example"
  * the processor's dashboard. The app holds the same constant
  * (`bundled-apps/stripe/src/standin.ts`); a test keeps the two equal.
  */
-export const PAYMENTS_STANDIN_MARKER = "demoStandIn"
+const PAYMENTS_STANDIN_MARKER = "demoStandIn"
 
 /** The `permissions` value the seeder writes on a stand-in install's metadata row. */
 export function standInInstallPermissions(checkedAt: string): Record<string, unknown> {
   return { mode: "test", checks: [], checkedAt, [PAYMENTS_STANDIN_MARKER]: true }
-}
-
-/** The customer portal login link of a stand-in install (the app's `portalLoginUrl`). */
-export function standInPortalLoginUrl(slug: string): string {
-  return `https://${PAYMENTS_STANDIN_HOST}/p/login/${slug.replace(/[^A-Za-z0-9_-]/g, "")}`
 }
 
 /** The hosted page of a stand-in invoice (the mirror's `hosted_invoice_url`). */
@@ -72,11 +65,6 @@ export function isPaymentsHost(host: string): boolean {
 export function isDeclaredPaymentsHost(host: string, allowedDomains: readonly string[]): boolean {
   const h = host.toLowerCase()
   return allowedDomains.some((d) => d.toLowerCase() === h)
-}
-
-/** The sentence a demo org reads when the stand-in does not model what was asked. */
-export function demoPaymentsUnsupportedMessage(locale: ShippedLocale = "en"): string {
-  return serverT(locale, "kernel.demo.paymentsUnsupported")
 }
 
 /** A string shaped like a processor key or signing secret (never allowed in a fixture). */

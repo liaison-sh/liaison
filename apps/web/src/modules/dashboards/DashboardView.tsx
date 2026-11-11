@@ -20,6 +20,7 @@
 import { RefreshCw } from "lucide-solid"
 import {
   type Component,
+  createEffect,
   createMemo,
   createResource,
   createSignal,
@@ -149,6 +150,35 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
   const [drill, setDrill] = createSignal<{ block: DashboardBlockSpec; target: DrillTarget } | null>(
     null,
   )
+  /** What had focus when the rows opened (a bar's pick, a table row): focus goes back on close. */
+  let drillOpener: HTMLElement | null = null
+  const openDrill = (block: DashboardBlockSpec, target: DrillTarget) => {
+    if (!drill()) {
+      const active = document.activeElement
+      drillOpener = active instanceof HTMLElement && active !== document.body ? active : null
+    }
+    setDrill({ block, target })
+  }
+  const closeDrill = () => {
+    setDrill(null)
+    const back = drillOpener
+    drillOpener = null
+    if (back?.isConnected) back.focus()
+  }
+  // Escape closes the rows from anywhere on the page while they are open (focus may be on the
+  // grid after a pick), unless a menu or a dialog takes it first.
+  createEffect(() => {
+    if (!drill()) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return
+      const t = e.target
+      if (t instanceof Element && t.closest('[role="menu"],[role="dialog"],[role="listbox"]'))
+        return
+      closeDrill()
+    }
+    document.addEventListener("keydown", onKey)
+    onCleanup(() => document.removeEventListener("keydown", onKey))
+  })
   onMount(() => {
     const timer = setInterval(() => {
       if (pageVisible()) setNow(Date.now())
@@ -442,7 +472,7 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
                         refreshTick={tick()}
                         rangeKey={follows(d(), block.id) ? rangeKey() : undefined}
                         filtersKey={filterKey()}
-                        onDrill={(target) => setDrill({ block, target })}
+                        onDrill={(target) => openDrill(block, target)}
                         showOwnWindow={usesRange() && !follows(d(), block.id)}
                         now={now()}
                         visible={onScreen()}
@@ -472,19 +502,35 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
               blockId={open().block.id}
               blockTitle={open().block.title}
               target={open().target}
+              contextKey={`${rangeKey() ?? ""}|${filterKey() ?? ""}`}
+              windowNote={
+                open().target.previous && windows().compareWindow
+                  ? formatWindow(windows().compareWindow!, i18n.locale())
+                  : undefined
+              }
               load={(offset) => {
                 const d = loaded()
                 const b = open().block
+                const t = open().target
+                const cw = windows().compareWindow
+                // A comparison bar's rows: the comparison window, as a custom range.
+                const range =
+                  t.previous && cw
+                    ? {
+                        timeRange: { preset: "custom" as const, from: cw.from, to: cw.to },
+                        compare: "none" as const,
+                      }
+                    : choice()
                 return getBlockRows(api, props.entityId, b.id, {
-                  target: open().target,
+                  target: t,
                   offset,
-                  ...(usesRange() && d && follows(d, b.id) ? { range: choice() } : {}),
+                  ...(usesRange() && d && follows(d, b.id) ? { range } : {}),
                   ...(wireFilters() ? { filters: wireFilters() } : {}),
                   signal: reads.signal,
                 })
               }}
               open={(link) => openRecordLink(api, link)}
-              onClose={() => setDrill(null)}
+              onClose={closeDrill}
             />
           )}
         </Show>

@@ -21,10 +21,30 @@ export function filtersFromQuery(search: string, defs: DashboardFilterDef[]): Fi
   return out
 }
 
-/** A filter's values as the server takes them: no empties, no repeats, one for a select or text. */
+/** The server's bounds on a filter's values (api filters.ts). */
+export const MAX_FILTER_VALUES = 50
+export const MAX_FILTER_VALUE_LENGTH = 200
+
+/**
+ * A filter's values as the server takes them: no empties, no repeats, one for a select or text,
+ * a multi's sorted; a value the server would refuse (outside a static list, too long, holding
+ * "{{" or "}}") is left out, so a stale or edited link never fails every block.
+ */
 export function normalise(def: DashboardFilterDef, values: readonly string[]): string[] {
-  const kept = [...new Set(values.filter((v) => v !== ""))]
-  return def.type === "multi" ? kept : kept.slice(0, 1)
+  const allowed = staticOptions(def)
+  const kept = [
+    ...new Set(
+      values.filter(
+        (v) =>
+          v !== "" &&
+          v.length <= MAX_FILTER_VALUE_LENGTH &&
+          !v.includes("{{") &&
+          !v.includes("}}") &&
+          (!allowed || allowed.includes(v)),
+      ),
+    ),
+  ]
+  return def.type === "multi" ? kept.sort().slice(0, MAX_FILTER_VALUES) : kept.slice(0, 1)
 }
 
 /** A filter's default as a list ([] = all). */

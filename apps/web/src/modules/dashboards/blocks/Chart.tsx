@@ -133,7 +133,9 @@ export function chartConfig(props: ChartProps, locale: string): Record<string, u
   const combo = props.type === "combo"
   const horizontal = props.type === "bar" && props.horizontal === true
   const stacked = props.stacked === true && (props.type === "bar" || area || combo)
-  const rightAxis = combo && props.secondaryAxis === true
+  // A combo's lines never stack on its bars: they go on their own unstacked axis on the right,
+  // asked for (secondaryAxis) or because the bars stack.
+  const rightAxis = combo && (props.secondaryAxis === true || stacked)
   let next = 0
   return {
     // An area is a filled line; a combo is bars with some datasets drawn as lines.
@@ -159,7 +161,7 @@ export function chartConfig(props: ChartProps, locale: string): Record<string, u
           borderDash: line && d.previous ? [4, 4] : undefined,
           fill: area && !d.previous ? (stacked ? (next === 1 ? "origin" : "-1") : "origin") : false,
           ...(rightAxis && line ? { yAxisID: "y1" } : {}),
-          ...(stacked && !d.previous ? { stack: "current" } : {}),
+          ...(stacked && !d.previous && !(combo && line) ? { stack: "current" } : {}),
           // Drawn behind the current series; a combo's lines over its bars.
           order: d.previous ? 1 : combo && line ? -1 : 0,
         }

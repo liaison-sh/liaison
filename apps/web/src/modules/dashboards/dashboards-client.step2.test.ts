@@ -9,6 +9,7 @@ import {
   parseBlockResponse,
   parseRowsResponse,
   recordLinkFrom,
+  saveViewerFilters,
 } from "./dashboards-client"
 
 describe("step 2 block shapes", () => {
@@ -142,5 +143,17 @@ describe("filter options", () => {
     const r = await getFilterOptions(api, "d1", "m", { filters: { channel: ["b2b"] } })
     expect(r).toEqual({ ok: true, options: ["DE", "FR"], truncated: false })
     expect(get.mock.calls[0]![0]).toBe("/dashboards/d1/filters/m/options?f.channel=b2b")
+  })
+})
+
+describe("remembered filters", () => {
+  it("does not send values too long for the server to remember", async () => {
+    const put = vi.fn(async () => ({}))
+    const api = { put } as unknown as Parameters<typeof saveViewerFilters>[0]
+    const many = Array.from({ length: 50 }, (_, i) => `${i}${"x".repeat(190)}`)
+    await saveViewerFilters(api, "d1", { a: many, b: many })
+    expect(put).not.toHaveBeenCalled()
+    await saveViewerFilters(api, "d1", { a: ["FR"] })
+    expect(put).toHaveBeenCalledTimes(1)
   })
 })

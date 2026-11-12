@@ -1717,7 +1717,7 @@ const FIELD_SAMPLE_ROWS = 50
  * number, true/false) in at least one of the first rows. Names only, never values: the dashboard
  * editor offers them when a person adds a filter.
  */
-export function rowFieldsOf(rows: Record<string, unknown>[] | undefined): string[] {
+export function rowFieldsOf(rows: Record<string, unknown>[] | null | undefined): string[] {
   const out = new Set<string>()
   for (const r of (rows ?? []).slice(0, FIELD_SAMPLE_ROWS)) {
     for (const [k, v] of Object.entries(r)) {

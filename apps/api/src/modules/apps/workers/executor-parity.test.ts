@@ -68,7 +68,7 @@ function executorParitySuite(target: ParityTarget): void {
 
   const ENV_KEYS = [
     "LIAISON_APP_LOADER_URL",
-    "LIAISON_APP_FALLBACK_LOADER_URL",
+    "LIAISON_SANDBOX_URL",
     "LIAISON_APP_LOADER_CELL_ID",
     "LIAISON_APP_LOADER_KEY",
     "LIAISON_APP_BRIDGE_BASE_URL",
@@ -104,7 +104,7 @@ function executorParitySuite(target: ParityTarget): void {
       // The primary loader always faults and the sandbox service is the
       // fallback target: every run lands on workerd through the product's path.
       e.LIAISON_APP_LOADER_URL = (loader as WorkerdLoader).deadLoaderUrl
-      e.LIAISON_APP_FALLBACK_LOADER_URL = loader.url
+      e.LIAISON_SANDBOX_URL = loader.url
     } else {
       e.LIAISON_APP_LOADER_URL = loader.url
     }

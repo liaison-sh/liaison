@@ -72,7 +72,7 @@ describe("import attributes in a handler bundle", () => {
 
   it("passes real first-party bundles (handlers and UI), minified or not", async () => {
     const entries: Array<[string, "bun" | "browser"]> = [
-      [join(REPO_ROOT, "apps", "api", "src", "apps", "example", "handlers.ts"), "bun"],
+      [join(REPO_ROOT, "apps", "api", "test-support", "apps", "example", "handlers.ts"), "bun"],
       [join(REPO_ROOT, "bundled-apps", "social", "handlers.ts"), "bun"],
       [join(REPO_ROOT, "bundled-apps", "social", "ui.tsx"), "browser"],
     ]

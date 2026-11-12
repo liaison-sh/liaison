@@ -15,7 +15,7 @@ Open `docs/app-development.md` once. It is the authoritative guide; this skill
 is a conversational pairing layer on top of it. If you and the doc disagree, the
 **doc wins** — patch the doc, don't drift the skill.
 
-Open `apps/api/src/apps/example/` — the working reference app. Every handler
+Open `apps/api/test-support/apps/example/` — the working reference app. Every handler
 pattern you suggest, point the developer at the relevant file in `example/`.
 
 ## Phase 1 — Understand what they want to build
@@ -43,7 +43,7 @@ module (`apps/web/src/modules/<name>/`). Confirm the scaffolded test passes:
 
 Walk them through replacing the placeholder `items_list` handler with their
 first real tool. Patterns (each maps to a handler in
-`apps/api/src/apps/example/handlers.ts`):
+`apps/api/test-support/apps/example/handlers.ts`):
 
 - **Read-only tool** — `async (params, ctx) => ({ data: await ctx.db.findMany(...) })`
 - **Mutation tool** — `ctx.db.insert(...)` then `await ctx.emit({ entity, action: "created", entityId })`
@@ -56,7 +56,7 @@ Every tool declares `requiredScopes` in the manifest, a non-empty list of `<app>
 
 ## Phase 4 — Test it
 
-Use `apps/api/src/apps/example/handlers.test.ts` as the template — one test per
+Use `apps/api/test-support/apps/example/handlers.test.ts` as the template — one test per
 handler, driven by `mockAppContext` from `~/modules/apps/test-helpers`. Run it as
 `.claude/skills/run-tests/SKILL.md` describes. Test
 observable behavior — returned data, emitted events, db writes — never internals.

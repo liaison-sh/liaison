@@ -81,7 +81,13 @@ export async function enqueue(args: EnqueueArgs): Promise<Uint8Array> {
   bump(inflightPerOrg, orgId)
   bump(inflightPerApp, appId)
   try {
-    const work = runTemplateToPdf({ bundleSource: source, data, replay: args.replay })
+    const work = runTemplateToPdf({
+      orgId,
+      appName: appId,
+      bundleSource: source,
+      data,
+      replay: args.replay,
+    })
     let timer: ReturnType<typeof setTimeout> | undefined
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(

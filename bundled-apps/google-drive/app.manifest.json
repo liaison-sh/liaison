@@ -1,6 +1,6 @@
 {
   "name": "google-drive",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "kind": "connector",
   "iconName": "folder",
   "description": "Google Drive connector: a Knowledge federated-search source and a headless agent-tool surface (search + read + import Drive files, plus upload of NEW files into an app-owned 'Liaison Reports' folder under the drive.file scope; existing Drive files are never modified or deleted).",
@@ -426,40 +426,17 @@
   ],
   "pages": {
     "picker": {
-      "source": "pages/picker.ts",
       "title": "Choose files for Liaison",
       "scope": "google-drive:accounts:read",
       "routes": [
         "savePicks"
       ],
-      "connectionToken": {
-        "connection": "drive"
-      },
-      "hosts": {
-        "script": [
-          "apis.google.com",
-          "www.gstatic.com"
-        ],
-        "frame": [
-          "docs.google.com",
-          "drive.google.com",
-          "accounts.google.com",
-          "content.googleapis.com"
-        ],
-        "connect": [
-          "apis.google.com",
-          "content.googleapis.com",
-          "www.googleapis.com"
-        ],
-        "image": [
-          "*.googleusercontent.com",
-          "ssl.gstatic.com",
-          "www.gstatic.com",
-          "drive-thirdparty.googleusercontent.com"
-        ],
-        "style": [
-          "www.gstatic.com",
-          "fonts.googleapis.com"
+      "widget": {
+        "kind": "google-picker",
+        "connection": "drive",
+        "route": "savePicks",
+        "tokenScopes": [
+          "https://www.googleapis.com/auth/drive.file"
         ]
       }
     }

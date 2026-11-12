@@ -55,6 +55,57 @@ describe("runApp", () => {
     expect(selectExecutor({ trusted: true, workersBundleSha: "a".repeat(64) })).toBe("inprocess")
   })
 
+  it("selects per the table: sandbox service, the runtime switch, a site's in-process placement", () => {
+    const sha = "a".repeat(64)
+    // The instance's sandbox service takes what the loader does not.
+    expect(selectExecutor({ trusted: false, sandboxService: true })).toBe("workerd")
+    expect(selectExecutor({ trusted: false, workersBundleSha: sha, sandboxService: true })).toBe(
+      "workers",
+    )
+    expect(selectExecutor({ trusted: true, sandboxService: true })).toBe("inprocess")
+    // LIAISON_APP_RUNTIME=quickjs: QuickJS whatever is configured.
+    const forced = { trusted: false, quickjsForced: true, sandboxService: true }
+    expect(selectExecutor({ ...forced, workersBundleSha: sha })).toBe("pool")
+    expect(selectExecutor({ ...forced, inProcess: true })).toBe("inprocess")
+    // A site's in-process placement is a QuickJS placement only.
+    expect(selectExecutor({ trusted: false, inProcess: true })).toBe("inprocess")
+    expect(selectExecutor({ trusted: false, inProcess: true, sandboxService: true })).toBe(
+      "workerd",
+    )
+  })
+
+  it("keeps a site's QuickJS placement: its in-process pool, or its own worker pool and limits", async () => {
+    const { inProcess, execute, init } = spyBoundaries()
+    const ownPool = { tag: "summarizer-pool" }
+    expect(
+      await runApp({
+        ...base,
+        trusted: false,
+        installed: null,
+        quickjs: { inProcess: true, inProcessPool: ownPool as never },
+      }),
+    ).toBe("from-inprocess")
+    expect(inProcess.mock.calls[0]?.[0]).toMatchObject({ pool: ownPool })
+    const ownExecute = mock(async (_: unknown) => "from-own-pool")
+    const onHeapReport = () => {}
+    expect(
+      await runApp({
+        ...base,
+        trusted: false,
+        installed: null,
+        quickjs: {
+          workerPool: { execute: ownExecute } as never,
+          memoryLimitBytes: 1024,
+          onHeapReport,
+        },
+      }),
+    ).toBe("from-own-pool")
+    expect(ownExecute.mock.calls[0]?.[0]).toMatchObject({ memoryLimitBytes: 1024, onHeapReport })
+    // The shared worker pool is neither started nor used for it.
+    expect(init).not.toHaveBeenCalled()
+    expect(execute).not.toHaveBeenCalled()
+  })
+
   it("runs trusted code in-process with exactly the executor's options", async () => {
     const { inProcess, execute, init } = spyBoundaries()
     const signal = new AbortController().signal
@@ -152,7 +203,7 @@ describe("runApp: a loader fault before any bridge call", () => {
     "LIAISON_APP_LOADER_URL",
     "LIAISON_APP_LOADER_CELL_ID",
     "LIAISON_APP_LOADER_KEY",
-    "LIAISON_APP_FALLBACK_LOADER_URL",
+    "LIAISON_SANDBOX_URL",
   ] as const
   type Mutable = Record<string, string | undefined>
   const saved = Object.fromEntries(KEYS.map((k) => [k, (env as unknown as Mutable)[k]]))
@@ -270,7 +321,7 @@ describe("runApp: a loader fault before any bridge call", () => {
 
   it("with the sandbox service configured: runs once more there, secret-free, labelled workerd", async () => {
     workersOn()
-    ;(env as unknown as Mutable).LIAISON_APP_FALLBACK_LOADER_URL = "http://sandbox.invalid/"
+    ;(env as unknown as Mutable).LIAISON_SANDBOX_URL = "http://sandbox.invalid/"
     const { execute } = spyBoundaries()
     const calls = loaderDownServiceUp()
     const bridge = quickjsBridge()
@@ -304,7 +355,7 @@ describe("runApp: a loader fault before any bridge call", () => {
 
   it("with the sandbox service configured: an open breaker sends the run there, labelled breaker", async () => {
     workersOn()
-    ;(env as unknown as Mutable).LIAISON_APP_FALLBACK_LOADER_URL = "http://sandbox.invalid"
+    ;(env as unknown as Mutable).LIAISON_SANDBOX_URL = "http://sandbox.invalid"
     const { execute } = spyBoundaries()
     for (let i = 0; i < 5; i++) loaderBreaker.record("loader_fault")
     expect(loaderBreaker.state()).toBe("open")
@@ -397,6 +448,125 @@ describe("resolveWorkersTarget: every sandboxed app once a loader is configured"
         at({ version: "1.0.0", sha256: "c".repeat(64), workerSha256: null }),
       ),
     ).toBeNull()
+  })
+})
+
+describe("runApp on a self-hosted instance (the sandbox service, no loader)", () => {
+  const KEYS = [
+    "LIAISON_APP_LOADER_URL",
+    "LIAISON_APP_LOADER_CELL_ID",
+    "LIAISON_APP_LOADER_KEY",
+    "LIAISON_SANDBOX_URL",
+    "LIAISON_SANDBOX_BRIDGE_URL",
+    "LIAISON_APP_RUNTIME",
+  ] as const
+  type Mutable = Record<string, string | undefined>
+  const saved = Object.fromEntries(KEYS.map((k) => [k, (env as unknown as Mutable)[k]]))
+  const settled: RunSettledInfo[] = []
+  const unsubscribe = onRunSettled((i) => {
+    if (i.app === "sh") settled.push(i)
+  })
+  afterEach(() => {
+    mock.restore()
+    settled.length = 0
+    const e = env as unknown as Mutable
+    for (const k of KEYS) e[k] = saved[k]
+  })
+  afterAll(() => unsubscribe())
+
+  const WORKER = "e".repeat(64)
+  const sandboxOn = () => {
+    const e = env as unknown as Mutable
+    for (const k of KEYS) e[k] = undefined
+    e.LIAISON_SANDBOX_URL = "http://sandbox.invalid:8790"
+    e.LIAISON_SANDBOX_BRIDGE_URL = "http://bridge.invalid:3100"
+  }
+  const run = (over: Partial<Parameters<typeof runApp>[0]> = {}) =>
+    runApp({
+      ...base,
+      appName: "sh",
+      trusted: false,
+      installed: { version: "2.0.0", sha256: "c".repeat(64), workerSha256: WORKER },
+      bridge: { config_get: async (k: string) => `value-of-${k}` },
+      ...over,
+    })
+
+  function serviceAnswers() {
+    const calls: Array<Record<string, any>> = []
+    spyOn(workersExecutor, "executeOnWorkers").mockImplementation(async (opts, onInfo) => {
+      calls.push(opts as never)
+      onInfo?.({ runId: "r-sh", attempts: 1, bridgeCalls: 0 })
+      return "from-workerd"
+    })
+    return calls
+  }
+
+  it("runs every sandboxed app with a Worker module there, secret-free, labelled workerd", async () => {
+    sandboxOn()
+    const { execute, inProcess } = spyBoundaries()
+    const calls = serviceAnswers()
+    expect(await run()).toBe("from-workerd")
+    expect(execute).not.toHaveBeenCalled()
+    expect(inProcess).not.toHaveBeenCalled()
+    const opts = calls[0] ?? {}
+    expect(opts.config).toMatchObject({
+      loaderUrl: "http://sandbox.invalid:8790",
+      cellId: "sandbox",
+      bridgeBaseUrl: "http://bridge.invalid:3100",
+    })
+    expect(opts.bundleSha256).toBe(WORKER)
+    expect(isWorkersRunBridge(opts.bridge)).toBe(true)
+    // The module is pushed (the service fetches nothing), and the loader's state is untouched.
+    expect(typeof opts.pushModule).toBe("function")
+    expect(opts.breaker).not.toBe(loaderBreaker)
+    expect(settled.at(-1)).toMatchObject({ executor: "workerd", ok: true, runId: "r-sh" })
+    expect(settled.at(-1)?.fallback).toBeUndefined()
+  })
+
+  it("keeps trusted code in process, and code with no installed version on QuickJS", async () => {
+    sandboxOn()
+    const { execute, inProcess } = spyBoundaries()
+    const calls = serviceAnswers()
+    expect(await run({ trusted: true })).toBe("from-inprocess")
+    expect(await run({ installed: null })).toBe("from-pool")
+    expect(await run({ installed: null, quickjs: { inProcess: true } })).toBe("from-inprocess")
+    expect(calls).toHaveLength(0)
+    expect(execute).toHaveBeenCalledTimes(1)
+    expect(inProcess).toHaveBeenCalledTimes(2)
+  })
+
+  it("LIAISON_APP_RUNTIME=quickjs puts every run back on QuickJS", async () => {
+    sandboxOn()
+    ;(env as unknown as Mutable).LIAISON_APP_RUNTIME = "quickjs"
+    const { execute } = spyBoundaries()
+    const calls = serviceAnswers()
+    expect(await run()).toBe("from-pool")
+    expect(calls).toHaveLength(0)
+    expect(execute).toHaveBeenCalledTimes(1)
+    expect(settled.at(-1)).toMatchObject({ executor: "quickjs", ok: true })
+  })
+
+  it("LIAISON_APP_RUNTIME=quickjs also overrides a configured loader", async () => {
+    sandboxOn()
+    const e = env as unknown as Mutable
+    e.LIAISON_APP_LOADER_URL = "http://loader.invalid"
+    e.LIAISON_APP_LOADER_CELL_ID = "cell-sh"
+    e.LIAISON_APP_LOADER_KEY = "sh-cell-key-0123456789abcdef"
+    e.LIAISON_APP_RUNTIME = "quickjs"
+    spyBoundaries()
+    const calls = serviceAnswers()
+    expect(await run()).toBe("from-pool")
+    expect(calls).toHaveLength(0)
+  })
+
+  it("without the sandbox service (the default): QuickJS, as before", async () => {
+    const e = env as unknown as Mutable
+    for (const k of KEYS) e[k] = undefined
+    const { execute } = spyBoundaries()
+    const calls = serviceAnswers()
+    expect(await run()).toBe("from-pool")
+    expect(calls).toHaveLength(0)
+    expect(execute).toHaveBeenCalledTimes(1)
   })
 })
 

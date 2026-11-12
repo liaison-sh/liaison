@@ -2831,6 +2831,8 @@
     "attentionDisabled": "{{app}} attention disabled",
     "requestedCapabilities": "Platform capabilities this app can use (granted by installing)",
     "requestedCrossAppCalls": "Tools of other apps this app can call without its own scopes (granted by installing)",
+    "pageBrowserCredentials": "Pages that put a connected account's access in your browser (run by Liaison; the app receives only what you choose)",
+    "pageBrowserCredential": "{{page}}: a provider widget with your {{connection}} account, limited to {{scopes}}",
     "approveUiFullAccess": "This app's interface runs inside Liaison with full access to your session. Only approve it if you trust its publisher.",
     "uiFullAccessApproved": "Interface approved by an admin (runs with full access to your session)",
     "uiTrusted": "Interface trusted (first-party or signed by a trusted publisher)",

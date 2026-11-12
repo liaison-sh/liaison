@@ -4,7 +4,8 @@
 // per (org, app, day, executor) with the runs, the bridge calls (Workers only:
 // QuickJS runs report none) and the wall milliseconds the cell counted as runs
 // settled, plus the CPU milliseconds the Workers loader measured, pulled from
-// it every hour (null until then, and always on QuickJS). For reporting (Usage
+// it every hour (null until then, and always on QuickJS and on the instance's
+// sandbox service, `workerd`). For reporting (Usage
 // in Settings, the daily `apps.usage` to Control): the caps are enforced from
 // Redis day counters, never from this table. Readable by the row's org under
 // RLS; written through the privileged pool only.
@@ -12,7 +13,7 @@
 import { bigint, date, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core"
 import { kernel, organizations } from "./organizations"
 
-export type AppUsageExecutor = "workers" | "quickjs" | "inprocess"
+export type AppUsageExecutor = "workers" | "workerd" | "quickjs" | "inprocess"
 
 export const appUsageDaily = kernel.table(
   "app_usage_daily",

@@ -4,8 +4,9 @@ The canonical "every-feature" sample app. It exists to be read: each handler
 demonstrates exactly one SDK surface in the smallest possible code. Both
 `docs/app-development.md` and the `creating-an-app` Claude skill point here.
 
-It is a real in-tree app — auto-discovered at startup, packageable with
-`bun run app:freeze example`.
+It is a test fixture: it lives in `apps/api/test-support/apps/`, which the
+production image does not carry, and is discovered in development and test
+only (`TEST_ONLY_APPS`, `modules/apps/discover-apps.ts`).
 
 ## What each handler teaches
 

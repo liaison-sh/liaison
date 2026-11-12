@@ -1096,6 +1096,7 @@ export async function stageTransformSource(input: StageInput): Promise<StagedRun
       const result = await runApiPull({
         source: prepared.code,
         host: {
+          orgId,
           kinds: input.kinds.map((k) => k.kind),
           validateRecord: validate,
           apiGet: (path) => client.get(path, abort.signal),
@@ -1216,6 +1217,7 @@ export async function stageTransformSource(input: StageInput): Promise<StagedRun
         files,
         batches: batches(),
         host: {
+          orgId,
           kinds: input.kinds.map((k) => k.kind),
           validateRecord: validate,
           resolveFile,

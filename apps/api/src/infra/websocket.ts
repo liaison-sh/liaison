@@ -1550,17 +1550,30 @@ export class WebSocketManager {
 
   /**
    * A `kernel:dashboard` frame (modules/dashboards/service.ts) follows the row's
-   * SELECT policy: an org dashboard's reaches every reader, a personal one's its
-   * owner only. A switch from org to personal (`previousVisibility: "org"`) still
-   * reaches the readers who saw it, so their list drops it; the frame carries ids
-   * and visibility, never a title. A frame naming no owner and no org visibility
-   * reaches no one (fail closed).
+   * SELECT policy: a dashboard the whole org sees (`orgWide`) reaches every reader;
+   * any other reaches the people in `userIds` (its owner, the people and the role
+   * members it is shared with, and those who saw it before the change). `wasOrgWide`
+   * still reaches the readers who saw it, so their list drops it. The frame carries
+   * ids and access, never a title. A frame of the previous release (no `orgWide`)
+   * follows `visibility` as before. A frame naming nobody reaches no one (fail closed).
    */
   private hasDashboardVisibilityAccess(client: { userId: string }, payload: EventPayload): boolean {
     if (payload.app !== "kernel" || payload.entity !== "dashboard") return true
     const data = payload.data as
-      | { visibility?: unknown; previousVisibility?: unknown; ownerUserId?: unknown }
+      | {
+          visibility?: unknown
+          previousVisibility?: unknown
+          ownerUserId?: unknown
+          orgWide?: unknown
+          wasOrgWide?: unknown
+          userIds?: unknown
+        }
       | undefined
+    if (typeof data?.orgWide === "boolean") {
+      if (data.orgWide || data.wasOrgWide === true) return true
+      if (Array.isArray(data.userIds) && data.userIds.includes(client.userId)) return true
+      return typeof data.ownerUserId === "string" && data.ownerUserId === client.userId
+    }
     if (data?.visibility === "org" || data?.previousVisibility === "org") return true
     return typeof data?.ownerUserId === "string" && data.ownerUserId === client.userId
   }

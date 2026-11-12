@@ -31,10 +31,12 @@ import {
   Copy,
   Download,
   History,
+  Lock,
   MoreHorizontal,
   Pencil,
   RefreshCw,
   Undo2,
+  Users,
   X,
 } from "lucide-solid"
 import {
@@ -61,6 +63,7 @@ import { PopupMenu } from "~/ui/PopupMenu"
 import { Skeleton } from "~/ui/Skeleton"
 import { BlockDrillPanel, openRecordLink } from "./BlockDrillPanel"
 import { BlockCard } from "./blocks/BlockCard"
+import { DashboardShareDialog } from "./DashboardShareDialog"
 import {
   type BlockReadInfo,
   blockCsvPath,
@@ -311,6 +314,7 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
    */
   const [undoStack, setUndoStack] = createSignal<{ before: number; produced: number }[]>([])
   const [historyOpen, setHistoryOpen] = createSignal(false)
+  const [shareOpen, setShareOpen] = createSignal(false)
   const [scheduleHint, setScheduleHint] = createSignal(false)
   const [menuOpen, setMenuOpen] = createSignal(false)
   const [exportOpen, setExportOpen] = createSignal(false)
@@ -722,12 +726,30 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
                 <span
                   data-testid="dashboard-visibility"
                   data-visibility={d().visibility}
+                  data-restricted={d().visibility !== "org" && d().shared === true ? "" : undefined}
                   class="shrink-0 rounded-full border border-border-subtle px-2 py-0.5 text-[11px] text-text-tertiary"
                 >
                   {d().visibility === "org"
                     ? i18n.t("kernel.dashboards.visibilityOrg")
-                    : i18n.t("kernel.dashboards.visibilityPersonal")}
+                    : d().shared
+                      ? i18n.t("kernel.dashboards.visibilityRestricted")
+                      : i18n.t("kernel.dashboards.visibilityPersonal")}
                 </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  data-testid="dashboard-share"
+                  onClick={() => {
+                    setShareOpen(true)
+                  }}
+                >
+                  {d().visibility !== "org" && d().shared ? (
+                    <Lock size={13} />
+                  ) : (
+                    <Users size={13} />
+                  )}
+                  {i18n.t("kernel.dashboards.share")}
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -1046,6 +1068,20 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
               }}
               open={(link) => openRecordLink(api, link)}
               onClose={closeDrill}
+            />
+          )}
+        </Show>
+        <Show when={loaded()}>
+          {(d) => (
+            <DashboardShareDialog
+              dashboardId={d().id}
+              dashboardTitle={d().title}
+              open={shareOpen()}
+              onOpenChange={setShareOpen}
+              onSaved={() => {
+                reloadDashboard(d().id)
+                void loadDashboards(api)
+              }}
             />
           )}
         </Show>

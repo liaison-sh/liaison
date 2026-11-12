@@ -84,3 +84,4 @@ kernel:dashboards:read every member holds, for dashboards_list and dashboards_ge
 Every-member scopes survive an agent's ceiling -> apps/api/src/modules/agent/scopes/effective-scope.ts:51
 Common base includes dashboards read and write -> apps/api/src/modules/agent/directory/common-base-scopes.ts:61
 Base additions reach @base and role agents at server start -> apps/api/src/modules/agent/directory/reconcile-base-ceilings.ts:67 ; apps/api/src/db/reconcile-catalog-boot.ts:238
+A restricted dashboard stays invisible to everyone else, admins included -> apps/api/src/db/migrations/0293_dashboard_sharing.sql:196

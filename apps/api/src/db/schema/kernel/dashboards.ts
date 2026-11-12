@@ -13,14 +13,17 @@ import {
 import { kernel, organizations } from "./organizations"
 import { users } from "./users"
 
-/** Who sees a dashboard: its owner only, or the whole org. */
+/** Derived from `orgAccess` (migration 0293): "org" when the whole org gets access. */
 export type DashboardVisibility = "personal" | "org"
+
+/** What every member of the org gets on a dashboard (the generic sharing model, 0117). */
+export type DashboardOrgAccess = "none" | "viewer" | "editor"
 
 /**
  * A dashboard (migration 0275): blocks in `spec`, each reading a read-only
  * tool or a store query as the viewer. A personal dashboard always has an
- * owner; an org one may lose it (erasure, ON DELETE SET NULL). FORCE RLS: org
- * dashboards to the org, personal ones to their owner.
+ * owner; an org one may lose it (erasure, ON DELETE SET NULL). FORCE RLS (0293): its owner,
+ * the whole org when `orgAccess` is viewer or editor, and whoever holds a grant.
  */
 export const dashboards = kernel.table(
   "dashboards",
@@ -31,6 +34,15 @@ export const dashboards = kernel.table(
       .references(() => organizations.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
     visibility: text("visibility").$type<DashboardVisibility>().notNull(),
+    /**
+     * The truth of who sees it beyond its owner and its grants (kernel.resource_grants, type
+     * kernel.dashboard). No database default on purpose: the trigger dashboards_sync_access
+     * fills it from `visibility` when a write leaves it out (the previous release), and keeps
+     * `visibility` derived from it.
+     */
+    orgAccess: text("org_access").$type<DashboardOrgAccess>().notNull().default(sql`NULL`),
+    aclUserIds: jsonb("acl_user_ids").$type<string[]>().notNull().default([]),
+    aclRoleIds: jsonb("acl_role_ids").$type<string[]>().notNull().default([]),
     ownerUserId: uuid("owner_user_id").references(() => users.id, { onDelete: "set null" }),
     spec: jsonb("spec").$type<Record<string, unknown>>().notNull(),
     version: integer("version").notNull().default(1),

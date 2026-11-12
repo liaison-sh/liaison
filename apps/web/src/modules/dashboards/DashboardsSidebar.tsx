@@ -143,7 +143,7 @@ export const DashboardsSidebar: Component = () => {
                 icon={LayoutGrid}
                 active={isOpen(d.id)}
                 trailing={
-                  <Show when={d.visibility === "org"}>
+                  <Show when={d.shared ?? d.visibility === "org"}>
                     <span
                       data-testid={`dashboards-sidebar-row-${d.id}-shared`}
                       title={t("kernel.dashboards.sharedWithTeam")}

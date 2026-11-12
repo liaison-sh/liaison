@@ -40,6 +40,7 @@ import {
   setViewerRange,
   updateDashboard,
 } from "~/modules/dashboards/service"
+import { getDashboardSharing, setDashboardSharing } from "~/modules/dashboards/sharing"
 import { timeRangeSchema } from "~/modules/dashboards/spec"
 
 export const dashboardsRoutes = new Hono<AppEnv>()
@@ -48,6 +49,21 @@ const idParam = z.object({ id: z.string().uuid() })
 const blockParam = z.object({ id: z.string().uuid(), blockId: z.string().min(1).max(40) })
 const title = z.string().trim().min(1).max(200)
 const visibility = z.enum(["personal", "org"])
+
+const shareRole = z.enum(["viewer", "editor"])
+const sharingBody = z
+  .object({
+    orgAccess: z.enum(["none", "viewer", "editor"]).optional(),
+    users: z
+      .array(z.object({ userId: z.string().uuid(), role: shareRole }).strict())
+      .max(200)
+      .optional(),
+    roles: z
+      .array(z.object({ roleId: z.string().uuid(), role: shareRole }).strict())
+      .max(100)
+      .optional(),
+  })
+  .strict()
 
 const createBody = z.object({
   title,
@@ -294,6 +310,29 @@ dashboardsRoutes
     const { id, version } = c.req.valid("param")
     try {
       return success(c, await getVersion(extractRlsContext(c), id, version))
+    } catch (err) {
+      return failure(c, err)
+    }
+  })
+  // Who sees it (sharing.ts): read by anyone who sees it, changed by its editors holding
+  // kernel:dashboards:share. A person's change is never an approval.
+  .get("/:id/sharing", zValidator("param", idParam), async (c) => {
+    try {
+      return success(c, await getDashboardSharing(extractRlsContext(c), c.req.valid("param").id))
+    } catch (err) {
+      return failure(c, err)
+    }
+  })
+  .put("/:id/sharing", zValidator("param", idParam), zValidator("json", sharingBody), async (c) => {
+    try {
+      return success(
+        c,
+        await setDashboardSharing(
+          extractRlsContext(c),
+          c.req.valid("param").id,
+          c.req.valid("json"),
+        ),
+      )
     } catch (err) {
       return failure(c, err)
     }

@@ -226,10 +226,10 @@ function secretConfigKeyResolver(
  * handler is therefore still reachable on a read-only run.
  */
 const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
-  // Settings-page writes (agentVisible: false tools): the mail providers switch, and the
-  // synced sources' archive / run now (its list op is refused with them: never a read-only need).
+  // Settings-page writes (agentVisible: false tools): the mail providers switch. The synced
+  // sources' method is not here: its list op is a read (a dashboard may show it), and it
+  // refuses archive / run now on a read-only run itself (bridge/knowledge-curation.ts).
   "mail_providersSet",
-  "knowledge_syncedSources",
   // Kernel-generic writes
   "emit",
   "enqueueJob",
@@ -308,7 +308,8 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   "tickets_assign",
   "tickets_merge",
   "tickets_markRead",
-  "tickets_admin",
+  // tickets_admin is not here: it serves reads and writes, and refuses its write ops on a
+  // read-only run itself (bridge/tickets.ts TICKETS_ADMIN_READ_OPS).
   "tickets_runJob",
   "tickets_runSync",
   "tickets_onGmailPushService",

@@ -3578,7 +3578,8 @@ export function dashboardSourceRefusal(
   if (tool.gated || tool.conditionalGate || tool.gatedWhen) return "it needs an approval"
   if (tool.externalEffect) return "it acts outside Liaison"
   if (tool.contractOnly) return "it is reached only through a provider contract"
-  if (tool.agentVisible === false) return "it is not offered to agents"
+  // Hidden from agents (`agentVisible: false`) is a catalog choice, not a reason: a settings
+  // page's own read runs as the viewer, under its scopes, like any other read.
   if (tool.requiresHumanTurn) return "it runs only on a person's own turn"
   // A "user" boundary is a read people and agents both call (taint-checked inside a
   // thread): a view may show it like any other read. Internal and agent-only tools

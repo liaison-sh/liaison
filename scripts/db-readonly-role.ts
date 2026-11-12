@@ -20,7 +20,7 @@
 // fail-closed on that specific cluster (requires DATABASE_URL).
 // --regenerate renders the grants SQL from the current liaison-self catalog
 // (`packages/db-core/src/grants-renderer.ts`) and WRITES it to the single
-// checked-in file (`apps/api/src/apps/database/generated/readonly-grants.sql`
+// checked-in file (`apps/api/src/modules/apps/connections/sql/generated/readonly-grants.sql`
 // — also the file `deploy/postgres-init/20-readonly-role.sh` executes via a
 // bind mount, no second copy). No DB connection required — run this after
 // any catalog change, then commit the diff.
@@ -36,11 +36,11 @@ import { getAdapter, renderReadonlyGrants } from "@liaison/db-core"
 import postgres from "postgres"
 // Side-effect import: registers the liaison-self adapter into db-core's
 // static registry so getAdapter("liaison-self") resolves.
-import "../apps/api/src/apps/database/adapters/liaison-self"
+import "../apps/api/src/modules/apps/connections/sql/adapters/liaison-self"
 
 const ROLE_NAME = "liaison_readonly"
 const GENERATED_GRANTS_PATH = new URL(
-  "../apps/api/src/apps/database/generated/readonly-grants.sql",
+  "../apps/api/src/modules/apps/connections/sql/generated/readonly-grants.sql",
   import.meta.url,
 ).pathname
 

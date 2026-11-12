@@ -35,12 +35,15 @@ import {
 } from "~/seed/tiers/demo/seed-demo"
 import { SAAS_ARLON_SUBSCRIPTION } from "~/seed/worlds/saas/plan"
 import { drainOutbox } from "~/tests/helpers/outbox"
+import { seededApps } from "~/tests/helpers/seeded-app-rows"
 import { installFromDist } from "../../../../../test-support/seed/install-dist-apps"
 import { paymentRecoveredInjector, recoveredCard } from "./payment-recovered"
 import { settleDemoPaymentsDeliveries } from "./payments/deliver"
 import { forgetDemoPaymentsOutside } from "./payments/overlay"
 
 const CATALOG_WORLD_APPS = ["invoicing", "stripe"]
+/** The catalog activations this file makes, undone at its end (no later file inherits them). */
+const activated = seededApps()
 const BOARD_DATE = new Date("2026-11-09T08:30:00.000Z")
 const ORG_SLUG = `saas-card-recovered-${Date.now().toString(36)}`
 const OWNER = {
@@ -146,7 +149,10 @@ beforeAll(async () => {
     appsRoot = mkdtempSync(path.join(tmpdir(), "saas-card-recovered-"))
     process.env.LIAISON_APPS_DIR = path.join(appsRoot, "apps")
   }
-  for (const app of CATALOG_WORLD_APPS) await installFromDist(app, crypto.randomUUID())
+  for (const app of CATALOG_WORLD_APPS) {
+    activated.track(app)
+    await installFromDist(app, crypto.randomUUID())
+  }
   initEventBus()
   world = await seedDemoWorld({
     orgSlug: ORG_SLUG,
@@ -159,6 +165,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (world) await forgetDemoPaymentsOutside(world.orgId)
+  await activated.cleanup()
   SandboxBridgeTestAccess.setFetch(null)
   DemoModeTestAccess.set(null)
   if (appsRoot) rmSync(appsRoot, { recursive: true, force: true })

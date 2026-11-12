@@ -65,6 +65,10 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   // tours): the pure guards and the seeded reads run in demo-seed, the modules
   // they reach in unit, the tour anchors against the web source in guards.
   { glob: "apps/api/src/modules/demo/worlds/saas/payments/stripe-standin.integration.test.ts", suites: ["integration-extra", "unit", "demo-seed"] },
+  // The stand-in itself and the sandbox egress paths that hand it a demo org's payments
+  // calls (fetch, file download, platform-held SQL): its real-kernel test runs in integration-extra.
+  { glob: "apps/api/src/modules/demo/worlds/saas/payments/**", suites: ["integration-extra", "demo-seed", "unit", "web-unit", "guards"] },
+  { glob: "apps/api/src/modules/apps/sandbox/bridge/{egress,files,db}.ts", suites: ["integration-extra", "unit", "integration", "api-guards"] },
   // The owner's question played through the agent loop on the seeded world: seeded, so demo-seed only.
   { glob: "apps/api/src/seed/worlds/saas/owner-question-reach.saas.integration.test.ts", suites: ["demo-seed"] },
   { glob: "apps/api/src/seed/worlds/saas/seed-without-owner.saas.integration.test.ts", suites: ["demo-seed"] },

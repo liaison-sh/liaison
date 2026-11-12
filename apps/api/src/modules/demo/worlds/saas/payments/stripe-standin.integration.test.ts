@@ -25,6 +25,7 @@ import { env } from "~/lib/env"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
 import { createCredentialConnection } from "~/modules/apps/connections/service"
 import { executeTool } from "~/modules/apps/execute-tool"
+import { resetInstallTrustCache } from "~/modules/apps/install-trust"
 import { reloadOrgApps } from "~/modules/apps/org-apps"
 import { registerApps } from "~/modules/apps/runtime"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
@@ -447,6 +448,12 @@ describe("the card-payments stand-in on the real kernel", () => {
     initEventBus()
     await initSandboxPool()
     await initWorkerPool()
+    // Both apps run here as the in-tree apps they are. A catalog activation of
+    // either name left in this database by an earlier file (an install whose
+    // record is gone) would make the egress read the app as installed with no
+    // grant, and refuse every host before the stand-in sees the call.
+    await sql`DELETE FROM kernel.apps_active_version WHERE name IN ('invoicing', 'stripe')`
+    resetInstallTrustCache()
     await registerApps([descriptor("invoicing") as never, descriptor("stripe") as never], ORG)
     await registerTemplates()
     for (const name of ["invoicing", "stripe"]) {

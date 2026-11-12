@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // A VISITOR'S FIRST TURN on the software world, freshly seeded as a visitor org
-// at the board date: a question about a prospect who has no Stripe customer.
+// at the board date: a question about a prospect who has no card-payments customer.
 // The turn runs through the REAL agent loop (context, tool list, tool search,
 // tool execution) against a local OpenRouter stub that answers with a scripted
 // model, so no model is ever called. Each read the script makes must answer:
@@ -26,6 +26,7 @@ import { ActivityTestAccess, type LinkedRecordsAsked } from "~/modules/contacts/
 import { registerDemoAlertMailer } from "~/modules/demo/demo-alerts"
 import { DemoBudgetTestAccess } from "~/modules/demo/demo-budget"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
+import { PAYMENTS_APP } from "~/modules/demo/worlds/saas/payments/sentinel"
 import { sendMessage } from "~/modules/threads/message"
 import { createOrGetAgentDm, resolvePersonalAgentId } from "~/modules/threads/thread"
 import { seedContext } from "~/seed/context"
@@ -74,11 +75,14 @@ const SEARCH = (query: string): ScriptCall => ({
   args: () => ({ query }),
 })
 
+/** The processor's name as the payments app writes it in its answers. */
+const PAYMENTS_LABEL = PAYMENTS_APP.charAt(0).toUpperCase() + PAYMENTS_APP.slice(1)
+
 /** The visitor's per-turn step budget (spec: 8 steps and 6 searches). */
 const VISITOR_STEPS = 8
 
 const SEARCHES: ScriptCall[] = [
-  SEARCH("find a Stripe customer by name"),
+  SEARCH("find a card-payments customer by name"),
   SEARCH("customer subscription and card"),
   SEARCH("company account manager"),
   SEARCH("deals of a company"),
@@ -414,7 +418,7 @@ async function storedCallsAfter(orgId: string, threadId: string, messageId: stri
 const convo = { threadId: "", ownerId: "" }
 
 describe("a visitor's first turn, with a scripted model", () => {
-  it("every read of a first question about a prospect answers, none fails, the one with no Stripe customer included", async () => {
+  it("every read of a first question about a prospect answers, none fails, the one with no card-payments customer included", async () => {
     expect(world.failures).toEqual([])
     const orgId = world.orgId
     const ownerId = world.org.ownerUserId as string
@@ -486,11 +490,12 @@ describe("a visitor's first turn, with a scripted model", () => {
     expect([...READS].filter((r) => !ran.has(r))).toEqual([])
     expect(cursor).toBeLessThanOrEqual(VISITOR_STEPS)
 
-    // The prospect has no Stripe customer, and the read says so in words.
+    // The prospect has no card-payments customer, and the read says so in words.
+    // The app's own sentence names the processor (PAYMENTS_LABEL).
     const get = called.find(
       (c) => c.name === "stripe__customers_get" && !notRun(results.get(c.id) ?? ""),
     )
-    expect(results.get(get?.id ?? "") ?? "").toContain("No Stripe customer is linked")
+    expect(results.get(get?.id ?? "") ?? "").toContain(`No ${PAYMENTS_LABEL} customer is linked`)
   }, 600_000)
   it("the next question, about a sales agent's staged follow-up, reads without a failed read, and a refused change is its own row, not a read that did not answer", async () => {
     const orgId = world.orgId

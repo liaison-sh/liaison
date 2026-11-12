@@ -11,9 +11,11 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import type { RlsClient } from "~/db"
 import {
+  ATOMIC_LOCAL_METHODS,
   ATOMIC_REFUSED_EGRESS_METHODS,
   type AtomicEgressAllowance,
   guardAtomicJobEgress,
+  isAtomicLocalMethod,
 } from "~/modules/apps/atomic-egress"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 
@@ -102,5 +104,60 @@ describe("atomic jobs that call outside (shrink-only allowlist)", () => {
     )
     const other = await session.fetch("https://example.test", "{}").catch((e: unknown) => e)
     expect((other as { code?: string }).code).not.toBe("atomic_run_egress_refused")
+  })
+
+  // The refusal set is derived from the bridge: every method not reviewed as
+  // local is refused, so a remote query (sql_*), a model call
+  // (files_analyzeDocument), a nested run (pdf_render) or a method added later
+  // cannot hold the run's transaction across its latency.
+  const org = "00000000-0000-0000-0000-00000000a7e2"
+  const poison = new Proxy(
+    {},
+    {
+      get(_t, prop) {
+        if (typeof prop === "symbol" || prop === "then") return undefined
+        throw new Error(`poison tx: ${String(prop)}`)
+      },
+    },
+  ) as RlsClient
+  const bridgeOf = (atomic: boolean) =>
+    createRpcBridge(
+      "monitoring",
+      "system:monitoring",
+      org,
+      poison,
+      { name: "monitoring" },
+      undefined,
+      "system",
+      undefined,
+      { currentJob: { name: "assign-refs", payload: {}, timeoutMs: 60_000, atomic } },
+    )
+
+  it("every bridge method that is not local refuses in an atomic job, sql and long calls included", async () => {
+    const plain = bridgeOf(false)
+    const atomic = bridgeOf(true)
+    const methods = Object.keys(atomic).filter((k) => typeof atomic[k] === "function")
+    const notRefused: string[] = []
+    for (const name of methods) {
+      if (isAtomicLocalMethod(name)) {
+        expect({ name, same: atomic[name] === plain[name] || String(atomic[name]) === String(plain[name]) }).toEqual({ name, same: true })
+        continue
+      }
+      const err = await (atomic[name] as () => Promise<unknown>)().catch((e: unknown) => e)
+      if ((err as { code?: string })?.code !== "atomic_run_egress_refused") notRefused.push(name)
+    }
+    expect(notRefused).toEqual([])
+    for (const m of ["sql_query", "sql_reads", "sql_schema", "sql_probe", "files_analyzeDocument", "pdf_render"]) {
+      expect({ m, present: methods.includes(m), local: isAtomicLocalMethod(m) }).toEqual({ m, present: true, local: false })
+    }
+  })
+
+  it("the named egress methods all exist on the bridge and none is classed local", () => {
+    const methods = new Set(Object.keys(bridgeOf(false)))
+    const stale = ATOMIC_REFUSED_EGRESS_METHODS.filter((m) => !methods.has(m) && !m.startsWith("connector_"))
+    expect(stale).toEqual([])
+    expect(ATOMIC_REFUSED_EGRESS_METHODS.filter(isAtomicLocalMethod)).toEqual([])
+    // A local entry that no bridge method carries any more is stale.
+    expect([...ATOMIC_LOCAL_METHODS].filter((m) => !methods.has(m))).toEqual([])
   })
 })

@@ -5,11 +5,13 @@
 // A sandboxed job declared `atomic: true` runs on ONE transaction from start
 // to end (infra/jobs/job-context.ts, "ambient"): it holds a pooled connection,
 // and every row it touched stays locked, for its whole wall clock. A provider
-// call inside that run holds them across the provider's latency. So an atomic
-// job's bridge refuses every egress method (ATOMIC_REFUSED_EGRESS_METHODS)
-// with `atomic_run_egress_refused`: `atomic` survives only for work that stays
-// in the database. A job that needs both splits into steps: read, call the
-// provider, then write in one bridge call (or `ctx.steps.run`).
+// call, a remote query or a nested run inside that run holds them across its
+// latency. So an atomic job's bridge keeps only the methods that stay in the
+// database or the local process (ATOMIC_LOCAL_METHOD_PREFIXES and
+// ATOMIC_LOCAL_METHODS), and refuses EVERY other method with
+// `atomic_run_egress_refused`: a new bridge method is refused by default until
+// it is reviewed as local. A job that needs both splits into steps: read, call
+// the provider, then write in one bridge call (or `ctx.steps.run`).
 //
 // The jobs that do egress inside an atomic run today are listed in
 // contract/atomic-egress.allowlist.json. The list only shrinks
@@ -19,11 +21,89 @@
 // Core apps are not concerned: their jobs declare no `atomic`.
 import allowlist from "./contract/atomic-egress.allowlist.json"
 
-/** Bridge methods that reach outside the database (a provider, another run, a model). */
+/**
+ * Prefixes of bridge methods an atomic job keeps: the app's own rows and data
+ * store, kernel row reads, logs, pure codecs and crypto, and the effect ledger
+ * and step state (their own short writes on the privileged pool).
+ */
+export const ATOMIC_LOCAL_METHOD_PREFIXES: readonly string[] = [
+  "db_",
+  "store_",
+  "kernel_",
+  "log_",
+  "codec_",
+  "crypto_",
+  "effects_",
+  "_steps_",
+  "steps_",
+]
+
+/** Single bridge methods an atomic job keeps: database, Redis or local-process work only. */
+export const ATOMIC_LOCAL_METHODS: ReadonlySet<string> = new Set([
+  "_approvalContext_get",
+  "accounts_list",
+  "accounts_setMetadata",
+  "approval_recordAmbiguous",
+  "approval_recordAwaitingOutput",
+  "approval_recordEffectLanded",
+  "approval_recordFailedNoEffect",
+  "approval_recordStarted",
+  "approval_recordSucceeded",
+  "approvals_pendingFor",
+  "approvals_statusOf",
+  "callerHasScope",
+  "config_setSecret",
+  "connections_describe",
+  "connections_getAccounts",
+  "connections_getSettings",
+  "contracts_binding",
+  "contracts_providers",
+  "files_attachToParent",
+  "files_listAttachments",
+  "files_reparent",
+  "limiter_pause",
+  "pages_link",
+  "config_get",
+  "config_has",
+  "emit",
+  "enqueueJob",
+  "jobs_enqueue",
+  "timers_wakeIn",
+  "getCallerApp",
+  "getIngestionCallerApp",
+  "getOrgId",
+  "getOrgSettings",
+  "getUserId",
+  "getUserSettings",
+  "hasOnlineUsers",
+  "hasScope",
+  "invalidateIdempotency",
+  "listContactsByExternalId",
+  "messages_post",
+  "nextHandle",
+  "realtime_publish",
+  "requestApproval",
+  "resolveContact",
+  "sequences_allocate",
+  "time_civil",
+])
+
+/** True when an atomic job may call bridge method `name` (it stays local). */
+export function isAtomicLocalMethod(name: string): boolean {
+  return ATOMIC_LOCAL_METHODS.has(name) || ATOMIC_LOCAL_METHOD_PREFIXES.some((p) => name.startsWith(p))
+}
+
+/**
+ * Bridge methods known to reach outside the database (a provider, a remote
+ * database, another run, a model). Not the refusal set: every non-local method
+ * is refused. Named so the guard test proves the long ones stay refused.
+ */
 export const ATOMIC_REFUSED_EGRESS_METHODS: readonly string[] = [
   "fetch",
   "bulk_fetchToBlob",
   "files_importFromUrl",
+  "files_analyzeDocument",
+  "pdf_render",
   "connections_getToken",
   "imap_fetch",
   "imap_writeBack",
@@ -32,6 +112,10 @@ export const ATOMIC_REFUSED_EGRESS_METHODS: readonly string[] = [
   "contracts_call",
   "agent_run",
   "agent_spawn",
+  "sql_query",
+  "sql_reads",
+  "sql_schema",
+  "sql_probe",
   "connector_list_operations",
   "connector_read",
   "connector_write",
@@ -64,7 +148,7 @@ function refused(method: string, app: string, job: string): Error {
 }
 
 /**
- * Refuse the egress methods of an atomic job's bridge (mutated in place),
+ * Refuse every non-local method of an atomic job's bridge (mutated in place),
  * unless the job is a listed offender. Applied last, after app extensions.
  */
 export function guardAtomicJobEgress(
@@ -73,8 +157,8 @@ export function guardAtomicJobEgress(
   job: string,
 ): void {
   if (atomicEgressAllowed(app, job)) return
-  for (const name of ATOMIC_REFUSED_EGRESS_METHODS) {
-    if (typeof bridge[name] !== "function") continue
+  for (const name of Object.keys(bridge)) {
+    if (typeof bridge[name] !== "function" || isAtomicLocalMethod(name)) continue
     bridge[name] = async () => {
       throw refused(name, app, job)
     }

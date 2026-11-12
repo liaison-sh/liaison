@@ -17,7 +17,7 @@ on those screens.
 To write an adapter for your API, follow the
 [`api-connector-authoring` skill](../.claude/skills/api-connector-authoring/SKILL.md);
 this document is its reference. The worked example throughout is the fixture
-CRM in `apps/api/src/apps/api-connector/__fixtures__/fixture-crm/`.
+CRM in `apps/api/src/modules/apps/connections/api/__fixtures__/fixture-crm/`.
 
 ---
 
@@ -29,10 +29,10 @@ agent ──tool call──▶ execute-tool (scope check, params schema, approva
                   connector tools        connector_list_operations
                         │                connector_read   (read ops, taint source)
                         │                connector_write  (write ops, always gated)
-                        │                (sandboxed handlers: thin delegators that
-                        │                 never see credentials)
+                        │                (the app's sandboxed handlers, bundled-apps/
+                        │                 api-connector: they never see credentials)
                         ▼
-                  host bridge  (HOST SIDE)
+                  ctx.api  platform-held API connection  (HOST SIDE)
                         │  resolve the connection: adapter row + org credentials
                         │  render(op, params)  → method, path, query, body
                         │  apply auth          → header / query / basic / bearer /
@@ -53,8 +53,22 @@ agent ──tool call──▶ execute-tool (scope check, params schema, approva
 ```
 
 The adapter format, templating, projection and pagination live in the pure
-package `packages/api-connector-core` (no I/O): the app, the CLI and the
-tests all import it, so the rules are enforced the same way everywhere.
+package `packages/api-connector-core` (no I/O): the platform, the app's
+screens, the CLI and the tests all import it, so the rules are enforced the
+same way everywhere.
+
+The app ships in the catalog (`bundled-apps/api-connector`): its agent tools,
+its settings screen and its customer card. The connection itself is the
+platform's: an app declares a credentials connection with an `api` block
+(the read, write and admin scopes), and the platform stores each account's
+adapter in the app's `adapters` table (previous ones in `adapter_versions`),
+holds the credentials, renders, signs and sends every call
+(`apps/api/src/modules/apps/connections/api/`), and checks the caller's scopes
+on every `ctx.api` call. Calls to one connection share the platform's
+per-connection limiter: at most the connection's declared `limits` (4 in
+flight) across every process. An instance that ran the connector before it
+moved to the catalog keeps every connection: the boot reconcile installs the
+catalog app under the same name, on the same tables and the same accounts.
 
 ### Demo orgs
 
@@ -85,7 +99,7 @@ from its first paint; the Test panel and the agent tools work.
 | `connector_list_operations({connection?})` | read | Lists each connection's operations: name, kind, role, description, params schema, returned fields. The agent instructions tell the agent to call it first. |
 | `connector_read({connection, operation, params})` | read | Runs one `read` operation and returns the projected items. Output is wrapped as untrusted external content and taints the turn. |
 | `connector_write({connection, operation, params})` | write, gated | Runs one `write` operation after a person approves it. Checked at staging, then pinned (below). The approval names the connection, the operation, the request (method, host and path) and the params. |
-| `connector_adapter_reference({section?})` | read, admin | The agent's authoring guide (`apps/api/src/apps/api-connector/reference/authoring.md`), one section per call (at most 30,000 characters); without `section`, the list of sections and the overview. Its field and roles tables are generated like this page's. Section `woocommerce` is a complete example adapter for a WooCommerce shop (orders, one order, products, best sellers). |
+| `connector_adapter_reference({section?})` | read, admin | The agent's authoring guide (`apps/api/src/modules/apps/connections/api/reference/authoring.md`), one section per call (at most 30,000 characters); without `section`, the list of sections and the overview. Its field and roles tables are generated like this page's. Section `woocommerce` is a complete example adapter for a WooCommerce shop (orders, one order, products, best sellers). |
 | `connector_adapter_get({identifier, operationsPage?})` | read, admin | The stored adapter document and its credential status, with `bytes` and `truncated`. A document over 30,000 characters comes with one page of its operations at a time. |
 | `connector_adapter_test({identifier, operation, params})` | read, admin | One page of one `read` operation with the stored credentials, as `POST /test` runs it; items fenced as external content (it taints the turn). A `write` is refused (`write_not_testable`). |
 | `connector_adapter_versions({identifier})` | read, admin | The kept previous adapters (the last 20 saves): id, version, who saved it and when, and whether restoring it moves the credential target. |
@@ -180,7 +194,7 @@ result names the ticket and says nothing was written to an external system.
 
 ### Customer card and agent context
 
-`GET /api/api-connector/customer` asks every connection whose adapter fills
+The customer card (the app's `customer_lookup` tool) asks every connection whose adapter fills
 `customer.lookup`: by email first, then by phone (when one is given), then by
 the company domain (the email's, or the one given), each only when the lookup
 operation declares that param. Only a plain addr-spec
@@ -478,7 +492,7 @@ accounts can create one; legacy private apps are no longer offered to new accoun
    | `customer.orders` / `customer.invoices`, when the account has them | `crm.objects.orders.read` / `crm.objects.invoices.read` (without them those endpoints answer 403) |
 
 3. Copy the key (`pat-<region>-…`) into the connector's `token` field on **Settings ›
-   Connectors**, or into `apiConnectors[].credentials.token` with `liaison config apply`.
+   Connectors**, or into the app's `connections[].credentials.token` with `liaison config apply`.
 4. Point the adapter's `baseUrl` at `https://api.hubapi.com`.
 
 Rotate the key from the same page; a rotated key takes effect on the next call after you
@@ -861,7 +875,7 @@ lines over the last 60 days; invoices; stock):
 Run it locally:
 
 ```sh
-FIXTURE_CRM_API_KEY=dev-key bun run apps/api/src/apps/api-connector/__fixtures__/fixture-crm/server.ts
+FIXTURE_CRM_API_KEY=dev-key bun run apps/api/src/modules/apps/connections/api/__fixtures__/fixture-crm/server.ts
 # fixture CRM listening on http://127.0.0.1:4010/v1 (header X-Api-Key;
 # without FIXTURE_CRM_API_KEY it answers to fixture-crm-dev-key)
 ```
@@ -883,45 +897,56 @@ them.
 
 ## 6. Config and CLI reference
 
-### `liaison config apply`: the `apiConnectors` section
+### `liaison config apply`: the app's provisioning
+
+The connections are the `api-connector` app's own setup: its `provision` block
+names each connection's adapter, and its `connections` list names each
+connection's credentials.
 
 ```yaml
 apps:
   - name: api-connector
     enable: true
-
-apiConnectors:
-  - identifier: crm                      # the connection slug, ^[a-z0-9][a-z0-9-]{0,39}$
-    adapter: connectors/crm.adapter.yaml # a path relative to this config file, or the adapter inline
-    credentials:
-      apiKey: "${CRM_API_KEY}"           # fields per auth type (section 3); secrets only as ${VAR}
-  - identifier: erp
-    adapter: connectors/erp.adapter.yaml
-    credentials:
-      clientId: "${ERP_CLIENT_ID}"
-      clientSecret: "${ERP_CLIENT_SECRET}"
+    provision:
+      connectors:
+        - identifier: crm                          # the connection slug, ^[a-z0-9][a-z0-9-]{0,39}$
+          adapter: { $file: connectors/crm.adapter.yaml }  # a file next to this config, or the adapter inline
+        - identifier: erp
+          adapter: { $file: connectors/erp.adapter.yaml }
+    connections:
+      - name: api
+        identifier: crm
+        credentials:
+          apiKey: "${CRM_API_KEY}"                 # fields per auth type (section 3); secrets only as ${VAR}
+      - name: api
+        identifier: erp
+        credentials:
+          clientId: "${ERP_CLIENT_ID}"
+          clientSecret: "${ERP_CLIENT_SECRET}"
 ```
 
-Stored credentials name the person who connected them. Without an `admin`
-section in the file, the run acts as the org's earliest active admin; an org
-with no active admin gets its adapters but its credentials are refused, with
-a message saying to add an `admin` section.
+A file that still has a top-level `apiConnectors` section is refused (exit 2)
+with a message saying where it moved.
 
-Each entry loads its adapter (a path must be relative to the config file's
-directory and stay inside it; an absolute path or one that escapes is refused),
-validates it (exit 2 with the issues before anything is written), checks the
-credential fields against the adapter's auth type, stores the adapter when it
-changed, then the credentials when they changed (compared decrypted, never
-printed). An adapter whose credential target changed (origin, auth type,
+`{ $file: <path> }` is replaced by that file's text before the app reads the
+block: the path must be relative to the config file's directory and stay
+inside it. The app validates each adapter (exit 2 with the issues before
+anything is written) and stores it only when it changed; the credentials are
+written after the adapters, and only when they changed (compared decrypted,
+never printed). An adapter whose credential target changed (origin, auth type,
 apiKey placement, token URL or host) deletes the stored credentials with it;
-the plan says so, and apply enters the config's credentials again when the
-entry has them, or reports them pending. A credentials block whose values are all empty (`${VAR:-}`) is
-reported pending. Applying the same file twice changes nothing the second
-time; `--dry-run` plans without writing. `config verify` probes each
-connection with one page of a `read` operation that has no required params and
-is not a role answering "at least one of" params (`customer.lookup`,
+the plan says so, and the file's `connections` enter them again. A credentials
+block whose values are all empty (`${VAR:-}`) is reported pending. Stored
+credentials name the person who connected them: without an `admin` section in
+the file, the run acts as the org's earliest active admin. Applying the same
+file twice changes nothing the second time; `--dry-run` plans without writing.
+
+`config verify` runs the app's own check: each connection with credentials is
+probed with one page of a `read` operation that has no required params and is
+not a role answering "at least one of" params (`customer.lookup`,
 `stock.check`, which the connector refuses without one): give the adapter a
-cheap param-less list. A connection without one is reported skipped.
+cheap param-less list. A connection without one, or without credentials, is
+skipped.
 
 ### CLI
 
@@ -969,57 +994,29 @@ Both print one JSON report on stdout.
   `boolean` as `value == "true"`, an `array` param as a comma-separated list.
   A name the operation does not declare is refused (`invalid_params`).
 
-### HTTP routes
+### The settings screen and the customer card
 
-Every body is the usual envelope (`{data}` or `{error: {code?, message}}`);
-the shapes are the types in `packages/api-connector-core/src/contract.ts`
-(`@liaison/api-connector-core/contract`), which the routes and the web client
-both use.
+The app's settings screen and its customer card run in the app's frame and
+call the app's own tools; the agent never sees these (`agentVisible: false`).
+Each answers the shapes in `packages/api-connector-core/src/contract.ts`
+(`@liaison/api-connector-core/contract`), or `{error: {code, message, status}}`.
+
+| Tool | Scope | What |
+|---|---|---|
+| `settings_connections` | `api-connector:read` | `{connections, readOnly, readOnlyReason?}`. Each connection: identifier, name, adapter id and version, baseUrl, auth shape (type; `in`/`name` for apiKey, never a secret), roles, operations (name, kind, role, description, params, fields), status (`ok`, `needs_credentials`, `error`). `readOnly` is true in a demo org (`readOnlyReason: "demo"`): the screen renders no add, replace, delete or credentials control from it |
+| `settings_adapter_save` | `api-connector:admin` | `{identifier, document, confirmCredentialWipe?}` (JSON or YAML text): the connection summary and `credentialsCleared` (true, and `status: needs_credentials`, when the credential target changed and the credentials were deleted). A change of the credential target while credentials are stored is refused `confirm_credential_wipe` (409) with `priorTarget` and `newTarget` unless the call confirms it; credentials entered or removed after that check refuse the save (409); `invalid_adapter` (422) with `issues: [{path, message}]`; 403 in a demo org |
+| `connector_adapter_versions` | `api-connector:admin` | `{identifier, current, versions}`: the kept previous adapters, newest first (id, adapterVersion, name, savedBy, savedByName, savedAt, target, `targetDiffers`) |
+| `settings_adapter_restore` | `api-connector:admin` | `{identifier, versionId, confirmCredentialWipe?}`: restore a kept adapter (the current one is kept in turn); the connection summary and `credentialsCleared`, `confirm_credential_wipe` (409) when stored credentials would be deleted without the confirmation, `unknown_version` (404), 403 in a demo org |
+| `settings_adapter_delete` | `api-connector:admin` | `{identifier}`: remove the adapter and its credentials; 404 when there is neither, 403 in a demo org |
+| `settings_adapter_test` | `api-connector:admin` | `{identifier, operation, params}`, one page of a read operation. The call ran: `{ok: true, status, items, truncated, ms}`, or `{ok: false, status, code, message, ms}` when the API failed (`upstream_status`, `timeout`, `too_large`, `invalid_response`, `host_refused`, `not_configured`, `demo_restricted`). Refused before any request: `write_not_testable` (422), `unknown_connection` / `unknown_operation` (404), `invalid_params` (400) |
+| `customer_lookup` | `api-connector:read` | The resolver behind the customer card: `{ticketId}` or `{mailConversationId}` (the participant is read under the viewer's own access) or one of `email`, `phone`, `domain`. `{matches: [{connection, connectionName, matchedBy, summary, currency?, orders?, invoices?, deals?}], configured, connections, errors}` (plus `email` for a ticket or conversation). `summary` maps dotted field paths to typed values (number, string, boolean; a list of scalars joined); `currency` is the record's own `currency` / `currency_code` field, which the card formats amounts in |
+
+Credentials go through the host's own credential dialog, never through the
+app:
 
 | Route | Scope | What |
 |---|---|---|
-| `GET /api/api-connector/adapters` | `api-connector:read` | `{connections, readOnly, readOnlyReason?}`. Each connection: identifier, name, adapter id and version, baseUrl, auth shape (type; `in`/`name` for apiKey, never a secret), roles, operations (name, kind, role, description, params, fields), status (`ok`, `needs_credentials`, `error`). `readOnly` is true in a demo org (`readOnlyReason: "demo"`): the settings page renders no add, replace, delete or credentials control from it |
-| `PUT /api/api-connector/adapters/:identifier` | `api-connector:admin` | Store an adapter (JSON, or YAML text); 200 with the connection summary and `credentialsCleared` (true, and `status: needs_credentials`, when the credential target changed and the credentials were deleted). A change of the credential target while credentials are stored answers 409 `confirm_credential_wipe` with `priorTarget` and `newTarget` unless the request carries `?confirmCredentialWipe=true`; credentials entered or removed after that check refuse the save with 409, 422 `invalid_adapter` with `issues: [{path, message}]`, 400 for a bad slug, 403 in a demo org |
-| `GET /api/api-connector/adapters/:identifier/versions` | `api-connector:admin` | `{identifier, current, versions}`: the kept previous adapters, newest first (id, adapterVersion, name, savedBy, savedByName, savedAt, target, `targetDiffers`) |
-| `POST /api/api-connector/adapters/:identifier/restore` | `api-connector:admin` | `{versionId, confirmCredentialWipe?}`: restore a kept adapter (the current one is kept in turn); 200 with the connection summary and `credentialsCleared`, 409 `confirm_credential_wipe` with `priorTarget` and `newTarget` when stored credentials would be deleted without the confirmation, 404 for an unknown version, 403 in a demo org |
-| `DELETE /api/api-connector/adapters/:identifier` | `api-connector:admin` | Remove the adapter and its credentials; 404 when there is neither, 403 in a demo org |
-| `POST /api/api-connector/adapters/:identifier/test` | `api-connector:admin` | `{operation, params}`, one page of a read operation. The call ran: 200 `{ok: true, status, items, truncated, ms}`, or 200 `{ok: false, status, code, message, ms}` when the API failed (`upstream_status`, `timeout`, `too_large`, `invalid_response`, `host_refused`, `not_configured`, `demo_restricted`). Refused before any request: 422 `write_not_testable`, 404 `unknown_connection` / `unknown_operation`, 400 `invalid_params` |
-| `GET /api/api-connector/customer?email=&phone=&domain=` | `api-connector:read` | The resolver behind the customer card (one of the three required): `{matches: [{connection, connectionName, matchedBy, summary, currency?, orders?, invoices?, deals?}], configured, connections, errors}`. `summary` maps dotted field paths to typed values (number, string, boolean; a list of scalars joined); `currency` is the record's own `currency` / `currency_code` field, which the card formats amounts in |
 | `POST /api/connections/api-connector/api/credentials` | `api-connector:accounts:admin` | Credentials, always org-owned: `identifier` = the slug (top level or inside `credentials`) plus exactly the adapter's auth fields. 404 when no adapter is stored for the slug, 400 for a missing or extra field or a bad slug, 403 in a demo org |
-
-In the web app: Settings → API connector (list, add by pasting or uploading
-the adapter with each issue shown at its path, a credentials form derived from
-the adapter's auth, a Test panel offering read operations only, a History
-panel that restores an earlier adapter and warns first when that deletes the
-credentials, delete with an inline confirmation).
-
-### Environment
-
-| Variable | Effect |
-|---|---|
-| `LIAISON_ALLOW_PRIVATE_API_CONNECTOR_HOSTS` | `true` lets this connector reach private and loopback addresses (an on-premise ERP, or the fixture in development). Cloud metadata and always-blocked addresses stay refused. Off by default. |
-
-### Error codes
-
-The HTTP status is what a route answers the code with.
-
-| Code | HTTP | Meaning | Usual fix |
-|---|---|---|---|
-| `invalid_adapter` | 422 | The adapter failed validation | Fix each `path: message`; rerun `validate` |
-| `unknown_connection` | 404 | No adapter stored under that identifier | Store the adapter (`config apply` or Settings) |
-| `unknown_operation` | 404 | The adapter has no operation of that name | Call `connector_list_operations`; check the name |
-| `not_configured` | 422 | The connection has no credentials yet, or they lack a field the auth type needs | Store the credentials |
-| `invalid_params` | 400 | A param is unknown, missing, mistyped, out of range or not in its declared `format` for the operation's schema, or a role answering "at least one of" (`customer.lookup`, `stock.check`) got none of them | Match the operation's `params` |
-| `host_refused` | 422 | The host resolves to a private or blocked address, a redirect, the token URL or a rendered request URL left the host or the base URL, or plain http without the private-hosts flag | Use the public https host; for an on-premise or local API set the private-hosts flag |
-| `upstream_status` | 502 | The API answered non-2xx (status included; the body never, except in the agent's `connector_adapter_test`, which shows a clipped, redacted excerpt as `vendorError`), or could not be reached | 401/403: credentials or the auth `name`; 404: path or id; 400: params, or a search `POST` with no body |
-| `timeout` | 504 | No complete answer in 15 s, or the call's 45 s budget ran out | Narrow the request (filters, smaller page) |
-| `too_large` | 502 | The response passed 2 MB, or a customer lookup needed more than its 20 upstream requests | Filter server-side, page smaller; keep chains short |
-| `invalid_response` | 502 | The API did not answer JSON, or the token endpoint returned no `access_token` | Look at a raw response |
-| `demo_restricted` | 403 | A demo org tried to reach anything but its seeded fixture connection | None: demo orgs keep to the fixture |
-| `write_not_testable` | 422 | `/test` or CLI `test` was asked to run a write | Writes run only through the agent, with approval |
-| `write_not_allowed` | 422 | `connector_read` was given a write operation, or `connector_write` a read; or an approved write's adapter or rendered target changed since it was approved (nothing was sent) | Use the tool matching the operation's kind; for a changed write, ask for approval again |
-
----
 
 ## 7. Related docs
 

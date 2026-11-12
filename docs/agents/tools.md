@@ -301,7 +301,6 @@ Rules that say which document templates a record needs (a customs declaration, a
 | `config_mail` | Add Mail app mailboxes. | `mail:accounts:admin` | Yes |
 | `config_tickets` | Add ticket inboxes and change ticket settings. | `tickets:inboxes:admin` | Yes |
 | `config_apps` | Enable apps, set their config, settings and connections. | `kernel:apps:admin` | Yes |
-| `config_apiConnectors` | Add or change API connections. | `api-connector:admin` | Yes |
 | `config_knowledge` | Add knowledge collections and documents. | `knowledge:documents:create` | Yes |
 | `config_agents` | Add or change role agents. | `kernel:agents:admin` | Yes |
 | `config_invoicing` | Change invoicing issuers, tax regimes and e-invoicing. | `invoicing:settings:write` | Yes |

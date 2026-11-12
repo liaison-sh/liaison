@@ -12,7 +12,9 @@
  * the sandboxed run itself (QuickJS and Workers) is covered by
  * modules/apps/workers/executor-parity.test.ts.
  */
+
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { knowledgeCreateDocumentSchema } from "@liaison/shared"
 import { sql } from "drizzle-orm"
 import {
   AppSourceConflictError,
@@ -22,7 +24,11 @@ import {
 } from "~/apps/knowledge/app-sources"
 import { runSyncWorker } from "~/apps/knowledge/knowledge-jobs"
 import { knowledgeRel } from "~/apps/knowledge/schema-refs"
-import { type KnowledgeActor, knowledgeActorFromContext } from "~/apps/knowledge/service"
+import {
+  createKnowledgeDocument,
+  type KnowledgeActor,
+  knowledgeActorFromContext,
+} from "~/apps/knowledge/service"
 import {
   createSyncedSource,
   type SyncedSourceRow,
@@ -631,20 +637,27 @@ describe("an app source files its documents in folders", () => {
     await drive(source.id)
     // A person files their own document in "x": it keeps "x" when the source
     // no longer lists anything there.
-    const own = extractRows<{ id: string }>(
-      await db.execute(sql`
-        INSERT INTO ${knowledgeRel("documents")}
-          (id, org_id, title, body, document_scope, owner_user_id, team, sensitivity, org_access,
-           created_by, required_scopes)
-        VALUES (gen_random_uuid(), ${orgA}::uuid, 'Mine', 'mine', 'organization', ${alice}::uuid,
-                '[]'::jsonb, 'internal', 'editor', ${alice}::uuid, '{}'::text[])
-        RETURNING id`),
-    )[0]!.id
     const x = (await foldersOf(source)).x!
-    await db.execute(sql`
-      INSERT INTO ${knowledgeRel("collection_memberships")}
-        (id, org_id, collection_id, target_type, target_id, created_by)
-      VALUES (gen_random_uuid(), ${orgA}::uuid, ${x.id}::uuid, 'document', ${own}::uuid, ${alice}::uuid)`)
+    const author = {
+      orgId: orgA,
+      userId: alice,
+      scopes: ["knowledge:documents:create", "knowledge:collections:manage", DOC_READ],
+      // An admin's wildcard grant: any sensitivity and team.
+      dimensionGrants: { "*": ["*"] },
+    }
+    await withRlsContext({ actorType: "user", ...author }, (tx) =>
+      createKnowledgeDocument(
+        tx,
+        knowledgeCreateDocumentSchema.parse({
+          documentScope: "organization",
+          title: "Mine",
+          body: "mine",
+          collectionIds: [x.id],
+        }),
+        knowledgeActorFromContext(author),
+        [],
+      ),
+    )
 
     provider.set(source.id, {
       pages: [],

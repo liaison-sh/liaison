@@ -174,7 +174,7 @@ export async function runRecordingPlan<S extends RecordingState>(opts: {
           : {}),
       } as never,
     ) as AppBridge
-  const only = process.env.RECORD_ONLY ? new Set(process.env.RECORD_ONLY.split(",")) : null
+  const only = process.env.CONTRACT_RECORD_ONLY ? new Set(process.env.CONTRACT_RECORD_ONLY.split(",")) : null
   const report: string[] = []
   try {
     for (const step of opts.plan) {
@@ -207,7 +207,7 @@ export async function runRecordingPlan<S extends RecordingState>(opts: {
       })
       const answer = outcome.ok ? outcome.result : { thrown: outcome.error }
       await step.after?.(answer, opts.state)
-      const summary = JSON.stringify(answer)?.slice(0, process.env.RECORD_DEBUG ? 3000 : 160)
+      const summary = JSON.stringify(answer)?.slice(0, process.env.CONTRACT_RECORD_DEBUG ? 3000 : 160)
       if ((only && !only.has(step.entry)) || step.record === false) {
         report.push(`  (prereq) ${step.entry}: ${summary}`)
         continue
@@ -221,7 +221,12 @@ export async function runRecordingPlan<S extends RecordingState>(opts: {
         )
         continue
       }
-      const scrubbed = scrubFixture(fixture, opts.replacements)
+      // A secret the app stores (a provider-minted webhook signing secret) is scrubbed to the
+      // stand-in the key-based scrub gives the provider's answer, so the replay still matches.
+      const stored = fixture.calls
+        .filter((c) => c.method === "config_setSecret" && typeof c.args[1] === "string")
+        .map((c) => ({ from: c.args[1] as string, to: "redacted" }))
+      const scrubbed = scrubFixture(fixture, [...opts.replacements, ...stored])
       const problem = await verifyFixture({
         isolate,
         entry,

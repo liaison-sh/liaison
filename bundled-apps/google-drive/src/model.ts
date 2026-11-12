@@ -120,7 +120,8 @@ export function parsePickedItems(raw: unknown, max = MAX_PICKED_ITEMS): PickedIt
 export function driveModeOf(metadata: Record<string, unknown>): DriveMode {
   const granted = metadata.grantedOAuthScopes
   if (!Array.isArray(granted) || granted.length === 0) return "full"
-  return granted.includes(DRIVE_READONLY_SCOPE) || granted.includes(DRIVE_FULL_SCOPE) ? "full" : "picked"
+  // Exact scope strings of the recorded grant (an array), never a substring.
+  return granted.some((s) => s === DRIVE_READONLY_SCOPE || s === DRIVE_FULL_SCOPE) ? "full" : "picked"
 }
 
 /** What an account may read. */

@@ -49,6 +49,11 @@ const ALLOWED: Array<{ file: string; registry: string; why: string }> = [
     registry: "eventSubscriptionDisposers",
     why: "a release batch of several orgs at once",
   },
+  {
+    file: "modules/apps/app-registries.ts",
+    registry: "eventSubscriptionDisposers",
+    why: "a registry reset forgets every org's registrations, so it disposes every org's subscriptions",
+  },
 ]
 
 function sourceFiles(dir: string, out: string[] = []): string[] {

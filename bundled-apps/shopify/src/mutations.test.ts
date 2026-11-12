@@ -135,6 +135,8 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
   const DUPLICATE = "gid://shopify/Product/200"
   const SURVIVOR_INV = "gid://shopify/InventoryItem/9001"
   const LOC = "gid://shopify/Location/1"
+  // A grant holding the scope the redirect leg needs (write_online_store_navigation).
+  const MERGE_GRANT = ["write_products", "write_inventory", "write_online_store_navigation"]
 
   // Single-default survivor: one "Default Title" variant, stocked 12 on-hand at LOC.
   const singleDefaultSurvivorRead = {
@@ -197,6 +199,7 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
 
   it("single-default survivor: CONSOLIDATES the duplicate's on-hand onto the survivor (no productVariantsBulkCreate — the 'Default Title already exists' 422), then redirects + deletes + emits product:merged", async () => {
     const { ctx, calls, events } = makeCtx({
+      grantedOAuthScopes: MERGE_GRANT,
       fetchResponses: [
         singleDefaultSurvivorRead,
         singleDefaultDuplicateRead,
@@ -301,6 +304,7 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
       },
     }
     const { ctx, calls } = makeCtx({
+      grantedOAuthScopes: MERGE_GRANT,
       fetchResponses: [
         multiSurvivorRead,
         multiDuplicateRead,
@@ -323,7 +327,7 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
   })
 
   it("rejects a self-merge (survivorId === duplicateId) before any Shopify call", async () => {
-    const { ctx, calls } = makeCtx({ fetchResponses: [] })
+    const { ctx, calls } = makeCtx({ fetchResponses: [], grantedOAuthScopes: MERGE_GRANT })
     await expect(
       products_merge({ survivorId: SURVIVOR, duplicateId: SURVIVOR }, ctx),
     ).rejects.toThrow(/SAME product|distinct/i)
@@ -331,7 +335,7 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
   })
 
   it("requires both ids — a missing duplicateId throws before touching Shopify", async () => {
-    const { ctx, calls } = makeCtx({ fetchResponses: [] })
+    const { ctx, calls } = makeCtx({ fetchResponses: [], grantedOAuthScopes: MERGE_GRANT })
     await expect(
       products_merge({ survivorId: SURVIVOR }, ctx),
     ).rejects.toThrow(/duplicate product id is required/i)
@@ -342,6 +346,7 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
     // A redirect userError that is NOT an idempotent 'already taken' (e.g. an invalid path) must throw —
     // not swallow it and report a misleading 'merged' while the redirect silently failed.
     const { ctx } = makeCtx({
+      grantedOAuthScopes: MERGE_GRANT,
       fetchResponses: [
         singleDefaultSurvivorRead,
         singleDefaultDuplicateRead,
@@ -359,6 +364,7 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
     // A prior partial merge can leave a redirect for the same path. 'Path has already been taken' must NOT
     // 422 the whole merge — the desired end-state (path → survivor) already holds, so the merge proceeds.
     const { ctx, calls } = makeCtx({
+      grantedOAuthScopes: MERGE_GRANT,
       fetchResponses: [
         singleDefaultSurvivorRead,
         singleDefaultDuplicateRead,
@@ -380,6 +386,7 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
 
   it("redirect leg REPOINTS a stale 'already taken' redirect that targets the wrong product onto the survivor", async () => {
     const { ctx, calls } = makeCtx({
+      grantedOAuthScopes: MERGE_GRANT,
       fetchResponses: [
         singleDefaultSurvivorRead,
         singleDefaultDuplicateRead,
@@ -396,6 +403,43 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
     const upd = JSON.parse(calls.find((c) => c.body.includes("urlRedirectUpdate"))!.body) as { variables: { id: string; urlRedirect: { target: string } } }
     expect(upd.variables.id).toBe("gid://shopify/UrlRedirect/55")
     expect(upd.variables.urlRedirect.target).toBe("/products/kestrel-6-recorder")
+  })
+
+  // The redirect needs write_online_store_navigation; without it Shopify answered ACCESS_DENIED after the
+  // variants had been copied, leaving the duplicate in place with its stock counted twice.
+  for (const [label, grant] of [
+    ["a grant without the redirect scope", ["write_products", "write_inventory"]],
+    ["an unrecorded grant", undefined],
+  ] as const) {
+    it(`refuses before any write on ${label}, in the handler and at staging`, async () => {
+      const { ctx, calls } = makeCtx({
+        ...(grant ? { grantedOAuthScopes: [...grant] } : {}),
+        fetchResponses: [singleDefaultSurvivorRead, singleDefaultDuplicateRead],
+      })
+      await expect(products_merge({ survivorId: SURVIVOR, duplicateId: DUPLICATE }, ctx)).rejects.toMatchObject({
+        code: "MISSING_SHOPIFY_SCOPE",
+      })
+      expect(calls).toHaveLength(2) // the two product reads, no mutation
+      expect(calls.some((c) => /mutation/.test(c.body))).toBe(false)
+
+      const staged = makeCtx({
+        ...(grant ? { grantedOAuthScopes: [...grant] } : {}),
+        fetchResponses: [singleDefaultSurvivorRead, singleDefaultDuplicateRead],
+      })
+      const pre = await products_merge_preflight({ survivorId: SURVIVOR, duplicateId: DUPLICATE }, staged.ctx)
+      expect(pre).toMatchObject({ error: { code: "MISSING_SHOPIFY_SCOPE" } })
+      expect((pre as { error: { message: string } }).error.message).toContain("write_online_store_navigation")
+    })
+  }
+
+  it("needs no redirect scope when the duplicate has no storefront handle", async () => {
+    const noHandle = structuredClone(singleDefaultDuplicateRead)
+    noHandle.data.product.handle = ""
+    const { ctx } = makeCtx({
+      grantedOAuthScopes: ["write_products", "write_inventory"],
+      fetchResponses: [singleDefaultSurvivorRead, noHandle],
+    })
+    expect(await products_merge_preflight({ survivorId: SURVIVOR, duplicateId: DUPLICATE }, ctx)).toEqual({ ok: true })
   })
 })
 

@@ -1507,7 +1507,9 @@ describe("invoicing manifest", () => {
     // 0.21.1: the deferred-retry, payment reconcile, order-number backfill and shipment link jobs hold
     //   no transaction (each write commits on its own; the shipment link merges in the database);
     //   resume-interrupted-issues wakes only while a document waits for its PDF.
-    expect(m.version).toBe("0.21.1")
+    // 0.21.2: an order's invoice carries a per-order, per-scope dedup key, so the same order event
+    //   run twice at once issues one invoice.
+    expect(m.version).toBe("0.21.2")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

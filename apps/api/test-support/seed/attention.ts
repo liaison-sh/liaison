@@ -11,7 +11,7 @@
 // feed right after seeding therefore cannot rely on the tick: it asks for the
 // lists to be recomputed here, and gets them stored before the call returns.
 import { attentionItemsRegistry } from "~/modules/apps/app-registries"
-import { refreshAppAttention } from "~/modules/apps/attention-store"
+import { listEveryActiveUser, refreshAppAttention } from "~/modules/apps/attention-store"
 import { awaitOrgApps } from "~/modules/apps/init"
 
 export interface RefreshedAttention {
@@ -29,7 +29,10 @@ export async function refreshStoredAppAttention(
   for (const [[entryOrg, appName]] of attentionItemsRegistry.entriesOf(orgId)) {
     if (entryOrg === orgId && (!only || only.includes(appName))) apps.add(appName)
   }
+  // Every active person, not only those around: a test reads the feed of someone who has not
+  // read it yet, and a refresh left alone runs for the people around only.
+  const userIds = await listEveryActiveUser(orgId)
   const out: RefreshedAttention["apps"] = {}
-  for (const app of [...apps].sort()) out[app] = await refreshAppAttention(orgId, app)
+  for (const app of [...apps].sort()) out[app] = await refreshAppAttention(orgId, app, { userIds })
   return { apps: out }
 }

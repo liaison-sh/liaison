@@ -542,6 +542,15 @@ expect(ctx.emit).toHaveBeenCalled()
 Run tests with `bun test apps/api/src/apps/my-app/`; see
 `.claude/skills/run-tests/SKILL.md` for the lock and the env.
 
+A bundled app's egress is also pinned by contract fixtures
+(`apps/api/src/modules/apps/contract/fixtures/<app>/`): recorded once against
+a provider's sandbox account, replayed in CI. The recorder scrubs each fixture
+before writing it: secrets, emails, IPs and phone numbers, then the store's
+identity (product titles, SKUs, vendors, handles, customer and company names,
+street addresses), each replaced by a stable stand-in derived from its hash,
+so a re-recording neither publishes a real catalogue nor churns the fixture.
+Read what a recording wrote before you commit it.
+
 ---
 
 ## 8. Packaging for distribution

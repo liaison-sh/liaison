@@ -25,6 +25,7 @@ import { mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { sql } from "~/db/connection"
+import { withSystemDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { env } from "~/lib/env"
@@ -52,6 +53,9 @@ import { registerApps, teardownAppRegistrations } from "~/modules/apps/runtime"
 import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import type { AppBridge } from "~/modules/apps/sandbox/run-app"
 import { createWebhookVerifyBridge } from "~/modules/webhooks/verify-bridge"
+import { insertAppRow, jsonCell } from "~/seed/factories/app-tables"
+import { seedAppRow, seedConnectedAccountRow } from "~/seed/factories/org/platform-rows"
+import { seedOrgRow, seedUserRows } from "~/seed/factories/org/rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
   type PlanState,
@@ -183,11 +187,22 @@ describe("record Shopify contract fixtures", () => {
   beforeAll(async () => {
     await acquireTestLock()
     process.env.LIAISON_BUNDLED_APPS_FROM_SOURCE = "1"
-    await sql`INSERT INTO kernel.organizations (id, name, slug)
-      VALUES (${CONTRACT_ORG_ID}, 'Contract recording', 'contract-recording') ON CONFLICT DO NOTHING`
-    await sql`INSERT INTO kernel.users (id, org_id, email, name, password_hash)
-      VALUES (${CONTRACT_USER_ID}, ${CONTRACT_ORG_ID}, 'recorder@example.com', 'Contract Recorder', 'x')
-      ON CONFLICT DO NOTHING`
+    await seedOrgRow(
+      { id: CONTRACT_ORG_ID, name: "Contract recording", slug: "contract-recording" },
+      { onConflict: "skip" },
+    )
+    await seedUserRows(
+      [
+        {
+          id: CONTRACT_USER_ID,
+          orgId: CONTRACT_ORG_ID,
+          email: "recorder@example.com",
+          name: "Contract Recorder",
+          passwordHash: "x",
+        },
+      ],
+      { onConflict: "skip" },
+    )
     await ensureAppsForOrg(CONTRACT_ORG_ID)
     await registerApps(
       [
@@ -207,16 +222,34 @@ describe("record Shopify contract fixtures", () => {
     if (!bridgeManifest) throw new Error("shopify did not register")
     await sql`UPDATE kernel.connected_accounts SET status = 'disconnected'
       WHERE org_id = ${CONTRACT_ORG_ID} AND app_name = ${APP} AND status = 'active'`
-    const [account] = await sql<{ id: string }[]>`INSERT INTO kernel.connected_accounts
-      (org_id, app_name, connection_name, owner_type, provider_type, identifier, display_name,
-       access_token_encrypted, status, created_by, metadata)
-      VALUES (${CONTRACT_ORG_ID}, ${APP}, 'shop', 'org', 'oauth2', ${SHOP}, ${SHOP},
-       ${encryptSecret(TOKEN, env.ENCRYPTION_KEY, CryptoContext.connectedAccountAccessToken)},
-       'active', ${CONTRACT_USER_ID}, ${JSON.stringify({ grantedOAuthScopes: manifest.scopes })}::jsonb)
-      RETURNING id`
-    await sql`INSERT INTO kernel.apps (org_id, name, version, config)
-      VALUES (${CONTRACT_ORG_ID}, ${APP}, ${manifest.version}, ${JSON.stringify({ shopifyWebhookSecret: SYNTHETIC_WEBHOOK_SECRET })}::jsonb)
-      ON CONFLICT (org_id, name) DO UPDATE SET config = EXCLUDED.config`
+    const accountId = await seedConnectedAccountRow({
+      orgId: CONTRACT_ORG_ID,
+      appName: APP,
+      connectionName: "shop",
+      ownerType: "org",
+      providerType: "oauth2",
+      identifier: SHOP,
+      displayName: SHOP,
+      accessTokenEncrypted: encryptSecret(
+        TOKEN,
+        env.ENCRYPTION_KEY,
+        CryptoContext.connectedAccountAccessToken,
+      ),
+      status: "active",
+      createdBy: CONTRACT_USER_ID,
+      metadata: { grantedOAuthScopes: manifest.scopes },
+    })
+    const appConfig = { shopifyWebhookSecret: SYNTHETIC_WEBHOOK_SECRET }
+    const configured = await sql`UPDATE kernel.apps SET config = ${JSON.stringify(appConfig)}::jsonb
+      WHERE org_id = ${CONTRACT_ORG_ID} AND name = ${APP} RETURNING id`
+    if (configured.length === 0) {
+      await seedAppRow({
+        orgId: CONTRACT_ORG_ID,
+        name: APP,
+        version: manifest.version,
+        config: appConfig,
+      })
+    }
     // The store's real OAuth grant, so the app's scope checks see what the token can do.
     const scopeRes = await fetch(`https://${SHOP}/admin/api/2026-04/graphql.json`, {
       method: "POST",
@@ -231,12 +264,21 @@ describe("record Shopify contract fixtures", () => {
     await sql`DELETE FROM app_shopify.install_metadata WHERE org_id = ${CONTRACT_ORG_ID}`
     await sql`DELETE FROM app_shopify.webhook_deliveries WHERE org_id = ${CONTRACT_ORG_ID}`
     await sql`DELETE FROM app_shopify.backfill_progress WHERE org_id = ${CONTRACT_ORG_ID}`
-    await sql`INSERT INTO app_shopify.install_metadata
-      (org_id, shop_domain, connection_id, api_version, granted_o_auth_scopes, connection_status,
-       installed_at, unfulfilled_threshold_hours, consecutive_scope_mirror_failures)
-      VALUES (${CONTRACT_ORG_ID}, ${SHOP}, ${account!.id}, ${String(
-        (manifest.connections as { shop: { apiVersion: string } }).shop.apiVersion,
-      )}, ${JSON.stringify(granted)}::jsonb, 'connected', now(), 24, 0)`
+    await withSystemDb("contract-recorder-install", (db) =>
+      insertAppRow(db, APP, "install_metadata", {
+        org_id: CONTRACT_ORG_ID,
+        shop_domain: SHOP,
+        connection_id: accountId,
+        api_version: String(
+          (manifest.connections as { shop: { apiVersion: string } }).shop.apiVersion,
+        ),
+        granted_o_auth_scopes: jsonCell(granted),
+        connection_status: "connected",
+        installed_at: new Date().toISOString(),
+        unfulfilled_threshold_hours: 24,
+        consecutive_scope_mirror_failures: 0,
+      }),
+    )
     console.log(`granted OAuth scopes: ${granted.join(",")}`)
     const scripts = await bundledAppScripts(DIR)
     isolate = await quickJsContractExecutor.open(scripts.source, { memoryBytes: 64 * 1024 * 1024 })

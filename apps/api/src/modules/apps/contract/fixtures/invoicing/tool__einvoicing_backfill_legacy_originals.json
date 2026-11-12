@@ -4,7 +4,7 @@
     "dry_run": true,
     "limit": 20
   },
-  "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+  "recordedFrom": "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts",
   "calls": [
     {
       "method": "db_findMany",
@@ -12,7 +12,7 @@
         "documents",
         "{\"where\":{\"legal_original_id\":null},\"orderBy\":{\"id\":\"asc\"},\"select\":[\"id\",\"number\",\"pdf_file_id\",\"external_refs\"],\"limit\":500,\"offset\":0}"
       ],
-      "reply": "[{\"id\":\"0804b869-4b36-42e4-bb39-5829d90478da\",\"number\":null,\"pdf_file_id\":null,\"external_refs\":{}},{\"id\":\"29d3aa97-8c08-4030-b21c-982379e31560\",\"number\":\"DEV-2026-0001\",\"pdf_file_id\":\"77ef635e-de61-4af2-8341-11f1cb0dd421\",\"external_refs\":{\"po_number\":\"RFQ-118-B\",\"customer_reference\":\"RFQ-118\"}},{\"id\":\"36e51715-a5a6-483f-b592-3a0a4b975cbb\",\"number\":null,\"pdf_file_id\":null,\"external_refs\":{}},{\"id\":\"3a0217db-e441-4236-9483-9fa86aaaf5c1\",\"number\":null,\"pdf_file_id\":null,\"external_refs\":{}},{\"id\":\"4fe0a7e4-382d-4065-8ef5-a9fdad04448f\",\"number\":null,\"pdf_file_id\":null,\"external_refs\":{}}]"
+      "reply": "[{\"id\":\"2d8567cf-dc8e-481a-ae23-7e351146d7f3\",\"number\":null,\"pdf_file_id\":null,\"external_refs\":{}},{\"id\":\"5c2e8bf9-1496-4223-8fda-4c98260e9353\",\"number\":null,\"pdf_file_id\":null,\"external_refs\":{}},{\"id\":\"6d484a21-3f96-434b-8faa-f1f466720db8\",\"number\":null,\"pdf_file_id\":null,\"external_refs\":{}},{\"id\":\"7b64a5e5-16a9-4c3a-9e0b-29706892a0aa\",\"number\":\"DEV-2026-0001\",\"pdf_file_id\":\"c1a3b036-403d-49d5-9ab8-c26bc21a5259\",\"external_refs\":{\"po_number\":\"RFQ-118-B\",\"customer_reference\":\"RFQ-118\"}},{\"id\":\"8a50a619-31ea-41ec-9617-3ac75ce5ebcc\",\"number\":null,\"pdf_file_id\":null,\"external_refs\":{}}]"
     }
   ]
 }

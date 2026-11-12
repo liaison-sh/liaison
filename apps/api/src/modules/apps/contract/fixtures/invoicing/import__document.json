@@ -36,13 +36,13 @@
           "grandTotalMinor": 50328,
           "status": "paid",
           "pdf": {
-            "fileId": "45672cff-19c0-4499-a719-c937775b54d5"
+            "fileId": "c0749001-b785-48e7-b8f0-9df58b567bae"
           }
         }
       }
     ]
   },
-  "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+  "recordedFrom": "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts",
   "calls": [
     {
       "method": "db_findMany",
@@ -52,7 +52,7 @@
     {
       "method": "db_findMany",
       "args": ["issuer_profiles", "{\"where\":{\"archived_at\":null},\"limit\":2}"],
-      "reply": "[{\"id\":\"9db8770b-31c5-4c19-bbac-d8b52f757d72\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:11:48.27835+00\",\"updated_at\":\"2026-11-12 08:11:48.44327+00\",\"legal_name\":\"Resonance Atelier SARL\",\"country\":\"FR\",\"vat_id\":\"FR86902000009\",\"tax_registration_id\":null,\"address\":\"1 rue de Test, 75001 Paris, France\",\"iban\":\"FR7630006000011234567890189\",\"swift_bic\":\"AGRIFRPP\",\"bank_name\":\"Banque Exemple Paris\",\"logo_file_id\":null,\"default_currency\":\"EUR\",\"default_language\":\"fr\",\"default_payment_terms_days\":30,\"prefix_invoice\":\"FAC-{YYYY}-\",\"prefix_quote\":\"DEV-{YYYY}-\",\"prefix_proforma\":\"PRO-{YYYY}-\",\"prefix_po\":\"BC-{YYYY}-\",\"prefix_credit_note\":\"AV-{YYYY}-\",\"invoice_approval_threshold_minor\":null,\"po_approval_threshold_minor\":null,\"require_two_eyes\":false,\"auto_email_enabled\":false,\"prices_include_tax\":false,\"mail_account_id\":null,\"timezone\":\"Europe/Paris\",\"email_templates\":{},\"shopify_shop_id\":\"contract-shop.myshopify.com\",\"archived_at\":null,\"siren\":\"902000009\",\"siret\":null,\"legal_form\":null,\"share_capital\":null,\"rcs_city\":null,\"routing_address\":\"902000009\",\"address_line1\":\"1 rue de Test\",\"address_line2\":null,\"postcode\":\"75001\",\"city\":\"Paris\",\"country_code\":\"FR\",\"vat_on_debits_default\":null}]"
+      "reply": "[{\"id\":\"99444731-e2a2-460c-ab40-a9348f2a7121\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:09:21.008996+00\",\"updated_at\":\"2026-11-12 09:09:21.108678+00\",\"legal_name\":\"Resonance Atelier SARL\",\"country\":\"FR\",\"vat_id\":\"FR86902000009\",\"tax_registration_id\":null,\"address\":\"1 rue de Test, 75001 Paris, France\",\"iban\":\"FR7630006000011234567890189\",\"swift_bic\":\"AGRIFRPP\",\"bank_name\":\"Banque Exemple Paris\",\"logo_file_id\":null,\"default_currency\":\"EUR\",\"default_language\":\"fr\",\"default_payment_terms_days\":30,\"prefix_invoice\":\"FAC-{YYYY}-\",\"prefix_quote\":\"DEV-{YYYY}-\",\"prefix_proforma\":\"PRO-{YYYY}-\",\"prefix_po\":\"BC-{YYYY}-\",\"prefix_credit_note\":\"AV-{YYYY}-\",\"invoice_approval_threshold_minor\":null,\"po_approval_threshold_minor\":null,\"require_two_eyes\":false,\"auto_email_enabled\":false,\"prices_include_tax\":false,\"mail_account_id\":null,\"timezone\":\"Europe/Paris\",\"email_templates\":{},\"shopify_shop_id\":\"contract-shop.myshopify.com\",\"archived_at\":null,\"siren\":\"902000009\",\"siret\":null,\"legal_form\":null,\"share_capital\":null,\"rcs_city\":null,\"routing_address\":\"902000009\",\"address_line1\":\"1 rue de Test\",\"address_line2\":null,\"postcode\":\"75001\",\"city\":\"Paris\",\"country_code\":\"FR\",\"vat_on_debits_default\":null}]"
     }
   ]
 }

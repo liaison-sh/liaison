@@ -6,7 +6,7 @@
 //
 //   (cd apps/api && set -a && source ../../.env.test && set +a && \
 //     bun run ../../scripts/with-test-lock.ts -- \
-//     bun test ./src/modules/apps/contract/record-invoicing.recorder.ts)
+//     bun test ./scripts/contract/record-invoicing.ts)
 //
 // Needs the Shopify development store (SHOPIFY_DEV_STORE_DOMAIN, SHOPIFY_DEV_STORE_OFFLINE_TOKEN):
 // invoicing reads orders and variants through the Shopify app, which this run installs and
@@ -23,6 +23,19 @@ import { type UserContext, withRlsContext } from "~/db/rls"
 import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { env } from "~/lib/env"
 import { initializedOrgRuntimes, toolRegistry } from "~/modules/apps/app-registries"
+import { BUNDLED_APPS_DIR, bridgeSurfaceOf } from "~/modules/apps/contract/apps.test-helpers"
+import { contractEntries } from "~/modules/apps/contract/entries"
+import { bundledAppScripts, productionLimits } from "~/modules/apps/contract/harness"
+import type { ContractIsolate } from "~/modules/apps/contract/isolate"
+import { quickJsContractExecutor } from "~/modules/apps/contract/quickjs-isolate"
+import {
+  type Replacement,
+  recordEntry,
+  scrubFixture,
+  verifyFixture,
+  writeFixture,
+} from "~/modules/apps/contract/recorder"
+import { CONTRACT_ORG_ID, CONTRACT_USER_ID } from "~/modules/apps/contract/replay-bridge"
 import { createHandlerApprovalRequest } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { registerApps, teardownAppRegistrations } from "~/modules/apps/runtime"
@@ -30,23 +43,10 @@ import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import type { AppBridge } from "~/modules/apps/sandbox/run-app"
 import { registerTemplate } from "~/modules/pdf/registry"
 import { acquireTestLock, releaseTestLock, superuserUrlForTestDb } from "~/tests/route-test-setup"
-import { BUNDLED_APPS_DIR, bridgeSurfaceOf } from "./apps.test-helpers"
-import { contractEntries } from "./entries"
-import { bundledAppScripts, productionLimits } from "./harness"
-import type { ContractIsolate } from "./isolate"
-import { quickJsContractExecutor } from "./quickjs-isolate"
-import {
-  type Replacement,
-  recordEntry,
-  scrubFixture,
-  verifyFixture,
-  writeFixture,
-} from "./recorder"
 import { INVOICING_RECORDING_PLAN, type InvoicingPlanState } from "./recording-plan-invoicing"
-import { CONTRACT_ORG_ID, CONTRACT_USER_ID } from "./replay-bridge"
 
 const APP = "invoicing"
-const FIXTURES_DIR = join(import.meta.dir, "fixtures")
+const FIXTURES_DIR = join(import.meta.dir, "../../src/modules/apps/contract/fixtures")
 const STAND_IN_SHOP = "contract-shop.myshopify.com"
 
 function requiredEnv(name: string): string {
@@ -304,7 +304,7 @@ describe("record invoicing contract fixtures", () => {
         surface,
         limits: productionLimits(entry),
         recordedFrom:
-          "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+          "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts",
       })
       const answer = outcome.ok ? outcome.result : { thrown: outcome.error }
       await step.after?.(answer, state)

@@ -7,21 +7,21 @@
     "source": "manual",
     "notes": "SIREN given by the customer's accountant"
   },
-  "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+  "recordedFrom": "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts",
   "calls": [
     {
       "method": "db_findMany",
       "args": [
-        "documents",
-        "{\"where\":{\"counterparty_contact_id\":\"00000000-0000-4000-8000-0000000c0a01\"},\"limit\":10}"
+        "counterparty_identities",
+        "{\"where\":{\"contact_id\":\"00000000-0000-4000-8000-0000000c0a01\"},\"limit\":1}"
       ],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
       "args": [
-        "counterparty_identities",
-        "{\"where\":{\"contact_id\":\"00000000-0000-4000-8000-0000000c0a01\"},\"limit\":1}"
+        "documents",
+        "{\"where\":{\"counterparty_contact_id\":\"00000000-0000-4000-8000-0000000c0a01\"},\"limit\":10}"
       ],
       "reply": "[]"
     },
@@ -36,7 +36,7 @@
     {
       "method": "executeTool",
       "args": ["kernel:contacts_read", "{\"contactId\":\"00000000-0000-4000-8000-0000000c0a01\"}"],
-      "reply": "{\"status\":\"completed\",\"result\":{\"contact\":{\"id\":\"00000000-0000-4000-8000-0000000c0a01\",\"name\":\"Atelier Lumen SAS\",\"email\":\"person1@example.com\",\"phone\":null,\"company\":null,\"externalIds\":{},\"metadata\":null,\"createdAt\":\"2026-11-12T08:11:54.491Z\",\"updatedAt\":\"2026-11-12T08:11:54.491Z\"},\"recentMailBacklinks\":[],\"recentTimeline\":[]}}"
+      "reply": "{\"status\":\"completed\",\"result\":{\"contact\":{\"id\":\"00000000-0000-4000-8000-0000000c0a01\",\"name\":\"Atelier Lumen SAS\",\"email\":\"person1@example.com\",\"phone\":null,\"company\":null,\"externalIds\":{},\"metadata\":null,\"createdAt\":\"2026-11-12T09:09:24.937Z\",\"updatedAt\":\"2026-11-12T09:09:24.937Z\"},\"recentMailBacklinks\":[],\"recentTimeline\":[]}}"
     },
     {
       "method": "db_findMany",
@@ -59,7 +59,7 @@
       "args": [
         "{\"tool_name\":\"invoicing:counterparty_identity_set\",\"summary\":\"Confirm SIREN 900000001 for Atelier Lumen SAS\",\"summary_detail\":{\"subtitle\":\"Identity confirmation: the registered name does not match the counterparty\",\"lines\":[\"Counterparty: Atelier Lumen SAS\",\"Registry name: DSB CONSULTING\",\"SIREN: 900000001\",\"Head office city: PARIS\",\"Source: manual\",\"Name check: the registered name does not match the counterparty\"]},\"current_payload\":{\"contact_id\":\"00000000-0000-4000-8000-0000000c0a01\",\"customer_kind\":\"business\",\"siren\":\"900000001\",\"source\":\"manual\",\"notes\":\"SIREN given by the customer's accountant\"},\"editable_fields\":[]}"
       ],
-      "reply": "{\"approval_id\":\"2007112b-28b9-42f6-8350-858cd37acb40\"}"
+      "reply": "{\"approval_id\":\"ecb09e81-e72f-46f0-a968-4ddd018069a2\"}"
     }
   ]
 }

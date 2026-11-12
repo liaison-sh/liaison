@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// What record-invoicing.recorder.ts runs, in order: each step names a contract entry
+// What record-invoicing.ts runs, in order: each step names a contract entry
 // (`<kind>:<name>`), builds its input from what earlier steps created (`state.values`), and may
 // read its answer for later steps. Every party below is fictional (example domains, the
 // registry's test SIRENs); the Shopify order is the development store's own.
 
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import type { RecordInput } from "./recorder"
+import type { RecordInput } from "~/modules/apps/contract/recorder"
 
 export interface InvoicingPlanState {
   /** The development store's `<shop>.myshopify.com`. */
@@ -162,7 +162,10 @@ function orderEvent(order: Rec, shop: string): Rec {
 /** The data an issue handed the PDF renderer, read from that issue's recorded fixture. */
 function renderedData(fixture: string): Rec {
   const f = JSON.parse(
-    readFileSync(join(import.meta.dir, "fixtures", "invoicing", fixture), "utf8"),
+    readFileSync(
+      join(import.meta.dir, "../../src/modules/apps/contract/fixtures", "invoicing", fixture),
+      "utf8",
+    ),
   ) as {
     calls: Array<{ method: string; args: unknown[] }>
   }

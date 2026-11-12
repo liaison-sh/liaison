@@ -1,7 +1,7 @@
 {
   "entry": "tool:received_einvoices_refresh",
   "params": {},
-  "recordedFrom": "a contract org with the Shopify development store, record-invoicing.recorder.ts",
+  "recordedFrom": "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts",
   "calls": [
     {
       "method": "db_findMany",

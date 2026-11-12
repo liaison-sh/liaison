@@ -16,6 +16,7 @@ import { isCustomAppName } from "~/modules/apps/custom-app-name"
 import { createAccountsMethods } from "~/modules/apps/sandbox/bridge/accounts"
 import { createAgentMethods } from "~/modules/apps/sandbox/bridge/agent"
 import { createApprovalsMethods } from "~/modules/apps/sandbox/bridge/approvals"
+import { createBatchMethods } from "~/modules/apps/sandbox/bridge/batch"
 import { createCalendarMethods } from "~/modules/apps/sandbox/bridge/calendar"
 import {
   type ActorType,
@@ -25,7 +26,6 @@ import {
 } from "~/modules/apps/sandbox/bridge/context"
 import { createContractsMethods } from "~/modules/apps/sandbox/bridge/contracts"
 import { createConversionMethods } from "~/modules/apps/sandbox/bridge/conversion"
-import { createBatchMethods } from "~/modules/apps/sandbox/bridge/batch"
 import { createDbMethods } from "~/modules/apps/sandbox/bridge/db"
 import { createEffectsMethods } from "~/modules/apps/sandbox/bridge/effects"
 import { createEgressMethods } from "~/modules/apps/sandbox/bridge/egress"

@@ -28,6 +28,10 @@ export const CORE_APP_MODULES: Readonly<Record<string, CoreAppModule>> = {
     modulePath: appsDir("tickets/handlers.ts"),
     load: () => import("~/apps/tickets/handlers"),
   },
+  "mcp-manager": {
+    modulePath: appsDir("mcp-manager/handlers.ts"),
+    load: () => import("~/apps/mcp-manager/handlers"),
+  },
 }
 
 /** The core module that runs `appName`'s handlers from `bundlePath`, or null (a bundle). */

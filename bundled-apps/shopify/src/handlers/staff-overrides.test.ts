@@ -100,6 +100,13 @@ describe("staff_overrides_upsert", () => {
     expect(rows[0]).not.toHaveProperty("createdAt")
   })
 
+  it("records the acting user from the sandbox's getter (the sandbox context has no userId field)", async () => {
+    const { ctx, tables } = makeCtx()
+    const sandboxCtx = Object.assign(ctx, { userId: undefined, getUserId: () => "sandbox-user" })
+    await staff_overrides_upsert({ liaisonUserId: MARIE_ID, shopifyStaffId: "s9" }, sandboxCtx)
+    expect((tables.get("staff_overrides") ?? [])[0]!.createdBy).toBe("sandbox-user")
+  })
+
   it("updates an existing row keyed by liaisonUserId (idempotent re-map)", async () => {
     const { ctx, tables } = makeCtx()
     await staff_overrides_upsert(

@@ -1,0 +1,26 @@
+{
+  "entry": "tool:contact_relationships_set",
+  "params": {
+    "contact_id": "00000000-0000-4000-8000-0000000c0a01",
+    "relationship": "customer"
+  },
+  "recordedFrom": "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "contact_relationships",
+        "{\"where\":{\"contact_id\":\"00000000-0000-4000-8000-0000000c0a01\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "contact_relationships",
+        "{\"contact_id\":\"00000000-0000-4000-8000-0000000c0a01\",\"relationship\":\"customer\",\"source\":\"manual\"}"
+      ],
+      "reply": "{\"id\":\"2687aadb-d6ca-44ea-9b90-1c9d1a407ca9\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:09:24.946951+00\",\"updated_at\":\"2026-11-12 09:09:24.946951+00\",\"contact_id\":\"00000000-0000-4000-8000-0000000c0a01\",\"relationship\":\"customer\",\"source\":\"manual\"}"
+    }
+  ]
+}

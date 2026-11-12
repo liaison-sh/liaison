@@ -1,0 +1,33 @@
+{
+  "entry": "tool:counterparty_territory_set",
+  "params": {
+    "contact_id": "00000000-0000-4000-8000-0000000c0a01",
+    "treatment": "as_foreign",
+    "reason": "Customer is based in Monaco"
+  },
+  "recordedFrom": "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "counterparty_identities",
+        "{\"where\":{\"contact_id\":\"00000000-0000-4000-8000-0000000c0a01\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "counterparty_identities",
+        "{\"contact_id\":\"00000000-0000-4000-8000-0000000c0a01\",\"territory_treatment\":\"as_foreign\",\"territory_reason\":\"Customer is based in Monaco\",\"source\":\"manual\",\"changed_at\":\"2026-01-01T00:00:00.000Z\"}"
+      ],
+      "reply": "{\"id\":\"203f8fb3-990c-46ad-8e5b-4776b8fa4f4f\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:09:25.448952+00\",\"updated_at\":\"2026-11-12 09:09:25.448952+00\",\"contact_id\":\"00000000-0000-4000-8000-0000000c0a01\",\"customer_kind\":null,\"siren\":null,\"siret\":null,\"establishment_country\":null,\"territory_reason\":\"Customer is based in Monaco\",\"vat_id\":null,\"routing_address\":null,\"registry_name\":null,\"registry_nature_juridique\":null,\"registry_line1\":null,\"registry_postcode\":null,\"registry_city\":null,\"registry_country_code\":null,\"source_url\":null,\"approval_request_id\":null,\"verified_by\":null,\"notes\":null,\"territory_treatment\":\"as_foreign\",\"routing_scheme\":\"0225\",\"registry_status\":null,\"registry_checked_at\":null,\"source\":\"manual\",\"confirmed_via\":null,\"changed_at\":\"2026-01-01 00:00:00+00\"}"
+    },
+    {
+      "method": "emit",
+      "args": [
+        "{\"entity\":\"einvoicing\",\"action\":\"identity_missing\",\"entityId\":\"00000000-0000-4000-8000-0000000c0a01\",\"data\":{\"contact_id\":\"00000000-0000-4000-8000-0000000c0a01\",\"resolved\":true}}"
+      ]
+    }
+  ]
+}

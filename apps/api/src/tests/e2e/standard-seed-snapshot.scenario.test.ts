@@ -217,6 +217,8 @@ async function bootAndSnapshot(tag: string): Promise<Snapshot> {
     const t0 = performance.now()
     lane = await createE2eLane(workerId, logDir, {
       admin: ADMIN,
+      // Read back as built: no minute sweep runs between the build and the read.
+      keepScheduledTicksHeld: true,
       seed: async (env) => {
         seedStart = Date.now()
         return seedStandardWorld(env, ADMIN, { now: new Date(seedStart) })

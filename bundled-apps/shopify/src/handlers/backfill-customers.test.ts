@@ -2,8 +2,12 @@
 //
 // Task B11 — Customer backfill job tests.
 //
+// The job is one resumable step (`ctx.steps.run`): the fake below keeps the
+// step's cursor like the platform does and `runUntilSettled` plays the job's
+// continuations (wake-ups) one after another. No run waits on Shopify.
+//
 // Behaviour exercised:
-//   - bulkOperationRunQuery, poll currentBulkOperation → COMPLETED
+//   - bulkOperationRunQuery, a later wake polls the operation → COMPLETED
 //   - fetchToBlob + iterateJsonl → one resolveContact call per row
 //   - cursor checkpoint every batch
 //   - resume from cursor (skip already-imported rows)
@@ -13,9 +17,8 @@
 import { describe, expect, it } from "bun:test"
 import type { AppContext } from "@liaison/app-sdk"
 import { createEnforcingEmit } from "../lib/emit.testutil"
-import { withTimer } from "../lib/timers.testutil"
 import { validateFields } from "../lib/validate-fields.testutil"
-import { backfillCustomersJob } from "./backfill-customers"
+import { BACKFILL_STEP, backfillCustomersJob, IMPORT_ROWS_PER_CHUNK } from "./backfill-customers"
 
 interface FetchResponse {
   status?: number
@@ -43,6 +46,8 @@ function makeCtx(opts: {
   blobs?: Record<string, unknown[]> // url -> JSONL rows
   blobErrors?: Record<string, "404">
   preload?: Record<string, DbRow[]>
+  /** Chunks one run takes before its budget is spent. */
+  chunksPerRun?: number
 }): {
   ctx: AppContext
   resolveContact: { calls: ResolveCall[] }
@@ -50,6 +55,7 @@ function makeCtx(opts: {
   events: Array<{ entity: string; action: string; entityId?: string; data?: unknown; metadata?: Record<string, unknown> }>
   tables: Map<string, DbRow[]>
   fetchCount: { current: number }
+  steps: FakeSteps
 } {
   const responses = [...opts.shopifyFetch]
   const blobs = opts.blobs ?? {}
@@ -82,9 +88,11 @@ function makeCtx(opts: {
     return id
   }
 
+  const steps = makeSteps(opts.chunksPerRun ?? 1000)
   const ctx = {
     userId: "u",
     orgId: "o",
+    steps: steps.client,
     db: {
       findMany: async (entity: string, query?: { where?: Record<string, unknown> }) => {
         const rows = tables.get(entity) ?? []
@@ -173,7 +181,63 @@ function makeCtx(opts: {
     },
   } as unknown as AppContext
 
-  return { ctx, resolveContact: { calls: resolveCalls }, updateLog, events, tables, fetchCount }
+  return { ctx, resolveContact: { calls: resolveCalls }, updateLog, events, tables, fetchCount, steps }
+}
+
+/** The platform's step state, in memory: `run` loops chunks until done, a `wakeIn`, or the run's chunk budget. */
+interface FakeSteps {
+  client: AppContext["steps"]
+  state: Map<string, { cursor: unknown; done: boolean }>
+  /** The `wakeIn` of every chunk that asked for one, in order. */
+  wakes: number[]
+  runs: number
+}
+
+function makeSteps(chunksPerRun: number): FakeSteps {
+  const state = new Map<string, { cursor: unknown; done: boolean }>()
+  const fake: FakeSteps = {
+    state,
+    wakes: [],
+    runs: 0,
+    client: {
+      run: (async (name: string, _opts: unknown, chunk: (c: unknown) => Promise<{ done: boolean; cursor?: unknown; wakeIn?: number }>) => {
+        fake.runs++
+        const st = state.get(name) ?? { cursor: null, done: false }
+        state.set(name, st)
+        if (st.done) return { state: "done", cursor: st.cursor, chunks: 0 }
+        let chunks = 0
+        while (chunks < chunksPerRun) {
+          const r = await chunk(st.cursor)
+          chunks++
+          st.cursor = r.cursor ?? null
+          if (r.done) {
+            st.done = true
+            return { state: "done", cursor: st.cursor, chunks }
+          }
+          if (r.wakeIn !== undefined) {
+            fake.wakes.push(r.wakeIn)
+            break
+          }
+        }
+        return { state: "scheduled", cursor: st.cursor, chunks }
+      }) as AppContext["steps"]["run"],
+      get: (async (name: string) => {
+        const st = state.get(name)
+        return st ? { cursor: st.cursor, done: st.done, running: false, updatedAt: "" } : null
+      }) as AppContext["steps"]["get"],
+      reset: async (name: string) => ({ reset: state.delete(name) }),
+    },
+  }
+  return fake
+}
+
+/** Run the job, then its continuations, until the step settles (as the platform's wake-ups would). */
+async function runUntilSettled(ctx: AppContext, maxRuns = 50) {
+  let result = await backfillCustomersJob({}, ctx)
+  for (let i = 0; result.status === "scheduled" && i < maxRuns; i++) {
+    result = await backfillCustomersJob({ _steps: { [BACKFILL_STEP]: { epoch: "e" } } }, ctx)
+  }
+  return result
 }
 
 const bulkRunQueryOk = (id = "bo1"): FetchResponse => ({
@@ -182,12 +246,16 @@ const bulkRunQueryOk = (id = "bo1"): FetchResponse => ({
   },
 })
 
-const currentBulkCompleted = (id = "bo1", url = "https://cdn/jsonl/bo1.jsonl"): FetchResponse => ({
-  body: { data: { currentBulkOperation: { id, status: "COMPLETED", url, errorCode: null } } },
+const currentBulkCompleted = (id = "bo1", url: string | null = "https://cdn/jsonl/bo1.jsonl"): FetchResponse => ({
+  body: { data: { node: { id, status: "COMPLETED", url, errorCode: null } } },
 })
 
 const currentBulkFailed = (id = "bo1"): FetchResponse => ({
-  body: { data: { currentBulkOperation: { id, status: "FAILED", url: null, errorCode: "INTERNAL_SERVER_ERROR" } } },
+  body: { data: { node: { id, status: "FAILED", url: null, errorCode: "INTERNAL_SERVER_ERROR" } } },
+})
+
+const currentBulkRunning = (id = "bo1"): FetchResponse => ({
+  body: { data: { node: { id, status: "RUNNING", url: null, errorCode: null } } },
 })
 
 describe("backfillCustomersJob", () => {
@@ -197,7 +265,7 @@ describe("backfillCustomersJob", () => {
       shopifyFetch: [bulkRunQueryOk(), currentBulkCompleted("bo1", url)],
       blobs: { [url]: [{ id: "gid://shopify/Customer/c1", email: "a@b.com" }, { id: "gid://shopify/Customer/c2", email: "c@d.com" }] },
     })
-    await backfillCustomersJob({}, ctx)
+    await runUntilSettled(ctx)
     expect(resolveContact.calls.length).toBe(2)
     expect(resolveContact.calls[0]!.externalId).toBe("c1")
     expect(resolveContact.calls[0]!.email).toBe("a@b.com")
@@ -207,29 +275,24 @@ describe("backfillCustomersJob", () => {
     expect(events.find((e) => e.entity === "customer" && e.action === "backfill_completed")).toBeDefined()
   })
 
-  it("checkpoints cursor every batch (batchSize=50 → 3 updates for 120 rows)", async () => {
+  it("saves the cursor after every chunk (250, 500, then the final one)", async () => {
     const url = "https://cdn/jsonl/big.jsonl"
-    const rows = Array.from({ length: 120 }, (_, i) => ({
-      id: `gid://shopify/Customer/c${i + 1}`,
+    const rows = Array.from({ length: IMPORT_ROWS_PER_CHUNK * 2 + 100 }, (_, i) => ({
+      id: `gid://shopify/Customer/${i + 1}`,
       email: `c${i + 1}@x`,
     }))
     const { ctx, updateLog } = makeCtx({
       shopifyFetch: [bulkRunQueryOk(), currentBulkCompleted("bo1", url)],
       blobs: { [url]: rows },
     })
-    await backfillCustomersJob({}, ctx)
-    const progressUpdates = updateLog.filter((u) => u.entity === "backfill_progress")
-    // 3 in-batch cursor updates (50, 100, 120) + 1 final status=completed
-    expect(progressUpdates.length).toBeGreaterThanOrEqual(3)
-    // Final cursor must be c120.
-    const lastCursorUpdate = [...progressUpdates].reverse().find((u) => u.data.cursorExternalId)
-    expect(lastCursorUpdate?.data.cursorExternalId).toBe("c120")
-    // No progress write may carry the kernel-managed updated_at column: the
-    // sandbox rejects undeclared fields and the enforcing mock would have
-    // thrown above, but assert explicitly so the contract is self-documenting.
-    for (const u of progressUpdates) {
-      expect(u.data).not.toHaveProperty("updatedAt")
-    }
+    await runUntilSettled(ctx)
+    const cursors = updateLog
+      .filter((u) => u.entity === "backfill_progress" && u.data.cursorExternalId)
+      .map((u) => u.data.cursorExternalId)
+    expect(cursors).toEqual([String(IMPORT_ROWS_PER_CHUNK), String(IMPORT_ROWS_PER_CHUNK * 2), String(rows.length)])
+    // No progress write may carry the kernel-managed updated_at column (the
+    // sandbox rejects undeclared fields; the enforcing mock throws on them too).
+    for (const u of updateLog) expect(u.data).not.toHaveProperty("updatedAt")
   })
 
   it("resumes from cursor; rows with external id <= cursor are skipped (numeric ids)", async () => {
@@ -250,7 +313,7 @@ describe("backfillCustomersJob", () => {
         ],
       },
     })
-    await backfillCustomersJob({}, ctx)
+    await runUntilSettled(ctx)
     expect(resolveContact.calls[0]!.externalId).toBe("1051")
     expect(resolveContact.calls.length).toBe(50)
   })
@@ -273,7 +336,7 @@ describe("backfillCustomersJob", () => {
         ],
       },
     })
-    await backfillCustomersJob({}, ctx)
+    await runUntilSettled(ctx)
     expect(resolveContact.calls.map((c) => c.externalId)).toEqual(["1051", "1052", "1053"])
   })
 
@@ -281,7 +344,7 @@ describe("backfillCustomersJob", () => {
     const { ctx, events, tables } = makeCtx({
       shopifyFetch: [bulkRunQueryOk(), currentBulkFailed()],
     })
-    await backfillCustomersJob({}, ctx)
+    await runUntilSettled(ctx)
     const row = (tables.get("backfill_progress") ?? []).find((r) => r.entityType === "customers")
     expect(row).toBeDefined()
     expect(row!.status).toBe("failed")
@@ -294,21 +357,20 @@ describe("backfillCustomersJob", () => {
       shopifyFetch: [bulkRunQueryOk(), currentBulkCompleted("bo1", url)],
       blobs: { [url]: [] },
     })
-    await backfillCustomersJob({}, ctx)
+    await runUntilSettled(ctx)
     expect(resolveContact.calls.length).toBe(0)
     const row = (tables.get("backfill_progress") ?? []).find((r) => r.entityType === "customers")
     expect(row!.status).toBe("completed")
   })
 
-  it("if cached URL expired (404 on blob fetch), re-runs bulkOperationRunQuery and re-streams", async () => {
+  it("an expired export URL (404 on blob fetch) runs the bulk operation again, keeping the cursor", async () => {
     const oldUrl = "https://cdn/jsonl/old.jsonl"
     const newUrl = "https://cdn/jsonl/new.jsonl"
-    const rows = [{ id: "gid://shopify/Customer/c1", email: "a@b" }]
+    const rows = [1, 2, 3].map((n) => ({ id: `gid://shopify/Customer/${n}`, email: `c${n}@x` }))
     const { ctx, resolveContact, fetchCount } = makeCtx({
       shopifyFetch: [
-        // First attempt: bulk-op already in COMPLETED state with cached URL.
-        { body: { data: { currentBulkOperation: { id: "bo0", status: "COMPLETED", url: oldUrl } } } },
-        // Re-run kicks off a fresh bulk-op.
+        bulkRunQueryOk("bo1"),
+        currentBulkCompleted("bo1", oldUrl),
         bulkRunQueryOk("bo2"),
         currentBulkCompleted("bo2", newUrl),
       ],
@@ -316,44 +378,76 @@ describe("backfillCustomersJob", () => {
       blobErrors: { [oldUrl]: "404" },
       preload: {
         backfill_progress: [
-          { id: "bp1", entityType: "customers", cursorExternalId: null, status: "running" } as DbRow,
+          { id: "bp1", entityType: "customers", cursorExternalId: "1", status: "running" } as DbRow,
         ],
       },
     })
-    await backfillCustomersJob({}, ctx)
-    expect(resolveContact.calls.length).toBe(1)
-    expect(resolveContact.calls[0]!.externalId).toBe("c1")
-    expect(fetchCount.current).toBe(3)
+    const result = await runUntilSettled(ctx)
+    expect(result.status).toBe("completed")
+    expect(resolveContact.calls.map((c) => c.externalId)).toEqual(["2", "3"])
+    expect(fetchCount.current).toBe(4)
+  })
+
+  it("a COMPLETED operation with no url (nothing matched) completes with no import", async () => {
+    const { ctx, resolveContact, tables } = makeCtx({ shopifyFetch: [bulkRunQueryOk(), currentBulkCompleted("bo1", null)] })
+    const result = await runUntilSettled(ctx)
+    expect(result.status).toBe("completed")
+    expect(resolveContact.calls).toHaveLength(0)
+    expect((tables.get("backfill_progress") ?? [])[0]!.status).toBe("completed")
   })
 })
 
-describe("backfillCustomersJob poll pacing", () => {
-  const running = (id = "bo1"): FetchResponse => ({
-    body: { data: { currentBulkOperation: { id, status: "RUNNING", url: null, errorCode: null } } },
-  })
+describe("backfillCustomersJob as resumable steps (no waiting in a run)", () => {
   const url = "https://cdn/jsonl/bo1.jsonl"
   const rows = [{ id: "gid://shopify/Customer/c1", email: "a@b.com" }]
 
-  it("backs off 250, 500, 1000 ms between polls where the runtime has a timer", async () => {
-    const { ctx, resolveContact } = makeCtx({
-      shopifyFetch: [bulkRunQueryOk(), running(), running(), running(), currentBulkCompleted("bo1", url)],
-      blobs: { [url]: rows },
-    })
-    const delays = await withTimer("recording", async (d) => {
-      await backfillCustomersJob({}, ctx)
-      return d
-    })
-    expect(delays).toEqual([250, 500, 1000])
-    expect(resolveContact.calls.length).toBe(1)
+  it("the first run starts the bulk operation and ends, asking to be woken; nothing is polled in that run", async () => {
+    const { ctx, fetchCount, steps } = makeCtx({ shopifyFetch: [bulkRunQueryOk(), currentBulkCompleted("bo1", url)], blobs: { [url]: rows } })
+    const first = await backfillCustomersJob({}, ctx)
+    expect(first.status).toBe("scheduled")
+    expect(fetchCount.current).toBe(1)
+    expect(steps.wakes).toEqual([5])
   })
 
-  it("polls without waiting where the runtime has no timer", async () => {
-    const { ctx, resolveContact, fetchCount } = makeCtx({
-      shopifyFetch: [bulkRunQueryOk(), running(), running(), currentBulkCompleted("bo1", url)],
+  it("a running operation is looked at once per wake, backing off 5, 10, 20 s", async () => {
+    const { ctx, resolveContact, steps } = makeCtx({
+      shopifyFetch: [bulkRunQueryOk(), currentBulkRunning(), currentBulkRunning(), currentBulkCompleted("bo1", url)],
       blobs: { [url]: rows },
     })
-    await withTimer("absent", () => backfillCustomersJob({}, ctx))
-    expect(fetchCount.current).toBe(4)
-    expect(resolveContact.calls.length).toBe(1)
+    const result = await runUntilSettled(ctx)
+    expect(result.status).toBe("completed")
+    expect(steps.wakes).toEqual([5, 10, 20])
+    expect(resolveContact.calls).toHaveLength(1)
+  })
+
+  it("a large export is imported across runs, the cursor carried between them", async () => {
+    const big = Array.from({ length: IMPORT_ROWS_PER_CHUNK * 2 + 10 }, (_, i) => ({
+      id: `gid://shopify/Customer/${i + 1}`,
+      email: `c${i + 1}@x`,
+    }))
+    // One chunk per run: every run after the first fetches the export again and skips what is done.
+    const { ctx, resolveContact, steps, tables } = makeCtx({
+      shopifyFetch: [bulkRunQueryOk(), currentBulkCompleted("bo1", url)],
+      blobs: { [url]: big },
+      chunksPerRun: 1,
+    })
+    const result = await runUntilSettled(ctx)
+    expect(result).toEqual({ status: "completed", cursor: String(big.length) })
+    expect(resolveContact.calls).toHaveLength(big.length)
+    expect(new Set(resolveContact.calls.map((c) => c.externalId)).size).toBe(big.length)
+    expect(steps.runs).toBeGreaterThan(3)
+    expect((tables.get("backfill_progress") ?? [])[0]).toMatchObject({ status: "completed", cursorExternalId: String(big.length) })
+  })
+
+  it("a fresh trigger after a finished backfill starts a new one from the last imported id", async () => {
+    const { ctx, resolveContact, steps } = makeCtx({
+      shopifyFetch: [bulkRunQueryOk("bo1"), currentBulkCompleted("bo1", url), bulkRunQueryOk("bo2"), currentBulkCompleted("bo2", "https://cdn/2")],
+      blobs: { [url]: rows, "https://cdn/2": [...rows, { id: "gid://shopify/Customer/c2", email: "n@x" }] },
+    })
+    await runUntilSettled(ctx)
+    expect(steps.state.get(BACKFILL_STEP)?.done).toBe(true)
+    const again = await runUntilSettled(ctx)
+    expect(again.status).toBe("completed")
+    expect(resolveContact.calls.map((c) => c.externalId)).toEqual(["c1", "c2"])
   })
 })

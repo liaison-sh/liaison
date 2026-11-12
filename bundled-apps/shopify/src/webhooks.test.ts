@@ -5,13 +5,15 @@
 // Covers:
 //   • dedup ledger (`webhook_deliveries`) — second delivery with same id
 //     returns 200 without re-emitting.
-//   • concurrent delivery — two parallel handlers on the same id ⇒ exactly
-//     one emit, both 200 (UNIQUE(webhookId) loser sees the row).
+//   • concurrent delivery — two parallel handlers on the same id ⇒ both 200,
+//     one processed row (UNIQUE(webhookId) loser updates the row).
+//   • no claim before the work: a run killed half way leaves nothing that
+//     makes the redelivery skip it.
 //   • Phase-17 contract fields on shopify:order_created.
 //   • resolveContact called with flat-string externalId (per Task A0 SDK
 //     signature; bridge keys it under `shopify`).
 //   • Guest checkout (payload.customer == null) skips resolveContact.
-//   • Downstream emit failure ⇒ 5xx, ledger row stays in `processing`.
+//   • Downstream emit failure ⇒ 5xx, ledger row `failed`, the retry re-runs.
 //   • inventory_levels/update short-circuits when not in allowlist.
 import { describe, expect, it } from "bun:test"
 import type { AppContext } from "@liaison/app-sdk"
@@ -437,7 +439,9 @@ describe("webhooks — inventory_levels/update allowlist", () => {
 })
 
 describe("webhooks — concurrent delivery", () => {
-  it("two parallel handlers on the same webhookId ⇒ exactly one emit, both 200", async () => {
+  it("two parallel handlers on the same webhookId both answer 200 and leave ONE processed row", async () => {
+    // The kernel's replay claim lets one of them through in production; the
+    // ledger still holds one row whichever wins.
     const { ctx, spy } = makeCtx()
     const [r1, r2] = await Promise.all([
       ordersCreateHandler(FIXTURE_ORDER, ctx, HDR("wh-race")),
@@ -445,8 +449,8 @@ describe("webhooks — concurrent delivery", () => {
     ])
     expect(r1.status).toBe(200)
     expect(r2.status).toBe(200)
-    const orderEmits = spy.emits.filter((e) => e.entity === "order" && e.action === "created")
-    expect(orderEmits.length).toBe(1)
+    const rows = (spy.rows.get("webhook_deliveries") ?? []).filter((r) => r.webhookId === "wh-race")
+    expect(rows.map((r) => r.status)).toEqual(["processed"])
   })
 })
 
@@ -955,32 +959,58 @@ describe("webhooks — Cluster-1 canonical emit identity", () => {
   })
 })
 
-describe("webhooks — mark processed before emit", () => {
-  it("row is marked processed before emit so a crash between the two does not re-emit on retry", async () => {
-    const { ctx, spy } = makeCtx()
-    // Track the sequence of significant side-effects to verify ordering.
+describe("webhooks — no claim before the work (no run-wide transaction)", () => {
+  it("writes the ledger only after the emit: nothing is written that a killed run would leave", async () => {
+    const { ctx } = makeCtx()
     const callLog: string[] = []
-    // Wrap db.update so we can detect the markProcessed call.
     const origUpdate = ctx.db.update.bind(ctx.db)
+    const origInsert = ctx.db.insert.bind(ctx.db)
     ctx.db.update = async (entity: string, id: string, data: Record<string, unknown>) => {
-      if (entity === "webhook_deliveries" && (data as { status?: string }).status === "processed") {
-        callLog.push("markProcessed")
-      }
+      if (entity === "webhook_deliveries") callLog.push(`ledger:${String(data.status)}`)
       return origUpdate(entity, id, data)
     }
-    // Wrap ctx.emit to record when channels are published.
+    ctx.db.insert = async (entity: string, data: Record<string, unknown>) => {
+      if (entity === "webhook_deliveries") callLog.push(`ledger:${String(data.status)}`)
+      return origInsert(entity, data)
+    }
     const origEmit = ctx.emit.bind(ctx)
     ctx.emit = async (...args: Parameters<typeof ctx.emit>) => {
       callLog.push("emit")
       return origEmit(...args)
     }
-    const headers = HDR("wh-mark-before-emit")
-    await ordersCreateHandler(FIXTURE_ORDER, ctx, headers)
-    // Both operations must have run.
-    expect(callLog).toContain("markProcessed")
-    expect(callLog).toContain("emit")
-    // markProcessed must precede emit — the at-least-once safety property.
-    expect(callLog.indexOf("markProcessed")).toBeLessThan(callLog.indexOf("emit"))
+    await ordersCreateHandler(FIXTURE_ORDER, ctx, HDR("wh-emit-then-record"))
+    expect(callLog).toEqual(["emit", "ledger:processed"])
+  })
+
+  it("a run killed after its emit is run again by the redelivery (at least once, never dropped)", async () => {
+    const { ctx, spy } = makeCtx()
+    // The kill: the run dies between its emit and its ledger write.
+    const origInsert = ctx.db.insert.bind(ctx.db)
+    let killed = false
+    ctx.db.insert = async (entity: string, data: Record<string, unknown>) => {
+      if (entity === "webhook_deliveries" && !killed) {
+        killed = true
+        throw new Error("run killed")
+      }
+      return origInsert(entity, data)
+    }
+    await ordersCreateHandler(FIXTURE_ORDER, ctx, HDR("wh-killed"))
+    const res = await ordersCreateHandler(FIXTURE_ORDER, ctx, HDR("wh-killed"))
+    expect(res.status).toBe(200)
+    expect(spy.emits.filter((e) => e.entity === "order" && e.action === "created")).toHaveLength(2)
+    const row = (spy.rows.get("webhook_deliveries") ?? []).find((r) => r.webhookId === "wh-killed")
+    expect(row?.status).toBe("processed")
+  })
+
+  it("a `processing` row a killed run left behind does not block the redelivery", async () => {
+    const { ctx, spy } = makeCtx()
+    spy.rows.set("webhook_deliveries", [
+      { id: "stale", webhookId: "wh-stale", topic: "orders/create", shopDomain: "demo.myshopify.com", status: "processing", failureCount: 0 },
+    ])
+    const res = await ordersCreateHandler(FIXTURE_ORDER, ctx, HDR("wh-stale"))
+    expect(res.status).toBe(200)
+    expect(spy.emits.filter((e) => e.entity === "order")).toHaveLength(1)
+    expect(spy.rows.get("webhook_deliveries")?.[0]?.status).toBe("processed")
   })
 })
 

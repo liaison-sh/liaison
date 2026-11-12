@@ -220,6 +220,10 @@ export const DOCS_EXEMPT: { glob: string; reason: string }[] = [
   { glob: "**/*.testutil.ts", reason: "test helpers" },
   { glob: "**/__test-helpers__/**", reason: "test helpers" },
   {
+    glob: "apps/api/scripts/contract/**",
+    reason: "contract fixture recorders, run by hand by a developer; no user-visible effect",
+  },
+  {
     glob: "apps/web/vitest.config.ts",
     reason: "the web unit-test runner's config; no user, admin or self-host surface",
   },

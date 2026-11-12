@@ -59,9 +59,14 @@ const CUSTOMER_EMAIL_CONSENT = `
     customerEmailMarketingConsentUpdate(input: $input) { customer { id email } userErrors { field message } }
   }
 `
+/** The consent mutation's input: the tool's top-level `customerId` belongs inside it. */
+function consentInput(params: Record<string, unknown>): Record<string, unknown> {
+  return { ...resolveMutationInput(params), customerId: params.customerId }
+}
+
 export async function customers_email_marketing_consent_update(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
   if (!params.customerId) throw makeMutationError("BAD_PARAM", "customerId is required")
-  return runMutation(ctx, { query: CUSTOMER_EMAIL_CONSENT, variables: { input: resolveMutationInput(params) }, dataKey: "customerEmailMarketingConsentUpdate", eventEntity: "customer", eventAction: "email_consent_updated", entityIdPath: "customer.id" })
+  return runMutation(ctx, { query: CUSTOMER_EMAIL_CONSENT, variables: { input: consentInput(params) }, dataKey: "customerEmailMarketingConsentUpdate", eventEntity: "customer", eventAction: "email_consent_updated", entityIdPath: "customer.id" })
 }
 
 const CUSTOMER_SMS_CONSENT = `
@@ -71,7 +76,7 @@ const CUSTOMER_SMS_CONSENT = `
 `
 export async function customers_sms_marketing_consent_update(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
   if (!params.customerId) throw makeMutationError("BAD_PARAM", "customerId is required")
-  return runMutation(ctx, { query: CUSTOMER_SMS_CONSENT, variables: { input: resolveMutationInput(params) }, dataKey: "customerSmsMarketingConsentUpdate", eventEntity: "customer", eventAction: "sms_consent_updated", entityIdPath: "customer.id" })
+  return runMutation(ctx, { query: CUSTOMER_SMS_CONSENT, variables: { input: consentInput(params) }, dataKey: "customerSmsMarketingConsentUpdate", eventEntity: "customer", eventAction: "sms_consent_updated", entityIdPath: "customer.id" })
 }
 
 // ─────────────────────────────────────────────────────────────────────────

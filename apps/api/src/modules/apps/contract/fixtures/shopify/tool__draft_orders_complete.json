@@ -1,0 +1,65 @@
+{
+  "entry": "tool:draft_orders_complete",
+  "params": {
+    "id": "gid://shopify/DraftOrder/1674823762086",
+    "paymentPending": false
+  },
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["install_metadata", "{\"limit\":1}"],
+      "reply": "[{\"id\":\"3b94fcd6-1bcf-453a-b16b-dd41fa2b4ba5\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:17:35.003397+00\",\"updated_at\":\"2026-11-12 08:17:35.003397+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 08:17:35.003397+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["install_metadata", "{\"limit\":1}"],
+      "reply": "[{\"id\":\"3b94fcd6-1bcf-453a-b16b-dd41fa2b4ba5\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:17:35.003397+00\",\"updated_at\":\"2026-11-12 08:17:35.003397+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 08:17:35.003397+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
+    },
+    {
+      "method": "connections_getAccounts",
+      "args": ["shop"],
+      "reply": "[{\"id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"identifier\":\"contract-shop.myshopify.com\",\"displayName\":\"contract-shop.myshopify.com\",\"status\":\"active\"}]"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://contract-shop.myshopify.com/admin/api/2026-04/graphql.json",
+        "{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":\"{\\\"query\\\":\\\"\\\\n  query DraftOrderInvoiceability($id: ID!) {\\\\n    draftOrder(id: $id) {\\\\n      id email taxExempt\\\\n      totalPriceSet { presentmentMoney { amount } }\\\\n      totalTaxSet { presentmentMoney { amount } }\\\\n      customAttributes { key value }\\\\n      billingAddress { name company address1 address2 zip city province countryCodeV2 }\\\\n      shippingAddress { name company address1 address2 zip city province countryCodeV2 }\\\\n      customer { id email firstName lastName taxExempt defaultAddress { name company address1 address2 zip city province countryCodeV2 } }\\\\n    }\\\\n  }\\\\n\\\",\\\"variables\\\":{\\\"id\\\":\\\"gid://shopify/DraftOrder/1674823762086\\\"}}\",\"auth\":{\"connection\":\"shop\",\"identifier\":\"contract-shop.myshopify.com\",\"scheme\":\"header:X-Shopify-Access-Token\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"data\\\":{\\\"draftOrder\\\":{\\\"id\\\":\\\"gid://shopify/DraftOrder/1674823762086\\\",\\\"email\\\":\\\"marie@example.com\\\",\\\"taxExempt\\\":false,\\\"totalPriceSet\\\":{\\\"presentmentMoney\\\":{\\\"amount\\\":\\\"1771.9\\\"}},\\\"totalTaxSet\\\":{\\\"presentmentMoney\\\":{\\\"amount\\\":\\\"0.0\\\"}},\\\"customAttributes\\\":[],\\\"billingAddress\\\":null,\\\"shippingAddress\\\":{\\\"name\\\":\\\"Marie Dupont\\\",\\\"company\\\":null,\\\"address1\\\":\\\"1 Contract Street\\\",\\\"address2\\\":null,\\\"zip\\\":\\\"69002\\\",\\\"city\\\":\\\"Lyon\\\",\\\"province\\\":null,\\\"countryCodeV2\\\":\\\"FR\\\"},\\\"customer\\\":{\\\"id\\\":\\\"gid://shopify/Customer/24929659846822\\\",\\\"email\\\":\\\"marie@example.com\\\",\\\"firstName\\\":\\\"Marie\\\",\\\"lastName\\\":\\\"Dupont\\\",\\\"taxExempt\\\":false,\\\"defaultAddress\\\":{\\\"name\\\":\\\"Marie Dupont\\\",\\\"company\\\":null,\\\"address1\\\":\\\"12 Rue de Rivoli\\\",\\\"address2\\\":null,\\\"zip\\\":\\\"75004\\\",\\\"city\\\":\\\"Paris\\\",\\\"province\\\":null,\\\"countryCodeV2\\\":\\\"FR\\\"}}}},\\\"extensions\\\":{\\\"cost\\\":{\\\"requestedQueryCost\\\":5,\\\"actualQueryCost\\\":5,\\\"throttleStatus\\\":{\\\"maximumAvailable\\\":20000,\\\"currentlyAvailable\\\":19995,\\\"restoreRate\\\":1000}}}}\"}"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "invoicing:orders_invoiceability_check",
+        "{\"shop_id\":\"contract-shop.myshopify.com\",\"stage\":\"complete\",\"draft_order_id\":\"gid://shopify/DraftOrder/1674823762086\",\"customer_id\":\"gid://shopify/Customer/24929659846822\",\"email\":\"marie@example.com\",\"legal_name\":\"Marie Dupont\",\"billing_address\":null,\"shipping_address\":{\"name\":\"Marie Dupont\",\"company\":null,\"address1\":\"1 Contract Street\",\"address2\":null,\"zip\":\"69002\",\"city\":\"Lyon\",\"province\":null,\"country_code\":\"FR\"},\"customer_default_address\":{\"name\":\"Marie Dupont\",\"company\":null,\"address1\":\"12 Rue de Rivoli\",\"address2\":null,\"zip\":\"75004\",\"city\":\"Paris\",\"province\":null,\"country_code\":\"FR\"},\"vat_id\":null,\"tax_exempt\":false,\"total_price\":\"1771.9\",\"total_tax\":\"0.0\"}"
+      ],
+      "reply": "{\"status\":\"error\",\"error\":{\"code\":\"tool_not_found\",\"message\":\"tool invoicing:orders_invoiceability_check not registered\",\"retryable\":false}}"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["install_metadata", "{\"limit\":1}"],
+      "reply": "[{\"id\":\"3b94fcd6-1bcf-453a-b16b-dd41fa2b4ba5\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:17:35.003397+00\",\"updated_at\":\"2026-11-12 08:17:35.003397+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 08:17:35.003397+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
+    },
+    {
+      "method": "connections_getAccounts",
+      "args": ["shop"],
+      "reply": "[{\"id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"identifier\":\"contract-shop.myshopify.com\",\"displayName\":\"contract-shop.myshopify.com\",\"status\":\"active\"}]"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://contract-shop.myshopify.com/admin/api/2026-04/graphql.json",
+        "{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":\"{\\\"query\\\":\\\"\\\\n  mutation DraftOrderComplete($id: ID!, $paymentPending: Boolean) {\\\\n    draftOrderComplete(id: $id, paymentPending: $paymentPending) {\\\\n      draftOrder { id name status poNumber order { id name poNumber } }\\\\n      userErrors { field message }\\\\n    }\\\\n  }\\\\n\\\",\\\"variables\\\":{\\\"id\\\":\\\"gid://shopify/DraftOrder/1674823762086\\\",\\\"paymentPending\\\":false}}\",\"auth\":{\"connection\":\"shop\",\"identifier\":\"contract-shop.myshopify.com\",\"scheme\":\"header:X-Shopify-Access-Token\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"data\\\":{\\\"draftOrderComplete\\\":{\\\"draftOrder\\\":{\\\"id\\\":\\\"gid://shopify/DraftOrder/1674823762086\\\",\\\"name\\\":\\\"#D949\\\",\\\"status\\\":\\\"COMPLETED\\\",\\\"poNumber\\\":null,\\\"order\\\":{\\\"id\\\":\\\"gid://shopify/Order/19010984706214\\\",\\\"name\\\":\\\"#2802\\\",\\\"poNumber\\\":null}},\\\"userErrors\\\":[]}},\\\"extensions\\\":{\\\"cost\\\":{\\\"requestedQueryCost\\\":11,\\\"actualQueryCost\\\":11,\\\"throttleStatus\\\":{\\\"maximumAvailable\\\":20000,\\\"currentlyAvailable\\\":19989,\\\"restoreRate\\\":1000}}}}\"}"
+    },
+    {
+      "method": "emit",
+      "args": [
+        "{\"entity\":\"draft_order\",\"action\":\"completed\",\"entityId\":\"gid://shopify/DraftOrder/1674823762086\",\"data\":{\"draftOrder\":{\"id\":\"gid://shopify/DraftOrder/1674823762086\",\"name\":\"#D949\",\"status\":\"COMPLETED\",\"poNumber\":null,\"order\":{\"id\":\"gid://shopify/Order/19010984706214\",\"name\":\"#2802\",\"poNumber\":null}},\"userErrors\":[]}}"
+      ]
+    }
+  ]
+}

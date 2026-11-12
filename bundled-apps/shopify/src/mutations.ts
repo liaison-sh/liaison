@@ -98,6 +98,7 @@ export {
   discounts_delete_preflight,
   discounts_delete,
   discounts_bulk_create,
+  discounts_bulk_create_poll,
 } from "./mutations/discounts"
 export {
   returns_request,

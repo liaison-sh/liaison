@@ -22,6 +22,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { createHmac } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
+import * as handlers from "~/apps/projects/handlers"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { type UserContext, withRlsContext } from "~/db/rls"
@@ -29,22 +30,8 @@ import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import projectsManifest from "../app.manifest.json"
 
-// handlers.ts is script-mode (no `export {}`) by design (see its header
-// comment) — its functions are only reachable at sandbox runtime via name
-// resolution, same as the real QuickJS bundle loader (bundle-loader.ts) reads
-// it: transpile TS -> JS with Bun's own transpiler (NOT a raw `new Function`
-// on the untranspiled source, which chokes on TS-only syntax like `import
-// type {}`), then eval and pull the named functions off the returned object.
-// This mirrors handlers.test.ts's existing "read the source text" approach
-// (which only greps it) but goes one step further to actually call the
-// functions with plain, non-JSON args (the envelope/format helpers take real
-// objects, not JSON strings).
-const handlersSource = await Bun.file(new URL("../handlers.ts", import.meta.url)).text()
-const transpiler = new Bun.Transpiler({ loader: "ts", target: "browser" })
-const transpiled = transpiler.transformSync(handlersSource)
-const exposed = new Function(
-  `${transpiled}\nreturn { parseCiStatusEnvelope, ciTaskTitle, ciTaskDescription, ciStatusWebhookVerifier, ciStatusWebhookHandler, webhookInfoHandler };`,
-)() as {
+// The core module's exports, called directly with plain (non-JSON) args.
+const exposed = handlers as unknown as {
   parseCiStatusEnvelope: (payload: unknown) => unknown
   ciTaskTitle: (env: { project: string; status: string; title?: string }) => string
   ciTaskDescription: (env: unknown) => string

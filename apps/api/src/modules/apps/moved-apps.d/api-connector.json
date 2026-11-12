@@ -1,0 +1,12 @@
+{
+  "name": "api-connector",
+  "why": "The API connector keeps its connections' credentials (the same `api` connection, one account per slug), its role scopes and pending approvals (the same tool names). Its adapters and their kept versions move into the platform's tables (kernel.api_adapters, kernel.api_adapter_versions), keyed by the app and its connection (connections/api/); the copy runs at every boot and leaves the app's tables as they are.",
+  "steps": [
+    {
+      "id": "api-adapters-to-platform",
+      "kind": "api-adapters-to-platform",
+      "connection": "api",
+      "schema": "app_api_connector"
+    }
+  ]
+}

@@ -33,7 +33,13 @@
 // (reconcile-catalog-boot.ts), instead of rolling out an image on which the
 // app silently disappeared. `moved-apps.test.ts` holds the same rule for the
 // repository: every name here has a `bundled-apps/<name>` and no in-tree dir.
+//
+// Each moved app is declared in a file of its own, `moved-apps.d/<name>.json`
+// (`readMovedApps`), and its move's test goes in a file of its own too, so two
+// apps that move in parallel pull requests touch no file in common here.
 
+import { readdirSync, readFileSync } from "node:fs"
+import { join } from "node:path"
 import { sql as drizzleSql } from "drizzle-orm"
 import type { PrivilegedDb } from "~/db"
 import { extractRows } from "~/db"
@@ -105,79 +111,95 @@ export interface MovedApp {
   steps: readonly AdoptionStep[]
 }
 
-/** Every app that moved from the source tree to the catalog, oldest first. */
-export const MOVED_APPS: readonly MovedApp[] = [
-  {
-    // Report access moved from the org's settings to the app's store
-    // (bundled-apps/database/src/access.ts), and the database knowledge source
-    // from a kernel adapter to the app's `catalog` source kind.
-    name: "database",
-    steps: [
-      {
-        id: "domain-access-to-store",
-        kind: "org-setting-to-store",
-        settingPath: ["database", "domainAccess"],
-        collection: "settings",
-        docId: "domain_access",
-      },
-      { id: "knowledge-sources-to-catalog", kind: "synced-sources-to-kind", sourceKind: "catalog" },
-    ],
-  },
-  {
-    // The GitLab knowledge sources move from the kernel's folder adapter to the
-    // app's `folder` source kind (bundled-apps/gitlab/src/knowledge.ts), which
-    // reads the same `<project>:<branch>:<path>` reference from its config and
-    // keeps the same document and folder identities. Credentials, the
-    // connection and every other row are keyed by the app's name: unchanged.
-    name: "gitlab",
-    steps: [
-      {
-        id: "knowledge-sources-to-folder",
-        kind: "synced-sources-to-kind",
-        sourceKind: "folder",
-        configFromColumns: { ref: "folder_ref" },
-      },
-    ],
-  },
-  {
-    // The Drive folders and the picked files that in-tree kernel code synced go
-    // to the app's `folder` and `picked` source kinds (bundled-apps/google-drive/
-    // src/knowledge.ts), with the folder and the account they synced through in
-    // their config. Picked items and chosen shared drives stay where they are,
-    // on the connected accounts' metadata; imported files stay kernel files.
-    name: "google-drive",
-    steps: [
-      {
-        id: "picked-sources-to-kind",
-        kind: "synced-sources-to-kind",
-        sourceKind: "picked",
-        folderRef: "liaison-picked-items",
-        configFromColumns: { ref: "folder_ref", account: "source_account" },
-      },
-      {
-        id: "folder-sources-to-kind",
-        kind: "synced-sources-to-kind",
-        sourceKind: "folder",
-        configFromColumns: { ref: "folder_ref", account: "source_account" },
-      },
-    ],
-  },
-  {
-    // The API connector keeps its connections' credentials (the same `api`
-    // connection, one account per slug), its role scopes and pending approvals
-    // (the same tool names). Its adapters and their kept versions move into the
-    // platform's tables, keyed by the app and connection (connections/api/).
-    name: "api-connector",
-    steps: [
-      {
-        id: "api-adapters-to-platform",
-        kind: "api-adapters-to-platform",
-        connection: "api",
-        schema: "app_api_connector",
-      },
-    ],
-  },
-]
+/** Where the moved apps are declared: one `<name>.json` per app (see `readMovedApps`). */
+export const MOVED_APPS_DIR = join(import.meta.dir, "moved-apps.d")
+
+const COLUMNS = new Set(["folder_ref", "source_account"])
+
+function parseStep(raw: unknown, where: string): AdoptionStep {
+  const fail = (why: string): never => {
+    throw new Error(`${where}: ${why}`)
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return fail("a step is an object")
+  const s = raw as Record<string, unknown>
+  const text = (k: string): string =>
+    typeof s[k] === "string" && s[k] !== "" ? (s[k] as string) : fail(`step "${k}" is a string`)
+  if (s.kind === "org-setting-to-store") {
+    const path = s.settingPath
+    if (!Array.isArray(path) || path.length === 0 || !path.every((p) => typeof p === "string")) {
+      return fail("settingPath is a list of keys")
+    }
+    return {
+      id: text("id"),
+      kind: "org-setting-to-store",
+      settingPath: path as string[],
+      collection: text("collection"),
+      docId: text("docId"),
+    }
+  }
+  if (s.kind === "synced-sources-to-kind") {
+    const step: SyncedSourcesToKindStep = {
+      id: text("id"),
+      kind: "synced-sources-to-kind",
+      sourceKind: text("sourceKind"),
+    }
+    if (s.folderRef !== undefined) step.folderRef = text("folderRef")
+    if (s.configFromColumns !== undefined) {
+      const cols = s.configFromColumns
+      if (!cols || typeof cols !== "object" || Array.isArray(cols)) {
+        return fail("configFromColumns maps config keys to columns")
+      }
+      for (const v of Object.values(cols)) {
+        if (typeof v !== "string" || !COLUMNS.has(v)) {
+          fail(`configFromColumns names folder_ref or source_account, not ${JSON.stringify(v)}`)
+        }
+      }
+      step.configFromColumns = cols as Record<string, "folder_ref" | "source_account">
+    }
+    return step
+  }
+  if (s.kind === "api-adapters-to-platform") {
+    return {
+      id: text("id"),
+      kind: "api-adapters-to-platform",
+      connection: text("connection"),
+      schema: text("schema"),
+    }
+  }
+  return fail(`unknown step kind ${JSON.stringify(s.kind)}`)
+}
+
+/**
+ * The moved apps declared in `dir`, one `<name>.json` per app, in name order:
+ * `{ "name": "<name>", "why": "<what moves and why the rest stays>", "steps": [...] }`.
+ * One file per app, so two apps that move in parallel pull requests never edit the
+ * same list. A file whose name differs from its `name`, a step that is not one of
+ * the kinds above, or a repeated step id throws: the catalog reconcile then fails
+ * loudly instead of skipping an app's data.
+ */
+export function readMovedApps(dir: string = MOVED_APPS_DIR): MovedApp[] {
+  const out: MovedApp[] = []
+  for (const file of readdirSync(dir)
+    .filter((f) => f.endsWith(".json"))
+    .sort()) {
+    const where = `moved-apps.d/${file}`
+    const raw = JSON.parse(readFileSync(join(dir, file), "utf8")) as Record<string, unknown>
+    const name = file.slice(0, -".json".length)
+    if (raw.name !== name) throw new Error(`${where}: "name" must be "${name}"`)
+    if (typeof raw.why !== "string" || raw.why.length < 10) {
+      throw new Error(`${where}: "why" says what moves and why the rest stays`)
+    }
+    if (!Array.isArray(raw.steps)) throw new Error(`${where}: "steps" is a list`)
+    const steps = raw.steps.map((s, i) => parseStep(s, `${where} step ${i}`))
+    const ids = steps.map((s) => s.id)
+    if (new Set(ids).size !== ids.length) throw new Error(`${where}: step ids repeat`)
+    out.push({ name, steps })
+  }
+  return out
+}
+
+/** Every app that moved from the source tree to the catalog (`moved-apps.d/<name>.json`). */
+export const MOVED_APPS: readonly MovedApp[] = readMovedApps()
 
 let movedAppsOverride: readonly MovedApp[] | null = null
 

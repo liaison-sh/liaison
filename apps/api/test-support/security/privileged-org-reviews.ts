@@ -5,6 +5,14 @@
 // the org id at that point is one the code may act for; the test fails on a
 // new site the caller trace cannot follow to one of them, and on an entry no
 // site needs any more.
+//
+// New entries go in a file of their own, `privileged-org-reviews/<feature>.json`
+// beside this one: `{ "<section>": { "<key>": "<why>" } }`, sections
+// trustedSources, reviewedDispatch, reviewedOutsideRoutes, reviewedOrigins and
+// reviewedRegistries (test-support/registry-dir.ts). Two PRs then never add
+// lines at the same end of one of these records.
+import { join } from "node:path"
+import { mergeRegistryDir } from "../registry-dir"
 import type { OrgTraceReviews } from "./enumerate"
 
 /**
@@ -95,8 +103,6 @@ export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
     "app knowledge source sync store: called through AppSourceStore by runAppSourceSync for the synced_sources row the knowledge sync job loaded (runSyncWorker), so source.orgId is that row's own org; every write is also bound to source.id AND org_id",
   "apps/api/src/apps/knowledge/app-sources.ts#failAppSourceSync":
     "app knowledge source sync store: called through AppSourceStore by runAppSourceSync for the synced_sources row the knowledge sync job loaded (runSyncWorker), so source.orgId is that row's own org; every write is also bound to source.id AND org_id",
-  "apps/api/src/modules/approvals/cancel.ts#cancelApprovalsForDeletedTasks":
-    "called only by deleteTask (apps/projects/service/tasks.ts) after it archived the tasks in the caller's RLS transaction for that same org (the route's auth org, or the projects bridge's own org); the update touches only that org's pending rows naming the archived task ids",
   "apps/api/src/seed/factories/support/inboxes.ts#ensureTicketMailboxInbox":
     "the /api/_test/seed route's factories (test-support/seed/factories.ts, mounted only in test builds; no product caller): the org a browser test names in its request, the one its lane seeded",
   "apps/api/src/seed/factories/support/inboxes.ts#ensureTicketMailboxAccount":
@@ -255,28 +261,6 @@ export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
  * The caller trace stops at a call made from one of them.
  */
 export const REVIEWED_ORIGINS: Record<string, string> = {
-  "apps/api/src/cli/api-connector/run.ts#runApiConnectorTest":
-    "operator command: the org resolveOrgId resolved from the operator's --org (or the only org); the API connection is one findAdapterConnections read for that same org (its conn carries that org id)",
-  "apps/api/src/modules/agent/context/connected-systems.ts#loadConnectedSystems":
-    "the turn's own org (context.ts and tool-search pass ctx.orgId); each connection comes from customerContextConnections(orgId), whose entries carry that same org id",
-  "apps/api/src/modules/agent/tools/secret-request-tools.ts#adapterProblem":
-    "the request_secret tool call's own org (ctx.orgId); the connection is apiConnFor(orgId, target.app), built with that same org id (null when the app declares none)",
-  "apps/api/src/modules/apps/connections/api/customer.ts#customerLookupConfigured":
-    "the caller's own org (the tours context's orgId); each connection comes from customerContextConnections(orgId), carrying that same org id",
-  "apps/api/src/modules/apps/connections/api/declarations.ts#importSourceConnection":
-    "the import's own org (the tool call's ctx.orgId, or the import run row's org); each connection comes from importSourceConnections(orgId), carrying that same org id",
-  "apps/api/src/modules/provisioning/config-export.ts#exportOrgConfig":
-    "the export's own org (the CLI's resolved org or the config tool's ctx.orgId); each app's API connection is apiConnFor(orgId, name), built with that same org id",
-  "apps/api/src/modules/secret-requests/routes.ts#formFor":
-    "the secret request row's own org, read for the authenticated caller's org (viewOf passes c.get('orgId')); the API connection is apiConnFor(orgId, target.app), built with that same org id",
-  "apps/api/src/modules/agent/context/customer-context.ts#lookupConnection":
-    "the turn's own org (input.orgId from the context assembler); each connection is one of customerContextConnections(input.orgId), carrying that same org id",
-  "apps/api/src/modules/agent/context/customer-context.ts#buildBlock":
-    "the turn's own org (input.orgId from the context assembler); the connection is one of customerContextConnections(input.orgId), carrying that same org id",
-  "apps/api/src/modules/provisioning/setup-state.ts#countUsableConnectors":
-    "computeSetupState's org (the caller's own org); each connection comes from apiConnectionsOf(orgId), carrying that same org id",
-  "apps/api/src/modules/apps/connections/api/authoring-tools.ts#registerAdapterAuthoringTools":
-    "the adapter save and restore tools and their summarizers, registered per [orgId, app] at that app's registration; the closures build the connection from the call's own ctx.orgId (connOf), as the tool pipeline and the approval pipeline pass it",
   "apps/api/src/modules/approvals/summary-backfill.ts#backfillApprovalSummaryBatch":
     "the approval summary backfill job (queued by the leader, boot-phase10.ts registerApprovalSummaryBackfill): each org id is read from pending kernel.approval_requests rows that lack a summary, and only that org's rows are read and written, in writeUnlessMoving",
   "apps/api/src/modules/apps/attention-store.ts#processAttentionRefreshJob":
@@ -697,6 +681,14 @@ export const REVIEWED_REGISTRIES: Record<string, string> = {
   "apps/api/src/modules/apps/approval-summarizers.ts#registerApprovalSummarizer":
     "kept per [orgId, app, tool] (approval-summarizers.ts:42-48); the approval pipeline calls it for an approval of that org",
 }
+
+mergeRegistryDir(join(import.meta.dir, "privileged-org-reviews"), {
+  trustedSources: TRUSTED_SOURCES,
+  reviewedDispatch: REVIEWED_DISPATCH,
+  reviewedOutsideRoutes: REVIEWED_OUTSIDE_ROUTES,
+  reviewedOrigins: REVIEWED_ORIGINS,
+  reviewedRegistries: REVIEWED_REGISTRIES,
+})
 
 export const REVIEWS: OrgTraceReviews = {
   trustedSources: TRUSTED_SOURCES,

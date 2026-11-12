@@ -491,25 +491,29 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
                     class="flex min-w-0 basis-full flex-wrap gap-x-3 text-text-secondary"
                   >
                     <For each={row.flags}>
-                      {(f) =>
-                        isAmountCheck(f) ? (
-                          <>
+                      {(f, i) => (
+                        <>
+                          {i() > 0 ? " " : ""}
+                          {isAmountCheck(f) ? (
                             <span
                               data-testid={`month-end-row-amount-check-${row.item_id}`}
                               class="font-medium text-text"
                             >
                               {f}
-                            </span>{" "}
-                          </>
-                        ) : (
-                          <>
-                            <span>{f}</span>{" "}
-                          </>
-                        )
-                      }
+                            </span>
+                          ) : (
+                            <span>{f}</span>
+                          )}
+                        </>
+                      )}
                     </For>
                     <Show when={changedBy(row.latest_change, names())}>
-                      {(w) => <span>{w()}</span>}
+                      {(w) => (
+                        <>
+                          {row.flags.length > 0 ? " " : ""}
+                          <span>{w()}</span>
+                        </>
+                      )}
                     </Show>
                   </span>
                 </button>

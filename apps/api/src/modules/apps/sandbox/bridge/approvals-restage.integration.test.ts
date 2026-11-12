@@ -54,11 +54,9 @@ async function restage(
   )
 }
 
-async function stageRow(opts: {
-  status?: string
-  approvedBy?: string[]
-  total?: number
-}): Promise<string> {
+async function stageRow(
+  opts: { status?: string; approvedBy?: string[]; total?: number } = {},
+): Promise<string> {
   const id = randomUUID()
   const payload = JSON.stringify({
     run_id: "run-1",

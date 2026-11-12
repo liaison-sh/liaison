@@ -54,7 +54,7 @@ describe("the month-end run card", () => {
     expect(card.current_payload.items[0]?.total_minor).toBe("180000")
     // Who is billed, then the total: the panel under the card lists each row's amounts.
     expect(card.summary_detail.lines).toHaveLength(2)
-    expect(card.summary_detail.lines[1]).toBe("Total: 3 600.00 EUR incl. VAT")
+    expect(card.summary_detail.lines[1]).toBe("Total: 3 600.00 EUR incl. VAT")
     // Drawn on 27 Nov at 09:00 in Paris, valid to the end of 30 Nov.
     expect(card.expiry_hours).toBe(3 * 24 + 15)
     const got = await recurringRunGet(h.ctx, { run_id: runId })
@@ -308,7 +308,7 @@ describe("the month-end run card", () => {
     const { items } = await cardItems(h.ctx, runId)
     const total = items.reduce((sum, i) => sum + BigInt(String(i.total_minor)), 0n)
     expect(total > 360000n).toBe(true)
-    const grouped = `${String(total / 100n).replace(/\B(?=(\d{3})+(?!\d))/g, " ")}.${String(total % 100n).padStart(2, "0")}`
+    const grouped = `${String(total / 100n).replace(/\B(?=(\d{3})+(?!\d))/g, " ")}.${String(total % 100n).padStart(2, "0")}`
     expect(summary?.lines?.at(-1)).toBe(`Total: ${grouped} EUR incl. VAT`)
   })
 })

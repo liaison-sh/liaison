@@ -15,8 +15,6 @@
  */
 import {
   commercialIdentitySchema,
-  databaseDomainNameSchema,
-  databaseDomainTierSchema,
   googleOAuthClientIdSchema,
   orgCapsSchema,
 } from "@liaison/shared"

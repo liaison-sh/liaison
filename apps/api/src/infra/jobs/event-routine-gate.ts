@@ -418,7 +418,7 @@ export function tableRowFilterMatches(
   const changed = Array.isArray(data.changed) ? data.changed : []
   if (!changed.includes(filter.column)) return false
   if (filter.to === undefined) return true
-  if (!change || !change.after) return false
+  if (!change?.after) return false
   const after = change.after[filter.column]
   if (!sameValue(after, filter.to)) return false
   if (!change.before) return true

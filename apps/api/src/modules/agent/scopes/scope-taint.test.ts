@@ -298,6 +298,9 @@ describe("writesToTable annotations on kernel tools", () => {
       dashboards_pdf: "kernel.files",
       dashboards_share: "kernel.dashboards",
       dashboards_delete: "kernel.dashboards",
+      // Dashboard tables: rows in the data store (judged by the table's readers), the tables.
+      tables_rows_write: "kernel.app_documents",
+      tables_edit: "kernel.dashboard_tables",
       // The app data store: a document of an app's declared collection.
       data_set: "kernel.app_documents",
       data_update: "kernel.app_documents",
@@ -537,6 +540,10 @@ describe("writesToTable annotations on kernel tools", () => {
         "dashboards_preview_block",
         "dashboards_snapshot",
         "dashboards_sources",
+        // Dashboard tables: the tables the person sees, one table, its rows.
+        "tables_get",
+        "tables_list",
+        "tables_query",
         "data_collections_list",
         "data_get",
         "data_query",

@@ -97,7 +97,7 @@ import {
   type TimePreset,
   type TimeRange,
 } from "~/modules/dashboards/relative-dates"
-import { checkStoreSource, checkToolSource } from "~/modules/dashboards/sources"
+import { checkSource, tableStamp } from "~/modules/dashboards/sources"
 import {
   type BlockRangeMode,
   type BlockSource,
@@ -117,6 +117,7 @@ import {
   sourceValue,
   specIssues,
   timeRangeSchema,
+  withSourceValue,
 } from "~/modules/dashboards/spec"
 import {
   attachPrevious,
@@ -439,10 +440,7 @@ export async function validateSpec(author: DashboardViewer, raw: unknown): Promi
     )
   }
   const problems: string[] = []
-  const sourceCheck = (source: BlockSource) =>
-    source.kind === "tool"
-      ? checkToolSource(author.orgId, source.tool, author)
-      : checkStoreSource(author.orgId, source.app, source.collection, author)
+  const sourceCheck = (source: BlockSource) => checkSource(author.orgId, source, author)
   for (const [id, source] of Object.entries(parsed.data.datasets ?? {})) {
     const check = await sourceCheck(source)
     if (!check.ok) problems.push(`datasets.${id}: ${check.code}: ${check.message}`)
@@ -1408,7 +1406,7 @@ function withFilterValues(
   spec: Pick<DashboardSpec, "filters">,
 ): BlockSource {
   const value = resolveFilterTokens(sourceValue(source), values, spec)
-  return source.kind === "tool" ? { ...source, params: value } : { ...source, query: value }
+  return withSourceValue(source, value)
 }
 
 /**
@@ -1515,10 +1513,20 @@ async function readSourceCached(
   ttlOverride?: number,
 ): Promise<SourceReadResult> {
   const fields = projectionFields(dashboard.spec, sourceKey)
+  // A table's cached read keys on its generation and version, read under the viewer's RLS first
+  // (A8): a row write, a column change or a sharing change is a new key at its commit, and a
+  // reader who lost access gets no cached rows (the stamp itself is unreadable to them).
+  let stamp: { generation: number; version: number } | null = null
+  if (source.kind === "table") {
+    stamp = await tableStamp(viewer, source.table)
+    if (!stamp) {
+      return { ok: false, error: "no_access", message: `no table ${source.table} you can read` }
+    }
+  }
   const key = sourceCacheKey(viewer, {
     dashboardId: dashboard.row.id,
     sourceKey,
-    resolvedSource: source,
+    resolvedSource: stamp ? { ...source, stamp } : source,
     fields,
     range,
   })
@@ -1708,10 +1716,7 @@ async function sourceRefusal(
   viewer: DashboardViewer,
   source: BlockSource,
 ): Promise<Refusal | null> {
-  const check =
-    source.kind === "tool"
-      ? await checkToolSource(viewer.orgId, source.tool, viewer)
-      : await checkStoreSource(viewer.orgId, source.app, source.collection, viewer)
+  const check = await checkSource(viewer.orgId, source, viewer)
   return check.ok ? null : { ok: false, error: check.code, message: check.message }
 }
 

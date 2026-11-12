@@ -16,15 +16,19 @@
 // "who is in this conversation" has one answer. A thread the resolver cannot place (missing,
 // a hidden sub-run thread) fails CLOSED: the write is refused as before.
 
-import { and, eq, inArray, isNotNull } from "drizzle-orm"
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm"
+import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
-import { threadParticipants, users } from "~/db/schema/kernel"
+import { resourceGrants, threadParticipants, userRoles, users } from "~/db/schema/kernel"
+import { schemaRef } from "~/db/schema-ref"
+import { quoteIdent } from "~/lib/sql-utils"
 import { currentRunContext } from "~/modules/agent/runtime/run-context"
 import { resolveRoomFloor } from "~/modules/agent/scopes/room-floor"
 import { UNKNOWN_TURN_TAINT } from "~/modules/agent/scopes/scope-taint"
 import { readerScopesOf } from "~/modules/agent/scopes/taint-read-scopes"
 import { appScopeAliasProviders } from "~/modules/apps/runtime-helpers"
 import { hasScope, loadEffectivePermissions } from "~/modules/permissions/permissions"
+import { SHAREABLE_RESOURCES } from "~/modules/sharing/service"
 
 /** True when `grants` cover every scope in `taintScopes` (hierarchical `hasScope` matching). */
 export function holdsEveryScope(
@@ -235,6 +239,78 @@ export async function conversationReadersTaintGap(opts: {
     if (readerIds.length === 0) return null
     const members = await loadOrgMemberGrants(opts.orgId, { userIds: readerIds })
     if (members.length !== readerIds.length) return UNCOUNTED_GAP
+    const collector = gapCollector()
+    for (const member of members) collector.add(member.scopes, opts.taintScopes)
+    return collector.gap()
+  } catch {
+    return UNCOUNTED_GAP
+  }
+}
+
+/**
+ * The gap when a write's readers are those of one shared resource (scope-taint.ts, rule 6j: a
+ * dashboard table's rows, which follow the table's sharing): its owner, everyone when its
+ * org_access is viewer or editor, the people granted and the members of the roles granted. Null
+ * when they all hold every taint scope. A dimension grant (readers not enumerable here), an
+ * unknown taint, a missing resource or a failed lookup is held by nobody.
+ */
+export async function resourceReadersTaintGap(opts: {
+  orgId: string
+  resourceType: string
+  resourceId: unknown
+  taintScopes: readonly string[]
+}): Promise<TaintAudienceGap | null> {
+  if (opts.taintScopes.some((s) => UNKNOWN_TURN_TAINT.includes(s))) return UNCOUNTED_GAP
+  const resource = SHAREABLE_RESOURCES[opts.resourceType]
+  const id = typeof opts.resourceId === "string" ? opts.resourceId : ""
+  if (!resource || !/^[0-9a-f-]{36}$/i.test(id)) return UNCOUNTED_GAP
+  try {
+    const readers = await withPrivilegedDb(
+      opts.orgId,
+      "scope-taint-resource-readers",
+      async (db) => {
+        const table = sql.raw(
+          `${quoteIdent(schemaRef(resource.schema))}.${quoteIdent(resource.table)}`,
+        )
+        const [row] = extractRows<{ org_access: string | null; owner_user_id: string | null }>(
+          await db.execute(sql`
+          SELECT org_access, owner_user_id::text AS owner_user_id FROM ${table}
+           WHERE id = ${id}::uuid AND org_id = ${opts.orgId}::uuid LIMIT 1`),
+        )
+        if (!row) return null
+        if (row.org_access && row.org_access !== "none") return "everyone" as const
+        const grants = await db
+          .select({ kind: resourceGrants.granteeKind, grantee: resourceGrants.grantee })
+          .from(resourceGrants)
+          .where(
+            and(
+              eq(resourceGrants.orgId, opts.orgId),
+              eq(resourceGrants.resourceType, opts.resourceType),
+              eq(resourceGrants.resourceId, id),
+            ),
+          )
+        if (grants.some((g) => g.kind === "dimension")) return null
+        const roleIds = grants.filter((g) => g.kind === "role").map((g) => g.grantee)
+        const members = roleIds.length
+          ? await db
+              .select({ userId: userRoles.userId })
+              .from(userRoles)
+              .where(and(eq(userRoles.orgId, opts.orgId), inArray(userRoles.roleId, roleIds)))
+          : []
+        return [
+          ...new Set([
+            ...(row.owner_user_id ? [row.owner_user_id] : []),
+            ...grants.filter((g) => g.kind === "user").map((g) => g.grantee),
+            ...members.map((m) => m.userId),
+          ]),
+        ]
+      },
+    )
+    if (readers === null) return UNCOUNTED_GAP
+    const members =
+      readers === "everyone"
+        ? await loadOrgMemberGrants(opts.orgId)
+        : await loadOrgMemberGrants(opts.orgId, { userIds: readers })
     const collector = gapCollector()
     for (const member of members) collector.add(member.scopes, opts.taintScopes)
     return collector.gap()

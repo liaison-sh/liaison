@@ -130,6 +130,9 @@
 //      i. (Superseded 2026-10-29 by rule 9: a web read is never judged here, whatever the turn
 //         read.)
 //      Unknown taint stays held by nobody; every judgement is point in time.
+//      j. a write whose readers are those of one shared resource (`sinkReadersResource`:
+//         tables_rows_write, whose rows follow the dashboard table's sharing) is judged by them:
+//         its owner, everyone when the whole org sees it, the people and role members granted.
 //   7. The refusal names the missing scope(s) and HOW MANY of the people who would see the
 //      write lack them, never who. It names the only remedies (a person holding the scopes
 //      acts in the app, or an admin adjusts scopes) and says a new conversation is not
@@ -891,6 +894,9 @@ export type ToolTaintDeclaration = {
   /** The requester and the conversation's participants are the write's only readers (rule 6e):
    *  judged at the dispatch by their grants instead of refused here. */
   sinkReadersConversation?: boolean
+  /** The readers of one shared resource are the write's readers (rule 6j): judged at the
+   *  dispatch by their grants instead of refused here. */
+  sinkReadersResource?: { type: string; idParam: string }
   /** The table this READ tool reads its rows from, schema-qualified like `writesToTable`. It is
    *  what makes the read an origin for the same-resource allowance; it never authorizes a write
    *  (a tool declaring it and no `writesToTable` is still judged by `readOnly`). */

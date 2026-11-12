@@ -116,6 +116,8 @@ const EXPECTED_CLOSURE: Record<string, string> = {
   "kernel.dashboards": "direct",
   "kernel.dashboard_viewer_states": "direct",
   "kernel.dashboard_versions": "direct",
+  "kernel.dashboard_tables": "direct",
+  "kernel.dashboard_table_changes": "direct",
   "kernel.demo_world_marks": "direct",
   "kernel.desktop_devices": "direct",
   "kernel.device_flow_requests": "direct",

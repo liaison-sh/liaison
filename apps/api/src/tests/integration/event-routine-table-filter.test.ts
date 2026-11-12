@@ -99,8 +99,15 @@ async function update(
   }
 }
 
-async function fire(evt: Record<string, unknown>) {
-  await _publishEventInternal({ ...(evt as never), orgId: ORG })
+async function fire(evt: {
+  app: string
+  entity: string
+  action: string
+  entityId: string
+  data: Record<string, unknown>
+  metadata?: Record<string, unknown>
+}) {
+  await _publishEventInternal({ ...evt, orgId: ORG })
   await flushEventHandlers()
   await new Promise((r) => setTimeout(r, COALESCE_MS + 150))
 }

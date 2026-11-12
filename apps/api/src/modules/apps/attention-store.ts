@@ -241,7 +241,8 @@ export interface AttentionStoreDeps {
   notify: (orgId: string, userId: string, appName: string) => Promise<void>
 }
 
-async function defaultListActiveUsers(orgId: string): Promise<string[]> {
+/** Every active person of the org, around or not: who a refresh that must store every list runs for. */
+export async function listEveryActiveUser(orgId: string): Promise<string[]> {
   return withPrivilegedDb(orgId, "attention-store:list-users", async (tx) => {
     const rows = (await tx.execute(
       sql`SELECT id::text AS id FROM ${K}.users WHERE org_id = ${orgId} AND status = 'active'`,
@@ -321,7 +322,7 @@ export async function markAttentionReader(
 }
 
 const defaultDeps: AttentionStoreDeps = {
-  listActiveUsers: async (orgId) => attentionAudience(orgId, await defaultListActiveUsers(orgId)),
+  listActiveUsers: async (orgId) => attentionAudience(orgId, await listEveryActiveUser(orgId)),
   loadPersonActor: defaultLoadPersonActor,
   invoke: invokeAppProvider,
   notify: (orgId, userId, appName) =>

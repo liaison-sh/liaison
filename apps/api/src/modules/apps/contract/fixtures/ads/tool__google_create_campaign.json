@@ -1,0 +1,41 @@
+{
+  "entry": "tool:google_create_campaign",
+  "params": {
+    "name": "Search – bass traps BE",
+    "advertising_channel_type": "SEARCH",
+    "daily_budget": 30,
+    "currency": "EUR",
+    "bidding_strategy": {
+      "maximizeConversions": {}
+    }
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getToken",
+      "args": ["google"],
+      "reply": "ads-token-stand-in-2"
+    },
+    {
+      "method": "connections_getCredentials",
+      "args": ["google-config"],
+      "reply": "{\"loginCustomerId\":\"9876543210\",\"customerId\":\"1234567890\",\"merchantId\":\"5550001234\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://googleads.googleapis.com/v26/customers/1234567890/campaignBudgets:mutate",
+        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-2\",\"login-customer-id\":\"9876543210\",\"Content-Type\":\"application/json\"},\"body\":\"{\\\"operations\\\":[{\\\"create\\\":{\\\"name\\\":\\\"Search – bass traps BE budget\\\",\\\"amountMicros\\\":\\\"30000000\\\",\\\"deliveryMethod\\\":\\\"STANDARD\\\"}}]}\"}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"results\\\":[{\\\"resourceName\\\":\\\"customers/1234567890/campaignBudgets/13000000001\\\"}]}\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://googleads.googleapis.com/v26/customers/1234567890/campaigns:mutate",
+        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-2\",\"login-customer-id\":\"9876543210\",\"Content-Type\":\"application/json\"},\"body\":\"{\\\"operations\\\":[{\\\"create\\\":{\\\"name\\\":\\\"Search – bass traps BE\\\",\\\"advertisingChannelType\\\":\\\"SEARCH\\\",\\\"status\\\":\\\"PAUSED\\\",\\\"campaignBudget\\\":\\\"customers/1234567890/campaignBudgets/13000000001\\\",\\\"maximizeConversions\\\":{}}}]}\"}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"results\\\":[{\\\"resourceName\\\":\\\"customers/1234567890/campaigns/21000000001\\\"}]}\"}"
+    }
+  ]
+}

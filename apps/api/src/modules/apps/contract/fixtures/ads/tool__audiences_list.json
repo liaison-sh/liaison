@@ -1,0 +1,22 @@
+{
+  "entry": "tool:audiences_list",
+  "params": {
+    "limit": 25
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getCredentials",
+      "args": ["meta"],
+      "reply": "{\"accessToken\":\"ads-token-stand-in-1\",\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://graph.facebook.com/v25.0/act_1234567890123456/customaudiences?fields=id%2Cname%2Csubtype%2Cdescription%2Capproximate_count_lower_bound%2Capproximate_count_upper_bound%2Cdelivery_status%7Bcode%2Cdescription%7D%2Coperation_status%7Bcode%2Cdescription%7D%2Cretention_days%2Cdata_source%7Btype%2Csub_type%7D%2Ctime_created%2Ctime_updated%2Ctime_content_updated&limit=25",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"data\\\":[{\\\"id\\\":\\\"120210000000000501\\\",\\\"name\\\":\\\"Buyers – last 180 days\\\",\\\"subtype\\\":\\\"CUSTOM\\\",\\\"approximate_count_lower_bound\\\":1200,\\\"approximate_count_upper_bound\\\":1500,\\\"delivery_status\\\":{\\\"code\\\":200,\\\"description\\\":\\\"This audience is ready for use.\\\"},\\\"operation_status\\\":{\\\"code\\\":200,\\\"description\\\":\\\"Normal\\\"}}],\\\"paging\\\":{\\\"cursors\\\":{\\\"before\\\":\\\"QVFIUmFiZA\\\",\\\"after\\\":\\\"QVFIUnpiZA\\\"}}}\"}"
+    }
+  ]
+}

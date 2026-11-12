@@ -1,0 +1,22 @@
+{
+  "entry": "tool:unwatch_object",
+  "params": {
+    "platform": "facebook",
+    "external_id": "104857600000001_123450000000002"
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "watched_object",
+        "{\"where\":{\"platform\":\"facebook\",\"external_id\":\"104857600000001_123450000000002\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"878d05ba-8869-47a3-b93d-5cc3f0f89479\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.380352+00\",\"updated_at\":\"2026-11-12 10:10:29.494461+00\",\"platform\":\"facebook\",\"object_type\":\"facebook_post\",\"external_id\":\"104857600000001_123450000000002\",\"title\":null,\"permalink\":null,\"reason\":\"manual\",\"status\":\"decayed\",\"cadence_seconds\":86400,\"priority\":80,\"comment_cursor\":null,\"last_polled_at\":\"2026-01-01 00:00:00+00\",\"last_activity_at\":null,\"next_poll_at\":\"2026-01-02 00:00:00+00\",\"watched_by\":null,\"new_findings_count\":0,\"metadata\":{}}]"
+    },
+    {
+      "method": "db_update",
+      "args": ["watched_object", "878d05ba-8869-47a3-b93d-5cc3f0f89479", "{\"status\":\"stopped\"}"]
+    }
+  ]
+}

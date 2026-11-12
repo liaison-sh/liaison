@@ -1,0 +1,17 @@
+{
+  "entry": "preflight:like_item",
+  "params": {
+    "finding_id": "f72f438a-f543-44a7-8327-bffccb3cc7d6"
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "finding",
+        "{\"where\":{\"id\":\"f72f438a-f543-44a7-8327-bffccb3cc7d6\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"f72f438a-f543-44a7-8327-bffccb3cc7d6\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.963834+00\",\"updated_at\":\"2026-11-12 10:10:30.087077+00\",\"platform\":\"facebook\",\"external_id\":\"123450000000001_998800000000003\",\"relation\":\"comment_on_our_content\",\"parent_external_id\":\"104857600000001_123450000000001\",\"watched_object_id\":null,\"contact_id\":null,\"author_handle\":null,\"author_external_id\":\"6000000000000003\",\"content_text\":\"Are these panels safe to mount above a radiator?\",\"media_url\":null,\"permalink\":null,\"occurred_at\":\"2025-12-31 23:59:00+00\",\"comment_count\":0,\"brand_relevant\":false,\"edited_after_reply\":false,\"triage_category\":\"complaint\",\"sentiment\":null,\"urgency\":75,\"should_reply\":true,\"needs_human\":null,\"triage_reason\":\"The customer says the order failed at checkout\",\"suggested_reply\":null,\"approval_request_id\":null,\"status\":\"triaged\",\"metadata\":{\"siblingsAccessible\":true}}]"
+    }
+  ]
+}

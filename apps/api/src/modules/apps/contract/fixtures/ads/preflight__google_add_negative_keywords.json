@@ -1,0 +1,18 @@
+{
+  "entry": "preflight:google_add_negative_keywords",
+  "params": {
+    "campaign_id": "21000000001",
+    "keywords": [
+      {
+        "text": "free",
+        "match_type": "BROAD"
+      },
+      {
+        "text": "diy foam",
+        "match_type": "PHRASE"
+      }
+    ]
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
+  "calls": []
+}

@@ -1,0 +1,10 @@
+{
+  "entry": "preflight:google_set_status",
+  "params": {
+    "object_type": "ad_group",
+    "object_id": "152000000001",
+    "status": "ENABLED"
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
+  "calls": []
+}

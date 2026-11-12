@@ -145,7 +145,7 @@ export async function fetchInsightsReport(
     const record: InsightsReportRecord = { reportRunId, startedAt: new Date().toISOString(), wakes: 0 }
     try {
       await ctx.store.set(INSIGHTS_REPORTS, key, record, { ifVersion: 0 })
-      await ctx.timers.wakeIn(wakeDelay(0), INSIGHTS_REPORT_JOB, { key }, wakeOpts(key))
+      await ctx.timers.wakeIn(wakeDelay(0), INSIGHTS_REPORT_JOB, { report: key }, wakeOpts(key))
     } catch (err) {
       if ((err as { code?: unknown })?.code === "version_conflict") {
         // A concurrent call started the same report first: follow that one.
@@ -175,10 +175,11 @@ export async function fetchInsightsReport(
  * is still building. A record that is gone, finished or too old ends it.
  */
 export async function insightsReportJob(
-  payload: { key?: unknown },
+  payload: { report?: unknown },
   ctx: InsightsReportCtx & { connections: unknown },
 ): Promise<{ state: string }> {
-  const key = typeof payload?.key === "string" ? payload.key : ""
+  // `report`: the store id of the report record (insightsReportKey).
+  const key = typeof payload?.report === "string" ? payload.report : ""
   if (!key) return { state: "no_key" }
   const doc = await ctx.store.get(INSIGHTS_REPORTS, key)
   if (!doc) return { state: "gone" }
@@ -218,6 +219,6 @@ export async function insightsReportJob(
 
   const wakes = rec.wakes + 1
   await ctx.store.set(INSIGHTS_REPORTS, key, { ...rec, wakes }, { ifVersion: doc.version })
-  await ctx.timers.wakeIn(wakeDelay(wakes), INSIGHTS_REPORT_JOB, { key }, wakeOpts(key))
+  await ctx.timers.wakeIn(wakeDelay(wakes), INSIGHTS_REPORT_JOB, { report: key }, wakeOpts(key))
   return { state: answer.reason }
 }

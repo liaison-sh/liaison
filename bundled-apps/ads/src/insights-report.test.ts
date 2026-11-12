@@ -48,7 +48,7 @@ describe("insights report continuation", () => {
     const key = await insightsReportKey(REQ.path, REQ.params)
     expect((await store.get(INSIGHTS_REPORTS, key))?.data).toMatchObject({ reportRunId: "RUN_1", wakes: 0 })
     expect(timers.wakes).toEqual([
-      { seconds: 15, job: INSIGHTS_REPORT_JOB, payload: { key }, jobId: `insights-report-${key}` },
+      { seconds: 15, job: INSIGHTS_REPORT_JOB, payload: { report: key }, jobId: `insights-report-${key}` },
     ])
   })
 
@@ -61,7 +61,7 @@ describe("insights report continuation", () => {
     ])
     await fetchInsightsReport(ctx, REQ)
     const key = await insightsReportKey(REQ.path, REQ.params)
-    expect(await insightsReportJob({ key }, ctx)).toEqual({ state: "parked" })
+    expect(await insightsReportJob({ report: key }, ctx)).toEqual({ state: "parked" })
     const before = urls.length
     expect(await fetchInsightsReport(ctx, REQ)).toEqual([{ spend: "3.00" }])
     expect(urls.length).toBe(before)
@@ -77,8 +77,8 @@ describe("insights report continuation", () => {
     ])
     await fetchInsightsReport(ctx, REQ)
     const key = await insightsReportKey(REQ.path, REQ.params)
-    expect(await insightsReportJob({ key }, ctx)).toEqual({ state: "still_running" })
-    expect(await insightsReportJob({ key }, ctx)).toEqual({ state: "still_running" })
+    expect(await insightsReportJob({ report: key }, ctx)).toEqual({ state: "still_running" })
+    expect(await insightsReportJob({ report: key }, ctx)).toEqual({ state: "still_running" })
     expect(timers.wakes.map((w) => w.seconds)).toEqual([15, 30, 60])
     expect((await store.get(INSIGHTS_REPORTS, key))?.data).toMatchObject({ wakes: 2 })
   })
@@ -91,7 +91,7 @@ describe("insights report continuation", () => {
     ])
     await fetchInsightsReport(ctx, REQ)
     const key = await insightsReportKey(REQ.path, REQ.params)
-    expect(await insightsReportJob({ key }, ctx)).toEqual({ state: "failed" })
+    expect(await insightsReportJob({ report: key }, ctx)).toEqual({ state: "failed" })
     const err = await fetchInsightsReport(ctx, REQ).catch((e: Error) => e)
     expect((err as Error).message).toContain("Job Failed")
     expect(store.docs.size).toBe(0)
@@ -105,7 +105,7 @@ describe("insights report continuation", () => {
     const key = await insightsReportKey(REQ.path, REQ.params)
     const old = new Date(Date.now() - REPORT_MAX_AGE_MS - 1000).toISOString()
     await store.set(INSIGHTS_REPORTS, key, { reportRunId: "RUN_OLD", startedAt: old, wakes: 3 })
-    expect(await insightsReportJob({ key }, ctx)).toEqual({ state: "expired" })
+    expect(await insightsReportJob({ report: key }, ctx)).toEqual({ state: "expired" })
     await store.set(INSIGHTS_REPORTS, key, { reportRunId: "RUN_OLD", startedAt: old, wakes: 3 })
     const out = await fetchInsightsReport(ctx, REQ)
     expect(out).toMatchObject({ _pending: true, report_run_id: "RUN_2" })
@@ -114,7 +114,7 @@ describe("insights report continuation", () => {
 
   it("the job ends quietly when the record is gone", async () => {
     const { ctx } = makeCtx([])
-    expect(await insightsReportJob({ key: "nope" }, ctx)).toEqual({ state: "gone" })
+    expect(await insightsReportJob({ report: "nope" }, ctx)).toEqual({ state: "gone" })
     expect(await insightsReportJob({}, ctx)).toEqual({ state: "no_key" })
   })
 })

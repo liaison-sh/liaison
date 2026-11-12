@@ -1,0 +1,50 @@
+{
+  "entry": "webhook-verify:segment",
+  "params": {
+    "headers": {
+      "content-type": "application/json",
+      "x-calls-signature": "9xEIgRIHAgYibbV7M2WLnVHZy61u2NAbmnFDY9w8YUk=",
+      "x-calls-delivery-id": "delivery-0002"
+    },
+    "body": "{\"callRef\":\"meet-2026-01-01-weekly-sync\",\"kind\":\"segment\",\"segmentId\":\"seg-0002\",\"ts\":\"2026-01-01T00:00:00.000Z\",\"speaker\":\"Customer\",\"text\":\"We need the first 40 units before the 15th of March, the rest can follow in April.\"}",
+    "method": "POST",
+    "query": {}
+  },
+  "recordedFrom": "the contract org on a local stack, record-calls.recorder.ts",
+  "calls": [
+    {
+      "method": "config_get",
+      "args": ["callsWebhookSecret"],
+      "reply": "calls-webhook-secret-stand-in"
+    },
+    {
+      "method": "crypto_hmacSha256Base64",
+      "args": [
+        "calls-webhook-secret-stand-in",
+        "{\"callRef\":\"meet-2026-01-01-weekly-sync\",\"kind\":\"segment\",\"segmentId\":\"seg-0002\",\"ts\":\"2026-01-01T00:00:00.000Z\",\"speaker\":\"Customer\",\"text\":\"We need the first 40 units before the 15th of March, the rest can follow in April.\"}"
+      ],
+      "reply": "9xEIgRIHAgYibbV7M2WLnVHZy61u2NAbmnFDY9w8YUk="
+    },
+    {
+      "method": "crypto_timingSafeEqual",
+      "args": [
+        "9xEIgRIHAgYibbV7M2WLnVHZy61u2NAbmnFDY9w8YUk=",
+        "9xEIgRIHAgYibbV7M2WLnVHZy61u2NAbmnFDY9w8YUk="
+      ],
+      "reply": true
+    },
+    {
+      "method": "config_get",
+      "args": ["callsWebhookTtlSeconds"],
+      "reply": null
+    },
+    {
+      "method": "crypto_hmacSha256Base64",
+      "args": [
+        "calls-delivery",
+        "{\"callRef\":\"meet-2026-01-01-weekly-sync\",\"kind\":\"segment\",\"segmentId\":\"seg-0002\",\"ts\":\"2026-01-01T00:00:00.000Z\",\"speaker\":\"Customer\",\"text\":\"We need the first 40 units before the 15th of March, the rest can follow in April.\"}"
+      ],
+      "reply": "taG/NrgVbiwibN/RlmeqEeJxZn2tD6MeyFtn6Br5aEQ="
+    }
+  ]
+}

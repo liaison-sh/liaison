@@ -2,7 +2,6 @@
 // The load harness's fan-out report (fanout-report.ts) and the per-org run
 // counters it reads (fanout-keys.ts): judged from Redis keys alone.
 import { afterAll, afterEach, describe, expect, it } from "bun:test"
-import crypto from "node:crypto"
 import { redis } from "~/lib/redis"
 import { histogramP95Ms, waitBucket } from "./fairness"
 import { expectedEpochs, maxSlicePct, spreadDelays, spreadWindowMs } from "./fanout"
@@ -22,6 +21,26 @@ import {
 } from "./fanout-keys"
 import { buildFanoutReport, FanoutReportTestAccess, summariseSyntheticDrain } from "./fanout-report"
 
+/**
+ * Seeded ids: every input of this file is the same on every run, so a result
+ * that depends on where the ids hash to (the spread's ranks, its phase) cannot
+ * differ between runs. mulberry32 over a fixed seed, formatted as a v4 uuid.
+ */
+function seededIds(seed: number): () => string {
+  let a = seed >>> 0
+  const next32 = (): number => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return (t ^ (t >>> 14)) >>> 0
+  }
+  return () => {
+    const hex = Array.from({ length: 4 }, () => next32().toString(16).padStart(8, "0")).join("")
+    const v = ((Number.parseInt(hex[16] as string, 16) & 0x3) | 0x8).toString(16)
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${v}${hex.slice(17, 20)}-${hex.slice(20, 32)}`
+  }
+}
 const written: string[] = []
 async function setKey(key: string, value: string): Promise<void> {
   written.push(key)
@@ -40,9 +59,10 @@ afterAll(async () => {
 
 describe("the fan-out report", () => {
   it("the report counts a doubled and a missed epoch from fixture keys", async () => {
-    const app = `rep${crypto.randomUUID().slice(0, 8)}`
+    const nextId = seededIds(1)
+    const app = `rep${nextId().slice(0, 8)}`
     const job = "tick"
-    const orgs = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()]
+    const orgs = [nextId(), nextId(), nextId()]
     // Three */5 epochs, all closed long ago.
     const base = Date.UTC(2026, 0, 1, 10, 0, 0)
     const epochs = [base, base + 300_000, base + 600_000]
@@ -53,7 +73,7 @@ describe("the fan-out report", () => {
     // The three report orgs plus one org the report was not asked about.
     fanoutTestState.listOrgs = async () => [
       ...orgs.map((orgId) => ({ orgId, status: null })),
-      { orgId: crypto.randomUUID(), status: "active" as const },
+      { orgId: nextId(), status: "active" as const },
     ]
     for (const e of epochs) {
       for (const [i, orgId] of orgs.entries()) {
@@ -104,18 +124,19 @@ describe("the fan-out report", () => {
   })
 
   it("an org the tick skipped on runsFor is not missed; the spread is judged on the orgs the tick ran", async () => {
-    const app = `rf${crypto.randomUUID().slice(0, 8)}`
+    const nextId = seededIds(2)
+    const app = `rf${nextId().slice(0, 8)}`
     const job = "tick"
-    const ran = Array.from({ length: 5 }, () => crypto.randomUUID())
-    const skipped = crypto.randomUUID()
-    const nonLoad = crypto.randomUUID()
+    const ran = Array.from({ length: 5 }, () => nextId())
+    const skipped = nextId()
+    const nonLoad = nextId()
     // One */5 epoch, closed long ago. The box has 20 eligible orgs; the tick ran 5.
     const epoch = Date.UTC(2026, 0, 1, 11, 0, 0)
     FanoutReportTestAccess.setSchedulers(
       async () => [{ template: { app, job, cron: "*/5 * * * *" } }],
       async () => 1,
     )
-    const others: string[] = Array.from({ length: 13 }, () => crypto.randomUUID())
+    const others: string[] = Array.from({ length: 13 }, () => nextId())
     fanoutTestState.listOrgs = async () =>
       [...ran, skipped, nonLoad, ...others].map((orgId) => ({ orgId, status: null }))
     fanoutTestState.isLoadOrg = async (o) => o !== nonLoad && !others.includes(o)
@@ -152,6 +173,7 @@ describe("the fan-out report", () => {
   })
 
   it("the spread is the tick's: judged on every org it ran, not on the load orgs' sample of its ranks", async () => {
+    const nextId = seededIds(3)
     // A tick of 22 orgs on a */5 job spreads them by rank, one every 2 s over
     // 44 s, so no tenth holds more than 3 of 22 (13.6 %). 10 of them are load
     // orgs; when 3 load orgs hold neighbouring ranks in one tenth, the load
@@ -159,17 +181,21 @@ describe("the fan-out report", () => {
     const job = "tick"
     const epoch = Date.UTC(2026, 0, 1, 12, 0, 0)
     const gapMs = 300_000
+    // Each org starts this long after its planned delay. The tenths are found
+    // on the same start offsets the report reads (delay + lag): a delay just
+    // under a tenth's edge starts in the next tenth.
+    const lagMs = 50
     let app = ""
     let orgs: string[] = []
     let load: string[] = []
     for (let tries = 0; load.length === 0 && tries < 500; tries++) {
-      app = `sp${crypto.randomUUID().slice(0, 8)}`
-      orgs = Array.from({ length: 22 }, () => crypto.randomUUID())
+      app = `sp${nextId().slice(0, 8)}`
+      orgs = Array.from({ length: 22 }, () => nextId())
       const w = spreadWindowMs(gapMs, orgs.length)
       const delays = spreadDelays(orgs, app, job, w)
       const byTenth = new Map<number, string[]>()
       for (const [orgId, d] of delays) {
-        const tenth = Math.floor((d / w) * 10)
+        const tenth = Math.floor(((d + lagMs) / w) * 10)
         byTenth.set(tenth, [...(byTenth.get(tenth) ?? []), orgId])
       }
       const full = [...byTenth.values()].find((ids) => ids.length === 3)
@@ -186,12 +212,11 @@ describe("the fan-out report", () => {
     )
     fanoutTestState.listOrgs = async () => orgs.map((orgId) => ({ orgId, status: null }))
     fanoutTestState.isLoadOrg = async (o) => load.includes(o)
-    // Each org starts 50 ms after its planned delay.
     for (const orgId of load) {
       await setKey(fanoutRunsKey(app, job, orgId, epoch), "1")
       await setKey(
         fanoutRunAtKey(app, job, orgId, epoch),
-        String(epoch + (delays.get(orgId) ?? 0) + 50),
+        String(epoch + (delays.get(orgId) ?? 0) + lagMs),
       )
     }
     const input = {
@@ -217,7 +242,7 @@ describe("the fan-out report", () => {
       await redis.hset(
         fanoutStartsKey(app, job, epoch),
         orgId,
-        String(epoch + (delays.get(orgId) ?? 0) + 50),
+        String(epoch + (delays.get(orgId) ?? 0) + lagMs),
       )
     }
     const tick = await buildFanoutReport(input)
@@ -235,8 +260,9 @@ describe("the fan-out report", () => {
   })
 
   it("a watched epoch records every org's first start; an unwatched one records none", async () => {
-    const loadOrg = crypto.randomUUID()
-    const otherOrg = crypto.randomUUID()
+    const nextId = seededIds(4)
+    const loadOrg = nextId()
+    const otherOrg = nextId()
     fanoutTestState.isLoadOrg = async (o) => o === loadOrg
     const watched = 1_700_000_600_000
     const unwatched = 1_700_000_900_000
@@ -276,8 +302,9 @@ describe("the fan-out report", () => {
   })
 
   it("a load org's first attempt is counted once; a retry, a non-fo id and a non-load org are not", async () => {
-    const loadOrg = crypto.randomUUID()
-    const otherOrg = crypto.randomUUID()
+    const nextId = seededIds(5)
+    const loadOrg = nextId()
+    const otherOrg = nextId()
     fanoutTestState.isLoadOrg = async (o) => o === loadOrg
     const epoch = 1_700_000_000_000
     const id = (org: string) => `fo.cnt.tick.${org}.${epoch}`
@@ -299,7 +326,8 @@ describe("the fan-out report", () => {
   })
 
   it("a fan-out job handed back by a drain is taken back, so its rerun is not a double", async () => {
-    const loadOrg = crypto.randomUUID()
+    const nextId = seededIds(6)
+    const loadOrg = nextId()
     fanoutTestState.isLoadOrg = async (o) => o === loadOrg
     const epoch = 1_700_000_300_000
     const id = `fo.hb.tick.${loadOrg}.${epoch}`

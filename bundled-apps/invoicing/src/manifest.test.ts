@@ -1500,7 +1500,11 @@ describe("invoicing manifest", () => {
     //   asked with the wrong argument and shape, so the link was never made).
     // 0.20.57: quotes and invoices for a B2B company name the company, billed at its location with
     //   its tax registration id; each draft's own taxesIncluded splits net and tax.
-    expect(m.version).toBe("0.20.58")
+    // 0.21.0: no transaction is held across a run: an issue commits its number, document, lines and
+    //   the writes that go with it (the draft it replaces, the invoice a credit note credits) in one
+    //   batch; automatic credit notes carry a dedup key; the deferred-retry sweep resumes issues a
+    //   dead run left unrendered.
+    expect(m.version).toBe("0.21.0")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

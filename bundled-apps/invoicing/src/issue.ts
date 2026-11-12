@@ -5,12 +5,16 @@
 // `issueDocument(ctx, input)` is the single seam every issuance tool
 // (agent + manual) delegates to. It composes D2 (tax classifier), D3
 // (numbering), D5 (money), D6 (PDF render via ctx.pdf), and K1 (thread
-// post via ctx.messages) inside the ambient transaction provided by the
-// kernel bridge.
+// post via ctx.messages). No transaction is held across the run: the
+// number, the document, its lines and the caller's `commit_with` writes
+// commit together in ONE `ctx.db.batch` call, so legal numbering stays
+// gap-free and unique; everything after it is a separate, retryable step.
 //
 // Failure semantics:
+//   - Failure before the batch (or of the batch) → nothing persisted, no
+//     number consumed.
 //   - PDF render failure → document is persisted with `pdf_status='failed'`;
-//     number is preserved (already allocated inside the ambient tx);
+//     number is preserved (committed with the document);
 //     lifecycle log records `pdf_render_failed`; caller treats the absence
 //     of `pdf_file_id` in the return envelope as "retry me".
 //   - Thread post failure → document is persisted with `pdf_status='ready'`;
@@ -27,7 +31,7 @@
 import { type EinvCtx, stageSendAfterIssue } from "./einvoicing/transmit"
 import type { CrossAppExecuteTool } from "./cross-app"
 import { documentRollup, lineAmounts } from "./money"
-import { allocateNumber } from "./numbering"
+import { numberingSequence } from "./numbering"
 import { classifyRegime } from "./einvoicing/classify"
 import type { TimeSurface } from "./issue-date"
 import type { CustomerKind, Regime } from "./einvoicing/classify"
@@ -331,6 +335,13 @@ export interface IssueInput {
    *  is reserved for a value read straight off a Shopify webhook payload with no human step in
    *  between (the order-paid auto-flow). */
   po_number_source?: "shopify_sync" | "person"
+  /** Writes that must commit with the document (the draft it replaces, the invoice a credit
+   *  note credits): appended to the issuing batch. `{ $ref: "document" }` is the new document's
+   *  id, `{ $seq: "formatted" }` its number. */
+  commit_with?: IssueBatchOp[]
+  /** A dedup key for the document (`documents.external_ref`, unique), e.g. the automatic credit
+   *  note of one Shopify refund. */
+  external_ref?: string
 }
 
 export interface IssueResult {
@@ -365,6 +376,26 @@ export interface IssueDb {
   findOne(entity: string, id: string): Promise<unknown | null>
   insert(entity: string, data: Record<string, unknown>): Promise<unknown>
   update(entity: string, id: string, data: Record<string, unknown>): Promise<void>
+  /** `ctx.db.batch`: writes (and the number) that commit together. */
+  batch(spec: IssueBatchSpec): Promise<{
+    sequence?: { value: number; formatted?: string }
+    rows: Record<string, Record<string, unknown>>
+  }>
+}
+
+/** One write of a `ctx.db.batch` (see the SDK's `DbBatchOp`). */
+export type IssueBatchOp =
+  | { insert: string; data: Record<string, unknown>; as?: string }
+  | { update: string; id: string | { $ref: string }; data: Record<string, unknown> }
+  | { delete: string; id: string | { $ref: string } }
+
+export interface IssueBatchSpec {
+  sequence?: {
+    key: string
+    format?: { prefix: string; pad?: number }
+    unique?: { entity: string; field: string; where?: Record<string, unknown> }
+  }
+  ops: IssueBatchOp[]
 }
 
 // Minimal ctx surface — the helper consumes only the bridges it needs.
@@ -388,9 +419,6 @@ export interface IssueCtx {
    * yet, then caches the result into `product_customs_overlay`.
    */
   executeTool?: CrossAppExecuteTool
-  sequences: {
-    allocate(p: { key: string }): Promise<{ value: number }>
-  }
   /** The host's clock in a time zone: the issue date and number year (`issue-date.ts`). */
   time: TimeSurface["time"]
   pdf: {
@@ -477,6 +505,8 @@ export interface IssueCtx {
 }
 
 export interface DocumentInsert {
+  /** Dedup key (unique when set). */
+  external_ref?: string
   type: string
   scope: DocumentScope | null
   status: string
@@ -692,6 +722,7 @@ function serialiseDocumentInsert(
       ? { internal_cancellation: row.internal_cancellation }
       : {}),
     ...(row.einvoice ?? {}),
+    ...(row.external_ref ? { external_ref: row.external_ref } : {}),
     lifecycle_log: row.lifecycle_log,
   }
 }
@@ -1090,34 +1121,22 @@ export async function issueDocument(
     throw new FxRateUnavailableError(draft.currency, fxDate)
   }
 
-  // 4) Number allocation via D3.
-  const numberResult = await allocateNumber(ctx, {
+  // 4) Numbering via D3: the number is allocated by the batch that writes the document (6).
+  const sequence = numberingSequence({
     issuer_profile: issuer,
     type,
     year_of_issue: draft.year_of_issue,
-    isTaken: async (value) =>
-      (
-        await ctx.db.findMany("documents", {
-          where: {
-            issuer_profile_id: issuer.id,
-            type,
-            year_of_issue: draft.year_of_issue,
-            number_int: value,
-          },
-          limit: 1,
-        })
-      ).length > 0,
   })
 
-  // 5) Insert document row.
+  // 5) The document row, numbered by the batch.
   const nowIso = new Date().toISOString()
   const userId = await ctx.getUserId()
   const documentInsert: DocumentInsert = {
     type,
     scope: input.scope ?? null,
     status: input.initial_status ?? "issued",
-    number: numberResult.formatted,
-    number_int: numberResult.value,
+    number: null,
+    number_int: null,
     year_of_issue: draft.year_of_issue,
     issuer_profile_id: issuer.id,
     counterparty_contact_id: counterparty.contact_id,
@@ -1149,6 +1168,7 @@ export async function issueDocument(
         ? draft.external_refs.shopify_order_id
         : null,
     shopify_order_number: readOrderNumber(draft.external_refs),
+    ...(input.external_ref ? { external_ref: input.external_ref } : {}),
     shipment_ref:
       typeof draft.external_refs.shipment_ref === "string"
         ? draft.external_refs.shipment_ref
@@ -1210,11 +1230,37 @@ export async function issueDocument(
         : []),
     ],
   }
-  const inserted = (await ctx.db.insert(
-    "documents",
-    serialiseDocumentInsert(documentInsert),
-  )) as Record<string, unknown>
-  const documentId = String(inserted.id)
+  // 6) Number, document, lines and the caller's own writes commit in ONE batch: a sandboxed run
+  //    holds no transaction across its calls, so a run that fails or is killed after this point
+  //    leaves an issued, numbered document (whose PDF a retry renders), and one that fails before
+  //    it leaves nothing and consumes no number.
+  const committed = await ctx.db.batch({
+    sequence,
+    ops: [
+      {
+        insert: "documents",
+        as: "document",
+        data: {
+          ...serialiseDocumentInsert(documentInsert),
+          number: { $seq: "formatted" },
+          number_int: { $seq: "value" },
+        },
+      },
+      ...snapshotLines.map((l) => ({
+        insert: "document_lines",
+        data: { ...serialiseLineInsert({ ...l, document_id: "" }), document_id: { $ref: "document" } },
+      })),
+      ...(input.commit_with ?? []),
+    ],
+  })
+  const allocated = committed.sequence
+  if (!allocated || typeof allocated.value !== "number" || typeof allocated.formatted !== "string") {
+    throw new Error(`numbering failed for "${sequence.key}": ${JSON.stringify(committed)}`)
+  }
+  const numberResult = { value: allocated.value, formatted: allocated.formatted }
+  documentInsert.number = numberResult.formatted
+  documentInsert.number_int = numberResult.value
+  const documentId = String(committed.rows.document?.id)
 
   // Kernel audit trail — mirrors the lifecycle_log entries just written into
   // documentInsert.lifecycle_log above (issued / marked_paid / po_number_changed).
@@ -1266,14 +1312,6 @@ export async function issueDocument(
         },
       })
     }
-  }
-
-  // 6) Insert line rows.
-  for (const l of snapshotLines) {
-    await ctx.db.insert(
-      "document_lines",
-      serialiseLineInsert({ ...l, document_id: documentId }),
-    )
   }
 
   // 7) Render PDF via ctx.pdf. Failures are captured: the document persists.

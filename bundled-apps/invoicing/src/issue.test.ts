@@ -43,7 +43,6 @@ function makeCtx(opts?: {
   ctx: IssueCtx
   db: MockDb
   state: {
-    sequences: Record<string, number>
     threadPosts: Array<{
       contact_id: string
       body: string
@@ -74,7 +73,6 @@ function makeCtx(opts?: {
     },
   })
   const state = {
-    sequences: {} as Record<string, number>,
     threadPosts: [] as Array<{
       contact_id: string
       body: string
@@ -95,13 +93,6 @@ function makeCtx(opts?: {
     getUserId: async () => "user-1",
     db,
     time: testTime(),
-    sequences: {
-      async allocate({ key }) {
-        const next = (state.sequences[key] ?? 0) + 1
-        state.sequences[key] = next
-        return { value: next }
-      },
-    },
     pdf: {
       async render(p) {
         state.renderCalls.push(p)
@@ -978,7 +969,7 @@ describe("issueDocument e-invoicing backstop (enforce)", () => {
     }
     expect(caught).toBeInstanceOf(EinvoiceGateRefusal)
     expect((caught as EinvoiceGateRefusal).result.code).toBe("einvoice_data_missing")
-    expect(Object.keys(state.sequences)).toHaveLength(0)
+    expect(db.__sequences.size).toBe(0)
     expect(db.__all("documents")).toHaveLength(0)
   })
 
@@ -1018,7 +1009,7 @@ describe("issueDocument e-invoicing backstop (enforce)", () => {
       expect(caught).toBeInstanceOf(FxRateUnavailableError)
       expect((caught as FxRateUnavailableError).code).toBe("fx_rate_unavailable")
       expect((caught as FxRateUnavailableError).retryable).toBe(true)
-      expect(Object.keys(state.sequences)).toHaveLength(0)
+      expect(db.__sequences.size).toBe(0)
       expect(db.__all("documents")).toHaveLength(0)
     })
 
@@ -1045,5 +1036,66 @@ describe("issueDocument e-invoicing backstop (enforce)", () => {
       await issueDocument(ctx, { type: "invoice", operation_category: "goods", issuer: issuerFR, counterparty: counterpartyFR, draft: baseDraft() })
       expect(db.__all("documents")[0]!.fx_rate ?? null).toBeNull()
     })
+  })
+})
+
+// ── No transaction across the run: what one issuing commit guarantees ────────
+describe("issueDocument commits number, document and lines in one batch", () => {
+  const input = (): IssueInput => ({
+    type: "invoice",
+    operation_category: "goods",
+    issuer: issuerFR,
+    counterparty: counterpartyFR,
+    draft: baseDraft(),
+  })
+
+  test("one batch carries the number, the document, its lines and the caller's writes", async () => {
+    const { ctx, db } = makeCtx()
+    db.__seed("documents", [{ id: "00000000-0000-4000-8000-0000000d0a1f", type: "invoice", status: "draft" }])
+    const specs: Array<Parameters<MockDb["batch"]>[0]> = []
+    const batch = db.batch.bind(db)
+    db.batch = async (spec) => {
+      specs.push(spec)
+      return batch(spec)
+    }
+    await issueDocument(ctx, {
+      ...input(),
+      commit_with: [{ delete: "documents", id: "00000000-0000-4000-8000-0000000d0a1f" }],
+    })
+    expect(specs).toHaveLength(1)
+    expect(specs[0]?.sequence?.key).toBe("invoicing:doc_number:issuer-1:invoice:2026")
+    expect(specs[0]?.ops.map((o) => Object.keys(o)[0])).toEqual(["insert", "insert", "delete"])
+    expect(db.__all("documents").map((d) => d.number)).toEqual(["INV-2026-0001"])
+  })
+
+  test("a failing write of the batch persists nothing and consumes no number", async () => {
+    const { ctx, db } = makeCtx()
+    await expect(
+      issueDocument(ctx, { ...input(), commit_with: [{ update: "documents", id: "missing", data: {} }] }),
+    ).rejects.toThrow()
+    expect(db.__all("documents")).toHaveLength(0)
+    expect(db.__all("document_lines")).toHaveLength(0)
+    expect((await issueDocument(ctx, input())).number).toBe("INV-2026-0001")
+  })
+
+  test("a run killed after the commit leaves the issued document numbered, and no gap", async () => {
+    const { ctx, db } = makeCtx()
+    // The run dies right after the issuing commit (its first call after it fails for good).
+    const dying = { ...ctx, emit: async () => Promise.reject(new Error("process died")) }
+    await expect(issueDocument(dying, input())).rejects.toThrow("process died")
+    const [doc] = db.__all("documents")
+    expect(doc?.number).toBe("INV-2026-0001")
+    expect(doc?.pdf_status).toBe("pending")
+    expect(db.__all("document_lines")).toHaveLength(1)
+    expect((await issueDocument(ctx, input())).number).toBe("INV-2026-0002")
+  })
+
+  test("issues started together never share a number and leave none out", async () => {
+    const { ctx, db } = makeCtx()
+    const results = await Promise.all(Array.from({ length: 8 }, () => issueDocument(ctx, input())))
+    expect(results.map((r) => r.number).sort()).toEqual(
+      Array.from({ length: 8 }, (_, i) => `INV-2026-000${i + 1}`),
+    )
+    expect(new Set(db.__all("documents").map((d) => d.number_int)).size).toBe(8)
   })
 })

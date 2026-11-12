@@ -231,6 +231,48 @@ describe("an app restages its own approval", () => {
     expect(String(note?.content)).toContain("Row a changed to 2.50")
   })
 
+  it("the summary an app gives with its restage is on the row when the restage returns, with its kind kept", async () => {
+    const id = await stageRow()
+    const res = JSON.parse(
+      await methods(APP).approvals_restagePayload!(
+        id,
+        JSON.stringify({ items: [{ item: "a", total: 250 }] }),
+        "Row a changed",
+        JSON.stringify({
+          title: "Issue 1 invoice for March",
+          lines: ["Total: 2.50 EUR incl. VAT"],
+        }),
+      ),
+    ) as { ok: boolean }
+    expect(res.ok).toBe(true)
+    const [row] = await sql`SELECT summary FROM kernel.approval_requests WHERE id = ${id}`
+    expect(row?.summary).toEqual({
+      kind: "run_issue",
+      title: "Issue 1 invoice for March",
+      lines: ["Total: 2.50 EUR incl. VAT"],
+    })
+  })
+
+  it("a summary that is not valid is dropped and the restage still stores the payload", async () => {
+    const id = await stageRow()
+    const res = JSON.parse(
+      await methods(APP).approvals_restagePayload!(
+        id,
+        JSON.stringify({ items: [{ item: "a", total: 7 }] }),
+        "Row a changed",
+        JSON.stringify({ title: "x".repeat(500), lines: [] }),
+      ),
+    ) as { ok: boolean }
+    expect(res.ok).toBe(true)
+    expect((await readRow(id)).current_payload).toEqual({
+      run_id: "run-1",
+      items: [{ item: "a", total: 7 }],
+    })
+    const [row] = await sql`SELECT summary FROM kernel.approval_requests WHERE id = ${id}`
+    const title = (row?.summary as { title: string } | undefined)?.title ?? ""
+    expect(title.length).toBeLessThanOrEqual(200)
+  })
+
   it("a deferred approval is restaged as a pending one is", async () => {
     const id = await stageRow({ status: "deferred" })
     const res = await restage(APP, id, { items: [{ item: "a", total: 300 }] })

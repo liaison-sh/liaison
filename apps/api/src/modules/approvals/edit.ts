@@ -3,11 +3,12 @@
 import {
   type ApprovalSummary,
   approvalSummaryLinesMax,
+  approvalSummarySchema,
   sharedSurfaceDraftReadScope,
 } from "@liaison/shared"
 import type { SchemaObject, ValidateFunction } from "ajv"
 import { sql as drizzleSql } from "drizzle-orm"
-import { extractRows } from "~/db"
+import { extractRows, type PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
@@ -94,6 +95,18 @@ export class UpdatePayloadError extends Error {
   }
 }
 
+/**
+ * What an app says its own approval's card reads after it restaged the payload: the headline and
+ * lines the summarizer would build from the new payload. Written in the same transaction as the
+ * payload, so the card and everything that follows the payload change in one event, with no
+ * summarizer round trip after the commit.
+ */
+export interface AppRestageSummary {
+  title?: string
+  subtitle?: string
+  lines?: string[]
+}
+
 export interface UpdatePayloadArgs {
   orgId: string
   requestId: string
@@ -129,7 +142,7 @@ export interface UpdatePayloadArgs {
    * reset, taint narrowing and the thread note stay. `actor` is ignored for authority; the note is
    * posted for the requester and names the app.
    */
-  appRestage?: { appName: string; note?: string }
+  appRestage?: { appName: string; note?: string; summary?: AppRestageSummary }
   /**
    * The calling turn's effective scopes (an agent's ceiling intersected with its person's
    * grants, or an MCP token's), passed by the agent tool. The tool asks only
@@ -431,6 +444,7 @@ export async function updatePayload(input: UpdatePayloadArgs): Promise<UpdatePay
         editableFields,
       })
     : null
+  let appSummaryWritten = false
   const result = await withPrivilegedDb(args.orgId, "approval-edit", async (tx) => {
     const locked = extractRows<
       {
@@ -568,6 +582,8 @@ export async function updatePayload(input: UpdatePayloadArgs): Promise<UpdatePay
         currentStatus: "decided_during_edit",
       })
     }
+    if (restage?.summary)
+      appSummaryWritten = await writeAppRestageSummary(tx, args.orgId, locked.id, restage.summary)
 
     const fieldList = diff.map((d) => d.field).join(", ")
     const editMetadata = {
@@ -713,13 +729,16 @@ export async function updatePayload(input: UpdatePayloadArgs): Promise<UpdatePay
               taintSurfaceLabelForTool(args.orgId, row.tool_name, tool?.writesToTable),
             )
         : null
-    await refreshSummaryAfterEdit(
-      args,
-      row,
-      publicResult.currentPayload,
-      publicResult.lastEdit,
-      disclosureLine,
-    )
+    // The app's own summary was written with the payload (one event); only a card that must also
+    // carry a disclosure line is rebuilt after the commit.
+    if (!(appSummaryWritten && disclosureLine === null))
+      await refreshSummaryAfterEdit(
+        args,
+        row,
+        publicResult.currentPayload,
+        publicResult.lastEdit,
+        disclosureLine,
+      )
   }
   return publicResult
 }
@@ -765,6 +784,40 @@ export function withDisclosureLine(
   if (!disclosureLine) return summary
   const keep = approvalSummaryLinesMax(summary.kind) - 1
   return { ...summary, lines: [...summary.lines.slice(0, keep), disclosureLine] }
+}
+
+/**
+ * Writes the summary an app gave with its restage onto the row, inside the edit's transaction.
+ * The row's kind, links and impact stay; title, subtitle and lines are replaced. Returns false (the
+ * summary is then rebuilt after the commit, as for any edit) when the result is not a valid summary.
+ */
+async function writeAppRestageSummary(
+  tx: PrivilegedDb,
+  orgId: string,
+  requestId: string,
+  given: AppRestageSummary,
+): Promise<boolean> {
+  const current = extractRows<{ summary: unknown }>(
+    await tx.execute(drizzleSql`
+      SELECT summary FROM ${K}.approval_requests WHERE id = ${requestId} AND org_id = ${orgId}::uuid
+    `),
+  )[0]?.summary
+  if (!current || typeof current !== "object" || Array.isArray(current)) return false
+  const next = {
+    ...(current as Record<string, unknown>),
+    ...(typeof given.title === "string" && given.title ? { title: given.title } : {}),
+    ...(typeof given.subtitle === "string" ? { subtitle: given.subtitle } : {}),
+    ...(Array.isArray(given.lines)
+      ? { lines: given.lines.filter((l) => typeof l === "string") }
+      : {}),
+  }
+  const valid = approvalSummarySchema.safeParse(next)
+  if (!valid.success) return false
+  await tx.execute(drizzleSql`
+    UPDATE ${K}.approval_requests SET summary = ${JSON.stringify(valid.data)}::jsonb
+    WHERE id = ${requestId} AND org_id = ${orgId}::uuid
+  `)
+  return true
 }
 
 /**

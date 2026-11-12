@@ -38,6 +38,7 @@ export function createApprovalsMethods(ctx: BridgeContext): Record<string, any> 
       approvalRequestId: string,
       fieldsJson: string,
       note?: string,
+      summaryJson?: string,
     ): Promise<string> => {
       const id = String(approvalRequestId ?? "")
       const refuse = (code: string, message: string) => JSON.stringify({ ok: false, code, message })
@@ -51,6 +52,20 @@ export function createApprovalsMethods(ctx: BridgeContext): Record<string, any> 
       }
       if (!fields || typeof fields !== "object" || Array.isArray(fields))
         return refuse("invalid_edit", "fields must be an object of payload paths to new values.")
+      // The card's text after the change, from the app (optional): written with the payload.
+      let summary: { title?: string; subtitle?: string; lines?: string[] } | undefined
+      if (summaryJson !== undefined && summaryJson !== null) {
+        try {
+          const parsed: unknown =
+            typeof summaryJson === "string" ? JSON.parse(summaryJson) : summaryJson
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) summary = parsed
+        } catch {
+          return refuse(
+            "invalid_edit",
+            "summary must be an object with a title, subtitle and lines.",
+          )
+        }
+      }
       // A turn whose taint cannot be known never widens an approval's readers.
       if (bridgeTurnTaintScopes === null)
         return refuse(
@@ -75,6 +90,7 @@ export function createApprovalsMethods(ctx: BridgeContext): Record<string, any> 
           appRestage: {
             appName,
             ...(typeof note === "string" && note.trim() !== "" ? { note } : {}),
+            ...(summary ? { summary } : {}),
           },
         })
         return JSON.stringify({

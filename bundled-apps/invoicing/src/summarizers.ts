@@ -46,6 +46,7 @@ import {
 } from "./approval-cards"
 
 import type { BuyerVatFacts } from "./buyer-vat"
+import { formatMoneyGrouped } from "./money"
 import { planTax, type TaxPlanLine } from "./tax-plan"
 
 type ApprovalSummaryShape = ApprovalCard
@@ -1290,24 +1291,32 @@ export function runCardLines(rawItems: unknown): string[] {
   return lines
 }
 
-export function summarizeRecurringRunIssue(
-  params: Record<string, unknown>,
-): Promise<ApprovalSummaryShape> {
-  const items = Array.isArray(params.items) ? params.items : []
-  const period = typeof params.period === "string" && params.period ? params.period : null
+/**
+ * What the run card reads for these rows: the one source for the summarizer and for the restage
+ * that follows a row edit, so the card says the same thing either way.
+ */
+export function runCardSummary(
+  rawItems: unknown,
+  period: string | null,
+): { title: string; subtitle: string; lines: string[] } {
+  const items = Array.isArray(rawItems) ? rawItems : []
   const lines = runCardLines(items)
-  return done({
-    kind: "recurring_run_issue",
+  return {
     title: `Issue ${items.length} invoice${items.length === 1 ? "" : "s"} for ${period ?? "a month-end run"}`,
     subtitle: "Numbers are taken on the issue day from 08:00, never at approval",
     lines: lines.length > 0 ? lines : [period ? `Month-end run for ${period}` : "Month-end run"],
-  })
+  }
+}
+
+export function summarizeRecurringRunIssue(
+  params: Record<string, unknown>,
+): Promise<ApprovalSummaryShape> {
+  const period = typeof params.period === "string" && params.period ? params.period : null
+  return done({ kind: "recurring_run_issue", ...runCardSummary(params.items, period) })
 }
 
 function moneyLine(v: bigint, currency: string): string {
-  const neg = v < 0n
-  const a = neg ? -v : v
-  return `${neg ? "-" : ""}${a / 100n}.${String(a % 100n).padStart(2, "0")} ${currency}`
+  return `${formatMoneyGrouped(v, currency)} ${currency}`
 }
 
 export function summarizeRecurringItemIssue(

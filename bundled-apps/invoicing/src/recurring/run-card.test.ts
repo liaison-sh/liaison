@@ -9,6 +9,7 @@ import { summarizeRecurringRunIssue } from "../summarizers"
 import { recurringDraftJob } from "./draft-job"
 import { recurringIssueJob } from "./issue-job"
 import { recurringLegalDateJob, urgencyOf } from "./legal-date-job"
+import { afterRunWrite, type EditCtx } from "./restage"
 import {
   cardItems,
   recurringRunIssue,
@@ -53,7 +54,7 @@ describe("the month-end run card", () => {
     expect(card.current_payload.items[0]?.total_minor).toBe("180000")
     // Who is billed, then the total: the panel under the card lists each row's amounts.
     expect(card.summary_detail.lines).toHaveLength(2)
-    expect(card.summary_detail.lines[1]).toBe("Total: 3600.00 EUR incl. VAT")
+    expect(card.summary_detail.lines[1]).toBe("Total: 3 600.00 EUR incl. VAT")
     // Drawn on 27 Nov at 09:00 in Paris, valid to the end of 30 Nov.
     expect(card.expiry_hours).toBe(3 * 24 + 15)
     const got = await recurringRunGet(h.ctx, { run_id: runId })
@@ -292,5 +293,22 @@ describe("the month-end run card", () => {
         card ? { status: "drafted" } : { status: "approved", auto: true, approved_by: "user-boss" },
       )
     }
+  })
+
+  test("an edit restages the card with its text, and the total reads the same figure as the new rows", async () => {
+    const { h, runId } = await drafted()
+    const item = h.db.__all("recurring_run_items")[0]
+    const line = h.db.__all("document_lines").find((l) => l.document_id === item?.document_id)
+    await h.db.update("document_lines", String(line?.id), {
+      unit_price_minor: "200000",
+      subtotal_minor: "200000",
+    })
+    await afterRunWrite(h.ctx as unknown as EditCtx, String(item?.id))
+    const summary = h.restagedSummaries.at(-1)
+    const { items } = await cardItems(h.ctx, runId)
+    const total = items.reduce((sum, i) => sum + BigInt(String(i.total_minor)), 0n)
+    expect(total > 360000n).toBe(true)
+    const grouped = `${String(total / 100n).replace(/\B(?=(\d{3})+(?!\d))/g, " ")}.${String(total % 100n).padStart(2, "0")}`
+    expect(summary?.lines?.at(-1)).toBe(`Total: ${grouped} EUR incl. VAT`)
   })
 })

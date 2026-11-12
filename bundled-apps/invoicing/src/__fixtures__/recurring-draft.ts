@@ -80,6 +80,8 @@ export interface Harness {
   /** Approvals a person decided: the kernel no longer restages them. */
   decided: Set<string>
   restaged: Array<Record<string, unknown>>
+  /** The card text each restage carried (its 4th argument), in order. */
+  restagedSummaries: Array<{ title?: string; subtitle?: string; lines?: string[] } | undefined>
   agentCalls: number
   draftWrites: number
 }
@@ -127,6 +129,7 @@ export function harness(
     db,
     approvals: [],
     restaged: [],
+    restagedSummaries: [],
     decided: new Set(),
     agentCalls: 0,
     draftWrites: 0,
@@ -157,10 +160,16 @@ export function harness(
       return { approval_id: `approval-${n}` }
     },
     approvals: {
-      restagePayload: async (id: string, fields: Record<string, unknown>) => {
+      restagePayload: async (
+        id: string,
+        fields: Record<string, unknown>,
+        _note?: string,
+        summary?: { title?: string; subtitle?: string; lines?: string[] },
+      ) => {
         // A decided approval is no longer rewritten: a change after it needs a new card.
         if (h.decided.has(id)) return { ok: false, code: "not_pending", message: "decided" }
         h.restaged.push({ id, ...fields })
+        h.restagedSummaries.push(summary)
         return { ok: true, approval_id: id, payload_hash: "h", changed: true }
       },
     },

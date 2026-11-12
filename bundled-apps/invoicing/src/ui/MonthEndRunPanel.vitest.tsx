@@ -329,12 +329,15 @@ describe("the month-end panel", () => {
     await waitFor(() => expect(decided).toEqual([["appr-redraw", "approve", "hash-2"]]))
   })
 
-  it("each row shows its account manager or None, and Ask puts a mention in the box without sending", async () => {
+  it("a row shows its account manager when the name is known and no line otherwise, and Ask puts a mention in the box without sending", async () => {
+    rows = [...rows, row("c", "Maison Arlon", "58800", { account_manager: "u-gone" })]
     renderPanel()
     await waitFor(() =>
       expect(screen.getByTestId("month-end-row-manager-a").textContent).toContain("Élodie Renard"),
     )
-    expect(screen.getByTestId("month-end-row-manager-b").textContent).toContain("None")
+    expect(screen.queryByTestId("month-end-row-manager-b")).toBeNull()
+    expect(screen.queryByTestId("month-end-row-manager-c")).toBeNull()
+    expect(screen.getByTestId("month-end-rows").textContent).not.toContain("a teammate")
     fireEvent.click(screen.getByTestId("month-end-row-open-a"))
     fireEvent.click(await screen.findByTestId("month-end-row-ask"))
     await waitFor(() => expect(mounted.at(-1)?.prefill).toBe("@Élodie Renard Hôtels Belcour: "))
@@ -408,6 +411,18 @@ describe("the month-end panel", () => {
     fireEvent.input(screen.getByTestId("month-end-search"), { target: { value: "Client 42" } })
     await waitFor(() => expect(screen.getByTestId("month-end-row-r42")).toBeTruthy())
   })
+  it("a row's notes sit inside the row, with a space between two notes", async () => {
+    rows = [
+      row("a", "Hôtels Belcour", "58800", {
+        flags: ["Changed since the last period", "the last period is still unpaid"],
+      }),
+    ]
+    renderPanel()
+    const open = await screen.findByTestId("month-end-row-open-a")
+    const notes = within(open).getByTestId("month-end-row-notes-a")
+    expect(notes.textContent).toBe("Changed since the last period the last period is still unpaid")
+  })
+
   it("a row billing far from last month shows its amount check, stands out from the folded rows and stays in Approve N", async () => {
     rows = Array.from({ length: 30 }, (_, i) => row(`r${i}`, `Client ${i}`, "12000"))
     rows[3] = row("r3", "Client 3", "1788000", {

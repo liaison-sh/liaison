@@ -10,7 +10,7 @@
 import { mintRunSendGrants } from "../einvoicing/run-send"
 import type { EinvCtx } from "../einvoicing/transmit"
 import type { ErrorEnvelope, MutationsCtx } from "../mutations/shared"
-import { runCardLines } from "../summarizers"
+import { runCardLines, runCardSummary } from "../summarizers"
 import { linesSignature, type PreviousInvoice } from "./flags"
 import { currentItemHash, itemContentHash } from "./item-hash"
 import { addDays, weekdayOf } from "./schedule"
@@ -26,6 +26,7 @@ export interface RunApprovals {
     approvalId: string,
     fields: Record<string, unknown>,
     note?: string,
+    summary?: { title?: string; subtitle?: string; lines?: string[] },
   ): Promise<unknown>
   statusOf?(approvalRequestId: string): Promise<unknown>
 }
@@ -259,10 +260,12 @@ export async function stageRunCard(
       : null
   // The card still waiting follows its rows, even down to none left to approve.
   if (existing && ctx.approvals?.restagePayload) {
+    const period = String(run.period_label ?? dayOf(run.issue_on) ?? "")
     const res = (await ctx.approvals.restagePayload(
       existing,
-      { items, period: String(run.period_label ?? dayOf(run.issue_on) ?? "") },
+      { items, period },
       "The month-end run's rows changed.",
+      runCardSummary(items, period),
     )) as { ok?: boolean } | null
     if (res?.ok) return { approval_id: existing, staged: false }
   }

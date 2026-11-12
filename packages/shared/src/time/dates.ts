@@ -18,27 +18,32 @@ const MONTH_NAMES = [
   "Dec",
 ] as const
 
+/** Midnight UTC of a `YYYY-MM-DD` date: a date-only ISO string always parses as UTC. */
+function utcDay(date: string): Date {
+  return new Date(date)
+}
+
 export function addDays(date: string, days: number): string {
-  const d = new Date(`${date}T00:00:00Z`)
+  const d = utcDay(date)
   d.setUTCDate(d.getUTCDate() + days)
   return d.toISOString().slice(0, 10)
 }
 
 export function isRealDate(date: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false
-  const d = new Date(`${date}T00:00:00Z`)
+  const d = utcDay(date)
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === date
 }
 
 /** ISO weekday of a date, Monday 1 to Sunday 7. */
 export function isoWeekdayOf(date: string): number {
-  const day = new Date(`${date}T00:00:00Z`).getUTCDay()
+  const day = utcDay(date).getUTCDay()
   return day === 0 ? 7 : day
 }
 
 /** "Mon 7 Dec 2026": the form every result states a date in, so a misread date is seen at once. */
 export function dayLabel(date: string): string {
-  const d = new Date(`${date}T00:00:00Z`)
+  const d = utcDay(date)
   return `${DAY_NAMES[isoWeekdayOf(date) - 1]} ${d.getUTCDate()} ${MONTH_NAMES[d.getUTCMonth()]} ${d.getUTCFullYear()}`
 }
 
@@ -57,10 +62,8 @@ function isoWeekMonday(year: number, week: number): string {
 export function isoWeeksIn(year: number): number {
   const monday1 = isoWeekMonday(year, 1)
   return (
-    Math.floor(
-      (Date.parse(`${year}-12-28T00:00:00Z`) - Date.parse(`${monday1}T00:00:00Z`)) /
-        (7 * 86_400_000),
-    ) + 1
+    Math.floor((utcDay(`${year}-12-28`).getTime() - utcDay(monday1).getTime()) / (7 * 86_400_000)) +
+    1
   )
 }
 

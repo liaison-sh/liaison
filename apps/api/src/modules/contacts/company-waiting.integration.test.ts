@@ -167,7 +167,7 @@ beforeAll(async () => {
       id: PROJECT,
       org_id: ORG_ID,
       name: "Sales",
-      key: `W${PROJECT.slice(0, 3).toUpperCase()}`,
+      key: `W${PROJECT.slice(0, 8).toUpperCase()}`,
       owner_id: ANNA,
       kind: "pipeline",
       created_at: AT,

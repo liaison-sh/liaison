@@ -2325,7 +2325,7 @@ describe("a new message is commercial by its recipient's data", () => {
       id: project,
       org_id: orgId,
       name: "Sales",
-      key: `D${project.slice(0, 3).toUpperCase()}`,
+      key: `D${project.slice(0, 8).toUpperCase()}`,
       owner_id: userId,
       kind: "pipeline",
       created_at: AT,

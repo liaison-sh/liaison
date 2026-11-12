@@ -108,7 +108,7 @@ async function pipelineWithDeal(
     id: project,
     org_id: ORG_ID,
     name: "Sales",
-    key: `M${project.slice(0, 3).toUpperCase()}`,
+    key: `M${project.slice(0, 8).toUpperCase()}`,
     owner_id: ANNA,
     kind: "pipeline",
     company_id: companyId,

@@ -107,7 +107,7 @@ The bridge surface is large and grows as apps need new host capabilities. Core c
 | Connections | `connections_getToken(connName, identifier?)`, `connections_getAccounts(connName)`, `connections_describe(connName)` (owner, connected by, health, token expiry, whether a refresh token is stored; no secrets), `connections_getCredentials`, `connections_getSettings(connName, identifier?)` (the fields marked `readable`, and which fields are empty; no secrets), `connections_disconnect` |
 | SQL connections | `sql_query(connName, request)`, `sql_reads(connName)`, `sql_schema(connName, request)`, `sql_probe(connName, request)` (`ctx.sql.*`: a database the platform holds the connection to, see "Query a database"; read-only, no secrets) |
 | Accounts | `accounts_list(connName, opts)`, `accounts_setMetadata(accountId, patch)` (`ctx.accounts.*`: the app's own accounts, the organization's and the caller's own; `setMetadata` is refused on a read-only run) |
-| Directory | `kernel_findOne(entity, id)`, `kernel_findByIds(entity, ids)` (`ctx.kernel.*`: a user's directory fields or a contact of the caller's organization, up to 200 ids) |
+| Directory | `kernel_findOne(entity, id)`, `kernel_findByIds(entity, ids)` (`ctx.kernel.*`: a user's directory fields or a contact of the caller's organization, up to 200 ids), `kernel_caller(scopes)`, `kernel_roles()`, `kernel_findUsersByEmail(emails)` |
 | Logging | `log_info`, `log_warn`, `log_error`, `log_debug` (`ctx.logger.*`; `console.*` lines arrive here too, see "Console output") |
 | Config | `config_get(key)`, `config_has(key)`, `crypto_hmacSha256Base64ForConfig(key, data)`, `crypto_verifyHmacForConfig(key, data, signature, "base64" \| "hex")` (sign or verify with a declared config secret, which stays on the host) |
 
@@ -578,6 +578,12 @@ return out.rows                            // { rows, truncated, durationMs }
 `ctx.accounts.list(connection, { identifier?, includeInactive? })` returns the app's accounts of one declared connection: the organization's and the caller's own, never another member's, another app's or another organization's, and never a token. Each has its `metadata` and `canManage`. `ctx.accounts.setMetadata(accountId, patch)` merges keys into an account's metadata (`null` removes a key, at most 32 KiB). A personal account is its owner's to change. The organization's account needs the connection's admin scope (`adminScope`, default `<app>:accounts:admin`), or a run of the app itself (a job). Every change is audited. The keys the platform keeps on an account (`grantedOAuthScopes`, `pickedItems`, `sharedDrives`, `tokenExpiry`) are refused for every caller.
 
 `ctx.kernel.findByIds("users", ids)` returns the directory fields of up to 200 users of the caller's organization in one call, as `ctx.kernel.findOne` does for one.
+
+For access rules of your own (who may see which of your reports or records), three more directory reads of the caller's organization:
+
+- `ctx.kernel.caller(scopes?)` says who the run acts for: `{ kind: "system" }` for a job or a setup step, or `{ kind: "person", userId, roleIds }`. `holds` answers, for each scope you name (at most 20), whether the person holds it through their own grants or the call's. The system holds every scope. It never lists the person's other grants.
+- `ctx.kernel.roles()` lists the organization's roles, id and name.
+- `ctx.kernel.findUsersByEmail(emails)` returns the directory fields of the organization's people with one of these emails (case-insensitive, up to 200), for example to resolve the people a provisioning config names.
 
 ### Commit an intent row before an outside call (`ctx.db.insertNow`)
 

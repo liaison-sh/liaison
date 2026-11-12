@@ -1,0 +1,63 @@
+{
+  "entry": "tool:supplier_invoice_upload",
+  "params": {
+    "file_id": "2dc3d324-5d0f-452d-b034-a4781fb01b5d",
+    "supplier_name": "Restaurants",
+    "invoice_date": "2026-10-15",
+    "due_date": "2026-11-14",
+    "invoice_number": "F-mwdawvzf",
+    "amount_minor": "12000",
+    "tax_minor": "2000",
+    "currency": "EUR"
+  },
+  "recordedFrom": "a Pennylane sandbox company, record-pennylane.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getCredentials",
+      "args": [
+        "pennylane"
+      ],
+      "reply": "{\"apiToken\":\"contract-sandbox-token\",\"scope\":\"company\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://app.pennylane.com/api/external/v2/suppliers?limit=100&filter=%5B%7B%22field%22%3A%22name%22%2C%22operator%22%3A%22start_with%22%2C%22value%22%3A%22Restaurants%22%7D%5D",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"items\\\":[{\\\"created_at\\\":\\\"2026-10-14T14:14:29.736569Z\\\",\\\"establishment_no\\\":null,\\\"reg_no\\\":\\\"\\\",\\\"iban\\\":\\\"\\\",\\\"id\\\":1585214115840,\\\"name\\\":\\\"Restaurants\\\",\\\"supplier_payment_method\\\":null,\\\"supplier_due_date_delay\\\":null,\\\"supplier_due_date_rule\\\":\\\"days\\\",\\\"updated_at\\\":\\\"2026-10-14T14:14:29.726410Z\\\",\\\"vat_number\\\":\\\"\\\",\\\"ledger_account\\\":{\\\"id\\\":16774290980864},\\\"emails\\\":[],\\\"postal_address\\\":{\\\"address\\\":\\\"\\\",\\\"postal_code\\\":\\\"\\\",\\\"city\\\":\\\"\\\",\\\"country_alpha2\\\":\\\"FR\\\"},\\\"external_reference\\\":\\\"01a13ac3-c03e-702e-9b97-2e7ce3b78c63\\\"}],\\\"has_more\\\":false,\\\"next_cursor\\\":null}\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://app.pennylane.com/api/external/v2/supplier_invoices?limit=1&filter=%5B%7B%22field%22%3A%22external_reference%22%2C%22operator%22%3A%22eq%22%2C%22value%22%3A%22liaison-2dc3d324-5d0f-452d-b034-a4781fb01b5d%22%7D%5D",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"items\\\":[],\\\"has_more\\\":false,\\\"next_cursor\\\":null}\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://app.pennylane.com/api/external/v2/file_attachments",
+        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\"},\"body\":{\"multipart\":[{\"name\":\"file\",\"fileId\":\"2dc3d324-5d0f-452d-b034-a4781fb01b5d\",\"filename\":\"F-mwdawvzf.pdf\",\"contentType\":\"application/pdf\",\"refuseParents\":[{\"app\":\"invoicing\",\"entityType\":\"received_file\"}]},{\"name\":\"filename\",\"value\":\"F-mwdawvzf.pdf\"}]},\"timeoutMs\":90000}"
+      ],
+      "reply": "{\"status\":201,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"id\\\":115881021440,\\\"filename\\\":\\\"F-mwdawvzf.pdf\\\",\\\"created_at\\\":\\\"2026-11-12T08:45:54.287085Z\\\",\\\"updated_at\\\":\\\"2026-11-12T08:45:54.297390Z\\\",\\\"url\\\":\\\"https://app.pennylane.com/companies/274309/rails/active_storage/blobs/redirect/zICBpl9yYWlsc4OkZGF0Yc8AAAZpgydwAKNleHDHCwfOavWDys4SuI7RAKNwdXKnYmxvYl9pZA--e99d7212d2156b617215f77db76f26cb9cb5ed26/F-mwdawvzf.pdf\\\"}\",\"upload\":{\"size\":7196,\"parts\":[{\"name\":\"file\",\"size\":6903,\"sha256\":\"ac0fbac1135c0db9f223d2b295fa3f430bdd832967637e634dcd16b5d88732c3\",\"fileId\":\"2dc3d324-5d0f-452d-b034-a4781fb01b5d\"},{\"name\":\"filename\",\"size\":14,\"sha256\":\"143d59241d344a6a3134d57e7417904a7c7cca35b13a8a9bb75176a4c9549538\"}]}}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://app.pennylane.com/api/external/v2/supplier_invoices/import",
+        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\",\"Content-Type\":\"application/json\"},\"body\":\"{\\\"file_attachment_id\\\":115881021440,\\\"supplier_id\\\":1585214115840,\\\"date\\\":\\\"2026-10-15\\\",\\\"deadline\\\":\\\"2026-11-14\\\",\\\"invoice_number\\\":\\\"F-mwdawvzf\\\",\\\"currency\\\":\\\"EUR\\\",\\\"currency_amount_before_tax\\\":\\\"100.00\\\",\\\"currency_amount\\\":\\\"120.00\\\",\\\"currency_tax\\\":\\\"20.00\\\",\\\"external_reference\\\":\\\"liaison-2dc3d324-5d0f-452d-b034-a4781fb01b5d\\\",\\\"invoice_lines\\\":[{\\\"currency_amount\\\":\\\"120.00\\\",\\\"currency_tax\\\":\\\"20.00\\\",\\\"label\\\":\\\"Invoice F-mwdawvzf\\\",\\\"vat_rate\\\":\\\"FR_200\\\"}]}\"}"
+      ],
+      "reply": "{\"status\":201,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"amount\\\":\\\"120.0\\\",\\\"archived_at\\\":null,\\\"created_at\\\":\\\"2026-11-12T08:45:54.442082Z\\\",\\\"currency_amount_before_tax\\\":\\\"100.0\\\",\\\"currency_amount\\\":\\\"120.0\\\",\\\"currency_tax\\\":\\\"20.0\\\",\\\"currency\\\":\\\"EUR\\\",\\\"date\\\":\\\"2026-10-15\\\",\\\"deadline\\\":\\\"2026-11-14\\\",\\\"filename\\\":\\\"F-mwdawvzf.pdf\\\",\\\"id\\\":34553820622848,\\\"invoice_number\\\":\\\"F-mwdawvzf\\\",\\\"label\\\":\\\"Facture Restaurants - F-mwdawvzf\\\",\\\"payment_status\\\":\\\"to_be_processed\\\",\\\"paid\\\":false,\\\"remaining_amount_with_tax\\\":\\\"-120.0\\\",\\\"remaining_amount_without_tax\\\":\\\"-100.0\\\",\\\"tax\\\":\\\"20.0\\\",\\\"updated_at\\\":\\\"2026-11-12T08:45:54.640861Z\\\",\\\"reconciled\\\":false,\\\"public_file_url\\\":\\\"https://app.pennylane.com/public/invoice/pdf?encrypted_id=jgSKKAZoZIb78yMHwWYtYSdaYlT2loS4fgl4n5S2KwZJ6gykPM%2F3lVL%2FEO5J%2BsWSgxh73NFi10hZMkI2Z2NAhAoG5Bj2zmd1P8OOrhGD5TZFVomFGassqUq7KkFLLw%3D%3D--WbosZriXwkkMFHwZ--scd8Z3q9xaZgPE%2Fk4KtKoQ%3D%3D\\\",\\\"exchange_rate\\\":\\\"1.0\\\",\\\"accounting_status\\\":\\\"complete\\\",\\\"ledger_entry\\\":{\\\"id\\\":34553820622848},\\\"transaction_reference\\\":null,\\\"supplier\\\":{\\\"id\\\":1585214115840,\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/suppliers/1585214115840\\\"},\\\"payment_method_ledger_account\\\":null,\\\"invoice_lines\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/supplier_invoices/34553820622848/invoice_lines\\\"},\\\"categories\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/supplier_invoices/34553820622848/categories\\\"},\\\"payments\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/supplier_invoices/34553820622848/payments\\\"},\\\"matched_transactions\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/supplier_invoices/34553820622848/matched_transactions\\\"},\\\"external_reference\\\":\\\"liaison-2dc3d324-5d0f-452d-b034-a4781fb01b5d\\\",\\\"import_source\\\":null,\\\"e_invoicing\\\":null,\\\"performance_date\\\":null}\"}"
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "supplier_invoice_upload",
+        "{\"supplier_name\":\"Restaurants\",\"invoice_date\":\"2026-10-15\",\"amount_minor\":\"12000\",\"currency\":\"EUR\",\"source_file_id\":\"2dc3d324-5d0f-452d-b034-a4781fb01b5d\",\"status\":\"imported\",\"provider_ref\":\"34553820622848\",\"invoice_number\":\"F-mwdawvzf\"}"
+      ],
+      "reply": "{\"id\":\"7a7779d0-bf96-4333-92bf-949f76889a23\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:45:54.695188+00\",\"updated_at\":\"2026-11-12 08:45:54.695188+00\",\"supplier_name\":\"Restaurants\",\"invoice_date\":\"2026-10-15\",\"amount_minor\":\"12000\",\"currency\":\"EUR\",\"source_file_id\":\"2dc3d324-5d0f-452d-b034-a4781fb01b5d\",\"status\":\"imported\",\"provider_ref\":\"34553820622848\",\"invoice_number\":\"F-mwdawvzf\"}"
+    }
+  ]
+}

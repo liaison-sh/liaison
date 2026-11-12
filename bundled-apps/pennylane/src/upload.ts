@@ -73,6 +73,29 @@ export function minorAmountsRefusal(input: { amount_minor?: unknown; tax_minor?:
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 
+/** French VAT rates (basis points) and Pennylane's code for each. */
+const FR_RATES: ReadonlyArray<readonly [bigint, string]> = [
+  [2000n, "FR_200"],
+  [1000n, "FR_100"],
+  [550n, "FR_55"],
+  [210n, "FR_21"],
+]
+
+/**
+ * The VAT rate code Pennylane requires on each imported invoice line, from the bill's figures:
+ * `exempt` without tax, the French rate whose tax on the amount before tax rounds to the stated
+ * tax (one minor unit of slack), else `mixed` (several rates folded into one total).
+ */
+export function vatRateCode(beforeTaxMinor: bigint, taxMinor: bigint): string {
+  if (taxMinor === 0n) return "exempt"
+  for (const [bp, code] of FR_RATES) {
+    const expected = (beforeTaxMinor * bp + 5000n) / 10000n
+    const diff = expected > taxMinor ? expected - taxMinor : taxMinor - expected
+    if (diff <= 1n) return code
+  }
+  return "mixed"
+}
+
 /** Where the invoicing app stores the files of supplier e-invoices received through the platform. */
 export const RECEIVED_EINVOICE_PARENT = { app: "invoicing", entityType: "received_file" } as const
 
@@ -128,7 +151,9 @@ export async function supplierInvoiceUpload(ctx: UploadCtx, input: UploadInput):
   const tax = minorToDecimal(String(input.tax_minor ?? "0"), currency)
   const refused = minorAmountsRefusal(input)
   if (refused || total === null || tax === null) return opError("invalid_amount", refused ?? "amount_minor is required")
-  const beforeTax = minorToDecimal(String(BigInt(String(input.amount_minor).trim()) - BigInt(String(input.tax_minor ?? "0").trim())), currency)!
+  const taxMinor = BigInt(String(input.tax_minor ?? "0").trim())
+  const beforeTaxMinor = BigInt(String(input.amount_minor).trim()) - taxMinor
+  const beforeTax = minorToDecimal(String(beforeTaxMinor), currency)!
   const externalReference = `liaison-${input.file_id}`
   try {
     const c = ctx.__client instanceof PennylaneClient ? ctx.__client : (await getClient(ctx)).client
@@ -177,7 +202,14 @@ export async function supplierInvoiceUpload(ctx: UploadCtx, input: UploadInput):
         currency_amount: total,
         currency_tax: tax,
         external_reference: externalReference,
-        invoice_lines: [{ currency_amount: total, currency_tax: tax, label: input.invoice_number ? `Invoice ${input.invoice_number}` : "Supplier invoice" }],
+        invoice_lines: [
+          {
+            currency_amount: total,
+            currency_tax: tax,
+            label: input.invoice_number ? `Invoice ${input.invoice_number}` : "Supplier invoice",
+            vat_rate: vatRateCode(beforeTaxMinor, taxMinor),
+          },
+        ],
       })
       return await record(String(created.data.id), false)
     } catch (e) {

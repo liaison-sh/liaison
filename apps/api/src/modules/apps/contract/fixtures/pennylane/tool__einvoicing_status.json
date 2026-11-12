@@ -1,0 +1,24 @@
+{
+  "entry": "tool:einvoicing_status",
+  "params": {
+    "provider_ref": "34552168124416"
+  },
+  "recordedFrom": "a Pennylane sandbox company, record-pennylane.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getCredentials",
+      "args": [
+        "pennylane"
+      ],
+      "reply": "{\"apiToken\":\"contract-sandbox-token\",\"scope\":\"company\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://app.pennylane.com/api/external/v2/customer_invoices/34552168124416",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"id\\\":34552168124416,\\\"label\\\":\\\"Facture Alex Exemple - S-mwdafswh\\\",\\\"invoice_number\\\":\\\"S-mwdafswh\\\",\\\"currency\\\":\\\"EUR\\\",\\\"amount\\\":\\\"120.0\\\",\\\"currency_amount\\\":\\\"120.0\\\",\\\"currency_amount_before_tax\\\":\\\"100.0\\\",\\\"tax\\\":\\\"20.0\\\",\\\"currency_tax\\\":\\\"20.0\\\",\\\"remaining_amount_with_tax\\\":\\\"120.0\\\",\\\"remaining_amount_without_tax\\\":\\\"100.0\\\",\\\"draft\\\":false,\\\"language\\\":\\\"fr_FR\\\",\\\"paid\\\":false,\\\"status\\\":\\\"upcoming\\\",\\\"filename\\\":\\\"S-mwdafswh.pdf\\\",\\\"date\\\":\\\"2026-11-03\\\",\\\"deadline\\\":\\\"2026-12-03\\\",\\\"special_mention\\\":null,\\\"created_at\\\":\\\"2026-11-12T08:32:14.702223Z\\\",\\\"updated_at\\\":\\\"2026-11-12T08:32:15.003937Z\\\",\\\"archived_at\\\":null,\\\"schematron_validation_status\\\":null,\\\"purchase_order_reference\\\":null,\\\"contract_reference\\\":null,\\\"sales_order_reference\\\":null,\\\"sale_type\\\":null,\\\"pdf_invoice_free_text\\\":\\\"\\\",\\\"pdf_description\\\":null,\\\"pdf_invoice_subject\\\":\\\"\\\",\\\"public_file_url\\\":\\\"https://app.pennylane.com/public/invoice/pdf?encrypted_id=2FSjxpz%2BHFKbhSnMu%2Fh7JBZZ7KohpQ6UP7XR9dp1s19G%2Bcu2QK5i9Fj0dsMMULEif5UkYYlkLbeX9KiJZ7GKse8fGS%2FCCJJcqSHksNujZeJ753zoses2BdI0nM%2FnAA%3D%3D--J77EqQrmG4CnoLMM--FGTaXO1n3qXgMsYxVpW1LA%3D%3D\\\",\\\"exchange_rate\\\":\\\"1.0\\\",\\\"discount\\\":{\\\"type\\\":\\\"relative\\\",\\\"value\\\":\\\"0.0\\\"},\\\"ledger_entry\\\":{\\\"id\\\":34552168124416},\\\"customer_invoice_template\\\":null,\\\"transaction_reference\\\":null,\\\"customer\\\":{\\\"id\\\":1665596395520,\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/customers/1665596395520\\\"},\\\"payment_method_ledger_account\\\":null,\\\"billing_subscription\\\":null,\\\"credited_invoice\\\":null,\\\"quote\\\":null,\\\"invoice_line_sections\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/customer_invoices/34552168124416/invoice_line_sections\\\"},\\\"invoice_lines\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/customer_invoices/34552168124416/invoice_lines\\\"},\\\"custom_header_fields\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/customer_invoices/34552168124416/custom_header_fields\\\"},\\\"categories\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/customer_invoices/34552168124416/categories\\\"},\\\"payments\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/customer_invoices/34552168124416/payments\\\"},\\\"matched_transactions\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/customer_invoices/34552168124416/matched_transactions\\\"},\\\"appendices\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/customer_invoices/34552168124416/appendices\\\"},\\\"installments\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/customer_invoices/34552168124416/installments\\\"},\\\"external_reference\\\":\\\"book-mwdafswh\\\",\\\"electronic_billing_address\\\":null,\\\"e_invoicing\\\":null,\\\"factur_x\\\":false,\\\"performance_date\\\":null}\"}"
+    }
+  ]
+}

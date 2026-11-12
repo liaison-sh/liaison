@@ -1,0 +1,98 @@
+{
+  "entry": "tool:einvoicing_book",
+  "params": {
+    "document_ref": "sale-mwdanmvb",
+    "pdf_file_id": "d4a3b3db-a183-46dd-9328-c882f0f7bd1b",
+    "legal_original_sha256": "a18c181232add6372aa09c4205501a997c070b1052f286203ccec89acbf27796",
+    "data": {
+      "invoice_number": "S-mwdanmvb",
+      "issue_date": "2026-11-03",
+      "due_date": "2026-12-03",
+      "currency": "EUR",
+      "fx_rate": null,
+      "subtotal_minor": 10000,
+      "tax_minor": 2000,
+      "total_minor": 12000,
+      "credit_of": null,
+      "customer": {
+        "contact_ref": null,
+        "kind": "individual",
+        "legal_name": "Alex Exemple",
+        "first_name": null,
+        "last_name": null,
+        "vat_id": null,
+        "country_code": "FR",
+        "address": {
+          "line1": "3 rue Test",
+          "line2": null,
+          "postcode": "75011",
+          "city": "Paris",
+          "country_code": "FR"
+        }
+      },
+      "lines": [
+        {
+          "label": "Contrôleur",
+          "quantity": "1",
+          "unit_price_minor": 10000,
+          "subtotal_minor": 10000,
+          "tax_minor": 2000,
+          "tax_rate_bp": 2000,
+          "tax_treatment": "eu_domestic",
+          "operation_category": "goods"
+        }
+      ]
+    },
+    "idempotency_key": "book-mwdanmvb"
+  },
+  "recordedFrom": "a Pennylane sandbox company, record-pennylane.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getCredentials",
+      "args": [
+        "pennylane"
+      ],
+      "reply": "{\"apiToken\":\"contract-sandbox-token\",\"scope\":\"company\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://app.pennylane.com/api/external/v2/customer_invoices?limit=2&filter=%5B%7B%22field%22%3A%22external_reference%22%2C%22operator%22%3A%22eq%22%2C%22value%22%3A%22book-mwdanmvb%22%7D%5D",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"items\\\":[],\\\"has_more\\\":false,\\\"next_cursor\\\":null}\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://app.pennylane.com/api/external/v2/customers?limit=2&filter=%5B%7B%22field%22%3A%22external_reference%22%2C%22operator%22%3A%22eq%22%2C%22value%22%3A%22doc%3Asale-mwdanmvb%22%7D%5D",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"items\\\":[],\\\"has_more\\\":false,\\\"next_cursor\\\":null}\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://app.pennylane.com/api/external/v2/customers",
+        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\",\"Content-Type\":\"application/json\"},\"body\":\"{\\\"customer_type\\\":\\\"individual\\\",\\\"external_reference\\\":\\\"doc:sale-mwdanmvb\\\",\\\"billing_address\\\":{\\\"address\\\":\\\"3 rue Test\\\",\\\"postal_code\\\":\\\"75011\\\",\\\"city\\\":\\\"Paris\\\",\\\"country_alpha2\\\":\\\"FR\\\"},\\\"first_name\\\":\\\"Alex\\\",\\\"last_name\\\":\\\"Exemple\\\"}\"}"
+      ],
+      "reply": "{\"status\":201,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"billing_iban\\\":null,\\\"created_at\\\":\\\"2026-11-12T08:38:21.307656Z\\\",\\\"customer_type\\\":\\\"individual\\\",\\\"id\\\":1665625120768,\\\"name\\\":\\\"Alex Exemple\\\",\\\"payment_conditions\\\":\\\"30_days\\\",\\\"phone\\\":\\\"\\\",\\\"recipient\\\":\\\"\\\",\\\"reference\\\":\\\"\\\",\\\"updated_at\\\":\\\"2026-11-12T08:38:21.307552Z\\\",\\\"billing_language\\\":\\\"fr_FR\\\",\\\"last_name\\\":\\\"Exemple\\\",\\\"first_name\\\":\\\"Alex\\\",\\\"ledger_account\\\":{\\\"id\\\":17402406068224},\\\"notes\\\":null,\\\"emails\\\":[],\\\"billing_address\\\":{\\\"address\\\":\\\"3 rue Test\\\",\\\"postal_code\\\":\\\"75011\\\",\\\"city\\\":\\\"Paris\\\",\\\"country_alpha2\\\":\\\"FR\\\"},\\\"delivery_address\\\":{\\\"address\\\":\\\"\\\",\\\"postal_code\\\":\\\"\\\",\\\"city\\\":\\\"\\\",\\\"country_alpha2\\\":\\\"\\\"},\\\"external_reference\\\":\\\"doc:sale-mwdanmvb\\\",\\\"mandates\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/gocardless_mandates?filter=%5B%7B%22field%22%3A%22customer_id%22%2C%22operator%22%3A%22eq%22%2C%22value%22%3A%221665625120768%22%7D%5D\\\"},\\\"pro_account_mandates\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/pro_account/mandates?filter=%5B%7B%22field%22%3A%22customer_id%22%2C%22operator%22%3A%22eq%22%2C%22value%22%3A%221665625120768%22%7D%5D\\\"},\\\"contacts\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/customers/1665625120768/contacts\\\"}}\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://app.pennylane.com/api/external/v2/file_attachments",
+        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\"},\"body\":{\"multipart\":[{\"name\":\"file\",\"fileId\":\"d4a3b3db-a183-46dd-9328-c882f0f7bd1b\",\"filename\":\"S-mwdanmvb.pdf\",\"contentType\":\"application/pdf\",\"expectSha256\":\"a18c181232add6372aa09c4205501a997c070b1052f286203ccec89acbf27796\"},{\"name\":\"filename\",\"value\":\"S-mwdanmvb.pdf\"}]},\"timeoutMs\":90000}"
+      ],
+      "reply": "{\"status\":201,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"id\\\":115873603584,\\\"filename\\\":\\\"S-mwdanmvb.pdf\\\",\\\"created_at\\\":\\\"2026-11-12T08:38:21.695407Z\\\",\\\"updated_at\\\":\\\"2026-11-12T08:38:21.706824Z\\\",\\\"url\\\":\\\"https://app.pennylane.com/companies/274309/rails/active_storage/blobs/redirect/zICBpl9yYWlsc4OkZGF0Yc8AAAZpcc-gAKNleHDHCwfOavWCBc4rDUQmAKNwdXKnYmxvYl9pZA--66baf0f762f3df93448ecf9883a4981a79cdaa48/S-mwdanmvb.pdf\\\"}\",\"upload\":{\"size\":7241,\"parts\":[{\"name\":\"file\",\"size\":6948,\"sha256\":\"a18c181232add6372aa09c4205501a997c070b1052f286203ccec89acbf27796\",\"fileId\":\"d4a3b3db-a183-46dd-9328-c882f0f7bd1b\"},{\"name\":\"filename\",\"size\":14,\"sha256\":\"828f59004aa4838c4b497716e3d3cd3da146f3519a3c11ac305a7aac61607cf3\"}]}}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://app.pennylane.com/api/external/v2/customer_invoices/import",
+        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\",\"Content-Type\":\"application/json\"},\"body\":\"{\\\"file_attachment_id\\\":115873603584,\\\"date\\\":\\\"2026-11-03\\\",\\\"deadline\\\":\\\"2026-12-03\\\",\\\"customer_id\\\":1665625120768,\\\"currency\\\":\\\"EUR\\\",\\\"invoice_number\\\":\\\"S-mwdanmvb\\\",\\\"external_reference\\\":\\\"book-mwdanmvb\\\",\\\"currency_amount_before_tax\\\":\\\"100.00\\\",\\\"currency_amount\\\":\\\"120.00\\\",\\\"currency_tax\\\":\\\"20.00\\\",\\\"invoice_lines\\\":[{\\\"label\\\":\\\"Contrôleur\\\",\\\"quantity\\\":1,\\\"raw_currency_unit_price\\\":\\\"100.00\\\",\\\"unit\\\":\\\"piece\\\",\\\"vat_rate\\\":\\\"FR_200\\\",\\\"currency_amount\\\":\\\"120.00\\\",\\\"currency_tax\\\":\\\"20.00\\\"}]}\"}"
+      ],
+      "reply": "{\"status\":201,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"id\\\":34552940421120,\\\"label\\\":\\\"Facture Alex Exemple - S-mwdanmvb\\\",\\\"invoice_number\\\":\\\"S-mwdanmvb\\\",\\\"currency\\\":\\\"EUR\\\",\\\"amount\\\":\\\"120.0\\\",\\\"currency_amount\\\":\\\"120.0\\\",\\\"currency_amount_before_tax\\\":\\\"100.0\\\",\\\"tax\\\":\\\"20.0\\\",\\\"currency_tax\\\":\\\"20.0\\\",\\\"remaining_amount_with_tax\\\":\\\"120.0\\\",\\\"remaining_amount_without_tax\\\":\\\"100.0\\\",\\\"draft\\\":false,\\\"language\\\":\\\"fr_FR\\\",\\\"paid\\\":false,\\\"status\\\":\\\"upcoming\\\",\\\"filename\\\":\\\"S-mwdanmvb.pdf\\\",\\\"date\\\":\\\"2026-11-03\\\",\\\"deadline\\\":\\\"2026-12-03\\\",\\\"pdf_invoice_free_text\\\":\\\"\\\",\\\"pdf_invoice_subject\\\":\\\"\\\",\\\"pdf_description\\\":null,\\\"special_mention\\\":null,\\\"created_at\\\":\\\"2026-11-12T08:38:21.876737Z\\\",\\\"updated_at\\\":\\\"2026-11-12T08:38:22.101443Z\\\",\\\"archived_at\\\":null,\\\"schematron_validation_status\\\":null,\\\"purchase_order_reference\\\":null,\\\"contract_reference\\\":null,\\\"sales_order_reference\\\":null,\\\"sale_type\\\":null,\\\"public_file_url\\\":\\\"https://app.pennylane.com/public/invoice/pdf?encrypted_id=MJFKAHfyiF7L5M%2BJgIeVs8B6A6Hs3hhDdfsttDWUe7Qg9VYRM41muXaooEYEiYh86n5YxzzEiG9w%2FZxvoRdaWuBMd3ZPuKOp8O1RctyyR71cvSs7XMD1wRr8tnv76Q%3D%3D--VDcKdt8DKGLAMMYF--R3MB%2FaOIHR%2FcAGO%2Bym8SZw%3D%3D\\\",\\\"exchange_rate\\\":\\\"1.0\\\",\\\"discount\\\":{\\\"type\\\":\\\"relative\\\",\\\"value\\\":\\\"0.0\\\"},\\\"ledger_entry\\\":{\\\"id\\\":34552940421120},\\\"customer_invoice_template\\\":null,\\\"transaction_reference\\\":null,\\\"customer\\\":{\\\"id\\\":1665625120768,\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/customers/1665625120768\\\"},\\\"payment_method_ledger_account\\\":null,\\\"billing_subscription\\\":null,\\\"credited_invoice\\\":null,\\\"quote\\\":null,\\\"invoice_line_sections\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/customer_invoices/34552940421120/invoice_line_sections\\\"},\\\"invoice_lines\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/customer_invoices/34552940421120/invoice_lines\\\"},\\\"custom_header_fields\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/customer_invoices/34552940421120/custom_header_fields\\\"},\\\"categories\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/customer_invoices/34552940421120/categories\\\"},\\\"payments\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/customer_invoices/34552940421120/payments\\\"},\\\"matched_transactions\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/customer_invoices/34552940421120/matched_transactions\\\"},\\\"appendices\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/customer_invoices/34552940421120/appendices\\\"},\\\"installments\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/customer_invoices/34552940421120/installments\\\"},\\\"external_reference\\\":\\\"book-mwdanmvb\\\",\\\"electronic_billing_address\\\":null,\\\"e_invoicing\\\":null,\\\"factur_x\\\":false,\\\"performance_date\\\":null}\"}"
+    }
+  ]
+}

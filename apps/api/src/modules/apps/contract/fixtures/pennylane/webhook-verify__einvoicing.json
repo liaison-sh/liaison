@@ -1,0 +1,38 @@
+{
+  "entry": "webhook-verify:einvoicing",
+  "params": {
+    "headers": {
+      "content-type": "application/json",
+      "x-pennylane-signature": "t=1767225600,v1=dc685965c312a016768bc26a5866d517599e085046f55e076be03415c4ac7354"
+    },
+    "body": "{\"id\":\"evt_contract_1\",\"type\":\"customer_invoice.einvoice_status_changed\",\"data\":{\"object\":{\"id\":4242}}}",
+    "method": "POST",
+    "query": {}
+  },
+  "recordedFrom": "a Pennylane sandbox company, record-pennylane.recorder.ts",
+  "calls": [
+    {
+      "method": "config_get",
+      "args": [
+        "einvoicingWebhookSecret"
+      ],
+      "reply": "contract-webhook-secret-not-real"
+    },
+    {
+      "method": "crypto_hmacSha256Hex",
+      "args": [
+        "contract-webhook-secret-not-real",
+        "1767225600.{\"id\":\"evt_contract_1\",\"type\":\"customer_invoice.einvoice_status_changed\",\"data\":{\"object\":{\"id\":4242}}}"
+      ],
+      "reply": "dc685965c312a016768bc26a5866d517599e085046f55e076be03415c4ac7354"
+    },
+    {
+      "method": "crypto_timingSafeEqual",
+      "args": [
+        "dc685965c312a016768bc26a5866d517599e085046f55e076be03415c4ac7354",
+        "dc685965c312a016768bc26a5866d517599e085046f55e076be03415c4ac7354"
+      ],
+      "reply": true
+    }
+  ]
+}

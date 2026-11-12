@@ -1,0 +1,40 @@
+{
+  "entry": "tool:trial_balance_get",
+  "params": {
+    "period": "2026"
+  },
+  "recordedFrom": "a Pennylane sandbox company, record-pennylane.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "account_class_map",
+        "{\"limit\":1000}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "app_config",
+        "{\"where\":{\"key\":\"account_class_map\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "connections_getCredentials",
+      "args": [
+        "pennylane"
+      ],
+      "reply": "{\"apiToken\":\"contract-sandbox-token\",\"scope\":\"company\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://app.pennylane.com/api/external/v2/trial_balance?period_start=2026-01-01&period_end=2026-12-31&limit=100",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"items\\\":[{\\\"credits\\\":\\\"120.0\\\",\\\"debits\\\":\\\"0.0\\\",\\\"label\\\":\\\"Fournisseurs\\\",\\\"number\\\":\\\"401\\\",\\\"formatted_number\\\":\\\"401000000\\\"},{\\\"credits\\\":\\\"0.0\\\",\\\"debits\\\":\\\"7184.03\\\",\\\"label\\\":\\\"Clients\\\",\\\"number\\\":\\\"411\\\",\\\"formatted_number\\\":\\\"411000000\\\"},{\\\"credits\\\":\\\"0.0\\\",\\\"debits\\\":\\\"20.0\\\",\\\"label\\\":\\\"TVA déductible sur encaissements\\\",\\\"number\\\":\\\"44564\\\",\\\"formatted_number\\\":\\\"445640000\\\"},{\\\"credits\\\":\\\"1145.17\\\",\\\"debits\\\":\\\"0.0\\\",\\\"label\\\":\\\"TVA collectée sur encaissements\\\",\\\"number\\\":\\\"44574\\\",\\\"formatted_number\\\":\\\"445740000\\\"},{\\\"credits\\\":\\\"0.0\\\",\\\"debits\\\":\\\"100.0\\\",\\\"label\\\":\\\"Autres charges extérieures diverses\\\",\\\"number\\\":\\\"6288\\\",\\\"formatted_number\\\":\\\"628800000\\\"},{\\\"credits\\\":\\\"6038.86\\\",\\\"debits\\\":\\\"0.0\\\",\\\"label\\\":\\\"Prestations de services\\\",\\\"number\\\":\\\"706\\\",\\\"formatted_number\\\":\\\"706000000\\\"}],\\\"has_more\\\":false,\\\"next_cursor\\\":null}\"}"
+    }
+  ]
+}

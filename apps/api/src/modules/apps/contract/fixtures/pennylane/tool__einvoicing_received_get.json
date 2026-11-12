@@ -1,0 +1,24 @@
+{
+  "entry": "tool:einvoicing_received_get",
+  "params": {
+    "provider_ref": "32384166563840"
+  },
+  "recordedFrom": "a Pennylane sandbox company, record-pennylane.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getCredentials",
+      "args": [
+        "pennylane"
+      ],
+      "reply": "{\"apiToken\":\"contract-sandbox-token\",\"scope\":\"company\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://app.pennylane.com/api/external/v2/supplier_invoices/32384166563840",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"amount\\\":\\\"120.0\\\",\\\"archived_at\\\":null,\\\"created_at\\\":\\\"2026-10-15T09:15:58.404517Z\\\",\\\"currency_amount_before_tax\\\":\\\"100.0\\\",\\\"currency_amount\\\":\\\"120.0\\\",\\\"currency_tax\\\":\\\"20.0\\\",\\\"currency\\\":\\\"EUR\\\",\\\"date\\\":\\\"2026-10-14\\\",\\\"deadline\\\":\\\"2026-11-13\\\",\\\"filename\\\":\\\"probe-bill.pdf\\\",\\\"id\\\":32384166563840,\\\"invoice_number\\\":\\\"PROBE-SUP-1\\\",\\\"label\\\":\\\"Facture Taxi - PROBE-SUP-1\\\",\\\"payment_status\\\":\\\"to_be_processed\\\",\\\"paid\\\":false,\\\"remaining_amount_with_tax\\\":\\\"-120.0\\\",\\\"remaining_amount_without_tax\\\":\\\"-100.0\\\",\\\"tax\\\":\\\"20.0\\\",\\\"updated_at\\\":\\\"2026-10-15T09:15:58.721789Z\\\",\\\"reconciled\\\":false,\\\"public_file_url\\\":\\\"https://app.pennylane.com/public/invoice/pdf?encrypted_id=4abtxso8dMszaKuTCB%2FlP9B36gT6W%2FtkNqgxh%2F7WurFwnR5jLV4oz2d9yxFD52dKoFBKjUImZj3I7bZ7FlHO3xTHdpCtoktSqPvtBcBl8AYGdy4jsegL0hemTeQoow%3D%3D--vrSDnpAkJdp2%2BI5%2F--uo%2FwbOK5X5kgZsX%2BSMcHbw%3D%3D\\\",\\\"exchange_rate\\\":\\\"1.0\\\",\\\"accounting_status\\\":\\\"complete\\\",\\\"ledger_entry\\\":{\\\"id\\\":32384166563840},\\\"transaction_reference\\\":null,\\\"supplier\\\":{\\\"id\\\":1585214119936,\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/suppliers/1585214119936\\\"},\\\"payment_method_ledger_account\\\":null,\\\"invoice_lines\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/supplier_invoices/32384166563840/invoice_lines\\\"},\\\"categories\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/supplier_invoices/32384166563840/categories\\\"},\\\"payments\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/supplier_invoices/32384166563840/payments\\\"},\\\"matched_transactions\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/supplier_invoices/32384166563840/matched_transactions\\\"},\\\"external_reference\\\":\\\"probe-sup-1\\\",\\\"import_source\\\":null,\\\"e_invoicing\\\":null,\\\"performance_date\\\":null}\"}"
+    }
+  ]
+}

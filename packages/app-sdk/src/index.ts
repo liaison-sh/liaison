@@ -115,6 +115,7 @@ export type {
   FetchAuth,
   FetchMultipartPart,
   JobsClient,
+  KernelCaller,
   KernelClient,
   KnowledgeSyncDocument,
   KnowledgeSyncInput,

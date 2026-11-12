@@ -507,3 +507,259 @@ describe("the database app's move", () => {
     expect(await dbSnapshot()).toEqual(after)
   })
 })
+
+describe("the google-drive app's move", () => {
+  const GD = "google-drive"
+  const PERSONAL = "00000000-0000-0000-0000-0000000ad031"
+  const ORG_ACCOUNT = "00000000-0000-0000-0000-0000000ad032"
+  const OAUTH_CLIENT = "00000000-0000-0000-0000-0000000ad033"
+  const FOLDER_SOURCE = "00000000-0000-0000-0000-0000000ad034"
+  const PICKED_SOURCE = "00000000-0000-0000-0000-0000000ad035"
+  const LEGACY_SOURCE = "00000000-0000-0000-0000-0000000ad036"
+  const SUBCOLLECTION = "00000000-0000-0000-0000-0000000ad037"
+  const GD_IDENTITY = "00000000-0000-0000-0000-0000000ad038"
+  const GD_DOCUMENT = "00000000-0000-0000-0000-0000000ad039"
+  const PICKED = [{ id: "pickedfile01", name: "Plan.docx", mimeType: "application/msword" }]
+  const SHARED = [{ id: "DRIVE_TEAM", name: "Team" }]
+  const json = (v: unknown) => ({ raw: `'${JSON.stringify(v)}'::jsonb` })
+
+  async function seedDriveApp(): Promise<void> {
+    const rows: Array<[string, Record<string, RowValue>]> = [
+      [
+        "kernel.apps",
+        { org_id: ORG, name: GD, version: "1.5.4", status: "active", config: json({}) },
+      ],
+      [
+        "kernel.connected_accounts",
+        {
+          id: PERSONAL,
+          org_id: ORG,
+          app_name: GD,
+          connection_name: "drive",
+          owner_type: "user",
+          owner_id: USER,
+          provider_type: "oauth2",
+          identifier: "ana@example.com",
+          access_token_encrypted: "enc:v1:access",
+          refresh_token_encrypted: "enc:v1:refresh",
+          metadata: json({
+            grantedOAuthScopes: ["https://www.googleapis.com/auth/drive.file"],
+            pickedItems: PICKED,
+          }),
+          created_by: USER,
+        },
+      ],
+      [
+        "kernel.connected_accounts",
+        {
+          id: ORG_ACCOUNT,
+          org_id: ORG,
+          app_name: GD,
+          connection_name: "drive",
+          owner_type: "org",
+          provider_type: "oauth2",
+          identifier: "team@example.com",
+          access_token_encrypted: "enc:v1:org-access",
+          metadata: json({ sharedDrives: SHARED }),
+          created_by: USER,
+        },
+      ],
+      [
+        "kernel.oauth_providers",
+        {
+          id: OAUTH_CLIENT,
+          org_id: ORG,
+          name: "google-drive:drive",
+          issuer_url: "https://accounts.google.com",
+          client_id: "drive-client.apps.example",
+          client_secret_encrypted: "enc:v1:client-secret",
+        },
+      ],
+      [
+        "app_knowledge.collections",
+        {
+          id: SUBCOLLECTION,
+          org_id: ORG,
+          name: "Specs",
+          parent_collection_id: COLLECTION,
+          description: `synced:${FOLDER_SOURCE}:subfolder01`,
+        },
+      ],
+      ...(
+        [
+          [FOLDER_SOURCE, "folder0001", "team@example.com", null],
+          [PICKED_SOURCE, "liaison-picked-items", "ana@example.com", USER],
+          [LEGACY_SOURCE, "legacyfolder", null, null],
+        ] as const
+      ).map(
+        ([id, ref, account, owner]) =>
+          [
+            "app_knowledge.synced_sources",
+            {
+              id,
+              org_id: ORG,
+              app_name: GD,
+              folder_ref: ref,
+              display_name: `Drive ${ref}`,
+              root_collection_id: COLLECTION,
+              default_sensitivity: owner ? null : "internal",
+              owner_user_id: owner,
+              source_account: account,
+              sync_cursor: json({ stack: [{ id: ref, parent: null }] }),
+              created_by: USER,
+            },
+          ] as [string, Record<string, RowValue>],
+      ),
+      [
+        "app_knowledge.source_identities",
+        { id: GD_IDENTITY, org_id: ORG, source: GD, external_id: "drivefile001" },
+      ],
+      [
+        "app_knowledge.documents",
+        {
+          id: GD_DOCUMENT,
+          org_id: ORG,
+          title: "Spec",
+          body: "The spec",
+          sensitivity: "internal",
+          created_by: USER,
+          synced_source_id: FOLDER_SOURCE,
+          source_identity_id: GD_IDENTITY,
+          required_scopes: { raw: "'{}'::text[]" },
+        },
+      ],
+    ]
+    for (const [table, row] of rows) await sql.unsafe(insertSql(table, row))
+  }
+
+  async function driveSnapshot(): Promise<Record<string, unknown[]>> {
+    const strip = (rows: readonly unknown[]) =>
+      rows.map((r) => {
+        const { updated_at: _u, ...rest } = r as Record<string, unknown>
+        return rest
+      })
+    return {
+      apps: strip(
+        await sql`SELECT id, name, status, config FROM kernel.apps
+        WHERE org_id = ${ORG} AND name = ${GD}`,
+      ),
+      accounts: strip(
+        await sql`SELECT * FROM kernel.connected_accounts
+        WHERE org_id = ${ORG} AND app_name = ${GD} ORDER BY id`,
+      ),
+      oauthClients: strip(
+        await sql`SELECT * FROM kernel.oauth_providers WHERE org_id = ${ORG} ORDER BY id`,
+      ),
+      sources: strip(
+        await sql`SELECT * FROM app_knowledge.synced_sources
+        WHERE org_id = ${ORG} AND app_name = ${GD} ORDER BY id`,
+      ),
+      collections: strip(
+        await sql`SELECT * FROM app_knowledge.collections WHERE org_id = ${ORG} ORDER BY id`,
+      ),
+      identities: strip(
+        await sql`SELECT * FROM app_knowledge.source_identities
+        WHERE org_id = ${ORG} AND source = ${GD}`,
+      ),
+      documents: strip(await sql`SELECT * FROM app_knowledge.documents WHERE id = ${GD_DOCUMENT}`),
+      adoptions: strip(
+        await sql`SELECT step_id, report FROM kernel.app_adoptions
+        WHERE app_name = ${GD} ORDER BY step_id`,
+      ),
+    }
+  }
+
+  afterEach(async () => {
+    await withSystemDb("moved-apps-drive-test-cleanup", async (db) => {
+      await db.delete(appsInstalled).where(eq(appsInstalled.name, GD))
+      await db.delete(appsActiveVersion).where(eq(appsActiveVersion.name, GD))
+    })
+    await sql`DELETE FROM kernel.app_adoptions WHERE app_name = ${GD}`
+    await sql`DELETE FROM kernel.oauth_providers WHERE org_id = ${ORG}`
+  })
+
+  it("keeps connections, OAuth tokens and client, picks, chosen drives, sources, cursors, documents and folders; only the source kinds change", async () => {
+    MovedAppsTestAccess.set(null)
+    bakeCatalog(true, GD)
+    await seedDriveApp()
+    const before = await driveSnapshot()
+
+    const first = await reconcileCatalogApps({ fallbackInstalledBy: NIL_UUID })
+    expect(first.failed).toEqual([])
+    expect(first.repaired).toContain(GD)
+    const after = await driveSnapshot()
+
+    // Same rows: the registration, both connected accounts (tokens, picked items,
+    // chosen shared drives), the org's OAuth client, the folder collections, the
+    // identity and the document.
+    for (const table of [
+      "apps",
+      "accounts",
+      "oauthClients",
+      "collections",
+      "identities",
+      "documents",
+    ] as const) {
+      expect({ table, rows: after[table] }).toEqual({ table, rows: before[table] })
+    }
+    // The sources keep their ids, folders, owners, accounts and cursors: only the
+    // kind the app syncs them with, and the folder and account in its config.
+    const byId = (rows: unknown[]) =>
+      new Map((rows as Array<Record<string, unknown>>).map((r) => [r.id as string, r]))
+    const was = byId(before.sources as unknown[])
+    const now = byId(after.sources as unknown[])
+    expect(now.get(FOLDER_SOURCE)).toEqual({
+      ...was.get(FOLDER_SOURCE),
+      source_kind: "folder",
+      source_config: { ref: "folder0001", account: "team@example.com" },
+    })
+    expect(now.get(PICKED_SOURCE)).toEqual({
+      ...was.get(PICKED_SOURCE),
+      source_kind: "picked",
+      source_config: { ref: "liaison-picked-items", account: "ana@example.com" },
+    })
+    expect(now.get(LEGACY_SOURCE)).toEqual({
+      ...was.get(LEGACY_SOURCE),
+      source_kind: "folder",
+      source_config: { ref: "legacyfolder" },
+    })
+    expect(after.adoptions).toEqual([
+      { step_id: "folder-sources-to-kind", report: { sources: 2 } },
+      { step_id: "picked-sources-to-kind", report: { sources: 1 } },
+    ])
+
+    // Idempotent: a second boot changes nothing.
+    const second = await reconcileCatalogApps({ fallbackInstalledBy: NIL_UUID })
+    expect(second.failed).toEqual([])
+    expect(await driveSnapshot()).toEqual(after)
+  })
+
+  it("migration 0296 hides what an org connection with no shared drive synced, and nothing of a personal one", async () => {
+    MovedAppsTestAccess.set(null)
+    await seedDriveApp()
+    await sql`UPDATE kernel.connected_accounts SET metadata = '{}'::jsonb WHERE id = ${ORG_ACCOUNT}`
+    const migration = await Bun.file(
+      join(import.meta.dir, "../../db/migrations/0296_org_drive_unscoped_content.sql"),
+    ).text()
+    await sql.unsafe(migration)
+    const [doc] = await sql<Array<{ archived_at: Date | null }>>`
+      SELECT archived_at FROM app_knowledge.documents WHERE id = ${GD_DOCUMENT}`
+    expect(doc?.archived_at).not.toBeNull()
+    const sources = await sql<Array<{ id: string; last_sync_status: string }>>`
+      SELECT id, last_sync_status FROM app_knowledge.synced_sources
+      WHERE org_id = ${ORG} AND app_name = ${GD} ORDER BY id`
+    expect(sources).toEqual([
+      // The org's folder: hidden, saying why.
+      { id: FOLDER_SOURCE, last_sync_status: "error" },
+      // A person's own picks, and a folder with no account recorded whose owner holds a
+      // personal Drive account (it syncs through that one): untouched.
+      { id: PICKED_SOURCE, last_sync_status: "idle" },
+      { id: LEGACY_SOURCE, last_sync_status: "idle" },
+    ])
+    const events = await sql<Array<{ payload: { action: string; entityId: string } }>>`
+      SELECT payload FROM kernel.pending_events
+      WHERE org_id = ${ORG} AND payload->>'entityId' = ${GD_DOCUMENT}`
+    expect(events.map((e) => e.payload.action)).toEqual(["archive"])
+    await sql`DELETE FROM kernel.pending_events WHERE org_id = ${ORG}`
+  })
+})

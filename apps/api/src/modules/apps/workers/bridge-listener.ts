@@ -36,13 +36,10 @@ export function startBridgeListener(
     hostname: opts.hostname ?? "0.0.0.0",
     port: opts.port,
     maxRequestBodySize: MAX_BRIDGE_BODY_BYTES,
-    fetch(req) {
-      const path = new URL(req.url).pathname
-      if (!isBridgeListenerRequest(req.method, path)) {
-        return new Response("Not Found", { status: 404 })
-      }
-      return fetchApp.fetch(req)
-    },
+    fetch: (req) =>
+      isBridgeListenerRequest(req.method, new URL(req.url).pathname)
+        ? fetchApp.fetch(req)
+        : new Response("Not Found", { status: 404 }),
   })
   log.info({ port: server.port }, "App bridge listener (sandbox network) listening")
   return server

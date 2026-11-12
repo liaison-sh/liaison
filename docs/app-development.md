@@ -860,8 +860,12 @@ it lists may have changed, and stores what it returns, one list per person:
 These runs are background jobs on their own queue, never part of a request.
 Wakes of one app in one workspace are grouped: the provider runs at most once
 every 15 seconds for them, after the writes they follow, and a workspace runs a
-limited number of refreshes a minute. A newer list is never replaced by an
-older run that finished later.
+limited number of refreshes and provider runs a minute. A newer list is never
+replaced by an older run that finished later.
+
+A refresh runs the provider only for the people who are around: online now, or
+who read their feed in the last 30 minutes. When someone comes back, their
+first feed read recomputes their lists.
 
 Each run replaces the person's whole list, so an item the provider no longer
 returns is cleared. A person without the provider's scope gets an empty list. A

@@ -47,7 +47,7 @@ If the customer has a Stripe subscription, the editor shows a conflict. Choose *
 
 Each schedule's invoice for a period is made by the month-end run of its issuer and issue day, in four steps. No model is asked anything along the way.
 
-1. **Drafted.** On a schedule's draft day, an hourly job makes one unnumbered draft from the schedule alone. Each draft is one row of the run, with flags such as "First invoice" or "Changed since October". Running the job twice adds nothing.
+1. **Drafted.** On a schedule's draft day, an hourly job makes one unnumbered draft from the schedule alone. Each draft is one row of the run, with flags such as "First invoice" or "Changed since October". A row that bills five times the last invoice of its schedule or more, or a fifth of it or less, reads "Check the amount" with last time's amount. Running the job twice adds nothing.
 2. **Approved.** The run gets one card listing every row, its total and its account manager. Approving it records each row as approved. No number is taken at approval. To change a row, change its draft: the card follows.
 3. **Issued.** From 08:00 on the issue day, in the issuer's time zone, the rows issue in order, at most 25 every five minutes. A row that fails stays an unnumbered draft and uses no number. The others keep consecutive numbers and the run ends **partial**.
 4. **Checked.** The optional **month-end-check** routine reads what other records say about the run's customers and says it in at most two sentences. It changes nothing and is off until you turn it on.

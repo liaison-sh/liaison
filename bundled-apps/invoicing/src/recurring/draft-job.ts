@@ -16,7 +16,7 @@
 import { civilDateOf } from "../issue-date"
 import type { ErrorEnvelope } from "../mutations/shared"
 import { lineSubtotal } from "../money"
-import { type CurrentDraft, linesSignature, periodLabel, type PreviousInvoice, runItemFlags } from "./flags"
+import { type CurrentDraft, linesSignature, periodLabel, runItemFlags } from "./flags"
 import {
   dayOf,
   draftLines,
@@ -25,6 +25,7 @@ import {
   findOneWhere,
   currentItemHash,
   jsonOf,
+  previousInvoice,
   type Row,
   type RunCtx,
   runItems,
@@ -82,21 +83,6 @@ async function insertOnce(ctx: RunCtx, entity: string, where: Row, data: Row): P
  */
 async function counterpartySnapshot(ctx: RunCtx, s: ScheduleRow): Promise<Row> {
   return { ...(await recipientOf(ctx, { contactId: s.contact_id ?? null, companyId: s.company_id ?? null })) }
-}
-
-/** The previous invoice of the schedule, for the row's flags. */
-async function previousInvoice(ctx: RunCtx, s: ScheduleRow): Promise<PreviousInvoice | null> {
-  if (!s.last_document_id) return null
-  const doc = (await ctx.db.findOne("documents", s.last_document_id)) as Row | null
-  if (!doc) return null
-  const lines = await draftLines(ctx, String(doc.id))
-  const prevItem = await findOneWhere(ctx, "recurring_run_items", { document_id: String(doc.id) })
-  return {
-    period_key: prevItem ? String(prevItem.period_key) : null,
-    net_minor: draftTotals(lines).net,
-    lines_signature: linesSignature(lines),
-    payment_status: (doc.payment_status as string | null) ?? null,
-  }
 }
 
 function draftLineRows(lines: ScheduleLineInput[], label: string): Row[] {
@@ -230,7 +216,7 @@ async function draftSchedule(ctx: RunCtx, s: ScheduleRow): Promise<{ runId: stri
   const differs = !written.created && !sameLines(lines, expected)
   const totals = draftTotals(lines)
   const current: CurrentDraft = { net_minor: totals.net, lines_signature: linesSignature(lines) }
-  const flags = runItemFlags(await previousInvoice(ctx, s), current)
+  const flags = runItemFlags(await previousInvoice(ctx, s.last_document_id ?? null), current)
   // One rule for whether a row is ready (customer, address, total), the same the edits apply.
   const rowState = runItemState(draftRow ?? docRow, lines, await rowIssuerHold(ctx, draftRow ?? docRow, s as unknown as Row))
   const missing = rowState.state === "needs_fix"

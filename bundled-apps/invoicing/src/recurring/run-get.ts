@@ -4,6 +4,7 @@
 // draft id, amounts, account manager, latest change and flags, so a change is made on the right
 // draft with the draft tools.
 import type { ErrorEnvelope } from "../mutations/shared"
+import { AMOUNT_CHECK } from "./flags"
 import { updatedAtOf } from "./restage"
 import { dayOf, draftLines, draftTotals, jsonOf, type Row, type RunCtx, runItems } from "./run-card"
 
@@ -108,12 +109,19 @@ export async function recurringRunGet(
     approval_request_id: run.approval_request_id ?? null,
     timezone: (issuer?.timezone as string | null) ?? null,
   }
+  const far = rows.filter((r) => r.state !== "issued" && r.state !== "left_out" && r.flags.some((f) => f.startsWith(AMOUNT_CHECK)))
   return {
     status: "completed",
     run: runOut,
     rows,
     message:
       `Run ${String(run.id)} for ${String(run.period_label)} is ${String(run.status)}, ${rows.length} row${rows.length === 1 ? "" : "s"}. Change a row with drafts_update on its draft_id.` +
+      (far.length > 0
+        ? ` ${far.length} row${far.length === 1 ? " bills" : "s bill"} far from the last invoice of ${far.length === 1 ? "its" : "their"} schedule (${far
+            .slice(0, 3)
+            .map((r) => r.customer ?? r.item_id)
+            .join(", ")}${far.length > 3 ? ", ..." : ""}). The "Check the amount" flag names what was billed last time: check it with a person before the card is approved.`
+        : "") +
       (cardWaiting(run, rows) ? ` Its card (approval ${String(run.approval_request_id)}) waits for a person, who approves or rejects it on the card; no tool approves it.` : ""),
   }
 }

@@ -281,6 +281,16 @@ describe("the month-end panel", () => {
     fireEvent.input(screen.getByTestId("month-end-search"), { target: { value: "Client 42" } })
     await waitFor(() => expect(screen.getByTestId("month-end-row-r42")).toBeTruthy())
   })
+  it("a row billing far from last month shows its amount check, stands out from the folded rows and stays in Approve N", async () => {
+    rows = Array.from({ length: 30 }, (_, i) => row(`r${i}`, `Client ${i}`, "12000"))
+    rows[3] = row("r3", "Client 3", "1788000", { flags: ["Changed since October", "Check the amount: October was 149.00 EUR excl."] })
+    renderPanel()
+    await screen.findByTestId("month-end-folded")
+    expect(screen.getByTestId("month-end-rows").children.length).toBe(1)
+    expect(screen.getByTestId("month-end-row-amount-check-r3").textContent).toBe("Check the amount: October was 149.00 EUR excl.")
+    expect(screen.queryByTestId("month-end-row-amount-check-r4")).toBeNull()
+    expect(screen.getByTestId("month-end-approve-count").textContent).toContain("30 invoices to approve")
+  })
   it("add an invoice someone forgot offers the schedules missing from the run and adds the one picked as a draft of the run", async () => {
     const line = (description: string, unit: number) => [{ description, qty: 1, unit_price_minor: unit, vat_bp: 2000 }]
     schedules = [

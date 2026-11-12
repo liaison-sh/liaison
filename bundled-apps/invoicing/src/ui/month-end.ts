@@ -3,6 +3,7 @@
 // What the month-end panel computes, apart from drawing it: which rows the card covers and their
 // total as typed, which rows fold away on a long run, what each viewer may do, and what changed
 // since the panel was drawn.
+import { AMOUNT_CHECK } from "../recurring/flags"
 import { tr } from "./i18n"
 
 /** One row as `recurring_run_get` returns it. */
@@ -83,6 +84,11 @@ export function approveSummary(
 }
 
 const SAME_AS = /^Same as (.+)$/
+
+/** A flag saying the row bills far from the last invoice of its schedule: read before approving. */
+export function isAmountCheck(flag: string): boolean {
+  return flag.startsWith(AMOUNT_CHECK)
+}
 
 /** A row someone may want to read before approving: not ready, changed, flagged. */
 export function needsLook(row: RunRow): boolean {

@@ -9,6 +9,7 @@
 // refused by the kernel), and a draft changed after approval is caught again at issue.
 import { mintRunSendGrants } from "../einvoicing/run-send"
 import type { EinvCtx } from "../einvoicing/transmit"
+import { linesSignature, type PreviousInvoice } from "./flags"
 import { currentItemHash, itemContentHash } from "./item-hash"
 import type { ErrorEnvelope, MutationsCtx } from "../mutations/shared"
 import { addDays, weekdayOf } from "./schedule"
@@ -74,6 +75,29 @@ export async function runItems(ctx: Pick<RunCtx, "db">, runId: string): Promise<
 
 export async function draftLines(ctx: Pick<RunCtx, "db">, documentId: string): Promise<Row[]> {
   return (await ctx.db.findMany("document_lines", { where: { document_id: documentId }, orderBy: { position: "asc" }, limit: 500 })) as Row[]
+}
+
+/**
+ * The schedule's last issued invoice, for a row's flags. `exceptDocumentId` is the row's own draft:
+ * once that one is issued it is the schedule's last, and a row never compares with itself.
+ */
+export async function previousInvoice(
+  ctx: Pick<RunCtx, "db">,
+  lastDocumentId: unknown,
+  exceptDocumentId?: string,
+): Promise<PreviousInvoice | null> {
+  if (typeof lastDocumentId !== "string" || !lastDocumentId || lastDocumentId === exceptDocumentId) return null
+  const doc = (await ctx.db.findOne("documents", lastDocumentId)) as Row | null
+  if (!doc) return null
+  const lines = await draftLines(ctx, String(doc.id))
+  const prevItem = await findOneWhere(ctx, "recurring_run_items", { document_id: String(doc.id) })
+  return {
+    period_key: prevItem ? String(prevItem.period_key) : null,
+    net_minor: draftTotals(lines).net,
+    lines_signature: linesSignature(lines),
+    payment_status: (doc.payment_status as string | null) ?? null,
+    currency: (doc.currency as string | null) ?? null,
+  }
 }
 
 /** Net (before tax) and total (with each line's rate) of a draft's lines, in minor units. */

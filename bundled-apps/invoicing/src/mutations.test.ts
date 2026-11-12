@@ -295,24 +295,6 @@ function makeCtx(opts?: {
     approval: opts?.approval ?? null,
     db,
     time: testTime(),
-    sequences: {
-      async allocate(p) {
-        const key = p.key
-        const existing = await db.findMany("__sequences", { where: { key }, limit: 1 })
-        const current = existing[0] as { value?: number } | undefined
-        const next = (current?.value ?? 0) + 1
-        if (current) {
-          await db.update(
-            "__sequences",
-            String((current as Record<string, unknown>).id),
-            { value: next },
-          )
-        } else {
-          await db.insert("__sequences", { key, value: next })
-        }
-        return { value: next }
-      },
-    },
     pdf: {
       async render(p) {
         extras.renderCalls.push(p)
@@ -1939,7 +1921,7 @@ describe("invoice.create_and_issue", () => {
         expect(r.error.retryable).toBe(true)
       }
       expect(db.__all("documents")).toHaveLength(0)
-      expect(db.__all("__sequences")).toHaveLength(0)
+      expect(db.__sequences.size).toBe(0)
     })
 
     test("a EUR invoice fetches nothing", async () => {
@@ -7941,7 +7923,7 @@ describe("e-invoicing gate at the manual issue sites", () => {
     expect(refused.error.retryable).toBe(true)
     expect(refused.error.status).toBe(422)
     expect(issuedDocs(db)).toHaveLength(0)
-    expect(db.__all("__sequences")).toHaveLength(0)
+    expect(db.__sequences.size).toBe(0)
 
     const ok = await invoiceCreateAndIssue(ctx, {
       counterparty: { ...frPerson, customer_kind: "individual" },

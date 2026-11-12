@@ -47,12 +47,10 @@ function makeCtx(opts?: { orgZone?: string; seed?: Array<Record<string, unknown>
     },
   })
   const emitted: Emitted[] = []
-  let sequence = 0
   const ctx: IssueCtx = {
     getUserId: async () => "user-1",
     db,
     time: testTime(opts?.orgZone ?? "UTC"),
-    sequences: { allocate: async () => ({ value: ++sequence }) },
     pdf: {
       async render() {
         return { file_id: "file-1", byte_size: 1024, page_count: 1, sha256: "0".repeat(64), parent_entity_id: crypto.randomUUID() }

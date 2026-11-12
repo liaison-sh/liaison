@@ -104,16 +104,6 @@ function makeCtx(): { ctx: MutationsCtx; db: MockDb } {
     approval: null,
     db,
     time: testTime(),
-    sequences: {
-      async allocate(p) {
-        const existing = await db.findMany("__sequences", { where: { key: p.key }, limit: 1 })
-        const current = existing[0] as { id?: string; value?: number } | undefined
-        const next = (current?.value ?? 0) + 1
-        if (current) await db.update("__sequences", String(current.id), { value: next })
-        else await db.insert("__sequences", { key: p.key, value: next })
-        return { value: next }
-      },
-    },
     pdf: {
       async render() {
         return { file_id: `pdf-${++idSeq}`, byte_size: 1024, page_count: 1, sha256: "0".repeat(64), parent_entity_id: crypto.randomUUID() }
@@ -189,11 +179,6 @@ describe("issueDocument recipient backstop", () => {
       getUserId: async () => "user-1",
       db,
       time: testTime(),
-      sequences: {
-        async allocate() {
-          return { value: 1 }
-        },
-      },
       pdf: {
         async render() {
           return { file_id: `pdf-${++idSeq}`, byte_size: 1024, page_count: 1, sha256: "0".repeat(64), parent_entity_id: crypto.randomUUID() }

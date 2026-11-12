@@ -32,6 +32,39 @@ export interface DbClient {
   ): Promise<{ count: number }>
   delete(entity: string, id: string): Promise<void>
   count(entity: string, opts?: { where?: Record<string, unknown> }): Promise<number>
+  /**
+   * Several writes to the app's own tables that commit together or not at all, in one call.
+   * A sandboxed run holds no transaction across its run, so writes that must land as one (a
+   * numbered document with its lines) go here. With `sequence`, the next value of one of the
+   * app's sequences is allocated inside the same commit (needs `sequences.allocate`): a failed
+   * batch consumes no value, concurrent batches never share one. `sequence.unique` steps past
+   * values a row matching `where` already holds in `field`. Placeholders anywhere in an op's
+   * `data`, or as its `id`: `{ $seq: "value" }`, `{ $seq: "formatted" }` (`format.prefix` +
+   * the value padded to `format.pad`), `{ $ref: "<as>" }` (the id of an earlier insert). At
+   * most 500 ops.
+   */
+  batch(spec: DbBatchSpec): Promise<DbBatchResult>
+}
+
+export type DbBatchOp =
+  | { insert: string; data: Record<string, unknown>; as?: string }
+  | { update: string; id: string | { $ref: string }; data: Record<string, unknown> }
+  | { delete: string; id: string | { $ref: string } }
+  | { updateMany: string; where: Record<string, unknown>; data: Record<string, unknown> }
+
+export interface DbBatchSpec {
+  sequence?: {
+    key: string
+    format?: { prefix: string; pad?: number }
+    unique?: { entity: string; field: string; where?: Record<string, unknown> }
+  }
+  ops: DbBatchOp[]
+}
+
+export interface DbBatchResult {
+  sequence?: { value: number; formatted?: string }
+  /** The rows inserted by ops that named themselves with `as`. */
+  rows: Record<string, Record<string, unknown> & { id: string }>
 }
 
 export type StoreScalar = string | number | boolean | null

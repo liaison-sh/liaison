@@ -20,7 +20,6 @@ import {
   getDraft,
   findIssuerProfile,
   dateOnly,
-  deleteDraftRow,
 } from "./db-helpers"
 import {
   normaliseDraftLines,
@@ -73,8 +72,9 @@ export interface CreditNoteIssueOptions {
    *  The original's line kinds come from the Shopify adapter, so they state the operation
    *  category, and a buyer with no company and no VAT id is a checkout consumer. */
   source?: "shopify"
-  /** The unique source key the credit note carries (a Stripe refund's `stripe:re_...`), so one
-   *  refund never yields two credit notes. */
+  /** The note's dedup key, written to `documents.external_ref` (unique) in the issuing commit (a
+   *  Stripe refund's `stripe:re_...`): one refund never yields two credit notes, and an automatic
+   *  note re-run after its run died is found by it instead of issued twice. */
   external_ref?: string | null
   /** "batch": issued with no person (a Stripe refund's automatic credit note), so its e-invoice
    *  goes out like every other no-person issue instead of asking for its own send card. */
@@ -502,6 +502,9 @@ export async function creditNoteCreateAndIssue(
   // `notes.value === undefined` means the caller said nothing; an explicit null clears it.
   const effectiveNotes = notes.value === undefined ? originalNotes : notes.value
 
+  const original = originalDocumentUuid
+    ? await findDocumentSummary(ctx.db, originalDocumentUuid)
+    : null
   const issueInput = {
     type: "credit_note" as const,
     issuer,
@@ -523,27 +526,15 @@ export async function creditNoteCreateAndIssue(
     ...autoSourceGateFields(opts),
     ...(opts.external_ref ? { external_ref: opts.external_ref } : {}),
     ...(opts.einvoice_send ? { einvoice_send: opts.einvoice_send } : {}),
+    commit_with: original ? [await creditedOnOriginal(ctx, original)] : [],
   }
   const issued = await issueWithFxRate(ctx, issueInput)
   if (!issued.ok) return issued.error
   const result = issued.result
 
   if (originalDocumentUuid) {
-    const original = await findDocumentSummary(ctx.db, originalDocumentUuid)
     if (original) {
-      await ctx.db.update("documents", originalDocumentUuid, {
-        lifecycle_log: [
-          ...original.lifecycle_log,
-          {
-            event: "credit_note_issued",
-            actor: await ctx.getUserId(),
-            ts: new Date().toISOString(),
-            credit_note_id: result.document_id,
-            number: result.number,
-          },
-        ],
-      })
-      // Kernel audit trail — mirrors the credit_note_issued lifecycle_log entry just written above.
+      // Kernel audit trail — mirrors the credit_note_issued lifecycle_log entry committed with the note.
       await ctx.emit({
         entity: "document",
         action: "credited",
@@ -788,33 +779,28 @@ export async function creditNoteIssue(
 
   const when = await issueDateParts(ctx, issuer)
   if (!when.ok) return when.error
+  const original = originalDocumentUuid
+    ? await findDocumentSummary(ctx.db, originalDocumentUuid)
+    : null
   const issueInput = {
     ...buildIssueInputFromDraft(draft, issuer, counterparty, when),
     original_invoice_number: originalNumber,
     original_invoice_date: dateOnly(originalIssuedAt),
     original: originalRef,
+    // The draft and the original's "credited" entry commit with the note: a re-run finds no
+    // draft instead of crediting twice.
+    commit_with: [
+      { delete: "documents", id: draft.id },
+      ...(original ? [await creditedOnOriginal(ctx, original)] : []),
+    ],
   }
   const issued = await issueWithFxRate(ctx, issueInput)
   if (!issued.ok) return issued.error
   const result = issued.result
-  await deleteDraftRow(ctx.db, draft.id)
 
   if (originalDocumentUuid) {
-    const original = await findDocumentSummary(ctx.db, originalDocumentUuid)
     if (original) {
-      await ctx.db.update("documents", originalDocumentUuid, {
-        lifecycle_log: [
-          ...original.lifecycle_log,
-          {
-            event: "credit_note_issued",
-            actor: await ctx.getUserId(),
-            ts: new Date().toISOString(),
-            credit_note_id: result.document_id,
-            number: result.number,
-          },
-        ],
-      })
-      // Kernel audit trail — mirrors the credit_note_issued lifecycle_log entry just written above.
+      // Kernel audit trail — mirrors the credit_note_issued lifecycle_log entry committed with the note.
       await ctx.emit({
         entity: "document",
         action: "credited",
@@ -838,5 +824,29 @@ export async function creditNoteIssue(
     document_id: result.document_id,
     number: result.number,
     ...(result.einvoicing_warning ? { einvoicing_warning: result.einvoicing_warning } : {}),
+  }
+}
+
+/** The original invoice's `credit_note_issued` entry, written in the same commit as the credit
+ *  note it names (`$ref` / `$seq`: the note's id and number, known only inside that commit). */
+async function creditedOnOriginal(
+  ctx: MutationsCtx,
+  original: { id: string; lifecycle_log: Array<Record<string, unknown>> },
+): Promise<{ update: string; id: string; data: Record<string, unknown> }> {
+  return {
+    update: "documents",
+    id: original.id,
+    data: {
+      lifecycle_log: [
+        ...original.lifecycle_log,
+        {
+          event: "credit_note_issued",
+          actor: await ctx.getUserId(),
+          ts: new Date().toISOString(),
+          credit_note_id: { $ref: "document" },
+          number: { $seq: "formatted" },
+        },
+      ],
+    },
   }
 }

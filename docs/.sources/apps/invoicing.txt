@@ -276,3 +276,7 @@ Check the amount flag names last time's amount, never on a first invoice -> bund
 Amount check follows an edit of the row -> bundled-apps/invoicing/src/recurring/restage.ts:260
 Run read names rows billing far from their last invoice -> bundled-apps/invoicing/src/recurring/run-get.ts:112
 Card line carries the row's note -> bundled-apps/invoicing/src/recurring/run-card.ts:150
+number taken in the same step that saves the document, lines and commit_with writes -> bundled-apps/invoicing/src/issue.ts:1237 ; bundled-apps/invoicing/src/mutations/credit-notes.ts:787
+no gap, no shared number under concurrency -> apps/api/src/tests/integration/sandbox-bridge-batch.test.ts:1
+deferred-retry renders a document still pending after ten minutes and parks the owed paid-order email -> bundled-apps/invoicing/src/handlers/resume-interrupted.ts:21 ; bundled-apps/invoicing/src/handlers/deferred-dispatch.ts:202
+automatic refund/cancel credit note never issued twice per invoice -> bundled-apps/invoicing/src/einvoicing/parked-credit-note.ts:115

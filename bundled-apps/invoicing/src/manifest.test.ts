@@ -1564,7 +1564,12 @@ describe("invoicing manifest", () => {
     // 0.20.79: above the 0.20.57 main took meanwhile, merged.
     // 0.20.83: the source repository link names the repository where the code now lives.
     // 0.20.84: the schedule page names its entity, so a turn sent from it knows the open schedule.
-    expect(m.version).toBe("0.20.100")
+    // 0.21.0 (main): no transaction is held across a run: an issue commits its number, document, lines and
+    //   the writes that go with it (the draft it replaces, the invoice a credit note credits) in one
+    //   batch; automatic credit notes carry a dedup key; the deferred-retry sweep resumes issues a
+    //   dead run left unrendered.
+    // 0.21.1: above the 0.21.0 main took meanwhile, merged.
+    expect(m.version).toBe("0.21.1")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },

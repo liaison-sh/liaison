@@ -25,7 +25,6 @@ import {
   getDraft,
   findIssuerProfile,
   updateDraftRow,
-  deleteDraftRow,
   rejectDraftOrderId,
   resolveIssuerProfileOrError,
 } from "./db-helpers"
@@ -251,13 +250,15 @@ export async function invoiceIssue(
   }
   const when = await issueDateParts(ctx, issuer)
   if (!when.ok) return when.error
-  const issueInput = buildIssueInputFromDraft(draft, issuer, counterparty, when)
+  // The draft is discarded in the same commit as the invoice that replaces it, so a
+  // re-invocation refuses with not_found rather than re-issuing.
+  const issueInput = {
+    ...buildIssueInputFromDraft(draft, issuer, counterparty, when),
+    commit_with: [{ delete: "documents", id: input.draft_id }],
+  }
   const issued = await issueWithFxRate(ctx, issueInput)
   if (!issued.ok) return issued.error
   const result = issued.result
-  // After successful issue, the draft is no longer a draft; we discard it
-  // so a re-invocation refuses with not_found rather than re-issuing.
-  await deleteDraftRow(ctx.db, input.draft_id)
   return {
     status: "completed",
     document_id: result.document_id,
@@ -269,7 +270,7 @@ export async function invoiceIssue(
 /**
  * Issue a month-end run's draft: the same checks and numbering as `invoice_issue`, with no card of
  * its own (the run's approval is that card). The issued document takes the draft's
- * `external_ref` and change log, and the draft is deleted in the same transaction.
+ * `external_ref` and change log, and the draft is deleted in the same commit.
  */
 export async function issueRunDraft(
   ctx: MutationsCtx,
@@ -281,9 +282,15 @@ export async function issueRunDraft(
   const when = await issueDateParts(ctx, issuer)
   if (!when.ok) return when.error
   const issueInput = buildIssueInputFromDraft(draft, issuer, counterparty, when)
-  const issued = await issueWithFxRate(ctx, { ...issueInput, external_ref: input.external_ref, lifecycle_carry: input.lifecycle_log, ...(input.einvoice_send ? { einvoice_send: input.einvoice_send } : {}) })
+  // The draft is discarded in the same commit as the invoice that replaces it.
+  const issued = await issueWithFxRate(ctx, {
+    ...issueInput,
+    external_ref: input.external_ref,
+    lifecycle_carry: input.lifecycle_log,
+    ...(input.einvoice_send ? { einvoice_send: input.einvoice_send } : {}),
+    commit_with: [{ delete: "documents", id: input.draft_id }],
+  })
   if (!issued.ok) return issued.error
-  await deleteDraftRow(ctx.db, input.draft_id)
   return {
     status: "completed",
     document_id: issued.result.document_id,

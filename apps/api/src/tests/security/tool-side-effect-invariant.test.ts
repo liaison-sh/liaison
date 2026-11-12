@@ -42,6 +42,8 @@ const SELF_GUARDING = new Set([
   "db_updateNow",
   "db_updateMany",
   "db_delete",
+  // Refuses before its first op, naming each op's table (bridge/batch.ts).
+  "db_batch",
   "messages_post",
   "executeTool",
   // Forwards the run's mark into the contract op's executeTool (bridge/contracts.ts:298).
@@ -240,10 +242,21 @@ describe("S3f-1: a read-only run refuses every bridge write", () => {
 
   it("a self-guarding write refuses on a read-only run", async () => {
     const ro = bridgeFor(true)
-    for (const name of ["db_insert", "db_insertNow", "db_update", "db_updateNow", "db_delete"]) {
+    for (const name of [
+      "db_insert",
+      "db_insertNow",
+      "db_update",
+      "db_updateNow",
+      "db_delete",
+      "db_batch",
+    ]) {
       let msg = ""
       try {
-        await ro[name](JSON.stringify({ entity: "items", data: { a: 1 }, where: { id: "x" } }))
+        const arg =
+          name === "db_batch"
+            ? JSON.stringify({ ops: [{ insert: "items", data: { a: 1 } }] })
+            : JSON.stringify({ entity: "items", data: { a: 1 }, where: { id: "x" } })
+        await ro[name](arg)
       } catch (err) {
         msg = String((err as Error).message)
       }

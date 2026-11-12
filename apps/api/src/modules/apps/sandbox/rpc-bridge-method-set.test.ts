@@ -97,6 +97,7 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["contracts_setBinding", "async"],
   ["crypto_hmacSha256Base64ForConfig", "async"],
   ["crypto_verifyHmacForConfig", "async"],
+  ["db_batch", "async"],
   ["db_count", "async"],
   ["db_delete", "async"],
   ["db_findMany", "async"],

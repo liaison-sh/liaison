@@ -162,6 +162,10 @@ Event handlers and webhook deliveries of sandboxed apps hold no transaction; eac
 A failed event handler runs once more; a failed delivery goes back to the inbox -> apps/api/src/infra/events/event-bus.ts:592 ; apps/api/src/modules/webhooks/routes.ts:647 ; apps/api/src/infra/jobs/webhook-inbox-jobs.ts:165
 Listed handlers keep one transaction; the list only shrinks; core apps keep it -> apps/api/src/modules/apps/run-wide-tx.ts:47 ; apps/api/src/modules/apps/contract/run-wide-tx.guard.test.ts:1
 insertNow behaves like insert in a session run, refused without commitNowTx -> apps/api/src/modules/apps/sandbox/bridge/db.ts:59 ; apps/api/src/modules/apps/sandbox/rpc-bridge.ts:573
+ctx.db.batch runs ops in one savepoint, sequence allocated inside it, $seq/$ref placeholders, at most 500 ops -> apps/api/src/modules/apps/sandbox/bridge/batch.ts:1 ; apps/api/src/modules/apps/sandbox/bridge/batch.ts:35 ; apps/api/src/modules/apps/sandbox/bridge/batch.ts:216
+ctx.db.batch read-only refusal before the first op -> apps/api/src/modules/apps/sandbox/bridge/batch.ts:126
+ctx.db.batch no gap, no shared value under concurrency (real database) -> apps/api/src/tests/integration/sandbox-bridge-batch.test.ts:1
+DbClient.batch type -> packages/app-sdk/src/types.ts:46
 WebCrypto on every executor; the local sandbox installs crypto.subtle digest/HMAC/random/uuid backed by the server -> apps/api/src/modules/apps/sandbox/webcrypto-shim.ts:37 ; apps/api/src/modules/apps/sandbox/webcrypto-shim.ts:91 ; apps/api/src/modules/apps/sandbox/webcrypto-shim.ts:101 ; apps/api/src/modules/apps/sandbox/webcrypto-shim.ts:276 ; apps/api/src/modules/apps/sandbox/pool.ts:159 ; apps/api/src/modules/apps/sandbox/sandbox-worker.ts:162
 Random values at most 65,536 per call; other methods reject NotSupportedError -> apps/api/src/modules/apps/sandbox/webcrypto-shim.ts:45 ; apps/api/src/modules/apps/sandbox/webcrypto-shim.ts:253
 No typed arrays in the local sandbox; bytes are arrays of numbers -> apps/api/src/modules/apps/sandbox/pool.ts:131 ; apps/api/src/modules/apps/sandbox/webcrypto-shim.ts:56

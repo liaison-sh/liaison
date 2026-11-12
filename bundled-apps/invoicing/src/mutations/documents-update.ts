@@ -4,11 +4,11 @@
 
 import { runItemDraftRefusal } from "../recurring/run-card"
 import { documentRollup, lineSubtotal, lineTax, lineTotal } from "../money"
-import { type DraftLine, type DraftLineInput, enrichLineCustoms, readRefString } from "../issue"
+import { type DraftLine, type DraftLineInput, enrichLineCustoms, type IssueBatchOp, readRefString } from "../issue"
 import { type ClassifyInput, classify } from "../tax"
 import { type DocumentFull, documentsGet, isUuid, type ReadsCtx } from "../reads"
 import { type BuyerVatFacts, checkBuyerVat, consumerDeclaredAgainstEvidence } from "../buyer-vat"
-import { dateOnly, FOREIGN_ID_CHARS, findIssuerProfile, deleteAllLines, isCalendarDate } from "./db-helpers"
+import { dateOnly, FOREIGN_ID_CHARS, findIssuerProfile, isCalendarDate } from "./db-helpers"
 import { issueDateParts } from "../issue-date"
 import { liftMisplacedCountry, normaliseDraftLine, netLinesForIssuer } from "./lines"
 import { ensureDocumentPdf } from "./pdf"
@@ -692,6 +692,7 @@ async function documentsUpdateRun(
   }
   // The preflight stops here: everything above only read and validated.
   if (preflight) return { ok: true, buyer: buyerFacts }
+  const lineOps: IssueBatchOp[] = []
   if (rawInput.lines) {
     const normalised = rawInput.lines.map(normaliseDraftLine)
     const effectiveCountry =
@@ -729,9 +730,15 @@ async function documentsUpdateRun(
         ? netLinesForIssuer(normalised, issuer, classifyInput)
         : normalised
     const { lineRows, rollup } = await recomputeLines(ctx, netLines, classifyInput)
-    await deleteAllLines(ctx.db, id)
+    // The old lines go, the new ones come and the totals follow in ONE commit (below): a run that
+    // dies part way never leaves a document whose lines and totals disagree.
+    const oldLines = (await ctx.db.findMany("document_lines", {
+      where: { document_id: id },
+      limit: 1000,
+    })) as Array<Record<string, unknown>>
+    for (const old of oldLines) lineOps.push({ delete: "document_lines", id: String(old.id) })
     for (const row of lineRows) {
-      await ctx.db.insert("document_lines", {
+      lineOps.push({ insert: "document_lines", data: {
         document_id: id,
         position: row.position,
         description: row.description,
@@ -747,7 +754,7 @@ async function documentsUpdateRun(
         customs_description: row.customs_description,
         product_source: row.product_source,
         external_id: row.external_id,
-      })
+      } })
     }
     update.subtotal_minor = rollup.subtotal_minor.toString()
     update.tax_total_minor = rollup.tax_total_minor.toString()
@@ -782,8 +789,10 @@ async function documentsUpdateRun(
   ]
   update.lifecycle_log = newLog
 
-  if (Object.keys(update).length > 0) {
-    await ctx.db.update("documents", id, update)
+  if (lineOps.length > 0 || Object.keys(update).length > 0) {
+    await ctx.db.batch({
+      ops: [...lineOps, ...(Object.keys(update).length > 0 ? [{ update: "documents", id, data: update }] : [])],
+    })
   }
 
   // Kernel audit trail — mirrors the "edited" lifecycle_log entry just written above, gated on

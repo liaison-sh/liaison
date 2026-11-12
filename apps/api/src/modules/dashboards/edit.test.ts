@@ -147,7 +147,7 @@ describe("describeOperations", () => {
       '1. Add a bar block "Spend by campaign" (width 2) at position 2 of 4 (after "Block a"), reading ads:insights_query with {"since":"{{range.from}}","until":"{{range.to}}"}',
     )
     expect(lines[0]).toContain(
-      "{{range.from}} = the dashboard range's start (2026-10-12 by default today)",
+      "{{range.from}} = the dashboard range's start (2026-10-01 by default today)",
     )
     expect(lines[1]).toBe('2. Change the block "Block b": title "Block b" → "Open B2B orders".')
     expect(lines[2]).toContain('3. Remove the metric block "Block c" (it read shop:orders_search')
@@ -156,6 +156,30 @@ describe("describeOperations", () => {
     expect(lines[4]).toBe('5. Rename the dashboard "Sales" → "Direction".')
     expect(lines[5]).toBe(
       "6. Default time range: the dashboard opens on last month (today 2026-10-01 to 2026-10-31) instead of the last 30 days (today 2026-10-12 to 2026-11-10), and compares with the previous period instead of the same period last year (each person's own choice stays theirs).",
+    )
+  })
+
+  it("explains range tokens with the default range the request ends on, and puts a title change first", () => {
+    const lines = describeOperations(
+      dashboard(),
+      [
+        {
+          op: "updateBlock",
+          blockId: "a",
+          changes: {
+            source: { kind: "tool", tool: "x:y", params: { since: "{{range.from}}" } },
+            title: "Units sold",
+          },
+        },
+        { op: "setTimeRange", timeRange: { preset: "lastMonth" } },
+      ],
+      ctx,
+    )
+    expect(lines[0]).toStartWith(
+      '1. Change the block "Block a": title "Block a" → "Units sold"; source now x:y',
+    )
+    expect(lines[0]).toContain(
+      "{{range.from}} = the dashboard range's start (2026-10-01 by default today)",
     )
   })
 

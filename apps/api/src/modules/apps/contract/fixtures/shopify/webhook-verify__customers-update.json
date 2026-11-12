@@ -1,0 +1,43 @@
+{
+  "entry": "webhook-verify:customers-update",
+  "params": {
+    "headers": {
+      "x-shopify-hmac-sha256": "7TS971ILjjz0u+L5CiygeMgKWJCCw4MwdlgmoIk2f8k=",
+      "x-shopify-webhook-id": "contract-customers-update-6",
+      "x-shopify-topic": "customers/update",
+      "x-shopify-shop-domain": "contract-shop.myshopify.com",
+      "x-shopify-api-version": "2026-04"
+    },
+    "body": "{\"id\":24929659846822,\"created_at\":\"2026-05-26T18:50:38-04:00\",\"updated_at\":\"2026-11-11T21:16:23-05:00\",\"first_name\":\"Marie\",\"last_name\":\"Dupont\",\"orders_count\":21,\"state\":\"disabled\",\"total_spent\":\"26301.60\",\"last_order_id\":19010485354662,\"note\":null,\"verified_email\":true,\"multipass_identifier\":null,\"tax_exempt\":false,\"tags\":\"liaison-seed, liaison-seed-cust-001, market:canada\",\"last_order_name\":\"#2797\",\"email\":\"marie@example.com\",\"phone\":null,\"currency\":\"USD\",\"addresses\":[{\"id\":43906378104998,\"customer_id\":24929659846822,\"first_name\":\"Marie\",\"last_name\":\"Dupont\",\"company\":null,\"address1\":\"1 Contract Street\",\"address2\":null,\"city\":\"Lyon\",\"province\":null,\"country\":\"France\",\"zip\":\"69002\",\"phone\":null,\"name\":\"Marie Dupont\",\"province_code\":null,\"country_code\":\"FR\",\"country_name\":\"France\",\"default\":false},{\"id\":36147297386662,\"customer_id\":24929659846822,\"first_name\":\"Marie\",\"last_name\":\"Dupont\",\"company\":null,\"address1\":\"12 Rue de Rivoli\",\"address2\":null,\"city\":\"Paris\",\"province\":null,\"country\":\"France\",\"zip\":\"75004\",\"phone\":null,\"name\":\"Marie Dupont\",\"province_code\":null,\"country_code\":\"FR\",\"country_name\":\"France\",\"default\":true}],\"tax_exemptions\":[],\"email_marketing_consent\":{\"state\":\"not_subscribed\",\"opt_in_level\":\"single_opt_in\",\"consent_updated_at\":null},\"sms_marketing_consent\":null,\"admin_graphql_api_id\":\"gid://shopify/Customer/24929659846822\",\"default_address\":{\"id\":36147297386662,\"customer_id\":24929659846822,\"first_name\":\"Marie\",\"last_name\":\"Dupont\",\"company\":null,\"address1\":\"12 Rue de Rivoli\",\"address2\":null,\"city\":\"Paris\",\"province\":null,\"country\":\"France\",\"zip\":\"75004\",\"phone\":null,\"name\":\"Marie Dupont\",\"province_code\":null,\"country_code\":\"FR\",\"country_name\":\"France\",\"default\":true}}",
+    "method": "POST",
+    "query": {}
+  },
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "calls": [
+    {
+      "method": "config_has",
+      "args": [
+        "shopifyWebhookSecret"
+      ],
+      "reply": true
+    },
+    {
+      "method": "crypto_verifyHmacForConfig",
+      "args": [
+        "shopifyWebhookSecret",
+        "{\"id\":24929659846822,\"created_at\":\"2026-05-26T18:50:38-04:00\",\"updated_at\":\"2026-11-11T21:16:23-05:00\",\"first_name\":\"Marie\",\"last_name\":\"Dupont\",\"orders_count\":21,\"state\":\"disabled\",\"total_spent\":\"26301.60\",\"last_order_id\":19010485354662,\"note\":null,\"verified_email\":true,\"multipass_identifier\":null,\"tax_exempt\":false,\"tags\":\"liaison-seed, liaison-seed-cust-001, market:canada\",\"last_order_name\":\"#2797\",\"email\":\"marie@example.com\",\"phone\":null,\"currency\":\"USD\",\"addresses\":[{\"id\":43906378104998,\"customer_id\":24929659846822,\"first_name\":\"Marie\",\"last_name\":\"Dupont\",\"company\":null,\"address1\":\"1 Contract Street\",\"address2\":null,\"city\":\"Lyon\",\"province\":null,\"country\":\"France\",\"zip\":\"69002\",\"phone\":null,\"name\":\"Marie Dupont\",\"province_code\":null,\"country_code\":\"FR\",\"country_name\":\"France\",\"default\":false},{\"id\":36147297386662,\"customer_id\":24929659846822,\"first_name\":\"Marie\",\"last_name\":\"Dupont\",\"company\":null,\"address1\":\"12 Rue de Rivoli\",\"address2\":null,\"city\":\"Paris\",\"province\":null,\"country\":\"France\",\"zip\":\"75004\",\"phone\":null,\"name\":\"Marie Dupont\",\"province_code\":null,\"country_code\":\"FR\",\"country_name\":\"France\",\"default\":true}],\"tax_exemptions\":[],\"email_marketing_consent\":{\"state\":\"not_subscribed\",\"opt_in_level\":\"single_opt_in\",\"consent_updated_at\":null},\"sms_marketing_consent\":null,\"admin_graphql_api_id\":\"gid://shopify/Customer/24929659846822\",\"default_address\":{\"id\":36147297386662,\"customer_id\":24929659846822,\"first_name\":\"Marie\",\"last_name\":\"Dupont\",\"company\":null,\"address1\":\"12 Rue de Rivoli\",\"address2\":null,\"city\":\"Paris\",\"province\":null,\"country\":\"France\",\"zip\":\"75004\",\"phone\":null,\"name\":\"Marie Dupont\",\"province_code\":null,\"country_code\":\"FR\",\"country_name\":\"France\",\"default\":true}}",
+        "7TS971ILjjz0u+L5CiygeMgKWJCCw4MwdlgmoIk2f8k=",
+        "base64"
+      ],
+      "reply": true
+    },
+    {
+      "method": "crypto_hmacSha256Base64",
+      "args": [
+        "shopify-delivery",
+        "{\"id\":24929659846822,\"created_at\":\"2026-05-26T18:50:38-04:00\",\"updated_at\":\"2026-11-11T21:16:23-05:00\",\"first_name\":\"Marie\",\"last_name\":\"Dupont\",\"orders_count\":21,\"state\":\"disabled\",\"total_spent\":\"26301.60\",\"last_order_id\":19010485354662,\"note\":null,\"verified_email\":true,\"multipass_identifier\":null,\"tax_exempt\":false,\"tags\":\"liaison-seed, liaison-seed-cust-001, market:canada\",\"last_order_name\":\"#2797\",\"email\":\"marie@example.com\",\"phone\":null,\"currency\":\"USD\",\"addresses\":[{\"id\":43906378104998,\"customer_id\":24929659846822,\"first_name\":\"Marie\",\"last_name\":\"Dupont\",\"company\":null,\"address1\":\"1 Contract Street\",\"address2\":null,\"city\":\"Lyon\",\"province\":null,\"country\":\"France\",\"zip\":\"69002\",\"phone\":null,\"name\":\"Marie Dupont\",\"province_code\":null,\"country_code\":\"FR\",\"country_name\":\"France\",\"default\":false},{\"id\":36147297386662,\"customer_id\":24929659846822,\"first_name\":\"Marie\",\"last_name\":\"Dupont\",\"company\":null,\"address1\":\"12 Rue de Rivoli\",\"address2\":null,\"city\":\"Paris\",\"province\":null,\"country\":\"France\",\"zip\":\"75004\",\"phone\":null,\"name\":\"Marie Dupont\",\"province_code\":null,\"country_code\":\"FR\",\"country_name\":\"France\",\"default\":true}],\"tax_exemptions\":[],\"email_marketing_consent\":{\"state\":\"not_subscribed\",\"opt_in_level\":\"single_opt_in\",\"consent_updated_at\":null},\"sms_marketing_consent\":null,\"admin_graphql_api_id\":\"gid://shopify/Customer/24929659846822\",\"default_address\":{\"id\":36147297386662,\"customer_id\":24929659846822,\"first_name\":\"Marie\",\"last_name\":\"Dupont\",\"company\":null,\"address1\":\"12 Rue de Rivoli\",\"address2\":null,\"city\":\"Paris\",\"province\":null,\"country\":\"France\",\"zip\":\"75004\",\"phone\":null,\"name\":\"Marie Dupont\",\"province_code\":null,\"country_code\":\"FR\",\"country_name\":\"France\",\"default\":true}}"
+      ],
+      "reply": "uiDNTZKfu22PEKioJz0pyYMyCwFLX3ne/f9P94q/N1s="
+    }
+  ]
+}

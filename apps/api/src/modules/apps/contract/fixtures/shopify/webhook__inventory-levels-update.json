@@ -1,0 +1,67 @@
+{
+  "entry": "webhook:inventory-levels-update",
+  "params": {
+    "inventory_item_id": 54996169916582,
+    "location_id": 83457310886,
+    "available": 27,
+    "updated_at": "2026-11-12T02:00:00+00:00",
+    "admin_graphql_api_id": "gid://shopify/InventoryLevel/83457310886?inventory_item_id=54996169916582"
+  },
+  "extraArgs": [
+    {
+      "x-shopify-hmac-sha256": "/kUMLd+XpJklIcCKzljVmU4/S4nJ4D9TH43PAhEc1TE=",
+      "x-shopify-webhook-id": "contract-inventory-levels-update-11",
+      "x-shopify-topic": "inventory_levels/update",
+      "x-shopify-shop-domain": "contract-shop.myshopify.com",
+      "x-shopify-api-version": "2026-04"
+    }
+  ],
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getAccounts",
+      "args": [
+        "shop"
+      ],
+      "reply": "[{\"id\":\"bdbddbdc-a4d8-4a07-a1c6-67306685a1a2\",\"identifier\":\"contract-shop.myshopify.com\",\"displayName\":\"contract-shop.myshopify.com\",\"status\":\"active\"}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "install_metadata",
+        "{\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"9d87b7aa-9abf-4798-9d19-6563d709a379\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 02:15:34.252989+00\",\"updated_at\":\"2026-11-12 02:15:34.252989+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 02:15:34.252989+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"bdbddbdc-a4d8-4a07-a1c6-67306685a1a2\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "webhook_deliveries",
+        "{\"where\":{\"webhookId\":\"contract-inventory-levels-update-11\"},\"orderBy\":{\"receivedAt\":\"asc\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "install_metadata",
+        "{\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"9d87b7aa-9abf-4798-9d19-6563d709a379\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 02:15:34.252989+00\",\"updated_at\":\"2026-11-12 02:15:34.252989+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 02:15:34.252989+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"bdbddbdc-a4d8-4a07-a1c6-67306685a1a2\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
+    },
+    {
+      "method": "emit",
+      "args": [
+        "{\"entity\":\"inventory\",\"action\":\"level_updated\",\"entityId\":\"54996169916582\",\"data\":{\"inventoryItemId\":\"54996169916582\",\"locationId\":\"83457310886\",\"available\":27},\"metadata\":{\"shopify_webhook_id\":\"contract-inventory-levels-update-11\"}}"
+      ]
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "webhook_deliveries",
+        "{\"webhookId\":\"contract-inventory-levels-update-11\",\"topic\":\"inventory_levels/update\",\"shopDomain\":\"contract-shop.myshopify.com\",\"failureCount\":0,\"receivedAt\":\"2026-01-01T00:00:00.000Z\",\"status\":\"processed\",\"processedAt\":\"2026-01-01T00:00:00.000Z\"}"
+      ],
+      "reply": "{\"id\":\"da853856-cd9f-45b7-ac48-0df0882858c4\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 02:16:32.065866+00\",\"updated_at\":\"2026-11-12 02:16:32.065866+00\",\"webhook_id\":\"contract-inventory-levels-update-11\",\"topic\":\"inventory_levels/update\",\"shop_domain\":\"contract-shop.myshopify.com\",\"status\":\"processed\",\"failure_count\":0,\"received_at\":\"2026-01-01 00:00:00+00\",\"processed_at\":\"2026-01-01 00:00:00+00\",\"raw_hmac\":null}"
+    }
+  ]
+}

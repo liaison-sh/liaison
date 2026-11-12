@@ -20,6 +20,7 @@ import { emitEvent } from "./lib/emit"
 import { ensureInstallMetadata, getShopifyClient, resolveShopConnection, shopFetchAuth } from "./lib/get-client"
 import { loadInstallMetadata } from "./lib/install-metadata"
 import { ShopifyClient, type ShopifyFetch } from "./lib/shopify-client"
+import { runOrgId } from "./lib/run-identity"
 
 /**
  * Map from kernel webhook endpoint slug (kebab, matches `app.manifest.json#webhooks` keys
@@ -436,7 +437,7 @@ export async function webhooksRepairHandler(
       const client = await getShopifyClient(ctx)
       // Only this org's own subscriptions say where this instance lives: a store
       // can also hold other orgs' or other instances' callbacks.
-      const marker = `/webhooks/${ctx.orgId}/shopify/`
+      const marker = `/webhooks/${await runOrgId(ctx)}/shopify/`
       for (const sub of await listWebhookSubscriptions(client)) {
         const url = sub.endpoint?.callbackUrl
         const idx = url ? url.indexOf(marker) : -1
@@ -466,7 +467,7 @@ export async function webhooksRepairHandler(
 
   const result = await subscribeShopifyTopics(ctx, {
     shopDomain,
-    orgId: ctx.orgId,
+    orgId: await runOrgId(ctx),
     identifier: shopDomain,
     kernelPublicBaseUrl,
   })
@@ -537,7 +538,7 @@ export async function onConnectionEstablished(
   // /api/webhooks/<orgId>/shopify/<endpoint>.
   if (data.kernelPublicBaseUrl) {
     try {
-      const orgId = (event as { orgId?: string }).orgId ?? data.orgId ?? ctx.orgId
+      const orgId = (event as { orgId?: string }).orgId ?? data.orgId ?? (await runOrgId(ctx))
       const sub = await subscribeShopifyTopics(ctx, {
         shopDomain,
         orgId,
@@ -635,7 +636,7 @@ export async function onBeforeDisconnect(
     })
     return out
   }
-  const orgId = event.orgId ?? ctx.orgId
+  const orgId = event.orgId ?? (await runOrgId(ctx))
   const prefix = orgCallbackPrefix(event.kernelPublicBaseUrl, orgId)
   try {
     const client = await buildShopifyClient(ctx, shopDomain, shopDomain)

@@ -1,0 +1,15 @@
+{
+  "entry": "preflight:products_update",
+  "params": {
+    "input": {
+      "id": "gid://shopify/Product/15989319368870",
+      "title": "Contract Fixture Synth II",
+      "tags": [
+        "contract-fixture",
+        "updated"
+      ]
+    }
+  },
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "calls": []
+}

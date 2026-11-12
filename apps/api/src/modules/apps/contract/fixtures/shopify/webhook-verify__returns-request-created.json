@@ -1,0 +1,43 @@
+{
+  "entry": "webhook-verify:returns-request-created",
+  "params": {
+    "headers": {
+      "x-shopify-hmac-sha256": "/MmSD7rJpz/0h+Uy47M3YX6nVnofgbWO77D65zGVzXo=",
+      "x-shopify-webhook-id": "contract-returns-request-created-9",
+      "x-shopify-topic": "returns/request",
+      "x-shopify-shop-domain": "contract-shop.myshopify.com",
+      "x-shopify-api-version": "2026-04"
+    },
+    "body": "{\"id\":41780773030,\"admin_graphql_api_id\":\"gid://shopify/Return/41780773030\",\"status\":\"requested\",\"order\":{\"id\":19010485158054,\"admin_graphql_api_id\":\"gid://shopify/Order/19010485158054\"},\"total_return_line_items\":1,\"name\":\"#R1\",\"return_line_items\":[{\"id\":65890812070,\"admin_graphql_api_id\":\"gid://shopify/ReturnLineItem/65890812070\",\"fulfillment_line_item\":{\"id\":19331824091302},\"quantity\":1,\"return_reason\":\"defective\"}]}",
+    "method": "POST",
+    "query": {}
+  },
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "calls": [
+    {
+      "method": "config_has",
+      "args": [
+        "shopifyWebhookSecret"
+      ],
+      "reply": true
+    },
+    {
+      "method": "crypto_verifyHmacForConfig",
+      "args": [
+        "shopifyWebhookSecret",
+        "{\"id\":41780773030,\"admin_graphql_api_id\":\"gid://shopify/Return/41780773030\",\"status\":\"requested\",\"order\":{\"id\":19010485158054,\"admin_graphql_api_id\":\"gid://shopify/Order/19010485158054\"},\"total_return_line_items\":1,\"name\":\"#R1\",\"return_line_items\":[{\"id\":65890812070,\"admin_graphql_api_id\":\"gid://shopify/ReturnLineItem/65890812070\",\"fulfillment_line_item\":{\"id\":19331824091302},\"quantity\":1,\"return_reason\":\"defective\"}]}",
+        "/MmSD7rJpz/0h+Uy47M3YX6nVnofgbWO77D65zGVzXo=",
+        "base64"
+      ],
+      "reply": true
+    },
+    {
+      "method": "crypto_hmacSha256Base64",
+      "args": [
+        "shopify-delivery",
+        "{\"id\":41780773030,\"admin_graphql_api_id\":\"gid://shopify/Return/41780773030\",\"status\":\"requested\",\"order\":{\"id\":19010485158054,\"admin_graphql_api_id\":\"gid://shopify/Order/19010485158054\"},\"total_return_line_items\":1,\"name\":\"#R1\",\"return_line_items\":[{\"id\":65890812070,\"admin_graphql_api_id\":\"gid://shopify/ReturnLineItem/65890812070\",\"fulfillment_line_item\":{\"id\":19331824091302},\"quantity\":1,\"return_reason\":\"defective\"}]}"
+      ],
+      "reply": "H8LU4W1r9M+hmWI+m8ih1eqbvSJtyU8MatvUQUSawYU="
+    }
+  ]
+}

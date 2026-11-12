@@ -1,0 +1,20 @@
+{
+  "entry": "tool:apply_seed_suggestion",
+  "params": {
+    "liaisonUserId": "00000000-0000-4000-8000-00000000c0df",
+    "scopes": [
+      "shopify:orders:read"
+    ]
+  },
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "calls": [
+    {
+      "method": "grants_setUserScopes",
+      "args": [
+        "00000000-0000-4000-8000-00000000c0df",
+        "[\"shopify:orders:read\"]"
+      ],
+      "reply": "{\"ok\":true}"
+    }
+  ]
+}

@@ -707,12 +707,14 @@ export async function discounts_bulk_create(params: Record<string, unknown>, ctx
         createdCount: null,
         codes: [],
         status: "creating",
+        bulkCreationId: jobId,
         message: awaiting
           ? "Shopify is still adding the codes: the result is filled in once they are all in."
           : "Shopify is still adding the codes: read them with discounts_search in a moment.",
       }
     }
-    return finishBulkCreate(ctx, client, { discountId, requestedCount: count, fallbackTitle: String(raw.title ?? prefix), status })
+    const done = await finishBulkCreate(ctx, client, { discountId, requestedCount: count, fallbackTitle: String(raw.title ?? prefix), status })
+    return { ...done, bulkCreationId: jobId }
   }
   return finishBulkCreate(ctx, client, { discountId, requestedCount: count, fallbackTitle: String(raw.title ?? prefix), status: null })
 }

@@ -1,0 +1,11 @@
+{
+  "entry": "preflight:draft_orders_update",
+  "params": {
+    "id": "gid://shopify/DraftOrder/1674792501414",
+    "input": {
+      "note": "Contract recorder order (updated)"
+    }
+  },
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "calls": []
+}

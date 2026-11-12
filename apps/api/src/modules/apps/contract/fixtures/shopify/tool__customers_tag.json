@@ -1,0 +1,42 @@
+{
+  "entry": "tool:customers_tag",
+  "params": {
+    "customerId": "gid://shopify/Customer/24929631043750",
+    "tags": [
+      "contract-fixture"
+    ],
+    "op": "add"
+  },
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "install_metadata",
+        "{\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"9d87b7aa-9abf-4798-9d19-6563d709a379\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 02:15:34.252989+00\",\"updated_at\":\"2026-11-12 02:15:34.252989+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 02:15:34.252989+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"bdbddbdc-a4d8-4a07-a1c6-67306685a1a2\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
+    },
+    {
+      "method": "connections_getAccounts",
+      "args": [
+        "shop"
+      ],
+      "reply": "[{\"id\":\"bdbddbdc-a4d8-4a07-a1c6-67306685a1a2\",\"identifier\":\"contract-shop.myshopify.com\",\"displayName\":\"contract-shop.myshopify.com\",\"status\":\"active\"}]"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://contract-shop.myshopify.com/admin/api/2026-04/graphql.json",
+        "{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":\"{\\\"query\\\":\\\"\\\\n  mutation TagsAdd($id: ID!, $tags: [String!]!) {\\\\n    tagsAdd(id: $id, tags: $tags) {\\\\n      node { id }\\\\n      userErrors { field message }\\\\n    }\\\\n  }\\\\n\\\",\\\"variables\\\":{\\\"id\\\":\\\"gid://shopify/Customer/24929631043750\\\",\\\"tags\\\":[\\\"contract-fixture\\\"]}}\",\"auth\":{\"connection\":\"shop\",\"identifier\":\"contract-shop.myshopify.com\",\"scheme\":\"header:X-Shopify-Access-Token\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"data\\\":{\\\"tagsAdd\\\":{\\\"node\\\":{\\\"id\\\":\\\"gid://shopify/Customer/24929631043750\\\"},\\\"userErrors\\\":[]}},\\\"extensions\\\":{\\\"cost\\\":{\\\"requestedQueryCost\\\":10,\\\"actualQueryCost\\\":10,\\\"throttleStatus\\\":{\\\"maximumAvailable\\\":20000,\\\"currentlyAvailable\\\":19990,\\\"restoreRate\\\":1000}}}}\"}"
+    },
+    {
+      "method": "emit",
+      "args": [
+        "{\"entity\":\"customer\",\"action\":\"tagged\",\"entityId\":\"gid://shopify/Customer/24929631043750\",\"data\":{\"node\":{\"id\":\"gid://shopify/Customer/24929631043750\"},\"userErrors\":[]}}"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "entry": "preflight:variants_delete",
+  "params": {
+    "id": "gid://shopify/ProductVariant/58146216378534",
+    "productId": "gid://shopify/Product/15989319368870"
+  },
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "calls": []
+}

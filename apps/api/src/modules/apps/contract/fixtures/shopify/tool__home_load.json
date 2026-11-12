@@ -1,0 +1,64 @@
+{
+  "entry": "tool:home_load",
+  "params": {
+    "recentLimit": 5
+  },
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "install_metadata",
+        "{\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"9d87b7aa-9abf-4798-9d19-6563d709a379\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 02:15:34.252989+00\",\"updated_at\":\"2026-11-12 02:15:34.252989+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 02:15:34.252989+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"bdbddbdc-a4d8-4a07-a1c6-67306685a1a2\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "install_metadata",
+        "{\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"9d87b7aa-9abf-4798-9d19-6563d709a379\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 02:15:34.252989+00\",\"updated_at\":\"2026-11-12 02:15:34.252989+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 02:15:34.252989+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"bdbddbdc-a4d8-4a07-a1c6-67306685a1a2\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
+    },
+    {
+      "method": "connections_getAccounts",
+      "args": [
+        "shop"
+      ],
+      "reply": "[{\"id\":\"bdbddbdc-a4d8-4a07-a1c6-67306685a1a2\",\"identifier\":\"contract-shop.myshopify.com\",\"displayName\":\"contract-shop.myshopify.com\",\"status\":\"active\"}]"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://contract-shop.myshopify.com/admin/api/2026-04/graphql.json",
+        "{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":\"{\\\"query\\\":\\\"\\\\n  query PendingReturns($first: Int!) {\\\\n    returns(first: $first, query: \\\\\\\"status:open OR status:requested\\\\\\\", sortKey: CREATED_AT, reverse: true) {\\\\n      edges { node {\\\\n        id status requestedAt\\\\n        order { name }\\\\n        returnLineItems(first: 1) {\\\\n          edges { node { returnReason } }\\\\n        }\\\\n      } }\\\\n    }\\\\n  }\\\\n\\\",\\\"variables\\\":{\\\"first\\\":20}}\",\"auth\":{\"connection\":\"shop\",\"identifier\":\"contract-shop.myshopify.com\",\"scheme\":\"header:X-Shopify-Access-Token\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"errors\\\":[{\\\"message\\\":\\\"Field 'returns' doesn't exist on type 'QueryRoot'\\\",\\\"locations\\\":[{\\\"line\\\":3,\\\"column\\\":5}],\\\"path\\\":[\\\"query PendingReturns\\\",\\\"returns\\\"],\\\"extensions\\\":{\\\"code\\\":\\\"undefinedField\\\",\\\"typeName\\\":\\\"QueryRoot\\\",\\\"fieldName\\\":\\\"returns\\\"}},{\\\"message\\\":\\\"Variable $first is declared by PendingReturns but not used\\\",\\\"locations\\\":[{\\\"line\\\":2,\\\"column\\\":3}],\\\"path\\\":[\\\"query PendingReturns\\\"],\\\"extensions\\\":{\\\"code\\\":\\\"variableNotUsed\\\",\\\"variableName\\\":\\\"first\\\"}}]}\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://contract-shop.myshopify.com/admin/api/2026-04/graphql.json",
+        "{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":\"{\\\"query\\\":\\\"\\\\n  query Unfulfilled($first: Int!, $query: String!) {\\\\n    orders(first: $first, query: $query, sortKey: CREATED_AT) {\\\\n      edges { node {\\\\n        id name createdAt\\\\n        customer { displayName email }\\\\n        currentTotalPriceSet { presentmentMoney { amount currencyCode } }\\\\n      } }\\\\n    }\\\\n  }\\\\n\\\",\\\"variables\\\":{\\\"first\\\":20,\\\"query\\\":\\\"status:open AND fulfillment_status:unfulfilled AND created_at:<'2025-12-31T00:00:00.000Z' AND created_at:>'2025-11-02T00:00:00.000Z'\\\"}}\",\"auth\":{\"connection\":\"shop\",\"identifier\":\"contract-shop.myshopify.com\",\"scheme\":\"header:X-Shopify-Access-Token\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"data\\\":{\\\"orders\\\":{\\\"edges\\\":[]}},\\\"extensions\\\":{\\\"cost\\\":{\\\"requestedQueryCost\\\":12,\\\"actualQueryCost\\\":2,\\\"throttleStatus\\\":{\\\"maximumAvailable\\\":20000,\\\"currentlyAvailable\\\":19992,\\\"restoreRate\\\":1000}}}}\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://contract-shop.myshopify.com/admin/api/2026-04/graphql.json",
+        "{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":\"{\\\"query\\\":\\\"\\\\n  query RecentOrders($first: Int!) {\\\\n    orders(first: $first, sortKey: CREATED_AT, reverse: true) {\\\\n      edges { node {\\\\n        id name createdAt displayFulfillmentStatus\\\\n        currentTotalPriceSet { presentmentMoney { amount currencyCode } }\\\\n        customer { displayName email }\\\\n        lineItems(first: 10) { edges { node { title quantity sku } } }\\\\n      } }\\\\n    }\\\\n  }\\\\n\\\",\\\"variables\\\":{\\\"first\\\":5}}\",\"auth\":{\"connection\":\"shop\",\"identifier\":\"contract-shop.myshopify.com\",\"scheme\":\"header:X-Shopify-Access-Token\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"data\\\":{\\\"orders\\\":{\\\"edges\\\":[{\\\"node\\\":{\\\"id\\\":\\\"gid://shopify/Order/19010474999974\\\",\\\"name\\\":\\\"#2795\\\",\\\"createdAt\\\":\\\"2026-11-12T02:09:56Z\\\",\\\"displayFulfillmentStatus\\\":\\\"UNFULFILLED\\\",\\\"currentTotalPriceSet\\\":{\\\"presentmentMoney\\\":{\\\"amount\\\":\\\"885.95\\\",\\\"currencyCode\\\":\\\"USD\\\"}},\\\"customer\\\":{\\\"displayName\\\":\\\"Marie Dupont\\\",\\\"email\\\":\\\"marie@example.com\\\"},\\\"lineItems\\\":{\\\"edges\\\":[{\\\"node\\\":{\\\"title\\\":\\\"The Minimal Snowboard\\\",\\\"quantity\\\":1,\\\"sku\\\":null}}]}}},{\\\"node\\\":{\\\"id\\\":\\\"gid://shopify/Order/19010474541222\\\",\\\"name\\\":\\\"#2794\\\",\\\"createdAt\\\":\\\"2026-11-12T02:09:42Z\\\",\\\"displayFulfillmentStatus\\\":\\\"PARTIALLY_FULFILLED\\\",\\\"currentTotalPriceSet\\\":{\\\"presentmentMoney\\\":{\\\"amount\\\":\\\"885.95\\\",\\\"currencyCode\\\":\\\"USD\\\"}},\\\"customer\\\":{\\\"displayName\\\":\\\"Marie Dupont\\\",\\\"email\\\":\\\"marie@example.com\\\"},\\\"lineItems\\\":{\\\"edges\\\":[{\\\"node\\\":{\\\"title\\\":\\\"The Minimal Snowboard\\\",\\\"quantity\\\":2,\\\"sku\\\":null}}]}}},{\\\"node\\\":{\\\"id\\\":\\\"gid://shopify/Order/19010470183078\\\",\\\"name\\\":\\\"#2793\\\",\\\"createdAt\\\":\\\"2026-11-12T02:06:58Z\\\",\\\"displayFulfillmentStatus\\\":\\\"UNFULFILLED\\\",\\\"currentTotalPriceSet\\\":{\\\"presentmentMoney\\\":{\\\"amount\\\":\\\"885.95\\\",\\\"currencyCode\\\":\\\"USD\\\"}},\\\"customer\\\":{\\\"displayName\\\":\\\"Marie Dupont\\\",\\\"email\\\":\\\"marie@example.com\\\"},\\\"lineItems\\\":{\\\"edges\\\":[{\\\"node\\\":{\\\"title\\\":\\\"The Minimal Snowboard\\\",\\\"quantity\\\":1,\\\"sku\\\":null}}]}}},{\\\"node\\\":{\\\"id\\\":\\\"gid://shopify/Order/19010469724326\\\",\\\"name\\\":\\\"#2792\\\",\\\"createdAt\\\":\\\"2026-11-12T02:06:44Z\\\",\\\"displayFulfillmentStatus\\\":\\\"PARTIALLY_FULFILLED\\\",\\\"currentTotalPriceSet\\\":{\\\"presentmentMoney\\\":{\\\"amount\\\":\\\"885.95\\\",\\\"currencyCode\\\":\\\"USD\\\"}},\\\"customer\\\":{\\\"displayName\\\":\\\"Marie Dupont\\\",\\\"email\\\":\\\"marie@example.com\\\"},\\\"lineItems\\\":{\\\"edges\\\":[{\\\"node\\\":{\\\"title\\\":\\\"The Minimal Snowboard\\\",\\\"quantity\\\":2,\\\"sku\\\":null}}]}}},{\\\"node\\\":{\\\"id\\\":\\\"gid://shopify/Order/19010467135654\\\",\\\"name\\\":\\\"#2791\\\",\\\"createdAt\\\":\\\"2026-11-12T02:04:58Z\\\",\\\"displayFulfillmentStatus\\\":\\\"UNFULFILLED\\\",\\\"currentTotalPriceSet\\\":{\\\"presentmentMoney\\\":{\\\"amount\\\":\\\"885.95\\\",\\\"currencyCode\\\":\\\"USD\\\"}},\\\"customer\\\":{\\\"displayName\\\":\\\"Marie Dupont\\\",\\\"email\\\":\\\"marie@example.com\\\"},\\\"lineItems\\\":{\\\"edges\\\":[{\\\"node\\\":{\\\"title\\\":\\\"The Minimal Snowboard\\\",\\\"quantity\\\":1,\\\"sku\\\":null}}]}}}]}},\\\"extensions\\\":{\\\"cost\\\":{\\\"requestedQueryCost\\\":26,\\\"actualQueryCost\\\":17,\\\"throttleStatus\\\":{\\\"maximumAvailable\\\":20000,\\\"currentlyAvailable\\\":20001,\\\"restoreRate\\\":1000}}}}\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://contract-shop.myshopify.com/admin/api/2026-04/graphql.json",
+        "{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":\"{\\\"query\\\":\\\"\\\\n  query LowInventory($first: Int!) {\\\\n    productVariants(first: $first, query: \\\\\\\"inventory_quantity:<=5 AND product_type:-giftcard\\\\\\\") {\\\\n      edges { node {\\\\n        id sku title inventoryQuantity\\\\n        product { id title productType }\\\\n      } }\\\\n    }\\\\n  }\\\\n\\\",\\\"variables\\\":{\\\"first\\\":20}}\",\"auth\":{\"connection\":\"shop\",\"identifier\":\"contract-shop.myshopify.com\",\"scheme\":\"header:X-Shopify-Access-Token\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"data\\\":{\\\"productVariants\\\":{\\\"edges\\\":[{\\\"node\\\":{\\\"id\\\":\\\"gid://shopify/ProductVariant/56534760980646\\\",\\\"sku\\\":null,\\\"title\\\":\\\"$10\\\",\\\"inventoryQuantity\\\":0,\\\"product\\\":{\\\"id\\\":\\\"gid://shopify/Product/15332593074342\\\",\\\"title\\\":\\\"Gift Card\\\",\\\"productType\\\":\\\"giftcard\\\"}}},{\\\"node\\\":{\\\"id\\\":\\\"gid://shopify/ProductVariant/56534761013414\\\",\\\"sku\\\":null,\\\"title\\\":\\\"$25\\\",\\\"inventoryQuantity\\\":0,\\\"product\\\":{\\\"id\\\":\\\"gid://shopify/Product/15332593074342\\\",\\\"title\\\":\\\"Gift Card\\\",\\\"productType\\\":\\\"giftcard\\\"}}},{\\\"node\\\":{\\\"id\\\":\\\"gid://shopify/ProductVariant/56534761046182\\\",\\\"sku\\\":null,\\\"title\\\":\\\"$50\\\",\\\"inventoryQuantity\\\":0,\\\"product\\\":{\\\"id\\\":\\\"gid://shopify/Product/15332593074342\\\",\\\"title\\\":\\\"Gift Card\\\",\\\"productType\\\":\\\"giftcard\\\"}}},{\\\"node\\\":{\\\"id\\\":\\\"gid://shopify/ProductVariant/56534761078950\\\",\\\"sku\\\":null,\\\"title\\\":\\\"$100\\\",\\\"inventoryQuantity\\\":0,\\\"product\\\":{\\\"id\\\":\\\"gid://shopify/Product/15332593074342\\\",\\\"title\\\":\\\"Gift Card\\\",\\\"productType\\\":\\\"giftcard\\\"}}}]}},\\\"extensions\\\":{\\\"cost\\\":{\\\"requestedQueryCost\\\":12,\\\"actualQueryCost\\\":4,\\\"throttleStatus\\\":{\\\"maximumAvailable\\\":20000,\\\"currentlyAvailable\\\":20009,\\\"restoreRate\\\":1000}}}}\"}"
+    }
+  ]
+}

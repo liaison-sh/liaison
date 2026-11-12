@@ -1,0 +1,24 @@
+{
+  "entry": "event:invoicing/document:created",
+  "params": {
+    "app": "invoicing",
+    "entity": "document",
+    "action": "created",
+    "entityId": "00000000-0000-4000-8000-0000000d0c00",
+    "orgId": "00000000-0000-4000-8000-00000000c0de",
+    "data": {
+      "document_id": "00000000-0000-4000-8000-0000000d0c00",
+      "number": "INV-2026-0040",
+      "shopify_order_id": "gid://shopify/Order/19010485158054"
+    }
+  },
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "calls": [
+    {
+      "method": "emit",
+      "args": [
+        "{\"entity\":\"order\",\"action\":\"invoice_changed\",\"data\":{\"document_id\":\"00000000-0000-4000-8000-0000000d0c00\",\"number\":\"INV-2026-0040\",\"document_action\":\"created\"}}"
+      ]
+    }
+  ]
+}

@@ -5209,3 +5209,21 @@ describe("customerShippingEmail policy: retail orders get Shopify's shipping ema
     })
   })
 })
+
+describe("marketing consent updates send the customer inside the mutation input", () => {
+  for (const [tool, field] of [
+    ["customers_email_marketing_consent_update", "emailMarketingConsent"],
+    ["customers_sms_marketing_consent_update", "smsMarketingConsent"],
+  ] as const) {
+    it(`${tool}: { customerId, input } (the manifest's shape) reaches Shopify as one input with customerId`, async () => {
+      const { ctx, calls } = makeCtx({
+        fetchResponses: [
+          { data: { [field === "emailMarketingConsent" ? "customerEmailMarketingConsentUpdate" : "customerSmsMarketingConsentUpdate"]: { customer: { id: "gid://shopify/Customer/7" }, userErrors: [] } } },
+        ],
+      })
+      await handlers[tool]({ customerId: "gid://shopify/Customer/7", input: { [field]: { marketingState: "NOT_SUBSCRIBED" } } }, ctx)
+      const body = JSON.parse(calls[0]!.body) as { variables: { input: Record<string, unknown> } }
+      expect(body.variables.input).toEqual({ customerId: "gid://shopify/Customer/7", [field]: { marketingState: "NOT_SUBSCRIBED" } })
+    })
+  }
+})

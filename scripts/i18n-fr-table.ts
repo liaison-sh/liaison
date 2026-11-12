@@ -7957,4 +7957,9 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.sidebarSettings.saveFailed": "La barre latérale n'a pas été enregistrée. Réessayez.",
   "kernel.sidebarSettings.adminIntro":
     "Les applications que {{name}} voit dans sa barre latérale. Cette personne peut à tout moment afficher ou masquer chacune d'elles dans ses propres réglages.",
+  "kernel.appPage.open": "Ouvrir",
+  "kernel.appPage.opened": "Ouvert dans une nouvelle fenêtre.",
+  "kernel.appPage.popupBlocked":
+    "Votre navigateur a bloqué la fenêtre. Autorisez les fenêtres pour Liaison et réessayez.",
+  "kernel.appPage.failed": "Ce lien a expiré ou a déjà servi. Redemandez-en un.",
 }

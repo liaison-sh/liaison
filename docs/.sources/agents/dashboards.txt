@@ -213,3 +213,4 @@ Periods start from today in the org's time zone -> apps/web/src/modules/dashboar
 Month, quarter (Q4 2026, T4 2026) and year labels -> apps/web/src/modules/dashboards/blocks/format.ts:66
 Percentage of total read as a percent -> apps/web/src/modules/dashboards/blocks/BlockRenderer.tsx:40
 Metric read from a single record has no rows button -> apps/web/src/modules/dashboards/blocks/BlockCard.tsx:253
+In a shared conversation, dashboard reads use the conversation's narrower access -> apps/api/src/modules/dashboards/tools.ts:126 ; apps/api/src/modules/agent/scopes/effective-scope.ts:45

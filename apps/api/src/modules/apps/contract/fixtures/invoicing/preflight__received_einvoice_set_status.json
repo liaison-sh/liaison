@@ -1,0 +1,19 @@
+{
+  "entry": "preflight:received_einvoice_set_status",
+  "params": {
+    "received_id": "00000000-0000-4000-8000-0000000e0001",
+    "action": "dispute",
+    "reason": "Quantity differs"
+  },
+  "recordedFrom": "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "received_einvoices",
+        "{\"where\":{\"id\":\"00000000-0000-4000-8000-0000000e0001\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

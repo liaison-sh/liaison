@@ -8,11 +8,6 @@ import { namesMatch } from "./identity"
 export const REGISTRY_HOST = "recherche-entreprises.api.gouv.fr"
 const REGISTRY_URL = `https://${REGISTRY_HOST}/search`
 const USER_AGENT = "Liaison invoicing (identity lookup)"
-/** Wait before the single retry of a rate-limited call. The registry sends no Retry-After header,
- *  so without one the client waits this long (its documented limit is 7 requests per second). */
-export const RATE_LIMIT_DEFAULT_WAIT_MS = 1_000
-/** Upper bound on an announced Retry-After: a longer wait is not worth holding a tool call for. */
-export const RATE_LIMIT_MAX_WAIT_MS = 2_000
 
 export interface RegistryCandidate {
   siren: string
@@ -45,21 +40,6 @@ export interface RegistryFetchCtx {
     url: string,
     opts?: { method?: string; headers?: Record<string, string>; body?: string },
   ) => Promise<unknown>
-}
-
-export interface RegistrySearchOptions {
-  /** Injected in tests so no suite waits for wall-clock time. */
-  sleep?: (ms: number) => Promise<void>
-}
-
-/** Sleep where a timer exists; the QuickJS sandbox has none, so there the pause is a no-op and
- *  the pacing comes from the round trip itself. */
-const defaultSleep = (ms: number): Promise<void> => {
-  const timer = (globalThis as { setTimeout?: (fn: () => void, ms: number) => unknown }).setTimeout
-  if (typeof timer !== "function" || ms <= 0) return Promise.resolve()
-  return new Promise<void>((resolve) => {
-    timer(() => resolve(), ms)
-  })
 }
 
 type Row = Record<string, unknown>
@@ -149,15 +129,6 @@ function parseEnvelope(raw: unknown): FetchResponse | null {
   return (raw ?? null) as FetchResponse | null
 }
 
-function retryAfterMs(headers: Record<string, string> | undefined): number {
-  if (!headers) return RATE_LIMIT_DEFAULT_WAIT_MS
-  const key = Object.keys(headers).find((k) => k.toLowerCase() === "retry-after")
-  const raw = key ? headers[key] : undefined
-  const secs = raw != null ? Number(raw) : Number.NaN
-  if (!Number.isFinite(secs) || secs < 0) return RATE_LIMIT_DEFAULT_WAIT_MS
-  return Math.min(secs * 1000, RATE_LIMIT_MAX_WAIT_MS)
-}
-
 /** The registry search URL for a query (null when there is nothing to search): also the
  *  provenance link of a SIREN the registry confirmed. */
 export function registrySearchUrl(input: { q?: string | null; siren?: string | null; postcode?: string | null }): string | null {
@@ -171,28 +142,22 @@ export function registrySearchUrl(input: { q?: string | null; siren?: string | n
 
 /**
  * Search the registry by free text and / or SIREN (a SIREN search keeps the exact hits only),
- * optionally narrowed to a 5-digit postcode. One retry on a 429, after the announced Retry-After
- * (at most 2 s) or a 1 s default when none is sent.
+ * optionally narrowed to a 5-digit postcode. A 429 is answered `rate_limited` at once, never
+ * waited out inside the run: the caller's next run (the confirm job, a later issue) asks again.
  */
 export async function registrySearch(
   ctx: RegistryFetchCtx,
   input: { q?: string | null; siren?: string | null; postcode?: string | null },
-  opts: RegistrySearchOptions = {},
 ): Promise<RegistrySearchResult> {
   const siren = digitsOnly(input.siren)
   const url = registrySearchUrl(input)
   if (!url || !ctx.fetch) return { status: "registry_unconfirmed", reason: "unreachable" }
-  const sleep = opts.sleep ?? defaultSleep
 
-  let res: FetchResponse | null = null
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      res = parseEnvelope(await ctx.fetch(url, { method: "GET", headers: { "User-Agent": USER_AGENT } }))
-    } catch {
-      return { status: "registry_unconfirmed", reason: "unreachable" }
-    }
-    if (res?.status !== 429) break
-    if (attempt === 0) await sleep(retryAfterMs(res.headers))
+  let res: FetchResponse | null
+  try {
+    res = parseEnvelope(await ctx.fetch(url, { method: "GET", headers: { "User-Agent": USER_AGENT } }))
+  } catch {
+    return { status: "registry_unconfirmed", reason: "unreachable" }
   }
   if (!res) return { status: "registry_unconfirmed", reason: "unreachable" }
   if (res.status === 429) return { status: "registry_unconfirmed", reason: "rate_limited" }

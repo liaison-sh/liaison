@@ -58,7 +58,7 @@ Connect the store for the whole organization, not as a personal account. A perso
 
 ### Connect with a store's access token
 
-A store whose custom app gives you an Admin API access token (`shpat_…`) can connect without the OAuth round trip, from the server's command line: `liaison connect shopify/shop --token-env SHOP_TOKEN --account your-store`, with the token in the `SHOP_TOKEN` environment variable (`--client-secret-env` for the app's secret, which signs its webhooks). The token is stored like an OAuth grant and never printed. The customer backfill and scope-seed jobs can then be run at once with `liaison app run-job shopify <job> --wait`. See the [provisioning CLI](../provisioning-cli.md).
+A store whose custom app gives you an Admin API access token (`shpat_…`) can connect without the OAuth round trip, from the server's command line: `liaison connect shopify/shop --token-env SHOP_TOKEN --account your-store`, with the token in the `SHOP_TOKEN` environment variable (`--client-secret-env` for the app's secret, which signs its webhooks). The token is stored like an OAuth grant and never printed. The customer backfill and scope-seed jobs can then be run at once with `liaison app run-job shopify <job> --wait`. See the [provisioning CLI](../provisioning-cli.md). The customer backfill works in several runs of its job: it asks Shopify for an export of the customers, comes back for it a little later, then imports the customers a few hundred at a time, so `--wait` returns after its first run while the backfill carries on; the Shopify settings show how far it got.
 
 ### Full order history
 
@@ -201,6 +201,10 @@ Read tools never wait. Every tool marked "Always" files an approval and changes 
 | `customers_update`, `customers_tag`, `customers_email_marketing_consent_update`, `customers_sms_marketing_consent_update` | Customers and consent | Always |
 | `metafields_set`, `metafields_delete` | Metafields | Always |
 | `connection_disconnect`, `staff_overrides_upsert`, `staff_overrides_delete`, `apply_seed_suggestion` | Admin actions | Always |
+
+When Shopify is still adding the codes of an approved `discounts_bulk_create`, the action finishes once they are all in, and the codes appear in its result then.
+
+Calls to one store share a limit across every run of the app (four at a time), and a store that reports its query budget running low pauses the next calls until it has recovered.
 
 `analytics_query` may return `partial: true` when the store's plan does not offer ShopifyQL. Treat that result as an estimate.
 

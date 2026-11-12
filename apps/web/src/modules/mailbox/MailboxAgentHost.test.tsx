@@ -15,7 +15,7 @@
 // asserted, a frame no request follows, and a request no turn owns each pass on
 // their own while the feature does not work.
 
-import { fireEvent, render, screen } from "@solidjs/testing-library"
+import { render, screen } from "@solidjs/testing-library"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { dispatchWsEventMessage } from "~/framework/app-registry"
 import { MailboxAgentHost } from "~/modules/mailbox/MailboxAgentHost"
@@ -116,8 +116,6 @@ function dispatchMcpReadRequest(requestId: string, messageIds: string[] = [MESSA
           turnNonce: `mcp:${requestId}`,
           origin: "mcp",
           connectionId: "c0ffee00-1111-4111-8111-111111111111",
-          client: "Claude Code",
-          clientConnectedAt: "2026-09-30T12:00:00.000Z",
           requestKind: "mail.read",
           messageIds,
           conversationId: "conv-1",
@@ -291,20 +289,9 @@ describe("MailboxAgentHost", () => {
     expect(frame).toMatchObject({ unlocked: false, keyIds: [] })
   })
 
-  it("a read asked by an app connected over MCP waits for the user, then releases only what they allowed", async () => {
+  it("a read asked by an app connected over MCP is answered at once, with no prompt", async () => {
     render(() => <MailboxAgentHost />)
     dispatchMcpReadRequest("req-mcp-1")
-    // The user is asked first, by name of the connected app; nothing is posted yet.
-    const prompt = await screen.findByTestId("mcp-mail-access-prompt")
-    expect(prompt.textContent).toContain("Claude Code")
-    // Beside the self-chosen name, the server's record of the connection.
-    const identity = screen.getByTestId("mcp-mail-access-identity").textContent ?? ""
-    expect(identity).toContain("2026")
-    expect(identity).toContain("c0ffee00")
-    expect(mocks.api.post).not.toHaveBeenCalled()
-    expect(mocks.openMessage).not.toHaveBeenCalled()
-
-    fireEvent.click(screen.getByTestId("mcp-mail-access-once"))
     await vi.waitFor(() => expect(mocks.api.post).toHaveBeenCalled())
     const [path, body] = mocks.api.post.mock.calls[0] as [string, Record<string, unknown>]
     expect(path).toBe("/agent/mailbox-plaintext/req-mcp-1")
@@ -314,23 +301,29 @@ describe("MailboxAgentHost", () => {
     ])
     // The conversation was loaded into this window before anything was opened.
     expect(mocks.loadMessages).toHaveBeenCalledWith(mocks.api, "conv-1")
+    expect(screen.queryByRole("dialog")).toBeNull()
   })
 
-  it("an MCP read the user denies releases nothing and says so", async () => {
+  it("an MCP read while the mailbox is locked releases nothing and says it is locked", async () => {
+    mocks.unlocked = false
     render(() => <MailboxAgentHost />)
     dispatchMcpReadRequest("req-mcp-2")
-    fireEvent.click(await screen.findByTestId("mcp-mail-access-deny"))
-    await vi.waitFor(() => expect(mocks.api.post).toHaveBeenCalled())
-    const [, body] = mocks.api.post.mock.calls[0] as [string, Record<string, unknown>]
-    expect(body.denied).toBeTruthy()
+    await vi.waitFor(() =>
+      expect(
+        mocks.api.post.mock.calls.some(([path]) => path === "/agent/mailbox-plaintext/req-mcp-2"),
+      ).toBe(true),
+    )
+    const [, body] = mocks.api.post.mock.calls.find(
+      ([path]) => path === "/agent/mailbox-plaintext/req-mcp-2",
+    ) as [string, Record<string, unknown>]
+    expect(body.denied).toMatchObject({ code: "locked" })
     expect(body.items).toBeUndefined()
     expect(mocks.openMessage).not.toHaveBeenCalled()
   })
 
-  it("an MCP read naming a message outside the conversation is refused whole, even when allowed", async () => {
+  it("an MCP read naming a message outside the conversation is refused whole", async () => {
     render(() => <MailboxAgentHost />)
     dispatchMcpReadRequest("req-mcp-3", [MESSAGE_ID, "99999999-9999-4999-8999-999999999999"])
-    fireEvent.click(await screen.findByTestId("mcp-mail-access-once"))
     await vi.waitFor(() => expect(mocks.api.post).toHaveBeenCalled())
     const [, body] = mocks.api.post.mock.calls[0] as [string, Record<string, unknown>]
     expect(body.denied).toBeTruthy()

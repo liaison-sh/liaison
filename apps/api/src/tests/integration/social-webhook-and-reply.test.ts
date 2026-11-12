@@ -25,7 +25,7 @@ import { dispatchAppJobWithContext } from "~/infra/jobs/job-context"
 import { getJobQueue, JobsTestAccess } from "~/infra/jobs/jobs"
 import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { env } from "~/lib/env"
-import { decideApproval } from "~/modules/approvals/decide"
+import { ApprovalDecisionError, decideApproval } from "~/modules/approvals/decide"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
 import { executeToolCore } from "~/modules/apps/execute-tool"
 import { registerApps } from "~/modules/apps/runtime"
@@ -302,12 +302,26 @@ describe("social through the kernel (real Postgres, sandbox, kernel webhook rout
     expect(approvals).toHaveLength(1)
     expect(approvals[0]!.status).toBe("pending")
 
-    await decideApproval({
+    // The platform refuses the reply: the decision reports it, and a refusal the same
+    // reply would meet again closes the request instead of re-pending it.
+    const refused = await decideApproval({
       orgId: ORG,
       requestId: approvals[0]!.id,
       actor: approver,
       decision: "approve",
+    }).then(
+      () => null,
+      (err: unknown) => err,
+    )
+    expect(refused).toBeInstanceOf(ApprovalDecisionError)
+    expect(refused).toMatchObject({
+      status: 422,
+      code: "handler_failed",
+      details: { details: { code: "reply_blocked", final: true } },
     })
+    const [closed] = await sql<Array<{ status: string }>>`
+      SELECT status FROM kernel.approval_requests WHERE id = ${approvals[0]!.id}`
+    expect(closed!.status).toBe("cancelled")
     expect(posts.filter((p) => p.url.includes("/commentThreads"))).toHaveLength(1)
 
     const [row] = await sql<Array<{ status: string; metadata: Record<string, any> }>>`
@@ -319,9 +333,10 @@ describe("social through the kernel (real Postgres, sandbox, kernel webhook rout
       approval_request_id: approvals[0]!.id,
     })
     expect(row!.metadata.last_reply_failure.provider_error).toContain("quotaExceeded")
-    const exec = await sql<Array<{ result: Record<string, unknown> | null }>>`
-      SELECT result FROM kernel.approved_handler_executions WHERE approval_request_id = ${approvals[0]!.id}`
-    expect(JSON.stringify(exec.map((e) => e.result))).toContain("quotaExceeded")
+    const exec = await sql<Array<{ status: string; error: Record<string, unknown> | null }>>`
+      SELECT status, error FROM kernel.approved_handler_executions WHERE approval_request_id = ${approvals[0]!.id}`
+    expect(exec.map((e) => e.status)).toEqual(["failed_no_effect"])
+    expect(JSON.stringify(exec.map((e) => e.error))).toContain("quotaExceeded")
 
     // Decided, the finding is free again: a deliberate retry can be staged (one at a time).
     const retry = await stage("Thanks, retry")

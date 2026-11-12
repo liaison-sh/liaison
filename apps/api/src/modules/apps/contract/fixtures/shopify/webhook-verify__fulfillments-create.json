@@ -1,0 +1,41 @@
+{
+  "entry": "webhook-verify:fulfillments-create",
+  "params": {
+    "headers": {
+      "x-shopify-hmac-sha256": "bzvVgJctgMBYtSFMnjZgqAmNy//WOOMKQNELdScFpyU=",
+      "x-shopify-webhook-id": "contract-fulfillments-create-10",
+      "x-shopify-topic": "fulfillments/create",
+      "x-shopify-shop-domain": "contract-shop.myshopify.com",
+      "x-shopify-api-version": "2026-04"
+    },
+    "body": "{\"id\":8148355743910,\"order_id\":19010984706214,\"status\":\"success\",\"created_at\":\"2026-11-12T03:18:15-05:00\",\"service\":\"manual\",\"updated_at\":\"2026-11-12T03:18:17-05:00\",\"tracking_company\":\"UPS\",\"shipment_status\":null,\"location_id\":83457310886,\"origin_address\":null,\"line_items\":[{\"id\":50929465917606,\"variant_id\":56534760784038,\"title\":\"The Minimal Snowboard\",\"quantity\":1,\"sku\":null,\"variant_title\":null,\"vendor\":\"Contract Shop\",\"fulfillment_service\":\"manual\",\"product_id\":15332593336486,\"requires_shipping\":true,\"taxable\":true,\"gift_card\":false,\"name\":\"The Minimal Snowboard\",\"variant_inventory_management\":\"shopify\",\"properties\":[],\"product_exists\":true,\"fulfillable_quantity\":1,\"grams\":0,\"price\":\"885.95\",\"total_discount\":\"0.00\",\"fulfillment_status\":\"partial\",\"price_set\":{\"shop_money\":{\"amount\":\"885.95\",\"currency_code\":\"USD\"},\"presentment_money\":{\"amount\":\"885.95\",\"currency_code\":\"USD\"}},\"total_discount_set\":{\"shop_money\":{\"amount\":\"0.00\",\"currency_code\":\"USD\"},\"presentment_money\":{\"amount\":\"0.00\",\"currency_code\":\"USD\"}},\"discount_allocations\":[],\"origin_location\":{\"id\":4524267634854,\"country_code\":\"US\",\"province_code\":\"\",\"name\":\"Shop location\",\"address1\":\"\",\"address2\":\"\",\"city\":\"\",\"zip\":\"\"},\"admin_graphql_api_id\":\"gid://shopify/LineItem/50929465917606\",\"duties\":[],\"tax_lines\":[],\"fulfillment_line_item_id\":19332754047142}],\"tracking_number\":\"1Z999AA10123456785\",\"tracking_numbers\":[\"1Z999AA10123456785\"],\"tracking_url\":\"https://www.ups.com/WebTracking?loc=en_US&requester=ST&trackNums=1Z999AA10123456785\",\"tracking_urls\":[\"https://www.ups.com/WebTracking?loc=en_US&requester=ST&trackNums=1Z999AA10123456785\"],\"receipt\":{},\"name\":\"#2802.1\",\"admin_graphql_api_id\":\"gid://shopify/Fulfillment/8148355743910\"}",
+    "method": "POST",
+    "query": {}
+  },
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "calls": [
+    {
+      "method": "config_has",
+      "args": ["shopifyWebhookSecret"],
+      "reply": true
+    },
+    {
+      "method": "crypto_verifyHmacForConfig",
+      "args": [
+        "shopifyWebhookSecret",
+        "{\"id\":8148355743910,\"order_id\":19010984706214,\"status\":\"success\",\"created_at\":\"2026-11-12T03:18:15-05:00\",\"service\":\"manual\",\"updated_at\":\"2026-11-12T03:18:17-05:00\",\"tracking_company\":\"UPS\",\"shipment_status\":null,\"location_id\":83457310886,\"origin_address\":null,\"line_items\":[{\"id\":50929465917606,\"variant_id\":56534760784038,\"title\":\"The Minimal Snowboard\",\"quantity\":1,\"sku\":null,\"variant_title\":null,\"vendor\":\"Contract Shop\",\"fulfillment_service\":\"manual\",\"product_id\":15332593336486,\"requires_shipping\":true,\"taxable\":true,\"gift_card\":false,\"name\":\"The Minimal Snowboard\",\"variant_inventory_management\":\"shopify\",\"properties\":[],\"product_exists\":true,\"fulfillable_quantity\":1,\"grams\":0,\"price\":\"885.95\",\"total_discount\":\"0.00\",\"fulfillment_status\":\"partial\",\"price_set\":{\"shop_money\":{\"amount\":\"885.95\",\"currency_code\":\"USD\"},\"presentment_money\":{\"amount\":\"885.95\",\"currency_code\":\"USD\"}},\"total_discount_set\":{\"shop_money\":{\"amount\":\"0.00\",\"currency_code\":\"USD\"},\"presentment_money\":{\"amount\":\"0.00\",\"currency_code\":\"USD\"}},\"discount_allocations\":[],\"origin_location\":{\"id\":4524267634854,\"country_code\":\"US\",\"province_code\":\"\",\"name\":\"Shop location\",\"address1\":\"\",\"address2\":\"\",\"city\":\"\",\"zip\":\"\"},\"admin_graphql_api_id\":\"gid://shopify/LineItem/50929465917606\",\"duties\":[],\"tax_lines\":[],\"fulfillment_line_item_id\":19332754047142}],\"tracking_number\":\"1Z999AA10123456785\",\"tracking_numbers\":[\"1Z999AA10123456785\"],\"tracking_url\":\"https://www.ups.com/WebTracking?loc=en_US&requester=ST&trackNums=1Z999AA10123456785\",\"tracking_urls\":[\"https://www.ups.com/WebTracking?loc=en_US&requester=ST&trackNums=1Z999AA10123456785\"],\"receipt\":{},\"name\":\"#2802.1\",\"admin_graphql_api_id\":\"gid://shopify/Fulfillment/8148355743910\"}",
+        "bzvVgJctgMBYtSFMnjZgqAmNy//WOOMKQNELdScFpyU=",
+        "base64"
+      ],
+      "reply": true
+    },
+    {
+      "method": "crypto_hmacSha256Base64",
+      "args": [
+        "shopify-delivery",
+        "{\"id\":8148355743910,\"order_id\":19010984706214,\"status\":\"success\",\"created_at\":\"2026-11-12T03:18:15-05:00\",\"service\":\"manual\",\"updated_at\":\"2026-11-12T03:18:17-05:00\",\"tracking_company\":\"UPS\",\"shipment_status\":null,\"location_id\":83457310886,\"origin_address\":null,\"line_items\":[{\"id\":50929465917606,\"variant_id\":56534760784038,\"title\":\"The Minimal Snowboard\",\"quantity\":1,\"sku\":null,\"variant_title\":null,\"vendor\":\"Contract Shop\",\"fulfillment_service\":\"manual\",\"product_id\":15332593336486,\"requires_shipping\":true,\"taxable\":true,\"gift_card\":false,\"name\":\"The Minimal Snowboard\",\"variant_inventory_management\":\"shopify\",\"properties\":[],\"product_exists\":true,\"fulfillable_quantity\":1,\"grams\":0,\"price\":\"885.95\",\"total_discount\":\"0.00\",\"fulfillment_status\":\"partial\",\"price_set\":{\"shop_money\":{\"amount\":\"885.95\",\"currency_code\":\"USD\"},\"presentment_money\":{\"amount\":\"885.95\",\"currency_code\":\"USD\"}},\"total_discount_set\":{\"shop_money\":{\"amount\":\"0.00\",\"currency_code\":\"USD\"},\"presentment_money\":{\"amount\":\"0.00\",\"currency_code\":\"USD\"}},\"discount_allocations\":[],\"origin_location\":{\"id\":4524267634854,\"country_code\":\"US\",\"province_code\":\"\",\"name\":\"Shop location\",\"address1\":\"\",\"address2\":\"\",\"city\":\"\",\"zip\":\"\"},\"admin_graphql_api_id\":\"gid://shopify/LineItem/50929465917606\",\"duties\":[],\"tax_lines\":[],\"fulfillment_line_item_id\":19332754047142}],\"tracking_number\":\"1Z999AA10123456785\",\"tracking_numbers\":[\"1Z999AA10123456785\"],\"tracking_url\":\"https://www.ups.com/WebTracking?loc=en_US&requester=ST&trackNums=1Z999AA10123456785\",\"tracking_urls\":[\"https://www.ups.com/WebTracking?loc=en_US&requester=ST&trackNums=1Z999AA10123456785\"],\"receipt\":{},\"name\":\"#2802.1\",\"admin_graphql_api_id\":\"gid://shopify/Fulfillment/8148355743910\"}"
+      ],
+      "reply": "8lFYEIdwFnBQtFPgpPTkQdI3MstSPiGZKr860yv+8rk="
+    }
+  ]
+}

@@ -49,6 +49,8 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   // The state moved or does not allow it (re-quote, wait, or pick another row).
   duplicate: 409,
   row_locked: 409,
+  // An issuer profile that issued documents: kept for them, edited instead of deleted.
+  issuer_in_use: 409,
   already_dispatched: 409,
   price_increased: 409,
   offer_not_quoted: 409,

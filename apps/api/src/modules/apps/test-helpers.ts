@@ -90,6 +90,7 @@ export function mockAppContext(opts: MockAppContextOpts): MockAppContext {
     batch: async (spec) =>
       (await applyMockBatch(
         {
+          findOne: (e, id) => db.findOne(e, id),
           insert: (e, d) => db.insert(e, d),
           update: (e, id, d) => db.update(e, id, d),
           delete: (e, id) => db.delete(e, id),

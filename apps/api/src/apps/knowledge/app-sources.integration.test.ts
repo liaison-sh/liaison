@@ -18,6 +18,7 @@ import {
   AppSourceConflictError,
   type AppSourceSyncInput,
   dbAppSourceStore,
+  loadAppSourceOwnerScopes,
 } from "~/apps/knowledge/app-sources"
 import { runSyncWorker } from "~/apps/knowledge/knowledge-jobs"
 import { knowledgeRel } from "~/apps/knowledge/schema-refs"
@@ -139,7 +140,7 @@ async function newSource(opts: {
  */
 async function drive(
   sourceId: string,
-  opts: { maxPagesPerJob?: number; ownerScopes?: string[] } = {},
+  opts: { maxPagesPerJob?: number; ownerScopes?: string[] | null } = {},
 ): Promise<{ jobs: number; continuations: string[] }> {
   const queue: Array<{ trigger: "schedule" | "continue" }> = [{ trigger: "schedule" }]
   const continuations: string[] = []
@@ -152,7 +153,8 @@ async function drive(
       {
         appSource: {
           setUpAppSourceOrg: async () => undefined,
-          ownerScopes: async () => opts.ownerScopes ?? [READ_SCOPE, DOC_READ],
+          ownerScopes: async () =>
+            opts.ownerScopes === undefined ? [READ_SCOPE, DOC_READ] : opts.ownerScopes,
           enqueueContinuation: async (id, generation) => {
             continuations.push(`sync:${id}:g${generation}`)
             queue.push({ trigger: "continue" })
@@ -345,6 +347,24 @@ describe("an app source syncs into Knowledge", () => {
     expect(state.last_sync_status).toBe("error")
     expect(state.last_error).toBe(`the source owner no longer holds ${READ_SCOPE}`)
     expect(await docsOf(source.id)).toEqual([])
+  })
+
+  it("stops syncing when the owner is no longer an active member", async () => {
+    const source = await newSource({ orgId: orgA, userId: alice })
+    provider.set(source.id, { pages: [["d1"]] })
+    await drive(source.id, { ownerScopes: null })
+    const state = await sourceState(source.id)
+    expect(state.last_sync_status).toBe("error")
+    expect(state.last_error).toBe("the source owner is no longer an active member")
+    expect(await docsOf(source.id)).toEqual([])
+  })
+
+  it("an owner's scopes are read only while they are an active member of the source's org", async () => {
+    const owner = await minimal.person(orgA, { role: "member" })
+    expect(await loadAppSourceOwnerScopes(orgA, owner.id)).not.toBeNull()
+    expect(await loadAppSourceOwnerScopes(orgB, owner.id)).toBeNull()
+    await db.execute(sql`UPDATE kernel.users SET status = 'deactivated' WHERE id = ${owner.id}`)
+    expect(await loadAppSourceOwnerScopes(orgA, owner.id)).toBeNull()
   })
 })
 

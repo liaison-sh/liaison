@@ -2,8 +2,7 @@
 //
 // Where the two-phase agent read protocol actually runs in a tab.
 //
-// It renders nothing but the prompt an app connected over MCP puts to the user
-// before a read (McpMailAccessPrompt). Its whole job is the wiring the protocol needs to exist
+// It renders nothing. Its whole job is the wiring the protocol needs to exist
 // at all: the unlock assertion on the socket, the subscription that answers the
 // server's decrypt and search requests, and the runtime handle the chat submit
 // path and the client job drainer reach through.
@@ -35,11 +34,6 @@ import {
 import { createAttachmentOpener } from "~/modules/mailbox/attachment-opener"
 import type { OpenedMessage, SealedMessagePayload } from "~/modules/mailbox/crypto-protocol"
 import { createJobTurnTransport } from "~/modules/mailbox/job-turn-transport"
-import {
-  askMcpMailAccess,
-  denyAllMcpMailAccess,
-  McpMailAccessPrompt,
-} from "~/modules/mailbox/McpMailAccessPrompt"
 import {
   createMailboxAgentRuntime,
   handleMailboxAgentStreamEvent,
@@ -169,12 +163,11 @@ const MailboxAgentHostRuntime: Component = () => {
     return await Promise.all(rows.map((sealed) => client.openMessage(sealed)))
   }
 
-  // Reads asked by an app connected over MCP for this same user: answered only
-  // after the user allows them in this window (mcp-plaintext-responder.ts).
+  // Reads asked by an app connected over MCP for this same user, answered while
+  // the mailbox is unlocked (mcp-plaintext-responder.ts).
   const mcpResponder = createMcpPlaintextResponder({
     isUnlocked: () => isMailboxUnlocked(),
     agentMailAccessEnabled,
-    askUser: (prompt) => askMcpMailAccess(prompt),
     loadConversation: (conversationId) => loadMessages(api, conversationId),
     conversationMessageIds: (conversationId) => getMessages(conversationId).map((m) => m.id),
     openMessages,
@@ -272,13 +265,6 @@ const MailboxAgentHostRuntime: Component = () => {
     void syncAgentMailAccessFromServer(api, agentMailAccessSyncDeps())
   })
 
-  // A lock ends every standing "allow for a while" and refuses what is asked.
-  createEffect(() => {
-    if (isMailboxUnlocked()) return
-    mcpResponder.reset()
-    denyAllMcpMailAccess()
-  })
-
   createEffect(() => {
     if (!isMailboxUnlocked()) {
       stopMailboxSearchIndex()
@@ -304,5 +290,5 @@ const MailboxAgentHostRuntime: Component = () => {
     runtime.sendStatusFrame()
   })
 
-  return <McpMailAccessPrompt />
+  return null
 }

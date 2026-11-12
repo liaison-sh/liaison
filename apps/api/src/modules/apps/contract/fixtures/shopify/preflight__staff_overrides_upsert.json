@@ -1,0 +1,19 @@
+{
+  "entry": "preflight:staff_overrides_upsert",
+  "params": {
+    "liaisonUserId": "00000000-0000-4000-8000-00000000c0df",
+    "shopifyStaffId": "gid://shopify/StaffMember/1001",
+    "reason": "Same person, two accounts"
+  },
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "staff_overrides",
+        "{\"where\":{\"shopifyStaffId\":\"gid://shopify/StaffMember/1001\"},\"limit\":2}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

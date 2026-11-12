@@ -294,6 +294,18 @@ describe("reply_to_finding: look before posting, reconcile an unknown outcome", 
     const res = await replyToFinding(ctx, { finding_id: "f1", reply_text: REPLY })
     expect(res).toMatchObject({ status: "failed" })
     expect(ctx.protocol.map((p) => p.step)).toEqual(["started", "failed_no_effect"])
+    // A refusal the same reply meets again closes the approval instead of re-pending it.
+    expect(ctx.protocol[1]?.ref).toMatchObject({ code: "reply_blocked", final: true })
+  })
+
+  test("a rate-limited POST records failed (no effect) and leaves the approval to be approved again", async () => {
+    const db = createMockDb()
+    await seed(db)
+    const ctx = ctxFor(db, { approvalRequestId: "appr-1", post: { status: 429, body: { error: { message: "slow down" } } } })
+    const res = await replyToFinding(ctx, { finding_id: "f1", reply_text: REPLY })
+    expect(res).toMatchObject({ status: "failed", reason: "rate_limited" })
+    expect(ctx.protocol[1]?.step).toBe("failed_no_effect")
+    expect((ctx.protocol[1]?.ref as Record<string, unknown>).final).toBeUndefined()
   })
 
   test("reconcile: the echo after a timed-out post settles the approval as executed, without a Graph read", async () => {

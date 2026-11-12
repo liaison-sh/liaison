@@ -157,6 +157,25 @@ export interface ApprovalBridges {
   approval_recordStarted?: (toolName: string) => Promise<void>
   approval_recordSucceeded?: (toolName: string, externalRefJson?: string) => Promise<void>
   approval_recordFailedNoEffect?: (toolName: string, errJson: string) => Promise<void>
+  approval_recordAwaitingOutput?: (toolName: string, externalRefJson?: string) => Promise<void>
+}
+
+/** Ctxs whose approved execution recorded `awaiting_output` (its `pollHandler` finishes it). */
+const ctxsAwaitingOutput = new WeakSet<object>()
+
+/**
+ * Under an approval replay, record that the tool's output is not ready yet: the kernel's poll
+ * job then asks the tool's `pollHandler` with `externalRef` until it is, and the approval
+ * protocol wrapper leaves the execution at `awaiting_output` instead of marking it succeeded.
+ * Returns false (nothing recorded) outside an approval.
+ */
+export async function recordAwaitingOutput(ctx: AppContext, externalRef: unknown): Promise<boolean> {
+  const bridged = ctx as unknown as ApprovalBridges
+  const approval = bridged.approval
+  if (!approval || typeof bridged.approval_recordAwaitingOutput !== "function") return false
+  await bridged.approval_recordAwaitingOutput(approval.toolName, JSON.stringify(externalRef))
+  ctxsAwaitingOutput.add(ctx as object)
+  return true
 }
 
 type MutationHandler = (params: Record<string, unknown>, ctx: AppContext) => Promise<unknown>
@@ -165,7 +184,8 @@ type MutationHandler = (params: Record<string, unknown>, ctx: AppContext) => Pro
  * Record this handler's approval-protocol outcome around its execution. Outside an approval
  * replay (no `ctx.approval`) it is a pass-through. Semantics:
  *   - entry → recordStarted
- *   - clean return → recordSucceeded (an `{error}` envelope return — e.g. shopify_not_connected —
+ *   - clean return → recordSucceeded, unless the handler recorded `awaiting_output` (its
+ *     `pollHandler` finishes the execution) (an `{error}` envelope return — e.g. shopify_not_connected —
  *     records failed_no_effect instead: the operation definitively did not run)
  *   - throw with NO mutation sent on this ctx → recordFailedNoEffect (kernel reverts the
  *     approval to pending and surfaces the message — validation errors become retryable)
@@ -186,7 +206,7 @@ export function withApprovalProtocol(fn: MutationHandler): MutationHandler {
           approval.toolName,
           JSON.stringify((result as { error: unknown }).error),
         )
-      } else {
+      } else if (!ctxsAwaitingOutput.has(ctx as object)) {
         await bridged.approval_recordSucceeded?.(approval.toolName)
       }
       return result

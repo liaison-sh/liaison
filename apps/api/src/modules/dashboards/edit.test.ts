@@ -143,8 +143,12 @@ describe("describeOperations", () => {
       ctx,
     )
     expect(lines).toHaveLength(6)
+    // What the block is, where it goes and what it shows first; where it reads last.
     expect(lines[0]).toStartWith(
-      '1. Add a bar block "Spend by campaign" (width 2) at position 2 of 4 (after "Block a"), reading ads:insights_query with {"since":"{{range.from}}","until":"{{range.to}}"}',
+      '1. Add a bar block "Spend by campaign" (width 2) at position 2 of 4 (after "Block a"); it shows ',
+    )
+    expect(lines[0]).toContain(
+      '; reading ads:insights_query with {"since":"{{range.from}}","until":"{{range.to}}"}',
     )
     expect(lines[0]).toContain(
       "{{range.from}} = the dashboard range's start (2026-10-01 by default today)",
@@ -304,12 +308,15 @@ describe("datasets and filters by operation", () => {
       ],
       { timeZone: "UTC", now: new Date("2026-11-11T12:00:00Z") },
     )
-    expect(lines[0]).toContain("Add the shared dataset 'orders': it reads shop:orders_search")
+    expect(lines[0]).toContain("Add the shared dataset 'orders', read once per view")
+    expect(lines[0]).toContain(": it reads shop:orders_search")
     expect(lines[0]).toContain("no block uses it yet")
     expect(lines[1]).toContain(
       'Add the filter "Market" (id market, one value, options FR, DE, default FR',
     )
-    expect(lines[2]).toContain("reading the shared dataset 'orders'")
+    // The dataset added on line 1 is named by its line, not repeated.
+    expect(lines[2]).toContain("reading the shared dataset 'orders' (added in 1.)")
+    expect(lines[2]).not.toContain("shop:orders_search")
     expect(lines[2]).toContain("keeps only rows where status is not cancelled")
     expect(lines[3]).toContain('showing the note "B2B = tagged b2b"')
     expect(lines[4]).toContain(
@@ -492,5 +499,133 @@ describe("diffDashboards with datasets and filters", () => {
     )
     expect(restored.spec.datasets).toBeUndefined()
     expect(restored.spec.filters).toBeUndefined()
+  })
+})
+
+describe("layered blocks and shared datasets on the card", () => {
+  const ctx = { timeZone: "UTC", now: new Date("2026-11-12T12:00:00Z") }
+  // Long params, as a real analytics query has: a layer on the block's own line was cut.
+  const query = `FROM sales SHOW units GROUP BY product_title, day SINCE {{range.from}} UNTIL {{range.to}} ${"WHERE channel = 'online' ".repeat(8)}`
+  const unitsSource = { kind: "tool", tool: "shop:analytics_query", params: { query } }
+  const sessionsSource = {
+    kind: "tool",
+    tool: "shop:analytics_query",
+    params: { query: query.replace("units", "sessions") },
+  }
+  const layered = (extra: Record<string, unknown> = {}) => ({
+    id: "blend",
+    type: "combo",
+    title: "Units and sessions",
+    width: 3,
+    layers: [
+      {
+        id: "units",
+        label: "Units",
+        as: "bar",
+        dataset: "units",
+        map: { groupBy: { field: "day", bucket: "week" }, y: "units", series: "product_title" },
+      },
+      {
+        id: "sessions",
+        label: "Sessions",
+        as: "line",
+        axis: "right",
+        source: sessionsSource,
+        map: { groupBy: { field: "day", bucket: "week" }, y: "sessions" },
+      },
+    ],
+    map: {
+      curve: "smooth",
+      headlineCalc: [{ label: "Units per session", expr: "units / sessions" }],
+    },
+    ...extra,
+  })
+
+  it("lists a 2-layer block on its line and each layer numbered under it, every line whole", () => {
+    const ops = [
+      { op: "setDataset" as const, id: "units", source: unitsSource },
+      { op: "addBlock" as const, block: layered() },
+    ]
+    const lines = describeOperations(dashboard(), ops, ctx)
+    expect(lines).toHaveLength(4)
+    expect(cardLineCount(ops)).toBe(4)
+    expect(lines[1]).toStartWith(
+      '2. Add a combo block "Units and sessions" (width 3) at position 4 of 4 (last), blending 2 layers joined on their date bucket ("Units", "Sessions"), each on its own line below; it shows smooth curve, headline figure "Units per session" = units / sessions',
+    )
+    expect(lines[2]).toBe(
+      `   2.1. Layer "Units": bars, sum of units by day per week, split by product_title; reading the shared dataset 'units' (added in 1.).`,
+    )
+    expect(lines[3]).toStartWith(
+      '   2.2. Layer "Sessions": a line on the right axis, sum of sessions by day per week; reading shop:analytics_query with',
+    )
+    expect(lines[3]).toContain("{{range.from}} = the dashboard range's start")
+    for (const l of lines) expect(l.length).toBeLessThanOrEqual(500)
+  })
+
+  it("names the line that sets a dataset, before or after, and shortens one already there", () => {
+    const current: EditableDashboard = {
+      ...dashboard(),
+      spec: {
+        ...dashboard().spec,
+        datasets: { units: unitsSource, sessions: sessionsSource },
+      } as unknown as DashboardSpec,
+    }
+    const lines = describeOperations(
+      current,
+      [
+        { op: "addBlock", block: { id: "u", type: "metric", dataset: "units", map: {} } },
+        { op: "setDataset", id: "units", source: unitsSource },
+        { op: "addBlock", block: { id: "s", type: "metric", dataset: "sessions", map: {} } },
+        { op: "addBlock", block: { id: "u2", type: "metric", dataset: "units", map: {} } },
+      ],
+      ctx,
+    )
+    expect(lines[0]).toContain("reading the shared dataset 'units' (changed in 2., below).")
+    // Unchanged and not on this card: its tool only, no params.
+    expect(lines[2]).toContain("reading the shared dataset 'sessions' (shop:analytics_query).")
+    expect(lines[2]).not.toContain("FROM sales")
+    expect(lines[3]).toContain("reading the shared dataset 'units' (changed in 2.).")
+  })
+
+  it("lists the layers of a copied or changed layered block, and a new dashboard's", () => {
+    const current: EditableDashboard = {
+      ...dashboard(),
+      spec: {
+        ...dashboard().spec,
+        datasets: { units: unitsSource },
+        blocks: [block("a"), layered()],
+      } as unknown as DashboardSpec,
+    }
+    const copied = describeOperations(current, [{ op: "duplicateBlock", blockId: "blend" }], ctx)
+    expect(copied).toHaveLength(3)
+    expect(copied[1]).toStartWith('   1.1. Layer "Units"')
+    expect(copied[1]).toContain("(shop:analytics_query)")
+    const [line, ...layers] = describeOperations(
+      current,
+      [{ op: "updateBlock", blockId: "blend", changes: { layers: layered().layers.slice(1) } }],
+      ctx,
+    )
+    expect(line).toContain('now blending 1 layer joined on their date bucket ("Sessions")')
+    expect(layers).toHaveLength(1)
+    expect(layers[0]).toStartWith('   1.1. Layer "Sessions"')
+    // A new dashboard's card (dashboards_create) diffs from an empty one: the same lines.
+    const empty: EditableDashboard = {
+      title: "",
+      visibility: "personal",
+      spec: { v: 1, blocks: [] } as unknown as DashboardSpec,
+    }
+    const ops = diffDashboards(empty, {
+      spec: { v: 1, datasets: { units: unitsSource }, blocks: [layered()] },
+    })
+    const created = describeOperations(empty, ops, ctx)
+    expect(created).toHaveLength(cardLineCount(ops))
+    expect(created[0]).toStartWith("1. Add the shared dataset 'units'")
+    expect(created[2]).toContain("reading the shared dataset 'units' (added in 1.)")
+    expect(created[3]).toStartWith('   2.2. Layer "Sessions"')
+    // Removing it names its layers, not their sources.
+    const [removed] = describeOperations(current, [{ op: "removeBlock", blockId: "blend" }], ctx)
+    expect(removed).toBe(
+      '1. Remove the combo block "Units and sessions" (it blended "Units", "Sessions").',
+    )
   })
 })

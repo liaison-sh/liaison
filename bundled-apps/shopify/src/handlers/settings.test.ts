@@ -222,6 +222,8 @@ describe("settingsLoad", () => {
       "write_merchant_managed_fulfillment_orders",
       "read_companies",
       "read_reports",
+      // Requested since 0.4.23 (products_merge's redirect): a grant from before it lacks it.
+      "write_online_store_navigation",
     ])
   })
 

@@ -576,8 +576,9 @@ describe("dashboards_edit", () => {
     expect(summary?.title).toBe('Change the org dashboard "Direction": 4 changes')
     expect(summary?.lines).toHaveLength(4)
     expect(summary?.lines[0]).toStartWith(
-      `1. Add a metric block "Tile spend" (width 1) at position 2 of 3 (after "Tile a"), reading ${APP}:orders_list`,
+      `1. Add a metric block "Tile spend" (width 1) at position 2 of 3 (after "Tile a"); it shows `,
     )
+    expect(summary?.lines[0]).toContain(`; reading ${APP}:orders_list`)
     expect(summary?.lines[0]).toContain("{{range.from}} = the dashboard range's start")
     expect(summary?.lines[1]).toBe('2. Change the block "Tile b": title "Tile b" → "Open orders".')
     expect(summary?.lines[2]).toStartWith('3. Remove the metric block "Tile a"')

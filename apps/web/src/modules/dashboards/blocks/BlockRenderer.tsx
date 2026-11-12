@@ -3,6 +3,7 @@ import { type Component, Match, Show, Switch } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import type {
   BlockData,
+  ChartLayer,
   DashboardBlockMap,
   DrillTarget,
   FunnelData,
@@ -59,13 +60,62 @@ export interface DatasetNames {
   current?: string
   /** "{name} (right axis)": a series read against the right-hand axis. */
   rightAxis?: (name: string) => string
+  /** What a stack adds up (the map's y): names its comparison total when no layer does. */
+  total?: string
+}
+
+type PreviousOne = { name: string; values: Array<number | null> }
+
+/**
+ * The comparison as drawn, in order: one entry per comparison series that holds a value, except
+ * that the series of a stack of bars (two or more stacked bar series) fold into one entry, its
+ * total, at the place of the first of them. Lines keep their own comparison.
+ */
+function comparisonDrawn(d: SeriesData): Array<{ members: PreviousOne[]; total: boolean }> {
+  const lines = new Set(d.kind === "combo" ? (d.display?.lineSeries ?? []) : [])
+  const stacks = d.display?.stacked === true && (d.kind === "bar" || d.kind === "combo")
+  const stackedBar = (name: string) => stacks && !lines.has(name)
+  const fold = d.series.filter((x) => stackedBar(x.name)).length > 1
+  const out: Array<{ members: PreviousOne[]; total: boolean }> = []
+  let total: { members: PreviousOne[]; total: boolean } | null = null
+  for (const p of d.previous?.series ?? []) {
+    if (!p.values.some((v) => v !== null)) continue
+    if (fold && stackedBar(p.name)) {
+      if (!total) {
+        total = { members: [], total: true }
+        out.push(total)
+      }
+      total.members.push(p)
+    } else out.push({ members: [p], total: false })
+  }
+  return out
+}
+
+/** The one layer every member of a stack's total comes from, if there is one. */
+function stackLayer(d: SeriesData, members: PreviousOne[]): ChartLayer | undefined {
+  const ids = new Set(members.map((p) => layerOfSeries(d, p.name)?.layer))
+  if (ids.size !== 1) return undefined
+  const [id] = [...ids]
+  return id === undefined ? undefined : d.layers?.find((l) => l.id === id)
+}
+
+/** A place's total over the members: null when none holds a value there. */
+function sumAt(members: PreviousOne[], i: number): number | null {
+  let sum: number | null = null
+  for (const p of members) {
+    const v = p.values[i]
+    if (typeof v === "number") sum = (sum ?? 0) + v
+  }
+  return sum
 }
 
 /**
  * A bar or line block's datasets: its series, then, when the server sent a comparison, each
- * series' previous values (drawn lighter) named "<series> · <comparison>". With `names.current`,
- * a lone series is named by its days and its comparison by the comparison's, and the tooltip
- * names each comparison value by its own day. A blended chart's right-axis series say so.
+ * series' previous values (drawn lighter) named "<series> · <comparison>". A stack of bars
+ * compares by its total: one lighter bar per place, named "<layer or y> · <comparison>". With
+ * `names.current`, a lone series is named by its days and its comparison by the comparison's,
+ * and the tooltip names each comparison value by its own day. A blended chart's right-axis
+ * series say so.
  */
 export function seriesDatasets(
   d: SeriesData,
@@ -84,16 +134,29 @@ export function seriesDatasets(
     ...(right.has(x.name) ? { axis: "right" as const } : {}),
     ...(lone ? { name: x.name } : {}),
   }))
-  const previous: ChartDataset[] = (d.previous?.series ?? [])
-    .filter((p) => p.values.some((v) => v !== null))
-    .map((p) => ({
+  const days = names.current && d.previous ? { dayLabels: d.previous.labels } : {}
+  const previous: ChartDataset[] = comparisonDrawn(d).map(({ members, total }) => {
+    if (total) {
+      const what = stackLayer(d, members)?.label ?? names.total
+      return {
+        label: what ? `${what} · ${previousName}` : previousName,
+        values: d.x.map((_, i) => sumAt(members, i)),
+        previous: true,
+        total: true,
+        ...(members.every((p) => right.has(p.name)) ? { axis: "right" as const } : {}),
+        ...days,
+      }
+    }
+    const p = members[0] as PreviousOne
+    return {
       label: d.series.length > 1 && p.name ? `${shown(p.name)} · ${previousName}` : previousName,
       values: p.values,
       previous: true,
       ...(lines.has(p.name) ? { asLine: true } : {}),
       ...(right.has(p.name) ? { axis: "right" as const } : {}),
-      ...(names.current && d.previous ? { dayLabels: d.previous.labels } : {}),
-    }))
+      ...days,
+    }
+  })
   return [...current, ...previous]
 }
 
@@ -124,12 +187,19 @@ export function layerOfSeries(
  */
 export function seriesPick(d: SeriesData, index: number, datasetIndex: number): DrillTarget | null {
   if (datasetIndex >= d.series.length) {
-    // The order seriesDatasets draws them in: only comparison series that hold a value.
-    const drawn = (d.previous?.series ?? []).filter((p) => p.values.some((v) => v !== null))
-    const p = drawn[datasetIndex - d.series.length]
+    // The order seriesDatasets draws them in: a stack's total asks for its layer's rows.
+    const drawn = comparisonDrawn(d)[datasetIndex - d.series.length]
     const label = d.previous?.labels[index]
-    if (!p || label === null || label === undefined || p.values[index] == null) return null
+    if (!drawn || label === null || label === undefined) return null
+    if (sumAt(drawn.members, index) === null) return null
     const target: DrillTarget = { category: String(label), previous: true }
+    if (drawn.total) {
+      const layer = d.layers ? stackLayer(d, drawn.members) : undefined
+      if (d.layers && !layer) return null
+      if (layer) target.layer = layer.id
+      return target
+    }
+    const p = drawn.members[0] as PreviousOne
     if (d.layers) return withLayer(d, target, p.name)
     if (d.series.length > 1 && p.name) target.series = p.name
     return target
@@ -257,6 +327,7 @@ export const BlockRenderer: Component<BlockRendererProps> = (props) => {
               inProgressIndex={inProgress()}
               datasets={seriesDatasets(s(), compareName(), {
                 current: range(props.window),
+                total: props.map?.y,
                 rightAxis: (name) => i18n.t("kernel.dashboards.chartRightAxis", { name }),
               })}
               format={share() ? "percent" : (s().format ?? format())}

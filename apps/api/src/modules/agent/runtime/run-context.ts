@@ -439,6 +439,21 @@ export function isPersonClientFrame(frame: RunContext | undefined): boolean {
   return frame?.mcpGateway === true && frame.agentId === undefined
 }
 
+/**
+ * True when a PERSON is calling from their own external client: an MCP call that no agent drives
+ * (no acting agent), outside any run frame or in their client's own gateway frame. Read live, so
+ * it is false on an approved re-entry, whose frame is the approval's: the dispatch records it on
+ * the approval when it parks a post instead (post-disclosure.ts).
+ */
+export function isPersonExternalClientCall(opts: {
+  mcp: boolean
+  actingAgentId: string | null
+}): boolean {
+  if (!opts.mcp || opts.actingAgentId !== null) return false
+  const frame = currentRunContext()
+  return frame === undefined || isPersonClientFrame(frame)
+}
+
 export function currentRunContext(): RunContext | undefined {
   return runContextStore.getStore()
 }

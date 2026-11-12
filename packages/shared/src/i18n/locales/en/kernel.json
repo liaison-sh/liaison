@@ -6522,6 +6522,7 @@
     "filtersReset": "Reset filters",
     "chartRightAxis": "{{name}} (right axis)",
     "chartInProgress": "Today, still counting",
+    "chartTotal": "Total: {{value}}",
     "chartVs": "vs {{range}}",
     "layerFailed": "{{layer}}: {{reason}}",
     "filterEditorAria": "Edit filters",

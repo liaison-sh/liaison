@@ -1146,18 +1146,20 @@ export async function checkEdit(
 ): Promise<{ cardLines: number }> {
   const { current, next, versions } = await planEdit(viewer, id, input)
   await validateSpec(viewer, next.spec)
-  // How many lines its approval card lists: a revert lists each change it restores.
-  const cardLines = versions.size
-    ? describeOperations(
-        {
-          title: current.title,
-          visibility: current.visibility,
-          spec: current.spec as unknown as DashboardSpec,
-        },
-        input.operations,
-        { timeZone: await dashboardTimezone(viewer.orgId), now: new Date(), versions },
-      ).length
-    : cardLineCount(input.operations)
+  // How many lines its approval card lists: a revert lists each change it restores, a copied
+  // layered block each of its layers (cardLineCount cannot see either without the dashboard).
+  const cardLines =
+    versions.size || input.operations.some((op) => op.op === "duplicateBlock")
+      ? describeOperations(
+          {
+            title: current.title,
+            visibility: current.visibility,
+            spec: current.spec as unknown as DashboardSpec,
+          },
+          input.operations,
+          { timeZone: await dashboardTimezone(viewer.orgId), now: new Date(), versions },
+        ).length
+      : cardLineCount(input.operations)
   return { cardLines }
 }
 

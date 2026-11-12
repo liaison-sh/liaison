@@ -77,10 +77,12 @@ type DedupRow = {
 }
 
 /**
- * How long a `processing` claim holds: past any webhook run's wall clock (29 s at most), so a
- * claim older than this belongs to a run that was killed before it marked the row.
+ * How long a `processing` claim holds: past any webhook run's wall clock (the request ceiling
+ * caps a run at about 29 s, and these handlers declare no budget, so they run under the shorter
+ * sandbox default), so a claim older than this belongs to a run that was killed before it marked
+ * the row. Kept short: until it lapses, every redelivery of that id is answered 503 and retried.
  */
-export const CLAIM_TTL_MS = 2 * 60_000
+export const CLAIM_TTL_MS = 45_000
 
 function claimExpired(row: DedupRow, now: number): boolean {
   const at = Date.parse(String(row.claimed_at ?? row.received_at ?? ""))
@@ -88,18 +90,25 @@ function claimExpired(row: DedupRow, now: number): boolean {
 }
 
 /**
- * Claim a delivery; returns false when it has already been processed or another run holds it.
+ * The outcome of claiming a delivery:
+ * - `run`: this run holds the claim and applies the delivery;
+ * - `done`: the delivery was already applied (its row is `processed`), a true duplicate;
+ * - `held`: another run's claim on it has not expired yet. That run may have been killed (a
+ *   live duplicate never reaches the handler: the kernel inbox leases each delivery), so the
+ *   delivery is NOT acknowledged: the caller answers 503 and the redelivery retries until the
+ *   claim either completes (then `done`) or lapses (then it is taken over and run).
+ */
+type Claim = { kind: "run"; rowId: string } | { kind: "done" } | { kind: "held" }
+
+/**
+ * Claim a delivery.
  *
  * No run holds a transaction across its bridge calls, so the claim is an expiring lease on the
  * ledger row: a new delivery inserts its row (the unique `delivery_id` decides a race), and a
  * `failed` row or a `processing` row whose claim expired (a killed run) is taken over with a
  * compare-and-set on its claim attempt counter, so two redeliveries never both proceed.
  */
-async function claimDelivery(
-  ctx: WebhookCtx,
-  deliveryId: string,
-  eventType: string,
-): Promise<{ proceed: boolean; rowId?: string }> {
+async function claimDelivery(ctx: WebhookCtx, deliveryId: string, eventType: string): Promise<Claim> {
   const now = Date.now()
   const existing = (await ctx.db.findMany("webhook_delivery", {
     where: { delivery_id: deliveryId },
@@ -107,8 +116,9 @@ async function claimDelivery(
   })) as DedupRow[]
   if (existing.length > 0) {
     const row = existing[0]!
+    if (row.status === "processed") return { kind: "done" }
     const takeOver = row.status === "failed" || (row.status === "processing" && claimExpired(row, now))
-    if (!takeOver) return { proceed: false }
+    if (!takeOver) return { kind: "held" }
     const res = (await ctx.db.updateMany("webhook_delivery", {
       where: { delivery_id: deliveryId, status: row.status, claim_attempt: row.claim_attempt ?? 0 },
       data: {
@@ -117,7 +127,8 @@ async function claimDelivery(
         claimed_at: new Date(now).toISOString(),
       },
     })) as { count?: number }
-    return res.count === 1 ? { proceed: true, rowId: row.id } : { proceed: false }
+    // Lost the compare-and-set: another redelivery holds a fresh claim now.
+    return res.count === 1 ? { kind: "run", rowId: row.id } : { kind: "held" }
   }
   try {
     const at = new Date(now).toISOString()
@@ -130,10 +141,10 @@ async function claimDelivery(
       claim_attempt: 1,
       claimed_at: at,
     })
-    return { proceed: true, rowId: ins.id }
+    return { kind: "run", rowId: ins.id }
   } catch {
-    // Race lost — another delivery inserted first; treat as duplicate.
-    return { proceed: false }
+    // Race lost: another delivery inserted first and holds the claim (it is not applied yet).
+    return { kind: "held" }
   }
 }
 
@@ -151,10 +162,11 @@ async function markFailed(ctx: WebhookCtx, rowId: string): Promise<void> {
 }
 
 /**
- * Dedup wrapper: claim → run → mark processed/failed. Returns 200 on success or
- * a duplicate (already-claimed) delivery; returns 503 when the handler throws,
- * so Boxtal's retry schedule re-delivers and the ledger row is marked `failed`
- * for the next attempt.
+ * Dedup wrapper: claim → run → mark processed/failed. Returns 200 on success or for a delivery
+ * already applied (`processed`). Returns 503 when the handler throws (the ledger row is marked
+ * `failed` for the next attempt) and when another run's unexpired claim holds the delivery: only
+ * a completed delivery is acknowledged, so a run killed after its claim is replayed until the
+ * claim lapses and the replay takes it over.
  */
 async function runDelivery(
   ctx: WebhookCtx,
@@ -163,14 +175,15 @@ async function runDelivery(
   run: () => Promise<void>,
 ): Promise<WebhookResult> {
   const claim = await claimDelivery(ctx, deliveryId, eventType)
-  if (!claim.proceed) return OK
+  if (claim.kind === "done") return OK
+  if (claim.kind === "held") return { status: 503, body: "delivery claimed by another run" }
   try {
     await run()
-    if (claim.rowId) await markProcessed(ctx, claim.rowId)
+    await markProcessed(ctx, claim.rowId)
     return OK
   } catch (err) {
     ctx.logger?.error?.("boxtal webhook handler failed", { eventType, deliveryId, err: String(err) })
-    if (claim.rowId) await markFailed(ctx, claim.rowId)
+    await markFailed(ctx, claim.rowId)
     // 503 so Boxtal retries (its retry schedule re-delivers).
     return { status: 503, body: "handler failed" }
   }

@@ -18,15 +18,11 @@ import { createHmac } from "node:crypto"
 import { join } from "node:path"
 import { sql } from "~/db/connection"
 import { schemaRef } from "~/db/schema-ref"
+import { CONTRACT_ORG_ID, CONTRACT_USER_ID } from "~/modules/apps/contract/replay-bridge"
 import { createHandlerApprovalRequest } from "~/modules/apps/execute-tool"
 import type { AppBridge } from "~/modules/apps/sandbox/run-app"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
-import {
-  type FakeProviders,
-  graphPage,
-  installFakeProviders,
-  on,
-} from "./fake-providers"
+import { type FakeProviders, graphPage, installFakeProviders, on } from "./fake-providers"
 import {
   installForRecording,
   type RecordingState,
@@ -34,7 +30,6 @@ import {
   runRecordingPlan,
   uninstallAfterRecording,
 } from "./recording-run"
-import { CONTRACT_ORG_ID, CONTRACT_USER_ID } from "~/modules/apps/contract/replay-bridge"
 
 const APP = "social"
 const APP_SECRET = "contract-meta-app-secret-not-real"

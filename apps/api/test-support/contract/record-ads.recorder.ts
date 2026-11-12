@@ -21,9 +21,10 @@ import { sql } from "~/db/connection"
 import { schemaRef } from "~/db/schema-ref"
 import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { env } from "~/lib/env"
+import type { ContractEntry } from "~/modules/apps/contract/entries"
+import { CONTRACT_ORG_ID, CONTRACT_USER_ID } from "~/modules/apps/contract/replay-bridge"
 import type { AppBridge } from "~/modules/apps/sandbox/run-app"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
-import type { ContractEntry } from "~/modules/apps/contract/entries"
 import {
   type FakeProviders,
   type FakeRoute,
@@ -39,7 +40,6 @@ import {
   runRecordingPlan,
   uninstallAfterRecording,
 } from "./recording-run"
-import { CONTRACT_ORG_ID, CONTRACT_USER_ID } from "~/modules/apps/contract/replay-bridge"
 
 const APP = "ads"
 const META_TOKEN = "contract-meta-system-user-token-not-real"

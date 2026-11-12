@@ -18,12 +18,11 @@ import { schemaRef } from "~/db/schema-ref"
 import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { env } from "~/lib/env"
 import { initializedOrgRuntimes, toolRegistry } from "~/modules/apps/app-registries"
-import { ensureAppsForOrg } from "~/modules/apps/init"
-import { registerApps, teardownAppRegistrations } from "~/modules/apps/runtime"
-import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
-import type { AppBridge } from "~/modules/apps/sandbox/run-app"
-import { createWebhookVerifyBridge } from "~/modules/webhooks/verify-bridge"
-import { BUNDLED_APPS_DIR, bridgeSurfaceOf, verifySurface } from "~/modules/apps/contract/apps.test-helpers"
+import {
+  BUNDLED_APPS_DIR,
+  bridgeSurfaceOf,
+  verifySurface,
+} from "~/modules/apps/contract/apps.test-helpers"
 import { type ContractEntry, contractEntries } from "~/modules/apps/contract/entries"
 import { bundledAppScripts, productionLimits } from "~/modules/apps/contract/harness"
 import type { ContractIsolate } from "~/modules/apps/contract/isolate"
@@ -37,6 +36,11 @@ import {
   writeFixture,
 } from "~/modules/apps/contract/recorder"
 import { CONTRACT_ORG_ID, CONTRACT_USER_ID } from "~/modules/apps/contract/replay-bridge"
+import { ensureAppsForOrg } from "~/modules/apps/init"
+import { registerApps, teardownAppRegistrations } from "~/modules/apps/runtime"
+import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import type { AppBridge } from "~/modules/apps/sandbox/run-app"
+import { createWebhookVerifyBridge } from "~/modules/webhooks/verify-bridge"
 
 export interface RecordingState {
   values: Record<string, unknown>

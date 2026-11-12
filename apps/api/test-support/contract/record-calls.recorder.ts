@@ -15,6 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { createHmac } from "node:crypto"
 import { join } from "node:path"
 import { sql } from "~/db/connection"
+import { CONTRACT_ORG_ID } from "~/modules/apps/contract/replay-bridge"
 import { runReindex } from "~/modules/search/reindex"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
@@ -24,7 +25,6 @@ import {
   runRecordingPlan,
   uninstallAfterRecording,
 } from "./recording-run"
-import { CONTRACT_ORG_ID } from "~/modules/apps/contract/replay-bridge"
 
 const APP = "calls"
 const SECRET = "contract-calls-secret-not-real"

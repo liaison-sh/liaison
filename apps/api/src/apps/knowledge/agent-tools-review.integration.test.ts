@@ -24,6 +24,7 @@ import type { KnowledgeFolderItem, KnowledgeSourceAdapter } from "~/apps/knowled
 import { extractRows, type RlsClient } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { type ActorContext, withRlsContext } from "~/db/rls"
+import { knowledgeSourceKindRegistry } from "~/modules/apps/app-registries"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -607,20 +608,44 @@ describe("knowledge add_folder_source — generalized across google-drive / gitl
     expect(r.documentsCreated).toBe(1)
   })
 
-  it("source:'database' with NO ref (optional for database) creates a synced source and harvests", async () => {
-    const r = await callKnowledgeTool<{
-      syncedSourceId?: string
-      source?: string
-      documentsCreated?: number
-    }>(
-      "add_folder_source",
-      { source: "database", oneShot: true },
-      sourcesManageActor,
-      multiSourceRegistry(),
-    )
-    expect(r.syncedSourceId).toBeTruthy()
-    expect(r.source).toBe("database")
-    expect(r.documentsCreated).toBe(1)
+  it("an app that declares a knowledge source kind gets an app source of that kind, no ref, reused on a second call", async () => {
+    knowledgeSourceKindRegistry.set([orgId, "kbapp"], {
+      kinds: { catalog: { title: "KB articles", handler: "syncCatalog" } },
+      dispatch: async () => ({ done: true }),
+    })
+    try {
+      const first = await callKnowledgeTool<{ syncedSourceId?: string; kind?: string }>(
+        "add_folder_source",
+        { source: "kbapp", scope: "organization" },
+        sourcesManageActor,
+        multiSourceRegistry(),
+      )
+      expect(first.syncedSourceId).toBeTruthy()
+      expect(first.kind).toBe("catalog")
+      const [row] = extractRows<{ source_kind: string; folder_ref: string }>(
+        await db.execute(
+          sql`SELECT source_kind, folder_ref FROM ${knowledgeRel("synced_sources")} WHERE id = ${first.syncedSourceId}::uuid`,
+        ),
+      )
+      expect(row).toEqual({ source_kind: "catalog", folder_ref: "app-source:catalog" })
+      const again = await callKnowledgeTool<{ syncedSourceId?: string }>(
+        "add_folder_source",
+        { source: "kbapp", scope: "organization" },
+        sourcesManageActor,
+        multiSourceRegistry(),
+      )
+      expect(again.syncedSourceId).toBe(first.syncedSourceId)
+      await expect(
+        callKnowledgeTool(
+          "add_folder_source",
+          { source: "kbapp", oneShot: true },
+          sourcesManageActor,
+          multiSourceRegistry(),
+        ),
+      ).rejects.toThrow(/oneShot is for folder sources/)
+    } finally {
+      knowledgeSourceKindRegistry.delete([orgId, "kbapp"])
+    }
   })
 
   it("rejects an unconnected/unregistered source with a clear 'connect the app first' error", async () => {
@@ -635,7 +660,7 @@ describe("knowledge add_folder_source — generalized across google-drive / gitl
     ).rejects.toThrow(/connect the confluence app first/i)
   })
 
-  it("gitlab without ref is rejected (ref required unless source is database)", async () => {
+  it("gitlab without ref is rejected (a folder source needs its ref)", async () => {
     await expect(
       callKnowledgeTool(
         "add_folder_source",

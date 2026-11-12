@@ -316,14 +316,6 @@ export const orgKernelSettingsSchema = z
       .passthrough()
       .optional(),
     taintSources: z.record(z.string(), z.unknown()).optional(),
-    // The database connector's per-domain read access (database-domain-access.ts).
-    // Read-tolerant here (a value is validated where it is written, by
-    // PUT /api/database/domain-access and config apply); the bridge parses it
-    // strictly and fails closed on a malformed entry.
-    database: z
-      .object({ domainAccess: z.record(z.string(), z.unknown()).optional() })
-      .passthrough()
-      .optional(),
     // Per-org transactional email identity. Both fields optional; resolvers fall
     // back to `env.EMAIL_FROM` (from) / undefined (replyTo). Declared explicitly
     // (NOT relying on `.passthrough()`) so the fields are typed `string`, not

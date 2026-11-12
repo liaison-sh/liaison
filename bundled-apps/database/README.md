@@ -26,7 +26,7 @@ opts in).
 
 ## Connecting
 
-Read [`docs/connecting-apps.md`](../../../../../docs/connecting-apps.md) first for
+Read [`docs/connecting-apps.md`](../../docs/connecting-apps.md) first for
 the shared connection machinery (credentials type, ownership, the
 `not_connected`-for-others isolation gotcha). This section is the
 database-connector-specific runbook.

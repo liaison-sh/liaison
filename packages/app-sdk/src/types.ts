@@ -328,10 +328,18 @@ export interface SqlReadInfo {
  */
 export interface SqlClient {
   query(connection: string, request: SqlQueryRequest): Promise<SqlRows | SqlError>
-  /** The named reads of the connection's catalog. */
-  reads(
-    connection: string,
-  ): Promise<{ adapter: string; reads: Record<string, SqlReadInfo> } | SqlError>
+  /**
+   * The named reads of the connection's catalog, and the access tier each
+   * domain declares by default (a domain absent from `domains` is internal).
+   */
+  reads(connection: string): Promise<
+    | {
+        adapter: string
+        reads: Record<string, SqlReadInfo>
+        domains: Record<string, { tier: "internal" | "confidential" | "restricted" }>
+      }
+    | SqlError
+  >
   /** Readable tables and their columns (all, or `table`). */
   schema(
     connection: string,

@@ -21,6 +21,8 @@
 //   4. an ungated write to a table every app reader sees is still refused (the property).
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { z } from "zod"
 import { sql } from "~/db/connection"
 import type { UserContext } from "~/db/rls"
@@ -35,6 +37,7 @@ import {
   toolRegistry,
 } from "~/modules/apps/app-registries"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { registerApps } from "~/modules/apps/runtime"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const ORG = "00000000-0000-4000-8000-0000000d7a01"
@@ -186,6 +189,25 @@ describe("scope taint: reads run, gated writes park for a scoped audience", () =
     ]) {
       spyOn("projects", name)
     }
+    // The database app is a catalog app: registered for this org from its package's manifest.
+    const dbManifest = JSON.parse(
+      readFileSync(
+        join(import.meta.dir, "../../../../../bundled-apps/database/app.manifest.json"),
+        "utf8",
+      ),
+    ) as { version: string }
+    await registerApps(
+      [
+        {
+          ...dbManifest,
+          trusted: false,
+          _firstParty: true,
+          _format: "manifest",
+          _bundlePath: join(import.meta.dir, "../../../../../bundled-apps/database/bundle.js"),
+        },
+      ] as never,
+      ORG,
+    )
     for (const name of ["db_list_reads", "db_read", "db_describe"]) spyOn("database", name)
     for (const name of ["kpi_list_hubs", "kpi_run"]) kpiTool(name)
 

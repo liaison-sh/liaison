@@ -105,7 +105,7 @@ import {
   setPeoplePassword,
   writePersonProfile,
 } from "~/seed/factories/people/people"
-import { grantRoleDimension, writeDomainAccess } from "~/seed/factories/people/role-grants"
+import { grantRoleDimension } from "~/seed/factories/people/role-grants"
 import {
   DEMO_DESK_TEAMS,
   DEMO_EMAIL_DOMAIN,
@@ -444,21 +444,21 @@ async function grantDeskTeams(
 }
 
 /**
- * The demo warehouse's confidential domains (revenue, dealers, customers) run
- * for the roles `DEMO_DOMAIN_ACCESS` names, resolved to this org's role ids and
- * written as the org's database domain access. Desired state: rewritten only
- * when it differs, so a re-seed (and the nightly reset) puts back what a
- * visitor changed.
+ * The demo warehouse's confidential domains (revenue, dealers, customers), each
+ * run for the roles `DEMO_DOMAIN_ACCESS` names: the database app's provision
+ * block (roles by name), applied by the warehouse layer once the app is there.
  */
-async function grantDemoDomainAccess(orgId: string, log: (msg: string) => void): Promise<void> {
-  await writeDomainAccess(
-    orgId,
-    Object.entries(DEMO_DOMAIN_ACCESS).map(
-      ([domain, demoRoles]) => [domain, demoRoles.map((role) => ROLE_NAMES[role])] as const,
+export function demoDomainAccessProvision(): {
+  domainAccess: Record<string, { tier: "confidential"; roles: string[] }>
+} {
+  return {
+    domainAccess: Object.fromEntries(
+      Object.entries(DEMO_DOMAIN_ACCESS).map(([domain, demoRoles]) => [
+        domain,
+        { tier: "confidential" as const, roles: demoRoles.map((role) => ROLE_NAMES[role]) },
+      ]),
     ),
-    "seedDemoOrg",
-    log,
-  )
+  }
 }
 
 /**
@@ -962,14 +962,13 @@ async function seedDemoOrgPeople(input: {
   await seedSavedViewDefaults(orgId)
 
   // Only the desk roles this seed made carry its grants; an existing org's own
-  // roles and its database domain access stay as its admins set them.
+  // roles stay as its admins set them.
   await grantDeskTeams(
     orgId,
     admin.userId,
     world.team.filter((p) => !input.existingRoles.has(ROLE_NAMES[p.role])),
     log,
   )
-  if (!input.existingOrg) await grantDemoDomainAccess(orgId, log)
 
   // Agents last: a personal agent's ceiling is a snapshot of its owner's
   // grants, so every role and app scope has to be in place before it is cut.

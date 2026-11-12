@@ -5,9 +5,9 @@
 // the status read never approval-gated.
 import { describe, expect, it } from "bun:test"
 import apiConnector from "~/apps/api-connector/app.manifest.json"
-import database from "~/apps/database/app.manifest.json"
 import gitlab from "~/apps/gitlab/app.manifest.json"
 import googleDrive from "~/apps/google-drive/app.manifest.json"
+import database from "../../../../../bundled-apps/database/app.manifest.json"
 import { validateAppManifest } from "./contract"
 
 interface Manifest {
@@ -43,7 +43,7 @@ const CONNECTORS: Array<{ manifest: Manifest; adminScope?: string; status?: stri
 ]
 
 /** A section that names its own scope: who may open report access is the apps admin. */
-const SECTION_SCOPE: Record<string, string> = { "report-access": "kernel:apps:admin" }
+const SECTION_SCOPE: Record<string, string> = { "report-access": "database:access:admin" }
 
 describe.each(CONNECTORS)("connector $manifest.name", ({ manifest, adminScope, status }) => {
   it("validates as a manifest", () => {

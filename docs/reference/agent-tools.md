@@ -405,6 +405,9 @@ Read-only access to your deployment's own database for troubleshooting and suppo
 | `db_probe` | Run the connect-time safety probe on demand: reports unexpected write grants, dangerous EXECUTE grants, and catalog drift (gate mode). |  | `database:reads:read` |
 | `db_query` | Run a raw, single-statement, SELECT-only SQL query against the connected database. |  | `database:query:read` |
 | `db_read` | Run a named, parameterized curated read from the catalog (see db_list_reads). |  | `database:reads:read` |
+| `report_access_find_people` | Find people of the organization by email, for naming them in a Report access rule. |  | `database:access:admin` |
+| `report_access_get` | The Report access settings: each domain of the connected catalog with its reads, the catalog default, the organization rule, and the roles and people a rule can name. |  | `database:access:admin` |
+| `report_access_set` | Replace the organization's Report access rules (one map of domain to tier, roles and people). |  | `database:access:admin` |
 
 ## gitlab
 

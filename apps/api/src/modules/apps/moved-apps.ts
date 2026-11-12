@@ -67,7 +67,24 @@ export interface MovedApp {
 }
 
 /** Every app that moved from the source tree to the catalog, oldest first. */
-export const MOVED_APPS: readonly MovedApp[] = []
+export const MOVED_APPS: readonly MovedApp[] = [
+  {
+    // Report access moved from the org's settings to the app's store
+    // (bundled-apps/database/src/access.ts), and the database knowledge source
+    // from a kernel adapter to the app's `catalog` source kind.
+    name: "database",
+    steps: [
+      {
+        id: "domain-access-to-store",
+        kind: "org-setting-to-store",
+        settingPath: ["database", "domainAccess"],
+        collection: "settings",
+        docId: "domain_access",
+      },
+      { id: "knowledge-sources-to-catalog", kind: "synced-sources-to-kind", sourceKind: "catalog" },
+    ],
+  },
+]
 
 let movedAppsOverride: readonly MovedApp[] | null = null
 

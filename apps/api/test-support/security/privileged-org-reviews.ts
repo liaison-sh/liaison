@@ -639,8 +639,6 @@ export const REVIEWED_ORIGINS: Record<string, string> = {
     "the user the single-use challenge token names (verified first), in that user's org",
   "apps/api/src/modules/mailbox-crypto/backfill-job.ts#runMailboxBackfillSweep":
     "backfill sweep: users needing a backfill, each in its own row's org",
-  "apps/api/src/apps/database/bridge.ts#createDatabaseBridgeExtension.resolveCredentials":
-    "sandbox bridge extension: the run's bridge context org (rpc-bridge.ts)",
   "apps/api/src/apps/tickets/jobs.ts#runSlaCheck":
     "tickets cron sweep: the orgId of the run's bridge context (sandbox/bridge/tickets.ts tickets_runJob), one org per fan-out run",
   "apps/api/src/modules/api-connector/routes.ts#<module>":

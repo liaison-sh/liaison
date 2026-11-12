@@ -923,7 +923,9 @@ it as a page, with the routes it calls:
   (a tool), `ctx.pages.link("picker", params)` answers a handle (`lpg_...`), not a
   URL: return it to the person, and their signed-in app turns it into a link with
   `POST /api/apps/<app>/pages/open` `{ "handle": "lpg_..." }`. Your app's code never
-  holds a link it could open as the person. From your panel, the person's browser can
+  holds a link it could open as the person. A tool that answers a handle shows an Open button under its call
+  in a conversation; your own screen opens one with `POST /api/apps/<app>/pages/open`
+  through `@liaison/host` `fetch`, then opens the returned URL in a new window. From your panel, the person's browser can
   also ask `POST /api/apps/<app>/pages/<page>/link` (no `params`: it refuses them).
   A handle and a link each work once, for 5 minutes; a person gets at most 20 per app
   every 10 minutes.

@@ -164,7 +164,6 @@ export function startFrameRuntime(win: Window & typeof globalThis = window): voi
     openApprovals: () => {
       void call("openApprovals", []).catch(() => {})
     },
-    openPage: (_app: string, handle: string) => call("openPage", [handle]),
     onEntityChange: (
       _app: string,
       keys: string | string[],

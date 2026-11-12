@@ -364,7 +364,6 @@ A framed screen reaches only its own `/api/apps/<app>/...` routes through `fetch
 | `app.listMyApprovals()` | Pending approvals of the app's own tools that the person may decide. |
 | `app.decideApproval(id, decision, payloadHash)` | The host shows its own confirmation dialog, checks the approval belongs to one of the app's tools, and keeps the payload fingerprint the app showed. The app's button only asks. |
 | `app.openExternal(url)` | Opens an `https` page in a new tab, with no opener and no referrer, only on a host the manifest declares (fetch domains, connection domains, `network.imageHosts`, `network.linkHosts`) and never the Liaison page's own origin. |
-| `app.openPage(handle)` | Opens one of the app's own pages from the handle a tool of the app answered (`ctx.pages.link`): a window on the web, the system browser in a desktop or phone shell. Call it in a click. Answers `opened`, `blocked` (a pop-up blocker) or `failed` (an expired or used handle). A tool that answers a handle also shows an Open button under its call in a conversation. Host API 1.4. |
 | `app.openRecord(app, entity, id)`, `app.openApprovals()` | Opens another app's record in its own tab (what it shows is up to the person's access), or the approvals queue. |
 
 In the page (a first-party app that is not framed) the same calls work; file opening, approval decisions and outside links then keep their direct path (`packages/host-sdk/src/index.ts`, `apps/web/src/framework/host-app-calls.ts`).

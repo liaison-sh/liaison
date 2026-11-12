@@ -41,8 +41,6 @@ export const FRAME_METHODS = [
   "openExternal",
   "openRecord",
   "openApprovals",
-  // Host API 1.4: an app page from a handle its own code minted (ctx.pages.link).
-  "openPage",
 ] as const
 export type FrameMethod = (typeof FRAME_METHODS)[number]
 

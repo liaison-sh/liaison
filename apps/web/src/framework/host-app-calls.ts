@@ -23,9 +23,7 @@
 // - `openExternal(url)`: https only, a host the app's manifest declares, never
 //   this page's origin; opened with noopener and noreferrer;
 // - `openRecord(app, entity, id)`: another app's record in its own tab (the
-//   person's session decides whether it shows); `openApprovals()`: the queue;
-// - `openPage(handle)`: one of the app's own pages, from a handle its code minted
-//   (`ctx.pages.link`); the server opens a handle only for its app and person.
+//   person's session decides whether it shows); `openApprovals()`: the queue.
 //
 // In-page (first-party) apps get the same calls with the app bound by the SDK;
 // the frame adds its own checks on top.
@@ -37,7 +35,6 @@ import type {
   HostPrintResult,
 } from "@liaison/host"
 import { getTabType, urlToTabInfo } from "~/framework/app-registry"
-import { type OpenPageOutcome, openAppPage } from "~/modules/app-pages/open-page"
 import { userFromToken } from "~/modules/auth/auth-store"
 import { canOpenDownloadedFile, openDownloadedFile } from "~/modules/desktop/desktop-store"
 import { currentLocale } from "~/modules/i18n/i18n-context"
@@ -318,21 +315,5 @@ export function buildAppHostCalls(deps: AppHostCallDeps) {
     },
 
     openApprovals: (): void => deps.navigate("/approvals"),
-
-    /** One of the calling app's own pages, from a handle its code minted (ctx.pages.link). */
-    openPage: async (app: string, handle: string): Promise<OpenPageOutcome> => {
-      if (!APP_NAME.test(app)) throw new Error("openPage: an app is required")
-      return openAppPage(
-        {
-          post: <T>(path: string, body: unknown) =>
-            deps.fetch<T>(`/api${path}`, {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify(body),
-            }),
-        },
-        { handle, app, page: "page" },
-      )
-    },
   }
 }

@@ -40,56 +40,6 @@
     "reason": "no-fixture"
   },
   {
-<<<<<<< HEAD
-    "app": "calls",
-    "entry": "tool:calls_list",
-    "reason": "no-fixture"
-  },
-  {
-    "app": "calls",
-    "entry": "tool:calls_segments_since",
-    "reason": "no-fixture"
-  },
-  {
-    "app": "calls",
-    "entry": "tool:calls_set_links",
-    "reason": "no-fixture"
-  },
-  {
-    "app": "calls",
-    "entry": "tool:webhook_info",
-    "reason": "no-fixture"
-  },
-  {
-    "app": "calls",
-    "entry": "webhook-verify:segment",
-=======
-    "app": "database",
-    "entry": "tool:db_describe",
-    "reason": "no-fixture"
-  },
-  {
-    "app": "database",
-    "entry": "tool:db_list_reads",
-    "reason": "no-fixture"
-  },
-  {
-    "app": "database",
-    "entry": "tool:db_probe",
-    "reason": "no-fixture"
-  },
-  {
-    "app": "database",
-    "entry": "tool:db_query",
-    "reason": "no-fixture"
-  },
-  {
-    "app": "database",
-    "entry": "tool:db_read",
->>>>>>> origin/main
-    "reason": "no-fixture"
-  },
-  {
     "app": "gitlab",
     "entry": "tool:gitlab_get_commit",
     "reason": "no-fixture"

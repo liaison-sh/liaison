@@ -21,33 +21,38 @@
 // A row with no anchor document is NOT silently dropped: it surfaces with the
 // reason it cannot ship yet (`noAnchorReason`), because a real order nobody has
 // invoiced is exactly the work the queue exists to make visible.
+
+import { type AttentionMark, evaluateAttention, mergeTemplateNeed } from "./attention"
+import { loadAttentionRules } from "./attention-store"
 import type { BoxtalToolCtx } from "./ctx"
+import { ORDER_RECORD_TYPE, type OrderDocument, orderDocumentsByRef } from "./customs-documents"
 import { documentNumbersById } from "./document-numbers"
 import {
   coverageMovedSince,
+  type DraftCacheRow,
   isDraftCacheStale,
   loadDraftCache,
-  resolveDrafts,
   RESOLVE_CONCURRENCY,
-  type DraftCacheRow,
+  resolveDrafts,
 } from "./draft-cache"
+import {
+  isLiveShipment,
+  isOperatorVisibleRef,
+  isStaleReservation,
+  UNFINISHED_LINK_STATES,
+} from "./link-store"
+import { loadTemplateNeeds } from "./needed-documents"
 import {
   excludedOrderKeys,
   loadOrderStates,
   orderKeyForShopifyOrder,
-  parseOrderKey,
   type PrepStatus,
+  parseOrderKey,
 } from "./order-state"
-import { readQueueFacts, type QueueFacts } from "./queue-facts"
-import { evaluateAttention, mergeTemplateNeed, type AttentionMark } from "./attention"
-import { loadTemplateNeeds } from "./needed-documents"
-import { ORDER_RECORD_TYPE, orderDocumentsByRef, type OrderDocument } from "./customs-documents"
+import { type OpenOrdersScan, type OrderCandidate, openOrdersScan } from "./orders"
 import { carrierFamilyOf } from "./print-record"
-import { loadAttentionRules } from "./attention-store"
+import { type QueueFacts, readQueueFacts } from "./queue-facts"
 import { loadProductCodeConfig } from "./settings"
-import { isLiveShipment, isOperatorVisibleRef, isStaleReservation, UNFINISHED_LINK_STATES } from "./link-store"
-import { openOrdersScan, type OpenOrdersScan, type OrderCandidate } from "./orders"
-
 
 // ── Row shapes (mirror the UI's expected props) ──────────────────────────────
 //
@@ -339,23 +344,29 @@ export function shipmentHasLabel(row: { documents?: Array<{ type?: string }> | n
 }
 
 /** The live outbound shipment covering each anchor document, for the prep grid's shipment cell. */
-export async function liveShipmentsByAnchor(
-  ctx: BoxtalToolCtx,
-): Promise<Map<string, {
-  id: string
-  has_label: boolean
-  tracking_number: string | null
-  order_status: string | null
-  created_at: string | null
-}>> {
+export async function liveShipmentsByAnchor(ctx: BoxtalToolCtx): Promise<
+  Map<
+    string,
+    {
+      id: string
+      has_label: boolean
+      tracking_number: string | null
+      order_status: string | null
+      created_at: string | null
+    }
+  >
+> {
   const rows = await findAllShipments(ctx, {})
-  const out = new Map<string, {
-    id: string
-    has_label: boolean
-    tracking_number: string | null
-    order_status: string | null
-    created_at: string | null
-  }>()
+  const out = new Map<
+    string,
+    {
+      id: string
+      has_label: boolean
+      tracking_number: string | null
+      order_status: string | null
+      created_at: string | null
+    }
+  >()
   for (const r of rows) {
     if (r.kind === "return") continue
     if (!isLiveShipment(r)) continue
@@ -397,7 +408,10 @@ export async function readyList(ctx: BoxtalToolCtx): Promise<{ rows: ReadyRow[] 
     // before the column carried an enum.
     findShipmentsInAny(ctx, [
       { order_status: { in: [...LIVE_ORDER_STATES] }, tracking_status: null },
-      { order_status: { in: [...LIVE_ORDER_STATES] }, tracking_status: { in: [...IN_WAREHOUSE_TRACKING, ""] } },
+      {
+        order_status: { in: [...LIVE_ORDER_STATES] },
+        tracking_status: { in: [...IN_WAREHOUSE_TRACKING, ""] },
+      },
     ]),
     loadAttentionRules(ctx),
     loadProductCodeConfig(ctx),
@@ -455,57 +469,60 @@ export async function readyList(ctx: BoxtalToolCtx): Promise<{ rows: ReadyRow[] 
             }
           : undefined
       return {
-      // The buy-time snapshot first, so a row's own fields still win where the names meet.
-      ...facts,
-      id: String(r.id),
-      recipient: r.recipient_summary ?? "-",
-      carrier: r.offer_code ?? null,
-      tracking_number: r.tracking_number ?? null,
-      // The CARRIER label cost (what shipping the parcel costs us), not the
-      // customs declared value — showing declared_total here misled operators
-      // (a 899 EUR "cost" for a 9 EUR label). Null for rows bought before the
-      // field existed.
-      cost: asNumber(r.label_cost_ttc),
-      order_status: r.order_status ?? null,
-      has_label: shipmentHasLabel(r),
-      invoice_ref: r.document_ref ?? null,
-      order_created_at: (r.document_ref ? orderFacts.get(r.document_ref)?.order_created_at : null) ?? null,
-      // The operator's own status on this order, so the WHOLE ROW can carry it here exactly as it
-      // does on the prep grid: a parcel put on hold must not look ordinary in the print queue.
-      status: (r.document_ref ? orderFacts.get(r.document_ref)?.status : null) ?? null,
-      requested_at: r.created_at ?? null,
-      // Only a reference an operator can actually look up in Boxtal. 0.13.16 briefly stored their
-      // internal numeric id, and rendering that beside a tracking number invites reading it AS one.
-      shipment_ref: isOperatorVisibleRef(r.boxtal_shipment_ref) ? (r.boxtal_shipment_ref as string) : null,
-      tracking_to_confirm: !r.tracking_number && r.tracking_to_confirm === true,
-      // The bench mark. A timestamp on the row, so "packed" is simply "stamped" and the moment it
-      // happened survives; the queue's ORDER is untouched by it (a packed row keeps its place).
-      packed: r.packed_at != null,
-      packed_at: r.packed_at ?? null,
-      // Rows fulfilled before the state column existed carry only the old flag.
-      fulfillment_state: r.fulfillment_state ?? (r.fulfillment_synced ? "fulfilled" : null),
-      fulfillment_error: r.fulfillment_error ?? null,
-      // Paperwork this destination/product combination needs that nothing else on the row would
-      // reveal (attention.ts). Evaluated from the row's OWN facts, so it costs no extra read.
-      // The kernel document rules' templates fold into the SAME mark (one marker per row).
-      attention: mergeTemplateNeed(
-        evaluateAttention(
-          {
-            destination: facts.destination,
-            carrier: r.offer_code ?? null,
-            category: facts.category,
-            products: facts.products,
-            weight: facts.weight,
-            declared_value: asNumber(r.declared_total),
-            items: facts.items,
-          },
-          attentionRules,
+        // The buy-time snapshot first, so a row's own fields still win where the names meet.
+        ...facts,
+        id: String(r.id),
+        recipient: r.recipient_summary ?? "-",
+        carrier: r.offer_code ?? null,
+        tracking_number: r.tracking_number ?? null,
+        // The CARRIER label cost (what shipping the parcel costs us), not the
+        // customs declared value — showing declared_total here misled operators
+        // (a 899 EUR "cost" for a 9 EUR label). Null for rows bought before the
+        // field existed.
+        cost: asNumber(r.label_cost_ttc),
+        order_status: r.order_status ?? null,
+        has_label: shipmentHasLabel(r),
+        invoice_ref: r.document_ref ?? null,
+        order_created_at:
+          (r.document_ref ? orderFacts.get(r.document_ref)?.order_created_at : null) ?? null,
+        // The operator's own status on this order, so the WHOLE ROW can carry it here exactly as it
+        // does on the prep grid: a parcel put on hold must not look ordinary in the print queue.
+        status: (r.document_ref ? orderFacts.get(r.document_ref)?.status : null) ?? null,
+        requested_at: r.created_at ?? null,
+        // Only a reference an operator can actually look up in Boxtal. 0.13.16 briefly stored their
+        // internal numeric id, and rendering that beside a tracking number invites reading it AS one.
+        shipment_ref: isOperatorVisibleRef(r.boxtal_shipment_ref)
+          ? (r.boxtal_shipment_ref as string)
+          : null,
+        tracking_to_confirm: !r.tracking_number && r.tracking_to_confirm === true,
+        // The bench mark. A timestamp on the row, so "packed" is simply "stamped" and the moment it
+        // happened survives; the queue's ORDER is untouched by it (a packed row keeps its place).
+        packed: r.packed_at != null,
+        packed_at: r.packed_at ?? null,
+        // Rows fulfilled before the state column existed carry only the old flag.
+        fulfillment_state: r.fulfillment_state ?? (r.fulfillment_synced ? "fulfilled" : null),
+        fulfillment_error: r.fulfillment_error ?? null,
+        // Paperwork this destination/product combination needs that nothing else on the row would
+        // reveal (attention.ts). Evaluated from the row's OWN facts, so it costs no extra read.
+        // The kernel document rules' templates fold into the SAME mark (one marker per row).
+        attention: mergeTemplateNeed(
+          evaluateAttention(
+            {
+              destination: facts.destination,
+              carrier: r.offer_code ?? null,
+              category: facts.category,
+              products: facts.products,
+              weight: facts.weight,
+              declared_value: asNumber(r.declared_total),
+              items: facts.items,
+            },
+            attentionRules,
+          ),
+          need,
         ),
-        need,
-      ),
-      // The templates to pre-tick and badge in the row's Print documents control.
-      needed_template_ids: shipmentNeed?.templates.map((t) => t.id) ?? [],
-      documents: (r.document_ref ? orderDocs.get(r.document_ref) : undefined) ?? [],
+        // The templates to pre-tick and badge in the row's Print documents control.
+        needed_template_ids: shipmentNeed?.templates.map((t) => t.id) ?? [],
+        documents: (r.document_ref ? orderDocs.get(r.document_ref) : undefined) ?? [],
       }
     })
     // Oldest REQUEST first: the print station works the queue top-down, and this is the column
@@ -530,7 +547,11 @@ async function orderFactsByDocumentRef(
   documentRefs: string[],
 ): Promise<Map<string, { order_created_at: string | null; status: PrepStatus | null }>> {
   const refs = [...new Set(documentRefs)]
-  const metas: Array<{ document_ref?: string | null; order_created_at?: string | null; shopify_order_id?: string | null }> = []
+  const metas: Array<{
+    document_ref?: string | null
+    order_created_at?: string | null
+    shopify_order_id?: string | null
+  }> = []
   // The bridge caps an IN list at 1000 values.
   for (let i = 0; i < refs.length; i += 1000) {
     metas.push(
@@ -563,9 +584,12 @@ export async function returnsList(ctx: BoxtalToolCtx): Promise<{ rows: ReturnRow
     loadProductCodeConfig(ctx),
   ])
   const rows = all.reverse().filter((r) => isLiveShipment(r))
-  const numbers = await documentNumbersById(ctx, rows.map((r) => r.document_ref ?? null))
-  const out = rows
-    .map((r): ReturnRow => ({
+  const numbers = await documentNumbersById(
+    ctx,
+    rows.map((r) => r.document_ref ?? null),
+  )
+  const out = rows.map(
+    (r): ReturnRow => ({
       ...readQueueFacts(r.queue_facts, productCodes),
       id: String(r.id),
       requested_at: r.created_at ?? null,
@@ -579,7 +603,8 @@ export async function returnsList(ctx: BoxtalToolCtx): Promise<{ rows: ReturnRow
       // lifecycle, not evidence that a label PDF exists.
       label_ready: shipmentHasLabel(r),
       created_by: r.created_by === "agent" ? "agent" : "user",
-    }))
+    }),
+  )
   return { rows: out }
 }
 
@@ -658,9 +683,15 @@ export async function worklistCandidates(
      *  sets this and a failed write never fails the read. */
     bestEffortWrites?: boolean
   } = {},
-): Promise<{ candidates: OrderCandidate[]; scan: OpenOrdersScan; coverage: Map<string, ShipmentCoverage> }> {
+): Promise<{
+  candidates: OrderCandidate[]
+  scan: OpenOrdersScan
+  coverage: Map<string, ShipmentCoverage>
+}> {
   const [scan, coverage, excluded, legacyExcludedDocs] = await Promise.all([
-    opts.scan ? Promise.resolve(opts.scan) : openOrdersScan(ctx, { source: opts.source, bestEffortWrites: opts.bestEffortWrites }),
+    opts.scan
+      ? Promise.resolve(opts.scan)
+      : openOrdersScan(ctx, { source: opts.source, bestEffortWrites: opts.bestEffortWrites }),
     liveShipmentCoverage(ctx),
     opts.includeExcluded ? Promise.resolve(new Set<string>()) : excludedOrderKeys(ctx),
     opts.includeExcluded ? Promise.resolve(new Set<string>()) : legacyExcludedDocumentRefs(ctx),
@@ -728,7 +759,8 @@ export async function toPrepareList(
       .filter(
         (ref): ref is string =>
           ref != null &&
-          (isDraftCacheStale(cache.get(ref)) || coverageMovedSince(cache.get(ref), coverage.get(ref))),
+          (isDraftCacheStale(cache.get(ref)) ||
+            coverageMovedSince(cache.get(ref), coverage.get(ref))),
       )
     if (missing.length > 0) {
       const fresh = await resolveDrafts(ctx, missing, {
@@ -740,7 +772,9 @@ export async function toPrepareList(
     }
   }
 
-  const rows: ToPrepareRow[] = candidates.map((c) => toPrepareRow(c, cache.get(c.anchor_ref ?? ""), coverage))
+  const rows: ToPrepareRow[] = candidates.map((c) =>
+    toPrepareRow(c, cache.get(c.anchor_ref ?? ""), coverage),
+  )
   const ready_to_prepare = rows.filter((r) => r.prep_status === "ready_to_prepare")
   const needs_fix = rows.filter((r) => r.prep_status === "needs_fix")
   return {
@@ -899,7 +933,12 @@ export async function exceptionsList(ctx: BoxtalToolCtx): Promise<{ rows: Except
 // no live track read.
 
 /** The stuck-family classification of a needs-attention row. */
-export type StuckFamily = "exception" | "failed_delivery" | "pickup_expiring" | "create_orphan" | "fulfillment_failed"
+export type StuckFamily =
+  | "exception"
+  | "failed_delivery"
+  | "pickup_expiring"
+  | "create_orphan"
+  | "fulfillment_failed"
 
 // The tracking_status values that belong to each stuck family. EXCEPTION-class
 // reuses EXCEPTION_STATES (the same authoritative set exceptions_list uses) so
@@ -999,7 +1038,8 @@ export async function stuckList(ctx: BoxtalToolCtx): Promise<{ rows: StuckRow[] 
     // never appears here.
     const family: StuckFamily | null = isStaleReservation(r, nowMs)
       ? "create_orphan"
-      : (classifyStuck(r.tracking_status ?? null) ?? (r.fulfillment_state === "failed" ? "fulfillment_failed" : null))
+      : (classifyStuck(r.tracking_status ?? null) ??
+        (r.fulfillment_state === "failed" ? "fulfillment_failed" : null))
     if (family == null) continue
     const externalId = r.external_id ?? null
     const boxtalOrderId = r.boxtal_order_id ?? null

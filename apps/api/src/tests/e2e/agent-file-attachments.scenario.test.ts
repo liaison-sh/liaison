@@ -23,7 +23,6 @@ import { decide } from "./helpers/approvals"
 import { parseMimeAttachments, seedDriveConnection, seedFileOnEntity } from "./helpers/attachments"
 import { LIVE_LLM } from "./helpers/live-llm"
 import { seedConversation } from "./helpers/mail-seed"
-import { type MockDriveHandle, startMockDrive } from "./helpers/mock-drive"
 import { ks, seedInbox, seedSmtpConnectedAccount, seedTicket, ts } from "./helpers/tickets-seed"
 import { setupScenario, teardownScenario } from "./setup"
 
@@ -96,7 +95,6 @@ describe("Generic Agent File Attachment System — E2E", () => {
   let world: TestWorld
   let url: string
   let smtp: SmtpFixture
-  let mockDrive: MockDriveHandle
   let agent: { id: string; email: string; token: string; name: string }
   let approver: { id: string; email: string; token: string; name: string }
   let threadId: string
@@ -288,7 +286,6 @@ describe("Generic Agent File Attachment System — E2E", () => {
 
   beforeAll(async () => {
     smtp = await startSmtpFixture()
-    mockDrive = await startMockDrive()
     const result = await setupScenario({
       seed: 7651,
       org: { name: "Agent File Attachments E2E Org" },
@@ -297,7 +294,6 @@ describe("Generic Agent File Attachment System — E2E", () => {
         threads: { count: 20, participants: "random(2-3)", messages: "random(1-2)" },
       },
       serverEnv: {
-        DRIVE_API_BASE_URL: `${mockDrive.url}/drive/v3`,
         ALLOW_PRIVATE_MAIL_HOSTS: "true",
       },
     })
@@ -348,7 +344,6 @@ describe("Generic Agent File Attachment System — E2E", () => {
         "kernel:threads:write",
         "kernel:files:read",
         "kernel:contacts:read",
-        "google-drive:accounts:read",
       ],
       dimensions: { "*": ["*"] },
       schemaPrefix: env.schemaPrefix,
@@ -391,7 +386,6 @@ describe("Generic Agent File Attachment System — E2E", () => {
 
   afterAll(async () => {
     await smtp?.close()
-    await mockDrive?.kill()
     await teardownScenario(env, world)
   }, 30_000)
 
@@ -732,71 +726,6 @@ describe("Generic Agent File Attachment System — E2E", () => {
     expect(stringifiedCopies[0]!.copied_from_id).toBe(src.fileId)
   }, 60_000)
 
-  // --- A4 — Pull a file from Google Drive and send it to a customer -------
-  it("A4: pull a file from Google Drive and send it to a customer", async () => {
-    const pdfBytes = makeBytes("A4-Q3-report", 5120)
-    mockDrive.addFixture({
-      id: "a4-d1",
-      name: "Q3 Report.pdf",
-      mimeType: "application/pdf",
-      downloadBody: pdfBytes.toString("base64"),
-    })
-    // C4 sub-case: a native Google Doc has no binary form.
-    mockDrive.addFixture({
-      id: "a4-gdoc",
-      name: "Strategy Memo",
-      mimeType: "application/vnd.google-apps.document",
-      exportBody: "exported text",
-    })
-    mockDrive.resetRequestLog()
-
-    // Import the PDF → an ordinary kernel.files id.
-    const imported = await runTool("google-drive:import", { driveFileId: "a4-d1" })
-    expect(imported.status).toBe(200)
-    const fileId = imported.data?.fileId as string
-    expect(fileId).toBeTruthy()
-    // Regression (compose-dealer-email-with-drive-spec-attachment): import is NOT the deliverable — its
-    // output must instruct the weak agent to pass the returned fileId into the send tool's attachments
-    // array, or the model imports the file, gets the id, then sends with NO attachments and fabricates
-    // "attached" (the gated approval card then shows nothing attached → the rubric's attachment clause fails).
-    const nextStep = imported.data?.nextStep as string
-    expect(nextStep).toBeTruthy()
-    expect(nextStep).toContain("attachments")
-    expect(nextStep).toContain(fileId)
-
-    // The mock saw a metadata fetch and an alt=media byte download.
-    const paths = mockDrive.requestLog.map((r) => `${r.path}?${JSON.stringify(r.query)}`)
-    expect(paths.some((p) => p.includes("/files/a4-d1") && p.includes("media"))).toBe(true)
-
-    // A native Google Doc cannot be imported as a binary file.
-    const gdoc = await runTool("google-drive:import", { driveFileId: "a4-gdoc" })
-    expect(gdoc.status).not.toBe(200)
-    expect(JSON.stringify(gdoc)).toContain("not_downloadable")
-
-    // Send the imported file to a customer on a ticket.
-    const ticket = await seedSmtpTicket("A4")
-    const capturedBefore = smtp.captured.length
-    const { decideStatus } = await runGated("tickets:reply", {
-      ticketId: ticket.id,
-      textBody: "The Q3 report is attached.",
-      attachments: [fileId],
-    })
-    expect(decideStatus).toBe(200)
-
-    expect(smtp.captured.length).toBe(capturedBefore + 1)
-    const captured = smtp.captured[smtp.captured.length - 1]!
-    const attachments = await parseMimeAttachments(captured.raw)
-    expect(attachments).toHaveLength(1)
-    expect(attachments[0]!.filename).toBe("Q3 Report.pdf")
-    // Byte-for-byte: the customer receives the exact Drive bytes.
-    expect(attachments[0]!.bytes.equals(pdfBytes)).toBe(true)
-
-    // Re-importing materialises a fresh row (not deduped).
-    const imported2 = await runTool("google-drive:import", { driveFileId: "a4-d1" })
-    expect(imported2.status).toBe(200)
-    expect(imported2.data?.fileId).not.toBe(fileId)
-  }, 90_000)
-
   // --- A5 — Provenance at the gate: cross-entity flagged, same-entity not --
   it("A5: cross-entity attachment is flagged with ⚠, same-entity is not", async () => {
     const ticketA = await seedSmtpTicket("A5a")
@@ -818,22 +747,11 @@ describe("Generic Agent File Attachment System — E2E", () => {
       mimeType: "application/pdf",
       bytes: makeBytes("A5-A", 512),
     })
-    // A Drive-imported file — a deliberately fetched source, never a leak.
-    mockDrive.addFixture({
-      id: "a5-d1",
-      name: "Q3 Report.pdf",
-      mimeType: "application/pdf",
-      downloadBody: makeBytes("A5-drive", 512).toString("base64"),
-    })
-    const driveImport = await runTool("google-drive:import", { driveFileId: "a5-d1" })
-    expect(driveImport.status).toBe(200)
-    const driveFileId = driveImport.data?.fileId as string
-
     // Gate a reply on ticket A carrying all three attachments.
     const triggered = await runTool("tickets:reply", {
       ticketId: ticketA.id,
       textBody: "See attached.",
-      attachments: [fileFromB.fileId, fileFromA.fileId, driveFileId],
+      attachments: [fileFromB.fileId, fileFromA.fileId],
     })
     expect(triggered.blocked?.approvalRequestId).toBeTruthy()
 
@@ -850,9 +768,6 @@ describe("Generic Agent File Attachment System — E2E", () => {
     // Same-ticket file → 📎, NO ⚠.
     expect(lineFor("ticketA-own.pdf")).toContain("📎")
     expect(lineFor("ticketA-own.pdf")).not.toContain("⚠")
-    // Drive-imported file → labelled "Google Drive", NO ⚠ (fix C2).
-    expect(lineFor("Q3 Report.pdf")).toContain("Google Drive")
-    expect(lineFor("Q3 Report.pdf")).not.toContain("⚠")
   }, 90_000)
 
   // --- A6 — The denylist blocks executable / double-extension attachments --
@@ -1025,60 +940,5 @@ describe("Generic Agent File Attachment System — E2E", () => {
       expect(referencesFile).toBe(true)
     },
     240_000,
-  )
-
-  // --- B2 — Agent (LLM) pulls a file from Google Drive and emails it ------
-  // Drives a real model provider: live only (LIAISON_E2E_LIVE_LLM=1, helpers/live-llm.ts).
-  it.if(LIVE_LLM)(
-    "B2: agent pulls a file from Google Drive and emails it via a gated send",
-    async () => {
-      mockDrive.addFixture({
-        id: "b2-q3",
-        name: "Q3 Report.pdf",
-        mimeType: "application/pdf",
-        downloadBody: makeBytes("B2-q3", 2048).toString("base64"),
-      })
-      mockDrive.resetRequestLog()
-
-      const account = await seedMailAccount("B2")
-      const { id: conversationId } = await seedConversation(env, {
-        accountId: account.accountId,
-        orgId: world.org.id,
-        ownerType: "org",
-        ownerId: null,
-        subject: "Quarterly numbers",
-        messageCount: 1,
-      })
-      await seedMailInbound(account.accountId, conversationId, "customer-b2@cust.test")
-
-      const prompt =
-        `Use the Google Drive search tool to find the file named "Q3 Report", then ` +
-        `use the Google Drive import tool to pull it into Liaison. Then call the mail ` +
-        `reply tool for conversation ${conversationId}, putting the imported file's id ` +
-        `in the attachments array, so the customer receives that file.`
-      // A real LLM is non-deterministic — give it a bounded number of attempts.
-      let mailApproval = false
-      for (let attempt = 0; attempt < 3 && !mailApproval; attempt++) {
-        const chatThread = await createAgentDmThread()
-        const { events } = await consumeSse(url, "/api/agent/chat", agent.token, {
-          threadId: chatThread,
-          content: prompt,
-          modelId: TOOL_MODEL,
-        })
-        if (isProviderUnavailable(events)) return // LLM provider down — skip, stay green.
-        const approvals = await env.db.sql.unsafe(
-          `SELECT id FROM ${ks(env)}.approval_requests
-          WHERE tool_name = 'mail:reply' AND originating_thread_id = $1`,
-          [chatThread],
-        )
-        mailApproval = approvals.length > 0
-      }
-
-      // The agent reached Drive — a search and/or a download happened.
-      expect(mockDrive.requestLog.length).toBeGreaterThan(0)
-      // Side-effect assertion: a gated mail:reply approval was created.
-      expect(mailApproval).toBe(true)
-    },
-    300_000,
   )
 })

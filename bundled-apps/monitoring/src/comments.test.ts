@@ -28,7 +28,10 @@ describe("incidentsCommentHandler", () => {
     const { ctx, spy, row } = await seeded()
     for (const input of [String(row.id), " inc-1 "]) {
       const before = comments(spy).length
-      const res = await incidentsCommentHandler({ incidentId: input, body: "  vendor ticket 4821  " }, ctx)
+      const res = await incidentsCommentHandler(
+        { incidentId: input, body: "  vendor ticket 4821  " },
+        ctx,
+      )
       expect(comments(spy).length).toBe(before + 1)
       const stored = comments(spy).at(-1)!
       expect(stored.incident_id).toBe(row.id)
@@ -71,9 +74,9 @@ describe("incidentsCommentHandler", () => {
     for (const body of ["", "   ", undefined, 42]) {
       const { ctx, spy } = await seeded()
       const emits = spy.emits.length
-      await expect(incidentsCommentHandler({ incidentId: "INC-1", body: body as never }, ctx)).rejects.toThrow(
-        /empty_comment/,
-      )
+      await expect(
+        incidentsCommentHandler({ incidentId: "INC-1", body: body as never }, ctx),
+      ).rejects.toThrow(/empty_comment/)
       expect(comments(spy).length).toBe(0)
       expect(spy.emits.length).toBe(emits)
     }
@@ -82,9 +85,9 @@ describe("incidentsCommentHandler", () => {
   it("rejects a body over 4000 characters, measured after trimming", async () => {
     const { ctx, spy } = await seeded()
     const emits = spy.emits.length
-    await expect(incidentsCommentHandler({ incidentId: "INC-1", body: "a".repeat(4001) }, ctx)).rejects.toThrow(
-      /comment_too_long/,
-    )
+    await expect(
+      incidentsCommentHandler({ incidentId: "INC-1", body: "a".repeat(4001) }, ctx),
+    ).rejects.toThrow(/comment_too_long/)
     expect(comments(spy).length).toBe(0)
     expect(spy.emits.length).toBe(emits)
 
@@ -96,12 +99,12 @@ describe("incidentsCommentHandler", () => {
 
   it("rejects an unknown incident and inserts nothing", async () => {
     const { ctx, spy } = await seeded()
-    await expect(incidentsCommentHandler({ incidentId: "INC-99", body: "hello" }, ctx)).rejects.toThrow(
-      /incident_not_found/,
-    )
-    await expect(incidentsCommentHandler({ incidentId: "nope", body: "hello" }, ctx)).rejects.toThrow(
-      /incident_not_found/,
-    )
+    await expect(
+      incidentsCommentHandler({ incidentId: "INC-99", body: "hello" }, ctx),
+    ).rejects.toThrow(/incident_not_found/)
+    await expect(
+      incidentsCommentHandler({ incidentId: "nope", body: "hello" }, ctx),
+    ).rejects.toThrow(/incident_not_found/)
     expect(comments(spy).length).toBe(0)
   })
 
@@ -121,13 +124,13 @@ describe("incidentsCommentHandler", () => {
 
   it("stores author_id null for a non-UUID user id and for an uppercase UUID", async () => {
     const { ctx, spy } = await seeded()
-    ;setActor(ctx, "system")
+    setActor(ctx, "system")
     await incidentsCommentHandler({ incidentId: "INC-1", body: "from a system actor" }, ctx)
     // TEST_USER_ID is all digits (upper case equals itself): use an id with letters.
-    ;setActor(ctx, "AAAAAAAA-0000-0000-0000-00000000000A")
+    setActor(ctx, "AAAAAAAA-0000-0000-0000-00000000000A")
     await incidentsCommentHandler({ incidentId: "INC-1", body: "from an uppercase id" }, ctx)
     expect(comments(spy).map((c) => c.author_id ?? null)).toEqual([null, null])
-    ;setActor(ctx, "aaaaaaaa-0000-0000-0000-00000000000a")
+    setActor(ctx, "aaaaaaaa-0000-0000-0000-00000000000a")
     await incidentsCommentHandler({ incidentId: "INC-1", body: "from a lowercase id" }, ctx)
     expect(comments(spy).at(-1)!.author_id).toBe("aaaaaaaa-0000-0000-0000-00000000000a")
   })
@@ -145,7 +148,9 @@ describe("incidentsCommentHandler", () => {
     }
     await incidentsCommentHandler(spoof as never, ctx)
     await incidentsAckHandler({ ...spoof, note: "ack spoof attempt" } as never, ctx)
-    expect(comments(spy).map((c) => ({ kind: c.kind, author_id: c.author_id, body: c.body }))).toEqual([
+    expect(
+      comments(spy).map((c) => ({ kind: c.kind, author_id: c.author_id, body: c.body })),
+    ).toEqual([
       { kind: "comment", author_id: USER, body: "spoof attempt" },
       { kind: "comment", author_id: USER, body: "ack spoof attempt" },
     ])
@@ -155,12 +160,19 @@ describe("incidentsCommentHandler", () => {
   it("a failed commented emit is logged and the stored comment is still returned (no error inviting a duplicate)", async () => {
     const { ctx, spy } = await seeded()
     spy.failNextEmit = true
-    const res = await incidentsCommentHandler({ incidentId: "INC-1", body: "vendor ticket 4821" }, ctx)
+    const res = await incidentsCommentHandler(
+      { incidentId: "INC-1", body: "vendor ticket 4821" },
+      ctx,
+    )
     expect(comments(spy).length).toBe(1)
     expect(res.data.id).toBe(comments(spy)[0]!.id)
     expect(spy.emits.some((e) => e.action === "commented")).toBe(false)
     expect(spy.errors.map((e) => e.data)).toEqual([
-      { incidentId: comments(spy)[0]!.incident_id, commentId: res.data.id, err: "emit failed (test)" },
+      {
+        incidentId: comments(spy)[0]!.incident_id,
+        commentId: res.data.id,
+        err: "emit failed (test)",
+      },
     ])
   })
 
@@ -168,6 +180,8 @@ describe("incidentsCommentHandler", () => {
     const { ctx, spy } = await seeded()
     await incidentsCommentHandler({ incidentId: "INC-1", body: "a\u0000b" }, ctx)
     expect(comments(spy)[0]!.body).toBe("ab")
-    await expect(incidentsCommentHandler({ incidentId: "INC-1", body: "\u0000" }, ctx)).rejects.toThrow(/empty_comment/)
+    await expect(
+      incidentsCommentHandler({ incidentId: "INC-1", body: "\u0000" }, ctx),
+    ).rejects.toThrow(/empty_comment/)
   })
 })

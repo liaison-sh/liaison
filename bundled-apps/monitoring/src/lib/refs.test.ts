@@ -5,7 +5,15 @@
 import { describe, expect, it } from "bun:test"
 import { assignRefsJobHandler, JOB_REF_BATCH } from "../jobs"
 import { incidents, makeCtx, type StoredRow } from "../test-ctx"
-import { allocateRef, assignMissingRefs, formatRef, parseRef, refFields, refLabel, resolveIncident } from "./refs"
+import {
+  allocateRef,
+  assignMissingRefs,
+  formatRef,
+  parseRef,
+  refFields,
+  refLabel,
+  resolveIncident,
+} from "./refs"
 
 const KEY = "monitoring:incident_ref"
 const ALL = { limit: 100 }
@@ -22,7 +30,18 @@ describe("parseRef / formatRef / refLabel / refFields", () => {
   })
 
   it("rejects everything that is not a positive INC-n of at most 9 digits", () => {
-    for (const bad of ["INC-0", "INC-", "INC-1a", "INC-1234567890", "142", "row-1000", "", undefined, 42, null]) {
+    for (const bad of [
+      "INC-0",
+      "INC-",
+      "INC-1a",
+      "INC-1234567890",
+      "142",
+      "row-1000",
+      "",
+      undefined,
+      42,
+      null,
+    ]) {
       expect(parseRef(bad)).toBeNull()
     }
   })
@@ -37,7 +56,8 @@ describe("parseRef / formatRef / refLabel / refFields", () => {
     expect(refFields(3)).toEqual({ ref: "INC-3", refLabel: "[INC-3] " })
     expect(refFields(undefined)).toEqual({ ref: null, refLabel: "" })
     // The bridge coerces an integer column to a number: anything else is "not numbered".
-    for (const bad of ["12", 1.5, -3, Number.NaN, {}]) expect(refFields(bad)).toEqual({ ref: null, refLabel: "" })
+    for (const bad of ["12", 1.5, -3, Number.NaN, {}])
+      expect(refFields(bad)).toEqual({ ref: null, refLabel: "" })
   })
 })
 
@@ -187,7 +207,10 @@ describe("assignRefsJobHandler", () => {
       first_seen_at: new Date(Date.UTC(2026, 5, 1, 0, i)).toISOString(),
     }))
     spy.rows.set("incidents", rows.reverse())
-    expect(await assignRefsJobHandler({}, ctx)).toEqual({ assigned: JOB_REF_BATCH, remaining: true })
+    expect(await assignRefsJobHandler({}, ctx)).toEqual({
+      assigned: JOB_REF_BATCH,
+      remaining: true,
+    })
     const open = incidents(spy).filter((r) => r.ref_number == null)
     expect(open.map((r) => r.id)).toEqual(["inc-050"])
     expect(await assignRefsJobHandler({}, ctx)).toEqual({ assigned: 1, remaining: false })

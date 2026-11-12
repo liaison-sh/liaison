@@ -7,30 +7,35 @@
 // (unsupported) Like.
 
 import { describe, expect, test } from "bun:test"
-import { ConversationDetailPanel, Messages, messageBubbleText, windowPillState } from "./Messages"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import {
+  authorLabel,
   canReply,
   FindingDetailPanel,
-  gatedResultNote,
   Findings,
-  splitPaneClasses,
-  likeDisabled,
   findingStatusTone,
-  authorLabel,
+  gatedResultNote,
   isVideoMatch,
+  likeDisabled,
   matchedTermsOf,
   platformLabel,
   postExcerptOf,
   shortTime,
+  splitPaneClasses,
 } from "./Findings"
-import { cadenceLabel, Watched } from "./Watched"
-import { decidePath, denyPendingApproval, rejectNote, SOCIAL_DECIDABLE_APPROVALS_PATH } from "./pending-approval"
-import { SocialQuota } from "./Quota"
 import { SocialAppIcon } from "./icon"
-import { SocialSidebar } from "./sidebar"
 import { stripExternalFence } from "./kit"
+import { ConversationDetailPanel, Messages, messageBubbleText, windowPillState } from "./Messages"
+import {
+  decidePath,
+  denyPendingApproval,
+  rejectNote,
+  SOCIAL_DECIDABLE_APPROVALS_PATH,
+} from "./pending-approval"
+import { SocialQuota } from "./Quota"
+import { SocialSidebar } from "./sidebar"
+import { cadenceLabel, Watched } from "./Watched"
 
 describe("manifest-named surfaces import cleanly as components", () => {
   test("every surface/panel/icon/sidebar is a function component", () => {
@@ -145,7 +150,7 @@ describe("cadenceLabel (B9 — watch cadence pills)", () => {
 })
 
 describe("stripExternalFence (untrusted-content fence — display, not the agent)", () => {
-  test("strips the <external-content source=\"untrusted\"> wrapper", () => {
+  test('strips the <external-content source="untrusted"> wrapper', () => {
     const fenced = '<external-content source="untrusted">\nIs this in stock?\n</external-content>'
     expect(stripExternalFence(fenced)).toBe("Is this in stock?")
   })
@@ -273,7 +278,10 @@ describe("denyPendingApproval (Reject and a direct reply settle the agent's requ
     expect(calls).toHaveLength(2)
     expect(calls[1]?.path).toBe("/api/approvals/a-1/decide")
     expect(calls[1]?.init?.method).toBe("POST")
-    expect(JSON.parse(String(calls[1]?.init?.body))).toEqual({ decision: "deny", reason: "Rejected from the finding." })
+    expect(JSON.parse(String(calls[1]?.init?.body))).toEqual({
+      decision: "deny",
+      reason: "Rejected from the finding.",
+    })
   })
 
   test("leaves a request the caller can't decide alone, posting no decision", async () => {

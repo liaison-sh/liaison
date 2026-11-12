@@ -14,9 +14,9 @@
 //
 // Pause direction ONLY — there is no resume/enable tool for Google in this build.
 
+import type { AppCtx } from "./lib/ctx-types"
 import { gaqlSearch, googleAdsMutate } from "./lib/google-client"
 import { getGoogleClient } from "./lib/google-config"
-import type { AppCtx } from "./lib/ctx-types"
 import {
   type PreflightOutcome,
   preflightGoogleAdCompositeId,
@@ -44,9 +44,7 @@ interface GooglePauseParams {
  * function. The composite rule itself is the same checker google_set_status
  * uses (lib/preflight), so the two Google tools can never drift.
  */
-export function preflightGooglePauseParams(
-  p: Record<string, unknown>,
-): PreflightOutcome<{
+export function preflightGooglePauseParams(p: Record<string, unknown>): PreflightOutcome<{
   objectType: GoogleObjectType
   objectId: string
   adRef: { adGroupId: string; adId: string } | null

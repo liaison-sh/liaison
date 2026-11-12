@@ -56,7 +56,10 @@ describe("segmentWebhookHandler — create and append", () => {
   it("keeps two different calls in two different docs", async () => {
     const { ctx, spy } = makeCtx()
     await segmentWebhookHandler(segPayload("s1", "2026-07-06T10:00:00Z"), ctx)
-    await segmentWebhookHandler({ ...segPayload("s1", "2026-07-06T10:00:05Z"), callRef: "other-call" }, ctx)
+    await segmentWebhookHandler(
+      { ...segPayload("s1", "2026-07-06T10:00:05Z"), callRef: "other-call" },
+      ctx,
+    )
     expect(spy.docs.size).toBe(2)
   })
 
@@ -75,7 +78,10 @@ describe("segmentWebhookHandler — idempotency and races", () => {
     const { ctx, spy } = makeCtx()
     await segmentWebhookHandler(segPayload("s1", "2026-07-06T10:00:00Z"), ctx)
     const bodyBefore = docByTitle(spy, TITLE)!.body
-    const res = await segmentWebhookHandler(segPayload("s1", "2026-07-06T10:00:00Z", "ALTERED"), ctx)
+    const res = await segmentWebhookHandler(
+      segPayload("s1", "2026-07-06T10:00:00Z", "ALTERED"),
+      ctx,
+    )
     expect(res.status).toBe(200)
     expect(docByTitle(spy, TITLE)!.body).toBe(bodyBefore)
     const parsed = parseCallDoc(docByTitle(spy, TITLE)!.body)
@@ -109,7 +115,10 @@ describe("segmentWebhookHandler — idempotency and races", () => {
     spy.onBeforeFirstUpdate = async () => {
       await segmentWebhookHandler(segPayload("s1", "2026-07-06T10:00:00Z", "ORIGINAL"), ctx)
     }
-    const res = await segmentWebhookHandler(segPayload("s1", "2026-07-06T10:00:00Z", "DUPLICATE"), ctx)
+    const res = await segmentWebhookHandler(
+      segPayload("s1", "2026-07-06T10:00:00Z", "DUPLICATE"),
+      ctx,
+    )
     expect(res.status).toBe(200)
     const parsed = parseCallDoc(docByTitle(spy, TITLE)!.body)
     expect(parsed.segments.filter((s) => s.segmentId === "s1").length).toBe(1)
@@ -207,7 +216,13 @@ describe("segmentWebhookHandler — summary deliveries", () => {
   it("a final summary (isFinal) replaces the rolling one and round-trips the flag", async () => {
     const { ctx, spy } = makeCtx()
     await segmentWebhookHandler(
-      { callRef: CALL, kind: "summary", ts: "2026-07-06T10:10:00Z", text: "rolling", isFinal: false },
+      {
+        callRef: CALL,
+        kind: "summary",
+        ts: "2026-07-06T10:10:00Z",
+        text: "rolling",
+        isFinal: false,
+      },
       ctx,
     )
     await segmentWebhookHandler(

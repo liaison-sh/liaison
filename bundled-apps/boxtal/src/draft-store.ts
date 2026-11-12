@@ -126,10 +126,7 @@ export async function saveDraftOverride(
 }
 
 /** Clear a draft's overrides (after a successful create, or on explicit reset). */
-export async function clearDraftOverride(
-  ctx: DraftStoreCtx,
-  documentRef: string,
-): Promise<void> {
+export async function clearDraftOverride(ctx: DraftStoreCtx, documentRef: string): Promise<void> {
   const row = await rowFor(ctx, documentRef)
   if (row) await ctx.db.delete("app_config", row.id)
 }

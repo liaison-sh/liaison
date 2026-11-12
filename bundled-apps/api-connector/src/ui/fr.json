@@ -1,0 +1,116 @@
+{
+  "card": {
+    "title": "Client",
+    "loading": "Recherche du client",
+    "unnamed": "Fiche sans nom",
+    "error": "Le client n'a pas pu être chargé.",
+    "noMatch": "Aucun client trouvé pour {{email}}",
+    "noMatchIn": "Aucun client trouvé dans {{system}} pour {{email}}",
+    "severalMatches": "{{count}} fiches correspondent",
+    "matchedByDomain": "Correspondance par le domaine de l'entreprise",
+    "openIn": "Ouvrir dans {{system}}",
+    "list": {
+      "orders": "Commandes récentes",
+      "invoices": "Factures",
+      "deals": "Affaires"
+    }
+  },
+  "settings": {
+    "connectionsTitle": "Connexions",
+    "description": "Les connexions à votre propre CRM ou ERP, chacune décrite par un adaptateur. Les agents lisent à travers elles, et la fiche client des tickets et de la messagerie utilise celles qui remplissent les rôles client.",
+    "add": "Ajouter une connexion",
+    "addTitle": "Nouvelle connexion",
+    "replaceTitle": "Remplacer l'adaptateur de {{identifier}}",
+    "slugLabel": "Nom de la connexion",
+    "slugHint": "Lettres minuscules, chiffres et tirets, par exemple crm ou erp-eu.",
+    "slugInvalid": "Utilisez de 1 à 40 lettres minuscules, chiffres ou tirets, en commençant par une lettre ou un chiffre.",
+    "adapterLabel": "Adaptateur (YAML ou JSON)",
+    "adapterFile": "Ou chargez un fichier",
+    "adapterEmpty": "Collez un adaptateur ou chargez un fichier.",
+    "issueDocument": "adaptateur",
+    "saveAdapter": "Enregistrer l'adaptateur",
+    "saveFailed": "L'adaptateur n'a pas pu être enregistré. Réessayez.",
+    "demoReadOnly": "Ceci est un espace de démonstration : les connexions sont en lecture seule, et seule la connexion d'exemple est disponible.",
+    "loading": "Chargement des connexions",
+    "loadFailed": "Les connexions n'ont pas pu être chargées.",
+    "empty": "Aucune connexion pour l'instant. Ajoutez-en une avec son adaptateur.",
+    "roles": "Rôles : {{roles}}",
+    "noRoles": "Aucun rôle client rempli",
+    "credentials": "Identifiants",
+    "test": "Tester",
+    "replace": "Remplacer l'adaptateur",
+    "deleteConfirm": "Supprimer {{name}} ? Son adaptateur et ses identifiants sont supprimés.",
+    "deleteFailed": "La connexion n'a pas pu être supprimée.",
+    "status": {
+      "ok": "Connectée",
+      "needs_credentials": "Identifiants requis",
+      "error": "Erreur"
+    },
+    "authApiKeyHeader": "Ce système demande une clé d'API, envoyée dans l'en-tête {{name}}.",
+    "authApiKeyQuery": "Ce système demande une clé d'API, envoyée comme paramètre {{name}}.",
+    "auth": {
+      "bearer": "Ce système demande un jeton bearer.",
+      "basic": "Ce système demande un nom d'utilisateur et un mot de passe.",
+      "oauth2ClientCredentials": "Ce système demande un identifiant et un secret client OAuth ; l'adresse du jeton vient de l'adaptateur."
+    },
+    "authUnknown": "L'adaptateur n'indique pas comment ce système s'authentifie.",
+    "credField": {
+      "apiKey": "Clé d'API",
+      "token": "Jeton",
+      "username": "Nom d'utilisateur",
+      "password": "Mot de passe",
+      "clientId": "Identifiant client",
+      "clientSecret": "Secret client"
+    },
+    "credMissing": "Remplissez tous les champs.",
+    "credFailed": "Les identifiants n'ont pas pu être enregistrés.",
+    "credSaved": "Identifiants enregistrés. Ils sont chiffrés et ne sont plus jamais affichés.",
+    "credSave": "Enregistrer les identifiants",
+    "testNoReads": "Cet adaptateur n'a aucune opération de lecture à tester.",
+    "testOperation": "Opération",
+    "testRun": "Lancer",
+    "paramListHint": "Valeurs séparées par des virgules",
+    "paramError": {
+      "required": "Obligatoire",
+      "number": "Saisissez un nombre",
+      "integer": "Saisissez un nombre entier",
+      "enum": "Choisissez une des valeurs proposées"
+    },
+    "testStatus": "HTTP {{status}}",
+    "testMs": "{{ms}} ms",
+    "testCount": {
+      "one": "{{count}} élément",
+      "other": "{{count}} éléments"
+    },
+    "testUpstreamHttp": "Le système a répondu HTTP {{status}}.",
+    "testError": {
+      "upstream_status": "Le système a répondu par une erreur.",
+      "timeout": "Le système n'a pas répondu à temps.",
+      "too_large": "La réponse était trop volumineuse.",
+      "invalid_response": "La réponse du système n'a pas pu être lue.",
+      "host_refused": "L'adresse de l'adaptateur n'est pas autorisée.",
+      "not_configured": "Cette connexion n'a pas encore d'identifiants.",
+      "write_not_testable": "Les opérations d'écriture ne peuvent pas être testées ici.",
+      "failed": "Le test n'a pas pu être lancé."
+    },
+    "slugPlaceholder": "crm",
+    "history": {
+      "open": "Historique",
+      "title": "Versions précédentes de cet adaptateur",
+      "loading": "Chargement de l'historique",
+      "loadFailed": "L'historique n'a pas pu être chargé.",
+      "empty": "Aucune version précédente pour l'instant : chaque enregistrement conserve celle qu'il remplace.",
+      "version": "Version {{version}}",
+      "saved": "Enregistrée le {{when}} par {{who}}",
+      "unknownSaver": "une personne qui ne fait plus partie de l'espace",
+      "restore": "Restaurer",
+      "wipeWarning": "Cette version pointe vers {{target}}. La restaurer supprime les identifiants enregistrés, qu'il faudra saisir à nouveau.",
+      "restoreAnyway": "Restaurer et supprimer les identifiants",
+      "restored": "Version {{version}} restaurée.",
+      "restoredCleared": "Version {{version}} restaurée. Saisissez à nouveau les identifiants.",
+      "restoreFailed": "La version n'a pas pu être restaurée."
+    },
+    "wipeWarning": "Cet adaptateur fait passer la connexion de {{from}} à {{to}}. L'enregistrer supprime les identifiants enregistrés, qu'il faudra saisir à nouveau.",
+    "saveAnyway": "Enregistrer et supprimer les identifiants"
+  }
+}

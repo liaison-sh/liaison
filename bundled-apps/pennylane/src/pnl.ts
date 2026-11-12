@@ -29,10 +29,7 @@ export function classifyAccount(code: string, mapping: Record<string, PnlClass>)
   return best ? best.cls : "other"
 }
 
-export function computePnlSummary(
-  lines: TbLine[],
-  mapping: Record<string, PnlClass>,
-): PnlSummary {
+export function computePnlSummary(lines: TbLine[], mapping: Record<string, PnlClass>): PnlSummary {
   const acc: Record<PnlClass, bigint> = { revenue: 0n, cogs: 0n, opex: 0n, other: 0n }
   for (const l of lines) acc[classifyAccount(l.account_code, mapping)] += l.balance_minor
   return { ...acc, gross_margin: acc.revenue - acc.cogs }

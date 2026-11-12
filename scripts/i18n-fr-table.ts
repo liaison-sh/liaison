@@ -8069,4 +8069,6 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.dashboards.tables.createForbidden": "Vous ne pouvez pas créer de table.",
   "kernel.dashboards.tables.createFailed": "La table n'a pas pu être créée. Réessayez.",
   "kernel.nav.dashboardTable": "Table",
+  "google-drive.sharedDrives.description":
+    "Les drives partagés que la connexion Drive de l'organisation partage avec l'équipe.",
 }

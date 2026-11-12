@@ -13,12 +13,6 @@ import { ensureLoaded, getById } from "~/modules/approvals/approvals-store"
 import { BugReportDraftCard } from "~/modules/bug-report/BugReportDraftCard"
 import { isDesktop } from "~/modules/desktop/desktop-store"
 import LocalPermissionCard, { currentLocalPrompt } from "~/modules/desktop/LocalPermissionCard"
-import {
-  DrivePickerCard,
-  drivePickerCardShown,
-  drivePickerOrigin,
-  drivePickerThread,
-} from "~/modules/drive-picker/DrivePickerCard"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import ImportRunCard from "~/modules/imports/ImportRunCard"
 import { MailboxSetupCard, mailboxSetupCardRef } from "~/modules/mailbox/MailboxSetupCard"
@@ -316,12 +310,6 @@ function SingleToolCallRow(props: ToolCallRowProps) {
       </Show>
       <Show when={setupStateResult(props.toolCall)}>
         {(state) => <SetupChecklistCard state={state()} />}
-      </Show>
-      <Show when={drivePickerCardShown(props.toolCall)}>
-        <DrivePickerCard
-          origin={drivePickerOrigin(props.toolCall)}
-          threadId={drivePickerThread(props.toolCall)}
-        />
       </Show>
       <Show when={pageHandleOf(props.toolCall)}>
         {(handle) => <PageHandleCard handle={handle()} />}

@@ -37,7 +37,9 @@ const CHARGE_LINE = new RegExp(
 )
 
 /** True when the line carries a catalog product link (the resolver's join key). */
-export function hasProductLink(line: Pick<ShippableLineInput, "product_source" | "external_id">): boolean {
+export function hasProductLink(
+  line: Pick<ShippableLineInput, "product_source" | "external_id">,
+): boolean {
   return Boolean(line.product_source && line.external_id)
 }
 

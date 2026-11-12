@@ -7,8 +7,23 @@
 // source of truth for the boxtal backend package.
 
 export const ZERO_DECIMAL_CURRENCIES: ReadonlySet<string> = new Set([
-  "BIF", "CLP", "DJF", "GNF", "HUF", "ISK", "JPY", "KMF", "KRW", "PYG",
-  "RWF", "UGX", "VND", "VUV", "XAF", "XOF", "XPF",
+  "BIF",
+  "CLP",
+  "DJF",
+  "GNF",
+  "HUF",
+  "ISK",
+  "JPY",
+  "KMF",
+  "KRW",
+  "PYG",
+  "RWF",
+  "UGX",
+  "VND",
+  "VUV",
+  "XAF",
+  "XOF",
+  "XPF",
 ])
 
 /** Minor-unit digit count for a currency: 0 for zero-decimal currencies, else 2. */

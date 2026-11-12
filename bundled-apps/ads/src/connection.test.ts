@@ -22,11 +22,20 @@ describe("MetaConnectionError crosses the sandbox as a safe ToolError", () => {
 
   it("surfaced messages carry no dash punctuation and no inner exception text", async () => {
     const unreadable = await getMetaClient({
-      connections: { meta: { getCredentials: async () => { throw new Error("pg: relation secret_store missing") } } },
+      connections: {
+        meta: {
+          getCredentials: async () => {
+            throw new Error("pg: relation secret_store missing")
+          },
+        },
+      },
     }).catch((e) => e)
     expect(unreadable).toBeInstanceOf(MetaConnectionError)
     expect(unreadable.message).not.toContain("secret_store")
-    for (const ctx of [{ connections: {} }, { connections: { meta: { getCredentials: async () => ({}) } } }]) {
+    for (const ctx of [
+      { connections: {} },
+      { connections: { meta: { getCredentials: async () => ({}) } } },
+    ]) {
       const err = await getMetaClient(ctx).catch((e) => e)
       expect(err.message).not.toMatch(/[–—]|--/)
     }
@@ -164,7 +173,7 @@ describe("getMetaClient — adAccountId normalization", () => {
         meta: {
           getCredentials: async () => ({
             accessToken: "tok",
-            adAccountId: "123456789",   // bare numeric, no act_ prefix
+            adAccountId: "123456789", // bare numeric, no act_ prefix
           }),
         },
       },

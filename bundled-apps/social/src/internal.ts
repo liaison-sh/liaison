@@ -31,12 +31,17 @@ export async function setTriage(
     triage_reason?: string
   },
 ): Promise<{ status: "triaged" | "skipped"; reason?: string }> {
-  const [finding] = (await ctx.db.findMany("finding", { where: { id: params.finding_id }, limit: 1 })) as FindingRow[]
+  const [finding] = (await ctx.db.findMany("finding", {
+    where: { id: params.finding_id },
+    limit: 1,
+  })) as FindingRow[]
   if (!finding) return { status: "skipped", reason: "not_found" }
   // Skip-handled: never downgrade a finding already past triage.
   if (PAST_TRIAGE.has(finding.status)) {
     const reason =
-      finding.status === "handled" || finding.status === "dismissed" ? "already_handled" : "in_progress"
+      finding.status === "handled" || finding.status === "dismissed"
+        ? "already_handled"
+        : "in_progress"
     // Still record the verdict fields (they are non-destructive) but DO NOT move status.
     await ctx.db.update("finding", finding.id, {
       triage_category: params.triage_category,
@@ -71,7 +76,10 @@ export async function correctTriage(
     triage_reason?: string
   },
 ): Promise<{ status: "corrected"; reason?: string }> {
-  const [finding] = (await ctx.db.findMany("finding", { where: { id: params.finding_id }, limit: 1 })) as FindingRow[]
+  const [finding] = (await ctx.db.findMany("finding", {
+    where: { id: params.finding_id },
+    limit: 1,
+  })) as FindingRow[]
   if (!finding) return { status: "corrected", reason: "not_found" }
   await ctx.db.update("finding", finding.id, {
     triage_category: params.triage_category,
@@ -86,7 +94,10 @@ export async function dismissFinding(
   ctx: SocialToolCtx,
   params: { finding_id: string },
 ): Promise<{ status: "dismissed" | "skipped"; reason?: string }> {
-  const [finding] = (await ctx.db.findMany("finding", { where: { id: params.finding_id }, limit: 1 })) as FindingRow[]
+  const [finding] = (await ctx.db.findMany("finding", {
+    where: { id: params.finding_id },
+    limit: 1,
+  })) as FindingRow[]
   if (!finding) return { status: "skipped", reason: "not_found" }
   await ctx.db.update("finding", finding.id, { status: "dismissed" })
   return { status: "dismissed" }
@@ -140,7 +151,13 @@ export async function watchObject(
   const watchedRef: string | { $ref: string } = watchedId ?? { $ref: "watched" }
   const ops: DbBatchOp[] = watchedId
     ? // Re-watching resumes a stopped/decayed watch.
-      [{ update: "watched_object", id: watchedId, data: { status: "active", new_findings_count: siblings.length } }]
+      [
+        {
+          update: "watched_object",
+          id: watchedId,
+          data: { status: "active", new_findings_count: siblings.length },
+        },
+      ]
     : [
         {
           insert: "watched_object",
@@ -155,7 +172,9 @@ export async function watchObject(
             title: params.title ?? null,
             ...(params.permalink ? { permalink: params.permalink } : {}),
             ...(params.metadata ? { metadata: params.metadata } : {}),
-            ...(params.cadence_seconds !== undefined ? { cadence_seconds: params.cadence_seconds } : {}),
+            ...(params.cadence_seconds !== undefined
+              ? { cadence_seconds: params.cadence_seconds }
+              : {}),
             // Keep the watch's new_findings_count in sync with its linked findings (§4.6).
             new_findings_count: siblings.length,
           },

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { metrics_list, metrics_run } from "./tools"
 import { createMockDb } from "../test-db"
+import { metrics_list, metrics_run } from "./tools"
 
 interface Envelope {
   status: "completed" | "pending_approval" | "error"
@@ -11,14 +11,22 @@ interface Envelope {
 
 function makeExecuteTool(responses: Record<string, Envelope>) {
   return async (target: string, _args: Record<string, unknown>): Promise<Envelope> => {
-    return responses[target] ?? { status: "error", error: { code: "not_mocked", message: `no mock for ${target}` } }
+    return (
+      responses[target] ?? {
+        status: "error",
+        error: { code: "not_mocked", message: `no mock for ${target}` },
+      }
+    )
   }
 }
 
 describe("metrics_list", () => {
   it("returns the registry with id/version/title/inputs/caveats/provisional", async () => {
     const db = createMockDb()
-    const result = (await metrics_list({}, { db, executeTool: async () => ({ status: "completed", result: [] }) })) as {
+    const result = (await metrics_list(
+      {},
+      { db, executeTool: async () => ({ status: "completed", result: [] }) },
+    )) as {
       formulas: Array<{ id: string; version: string; provisional: boolean }>
       count: number
     }
@@ -45,16 +53,29 @@ describe("metrics_run", () => {
       // current totals; insight tools wrap rows in data/rows).
       "shopify:orders_search": {
         status: "completed",
-        result: { results: [{ currency: "EUR", attributes: { totalAmount: "10000" } }], nextCursor: null, totalCount: 1 },
+        result: {
+          results: [{ currency: "EUR", attributes: { totalAmount: "10000" } }],
+          nextCursor: null,
+          totalCount: 1,
+        },
       },
       "ads:insights_query": { status: "completed", result: { data: [{ spend: 1500 }] } },
-      "ads:google_insights_query": { status: "completed", result: { rows: [{ cost: 1000 }], count: 1 } },
+      "ads:google_insights_query": {
+        status: "completed",
+        result: { rows: [{ cost: 1000 }], count: 1 },
+      },
       "database:db_read": { status: "completed", result: { rows: [], truncated: false } },
     })
     const result = (await metrics_run(
       { formula_id: "blended_mer_dtc", period_start: "2026-07-01", period_end: "2026-07-31" },
       { db, executeTool },
-    )) as { value: string; formulaId: string; formulaVersion: string; lineage: unknown; caveats: string[] }
+    )) as {
+      value: string
+      formulaId: string
+      formulaVersion: string
+      lineage: unknown
+      caveats: string[]
+    }
 
     expect(result.formulaId).toBe("blended_mer_dtc")
     expect(result.formulaVersion).toBe("1.1.0")
@@ -78,13 +99,24 @@ describe("metrics_run", () => {
     const executeTool = makeExecuteTool({
       "shopify:orders_search": {
         status: "completed",
-        result: { results: [{ currency: "EUR", attributes: { totalAmount: "5000" } }], nextCursor: null, totalCount: 1 },
+        result: {
+          results: [{ currency: "EUR", attributes: { totalAmount: "5000" } }],
+          nextCursor: null,
+          totalCount: 1,
+        },
       },
       "ads:insights_query": { status: "completed", result: { data: [{ spend: 500 }] } },
-      "ads:google_insights_query": { status: "completed", result: { rows: [{ cost: 500 }], count: 1 } },
+      "ads:google_insights_query": {
+        status: "completed",
+        result: { rows: [{ cost: 500 }], count: 1 },
+      },
       "database:db_read": { status: "completed", result: { rows: [], truncated: false } },
     })
-    const params = { formula_id: "blended_mer_dtc", period_start: "2026-07-01", period_end: "2026-07-31" }
+    const params = {
+      formula_id: "blended_mer_dtc",
+      period_start: "2026-07-01",
+      period_end: "2026-07-31",
+    }
     const r1 = await metrics_run(params, { db, executeTool })
     const r2 = await metrics_run(params, { db, executeTool })
     expect(JSON.stringify(r1)).toBe(JSON.stringify(r2))
@@ -104,7 +136,10 @@ describe("metrics_run", () => {
     const db = createMockDb()
     const executeTool = async (target: string): Promise<Envelope> => {
       if (target === "database:db_read" || target === "database:db_query") {
-        return { status: "error", error: { code: "connect_error", message: "database app not connected" } }
+        return {
+          status: "error",
+          error: { code: "connect_error", message: "database app not connected" },
+        }
       }
       return { status: "completed", result: [] }
     }

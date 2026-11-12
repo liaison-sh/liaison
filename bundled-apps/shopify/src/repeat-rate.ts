@@ -69,7 +69,10 @@ interface CustomersPage {
   }
 }
 
-export async function repeat_rate(_params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function repeat_rate(
+  _params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   const client = await getShopifyClient(ctx)
   const collected: CustomerOrderCount[] = []
   let cursor: string | null = null

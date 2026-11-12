@@ -6,13 +6,13 @@
 // as a `PostalParty`, and read back to pre-fill the settings form + drive the
 // create-path sender assembly.
 
-import { partyFromConfig, type PostalParty, validateParty } from "./address"
+import { type PostalParty, partyFromConfig, validateParty } from "./address"
 import { CARRIER_BRANDS, resolveCarrierBrand } from "./carriers"
 import {
   NEUTRAL_PACKAGING_POLICY,
+  normalizePackagingPolicy,
   PACKAGING_POLICY_KEY,
   type PackagingPolicy,
-  normalizePackagingPolicy,
   packagingPolicyFromValue,
   packagingPolicyProblems,
 } from "./packaging-policy"
@@ -89,7 +89,9 @@ export async function loadCarrierAllowlist(ctx: SettingsCtx): Promise<string[]> 
   return v.filter((x): x is string => typeof x === "string")
 }
 
-async function excludePickupPointRow(ctx: SettingsCtx): Promise<{ id: string; value: unknown } | null> {
+async function excludePickupPointRow(
+  ctx: SettingsCtx,
+): Promise<{ id: string; value: unknown } | null> {
   const rows = (await ctx.db.findMany("app_config", {
     where: { key: EXCLUDE_PICKUP_POINT_KEY },
     limit: 1,
@@ -209,8 +211,13 @@ export async function settingsCarrierAllowlistSet(
   }
   if (typeof input.exclude_pickup_point_services === "boolean") {
     const row = await excludePickupPointRow(ctx)
-    if (row) await ctx.db.update("app_config", row.id, { value: input.exclude_pickup_point_services })
-    else await ctx.db.insert("app_config", { key: EXCLUDE_PICKUP_POINT_KEY, value: input.exclude_pickup_point_services })
+    if (row)
+      await ctx.db.update("app_config", row.id, { value: input.exclude_pickup_point_services })
+    else
+      await ctx.db.insert("app_config", {
+        key: EXCLUDE_PICKUP_POINT_KEY,
+        value: input.exclude_pickup_point_services,
+      })
   }
   return {
     ok: true,
@@ -388,8 +395,10 @@ export async function settingsProductCodesSet(
     }
     return [...new Set(v.map((x) => String(x).trim()))]
   }
-  if (input.strip_prefixes !== undefined) next.strip_prefixes = cleanList("strip_prefixes", input.strip_prefixes)
-  if (input.strip_suffixes !== undefined) next.strip_suffixes = cleanList("strip_suffixes", input.strip_suffixes)
+  if (input.strip_prefixes !== undefined)
+    next.strip_prefixes = cleanList("strip_prefixes", input.strip_prefixes)
+  if (input.strip_suffixes !== undefined)
+    next.strip_suffixes = cleanList("strip_suffixes", input.strip_suffixes)
   if (input.aliases !== undefined) {
     if (!Array.isArray(input.aliases)) throw new Error("aliases must be a list of { sku, code }")
     const aliases: Record<string, string> = {}
@@ -417,7 +426,12 @@ export async function settingsProductCodesSet(
     for (const r of input.ranks) {
       const code = typeof r?.code === "string" ? r.code.trim().toUpperCase() : ""
       const rank = r?.rank
-      if (code === "" || code.length > MAX_PRODUCT_CODE_LENGTH || typeof rank !== "number" || !Number.isInteger(rank)) {
+      if (
+        code === "" ||
+        code.length > MAX_PRODUCT_CODE_LENGTH ||
+        typeof rank !== "number" ||
+        !Number.isInteger(rank)
+      ) {
         bad.push(JSON.stringify(r))
         continue
       }
@@ -439,7 +453,9 @@ export async function settingsProductCodesSet(
 
 // — packaging policy —
 
-async function packagingPolicyRow(ctx: SettingsCtx): Promise<{ id: string; value: unknown } | null> {
+async function packagingPolicyRow(
+  ctx: SettingsCtx,
+): Promise<{ id: string; value: unknown } | null> {
   const rows = (await ctx.db.findMany("app_config", {
     where: { key: PACKAGING_POLICY_KEY },
     limit: 1,
@@ -473,7 +489,9 @@ export async function settingsPackagingPolicySet(
   const current = input.reset === true ? NEUTRAL_PACKAGING_POLICY : await loadPackagingPolicy(ctx)
   const next: PackagingPolicy = {
     raw_stack_max_height:
-      input.raw_stack_max_height !== undefined ? input.raw_stack_max_height : current.raw_stack_max_height,
+      input.raw_stack_max_height !== undefined
+        ? input.raw_stack_max_height
+        : current.raw_stack_max_height,
     cartons: input.cartons !== undefined ? input.cartons : current.cartons,
     merge_leftovers_into_packs:
       input.merge_leftovers_into_packs !== undefined
@@ -487,7 +505,8 @@ export async function settingsPackagingPolicySet(
       input.nominal_proforma_value_minor !== undefined
         ? input.nominal_proforma_value_minor
         : current.nominal_proforma_value_minor,
-    master_cartons: input.master_cartons !== undefined ? input.master_cartons : current.master_cartons,
+    master_cartons:
+      input.master_cartons !== undefined ? input.master_cartons : current.master_cartons,
   }
   const problems = packagingPolicyProblems(next)
   if (problems.length > 0) throw new Error(`Invalid packaging policy: ${problems.join("; ")}.`)

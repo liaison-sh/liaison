@@ -22,11 +22,11 @@
 import { facebookCommentUrl } from "../lib/facebook-links"
 import { packCursor, parseCursor, parseJsonCursor } from "./cursor"
 import {
-  type GraphPage,
-  type ListError,
   type GraphError,
+  type GraphPage,
   graphError,
   graphTime,
+  type ListError,
   type ListState,
   readListState,
   usageThrottled,
@@ -396,7 +396,8 @@ async function fetchConversationMessages(
     const res = await ctx.fetch(url, {
       headers: { Authorization: `Bearer ${pageAccessToken}` },
     })
-    if (res.status !== 200) return { messages: out, ok: false, rateLimited: graphError(res) === "RATE_LIMITED" }
+    if (res.status !== 200)
+      return { messages: out, ok: false, rateLimited: graphError(res) === "RATE_LIMITED" }
     const body = parseBody(res.body) as FbDmMessagesResponse
     const data = body.data ?? []
     out.push(...data)
@@ -423,7 +424,10 @@ interface FbCompoundCursor {
   pages?: Record<string, unknown>
 }
 
-function pageStates(cursor: string | null): { fresh: (pageId: string) => boolean; state: (pageId: string) => ListState | null } {
+function pageStates(cursor: string | null): {
+  fresh: (pageId: string) => boolean
+  state: (pageId: string) => ListState | null
+} {
   const pages = (parseJsonCursor(cursor) as FbCompoundCursor).pages ?? {}
   return {
     // A Page the cursor has never seen gets its history backfilled.
@@ -448,12 +452,16 @@ async function fetchListPage<T>(
   // Any other failure: skip this source this tick with its state kept,
   // instead of reading an error body as an empty list.
   if (res.status !== 200) return { error: "UNAVAILABLE" }
-  const body = parseBody(res.body) as { data?: T[]; paging?: { cursors?: { after?: string }; next?: string } }
+  const body = parseBody(res.body) as {
+    data?: T[]
+    paging?: { cursors?: { after?: string }; next?: string }
+  }
   const data = body.data ?? []
   // Graph keeps an `after` cursor on the last page; only `paging.next` says more exist.
-  const next = data.length > 0 && body.paging?.cursors?.after && body.paging.next !== undefined
-    ? body.paging.cursors.after
-    : null
+  const next =
+    data.length > 0 && body.paging?.cursors?.after && body.paging.next !== undefined
+      ? body.paging.cursors.after
+      : null
   return { items: data, next, throttled: usageThrottled(res.headers) }
 }
 
@@ -525,7 +533,10 @@ export const facebookAdapter: PlatformAdapter = {
       })
       if ("error" in walk) {
         if (walk.error === "UNAVAILABLE") {
-          ctx.logger?.warn?.("social: facebook list read failed, page skipped this tick", { pageId: page.id, edge: "conversations" })
+          ctx.logger?.warn?.("social: facebook list read failed, page skipped this tick", {
+            pageId: page.id,
+            edge: "conversations",
+          })
           const kept = states.state(page.id)
           if (kept) nextPerPage[page.id] = kept
           continue
@@ -546,7 +557,12 @@ export const facebookAdapter: PlatformAdapter = {
             complete = false
             held = true
           } else {
-            const fetched = await fetchConversationMessages(ctx, conv.id, page.access_token, graphTime(threshold))
+            const fetched = await fetchConversationMessages(
+              ctx,
+              conv.id,
+              page.access_token,
+              graphTime(threshold),
+            )
             rawMessages = fetched.messages
             complete = fetched.ok
             if (fetched.rateLimited) {
@@ -602,7 +618,8 @@ export const facebookAdapter: PlatformAdapter = {
     let rateLimited = false
 
     for (const page of pages) {
-      const feedFields = "fields=id,message,permalink_url,created_time,comments.summary(true).limit(0)"
+      const feedFields =
+        "fields=id,message,permalink_url,created_time,comments.summary(true).limit(0)"
       const walk = await walkNewestFirst<FbPost>({
         state: states.state(page.id),
         fresh: states.fresh(page.id),
@@ -620,7 +637,10 @@ export const facebookAdapter: PlatformAdapter = {
       })
       if ("error" in walk) {
         if (walk.error === "UNAVAILABLE") {
-          ctx.logger?.warn?.("social: facebook list read failed, page skipped this tick", { pageId: page.id, edge: "feed" })
+          ctx.logger?.warn?.("social: facebook list read failed, page skipped this tick", {
+            pageId: page.id,
+            edge: "feed",
+          })
           const kept = states.state(page.id)
           if (kept) nextPerPage[page.id] = kept
           continue
@@ -661,7 +681,9 @@ export const facebookAdapter: PlatformAdapter = {
     const objects: OwnRecentObjectsResult["objects"] = []
     for (const page of pages) {
       const url = `${FB_BASE}/${page.id}/posts?fields=id,message,permalink_url,created_time&limit=${limit}`
-      const res = await ctx.fetch(url, { headers: { Authorization: `Bearer ${page.access_token}` } })
+      const res = await ctx.fetch(url, {
+        headers: { Authorization: `Bearer ${page.access_token}` },
+      })
       if (res.status === 401) return { objects: [], error: "CONNECTION_LOST" }
       const parsed = parseBody(res.body) as FbFeedResponse & FbErrorBody
       if (graphError(res) === "RATE_LIMITED") return { objects: [], error: "RATE_LIMITED" }
@@ -730,19 +752,21 @@ export const facebookAdapter: PlatformAdapter = {
     }
     // The Page's own replies are not actionable findings (same skip as
     // `fetchPostComments`).
-    const findings: NormalizedFinding[] = (body.data ?? []).filter((c) => c.from?.id !== page.id).map((c) => ({
-      platform: "facebook",
-      externalId: c.id,
-      relation: "comment_on_our_content",
-      parentExternalId: objectExternalId,
-      authorHandle: c.from?.name ?? null,
-      authorExternalId: c.from?.id ?? null,
-      contentText: c.message ?? null,
-      permalink: c.permalink_url ?? facebookCommentUrl(c.id, objectExternalId),
-      occurredAt: c.created_time ?? null,
-      commentCount: 0,
-      metadata: { siblingsAccessible: true, pageId: page.id },
-    }))
+    const findings: NormalizedFinding[] = (body.data ?? [])
+      .filter((c) => c.from?.id !== page.id)
+      .map((c) => ({
+        platform: "facebook",
+        externalId: c.id,
+        relation: "comment_on_our_content",
+        parentExternalId: objectExternalId,
+        authorHandle: c.from?.name ?? null,
+        authorExternalId: c.from?.id ?? null,
+        contentText: c.message ?? null,
+        permalink: c.permalink_url ?? facebookCommentUrl(c.id, objectExternalId),
+        occurredAt: c.created_time ?? null,
+        commentCount: 0,
+        metadata: { siblingsAccessible: true, pageId: page.id },
+      }))
     return { findings, nextCursor: body.paging?.cursors?.after ?? null, unitsConsumed: 0 }
   },
 
@@ -802,7 +826,11 @@ export const facebookAdapter: PlatformAdapter = {
   // Our reply on a comment/post, if it is there: `GET {id}/comments` (the
   // replies, newest first) with the owning Page's token, looking for a comment
   // written by one of the connected user's Pages with exactly this text.
-  async findOwnReply(target: { externalId: string }, text: string, ctx: AdapterContext): Promise<OwnReplyLookup> {
+  async findOwnReply(
+    target: { externalId: string },
+    text: string,
+    ctx: AdapterContext,
+  ): Promise<OwnReplyLookup> {
     const { pages, error } = await resolveManagedPages(ctx)
     if (error) return { status: "unknown", reason: error }
     const page = resolvePageTokenForExternalId(pages, target.externalId)
@@ -811,11 +839,16 @@ export const facebookAdapter: PlatformAdapter = {
     let url: string | null =
       `${FB_BASE}/${target.externalId}/comments?fields=id,message,from&order=reverse_chronological&limit=100`
     for (let n = 0; url && n < OWN_REPLY_MAX_PAGES; n++) {
-      const res = await ctx.fetch(url, { headers: { Authorization: `Bearer ${page.access_token}` } })
-      if (res.status < 200 || res.status >= 300) return { status: "unknown", reason: `HTTP ${res.status}` }
+      const res = await ctx.fetch(url, {
+        headers: { Authorization: `Bearer ${page.access_token}` },
+      })
+      if (res.status < 200 || res.status >= 300)
+        return { status: "unknown", reason: `HTTP ${res.status}` }
       const body = parseBody(res.body) as { data?: FbComment[]; paging?: { next?: unknown } }
       if (!Array.isArray(body.data)) return { status: "unknown", reason: "unreadable_replies" }
-      const hit = body.data.find((c) => c.from?.id !== undefined && own.has(c.from.id) && sameReplyText(c.message, text))
+      const hit = body.data.find(
+        (c) => c.from?.id !== undefined && own.has(c.from.id) && sameReplyText(c.message, text),
+      )
       if (hit) return { status: "found", externalId: hit.id ?? null }
       url = typeof body.paging?.next === "string" ? body.paging.next : null
     }
@@ -861,7 +894,8 @@ export const facebookAdapter: PlatformAdapter = {
       for (const change of entry.changes ?? []) {
         const v = change.value ?? {}
         if (change.field === "feed" && typeof v.comment_id === "string") {
-          const fromId = typeof v.from === "object" && v.from ? (v.from as { id?: unknown }).id : undefined
+          const fromId =
+            typeof v.from === "object" && v.from ? (v.from as { id?: unknown }).id : undefined
           const authorId = fromId === undefined || fromId === null ? null : String(fromId)
           const postId = typeof v.post_id === "string" ? v.post_id : null
           const parentId = typeof v.parent_id === "string" ? v.parent_id : null
@@ -877,7 +911,8 @@ export const facebookAdapter: PlatformAdapter = {
             // which Meta echoes like any other comment. The post id's
             // `<pageId>_` prefix names the same Page when `entry.id` is absent.
             authoredByOwner:
-              authorId !== null && (authorId === ownId || (postId !== null && authorId === pageIdPrefix(postId))),
+              authorId !== null &&
+              (authorId === ownId || (postId !== null && authorId === pageIdPrefix(postId))),
             // A top-level comment's parent is the post itself.
             replyToExternalId: parentId,
             // Meta's own time for the comment, never the arrival time (a retried

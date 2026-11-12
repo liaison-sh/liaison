@@ -22,87 +22,26 @@
 //
 // kit.tsx primitives only; no kernel ui imports; no @solidjs/router; explicit props (no {...rest}
 // spreads onto host elements, per the bundling rule). No dash punctuation in operator copy.
+
+import { accessToken, app, getContext } from "@liaison/host"
 import {
   type Component,
   createEffect,
-  type JSX,
   createMemo,
   createSignal,
   For,
   Index,
+  type JSX,
   onCleanup,
   Show,
   untrack,
 } from "solid-js"
-import { accessToken, app, getContext } from "@liaison/host"
-import { AddShipmentPanel } from "./AddShipmentPanel"
-import { tr } from "./i18n"
 import { AddressDiffersChip, AddressDiffersFold } from "./AddressDiffers"
-import {
-  type ApprovalRow,
-  approvalCardText,
-  decideBody,
-  decisionNote,
-  pendingShipApprovalsByDraft,
-  shipApprovalForRow,
-  shipOutcome,
-} from "./ship-approval"
-import { CaretIcon, CarrierLogo, PrinterIcon } from "./icon"
-import { loadFileInto, openPreparingTab } from "./file-open"
-import { productChipLabel, resolveProductCodes, shortProductCode } from "./product-codes"
+import { AddShipmentPanel } from "./AddShipmentPanel"
 import { compareCountry, countryName, countryOptions, sortByCountry } from "./country"
-import { type ReadyRow, ReadyRowView, ReadySelectionBar, type ReadyWorklist } from "./ReadyRows"
-import {
-  readyRowMatchesView,
-  showsToPrepare,
-  WORKLIST_TO_PREPARE_LABEL,
-  type WorklistFilter,
-  worklistEmptyKind,
-} from "./worklist-logic"
-import {
-  decodeOrgIdFromToken,
-  evictShippedRowFromCache,
-  loadPrepCache,
-  resolveLocalStorage,
-  savePrepCache,
-} from "./prep-cache"
-import {
-  EXIT_TRANSITION_MS,
-  gridViewState,
-  planPrepListOpen,
-  reconcileExitingRows,
-  rowIsInteractive,
-  toggleRowKey,
-} from "./prep-view-state"
-import {
-  addressDiffers,
-  CATEGORY_SHORT_LABELS,
-  canShip,
-  categoryFullLabel,
-  categoryLockReason,
-  createRunMutation,
-  invoiceControlState,
-  LABEL_LABELS,
-  labelState,
-  keepUnchangedRows,
-  mergeRows,
-  type PrepCategory,
-  type PrepInvoiceState,
-  type PrepListResult,
-  type PrepOffer,
-  type PrepParcel,
-  type PollTickState,
-  type PrepQuoteView,
-  type PrepAddressPick,
-  type PrepRow,
-  type PrepStatus,
-  pollTick,
-  quoteButtonState,
-  rowTintClass,
-  shipDisabledReason,
-  shipParams,
-  STATUS_LABELS,
-} from "./prep-row-logic"
+import { loadFileInto, openPreparingTab } from "./file-open"
+import { tr } from "./i18n"
+import { CaretIcon, CarrierLogo, PrinterIcon } from "./icon"
 import {
   Badge,
   Button,
@@ -114,7 +53,73 @@ import {
   PageHeader,
   Th,
 } from "./kit"
+import {
+  decodeOrgIdFromToken,
+  evictShippedRowFromCache,
+  loadPrepCache,
+  resolveLocalStorage,
+  savePrepCache,
+} from "./prep-cache"
+import {
+  addressDiffers,
+  CATEGORY_SHORT_LABELS,
+  canShip,
+  categoryFullLabel,
+  categoryLockReason,
+  createRunMutation,
+  invoiceControlState,
+  keepUnchangedRows,
+  LABEL_LABELS,
+  labelState,
+  mergeRows,
+  type PollTickState,
+  type PrepAddressPick,
+  type PrepCategory,
+  type PrepInvoiceState,
+  type PrepListResult,
+  type PrepOffer,
+  type PrepParcel,
+  type PrepQuoteView,
+  type PrepRow,
+  type PrepStatus,
+  pollTick,
+  quoteButtonState,
+  rowTintClass,
+  STATUS_LABELS,
+  shipDisabledReason,
+  shipParams,
+} from "./prep-row-logic"
+import {
+  EXIT_TRANSITION_MS,
+  gridViewState,
+  planPrepListOpen,
+  reconcileExitingRows,
+  rowIsInteractive,
+  toggleRowKey,
+} from "./prep-view-state"
+import { productChipLabel, resolveProductCodes, shortProductCode } from "./product-codes"
+import { type ReadyRow, ReadyRowView, ReadySelectionBar, type ReadyWorklist } from "./ReadyRows"
+import {
+  type ApprovalRow,
+  approvalCardText,
+  decideBody,
+  decisionNote,
+  pendingShipApprovalsByDraft,
+  shipApprovalForRow,
+  shipOutcome,
+} from "./ship-approval"
+import {
+  readyRowMatchesView,
+  showsToPrepare,
+  WORKLIST_TO_PREPARE_LABEL,
+  type WorklistFilter,
+  worklistEmptyKind,
+} from "./worklist-logic"
 
+// Money helpers (currency-exponent aware) now live in kit.tsx — the single
+// money system for the boxtal UI package. Re-exported here so existing
+// imports from "./PrepGrid" (PrepGrid.test.ts) keep working.
+export { currencyExponent, formatMoneyMinor } from "./kit"
 // ── Row + tool-response shapes ──────────────────────────────────────────────
 //
 // They live in prep-row-logic.ts (the pure module) rather than here, so a test can get the row
@@ -135,11 +140,6 @@ export type {
   PrepShipmentView,
   PrepStatus,
 } from "./prep-row-logic"
-
-// Money helpers (currency-exponent aware) now live in kit.tsx — the single
-// money system for the boxtal UI package. Re-exported here so existing
-// imports from "./PrepGrid" (PrepGrid.test.ts) keep working.
-export { currencyExponent, formatMoneyMinor } from "./kit"
 
 // ── Pure helpers (unit-tested in PrepGrid.test.ts) ──────────────────────────
 
@@ -187,12 +187,14 @@ export interface PrepFilterInput {
  *  still happens server-side on the next prep_list call with these params). */
 export function matchesPrepFilter(row: PrepRow, f: PrepFilterInput): boolean {
   if (!f.includeExcluded && row.excluded) return false
-  if (f.country && row.destination.trim().toUpperCase() !== f.country.trim().toUpperCase()) return false
+  if (f.country && row.destination.trim().toUpperCase() !== f.country.trim().toUpperCase())
+    return false
   if (f.tag && !row.order_tags.some((t) => t.toLowerCase() === f.tag.toLowerCase())) return false
   if (f.product && !row.products.toLowerCase().includes(f.product.toLowerCase())) return false
   if (f.search) {
     const q = f.search.toLowerCase()
-    const haystack = `${row.invoice_ref} ${row.order_name ?? ""} ${row.customer} ${row.destination}`.toLowerCase()
+    const haystack =
+      `${row.invoice_ref} ${row.order_name ?? ""} ${row.customer} ${row.destination}`.toLowerCase()
     if (!haystack.includes(q)) return false
   }
   return true
@@ -371,12 +373,15 @@ export function setCartonCount(draft: PackageDraft, next: number): PackageDraft 
 }
 
 /** Replace one carton's figures, leaving every sibling untouched. */
-export function setCarton(draft: PackageDraft, index: number, patch: Partial<CartonDraft>): PackageDraft {
+export function setCarton(
+  draft: PackageDraft,
+  index: number,
+  patch: Partial<CartonDraft>,
+): PackageDraft {
   return {
     cartons: draft.cartons.map((c, i) => (i === index ? { ...c, ...patch } : c)),
   }
 }
-
 
 // ── Sorting (ticket-10221) ─────────────────────────────────────────────────
 // The grid had no sort at all: rows arrived in whatever order prep_list
@@ -409,13 +414,15 @@ export function comparePrepRows(a: PrepRow, b: PrepRow, sort: PrepSort): number 
     // A row with no total sorts last in BOTH directions -- an unpriced row is
     // not "cheapest", it is unknown, and burying it under the cheap end would
     // read as a fact it does not carry.
-    const av = a.grand_total_minor, bv = b.grand_total_minor
+    const av = a.grand_total_minor,
+      bv = b.grand_total_minor
     if (av == null && bv == null) return 0
     if (av == null) return 1
     if (bv == null) return -1
     return flip * (av - bv)
   }
-  const x = orderSortValue(a), y = orderSortValue(b)
+  const x = orderSortValue(a),
+    y = orderSortValue(b)
   if (x.num == null && y.num == null) return flip * x.text.localeCompare(y.text)
   if (x.num == null) return 1
   if (y.num == null) return -1
@@ -481,7 +488,12 @@ export function packageDetailTitle(draft: PackageDraft): string {
  *  "Refresh stale" header button. */
 export function staleQuoteRefs(rows: PrepRow[]): string[] {
   return rows
-    .filter((row) => !row.excluded && row.state !== "needs_fix" && (row.quote.stale || row.state === "quote_missing"))
+    .filter(
+      (row) =>
+        !row.excluded &&
+        row.state !== "needs_fix" &&
+        (row.quote.stale || row.state === "quote_missing"),
+    )
     .map((row) => row.document_ref)
     .filter((ref): ref is string => ref != null)
 }
@@ -556,7 +568,17 @@ async function fetchPrepRows(orderKeys: string[]): Promise<PrepRow[]> {
 let prepListCache: { key: string; value: PrepListResult } | null = null
 
 const InboxIcon: Component = () => (
-  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <svg
+    width="28"
+    height="28"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
     <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
     <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
   </svg>
@@ -967,7 +989,6 @@ const PackageCell: Component<{
   )
 }
 
-
 /** Normalize what the operator typed into what the tool stores: trimmed, empty is null. */
 export function noteFromInput(raw: string): string | null {
   const trimmed = raw.trim()
@@ -1007,7 +1028,10 @@ const NoteCell: Component<{
         value={current()}
         placeholder="Staff note"
         aria-label="Shopify staff note"
-        title={current() || "Internal note on the Shopify order (what Shopify admin shows as the order note). Saved when you leave the field."}
+        title={
+          current() ||
+          "Internal note on the Shopify order (what Shopify admin shows as the order note). Saved when you leave the field."
+        }
         disabled={props.busy}
         data-testid={`boxtal-prep-note-${props.row.order_key}`}
         onFocus={() => setFocused(true)}
@@ -1311,7 +1335,10 @@ const LabelCell: Component<{
     >
       <Button
         variant={state() === "ready" ? "secondary" : "ghost"}
-        class={cx("whitespace-nowrap py-1", state() === "check_documents" ? "px-2 text-[11.5px]" : "!px-1")}
+        class={cx(
+          "whitespace-nowrap py-1",
+          state() === "check_documents" ? "px-2 text-[11.5px]" : "!px-1",
+        )}
         disabled={props.busy || state() === "disabled"}
         title={labelButtonTitle(state())}
         ariaLabel={LABEL_LABELS[state()]}
@@ -1445,7 +1472,9 @@ export const PrepGrid: Component<{
     if (!served) {
       served = true
       const memCached = prepListCache && prepListCache.key === key ? prepListCache.value : null
-      const persisted = memCached ? null : loadPrepCache(cacheCtx.storage, cacheCtx.orgId, includeExcluded())
+      const persisted = memCached
+        ? null
+        : loadPrepCache(cacheCtx.storage, cacheCtx.orgId, includeExcluded())
       const plan = planPrepListOpen(memCached ?? persisted?.value ?? null)
       if (plan.paint) {
         prepListCache = { key, value: plan.paint }
@@ -1535,9 +1564,14 @@ export const PrepGrid: Component<{
       return [key, ticket] as const
     })
     const fresh = await fetchPrepRows(orderKeys)
-    const stillCurrent = new Set(tickets.filter(([key, ticket]) => patchTickets.get(key) === ticket).map(([key]) => key))
+    const stillCurrent = new Set(
+      tickets.filter(([key, ticket]) => patchTickets.get(key) === ticket).map(([key]) => key),
+    )
     if (stillCurrent.size === 0) return // every row in this batch was superseded by a newer read
-    patchRows(fresh.filter((row) => stillCurrent.has(row.order_key)), [...stillCurrent])
+    patchRows(
+      fresh.filter((row) => stillCurrent.has(row.order_key)),
+      [...stillCurrent],
+    )
   }
 
   const isBusy = (key: string): boolean => busyKeys().has(key)
@@ -1740,11 +1774,19 @@ export const PrepGrid: Component<{
   const pollStarted = new Map<string, PollTickState>()
   const pollTimer = setInterval(() => {
     const now = Date.now()
-    const { dueLabelKeys, dueInvoicePdfKeys, timedOutKeys } = pollTick(fetchedRows(), pollStarted, now, isBusy)
+    const { dueLabelKeys, dueInvoicePdfKeys, timedOutKeys } = pollTick(
+      fetchedRows(),
+      pollStarted,
+      now,
+      isBusy,
+    )
     for (const { key, reason } of timedOutKeys) {
       // Deadline reached. Say what happened instead of leaving a spinner that never resolves.
       if (reason === "invoice_pdf" && pendingPdf.has(key)) {
-        finishPdf(key, "The document PDF is taking longer than a minute to render. Try again shortly.")
+        finishPdf(
+          key,
+          "The document PDF is taking longer than a minute to render. Try again shortly.",
+        )
       }
     }
     // The invoice_pdf wait is resolved by re-asking for the FILE: a row re-read cannot see it (the
@@ -1809,7 +1851,10 @@ export const PrepGrid: Component<{
   const selectOffer = (row: PrepRow, offerCode: string): Promise<void> =>
     runMutation("select_offer", row.order_key, async () => {
       if (!row.document_ref) return
-      await app.invokeTool("prep_select_offer", { document_ref: row.document_ref, offer_code: offerCode })
+      await app.invokeTool("prep_select_offer", {
+        document_ref: row.document_ref,
+        offer_code: offerCode,
+      })
     })
 
   // Status applies OPTIMISTICALLY: the row tint and the select's own value must not lag a whole
@@ -1907,11 +1952,15 @@ export const PrepGrid: Component<{
     return runMutation("ship", row.order_key, async () => {
       setShipNote(row.order_key, null)
       const outcome = shipOutcome(
-        await app.invokeTool<unknown>("create_shipment", params as unknown as Record<string, unknown>),
+        await app.invokeTool<unknown>(
+          "create_shipment",
+          params as unknown as Record<string, unknown>,
+        ),
       )
       if (outcome.kind === "pending") {
         // Parked, NOT bought: the row stays. Whoever may decide it does so on this row.
-        if (!outcome.requesterCanApprove) setPendingShips((prev) => new Set(prev).add(row.order_key))
+        if (!outcome.requesterCanApprove)
+          setPendingShips((prev) => new Set(prev).add(row.order_key))
         await loadShipApprovals(true)
         return
       }
@@ -1928,7 +1977,11 @@ export const PrepGrid: Component<{
 
   // The one decision for a parked label purchase, taken on its row. Approving runs the purchase
   // with the decider's authority, and everything it sets off runs under that same decision.
-  const decideShip = (row: PrepRow, approval: ApprovalRow, decision: "approve" | "deny"): Promise<void> =>
+  const decideShip = (
+    row: PrepRow,
+    approval: ApprovalRow,
+    decision: "approve" | "deny",
+  ): Promise<void> =>
     runMutation("ship", row.order_key, async () => {
       setShipNote(row.order_key, null)
       setOpenApprovalCards((prev) => toggleRowKey(prev, row.order_key, false))
@@ -1942,11 +1995,17 @@ export const PrepGrid: Component<{
           next.delete(row.order_key)
           return next
         })
-        if (decision === "approve" && (result as { status?: unknown } | null)?.status === "approved") {
+        if (
+          decision === "approve" &&
+          (result as { status?: unknown } | null)?.status === "approved"
+        ) {
           evictShippedRowFromCache(cacheCtx.storage, cacheCtx.orgId, row.order_key, Date.now())
         }
       } catch (err) {
-        setRowError(row.order_key, err instanceof Error ? err.message : "The decision did not go through.")
+        setRowError(
+          row.order_key,
+          err instanceof Error ? err.message : "The decision did not go through.",
+        )
       } finally {
         await loadShipApprovals(true)
       }
@@ -1972,13 +2031,18 @@ export const PrepGrid: Component<{
     patchRows([{ ...row, invoice: { ...row.invoice, state } }], [row.order_key])
   }
 
-  const requestInvoicePdf = async (orderKey: string, documentRef: string | null): Promise<
-    { done: true } | { done: false; error?: string }
-  > => {
-    const res = await app.invokeTool<{ file_id?: string | null; generating?: boolean; error?: string }>(
-      "prep_document_pdf",
-      { order_key: orderKey, ...(documentRef ? { document_ref: documentRef } : {}) },
-    )
+  const requestInvoicePdf = async (
+    orderKey: string,
+    documentRef: string | null,
+  ): Promise<{ done: true } | { done: false; error?: string }> => {
+    const res = await app.invokeTool<{
+      file_id?: string | null
+      generating?: boolean
+      error?: string
+    }>("prep_document_pdf", {
+      order_key: orderKey,
+      ...(documentRef ? { document_ref: documentRef } : {}),
+    })
     if (res?.file_id) {
       const pending = pendingPdf.get(orderKey)
       await loadFileInto(res.file_id, pending?.win ?? null, "invoice")
@@ -2037,10 +2101,10 @@ export const PrepGrid: Component<{
     const win = openPreparingTab()
     void (async () => {
       try {
-        const res = await app.invokeTool<{ label?: { file_id: string } | null; label_error?: string }>(
-          "print_pack",
-          { shipment_id: row.shipment?.id },
-        )
+        const res = await app.invokeTool<{
+          label?: { file_id: string } | null
+          label_error?: string
+        }>("print_pack", { shipment_id: row.shipment?.id })
         if (res?.label?.file_id) await loadFileInto(res.label.file_id, win, "label")
         else {
           win?.close()
@@ -2096,7 +2160,13 @@ export const PrepGrid: Component<{
       {props.filterBar}
 
       {/* What this list is NOT showing, said out loud rather than left to be discovered. */}
-      <Show when={latestResult()?.last_sync_error || latestResult()?.truncated || latestResult()?.invoicing_available === false}>
+      <Show
+        when={
+          latestResult()?.last_sync_error ||
+          latestResult()?.truncated ||
+          latestResult()?.invoicing_available === false
+        }
+      >
         <div
           class="mx-4 mt-3 rounded-sm border border-warning-border bg-warning-glow/40 px-3 py-2 text-[12px] text-text"
           data-testid="boxtal-prep-notice"
@@ -2230,7 +2300,11 @@ export const PrepGrid: Component<{
       <Show
         when={viewState().empty !== "load_error" || !prepBlocksTable()}
         fallback={
-          <EmptyState icon={<InboxIcon />} title="Couldn't load queue" testid="boxtal-prep-grid-error">
+          <EmptyState
+            icon={<InboxIcon />}
+            title="Couldn't load queue"
+            testid="boxtal-prep-grid-error"
+          >
             {String(result.error?.message ?? result.error ?? "Unknown error")}
           </EmptyState>
         }
@@ -2258,242 +2332,283 @@ export const PrepGrid: Component<{
         <Show
           when={viewState().empty !== "loading" || !prepBlocksTable()}
           fallback={
-            <EmptyState icon={<InboxIcon />} title="Loading the queue" testid="boxtal-prep-grid-loading">
+            <EmptyState
+              icon={<InboxIcon />}
+              title="Loading the queue"
+              testid="boxtal-prep-grid-loading"
+            >
               Nothing is cached yet. The queue is loading.
             </EmptyState>
           }
         >
-        <Show
-          when={anyVisible()}
-          fallback={
-            <Show
-              when={emptyKind() !== "no_match"}
-              fallback={
-                <EmptyState icon={<InboxIcon />} title="No rows match these filters" testid="boxtal-worklist-no-match">
-                  <Button variant="ghost" testid="boxtal-worklist-clear-filters" onClick={clearFilters}>
-                    Clear filters
-                  </Button>
-                </EmptyState>
-              }
-            >
+          <Show
+            when={anyVisible()}
+            fallback={
               <Show
-                when={emptyKind() === "nothing_ready"}
+                when={emptyKind() !== "no_match"}
                 fallback={
-                  <EmptyState icon={<InboxIcon />} title="Nothing to prepare" testid="boxtal-prep-grid-empty">
-                    Every open order is shipped or excluded.
+                  <EmptyState
+                    icon={<InboxIcon />}
+                    title="No rows match these filters"
+                    testid="boxtal-worklist-no-match"
+                  >
+                    <Button
+                      variant="ghost"
+                      testid="boxtal-worklist-clear-filters"
+                      onClick={clearFilters}
+                    >
+                      Clear filters
+                    </Button>
                   </EmptyState>
                 }
               >
-                <EmptyState icon={<InboxIcon />} title="Nothing ready" testid="boxtal-ready-empty">
-                  Shipments with a bought label will appear here, ready for the print station.
-                </EmptyState>
+                <Show
+                  when={emptyKind() === "nothing_ready"}
+                  fallback={
+                    <EmptyState
+                      icon={<InboxIcon />}
+                      title="Nothing to prepare"
+                      testid="boxtal-prep-grid-empty"
+                    >
+                      Every open order is shipped or excluded.
+                    </EmptyState>
+                  }
+                >
+                  <EmptyState
+                    icon={<InboxIcon />}
+                    title="Nothing ready"
+                    testid="boxtal-ready-empty"
+                  >
+                    Shipments with a bought label will appear here, ready for the print station.
+                  </EmptyState>
+                </Show>
               </Show>
+            }
+          >
+            <Show when={props.ready && readyVisible().length > 0}>
+              <ReadySelectionBar ready={props.ready!} visible={readyVisible()} />
             </Show>
-          }
-        >
-          <Show when={props.ready && readyVisible().length > 0}>
-            <ReadySelectionBar ready={props.ready!} visible={readyVisible()} />
-          </Show>
-          {/* The horizontal scroller. Its own width -- not the window's -- decides
+            {/* The horizontal scroller. Its own width -- not the window's -- decides
               whether the Actions column stays pinned (see actionsSticky above), and
               `data-sticky-actions` publishes that decision so the e2e can pin the rule
               at both geometries. Un-stuck, the table simply scrolls: `overflow-auto`
               gives it a real horizontal scrollbar, which is how a table this wide is
               read. */}
-          <div
-            class="flex-1 overflow-auto"
-            data-testid="boxtal-prep-grid-scroller"
-            data-sticky-actions={String(actionsSticky())}
-            ref={setScroller}
-          >
-            <table
-              data-testid="boxtal-prep-grid-table"
-              class="min-w-full border-separate border-spacing-0 text-left text-[12.5px]"
+            <div
+              class="flex-1 overflow-auto"
+              data-testid="boxtal-prep-grid-scroller"
+              data-sticky-actions={String(actionsSticky())}
+              ref={setScroller}
             >
-              <thead>
-                <tr>
-                  <Th
-                    pad="tight"
-                    class="sticky top-0 z-10 hidden border-b border-border bg-bg md:table-cell"
-                  >
-                    State
-                  </Th>
-                  <SortTh label="Order" sortKey="order" active={sort()} onSort={onSort} />
-                  <SortTh label="Client" sortKey="client" active={sort()} onSort={onSort} />
-                  <SortTh
-                    label="Country"
-                    sortKey="country"
-                    active={sort()}
-                    class="hidden md:table-cell"
-                    onSort={onSort}
-                  />
-                  <Th
-                    pad="tight"
-                    class="sticky top-0 z-10 hidden border-b border-border bg-bg md:table-cell"
-                  >
-                    Products
-                  </Th>
-                  <SortTh
-                    label="Total"
-                    sortKey="total"
-                    active={sort()}
-                    right
-                    class="hidden md:table-cell"
-                    onSort={onSort}
-                  />
-                  <Th
-                    pad="tight"
-                    class="sticky top-0 z-10 hidden border-b border-border bg-bg md:table-cell"
-                  >
-                    Category
-                  </Th>
-                  <Th
-                    pad="tight"
-                    class="sticky top-0 z-10 hidden border-b border-border bg-bg md:table-cell"
-                  >
-                    Document
-                  </Th>
-                  {/* ONE actions column, pinned to the right edge, so Ship stays reachable on a
+              <table
+                data-testid="boxtal-prep-grid-table"
+                class="min-w-full border-separate border-spacing-0 text-left text-[12.5px]"
+              >
+                <thead>
+                  <tr>
+                    <Th
+                      pad="tight"
+                      class="sticky top-0 z-10 hidden border-b border-border bg-bg md:table-cell"
+                    >
+                      State
+                    </Th>
+                    <SortTh label="Order" sortKey="order" active={sort()} onSort={onSort} />
+                    <SortTh label="Client" sortKey="client" active={sort()} onSort={onSort} />
+                    <SortTh
+                      label="Country"
+                      sortKey="country"
+                      active={sort()}
+                      class="hidden md:table-cell"
+                      onSort={onSort}
+                    />
+                    <Th
+                      pad="tight"
+                      class="sticky top-0 z-10 hidden border-b border-border bg-bg md:table-cell"
+                    >
+                      Products
+                    </Th>
+                    <SortTh
+                      label="Total"
+                      sortKey="total"
+                      active={sort()}
+                      right
+                      class="hidden md:table-cell"
+                      onSort={onSort}
+                    />
+                    <Th
+                      pad="tight"
+                      class="sticky top-0 z-10 hidden border-b border-border bg-bg md:table-cell"
+                    >
+                      Category
+                    </Th>
+                    <Th
+                      pad="tight"
+                      class="sticky top-0 z-10 hidden border-b border-border bg-bg md:table-cell"
+                    >
+                      Document
+                    </Th>
+                    {/* ONE actions column, pinned to the right edge, so Ship stays reachable on a
                       narrow viewport instead of scrolling out of reach (the same defect as not
                       having it on the row at all). No separator of its own: it is only pinned at
                       the widths where the table FITS, so nothing is behind it to mark off. The
                       grid wrapper is horizontally scrollable (`overflow-auto` below) so anything
                       still off-screen is reachable too. */}
-                  <Th
-                    right
-                    pad="tight"
-                    class={cx("sticky top-0 z-20 border-b bg-bg", actionsSticky() ? "right-0" : "")}
-                  >
-                    Actions
-                  </Th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-border-subtle">
-                <For each={prepShown() ? displayRows() : []}>
-                  {(row) => {
-                    // A row mid-exit-transition (held on screen by reconcileExitingRows after a
-                    // refresh dropped it) is busy in every sense that matters here: no action on
-                    // it can do anything useful in the ~220ms before it leaves.
-                    const exiting = () => exitingKeys().has(row.order_key)
-                    const busy = () => isBusy(row.order_key) || !rowIsInteractive(exiting())
-                    const lock = () => categoryLockReason(row)
-                    // Denser than the first cut (2026-09-08): py-1.5 -> py-1 and a tight
-                    // leading on every stacked cell. The row is a worklist line, not a card, and
-                    // 12px of vertical padding plus default line-height spent ~24px of every row
-                    // on nothing. The header padding was tightened to match (Th pad="tight"), so
-                    // no column is set wider than its own content by its label's padding.
-                    const cellClass = "border-b border-border-subtle px-1.5 py-1 align-middle"
-                    const phoneExpanded = () => phoneExpandedRows().has(row.order_key)
-                    // A column the phone drops stays in the row and paints as a
-                    // stacked block once the operator expands it, so the cell is
-                    // written once and read at both widths.
-                    const phoneCell = (key: string) =>
-                      PREP_GRID_COLUMNS.find((c) => c.key === key)?.survivesPhone
-                        ? ""
-                        : phoneExpanded()
-                          ? "block md:table-cell"
-                          : "hidden md:table-cell"
-                    const productCodes = createMemo(() => resolveProductCodes(row.products))
-                    const [addressOpen, setAddressOpen] = createSignal(false)
-                    return (
-                      <>
-                      <tr
-                        data-testid={`boxtal-prep-row-${row.order_key}`}
-                        data-status={row.status}
-                        data-state={row.state}
-                        data-excluded={row.excluded.toString()}
-                        data-exiting={exiting() ? "true" : "false"}
-                        class={cx(
-                          "group transition-[opacity] duration-200 ease-in hover:bg-surface-hover",
-                          exiting() ? "pointer-events-none opacity-0" : "opacity-100",
-                          // The prep grid has no packed mark: packing happens at the print
-                          // station, on a Ready-to-ship row, so this grid is never greyed for it.
-                          rowTintClass(row.status, false),
-                        )}
-                      >
-                        <td class={cx(cellClass, phoneCell("status"))} data-phone-column="status">
-                          {/* Where the order is in the worklist: no label yet. Its status
+                    <Th
+                      right
+                      pad="tight"
+                      class={cx(
+                        "sticky top-0 z-20 border-b bg-bg",
+                        actionsSticky() ? "right-0" : "",
+                      )}
+                    >
+                      Actions
+                    </Th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-border-subtle">
+                  <For each={prepShown() ? displayRows() : []}>
+                    {(row) => {
+                      // A row mid-exit-transition (held on screen by reconcileExitingRows after a
+                      // refresh dropped it) is busy in every sense that matters here: no action on
+                      // it can do anything useful in the ~220ms before it leaves.
+                      const exiting = () => exitingKeys().has(row.order_key)
+                      const busy = () => isBusy(row.order_key) || !rowIsInteractive(exiting())
+                      const lock = () => categoryLockReason(row)
+                      // Denser than the first cut (2026-09-08): py-1.5 -> py-1 and a tight
+                      // leading on every stacked cell. The row is a worklist line, not a card, and
+                      // 12px of vertical padding plus default line-height spent ~24px of every row
+                      // on nothing. The header padding was tightened to match (Th pad="tight"), so
+                      // no column is set wider than its own content by its label's padding.
+                      const cellClass = "border-b border-border-subtle px-1.5 py-1 align-middle"
+                      const phoneExpanded = () => phoneExpandedRows().has(row.order_key)
+                      // A column the phone drops stays in the row and paints as a
+                      // stacked block once the operator expands it, so the cell is
+                      // written once and read at both widths.
+                      const phoneCell = (key: string) =>
+                        PREP_GRID_COLUMNS.find((c) => c.key === key)?.survivesPhone
+                          ? ""
+                          : phoneExpanded()
+                            ? "block md:table-cell"
+                            : "hidden md:table-cell"
+                      const productCodes = createMemo(() => resolveProductCodes(row.products))
+                      const [addressOpen, setAddressOpen] = createSignal(false)
+                      return (
+                        <>
+                          <tr
+                            data-testid={`boxtal-prep-row-${row.order_key}`}
+                            data-status={row.status}
+                            data-state={row.state}
+                            data-excluded={row.excluded.toString()}
+                            data-exiting={exiting() ? "true" : "false"}
+                            class={cx(
+                              "group transition-[opacity] duration-200 ease-in hover:bg-surface-hover",
+                              exiting() ? "pointer-events-none opacity-0" : "opacity-100",
+                              // The prep grid has no packed mark: packing happens at the print
+                              // station, on a Ready-to-ship row, so this grid is never greyed for it.
+                              rowTintClass(row.status, false),
+                            )}
+                          >
+                            <td
+                              class={cx(cellClass, phoneCell("status"))}
+                              data-phone-column="status"
+                            >
+                              {/* Where the order is in the worklist: no label yet. Its status
                               (To prepare, Validated, On hold) is the select under it. */}
-                          <span
-                            class="mb-0.5 block whitespace-nowrap text-[11px] font-medium leading-[1.3] text-text-secondary"
-                            data-testid={`boxtal-prep-state-${row.order_key}`}
-                          >
-                            {WORKLIST_TO_PREPARE_LABEL}
-                          </span>
-                          <select
-                            class={cx(inputClass, "!w-[96px] px-1 py-0.5 text-[11px]")}
-                            data-testid={`boxtal-prep-status-${row.order_key}`}
-                            aria-label="Row status"
-                            value={row.status}
-                            disabled={busy()}
-                            onChange={(e) => void setStatus(row, e.currentTarget.value as PrepStatus)}
-                          >
-                            <For each={STATUS_OPTIONS}>
-                              {(opt) => <option value={opt.value}>{opt.label}</option>}
-                            </For>
-                          </select>
-                          {/* The status reason (why a row is on hold, what an order-less row is
+                              <span
+                                class="mb-0.5 block whitespace-nowrap text-[11px] font-medium leading-[1.3] text-text-secondary"
+                                data-testid={`boxtal-prep-state-${row.order_key}`}
+                              >
+                                {WORKLIST_TO_PREPARE_LABEL}
+                              </span>
+                              <select
+                                class={cx(inputClass, "!w-[96px] px-1 py-0.5 text-[11px]")}
+                                data-testid={`boxtal-prep-status-${row.order_key}`}
+                                aria-label="Row status"
+                                value={row.status}
+                                disabled={busy()}
+                                onChange={(e) =>
+                                  void setStatus(row, e.currentTarget.value as PrepStatus)
+                                }
+                              >
+                                <For each={STATUS_OPTIONS}>
+                                  {(opt) => <option value={opt.value}>{opt.label}</option>}
+                                </For>
+                              </select>
+                              {/* The status reason (why a row is on hold, what an order-less row is
                               for) was stored but never shown; one quiet clamped line under the
                               select, full text on hover. */}
-                          <Show when={row.status_note}>
-                            <span
-                              class="mt-0.5 block max-w-[96px] truncate text-[10.5px] leading-[1.3] text-text-tertiary"
-                              title={row.status_note ?? undefined}
-                              data-testid={`boxtal-prep-status-note-${row.order_key}`}
-                            >
-                              {row.status_note}
-                            </span>
-                          </Show>
-                        </td>
-                        <td class={cellClass}>
-                          {/* Two lines, tight: the order number is the value and the date is the
+                              <Show when={row.status_note}>
+                                <span
+                                  class="mt-0.5 block max-w-[96px] truncate text-[10.5px] leading-[1.3] text-text-tertiary"
+                                  title={row.status_note ?? undefined}
+                                  data-testid={`boxtal-prep-status-note-${row.order_key}`}
+                                >
+                                  {row.status_note}
+                                </span>
+                              </Show>
+                            </td>
+                            <td class={cellClass}>
+                              {/* Two lines, tight: the order number is the value and the date is the
                               label under it, so the label is quieter and the pair shares one
                               baseline block instead of two full line-heights. */}
-                          <div class="flex flex-col leading-[1.3]">
-                            <span class="whitespace-nowrap font-mono text-text">
-                              {row.order_name ?? row.invoice_ref}
-                            </span>
-                            <span class="whitespace-nowrap font-mono text-[10.5px] tabular-nums text-text-tertiary">
-                              {row.order_created_at
-                                ? new Date(row.order_created_at).toLocaleDateString()
-                                : ""}
-                            </span>
-                            {/* The Shopify staff note is the THIRD line of this cell, not a
+                              <div class="flex flex-col leading-[1.3]">
+                                <span class="whitespace-nowrap font-mono text-text">
+                                  {row.order_name ?? row.invoice_ref}
+                                </span>
+                                <span class="whitespace-nowrap font-mono text-[10.5px] tabular-nums text-text-tertiary">
+                                  {row.order_created_at
+                                    ? new Date(row.order_created_at).toLocaleDateString()
+                                    : ""}
+                                </span>
+                                {/* The Shopify staff note is the THIRD line of this cell, not a
                                 column of its own: a ninth column is what put the old Packages
                                 cell under the sticky Actions edge (see the PrepGrid.test pin).
                                 Read-only text at rest, a textarea on click. */}
-                            <NoteCell row={row} busy={busy()} onSave={(note) => void setNote(row, note)} />
-                          </div>
-                        </td>
-                        <td class={cellClass}>
-                          {/* At most two lines (2026-09-08): the name, capped and truncated, then the
+                                <NoteCell
+                                  row={row}
+                                  busy={busy()}
+                                  onSave={(note) => void setNote(row, note)}
+                                />
+                              </div>
+                            </td>
+                            <td class={cellClass}>
+                              {/* At most two lines (2026-09-08): the name, capped and truncated, then the
                               order's tags clamped to one line. The country, which used to share
                               that second line, is its own column now. The full name and tag list
                               are on the cell's `title`, so the cap costs nothing an operator
                               cannot recover by hovering. */}
-                          <div
-                            class="flex max-w-[92px] flex-col leading-[1.3]"
-                            title={`${row.customer}${row.order_tags.length > 0 ? ` (${row.order_tags.join(", ")})` : ""}`}
-                          >
-                            <span class="truncate text-text">{row.customer}</span>
-                            <Show when={row.order_tags.length > 0}>
-                              <span class="truncate text-[10.5px] text-text-tertiary">{row.order_tags.join(", ")}</span>
-                            </Show>
-                          </div>
-                        </td>
-                        {/* The destination country has its own column (sortable, filterable): the
+                              <div
+                                class="flex max-w-[92px] flex-col leading-[1.3]"
+                                title={`${row.customer}${row.order_tags.length > 0 ? ` (${row.order_tags.join(", ")})` : ""}`}
+                              >
+                                <span class="truncate text-text">{row.customer}</span>
+                                <Show when={row.order_tags.length > 0}>
+                                  <span class="truncate text-[10.5px] text-text-tertiary">
+                                    {row.order_tags.join(", ")}
+                                  </span>
+                                </Show>
+                              </div>
+                            </td>
+                            {/* The destination country has its own column (sortable, filterable): the
                             ISO code, the country's name on hover. It used to sit under the name. */}
-                        <td
-                          class={cx(cellClass, "font-mono text-text-secondary", phoneCell("country"))}
-                          data-phone-column="country"
-                          data-testid={`boxtal-prep-country-${row.order_key}`}
-                          title={countryName(row.destination)}
-                        >
-                          {row.destination || "-"}
-                        </td>
-                        <td class={cx(cellClass, "text-text-secondary", phoneCell("products"))} data-phone-column="products">
-                          <span class="flex flex-wrap items-center gap-1">
-                            {/* RESOLVED, MERGED, COMPACT (2026-09-08). This cell used to print
+                            <td
+                              class={cx(
+                                cellClass,
+                                "font-mono text-text-secondary",
+                                phoneCell("country"),
+                              )}
+                              data-phone-column="country"
+                              data-testid={`boxtal-prep-country-${row.order_key}`}
+                              title={countryName(row.destination)}
+                            >
+                              {row.destination || "-"}
+                            </td>
+                            <td
+                              class={cx(cellClass, "text-text-secondary", phoneCell("products"))}
+                              data-phone-column="products"
+                            >
+                              <span class="flex flex-wrap items-center gap-1">
+                                {/* RESOLVED, MERGED, COMPACT (2026-09-08). This cell used to print
                                 the row's `products` summary verbatim, and for an order with no
                                 document that summary is the raw Shopify sku: a real prod row read
                                 nine wrapped lines of `2xEMB-ET2-BLACK-B2B, ...` and stood three
@@ -2516,101 +2631,110 @@ export const PrepGrid: Component<{
                                 `display:-webkit-box`, `block` overrode it, and the clamp became a
                                 no-op. Measured on the dealer row before this pass: 13 wrapped
                                 lines, a 275.5px row against its 93.8px neighbours. */}
-                            <span
-                              class="line-clamp-3 min-w-[88px] max-w-[120px] font-mono text-[10.5px] leading-[1.35]"
-                              title={row.products}
-                              data-testid={`boxtal-prep-products-${row.order_key}`}
-                            >
-                              <Show when={productCodes().length > 0} fallback={row.products}>
-                                <For each={productCodes()}>
-                                  {(entry) => (
-                                    <span class="mr-1 inline-block whitespace-nowrap">
-                                      <Show when={entry.qty !== 1}>
-                                        <span class="text-text-tertiary tabular-nums">{`${entry.qty}x`}</span>
-                                      </Show>
-                                      <span class="text-text">{productChipLabel(entry.code)}</span>
-                                    </span>
-                                  )}
-                                </For>
-                              </Show>
-                            </span>
-                            <Show when={row.partially_shipped}>
-                              <Badge tone="warning">{`partial: ${row.remaining_units ?? "?"} left`}</Badge>
-                            </Show>
-                            {/* A blocked row says WHY it is blocked. The reason is the only thing
+                                <span
+                                  class="line-clamp-3 min-w-[88px] max-w-[120px] font-mono text-[10.5px] leading-[1.35]"
+                                  title={row.products}
+                                  data-testid={`boxtal-prep-products-${row.order_key}`}
+                                >
+                                  <Show when={productCodes().length > 0} fallback={row.products}>
+                                    <For each={productCodes()}>
+                                      {(entry) => (
+                                        <span class="mr-1 inline-block whitespace-nowrap">
+                                          <Show when={entry.qty !== 1}>
+                                            <span class="text-text-tertiary tabular-nums">{`${entry.qty}x`}</span>
+                                          </Show>
+                                          <span class="text-text">
+                                            {productChipLabel(entry.code)}
+                                          </span>
+                                        </span>
+                                      )}
+                                    </For>
+                                  </Show>
+                                </span>
+                                <Show when={row.partially_shipped}>
+                                  <Badge tone="warning">{`partial: ${row.remaining_units ?? "?"} left`}</Badge>
+                                </Show>
+                                {/* A blocked row says WHY it is blocked. The reason is the only thing
                                 that tells the operator what to fix (a missing weight, a bad
                                 address, a customs value), and "Refresh stale" deliberately skips
                                 needs_fix rows, so a reason derived from the order also gets a
                                 Recheck that re-resolves this one row. */}
-                            <Show when={row.state === "needs_fix"}>
-                              <span class="inline-flex items-center gap-1">
-                                <span title={row.reason ?? undefined}>
-                                  <Badge tone="warning" dot testid={`boxtal-prep-reason-${row.order_key}`}>
-                                    {row.reason ?? "Needs fix"}
-                                  </Badge>
-                                </span>
-                                <Show when={reasonIsRecheckable(row.reason)}>
-                                  <Button
-                                    variant="ghost"
-                                    class="whitespace-nowrap px-1.5 py-0.5 text-[11px]"
-                                    disabled={busy()}
-                                    title="Re-derive this row's customs values from the linked Shopify order"
-                                    testid={`boxtal-prep-recheck-${row.order_key}`}
-                                    onClick={() => void patchRow(row.order_key).catch(() => {})}
-                                  >
-                                    {busy() ? "Checking..." : "Recheck"}
-                                  </Button>
+                                <Show when={row.state === "needs_fix"}>
+                                  <span class="inline-flex items-center gap-1">
+                                    <span title={row.reason ?? undefined}>
+                                      <Badge
+                                        tone="warning"
+                                        dot
+                                        testid={`boxtal-prep-reason-${row.order_key}`}
+                                      >
+                                        {row.reason ?? "Needs fix"}
+                                      </Badge>
+                                    </span>
+                                    <Show when={reasonIsRecheckable(row.reason)}>
+                                      <Button
+                                        variant="ghost"
+                                        class="whitespace-nowrap px-1.5 py-0.5 text-[11px]"
+                                        disabled={busy()}
+                                        title="Re-derive this row's customs values from the linked Shopify order"
+                                        testid={`boxtal-prep-recheck-${row.order_key}`}
+                                        onClick={() => void patchRow(row.order_key).catch(() => {})}
+                                      >
+                                        {busy() ? "Checking..." : "Recheck"}
+                                      </Button>
+                                    </Show>
+                                  </span>
                                 </Show>
-                              </span>
-                            </Show>
-                            {/* The order's address and the customer's verified one differ: held
+                                {/* The order's address and the customer's verified one differ: held
                                 until a person picks, in the fold the chip opens under the row. */}
-                            <Show when={addressDiffers(row)}>
-                              <AddressDiffersChip
-                                row={row}
-                                open={addressOpen()}
-                                onToggle={() => setAddressOpen(!addressOpen())}
-                              />
-                            </Show>
-                            <Show when={row.recipient_phone_issue}>
-                              <span class="inline-flex items-center gap-1">
-                                <span title={row.recipient_phone_issue}>
-                                  <Badge tone="warning" dot>
-                                    Phone invalid for destination
-                                  </Badge>
-                                </span>
-                                {/* recipient_phone_issue is a snapshot from the last resolve, so a
+                                <Show when={addressDiffers(row)}>
+                                  <AddressDiffersChip
+                                    row={row}
+                                    open={addressOpen()}
+                                    onToggle={() => setAddressOpen(!addressOpen())}
+                                  />
+                                </Show>
+                                <Show when={row.recipient_phone_issue}>
+                                  <span class="inline-flex items-center gap-1">
+                                    <span title={row.recipient_phone_issue}>
+                                      <Badge tone="warning" dot>
+                                        Phone invalid for destination
+                                      </Badge>
+                                    </span>
+                                    {/* recipient_phone_issue is a snapshot from the last resolve, so a
                                     contact fixed elsewhere (Contacts app, Shopify) would otherwise
                                     leave Ship disabled and this badge lying until the next full
                                     prep_sync. patchRow re-resolves this ONE row live, the same call
                                     every other row action already makes, so the flag clears the
                                     moment the operator asks without waiting on a scheduled sync. */}
-                                <Button
-                                  variant="ghost"
-                                  class="whitespace-nowrap px-1.5 py-0.5 text-[11px]"
-                                  disabled={busy()}
-                                  title="Recheck this recipient now that the phone may have been corrected"
-                                  testid={`boxtal-prep-recheck-phone-${row.order_key}`}
-                                  onClick={() => void patchRow(row.order_key).catch(() => {})}
-                                >
-                                  {busy() ? "Checking..." : "Recheck"}
-                                </Button>
+                                    <Button
+                                      variant="ghost"
+                                      class="whitespace-nowrap px-1.5 py-0.5 text-[11px]"
+                                      disabled={busy()}
+                                      title="Recheck this recipient now that the phone may have been corrected"
+                                      testid={`boxtal-prep-recheck-phone-${row.order_key}`}
+                                      onClick={() => void patchRow(row.order_key).catch(() => {})}
+                                    >
+                                      {busy() ? "Checking..." : "Recheck"}
+                                    </Button>
+                                  </span>
+                                </Show>
                               </span>
-                            </Show>
-                          </span>
-                        </td>
-                        <td class={cx(cellClass, "text-right", phoneCell("total"))} data-phone-column="total">
-                          <div class="flex flex-col items-end gap-0.5 leading-[1.3]">
-                            <span class="whitespace-nowrap font-mono tabular-nums text-text">
-                              {formatMoneyMinor(row.grand_total_minor, row.currency)}
-                            </span>
-                            <ShippingEstimateCell
-                              row={row}
-                              busy={busy()}
-                              onSelect={(code) => void selectOffer(row, code)}
-                              testid={`boxtal-prep-estimate-${row.order_key}`}
-                            />
-                            {/* The carton line lives HERE, as the third line of this
+                            </td>
+                            <td
+                              class={cx(cellClass, "text-right", phoneCell("total"))}
+                              data-phone-column="total"
+                            >
+                              <div class="flex flex-col items-end gap-0.5 leading-[1.3]">
+                                <span class="whitespace-nowrap font-mono tabular-nums text-text">
+                                  {formatMoneyMinor(row.grand_total_minor, row.currency)}
+                                </span>
+                                <ShippingEstimateCell
+                                  row={row}
+                                  busy={busy()}
+                                  onSelect={(code) => void selectOffer(row, code)}
+                                  testid={`boxtal-prep-estimate-${row.order_key}`}
+                                />
+                                {/* The carton line lives HERE, as the third line of this
                                 stack, and no longer in a standalone Packages column.
                                 Measured at 1440x900 with the agent panel open: the grid
                                 scrolled 1128px of content through an 812px viewport, so
@@ -2622,179 +2746,210 @@ export const PrepGrid: Component<{
                                 overflow; dropping the column can. Carrier, price and
                                 cartons are read together anyway, which is why this is
                                 where the line belongs. */}
-                            <Show
-                              when={row.document_ref}
-                              fallback={
-                                <span
-                                  class="text-[11px] text-text-tertiary"
-                                  data-testid={`boxtal-prep-packages-${row.order_key}`}
+                                <Show
+                                  when={row.document_ref}
+                                  fallback={
+                                    <span
+                                      class="text-[11px] text-text-tertiary"
+                                      data-testid={`boxtal-prep-packages-${row.order_key}`}
+                                    >
+                                      {row.reason ?? "No document yet"}
+                                    </span>
+                                  }
                                 >
-                                  {row.reason ?? "No document yet"}
-                                </span>
-                              }
-                            >
-                              <Show
-                                when={row.state !== "not_synced"}
-                                fallback={
-                                  <span
-                                    class="text-[11px] text-text-tertiary"
-                                    data-testid={`boxtal-prep-packages-${row.order_key}`}
+                                  <Show
+                                    when={row.state !== "not_synced"}
+                                    fallback={
+                                      <span
+                                        class="text-[11px] text-text-tertiary"
+                                        data-testid={`boxtal-prep-packages-${row.order_key}`}
+                                      >
+                                        Not synced yet
+                                      </span>
+                                    }
                                   >
-                                    Not synced yet
-                                  </span>
-                                }
-                              >
-                                <PackageCell
-                                  row={row}
-                                  busy={busy()}
-                                  onCommit={(draft) => void setPackage(row, draft)}
-                                />
-                              </Show>
-                            </Show>
-                          </div>
-                        </td>
-                        <td class={cx(cellClass, phoneCell("category"))} data-phone-column="category">
-                          {/* Short option words, full wording on hover: the column sits in the
+                                    <PackageCell
+                                      row={row}
+                                      busy={busy()}
+                                      onCommit={(draft) => void setPackage(row, draft)}
+                                    />
+                                  </Show>
+                                </Show>
+                              </div>
+                            </td>
+                            <td
+                              class={cx(cellClass, phoneCell("category"))}
+                              data-phone-column="category"
+                            >
+                              {/* Short option words, full wording on hover: the column sits in the
                               band the sticky Actions cell rides over, so its width is paid for
                               by the Document column next to it. */}
-                          <span title={lock() ?? categoryFullLabel(row.category)}>
-                            <select
-                              class={cx(inputClass, "!w-[70px] px-1 py-0.5 text-[11px]")}
-                              data-testid={`boxtal-prep-category-${row.order_key}`}
-                              aria-label="Row category"
-                              value={row.category}
-                              disabled={busy() || lock() !== null}
-                              onChange={(e) =>
-                                void setCategory(row, e.currentTarget.value as PrepCategory)
-                              }
+                              <span title={lock() ?? categoryFullLabel(row.category)}>
+                                <select
+                                  class={cx(inputClass, "!w-[70px] px-1 py-0.5 text-[11px]")}
+                                  data-testid={`boxtal-prep-category-${row.order_key}`}
+                                  aria-label="Row category"
+                                  value={row.category}
+                                  disabled={busy() || lock() !== null}
+                                  onChange={(e) =>
+                                    void setCategory(row, e.currentTarget.value as PrepCategory)
+                                  }
+                                >
+                                  <For each={CATEGORY_OPTIONS}>
+                                    {(opt) => <option value={opt.value}>{opt.label}</option>}
+                                  </For>
+                                </select>
+                              </span>
+                            </td>
+                            <td
+                              class={cx(cellClass, phoneCell("document"))}
+                              data-phone-column="document"
                             >
-                              <For each={CATEGORY_OPTIONS}>
-                                {(opt) => <option value={opt.value}>{opt.label}</option>}
-                              </For>
-                            </select>
-                          </span>
-                        </td>
-                        <td class={cx(cellClass, phoneCell("document"))} data-phone-column="document">
-                          <InvoiceCell row={row} busy={busy()} onDownload={() => downloadInvoice(row)} />
-                        </td>
-                        <td
-                          class={cx(
-                            cellClass,
-                            // Pinned AND OPAQUE only while the table fits. Once it does
-                            // not, the opaque ground comes off with the pin, so nothing
-                            // is painted over the Document column behind it.
-                            actionsSticky()
-                              ? "sticky right-0 z-10 bg-bg group-hover:bg-surface-hover"
-                              : "",
-                          )}
-                        >
-                          <div class="flex items-start justify-end gap-0.5">
-                            {/* Phone only: reveals the columns 390 px drops, in
+                              <InvoiceCell
+                                row={row}
+                                busy={busy()}
+                                onDownload={() => downloadInvoice(row)}
+                              />
+                            </td>
+                            <td
+                              class={cx(
+                                cellClass,
+                                // Pinned AND OPAQUE only while the table fits. Once it does
+                                // not, the opaque ground comes off with the pin, so nothing
+                                // is painted over the Document column behind it.
+                                actionsSticky()
+                                  ? "sticky right-0 z-10 bg-bg group-hover:bg-surface-hover"
+                                  : "",
+                              )}
+                            >
+                              <div class="flex items-start justify-end gap-0.5">
+                                {/* Phone only: reveals the columns 390 px drops, in
                                 the row itself. No extra column: the grid still
                                 has exactly its eight data columns. */}
-                            <button
-                              type="button"
-                              class="min-h-11 min-w-11 rounded-md text-text-secondary md:hidden"
-                              data-testid={`boxtal-prep-row-phone-expand-${row.order_key}`}
-                              aria-expanded={phoneExpanded()}
-                              aria-label={phoneExpanded() ? "Hide columns" : "Show columns"}
-                              onClick={() => setPhoneExpandedRows((prev) => toggleRowKey(prev, row.order_key))}
-                            >
-                              {phoneExpanded() ? "\u2212" : "+"}
-                            </button>
-                            <QuoteCell row={row} busy={busy()} onQuote={() => void quoteRow(row)} />
-                            <ShipCell
-                              row={row}
-                              busy={busy()}
-                              error={rowErrors()[row.order_key] ?? null}
-                              pending={pendingShips().has(row.order_key)}
-                              approval={shipApprovalForRow(row, shipApprovals())}
-                              note={shipNotes()[row.order_key] ?? null}
-                              open={openApprovalCards().has(row.order_key)}
-                              onToggle={() => setOpenApprovalCards((prev) => toggleRowKey(prev, row.order_key))}
-                              onShip={() => void shipRow(row)}
-                              onDecide={(decision) => {
-                                const approval = shipApprovalForRow(row, shipApprovals())
-                                if (approval) void decideShip(row, approval, decision)
-                              }}
-                            />
-                            <LabelCell
-                              row={row}
-                              busy={busy()}
-                              onPrint={() => printLabel(row)}
-                              onCheckDocuments={() => void checkDocuments(row)}
-                            />
-                            <Show
-                              when={row.excluded}
-                              fallback={
-                                <Button
-                                  variant="ghost"
-                                  class="!px-1 py-1"
-                                  testid={`boxtal-prep-exclude-${row.order_key}`}
-                                  title="Hide this row from the worklist"
-                                  ariaLabel="Exclude from the worklist"
-                                  disabled={busy()}
-                                  onClick={() => void excludeRow(row)}
+                                <button
+                                  type="button"
+                                  class="min-h-11 min-w-11 rounded-md text-text-secondary md:hidden"
+                                  data-testid={`boxtal-prep-row-phone-expand-${row.order_key}`}
+                                  aria-expanded={phoneExpanded()}
+                                  aria-label={phoneExpanded() ? "Hide columns" : "Show columns"}
+                                  onClick={() =>
+                                    setPhoneExpandedRows((prev) =>
+                                      toggleRowKey(prev, row.order_key),
+                                    )
+                                  }
                                 >
-                                  x
-                                </Button>
-                              }
-                            >
-                              <Button
-                                variant="ghost"
-                                class="px-1.5 py-1 text-[11.5px]"
-                                testid={`boxtal-prep-restore-${row.order_key}`}
-                                title="Put this row back in the worklist"
-                                disabled={busy()}
-                                onClick={() => void restoreRow(row)}
+                                  {phoneExpanded() ? "\u2212" : "+"}
+                                </button>
+                                <QuoteCell
+                                  row={row}
+                                  busy={busy()}
+                                  onQuote={() => void quoteRow(row)}
+                                />
+                                <ShipCell
+                                  row={row}
+                                  busy={busy()}
+                                  error={rowErrors()[row.order_key] ?? null}
+                                  pending={pendingShips().has(row.order_key)}
+                                  approval={shipApprovalForRow(row, shipApprovals())}
+                                  note={shipNotes()[row.order_key] ?? null}
+                                  open={openApprovalCards().has(row.order_key)}
+                                  onToggle={() =>
+                                    setOpenApprovalCards((prev) =>
+                                      toggleRowKey(prev, row.order_key),
+                                    )
+                                  }
+                                  onShip={() => void shipRow(row)}
+                                  onDecide={(decision) => {
+                                    const approval = shipApprovalForRow(row, shipApprovals())
+                                    if (approval) void decideShip(row, approval, decision)
+                                  }}
+                                />
+                                <LabelCell
+                                  row={row}
+                                  busy={busy()}
+                                  onPrint={() => printLabel(row)}
+                                  onCheckDocuments={() => void checkDocuments(row)}
+                                />
+                                <Show
+                                  when={row.excluded}
+                                  fallback={
+                                    <Button
+                                      variant="ghost"
+                                      class="!px-1 py-1"
+                                      testid={`boxtal-prep-exclude-${row.order_key}`}
+                                      title="Hide this row from the worklist"
+                                      ariaLabel="Exclude from the worklist"
+                                      disabled={busy()}
+                                      onClick={() => void excludeRow(row)}
+                                    >
+                                      x
+                                    </Button>
+                                  }
+                                >
+                                  <Button
+                                    variant="ghost"
+                                    class="px-1.5 py-1 text-[11.5px]"
+                                    testid={`boxtal-prep-restore-${row.order_key}`}
+                                    title="Put this row back in the worklist"
+                                    disabled={busy()}
+                                    onClick={() => void restoreRow(row)}
+                                  >
+                                    Restore
+                                  </Button>
+                                </Show>
+                              </div>
+                            </td>
+                          </tr>
+                          <Show when={addressOpen() && addressDiffers(row)}>
+                            <tr data-testid={`boxtal-prep-address-fold-row-${row.order_key}`}>
+                              <td
+                                colSpan={PREP_GRID_COLUMNS.length}
+                                class="border-b border-border-subtle"
                               >
-                                Restore
-                              </Button>
-                            </Show>
-                          </div>
-                        </td>
-                      </tr>
-                      <Show when={addressOpen() && addressDiffers(row)}>
-                        <tr data-testid={`boxtal-prep-address-fold-row-${row.order_key}`}>
-                          <td colSpan={PREP_GRID_COLUMNS.length} class="border-b border-border-subtle">
-                            <AddressDiffersFold row={row} busy={busy()} onPick={(pick) => void pickAddress(row, pick)} />
-                          </td>
-                        </tr>
-                      </Show>
-                      </>
-                    )
-                  }}
-                </For>
-                {/* The bought labels, after the orders to prepare (workflow order), in the same
+                                <AddressDiffersFold
+                                  row={row}
+                                  busy={busy()}
+                                  onPick={(pick) => void pickAddress(row, pick)}
+                                />
+                              </td>
+                            </tr>
+                          </Show>
+                        </>
+                      )
+                    }}
+                  </For>
+                  {/* The bought labels, after the orders to prepare (workflow order), in the same
                     table and the same columns. Keyed by row object: a refresh keeps their DOM. */}
-                <For each={readyVisible()}>
-                  {(row) => (
-                    <ReadyRowView
-                      ready={props.ready!}
-                      row={row}
-                      cellClass="border-b border-border-subtle px-1.5 py-1 align-middle"
-                      survivesPhone={(key) => PREP_GRID_COLUMNS.find((c) => c.key === key)?.survivesPhone === true}
-                      actionsSticky={actionsSticky()}
-                    />
-                  )}
-                </For>
-              </tbody>
-            </table>
-          </div>
-          {/* Un-stuck, the actions sit at the END of the row instead of pinned to the
+                  <For each={readyVisible()}>
+                    {(row) => (
+                      <ReadyRowView
+                        ready={props.ready!}
+                        row={row}
+                        cellClass="border-b border-border-subtle px-1.5 py-1 align-middle"
+                        survivesPhone={(key) =>
+                          PREP_GRID_COLUMNS.find((c) => c.key === key)?.survivesPhone === true
+                        }
+                        actionsSticky={actionsSticky()}
+                      />
+                    )}
+                  </For>
+                </tbody>
+              </table>
+            </div>
+            {/* Un-stuck, the actions sit at the END of the row instead of pinned to the
               edge, so they are reached by scrolling. This platform draws OVERLAY
               scrollbars (measured: the container's scrollbar takes 0px of height), so
               the scroll affordance is invisible until the operator already scrolls --
               say it in words instead. Only while the table actually overflows. */}
-          <Show when={!actionsSticky()}>
-            <div
-              class="border-t border-border-subtle px-1.5 py-1 text-[11px] text-text-tertiary"
-              data-testid="boxtal-prep-grid-scroll-hint"
-            >
-              Actions sit at the end of each row. Scroll right to reach them.
-            </div>
+            <Show when={!actionsSticky()}>
+              <div
+                class="border-t border-border-subtle px-1.5 py-1 text-[11px] text-text-tertiary"
+                data-testid="boxtal-prep-grid-scroll-hint"
+              >
+                Actions sit at the end of each row. Scroll right to reach them.
+              </div>
+            </Show>
           </Show>
-        </Show>
         </Show>
       </Show>
     </div>

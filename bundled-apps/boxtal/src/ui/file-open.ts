@@ -43,7 +43,11 @@ export function openPreparingTab(): Window | null {
 /** Fetch a kernel file's bytes with the bearer token and load them into a PRE-OPENED tab, or hand
  *  them to the host when it opens files itself (desktop). One call per document: the label and the
  *  invoice each get their own tab. `baseName` names the file the desktop saves ("label", "invoice"). */
-export async function loadFileInto(fileId: string, win: Window | null, baseName = "document"): Promise<void> {
+export async function loadFileInto(
+  fileId: string,
+  win: Window | null,
+  baseName = "document",
+): Promise<void> {
   // Framed: the host fetches and shows it; no bytes reach this screen.
   if (await app.openFile(fileId, `${baseName}-${fileId.slice(0, 8)}.pdf`)) {
     win?.close()
@@ -58,7 +62,8 @@ export async function loadFileInto(fileId: string, win: Window | null, baseName 
     win?.close()
     throw e
   }
-  const pdfBlob = blob.type === "application/pdf" ? blob : new Blob([blob], { type: "application/pdf" })
+  const pdfBlob =
+    blob.type === "application/pdf" ? blob : new Blob([blob], { type: "application/pdf" })
   let openedNatively: boolean
   try {
     openedNatively = await openFile(pdfBlob, `${baseName}-${fileId.slice(0, 8)}.pdf`)

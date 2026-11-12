@@ -164,6 +164,7 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `LIAISON_APP_LOADER_URL` | `string (URL)` |  | no | Running sandboxed apps on a remote V8 isolate loader instead of the local QuickJS sandbox (modules/apps/workers/config.ts). Used when LIAISON_APP_LOADER_URL, LIAISON_APP_LOADER_CELL_ID and LIAISON_APP_LOADER_KEY are all set: every installed sandboxed app then runs there (any LIAISON_ROLE: a bridge call on another process is forwarded to the run's own), on the Worker module its package carried, which the loader fetches from this server (`GET /api/app-bridge/bundles/<sha256>`, signed with LIAISON_APP_LOADER_KEY) when it has no copy. Unset by default: every app runs on QuickJS and /api/app-bridge answers 404. The loader's base URL (it is called at `<url>/run`). |
 | `LIAISON_APP_LOADER_CELL_ID` | `string` |  | no | This instance's id at the loader; it picks the signing key and the bridge origin the loader accepts. |
 | `LIAISON_APP_LOADER_KEY` | `string` |  | no | The shared key that signs this instance's requests to the loader. |
+| `LIAISON_APP_FALLBACK_LOADER_URL` | `string (URL)` |  | no | Where a run meant for the loader goes when the loader cannot take it (its breaker open, an app-level fallback, a loader fault before any bridge call): the base URL of this instance's own sandbox service, which speaks the loader's protocol (`<url>/run`, signed with the same cell id and key). Unset: those runs fall back to the local QuickJS sandbox. |
 | `LIAISON_APP_BRIDGE_BASE_URL` | `string (URL)` |  | no | The public base URL the loader's isolates call back on (`<url>/api/app-bridge/<runId>`). Unset, BASE_URL. |
 | `LIAISON_APP_BRIDGE_TIMINGS_FILE` | `string` |  | no | A JSONL file that receives one timing line per /api/app-bridge call (run, app, method, duration, status). Unset, the timings stay in memory only. |
 | `LIAISON_READY_WARM_MS` | `number` | `30000` | no | How long a serving process may spend, before /readyz answers 200, registering the apps of the orgs with a live socket in the cell (the orgs a deploy's reconnecting sockets bring it first). Past it the process turns ready and the rest register on demand. 0 skips it. |
@@ -259,7 +260,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | Name | Read in |
 | --- | --- |
 | `ALLOW_PRIVATE_MAIL_HOSTS` | `apps/api/src/modules/apps/sandbox/host-validation.ts:20`, `apps/api/src/modules/apps/sandbox/smtp-bridge.ts:139` |
-| `APP_REGISTRATION_CONCURRENCY` | `apps/api/src/modules/apps/init.ts:781` |
+| `APP_REGISTRATION_CONCURRENCY` | `apps/api/src/modules/apps/init.ts:771` |
 | `APP_WORKER_MAX_EXECS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:75` |
 | `APP_WORKER_MAX_RSS_MB` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:74` |
 | `APP_WORKER_POOL_MAX` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:32`, `apps/api/src/modules/apps/workers/admission.ts:33` |
@@ -271,16 +272,14 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `CLAMAV_HOST` | `apps/api/src/lib/clamav.ts:38` |
 | `CLAUDE_CONFIG_DIR` | `apps/desktop/sidecar/config-isolation.ts:23`, `apps/desktop/sidecar/session-import.ts:14` |
 | `CLAUDE_SECURESTORAGE_CONFIG_DIR` | `apps/desktop/sidecar/config-isolation.ts:17`, `apps/desktop/sidecar/config-isolation.ts:22` |
-| `DRIVE_API_BASE_URL` | `apps/api/src/apps/google-drive/drive-rest.ts:33` |
-| `DRIVE_UPLOAD_API_BASE_URL` | `apps/api/src/apps/google-drive/drive-rest.ts:37` |
 | `EVENT_ROUTINE_COALESCE_MS` | `apps/api/src/infra/jobs/event-routine-subscriber.ts:50`, `apps/api/src/modules/agent/tools/skills-routines-tools.ts:5182` |
 | `GS_BIN` | `apps/api/src/modules/pdf/render.ts:376` |
 | `INBOUND_TRUSTED_AUTHSERV_IDS` | `apps/api/src/lib/email/sender-auth.ts:44` |
 | `LIAISON_ALLOW_OLDER_IMAGE` | `apps/api/src/db/schema-guard.ts:32` |
-| `LIAISON_ALLOW_PRIVATE_API_CONNECTOR_HOSTS` | `apps/api/src/apps/api-connector/adapter-policy.ts:25` |
+| `LIAISON_ALLOW_PRIVATE_API_CONNECTOR_HOSTS` | `apps/api/src/modules/apps/connections/api/adapter-policy.ts:25` |
 | `LIAISON_ALLOW_PRIVATE_MODEL_SERVERS` | `apps/api/src/modules/agent/providers/model-server.ts:33` |
 | `LIAISON_APP_CATALOG_DIR` | `apps/api/src/modules/apps/catalog.ts:77`, `apps/api/src/modules/permissions/scope-registry.ts:81` |
-| `LIAISON_APP_PRIVATE_HOSTS` | `apps/api/src/modules/apps/sandbox/bridge/shared.ts:211` |
+| `LIAISON_APP_PRIVATE_HOSTS` | `apps/api/src/modules/apps/sandbox/bridge/shared.ts:213` |
 | `LIAISON_BUNDLED_APPS_FROM_SOURCE` | `apps/api/src/modules/apps/contract/recording-run.test-helpers.ts:100`, `apps/api/src/modules/apps/sandbox/bundle-loader.ts:51` |
 | `LIAISON_CLI_OPERATOR` | `apps/api/src/cli/agent/ask.ts:168` |
 | `LIAISON_DATABASE_ADAPTER` | `apps/api/src/modules/apps/connections/sql/catalog.ts:187` |
@@ -290,10 +289,10 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_DB_ALLOW_PLAINTEXT_LOCAL` | `apps/api/src/modules/apps/connections/sql/credentials.ts:145`, `apps/api/src/modules/apps/connections/sql/credentials.ts:165` |
 | `LIAISON_DB_ALLOW_PRIVILEGED_SESSION` | `apps/api/src/modules/apps/connections/sql/credentials.ts:154` |
 | `LIAISON_DEBUG_GEMINI_REQ` | `apps/api/src/modules/agent/providers/provider.ts:157` |
-| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1656` |
+| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1662` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
 | `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:513`, `apps/api/src/modules/apps/app-frame.ts:35` |
-| `LIAISON_TRUSTED_SUMMARIZER_APPS` | `apps/api/src/modules/apps/runtime.ts:1384` |
+| `LIAISON_TRUSTED_SUMMARIZER_APPS` | `apps/api/src/modules/apps/runtime.ts:1387` |
 | `LIAISON_WEB_TOOLS_ALLOW_PRIVATE` | `apps/api/src/modules/agent/tools/web-tools.ts:160`, `apps/api/src/modules/agent/tools/web-tools.ts:253` |
 | `MAIL_INGEST_STALE_SEC` | `apps/api/src/modules/monitor/index.ts:306` |
 | `MAILBOX_DECRYPT_WAIT_BUDGET_MS` | `apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:105` |
@@ -316,12 +315,12 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `ORG_MAINTENANCE_FLAG_PATH` | `apps/api/src/middleware/org-maintenance.ts:25` |
 | `QA_DRIVE_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/knowledge.ts:79` |
 | `QA_GMAIL_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/rows.ts:462` |
-| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:562`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
+| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:560`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
 | `RECHECK_SYNC_BACKEND` | `apps/api/src/lib/manifest-regex.ts:33` |
 | `ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:62` |
 | `ROUTINE_EVENT_RECONCILE_MAX_RETRIES` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:65` |
-| `ROUTINE_OVERLAP_DEFER_DELAY_MS` | `apps/api/src/infra/jobs/kernel-jobs.ts:70` |
-| `ROUTINE_OVERLAP_MAX_DEFERRALS` | `apps/api/src/infra/jobs/kernel-jobs.ts:74` |
+| `ROUTINE_OVERLAP_DEFER_DELAY_MS` | `apps/api/src/infra/jobs/kernel-jobs.ts:67` |
+| `ROUTINE_OVERLAP_MAX_DEFERRALS` | `apps/api/src/infra/jobs/kernel-jobs.ts:71` |
 | `SANDBOX_BOOT_RAMP_MS` | `apps/api/src/index.ts:419` |
 | `SANDBOX_POOL_REPORT_INTERVAL_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:98` |
 | `SANDBOX_QUEUE_WAIT_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:95` |

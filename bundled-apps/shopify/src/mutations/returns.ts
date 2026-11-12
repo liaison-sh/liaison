@@ -4,15 +4,15 @@
 
 import type { AppContext } from "@liaison/app-sdk"
 import {
-  type PreflightResult,
-  runMutation,
-  resolveMutationInput,
-  readGatedTarget,
   assertTargetState,
   isRec,
   makeMutationError,
-  requireTargetId,
+  type PreflightResult,
   preflightRefusal,
+  readGatedTarget,
+  requireTargetId,
+  resolveMutationInput,
+  runMutation,
 } from "./shared"
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -24,8 +24,18 @@ const RETURN_REQUEST = `
     returnRequest(input: $input) { return { id name status } userErrors { field message } }
   }
 `
-export async function returns_request(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
-  return runMutation(ctx, { query: RETURN_REQUEST, variables: { input: resolveMutationInput(params) }, dataKey: "returnRequest", eventEntity: "return", eventAction: "requested", entityIdPath: "return.id" })
+export async function returns_request(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
+  return runMutation(ctx, {
+    query: RETURN_REQUEST,
+    variables: { input: resolveMutationInput(params) },
+    dataKey: "returnRequest",
+    eventEntity: "return",
+    eventAction: "requested",
+    entityIdPath: "return.id",
+  })
 }
 
 const RETURN_APPROVE = `
@@ -80,9 +90,19 @@ export async function returns_approve_preflight(
   return { ok: true }
 }
 
-export async function returns_approve(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function returns_approve(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   if (!params.id) throw makeMutationError("BAD_PARAM", "id is required")
-  return runMutation(ctx, { query: RETURN_APPROVE, variables: { input: { id: params.id } }, dataKey: "returnApproveRequest", eventEntity: "return", eventAction: "approved", entityIdPath: "return.id" })
+  return runMutation(ctx, {
+    query: RETURN_APPROVE,
+    variables: { input: { id: params.id } },
+    dataKey: "returnApproveRequest",
+    eventEntity: "return",
+    eventAction: "approved",
+    entityIdPath: "return.id",
+  })
 }
 
 const RETURN_DECLINE = `
@@ -111,11 +131,21 @@ export async function returns_decline_preflight(
   return { ok: true }
 }
 
-export async function returns_decline(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function returns_decline(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   if (!params.id) throw makeMutationError("BAD_PARAM", "id is required")
   const rawReason = typeof params.declineReason === "string" ? params.declineReason.trim() : ""
   const declineReason = RETURN_DECLINE_REASONS.has(rawReason) ? rawReason : "OTHER"
-  return runMutation(ctx, { query: RETURN_DECLINE, variables: { input: { id: params.id, declineReason } }, dataKey: "returnDeclineRequest", eventEntity: "return", eventAction: "declined", entityIdPath: "return.id" })
+  return runMutation(ctx, {
+    query: RETURN_DECLINE,
+    variables: { input: { id: params.id, declineReason } },
+    dataKey: "returnDeclineRequest",
+    eventEntity: "return",
+    eventAction: "declined",
+    entityIdPath: "return.id",
+  })
 }
 
 const RETURN_REFUND = `
@@ -139,9 +169,19 @@ export async function returns_refund_preflight(
   return { ok: true }
 }
 
-export async function returns_refund(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function returns_refund(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   resolveReturnRefundId(params)
-  return runMutation(ctx, { query: RETURN_REFUND, variables: { returnRefundInput: params.returnRefundInput ?? params }, dataKey: "returnRefund", eventEntity: "return", eventAction: "refunded", entityIdPath: "refund.id" })
+  return runMutation(ctx, {
+    query: RETURN_REFUND,
+    variables: { returnRefundInput: params.returnRefundInput ?? params },
+    dataKey: "returnRefund",
+    eventEntity: "return",
+    eventAction: "refunded",
+    entityIdPath: "refund.id",
+  })
 }
 
 const RETURN_CLOSE = `
@@ -163,7 +203,17 @@ export async function returns_close_preflight(
   return { ok: true }
 }
 
-export async function returns_close(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function returns_close(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   if (!params.id) throw makeMutationError("BAD_PARAM", "id is required")
-  return runMutation(ctx, { query: RETURN_CLOSE, variables: { id: params.id }, dataKey: "returnClose", eventEntity: "return", eventAction: "closed", entityIdPath: "return.id" })
+  return runMutation(ctx, {
+    query: RETURN_CLOSE,
+    variables: { id: params.id },
+    dataKey: "returnClose",
+    eventEntity: "return",
+    eventAction: "closed",
+    entityIdPath: "return.id",
+  })
 }

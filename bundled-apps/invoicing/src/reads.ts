@@ -232,10 +232,7 @@ export interface ReadsDb {
  * shapes we map to PendingApproval.
  */
 export interface ReadsKernel {
-  listApprovals(
-    toolNamePrefix?: string,
-    limit?: number,
-  ): Promise<unknown[]>
+  listApprovals(toolNamePrefix?: string, limit?: number): Promise<unknown[]>
 }
 
 /** The HTTP envelope a sandbox `ctx.fetch` resolves to. */
@@ -257,12 +254,10 @@ export interface ReadsFetchEnvelope {
  * `vatValidate` passes an opts object (so it normally gets the parsed envelope)
  * AND defensively parses a string, so the type must admit both shapes.
  */
-export interface ReadsFetch {
-  (
-    url: string,
-    opts?: { method?: string; headers?: Record<string, string>; body?: string; timeoutMs?: number },
-  ): Promise<ReadsFetchEnvelope | string>
-}
+export type ReadsFetch = (
+  url: string,
+  opts?: { method?: string; headers?: Record<string, string>; body?: string; timeoutMs?: number },
+) => Promise<ReadsFetchEnvelope | string>
 
 export interface ReadsCtx {
   db: ReadsDb
@@ -344,8 +339,7 @@ function toDocumentHeader(row: unknown): DocumentHeader {
     number: (r.number as string | null) ?? null,
     status: String(r.status ?? "draft"),
     payment_status: String(r.payment_status ?? "unpaid"),
-    counterparty_contact_id:
-      (r.counterparty_contact_id as string | null) ?? null,
+    counterparty_contact_id: (r.counterparty_contact_id as string | null) ?? null,
     counterparty_name: (r.counterparty_name as string | null) ?? null,
     counterparty_address: (r.counterparty_address as string | null) ?? null,
     counterparty_shipping_address: (r.counterparty_shipping_address as string | null) ?? null,
@@ -375,9 +369,7 @@ function toDocumentHeader(row: unknown): DocumentHeader {
     // scripts/backfill-order-numbers.sql.)
     shopify_order_number: readOrderNumberFromRow(r),
     shipment_ref:
-      typeof r.shipment_ref === "string" && r.shipment_ref.length > 0
-        ? r.shipment_ref
-        : null,
+      typeof r.shipment_ref === "string" && r.shipment_ref.length > 0 ? r.shipment_ref : null,
     shopify_draft_order_id: readRefColumn(r, "shopify_draft_order_id"),
     shopify_draft_order_name: readRefColumn(r, "shopify_draft_order_name"),
     po_number: readRefColumn(r, "po_number"),
@@ -454,7 +446,9 @@ function everyTerm(text: string, tokens: string[], whole = false): boolean {
 }
 
 function rowText(r: Record<string, unknown>, keys: string[]): string {
-  return normaliseAddress(keys.map((k) => (typeof r[k] === "string" ? (r[k] as string) : "")).join(" "))
+  return normaliseAddress(
+    keys.map((k) => (typeof r[k] === "string" ? (r[k] as string) : "")).join(" "),
+  )
 }
 
 /** The normalised words of every searchable header field, the external order reference included. */
@@ -475,7 +469,14 @@ function matchRank(r: Record<string, unknown>, q: string, tokens: string[], line
     typeof v === "string" ? v.replace(/^#/, "").trim().toLowerCase() : "",
   )
   if (ref !== "" && refs.includes(ref)) return 0
-  if (everyTerm(rowText(r, ["counterparty_name", "buyer_legal_name", "counterparty_shipping_name"]), tokens, true)) return 1
+  if (
+    everyTerm(
+      rowText(r, ["counterparty_name", "buyer_legal_name", "counterparty_shipping_name"]),
+      tokens,
+      true,
+    )
+  )
+    return 1
   const header = headerText(r)
   if (everyTerm(header, tokens, true)) return 2
   if (lines && everyTerm(lines, tokens, true)) return 3
@@ -517,7 +518,11 @@ async function lineMatchedRows(
  * `shopify_order_number` column was filled), for an order-reference query that found nothing
  * else. A bounded walk over the newest documents of the same filter.
  */
-async function externalRefOrderRows(ctx: ReadsCtx, q: string, where: Record<string, unknown>): Promise<unknown[]> {
+async function externalRefOrderRows(
+  ctx: ReadsCtx,
+  q: string,
+  where: Record<string, unknown>,
+): Promise<unknown[]> {
   const ref = q.replace(/^#/, "").trim().toLowerCase()
   if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(ref) || !/\d/.test(ref)) return []
   const out: unknown[] = []
@@ -531,7 +536,13 @@ async function externalRefOrderRows(ctx: ReadsCtx, q: string, where: Record<stri
     for (const r of page) {
       const refs = (r.external_refs as Record<string, unknown> | undefined) ?? {}
       const values = [refs.shopify_order_number, refs.shopify_order_name, refs.order_number]
-      if (values.some((v) => (typeof v === "string" || typeof v === "number") && String(v).replace(/^#/, "").trim().toLowerCase() === ref)) {
+      if (
+        values.some(
+          (v) =>
+            (typeof v === "string" || typeof v === "number") &&
+            String(v).replace(/^#/, "").trim().toLowerCase() === ref,
+        )
+      ) {
         out.push(r)
       }
     }
@@ -542,7 +553,8 @@ async function externalRefOrderRows(ctx: ReadsCtx, q: string, where: Record<stri
 
 /** One line of a kernel contact address, the way a document prints it. */
 function contactAddressLine(a: Record<string, unknown>): string {
-  const s = (k: string) => (typeof a[k] === "string" && (a[k] as string).trim() !== "" ? (a[k] as string).trim() : null)
+  const s = (k: string) =>
+    typeof a[k] === "string" && (a[k] as string).trim() !== "" ? (a[k] as string).trim() : null
   const city = [s("postalCode"), s("city")].filter(Boolean).join(" ")
   return [s("street1"), s("street2"), city, s("countryIso2")].filter(Boolean).join(", ")
 }
@@ -552,7 +564,11 @@ function contactAddressLine(a: Record<string, unknown>): string {
  * of its addresses (same house number and street, compared by `addressMatch`). Needs the kernel
  * contact reads; without them (or for a malformed id) it finds nothing extra.
  */
-async function contactMatchedRows(ctx: ReadsCtx, contactId: string, where: Record<string, unknown>): Promise<unknown[]> {
+async function contactMatchedRows(
+  ctx: ReadsCtx,
+  contactId: string,
+  where: Record<string, unknown>,
+): Promise<unknown[]> {
   const exec = ctx.executeTool
   if (!exec || !UUID_RE.test(contactId)) return []
   const { counterparty_contact_id: _linked, ...base } = where
@@ -582,7 +598,12 @@ async function contactMatchedRows(ctx: ReadsCtx, contactId: string, where: Recor
   const out: unknown[] = []
   if (email) {
     for (const e of new Set([email, email.toLowerCase()])) {
-      out.push(...(await ctx.db.findMany("documents", { where: { ...base, counterparty_email: e }, limit: READS_MAX_LIMIT })))
+      out.push(
+        ...(await ctx.db.findMany("documents", {
+          where: { ...base, counterparty_email: e },
+          limit: READS_MAX_LIMIT,
+        })),
+      )
     }
   }
   for (const line of addresses.slice(0, 3)) {
@@ -590,12 +611,16 @@ async function contactMatchedRows(ctx: ReadsCtx, contactId: string, where: Recor
     if (!postcode) continue
     const hits = (await ctx.db.findMany("documents", {
       where: base,
-      search: { fields: ["counterparty_address", "counterparty_shipping_address"], query: postcode },
+      search: {
+        fields: ["counterparty_address", "counterparty_shipping_address"],
+        query: postcode,
+      },
       limit: READS_MAX_LIMIT,
     })) as Array<Record<string, unknown>>
     for (const r of hits) {
       const billing = typeof r.counterparty_address === "string" ? r.counterparty_address : null
-      const shipping = typeof r.counterparty_shipping_address === "string" ? r.counterparty_shipping_address : null
+      const shipping =
+        typeof r.counterparty_shipping_address === "string" ? r.counterparty_shipping_address : null
       if (addressMatch(line, billing) !== null || addressMatch(line, shipping) !== null) out.push(r)
     }
   }
@@ -646,7 +671,9 @@ async function noSuchNumberHint(ctx: ReadsCtx, query: string): Promise<string | 
 export async function documentsSearchTool(
   ctx: ReadsCtx,
   input: DocumentsSearchInput = {},
-): Promise<DocumentHeader[] | { totalCount: number } | { results: DocumentHeader[]; hint: string }> {
+): Promise<
+  DocumentHeader[] | { totalCount: number } | { results: DocumentHeader[]; hint: string }
+> {
   const result = input.countOnly
     ? await documentsSearch(ctx, { ...input, countOnly: true })
     : await documentsSearch(ctx, input)
@@ -690,15 +717,16 @@ export async function documentsSearch(
   if (Array.isArray(input.ids)) {
     // Only well-formed ids reach the IN list: a malformed one would fail the whole read
     // ("invalid input syntax for type uuid") instead of matching nothing.
-    const ids = [...new Set(input.ids.filter((id) => typeof id === "string" && UUID_RE.test(id)))].slice(
-      0,
-      READS_MAX_LIMIT,
-    )
+    const ids = [
+      ...new Set(input.ids.filter((id) => typeof id === "string" && UUID_RE.test(id))),
+    ].slice(0, READS_MAX_LIMIT)
     if (ids.length === 0) return input.countOnly ? { totalCount: 0 } : []
     where.id = { in: ids }
     // db_count refuses where.id: the count of a bounded id set is the rows it reads.
     if (input.countOnly) {
-      return { totalCount: (await ctx.db.findMany("documents", { where, limit: ids.length })).length }
+      return {
+        totalCount: (await ctx.db.findMany("documents", { where, limit: ids.length })).length,
+      }
     }
   }
 
@@ -774,7 +802,10 @@ export async function documentsSearch(
         if (inRange(d)) {
           matched.push(r)
           if (matched.length >= wanted) break walk
-        } else if (d != null && ((dir === "desc" && from && d < from) || (dir === "asc" && to && d > to))) {
+        } else if (
+          d != null &&
+          ((dir === "desc" && from && d < from) || (dir === "asc" && to && d > to))
+        ) {
           break walk
         }
       }
@@ -787,7 +818,9 @@ export async function documentsSearch(
     const tokens = q ? searchWords(q) : []
     const lineText = new Map<string, string>()
     const extra: unknown[] = contactExtras.filter(
-      (r) => rowInRange(r) && (tokens.length === 0 || everyTerm(headerText(r as Record<string, unknown>), tokens)),
+      (r) =>
+        rowInRange(r) &&
+        (tokens.length === 0 || everyTerm(headerText(r as Record<string, unknown>), tokens)),
     )
     if (q && tokens.length > 0 && !Array.isArray(input.ids)) {
       const byLines = await lineMatchedRows(ctx, q, tokens, where, lineText)
@@ -813,7 +846,9 @@ export async function documentsSearch(
       return (Number(a.number_int ?? 0) - Number(b.number_int ?? 0)) * sign
     })
     if (q) {
-      const rank = new Map(all.map((r) => [String(r.id), matchRank(r, q, tokens, lineText.get(String(r.id)) ?? "")]))
+      const rank = new Map(
+        all.map((r) => [String(r.id), matchRank(r, q, tokens, lineText.get(String(r.id)) ?? "")]),
+      )
       // Array.prototype.sort is stable: within one rank the date order above stays.
       all.sort((a, b) => (rank.get(String(a.id)) ?? 9) - (rank.get(String(b.id)) ?? 9))
     }
@@ -918,8 +953,7 @@ export async function documentsGet(
     pdf_file_id: (doc.pdf_file_id as string | null) ?? null,
     pdf_status: (doc.pdf_status as string | null) ?? null,
     external_refs: (doc.external_refs as Record<string, unknown> | undefined) ?? {},
-    lifecycle_log:
-      (doc.lifecycle_log as Array<Record<string, unknown>> | undefined) ?? [],
+    lifecycle_log: (doc.lifecycle_log as Array<Record<string, unknown>> | undefined) ?? [],
     lines: lineRows.map(toDocumentLine),
     shipments: linkedShipments(doc.external_refs),
     customer_kind: textOrNull(doc.customer_kind),
@@ -1317,7 +1351,9 @@ export async function settingsIssuerProfileList(
   for (const row of rows) {
     const r = row as Record<string, unknown>
     // The browser has the zone table but not the org's zone: the host states the issuer's date.
-    const today = await civilDateOf(ctx, { timezone: (r.timezone as string | null | undefined) ?? null })
+    const today = await civilDateOf(ctx, {
+      timezone: (r.timezone as string | null | undefined) ?? null,
+    })
     items.push({
       ...r,
       id: String(r.id ?? ""),
@@ -1341,7 +1377,12 @@ export async function settingsTaxRegimeList(
     orderBy: { issuer_country: "asc" },
     limit: READS_MAX_LIMIT,
   })
-  return { items: rows.map((row) => ({ ...(row as Record<string, unknown>), id: String((row as Record<string, unknown>).id ?? "") })) }
+  return {
+    items: rows.map((row) => ({
+      ...(row as Record<string, unknown>),
+      id: String((row as Record<string, unknown>).id ?? ""),
+    })),
+  }
 }
 
 /** settings_hs_code_list — the org's HS-code library. */
@@ -1353,7 +1394,12 @@ export async function settingsHsCodeList(
     orderBy: { code: "asc" },
     limit: clampLimit(input.limit),
   })
-  return { items: rows.map((row) => ({ ...(row as Record<string, unknown>), id: String((row as Record<string, unknown>).id ?? "") })) }
+  return {
+    items: rows.map((row) => ({
+      ...(row as Record<string, unknown>),
+      id: String((row as Record<string, unknown>).id ?? ""),
+    })),
+  }
 }
 
 /** settings_shop_mapping_list — Shopify shop→issuer mappings. There is NO
@@ -1396,14 +1442,24 @@ export interface PdfRef {
   /** The files above as rows (`kind`, `file_id`, `url`), the list a dashboard block reads: the
    *  PDF (kind `legal_original` when it is one, else `pdf`), then any management copy and
    *  Factur-X XML. Empty when no PDF has rendered. */
-  rows: Array<{ kind: "legal_original" | "pdf" | "management_copy" | "facturx_xml"; file_id: string; url: string | null }>
+  rows: Array<{
+    kind: "legal_original" | "pdf" | "management_copy" | "facturx_xml"
+    file_id: string
+    url: string | null
+  }>
 }
 
 function pdfRefRows(ref: Omit<PdfRef, "rows">): PdfRef["rows"] {
   const rows: PdfRef["rows"] = []
-  if (ref.file_id) rows.push({ kind: ref.legal_original ? "legal_original" : "pdf", file_id: ref.file_id, url: ref.url })
+  if (ref.file_id)
+    rows.push({
+      kind: ref.legal_original ? "legal_original" : "pdf",
+      file_id: ref.file_id,
+      url: ref.url,
+    })
   if (ref.management_copy) rows.push({ kind: "management_copy", ...ref.management_copy })
-  if (ref.facturx_xml_file_id) rows.push({ kind: "facturx_xml", file_id: ref.facturx_xml_file_id, url: null })
+  if (ref.facturx_xml_file_id)
+    rows.push({ kind: "facturx_xml", file_id: ref.facturx_xml_file_id, url: null })
   return rows
 }
 
@@ -1415,7 +1471,14 @@ const inlineUrl = (fileId: string) => `/api/files/${fileId}/inline`
  *  later management re-render. Returns nulls when no PDF has rendered (pending/failed) so the UI
  *  can show the retry path. */
 async function documentPdfRef(ctx: ReadsCtx, id: string | undefined): Promise<PdfRef> {
-  const none: PdfRef = { file_id: null, url: null, legal_original: false, management_copy: null, facturx_xml_file_id: null, rows: [] }
+  const none: PdfRef = {
+    file_id: null,
+    url: null,
+    legal_original: false,
+    management_copy: null,
+    facturx_xml_file_id: null,
+    rows: [],
+  }
   if (!id) return none
   const r = await resolveDocumentRow(ctx.db, id)
   if (!r) return none
@@ -1424,14 +1487,20 @@ async function documentPdfRef(ctx: ReadsCtx, id: string | undefined): Promise<Pd
   const fileId = chosen.file_id
   let xmlId: string | null = null
   if (chosen.legal_original) {
-    const xml = (await ctx.db.findMany("facturx_files", { where: { document_id: r.id }, limit: 1 })) as Array<Record<string, unknown>>
+    const xml = (await ctx.db.findMany("facturx_files", {
+      where: { document_id: r.id },
+      limit: 1,
+    })) as Array<Record<string, unknown>>
     xmlId = (xml[0]?.file_id as string | null | undefined) ?? null
   }
   const ref = {
     file_id: fileId,
     url: fileId ? inlineUrl(fileId) : null,
     legal_original: chosen.legal_original,
-    management_copy: chosen.legal_original && current && current !== fileId ? { file_id: current, url: inlineUrl(current) } : null,
+    management_copy:
+      chosen.legal_original && current && current !== fileId
+        ? { file_id: current, url: inlineUrl(current) }
+        : null,
     facturx_xml_file_id: xmlId,
   }
   return { ...ref, rows: pdfRefRows(ref) }
@@ -1558,7 +1627,6 @@ const DOCUMENTS_EXPORT_COLUMNS: Array<[string, string]> = [
   // Free-text document notes. Appended LAST so existing column positions are unchanged.
   ["notes", "notes"],
 ]
-
 
 export async function exportDocuments(
   ctx: ReadsCtx,

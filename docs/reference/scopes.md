@@ -97,11 +97,11 @@ Connect an ERP, CRM or any HTTP API from an adapter document, with agent tools a
 
 | Scope | Declared by | Description |
 | --- | --- | --- |
-| `api-connector:accounts:admin` | role admin |  |
-| `api-connector:admin` | role admin; settings section connections; tools connector_adapter_get, connector_adapter_reference, connector_adapter_test, connector_adapter_versions |  |
+| `api-connector:accounts:admin` | manifest scopes; role admin |  |
+| `api-connector:admin` | manifest scopes; role admin; settings section connections; tools connector_adapter_get, connector_adapter_reference, connector_adapter_test, connector_adapter_versions, settings_adapter_delete, settings_adapter_restore and 2 more |  |
 | `api-connector:approve` | approver scope | Decide (approve, edit, or deny) api-connector approvals raised by its gated tools |
-| `api-connector:read` | role member; tools connector_list_operations, connector_read |  |
-| `api-connector:write` | role member; tool connector_write |  |
+| `api-connector:read` | manifest scopes; role member; tools connector_list_operations, connector_read, customer_lookup, settings_connections |  |
+| `api-connector:write` | manifest scopes; role member; tool connector_write |  |
 
 ## boxtal
 
@@ -172,10 +172,10 @@ Search, read and import Google Drive files, and upload new reports.
 
 | Scope | Declared by | Description |
 | --- | --- | --- |
-| `google-drive:accounts:admin` | role admin; tools choose_shared_drives, shared_drives |  |
-| `google-drive:accounts:read` | role member; tools import, read, search |  |
+| `google-drive:accounts:admin` | manifest scopes; role admin; settings section shared-drives; tools choose_shared_drives, shared_drives, shared_drives_save |  |
+| `google-drive:accounts:read` | manifest scopes; role member; tools drive_picker, import, picker_remove, picker_state, read, search |  |
 | `google-drive:approve` | approver scope | Decide (approve, edit, or deny) google-drive approvals raised by its gated tools |
-| `google-drive:files:write` | role member; tool upload |  |
+| `google-drive:files:write` | manifest scopes; role member; tool upload |  |
 
 ## invoicing
 

@@ -101,17 +101,6 @@ describe("secret fields are refused with a message naming request_secret", () =>
         ],
         path: "apps[0].connection.oauthClient.clientSecret",
       },
-      {
-        section: "apiConnectors",
-        data: [
-          {
-            identifier: "crm",
-            adapter: { name: "CRM" },
-            credentials: { apiKey: "k" },
-          },
-        ],
-        path: "apiConnectors[0].credentials",
-      },
     ]
   for (const row of rows) {
     test(row.path, () => {
@@ -144,11 +133,6 @@ describe("fields that read the server's disk are refused with the file-id replac
       data: { issuerProfiles: [{ legalName: "Acme", country: "FR", logoPath: "./logo.png" }] },
       message:
         "invoicing.issuerProfiles[0].logoPath reads the server's disk: upload the file and pass logoFileId",
-    },
-    {
-      section: "apiConnectors",
-      data: [{ identifier: "crm", adapter: "./crm.adapter.yaml" }],
-      message: "apiConnectors[0].adapter reads the server's disk: pass the adapter document inline",
     },
   ]
   for (const row of rows) {
@@ -307,7 +291,6 @@ describe("required scopes per section and entry", () => {
     { section: "email", data: { from: "a@acme.example" }, scopes: ["kernel:org:admin"] },
     { section: "agents", data: [], scopes: ["kernel:agents:admin"] },
     { section: "invoicing", data: {}, scopes: ["invoicing:settings:write"] },
-    { section: "apiConnectors", data: [], scopes: ["api-connector:admin"] },
     { section: "mail", data: { mailboxes: [] }, scopes: ["mail:accounts:admin"] },
     {
       section: "mail",

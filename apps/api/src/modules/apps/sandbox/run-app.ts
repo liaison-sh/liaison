@@ -9,6 +9,9 @@
 //   workers    an untrusted app whose installed version recorded a Worker
 //              module (the package's worker.js, install-service.ts), when
 //              the app loader is configured (workers/config.ts), in any role
+//   workerd    the same run on this instance's own sandbox service, when the
+//              loader cannot take it and that service is configured
+//              (workers/config.ts readFallbackTarget)
 //   pool       everything else, on the out-of-process worker pool
 //
 // An app that cannot run on Workers (its installed version came from a
@@ -17,8 +20,9 @@
 // runs: a Workers run gets a secret-free bridge (the site's `workersBridge`, or a marked copy of
 // `bridge`), a QuickJS run `bridge` itself, which runApp never changes. A
 // Workers run whose attempts end on a loader-level fault before any bridge
-// call runs once more on QuickJS, on `bridge` (`fallback: "loader_fault"`,
-// workers/fallback.ts); never after a bridge call. Every run raises one
+// call runs once more on the fallback target (`fallback: "loader_fault"`,
+// workers/fallback.ts): the instance's sandbox service on a secret-free bridge
+// when configured, else QuickJS on `bridge`; never after a bridge call. Every run raises one
 // run-settled event (workers/run-settled.ts) once it has settled, tagged with
 // the executor that ran it; the run timing records (workers/timings.ts, kind
 // "run") are one of its subscribers.
@@ -51,9 +55,18 @@ import {
   initWorkerPool,
   type WorkerExecOptions,
 } from "~/modules/apps/sandbox/worker-pool"
-import { readWorkersConfig, type WorkersConfig } from "~/modules/apps/workers/config"
+import {
+  readFallbackTarget,
+  readWorkersConfig,
+  type WorkersConfig,
+} from "~/modules/apps/workers/config"
 import { executeOnWorkers, type WorkersRunInfo } from "~/modules/apps/workers/executor"
-import { AppFallbacks, appFallbacks, loaderBreaker } from "~/modules/apps/workers/fallback"
+import {
+  AppFallbacks,
+  appFallbacks,
+  fallbackTargetRunState,
+  loaderBreaker,
+} from "~/modules/apps/workers/fallback"
 import { emitRunSettled, type WorkersFallback } from "~/modules/apps/workers/run-settled"
 import { deliverRunLogs } from "~/modules/apps/workers/worker-logs"
 // The run timing records subscribe to the run-settled event (timings.ts).
@@ -137,7 +150,7 @@ export interface RunAppOptions {
 export type AppBridge = Record<string, (...args: any[]) => any>
 
 /** Which executor runs this call. */
-export type AppExecutor = "inprocess" | "pool" | "workers"
+export type AppExecutor = "inprocess" | "pool" | "workers" | "workerd"
 
 /**
  * THE executor choice: trusted code in-process; an untrusted run with a Workers
@@ -148,9 +161,12 @@ export type AppExecutor = "inprocess" | "pool" | "workers"
 export function selectExecutor(opts: {
   trusted: boolean
   workersBundleSha?: string | undefined
+  /** The loader cannot take this run and the instance's sandbox service is configured. */
+  fallbackService?: boolean
 }): AppExecutor {
   if (opts.trusted) return "inprocess"
-  return opts.workersBundleSha ? "workers" : "pool"
+  if (opts.workersBundleSha) return "workers"
+  return opts.fallbackService ? "workerd" : "pool"
 }
 
 /** Where a Workers run goes: the configuration, the installed version and its bundle. */
@@ -201,6 +217,14 @@ export interface WorkersPlan {
   target: WorkersTarget | null
   fallback?: WorkersFallback
   probe?: boolean
+  /** Where the run goes instead, when it falls back and the sandbox service is configured. */
+  fallbackTarget?: WorkersTarget
+}
+
+/** The same run on the instance's sandbox service, or none (QuickJS) when it is not configured. */
+export function fallbackTargetOf(target: WorkersTarget): WorkersTarget | undefined {
+  const fb = readFallbackTarget(target.config)
+  return fb.kind === "workerd" ? { ...target, config: fb.config } : undefined
 }
 
 export async function planWorkersRun(
@@ -208,20 +232,35 @@ export async function planWorkersRun(
 ): Promise<WorkersPlan> {
   const target = await resolveWorkersTarget(opts)
   if (!target) return { target: null }
+  const instead = fallbackTargetOf(target)
+  const elsewhere = instead ? { fallbackTarget: instead } : {}
   if (appFallbacks.active(AppFallbacks.key(opts.orgId, opts.appName, target.version))) {
-    return { target: null, fallback: "app" }
+    return { target: null, fallback: "app", ...elsewhere }
   }
   const admission = loaderBreaker.admit()
-  if (!admission.allow) return { target: null, fallback: "breaker" }
+  if (!admission.allow) return { target: null, fallback: "breaker", ...elsewhere }
   return admission.probe ? { target, probe: true } : { target }
 }
 
-/** Running executions by token -> app, so a nested run's record names its parent app. */
-const runningExecutions = new Map<string, string>()
+/**
+ * Running executions by token: the app (a nested run's record names its parent
+ * app) and how deep the run is in a chain of nested runs (0 top-level).
+ */
+const runningExecutions = new Map<string, { app: string; depth: number }>()
+
+/** A run's depth: one below its parent's, when it is nested under a running one. */
+function runDepthOf(opts: Pick<RunAppOptions, "nested" | "nestedParentKey">): number {
+  if (!opts.nested) return 0
+  const parent = opts.nestedParentKey ? runningExecutions.get(opts.nestedParentKey) : undefined
+  return (parent?.depth ?? 0) + 1
+}
 
 export async function runApp(opts: RunAppOptions): Promise<unknown> {
   const started = Date.now()
-  if (opts.executionToken) runningExecutions.set(opts.executionToken, opts.appName)
+  const depth = runDepthOf(opts)
+  if (opts.executionToken) {
+    runningExecutions.set(opts.executionToken, { app: opts.appName, depth })
+  }
   let info: WorkersRunInfo = {}
   let ok = false
   let executor: AppExecutor = opts.trusted ? "inprocess" : "pool"
@@ -230,7 +269,11 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
     // Decide, then build the bridge for that executor (runOnExecutor), then run.
     const plan = await planWorkersRun(opts)
     fallback = plan.fallback
-    executor = selectExecutor({ trusted: opts.trusted, workersBundleSha: plan.target?.sha256 })
+    executor = selectExecutor({
+      trusted: opts.trusted,
+      workersBundleSha: plan.target?.sha256,
+      fallbackService: plan.fallbackTarget !== undefined,
+    })
     let result: unknown
     try {
       result = await runOnExecutor(opts, executor, plan, (i) => {
@@ -238,8 +281,11 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
       })
     } catch (err) {
       if (executor !== "workers" || !fallsBackAfterLoaderFault(info, opts.signal)) throw err
-      // Nothing the app did can have happened (no bridge call): the run goes to
-      // QuickJS once, on the bridge built for it, within what is left of its budget.
+      // Nothing the app did can have happened (no bridge call): the run goes
+      // once to the fallback target (the sandbox service on a secret-free
+      // bridge, else QuickJS on the bridge built for it), within what is left
+      // of its budget.
+      const fallbackTarget = plan.target ? fallbackTargetOf(plan.target) : undefined
       const budget = opts.timeoutMs ?? runLimits(runEntryKind(opts)).wallMs
       const remaining = Math.max(MIN_FALLBACK_BUDGET_MS, budget - (Date.now() - started))
       log.warn(
@@ -251,15 +297,25 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
           attempts: info.attempts,
           remainingMs: remaining,
         },
-        "App loader fault before any bridge call; running this run on QuickJS",
+        fallbackTarget
+          ? "App loader fault before any bridge call; running this run on the sandbox service"
+          : "App loader fault before any bridge call; running this run on QuickJS",
       )
       fallback = "loader_fault"
-      executor = selectExecutor({ trusted: opts.trusted })
+      executor = selectExecutor({
+        trusted: opts.trusted,
+        fallbackService: fallbackTarget !== undefined,
+      })
+      const loaderAttempts = info
       result = await runOnExecutor(
         { ...opts, timeoutMs: remaining },
         executor,
-        { target: null },
-        () => undefined,
+        { target: null, ...(fallbackTarget ? { fallbackTarget } : {}) },
+        // The sandbox service's run (its id, bridge calls, logs) with the
+        // loader's attempts and fault, which are why it ran there.
+        (i) => {
+          info = { ...i, attempts: loaderAttempts.attempts, fault: loaderAttempts.fault }
+        },
       )
     }
     ok = true
@@ -280,7 +336,9 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
     // never the run's failure (modules/app-builder/logs.ts).
     void flushRunLogs(opts.bridge)
     const parentApp =
-      opts.nested && opts.nestedParentKey ? runningExecutions.get(opts.nestedParentKey) : undefined
+      opts.nested && opts.nestedParentKey
+        ? runningExecutions.get(opts.nestedParentKey)?.app
+        : undefined
     emitRunSettled({
       ...(info.runId ? { runId: info.runId } : {}),
       app: opts.appName,
@@ -331,7 +389,7 @@ async function runOnExecutor(
   plan: WorkersPlan,
   onInfo: (info: WorkersRunInfo) => void,
 ): Promise<unknown> {
-  const workersTarget = plan.target
+  const workersTarget = executor === "workerd" ? plan.fallbackTarget : plan.target
   // A custom app's code never holds a secret, on any executor. Its bridge
   // is built secret-free (rpc-bridge.ts); one built elsewhere is marked here,
   // before any call.
@@ -341,7 +399,7 @@ async function runOnExecutor(
       reason: "custom_app",
     })
   }
-  if (executor === "workers" && workersTarget) {
+  if ((executor === "workers" || executor === "workerd") && workersTarget) {
     // The isolate lives off this server: no method may hand it a secret. The
     // site may build that bridge itself (workersBridge), or have built a
     // secret-free one already (a custom app's); otherwise a copy is marked
@@ -376,6 +434,17 @@ async function runOnExecutor(
         nested: opts.nested === true,
         ...(opts.nestedParentKey !== undefined ? { nestedParentKey: opts.nestedParentKey } : {}),
         ...(plan.probe ? { probe: true } : {}),
+        runDepth: runDepthOf(opts),
+        // The fallback target's runs leave the loader's breaker and app
+        // fallbacks alone, and have nothing further to fall back to. The
+        // sandbox service holds no key to fetch a module: it is pushed.
+        ...(executor === "workerd"
+          ? {
+              ...fallbackTargetRunState(),
+              pushModule: async () =>
+                (await readInstalledWorkerModule(workersTarget.sha256))?.bytes ?? null,
+            }
+          : {}),
       },
       onInfo,
     )
@@ -414,7 +483,10 @@ async function runOnExecutor(
       return getWorkerPool().execute(exec)
     }
     case "workers":
-      throw new Error(`runApp(${opts.appName}:${opts.exportName}): Workers run without a target`)
+    case "workerd":
+      throw new Error(
+        `runApp(${opts.appName}:${opts.exportName}): ${executor} run without a target`,
+      )
     default: {
       const never: never = executor
       throw new Error(`Unknown app executor: ${String(never)}`)

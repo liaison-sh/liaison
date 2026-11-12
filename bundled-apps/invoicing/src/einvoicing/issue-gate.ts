@@ -10,15 +10,15 @@ import type { CustomerKind, Regime } from "./classify"
 import type { OperationCategory, PaymentState } from "./classify-operation"
 import {
   type BuyerSnapshot,
+  evaluateEinvoiceGate,
   type GateEvaluation,
   type GateInput,
   type GateMode,
+  gateErrorEnvelope,
+  gateWarning,
   type MissingItem,
   type OperationSource,
   type OriginalSnapshot,
-  evaluateEinvoiceGate,
-  gateErrorEnvelope,
-  gateWarning,
   resolveBuyerFacts,
   resolveGateMode,
 } from "./gate"
@@ -61,7 +61,10 @@ export interface EinvoiceSiteInput {
 
 export interface GateCtx {
   db: {
-    findMany(entity: string, opts?: { where?: Record<string, unknown>; limit?: number; offset?: number }): Promise<unknown[]>
+    findMany(
+      entity: string,
+      opts?: { where?: Record<string, unknown>; limit?: number; offset?: number },
+    ): Promise<unknown[]>
     insert(entity: string, data: Record<string, unknown>): Promise<unknown>
   }
   executeTool?: CrossAppExecuteTool
@@ -163,8 +166,17 @@ export async function prepareEinvoiceGate(
   }
 
   let derivedKind: CustomerKind | null = null
-  if (INVOICE_TYPES.has(s.type) && buyer.source !== "original" && buyer.source !== "original_identity" && !buyer.customerKind) {
-    company = buyer.vatId ? null : company !== undefined ? company : (str(s.company) ?? (await contactCompany(ctx, cp.contact_id)))
+  if (
+    INVOICE_TYPES.has(s.type) &&
+    buyer.source !== "original" &&
+    buyer.source !== "original_identity" &&
+    !buyer.customerKind
+  ) {
+    company = buyer.vatId
+      ? null
+      : company !== undefined
+        ? company
+        : (str(s.company) ?? (await contactCompany(ctx, cp.contact_id)))
     derivedKind = deriveKind({
       vat_id: buyer.vatId,
       company,
@@ -189,12 +201,15 @@ export async function prepareEinvoiceGate(
   // Operation category: the call's explicit value; otherwise a credit note inherits its
   // original's stated category; otherwise the lines decide (authoritative or default).
   let category: OperationCategory | null = s.operation_category ?? null
-  let source: OperationSource | null = category ? (s.operation_source ?? "explicit") : (s.operation_source ?? null)
+  let source: OperationSource | null = category
+    ? (s.operation_source ?? "explicit")
+    : (s.operation_source ?? null)
   const origCat = originalSnapshot ? original?.snapshot : null
   if (
     !category &&
     origCat?.operation_category &&
-    (origCat.operation_category_source === "explicit" || origCat.operation_category_source === "lines_authoritative")
+    (origCat.operation_category_source === "explicit" ||
+      origCat.operation_category_source === "lines_authoritative")
   ) {
     category = origCat.operation_category
     source = origCat.operation_category_source
@@ -213,7 +228,11 @@ export async function prepareEinvoiceGate(
     operationSource: source,
     paymentState: s.payment_state ?? null,
     original: original
-      ? { id: original.id, regime: original.regime, transmissionStatus: original.transmissionStatus ?? null }
+      ? {
+          id: original.id,
+          regime: original.regime,
+          transmissionStatus: original.transmissionStatus ?? null,
+        }
       : null,
     mode,
   }
@@ -229,10 +248,14 @@ export type EinvoiceSiteCheck =
  * write: in enforce mode a refusal becomes the typed, retryable error envelope; in warn mode the
  * document may be issued and the warning travels with the result.
  */
-export async function checkEinvoiceGate(ctx: GateCtx, s: EinvoiceSiteInput): Promise<EinvoiceSiteCheck> {
+export async function checkEinvoiceGate(
+  ctx: GateCtx,
+  s: EinvoiceSiteInput,
+): Promise<EinvoiceSiteCheck> {
   const prepared = await prepareEinvoiceGate(ctx, s, { materialise: false })
   const r = prepared.evaluation.refusal
-  if (r && r.mode === "enforce") return { ok: false, error: gateErrorEnvelope(r), derivedKind: prepared.derivedKind }
+  if (r && r.mode === "enforce")
+    return { ok: false, error: gateErrorEnvelope(r), derivedKind: prepared.derivedKind }
   return { ok: true, prepared, warning: r ? gateWarning(r) : null }
 }
 
@@ -248,7 +271,10 @@ export function readEinvoiceRowColumns(row: Record<string, unknown>): EinvoiceRo
     buyer_legal_name: str(row.buyer_legal_name),
     buyer_siren: str(row.buyer_siren),
     buyer_siret: str(row.buyer_siret),
-    buyer_siren_confirmed_via: pick<"auto" | "approval">(row.buyer_siren_confirmed_via, ["auto", "approval"]),
+    buyer_siren_confirmed_via: pick<"auto" | "approval">(row.buyer_siren_confirmed_via, [
+      "auto",
+      "approval",
+    ]),
     counterparty_vat_id: str(row.counterparty_vat_id),
     billing_line1: str(row.billing_line1),
     billing_line2: str(row.billing_line2),
@@ -310,7 +336,10 @@ export function einvoiceParamsError(
       },
     }
   }
-  if (operationCategory != null && !(CATEGORY_VALUES as readonly unknown[]).includes(operationCategory)) {
+  if (
+    operationCategory != null &&
+    !(CATEGORY_VALUES as readonly unknown[]).includes(operationCategory)
+  ) {
     return {
       status: "error",
       error: {

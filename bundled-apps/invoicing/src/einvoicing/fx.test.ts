@@ -4,8 +4,8 @@
 // answers (no live network). Rates are foreign units per 1 EUR; EUR = amount / rate, half-up.
 import { describe, expect, test } from "bun:test"
 import { createMockDb } from "../test-db"
-import { ECB_EMPTY_200, ECB_USD_CSV } from "./fx.fixtures"
 import { cachedRate, eurMinor, fetchEcbRate, parseEcbCsv, warmFxRate } from "./fx"
+import { ECB_EMPTY_200, ECB_USD_CSV } from "./fx.fixtures"
 
 const NOW = new Date("2026-10-02T09:00:00Z")
 
@@ -54,15 +54,29 @@ describe("fetchEcbRate", () => {
     expect(calls).toHaveLength(2)
   })
   test("a transport error is unavailable, never thrown", async () => {
-    const r = await fetchEcbRate({ fetch: async () => { throw new Error("down") } }, "USD", "2026-10-03")
+    const r = await fetchEcbRate(
+      {
+        fetch: async () => {
+          throw new Error("down")
+        },
+      },
+      "USD",
+      "2026-10-03",
+    )
     expect(r).toEqual({ ok: false, code: "fx_rate_unavailable" })
   })
   test("no fetch in the context is unavailable", async () => {
-    expect(await fetchEcbRate({}, "USD", "2026-10-03")).toEqual({ ok: false, code: "fx_rate_unavailable" })
+    expect(await fetchEcbRate({}, "USD", "2026-10-03")).toEqual({
+      ok: false,
+      code: "fx_rate_unavailable",
+    })
   })
   test("a malformed currency code never reaches the network", async () => {
     const { fetch, calls } = okFetch()
-    expect(await fetchEcbRate({ fetch }, "US/D", "2026-10-03")).toEqual({ ok: false, code: "fx_rate_unavailable" })
+    expect(await fetchEcbRate({ fetch }, "US/D", "2026-10-03")).toEqual({
+      ok: false,
+      code: "fx_rate_unavailable",
+    })
     expect(calls).toHaveLength(0)
   })
   test("a JSON-string envelope is understood", async () => {
@@ -99,13 +113,22 @@ describe("cachedRate", () => {
   ]
   test("latest rate on or before the date", async () => {
     const db = createMockDb({ seed: { fx_rates: seed } })
-    expect(await cachedRate(db, "USD", "2026-10-03")).toEqual({ rate: "1.1225", rate_date: "2026-10-02" })
-    expect(await cachedRate(db, "USD", "2026-10-01")).toEqual({ rate: "1.1298", rate_date: "2026-10-01" })
+    expect(await cachedRate(db, "USD", "2026-10-03")).toEqual({
+      rate: "1.1225",
+      rate_date: "2026-10-02",
+    })
+    expect(await cachedRate(db, "USD", "2026-10-01")).toEqual({
+      rate: "1.1298",
+      rate_date: "2026-10-01",
+    })
   })
   test("nothing on or before the date, or older than 7 days, is a miss (never a stale guess)", async () => {
     const db = createMockDb({ seed: { fx_rates: seed } })
     expect(await cachedRate(db, "USD", "2026-09-30")).toBeNull()
-    expect(await cachedRate(db, "USD", "2026-10-09")).toEqual({ rate: "1.1225", rate_date: "2026-10-02" })
+    expect(await cachedRate(db, "USD", "2026-10-09")).toEqual({
+      rate: "1.1225",
+      rate_date: "2026-10-02",
+    })
     expect(await cachedRate(db, "USD", "2026-10-10")).toBeNull()
     expect(await cachedRate(db, "JPY", "2026-10-02")).toBeNull()
   })
@@ -114,17 +137,31 @@ describe("cachedRate", () => {
     const start = Date.parse("2024-12-01T00:00:00Z")
     for (let i = 0; i < 700; i++) {
       const d = new Date(start + i * 86_400_000).toISOString().slice(0, 10)
-      rows.push({ id: `u${String(i).padStart(4, "0")}`, currency: "USD", rate_date: d, rate: `1.${String(1000 + i)}`, fetched_at: NOW })
+      rows.push({
+        id: `u${String(i).padStart(4, "0")}`,
+        currency: "USD",
+        rate_date: d,
+        rate: `1.${String(1000 + i)}`,
+        fetched_at: NOW,
+      })
     }
     const last = rows[699] as { rate_date: string; rate: string }
     const db = createMockDb({ seed: { fx_rates: rows } })
     // The newest rate is the 700th row stored: a capped unordered scan never reaches it.
-    expect(await cachedRate(db, "USD", last.rate_date)).toEqual({ rate: last.rate, rate_date: last.rate_date })
+    expect(await cachedRate(db, "USD", last.rate_date)).toEqual({
+      rate: last.rate,
+      rate_date: last.rate_date,
+    })
     // A back-dated document takes the rate of its own date, never a later one.
     const mid = rows[400] as { rate_date: string; rate: string }
-    expect(await cachedRate(db, "USD", mid.rate_date)).toEqual({ rate: mid.rate, rate_date: mid.rate_date })
+    expect(await cachedRate(db, "USD", mid.rate_date)).toEqual({
+      rate: mid.rate,
+      rate_date: mid.rate_date,
+    })
     // Past the 7-day window of the newest row: a miss.
-    const late = new Date(Date.parse(`${last.rate_date}T00:00:00Z`) + 8 * 86_400_000).toISOString().slice(0, 10)
+    const late = new Date(Date.parse(`${last.rate_date}T00:00:00Z`) + 8 * 86_400_000)
+      .toISOString()
+      .slice(0, 10)
     expect(await cachedRate(db, "USD", late)).toBeNull()
   })
   test("reads ordered by rate_date, newest first, a page at a time", async () => {
@@ -136,7 +173,10 @@ describe("cachedRate", () => {
         return inner.findMany(entity, opts as Parameters<typeof inner.findMany>[1])
       },
     }
-    expect(await cachedRate(db, "USD", "2026-10-03")).toEqual({ rate: "1.1225", rate_date: "2026-10-02" })
+    expect(await cachedRate(db, "USD", "2026-10-03")).toEqual({
+      rate: "1.1225",
+      rate_date: "2026-10-02",
+    })
     expect(seen).toHaveLength(1)
     expect(seen[0]).toMatchObject({ where: { currency: "USD" }, orderBy: { rate_date: "desc" } })
     expect(Number(seen[0]?.limit)).toBeLessThanOrEqual(50)

@@ -30,7 +30,12 @@ export interface FxFetchCtx {
 export interface FxDb {
   findMany(
     entity: string,
-    opts?: { where?: Record<string, unknown>; orderBy?: Record<string, "asc" | "desc">; limit?: number; offset?: number },
+    opts?: {
+      where?: Record<string, unknown>
+      orderBy?: Record<string, "asc" | "desc">
+      limit?: number
+      offset?: number
+    },
   ): Promise<unknown[]>
   insert(entity: string, data: Record<string, unknown>): Promise<unknown>
 }
@@ -101,11 +106,14 @@ export async function fetchEcbRate(
   currency: string,
   onOrBefore: string,
 ): Promise<FxFetchResult> {
-  if (!ctx.fetch || !/^[A-Z]{3}$/.test(currency) || !/^\d{4}-\d{2}-\d{2}$/.test(onOrBefore)) return UNAVAILABLE
+  if (!ctx.fetch || !/^[A-Z]{3}$/.test(currency) || !/^\d{4}-\d{2}-\d{2}$/.test(onOrBefore))
+    return UNAVAILABLE
   const url = `${ECB_PATH}/D.${currency}.EUR.SP00.A?endPeriod=${onOrBefore}&lastNObservations=1&format=csvdata`
   for (let attempt = 0; attempt < FETCH_ATTEMPTS; attempt++) {
     try {
-      const res = envelope(await ctx.fetch(url, { method: "GET", headers: { "User-Agent": USER_AGENT } }))
+      const res = envelope(
+        await ctx.fetch(url, { method: "GET", headers: { "User-Agent": USER_AGENT } }),
+      )
       if (res?.status === 200 && typeof res.body === "string") {
         const parsed = parseEcbCsv(res.body)
         if (parsed) return { ok: true, ...parsed }
@@ -118,7 +126,9 @@ export async function fetchEcbRate(
 }
 
 function dayBefore(date: string, days: number): string {
-  return new Date(new Date(`${date}T00:00:00Z`).getTime() - days * DAY_MS).toISOString().slice(0, 10)
+  return new Date(new Date(`${date}T00:00:00Z`).getTime() - days * DAY_MS)
+    .toISOString()
+    .slice(0, 10)
 }
 
 /** Rows per read when scanning the cache newest-first for the rate on or before a date. */
@@ -165,13 +175,22 @@ export function eurMinor(amountMinor: bigint, rate: string, exp = 2): bigint {
   const negative = amountMinor < 0n
   const abs = negative ? -amountMinor : amountMinor
   const numerator = abs * 100n * scale
-  const denominator = (10n ** BigInt(exp)) * num
+  const denominator = 10n ** BigInt(exp) * num
   const q = (2n * numerator + denominator) / (2n * denominator)
   return negative ? -q : q
 }
 
-async function store(db: FxDb, currency: string, rate: string, rateDate: string, now: Date): Promise<boolean> {
-  const existing = (await db.findMany("fx_rates", { where: { currency, rate_date: rateDate }, limit: 1 })) as Row[]
+async function store(
+  db: FxDb,
+  currency: string,
+  rate: string,
+  rateDate: string,
+  now: Date,
+): Promise<boolean> {
+  const existing = (await db.findMany("fx_rates", {
+    where: { currency, rate_date: rateDate },
+    limit: 1,
+  })) as Row[]
   if (existing.length > 0) return false
   await db.insert("fx_rates", { currency, rate_date: rateDate, rate, fetched_at: now })
   return true
@@ -213,7 +232,10 @@ export function fxIssueDate(issuedAt: string | null | undefined, now: Date = new
 export class FxRateUnavailableError extends Error {
   readonly code = "fx_rate_unavailable"
   readonly retryable = true
-  constructor(readonly currency: string, readonly date: string) {
+  constructor(
+    readonly currency: string,
+    readonly date: string,
+  ) {
     super(
       `A ${currency} e-invoice needs its VAT total in EUR at the ECB reference rate, and no rate on or ` +
         `in the ${FX_MAX_AGE_DAYS} days before ${date} could be fetched (the ECB did not answer). Nothing was ` +

@@ -141,7 +141,6 @@ export async function experiment_list(params: unknown, ctx: AppCtx): Promise<unk
   return {
     experiments: rows,
     count: rows.length,
-    note:
-      "Consult this list before proposing a new test (doctrine block G): do not re-run something already in flight or just concluded.",
+    note: "Consult this list before proposing a new test (doctrine block G): do not re-run something already in flight or just concluded.",
   }
 }

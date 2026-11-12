@@ -118,6 +118,13 @@ function hashAppManifests(h: ReturnType<typeof createHash>, root: string): void 
       }
     }
   }
+  // The catalog app whose schema the template also applies (apply-app-schemas.ts).
+  for (const rel of ["bundled-apps/api-connector/app.manifest.json"]) {
+    const abs = path.join(root, rel)
+    h.update(`${rel}\0`)
+    if (existsSync(abs)) h.update(readFileSync(abs))
+    h.update("\0")
+  }
   for (const rel of [...APP_REGISTRATION_CODE_FILES, "db/apply-app-schemas.ts"]) {
     const abs = path.join(root, "apps/api/src", rel)
     h.update(`${rel}\0`)

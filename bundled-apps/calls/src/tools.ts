@@ -13,9 +13,9 @@
 import type { CallsCtx } from "./ctx"
 import {
   applyLinks,
+  CALL_TITLE_PREFIX,
   type CallLinks,
   type CallSegment,
-  CALL_TITLE_PREFIX,
   callTitleCandidates,
   LEGACY_CALL_TITLE_PREFIX,
   parseCallDoc,
@@ -109,7 +109,10 @@ async function readDocSnapshot(ctx: CallsCtx, id: string): Promise<DocSnapshot |
   return { revision, body: typeof r.document?.body === "string" ? r.document.body : "" }
 }
 
-function isRevisionConflict(env: { status: string; error?: { code?: string; message?: string } }): boolean {
+function isRevisionConflict(env: {
+  status: string
+  error?: { code?: string; message?: string }
+}): boolean {
   if (env.status !== "error") return false
   return /revision[_ ]?conflict/i.test(`${env.error?.code ?? ""} ${env.error?.message ?? ""}`)
 }
@@ -271,9 +274,7 @@ export async function callsListHandler(
         typeof h.sourceEntityId === "string",
     )
     .map((h) => ({
-      callRef: (h.title as string).slice(
-        (callTitlePrefixOf(h.title as string) as string).length,
-      ),
+      callRef: (h.title as string).slice((callTitlePrefixOf(h.title as string) as string).length),
       documentId: h.sourceEntityId as string,
       title: h.title as string,
     }))

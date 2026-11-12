@@ -63,7 +63,10 @@ export type PackedToggleAction =
 export function packedToggleAction(row: WorklistReadyRow): PackedToggleAction {
   if (!row.packed) return { kind: "pack" }
   if (row.fulfillment_state === "fulfilled") {
-    return { kind: "confirm_unpack", message: `Confirm unfulfilling order ${row.order_name ?? "of this parcel"}?` }
+    return {
+      kind: "confirm_unpack",
+      message: `Confirm unfulfilling order ${row.order_name ?? "of this parcel"}?`,
+    }
   }
   return { kind: "unpack" }
 }
@@ -123,14 +126,27 @@ export interface WorklistReadySearchRow extends WorklistReadyRow {
  * invoice, customer, country, and the tracking number or Boxtal reference). A bought label carries
  * no Shopify tags, so a tag filter keeps none of them.
  */
-export function readyRowMatchesView(row: WorklistReadySearchRow, filter: WorklistFilter, n: WorklistNarrowing): boolean {
+export function readyRowMatchesView(
+  row: WorklistReadySearchRow,
+  filter: WorklistFilter,
+  n: WorklistNarrowing,
+): boolean {
   if (!readyRowMatches(row, filter)) return false
-  if (n.country && (row.destination ?? "").trim().toUpperCase() !== n.country.trim().toUpperCase()) return false
+  if (n.country && (row.destination ?? "").trim().toUpperCase() !== n.country.trim().toUpperCase())
+    return false
   if (n.tag) return false
-  if (n.product && !(row.products ?? "").toLowerCase().includes(n.product.toLowerCase())) return false
+  if (n.product && !(row.products ?? "").toLowerCase().includes(n.product.toLowerCase()))
+    return false
   if (n.search) {
     const q = n.search.toLowerCase()
-    const haystack = [row.invoice_ref, row.order_name, row.recipient, row.destination, row.tracking_number, row.shipment_ref]
+    const haystack = [
+      row.invoice_ref,
+      row.order_name,
+      row.recipient,
+      row.destination,
+      row.tracking_number,
+      row.shipment_ref,
+    ]
       .filter(Boolean)
       .join(" ")
       .toLowerCase()
@@ -152,13 +168,16 @@ export function worklistEmptyKind(input: {
   narrowed: boolean
 }): WorklistEmptyKind {
   if (input.narrowed) return "no_match"
-  if (input.filter === "to_prepare") return input.prepTotal === 0 ? "nothing_to_prepare" : "no_match"
+  if (input.filter === "to_prepare")
+    return input.prepTotal === 0 ? "nothing_to_prepare" : "no_match"
   if (input.filter !== "all") return input.readyTotal === 0 ? "nothing_ready" : "no_match"
   return input.prepTotal === 0 && input.readyTotal === 0 ? "nothing_to_prepare" : "no_match"
 }
 
 /** The filter bar counts. Depend on the loaded rows only, never on the filter that is active. */
-export function worklistFilterCounts(rows: WorklistReadyRow[]): Record<"ready" | "to_pack" | "packed", number> {
+export function worklistFilterCounts(
+  rows: WorklistReadyRow[],
+): Record<"ready" | "to_pack" | "packed", number> {
   return {
     ready: rows.filter((r) => readyRowMatches(r, "ready")).length,
     to_pack: rows.filter((r) => readyRowMatches(r, "to_pack")).length,

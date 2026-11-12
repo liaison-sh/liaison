@@ -7,6 +7,9 @@
 // (no `any`): the manifest declares the param JSON-schema, so we type params to
 // the per-tool input shape and let the read/upload functions do the work. Job
 // handlers are kernel-shaped `(payload, ctx)`.
+
+import type { PennylaneToolCtx } from "./ctx"
+import { probeWebhookUpstream } from "./einvoicing/probe-webhook-upstream"
 import {
   cashPosition,
   customerInvoicesList,
@@ -19,11 +22,9 @@ import {
   transactionsList,
   trialBalanceGet,
 } from "./reads"
-import { minorAmountsRefusal, supplierInvoiceUpload, type UploadInput } from "./upload"
 import { type RefreshSnapshotsCtx, refreshSnapshotsJob } from "./snapshot"
-import { probeWebhookUpstream } from "./einvoicing/probe-webhook-upstream"
-import type { PennylaneToolCtx } from "./ctx"
 import type { Filter } from "./types"
+import { minorAmountsRefusal, supplierInvoiceUpload, type UploadInput } from "./upload"
 
 type Ctx = PennylaneToolCtx
 type ListParams = { cursor?: string; limit?: number; filter?: Filter[] }
@@ -37,8 +38,7 @@ export const customerInvoicesListHandler = (params: ListParams, ctx: Ctx) =>
   customerInvoicesList(ctx, params)
 export const trialBalanceGetHandler = (params: { period?: string }, ctx: Ctx) =>
   trialBalanceGet(ctx, params)
-export const pnlSummaryHandler = (params: { period?: string }, ctx: Ctx) =>
-  pnlSummary(ctx, params)
+export const pnlSummaryHandler = (params: { period?: string }, ctx: Ctx) => pnlSummary(ctx, params)
 export const cashPositionHandler = (_params: Record<string, never>, ctx: Ctx) =>
   cashPosition(ctx, {})
 export const transactionsListHandler = (params: ListParams, ctx: Ctx) =>
@@ -70,9 +70,6 @@ export const refreshSnapshotsJobHandler = (
 // — webhook upstream probe (named by `webhookHealth.probe`): evidence for the webhook health check —
 export const probeWebhookUpstreamJob = (_payload: unknown, ctx: Ctx) => probeWebhookUpstream(ctx)
 
-// — gated-tool approval summarizers —
-export * from "./summarizers"
-
 // — einvoicing-pa@1 provider ops (contractOnly; reached through the kernel contract dispatch) —
 export {
   einvoicingAdvance,
@@ -88,9 +85,11 @@ export {
   einvoicingStatusChanges,
   einvoicingSubmit,
 } from "./einvoicing/ops"
-
 // — e-invoicing webhooks: verifier, handler, gated setup —
 export { einvoicingWebhookHandler, verifyEinvoicingWebhook } from "./einvoicing/webhooks"
+// — gated-tool approval summarizers —
+export * from "./summarizers"
+
 import { webhooksSetup } from "./einvoicing/webhooks"
 export const webhooks_setup = (params: { callback_base_url?: string }, ctx: Ctx) =>
   webhooksSetup(params, ctx as Parameters<typeof webhooksSetup>[1])

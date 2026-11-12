@@ -57,9 +57,9 @@ describe("loadFileInto", () => {
       },
     }
     const win = fakeWin()
-    await expect(loadFileInto("0123456789abcdef", win as unknown as Window, "label")).rejects.toThrow(
-      /could not open/,
-    )
+    await expect(
+      loadFileInto("0123456789abcdef", win as unknown as Window, "label"),
+    ).rejects.toThrow(/could not open/)
     expect(win.close).toHaveBeenCalledTimes(1)
     expect(createObjectURL).not.toHaveBeenCalled()
   })

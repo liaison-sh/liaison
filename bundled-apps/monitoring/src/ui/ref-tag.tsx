@@ -5,13 +5,17 @@
 import { type Component, Show } from "solid-js"
 import { cx } from "./kit"
 
-export const RefTag: Component<{ value?: string | null; testid: string; prominent?: boolean }> = (props) => (
+export const RefTag: Component<{ value?: string | null; testid: string; prominent?: boolean }> = (
+  props,
+) => (
   <Show when={props.value}>
     <span
       class={cx(
         "shrink-0 font-mono",
         // The detail page shows it a step larger and selectable (people copy it into messages).
-        props.prominent ? "select-all text-[11.5px] text-text-secondary" : "text-[11px] text-text-tertiary",
+        props.prominent
+          ? "select-all text-[11.5px] text-text-secondary"
+          : "text-[11px] text-text-tertiary",
       )}
       data-testid={props.testid}
     >

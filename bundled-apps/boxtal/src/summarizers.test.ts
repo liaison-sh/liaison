@@ -1,11 +1,20 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { summarizeCancelShipment, summarizeClaimOpen, summarizeCreateShipment, summarizeSettleOrphanCreate } from "./summarizers"
+import {
+  summarizeCancelShipment,
+  summarizeClaimOpen,
+  summarizeCreateShipment,
+  summarizeSettleOrphanCreate,
+} from "./summarizers"
 
 describe("summarizeCreateShipment — outbound vs return, address completeness", () => {
   it("names the order, its document and the recipient in the title, never only the draft id", async () => {
     const s = await summarizeCreateShipment(
-      { draft_id: "3f2a9c1e-0000-4000-8000-000000000001", offer_code: "UPSE-Standard", quoted_price_ttc: 18.4 },
+      {
+        draft_id: "3f2a9c1e-0000-4000-8000-000000000001",
+        offer_code: "UPSE-Standard",
+        quoted_price_ttc: 18.4,
+      },
       undefined,
       {
         connectionIdentifier: null,
@@ -18,7 +27,9 @@ describe("summarizeCreateShipment — outbound vs return, address completeness",
         },
       },
     )
-    expect(s.title).toBe("Buy label for order #3360 (INV-2026-0042), Alice Example, via UPSE-Standard")
+    expect(s.title).toBe(
+      "Buy label for order #3360 (INV-2026-0042), Alice Example, via UPSE-Standard",
+    )
     expect(s.title).not.toContain("3f2a9c1e")
   })
 
@@ -41,8 +52,12 @@ describe("summarizeCreateShipment — outbound vs return, address completeness",
       },
     )
     const joined = s.lines.join("\n")
-    expect(joined).toContain("Package: 2 parcels, 26.70 kg total (60x39x38 cm 21 kg; 59x38x10 cm 5.7 kg)")
-    expect(joined).toContain("Check the packing: The 60x40x30 carton was used with an assumed tare of 0.5 kg.")
+    expect(joined).toContain(
+      "Package: 2 parcels, 26.70 kg total (60x39x38 cm 21 kg; 59x38x10 cm 5.7 kg)",
+    )
+    expect(joined).toContain(
+      "Check the packing: The 60x40x30 carton was used with an assumed tare of 0.5 kg.",
+    )
   })
 
   it("names the draft, the chosen carrier offer, and the recipient when a full address is given", async () => {
@@ -83,7 +98,9 @@ describe("summarizeCreateShipment — outbound vs return, address completeness",
       offer_code: "ups_express",
       recipient_address: { name: "Bob", city: "Lyon" },
     })
-    expect(s.lines.join("\n")).toMatch(/still needed before the label is bought: street, postalCode, countryIsoCode/)
+    expect(s.lines.join("\n")).toMatch(
+      /still needed before the label is bought: street, postalCode, countryIsoCode/,
+    )
   })
 
   // Walk D47: the agent passed only the recipient's name and phone; the draft
@@ -115,7 +132,9 @@ describe("summarizeCreateShipment — outbound vs return, address completeness",
     )
     const joined = s.lines.join("\n")
     expect(joined).not.toMatch(/still needed/)
-    expect(joined).toMatch(/To: Harborlight Audio KK, 21 Yamashitacho, 231-0023 Yokohama, JP \(\+81 45 100003\)/)
+    expect(joined).toMatch(
+      /To: Harborlight Audio KK, 21 Yamashitacho, 231-0023 Yokohama, JP \(\+81 45 100003\)/,
+    )
   })
 
   it("is_return:true names it a reverse shipment and includes the return reason", async () => {
@@ -160,7 +179,12 @@ describe("summarizeCreateShipment — outbound vs return, address completeness",
 
   it("renders the rich card: From, To with phone, Contents, parcel dims, customs totals, invoice link", async () => {
     const s = await summarizeCreateShipment(
-      { draft_id: "doc-42", offer_code: "FEDX-InternationalEconomy", quoted_price_ttc: 57.66, quoted_currency: "EUR" },
+      {
+        draft_id: "doc-42",
+        offer_code: "FEDX-InternationalEconomy",
+        quoted_price_ttc: 57.66,
+        quoted_currency: "EUR",
+      },
       undefined,
       {
         context: {
@@ -187,8 +211,16 @@ describe("summarizeCreateShipment — outbound vs return, address completeness",
           parcels: [{ length: 58, width: 38, height: 16, weight: 7.2 }],
           customs_required: true,
           customsArticles: [
-            { quantity: "1.000", unitValue: { value: 899, currency: "USD" }, tariffNumber: "854370" },
-            { quantity: "1.000", unitValue: { value: 99, currency: "USD" }, tariffNumber: "962000" },
+            {
+              quantity: "1.000",
+              unitValue: { value: 899, currency: "USD" },
+              tariffNumber: "854370",
+            },
+            {
+              quantity: "1.000",
+              unitValue: { value: 99, currency: "USD" },
+              tariffNumber: "962000",
+            },
           ],
           lineSummaries: [
             { label: "ET2", line_kind: "goods", quantity: 1 },
@@ -202,7 +234,9 @@ describe("summarizeCreateShipment — outbound vs return, address completeness",
     const joined = s.lines.join("\n")
     expect(joined).toMatch(/Carrier: FEDX-InternationalEconomy, 57\.66 EUR TTC/)
     expect(joined).toMatch(/From: FABRIKAM \/ Quinn Harper, 81 rue des Exemples, 75018 Paris, FR/)
-    expect(joined).toMatch(/To: Stanley Fortson, 116 Chickasaw Dr\., 38572 Crossville, US \(\+16155730921\)/)
+    expect(joined).toMatch(
+      /To: Stanley Fortson, 116 Chickasaw Dr\., 38572 Crossville, US \(\+16155730921\)/,
+    )
     expect(joined).toMatch(/Contents: 1x ET2, 1x MP/)
     expect(joined).not.toMatch(/1x SW/)
     expect(joined).toMatch(/Package: 1 parcel, 58x38x16 cm, 7\.20 kg total/)
@@ -210,7 +244,9 @@ describe("summarizeCreateShipment — outbound vs return, address completeness",
     expect(joined).toMatch(/Customs export: 2 articles, declared 998\.00 USD, HS 854370, 962000/)
     expect(joined).not.toMatch(/still needed/)
     expect(s.lines.length).toBeLessThanOrEqual(8)
-    expect(s.links).toEqual([{ label: "Open invoice", app: "invoicing", entityType: "detail", entityId: "doc-42" }])
+    expect(s.links).toEqual([
+      { label: "Open invoice", app: "invoicing", entityType: "detail", entityId: "doc-42" },
+    ])
   })
 
   it("falls back to the shipments-list link only when no draft id is known", async () => {
@@ -239,7 +275,11 @@ describe("summarizeCreateShipment — outbound vs return, address completeness",
   })
 
   it("degrades gracefully to params-only rendering when meta/context is absent", async () => {
-    const s = await summarizeCreateShipment({ draft_id: "draft-99", offer_code: "chronopost" }, undefined, undefined)
+    const s = await summarizeCreateShipment(
+      { draft_id: "draft-99", offer_code: "chronopost" },
+      undefined,
+      undefined,
+    )
     expect(s.title).toBe("Ship draft draft-99 via chronopost")
     expect(s.lines.join("\n")).toMatch(/taken from the source invoice/)
   })
@@ -314,14 +354,22 @@ describe("summarizeCancelShipment — names the shipment being stopped", () => {
 
 describe("summarizeSettleOrphanCreate: says which outcome the agent proposes", () => {
   it("release names the row and that the invoice is freed", async () => {
-    const s = await summarizeSettleOrphanCreate({ id: "row-1", outcome: "release", note: "nothing in the dashboard" })
+    const s = await summarizeSettleOrphanCreate({
+      id: "row-1",
+      outcome: "release",
+      note: "nothing in the dashboard",
+    })
     expect(s.title).toBe("Release unfinished label purchase row-1")
     expect(s.subtitle).toMatch(/no label was bought/)
     expect(s.lines.join("\n")).toMatch(/Note: nothing in the dashboard/)
   })
 
   it("adopt names the Boxtal order", async () => {
-    const s = await summarizeSettleOrphanCreate({ id: "row-1", outcome: "adopt", boxtal_order_id: "BX-9" })
+    const s = await summarizeSettleOrphanCreate({
+      id: "row-1",
+      outcome: "adopt",
+      boxtal_order_id: "BX-9",
+    })
     expect(s.title).toBe("Link unfinished label purchase row-1 to Boxtal order BX-9")
     expect(s.lines).toContain("Boxtal order: BX-9")
   })

@@ -13,9 +13,9 @@
 //   META_TEST_TOKEN=<token> META_TEST_AD_ACCOUNT_ID=act_<id> META_TEST_PAGE_ID=<id> \
 //   bun test bundled-apps/ads/src/ads-meta-live.test.ts
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
-import { create_campaign, create_adset, create_ad, create_creative, upload_image } from "./writes"
-import { account_info, campaigns_list, adsets_list } from "./reads"
 import { pause } from "./pause"
+import { account_info, adsets_list, campaigns_list } from "./reads"
+import { create_ad, create_adset, create_campaign, create_creative, upload_image } from "./writes"
 
 const TOKEN = process.env.META_TEST_TOKEN
 const AD_ACCOUNT_ID = process.env.META_TEST_AD_ACCOUNT_ID ?? ""
@@ -64,17 +64,20 @@ liveDescribe("ads meta live e2e (zero-spend-by-construction)", () => {
   beforeAll(async () => {
     if (!TOKEN) return
 
-    const info = await account_info({} as never, ctx) as {
+    const info = (await account_info({} as never, ctx)) as {
       currency?: string
       spend_cap?: string
       account_status?: number
     }
 
-    console.log("[ads-meta-e2e] Account info:", JSON.stringify({
-      currency: info.currency,
-      spend_cap: info.spend_cap,
-      account_status: info.account_status,
-    }))
+    console.log(
+      "[ads-meta-e2e] Account info:",
+      JSON.stringify({
+        currency: info.currency,
+        spend_cap: info.spend_cap,
+        account_status: info.account_status,
+      }),
+    )
 
     // REQUIRED precondition (spec §1 criterion 8 / §10): a tiny account-level spend
     // cap must be set BEFORE the create flow — belt-and-suspenders if an object is
@@ -82,7 +85,7 @@ liveDescribe("ads meta live e2e (zero-spend-by-construction)", () => {
     expect(
       info.spend_cap && info.spend_cap !== "0",
       "REQUIRED: set a small account-level spend cap on the e2e ad account before running " +
-      "(Meta Business Manager). The e2e refuses to run the create flow without it.",
+        "(Meta Business Manager). The e2e refuses to run the create flow without it.",
     ).toBeTruthy()
   })
 
@@ -94,9 +97,9 @@ liveDescribe("ads meta live e2e (zero-spend-by-construction)", () => {
     // Pause all created objects first (already done in tests, but belt+suspenders)
     // Then delete in reverse order: ad → adset → campaign
     const order = ["ad", "adset", "campaign", "creative"]
-    const sorted = [...createdIds].reverse().sort(
-      (a, b) => order.indexOf(a.type) - order.indexOf(b.type),
-    )
+    const sorted = [...createdIds]
+      .reverse()
+      .sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type))
 
     for (const obj of sorted) {
       try {
@@ -106,7 +109,7 @@ liveDescribe("ads meta live e2e (zero-spend-by-construction)", () => {
           method: "DELETE",
           headers: { Authorization: `Bearer ${TOKEN}` },
         })
-        const body = await response.json() as { success?: boolean; error?: unknown }
+        const body = (await response.json()) as { success?: boolean; error?: unknown }
         if (body.success) {
           console.log(`[ads-meta-e2e] Deleted ${obj.type} ${obj.id}`)
         } else {
@@ -126,7 +129,7 @@ liveDescribe("ads meta live e2e (zero-spend-by-construction)", () => {
   let adId: string
 
   it("create_campaign (PAUSED) — Meta accepts OUTCOME_SALES + special_ad_categories:[]", async () => {
-    const result = await create_campaign(
+    const result = (await create_campaign(
       {
         name: `[e2e-test] Campaign ${Date.now()}`,
         objective: "OUTCOME_SALES",
@@ -134,7 +137,7 @@ liveDescribe("ads meta live e2e (zero-spend-by-construction)", () => {
         status: "PAUSED",
       },
       ctx,
-    ) as { id: string }
+    )) as { id: string }
     expect(result.id).toBeTruthy()
     campaignId = result.id
     createdIds.push({ type: "campaign", id: campaignId })
@@ -143,7 +146,7 @@ liveDescribe("ads meta live e2e (zero-spend-by-construction)", () => {
 
   it("create_adset (PAUSED) — Meta accepts targeting + daily_budget", async () => {
     expect(campaignId).toBeTruthy()
-    const result = await create_adset(
+    const result = (await create_adset(
       {
         campaign_id: campaignId,
         name: `[e2e-test] Adset ${Date.now()}`,
@@ -159,7 +162,7 @@ liveDescribe("ads meta live e2e (zero-spend-by-construction)", () => {
         status: "PAUSED",
       },
       ctx,
-    ) as { id: string }
+    )) as { id: string }
     expect(result.id).toBeTruthy()
     adsetId = result.id
     createdIds.push({ type: "adset", id: adsetId })
@@ -172,7 +175,7 @@ liveDescribe("ads meta live e2e (zero-spend-by-construction)", () => {
       console.warn("[ads-meta-e2e] META_TEST_PAGE_ID not set — skipping creative test")
       return
     }
-    const result = await create_creative(
+    const result = (await create_creative(
       {
         object_story_spec: {
           page_id: PAGE_ID,
@@ -189,7 +192,7 @@ liveDescribe("ads meta live e2e (zero-spend-by-construction)", () => {
         },
       },
       ctx,
-    ) as { id: string }
+    )) as { id: string }
     expect(result.id).toBeTruthy()
     creativeId = result.id
     createdIds.push({ type: "creative", id: creativeId })
@@ -201,7 +204,7 @@ liveDescribe("ads meta live e2e (zero-spend-by-construction)", () => {
       console.warn("[ads-meta-e2e] Skipping ad creation — adset or creative not created")
       return
     }
-    const result = await create_ad(
+    const result = (await create_ad(
       {
         adset_id: adsetId,
         name: `[e2e-test] Ad ${Date.now()}`,
@@ -209,7 +212,7 @@ liveDescribe("ads meta live e2e (zero-spend-by-construction)", () => {
         status: "PAUSED",
       },
       ctx,
-    ) as { id: string }
+    )) as { id: string }
     expect(result.id).toBeTruthy()
     adId = result.id
     createdIds.push({ type: "ad", id: adId })
@@ -217,7 +220,9 @@ liveDescribe("ads meta live e2e (zero-spend-by-construction)", () => {
   })
 
   it("read back — campaigns_list finds the created campaign", async () => {
-    const result = await campaigns_list({}, ctx) as { data: Array<{ id: string; effective_status: string }> }
+    const result = (await campaigns_list({}, ctx)) as {
+      data: Array<{ id: string; effective_status: string }>
+    }
     const found = result.data.find((c) => c.id === campaignId)
     expect(found).toBeDefined()
     // Must be PAUSED — never ACTIVE
@@ -230,10 +235,9 @@ liveDescribe("ads meta live e2e (zero-spend-by-construction)", () => {
     // Pause has a real DB requirement for ledger write, which we skip here
     // Instead we call the underlying metaFetch path directly via set_status
     const { set_status } = await import("./writes")
-    const result = await set_status(
-      { object_id: campaignId, status: "PAUSED" },
-      ctx,
-    ) as { effective_status: string }
+    const result = (await set_status({ object_id: campaignId, status: "PAUSED" }, ctx)) as {
+      effective_status: string
+    }
     // Must not be ACTIVE
     expect(result.effective_status).not.toBe("ACTIVE")
     console.log("[ads-meta-e2e] Post-pause effective_status:", result.effective_status)
@@ -241,7 +245,9 @@ liveDescribe("ads meta live e2e (zero-spend-by-construction)", () => {
 
   it("no ACTIVE objects remain after the test flow", async () => {
     // Verify all our created objects are PAUSED, not ACTIVE
-    const result = await campaigns_list({}, ctx) as { data: Array<{ id: string; effective_status: string }> }
+    const result = (await campaigns_list({}, ctx)) as {
+      data: Array<{ id: string; effective_status: string }>
+    }
     const ourCampaign = result.data.find((c) => c.id === campaignId)
     if (ourCampaign) {
       expect(ourCampaign.effective_status).not.toBe("ACTIVE")

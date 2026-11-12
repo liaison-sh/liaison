@@ -10,8 +10,9 @@
 // in front of them and needs to see everything they typed at once.
 //
 // kit.tsx primitives only; no {...rest} spreads onto host elements.
-import { type Component, createSignal, For, onMount, Show } from "solid-js"
+
 import { app } from "@liaison/host"
+import { type Component, createSignal, For, onMount, Show } from "solid-js"
 import { Button, cx, inputClass } from "./kit"
 import { CATEGORY_LABELS, type PrepRow } from "./prep-row-logic"
 
@@ -24,7 +25,11 @@ interface OrderPrefillResult {
 
 /** What `packages_list` hands back, trimmed to the fields the item picker needs. */
 interface CatalogResult {
-  profiles?: Array<{ product_source?: string | null; product_id?: string | null; short_code?: string | null }>
+  profiles?: Array<{
+    product_source?: string | null
+    product_id?: string | null
+    short_code?: string | null
+  }>
   local_products?: Array<{ sku?: string | null; label?: string | null }>
 }
 
@@ -75,7 +80,13 @@ interface ItemDraft {
   product_source: string
 }
 
-const BLANK_ITEM: ItemDraft = { name: "", quantity: 1, catalogValue: "", external_id: "", product_source: "" }
+const BLANK_ITEM: ItemDraft = {
+  name: "",
+  quantity: 1,
+  catalogValue: "",
+  external_id: "",
+  product_source: "",
+}
 
 interface RecipientDraft {
   name: string
@@ -168,7 +179,8 @@ export const AddShipmentPanel: Component<{
     })
   }
 
-  const filledItems = (): ItemDraft[] => items().filter((i) => i.name.trim() !== "" && i.quantity > 0)
+  const filledItems = (): ItemDraft[] =>
+    items().filter((i) => i.name.trim() !== "" && i.quantity > 0)
   const missing = (): string[] => missingRecipientFields(recipient())
   const canSubmit = (): boolean => !busy() && missing().length === 0 && filledItems().length > 0
 
@@ -194,11 +206,16 @@ export const AddShipmentPanel: Component<{
         items: filledItems().map((i) => ({
           name: i.name,
           quantity: i.quantity,
-          ...(i.external_id ? { external_id: i.external_id, product_source: i.product_source || "shopify" } : {}),
+          ...(i.external_id
+            ? { external_id: i.external_id, product_source: i.product_source || "shopify" }
+            : {}),
         })),
       })
       if (res?.row) props.onCreated(res.row)
-      else setError("The shipment was created but its row could not be read back. Pull orders to see it.")
+      else
+        setError(
+          "The shipment was created but its row could not be read back. Pull orders to see it.",
+        )
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -252,7 +269,11 @@ export const AddShipmentPanel: Component<{
     >
       <div class="mb-2 flex items-center justify-between">
         <h2 class="text-[13px] font-semibold text-text">Add a shipment with no order</h2>
-        <Button variant="ghost" testid="boxtal-prep-add-shipment-close" onClick={() => props.onClose()}>
+        <Button
+          variant="ghost"
+          testid="boxtal-prep-add-shipment-close"
+          onClick={() => props.onClose()}
+        >
           Close
         </Button>
       </div>
@@ -324,7 +345,9 @@ export const AddShipmentPanel: Component<{
                 class={inputClass}
                 data-testid={`boxtal-prep-add-${field}`}
                 value={recipient()[field]}
-                onInput={(e) => patchRecipient({ [field]: e.currentTarget.value } as Partial<RecipientDraft>)}
+                onInput={(e) =>
+                  patchRecipient({ [field]: e.currentTarget.value } as Partial<RecipientDraft>)
+                }
               />
             </div>
           )}
@@ -335,7 +358,8 @@ export const AddShipmentPanel: Component<{
         <div class="mb-1 text-[11px] text-text-tertiary">What is in the parcel</div>
         <Show when={catalogError()}>
           <div class="mb-1 text-[11px] text-warning" data-testid="boxtal-prep-add-catalog-error">
-            The catalog could not be loaded, so items can only be typed as a custom reference: {catalogError()}
+            The catalog could not be loaded, so items can only be typed as a custom reference:{" "}
+            {catalogError()}
           </div>
         </Show>
         <For each={items()}>
@@ -375,7 +399,12 @@ export const AddShipmentPanel: Component<{
                   class={cx(inputClass, "!w-40")}
                   data-testid={`boxtal-prep-add-item-ref-${i()}`}
                   value={item.external_id}
-                  onInput={(e) => patchItem(i(), { external_id: e.currentTarget.value, product_source: "shopify" })}
+                  onInput={(e) =>
+                    patchItem(i(), {
+                      external_id: e.currentTarget.value,
+                      product_source: "shopify",
+                    })
+                  }
                 />
               </Show>
             </div>

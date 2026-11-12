@@ -143,6 +143,8 @@ export interface AppManifestForBridge {
       appSecretConfigKeys?: string[]
       /** A SQL connection the platform holds (`ctx.sql.*`, connections/sql/service.ts). */
       sql?: import("~/modules/apps/connections/sql/service").SqlConnectionDeclaration
+      /** An HTTP API connection the platform holds (`ctx.api.*`, connections/api/). */
+      api?: { readScope: string; writeScope: string; adminScope: string }
     }
   >
   network?: { allowedDomains?: string[]; allowPrivateHostsInTest?: boolean }

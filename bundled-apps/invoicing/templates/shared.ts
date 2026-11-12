@@ -801,7 +801,12 @@ function drawTableHeader(state: LayoutState): void {
     bold: true,
     color: GRAY_DARK,
   })
-  drawRight(ctx, "Qty", TABLE_COLS.qty.rightX, { y: labelY, size: 8.5, bold: true, color: GRAY_DARK })
+  drawRight(ctx, "Qty", TABLE_COLS.qty.rightX, {
+    y: labelY,
+    size: 8.5,
+    bold: true,
+    color: GRAY_DARK,
+  })
   drawRight(ctx, "Unit price", TABLE_COLS.unitPrice.rightX, {
     y: labelY,
     size: 8.5,
@@ -828,7 +833,15 @@ function drawTableHeader(state: LayoutState): void {
 function drawWrappedParagraph(
   state: LayoutState,
   text: string,
-  opts: { x: number; maxWidth: number; size: number; bold?: boolean; oblique?: boolean; color?: [number, number, number]; leading?: number },
+  opts: {
+    x: number
+    maxWidth: number
+    size: number
+    bold?: boolean
+    oblique?: boolean
+    color?: [number, number, number]
+    leading?: number
+  },
 ): void {
   const lines = wrapText(text, opts.maxWidth, opts.size, !!opts.bold)
   const leading = opts.leading ?? opts.size + 3
@@ -908,7 +921,13 @@ function drawHeader(state: LayoutState, input: DocumentRenderInput): void {
     })
   } else {
     const ctx = ctxOf(state)
-    draw(ctx, input.issuer.legal_name, { x: MARGIN_X, y: top - 8, size: 16, bold: true, color: GRAY_DARK })
+    draw(ctx, input.issuer.legal_name, {
+      x: MARGIN_X,
+      y: top - 8,
+      size: 16,
+      bold: true,
+      color: GRAY_DARK,
+    })
   }
 
   // Right-aligned title block.
@@ -953,14 +972,21 @@ function drawHeader(state: LayoutState, input: DocumentRenderInput): void {
   // caller at buildTemplateData time from external_refs.original_document_id).
   if (input.document.type === "credit_note" && input.document.original_invoice_number) {
     const ctxRef = ctxOf(state)
-    drawRight(ctxRef, `Credit note for invoice ${input.document.original_invoice_number}${
-        input.document.original_invoice_date ? ` of ${formatDateLike(input.document.original_invoice_date)}` : ""
-      }`, rightX, {
-      y: ry,
-      size: 8.5,
-      bold: true,
-      color: GRAY_DARK,
-    })
+    drawRight(
+      ctxRef,
+      `Credit note for invoice ${input.document.original_invoice_number}${
+        input.document.original_invoice_date
+          ? ` of ${formatDateLike(input.document.original_invoice_date)}`
+          : ""
+      }`,
+      rightX,
+      {
+        y: ry,
+        size: 8.5,
+        bold: true,
+        color: GRAY_DARK,
+      },
+    )
     ry -= 13
     if (input.document.reason) {
       const ctxReason = ctxOf(state)
@@ -1004,7 +1030,10 @@ function drawParties(state: LayoutState, input: DocumentRenderInput): void {
   // The SHIP TO block sits under BILL TO in the right column, so reserve room for it too:
   // its label + name + one line per address line + the leading below the block.
   const shipToBudget = showShipTo
-    ? 14 + 13 + 12 * Math.max(1, shipAddress.split(/\r?\n/).filter((l) => l.trim() !== "").length) + 10
+    ? 14 +
+      13 +
+      12 * Math.max(1, shipAddress.split(/\r?\n/).filter((l) => l.trim() !== "").length) +
+      10
     : 0
   ensureSpace(state, 90 + shipToBudget)
   const startY = state.cursor.y
@@ -1033,7 +1062,14 @@ function drawParties(state: LayoutState, input: DocumentRenderInput): void {
     blockTop: number = startY,
   ): number => {
     let y = blockTop
-    const ctxLabel: DrawCtx = { pdf: state.pdf, page: state.page, font: state.font, bold: state.bold, oblique: state.oblique, cursor: { y } }
+    const ctxLabel: DrawCtx = {
+      pdf: state.pdf,
+      page: state.page,
+      font: state.font,
+      bold: state.bold,
+      oblique: state.oblique,
+      cursor: { y },
+    }
     draw(ctxLabel, label, { x, y, size: 7.5, bold: true, color: GRAY_LABEL })
     y -= 14
     const ctxName: DrawCtx = { ...ctxLabel, cursor: { y } }
@@ -1107,8 +1143,7 @@ function drawParties(state: LayoutState, input: DocumentRenderInput): void {
         rightColWidth,
         "SHIP TO",
         {
-          legal_name:
-            input.counterparty.shipping_name?.trim() || input.counterparty.legal_name,
+          legal_name: input.counterparty.shipping_name?.trim() || input.counterparty.legal_name,
           address: shipAddress,
         },
         rightEnd - 10,
@@ -1387,7 +1422,10 @@ function legalFormCapital(issuer: IssuerData): string | null {
 }
 
 function drawLegalMention(state: LayoutState, input: DocumentRenderInput): void {
-  const paragraphs = [input.legal_mention, input.document.vat_on_debits ? VAT_ON_DEBITS_TEXT : ""].filter(Boolean)
+  const paragraphs = [
+    input.legal_mention,
+    input.document.vat_on_debits ? VAT_ON_DEBITS_TEXT : "",
+  ].filter(Boolean)
   for (const text of paragraphs) {
     drawWrappedParagraph(state, text, {
       x: MARGIN_X,
@@ -1423,7 +1461,14 @@ function drawPaymentDetails(state: LayoutState, input: DocumentRenderInput): voi
     borderWidth: 0.75,
   })
   let y = boxTop - 14
-  const ctxTitle: DrawCtx = { pdf: state.pdf, page: state.page, font: state.font, bold: state.bold, oblique: state.oblique, cursor: { y } }
+  const ctxTitle: DrawCtx = {
+    pdf: state.pdf,
+    page: state.page,
+    font: state.font,
+    bold: state.bold,
+    oblique: state.oblique,
+    cursor: { y },
+  }
   draw(ctxTitle, "Payment details", { x: MARGIN_X + 10, y, size: 9, bold: true, color: GRAY_DARK })
   y -= 14
   for (const line of lines) {
@@ -1444,7 +1489,14 @@ function drawFooters(state: LayoutState, input: DocumentRenderInput): void {
   const total = state.pages.length
   const footerY = 40
   for (const [i, page] of state.pages.entries()) {
-    const ctx: DrawCtx = { pdf: state.pdf, page, font: state.font, bold: state.bold, oblique: state.oblique, cursor: { y: footerY } }
+    const ctx: DrawCtx = {
+      pdf: state.pdf,
+      page,
+      font: state.font,
+      bold: state.bold,
+      oblique: state.oblique,
+      cursor: { y: footerY },
+    }
     const rcs = input.issuer.rcs_city?.trim()
       ? `RCS ${input.issuer.rcs_city.trim()}${input.issuer.siren?.trim() ? ` ${input.issuer.siren.trim()}` : ""}`
       : ""
@@ -1473,6 +1525,10 @@ function drawFooters(state: LayoutState, input: DocumentRenderInput): void {
       draw({ ...ctx, cursor: { y } }, line, { x: MARGIN_X, y, size, color: GRAY_LABEL })
     }
     const ctxRight: DrawCtx = { ...ctx, cursor: { y: footerY } }
-    drawRight(ctxRight, rightText, MARGIN_X + CONTENT_WIDTH, { y: footerY, size: 7.5, color: GRAY_LABEL })
+    drawRight(ctxRight, rightText, MARGIN_X + CONTENT_WIDTH, {
+      y: footerY,
+      size: 7.5,
+      color: GRAY_LABEL,
+    })
   }
 }

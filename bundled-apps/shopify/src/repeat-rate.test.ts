@@ -4,7 +4,7 @@
 // (Live customer pagination is exercised by the chaos gate against the dev store.)
 
 import { describe, expect, it } from "bun:test"
-import { computeRepeatRate, type CustomerOrderCount } from "./repeat-rate"
+import { type CustomerOrderCount, computeRepeatRate } from "./repeat-rate"
 
 function c(name: string, orders: number | string | null): CustomerOrderCount {
   return { displayName: name, numberOfOrders: orders }

@@ -12,7 +12,10 @@ type Row = Record<string, unknown>
 
 export interface SettingsToolCtx {
   db: {
-    findMany(entity: string, opts?: { where?: Record<string, unknown>; limit?: number }): Promise<unknown[]>
+    findMany(
+      entity: string,
+      opts?: { where?: Record<string, unknown>; limit?: number },
+    ): Promise<unknown[]>
     insert(entity: string, data: Record<string, unknown>): Promise<unknown>
     update(entity: string, id: string, data: Record<string, unknown>): Promise<unknown>
   }
@@ -39,7 +42,10 @@ const APP_NAME_RE = /^[a-z][a-z0-9-]{0,62}$/
 
 /** A date field of the patch: absent keeps the stored value (`undefined`), an explicit `null` or
  *  an empty string clears it (`null`), any other string is the new value (validated by the caller). */
-function clearableField(input: Record<string, unknown> | undefined, key: string): string | null | undefined {
+function clearableField(
+  input: Record<string, unknown> | undefined,
+  key: string,
+): string | null | undefined {
   if (!input || !Object.hasOwn(input, key) || input[key] === undefined) return undefined
   const v = input[key]
   if (v === null) return null
@@ -60,24 +66,36 @@ export async function einvoicingSettingsSet(
   },
 ): Promise<Row> {
   const mode = input?.gate_mode ?? null
-  if (mode !== null && mode !== "warn" && mode !== "enforce") return fail("invalid_input", "gate_mode must be warn or enforce")
+  if (mode !== null && mode !== "warn" && mode !== "enforce")
+    return fail("invalid_input", "gate_mode must be warn or enforce")
   const date = clearableField(input, "cibs_switch_date")
-  if (typeof date === "string" && !validDate(date)) return fail("invalid_input", "cibs_switch_date must be a date YYYY-MM-DD")
+  if (typeof date === "string" && !validDate(date))
+    return fail("invalid_input", "cibs_switch_date must be a date YYYY-MM-DD")
   // Absent keeps the binding; null or empty unbinds it.
   const provider = clearableField(input, "provider_app")
-  if (typeof provider === "string" && !APP_NAME_RE.test(provider)) return fail("invalid_input", "provider_app must be an installed app's name")
+  if (typeof provider === "string" && !APP_NAME_RE.test(provider))
+    return fail("invalid_input", "provider_app must be an installed app's name")
   const cutover = clearableField(input, "cutover_date")
-  if (typeof cutover === "string" && !validDate(cutover)) return fail("invalid_input", "cutover_date must be a date YYYY-MM-DD")
+  if (typeof cutover === "string" && !validDate(cutover))
+    return fail("invalid_input", "cutover_date must be a date YYYY-MM-DD")
   const send = typeof input?.send_enabled === "boolean" ? input.send_enabled : null
   const book = typeof input?.book_enabled === "boolean" ? input.book_enabled : null
-  if (mode === null && date === undefined && provider === undefined && cutover === undefined && send === null && book === null) {
+  if (
+    mode === null &&
+    date === undefined &&
+    provider === undefined &&
+    cutover === undefined &&
+    send === null &&
+    book === null
+  ) {
     return fail("invalid_input", "pass at least one setting")
   }
 
   // The binding must name an app registered here that implements the contract (the kernel
   // refuses anything else at dispatch; checked before writing so a typo never lands).
   if (typeof provider === "string") {
-    if (!ctx.contracts) return fail("provider_not_available", "Provider contracts are not available in this context.")
+    if (!ctx.contracts)
+      return fail("provider_not_available", "Provider contracts are not available in this context.")
     const raw = await ctx.contracts.providers("einvoicing-pa@1")
     const providers = (typeof raw === "string" ? JSON.parse(raw) : raw) as string[]
     if (!Array.isArray(providers) || !providers.includes(provider)) {
@@ -98,7 +116,8 @@ export async function einvoicingSettingsSet(
   // it is written only once the kernel took the change.
   const previous = (existing?.provider_app as string | null | undefined) ?? null
   if (provider !== undefined && provider !== previous) {
-    if (!ctx.contracts?.setBinding) return fail("provider_not_available", "Provider contracts are not available in this context.")
+    if (!ctx.contracts?.setBinding)
+      return fail("provider_not_available", "Provider contracts are not available in this context.")
     const raw = await ctx.contracts.setBinding("einvoicing-pa@1", provider)
     let out: unknown = raw
     if (typeof raw === "string") {
@@ -110,7 +129,10 @@ export async function einvoicingSettingsSet(
     }
     const o = (out ?? {}) as { status?: string; error?: { code?: string; message?: string } }
     if (o.status !== "ok") {
-      return fail(o.error?.code ?? "contract_binding_forbidden", o.error?.message ?? "The platform binding was not changed.")
+      return fail(
+        o.error?.code ?? "contract_binding_forbidden",
+        o.error?.message ?? "The platform binding was not changed.",
+      )
     }
   }
   const patch: Row = {
@@ -144,7 +166,12 @@ export async function einvoicingSettingsSet(
       entity: "einvoicing",
       action: "binding_changed",
       entityId: String(row.id),
-      data: { from: previous ?? "none", to: provider ?? "none", by: changedBy ?? "unknown", source: "tool" },
+      data: {
+        from: previous ?? "none",
+        to: provider ?? "none",
+        by: changedBy ?? "unknown",
+        source: "tool",
+      },
     })
   }
   return { status: "ok", settings: row }

@@ -103,6 +103,8 @@ export {
 } from "./secret-placement"
 export type {
   AccountsClient,
+  ApiAnswer,
+  ApiConnectionsClient,
   AppAccount,
   AppContext,
   ConnectionClient,

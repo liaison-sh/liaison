@@ -59,14 +59,20 @@ describe("boxtalWebhookVerifier", () => {
       `sha256=${hmacHex(SECRET, BODY)}`,
       `sha256=${hmacBase64(SECRET, BODY)}`,
     ]) {
-      const res = await boxtalWebhookVerifier(params({ "x-bxt-signature": sig }), makeTestBridge(SECRET))
+      const res = await boxtalWebhookVerifier(
+        params({ "x-bxt-signature": sig }),
+        makeTestBridge(SECRET),
+      )
       expect(res.ok).toBe(true)
     }
   })
 
   it("a wrong secret is still refused in BOTH encodings", async () => {
     for (const sig of [hmacHex("wrong-secret", BODY), hmacBase64("wrong-secret", BODY)]) {
-      const res = await boxtalWebhookVerifier(params({ "x-bxt-signature": sig }), makeTestBridge(SECRET))
+      const res = await boxtalWebhookVerifier(
+        params({ "x-bxt-signature": sig }),
+        makeTestBridge(SECRET),
+      )
       expect(res.ok).toBe(false)
       expect(res.reason).toBe("signature_mismatch")
     }
@@ -74,12 +80,18 @@ describe("boxtalWebhookVerifier", () => {
 
   it("reports the rejected signature's shape, never its value", async () => {
     const badHex = hmacHex("wrong-secret", BODY)
-    const res = await boxtalWebhookVerifier(params({ "x-bxt-signature": badHex }), makeTestBridge(SECRET))
+    const res = await boxtalWebhookVerifier(
+      params({ "x-bxt-signature": badHex }),
+      makeTestBridge(SECRET),
+    )
     expect(res.sigShape).toBe("len=64,charset=hex")
     expect(res.sigShape).not.toContain(badHex)
 
     const badB64 = hmacBase64("wrong-secret", BODY)
-    const res2 = await boxtalWebhookVerifier(params({ "x-bxt-signature": badB64 }), makeTestBridge(SECRET))
+    const res2 = await boxtalWebhookVerifier(
+      params({ "x-bxt-signature": badB64 }),
+      makeTestBridge(SECRET),
+    )
     expect(res2.sigShape).toBe("len=44,charset=base64")
   })
 
@@ -93,7 +105,10 @@ describe("boxtalWebhookVerifier", () => {
         return bridge.config_get(k)
       },
     }
-    const res = await boxtalWebhookVerifier(params({ "x-bxt-signature": hmacHex(SECRET, BODY) }), spy)
+    const res = await boxtalWebhookVerifier(
+      params({ "x-bxt-signature": hmacHex(SECRET, BODY) }),
+      spy,
+    )
     expect(res.ok).toBe(true)
     expect(seen).toEqual([])
   })
@@ -116,8 +131,14 @@ describe("boxtalWebhookVerifier", () => {
 
   it("derives a stable delivery id from the body when no delivery-id header is present", async () => {
     const sig = hmacBase64(SECRET, BODY)
-    const a = await boxtalWebhookVerifier(params({ "x-bxt-signature": sig }), makeTestBridge(SECRET))
-    const b = await boxtalWebhookVerifier(params({ "x-bxt-signature": sig }), makeTestBridge(SECRET))
+    const a = await boxtalWebhookVerifier(
+      params({ "x-bxt-signature": sig }),
+      makeTestBridge(SECRET),
+    )
+    const b = await boxtalWebhookVerifier(
+      params({ "x-bxt-signature": sig }),
+      makeTestBridge(SECRET),
+    )
     expect(a.ok).toBe(true)
     expect(a.replayKey).toBe(b.replayKey) // same body → same dedup key
   })

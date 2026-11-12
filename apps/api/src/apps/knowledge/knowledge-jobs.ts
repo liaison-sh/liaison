@@ -16,20 +16,16 @@
  * BullMQ at boot.
  */
 import { sql as drizzleSql } from "drizzle-orm"
-import { createGoogleDriveAdapter } from "~/apps/google-drive/adapter"
-import { makeDriveFetchers } from "~/apps/google-drive/drive-rest"
-import { loadPickedItems } from "~/apps/google-drive/picker"
 import { runAppSourceSyncJob } from "~/apps/knowledge/app-sources"
 import { knowledgeRel } from "~/apps/knowledge/schema-refs"
 import type { KnowledgeSourceAdapter } from "~/apps/knowledge/source-protocol"
-import { KNOWLEDGE_SOURCE_READ_SCOPE } from "~/apps/knowledge/source-registry"
 import { reconcileSyncedSource } from "~/apps/knowledge/sync-reconciler"
 import {
   type SyncedSourceDbRow,
   rowFromDb as syncedSourceRowFromDb,
 } from "~/apps/knowledge/synced-sources"
 import { extractRows } from "~/db"
-import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
+import { withSystemDb } from "~/db/privileged"
 import {
   createAppQueue,
   enqueueAppJob,
@@ -58,75 +54,19 @@ type DueSourceRow = SyncedSourceDbRow
 const rowToSyncedSource = syncedSourceRowFromDb
 
 /**
- * A synced source keeps using the connected account's credential on every
- * tick, long after it was created. The credential may be an org-owned one that
- * every member could otherwise reach only through the source app's own scope,
- * so the owner's CURRENT scopes are re-checked before each fetch: a user who
- * has lost (or never held) the source app's read scope no longer syncs through
- * it.
- */
-async function assertOwnerMaySyncFrom(
-  app: keyof typeof KNOWLEDGE_SOURCE_READ_SCOPE,
-  orgId: string,
-  userId: string,
-): Promise<void> {
-  const { loadEffectivePermissions, hasScope } = await import("~/modules/permissions/permissions")
-  const effective = await withSystemDb("knowledge-sync-owner-scopes", (db) =>
-    loadEffectivePermissions(db, userId, orgId),
-  )
-  if (!hasScope(KNOWLEDGE_SOURCE_READ_SCOPE[app], effective.scopes)) {
-    throw new Error(
-      `FORBIDDEN: the source owner no longer holds ${KNOWLEDGE_SOURCE_READ_SCOPE[app]}`,
-    )
-  }
-}
-
-/**
- * Resolve the adapter for a given app name + actor. Supports google-drive;
- * an app that declares a knowledge source kind syncs through app-sources.ts
- * instead.
+ * Resolve the adapter for a given app name + actor. No connector syncs
+ * through a kernel adapter any more: an app that declares a knowledge source
+ * kind syncs through app-sources.ts. Tests inject their own adapter.
  */
 function resolveAdapter(
   appName: string,
-  source: {
+  _source: {
     orgId: string
     ownerUserId: string | null
     createdBy: string
     sourceAccount?: string | null
   },
 ): KnowledgeSourceAdapter {
-  if (appName === "google-drive") {
-    const userId = source.ownerUserId ?? source.createdBy
-    const getAccess = async () => {
-      await assertOwnerMaySyncFrom("google-drive", source.orgId, userId)
-      const { driveSourceOwnerOf, resolveDriveAccess } = await import(
-        "~/apps/google-drive/drive-access"
-      )
-      // Privileged db to fetch the OAuth token; the connections service uses the
-      // orgId we pass. Token fetch errors map to listFolder/fetchRemoteContent
-      // errors in the adapter. The folder syncs from the Drive account recorded
-      // when it was added, never silently from another account of the same user,
-      // and only within that account's read scope (an org account: the shared
-      // drives an admin chose, drive-scope.ts).
-      return withPrivilegedDb(source.orgId, "knowledge-sync-token", (db) =>
-        resolveDriveAccess(db, source.orgId, userId, {
-          ...(source.sourceAccount ? { identifier: source.sourceAccount } : {}),
-          // One Google account may hold an org row AND a member's own row: an
-          // org folder reads through the org's, a personal one its owner's.
-          sourceOwner: driveSourceOwnerOf(source),
-        }),
-      )
-    }
-    const getToken = async (): Promise<string> => (await getAccess()).token
-    const fetchers = makeDriveFetchers(getAccess)
-    // The picked-items root (drive-mode.ts) lists what the person picked on
-    // this source's Drive account.
-    const getPickedItems = async () =>
-      source.sourceAccount
-        ? loadPickedItems(source.orgId, source.sourceAccount, source.ownerUserId)
-        : []
-    return createGoogleDriveAdapter({ getToken, ...fetchers, getPickedItems })
-  }
   throw new Error(`No adapter registered for app: ${appName}`)
 }
 
@@ -166,28 +106,10 @@ export async function tickEnqueueDueSources(enqueue: EnqueueFn): Promise<number>
   return due.length
 }
 
-async function defaultGate(source: ReturnType<typeof rowToSyncedSource>): Promise<"sync" | "skip"> {
-  // An owner who may no longer sync from Drive reads nothing here either: the
-  // sync then fails on the same check, as before.
-  try {
-    await assertOwnerMaySyncFrom(
-      "google-drive",
-      source.orgId,
-      source.ownerUserId ?? source.createdBy,
-    )
-  } catch {
-    return "sync"
-  }
-  const { gateDriveSourceSync } = await import("~/apps/google-drive/org-drive-content")
-  return gateDriveSourceSync(source)
-}
-
 export interface RunSyncWorkerDeps {
-  /** Decides whether a Drive folder may sync (tests stub it). Production: gateDriveSourceSync. */
-  gate?: (source: ReturnType<typeof rowToSyncedSource>) => Promise<"sync" | "skip">
   /**
    * Resolve an adapter for the given app. Tests inject a stub that doesn't
-   * touch OAuth or real Drive. Production uses {@link resolveAdapter}.
+   * touch OAuth or a real provider. Production uses {@link resolveAdapter}.
    */
   resolveAdapter?: (
     appName: string,
@@ -300,13 +222,6 @@ export async function runSyncWorker(
       }
       throw err
     }
-    return
-  }
-  // A Drive folder that syncs through an ORGANIZATION connection stays within
-  // the shared drives an admin chose: with none chosen its content is hidden,
-  // outside them it is removed, and nothing syncs (org-drive-content.ts).
-  if (source.appName === "google-drive" && (await (deps.gate ?? defaultGate)(source)) === "skip") {
-    log.info({ sourceId: source.id }, "sync-source: org Drive folder outside its shared drives")
     return
   }
   const adapter = (deps.resolveAdapter ?? resolveAdapter)(source.appName, source)

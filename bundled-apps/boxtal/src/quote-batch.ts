@@ -23,10 +23,10 @@
 // silently truncated). When `covered_count < total_count` the caller MUST disclose
 // the bound (more orders remain to price in another pass).
 
-import { quote } from "./shipment"
-import { toPrepareList, type ToPrepareRow } from "./queues"
-import type { CotationParty, Offer } from "./lib/boxtal-v1-client"
 import type { BoxtalToolCtx } from "./ctx"
+import type { CotationParty, Offer } from "./lib/boxtal-v1-client"
+import { type ToPrepareRow, toPrepareList } from "./queues"
+import { quote } from "./shipment"
 
 /** A placeholder party for a draft-driven quote: `quote` overwrites `from` (org
  *  ship-from) and `to` (draft recipient) entirely, so these blanks never reach
@@ -138,7 +138,10 @@ export interface QuoteBatchResult {
  * arithmetic the cheapest-within-deadline pick depends on. (No public-holiday
  * calendar is modelled — weekends only, matching the quote tool's guidance.)
  */
-export function businessDaysBetween(collection: string | null, delivery: string | null): number | null {
+export function businessDaysBetween(
+  collection: string | null,
+  delivery: string | null,
+): number | null {
   if (!collection || !delivery) return null
   const start = new Date(`${collection}T00:00:00Z`)
   const end = new Date(`${delivery}T00:00:00Z`)
@@ -228,16 +231,18 @@ async function resolveCandidates(
   }
   const { rows } = await toPrepareList(ctx)
   const wantCountry = input.destination_country?.trim().toUpperCase()
-  return rows
-    .filter((r: ToPrepareRow) => r.prep_status === "ready_to_prepare")
-    // A row with no anchor document has nothing to quote against (its draft_id IS the anchor).
-    .filter((r) => r.id != null)
-    .filter((r) => !wantCountry || (r.destination ?? "").trim().toUpperCase() === wantCountry)
-    .map((r) => ({
-      order_ref: r.id!,
-      recipient: r.customer ?? null,
-      destination_country: r.destination ?? null,
-    }))
+  return (
+    rows
+      .filter((r: ToPrepareRow) => r.prep_status === "ready_to_prepare")
+      // A row with no anchor document has nothing to quote against (its draft_id IS the anchor).
+      .filter((r) => r.id != null)
+      .filter((r) => !wantCountry || (r.destination ?? "").trim().toUpperCase() === wantCountry)
+      .map((r) => ({
+        order_ref: r.id!,
+        recipient: r.customer ?? null,
+        destination_country: r.destination ?? null,
+      }))
+  )
 }
 
 /**
@@ -247,7 +252,10 @@ async function resolveCandidates(
  * nothing. `covered_count`/`total_count` report the honest bound when the wall
  * exceeds the cap.
  */
-export async function quoteBatch(ctx: BoxtalToolCtx, input: QuoteBatchInput): Promise<QuoteBatchResult> {
+export async function quoteBatch(
+  ctx: BoxtalToolCtx,
+  input: QuoteBatchInput,
+): Promise<QuoteBatchResult> {
   const maxEta = input.max_eta_business_days ?? DEFAULT_MAX_ETA_BUSINESS_DAYS
   const limit = Math.max(1, input.limit ?? DEFAULT_LIMIT)
   const candidates = await resolveCandidates(ctx, input)

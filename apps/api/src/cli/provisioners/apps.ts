@@ -48,7 +48,6 @@ import {
   planConnection,
   provisionConnection,
 } from "~/cli/provisioners/connector"
-import { applyDriveSharedDrives } from "~/cli/provisioners/drive-shared-drives"
 import {
   applyMailProviders,
   type MailProviderResult,
@@ -155,6 +154,9 @@ export const appsProvisioner: Provisioner<ProvisioningConfig> = {
         }
         actions.push(`provision app '${app.name}': ${Object.keys(app.provision).join(", ")}`)
       }
+      for (const account of app.connections ?? []) {
+        actions.push(`connect '${app.name}/${account.name}' account '${account.identifier}'`)
+      }
     }
     return { actions }
   },
@@ -260,11 +262,6 @@ async function planAppsAgainstStore(
       actions.push(
         `app '${app.name}' connection '${app.connection.name}': connected once its credentials or consent are given`,
       )
-      if (app.connection.sharedDrives) {
-        actions.push(
-          `app '${app.name}' connection '${app.connection.name}': share shared drives ${app.connection.sharedDrives.join(", ") || "(none)"}`,
-        )
-      }
     }
     actions.push(...(lines.length > 0 ? lines : [`app '${app.name}' unchanged`]))
   }
@@ -408,6 +405,13 @@ async function applyApps(
         changed.push(...r.changed)
         unchanged.push(...r.unchanged)
       }
+      // More accounts of a multiInstance connection, after the app's own setup.
+      for (const account of app.connections ?? []) {
+        const r = await provisionConnection(ctx, app.name, account)
+        if (r.changed) changed.push(...r.changed)
+        if (r.unchanged) unchanged.push(...r.unchanged)
+        if (r.pending) pending.push(r.pending)
+      }
       apps.push({
         name: app.name,
         enabled: (await settledAppState(ctx.orgId, app.name)) === "on",
@@ -422,18 +426,17 @@ async function applyApps(
     if (result.changed) changed.push(...result.changed)
     if (result.unchanged) unchanged.push(...result.unchanged)
     if (result.pending) pending.push(result.pending)
-    // google-drive: the shared drives the organization's connection shares.
-    if (app.connection.sharedDrives) {
-      const r = await applyDriveSharedDrives(ctx, app.connection.sharedDrives)
-      changed.push(...r.changed)
-      unchanged.push(...r.unchanged)
-      pending.push(...r.pending)
-    }
     // The app's own setup runs once its connection is in place (it may use it).
     if (app.provision) {
       const r = await applyAppProvision(ctx, app.name, app.provision)
       changed.push(...r.changed)
       unchanged.push(...r.unchanged)
+    }
+    for (const account of app.connections ?? []) {
+      const r = await provisionConnection(ctx, app.name, account)
+      if (r.changed) changed.push(...r.changed)
+      if (r.unchanged) unchanged.push(...r.unchanged)
+      if (r.pending) pending.push(r.pending)
     }
     // A connection that is unchanged can still be dead (a host that moved, a
     // revoked token): probe the stored row when the app has a probe, and turn

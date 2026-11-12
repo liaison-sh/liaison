@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
 import { ToolError } from "@liaison/app-sdk"
+import { deriveDraftFacts } from "./draft-cache"
+import { stuckList } from "./queues"
+import { boxtalOrderProbe, type OrphanRow, reconcileOrphanedCreates } from "./reconcile-tracking"
 import {
   createShipment,
-  pollCreateShipmentOutput,
-  normalizeRecipientAddress,
-  normalizePostalCode,
-  parseInvoiceAddress,
   createShipmentPreflight,
   importLabelDocument,
   importLabelFile,
+  normalizePostalCode,
+  normalizeRecipientAddress,
+  parseInvoiceAddress,
+  pollCreateShipmentOutput,
   quote,
   shipmentDraftCreate,
   shipmentDraftSetCustoms,
@@ -18,9 +21,6 @@ import {
   shipmentDraftSetPackagePersist,
 } from "./shipment"
 import { createMockDb } from "./test-db"
-import { deriveDraftFacts } from "./draft-cache"
-import { stuckList } from "./queues"
-import { boxtalOrderProbe, type OrphanRow, reconcileOrphanedCreates } from "./reconcile-tracking"
 
 const CREDS = { v1Key: "k1", v1Secret: "s1", v3Key: "k3", v3Secret: "s3", environment: "sandbox" }
 
@@ -103,14 +103,29 @@ function makeCtx(opts?: {
   excludePickupPoint?: boolean
 }) {
   const appConfigRows: Array<Record<string, unknown>> = []
-  if (!opts?.noSender) appConfigRows.push({ id: "cfg-sender", key: "sender_address", value: SENDER_PARTY })
-  if (opts?.allowlist) appConfigRows.push({ id: "cfg-allowlist", key: "carrier_allowlist", value: opts.allowlist })
+  if (!opts?.noSender)
+    appConfigRows.push({ id: "cfg-sender", key: "sender_address", value: SENDER_PARTY })
+  if (opts?.allowlist)
+    appConfigRows.push({ id: "cfg-allowlist", key: "carrier_allowlist", value: opts.allowlist })
   if (typeof opts?.excludePickupPoint === "boolean")
-    appConfigRows.push({ id: "cfg-pickup", key: "exclude_pickup_point_services", value: opts.excludePickupPoint })
+    appConfigRows.push({
+      id: "cfg-pickup",
+      key: "exclude_pickup_point_services",
+      value: opts.excludePickupPoint,
+    })
   const db = createMockDb({
     seed: {
       shipping_profile: [
-        { id: "p1", product_source: "shopify", product_id: "V1", unit_weight: 0.5, solo_length: 30, solo_width: 20, solo_height: 10, content_category: "content:v1:10120" },
+        {
+          id: "p1",
+          product_source: "shopify",
+          product_id: "V1",
+          unit_weight: 0.5,
+          solo_length: 30,
+          solo_width: 20,
+          solo_height: 10,
+          content_category: "content:v1:10120",
+        },
       ],
       ...(appConfigRows.length ? { app_config: appConfigRows } : {}),
     },
@@ -120,26 +135,69 @@ function makeCtx(opts?: {
     const method = o?.method ?? "GET"
     fetchCalls.push({ url, method, body: o?.body })
     if (url.includes("/iam/account-app/token")) {
-      return { status: 200, headers: {}, body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }) }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }),
+      }
     }
     if (url.includes("/cotation")) {
-      return { status: opts?.cotationStatus ?? 200, headers: {}, body: opts?.cotationBody ?? MULTI_XML }
+      return {
+        status: opts?.cotationStatus ?? 200,
+        headers: {},
+        body: opts?.cotationBody ?? MULTI_XML,
+      }
     }
     if (url.includes("/shipping-order") && url.includes("/tracking")) {
-      return { status: 200, headers: {}, body: opts?.trackingBody ?? JSON.stringify({ status: 200, timestamp: "t", content: [{ status: "ANNOUNCED", trackingNumber: "TRK1", trackingDateTime: "2026-06-01T00:00:00Z", history: [] }] }) }
+      return {
+        status: 200,
+        headers: {},
+        body:
+          opts?.trackingBody ??
+          JSON.stringify({
+            status: 200,
+            timestamp: "t",
+            content: [
+              {
+                status: "ANNOUNCED",
+                trackingNumber: "TRK1",
+                trackingDateTime: "2026-06-01T00:00:00Z",
+                history: [],
+              },
+            ],
+          }),
+      }
     }
     if (url.includes("/shipping-order") && url.includes("/shipping-document")) {
-      return { status: 200, headers: {}, body: opts?.documentsBody ?? JSON.stringify({ status: 200, timestamp: "t", content: [] }) }
+      return {
+        status: 200,
+        headers: {},
+        body: opts?.documentsBody ?? JSON.stringify({ status: 200, timestamp: "t", content: [] }),
+      }
     }
     if (url.includes("/shipping-order")) {
       const status = opts?.v3Status ?? 200
       return {
         status,
         headers: {},
-        body: opts?.v3Body ?? JSON.stringify({ status: 200, timestamp: "t", content: { id: "ord-1", status: "PENDING", deliveryPriceExclTax: { value: 7.8, currency: "EUR" } } }),
+        body:
+          opts?.v3Body ??
+          JSON.stringify({
+            status: 200,
+            timestamp: "t",
+            content: {
+              id: "ord-1",
+              status: "PENDING",
+              deliveryPriceExclTax: { value: 7.8, currency: "EUR" },
+            },
+          }),
       }
     }
-    return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: {} }) }
+    return {
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ status: 200, timestamp: "t", content: {} }),
+    }
   }
   const executeTool =
     opts?.executeTool ??
@@ -158,7 +216,15 @@ function makeCtx(opts?: {
     db,
     fetch,
     executeTool,
-    connections: { boxtal: { getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }), getToken: async () => { throw new Error("no") }, getAccounts: async () => [] } },
+    connections: {
+      boxtal: {
+        getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }),
+        getToken: async () => {
+          throw new Error("no")
+        },
+        getAccounts: async () => [],
+      },
+    },
     config: { get: async () => "whsecret", has: async () => true },
     logger: { info() {}, warn() {}, error() {}, debug() {} },
     ...(opts?.filesImportFromUrl
@@ -219,7 +285,9 @@ describe("parseInvoiceAddress", () => {
       postalCode: "10019",
       state: "NY",
     })
-    expect(parseInvoiceAddress("Acme Inc\n250 W 57th St\nNew York, NY 10019-1234", us)).toMatchObject({
+    expect(
+      parseInvoiceAddress("Acme Inc\n250 W 57th St\nNew York, NY 10019-1234", us),
+    ).toMatchObject({
       street: "Acme Inc, 250 W 57th St",
       city: "New York",
       postalCode: "10019",
@@ -233,11 +301,18 @@ describe("parseInvoiceAddress", () => {
   })
   it("drops a trailing country, as its own line or as the last comma part", () => {
     const us = { ...fb, countryIsoCode: "US" }
-    const want = { street: "250 W 94th St, Apt. 8j", city: "New York", postalCode: "10025", state: "NY" }
-    expect(parseInvoiceAddress("250 W 94th St, Apt. 8j, New York, NY 10025, USA", us)).toMatchObject(want)
-    expect(parseInvoiceAddress("250 W 94th St, Apt. 8j\nNew York, NY 10025\nUnited States", us)).toMatchObject(
-      want,
-    )
+    const want = {
+      street: "250 W 94th St, Apt. 8j",
+      city: "New York",
+      postalCode: "10025",
+      state: "NY",
+    }
+    expect(
+      parseInvoiceAddress("250 W 94th St, Apt. 8j, New York, NY 10025, USA", us),
+    ).toMatchObject(want)
+    expect(
+      parseInvoiceAddress("250 W 94th St, Apt. 8j\nNew York, NY 10025\nUnited States", us),
+    ).toMatchObject(want)
     expect(parseInvoiceAddress("50 rue des TROIS ROIS\n44000 NANTES\nFrance", fb)).toMatchObject({
       street: "50 rue des TROIS ROIS",
       postalCode: "44000",
@@ -247,8 +322,16 @@ describe("parseInvoiceAddress", () => {
   it("reads labelled lines (City: / Postal Code: / State:)", () => {
     const us = { ...fb, countryIsoCode: "US" }
     expect(
-      parseInvoiceAddress("250 W 94th St, Apt. 8j\nCity: New York\nPostal Code: 10025\nState: NY\nUSA\n", us),
-    ).toMatchObject({ street: "250 W 94th St, Apt. 8j", city: "New York", postalCode: "10025", state: "NY" })
+      parseInvoiceAddress(
+        "250 W 94th St, Apt. 8j\nCity: New York\nPostal Code: 10025\nState: NY\nUSA\n",
+        us,
+      ),
+    ).toMatchObject({
+      street: "250 W 94th St, Apt. 8j",
+      city: "New York",
+      postalCode: "10025",
+      state: "NY",
+    })
     expect(
       parseInvoiceAddress("Street: 12 rue Oberkampf\nZip: 75011\nCity: Paris\nCountry: France", fb),
     ).toMatchObject({ street: "12 rue Oberkampf", city: "Paris", postalCode: "75011" })
@@ -285,7 +368,11 @@ describe("quote", () => {
     // excludePickupPoint:false isolates the ALLOWLIST axis — FOUR_CARRIER_XML's UPS
     // offer is a "Standard Access Point" service the pickup-point policy would also
     // drop; disabling that policy keeps this test focused on the brand filter.
-    const { ctx } = makeCtx({ cotationBody: FOUR_CARRIER_XML, allowlist: ["ups", "fedex", "dhl"], excludePickupPoint: false })
+    const { ctx } = makeCtx({
+      cotationBody: FOUR_CARRIER_XML,
+      allowlist: ["ups", "fedex", "dhl"],
+      excludePickupPoint: false,
+    })
     const res = await quote(ctx, {
       from: { country: "FR", postalCode: "75001", city: "Paris", type: "entreprise" },
       to: { country: "DE", postalCode: "04289", city: "Leipzig", type: "particulier" },
@@ -303,7 +390,11 @@ describe("quote", () => {
     // the only difference is ignore_allowlist:true, so if the flag works the
     // non-allowlisted Chronopost offer must now come through. excludePickupPoint:false
     // isolates the allowlist axis (FOUR_CARRIER_XML's UPS offer is an access-point service).
-    const { ctx } = makeCtx({ cotationBody: FOUR_CARRIER_XML, allowlist: ["ups", "fedex", "dhl"], excludePickupPoint: false })
+    const { ctx } = makeCtx({
+      cotationBody: FOUR_CARRIER_XML,
+      allowlist: ["ups", "fedex", "dhl"],
+      excludePickupPoint: false,
+    })
     const res = await quote(ctx, {
       from: { country: "FR", postalCode: "75001", city: "Paris", type: "entreprise" },
       to: { country: "DE", postalCode: "04289", city: "Leipzig", type: "particulier" },
@@ -323,7 +414,10 @@ describe("quote", () => {
     // cheaper UPS Access Point relay offer must still be dropped, so the door-to-door
     // Chronopost is the sole survivor -- proving ignore_allowlist did not leak into
     // the pickup-point axis.
-    const { ctx } = makeCtx({ cotationBody: RELAY_CHEAPEST_XML, allowlist: ["ups", "fedex", "dhl"] })
+    const { ctx } = makeCtx({
+      cotationBody: RELAY_CHEAPEST_XML,
+      allowlist: ["ups", "fedex", "dhl"],
+    })
     const res = await quote(ctx, {
       to: { country: "FR", postalCode: "75001", city: "Paris", type: "particulier" },
       parcels: [{ weight: 1, length: 20, width: 15, height: 10 }],
@@ -615,7 +709,8 @@ describe("shipmentDraftCreate", () => {
         counterparty_country: "US",
         counterparty_address: "11418 Richmond Hill\n10001 New York, New York",
       }
-      if (target === "invoicing:documents_search") return { status: "completed", result: [withAddress] }
+      if (target === "invoicing:documents_search")
+        return { status: "completed", result: [withAddress] }
       return { status: "completed", result: withAddress }
     }
     const { ctx } = makeCtx({ executeTool })
@@ -636,7 +731,9 @@ describe("shipmentDraftCreate", () => {
       if (target === "kernel:contacts_read") {
         return {
           status: "completed",
-          result: { contact: { id: "contact-1", metadata: stored ? { shipping_address: stored } : {} } },
+          result: {
+            contact: { id: "contact-1", metadata: stored ? { shipping_address: stored } : {} },
+          },
         }
       }
       if (target === "kernel:contacts_write") {
@@ -668,7 +765,8 @@ describe("shipmentDraftCreate", () => {
         counterparty_address: "21 Yamashitacho\n231-0023 Yokohama",
         shopify_order_id: "6100097",
       }
-      if (target === "invoicing:documents_search") return { status: "completed", result: [fromOrder] }
+      if (target === "invoicing:documents_search")
+        return { status: "completed", result: [fromOrder] }
       return { status: "completed", result: fromOrder }
     }
     const { ctx } = makeCtx({ executeTool })
@@ -721,13 +819,17 @@ describe("shipmentDraftCreate", () => {
           },
         }
       }
-      if (target === "invoicing:documents_search") return { status: "completed", result: [fromOrder] }
+      if (target === "invoicing:documents_search")
+        return { status: "completed", result: [fromOrder] }
       return { status: "completed", result: fromOrder }
     }
     const { ctx } = makeCtx({ executeTool })
     for (let i = 0; i < 4; i++) {
       const draft = await shipmentDraftCreate(ctx, { document_ref: "doc-1" })
-      expect(draft.recipient_address).toMatchObject({ phone: "+81 45 100003", postalCode: "231-0023" })
+      expect(draft.recipient_address).toMatchObject({
+        phone: "+81 45 100003",
+        postalCode: "231-0023",
+      })
     }
     expect(writes).toHaveLength(0)
   })
@@ -820,16 +922,26 @@ describe("shipmentDraftCreate", () => {
     // crashing. Mock: documents_search returns the invoice (whose id is a UUID), documents_get(id) returns
     // the full doc; the draft must succeed exactly as if the UUID had been passed.
     const docUuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-    const resolved = { ...INVOICE, id: docUuid, number: "EMB-2026-8201", status: "issued", shopify_order_id: "#2357" }
+    const resolved = {
+      ...INVOICE,
+      id: docUuid,
+      number: "EMB-2026-8201",
+      status: "issued",
+      shopify_order_id: "#2357",
+    }
     const calls: { target: string; args: unknown }[] = []
     const executeTool = async (target: string, args: unknown) => {
       calls.push({ target, args })
-      if (target === "invoicing:documents_search") return { status: "completed", result: [resolved] }
+      if (target === "invoicing:documents_search")
+        return { status: "completed", result: [resolved] }
       // documents_get MISSES on the raw number (the pg 22P02 surfaced as an error envelope), and resolves
       // only when asked for the real UUID — so the draft succeeds ONLY via the search-resolve retry.
       const id = (args as { id?: string })?.id
       if (id === docUuid) return { status: "completed", result: resolved }
-      return { status: "error", error: { code: "invalid_uuid", message: "invalid input syntax for type uuid" } }
+      return {
+        status: "error",
+        error: { code: "invalid_uuid", message: "invalid input syntax for type uuid" },
+      }
     }
     const { ctx } = makeCtx({ executeTool })
     // Pass the invoice NUMBER (not the UUID).
@@ -848,13 +960,32 @@ describe("shipmentDraftCreate", () => {
   it("set_package marks requote and replaces the parcel set", async () => {
     const { ctx } = makeCtx()
     const draft = await shipmentDraftCreate(ctx, { document_ref: "doc-1" })
-    const updated = shipmentDraftSetPackage(draft, { override: { length: 50, width: 50, height: 50, weight: 9 } })
+    const updated = shipmentDraftSetPackage(draft, {
+      override: { length: 50, width: 50, height: 50, weight: 9 },
+    })
     expect(updated.parcels[0]).toMatchObject({ length: 50, weight: 9 })
     expect(updated.requote).toBe(true)
   })
 
   it("set_customs overrides an article without touching the source", () => {
-    const draft = { document_ref: "d", parcels: [], customsArticles: [{ line_id: "l", description: "x", quantity: 1, unitWeight: 1, unitValue: { value: 1, currency: "EUR" }, originCountry: "FR", tariffNumber: "1" }], unresolved: [], recipient: "", route: "" } as any
+    const draft = {
+      document_ref: "d",
+      parcels: [],
+      customsArticles: [
+        {
+          line_id: "l",
+          description: "x",
+          quantity: 1,
+          unitWeight: 1,
+          unitValue: { value: 1, currency: "EUR" },
+          originCountry: "FR",
+          tariffNumber: "1",
+        },
+      ],
+      unresolved: [],
+      recipient: "",
+      route: "",
+    } as any
     const updated = shipmentDraftSetCustoms(draft, { index: 0, patch: { description: "New" } })
     expect(updated.customsArticles[0]!.description).toBe("New")
     expect(draft.customsArticles[0]!.description).toBe("x")
@@ -881,7 +1012,9 @@ describe("draft overrides reach the create body (I1)", () => {
       recipient_address: RECIPIENT_ADDRESS,
     })
     const post = fetchCalls.find((c) => c.url.endsWith("/shipping-order") && c.method === "POST")!
-    const body = JSON.parse(post.body!) as { shipment: { packages: Array<{ length: number; weight: number }> } }
+    const body = JSON.parse(post.body!) as {
+      shipment: { packages: Array<{ length: number; weight: number }> }
+    }
     expect(body.shipment.packages[0]).toMatchObject({ length: 80, weight: 12 })
   })
 
@@ -929,7 +1062,9 @@ describe("draft overrides reach the create body (I1)", () => {
     expect("error" in res && res.error?.code).toBe("price_increased")
     expect("error" in res && res.error?.message).toMatch(/9\.36/)
     expect("error" in res && res.error?.message).toMatch(/8\.00/)
-    expect("error" in res && res.error?.message).toContain("The approval is re-staged at the new price")
+    expect("error" in res && res.error?.message).toContain(
+      "The approval is re-staged at the new price",
+    )
     // The soft error carries the payload patch the kernel applies when re-staging the
     // reverted approval, so the re-staged card quotes the CURRENT price.
     expect(
@@ -938,7 +1073,9 @@ describe("draft overrides reach the create body (I1)", () => {
     ).toEqual({ quoted_price_ttc: 9.36 })
     // Rejected BEFORE reserving or buying.
     expect(db.__all("shipment")).toHaveLength(0)
-    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(false)
+    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(
+      false,
+    )
   })
 
   it("price oracle: a direct Ship click (no approval) is told to re-quote, never that an approval was re-staged", async () => {
@@ -974,7 +1111,9 @@ describe("draft overrides reach the create body (I1)", () => {
     // Approved at 20.00, live is 9.36: cheaper, execute.
     const res = await createShipment(ctx, { ...CREATE_INPUT, quoted_price_ttc: 20.0 })
     expect("error" in res).toBe(false)
-    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(true)
+    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(
+      true,
+    )
   })
 
   it("price oracle: a raise WITHIN 5% still buys (tolerance band)", async () => {
@@ -982,14 +1121,18 @@ describe("draft overrides reach the create body (I1)", () => {
     // Approved at 9.00, live is 9.36 (+4%): within tolerance, execute.
     const res = await createShipment(ctx, { ...CREATE_INPUT, quoted_price_ttc: 9.0 })
     expect("error" in res).toBe(false)
-    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(true)
+    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(
+      true,
+    )
   })
 
   it("price oracle: a matching quoted_price_ttc buys normally", async () => {
     const { ctx, fetchCalls } = makeCtx()
     const res = await createShipment(ctx, { ...CREATE_INPUT, quoted_price_ttc: 9.36 })
     expect("error" in res).toBe(false)
-    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(true)
+    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(
+      true,
+    )
   })
 
   it("a persisted customs override reaches the create body", async () => {
@@ -1006,8 +1149,12 @@ describe("draft overrides reach the create body (I1)", () => {
       recipient_address: RECIPIENT_ADDRESS,
     })
     const post = fetchCalls.find((c) => c.url.endsWith("/shipping-order") && c.method === "POST")!
-    const body = JSON.parse(post.body!) as { shipment: { customsDeclaration: { articles: Array<{ description: string }> } } }
-    expect(body.shipment.customsDeclaration.articles[0]!.description).toBe("Hand-edited customs description")
+    const body = JSON.parse(post.body!) as {
+      shipment: { customsDeclaration: { articles: Array<{ description: string }> } }
+    }
+    expect(body.shipment.customsDeclaration.articles[0]!.description).toBe(
+      "Hand-edited customs description",
+    )
   })
 })
 
@@ -1041,7 +1188,9 @@ describe("create_shipment schedules the carrier pickup (expectedTakingOverDate)"
     const res = await createShipment(ctx, { ...CREATE_INPUT, collection_date: "09/06/2026" })
     expect("error" in res && res.error?.code).toBe("validation")
     expect(db.__all("shipment")).toHaveLength(0)
-    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(false)
+    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(
+      false,
+    )
   })
 })
 
@@ -1057,10 +1206,27 @@ describe("set_package — named-pack reference (multi-carton override)", () => {
     const db = createMockDb({
       seed: {
         shipping_profile: [
-          { id: "p1", product_source: "shopify", product_id: "V1", unit_weight: 0.5, solo_length: 30, solo_width: 20, solo_height: 10, content_category: "content:v1:10120" },
+          {
+            id: "p1",
+            product_source: "shopify",
+            product_id: "V1",
+            unit_weight: 0.5,
+            solo_length: 30,
+            solo_width: 20,
+            solo_height: 10,
+            content_category: "content:v1:10120",
+          },
         ],
         pack: [
-          { id: "pack-studio", name: "STUDIO-BOX", length: 60, width: 42, height: 34, gross_weight: 6.8, content_category: "content:v1:10250" },
+          {
+            id: "pack-studio",
+            name: "STUDIO-BOX",
+            length: 60,
+            width: 42,
+            height: 34,
+            gross_weight: 6.8,
+            content_category: "content:v1:10250",
+          },
         ],
         app_config: [{ id: "cfg-sender", key: "sender_address", value: SENDER_PARTY }],
       },
@@ -1069,17 +1235,47 @@ describe("set_package — named-pack reference (multi-carton override)", () => {
     const fetch = async (url: string, o?: { method?: string; body?: string }) => {
       const method = o?.method ?? "GET"
       fetchCalls.push({ url, method, body: o?.body })
-      if (url.includes("/iam/account-app/token")) return { status: 200, headers: {}, body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }) }
+      if (url.includes("/iam/account-app/token"))
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }),
+        }
       if (url.includes("/cotation")) return { status: 200, headers: {}, body: MULTI_XML }
-      if (url.includes("/shipping-order")) return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: { id: "ord-1", status: "PENDING", deliveryPriceExclTax: { value: 7.8, currency: "EUR" } } }) }
-      return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: {} }) }
+      if (url.includes("/shipping-order"))
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({
+            status: 200,
+            timestamp: "t",
+            content: {
+              id: "ord-1",
+              status: "PENDING",
+              deliveryPriceExclTax: { value: 7.8, currency: "EUR" },
+            },
+          }),
+        }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ status: 200, timestamp: "t", content: {} }),
+      }
     }
     const ctx = {
       orgId: "org-1",
       db,
       fetch,
       executeTool: async (_t: string, _a: unknown) => ({ status: "completed", result: INVOICE }),
-      connections: { boxtal: { getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }), getToken: async () => { throw new Error("no") }, getAccounts: async () => [] } },
+      connections: {
+        boxtal: {
+          getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }),
+          getToken: async () => {
+            throw new Error("no")
+          },
+          getAccounts: async () => [],
+        },
+      },
       config: { get: async () => "whsecret", has: async () => true },
       logger: { info() {}, warn() {}, error() {}, debug() {} },
     } as any
@@ -1100,16 +1296,25 @@ describe("set_package — named-pack reference (multi-carton override)", () => {
 
   it("matches a pack reference case-insensitively and by id", async () => {
     const lower = makeCtxWithPack()
-    const byLower = await shipmentDraftSetPackagePersist(lower.ctx, { draft_id: "doc-1", override: { pack: "studio-box" } })
+    const byLower = await shipmentDraftSetPackagePersist(lower.ctx, {
+      draft_id: "doc-1",
+      override: { pack: "studio-box" },
+    })
     expect(byLower.parcels[0]).toMatchObject({ length: 60, weight: 6.8 })
     const byId = makeCtxWithPack()
-    const byPackId = await shipmentDraftSetPackagePersist(byId.ctx, { draft_id: "doc-1", override: { pack: "pack-studio" } })
+    const byPackId = await shipmentDraftSetPackagePersist(byId.ctx, {
+      draft_id: "doc-1",
+      override: { pack: "pack-studio" },
+    })
     expect(byPackId.parcels[0]).toMatchObject({ length: 60, weight: 6.8 })
   })
 
   it("the resolved pack carton reaches the create body as a single parcel", async () => {
     const { ctx, fetchCalls } = makeCtxWithPack()
-    await shipmentDraftSetPackagePersist(ctx, { draft_id: "doc-1", override: { pack: "STUDIO-BOX" } })
+    await shipmentDraftSetPackagePersist(ctx, {
+      draft_id: "doc-1",
+      override: { pack: "STUDIO-BOX" },
+    })
     await createShipment(ctx, {
       draft_id: "doc-1",
       offer_code: "CHRP-Chrono18",
@@ -1117,7 +1322,9 @@ describe("set_package — named-pack reference (multi-carton override)", () => {
       recipient_address: RECIPIENT_ADDRESS,
     })
     const post = fetchCalls.find((c) => c.url.endsWith("/shipping-order") && c.method === "POST")!
-    const body = JSON.parse(post.body!) as { shipment: { packages: Array<{ length: number; weight: number }> } }
+    const body = JSON.parse(post.body!) as {
+      shipment: { packages: Array<{ length: number; weight: number }> }
+    }
     expect(body.shipment.packages).toHaveLength(1)
     expect(body.shipment.packages[0]).toMatchObject({ length: 60, weight: 6.8 })
   })
@@ -1159,7 +1366,13 @@ describe("EU-domestic customs omission (I2)", () => {
       draft_id: "doc-1",
       offer_code: "CHRP-Chrono18",
       recipient_phone: "+4915112345678",
-      recipient_address: { ...RECIPIENT_ADDRESS, countryIsoCode: "DE", postalCode: "10115", city: "Berlin", street: "Unter den Linden 1" },
+      recipient_address: {
+        ...RECIPIENT_ADDRESS,
+        countryIsoCode: "DE",
+        postalCode: "10115",
+        city: "Berlin",
+        street: "Unter den Linden 1",
+      },
     })
     const post = fetchCalls.find((c) => c.url.endsWith("/shipping-order") && c.method === "POST")!
     const body = JSON.parse(post.body!) as { shipment: { customsDeclaration?: unknown } }
@@ -1271,7 +1484,9 @@ describe("stage-time party completeness (0.2.11)", () => {
       recipient_address: { name: "Patrick Schmutz", city: "Konstanz", countryIsoCode: "DE" },
     })
     expect("error" in res && res.error.code).toBe("recipient_address_required")
-    expect("error" in res && res.error.message).toMatch(/missing: .*(phone|email|street|postalCode)/)
+    expect("error" in res && res.error.message).toMatch(
+      /missing: .*(phone|email|street|postalCode)/,
+    )
   })
 })
 
@@ -1281,7 +1496,13 @@ describe("normalizeRecipientAddress — alias-dialect tolerance", () => {
       name: "Patrick Schmutz",
       city: "Konstanz",
       // biome-ignore lint/suspicious/noExplicitAny: exercising the alias dialect
-      ...( { zip: "78462", address1: "Schottenstr. 73", address2: null, country: "Germany", countryCode: "DE" } as any),
+      ...({
+        zip: "78462",
+        address1: "Schottenstr. 73",
+        address2: null,
+        country: "Germany",
+        countryCode: "DE",
+      } as any),
     })!
     expect(n.street).toBe("Schottenstr. 73")
     expect(n.postalCode).toBe("78462")
@@ -1296,7 +1517,7 @@ describe("normalizeRecipientAddress — alias-dialect tolerance", () => {
       postalCode: "75001",
       countryIsoCode: "FR",
       // biome-ignore lint/suspicious/noExplicitAny: exercising the alias dialect
-      ...( { zip: "99999", address1: "wrong st", countryCode: "US" } as any),
+      ...({ zip: "99999", address1: "wrong st", countryCode: "US" } as any),
     })!
     expect(n.street).toBe("1 rue de Rivoli")
     expect(n.postalCode).toBe("75001")
@@ -1308,10 +1529,18 @@ describe("normalizeRecipientAddress — alias-dialect tolerance", () => {
     const res = await createShipment(ctx, {
       ...CREATE_INPUT,
       // biome-ignore lint/suspicious/noExplicitAny: exercising the alias dialect
-      recipient_address: { name: "Patrick Schmutz", city: "Konstanz", zip: "78462", address1: "Schottenstr. 73", countryCode: "DE" } as any,
+      recipient_address: {
+        name: "Patrick Schmutz",
+        city: "Konstanz",
+        zip: "78462",
+        address1: "Schottenstr. 73",
+        countryCode: "DE",
+      } as any,
     })
     expect("error" in res).toBe(false)
-    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(true)
+    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(
+      true,
+    )
   })
 })
 
@@ -1338,7 +1567,9 @@ describe("createShipment maps Boxtal InvalidPaymentException to an actionable er
 
   it("names the account, the remedy, and that nothing was bought", async () => {
     const { ctx } = makeCtx({ v3Status: 422, v3Body: PAYMENT_422 })
-    const res = (await createShipment(ctx, CREATE_INPUT)) as { error?: { code?: string; message?: string } }
+    const res = (await createShipment(ctx, CREATE_INPUT)) as {
+      error?: { code?: string; message?: string }
+    }
     expect(res.error?.code).toBe("boxtal_account_payment_blocked")
     const msg = res.error?.message ?? ""
     expect(msg).toContain("encours")
@@ -1383,7 +1614,9 @@ describe("createShipment refuses a refunded or cancelled order", () => {
     expect((res as { error?: { code?: string } }).error?.code).toBe("order_refunded")
     expect((res as { error?: { message?: string } }).error?.message).toContain("#3320")
     // The money-spending call must never have been made.
-    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(false)
+    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(
+      false,
+    )
   })
 
   it("refuses a CANCELLED order and buys nothing", async () => {
@@ -1393,7 +1626,9 @@ describe("createShipment refuses a refunded or cancelled order", () => {
     })
     const res = await createShipment(ctx, CREATE_INPUT)
     expect((res as { error?: { code?: string } }).error?.code).toBe("order_cancelled")
-    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(false)
+    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(
+      false,
+    )
   })
 
   // Control: the guard must not block ordinary shipping.
@@ -1435,8 +1670,14 @@ function orderPostBody(fetchCalls: Array<{ url: string; method: string; body?: s
   if (!post?.body) throw new Error("no /shipping-order POST captured")
   return JSON.parse(post.body) as {
     shipment: {
-      fromAddress: { contact: { phone: string }; location: { countryIsoCode: string; postalCode: string; street: string; city: string } }
-      toAddress: { contact: { phone: string }; location: { countryIsoCode: string; postalCode: string; street: string; city: string } }
+      fromAddress: {
+        contact: { phone: string }
+        location: { countryIsoCode: string; postalCode: string; street: string; city: string }
+      }
+      toAddress: {
+        contact: { phone: string }
+        location: { countryIsoCode: string; postalCode: string; street: string; city: string }
+      }
       customsDeclaration?: { articles: Array<{ description: string; unitWeight: number }> }
       packages: Array<{ value: { value: number } }>
     }
@@ -1447,7 +1688,9 @@ describe("create_shipment (gated body)", () => {
   it("reserves, POSTs once, finalizes, backfills tracking, returns link summary", async () => {
     const { ctx, db, fetchCalls } = makeCtx()
     const res = await createShipment(ctx, CREATE_INPUT)
-    const orderPosts = fetchCalls.filter((c) => c.url.endsWith("/shipping-order") && c.method === "POST")
+    const orderPosts = fetchCalls.filter(
+      (c) => c.url.endsWith("/shipping-order") && c.method === "POST",
+    )
     expect(orderPosts).toHaveLength(1)
     const row = db.__all("shipment").find((r) => r.document_ref === "doc-1")!
     expect(row.link_state).toBe("created")
@@ -1497,7 +1740,9 @@ describe("create_shipment (gated body)", () => {
       recipient_address: { name: "Acme", countryIsoCode: "US" }, // no street/city/postal
     })
     expect(res.error?.code).toBe("recipient_address_required")
-    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(false)
+    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(
+      false,
+    )
   })
 
   // BL-242 regression: when the linked contact carries a stored shipping address and the agent passes
@@ -1548,15 +1793,21 @@ describe("create_shipment (gated body)", () => {
     const { ctx, fetchCalls } = makeCtx({ noSender: true })
     const res = await createShipment(ctx, CREATE_INPUT)
     expect(res.error?.code).toBe("sender_address_required")
-    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(false)
+    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(
+      false,
+    )
   })
 
   it("a second (sequential) approval after the first commits is refused by the partial-unique — zero extra POSTs", async () => {
     const { ctx, db, fetchCalls } = makeCtx()
     await createShipment(ctx, CREATE_INPUT)
-    const postsAfterFirst = fetchCalls.filter((c) => c.url.endsWith("/shipping-order") && c.method === "POST").length
+    const postsAfterFirst = fetchCalls.filter(
+      (c) => c.url.endsWith("/shipping-order") && c.method === "POST",
+    ).length
     const res2 = await createShipment(ctx, CREATE_INPUT)
-    const postsAfterSecond = fetchCalls.filter((c) => c.url.endsWith("/shipping-order") && c.method === "POST").length
+    const postsAfterSecond = fetchCalls.filter(
+      (c) => c.url.endsWith("/shipping-order") && c.method === "POST",
+    ).length
     expect(postsAfterSecond).toBe(postsAfterFirst) // no extra POST
     expect(res2.error).toBeDefined()
     expect(db.__all("shipment")).toHaveLength(1)
@@ -1578,7 +1829,10 @@ describe("create_shipment (gated body)", () => {
           .some((r) => r.document_ref === data.document_ref && r.order_status !== "CANCELLED")
         // The bridge's real wording for the partial-unique index firing (23505): only a unique
         // violation is a duplicate; any other insert failure propagates.
-        if (live) throw new Error('db_insert failed - pg: duplicate key value violates unique constraint "shipment_document_ref_live" (23505)')
+        if (live)
+          throw new Error(
+            'db_insert failed - pg: duplicate key value violates unique constraint "shipment_document_ref_live" (23505)',
+          )
       }
       return realInsert(entity, data)
     }
@@ -1602,7 +1856,10 @@ describe("create_shipment (gated body)", () => {
   })
 
   it("a 422 phone validation → precise error AND releases the reservation (M5)", async () => {
-    const { ctx, db } = makeCtx({ v3Status: 422, v3Body: JSON.stringify({ code: "ValidationException.Phone", message: "invalid phone" }) })
+    const { ctx, db } = makeCtx({
+      v3Status: 422,
+      v3Body: JSON.stringify({ code: "ValidationException.Phone", message: "invalid phone" }),
+    })
     const res = await createShipment(ctx, CREATE_INPUT)
     expect(res.error?.message).toMatch(/recipient phone invalid/i)
     // Boxtal's own reason, not only ours: the operator sees what the carrier refused.
@@ -1673,7 +1930,16 @@ describe("create_shipment — return (reverse) flow", () => {
     const db = createMockDb({
       seed: {
         shipping_profile: [
-          { id: "p1", product_source: "shopify", product_id: "V1", unit_weight: 0.5, solo_length: 30, solo_width: 20, solo_height: 10, content_category: "content:v1:10120" },
+          {
+            id: "p1",
+            product_source: "shopify",
+            product_id: "V1",
+            unit_weight: 0.5,
+            solo_length: 30,
+            solo_width: 20,
+            solo_height: 10,
+            content_category: "content:v1:10120",
+          },
         ],
         app_config: [{ id: "cfg-sender", key: "sender_address", value: SENDER_PARTY }],
         prep_state: [{ id: "s1", document_ref: "doc-1", category: "gift", excluded: false }],
@@ -1684,18 +1950,53 @@ describe("create_shipment — return (reverse) flow", () => {
       const method = o?.method ?? "GET"
       fetchCalls.push({ url, method, body: o?.body })
       if (url.includes("/iam/account-app/token")) {
-        return { status: 200, headers: {}, body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }) }
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }),
+        }
       }
       if (url.includes("/cotation")) {
         return { status: 200, headers: {}, body: MULTI_XML }
       }
       if (url.includes("/shipping-order") && url.includes("/tracking")) {
-        return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: [{ status: "ANNOUNCED", trackingNumber: "TRK1", trackingDateTime: "2026-06-01T00:00:00Z", history: [] }] }) }
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({
+            status: 200,
+            timestamp: "t",
+            content: [
+              {
+                status: "ANNOUNCED",
+                trackingNumber: "TRK1",
+                trackingDateTime: "2026-06-01T00:00:00Z",
+                history: [],
+              },
+            ],
+          }),
+        }
       }
       if (url.includes("/shipping-order")) {
-        return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: { id: "ord-1", status: "PENDING", deliveryPriceExclTax: { value: 7.8, currency: "EUR" } } }) }
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({
+            status: 200,
+            timestamp: "t",
+            content: {
+              id: "ord-1",
+              status: "PENDING",
+              deliveryPriceExclTax: { value: 7.8, currency: "EUR" },
+            },
+          }),
+        }
       }
-      return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: {} }) }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ status: 200, timestamp: "t", content: {} }),
+      }
     }
     const executeTool = async (target: string, _args: unknown) => {
       if (target === "invoicing:documents_search") return { status: "completed", result: [INVOICE] }
@@ -1706,11 +2007,23 @@ describe("create_shipment — return (reverse) flow", () => {
       db,
       fetch,
       executeTool,
-      connections: { boxtal: { getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }), getToken: async () => { throw new Error("no") }, getAccounts: async () => [] } },
+      connections: {
+        boxtal: {
+          getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }),
+          getToken: async () => {
+            throw new Error("no")
+          },
+          getAccounts: async () => [],
+        },
+      },
       config: { get: async () => "whsecret", has: async () => true },
       logger: { info() {}, warn() {}, error() {}, debug() {} },
     } as any
-    await createShipment(ctx, { ...CREATE_INPUT, is_return: true, return_reason: "Wrong item shipped" })
+    await createShipment(ctx, {
+      ...CREATE_INPUT,
+      is_return: true,
+      return_reason: "Wrong item shipped",
+    })
     const body = bodyOf(fetchCalls)
     expect(body.shipment.customsDeclaration?.reason).toBe("RETURN")
     const row = db.__all("shipment").find((r) => r.document_ref === "doc-1")!
@@ -1720,18 +2033,39 @@ describe("create_shipment — return (reverse) flow", () => {
   it("a delivered OUTBOUND on the same invoice does NOT block the return (kind-scoped uniqueness) — the warranty-return case", async () => {
     const { ctx, db } = makeCtx()
     // The original sale already shipped: a live outbound row exists for doc-1.
-    ctx.db.insert("shipment", { document_ref: "doc-1", link_state: "created", order_status: "CONFIRMED", kind: "outbound" })
-    const res = await createShipment(ctx, { ...CREATE_INPUT, is_return: true, return_reason: "Warranty repair" })
+    ctx.db.insert("shipment", {
+      document_ref: "doc-1",
+      link_state: "created",
+      order_status: "CONFIRMED",
+      kind: "outbound",
+    })
+    const res = await createShipment(ctx, {
+      ...CREATE_INPUT,
+      is_return: true,
+      return_reason: "Warranty repair",
+    })
     expect("error" in res ? res.error : undefined).toBeUndefined()
     expect("boxtal_order_id" in res && res.boxtal_order_id).toBe("ord-1")
-    const kinds = db.__all("shipment").filter((r) => r.document_ref === "doc-1").map((r) => r.kind)
+    const kinds = db
+      .__all("shipment")
+      .filter((r) => r.document_ref === "doc-1")
+      .map((r) => r.kind)
     expect(kinds.sort()).toEqual(["outbound", "return"])
   })
 
   it("a SECOND return for the same invoice is still refused (duplicate within the kind)", async () => {
     const { ctx } = makeCtx()
-    ctx.db.insert("shipment", { document_ref: "doc-1", link_state: "created", order_status: "PENDING", kind: "return" })
-    const res = await createShipment(ctx, { ...CREATE_INPUT, is_return: true, return_reason: "Warranty repair" })
+    ctx.db.insert("shipment", {
+      document_ref: "doc-1",
+      link_state: "created",
+      order_status: "PENDING",
+      kind: "return",
+    })
+    const res = await createShipment(ctx, {
+      ...CREATE_INPUT,
+      is_return: true,
+      return_reason: "Warranty repair",
+    })
     expect("error" in res && res.error?.code).toBe("duplicate")
   })
 
@@ -1743,10 +2077,16 @@ describe("create_shipment — return (reverse) flow", () => {
       ...INVOICE,
       counterparty_country: "DE",
       requires_hs_code: false,
-      lines: INVOICE.lines.map((l) => ({ ...l, product_source: null, external_id: null, hs_code: null })),
+      lines: INVOICE.lines.map((l) => ({
+        ...l,
+        product_source: null,
+        external_id: null,
+        hs_code: null,
+      })),
     }
     const executeTool = async (target: string, _args: unknown) => {
-      if (target === "invoicing:documents_search") return { status: "completed", result: [UNLINKED_EU_INVOICE] }
+      if (target === "invoicing:documents_search")
+        return { status: "completed", result: [UNLINKED_EU_INVOICE] }
       return { status: "completed", result: UNLINKED_EU_INVOICE }
     }
     const { ctx } = makeCtx({ executeTool })
@@ -1776,7 +2116,8 @@ describe("create_shipment — return (reverse) flow", () => {
       lines: INVOICE.lines.map((l) => ({ ...l, product_source: null, external_id: null })),
     }
     const executeTool = async (target: string, _args: unknown) => {
-      if (target === "invoicing:documents_search") return { status: "completed", result: [UNLINKED_US_INVOICE] }
+      if (target === "invoicing:documents_search")
+        return { status: "completed", result: [UNLINKED_US_INVOICE] }
       return { status: "completed", result: UNLINKED_US_INVOICE }
     }
     const { ctx } = makeCtx({ executeTool })
@@ -1794,10 +2135,16 @@ describe("create_shipment — return (reverse) flow", () => {
       ...INVOICE,
       counterparty_country: "DE",
       requires_hs_code: false,
-      lines: INVOICE.lines.map((l) => ({ ...l, product_source: null, external_id: null, hs_code: null })),
+      lines: INVOICE.lines.map((l) => ({
+        ...l,
+        product_source: null,
+        external_id: null,
+        hs_code: null,
+      })),
     }
     const executeTool = async (target: string, _args: unknown) => {
-      if (target === "invoicing:documents_search") return { status: "completed", result: [UNLINKED_EU_INVOICE] }
+      if (target === "invoicing:documents_search")
+        return { status: "completed", result: [UNLINKED_EU_INVOICE] }
       return { status: "completed", result: UNLINKED_EU_INVOICE }
     }
     const { ctx } = makeCtx({ executeTool })
@@ -1808,7 +2155,11 @@ describe("create_shipment — return (reverse) flow", () => {
 
   it("the execution-time offer validation re-quotes the RETURN leg for is_return (expediteur=customer)", async () => {
     const { ctx, fetchCalls } = makeCtx()
-    await createShipment(ctx, { ...CREATE_INPUT, is_return: true, return_reason: "Warranty repair" })
+    await createShipment(ctx, {
+      ...CREATE_INPUT,
+      is_return: true,
+      return_reason: "Warranty repair",
+    })
     // The backstop re-quote must price the leg being shipped: customer→us, not us→customer.
     const cotation = fetchCalls.find((c) => c.url.includes("/cotation"))!.url
     expect(cotation).toContain("expediteur.pays=US")
@@ -1831,18 +2182,25 @@ describe("create_shipment — stage-time preflight (mis-shipment recovery)", () 
     expect(res).toEqual({ ok: true })
     // Preflight is validation-only: it must NOT reserve a shipment row or POST to Boxtal.
     expect(db.__all("shipment")).toHaveLength(0)
-    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(false)
+    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(
+      false,
+    )
   })
 
   it("rejects (recipient_phone_invalid) at stage time when the destination is US/CA and the phone is not North American", async () => {
     const { ctx, db, fetchCalls } = makeCtx()
     // The exact Boxtal/FedEx 422 class: a French mobile on a US label. Must be
     // rejected BEFORE the approval card is created, like a missing state.
-    const res = await createShipmentPreflight(ctx, { ...CREATE_INPUT, recipient_phone: "+33 6 12 34 56 78" })
+    const res = await createShipmentPreflight(ctx, {
+      ...CREATE_INPUT,
+      recipient_phone: "+33 6 12 34 56 78",
+    })
     expect("error" in res && res.error.code).toBe("recipient_phone_invalid")
     expect("error" in res && res.error.message).toMatch(/North American/)
     expect(db.__all("shipment")).toHaveLength(0)
-    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(false)
+    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(
+      false,
+    )
   })
 
   it("execution also HARD-FAILS (recipient_phone_invalid, no POST) on an invalid US recipient phone", async () => {
@@ -1850,20 +2208,30 @@ describe("create_shipment — stage-time preflight (mis-shipment recovery)", () 
     const res = await createShipment(ctx, { ...CREATE_INPUT, recipient_phone: "0612345678" })
     expect("error" in res && res.error?.code).toBe("recipient_phone_invalid")
     expect(db.__all("shipment")).toHaveLength(0)
-    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(false)
+    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(
+      false,
+    )
   })
 
   it("rejects (draft_unresolved) when the draft_id does not resolve to a real invoice — the wrong-id 422 class", async () => {
     // documents_get returns a completed-but-null result for a non-invoice id (a hallucinated id / the
     // approval Request ID / the other leg's id) — the exact case that 422'd post-approval before the fix.
-    const executeTool = async (_target: string, _args: unknown) => ({ status: "completed", result: null })
+    const executeTool = async (_target: string, _args: unknown) => ({
+      status: "completed",
+      result: null,
+    })
     const { ctx, db, fetchCalls } = makeCtx({ executeTool })
-    const res = await createShipmentPreflight(ctx, { draft_id: "not-an-invoice", offer_code: "CHRP-Chrono18" })
+    const res = await createShipmentPreflight(ctx, {
+      draft_id: "not-an-invoice",
+      offer_code: "CHRP-Chrono18",
+    })
     expect("error" in res && res.error.code).toBe("draft_unresolved")
     expect("error" in res && res.error.message).toMatch(/no invoicing document found/i)
     // Still no side effects on the failing path.
     expect(db.__all("shipment")).toHaveLength(0)
-    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(false)
+    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(
+      false,
+    )
   })
 
   it("rejects (duplicate) when a live shipment already exists for that invoice — the same-doc-both-legs error", async () => {
@@ -1871,7 +2239,12 @@ describe("create_shipment — stage-time preflight (mis-shipment recovery)", () 
     // A live (non-CANCELLED) shipment already in flight for doc-1 — staging a SECOND create for the same
     // invoice (e.g. opening both the return and the reship from the same doc) would 422 'duplicate' at
     // execution; the preflight catches it at stage time with guidance to use two DISTINCT documents.
-    ctx.db.insert("shipment", { document_ref: "doc-1", link_state: "created", order_status: "PENDING", kind: "outbound" })
+    ctx.db.insert("shipment", {
+      document_ref: "doc-1",
+      link_state: "created",
+      order_status: "PENDING",
+      kind: "outbound",
+    })
     const res = await createShipmentPreflight(ctx, CREATE_INPUT)
     expect("error" in res && res.error.code).toBe("duplicate")
     expect("error" in res && res.error.message).toMatch(/different document/i)
@@ -1881,14 +2254,24 @@ describe("create_shipment — stage-time preflight (mis-shipment recovery)", () 
     const { ctx } = makeCtx()
     // The original sale's outbound leg is live (delivered or in flight) — the warranty
     // return opens from the SAME invoice and must not be blocked by it.
-    ctx.db.insert("shipment", { document_ref: "doc-1", link_state: "created", order_status: "CONFIRMED", kind: "outbound" })
+    ctx.db.insert("shipment", {
+      document_ref: "doc-1",
+      link_state: "created",
+      order_status: "CONFIRMED",
+      kind: "outbound",
+    })
     const res = await createShipmentPreflight(ctx, { ...CREATE_INPUT, is_return: true })
     expect(res).toEqual({ ok: true })
   })
 
   it("staging a SECOND return for the same invoice is rejected (duplicate within the kind)", async () => {
     const { ctx } = makeCtx()
-    ctx.db.insert("shipment", { document_ref: "doc-1", link_state: "created", order_status: "PENDING", kind: "return" })
+    ctx.db.insert("shipment", {
+      document_ref: "doc-1",
+      link_state: "created",
+      order_status: "PENDING",
+      kind: "return",
+    })
     const res = await createShipmentPreflight(ctx, { ...CREATE_INPUT, is_return: true })
     expect("error" in res && res.error.code).toBe("duplicate")
     expect("error" in res && res.error.message).toMatch(/return shipment is already in flight/i)
@@ -1896,7 +2279,12 @@ describe("create_shipment — stage-time preflight (mis-shipment recovery)", () 
 
   it("does NOT treat a CANCELLED prior shipment as a duplicate (a re-attempt after cancel is allowed)", async () => {
     const { ctx } = makeCtx()
-    ctx.db.insert("shipment", { document_ref: "doc-1", link_state: "created", order_status: "CANCELLED", kind: "outbound" })
+    ctx.db.insert("shipment", {
+      document_ref: "doc-1",
+      link_state: "created",
+      order_status: "CANCELLED",
+      kind: "outbound",
+    })
     const res = await createShipmentPreflight(ctx, CREATE_INPUT)
     expect(res).toEqual({ ok: true })
   })
@@ -1920,7 +2308,9 @@ describe("create_shipment — stage-time preflight (mis-shipment recovery)", () 
     expect("error" in res && res.error.message).toMatch(/CHRP-Chrono18/)
     // Still validation-only — no reservation, no POST.
     expect(db.__all("shipment")).toHaveLength(0)
-    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(false)
+    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(
+      false,
+    )
   })
 
   it("passes ({ok:true}) when the offer_code IS one of the route's quoted offers (no false reject)", async () => {
@@ -1952,13 +2342,16 @@ describe("create_shipment — label import into kernel.files (label_file_id)", (
   const LABEL_DOCS = JSON.stringify({
     status: 200,
     timestamp: "t",
-    content: [{ url: "https://api.boxtal.com/signed/label-ord-1.pdf", type: "LABEL", format: "PDF_A4" }],
+    content: [
+      { url: "https://api.boxtal.com/signed/label-ord-1.pdf", type: "LABEL", format: "PDF_A4" },
+    ],
   })
 
   it("imports the LABEL onto the shipment row and returns its kernel file id", async () => {
     const { ctx, db, importCalls } = makeCtx({
       documentsBody: LABEL_DOCS,
-      filesImportFromUrl: async () => JSON.stringify({ id: "file-42", filename: "label-ord-1.pdf" }),
+      filesImportFromUrl: async () =>
+        JSON.stringify({ id: "file-42", filename: "label-ord-1.pdf" }),
     })
     const res = await createShipment(ctx, CREATE_INPUT)
     expect("label_file_id" in res && res.label_file_id).toBe("file-42")
@@ -2032,8 +2425,16 @@ describe("create_shipment — label import into kernel.files (label_file_id)", (
           status: 200,
           timestamp: "t",
           content: [
-            { url: "https://document.boxtal.com/shipping-label/REF_bordereau_1.pdf", type: "LABEL", format: "PDF_A4" },
-            { url: "https://document.boxtal.com/shipping-label/REF_bordereau_2.pdf", type: "LABEL", format: "PDF_A4" },
+            {
+              url: "https://document.boxtal.com/shipping-label/REF_bordereau_1.pdf",
+              type: "LABEL",
+              format: "PDF_A4",
+            },
+            {
+              url: "https://document.boxtal.com/shipping-label/REF_bordereau_2.pdf",
+              type: "LABEL",
+              format: "PDF_A4",
+            },
           ],
         }),
         filesImportFromUrl: async () => JSON.stringify({ id: `file-${++n}` }),
@@ -2045,7 +2446,12 @@ describe("create_shipment — label import into kernel.files (label_file_id)", (
           return { status: "error", error: { code: "unmocked", message: target } }
         },
       })
-      await db.insert("shipment", { document_ref: "doc-1", boxtal_order_id: "ord-1", link_state: "created", order_status: "PENDING" })
+      await db.insert("shipment", {
+        document_ref: "doc-1",
+        boxtal_order_id: "ord-1",
+        link_state: "created",
+        order_status: "PENDING",
+      })
       const res = await importLabelDocument(ctx, { id: "ord-1" })
       expect(importCalls).toHaveLength(2)
       expect(merges[0]?.file_ids).toEqual(["file-1", "file-2"])
@@ -2057,7 +2463,12 @@ describe("create_shipment — label import into kernel.files (label_file_id)", (
       const { ctx, db } = makeCtx({
         filesImportFromUrl: async () => JSON.stringify({ id: "never" }),
       })
-      await db.insert("shipment", { document_ref: "doc-1", boxtal_order_id: "ord-1", link_state: "created", order_status: "PENDING" })
+      await db.insert("shipment", {
+        document_ref: "doc-1",
+        boxtal_order_id: "ord-1",
+        link_state: "created",
+        order_status: "PENDING",
+      })
       const res = await importLabelDocument(ctx, { id: "ord-1" })
       expect(res.error?.code).toBe("label_not_ready")
     })
@@ -2087,7 +2498,9 @@ describe("create_shipment — offer-code route validation backstop (marco-day jo
     expect("error" in res && res.error?.code).toBe("offer_not_quoted")
     // No label bought: no shipment reserved + no create POST.
     expect(db.__all("shipment").filter((r: any) => r.link_state === "created")).toHaveLength(0)
-    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(false)
+    expect(fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toBe(
+      false,
+    )
   })
 
   it("creates the label when the offer_code IS quoted (CHRP-Chrono18 round-trips) — no false block", async () => {
@@ -2123,17 +2536,22 @@ describe("US/CA state handling (prod 400 BAD_REQUEST on a stateless US label)", 
   it("parseInvoiceAddress leaves non-US regions as-is and null when absent", () => {
     const fr = { name: "X", email: null, countryIsoCode: "FR" }
     expect(parseInvoiceAddress("81 rue des Exemples\n75018 Paris", fr)?.state ?? null).toBeNull()
-    expect(
-      parseInvoiceAddress("1 rue\n75018 Paris, Île-de-France", fr)?.state,
-    ).toBe("Île-de-France")
+    expect(parseInvoiceAddress("1 rue\n75018 Paris, Île-de-France", fr)?.state).toBe(
+      "Île-de-France",
+    )
   })
 
   it("normalizeRecipientAddress folds Shopify province aliases into state", () => {
     expect(
-      normalizeRecipientAddress({ city: "Airdrie", countryIsoCode: "CA", province: "Alberta" } as never)?.state,
+      normalizeRecipientAddress({
+        city: "Airdrie",
+        countryIsoCode: "CA",
+        province: "Alberta",
+      } as never)?.state,
     ).toBe("AB")
     expect(
-      normalizeRecipientAddress({ city: "NYC", countryCode: "us", provinceCode: "ny" } as never)?.state,
+      normalizeRecipientAddress({ city: "NYC", countryCode: "us", provinceCode: "ny" } as never)
+        ?.state,
     ).toBe("NY")
   })
 })
@@ -2150,15 +2568,54 @@ describe("create_shipment offer resolution (prep-dashboard selection) + pickup-p
   // FOUR_CARRIER re-quote offers: CHRP (cheapest, 9.66), FEDX (15.46), UPS AP (dropped by policy),
   // DHL (42.01). A cached prep_quote is what create_shipment reads to stage the operator's choice.
   const CACHED_OFFERS = [
-    { carrier: "Chronopost", service: "Chrono 2Shop Europe", offer_code: "CHRP-Chrono2ShopEurope", price_ht_minor: 966, price_ttc_minor: 1159, currency: "EUR", delivery_date: "2026-06-04", eta_business_days: 3, is_pickup_point: false },
-    { carrier: "FedEx", service: "FedEx Regional Economy", offer_code: "FEDX-FedexRegionalEconomy", price_ht_minor: 1546, price_ttc_minor: 1854, currency: "EUR", delivery_date: "2026-06-03", eta_business_days: 2, is_pickup_point: false },
+    {
+      carrier: "Chronopost",
+      service: "Chrono 2Shop Europe",
+      offer_code: "CHRP-Chrono2ShopEurope",
+      price_ht_minor: 966,
+      price_ttc_minor: 1159,
+      currency: "EUR",
+      delivery_date: "2026-06-04",
+      eta_business_days: 3,
+      is_pickup_point: false,
+    },
+    {
+      carrier: "FedEx",
+      service: "FedEx Regional Economy",
+      offer_code: "FEDX-FedexRegionalEconomy",
+      price_ht_minor: 1546,
+      price_ttc_minor: 1854,
+      currency: "EUR",
+      delivery_date: "2026-06-03",
+      eta_business_days: 2,
+      is_pickup_point: false,
+    },
   ]
-  function seedPrep(db: ReturnType<typeof createMockDb>, opts: { selected?: string; noQuote?: boolean }) {
+  function seedPrep(
+    db: ReturnType<typeof createMockDb>,
+    opts: { selected?: string; noQuote?: boolean },
+  ) {
     if (!opts.noQuote) {
-      db.__seed("prep_quote", [{ id: "q1", document_ref: "doc-1", input_hash: "h", offers: CACHED_OFFERS, quoted_at: "2026-07-10T08:00:00Z" }])
+      db.__seed("prep_quote", [
+        {
+          id: "q1",
+          document_ref: "doc-1",
+          input_hash: "h",
+          offers: CACHED_OFFERS,
+          quoted_at: "2026-07-10T08:00:00Z",
+        },
+      ])
     }
     if (opts.selected) {
-      db.__seed("prep_state", [{ id: "s1", document_ref: "doc-1", category: "sale", excluded: false, selected_offer_code: opts.selected }])
+      db.__seed("prep_state", [
+        {
+          id: "s1",
+          document_ref: "doc-1",
+          category: "sale",
+          excluded: false,
+          selected_offer_code: opts.selected,
+        },
+      ])
     }
   }
 
@@ -2311,7 +2768,8 @@ describe("customs FX: the Shopify order reference must reach orders_get in gid f
     const noOrder = { ...USD_INVOICE, shopify_order_id: null }
     const { ctx } = makeCtx({
       executeTool: async (target: string) => {
-        if (target === "invoicing:documents_search") return { status: "completed", result: [noOrder] }
+        if (target === "invoicing:documents_search")
+          return { status: "completed", result: [noOrder] }
         return { status: "completed", result: noOrder }
       },
     })
@@ -2329,7 +2787,8 @@ describe("customs FX: the Shopify order reference must reach orders_get in gid f
     const noOrder = { ...USD_INVOICE, shopify_order_id: null }
     return makeCtx({
       executeTool: async (target: string) => {
-        if (target === "invoicing:documents_search") return { status: "completed", result: [noOrder] }
+        if (target === "invoicing:documents_search")
+          return { status: "completed", result: [noOrder] }
         return { status: "completed", result: noOrder }
       },
     })
@@ -2340,7 +2799,11 @@ describe("customs FX: the Shopify order reference must reach orders_get in gid f
     const before = await shipmentDraftCreate(ctx, { document_ref: "doc-1" })
     expect(before.customsArticles[0]!.reason).toBe("fx_unavailable")
 
-    const after = await shipmentDraftSetCustomsPersist(ctx, { draft_id: "doc-1", index: 0, patch: { unitValue: 1 } })
+    const after = await shipmentDraftSetCustomsPersist(ctx, {
+      draft_id: "doc-1",
+      index: 0,
+      patch: { unitValue: 1 },
+    })
     expect(after.customsArticles[0]!.unitValue).toEqual({ value: 1, currency: "EUR" })
     expect(after.customsArticles[0]!.blocked).toBeFalsy()
     expect(after.customsArticles[0]!.reason).toBeUndefined()
@@ -2371,7 +2834,11 @@ describe("customs FX: the Shopify order reference must reach orders_get in gid f
   it("set_customs refuses a unitValue that is not a positive number instead of silently dropping it", async () => {
     const { ctx } = noRateCtx()
     await expect(
-      shipmentDraftSetCustomsPersist(ctx, { draft_id: "doc-1", index: 0, patch: { unitValue: "1 EUR" as never } }),
+      shipmentDraftSetCustomsPersist(ctx, {
+        draft_id: "doc-1",
+        index: 0,
+        patch: { unitValue: "1 EUR" as never },
+      }),
     ).rejects.toThrow(/unitValue/)
   })
 })
@@ -2575,7 +3042,12 @@ describe("parseInvoiceAddress on a single comma-joined line", () => {
         email: null,
         countryIsoCode: "FR",
       }),
-    ).toMatchObject({ street: "81 rue des Exemples", postalCode: "75018", city: "Paris", state: "Ile-de-France" })
+    ).toMatchObject({
+      street: "81 rue des Exemples",
+      postalCode: "75018",
+      city: "Paris",
+      state: "Ile-de-France",
+    })
   })
   it("does not regress the multiline shape", () => {
     const fb = { name: "Xavier Thibaud", email: "x@example.com", countryIsoCode: "FR" }
@@ -2656,14 +3128,22 @@ describe("label import: one read per run", () => {
 })
 
 describe("parseInvoiceAddress: postcodes with a space that lead the locality", () => {
-  const fbFor = (countryIsoCode: string) => ({ name: "Test Recipient", email: "r@example.com", countryIsoCode })
+  const fbFor = (countryIsoCode: string) => ({
+    name: "Test Recipient",
+    email: "r@example.com",
+    countryIsoCode,
+  })
   it("keeps a Dutch postcode's two letters (4 digits + space + 2 letters)", () => {
-    expect(parseInvoiceAddress("Teststraat 12\n1114 BC Amsterdam-Duivendrecht", fbFor("NL"))).toMatchObject({
+    expect(
+      parseInvoiceAddress("Teststraat 12\n1114 BC Amsterdam-Duivendrecht", fbFor("NL")),
+    ).toMatchObject({
       street: "Teststraat 12",
       postalCode: "1114 BC",
       city: "Amsterdam-Duivendrecht",
     })
-    expect(parseInvoiceAddress("Teststraat 12\n1114BC Amsterdam\nNetherlands", fbFor("NL"))).toMatchObject({
+    expect(
+      parseInvoiceAddress("Teststraat 12\n1114BC Amsterdam\nNetherlands", fbFor("NL")),
+    ).toMatchObject({
       postalCode: "1114BC",
       city: "Amsterdam",
     })
@@ -2691,7 +3171,10 @@ describe("parseInvoiceAddress: postcodes with a space that lead the locality", (
       ["SK", "811 01 Bratislava", "811 01", "Bratislava"],
       ["GR", "105 57 Athina", "105 57", "Athina"],
     ] as const) {
-      expect(parseInvoiceAddress(`Testgatan 1\n${line}`, fbFor(cc))).toMatchObject({ postalCode: code, city })
+      expect(parseInvoiceAddress(`Testgatan 1\n${line}`, fbFor(cc))).toMatchObject({
+        postalCode: code,
+        city,
+      })
     }
   })
   it("leaves other countries' shapes as they were (PL, PT, DE, FR, GB, CA)", () => {
@@ -2712,8 +3195,12 @@ describe("parseInvoiceAddress: postcodes with a space that lead the locality", (
       city: "Paris",
     })
     // GB and CA postcodes start with a letter: no leading postcode is read, as before.
-    expect(parseInvoiceAddress("1 Test Road\nLondon SW1A 1AA", fbFor("GB"))?.postalCode ?? null).toBeNull()
-    expect(parseInvoiceAddress("1 Test Street\nOttawa ON K1A 0B1", fbFor("CA"))?.postalCode ?? null).toBeNull()
+    expect(
+      parseInvoiceAddress("1 Test Road\nLondon SW1A 1AA", fbFor("GB"))?.postalCode ?? null,
+    ).toBeNull()
+    expect(
+      parseInvoiceAddress("1 Test Street\nOttawa ON K1A 0B1", fbFor("CA"))?.postalCode ?? null,
+    ).toBeNull()
   })
 })
 
@@ -2721,8 +3208,18 @@ describe("parseInvoiceAddress: postcodes with a space that lead the locality", (
 // unresolved ones block (shippable-lines.ts). A free-text "Shipping" line kinded as goods, with no
 // product link, used to show the row as ready in the worklist while Ship refused it.
 describe("shippable lines: the worklist and staging agree", () => {
-  const DE_RECIPIENT = { ...RECIPIENT_ADDRESS, city: "Berlin", postalCode: "10115", countryIsoCode: "DE", state: undefined }
-  const DE_INPUT = { ...CREATE_INPUT, recipient_address: DE_RECIPIENT, recipient_phone: "+4930123456" }
+  const DE_RECIPIENT = {
+    ...RECIPIENT_ADDRESS,
+    city: "Berlin",
+    postalCode: "10115",
+    countryIsoCode: "DE",
+    state: undefined,
+  }
+  const DE_INPUT = {
+    ...CREATE_INPUT,
+    recipient_address: DE_RECIPIENT,
+    recipient_phone: "+4930123456",
+  }
   const goods = (id: string, external_id: string, quantity: number) => ({
     id,
     description: `Product ${external_id}`,
@@ -2747,7 +3244,11 @@ describe("shippable lines: the worklist and staging agree", () => {
     external_id: null,
     line_kind: "goods",
   })
-  const kindedShipping = (id: string) => ({ ...freeTextShipping(id), description: "Shipping (Express)", line_kind: "shipping" })
+  const kindedShipping = (id: string) => ({
+    ...freeTextShipping(id),
+    description: "Shipping (Express)",
+    line_kind: "shipping",
+  })
   const invoice = (id: string, lines: unknown[]) => ({
     ...INVOICE,
     id,
@@ -2762,11 +3263,15 @@ describe("shippable lines: the worklist and staging agree", () => {
     const { ctx, db } = makeCtx({
       executeTool: async (target: string, args: { id?: string }) => {
         if (target === "invoicing:documents_search") return { status: "completed", result: docs }
-        if (target === "invoicing:documents_get") return { status: "completed", result: byId.get(String(args?.id)) ?? null }
+        if (target === "invoicing:documents_get")
+          return { status: "completed", result: byId.get(String(args?.id)) ?? null }
         return { status: "completed", result: null }
       },
     })
-    for (const [id, product_id, w] of [["p2", "V2", 2.0], ["p3", "V3", 5.4]] as const) {
+    for (const [id, product_id, w] of [
+      ["p2", "V2", 2.0],
+      ["p3", "V3", 5.4],
+    ] as const) {
       await db.insert("shipping_profile", {
         id,
         product_source: "shopify",
@@ -2778,15 +3283,48 @@ describe("shippable lines: the worklist and staging agree", () => {
         content_category: "content:v1:10120",
       })
     }
-    await db.insert("pack", { id: "pack-a", name: "PACK-A", length: 58, width: 38, height: 42, gross_weight: 20.5, content_category: null, carton_tare: null })
-    await db.insert("pack", { id: "pack-b", name: "PACK-B", length: 60, width: 40, height: 38, gross_weight: 13, content_category: null, carton_tare: null })
-    await db.insert("pack_component", { id: "pc-a", pack_id: "pack-a", product_source: "shopify", product_id: "V1", quantity: 1 })
-    await db.insert("pack_component", { id: "pc-b", pack_id: "pack-b", product_source: "shopify", product_id: "V2", quantity: 1 })
+    await db.insert("pack", {
+      id: "pack-a",
+      name: "PACK-A",
+      length: 58,
+      width: 38,
+      height: 42,
+      gross_weight: 20.5,
+      content_category: null,
+      carton_tare: null,
+    })
+    await db.insert("pack", {
+      id: "pack-b",
+      name: "PACK-B",
+      length: 60,
+      width: 40,
+      height: 38,
+      gross_weight: 13,
+      content_category: null,
+      carton_tare: null,
+    })
+    await db.insert("pack_component", {
+      id: "pc-a",
+      pack_id: "pack-a",
+      product_source: "shopify",
+      product_id: "V1",
+      quantity: 1,
+    })
+    await db.insert("pack_component", {
+      id: "pc-b",
+      pack_id: "pack-b",
+      product_source: "shopify",
+      product_id: "V2",
+      quantity: 1,
+    })
     return ctx
   }
 
   async function verdicts(ctx: unknown, docId: string) {
-    const draft = await shipmentDraftCreate(ctx as never, { document_ref: docId, orderShipTo: false })
+    const draft = await shipmentDraftCreate(ctx as never, {
+      document_ref: docId,
+      orderShipTo: false,
+    })
     const facts = deriveDraftFacts(draft, docId)
     const pre = await createShipmentPreflight(ctx as never, { ...DE_INPUT, draft_id: docId })
     const stagingRefuses = "error" in pre && pre.error?.code === "unresolved_lines"
@@ -2809,8 +3347,15 @@ describe("shippable lines: the worklist and staging agree", () => {
   })
 
   it("a two-invoice order (free-text and kinded shipping lines) is ready in both, per invoice", async () => {
-    const a = invoice("00000000-0000-4000-8000-00000000000a", [goods("a1", "V1", 1), goods("a2", "V3", 1), freeTextShipping("a3")])
-    const b = invoice("00000000-0000-4000-8000-00000000000b", [goods("b1", "V2", 2), kindedShipping("b2")])
+    const a = invoice("00000000-0000-4000-8000-00000000000a", [
+      goods("a1", "V1", 1),
+      goods("a2", "V3", 1),
+      freeTextShipping("a3"),
+    ])
+    const b = invoice("00000000-0000-4000-8000-00000000000b", [
+      goods("b1", "V2", 2),
+      kindedShipping("b2"),
+    ])
     const ctx = await ctxFor([a, b])
     for (const doc of [a, b]) {
       const { draft, facts, stagingRefuses } = await verdicts(ctx, doc.id)
@@ -2844,7 +3389,10 @@ describe("shippable lines: the worklist and staging agree", () => {
     requires_hs_code: true,
   })
   async function exportVerdicts(ctx: unknown, docId: string) {
-    const draft = await shipmentDraftCreate(ctx as never, { document_ref: docId, orderShipTo: false })
+    const draft = await shipmentDraftCreate(ctx as never, {
+      document_ref: docId,
+      orderShipTo: false,
+    })
     const facts = deriveDraftFacts(draft, docId)
     const pre = await createShipmentPreflight(ctx as never, { ...CREATE_INPUT, draft_id: docId })
     const stagingRefuses = "error" in pre && pre.error?.code === "unresolved_lines"
@@ -2877,7 +3425,10 @@ describe("shippable lines: the worklist and staging agree", () => {
     const ctx = await ctxFor([doc])
     const { draft, facts, stagingRefuses } = await exportVerdicts(ctx, doc.id)
     expect(draft.customsArticles.map((a) => a.line_id)).toEqual(["f1", "f2"])
-    expect(draft.customsArticles.find((a) => a.line_id === "f2")).toMatchObject({ blocked: true, reason: "missing_weight" })
+    expect(draft.customsArticles.find((a) => a.line_id === "f2")).toMatchObject({
+      blocked: true,
+      reason: "missing_weight",
+    })
     expect(facts.needs_fix_reason).not.toBeNull()
     expect(stagingRefuses).toBe(true)
   })
@@ -2892,14 +3443,20 @@ describe("create_shipment: a kill after the paid POST keeps the reservation (D12
   /** The run's transaction around a mock db: plain writes are undone when the run throws,
    *  commit-now writes go straight through. `killAfterPost` throws on the first write after the
    *  /shipping-order POST, as the sandbox's kill would cut the handler off right there. */
-  function inRunTransaction(db: ReturnType<typeof createMockDb>, fetchCalls: Array<{ url: string; method: string }>) {
+  function inRunTransaction(
+    db: ReturnType<typeof createMockDb>,
+    fetchCalls: Array<{ url: string; method: string }>,
+  ) {
     const undo: Array<() => Promise<void>> = []
     let killAfterPost = false
-    const posted = () => fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")
+    const posted = () =>
+      fetchCalls.some((c) => c.url.endsWith("/shipping-order") && c.method === "POST")
     const guard = () => {
       if (killAfterPost && posted()) throw new Error("App execution timed out")
     }
-    const prior = (entity: string, id: string) => ({ ...(db.__all(entity).find((r) => String(r.id) === id) ?? {}) })
+    const prior = (entity: string, id: string) => ({
+      ...(db.__all(entity).find((r) => String(r.id) === id) ?? {}),
+    })
     const runDb = {
       ...db,
       findMany: db.findMany.bind(db),
@@ -2918,7 +3475,10 @@ describe("create_shipment: a kill after the paid POST keeps the reservation (D12
         const cleared = Object.fromEntries(Object.keys(data).map((k) => [k, undefined]))
         undo.push(() => db.update(entity, id, { ...cleared, ...before }))
       },
-      async updateMany(entity: string, opts: { where: Record<string, unknown>; data: Record<string, unknown> }) {
+      async updateMany(
+        entity: string,
+        opts: { where: Record<string, unknown>; data: Record<string, unknown> },
+      ) {
         guard()
         return db.updateMany(entity, opts)
       },
@@ -2963,23 +3523,38 @@ describe("create_shipment: a kill after the paid POST keeps the reservation (D12
     const outcome = await tx.run(() => createShipment({ ...ctx, db: tx.runDb }, CREATE_INPUT))
     expect(String(outcome)).toContain("App execution timed out")
     // The label WAS bought (one POST), and the reservation is still there to say so.
-    expect(fetchCalls.filter((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toHaveLength(1)
+    expect(
+      fetchCalls.filter((c) => c.url.endsWith("/shipping-order") && c.method === "POST"),
+    ).toHaveLength(1)
     const rows = db.__all("shipment")
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ document_ref: "doc-1", external_id: "#3320", link_state: "create_in_flight", boxtal_order_id: null })
+    expect(rows[0]).toMatchObject({
+      document_ref: "doc-1",
+      external_id: "#3320",
+      link_state: "create_in_flight",
+      boxtal_order_id: null,
+    })
 
     // Fifteen minutes on, it is an orphan: stuck_list surfaces it with what happened and what to do.
     const requestedAt = new Date(Date.now() - 20 * 60 * 1000).toISOString()
     await db.update("shipment", String(rows[0]!.id), { created_at: requestedAt })
     const stuck = (await stuckList(ctx)).rows
     expect(stuck).toHaveLength(1)
-    expect(stuck[0]).toMatchObject({ id: String(rows[0]!.id), family: "create_orphan", order_ref: "#3320" })
+    expect(stuck[0]).toMatchObject({
+      id: String(rows[0]!.id),
+      family: "create_orphan",
+      order_ref: "#3320",
+    })
     expect(stuck[0]!.reason).toContain("paid label may exist at Boxtal")
     expect(stuck[0]!.reason).toContain("settle_orphan_create")
 
     // The sweep asks Boxtal by the merchant reference and, when nothing answers, reports it (and
     // writes nothing that spends or frees money).
-    const nothing = await reconcileOrphanedCreates(ctx, db.__all("shipment") as unknown as OrphanRow[], async () => null)
+    const nothing = await reconcileOrphanedCreates(
+      ctx,
+      db.__all("shipment") as unknown as OrphanRow[],
+      async () => null,
+    )
     expect(nothing).toMatchObject({ candidates: 1, resolved: 0, unresolved: 1 })
     expect(db.__all("shipment")[0]).toMatchObject({ link_state: "create_in_flight" })
     expect(db.__all("shipment")[0]!.orphan_reported_at).toBeTruthy()
@@ -2999,7 +3574,10 @@ describe("create_shipment: a kill after the paid POST keeps the reservation (D12
       } as never),
     )
     expect(found).toMatchObject({ resolved: 1 })
-    expect(db.__all("shipment")[0]).toMatchObject({ link_state: "created", boxtal_order_id: "ord-1" })
+    expect(db.__all("shipment")[0]).toMatchObject({
+      link_state: "created",
+      boxtal_order_id: "ord-1",
+    })
   })
 
   it("an uninterrupted run inside the same transaction finishes exactly as before", async () => {
@@ -3009,7 +3587,11 @@ describe("create_shipment: a kill after the paid POST keeps the reservation (D12
     expect(res).toMatchObject({ boxtal_order_id: "ord-1", order_status: "PENDING" })
     const rows = db.__all("shipment")
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ link_state: "created", boxtal_order_id: "ord-1", tracking_number: "TRK1" })
+    expect(rows[0]).toMatchObject({
+      link_state: "created",
+      boxtal_order_id: "ord-1",
+      tracking_number: "TRK1",
+    })
   })
 
   it("a reservation insert that fails for any reason other than a duplicate buys nothing and says why", async () => {
@@ -3028,8 +3610,12 @@ describe("create_shipment: a kill after the paid POST keeps the reservation (D12
       },
       updateNow: db.updateNow.bind(db),
     }
-    const outcome = await createShipment({ ...ctx, db: runDb }, CREATE_INPUT).catch((err: unknown) => err as Error)
+    const outcome = await createShipment({ ...ctx, db: runDb }, CREATE_INPUT).catch(
+      (err: unknown) => err as Error,
+    )
     expect(String(outcome)).toContain("lock timeout")
-    expect(fetchCalls.filter((c) => c.url.endsWith("/shipping-order") && c.method === "POST")).toHaveLength(0)
+    expect(
+      fetchCalls.filter((c) => c.url.endsWith("/shipping-order") && c.method === "POST"),
+    ).toHaveLength(0)
   })
 })

@@ -29,22 +29,22 @@
 //       → email_failed deferred row.
 
 import type { CrossAppExecuteTool } from "../cross-app"
-import { deliveryFileId } from "../legal-originals/delivery"
 import { park, resolveOpenParks } from "../deferred"
+import { type FxFetchCtx, FxRateUnavailableError, fxIssueDate, warmFxRate } from "../einvoicing/fx"
+import { EINVOICE_IDENTITY_PARK_KIND, raiseIdentityAttention } from "../einvoicing/gate"
+import { ensureDerivedIdentity } from "../einvoicing/identity-derive"
+import { checkEinvoiceGate } from "../einvoicing/issue-gate"
 import {
   CustomsFetchError,
   counterpartyCompletenessError,
-  issueDocument,
   type IssueCtx,
   type IssueInput,
+  issueDocument,
   type LineKind,
 } from "../issue"
-import { EINVOICE_IDENTITY_PARK_KIND, raiseIdentityAttention } from "../einvoicing/gate"
-import { ensureDerivedIdentity } from "../einvoicing/identity-derive"
-import { type FxFetchCtx, FxRateUnavailableError, fxIssueDate, warmFxRate } from "../einvoicing/fx"
-import { checkEinvoiceGate } from "../einvoicing/issue-gate"
-import { formatMoneyMinor, lineSubtotal, lineTax, majorDecimalToMinor, netOfTax } from "../money"
 import { civilDateOf, type IssueDateParts, issueDateParts } from "../issue-date"
+import { deliveryFileId } from "../legal-originals/delivery"
+import { formatMoneyMinor, lineSubtotal, lineTax, majorDecimalToMinor, netOfTax } from "../money"
 import { isFullyCredited } from "../mutations"
 import { isUniqueViolation } from "../mutations/quote-proforma-po"
 import { classify, EXEMPT_TREATMENTS, isUntaxedIntraEuSaleWithoutVat } from "../tax"
@@ -162,8 +162,10 @@ export function applyTaxOverride(
     if (mode === "as_computed") return rest
     if (li.shopify_tax_minor == null || li.shopify_tax_minor === "") return li
     const subtotal =
-      lineSubtotal({ quantity: li.quantity, unit_price_minor: toBigIntMinor(li.unit_price_minor) }) -
-      toBigIntMinor(li.discount_minor)
+      lineSubtotal({
+        quantity: li.quantity,
+        unit_price_minor: toBigIntMinor(li.unit_price_minor),
+      }) - toBigIntMinor(li.discount_minor)
     const reported = toBigIntMinor(li.shopify_tax_minor)
     const rate = subtotal > 0n ? Number((reported * 10000n * 2n + subtotal) / (subtotal * 2n)) : 0
     return { ...rest, tax_rate_bp: rate }
@@ -262,16 +264,15 @@ export interface OrderPaidCtx extends IssueCtx {
     }
     current_payload: unknown
     editable_fields?: string[]
-  }): Promise<{ approval_id: string; auto_approved?: undefined } | { approval_id: string | null; auto_approved: true }>
+  }): Promise<
+    | { approval_id: string; auto_approved?: undefined }
+    | { approval_id: string | null; auto_approved: true }
+  >
   // Kernel contact resolution (resolve-or-create by external id / email). Used
   // by the `order:created` adapter to link the Shopify customer to its kernel
   // contact. Shopify is an OPTIONAL dependency — this is only ever reached when
   // a Shopify event is delivered, so it adds no standalone coupling.
-  resolveContact(params: {
-    email?: string
-    name?: string
-    externalId?: string
-  }): Promise<unknown>
+  resolveContact(params: { email?: string; name?: string; externalId?: string }): Promise<unknown>
 }
 
 export interface IssuedDocumentRef {
@@ -372,8 +373,10 @@ export function shopifyTaxMismatches(
     if (typeof li.tax_rate_bp !== "number") continue
     if (li.shopify_tax_minor == null || li.shopify_tax_minor === "") continue
     const subtotal =
-      lineSubtotal({ quantity: li.quantity, unit_price_minor: toBigIntMinor(li.unit_price_minor) }) -
-      toBigIntMinor(li.discount_minor)
+      lineSubtotal({
+        quantity: li.quantity,
+        unit_price_minor: toBigIntMinor(li.unit_price_minor),
+      }) - toBigIntMinor(li.discount_minor)
     const computed = lineTax({ subtotal_minor: subtotal, tax_rate_bp: li.tax_rate_bp })
     const reported = toBigIntMinor(li.shopify_tax_minor)
     const tolerance = BigInt(Math.max(1, li.shopify_tax_line_count ?? 1))
@@ -391,7 +394,9 @@ export function shopifyTaxMismatches(
   return out
 }
 
-function marketplaceTaxRef(items: OrderPaidPayload["line_items"]): { marketplace_tax_minor?: string } {
+function marketplaceTaxRef(items: OrderPaidPayload["line_items"]): {
+  marketplace_tax_minor?: string
+} {
   let sum = 0n
   for (const li of items) sum += toBigIntMinor(li.marketplace_tax_minor)
   return sum > 0n ? { marketplace_tax_minor: sum.toString() } : {}
@@ -414,20 +419,19 @@ function toIssuerProfileRow(row: unknown): IssuerProfileRow {
     prefix_proforma: (r.prefix_proforma as string | undefined) ?? undefined,
     prefix_po: (r.prefix_po as string | undefined) ?? undefined,
     invoice_approval_threshold_minor:
-      (r.invoice_approval_threshold_minor as bigint | number | string | null | undefined) ??
-      null,
+      (r.invoice_approval_threshold_minor as bigint | number | string | null | undefined) ?? null,
     auto_email_enabled: !!r.auto_email_enabled,
     prices_include_tax: !!r.prices_include_tax,
     mail_account_id: (r.mail_account_id as string | null | undefined) ?? null,
     timezone: (r.timezone as string | null | undefined) ?? null,
     email_templates:
-      (r.email_templates as
-        | Record<string, { subject?: string; body?: string }>
-        | undefined) ?? undefined,
+      (r.email_templates as Record<string, { subject?: string; body?: string }> | undefined) ??
+      undefined,
     // The seller identity the PDF mentions and a Factur-X carries (dropped here before, so an
     // order-paid invoice lost the seller SIREN mentions the manual path printed).
     logo_file_id: (r.logo_file_id as string | null | undefined) ?? null,
-    vat_on_debits_default: typeof r.vat_on_debits_default === "boolean" ? r.vat_on_debits_default : null,
+    vat_on_debits_default:
+      typeof r.vat_on_debits_default === "boolean" ? r.vat_on_debits_default : null,
     siren: (r.siren as string | null | undefined) ?? null,
     siret: (r.siret as string | null | undefined) ?? null,
     legal_form: (r.legal_form as string | null | undefined) ?? null,
@@ -520,9 +524,7 @@ async function findOriginatingQuotePo(
   for (const row of rows) {
     const po =
       (row.po_number as string | null | undefined) ??
-      ((row.external_refs as Record<string, unknown> | undefined)?.po_number as
-        | string
-        | undefined)
+      ((row.external_refs as Record<string, unknown> | undefined)?.po_number as string | undefined)
     if (typeof po === "string" && po.trim() !== "") {
       return {
         quote_id: String(row.id),
@@ -553,9 +555,16 @@ async function parkForTaxReview(
   ctx: OrderPaidCtx,
   parkPayload: OrderPaidPayload,
   orderNumber: string | null,
-  park_: { status: DeferredEventInsert["status"]; reason: string; blocked_on: Record<string, unknown> },
+  park_: {
+    status: DeferredEventInsert["status"]
+    reason: string
+    blocked_on: Record<string, unknown>
+  },
 ): Promise<OrderPaidResult> {
-  const def = await park({ db: ctx.db }, { event_id: parkPayload.id, event_payload_json: parkPayload, ...park_ })
+  const def = await park(
+    { db: ctx.db },
+    { event_id: parkPayload.id, event_payload_json: parkPayload, ...park_ },
+  )
   if (def.created && ctx.emit) {
     await ctx.emit({
       entity: "deferred",
@@ -769,7 +778,10 @@ export async function onShopifyOrderPaid(
         kind: "tax_treatment",
         treatment: classification.treatment,
         counterparty_country: counterpartyCountry,
-        lines: taxedOnExempt.map((li) => ({ description: li.description, tax_rate_bp: li.tax_rate_bp })),
+        lines: taxedOnExempt.map((li) => ({
+          description: li.description,
+          tax_rate_bp: li.tax_rate_bp,
+        })),
       },
     })
   }
@@ -798,7 +810,10 @@ export async function onShopifyOrderPaid(
   // charge with its VAT number. A person decides; a lone 0% line next to taxed ones is not this.
   const chargesNoTax =
     payload.line_items.length > 0 && payload.line_items.every((li) => li.tax_rate_bp === 0)
-  if (!payload.tax_override && isUntaxedIntraEuSaleWithoutVat(classification.treatment, chargesNoTax)) {
+  if (
+    !payload.tax_override &&
+    isUntaxedIntraEuSaleWithoutVat(classification.treatment, chargesNoTax)
+  ) {
     return parkForTaxReview(ctx, parkPayload, orderNumber, {
       status: "awaiting_data",
       reason: "buyer_vat_missing",
@@ -817,7 +832,6 @@ export async function onShopifyOrderPaid(
       },
     })
   }
-
 
   // Steps 7+8+10+11+12 — build drafts, snapshot lines, issue + PDF + thread post.
   //
@@ -1147,7 +1161,10 @@ export async function onShopifyOrderPaid(
       // (orderInvoiceRef): nothing of ours was persisted, and that run delivers its own invoice.
       if (isUniqueViolation(err)) {
         const held = issueInput.external_ref
-          ? await ctx.db.findMany("documents", { where: { external_ref: issueInput.external_ref }, limit: 1 })
+          ? await ctx.db.findMany("documents", {
+              where: { external_ref: issueInput.external_ref },
+              limit: 1,
+            })
           : []
         if (held.length > 0) continue
       }
@@ -1165,9 +1182,9 @@ export async function onShopifyOrderPaid(
     // the quote it was actually borrowed from). Read-modify-write: issueDocument already
     // persisted this document's own lifecycle_log, so append rather than clobber it.
     if (inheritedPo) {
-      const row = (await ctx.db.findOne("documents", issueResult.document_id)) as
-        | { lifecycle_log?: Array<Record<string, unknown>> }
-        | null
+      const row = (await ctx.db.findOne("documents", issueResult.document_id)) as {
+        lifecycle_log?: Array<Record<string, unknown>>
+      } | null
       const currentLog = row?.lifecycle_log ?? []
       await ctx.db.update("documents", issueResult.document_id, {
         lifecycle_log: [
@@ -1213,7 +1230,11 @@ export async function onShopifyOrderPaid(
   const pdfFileIds: string[] = []
   for (const d of issued) {
     if (!d.pdf_file_id) continue
-    const row = ((await ctx.db.findMany("documents", { where: { id: d.document_id }, limit: 1 })) as Array<Record<string, unknown>>)[0]
+    const row = (
+      (await ctx.db.findMany("documents", { where: { id: d.document_id }, limit: 1 })) as Array<
+        Record<string, unknown>
+      >
+    )[0]
     const delivery = await deliveryFileId(ctx.db, { ...(row ?? {}), pdf_file_id: d.pdf_file_id })
     pdfFileIds.push(delivery.file_id ?? d.pdf_file_id)
   }
@@ -1536,7 +1557,9 @@ function toNetLineMoney(params: {
 export function formatEventAddress(a: ShopifyEventAddress | null | undefined): string | null {
   if (!a) return null
   const locality = [a.zip, a.city].filter(Boolean).join(" ")
-  const localityWithProvince = a.province ? [locality, a.province].filter(Boolean).join(", ") : locality
+  const localityWithProvince = a.province
+    ? [locality, a.province].filter(Boolean).join(", ")
+    : locality
   const lines = [
     a.company ?? null,
     a.address1 ?? null,
@@ -1570,7 +1593,9 @@ function taxFactsFields(tax: ReturnType<typeof shopifyLineTaxFacts>): {
     ...(tax.sellerAmountMinor != null
       ? { shopify_tax_minor: tax.sellerAmountMinor, shopify_tax_line_count: tax.sellerTaxLineCount }
       : {}),
-    ...(tax.marketplaceAmountMinor !== "0" ? { marketplace_tax_minor: tax.marketplaceAmountMinor } : {}),
+    ...(tax.marketplaceAmountMinor !== "0"
+      ? { marketplace_tax_minor: tax.marketplaceAmountMinor }
+      : {}),
   }
 }
 
@@ -1677,7 +1702,8 @@ export function adaptShopifyOrderCreatedEvent(event: ShopifyOrderCreatedEvent): 
 
   return {
     id: String(event.orderId ?? ""),
-    order_number: typeof event.name === "string" && event.name.trim() !== "" ? event.name.trim() : null,
+    order_number:
+      typeof event.name === "string" && event.name.trim() !== "" ? event.name.trim() : null,
     shop_id: String(event.shopDomain ?? ""),
     createdAt: event.createdAt,
     financial_status: event.financialStatus ?? null,
@@ -1859,14 +1885,14 @@ interface ShopifyCompanyLocationAddress {
 function formatFetchedAddress(a: ShopifyFetchedAddress | null | undefined): string | null {
   if (!a) return null
   const locality = [a.zip, a.city].filter(Boolean).join(" ")
-  const localityWithProvince = a.province ? [locality, a.province].filter(Boolean).join(", ") : locality
+  const localityWithProvince = a.province
+    ? [locality, a.province].filter(Boolean).join(", ")
+    : locality
   // No country line — the document snapshot's counterparty_country renders as
   // its own line on the PDF; carrying it here doubled it.
-  const lines = [
-    a.address1 ?? null,
-    a.address2 ?? null,
-    localityWithProvince || null,
-  ].filter((l): l is string => !!l && l.trim() !== "")
+  const lines = [a.address1 ?? null, a.address2 ?? null, localityWithProvince || null].filter(
+    (l): l is string => !!l && l.trim() !== "",
+  )
   return lines.length > 0 ? lines.join("\n") : null
 }
 
@@ -1905,13 +1931,13 @@ export function mergeCustomer(
   // A buyer with a VAT number is the business: the invoice names the company, not the person
   // who checked out (whose name the event's legal_name carries).
   const legalName = vatId && company ? company : personName
-  const address = fromWebhook?.address ?? formatFetchedAddress(fromFetch.billingAddress ?? fetchedAddress)
+  const address =
+    fromWebhook?.address ?? formatFetchedAddress(fromFetch.billingAddress ?? fetchedAddress)
   return {
     id: fromWebhook?.id ?? null,
     email: fromWebhook?.email ?? fetched?.email ?? null,
     contact_id: fromWebhook?.contact_id ?? null,
-    country:
-      fromWebhook?.country ?? fetchedAddress?.countryCode?.toUpperCase() ?? undefined,
+    country: fromWebhook?.country ?? fetchedAddress?.countryCode?.toUpperCase() ?? undefined,
     // Only an event that already split the two carries a tax country; the fetch fills it from the
     // ship to. An older payload (no tax_country) keeps classifying on `country`, as before.
     tax_country:
@@ -1927,8 +1953,7 @@ export function mergeCustomer(
     // different consignee survives enrichment instead of being swallowed.
     shipping_address:
       fromWebhook?.shipping_address ?? formatFetchedShippingAddress(fromFetch.shippingAddress),
-    shipping_name:
-      fromWebhook?.shipping_name ?? fromFetch.shippingAddress?.name ?? null,
+    shipping_name: fromWebhook?.shipping_name ?? fromFetch.shippingAddress?.name ?? null,
     // Structured addresses: the webhook's, else the fetched ones (same fallback as `address`).
     billing,
     delivery:
@@ -1968,7 +1993,10 @@ function mergeCompanyBuyer(
   const shippingSource: ShopifyFetchedAddress | null =
     fromFetch.shippingAddress ?? pc.shippingAddress ?? null
   const vatId =
-    addrStr(fromWebhook?.vat_id) ?? addrStr(pc.taxRegistrationId) ?? addrStr(fromFetch.buyerTaxId) ?? null
+    addrStr(fromWebhook?.vat_id) ??
+    addrStr(pc.taxRegistrationId) ??
+    addrStr(fromFetch.buyerTaxId) ??
+    null
   const fetchedAddress = formatFetchedAddress(billingSource)
   const address = withoutLeadingLine(fromWebhook?.address ?? fetchedAddress, companyName)
   const billingCountry =
@@ -1989,8 +2017,7 @@ function mergeCompanyBuyer(
     legal_name: companyName,
     vat_id: vatId,
     address,
-    shipping_address:
-      fromWebhook?.shipping_address ?? formatFetchedShippingAddress(shippingSource),
+    shipping_address: fromWebhook?.shipping_address ?? formatFetchedShippingAddress(shippingSource),
     shipping_name: fromWebhook?.shipping_name ?? addrStr(shippingSource?.name) ?? null,
     billing: fromWebhook?.billing
       ? { ...fromWebhook.billing, company: companyName }

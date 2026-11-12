@@ -3,7 +3,6 @@
 // is a COMPILE error, not the intended `undefined`-instructions failure.
 import { describe, expect, it } from "bun:test"
 import { contactsAppManifest } from "~/apps/contacts/manifest-descriptor"
-import { googleDriveAppManifest } from "~/apps/google-drive/manifest-descriptor"
 import { knowledgeAppManifest } from "~/apps/knowledge/manifest-descriptor"
 import { mailAppManifest } from "~/apps/mail/manifest-descriptor"
 import { mcpManagerAppManifest } from "~/apps/mcp-manager/manifest-descriptor"
@@ -11,6 +10,7 @@ import { projectsAppManifest } from "~/apps/projects/manifest-descriptor"
 import { ticketsAppManifest } from "~/apps/tickets/manifest-descriptor"
 import { normalizeAppGuide } from "~/modules/agent/context/app-guide"
 import boxtalManifest from "../../../../../../bundled-apps/boxtal/app.manifest.json"
+import googleDriveManifest from "../../../../../../bundled-apps/google-drive/app.manifest.json"
 import invoicingManifest from "../../../../../../bundled-apps/invoicing/app.manifest.json"
 import pennylaneManifest from "../../../../../../bundled-apps/pennylane/app.manifest.json"
 import shopifyManifest from "../../../../../../bundled-apps/shopify/app.manifest.json"
@@ -21,7 +21,6 @@ const inTree = {
   mail: mailAppManifest,
   projects: projectsAppManifest,
   contacts: contactsAppManifest,
-  "google-drive": googleDriveAppManifest,
   "mcp-manager": mcpManagerAppManifest,
   knowledge: knowledgeAppManifest, // NEW — was missing agentInstructions entirely
 }
@@ -31,6 +30,7 @@ const bundled: Record<string, { agentInstructions?: unknown }> = {
   boxtal: boxtalManifest,
   social: socialManifest, // NEW — was omitted from coverage
   pennylane: pennylaneManifest, // NEW — built in the Pennylane section (Task 7)
+  "google-drive": googleDriveManifest,
 }
 
 // Upper guard against runaway prompt-cache bloat. The original 1600 floor was

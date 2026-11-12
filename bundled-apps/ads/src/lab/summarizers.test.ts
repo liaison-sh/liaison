@@ -4,7 +4,7 @@
 // SummaryCard echoing the fields the approver needs to see.
 
 import { describe, expect, it } from "bun:test"
-import { summarizeManualSpendAdd, summarizeDealerProfileUpsert } from "../summarizers"
+import { summarizeDealerProfileUpsert, summarizeManualSpendAdd } from "../summarizers"
 
 describe("summarizeManualSpendAdd", () => {
   it("echoes channel/amount/currency/period", () => {

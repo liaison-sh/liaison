@@ -253,9 +253,9 @@ PW_UPDATE_SNAPSHOTS=missing bun run ../../scripts/with-test-lock.ts -- bunx --bu
 
 ## Mocking Google Drive in E2E tests
 
-Phase 11 Knowledge scenarios exercise the federated search + Drive citation flow against a per-worker mock Drive HTTP server (`apps/api/src/tests/e2e/helpers/mock-drive.ts`).
+Scenarios that seed Drive content run against a per-worker mock Drive HTTP server (`apps/api/src/tests/e2e/helpers/mock-drive.ts`). The Google Drive app itself (`bundled-apps/google-drive`) is tested against a fake Drive behind `ctx.fetch` (`bun run scripts/test-run.ts bundled-google-drive`), and its contract fixtures are recorded against a fake Drive reached through the live bridge (`apps/api/scripts/contract/record-google-drive.ts`).
 
-- `apps/api/src/apps/google-drive/drive-rest.ts` honours `DRIVE_API_BASE_URL` and falls back to `https://www.googleapis.com/drive/v3` when unset. The Playwright fixture (`apps/web/src/tests/e2e/fixtures/test.ts`) allocates a third deterministic port per worker, boots the mock server on it, and injects `DRIVE_API_BASE_URL` + `ENCRYPTION_KEY` into the API process via `serverEnv` before `createWorkerEnv` returns.
+- The mock server's base URL reaches the API process as `DRIVE_API_BASE_URL`. The Playwright fixture (`apps/web/src/tests/e2e/fixtures/test.ts`) allocates a third deterministic port per worker, boots the mock server on it, and injects `DRIVE_API_BASE_URL` + `ENCRYPTION_KEY` into the API process via `serverEnv` before `createWorkerEnv` returns.
 - Scenarios access the mock via `env.mockDrive` — `addFixture`, `resetFixtures`, `resetRequestLog`, `requestLog`. Each scenario seeds its own fixtures in `beforeEach`.
 - Drive `connected_accounts` rows are seeded via `seedDriveConnection` in `apps/web/src/tests/e2e/helpers/knowledge-seed.ts`, which uses `env.encryptionKey` so encryptor↔decryptor parity with the API process is guaranteed.
 

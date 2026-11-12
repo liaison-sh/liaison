@@ -18,13 +18,14 @@
 // All data flows through the host bridge (`app.invokeTool`). Loading + empty
 // states stay tertiary-toned so they recede into the layout rather than
 // shouting.
-import { type Component } from "solid-js"
-import { app } from "@liaison/host"
-import { adminResourceId } from "./panels/url-template"
-import { formatHoursHuman, formatShopifyMoney, statusLabel } from "./list-helpers"
+
 import { CardTable } from "@liaison/app-ui/card-table"
-import { Chip, Empty, For, Section, Show, StatusPill } from "./primitives"
+import { app } from "@liaison/host"
+import type { Component } from "solid-js"
 import { onOutsideLinkClick, openOutside } from "./external-link"
+import { formatHoursHuman, formatShopifyMoney, statusLabel } from "./list-helpers"
+import { adminResourceId } from "./panels/url-template"
+import { Chip, Empty, For, Section, Show, StatusPill } from "./primitives"
 
 interface ConnectionSnapshot {
   shopDomain: string | null
@@ -273,7 +274,10 @@ function RecentOrdersTable(props: { orders: RecentOrderRow[]; shopDomain: string
               header: "Status",
               role: "meta",
               cell: (o) => (
-                <Show when={o.fulfillmentStatus} fallback={<Chip>{statusLabel("unfulfilled")}</Chip>}>
+                <Show
+                  when={o.fulfillmentStatus}
+                  fallback={<Chip>{statusLabel("unfulfilled")}</Chip>}
+                >
                   <StatusPill status={o.fulfillmentStatus ?? null} />
                 </Show>
               ),
@@ -313,9 +317,7 @@ function HomeSkeleton() {
 // ShopifyHome — exposed via manifest `views.tabTypes.home.component`.
 // ─────────────────────────────────────────────────────────────────────────
 export const ShopifyHome: Component = () => {
-  const [bundle] = app.createResource<HomeBundle>(() =>
-    app.invokeTool<HomeBundle>("home_load", {}),
-  )
+  const [bundle] = app.createResource<HomeBundle>(() => app.invokeTool<HomeBundle>("home_load", {}))
 
   const shopDomain = () => bundle()?.connection.shopDomain ?? null
   const totalAttention = () => {
@@ -365,9 +367,7 @@ export const ShopifyHome: Component = () => {
               <Show
                 when={totalAttention() > 0}
                 fallback={
-                  <Empty testid="attention-empty">
-                    Nothing needs your attention right now.
-                  </Empty>
+                  <Empty testid="attention-empty">Nothing needs your attention right now.</Empty>
                 }
               >
                 <div class="flex flex-col gap-4">
@@ -405,7 +405,10 @@ export const ShopifyHome: Component = () => {
                               : null
                           }
                           trailing={formatHoursHuman(o.hoursSincePlaced)}
-                          href={shopifyAdminUrl(shopDomain(), `/orders/${adminResourceId(o.orderId)}`)}
+                          href={shopifyAdminUrl(
+                            shopDomain(),
+                            `/orders/${adminResourceId(o.orderId)}`,
+                          )}
                         />
                       )}
                     </For>

@@ -87,6 +87,14 @@ export async function answerBridgeCall(
     return answer(404, { error: `Unknown bridge method: ${method}`, reason: "unknown_method" })
   }
 
+  if (entry.stats.bridgeCalls >= entry.maxBridgeCalls) {
+    log.warn({ runId, app: entry.appName, method }, "App run over its subrequest limit")
+    return answer(429, {
+      error: `Too many subrequests: this run may make ${entry.maxBridgeCalls}`,
+      errorStatus: 429,
+      errorCode: "subrequest_limit",
+    })
+  }
   entry.stats.bridgeCalls++
   const started = now()
   const remaining = Math.max(0, entry.deadline - started)

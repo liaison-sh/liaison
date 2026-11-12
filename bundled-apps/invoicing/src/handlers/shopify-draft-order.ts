@@ -30,11 +30,7 @@
 import { type DeferredRow, park, resolveOpenParks } from "../deferred"
 import { counterpartyCompletenessError, type DraftLineInput } from "../issue"
 import { majorDecimalToMinor, netOfIncludedTax } from "../money"
-import {
-  documentsUpdate,
-  quoteCreateAndIssue,
-  type MutationsCtx,
-} from "../mutations"
+import { documentsUpdate, type MutationsCtx, quoteCreateAndIssue } from "../mutations"
 import { findIssuerByShopId, type IssuerProfileRow } from "./shopify-order-paid"
 
 // ── The normalized draft order the shopify app produces ────────────────────
@@ -150,11 +146,7 @@ export interface NormalizedDraftOrder {
 
 export interface DraftOrderCtx extends MutationsCtx {
   /** Kernel resolve-or-create for the Shopify customer, exactly as the order flow uses it. */
-  resolveContact(params: {
-    email?: string
-    name?: string
-    externalId?: string
-  }): Promise<unknown>
+  resolveContact(params: { email?: string; name?: string; externalId?: string }): Promise<unknown>
 }
 
 /** The event envelope the kernel delivers, plus the two shapes its `data` can take. */
@@ -269,9 +261,7 @@ export function draftOrderLinesToItems(
         : netOfIncludedTax(majorAmountToMinor(li.appliedDiscount.amount, currency), rateBp)
       : 0n,
   )
-  const grossPerLine = lines.map(
-    (li) => netUnit(li) * BigInt(Math.max(0, Math.round(li.quantity))),
-  )
+  const grossPerLine = lines.map((li) => netUnit(li) * BigInt(Math.max(0, Math.round(li.quantity))))
 
   // Proportional share of the order-level discount.
   const orderDiscount =
@@ -336,9 +326,7 @@ export function draftOrderLinesToItems(
 export function formatDraftOrderAddress(a: NormalizedAddress | null | undefined): string | null {
   if (!a) return null
   const locality = [a.zip, a.city].filter(Boolean).join(" ")
-  const withProvince = a.province
-    ? [locality, a.province].filter(Boolean).join(", ")
-    : locality
+  const withProvince = a.province ? [locality, a.province].filter(Boolean).join(", ") : locality
   const lines = [a.company, a.address1, a.address2, withProvince || null].filter(
     (l): l is string => typeof l === "string" && l.trim() !== "",
   )
@@ -471,8 +459,10 @@ function normalizedFromEvent(event: DraftOrderEvent): NormalizedDraftOrder | nul
 async function fetchDraftOrder(
   ctx: DraftOrderCtx,
   draftOrderId: string,
-): Promise<{ ok: true; draft: NormalizedDraftOrder } | { ok: false; code: string; message: string }> {
-  let envelope
+): Promise<
+  { ok: true; draft: NormalizedDraftOrder } | { ok: false; code: string; message: string }
+> {
+  let envelope: Awaited<ReturnType<DraftOrderCtx["executeTool"]>>
   try {
     envelope = await ctx.executeTool("shopify:draft_orders_get", { id: draftOrderId })
   } catch (err) {
@@ -487,11 +477,11 @@ async function fetchDraftOrder(
       ok: false,
       code:
         envelope.status === "error"
-          ? envelope.error?.code ?? "draft_order_fetch_failed"
+          ? (envelope.error?.code ?? "draft_order_fetch_failed")
           : "draft_order_fetch_pending_approval",
       message:
         envelope.status === "error"
-          ? envelope.error?.message ?? "shopify:draft_orders_get returned an error"
+          ? (envelope.error?.message ?? "shopify:draft_orders_get returned an error")
           : `shopify:draft_orders_get parked an approval for ${draftOrderId}`,
     }
   }
@@ -555,7 +545,8 @@ export async function retryParkedDraftOrderQuote(
     return { status: "still_blocked", reason: "parked_draft_order_unreadable" }
   }
   const parked = row.event_payload_json
-  if (await findQuoteByDraftOrderId(ctx as DraftOrderCtx, parked.draft_order_id)) return { status: "ok" }
+  if (await findQuoteByDraftOrderId(ctx as DraftOrderCtx, parked.draft_order_id))
+    return { status: "ok" }
   const synced = await syncQuoteFromDraftOrder(ctx, {
     draftOrderId: parked.draft_order_id,
     draft: parked.draft,
@@ -766,7 +757,9 @@ export async function syncQuoteFromDraftOrder(
   // into the Shopify admin is the flow this is FOR, so it must reach the quote whether the
   // draft order arrives at create or at a later update.
   const poNumber =
-    typeof draft.poNumber === "string" && draft.poNumber.trim() !== "" ? draft.poNumber.trim() : null
+    typeof draft.poNumber === "string" && draft.poNumber.trim() !== ""
+      ? draft.poNumber.trim()
+      : null
 
   if (!existing) {
     const created = await quoteCreateAndIssue(c, {

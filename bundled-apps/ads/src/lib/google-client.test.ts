@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { gaqlSearch, googleAdsMutate, microsToMajor, MICROS, GOOGLE_ADS_API_VERSION } from "./google-client"
+import {
+  GOOGLE_ADS_API_VERSION,
+  gaqlSearch,
+  googleAdsMutate,
+  MICROS,
+  microsToMajor,
+} from "./google-client"
 import { GoogleAdsApiError, GoogleAuthError } from "./google-error"
 
 interface FetchCall {
@@ -35,7 +41,10 @@ function makeFetch(responses: MockResponse[]) {
 describe("gaqlSearch — request shape", () => {
   it("posts to {version}/customers/{cid}/googleAds:searchStream with the GAQL query in the body", async () => {
     const { fetch, calls } = makeFetch([
-      { status: 200, body: JSON.stringify([{ results: [{ campaign: { id: "1", name: "Camp A" } }] }]) },
+      {
+        status: 200,
+        body: JSON.stringify([{ results: [{ campaign: { id: "1", name: "Camp A" } }] }]),
+      },
     ])
     await gaqlSearch(fetch, {
       customerId: "1234567890",
@@ -48,7 +57,9 @@ describe("gaqlSearch — request shape", () => {
     expect(calls[0]?.url).toBe(
       `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/1234567890/googleAds:searchStream`,
     )
-    expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ query: "SELECT campaign.id, campaign.name FROM campaign" })
+    expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({
+      query: "SELECT campaign.id, campaign.name FROM campaign",
+    })
   })
 
   it("sends Authorization Bearer + login-customer-id + Content-Type, and never a developer-token header", async () => {
@@ -167,7 +178,9 @@ describe("gaqlSearch — error surfacing", () => {
   })
 
   it("throws a GoogleAuthError on a 401", async () => {
-    const body = JSON.stringify({ error: { code: 401, status: "UNAUTHENTICATED", message: "bad token" } })
+    const body = JSON.stringify({
+      error: { code: 401, status: "UNAUTHENTICATED", message: "bad token" },
+    })
     const { fetch } = makeFetch([{ status: 401, body }])
     await expect(
       gaqlSearch(fetch, {

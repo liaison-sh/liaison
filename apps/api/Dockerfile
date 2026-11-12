@@ -43,12 +43,14 @@ COPY apps/desktop/sidecar/package.json apps/desktop/sidecar/
 # without its manifest the frozen install refuses the whole build.
 COPY apps/mobile/package.json apps/mobile/
 COPY packages/api-connector-core/package.json packages/api-connector-core/
+COPY packages/app-loader/package.json packages/app-loader/
 COPY packages/app-sdk/package.json packages/app-sdk/
 COPY packages/app-ui/package.json packages/app-ui/
 COPY packages/control-plane-contract/package.json packages/control-plane-contract/
 COPY packages/db-core/package.json packages/db-core/
 COPY packages/host-sdk/package.json packages/host-sdk/
 COPY packages/mailbox-crypto/package.json packages/mailbox-crypto/
+COPY packages/sandbox-supervisor/package.json packages/sandbox-supervisor/
 COPY packages/shared/package.json packages/shared/
 COPY packages/test-helpers/package.json packages/test-helpers/
 # The fallback runs ONLY when the normal install fails, which in practice means a package

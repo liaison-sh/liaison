@@ -1,0 +1,37 @@
+{
+  "entry": "tool:import",
+  "params": {
+    "driveFileId": "scan0001"
+  },
+  "recordedFrom": "a contract org's Drive accounts against a fake Google Drive v3 reached through the live bridge transport, scripts/contract/record-google-drive.ts",
+  "calls": [
+    {
+      "method": "accounts_list",
+      "args": ["drive", null],
+      "reply": "[{\"id\":\"00000000-0000-4000-8000-00000000d001\",\"identifier\":\"ana@example.com\",\"ownerType\":\"user\",\"ownerId\":\"00000000-0000-4000-8000-00000000c0df\",\"displayName\":null,\"status\":\"active\",\"metadata\":{\"grantedOAuthScopes\":[\"https://www.googleapis.com/auth/drive.readonly\"]},\"createdAt\":\"2026-11-12T15:43:39.415Z\",\"updatedAt\":\"2026-11-12T15:43:39.415Z\",\"canManage\":true},{\"id\":\"00000000-0000-4000-8000-00000000d002\",\"identifier\":\"team@example.com\",\"ownerType\":\"org\",\"ownerId\":null,\"displayName\":null,\"status\":\"active\",\"metadata\":{},\"createdAt\":\"2026-11-12T15:43:39.418Z\",\"updatedAt\":\"2026-11-12T15:43:39.418Z\",\"canManage\":true}]"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://www.googleapis.com/drive/v3/files/scan0001?fields=id%2Cname%2CmimeType%2CwebViewLink%2CmodifiedTime%2Ccapabilities%2CshortcutDetails%2CresourceKey%2Ctrashed%2CdriveId%2Cparents%2Csize&supportsAllDrives=true",
+        "{\"auth\":{\"connection\":\"drive\",\"account\":\"00000000-0000-4000-8000-00000000d001\",\"scheme\":\"bearer\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json;charset=utf-8\"},\"body\":\"{\\\"id\\\":\\\"scan0001\\\",\\\"name\\\":\\\"Scan.pdf\\\",\\\"mimeType\\\":\\\"application/pdf\\\",\\\"modifiedTime\\\":\\\"2026-11-01T09:00:00.000Z\\\",\\\"webViewLink\\\":\\\"https://drive.google.com/file/d/scan0001/view\\\",\\\"capabilities\\\":{\\\"canDownload\\\":true}}\"}"
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "imports",
+        "{\"owner_type\":\"user\",\"owner_id\":\"00000000-0000-4000-8000-00000000c0df\",\"drive_file_id\":\"scan0001\",\"filename\":\"Scan.pdf\"}"
+      ],
+      "reply": "{\"id\":\"43c770d6-01a2-43bf-8dcc-c33b395b5ea0\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 15:43:39.64559+00\",\"updated_at\":\"2026-11-12 15:43:39.64559+00\",\"owner_type\":\"user\",\"owner_id\":\"00000000-0000-4000-8000-00000000c0df\",\"drive_file_id\":\"scan0001\",\"filename\":\"Scan.pdf\"}"
+    },
+    {
+      "method": "files_importFromUrl",
+      "args": [
+        "{\"targetApp\":\"google-drive\",\"targetEntityType\":\"import\",\"targetEntityId\":\"43c770d6-01a2-43bf-8dcc-c33b395b5ea0\",\"url\":\"https://www.googleapis.com/drive/v3/files/scan0001?alt=media&supportsAllDrives=true\",\"filename\":\"Scan.pdf\",\"mimeType\":\"application/pdf\",\"headers\":{},\"auth\":{\"connection\":\"drive\",\"account\":\"00000000-0000-4000-8000-00000000d001\",\"scheme\":\"bearer\"},\"disposition\":\"attachment\"}"
+      ],
+      "reply": "{\"id\":\"13688ed2-809e-4e64-a67d-1242114341c7\",\"filename\":\"Scan.pdf\",\"mimeType\":\"application/pdf\",\"sizeBytes\":17,\"sha256\":\"e777d7d0401073d454c3eab01d4fdbcfe849a855ea49aa71ce69d3bc44720c3a\",\"storageKey\":\"orgs/00000000-0000-4000-8000-00000000c0de/google-drive/import/43c770d6-01a2-43bf-8dcc-c33b395b5ea0/13688ed2-809e-4e64-a67d-1242114341c7/Scan.pdf\",\"disposition\":\"attachment\",\"contentId\":null}"
+    }
+  ]
+}

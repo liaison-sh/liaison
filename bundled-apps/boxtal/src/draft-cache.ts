@@ -21,7 +21,7 @@ import type { CustomsArticle } from "./customs"
 import { isUniqueViolation } from "./db-errors"
 import type { PrepRecipient } from "./order-state"
 import type { Parcel } from "./resolver"
-import { shipmentDraftCreate, type ShipmentDraft } from "./shipment"
+import { type ShipmentDraft, shipmentDraftCreate } from "./shipment"
 import { unresolvedLinesBlockLabel } from "./shippable-lines"
 
 /** Bounded concurrency for a resolution pass: rows are independent, but a large worklist must not
@@ -123,7 +123,11 @@ export interface DraftCacheRow {
   invoice_lines: Array<{ line_id: string; quantity: number }>
   /** The catalog variants this resolution found with no shipping profile, so the catalog can offer
    *  to link each to an existing profile. Absent on rows resolved before it existed. */
-  unresolved_refs?: Array<{ product_source: string; product_id: string; description: string | null }>
+  unresolved_refs?: Array<{
+    product_source: string
+    product_id: string
+    description: string | null
+  }>
   /** How the address was chosen and whether it matches the customer's verified one
    *  (address-check.ts). Absent on rows resolved before it existed. */
   address_check?: AddressCheck | null
@@ -160,16 +164,27 @@ export function coverageMovedSince(
     shipped.size === 0
       ? null
       : row.invoice_lines
-          .map((l) => ({ line_id: l.line_id, quantity: l.quantity - (shipped.get(l.line_id) ?? 0) }))
+          .map((l) => ({
+            line_id: l.line_id,
+            quantity: l.quantity - (shipped.get(l.line_id) ?? 0),
+          }))
           .filter((l) => l.quantity > 0)
   const key = (v: Array<{ line_id: string; quantity: number }> | null) =>
-    v == null ? "" : [...v].map((l) => `${l.line_id}:${l.quantity}`).sort().join("|")
+    v == null
+      ? ""
+      : [...v]
+          .map((l) => `${l.line_id}:${l.quantity}`)
+          .sort()
+          .join("|")
   return key(row.partial_remaining ?? null) !== key(expected)
 }
 
 /** The distinct variants a draft resolved with no profile (lines with a catalog ref only). */
 function unresolvedRefs(draft: ShipmentDraft): NonNullable<DraftCacheRow["unresolved_refs"]> {
-  const out = new Map<string, { product_source: string; product_id: string; description: string | null }>()
+  const out = new Map<
+    string,
+    { product_source: string; product_id: string; description: string | null }
+  >()
   for (const u of draft.unresolved ?? []) {
     if (u.reason !== "no_profile") continue
     const { product_source, external_id } = u.line
@@ -177,7 +192,11 @@ function unresolvedRefs(draft: ShipmentDraft): NonNullable<DraftCacheRow["unreso
     const key = `${product_source}:${external_id}`
     if (out.has(key)) continue
     const summary = (draft.lineSummaries ?? []).find((l) => l.external_id === external_id)
-    out.set(key, { product_source, product_id: external_id, description: summary?.description ?? null })
+    out.set(key, {
+      product_source,
+      product_id: external_id,
+      description: summary?.description ?? null,
+    })
   }
   return [...out.values()]
 }
@@ -191,7 +210,9 @@ export function deriveDraftFacts(
   // The lines staging refuses are exactly the ones the worklist flags: the draft's unresolved lines
   // are parcel lines already (shippable-lines.ts), and the same rule decides whether they block.
   const physicalUnresolved = unresolvedLinesBlockLabel(draft) ? draft.unresolved : []
-  const customsDefect = draft.customs_required ? customsArticleDefect(draft.customsArticles) : undefined
+  const customsDefect = draft.customs_required
+    ? customsArticleDefect(draft.customsArticles)
+    : undefined
 
   let needsFixReason: string | null = null
   if (draft.parcels.length === 0 && physicalUnresolved.length === 0) {
@@ -246,7 +267,10 @@ export function deriveDraftFacts(
       ? (validateRecipientPhone(draft.recipient_country, address.phone) ?? null)
       : null,
     partial_remaining: partialRemaining,
-    invoice_lines: (draft.invoice_lines ?? []).map((l) => ({ line_id: l.line_id, quantity: l.quantity })),
+    invoice_lines: (draft.invoice_lines ?? []).map((l) => ({
+      line_id: l.line_id,
+      quantity: l.quantity,
+    })),
     unresolved_refs: unresolvedRefs(draft),
     address_check: draft.address_check ?? null,
     resolved_at: new Date().toISOString(),
@@ -319,13 +343,20 @@ export async function resolveDrafts(
         const facts = deriveDraftFacts(draft, ref)
         if (!cov || cov.full || cov.shippedByLine.size === 0) return facts
         const subset = facts.invoice_lines
-          .map((l) => ({ line_id: l.line_id, quantity: l.quantity - (cov.shippedByLine.get(l.line_id) ?? 0) }))
+          .map((l) => ({
+            line_id: l.line_id,
+            quantity: l.quantity - (cov.shippedByLine.get(l.line_id) ?? 0),
+          }))
           .filter((l) => l.quantity > 0)
         if (subset.length === 0) {
           // Every unit has a live batch: nothing left to pack, and the row says so.
           return { ...facts, partial_remaining: [] }
         }
-        const batch = await shipmentDraftCreate(ctx, { document_ref: ref, lines: subset, orderShipTo: false })
+        const batch = await shipmentDraftCreate(ctx, {
+          document_ref: ref,
+          lines: subset,
+          orderShipTo: false,
+        })
         return deriveDraftFacts(batch, ref, subset)
       } catch (err) {
         // A THROWN resolution is a read failure, not a verdict on the invoice. Caching it as a

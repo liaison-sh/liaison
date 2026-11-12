@@ -2,16 +2,16 @@
 //
 // Invoicing mutations: documents.send_to_customer.
 
-import { findDocumentSummary, findIssuerProfile } from "./db-helpers"
 import { closeAutoEmailParks } from "../deferred"
 import { deliveryFileId } from "../legal-originals/delivery"
+import { findDocumentSummary, findIssuerProfile } from "./db-helpers"
 import { ensureDocumentPdf } from "./pdf"
 import {
-  type MutationsCtx,
   type DocumentRowSummary,
   type ErrorEnvelope,
-  type PreflightResult,
   type MutationResult,
+  type MutationsCtx,
+  type PreflightResult,
   toPreflightResult,
 } from "./shared"
 
@@ -78,7 +78,8 @@ async function preflightSendToCustomerParams(
       contactId: doc.counterparty_contact_id,
     })
     if (contactResult.status === "completed") {
-      const email = (contactResult.result as { contact?: { email?: string | null } } | undefined)?.contact?.email
+      const email = (contactResult.result as { contact?: { email?: string | null } } | undefined)
+        ?.contact?.email
       recipient = (email ?? "").trim()
     }
   }
@@ -92,12 +93,16 @@ async function preflightSendToCustomerParams(
     })
     if (searchResult.status === "completed") {
       const items =
-        (searchResult.result as { items?: Array<{ name?: string | null; primaryEmail?: string | null }> } | undefined)
-          ?.items ?? []
+        (
+          searchResult.result as
+            | { items?: Array<{ name?: string | null; primaryEmail?: string | null }> }
+            | undefined
+        )?.items ?? []
       const wanted = doc.counterparty_name.trim().toLowerCase()
       const exact = items.filter(
         (c) =>
-          (c.name ?? "").trim().toLowerCase() === wanted && (c.primaryEmail ?? "").trim().length > 0,
+          (c.name ?? "").trim().toLowerCase() === wanted &&
+          (c.primaryEmail ?? "").trim().length > 0,
       )
       if (exact.length === 1) recipient = (exact[0]?.primaryEmail ?? "").trim()
     }
@@ -109,7 +114,8 @@ async function preflightSendToCustomerParams(
         status: "error",
         error: {
           code: "no_recipient",
-          message: "no recipient: the counterparty contact has no email on file (and no `to` override was given)",
+          message:
+            "no recipient: the counterparty contact has no email on file (and no `to` override was given)",
         },
       },
     }
@@ -154,7 +160,12 @@ export async function documentsSendToCustomer(
     return { status: "error", error: pdf.error }
   }
   // The customer receives the LEGAL ORIGINAL (fixed at issue), never a later management copy.
-  const fresh = ((await ctx.db.findMany("documents", { where: { id: doc.id }, limit: 1 })) as Array<Record<string, unknown>>)[0] ?? {}
+  const fresh =
+    (
+      (await ctx.db.findMany("documents", { where: { id: doc.id }, limit: 1 })) as Array<
+        Record<string, unknown>
+      >
+    )[0] ?? {}
   const delivery = await deliveryFileId(ctx.db, { ...fresh, pdf_file_id: pdf.pdf_file_id })
   const attachment = delivery.file_id ?? pdf.pdf_file_id
   // Use mail:composeForApp — the INTERNAL cross-app variant — NOT the agent-facing gated mail:compose.
@@ -204,7 +215,10 @@ export function sendErrorFromEnvelope(envelope: {
   error?: { code?: string; message?: string; retryable?: boolean }
 }): { code: string; message: string } {
   if (envelope.error?.code || envelope.error?.message) {
-    return { code: envelope.error.code ?? "send_failed", message: envelope.error.message ?? "send failed" }
+    return {
+      code: envelope.error.code ?? "send_failed",
+      message: envelope.error.message ?? "send failed",
+    }
   }
   return {
     code: "send_dispatch_failed",

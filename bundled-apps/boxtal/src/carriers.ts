@@ -43,7 +43,12 @@ export const CARRIER_BRANDS: readonly CarrierBrand[] = [
   { key: "fedex", label: "FedEx", codes: ["FEDX"], labelPattern: /\bfedex\b/i },
   { key: "dhl", label: "DHL", codes: ["DHLE"], labelPattern: /\bdhl\b/i },
   { key: "chronopost", label: "Chronopost", codes: ["CHRP"], labelPattern: /\bchrono/i },
-  { key: "laposte", label: "La Poste / Colissimo", codes: ["POFR", "SOGP"], labelPattern: /(colissimo|la poste)/i },
+  {
+    key: "laposte",
+    label: "La Poste / Colissimo",
+    codes: ["POFR", "SOGP"],
+    labelPattern: /(colissimo|la poste)/i,
+  },
   { key: "mondialrelay", label: "Mondial Relay", codes: ["MONR"], labelPattern: /\bmondial\b/i },
   { key: "colisprive", label: "Colis Prive", codes: ["COPR"], labelPattern: /colis priv/i },
   { key: "tnt", label: "TNT", codes: ["TNTE"], labelPattern: /\btnt\b/i },
@@ -75,7 +80,9 @@ export function resolveCarrierBrand(input: string): string | null {
 /** The brand an offer belongs to — by operator code first, then by label. Null
  *  when the offer cannot be classified into any known brand. */
 export function carrierBrandOf(offer: Pick<Offer, "carrier" | "carrier_code">): string | null {
-  const byCode = offer.carrier_code ? CODE_TO_BRAND.get(offer.carrier_code.toUpperCase()) : undefined
+  const byCode = offer.carrier_code
+    ? CODE_TO_BRAND.get(offer.carrier_code.toUpperCase())
+    : undefined
   if (byCode) return byCode
   const label = offer.carrier ?? ""
   for (const b of CARRIER_BRANDS) if (b.labelPattern.test(label)) return b.key

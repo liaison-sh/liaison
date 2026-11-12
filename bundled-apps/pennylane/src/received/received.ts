@@ -20,12 +20,17 @@ import {
   type ReceivedState,
 } from "@liaison/app-sdk/contracts"
 import type { PennylaneToolCtx } from "../ctx"
-import { getClient } from "../lib/get-client"
-import { PennylaneApiError, PennylaneClient } from "../lib/pennylane-client"
 import { fromException, type OpError, opError } from "../einvoicing/errors"
 import { registrationStatus } from "../einvoicing/send"
+import { getClient } from "../lib/get-client"
+import { PennylaneApiError, PennylaneClient } from "../lib/pennylane-client"
 import { API_HOST } from "./hosts"
-import { DISPUTE_REASONS, PENNYLANE_RECEIVED_STATUS, PENNYLANE_STATUS_FOR, REFUSE_REASONS } from "./reasons"
+import {
+  DISPUTE_REASONS,
+  PENNYLANE_RECEIVED_STATUS,
+  PENNYLANE_STATUS_FOR,
+  REFUSE_REASONS,
+} from "./reasons"
 
 export type ReceptionCtx = PennylaneToolCtx
 
@@ -78,8 +83,10 @@ function mappedStatus(raw: string | null): ReceivedState {
 export function offeredActions(raw: string | null, paymentLinked: boolean): ReceivedActionOffer[] {
   const out: ReceivedActionOffer[] = []
   const open = raw === null || raw === "waiting_for_validation" || raw === "approved"
-  if (!paymentLinked && (open || raw === "disputed")) out.push({ action: "refuse", reasons: [...REFUSE_REASONS], comment: false })
-  if (!paymentLinked && open) out.push({ action: "dispute", reasons: [...DISPUTE_REASONS], comment: false })
+  if (!paymentLinked && (open || raw === "disputed"))
+    out.push({ action: "refuse", reasons: [...REFUSE_REASONS], comment: false })
+  if (!paymentLinked && open)
+    out.push({ action: "dispute", reasons: [...DISPUTE_REASONS], comment: false })
   if (raw === "disputed") out.push({ action: "undispute", reasons: [], comment: false })
   return out
 }
@@ -115,8 +122,14 @@ function normalise(inv: SupplierInvoice, supplier: Supplier | null): ReceivedInv
   const paymentLinked = inv.paid === true || PAID_STATUSES.has(String(inv.payment_status ?? ""))
   const originalName = fileName(e.source_file_url)
   const files: ReceivedInvoice["files"] = []
-  if (e.source_file_url) files.push({ file: "original", filename: originalName, mime_type: mimeOf(originalName) })
-  if (inv.public_file_url) files.push({ file: "rendering", filename: `${inv.invoice_number ?? inv.id}.pdf`, mime_type: "application/pdf" })
+  if (e.source_file_url)
+    files.push({ file: "original", filename: originalName, mime_type: mimeOf(originalName) })
+  if (inv.public_file_url)
+    files.push({
+      file: "rendering",
+      filename: `${inv.invoice_number ?? inv.id}.pdf`,
+      mime_type: "application/pdf",
+    })
   return {
     provider_ref: String(inv.id),
     supplier: {
@@ -145,16 +158,21 @@ function normalise(inv: SupplierInvoice, supplier: Supplier | null): ReceivedInv
 }
 
 async function read(c: PennylaneClient, ref: string): Promise<SupplierInvoice | OpError> {
-  if (!/^\d+$/.test(ref)) return opError("invalid_input", "provider_ref must be a Pennylane supplier invoice id")
+  if (!/^\d+$/.test(ref))
+    return opError("invalid_input", "provider_ref must be a Pennylane supplier invoice id")
   let inv: SupplierInvoice
   try {
     inv = await c.get<SupplierInvoice>(`/supplier_invoices/${ref}`)
   } catch (e) {
-    if (e instanceof PennylaneApiError && e.status === 404) return opError("received_not_found", `Pennylane has no supplier invoice ${ref}`)
+    if (e instanceof PennylaneApiError && e.status === 404)
+      return opError("received_not_found", `Pennylane has no supplier invoice ${ref}`)
     throw e
   }
   if (!inv.e_invoicing) {
-    return opError("not_received_einvoice", `Supplier invoice ${ref} was not received through the e-invoicing network`)
+    return opError(
+      "not_received_einvoice",
+      `Supplier invoice ${ref} was not received through the e-invoicing network`,
+    )
   }
   return inv
 }
@@ -182,7 +200,8 @@ function parseCursor(c: unknown): Record<string, number> {
   try {
     const o = JSON.parse(c) as Record<string, unknown>
     const out: Record<string, number> = {}
-    for (const [k, v] of Object.entries(o ?? {})) if (typeof v === "number" && Number.isFinite(v)) out[k] = v
+    for (const [k, v] of Object.entries(o ?? {}))
+      if (typeof v === "number" && Number.isFinite(v)) out[k] = v
     return out
   } catch {
     return {}
@@ -246,12 +265,19 @@ export async function getReceived(ctx: PennylaneToolCtx, p: { provider_ref: stri
 
 export async function fetchReceivedFile(
   ctx: ReceptionCtx,
-  p: { provider_ref: string; file: "original" | "rendering"; target: { app?: string; entity_type?: string; entity_id?: string } },
+  p: {
+    provider_ref: string
+    file: "original" | "rendering"
+    target: { app?: string; entity_type?: string; entity_id?: string }
+  },
 ) {
-  if (!ctx.files_importFromUrl) return opError("unsupported", "the host file import is not available here")
+  if (!ctx.files_importFromUrl)
+    return opError("unsupported", "the host file import is not available here")
   const t = p?.target ?? {}
-  if (!t.app || !t.entity_type || !t.entity_id) return opError("invalid_input", "target needs app, entity_type and entity_id")
-  if (p?.file !== "original" && p?.file !== "rendering") return opError("invalid_input", 'file is "original" or "rendering"')
+  if (!t.app || !t.entity_type || !t.entity_id)
+    return opError("invalid_input", "target needs app, entity_type and entity_id")
+  if (p?.file !== "original" && p?.file !== "rendering")
+    return opError("invalid_input", 'file is "original" or "rendering"')
   try {
     const c = await client(ctx)
     // Re-read for a fresh URL (the rendering's link expires after 30 minutes).
@@ -259,9 +285,16 @@ export async function fetchReceivedFile(
     if ("status" in inv && inv.status === "error") return inv
     const si = inv as SupplierInvoice
     const url = p.file === "original" ? si.e_invoicing?.source_file_url : si.public_file_url
-    if (!url) return opError("received_file_missing", `Pennylane gives no ${p.file} file for supplier invoice ${p.provider_ref}`)
+    if (!url)
+      return opError(
+        "received_file_missing",
+        `Pennylane gives no ${p.file} file for supplier invoice ${p.provider_ref}`,
+      )
     const host = hostOf(url)
-    const name = p.file === "original" ? (fileName(url) ?? `${si.invoice_number ?? si.id}.xml`) : `${si.invoice_number ?? si.id}.pdf`
+    const name =
+      p.file === "original"
+        ? (fileName(url) ?? `${si.invoice_number ?? si.id}.xml`)
+        : `${si.invoice_number ?? si.id}.pdf`
     const out = JSON.parse(
       await ctx.files_importFromUrl(
         JSON.stringify({
@@ -287,7 +320,11 @@ export async function fetchReceivedFile(
   } catch (e) {
     // A host bridge refusal crosses the sandbox as a plain error-shaped value: read its message.
     const msg = e instanceof Error ? e.message : String((e as { message?: unknown })?.message ?? e)
-    if (/allowlist|private|redirect|import_fetch_failed|file_too_large|invalid_credentials_mode/i.test(msg)) {
+    if (
+      /allowlist|private|redirect|import_fetch_failed|file_too_large|invalid_credentials_mode/i.test(
+        msg,
+      )
+    ) {
       return opError("received_file_download_refused", `fetch_received_file: ${msg}`)
     }
     return fromException(e, "fetch_received_file")
@@ -319,21 +356,37 @@ export async function setReceivedStatus(
       )
     }
     if (action !== "undispute" && !offer.reasons.some((r) => r.reason === p.reason)) {
-      return opError("received_reason_invalid", `"${p.reason}" is not one of Pennylane's reasons to ${action}`, false, {
-        reasons: offer.reasons.map((r) => r.reason),
-      })
+      return opError(
+        "received_reason_invalid",
+        `"${p.reason}" is not one of Pennylane's reasons to ${action}`,
+        false,
+        {
+          reasons: offer.reasons.map((r) => r.reason),
+        },
+      )
     }
-    const body = action === "undispute" ? { status: PENNYLANE_STATUS_FOR.approved } : { status: PENNYLANE_STATUS_FOR[status], reason: p.reason }
+    const body =
+      action === "undispute"
+        ? { status: PENNYLANE_STATUS_FOR.approved }
+        : { status: PENNYLANE_STATUS_FOR[status], reason: p.reason }
     try {
       await c.put(`/supplier_invoices/${ref}/e_invoice_status`, body)
     } catch (e) {
       if (e instanceof PennylaneApiError && (e.status === 422 || e.status === 400)) {
         const after = await readNormalised(c, ref)
-        return opError("provider_rejected", `Pennylane refused to ${action} supplier invoice ${ref} (${e.status})`, false, {
-          status: e.status,
-          body: e.body,
-          now: "status" in after && (after as OpError).status === "error" ? null : (after as ReceivedInvoice).status,
-        })
+        return opError(
+          "provider_rejected",
+          `Pennylane refused to ${action} supplier invoice ${ref} (${e.status})`,
+          false,
+          {
+            status: e.status,
+            body: e.body,
+            now:
+              "status" in after && (after as OpError).status === "error"
+                ? null
+                : (after as ReceivedInvoice).status,
+          },
+        )
       }
       throw e
     }

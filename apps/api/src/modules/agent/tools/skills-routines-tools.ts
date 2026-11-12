@@ -2679,7 +2679,7 @@ async function refuseOwnerApprover(
 /** The one trigger a sender filter applies to (S26). */
 const MAIL_SENDER_FILTER_EVENT = "mail:message:create"
 
-/** The triggers a table row filter applies to (0297). */
+/** The triggers a table row filter applies to (0298). */
 const TABLE_ROW_FILTER_EVENTS: readonly string[] = [
   "kernel:dashboard_table_row:created",
   "kernel:dashboard_table_row:updated",
@@ -2707,7 +2707,7 @@ function filterFitsEvent(
 /**
  * Normalise a routine's event filter against its trigger. A sender filter (S26) belongs to
  * `mail:message:create`: empty lists are dropped and an empty filter is stored as null. A table
- * row filter ({tableId, column?, to?}, 0297) belongs to the `kernel:dashboard_table_row:*`
+ * row filter ({tableId, column?, to?}, 0298) belongs to the `kernel:dashboard_table_row:*`
  * triggers; `to` needs a column. A filter on any other trigger is refused rather than stored inert.
  */
 function resolveRoutineEventFilter(

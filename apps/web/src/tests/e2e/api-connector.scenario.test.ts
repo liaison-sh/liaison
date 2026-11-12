@@ -15,11 +15,11 @@
 //      sender, collapsible from its header.
 import { readFileSync } from "node:fs"
 import { api, createUserWithScopes } from "@liaison/test-helpers"
-import { FIXTURE_CRM_ADAPTER_FILE } from "../../../../api/src/apps/api-connector/__fixtures__/fixture-crm/adapter"
+import { FIXTURE_CRM_ADAPTER_FILE } from "../../../../api/src/modules/apps/connections/api/__fixtures__/fixture-crm/adapter"
 import {
   type FixtureCrm,
   startFixtureCrm,
-} from "../../../../api/src/apps/api-connector/__fixtures__/fixture-crm/server"
+} from "../../../../api/src/modules/apps/connections/api/__fixtures__/fixture-crm/server"
 import { expect, loginAs, test } from "./fixtures/test"
 import { resolveContact } from "./helpers/contacts-seed"
 import { seedMailAccount, seedMailConversation } from "./helpers/mail-fixtures"

@@ -7,8 +7,6 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
-import { apiConnectorAppManifest } from "~/apps/api-connector/manifest-descriptor"
-import { googleDriveAppManifest } from "~/apps/google-drive/manifest-descriptor"
 import type { RlsClient } from "~/db"
 import type { BridgeExtensionFactory } from "~/modules/apps/sandbox/bridge-extensions"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
@@ -29,10 +27,7 @@ const FIXTURES_DIR = join(import.meta.dir, "fixtures")
 
 /** In-tree apps that run sandboxed, with their manifest descriptors. */
 const IN_TREE: Record<string, { _bundlePath: string; _bridgeExtension?: BridgeExtensionFactory }> =
-  {
-    "api-connector": apiConnectorAppManifest,
-    "google-drive": googleDriveAppManifest,
-  }
+  {}
 
 /** Construction of a bridge never touches the database; any access throws. */
 const poisonTx = new Proxy(
@@ -51,9 +46,20 @@ function kindOf(fn: unknown): "sync" | "async" {
     : "sync"
 }
 
-/** The bridge methods a run of `app` gets, with their sync/async kind. */
-export function bridgeSurfaceOf(app: string, extension?: BridgeExtensionFactory): BridgeSurface {
-  const bridge = createRpcBridge(app, CONTRACT_USER_ID, CONTRACT_ORG_ID, poisonTx, { name: app })
+/**
+ * The bridge methods a run of `app` gets, with their sync/async kind. The
+ * manifest's connections decide the platform groups a connection kind brings
+ * (`api_*` for an app declaring an API connection).
+ */
+export function bridgeSurfaceOf(
+  app: string,
+  extension?: BridgeExtensionFactory,
+  manifest?: { connections?: Record<string, unknown> },
+): BridgeSurface {
+  const bridge = createRpcBridge(app, CONTRACT_USER_ID, CONTRACT_ORG_ID, poisonTx, {
+    name: app,
+    ...(manifest?.connections ? { connections: manifest.connections as never } : {}),
+  })
   const surface = new Map<string, "sync" | "async">()
   for (const [name, fn] of Object.entries(bridge)) {
     if (typeof fn === "function") surface.set(name, kindOf(fn))
@@ -128,7 +134,7 @@ export async function loadAppUnderContract(app: string): Promise<AppUnderContrac
     entries: contractEntries(manifest),
     source: scripts.source,
     templateSource: scripts.templateSource,
-    surface: bridgeSurfaceOf(app),
+    surface: bridgeSurfaceOf(app, undefined, manifest),
     verifySurface: verifySurface(),
     fixtures: fixturesOf(app),
   }

@@ -37,7 +37,12 @@ export type ClassifyErrorCode =
 
 export type ClassifyResult =
   | { regime: Regime; reasons: RegimeReason[]; internalCancellation?: boolean }
-  | { regime: null; error: { code: ClassifyErrorCode }; reasons: RegimeReason[]; internalCancellation?: undefined }
+  | {
+      regime: null
+      error: { code: ClassifyErrorCode }
+      reasons: RegimeReason[]
+      internalCancellation?: undefined
+    }
 
 const R = {
   not_invoice: {
@@ -115,7 +120,10 @@ export function classifyRegime(input: ClassifyInput): ClassifyResult {
   if (terr.territory === "needs_review") {
     if (input.territoryTreatment === "as_fr") french = true
     else if (input.territoryTreatment !== "as_foreign") {
-      return { regime: "needs_review", reasons: [R.needs_review(terr.code ?? "buyer_country_missing")] }
+      return {
+        regime: "needs_review",
+        reasons: [R.needs_review(terr.code ?? "buyer_country_missing")],
+      }
     }
   }
   // 5
@@ -130,7 +138,8 @@ export function classifyRegime(input: ClassifyInput): ClassifyResult {
     )
   }
   // 7
-  if (kind === "individual" || kind === "non_registered_entity") return { regime: "e_reporting", reasons: [R.not_business] }
+  if (kind === "individual" || kind === "non_registered_entity")
+    return { regime: "e_reporting", reasons: [R.not_business] }
   if (kind === "public_entity") return { regime: "out_of_scope", reasons: [R.public_entity] }
   // 8
   const siren = (input.buyerSiren ?? "").trim()
@@ -142,7 +151,11 @@ export function classifyRegime(input: ClassifyInput): ClassifyResult {
     )
   }
   if (!isValidSiren(siren)) {
-    return err("siren_invalid", "The buyer's SIREN is not valid.", "Le SIREN de l'acheteur n'est pas valide.")
+    return err(
+      "siren_invalid",
+      "The buyer's SIREN is not valid.",
+      "Le SIREN de l'acheteur n'est pas valide.",
+    )
   }
   if (input.sirenStatus === "C") {
     return err(

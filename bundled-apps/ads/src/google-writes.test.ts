@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
 import {
-  google_create_campaign,
-  google_create_adgroup,
-  google_create_ad,
-  google_update_budget,
-  google_set_status,
   google_add_negative_keywords,
+  google_create_ad,
+  google_create_adgroup,
+  google_create_campaign,
   google_create_conversion_action,
+  google_set_status,
+  google_update_budget,
 } from "./google-writes"
 import { GoogleConfigError } from "./lib/google-config"
 
@@ -120,7 +120,7 @@ describe("google_create_campaign", () => {
       ctx,
     )
     expect(calls[1]?.body).toContain("PAUSED")
-    expect(calls[1]?.body).not.toContain("\"status\":\"ENABLED\"")
+    expect(calls[1]?.body).not.toContain('"status":"ENABLED"')
   })
 
   it("rejects an invalid advertising_channel_type", async () => {
@@ -158,7 +158,11 @@ describe("google_create_campaign", () => {
       },
       ctx,
     )) as { experiment?: unknown }
-    expect(result.experiment).toEqual({ title: "Brand test", hypothesis: "h", metric_tier: "blended" })
+    expect(result.experiment).toEqual({
+      title: "Brand test",
+      hypothesis: "h",
+      metric_tier: "blended",
+    })
   })
 
   it("defaults bidding_strategy to manualCpc for SEARCH when omitted, embedded in the campaigns:mutate body", async () => {
@@ -167,7 +171,12 @@ describe("google_create_campaign", () => {
       mutateOk("customers/1234567890/campaigns/222"),
     ])
     const result = (await google_create_campaign(
-      { name: "Search — Brand", advertising_channel_type: "SEARCH", daily_budget: 10, currency: "EUR" },
+      {
+        name: "Search — Brand",
+        advertising_channel_type: "SEARCH",
+        daily_budget: 10,
+        currency: "EUR",
+      },
       ctx,
     )) as { bidding_strategy_type?: string }
     expect(calls[1]?.body).toContain("manualCpc")
@@ -180,7 +189,12 @@ describe("google_create_campaign", () => {
       mutateOk("customers/1234567890/campaigns/222"),
     ])
     const result = (await google_create_campaign(
-      { name: "PMax", advertising_channel_type: "PERFORMANCE_MAX", daily_budget: 10, currency: "EUR" },
+      {
+        name: "PMax",
+        advertising_channel_type: "PERFORMANCE_MAX",
+        daily_budget: 10,
+        currency: "EUR",
+      },
       ctx,
     )) as { bidding_strategy_type?: string }
     expect(calls[1]?.body).toContain("maximizeConversions")
@@ -258,15 +272,19 @@ describe("google_create_adgroup", () => {
 
   it("connection-absent -> connect-error", async () => {
     const { ctx } = noConnCtx()
-    await expect(
-      google_create_adgroup({ campaign_id: "222", name: "x" }, ctx),
-    ).rejects.toThrow(GoogleConfigError)
+    await expect(google_create_adgroup({ campaign_id: "222", name: "x" }, ctx)).rejects.toThrow(
+      GoogleConfigError,
+    )
   })
 
   it("threads the experiment field into the returned payload for the summarizer", async () => {
     const { ctx } = makeCtx([mutateOk("customers/1234567890/adGroups/333")])
     const result = (await google_create_adgroup(
-      { campaign_id: "222", name: "Ad group 1", experiment: { title: "t", hypothesis: "h", metric_tier: "blended" } },
+      {
+        campaign_id: "222",
+        name: "Ad group 1",
+        experiment: { title: "t", hypothesis: "h", metric_tier: "blended" },
+      },
       ctx,
     )) as { experiment?: unknown }
     expect(result.experiment).toEqual({ title: "t", hypothesis: "h", metric_tier: "blended" })
@@ -331,7 +349,12 @@ describe("google_create_ad", () => {
     const { ctx } = makeCtx([])
     await expect(
       google_create_ad(
-        { ad_group_id: "333", headlines: ["a", "b", "c"], descriptions: ["a", "b"], final_urls: [] },
+        {
+          ad_group_id: "333",
+          headlines: ["a", "b", "c"],
+          descriptions: ["a", "b"],
+          final_urls: [],
+        },
         ctx,
       ),
     ).rejects.toThrow(/final_urls/)
@@ -341,7 +364,12 @@ describe("google_create_ad", () => {
     const { ctx } = noConnCtx()
     await expect(
       google_create_ad(
-        { ad_group_id: "333", headlines: ["a", "b", "c"], descriptions: ["a", "b"], final_urls: ["https://x.com"] },
+        {
+          ad_group_id: "333",
+          headlines: ["a", "b", "c"],
+          descriptions: ["a", "b"],
+          final_urls: ["https://x.com"],
+        },
         ctx,
       ),
     ).rejects.toThrow(GoogleConfigError)
@@ -354,7 +382,11 @@ describe("google_update_budget", () => {
   it("campaignBudgets:mutate update, major->micros exact", async () => {
     const { ctx, calls } = makeCtx([mutateOk("customers/1234567890/campaignBudgets/111")])
     const result = (await google_update_budget(
-      { budget_resource_name: "customers/1234567890/campaignBudgets/111", amount: 42.5, currency: "EUR" },
+      {
+        budget_resource_name: "customers/1234567890/campaignBudgets/111",
+        amount: 42.5,
+        currency: "EUR",
+      },
       ctx,
     )) as { amount_micros?: number; amount?: number; currency?: string }
     expect(calls.length).toBe(1)
@@ -436,7 +468,13 @@ describe("google_add_negative_keywords", () => {
   it("adGroupCriteria:mutate adds negative keyword criteria, enumerated", async () => {
     const { ctx, calls } = makeCtx([mutateOk("customers/1234567890/adGroupCriteria/1")])
     const result = (await google_add_negative_keywords(
-      { ad_group_id: "333", keywords: [{ text: "free", match_type: "BROAD" }, { text: "cheap", match_type: "PHRASE" }] },
+      {
+        ad_group_id: "333",
+        keywords: [
+          { text: "free", match_type: "BROAD" },
+          { text: "cheap", match_type: "PHRASE" },
+        ],
+      },
       ctx,
     )) as { added?: unknown[] }
     expect(calls.length).toBe(1)

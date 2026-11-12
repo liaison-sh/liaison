@@ -20,7 +20,10 @@ export const PENNYLANE_STATUS_MAP: Readonly<Record<string, LifecycleState>> = {
 /** Official lifecycle codes Pennylane does not expose (never observed through this provider). */
 export const NOT_OBSERVABLE_CODES: readonly number[] = [202, 203, 206, 208, 209, 211]
 
-export function mapPennylaneStatus(raw: unknown): { mapped: LifecycleState | null; code: number | null } {
+export function mapPennylaneStatus(raw: unknown): {
+  mapped: LifecycleState | null
+  code: number | null
+} {
   if (typeof raw !== "string") return { mapped: null, code: null }
   const mapped = PENNYLANE_STATUS_MAP[raw] ?? null
   return { mapped, code: mapped ? LIFECYCLE_CODE[mapped] : null }

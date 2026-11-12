@@ -3,51 +3,51 @@
 // Invoicing mutations: quote, proforma and purchase order issuance (issue from a draft with
 // threshold gating, and the generic create and issue path).
 
-import { documentsGet, type ReadsCtx } from "../reads"
+import { asHandlerSummary, issueCard } from "../approval-cards"
+import { type BuyerVatFacts, checkBuyerVat, needsHumanBuyerDecision } from "../buyer-vat"
 import {
   type Counterparty,
+  counterpartyCompletenessError,
   type DraftLine,
   type DraftLineInput,
   issueDocument,
-  counterpartyCompletenessError,
   taxCountryOf,
 } from "../issue"
+import { issueDateParts } from "../issue-date"
+import { documentsGet, type ReadsCtx } from "../reads"
 import type { ClassifyInput } from "../tax"
+import { planTax } from "../tax-plan"
 import {
-  type IssuerProfileRow,
   findIssuerProfile,
   getDraft,
+  type IssuerProfileRow,
   resolveIssuerProfileOrError,
 } from "./db-helpers"
 import {
-  checkTwoEyes,
-  counterpartyFromRow,
-  computeLineFinancials,
   buildIssueInputFromDraft,
-  normaliseDraftLines,
+  checkTwoEyes,
+  computeLineFinancials,
+  counterpartyFromRow,
   netLinesForIssuer,
+  normaliseDraftLines,
 } from "./lines"
 import {
-  type MutationsCtx,
-  type DraftRow,
   type DocumentType,
+  type DraftRow,
   type ErrorEnvelope,
+  lineAmountsError,
+  lineDiscountError,
   type MutationResult,
+  type MutationsCtx,
   type MutationsDb,
+  normaliseCustomerReference,
+  normaliseNotes,
   type PreflightResult,
   toBigInt,
-  normaliseNotes,
-  lineAmountsError,
   toPreflightResult,
-  lineDiscountError,
-  normaliseCustomerReference,
 } from "./shared"
 import { quoteCreateViaShopifyDraftOrder } from "./shopify-quote"
-import { asHandlerSummary, issueCard } from "../approval-cards"
-import { type BuyerVatFacts, checkBuyerVat, needsHumanBuyerDecision } from "../buyer-vat"
-import { issueDateParts } from "../issue-date"
 import { draftOrderDateRefusal, statedIssueDate } from "./stated-issue-date"
-import { planTax } from "../tax-plan"
 
 // ── Quote / Proforma / PO issuance (E7) ──────────────────────────────────
 
@@ -130,18 +130,27 @@ export async function checkDraftBuyer(
   draft: DraftRow,
   issuer: IssuerProfileRow,
   counterparty: Counterparty,
-): Promise<{ ok: true; counterparty: Counterparty; buyer: BuyerVatFacts } | { ok: false; error: ErrorEnvelope }> {
+): Promise<
+  | { ok: true; counterparty: Counterparty; buyer: BuyerVatFacts }
+  | { ok: false; error: ErrorEnvelope }
+> {
   const r = await checkBuyerVat(ctx, {
     issuerCountry: issuer.country,
     taxCountry: taxCountryOf(counterparty),
-    counterparty: { ...counterparty, customer_kind: counterparty.customer_kind ?? draft.customer_kind ?? null },
+    counterparty: {
+      ...counterparty,
+      customer_kind: counterparty.customer_kind ?? draft.customer_kind ?? null,
+    },
     buyerIsConsumer: draft.external_refs?.buyer_is_consumer === true,
     excludeDocumentId: draft.id,
   })
   if (!r.ok) return { ok: false, error: r.error }
   return {
     ok: true,
-    counterparty: r.facts.vat_id && !counterparty.vat_id ? { ...counterparty, vat_id: r.facts.vat_id } : counterparty,
+    counterparty:
+      r.facts.vat_id && !counterparty.vat_id
+        ? { ...counterparty, vat_id: r.facts.vat_id }
+        : counterparty,
     buyer: r.facts,
   }
 }
@@ -233,20 +242,14 @@ function pickThreshold(
   gatingKind: GatingKind,
 ): bigint | null {
   let raw: string | number | null | undefined
-  if (gatingKind === "conditional_invoice")
-    raw = issuer.invoice_approval_threshold_minor
-  else if (gatingKind === "conditional_po")
-    raw = issuer.po_approval_threshold_minor
+  if (gatingKind === "conditional_invoice") raw = issuer.invoice_approval_threshold_minor
+  else if (gatingKind === "conditional_po") raw = issuer.po_approval_threshold_minor
   else return null
   if (raw == null) return null
   return toBigInt(raw)
 }
 
-function computeMustGate(
-  gatingKind: GatingKind,
-  total: bigint,
-  threshold: bigint | null,
-): boolean {
+function computeMustGate(gatingKind: GatingKind, total: bigint, threshold: bigint | null): boolean {
   if (gatingKind === "always") return true
   if (gatingKind === "none") return false
   // A purchase order is an outbound commitment: an unset threshold means threshold 0 (always approve).
@@ -265,13 +268,7 @@ export async function quoteIssue(
       error: { code: "not_found", message: `draft ${input.draft_id} not found` },
     }
   }
-  return issueFromDraftWithGating(
-    ctx,
-    draft,
-    "quote",
-    "invoicing:quote_issue",
-    "always",
-  )
+  return issueFromDraftWithGating(ctx, draft, "quote", "invoicing:quote_issue", "always")
 }
 
 export interface QuoteCreateAndIssueInput {
@@ -422,9 +419,7 @@ async function preflightCreateAndIssueParams(
       limit: 50,
     })) as Array<Record<string, unknown>>
     const match = existing.find(
-      (r) =>
-        r.type === type &&
-        ((r.shipment_ref as string | null) ?? null) === wantedRef,
+      (r) => r.type === type && ((r.shipment_ref as string | null) ?? null) === wantedRef,
     )
     if (match) {
       const differs = await existingContentDiffers(ctx, match, input)
@@ -497,7 +492,15 @@ async function preflightCreateAndIssueParams(
     const refused = await draftOrderDateRefusal(ctx, issuer, input.issued_at)
     if (refused) return { ok: false, error: refused }
   }
-  return { ok: true, input, notes, customerReference: customerReference.value ?? null, issuer, currency, buyer }
+  return {
+    ok: true,
+    input,
+    notes,
+    customerReference: customerReference.value ?? null,
+    issuer,
+    currency,
+    buyer,
+  }
 }
 
 const NO_BUYER_FACTS: BuyerVatFacts = {
@@ -611,8 +614,7 @@ async function createAndIssueGenerically(
   // issueDocument mirrors these two onto the top-level indexed columns, which
   // carry the (shopify_order_id, scope, shipment_ref) uniqueness backstop.
   if (input.shopify_order_id) externalRefs.shopify_order_id = input.shopify_order_id
-  if (input.shopify_order_number)
-    externalRefs.shopify_order_number = input.shopify_order_number
+  if (input.shopify_order_number) externalRefs.shopify_order_number = input.shopify_order_number
   if (input.shipment_ref) externalRefs.shipment_ref = input.shipment_ref
   // Mirrored onto the top-level shopify_draft_order_id/_name columns by issueDocument.
   if (input.shopify_draft_order_id)
@@ -750,11 +752,13 @@ async function existingContentDiffers(
       })
     }
   }
-  const stored = ((await ctx.db.findMany("document_lines", {
-    where: { document_id: String(doc.id) },
-    orderBy: { position: "asc" },
-    limit: 1000,
-  })) as Array<Record<string, unknown>>)
+  const stored = (
+    (await ctx.db.findMany("document_lines", {
+      where: { document_id: String(doc.id) },
+      orderBy: { position: "asc" },
+      limit: 1000,
+    })) as Array<Record<string, unknown>>
+  )
     .slice()
     .sort((a, b) => Number(a.position ?? 0) - Number(b.position ?? 0))
   if (stored.length !== items.length) return "lines"
@@ -767,7 +771,8 @@ async function existingContentDiffers(
   }
   for (const [i, want] of items.entries()) {
     const have = stored[i]!
-    if (String(have.description ?? "").trim() !== String(want.description ?? "").trim()) return "lines"
+    if (String(have.description ?? "").trim() !== String(want.description ?? "").trim())
+      return "lines"
     if (Number(have.quantity) !== Number(want.quantity)) return "lines"
     if (minor(have.unit_price_minor) !== want.unit_price_minor) return "lines"
     if (minor(have.discount_minor) !== (want.discount_minor ?? 0n)) return "lines"
@@ -884,10 +889,14 @@ export async function quoteCreateAndIssue(
         current_payload: input,
         editable_fields: ["items"],
       })
-      if (!approval.auto_approved) return { status: "pending_approval", approval_id: approval.approval_id }
+      if (!approval.auto_approved)
+        return { status: "pending_approval", approval_id: approval.approval_id }
     }
     const vat = buyerCheck.facts.vat_id
-    const withVat = vat && !input.counterparty.vat_id ? { ...input, counterparty: { ...input.counterparty, vat_id: vat } } : input
+    const withVat =
+      vat && !input.counterparty.vat_id
+        ? { ...input, counterparty: { ...input.counterparty, vat_id: vat } }
+        : input
     return quoteCreateViaShopifyDraftOrder(ctx, withVat, issuerResolution.issuer)
   }
   return createAndIssueGenerically(
@@ -918,7 +927,10 @@ export async function quoteCreateAndIssuePreflight(
 }
 
 /** quote_issue's stage-time check: the same as proforma_issue's (see below). */
-export async function quoteIssuePreflight(ctx: MutationsCtx, input: { draft_id: string }): Promise<PreflightResult> {
+export async function quoteIssuePreflight(
+  ctx: MutationsCtx,
+  input: { draft_id: string },
+): Promise<PreflightResult> {
   const draft = await getDraft(ctx.db, input.draft_id)
   if (!draft) return { error: { code: "not_found", message: `draft ${input.draft_id} not found` } }
   return toPreflightResult(await preflightIssueFromDraft(ctx, draft, "quote"))
@@ -946,13 +958,7 @@ export async function proformaIssue(
       error: { code: "not_found", message: `draft ${input.draft_id} not found` },
     }
   }
-  return issueFromDraftWithGating(
-    ctx,
-    draft,
-    "proforma",
-    "invoicing:proforma_issue",
-    "always",
-  )
+  return issueFromDraftWithGating(ctx, draft, "proforma", "invoicing:proforma_issue", "always")
 }
 
 export interface ProformaCreateAndIssueInput extends QuoteCreateAndIssueInput {
@@ -991,7 +997,10 @@ export async function draftIssuePreview(
   ctx: MutationsCtx & ReadsCtx,
   input: { draft_id: string },
 ): Promise<Record<string, unknown> | null> {
-  const doc = (await documentsGet(ctx, { id: input.draft_id })) as unknown as Record<string, unknown> | null
+  const doc = (await documentsGet(ctx, { id: input.draft_id })) as unknown as Record<
+    string,
+    unknown
+  > | null
   const draft = doc ? await getDraft(ctx.db, String(doc.id)) : null
   const issuer = draft ? await findIssuerProfile(ctx.db, draft.issuer_profile_id) : null
   if (!doc || !draft || !issuer || !draft.lines?.length) return doc

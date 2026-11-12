@@ -7,8 +7,6 @@ import { bodyLimit } from "hono/body-limit"
 import { every } from "hono/combine"
 import { cors } from "hono/cors"
 import { pinoLogger } from "hono-pino"
-import { drivePickerRoutes } from "~/apps/google-drive/picker-routes"
-import { driveSharedDrivesRoutes } from "~/apps/google-drive/shared-drives-routes"
 import { knowledgeRoutes } from "~/apps/knowledge/routes"
 import { mcpManagerAuditRoutes } from "~/apps/mcp-manager/audit-routes"
 import { mcpManagerOAuthRoutes } from "~/apps/mcp-manager/oauth-routes"
@@ -60,7 +58,7 @@ import {
   appSkillsRoutes,
   skillsRoutes,
 } from "~/modules/agent/skills/skills-routes"
-import { apiConnectorRoutes } from "~/modules/api-connector/routes"
+import "~/modules/apps/connections/api/registrations"
 import { appLogsRoutes } from "~/modules/app-builder/logs-routes"
 import { builderRoutes } from "~/modules/app-builder/routes"
 import { APPROVAL_DECIDE_BODY_MAX_BYTES } from "~/modules/approvals/mailbox-fulfilment"
@@ -786,9 +784,6 @@ app.use("/api/user/preferences/*", authMw, orgLimiter)
 app.route("/api/user/preferences", preferencesRoutes)
 
 // API connector admin/read routes (kernel module; scopes checked per route).
-app.use("/api/api-connector/*", authMw, orgLimiter)
-app.use("/api/api-connector/*", kernelPrefixStateGate("api-connector"))
-app.route("/api/api-connector", apiConnectorRoutes)
 
 app.use("/api/assist", authMw, orgLimiter)
 app.use("/api/assist/*", authMw, orgLimiter)
@@ -1284,19 +1279,6 @@ app.route("/api/connections", connectionRoutes)
 // session in the path is the credential; the app's handler runs as the person
 // the link was minted for.
 app.route("/api/app-pages", appPageRoutes)
-// The Google Picker page (google-drive/picker-page.ts): public, its one-time
-// ticket in the path is the only credential; it renders once per ticket.
-app.get("/api/drive-picker/:ticket", async (c) => {
-  const { drivePickerPage } = await import("~/apps/google-drive/picker-page")
-  return drivePickerPage(c)
-})
-app.post("/api/drive-picker/:ticket/items", async (c) => {
-  const { drivePickerPageSave } = await import("~/apps/google-drive/picker-page")
-  return drivePickerPageSave(c)
-})
-app.use("/api/google-drive/*", authMw, orgLimiter)
-app.route("/api/google-drive", drivePickerRoutes)
-app.route("/api/google-drive", driveSharedDrivesRoutes)
 
 app.use("/api/mail", authMw, orgLimiter)
 app.use("/api/mail/*", authMw, orgLimiter)

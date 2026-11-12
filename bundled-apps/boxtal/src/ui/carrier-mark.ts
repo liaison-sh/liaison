@@ -109,12 +109,33 @@ export const CARRIER_MARKS: readonly CarrierMark[] = [
     bg: "#ffce00",
     width: 44,
   },
-  { brand: "mondialrelay", name: "Mondial Relay", text: "Mondial Relay", fg: "#c8102e", bg: "#ffffff", width: 46 },
-  { brand: "colisprive", name: "Colis Prive", text: "Colis Prive", fg: "#e2530f", bg: "#ffffff", width: 44 },
+  {
+    brand: "mondialrelay",
+    name: "Mondial Relay",
+    text: "Mondial Relay",
+    fg: "#c8102e",
+    bg: "#ffffff",
+    width: 46,
+  },
+  {
+    brand: "colisprive",
+    name: "Colis Prive",
+    text: "Colis Prive",
+    fg: "#e2530f",
+    bg: "#ffffff",
+    width: 44,
+  },
   // White on the TNT orange.
   { brand: "tnt", name: "TNT", text: "TNT", fg: "#ffffff", bg: "#ff6600", width: 26 },
   { brand: "sodexi", name: "Sodexi", text: "Sodexi", fg: "#0a5c9e", bg: "#ffffff", width: 32 },
-  { brand: "happypost", name: "Happy Post", text: "Happy Post", fg: "#00706b", bg: "#ffffff", width: 44 },
+  {
+    brand: "happypost",
+    name: "Happy Post",
+    text: "Happy Post",
+    fg: "#00706b",
+    bg: "#ffffff",
+    width: 44,
+  },
 ]
 
 const MARK_BY_BRAND = new Map<string, CarrierMark>(CARRIER_MARKS.map((m) => [m.brand, m]))

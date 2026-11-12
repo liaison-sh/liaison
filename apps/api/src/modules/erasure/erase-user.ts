@@ -1354,7 +1354,7 @@ export async function eraseUser(
       await tx.execute(drizzleSql`
         UPDATE ${K}.dashboard_versions SET saved_by = NULL WHERE saved_by = ${userId}
       `)
-      // Dashboard tables (0297): org data, so attribution only; a row change's actor too.
+      // Dashboard tables (0298): org data, so attribution only; a row change's actor too.
       await tx.execute(drizzleSql`
         UPDATE ${K}.dashboard_tables SET owner_user_id = NULL WHERE owner_user_id = ${userId}
       `)

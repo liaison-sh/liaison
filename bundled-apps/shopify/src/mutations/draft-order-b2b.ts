@@ -38,7 +38,8 @@ export interface PriceException {
   note: string | null
 }
 
-const str = (v: unknown): string | null => (typeof v === "string" && v.trim() !== "" ? v.trim() : null)
+const str = (v: unknown): string | null =>
+  typeof v === "string" && v.trim() !== "" ? v.trim() : null
 
 /**
  * Read a `priceException` ({ reason, note }, or a bare reason string). Undefined when absent; throws
@@ -64,9 +65,17 @@ export function priceExceptionLabel(e: PriceException): string {
 }
 
 /** Append (or replace) the price-exception attribute on a customAttributes array. */
-export function withPriceExceptionAttribute(attrs: unknown, e: PriceException): Array<Record<string, unknown>> {
-  const kept = (Array.isArray(attrs) ? attrs.filter(isRec) : []).filter((a) => a.key !== PRICE_EXCEPTION_ATTRIBUTE)
-  return [...kept.map((a) => ({ ...a })), { key: PRICE_EXCEPTION_ATTRIBUTE, value: priceExceptionLabel(e) }]
+export function withPriceExceptionAttribute(
+  attrs: unknown,
+  e: PriceException,
+): Array<Record<string, unknown>> {
+  const kept = (Array.isArray(attrs) ? attrs.filter(isRec) : []).filter(
+    (a) => a.key !== PRICE_EXCEPTION_ATTRIBUTE,
+  )
+  return [
+    ...kept.map((a) => ({ ...a })),
+    { key: PRICE_EXCEPTION_ATTRIBUTE, value: priceExceptionLabel(e) },
+  ]
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -113,7 +122,11 @@ export interface B2bContext {
   /** True when the buyer is a B2B company (or a company contact). */
   b2b: boolean
   /** A company location already on the draft (update path). */
-  existingCompany: { companyName: string | null; locationId: string | null; locationName: string | null } | null
+  existingCompany: {
+    companyName: string | null
+    locationId: string | null
+    locationName: string | null
+  } | null
   /** The companies the customer is a contact of (for the refusal message). */
   contactCompanies: ContactCompany[]
 }
@@ -147,7 +160,11 @@ const CUSTOMER_COMPANIES_QUERY = `
 interface ContactProfileNode {
   id?: string | null
   company?: { id?: string | null; name?: string | null } | null
-  roleAssignments?: { nodes?: Array<{ companyLocation?: { id?: string | null; name?: string | null } | null } | null> | null } | null
+  roleAssignments?: {
+    nodes?: Array<{
+      companyLocation?: { id?: string | null; name?: string | null } | null
+    } | null> | null
+  } | null
 }
 
 function contactCompaniesOf(profiles: ContactProfileNode[] | null | undefined): ContactCompany[] {
@@ -160,13 +177,21 @@ function contactCompaniesOf(profiles: ContactProfileNode[] | null | undefined): 
       const id = str(n?.companyLocation?.id)
       return id ? [{ id, name: str(n?.companyLocation?.name) }] : []
     })
-    out.push({ companyId, companyName: str(p.company?.name), companyContactId: contactId, locations })
+    out.push({
+      companyId,
+      companyName: str(p.company?.name),
+      companyContactId: contactId,
+      locations,
+    })
   }
   return out
 }
 
 /** The companies a Shopify customer is a contact of (empty for a consumer). Throws on a failed read. */
-export async function readContactCompanies(client: ShopClient, customerId: string): Promise<ContactCompany[]> {
+export async function readContactCompanies(
+  client: ShopClient,
+  customerId: string,
+): Promise<ContactCompany[]> {
   let data: { customer?: { companyContactProfiles?: ContactProfileNode[] | null } | null }
   try {
     data = await client.query(CUSTOMER_COMPANIES_QUERY, { id: customerId })
@@ -226,7 +251,9 @@ export async function resolveB2bContext(
   if (args.draftId) {
     let draft: DraftBuyerNode | null | undefined
     try {
-      const data = await client.query<{ draftOrder?: DraftBuyerNode | null }>(DRAFT_BUYER_QUERY, { id: args.draftId })
+      const data = await client.query<{ draftOrder?: DraftBuyerNode | null }>(DRAFT_BUYER_QUERY, {
+        id: args.draftId,
+      })
       draft = data.draftOrder
     } catch (err) {
       throw b2bCheckFailed(err)
@@ -271,7 +298,8 @@ export function companyRequiredError(contactCompanies: ContactCompany[]): Error 
   )
 }
 
-const COMPANY_ADDRESS_FIELDS = "address1 address2 city zip province zoneCode countryCode companyName recipient firstName lastName phone"
+const COMPANY_ADDRESS_FIELDS =
+  "address1 address2 city zip province zoneCode countryCode companyName recipient firstName lastName phone"
 
 const PURCHASING_COMPANY_QUERY = `
   query B2bPurchasingCompany($contactId: ID!, $locationId: ID!) {
@@ -306,7 +334,9 @@ interface PurchasingCompanyData {
       taxExempt?: boolean | null
       defaultAddress?: Record<string, unknown> | null
     } | null
-    roleAssignments?: { nodes?: Array<{ companyLocation?: { id?: string | null } | null } | null> | null } | null
+    roleAssignments?: {
+      nodes?: Array<{ companyLocation?: { id?: string | null } | null } | null> | null
+    } | null
   } | null
   companyLocation?: {
     id?: string | null
@@ -327,7 +357,9 @@ export async function verifyPurchasingCompany(
   client: ShopClient,
   pc: PurchasingCompanyIds,
 ): Promise<VerifiedCompanyBuyer> {
-  const missing = (["companyId", "companyLocationId", "companyContactId"] as const).filter((k) => !pc[k])
+  const missing = (["companyId", "companyLocationId", "companyContactId"] as const).filter(
+    (k) => !pc[k],
+  )
   if (missing.length > 0) {
     throw makeMutationError(
       "B2B_COMPANY_INCOMPLETE",
@@ -358,7 +390,9 @@ export async function verifyPurchasingCompany(
       `companyContactId ${pc.companyContactId} is not a contact of company ${pc.companyId}. Read the company's contacts with companies_get.`,
     )
   }
-  const hasRole = (contact.roleAssignments?.nodes ?? []).some((n) => str(n?.companyLocation?.id) === pc.companyLocationId)
+  const hasRole = (contact.roleAssignments?.nodes ?? []).some(
+    (n) => str(n?.companyLocation?.id) === pc.companyLocationId,
+  )
   if (!hasRole) {
     throw makeMutationError(
       "B2B_CONTACT_NO_ROLE",
@@ -374,7 +408,10 @@ export async function verifyPurchasingCompany(
     location: {
       id: pc.companyLocationId as string,
       name: str(location.name),
-      taxExempt: typeof location.taxSettings?.taxExempt === "boolean" ? location.taxSettings.taxExempt : null,
+      taxExempt:
+        typeof location.taxSettings?.taxExempt === "boolean"
+          ? location.taxSettings.taxExempt
+          : null,
       taxRegistrationId: str(location.taxSettings?.taxRegistrationId),
       shippingAddress: isRec(location.shippingAddress) ? location.shippingAddress : null,
       billingAddress: isRec(location.billingAddress) ? location.billingAddress : null,
@@ -393,7 +430,9 @@ export async function verifyPurchasingCompany(
 }
 
 /** A Shopify CompanyAddress as a MailingAddressInput (recipient split into first/last name). */
-export function companyAddressToMailingInput(a: Record<string, unknown> | null): Record<string, unknown> | undefined {
+export function companyAddressToMailingInput(
+  a: Record<string, unknown> | null,
+): Record<string, unknown> | undefined {
   if (!a || !str(a.address1)) return undefined
   const out: Record<string, unknown> = {}
   const recipient = str(a.recipient)
@@ -531,14 +570,24 @@ export async function readLocationCatalogs(
   } catch (err) {
     throw catalogUnreadable(locationLabel, err)
   }
-  if (!data.companyLocation?.catalogs) throw catalogUnreadable(locationLabel, new Error("no catalogs returned"))
+  if (!data.companyLocation?.catalogs)
+    throw catalogUnreadable(locationLabel, new Error("no catalogs returned"))
   if (data.companyLocation.catalogs.pageInfo?.hasNextPage)
-    throw catalogUnreadable(locationLabel, new Error("more than 25 catalogs assigned to the location"))
+    throw catalogUnreadable(
+      locationLabel,
+      new Error("more than 25 catalogs assigned to the location"),
+    )
   const out: LocationCatalog[] = (data.companyLocation.catalogs.nodes ?? []).flatMap((n) => {
     const id = str(n?.id)
     if (!id || (n?.status && n.status !== "ACTIVE")) return []
     return [
-      { id, title: str(n?.title), priceListId: str(n?.priceList?.id), priceListName: str(n?.priceList?.name), source: "direct" },
+      {
+        id,
+        title: str(n?.title),
+        priceListId: str(n?.priceList?.id),
+        priceListName: str(n?.priceList?.name),
+        source: "direct",
+      },
     ]
   })
   for (const c of market.get(locationId) ?? []) {
@@ -585,7 +634,13 @@ export async function variantsWithFixedCatalogPrice(
           .join(" ")} }`,
     )
     .join(" ")
-  let data: Record<string, Record<string, { nodes?: Array<{ variant?: { id?: string | null } | null } | null> | null } | string | null> | null>
+  let data: Record<
+    string,
+    Record<
+      string,
+      { nodes?: Array<{ variant?: { id?: string | null } | null } | null> | null } | string | null
+    > | null
+  >
   try {
     data = await client.query(`query B2bFixedCatalogPrices { ${fields} }`)
   } catch (err) {
@@ -593,7 +648,8 @@ export async function variantsWithFixedCatalogPrice(
   }
   lists.forEach((c, i) => {
     const pl = data?.[`pl${i}`]
-    if (!pl) throw catalogUnreadable(locationLabel, new Error(`price list ${c.priceListId} not readable`))
+    if (!pl)
+      throw catalogUnreadable(locationLabel, new Error(`price list ${c.priceListId} not readable`))
     variants.forEach((v, j) => {
       const conn = pl[`v${j}`]
       const nodes = conn && typeof conn === "object" ? (conn.nodes ?? []) : []
@@ -615,11 +671,16 @@ export function noCatalogPriceError(
         .map(
           (c) =>
             `${c.title ?? c.id}${c.priceListName ? ` (price list ${c.priceListName})` : " (no price list)"}` +
-            (c.source.startsWith("market:") ? ` via market ${c.source.slice("market:".length)}` : ""),
+            (c.source.startsWith("market:")
+              ? ` via market ${c.source.slice("market:".length)}`
+              : ""),
         )
         .join(", ")
     : `no active catalog applies to ${locationLabel}`
-  const lines = missing.map((m) => `line ${m.index + 1}: no B2B price set for ${m.label ?? m.variantId} (${m.variantId}) in ${checked}`)
+  const lines = missing.map(
+    (m) =>
+      `line ${m.index + 1}: no B2B price set for ${m.label ?? m.variantId} (${m.variantId}) in ${checked}`,
+  )
   return makeMutationError(
     "B2B_NO_CATALOG_PRICE",
     `${lines.join("; ")}. Set one in the catalog's price list, or give an approved exception: ` +

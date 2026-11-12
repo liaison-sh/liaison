@@ -89,3 +89,4 @@ every member may export themself, another member needs kernel:data_subject:expor
 data_subject_export file counts toward the storage limit, STORAGE_QUOTA_EXCEEDED and nothing saved at the limit -> apps/api/src/modules/export/data-subject-export-tool.ts:705
 data_subject_export file: only the requester can open it, never the subject, another member or an admin -> apps/api/src/modules/files/rls-builder.ts:108 ; apps/api/src/modules/export/data-subject-export-tool.ts:739
 Member export: dashboard tables owned, made or changed (names and counts) -> apps/api/src/modules/export/member-data-subject-bundle.ts:244
+Export manifest names each app's version, a catalog app's active version -> apps/api/src/modules/export/orchestrator.ts:22

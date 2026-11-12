@@ -45,7 +45,6 @@ import {
 } from "solid-js"
 import type { ApiClient } from "~/lib/api-client"
 import { ApiError } from "~/lib/api-error"
-import { DrivePickerCard } from "~/modules/drive-picker/DrivePickerCard"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { MailboxSetupCard } from "~/modules/mailbox/MailboxSetupCard"
 import { runShellOAuth, shellRunsOAuth } from "~/modules/settings/oauth-connect"
@@ -683,10 +682,6 @@ const SecretRequestToolCard: Component<{ requestId: string }> = (props) => {
                   ? i18n.t("secret-request.connectedWithHint", { hint: r().hint ?? "" })
                   : i18n.t("secret-request.connected")}
               </p>
-              {/* A Drive connected with drive.file only: choose its files right here. */}
-              <Show when={r().target.app === "google-drive"}>
-                <DrivePickerCard quiet />
-              </Show>
               {/* The person's own mailbox: on to its mailbox password, if it waits for one. */}
               <Show when={personalMailbox(r())}>
                 <MailboxSetupCard quiet email={personalMailboxAddress(r())} />

@@ -22,11 +22,6 @@
  */
 import { type OAuthClientSource, orgKernelSettingsSchema } from "@liaison/shared"
 import { and, count, sql as drizzleSql, eq, inArray, notInArray, notLike } from "drizzle-orm"
-import {
-  API_CONNECTOR_APP,
-  API_CONNECTOR_CONNECTION,
-  listAdapterRows,
-} from "~/apps/api-connector/store"
 import { knowledgeRel } from "~/apps/knowledge/schema-refs"
 import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -36,6 +31,11 @@ import { rootLogger } from "~/lib/logger"
 import { getOrgKernelSettings } from "~/lib/settings"
 import { hasUsableModelKey } from "~/modules/agent/credits/credit-meter"
 import { connectionConfigRegistry } from "~/modules/apps/app-registries"
+import {
+  API_CONNECTOR_APP,
+  API_CONNECTOR_CONNECTION,
+  listAdapterRows,
+} from "~/modules/apps/connections/api/store"
 import { oauthConnectionKey, resolveOAuthClient } from "~/modules/apps/connections/oauth-client"
 import { connectionTurnedOff } from "~/modules/apps/connections/oauth-client-config"
 import {

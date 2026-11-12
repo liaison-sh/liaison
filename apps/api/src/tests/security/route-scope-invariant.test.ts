@@ -84,8 +84,6 @@ const ANY_MEMBER: Record<string, string> = {
   "GET /api/v1/slots/:slot": "app manifests and connection type definitions, no org data",
   "POST /api/connections/links/peek":
     "a one-time connect link, looked up by its secret token: what it connects, for the person it was minted for only",
-  "GET /api/google-drive/picker":
-    "the caller's own Drive accounts (org accounts only with the connection's admin scope) and whether the Picker is configured",
   "GET /api/bug-reports/forwarding":
     "whether the deployment offers forwarding a bug report, the same for every member",
   "GET /api/bug-reports/drafts":
@@ -202,14 +200,5 @@ describe("route scope invariant (a scopeless member against every session route)
   it("every route that answers a scopeless member is a reviewed any-member route", () => {
     const unreviewed = answered.filter((a) => !(a.split(" -> ")[0]! in ANY_MEMBER))
     expect(unreviewed).toEqual([])
-  })
-
-  // The org's Drive connections and the shared drives each shares are behind
-  // google-drive:accounts:read, the scope of the app's other account reads.
-  it("GET /api/google-drive/shared-drives refuses a scopeless member with 403", async () => {
-    const res = await app.request("/api/google-drive/shared-drives", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    expect(res.status).toBe(403)
   })
 })

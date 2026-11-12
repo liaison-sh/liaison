@@ -10,12 +10,12 @@
 import { Route, Router } from "@solidjs/router"
 import { fireEvent, render, screen, waitFor, within } from "@solidjs/testing-library"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import apiConnectorManifest from "../../../../../../bundled-apps/api-connector/app.manifest.json"
 import callsManifest from "../../../../../../bundled-apps/calls/app.manifest.json"
 import databaseManifest from "../../../../../../bundled-apps/database/app.manifest.json"
 import gitlabManifest from "../../../../../../bundled-apps/gitlab/app.manifest.json"
+import driveManifest from "../../../../../../bundled-apps/google-drive/app.manifest.json"
 import pennylaneManifest from "../../../../../../bundled-apps/pennylane/app.manifest.json"
-import apiConnectorManifest from "../../../../../api/src/apps/api-connector/app.manifest.json"
-import driveManifest from "../../../../../api/src/apps/google-drive/app.manifest.json"
 import { apiError, createFakeApi, type FakeApi } from "../app-page/__fixtures__/fake-api"
 import type { AppSettingsManifest } from "../app-page/types"
 
@@ -304,9 +304,19 @@ describe("Google Drive connector card", () => {
     renderPage("google-drive")
     await screen.findByTestId("connectors-page")
     expect(await screen.findByTestId("connector-card-google-drive")).toBeTruthy()
+    // The connection is every member's; the shared drives an admin's only.
     expect(
-      driveManifest.settings.sections.map((section: { scope: string }) => section.scope),
-    ).toEqual(["user"])
+      driveManifest.settings.sections.map(
+        (section: { id: string; scope: string; adminScope?: string }) => [
+          section.id,
+          section.scope,
+          section.adminScope ?? null,
+        ],
+      ),
+    ).toEqual([
+      ["connection", "user", null],
+      ["shared-drives", "org", "google-drive:accounts:admin"],
+    ])
   })
 })
 
@@ -326,8 +336,17 @@ describe("API connector card", () => {
   }
 
   beforeEach(async () => {
-    // The real in-tree export bag: the custom block resolves from it by name.
-    const exports = await import("~/modules/api-connector/exports")
+    // The app's export bag (its UI bundle runs in the app frame): the custom
+    // block resolves from it by name.
+    const exports = {
+      ApiConnectorAdapters: () => (
+        <div>
+          <div data-testid="api-connector-connection-crm" />
+          <button type="button" data-testid="api-connector-add" />
+          <button type="button" data-testid="api-connector-test-crm" />
+        </div>
+      ),
+    }
     register(apiConnectorManifest, exports)
     api.on("get", "/apps/api-connector/connections", () => [
       {

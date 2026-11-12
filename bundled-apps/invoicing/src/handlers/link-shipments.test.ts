@@ -48,7 +48,12 @@ describe("link-shipments job", () => {
       [INVOICE]: [
         {
           id: "966984e4-353a-40b8-ac86-3e71f7cd37a6",
-          attributes: { document_ref: INVOICE, order_status: "CONFIRMED", tracking_number: "875663524252", carrier: "FEDEX" },
+          attributes: {
+            document_ref: INVOICE,
+            order_status: "CONFIRMED",
+            tracking_number: "875663524252",
+            carrier: "FEDEX",
+          },
         },
         // A substring hit on another document, and a cancelled shipment: never linked.
         { id: "other", attributes: { document_ref: `${INVOICE}-x`, order_status: "CONFIRMED" } },
@@ -60,7 +65,11 @@ describe("link-shipments job", () => {
     const row = (await db.findOne("documents", INVOICE)) as Record<string, unknown>
     expect(row.shipment_ref).toBeNull()
     expect((row.external_refs as Record<string, unknown>).shipments).toEqual([
-      { shipment_id: "966984e4-353a-40b8-ac86-3e71f7cd37a6", tracking_number: "875663524252", carrier: "FEDEX" },
+      {
+        shipment_id: "966984e4-353a-40b8-ac86-3e71f7cd37a6",
+        tracking_number: "875663524252",
+        carrier: "FEDEX",
+      },
     ])
     expect((row.external_refs as Record<string, unknown>).shopify_order_id).toBe("13035044503883")
     const log = row.lifecycle_log as Array<Record<string, unknown>>
@@ -87,7 +96,9 @@ describe("link-shipments job", () => {
   })
 
   test("boxtal not installed stops the run quietly", async () => {
-    const db = createMockDb({ seed: { documents: [doc(INVOICE), doc(OLD, { issued_at: "2026-10-02" })] } })
+    const db = createMockDb({
+      seed: { documents: [doc(INVOICE), doc(OLD, { issued_at: "2026-10-02" })] },
+    })
     let n = 0
     const res = await linkShipments(
       {
@@ -121,7 +132,11 @@ describe("link-shipments job", () => {
       })
       return {
         status: "completed",
-        result: { results: [{ id: "s-9", attributes: { document_ref: INVOICE, order_status: "CONFIRMED" } }] },
+        result: {
+          results: [
+            { id: "s-9", attributes: { document_ref: INVOICE, order_status: "CONFIRMED" } },
+          ],
+        },
       }
     }
     await linkShipments({ db, executeTool }, { now: NOW })

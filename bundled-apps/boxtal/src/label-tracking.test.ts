@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { runInNewContext } from "node:vm"
 import { deflateRawSync, deflateSync } from "node:zlib"
+import { buildLabelPdf, FEDEX_INTL_LABEL_LINES, FEDEX_LABEL_LINES } from "./__fixtures__/label-pdf"
 import type { BoxtalToolCtx } from "./ctx"
 import {
   ascii85Decode,
@@ -22,7 +23,6 @@ import {
   trackingNumberFromLabelPdf,
   trackingNumberFromLabelText,
 } from "./label-tracking"
-import { buildLabelPdf, FEDEX_INTL_LABEL_LINES, FEDEX_LABEL_LINES } from "./__fixtures__/label-pdf"
 import { createMockDb } from "./test-db"
 
 describe("inflate", () => {
@@ -31,8 +31,12 @@ describe("inflate", () => {
     const text = new TextEncoder().encode("TRK# 8777 4092 5574 ".repeat(400))
     for (const input of [random, text, new Uint8Array(0)]) {
       for (const level of [0, 1, 9]) {
-        expect(inflateRaw(new Uint8Array(deflateRawSync(input, { level })))).toEqual(Array.from(input))
-        expect(inflateZlib(new Uint8Array(deflateSync(input, { level })))).toEqual(Array.from(input))
+        expect(inflateRaw(new Uint8Array(deflateRawSync(input, { level })))).toEqual(
+          Array.from(input),
+        )
+        expect(inflateZlib(new Uint8Array(deflateSync(input, { level })))).toEqual(
+          Array.from(input),
+        )
       }
     }
   })
@@ -42,7 +46,7 @@ describe("inflate", () => {
   })
 
   it("decodes ASCII85 with the z shortcut and a partial last group", () => {
-    expect(String.fromCharCode(...ascii85Decode("<~87cURD]i,\"Ebo80~>"))).toBe("Hello World!")
+    expect(String.fromCharCode(...ascii85Decode('<~87cURD]i,"Ebo80~>'))).toBe("Hello World!")
     expect(ascii85Decode("z~>")).toEqual([0, 0, 0, 0])
   })
 })
@@ -55,13 +59,17 @@ describe("tracking number from the label", () => {
   })
 
   it("returns null without the TRK# marker", () => {
-    expect(trackingNumberFromLabelPdf(buildLabelPdf(FEDEX_LABEL_LINES.filter((l) => l !== "TRK#")))).toBeNull()
+    expect(
+      trackingNumberFromLabelPdf(buildLabelPdf(FEDEX_LABEL_LINES.filter((l) => l !== "TRK#"))),
+    ).toBeNull()
   })
 
   it("returns null when two different numbers could be the AWB", () => {
     expect(trackingNumberFromLabelText(["TRK#", "8777 4092 5574", "8777 4092 5575"])).toBeNull()
     // The same number drawn twice is still one number.
-    expect(trackingNumberFromLabelText(["TRK#", "8777 4092 5574", "877740925574"])).toBe("877740925574")
+    expect(trackingNumberFromLabelText(["TRK#", "8777 4092 5574", "877740925574"])).toBe(
+      "877740925574",
+    )
   })
 
   // Prod, 2026-11-09: ticking a FedEx Regional Economy parcel to a UK recipient failed "No tracking
@@ -74,7 +82,9 @@ describe("tracking number from the label", () => {
   })
 
   it("reads the AWB when TRK#, the number and the form code are drawn as one run", () => {
-    expect(trackingNumberFromLabelText(["TRK# 8777 4092 5574 0430", "447700900123"])).toBe("877740925574")
+    expect(trackingNumberFromLabelText(["TRK# 8777 4092 5574 0430", "447700900123"])).toBe(
+      "877740925574",
+    )
     expect(trackingNumberFromLabelText(["TRK#", "8777 4092 5574 0430"])).toBe("877740925574")
   })
 
@@ -83,7 +93,7 @@ describe("tracking number from the label", () => {
   })
 
   it("returns null on a body that is not a PDF", () => {
-    expect(trackingNumberFromLabelPdf("{\"status\":200}")).toBeNull()
+    expect(trackingNumberFromLabelPdf('{"status":200}')).toBeNull()
   })
 })
 
@@ -104,9 +114,22 @@ describe("tracking number from the label, inside the app sandbox's globals", () 
     expect(built.success).toBe(true)
     const code = await built.outputs[0]!.text()
     const blocked = [
-      "ArrayBuffer", "SharedArrayBuffer", "DataView", "Int8Array", "Uint8Array", "Uint8ClampedArray",
-      "Int16Array", "Uint16Array", "Int32Array", "Uint32Array", "Float32Array", "Float64Array",
-      "BigInt64Array", "BigUint64Array", "TextDecoder", "TextEncoder",
+      "ArrayBuffer",
+      "SharedArrayBuffer",
+      "DataView",
+      "Int8Array",
+      "Uint8Array",
+      "Uint8ClampedArray",
+      "Int16Array",
+      "Uint16Array",
+      "Int32Array",
+      "Uint32Array",
+      "Float32Array",
+      "Float64Array",
+      "BigInt64Array",
+      "BigUint64Array",
+      "TextDecoder",
+      "TextEncoder",
     ]
     const sandbox: Record<string, unknown> = { __pdf: buildLabelPdf(FEDEX_LABEL_LINES) }
     const result = runInNewContext(
@@ -152,7 +175,14 @@ describe("carrier check digits", () => {
 })
 
 describe("UPS tracking number from a text label", () => {
-  const lines = ["SHIP TO:", "TEST RECIPIENT", "1 TEST STREET", "75011 PARIS", "FRANCE", "TRACKING #: 1Z W49 41Y 04 9253 0257"]
+  const lines = [
+    "SHIP TO:",
+    "TEST RECIPIENT",
+    "1 TEST STREET",
+    "75011 PARIS",
+    "FRANCE",
+    "TRACKING #: 1Z W49 41Y 04 9253 0257",
+  ]
   it("reads the 1Z and sees the recipient's postcode", () => {
     const strings = pdfTextStrings(buildLabelPdf(lines))
     expect(carrierTrackingFromLabelText("ups", strings)).toBe(UPS_NUMBER)
@@ -189,14 +219,19 @@ function sourcingCtx(opts: {
       contactReads.push(target)
       return (
         opts.contactAddress
-          ? { status: "completed", result: { contact: { metadata: { shipping_address: opts.contactAddress } } } }
+          ? {
+              status: "completed",
+              result: { contact: { metadata: { shipping_address: opts.contactAddress } } },
+            }
           : { status: "completed", result: { contact: { metadata: {} } } }
       ) as never
     },
     logger: { info() {}, warn() {} },
     files_listAttachments: async () =>
       JSON.stringify(
-        opts.noLabelFile ? [] : [{ id: "file-label-1", mimeType: "application/pdf", filename: "label-ord-1.pdf" }],
+        opts.noLabelFile
+          ? []
+          : [{ id: "file-label-1", mimeType: "application/pdf", filename: "label-ord-1.pdf" }],
       ),
     ...(opts.analysis === null
       ? {}
@@ -204,7 +239,9 @@ function sourcingCtx(opts: {
           files_analyzeDocument: async (argsJson: string) => {
             const args = JSON.parse(argsJson) as { fileId: string; prompt: string }
             analysisCalls.push(args)
-            return JSON.stringify(opts.analysis ? opts.analysis(args) : { error: { code: "analysis_disabled" } })
+            return JSON.stringify(
+              opts.analysis ? opts.analysis(args) : { error: { code: "analysis_disabled" } },
+            )
           },
         }),
   }
@@ -222,11 +259,22 @@ const UPS_ROW = {
 const IMAGE_LABEL: string[] = []
 
 describe("sourceTrackingFromLabel, every carrier", () => {
-  const read = (n: string, pc: string) => () => ({ text: `\`\`\`json\n{"tracking_number":"${n}","recipient_postcode":"${pc}"}\n\`\`\``, model: "m" })
+  const read = (n: string, pc: string) => () => ({
+    text: `\`\`\`json\n{"tracking_number":"${n}","recipient_postcode":"${pc}"}\n\`\`\``,
+    model: "m",
+  })
 
   it("stores a UPS number read from the label image when it validates (source label, operator tick fulfils)", async () => {
-    const { ctx, db, analysisCalls } = sourcingCtx({ row: UPS_ROW, labelLines: IMAGE_LABEL, analysis: read("1Z W49 41Y 04 9253 0257", "75 011") })
-    expect(await sourceTrackingFromLabel(ctx, UPS_ROW, { labelUrl: "https://document.boxtal.com/l.pdf" })).toBe(UPS_NUMBER)
+    const { ctx, db, analysisCalls } = sourcingCtx({
+      row: UPS_ROW,
+      labelLines: IMAGE_LABEL,
+      analysis: read("1Z W49 41Y 04 9253 0257", "75 011"),
+    })
+    expect(
+      await sourceTrackingFromLabel(ctx, UPS_ROW, {
+        labelUrl: "https://document.boxtal.com/l.pdf",
+      }),
+    ).toBe(UPS_NUMBER)
     expect(analysisCalls).toEqual([{ fileId: "file-label-1", prompt: LABEL_ANALYSIS_PROMPT }])
     const row = db.__all("shipment")[0]!
     expect(row.tracking_number).toBe(UPS_NUMBER)
@@ -235,60 +283,119 @@ describe("sourceTrackingFromLabel, every carrier", () => {
   })
 
   it("refuses a misread check digit: no number, the row says tracking to confirm", async () => {
-    const { ctx, db } = sourcingCtx({ row: UPS_ROW, labelLines: IMAGE_LABEL, analysis: read("1ZW4941Y0492530258", "75011") })
-    expect(await sourceTrackingFromLabel(ctx, UPS_ROW, { labelUrl: "https://document.boxtal.com/l.pdf" })).toBeNull()
+    const { ctx, db } = sourcingCtx({
+      row: UPS_ROW,
+      labelLines: IMAGE_LABEL,
+      analysis: read("1ZW4941Y0492530258", "75011"),
+    })
+    expect(
+      await sourceTrackingFromLabel(ctx, UPS_ROW, {
+        labelUrl: "https://document.boxtal.com/l.pdf",
+      }),
+    ).toBeNull()
     const row = db.__all("shipment")[0]!
     expect(row.tracking_number ?? null).toBeNull()
     expect(row.tracking_to_confirm).toBe(true)
   })
 
   it("refuses a label printed for another postcode", async () => {
-    const { ctx, db } = sourcingCtx({ row: UPS_ROW, labelLines: IMAGE_LABEL, analysis: read(UPS_NUMBER, "69001") })
-    expect(await sourceTrackingFromLabel(ctx, UPS_ROW, { labelUrl: "https://document.boxtal.com/l.pdf" })).toBeNull()
+    const { ctx, db } = sourcingCtx({
+      row: UPS_ROW,
+      labelLines: IMAGE_LABEL,
+      analysis: read(UPS_NUMBER, "69001"),
+    })
+    expect(
+      await sourceTrackingFromLabel(ctx, UPS_ROW, {
+        labelUrl: "https://document.boxtal.com/l.pdf",
+      }),
+    ).toBeNull()
     expect(db.__all("shipment")[0]!.tracking_to_confirm).toBe(true)
   })
 
   it("without the analysis seam the row says tracking to confirm, and a marked row is not analysed again", async () => {
     const none = sourcingCtx({ row: UPS_ROW, labelLines: IMAGE_LABEL, analysis: null })
-    expect(await sourceTrackingFromLabel(none.ctx, UPS_ROW, { labelUrl: "https://document.boxtal.com/l.pdf" })).toBeNull()
+    expect(
+      await sourceTrackingFromLabel(none.ctx, UPS_ROW, {
+        labelUrl: "https://document.boxtal.com/l.pdf",
+      }),
+    ).toBeNull()
     expect(none.db.__all("shipment")[0]!.tracking_to_confirm).toBe(true)
 
     const marked = { ...UPS_ROW, tracking_to_confirm: true }
-    const again = sourcingCtx({ row: marked, labelLines: IMAGE_LABEL, analysis: read(UPS_NUMBER, "75011") })
-    expect(await sourceTrackingFromLabel(again.ctx, marked, { labelUrl: "https://document.boxtal.com/l.pdf" })).toBeNull()
+    const again = sourcingCtx({
+      row: marked,
+      labelLines: IMAGE_LABEL,
+      analysis: read(UPS_NUMBER, "75011"),
+    })
+    expect(
+      await sourceTrackingFromLabel(again.ctx, marked, {
+        labelUrl: "https://document.boxtal.com/l.pdf",
+      }),
+    ).toBeNull()
     expect(again.analysisCalls).toHaveLength(0)
   })
 
   it("reads a UPS text label without asking the analysis", async () => {
     const lines = ["SHIP TO:", "75011 PARIS", "TRACKING #: 1Z W49 41Y 04 9253 0257"]
-    const { ctx, analysisCalls } = sourcingCtx({ row: UPS_ROW, labelLines: lines, analysis: read(UPS_NUMBER, "75011") })
-    expect(await sourceTrackingFromLabel(ctx, UPS_ROW, { labelUrl: "https://document.boxtal.com/l.pdf" })).toBe(UPS_NUMBER)
+    const { ctx, analysisCalls } = sourcingCtx({
+      row: UPS_ROW,
+      labelLines: lines,
+      analysis: read(UPS_NUMBER, "75011"),
+    })
+    expect(
+      await sourceTrackingFromLabel(ctx, UPS_ROW, {
+        labelUrl: "https://document.boxtal.com/l.pdf",
+      }),
+    ).toBe(UPS_NUMBER)
     expect(analysisCalls).toHaveLength(0)
   })
 
   it("FedEx is unchanged: TRK# text, no analysis, no to-confirm mark", async () => {
     const fedex = { ...UPS_ROW, offer_code: "FEDX-RegionalEconomy" }
-    const { ctx, db, analysisCalls } = sourcingCtx({ row: fedex, labelLines: FEDEX_LABEL_LINES, analysis: read(UPS_NUMBER, "75011") })
-    expect(await sourceTrackingFromLabel(ctx, fedex, { labelUrl: "https://document.boxtal.com/l.pdf" })).toBe("877740925574")
+    const { ctx, db, analysisCalls } = sourcingCtx({
+      row: fedex,
+      labelLines: FEDEX_LABEL_LINES,
+      analysis: read(UPS_NUMBER, "75011"),
+    })
+    expect(
+      await sourceTrackingFromLabel(ctx, fedex, { labelUrl: "https://document.boxtal.com/l.pdf" }),
+    ).toBe("877740925574")
     expect(analysisCalls).toHaveLength(0)
     expect(db.__all("shipment")[0]!.tracking_from_label).toBe(true)
 
-    const noNumber = sourcingCtx({ row: fedex, labelLines: IMAGE_LABEL, analysis: read(UPS_NUMBER, "75011") })
-    expect(await sourceTrackingFromLabel(noNumber.ctx, fedex, { labelUrl: "https://document.boxtal.com/l.pdf" })).toBeNull()
+    const noNumber = sourcingCtx({
+      row: fedex,
+      labelLines: IMAGE_LABEL,
+      analysis: read(UPS_NUMBER, "75011"),
+    })
+    expect(
+      await sourceTrackingFromLabel(noNumber.ctx, fedex, {
+        labelUrl: "https://document.boxtal.com/l.pdf",
+      }),
+    ).toBeNull()
     expect(noNumber.analysisCalls).toHaveLength(0)
     expect(noNumber.db.__all("shipment")[0]!.tracking_to_confirm ?? false).toBe(false)
   })
 })
 
 describe("sourceTrackingFromLabel, rows without a frozen postcode", () => {
-  const read = (n: string, pc: string) => () => ({ text: `{"tracking_number":"${n}","recipient_postcode":"${pc}"}`, model: "m" })
+  const read = (n: string, pc: string) => () => ({
+    text: `{"tracking_number":"${n}","recipient_postcode":"${pc}"}`,
+    model: "m",
+  })
   // Bought before the label postcode was frozen on the row, or adopted from Boxtal.
   const OLD_ROW = { ...UPS_ROW, queue_facts: { destination: "FR" }, contact_ref: "contact-1" }
 
   it("no postcode anywhere: to confirm, and the paid analysis is never asked", async () => {
     const row = { ...OLD_ROW, contact_ref: null }
-    const { ctx, db, analysisCalls } = sourcingCtx({ row, labelLines: IMAGE_LABEL, analysis: read(UPS_NUMBER, "75011") })
-    expect(await sourceTrackingFromLabel(ctx, row, { labelUrl: "https://document.boxtal.com/l.pdf" })).toBeNull()
+    const { ctx, db, analysisCalls } = sourcingCtx({
+      row,
+      labelLines: IMAGE_LABEL,
+      analysis: read(UPS_NUMBER, "75011"),
+    })
+    expect(
+      await sourceTrackingFromLabel(ctx, row, { labelUrl: "https://document.boxtal.com/l.pdf" }),
+    ).toBeNull()
     expect(analysisCalls).toHaveLength(0)
     expect(db.__all("shipment")[0]!.tracking_to_confirm).toBe(true)
   })
@@ -300,7 +407,11 @@ describe("sourceTrackingFromLabel, rows without a frozen postcode", () => {
       analysis: read(UPS_NUMBER, "75011"),
       contactAddress: { city: "Paris" },
     })
-    expect(await sourceTrackingFromLabel(ctx, OLD_ROW, { labelUrl: "https://document.boxtal.com/l.pdf" })).toBeNull()
+    expect(
+      await sourceTrackingFromLabel(ctx, OLD_ROW, {
+        labelUrl: "https://document.boxtal.com/l.pdf",
+      }),
+    ).toBeNull()
     expect(analysisCalls).toHaveLength(0)
     expect(db.__all("shipment")[0]!.tracking_to_confirm).toBe(true)
   })
@@ -312,7 +423,11 @@ describe("sourceTrackingFromLabel, rows without a frozen postcode", () => {
       analysis: read(UPS_NUMBER, "75011"),
       contactAddress: { postalCode: "75 011", countryIsoCode: "FR" },
     })
-    expect(await sourceTrackingFromLabel(ctx, OLD_ROW, { labelUrl: "https://document.boxtal.com/l.pdf" })).toBe(UPS_NUMBER)
+    expect(
+      await sourceTrackingFromLabel(ctx, OLD_ROW, {
+        labelUrl: "https://document.boxtal.com/l.pdf",
+      }),
+    ).toBe(UPS_NUMBER)
     expect(contactReads).toEqual(["kernel:contacts_read"])
     expect(analysisCalls).toHaveLength(1)
     expect(db.__all("shipment")[0]!.tracking_number).toBe(UPS_NUMBER)
@@ -326,20 +441,31 @@ describe("sourceTrackingFromLabel, rows without a frozen postcode", () => {
       analysis: read(UPS_NUMBER, "75011"),
       contactAddress: { postalCode: "75011" },
     })
-    expect(await sourceTrackingFromLabel(ctx, row, { labelUrl: "https://document.boxtal.com/l.pdf" })).toBeNull()
+    expect(
+      await sourceTrackingFromLabel(ctx, row, { labelUrl: "https://document.boxtal.com/l.pdf" }),
+    ).toBeNull()
     expect(contactReads).toHaveLength(0)
     expect(analysisCalls).toHaveLength(0)
   })
 })
 
 describe("sourceTrackingFromLabel, transient failures", () => {
-  const read = (n: string, pc: string) => () => ({ text: `{"tracking_number":"${n}","recipient_postcode":"${pc}"}`, model: "m" })
+  const read = (n: string, pc: string) => () => ({
+    text: `{"tracking_number":"${n}","recipient_postcode":"${pc}"}`,
+    model: "m",
+  })
   const pass = async (ctx: BoxtalToolCtx, db: ReturnType<typeof createMockDb>) =>
-    sourceTrackingFromLabel(ctx, db.__all("shipment")[0] as never, { labelUrl: "https://document.boxtal.com/l.pdf" })
+    sourceTrackingFromLabel(ctx, db.__all("shipment")[0] as never, {
+      labelUrl: "https://document.boxtal.com/l.pdf",
+    })
 
   for (const code of ["timeout", "model_error", "storage_error"]) {
     it(`a ${code} leaves the row for the next pass, and marks it only after 3 attempts`, async () => {
-      const { ctx, db, analysisCalls } = sourcingCtx({ row: UPS_ROW, labelLines: IMAGE_LABEL, analysis: () => ({ error: { code } }) })
+      const { ctx, db, analysisCalls } = sourcingCtx({
+        row: UPS_ROW,
+        labelLines: IMAGE_LABEL,
+        analysis: () => ({ error: { code } }),
+      })
       expect(await pass(ctx, db)).toBeNull()
       expect(db.__all("shipment")[0]!.tracking_to_confirm ?? false).toBe(false)
       expect(db.__all("shipment")[0]!.tracking_label_attempts).toBe(1)
@@ -380,7 +506,11 @@ describe("sourceTrackingFromLabel, transient failures", () => {
   })
 
   it("the analysis switched off is final at once: to confirm", async () => {
-    const { ctx, db } = sourcingCtx({ row: UPS_ROW, labelLines: IMAGE_LABEL, analysis: () => ({ error: { code: "analysis_disabled" } }) })
+    const { ctx, db } = sourcingCtx({
+      row: UPS_ROW,
+      labelLines: IMAGE_LABEL,
+      analysis: () => ({ error: { code: "analysis_disabled" } }),
+    })
     expect(await pass(ctx, db)).toBeNull()
     expect(db.__all("shipment")[0]!.tracking_to_confirm).toBe(true)
   })

@@ -6,7 +6,14 @@
 
 import { describe, expect, test } from "bun:test"
 import type { SocialToolCtx } from "./ctx"
-import { dmSnippet, emitFindingCreated, ingestDmMessages, parseWebhookJob, upsertDmMessage, upsertFinding } from "./ingest"
+import {
+  dmSnippet,
+  emitFindingCreated,
+  ingestDmMessages,
+  parseWebhookJob,
+  upsertDmMessage,
+  upsertFinding,
+} from "./ingest"
 import { createMockDb } from "./test-db"
 
 const ISO = "2026-06-01T10:00:00.000Z"
@@ -16,7 +23,12 @@ function ctxWith(db = createMockDb()): SocialToolCtx & { __emitted: unknown[] } 
   return {
     orgId: "org-1",
     db,
-    fetch: (async () => ({ status: 200, ok: true, json: async () => ({}), text: async () => "" })) as never,
+    fetch: (async () => ({
+      status: 200,
+      ok: true,
+      json: async () => ({}),
+      text: async () => "",
+    })) as never,
     connections: {},
     config: { get: async () => null },
     async emit(e) {
@@ -70,7 +82,11 @@ describe("upsertFinding (B5 dedup)", () => {
 describe("upsertFinding keeps what a poorer source does not carry", () => {
   test("a later sync fills a missing permalink; a webhook delivery without one never erases it or the post context", async () => {
     const ctx = ctxWith()
-    const base = { platform: "facebook" as const, externalId: "222_333", relation: "comment_on_our_content" as const }
+    const base = {
+      platform: "facebook" as const,
+      externalId: "222_333",
+      relation: "comment_on_our_content" as const,
+    }
     await upsertFinding(ctx, { ...base, contentText: "hi", metadata: { siblingsAccessible: true } })
     await upsertFinding(ctx, {
       ...base,
@@ -79,7 +95,9 @@ describe("upsertFinding keeps what a poorer source does not carry", () => {
       metadata: { siblingsAccessible: true, postExcerpt: "New post", postPermalink: null },
     })
     await upsertFinding(ctx, { ...base, contentText: "hi", metadata: { siblingsAccessible: true } })
-    const [row] = (await ctx.db.findMany("finding", { where: { external_id: "222_333" } })) as Array<{
+    const [row] = (await ctx.db.findMany("finding", {
+      where: { external_id: "222_333" },
+    })) as Array<{
       permalink: string | null
       metadata: Record<string, unknown>
     }>
@@ -107,7 +125,9 @@ describe("contact linking (I3 — §5/§6)", () => {
       authorHandle: "@fan",
     })
     expect(resolveCalls).toContainEqual(expect.objectContaining({ externalId: "ig-user-9" }))
-    const row = (await db.findMany("finding", { where: { id: res.id } }))[0] as { contact_id: string }
+    const row = (await db.findMany("finding", { where: { id: res.id } }))[0] as {
+      contact_id: string
+    }
     expect(row.contact_id).toBe("contact-42")
   })
 
@@ -125,7 +145,9 @@ describe("contact linking (I3 — §5/§6)", () => {
       relation: "comment_on_our_content",
       authorExternalId: "u-1",
     })
-    const row = (await db.findMany("finding", { where: { id: res.id } }))[0] as { contact_id: string | null }
+    const row = (await db.findMany("finding", { where: { id: res.id } }))[0] as {
+      contact_id: string | null
+    }
     expect(row.contact_id ?? null).toBeNull()
   })
 })
@@ -161,11 +183,23 @@ describe("dmSnippet (B: snippet honesty)", () => {
 describe("ingestDmMessages snippet honesty (B)", () => {
   test("an inbound message with an empty body lands last_message_snippet:'[attachment]', not null", async () => {
     const ctx = ctxWith()
-    await ctx.db.insert("dm_conversation", { id: "conv-row-1", platform: "facebook", external_id: "conv-1" })
+    await ctx.db.insert("dm_conversation", {
+      id: "conv-row-1",
+      platform: "facebook",
+      external_id: "conv-1",
+    })
     const convByExternalId = new Map([["conv-1", { id: "conv-row-1" }]])
     await ingestDmMessages(
       ctx,
-      [{ conversationExternalId: "conv-1", externalId: "m-1", direction: "inbound", body: "", occurredAt: ISO }],
+      [
+        {
+          conversationExternalId: "conv-1",
+          externalId: "m-1",
+          direction: "inbound",
+          body: "",
+          occurredAt: ISO,
+        },
+      ],
       convByExternalId,
     )
     const conv = (await ctx.db.findMany("dm_conversation", { where: { id: "conv-row-1" } }))[0] as {
@@ -185,7 +219,12 @@ describe("parseWebhookJob (B5)", () => {
           changes: [
             {
               field: "feed",
-              value: { comment_id: "c-9", post_id: "p-1", message: "great product", from: { id: "u-3" } },
+              value: {
+                comment_id: "c-9",
+                post_id: "p-1",
+                message: "great product",
+                from: { id: "u-3" },
+              },
             },
           ],
         },
@@ -202,7 +241,11 @@ describe("parseWebhookJob (B5)", () => {
   test("re-parsing the same webhook body does not duplicate the finding (dedup on replay)", async () => {
     const ctx = ctxWith()
     const body = {
-      entry: [{ changes: [{ field: "feed", value: { comment_id: "c-1", post_id: "p-1", message: "x" } }] }],
+      entry: [
+        {
+          changes: [{ field: "feed", value: { comment_id: "c-1", post_id: "p-1", message: "x" } }],
+        },
+      ],
     }
     await parseWebhookJob(ctx, { platform: "facebook", body })
     await parseWebhookJob(ctx, { platform: "facebook", body })
@@ -288,7 +331,9 @@ describe("two parses of one delivery racing on a new person", () => {
       ],
     }
     await parseWebhookJob(ctx, { platform: "facebook", body })
-    expect(await db.count("dm_conversation", { where: { participant_external_id: "psid-race" } })).toBe(1)
+    expect(
+      await db.count("dm_conversation", { where: { participant_external_id: "psid-race" } }),
+    ).toBe(1)
     const msgs = (await db.findMany("dm_message", { where: { external_id: "m_race" } })) as Array<{
       conversation_id: string
     }>
@@ -297,7 +342,11 @@ describe("two parses of one delivery racing on a new person", () => {
 
   test("the parse that loses the message insert reports it as already there", async () => {
     const db = createMockDb()
-    const conv = await db.insert("dm_conversation", { platform: "facebook", external_id: "psid-2", status: "open" })
+    const conv = await db.insert("dm_conversation", {
+      platform: "facebook",
+      external_id: "psid-2",
+      status: "open",
+    })
     let stale = true
     const racing = {
       ...db,
@@ -328,11 +377,16 @@ describe("two parses of one delivery racing on a new person", () => {
     const failing = {
       ...db,
       insert: async (entity: string, data: Record<string, unknown>) => {
-        if (entity === "dm_message") throw new Error("pg: permission denied for table dm_message (42501)")
+        if (entity === "dm_message")
+          throw new Error("pg: permission denied for table dm_message (42501)")
         return db.insert(entity, data)
       },
     }
-    const conv = await db.insert("dm_conversation", { platform: "facebook", external_id: "psid-3", status: "open" })
+    const conv = await db.insert("dm_conversation", {
+      platform: "facebook",
+      external_id: "psid-3",
+      status: "open",
+    })
     await expect(
       upsertDmMessage(ctxWith(failing as never), conv.id, {
         conversationExternalId: "psid-3",

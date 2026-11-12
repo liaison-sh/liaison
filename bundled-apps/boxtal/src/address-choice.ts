@@ -25,7 +25,11 @@ import type { BoxtalToolCtx } from "./ctx"
 import { deriveDraftFacts } from "./draft-cache"
 import { orderKeyForDocumentRef, parseOrderKey, upsertPrepOrderState } from "./order-state"
 import { refreshCachedShipTo } from "./prep-meta"
-import { ORDER_UNREADABLE_MESSAGE, type RecipientAddressInput, shipmentDraftCreate } from "./shipment"
+import {
+  ORDER_UNREADABLE_MESSAGE,
+  type RecipientAddressInput,
+  shipmentDraftCreate,
+} from "./shipment"
 
 export interface PrepSetAddressChoiceInput {
   document_ref: string
@@ -37,7 +41,10 @@ export interface PrepSetAddressChoiceInput {
 }
 
 /** The fields of an address the approval card prints. */
-type ShownAddress = Pick<RecipientAddressInput, "name" | "company" | "street" | "city" | "postalCode" | "countryIsoCode">
+type ShownAddress = Pick<
+  RecipientAddressInput,
+  "name" | "company" | "street" | "city" | "postalCode" | "countryIsoCode"
+>
 
 /** The two addresses a pick is decided on, as the preflight read them and the card shows them. */
 export interface ShownAddresses {
@@ -47,7 +54,14 @@ export interface ShownAddresses {
 }
 
 function shownAddress(a: RecipientAddressInput): ShownAddress {
-  return { name: a.name, company: a.company, street: a.street, city: a.city, postalCode: a.postalCode, countryIsoCode: a.countryIsoCode }
+  return {
+    name: a.name,
+    company: a.company,
+    street: a.street,
+    city: a.city,
+    postalCode: a.postalCode,
+    countryIsoCode: a.countryIsoCode,
+  }
 }
 
 export interface PrepSetAddressChoiceResult {
@@ -64,7 +78,10 @@ const ADDRESSES_CHANGED_MESSAGE =
 function parseInput(input: PrepSetAddressChoiceInput): { documentRef: string; pick: AddressPick } {
   const documentRef = typeof input?.document_ref === "string" ? input.document_ref.trim() : ""
   if (!documentRef) {
-    throw new ToolError("prep_set_address_choice needs the row's document_ref.", { code: "invalid_input", retryable: false })
+    throw new ToolError("prep_set_address_choice needs the row's document_ref.", {
+      code: "invalid_input",
+      retryable: false,
+    })
   }
   const pick = input.choice
   if (pick !== "order" && pick !== "verified") {
@@ -86,7 +103,11 @@ function refuseUnreadable(check: AddressCheck | null | undefined): void {
 const NOTHING_TO_PICK_MESSAGE =
   "Nothing to pick: this row's order address and the customer's verified address do not differ (or one of them is missing)."
 
-function refuseOtherVerified(pick: AddressPick, addressId: string | null | undefined, verifiedId: string): void {
+function refuseOtherVerified(
+  pick: AddressPick,
+  addressId: string | null | undefined,
+  verifiedId: string,
+): void {
   if (pick === "verified" && addressId && addressId !== verifiedId) {
     throw new ToolError(
       `Verified address ${addressId} is not the one this row compares against (${verifiedId}). Re-read the row and pick again.`,
@@ -103,7 +124,10 @@ function refuseOtherVerified(pick: AddressPick, addressId: string | null | undef
 export async function prepSetAddressChoicePreflight(
   ctx: BoxtalToolCtx,
   input: PrepSetAddressChoiceInput,
-): Promise<{ ok: true; pinnedParams: { shown_addresses: ShownAddresses } } | { error: { code: string; message: string; retryable: boolean } }> {
+): Promise<
+  | { ok: true; pinnedParams: { shown_addresses: ShownAddresses } }
+  | { error: { code: string; message: string; retryable: boolean } }
+> {
   try {
     const { documentRef, pick } = parseInput(input)
     const draft = await shipmentDraftCreate(ctx, { document_ref: documentRef })
@@ -111,7 +135,10 @@ export async function prepSetAddressChoicePreflight(
     refuseUnreadable(check)
     const parsedKey = parseOrderKey(await orderKeyForDocumentRef(ctx, documentRef))
     if (parsedKey?.kind !== "order" || !needsAddressPick(check)) {
-      throw new ToolError(NOTHING_TO_PICK_MESSAGE, { code: "address_choice_not_needed", retryable: false })
+      throw new ToolError(NOTHING_TO_PICK_MESSAGE, {
+        code: "address_choice_not_needed",
+        retryable: false,
+      })
     }
     refuseOtherVerified(pick, input.address_id, check.verified_address.id)
     return {
@@ -128,7 +155,13 @@ export async function prepSetAddressChoicePreflight(
     if (err instanceof ToolError) {
       return { error: { code: err.code, message: err.message, retryable: err.retryable } }
     }
-    return { error: { code: "draft_unresolved", message: err instanceof Error ? err.message : String(err), retryable: false } }
+    return {
+      error: {
+        code: "draft_unresolved",
+        message: err instanceof Error ? err.message : String(err),
+        retryable: false,
+      },
+    }
   }
 }
 
@@ -150,16 +183,19 @@ export async function prepSetAddressChoice(
   // No pinned addresses: a call staged before they were pinned, whose card showed another read.
   const shownHash = input.shown_addresses?.hash ?? null
   if (!orderId || !needsAddressPick(check)) {
-    throw new ToolError(
-      shownHash ? ADDRESSES_CHANGED_MESSAGE : NOTHING_TO_PICK_MESSAGE,
-      { code: shownHash ? "address_choice_stale" : "address_choice_not_needed", retryable: false },
-    )
+    throw new ToolError(shownHash ? ADDRESSES_CHANGED_MESSAGE : NOTHING_TO_PICK_MESSAGE, {
+      code: shownHash ? "address_choice_stale" : "address_choice_not_needed",
+      retryable: false,
+    })
   }
   const verifiedId = check.verified_address.id
   refuseOtherVerified(pick, input.address_id, verifiedId)
   const hash = addressPairHash(check.order_address, check.verified_address)
   if (shownHash !== hash) {
-    throw new ToolError(ADDRESSES_CHANGED_MESSAGE, { code: "address_choice_stale", retryable: false })
+    throw new ToolError(ADDRESSES_CHANGED_MESSAGE, {
+      code: "address_choice_stale",
+      retryable: false,
+    })
   }
 
   const record: AddressChoiceRecord = {
@@ -170,7 +206,12 @@ export async function prepSetAddressChoice(
     // The approver of an agent's call, else the person whose own click ran it.
     chosen_by: ctx.approval?.approvalDeciderId ?? (await callingUserId(ctx)),
   }
-  await upsertPrepOrderState(ctx, orderKey, { address_choice: record }, { anchorRef: documentRef, shopifyOrderId: orderId })
+  await upsertPrepOrderState(
+    ctx,
+    orderKey,
+    { address_choice: record },
+    { anchorRef: documentRef, shopifyOrderId: orderId },
+  )
 
   // Rebuild with the pick applied and patch the row's cached recipient, so a Ship click from the
   // grid sends the picked address and the chip reads the pick without waiting for the next sync.
@@ -194,7 +235,10 @@ async function patchCachedRecipient(
   draft: Awaited<ReturnType<typeof shipmentDraftCreate>>,
 ): Promise<void> {
   try {
-    const rows = (await ctx.db.findMany("prep_draft_cache", { where: { document_ref: documentRef }, limit: 1 })) as Array<{
+    const rows = (await ctx.db.findMany("prep_draft_cache", {
+      where: { document_ref: documentRef },
+      limit: 1,
+    })) as Array<{
       id: string
     }>
     if (!rows[0]) return
@@ -206,6 +250,9 @@ async function patchCachedRecipient(
     })
   } catch (err) {
     // The pick is stored; the row's cache catches up on its next read.
-    ctx.logger?.warn?.("prep: could not refresh the row after an address pick", { document_ref: documentRef, err: String(err) })
+    ctx.logger?.warn?.("prep: could not refresh the row after an address pick", {
+      document_ref: documentRef,
+      err: String(err),
+    })
   }
 }

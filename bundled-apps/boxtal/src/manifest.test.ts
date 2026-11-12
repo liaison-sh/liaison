@@ -55,7 +55,10 @@ describe("Boxtal app.manifest.json", () => {
   it("pins the webhook secret to the subscription body on Boxtal's API hosts (secrets)", () => {
     const m = load()
     expect(m.secrets).toEqual({
-      boxtalWebhookSecret: { hosts: ["api.boxtal.build", "api.boxtal.com"], in: "body:webhookSecret" },
+      boxtalWebhookSecret: {
+        hosts: ["api.boxtal.build", "api.boxtal.com"],
+        in: "body:webhookSecret",
+      },
     })
     // The client writes it at exactly that path (lib/boxtal-v3-client.ts).
     const src = readFileSync(join(import.meta.dir, "lib", "boxtal-v3-client.ts"), "utf8")
@@ -73,8 +76,9 @@ describe("Boxtal app.manifest.json", () => {
   // Walk 5 (D41): an open carton or customs patch let a weak model stage keys like "width1",
   // "height /" and "unitWeight_kg", which the handler dropped. Both shapes are closed.
   it("the draft's carton and customs patch take only their declared fields", () => {
-    const tools = (load() as { tools: Record<string, { params: { properties: Record<string, any> } }> })
-      .tools
+    const tools = (
+      load() as { tools: Record<string, { params: { properties: Record<string, any> } }> }
+    ).tools
     const override = tools.shipment_draft_set_package!.params.properties.override
     expect(override.additionalProperties).toBe(false)
     expect(override.items.additionalProperties).toBe(false)
@@ -102,9 +106,11 @@ describe("Boxtal app.manifest.json", () => {
     expect(/intra-eu/i.test(ai) && /customs-free/i.test(ai)).toBe(true)
     // The core rule: per-item-class codes, never one code across lines, look it up first.
     expect(/per item class|PER ITEM CLASS/i.test(ai)).toBe(true)
-    expect(/never copy one line's code|never reuse a code|different code on each line|DIFFERENT code/i.test(ai)).toBe(
-      true,
-    )
+    expect(
+      /never copy one line's code|never reuse a code|different code on each line|DIFFERENT code/i.test(
+        ai,
+      ),
+    ).toBe(true)
     expect(/hs_codes_lookup/i.test(ai)).toBe(true)
   })
 
@@ -181,9 +187,9 @@ describe("Boxtal app.manifest.json", () => {
     expect(/incoterm/i.test(desc)).toBe(true)
     expect(/DAP/.test(desc)).toBe(true)
     // Forbids the dispatch-y wording the judge flagged; reinforces staged/pending framing.
-    expect(/never use 'dispatched', 'initiated', 'sent', or 'finalize the dispatch'/i.test(desc)).toBe(
-      true,
-    )
+    expect(
+      /never use 'dispatched', 'initiated', 'sent', or 'finalize the dispatch'/i.test(desc),
+    ).toBe(true)
   })
 
   // Regression (boxtal-carrier-sla-performance-report) — the carrier-performance DATA-HONESTY affordance.
@@ -252,9 +258,9 @@ describe("Boxtal app.manifest.json", () => {
     // No single status means 'stuck'; the set spans several distinct values.
     expect(/no single status that means 'stuck'|spans SEVERAL DISTINCT/i.test(d)).toBe(true)
     // The reliable sweep is blank-enumerate + classify each hit in-context.
-    expect(/BLANK-enumerate/i.test(d) && /classify each hit's tracking_status in-context/i.test(d)).toBe(
-      true,
-    )
+    expect(
+      /BLANK-enumerate/i.test(d) && /classify each hit's tracking_status in-context/i.test(d),
+    ).toBe(true)
   })
 
   // Regression (stuck-shipment-exception-sweep) — the BROADER-stuck + anti-fabrication-link affordance.
@@ -269,35 +275,47 @@ describe("Boxtal app.manifest.json", () => {
   it("agentInstructions teaches the delivered-but-disputed cross-check + the anti-fabrication ticket-link rule", () => {
     const ai = guideText(load())
     // 'stuck' is broader than the EXCEPTION flag; do not rely on exceptions_list alone for a sweep.
-    expect(/BROADER than the carrier EXCEPTION flag|do NOT rely on exceptions_list alone/i.test(ai)).toBe(true)
+    expect(
+      /BROADER than the carrier EXCEPTION flag|do NOT rely on exceptions_list alone/i.test(ai),
+    ).toBe(true)
     // The delivered-but-disputed family is named explicitly as the easiest to miss.
     expect(/DELIVERED but the customer disputes|delivered-but-disputed/i.test(ai)).toBe(true)
     // The sweep is TWO required passes (carrier + support), unioned — a carrier-only sweep is INCOMPLETE.
     expect(/TWO passes you MUST run BOTH/i.test(ai)).toBe(true)
     expect(/PASS 1 \(carrier side\)/i.test(ai) && /PASS 2 \(support side/i.test(ai)).toBe(true)
-    expect(/only ran PASS 1 and reported the carrier-flagged parcels is INCOMPLETE/i.test(ai)).toBe(true)
-    // PASS 2 scans the OPEN ticket queue for non-receipt/dispute language to catch the disputed deliveries.
-    expect(/OPEN tickets \(status=open\)/i.test(ai)).toBe(true)
-    expect(/not received.*never arrived.*missing.*where is my order.*disputed/is.test(ai)).toBe(true)
-    // Do NOT trust the search snapshot status to decide which to track (the stale/decoy-snapshot trap).
-    expect(/Do NOT trust the search snapshot's tracking_status|track is the source of truth/i.test(ai)).toBe(
+    expect(/only ran PASS 1 and reported the carrier-flagged parcels is INCOMPLETE/i.test(ai)).toBe(
       true,
     )
+    // PASS 2 scans the OPEN ticket queue for non-receipt/dispute language to catch the disputed deliveries.
+    expect(/OPEN tickets \(status=open\)/i.test(ai)).toBe(true)
+    expect(/not received.*never arrived.*missing.*where is my order.*disputed/is.test(ai)).toBe(
+      true,
+    )
+    // Do NOT trust the search snapshot status to decide which to track (the stale/decoy-snapshot trap).
+    expect(
+      /Do NOT trust the search snapshot's tracking_status|track is the source of truth/i.test(ai),
+    ).toBe(true)
     // The anti-fabrication link rule: cite only a tool-returned id; never invent a placeholder.
-    expect(/cite ONLY a ticket id\/handle that a tool result returned THIS turn/i.test(ai)).toBe(true)
-    expect(/NEVER invent or paste a placeholder ticket id or order number|123456789abc/i.test(ai)).toBe(true)
+    expect(/cite ONLY a ticket id\/handle that a tool result returned THIS turn/i.test(ai)).toBe(
+      true,
+    )
+    expect(
+      /NEVER invent or paste a placeholder ticket id or order number|123456789abc/i.test(ai),
+    ).toBe(true)
     expect(/no existing ticket found/i.test(ai)).toBe(true)
     // The RELIABLE lookup is by customer NAME / order number, NOT problem keywords (the false-none trap).
     expect(/by the CUSTOMER NAME or the ORDER NUMBER/i.test(ai)).toBe(true)
     expect(/NOT by problem keywords/i.test(ai)).toBe(true)
     // The order number is already on the boxtal shipment — no separate shopify call needed to state it.
-    expect(/order reference are ALREADY on the boxtal shipment|do NOT need a separate shopify call/i.test(ai)).toBe(
-      true,
-    )
+    expect(
+      /order reference are ALREADY on the boxtal shipment|do NOT need a separate shopify call/i.test(
+        ai,
+      ),
+    ).toBe(true)
     // Only link a ticket that concerns THIS stuck shipment (the unrelated-RMA over-link trap).
-    expect(/UNRELATED tickets|only link a ticket that actually concerns THIS stuck shipment/i.test(ai)).toBe(
-      true,
-    )
+    expect(
+      /UNRELATED tickets|only link a ticket that actually concerns THIS stuck shipment/i.test(ai),
+    ).toBe(true)
   })
 
   // Regression (draft-rma-reply-with-return-label-attach) — the CROSS-APP file-source enabler. A prepared
@@ -337,7 +355,9 @@ describe("Boxtal app.manifest.json", () => {
     // The attach goes into the reply tool's attachments array.
     expect(/attachments=\[/i.test(ai)).toBe(true)
     // Anti-fabrication: never claim attached unless the array carried a real files_list id.
-    expect(/NEVER invent or guess a label\/file id|NEVER tell the customer you attached/i.test(ai)).toBe(true)
+    expect(
+      /NEVER invent or guess a label\/file id|NEVER tell the customer you attached/i.test(ai),
+    ).toBe(true)
     // The kernel file id (not a get_documents URL) is the attachable id.
     expect(/the ATTACHABLE kernel file id .*comes from files_list/i.test(ai)).toBe(true)
   })
@@ -372,7 +392,11 @@ describe("Boxtal app.manifest.json", () => {
     const r = packageManifestSchema.safeParse(load())
     expect(r.success).toBe(true)
     if (!r.success) return
-    const t = r.data.tools?.create_shipment as { requiredScopes?: string[]; scope?: string; readOnly?: boolean }
+    const t = r.data.tools?.create_shipment as {
+      requiredScopes?: string[]
+      scope?: string
+      readOnly?: boolean
+    }
     expect(t.requiredScopes).toEqual(["boxtal:shipments:write", "boxtal:quotes:read"])
     expect(t.scope).toBeUndefined()
     // A label buy is a write: it must never be exempt from scope taint.
@@ -406,7 +430,7 @@ describe("Boxtal app.manifest.json", () => {
     const clauseStart = ai.indexOf("PACK_UPSERT CARTON_TARE IS FULL REPLACE")
     expect(clauseStart).toBeGreaterThan(-1)
     const clause = ai.slice(clauseStart)
-    expect(/^[\x00-\x7F]*$/.test(clause)).toBe(true)
+    expect(/^\p{ASCII}*$/u.test(clause)).toBe(true)
     expect(clause).not.toMatch(/--|‒|–|—|―/)
   })
 
@@ -616,9 +640,9 @@ describe("Boxtal app.manifest.json", () => {
     // 0.24.6: no catalog tool holds a transaction across its run: a profile write, link, unlink or
     // merge commits with its old-table mirror in one batch, a pack with its components.
     // 0.24.7: reads that answer figures also answer the rows a dashboard block charts.
-    // 0.24.8: a shipment declares `pick` (the search tool), so a dashboard table's link cell
+    // 0.24.10: a shipment declares `pick` (the search tool), so a dashboard table's link cell
     // can pick one.
-    expect(m.version).toBe("0.24.8")
+    expect(m.version).toBe("0.24.10")
     expect(m.packageFormat).toBe(1)
   })
 
@@ -626,7 +650,9 @@ describe("Boxtal app.manifest.json", () => {
     // The sandbox serves its label PDFs from document.boxtal.build: without it every sandbox
     // shipment's label import failed with "Domain not in allowlist".
     const m = load() as { network: { allowedDomains: string[] } }
-    expect(m.network.allowedDomains).toEqual(expect.arrayContaining(["document.boxtal.com", "document.boxtal.build"]))
+    expect(m.network.allowedDomains).toEqual(
+      expect.arrayContaining(["document.boxtal.com", "document.boxtal.build"]),
+    )
   })
 
   it("backfill-queue-facts reaches only workspaces with a shipment missing its snapshot", () => {
@@ -641,19 +667,42 @@ describe("Boxtal app.manifest.json", () => {
   // format, read and written through the page's own pair.
   it("declares its settings page, and no views.settings", () => {
     const m = load() as {
-      tools: Record<string, { agentVisible?: boolean; readOnly?: boolean; gated?: boolean; params?: { properties?: Record<string, unknown> } }>
+      tools: Record<
+        string,
+        {
+          agentVisible?: boolean
+          readOnly?: boolean
+          gated?: boolean
+          params?: { properties?: Record<string, unknown> }
+        }
+      >
       views: { settings?: unknown }
       settings: { sections: Array<{ id: string; blocks: Array<Record<string, unknown>> }> }
     }
     expect(m.views.settings).toBeUndefined()
-    expect(m.settings.sections.map((s) => s.id)).toEqual(["connection", "sender", "pickup-points", "labels"])
-    expect((load() as { connections: Record<string, { purpose?: string }> }).connections.boxtal?.purpose).toBe(
-      "Boxtal API keys",
-    )
+    expect(m.settings.sections.map((s) => s.id)).toEqual([
+      "connection",
+      "sender",
+      "pickup-points",
+      "labels",
+    ])
+    expect(
+      (load() as { connections: Record<string, { purpose?: string }> }).connections.boxtal?.purpose,
+    ).toBe("Boxtal API keys")
     const fieldsOf = (id: string) =>
-      (m.settings.sections.find((s) => s.id === id)?.blocks ?? []).filter((b) => b.block === "field")
+      (m.settings.sections.find((s) => s.id === id)?.blocks ?? []).filter(
+        (b) => b.block === "field",
+      )
     const sender = fieldsOf("sender")
-    expect(sender.map((f) => f.key)).toEqual(["name", "phone", "email", "street", "postalCode", "city", "countryIsoCode"])
+    expect(sender.map((f) => f.key)).toEqual([
+      "name",
+      "phone",
+      "email",
+      "street",
+      "postalCode",
+      "city",
+      "countryIsoCode",
+    ])
     // The ship-from address is written by the agents' own gated tool, so its gate, its
     // approval card and any org approval policy on it apply to a click on the page too.
     for (const f of sender) {
@@ -662,7 +711,9 @@ describe("Boxtal app.manifest.json", () => {
       })
       // Boxtal refuses a shipment whose sender has no email (422 NotBlank): every
       // ship-from field is required, so none can be cleared.
-      expect((f.validation as { required?: boolean } | undefined)?.required, String(f.key)).toBe(true)
+      expect((f.validation as { required?: boolean } | undefined)?.required, String(f.key)).toBe(
+        true,
+      )
     }
     const rest = [...fieldsOf("pickup-points"), ...fieldsOf("labels")]
     expect(rest.map((f) => f.key)).toEqual(["exclude_pickup_point_services", "label_format"])
@@ -729,7 +780,9 @@ describe("Boxtal app.manifest.json", () => {
     const job = m.jobs?.["probe-webhook-upstream"]
     expect(job?.handler).toBe("probeWebhookUpstreamJob")
     expect(job?.schedule).toBe("*/15 * * * *")
-    expect((m as { webhookHealth?: unknown }).webhookHealth).toEqual({ probe: "probe-webhook-upstream" })
+    expect((m as { webhookHealth?: unknown }).webhookHealth).toEqual({
+      probe: "probe-webhook-upstream",
+    })
   })
 
   it("declares the reconcile-tracking cron job", () => {
@@ -847,7 +900,9 @@ describe("Boxtal app.manifest.json", () => {
     const desc = tool?.description ?? ""
     // BOM required for a bundle/kit pack + an empty components list is incomplete.
     expect(/bill of materials|BOM/i.test(desc)).toBe(true)
-    expect(/REQUIRED, not optional|BOM is REQUIRED|required for a bundle|empty .*components/i.test(desc)).toBe(true)
+    expect(
+      /REQUIRED, not optional|BOM is REQUIRED|required for a bundle|empty .*components/i.test(desc),
+    ).toBe(true)
     // A concrete example BOM the model can pattern-match.
     expect(/product_source.*product_id|RAL-44.*RAL-WND/s.test(desc)).toBe(true)
     // The name→sku lookup path (packages_list.local_products).
@@ -921,9 +976,15 @@ describe("Boxtal app.manifest.json", () => {
     // INLINE filled draft the complete deliverable for a no-ticket customer, forbid reaching for
     // mail:compose, and require an errored tickets:reply be reported as NOT-through (fall back to inline),
     // never as a pending approval.
-    expect(/inline filled draft IS the finished deliverable|inline draft alone fully satisfies/i.test(ai)).toBe(true)
+    expect(
+      /inline filled draft IS the finished deliverable|inline draft alone fully satisfies/i.test(
+        ai,
+      ),
+    ).toBe(true)
     expect(/do NOT reach for mail:compose|not your channel here/i.test(ai)).toBe(true)
-    expect(/do NOT report it as pending approval|say plainly it did not go through/i.test(ai)).toBe(true)
+    expect(/do NOT report it as pending approval|say plainly it did not go through/i.test(ai)).toBe(
+      true,
+    )
   })
 
   // Regression (marco-fulfillment-throughput-shipping-cost-impossible) — the throughput/spend DATA-HONESTY
@@ -938,20 +999,30 @@ describe("Boxtal app.manifest.json", () => {
     expect(/SHIPPING THROUGHPUT & SPEND BY CARRIER/i.test(ai)).toBe(true)
     // queue_counts is LIVE state, NOT 'parcels shipped this month'.
     expect(/queue_counts is NOT throughput/i.test(ai)).toBe(true)
-    expect(/never 'parcels shipped this month'|not present it as a monthly shipped count/i.test(ai)).toBe(true)
+    expect(
+      /never 'parcels shipped this month'|not present it as a monthly shipped count/i.test(ai),
+    ).toBe(true)
     // queue_counts is a MANDATORY FIRST read for a throughput question (the smoke gap: agent skipped it).
     expect(/MANDATORY FIRST STEP/i.test(ai)).toBe(true)
     expect(/Do NOT answer a throughput question from search alone/i.test(ai)).toBe(true)
     // It must RENDER the queue numbers in the reply, not merely call the tool (the gate run-1 gap).
     expect(/RENDER its actual numbers IN THE USER-FACING REPLY/i.test(ai)).toBe(true)
     expect(/NOT enough to merely CALL queue_counts/i.test(ai)).toBe(true)
-    expect(/do NOT let the queue numbers silently coincide with the carrier-tally total/i.test(ai)).toBe(true)
+    expect(
+      /do NOT let the queue numbers silently coincide with the carrier-tally total/i.test(ai),
+    ).toBe(true)
     // Consistency: do not reverse a bounded-sample framing into 'complete/authoritative whole fleet'.
     expect(/CONSISTENCY, keep the SAME/i.test(ai)).toBe(true)
-    expect(/do NOT later UPGRADE it to 'the entire active fleet|nextCursor: null.*does NOT license/is.test(ai)).toBe(true)
+    expect(
+      /do NOT later UPGRADE it to 'the entire active fleet|nextCursor: null.*does NOT license/is.test(
+        ai,
+      ),
+    ).toBe(true)
     // Volume tally is by offer_code over a paged sample with no date filter.
     expect(/group the hits by their `carrier` \(offer_code\)/i.test(ai)).toBe(true)
-    expect(/NO created_at \/ ship-date field and NO date filter|cannot isolate 'this month'/i.test(ai)).toBe(true)
+    expect(
+      /NO created_at \/ ship-date field and NO date filter|cannot isolate 'this month'/i.test(ai),
+    ).toBe(true)
     expect(/OFFSET-PAGED SAMPLE/i.test(ai)).toBe(true)
     // Spend is uncomputable: declared_value is parcel value, not carrier spend; no shipping price persisted.
     expect(/declared_value.*declared parcel VALUE.*NOT what was paid to ship/is.test(ai)).toBe(true)
@@ -968,7 +1039,9 @@ describe("Boxtal app.manifest.json", () => {
     expect(/CARRIER VOLUME \/ THROUGHPUT BY CARRIER/i.test(s)).toBe(true)
     expect(/NO created_at \/ ship-date field and NO date-range parameter/i.test(s)).toBe(true)
     expect(/OFFSET-PAGED SAMPLE/i.test(s)).toBe(true)
-    expect(/`declared_value` is the declared parcel VALUE.*NOT the carrier shipping spend/is.test(s)).toBe(true)
+    expect(
+      /`declared_value` is the declared parcel VALUE.*NOT the carrier shipping spend/is.test(s),
+    ).toBe(true)
     expect(/shipping SPEND by carrier CANNOT be computed or summed/i.test(s)).toBe(true)
     expect(/dateBoundNotice and spendNotice/i.test(s)).toBe(true)
     const qc = m.tools.queue_counts?.description ?? ""

@@ -19,7 +19,10 @@ import { fromException, type OpError, opError } from "./errors"
 import { recordStatusChange } from "./inbox"
 
 export const WEBHOOK_SECRET_KEY = "einvoicingWebhookSecret"
-export const WEBHOOK_EVENTS = ["customer_invoice.e_invoicing_status_updated", "supplier_invoice.e_invoicing_received"] as const
+export const WEBHOOK_EVENTS = [
+  "customer_invoice.e_invoicing_status_updated",
+  "supplier_invoice.e_invoicing_received",
+] as const
 const MAX_SKEW_SECONDS = 300
 const REPLAY_TTL_SECONDS = 900
 
@@ -43,7 +46,12 @@ export function parseSignature(header: string | undefined): { t: number; v1: str
 }
 
 export async function verifyEinvoicingWebhook(
-  params: { headers: Record<string, string>; body: string; method: string; query: Record<string, string> },
+  params: {
+    headers: Record<string, string>
+    body: string
+    method: string
+    query: Record<string, string>
+  },
   bridge: VerifyBridge,
   now: () => number = () => Date.now(),
 ): Promise<{ ok: boolean; reason?: string; replayKey?: string; replayTtlSeconds?: number }> {
@@ -52,9 +60,11 @@ export async function verifyEinvoicingWebhook(
   if (!sig) return { ok: false, reason: "missing_signature" }
   const secret = (await bridge.config_get(WEBHOOK_SECRET_KEY)) as string | null
   if (!secret) return { ok: false, reason: "missing_secret" }
-  if (Math.abs(Math.floor(now() / 1000) - sig.t) > MAX_SKEW_SECONDS) return { ok: false, reason: "stale_timestamp" }
+  if (Math.abs(Math.floor(now() / 1000) - sig.t) > MAX_SKEW_SECONDS)
+    return { ok: false, reason: "stale_timestamp" }
   const expected = await bridge.crypto_hmacSha256Hex(secret, `${sig.t}.${params.body}`)
-  if (!(await bridge.crypto_timingSafeEqual(sig.v1, expected))) return { ok: false, reason: "signature_mismatch" }
+  if (!(await bridge.crypto_timingSafeEqual(sig.v1, expected)))
+    return { ok: false, reason: "signature_mismatch" }
   let envelopeId: string | null = null
   try {
     const id = (JSON.parse(params.body) as { id?: unknown }).id
@@ -62,14 +72,22 @@ export async function verifyEinvoicingWebhook(
   } catch {
     return { ok: false, reason: "invalid_json" }
   }
-  return { ok: true, replayKey: envelopeId ? `envelope:${envelopeId}` : `sig:${sig.v1}`, replayTtlSeconds: REPLAY_TTL_SECONDS }
+  return {
+    ok: true,
+    replayKey: envelopeId ? `envelope:${envelopeId}` : `sig:${sig.v1}`,
+    replayTtlSeconds: REPLAY_TTL_SECONDS,
+  }
 }
 
 interface Envelope {
   id?: string | number
   type?: string
   event?: string
-  data?: { object?: { id?: string | number }; data?: { id?: string | number }; id?: string | number }
+  data?: {
+    object?: { id?: string | number }
+    data?: { id?: string | number }
+    id?: string | number
+  }
 }
 
 /** The webhook handler: record which invoice may have changed, acknowledge. */
@@ -83,7 +101,11 @@ export async function einvoicingWebhookHandler(
     ctx.logger?.warn?.("pennylane einvoicing webhook without an object id", { type })
     return { status: 200 }
   }
-  const kind = type.startsWith("supplier_invoice.") ? "supplier_invoice" : type.startsWith("customer_invoice.") ? "customer_invoice" : null
+  const kind = type.startsWith("supplier_invoice.")
+    ? "supplier_invoice"
+    : type.startsWith("customer_invoice.")
+      ? "customer_invoice"
+      : null
   if (!kind) return { status: 200 } // other events (e.g. dms_file.created) are not ours
   await recordStatusChange(ctx, {
     provider_ref: String(ref),
@@ -101,20 +123,32 @@ export const BASE_URL_KEY = "kernel_public_base_url"
 export const SUBSCRIPTION_KEY = "einvoicing_webhook_subscription"
 
 type SetupCtx = PennylaneToolCtx & {
-  config: { get(key: string): Promise<unknown>; setSecret(key: string, value: string): Promise<void> }
+  config: {
+    get(key: string): Promise<unknown>
+    setSecret(key: string, value: string): Promise<void>
+  }
   getOrgId?: () => Promise<string> | string
 }
 
 type ConfigDb = {
   db: {
-    findMany(entity: string, opts?: { where?: Record<string, unknown>; limit?: number }): Promise<unknown[]>
+    findMany(
+      entity: string,
+      opts?: { where?: Record<string, unknown>; limit?: number },
+    ): Promise<unknown[]>
     insert(entity: string, data: Record<string, unknown>): Promise<unknown>
     update(entity: string, id: string, data: Record<string, unknown>): Promise<unknown>
   }
 }
 
-async function appConfig(ctx: ConfigDb, key: string): Promise<{ id: string; value: unknown } | null> {
-  const rows = (await ctx.db.findMany("app_config", { where: { key }, limit: 1 })) as Array<{ id: string; value: unknown }>
+async function appConfig(
+  ctx: ConfigDb,
+  key: string,
+): Promise<{ id: string; value: unknown } | null> {
+  const rows = (await ctx.db.findMany("app_config", { where: { key }, limit: 1 })) as Array<{
+    id: string
+    value: unknown
+  }>
   return rows[0] ?? null
 }
 
@@ -138,7 +172,16 @@ export async function readAppConfig<T>(ctx: ConfigDb, key: string): Promise<T | 
 export async function webhooksSetup(
   params: { callback_base_url?: string },
   ctx: SetupCtx,
-): Promise<{ status: "completed"; subscription_id: number; callback_url: string; events: readonly string[]; replaced: boolean } | OpError> {
+): Promise<
+  | {
+      status: "completed"
+      subscription_id: number
+      callback_url: string
+      events: readonly string[]
+      replaced: boolean
+    }
+  | OpError
+> {
   const stored = await readAppConfig<string>(ctx, BASE_URL_KEY)
   const base = (params?.callback_base_url || stored || "").replace(/\/$/, "")
   if (!/^https:\/\//.test(base)) {
@@ -156,7 +199,9 @@ export async function webhooksSetup(
     return fromException(e, "webhooks_setup")
   }
   try {
-    const page = await client.list<{ id: number; callback_url: string }>("/webhook_subscriptions", { limit: 100 })
+    const page = await client.list<{ id: number; callback_url: string }>("/webhook_subscriptions", {
+      limit: 100,
+    })
     const mine = page.items.filter((s) => s.callback_url === callbackUrl)
     // The secret is returned only at creation: a subscription we hold no secret for cannot be
     // verified, so it is replaced rather than kept.
@@ -167,11 +212,26 @@ export async function webhooksSetup(
       enabled: true,
     })
     const secret = created.data?.secret
-    if (!secret) return opError("provider_rejected", "Pennylane created the subscription without returning its signing secret")
+    if (!secret)
+      return opError(
+        "provider_rejected",
+        "Pennylane created the subscription without returning its signing secret",
+      )
     await ctx.config.setSecret(WEBHOOK_SECRET_KEY, secret)
-    await setAppConfig(ctx, SUBSCRIPTION_KEY, { id: created.data.id, callback_url: callbackUrl, events: WEBHOOK_EVENTS, at: new Date().toISOString() })
+    await setAppConfig(ctx, SUBSCRIPTION_KEY, {
+      id: created.data.id,
+      callback_url: callbackUrl,
+      events: WEBHOOK_EVENTS,
+      at: new Date().toISOString(),
+    })
     if (params?.callback_base_url) await setAppConfig(ctx, BASE_URL_KEY, base)
-    return { status: "completed", subscription_id: created.data.id, callback_url: callbackUrl, events: WEBHOOK_EVENTS, replaced: mine.length > 0 }
+    return {
+      status: "completed",
+      subscription_id: created.data.id,
+      callback_url: callbackUrl,
+      events: WEBHOOK_EVENTS,
+      replaced: mine.length > 0,
+    }
   } catch (e) {
     return fromException(e, "webhooks_setup")
   }

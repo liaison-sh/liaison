@@ -38,7 +38,6 @@ import {
   type ShippedLocale,
 } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
-import { pickerConfigured } from "~/apps/google-drive/drive-mode"
 import { kernelRel } from "~/apps/tickets/schema-refs"
 import { resolveOrgId } from "~/cli/lib/resolve-org-id"
 import { extractRows } from "~/db"
@@ -176,6 +175,9 @@ export async function buildGuide(
     }
     if (plan.imap && plan.imap.guide !== plan.guide) text.push(...renderGuideText(plan.imap.guide))
     const drivePickerUrl = `${values.baseUrl}/settings/apps/google-drive`
+    // The Google Picker's key and project number (the google-drive app's
+    // instance config defaults, modules/apps/instance-config-defaults.ts).
+    const pickerConfigured = Boolean(env.GOOGLE_PICKER_API_KEY && env.GOOGLE_CLOUD_PROJECT_NUMBER)
     if (plan.driveMode === "full") {
       text.push("", "Google Drive: full (Liaison reads the whole Drive once connected).")
     } else if (plan.driveMode === "picked") {
@@ -184,9 +186,9 @@ export async function buildGuide(
         "Google Drive: picked (drive.file). With an account that is not on Google Workspace the person chooses which Drive files Liaison can see; a Google Workspace account can share the whole Drive.",
         `The Google Picker runs in Liaison, not here: after connecting, choose the files at ${drivePickerUrl} (or on the agent's picker card).`,
       )
-      if (!pickerConfigured(env)) {
+      if (!pickerConfigured) {
         text.push(
-          "The Google Picker is not set up on this server: set GOOGLE_PICKER_API_KEY and GOOGLE_CLOUD_PROJECT_NUMBER.",
+          "The Google Picker is not set up on this server: set GOOGLE_PICKER_API_KEY and GOOGLE_CLOUD_PROJECT_NUMBER (or the google-drive app's config pickerApiKey and pickerAppId).",
         )
       }
     }
@@ -197,7 +199,7 @@ export async function buildGuide(
           provider,
           ...plan,
           ...(plan.driveMode === "picked"
-            ? { drivePicker: { url: drivePickerUrl, configured: pickerConfigured(env) } }
+            ? { drivePicker: { url: drivePickerUrl, configured: pickerConfigured } }
             : {}),
           values,
         },

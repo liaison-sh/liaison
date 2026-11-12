@@ -18,7 +18,7 @@ export const GRAPH = "https://graph.facebook.com/v25.0"
  * toMinorUnits(50, 'JPY') === 50
  */
 export function toMinorUnits(amount: number, currency: string): number {
-  return Math.round(amount * Math.pow(10, currencyExponent(currency)))
+  return Math.round(amount * 10 ** currencyExponent(currency))
 }
 
 /**
@@ -195,10 +195,7 @@ function checkThrottleHeaders(headers: Record<string, string>): string | null {
       const parsed = JSON.parse(val) as Record<string, unknown>
 
       // Flat shape: a top-level numeric call_count (the common X-App-Usage form).
-      if (
-        typeof parsed.call_count === "number" &&
-        parsed.call_count > THROTTLE_WARN_THRESHOLD
-      ) {
+      if (typeof parsed.call_count === "number" && parsed.call_count > THROTTLE_WARN_THRESHOLD) {
         return `Meta API throttle warning: ${header} call_count at ${parsed.call_count}%`
       }
 
@@ -232,10 +229,7 @@ function checkThrottleHeaders(headers: Record<string, string>): string | null {
 // and metaFetch casts the result to FetchResult internally. Widening the param
 // here (rather than narrowing every ctx interface + test mock) keeps handlers and
 // mocks assignable without any `as` casts at the callsites.
-export type MetaFetch = (
-  url: string,
-  opts?: Record<string, unknown>,
-) => Promise<unknown>
+export type MetaFetch = (url: string, opts?: Record<string, unknown>) => Promise<unknown>
 
 // Compile-time guard: the precise SDK fetch must remain assignable to MetaFetch,
 // so production ctx.fetch (the real bridge) works through metaFetch unchanged.
@@ -263,10 +257,7 @@ interface FetchResult {
  * - Parses non-2xx → typed errors
  * - Checks throttle headers
  */
-export async function metaFetch(
-  fetch: MetaFetch,
-  opts: MetaFetchOptions,
-): Promise<unknown> {
+export async function metaFetch(fetch: MetaFetch, opts: MetaFetchOptions): Promise<unknown> {
   const { path, method = "GET", params, accessToken } = opts
   const url = `${GRAPH}${path}`
 
@@ -276,8 +267,7 @@ export async function metaFetch(
   if (params && Object.keys(params).length > 0) {
     const parts: string[] = []
     for (const [k, v] of Object.entries(params)) {
-      const strVal =
-        typeof v === "object" && v !== null ? JSON.stringify(v) : String(v)
+      const strVal = typeof v === "object" && v !== null ? JSON.stringify(v) : String(v)
       parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(strVal)}`)
     }
     const encoded = parts.join("&")
@@ -329,10 +319,7 @@ interface PagedResponse {
 /**
  * Fetch all pages of a cursor-paged Meta API edge, accumulating within the 1 MB cap.
  */
-export async function metaFetchPaged(
-  fetch: MetaFetch,
-  opts: MetaFetchOptions,
-): Promise<unknown[]> {
+export async function metaFetchPaged(fetch: MetaFetch, opts: MetaFetchOptions): Promise<unknown[]> {
   const accumulated: unknown[] = []
   let afterCursor: string | undefined
   let pages = 0
@@ -342,7 +329,7 @@ export async function metaFetchPaged(
     const params: Record<string, unknown> = { ...(opts.params ?? {}) }
     if (afterCursor) params.after = afterCursor
 
-    const result = await metaFetch(fetch, { ...opts, params }) as PagedResponse
+    const result = (await metaFetch(fetch, { ...opts, params })) as PagedResponse
 
     const data = Array.isArray(result.data) ? result.data : []
     accumulated.push(...data)

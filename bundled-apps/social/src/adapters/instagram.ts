@@ -13,9 +13,9 @@ import { packCursor, parseCursor, parseJsonCursor } from "./cursor"
 import {
   type GraphError,
   type GraphPage,
-  type ListError,
   graphError,
   graphTime,
+  type ListError,
   type ListState,
   readListState,
   usageThrottled,
@@ -42,7 +42,6 @@ function parseBody(body: string): unknown {
     return {}
   }
 }
-
 
 // Instagram API with Instagram Login is served from graph.instagram.com (the
 // business-login token is scoped to this host), not graph.facebook.com. The
@@ -131,9 +130,10 @@ async function fetchOwnMediaComments(
   const res = await ctx.fetch(url, {
     headers: ctx.accessToken ? { Authorization: `Bearer ${ctx.accessToken}` } : {},
   })
-  if (graphError(res) === "RATE_LIMITED") return { findings: [], redacted: false, rateLimited: true }
+  if (graphError(res) === "RATE_LIMITED")
+    return { findings: [], redacted: false, rateLimited: true }
   if (res.status !== 200) return { findings: [], redacted: false }
-  const body = (parseBody(res.body)) as IgCommentsResponse
+  const body = parseBody(res.body) as IgCommentsResponse
   const data = body.data ?? []
   const redacted = commentsCount > 0 && data.length === 0
   const nonSelfComments = data.filter((c) => !isSelf(self, c.username))
@@ -222,7 +222,11 @@ interface IgMeResponse {
 async function resolveSelfIdentity(
   ctx: AdapterContext,
 ): Promise<{ self: SelfIdentity; error?: "CONNECTION_LOST" | "RATE_LIMITED" }> {
-  const fallback: SelfIdentity = { accountExternalId: ctx.accountExternalId, meId: null, username: null }
+  const fallback: SelfIdentity = {
+    accountExternalId: ctx.accountExternalId,
+    meId: null,
+    username: null,
+  }
   try {
     const res = await ctx.fetch(`${IG_BASE}/me?fields=id,username`, {
       headers: ctx.accessToken ? { Authorization: `Bearer ${ctx.accessToken}` } : {},
@@ -289,7 +293,12 @@ function normalizeConversation(
   messages: IgDmMessage[] = [],
 ): NormalizedConversation {
   const participant = nonSelfParticipant(conv, self)
-  const resolvedName = resolveParticipantName(participant?.username, participant?.id, self, messages)
+  const resolvedName = resolveParticipantName(
+    participant?.username,
+    participant?.id,
+    self,
+    messages,
+  )
   return {
     platform: "instagram",
     externalId: conv.id,
@@ -340,7 +349,8 @@ async function fetchConversationMessages(
     const res = await ctx.fetch(url, {
       headers: ctx.accessToken ? { Authorization: `Bearer ${ctx.accessToken}` } : {},
     })
-    if (res.status !== 200) return { messages: out, ok: false, rateLimited: graphError(res) === "RATE_LIMITED" }
+    if (res.status !== 200)
+      return { messages: out, ok: false, rateLimited: graphError(res) === "RATE_LIMITED" }
     const body = parseBody(res.body) as IgDmMessagesResponse
     const data = body.data ?? []
     out.push(...data)
@@ -362,7 +372,10 @@ const MEDIA_PAGE_LIMIT = 25
 const MEDIA_BACKFILL_LIMIT = 10
 
 /** One page of a Graph list edge for `walkNewestFirst`. */
-async function fetchListPage<T>(ctx: AdapterContext, url: string): Promise<GraphPage<T> | { error: ListError }> {
+async function fetchListPage<T>(
+  ctx: AdapterContext,
+  url: string,
+): Promise<GraphPage<T> | { error: ListError }> {
   const res = await ctx.fetch(url, {
     headers: ctx.accessToken ? { Authorization: `Bearer ${ctx.accessToken}` } : {},
   })
@@ -371,12 +384,16 @@ async function fetchListPage<T>(ctx: AdapterContext, url: string): Promise<Graph
   // Any other failure: skip this source this tick with its state kept,
   // instead of reading an error body as an empty list.
   if (res.status !== 200) return { error: "UNAVAILABLE" }
-  const body = parseBody(res.body) as { data?: T[]; paging?: { cursors?: { after?: string }; next?: string } }
+  const body = parseBody(res.body) as {
+    data?: T[]
+    paging?: { cursors?: { after?: string }; next?: string }
+  }
   const data = body.data ?? []
   // Graph keeps an `after` cursor on the last page; only `paging.next` says more exist.
-  const next = data.length > 0 && body.paging?.cursors?.after && body.paging.next !== undefined
-    ? body.paging.cursors.after
-    : null
+  const next =
+    data.length > 0 && body.paging?.cursors?.after && body.paging.next !== undefined
+      ? body.paging.cursors.after
+      : null
   return { items: data, next, throttled: usageThrottled(res.headers) }
 }
 
@@ -534,12 +551,11 @@ export const instagramAdapter: PlatformAdapter = {
     let redactionWarned = false
     let rateLimited = false
     for (const media of ownMedia) {
-      const { findings: comments, redacted, rateLimited: limited } = await fetchOwnMediaComments(
-        ctx,
-        media.id,
-        media.comments_count ?? 0,
-        self,
-      )
+      const {
+        findings: comments,
+        redacted,
+        rateLimited: limited,
+      } = await fetchOwnMediaComments(ctx, media.id, media.comments_count ?? 0, self)
       if (limited) {
         rateLimited = true
         break
@@ -614,7 +630,7 @@ export const instagramAdapter: PlatformAdapter = {
     if (graphError(res) === "RATE_LIMITED") {
       return { findings: [], nextCursor: cursor, unitsConsumed: 0, error: "RATE_LIMITED" }
     }
-    const body = (parseBody(res.body)) as {
+    const body = parseBody(res.body) as {
       data?: Array<{ id: string; text?: string; username?: string; timestamp?: string }>
       paging?: { cursors?: { after?: string } }
     }

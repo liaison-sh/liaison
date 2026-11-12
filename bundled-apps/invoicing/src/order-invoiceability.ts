@@ -17,12 +17,9 @@
 // reproduction, and the French e-invoicing identity of the buyer (registry lookups); those are
 // settings or post-order facts, not something the order's author can fix on the draft.
 
-import {
-  findIssuerByShopId,
-  formatEventAddress,
-} from "./handlers/shopify-order-paid"
+import { findIssuerByShopId, formatEventAddress } from "./handlers/shopify-order-paid"
 import { counterpartyCompletenessError } from "./issue"
-import { EXEMPT_TREATMENTS, classify, isUntaxedIntraEuSaleWithoutVat } from "./tax"
+import { classify, EXEMPT_TREATMENTS, isUntaxedIntraEuSaleWithoutVat } from "./tax"
 
 /** A postal address as the Shopify app reports it (snake_case country code). */
 export interface ProspectiveOrderAddress {
@@ -81,7 +78,8 @@ export interface InvoiceabilityResult {
 }
 
 const blank = (v: unknown): boolean => typeof v !== "string" || v.trim() === ""
-const str = (v: unknown): string | null => (typeof v === "string" && v.trim() !== "" ? v.trim() : null)
+const str = (v: unknown): string | null =>
+  typeof v === "string" && v.trim() !== "" ? v.trim() : null
 const upper = (v: unknown): string | null => str(v)?.toUpperCase() ?? null
 
 function amount(v: unknown): number | null {
@@ -175,7 +173,12 @@ export function invoiceabilityProblems(
         `exemption so Shopify charges ${counterpartyCountry} VAT`,
     })
   }
-  if (EXEMPT_TREATMENTS.has(classification.treatment) && facts.tax_exempt !== true && tax != null && tax > 0) {
+  if (
+    EXEMPT_TREATMENTS.has(classification.treatment) &&
+    facts.tax_exempt !== true &&
+    tax != null &&
+    tax > 0
+  ) {
     problems.push({
       reason: "tax_on_exempt_treatment",
       field: "tax_exempt",

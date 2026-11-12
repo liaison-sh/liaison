@@ -197,3 +197,4 @@ Read at startup on every device -> apps/web/src/startup.ts:86
 Hidden apps stay available from search, palette, links -> packages/shared/src/i18n/locales/en/kernel.json:6675
 Agent can hide or show apps -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:1816
 Admin sets a starting list from the Users page -> apps/web/src/modules/settings/AdminUserDetail.tsx:437
+Drive shared drives section in settings -> bundled-apps/google-drive/app.manifest.json:1

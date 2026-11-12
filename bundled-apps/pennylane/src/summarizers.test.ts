@@ -24,8 +24,15 @@ describe("summarizeSupplierInvoiceUpload", () => {
   })
 
   it("says plainly that approving books the bill in Pennylane", async () => {
-    const s = await summarizeSupplierInvoiceUpload({ file_id: "file-2", supplier_name: "Vendor Co", invoice_date: "2026-07-02", amount_minor: "100" })
-    expect(s.lines.join("\n")).toMatch(/imports the bill and its PDF into Pennylane's accounts payable/)
+    const s = await summarizeSupplierInvoiceUpload({
+      file_id: "file-2",
+      supplier_name: "Vendor Co",
+      invoice_date: "2026-07-02",
+      amount_minor: "100",
+    })
+    expect(s.lines.join("\n")).toMatch(
+      /imports the bill and its PDF into Pennylane's accounts payable/,
+    )
     expect(s.subtitle).toMatch(/books a supplier invoice in Pennylane/)
   })
 })

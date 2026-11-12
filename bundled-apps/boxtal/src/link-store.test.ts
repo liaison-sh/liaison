@@ -213,10 +213,16 @@ describe("shipmentRefFromLabelUrl", () => {
 
 describe("applyDocumentCreated: reference capture", () => {
   it("captures the reference from the label URL before the URLs are stripped", async () => {
-    const db = createMockDb({ seed: { shipment: [{ id: "s1", boxtal_order_id: "o1", order_status: "PENDING" }] } })
+    const db = createMockDb({
+      seed: { shipment: [{ id: "s1", boxtal_order_id: "o1", order_status: "PENDING" }] },
+    })
     const ctx = { db } as any
     await applyDocumentCreated(ctx, "o1", [
-      { url: "https://document.boxtal.com/shipping-label/2609141542FEDX1CS3FR_bordereau_1.pdf?x=1", type: "LABEL", format: "PDF_A4" },
+      {
+        url: "https://document.boxtal.com/shipping-label/2609141542FEDX1CS3FR_bordereau_1.pdf?x=1",
+        type: "LABEL",
+        format: "PDF_A4",
+      },
     ])
     const row = (await db.findOne("shipment", "s1")) as Record<string, unknown>
     expect(row.boxtal_shipment_ref).toBe("2609141542FEDX1CS3FR")

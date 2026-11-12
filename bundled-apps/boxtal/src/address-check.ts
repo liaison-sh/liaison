@@ -104,7 +104,17 @@ export interface AddressSources {
   invoice: RecipientAddressInput | null
 }
 
-const FIELDS = ["name", "company", "email", "phone", "street", "city", "postalCode", "countryIsoCode", "state"] as const
+const FIELDS = [
+  "name",
+  "company",
+  "email",
+  "phone",
+  "street",
+  "city",
+  "postalCode",
+  "countryIsoCode",
+  "state",
+] as const
 type Field = (typeof FIELDS)[number]
 const PERSON_FIELDS: ReadonlySet<Field> = new Set(["name", "company", "phone", "email"])
 
@@ -146,7 +156,8 @@ const UNIT_WORDS: ReadonlySet<string> = new Set(["ste", "suite", "apt", "unit"])
  *  Null for any other word. */
 function foldSt(token: string, next: string | undefined): string | null {
   const nextIsNumber = next !== undefined && /^\d/.test(next)
-  if (token === "st") return next === undefined || nextIsNumber || UNIT_WORDS.has(next) ? "street" : "saint"
+  if (token === "st")
+    return next === undefined || nextIsNumber || UNIT_WORDS.has(next) ? "street" : "saint"
   if (token === "ste") return nextIsNumber ? "suite" : "saint"
   return SAINT_FORMS.has(token) ? "saint" : null
 }
@@ -159,11 +170,7 @@ function foldWord(word: string, next?: string): string {
 }
 
 function foldText(text: string): string {
-  return text
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/ß/g, "ss")
+  return text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/ß/g, "ss")
 }
 
 /** A street as comparable parts: its house numbers in order, and its words joined without
@@ -200,7 +207,7 @@ export function cityKey(city: string): string {
     .filter((t) => t !== "")
   const cedex = tokens.indexOf("cedex")
   const kept = cedex > 0 ? tokens.slice(0, cedex) : tokens
-  return kept.map((t, i) => foldSt(t, kept[i + 1]) === "saint" ? "saint" : t).join("")
+  return kept.map((t, i) => (foldSt(t, kept[i + 1]) === "saint" ? "saint" : t)).join("")
 }
 
 function postalKey(postal: string): string {
@@ -215,7 +222,10 @@ function present(v: string | null | undefined): string | null {
 /** Do two addresses name the same place? Country, postal code, city and street must all be
  *  present on both and equal after folding; house numbers must be identical. Ambiguity is a
  *  mismatch. */
-export function sameLocation(a: RecipientAddressInput | null, b: RecipientAddressInput | null): boolean {
+export function sameLocation(
+  a: RecipientAddressInput | null,
+  b: RecipientAddressInput | null,
+): boolean {
   if (!a || !b) return false
   const ca = present(a.countryIsoCode)
   const cb = present(b.countryIsoCode)
@@ -249,7 +259,10 @@ function locationKey(a: RecipientAddressInput): string {
 }
 
 /** The hash a person's pick is tied to: the order's address and the verified one (with its id). */
-export function addressPairHash(order: RecipientAddressInput, verified: RecipientAddressInput & { id: string }): string {
+export function addressPairHash(
+  order: RecipientAddressInput,
+  verified: RecipientAddressInput & { id: string },
+): string {
   const raw = `${locationKey(order)}::${verified.id}::${locationKey(verified)}`
   // Small deterministic FNV-1a hash, the same as the quote cache key: no crypto needed.
   let h = 0x811c9dc5
@@ -287,7 +300,9 @@ export function needsAddressPick(check: AddressCheck | null | undefined): check 
   order_address: RecipientAddressInput
   verified_address: VerifiedAddressView
 } {
-  return Boolean(check && check.state === "differs" && check.order_address && check.verified_address)
+  return Boolean(
+    check && check.state === "differs" && check.order_address && check.verified_address,
+  )
 }
 
 /** Apply a stored pick to a resolution that came out `differs`. A pick made against other
@@ -300,9 +315,15 @@ export function applyAddressChoice(
   const check = resolved.check
   if (!stored || !needsAddressPick(check)) return resolved
   if (stored.hash !== addressPairHash(check.order_address, check.verified_address)) return resolved
-  const { id, verified_at: _at, verified_by_name: _by, verification_source: _src, ...verifiedAddress } =
-    check.verified_address
-  if (stored.pick === "verified" && stored.address_id != null && stored.address_id !== id) return resolved
+  const {
+    id,
+    verified_at: _at,
+    verified_by_name: _by,
+    verification_source: _src,
+    ...verifiedAddress
+  } = check.verified_address
+  if (stored.pick === "verified" && stored.address_id != null && stored.address_id !== id)
+    return resolved
   const next = resolveRecipient({
     ...sources,
     choice:
@@ -310,7 +331,10 @@ export function applyAddressChoice(
         ? { address: check.order_address }
         : { address: verifiedAddress, address_id: id },
   })
-  return { ...next, check: { ...next.check, choice: { pick: stored.pick, chosen_at: stored.chosen_at || null } } }
+  return {
+    ...next,
+    check: { ...next.check, choice: { pick: stored.pick, chosen_at: stored.chosen_at || null } },
+  }
 }
 
 /** Same country and postal code: enough for a state (it follows the postal code). */
@@ -318,7 +342,10 @@ function samePostalArea(a: RecipientAddressInput, b: RecipientAddressInput): boo
   const ca = present(a.countryIsoCode)
   const pa = present(a.postalCode)
   if (!ca || !pa) return false
-  return ca.toUpperCase() === (present(b.countryIsoCode) ?? "").toUpperCase() && postalKey(pa) === postalKey(present(b.postalCode) ?? "")
+  return (
+    ca.toUpperCase() === (present(b.countryIsoCode) ?? "").toUpperCase() &&
+    postalKey(pa) === postalKey(present(b.postalCode) ?? "")
+  )
 }
 
 function hasLocation(a: RecipientAddressInput | null | undefined): a is RecipientAddressInput {
@@ -328,7 +355,9 @@ function hasLocation(a: RecipientAddressInput | null | undefined): a is Recipien
 /** Does a stored address hold everything a label buy needs (street, city, postal code, phone)? */
 export function hasLabelAddress(a: RecipientAddressInput | null): boolean {
   // A country with no postal codes (UAE, Qatar...) has none to hold.
-  return Boolean(a?.street && a.city && (a.postalCode || !postalCodeRequired(a.countryIsoCode)) && a.phone)
+  return Boolean(
+    a?.street && a.city && (a.postalCode || !postalCodeRequired(a.countryIsoCode)) && a.phone,
+  )
 }
 
 interface Candidate {
@@ -349,21 +378,29 @@ export function resolveRecipient(sources: AddressSources): ResolvedRecipient {
   const verified = sources.verified.filter((v) => hasLocation(v.address))
   const orderHasAddress = hasLocation(order)
   const orderMayHaveAddress = orderHasAddress || sources.orderUnknown === true
-  const matchingVerified = orderHasAddress ? verified.find((v) => sameLocation(order, v.address)) : undefined
+  const matchingVerified = orderHasAddress
+    ? verified.find((v) => sameLocation(order, v.address))
+    : undefined
 
   const precedence: Candidate[] = []
   if (sources.choice && hasLocation(sources.choice.address)) {
     const picked = sources.choice.address_id
       ? verified.find((v) => v.id === sources.choice?.address_id)
       : undefined
-    precedence.push({ source: "operator_choice", address: sources.choice.address, ...(picked ? { verified: picked } : {}) })
+    precedence.push({
+      source: "operator_choice",
+      address: sources.choice.address,
+      ...(picked ? { verified: picked } : {}),
+    })
   }
   if (hasLocation(prep)) precedence.push({ source: "prep_recipient", address: prep })
   if (orderHasAddress) precedence.push({ source: "order", address: order })
   // A verified address is used outright ONLY when the order says nothing about where to ship.
-  if (!orderMayHaveAddress && verified[0]) precedence.push({ source: "verified", address: verified[0].address, verified: verified[0] })
+  if (!orderMayHaveAddress && verified[0])
+    precedence.push({ source: "verified", address: verified[0].address, verified: verified[0] })
   if (hasLocation(contact)) precedence.push({ source: "contact", address: contact })
-  if (hasLocation(customerDefault)) precedence.push({ source: "customer_default", address: customerDefault })
+  if (hasLocation(customerDefault))
+    precedence.push({ source: "customer_default", address: customerDefault })
   if (hasLocation(invoice)) precedence.push({ source: "invoice", address: invoice })
 
   const winner = precedence[0] ?? null
@@ -408,7 +445,10 @@ export function resolveRecipient(sources: AddressSources): ResolvedRecipient {
       : [ord(order), def(customerDefault), inv(invoice)]),
     ...verified.map((v): Candidate => ({ source: "verified", address: v.address, verified: v })),
   ]
-  const ordered = [winner, ...base.filter((c): c is Candidate => c != null && c.address !== winner.address)]
+  const ordered = [
+    winner,
+    ...base.filter((c): c is Candidate => c != null && c.address !== winner.address),
+  ]
   // The winner's own position in the historical order decides ties between agreeing sources.
   const winnerIndex = base.findIndex((c) => c?.address === winner.address)
   const fillOrder =
@@ -421,7 +461,8 @@ export function resolveRecipient(sources: AddressSources): ResolvedRecipient {
   const typedContact = prep && !hasLocation(prep) ? prep : null
   const out: RecipientAddressInput = {}
   for (const field of FIELDS) {
-    let value: string | null = typedContact && PERSON_FIELDS.has(field) ? present(typedContact[field]) : null
+    let value: string | null =
+      typedContact && PERSON_FIELDS.has(field) ? present(typedContact[field]) : null
     for (const c of value == null ? fillOrder : []) {
       const v = present(c.address[field])
       if (v && (c.address === winner.address || allowedFill(field, c, winner))) {
@@ -431,7 +472,8 @@ export function resolveRecipient(sources: AddressSources): ResolvedRecipient {
     }
     // Last resort for who to address: the invoice's name and email are the document's own, not
     // part of its address text, so they may fill even when the invoice text names another place.
-    if (value == null && invoice && (field === "name" || field === "email")) value = present(invoice[field])
+    if (value == null && invoice && (field === "name" || field === "email"))
+      value = present(invoice[field])
     out[field] = value
   }
   return { address: out, check }

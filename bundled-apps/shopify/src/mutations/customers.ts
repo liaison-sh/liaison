@@ -4,13 +4,13 @@
 
 import type { AppContext } from "@liaison/app-sdk"
 import {
-  type PreflightResult,
-  resolveMutationInput,
   makeMutationError,
-  readGatedTarget,
+  type PreflightResult,
   preflightRefusal,
-  runMutation,
+  readGatedTarget,
   requireTargetId,
+  resolveMutationInput,
+  runMutation,
 } from "./shared"
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -49,9 +49,19 @@ export async function customers_update_preflight(
   return { ok: true }
 }
 
-export async function customers_update(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function customers_update(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   const input = buildCustomerUpdateInput(params)
-  return runMutation(ctx, { query: CUSTOMER_UPDATE, variables: { input }, dataKey: "customerUpdate", eventEntity: "customer", eventAction: "updated", entityIdPath: "customer.id" })
+  return runMutation(ctx, {
+    query: CUSTOMER_UPDATE,
+    variables: { input },
+    dataKey: "customerUpdate",
+    eventEntity: "customer",
+    eventAction: "updated",
+    entityIdPath: "customer.id",
+  })
 }
 
 const CUSTOMER_EMAIL_CONSENT = `
@@ -64,9 +74,19 @@ function consentInput(params: Record<string, unknown>): Record<string, unknown> 
   return { ...resolveMutationInput(params), customerId: params.customerId }
 }
 
-export async function customers_email_marketing_consent_update(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function customers_email_marketing_consent_update(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   if (!params.customerId) throw makeMutationError("BAD_PARAM", "customerId is required")
-  return runMutation(ctx, { query: CUSTOMER_EMAIL_CONSENT, variables: { input: consentInput(params) }, dataKey: "customerEmailMarketingConsentUpdate", eventEntity: "customer", eventAction: "email_consent_updated", entityIdPath: "customer.id" })
+  return runMutation(ctx, {
+    query: CUSTOMER_EMAIL_CONSENT,
+    variables: { input: consentInput(params) },
+    dataKey: "customerEmailMarketingConsentUpdate",
+    eventEntity: "customer",
+    eventAction: "email_consent_updated",
+    entityIdPath: "customer.id",
+  })
 }
 
 const CUSTOMER_SMS_CONSENT = `
@@ -74,9 +94,19 @@ const CUSTOMER_SMS_CONSENT = `
     customerSmsMarketingConsentUpdate(input: $input) { customer { id email } userErrors { field message } }
   }
 `
-export async function customers_sms_marketing_consent_update(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function customers_sms_marketing_consent_update(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   if (!params.customerId) throw makeMutationError("BAD_PARAM", "customerId is required")
-  return runMutation(ctx, { query: CUSTOMER_SMS_CONSENT, variables: { input: consentInput(params) }, dataKey: "customerSmsMarketingConsentUpdate", eventEntity: "customer", eventAction: "sms_consent_updated", entityIdPath: "customer.id" })
+  return runMutation(ctx, {
+    query: CUSTOMER_SMS_CONSENT,
+    variables: { input: consentInput(params) },
+    dataKey: "customerSmsMarketingConsentUpdate",
+    eventEntity: "customer",
+    eventAction: "sms_consent_updated",
+    entityIdPath: "customer.id",
+  })
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -117,7 +147,10 @@ export async function customers_tag_preflight(
   return { ok: true }
 }
 
-export async function customers_tag(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function customers_tag(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   if (!params.customerId) throw makeMutationError("BAD_PARAM", "customerId is required")
   const tags = (params.tags as string[] | undefined) ?? []
   const op = params.op === "remove" ? "remove" : "add"

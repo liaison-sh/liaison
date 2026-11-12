@@ -9,9 +9,16 @@
 // then tells every monitoring surface to refetch. The "Detailed monitoring"
 // link is a plain field of the same page. Errors stay on screen.
 import { hueGlyphColor } from "@liaison/app-ui/hue"
-import { fetch as hostFetch } from "@liaison/host"
-import { app } from "@liaison/host"
-import { type Component, createEffect, createResource, createSignal, For, Index, Show } from "solid-js"
+import { app, fetch as hostFetch } from "@liaison/host"
+import {
+  type Component,
+  createEffect,
+  createResource,
+  createSignal,
+  For,
+  Index,
+  Show,
+} from "solid-js"
 import type { IncidentsSummaryWithConfig } from "../lib/summarize"
 import { tr } from "./i18n"
 import { Button, cx, inputClass } from "./kit"
@@ -22,8 +29,8 @@ import {
   monogram,
   moveRow,
   profilesFromDraft,
-  type SourceView,
   SOURCES_KEY,
+  type SourceView,
   sourceHue,
 } from "./sources"
 
@@ -50,7 +57,12 @@ function previewView(row: DraftRow): SourceView {
   }
 }
 
-const ArrowButton: Component<{ dir: "up" | "down"; disabled: boolean; onClick: () => void; testid: string }> = (props) => (
+const ArrowButton: Component<{
+  dir: "up" | "down"
+  disabled: boolean
+  onClick: () => void
+  testid: string
+}> = (props) => (
   <button
     type="button"
     data-testid={props.testid}
@@ -60,7 +72,17 @@ const ArrowButton: Component<{ dir: "up" | "down"; disabled: boolean; onClick: (
     title={props.dir === "up" ? tr("Move up") : tr("Move down")}
     class="grid h-5 w-5 place-items-center rounded text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text disabled:opacity-30 disabled:hover:bg-transparent"
   >
-    <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
       <path d={props.dir === "up" ? "M4 10l4-4 4 4" : "M4 6l4 4 4-4"} />
     </svg>
   </button>
@@ -123,7 +145,9 @@ export const MonitoringSources: Component = () => {
   return (
     <div data-testid="monitoring-sources-settings" class="flex flex-col gap-3">
       <Show when={summary.error || (summary() === null && !summary.loading)}>
-        <p class="text-[12px] text-text-tertiary">{tr("The sources could not be read. Try again later.")}</p>
+        <p class="text-[12px] text-text-tertiary">
+          {tr("The sources could not be read. Try again later.")}
+        </p>
       </Show>
       <Show when={(summary()?.warnings.length ?? 0) > 0}>
         <div
@@ -142,7 +166,9 @@ export const MonitoringSources: Component = () => {
         fallback={
           <Show when={summary()}>
             <p class="py-2 text-[12px] text-text-tertiary">
-              {tr("No alert source has reported yet. Sources appear the first time they deliver an alert to the webhook.")}
+              {tr(
+                "No alert source has reported yet. Sources appear the first time they deliver an alert to the webhook.",
+              )}
             </p>
           </Show>
         }
@@ -178,12 +204,18 @@ export const MonitoringSources: Component = () => {
                     data-testid={`monitoring-sources-settings-label-${row().source}`}
                     onInput={(e) => patch(i, { label: e.currentTarget.value })}
                   />
-                  <span class="truncate font-mono text-[10.5px] text-text-tertiary">{row().source}</span>
+                  <span class="truncate font-mono text-[10.5px] text-text-tertiary">
+                    {row().source}
+                  </span>
                 </div>
                 <div class="flex w-28 shrink-0 flex-col gap-1">
                   <Show
                     when={!row().urgent}
-                    fallback={<span class="text-[10.5px] text-text-tertiary">{tr("Urgent sources use red")}</span>}
+                    fallback={
+                      <span class="text-[10.5px] text-text-tertiary">
+                        {tr("Urgent sources use red")}
+                      </span>
+                    }
                   >
                     <input
                       type="range"
@@ -239,15 +271,28 @@ export const MonitoringSources: Component = () => {
       <Show when={dirty() || saved()}>
         <div class="flex items-center justify-end gap-2">
           <Show when={saved() && !dirty()}>
-            <span class="text-[12px] text-text-secondary" data-testid="monitoring-sources-settings-saved">
+            <span
+              class="text-[12px] text-text-secondary"
+              data-testid="monitoring-sources-settings-saved"
+            >
               {tr("Saved")}
             </span>
           </Show>
           <Show when={dirty()}>
-            <Button variant="ghost" onClick={discard} disabled={busy()} testid="monitoring-sources-settings-cancel">
+            <Button
+              variant="ghost"
+              onClick={discard}
+              disabled={busy()}
+              testid="monitoring-sources-settings-cancel"
+            >
               {tr("Discard")}
             </Button>
-            <Button variant="primary" onClick={() => void save()} disabled={busy()} testid="monitoring-sources-settings-save">
+            <Button
+              variant="primary"
+              onClick={() => void save()}
+              disabled={busy()}
+              testid="monitoring-sources-settings-save"
+            >
               {busy() ? tr("Saving…") : tr("Save")}
             </Button>
           </Show>

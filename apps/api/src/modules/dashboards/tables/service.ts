@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// Dashboard tables (kernel.dashboard_tables, migration 0297): org data with typed columns that
+// Dashboard tables (kernel.dashboard_tables, migration 0298): org data with typed columns that
 // people edit in a table block and agents write with kernel tools. Every function runs under the
 // caller's RLS (the row policies decide who reads and writes; this module checks the same rules
 // first so a refusal names its reason).

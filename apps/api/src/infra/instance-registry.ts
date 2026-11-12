@@ -204,6 +204,10 @@ export class InstanceRegistry {
     await this.runTick()
   }
 
+  isRunning(): boolean {
+    return this.running
+  }
+
   /** False once no renew landed within `ttl - interval` (or before the first). */
   isOwnRecordLive(): boolean {
     return this.running && this.confirmedOnce && !this.lost
@@ -455,6 +459,11 @@ export function startInstanceHeartbeat(rec: Omit<InstanceRecord, "startedAt">): 
 
 export function stopInstanceHeartbeat(opts?: { releaseOwned?: boolean }): Promise<void> {
   return registry().stop(opts)
+}
+
+/** Whether this process writes its heartbeat record (the server does from boot; a CLI process only once it runs apps on the loader). */
+export function isInstanceHeartbeatRunning(): boolean {
+  return registry().isRunning()
 }
 
 /** False once this process's own record is lost (see `InstanceRegistry.isOwnRecordLive`). */

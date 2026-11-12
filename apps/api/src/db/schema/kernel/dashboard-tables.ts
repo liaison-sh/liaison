@@ -17,7 +17,7 @@ import { kernel, organizations } from "./organizations"
 import { users } from "./users"
 
 /**
- * A dashboard table (migration 0297): typed columns people and agents write rows into. Its rows
+ * A dashboard table (migration 0298): typed columns people and agents write rows into. Its rows
  * live in kernel.app_documents (app `dashboards`, collection `t_<id hex>`), whose restrictive
  * policies follow this row's sharing. Shared as dashboards are: its owner, `orgAccess` and
  * kernel.resource_grants rows of type `kernel.dashboard_table`.
@@ -73,7 +73,7 @@ export type DashboardTableRow = typeof dashboardTables.$inferSelect
 export type DashboardTableChangeOp = "create" | "update" | "delete" | "undo"
 
 /**
- * One row write of a dashboard table (migration 0297): the cells before and after (the changed
+ * One row write of a dashboard table (migration 0298): the cells before and after (the changed
  * cells only, for an update), who made it and when. No foreign key to the table: the history
  * outlives a deleted table for retention and export, and no RLS reader sees it then.
  */

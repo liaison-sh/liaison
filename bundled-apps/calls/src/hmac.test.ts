@@ -21,7 +21,12 @@ const NOW = Date.parse("2026-07-06T10:05:00Z")
 function reqFor(
   body: string,
   headers: Record<string, string> = {},
-): { headers: Record<string, string>; body: string; method: string; query: Record<string, string> } {
+): {
+  headers: Record<string, string>
+  body: string
+  method: string
+  query: Record<string, string>
+} {
   return { headers, body, method: "POST", query: {} }
 }
 

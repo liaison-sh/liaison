@@ -9,8 +9,9 @@
 // Design language: kernel-aligned refined minimalism (Linear-inspired). Dense
 // 11–13px type, hairline borders, restrained accent usage, tabular numerals
 // for any quantity, money, or identifier. No emojis, no gradients, no shadows.
-import { For, Show, type JSX } from "solid-js"
+
 import { app } from "@liaison/host"
+import { For, type JSX, Show } from "solid-js"
 import { loadShopDomain, statusLabel } from "./list-helpers"
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -155,10 +156,7 @@ export function PanelHeader(props: PanelHeaderProps) {
 // ─────────────────────────────────────────────────────────────────────────
 export function Empty(props: { children: JSX.Element; testid?: string }) {
   return (
-    <p
-      data-testid={props.testid}
-      class="px-4 py-8 text-center text-xs text-text-tertiary"
-    >
+    <p data-testid={props.testid} class="px-4 py-8 text-center text-xs text-text-tertiary">
       {props.children}
     </p>
   )

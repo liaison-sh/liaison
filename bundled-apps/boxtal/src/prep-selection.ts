@@ -26,7 +26,10 @@ interface StoredOffer {
 
 /** Minimal db surface (the generic bridge's exact-match `findMany`). */
 interface SelectionDb {
-  findMany(entity: string, opts?: { where?: Record<string, unknown>; limit?: number }): Promise<unknown[]>
+  findMany(
+    entity: string,
+    opts?: { where?: Record<string, unknown>; limit?: number },
+  ): Promise<unknown[]>
 }
 interface SelectionCtx {
   db: SelectionDb

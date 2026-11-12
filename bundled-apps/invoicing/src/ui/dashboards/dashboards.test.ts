@@ -7,6 +7,7 @@
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import { isOutstanding } from "./AwaitingPayment"
 import {
   ALL_SALES_COLUMNS,
   AWAITING_PAYMENT_COLUMNS,
@@ -15,10 +16,15 @@ import {
   EMPTY_STATE,
   toCsv,
 } from "./columns"
-import { applyFilter, DEFAULT_FILTER, EU_COUNTRIES, filterRowsForTab, type DocumentRow } from "./types"
-import { isOutstanding } from "./AwaitingPayment"
-import { documentsSearchArgs, LIST_PAGE_LIMIT, searchParamsFromFilter } from "./loader"
 import { perCurrencyRollup } from "./groupings"
+import { documentsSearchArgs, LIST_PAGE_LIMIT, searchParamsFromFilter } from "./loader"
+import {
+  applyFilter,
+  DEFAULT_FILTER,
+  type DocumentRow,
+  EU_COUNTRIES,
+  filterRowsForTab,
+} from "./types"
 
 // ─────────────────────────────────────────────────────────────────────────
 // Fixtures.
@@ -135,7 +141,6 @@ describe("CSV export (RFC 4180 escape)", () => {
     const csv = toCsv(ALL_SALES_COLUMNS, [row])
     expect(csv).toContain('"Line1\nLine2"')
   })
-
 })
 
 describe("filter logic (date boundary off-by-one, market, channel, buyer_type)", () => {
@@ -163,7 +168,11 @@ describe("filter logic (date boundary off-by-one, market, channel, buyer_type)",
 
   test("timestamp issued_at: single-day range (from=to) keeps the same-day row", () => {
     const ts: DocumentRow = { ...baseRow, id: "ts-2", issued_at: "2026-07-24 12:30:00+00" }
-    const out = applyFilter([ts], { ...DEFAULT_FILTER, date_from: "2026-07-24", date_to: "2026-07-24" })
+    const out = applyFilter([ts], {
+      ...DEFAULT_FILTER,
+      date_from: "2026-07-24",
+      date_to: "2026-07-24",
+    })
     expect(out.map((r) => r.id)).toEqual(["ts-2"])
   })
 
@@ -238,7 +247,16 @@ describe("documentsSearchArgs: what a list load sends to documents_search", () =
   // in the list). Every value sent must fit the declared schema.
   const manifest = JSON.parse(
     readFileSync(join(import.meta.dir, "..", "..", "..", "app.manifest.json"), "utf8"),
-  ) as { tools: Record<string, { params: { properties: Record<string, { properties?: Record<string, { type: string | string[] }> }> } }> }
+  ) as {
+    tools: Record<
+      string,
+      {
+        params: {
+          properties: Record<string, { properties?: Record<string, { type: string | string[] }> }>
+        }
+      }
+    >
+  }
   const rangeProps = manifest.tools.documents_search!.params.properties.date_range!.properties!
   const fitsDeclared = (key: "from" | "to", v: unknown) => {
     const t = rangeProps[key]!.type
@@ -247,12 +265,16 @@ describe("documentsSearchArgs: what a list load sends to documents_search", () =
   }
 
   test("a range with only a start date omits the empty end bound", () => {
-    const args = documentsSearchArgs(searchParamsFromFilter({ ...DEFAULT_FILTER, date_from: "2026-09-01" }))
+    const args = documentsSearchArgs(
+      searchParamsFromFilter({ ...DEFAULT_FILTER, date_from: "2026-09-01" }),
+    )
     expect(args.date_range).toEqual({ from: "2026-09-01" })
   })
 
   test("a range with only an end date omits the empty start bound", () => {
-    const args = documentsSearchArgs(searchParamsFromFilter({ ...DEFAULT_FILTER, date_to: "2026-09-30" }))
+    const args = documentsSearchArgs(
+      searchParamsFromFilter({ ...DEFAULT_FILTER, date_to: "2026-09-30" }),
+    )
     expect(args.date_range).toEqual({ to: "2026-09-30" })
   })
 
@@ -262,8 +284,12 @@ describe("documentsSearchArgs: what a list load sends to documents_search", () =
       { ...DEFAULT_FILTER, date_to: "2026-09-30" },
       { ...DEFAULT_FILTER, date_from: "2026-09-01", date_to: "2026-09-30" },
     ]) {
-      const range = documentsSearchArgs(searchParamsFromFilter(f)).date_range as Record<string, unknown>
-      for (const [k, v] of Object.entries(range)) expect(fitsDeclared(k as "from" | "to", v)).toBe(true)
+      const range = documentsSearchArgs(searchParamsFromFilter(f)).date_range as Record<
+        string,
+        unknown
+      >
+      for (const [k, v] of Object.entries(range))
+        expect(fitsDeclared(k as "from" | "to", v)).toBe(true)
     }
   })
 
@@ -272,7 +298,9 @@ describe("documentsSearchArgs: what a list load sends to documents_search", () =
   })
 
   test("the sort choice reaches the tool and the load asks for a full page", () => {
-    const oldest = documentsSearchArgs(searchParamsFromFilter({ ...DEFAULT_FILTER, sort: "oldest" }))
+    const oldest = documentsSearchArgs(
+      searchParamsFromFilter({ ...DEFAULT_FILTER, sort: "oldest" }),
+    )
     expect(oldest.sort).toBe("oldest")
     expect(oldest.limit).toBe(LIST_PAGE_LIMIT)
     expect(documentsSearchArgs(searchParamsFromFilter(DEFAULT_FILTER)).sort).toBeUndefined()
@@ -294,18 +322,29 @@ describe("empty-state copy (spec §12 pinning)", () => {
 
 describe("isOutstanding — awaiting-payment eligibility", () => {
   test("an issued, unpaid invoice is outstanding", () => {
-    expect(isOutstanding({ ...baseRow, type: "invoice", status: "issued", payment_status: "unpaid" })).toBe(true)
+    expect(
+      isOutstanding({ ...baseRow, type: "invoice", status: "issued", payment_status: "unpaid" }),
+    ).toBe(true)
   })
 
   test("a paid invoice is NOT outstanding", () => {
-    expect(isOutstanding({ ...baseRow, type: "invoice", status: "issued", payment_status: "paid" })).toBe(false)
+    expect(
+      isOutstanding({ ...baseRow, type: "invoice", status: "issued", payment_status: "paid" }),
+    ).toBe(false)
   })
 
   test("a credit note is NEVER outstanding, even though it issues to status='issued' with payment_status='unpaid'", () => {
     // Credit notes are not payable (no due date, no mark_paid), so their payment_status stays at the
     // default 'unpaid' — without the explicit type gate they would incorrectly show up as an
     // outstanding receivable on the Awaiting-payment dashboard.
-    expect(isOutstanding({ ...baseRow, type: "credit_note", status: "issued", payment_status: "unpaid" })).toBe(false)
+    expect(
+      isOutstanding({
+        ...baseRow,
+        type: "credit_note",
+        status: "issued",
+        payment_status: "unpaid",
+      }),
+    ).toBe(false)
   })
 })
 
@@ -323,7 +362,11 @@ describe("module surface", () => {
     // mount imports, a typed Solid `Component` that is a callable function.
     const dir = join(import.meta.dir)
     const shells: Array<[file: string, name: string, mountFile: string]> = [
-      [join(dir, "..", "DocumentsList.tsx"), "InvoicingDocumentsList", join(dir, "..", "index.tsx")],
+      [
+        join(dir, "..", "DocumentsList.tsx"),
+        "InvoicingDocumentsList",
+        join(dir, "..", "index.tsx"),
+      ],
       [join(dir, "AwaitingPayment.tsx"), "AwaitingPayment", join(dir, "..", "index.tsx")],
       [join(dir, "Toolbar.tsx"), "Toolbar", join(dir, "AwaitingPayment.tsx")],
     ]
@@ -334,9 +377,10 @@ describe("module surface", () => {
       )
       const mod: Record<string, unknown> = await import(file)
       expect(typeof mod[name], `${name} is a mountable function at runtime`).toBe("function")
-      expect(readFileSync(mountFile, "utf-8"), `${name} is imported by name where it is mounted`).toMatch(
-        new RegExp(`import \\{[^}]*\\b${name}\\b[^}]*\\} from`),
-      )
+      expect(
+        readFileSync(mountFile, "utf-8"),
+        `${name} is imported by name where it is mounted`,
+      ).toMatch(new RegExp(`import \\{[^}]*\\b${name}\\b[^}]*\\} from`))
     }
   })
 
@@ -362,13 +406,28 @@ describe("module surface", () => {
   })
 
   test("per-currency footer groups digits like the rows, and gives a mixed-type list its count only", () => {
-    const inv: DocumentRow = { ...baseRow, type: "invoice", currency: "EUR", grand_total_minor: 13162280n }
+    const inv: DocumentRow = {
+      ...baseRow,
+      type: "invoice",
+      currency: "EUR",
+      grand_total_minor: 13162280n,
+    }
     const invoiceForms = { one: "invoice", other: "invoices" }
     expect(perCurrencyRollup([inv], invoiceForms)).toBe("1 invoice: 131\u00a0622.80 EUR")
     expect(perCurrencyRollup([inv, inv], invoiceForms)).toBe("2 invoices: 263\u00a0245.60 EUR")
     // Invoices, quotes, purchase orders and credit notes summed together is no usable figure.
-    const po: DocumentRow = { ...baseRow, type: "purchase_order", currency: "EUR", grand_total_minor: 50000n }
-    const cn: DocumentRow = { ...baseRow, type: "credit_note", currency: "EUR", grand_total_minor: -1000n }
+    const po: DocumentRow = {
+      ...baseRow,
+      type: "purchase_order",
+      currency: "EUR",
+      grand_total_minor: 50000n,
+    }
+    const cn: DocumentRow = {
+      ...baseRow,
+      type: "credit_note",
+      currency: "EUR",
+      grand_total_minor: -1000n,
+    }
     expect(perCurrencyRollup([inv, po, cn], "documents")).toBe("3 documents")
   })
 

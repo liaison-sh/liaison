@@ -17,18 +17,13 @@
 // 'inferred' but a manual override has subsequently been set, the panel
 // shows a small "manual vs inferred" attention badge so the user can
 // decide whether to keep the inferred classification.
-import { tr } from "./i18n"
-import {
-  createResource,
-  createSignal,
-  For,
-  Show,
-  type Component,
-} from "solid-js"
-import { app, navigate } from "@liaison/host"
-import { loadViewerAccess } from "./access"
+
 import { CardTable, type CardTableColumn } from "@liaison/app-ui/card-table"
+import { app, navigate } from "@liaison/host"
+import { type Component, createResource, createSignal, For, Show } from "solid-js"
 import { documentRollup, formatMoneyMinor, lineSubtotal } from "../money"
+import { loadViewerAccess } from "./access"
+import { tr } from "./i18n"
 
 export interface ContactDocumentsPanelProps {
   /** The kernel `contact_detail` slot host (SlotPanels) mounts every slot panel
@@ -42,12 +37,7 @@ export interface ContactDocumentsPanelProps {
 }
 
 export type Relationship = "customer" | "vendor" | "both" | "other"
-export const RELATIONSHIP_OPTIONS: Relationship[] = [
-  "customer",
-  "vendor",
-  "both",
-  "other",
-]
+export const RELATIONSHIP_OPTIONS: Relationship[] = ["customer", "vendor", "both", "other"]
 
 /** A draft's own line, as `documents_search({ include_lines: true })` returns it (documents_get
  *  shape) — only the fields the totals roll-up needs. */
@@ -114,10 +104,9 @@ export async function loadPanel(contactId: string): Promise<{
       })
       .catch(() => [] as DocumentRow[]),
     app
-      .invokeTool<RelationshipRow | { item: RelationshipRow | null }>(
-        "contact_relationships_get",
-        { contact_id: contactId },
-      )
+      .invokeTool<RelationshipRow | { item: RelationshipRow | null }>("contact_relationships_get", {
+        contact_id: contactId,
+      })
       .catch(() => null),
   ])
   const relationship =
@@ -218,15 +207,15 @@ export const ContactDocumentsPanel: Component<ContactDocumentsPanelProps> = (pro
             onChange={(e) => void setRelationship(e.currentTarget.value as Relationship)}
             class="rounded-md border border-border-subtle bg-surface px-2 py-1 text-text"
           >
-            <For each={RELATIONSHIP_OPTIONS}>
-              {(r) => <option value={r}>{r}</option>}
-            </For>
+            <For each={RELATIONSHIP_OPTIONS}>{(r) => <option value={r}>{r}</option>}</For>
           </select>
           <Show when={data()?.relationship?.has_inferred_conflict}>
             <span
               data-testid="contact-documents-panel-conflict"
               class="rounded bg-warning/20 px-2 py-0.5 text-[11px] text-warning"
-              title={tr("A manual override differs from the inferred relationship: review and confirm.")}
+              title={tr(
+                "A manual override differs from the inferred relationship: review and confirm.",
+              )}
             >
               {tr("manual vs inferred")}
             </span>
@@ -259,25 +248,32 @@ export const ContactDocumentsPanel: Component<ContactDocumentsPanelProps> = (pro
             rowKey={(row) => row.id}
             rowTestid={(row) => `contact-documents-panel-row-${row.id}`}
             onRowClick={(row) => navigate(`/invoicing/document/${row.id}`)}
-            columns={[
-              {
-                key: "number",
-                header: "#",
-                role: "anchor",
-                cell: (row) => <span class="font-mono">{row.number ?? "(draft)"}</span>,
-              },
-              { key: "type", header: tr("Type"), role: "secondary", cell: (row) => row.type },
-              { key: "date", header: tr("Date"), role: "meta", cell: (row) => fmtDate(row.issued_at) },
-              { key: "status", header: tr("Status"), role: "meta", cell: (row) => row.status },
-              {
-                key: "total",
-                header: tr("Total"),
-                role: "meta",
-                numeric: true,
-                align: "right",
-                cell: (row) => displayTotal(row),
-              },
-            ] as Array<CardTableColumn<DocumentRow>>}
+            columns={
+              [
+                {
+                  key: "number",
+                  header: "#",
+                  role: "anchor",
+                  cell: (row) => <span class="font-mono">{row.number ?? "(draft)"}</span>,
+                },
+                { key: "type", header: tr("Type"), role: "secondary", cell: (row) => row.type },
+                {
+                  key: "date",
+                  header: tr("Date"),
+                  role: "meta",
+                  cell: (row) => fmtDate(row.issued_at),
+                },
+                { key: "status", header: tr("Status"), role: "meta", cell: (row) => row.status },
+                {
+                  key: "total",
+                  header: tr("Total"),
+                  role: "meta",
+                  numeric: true,
+                  align: "right",
+                  cell: (row) => displayTotal(row),
+                },
+              ] as Array<CardTableColumn<DocumentRow>>
+            }
           />
         </div>
       </Show>

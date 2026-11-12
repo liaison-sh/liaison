@@ -48,13 +48,24 @@ export function addressParts(a: string | null | undefined): AddressParts | null 
   // A trailing country: a last segment made only of country words, or country words ending it.
   while (segs.length > 1 && segs[segs.length - 1]!.every((t) => COUNTRY_WORDS.has(t))) segs.pop()
   const last = segs[segs.length - 1]
-  while (last && last.length > 1 && COUNTRY_WORDS.has(last[last.length - 1]!) && !/\d/.test(last[last.length - 1]!)) last.pop()
+  while (
+    last &&
+    last.length > 1 &&
+    COUNTRY_WORDS.has(last[last.length - 1]!) &&
+    !/\d/.test(last[last.length - 1]!)
+  )
+    last.pop()
   const flat: Array<{ t: string; seg: number; i: number }> = []
-  segs.forEach((s, seg) => s.forEach((t, i) => flat.push({ t, seg, i })))
+  for (const [seg, s] of segs.entries()) {
+    for (const [i, t] of s.entries()) flat.push({ t, seg, i })
+  }
   // The postcode: the last 4-5 digit token. The house number: the first short number before or
   // around it that is not the postcode.
   const pc = [...flat].reverse().find((x) => /^\d{4,5}$/.test(x.t)) ?? null
-  const num = flat.find((x) => x !== pc && /^\d{1,4}[a-z]{0,3}$/.test(x.t) && !(pc && x.seg === pc.seg && x.i > pc.i)) ?? null
+  const num =
+    flat.find(
+      (x) => x !== pc && /^\d{1,4}[a-z]{0,3}$/.test(x.t) && !(pc && x.seg === pc.seg && x.i > pc.i),
+    ) ?? null
   if (!num) return null
   const isWord = (t: string) => !/\d/.test(t)
   const seg = segs[num.seg]!
@@ -85,7 +96,10 @@ function sameStreet(a: string[], b: string[]): boolean {
  * How two addresses match: "full" (house number, street and postcode, and the city when both say
  * one), "street" (house number and street, another or no postcode), or null.
  */
-export function addressMatch(a: string | null | undefined, b: string | null | undefined): "full" | "street" | null {
+export function addressMatch(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): "full" | "street" | null {
   const na = normaliseAddress(a)
   const nb = normaliseAddress(b)
   if (!na || !nb) return null
@@ -104,6 +118,9 @@ export function sameAddress(a: string | null | undefined, b: string | null | und
 }
 
 /** Same house number, street and postcode (and city): the strong match that may fill in a VAT number. */
-export function sameFullAddress(a: string | null | undefined, b: string | null | undefined): boolean {
+export function sameFullAddress(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
   return addressMatch(a, b) === "full"
 }

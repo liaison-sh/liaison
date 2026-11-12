@@ -17,8 +17,14 @@ import { IncidentRow, type TriageAction } from "./incident-row"
 import { Button, Card, cx, SectionLabel } from "./kit"
 import { loadMemberNames } from "./members"
 import { onMonitoringChange, SourceSquare } from "./source-glyph"
+import {
+  buildSourceViews,
+  decodeSourceId,
+  type IncidentLike,
+  isAutoResolved,
+  sourceStats,
+} from "./sources"
 import { rememberSourceLabels } from "./tab-labels"
-import { buildSourceViews, decodeSourceId, type IncidentLike, isAutoResolved, sourceStats } from "./sources"
 
 export const MonitoringSourcePage: Component<{ entityId?: string; id?: string }> = (props) => {
   const sourceId = () => decodeSourceId(props.entityId ?? props.id ?? "")
@@ -26,7 +32,9 @@ export const MonitoringSourcePage: Component<{ entityId?: string; id?: string }>
   const [triageError, setTriageError] = createSignal<string | null>(null)
   const nowMs = () => Date.now()
 
-  const [summary, { refetch: refetchSummary }] = createResource<IncidentsSummaryWithConfig | undefined>(async () => {
+  const [summary, { refetch: refetchSummary }] = createResource<
+    IncidentsSummaryWithConfig | undefined
+  >(async () => {
     const res = await app.invokeTool<{ data: IncidentsSummaryWithConfig }>("incidents_summary", {})
     return res?.data
   })
@@ -42,7 +50,9 @@ export const MonitoringSourcePage: Component<{ entityId?: string; id?: string }>
         status: "resolved",
         limit: 50,
       })
-      return (res?.data ?? []).sort((a, b) => (b.resolvedAt ?? "").localeCompare(a.resolvedAt ?? ""))
+      return (res?.data ?? []).sort((a, b) =>
+        (b.resolvedAt ?? "").localeCompare(a.resolvedAt ?? ""),
+      )
     },
   )
   // Names only when a person resolved something here.
@@ -79,9 +89,13 @@ export const MonitoringSourcePage: Component<{ entityId?: string; id?: string }>
   const liveRows = createMemo(() =>
     [...(live.latest ?? [])].sort((a, b) => (b.lastSeenAt ?? "").localeCompare(a.lastSeenAt ?? "")),
   )
-  const stats = createMemo(() => sourceStats([...(live.latest ?? []), ...(resolved.latest ?? [])], nowMs()))
+  const stats = createMemo(() =>
+    sourceStats([...(live.latest ?? []), ...(resolved.latest ?? [])], nowMs()),
+  )
   const lastAlert = createMemo(() => {
-    const all = [view()?.lastSeenAt, ...liveRows().map((i) => i.lastSeenAt)].filter((x): x is string => !!x)
+    const all = [view()?.lastSeenAt, ...liveRows().map((i) => i.lastSeenAt)].filter(
+      (x): x is string => !!x,
+    )
     return all.sort().at(-1) ?? null
   })
   const loadError = () => (summary.error ?? live.error ?? resolved.error) as unknown
@@ -91,9 +105,15 @@ export const MonitoringSourcePage: Component<{ entityId?: string; id?: string }>
       <div class="flex-1 overflow-y-auto">
         <div class="mx-auto flex max-w-[1000px] flex-col gap-[18px] px-6 pb-12 pt-5">
           <div class="flex flex-wrap items-end justify-between gap-3">
-            <Show when={view()} fallback={<h1 class="font-mono text-[18px] font-semibold text-text">{sourceId()}</h1>}>
+            <Show
+              when={view()}
+              fallback={<h1 class="font-mono text-[18px] font-semibold text-text">{sourceId()}</h1>}
+            >
               {(v) => (
-                <div class="flex min-w-0 items-center gap-3.5" data-testid="monitoring-source-header">
+                <div
+                  class="flex min-w-0 items-center gap-3.5"
+                  data-testid="monitoring-source-header"
+                >
                   <SourceSquare source={v()} size="lg" />
                   <div class="min-w-0">
                     <h1 class="flex items-center gap-2 text-[18px] font-semibold text-text">
@@ -109,7 +129,9 @@ export const MonitoringSourcePage: Component<{ entityId?: string; id?: string }>
                       <span>
                         ·{" "}
                         {lastAlert()
-                          ? tr("Live · last alert {{when}}", { when: formatAge(lastAlert(), nowMs()) })
+                          ? tr("Live · last alert {{when}}", {
+                              when: formatAge(lastAlert(), nowMs()),
+                            })
                           : tr("Live · no alert yet")}
                       </span>
                     </LiveLine>
@@ -121,10 +143,16 @@ export const MonitoringSourcePage: Component<{ entityId?: string; id?: string }>
           </div>
 
           <Show when={loadError()}>
-            <Card class="flex items-center justify-between gap-3 border-error-border bg-error-glow px-4 py-3" testid="monitoring-load-error">
+            <Card
+              class="flex items-center justify-between gap-3 border-error-border bg-error-glow px-4 py-3"
+              testid="monitoring-load-error"
+            >
               <span class="text-[12.5px] text-error">
                 {tr("Monitoring could not load: {{message}}", {
-                  message: loadError() instanceof Error ? (loadError() as Error).message : String(loadError()),
+                  message:
+                    loadError() instanceof Error
+                      ? (loadError() as Error).message
+                      : String(loadError()),
                 })}
               </span>
               <Button variant="danger" onClick={refetch} testid="monitoring-load-retry">
@@ -133,7 +161,10 @@ export const MonitoringSourcePage: Component<{ entityId?: string; id?: string }>
             </Card>
           </Show>
           <Show when={triageError()}>
-            <Card class="border-error-border bg-error-glow px-4 py-2.5 text-[12px] text-error" testid="monitoring-triage-error">
+            <Card
+              class="border-error-border bg-error-glow px-4 py-2.5 text-[12px] text-error"
+              testid="monitoring-triage-error"
+            >
               {triageError()}
             </Card>
           </Show>
@@ -151,8 +182,17 @@ export const MonitoringSourcePage: Component<{ entityId?: string; id?: string }>
               tone={stats().openWarning > 0 ? "warning" : undefined}
               testid="monitoring-source-stat-warning"
             />
-            <StatTile label={tr("Resolved · 24h")} value={stats().resolved24h} tone="success" testid="monitoring-source-stat-resolved24h" />
-            <StatTile label={tr("Auto-resolved · 7d")} value={stats().autoResolved7d} testid="monitoring-source-stat-auto7d" />
+            <StatTile
+              label={tr("Resolved · 24h")}
+              value={stats().resolved24h}
+              tone="success"
+              testid="monitoring-source-stat-resolved24h"
+            />
+            <StatTile
+              label={tr("Auto-resolved · 7d")}
+              value={stats().autoResolved7d}
+              testid="monitoring-source-stat-auto7d"
+            />
           </div>
 
           <SectionLabel>{tr("Live incidents")}</SectionLabel>
@@ -160,7 +200,12 @@ export const MonitoringSourcePage: Component<{ entityId?: string; id?: string }>
             <Show
               when={liveRows().length > 0}
               fallback={
-                <p class={cx("px-4 py-3 text-[12.5px]", live.latest ? "text-success" : "text-text-tertiary")}>
+                <p
+                  class={cx(
+                    "px-4 py-3 text-[12.5px]",
+                    live.latest ? "text-success" : "text-text-tertiary",
+                  )}
+                >
                   {live.latest ? `✓ ${tr("All clear")}` : tr("Loading…")}
                 </p>
               }
@@ -193,7 +238,9 @@ export const MonitoringSourcePage: Component<{ entityId?: string; id?: string }>
                   <IncidentRow
                     incident={inc}
                     nowMs={nowMs()}
-                    resolverName={inc.resolvedBy ? (names.latest?.get(inc.resolvedBy) ?? null) : null}
+                    resolverName={
+                      inc.resolvedBy ? (names.latest?.get(inc.resolvedBy) ?? null) : null
+                    }
                   />
                 )}
               </For>

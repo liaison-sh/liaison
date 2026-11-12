@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { merchant_feed_status, merchant_product_issues } from "./merchant-reads"
 import { GoogleConfigError } from "./lib/google-config"
+import { merchant_feed_status, merchant_product_issues } from "./merchant-reads"
 
 interface FetchCall {
   url: string
@@ -37,7 +37,14 @@ function makeCtx(fetchResponses: MockResponse[]) {
 }
 
 function noConnCtx() {
-  return { ctx: { fetch: async () => { throw new Error("must not be called") }, connections: {} } }
+  return {
+    ctx: {
+      fetch: async () => {
+        throw new Error("must not be called")
+      },
+      connections: {},
+    },
+  }
 }
 
 // ─── merchant_feed_status ──────────────────────────────────────────────────────
@@ -52,7 +59,12 @@ describe("merchant_feed_status", () => {
             {
               reportingContext: "SHOPPING_ADS",
               countryCode: "US",
-              stats: { activeCount: "120", disapprovedCount: "8", pendingCount: "3", expiringCount: "2" },
+              stats: {
+                activeCount: "120",
+                disapprovedCount: "8",
+                pendingCount: "3",
+                expiringCount: "2",
+              },
               itemLevelIssues: [{ code: "price_mismatch", numProducts: "8" }],
             },
           ],
@@ -72,13 +84,23 @@ describe("merchant_feed_status", () => {
             {
               reportingContext: "SHOPPING_ADS",
               countryCode: "US",
-              stats: { activeCount: "120", disapprovedCount: "8", pendingCount: "3", expiringCount: "2" },
+              stats: {
+                activeCount: "120",
+                disapprovedCount: "8",
+                pendingCount: "3",
+                expiringCount: "2",
+              },
               itemLevelIssues: [{ code: "price_mismatch", numProducts: "8" }],
             },
             {
               reportingContext: "FREE_LISTINGS",
               countryCode: "US",
-              stats: { activeCount: "10", disapprovedCount: "1", pendingCount: "0", expiringCount: "0" },
+              stats: {
+                activeCount: "10",
+                disapprovedCount: "1",
+                pendingCount: "0",
+                expiringCount: "0",
+              },
               itemLevelIssues: [],
             },
           ],
@@ -158,7 +180,12 @@ describe("merchant_product_issues", () => {
     const result = (await merchant_product_issues({}, ctx)) as {
       products: Array<{
         product_id: string
-        issues: Array<{ code: string; klass: string; recommended_action?: string; shopify_edit_hint?: string }>
+        issues: Array<{
+          code: string
+          klass: string
+          recommended_action?: string
+          shopify_edit_hint?: string
+        }>
       }>
     }
     const issues = result.products[0]?.issues ?? []
@@ -185,7 +212,9 @@ describe("merchant_product_issues", () => {
             {
               productId: "online:en:US:sku456",
               title: "Gadget",
-              itemLevelIssues: [{ code: "gtin_invalid", description: "Invalid GTIN", detail: "Bad GTIN value" }],
+              itemLevelIssues: [
+                { code: "gtin_invalid", description: "Invalid GTIN", detail: "Bad GTIN value" },
+              ],
             },
           ],
         }),

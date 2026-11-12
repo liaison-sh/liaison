@@ -12,7 +12,14 @@
 // confirmed instrument+skin pack, and a five-instrument master pack too deep for the ladder, plus a
 // few unresolvable lines.
 
-import type { CatalogPack, CatalogPackComponent, CatalogProfile, Parcel, ResolveResult, ResolverLine } from "../resolver"
+import type {
+  CatalogPack,
+  CatalogPackComponent,
+  CatalogProfile,
+  Parcel,
+  ResolveResult,
+  ResolverLine,
+} from "../resolver"
 
 function profile(id: string, weight: number, l: number, w: number, h: number): CatalogProfile {
   return {
@@ -69,7 +76,10 @@ const PACK_MASTER: CatalogPack = {
   carton_tare: null,
 }
 
-export const PACK_CONFIGS: Record<string, { packs: CatalogPack[]; components: CatalogPackComponent[] }> = {
+export const PACK_CONFIGS: Record<
+  string,
+  { packs: CatalogPack[]; components: CatalogPackComponent[] }
+> = {
   none: { packs: [], components: [] },
   set: {
     packs: [PACK_SET],
@@ -184,7 +194,9 @@ export function renderResult(r: ResolveResult): string {
 }
 
 /** Item sets for the nominal proforma (repair and gift categories). */
-export const NOMINAL_ITEM_SETS: Array<Array<{ name: string; quantity: number; external_id?: string }>> = [
+export const NOMINAL_ITEM_SETS: Array<
+  Array<{ name: string; quantity: number; external_id?: string }>
+> = [
   [{ name: "Instrument", quantity: 1, external_id: "INSTR" }],
   [
     { name: "Instrument", quantity: 1, external_id: "INSTR" },
@@ -195,6 +207,9 @@ export const NOMINAL_ITEM_SETS: Array<Array<{ name: string; quantity: number; ex
     { name: "Instrument", quantity: 7, external_id: "INSTR" },
     { name: "Plate", quantity: 1, external_id: "PLATE" },
   ],
-  [{ name: "Pads", quantity: 3 }, { name: "Skin", quantity: 2, external_id: "SKIN" }],
+  [
+    { name: "Pads", quantity: 3 },
+    { name: "Skin", quantity: 2, external_id: "SKIN" },
+  ],
   Array.from({ length: 120 }, (_, i) => ({ name: `Part ${i}`, quantity: 1 })),
 ]

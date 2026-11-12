@@ -839,11 +839,13 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
         ? fileArg
         : [
             path.join(ROOT, "packages/api-connector-core"),
+            path.join(ROOT, "packages/app-loader"),
             path.join(ROOT, "packages/app-sdk"),
             path.join(ROOT, "packages/app-ui"),
             path.join(ROOT, "packages/control-plane-contract"),
             path.join(ROOT, "packages/db-core"),
             path.join(ROOT, "packages/host-sdk"),
+            path.join(ROOT, "packages/sandbox-supervisor"),
           ]),
     ],
     cwd: ROOT,
@@ -1718,6 +1720,18 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
   // Database bundled-app oracles: Report access, the db_* answers, provisioning
   // and the knowledge source's paging over an in-memory ctx (src/test-ctx.ts).
   // No Postgres needed: ctx.sql itself is the platform's (connections/sql).
+  // Google Drive bundled-app oracles: the handlers against a fake Drive behind
+  // ctx.fetch (test-ctx.ts), no Postgres.
+  "bundled-google-drive": {
+    cmd: [
+      "bun",
+      "test",
+      ...bailBun,
+      ...bunTestFlags,
+      ...(fileFilter ? fileArg : ["src/drive.test.ts"]),
+    ],
+    cwd: path.join(ROOT, "bundled-apps/google-drive"),
+  },
   "bundled-database": {
     cmd: [
       "bun",
@@ -1739,6 +1753,21 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
       ...(fileFilter ? fileArg : ["src/gitlab.test.ts"]),
     ],
     cwd: path.join(ROOT, "bundled-apps/gitlab"),
+  },
+  // API connector bundled-app oracles: the tools, the settings screen and card
+  // tools, provisioning and verify over a fake ctx.api, the manifest, and the
+  // params form. No Postgres needed: ctx.api is the platform's (connections/api).
+  "bundled-api-connector": {
+    cmd: [
+      "bun",
+      "test",
+      ...bailBun,
+      ...bunTestFlags,
+      ...(fileFilter
+        ? fileArg
+        : ["src/handlers.test.ts", "src/manifest.test.ts", "src/ui/params-form.test.ts"]),
+    ],
+    cwd: path.join(ROOT, "bundled-apps/api-connector"),
   },
   // Monitoring bundled-app oracles -- same orphan class. Fully mock-driven
   // (test-ctx in-memory AppContext + the pure-node hmac testutil bridge): the
@@ -2177,7 +2206,9 @@ if (suite === "full") {
     "bundled-boxtal",
     "bundled-monitoring",
     "bundled-database",
+    "bundled-google-drive",
     "bundled-gitlab",
+    "bundled-api-connector",
     "bundled-pennylane",
     "bundled-calls",
     "bundled-social",

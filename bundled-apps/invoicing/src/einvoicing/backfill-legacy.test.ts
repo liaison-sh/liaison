@@ -7,7 +7,7 @@
 // database is the bridge-shaped in-memory mock.
 import { describe, expect, test } from "bun:test"
 import { createMockDb, type MockDb } from "../test-db"
-import { type LegacyBackfillCtx, backfillLegacyOriginals } from "./backfill-legacy"
+import { backfillLegacyOriginals, type LegacyBackfillCtx } from "./backfill-legacy"
 import { sha256Hex } from "./backfill-sha256"
 
 type Row = Record<string, unknown>
@@ -32,9 +32,23 @@ interface StoredFile {
 function world(opts: { sizes?: [number, number] } = {}) {
   const [sizeA, sizeB] = opts.sizes ?? [3000, 4000]
   const files = new Map<string, StoredFile>([
-    ["file-a", { bytes: bytesOf(1, sizeA), filename: "1101.pdf", entityType: "pdf", entityId: "file-a" }],
-    ["file-b", { bytes: bytesOf(2, sizeB), filename: "1102.pdf", entityType: "pdf", entityId: "file-b" }],
-    ["render-b", { bytes: bytesOf(3, 900), filename: "invoice-1102.pdf", entityType: "pdf", entityId: "render-b" }],
+    [
+      "file-a",
+      { bytes: bytesOf(1, sizeA), filename: "1101.pdf", entityType: "pdf", entityId: "file-a" },
+    ],
+    [
+      "file-b",
+      { bytes: bytesOf(2, sizeB), filename: "1102.pdf", entityType: "pdf", entityId: "file-b" },
+    ],
+    [
+      "render-b",
+      {
+        bytes: bytesOf(3, 900),
+        filename: "invoice-1102.pdf",
+        entityType: "pdf",
+        entityId: "render-b",
+      },
+    ],
   ])
   const base = {
     type: "invoice",
@@ -52,8 +66,20 @@ function world(opts: { sizes?: [number, number] } = {}) {
   const db = createMockDb({
     seed: {
       documents: [
-        { ...base, id: DOC_A, number: "1101", pdf_file_id: "file-a", external_refs: { import_source: "1101.pdf", import_file_id: "file-a" } },
-        { ...base, id: DOC_B, number: "1102", pdf_file_id: "render-b", external_refs: { import_source: "1102.pdf", import_file_id: "file-b" } },
+        {
+          ...base,
+          id: DOC_A,
+          number: "1101",
+          pdf_file_id: "file-a",
+          external_refs: { import_source: "1101.pdf", import_file_id: "file-a" },
+        },
+        {
+          ...base,
+          id: DOC_B,
+          number: "1102",
+          pdf_file_id: "render-b",
+          external_refs: { import_source: "1102.pdf", import_file_id: "file-b" },
+        },
         { ...base, id: DOC_C, number: "INV-2026-1", pdf_file_id: "render-c", external_refs: {} },
       ],
     },
@@ -74,14 +100,24 @@ function world(opts: { sizes?: [number, number] } = {}) {
         (a) => a.app === "invoicing" && a.entityType === f.entityType && a.entityId === f.entityId,
       )
       if (!allowed) throw new Error("forbidden")
-      return JSON.stringify({ filename: f.filename, mimeType: "application/pdf", sizeBytes: f.bytes.length, bytesBase64: toB64(f.bytes) })
+      return JSON.stringify({
+        filename: f.filename,
+        mimeType: "application/pdf",
+        sizeBytes: f.bytes.length,
+        bytesBase64: toB64(f.bytes),
+      })
     },
     async files_importAttachment(argsJson: string) {
       const p = JSON.parse(argsJson) as Row
       imports.push(p)
       const id = `copy-${++copySeq}`
       const bytes = new Uint8Array(Buffer.from(String(p.bytesBase64), "base64"))
-      files.set(id, { bytes, filename: String(p.filename), entityType: String(p.targetEntityType), entityId: String(p.targetEntityId) })
+      files.set(id, {
+        bytes,
+        filename: String(p.filename),
+        entityType: String(p.targetEntityType),
+        entityId: String(p.targetEntityId),
+      })
       return JSON.stringify({ id, sizeBytes: bytes.length })
     },
   }
@@ -95,7 +131,14 @@ describe("einvoicing_backfill_legacy_originals", () => {
   test("dry run (the default) reports the batch and the re-pointed documents, and writes nothing", async () => {
     const { db, ctx, reads, imports } = world()
     const r = await backfillLegacyOriginals(ctx, {})
-    expect(r).toMatchObject({ status: "ok", dry_run: true, processed: 2, repointed: 1, remaining: 0, bytes: 0 })
+    expect(r).toMatchObject({
+      status: "ok",
+      dry_run: true,
+      processed: 2,
+      repointed: 1,
+      remaining: 0,
+      bytes: 0,
+    })
     expect(originals(db)).toHaveLength(0)
     expect(doc(db, DOC_B).pdf_file_id).toBe("render-b")
     expect(reads).toHaveLength(0)
@@ -105,7 +148,14 @@ describe("einvoicing_backfill_legacy_originals", () => {
   test("the real run hashes each imported file, copies it onto its legal original and restores the re-pointed one", async () => {
     const { db, ctx, files, imports } = world()
     const r = await backfillLegacyOriginals(ctx, { dry_run: false })
-    expect(r).toMatchObject({ status: "ok", dry_run: false, processed: 2, repointed: 1, remaining: 0, bytes: 7000 })
+    expect(r).toMatchObject({
+      status: "ok",
+      dry_run: false,
+      processed: 2,
+      repointed: 1,
+      remaining: 0,
+      bytes: 7000,
+    })
 
     const rows = originals(db)
     expect(rows).toHaveLength(2)
@@ -115,7 +165,12 @@ describe("einvoicing_backfill_legacy_originals", () => {
     ] as const) {
       const row = rows.find((o) => o.document_id === docId)!
       const imported = files.get(source)!.bytes
-      expect(row).toMatchObject({ kind: "legacy_import", sha256: sha256Hex(imported), byte_size: imported.length, recorded_by: "user-1" })
+      expect(row).toMatchObject({
+        kind: "legacy_import",
+        sha256: sha256Hex(imported),
+        byte_size: imported.length,
+        recorded_by: "user-1",
+      })
       // The copy lives on the legal original row, byte for byte the imported file.
       const copy = files.get(String(row.file_id))!
       expect(copy.entityType).toBe("legal_original")
@@ -128,10 +183,14 @@ describe("einvoicing_backfill_legacy_originals", () => {
     }
     expect(imports.map((i) => i.targetApp)).toEqual(["invoicing", "invoicing"])
 
-    const restored = (doc(db, DOC_B).lifecycle_log as Row[]).filter((e) => e.event === "legal_original_restored")
+    const restored = (doc(db, DOC_B).lifecycle_log as Row[]).filter(
+      (e) => e.event === "legal_original_restored",
+    )
     expect(restored).toHaveLength(1)
     expect(restored[0]).toMatchObject({ from_file_id: "render-b", to_file_id: "file-b" })
-    expect((doc(db, DOC_A).lifecycle_log as Row[]).some((e) => e.event === "legal_original_restored")).toBe(false)
+    expect(
+      (doc(db, DOC_A).lifecycle_log as Row[]).some((e) => e.event === "legal_original_restored"),
+    ).toBe(false)
     // A document issued in the app is not a legacy import.
     expect(doc(db, DOC_C).legal_original_id ?? null).toBeNull()
     expect(doc(db, DOC_C).pdf_file_id).toBe("render-c")
@@ -149,7 +208,13 @@ describe("einvoicing_backfill_legacy_originals", () => {
     const { db, ctx, files, imports } = world()
     const sha = sha256Hex(files.get("file-a")!.bytes)
     // The earlier batch inserted the row and stopped before the copy and the document update.
-    await db.insert("legal_originals", { document_id: DOC_A, kind: "legacy_import", file_id: null, sha256: sha, byte_size: 3000 })
+    await db.insert("legal_originals", {
+      document_id: DOC_A,
+      kind: "legacy_import",
+      file_id: null,
+      sha256: sha,
+      byte_size: 3000,
+    })
     const r = await backfillLegacyOriginals(ctx, { dry_run: false })
     expect(r).toMatchObject({ status: "ok", processed: 2, remaining: 0 })
     const rowsA = originals(db).filter((o) => o.document_id === DOC_A)
@@ -163,16 +228,32 @@ describe("einvoicing_backfill_legacy_originals", () => {
   test("a half-done row whose copy already exists is reused without a second copy", async () => {
     const { db, ctx, files, imports } = world()
     const sha = sha256Hex(files.get("file-a")!.bytes)
-    await db.insert("legal_originals", { document_id: DOC_A, kind: "legacy_import", file_id: "copy-earlier", sha256: sha, byte_size: 3000 })
+    await db.insert("legal_originals", {
+      document_id: DOC_A,
+      kind: "legacy_import",
+      file_id: "copy-earlier",
+      sha256: sha,
+      byte_size: 3000,
+    })
     await backfillLegacyOriginals(ctx, { dry_run: false })
     expect(originals(db).filter((o) => o.document_id === DOC_A)).toHaveLength(1)
-    expect(imports.filter((i) => i.targetEntityId === String(originals(db).find((o) => o.document_id === DOC_A)!.id))).toHaveLength(0)
+    expect(
+      imports.filter(
+        (i) => i.targetEntityId === String(originals(db).find((o) => o.document_id === DOC_A)!.id),
+      ),
+    ).toHaveLength(0)
     expect(doc(db, DOC_A).legal_original_id).toBeTruthy()
   })
 
   test("a recorded row with other bytes is a conflict: the document is set aside and nothing is overwritten", async () => {
     const { db, ctx } = world()
-    await db.insert("legal_originals", { document_id: DOC_A, kind: "legacy_import", file_id: "x", sha256: "f".repeat(64), byte_size: 1 })
+    await db.insert("legal_originals", {
+      document_id: DOC_A,
+      kind: "legacy_import",
+      file_id: "x",
+      sha256: "f".repeat(64),
+      byte_size: 1,
+    })
     const r = await backfillLegacyOriginals(ctx, { dry_run: false })
     expect((r.failed as Row[]).map((f) => f.document_id)).toEqual([DOC_A])
     expect(String((r.failed as Row[])[0]!.error)).toContain("legal_original_conflict")
@@ -234,24 +315,40 @@ describe("einvoicing_backfill_legacy_originals", () => {
     expect(first).toMatchObject({ processed: 0, remaining: 2, set_aside: 2 })
     expect((first.failed as Row[]).map((f) => f.document_id)).toEqual(bad)
     // The failure is recorded on the document, against the file that could not be read.
-    const marker = (doc(db, bad[0] as string).external_refs as Row).legal_original_backfill_failure as Row
+    const marker = (doc(db, bad[0] as string).external_refs as Row)
+      .legal_original_backfill_failure as Row
     expect(marker).toMatchObject({ file_id: "gone-0" })
     expect(typeof marker.error).toBe("string")
     expect((doc(db, bad[0] as string).external_refs as Row).import_source).toBe("900.pdf")
 
     const second = await backfillLegacyOriginals(ctx, { dry_run: false, limit: 2 })
     expect(second).toMatchObject({ processed: 2, remaining: 0, set_aside: 2 })
-    expect(originals(db).map((o) => o.document_id).sort()).toEqual([DOC_A, DOC_B])
+    expect(
+      originals(db)
+        .map((o) => o.document_id)
+        .sort(),
+    ).toEqual([DOC_A, DOC_B])
 
     // The dry run reports the set-aside documents too.
-    expect(await backfillLegacyOriginals(ctx, {})).toMatchObject({ processed: 0, remaining: 0, set_aside: 2 })
+    expect(await backfillLegacyOriginals(ctx, {})).toMatchObject({
+      processed: 0,
+      remaining: 0,
+      set_aside: 2,
+    })
 
     // Once the file is readable again, retry_failed records it and clears the marker.
-    files.set("gone-0", { bytes: bytesOf(9, 500), filename: "900.pdf", entityType: "pdf", entityId: "gone-0" })
+    files.set("gone-0", {
+      bytes: bytesOf(9, 500),
+      filename: "900.pdf",
+      entityType: "pdf",
+      entityId: "gone-0",
+    })
     const retry = await backfillLegacyOriginals(ctx, { dry_run: false, retry_failed: true })
     expect(retry).toMatchObject({ processed: 1, set_aside: 1 })
     expect((retry.failed as Row[]).map((f) => f.document_id)).toEqual([bad[1]])
-    expect((doc(db, bad[0] as string).external_refs as Row).legal_original_backfill_failure).toBeUndefined()
+    expect(
+      (doc(db, bad[0] as string).external_refs as Row).legal_original_backfill_failure,
+    ).toBeUndefined()
     expect(doc(db, bad[0] as string).legal_original_id).toBeTruthy()
   })
 
@@ -259,7 +356,10 @@ describe("einvoicing_backfill_legacy_originals", () => {
     const { db, ctx } = world()
     const a = doc(db, DOC_A)
     await db.update("documents", DOC_A, {
-      external_refs: { ...(a.external_refs as Row), legal_original_backfill_failure: { file_id: "older-file", error: "x" } },
+      external_refs: {
+        ...(a.external_refs as Row),
+        legal_original_backfill_failure: { file_id: "older-file", error: "x" },
+      },
     })
     const r = await backfillLegacyOriginals(ctx, { dry_run: false })
     expect(r).toMatchObject({ processed: 2, remaining: 0, set_aside: 0 })

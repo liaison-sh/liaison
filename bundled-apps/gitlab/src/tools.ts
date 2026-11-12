@@ -37,7 +37,10 @@ export function toolError(err: unknown): ToolError {
   }
 }
 
-async function guarded<T>(ctx: GitlabCtx, run: (group: string) => Promise<T>): Promise<T | ToolError> {
+async function guarded<T>(
+  ctx: GitlabCtx,
+  run: (group: string) => Promise<T>,
+): Promise<T | ToolError> {
   try {
     return await run(await connectedGroup(ctx))
   } catch (err) {
@@ -213,7 +216,12 @@ export async function gitlabGetCommit(
     const base = `/projects/${encodeId(params.project)}/repository/commits/${encodeURIComponent(params.sha)}`
     const commit = await getJson<Commit>(ctx, base)
     const diffs = params.withDiff
-      ? (await getList<{ old_path: string; new_path: string; diff: string }>(ctx, `${base}/diff?per_page=100`)).items
+      ? (
+          await getList<{ old_path: string; new_path: string; diff: string }>(
+            ctx,
+            `${base}/diff?per_page=100`,
+          )
+        ).items
       : undefined
     return { commit: { ...commitShape(commit), stats: commit.stats, diffs } }
   })
@@ -256,7 +264,12 @@ export async function gitlabGetMergeRequest(
     const base = `/projects/${encodeId(params.project)}/merge_requests/${encodeURIComponent(String(params.iid))}`
     const mr = await getJson<MergeRequest>(ctx, base)
     const changes = params.withChanges
-      ? (await getList<{ old_path: string; new_path: string; diff: string }>(ctx, `${base}/diffs?per_page=100`)).items
+      ? (
+          await getList<{ old_path: string; new_path: string; diff: string }>(
+            ctx,
+            `${base}/diffs?per_page=100`,
+          )
+        ).items
       : undefined
     return { mergeRequest: { ...mrShape(mr), changes } }
   })
@@ -410,42 +423,48 @@ export async function gitlabReadFile(
   params: { project: string; path: string; ref?: string; startLine?: number; endLine?: number },
   ctx: GitlabCtx,
 ) {
-  return guarded(ctx, async (): Promise<{ content: string; url: string; ref: string } | ToolError> => {
-    const file = await readFile(ctx, params.project, params.path, params.ref ?? "HEAD")
-    let text = redactSecrets(file.text)
-    if (params.startLine !== undefined || params.endLine !== undefined) {
-      const lines = text.split("\n")
-      const start = params.startLine ?? 1
-      const end = params.endLine ?? lines.length
-      if (start > end) {
-        return {
-          error: { code: "INVALID_PARAMS", message: `startLine (${start}) must be ≤ endLine (${end})` },
+  return guarded(
+    ctx,
+    async (): Promise<{ content: string; url: string; ref: string } | ToolError> => {
+      const file = await readFile(ctx, params.project, params.path, params.ref ?? "HEAD")
+      let text = redactSecrets(file.text)
+      if (params.startLine !== undefined || params.endLine !== undefined) {
+        const lines = text.split("\n")
+        const start = params.startLine ?? 1
+        const end = params.endLine ?? lines.length
+        if (start > end) {
+          return {
+            error: {
+              code: "INVALID_PARAMS",
+              message: `startLine (${start}) must be ≤ endLine (${end})`,
+            },
+          }
         }
-      }
-      if (start > lines.length) {
-        return {
-          error: {
-            code: "INVALID_PARAMS",
-            message: `startLine (${start}) exceeds file length (${lines.length} lines)`,
-          },
+        if (start > lines.length) {
+          return {
+            error: {
+              code: "INVALID_PARAMS",
+              message: `startLine (${start}) exceeds file length (${lines.length} lines)`,
+            },
+          }
         }
+        text = lines.slice(start - 1, end).join("\n")
       }
-      text = lines.slice(start - 1, end).join("\n")
-    }
-    // A numeric project id is no namespace: resolve one for a clickable link.
-    let namespace = params.project
-    try {
-      namespace = (await getJson<Project>(ctx, `/projects/${encodeId(params.project)}`))
-        .path_with_namespace
-    } catch {
-      // Keep the given project as a best-effort link.
-    }
-    return {
-      content: text,
-      url: `${WEB_BASE}/${namespace}/-/blob/${file.lastCommitId}/${params.path}`,
-      ref: file.lastCommitId,
-    }
-  })
+      // A numeric project id is no namespace: resolve one for a clickable link.
+      let namespace = params.project
+      try {
+        namespace = (await getJson<Project>(ctx, `/projects/${encodeId(params.project)}`))
+          .path_with_namespace
+      } catch {
+        // Keep the given project as a best-effort link.
+      }
+      return {
+        content: text,
+        url: `${WEB_BASE}/${namespace}/-/blob/${file.lastCommitId}/${params.path}`,
+        ref: file.lastCommitId,
+      }
+    },
+  )
 }
 
 export async function gitlabListTree(
@@ -460,8 +479,16 @@ export async function gitlabListTree(
       pagination: "keyset",
       path: params.path,
     })
-    const answer = await gitlabGet(ctx, `/projects/${encodeId(params.project)}/repository/tree?${qs}`)
-    const items = JSON.parse(answer.body) as Array<{ id: string; name: string; type: string; path: string }>
+    const answer = await gitlabGet(
+      ctx,
+      `/projects/${encodeId(params.project)}/repository/tree?${qs}`,
+    )
+    const items = JSON.parse(answer.body) as Array<{
+      id: string
+      name: string
+      type: string
+      path: string
+    }>
     const next = nextLink(answer)
     return {
       entries: items.map((e) => ({ name: e.name, path: e.path, type: e.type, id: e.id })),

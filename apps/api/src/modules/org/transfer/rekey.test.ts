@@ -140,7 +140,7 @@ const JWT_SECRET_USES: Record<string, string> = {
     "MCP connection tokens: after the commit the org's MCP clients reconnect (accepted; the after-commit step marks them)",
   "modules/agent/mailbox-plaintext/mailbox-forward.ts":
     "process-to-process signing of in-flight decrypt answers: nothing persisted, none in flight after the drain",
-  "apps/api-connector/store.ts":
+  "modules/apps/connections/api/store.ts":
     "credential cache version (Redis cache key): recomputed on the target, nothing persisted",
   "apps/tickets/self-send-marker.ts":
     "marker on mail the org sent: the post-move history sync starts at the freeze's historyId after a full drain, so mail sent before the move is not re-read",

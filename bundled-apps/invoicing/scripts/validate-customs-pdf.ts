@@ -20,7 +20,7 @@
 // step 7 ("download a sample export invoice's PDF; assert customs fields
 // land in the right places") to be runnable.
 
-import { readFileSync, existsSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { resolve } from "node:path"
 
 // pdf-parse is CommonJS; import the inner module path to avoid its
@@ -61,9 +61,7 @@ const LEGAL_MENTIONS = [
  * Used by S4 (`invoicing/customs-pdf.scenario.test.ts`) to feed
  * `validateCustomsPdfText` from bytes fetched via `GET /api/files/:id`.
  */
-export async function pdfBytesToText(
-  bytes: Uint8Array | Buffer,
-): Promise<string> {
+export async function pdfBytesToText(bytes: Uint8Array | Buffer): Promise<string> {
   const buf = bytes instanceof Buffer ? bytes : Buffer.from(bytes)
   const parsed = await pdfParse(buf)
   return parsed.text

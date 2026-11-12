@@ -66,9 +66,10 @@ describe("Report access rules", () => {
     const tiers = { revenue: { tier: "confidential" as const } }
     expect(resolveRule("revenue", tiers, {}).source).toBe("catalog")
     expect(resolveRule("support", tiers, {})).toMatchObject({ tier: "internal", source: "default" })
-    expect(
-      resolveRule("revenue", tiers, { revenue: { tier: "internal" } }),
-    ).toMatchObject({ tier: "internal", source: "org" })
+    expect(resolveRule("revenue", tiers, { revenue: { tier: "internal" } })).toMatchObject({
+      tier: "internal",
+      source: "org",
+    })
   })
 
   it("a stored rule that does not parse restricts its domain to nobody (fails closed)", () => {
@@ -121,7 +122,11 @@ describe("db_list_reads and db_read", () => {
   })
 
   it("the catalog's own tier gates a domain the org set no rule for", async () => {
-    const ctx = fakeCtx({ reads: READS, caller: member, domains: { revenue: { tier: "confidential" } } })
+    const ctx = fakeCtx({
+      reads: READS,
+      caller: member,
+      domains: { revenue: { tier: "confidential" } },
+    })
     const refused = await dbRead({ name: "revenue_by_month" }, asCtx(ctx))
     expect((refused.error as { code: string }).code).toBe("domain_restricted")
   })
@@ -136,13 +141,21 @@ describe("db_list_reads and db_read", () => {
     expect(ctx.calls.at(-1)).toEqual({
       method: "query",
       connection: "database",
-      request: { read: "open_tickets", params: { status: "open" }, timeoutMs: 55_000, maxRows: 2_000 },
+      request: {
+        read: "open_tickets",
+        params: { status: "open" },
+        timeoutMs: 55_000,
+        maxRows: 2_000,
+      },
     })
   })
 
   it("an unknown read lists the valid names", async () => {
     const out = await dbRead({ name: "nope" }, asCtx(fakeCtx({ reads: READS })))
-    expect(out.error).toMatchObject({ code: "unknown_read", validNames: ["revenue_by_month", "open_tickets"] })
+    expect(out.error).toMatchObject({
+      code: "unknown_read",
+      validNames: ["revenue_by_month", "open_tickets"],
+    })
   })
 })
 
@@ -159,9 +172,9 @@ describe("db_query, db_describe and the warehouse", () => {
 
   it("an empty sql is refused before any call; an unknown connection names the valid ones", async () => {
     const ctx = fakeCtx()
-    expect(((await dbQuery({ sql: " " }, asCtx(ctx))) as { error: { code: string } }).error.code).toBe(
-      "invalid_params",
-    )
+    expect(
+      ((await dbQuery({ sql: " " }, asCtx(ctx))) as { error: { code: string } }).error.code,
+    ).toBe("invalid_params")
     expect(parseConnection("other")).toMatchObject({ error: { code: "unknown_connection" } })
     expect(parseConnection(undefined)).toBe("default")
     expect(ctx.calls).toHaveLength(0)
@@ -174,7 +187,10 @@ describe("db_query, db_describe and the warehouse", () => {
   })
 
   it("a malformed value is invalid_params, by its SQLSTATE", () => {
-    const out = explain({ error: { code: "execution", message: "bad uuid", sqlstate: "22P02" } }, "read")
+    const out = explain(
+      { error: { code: "execution", message: "bad uuid", sqlstate: "22P02" } },
+      "read",
+    )
     expect((out.error as { code: string }).code).toBe("invalid_params")
   })
 
@@ -197,12 +213,20 @@ describe("db_query, db_describe and the warehouse", () => {
         req.table ? { tables: [] } : { tables: [{ table: "public.orders", columns: [] }] },
     })
     const out = await dbDescribe({ table: "public.secrets" }, asCtx(ctx))
-    expect(out.error).toMatchObject({ code: "table_not_readable", readableTables: ["public.orders"] })
+    expect(out.error).toMatchObject({
+      code: "table_not_readable",
+      readableTables: ["public.orders"],
+    })
   })
 
   it("db_probe answers the report and its checks as rows", async () => {
     const ctx = fakeCtx({
-      probe: () => ({ ok: false, mode: "direct", writeGrantsDetected: true, warnings: ["write grant"] }),
+      probe: () => ({
+        ok: false,
+        mode: "direct",
+        writeGrantsDetected: true,
+        warnings: ["write grant"],
+      }),
     })
     const out = await dbProbe({}, asCtx(ctx))
     expect(out).toMatchObject({ ok: false, warnings: ["write grant"] })
@@ -280,7 +304,10 @@ describe("Report access settings and provisioning", () => {
     const ctx = fakeCtx({ roles: ROLES })
     await expect(
       provisionDatabase(
-        { config: { domainAccess: { x: { tier: "confidential", roles: ["ghosts"] } } }, dryRun: false },
+        {
+          config: { domainAccess: { x: { tier: "confidential", roles: ["ghosts"] } } },
+          dryRun: false,
+        },
         asCtx(ctx),
       ),
     ).rejects.toThrow("unknown role 'ghosts'")
@@ -302,15 +329,29 @@ describe("knowledge source `catalog`", () => {
         req.read === "knowledge_sync_list"
           ? { rows: list, truncated: false, durationMs: 1 }
           : {
-              rows: [{ id: (req.params as { id: string }).id, title: "T", body: "B", updated_at: "2026-01-01" }],
+              rows: [
+                {
+                  id: (req.params as { id: string }).id,
+                  title: "T",
+                  body: "B",
+                  updated_at: "2026-01-01",
+                },
+              ],
               truncated: false,
               durationMs: 1,
             },
     })
     const page = await syncCatalogArticles({ cursor: null } as never, asCtx(ctx))
     expect(page.done).toBe(false)
-    expect(page.nextCursor).toEqual({ updated_at: "2026-01-01T00:00:00.000Z", id: `a${PAGE_SIZE - 1}` })
-    expect(page.documents?.upsert?.[0]).toMatchObject({ externalId: "a0", body: "B", mimeType: "text/markdown" })
+    expect(page.nextCursor).toEqual({
+      updated_at: "2026-01-01T00:00:00.000Z",
+      id: `a${PAGE_SIZE - 1}`,
+    })
+    expect(page.documents?.upsert?.[0]).toMatchObject({
+      externalId: "a0",
+      body: "B",
+      mimeType: "text/markdown",
+    })
     const first = ctx.calls.find((c) => c.method === "query")?.request as { params: unknown }
     expect(first.params).toEqual({ after_updated_at: null, after_id: null, limit: PAGE_SIZE })
   })

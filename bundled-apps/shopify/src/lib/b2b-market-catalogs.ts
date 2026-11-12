@@ -67,7 +67,9 @@ const pageOf = (conn: unknown): { hasNextPage: boolean; endCursor: string | null
 }
 
 /** The ACTIVE markets that carry a company-locations condition. Throws on a failed or truncated read. */
-async function readB2bMarkets(client: QueryClient): Promise<Array<{ id: string; appliesToAll: boolean }>> {
+async function readB2bMarkets(
+  client: QueryClient,
+): Promise<Array<{ id: string; appliesToAll: boolean }>> {
   const out: Array<{ id: string; appliesToAll: boolean }> = []
   let after: string | null = null
   for (let page = 0; page < MAX_MARKET_PAGES; page++) {
@@ -98,27 +100,35 @@ async function readMarket(
   let name: string | null = null
   let catalogs: Rec[] = []
   for (let page = 0; page < MAX_LOCATION_PAGES; page++) {
-    const data: { market?: unknown } = await client.query(MARKET_CATALOGS_QUERY, { id: marketId, after })
+    const data: { market?: unknown } = await client.query(MARKET_CATALOGS_QUERY, {
+      id: marketId,
+      after,
+    })
     const m = data?.market
     if (!isRec(m)) throw new Error(`market ${marketId} not readable`)
     name = str(m.name)
     if (!isRec(m.catalogs)) throw new Error(`catalogs of market ${name ?? marketId} not returned`)
-    if (pageOf(m.catalogs).hasNextPage) throw new Error(`market ${name ?? marketId} has more than 25 catalogs`)
+    if (pageOf(m.catalogs).hasNextPage)
+      throw new Error(`market ${name ?? marketId} has more than 25 catalogs`)
     catalogs = nodesOf(m.catalogs)
     if (appliesToAll) return { name, catalogs, locationIds }
     const cond = isRec(m.conditions) ? m.conditions.companyLocationsCondition : null
     const locs = isRec(cond) ? cond.companyLocations : null
-    if (!isRec(locs)) throw new Error(`company locations of market ${name ?? marketId} not returned`)
+    if (!isRec(locs))
+      throw new Error(`company locations of market ${name ?? marketId} not returned`)
     for (const l of nodesOf(locs)) {
       const id = str(l.id)
       if (id) locationIds.add(id)
     }
     const p = pageOf(locs)
     if (!p.hasNextPage) return { name, catalogs, locationIds }
-    if (!p.endCursor) throw new Error(`company locations of market ${name ?? marketId} truncated (no cursor)`)
+    if (!p.endCursor)
+      throw new Error(`company locations of market ${name ?? marketId} truncated (no cursor)`)
     after = p.endCursor
   }
-  throw new Error(`market ${name ?? marketId} lists more than ${LOCATIONS_PAGE * MAX_LOCATION_PAGES} company locations`)
+  throw new Error(
+    `market ${name ?? marketId} lists more than ${LOCATIONS_PAGE * MAX_LOCATION_PAGES} company locations`,
+  )
 }
 
 /**
@@ -133,7 +143,11 @@ export async function readB2bMarketCatalogs(
   if (locationIds.length === 0) return out
   const markets = await readB2bMarkets(client)
   for (const market of markets) {
-    const { name, catalogs, locationIds: listed } = await readMarket(client, market.id, market.appliesToAll)
+    const {
+      name,
+      catalogs,
+      locationIds: listed,
+    } = await readMarket(client, market.id, market.appliesToAll)
     const refs = catalogs.flatMap((c): MarketCatalogRef[] => {
       const id = str(c.id)
       if (!id) return []
@@ -144,7 +158,8 @@ export async function readB2bMarketCatalogs(
           id,
           title: str(c.title),
           status: str(c.status),
-          priceList: pl && plId ? { id: plId, name: str(pl.name), currency: str(pl.currency) } : null,
+          priceList:
+            pl && plId ? { id: plId, name: str(pl.name), currency: str(pl.currency) } : null,
           marketId: market.id,
           marketName: name,
         },

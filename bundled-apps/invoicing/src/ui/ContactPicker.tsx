@@ -8,9 +8,10 @@
 //
 // Pure helpers (`contactLabel`, `pickedContactPatch`) are exported for the
 // bun:test suite; the component is thin glue around them.
-import { tr } from "./i18n"
-import { createResource, createSignal, For, Show, type Component } from "solid-js"
+
 import { fetch as hostFetch, navigate } from "@liaison/host"
+import { type Component, createResource, createSignal, For, Show } from "solid-js"
+import { tr } from "./i18n"
 import { cx, inputClass } from "./kit"
 
 /** The slice of a kernel contact (`GET /api/contacts`) the picker reads. */
@@ -134,7 +135,9 @@ export const ContactPicker: Component<{
               <For
                 each={results() ?? []}
                 fallback={
-                  <li class="px-3 py-2 text-[12px] text-text-tertiary">{tr("No matching contact.")}</li>
+                  <li class="px-3 py-2 text-[12px] text-text-tertiary">
+                    {tr("No matching contact.")}
+                  </li>
                 }
               >
                 {(c) => (

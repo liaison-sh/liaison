@@ -10,50 +10,17 @@
 // straight-line body (reserve → POST → finalize/markUncertain) with NO
 // first-call/re-entry branch — the kernel guarantees it only runs post-approval.
 
-import { type BoxtalFacade, getClientOrError } from "./lib/get-client"
+import { ToolError } from "@liaison/app-sdk"
 import {
-  type BoxtalAddress,
-  BoxtalApiError,
-  type BoxtalCreateDraft,
-  type NormalizedOrder,
-} from "./lib/boxtal-v3-client"
-import type { CotationInput, CotationParty, Offer } from "./lib/boxtal-v1-client"
-import {
-  resolvePackages,
-  type CatalogPack,
-  type CatalogPackComponent,
-  type CatalogProfile,
-  type Parcel,
-  type ResolverLine,
-} from "./resolver"
-import {
-  type ArticleOverride,
-  buildCustomsArticles,
-  type CustomsBasis,
-  categoryToCustomsBasis,
-  contentCategoryNumeric,
-  type CustomsArticle,
-  type CustomsDocLine,
-  type CustomsPatch,
-  overrideUnitValue,
-  type PrepCategory,
-  requiresCustoms,
-  resolvePrepCategory,
-} from "./customs"
-import {
-  DECLARED_CURRENCY,
-  deriveShopifyOrderRate,
-  type FxConversion,
-} from "./fx"
-import { toShopifyOrderGid } from "./shopify-ref"
-import {
-  type CachedShipTo,
-  type ShipToCacheEntry,
-  type ShopifyOrderAddress,
-  shipToCacheOf,
-  shopifyOrderMetaOf,
-  warmPrepMetaForDocument,
-} from "./prep-meta"
+  assembleAddress,
+  boxtalText,
+  normalizeRegion,
+  type PostalParty,
+  partyFromConfig,
+  postalCodeRequired,
+  validateParty,
+  validateRecipientPhone,
+} from "./address"
 import {
   type AddressCheck,
   type AddressChoiceRecord,
@@ -63,39 +30,65 @@ import {
   resolveRecipient,
   type VerifiedAddress,
 } from "./address-check"
-import { numericOrderId, orderKeyForShopifyOrder } from "./order-state"
-import { buildQueueFacts } from "./queue-facts"
-import { buildPrintSnapshot, carrierFamilyOf } from "./print-record"
+import { filterOffersByAllowlist, filterOffersByPickupPoint } from "./carriers"
+import { countryIsoFromName, namesCountry } from "./country-names"
+import type { BoxtalToolCtx, CrossAppEnvelope } from "./ctx"
+import {
+  type ArticleOverride,
+  buildCustomsArticles,
+  type CustomsArticle,
+  type CustomsBasis,
+  type CustomsDocLine,
+  type CustomsPatch,
+  categoryToCustomsBasis,
+  contentCategoryNumeric,
+  overrideUnitValue,
+  type PrepCategory,
+  requiresCustoms,
+  resolvePrepCategory,
+} from "./customs"
 import { generateOrderDocuments } from "./customs-documents"
 import { summarizeProducts } from "./draft-cache"
-import {
-  unshippableMessage,
-  unshippableReason,
-  type UnshippableReason,
-} from "./order-shippability"
-import {
-  finalizeCreated,
-  isLiveShipment,
-  markUncertain,
-  reserveCreate,
-} from "./link-store"
 import {
   clearDraftOverride,
   type DraftOverride,
   loadDraftOverride,
   saveDraftOverride,
 } from "./draft-store"
+import { DECLARED_CURRENCY, deriveShopifyOrderRate, type FxConversion } from "./fx"
+import type { CotationInput, CotationParty, Offer } from "./lib/boxtal-v1-client"
 import {
-  assembleAddress,
-  boxtalText,
-  normalizeRegion,
-  partyFromConfig,
-  type PostalParty,
-  postalCodeRequired,
-  validateParty,
-  validateRecipientPhone,
-} from "./address"
-import { filterOffersByAllowlist, filterOffersByPickupPoint } from "./carriers"
+  type BoxtalAddress,
+  BoxtalApiError,
+  type BoxtalCreateDraft,
+  type NormalizedOrder,
+} from "./lib/boxtal-v3-client"
+import { type BoxtalFacade, getClientOrError } from "./lib/get-client"
+import { finalizeCreated, isLiveShipment, markUncertain, reserveCreate } from "./link-store"
+import { grossOfExcludedTax } from "./money"
+import { type UnshippableReason, unshippableMessage, unshippableReason } from "./order-shippability"
+import { numericOrderId, orderKeyForShopifyOrder } from "./order-state"
+import {
+  type CachedShipTo,
+  type ShipToCacheEntry,
+  type ShopifyOrderAddress,
+  shipToCacheOf,
+  shopifyOrderMetaOf,
+  warmPrepMetaForDocument,
+} from "./prep-meta"
+import { type ResolvedStageOffer, resolveStageOffer } from "./prep-selection"
+import { buildPrintSnapshot, carrierFamilyOf } from "./print-record"
+import { withAttributeShortCodes } from "./product-attributes"
+import { loadVariantProfiles } from "./profiles"
+import { buildQueueFacts } from "./queue-facts"
+import {
+  type CatalogPack,
+  type CatalogPackComponent,
+  type CatalogProfile,
+  type Parcel,
+  type ResolverLine,
+  resolvePackages,
+} from "./resolver"
 import {
   type LabelFormat,
   loadCarrierAllowlist,
@@ -103,15 +96,9 @@ import {
   loadLabelFormat,
   loadPackagingPolicy,
 } from "./settings"
-import { resolveStageOffer, type ResolvedStageOffer } from "./prep-selection"
-import type { BoxtalToolCtx, CrossAppEnvelope } from "./ctx"
-import { isParcelLine, unresolvedLinesBlockLabel } from "./shippable-lines"
-import { ToolError } from "@liaison/app-sdk"
-import { grossOfExcludedTax } from "./money"
-import { withAttributeShortCodes } from "./product-attributes"
-import { loadVariantProfiles } from "./profiles"
 import { findShipmentByRef } from "./shipment-lookup"
-import { countryIsoFromName, namesCountry } from "./country-names"
+import { isParcelLine, unresolvedLinesBlockLabel } from "./shippable-lines"
+import { toShopifyOrderGid } from "./shopify-ref"
 
 /**
  * Extract Boxtal's human-readable validation detail from an error response body
@@ -134,7 +121,9 @@ export function summarizeBoxtalError(body: string): string {
     // `parameters`), else its code.
     const errs: string[] = []
     for (const e of parsed.errors ?? []) {
-      const params = Array.isArray(e?.parameters) ? (e.parameters as Array<Record<string, unknown>>) : []
+      const params = Array.isArray(e?.parameters)
+        ? (e.parameters as Array<Record<string, unknown>>)
+        : []
       const named = params
         .map((p) => {
           const field = [p?.propertyPath, p?.field, p?.path].find((v) => typeof v === "string" && v)
@@ -306,7 +295,10 @@ export interface ShipmentDraft {
  *  "Tessera 2" -> "T2"); single-word names take their first 3 letters uppercase. */
 export function deriveShortCode(description: string): string {
   const head = (description.split(/\s+—\s+|\s+-\s+|[.,(]/)[0] ?? description).trim()
-  const words = head.split(/\s+/).filter((w) => /[a-z0-9]/i.test(w)).slice(0, 4)
+  const words = head
+    .split(/\s+/)
+    .filter((w) => /[a-z0-9]/i.test(w))
+    .slice(0, 4)
   if (words.length === 0) return "?"
   if (words.length === 1) return (words[0] ?? "").slice(0, 3).toUpperCase()
   return words
@@ -359,7 +351,10 @@ export function buildOfferWithInsurance(
  * Callers may pass the v3 address vocabulary ("BUSINESS"/"RESIDENTIAL"), the French
  * value directly, or omit it — Boxtal v1 400s on anything but "entreprise"/"particulier".
  */
-function cotationPartyType(raw: string | undefined, fallback: "entreprise" | "particulier"): string {
+function cotationPartyType(
+  raw: string | undefined,
+  fallback: "entreprise" | "particulier",
+): string {
   const v = (raw ?? "").trim().toLowerCase()
   if (v === "entreprise" || v === "business") return "entreprise"
   if (v === "particulier" || v === "residential" || v === "private") return "particulier"
@@ -423,7 +418,8 @@ async function enrichFromDraft(ctx: ShipmentCtx, input: CotationInput): Promise<
   const addr = draft.recipient_address
   const to = (input.to ?? {}) as Partial<CotationParty>
   const filledTo: CotationParty = {
-    country: String(to.country ?? "").trim() || addr?.countryIsoCode || draft.recipient_country || "",
+    country:
+      String(to.country ?? "").trim() || addr?.countryIsoCode || draft.recipient_country || "",
     postalCode: String(to.postalCode ?? "").trim() || addr?.postalCode || "",
     city: String(to.city ?? "").trim() || addr?.city || "",
     type: to.type ?? "particulier",
@@ -479,7 +475,8 @@ async function defaultContentCode(ctx: ShipmentCtx): Promise<string | null> {
   const rows = await loadVariantProfiles(ctx.db)
   const counts = new Map<string, number>()
   for (const r of rows) {
-    const c = typeof r.content_category === "string" && r.content_category ? r.content_category : null
+    const c =
+      typeof r.content_category === "string" && r.content_category ? r.content_category : null
     if (c) counts.set(c, (counts.get(c) ?? 0) + 1)
   }
   let best: string | null = null
@@ -533,7 +530,8 @@ export async function quote(ctx: ShipmentCtx, input: CotationInput): Promise<Quo
     //      cheapest. `include_pickup_point:true` bypasses it for this call (the
     //      "customer wants a relay" case); the policy off is also pass-through.
     const allow = input.ignore_allowlist === true ? [] : await loadCarrierAllowlist(ctx)
-    const excludePickup = (await loadExcludePickupPointServices(ctx)) && input.include_pickup_point !== true
+    const excludePickup =
+      (await loadExcludePickupPointServices(ctx)) && input.include_pickup_point !== true
     const allowed = filterOffersByAllowlist(offers, allow)
     return { offers: filterOffersByPickupPoint(allowed, excludePickup) }
   } catch (err) {
@@ -668,7 +666,8 @@ export interface PartialLineInput {
  *  the invoice line's own quantity (the per-batch remaining check against OTHER
  *  live batches happens at reserve time, where the sibling rows are known). */
 function applyLineSubset(doc: InvoiceResult, lines: PartialLineInput[]): InvoiceResult {
-  if (lines.length === 0) throw new Error("Partial shipment lines must not be empty; omit lines for a full shipment.")
+  if (lines.length === 0)
+    throw new Error("Partial shipment lines must not be empty; omit lines for a full shipment.")
   const byId = new Map(doc.lines.map((l) => [l.id, l]))
   const subset = lines.map((req) => {
     const line = byId.get(req.line_id)
@@ -678,7 +677,9 @@ function applyLineSubset(doc: InvoiceResult, lines: PartialLineInput[]): Invoice
       )
     }
     if (!Number.isFinite(req.quantity) || req.quantity <= 0) {
-      throw new Error(`Partial shipment quantity for line "${req.line_id}" must be a positive number.`)
+      throw new Error(
+        `Partial shipment quantity for line "${req.line_id}" must be a positive number.`,
+      )
     }
     if (req.quantity > line.quantity) {
       throw new Error(
@@ -705,7 +706,9 @@ export async function shipmentDraftCreate(
 ): Promise<ShipmentDraft> {
   const build = { orderShipTo: input.orderShipTo !== false }
   if (input.preloaded_document && input.preloaded_document.id === input.document_ref) {
-    const doc = input.lines ? applyLineSubset(input.preloaded_document, input.lines) : input.preloaded_document
+    const doc = input.lines
+      ? applyLineSubset(input.preloaded_document, input.lines)
+      : input.preloaded_document
     return buildDraftFromDoc(ctx, doc, input.lines ? input.preloaded_document : undefined, build)
   }
   const looksLikeUuid = UUID_RE.test(input.document_ref)
@@ -868,25 +871,36 @@ async function buildDraftFromDoc(
   // anchored by `proforma_document_ref`. Reading only `prep_state` silently declared those parcels
   // as a SALE at customs and dropped the structured address, so the cotation went out with no
   // postal code and came back "No offers". Load it in the SAME round-trip.
-  const [profiles, packs, components, override, prepStateRows, orderStateRows, senderParty, packagingPolicy, orderName] =
-    await Promise.all([
-      // Short codes come from the product attributes first (product-attributes.ts), the
-      // profile's own code being the fallback.
-      loadVariantProfiles(ctx.db).then((rows) => withAttributeShortCodes(ctx, rows)) as Promise<CatalogProfile[]>,
-      ctx.db.findMany("pack", { limit: 1000 }) as Promise<CatalogPack[]>,
-      ctx.db.findMany("pack_component", { limit: 1000 }) as Promise<CatalogPackComponent[]>,
-      loadDraftOverride(ctx, doc.id),
-      ctx.db.findMany("prep_state", { where: { document_ref: doc.id }, limit: 1 }) as Promise<
-        Array<{ category?: string | null }>
-      >,
-      ctx.db.findMany("prep_order_state", {
-        where: { proforma_document_ref: doc.id },
-        limit: 1,
-      }) as Promise<Array<{ category?: string | null; recipient?: unknown }>>,
-      loadSenderParty(ctx),
-      loadPackagingPolicy(ctx),
-      loadOrderName(ctx, doc.id),
-    ])
+  const [
+    profiles,
+    packs,
+    components,
+    override,
+    prepStateRows,
+    orderStateRows,
+    senderParty,
+    packagingPolicy,
+    orderName,
+  ] = await Promise.all([
+    // Short codes come from the product attributes first (product-attributes.ts), the
+    // profile's own code being the fallback.
+    loadVariantProfiles(ctx.db).then((rows) => withAttributeShortCodes(ctx, rows)) as Promise<
+      CatalogProfile[]
+    >,
+    ctx.db.findMany("pack", { limit: 1000 }) as Promise<CatalogPack[]>,
+    ctx.db.findMany("pack_component", { limit: 1000 }) as Promise<CatalogPackComponent[]>,
+    loadDraftOverride(ctx, doc.id),
+    ctx.db.findMany("prep_state", { where: { document_ref: doc.id }, limit: 1 }) as Promise<
+      Array<{ category?: string | null }>
+    >,
+    ctx.db.findMany("prep_order_state", {
+      where: { proforma_document_ref: doc.id },
+      limit: 1,
+    }) as Promise<Array<{ category?: string | null; recipient?: unknown }>>,
+    loadSenderParty(ctx),
+    loadPackagingPolicy(ctx),
+    loadOrderName(ctx, doc.id),
+  ])
   const orderStateRow = orderStateRows[0] ?? null
   // The order-state row's category wins when it is set; otherwise fall back to the per-document
   // prep_state row exactly as before.
@@ -903,7 +917,13 @@ async function buildDraftFromDoc(
     external_id: l.external_id,
     quantity: l.quantity,
   }))
-  const resolved = resolvePackages({ lines: resolverLines, profiles, packs, components, policy: packagingPolicy })
+  const resolved = resolvePackages({
+    lines: resolverLines,
+    profiles,
+    packs,
+    components,
+    policy: packagingPolicy,
+  })
 
   const profilesByRef: Record<string, { unit_weight: number; short_code: string | null }> = {}
   for (const p of profiles)
@@ -939,8 +959,7 @@ async function buildDraftFromDoc(
   // rate BEFORE the articles are built (ticket-10154). Only fetched on the rare
   // non-EUR export — an EUR invoice costs nothing here.
   const readOrder = orderReader(ctx, doc)
-  const needsFx =
-    customsRequired && String(doc.currency ?? "").toUpperCase() !== DECLARED_CURRENCY
+  const needsFx = customsRequired && String(doc.currency ?? "").toUpperCase() !== DECLARED_CURRENCY
   const fx = needsFx ? await resolveFxToDeclared(readOrder, doc) : null
 
   // Customs articles are built only when the route requires a declaration; an
@@ -980,7 +999,10 @@ async function buildDraftFromDoc(
   }
   const contactId = doc.counterparty_contact_id ?? null
   const [contactAddress, verified, cachedShipTo] = await Promise.all([
-    loadContactShippingAddress(ctx, contactId, { name: fallback.name, countryIsoCode: fallback.countryIsoCode }),
+    loadContactShippingAddress(ctx, contactId, {
+      name: fallback.name,
+      countryIsoCode: fallback.countryIsoCode,
+    }),
     loadVerifiedDeliveryAddresses(ctx, contactId, fallback),
     // The cache serves the worklist only: the label path reads the order or refuses.
     doc.shopify_order_id && !build.orderShipTo
@@ -1047,7 +1069,11 @@ async function buildDraftFromDoc(
     const stored = await loadAddressChoice(ctx, doc.shopify_order_id)
     resolvedRecipient = applyAddressChoice(addressSources, resolvedRecipient, stored)
   }
-  if (orderReadFailed) resolvedRecipient = { ...resolvedRecipient, check: { ...resolvedRecipient.check, order_read: "failed" } }
+  if (orderReadFailed)
+    resolvedRecipient = {
+      ...resolvedRecipient,
+      check: { ...resolvedRecipient.check, order_read: "failed" },
+    }
   const recipientAddress = resolvedRecipient.address
 
   return {
@@ -1091,11 +1117,14 @@ async function buildDraftFromDoc(
     // `quantity` does, so coerce and drop anything non-finite rather than surfacing NaN.
     document_total_minor: toFiniteMinor(doc.grand_total_minor),
     lineSummaries: doc.lines.map((l) => {
-      const profile = l.product_source ? profilesByRef[`${l.product_source}:${l.external_id}`] : undefined
+      const profile = l.product_source
+        ? profilesByRef[`${l.product_source}:${l.external_id}`]
+        : undefined
       return {
         external_id: l.external_id,
         description: l.customs_description ?? l.description,
-        label: profile?.short_code || deriveShortCode(l.description || l.customs_description || "?"),
+        label:
+          profile?.short_code || deriveShortCode(l.description || l.customs_description || "?"),
         line_kind: l.line_kind ?? "goods",
         // Invoicing quantities arrive as decimal STRINGS ("01.000") — the old
         // pass-through is why the products summary read "01.000xWidget 2".
@@ -1173,7 +1202,10 @@ const GENERIC_LEADING_POSTCODE = /^(\d[\dA-Za-z-]*)\s+(.+)$/
 
 /** Split "<postcode> <city>" by the country's postcode shape. Returns null when the text does not
  *  start with a postcode followed by a city. */
-function splitLeadingPostcode(text: string, country: string | null): { postalCode: string; city: string } | null {
+function splitLeadingPostcode(
+  text: string,
+  country: string | null,
+): { postalCode: string; city: string } | null {
   const spaced = country ? SPACED_LEADING_POSTCODE[country.toUpperCase()] : undefined
   const m = spaced?.exec(text)
   if (m?.[2]) return { postalCode: m[1]!, city: m[2] }
@@ -1187,7 +1219,10 @@ function splitLeadingPostcode(text: string, country: string | null): { postalCod
  *    "<street>, <postcode> <city>[, <region>]"   — a part that is "<postcode> <city>"
  *  Anything else (no digit-leading part, or nothing before it to be the street) returns null and
  *  the caller keeps its multiline rule. */
-function splitSingleLineAddress(line: string, country: string | null): {
+function splitSingleLineAddress(
+  line: string,
+  country: string | null,
+): {
   street: string | null
   postalCode: string | null
   city: string | null
@@ -1353,9 +1388,12 @@ const ADDRESS_LABELS: Array<[RegExp, "street" | "city" | "postalCode" | "region"
 /** Read an address typed as labelled lines ("City: New York", "Postal Code: 10025",
  *  "State: NY"). Unlabelled lines are street. Null when no city or postal code is labelled, so the
  *  positional rules apply instead. */
-function readLabelledLines(
-  lines: string[],
-): { street: string | null; city: string | null; postalCode: string | null; region: string | null } | null {
+function readLabelledLines(lines: string[]): {
+  street: string | null
+  city: string | null
+  postalCode: string | null
+  region: string | null
+} | null {
   const street: string[] = []
   const found: Partial<Record<"city" | "postalCode" | "region", string>> = {}
   for (const line of lines) {
@@ -1415,7 +1453,8 @@ export function parseInvoiceAddress(
   // has no trailing locality LINE, so the multiline rule below mis-split it into
   // city="Industriveien 4" / state="4879, Grimstad" and the cotation went out with no postal code.
   // Treat the commas as the separators in that case.
-  const us = (fallback.countryIsoCode ?? "").trim().toUpperCase() === "US" ? splitUsAddress(lines) : null
+  const us =
+    (fallback.countryIsoCode ?? "").trim().toUpperCase() === "US" ? splitUsAddress(lines) : null
   if (us) {
     return {
       name: fallback.name,
@@ -1429,7 +1468,8 @@ export function parseInvoiceAddress(
       state: normalizeRegion(fallback.countryIsoCode, us.state),
     }
   }
-  const single = lines.length === 1 ? splitSingleLineAddress(lines[0]!, fallback.countryIsoCode) : null
+  const single =
+    lines.length === 1 ? splitSingleLineAddress(lines[0]!, fallback.countryIsoCode) : null
   const locality = single ? "" : (lines[lines.length - 1] ?? "")
   const streetLines = single ? [] : lines.slice(0, -1)
   // "44000 NANTES", "75018 Paris, Île-de-France", "10001 NEW YORK" — a leading
@@ -1438,11 +1478,11 @@ export function parseInvoiceAddress(
   const m = splitLeadingPostcode(locality, fallback.countryIsoCode)
   const postalCode = single ? single.postalCode : (m?.postalCode ?? null)
   const cityAndRegion = (m?.city ?? locality).split(",")
-  const city = single ? single.city : (cityAndRegion[0]?.trim() || null)
+  const city = single ? single.city : cityAndRegion[0]?.trim() || null
   // "19003-2385 Ardmore, Pennsylvania" — the part after the comma is the
   // state/province, which US/CA labels require (full names normalize to codes).
-  const region = single ? single.region : (cityAndRegion.slice(1).join(",").trim() || null)
-  const street = single ? single.street : (streetLines.join(", ") || null)
+  const region = single ? single.region : cityAndRegion.slice(1).join(",").trim() || null
+  const street = single ? single.street : streetLines.join(", ") || null
   if (!street && !city) return null
   return {
     name: fallback.name,
@@ -1487,7 +1527,10 @@ function recipientFromShopifyAddress(
 /** What prep_sync cached on this document's prep_meta row about the order's ship-to. */
 async function loadCachedShipTo(ctx: ShipmentCtx, documentRef: string): Promise<ShipToCacheEntry> {
   try {
-    const rows = (await ctx.db.findMany("prep_meta", { where: { document_ref: documentRef }, limit: 1 })) as Array<{
+    const rows = (await ctx.db.findMany("prep_meta", {
+      where: { document_ref: documentRef },
+      limit: 1,
+    })) as Array<{
       ship_to?: unknown
     }>
     return shipToCacheOf(rows[0]?.ship_to)
@@ -1498,7 +1541,10 @@ async function loadCachedShipTo(ctx: ShipmentCtx, documentRef: string): Promise<
 
 /** A person's pick between the order's address and the verified one, stored on the order's prep
  *  state (prep_set_address_choice), or null. */
-async function loadAddressChoice(ctx: ShipmentCtx, shopifyOrderId: string): Promise<AddressChoiceRecord | null> {
+async function loadAddressChoice(
+  ctx: ShipmentCtx,
+  shopifyOrderId: string,
+): Promise<AddressChoiceRecord | null> {
   const id = numericOrderId(shopifyOrderId)
   if (!id) return null
   try {
@@ -1543,7 +1589,14 @@ async function loadVerifiedDeliveryAddresses(
       return typeof v === "string" && v.trim() !== "" ? v.trim() : null
     }
     const id = str("id")
-    if (!id || r.role !== "delivery" || r.verified !== true || r.stale === true || r.archived === true) continue
+    if (
+      !id ||
+      r.role !== "delivery" ||
+      r.verified !== true ||
+      r.stale === true ||
+      r.archived === true
+    )
+      continue
     const street = [str("street1"), str("street2")].filter(Boolean).join(", ") || null
     const countryIsoCode = str("countryIso2")?.toUpperCase() ?? fallback.countryIsoCode
     out.push({
@@ -1623,7 +1676,10 @@ async function senderCountryOf(ctx: ShipmentCtx): Promise<string> {
 /** The kernel contact's TOP-LEVEL email (not metadata.shipping_address —
  *  usually unpopulated). Used to auto-fill the counterparty email Boxtal
  *  hard-requires on both parties. Null on any failure. */
-async function loadContactEmail(ctx: ShipmentCtx, contactId: string | null): Promise<string | null> {
+async function loadContactEmail(
+  ctx: ShipmentCtx,
+  contactId: string | null,
+): Promise<string | null> {
   if (!contactId) return null
   try {
     const env = (await ctx.executeTool("kernel:contacts_read", { contactId })) as {
@@ -1684,7 +1740,14 @@ function toArticleOverrides(
  * parcel). A `{ pack }` ref wins when present; raw dims are the fallback.
  */
 export type SetPackageOverrideItem =
-  | { pack: string; length?: number; width?: number; height?: number; weight?: number; quantity?: number }
+  | {
+      pack: string
+      length?: number
+      width?: number
+      height?: number
+      weight?: number
+      quantity?: number
+    }
   | (Parcel & { quantity?: number })
 
 /**
@@ -1697,7 +1760,9 @@ export type SetPackageOverride = SetPackageOverrideItem | SetPackageOverrideItem
 
 /** True when a carton references a named pack (vs supplying raw ad-hoc dims). */
 function isPackRef(o: SetPackageOverrideItem): o is { pack: string } {
-  return typeof (o as { pack?: unknown }).pack === "string" && (o as { pack: string }).pack.trim() !== ""
+  return (
+    typeof (o as { pack?: unknown }).pack === "string" && (o as { pack: string }).pack.trim() !== ""
+  )
 }
 
 /**
@@ -2015,7 +2080,9 @@ function partialBatchBlock(
   const liveOutbound = existing.filter(
     (r) => isLiveShipment(r) && ((r.kind as string | null) ?? "outbound") === "outbound",
   )
-  const hasLiveFull = liveOutbound.some((r) => (r as { line_quantities?: unknown }).line_quantities == null)
+  const hasLiveFull = liveOutbound.some(
+    (r) => (r as { line_quantities?: unknown }).line_quantities == null,
+  )
   if (hasLiveFull) {
     return {
       code: "duplicate",
@@ -2035,7 +2102,8 @@ function partialBatchBlock(
     for (const r of liveOutbound) {
       const lqs = (r as { line_quantities?: Array<{ line_id: string; quantity: number }> | null })
         .line_quantities
-      for (const lq of lqs ?? []) shipped.set(lq.line_id, (shipped.get(lq.line_id) ?? 0) + lq.quantity)
+      for (const lq of lqs ?? [])
+        shipped.set(lq.line_id, (shipped.get(lq.line_id) ?? 0) + lq.quantity)
     }
     const totals = new Map(invoiceLines.map((l) => [l.line_id, l.quantity]))
     for (const req of requested) {
@@ -2066,11 +2134,21 @@ export async function importLabelDocument(
   input: { id: string },
   /** print_pack merges the parcels itself (its orientation pass), so it asks for them unmerged. */
   opts: { mergeParcels?: boolean } = {},
-): Promise<{ label_file_id?: string; label_file_ids?: string[]; error?: { code: string; message: string } }> {
+): Promise<{
+  label_file_id?: string
+  label_file_ids?: string[]
+  error?: { code: string; message: string }
+}> {
   const client = await getClientOrError(ctx)
   if ("error" in client) return { error: client.error }
   const ref = String(input.id ?? "").trim()
-  if (!ref) return { error: { code: "invalid_params", message: "id (boxtal order id or shipment row id) is required" } }
+  if (!ref)
+    return {
+      error: {
+        code: "invalid_params",
+        message: "id (boxtal order id or shipment row id) is required",
+      },
+    }
   // Resolve the local shipment row — the kernel.files parent. Accept either the
   // Boxtal order id (what get_documents/track take) or the local row id.
   const row = await findShipmentByRef(ctx, ref, { orderIdFirst: true })
@@ -2084,7 +2162,12 @@ export async function importLabelDocument(
     }
   }
   if (!ctx.files_importFromUrl) {
-    return { error: { code: "unsupported", message: "files_importFromUrl bridge unavailable in this runtime." } }
+    return {
+      error: {
+        code: "unsupported",
+        message: "files_importFromUrl bridge unavailable in this runtime.",
+      },
+    }
   }
   // One read: a label not generated yet is "retry in a minute", never a wait inside this run.
   const fileIds = await importLabelFiles(ctx, client, boxtalOrderId, String(row.id))
@@ -2097,7 +2180,8 @@ export async function importLabelDocument(
       },
     }
   }
-  if (opts.mergeParcels === false || fileIds.length === 1) return { label_file_id: fileIds[0]!, label_file_ids: fileIds }
+  if (opts.mergeParcels === false || fileIds.length === 1)
+    return { label_file_id: fileIds[0]!, label_file_ids: fileIds }
   const merged = await mergeParcelLabels(ctx, fileIds, boxtalOrderId)
   if ("error" in merged) {
     return {
@@ -2193,7 +2277,9 @@ export async function issueBatchProforma(
           `The issuer profile of invoice ${draft.document_ref} could not be read, so the batch proforma's prices cannot be declared safely.`,
         )
       }
-      const raw = issEnv.result as { items?: Array<{ id?: string; prices_include_tax?: boolean }> } | null
+      const raw = issEnv.result as {
+        items?: Array<{ id?: string; prices_include_tax?: boolean }>
+      } | null
       inclusive = !!(raw?.items ?? []).find((p) => p?.id === issuerId)?.prices_include_tax
     }
     const env = await ctx.executeTool("invoicing:proforma_create_and_issue", {
@@ -2230,27 +2316,33 @@ export async function issueBatchProforma(
         ...(l.external_id ? { external_id: l.external_id, product_source: "shopify" } : {}),
       })),
     })
-    if (env.status === "pending_approval") return { status: "pending_approval", approval_id: env.approval_id }
+    if (env.status === "pending_approval")
+      return { status: "pending_approval", approval_id: env.approval_id }
     if (env.status === "error") return fail(env.error.code ?? "proforma_failed", env.error.message)
     // The invoicing mutation returns its OWN result envelope inside the cross-app one.
-    const res = env.result as
-      | {
-          status?: string
-          document_id?: string
-          id?: string
-          approval_id?: string
-          error?: { code?: string; message?: string }
-          document?: { id?: string }
-        }
-      | null
+    const res = env.result as {
+      status?: string
+      document_id?: string
+      id?: string
+      approval_id?: string
+      error?: { code?: string; message?: string }
+      document?: { id?: string }
+    } | null
     if (res?.status === "pending_approval" && res.approval_id) {
       return { status: "pending_approval", approval_id: res.approval_id }
     }
     if (res?.status === "error") {
-      return fail(res.error?.code ?? "proforma_failed", res.error?.message ?? "The batch proforma could not be issued.")
+      return fail(
+        res.error?.code ?? "proforma_failed",
+        res.error?.message ?? "The batch proforma could not be issued.",
+      )
     }
     const id = res?.document_id ?? res?.id ?? res?.document?.id ?? null
-    if (!id) return fail("proforma_not_issued", "Invoicing accepted the batch proforma but returned no document id.")
+    if (!id)
+      return fail(
+        "proforma_not_issued",
+        "Invoicing accepted the batch proforma but returned no document id.",
+      )
     return { status: "completed", document_id: id }
   } catch (err) {
     return fail("invoicing_unavailable", err instanceof Error ? err.message : String(err))
@@ -2337,12 +2429,20 @@ async function resolveOrderUnshippable(
 async function loadOrderFacts(
   ctx: ShipmentCtx,
   documentRef: string,
-): Promise<{ order_name: string | null; order_created_at: string | null; staff_note: string | null }> {
+): Promise<{
+  order_name: string | null
+  order_created_at: string | null
+  staff_note: string | null
+}> {
   try {
     const rows = (await ctx.db.findMany("prep_meta", {
       where: { document_ref: documentRef },
       limit: 1,
-    })) as Array<{ order_name?: string | null; order_created_at?: string | null; staff_note?: string | null }>
+    })) as Array<{
+      order_name?: string | null
+      order_created_at?: string | null
+      staff_note?: string | null
+    }>
     const row = rows[0]
     return {
       order_name: row?.order_name ?? null,
@@ -2388,7 +2488,12 @@ export async function createShipment(
   if (typeof input.collection_date === "string" && input.collection_date.trim() !== "") {
     const d = input.collection_date.trim()
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
-      return { error: { code: "validation", message: "collection_date must be a plain calendar date (YYYY-MM-DD)." } }
+      return {
+        error: {
+          code: "validation",
+          message: "collection_date must be a plain calendar date (YYYY-MM-DD).",
+        },
+      }
     }
     explicitCollectionDate = d
   }
@@ -2446,7 +2551,9 @@ export async function createShipment(
   const hasNonEmptyOffer = offerProvided && (input.offer_code as string).trim() !== ""
   const stageSelection: ResolvedStageOffer | null =
     !offerProvided && !input.is_return ? await resolveStageOffer(ctx, draft.document_ref) : null
-  const offerCode = hasNonEmptyOffer ? (input.offer_code as string).trim() : stageSelection?.offer_code ?? ""
+  const offerCode = hasNonEmptyOffer
+    ? (input.offer_code as string).trim()
+    : (stageSelection?.offer_code ?? "")
   if (offerCode === "" && !offerProvided && !input.is_return) {
     return {
       error: {
@@ -2458,7 +2565,8 @@ export async function createShipment(
   }
   // A relay offer the operator DELIBERATELY chose (or an explicit include_pickup_point) must survive
   // the org pickup-point exclusion when the offer is re-validated against the live route below.
-  const includePickupPoint = input.include_pickup_point === true || stageSelection?.is_pickup_point === true
+  const includePickupPoint =
+    input.include_pickup_point === true || stageSelection?.is_pickup_point === true
   // OFFER-CODE ROUTE VALIDATION backstop (BL — the marco-day journey root). The stage-time preflight
   // already rejects a non-quoted offer_code, but enforce it at EXECUTION too so an approved request can
   // never BUY a label on a carrier the quote didn't return for this draft's destination (a wrong/doomed
@@ -2518,7 +2626,9 @@ export async function createShipment(
     if (!quoted.error && quoted.offers.length > 0) {
       const offer = quoted.offers.find((o) => o.offer_code === offerCode)
       if (!offer) {
-        const available = quoted.offers.map((o) => `${o.offer_code} (${o.carrier} ${o.service})`).join(", ")
+        const available = quoted.offers
+          .map((o) => `${o.offer_code} (${o.carrier} ${o.service})`)
+          .join(", ")
         return {
           error: {
             code: "offer_not_quoted",
@@ -2577,11 +2687,22 @@ export async function createShipment(
   // empty addresses (which Boxtal 422s).
   const sender = await loadSenderParty(ctx)
   if (!sender) {
-    return { error: { code: "sender_address_required", message: "Set the ship-from (sender) address in Boxtal settings before creating a shipment." } }
+    return {
+      error: {
+        code: "sender_address_required",
+        message:
+          "Set the ship-from (sender) address in Boxtal settings before creating a shipment.",
+      },
+    }
   }
   const senderMissing = validateParty(sender)
   if (senderMissing.length > 0) {
-    return { error: { code: "sender_address_required", message: `Sender address is incomplete, missing: ${senderMissing.join(", ")}.` } }
+    return {
+      error: {
+        code: "sender_address_required",
+        message: `Sender address is incomplete, missing: ${senderMissing.join(", ")}.`,
+      },
+    }
   }
 
   const recipient = buildRecipientParty(draft, input)
@@ -2596,10 +2717,16 @@ export async function createShipment(
   }
   const recipientMissing = validateParty(recipient)
   if (recipientMissing.length > 0) {
-    const code = recipientMissing.length === 1 && recipientMissing[0] === "phone"
-      ? "recipient_phone_required"
-      : "recipient_address_required"
-    return { error: { code, message: `Recipient address is incomplete, missing: ${recipientMissing.join(", ")}.` } }
+    const code =
+      recipientMissing.length === 1 && recipientMissing[0] === "phone"
+        ? "recipient_phone_required"
+        : "recipient_address_required"
+    return {
+      error: {
+        code,
+        message: `Recipient address is incomplete, missing: ${recipientMissing.join(", ")}.`,
+      },
+    }
   }
   // Destination-aware phone rule (US/CA labels 422 at Boxtal/FedEx on a
   // non-North-American phone). The stage-time preflight already rejects this;
@@ -2669,7 +2796,9 @@ export async function createShipment(
     line_quantities: batchLineQuantities,
   })
   if (!reserve.ok) {
-    return { error: { code: "duplicate", message: "A shipment is already in flight for this invoice." } }
+    return {
+      error: { code: "duplicate", message: "A shipment is already in flight for this invoice." },
+    }
   }
 
   // Outbound ships us→customer (from=org sender, to=counterparty). A return ships
@@ -2710,7 +2839,13 @@ export async function createShipment(
       if (err.status >= 500) {
         // Indeterminate — keep the row so a blind retry is blocked.
         await markUncertain(ctx, reserve.id)
-        return { error: { code: "create_uncertain", message: "Boxtal returned a server error; verify the order in the Boxtal dashboard before retrying." } }
+        return {
+          error: {
+            code: "create_uncertain",
+            message:
+              "Boxtal returned a server error; verify the order in the Boxtal dashboard before retrying.",
+          },
+        }
       }
       if (err.status === 422 && err.body.includes("Phone")) {
         // Deterministic validation reject — release the reservation so a
@@ -2718,7 +2853,12 @@ export async function createShipment(
         // create_uncertain for INDETERMINATE 5xx only).
         await releaseReservation(ctx, reserve.id)
         const detail = summarizeBoxtalError(err.body)
-        return { error: { code: "validation", message: detail ? `recipient phone invalid: ${detail}` : "recipient phone invalid" } }
+        return {
+          error: {
+            code: "validation",
+            message: detail ? `recipient phone invalid: ${detail}` : "recipient phone invalid",
+          },
+        }
       }
       if (err.status === 422 && err.body.includes("InvalidPaymentException")) {
         // NOT a problem with this shipment. Boxtal refuses the ORDER when the
@@ -2787,10 +2927,14 @@ export async function createShipment(
     // instead of re-resolving the invoice, so a later amendment cannot rewrite the history of a
     // parcel already on a van. See queue-facts.ts.
     queue_facts: {
-      ...buildQueueFacts({ ...draft, products: summarizeProducts(draft) }, await loadOrderFacts(ctx, draft.document_ref), {
-        kind: input.is_return ? "return" : "outbound",
-        carrierFamily: carrierFamilyOf(offerCode, quotedCarrierName),
-      }),
+      ...buildQueueFacts(
+        { ...draft, products: summarizeProducts(draft) },
+        await loadOrderFacts(ctx, draft.document_ref),
+        {
+          kind: input.is_return ? "return" : "outbound",
+          carrierFamily: carrierFamilyOf(offerCode, quotedCarrierName),
+        },
+      ),
       // The print record's buy-time half (print-record.ts): invoice, the customer and the address
       // the label was printed for, the carrier and the goods lines as they shipped.
       print: buildPrintSnapshot(draft, {
@@ -2851,7 +2995,10 @@ export async function createShipment(
       ? {
           batch_proforma_error:
             batchProformaIssue.status === "pending_approval"
-              ? { code: "pending_approval", message: `The batch proforma is waiting for approval (${batchProformaIssue.approval_id}).` }
+              ? {
+                  code: "pending_approval",
+                  message: `The batch proforma is waiting for approval (${batchProformaIssue.approval_id}).`,
+                }
               : { code: batchProformaIssue.code, message: batchProformaIssue.message },
         }
       : {}),
@@ -2934,7 +3081,9 @@ export async function pollCreateShipmentOutput(
  *  import_label_document / print_pack). Never throws. */
 export async function importLabelFiles(
   ctx: ShipmentCtx,
-  client: { v3: { getDocuments(id: string): Promise<Array<{ url?: string; type: string; format: string }>> } },
+  client: {
+    v3: { getDocuments(id: string): Promise<Array<{ url?: string; type: string; format: string }>> }
+  },
   boxtalOrderId: string,
   shipmentRowId: string,
 ): Promise<string[]> {
@@ -2960,7 +3109,10 @@ export async function importLabelFiles(
               targetEntityType: "shipment",
               targetEntityId: shipmentRowId,
               url: label.url,
-              filename: labels.length > 1 ? `label-${boxtalOrderId}-${i + 1}.pdf` : `label-${boxtalOrderId}.pdf`,
+              filename:
+                labels.length > 1
+                  ? `label-${boxtalOrderId}-${i + 1}.pdf`
+                  : `label-${boxtalOrderId}.pdf`,
               mimeType: "application/pdf",
               // Boxtal stamps a spurious /Rotate on label pages (content is
               // authored upright) — every viewer/printer then renders the label
@@ -3012,7 +3164,9 @@ export async function mergeParcelLabels(
 /** The order's label as ONE kernel file id (every parcel's label merged), or null. */
 export async function importLabelFile(
   ctx: ShipmentCtx,
-  client: { v3: { getDocuments(id: string): Promise<Array<{ url?: string; type: string; format: string }>> } },
+  client: {
+    v3: { getDocuments(id: string): Promise<Array<{ url?: string; type: string; format: string }>> }
+  },
   boxtalOrderId: string,
   shipmentRowId: string,
 ): Promise<string | null> {
@@ -3020,7 +3174,11 @@ export async function importLabelFile(
   if (ids.length === 0) return null
   const merged = await mergeParcelLabels(ctx, ids, boxtalOrderId)
   if ("file_id" in merged) return merged.file_id
-  ctx.logger?.warn?.("parcel labels not merged", { boxtal_order_id: boxtalOrderId, parcels: ids.length, reason: merged.error })
+  ctx.logger?.warn?.("parcel labels not merged", {
+    boxtal_order_id: boxtalOrderId,
+    parcels: ids.length,
+    reason: merged.error,
+  })
   return null
 }
 
@@ -3030,12 +3188,13 @@ export const ADDRESS_DIFFERS_MESSAGE =
   "Address differs: a person must pick which address to use. The order's ship-to and the customer's verified delivery address are not the same place; pick one on the To prepare row (Address differs) before the label is staged."
 
 /** The refusal when the label path could not read the order: the label never goes to a guess. */
-export const ORDER_UNREADABLE_MESSAGE = "Could not read the order's address from the store; try again."
+export const ORDER_UNREADABLE_MESSAGE =
+  "Could not read the order's address from the store; try again."
 
 /** A return opens from the sale invoice, whose To prepare row may be gone once it shipped, so the
  *  pick is made with prep_set_address_choice on that invoice (a person approves an agent's call). */
 export const ADDRESS_DIFFERS_RETURN_MESSAGE =
-  "Address differs: a person must pick which address to use. The order's ship-to and the customer's verified delivery address are not the same place; pick one with prep_set_address_choice for this invoice (document_ref = the draft_id, choice \"order\" or \"verified\"), then stage the return again."
+  'Address differs: a person must pick which address to use. The order\'s ship-to and the customer\'s verified delivery address are not the same place; pick one with prep_set_address_choice for this invoice (document_ref = the draft_id, choice "order" or "verified"), then stage the return again.'
 
 /** Refuses a label whose order could not be read, and holds one while the order's address and
  *  the verified one differ with no standing pick. */
@@ -3050,7 +3209,10 @@ export function addressPickBlock(
       message: `${ORDER_UNREADABLE_MESSAGE} Nothing was bought: a label only goes to an address read from the order just now.`,
     }
   if (check?.state === "differs" && !check.choice)
-    return { code: "address_differs", message: opts.isReturn ? ADDRESS_DIFFERS_RETURN_MESSAGE : ADDRESS_DIFFERS_MESSAGE }
+    return {
+      code: "address_differs",
+      message: opts.isReturn ? ADDRESS_DIFFERS_RETURN_MESSAGE : ADDRESS_DIFFERS_MESSAGE,
+    }
   return null
 }
 
@@ -3251,10 +3413,7 @@ export async function createShipmentPreflight(
  * `recipient_address`, with the NAME + COUNTRY defaulted from the invoice
  * snapshot and the PHONE preferring the explicit `recipient_phone` param.
  */
-function buildRecipientParty(
-  draft: ShipmentDraft,
-  input: CreateShipmentInput,
-): PostalParty {
+function buildRecipientParty(draft: ShipmentDraft, input: CreateShipmentInput): PostalParty {
   // The agent's explicit `recipient_address` param wins; otherwise fall back to
   // the address pre-filled on the draft from the linked contact's stored address
   // (so a gated create resolves without the operator re-keying an on-file
@@ -3325,7 +3484,8 @@ async function loadCancelTarget(
   ctx: ShipmentCtx,
   id: string,
 ): Promise<
-  { error: { code: string; message: string } } | { client: BoxtalFacade; orderStatus: string | null }
+  | { error: { code: string; message: string } }
+  | { client: BoxtalFacade; orderStatus: string | null }
 > {
   const client = await getClientOrError(ctx)
   if ("error" in client) {
@@ -3392,10 +3552,18 @@ export async function cancelShipment(
   }
   const tracking = await client.v3.getTracking(input.id)
   if (tracking.tracking_status && NON_CANCELLABLE_TRACKING.has(tracking.tracking_status)) {
-    return { error: { code: "already_dispatched", message: "Shipment already dispatched/delivered, cannot cancel." } }
+    return {
+      error: {
+        code: "already_dispatched",
+        message: "Shipment already dispatched/delivered, cannot cancel.",
+      },
+    }
   }
   await client.v3.cancel(input.id)
-  const rows = (await ctx.db.findMany("shipment", { where: { boxtal_order_id: input.id }, limit: 1 })) as Array<{ id: string }>
+  const rows = (await ctx.db.findMany("shipment", {
+    where: { boxtal_order_id: input.id },
+    limit: 1,
+  })) as Array<{ id: string }>
   if (rows[0]) {
     await ctx.db.update("shipment", rows[0].id, { order_status: "CANCELLED" })
   }
@@ -3436,7 +3604,9 @@ function buildCreateDraft(
       height: p.height,
       value: { value: perParcel, currency },
     })),
-    content: draft.content_code ? { id: `content:v1:${draft.content_code}`, description: "" } : undefined,
+    content: draft.content_code
+      ? { id: `content:v1:${draft.content_code}`, description: "" }
+      : undefined,
     customsDeclaration: attachCustoms
       ? {
           reason: addresses.reason,

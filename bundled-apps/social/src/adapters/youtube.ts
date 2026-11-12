@@ -41,7 +41,6 @@ function parseBody(body: string): unknown {
   }
 }
 
-
 const YT_BASE = "https://www.googleapis.com/youtube/v3"
 
 /** YouTube Data API v3 quota unit costs (§2.3). */
@@ -70,8 +69,15 @@ const KEYWORD_WINDOW_OVERLAP_MS = 12 * 60 * 60 * 1000
  *  videos.list statistics batch per 50 hits, and the own-channel sweep
  *  (channels + playlistItems + one commentThreads per recent upload). */
 export function estimateYoutubeDiscoveryUnits(termCount: number): number {
-  const keyword = termCount > 0 ? termCount * YT_SEARCH_UNITS + Math.ceil((termCount * 50) / VIDEOS_BATCH_SIZE) * YT_VIDEOS_UNITS : 0
-  const ownChannel = YT_CHANNELS_UNITS + YT_PLAYLIST_ITEMS_UNITS + OWN_CHANNEL_RECENT_UPLOADS * YT_COMMENT_THREADS_UNITS
+  const keyword =
+    termCount > 0
+      ? termCount * YT_SEARCH_UNITS +
+        Math.ceil((termCount * 50) / VIDEOS_BATCH_SIZE) * YT_VIDEOS_UNITS
+      : 0
+  const ownChannel =
+    YT_CHANNELS_UNITS +
+    YT_PLAYLIST_ITEMS_UNITS +
+    OWN_CHANNEL_RECENT_UPLOADS * YT_COMMENT_THREADS_UNITS
   return keyword + ownChannel
 }
 
@@ -82,7 +88,9 @@ export function estimateYoutubeDiscoveryUnits(termCount: number): number {
 export function isYoutubeQuotaRefusal(res: { status: number; body: string }): boolean {
   if (res.status !== 403) return false
   const body = parseBody(res.body) as { error?: { errors?: Array<{ reason?: string }> } }
-  return (body.error?.errors ?? []).some((e) => e.reason === "quotaExceeded" || e.reason === "dailyLimitExceeded")
+  return (body.error?.errors ?? []).some(
+    (e) => e.reason === "quotaExceeded" || e.reason === "dailyLimitExceeded",
+  )
 }
 
 /** Per-term keyword-search state, packed into sync_state.cursor:
@@ -145,7 +153,11 @@ export function termAppearsIn(term: DiscoveryTerm, text: string | null | undefin
  * to actually appear as a case-insensitive SUBSTRING PHRASE in the video's
  * title or description (search.list's snippet carries both).
  */
-function termMatchesVerbatim(term: DiscoveryTerm, title: string | null, description: string | null): boolean {
+function termMatchesVerbatim(
+  term: DiscoveryTerm,
+  title: string | null,
+  description: string | null,
+): boolean {
   return termAppearsIn(term, title) || termAppearsIn(term, description)
 }
 
@@ -285,7 +297,7 @@ async function discoverKeywordMatches(
       break
     }
     unitsConsumed += YT_SEARCH_UNITS
-    const body = (parseBody(res.body)) as { items?: YtSearchItem[]; nextPageToken?: string }
+    const body = parseBody(res.body) as { items?: YtSearchItem[]; nextPageToken?: string }
     // Advance this term's window. Only a windowed read keeps paging: without a
     // watermark the "next page" is older history, which is never wanted.
     next.terms[term.id] =
@@ -303,7 +315,10 @@ async function discoverKeywordMatches(
     for (const item of body.items ?? []) {
       const videoId = item.id?.videoId
       if (!videoId) continue
-      if (!termMatchesVerbatim(term, item.snippet?.title ?? null, item.snippet?.description ?? null)) continue
+      if (
+        !termMatchesVerbatim(term, item.snippet?.title ?? null, item.snippet?.description ?? null)
+      )
+        continue
       const existing = byVideo.get(videoId)
       if (existing) {
         const matched = (existing.metadata?.matchedTerms as string[] | undefined) ?? []
@@ -365,7 +380,7 @@ async function populateKeywordCommentCounts(
     }
     if (res.status === 401 || res.status === 429) break
     unitsConsumed += YT_VIDEOS_UNITS
-    const body = (parseBody(res.body)) as YtVideosStatisticsResponse
+    const body = parseBody(res.body) as YtVideosStatisticsResponse
     for (const item of body.items ?? []) {
       if (!item.id) continue
       const raw = item.statistics?.commentCount
@@ -401,11 +416,11 @@ async function discoverOwnChannelComments(
 ): Promise<{ findings: NormalizedFinding[]; unitsConsumed: number; quotaExhausted?: boolean }> {
   let unitsConsumed = 0
 
-  const channelsRes = await ctx.fetch(
-    `${YT_BASE}/channels?part=contentDetails&mine=true`,
-    { headers: authHeaders(ctx) },
-  )
-  if (isYoutubeQuotaRefusal(channelsRes)) return { findings: [], unitsConsumed, quotaExhausted: true }
+  const channelsRes = await ctx.fetch(`${YT_BASE}/channels?part=contentDetails&mine=true`, {
+    headers: authHeaders(ctx),
+  })
+  if (isYoutubeQuotaRefusal(channelsRes))
+    return { findings: [], unitsConsumed, quotaExhausted: true }
   if (channelsRes.status === 401 || channelsRes.status === 429) {
     // No channel resolvable this cycle — the caller's overall discover() still
     // surfaces the typed error from the keyword sweep if that also failed;
@@ -413,21 +428,23 @@ async function discoverOwnChannelComments(
     return { findings: [], unitsConsumed }
   }
   unitsConsumed += YT_CHANNELS_UNITS
-  const channelsBody = (parseBody(channelsRes.body)) as YtChannelsResponse
+  const channelsBody = parseBody(channelsRes.body) as YtChannelsResponse
   const ownChannelId = channelsBody.items?.[0]?.id ?? null
-  const uploadsPlaylistId = channelsBody.items?.[0]?.contentDetails?.relatedPlaylists?.uploads ?? null
+  const uploadsPlaylistId =
+    channelsBody.items?.[0]?.contentDetails?.relatedPlaylists?.uploads ?? null
   if (!uploadsPlaylistId) return { findings: [], unitsConsumed }
 
   const playlistRes = await ctx.fetch(
     `${YT_BASE}/playlistItems?part=snippet,contentDetails&playlistId=${uploadsPlaylistId}&maxResults=${OWN_CHANNEL_RECENT_UPLOADS}`,
     { headers: authHeaders(ctx) },
   )
-  if (isYoutubeQuotaRefusal(playlistRes)) return { findings: [], unitsConsumed, quotaExhausted: true }
+  if (isYoutubeQuotaRefusal(playlistRes))
+    return { findings: [], unitsConsumed, quotaExhausted: true }
   if (playlistRes.status === 401 || playlistRes.status === 429) {
     return { findings: [], unitsConsumed }
   }
   unitsConsumed += YT_PLAYLIST_ITEMS_UNITS
-  const playlistBody = (parseBody(playlistRes.body)) as YtPlaylistItemsResponse
+  const playlistBody = parseBody(playlistRes.body) as YtPlaylistItemsResponse
   const recentVideos = (playlistBody.items ?? [])
     .map((it) => ({
       videoId: it.contentDetails?.videoId ?? it.snippet?.resourceId?.videoId ?? null,
@@ -457,7 +474,7 @@ async function discoverOwnChannelComments(
     if (isYoutubeQuotaRefusal(res)) return { findings, unitsConsumed, quotaExhausted: true }
     if (res.status !== 200) continue
     unitsConsumed += YT_COMMENT_THREADS_UNITS
-    const body = (parseBody(res.body)) as YtCommentThreadsResponse
+    const body = parseBody(res.body) as YtCommentThreadsResponse
     findings.push(
       ...normalizeCommentThreads(body.items ?? [], video.videoId, {
         ownChannelId,
@@ -523,7 +540,7 @@ export const youtubeAdapter: PlatformAdapter = {
     if (isYoutubeQuotaRefusal(res)) {
       return { findings: [], nextCursor: cursor, unitsConsumed: 0, quotaExhausted: true }
     }
-    const body = (parseBody(res.body)) as YtCommentThreadsResponse & { nextPageToken?: string }
+    const body = parseBody(res.body) as YtCommentThreadsResponse & { nextPageToken?: string }
     const findings = normalizeCommentThreads(body.items ?? [], objectExternalId)
     return {
       findings,

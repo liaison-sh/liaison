@@ -22,7 +22,7 @@
 // displayed identity is the Shopify staff email until a kernel user-directory
 // read affordance lands.
 import type { AppContext } from "@liaison/app-sdk"
-import { REQUIRED_OAUTH_SCOPES, grantSatisfies, recordedGrantedScopes } from "../lib/constants"
+import { grantSatisfies, REQUIRED_OAUTH_SCOPES, recordedGrantedScopes } from "../lib/constants"
 import { resolveInstallMetadata } from "../lib/get-client"
 import { camelizeRows } from "../lib/install-metadata"
 import { scopeSeedJob } from "./scope-seed"
@@ -187,7 +187,8 @@ export async function settingsLoad(
   const overrideRows = camelizeRows<StaffOverrideRow>(overrideRowsRaw)
   const overrideByStaffId = new Map<string, string>()
   for (const o of overrideRows) {
-    if (o.shopifyStaffId && o.liaisonUserId) overrideByStaffId.set(o.shopifyStaffId, o.liaisonUserId)
+    if (o.shopifyStaffId && o.liaisonUserId)
+      overrideByStaffId.set(o.shopifyStaffId, o.liaisonUserId)
   }
   const mappings: IdentityMappingRow[] = mirrorRows.map((m) => {
     const staffId = m.shopifyStaffId ?? null

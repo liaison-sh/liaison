@@ -1,0 +1,27 @@
+{
+  "entry": "tool:search",
+  "params": {
+    "query": "plan"
+  },
+  "recordedFrom": "a contract org's Drive accounts against a fake Google Drive v3 reached through the live bridge transport, scripts/contract/record-google-drive.ts",
+  "calls": [
+    {
+      "method": "accounts_list",
+      "args": ["drive", null],
+      "reply": "[{\"id\":\"00000000-0000-4000-8000-00000000d001\",\"identifier\":\"ana@example.com\",\"ownerType\":\"user\",\"ownerId\":\"00000000-0000-4000-8000-00000000c0df\",\"displayName\":null,\"status\":\"active\",\"metadata\":{\"grantedOAuthScopes\":[\"https://www.googleapis.com/auth/drive.readonly\"]},\"createdAt\":\"2026-11-12T15:43:39.415Z\",\"updatedAt\":\"2026-11-12T15:43:39.415Z\",\"canManage\":true},{\"id\":\"00000000-0000-4000-8000-00000000d002\",\"identifier\":\"team@example.com\",\"ownerType\":\"org\",\"ownerId\":null,\"displayName\":null,\"status\":\"active\",\"metadata\":{},\"createdAt\":\"2026-11-12T15:43:39.418Z\",\"updatedAt\":\"2026-11-12T15:43:39.418Z\",\"canManage\":true}]"
+    },
+    {
+      "method": "accounts_list",
+      "args": ["drive"],
+      "reply": "[{\"id\":\"00000000-0000-4000-8000-00000000d001\",\"identifier\":\"ana@example.com\",\"ownerType\":\"user\",\"ownerId\":\"00000000-0000-4000-8000-00000000c0df\",\"displayName\":null,\"status\":\"active\",\"metadata\":{\"grantedOAuthScopes\":[\"https://www.googleapis.com/auth/drive.readonly\"]},\"createdAt\":\"2026-11-12T15:43:39.415Z\",\"updatedAt\":\"2026-11-12T15:43:39.415Z\",\"canManage\":true},{\"id\":\"00000000-0000-4000-8000-00000000d002\",\"identifier\":\"team@example.com\",\"ownerType\":\"org\",\"ownerId\":null,\"displayName\":null,\"status\":\"active\",\"metadata\":{},\"createdAt\":\"2026-11-12T15:43:39.418Z\",\"updatedAt\":\"2026-11-12T15:43:39.418Z\",\"canManage\":true}]"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://www.googleapis.com/drive/v3/files?fields=files(id%2Cname%2CmimeType%2CwebViewLink%2CmodifiedTime%2Ccapabilities%2CshortcutDetails%2CresourceKey%2Ctrashed%2CdriveId%2Cparents%2Csize)%2CincompleteSearch%2CnextPageToken&q=(fullText%20contains%20'plan'%20or%20name%20contains%20'plan')%20and%20trashed%20%3D%20false&pageSize=25&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives",
+        "{\"auth\":{\"connection\":\"drive\",\"account\":\"00000000-0000-4000-8000-00000000d001\",\"scheme\":\"bearer\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json;charset=utf-8\"},\"body\":\"{\\\"files\\\":[{\\\"id\\\":\\\"doc00001\\\",\\\"name\\\":\\\"Onboarding plan\\\",\\\"mimeType\\\":\\\"application/vnd.google-apps.document\\\",\\\"modifiedTime\\\":\\\"2026-11-01T09:00:00.000Z\\\",\\\"webViewLink\\\":\\\"https://drive.google.com/file/d/doc00001/view\\\",\\\"capabilities\\\":{\\\"canDownload\\\":true}}]}\"}"
+    }
+  ]
+}

@@ -29,7 +29,9 @@ describe("contactLabel", () => {
 
 describe("pickedContactPatch", () => {
   it("links the contact and fills an empty customer name and email", () => {
-    expect(pickedContactPatch(contact, { counterparty_name: "", counterparty_email: null })).toEqual({
+    expect(
+      pickedContactPatch(contact, { counterparty_name: "", counterparty_email: null }),
+    ).toEqual({
       counterparty_contact_id: contact.id,
       counterparty_name: "Acme SAS",
       counterparty_email: "claire@acme.example",
@@ -37,7 +39,9 @@ describe("pickedContactPatch", () => {
   })
 
   it("uses the person's name when the contact has no company", () => {
-    expect(pickedContactPatch({ ...contact, company: null }, {}).counterparty_name).toBe("Claire Martin")
+    expect(pickedContactPatch({ ...contact, company: null }, {}).counterparty_name).toBe(
+      "Claire Martin",
+    )
   })
 
   it("never overwrites what the operator already typed", () => {

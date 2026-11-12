@@ -3,18 +3,18 @@
 // Invoicing mutations: documents.mark_paid and documents.record_refund.
 
 import { readMinorAmount } from "@liaison/app-sdk"
-import { transition } from "../state"
 import { civilDateOf } from "../issue-date"
+import { transition } from "../state"
 import { findDocumentSummary, findIssuerProfile, sumPriorRefundedMinor } from "./db-helpers"
 import { ensureDocumentPdf } from "./pdf"
 import {
-  type MutationsCtx,
   type DocumentRowSummary,
-  type ErrorEnvelope,
   type DocumentType,
-  type PreflightResult,
-  type MutationResult,
+  type ErrorEnvelope,
   invalidAmountError,
+  type MutationResult,
+  type MutationsCtx,
+  type PreflightResult,
   toPreflightResult,
 } from "./shared"
 
@@ -29,7 +29,8 @@ async function preflightMarkPaidParams(
   ctx: MutationsCtx,
   input: { document_id: string; paid_date?: string },
 ): Promise<
-  { ok: true; doc: DocumentRowSummary; nextStatus: string; paidAt: string } | { ok: false; error: ErrorEnvelope }
+  | { ok: true; doc: DocumentRowSummary; nextStatus: string; paidAt: string }
+  | { ok: false; error: ErrorEnvelope }
 > {
   const doc = await findDocumentSummary(ctx.db, input.document_id)
   if (!doc) {
@@ -42,10 +43,7 @@ async function preflightMarkPaidParams(
     }
   }
   const status = doc.status ?? "draft"
-  const trans = transition(
-    { type: doc.type as DocumentType, status },
-    "mark_paid",
-  )
+  const trans = transition({ type: doc.type as DocumentType, status }, "mark_paid")
   if (trans.status !== "ok") {
     return {
       ok: false,
@@ -166,7 +164,10 @@ async function preflightRecordRefundParams(
   if (refundAmount === null) {
     return {
       ok: false,
-      error: { status: "error", error: invalidAmountError("refund_amount_minor", input.refund_amount_minor) },
+      error: {
+        status: "error",
+        error: invalidAmountError("refund_amount_minor", input.refund_amount_minor),
+      },
     }
   }
   input = { ...input, refund_amount_minor: refundAmount }
@@ -194,10 +195,7 @@ async function preflightRecordRefundParams(
   }
 
   if (input.refund_kind === "full") {
-    const trans = transition(
-      { type: doc.type as DocumentType, status },
-      "mark_refunded",
-    )
+    const trans = transition({ type: doc.type as DocumentType, status }, "mark_refunded")
     if (trans.status !== "ok") {
       return {
         ok: false,

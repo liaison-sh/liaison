@@ -168,10 +168,6 @@ describe("raw fetch discipline", () => {
     // `fetch(range, query, options)` is the ImapFlow client INTERFACE method
     // (an IMAP FETCH command over the open client), not an HTTP call.
     "modules/apps/sandbox/imap-mailbox.ts",
-    // The `fetch(` here is inside the Google Picker page's script SERVED TO THE
-    // BROWSER, as in mcp/oauth-server-routes.ts: it posts the picked items to
-    // the same-origin save URL from the user's browser, not from the server.
-    "apps/google-drive/picker-page.ts",
   ])
 
   const files = findProductionTsFiles(srcDir)

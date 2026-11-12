@@ -2,8 +2,8 @@
 import { describe, expect, it } from "bun:test"
 import {
   BoxtalApiError,
-  BoxtalV3Client,
   type BoxtalFetch,
+  BoxtalV3Client,
   webhookSecretPlaceholder,
 } from "./boxtal-v3-client"
 
@@ -50,7 +50,10 @@ describe("BoxtalV3Client — the host authenticates (bearer exchange) and a 401 
     exchange: { url: `${base}/iam/account-app/token`, fields: ["v3Key", "v3Secret"] },
   })
 
-  function recordingFetch(statuses: number[]): { fetch: BoxtalFetch; seen: Array<Record<string, unknown>> } {
+  function recordingFetch(statuses: number[]): {
+    fetch: BoxtalFetch
+    seen: Array<Record<string, unknown>>
+  } {
     const seen: Array<Record<string, unknown>> = []
     const fetch: BoxtalFetch = async (url, opts) => {
       seen.push({ url, ...opts })
@@ -82,7 +85,10 @@ describe("BoxtalV3Client — the host authenticates (bearer exchange) and a 401 
     const failing = recordingFetch([401, 401])
     let err: unknown
     try {
-      await new BoxtalV3Client({ fetch: failing.fetch, environment: "sandbox" }).listContentCategories()
+      await new BoxtalV3Client({
+        fetch: failing.fetch,
+        environment: "sandbox",
+      }).listContentCategories()
     } catch (e) {
       err = e
     }
@@ -104,9 +110,7 @@ function clientWithBiz(
   client: BoxtalV3Client
   calls: RecordedCall[]
 } {
-  const { fetch: inner, calls } = makeFetch([
-    { match: isBizCall, status, body },
-  ])
+  const { fetch: inner, calls } = makeFetch([{ match: isBizCall, status, body }])
   const fetch: BoxtalFetch = async (url, opts) => {
     seenOpts?.push(opts as Record<string, unknown> | undefined)
     return inner(url, opts)
@@ -124,8 +128,16 @@ function wrap(content: unknown): string {
 
 const sampleDraft = {
   shippingOfferCode: "CHRP-Chrono18",
-  fromAddress: { type: "BUSINESS" as const, contact: { email: "s@e.com", phone: "+33600000000", lastName: "S", firstName: "F" }, location: { city: "Paris", street: "1 rue", postalCode: "75001", countryIsoCode: "FR" } },
-  toAddress: { type: "RESIDENTIAL" as const, contact: { email: "d@e.com", phone: "+12025550100", lastName: "D", firstName: "G" }, location: { city: "NYC", street: "5th Ave", postalCode: "10001", countryIsoCode: "US" } },
+  fromAddress: {
+    type: "BUSINESS" as const,
+    contact: { email: "s@e.com", phone: "+33600000000", lastName: "S", firstName: "F" },
+    location: { city: "Paris", street: "1 rue", postalCode: "75001", countryIsoCode: "FR" },
+  },
+  toAddress: {
+    type: "RESIDENTIAL" as const,
+    contact: { email: "d@e.com", phone: "+12025550100", lastName: "D", firstName: "G" },
+    location: { city: "NYC", street: "5th Ave", postalCode: "10001", countryIsoCode: "US" },
+  },
   packages: [
     { weight: 1.2, length: 30, width: 20, height: 10, value: { value: 50, currency: "EUR" } },
   ],
@@ -169,7 +181,14 @@ describe("BoxtalV3Client.buildCreateBody", () => {
       customsDeclaration: {
         reason: "SALE",
         articles: [
-          { description: "y".repeat(100), quantity: 2, unitWeight: 0.5, unitValue: { value: 25, currency: "EUR" }, originCountry: "FR", tariffNumber: "851762" },
+          {
+            description: "y".repeat(100),
+            quantity: 2,
+            unitWeight: 0.5,
+            unitValue: { value: 25, currency: "EUR" },
+            originCountry: "FR",
+            tariffNumber: "851762",
+          },
         ],
       },
     })
@@ -224,7 +243,11 @@ describe("BoxtalV3Client business methods", () => {
   it("a refused call carries Boxtal's own reason in the error message", async () => {
     const { client } = clientWithBiz(
       422,
-      JSON.stringify({ messages: [{ severity: "ERROR", text: "shipment.toAddress.contact.lastName: invalid value" }] }),
+      JSON.stringify({
+        messages: [
+          { severity: "ERROR", text: "shipment.toAddress.contact.lastName: invalid value" },
+        ],
+      }),
     )
     const err = await client.createShippingOrder(sampleDraft).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(BoxtalApiError)
@@ -243,7 +266,10 @@ describe("BoxtalV3Client business methods", () => {
     )
     const res = await client.createShippingOrder(sampleDraft)
     expect(res.tracking_number).toBe("1ZW4941Y0492530257")
-    const bare = await clientWithBiz(200, wrap({ id: "ord-3", status: "PENDING" })).client.createShippingOrder(sampleDraft)
+    const bare = await clientWithBiz(
+      200,
+      wrap({ id: "ord-3", status: "PENDING" }),
+    ).client.createShippingOrder(sampleDraft)
     expect(bare.tracking_number).toBeNull()
   })
 
@@ -263,7 +289,11 @@ describe("BoxtalV3Client business methods", () => {
           trackingDateTime: "2026-06-02T10:00:00Z",
           history: [
             { status: "SHIPPED", trackingDateTime: "2026-06-01T08:00:00Z", message: "Picked up" },
-            { status: "IN_TRANSIT", trackingDateTime: "2026-06-02T10:00:00Z", message: "In transit" },
+            {
+              status: "IN_TRANSIT",
+              trackingDateTime: "2026-06-02T10:00:00Z",
+              message: "In transit",
+            },
           ],
         },
       ]),
@@ -272,7 +302,11 @@ describe("BoxtalV3Client business methods", () => {
     expect(res.tracking_number).toBe("TRK123")
     expect(res.tracking_status).toBe("IN_TRANSIT")
     expect(res.events).toHaveLength(2)
-    expect(res.events[0]).toMatchObject({ status: "SHIPPED", at: "2026-06-01T08:00:00Z", label: "Picked up" })
+    expect(res.events[0]).toMatchObject({
+      status: "SHIPPED",
+      at: "2026-06-01T08:00:00Z",
+      label: "Picked up",
+    })
     // An in-transit parcel has NO pickup deadline.
     expect(res.pickup_deadline).toBeNull()
   })
@@ -290,7 +324,11 @@ describe("BoxtalV3Client business methods", () => {
           trackingDateTime: "2026-06-18T11:00:00Z",
           pickupDeadline: "2026-06-25",
           history: [
-            { status: "REACHED_DELIVERY_PICKUP_POINT", trackingDateTime: "2026-06-18T11:00:00Z", message: "Awaiting collection at the pickup point" },
+            {
+              status: "REACHED_DELIVERY_PICKUP_POINT",
+              trackingDateTime: "2026-06-18T11:00:00Z",
+              message: "Awaiting collection at the pickup point",
+            },
           ],
         },
       ]),
@@ -330,7 +368,11 @@ describe("BoxtalV3Client business methods", () => {
     )
     const docs = await client.getDocuments("ord-1")
     expect(docs).toHaveLength(2)
-    expect(docs[0]).toMatchObject({ url: "https://signed/label.pdf", type: "LABEL", format: "PDF_A4" })
+    expect(docs[0]).toMatchObject({
+      url: "https://signed/label.pdf",
+      type: "LABEL",
+      format: "PDF_A4",
+    })
   })
 
   it("cancel DELETEs and returns CANCELLED", async () => {
@@ -434,7 +476,11 @@ describe("BoxtalV3Client - request timeout and call budget", () => {
     const seen: unknown[] = []
     const fetch: BoxtalFetch = async (_url, opts) => {
       seen.push(JSON.parse(JSON.stringify(opts ?? {})))
-      return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: {} }) }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ status: 200, timestamp: "t", content: {} }),
+      }
     }
     const client = new BoxtalV3Client({ fetch, environment: "sandbox", requestTimeoutMs: 25 })
     await client.getShippingOrder("ord-1")

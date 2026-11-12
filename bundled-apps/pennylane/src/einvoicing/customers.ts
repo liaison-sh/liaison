@@ -30,7 +30,13 @@ export interface CustomerInput {
   last_name?: string | null
   reg_no?: string | null
   vat_number?: string | null
-  address: { line1: string; line2?: string | null; postcode: string; city: string; country_code: string }
+  address: {
+    line1: string
+    line2?: string | null
+    postcode: string
+    city: string
+    country_code: string
+  }
 }
 
 function billingAddress(a: CustomerInput["address"]) {
@@ -45,13 +51,17 @@ function billingAddress(a: CustomerInput["address"]) {
 /** Individuals need a first and last name: given names win, else the last word is the family
  *  name and the rest the given name ("Marie Claire Dupont" → "Marie Claire" / "Dupont"). */
 export function splitPersonName(input: CustomerInput): { first_name: string; last_name: string } {
-  if (input.first_name && input.last_name) return { first_name: input.first_name, last_name: input.last_name }
+  if (input.first_name && input.last_name)
+    return { first_name: input.first_name, last_name: input.last_name }
   const words = input.name.trim().split(/\s+/).filter(Boolean)
   if (words.length <= 1) return { first_name: words[0] ?? "-", last_name: words[0] ?? "-" }
   return { first_name: words.slice(0, -1).join(" "), last_name: words[words.length - 1]! }
 }
 
-async function findByExternalReference(client: PennylaneClient, ref: string): Promise<PennylaneCustomer | null> {
+async function findByExternalReference(
+  client: PennylaneClient,
+  ref: string,
+): Promise<PennylaneCustomer | null> {
   const page = await client.list<PennylaneCustomer>("/customers", {
     filter: [{ field: "external_reference", operator: "eq", value: ref }],
     limit: 2,
@@ -80,25 +90,39 @@ function changes(existing: PennylaneCustomer, input: CustomerInput): Record<stri
   if (existing.customer_type !== input.kind) out.customer_type = input.kind
   if (input.kind === "company") {
     if (existing.name !== input.name) out.name = input.name
-    if ((existing.reg_no ?? null) !== (input.reg_no ?? null) && input.reg_no) out.reg_no = input.reg_no
-    if ((existing.vat_number ?? null) !== (input.vat_number ?? null) && input.vat_number) out.vat_number = input.vat_number
+    if ((existing.reg_no ?? null) !== (input.reg_no ?? null) && input.reg_no)
+      out.reg_no = input.reg_no
+    if ((existing.vat_number ?? null) !== (input.vat_number ?? null) && input.vat_number)
+      out.vat_number = input.vat_number
   }
   const want = billingAddress(input.address)
   const have = existing.billing_address
-  if (!have || have.address !== want.address || have.postal_code !== want.postal_code || have.city !== want.city || have.country_alpha2 !== want.country_alpha2) {
+  if (
+    !have ||
+    have.address !== want.address ||
+    have.postal_code !== want.postal_code ||
+    have.city !== want.city ||
+    have.country_alpha2 !== want.country_alpha2
+  ) {
     out.billing_address = want
   }
   return out
 }
 
-export async function upsertCustomer(client: PennylaneClient, input: CustomerInput): Promise<PennylaneCustomer> {
+export async function upsertCustomer(
+  client: PennylaneClient,
+  input: CustomerInput,
+): Promise<PennylaneCustomer> {
   let existing = await findByExternalReference(client, input.external_reference)
   if (!existing) {
     try {
       return (await client.post<PennylaneCustomer>("/customers", createBody(input))).data
     } catch (e) {
       // Created concurrently (or by a run that crashed before recording it): adopt it.
-      if ((e as { status?: number }).status === 422 && /already been taken/i.test((e as { body?: string }).body ?? "")) {
+      if (
+        (e as { status?: number }).status === 422 &&
+        /already been taken/i.test((e as { body?: string }).body ?? "")
+      ) {
         existing = await findByExternalReference(client, input.external_reference)
         if (!existing) throw e
       } else {

@@ -199,8 +199,13 @@ async function resolveIssuerProfileId(ctx: BoxtalToolCtx): Promise<IssuerLookup>
     const env = await ctx.executeTool("invoicing:settings_issuer_profile_list", {})
     if (env.status !== "completed" || env.result == null) {
       const message =
-        env.status === "error" ? env.error.message : "the invoicing app did not answer the issuer-profile read"
-      ctx.logger?.warn?.("prep: issuer profile read did not complete", { status: env.status, err: message })
+        env.status === "error"
+          ? env.error.message
+          : "the invoicing app did not answer the issuer-profile read"
+      ctx.logger?.warn?.("prep: issuer profile read did not complete", {
+        status: env.status,
+        err: message,
+      })
       return { error: message }
     }
     // The invoicing tool answers `{ items: [...] }` (reads.ts settingsIssuerProfileList). The other
@@ -319,17 +324,15 @@ export async function ensureNominalProforma(
     return { status: "error", code: env.error.code, message: env.error.message }
   }
   // The invoicing mutation returns its OWN result envelope inside the cross-app one.
-  const res = env.result as
-    | {
-        status?: string
-        document_id?: string
-        id?: string
-        number?: string | null
-        approval_id?: string
-        error?: { code?: string; message?: string }
-        document?: { id?: string }
-      }
-    | null
+  const res = env.result as {
+    status?: string
+    document_id?: string
+    id?: string
+    number?: string | null
+    approval_id?: string
+    error?: { code?: string; message?: string }
+    document?: { id?: string }
+  } | null
   if (res?.status === "pending_approval" && res.approval_id) {
     return { status: "pending_approval", approval_id: res.approval_id }
   }
@@ -423,7 +426,10 @@ export async function resolvePendingProformas(
 /** How long a pending proforma approval is worth waiting on before the row says so out loud. */
 export const PROFORMA_PENDING_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000
 
-export function isProformaApprovalExpired(requestedAt: string | null | undefined, now = Date.now()): boolean {
+export function isProformaApprovalExpired(
+  requestedAt: string | null | undefined,
+  now = Date.now(),
+): boolean {
   if (!requestedAt) return false
   const t = Date.parse(requestedAt)
   if (Number.isNaN(t)) return false

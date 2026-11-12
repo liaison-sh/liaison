@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { type Component, createMemo, createResource, createSignal, For, Show } from "solid-js"
+
 import { app } from "@liaison/host"
+import { type Component, createMemo, createResource, createSignal, For, Show } from "solid-js"
 import { AdPreviewDrawer, EmptyState, MetaIssueNote, PageHeader } from "./kit"
 import { type MetaIssue, metaIssueFromError, toolData, toolRows } from "./ui-logic"
 
@@ -41,9 +42,11 @@ function extractIframeSrc(body: string | null | undefined): string | null {
   return m?.[1] ?? null
 }
 
-const AdTile: Component<{ adId: string; adName: string; onOpen: (adId: string) => void }> = (props) => {
+const AdTile: Component<{ adId: string; adName: string; onOpen: (adId: string) => void }> = (
+  props,
+) => {
   const [creative] = app.createResource(() =>
-    app.invokeTool<CreativeResult>("creative_get", { ad_id: props.adId }).catch(() => null)
+    app.invokeTool<CreativeResult>("creative_get", { ad_id: props.adId }).catch(() => null),
   )
 
   return (
@@ -55,7 +58,10 @@ const AdTile: Component<{ adId: string; adName: string; onOpen: (adId: string) =
       title={props.adName}
     >
       <Show when={creative.loading}>
-        <div data-testid={`ads-ad-thumb-skeleton-${props.adId}`} class="flex-1 animate-pulse bg-surface-hover" />
+        <div
+          data-testid={`ads-ad-thumb-skeleton-${props.adId}`}
+          class="flex-1 animate-pulse bg-surface-hover"
+        />
       </Show>
       <Show when={!creative.loading}>
         <Show
@@ -67,12 +73,7 @@ const AdTile: Component<{ adId: string; adName: string; onOpen: (adId: string) =
           }
         >
           {(src) => (
-            <img
-              src={src()}
-              alt={props.adName}
-              class="h-full w-full object-cover"
-              loading="lazy"
-            />
+            <img src={src()} alt={props.adName} class="h-full w-full object-cover" loading="lazy" />
           )}
         </Show>
       </Show>
@@ -133,10 +134,12 @@ export const AdsTab: Component = () => {
 
   const [previews] = createResource(openAdId, (adId) => {
     if (!adId) return null
-    return app.invokeTool<PreviewResult>("ad_preview", {
-      ad_id: adId,
-      ad_formats: PLACEMENTS.map((p) => p.value),
-    }).catch(() => null)
+    return app
+      .invokeTool<PreviewResult>("ad_preview", {
+        ad_id: adId,
+        ad_formats: PLACEMENTS.map((p) => p.value),
+      })
+      .catch(() => null)
   })
 
   const iframeSrc = createMemo(() => {
@@ -182,7 +185,14 @@ export const AdsTab: Component = () => {
           >
             <For each={ads()}>
               {(ad) => (
-                <AdTile adId={ad.id} adName={ad.name} onOpen={(id) => { setOpenAdId(id); setPlacement("DESKTOP_FEED_STANDARD") }} />
+                <AdTile
+                  adId={ad.id}
+                  adName={ad.name}
+                  onOpen={(id) => {
+                    setOpenAdId(id)
+                    setPlacement("DESKTOP_FEED_STANDARD")
+                  }}
+                />
               )}
             </For>
           </div>

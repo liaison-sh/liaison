@@ -1179,6 +1179,12 @@ export const envSchema = z
     LIAISON_APP_LOADER_CELL_ID: z.preprocess(unsetIfEmpty, z.string().optional()),
     // The shared key that signs this instance's requests to the loader.
     LIAISON_APP_LOADER_KEY: z.preprocess(unsetIfEmpty, z.string().optional()),
+    // Where a run meant for the loader goes when the loader cannot take it
+    // (its breaker open, an app-level fallback, a loader fault before any
+    // bridge call): the base URL of this instance's own sandbox service, which
+    // speaks the loader's protocol (`<url>/run`, signed with the same cell id
+    // and key). Unset: those runs fall back to the local QuickJS sandbox.
+    LIAISON_APP_FALLBACK_LOADER_URL: z.preprocess(unsetIfEmpty, z.string().url().optional()),
     // The public base URL the loader's isolates call back on
     // (`<url>/api/app-bridge/<runId>`). Unset, BASE_URL.
     LIAISON_APP_BRIDGE_BASE_URL: z.preprocess(unsetIfEmpty, z.string().url().optional()),

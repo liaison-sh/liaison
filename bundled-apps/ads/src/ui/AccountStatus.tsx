@@ -7,8 +7,9 @@
 // connected": a throttled or refused Meta read keeps its reason so the card
 // says what actually happened. Connecting and editing credential values happen
 // in the page's connections block, above this one.
-import { type Component, createMemo, createSignal } from "solid-js"
+
 import { app } from "@liaison/host"
+import { type Component, createMemo, createSignal } from "solid-js"
 import { Badge, Card, SectionLabel } from "./kit"
 import { metaIssueFromError, toolErrorCode } from "./ui-logic"
 
@@ -83,17 +84,27 @@ export const AdsAccountStatus: Component = () => {
     if (failure && toolErrorCode(failure) !== "meta_not_connected") {
       return { kind: "unavailable", detail: metaIssueFromError(failure).text }
     }
-    return { kind: "not_connected", detail: "Add the System User token and ad account id in the Meta connection" }
+    return {
+      kind: "not_connected",
+      detail: "Add the System User token and ad account id in the Meta connection",
+    }
   })
 
   const googleState = createMemo<ArmState>(() => {
     const g = google()
     if (google.loading) return { kind: "unavailable", detail: "Loading…" }
-    if (g?.customer_id) return { kind: "connected", detail: `Customer ${g.customer_id} · ${g.currency ?? "?"}` }
+    if (g?.customer_id)
+      return { kind: "connected", detail: `Customer ${g.customer_id} · ${g.currency ?? "?"}` }
     if (g?.error?.code === "google_not_connected") {
-      return { kind: "not_connected", detail: g.error.message ?? "Google account not authorized yet" }
+      return {
+        kind: "not_connected",
+        detail: g.error.message ?? "Google account not authorized yet",
+      }
     }
-    return { kind: "unavailable", detail: g?.error?.message ?? "Status read failed, try again later" }
+    return {
+      kind: "unavailable",
+      detail: g?.error?.message ?? "Status read failed, try again later",
+    }
   })
 
   const merchantState = createMemo<ArmState>(() => {
@@ -101,12 +112,18 @@ export const AdsAccountStatus: Component = () => {
     if (merchant.loading) return { kind: "unavailable", detail: "Loading…" }
     if (m && !m.error) return { kind: "connected", detail: "Feed reachable" }
     if (m?.error?.code === "merchant_not_configured") {
-      return { kind: "not_connected", detail: "Optional: add the Merchant Center id in the Google Ads API settings connection" }
+      return {
+        kind: "not_connected",
+        detail: "Optional: add the Merchant Center id in the Google Ads API settings connection",
+      }
     }
     if (m?.error?.code === "google_not_connected") {
       return { kind: "not_connected", detail: "Connect Google Ads first" }
     }
-    return { kind: "unavailable", detail: m?.error?.message ?? "Status read failed, try again later" }
+    return {
+      kind: "unavailable",
+      detail: m?.error?.message ?? "Status read failed, try again later",
+    }
   })
 
   return (

@@ -7,7 +7,14 @@ import { describe, expect, it } from "bun:test"
 import { computeInventoryValue, type VariantValuationInput } from "./inventory-value"
 
 function v(partial: Partial<VariantValuationInput>): VariantValuationInput {
-  return { sku: null, title: null, displayName: null, price: null, inventoryQuantity: null, ...partial }
+  return {
+    sku: null,
+    title: null,
+    displayName: null,
+    price: null,
+    inventoryQuantity: null,
+    ...partial,
+  }
 }
 
 describe("computeInventoryValue (BL-169 #2)", () => {

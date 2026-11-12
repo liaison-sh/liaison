@@ -85,7 +85,7 @@ const READ_ONLY: Record<string, string[]> = {
   ],
   // shared_drives lists the org Drive connections and (for an admin) the Shared Drives the
   // connecting account is a member of (drives.list); only the token cache is touched.
-  "google-drive": ["search", "read", "shared_drives"],
+  "google-drive": ["search", "read", "shared_drives", "picker_state"],
   // Every call writes one audit row (read name, outcome, row count, SQL hash); the target is
   // reached through a read-only role, so nothing else is written anywhere. The two Report
   // access reads only read the app's own store, the catalog and the org's directory.
@@ -98,8 +98,9 @@ const READ_ONLY: Record<string, string[]> = {
     "report_access_get",
     "report_access_find_people",
   ],
-  // The API connector's reads: an adapter row read, then the upstream GET (or
-  // readOnlyPost search) through the host transport. Around them only platform
+  // The API connector's reads (ctx.api, the platform-held API connections): an
+  // adapter row read, then the upstream GET (or readOnlyPost search) through the
+  // platform transport. Around them only platform
   // bookkeeping: the audit row (connection, operation name, status, ms) and the
   // oauth2 token / customer caches, none of which carries the turn's data.
   "api-connector": [
@@ -111,6 +112,11 @@ const READ_ONLY: Record<string, string[]> = {
     "connector_adapter_versions",
     "connector_adapter_reference",
     "connector_adapter_test",
+    // The settings screen's connection list and Test panel, and the customer card:
+    // the same platform reads (ctx.api), never a write.
+    "settings_connections",
+    "settings_adapter_test",
+    "customer_lookup",
   ],
   // Bundled (catalog) first-party apps.
   ads: [

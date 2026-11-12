@@ -49,7 +49,11 @@ export function shipOutcome(result: unknown): ShipOutcome {
       requesterCanApprove: blocked.requesterCanApprove,
     }
   }
-  const r = (result ?? {}) as { status?: unknown; approval_id?: unknown; error?: { message?: unknown } }
+  const r = (result ?? {}) as {
+    status?: unknown
+    approval_id?: unknown
+    error?: { message?: unknown }
+  }
   if (r.status === "pending_approval") {
     return {
       kind: "pending",
@@ -104,7 +108,9 @@ export function decideBody(
 /** Pending label purchases keyed by the draft they buy for (draft_id === the row's document_ref).
  *  When several are pending for one draft the newest wins; the kernel already restages a re-click
  *  onto the existing request, so more than one is an agent's stale leftover. */
-export function pendingShipApprovalsByDraft(rows: readonly ApprovalRow[]): Map<string, ApprovalRow> {
+export function pendingShipApprovalsByDraft(
+  rows: readonly ApprovalRow[],
+): Map<string, ApprovalRow> {
   const out = new Map<string, ApprovalRow>()
   const pending = rows
     .filter((r) => r.toolName === CREATE_SHIPMENT_TOOL && r.status === "pending")
@@ -126,7 +132,11 @@ export function shipApprovalForRow(
 
 /** What the inline card says: the summary the approval was staged with (order, recipient, parcels,
  *  carrier, price), and who asked. */
-export function approvalCardText(approval: ApprovalRow): { title: string; lines: string[]; requester: string | null } {
+export function approvalCardText(approval: ApprovalRow): {
+  title: string
+  lines: string[]
+  requester: string | null
+} {
   const title = approval.summary?.title?.trim() || "Buy this label"
   const lines = Array.isArray(approval.summary?.lines)
     ? approval.summary!.lines!.filter((l): l is string => typeof l === "string" && l.trim() !== "")

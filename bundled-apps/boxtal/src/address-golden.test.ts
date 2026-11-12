@@ -19,7 +19,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { type GoldenCase, goldenCases } from "./__fixtures__/address-golden"
 import { goldenCtx } from "./__fixtures__/address-harness"
-import { shipmentDraftCreate, type RecipientAddressInput } from "./shipment"
+import { type RecipientAddressInput, shipmentDraftCreate } from "./shipment"
 
 const SNAPSHOT = join(import.meta.dir, "__fixtures__", "address-golden.before.json")
 
@@ -32,8 +32,13 @@ type Snapshot = Record<string, Record<Mode, Entry>>
 
 async function build(c: GoldenCase, mode: Mode) {
   const { ctx, calls, id } = goldenCtx(c)
-  const draft = await shipmentDraftCreate(ctx, { document_ref: id, ...(mode === "worklist" ? { orderShipTo: false } : {}) })
-  const { recipient_address, address_check, ...rest } = draft as typeof draft & { address_check?: unknown }
+  const draft = await shipmentDraftCreate(ctx, {
+    document_ref: id,
+    ...(mode === "worklist" ? { orderShipTo: false } : {}),
+  })
+  const { recipient_address, address_check, ...rest } = draft as typeof draft & {
+    address_check?: unknown
+  }
   const entry: Entry = {
     recipient_address,
     rest: createHash("sha256").update(JSON.stringify(rest)).digest("hex"),
@@ -61,7 +66,10 @@ describe("address golden: customers with no verified address", () => {
     it("records the snapshot", async () => {
       const out: Snapshot = {}
       for (const c of cases) {
-        out[c.id] = { label: (await build(c, "label")).entry, worklist: (await build(c, "worklist")).entry }
+        out[c.id] = {
+          label: (await build(c, "label")).entry,
+          worklist: (await build(c, "worklist")).entry,
+        }
       }
       writeFileSync(SNAPSHOT, `${JSON.stringify(out, null, 1)}\n`)
     })
@@ -79,8 +87,10 @@ describe("address golden: customers with no verified address", () => {
         const was = before[c.id]?.[mode]
         expect(was).toBeDefined()
         // Nothing outside the recipient address ever changes.
-        if (entry.rest !== was!.rest) unexpected.push(`${c.id}/${mode}: draft fields other than the address changed`)
-        const same = JSON.stringify(entry.recipient_address) === JSON.stringify(was!.recipient_address)
+        if (entry.rest !== was!.rest)
+          unexpected.push(`${c.id}/${mode}: draft fields other than the address changed`)
+        const same =
+          JSON.stringify(entry.recipient_address) === JSON.stringify(was!.recipient_address)
         if (!expectsChange(c, mode)) {
           if (!same)
             unexpected.push(
@@ -106,7 +116,10 @@ describe("address golden: customers with no verified address", () => {
       }
     }
     expect(unexpected).toEqual([])
-    expect(documented.length).toBe(cases.filter((c) => c.orderBeatsContactCopy).length + cases.filter((c) => c.orderBeatsContactCopy && c.cachedShipTo).length)
+    expect(documented.length).toBe(
+      cases.filter((c) => c.orderBeatsContactCopy).length +
+        cases.filter((c) => c.orderBeatsContactCopy && c.cachedShipTo).length,
+    )
   })
 
   it("flags nothing for them: every draft says no verified address", async () => {

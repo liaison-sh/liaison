@@ -241,8 +241,7 @@ export async function upsertPrepOrderState(
   const parsed = parseOrderKey(orderKey)
   const base: PrepOrderStateRow = {
     order_key: orderKey,
-    shopify_order_id:
-      opts.shopifyOrderId ?? (parsed?.kind === "order" ? parsed.id : null),
+    shopify_order_id: opts.shopifyOrderId ?? (parsed?.kind === "order" ? parsed.id : null),
     status: effectiveStatus(null, legacy),
     category: legacy?.category ?? "sale",
     excluded: isExcluded(null, legacy),
@@ -406,17 +405,23 @@ async function checkedOrderKey(ctx: BoxtalToolCtx, orderKey: string): Promise<st
     env = await ctx.executeTool("shopify:orders_get", { id: `gid://shopify/Order/${parsed.id}` })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    throw new ToolError(`Could not check order ${parsed.id}: ${message}. Nothing was changed. Try again in a moment.`, {
-      code: "order_key_unresolved",
-      retryable: true,
-    })
+    throw new ToolError(
+      `Could not check order ${parsed.id}: ${message}. Nothing was changed. Try again in a moment.`,
+      {
+        code: "order_key_unresolved",
+        retryable: true,
+      },
+    )
   }
   if (env.status !== "completed") {
     const message = env.status === "error" ? env.error.message : "the read is awaiting approval"
-    throw new ToolError(`Could not check order ${parsed.id}: ${message}. Nothing was changed. Try again in a moment.`, {
-      code: "order_key_unresolved",
-      retryable: true,
-    })
+    throw new ToolError(
+      `Could not check order ${parsed.id}: ${message}. Nothing was changed. Try again in a moment.`,
+      {
+        code: "order_key_unresolved",
+        retryable: true,
+      },
+    )
   }
   if (!env.result || typeof env.result !== "object") {
     throw new ToolError(
@@ -510,7 +515,10 @@ export async function excludedOrderKeys(ctx: BoxtalToolCtx): Promise<Set<string>
   const keyByDocument = new Map<string, string>()
   for (const m of metas) {
     const oid = numericOrderId(m.shopify_order_id)
-    keyByDocument.set(m.document_ref, oid ? orderKeyForShopifyOrder(oid) : orderKeyForDocument(m.document_ref))
+    keyByDocument.set(
+      m.document_ref,
+      oid ? orderKeyForShopifyOrder(oid) : orderKeyForDocument(m.document_ref),
+    )
   }
   for (const l of legacy) {
     if (!l.excluded) continue

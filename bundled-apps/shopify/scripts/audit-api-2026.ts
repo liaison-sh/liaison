@@ -93,7 +93,13 @@ function dummyVarValue(varName: string): unknown {
   const n = varName.toLowerCase()
   if (n === "id" || n.endsWith("id")) return "gid://shopify/Probe/0"
   if (n.includes("first") || n.includes("limit")) return 1
-  if (n.includes("after") || n.includes("cursor") || n.includes("query") || n.includes("key") || n.includes("uri"))
+  if (
+    n.includes("after") ||
+    n.includes("cursor") ||
+    n.includes("query") ||
+    n.includes("key") ||
+    n.includes("uri")
+  )
     return null
   if (n.includes("notify") || n.includes("pending") || n.includes("boolean")) return false
   // Any *input*/object-shaped var: send a probe object → forces "Field is not defined" pre-exec.
@@ -107,11 +113,16 @@ async function main() {
     ...readdirSync(join(dir, "mutations"))
       .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
       .sort()
-      .map((f): [string, string] => [`mutations/${f}`, readFileSync(join(dir, "mutations", f), "utf8")]),
+      .map((f): [string, string] => [
+        `mutations/${f}`,
+        readFileSync(join(dir, "mutations", f), "utf8"),
+      ]),
     ["reads", readFileSync(join(dir, "reads.ts"), "utf8")],
   ]
   const ops = files.flatMap(([f, src]) => extractOps(src, f))
-  console.log(`→ Auditing ${ops.length} GraphQL operations against ${env.domain} (API ${env.apiVersion})\n`)
+  console.log(
+    `→ Auditing ${ops.length} GraphQL operations against ${env.domain} (API ${env.apiVersion})\n`,
+  )
 
   const drift: Array<{ op: string; messages: string[] }> = []
   for (const op of ops) {
@@ -125,7 +136,11 @@ async function main() {
     // fields still surface here via "doesn't exist on type 'QueryRoot'/'Mutation'" when the API
     // returns the validation shape; a query that ONLY ever returns bare "Not Found" is verified by hand.
     const schemaMsgs = msgs
-      .filter((msg) => /doesn't exist on type|isn't defined|Field is not defined|Cannot query field|no field/i.test(msg))
+      .filter((msg) =>
+        /doesn't exist on type|isn't defined|Field is not defined|Cannot query field|no field/i.test(
+          msg,
+        ),
+      )
       .filter((msg) => !msg.includes(PROBE))
     if (schemaMsgs.length > 0) drift.push({ op: op.name, messages: [...new Set(schemaMsgs)] })
   }

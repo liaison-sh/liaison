@@ -41,7 +41,9 @@ export interface RawLineItem {
 export interface RawAbandonedCheckout {
   id?: string | null
   createdAt?: string | null
-  totalPriceSet?: { shopMoney?: { amount?: string | null; currencyCode?: string | null } | null } | null
+  totalPriceSet?: {
+    shopMoney?: { amount?: string | null; currencyCode?: string | null } | null
+  } | null
   customer?: { displayName?: string | null; email?: string | null } | null
   lineItems?: { nodes?: RawLineItem[] | null } | null
   abandonedCheckoutUrl?: string | null

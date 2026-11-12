@@ -8,20 +8,14 @@
 // with that column populated (matching what issueDocument persists).
 
 import { describe, expect, test } from "bun:test"
+import { createMockDb, type MockDb } from "../test-db"
+import { type OrderCancelledCtx, onShopifyOrderCancelled } from "./shopify-order-cancelled"
 import {
-  onShopifyOrderCancelled,
-  type OrderCancelledCtx,
-} from "./shopify-order-cancelled"
-import {
-  observeShopifyOrderUpdated,
   type OrderUpdatedCtx,
   type OrderUpdatedExecuteToolEnvelope,
+  observeShopifyOrderUpdated,
 } from "./shopify-order-updated"
-import {
-  onShopifyRefundCreated,
-  type RefundCtx,
-} from "./shopify-refund-created"
-import { createMockDb, type MockDb } from "../test-db"
+import { onShopifyRefundCreated, type RefundCtx } from "./shopify-refund-created"
 
 interface SeedDocOptions {
   id: string
@@ -216,7 +210,14 @@ describe("onShopifyRefundCreated (E4)", () => {
     // Programmatic tool emit (gid id) then the Shopify webhook (numeric id) for
     // the SAME refund — normalizeRefundId collapses both to "555".
     await onShopifyRefundCreated(
-      { data: { id: "gid://shopify/Refund/555", order_id: "ord-11", amount: "100.00", currency: "EUR" } },
+      {
+        data: {
+          id: "gid://shopify/Refund/555",
+          order_id: "ord-11",
+          amount: "100.00",
+          currency: "EUR",
+        },
+      },
       ctx,
     )
     await onShopifyRefundCreated(
@@ -391,9 +392,9 @@ describe("observeShopifyOrderUpdated (E4)", () => {
       changed_fields: ["line_items", "shipping_address"],
     })
     // Baseline is persisted, but no attention on the first observation.
-    expect(
-      (doc.external_refs as Record<string, unknown>).downstream_order_sig,
-    ).toEqual(expect.any(String))
+    expect((doc.external_refs as Record<string, unknown>).downstream_order_sig).toEqual(
+      expect.any(String),
+    )
     expect(attentions).toHaveLength(0)
   })
 
@@ -514,18 +515,27 @@ describe("observeShopifyOrderUpdated (E4)", () => {
     // The invoice observed both webhooks and alerted once on the real change.
     expect((invoice.lifecycle_log as unknown[]).length).toBe(2)
     expect(attentions).toHaveLength(1)
-    expect(attentions[0]).toMatchObject({ entity: "detail", action: "order_edited", entityId: "doc-inv" })
+    expect(attentions[0]).toMatchObject({
+      entity: "detail",
+      action: "order_edited",
+      entityId: "doc-inv",
+    })
 
     // The credit note is untouched: no downstream_change_observed lifecycle
     // entry, no baseline signature, and no attention card ever named it.
     expect((creditNote.lifecycle_log as unknown[]).length).toBe(0)
-    expect((creditNote.external_refs as Record<string, unknown>).downstream_order_sig).toBeUndefined()
+    expect(
+      (creditNote.external_refs as Record<string, unknown>).downstream_order_sig,
+    ).toBeUndefined()
     expect(attentions.some((a) => a.entityId === "doc-cn")).toBe(false)
   })
 
   test("no invoice yet → noop, no attention", async () => {
     const { ctx, attentions } = makeUpdatedCtx()
-    const result = await observeShopifyOrderUpdated(orderUpdate({ orderId: "shopify-order-1", total: "10.00" }), ctx)
+    const result = await observeShopifyOrderUpdated(
+      orderUpdate({ orderId: "shopify-order-1", total: "10.00" }),
+      ctx,
+    )
     expect(result.status).toBe("noop")
     if (result.status !== "noop") throw new Error("unreachable")
     expect(result.reason).toBe("no_invoice_yet")
@@ -536,7 +546,10 @@ describe("observeShopifyOrderUpdated (E4)", () => {
     const { ctx, db, attentions } = makeUpdatedCtx()
     seedDocument(db, { id: "doc-1", shopify_order_id: "ord-7", number: "INV-2026-0008" })
     const result = await observeShopifyOrderUpdated(
-      { entityId: "ord-7", data: orderUpdate({ orderId: "ord-7", total: "120.00", changed_fields: ["line_items"] }) },
+      {
+        entityId: "ord-7",
+        data: orderUpdate({ orderId: "ord-7", total: "120.00", changed_fields: ["line_items"] }),
+      },
       ctx,
     )
     expect(result.status).toBe("ok")
@@ -558,7 +571,10 @@ describe("observeShopifyOrderUpdated (E4)", () => {
     seedDocument(db, { id: "doc-1", shopify_order_id: "ord-direct", number: "INV-2026-0009" })
     // The kernel may hand the subscriber the normalized order object directly
     // (no { entityId, data } envelope) — its id field is `orderId`.
-    const result = await observeShopifyOrderUpdated(orderUpdate({ orderId: "ord-direct", total: "80.00" }), ctx)
+    const result = await observeShopifyOrderUpdated(
+      orderUpdate({ orderId: "ord-direct", total: "80.00" }),
+      ctx,
+    )
     expect(result.status).toBe("ok")
     const doc = db.__all("documents").find((d) => d.id === "doc-1")!
     expect((doc.lifecycle_log as Array<Record<string, unknown>>)[0]).toMatchObject({
@@ -695,8 +711,8 @@ describe("observeShopifyOrderUpdated (E4)", () => {
 
     // The two calls' dedupe keys must be DISTINCT — this is the actual defect:
     // before the fix both calls carried the same order+signature key.
-    const keyGoods = executeToolCalls.find((c) => c.args.original_document_id === "doc-goods")!
-      .args.dedupe_key
+    const keyGoods = executeToolCalls.find((c) => c.args.original_document_id === "doc-goods")!.args
+      .dedupe_key
     const keySoftware = executeToolCalls.find(
       (c) => c.args.original_document_id === "doc-software",
     )!.args.dedupe_key
@@ -717,7 +733,10 @@ describe("observeShopifyOrderUpdated (E4)", () => {
       shopify_order_id: "ord-split-repeat",
       number: "INV-2026-0211",
     })
-    await observeShopifyOrderUpdated(orderUpdate({ orderId: "ord-split-repeat", total: "120.00" }), ctx) // baseline
+    await observeShopifyOrderUpdated(
+      orderUpdate({ orderId: "ord-split-repeat", total: "120.00" }),
+      ctx,
+    ) // baseline
     const edited = orderUpdate({
       orderId: "ord-split-repeat",
       total: "150.00",
@@ -795,10 +814,7 @@ describe("onShopifyOrderCancelled (E4)", () => {
       status: "draft",
       lifecycle_log: [],
     })
-    const result = await onShopifyOrderCancelled(
-      { id: "shopify-order-1", shop_id: "shop-1" },
-      ctx,
-    )
+    const result = await onShopifyOrderCancelled({ id: "shopify-order-1", shop_id: "shop-1" }, ctx)
     expect(result.status).toBe("ok")
     if (result.status !== "ok") throw new Error("unreachable")
     expect(result.attention_emitted).toBe(false)
@@ -814,10 +830,7 @@ describe("onShopifyOrderCancelled (E4)", () => {
 
   test("no invoice → noop", async () => {
     const { ctx, attentions } = makeCancelledCtx()
-    const result = await onShopifyOrderCancelled(
-      { id: "shopify-order-1", shop_id: "shop-1" },
-      ctx,
-    )
+    const result = await onShopifyOrderCancelled({ id: "shopify-order-1", shop_id: "shop-1" }, ctx)
     expect(result.status).toBe("noop")
     expect(attentions).toHaveLength(0)
   })

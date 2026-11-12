@@ -556,9 +556,6 @@ describe("writesToTable annotations on kernel tools", () => {
         "document_rules_list",
         // Which templates given records need, by the same rules; writes nothing.
         "document_rules_match",
-        // The caller's Drive accounts: mode and picked file names; writes nothing
-        // (the picker card saves picks through the web route, not the tool).
-        "drive_picker",
         // 2026-09-25: resolves which apps can export and returns a download URL; the
         // download route reads under the caller's own RLS. It writes nothing.
         "export",

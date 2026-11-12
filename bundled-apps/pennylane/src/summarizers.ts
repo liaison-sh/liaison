@@ -36,7 +36,9 @@ export function summarizeSupplierInvoiceUpload(params: unknown): Promise<Approva
     const m = str(v)
     if (!m) return null
     const amount = minorToDecimal(m, currency)
-    return amount === null ? `${m} (not a whole number of minor units, approving will be refused)` : `${amount} ${currency}`
+    return amount === null
+      ? `${m} (not a whole number of minor units, approving will be refused)`
+      : `${amount} ${currency}`
   }
   const lines: string[] = []
   const number = str(p.invoice_number)
@@ -72,7 +74,9 @@ export function summarizeWebhooksSetup(params: unknown): Promise<ApprovalSummary
     title: "Subscribe Pennylane e-invoicing events",
     subtitle: "Status changes of sent e-invoices and received supplier e-invoices",
     lines: [
-      base ? `Callback base address: ${base}` : "Callback base address: the one recorded when Pennylane was connected",
+      base
+        ? `Callback base address: ${base}`
+        : "Callback base address: the one recorded when Pennylane was connected",
       "Replaces an earlier subscription to the same address",
       "Pennylane's signing secret is kept by Liaison and never shown",
     ],

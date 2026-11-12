@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// A routine on a dashboard table's row events (0297): its filter {tableId, column, to} fires it
+// A routine on a dashboard table's row events (0298): its filter {tableId, column, to} fires it
 // once on the column's transition to the value, not on other edits of the row, not on another
 // table, not on its own write (firedByRoutineId), and never for a table its owner cannot read
 // (the owner gate probes the table). The values are read from the change row as the owner: the

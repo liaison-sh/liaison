@@ -8,17 +8,17 @@ import { getShopifyClient, resolveInstallMetadata } from "../lib/get-client"
 import { inventory_adjust } from "./inventory"
 import { PRODUCT_DELETE } from "./products"
 import {
-  type PreflightResult,
-  type UserError,
-  makeMutationError,
-  resolveMutationInput,
-  gidFrom,
-  preflightRefusal,
-  runMutation,
-  idempotencyKey,
-  markExternalEffect,
   assertNoUserErrors,
   emitMutationEvent,
+  gidFrom,
+  idempotencyKey,
+  makeMutationError,
+  markExternalEffect,
+  type PreflightResult,
+  preflightRefusal,
+  resolveMutationInput,
+  runMutation,
+  type UserError,
 } from "./shared"
 import { VARIANTS_BULK_CREATE } from "./variants"
 
@@ -56,7 +56,10 @@ interface MergeVariantNode {
   price: string | null
   inventoryQuantity: number | null
   selectedOptions: { name: string; value: string }[] | null
-  inventoryItem: { id: string | null; inventoryLevels: { edges: { node: MergeInventoryLevel }[] } | null } | null
+  inventoryItem: {
+    id: string | null
+    inventoryLevels: { edges: { node: MergeInventoryLevel }[] } | null
+  } | null
 }
 interface MergeProductNode {
   id: string
@@ -94,10 +97,15 @@ const PRODUCT_MERGE_READ = `
 `
 
 /** Read a product (id, title, handle, variants with sku/price/inventory) for the merge orchestration. */
-async function readMergeProduct(ctx: AppContext, id: string, role: string): Promise<MergeProductNode> {
+async function readMergeProduct(
+  ctx: AppContext,
+  id: string,
+  role: string,
+): Promise<MergeProductNode> {
   const client = await getShopifyClient(ctx)
   const data = await client.query<{ product?: MergeProductNode | null }>(PRODUCT_MERGE_READ, { id })
-  if (!data.product) throw makeMutationError("NOT_FOUND", `products_merge: the ${role} product ${id} was not found`)
+  if (!data.product)
+    throw makeMutationError("NOT_FOUND", `products_merge: the ${role} product ${id} was not found`)
   return data.product
 }
 
@@ -129,7 +137,10 @@ const URL_REDIRECT_UPDATE = `
  *  reaches for: survivorId/keepId/keep/canonicalId/targetId for the listing to KEEP, and
  *  duplicateId/removeId/remove/sourceId/deleteId for the one to remove. The survivor is the listing
  *  inventory/variants are reassigned ONTO; the duplicate is redirected + deleted. */
-function resolveMergeIds(params: Record<string, unknown>): { survivorId: string; duplicateId: string } {
+function resolveMergeIds(params: Record<string, unknown>): {
+  survivorId: string
+  duplicateId: string
+} {
   const input = resolveMutationInput(params)
   const pick = (...keys: string[]): string | undefined => {
     for (const k of keys) {
@@ -139,8 +150,24 @@ function resolveMergeIds(params: Record<string, unknown>): { survivorId: string;
     }
     return undefined
   }
-  const survivorId = pick("survivorId", "keepId", "keep", "canonicalId", "canonical", "targetId", "winnerId")
-  const duplicateId = pick("duplicateId", "removeId", "remove", "sourceId", "deleteId", "loserId", "redundantId")
+  const survivorId = pick(
+    "survivorId",
+    "keepId",
+    "keep",
+    "canonicalId",
+    "canonical",
+    "targetId",
+    "winnerId",
+  )
+  const duplicateId = pick(
+    "duplicateId",
+    "removeId",
+    "remove",
+    "sourceId",
+    "deleteId",
+    "loserId",
+    "redundantId",
+  )
   if (!survivorId)
     throw makeMutationError(
       "BAD_PARAM",
@@ -185,7 +212,10 @@ export async function products_merge_preflight(
   return { ok: true }
 }
 
-export async function products_merge(params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function products_merge(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   const { survivorId, duplicateId } = resolveMergeIds(params)
   const survivor = await readMergeProduct(ctx, survivorId, "survivor (keep)")
   const duplicate = await readMergeProduct(ctx, duplicateId, "duplicate (remove)")
@@ -338,10 +368,16 @@ export async function products_merge(params: Record<string, unknown>, ctx: AppCo
         const upd = await client.query<{
           urlRedirectUpdate?: { urlRedirect?: { id?: string } | null; userErrors?: UserError[] }
         }>(URL_REDIRECT_UPDATE, { id: node.id, urlRedirect: { path, target } })
-        assertNoUserErrors(upd.urlRedirectUpdate as Record<string, unknown> | undefined, "urlRedirectUpdate")
+        assertNoUserErrors(
+          upd.urlRedirectUpdate as Record<string, unknown> | undefined,
+          "urlRedirectUpdate",
+        )
       }
     } else {
-      assertNoUserErrors(rdata.urlRedirectCreate as Record<string, unknown> | undefined, "urlRedirectCreate")
+      assertNoUserErrors(
+        rdata.urlRedirectCreate as Record<string, unknown> | undefined,
+        "urlRedirectCreate",
+      )
     }
     redirect = { path, target }
   }
@@ -398,7 +434,8 @@ function redirectPlan(
 ): { path: string; target: string } | null {
   const dupHandle = typeof duplicate.handle === "string" ? duplicate.handle.trim() : ""
   const survivorHandle = typeof survivor.handle === "string" ? survivor.handle.trim() : ""
-  if (dupHandle.length === 0 || survivorHandle.length === 0 || dupHandle === survivorHandle) return null
+  if (dupHandle.length === 0 || survivorHandle.length === 0 || dupHandle === survivorHandle)
+    return null
   return { path: `/products/${dupHandle}`, target: `/products/${survivorHandle}` }
 }
 
@@ -419,7 +456,9 @@ async function assertRedirectScope(ctx: AppContext, plan: { path: string } | nul
 
 // ── products_merge inventory/option helpers ──────────────────────────────
 /** True iff a variant's selectedOptions are just the implicit default ("Title" = "Default Title"). */
-function isImplicitDefaultOptions(opts: { name: string; value: string }[] | null | undefined): boolean {
+function isImplicitDefaultOptions(
+  opts: { name: string; value: string }[] | null | undefined,
+): boolean {
   if (!Array.isArray(opts) || opts.length === 0) return true // no options node ⇒ implicit default
   return opts.length === 1 && opts[0]?.name === "Title" && opts[0]?.value === "Default Title"
 }
@@ -438,7 +477,10 @@ function onHandByLocation(v: MergeVariantNode): Map<string, number> {
 }
 
 /** True iff the survivor's primary variant is tracked at the given location (so an adjust there is valid). */
-function survivorTracksLocation(primary: MergeVariantNode | undefined, locationId: string): boolean {
+function survivorTracksLocation(
+  primary: MergeVariantNode | undefined,
+  locationId: string,
+): boolean {
   const edges = primary?.inventoryItem?.inventoryLevels?.edges ?? []
   return edges.some((le) => le.node.location?.id === locationId)
 }

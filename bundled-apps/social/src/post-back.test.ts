@@ -8,7 +8,14 @@
 
 import { describe, expect, test } from "bun:test"
 import type { SocialApproval, SocialToolCtx } from "./ctx"
-import { likeItem, likeItemPreflight, replyToFinding, replyToFindingPreflight, sendDm, sendDmPreflight } from "./post-back"
+import {
+  likeItem,
+  likeItemPreflight,
+  replyToFinding,
+  replyToFindingPreflight,
+  sendDm,
+  sendDmPreflight,
+} from "./post-back"
 import { createMockDb, type MockDb } from "./test-db"
 
 interface FetchCall {
@@ -35,23 +42,29 @@ interface TestCtx extends SocialToolCtx {
   __approvalInputs: ApprovalInput[]
 }
 
-function makeCtx(opts: {
-  approval?: SocialApproval
-  db?: MockDb
-  fetchStatus?: number
-  /** Extra URL-path-substring → JSON body routes (e.g. `/me/accounts`), layered
-   *  over the default `{ id: "posted-1" }` POST response. First match wins. */
-  routes?: Record<string, unknown>
-  /** OAuth token the `connections` accessor returns (facebook page-token tests
-   *  need a live user token so `resolveAccessToken` succeeds). `null` throws
-   *  (simulates no connected account). */
-  connectionToken?: string | null
-} = {}): TestCtx {
+function makeCtx(
+  opts: {
+    approval?: SocialApproval
+    db?: MockDb
+    fetchStatus?: number
+    /** Extra URL-path-substring → JSON body routes (e.g. `/me/accounts`), layered
+     *  over the default `{ id: "posted-1" }` POST response. First match wins. */
+    routes?: Record<string, unknown>
+    /** OAuth token the `connections` accessor returns (facebook page-token tests
+     *  need a live user token so `resolveAccessToken` succeeds). `null` throws
+     *  (simulates no connected account). */
+    connectionToken?: string | null
+  } = {},
+): TestCtx {
   const calls: FetchCall[] = []
   const approvalInputs: ApprovalInput[] = []
   const fetchImpl = (async (
     url: string,
-    init?: { method?: string; body?: Record<string, unknown> | string; headers?: Record<string, string> },
+    init?: {
+      method?: string
+      body?: Record<string, unknown> | string
+      headers?: Record<string, string>
+    },
   ) => {
     calls.push({ url, method: init?.method ?? "GET", body: init?.body, headers: init?.headers })
     const status = opts.fetchStatus ?? 200
@@ -149,7 +162,10 @@ describe("replyToFinding (B6 re-entry + idempotency)", () => {
       content_text: "This pedal is amazing!",
     })
     const ctx = makeCtx({ db })
-    await replyToFinding(ctx, { finding_id: "f1", reply_text: "Thanks so much for the kind words!" })
+    await replyToFinding(ctx, {
+      finding_id: "f1",
+      reply_text: "Thanks so much for the kind words!",
+    })
     const input = ctx.__approvalInputs[0]!
     const detail = input.summary_detail!
     expect(detail.subtitle).toContain("instagram")
@@ -170,7 +186,11 @@ describe("replyToFinding (B6 re-entry + idempotency)", () => {
 
   test("reply_text rides in the POST body, never path-interpolated (injection)", async () => {
     const db = createMockDb()
-    await seedFinding(db, { platform: "facebook", relation: "comment_on_our_content", external_id: "FB_123" })
+    await seedFinding(db, {
+      platform: "facebook",
+      relation: "comment_on_our_content",
+      external_id: "FB_123",
+    })
     const ctx = makeCtx({ db, approval: { approvalRequestId: "appr-1" } })
     const evil = "thanks!../../../delete?confirm=true&x=1"
     const res = await replyToFinding(ctx, { finding_id: "f1", reply_text: evil })
@@ -212,7 +232,10 @@ describe("replyToFinding (B6 re-entry + idempotency)", () => {
     expect(f.status).toBe("triaged")
     expect(f.suggested_reply ?? null).toBeNull()
     expect(f.approval_request_id ?? null).toBeNull()
-    expect(ctx.__approvalInputs[0]?.current_payload).toEqual({ finding_id: "f1", reply_text: "drafted reply" })
+    expect(ctx.__approvalInputs[0]?.current_payload).toEqual({
+      finding_id: "f1",
+      reply_text: "drafted reply",
+    })
   })
 
   // C3: post-back dispatches on the finding's platform so each reply hits the
@@ -243,7 +266,11 @@ describe("replyToFinding (B6 re-entry + idempotency)", () => {
   // is a keyword_match and the adapter supports it.
   test("a keyword_match (video) finding posts a TOP-LEVEL comment (commentThreads.insert), not a reply", async () => {
     const db = createMockDb()
-    await seedFinding(db, { platform: "youtube", external_id: "vid-abc", relation: "keyword_match" })
+    await seedFinding(db, {
+      platform: "youtube",
+      external_id: "vid-abc",
+      relation: "keyword_match",
+    })
     const ctx = makeCtx({ db, approval: { approvalRequestId: "appr-1" } })
     const res = await replyToFinding(ctx, { finding_id: "f1", reply_text: "Nice video!" })
     expect(res).toMatchObject({ status: "completed" })
@@ -251,7 +278,10 @@ describe("replyToFinding (B6 re-entry + idempotency)", () => {
     expect(call.url).toBe("https://www.googleapis.com/youtube/v3/commentThreads?part=snippet")
     const body = JSON.parse(call.body as string)
     expect(body).toMatchObject({
-      snippet: { videoId: "vid-abc", topLevelComment: { snippet: { textOriginal: "Nice video!" } } },
+      snippet: {
+        videoId: "vid-abc",
+        topLevelComment: { snippet: { textOriginal: "Nice video!" } },
+      },
     })
   })
 
@@ -267,7 +297,11 @@ describe("replyToFinding (B6 re-entry + idempotency)", () => {
       source_type: "discovery",
       active: true,
     })
-    await seedFinding(db, { platform: "facebook", external_id: "page-1_comment-9", relation: "comment_on_our_content" })
+    await seedFinding(db, {
+      platform: "facebook",
+      external_id: "page-1_comment-9",
+      relation: "comment_on_our_content",
+    })
     const ctx = makeCtx({
       db,
       approval: { approvalRequestId: "appr-1" },
@@ -280,7 +314,10 @@ describe("replyToFinding (B6 re-entry + idempotency)", () => {
     expect(accountsCall.headers).toEqual({ Authorization: "Bearer user-token" })
     const postCall = ctx.fetch.calls.find((c) => c.method === "POST")!
     expect(postCall.url).toBe("https://graph.facebook.com/v26.0/page-1_comment-9/comments")
-    expect(postCall.headers).toEqual({ "content-type": "application/json", Authorization: "Bearer page-1-token" })
+    expect(postCall.headers).toEqual({
+      "content-type": "application/json",
+      Authorization: "Bearer page-1-token",
+    })
   })
 })
 
@@ -323,7 +360,9 @@ describe("sendDm (B6 window recompute)", () => {
     const res = await sendDm(ctx, { conversation_id: "c1", body: "hi" })
     expect(res).toMatchObject({ status: "window_closed" })
     expect(ctx.fetch.calls.length).toBe(0)
-    expect(await db.count("dm_message", { where: { conversation_id: "c1", direction: "outbound" } })).toBe(0)
+    expect(
+      await db.count("dm_message", { where: { conversation_id: "c1", direction: "outbound" } }),
+    ).toBe(0)
   })
 
   test("within 7d posts with HUMAN_AGENT tag and records the outbound row", async () => {
@@ -332,7 +371,9 @@ describe("sendDm (B6 window recompute)", () => {
     const ctx = makeCtx({ db, approval: { approvalRequestId: "appr-1" } })
     const res = await sendDm(ctx, { conversation_id: "c1", body: "hi" })
     expect(res).toMatchObject({ status: "completed", sent_via_tag: "human_agent" })
-    expect(await db.count("dm_message", { where: { conversation_id: "c1", direction: "outbound" } })).toBe(1)
+    expect(
+      await db.count("dm_message", { where: { conversation_id: "c1", direction: "outbound" } }),
+    ).toBe(1)
   })
 
   test("first entry (no approval) returns pending_approval, no send", async () => {
@@ -404,7 +445,10 @@ describe("sendDm facebook page-token resolution (conversation metadata plumbing)
     expect(res).toMatchObject({ status: "completed" })
     const postCall = ctx.fetch.calls.find((c) => c.method === "POST")!
     expect(postCall.url).toBe("https://graph.facebook.com/v26.0/me/messages")
-    expect(postCall.headers).toEqual({ "content-type": "application/json", Authorization: "Bearer token-b" })
+    expect(postCall.headers).toEqual({
+      "content-type": "application/json",
+      Authorization: "Bearer token-b",
+    })
   })
 
   test("missing metadata.pageId falls back to the first managed page (never the user token)", async () => {
@@ -433,7 +477,10 @@ describe("sendDm facebook page-token resolution (conversation metadata plumbing)
     const res = await sendDm(ctx, { conversation_id: "c1", body: "hi" })
     expect(res).toMatchObject({ status: "completed" })
     const postCall = ctx.fetch.calls.find((c) => c.method === "POST")!
-    expect(postCall.headers).toEqual({ "content-type": "application/json", Authorization: "Bearer token-a" })
+    expect(postCall.headers).toEqual({
+      "content-type": "application/json",
+      Authorization: "Bearer token-a",
+    })
   })
 })
 
@@ -506,13 +553,29 @@ describe("sendDm stage-time preflight (closed window surfaces BEFORE the gate)",
 
 describe("likeItem (B6 support matrix)", () => {
   test.each([
-    ["FB own-page comment", { platform: "facebook", relation: "comment_on_our_content" }, "completed"],
-    ["IG own-media comment", { platform: "instagram", relation: "comment_on_our_content" }, "completed"],
-    ["IG third-party mention", { platform: "instagram", relation: "mention_in_post" }, "unsupported"],
+    [
+      "FB own-page comment",
+      { platform: "facebook", relation: "comment_on_our_content" },
+      "completed",
+    ],
+    [
+      "IG own-media comment",
+      { platform: "instagram", relation: "comment_on_our_content" },
+      "completed",
+    ],
+    [
+      "IG third-party mention",
+      { platform: "instagram", relation: "mention_in_post" },
+      "unsupported",
+    ],
     ["YouTube comment", { platform: "youtube", relation: "comment_on_our_content" }, "unsupported"],
   ])("like_item %s → %s", async (_label, target, expected) => {
     const db = createMockDb()
-    await seedFinding(db, { platform: target.platform, relation: target.relation, external_id: "X_1" })
+    await seedFinding(db, {
+      platform: target.platform,
+      relation: target.relation,
+      external_id: "X_1",
+    })
     const ctx = makeCtx({ db, approval: { approvalRequestId: "appr-1" } })
     const res = await likeItem(ctx, { finding_id: "f1" })
     expect(res.status).toBe(expected as typeof res.status)
@@ -550,7 +613,11 @@ describe("likeItem (B6 support matrix)", () => {
 describe("likeItem stage-time preflight (supported-vs-unsupported surfaces BEFORE the gate)", () => {
   test("YouTube comment → typed like_unsupported_for_target error at stage time, no fetch, no approval", async () => {
     const db = createMockDb()
-    await seedFinding(db, { platform: "youtube", relation: "comment_on_our_content", external_id: "YT_1" })
+    await seedFinding(db, {
+      platform: "youtube",
+      relation: "comment_on_our_content",
+      external_id: "YT_1",
+    })
     const ctx = makeCtx({ db })
     const res = await likeItemPreflight(ctx, { finding_id: "f1" })
     expect(res).toEqual({
@@ -570,7 +637,11 @@ describe("likeItem stage-time preflight (supported-vs-unsupported surfaces BEFOR
     ["IG own-media comment", { platform: "instagram", relation: "comment_on_our_content" }],
   ])("%s → preflight ok (a supported like proceeds to the gate)", async (_label, target) => {
     const db = createMockDb()
-    await seedFinding(db, { platform: target.platform, relation: target.relation, external_id: "OK_1" })
+    await seedFinding(db, {
+      platform: target.platform,
+      relation: target.relation,
+      external_id: "OK_1",
+    })
     const ctx = makeCtx({ db })
     const res = await likeItemPreflight(ctx, { finding_id: "f1" })
     expect(res).toEqual({ ok: true })
@@ -579,7 +650,11 @@ describe("likeItem stage-time preflight (supported-vs-unsupported surfaces BEFOR
 
   test("IG third-party mention → unsupported at stage time (only own-content comments are likeable)", async () => {
     const db = createMockDb()
-    await seedFinding(db, { platform: "instagram", relation: "mention_in_post", external_id: "IG_M1" })
+    await seedFinding(db, {
+      platform: "instagram",
+      relation: "mention_in_post",
+      external_id: "IG_M1",
+    })
     const res = await likeItemPreflight(makeCtx({ db }), { finding_id: "f1" })
     expect(res).toMatchObject({ error: { code: "like_unsupported_for_target" } })
   })
@@ -609,7 +684,11 @@ describe("replyToFinding failure reason is recorded", () => {
       fetchStatus: 403,
       routes: {
         "/commentThreads": {
-          error: { code: 403, message: "The request cannot be completed because you have exceeded your quota.", errors: [{ reason: "quotaExceeded" }] },
+          error: {
+            code: 403,
+            message: "The request cannot be completed because you have exceeded your quota.",
+            errors: [{ reason: "quotaExceeded" }],
+          },
         },
       },
     })
@@ -647,7 +726,12 @@ describe("replyToFinding stage-time preflight refuses a second pending reply", (
     const db = createMockDb()
     await seedFinding(db)
     const ctx = withPending(makeCtx({ db }), [
-      { id: "appr-1", tool_name: "social:reply_to_finding", target_id: "f1", payload: { finding_id: "f1", reply_text: "a" } },
+      {
+        id: "appr-1",
+        tool_name: "social:reply_to_finding",
+        target_id: "f1",
+        payload: { finding_id: "f1", reply_text: "a" },
+      },
     ])
     const res = await replyToFindingPreflight(ctx, { finding_id: "f1" })
     expect(res).toEqual({
@@ -711,7 +795,11 @@ describe("granted inline (auto_approved): the action runs on first entry", () =>
 
   test("like_item likes once", async () => {
     const db = createMockDb()
-    await seedFinding(db, { platform: "facebook", relation: "comment_on_our_content", external_id: "X_1" })
+    await seedFinding(db, {
+      platform: "facebook",
+      relation: "comment_on_our_content",
+      external_id: "X_1",
+    })
     const ctx = inlineCtx(db)
     const res = await likeItem(ctx, { finding_id: "f1" })
     expect(res.status).toBe("completed")

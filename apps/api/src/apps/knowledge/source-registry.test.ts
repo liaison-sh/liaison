@@ -28,18 +28,15 @@ describe("registerDefaultKnowledgeSources: the source app's own read scope gates
       .listEnabled({ ...actor, scopes })
       .map((a) => a.source)
 
-  it("a member without the Drive scope gets no adapter, even with knowledge scopes", () => {
+  it("a member with only knowledge scopes gets no adapter, even with knowledge scopes", () => {
     const sources = sourcesFor(["knowledge:documents:read", "knowledge:sources:read"])
     expect(sources).toEqual([])
   })
 
-  it("holding the Drive read scope adds the Drive adapter", () => {
-    expect(sourcesFor(["google-drive:accounts:read"])).toEqual(["google-drive"])
-  })
-
-  // GitLab syncs through its own source kind (bundled-apps/gitlab, app-sources.ts):
-  // no kernel adapter, whatever the scopes.
-  it("the wildcard holder gets Drive only", () => {
-    expect(sourcesFor(["*"])).toEqual(["google-drive"])
+  // Google Drive and GitLab sync through their own source kinds (bundled apps,
+  // app-sources.ts): no kernel adapter, whatever the scopes.
+  it("no connector is a kernel adapter here, whatever the scopes", () => {
+    expect(sourcesFor(["google-drive:accounts:read", "gitlab:repo:read"])).toEqual([])
+    expect(sourcesFor(["*"])).toEqual([])
   })
 })

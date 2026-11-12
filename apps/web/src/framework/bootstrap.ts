@@ -1563,7 +1563,6 @@ export const trustedAppExports: Record<string, () => Promise<Record<string, unkn
   projects: () => import("~/modules/projects/exports"),
   knowledge: () => import("~/modules/knowledge/exports"),
   calendar: () => import("~/modules/calendar/exports"),
-  "api-connector": () => import("~/modules/api-connector/exports"),
   test: () => import("~/modules/test/exports"),
 }
 

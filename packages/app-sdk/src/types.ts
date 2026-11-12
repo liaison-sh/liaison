@@ -355,6 +355,45 @@ export interface SqlReadInfo {
  * connection and gets rows. Every call is read-only, bounded (statement
  * timeout, row cap) and audited. Failures are answered, not thrown.
  */
+/**
+ * `ctx.api.*`: the HTTP API connections the platform holds for an app that
+ * declares a credentials connection with an `api` block (each account an
+ * adapter document plus its credentials). The platform renders, signs and
+ * sends every call and checks the caller's scopes against the block's; app
+ * code gets answers, never a credential. Every answer is a JSON object, or
+ * `{ error: { code, message, status? } }`.
+ */
+export type ApiAnswer = Record<string, unknown>
+export interface ApiConnectionsClient {
+  /** Connections and their operations (agent-facing; `{ connection? }` narrows to one). */
+  listOperations(request?: { connection?: string }): Promise<ApiAnswer>
+  /** One READ operation: `{ connection, operation, params? }`; items fenced as external content. */
+  read(request: Record<string, unknown>): Promise<ApiAnswer>
+  /** One approved WRITE operation, with the target pinned at staging. */
+  write(request: Record<string, unknown>): Promise<ApiAnswer>
+  /** The stage-time check of a write: `{ ok, pinnedParams: { target } }` or a refusal. */
+  writeValidate(request: Record<string, unknown>): Promise<ApiAnswer>
+  adapterGet(request: { identifier: string; operationsPage?: number }): Promise<ApiAnswer>
+  adapterVersions(request: { identifier: string }): Promise<ApiAnswer>
+  adapterReference(request?: { section?: string }): Promise<ApiAnswer>
+  /** One page of a READ operation; `raw: true` answers the items unfenced (a settings screen). */
+  adapterTest(request: Record<string, unknown>): Promise<ApiAnswer>
+  /** Every connection with its auth shape, operations and credential status. */
+  connections(): Promise<ApiAnswer>
+  /** Check an adapter document (JSON or YAML text, or an object) without saving it. */
+  validate(request: { document: unknown }): Promise<ApiAnswer>
+  /** What a save would do, nothing written: `{ ok, unchanged, created, wipesCredentials }`. */
+  adapterPlan(request: { identifier: string; document: unknown }): Promise<ApiAnswer>
+  /** Save an adapter (admin): `{ identifier, document, confirmCredentialWipe?, skipUnchanged? }`. */
+  adapterPut(request: Record<string, unknown>): Promise<ApiAnswer>
+  adapterRestore(request: Record<string, unknown>): Promise<ApiAnswer>
+  adapterDelete(request: { identifier: string }): Promise<ApiAnswer>
+  /** `config verify`: one read per connection, `{ results: [{ connection, status, identity?, error? }] }`. */
+  verify(): Promise<ApiAnswer>
+  /** Who a person is in the org's systems: by email, phone, domain, or a ticket's or conversation's participant. */
+  customer(request: Record<string, unknown>): Promise<ApiAnswer>
+}
+
 export interface SqlClient {
   query(connection: string, request: SqlQueryRequest): Promise<SqlRows | SqlError>
   /**
@@ -584,6 +623,8 @@ export interface AppContext {
   pages: PagesClient
   /** Platform-held SQL connections (see {@link SqlClient}). */
   sql: SqlClient
+  /** Platform-held HTTP API connections (an `api` connection only; see ApiConnectionsClient). */
+  api: ApiConnectionsClient
   /** This app's own connected accounts (see {@link AccountsClient}). */
   accounts: AccountsClient
   /** Directory reads of the org (see {@link KernelClient}). */
@@ -639,7 +680,12 @@ export interface AppContext {
     opts?: {
       method?: string
       headers?: Record<string, string>
-      body?: string | { multipart: FetchMultipartPart[] }
+      /**
+       * `{ multipart }` is multipart/form-data; with `related: true` it is
+       * multipart/related (each part only its Content-Type, in order), as Google's
+       * upload APIs take a JSON metadata part then the media.
+       */
+      body?: string | { multipart: FetchMultipartPart[]; related?: boolean }
       timeoutMs?: number
       /** A connection credential the host adds (see `FetchAuth`). */
       auth?: FetchAuth
@@ -649,6 +695,13 @@ export interface AppContext {
        * stands, verbatim. Only to a host of the connection that declares the key.
        */
       configSecrets?: Record<string, string>
+      /**
+       * `"xlsx-text"`: the host downloads an Excel workbook (up to 10 MB) and answers it as
+       * text, each sheet under a `Sheet: <name>` line then its rows as CSV (at most 20 000 rows
+       * and 1 000 000 characters, a closing line says when it was cut). A body that is not a
+       * workbook rejects with `not_a_workbook`. Only a successful answer is converted.
+       */
+      convert?: "xlsx-text"
     },
   ): Promise<{
     status: number
@@ -899,7 +952,9 @@ export interface AppContext {
 
 /** One part of a `ctx.fetch` multipart upload: a text field, or a kernel file the app may read. */
 export type FetchMultipartPart =
-  | { name: string; value: string }
+  | { name: string; value: string; contentType?: string }
+  /** Bytes the app holds as base64, decoded by the host. */
+  | { name: string; base64: string; filename?: string; contentType?: string }
   | { name: string; fileId: string; filename?: string; contentType?: string; expectSha256?: string }
 
 /**
@@ -938,6 +993,8 @@ export interface KnowledgeSyncInput<Cursor = unknown> {
   kind: string
   config: Record<string, unknown>
   cursor: Cursor | null
+  /** Whose source it is: one person's own (the run acts for them), or the organization's. */
+  scope?: "personal" | "organization"
 }
 
 /** One document of a knowledge source page. */

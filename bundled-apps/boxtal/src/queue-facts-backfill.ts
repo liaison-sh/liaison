@@ -13,10 +13,10 @@
 // was actually in the box if the invoice moved since. Rows bought from here on carry the real
 // thing. That is why this only ever fills an EMPTY snapshot and never overwrites one.
 import type { BoxtalToolCtx } from "./ctx"
-import { buildQueueFacts, type QueueFacts } from "./queue-facts"
 import { summarizeProducts } from "./draft-cache"
-import { shipmentDraftCreate } from "./shipment"
 import { isLiveShipment } from "./link-store"
+import { buildQueueFacts, type QueueFacts } from "./queue-facts"
+import { shipmentDraftCreate } from "./shipment"
 
 /** Bounded per run: resolution costs an invoicing read per row, and this is a repair pass, not a
  *  hot path. A backlog larger than this simply finishes on the next run. */
@@ -100,14 +100,25 @@ export async function backfillQueueFacts(
   let failed = 0
   for (const row of batch) {
     try {
-      const draft = await shipmentDraftCreate(ctx, { document_ref: String(row.document_ref), orderShipTo: false })
+      const draft = await shipmentDraftCreate(ctx, {
+        document_ref: String(row.document_ref),
+        orderShipTo: false,
+      })
       const metas = (await ctx.db.findMany("prep_meta", {
         where: { document_ref: String(row.document_ref) },
         limit: 1,
-      })) as Array<{ order_name?: string | null; order_created_at?: string | null; staff_note?: string | null }>
-      const facts: QueueFacts = buildQueueFacts({ ...draft, products: summarizeProducts(draft) }, metas[0] ?? {}, {
-        kind: row.kind === "return" ? "return" : "outbound",
-      })
+      })) as Array<{
+        order_name?: string | null
+        order_created_at?: string | null
+        staff_note?: string | null
+      }>
+      const facts: QueueFacts = buildQueueFacts(
+        { ...draft, products: summarizeProducts(draft) },
+        metas[0] ?? {},
+        {
+          kind: row.kind === "return" ? "return" : "outbound",
+        },
+      )
       await ctx.db.update("shipment", String(row.id), { queue_facts: facts })
       filled++
     } catch (err) {

@@ -6,10 +6,11 @@
 // CardTable's role model (anchor/secondary/meta/fold) so every dashboard gets
 // the phone card story for free, while CSV export keeps using the plain `get`
 // accessor untouched (columns.ts).
-import { tr } from "../i18n"
-import { Show, type Component, type JSX } from "solid-js"
-import { navigate } from "@liaison/host"
+
 import { CardTable, type CardTableColumn } from "@liaison/app-ui/card-table"
+import { navigate } from "@liaison/host"
+import { type Component, type JSX, Show } from "solid-js"
+import { tr } from "../i18n"
 import { Badge, cx, StatusBadge, TypeLabel } from "../kit"
 import type { DashboardColumn } from "./columns"
 
@@ -88,7 +89,9 @@ function renderCell<R>(col: DashboardColumn<R>, row: R): JSX.Element {
       return <span class="font-mono tabular-nums text-text-secondary">{raw}</span>
     default:
       return (
-        <span class={col.key === "number" || col.key === "customer" ? "text-text" : undefined}>{raw}</span>
+        <span class={col.key === "number" || col.key === "customer" ? "text-text" : undefined}>
+          {raw}
+        </span>
       )
   }
 }
@@ -169,7 +172,9 @@ function toCardColumns<R>(
             <span class="flex items-center gap-2">
               {body}
               <Show when={pair?.position === "first" && opts.pairAction}>
-                {(action) => <span class="text-[11px] text-text-secondary">{action()(pair!.key)}</span>}
+                {(action) => (
+                  <span class="text-[11px] text-text-secondary">{action()(pair!.key)}</span>
+                )}
               </Show>
             </span>
             <Show when={label}>
@@ -205,7 +210,9 @@ export function DataTable<R>(props: DataTableProps<R>): ReturnType<Component> {
               pairAction: props.pairAction,
               pairLabel: props.pairLabel,
             })}
-            rowClass={props.pairing ? (row) => pairRowClass(props.pairing?.(row) ?? null) : undefined}
+            rowClass={
+              props.pairing ? (row) => pairRowClass(props.pairing?.(row) ?? null) : undefined
+            }
             rowMarker={
               props.pairing
                 ? (row) => {

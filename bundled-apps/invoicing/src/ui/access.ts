@@ -14,11 +14,16 @@ export interface ViewerAccess {
 }
 
 /** The answer when the tool cannot be read: nothing is offered (the safe side). */
-export const NO_ACCESS: ViewerAccess = { documents_write: false, settings_read: false, approve: false }
+export const NO_ACCESS: ViewerAccess = {
+  documents_write: false,
+  settings_read: false,
+  approve: false,
+}
 
 /** Normalise a `viewer_access` result (or an error envelope) to flags. */
 export function toViewerAccess(raw: unknown): ViewerAccess {
-  if (!raw || typeof raw !== "object" || (raw as { status?: unknown }).status === "error") return NO_ACCESS
+  if (!raw || typeof raw !== "object" || (raw as { status?: unknown }).status === "error")
+    return NO_ACCESS
   const r = raw as Partial<Record<keyof ViewerAccess, unknown>>
   return {
     documents_write: r.documents_write === true,

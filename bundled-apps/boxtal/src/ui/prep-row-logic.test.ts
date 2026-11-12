@@ -3,8 +3,9 @@
 // Every prep-row button state is a decidable function of the row, and the refetch rule is data.
 // These are the oracles behind the rework's two headline claims: a row action patches ONE row, and
 // no button ever promises something the row cannot do.
-import { readFileSync } from "node:fs"
+
 import { describe, expect, it } from "bun:test"
+import { readFileSync } from "node:fs"
 import {
   CATEGORY_LABELS,
   CATEGORY_SHORT_LABELS,
@@ -13,25 +14,25 @@ import {
   categoryLockReason,
   createRunMutation,
   invoiceControlState,
+  keepUnchangedRows,
   LABEL_LABELS,
   LABEL_WAIT_MS,
   labelState,
-  keepUnchangedRows,
   mergeRows,
   mutationPlan,
   NO_INVOICE_TOOLTIP,
+  type PollTickState,
+  type PrepInvoiceState,
+  type PrepOffer,
+  type PrepRow,
   pollPlan,
   pollTick,
   quoteButtonState,
   quotedPriceMajor,
   rowTintClass,
+  STATUS_LABELS,
   shipDisabledReason,
   shipParams,
-  STATUS_LABELS,
-  type PollTickState,
-  type PrepInvoiceState,
-  type PrepOffer,
-  type PrepRow,
 } from "./prep-row-logic"
 
 function offer(over: Partial<PrepOffer> = {}): PrepOffer {
@@ -83,7 +84,13 @@ function shippableRow(over: Partial<PrepRow> = {}): PrepRow {
     state: "ready",
     excluded: false,
     validated: false,
-    invoice: { state: "issued", document_id: "doc-1", number: "INV-001", approval_id: null, kind: "invoice" },
+    invoice: {
+      state: "issued",
+      document_id: "doc-1",
+      number: "INV-001",
+      approval_id: null,
+      kind: "invoice",
+    },
     shipment: null,
     recipient: {
       name: "Alice Example",
@@ -145,7 +152,19 @@ describe("createRunMutation: the refetch rule as a mechanism, driven directly ra
   }
 
   it("patches the row and never refetches, for every row action in the plan", async () => {
-    for (const action of ["set_status", "set_note", "set_category", "set_package", "select_offer", "quote", "ship", "check_documents", "exclude", "restore", "add_shipment"] as const) {
+    for (const action of [
+      "set_status",
+      "set_note",
+      "set_category",
+      "set_package",
+      "select_offer",
+      "quote",
+      "ship",
+      "check_documents",
+      "exclude",
+      "restore",
+      "add_shipment",
+    ] as const) {
       const { runMutation, calls } = stub()
       await runMutation(action, "so:1", async () => {})
       expect(calls.refetch).toBe(0)
@@ -210,10 +229,10 @@ describe("createRunMutation: the busy flag lives exactly as long as the write", 
     // One microtask turn is all the write needs; the read is still outstanding.
     await Promise.resolve()
     await Promise.resolve()
-    expect(busy, "the row is still marked busy while only the confirmation read is in flight").toEqual([
-      true,
-      false,
-    ])
+    expect(
+      busy,
+      "the row is still marked busy while only the confirmation read is in flight",
+    ).toEqual([true, false])
     settlePatch()
     await run
     expect(busy).toEqual([true, false])
@@ -270,7 +289,7 @@ describe("PrepGrid.tsx wiring: refetch() is invoked from exactly one place, the 
     expect(src).toContain("createRunMutation({ setRowBusy, setRowError, refetch, patchRow })")
   })
 
-  it("the mechanism's one refetch() call, in createRunMutation, is guarded by mutationPlan[name] === \"refetch\"", () => {
+  it('the mechanism\'s one refetch() call, in createRunMutation, is guarded by mutationPlan[name] === "refetch"', () => {
     const modSrc = readFileSync(new URL("./prep-row-logic.ts", import.meta.url), "utf8")
     // `deps.refetch()`, not the bare word: the module's own header comment mentions `refetch()`
     // in prose while explaining the OLD bug, which is not a call site.
@@ -313,16 +332,29 @@ describe("shipDisabledReason: an address a person must pick holds the row", () =
     state: "differs",
     used: { source: "order" },
     order_address: { street: "Werkstr. 6", postalCode: "53424", countryIsoCode: "DE" },
-    verified_address: { id: "addr-1", street: "Industriepark 3", postalCode: "53424", countryIsoCode: "DE" },
+    verified_address: {
+      id: "addr-1",
+      street: "Industriepark 3",
+      postalCode: "53424",
+      countryIsoCode: "DE",
+    },
   })
   it("holds Ship while the order and the verified address differ and nobody picked", () => {
-    expect(shipDisabledReason(shippableRow({ address_check: differs() }))).toContain("Pick which one to use")
+    expect(shipDisabledReason(shippableRow({ address_check: differs() }))).toContain(
+      "Pick which one to use",
+    )
   })
   it("a pick releases it; no verified address never holds", () => {
     expect(
-      shipDisabledReason(shippableRow({ address_check: { ...differs(), choice: { pick: "verified", chosen_at: null } } })),
+      shipDisabledReason(
+        shippableRow({
+          address_check: { ...differs(), choice: { pick: "verified", chosen_at: null } },
+        }),
+      ),
     ).toBeNull()
-    expect(shipDisabledReason(shippableRow({ address_check: { ...differs(), state: "match" } }))).toBeNull()
+    expect(
+      shipDisabledReason(shippableRow({ address_check: { ...differs(), state: "match" } })),
+    ).toBeNull()
     expect(shipDisabledReason(shippableRow())).toBeNull()
   })
 })
@@ -337,17 +369,65 @@ describe("shipDisabledReason: the first thing the operator has to fix, named", (
     ["on hold wins over everything", { status: "on_hold" }, "on hold"],
     [
       "already shipped",
-      { shipment: { id: "s1", order_status: "CONFIRMED", tracking_number: null, has_label: true, created_at: "2026-07-03T00:00:00.000Z" } },
+      {
+        shipment: {
+          id: "s1",
+          order_status: "CONFIRMED",
+          tracking_number: null,
+          has_label: true,
+          created_at: "2026-07-03T00:00:00.000Z",
+        },
+      },
       "already been bought",
     ],
-    ["invoicing not installed", { invoice: { state: "not_available", document_id: null, number: null, approval_id: null, kind: null } }, "not installed"],
-    ["no document", { document_ref: null, state: "needs_document", reason: "No invoice issued for this order yet" }, "No invoice issued for this order yet"],
-    ["document not issued", { invoice: { state: "pending_approval", document_id: null, number: null, approval_id: "a1", kind: "proforma" } }, "not issued yet"],
+    [
+      "invoicing not installed",
+      {
+        invoice: {
+          state: "not_available",
+          document_id: null,
+          number: null,
+          approval_id: null,
+          kind: null,
+        },
+      },
+      "not installed",
+    ],
+    [
+      "no document",
+      {
+        document_ref: null,
+        state: "needs_document",
+        reason: "No invoice issued for this order yet",
+      },
+      "No invoice issued for this order yet",
+    ],
+    [
+      "document not issued",
+      {
+        invoice: {
+          state: "pending_approval",
+          document_id: null,
+          number: null,
+          approval_id: "a1",
+          kind: "proforma",
+        },
+      },
+      "not issued yet",
+    ],
     ["not synced", { state: "not_synced" }, "not been synced"],
     ["needs fix", { state: "needs_fix", reason: "Missing HS code" }, "Missing HS code"],
-    ["no offers", { quote: { ...shippableRow().quote, offers: [], cheapest: null } }, "No carrier offer"],
+    [
+      "no offers",
+      { quote: { ...shippableRow().quote, offers: [], cheapest: null } },
+      "No carrier offer",
+    ],
     ["stale quote", { quote: { ...shippableRow().quote, stale: true } }, "out of date"],
-    ["incomplete address", { recipient: { ...shippableRow().recipient!, complete: false } }, "incomplete"],
+    [
+      "incomplete address",
+      { recipient: { ...shippableRow().recipient!, complete: false } },
+      "incomplete",
+    ],
   ]
   for (const [name, patch, needle] of cases) {
     it(`names the blocker: ${name}`, () => {
@@ -359,7 +439,11 @@ describe("shipDisabledReason: the first thing the operator has to fix, named", (
   }
 
   it("reports the hold before any other blocker, so the row says the truth an operator can act on", () => {
-    const row = shippableRow({ status: "on_hold", state: "not_synced", quote: { ...shippableRow().quote, offers: [] } })
+    const row = shippableRow({
+      status: "on_hold",
+      state: "not_synced",
+      quote: { ...shippableRow().quote, offers: [] },
+    })
     expect(shipDisabledReason(row)).toContain("on hold")
   })
 
@@ -367,7 +451,12 @@ describe("shipDisabledReason: the first thing the operator has to fix, named", (
     // ticket 10419 follow-up: this used to say "the recipient address is incomplete" with no
     // hint which field to fix, contradicting missingRecipientFields' own purpose.
     const missingEmail = shippableRow({
-      recipient: { ...shippableRow().recipient!, email: null, complete: false, missing_fields: ["email"] },
+      recipient: {
+        ...shippableRow().recipient!,
+        email: null,
+        complete: false,
+        missing_fields: ["email"],
+      },
     })
     expect(shipDisabledReason(missingEmail)).toBe(
       "The recipient is missing its email, so the carrier would refuse the label.",
@@ -412,13 +501,22 @@ describe("quotedPriceMajor + shipParams: the price handed to create_shipment is 
       quoted_currency: "EUR",
       recipient_phone: "+33612345678",
     })
-    expect(params.recipient_address).toMatchObject({ city: "Lyon", postalCode: "69001", countryIsoCode: "FR" })
+    expect(params.recipient_address).toMatchObject({
+      city: "Lyon",
+      postalCode: "69001",
+      countryIsoCode: "FR",
+    })
   })
 
   it("buys the operator's chosen offer, not the cheapest, when one is chosen", () => {
     const chosen = offer({ offer_code: "UPSE-Express", carrier: "UPS", price_ttc_minor: 2160 })
     const row = shippableRow()
-    row.quote = { ...row.quote, offers: [row.quote.cheapest!, chosen], selected: chosen, selected_offer_code: chosen.offer_code }
+    row.quote = {
+      ...row.quote,
+      offers: [row.quote.cheapest!, chosen],
+      selected: chosen,
+      selected_offer_code: chosen.offer_code,
+    }
     const params = shipParams(row)!
     expect(params.offer_code).toBe("UPSE-Express")
     expect(params.quoted_price_ttc).toBe(21.6)
@@ -458,16 +556,30 @@ describe("labelState: Label is enabled only once the label PDF exists", () => {
   })
 
   it("polls the waiting row every 5s and stops at the five minute mark", () => {
-    expect(pollPlan(shipped(), t0 + 1000)).toMatchObject({ intervalMs: 5000, reason: "label", timeoutMs: LABEL_WAIT_MS })
+    expect(pollPlan(shipped(), t0 + 1000)).toMatchObject({
+      intervalMs: 5000,
+      reason: "label",
+      timeoutMs: LABEL_WAIT_MS,
+    })
     expect(pollPlan(shipped({ has_label: true }), t0 + 1000).intervalMs).toBeNull()
     expect(pollPlan(shippableRow(), t0).intervalMs).toBeNull()
   })
 
   it("polls a generating PDF every 3s for at most a minute", () => {
     const row = shippableRow({
-      invoice: { state: "generating", document_id: "doc-1", number: "INV-001", approval_id: null, kind: "invoice" },
+      invoice: {
+        state: "generating",
+        document_id: "doc-1",
+        number: "INV-001",
+        approval_id: null,
+        kind: "invoice",
+      },
     })
-    expect(pollPlan(row, t0)).toMatchObject({ intervalMs: 3000, timeoutMs: 60_000, reason: "invoice_pdf" })
+    expect(pollPlan(row, t0)).toMatchObject({
+      intervalMs: 3000,
+      timeoutMs: 60_000,
+      reason: "invoice_pdf",
+    })
   })
 })
 
@@ -519,7 +631,13 @@ describe("pollTick: which rows are due on a single 1s tick", () => {
     // timeout is enforced entirely by the tick, which is the branch under test here.
     const pdfRow = shippableRow({
       order_key: "so:1",
-      invoice: { state: "generating", document_id: "doc-1", number: "INV-001", approval_id: null, kind: "invoice" },
+      invoice: {
+        state: "generating",
+        document_id: "doc-1",
+        number: "INV-001",
+        approval_id: null,
+        kind: "invoice",
+      },
     })
     const rows = [pdfRow]
     const pollStarted = new Map<string, PollTickState>()
@@ -533,7 +651,13 @@ describe("pollTick: which rows are due on a single 1s tick", () => {
   it("keeps invoice_pdf rows out of the batched label list", () => {
     const pdfRow = shippableRow({
       order_key: "so:9",
-      invoice: { state: "generating", document_id: "doc-9", number: "INV-9", approval_id: null, kind: "invoice" },
+      invoice: {
+        state: "generating",
+        document_id: "doc-9",
+        number: "INV-9",
+        approval_id: null,
+        kind: "invoice",
+      },
     })
     const pollStarted = new Map<string, PollTickState>()
     pollTick([pdfRow], pollStarted, t0, notBusy)
@@ -554,7 +678,13 @@ describe("invoiceControlState + quoteButtonState + categoryLockReason", () => {
   it("names a proforma anchor as a proforma, not as an invoice", () => {
     const row = shippableRow({
       anchor_kind: "proforma",
-      invoice: { state: "issued", document_id: "prof-1", number: "PF-1", approval_id: null, kind: "proforma" },
+      invoice: {
+        state: "issued",
+        document_id: "prof-1",
+        number: "PF-1",
+        approval_id: null,
+        kind: "proforma",
+      },
     })
     const c = invoiceControlState(row)
     expect(c.label).toBe("PF-1")
@@ -562,7 +692,10 @@ describe("invoiceControlState + quoteButtonState + categoryLockReason", () => {
   })
 
   it("falls back to the kind word when an issued anchor has no number yet", () => {
-    for (const [kind, word] of [["invoice", "Issued"], ["proforma", "Proforma"]] as const) {
+    for (const [kind, word] of [
+      ["invoice", "Issued"],
+      ["proforma", "Proforma"],
+    ] as const) {
       const row = shippableRow({
         invoice: { state: "issued", document_id: "d-1", number: null, approval_id: null, kind },
       })
@@ -597,16 +730,31 @@ describe("invoiceControlState + quoteButtonState + categoryLockReason", () => {
       kind: null,
       ...over,
     })
-    const cases: Array<{ state: PrepInvoiceState; invoice: PrepRow["invoice"]; label: string; full: string }> = [
+    const cases: Array<{
+      state: PrepInvoiceState
+      invoice: PrepRow["invoice"]
+      label: string
+      full: string
+    }> = [
       {
         state: "issued",
-        invoice: inv({ state: "issued", document_id: "d", number: "INV-2026-3493", kind: "invoice" }),
+        invoice: inv({
+          state: "issued",
+          document_id: "d",
+          number: "INV-2026-3493",
+          kind: "invoice",
+        }),
         label: "INV-2026-3493",
         full: "Issued",
       },
       {
         state: "issued",
-        invoice: inv({ state: "issued", document_id: "d", number: "PRO-2026-0007", kind: "proforma" }),
+        invoice: inv({
+          state: "issued",
+          document_id: "d",
+          number: "PRO-2026-0007",
+          kind: "proforma",
+        }),
         label: "PRO-2026-0007",
         full: "Proforma",
       },
@@ -646,7 +794,9 @@ describe("invoiceControlState + quoteButtonState + categoryLockReason", () => {
       expect(got.label, `label for ${c.state}`).toBe(c.label)
       // Short: no label may exceed the width of a document number, which is the
       // one string the column cannot shorten.
-      expect(got.label.length, `label length for ${c.state}`).toBeLessThanOrEqual("INV-2026-3493".length)
+      expect(got.label.length, `label length for ${c.state}`).toBeLessThanOrEqual(
+        "INV-2026-3493".length,
+      )
       // And nothing is lost: the wording the label dropped is on the tooltip.
       expect(got.tooltip, `tooltip for ${c.state}`).toContain(c.full)
       expect(got.tooltip, `tooltip for ${c.state}`).not.toContain("--")
@@ -654,7 +804,14 @@ describe("invoiceControlState + quoteButtonState + categoryLockReason", () => {
     }
     // The number itself is NEVER dropped.
     const issued = invoiceControlState(
-      shippableRow({ invoice: inv({ state: "issued", document_id: "d", number: "INV-2026-3493", kind: "invoice" }) }),
+      shippableRow({
+        invoice: inv({
+          state: "issued",
+          document_id: "d",
+          number: "INV-2026-3493",
+          kind: "invoice",
+        }),
+      }),
     )
     expect(issued.label).toContain("INV-2026-3493")
     expect(issued.tooltip).toContain("INV-2026-3493")
@@ -662,9 +819,17 @@ describe("invoiceControlState + quoteButtonState + categoryLockReason", () => {
 
   it("says the quote button's word: Sync, Re-quote, No offers", () => {
     expect(quoteButtonState(shippableRow({ state: "not_synced" })).label).toBe("Sync")
-    expect(quoteButtonState(shippableRow({ quote: { ...shippableRow().quote, stale: true } })).label).toBe("Re-quote")
-    expect(quoteButtonState(shippableRow({ quote: { ...shippableRow().quote, offers: [], cheapest: null } })).label).toBe("No offers")
-    expect(quoteButtonState(shippableRow({ state: "needs_document", document_ref: null })).disabled).toBe(true)
+    expect(
+      quoteButtonState(shippableRow({ quote: { ...shippableRow().quote, stale: true } })).label,
+    ).toBe("Re-quote")
+    expect(
+      quoteButtonState(
+        shippableRow({ quote: { ...shippableRow().quote, offers: [], cheapest: null } }),
+      ).label,
+    ).toBe("No offers")
+    expect(
+      quoteButtonState(shippableRow({ state: "needs_document", document_ref: null })).disabled,
+    ).toBe(true)
     expect(quoteButtonState(shippableRow()).label).toBe("Quote")
   })
 
@@ -672,12 +837,28 @@ describe("invoiceControlState + quoteButtonState + categoryLockReason", () => {
     expect(categoryLockReason(shippableRow())).toBeNull()
     expect(
       categoryLockReason(
-        shippableRow({ invoice: { state: "pending_approval", document_id: null, number: null, approval_id: "a1", kind: "proforma" } }),
+        shippableRow({
+          invoice: {
+            state: "pending_approval",
+            document_id: null,
+            number: null,
+            approval_id: "a1",
+            kind: "proforma",
+          },
+        }),
       ),
     ).toContain("waiting for approval")
     expect(
       categoryLockReason(
-        shippableRow({ shipment: { id: "s1", order_status: "CONFIRMED", tracking_number: null, has_label: true, created_at: null } }),
+        shippableRow({
+          shipment: {
+            id: "s1",
+            order_status: "CONFIRMED",
+            tracking_number: null,
+            has_label: true,
+            created_at: null,
+          },
+        }),
       ),
     ).toContain("already been bought")
   })
@@ -782,7 +963,11 @@ describe("copy discipline", () => {
   })
 
   it("labels every status and category in the operator's words", () => {
-    expect(STATUS_LABELS).toEqual({ to_prepare: "To prepare", validated: "Validated", on_hold: "On hold" })
+    expect(STATUS_LABELS).toEqual({
+      to_prepare: "To prepare",
+      validated: "Validated",
+      on_hold: "On hold",
+    })
     expect(CATEGORY_LABELS).toEqual({ sale: "Sale", repair: "Return after repair", gift: "Sample" })
     // The prep grid's select renders the SHORT forms (its column is paid for by the
     // Document column beside it) with the full wording on the control's title. Every

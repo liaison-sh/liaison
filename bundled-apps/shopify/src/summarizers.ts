@@ -19,10 +19,10 @@ import {
   type B2bReason,
   type B2bVerdict,
   type CustomerNotificationReason,
-  type TrackingFacts,
   customerNotificationFor,
   parseShippingEmailPolicy,
   SHIPPING_EMAIL_POLICIES,
+  type TrackingFacts,
   trackingNumbersOf,
 } from "./lib/b2b"
 import { describeDiscountInput } from "./mutations/discounts"
@@ -115,19 +115,24 @@ function orderContextLines(context: unknown): string[] {
   // real purchase date, `createdAt` the record-creation instant — they coincide for a normal
   // checkout but diverge for an imported/backdated order). Placed EARLY (right after the
   // customer line) so it survives the kernel's 8-line truncation on a line-item-heavy order.
-  const placedAt = dateOnly(context.attributes && isRec(context.attributes) ? context.attributes.processedAt : null)
+  const placedAt = dateOnly(
+    context.attributes && isRec(context.attributes) ? context.attributes.processedAt : null,
+  )
   if (placedAt) lines.push(`Order placed: ${placedAt}`)
-  const lineItems = isArr(context.lineItems) ? (context.lineItems.filter(isRec) as Record<string, unknown>[]) : []
+  const lineItems = isArr(context.lineItems)
+    ? (context.lineItems.filter(isRec) as Record<string, unknown>[])
+    : []
   for (const li of lineItems.slice(0, 10)) {
     const qty = li.quantity ?? "?"
     const title = str(li.title) ?? (isRec(li.variant) ? str(li.variant.title) : null) ?? "item"
     lines.push(`${qty}x ${title}`)
   }
   if (lineItems.length > 10) lines.push(`...and ${lineItems.length - 10} more line item(s)`)
-  const total = isRec(context.totalPrice) ? money(context.totalPrice.amount, context.totalPrice.currencyCode) : null
+  const total = isRec(context.totalPrice)
+    ? money(context.totalPrice.amount, context.totalPrice.currencyCode)
+    : null
   if (total) lines.push(`Order total: ${total}`)
-  const shipCountry =
-    (isRec(context.attributes) && str(context.attributes.shippingCountry)) || null
+  const shipCountry = (isRec(context.attributes) && str(context.attributes.shippingCountry)) || null
   if (shipCountry) lines.push(`Ships to: ${shipCountry}`)
   return lines
 }
@@ -141,7 +146,9 @@ function orderNumberFromContext(context: unknown): string | null {
 /** Customer display name from an order context's nested customer, else null. */
 function orderCustomerNameFromContext(context: unknown): string | null {
   if (!isRec(context) || !isRec(context.customer)) return null
-  const name = [str(context.customer.first_name), str(context.customer.last_name)].filter(Boolean).join(" ")
+  const name = [str(context.customer.first_name), str(context.customer.last_name)]
+    .filter(Boolean)
+    .join(" ")
   return name || str(context.customer.email)
 }
 
@@ -158,7 +165,9 @@ function customerContextLines(context: unknown): string[] {
   // Account-creation date — placed early, before the spend figure, so it survives truncation.
   const since = dateOnly(attrs.createdAt)
   if (since) lines.push(`Customer since: ${since}`)
-  const spent = isRec(attrs.amountSpent) ? money(attrs.amountSpent.amount, attrs.amountSpent.currencyCode) : null
+  const spent = isRec(attrs.amountSpent)
+    ? money(attrs.amountSpent.amount, attrs.amountSpent.currencyCode)
+    : null
   if (spent) lines.push(`Lifetime spend: ${spent}`)
   return lines
 }
@@ -208,7 +217,9 @@ function draftOrderContextLines(context: unknown): string[] {
   // a transaction). Placed early so it survives truncation on a line-item-heavy draft.
   const draftCreatedAt = dateOnly(attrs.createdAt)
   if (draftCreatedAt) lines.push(`Draft created: ${draftCreatedAt}`)
-  const lineItems = isArr(context.lineItems) ? (context.lineItems.filter(isRec) as Record<string, unknown>[]) : []
+  const lineItems = isArr(context.lineItems)
+    ? (context.lineItems.filter(isRec) as Record<string, unknown>[])
+    : []
   for (const li of lineItems.slice(0, 10)) {
     const qty = li.quantity ?? "?"
     const title = str(li.title) ?? "item"
@@ -222,7 +233,8 @@ function draftOrderContextLines(context: unknown): string[] {
 
 /** Draft order's customer display name/email, else null. */
 function draftOrderCustomerNameFromContext(context: unknown): string | null {
-  if (!isRec(context) || !isRec(context.attributes) || !isRec(context.attributes.customer)) return null
+  if (!isRec(context) || !isRec(context.attributes) || !isRec(context.attributes.customer))
+    return null
   const customer = context.attributes.customer
   const name = [str(customer.firstName), str(customer.lastName)].filter(Boolean).join(" ")
   return name || str(customer.email)
@@ -242,7 +254,10 @@ function variantLabelFromContext(context: unknown): string | null {
 // tabType in app.manifest.json), so a link can only point at the relevant list, not
 // the specific order/product/customer. `entityId` matches the tabType's own key
 // (namespaced by the frontend as `shopify:<key>`), not the record id.
-function listLink(label: string, tabKey: "orders" | "customers" | "products" | "markets"): ApprovalSummaryLinkShape {
+function listLink(
+  label: string,
+  tabKey: "orders" | "customers" | "products" | "markets",
+): ApprovalSummaryLinkShape {
   return { label, app: "shopify", entityType: tabKey, entityId: tabKey }
 }
 
@@ -360,14 +375,18 @@ function humanizeFieldValue(value: unknown): string {
  * `handled` lists top-level keys AND dotted paths already covered. Identifier keys
  * (`id`, `productId`, `orderId`, …) are skipped — they belong in the title, not the lines.
  */
-function describeRemainingFields(payload: Record<string, unknown>, handled: readonly string[]): string[] {
+function describeRemainingFields(
+  payload: Record<string, unknown>,
+  handled: readonly string[],
+): string[] {
   const handledSet = new Set(handled)
   const skip = new Set(["id", "productId", "orderId", "customerId", "input"])
   const lines: string[] = []
   const walk = (obj: Record<string, unknown>, prefix: string): void => {
     for (const [key, value] of Object.entries(obj)) {
       const path = prefix ? `${prefix}.${key}` : key
-      if (handledSet.has(path) || (prefix === "" && (handledSet.has(key) || skip.has(key)))) continue
+      if (handledSet.has(path) || (prefix === "" && (handledSet.has(key) || skip.has(key))))
+        continue
       if (value == null) continue
       if (isRec(value)) {
         walk(value, path)
@@ -382,7 +401,10 @@ function describeRemainingFields(payload: Record<string, unknown>, handled: read
         )
         continue
       }
-      lines.push(describeKnownField(path, value) ?? `${humanizeFieldPath(path)} -> ${humanizeFieldValue(value)}`)
+      lines.push(
+        describeKnownField(path, value) ??
+          `${humanizeFieldPath(path)} -> ${humanizeFieldValue(value)}`,
+      )
     }
   }
   walk(payload, "")
@@ -402,16 +424,17 @@ function discountLabel(d: Record<string, unknown>): string {
 /** True when every per-line discount present is the same value (one distinct discount across the
  *  lines) — i.e. a single whole-order discount the weak model spread per-line. Mirrors the
  *  handler's promoteUniformLineDiscountToOrderLevel so the summary matches what executes. */
-function uniformLineDiscount(
-  lines: Record<string, unknown>[],
-): Record<string, unknown> | null {
+function uniformLineDiscount(lines: Record<string, unknown>[]): Record<string, unknown> | null {
   const present: Record<string, unknown>[] = []
   for (const l of lines) if (isRec(l.appliedDiscount)) present.push(l.appliedDiscount)
   if (present.length === 0) return null
   const first = present[0]
   if (!first) return null
   const same = present.every(
-    (d) => d.valueType === first.valueType && Number(d.value ?? d.percentage ?? d.amount) === Number(first.value ?? first.percentage ?? first.amount),
+    (d) =>
+      d.valueType === first.valueType &&
+      Number(d.value ?? d.percentage ?? d.amount) ===
+        Number(first.value ?? first.percentage ?? first.amount),
   )
   return same ? first : null
 }
@@ -442,14 +465,17 @@ function b2bPriceBasis(li: Record<string, unknown>): string {
   const parts: string[] = []
   if (amount != null && amount !== "") parts.push(`unit price ${String(amount)}`)
   if (isRec(li.appliedDiscount)) parts.push(discountLabel(li.appliedDiscount))
-  if (isRec(li.originalUnitPriceWithCurrency)) parts.push(`custom price ${String(li.originalUnitPriceWithCurrency.amount)}`)
+  if (isRec(li.originalUnitPriceWithCurrency))
+    parts.push(`custom price ${String(li.originalUnitPriceWithCurrency.amount)}`)
   return `price exception (${why})${parts.length ? `, ${parts.join(", ")}` : ""}`
 }
 
 /** The company and location a B2B draft is placed for (names from the hydrated context). */
 function companyLines(pc: Record<string, unknown>, hydrated: unknown): string[] {
   const h = isRec(hydrated) ? hydrated : {}
-  const company = (typeof h.name === "string" && h.name) || (typeof pc.companyId === "string" ? pc.companyId : "?")
+  const company =
+    (typeof h.name === "string" && h.name) ||
+    (typeof pc.companyId === "string" ? pc.companyId : "?")
   const location =
     (typeof h.locationName === "string" && h.locationName) ||
     (typeof pc.companyLocationId === "string" ? pc.companyLocationId : "?")
@@ -470,7 +496,10 @@ export function summarizeDraftOrderCreate(
   // summarizerContext hydration (variants_brief): variantId → human identity. Without it the
   // card read "1× gid://shopify/ProductVariant/57467363623243" — the approver had no idea WHAT
   // product they were approving. Hydration is best-effort; a raw gid remains the fallback.
-  const briefById = new Map<string, { title: string; price: string | null; requiresShipping: boolean | null }>()
+  const briefById = new Map<
+    string,
+    { title: string; price: string | null; requiresShipping: boolean | null }
+  >()
   const metaCtx = meta?.context
   const ctxVariants = isRec(metaCtx) && Array.isArray(metaCtx.variants) ? metaCtx.variants : []
   for (const v of ctxVariants) {
@@ -493,7 +522,9 @@ export function summarizeDraftOrderCreate(
   // Order-level discount: an explicit one, else a uniform per-line discount promoted to order level.
   const explicitOrderDiscount = isRec(input.appliedDiscount) ? input.appliedDiscount : null
   const promoted =
-    explicitOrderDiscount == null && lineItems.length >= 2 && !companyDraft ? uniformLineDiscount(lineItems) : null
+    explicitOrderDiscount == null && lineItems.length >= 2 && !companyDraft
+      ? uniformLineDiscount(lineItems)
+      : null
   const orderDiscount = explicitOrderDiscount ?? promoted
 
   // Deterministic price arithmetic: the approver must see what each discounted
@@ -523,9 +554,10 @@ export function summarizeDraftOrderCreate(
     const kindTag = brief?.requiresShipping === false ? " [digital]" : ""
     // A per-line discount that is NOT the promoted whole-order one stays shown per line.
     const lineDiscount = isRec(li.appliedDiscount) ? li.appliedDiscount : null
-    const perLine = lineDiscount && promoted == null && explicitOrderDiscount == null
-      ? ` (${discountLabel(lineDiscount)})`
-      : ""
+    const perLine =
+      lineDiscount && promoted == null && explicitOrderDiscount == null
+        ? ` (${discountLabel(lineDiscount)})`
+        : ""
     const listNum = brief?.price ? Number(brief.price) : Number.NaN
     const qtyNum = typeof li.quantity === "number" ? li.quantity : Number(li.quantity)
     let effTag = ""
@@ -548,21 +580,30 @@ export function summarizeDraftOrderCreate(
 
   if (orderDiscount) {
     const why = priceExceptionText(input.priceException)
-    lines.push(`Order-level discount (whole order): ${discountLabel(orderDiscount)}${why ? ` (exception: ${why})` : ""}`)
+    lines.push(
+      `Order-level discount (whole order): ${discountLabel(orderDiscount)}${why ? ` (exception: ${why})` : ""}`,
+    )
   }
   if (totalComplete) {
     lines.push(`Projected total before shipping/tax: ${money(projectedTotal)}`)
   }
 
   const custId =
-    (isRec(input.purchasingEntity) && typeof input.purchasingEntity.customerId === "string" && input.purchasingEntity.customerId) ||
+    (isRec(input.purchasingEntity) &&
+      typeof input.purchasingEntity.customerId === "string" &&
+      input.purchasingEntity.customerId) ||
     (isRec(input.customer) && typeof input.customer.id === "string" && input.customer.id) ||
     (typeof input.customerId === "string" && input.customerId) ||
     null
   if (custId) lines.push(`Customer: ${custId}`)
   // Buyer identity the guard binds a digital order to — the approver must see WHO receives it.
-  if (typeof input.email === "string" && input.email.length > 0) lines.push(`Buyer email: ${input.email}`)
-  const addr = isRec(input.billingAddress) ? input.billingAddress : isRec(input.shippingAddress) ? input.shippingAddress : null
+  if (typeof input.email === "string" && input.email.length > 0)
+    lines.push(`Buyer email: ${input.email}`)
+  const addr = isRec(input.billingAddress)
+    ? input.billingAddress
+    : isRec(input.shippingAddress)
+      ? input.shippingAddress
+      : null
   const buyerName = addr
     ? [addr.firstName, addr.lastName].filter((v) => typeof v === "string" && v.length > 0).join(" ")
     : ""
@@ -589,17 +630,31 @@ export function summarizeDraftOrderCreate(
  * description nudges the agent to pass them so the reviewer sees real names.
  */
 export function summarizeProductsMerge(params: unknown): Promise<ApprovalSummaryShape> {
-  const p = isRec(params) && isRec(params.input) ? { ...params, ...params.input } : isRec(params) ? params : {}
-  const str = (v: unknown): string | null => (typeof v === "string" && v.trim().length > 0 ? v.trim() : null)
+  const p =
+    isRec(params) && isRec(params.input)
+      ? { ...params, ...params.input }
+      : isRec(params)
+        ? params
+        : {}
+  const str = (v: unknown): string | null =>
+    typeof v === "string" && v.trim().length > 0 ? v.trim() : null
   const gid = (v: unknown): string | null =>
     str(v) ?? (isRec(v) && typeof v.id === "string" ? v.id : null)
 
-  const survivorId = gid(p.survivorId ?? p.keepId ?? p.keep ?? p.canonicalId ?? p.targetId ?? p.winnerId)
-  const duplicateId = gid(p.duplicateId ?? p.removeId ?? p.remove ?? p.sourceId ?? p.deleteId ?? p.loserId)
+  const survivorId = gid(
+    p.survivorId ?? p.keepId ?? p.keep ?? p.canonicalId ?? p.targetId ?? p.winnerId,
+  )
+  const duplicateId = gid(
+    p.duplicateId ?? p.removeId ?? p.remove ?? p.sourceId ?? p.deleteId ?? p.loserId,
+  )
   const survivorTitle =
-    str(p.survivorTitle ?? p.keepTitle ?? p.canonicalTitle ?? p.targetTitle) ?? survivorId ?? "(unnamed)"
+    str(p.survivorTitle ?? p.keepTitle ?? p.canonicalTitle ?? p.targetTitle) ??
+    survivorId ??
+    "(unnamed)"
   const duplicateTitle =
-    str(p.duplicateTitle ?? p.removeTitle ?? p.sourceTitle ?? p.deleteTitle) ?? duplicateId ?? "(unnamed)"
+    str(p.duplicateTitle ?? p.removeTitle ?? p.sourceTitle ?? p.deleteTitle) ??
+    duplicateId ??
+    "(unnamed)"
 
   const lines: string[] = [
     `KEEP (survivor): ${survivorTitle}`,
@@ -619,11 +674,17 @@ export function summarizeProductsMerge(params: unknown): Promise<ApprovalSummary
 
 // ─── Orders / refunds / fulfillments ──────────────────────────────────────────
 
-export function summarizeRefundsCreate(params: unknown, _ctx?: unknown, meta?: SummarizerMeta): Promise<ApprovalSummaryShape> {
+export function summarizeRefundsCreate(
+  params: unknown,
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
   const p = isRec(params) ? params : {}
   const orderId = gidShort(p.orderId)
   const amount = str(p.amount)
-  const lineItems = isArr(p.refundLineItems) ? (p.refundLineItems.filter(isRec) as Record<string, unknown>[]) : []
+  const lineItems = isArr(p.refundLineItems)
+    ? (p.refundLineItems.filter(isRec) as Record<string, unknown>[])
+    : []
   const lines: string[] = []
 
   if (amount) {
@@ -631,7 +692,9 @@ export function summarizeRefundsCreate(params: unknown, _ctx?: unknown, meta?: S
   } else if (lineItems.length > 0) {
     for (const li of lineItems) {
       const qty = li.quantity ?? "?"
-      lines.push(`Refund ${qty}x line item ${gidShort(li.lineItemId)}${li.restockType ? ` (restock: ${li.restockType})` : ""}`)
+      lines.push(
+        `Refund ${qty}x line item ${gidShort(li.lineItemId)}${li.restockType ? ` (restock: ${li.restockType})` : ""}`,
+      )
     }
   } else {
     lines.push("Refund the full remaining order amount")
@@ -660,10 +723,19 @@ export function summarizeRefundsCreate(params: unknown, _ctx?: unknown, meta?: S
 
   return Promise.resolve({
     kind: "refunds_create",
-    title: amount ? `Refund ${amount} on ${orderLabel}${forWhom}` : `Refund ${orderLabel}${forWhom}`,
+    title: amount
+      ? `Refund ${amount} on ${orderLabel}${forWhom}`
+      : `Refund ${orderLabel}${forWhom}`,
     subtitle: notify ? "Customer WILL be notified" : "No customer notification",
     lines,
-    links: adminLink(meta, "Open order in Shopify", "orders", numericId(p.orderId), "Open orders in Shopify", "orders"),
+    links: adminLink(
+      meta,
+      "Open order in Shopify",
+      "orders",
+      numericId(p.orderId),
+      "Open orders in Shopify",
+      "orders",
+    ),
   })
 }
 
@@ -675,7 +747,9 @@ export function summarizeDraftOrdersComplete(
   const p = unwrapInput(params)
   const id = gidShort(p.id)
   const lines = [
-    p.paymentPending ? "Mark as paid: payment PENDING (not collected now)" : "Mark as paid: payment collected now",
+    p.paymentPending
+      ? "Mark as paid: payment PENDING (not collected now)"
+      : "Mark as paid: payment collected now",
   ]
 
   const context = meta?.context
@@ -688,7 +762,14 @@ export function summarizeDraftOrdersComplete(
     title: `Complete draft order ${draftName ?? id}${customerName ? ` for ${customerName}` : ""}`,
     subtitle: "Converts the draft into a real order",
     lines,
-    links: adminLink(meta, "Open draft order in Shopify", "draft_orders", numericId(p.id), "Open orders in Shopify", "orders"),
+    links: adminLink(
+      meta,
+      "Open draft order in Shopify",
+      "draft_orders",
+      numericId(p.id),
+      "Open orders in Shopify",
+      "orders",
+    ),
   })
 }
 
@@ -709,10 +790,15 @@ const CARD_NOTICE: Record<CustomerNotificationReason, string> = {
   undecided_fail_closed: "Notification decided at execution (store shipping email policy)",
 }
 
-function fulfilmentNotifySubtitle(callerNotify: boolean, source: unknown, tracking: TrackingFacts): string {
+function fulfilmentNotifySubtitle(
+  callerNotify: boolean,
+  source: unknown,
+  tracking: TrackingFacts,
+): string {
   const rec = isRec(source) ? source : {}
   const policy =
-    typeof rec.shippingEmailPolicy === "string" && (SHIPPING_EMAIL_POLICIES as readonly string[]).includes(rec.shippingEmailPolicy)
+    typeof rec.shippingEmailPolicy === "string" &&
+    (SHIPPING_EMAIL_POLICIES as readonly string[]).includes(rec.shippingEmailPolicy)
       ? parseShippingEmailPolicy(rec.shippingEmailPolicy)
       : null
   if (policy === null) return CARD_NOTICE.undecided_fail_closed
@@ -723,7 +809,12 @@ function fulfilmentNotifySubtitle(callerNotify: boolean, source: unknown, tracki
       : v?.b2b === false
         ? { b2b: false, reason: null }
         : null
-  const decision = customerNotificationFor({ policy, verdict, callerAsksToNotify: callerNotify, tracking })
+  const decision = customerNotificationFor({
+    policy,
+    verdict,
+    callerAsksToNotify: callerNotify,
+    tracking,
+  })
   if (decision.notice) return CARD_NOTICE[decision.notice.reason]
   const notify = decision.notify ?? callerNotify
   return notify ? "Customer WILL be notified" : "No customer notification"
@@ -781,7 +872,14 @@ export function summarizeFulfillmentsCreate(
       hasNumber: trackingNumbersOf(normalizeTrackingInfo(fulfillment.trackingInfo)).length > 0,
     }),
     lines,
-    links: adminLink(meta, "Open order in Shopify", "orders", numericId(p.orderId), "Open orders in Shopify", "orders"),
+    links: adminLink(
+      meta,
+      "Open order in Shopify",
+      "orders",
+      numericId(p.orderId),
+      "Open orders in Shopify",
+      "orders",
+    ),
   })
 }
 
@@ -804,13 +902,17 @@ export function summarizeFulfillmentsUpdateTracking(
   const info = isRec(p.trackingInfoInput) ? p.trackingInfoInput : {}
   const company = str(info.company)
   const number = str(info.number)
-  const numbers = isArr(info.numbers) ? info.numbers.filter((n): n is string => typeof n === "string") : []
+  const numbers = isArr(info.numbers)
+    ? info.numbers.filter((n): n is string => typeof n === "string")
+    : []
   const notify = p.notifyCustomer === true
-  const attrs = isRec(meta?.context) && isRec(meta.context.attributes) ? meta.context.attributes : null
+  const attrs =
+    isRec(meta?.context) && isRec(meta.context.attributes) ? meta.context.attributes : null
   // The fulfilment's tracking before this update (fulfillments_get); unknown without the read.
   const hadNumber =
     isRec(attrs) && isArr(attrs.trackingInfo)
-      ? trackingNumbersOf({ numbers: attrs.trackingInfo.map((t) => (isRec(t) ? t.number : null)) }).length > 0
+      ? trackingNumbersOf({ numbers: attrs.trackingInfo.map((t) => (isRec(t) ? t.number : null)) })
+          .length > 0
       : null
 
   const lines: string[] = []
@@ -831,7 +933,11 @@ export function summarizeFulfillmentsUpdateTracking(
   })
 }
 
-export function summarizeOrderUpdate(params: unknown, _ctx?: unknown, meta?: SummarizerMeta): Promise<ApprovalSummaryShape> {
+export function summarizeOrderUpdate(
+  params: unknown,
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
   const p = unwrapInput(params)
   const id = gidShort(p.id)
   const lines: string[] = []
@@ -856,11 +962,22 @@ export function summarizeOrderUpdate(params: unknown, _ctx?: unknown, meta?: Sum
     kind: "order_update",
     title: `Update ${orderLabel}${forWhom}`,
     lines,
-    links: adminLink(meta, "Open order in Shopify", "orders", numericId(p.id), "Open orders in Shopify", "orders"),
+    links: adminLink(
+      meta,
+      "Open order in Shopify",
+      "orders",
+      numericId(p.id),
+      "Open orders in Shopify",
+      "orders",
+    ),
   })
 }
 
-export function summarizeOrderCancel(params: unknown, _ctx?: unknown, meta?: SummarizerMeta): Promise<ApprovalSummaryShape> {
+export function summarizeOrderCancel(
+  params: unknown,
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
   const p = isRec(params) ? params : {}
   const orderId = gidShort(p.orderId)
   const reason = str(p.reason)
@@ -868,10 +985,7 @@ export function summarizeOrderCancel(params: unknown, _ctx?: unknown, meta?: Sum
   const restock = p.restock === true
   const notify = p.notifyCustomer === true
 
-  const lines: string[] = [
-    `Refund: ${refund ? "yes" : "no"}`,
-    `Restock: ${restock ? "yes" : "no"}`,
-  ]
+  const lines: string[] = [`Refund: ${refund ? "yes" : "no"}`, `Restock: ${restock ? "yes" : "no"}`]
   if (reason) lines.push(`Reason: ${reason}`)
 
   const context = meta?.context
@@ -887,17 +1001,30 @@ export function summarizeOrderCancel(params: unknown, _ctx?: unknown, meta?: Sum
     title: `Cancel ${orderLabel}${forWhom}`,
     subtitle: notify ? "Customer WILL be notified" : "No customer notification",
     lines,
-    links: adminLink(meta, "Open order in Shopify", "orders", numericId(p.orderId), "Open orders in Shopify", "orders"),
+    links: adminLink(
+      meta,
+      "Open order in Shopify",
+      "orders",
+      numericId(p.orderId),
+      "Open orders in Shopify",
+      "orders",
+    ),
   })
 }
 
 // ─── Draft orders (update / delete / send) ────────────────────────────────────
 
-export function summarizeDraftOrdersUpdate(params: unknown, _ctx?: unknown, meta?: SummarizerMeta): Promise<ApprovalSummaryShape> {
+export function summarizeDraftOrdersUpdate(
+  params: unknown,
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
   const p = isRec(params) ? params : {}
   const id = gidShort(p.id)
   const input = isRec(p.input) ? p.input : {}
-  const lineItems = isArr(input.lineItems) ? (input.lineItems.filter(isRec) as Record<string, unknown>[]) : []
+  const lineItems = isArr(input.lineItems)
+    ? (input.lineItems.filter(isRec) as Record<string, unknown>[])
+    : []
   const lines: string[] = []
   const context = meta?.context
   // B2B: the company the draft is (or will be) placed for, and each line's price basis.
@@ -914,14 +1041,21 @@ export function summarizeDraftOrdersUpdate(params: unknown, _ctx?: unknown, meta
   else if (existing) {
     const company = typeof existing.companyName === "string" ? existing.companyName : "?"
     const location = typeof existing.locationName === "string" ? existing.locationName : "?"
-    lines.push(`Company: ${company}`, `Location: ${location} (prices from this location's B2B catalog)`)
+    lines.push(
+      `Company: ${company}`,
+      `Location: ${location} (prices from this location's B2B catalog)`,
+    )
   }
   for (const li of lineItems) {
-    lines.push(`${li.quantity ?? "?"}x ${gidShort(li.variantId)}${companyDraft ? `: ${b2bPriceBasis(li)}` : ""}`)
+    lines.push(
+      `${li.quantity ?? "?"}x ${gidShort(li.variantId)}${companyDraft ? `: ${b2bPriceBasis(li)}` : ""}`,
+    )
   }
   if (isRec(input.appliedDiscount)) {
     const why = priceExceptionText(input.priceException)
-    lines.push(`Discount: ${discountLabel(input.appliedDiscount)}${why ? ` (exception: ${why})` : ""}`)
+    lines.push(
+      `Discount: ${discountLabel(input.appliedDiscount)}${why ? ` (exception: ${why})` : ""}`,
+    )
   }
   const note = str(input.note)
   if (note) lines.push(`Note: ${note}`)
@@ -934,11 +1068,19 @@ export function summarizeDraftOrdersUpdate(params: unknown, _ctx?: unknown, meta
     kind: "draft_orders_update",
     title: `Update draft order ${draftName ?? id}${customerName ? ` for ${customerName}` : ""}`,
     lines,
-    links: externalLink(meta?.connectionIdentifier, "Open draft order in Shopify", `/admin/draft_orders/${numericId(p.id)}`),
+    links: externalLink(
+      meta?.connectionIdentifier,
+      "Open draft order in Shopify",
+      `/admin/draft_orders/${numericId(p.id)}`,
+    ),
   })
 }
 
-export function summarizeDraftOrdersDelete(params: unknown, _ctx?: unknown, meta?: SummarizerMeta): Promise<ApprovalSummaryShape> {
+export function summarizeDraftOrdersDelete(
+  params: unknown,
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
   const p = isRec(params) ? params : {}
   const context = meta?.context
   const draftName = draftOrderNameFromContext(context)
@@ -950,11 +1092,19 @@ export function summarizeDraftOrdersDelete(params: unknown, _ctx?: unknown, meta
     title: `Delete draft order ${draftName ?? gidShort(p.id)}${customerName ? ` for ${customerName}` : ""}`,
     subtitle: "This permanently removes the draft",
     lines,
-    links: externalLink(meta?.connectionIdentifier, "Open draft order in Shopify", `/admin/draft_orders/${numericId(p.id)}`),
+    links: externalLink(
+      meta?.connectionIdentifier,
+      "Open draft order in Shopify",
+      `/admin/draft_orders/${numericId(p.id)}`,
+    ),
   })
 }
 
-export function summarizeDraftOrdersSend(params: unknown, _ctx?: unknown, meta?: SummarizerMeta): Promise<ApprovalSummaryShape> {
+export function summarizeDraftOrdersSend(
+  params: unknown,
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
   const p = isRec(params) ? params : {}
   const id = gidShort(p.id)
   const email = isRec(p.email) ? p.email : {}
@@ -979,13 +1129,21 @@ export function summarizeDraftOrdersSend(params: unknown, _ctx?: unknown, meta?:
     kind: "draft_orders_send",
     title: `Email draft order ${draftName ?? id} invoice${to ? ` to ${to}` : customerName ? ` to ${customerName}` : ""}`,
     lines,
-    links: externalLink(meta?.connectionIdentifier, "Open draft order in Shopify", `/admin/draft_orders/${numericId(p.id)}`),
+    links: externalLink(
+      meta?.connectionIdentifier,
+      "Open draft order in Shopify",
+      `/admin/draft_orders/${numericId(p.id)}`,
+    ),
   })
 }
 
 // ─── Products / variants / publishing ─────────────────────────────────────────
 
-export function summarizeProductsCreate(params: unknown, _ctx?: unknown, meta?: SummarizerMeta): Promise<ApprovalSummaryShape> {
+export function summarizeProductsCreate(
+  params: unknown,
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
   const p = unwrapInput(params)
   const title = str(p.title) ?? "(untitled product)"
   const status = str(p.status) ?? "DRAFT"
@@ -1002,11 +1160,22 @@ export function summarizeProductsCreate(params: unknown, _ctx?: unknown, meta?: 
     kind: "products_create",
     title: `Create product: ${title}`,
     lines,
-    links: adminLink(meta, "Open products in Shopify", "products", null, "Open products in Shopify", "products"),
+    links: adminLink(
+      meta,
+      "Open products in Shopify",
+      "products",
+      null,
+      "Open products in Shopify",
+      "products",
+    ),
   })
 }
 
-export function summarizeProductsUpdate(params: unknown, _ctx?: unknown, meta?: SummarizerMeta): Promise<ApprovalSummaryShape> {
+export function summarizeProductsUpdate(
+  params: unknown,
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
   const p = unwrapInput(params)
   const id = gidShort(p.id)
   const title = str(p.title)
@@ -1031,11 +1200,22 @@ export function summarizeProductsUpdate(params: unknown, _ctx?: unknown, meta?: 
     kind: "products_update",
     title: `Update product ${title ?? currentTitle ?? id}`,
     lines,
-    links: adminLink(meta, "Open product in Shopify", "products", numericId(p.id), "Open products in Shopify", "products"),
+    links: adminLink(
+      meta,
+      "Open product in Shopify",
+      "products",
+      numericId(p.id),
+      "Open products in Shopify",
+      "products",
+    ),
   })
 }
 
-export function summarizeProductsDelete(params: unknown, _ctx?: unknown, meta?: SummarizerMeta): Promise<ApprovalSummaryShape> {
+export function summarizeProductsDelete(
+  params: unknown,
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
   const p = isRec(params) ? params : {}
   const title = productTitleFromContext(meta?.context)
   const listedSince = productListedSinceLine(meta?.context)
@@ -1045,7 +1225,14 @@ export function summarizeProductsDelete(params: unknown, _ctx?: unknown, meta?: 
     title: `Delete product ${title ?? gidShort(p.id)}`,
     subtitle: "This permanently removes the listing from the store",
     lines: [`Product: ${title ?? gidShort(p.id)}`, ...(listedSince ? [listedSince] : [])],
-    links: adminLink(meta, "Open product in Shopify", "products", numericId(p.id), "Open products in Shopify", "products"),
+    links: adminLink(
+      meta,
+      "Open product in Shopify",
+      "products",
+      numericId(p.id),
+      "Open products in Shopify",
+      "products",
+    ),
   })
 }
 
@@ -1065,7 +1252,11 @@ function publicationTargetsFromContext(
   }))
 }
 
-export function summarizeProductsPublish(params: unknown, _ctx?: unknown, meta?: SummarizerMeta): Promise<ApprovalSummaryShape> {
+export function summarizeProductsPublish(
+  params: unknown,
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
   const p = isRec(params) ? params : {}
   const id = gidShort(p.id)
   const targets = publicationTargetsFromContext(meta?.context, "publishTargets")
@@ -1084,14 +1275,27 @@ export function summarizeProductsPublish(params: unknown, _ctx?: unknown, meta?:
     kind: "products_publish",
     title: `Publish product ${title ?? id}`,
     ...(targets && targets.length > 0
-      ? { subtitle: `Puts the listing on ${targets.length === 1 ? "1 sales channel" : `${targets.length} sales channels`}` }
+      ? {
+          subtitle: `Puts the listing on ${targets.length === 1 ? "1 sales channel" : `${targets.length} sales channels`}`,
+        }
       : {}),
     lines,
-    links: adminLink(meta, "Open product in Shopify", "products", numericId(p.id), "Open products in Shopify", "products"),
+    links: adminLink(
+      meta,
+      "Open product in Shopify",
+      "products",
+      numericId(p.id),
+      "Open products in Shopify",
+      "products",
+    ),
   })
 }
 
-export function summarizeProductsUnpublish(params: unknown, _ctx?: unknown, meta?: SummarizerMeta): Promise<ApprovalSummaryShape> {
+export function summarizeProductsUnpublish(
+  params: unknown,
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
   const p = isRec(params) ? params : {}
   const id = gidShort(p.id)
   const targets = publicationTargetsFromContext(meta?.context, "unpublishTargets")
@@ -1109,10 +1313,16 @@ export function summarizeProductsUnpublish(params: unknown, _ctx?: unknown, meta
     title: `Unpublish product ${title ?? id}`,
     subtitle: "Hides the listing from these sales channels; the product record is kept",
     lines,
-    links: adminLink(meta, "Open product in Shopify", "products", numericId(p.id), "Open products in Shopify", "products"),
+    links: adminLink(
+      meta,
+      "Open product in Shopify",
+      "products",
+      numericId(p.id),
+      "Open products in Shopify",
+      "products",
+    ),
   })
 }
-
 
 export function summarizeVariantsCreate(params: unknown): Promise<ApprovalSummaryShape> {
   const p = unwrapInput(params)
@@ -1133,7 +1343,11 @@ export function summarizeVariantsCreate(params: unknown): Promise<ApprovalSummar
   })
 }
 
-export function summarizeVariantsUpdate(params: unknown, _ctx?: unknown, meta?: SummarizerMeta): Promise<ApprovalSummaryShape> {
+export function summarizeVariantsUpdate(
+  params: unknown,
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
   const p = unwrapInput(params)
   const id = gidShort(p.id)
   const lines: string[] = []
@@ -1141,9 +1355,16 @@ export function summarizeVariantsUpdate(params: unknown, _ctx?: unknown, meta?: 
   if (str(p.compareAtPrice)) lines.push(`Compare-at price -> ${str(p.compareAtPrice)}`)
   if (str(p.barcode)) lines.push(`Barcode -> ${str(p.barcode)}`)
   if (str(p.inventoryPolicy)) lines.push(`Inventory policy -> ${str(p.inventoryPolicy)}`)
-  if (isRec(p.inventoryItem) && str(p.inventoryItem.sku)) lines.push(`SKU -> ${str(p.inventoryItem.sku)}`)
+  if (isRec(p.inventoryItem) && str(p.inventoryItem.sku))
+    lines.push(`SKU -> ${str(p.inventoryItem.sku)}`)
   lines.push(
-    ...describeRemainingFields(p, ["price", "compareAtPrice", "barcode", "inventoryPolicy", "inventoryItem.sku"]),
+    ...describeRemainingFields(p, [
+      "price",
+      "compareAtPrice",
+      "barcode",
+      "inventoryPolicy",
+      "inventoryItem.sku",
+    ]),
   )
   if (lines.length === 0) lines.push("Only the variant identifier is present in the payload")
 
@@ -1156,7 +1377,11 @@ export function summarizeVariantsUpdate(params: unknown, _ctx?: unknown, meta?: 
   })
 }
 
-export function summarizeVariantsDelete(params: unknown, _ctx?: unknown, meta?: SummarizerMeta): Promise<ApprovalSummaryShape> {
+export function summarizeVariantsDelete(
+  params: unknown,
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
   const p = isRec(params) ? params : {}
   const label = variantLabelFromContext(meta?.context)
   return Promise.resolve({
@@ -1179,7 +1404,9 @@ export function summarizeInventoryAdjust(params: unknown): Promise<ApprovalSumma
   if (name) lines.push(`Ledger: ${name}`)
   for (const c of changes.slice(0, 6)) {
     const delta = typeof c.delta === "number" ? c.delta : Number(c.delta ?? 0)
-    lines.push(`${delta > 0 ? "+" : ""}${delta} on item ${gidShort(c.inventoryItemId)} at location ${gidShort(c.locationId)}`)
+    lines.push(
+      `${delta > 0 ? "+" : ""}${delta} on item ${gidShort(c.inventoryItemId)} at location ${gidShort(c.locationId)}`,
+    )
   }
   if (changes.length > 6) lines.push(`...and ${changes.length - 6} more line(s)`)
 
@@ -1194,11 +1421,15 @@ export function summarizeInventoryAdjust(params: unknown): Promise<ApprovalSumma
 export function summarizeInventorySetOnHand(params: unknown): Promise<ApprovalSummaryShape> {
   const p = unwrapInput(params)
   const reason = str(p.reason) ?? "(no reason given)"
-  const changes = isArr(p.setQuantities) ? (p.setQuantities.filter(isRec) as Record<string, unknown>[]) : []
+  const changes = isArr(p.setQuantities)
+    ? (p.setQuantities.filter(isRec) as Record<string, unknown>[])
+    : []
 
   const lines: string[] = [`Reason: ${reason}`]
   for (const c of changes.slice(0, 6)) {
-    lines.push(`Set item ${gidShort(c.inventoryItemId)} at location ${gidShort(c.locationId)} to ${c.quantity ?? "?"}`)
+    lines.push(
+      `Set item ${gidShort(c.inventoryItemId)} at location ${gidShort(c.locationId)} to ${c.quantity ?? "?"}`,
+    )
   }
   if (changes.length > 6) lines.push(`...and ${changes.length - 6} more line(s)`)
 
@@ -1267,10 +1498,13 @@ export function summarizeReturnsRequest(params: unknown): Promise<ApprovalSummar
   const p = isRec(params) ? params : {}
   const input = isRec(p.input) ? p.input : {}
   const orderId = gidShort(input.orderId)
-  const items = isArr(input.returnLineItems) ? (input.returnLineItems.filter(isRec) as Record<string, unknown>[]) : []
+  const items = isArr(input.returnLineItems)
+    ? (input.returnLineItems.filter(isRec) as Record<string, unknown>[])
+    : []
 
   const lines = items.map(
-    (li) => `${li.quantity ?? "?"}x ${gidShort(li.fulfillmentLineItemId)}: ${str(li.returnReason) ?? "(no reason)"}`,
+    (li) =>
+      `${li.quantity ?? "?"}x ${gidShort(li.fulfillmentLineItemId)}: ${str(li.returnReason) ?? "(no reason)"}`,
   )
 
   return Promise.resolve({
@@ -1335,7 +1569,11 @@ export function summarizeReturnsClose(params: unknown): Promise<ApprovalSummaryS
 
 // ─── Customers ──────────────────────────────────────────────────────────────────
 
-export function summarizeCustomersUpdate(params: unknown, _ctx?: unknown, meta?: SummarizerMeta): Promise<ApprovalSummaryShape> {
+export function summarizeCustomersUpdate(
+  params: unknown,
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
   const p = unwrapInput(params)
   const id = gidShort(p.id)
   const name = [str(p.firstName), str(p.lastName)].filter(Boolean).join(" ") || null
@@ -1345,9 +1583,18 @@ export function summarizeCustomersUpdate(params: unknown, _ctx?: unknown, meta?:
   if (str(p.note)) lines.push(`Note -> ${str(p.note)}`)
   const tags = isArr(p.tags) ? p.tags.filter((t): t is string => typeof t === "string") : []
   if (tags.length > 0) lines.push(`Tags -> ${tags.join(", ")}`)
-  if (isArr(p.addresses) && p.addresses.length > 0) lines.push(`Address change(s): ${p.addresses.length}`)
+  if (isArr(p.addresses) && p.addresses.length > 0)
+    lines.push(`Address change(s): ${p.addresses.length}`)
   lines.push(
-    ...describeRemainingFields(p, ["email", "phone", "note", "tags", "addresses", "firstName", "lastName"]),
+    ...describeRemainingFields(p, [
+      "email",
+      "phone",
+      "note",
+      "tags",
+      "addresses",
+      "firstName",
+      "lastName",
+    ]),
   )
   if (lines.length === 0) lines.push("Only the customer identifier is present in the payload")
 
@@ -1360,11 +1607,21 @@ export function summarizeCustomersUpdate(params: unknown, _ctx?: unknown, meta?:
     kind: "customers_update",
     title: `Update customer ${name ?? currentName ?? id}`,
     lines,
-    links: adminLink(meta, "Open customer in Shopify", "customers", numericId(p.id), "Open customers in Shopify", "customers"),
+    links: adminLink(
+      meta,
+      "Open customer in Shopify",
+      "customers",
+      numericId(p.id),
+      "Open customers in Shopify",
+      "customers",
+    ),
   })
 }
 
-function marketingConsentLines(input: Record<string, unknown>, key: "emailMarketingConsent" | "smsMarketingConsent"): string[] {
+function marketingConsentLines(
+  input: Record<string, unknown>,
+  key: "emailMarketingConsent" | "smsMarketingConsent",
+): string[] {
   const consent = isRec(input[key]) ? (input[key] as Record<string, unknown>) : {}
   const state = str(consent.marketingState) ?? "(unspecified)"
   const optIn = str(consent.marketingOptInLevel)
@@ -1390,7 +1647,14 @@ export function summarizeCustomersEmailMarketingConsentUpdate(
     kind: "customers_email_marketing_consent_update",
     title: `Update email marketing consent for customer ${name ?? customerId}`,
     lines,
-    links: adminLink(meta, "Open customer in Shopify", "customers", numericId(p.customerId), "Open customers in Shopify", "customers"),
+    links: adminLink(
+      meta,
+      "Open customer in Shopify",
+      "customers",
+      numericId(p.customerId),
+      "Open customers in Shopify",
+      "customers",
+    ),
   })
 }
 
@@ -1411,11 +1675,22 @@ export function summarizeCustomersSmsMarketingConsentUpdate(
     kind: "customers_sms_marketing_consent_update",
     title: `Update SMS marketing consent for customer ${name ?? customerId}`,
     lines,
-    links: adminLink(meta, "Open customer in Shopify", "customers", numericId(p.customerId), "Open customers in Shopify", "customers"),
+    links: adminLink(
+      meta,
+      "Open customer in Shopify",
+      "customers",
+      numericId(p.customerId),
+      "Open customers in Shopify",
+      "customers",
+    ),
   })
 }
 
-export function summarizeCustomersTag(params: unknown, _ctx?: unknown, meta?: SummarizerMeta): Promise<ApprovalSummaryShape> {
+export function summarizeCustomersTag(
+  params: unknown,
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
   const p = isRec(params) ? params : {}
   const customerId = gidShort(p.customerId)
   const tags = isArr(p.tags) ? p.tags.filter((t): t is string => typeof t === "string") : []
@@ -1431,7 +1706,14 @@ export function summarizeCustomersTag(params: unknown, _ctx?: unknown, meta?: Su
     kind: "customers_tag",
     title: `${op === "remove" ? "Remove" : "Add"} tag${tags.length === 1 ? "" : "s"} on customer ${name ?? customerId}`,
     lines,
-    links: adminLink(meta, "Open customer in Shopify", "customers", numericId(p.customerId), "Open customers in Shopify", "customers"),
+    links: adminLink(
+      meta,
+      "Open customer in Shopify",
+      "customers",
+      numericId(p.customerId),
+      "Open customers in Shopify",
+      "customers",
+    ),
   })
 }
 
@@ -1439,11 +1721,16 @@ export function summarizeCustomersTag(params: unknown, _ctx?: unknown, meta?: Su
 
 export function summarizeMetafieldsSet(params: unknown): Promise<ApprovalSummaryShape> {
   const p = isRec(params) ? params : {}
-  const metafields = isArr(p.metafields) ? (p.metafields.filter(isRec) as Record<string, unknown>[]) : []
+  const metafields = isArr(p.metafields)
+    ? (p.metafields.filter(isRec) as Record<string, unknown>[])
+    : []
 
   const lines = metafields
     .slice(0, 6)
-    .map((m) => `${gidShort(m.ownerId)}: ${str(m.namespace)}.${str(m.key)} (${str(m.type)}) = ${str(m.value)}`)
+    .map(
+      (m) =>
+        `${gidShort(m.ownerId)}: ${str(m.namespace)}.${str(m.key)} (${str(m.type)}) = ${str(m.value)}`,
+    )
   if (metafields.length > 6) lines.push(`...and ${metafields.length - 6} more field(s)`)
 
   return Promise.resolve({

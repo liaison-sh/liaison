@@ -301,7 +301,6 @@ Rules that say which document templates a record needs (a customs declaration, a
 | `config_mail` | Add Mail app mailboxes. | `mail:accounts:admin` | Yes |
 | `config_tickets` | Add ticket inboxes and change ticket settings. | `tickets:inboxes:admin` | Yes |
 | `config_apps` | Enable apps, set their config, settings and connections. | `kernel:apps:admin` | Yes |
-| `config_apiConnectors` | Add or change API connections. | `api-connector:admin` | Yes |
 | `config_knowledge` | Add knowledge collections and documents. | `knowledge:documents:create` | Yes |
 | `config_agents` | Add or change role agents. | `kernel:agents:admin` | Yes |
 | `config_invoicing` | Change invoicing issuers, tax regimes and e-invoicing. | `invoicing:settings:write` | Yes |
@@ -401,7 +400,7 @@ Gmail, Google Calendar, Shopify and the other apps that sign in at a provider ar
 - A connection the organization has switched off (for example **Gmail mailboxes** off in Settings › Apps › Mail) gets no Connect card: the agent first proposes the configuration change that turns it on. A card shown before the switch went off says so when you select Connect, and who can turn it on.
 - Each card is completed only by the account its own sign-in connected. Connecting your own account in Settings also completes your waiting personal card. Another admin connecting a different shared inbox in Settings does not complete a card for a shared account.
 - Two people in one conversation who each ask to connect their own account each get their own card.
-- A Google Drive connected with a personal Google account sees only the files the person picks. The agent puts the address on the Drive Connect card (`identifier`), which decides the mode. Its Connect card then shows **Choose files for Liaison**, and the agent can show the same card later with `drive_picker`, for example when a file you name cannot be found. The agent posts one card per message: a mailbox card first, the Drive Connect card in a later message once the mailbox is connected, and the picker only once Drive is connected. See [Google Drive](../apps/google-drive.md#choose-the-files-liaison-sees).
+- A Google Drive connected with a personal Google account sees only the files the person picks. The agent puts the address on the Drive Connect card (`identifier`), which decides the mode. Once Drive is connected, the agent shows an **Open** button to Google's picker with `google-drive__drive_picker`, for example when a file you name cannot be found. The agent posts one card per message: a mailbox card first, the Drive Connect card in a later message once the mailbox is connected, and the picker only once Drive is connected. See [Google Drive](../apps/google-drive.md#choose-the-files-liaison-sees).
 
 ## Import from another tool
 

@@ -9,11 +9,11 @@
 // string), parsed back to bigint only where a computation needs it.
 
 import type { StepChunkResult, StepsClient } from "@liaison/app-sdk"
-import { classifyAccount, computePnlSummary, type TbLine } from "./pnl"
-import type { Filter, PnlClass } from "./types"
 import type { PennylaneClientLike, PennylaneLogger, PennylaneToolCtx } from "./ctx"
 import { getClient, PennylaneConnectionError } from "./lib/get-client"
 import { PennylaneRateLimitError } from "./lib/pennylane-client"
+import { classifyAccount, computePnlSummary, type TbLine } from "./pnl"
+import type { Filter, PnlClass } from "./types"
 
 /**
  * Hard cap on pages a single `listAll` aggregation will follow. At the client's
@@ -113,9 +113,7 @@ export interface ConnectionScope {
 }
 
 /** The connect-probe verdict recorded at connect time, or null when unset. */
-export async function readConnectionScope(
-  ctx: PennylaneToolCtx,
-): Promise<ConnectionScope | null> {
+export async function readConnectionScope(ctx: PennylaneToolCtx): Promise<ConnectionScope | null> {
   const raw = await readAppConfig(ctx, "connection_scope")
   return raw ? (JSON.parse(raw) as ConnectionScope) : null
 }
@@ -191,7 +189,10 @@ export function parsePeriod(period: string | undefined): PeriodWindow | null {
   if (m) {
     const y = Number(m[1])
     const q = Number(m[2])
-    return { period_start: `${m[1]}-${String(q * 3 - 2).padStart(2, "0")}-01`, period_end: monthEnd(y, q * 3) }
+    return {
+      period_start: `${m[1]}-${String(q * 3 - 2).padStart(2, "0")}-01`,
+      period_end: monthEnd(y, q * 3),
+    }
   }
   m = /^(\d{4})-(\d{2})$/.exec(p)
   if (m && Number(m[2]) >= 1 && Number(m[2]) <= 12) {
@@ -262,7 +263,10 @@ export interface RawTrialBalanceLine {
  * side, so every P&L bucket reads positive in normal operation: credits − debits for a
  * revenue account, debits − credits for every other account (costs, balance sheet).
  */
-export function normalizeTbLine(raw: RawTrialBalanceLine, mapping: Record<string, PnlClass>): TbLine {
+export function normalizeTbLine(
+  raw: RawTrialBalanceLine,
+  mapping: Record<string, PnlClass>,
+): TbLine {
   const account_code = String(raw.number ?? raw.account_code ?? "")
   let balance_minor: bigint
   if (raw.debits !== undefined || raw.credits !== undefined) {
@@ -296,11 +300,7 @@ function toMinor(v: number | string | undefined): bigint {
 }
 
 function isApiError403(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    (err as { status?: number }).status === 403
-  )
+  return typeof err === "object" && err !== null && (err as { status?: number }).status === 403
 }
 
 /** The step the refresh runs as (`ctx.steps`): its cursor carries the partial totals. */
@@ -421,7 +421,10 @@ export async function refreshSnapshotsJob(
           }
           const step = advance({ ...c, pnl }, page, "/trial_balance", page.items.length, ctx.logger)
           c = step.more ? step.cursor : { ...step.cursor, phase: "bank" }
-          if (c.phase === "bank" && (await readConnectionScope(ctx))?.cash_status === "unavailable") {
+          if (
+            c.phase === "bank" &&
+            (await readConnectionScope(ctx))?.cash_status === "unavailable"
+          ) {
             c = { ...c, phase: "write", cashStatus: "unavailable" }
           }
           continue
@@ -443,7 +446,13 @@ export async function refreshSnapshotsJob(
           const cur = a.currency ?? "EUR"
           totals[cur] = String(BigInt(totals[cur] ?? "0") + toMinor(a.balance))
         }
-        const step = advance({ ...c, totals }, page, "/bank_accounts", page.items.length, ctx.logger)
+        const step = advance(
+          { ...c, totals },
+          page,
+          "/bank_accounts",
+          page.items.length,
+          ctx.logger,
+        )
         c = step.more ? step.cursor : { ...step.cursor, phase: "write" }
       }
     } catch (err) {
@@ -488,4 +497,3 @@ async function upsertSingleton(
   if (rows[0]) await ctx.db.update(entity, rows[0].id, data)
   else await ctx.db.insert(entity, data)
 }
-

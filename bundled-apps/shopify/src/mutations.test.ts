@@ -9,35 +9,45 @@
 // Plus a coverage spot-check on draft-orders, fulfillments, and customer
 // consent so a future bundle-shape regression bites here too.
 import { describe, expect, it } from "bun:test"
-import type { AppContext } from "@liaison/app-sdk"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import type { AppContext } from "@liaison/app-sdk"
 import * as handlers from "./handlers"
 import {
   channelName,
   createEnforcingEmit,
-  loadDeclaredEmits,
   type RecordedEmit as EmittedEvent,
+  loadDeclaredEmits,
 } from "./lib/emit.testutil"
 import {
   canonicaliseBasicCodeDiscount,
-  discounts_create_preflight,
   canonicaliseBasicCodeDiscountPartial,
   canonicalizeProductInput,
   customers_tag,
+  customers_tag_preflight,
   customers_update,
-  discounts_create,
+  customers_update_preflight,
   discounts_bulk_create,
+  discounts_create,
+  discounts_create_preflight,
+  discounts_delete_preflight,
   discounts_update,
+  discounts_update_preflight,
   draft_orders_complete,
   draft_orders_create,
+  draft_orders_create_preflight,
   draft_orders_delete,
+  draft_orders_delete_preflight,
   draft_orders_send,
   draft_orders_update,
+  fulfillments_cancel_preflight,
   fulfillments_create,
+  fulfillments_create_preflight,
   fulfillments_update_tracking,
   inventory_adjust,
+  inventory_adjust_preflight,
   inventory_set_on_hand,
+  inventory_set_on_hand_preflight,
   metafields_delete,
   metafields_set,
   normalizeDraftOrderInput,
@@ -45,45 +55,35 @@ import {
   normalizeInventoryAdjustInput,
   normalizeInventorySetOnHandInput,
   normalizeTrackingInfo,
-  withApprovalProtocol,
   order_cancel,
+  order_cancel_preflight,
   order_note_set,
   order_update,
+  order_update_preflight,
   products_create,
+  products_delete_preflight,
   products_merge,
+  products_merge_preflight,
   products_publication_targets,
   products_publish,
+  products_publish_preflight,
   products_unpublish,
+  products_unpublish_preflight,
   products_update,
+  products_update_preflight,
   refunds_create,
   refunds_create_preflight,
-  products_merge_preflight,
-  draft_orders_create_preflight,
-  fulfillments_create_preflight,
-  variants_update_preflight,
-  variants_delete_preflight,
-  order_update_preflight,
-  products_update_preflight,
-  inventory_adjust_preflight,
-  products_unpublish_preflight,
-  products_delete_preflight,
-  order_cancel_preflight,
-  draft_orders_delete_preflight,
-  discounts_delete_preflight,
-  discounts_update_preflight,
-  returns_approve_preflight,
-  returns_decline_preflight,
-  returns_close_preflight,
-  returns_refund_preflight,
-  fulfillments_cancel_preflight,
-  inventory_set_on_hand_preflight,
-  customers_update_preflight,
-  customers_tag_preflight,
-  products_publish_preflight,
   resolveMutationInput,
+  returns_approve_preflight,
+  returns_close_preflight,
   returns_decline,
+  returns_decline_preflight,
+  returns_refund_preflight,
   variants_create,
+  variants_delete_preflight,
   variants_update,
+  variants_update_preflight,
+  withApprovalProtocol,
 } from "./mutations"
 
 describe("products_create — accepts bundled variant SKU/price (2-step create + default-variant set)", () => {
@@ -93,18 +93,48 @@ describe("products_create — accepts bundled variant SKU/price (2-step create +
     // applies the SKU/price to the auto-created default variant.
     const { ctx, calls } = makeCtx({
       fetchResponses: [
-        { data: { productCreate: { product: { id: "gid://shopify/Product/1", title: "Kestrel 8", status: "DRAFT", variants: { edges: [{ node: { id: "gid://shopify/ProductVariant/9" } }] } }, userErrors: [] } } },
-        { data: { productVariantsBulkUpdate: { productVariants: [{ id: "gid://shopify/ProductVariant/9", sku: "RAL-48", price: "749.00" }], userErrors: [] } } },
+        {
+          data: {
+            productCreate: {
+              product: {
+                id: "gid://shopify/Product/1",
+                title: "Kestrel 8",
+                status: "DRAFT",
+                variants: { edges: [{ node: { id: "gid://shopify/ProductVariant/9" } }] },
+              },
+              userErrors: [],
+            },
+          },
+        },
+        {
+          data: {
+            productVariantsBulkUpdate: {
+              productVariants: [
+                { id: "gid://shopify/ProductVariant/9", sku: "RAL-48", price: "749.00" },
+              ],
+              userErrors: [],
+            },
+          },
+        },
       ],
     })
-    await products_create({ input: { title: "Kestrel 8", status: "DRAFT", variants: [{ sku: "RAL-48", price: 749 }] } }, ctx)
+    await products_create(
+      { input: { title: "Kestrel 8", status: "DRAFT", variants: [{ sku: "RAL-48", price: 749 }] } },
+      ctx,
+    )
     // 1st call: productCreate with NO variants field on the ProductInput.
-    const create = JSON.parse(calls[0]!.body) as { query: string; variables: { input: Record<string, unknown> } }
+    const create = JSON.parse(calls[0]!.body) as {
+      query: string
+      variables: { input: Record<string, unknown> }
+    }
     expect(create.query).toContain("productCreate")
     expect(create.variables.input.variants).toBeUndefined()
     expect(create.variables.input.title).toBe("Kestrel 8")
     // 2nd call: productVariantsBulkUpdate sets the default variant's price + sku (under inventoryItem).
-    const upd = JSON.parse(calls[1]!.body) as { query: string; variables: { productId: string; variants: Array<Record<string, unknown>> } }
+    const upd = JSON.parse(calls[1]!.body) as {
+      query: string
+      variables: { productId: string; variants: Array<Record<string, unknown>> }
+    }
     expect(upd.query).toContain("productVariantsBulkUpdate")
     expect(upd.variables.productId).toBe("gid://shopify/Product/1")
     expect(upd.variables.variants[0]!.id).toBe("gid://shopify/ProductVariant/9")
@@ -115,7 +145,19 @@ describe("products_create — accepts bundled variant SKU/price (2-step create +
   it("does only the productCreate when no variant data is bundled", async () => {
     const { ctx, calls } = makeCtx({
       fetchResponses: [
-        { data: { productCreate: { product: { id: "gid://shopify/Product/2", title: "Plain", status: "ACTIVE", variants: { edges: [{ node: { id: "gid://shopify/ProductVariant/22" } }] } }, userErrors: [] } } },
+        {
+          data: {
+            productCreate: {
+              product: {
+                id: "gid://shopify/Product/2",
+                title: "Plain",
+                status: "ACTIVE",
+                variants: { edges: [{ node: { id: "gid://shopify/ProductVariant/22" } }] },
+              },
+              userErrors: [],
+            },
+          },
+        },
       ],
     })
     await products_create({ input: { title: "Plain", status: "ACTIVE" } }, ctx)
@@ -158,7 +200,16 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
                 selectedOptions: [{ name: "Title", value: "Default Title" }],
                 inventoryItem: {
                   id: SURVIVOR_INV,
-                  inventoryLevels: { edges: [{ node: { location: { id: LOC }, quantities: [{ name: "on_hand", quantity: 12 }] } }] },
+                  inventoryLevels: {
+                    edges: [
+                      {
+                        node: {
+                          location: { id: LOC },
+                          quantities: [{ name: "on_hand", quantity: 12 }],
+                        },
+                      },
+                    ],
+                  },
                 },
               },
             },
@@ -187,7 +238,16 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
                 selectedOptions: [{ name: "Title", value: "Default Title" }],
                 inventoryItem: {
                   id: "gid://shopify/InventoryItem/9002",
-                  inventoryLevels: { edges: [{ node: { location: { id: LOC }, quantities: [{ name: "on_hand", quantity: 5 }] } }] },
+                  inventoryLevels: {
+                    edges: [
+                      {
+                        node: {
+                          location: { id: LOC },
+                          quantities: [{ name: "on_hand", quantity: 5 }],
+                        },
+                      },
+                    ],
+                  },
                 },
               },
             },
@@ -204,10 +264,36 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
         singleDefaultSurvivorRead,
         singleDefaultDuplicateRead,
         // inventory_adjust first reads the survivor's live on_hand to fill changeFromQuantity…
-        { data: { inventoryItem: { inventoryLevel: { quantities: [{ name: "on_hand", quantity: 12 }] } } } },
+        {
+          data: {
+            inventoryItem: { inventoryLevel: { quantities: [{ name: "on_hand", quantity: 12 }] } },
+          },
+        },
         // …then the adjust itself (delta +5).
-        { data: { inventoryAdjustQuantities: { inventoryAdjustmentGroup: { id: "gid://shopify/InventoryAdjustmentGroup/1", reason: "movement_created", changes: [{ delta: 5, name: "on_hand", location: { id: LOC } }] }, userErrors: [] } } },
-        { data: { urlRedirectCreate: { urlRedirect: { id: "gid://shopify/UrlRedirect/77", path: "/products/kestrel-6-recorder-1", target: "/products/kestrel-6-recorder" }, userErrors: [] } } },
+        {
+          data: {
+            inventoryAdjustQuantities: {
+              inventoryAdjustmentGroup: {
+                id: "gid://shopify/InventoryAdjustmentGroup/1",
+                reason: "movement_created",
+                changes: [{ delta: 5, name: "on_hand", location: { id: LOC } }],
+              },
+              userErrors: [],
+            },
+          },
+        },
+        {
+          data: {
+            urlRedirectCreate: {
+              urlRedirect: {
+                id: "gid://shopify/UrlRedirect/77",
+                path: "/products/kestrel-6-recorder-1",
+                target: "/products/kestrel-6-recorder",
+              },
+              userErrors: [],
+            },
+          },
+        },
         { data: { productDelete: { deletedProductId: DUPLICATE, userErrors: [] } } },
       ],
     })
@@ -220,12 +306,30 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
 
     // The defect guard: NO productVariantsBulkCreate is ever sent for a single-default survivor.
     const bulkCreateCall = calls.find((c) => c.body.includes("productVariantsBulkCreate"))
-    expect(bulkCreateCall, "single-default survivor must NOT bulk-create a 2nd variant (the Default-Title 422)").toBeUndefined()
+    expect(
+      bulkCreateCall,
+      "single-default survivor must NOT bulk-create a 2nd variant (the Default-Title 422)",
+    ).toBeUndefined()
 
     // The consolidation: inventoryAdjustQuantities adds the duplicate's +5 on_hand onto the survivor item @LOC.
     const adjustCall = calls.find((c) => c.body.includes("inventoryAdjustQuantities"))
-    expect(adjustCall, "must consolidate the duplicate's on-hand via inventoryAdjustQuantities").toBeTruthy()
-    const adjust = JSON.parse(adjustCall!.body) as { variables: { input: { name: string; changes: Array<{ inventoryItemId: string; locationId: string; delta: number; changeFromQuantity?: number }> } } }
+    expect(
+      adjustCall,
+      "must consolidate the duplicate's on-hand via inventoryAdjustQuantities",
+    ).toBeTruthy()
+    const adjust = JSON.parse(adjustCall!.body) as {
+      variables: {
+        input: {
+          name: string
+          changes: Array<{
+            inventoryItemId: string
+            locationId: string
+            delta: number
+            changeFromQuantity?: number
+          }>
+        }
+      }
+    }
     expect(adjust.variables.input.name).toBe("on_hand")
     expect(adjust.variables.input.changes[0]!.inventoryItemId).toBe(SURVIVOR_INV)
     expect(adjust.variables.input.changes[0]!.locationId).toBe(LOC)
@@ -233,17 +337,24 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
     expect(adjust.variables.input.changes[0]!.changeFromQuantity).toBe(12) // filled from the live survivor on_hand
 
     // Redirect + delete still happen.
-    const redirect = JSON.parse(calls.find((c) => c.body.includes("urlRedirectCreate"))!.body) as { variables: { urlRedirect: { path: string; target: string } } }
+    const redirect = JSON.parse(calls.find((c) => c.body.includes("urlRedirectCreate"))!.body) as {
+      variables: { urlRedirect: { path: string; target: string } }
+    }
     expect(redirect.variables.urlRedirect.path).toBe("/products/kestrel-6-recorder-1")
     expect(redirect.variables.urlRedirect.target).toBe("/products/kestrel-6-recorder")
-    const del = JSON.parse(calls.find((c) => c.body.includes("productDelete"))!.body) as { variables: { input: { id: string } } }
+    const del = JSON.parse(calls.find((c) => c.body.includes("productDelete"))!.body) as {
+      variables: { input: { id: string } }
+    }
     expect(del.variables.input.id).toBe(DUPLICATE)
 
     // Result + event report the consolidation, not a fabricated reassigned variant.
     expect(out.deletedProductId).toBe(DUPLICATE)
     expect(out.variantsReassigned).toHaveLength(0)
     expect(out.variantsConsolidated).toEqual([{ sku: "RAL-44-B", onHandAdded: 5 }])
-    expect(out.redirect).toEqual({ path: "/products/kestrel-6-recorder-1", target: "/products/kestrel-6-recorder" })
+    expect(out.redirect).toEqual({
+      path: "/products/kestrel-6-recorder-1",
+      target: "/products/kestrel-6-recorder",
+    })
     const merged = events.find((e) => e.entity === "product" && e.action === "merged")
     expect(merged, "products_merge must emit product:merged").toBeTruthy()
     expect((merged!.data as { survivor: { id: string } }).survivor.id).toBe(SURVIVOR)
@@ -270,7 +381,19 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
                   price: "699.00",
                   inventoryQuantity: 12,
                   selectedOptions: [{ name: "Color", value: "Black" }],
-                  inventoryItem: { id: SURVIVOR_INV, inventoryLevels: { edges: [{ node: { location: { id: LOC }, quantities: [{ name: "on_hand", quantity: 12 }] } }] } },
+                  inventoryItem: {
+                    id: SURVIVOR_INV,
+                    inventoryLevels: {
+                      edges: [
+                        {
+                          node: {
+                            location: { id: LOC },
+                            quantities: [{ name: "on_hand", quantity: 12 }],
+                          },
+                        },
+                      ],
+                    },
+                  },
                 },
               },
             ],
@@ -295,7 +418,19 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
                   price: "699.00",
                   inventoryQuantity: 5,
                   selectedOptions: [{ name: "Color", value: "Silver" }],
-                  inventoryItem: { id: "gid://shopify/InventoryItem/9002", inventoryLevels: { edges: [{ node: { location: { id: LOC }, quantities: [{ name: "on_hand", quantity: 5 }] } }] } },
+                  inventoryItem: {
+                    id: "gid://shopify/InventoryItem/9002",
+                    inventoryLevels: {
+                      edges: [
+                        {
+                          node: {
+                            location: { id: LOC },
+                            quantities: [{ name: "on_hand", quantity: 5 }],
+                          },
+                        },
+                      ],
+                    },
+                  },
                 },
               },
             ],
@@ -308,8 +443,28 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
       fetchResponses: [
         multiSurvivorRead,
         multiDuplicateRead,
-        { data: { productVariantsBulkCreate: { productVariants: [{ id: "gid://shopify/ProductVariant/3001", sku: "RAL-44-SLV", price: "699.00" }], userErrors: [] } } },
-        { data: { urlRedirectCreate: { urlRedirect: { id: "gid://shopify/UrlRedirect/77", path: "/products/kestrel-6-recorder-1", target: "/products/kestrel-6-recorder" }, userErrors: [] } } },
+        {
+          data: {
+            productVariantsBulkCreate: {
+              productVariants: [
+                { id: "gid://shopify/ProductVariant/3001", sku: "RAL-44-SLV", price: "699.00" },
+              ],
+              userErrors: [],
+            },
+          },
+        },
+        {
+          data: {
+            urlRedirectCreate: {
+              urlRedirect: {
+                id: "gid://shopify/UrlRedirect/77",
+                path: "/products/kestrel-6-recorder-1",
+                target: "/products/kestrel-6-recorder",
+              },
+              userErrors: [],
+            },
+          },
+        },
         { data: { productDelete: { deletedProductId: DUPLICATE, userErrors: [] } } },
       ],
     })
@@ -317,11 +472,23 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
       variantsReassigned: { sku: string }[]
       variantsConsolidated: { sku: string }[]
     }
-    const create = JSON.parse(calls.find((c) => c.body.includes("productVariantsBulkCreate"))!.body) as { variables: { productId: string; variants: Array<{ inventoryItem?: { sku?: string }; optionValues?: Array<{ name: string; optionName: string }> }> } }
+    const create = JSON.parse(
+      calls.find((c) => c.body.includes("productVariantsBulkCreate"))!.body,
+    ) as {
+      variables: {
+        productId: string
+        variants: Array<{
+          inventoryItem?: { sku?: string }
+          optionValues?: Array<{ name: string; optionName: string }>
+        }>
+      }
+    }
     expect(create.variables.productId).toBe(SURVIVOR)
     expect(create.variables.variants[0]!.inventoryItem?.sku).toBe("RAL-44-SLV")
     // The distinct optionValue (Color=Silver) is carried so the new variant doesn't collide with Black.
-    expect(create.variables.variants[0]!.optionValues).toEqual([{ name: "Silver", optionName: "Color" }])
+    expect(create.variables.variants[0]!.optionValues).toEqual([
+      { name: "Silver", optionName: "Color" },
+    ])
     expect(out.variantsReassigned.map((v) => v.sku)).toEqual(["RAL-44-SLV"])
     expect(out.variantsConsolidated).toHaveLength(0)
   })
@@ -336,9 +503,9 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
 
   it("requires both ids — a missing duplicateId throws before touching Shopify", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [], grantedOAuthScopes: MERGE_GRANT })
-    await expect(
-      products_merge({ survivorId: SURVIVOR }, ctx),
-    ).rejects.toThrow(/duplicate product id is required/i)
+    await expect(products_merge({ survivorId: SURVIVOR }, ctx)).rejects.toThrow(
+      /duplicate product id is required/i,
+    )
     expect(calls).toHaveLength(0)
   })
 
@@ -350,9 +517,30 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
       fetchResponses: [
         singleDefaultSurvivorRead,
         singleDefaultDuplicateRead,
-        { data: { inventoryItem: { inventoryLevel: { quantities: [{ name: "on_hand", quantity: 12 }] } } } },
-        { data: { inventoryAdjustQuantities: { inventoryAdjustmentGroup: { id: "gid://shopify/InventoryAdjustmentGroup/1", changes: [] }, userErrors: [] } } },
-        { data: { urlRedirectCreate: { urlRedirect: null, userErrors: [{ field: ["path"], message: "Path is invalid" }] } } },
+        {
+          data: {
+            inventoryItem: { inventoryLevel: { quantities: [{ name: "on_hand", quantity: 12 }] } },
+          },
+        },
+        {
+          data: {
+            inventoryAdjustQuantities: {
+              inventoryAdjustmentGroup: {
+                id: "gid://shopify/InventoryAdjustmentGroup/1",
+                changes: [],
+              },
+              userErrors: [],
+            },
+          },
+        },
+        {
+          data: {
+            urlRedirectCreate: {
+              urlRedirect: null,
+              userErrors: [{ field: ["path"], message: "Path is invalid" }],
+            },
+          },
+        },
       ],
     })
     await expect(
@@ -368,20 +556,66 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
       fetchResponses: [
         singleDefaultSurvivorRead,
         singleDefaultDuplicateRead,
-        { data: { inventoryItem: { inventoryLevel: { quantities: [{ name: "on_hand", quantity: 12 }] } } } },
-        { data: { inventoryAdjustQuantities: { inventoryAdjustmentGroup: { id: "gid://shopify/InventoryAdjustmentGroup/1", changes: [] }, userErrors: [] } } },
+        {
+          data: {
+            inventoryItem: { inventoryLevel: { quantities: [{ name: "on_hand", quantity: 12 }] } },
+          },
+        },
+        {
+          data: {
+            inventoryAdjustQuantities: {
+              inventoryAdjustmentGroup: {
+                id: "gid://shopify/InventoryAdjustmentGroup/1",
+                changes: [],
+              },
+              userErrors: [],
+            },
+          },
+        },
         // create reports the path is already taken…
-        { data: { urlRedirectCreate: { urlRedirect: null, userErrors: [{ field: ["path"], message: "Path has already been taken" }] } } },
+        {
+          data: {
+            urlRedirectCreate: {
+              urlRedirect: null,
+              userErrors: [{ field: ["path"], message: "Path has already been taken" }],
+            },
+          },
+        },
         // …the existing redirect ALREADY targets the survivor → reconcile to success, no update needed.
-        { data: { urlRedirects: { edges: [{ node: { id: "gid://shopify/UrlRedirect/55", path: "/products/kestrel-6-recorder-1", target: "/products/kestrel-6-recorder" } }] } } },
+        {
+          data: {
+            urlRedirects: {
+              edges: [
+                {
+                  node: {
+                    id: "gid://shopify/UrlRedirect/55",
+                    path: "/products/kestrel-6-recorder-1",
+                    target: "/products/kestrel-6-recorder",
+                  },
+                },
+              ],
+            },
+          },
+        },
         { data: { productDelete: { deletedProductId: DUPLICATE, userErrors: [] } } },
       ],
     })
-    const out = (await products_merge({ survivorId: SURVIVOR, duplicateId: DUPLICATE }, ctx)) as { redirect: { path: string; target: string } | null }
+    const out = (await products_merge({ survivorId: SURVIVOR, duplicateId: DUPLICATE }, ctx)) as {
+      redirect: { path: string; target: string } | null
+    }
     // No urlRedirectUpdate is sent (target already correct), and the merge completes through to delete.
-    expect(calls.find((c) => c.body.includes("urlRedirectUpdate")), "no update when the redirect already targets the survivor").toBeUndefined()
-    expect(calls.find((c) => c.body.includes("productDelete")), "merge proceeds to delete the duplicate").toBeTruthy()
-    expect(out.redirect).toEqual({ path: "/products/kestrel-6-recorder-1", target: "/products/kestrel-6-recorder" })
+    expect(
+      calls.find((c) => c.body.includes("urlRedirectUpdate")),
+      "no update when the redirect already targets the survivor",
+    ).toBeUndefined()
+    expect(
+      calls.find((c) => c.body.includes("productDelete")),
+      "merge proceeds to delete the duplicate",
+    ).toBeTruthy()
+    expect(out.redirect).toEqual({
+      path: "/products/kestrel-6-recorder-1",
+      target: "/products/kestrel-6-recorder",
+    })
   })
 
   it("redirect leg REPOINTS a stale 'already taken' redirect that targets the wrong product onto the survivor", async () => {
@@ -390,17 +624,65 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
       fetchResponses: [
         singleDefaultSurvivorRead,
         singleDefaultDuplicateRead,
-        { data: { inventoryItem: { inventoryLevel: { quantities: [{ name: "on_hand", quantity: 12 }] } } } },
-        { data: { inventoryAdjustQuantities: { inventoryAdjustmentGroup: { id: "gid://shopify/InventoryAdjustmentGroup/1", changes: [] }, userErrors: [] } } },
-        { data: { urlRedirectCreate: { urlRedirect: null, userErrors: [{ field: ["path"], message: "Path has already been taken" }] } } },
+        {
+          data: {
+            inventoryItem: { inventoryLevel: { quantities: [{ name: "on_hand", quantity: 12 }] } },
+          },
+        },
+        {
+          data: {
+            inventoryAdjustQuantities: {
+              inventoryAdjustmentGroup: {
+                id: "gid://shopify/InventoryAdjustmentGroup/1",
+                changes: [],
+              },
+              userErrors: [],
+            },
+          },
+        },
+        {
+          data: {
+            urlRedirectCreate: {
+              urlRedirect: null,
+              userErrors: [{ field: ["path"], message: "Path has already been taken" }],
+            },
+          },
+        },
         // the existing redirect points SOMEWHERE ELSE → must be updated to the survivor.
-        { data: { urlRedirects: { edges: [{ node: { id: "gid://shopify/UrlRedirect/55", path: "/products/kestrel-6-recorder-1", target: "/products/some-old-product" } }] } } },
-        { data: { urlRedirectUpdate: { urlRedirect: { id: "gid://shopify/UrlRedirect/55", path: "/products/kestrel-6-recorder-1", target: "/products/kestrel-6-recorder" }, userErrors: [] } } },
+        {
+          data: {
+            urlRedirects: {
+              edges: [
+                {
+                  node: {
+                    id: "gid://shopify/UrlRedirect/55",
+                    path: "/products/kestrel-6-recorder-1",
+                    target: "/products/some-old-product",
+                  },
+                },
+              ],
+            },
+          },
+        },
+        {
+          data: {
+            urlRedirectUpdate: {
+              urlRedirect: {
+                id: "gid://shopify/UrlRedirect/55",
+                path: "/products/kestrel-6-recorder-1",
+                target: "/products/kestrel-6-recorder",
+              },
+              userErrors: [],
+            },
+          },
+        },
         { data: { productDelete: { deletedProductId: DUPLICATE, userErrors: [] } } },
       ],
     })
     await products_merge({ survivorId: SURVIVOR, duplicateId: DUPLICATE }, ctx)
-    const upd = JSON.parse(calls.find((c) => c.body.includes("urlRedirectUpdate"))!.body) as { variables: { id: string; urlRedirect: { target: string } } }
+    const upd = JSON.parse(calls.find((c) => c.body.includes("urlRedirectUpdate"))!.body) as {
+      variables: { id: string; urlRedirect: { target: string } }
+    }
     expect(upd.variables.id).toBe("gid://shopify/UrlRedirect/55")
     expect(upd.variables.urlRedirect.target).toBe("/products/kestrel-6-recorder")
   })
@@ -416,7 +698,9 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
         ...(grant ? { grantedOAuthScopes: [...grant] } : {}),
         fetchResponses: [singleDefaultSurvivorRead, singleDefaultDuplicateRead],
       })
-      await expect(products_merge({ survivorId: SURVIVOR, duplicateId: DUPLICATE }, ctx)).rejects.toMatchObject({
+      await expect(
+        products_merge({ survivorId: SURVIVOR, duplicateId: DUPLICATE }, ctx),
+      ).rejects.toMatchObject({
         code: "MISSING_SHOPIFY_SCOPE",
       })
       expect(calls).toHaveLength(2) // the two product reads, no mutation
@@ -426,9 +710,14 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
         ...(grant ? { grantedOAuthScopes: [...grant] } : {}),
         fetchResponses: [singleDefaultSurvivorRead, singleDefaultDuplicateRead],
       })
-      const pre = await products_merge_preflight({ survivorId: SURVIVOR, duplicateId: DUPLICATE }, staged.ctx)
+      const pre = await products_merge_preflight(
+        { survivorId: SURVIVOR, duplicateId: DUPLICATE },
+        staged.ctx,
+      )
       expect(pre).toMatchObject({ error: { code: "MISSING_SHOPIFY_SCOPE" } })
-      expect((pre as { error: { message: string } }).error.message).toContain("write_online_store_navigation")
+      expect((pre as { error: { message: string } }).error.message).toContain(
+        "write_online_store_navigation",
+      )
     })
   }
 
@@ -439,7 +728,9 @@ describe("products_merge — synthetic gated merge: consolidate/reassign + redir
       grantedOAuthScopes: ["write_products", "write_inventory"],
       fetchResponses: [singleDefaultSurvivorRead, noHandle],
     })
-    expect(await products_merge_preflight({ survivorId: SURVIVOR, duplicateId: DUPLICATE }, ctx)).toEqual({ ok: true })
+    expect(
+      await products_merge_preflight({ survivorId: SURVIVOR, duplicateId: DUPLICATE }, ctx),
+    ).toEqual({ ok: true })
   })
 })
 
@@ -448,11 +739,32 @@ describe("variants_* use the API-2026 productVariantsBulk* mutations", () => {
     // API 2026-01 removed single productVariantCreate → bulk family (productId arg + variants array).
     const { ctx, calls } = makeCtx({
       fetchResponses: [
-        { data: { productVariantsBulkCreate: { productVariants: [{ id: "gid://shopify/ProductVariant/9", sku: "RAL-48", price: "749.00" }], userErrors: [] } } },
+        {
+          data: {
+            productVariantsBulkCreate: {
+              productVariants: [
+                { id: "gid://shopify/ProductVariant/9", sku: "RAL-48", price: "749.00" },
+              ],
+              userErrors: [],
+            },
+          },
+        },
       ],
     })
-    await variants_create({ input: { productId: "gid://shopify/Product/1", price: "749.00", inventoryItem: { sku: "RAL-48" } } }, ctx)
-    const body = JSON.parse(calls[0]!.body) as { query: string; variables: { productId: string; variants: Array<Record<string, unknown>> } }
+    await variants_create(
+      {
+        input: {
+          productId: "gid://shopify/Product/1",
+          price: "749.00",
+          inventoryItem: { sku: "RAL-48" },
+        },
+      },
+      ctx,
+    )
+    const body = JSON.parse(calls[0]!.body) as {
+      query: string
+      variables: { productId: string; variants: Array<Record<string, unknown>> }
+    }
     expect(body.query).toContain("productVariantsBulkCreate")
     expect(body.variables.productId).toBe("gid://shopify/Product/1")
     expect(body.variables.variants).toHaveLength(1)
@@ -464,11 +776,21 @@ describe("variants_* use the API-2026 productVariantsBulk* mutations", () => {
     const { ctx, calls } = makeCtx({
       fetchResponses: [
         { data: { productVariant: { product: { id: "gid://shopify/Product/7" } } } }, // resolveProductIdForVariant
-        { data: { productVariantsBulkUpdate: { productVariants: [{ id: "gid://shopify/ProductVariant/9", sku: "X", price: "5.00" }], userErrors: [] } } },
+        {
+          data: {
+            productVariantsBulkUpdate: {
+              productVariants: [{ id: "gid://shopify/ProductVariant/9", sku: "X", price: "5.00" }],
+              userErrors: [],
+            },
+          },
+        },
       ],
     })
     await variants_update({ input: { id: "gid://shopify/ProductVariant/9", price: "5.00" } }, ctx)
-    const update = JSON.parse(calls[1]!.body) as { query: string; variables: { productId: string; variants: Array<Record<string, unknown>>; key?: unknown } }
+    const update = JSON.parse(calls[1]!.body) as {
+      query: string
+      variables: { productId: string; variants: Array<Record<string, unknown>>; key?: unknown }
+    }
     expect(update.query).toContain("productVariantsBulkUpdate")
     expect(update.variables.productId).toBe("gid://shopify/Product/7") // resolved from the variant
     expect(update.variables.variants[0]!.id).toBe("gid://shopify/ProductVariant/9")
@@ -485,11 +807,25 @@ describe("variants_* use the API-2026 productVariantsBulk* mutations", () => {
     const { ctx, calls } = makeCtx({
       fetchResponses: [
         { data: { productVariant: { product: { id: "gid://shopify/Product/7" } } } }, // resolveProductIdForVariant
-        { data: { productVariantsBulkUpdate: { productVariants: [{ id: "gid://shopify/ProductVariant/9", sku: "RAL-44", price: "699.00" }], userErrors: [] } } },
+        {
+          data: {
+            productVariantsBulkUpdate: {
+              productVariants: [
+                { id: "gid://shopify/ProductVariant/9", sku: "RAL-44", price: "699.00" },
+              ],
+              userErrors: [],
+            },
+          },
+        },
       ],
     })
-    await variants_update({ input: { id: "gid://shopify/ProductVariant/9", sku: "RAL-44", price: "699.00" } }, ctx)
-    const update = JSON.parse(calls[1]!.body) as { variables: { variants: Array<Record<string, unknown>> } }
+    await variants_update(
+      { input: { id: "gid://shopify/ProductVariant/9", sku: "RAL-44", price: "699.00" } },
+      ctx,
+    )
+    const update = JSON.parse(calls[1]!.body) as {
+      variables: { variants: Array<Record<string, unknown>> }
+    }
     const v = update.variables.variants[0]!
     expect(v.sku).toBeUndefined() // top-level sku removed — not a valid field
     expect((v.inventoryItem as { sku: string }).sku).toBe("RAL-44") // moved under inventoryItem
@@ -507,25 +843,51 @@ describe("variants_* use the API-2026 productVariantsBulk* mutations", () => {
     const { ctx, calls } = makeCtx({
       fetchResponses: [
         { data: { productVariant: { product: { id: "gid://shopify/Product/7" } } } },
-        { data: { productVariantsBulkUpdate: { productVariants: [{ id: "gid://shopify/ProductVariant/9" }], userErrors: [] } } },
+        {
+          data: {
+            productVariantsBulkUpdate: {
+              productVariants: [{ id: "gid://shopify/ProductVariant/9" }],
+              userErrors: [],
+            },
+          },
+        },
       ],
     })
-    await variants_update({ input: { id: "gid://shopify/ProductVariant/9", hs_code: "854370" } }, ctx)
-    const update = JSON.parse(calls[1]!.body) as { variables: { variants: Array<Record<string, unknown>> } }
+    await variants_update(
+      { input: { id: "gid://shopify/ProductVariant/9", hs_code: "854370" } },
+      ctx,
+    )
+    const update = JSON.parse(calls[1]!.body) as {
+      variables: { variants: Array<Record<string, unknown>> }
+    }
     const v = update.variables.variants[0]!
     expect(v.hs_code).toBeUndefined() // the field that 422s must be gone
-    expect((v.inventoryItem as { harmonizedSystemCode: string }).harmonizedSystemCode).toBe("854370")
+    expect((v.inventoryItem as { harmonizedSystemCode: string }).harmonizedSystemCode).toBe(
+      "854370",
+    )
   })
 
   it("variants_update normalizes country_of_origin → inventoryItem.countryCodeOfOrigin", async () => {
     const { ctx, calls } = makeCtx({
       fetchResponses: [
         { data: { productVariant: { product: { id: "gid://shopify/Product/7" } } } },
-        { data: { productVariantsBulkUpdate: { productVariants: [{ id: "gid://shopify/ProductVariant/9" }], userErrors: [] } } },
+        {
+          data: {
+            productVariantsBulkUpdate: {
+              productVariants: [{ id: "gid://shopify/ProductVariant/9" }],
+              userErrors: [],
+            },
+          },
+        },
       ],
     })
-    await variants_update({ input: { id: "gid://shopify/ProductVariant/9", country_of_origin: "FR" } }, ctx)
-    const update = JSON.parse(calls[1]!.body) as { variables: { variants: Array<Record<string, unknown>> } }
+    await variants_update(
+      { input: { id: "gid://shopify/ProductVariant/9", country_of_origin: "FR" } },
+      ctx,
+    )
+    const update = JSON.parse(calls[1]!.body) as {
+      variables: { variants: Array<Record<string, unknown>> }
+    }
     const v = update.variables.variants[0]!
     expect(v.country_of_origin).toBeUndefined()
     expect((v.inventoryItem as { countryCodeOfOrigin: string }).countryCodeOfOrigin).toBe("FR")
@@ -535,14 +897,30 @@ describe("variants_* use the API-2026 productVariantsBulk* mutations", () => {
     const { ctx, calls } = makeCtx({
       fetchResponses: [
         { data: { productVariant: { product: { id: "gid://shopify/Product/7" } } } },
-        { data: { productVariantsBulkUpdate: { productVariants: [{ id: "gid://shopify/ProductVariant/9" }], userErrors: [] } } },
+        {
+          data: {
+            productVariantsBulkUpdate: {
+              productVariants: [{ id: "gid://shopify/ProductVariant/9" }],
+              userErrors: [],
+            },
+          },
+        },
       ],
     })
     await variants_update(
-      { input: { id: "gid://shopify/ProductVariant/9", sku: "EMB-ET2", hs_code: "854370", country_of_origin: "FR" } },
+      {
+        input: {
+          id: "gid://shopify/ProductVariant/9",
+          sku: "EMB-ET2",
+          hs_code: "854370",
+          country_of_origin: "FR",
+        },
+      },
       ctx,
     )
-    const update = JSON.parse(calls[1]!.body) as { variables: { variants: Array<Record<string, unknown>> } }
+    const update = JSON.parse(calls[1]!.body) as {
+      variables: { variants: Array<Record<string, unknown>> }
+    }
     const inv = update.variables.variants[0]!.inventoryItem as Record<string, string>
     // All three land together — sku normalization must not drop the customs keys.
     expect(inv.sku).toBe("EMB-ET2")
@@ -554,16 +932,31 @@ describe("variants_* use the API-2026 productVariantsBulk* mutations", () => {
     const { ctx, calls } = makeCtx({
       fetchResponses: [
         { data: { productVariant: { product: { id: "gid://shopify/Product/7" } } } },
-        { data: { productVariantsBulkUpdate: { productVariants: [{ id: "gid://shopify/ProductVariant/9" }], userErrors: [] } } },
+        {
+          data: {
+            productVariantsBulkUpdate: {
+              productVariants: [{ id: "gid://shopify/ProductVariant/9" }],
+              userErrors: [],
+            },
+          },
+        },
       ],
     })
     // Idempotent: a caller who already sends the correct shape must not have it
     // overwritten by a stale flat value.
     await variants_update(
-      { input: { id: "gid://shopify/ProductVariant/9", hs_code: "999999", inventoryItem: { harmonizedSystemCode: "854370" } } },
+      {
+        input: {
+          id: "gid://shopify/ProductVariant/9",
+          hs_code: "999999",
+          inventoryItem: { harmonizedSystemCode: "854370" },
+        },
+      },
       ctx,
     )
-    const update = JSON.parse(calls[1]!.body) as { variables: { variants: Array<Record<string, unknown>> } }
+    const update = JSON.parse(calls[1]!.body) as {
+      variables: { variants: Array<Record<string, unknown>> }
+    }
     const inv = update.variables.variants[0]!.inventoryItem as Record<string, string>
     expect(inv.harmonizedSystemCode).toBe("854370")
     expect(update.variables.variants[0]!.hs_code).toBeUndefined()
@@ -575,14 +968,28 @@ describe("variants_* use the API-2026 productVariantsBulk* mutations", () => {
     const { ctx, calls } = makeCtx({
       fetchResponses: [
         { data: { productVariant: { product: { id: "gid://shopify/Product/7" } } } },
-        { data: { productVariantsBulkUpdate: { productVariants: [{ id: "gid://shopify/ProductVariant/9" }], userErrors: [] } } },
+        {
+          data: {
+            productVariantsBulkUpdate: {
+              productVariants: [{ id: "gid://shopify/ProductVariant/9" }],
+              userErrors: [],
+            },
+          },
+        },
       ],
     })
     await variants_update(
-      { input: { id: "gid://shopify/ProductVariant/9", optionValues: [{ value: "Black", optionName: "Color" }] } },
+      {
+        input: {
+          id: "gid://shopify/ProductVariant/9",
+          optionValues: [{ value: "Black", optionName: "Color" }],
+        },
+      },
       ctx,
     )
-    const update = JSON.parse(calls[1]!.body) as { variables: { variants: Array<{ optionValues: Array<Record<string, unknown>> }> } }
+    const update = JSON.parse(calls[1]!.body) as {
+      variables: { variants: Array<{ optionValues: Array<Record<string, unknown>> }> }
+    }
     const ov = update.variables.variants[0]!.optionValues[0]!
     expect(ov.value).toBeUndefined()
     expect(ov.name).toBe("Black")
@@ -592,11 +999,23 @@ describe("variants_* use the API-2026 productVariantsBulk* mutations", () => {
   it("variants_create normalizes a flat sku and leaves an already-correct inventoryItem.sku untouched", async () => {
     const { ctx, calls } = makeCtx({
       fetchResponses: [
-        { data: { productVariantsBulkCreate: { productVariants: [{ id: "gid://shopify/ProductVariant/9" }], userErrors: [] } } },
+        {
+          data: {
+            productVariantsBulkCreate: {
+              productVariants: [{ id: "gid://shopify/ProductVariant/9" }],
+              userErrors: [],
+            },
+          },
+        },
       ],
     })
-    await variants_create({ input: { productId: "gid://shopify/Product/1", sku: "RAL-NEW", price: "10.00" } }, ctx)
-    const body = JSON.parse(calls[0]!.body) as { variables: { variants: Array<Record<string, unknown>> } }
+    await variants_create(
+      { input: { productId: "gid://shopify/Product/1", sku: "RAL-NEW", price: "10.00" } },
+      ctx,
+    )
+    const body = JSON.parse(calls[0]!.body) as {
+      variables: { variants: Array<Record<string, unknown>> }
+    }
     const v = body.variables.variants[0]!
     expect(v.sku).toBeUndefined()
     expect((v.inventoryItem as { sku: string }).sku).toBe("RAL-NEW")
@@ -607,14 +1026,29 @@ describe("variants_* use the API-2026 productVariantsBulk* mutations", () => {
     const { ctx, calls } = makeCtx({
       fetchResponses: [
         { data: { productVariant: { product: { id: "gid://shopify/Product/7" } } } },
-        { data: { productVariantsBulkUpdate: { productVariants: [{ id: "gid://shopify/ProductVariant/9" }], userErrors: [] } } },
+        {
+          data: {
+            productVariantsBulkUpdate: {
+              productVariants: [{ id: "gid://shopify/ProductVariant/9" }],
+              userErrors: [],
+            },
+          },
+        },
       ],
     })
     await variants_update(
-      { input: { id: "gid://shopify/ProductVariant/9", sku: "STRAY", inventoryItem: { sku: "CORRECT", tracked: true } } },
+      {
+        input: {
+          id: "gid://shopify/ProductVariant/9",
+          sku: "STRAY",
+          inventoryItem: { sku: "CORRECT", tracked: true },
+        },
+      },
       ctx,
     )
-    const update = JSON.parse(calls[1]!.body) as { variables: { variants: Array<Record<string, unknown>> } }
+    const update = JSON.parse(calls[1]!.body) as {
+      variables: { variants: Array<Record<string, unknown>> }
+    }
     const v = update.variables.variants[0]!
     expect(v.sku).toBeUndefined()
     expect((v.inventoryItem as { sku: string; tracked: boolean }).sku).toBe("CORRECT")
@@ -629,13 +1063,37 @@ describe("variants_* use the API-2026 productVariantsBulk* mutations", () => {
     const { ctx, calls } = makeCtx({
       fetchResponses: [
         // 1st call: live current "available" quantity for the change row.
-        { data: { inventoryItem: { inventoryLevel: { quantities: [{ name: "available", quantity: 50 }] } } } },
+        {
+          data: {
+            inventoryItem: {
+              inventoryLevel: { quantities: [{ name: "available", quantity: 50 }] },
+            },
+          },
+        },
         // 2nd call: the adjust mutation.
-        { data: { inventoryAdjustQuantities: { inventoryAdjustmentGroup: { id: "gid://shopify/InventoryAdjustmentGroup/1" }, userErrors: [] } } },
+        {
+          data: {
+            inventoryAdjustQuantities: {
+              inventoryAdjustmentGroup: { id: "gid://shopify/InventoryAdjustmentGroup/1" },
+              userErrors: [],
+            },
+          },
+        },
       ],
     })
     await inventory_adjust(
-      { input: { reason: "correction", changes: [{ inventoryItemId: "gid://shopify/InventoryItem/1", locationId: "gid://shopify/Location/1", delta: 5 }] } },
+      {
+        input: {
+          reason: "correction",
+          changes: [
+            {
+              inventoryItemId: "gid://shopify/InventoryItem/1",
+              locationId: "gid://shopify/Location/1",
+              delta: 5,
+            },
+          ],
+        },
+      },
       ctx,
     )
     const adj = JSON.parse(calls[1]!.body) as {
@@ -655,14 +1113,19 @@ describe("resolveMutationInput — unwrap a weak model's redundant input wrapper
     // Weak model sent {input: {productInput: {…}}} → Shopify 422'd "Field is not defined on
     // ProductInput". The handler must unwrap to the real ProductInput.
     expect(
-      resolveMutationInput({ input: { productInput: { title: "Kestrel 8", descriptionHtml: "<p>x</p>" } } }),
+      resolveMutationInput({
+        input: { productInput: { title: "Kestrel 8", descriptionHtml: "<p>x</p>" } },
+      }),
     ).toEqual({ title: "Kestrel 8", descriptionHtml: "<p>x</p>" })
   })
   it("unwraps a redundant nested `input`", () => {
     expect(resolveMutationInput({ input: { input: { title: "X" } } })).toEqual({ title: "X" })
   })
   it("leaves a correct multi-field input untouched", () => {
-    const inp = { reason: "correction", setQuantities: [{ inventoryItemId: "i", locationId: "l", quantity: 47 }] }
+    const inp = {
+      reason: "correction",
+      setQuantities: [{ inventoryItemId: "i", locationId: "l", quantity: 47 }],
+    }
     expect(resolveMutationInput({ input: inp })).toEqual(inp)
   })
   it("does NOT unwrap a legitimate single-OBJECT field (purchasingEntity) or array fields", () => {
@@ -674,7 +1137,10 @@ describe("resolveMutationInput — unwrap a weak model's redundant input wrapper
     })
   })
   it("falls back to the params themselves when there is no `input` key (flat shape)", () => {
-    expect(resolveMutationInput({ title: "X", descriptionHtml: "y" })).toEqual({ title: "X", descriptionHtml: "y" })
+    expect(resolveMutationInput({ title: "X", descriptionHtml: "y" })).toEqual({
+      title: "X",
+      descriptionHtml: "y",
+    })
   })
 })
 
@@ -682,7 +1148,9 @@ describe("canonicalizeProductInput — maps deprecated ProductInput field names 
   it("canonicalizes a weak model's `bodyHtml` → `descriptionHtml` (the observed launch-publish 422)", () => {
     // Shopify dropped `bodyHtml` from ProductInput (renamed → `descriptionHtml`). A weak model passes the
     // old name and Shopify 422s "Field is not defined on ProductInput … bodyHtml", failing the gated write.
-    expect(canonicalizeProductInput({ bodyHtml: "<p>x</p>" })).toEqual({ descriptionHtml: "<p>x</p>" })
+    expect(canonicalizeProductInput({ bodyHtml: "<p>x</p>" })).toEqual({
+      descriptionHtml: "<p>x</p>",
+    })
   })
   it("also maps the snake_case `body_html`", () => {
     expect(canonicalizeProductInput({ title: "Kestrel 8", body_html: "<p>desc</p>" })).toEqual({
@@ -691,7 +1159,9 @@ describe("canonicalizeProductInput — maps deprecated ProductInput field names 
     })
   })
   it("leaves a correct `descriptionHtml` untouched and never clobbers it with a stray alias", () => {
-    expect(canonicalizeProductInput({ descriptionHtml: "<p>real</p>", bodyHtml: "<p>stale</p>" })).toEqual({
+    expect(
+      canonicalizeProductInput({ descriptionHtml: "<p>real</p>", bodyHtml: "<p>stale</p>" }),
+    ).toEqual({
       descriptionHtml: "<p>real</p>",
     })
     expect(canonicalizeProductInput({ title: "X", descriptionHtml: "<p>y</p>" })).toEqual({
@@ -735,10 +1205,25 @@ describe("canonicalizeProductInput — maps deprecated ProductInput field names 
   it("products_create sends `descriptionHtml` to Shopify when the agent passed `bodyHtml`", async () => {
     const { ctx, calls } = makeCtx({
       fetchResponses: [
-        { data: { productCreate: { product: { id: "gid://shopify/Product/1", title: "Kestrel 8", status: "DRAFT", variants: { edges: [] } }, userErrors: [] } } },
+        {
+          data: {
+            productCreate: {
+              product: {
+                id: "gid://shopify/Product/1",
+                title: "Kestrel 8",
+                status: "DRAFT",
+                variants: { edges: [] },
+              },
+              userErrors: [],
+            },
+          },
+        },
       ],
     })
-    await products_create({ input: { title: "Kestrel 8", status: "DRAFT", bodyHtml: "<p>v2.5 Studio Bundle</p>" } }, ctx)
+    await products_create(
+      { input: { title: "Kestrel 8", status: "DRAFT", bodyHtml: "<p>v2.5 Studio Bundle</p>" } },
+      ctx,
+    )
     const create = JSON.parse(calls[0]!.body) as { variables: { input: Record<string, unknown> } }
     expect(create.variables.input.descriptionHtml).toBe("<p>v2.5 Studio Bundle</p>")
     expect(create.variables.input.bodyHtml).toBeUndefined()
@@ -750,37 +1235,85 @@ describe("canonicalizeProductInput — maps deprecated ProductInput field names 
     // variant to the default variant (2nd call) while the stray field is dropped from the ProductInput.
     const { ctx, calls } = makeCtx({
       fetchResponses: [
-        { data: { productCreate: { product: { id: "gid://shopify/Product/1", title: "Kestrel 8", status: "DRAFT", variants: { edges: [{ node: { id: "gid://shopify/ProductVariant/9" } }] } }, userErrors: [] } } },
-        { data: { productVariantsBulkUpdate: { productVariants: [{ id: "gid://shopify/ProductVariant/9" }], userErrors: [] } } },
+        {
+          data: {
+            productCreate: {
+              product: {
+                id: "gid://shopify/Product/1",
+                title: "Kestrel 8",
+                status: "DRAFT",
+                variants: { edges: [{ node: { id: "gid://shopify/ProductVariant/9" } }] },
+              },
+              userErrors: [],
+            },
+          },
+        },
+        {
+          data: {
+            productVariantsBulkUpdate: {
+              productVariants: [{ id: "gid://shopify/ProductVariant/9" }],
+              userErrors: [],
+            },
+          },
+        },
       ],
     })
-    await products_create({ input: { title: "Kestrel 8", status: "DRAFT", productCategory: "Synthesizers", variants: [{ sku: "RAL-48", price: 749 }] } }, ctx)
+    await products_create(
+      {
+        input: {
+          title: "Kestrel 8",
+          status: "DRAFT",
+          productCategory: "Synthesizers",
+          variants: [{ sku: "RAL-48", price: 749 }],
+        },
+      },
+      ctx,
+    )
     const create = JSON.parse(calls[0]!.body) as { variables: { input: Record<string, unknown> } }
     expect(create.variables.input.productCategory).toBeUndefined() // stray invalid field stripped
     expect(create.variables.input.variants).toBeUndefined() // variant keys not on ProductInput
     expect(create.variables.input.title).toBe("Kestrel 8")
     // 2nd call still applies the bundled variant sku/price.
-    const upd = JSON.parse(calls[1]!.body) as { variables: { variants: Array<Record<string, unknown>> } }
+    const upd = JSON.parse(calls[1]!.body) as {
+      variables: { variants: Array<Record<string, unknown>> }
+    }
     expect((upd.variables.variants[0]!.inventoryItem as { sku: string }).sku).toBe("RAL-48")
     expect(upd.variables.variants[0]!.price).toBe("749")
   })
 })
 
 describe("returns_decline — declineReason is an enum, free text is coerced to OTHER", () => {
-  const declineResp = { data: { returnDeclineRequest: { return: { id: "gid://shopify/Return/1", status: "DECLINED" }, userErrors: [] } } }
+  const declineResp = {
+    data: {
+      returnDeclineRequest: {
+        return: { id: "gid://shopify/Return/1", status: "DECLINED" },
+        userErrors: [],
+      },
+    },
+  }
 
   it("coerces a free-text declineReason to OTHER (the agent's human sentence would otherwise 422)", async () => {
     // The agent naturally passes a human sentence; Shopify's ReturnDeclineRequestInput.declineReason
     // is an enum, so an unmapped value fails the mutation. We must send a valid enum.
     const { ctx, calls } = makeCtx({ fetchResponses: [declineResp] })
-    await returns_decline({ id: "gid://shopify/Return/1", declineReason: "Warranty period of 2 years has expired. We offer a goodwill repair instead." }, ctx)
+    await returns_decline(
+      {
+        id: "gid://shopify/Return/1",
+        declineReason:
+          "Warranty period of 2 years has expired. We offer a goodwill repair instead.",
+      },
+      ctx,
+    )
     const body = JSON.parse(calls[0]!.body) as { variables: { input: { declineReason: string } } }
     expect(body.variables.input.declineReason).toBe("OTHER")
   })
 
   it("passes a valid enum value through unchanged", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [declineResp] })
-    await returns_decline({ id: "gid://shopify/Return/1", declineReason: "RETURN_PERIOD_ENDED" }, ctx)
+    await returns_decline(
+      { id: "gid://shopify/Return/1", declineReason: "RETURN_PERIOD_ENDED" },
+      ctx,
+    )
     const body = JSON.parse(calls[0]!.body) as { variables: { input: { declineReason: string } } }
     expect(body.variables.input.declineReason).toBe("RETURN_PERIOD_ENDED")
   })
@@ -793,7 +1326,6 @@ describe("returns_decline — declineReason is an enum, free text is coerced to 
   })
 })
 
-
 describe("fulfillments_create — resolves orderId to the order's open fulfillment orders", () => {
   // Regression: fulfillmentCreateV2 takes lineItemsByFulfillmentOrder, NOT orderId — passing the agent's
   // natural { orderId } straight through 422s ("Field is not defined on FulfillmentV2Input"). The handler
@@ -802,7 +1334,9 @@ describe("fulfillments_create — resolves orderId to the order's open fulfillme
     data: {
       order: {
         id: "gid://shopify/Order/1056",
-        fulfillmentOrders: { nodes: [{ id: "gid://shopify/FulfillmentOrder/9001", status: "OPEN" }] },
+        fulfillmentOrders: {
+          nodes: [{ id: "gid://shopify/FulfillmentOrder/9001", status: "OPEN" }],
+        },
       },
     },
   }
@@ -820,7 +1354,12 @@ describe("fulfillments_create — resolves orderId to the order's open fulfillme
     await fulfillments_create({ fulfillment: { orderId: "gid://shopify/Order/1056" } }, ctx)
     expect(calls.length).toBe(2) // FO lookup, then the mutation
     const mut = JSON.parse(calls[1]!.body) as {
-      variables: { fulfillment: { lineItemsByFulfillmentOrder?: Array<{ fulfillmentOrderId: string }>; orderId?: string } }
+      variables: {
+        fulfillment: {
+          lineItemsByFulfillmentOrder?: Array<{ fulfillmentOrderId: string }>
+          orderId?: string
+        }
+      }
     }
     expect(mut.variables.fulfillment.lineItemsByFulfillmentOrder).toEqual([
       { fulfillmentOrderId: "gid://shopify/FulfillmentOrder/9001" },
@@ -832,7 +1371,9 @@ describe("fulfillments_create — resolves orderId to the order's open fulfillme
     const { ctx, calls } = makeCtx({ fetchResponses: [orderFOs, fulfillmentCreated] })
     await fulfillments_create({ orderId: "gid://shopify/Order/1056" }, ctx)
     const mut = JSON.parse(calls[1]!.body) as {
-      variables: { fulfillment: { lineItemsByFulfillmentOrder?: Array<{ fulfillmentOrderId: string }> } }
+      variables: {
+        fulfillment: { lineItemsByFulfillmentOrder?: Array<{ fulfillmentOrderId: string }> }
+      }
     }
     expect(mut.variables.fulfillment.lineItemsByFulfillmentOrder).toEqual([
       { fulfillmentOrderId: "gid://shopify/FulfillmentOrder/9001" },
@@ -851,7 +1392,9 @@ describe("fulfillments_create — resolves orderId to the order's open fulfillme
     const lookup = JSON.parse(calls[0]!.body) as { variables: { id: string } }
     expect(lookup.variables.id).toBe("gid://shopify/Order/1056")
     const mut = JSON.parse(calls[1]!.body) as {
-      variables: { fulfillment: { lineItemsByFulfillmentOrder?: Array<{ fulfillmentOrderId: string }> } }
+      variables: {
+        fulfillment: { lineItemsByFulfillmentOrder?: Array<{ fulfillmentOrderId: string }> }
+      }
     }
     expect(mut.variables.fulfillment.lineItemsByFulfillmentOrder).toEqual([
       { fulfillmentOrderId: "gid://shopify/FulfillmentOrder/9001" },
@@ -868,12 +1411,18 @@ describe("fulfillments_create — resolves orderId to the order's open fulfillme
   it("passes an explicit lineItemsByFulfillmentOrder through unchanged (no FO lookup)", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [fulfillmentCreated] })
     await fulfillments_create(
-      { fulfillment: { lineItemsByFulfillmentOrder: [{ fulfillmentOrderId: "gid://shopify/FulfillmentOrder/7" }] } },
+      {
+        fulfillment: {
+          lineItemsByFulfillmentOrder: [{ fulfillmentOrderId: "gid://shopify/FulfillmentOrder/7" }],
+        },
+      },
       ctx,
     )
     expect(calls.length).toBe(1) // no FO lookup needed
     const mut = JSON.parse(calls[0]!.body) as {
-      variables: { fulfillment: { lineItemsByFulfillmentOrder: Array<{ fulfillmentOrderId: string }> } }
+      variables: {
+        fulfillment: { lineItemsByFulfillmentOrder: Array<{ fulfillmentOrderId: string }> }
+      }
     }
     expect(mut.variables.fulfillment.lineItemsByFulfillmentOrder).toEqual([
       { fulfillmentOrderId: "gid://shopify/FulfillmentOrder/7" },
@@ -881,7 +1430,9 @@ describe("fulfillments_create — resolves orderId to the order's open fulfillme
   })
 
   it("errors clearly when the order has no OPEN fulfillment orders", async () => {
-    const noFOs = { data: { order: { id: "gid://shopify/Order/1056", fulfillmentOrders: { nodes: [] } } } }
+    const noFOs = {
+      data: { order: { id: "gid://shopify/Order/1056", fulfillmentOrders: { nodes: [] } } },
+    }
     const { ctx } = makeCtx({ fetchResponses: [noFOs] })
     await expect(fulfillments_create({ orderId: "gid://shopify/Order/1056" }, ctx)).rejects.toThrow(
       /no OPEN fulfillment orders/i,
@@ -900,7 +1451,11 @@ describe("fulfillments_create — resolves orderId to the order's open fulfillme
         orderId: "gid://shopify/Order/1056",
         fulfillment: {
           orderId: "gid://shopify/Order/1056",
-          trackingInfo: { carrier: "Mondial Relay", trackingNumber: "MR-123", trackingUrl: "https://t/MR-123" },
+          trackingInfo: {
+            carrier: "Mondial Relay",
+            trackingNumber: "MR-123",
+            trackingUrl: "https://t/MR-123",
+          },
         },
       },
       ctx,
@@ -959,7 +1514,14 @@ describe("fulfillments_create — resolves orderId to the order's open fulfillme
 
 describe("fulfillments_create — truthful PARTIAL fulfillment via friendly lineItems", () => {
   // Fixture helper: one FO line item node as the resolver query returns it.
-  const foLine = (id: string, remaining: number, total: number, liId: string, sku: string | null, title: string) => ({
+  const foLine = (
+    id: string,
+    remaining: number,
+    total: number,
+    liId: string,
+    sku: string | null,
+    title: string,
+  ) => ({
     id,
     remainingQuantity: remaining,
     totalQuantity: total,
@@ -976,8 +1538,22 @@ describe("fulfillments_create — truthful PARTIAL fulfillment via friendly line
               status: "OPEN",
               lineItems: {
                 nodes: [
-                  foLine("gid://shopify/FulfillmentOrderLineItem/1", 3, 5, "gid://shopify/LineItem/11", "KS6-44", "Kestrel 6"),
-                  foLine("gid://shopify/FulfillmentOrderLineItem/2", 2, 2, "gid://shopify/LineItem/12", "CASE-1", "Case"),
+                  foLine(
+                    "gid://shopify/FulfillmentOrderLineItem/1",
+                    3,
+                    5,
+                    "gid://shopify/LineItem/11",
+                    "KS6-44",
+                    "Kestrel 6",
+                  ),
+                  foLine(
+                    "gid://shopify/FulfillmentOrderLineItem/2",
+                    2,
+                    2,
+                    "gid://shopify/LineItem/12",
+                    "CASE-1",
+                    "Case",
+                  ),
                 ],
               },
             },
@@ -996,14 +1572,32 @@ describe("fulfillments_create — truthful PARTIAL fulfillment via friendly line
               id: "gid://shopify/FulfillmentOrder/9001",
               status: "OPEN",
               lineItems: {
-                nodes: [foLine("gid://shopify/FulfillmentOrderLineItem/1", 2, 5, "gid://shopify/LineItem/11", "KS6-44", "Kestrel 6")],
+                nodes: [
+                  foLine(
+                    "gid://shopify/FulfillmentOrderLineItem/1",
+                    2,
+                    5,
+                    "gid://shopify/LineItem/11",
+                    "KS6-44",
+                    "Kestrel 6",
+                  ),
+                ],
               },
             },
             {
               id: "gid://shopify/FulfillmentOrder/9002",
               status: "OPEN",
               lineItems: {
-                nodes: [foLine("gid://shopify/FulfillmentOrderLineItem/3", 3, 3, "gid://shopify/LineItem/11", "KS6-44", "Kestrel 6")],
+                nodes: [
+                  foLine(
+                    "gid://shopify/FulfillmentOrderLineItem/3",
+                    3,
+                    3,
+                    "gid://shopify/LineItem/11",
+                    "KS6-44",
+                    "Kestrel 6",
+                  ),
+                ],
               },
             },
           ],
@@ -1025,7 +1619,9 @@ describe("fulfillments_create — truthful PARTIAL fulfillment via friendly line
       data: {
         order: {
           id: "gid://shopify/Order/1056",
-          fulfillmentOrders: { nodes: [{ id: "gid://shopify/FulfillmentOrder/9001", status: "OPEN" }] },
+          fulfillmentOrders: {
+            nodes: [{ id: "gid://shopify/FulfillmentOrder/9001", status: "OPEN" }],
+          },
         },
       },
     }
@@ -1061,7 +1657,9 @@ describe("fulfillments_create — truthful PARTIAL fulfillment via friendly line
     expect(mut.variables.fulfillment.lineItemsByFulfillmentOrder).toEqual([
       {
         fulfillmentOrderId: "gid://shopify/FulfillmentOrder/9001",
-        fulfillmentOrderLineItems: [{ id: "gid://shopify/FulfillmentOrderLineItem/1", quantity: 2 }],
+        fulfillmentOrderLineItems: [
+          { id: "gid://shopify/FulfillmentOrderLineItem/1", quantity: 2 },
+        ],
       },
     ])
   })
@@ -1069,7 +1667,10 @@ describe("fulfillments_create — truthful PARTIAL fulfillment via friendly line
   it("maps by explicit orderLineItemId when sku is absent", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [singleFO, fulfillmentCreated] })
     await fulfillments_create(
-      { orderId: "gid://shopify/Order/1056", lineItems: [{ orderLineItemId: "gid://shopify/LineItem/12", quantity: 1 }] },
+      {
+        orderId: "gid://shopify/Order/1056",
+        lineItems: [{ orderLineItemId: "gid://shopify/LineItem/12", quantity: 1 }],
+      },
       ctx,
     )
     const mut = JSON.parse(calls[1]!.body) as {
@@ -1078,7 +1679,9 @@ describe("fulfillments_create — truthful PARTIAL fulfillment via friendly line
     expect(mut.variables.fulfillment.lineItemsByFulfillmentOrder).toEqual([
       {
         fulfillmentOrderId: "gid://shopify/FulfillmentOrder/9001",
-        fulfillmentOrderLineItems: [{ id: "gid://shopify/FulfillmentOrderLineItem/2", quantity: 1 }],
+        fulfillmentOrderLineItems: [
+          { id: "gid://shopify/FulfillmentOrderLineItem/2", quantity: 1 },
+        ],
       },
     ])
   })
@@ -1095,11 +1698,15 @@ describe("fulfillments_create — truthful PARTIAL fulfillment via friendly line
     expect(mut.variables.fulfillment.lineItemsByFulfillmentOrder).toEqual([
       {
         fulfillmentOrderId: "gid://shopify/FulfillmentOrder/9001",
-        fulfillmentOrderLineItems: [{ id: "gid://shopify/FulfillmentOrderLineItem/1", quantity: 2 }],
+        fulfillmentOrderLineItems: [
+          { id: "gid://shopify/FulfillmentOrderLineItem/1", quantity: 2 },
+        ],
       },
       {
         fulfillmentOrderId: "gid://shopify/FulfillmentOrder/9002",
-        fulfillmentOrderLineItems: [{ id: "gid://shopify/FulfillmentOrderLineItem/3", quantity: 2 }],
+        fulfillmentOrderLineItems: [
+          { id: "gid://shopify/FulfillmentOrderLineItem/3", quantity: 2 },
+        ],
       },
     ])
   })
@@ -1107,7 +1714,10 @@ describe("fulfillments_create — truthful PARTIAL fulfillment via friendly line
   it("errors clearly when quantity exceeds the remaining quantity", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [singleFO] })
     await expect(
-      fulfillments_create({ orderId: "gid://shopify/Order/1056", lineItems: [{ sku: "KS6-44", quantity: 9 }] }, ctx),
+      fulfillments_create(
+        { orderId: "gid://shopify/Order/1056", lineItems: [{ sku: "KS6-44", quantity: 9 }] },
+        ctx,
+      ),
     ).rejects.toThrow(/exceeds.*remaining/i)
     expect(calls).toHaveLength(1) // no mutation was attempted
   })
@@ -1115,7 +1725,10 @@ describe("fulfillments_create — truthful PARTIAL fulfillment via friendly line
   it("errors clearly on an unknown sku (no partial guessing)", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [singleFO] })
     await expect(
-      fulfillments_create({ orderId: "gid://shopify/Order/1056", lineItems: [{ sku: "NOPE-1", quantity: 1 }] }, ctx),
+      fulfillments_create(
+        { orderId: "gid://shopify/Order/1056", lineItems: [{ sku: "NOPE-1", quantity: 1 }] },
+        ctx,
+      ),
     ).rejects.toThrow(/NOPE-1/)
     expect(calls).toHaveLength(1)
   })
@@ -1132,8 +1745,22 @@ describe("fulfillments_create — truthful PARTIAL fulfillment via friendly line
                 status: "OPEN",
                 lineItems: {
                   nodes: [
-                    foLine("gid://shopify/FulfillmentOrderLineItem/1", 1, 1, "gid://shopify/LineItem/11", "DUP-1", "A"),
-                    foLine("gid://shopify/FulfillmentOrderLineItem/2", 1, 1, "gid://shopify/LineItem/12", "DUP-1", "B"),
+                    foLine(
+                      "gid://shopify/FulfillmentOrderLineItem/1",
+                      1,
+                      1,
+                      "gid://shopify/LineItem/11",
+                      "DUP-1",
+                      "A",
+                    ),
+                    foLine(
+                      "gid://shopify/FulfillmentOrderLineItem/2",
+                      1,
+                      1,
+                      "gid://shopify/LineItem/12",
+                      "DUP-1",
+                      "B",
+                    ),
                   ],
                 },
               },
@@ -1144,13 +1771,18 @@ describe("fulfillments_create — truthful PARTIAL fulfillment via friendly line
     }
     const { ctx } = makeCtx({ fetchResponses: [ambiguous] })
     await expect(
-      fulfillments_create({ orderId: "gid://shopify/Order/1056", lineItems: [{ sku: "DUP-1", quantity: 1 }] }, ctx),
+      fulfillments_create(
+        { orderId: "gid://shopify/Order/1056", lineItems: [{ sku: "DUP-1", quantity: 1 }] },
+        ctx,
+      ),
     ).rejects.toThrow(/orderLineItemId/)
   })
 
   it("requires an orderId alongside lineItems", async () => {
     const { ctx } = makeCtx({ fetchResponses: [] })
-    await expect(fulfillments_create({ lineItems: [{ sku: "KS6-44", quantity: 1 }] }, ctx)).rejects.toThrow(/orderId/)
+    await expect(
+      fulfillments_create({ lineItems: [{ sku: "KS6-44", quantity: 1 }] }, ctx),
+    ).rejects.toThrow(/orderId/)
   })
 
   it("keeps trackingInfo + notifyCustomer on the partial payload", async () => {
@@ -1159,7 +1791,10 @@ describe("fulfillments_create — truthful PARTIAL fulfillment via friendly line
       {
         orderId: "gid://shopify/Order/1056",
         lineItems: [{ sku: "CASE-1", quantity: 1 }],
-        fulfillment: { trackingInfo: { carrier: "UPS", trackingNumber: "1Z" }, notifyCustomer: true },
+        fulfillment: {
+          trackingInfo: { carrier: "UPS", trackingNumber: "1Z" },
+          notifyCustomer: true,
+        },
       },
       ctx,
     )
@@ -1196,9 +1831,12 @@ describe("products_publish: resolves real sales channels, never an empty input",
       },
     },
   })
-  const published = { data: { publishablePublish: { publishable: { __typename: "Product" }, userErrors: [] } } }
+  const published = {
+    data: { publishablePublish: { publishable: { __typename: "Product" }, userErrors: [] } },
+  }
   const mutationInput = (calls: Array<{ body: string }>) =>
-    (JSON.parse(calls[calls.length - 1]!.body) as { variables: { input: unknown[] } }).variables.input
+    (JSON.parse(calls[calls.length - 1]!.body) as { variables: { input: unknown[] } }).variables
+      .input
 
   it("id only: publishes on every store channel the product is not on yet", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [state([ONLINE]), published] })
@@ -1213,31 +1851,46 @@ describe("products_publish: resolves real sales channels, never an empty input",
     await products_publish(
       {
         id: "gid://shopify/Product/16099791012171",
-        input: [{ publicationId: "gid://shopify/Channel/1" }, { publicationId: "gid://shopify/Publication/999" }],
+        input: [
+          { publicationId: "gid://shopify/Channel/1" },
+          { publicationId: "gid://shopify/Publication/999" },
+        ],
       },
       ctx,
     )
-    expect(mutationInput(calls)).toEqual([{ publicationId: ONLINE }, { publicationId: HEADLESS }, { publicationId: POS }])
+    expect(mutationInput(calls)).toEqual([
+      { publicationId: ONLINE },
+      { publicationId: HEADLESS },
+      { publicationId: POS },
+    ])
   })
 
   it("keeps REAL caller-supplied channels, with their publishDate", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [state([]), published] })
     await products_publish(
-      { id: "gid://shopify/Product/16099791012171", input: [{ publicationId: HEADLESS, publishDate: "2026-11-01T09:00:00Z" }] },
+      {
+        id: "gid://shopify/Product/16099791012171",
+        input: [{ publicationId: HEADLESS, publishDate: "2026-11-01T09:00:00Z" }],
+      },
       ctx,
     )
-    expect(mutationInput(calls)).toEqual([{ publicationId: HEADLESS, publishDate: "2026-11-01T09:00:00Z" }])
+    expect(mutationInput(calls)).toEqual([
+      { publicationId: HEADLESS, publishDate: "2026-11-01T09:00:00Z" },
+    ])
   })
 
   it("refuses (preflight and handler) a product already on every channel, sending no mutation", async () => {
     const all = [ONLINE, HEADLESS, POS]
     const pre = makeCtx({ fetchResponses: [state(all)] })
-    const out = await products_publish_preflight({ id: "gid://shopify/Product/16099791012171" }, pre.ctx)
+    const out = await products_publish_preflight(
+      { id: "gid://shopify/Product/16099791012171" },
+      pre.ctx,
+    )
     expect((out as { error: { code: string } }).error.code).toBe("ALREADY_PUBLISHED")
     const run = makeCtx({ fetchResponses: [state(all), published] })
-    await expect(products_publish({ id: "gid://shopify/Product/16099791012171" }, run.ctx)).rejects.toThrow(
-      /already published on every sales channel/,
-    )
+    await expect(
+      products_publish({ id: "gid://shopify/Product/16099791012171" }, run.ctx),
+    ).rejects.toThrow(/already published on every sales channel/)
     expect(run.calls.some((c) => c.body.includes("PublishablePublish"))).toBe(false)
   })
 
@@ -1246,30 +1899,49 @@ describe("products_publish: resolves real sales channels, never an empty input",
     const withCatalog = () => {
       const s = state([ONLINE])
       s.data.publications.edges.push({
-        node: { id: B2B, name: "Wholesale", catalog: { id: "gid://shopify/CompanyLocationCatalog/7", title: "Wholesale" } },
+        node: {
+          id: B2B,
+          name: "Wholesale",
+          catalog: { id: "gid://shopify/CompanyLocationCatalog/7", title: "Wholesale" },
+        },
       } as never)
       return s
     }
     const idOnly = makeCtx({ fetchResponses: [withCatalog(), published] })
     await products_publish({ id: "gid://shopify/Product/16099791012171" }, idOnly.ctx)
-    expect(mutationInput(idOnly.calls)).toEqual([{ publicationId: HEADLESS }, { publicationId: POS }])
+    expect(mutationInput(idOnly.calls)).toEqual([
+      { publicationId: HEADLESS },
+      { publicationId: POS },
+    ])
 
     const card = makeCtx({ fetchResponses: [withCatalog()] })
-    const out = (await products_publication_targets({ id: "gid://shopify/Product/16099791012171" }, card.ctx)) as {
+    const out = (await products_publication_targets(
+      { id: "gid://shopify/Product/16099791012171" },
+      card.ctx,
+    )) as {
       attributes: { publishTargets: Array<{ name: string }> }
     }
     expect(out.attributes.publishTargets.map((t) => t.name)).toEqual(["Headless", "Point of Sale"])
 
     const named = makeCtx({ fetchResponses: [withCatalog(), published] })
-    await products_publish({ id: "gid://shopify/Product/16099791012171", input: [{ publicationId: B2B }] }, named.ctx)
+    await products_publish(
+      { id: "gid://shopify/Product/16099791012171", input: [{ publicationId: B2B }] },
+      named.ctx,
+    )
     expect(mutationInput(named.calls)).toEqual([{ publicationId: B2B }])
   })
 
   it("products_publication_targets names the exact channels publish and unpublish would act on", async () => {
     const { ctx } = makeCtx({ fetchResponses: [state([ONLINE])] })
-    const out = (await products_publication_targets({ id: "gid://shopify/Product/16099791012171" }, ctx)) as {
+    const out = (await products_publication_targets(
+      { id: "gid://shopify/Product/16099791012171" },
+      ctx,
+    )) as {
       title: string
-      attributes: { publishTargets: Array<{ name: string }>; unpublishTargets: Array<{ name: string }> }
+      attributes: {
+        publishTargets: Array<{ name: string }>
+        unpublishTargets: Array<{ name: string }>
+      }
     }
     expect(out.title).toBe("Kestrel 6")
     expect(out.attributes.publishTargets.map((t) => t.name)).toEqual(["Headless", "Point of Sale"])
@@ -1305,13 +1977,21 @@ describe("products_publish / products_unpublish preflight: refuses a connection 
       fetchResponses: [
         {
           data: {
-            product: { id: "gid://shopify/Product/1", title: "P", resourcePublicationsV2: { edges: [] } },
-            publications: { edges: [{ node: { id: "gid://shopify/Publication/1", name: "Online Store" } }] },
+            product: {
+              id: "gid://shopify/Product/1",
+              title: "P",
+              resourcePublicationsV2: { edges: [] },
+            },
+            publications: {
+              edges: [{ node: { id: "gid://shopify/Publication/1", name: "Online Store" } }],
+            },
           },
         },
       ],
     })
-    expect(await products_publish_preflight({ id: "gid://shopify/Product/1" }, ctx)).toEqual({ ok: true })
+    expect(await products_publish_preflight({ id: "gid://shopify/Product/1" }, ctx)).toEqual({
+      ok: true,
+    })
   })
 })
 
@@ -1327,8 +2007,18 @@ describe("products_unpublish — resolves real publication ids (never 422s on a 
         id: "gid://shopify/Product/15370621976742",
         resourcePublicationsV2: {
           edges: [
-            { node: { publication: { id: "gid://shopify/Publication/316255928486" }, isPublished: true } },
-            { node: { publication: { id: "gid://shopify/Publication/316256092326" }, isPublished: true } },
+            {
+              node: {
+                publication: { id: "gid://shopify/Publication/316255928486" },
+                isPublished: true,
+              },
+            },
+            {
+              node: {
+                publication: { id: "gid://shopify/Publication/316256092326" },
+                isPublished: true,
+              },
+            },
           ],
         },
       },
@@ -1361,11 +2051,16 @@ describe("products_unpublish — resolves real publication ids (never 422s on a 
   it("ignores a fabricated channel id (the gid://shopify/Channel/1 422 trap) and resolves real ones", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [productPublications, unpublished] })
     await products_unpublish(
-      { id: "gid://shopify/Product/15370621976742", input: [{ publicationId: "gid://shopify/Channel/1" }] },
+      {
+        id: "gid://shopify/Product/15370621976742",
+        input: [{ publicationId: "gid://shopify/Channel/1" }],
+      },
       ctx,
     )
     expect(calls.length).toBe(2) // the bogus id forces the resolution path
-    const mut = JSON.parse(calls[1]!.body) as { variables: { input: Array<{ publicationId: string }> } }
+    const mut = JSON.parse(calls[1]!.body) as {
+      variables: { input: Array<{ publicationId: string }> }
+    }
     // The invalid Channel id must NOT reach Shopify; real Publication gids are sent instead.
     expect(mut.variables.input).toEqual([
       { publicationId: "gid://shopify/Publication/316255928486" },
@@ -1376,7 +2071,10 @@ describe("products_unpublish — resolves real publication ids (never 422s on a 
   it("falls back to all store publications when the product is published on none", async () => {
     const onNone = {
       data: {
-        product: { id: "gid://shopify/Product/15370621976742", resourcePublicationsV2: { edges: [] } },
+        product: {
+          id: "gid://shopify/Product/15370621976742",
+          resourcePublicationsV2: { edges: [] },
+        },
         publications: {
           edges: [
             { node: { id: "gid://shopify/Publication/316255928486" } },
@@ -1387,7 +2085,9 @@ describe("products_unpublish — resolves real publication ids (never 422s on a 
     }
     const { ctx, calls } = makeCtx({ fetchResponses: [onNone, unpublished] })
     await products_unpublish({ id: "gid://shopify/Product/15370621976742" }, ctx)
-    const mut = JSON.parse(calls[1]!.body) as { variables: { input: Array<{ publicationId: string }> } }
+    const mut = JSON.parse(calls[1]!.body) as {
+      variables: { input: Array<{ publicationId: string }> }
+    }
     expect(mut.variables.input).toEqual([
       { publicationId: "gid://shopify/Publication/316255928486" },
       { publicationId: "gid://shopify/Publication/316256125094" },
@@ -1404,8 +2104,12 @@ describe("products_unpublish — resolves real publication ids (never 422s on a 
       ctx,
     )
     expect(calls.length).toBe(1) // no publication lookup — the supplied gids are already valid
-    const mut = JSON.parse(calls[0]!.body) as { variables: { input: Array<{ publicationId: string }> } }
-    expect(mut.variables.input).toEqual([{ publicationId: "gid://shopify/Publication/316255928486" }])
+    const mut = JSON.parse(calls[0]!.body) as {
+      variables: { input: Array<{ publicationId: string }> }
+    }
+    expect(mut.variables.input).toEqual([
+      { publicationId: "gid://shopify/Publication/316255928486" },
+    ])
   })
 })
 
@@ -1434,7 +2138,9 @@ describe("normalizeTrackingInfo — maps weak-model tracking aliases onto Fulfil
   })
   it("an explicit company wins over a carrier alias (first-writer)", () => {
     // company is listed first in the alias table, so it is written before carrier is seen.
-    expect(normalizeTrackingInfo({ company: "Real", carrier: "Alias" })).toEqual({ company: "Real" })
+    expect(normalizeTrackingInfo({ company: "Real", carrier: "Alias" })).toEqual({
+      company: "Real",
+    })
   })
   it("returns undefined for empty/absent/all-unknown input", () => {
     expect(normalizeTrackingInfo(undefined)).toBeUndefined()
@@ -1455,13 +2161,29 @@ describe("normalizeTrackingInfo — maps weak-model tracking aliases onto Fulfil
     expect(normalizeTrackingInfo({ url: "N/A", number: "n/a", company: "—" })).toBeUndefined()
   })
   it("drops the full placeholder/sentinel set (N/A, none, TBD, '-', empty) case/space-insensitive", () => {
-    for (const ph of ["N/A", "n/a", " NA ", "none", "None", "null", "TBD", "tba", "unknown", "pending", "-", "—", ""]) {
+    for (const ph of [
+      "N/A",
+      "n/a",
+      " NA ",
+      "none",
+      "None",
+      "null",
+      "TBD",
+      "tba",
+      "unknown",
+      "pending",
+      "-",
+      "—",
+      "",
+    ]) {
       expect(normalizeTrackingInfo({ url: ph, number: ph, company: ph })).toBeUndefined()
     }
   })
   it("drops a url that is not an absolute http(s) URL, but keeps a real one", () => {
     // host-only / scheme-less strings 422 Shopify — drop them.
-    expect(normalizeTrackingInfo({ number: "X1", url: "track.example.com/X1" })).toEqual({ number: "X1" })
+    expect(normalizeTrackingInfo({ number: "X1", url: "track.example.com/X1" })).toEqual({
+      number: "X1",
+    })
     expect(normalizeTrackingInfo({ number: "X1", url: "ftp://x" })).toEqual({ number: "X1" })
     // a real https url survives.
     expect(normalizeTrackingInfo({ number: "X1", url: "https://track.example.com/X1" })).toEqual({
@@ -1470,7 +2192,9 @@ describe("normalizeTrackingInfo — maps weak-model tracking aliases onto Fulfil
     })
   })
   it("filters placeholders/invalid-urls out of array fields, dropping the field if nothing survives", () => {
-    expect(normalizeTrackingInfo({ urls: ["https://a", "N/A", "not-a-url"] })).toEqual({ urls: ["https://a"] })
+    expect(normalizeTrackingInfo({ urls: ["https://a", "N/A", "not-a-url"] })).toEqual({
+      urls: ["https://a"],
+    })
     expect(normalizeTrackingInfo({ urls: ["N/A", "-"] })).toBeUndefined()
     expect(normalizeTrackingInfo({ numbers: ["A1", "", "A2"] })).toEqual({ numbers: ["A1", "A2"] })
   })
@@ -1572,7 +2296,11 @@ describe("normalizeDraftOrderInput — maps weak-model API drift to API-2026 Dra
     expect(out.customer).toBeUndefined()
     expect(out.purchasingEntity).toEqual({ customerId: "gid://shopify/Customer/7" })
     expect(out.lineItemsDiscount).toBeUndefined()
-    expect(out.appliedDiscount).toMatchObject({ value: 40, valueType: "PERCENTAGE", title: "Dealer" })
+    expect(out.appliedDiscount).toMatchObject({
+      value: 40,
+      valueType: "PERCENTAGE",
+      title: "Dealer",
+    })
   })
 
   it("strips a stray email/field nested in purchasingEntity (Shopify 422 'not defined on PurchasingEntityInput')", async () => {
@@ -1673,7 +2401,10 @@ describe("normalizeDraftOrderInput — maps weak-model API drift to API-2026 Dra
 
   it("drops a shippingAddress with nothing usable after stripping (a quote needs none)", async () => {
     const { ctx } = makeCtx({ fetchResponses: [] })
-    const out = await normalizeDraftOrderInput({ shippingAddress: { bogus: "x", note: "n/a" } }, ctx)
+    const out = await normalizeDraftOrderInput(
+      { shippingAddress: { bogus: "x", note: "n/a" } },
+      ctx,
+    )
     expect(out.shippingAddress).toBeUndefined()
   })
 
@@ -1851,7 +2582,11 @@ describe("normalizeDraftOrderInput — buyer-identity guard throws carry status 
     let caught: unknown
     try {
       await normalizeDraftOrderInput(
-        { lineItems: [{ variantId: "gid://shopify/ProductVariant/9", quantity: 1, requiresShipping: true }] },
+        {
+          lineItems: [
+            { variantId: "gid://shopify/ProductVariant/9", quantity: 1, requiresShipping: true },
+          ],
+        },
         ctx,
         { enforceBuyerIdentity: true },
       )
@@ -1864,7 +2599,17 @@ describe("normalizeDraftOrderInput — buyer-identity guard throws carry status 
   })
 
   it("a digital-goods draft order with no usable buyer email throws MISSING_BUYER_EMAIL at status 400", async () => {
-    const { ctx } = makeCtx({ fetchResponses: [{ data: { nodes: [{ id: "gid://shopify/ProductVariant/9", inventoryItem: { requiresShipping: false } }] } }] })
+    const { ctx } = makeCtx({
+      fetchResponses: [
+        {
+          data: {
+            nodes: [
+              { id: "gid://shopify/ProductVariant/9", inventoryItem: { requiresShipping: false } },
+            ],
+          },
+        },
+      ],
+    })
     let caught: unknown
     try {
       await normalizeDraftOrderInput(
@@ -1892,8 +2637,16 @@ describe("normalizeDraftOrderInput — whole-order discount promotion to order l
     const out = await normalizeDraftOrderInput(
       {
         lineItems: [
-          { variantId: "gid://shopify/ProductVariant/1", quantity: 8, appliedDiscount: { value: 20, valueType: "PERCENTAGE", title: "EDU 20% discount" } },
-          { variantId: "gid://shopify/ProductVariant/2", quantity: 8, appliedDiscount: { value: 20, valueType: "PERCENTAGE", title: "EDU 20% discount" } },
+          {
+            variantId: "gid://shopify/ProductVariant/1",
+            quantity: 8,
+            appliedDiscount: { value: 20, valueType: "PERCENTAGE", title: "EDU 20% discount" },
+          },
+          {
+            variantId: "gid://shopify/ProductVariant/2",
+            quantity: 8,
+            appliedDiscount: { value: 20, valueType: "PERCENTAGE", title: "EDU 20% discount" },
+          },
         ],
       },
       ctx,
@@ -1912,7 +2665,11 @@ describe("normalizeDraftOrderInput — whole-order discount promotion to order l
     const out = await normalizeDraftOrderInput(
       {
         lineItems: [
-          { variantId: "gid://shopify/ProductVariant/1", quantity: 8, appliedDiscount: { value: 20, valueType: "PERCENTAGE", title: "EDU" } },
+          {
+            variantId: "gid://shopify/ProductVariant/1",
+            quantity: 8,
+            appliedDiscount: { value: 20, valueType: "PERCENTAGE", title: "EDU" },
+          },
           { variantId: "gid://shopify/ProductVariant/2", quantity: 8 }, // the other line carries no discount
         ],
       },
@@ -1930,8 +2687,16 @@ describe("normalizeDraftOrderInput — whole-order discount promotion to order l
     const out = await normalizeDraftOrderInput(
       {
         lineItems: [
-          { variantId: "gid://shopify/ProductVariant/1", quantity: 10, appliedDiscount: { value: 30, valueType: "PERCENTAGE", title: "Dealer" } },
-          { variantId: "gid://shopify/ProductVariant/2", quantity: 2, appliedDiscount: { value: 10, valueType: "PERCENTAGE", title: "Accessory" } },
+          {
+            variantId: "gid://shopify/ProductVariant/1",
+            quantity: 10,
+            appliedDiscount: { value: 30, valueType: "PERCENTAGE", title: "Dealer" },
+          },
+          {
+            variantId: "gid://shopify/ProductVariant/2",
+            quantity: 2,
+            appliedDiscount: { value: 10, valueType: "PERCENTAGE", title: "Accessory" },
+          },
         ],
       },
       ctx,
@@ -1946,7 +2711,15 @@ describe("normalizeDraftOrderInput — whole-order discount promotion to order l
   it("a SINGLE-line draft keeps its per-line discount (BL-04 round-trip; one line == whole order)", async () => {
     const { ctx } = makeCtx({ fetchResponses: [] })
     const out = await normalizeDraftOrderInput(
-      { lineItems: [{ variantId: "gid://shopify/ProductVariant/9", quantity: 25, appliedDiscount: { value: 40, valueType: "PERCENTAGE", title: "Dealer" } }] },
+      {
+        lineItems: [
+          {
+            variantId: "gid://shopify/ProductVariant/9",
+            quantity: 25,
+            appliedDiscount: { value: 40, valueType: "PERCENTAGE", title: "Dealer" },
+          },
+        ],
+      },
       ctx,
       { promoteWholeOrderDiscount: true },
     )
@@ -1976,8 +2749,16 @@ describe("normalizeDraftOrderInput — whole-order discount promotion to order l
     const out = await normalizeDraftOrderInput(
       {
         lineItems: [
-          { variantId: "gid://shopify/ProductVariant/1", quantity: 8, appliedDiscount: { value: 20, valueType: "PERCENTAGE", title: "EDU" } },
-          { variantId: "gid://shopify/ProductVariant/2", quantity: 8, appliedDiscount: { value: 20, valueType: "PERCENTAGE", title: "EDU" } },
+          {
+            variantId: "gid://shopify/ProductVariant/1",
+            quantity: 8,
+            appliedDiscount: { value: 20, valueType: "PERCENTAGE", title: "EDU" },
+          },
+          {
+            variantId: "gid://shopify/ProductVariant/2",
+            quantity: 8,
+            appliedDiscount: { value: 20, valueType: "PERCENTAGE", title: "EDU" },
+          },
         ],
       },
       ctx, // no opts → promoteWholeOrderDiscount defaults off
@@ -2006,7 +2787,11 @@ describe("draft_orders_create — order-level discount placement (end-to-end gat
         {
           data: {
             draftOrderCreate: {
-              draftOrder: { id: "gid://shopify/DraftOrder/8", name: "#D8", totalPriceSet: { presentmentMoney: { amount: "4787.20", currencyCode: "USD" } } },
+              draftOrder: {
+                id: "gid://shopify/DraftOrder/8",
+                name: "#D8",
+                totalPriceSet: { presentmentMoney: { amount: "4787.20", currencyCode: "USD" } },
+              },
               userErrors: [],
             },
           },
@@ -2018,19 +2803,38 @@ describe("draft_orders_create — order-level discount placement (end-to-end gat
         input: {
           note: "UK export, post-Brexit customs, commercial invoice required",
           lineItems: [
-            { variantId: "gid://shopify/ProductVariant/1", quantity: 8, appliedDiscount: { value: 20, valueType: "PERCENTAGE", title: "EDU 20% discount" } },
+            {
+              variantId: "gid://shopify/ProductVariant/1",
+              quantity: 8,
+              appliedDiscount: { value: 20, valueType: "PERCENTAGE", title: "EDU 20% discount" },
+            },
             { variantId: "gid://shopify/ProductVariant/2", quantity: 8 },
           ],
           // Physical goods → the guard requires a ship-to address.
-          shippingAddress: { firstName: "Edu", lastName: "Buyer", address1: "10 College Rd", city: "London", countryCode: "GB", zip: "EC1A 1BB" },
+          shippingAddress: {
+            firstName: "Edu",
+            lastName: "Buyer",
+            address1: "10 College Rd",
+            city: "London",
+            countryCode: "GB",
+            zip: "EC1A 1BB",
+          },
         },
       },
       ctx,
     )
     const sent = JSON.parse(calls[1]!.body) as {
-      variables: { input: { appliedDiscount?: { value: number; valueType: string }; lineItems: Array<{ appliedDiscount?: unknown }> } }
+      variables: {
+        input: {
+          appliedDiscount?: { value: number; valueType: string }
+          lineItems: Array<{ appliedDiscount?: unknown }>
+        }
+      }
     }
-    expect(sent.variables.input.appliedDiscount).toMatchObject({ value: 20, valueType: "PERCENTAGE" })
+    expect(sent.variables.input.appliedDiscount).toMatchObject({
+      value: 20,
+      valueType: "PERCENTAGE",
+    })
     expect(sent.variables.input.lineItems[0]?.appliedDiscount).toBeUndefined()
     expect(sent.variables.input.lineItems[1]?.appliedDiscount).toBeUndefined()
   })
@@ -2040,7 +2844,11 @@ describe("inventory input normalisation — set-on-hand vs adjust (weak-model AP
   it("set_on_hand: a flat {inventoryItemId, locationId, newQuantity} → InventorySetOnHandQuantitiesInput", () => {
     // The exact failing shape: agent gave `newQuantity` (absolute) on a flat object, no setQuantities wrapper.
     expect(
-      normalizeInventorySetOnHandInput({ inventoryItemId: "gid://i/1", locationId: "gid://l/2", newQuantity: 47 }),
+      normalizeInventorySetOnHandInput({
+        inventoryItemId: "gid://i/1",
+        locationId: "gid://l/2",
+        newQuantity: 47,
+      }),
     ).toEqual({
       reason: "correction",
       setQuantities: [{ inventoryItemId: "gid://i/1", locationId: "gid://l/2", quantity: 47 }],
@@ -2049,7 +2857,10 @@ describe("inventory input normalisation — set-on-hand vs adjust (weak-model AP
 
   it("set_on_hand: maps quantity synonyms (onHand) and a string number; keeps a VALID enum reason", () => {
     expect(
-      normalizeInventorySetOnHandInput({ reason: "cycle_count_available", setQuantities: [{ inventoryItemId: "i", locationId: "l", onHand: "12" }] }),
+      normalizeInventorySetOnHandInput({
+        reason: "cycle_count_available",
+        setQuantities: [{ inventoryItemId: "i", locationId: "l", onHand: "12" }],
+      }),
     ).toEqual({
       reason: "cycle_count_available",
       setQuantities: [{ inventoryItemId: "i", locationId: "l", quantity: 12 }],
@@ -2057,12 +2868,17 @@ describe("inventory input normalisation — set-on-hand vs adjust (weak-model AP
   })
 
   it("set_on_hand: maps an invalid free-text reason (physical_count) to the enum default 'correction'", () => {
-    const out = normalizeInventorySetOnHandInput({ reason: "physical_count", setQuantities: [{ inventoryItemId: "i", locationId: "l", quantity: 47 }] })
+    const out = normalizeInventorySetOnHandInput({
+      reason: "physical_count",
+      setQuantities: [{ inventoryItemId: "i", locationId: "l", quantity: 47 }],
+    })
     expect(out.reason).toBe("correction")
   })
 
   it("adjust: a flat {inventoryItemId, locationId, delta} → InventoryAdjustQuantitiesInput (name=available)", () => {
-    expect(normalizeInventoryAdjustInput({ inventoryItemId: "i", locationId: "l", delta: -3 })).toEqual({
+    expect(
+      normalizeInventoryAdjustInput({ inventoryItemId: "i", locationId: "l", delta: -3 }),
+    ).toEqual({
       reason: "correction",
       name: "available",
       changes: [{ inventoryItemId: "i", locationId: "l", delta: -3 }],
@@ -2081,23 +2897,46 @@ describe("inventory input normalisation — set-on-hand vs adjust (weak-model AP
     // inventorySetOnHandQuantities) with changeFromQuantity + the @idempotent directive.
     const { ctx, calls } = makeCtx({
       fetchResponses: [
-        { data: { inventoryItem: { inventoryLevel: { quantities: [{ name: "on_hand", quantity: 30 }] } } } },
-        { data: { inventorySetQuantities: { inventoryAdjustmentGroup: { id: "gid://shopify/InventoryAdjustmentGroup/1" }, userErrors: [] } } },
+        {
+          data: {
+            inventoryItem: { inventoryLevel: { quantities: [{ name: "on_hand", quantity: 30 }] } },
+          },
+        },
+        {
+          data: {
+            inventorySetQuantities: {
+              inventoryAdjustmentGroup: { id: "gid://shopify/InventoryAdjustmentGroup/1" },
+              userErrors: [],
+            },
+          },
+        },
       ],
     })
     await inventory_set_on_hand(
-      { input: { inventoryItemId: "gid://shopify/InventoryItem/9", locationId: "gid://shopify/Location/2", newQuantity: 47 } },
+      {
+        input: {
+          inventoryItemId: "gid://shopify/InventoryItem/9",
+          locationId: "gid://shopify/Location/2",
+          newQuantity: 47,
+        },
+      },
       ctx,
     )
     // 1st call: read current on_hand for the (item, location).
-    const read = JSON.parse(calls[0]!.body) as { query: string; variables: { id: string; loc: string } }
+    const read = JSON.parse(calls[0]!.body) as {
+      query: string
+      variables: { id: string; loc: string }
+    }
     expect(read.query).toContain("inventoryLevel")
     expect(read.variables.id).toBe("gid://shopify/InventoryItem/9")
     expect(read.variables.loc).toBe("gid://shopify/Location/2")
     // 2nd call: inventorySetQuantities with the absolute quantity + changeFromQuantity from the read + @idempotent.
     const set = JSON.parse(calls[1]!.body) as {
       query: string
-      variables: { input: { name: string; reason: string; quantities: Array<Record<string, unknown>> }; key: string }
+      variables: {
+        input: { name: string; reason: string; quantities: Array<Record<string, unknown>> }
+        key: string
+      }
     }
     expect(set.query).toContain("inventorySetQuantities")
     expect(set.query).toContain("@idempotent")
@@ -2118,16 +2957,34 @@ describe("order_update — capability boundary: tags/note only, NOT shipping add
   it("REJECTS an unsupported shippingAddress field with a clear boundary (no silent accept → no false claim)", async () => {
     const { ctx } = makeCtx({ fetchResponses: [] })
     await expect(
-      order_update({ input: { id: "gid://shopify/Order/1", shippingAddress: { address1: "42 Rue", address2: "Apt 14" } } }, ctx),
+      order_update(
+        {
+          input: {
+            id: "gid://shopify/Order/1",
+            shippingAddress: { address1: "42 Rue", address2: "Apt 14" },
+          },
+        },
+        ctx,
+      ),
     ).rejects.toThrow(/CANNOT change|shipping address/i)
   })
 
   it("allows the supported fields (tags/note) and sends orderUpdate", async () => {
     const { ctx, calls } = makeCtx({
-      fetchResponses: [{ data: { orderUpdate: { order: { id: "gid://shopify/Order/1" }, userErrors: [] } } }],
+      fetchResponses: [
+        { data: { orderUpdate: { order: { id: "gid://shopify/Order/1" }, userErrors: [] } } },
+      ],
     })
-    await order_update({ input: { id: "gid://shopify/Order/1", tags: ["vip"], note: "address correction requested" } }, ctx)
-    const body = JSON.parse(calls[0]!.body) as { query: string; variables: { input: Record<string, unknown> } }
+    await order_update(
+      {
+        input: { id: "gid://shopify/Order/1", tags: ["vip"], note: "address correction requested" },
+      },
+      ctx,
+    )
+    const body = JSON.parse(calls[0]!.body) as {
+      query: string
+      variables: { input: Record<string, unknown> }
+    }
     expect(body.query).toContain("orderUpdate")
     expect(body.variables.input.tags).toEqual(["vip"])
     expect(body.variables.input.note).toBe("address correction requested")
@@ -2142,7 +2999,10 @@ describe("products_update — wrong-entity guard (Modular-Expo-leads gate fail)"
   it("REJECTS an ORDER gid with a redirect to order_update (no cryptic Invalid id 422)", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [] })
     await expect(
-      products_update({ input: { id: "gid://shopify/Order/12814287863974", tags: ["Modular Expo-2026"] } }, ctx),
+      products_update(
+        { input: { id: "gid://shopify/Order/12814287863974", tags: ["Modular Expo-2026"] } },
+        ctx,
+      ),
     ).rejects.toThrow(/order_update/i)
     // It must FAIL BEFORE any Shopify mutation call (no productUpdate sent with a bad id).
     expect(calls).toHaveLength(0)
@@ -2150,17 +3010,38 @@ describe("products_update — wrong-entity guard (Modular-Expo-leads gate fail)"
 
   it("accepts a real PRODUCT gid and sends productUpdate", async () => {
     const { ctx, calls } = makeCtx({
-      fetchResponses: [{ data: { productUpdate: { product: { id: "gid://shopify/Product/1", title: "Kestrel 6", status: "ACTIVE" }, userErrors: [] } } }],
+      fetchResponses: [
+        {
+          data: {
+            productUpdate: {
+              product: { id: "gid://shopify/Product/1", title: "Kestrel 6", status: "ACTIVE" },
+              userErrors: [],
+            },
+          },
+        },
+      ],
     })
     await products_update({ input: { id: "gid://shopify/Product/1", tags: ["expo"] } }, ctx)
-    const body = JSON.parse(calls[0]!.body) as { query: string; variables: { input: Record<string, unknown> } }
+    const body = JSON.parse(calls[0]!.body) as {
+      query: string
+      variables: { input: Record<string, unknown> }
+    }
     expect(body.query).toContain("productUpdate")
     expect(body.variables.input.id).toBe("gid://shopify/Product/1")
   })
 
   it("leaves a bare numeric/legacy id alone (Shopify resolves it)", async () => {
     const { ctx, calls } = makeCtx({
-      fetchResponses: [{ data: { productUpdate: { product: { id: "gid://shopify/Product/2", title: "X", status: "ACTIVE" }, userErrors: [] } } }],
+      fetchResponses: [
+        {
+          data: {
+            productUpdate: {
+              product: { id: "gid://shopify/Product/2", title: "X", status: "ACTIVE" },
+              userErrors: [],
+            },
+          },
+        },
+      ],
     })
     await products_update({ input: { id: "123456", tags: ["x"] } }, ctx)
     expect(calls).toHaveLength(1) // not rejected by the gid-entity guard
@@ -2183,7 +3064,9 @@ describe("normalizeEmailInput — draftOrderInvoiceSend EmailInput", () => {
     // The weak model appends `.com` to a `*.example` address; `tonwerk-audio.example.com` is a
     // subdomain of the RFC-2606 reserved example.com and never resolves → the send must fall back
     // to the draft's customer email, not pass the undeliverable override.
-    expect(normalizeEmailInput({ to: "dirk.sauer@tonwerk-audio.example.com", subject: "Q" })).toBeNull()
+    expect(
+      normalizeEmailInput({ to: "dirk.sauer@tonwerk-audio.example.com", subject: "Q" }),
+    ).toBeNull()
     expect(normalizeEmailInput({ to: "x@example.com" })).toBeNull()
   })
 
@@ -2245,7 +3128,9 @@ describe("refunds_create", () => {
             kind: "SALE",
             status: "SUCCESS",
             gateway: opts?.gateway ?? "manual",
-            amountSet: { presentmentMoney: { amount: opts?.amount ?? "789.00", currencyCode: "EUR" } },
+            amountSet: {
+              presentmentMoney: { amount: opts?.amount ?? "789.00", currencyCode: "EUR" },
+            },
           },
         ],
       },
@@ -2299,7 +3184,11 @@ describe("refunds_create", () => {
   it("builds a FULL refund (all refundable lines + derived REFUND transaction) from orderId alone", async () => {
     const { ctx, calls } = makeCtx({
       fetchResponses: [
-        orderCtxResp({ lineItemId: "gid://shopify/LineItem/100", saleTxId: "gid://shopify/OrderTransaction/500", amount: "789.00" }),
+        orderCtxResp({
+          lineItemId: "gid://shopify/LineItem/100",
+          saleTxId: "gid://shopify/OrderTransaction/500",
+          amount: "789.00",
+        }),
         refundResp(),
       ],
     })
@@ -2315,7 +3204,9 @@ describe("refunds_create", () => {
       }
     ).variables.input
     // The order's own refundable line, full quantity.
-    expect(input.refundLineItems).toEqual([{ lineItemId: "gid://shopify/LineItem/100", quantity: 1 }])
+    expect(input.refundLineItems).toEqual([
+      { lineItemId: "gid://shopify/LineItem/100", quantity: 1 },
+    ])
     // A REFUND transaction against the parent SALE for the full captured amount — so money is actually
     // returned (not a €0 line-item-only refund).
     expect(input.transactions).toHaveLength(1)
@@ -2335,7 +3226,11 @@ describe("refunds_create", () => {
     // threading gateway/parentId/orderId from the order's parent SALE.
     const { ctx, calls } = makeCtx({
       fetchResponses: [
-        orderCtxResp({ amount: "699.00", saleTxId: "gid://shopify/OrderTransaction/777", gateway: "manual" }),
+        orderCtxResp({
+          amount: "699.00",
+          saleTxId: "gid://shopify/OrderTransaction/777",
+          gateway: "manual",
+        }),
         refundResp("gid://shopify/Refund/9", "Goodwill — firmware recall"),
       ],
     })
@@ -2349,7 +3244,13 @@ describe("refunds_create", () => {
           input: {
             refundLineItems: unknown[]
             shipping: unknown
-            transactions: { kind: string; parentId: string; amount: string; gateway: string; orderId: string }[]
+            transactions: {
+              kind: string
+              parentId: string
+              amount: string
+              gateway: string
+              orderId: string
+            }[]
           }
         }
       }
@@ -2373,13 +3274,20 @@ describe("refunds_create", () => {
     // (the parent SALE's presentmentMoney, the caller's flat amount), so RefundInput.currency MUST
     // be set to the presentment currency — without it Shopify interprets the transaction amount in
     // the shop currency and rejects the refund ("Currency must match parent transaction USD").
-    const multiCtx = orderCtxResp({ amount: "1078.30", saleTxId: "gid://shopify/OrderTransaction/13", gateway: "shopify_payments" })
+    const multiCtx = orderCtxResp({
+      amount: "1078.30",
+      saleTxId: "gid://shopify/OrderTransaction/13",
+      gateway: "shopify_payments",
+    })
     ;(multiCtx.data.order as Record<string, unknown>).presentmentCurrencyCode = "USD"
     const { ctx, calls } = makeCtx({ fetchResponses: [multiCtx, refundResp()] })
     await refunds_create({ orderId: "gid://shopify/Order/9", amount: "200.00" }, ctx)
     const { input, idempotencyKey } = (
       JSON.parse(calls[1]!.body) as {
-        variables: { input: { currency?: string; transactions: { amount: string }[] }; idempotencyKey: string }
+        variables: {
+          input: { currency?: string; transactions: { amount: string }[] }
+          idempotencyKey: string
+        }
       }
     ).variables
     expect(input.currency).toBe("USD")
@@ -2389,7 +3297,9 @@ describe("refunds_create", () => {
     const sameCcy = makeCtx({ fetchResponses: [orderCtxResp({ amount: "1078.30" }), refundResp()] })
     await refunds_create({ orderId: "gid://shopify/Order/9", amount: "200.00" }, sameCcy.ctx)
     const singleCcy = (
-      JSON.parse(sameCcy.calls[1]!.body) as { variables: { input: { currency?: string }; idempotencyKey: string } }
+      JSON.parse(sameCcy.calls[1]!.body) as {
+        variables: { input: { currency?: string }; idempotencyKey: string }
+      }
     ).variables
     expect(singleCcy.input.currency).toBeUndefined()
     expect(singleCcy.idempotencyKey).not.toBe(idempotencyKey)
@@ -2401,7 +3311,9 @@ describe("refunds_create", () => {
     // of the same refund into replaying that failure. The kernel mints one
     // approvalExecutionId per decide (stable across its transient re-invocations).
     const keyFor = async (executionId?: string) => {
-      const { ctx, calls } = makeCtx({ fetchResponses: [orderCtxResp({ amount: "699.00" }), refundResp()] })
+      const { ctx, calls } = makeCtx({
+        fetchResponses: [orderCtxResp({ amount: "699.00" }), refundResp()],
+      })
       if (executionId) {
         ;(ctx as unknown as Record<string, unknown>).approval = {
           approvalRequestId: "req-1",
@@ -2411,7 +3323,8 @@ describe("refunds_create", () => {
         }
       }
       await refunds_create({ orderId: "gid://shopify/Order/9", amount: "50.00" }, ctx)
-      return (JSON.parse(calls[1]!.body) as { variables: { idempotencyKey: string } }).variables.idempotencyKey
+      return (JSON.parse(calls[1]!.body) as { variables: { idempotencyKey: string } }).variables
+        .idempotencyKey
     }
     const execA1 = await keyFor("exec-a")
     const execA2 = await keyFor("exec-a")
@@ -2431,25 +3344,42 @@ describe("refunds_create", () => {
     })
     await refunds_create({ orderId: "gid://shopify/Order/9", amount: 50 }, num.ctx)
     const numTx = (
-      JSON.parse(num.calls[1]!.body) as { variables: { input: { refundLineItems: unknown[]; transactions: { amount: string }[] } } }
+      JSON.parse(num.calls[1]!.body) as {
+        variables: { input: { refundLineItems: unknown[]; transactions: { amount: string }[] } }
+      }
     ).variables.input
     expect(numTx.refundLineItems).toEqual([])
     expect(numTx.transactions[0]!.amount).toBe("50.00")
 
     const txOnly = makeCtx({
-      fetchResponses: [orderCtxResp({ amount: "699.00", saleTxId: "gid://shopify/OrderTransaction/888" }), refundResp()],
+      fetchResponses: [
+        orderCtxResp({ amount: "699.00", saleTxId: "gid://shopify/OrderTransaction/888" }),
+        refundResp(),
+      ],
     })
     await refunds_create(
       {
         orderId: "gid://shopify/Order/9",
         // The agent's hand-built transaction with the fields it can't know (the 422 source) left null.
-        transactions: [{ kind: "REFUND", amount: "50.00", gateway: null, orderId: null, parentId: null }],
+        transactions: [
+          { kind: "REFUND", amount: "50.00", gateway: null, orderId: null, parentId: null },
+        ],
       },
       txOnly.ctx,
     )
     const txInput = (
       JSON.parse(txOnly.calls[1]!.body) as {
-        variables: { input: { transactions: { kind: string; gateway: string; orderId: string; parentId: string; amount: string }[] } }
+        variables: {
+          input: {
+            transactions: {
+              kind: string
+              gateway: string
+              orderId: string
+              parentId: string
+              amount: string
+            }[]
+          }
+        }
       }
     ).variables.input
     expect(txInput.transactions).toHaveLength(1)
@@ -2475,7 +3405,9 @@ describe("refunds_create", () => {
       ctx,
     )
     const input = (
-      JSON.parse(calls[1]!.body) as { variables: { input: { shipping: unknown; transactions: { amount: string }[] } } }
+      JSON.parse(calls[1]!.body) as {
+        variables: { input: { shipping: unknown; transactions: { amount: string }[] } }
+      }
     ).variables.input
     expect(input.shipping).toBeUndefined()
     expect(input.transactions[0]!.amount).toBe("50.00")
@@ -2496,7 +3428,9 @@ describe("refunds_create", () => {
       {
         orderId: "gid://shopify/Order/9",
         // A lineItemId from a DIFFERENT order (the near-identical duplicate).
-        refundLineItems: [{ lineItemId: "gid://shopify/LineItem/OTHER-ORDER", quantity: 1, sku: "RAL-MOD" }],
+        refundLineItems: [
+          { lineItemId: "gid://shopify/LineItem/OTHER-ORDER", quantity: 1, sku: "RAL-MOD" },
+        ],
       },
       ctx,
     )
@@ -2542,9 +3476,9 @@ describe("refunds_create", () => {
 
   it("throws when the order is not found", async () => {
     const { ctx } = makeCtx({ fetchResponses: [{ data: { order: null } }] })
-    await expect(
-      refunds_create({ orderId: "gid://shopify/Order/missing" }, ctx),
-    ).rejects.toThrow(/not found/)
+    await expect(refunds_create({ orderId: "gid://shopify/Order/missing" }, ctx)).rejects.toThrow(
+      /not found/,
+    )
   })
 
   it("throws when Shopify returns userErrors and skips event emission", async () => {
@@ -2666,11 +3600,21 @@ describe("draft_orders_create", () => {
     const { ctx, events } = makeCtx({
       fetchResponses: [
         // The buyer-identity guard first batch-queries the lines' requiresShipping (one physical variant).
-        { data: { nodes: [{ id: "gid://shopify/ProductVariant/1", inventoryItem: { requiresShipping: true } }] } },
+        {
+          data: {
+            nodes: [
+              { id: "gid://shopify/ProductVariant/1", inventoryItem: { requiresShipping: true } },
+            ],
+          },
+        },
         {
           data: {
             draftOrderCreate: {
-              draftOrder: { id: "gid://shopify/DraftOrder/7", name: "#D7", totalPriceSet: { presentmentMoney: { amount: "50.00", currencyCode: "USD" } } },
+              draftOrder: {
+                id: "gid://shopify/DraftOrder/7",
+                name: "#D7",
+                totalPriceSet: { presentmentMoney: { amount: "50.00", currencyCode: "USD" } },
+              },
               userErrors: [],
             },
           },
@@ -2682,7 +3626,14 @@ describe("draft_orders_create", () => {
       {
         input: {
           lineItems: [{ quantity: 1, variantId: "gid://shopify/ProductVariant/1" }],
-          shippingAddress: { firstName: "Dana", lastName: "Reed", address1: "1 Main St", city: "Berlin", countryCode: "DE", zip: "10115" },
+          shippingAddress: {
+            firstName: "Dana",
+            lastName: "Reed",
+            address1: "1 Main St",
+            city: "Berlin",
+            countryCode: "DE",
+            zip: "10115",
+          },
         },
       },
       ctx,
@@ -2694,7 +3645,13 @@ describe("draft_orders_create", () => {
   it("carries poNumber on the emitted event when the created draft has one (event shape: camelCase, not the tool-result po_number)", async () => {
     const { ctx, events } = makeCtx({
       fetchResponses: [
-        { data: { nodes: [{ id: "gid://shopify/ProductVariant/1", inventoryItem: { requiresShipping: true } }] } },
+        {
+          data: {
+            nodes: [
+              { id: "gid://shopify/ProductVariant/1", inventoryItem: { requiresShipping: true } },
+            ],
+          },
+        },
         {
           data: {
             draftOrderCreate: {
@@ -2715,7 +3672,14 @@ describe("draft_orders_create", () => {
         input: {
           poNumber: "PO-4471",
           lineItems: [{ quantity: 1, variantId: "gid://shopify/ProductVariant/1" }],
-          shippingAddress: { firstName: "Dana", lastName: "Reed", address1: "1 Main St", city: "Berlin", countryCode: "DE", zip: "10115" },
+          shippingAddress: {
+            firstName: "Dana",
+            lastName: "Reed",
+            address1: "1 Main St",
+            city: "Berlin",
+            countryCode: "DE",
+            zip: "10115",
+          },
         },
       },
       ctx,
@@ -2734,11 +3698,21 @@ describe("draft_orders_create", () => {
     const { ctx, calls, events } = makeCtx({
       fetchResponses: [
         // Guard's batched requiresShipping probe: this dealer line is physical hardware.
-        { data: { nodes: [{ id: "gid://shopify/ProductVariant/1", inventoryItem: { requiresShipping: true } }] } },
+        {
+          data: {
+            nodes: [
+              { id: "gid://shopify/ProductVariant/1", inventoryItem: { requiresShipping: true } },
+            ],
+          },
+        },
         {
           data: {
             draftOrderCreate: {
-              draftOrder: { id: "gid://shopify/DraftOrder/9", name: "#D9", totalPriceSet: { presentmentMoney: { amount: "699.00", currencyCode: "EUR" } } },
+              draftOrder: {
+                id: "gid://shopify/DraftOrder/9",
+                name: "#D9",
+                totalPriceSet: { presentmentMoney: { amount: "699.00", currencyCode: "EUR" } },
+              },
               userErrors: [],
             },
           },
@@ -2750,7 +3724,14 @@ describe("draft_orders_create", () => {
         input: {
           email: "orders@klangwerk-gmbh.de",
           lineItems: [{ quantity: 25, variantId: "gid://shopify/ProductVariant/1" }],
-          shippingAddress: { firstName: "Klaus", lastName: "Werk", address1: "5 Ringstr", city: "Wien", countryCode: "AT", zip: "1010" },
+          shippingAddress: {
+            firstName: "Klaus",
+            lastName: "Werk",
+            address1: "5 Ringstr",
+            city: "Wien",
+            countryCode: "AT",
+            zip: "1010",
+          },
         },
       },
       ctx,
@@ -2769,13 +3750,30 @@ describe("draft_orders_create", () => {
   it("retries the create once WITHOUT the email when Shopify rejects the email domain", async () => {
     const { ctx, calls, events } = makeCtx({
       fetchResponses: [
-        { data: { nodes: [{ id: "gid://shopify/ProductVariant/1", inventoryItem: { requiresShipping: true } }] } },
+        {
+          data: {
+            nodes: [
+              { id: "gid://shopify/ProductVariant/1", inventoryItem: { requiresShipping: true } },
+            ],
+          },
+        },
         // Shopify's domain verdict comes back as a userErrors rejection.
-        { data: { draftOrderCreate: { draftOrder: null, userErrors: [{ field: ["email"], message: "Email contains an invalid domain name" }] } } },
         {
           data: {
             draftOrderCreate: {
-              draftOrder: { id: "gid://shopify/DraftOrder/11", name: "#D11", totalPriceSet: { presentmentMoney: { amount: "699.00", currencyCode: "EUR" } } },
+              draftOrder: null,
+              userErrors: [{ field: ["email"], message: "Email contains an invalid domain name" }],
+            },
+          },
+        },
+        {
+          data: {
+            draftOrderCreate: {
+              draftOrder: {
+                id: "gid://shopify/DraftOrder/11",
+                name: "#D11",
+                totalPriceSet: { presentmentMoney: { amount: "699.00", currencyCode: "EUR" } },
+              },
               userErrors: [],
             },
           },
@@ -2787,7 +3785,14 @@ describe("draft_orders_create", () => {
         input: {
           email: "orders@nowhere-fabricated.de",
           lineItems: [{ quantity: 1, variantId: "gid://shopify/ProductVariant/1" }],
-          shippingAddress: { firstName: "Klaus", lastName: "Werk", address1: "5 Ringstr", city: "Wien", countryCode: "AT", zip: "1010" },
+          shippingAddress: {
+            firstName: "Klaus",
+            lastName: "Werk",
+            address1: "5 Ringstr",
+            city: "Wien",
+            countryCode: "AT",
+            zip: "1010",
+          },
         },
       },
       ctx,
@@ -2807,8 +3812,21 @@ describe("draft_orders_create", () => {
   it("does NOT retry on an unrelated Shopify rejection, and the original error propagates unchanged", async () => {
     const { ctx, calls } = makeCtx({
       fetchResponses: [
-        { data: { nodes: [{ id: "gid://shopify/ProductVariant/1", inventoryItem: { requiresShipping: true } }] } },
-        { data: { draftOrderCreate: { draftOrder: null, userErrors: [{ field: ["lineItems"], message: "Variant is unavailable for sale" }] } } },
+        {
+          data: {
+            nodes: [
+              { id: "gid://shopify/ProductVariant/1", inventoryItem: { requiresShipping: true } },
+            ],
+          },
+        },
+        {
+          data: {
+            draftOrderCreate: {
+              draftOrder: null,
+              userErrors: [{ field: ["lineItems"], message: "Variant is unavailable for sale" }],
+            },
+          },
+        },
       ],
     })
     let caught: unknown
@@ -2818,7 +3836,14 @@ describe("draft_orders_create", () => {
           input: {
             email: "orders@klangwerk-gmbh.de",
             lineItems: [{ quantity: 1, variantId: "gid://shopify/ProductVariant/1" }],
-            shippingAddress: { firstName: "Klaus", lastName: "Werk", address1: "5 Ringstr", city: "Wien", countryCode: "AT", zip: "1010" },
+            shippingAddress: {
+              firstName: "Klaus",
+              lastName: "Werk",
+              address1: "5 Ringstr",
+              city: "Wien",
+              countryCode: "AT",
+              zip: "1010",
+            },
           },
         },
         ctx,
@@ -2828,7 +3853,9 @@ describe("draft_orders_create", () => {
     }
     expect(calls).toHaveLength(2) // probe + the ONE create; no retry
     expect((caught as { code?: string }).code).toBe("SHOPIFY_USER_ERROR")
-    expect((caught as Error).message).toBe("draftOrderCreate: lineItems: Variant is unavailable for sale")
+    expect((caught as Error).message).toBe(
+      "draftOrderCreate: lineItems: Variant is unavailable for sale",
+    )
   })
 })
 
@@ -2923,7 +3950,11 @@ describe("draft_orders_create — buyer-identity guard (digital needs name+email
   const createOk = {
     data: {
       draftOrderCreate: {
-        draftOrder: { id: "gid://shopify/DraftOrder/1", name: "#D1", totalPriceSet: { presentmentMoney: { amount: "0.00", currencyCode: "EUR" } } },
+        draftOrder: {
+          id: "gid://shopify/DraftOrder/1",
+          name: "#D1",
+          totalPriceSet: { presentmentMoney: { amount: "0.00", currencyCode: "EUR" } },
+        },
         userErrors: [],
       },
     },
@@ -2932,7 +3963,10 @@ describe("draft_orders_create — buyer-identity guard (digital needs name+email
   it("rejects a DIGITAL order with no buyer email (the exact comp-order failure)", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [digitalNodes()] })
     await expect(
-      draft_orders_create({ input: { lineItems: [{ variantId: "gid://shopify/ProductVariant/1", quantity: 1 }] } }, ctx),
+      draft_orders_create(
+        { input: { lineItems: [{ variantId: "gid://shopify/ProductVariant/1", quantity: 1 }] } },
+        ctx,
+      ),
     ).rejects.toThrow(/digital goods needs a usable buyer email/i)
     expect(calls).toHaveLength(1) // only the requiresShipping probe ran; the gated create never fired
   })
@@ -2941,7 +3975,12 @@ describe("draft_orders_create — buyer-identity guard (digital needs name+email
     const { ctx } = makeCtx({ fetchResponses: [digitalNodes()] })
     await expect(
       draft_orders_create(
-        { input: { email: "jeff@apple.com", lineItems: [{ variantId: "gid://shopify/ProductVariant/1", quantity: 1 }] } },
+        {
+          input: {
+            email: "jeff@apple.com",
+            lineItems: [{ variantId: "gid://shopify/ProductVariant/1", quantity: 1 }],
+          },
+        },
         ctx,
       ),
     ).rejects.toThrow(/digital goods needs a buyer name/i)
@@ -2955,7 +3994,11 @@ describe("draft_orders_create — buyer-identity guard (digital needs name+email
           email: "jeff@apple.com",
           billingAddress: { firstName: "Jeff", lastName: "Cross" },
           lineItems: [
-            { variantId: "gid://shopify/ProductVariant/1", quantity: 1, appliedDiscount: { value: 100, valueType: "PERCENTAGE", title: "Comp" } },
+            {
+              variantId: "gid://shopify/ProductVariant/1",
+              quantity: 1,
+              appliedDiscount: { value: 100, valueType: "PERCENTAGE", title: "Comp" },
+            },
           ],
         },
       },
@@ -2967,7 +4010,9 @@ describe("draft_orders_create — buyer-identity guard (digital needs name+email
 
   it("creates a DIGITAL order with a LINKED customer and no explicit email (the customer supplies both)", async () => {
     // The B2B guard first reads whether the customer is a company contact (a consumer: no profiles).
-    const consumer = { data: { customer: { id: "gid://shopify/Customer/7", companyContactProfiles: [] } } }
+    const consumer = {
+      data: { customer: { id: "gid://shopify/Customer/7", companyContactProfiles: [] } },
+    }
     const { ctx, calls } = makeCtx({ fetchResponses: [consumer, digitalNodes(), createOk] })
     await draft_orders_create(
       {
@@ -2979,13 +4024,18 @@ describe("draft_orders_create — buyer-identity guard (digital needs name+email
       ctx,
     )
     const sent = JSON.parse(calls[2]!.body) as { variables: { input: Record<string, unknown> } }
-    expect(sent.variables.input.purchasingEntity).toMatchObject({ customerId: "gid://shopify/Customer/7" })
+    expect(sent.variables.input.purchasingEntity).toMatchObject({
+      customerId: "gid://shopify/Customer/7",
+    })
   })
 
   it("rejects a PHYSICAL order with no shipping address", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [physicalNodes()] })
     await expect(
-      draft_orders_create({ input: { lineItems: [{ variantId: "gid://shopify/ProductVariant/1", quantity: 1 }] } }, ctx),
+      draft_orders_create(
+        { input: { lineItems: [{ variantId: "gid://shopify/ProductVariant/1", quantity: 1 }] } },
+        ctx,
+      ),
     ).rejects.toThrow(/physical goods needs a shipping address/i)
     expect(calls).toHaveLength(1)
   })
@@ -2996,13 +4046,24 @@ describe("draft_orders_create — buyer-identity guard (digital needs name+email
       {
         input: {
           lineItems: [{ variantId: "gid://shopify/ProductVariant/1", quantity: 1 }],
-          shippingAddress: { firstName: "Dana", lastName: "Reed", address1: "1 Main St", city: "Berlin", countryCode: "DE", zip: "10115" },
+          shippingAddress: {
+            firstName: "Dana",
+            lastName: "Reed",
+            address1: "1 Main St",
+            city: "Berlin",
+            countryCode: "DE",
+            zip: "10115",
+          },
         },
       },
       ctx,
     )
     const sent = JSON.parse(calls[1]!.body) as { variables: { input: Record<string, unknown> } }
-    expect(sent.variables.input.shippingAddress).toMatchObject({ address1: "1 Main St", city: "Berlin", countryCode: "DE" })
+    expect(sent.variables.input.shippingAddress).toMatchObject({
+      address1: "1 Main St",
+      city: "Berlin",
+      countryCode: "DE",
+    })
   })
 })
 
@@ -3013,11 +4074,21 @@ describe("draft_orders_create — requiresShipping probe query shape", () => {
     // then demanded a shipping address for a digital license and wedged the approval. Pin the query.
     const { ctx, calls } = makeCtx({
       fetchResponses: [
-        { data: { nodes: [{ id: "gid://shopify/ProductVariant/1", inventoryItem: { requiresShipping: false } }] } },
+        {
+          data: {
+            nodes: [
+              { id: "gid://shopify/ProductVariant/1", inventoryItem: { requiresShipping: false } },
+            ],
+          },
+        },
         {
           data: {
             draftOrderCreate: {
-              draftOrder: { id: "gid://shopify/DraftOrder/1", name: "#D1", totalPriceSet: { presentmentMoney: { amount: "0.00", currencyCode: "EUR" } } },
+              draftOrder: {
+                id: "gid://shopify/DraftOrder/1",
+                name: "#D1",
+                totalPriceSet: { presentmentMoney: { amount: "0.00", currencyCode: "EUR" } },
+              },
               userErrors: [],
             },
           },
@@ -3045,11 +4116,19 @@ describe("withApprovalProtocol — durable outcome recording on the post-approva
   // outcome row is AMBIGUOUS and leaves the approval stuck at `approving`. The wrapper records
   // failed_no_effect for provably-effectless failures (validation errors, Shopify userErrors
   // rejections) so the kernel reverts the approval to pending and surfaces the message.
-  type Recorded = { started: string[]; succeeded: string[]; failedNoEffect: Array<{ tool: string; err: unknown }> }
+  type Recorded = {
+    started: string[]
+    succeeded: string[]
+    failedNoEffect: Array<{ tool: string; err: unknown }>
+  }
   const approvalCtx = (base: unknown): { ctx: AppContext; recorded: Recorded } => {
     const recorded: Recorded = { started: [], succeeded: [], failedNoEffect: [] }
     const ctx = Object.assign(base as Record<string, unknown>, {
-      approval: { approvalRequestId: "ar-1", approvalDeciderId: "u-2", toolName: "shopify:tool_under_test" },
+      approval: {
+        approvalRequestId: "ar-1",
+        approvalDeciderId: "u-2",
+        toolName: "shopify:tool_under_test",
+      },
       approval_recordStarted: async (t: string) => void recorded.started.push(t),
       approval_recordSucceeded: async (t: string) => void recorded.succeeded.push(t),
       approval_recordFailedNoEffect: async (t: string, errJson: string) =>
@@ -3067,7 +4146,10 @@ describe("withApprovalProtocol — durable outcome recording on the post-approva
   it("a throw BEFORE any mutation was sent records started + failed_no_effect (approval reverts to pending)", async () => {
     const { ctx, recorded } = approvalCtx(makeCtx({ fetchResponses: [] }).ctx)
     const fn = withApprovalProtocol(async () => {
-      throw Object.assign(new Error("A draft order with digital goods needs a usable buyer email"), { code: "MISSING_BUYER_EMAIL" })
+      throw Object.assign(
+        new Error("A draft order with digital goods needs a usable buyer email"),
+        { code: "MISSING_BUYER_EMAIL" },
+      )
     })
     await expect(fn({}, ctx)).rejects.toThrow(/usable buyer email/)
     expect(recorded.started).toEqual(["shopify:tool_under_test"])
@@ -3081,7 +4163,10 @@ describe("withApprovalProtocol — durable outcome recording on the post-approva
       fetchResponses: [
         {
           data: {
-            draftOrderComplete: { draftOrder: { id: "gid://shopify/DraftOrder/2", name: "#D2", status: "COMPLETED" }, userErrors: [] },
+            draftOrderComplete: {
+              draftOrder: { id: "gid://shopify/DraftOrder/2", name: "#D2", status: "COMPLETED" },
+              userErrors: [],
+            },
           },
         },
       ],
@@ -3099,14 +4184,19 @@ describe("withApprovalProtocol — durable outcome recording on the post-approva
       fetchResponses: [
         {
           data: {
-            draftOrderComplete: { draftOrder: null, userErrors: [{ field: ["email"], message: "Email contains an invalid domain name" }] },
+            draftOrderComplete: {
+              draftOrder: null,
+              userErrors: [{ field: ["email"], message: "Email contains an invalid domain name" }],
+            },
           },
         },
       ],
     })
     const { ctx, recorded } = approvalCtx(base.ctx)
     const fn = withApprovalProtocol(draft_orders_complete)
-    await expect(fn({ id: "gid://shopify/DraftOrder/3" }, ctx)).rejects.toThrow(/invalid domain name/)
+    await expect(fn({ id: "gid://shopify/DraftOrder/3" }, ctx)).rejects.toThrow(
+      /invalid domain name/,
+    )
     expect(recorded.failedNoEffect).toHaveLength(1)
     expect(recorded.succeeded).toEqual([])
   })
@@ -3117,7 +4207,9 @@ describe("withApprovalProtocol — durable outcome recording on the post-approva
     const base = makeCtx({ fetchResponses: [{ data: {} }] })
     const { ctx, recorded } = approvalCtx(base.ctx)
     const fn = withApprovalProtocol(draft_orders_complete)
-    await expect(fn({ id: "gid://shopify/DraftOrder/4" }, ctx)).rejects.toThrow(/returned no payload/)
+    await expect(fn({ id: "gid://shopify/DraftOrder/4" }, ctx)).rejects.toThrow(
+      /returned no payload/,
+    )
     expect(recorded.started).toEqual(["shopify:tool_under_test"])
     expect(recorded.succeeded).toEqual([])
     expect(recorded.failedNoEffect).toEqual([])
@@ -3128,7 +4220,9 @@ describe("withApprovalProtocol — durable outcome recording on the post-approva
     // the caller could have avoided by fixing its input, so it must NOT default to 400 like the
     // ~40 caller-input BAD_PARAM/NOT_FOUND sites in this file.
     const { ctx } = makeCtx({ fetchResponses: [{ data: {} }] })
-    await expect(draft_orders_complete({ id: "gid://shopify/DraftOrder/5" }, ctx)).rejects.toMatchObject({
+    await expect(
+      draft_orders_complete({ id: "gid://shopify/DraftOrder/5" }, ctx),
+    ).rejects.toMatchObject({
       code: "SHOPIFY_EMPTY_PAYLOAD",
       status: 502,
     })
@@ -3145,7 +4239,14 @@ describe("withApprovalProtocol — durable outcome recording on the post-approva
       db: {
         findMany: async (entity: string) =>
           entity === "install_metadata"
-            ? [{ id: "i1", shopDomain: "demo.myshopify.com", connectionId: "ca1", apiVersion: "2026-04" }]
+            ? [
+                {
+                  id: "i1",
+                  shopDomain: "demo.myshopify.com",
+                  connectionId: "ca1",
+                  apiVersion: "2026-04",
+                },
+              ]
             : [],
         findOne: async () => null,
         insert: async () => ({ id: "x" }),
@@ -3160,7 +4261,13 @@ describe("withApprovalProtocol — durable outcome recording on the post-approva
       connections: {
         shop: {
           getAccounts: async () => [
-            { id: "ca1", ownerType: "org" as const, ownerId: null, identifier: "demo.myshopify.com", displayName: null },
+            {
+              id: "ca1",
+              ownerType: "org" as const,
+              ownerId: null,
+              identifier: "demo.myshopify.com",
+              displayName: null,
+            },
           ],
           getToken: async () => "test-token",
         },
@@ -3176,7 +4283,9 @@ describe("withApprovalProtocol — durable outcome recording on the post-approva
         deleteBlob: async () => undefined,
       },
     } as unknown as AppContext
-    await expect(draft_orders_complete({ id: "gid://shopify/DraftOrder/6" }, ctx)).rejects.toMatchObject({
+    await expect(
+      draft_orders_complete({ id: "gid://shopify/DraftOrder/6" }, ctx),
+    ).rejects.toMatchObject({
       code: "HTTP_ERROR",
       status: 500,
     })
@@ -3184,7 +4293,9 @@ describe("withApprovalProtocol — durable outcome recording on the post-approva
 
   it("an {error} envelope return (e.g. shopify_not_connected) records failed_no_effect, not succeeded", async () => {
     const { ctx, recorded } = approvalCtx(makeCtx({ fetchResponses: [] }).ctx)
-    const fn = withApprovalProtocol(async () => ({ error: { code: "shopify_not_connected", message: "no connection" } }))
+    const fn = withApprovalProtocol(async () => ({
+      error: { code: "shopify_not_connected", message: "no connection" },
+    }))
     await fn({}, ctx)
     expect(recorded.failedNoEffect).toHaveLength(1)
     expect(recorded.failedNoEffect[0]!.err).toMatchObject({ code: "shopify_not_connected" })
@@ -3199,7 +4310,11 @@ describe("fulfillments_create", () => {
         {
           data: {
             fulfillmentCreateV2: {
-              fulfillment: { id: "gid://shopify/Fulfillment/1", status: "SUCCESS", trackingInfo: [] },
+              fulfillment: {
+                id: "gid://shopify/Fulfillment/1",
+                status: "SUCCESS",
+                trackingInfo: [],
+              },
               userErrors: [],
             },
           },
@@ -3207,10 +4322,16 @@ describe("fulfillments_create", () => {
       ],
     })
     await fulfillments_create(
-      { fulfillment: { lineItemsByFulfillmentOrder: [{ fulfillmentOrderId: "gid://shopify/FulfillmentOrder/1" }] } },
+      {
+        fulfillment: {
+          lineItemsByFulfillmentOrder: [{ fulfillmentOrderId: "gid://shopify/FulfillmentOrder/1" }],
+        },
+      },
       ctx,
     )
-    const body = JSON.parse(calls[0]!.body) as { variables: { fulfillment: Record<string, unknown> } }
+    const body = JSON.parse(calls[0]!.body) as {
+      variables: { fulfillment: Record<string, unknown> }
+    }
     expect(body.variables.fulfillment).toBeDefined()
     expect(events[0]!.entity).toBe("fulfillment")
     expect(events[0]!.action).toBe("created")
@@ -3244,7 +4365,11 @@ describe("fulfillments_update_tracking", () => {
       ctx,
     )
     const body = JSON.parse(calls[0]!.body) as {
-      variables: { fulfillmentId: string; trackingInfoInput: Record<string, unknown>; notifyCustomer: boolean }
+      variables: {
+        fulfillmentId: string
+        trackingInfoInput: Record<string, unknown>
+        notifyCustomer: boolean
+      }
     }
     expect(body.variables.fulfillmentId).toBe("gid://shopify/Fulfillment/7")
     expect(body.variables.notifyCustomer).toBe(true)
@@ -3275,7 +4400,13 @@ describe("customers_update", () => {
         {
           data: {
             customerUpdate: {
-              customer: { id: "gid://shopify/Customer/3", email: "x@y", firstName: "X", lastName: "Y", tags: [] },
+              customer: {
+                id: "gid://shopify/Customer/3",
+                email: "x@y",
+                firstName: "X",
+                lastName: "Y",
+                tags: [],
+              },
               userErrors: [],
             },
           },
@@ -3283,7 +4414,9 @@ describe("customers_update", () => {
       ],
     })
     await customers_update({ id: "gid://shopify/Customer/3", firstName: "X" }, ctx)
-    const body = JSON.parse(calls[0]!.body) as { variables: { input: { id: string; firstName?: string } } }
+    const body = JSON.parse(calls[0]!.body) as {
+      variables: { input: { id: string; firstName?: string } }
+    }
     expect(body.variables.input.id).toBe("gid://shopify/Customer/3")
     expect(events[0]!.entity).toBe("customer")
     expect(events[0]!.action).toBe("updated")
@@ -3327,7 +4460,10 @@ describe("order_update / order_cancel", () => {
         },
       ],
     })
-    await order_cancel({ orderId: "gid://shopify/Order/9", reason: "CUSTOMER", refund: false, restock: false }, ctx)
+    await order_cancel(
+      { orderId: "gid://shopify/Order/9", reason: "CUSTOMER", refund: false, restock: false },
+      ctx,
+    )
     expect(events[0]!.entity).toBe("order")
     expect(events[0]!.action).toBe("cancel_requested")
     // entityId must be the order id, not the async job GID, so attention
@@ -3338,7 +4474,10 @@ describe("order_update / order_cancel", () => {
 
 describe("order_note_set: Boxtal To prepare note sync (ungated, compare-and-set)", () => {
   const noteContract = JSON.parse(
-    readFileSync(join(import.meta.dir, "__fixtures__", "contract", "order-note-contract.json"), "utf8"),
+    readFileSync(
+      join(import.meta.dir, "__fixtures__", "contract", "order-note-contract.json"),
+      "utf8",
+    ),
   ) as {
     orders_get: { note: string }
     order_note_set_ok: { order_id: string; note: string; previous_note: string }
@@ -3385,7 +4524,11 @@ describe("order_note_set: Boxtal To prepare note sync (ungated, compare-and-set)
       ],
     })
     const out = await order_note_set(
-      { order_id: "gid://shopify/Order/1001", note: "Updated after match", expected_note: longNote },
+      {
+        order_id: "gid://shopify/Order/1001",
+        note: "Updated after match",
+        expected_note: longNote,
+      },
       ctx,
     )
     expect(out.ok).toBe(true)
@@ -3406,7 +4549,11 @@ describe("order_note_set: Boxtal To prepare note sync (ungated, compare-and-set)
       ],
     })
     const out = await order_note_set(
-      { order_id: "gid://shopify/Order/1001", note: "New text", expected_note: "stale expectation" },
+      {
+        order_id: "gid://shopify/Order/1001",
+        note: "New text",
+        expected_note: "stale expectation",
+      },
       ctx,
     )
     expect(out).toEqual({
@@ -3439,7 +4586,11 @@ describe("order_note_set: Boxtal To prepare note sync (ungated, compare-and-set)
       ],
     })
     const out = await order_note_set(
-      { order_id: "gid://shopify/Order/1001", note: "New text", expected_note: "Ship with the spare pedal" },
+      {
+        order_id: "gid://shopify/Order/1001",
+        note: "New text",
+        expected_note: "Ship with the spare pedal",
+      },
       ctx,
     )
     expect(out).toEqual({
@@ -3461,7 +4612,11 @@ describe("order_note_set: Boxtal To prepare note sync (ungated, compare-and-set)
       ],
     })
     const out = await order_note_set(
-      { order_id: "gid://shopify/Order/1001", note: "New text", expected_note: "Ship with the spare pedal" },
+      {
+        order_id: "gid://shopify/Order/1001",
+        note: "New text",
+        expected_note: "Ship with the spare pedal",
+      },
       ctx,
     )
     expect(out).toEqual({
@@ -3551,9 +4706,7 @@ describe("order_note_set: Boxtal To prepare note sync (ungated, compare-and-set)
 
   it("order_note_set reports a conflict when Shopify has an empty note and the editor expected text", async () => {
     const { ctx, calls } = makeCtx({
-      fetchResponses: [
-        { data: { order: { id: "gid://shopify/Order/1008", note: "" } } },
-      ],
+      fetchResponses: [{ data: { order: { id: "gid://shopify/Order/1008", note: "" } } }],
     })
     const out = await order_note_set(
       { order_id: "gid://shopify/Order/1008", note: "New text", expected_note: "something" },
@@ -3582,7 +4735,10 @@ describe("order_note_set: Boxtal To prepare note sync (ungated, compare-and-set)
         },
       ],
     })
-    const out = await order_note_set({ order_id: "gid://shopify/Order/1002", note: "Last write wins" }, ctx)
+    const out = await order_note_set(
+      { order_id: "gid://shopify/Order/1002", note: "Last write wins" },
+      ctx,
+    )
     expect(out).toEqual({
       ok: true,
       order_id: "gid://shopify/Order/1002",
@@ -3596,11 +4752,20 @@ describe("order_note_set: Boxtal To prepare note sync (ungated, compare-and-set)
   it("order_note_set clears the note when note is null", async () => {
     const { ctx } = makeCtx({
       fetchResponses: [
-        { data: { orderUpdate: { order: { id: "gid://shopify/Order/1003", note: null }, userErrors: [] } } },
+        {
+          data: {
+            orderUpdate: { order: { id: "gid://shopify/Order/1003", note: null }, userErrors: [] },
+          },
+        },
       ],
     })
     const out = await order_note_set({ order_id: "gid://shopify/Order/1003", note: null }, ctx)
-    expect(out).toEqual({ ok: true, order_id: "gid://shopify/Order/1003", note: null, previous_note: null })
+    expect(out).toEqual({
+      ok: true,
+      order_id: "gid://shopify/Order/1003",
+      note: null,
+      previous_note: null,
+    })
   })
 
   it("order_note_set surfaces a Shopify user error instead of reporting success", async () => {
@@ -3616,15 +4781,19 @@ describe("order_note_set: Boxtal To prepare note sync (ungated, compare-and-set)
         },
       ],
     })
-    await expect(order_note_set({ order_id: "gid://shopify/Order/1004", note: "x".repeat(9999) }, ctx)).rejects.toThrow(
-      /Note is too long/,
-    )
+    await expect(
+      order_note_set({ order_id: "gid://shopify/Order/1004", note: "x".repeat(9999) }, ctx),
+    ).rejects.toThrow(/Note is too long/)
   })
 
   it("normalizes a bare numeric order_id to the Shopify gid before writing", async () => {
     const { ctx, calls } = makeCtx({
       fetchResponses: [
-        { data: { orderUpdate: { order: { id: "gid://shopify/Order/1005", note: "hi" }, userErrors: [] } } },
+        {
+          data: {
+            orderUpdate: { order: { id: "gid://shopify/Order/1005", note: "hi" }, userErrors: [] },
+          },
+        },
       ],
     })
     await order_note_set({ order_id: "1005", note: "hi" }, ctx)
@@ -3634,19 +4803,37 @@ describe("order_note_set: Boxtal To prepare note sync (ungated, compare-and-set)
 
   it("order note contract fixture matches the real handler output shapes", async () => {
     const contract = JSON.parse(
-      readFileSync(join(import.meta.dir, "__fixtures__", "contract", "order-note-contract.json"), "utf8"),
+      readFileSync(
+        join(import.meta.dir, "__fixtures__", "contract", "order-note-contract.json"),
+        "utf8",
+      ),
     ) as {
       order_note_set_ok: { ok: true; order_id: string; note: string; previous_note: string }
-      order_note_set_conflict: { ok: false; reason: "conflict"; order_id: string; current_note: string }
+      order_note_set_conflict: {
+        ok: false
+        reason: "conflict"
+        order_id: string
+        current_note: string
+      }
     }
 
     const { ctx: okCtx } = makeCtx({
       fetchResponses: [
-        { data: { order: { id: contract.order_note_set_ok.order_id, note: contract.order_note_set_ok.previous_note } } },
+        {
+          data: {
+            order: {
+              id: contract.order_note_set_ok.order_id,
+              note: contract.order_note_set_ok.previous_note,
+            },
+          },
+        },
         {
           data: {
             orderUpdate: {
-              order: { id: contract.order_note_set_ok.order_id, note: contract.order_note_set_ok.note },
+              order: {
+                id: contract.order_note_set_ok.order_id,
+                note: contract.order_note_set_ok.note,
+              },
               userErrors: [],
             },
           },
@@ -3762,9 +4949,15 @@ describe("draft_orders_update / delete / send", () => {
         },
       ],
     })
-    await draft_orders_send({ id: "gid://shopify/DraftOrder/1", email: { to: "explicit@buyer.com" } }, ctx)
+    await draft_orders_send(
+      { id: "gid://shopify/DraftOrder/1", email: { to: "explicit@buyer.com" } },
+      ctx,
+    )
     expect(calls.length).toBe(1) // explicit recipient → no resolve query
-    const send = JSON.parse(calls[0]!.body) as { query: string; variables: { email: { to?: string } } }
+    const send = JSON.parse(calls[0]!.body) as {
+      query: string
+      variables: { email: { to?: string } }
+    }
     expect(send.query).toContain("DraftOrderInvoiceSend")
     expect(send.variables.email.to).toBe("explicit@buyer.com")
   })
@@ -3777,8 +4970,14 @@ describe("products_publish / unpublish", () => {
       fetchResponses: [
         {
           data: {
-            product: { id: "gid://shopify/Product/1", title: "P", resourcePublicationsV2: { edges: [] } },
-            publications: { edges: [{ node: { id: "gid://shopify/Publication/1", name: "Online Store" } }] },
+            product: {
+              id: "gid://shopify/Product/1",
+              title: "P",
+              resourcePublicationsV2: { edges: [] },
+            },
+            publications: {
+              edges: [{ node: { id: "gid://shopify/Publication/1", name: "Online Store" } }],
+            },
           },
         },
         {
@@ -3809,7 +5008,11 @@ describe("products_publish / unpublish", () => {
             product: {
               id: "gid://shopify/Product/1",
               resourcePublicationsV2: {
-                edges: [{ node: { publication: { id: "gid://shopify/Publication/1" }, isPublished: true } }],
+                edges: [
+                  {
+                    node: { publication: { id: "gid://shopify/Publication/1" }, isPublished: true },
+                  },
+                ],
               },
             },
             publications: { edges: [{ node: { id: "gid://shopify/Publication/1" } }] },
@@ -3847,7 +5050,10 @@ describe("customers_tag", () => {
         { data: { tagsRemove: { node: { id: "gid://shopify/Customer/1" }, userErrors: [] } } },
       ],
     })
-    await customers_tag({ customerId: "gid://shopify/Customer/1", tags: ["VIP"], op: "remove" }, ctx)
+    await customers_tag(
+      { customerId: "gid://shopify/Customer/1", tags: ["VIP"], op: "remove" },
+      ctx,
+    )
     expect(calls[0]!.body).toContain("TagsRemove")
     expect(events[0]!.action).toBe("untagged")
   })
@@ -3904,7 +5110,9 @@ describe("metafields_set / delete", () => {
         {
           data: {
             metafieldsDelete: {
-              deletedMetafields: [{ ownerId: "gid://shopify/Product/1", namespace: "custom", key: "spec" }],
+              deletedMetafields: [
+                { ownerId: "gid://shopify/Product/1", namespace: "custom", key: "spec" },
+              ],
               userErrors: [],
             },
           },
@@ -4007,7 +5215,15 @@ describe("draft_orders_update — per-line appliedDiscount round-trip (BL-04)", 
     const { ctx, calls } = makeCtx({
       fetchResponses: [
         // The B2B guard reads the draft's buyer (a consumer draft with no customer).
-        { data: { draftOrder: { id: "gid://shopify/DraftOrder/1", purchasingEntity: null, customer: null } } },
+        {
+          data: {
+            draftOrder: {
+              id: "gid://shopify/DraftOrder/1",
+              purchasingEntity: null,
+              customer: null,
+            },
+          },
+        },
         {
           data: {
             draftOrderUpdate: {
@@ -4081,10 +5297,20 @@ describe("canonicaliseBasicCodeDiscount — maps weak-model shapes onto Shopify 
 
   it("accepts a 0.15 fraction unchanged and a '15%' string", () => {
     expect(
-      (canonicaliseBasicCodeDiscount({ code: "X", percentage: 0.15 }).customerGets as Record<string, unknown>).value,
+      (
+        canonicaliseBasicCodeDiscount({ code: "X", percentage: 0.15 }).customerGets as Record<
+          string,
+          unknown
+        >
+      ).value,
     ).toEqual({ percentage: 0.15 })
     expect(
-      (canonicaliseBasicCodeDiscount({ code: "X", value: "15%" }).customerGets as Record<string, unknown>).value,
+      (
+        canonicaliseBasicCodeDiscount({ code: "X", value: "15%" }).customerGets as Record<
+          string,
+          unknown
+        >
+      ).value,
     ).toEqual({ percentage: 0.15 })
   })
 
@@ -4092,7 +5318,10 @@ describe("canonicaliseBasicCodeDiscount — maps weak-model shapes onto Shopify 
     const out = canonicaliseBasicCodeDiscount({
       code: "Y",
       customerSelection: { all: true },
-      customerGets: { value: { percentage: 15 }, items: { products: { productsToAdd: ["gid://shopify/Product/9"] } } },
+      customerGets: {
+        value: { percentage: 15 },
+        items: { products: { productsToAdd: ["gid://shopify/Product/9"] } },
+      },
     })
     expect(out.customerGets).toEqual({
       value: { percentage: 0.15 },
@@ -4103,18 +5332,35 @@ describe("canonicaliseBasicCodeDiscount — maps weak-model shapes onto Shopify 
   it("falls back to {all:true} for an EMPTY/invalid customer selection (the gate 422 regression)", () => {
     // The live 422: 'Customer selection a minimum of one prerequisite … must be provided' — an empty
     // customers list. Each invalid form must canonicalise to a valid {all:true}.
-    for (const sel of [{ customers: [] }, { customers: { add: [] } }, { all: false }, { customerSegments: [] }]) {
-      const out = canonicaliseBasicCodeDiscount({ code: "BF2026-STUDIO", percentage: 15, customerSelection: sel })
+    for (const sel of [
+      { customers: [] },
+      { customers: { add: [] } },
+      { all: false },
+      { customerSegments: [] },
+    ]) {
+      const out = canonicaliseBasicCodeDiscount({
+        code: "BF2026-STUDIO",
+        percentage: 15,
+        customerSelection: sel,
+      })
       expect(out.customerSelection).toEqual({ all: true })
     }
   })
 
   it("honours a NON-empty customer/segment selection in Shopify's {add:[...]} shape", () => {
     expect(
-      canonicaliseBasicCodeDiscount({ code: "X", percentage: 10, customerSelection: { customers: ["gid://shopify/Customer/5"] } }).customerSelection,
+      canonicaliseBasicCodeDiscount({
+        code: "X",
+        percentage: 10,
+        customerSelection: { customers: ["gid://shopify/Customer/5"] },
+      }).customerSelection,
     ).toEqual({ customers: { add: ["gid://shopify/Customer/5"] } })
     expect(
-      canonicaliseBasicCodeDiscount({ code: "X", percentage: 10, customerSelection: { customerSegments: { add: ["gid://shopify/Segment/9"] } } }).customerSelection,
+      canonicaliseBasicCodeDiscount({
+        code: "X",
+        percentage: 10,
+        customerSelection: { customerSegments: { add: ["gid://shopify/Segment/9"] } },
+      }).customerSelection,
     ).toEqual({ customerSegments: { add: ["gid://shopify/Segment/9"] } })
   })
 
@@ -4146,7 +5392,9 @@ describe("canonicaliseBasicCodeDiscount — maps weak-model shapes onto Shopify 
       products: ["gid://shopify/ProductVariant/56669053419686"],
     })
     const gets = out.customerGets as { items: { products: Record<string, unknown> } }
-    expect(gets.items.products.productVariantsToAdd).toEqual(["gid://shopify/ProductVariant/56669053419686"])
+    expect(gets.items.products.productVariantsToAdd).toEqual([
+      "gid://shopify/ProductVariant/56669053419686",
+    ])
     expect("productsToAdd" in gets.items.products).toBe(false)
   })
 
@@ -4191,16 +5439,26 @@ describe("canonicaliseBasicCodeDiscount — maps weak-model shapes onto Shopify 
   })
 
   it("defaults title to the code when none given (Shopify requires a title)", () => {
-    expect(canonicaliseBasicCodeDiscount({ code: "BF2026-STUDIO", percentage: 15 }).title).toBe("BF2026-STUDIO")
+    expect(canonicaliseBasicCodeDiscount({ code: "BF2026-STUDIO", percentage: 15 }).title).toBe(
+      "BF2026-STUDIO",
+    )
   })
 
   it("recovers `code` from an alias / title when top-level code is missing (the 'Code can't be blank' 422)", () => {
     // Shopify requires `code`; a weak model sometimes omits it and parks the coupon string elsewhere.
-    expect(canonicaliseBasicCodeDiscount({ discountCode: "BF2026-STUDIO", percentage: 15 }).code).toBe("BF2026-STUDIO")
-    expect(canonicaliseBasicCodeDiscount({ couponCode: "BF2026-STUDIO", percentage: 15 }).code).toBe("BF2026-STUDIO")
-    expect(canonicaliseBasicCodeDiscount({ title: "BF2026-STUDIO", percentage: 15 }).code).toBe("BF2026-STUDIO")
+    expect(
+      canonicaliseBasicCodeDiscount({ discountCode: "BF2026-STUDIO", percentage: 15 }).code,
+    ).toBe("BF2026-STUDIO")
+    expect(
+      canonicaliseBasicCodeDiscount({ couponCode: "BF2026-STUDIO", percentage: 15 }).code,
+    ).toBe("BF2026-STUDIO")
+    expect(canonicaliseBasicCodeDiscount({ title: "BF2026-STUDIO", percentage: 15 }).code).toBe(
+      "BF2026-STUDIO",
+    )
     // An explicit code is never overridden by an alias.
-    expect(canonicaliseBasicCodeDiscount({ code: "REAL", discountCode: "ALIAS", percentage: 15 }).code).toBe("REAL")
+    expect(
+      canonicaliseBasicCodeDiscount({ code: "REAL", discountCode: "ALIAS", percentage: 15 }).code,
+    ).toBe("REAL")
   })
 
   it("REJECTS usageLimit:0 instead of turning it into an unlimited code", () => {
@@ -4211,25 +5469,37 @@ describe("canonicaliseBasicCodeDiscount — maps weak-model shapes onto Shopify 
   })
 
   it("keeps a positive whole usageLimit and rejects a fractional, negative or non-numeric one", () => {
-    expect(canonicaliseBasicCodeDiscount({ code: "X", percentage: 10, usageLimit: 25 }).usageLimit).toBe(25)
+    expect(
+      canonicaliseBasicCodeDiscount({ code: "X", percentage: 10, usageLimit: 25 }).usageLimit,
+    ).toBe(25)
     for (const bad of [5.9, -3, "lots"]) {
-      expect(() => canonicaliseBasicCodeDiscount({ code: "X", percentage: 10, usageLimit: bad })).toThrow(/usageLimit/)
+      expect(() =>
+        canonicaliseBasicCodeDiscount({ code: "X", percentage: 10, usageLimit: bad }),
+      ).toThrow(/usageLimit/)
     }
   })
 
   it("rejects recurringCycleLimit:0 likewise", () => {
-    expect(() => canonicaliseBasicCodeDiscount({ code: "X", percentage: 10, recurringCycleLimit: 0 })).toThrow(
-      /recurringCycleLimit/,
-    )
+    expect(() =>
+      canonicaliseBasicCodeDiscount({ code: "X", percentage: 10, recurringCycleLimit: 0 }),
+    ).toThrow(/recurringCycleLimit/)
   })
 
   it("rejects an ambiguous or out-of-range percentage instead of guessing", () => {
     for (const bad of [1, "1", 0, -5, 150, "abc"]) {
-      expect(() => canonicaliseBasicCodeDiscount({ code: "X", percentage: bad })).toThrow(/percentage/)
+      expect(() => canonicaliseBasicCodeDiscount({ code: "X", percentage: bad })).toThrow(
+        /percentage/,
+      )
     }
     const pct = (v: unknown) =>
-      ((canonicaliseBasicCodeDiscount({ code: "X", percentage: v }).customerGets as Record<string, unknown>)
-        .value as { percentage: number }).percentage
+      (
+        (
+          canonicaliseBasicCodeDiscount({ code: "X", percentage: v }).customerGets as Record<
+            string,
+            unknown
+          >
+        ).value as { percentage: number }
+      ).percentage
     expect(pct("1%")).toBe(0.01)
     expect(pct("100%")).toBe(1)
     expect(pct(0.15)).toBe(0.15)
@@ -4238,7 +5508,14 @@ describe("canonicaliseBasicCodeDiscount — maps weak-model shapes onto Shopify 
 })
 
 describe("discounts_create — sends the canonicalised DiscountCodeBasicInput to Shopify (no 422 passthrough)", () => {
-  const createResp = { data: { discountCodeBasicCreate: { codeDiscountNode: { id: "gid://shopify/DiscountCodeNode/77" }, userErrors: [] } } }
+  const createResp = {
+    data: {
+      discountCodeBasicCreate: {
+        codeDiscountNode: { id: "gid://shopify/DiscountCodeNode/77" },
+        userErrors: [],
+      },
+    },
+  }
 
   it("normalises the weak-model flat shape before the mutation (end-to-end gated payload)", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [createResp] })
@@ -4254,7 +5531,9 @@ describe("discounts_create — sends the canonicalised DiscountCodeBasicInput to
       },
       ctx,
     )
-    const body = JSON.parse(calls[0]!.body) as { variables: { basicCodeDiscount: Record<string, unknown> } }
+    const body = JSON.parse(calls[0]!.body) as {
+      variables: { basicCodeDiscount: Record<string, unknown> }
+    }
     const bcd = body.variables.basicCodeDiscount
     expect(bcd.customerSelection).toEqual({ all: true })
     expect(bcd.customerGets).toEqual({
@@ -4269,8 +5548,12 @@ describe("discounts_create — sends the canonicalised DiscountCodeBasicInput to
   it("unwraps a basicCodeDiscount wrapper and normalises it", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [createResp] })
     await discounts_create({ basicCodeDiscount: { code: "C", percentage: 25 } }, ctx)
-    const body = JSON.parse(calls[0]!.body) as { variables: { basicCodeDiscount: Record<string, unknown> } }
-    expect((body.variables.basicCodeDiscount.customerGets as Record<string, unknown>).value).toEqual({ percentage: 0.25 })
+    const body = JSON.parse(calls[0]!.body) as {
+      variables: { basicCodeDiscount: Record<string, unknown> }
+    }
+    expect(
+      (body.variables.basicCodeDiscount.customerGets as Record<string, unknown>).value,
+    ).toEqual({ percentage: 0.25 })
   })
 
   it("refuses usageLimit:0 at stage time, so no approval is ever parked for it", async () => {
@@ -4297,10 +5580,22 @@ describe("canonicaliseBasicCodeDiscountPartial — an update is a delta, never f
   })
 
   it("discounts_update sends only the delta", async () => {
-    const updateResp = { data: { discountCodeBasicUpdate: { codeDiscountNode: { id: "gid://shopify/DiscountCodeNode/77" }, userErrors: [] } } }
+    const updateResp = {
+      data: {
+        discountCodeBasicUpdate: {
+          codeDiscountNode: { id: "gid://shopify/DiscountCodeNode/77" },
+          userErrors: [],
+        },
+      },
+    }
     const { ctx, calls } = makeCtx({ fetchResponses: [updateResp] })
-    await discounts_update({ id: "gid://shopify/DiscountCodeNode/77", endsAt: "2026-11-30T00:00:00Z" }, ctx)
-    const body = JSON.parse(calls[0]!.body) as { variables: { id: string; basicCodeDiscount: Record<string, unknown> } }
+    await discounts_update(
+      { id: "gid://shopify/DiscountCodeNode/77", endsAt: "2026-11-30T00:00:00Z" },
+      ctx,
+    )
+    const body = JSON.parse(calls[0]!.body) as {
+      variables: { id: string; basicCodeDiscount: Record<string, unknown> }
+    }
     expect(body.variables.id).toBe("gid://shopify/DiscountCodeNode/77")
     expect(body.variables.basicCodeDiscount).toEqual({ endsAt: "2026-11-30T00:00:00Z" })
   })
@@ -4313,14 +5608,47 @@ describe("discounts_bulk_create — N unique single-use codes on one code discou
   // (2) discountRedeemCodeBulkAdd (the remaining codes, async), (3) the bulk-creation status poll,
   // (4) the read-back of the actual persisted codes. `persistedCodes` is what the store returns.
   const responses = (persistedCodes: string[], opts?: { failedCount?: number }) => [
-    { data: { discountCodeBasicCreate: { codeDiscountNode: { id: DISCOUNT_ID }, userErrors: [] } } },
-    { data: { discountRedeemCodeBulkAdd: { bulkCreation: { id: "gid://shopify/DiscountRedeemCodeBulkCreation/1" }, userErrors: [] } } },
-    { data: { discountRedeemCodeBulkCreation: { id: "gid://shopify/DiscountRedeemCodeBulkCreation/1", done: true, codesCount: persistedCodes.length, importedCount: persistedCodes.length - (opts?.failedCount ?? 0), failedCount: opts?.failedCount ?? 0 } } },
-    { data: { codeDiscountNode: { id: DISCOUNT_ID, codeDiscount: { __typename: "DiscountCodeBasic", title: "Synth Summit Press — Kestrel 6", codes: { nodes: persistedCodes.map((code) => ({ code })) } } } } },
+    {
+      data: { discountCodeBasicCreate: { codeDiscountNode: { id: DISCOUNT_ID }, userErrors: [] } },
+    },
+    {
+      data: {
+        discountRedeemCodeBulkAdd: {
+          bulkCreation: { id: "gid://shopify/DiscountRedeemCodeBulkCreation/1" },
+          userErrors: [],
+        },
+      },
+    },
+    {
+      data: {
+        discountRedeemCodeBulkCreation: {
+          id: "gid://shopify/DiscountRedeemCodeBulkCreation/1",
+          done: true,
+          codesCount: persistedCodes.length,
+          importedCount: persistedCodes.length - (opts?.failedCount ?? 0),
+          failedCount: opts?.failedCount ?? 0,
+        },
+      },
+    },
+    {
+      data: {
+        codeDiscountNode: {
+          id: DISCOUNT_ID,
+          codeDiscount: {
+            __typename: "DiscountCodeBasic",
+            title: "Synth Summit Press — Kestrel 6",
+            codes: { nodes: persistedCodes.map((code) => ({ code })) },
+          },
+        },
+      },
+    },
   ]
 
   it("creates a 50% Kestrel 6 discount and bulk-adds 25 UNIQUE single-use codes in one op; returns the real codes", async () => {
-    const persisted = Array.from({ length: 25 }, (_, i) => `SYNTH-SUMMIT-CODE${String(i).padStart(2, "0")}`)
+    const persisted = Array.from(
+      { length: 25 },
+      (_, i) => `SYNTH-SUMMIT-CODE${String(i).padStart(2, "0")}`,
+    )
     const { ctx, calls, events } = makeCtx({ fetchResponses: responses(persisted) })
     const out = (await discounts_bulk_create(
       {
@@ -4340,7 +5668,9 @@ describe("discounts_bulk_create — N unique single-use codes on one code discou
 
     // (1) The code discount create normalised the weak-model shape: 50 → 0.5 fraction, single-use defaults,
     //     scoped to the Kestrel 6 product, carrying the first code.
-    const createBody = JSON.parse(calls[0]!.body) as { variables: { basicCodeDiscount: Record<string, unknown> } }
+    const createBody = JSON.parse(calls[0]!.body) as {
+      variables: { basicCodeDiscount: Record<string, unknown> }
+    }
     const bcd = createBody.variables.basicCodeDiscount
     expect((bcd.customerGets as { value: { percentage: number } }).value.percentage).toBe(0.5)
     expect(bcd.usageLimit).toBe(1) // single-use per code
@@ -4350,12 +5680,16 @@ describe("discounts_bulk_create — N unique single-use codes on one code discou
     expect(typeof bcd.startsAt).toBe("string")
     expect(() => new Date(bcd.startsAt as string).toISOString()).not.toThrow()
     expect(Number.isNaN(Date.parse(bcd.startsAt as string))).toBe(false)
-    expect((bcd.customerGets as { items: { products: { productsToAdd: string[] } } }).items.products.productsToAdd)
-      .toContain("gid://shopify/Product/44")
+    expect(
+      (bcd.customerGets as { items: { products: { productsToAdd: string[] } } }).items.products
+        .productsToAdd,
+    ).toContain("gid://shopify/Product/44")
     expect(typeof bcd.code).toBe("string")
 
     // (2) The bulk-add carried the REMAINING 24 codes (codes[0] is on the create).
-    const addBody = JSON.parse(calls[1]!.body) as { variables: { discountId: string; codes: { code: string }[] } }
+    const addBody = JSON.parse(calls[1]!.body) as {
+      variables: { discountId: string; codes: { code: string }[] }
+    }
     expect(addBody.variables.discountId).toBe(DISCOUNT_ID)
     expect(addBody.variables.codes.length).toBe(24)
 
@@ -4378,7 +5712,10 @@ describe("discounts_bulk_create — N unique single-use codes on one code discou
     // The store persisted only 23 of the 25 (a phantom drop). The tool must report the REAL 23, never claim 25.
     const persisted = Array.from({ length: 23 }, (_, i) => `PRESS-${i}`)
     const { ctx } = makeCtx({ fetchResponses: responses(persisted) })
-    const out = (await discounts_bulk_create({ count: 25, codePrefix: "PRESS", basicCodeDiscount: { percentage: 50 } }, ctx)) as {
+    const out = (await discounts_bulk_create(
+      { count: 25, codePrefix: "PRESS", basicCodeDiscount: { percentage: 50 } },
+      ctx,
+    )) as {
       createdCount: number
       requestedCount: number
       codes: string[]
@@ -4391,7 +5728,17 @@ describe("discounts_bulk_create — N unique single-use codes on one code discou
   // The status look answers "not done yet": the tool does not wait or poll again in its run.
   const respondsNotDone = () => {
     const r = responses(["P-1", "P-2", "P-3"])
-    const pending = { data: { discountRedeemCodeBulkCreation: { id: "gid://shopify/DiscountRedeemCodeBulkCreation/1", done: false, codesCount: null, importedCount: null, failedCount: null } } }
+    const pending = {
+      data: {
+        discountRedeemCodeBulkCreation: {
+          id: "gid://shopify/DiscountRedeemCodeBulkCreation/1",
+          done: false,
+          codesCount: null,
+          importedCount: null,
+          failedCount: null,
+        },
+      },
+    }
     return [r[0]!, r[1]!, pending]
   }
 
@@ -4400,7 +5747,11 @@ describe("discounts_bulk_create — N unique single-use codes on one code discou
     const recorded: Array<[string, string]> = []
     const succeeded: string[] = []
     Object.assign(ctx, {
-      approval: { approvalRequestId: "ar-1", approvalDeciderId: "u-1", toolName: "shopify:discounts_bulk_create" },
+      approval: {
+        approvalRequestId: "ar-1",
+        approvalDeciderId: "u-1",
+        toolName: "shopify:discounts_bulk_create",
+      },
       approval_recordStarted: async () => undefined,
       approval_recordSucceeded: async (t: string) => {
         succeeded.push(t)
@@ -4409,7 +5760,10 @@ describe("discounts_bulk_create — N unique single-use codes on one code discou
         recorded.push([t, ref])
       },
     })
-    const out = (await handlers.discounts_bulk_create({ count: 3, codePrefix: "P", basicCodeDiscount: { percentage: 50 } }, ctx)) as {
+    const out = (await handlers.discounts_bulk_create(
+      { count: 3, codePrefix: "P", basicCodeDiscount: { percentage: 50 } },
+      ctx,
+    )) as {
       status: string
       codes: string[]
     }
@@ -4427,21 +5781,46 @@ describe("discounts_bulk_create — N unique single-use codes on one code discou
   })
 
   it("the pollHandler answers not ready while the job runs, then the persisted codes", async () => {
-    const ref = { discount_id: DISCOUNT_ID, bulk_creation_id: "job/1", requested_count: 3, title: "P" }
-    const pending = { data: { discountRedeemCodeBulkCreation: { id: "job/1", done: false, codesCount: null, importedCount: null, failedCount: null } } }
+    const ref = {
+      discount_id: DISCOUNT_ID,
+      bulk_creation_id: "job/1",
+      requested_count: 3,
+      title: "P",
+    }
+    const pending = {
+      data: {
+        discountRedeemCodeBulkCreation: {
+          id: "job/1",
+          done: false,
+          codesCount: null,
+          importedCount: null,
+          failedCount: null,
+        },
+      },
+    }
     const r = responses(["P-1", "P-2", "P-3"])
     const first = makeCtx({ fetchResponses: [pending] })
-    expect(await handlers.discounts_bulk_create_poll({ external_ref: ref }, first.ctx)).toEqual({ ready: false })
+    expect(await handlers.discounts_bulk_create_poll({ external_ref: ref }, first.ctx)).toEqual({
+      ready: false,
+    })
     const second = makeCtx({ fetchResponses: [r[2]!, r[3]!] })
     const done = await handlers.discounts_bulk_create_poll({ external_ref: ref }, second.ctx)
     expect(done.ready).toBe(true)
-    expect(done.result).toMatchObject({ discountId: DISCOUNT_ID, requestedCount: 3, createdCount: 3, codes: ["P-1", "P-2", "P-3"] })
+    expect(done.result).toMatchObject({
+      discountId: DISCOUNT_ID,
+      requestedCount: 3,
+      createdCount: 3,
+      codes: ["P-1", "P-2", "P-3"],
+    })
     expect(second.events.map((e) => `${e.entity}:${e.action}`)).toContain("discount:bulk_created")
   })
 
   it("outside an approval a not-done job answers `creating` and points at discounts_search", async () => {
     const { ctx } = makeCtx({ fetchResponses: respondsNotDone() })
-    const out = (await discounts_bulk_create({ count: 3, codePrefix: "P", basicCodeDiscount: { percentage: 50 } }, ctx)) as {
+    const out = (await discounts_bulk_create(
+      { count: 3, codePrefix: "P", basicCodeDiscount: { percentage: 50 } },
+      ctx,
+    )) as {
       status: string
       message: string
     }
@@ -4453,7 +5832,10 @@ describe("discounts_bulk_create — N unique single-use codes on one code discou
     const persisted = Array.from({ length: 25 }, (_, i) => `PRESS-${i}`)
     const { ctx } = makeCtx({ fetchResponses: responses(persisted, { failedCount: 3 }) })
     await expect(
-      discounts_bulk_create({ count: 25, codePrefix: "PRESS", basicCodeDiscount: { percentage: 50 } }, ctx),
+      discounts_bulk_create(
+        { count: 25, codePrefix: "PRESS", basicCodeDiscount: { percentage: 50 } },
+        ctx,
+      ),
     ).rejects.toThrow(/failed to import/i)
   })
 
@@ -4461,31 +5843,73 @@ describe("discounts_bulk_create — N unique single-use codes on one code discou
     const persisted = ["P-0", "P-1"]
     const { ctx, calls } = makeCtx({ fetchResponses: responses(persisted) })
     await discounts_bulk_create(
-      { count: 2, codePrefix: "P", basicCodeDiscount: { percentage: 50, startsAt: "2026-09-01T00:00:00Z", endsAt: "2026-09-08T00:00:00Z" } },
+      {
+        count: 2,
+        codePrefix: "P",
+        basicCodeDiscount: {
+          percentage: 50,
+          startsAt: "2026-09-01T00:00:00Z",
+          endsAt: "2026-09-08T00:00:00Z",
+        },
+      },
       ctx,
     )
-    const createBody = JSON.parse(calls[0]!.body) as { variables: { basicCodeDiscount: Record<string, unknown> } }
+    const createBody = JSON.parse(calls[0]!.body) as {
+      variables: { basicCodeDiscount: Record<string, unknown> }
+    }
     expect(createBody.variables.basicCodeDiscount.startsAt).toBe("2026-09-01T00:00:00Z")
     expect(createBody.variables.basicCodeDiscount.endsAt).toBe("2026-09-08T00:00:00Z")
   })
 
   it("count=1 makes a single code with NO bulk-add call (degenerate batch)", async () => {
-    const { ctx, calls } = makeCtx({ fetchResponses: [
-      { data: { discountCodeBasicCreate: { codeDiscountNode: { id: DISCOUNT_ID }, userErrors: [] } } },
-      { data: { codeDiscountNode: { id: DISCOUNT_ID, codeDiscount: { __typename: "DiscountCodeBasic", title: "P", codes: { nodes: [{ code: "P-AAA" }] } } } } },
-    ] })
-    const out = (await discounts_bulk_create({ count: 1, codePrefix: "P", basicCodeDiscount: { percentage: 50 } }, ctx)) as { createdCount: number }
+    const { ctx, calls } = makeCtx({
+      fetchResponses: [
+        {
+          data: {
+            discountCodeBasicCreate: { codeDiscountNode: { id: DISCOUNT_ID }, userErrors: [] },
+          },
+        },
+        {
+          data: {
+            codeDiscountNode: {
+              id: DISCOUNT_ID,
+              codeDiscount: {
+                __typename: "DiscountCodeBasic",
+                title: "P",
+                codes: { nodes: [{ code: "P-AAA" }] },
+              },
+            },
+          },
+        },
+      ],
+    })
+    const out = (await discounts_bulk_create(
+      { count: 1, codePrefix: "P", basicCodeDiscount: { percentage: 50 } },
+      ctx,
+    )) as { createdCount: number }
     // Only the create + the read-back — no bulk-add (nothing to add beyond codes[0]).
     expect(calls.length).toBe(2)
     expect(out.createdCount).toBe(1)
   })
 
   it("propagates a discountCodeBasicCreate userError instead of swallowing it", async () => {
-    const { ctx } = makeCtx({ fetchResponses: [
-      { data: { discountCodeBasicCreate: { codeDiscountNode: null, userErrors: [{ field: ["code"], message: "Code must be unique" }] } } },
-    ] })
+    const { ctx } = makeCtx({
+      fetchResponses: [
+        {
+          data: {
+            discountCodeBasicCreate: {
+              codeDiscountNode: null,
+              userErrors: [{ field: ["code"], message: "Code must be unique" }],
+            },
+          },
+        },
+      ],
+    })
     await expect(
-      discounts_bulk_create({ count: 5, codePrefix: "P", basicCodeDiscount: { percentage: 50 } }, ctx),
+      discounts_bulk_create(
+        { count: 5, codePrefix: "P", basicCodeDiscount: { percentage: 50 } },
+        ctx,
+      ),
     ).rejects.toThrow(/Code must be unique/i)
   })
 })
@@ -4503,7 +5927,9 @@ describe("discounts_bulk_create — N unique single-use codes on one code discou
 describe("stage-time preflights refuse a gated call whose required data is missing", () => {
   /** Every GraphQL body a preflight sent that is a WRITE. A preflight must send none. */
   const mutationBodies = (calls: Array<{ body: string }>): string[] =>
-    calls.map((c) => c.body).filter((b) => /"query":\s*"[^"]*\\n?\s*mutation|mutation [A-Z]/.test(b))
+    calls
+      .map((c) => c.body)
+      .filter((b) => /"query":\s*"[^"]*\\n?\s*mutation|mutation [A-Z]/.test(b))
 
   it("products_merge_preflight refuses a survivor gid that resolves to no product, before anything is deleted", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [{ data: { product: null } }] })
@@ -4546,7 +5972,13 @@ describe("stage-time preflights refuse a gated call whose required data is missi
     const { ctx, calls } = makeCtx({
       fetchResponses: [
         // variantsRequireShipping: the line is a license (no shipping) -> the license needs an email.
-        { data: { nodes: [{ id: "gid://shopify/ProductVariant/1", inventoryItem: { requiresShipping: false } }] } },
+        {
+          data: {
+            nodes: [
+              { id: "gid://shopify/ProductVariant/1", inventoryItem: { requiresShipping: false } },
+            ],
+          },
+        },
       ],
     })
     const out = await draft_orders_create_preflight(
@@ -4561,11 +5993,23 @@ describe("stage-time preflights refuse a gated call whose required data is missi
   it("draft_orders_create_preflight refuses physical goods with nowhere to ship", async () => {
     const { ctx } = makeCtx({
       fetchResponses: [
-        { data: { nodes: [{ id: "gid://shopify/ProductVariant/1", inventoryItem: { requiresShipping: true } }] } },
+        {
+          data: {
+            nodes: [
+              { id: "gid://shopify/ProductVariant/1", inventoryItem: { requiresShipping: true } },
+            ],
+          },
+        },
       ],
     })
     const out = await draft_orders_create_preflight(
-      { input: { email: "buyer@tessera-test.fr", billingAddress: { firstName: "Ada" }, lineItems: [{ variantId: "gid://shopify/ProductVariant/1", quantity: 1 }] } },
+      {
+        input: {
+          email: "buyer@tessera-test.fr",
+          billingAddress: { firstName: "Ada" },
+          lineItems: [{ variantId: "gid://shopify/ProductVariant/1", quantity: 1 }],
+        },
+      },
       ctx,
     )
     expect("error" in out).toBe(true)
@@ -4580,7 +6024,14 @@ describe("stage-time preflights refuse a gated call whose required data is missi
       fetchResponses: [{ data: { node: null } }], // lookupVariantPrice: the variant does not resolve
     })
     const out = await draft_orders_create_preflight(
-      { input: { email: "buyer@tessera-test.fr", lineItems: [{ variantId: "gid://shopify/ProductVariant/404", price: "50.00", quantity: 1 }] } },
+      {
+        input: {
+          email: "buyer@tessera-test.fr",
+          lineItems: [
+            { variantId: "gid://shopify/ProductVariant/404", price: "50.00", quantity: 1 },
+          ],
+        },
+      },
       ctx,
     )
     expect("error" in out).toBe(true)
@@ -4595,7 +6046,12 @@ describe("stage-time preflights refuse a gated call whose required data is missi
       fetchResponses: [{ data: { product: { variants: { nodes: [] } } } }],
     })
     const out = await draft_orders_create_preflight(
-      { input: { email: "buyer@tessera-test.fr", lineItems: [{ productId: "gid://shopify/Product/404", price: "50.00", quantity: 1 }] } },
+      {
+        input: {
+          email: "buyer@tessera-test.fr",
+          lineItems: [{ productId: "gid://shopify/Product/404", price: "50.00", quantity: 1 }],
+        },
+      },
       ctx,
     )
     expect("error" in out).toBe(true)
@@ -4606,7 +6062,14 @@ describe("stage-time preflights refuse a gated call whose required data is missi
     const { ctx, events } = makeCtx({ fetchResponses: [{ data: { node: null } }] })
     await expect(
       draft_orders_create(
-        { input: { email: "buyer@tessera-test.fr", lineItems: [{ variantId: "gid://shopify/ProductVariant/404", price: "50.00", quantity: 1 }] } },
+        {
+          input: {
+            email: "buyer@tessera-test.fr",
+            lineItems: [
+              { variantId: "gid://shopify/ProductVariant/404", price: "50.00", quantity: 1 },
+            ],
+          },
+        },
         ctx,
       ),
     ).rejects.toThrow(/does not resolve in this store/)
@@ -4616,11 +6079,23 @@ describe("stage-time preflights refuse a gated call whose required data is missi
   it("draft_orders_create_preflight passes a complete digital draft (does NOT block a real one)", async () => {
     const { ctx } = makeCtx({
       fetchResponses: [
-        { data: { nodes: [{ id: "gid://shopify/ProductVariant/1", inventoryItem: { requiresShipping: false } }] } },
+        {
+          data: {
+            nodes: [
+              { id: "gid://shopify/ProductVariant/1", inventoryItem: { requiresShipping: false } },
+            ],
+          },
+        },
       ],
     })
     const out = await draft_orders_create_preflight(
-      { input: { email: "buyer@tessera-test.fr", billingAddress: { firstName: "Ada", lastName: "L" }, lineItems: [{ variantId: "gid://shopify/ProductVariant/1", quantity: 1 }] } },
+      {
+        input: {
+          email: "buyer@tessera-test.fr",
+          billingAddress: { firstName: "Ada", lastName: "L" },
+          lineItems: [{ variantId: "gid://shopify/ProductVariant/1", quantity: 1 }],
+        },
+      },
       ctx,
     )
     expect(out).toEqual({ ok: true })
@@ -4647,10 +6122,20 @@ describe("stage-time preflights refuse a gated call whose required data is missi
   it("fulfillments_create_preflight passes an order that still has an open fulfillment order", async () => {
     const { ctx } = makeCtx({
       fetchResponses: [
-        { data: { order: { fulfillmentOrders: { nodes: [{ id: "gid://shopify/FulfillmentOrder/5", status: "OPEN" }] } } } },
+        {
+          data: {
+            order: {
+              fulfillmentOrders: {
+                nodes: [{ id: "gid://shopify/FulfillmentOrder/5", status: "OPEN" }],
+              },
+            },
+          },
+        },
       ],
     })
-    expect(await fulfillments_create_preflight({ orderId: "gid://shopify/Order/9" }, ctx)).toEqual({ ok: true })
+    expect(await fulfillments_create_preflight({ orderId: "gid://shopify/Order/9" }, ctx)).toEqual({
+      ok: true,
+    })
   })
 
   it("variants_update_preflight refuses a variant gid that resolves to no owning product", async () => {
@@ -4676,13 +6161,26 @@ describe("stage-time preflights refuse a gated call whose required data is missi
 
   it("variants_update_preflight passes a variant that resolves (and one that carries its own productId)", async () => {
     const { ctx } = makeCtx({
-      fetchResponses: [{ data: { productVariant: { product: { id: "gid://shopify/Product/7" } } } }],
+      fetchResponses: [
+        { data: { productVariant: { product: { id: "gid://shopify/Product/7" } } } },
+      ],
     })
-    expect(await variants_update_preflight({ input: { id: "gid://shopify/ProductVariant/9", price: "1.00" } }, ctx)).toEqual({ ok: true })
+    expect(
+      await variants_update_preflight(
+        { input: { id: "gid://shopify/ProductVariant/9", price: "1.00" } },
+        ctx,
+      ),
+    ).toEqual({ ok: true })
     const { ctx: ctx2, calls } = makeCtx({ fetchResponses: [] })
     expect(
       await variants_update_preflight(
-        { input: { id: "gid://shopify/ProductVariant/9", productId: "gid://shopify/Product/7", price: "1.00" } },
+        {
+          input: {
+            id: "gid://shopify/ProductVariant/9",
+            productId: "gid://shopify/Product/7",
+            price: "1.00",
+          },
+        },
         ctx2,
       ),
     ).toEqual({ ok: true })
@@ -4704,12 +6202,17 @@ describe("stage-time preflights refuse a gated call whose required data is missi
 
   it("order_update_preflight passes a tags/note edit", async () => {
     const { ctx } = makeCtx({ fetchResponses: [] })
-    expect(await order_update_preflight({ input: { id: "gid://shopify/Order/9", tags: ["vip"] } }, ctx)).toEqual({ ok: true })
+    expect(
+      await order_update_preflight({ input: { id: "gid://shopify/Order/9", tags: ["vip"] } }, ctx),
+    ).toEqual({ ok: true })
   })
 
   it("products_update_preflight refuses an ORDER gid passed to the product tool", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [] })
-    const out = await products_update_preflight({ input: { id: "gid://shopify/Order/9", tags: ["vip"] } }, ctx)
+    const out = await products_update_preflight(
+      { input: { id: "gid://shopify/Order/9", tags: ["vip"] } },
+      ctx,
+    )
     expect("error" in out).toBe(true)
     const err = (out as { error: { code: string; message: string } }).error
     expect(err.code).toBe("WRONG_ENTITY_FOR_TOOL")
@@ -4719,13 +6222,28 @@ describe("stage-time preflights refuse a gated call whose required data is missi
 
   it("products_update_preflight passes a real product edit", async () => {
     const { ctx } = makeCtx({ fetchResponses: [] })
-    expect(await products_update_preflight({ input: { id: "gid://shopify/Product/1", title: "X" } }, ctx)).toEqual({ ok: true })
+    expect(
+      await products_update_preflight(
+        { input: { id: "gid://shopify/Product/1", title: "X" } },
+        ctx,
+      ),
+    ).toEqual({ ok: true })
   })
 
   it("inventory_adjust_preflight refuses an absolute count handed to the relative delta tool", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [] })
     const out = await inventory_adjust_preflight(
-      { input: { changes: [{ inventoryItemId: "gid://shopify/InventoryItem/1", locationId: "gid://shopify/Location/1", newQuantity: 47 }] } },
+      {
+        input: {
+          changes: [
+            {
+              inventoryItemId: "gid://shopify/InventoryItem/1",
+              locationId: "gid://shopify/Location/1",
+              newQuantity: 47,
+            },
+          ],
+        },
+      },
       ctx,
     )
     expect("error" in out).toBe(true)
@@ -4737,7 +6255,17 @@ describe("stage-time preflights refuse a gated call whose required data is missi
   it("inventory_adjust_preflight passes a genuine signed delta", async () => {
     const { ctx } = makeCtx({ fetchResponses: [] })
     const out = await inventory_adjust_preflight(
-      { input: { changes: [{ inventoryItemId: "gid://shopify/InventoryItem/1", locationId: "gid://shopify/Location/1", delta: -2 }] } },
+      {
+        input: {
+          changes: [
+            {
+              inventoryItemId: "gid://shopify/InventoryItem/1",
+              locationId: "gid://shopify/Location/1",
+              delta: -2,
+            },
+          ],
+        },
+      },
       ctx,
     )
     expect(out).toEqual({ ok: true })
@@ -4745,7 +6273,11 @@ describe("stage-time preflights refuse a gated call whose required data is missi
 
   it("products_unpublish_preflight refuses when the store has no sales-channel publications", async () => {
     const { ctx, calls } = makeCtx({
-      fetchResponses: [{ data: { product: { resourcePublicationsV2: { edges: [] } }, publications: { edges: [] } } }],
+      fetchResponses: [
+        {
+          data: { product: { resourcePublicationsV2: { edges: [] } }, publications: { edges: [] } },
+        },
+      ],
     })
     const out = await products_unpublish_preflight({ id: "gid://shopify/Product/1" }, ctx)
     expect("error" in out).toBe(true)
@@ -4756,10 +6288,25 @@ describe("stage-time preflights refuse a gated call whose required data is missi
   it("products_unpublish_preflight passes a product that is published somewhere", async () => {
     const { ctx } = makeCtx({
       fetchResponses: [
-        { data: { product: { resourcePublicationsV2: { edges: [{ node: { publication: { id: "gid://shopify/Publication/1" }, isPublished: true } }] } }, publications: { edges: [] } } },
+        {
+          data: {
+            product: {
+              resourcePublicationsV2: {
+                edges: [
+                  {
+                    node: { publication: { id: "gid://shopify/Publication/1" }, isPublished: true },
+                  },
+                ],
+              },
+            },
+            publications: { edges: [] },
+          },
+        },
       ],
     })
-    expect(await products_unpublish_preflight({ id: "gid://shopify/Product/1" }, ctx)).toEqual({ ok: true })
+    expect(await products_unpublish_preflight({ id: "gid://shopify/Product/1" }, ctx)).toEqual({
+      ok: true,
+    })
   })
 })
 
@@ -4777,13 +6324,21 @@ describe("stage-time preflights refuse a gated call whose required data is missi
 describe("stage-time preflights refuse a destructive gated call whose target is wrong or unusable", () => {
   /** Every GraphQL body a preflight sent that is a WRITE. A preflight must send none. */
   const mutationBodies = (calls: Array<{ body: string }>): string[] =>
-    calls.map((c) => c.body).filter((b) => /"query":\s*"[^"]*\\n?\s*mutation|mutation [A-Z]/.test(b))
+    calls
+      .map((c) => c.body)
+      .filter((b) => /"query":\s*"[^"]*\\n?\s*mutation|mutation [A-Z]/.test(b))
   const errorOf = (out: unknown): { code: string; message: string } => {
     expect("error" in (out as object)).toBe(true)
     return (out as { error: { code: string; message: string } }).error
   }
   const node = (typename: string, status?: string) => ({
-    data: { node: { id: `gid://shopify/${typename}/1`, __typename: typename, ...(status ? { status } : {}) } },
+    data: {
+      node: {
+        id: `gid://shopify/${typename}/1`,
+        __typename: typename,
+        ...(status ? { status } : {}),
+      },
+    },
   })
   const NO_NODE = { data: { node: null } }
 
@@ -4804,7 +6359,9 @@ describe("stage-time preflights refuse a destructive gated call whose target is 
 
   it("products_delete_preflight passes a product that resolves", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [node("Product")] })
-    expect(await products_delete_preflight({ id: "gid://shopify/Product/1" }, ctx)).toEqual({ ok: true })
+    expect(await products_delete_preflight({ id: "gid://shopify/Product/1" }, ctx)).toEqual({
+      ok: true,
+    })
     expect(mutationBodies(calls)).toHaveLength(0)
   })
 
@@ -4824,14 +6381,18 @@ describe("stage-time preflights refuse a destructive gated call whose target is 
 
   it("draft_orders_delete_preflight refuses a draft gid that resolves to nothing", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [NO_NODE] })
-    const err = errorOf(await draft_orders_delete_preflight({ id: "gid://shopify/DraftOrder/404" }, ctx))
+    const err = errorOf(
+      await draft_orders_delete_preflight({ id: "gid://shopify/DraftOrder/404" }, ctx),
+    )
     expect(err.code).toBe("NOT_FOUND")
     expect(mutationBodies(calls)).toHaveLength(0)
   })
 
   it("discounts_delete_preflight refuses a discount gid that resolves to nothing", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [NO_NODE] })
-    const err = errorOf(await discounts_delete_preflight({ id: "gid://shopify/DiscountCodeNode/404" }, ctx))
+    const err = errorOf(
+      await discounts_delete_preflight({ id: "gid://shopify/DiscountCodeNode/404" }, ctx),
+    )
     expect(err.code).toBe("NOT_FOUND")
     expect(mutationBodies(calls)).toHaveLength(0)
   })
@@ -4839,7 +6400,10 @@ describe("stage-time preflights refuse a destructive gated call whose target is 
   it("discounts_update_preflight refuses a discount gid that resolves to nothing", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [NO_NODE] })
     const err = errorOf(
-      await discounts_update_preflight({ id: "gid://shopify/DiscountCodeNode/404", endsAt: "2026-11-30T00:00:00Z" }, ctx),
+      await discounts_update_preflight(
+        { id: "gid://shopify/DiscountCodeNode/404", endsAt: "2026-11-30T00:00:00Z" },
+        ctx,
+      ),
     )
     expect(err.code).toBe("NOT_FOUND")
     expect(mutationBodies(calls)).toHaveLength(0)
@@ -4855,13 +6419,18 @@ describe("stage-time preflights refuse a destructive gated call whose target is 
 
   it("returns_approve_preflight passes a return that is still REQUESTED", async () => {
     const { ctx } = makeCtx({ fetchResponses: [node("Return", "REQUESTED")] })
-    expect(await returns_approve_preflight({ id: "gid://shopify/Return/1" }, ctx)).toEqual({ ok: true })
+    expect(await returns_approve_preflight({ id: "gid://shopify/Return/1" }, ctx)).toEqual({
+      ok: true,
+    })
   })
 
   it("returns_decline_preflight refuses a return that has already been closed", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [node("Return", "CLOSED")] })
     const err = errorOf(
-      await returns_decline_preflight({ id: "gid://shopify/Return/1", declineReason: "FINAL_SALE" }, ctx),
+      await returns_decline_preflight(
+        { id: "gid://shopify/Return/1", declineReason: "FINAL_SALE" },
+        ctx,
+      ),
     )
     expect(err.code).toBe("INVALID_STATE")
     expect(mutationBodies(calls)).toHaveLength(0)
@@ -4888,33 +6457,43 @@ describe("stage-time preflights refuse a destructive gated call whose target is 
 
   it("returns_refund_preflight refuses a call with no returnId at all", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [] })
-    const err = errorOf(await returns_refund_preflight({ returnRefundInput: { returnRefundLineItems: [] } }, ctx))
+    const err = errorOf(
+      await returns_refund_preflight({ returnRefundInput: { returnRefundLineItems: [] } }, ctx),
+    )
     expect(err.code).toBe("BAD_PARAM")
     expect(calls).toHaveLength(0)
   })
 
   it("fulfillments_cancel_preflight refuses a fulfillment that is already cancelled", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [node("Fulfillment", "CANCELLED")] })
-    const err = errorOf(await fulfillments_cancel_preflight({ id: "gid://shopify/Fulfillment/1" }, ctx))
+    const err = errorOf(
+      await fulfillments_cancel_preflight({ id: "gid://shopify/Fulfillment/1" }, ctx),
+    )
     expect(err.code).toBe("INVALID_STATE")
     expect(mutationBodies(calls)).toHaveLength(0)
   })
 
   it("fulfillments_cancel_preflight passes a fulfillment that shipped successfully", async () => {
     const { ctx } = makeCtx({ fetchResponses: [node("Fulfillment", "SUCCESS")] })
-    expect(await fulfillments_cancel_preflight({ id: "gid://shopify/Fulfillment/1" }, ctx)).toEqual({ ok: true })
+    expect(await fulfillments_cancel_preflight({ id: "gid://shopify/Fulfillment/1" }, ctx)).toEqual(
+      { ok: true },
+    )
   })
 
   it("customers_update_preflight refuses a customer gid that resolves to nothing", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [NO_NODE] })
-    const err = errorOf(await customers_update_preflight({ id: "gid://shopify/Customer/404", firstName: "X" }, ctx))
+    const err = errorOf(
+      await customers_update_preflight({ id: "gid://shopify/Customer/404", firstName: "X" }, ctx),
+    )
     expect(err.code).toBe("NOT_FOUND")
     expect(mutationBodies(calls)).toHaveLength(0)
   })
 
   it("customers_tag_preflight refuses an ORDER gid, which tagsAdd would have tagged silently", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [node("Order")] })
-    const err = errorOf(await customers_tag_preflight({ customerId: "gid://shopify/Order/9", tags: ["VIP"] }, ctx))
+    const err = errorOf(
+      await customers_tag_preflight({ customerId: "gid://shopify/Order/9", tags: ["VIP"] }, ctx),
+    )
     expect(err.code).toBe("WRONG_ENTITY_FOR_TOOL")
     expect(err.message).toContain("Order")
     expect(mutationBodies(calls)).toHaveLength(0)
@@ -4922,7 +6501,9 @@ describe("stage-time preflights refuse a destructive gated call whose target is 
 
   it("products_publish_preflight refuses a product gid that resolves to nothing", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [NO_NODE] })
-    const err = errorOf(await products_publish_preflight({ id: "gid://shopify/Product/404", input: [] }, ctx))
+    const err = errorOf(
+      await products_publish_preflight({ id: "gid://shopify/Product/404", input: [] }, ctx),
+    )
     expect(err.code).toBe("NOT_FOUND")
     expect(mutationBodies(calls)).toHaveLength(0)
   })
@@ -4934,7 +6515,11 @@ describe("stage-time preflights refuse a destructive gated call whose target is 
     const { ctx, calls } = makeCtx({ fetchResponses: [{ data: { inventoryItem: null } }] })
     const err = errorOf(
       await inventory_set_on_hand_preflight(
-        { inventoryItemId: "gid://shopify/InventoryItem/404", locationId: "gid://shopify/Location/1", quantity: 12 },
+        {
+          inventoryItemId: "gid://shopify/InventoryItem/404",
+          locationId: "gid://shopify/Location/1",
+          quantity: 12,
+        },
         ctx,
       ),
     )
@@ -4945,10 +6530,20 @@ describe("stage-time preflights refuse a destructive gated call whose target is 
 
   it("inventory_set_on_hand_preflight passes a GENUINE zero on-hand (0 is a real count, not a missing pair)", async () => {
     const { ctx, calls } = makeCtx({
-      fetchResponses: [{ data: { inventoryItem: { inventoryLevel: { quantities: [{ name: "on_hand", quantity: 0 }] } } } }],
+      fetchResponses: [
+        {
+          data: {
+            inventoryItem: { inventoryLevel: { quantities: [{ name: "on_hand", quantity: 0 }] } },
+          },
+        },
+      ],
     })
     const out = await inventory_set_on_hand_preflight(
-      { inventoryItemId: "gid://shopify/InventoryItem/1", locationId: "gid://shopify/Location/1", quantity: 12 },
+      {
+        inventoryItemId: "gid://shopify/InventoryItem/1",
+        locationId: "gid://shopify/Location/1",
+        quantity: 12,
+      },
       ctx,
     )
     expect(out).toEqual({ ok: true })
@@ -4972,10 +6567,16 @@ describe("stage-time preflights refuse a destructive gated call whose target is 
   })
 
   it("inventory_set_on_hand itself throws on the unresolvable pair and sends NO mutation (the guard is not preflight-only)", async () => {
-    const { ctx, calls } = makeCtx({ fetchResponses: [{ data: { inventoryItem: { inventoryLevel: null } } }] })
+    const { ctx, calls } = makeCtx({
+      fetchResponses: [{ data: { inventoryItem: { inventoryLevel: null } } }],
+    })
     await expect(
       inventory_set_on_hand(
-        { inventoryItemId: "gid://shopify/InventoryItem/404", locationId: "gid://shopify/Location/1", quantity: 12 },
+        {
+          inventoryItemId: "gid://shopify/InventoryItem/404",
+          locationId: "gid://shopify/Location/1",
+          quantity: 12,
+        },
         ctx,
       ),
     ).rejects.toThrow(/no stock level/i)
@@ -4999,26 +6600,40 @@ describe("customerShippingEmail policy: retail orders get Shopify's shipping ema
     data: {
       order: {
         id: "gid://shopify/Order/1056",
-        fulfillmentOrders: { nodes: [{ id: "gid://shopify/FulfillmentOrder/9001", status: "OPEN" }] },
+        fulfillmentOrders: {
+          nodes: [{ id: "gid://shopify/FulfillmentOrder/9001", status: "OPEN" }],
+        },
         ...extra,
       },
     },
   })
-  const companyBuyer = { purchasingEntity: { company: { name: "Example Trading Ltd" } }, lineItems: { nodes: [] } }
+  const companyBuyer = {
+    purchasingEntity: { company: { name: "Example Trading Ltd" } },
+    lineItems: { nodes: [] },
+  }
   const consumerBuyer = { purchasingEntity: {}, lineItems: { nodes: [{ sku: "KS6-44" }] } }
-  const markedSku = { purchasingEntity: {}, lineItems: { nodes: [{ sku: "KS6-44" }, { sku: "KS6-44-b2b" }] } }
+  const markedSku = {
+    purchasingEntity: {},
+    lineItems: { nodes: [{ sku: "KS6-44" }, { sku: "KS6-44-b2b" }] },
+  }
   const retailOnly = { customerShippingEmail: "retail_only", b2bSkuSuffixes: " -WHOLESALE , -B2B " }
   const sentFulfillment = (calls: Array<{ body: string }>, index: number) =>
-    (JSON.parse(calls[index]!.body) as { variables: { fulfillment: Record<string, unknown> } }).variables.fulfillment
+    (JSON.parse(calls[index]!.body) as { variables: { fulfillment: Record<string, unknown> } })
+      .variables.fulfillment
   // The exact payload the Boxtal packed tick and the carrier-scan webhook send (fulfillment.ts).
   const boxtalCall = {
     orderId: "gid://shopify/Order/1056",
     fulfillment: { trackingInfo: { number: "1Z999", company: "UPS" }, notifyCustomer: false },
   }
-  const notice = (res: unknown) => (res as { customerNotification?: { notified: boolean; reason: string; message: string } }).customerNotification
+  const notice = (res: unknown) =>
+    (res as { customerNotification?: { notified: boolean; reason: string; message: string } })
+      .customerNotification
 
   it("asks Shopify for the buyer company and the line skus with the open fulfillment orders", async () => {
-    const { ctx, calls } = makeCtx({ fetchResponses: [order(consumerBuyer), created], config: retailOnly })
+    const { ctx, calls } = makeCtx({
+      fetchResponses: [order(consumerBuyer), created],
+      config: retailOnly,
+    })
     await fulfillments_create(boxtalCall, ctx)
     const lookup = JSON.parse(calls[0]!.body) as { query: string }
     expect(lookup.query).toContain("PurchasingCompany")
@@ -5026,7 +6641,10 @@ describe("customerShippingEmail policy: retail orders get Shopify's shipping ema
   })
 
   it("retail_only: Boxtal's tick / webhook payload (notifyCustomer false) emails a retail customer, with the tracking", async () => {
-    const { ctx, calls } = makeCtx({ fetchResponses: [order(consumerBuyer), created], config: retailOnly })
+    const { ctx, calls } = makeCtx({
+      fetchResponses: [order(consumerBuyer), created],
+      config: retailOnly,
+    })
     const res = await fulfillments_create(boxtalCall, ctx)
     const sent = sentFulfillment(calls, 1)
     expect(sent.notifyCustomer).toBe(true)
@@ -5035,7 +6653,10 @@ describe("customerShippingEmail policy: retail orders get Shopify's shipping ema
   })
 
   it("retail_only: a B2B company buyer is never emailed, even when the caller asks", async () => {
-    const { ctx, calls } = makeCtx({ fetchResponses: [order(companyBuyer), created], config: retailOnly })
+    const { ctx, calls } = makeCtx({
+      fetchResponses: [order(companyBuyer), created],
+      config: retailOnly,
+    })
     const res = await fulfillments_create(
       { orderId: "gid://shopify/Order/1056", fulfillment: { notifyCustomer: true } },
       ctx,
@@ -5046,7 +6667,10 @@ describe("customerShippingEmail policy: retail orders get Shopify's shipping ema
   })
 
   it("retail_only: a B2B sku suffix (any case, comma separated) is never emailed on the Boxtal path", async () => {
-    const { ctx, calls } = makeCtx({ fetchResponses: [order(markedSku), created], config: retailOnly })
+    const { ctx, calls } = makeCtx({
+      fetchResponses: [order(markedSku), created],
+      config: retailOnly,
+    })
     const res = await fulfillments_create(boxtalCall, ctx)
     expect(sentFulfillment(calls, 1).notifyCustomer).toBe(false)
     expect(notice(res)?.reason).toBe("b2b_sku_suffix")
@@ -5065,7 +6689,11 @@ describe("customerShippingEmail policy: retail orders get Shopify's shipping ema
                 status: "OPEN",
                 lineItems: {
                   nodes: [
-                    { id: "gid://shopify/FulfillmentOrderLineItem/1", remainingQuantity: 2, lineItem: { id: "gid://shopify/LineItem/11", sku: "KS6-44" } },
+                    {
+                      id: "gid://shopify/FulfillmentOrderLineItem/1",
+                      remainingQuantity: 2,
+                      lineItem: { id: "gid://shopify/LineItem/11", sku: "KS6-44" },
+                    },
                   ],
                 },
               },
@@ -5075,7 +6703,10 @@ describe("customerShippingEmail policy: retail orders get Shopify's shipping ema
       },
     })
     const call = { ...boxtalCall, lineItems: [{ sku: "KS6-44", quantity: 1 }] }
-    const retail = makeCtx({ fetchResponses: [partial(consumerBuyer), created], config: retailOnly })
+    const retail = makeCtx({
+      fetchResponses: [partial(consumerBuyer), created],
+      config: retailOnly,
+    })
     await fulfillments_create(call, retail.ctx)
     expect(sentFulfillment(retail.calls, 1).notifyCustomer).toBe(true)
     const b2b = makeCtx({ fetchResponses: [partial(companyBuyer), created], config: retailOnly })
@@ -5086,13 +6717,20 @@ describe("customerShippingEmail policy: retail orders get Shopify's shipping ema
   it("retail_only: a prebuilt lineItemsByFulfillmentOrder looks the order up; unreadable order = no email (fail closed)", async () => {
     const prebuilt = {
       fulfillment: {
-        lineItemsByFulfillmentOrder: [{ fulfillmentOrderId: "gid://shopify/FulfillmentOrder/9001" }],
+        lineItemsByFulfillmentOrder: [
+          { fulfillmentOrderId: "gid://shopify/FulfillmentOrder/9001" },
+        ],
         trackingInfo: { number: "1Z999" },
         notifyCustomer: true,
       },
     }
-    const foOrder = (o: unknown) => ({ data: { fulfillmentOrder: { id: "gid://shopify/FulfillmentOrder/9001", order: o } } })
-    const retail = makeCtx({ fetchResponses: [foOrder({ id: "gid://shopify/Order/1056", ...consumerBuyer }), created], config: retailOnly })
+    const foOrder = (o: unknown) => ({
+      data: { fulfillmentOrder: { id: "gid://shopify/FulfillmentOrder/9001", order: o } },
+    })
+    const retail = makeCtx({
+      fetchResponses: [foOrder({ id: "gid://shopify/Order/1056", ...consumerBuyer }), created],
+      config: retailOnly,
+    })
     await fulfillments_create(prebuilt, retail.ctx)
     expect(sentFulfillment(retail.calls, 1).notifyCustomer).toBe(true)
     const unreadable = makeCtx({ fetchResponses: [foOrder(null), created], config: retailOnly })
@@ -5123,8 +6761,14 @@ describe("customerShippingEmail policy: retail orders get Shopify's shipping ema
   })
 
   it("policy unset: the caller's flag stands, B2B or not, with no notice (today's behaviour)", async () => {
-    const b2b = makeCtx({ fetchResponses: [order(companyBuyer), created], config: { b2bSkuSuffixes: "-B2B" } })
-    const res = await fulfillments_create({ orderId: "gid://shopify/Order/1056", fulfillment: { notifyCustomer: true } }, b2b.ctx)
+    const b2b = makeCtx({
+      fetchResponses: [order(companyBuyer), created],
+      config: { b2bSkuSuffixes: "-B2B" },
+    })
+    const res = await fulfillments_create(
+      { orderId: "gid://shopify/Order/1056", fulfillment: { notifyCustomer: true } },
+      b2b.ctx,
+    )
     expect(sentFulfillment(b2b.calls, 1).notifyCustomer).toBe(true)
     expect(notice(res)).toBeUndefined()
     const boxtal = makeCtx({ fetchResponses: [order(consumerBuyer), created] })
@@ -5133,24 +6777,45 @@ describe("customerShippingEmail policy: retail orders get Shopify's shipping ema
   })
 
   it("policies all and none ignore the caller and the order", async () => {
-    const all = makeCtx({ fetchResponses: [order(companyBuyer), created], config: { customerShippingEmail: "all" } })
+    const all = makeCtx({
+      fetchResponses: [order(companyBuyer), created],
+      config: { customerShippingEmail: "all" },
+    })
     await fulfillments_create(boxtalCall, all.ctx)
     expect(sentFulfillment(all.calls, 1).notifyCustomer).toBe(true)
-    const none = makeCtx({ fetchResponses: [order(consumerBuyer), created], config: { customerShippingEmail: "none" } })
-    await fulfillments_create({ orderId: "gid://shopify/Order/1056", fulfillment: { notifyCustomer: true } }, none.ctx)
+    const none = makeCtx({
+      fetchResponses: [order(consumerBuyer), created],
+      config: { customerShippingEmail: "none" },
+    })
+    await fulfillments_create(
+      { orderId: "gid://shopify/Order/1056", fulfillment: { notifyCustomer: true } },
+      none.ctx,
+    )
     expect(sentFulfillment(none.calls, 1).notifyCustomer).toBe(false)
   })
 
   it("no tracking on the create: no email under retail_only or all (it goes out with the first tracking number)", async () => {
     for (const config of [retailOnly, { customerShippingEmail: "all" }]) {
       const { ctx, calls } = makeCtx({ fetchResponses: [order(consumerBuyer), created], config })
-      const res = await fulfillments_create({ orderId: "gid://shopify/Order/1056", fulfillment: { notifyCustomer: true } }, ctx)
+      const res = await fulfillments_create(
+        { orderId: "gid://shopify/Order/1056", fulfillment: { notifyCustomer: true } },
+        ctx,
+      )
       expect(sentFulfillment(calls, 1).notifyCustomer).toBe(false)
       expect(notice(res)).toMatchObject({ notified: false, reason: "no_tracking" })
     }
     // A placeholder number ("N/A") is no tracking either.
-    const { ctx, calls } = makeCtx({ fetchResponses: [order(consumerBuyer), created], config: retailOnly })
-    await fulfillments_create({ orderId: "gid://shopify/Order/1056", fulfillment: { trackingInfo: { number: "N/A", company: "UPS" } } }, ctx)
+    const { ctx, calls } = makeCtx({
+      fetchResponses: [order(consumerBuyer), created],
+      config: retailOnly,
+    })
+    await fulfillments_create(
+      {
+        orderId: "gid://shopify/Order/1056",
+        fulfillment: { trackingInfo: { number: "N/A", company: "UPS" } },
+      },
+      ctx,
+    )
     expect(sentFulfillment(calls, 1).notifyCustomer).toBe(false)
   })
 
@@ -5174,7 +6839,10 @@ describe("customerShippingEmail policy: retail orders get Shopify's shipping ema
     })
     // The tracking mutation is always the last call (the fulfilment read happens only when needed).
     const sentNotify = (calls: Array<{ body: string }>) =>
-      (JSON.parse(calls[calls.length - 1]!.body) as { query: string; variables: { notifyCustomer: boolean } })
+      JSON.parse(calls[calls.length - 1]!.body) as {
+        query: string
+        variables: { notifyCustomer: boolean }
+      }
     const update = (info: Record<string, unknown>, notifyCustomer?: boolean) => ({
       fulfillmentId: "gid://shopify/Fulfillment/7",
       trackingInfoInput: info,
@@ -5183,8 +6851,14 @@ describe("customerShippingEmail policy: retail orders get Shopify's shipping ema
 
     it("the first tracking number on an untracked fulfilment emails the customer once (retail_only and all)", async () => {
       for (const config of [retailOnly, { customerShippingEmail: "all" }]) {
-        const { ctx, calls } = makeCtx({ fetchResponses: [current(consumerBuyer, []), updated], config })
-        const res = await fulfillments_update_tracking(update({ number: "1Z999", company: "UPS" }), ctx)
+        const { ctx, calls } = makeCtx({
+          fetchResponses: [current(consumerBuyer, []), updated],
+          config,
+        })
+        const res = await fulfillments_update_tracking(
+          update({ number: "1Z999", company: "UPS" }),
+          ctx,
+        )
         const sent = sentNotify(calls)
         expect(sent.query).toContain("fulfillmentTrackingInfoUpdateV2")
         expect(sent.variables.notifyCustomer).toBe(true)
@@ -5194,15 +6868,24 @@ describe("customerShippingEmail policy: retail orders get Shopify's shipping ema
 
     it("a number change on an already tracked fulfilment never emails again", async () => {
       for (const config of [retailOnly, { customerShippingEmail: "all" }]) {
-        const { ctx, calls } = makeCtx({ fetchResponses: [current(consumerBuyer, ["OLD1"]), updated], config })
-        const res = await fulfillments_update_tracking(update({ number: "1Z999", company: "UPS" }, true), ctx)
+        const { ctx, calls } = makeCtx({
+          fetchResponses: [current(consumerBuyer, ["OLD1"]), updated],
+          config,
+        })
+        const res = await fulfillments_update_tracking(
+          update({ number: "1Z999", company: "UPS" }, true),
+          ctx,
+        )
         expect(sentNotify(calls).variables.notifyCustomer).toBe(false)
         expect(notice(res)).toMatchObject({ notified: false, reason: "already_notified" })
       }
     })
 
     it("the same number again never emails", async () => {
-      const { ctx, calls } = makeCtx({ fetchResponses: [current(consumerBuyer, ["1Z999"]), updated], config: retailOnly })
+      const { ctx, calls } = makeCtx({
+        fetchResponses: [current(consumerBuyer, ["1Z999"]), updated],
+        config: retailOnly,
+      })
       const res = await fulfillments_update_tracking(update({ number: "1Z999" }, true), ctx)
       expect(sentNotify(calls).variables.notifyCustomer).toBe(false)
       expect(notice(res)?.reason).toBe("already_notified")
@@ -5222,20 +6905,29 @@ describe("customerShippingEmail policy: retail orders get Shopify's shipping ema
           expect(notice(res)?.notified).toBe(false)
         }
       }
-      const { ctx } = makeCtx({ fetchResponses: [current(consumerBuyer, []), updated], config: retailOnly })
+      const { ctx } = makeCtx({
+        fetchResponses: [current(consumerBuyer, []), updated],
+        config: retailOnly,
+      })
       const res = await fulfillments_update_tracking(update({ company: "DHL" }), ctx)
       expect(notice(res)?.reason).toBe("no_tracking")
     })
 
     it("the fulfilment's current tracking unreadable: no email (fail closed)", async () => {
-      const { ctx, calls } = makeCtx({ fetchResponses: [{ data: { fulfillment: null } }, updated], config: { customerShippingEmail: "all" } })
+      const { ctx, calls } = makeCtx({
+        fetchResponses: [{ data: { fulfillment: null } }, updated],
+        config: { customerShippingEmail: "all" },
+      })
       const res = await fulfillments_update_tracking(update({ number: "1Z999" }), ctx)
       expect(sentNotify(calls).variables.notifyCustomer).toBe(false)
       expect(notice(res)?.reason).toBe("undecided_fail_closed")
     })
 
     it("retail_only: a B2B order's tracking update never emails, even its first number", async () => {
-      const { ctx, calls } = makeCtx({ fetchResponses: [current(companyBuyer, []), updated], config: retailOnly })
+      const { ctx, calls } = makeCtx({
+        fetchResponses: [current(companyBuyer, []), updated],
+        config: retailOnly,
+      })
       const res = await fulfillments_update_tracking(update({ number: "1Z999" }, true), ctx)
       expect(sentNotify(calls).variables.notifyCustomer).toBe(false)
       expect(notice(res)?.reason).toBe("b2b_company_buyer")
@@ -5262,12 +6954,30 @@ describe("marketing consent updates send the customer inside the mutation input"
     it(`${tool}: { customerId, input } (the manifest's shape) reaches Shopify as one input with customerId`, async () => {
       const { ctx, calls } = makeCtx({
         fetchResponses: [
-          { data: { [field === "emailMarketingConsent" ? "customerEmailMarketingConsentUpdate" : "customerSmsMarketingConsentUpdate"]: { customer: { id: "gid://shopify/Customer/7" }, userErrors: [] } } },
+          {
+            data: {
+              [field === "emailMarketingConsent"
+                ? "customerEmailMarketingConsentUpdate"
+                : "customerSmsMarketingConsentUpdate"]: {
+                customer: { id: "gid://shopify/Customer/7" },
+                userErrors: [],
+              },
+            },
+          },
         ],
       })
-      await handlers[tool]({ customerId: "gid://shopify/Customer/7", input: { [field]: { marketingState: "NOT_SUBSCRIBED" } } }, ctx)
+      await handlers[tool](
+        {
+          customerId: "gid://shopify/Customer/7",
+          input: { [field]: { marketingState: "NOT_SUBSCRIBED" } },
+        },
+        ctx,
+      )
       const body = JSON.parse(calls[0]!.body) as { variables: { input: Record<string, unknown> } }
-      expect(body.variables.input).toEqual({ customerId: "gid://shopify/Customer/7", [field]: { marketingState: "NOT_SUBSCRIBED" } })
+      expect(body.variables.input).toEqual({
+        customerId: "gid://shopify/Customer/7",
+        [field]: { marketingState: "NOT_SUBSCRIBED" },
+      })
     })
   }
 })

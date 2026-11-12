@@ -1129,6 +1129,8 @@ export interface KnowledgeSyncDispatchInput {
   kind: string
   config: Record<string, unknown>
   cursor: unknown
+  /** Whose source it is: one person's own, or the organization's. */
+  scope: "personal" | "organization"
 }
 
 /**

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// Dashboard tables against the real database and its row policies (migration 0297): sharing
+// Dashboard tables against the real database and its row policies (migration 0298): sharing
 // decides every read and write, by the service and by any raw path (the data store's own
 // org-only functions included); a row write records its change in the same transaction, an
 // undo writes the change back while it is the row's latest and refuses after; a row event

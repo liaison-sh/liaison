@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
 import {
-  parseGoogleAdsError,
   GoogleAdsApiError,
   GoogleAuthError,
   GoogleParamError,
+  parseGoogleAdsError,
 } from "./google-error"
 
 describe("parseGoogleAdsError — GoogleAdsFailure envelope", () => {
@@ -82,7 +82,9 @@ describe("parseGoogleAdsError — GoogleAdsFailure envelope", () => {
         details: [
           {
             "@type": "type.googleapis.com/google.ads.googleads.v26.errors.GoogleAdsFailure",
-            errors: [{ errorCode: { queryError: "UNEXPECTED_END_OF_QUERY" }, message: "unexpected end" }],
+            errors: [
+              { errorCode: { queryError: "UNEXPECTED_END_OF_QUERY" }, message: "unexpected end" },
+            ],
           },
         ],
       },
@@ -107,7 +109,9 @@ describe("parseGoogleAdsError — GoogleAdsFailure envelope", () => {
         },
       })
       const err = parseGoogleAdsError(body, 400)
-      expect(err, `errorCode key '${key}' should map to GoogleParamError`).toBeInstanceOf(GoogleParamError)
+      expect(err, `errorCode key '${key}' should map to GoogleParamError`).toBeInstanceOf(
+        GoogleParamError,
+      )
     }
   })
 
@@ -120,7 +124,9 @@ describe("parseGoogleAdsError — GoogleAdsFailure envelope", () => {
         details: [
           {
             "@type": "type.googleapis.com/google.ads.googleads.v26.errors.GoogleAdsFailure",
-            errors: [{ errorCode: { internalError: "INTERNAL_ERROR" }, message: "some other failure" }],
+            errors: [
+              { errorCode: { internalError: "INTERNAL_ERROR" }, message: "some other failure" },
+            ],
           },
         ],
       },
@@ -137,7 +143,9 @@ describe("parseGoogleAdsError — GoogleAdsFailure envelope", () => {
   })
 
   it("falls back to a generic GoogleAdsApiError when there is no GoogleAdsFailure detail", () => {
-    const body = JSON.stringify({ error: { code: 500, message: "Internal error", status: "INTERNAL" } })
+    const body = JSON.stringify({
+      error: { code: 500, message: "Internal error", status: "INTERNAL" },
+    })
     const err = parseGoogleAdsError(body, 500)
     expect(err).toBeInstanceOf(GoogleAdsApiError)
     expect(err.message).toContain("Internal error")
@@ -147,7 +155,13 @@ describe("parseGoogleAdsError — GoogleAdsFailure envelope", () => {
 // Real-shaped bodies. googleAds:searchStream answers an error as a JSON ARRAY
 // holding one envelope (`[{"error":{...}}]`); unary calls (search, mutate) and
 // Merchant API answer the bare object (`{"error":{...}}`).
-function failure(status: string, httpCode: number, codeKey: string, codeValue: string, message: string) {
+function failure(
+  status: string,
+  httpCode: number,
+  codeKey: string,
+  codeValue: string,
+  message: string,
+) {
   return {
     error: {
       code: httpCode,
@@ -206,7 +220,13 @@ describe("parseGoogleAdsError — searchStream ARRAY envelope and 403 hints", ()
 
   it("ACTION_NOT_PERMITTED (v24 and earlier: the same Test-access refusal, object envelope) gets the same hint", () => {
     const body = JSON.stringify(
-      failure("PERMISSION_DENIED", 403, "authorizationError", "ACTION_NOT_PERMITTED", "The user does not have permission to perform this action."),
+      failure(
+        "PERMISSION_DENIED",
+        403,
+        "authorizationError",
+        "ACTION_NOT_PERMITTED",
+        "The user does not have permission to perform this action.",
+      ),
     )
     const err = parseGoogleAdsError(body, 403)
     expect(err.code).toBe("ACTION_NOT_PERMITTED")
@@ -215,15 +235,25 @@ describe("parseGoogleAdsError — searchStream ARRAY envelope and 403 hints", ()
 
   it("AUTHORIZATION_ERROR quotes Google's documented known issue (fix rolling out) and its workaround: a NEW project applying for Explorer", () => {
     const body = JSON.stringify([
-      failure("PERMISSION_DENIED", 403, "authorizationError", "AUTHORIZATION_ERROR", "Authorization of the request failed."),
+      failure(
+        "PERMISSION_DENIED",
+        403,
+        "authorizationError",
+        "AUTHORIZATION_ERROR",
+        "Authorization of the request failed.",
+      ),
     ])
     const err = parseGoogleAdsError(body, 403)
     expect(err.code).toBe("AUTHORIZATION_ERROR")
     expect(err.message).toContain("Authorization of the request failed.")
-    expect(err.message).toContain("https://developers.google.com/google-ads/api/docs/api-policy/developer-token")
+    expect(err.message).toContain(
+      "https://developers.google.com/google-ads/api/docs/api-policy/developer-token",
+    )
     expect(err.message).toContain("known issue Google documents")
     expect(err.message).toContain("rolling it out")
-    expect(err.message).toMatch(/NEW Google Cloud project, apply for Explorer access from that project/)
+    expect(err.message).toMatch(
+      /NEW Google Cloud project, apply for Explorer access from that project/,
+    )
   })
 
   it("a 403 with no GoogleAdsFailure (API not enabled, google.rpc.ErrorInfo) keeps status, reason and message", () => {
@@ -231,7 +261,8 @@ describe("parseGoogleAdsError — searchStream ARRAY envelope and 403 hints", ()
       {
         error: {
           code: 403,
-          message: "Google Ads API has not been used in project 123456789 before or it is disabled.",
+          message:
+            "Google Ads API has not been used in project 123456789 before or it is disabled.",
           status: "PERMISSION_DENIED",
           details: [
             {
@@ -253,7 +284,13 @@ describe("parseGoogleAdsError — searchStream ARRAY envelope and 403 hints", ()
 
   it("an authenticationError still says to reconnect the google connection", () => {
     const body = JSON.stringify([
-      failure("UNAUTHENTICATED", 401, "authenticationError", "OAUTH_TOKEN_INVALID", "Oauth token is invalid."),
+      failure(
+        "UNAUTHENTICATED",
+        401,
+        "authenticationError",
+        "OAUTH_TOKEN_INVALID",
+        "Oauth token is invalid.",
+      ),
     ])
     const err = parseGoogleAdsError(body, 401)
     expect(err).toBeInstanceOf(GoogleAuthError)

@@ -35,6 +35,8 @@ import {
   manifestRegistry,
 } from "~/modules/apps/app-registries"
 import { resetCatalogCache } from "~/modules/apps/catalog"
+import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
+import { getAdapterRow } from "~/modules/apps/connections/api/store"
 import { getCredentialsForConnection } from "~/modules/apps/connections/service"
 import { getEnabledApps } from "~/modules/apps/enabled-apps"
 import { ensureAppsForOrg } from "~/modules/apps/init"
@@ -379,6 +381,60 @@ describe("apps provisioner (Task 11)", () => {
     expect(extractRows(count2).length).toBe(1)
   })
 
+  // The API connections: the app's provision block writes each adapter, then
+  // its `connections` enter each account's credentials (an account needs its
+  // adapter first). A re-run changes nothing.
+  test("api-connector: provision writes the adapters, then connections store each account", async () => {
+    const { ctx, orgId } = await freshOrgWithAdmin()
+    await registerApiConnectorApp(orgId)
+    const adapter = {
+      id: "crm",
+      name: "Example CRM",
+      version: "1.0.0",
+      baseUrl: "https://crm.example.com/api",
+      auth: { type: "bearer" },
+      operations: [
+        {
+          name: "list_companies",
+          description: "Companies.",
+          kind: "read",
+          method: "GET",
+          path: "/companies",
+          params: { type: "object", properties: {} },
+          items: "/data",
+          fields: ["id", "name"],
+        },
+      ],
+    }
+    const config: ProvisioningConfig = {
+      org: { slug: "x", name: "X" },
+      apps: [
+        {
+          name: "api-connector",
+          enable: true,
+          provision: { connectors: [{ identifier: "crm", adapter }] },
+          connections: [{ name: "api", identifier: "crm", credentials: { token: "tok-crm" } }],
+        },
+      ],
+    }
+    const accounts = async () =>
+      extractRows(
+        await withPrivilegedDb(orgId, "t", (tx) =>
+          tx.execute(drizzleSql`
+            SELECT identifier FROM ${kernelRel("connected_accounts")}
+            WHERE org_id = ${orgId}::uuid AND app_name = 'api-connector' AND status = 'active'`),
+        ),
+      )
+    const r1 = await appsProvisioner.apply(ctx, { actions: [] }, config)
+    expect(r1.changed).toContain("apps.api-connector.provision: connection 'crm': adapter created")
+    expect((await getAdapterRow(orgId, "crm"))?.adapter.name).toBe("Example CRM")
+    expect(await accounts()).toEqual([{ identifier: "crm" }])
+
+    const r2 = await appsProvisioner.apply(ctx, { actions: [] }, config)
+    expect(r2.unchanged).toContain("apps.api-connector.provision")
+    expect(await accounts()).toEqual([{ identifier: "crm" }])
+  })
+
   // A credentials connection whose non-secret setting (the URL) moved: the dry
   // run's plan shows old -> new without writing, apply replaces it and reports
   // the change on the app entry, and the post-apply health check turns a dead
@@ -456,31 +512,33 @@ describe("apps provisioner (Task 11)", () => {
     expect(afterApply.group).toBe("team-new")
   })
 
-  test("oauth2 connection (google-drive/drive): pending, no write", async () => {
+  test("oauth2 connection (calendar/google-calendar): pending, no write", async () => {
     const { ctx, orgId } = await freshOrgWithAdmin()
     const config: ProvisioningConfig = {
       org: { slug: "x", name: "X" },
       apps: [
         {
-          name: "google-drive",
+          name: "calendar",
           enable: true,
-          connection: { name: "drive", identifier: "drive-account", ownerType: "org" },
+          connection: { name: "google-calendar", identifier: "calendar-account", ownerType: "org" },
         },
       ],
     }
 
     const r = await appsProvisioner.apply(ctx, { actions: [] }, config)
-    const e = findApp(r, "google-drive")
+    const e = findApp(r, "calendar")
     expect(e.enabled).toBe(true)
     expect(e.connected).toBeFalsy()
 
     const pending = r.pending ?? []
-    expect(pending.find((p) => p.app === "google-drive" && p.connection === "drive")).toBeDefined()
+    expect(
+      pending.find((p) => p.app === "calendar" && p.connection === "google-calendar"),
+    ).toBeDefined()
 
     const rows = await withPrivilegedDb(orgId, "t", (tx) =>
       tx.execute(drizzleSql`
         SELECT id FROM ${kernelRel("connected_accounts")}
-        WHERE org_id = ${orgId}::uuid AND app_name = 'google-drive'
+        WHERE org_id = ${orgId}::uuid AND app_name = 'calendar'
       `),
     )
     expect(extractRows(rows).length).toBe(0)

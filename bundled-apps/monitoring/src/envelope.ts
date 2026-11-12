@@ -27,7 +27,8 @@ export const HTTP_URL_RE = /^https?:\/\/[^\s/?#]+[^\s]*$/i
  * Free text with U+0000 removed before the length rules apply: Postgres refuses it in a text
  * column, so a NUL would turn the delivery into a SQL error the sender retries forever.
  */
-const text = (schema: z.ZodString) => z.preprocess((v) => (typeof v === "string" ? stripNul(v) : v), schema)
+const text = (schema: z.ZodString) =>
+  z.preprocess((v) => (typeof v === "string" ? stripNul(v) : v), schema)
 
 const sourceField = text(z.string().min(1).max(200))
 const severityField = z.enum(SEVERITIES)
@@ -116,7 +117,9 @@ export function parseEnvelope(payload: unknown): ParsedEnvelope {
     if (!markers.success) return { kind: "invalid", detail: issues(markers.error) }
     if (markers.data.status === "resolved" || markers.data.event === "resolve") {
       const r = resolveEnvelopeSchema.safeParse(payload)
-      return r.success ? { kind: "resolve", resolve: r.data } : { kind: "invalid", detail: issues(r.error) }
+      return r.success
+        ? { kind: "resolve", resolve: r.data }
+        : { kind: "invalid", detail: issues(r.error) }
     }
   }
   const a = alertEnvelopeSchema.safeParse(payload)

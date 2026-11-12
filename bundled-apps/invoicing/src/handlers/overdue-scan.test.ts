@@ -9,8 +9,8 @@
 
 import { describe, expect, it } from "bun:test"
 import manifest from "../../app.manifest.json"
-import { overdueScanJob, overdueScanJobHandler, type OverdueScanCtx } from "./overdue-scan"
 import { createMockDb, type MockDb } from "../test-db"
+import { type OverdueScanCtx, overdueScanJob, overdueScanJobHandler } from "./overdue-scan"
 
 interface SeedDocOptions {
   id?: string
@@ -68,10 +68,7 @@ describe("overdueScanJob (Phase 17 G1)", () => {
   })
 
   it("emits one attention per overdue document", async () => {
-    const { ctx, emitted } = makeCtx([
-      seedDoc({ id: "a" }),
-      seedDoc({ id: "b" }),
-    ])
+    const { ctx, emitted } = makeCtx([seedDoc({ id: "a" }), seedDoc({ id: "b" })])
     const r = await overdueScanJob(ctx, { now: new Date("2026-05-28") })
     expect(r.scanned).toBe(2)
     expect(r.emitted).toBe(2)
@@ -82,9 +79,7 @@ describe("overdueScanJob (Phase 17 G1)", () => {
     // detail tab (`invoicing:detail`).
     expect(emitted[0]!.entity).toBe("detail")
     expect(emitted[0]!.action).toBe("document_overdue")
-    expect(
-      (emitted[0]!.data as Record<string, unknown>).days_overdue as number,
-    ).toBeGreaterThan(0)
+    expect((emitted[0]!.data as Record<string, unknown>).days_overdue as number).toBeGreaterThan(0)
   })
 
   // B3 regression: the attention summary must render a human currency amount,
@@ -130,13 +125,9 @@ describe("overdueScanJob (Phase 17 G1)", () => {
   })
 
   it("computes days_overdue correctly", async () => {
-    const { ctx, emitted } = makeCtx([
-      seedDoc({ id: "a", due_at: "2026-05-20" }),
-    ])
+    const { ctx, emitted } = makeCtx([seedDoc({ id: "a", due_at: "2026-05-20" })])
     await overdueScanJob(ctx, { now: new Date("2026-05-28") })
-    expect(
-      (emitted[0]!.data as Record<string, unknown>).days_overdue,
-    ).toBe(8)
+    expect((emitted[0]!.data as Record<string, unknown>).days_overdue).toBe(8)
   })
 
   it("excludes credit notes even if (defensively) seeded with status='issued' and a past due_at", async () => {
@@ -223,7 +214,11 @@ describe("overdue resolution — a paid past-due invoice clears its stale row", 
       expect(res.emitted).toBe(0)
       expect(res.resolved).toBe(1)
       expect(emitted).toHaveLength(1)
-      expect(emitted[0]).toMatchObject({ entity: "detail", action: "document_overdue", entityId: "doc-paid" })
+      expect(emitted[0]).toMatchObject({
+        entity: "detail",
+        action: "document_overdue",
+        entityId: "doc-paid",
+      })
       expect((emitted[0]!.data as Record<string, unknown>).days_overdue).toBe(0)
     })
   })
@@ -258,9 +253,11 @@ describe("overdue resolution — a paid past-due invoice clears its stale row", 
   })
 
   it("the manifest translation turns a days_overdue 0 event into a resolution", () => {
-    const t = (manifest as unknown as {
-      attention: { translations: Array<{ event: string; resolveWhen?: unknown }> }
-    }).attention.translations.find((x) => x.event === "detail:document_overdue")
+    const t = (
+      manifest as unknown as {
+        attention: { translations: Array<{ event: string; resolveWhen?: unknown }> }
+      }
+    ).attention.translations.find((x) => x.event === "detail:document_overdue")
     expect(t?.resolveWhen).toEqual({ field: "days_overdue", equals: 0 })
   })
 })

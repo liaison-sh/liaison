@@ -27,7 +27,10 @@ import type { BoxtalToolCtx } from "./ctx"
 import { currencyExponent } from "./money"
 
 /** The carrier family ("fedex", "ups", ...) of a Boxtal offer code ("FEDX-InternationalEconomy"). */
-export function carrierFamilyOf(offerCode: string | null | undefined, carrierLabel?: string | null): string | null {
+export function carrierFamilyOf(
+  offerCode: string | null | undefined,
+  carrierLabel?: string | null,
+): string | null {
   const code = (offerCode ?? "").trim()
   if (!code && !carrierLabel) return null
   return carrierBrandOf({ carrier_code: code.split("-")[0] ?? "", carrier: carrierLabel ?? "" })
@@ -143,7 +146,11 @@ function fromMinor(minor: number | null, currency: string | null): number | null
  */
 export function buildPrintSnapshot(
   draft: PrintSnapshotDraftView,
-  opts: { offerCode?: string | null; carrierName?: string | null; customer?: PrintSnapshotAddress | null },
+  opts: {
+    offerCode?: string | null
+    carrierName?: string | null
+    customer?: PrintSnapshotAddress | null
+  },
 ): PrintSnapshot {
   const articles = new Map((draft.customsArticles ?? []).map((a) => [a.line_id, a]))
   const lines: PrintLine[] = (draft.lineSummaries ?? [])
@@ -159,14 +166,19 @@ export function buildPrintSnapshot(
         hts: text(article?.tariffNumber) ?? text(l.hs_code),
         origin: text(article?.originCountry) ?? text(l.country_of_origin),
         quantity,
-        value: unit != null && quantity != null ? round(unit * quantity, currency ? currencyExponent(currency) : 2) : null,
+        value:
+          unit != null && quantity != null
+            ? round(unit * quantity, currency ? currencyExponent(currency) : 2)
+            : null,
         unit_value: unit,
         currency,
       }
     })
   const contact = opts.customer?.contact ?? null
   const location = opts.customer?.location ?? null
-  const name = [text(contact?.firstName), text(contact?.lastName)].filter((p): p is string => p != null).join(" ")
+  const name = [text(contact?.firstName), text(contact?.lastName)]
+    .filter((p): p is string => p != null)
+    .join(" ")
   const family = carrierFamilyOf(opts.offerCode, opts.carrierName)
   return {
     invoice: { number: text(draft.document_number), date: text(draft.invoice_issued_at) },
@@ -184,7 +196,8 @@ export function buildPrintSnapshot(
         country_iso2: text(location?.countryIsoCode)?.toUpperCase() ?? null,
       },
     },
-    carrier_name: text(opts.carrierName) ?? CARRIER_BRANDS.find((b) => b.key === family)?.label ?? null,
+    carrier_name:
+      text(opts.carrierName) ?? CARRIER_BRANDS.find((b) => b.key === family)?.label ?? null,
     carrier_family: family,
     lines,
   }
@@ -199,7 +212,9 @@ function asObject(raw: unknown): Record<string, unknown> | null {
       return null
     }
   }
-  return value != null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null
+  return value != null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
 }
 
 /** The snapshot read back off `queue_facts`; null for a row bought before it existed. */
@@ -254,7 +269,9 @@ export function countryNameEn(iso2: string | null): string | null {
   if (listed) return listed
   try {
     // Some ICU builds name CN "China mainland"; paperwork names the country.
-    const name = new Intl.DisplayNames(["en"], { type: "region" }).of(iso2)?.replace(/ mainland$/, "")
+    const name = new Intl.DisplayNames(["en"], { type: "region" })
+      .of(iso2)
+      ?.replace(/ mainland$/, "")
     return name && name !== iso2 ? name : null
   } catch {
     return null
@@ -285,15 +302,24 @@ interface PrintRowView {
 }
 
 /** Product attributes by SKU (kernel), one call for the record's SKUs; empty on any failure. */
-async function attributesBySku(ctx: BoxtalToolCtx, skus: string[]): Promise<Map<string, Record<string, string>>> {
+async function attributesBySku(
+  ctx: BoxtalToolCtx,
+  skus: string[],
+): Promise<Map<string, Record<string, string>>> {
   const out = new Map<string, Record<string, string>>()
   if (skus.length === 0) return out
   try {
     const env = await ctx.executeTool("kernel:product_attributes_list", { skus })
     if (env.status !== "completed") return out
-    const rows = (env.result as { attributes?: Array<{ sku?: unknown; key?: unknown; value?: unknown }> } | null)?.attributes ?? []
+    const rows =
+      (
+        env.result as {
+          attributes?: Array<{ sku?: unknown; key?: unknown; value?: unknown }>
+        } | null
+      )?.attributes ?? []
     for (const a of rows) {
-      if (typeof a.sku !== "string" || typeof a.key !== "string" || typeof a.value !== "string") continue
+      if (typeof a.sku !== "string" || typeof a.key !== "string" || typeof a.value !== "string")
+        continue
       const attrs = out.get(a.sku) ?? {}
       attrs[a.key] = a.value
       out.set(a.sku, attrs)
@@ -310,7 +336,10 @@ export async function printRecordGet(
   input: { shipment_id?: string },
 ): Promise<PrintRecord | { error: { code: string; message: string } }> {
   const id = String(input.shipment_id ?? "").trim()
-  if (!id) return { error: { code: "invalid_params", message: "shipment_id is required (a shipment row id)." } }
+  if (!id)
+    return {
+      error: { code: "invalid_params", message: "shipment_id is required (a shipment row id)." },
+    }
   const rows = (await ctx.db.findMany("shipment", { where: { id }, limit: 1 })) as PrintRowView[]
   const row = rows[0]
   if (!row) return { error: { code: "not_found", message: `No shipment row matches "${id}".` } }
@@ -335,7 +364,8 @@ export async function printRecordGet(
     },
     shipment: {
       id: String(row.id),
-      carrier_name: snapshot?.carrier_name ?? CARRIER_BRANDS.find((b) => b.key === family)?.label ?? null,
+      carrier_name:
+        snapshot?.carrier_name ?? CARRIER_BRANDS.find((b) => b.key === family)?.label ?? null,
       carrier_family: family,
       tracking_number: tracking,
       tracking_label: trackingLabelOf(family),

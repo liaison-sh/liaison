@@ -38,10 +38,7 @@ function loadManifest(): ManifestSchema {
  * (base entity columns like `id`/`createdAt`/`updatedAt` are NOT exempt on the
  * write path — the kernel sets them).
  */
-export function validateFields(
-  entity: string,
-  data: Record<string, unknown>,
-): void {
+export function validateFields(entity: string, data: Record<string, unknown>): void {
   const entityDef = loadManifest().schema?.[entity]
   if (!entityDef?.fields) {
     throw new Error(

@@ -13,7 +13,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import crypto from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
 import contactsManifest from "~/apps/contacts/app.manifest.json"
-import driveManifest from "~/apps/google-drive/app.manifest.json"
 import knowledgeManifest from "~/apps/knowledge/app.manifest.json"
 import mailManifest from "~/apps/mail/app.manifest.json"
 import projectsManifest from "~/apps/projects/app.manifest.json"
@@ -183,27 +182,6 @@ const SEEDS: Record<string, (oid: string, uid: string) => Promise<SeedResult>> =
       dims: {},
     }
   },
-
-  "google-drive": async (oid, uid) => {
-    const accountId = crypto.randomUUID()
-    const displayName = `Export Drive ${crypto.randomUUID().slice(0, 8)}`
-    await withSystemDb("per-app-export-seed-drive", async (tx) => {
-      await tx.execute(drizzleSql`
-        INSERT INTO kernel.connected_accounts
-          (id, org_id, app_name, connection_name, owner_type, owner_id,
-           provider_type, identifier, display_name, status, created_by)
-        VALUES (${accountId}, ${oid}, 'google-drive', 'Export Drive', 'user', ${uid},
-                'google', 'export-drive@test.com', ${displayName}, 'active', ${uid})`)
-    })
-    return {
-      assert: (rows) => {
-        const row = rows.find((r) => r.id === accountId)
-        expect(row).toBeDefined()
-        expect(row?.displayName).toBe(displayName)
-      },
-      dims: {},
-    }
-  },
 }
 
 const APPS: Array<{ name: string; manifest: unknown; scope: string }> = [
@@ -213,11 +191,8 @@ const APPS: Array<{ name: string; manifest: unknown; scope: string }> = [
   // that entity, so the actor needs `mail:conversations:read` (not accounts).
   { name: "mail", manifest: mailManifest, scope: "mail:conversations:read" },
   { name: "contacts", manifest: contactsManifest, scope: "contacts:contacts:read" },
-  {
-    name: "google-drive",
-    manifest: driveManifest,
-    scope: "google-drive:accounts:read",
-  },
+  // google-drive is a bundled app: its export handler is proven by its contract
+  // fixture (contract/fixtures/google-drive/export__export.json).
 ]
 
 describe("per-app export contract acceptance (E1/E3)", () => {

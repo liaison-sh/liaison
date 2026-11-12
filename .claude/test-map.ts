@@ -68,7 +68,7 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   { glob: "apps/api/src/infra/**", suites: ["unit", "integration"] },
   { glob: "apps/api/src/middleware/**", suites: ["unit", "integration"] },
   // The agent's authoring reference carries generated tables (drift test in root).
-  { glob: "apps/api/src/apps/api-connector/reference/**", suites: ["root", "unit"] },
+  { glob: "apps/api/src/modules/apps/connections/api/reference/**", suites: ["root", "unit"] },
   { glob: "apps/api/src/apps/**", suites: ["unit", "integration", "e2e-parallel", "api-guards"] },
   { glob: "apps/api/src/services/**", suites: ["unit", "integration"] },
   { glob: "apps/api/src/cli/**", suites: ["unit"] },
@@ -148,7 +148,17 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
     glob: "packages/control-plane-contract/**",
     suites: ["workspace-packages", "unit", "integration"],
   },
+  // The app loader every loader host runs; the api's Workers executor and its
+  // test stand-in (unit, integration) import it.
+  { glob: "packages/app-loader/**", suites: ["workspace-packages", "unit", "integration"] },
   { glob: "packages/db-core/**", suites: ["workspace-packages", "unit", "integration"] },
+  // The self-hosted sandbox service (workerd). Its probes, the executor parity
+  // suite on workerd (unit) and the wake-up contract on workerd (api-guards);
+  // its package.json pins workerd, so a bump re-runs all three.
+  {
+    glob: "packages/sandbox-supervisor/**",
+    suites: ["workspace-packages", "unit", "api-guards"],
+  },
   { glob: "packages/test-helpers/src/{role-processes,cell-clients}*", suites: ["cell"] },
   // The lane attach handle (TestWorld) and the standard world every lane reads.
   {
@@ -172,7 +182,11 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   { glob: "bundled-apps/invoicing/**", suites: ["api-guards", "bundled-invoicing", "bundled-freeze", "e2e-parallel", "demo-seed"] },
   { glob: "bundled-apps/monitoring/**", suites: ["api-guards", "bundled-monitoring", "bundled-monitoring-ui", "bundled-freeze", "e2e-parallel", "demo-seed"] },
   { glob: "bundled-apps/database/**", suites: ["api-guards", "bundled-database", "bundled-freeze", "e2e-parallel", "demo-seed"] },
+  { glob: "bundled-apps/google-drive/**", suites: ["api-guards", "bundled-google-drive", "bundled-freeze"] },
   { glob: "bundled-apps/gitlab/**", suites: ["api-guards", "bundled-gitlab", "bundled-freeze", "e2e-parallel", "demo-seed"] },
+  // Its manifest is also the test template's api-connector schema and the app the
+  // platform-held API connection tests register (apps/api/src/db/apply-app-schemas.ts).
+  { glob: "bundled-apps/api-connector/**", suites: ["api-guards", "bundled-api-connector", "bundled-freeze", "e2e-parallel", "demo-seed", "unit", "integration"] },
   { glob: "bundled-apps/pennylane/**", suites: ["api-guards", "bundled-pennylane", "bundled-freeze", "e2e-parallel", "demo-seed"] },
   { glob: "bundled-apps/shopify/**", suites: ["api-guards", "bundled-shopify", "bundled-freeze", "e2e-parallel", "demo-seed"] },
   { glob: "bundled-apps/social/**", suites: ["api-guards", "bundled-social", "bundled-social-ui", "integration-extra", "bundled-freeze", "e2e-parallel", "demo-seed"] },

@@ -258,10 +258,8 @@ const connectionSchema = z.object({
   // declared via an unset `${ENV:-}` ref is treated as "not configured yet" and
   // SKIPPED by the connector (incremental setup), not rejected here.
   oauthClient: z.object({ clientId: z.string(), clientSecret: z.string() }).optional(),
-  // google-drive only: the Shared Drives (ids or names) the organization's Drive
-  // connection shares with the team. It reads nothing until they are chosen; no
-  // one's My Drive is ever read through the org connection.
-  sharedDrives: z.array(z.string().min(1)).max(100).optional(),
+  // Moved: refused below with where it went (the app's provisioning).
+  sharedDrives: z.unknown().optional(),
 })
 
 /**
@@ -305,6 +303,10 @@ const appSchema = z
     name: z.string().min(1),
     enable: z.boolean(),
     connection: connectionSchema.optional(),
+    // More accounts of a multiInstance credentials connection, each by its
+    // `identifier` (an API connection per slug, for one). Applied after the
+    // app's `provision`, which may set up what an account needs first.
+    connections: z.array(connectionSchema).optional(),
     // Mail app only: which mail providers are switched on for the org.
     providers: mailProvidersSchema.optional(),
     // Non-secret app config keys (`kernel.apps.config`), written through the
@@ -334,9 +336,15 @@ const appSchema = z
     message: "config requires enable: true (a disabled app entry is skipped)",
     path: ["config"],
   })
-  .refine((a) => a.connection?.sharedDrives === undefined || a.name === "google-drive", {
-    message: "sharedDrives is only supported on the 'google-drive' connection",
+  .refine((a) => a.connection?.sharedDrives === undefined, {
+    message:
+      "connection.sharedDrives moved into the google-drive app's provisioning: write it as provision: { sharedDrives: [{ account: <the org connection's Google account>, drives: [...] }] }",
     path: ["connection", "sharedDrives"],
+  })
+  .refine((a) => (a.connections ?? []).every((c) => c.sharedDrives === undefined), {
+    message:
+      "connections[].sharedDrives moved into the google-drive app's provisioning: write it as provision: { sharedDrives: [{ account: <the org connection's Google account>, drives: [...] }] }",
+    path: ["connections"],
   })
   .refine((a) => a.settings === undefined || a.enable, {
     message: "settings requires enable: true (a disabled app entry is skipped)",
@@ -345,6 +353,14 @@ const appSchema = z
   .refine((a) => a.provision === undefined || a.enable, {
     message: "provision requires enable: true (a disabled app entry is skipped)",
     path: ["provision"],
+  })
+  .refine((a) => a.connections === undefined || a.enable, {
+    message: "connections requires enable: true (a disabled app entry is skipped)",
+    path: ["connections"],
+  })
+  .refine((a) => (a.connections ?? []).every((c) => c.identifier !== undefined), {
+    message: "each entry of connections names its account with identifier",
+    path: ["connections"],
   })
   .refine((a) => a.domainAccess === undefined, {
     message:
@@ -585,19 +601,12 @@ export const agentSchema = z
   })
   .strict()
 
-// One API connection (api-connector app): an adapter document, by path
-// (relative to the config file) or inline, plus the credentials its auth type
-// needs. Idempotent by `identifier`; the adapter itself is validated by the
-// provisioner (path-precise issues, exit 2).
-const apiConnectorSchema = z
-  .object({
-    identifier: z
-      .string()
-      .regex(/^[a-z0-9][a-z0-9-]{0,39}$/, "a lowercase slug of at most 40 characters"),
-    adapter: z.union([z.string().min(1), z.record(z.string(), z.unknown())]),
-    credentials: z.record(z.string(), z.string()).optional(),
-  })
-  .strict()
+/** Where the removed top-level `apiConnectors` section went. */
+export const API_CONNECTORS_MOVED =
+  "apiConnectors moved into the api-connector app's provisioning: write each connection as " +
+  "apps: [{ name: api-connector, enable: true, provision: { connectors: [{ identifier, adapter }] }, " +
+  "connections: [{ name: api, identifier, credentials }] }] (adapter inline, or { $file: <path> } " +
+  "relative to the config file). See docs/provisioning-cli.md."
 
 /** The authoritative provisioning config schema. Top level is strict. */
 /**
@@ -634,7 +643,9 @@ export const configSchema = z
     mail: mailSchema,
     tickets: ticketsSchema,
     apps: z.array(appSchema).optional(),
-    apiConnectors: z.array(apiConnectorSchema).optional(),
+    // Refused with where it went (the api-connector app's own provisioning), so a
+    // file that still carries it fails instead of being silently ignored.
+    apiConnectors: z.unknown().optional(),
     knowledge: knowledgeSchema,
     agents: z.array(agentSchema).optional(),
     invoicing: invoicingSchema,
@@ -642,6 +653,10 @@ export const configSchema = z
     liaisonTeam: liaisonTeamSchema,
   })
   .strict()
+  .refine((c) => c.apiConnectors === undefined, {
+    message: API_CONNECTORS_MOVED,
+    path: ["apiConnectors"],
+  })
 
 export type ProvisioningConfig = z.infer<typeof configSchema>
 

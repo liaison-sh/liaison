@@ -479,7 +479,6 @@ const ENTRY_RULES: Record<string, { id: string; required?: string[] }> = {
   "invoicing.issuerProfiles": { id: "legalName", required: ["legalName", "country"] },
   users: { id: "email" },
   apiKeys: { id: "label" },
-  apiConnectors: { id: "identifier" },
   "mail.mailboxes": { id: "address" },
   "tickets.inboxes": { id: "address" },
   "knowledge.collections": { id: "name" },

@@ -13,12 +13,14 @@ describe("op error statuses", () => {
   })
 
   test("Pennylane refusing the token is a failed dependency, not a server fault", () => {
-    const e = fromException(new PennylaneApiError(403, "{\"error\":\"scope\"}"), "webhooks_setup")
+    const e = fromException(new PennylaneApiError(403, '{"error":"scope"}'), "webhooks_setup")
     expect(e.error).toMatchObject({ code: "provider_unauthorized", status: 424 })
   })
 
   test("a rate limit is 429 and a Pennylane outage 502", () => {
-    expect(fromException(new PennylaneRateLimitError(Date.now() + 1000), "x").error.status).toBe(429)
+    expect(fromException(new PennylaneRateLimitError(Date.now() + 1000), "x").error.status).toBe(
+      429,
+    )
     expect(fromException(new PennylaneApiError(503, ""), "x").error.status).toBe(502)
   })
 

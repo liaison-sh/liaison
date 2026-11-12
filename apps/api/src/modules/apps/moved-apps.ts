@@ -57,12 +57,14 @@ export interface SyncedSourcesToKindStep {
   id: string
   kind: "synced-sources-to-kind"
   sourceKind: string
+  /** Only the sources with exactly this `folder_ref` (default: every one with no kind yet). */
+  folderRef?: string
   /**
-   * The config key that carries each source's folder reference (`folder_ref`,
-   * what the in-tree adapter synced) for the kind's handler: `{ [key]: folder_ref }`.
-   * Absent: the config stays as it is (`{}` when none).
+   * Config keys filled from the source's own columns (`folder_ref`,
+   * `source_account`), for a kind whose handler reads the folder or the account
+   * from its config. A column with no value adds no key.
    */
-  configFromFolderRef?: string
+  configFromColumns?: Readonly<Record<string, "folder_ref" | "source_account">>
 }
 
 export type AdoptionStep = OrgSettingToStoreStep | SyncedSourcesToKindStep
@@ -102,9 +104,42 @@ export const MOVED_APPS: readonly MovedApp[] = [
         id: "knowledge-sources-to-folder",
         kind: "synced-sources-to-kind",
         sourceKind: "folder",
-        configFromFolderRef: "ref",
+        configFromColumns: { ref: "folder_ref" },
       },
     ],
+  },
+  {
+    // The Drive folders and the picked files that in-tree kernel code synced go
+    // to the app's `folder` and `picked` source kinds (bundled-apps/google-drive/
+    // src/knowledge.ts), with the folder and the account they synced through in
+    // their config. Picked items and chosen shared drives stay where they are,
+    // on the connected accounts' metadata; imported files stay kernel files.
+    name: "google-drive",
+    steps: [
+      {
+        id: "picked-sources-to-kind",
+        kind: "synced-sources-to-kind",
+        sourceKind: "picked",
+        folderRef: "liaison-picked-items",
+        configFromColumns: { ref: "folder_ref", account: "source_account" },
+      },
+      {
+        id: "folder-sources-to-kind",
+        kind: "synced-sources-to-kind",
+        sourceKind: "folder",
+        configFromColumns: { ref: "folder_ref", account: "source_account" },
+      },
+    ],
+  },
+  {
+    // The API connector keeps every row where the catalog app reads it: its
+    // adapters and their kept versions in its own schema (the same tables),
+    // the connections' credentials (the same `api` connection, one account per
+    // slug), its role scopes and pending approvals (the same tool names). The
+    // platform-held API connections (connections/api/) serve them from there,
+    // so nothing moves.
+    name: "api-connector",
+    steps: [],
   },
 ]
 
@@ -239,16 +274,25 @@ async function runSyncedSourcesToKind(
   if (!(await columnExists(db, schemaRef("app_knowledge"), "synced_sources", "source_kind"))) {
     return { state: "deferred", reason: "app_knowledge.synced_sources.source_kind is missing" }
   }
-  const config = step.configFromFolderRef
-    ? drizzleSql`COALESCE(source_config, '{}'::jsonb) || jsonb_build_object(${step.configFromFolderRef}::text, folder_ref)`
-    : drizzleSql`COALESCE(source_config, '{}'::jsonb)`
+  const fromColumns = Object.entries(step.configFromColumns ?? {})
+  const config =
+    fromColumns.length === 0
+      ? drizzleSql`'{}'::jsonb`
+      : drizzleSql`jsonb_strip_nulls(jsonb_build_object(${drizzleSql.join(
+          fromColumns.map(
+            ([key, column]) =>
+              drizzleSql`${key}::text, ${column === "folder_ref" ? drizzleSql`folder_ref` : drizzleSql`source_account`}`,
+          ),
+          drizzleSql`, `,
+        )}))`
   const rows = extractRows<{ id: string }>(
     await db.execute(drizzleSql`
       UPDATE ${KNOWLEDGE}.synced_sources
       SET source_kind = ${step.sourceKind},
-          source_config = ${config},
+          source_config = COALESCE(source_config, '{}'::jsonb) || ${config},
           updated_at = now()
       WHERE app_name = ${app} AND source_kind IS NULL
+        ${step.folderRef !== undefined ? drizzleSql`AND folder_ref = ${step.folderRef}` : drizzleSql``}
       RETURNING id
     `),
   )

@@ -232,6 +232,7 @@ export async function items_create(
 | `ctx.timers.wakeIn` | Run a job in N seconds instead of waiting inside a run |
 | `ctx.steps.run` | Long work in bounded chunks across runs, the cursor saved for you ([Sandboxing](app-sandbox.md#long-work-come-back-later-ctxsteps-ctxtimers-ctxjobs)) |
 | `ctx.connections` | Per-connection OAuth/credential tokens |
+| `ctx.api` | Call an HTTP API the platform holds the connection to (a credentials connection with an `api` block: each account an adapter document): list operations, read, write (gated), test, and manage the adapters; the platform checks the caller against the block's read, write and admin scopes and never hands back a credential ([Sandboxing](app-sandbox.md)) |
 | `ctx.sql` | Query a database the platform holds the connection to: named reads (listed with each catalog domain's access tier) or a read-only `SELECT`, rows only, never the credentials ([Sandboxing](app-sandbox.md#query-a-database-ctxsql)) |
 | `ctx.accounts` | Your app's own connected accounts and their metadata ([Sandboxing](app-sandbox.md#read-your-own-accounts-ctxaccounts)) |
 | `ctx.kernel` | Directory reads of the caller's organization: a user or contact by id, who the run acts for and which scopes they hold (`caller`), the roles, people by email, for access rules of your own ([Sandboxing](app-sandbox.md#read-your-own-accounts-ctxaccounts)) |
@@ -379,6 +380,10 @@ frame. Write it so that it works there too:
   record or the approvals queue. Each one also works in the page. Ask in your own
   dialog (the `ConfirmDialog` of `@liaison/app-ui`), never `window.confirm`. The
   limits are in [Sandboxing](app-sandbox.md#host-calls-a-framed-screen-makes).
+- Ask for one account's credentials with `app.openConnectDialog({ connectionName,
+  identifier, fields })` from `@liaison/host`: the host's own dialog, for that
+  account of a multiInstance credentials connection and only those declared
+  fields, so what the person types never passes through the app.
 - Read the page's path with `currentPath()` from `@liaison/host`, never
   `window.location` (a frame's location is its own document's), and read it
   again on `popstate`, which the host fires on every route change. A sidebar
@@ -437,8 +442,13 @@ obtains, caches and drops on a 401), or `"basic"` (two credentials fields).
 `account` names exactly one account by the id `ctx.accounts.list` gave (the
 organization's, or the acting person's own; any other is refused with
 `unknown_account`), for when one identifier has both an organization and a
-personal account. `files_importFromUrl` takes the same `auth` to download a file
+personal account. What your app keeps on an account (`ctx.accounts.setMetadata`) stays
+on it when the same owner reconnects the same account. `files_importFromUrl` takes the same `auth` to download a file
 with a connection's token the app never holds.
+`convert: "xlsx-text"` answers an Excel workbook (up to 10 MB) as text, each sheet
+under `Sheet: <name>` then its rows as CSV. A `{ multipart }` body takes `related: true`
+(multipart/related, each part only its Content-Type: a JSON metadata part then the
+media, as Google's upload API takes them) and parts carrying `base64` bytes.
 `configSecrets: { "<placeholder>": "<config key>" }` writes a declared config
 secret where the manifest's `secrets` map places it (below), and `ctx.config.has(key)`
 tells whether a secret is set without reading it. For the non-secret part of a
@@ -1059,7 +1069,9 @@ Liaison keeps its documents up to date. Declare the kind in the manifest:
   passes becomes the config `{ ref }`, and the same ref finds the same source.
 - `timeoutMs`: one page's time limit, 60 s when absent, at most 120 s.
 
-The handler gets `{ sourceId, kind, config, cursor }` and returns one page:
+The handler gets `{ sourceId, kind, config, cursor, scope }` (`scope`: `personal`
+for one person's source, the run then acting for them, or `organization`) and
+returns one page:
 
 ```ts
 import type { KnowledgeSyncInput, KnowledgeSyncResult } from "@liaison/app-sdk"
@@ -1147,6 +1159,15 @@ return {
   refused, or that another run got to first, changes no folder.
 - Per page: at most 500 folders (those paths add included), 1000 folder
   deletes, and paths 32 folders deep.
+
+
+Your own code manages your sources with `ctx.knowledge_appSource` (reads: `get` one by
+`kind`, `ref`, `scope` and `account`, `list` the ones the run may see) and
+`ctx.knowledge_appSourceWrite` (`ensure` one, created with the acting person's Knowledge
+rights or reactivated; `sync` one now; `purgeAccount` the content your sources synced
+through a disconnected account of your app, read from the kernel row), each a JSON string in
+and out, pinned to your app. A folder `add_folder_source` names (`ref`) goes to your `folder`
+kind when you declare one, with config `{ ref }`.
 
 ## See also
 

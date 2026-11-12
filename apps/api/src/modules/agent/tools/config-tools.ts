@@ -82,7 +82,6 @@ const SECTION_LABEL: Record<ConfigToolSection, string> = {
   mail: "Mail app mailboxes",
   tickets: "ticket inboxes and ticket settings",
   apps: "apps, their config and connections",
-  apiConnectors: "API connections (adapters)",
   knowledge: "knowledge collections and documents",
   agents: "role agents",
   invoicing: "invoicing issuers, tax regimes and e-invoicing",
@@ -676,12 +675,6 @@ export function registerConfigTools(orgId: string): void {
       description:
         "Change apps, their config, settings and connections: the apps section of liaison config apply. Read kernel__config_export first. Gated. Secrets go through kernel__request_secret, files as uploaded file ids.",
       requiredScopes: ["kernel:apps:admin"],
-    },
-    {
-      name: "config_apiConnectors",
-      description:
-        "Change API connections as a liaison config apply section. To connect one system (a CRM, ERP, any HTTP API) use api-connector__connector_adapter_save: it checks the adapter and lists every issue. Gated.",
-      requiredScopes: ["api-connector:admin"],
     },
     {
       name: "config_knowledge",

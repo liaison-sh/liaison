@@ -101,9 +101,15 @@ async function resolveOrCreateDoc(ctx: CallsCtx, callRef: string): Promise<DocSn
   })
   if (env.status !== "completed") {
     if (env.status === "error") {
-      throw new RetryableResolveError(`knowledge:create failed: ${env.error.code} ${env.error.message}`, isIdempotencyContention(env))
+      throw new RetryableResolveError(
+        `knowledge:create failed: ${env.error.code} ${env.error.message}`,
+        isIdempotencyContention(env),
+      )
     }
-    throw new RetryableResolveError("knowledge:create was gated (pending_approval): unexpected for an ungated tool", false)
+    throw new RetryableResolveError(
+      "knowledge:create was gated (pending_approval): unexpected for an ungated tool",
+      false,
+    )
   }
   const snap = snapshotFromDocResult(env.result)
   if (!snap) {

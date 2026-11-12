@@ -10,7 +10,6 @@
 import { afterAll, beforeAll, describe, expect, it, mock } from "bun:test"
 import { registerAdapter } from "@liaison/db-core"
 import { sql } from "drizzle-orm"
-import { kbSyncCatalog } from "~/modules/apps/connections/sql/adapters/__fixtures__/kb-sync"
 import {
   loadSyncedSourceForOrgSystem,
   loadSyncedSourceForWorker,
@@ -31,6 +30,7 @@ import { __privileged_db__ as db } from "~/db/connection"
 import { withRlsContext } from "~/db/rls"
 import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { env } from "~/lib/env"
+import { kbSyncCatalog } from "~/modules/apps/connections/sql/adapters/__fixtures__/kb-sync"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 

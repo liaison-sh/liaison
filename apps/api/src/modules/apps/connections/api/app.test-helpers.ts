@@ -15,7 +15,7 @@ export async function registerApiConnectorApp(orgId: string): Promise<void> {
  * platform's own write), for a test that needs a connection to exist.
  * Answers `{ status }` like the old settings route did.
  */
-export async function saveAdapterForTest(
+export async function seedAdapter(
   orgId: string,
   identifier: string,
   document: unknown,

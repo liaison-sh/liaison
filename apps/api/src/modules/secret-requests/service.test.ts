@@ -13,7 +13,7 @@ import { withRlsContext } from "~/db/rls"
 import { secretRequests } from "~/db/schema/kernel"
 import {
   registerApiConnectorApp,
-  saveAdapterForTest,
+  seedAdapter,
 } from "~/modules/apps/connections/api/app.test-helpers"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
@@ -265,7 +265,7 @@ describe("secret requests: completion is derived from the store", () => {
         },
       ],
     }
-    const put = await saveAdapterForTest(orgId, "crm", adapter)
+    const put = await seedAdapter(orgId, "crm", adapter)
     expect(put.status).toBeLessThan(300)
     const row = await ask({ kind: "api_connector_credentials", identifier: "crm" })
     await expectNothingStored(row.id)

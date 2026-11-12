@@ -133,7 +133,7 @@ describe("import and upload", () => {
     expect(out.fileId).toBe("file-1")
     expect(out.nextStep).toContain('attachments:["file-1"]')
     expect(f.rows[0]).toEqual({
-      entity: "import",
+      entity: "imports",
       data: { owner_type: "user", owner_id: "user-1", drive_file_id: "pdf00001", filename: "Scan.pdf" },
     })
     expect(f.imports[0]).toMatchObject({

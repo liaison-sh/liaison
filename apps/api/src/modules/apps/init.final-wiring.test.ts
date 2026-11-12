@@ -8,6 +8,10 @@ describe("Knowledge final wiring", () => {
     expect(names).toContain("knowledge")
     const { existsSync } = await import("node:fs")
     const { join } = await import("node:path")
-    expect(existsSync(join(import.meta.dir, "../../../../../bundled-apps/google-drive/app.manifest.json"))).toBe(true)
+    expect(
+      existsSync(
+        join(import.meta.dir, "../../../../../bundled-apps/google-drive/app.manifest.json"),
+      ),
+    ).toBe(true)
   })
 })

@@ -57,6 +57,7 @@ export const SERVER_ESTIMATES: Record<string, StepEstimate> = {
   signInGoogle: { minutes: [2, 4], part: "basic" },
   // A single company gives its clients in the workspace config instead.
   instanceClients: { minutes: [0, 0] },
+  drivePicker: { minutes: [3, 5] },
   webPush: { minutes: [1, 2] },
   // Not available with the published phone app (server-setup.ts).
   phonePush: { minutes: [0, 0] },

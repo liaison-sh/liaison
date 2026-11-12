@@ -50,6 +50,7 @@ export function fakeCtx(opts: {
   const accounts = opts.accounts ?? []
   const ctx = {
     userId: "user-1",
+    getUserId: async () => "user-1",
     orgId: "org-1",
     accounts: {
       async list(_connection: string, o?: { identifier?: string }) {

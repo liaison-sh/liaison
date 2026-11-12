@@ -1018,11 +1018,19 @@ export const envSchema = z
       (v) => (v === "" ? undefined : v),
       z.string().optional(),
     ),
-    // No longer read: the Google Picker's key and project number are the
-    // google-drive app's config (`pickerApiKey`, `pickerAppId`). Kept declared so a
-    // deployment that still sets them boots and is told where they moved (moved-apps.ts).
+    // The Google Picker, where a person chooses the Drive files Liaison can see when
+    // their Drive is connected with `drive.file` only (a personal Google account on
+    // an unverified instance client). An API key of the Drive client's Google Cloud
+    // project with the Google Picker API on, and that project's number (the Picker's
+    // app id). Unset, the picker is hidden and admins are told to set both.
     GOOGLE_PICKER_API_KEY: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
-    GOOGLE_CLOUD_PROJECT_NUMBER: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+    GOOGLE_CLOUD_PROJECT_NUMBER: z.preprocess(
+      (v) => (v === "" ? undefined : v),
+      z
+        .string()
+        .regex(/^\d{3,20}$/)
+        .optional(),
+    ),
     // Google Ads, Merchant Center and YouTube (the Ads and Social apps).
     GOOGLE_MARKETING_OAUTH_CLIENT_ID: z.preprocess(
       (v) => (v === "" ? undefined : v),

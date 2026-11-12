@@ -1,0 +1,14 @@
+{
+  "entry": "export:export",
+  "params": {
+    "format": "json"
+  },
+  "recordedFrom": "a contract org's Drive accounts against a fake Google Drive v3 reached through the live bridge transport, scripts/contract/record-google-drive.ts",
+  "calls": [
+    {
+      "method": "accounts_list",
+      "args": ["drive", "{\"includeInactive\":true}"],
+      "reply": "[{\"id\":\"00000000-0000-4000-8000-00000000d001\",\"identifier\":\"ana@example.com\",\"ownerType\":\"user\",\"ownerId\":\"00000000-0000-4000-8000-00000000c0df\",\"displayName\":null,\"status\":\"active\",\"metadata\":{\"grantedOAuthScopes\":[\"https://www.googleapis.com/auth/drive.readonly\"]},\"createdAt\":\"2026-11-12T15:31:24.936Z\",\"updatedAt\":\"2026-11-12T15:31:24.936Z\",\"canManage\":true},{\"id\":\"00000000-0000-4000-8000-00000000d002\",\"identifier\":\"team@example.com\",\"ownerType\":\"org\",\"ownerId\":null,\"displayName\":null,\"status\":\"active\",\"metadata\":{\"sharedDrives\":[{\"id\":\"DRIVE_TEAM\",\"name\":\"Team\"}]},\"createdAt\":\"2026-11-12T15:31:24.939Z\",\"updatedAt\":\"2026-11-12T15:31:25.450Z\",\"canManage\":true},{\"id\":\"00000000-0000-4000-8000-00000000d003\",\"identifier\":\"old@example.com\",\"ownerType\":\"user\",\"ownerId\":\"00000000-0000-4000-8000-00000000c0df\",\"displayName\":null,\"status\":\"disconnected\",\"metadata\":{},\"createdAt\":\"2026-11-12T15:31:24.943Z\",\"updatedAt\":\"2026-11-12T15:31:24.943Z\",\"canManage\":true}]"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "entry": "tool:upload",
+  "params": {
+    "name": "Report.txt",
+    "mimeType": "text/plain",
+    "contentBase64": "V2Vla2x5IHJlcG9ydA=="
+  },
+  "recordedFrom": "a contract org's Drive accounts against a fake Google Drive v3 reached through the live bridge transport, scripts/contract/record-google-drive.ts",
+  "calls": [
+    {
+      "method": "accounts_list",
+      "args": ["drive", null],
+      "reply": "[{\"id\":\"00000000-0000-4000-8000-00000000d001\",\"identifier\":\"ana@example.com\",\"ownerType\":\"user\",\"ownerId\":\"00000000-0000-4000-8000-00000000c0df\",\"displayName\":null,\"status\":\"active\",\"metadata\":{\"grantedOAuthScopes\":[\"https://www.googleapis.com/auth/drive.readonly\"]},\"createdAt\":\"2026-11-12T15:31:24.936Z\",\"updatedAt\":\"2026-11-12T15:31:24.936Z\",\"canManage\":true},{\"id\":\"00000000-0000-4000-8000-00000000d002\",\"identifier\":\"team@example.com\",\"ownerType\":\"org\",\"ownerId\":null,\"displayName\":null,\"status\":\"active\",\"metadata\":{},\"createdAt\":\"2026-11-12T15:31:24.939Z\",\"updatedAt\":\"2026-11-12T15:31:24.939Z\",\"canManage\":true}]"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://www.googleapis.com/drive/v3/files?fields=files(id%2Cname)&q=mimeType%20%3D%20'application%2Fvnd.google-apps.folder'%20and%20trashed%20%3D%20false%20and%20appProperties%20has%20%7B%20key%3D'liaisonReports'%20and%20value%3D'1'%20%7D&pageSize=1",
+        "{\"auth\":{\"connection\":\"drive\",\"account\":\"00000000-0000-4000-8000-00000000d001\",\"scheme\":\"bearer\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json;charset=utf-8\"},\"body\":\"{\\\"files\\\":[]}\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://www.googleapis.com/drive/v3/files?fields=id",
+        "{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"application/json; charset=UTF-8\"},\"body\":\"{\\\"name\\\":\\\"Liaison Reports\\\",\\\"mimeType\\\":\\\"application/vnd.google-apps.folder\\\",\\\"appProperties\\\":{\\\"liaisonReports\\\":\\\"1\\\"}}\",\"auth\":{\"connection\":\"drive\",\"account\":\"00000000-0000-4000-8000-00000000d001\",\"scheme\":\"bearer\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json;charset=utf-8\"},\"body\":\"{\\\"id\\\":\\\"reports001\\\"}\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id%2CwebViewLink&supportsAllDrives=true",
+        "{\"method\":\"POST\",\"body\":{\"related\":true,\"multipart\":[{\"name\":\"metadata\",\"value\":\"{\\\"name\\\":\\\"Report.txt\\\",\\\"mimeType\\\":\\\"text/plain\\\",\\\"parents\\\":[\\\"reports001\\\"]}\",\"contentType\":\"application/json; charset=UTF-8\"},{\"name\":\"media\",\"base64\":\"V2Vla2x5IHJlcG9ydA==\",\"contentType\":\"text/plain\"}]},\"timeoutMs\":120000,\"auth\":{\"connection\":\"drive\",\"account\":\"00000000-0000-4000-8000-00000000d001\",\"scheme\":\"bearer\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json;charset=utf-8\"},\"body\":\"{\\\"id\\\":\\\"upload0001\\\",\\\"webViewLink\\\":\\\"https://drive.google.com/file/d/upload0001/view\\\"}\",\"upload\":{\"size\":283,\"parts\":[{\"name\":\"metadata\",\"size\":70,\"sha256\":\"097606ecfa9f021a03b9f94ee019713e898d45fba92d87482307bec68e5a5bd1\"},{\"name\":\"media\",\"size\":13,\"sha256\":\"53f750c31972d44b6417842a301ca28483e7c4ac9e2d1007dedde49c98c2f3de\"}]}}"
+    }
+  ]
+}

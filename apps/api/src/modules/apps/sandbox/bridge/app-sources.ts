@@ -61,7 +61,8 @@ function view(r: SourceRow) {
 export function createAppSourceMethods(ctx: BridgeContext): Record<string, any> {
   const { appName, orgId, userId, actorType } = ctx
   const person = actorType === "user" && UUID_RE.test(userId) ? userId : null
-  const bad = (message: string) => typedError(400, "invalid_params", `knowledge_appSource: ${message}`)
+  const bad = (message: string) =>
+    typedError(400, "invalid_params", `knowledge_appSource: ${message}`)
 
   async function rows(where: ReturnType<typeof drizzleSql>): Promise<SourceRow[]> {
     const [{ withPrivilegedDb }, { knowledgeRel }] = await Promise.all([
@@ -94,7 +95,8 @@ export function createAppSourceMethods(ctx: BridgeContext): Record<string, any> 
   function ownerOf(scope: unknown): string | null {
     if (scope === "organization") return null
     if (scope !== "personal") throw bad('scope is "personal" or "organization"')
-    if (!person) throw typedError(403, "forbidden", "knowledge_appSource: a personal source needs a person")
+    if (!person)
+      throw typedError(403, "forbidden", "knowledge_appSource: a personal source needs a person")
     return person
   }
 
@@ -116,65 +118,66 @@ export function createAppSourceMethods(ctx: BridgeContext): Record<string, any> 
     if (write !== writes) {
       throw bad(`op ${String(p.op)} goes through knowledge_appSource${write ? "Write" : ""}`)
     }
-    {
-      switch (p.op) {
-        case "get": {
-          const row = await find(p, false)
-          return JSON.stringify(row ? view(row) : null)
+    switch (p.op) {
+      case "get": {
+        const row = await find(p, false)
+        return JSON.stringify(row ? view(row) : null)
+      }
+      case "list":
+        return JSON.stringify((await rows(drizzleSql`s.archived_at IS NULL`)).map(view))
+      case "ensure": {
+        const existing = await find(p, true)
+        const { reactivateSyncedSource, createSyncedSource } = await import(
+          "~/apps/knowledge/synced-sources"
+        )
+        if (existing) {
+          await reactivateSyncedSource(orgId, existing.id)
+          return JSON.stringify(view({ ...existing, last_sync_status: "idle" }))
         }
-        case "list":
-          return JSON.stringify((await rows(drizzleSql`s.archived_at IS NULL`)).map(view))
-        case "ensure": {
-          const existing = await find(p, true)
-          const { reactivateSyncedSource, createSyncedSource } = await import(
-            "~/apps/knowledge/synced-sources"
-          )
-          if (existing) {
-            await reactivateSyncedSource(orgId, existing.id)
-            return JSON.stringify(view({ ...existing, last_sync_status: "idle" }))
-          }
-          const { knowledgeActorFromContext } = await import("~/apps/knowledge/service")
-          const actor = knowledgeActorFromContext(bridgeKnowledgeActorInput(ctx))
-          const scope = p.scope === "organization" ? "organization" : "personal"
-          const created = await createSyncedSource(
-            ctx.txDb as never,
-            {
-              appName,
-              sourceKind: declaredKind(p.kind),
-              sourceConfig:
-                p.config && typeof p.config === "object" && !Array.isArray(p.config)
-                  ? (p.config as Record<string, unknown>)
-                  : {},
-              folderRef: p.ref as string,
-              displayName:
-                typeof p.displayName === "string" && p.displayName ? p.displayName : appName,
-              syncIntervalSeconds:
-                typeof p.syncIntervalSeconds === "number" ? p.syncIntervalSeconds : 3600,
-              scope,
-              ...(scope === "organization" ? { defaultSensitivity: "internal" } : {}),
-            },
-            actor,
-          )
-          if (typeof p.account === "string" && p.account) {
-            const [{ withPrivilegedDb }, { knowledgeRel }] = await Promise.all([
-              import("~/db/privileged"),
-              import("~/apps/knowledge/schema-refs"),
-            ])
-            await withPrivilegedDb(orgId, "app-source-account", (tx) =>
-              tx.execute(drizzleSql`
+        const { knowledgeActorFromContext } = await import("~/apps/knowledge/service")
+        const actor = knowledgeActorFromContext(bridgeKnowledgeActorInput(ctx))
+        const scope = p.scope === "organization" ? "organization" : "personal"
+        const created = await createSyncedSource(
+          ctx.txDb as never,
+          {
+            appName,
+            sourceKind: declaredKind(p.kind),
+            sourceConfig:
+              p.config && typeof p.config === "object" && !Array.isArray(p.config)
+                ? (p.config as Record<string, unknown>)
+                : {},
+            folderRef: p.ref as string,
+            displayName:
+              typeof p.displayName === "string" && p.displayName ? p.displayName : appName,
+            syncIntervalSeconds:
+              typeof p.syncIntervalSeconds === "number" ? p.syncIntervalSeconds : 3600,
+            scope,
+            ...(scope === "organization" ? { defaultSensitivity: "internal" } : {}),
+          },
+          actor,
+        )
+        if (typeof p.account === "string" && p.account) {
+          const [{ withPrivilegedDb }, { knowledgeRel }] = await Promise.all([
+            import("~/db/privileged"),
+            import("~/apps/knowledge/schema-refs"),
+          ])
+          await withPrivilegedDb(orgId, "app-source-account", (tx) =>
+            tx.execute(drizzleSql`
                 UPDATE ${knowledgeRel("synced_sources")} SET source_account = ${p.account as string}
                 WHERE id = ${created.id}::uuid AND org_id = ${orgId}::uuid
               `),
-            )
-          }
-          const [row] = await rows(drizzleSql`s.id = ${created.id}::uuid`)
-          return JSON.stringify(row ? view(row) : null)
+          )
         }
-        case "sync": {
-          if (typeof p.id !== "string" || !UUID_RE.test(p.id)) throw bad("id is required")
-          const [row] = await rows(drizzleSql`s.id = ${p.id}::uuid AND s.archived_at IS NULL`)
-          if (!row) throw typedError(404, "not_found", "knowledge_appSource: no such source of this app")
-          const { enqueueAppJob } = await import("~/infra/jobs/jobs")
+        const [row] = await rows(drizzleSql`s.id = ${created.id}::uuid`)
+        return JSON.stringify(row ? view(row) : null)
+      }
+      case "sync": {
+        if (typeof p.id !== "string" || !UUID_RE.test(p.id)) throw bad("id is required")
+        const [row] = await rows(drizzleSql`s.id = ${p.id}::uuid AND s.archived_at IS NULL`)
+        if (!row)
+          throw typedError(404, "not_found", "knowledge_appSource: no such source of this app")
+        const { enqueueAppJob } = await import("~/infra/jobs/jobs")
+        try {
           await enqueueAppJob(
             "knowledge",
             "sync-source",
@@ -182,19 +185,35 @@ export function createAppSourceMethods(ctx: BridgeContext): Record<string, any> 
             { jobId: `sync:${row.id}` },
           )
           return JSON.stringify({ id: row.id, enqueued: true })
-        }
-        case "purgeAccount": {
-          if (typeof p.connectionId !== "string" || !UUID_RE.test(p.connectionId)) {
-            throw bad("connectionId is required")
-          }
-          const { purgeDisconnectedAccount } = await import(
-            "~/apps/knowledge/account-sources-purge"
+        } catch (err) {
+          // The source is due: the scheduler's next tick syncs it.
+          const [{ withPrivilegedDb }, { knowledgeRel }, { appsLogger }] = await Promise.all([
+            import("~/db/privileged"),
+            import("~/apps/knowledge/schema-refs"),
+            import("~/lib/logger"),
+          ])
+          appsLogger.warn(
+            { err, orgId, app: appName, sourceId: row.id },
+            "app source: sync enqueue failed",
           )
-          return JSON.stringify(await purgeDisconnectedAccount(orgId, appName, p.connectionId))
+          await withPrivilegedDb(orgId, "app-source-due", (tx) =>
+            tx.execute(drizzleSql`
+                UPDATE ${knowledgeRel("synced_sources")} SET last_sync_at = NULL, updated_at = now()
+                WHERE id = ${row.id}::uuid AND org_id = ${orgId}::uuid
+              `),
+          )
+          return JSON.stringify({ id: row.id, enqueued: false, due: true })
         }
-        default:
-          throw bad(`unknown op ${String(p.op)}`)
       }
+      case "purgeAccount": {
+        if (typeof p.connectionId !== "string" || !UUID_RE.test(p.connectionId)) {
+          throw bad("connectionId is required")
+        }
+        const { purgeDisconnectedAccount } = await import("~/apps/knowledge/account-sources-purge")
+        return JSON.stringify(await purgeDisconnectedAccount(orgId, appName, p.connectionId))
+      }
+      default:
+        throw bad(`unknown op ${String(p.op)}`)
     }
   }
   return {

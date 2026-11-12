@@ -1,0 +1,32 @@
+{
+  "entry": "tool:picker_remove",
+  "params": {
+    "account": "00000000-0000-4000-8000-00000000d001",
+    "itemId": "doc00001"
+  },
+  "recordedFrom": "a contract org's Drive accounts against a fake Google Drive v3 reached through the live bridge transport, scripts/contract/record-google-drive.ts",
+  "calls": [
+    {
+      "method": "accounts_list",
+      "args": ["drive"],
+      "reply": "[{\"id\":\"00000000-0000-4000-8000-00000000d001\",\"identifier\":\"ana@example.com\",\"ownerType\":\"user\",\"ownerId\":\"00000000-0000-4000-8000-00000000c0df\",\"displayName\":null,\"status\":\"active\",\"metadata\":{\"pickedItems\":[{\"id\":\"doc00001\",\"name\":\"Onboarding plan\",\"mimeType\":\"application/vnd.google-apps.document\"}],\"grantedOAuthScopes\":[\"https://www.googleapis.com/auth/drive.file\"]},\"createdAt\":\"2026-11-12T15:31:24.936Z\",\"updatedAt\":\"2026-11-12T15:31:25.761Z\",\"canManage\":true},{\"id\":\"00000000-0000-4000-8000-00000000d002\",\"identifier\":\"team@example.com\",\"ownerType\":\"org\",\"ownerId\":null,\"displayName\":null,\"status\":\"active\",\"metadata\":{\"sharedDrives\":[{\"id\":\"DRIVE_TEAM\",\"name\":\"Team\"}]},\"createdAt\":\"2026-11-12T15:31:24.939Z\",\"updatedAt\":\"2026-11-12T15:31:25.450Z\",\"canManage\":true}]"
+    },
+    {
+      "method": "accounts_setMetadata",
+      "args": ["00000000-0000-4000-8000-00000000d001", "{\"pickedItems\":[]}"],
+      "reply": "{\"id\":\"00000000-0000-4000-8000-00000000d001\",\"identifier\":\"ana@example.com\",\"ownerType\":\"user\",\"ownerId\":\"00000000-0000-4000-8000-00000000c0df\",\"displayName\":null,\"status\":\"active\",\"metadata\":{\"pickedItems\":[],\"grantedOAuthScopes\":[\"https://www.googleapis.com/auth/drive.file\"]},\"createdAt\":\"2026-11-12T15:31:24.936Z\",\"updatedAt\":\"2026-11-12T15:31:25.907Z\",\"canManage\":true}"
+    },
+    {
+      "method": "knowledge_appSourceWrite",
+      "args": [
+        "{\"op\":\"ensure\",\"kind\":\"picked\",\"ref\":\"liaison-picked-items\",\"config\":{\"ref\":\"liaison-picked-items\",\"account\":\"ana@example.com\"},\"account\":\"ana@example.com\",\"displayName\":\"Google Drive: ana@example.com\",\"scope\":\"personal\",\"syncIntervalSeconds\":900}"
+      ],
+      "reply": "{\"id\":\"537b5ad1-76eb-41e7-b4af-9b88c5ac36d3\",\"kind\":\"picked\",\"ref\":\"liaison-picked-items\",\"config\":{\"ref\":\"liaison-picked-items\",\"account\":\"ana@example.com\"},\"ownerUserId\":\"00000000-0000-4000-8000-00000000c0df\",\"sourceAccount\":\"ana@example.com\",\"lastSyncStatus\":\"idle\",\"lastSyncAt\":null,\"lastError\":null,\"documents\":0}"
+    },
+    {
+      "method": "knowledge_appSourceWrite",
+      "args": ["{\"op\":\"sync\",\"id\":\"537b5ad1-76eb-41e7-b4af-9b88c5ac36d3\"}"],
+      "reply": "{\"id\":\"537b5ad1-76eb-41e7-b4af-9b88c5ac36d3\",\"enqueued\":false,\"due\":true}"
+    }
+  ]
+}

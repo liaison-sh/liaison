@@ -72,11 +72,6 @@ export type AdoptionStep = OrgSettingToStoreStep | SyncedSourcesToKindStep
 export interface MovedApp {
   name: string
   steps: readonly AdoptionStep[]
-  /**
-   * Server environment variables the in-tree app read and the catalog app does
-   * not: a boot that still sees one logs where its value goes now.
-   */
-  movedEnv?: Readonly<Record<string, string>>
 }
 
 /** Every app that moved from the source tree to the catalog, oldest first. */
@@ -119,10 +114,6 @@ export const MOVED_APPS: readonly MovedApp[] = [
         configFromColumns: { ref: "folder_ref", account: "source_account" },
       },
     ],
-    movedEnv: {
-      GOOGLE_PICKER_API_KEY: "the google-drive app's config key pickerApiKey (apps[].config with liaison config apply)",
-      GOOGLE_CLOUD_PROJECT_NUMBER: "the google-drive app's config key pickerAppId (apps[].config with liaison config apply)",
-    },
   },
 ]
 
@@ -299,14 +290,6 @@ async function runStep(db: PrivilegedDb, app: string, step: AdoptionStep): Promi
 export async function adoptMovedApps(db: PrivilegedDb): Promise<AdoptionResult[]> {
   const out: AdoptionResult[] = []
   for (const app of movedApps()) {
-    for (const [name, movedTo] of Object.entries(app.movedEnv ?? {})) {
-      if (process.env[name]) {
-        log.warn(
-          { app: app.name, env: name },
-          `${name} is no longer read since ${app.name} ships as a catalog app: set ${movedTo}`,
-        )
-      }
-    }
     if (app.steps.length === 0) continue
     const active = extractRows(
       await db.execute(drizzleSql`SELECT 1 FROM ${K}.apps_active_version WHERE name = ${app.name}`),

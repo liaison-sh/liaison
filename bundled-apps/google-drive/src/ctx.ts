@@ -20,6 +20,8 @@ export interface AppSourceView {
 }
 
 export interface DriveCtx extends AppContext {
+  /** The person the run acts for. */
+  getUserId(): Promise<string>
   /** Download a file onto one of the app's own parents, host-side (bytes never cross). */
   files_importFromUrl?: (argsJson: string) => Promise<string>
   /** The app's own knowledge sources: `get` one by kind and ref, `list` them. */

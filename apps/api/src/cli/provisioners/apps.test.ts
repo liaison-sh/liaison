@@ -476,7 +476,9 @@ describe("apps provisioner (Task 11)", () => {
     expect(e.connected).toBeFalsy()
 
     const pending = r.pending ?? []
-    expect(pending.find((p) => p.app === "calendar" && p.connection === "google-calendar")).toBeDefined()
+    expect(
+      pending.find((p) => p.app === "calendar" && p.connection === "google-calendar"),
+    ).toBeDefined()
 
     const rows = await withPrivilegedDb(orgId, "t", (tx) =>
       tx.execute(drizzleSql`

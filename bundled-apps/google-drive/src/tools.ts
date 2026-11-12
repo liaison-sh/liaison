@@ -237,9 +237,9 @@ export async function driveImport(params: { driveFileId?: string }, ctx: DriveCt
     }
     const filename = meta.name || "drive-file"
     // The file's parent: a row of the person's own (personal rows: only they see it).
-    const row = await ctx.db.insert("import", {
+    const row = await ctx.db.insert("imports", {
       owner_type: "user",
-      owner_id: ctx.userId,
+      owner_id: await ctx.getUserId(),
       drive_file_id: meta.id,
       filename,
     })
@@ -261,7 +261,7 @@ export async function driveImport(params: { driveFileId?: string }, ctx: DriveCt
         ),
       )
     } catch (err) {
-      await ctx.db.delete("import", row.id)
+      await ctx.db.delete("imports", row.id)
       const message = err instanceof Error ? err.message : String(err)
       const code = /file_too_large|exceeds/.test(message)
         ? "file_too_large"

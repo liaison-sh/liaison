@@ -175,6 +175,9 @@ export async function buildGuide(
     }
     if (plan.imap && plan.imap.guide !== plan.guide) text.push(...renderGuideText(plan.imap.guide))
     const drivePickerUrl = `${values.baseUrl}/settings/apps/google-drive`
+    // The Google Picker's key and project number (the google-drive app's
+    // instance config defaults, modules/apps/instance-config-defaults.ts).
+    const pickerConfigured = Boolean(env.GOOGLE_PICKER_API_KEY && env.GOOGLE_CLOUD_PROJECT_NUMBER)
     if (plan.driveMode === "full") {
       text.push("", "Google Drive: full (Liaison reads the whole Drive once connected).")
     } else if (plan.driveMode === "picked") {
@@ -183,9 +186,11 @@ export async function buildGuide(
         "Google Drive: picked (drive.file). With an account that is not on Google Workspace the person chooses which Drive files Liaison can see; a Google Workspace account can share the whole Drive.",
         `The Google Picker runs in Liaison, not here: after connecting, choose the files at ${drivePickerUrl} (or on the agent's picker card).`,
       )
-      text.push(
-        "The Google Picker needs its API key and project number in the google-drive app's config: `apps: [{ name: google-drive, config: { pickerApiKey, pickerAppId } }]` with `liaison config apply`.",
-      )
+      if (!pickerConfigured) {
+        text.push(
+          "The Google Picker is not set up on this server: set GOOGLE_PICKER_API_KEY and GOOGLE_CLOUD_PROJECT_NUMBER (or the google-drive app's config pickerApiKey and pickerAppId).",
+        )
+      }
     }
     return {
       ok: true,
@@ -194,7 +199,7 @@ export async function buildGuide(
           provider,
           ...plan,
           ...(plan.driveMode === "picked"
-            ? { drivePicker: { url: drivePickerUrl, configKeys: ["pickerApiKey", "pickerAppId"] } }
+            ? { drivePicker: { url: drivePickerUrl, configured: pickerConfigured } }
             : {}),
           values,
         },

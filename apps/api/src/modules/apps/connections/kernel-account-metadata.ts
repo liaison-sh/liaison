@@ -8,10 +8,7 @@
 // the same account by the same owner (service.ts).
 // The connect path builds its metadata typed against this list, so a new key
 // the kernel writes there is reserved by construction.
-export const KERNEL_ACCOUNT_METADATA_KEYS = [
-  "grantedOAuthScopes",
-  "tokenExpiry",
-] as const
+export const KERNEL_ACCOUNT_METADATA_KEYS = ["grantedOAuthScopes", "tokenExpiry"] as const
 
 export type KernelAccountMetadataKey = (typeof KERNEL_ACCOUNT_METADATA_KEYS)[number]
 

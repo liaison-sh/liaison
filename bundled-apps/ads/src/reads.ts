@@ -3,9 +3,16 @@
 // Ungated read tools for the ads app. All handlers authored natively
 // as (params, ctx) — the kernel convention.
 
-import { metaFetch, metaFetchPage, metaFetchPaged, isInsightsPending, fromAccountCurrency, type InsightsPending } from "./lib/meta-client"
-import { getMetaClient } from "./lib/get-client"
 import { fetchInsightsReport, type InsightsReportCtx } from "./insights-report"
+import { getMetaClient } from "./lib/get-client"
+import {
+  fromAccountCurrency,
+  type InsightsPending,
+  isInsightsPending,
+  metaFetch,
+  metaFetchPage,
+  metaFetchPaged,
+} from "./lib/meta-client"
 
 // ─── Shared ctx type for reads ────────────────────────────────────────────────
 
@@ -67,7 +74,10 @@ interface InsightsQueryParams {
   currency?: string
 }
 
-export async function insights_query(params: InsightsQueryParams, ctx: InsightsCtx): Promise<unknown> {
+export async function insights_query(
+  params: InsightsQueryParams,
+  ctx: InsightsCtx,
+): Promise<unknown> {
   const { accessToken, adAccountId } = await getMetaClient(ctx)
 
   const breakdowns = params.breakdowns ?? []
@@ -80,7 +90,11 @@ export async function insights_query(params: InsightsQueryParams, ctx: InsightsC
     fields: (params.fields ?? ["spend", "impressions", "clicks", "cpm", "ctr"]).join(","),
     // Scope to a specific campaign when campaign_id is provided.
     ...(params.campaign_id
-      ? { filtering: JSON.stringify([{ field: "campaign.id", operator: "EQUAL", value: params.campaign_id }]) }
+      ? {
+          filtering: JSON.stringify([
+            { field: "campaign.id", operator: "EQUAL", value: params.campaign_id },
+          ]),
+        }
       : {}),
   }
 
@@ -101,8 +115,7 @@ export async function insights_query(params: InsightsQueryParams, ctx: InsightsC
     // (the dashboard's 30 day chart is 30 rows): it goes synchronous too.
     const daily = params.time_increment === 1 || params.time_increment === "1"
     const bounded = Boolean(params.date_preset || params.time_range)
-    const isLargePull =
-      !bounded || (daily && (params.level !== "account" || group.length > 0))
+    const isLargePull = !bounded || (daily && (params.level !== "account" || group.length > 0))
 
     let data: unknown[]
     if (isLargePull) {
@@ -119,12 +132,12 @@ export async function insights_query(params: InsightsQueryParams, ctx: InsightsC
       }
       data = asyncResult
     } else {
-      const result = await metaFetch(ctx.fetch, {
+      const result = (await metaFetch(ctx.fetch, {
         path: `/${adAccountId}/insights`,
         method: "GET",
         params: callParams,
         accessToken,
-      }) as { data?: unknown[] }
+      })) as { data?: unknown[] }
       data = result.data ?? []
     }
 
@@ -174,7 +187,17 @@ interface CampaignsListParams {
 
 export async function campaigns_list(params: CampaignsListParams, ctx: ReadCtx): Promise<unknown> {
   const { accessToken, adAccountId } = await getMetaClient(ctx)
-  const fields = (params.fields ?? ["id", "name", "status", "effective_status", "objective", "daily_budget", "lifetime_budget"]).join(",")
+  const fields = (
+    params.fields ?? [
+      "id",
+      "name",
+      "status",
+      "effective_status",
+      "objective",
+      "daily_budget",
+      "lifetime_budget",
+    ]
+  ).join(",")
   const data = await metaFetchPaged(ctx.fetch, {
     path: `/${adAccountId}/campaigns`,
     method: "GET",
@@ -197,15 +220,23 @@ interface AdsetsListParams {
 
 export async function adsets_list(params: AdsetsListParams, ctx: ReadCtx): Promise<unknown> {
   const { accessToken, adAccountId } = await getMetaClient(ctx)
-  const fields = (params.fields ?? [
-    "id", "name", "status", "effective_status", "campaign_id",
-    "targeting", "daily_budget", "lifetime_budget", "optimization_goal",
-    "billing_event", "bid_amount",
-  ]).join(",")
+  const fields = (
+    params.fields ?? [
+      "id",
+      "name",
+      "status",
+      "effective_status",
+      "campaign_id",
+      "targeting",
+      "daily_budget",
+      "lifetime_budget",
+      "optimization_goal",
+      "billing_event",
+      "bid_amount",
+    ]
+  ).join(",")
 
-  const path = params.campaign_id
-    ? `/${params.campaign_id}/adsets`
-    : `/${adAccountId}/adsets`
+  const path = params.campaign_id ? `/${params.campaign_id}/adsets` : `/${adAccountId}/adsets`
 
   const data = await metaFetchPaged(ctx.fetch, {
     path,
@@ -253,15 +284,23 @@ const ADS_DEFAULT_EFFECTIVE_STATUS = [
 
 export async function ads_list(params: AdsListParams, ctx: ReadCtx): Promise<unknown> {
   const { accessToken, adAccountId } = await getMetaClient(ctx)
-  const fields = (params.fields ?? [
-    "id", "name", "status", "effective_status", "adset_id", "campaign_id", "creative",
-  ]).join(",")
+  const fields = (
+    params.fields ?? [
+      "id",
+      "name",
+      "status",
+      "effective_status",
+      "adset_id",
+      "campaign_id",
+      "creative",
+    ]
+  ).join(",")
 
   const path = params.adset_id
     ? `/${params.adset_id}/ads`
     : params.campaign_id
-    ? `/${params.campaign_id}/ads`
-    : `/${adAccountId}/ads`
+      ? `/${params.campaign_id}/ads`
+      : `/${adAccountId}/ads`
 
   // Effective-status filter (Meta filtering grammar, same as campaigns/insights
   // use). Cheap server-side prune of the archived/deleted long tail.
@@ -309,7 +348,10 @@ interface TargetingSearchParams {
   location_types?: string[]
 }
 
-export async function targeting_search(params: TargetingSearchParams, ctx: ReadCtx): Promise<unknown> {
+export async function targeting_search(
+  params: TargetingSearchParams,
+  ctx: ReadCtx,
+): Promise<unknown> {
   const { accessToken } = await getMetaClient(ctx)
   const searchParams: Record<string, unknown> = {
     type: params.type,
@@ -373,7 +415,8 @@ export async function audiences_list(params: AudiencesListParams, ctx: ReadCtx):
     path: `/${adAccountId}/customaudiences`,
     method: "GET",
     params: {
-      fields: "id,name,subtype,description,approximate_count_lower_bound,approximate_count_upper_bound,delivery_status{code,description},operation_status{code,description},retention_days,data_source{type,sub_type},time_created,time_updated,time_content_updated",
+      fields:
+        "id,name,subtype,description,approximate_count_lower_bound,approximate_count_upper_bound,delivery_status{code,description},operation_status{code,description},retention_days,data_source{type,sub_type},time_created,time_updated,time_content_updated",
       ...(params.limit ? { limit: params.limit } : {}),
     },
     accessToken,
@@ -388,12 +431,12 @@ export async function pages_list(_params: Record<string, never>, ctx: ReadCtx): 
   // SECURITY: never request access_token — a Page access token is a live credential
   // that would land in the LLM context / transcript / persistence. We only need
   // id/name/category to resolve a page_id for create_creative.
-  const result = await metaFetch(ctx.fetch, {
+  const result = (await metaFetch(ctx.fetch, {
     path: "/me/accounts",
     method: "GET",
     params: { fields: "id,name,category" },
     accessToken,
-  }) as { data?: unknown[] }
+  })) as { data?: unknown[] }
   return { data: result.data ?? [] }
 }
 
@@ -442,7 +485,9 @@ export async function graph_get(params: GraphGetParams, ctx: ReadCtx): Promise<u
     throw new Error("graph_get: path must be a Graph API path, not a full URL (contains '://')")
   }
   if (path.toLowerCase().includes("access_token=")) {
-    throw new Error("graph_get: path must not carry an access_token query param: the token is sent as a Bearer header")
+    throw new Error(
+      "graph_get: path must not carry an access_token query param: the token is sent as a Bearer header",
+    )
   }
 
   // An agent often writes the query inline (`/act_1/insights?limit=5`). metaFetch
@@ -495,24 +540,34 @@ export async function creative_get(params: CreativeGetParams, ctx: ReadCtx): Pro
 
   // Step 1: If ad_id given and no creative_id, resolve the creative ref
   if (params.ad_id && !creativeId) {
-    const adResult = await metaFetch(ctx.fetch, {
+    const adResult = (await metaFetch(ctx.fetch, {
       path: `/${params.ad_id}`,
       params: { fields: "creative" },
       accessToken,
-    }) as { creative?: { id?: string } }
+    })) as { creative?: { id?: string } }
     creativeId = adResult?.creative?.id
   }
 
   if (!creativeId) {
-    return { creative_id: creativeId, thumbnail_url: null, image_urls: [], video_id: null, headline: null, body: null, reason: "no_creative" }
+    return {
+      creative_id: creativeId,
+      thumbnail_url: null,
+      image_urls: [],
+      video_id: null,
+      headline: null,
+      body: null,
+      reason: "no_creative",
+    }
   }
 
   // Step 2: Read the creative
-  const creative = await metaFetch(ctx.fetch, {
+  const creative = (await metaFetch(ctx.fetch, {
     path: `/${creativeId}`,
-    params: { fields: "object_story_spec,asset_feed_spec,title,body,image_hash,video_id,thumbnail_url" },
+    params: {
+      fields: "object_story_spec,asset_feed_spec,title,body,image_hash,video_id,thumbnail_url",
+    },
     accessToken,
-  }) as {
+  })) as {
     object_story_spec?: { link_data?: { image_hash?: string } }
     asset_feed_spec?: { images?: Array<{ hash?: string }> }
     image_hash?: string
@@ -524,7 +579,8 @@ export async function creative_get(params: CreativeGetParams, ctx: ReadCtx): Pro
 
   // Collect image_hash values
   const hashes: string[] = []
-  if (creative.object_story_spec?.link_data?.image_hash) hashes.push(creative.object_story_spec.link_data.image_hash)
+  if (creative.object_story_spec?.link_data?.image_hash)
+    hashes.push(creative.object_story_spec.link_data.image_hash)
   if (creative.asset_feed_spec?.images) {
     for (const img of creative.asset_feed_spec.images) {
       if (img.hash) hashes.push(img.hash)
@@ -537,11 +593,11 @@ export async function creative_get(params: CreativeGetParams, ctx: ReadCtx): Pro
   // Step 3: Resolve hashes to CDN URLs via metaFetch (NOT metaFetchPaged)
   // adAccountId already has the act_ prefix as stored in credentials.
   if (hashes.length > 0) {
-    const result = await metaFetch(ctx.fetch, {
+    const result = (await metaFetch(ctx.fetch, {
       path: `/${adAccountId}/adimages`,
       params: { hashes: JSON.stringify(hashes), fields: "hash,url,permalink_url" },
       accessToken,
-    }) as { images?: Record<string, { url?: string }> }
+    })) as { images?: Record<string, { url?: string }> }
 
     if (result.images) {
       for (const hash of hashes) {
@@ -556,16 +612,24 @@ export async function creative_get(params: CreativeGetParams, ctx: ReadCtx): Pro
   const videoId = creative.video_id ?? null
 
   if (videoId && !thumbnailUrl) {
-    const videoResult = await metaFetch(ctx.fetch, {
+    const videoResult = (await metaFetch(ctx.fetch, {
       path: `/${videoId}`,
       params: { fields: "thumbnails{uri},picture" },
       accessToken,
-    }) as { thumbnails?: { data?: Array<{ uri?: string }> }; picture?: string }
+    })) as { thumbnails?: { data?: Array<{ uri?: string }> }; picture?: string }
     thumbnailUrl = videoResult?.thumbnails?.data?.[0]?.uri ?? videoResult?.picture ?? null
   }
 
   if (!thumbnailUrl && imageUrls.length === 0 && !videoId) {
-    return { creative_id: creativeId, thumbnail_url: null, image_urls: [], video_id: null, headline: null, body: null, reason: "no_creative" }
+    return {
+      creative_id: creativeId,
+      thumbnail_url: null,
+      image_urls: [],
+      video_id: null,
+      headline: null,
+      body: null,
+      reason: "no_creative",
+    }
   }
 
   return {
@@ -599,15 +663,19 @@ export async function ad_preview(params: AdPreviewParams, ctx: ReadCtx): Promise
 
   const fetchPreview = async (fmt: string): Promise<AdPreviewSingle> => {
     try {
-      const result = await metaFetch(ctx.fetch, {
+      const result = (await metaFetch(ctx.fetch, {
         path: `/${targetId}/previews`,
         params: { ad_format: fmt },
         accessToken,
-      }) as { data?: Array<{ body?: string }> }
+      })) as { data?: Array<{ body?: string }> }
       const body = result?.data?.[0]?.body ?? null
       return { ad_format: fmt, body }
     } catch (err) {
-      return { ad_format: fmt, body: null, reason: err instanceof Error ? err.message : String(err) }
+      return {
+        ad_format: fmt,
+        body: null,
+        reason: err instanceof Error ? err.message : String(err),
+      }
     }
   }
 

@@ -41,16 +41,26 @@ export function vatCategory(rateBp: number, treatment: string | null | undefined
   }
 }
 
-export function vatBreakdown(lines: BreakdownLine[], treatment: string | null | undefined): VatGroup[] {
+export function vatBreakdown(
+  lines: BreakdownLine[],
+  treatment: string | null | undefined,
+): VatGroup[] {
   const groups = new Map<string, VatGroup>()
   for (const l of lines) {
     const category = vatCategory(l.tax_rate_bp, treatment)
     const key = `${category}:${l.tax_rate_bp}`
-    const g = groups.get(key) ?? { category, rate_bp: l.tax_rate_bp, basis_minor: 0n, tax_minor: 0n }
+    const g = groups.get(key) ?? {
+      category,
+      rate_bp: l.tax_rate_bp,
+      basis_minor: 0n,
+      tax_minor: 0n,
+    }
     g.basis_minor += l.subtotal_minor
     g.tax_minor += l.tax_minor
     groups.set(key, g)
   }
   // Deterministic order: highest rate first, then category.
-  return [...groups.values()].sort((a, b) => b.rate_bp - a.rate_bp || a.category.localeCompare(b.category))
+  return [...groups.values()].sort(
+    (a, b) => b.rate_bp - a.rate_bp || a.category.localeCompare(b.category),
+  )
 }

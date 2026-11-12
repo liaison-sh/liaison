@@ -99,7 +99,8 @@ export function summarize(
   const sources = [...bySource.values()].sort((a, b) => {
     // Loudest first: live count desc, then worst severity desc, then recency.
     if (b.open !== a.open) return b.open - a.open
-    const sw = (SEVERITY_ORDER[b.worstSeverity ?? ""] ?? -1) - (SEVERITY_ORDER[a.worstSeverity ?? ""] ?? -1)
+    const sw =
+      (SEVERITY_ORDER[b.worstSeverity ?? ""] ?? -1) - (SEVERITY_ORDER[a.worstSeverity ?? ""] ?? -1)
     if (sw !== 0) return sw
     return (b.lastSeenAt ?? "").localeCompare(a.lastSeenAt ?? "")
   })

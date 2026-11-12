@@ -39,7 +39,12 @@ const STATUS_BY_CODE: Record<string, number> = {
   provider_unavailable: 502,
 }
 
-export function opError(code: string, message: string, retryable = false, detail?: unknown): OpError {
+export function opError(
+  code: string,
+  message: string,
+  retryable = false,
+  detail?: unknown,
+): OpError {
   const status = STATUS_BY_CODE[code]
   return {
     status: "error",
@@ -60,13 +65,21 @@ export function isOpError(v: unknown): v is OpError {
 /** Map a thrown client/connection error to the op error the caller can act on. */
 export function fromException(e: unknown, what: string): OpError {
   if (e instanceof PennylaneRateLimitError) {
-    return opError("provider_rate_limited", `${what}: Pennylane's request budget is spent; retry later`, true, {
-      retry_at: new Date(e.retryAtMs).toISOString(),
-    })
+    return opError(
+      "provider_rate_limited",
+      `${what}: Pennylane's request budget is spent; retry later`,
+      true,
+      {
+        retry_at: new Date(e.retryAtMs).toISOString(),
+      },
+    )
   }
   if (e instanceof PennylaneApiError) {
     if (e.status >= 500 || e.status === 408) {
-      return opError("provider_unavailable", `${what}: Pennylane answered ${e.status}`, true, { status: e.status, body: e.body })
+      return opError("provider_unavailable", `${what}: Pennylane answered ${e.status}`, true, {
+        status: e.status,
+        body: e.body,
+      })
     }
     if (e.status === 401 || e.status === 403) {
       return opError(
@@ -76,9 +89,13 @@ export function fromException(e: unknown, what: string): OpError {
         { status: e.status, body: e.body },
       )
     }
-    return opError("provider_rejected", `${what}: Pennylane answered ${e.status}`, false, { status: e.status, body: e.body })
+    return opError("provider_rejected", `${what}: Pennylane answered ${e.status}`, false, {
+      status: e.status,
+      body: e.body,
+    })
   }
-  if (e instanceof PennylaneConnectionError) return opError("provider_not_connected", e.message, false)
+  if (e instanceof PennylaneConnectionError)
+    return opError("provider_not_connected", e.message, false)
   const msg = e instanceof Error ? e.message : String(e)
   return opError("provider_error", `${what}: ${msg}`, true)
 }

@@ -8,7 +8,13 @@ import { taxOverrideNote, visibleDeferredItems } from "./DeferredList"
 describe("Deferred tab", () => {
   it("lists open parks only, tax reviews first", () => {
     const items = visibleDeferredItems([
-      { id: "a", status: "awaiting_data", reason: "customer_email_missing", order_id: "1", order_number: "#1" },
+      {
+        id: "a",
+        status: "awaiting_data",
+        reason: "customer_email_missing",
+        order_id: "1",
+        order_number: "#1",
+      },
       { id: "b", status: "resolved", reason: "order_cancelled", order_id: "2", order_number: "#2" },
       {
         id: "c",
@@ -27,7 +33,12 @@ describe("Deferred tab", () => {
       text: "Sent for approval.",
       isError: false,
     })
-    expect(taxOverrideNote({ status: "error", error: { code: "still_blocked", message: "Still blocked." } })).toEqual({
+    expect(
+      taxOverrideNote({
+        status: "error",
+        error: { code: "still_blocked", message: "Still blocked." },
+      }),
+    ).toEqual({
       text: "Still blocked.",
       isError: true,
     })

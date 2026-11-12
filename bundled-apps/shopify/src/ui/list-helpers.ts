@@ -16,10 +16,7 @@ import { app } from "@liaison/host"
 // N". With no next page, the loaded length IS the total for the current query.
 // Returns null while loading so the header hides the count.
 // ─────────────────────────────────────────────────────────────────────────
-export function listCountLabel(
-  loaded: number | null | undefined,
-  hasMore: boolean,
-): string | null {
+export function listCountLabel(loaded: number | null | undefined, hasMore: boolean): string | null {
   if (loaded === null || loaded === undefined) return null
   return hasMore ? `${loaded}+` : `${loaded}`
 }

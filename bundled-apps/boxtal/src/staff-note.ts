@@ -9,8 +9,8 @@
 // unusable). Conflict policy is compare-and-set on the note the grid last showed: a concurrent
 // edit in Shopify admin is refused with the fresh value, never clobbered.
 
-import type { BoxtalToolCtx } from "./ctx"
 import { ToolError } from "@liaison/app-sdk"
+import type { BoxtalToolCtx } from "./ctx"
 import { parseOrderKey } from "./order-state"
 import { toShopifyOrderGid } from "./shopify-ref"
 
@@ -38,13 +38,19 @@ interface OrderNoteSetConflict {
 function normalizeNote(raw: unknown): string | null {
   if (raw === null || raw === undefined) return null
   if (typeof raw !== "string") {
-    throw new ToolError("note must be a string or null.", { code: "invalid_note", retryable: false })
+    throw new ToolError("note must be a string or null.", {
+      code: "invalid_note",
+      retryable: false,
+    })
   }
   const trimmed = raw.trim()
   return trimmed === "" ? null : trimmed
 }
 
-export async function prepSetNote(ctx: BoxtalToolCtx, input: PrepSetNoteInput): Promise<PrepSetNoteResult> {
+export async function prepSetNote(
+  ctx: BoxtalToolCtx,
+  input: PrepSetNoteInput,
+): Promise<PrepSetNoteResult> {
   const parsed = typeof input?.order_key === "string" ? parseOrderKey(input.order_key) : null
   if (!parsed) {
     throw new ToolError(
@@ -59,7 +65,7 @@ export async function prepSetNote(ctx: BoxtalToolCtx, input: PrepSetNoteInput): 
     )
   }
   const note = normalizeNote(input.note)
-  const hasExpected = Object.prototype.hasOwnProperty.call(input, "expected_note")
+  const hasExpected = Object.hasOwn(input, "expected_note")
   const args: Record<string, unknown> = { order_id: toShopifyOrderGid(parsed.id), note }
   if (hasExpected) args.expected_note = normalizeNote(input.expected_note)
 
@@ -80,7 +86,12 @@ export async function prepSetNote(ctx: BoxtalToolCtx, input: PrepSetNoteInput): 
   }
   const res = env.result as OrderNoteSetOk | OrderNoteSetConflict
   if (res && res.ok === false) {
-    return { ok: false, reason: "conflict", order_key: input.order_key, current_note: res.current_note ?? null }
+    return {
+      ok: false,
+      reason: "conflict",
+      order_key: input.order_key,
+      current_note: res.current_note ?? null,
+    }
   }
   const saved = res?.note ?? note
   await cacheStaffNote(ctx, parsed.id, saved)
@@ -88,7 +99,11 @@ export async function prepSetNote(ctx: BoxtalToolCtx, input: PrepSetNoteInput): 
 }
 
 /** Keep the cached order facts in step, so a cache-mode or fail-soft read shows the saved note. */
-async function cacheStaffNote(ctx: BoxtalToolCtx, shopifyOrderId: string, note: string | null): Promise<void> {
+async function cacheStaffNote(
+  ctx: BoxtalToolCtx,
+  shopifyOrderId: string,
+  note: string | null,
+): Promise<void> {
   const metas = (await ctx.db.findMany("prep_meta", {
     where: { shopify_order_id: shopifyOrderId },
     limit: 50,

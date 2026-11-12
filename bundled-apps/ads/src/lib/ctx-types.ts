@@ -6,12 +6,15 @@
 
 export interface AppDb {
   insert(entity: string, data: Record<string, unknown>): Promise<{ id: string }>
-  findMany(entity: string, opts?: {
-    where?: Record<string, unknown>
-    orderBy?: Record<string, "asc" | "desc">
-    limit?: number
-    offset?: number
-  }): Promise<unknown[]>
+  findMany(
+    entity: string,
+    opts?: {
+      where?: Record<string, unknown>
+      orderBy?: Record<string, "asc" | "desc">
+      limit?: number
+      offset?: number
+    },
+  ): Promise<unknown[]>
   findOne(entity: string, id: string): Promise<unknown | null>
   update(entity: string, id: string, data: Record<string, unknown>): Promise<void>
   delete(entity: string, id: string): Promise<void>

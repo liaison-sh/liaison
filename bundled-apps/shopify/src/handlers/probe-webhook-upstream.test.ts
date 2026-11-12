@@ -10,8 +10,13 @@ import type { AppContext } from "@liaison/app-sdk"
 import { createEnforcingEmit } from "../lib/emit.testutil"
 import { probeWebhookUpstreamJob } from "./probe-webhook-upstream"
 
-interface FetchResponse { status?: number; body: unknown }
-interface DbRow extends Record<string, unknown> { id: string }
+interface FetchResponse {
+  status?: number
+  body: unknown
+}
+interface DbRow extends Record<string, unknown> {
+  id: string
+}
 
 function makeCtx(opts: {
   shopifyFetch?: FetchResponse[]
@@ -53,7 +58,13 @@ function makeCtx(opts: {
     connections: {
       shop: {
         getAccounts: async () => [
-          { id: "ca1", ownerType: "org" as const, ownerId: null, identifier: "demo.myshopify.com", displayName: null },
+          {
+            id: "ca1",
+            ownerType: "org" as const,
+            ownerId: null,
+            identifier: "demo.myshopify.com",
+            displayName: null,
+          },
         ],
         getToken: async () => "test-token",
       },
@@ -83,7 +94,9 @@ const latestOrder = (updatedAt: string | null): FetchResponse => ({
 describe("probeWebhookUpstreamJob", () => {
   it("reports the newest order change, asking Shopify for it sorted by UPDATED_AT", async () => {
     const { ctx, fetchBodies } = makeCtx({ shopifyFetch: [latestOrder("2026-10-10T18:27:31Z")] })
-    expect(await probeWebhookUpstreamJob({}, ctx)).toEqual({ upstreamActivityAt: "2026-10-10T18:27:31Z" })
+    expect(await probeWebhookUpstreamJob({}, ctx)).toEqual({
+      upstreamActivityAt: "2026-10-10T18:27:31Z",
+    })
     const body = JSON.parse(fetchBodies[0]!) as { query: string }
     expect(body.query).toContain("sortKey: UPDATED_AT")
     expect(body.query).toContain("reverse: true")

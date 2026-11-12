@@ -9,13 +9,29 @@
 // carries a gear for admins (the app's settings page). The footer links to the
 // configured detailed-monitoring page. Rows update live on incident changes.
 import { app, currentPath, navigate } from "@liaison/host"
-import { type Component, createMemo, createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import {
+  type Component,
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js"
 import type { IncidentsSummaryWithConfig } from "../lib/summarize"
 import { tr } from "./i18n"
 import { cx } from "./kit"
 import { onMonitoringChange, SourceSquare, URGENT_WASH } from "./source-glyph"
+import {
+  badgeKind,
+  buildSourceViews,
+  decodeSourceId,
+  type SourceView,
+  sourcePath,
+  statusPath,
+} from "./sources"
 import { rememberSourceLabels } from "./tab-labels"
-import { badgeKind, buildSourceViews, decodeSourceId, type SourceView, sourcePath, statusPath } from "./sources"
 
 // URL reactivity (same pattern as Boxtal/Invoicing sidebars — bundled plugins
 // cannot import @solidjs/router; the kernel pushes via history.pushState and
@@ -80,11 +96,15 @@ export function activeRoute(windowPath: string, lastNavigated: string | null): s
  * would load the path inside the frame instead of opening the tab.
  */
 export function onRowClick(
-  e: Pick<MouseEvent, "button" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey" | "defaultPrevented" | "preventDefault">,
+  e: Pick<
+    MouseEvent,
+    "button" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey" | "defaultPrevented" | "preventDefault"
+  >,
   path: string,
   go: (path: string) => void,
 ): void {
-  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
+    return
   e.preventDefault()
   go(path)
 }
@@ -110,7 +130,16 @@ const Eyebrow: Component<{ label: string; children?: unknown }> = (props) => (
 
 const NavIcon: Component<{ kind: "overview" | "ack" | "resolved" }> = (props) => (
   <span class="grid w-3.5 place-items-center text-text-tertiary" aria-hidden="true">
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
       <Show when={props.kind === "overview"}>
         <circle cx="8" cy="8" r="5.5" />
         <circle cx="8" cy="8" r="2" />
@@ -148,7 +177,10 @@ function NavRow(p: {
         <NavIcon kind={p.icon} />
         <span class="min-w-0 flex-1 truncate">{p.label}</span>
         <Show when={(p.count ?? 0) > 0}>
-          <span data-testid={`monitoring-sidebar-badge-${p.slug}`} class={cx(COUNT, COUNT_KIND[p.kind ?? "neutral"])}>
+          <span
+            data-testid={`monitoring-sidebar-badge-${p.slug}`}
+            class={cx(COUNT, COUNT_KIND[p.kind ?? "neutral"])}
+          >
             {p.count}
           </span>
         </Show>
@@ -165,22 +197,29 @@ function SourceRow(p: { source: SourceView; active: boolean; go: (path: string) 
       <a
         href={sourcePath(p.source.source)}
         onClick={(e) => onRowClick(e, sourcePath(p.source.source), p.go)}
-        title={p.source.label === p.source.source ? p.source.source : `${p.source.label} (${p.source.source})`}
+        title={
+          p.source.label === p.source.source
+            ? p.source.source
+            : `${p.source.label} (${p.source.source})`
+        }
         data-testid={`monitoring-sidebar-source-${p.source.source}`}
         data-urgent={p.source.urgent ? "true" : undefined}
         aria-current={p.active ? "page" : undefined}
-        class={cx(
-          ROW,
-          p.active ? ROW_ACTIVE : ROW_IDLE,
-          p.source.urgent && URGENT_WASH,
-        )}
+        class={cx(ROW, p.active ? ROW_ACTIVE : ROW_IDLE, p.source.urgent && URGENT_WASH)}
       >
         <SourceSquare source={p.source} size="sm" />
-        <span class={cx("min-w-0 flex-1 truncate", quiet() && !p.active && "text-text-tertiary")}>{p.source.label}</span>
+        <span class={cx("min-w-0 flex-1 truncate", quiet() && !p.active && "text-text-tertiary")}>
+          {p.source.label}
+        </span>
         <Show
           when={!quiet()}
           fallback={
-            <span class="text-[11px] text-success" data-testid={`monitoring-sidebar-source-clear-${p.source.source}`} aria-label={tr("All clear")}>
+            <span
+              class="text-[11px] text-success"
+              data-testid={`monitoring-sidebar-source-clear-${p.source.source}`}
+              role="img"
+              aria-label={tr("All clear")}
+            >
               ✓
             </span>
           }
@@ -188,7 +227,10 @@ function SourceRow(p: { source: SourceView; active: boolean; go: (path: string) 
           <span
             data-testid={`monitoring-sidebar-source-badge-${p.source.source}`}
             data-kind={kind()}
-            class={cx(COUNT, COUNT_KIND[kind() === "clear" ? "neutral" : (kind() as keyof typeof COUNT_KIND)])}
+            class={cx(
+              COUNT,
+              COUNT_KIND[kind() === "clear" ? "neutral" : (kind() as keyof typeof COUNT_KIND)],
+            )}
           >
             {p.source.live}
           </span>
@@ -207,16 +249,21 @@ export const MonitoringSidebar: Component = () => {
   }
   const pathname = () => activeRoute(windowPath(), lastNavigated()) ?? ""
 
-  const [summary, { refetch }] = createResource<IncidentsSummaryWithConfig | undefined>(async () => {
-    try {
-      const res = await app.invokeTool<{ data: IncidentsSummaryWithConfig }>("incidents_summary", {})
-      return res?.data
-    } catch (err) {
-      // Badges degrade to empty; keep the failure diagnosable.
-      console.error("monitoring sidebar: incidents_summary failed", err)
-      return undefined
-    }
-  })
+  const [summary, { refetch }] = createResource<IncidentsSummaryWithConfig | undefined>(
+    async () => {
+      try {
+        const res = await app.invokeTool<{ data: IncidentsSummaryWithConfig }>(
+          "incidents_summary",
+          {},
+        )
+        return res?.data
+      } catch (err) {
+        // Badges degrade to empty; keep the failure diagnosable.
+        console.error("monitoring sidebar: incidents_summary failed", err)
+        return undefined
+      }
+    },
+  )
   onMonitoringChange(() => void refetch())
 
   const sources = createMemo(() => {
@@ -235,7 +282,10 @@ export const MonitoringSidebar: Component = () => {
     <nav data-testid="monitoring-sidebar" class="flex h-full min-h-0 flex-col">
       <div class="flex items-center gap-2 border-b border-border-subtle px-4 py-3">
         <span
-          class={cx("h-1.5 w-1.5 rounded-full", critical() ? "animate-pulse bg-error" : "bg-success")}
+          class={cx(
+            "h-1.5 w-1.5 rounded-full",
+            critical() ? "animate-pulse bg-error" : "bg-success",
+          )}
           aria-hidden="true"
         />
         <span class="text-[12.5px] font-semibold text-text">{tr("Monitoring")}</span>
@@ -252,7 +302,13 @@ export const MonitoringSidebar: Component = () => {
             go={go}
             active={pathname() === "/monitoring" || pathname() === "/monitoring/"}
             count={summary.latest?.open.total}
-            kind={critical() ? "critical" : (summary.latest?.open.warning ?? 0) > 0 ? "warning" : "neutral"}
+            kind={
+              critical()
+                ? "critical"
+                : (summary.latest?.open.warning ?? 0) > 0
+                  ? "warning"
+                  : "neutral"
+            }
           />
           <NavRow
             href={statusPath("acknowledged")}
@@ -283,7 +339,17 @@ export const MonitoringSidebar: Component = () => {
               onClick={() => navigate("/settings/apps/monitoring")}
               class="grid h-5 w-5 place-items-center rounded text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text"
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
                 <circle cx="12" cy="12" r="3" />
                 <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
               </svg>
@@ -293,13 +359,18 @@ export const MonitoringSidebar: Component = () => {
         <Show
           when={sources().length > 0}
           fallback={
-            <p class="px-3.5 py-1 text-[11.5px] text-text-tertiary" data-testid="monitoring-sidebar-sources-empty">
+            <p
+              class="px-3.5 py-1 text-[11.5px] text-text-tertiary"
+              data-testid="monitoring-sidebar-sources-empty"
+            >
               {summary.loading && !summary.latest ? "" : tr("No source yet")}
             </p>
           }
         >
           <ul class="flex flex-col gap-px px-2" data-testid="monitoring-sidebar-sources">
-            <For each={sources()}>{(s) => <SourceRow source={s} active={activeSource() === s.source} go={go} />}</For>
+            <For each={sources()}>
+              {(s) => <SourceRow source={s} active={activeSource() === s.source} go={go} />}
+            </For>
           </ul>
         </Show>
       </div>
@@ -314,13 +385,14 @@ export const MonitoringSidebar: Component = () => {
               data-testid="monitoring-sidebar-detailed-link"
               class={cx(ROW, ROW_IDLE)}
             >
-              <span class="grid w-3.5 place-items-center text-text-tertiary" aria-hidden="true">↗</span>
+              <span class="grid w-3.5 place-items-center text-text-tertiary" aria-hidden="true">
+                ↗
+              </span>
               <span class="min-w-0 flex-1 truncate">{tr("Detailed monitoring")}</span>
             </a>
           </div>
         )}
       </Show>
-
     </nav>
   )
 }

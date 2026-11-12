@@ -102,10 +102,7 @@ export function emptyCallDoc(): CallDoc {
 /** Insert a segment in ts order (ties by segmentId). No-op when the
  *  segmentId is already present — `inserted:false` tells the caller to skip
  *  the knowledge update entirely. */
-export function applySegment(
-  doc: CallDoc,
-  seg: CallSegment,
-): { doc: CallDoc; inserted: boolean } {
+export function applySegment(doc: CallDoc, seg: CallSegment): { doc: CallDoc; inserted: boolean } {
   if (doc.segments.some((s) => s.segmentId === seg.segmentId)) {
     return { doc, inserted: false }
   }
@@ -144,7 +141,9 @@ function neutralizeMarkerLines(text: string): string {
   return text
     .split("\n")
     .map((line) =>
-      SEG_MARKER.test(line) || RESUME_MARKER.test(line) || LINKS_MARKER.test(line) ? ` ${line}` : line,
+      SEG_MARKER.test(line) || RESUME_MARKER.test(line) || LINKS_MARKER.test(line)
+        ? ` ${line}`
+        : line,
     )
     .join("\n")
 }

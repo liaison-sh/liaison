@@ -6,12 +6,12 @@
 import { minorAmountRefusal, readMinorAmount } from "@liaison/app-sdk"
 import { type BuyerVatFacts, needsHumanBuyerDecision } from "../buyer-vat"
 import type { CrossAppExecuteTool } from "../cross-app"
-import type { ReadsFetch } from "../reads"
-import type { DraftLine, IssueCtx, IssueDb } from "../issue"
 import type { CustomerKind } from "../einvoicing/classify"
 import type { OperationCategory } from "../einvoicing/classify-operation"
 import type { EinvoiceRowColumns } from "../einvoicing/issue-gate"
+import type { DraftLine, IssueCtx, IssueDb } from "../issue"
 import { lineSubtotal } from "../money"
+import type { ReadsFetch } from "../reads"
 
 export type DocumentType = "invoice" | "quote" | "proforma" | "purchase_order" | "credit_note"
 
@@ -157,11 +157,20 @@ export type ErrorEnvelope = {
 export type PreflightResult =
   /** `noAutoApprove`: this call must be decided by a person (no auto-approve policy answers it). */
   | { ok: true; noAutoApprove?: true }
-  | { error: { code: string; message: string; retryable?: boolean; status?: number; body?: unknown } }
+  | {
+      error: { code: string; message: string; retryable?: boolean; status?: number; body?: unknown }
+    }
 
 /** Map a shared-validation outcome onto the kernel's preflight contract. */
 export function toPreflightResult(
-  outcome: { ok: true; buyer?: Partial<Pick<BuyerVatFacts, "consumer_override_evidence" | "business_unverified">> | null } | { ok: false; error: ErrorEnvelope },
+  outcome:
+    | {
+        ok: true
+        buyer?: Partial<
+          Pick<BuyerVatFacts, "consumer_override_evidence" | "business_unverified">
+        > | null
+      }
+    | { ok: false; error: ErrorEnvelope },
 ): PreflightResult {
   if (!outcome.ok) return { error: outcome.error.error }
   // A buyer the agent declared a private consumer against business evidence, or whose business
@@ -176,10 +185,7 @@ export type PendingApprovalEnvelope = {
   approval_id: string
 }
 
-export type MutationResult<T> =
-  | CompletedEnvelope<T>
-  | PendingApprovalEnvelope
-  | ErrorEnvelope
+export type MutationResult<T> = CompletedEnvelope<T> | PendingApprovalEnvelope | ErrorEnvelope
 
 /**
  * Hard cap on `documents.notes`. Free text goes on the PDF face, so it needs a bound the
@@ -248,7 +254,9 @@ export interface MutationsDb extends IssueDb {
  * scope (approvals are for agents, not persons: no approval row exists then, `approval_id` is
  * null). Otherwise the approval is parked and the handler reports it pending.
  */
-export type RequestedApproval = { approval_id: string; auto_approved?: undefined } | { approval_id: string | null; auto_approved: true }
+export type RequestedApproval =
+  | { approval_id: string; auto_approved?: undefined }
+  | { approval_id: string | null; auto_approved: true }
 
 export interface MutationsCtx extends Omit<IssueCtx, "db"> {
   // K6 post-approval re-entry signal. Field names mirror the kernel's
@@ -330,7 +338,10 @@ const DISCOUNT_HINT =
 
 /** The typed refusal for a minor-unit field that does not hold a whole number. `field` may be a
  *  path (`items[2].discount_minor`). */
-export function invalidAmountError(field: string, value: unknown): { code: string; message: string } {
+export function invalidAmountError(
+  field: string,
+  value: unknown,
+): { code: string; message: string } {
   const hint = field.endsWith("discount_minor")
     ? ` ${DISCOUNT_HINT}`
     : field.endsWith("unit_price_minor")
@@ -361,7 +372,10 @@ export function lineDiscountError(lines: unknown, field = "items"): ErrorEnvelop
     if (unit === null) continue
     let lineAmount: bigint
     try {
-      lineAmount = lineSubtotal({ quantity: line.quantity as string | number, unit_price_minor: unit })
+      lineAmount = lineSubtotal({
+        quantity: line.quantity as string | number,
+        unit_price_minor: unit,
+      })
     } catch {
       continue
     }

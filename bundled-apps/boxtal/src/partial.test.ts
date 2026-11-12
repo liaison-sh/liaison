@@ -7,14 +7,14 @@
 // unit has a live batch.
 
 import { describe, expect, it } from "bun:test"
+// The netting proforma_create_and_issue applies to a typed price under prices_include_tax.
+import { netOfIncludedTax } from "../../invoicing/src/money"
+import { makeOrderScanStub, type OrderScanStubOptions } from "./__fixtures__/order-scan"
+import type { BoxtalToolCtx, CrossAppEnvelope } from "./ctx"
 import { reserveCreate } from "./link-store"
 import { readyList, toPrepareList } from "./queues"
 import { issueBatchProforma, shipmentDraftCreate } from "./shipment"
 import { createMockDb } from "./test-db"
-// The netting proforma_create_and_issue applies to a typed price under prices_include_tax.
-import { netOfIncludedTax } from "../../invoicing/src/money"
-import type { BoxtalToolCtx, CrossAppEnvelope } from "./ctx"
-import { makeOrderScanStub, type OrderScanStubOptions } from "./__fixtures__/order-scan"
 
 const SENDER_PARTY = {
   name: "Fabrikam SAS",
@@ -84,7 +84,10 @@ function makeCtx(opts: {
     const scanned = scanStub(target, args as Record<string, unknown>)
     if (scanned) return scanned
     if (target === "invoicing:documents_search") {
-      return { status: "completed", result: opts.invoices.map((d) => ({ channel: "shopify", ...d })) }
+      return {
+        status: "completed",
+        result: opts.invoices.map((d) => ({ channel: "shopify", ...d })),
+      }
     }
     if (target === "invoicing:documents_get") {
       const ref =
@@ -183,10 +186,13 @@ describe("partial shipments — batch reservation", () => {
     })
     expect(res.ok).toBe(true)
     if (res.ok) {
-      const row = (await (ctx as never as { db: ReturnType<typeof createMockDb> }).db.findMany("shipment", {
-        where: { id: res.id },
-        limit: 1,
-      })) as Array<Record<string, unknown>>
+      const row = (await (ctx as never as { db: ReturnType<typeof createMockDb> }).db.findMany(
+        "shipment",
+        {
+          where: { id: res.id },
+          limit: 1,
+        },
+      )) as Array<Record<string, unknown>>
       expect(row[0]?.batch_seq).toBe(2)
     }
   })
@@ -357,20 +363,23 @@ describe("partial shipments — preflight overship guard", () => {
         ],
       },
     })
-    const res = await createShipmentPreflight(ctx as never, {
-      draft_id: "inv-1",
-      offer_code: "CHRP-Chrono13",
-      lines: [{ line_id: "line-inv-1", quantity: 4 }],
-      recipient_address: {
-        name: "Dealer",
-        street: "1 Main St",
-        city: "NYC",
-        postalCode: "10001",
-        countryIsoCode: "US",
-        email: "d@x.com",
-        phone: "+12125550100",
-      },
-    } as never)
+    const res = await createShipmentPreflight(
+      ctx as never,
+      {
+        draft_id: "inv-1",
+        offer_code: "CHRP-Chrono13",
+        lines: [{ line_id: "line-inv-1", quantity: 4 }],
+        recipient_address: {
+          name: "Dealer",
+          street: "1 Main St",
+          city: "NYC",
+          postalCode: "10001",
+          countryIsoCode: "US",
+          email: "d@x.com",
+          phone: "+12125550100",
+        },
+      } as never,
+    )
     expect("error" in res && res.error.code).toBe("partial_overship")
     expect("error" in res ? res.error.message : "").toContain("2 of 5")
   })
@@ -388,27 +397,58 @@ describe("partial shipments — end-to-end journey (two batches, proformas, work
       ...(base.ctx as unknown as Record<string, unknown>),
       fetch: async (url: string, o?: { method?: string }) => {
         if (url.includes("/iam/account-app/token")) {
-          return { status: 200, headers: {}, body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }) }
+          return {
+            status: 200,
+            headers: {},
+            body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }),
+          }
         }
         if (url.includes("/shipping-order") && url.includes("/tracking")) {
           return {
             status: 200,
             headers: {},
-            body: JSON.stringify({ status: 200, timestamp: "t", content: [{ status: "ANNOUNCED", trackingNumber: `TRK${orderSeq}`, trackingDateTime: "2026-07-17T00:00:00Z", history: [] }] }),
+            body: JSON.stringify({
+              status: 200,
+              timestamp: "t",
+              content: [
+                {
+                  status: "ANNOUNCED",
+                  trackingNumber: `TRK${orderSeq}`,
+                  trackingDateTime: "2026-07-17T00:00:00Z",
+                  history: [],
+                },
+              ],
+            }),
           }
         }
         if (url.includes("/shipping-order") && url.includes("/shipping-document")) {
-          return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: [] }) }
+          return {
+            status: 200,
+            headers: {},
+            body: JSON.stringify({ status: 200, timestamp: "t", content: [] }),
+          }
         }
         if (url.includes("/shipping-order") && (o?.method ?? "GET") === "POST") {
           orderSeq += 1
           return {
             status: 200,
             headers: {},
-            body: JSON.stringify({ status: 200, timestamp: "t", content: { id: `ord-${orderSeq}`, status: "PENDING", deliveryPriceExclTax: { value: 7.8, currency: "EUR" } } }),
+            body: JSON.stringify({
+              status: 200,
+              timestamp: "t",
+              content: {
+                id: `ord-${orderSeq}`,
+                status: "PENDING",
+                deliveryPriceExclTax: { value: 7.8, currency: "EUR" },
+              },
+            }),
           }
         }
-        return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: {} }) }
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({ status: 200, timestamp: "t", content: {} }),
+        }
       },
       config: { get: async () => "whsecret", has: async () => true },
       executeTool: async (target: string, args: unknown): Promise<CrossAppEnvelope> => {
@@ -463,16 +503,17 @@ describe("partial shipments — end-to-end journey (two batches, proformas, work
     expect(midRow?.remaining_units).toBe(3)
 
     // Webhook for batch 1: fulfills ONLY 2 units of RAL-44.
-    ;(await import("./test-db")) // keep import shape stable
+    await import("./test-db") // keep import shape stable
     const db = (ctx as never as { db: ReturnType<typeof createMockDb> }).db
     const batch1 = db.__all("shipment").find((s) => s.boxtal_order_id === "ord-1")!
     db.__all("prep_meta").length === 0 &&
-      (await db.insert("prep_meta", { document_ref: inv.id, shopify_order_id: inv.shopify_order_id }))
-    await documentCreatedHandler(
-      { eventType: "DOCUMENT_CREATED", orderId: "ord-1" },
-      ctx,
-      { "x-bxt-delivery-id": "d-1" },
-    )
+      (await db.insert("prep_meta", {
+        document_ref: inv.id,
+        shopify_order_id: inv.shopify_order_id,
+      }))
+    await documentCreatedHandler({ eventType: "DOCUMENT_CREATED", orderId: "ord-1" }, ctx, {
+      "x-bxt-delivery-id": "d-1",
+    })
     const ff1 = crossCalls.filter((c) => c.target === "shopify:fulfillments_create").at(-1)
     expect(ff1).toBeDefined()
     expect(ff1!.args.lineItems).toEqual([{ sku: "RAL-44", quantity: 2 }])
@@ -502,7 +543,9 @@ describe("partial shipments — end-to-end journey (two batches, proformas, work
       lines: [{ line_id: `line-${inv.id}`, quantity: 1 }],
       recipient_address: address,
     } as never)
-    expect("error" in res3 && (res3 as { error: { code: string } }).error.code).toBe("partial_overship")
+    expect("error" in res3 && (res3 as { error: { code: string } }).error.code).toBe(
+      "partial_overship",
+    )
   })
 })
 
@@ -531,7 +574,8 @@ describe("issueBatchProforma (partial batch customs proforma)", () => {
       logger: { warn: (msg: string, meta: unknown) => warns.push({ msg, meta }) },
       executeTool: async (target: string, args: unknown): Promise<CrossAppEnvelope> => {
         calls.push({ target, args: args as Record<string, unknown> })
-        if (target === "invoicing:documents_get") return { status: "completed", result: sourceInvoice }
+        if (target === "invoicing:documents_get")
+          return { status: "completed", result: sourceInvoice }
         return proformaReply
       },
     } as never
@@ -561,10 +605,17 @@ describe("issueBatchProforma (partial batch customs proforma)", () => {
   it("an invoicing refusal is logged and returned, never a silent null", async () => {
     const { ctx, warns } = stubCtx({
       status: "completed",
-      result: { status: "error", error: { code: "counterparty_incomplete", message: "email is missing" } },
+      result: {
+        status: "error",
+        error: { code: "counterparty_incomplete", message: "email is missing" },
+      },
     })
     const out = await issueBatchProforma(ctx, draft, "ship-2")
-    expect(out).toEqual({ status: "error", code: "counterparty_incomplete", message: "email is missing" })
+    expect(out).toEqual({
+      status: "error",
+      code: "counterparty_incomplete",
+      message: "email is missing",
+    })
     expect(warns).toHaveLength(1)
     expect(warns[0]!.msg).toMatch(/batch proforma/)
   })
@@ -587,10 +638,16 @@ describe("issueBatchProforma (partial batch customs proforma)", () => {
       executeTool: async (target: string, args: unknown): Promise<CrossAppEnvelope> => {
         calls.push({ target, args: args as Record<string, unknown> })
         if (target === "invoicing:documents_get") {
-          return { status: "completed", result: { ...sourceInvoice, currency: "EUR", issuer_profile_id: "iss-incl" } }
+          return {
+            status: "completed",
+            result: { ...sourceInvoice, currency: "EUR", issuer_profile_id: "iss-incl" },
+          }
         }
         if (target === "invoicing:settings_issuer_profile_list") {
-          return { status: "completed", result: { items: [{ id: "iss-incl", prices_include_tax: true }] } }
+          return {
+            status: "completed",
+            result: { items: [{ id: "iss-incl", prices_include_tax: true }] },
+          }
         }
         return { status: "completed", result: { status: "completed", document_id: "pro-3" } }
       },
@@ -598,9 +655,14 @@ describe("issueBatchProforma (partial batch customs proforma)", () => {
     const out = await issueBatchProforma(ctx, taxedDraft, "ship-3")
     expect(out.status).toBe("completed")
     const call = calls.find((c) => c.target === "invoicing:proforma_create_and_issue")!
-    const items = call.args.items as Array<{ unit_price_minor: number; tax_rate_bp_override?: number }>
+    const items = call.args.items as Array<{
+      unit_price_minor: number
+      tax_rate_bp_override?: number
+    }>
     // Without an override the tool nets at the classified rate: 20% for this FR domestic recipient.
-    const stored = items.map((i) => Number(netOfIncludedTax(BigInt(i.unit_price_minor), i.tax_rate_bp_override ?? 2000)))
+    const stored = items.map((i) =>
+      Number(netOfIncludedTax(BigInt(i.unit_price_minor), i.tax_rate_bp_override ?? 2000)),
+    )
     expect(stored).toEqual([8_333, 417])
     expect(call.args.issuer_profile_id).toBe("iss-incl")
   })

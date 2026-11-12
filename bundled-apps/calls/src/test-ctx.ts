@@ -107,14 +107,22 @@ export function makeCtx(overrides?: { config?: Record<string, unknown> }): {
       if (!doc) {
         return {
           status: "error",
-          error: { code: "tool_error", message: "NOT_FOUND: Knowledge item not found", retryable: false },
+          error: {
+            code: "tool_error",
+            message: "NOT_FOUND: Knowledge item not found",
+            retryable: false,
+          },
         }
       }
       if (doc.revision !== args.revision) {
         // service.ts:1027-1028 — KnowledgeError("REVISION_CONFLICT", "Revision conflict")
         return {
           status: "error",
-          error: { code: "tool_error", message: "REVISION_CONFLICT: Revision conflict", retryable: false },
+          error: {
+            code: "tool_error",
+            message: "REVISION_CONFLICT: Revision conflict",
+            retryable: false,
+          },
         }
       }
       doc.revision += 1
@@ -137,7 +145,11 @@ export function makeCtx(overrides?: { config?: Record<string, unknown> }): {
       if (spy.findByTitleErrors) {
         return {
           status: "error",
-          error: { code: "tool_error", message: "find_by_title unavailable (test)", retryable: true },
+          error: {
+            code: "tool_error",
+            message: "find_by_title unavailable (test)",
+            retryable: true,
+          },
         }
       }
       const title = String(args.title ?? "").trim()

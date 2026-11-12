@@ -18,15 +18,15 @@
 // instead of a throw the kernel redacts to "Tool execution failed" in
 // production. See lib/get-client.ts for the rationale.
 
-import { withShopifyConnectionEnvelope } from "./lib/get-client"
+import * as abandonedCheckoutsHandlers from "./abandoned-checkouts"
+import * as analyticsHandlers from "./analytics"
 import { webhooksRepairHandler } from "./connection"
 import * as homeHandlers from "./handlers/home"
-import * as readHandlers from "./reads"
-import * as mutationHandlers from "./mutations"
-import * as analyticsHandlers from "./analytics"
 import * as inventoryValueHandlers from "./inventory-value"
+import { withShopifyConnectionEnvelope } from "./lib/get-client"
+import * as mutationHandlers from "./mutations"
+import * as readHandlers from "./reads"
 import * as repeatRateHandlers from "./repeat-rate"
-import * as abandonedCheckoutsHandlers from "./abandoned-checkouts"
 
 // — home tool (manifest.tools.home_load.handler) — backs the kernel-mounted
 //   Shopify Home tab. Returns connection + attention bundle + recent orders.
@@ -40,20 +40,20 @@ export const home_load = withShopifyConnectionEnvelope(homeHandlers.home_load)
 // manifest entries and the stub exports were removed. Re-add them (manifest +
 // real handler) when the backfill surface is implemented.
 export { backfillCustomersJob } from "./handlers/backfill-customers" // Task B11
-export { scopeSeedJob, applySeedSuggestion } from "./handlers/scope-seed" // Task B10
-export {
-  staff_overrides_upsert,
-  staff_overrides_delete,
-  staff_overrides_upsert_preflight,
-} from "./handlers/staff-overrides" // Task B14
+export { probeWebhookUpstreamJob } from "./handlers/probe-webhook-upstream" // webhook silence evidence
+export { pruneWebhookDeliveriesJob } from "./handlers/prune-webhook-deliveries" // §3.4 ledger prune
+export { reconcileCustomersJob } from "./handlers/reconcile-customers" // Task B12
+export { scanUnfulfilledOrdersJob } from "./handlers/scan-unfulfilled" // Task B12
+export { applySeedSuggestion, scopeSeedJob } from "./handlers/scope-seed" // Task B10
 // — settings tools (manifest.tools.{settings_load,connection_disconnect}.handler) — Task B14
 //   `settings_load` backs the Settings panel data fetch (read-only, ungated);
 //   `connection_disconnect` tears down the Shopify connection (gated admin).
-export { settingsLoad, connectionDisconnect } from "./handlers/settings"
-export { reconcileCustomersJob } from "./handlers/reconcile-customers" // Task B12
-export { scanUnfulfilledOrdersJob } from "./handlers/scan-unfulfilled" // Task B12
-export { pruneWebhookDeliveriesJob } from "./handlers/prune-webhook-deliveries" // §3.4 ledger prune
-export { probeWebhookUpstreamJob } from "./handlers/probe-webhook-upstream" // webhook silence evidence
+export { connectionDisconnect, settingsLoad } from "./handlers/settings"
+export {
+  staff_overrides_delete,
+  staff_overrides_upsert,
+  staff_overrides_upsert_preflight,
+} from "./handlers/staff-overrides" // Task B14
 
 // — search (manifest.search.handler) — Task B7
 export { searchHandler } from "./search"
@@ -108,9 +108,13 @@ export const orders_invoice_links = readHandlers.orders_invoice_links
 // not wrapped either; it degrades to `{ codes: {} }` on its own.
 export const products_short_codes = readHandlers.products_short_codes
 export const customers_search = withShopifyConnectionEnvelope(readHandlers.customers_search)
-export const customers_segment_search = withShopifyConnectionEnvelope(readHandlers.customers_segment_search)
+export const customers_segment_search = withShopifyConnectionEnvelope(
+  readHandlers.customers_segment_search,
+)
 export const customers_get = withShopifyConnectionEnvelope(readHandlers.customers_get)
-export const customers_get_by_external_id = withShopifyConnectionEnvelope(readHandlers.customers_get_by_external_id)
+export const customers_get_by_external_id = withShopifyConnectionEnvelope(
+  readHandlers.customers_get_by_external_id,
+)
 export const products_search = withShopifyConnectionEnvelope(readHandlers.products_search)
 export const products_get = withShopifyConnectionEnvelope(readHandlers.products_get)
 // The sales channels a product is on and the exact channels a publish / unpublish would act on
@@ -124,11 +128,17 @@ export const variants_search = withShopifyConnectionEnvelope(readHandlers.varian
 export const variants_get = withShopifyConnectionEnvelope(readHandlers.variants_get)
 // Batched variant identity for approval-card hydration (draft_orders_create summarizerContext).
 export const variants_brief = withShopifyConnectionEnvelope(readHandlers.variants_brief)
-export const variants_market_price = withShopifyConnectionEnvelope(readHandlers.variants_market_price)
-export const inventory_levels_list = withShopifyConnectionEnvelope(readHandlers.inventory_levels_list)
+export const variants_market_price = withShopifyConnectionEnvelope(
+  readHandlers.variants_market_price,
+)
+export const inventory_levels_list = withShopifyConnectionEnvelope(
+  readHandlers.inventory_levels_list,
+)
 export const fulfillments_get = withShopifyConnectionEnvelope(readHandlers.fulfillments_get)
 // Partial-fulfillment planning read: per-FO line item ids + remaining quantities.
-export const fulfillment_orders_get = withShopifyConnectionEnvelope(readHandlers.fulfillment_orders_get)
+export const fulfillment_orders_get = withShopifyConnectionEnvelope(
+  readHandlers.fulfillment_orders_get,
+)
 export const returns_search = withShopifyConnectionEnvelope(readHandlers.returns_search)
 export const refunds_get = withShopifyConnectionEnvelope(readHandlers.refunds_get)
 export const discounts_search = withShopifyConnectionEnvelope(readHandlers.discounts_search)
@@ -145,24 +155,24 @@ export const locations_list = withShopifyConnectionEnvelope(readHandlers.locatio
 
 // — webhook handlers + verifier (manifest.webhooks.<topic>.{handler,verify}) — Task B9
 export {
-  shopifyWebhookVerifier,
-  ordersCreateHandler,
-  ordersUpdatedHandler,
-  ordersFulfilledHandler,
-  ordersCancelledHandler,
+  appUninstalledHandler,
   customersCreateHandler,
-  customersUpdateHandler,
   customersDeleteHandler,
-  refundsCreateHandler,
-  returnsRequestedHandler,
+  customersUpdateHandler,
+  draftOrdersCreateHandler,
+  draftOrdersDeleteHandler,
+  draftOrdersUpdateHandler,
   fulfillmentsCreateHandler,
   inventoryLevelsUpdateHandler,
+  ordersCancelledHandler,
+  ordersCreateHandler,
+  ordersFulfilledHandler,
+  ordersUpdatedHandler,
   productsCreateHandler,
   productsUpdateHandler,
-  draftOrdersCreateHandler,
-  draftOrdersUpdateHandler,
-  draftOrdersDeleteHandler,
-  appUninstalledHandler,
+  refundsCreateHandler,
+  returnsRequestedHandler,
+  shopifyWebhookVerifier,
 } from "./webhooks"
 
 // — mutation tools (manifest.tools.<name>.handler, gated: true) — Task B8
@@ -172,10 +182,15 @@ export {
 // Shopify userErrors rejection cleanly reverts the approval to pending instead of wedging
 // it at `approving`). The protocol wrapper is a pass-through outside an approval replay.
 const gatedMutation = (
-  fn: (params: Record<string, unknown>, ctx: import("@liaison/app-sdk").AppContext) => Promise<unknown>,
+  fn: (
+    params: Record<string, unknown>,
+    ctx: import("@liaison/app-sdk").AppContext,
+  ) => Promise<unknown>,
 ) => mutationHandlers.withApprovalProtocol(withShopifyConnectionEnvelope(fn))
 export const refunds_create = gatedMutation(mutationHandlers.refunds_create)
-export const refunds_create_preflight = withShopifyConnectionEnvelope(mutationHandlers.refunds_create_preflight)
+export const refunds_create_preflight = withShopifyConnectionEnvelope(
+  mutationHandlers.refunds_create_preflight,
+)
 export const draft_orders_create = gatedMutation(mutationHandlers.draft_orders_create)
 // — STAGE-TIME preflights (manifest.tools.<name>.preflight) — run BEFORE the approval is created so a
 //   gated call is never parked for a human when the data it needs is missing or invalid. Read-only, so
@@ -187,50 +202,90 @@ export const draft_orders_create_preflight = withShopifyConnectionEnvelope(
 export const draft_orders_update_preflight = withShopifyConnectionEnvelope(
   mutationHandlers.draft_orders_update_preflight,
 )
-export const products_merge_preflight = withShopifyConnectionEnvelope(mutationHandlers.products_merge_preflight)
+export const products_merge_preflight = withShopifyConnectionEnvelope(
+  mutationHandlers.products_merge_preflight,
+)
 export const fulfillments_create_preflight = withShopifyConnectionEnvelope(
   mutationHandlers.fulfillments_create_preflight,
 )
-export const variants_update_preflight = withShopifyConnectionEnvelope(mutationHandlers.variants_update_preflight)
-export const variants_delete_preflight = withShopifyConnectionEnvelope(mutationHandlers.variants_delete_preflight)
-export const order_update_preflight = withShopifyConnectionEnvelope(mutationHandlers.order_update_preflight)
-export const products_update_preflight = withShopifyConnectionEnvelope(mutationHandlers.products_update_preflight)
-export const inventory_adjust_preflight = withShopifyConnectionEnvelope(mutationHandlers.inventory_adjust_preflight)
+export const variants_update_preflight = withShopifyConnectionEnvelope(
+  mutationHandlers.variants_update_preflight,
+)
+export const variants_delete_preflight = withShopifyConnectionEnvelope(
+  mutationHandlers.variants_delete_preflight,
+)
+export const order_update_preflight = withShopifyConnectionEnvelope(
+  mutationHandlers.order_update_preflight,
+)
+export const products_update_preflight = withShopifyConnectionEnvelope(
+  mutationHandlers.products_update_preflight,
+)
+export const inventory_adjust_preflight = withShopifyConnectionEnvelope(
+  mutationHandlers.inventory_adjust_preflight,
+)
 export const products_unpublish_preflight = withShopifyConnectionEnvelope(
   mutationHandlers.products_unpublish_preflight,
 )
 // — the destructive/state-machine tools a re-audit found wrongly classified as safe to stage
 //   unchecked: a permanent delete, an order cancel, and the return/fulfillment transitions whose
 //   refusal used to land in the APPROVER's hands rather than the agent's.
-export const products_delete_preflight = withShopifyConnectionEnvelope(mutationHandlers.products_delete_preflight)
-export const order_cancel_preflight = withShopifyConnectionEnvelope(mutationHandlers.order_cancel_preflight)
+export const products_delete_preflight = withShopifyConnectionEnvelope(
+  mutationHandlers.products_delete_preflight,
+)
+export const order_cancel_preflight = withShopifyConnectionEnvelope(
+  mutationHandlers.order_cancel_preflight,
+)
 export const draft_orders_complete_preflight = withShopifyConnectionEnvelope(
   mutationHandlers.draft_orders_complete_preflight,
 )
 export const draft_orders_delete_preflight = withShopifyConnectionEnvelope(
   mutationHandlers.draft_orders_delete_preflight,
 )
-export const discounts_delete_preflight = withShopifyConnectionEnvelope(mutationHandlers.discounts_delete_preflight)
-export const discounts_update_preflight = withShopifyConnectionEnvelope(mutationHandlers.discounts_update_preflight)
-export const discounts_create_preflight = withShopifyConnectionEnvelope(mutationHandlers.discounts_create_preflight)
-export const discounts_bulk_create_preflight = withShopifyConnectionEnvelope(mutationHandlers.discounts_bulk_create_preflight)
-export const returns_approve_preflight = withShopifyConnectionEnvelope(mutationHandlers.returns_approve_preflight)
-export const returns_decline_preflight = withShopifyConnectionEnvelope(mutationHandlers.returns_decline_preflight)
-export const returns_close_preflight = withShopifyConnectionEnvelope(mutationHandlers.returns_close_preflight)
-export const returns_refund_preflight = withShopifyConnectionEnvelope(mutationHandlers.returns_refund_preflight)
+export const discounts_delete_preflight = withShopifyConnectionEnvelope(
+  mutationHandlers.discounts_delete_preflight,
+)
+export const discounts_update_preflight = withShopifyConnectionEnvelope(
+  mutationHandlers.discounts_update_preflight,
+)
+export const discounts_create_preflight = withShopifyConnectionEnvelope(
+  mutationHandlers.discounts_create_preflight,
+)
+export const discounts_bulk_create_preflight = withShopifyConnectionEnvelope(
+  mutationHandlers.discounts_bulk_create_preflight,
+)
+export const returns_approve_preflight = withShopifyConnectionEnvelope(
+  mutationHandlers.returns_approve_preflight,
+)
+export const returns_decline_preflight = withShopifyConnectionEnvelope(
+  mutationHandlers.returns_decline_preflight,
+)
+export const returns_close_preflight = withShopifyConnectionEnvelope(
+  mutationHandlers.returns_close_preflight,
+)
+export const returns_refund_preflight = withShopifyConnectionEnvelope(
+  mutationHandlers.returns_refund_preflight,
+)
 export const fulfillments_cancel_preflight = withShopifyConnectionEnvelope(
   mutationHandlers.fulfillments_cancel_preflight,
 )
 export const inventory_set_on_hand_preflight = withShopifyConnectionEnvelope(
   mutationHandlers.inventory_set_on_hand_preflight,
 )
-export const customers_update_preflight = withShopifyConnectionEnvelope(mutationHandlers.customers_update_preflight)
-export const customers_tag_preflight = withShopifyConnectionEnvelope(mutationHandlers.customers_tag_preflight)
-export const products_publish_preflight = withShopifyConnectionEnvelope(mutationHandlers.products_publish_preflight)
+export const customers_update_preflight = withShopifyConnectionEnvelope(
+  mutationHandlers.customers_update_preflight,
+)
+export const customers_tag_preflight = withShopifyConnectionEnvelope(
+  mutationHandlers.customers_tag_preflight,
+)
+export const products_publish_preflight = withShopifyConnectionEnvelope(
+  mutationHandlers.products_publish_preflight,
+)
 export const draft_orders_complete = gatedMutation(mutationHandlers.draft_orders_complete)
 export const fulfillments_create = gatedMutation(mutationHandlers.fulfillments_create)
 export const fulfillments_cancel = gatedMutation(mutationHandlers.fulfillments_cancel)
-export const fulfillments_update_tracking = gatedMutation(mutationHandlers.fulfillments_update_tracking)
+export const fulfillments_update_tracking = gatedMutation(
+  mutationHandlers.fulfillments_update_tracking,
+)
 export const products_create = gatedMutation(mutationHandlers.products_create)
 export const products_update = gatedMutation(mutationHandlers.products_update)
 export const products_delete = gatedMutation(mutationHandlers.products_delete)

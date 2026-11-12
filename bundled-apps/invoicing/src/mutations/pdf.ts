@@ -2,24 +2,24 @@
 //
 // Invoicing mutations: document PDF rendering (ensureDocumentPdf) and the explicit retry.
 
+import type { OperationCategory } from "../einvoicing/classify-operation"
+import { importedOriginalMissing } from "../einvoicing/gate"
+import { documentLegalMention } from "../einvoicing/mentions"
+import { FacturxBuildError, type FacturxInput } from "../facturx/cii"
+import { facturxEligible, facturxInputFrom } from "../facturx/input"
 import {
+  buildTemplateData,
   type Counterparty,
   type IssueCtx,
   type IssueDb,
-  buildTemplateData,
   storedTaxCountry,
   taxCountryOf,
 } from "../issue"
-import { documentLegalMention } from "../einvoicing/mentions"
-import type { OperationCategory } from "../einvoicing/classify-operation"
-import { classify } from "../tax"
-import { isUuid } from "../reads"
-import { importedOriginalMissing } from "../einvoicing/gate"
-import { FacturxBuildError, type FacturxInput } from "../facturx/cii"
-import { facturxEligible, facturxInputFrom } from "../facturx/input"
 import { hasLegalOriginal, recordLegalOriginal } from "../legal-originals/record"
-import { FOREIGN_ID_CHARS, dateOnly, findIssuerProfile } from "./db-helpers"
-import { type DocumentType, type MutationsCtx, type MutationResult, toBigInt } from "./shared"
+import { isUuid } from "../reads"
+import { classify } from "../tax"
+import { dateOnly, FOREIGN_ID_CHARS, findIssuerProfile } from "./db-helpers"
+import { type DocumentType, type MutationResult, type MutationsCtx, toBigInt } from "./shared"
 
 /**
  * documents_retry_pdf — re-render a document's PDF (the affordance shown when
@@ -55,7 +55,10 @@ export async function ensureDocumentPdf(
   opts?: { force?: boolean; link?: boolean },
 ): Promise<
   | { ok: true; pdf_file_id: string }
-  | { ok: false; error: { code: string; message: string; retryable?: boolean; status?: number; body?: unknown } }
+  | {
+      ok: false
+      error: { code: string; message: string; retryable?: boolean; status?: number; body?: unknown }
+    }
 > {
   // Accept a document NUMBER as well as its uuid id — documents_retry_pdf is called directly with
   // whatever identifier the agent has (often the visible number), not always a pre-resolved uuid.
@@ -71,7 +74,8 @@ export async function ensureDocumentPdf(
   const where = isUuid(idOrNumber) ? { id: idOrNumber } : { number: idOrNumber }
   const docRows = await ctx.db.findMany("documents", { where, limit: 1 })
   const doc = docRows[0] as Record<string, unknown> | undefined
-  if (!doc) return { ok: false, error: { code: "not_found", message: `document ${idOrNumber} not found` } }
+  if (!doc)
+    return { ok: false, error: { code: "not_found", message: `document ${idOrNumber} not found` } }
   const id = String(doc.id)
   const existing = (doc.pdf_file_id as string | null) ?? null
   const refs = refsOf(doc.external_refs)
@@ -107,7 +111,8 @@ export async function ensureDocumentPdf(
     doc.number !== "" &&
     (doc.pdf_status as string | null) !== "ready"
   const issuer = await findIssuerProfile(ctx.db, String(doc.issuer_profile_id))
-  if (!issuer) return { ok: false, error: { code: "issuer_not_found", message: "issuer profile missing" } }
+  if (!issuer)
+    return { ok: false, error: { code: "issuer_not_found", message: "issuer profile missing" } }
   const lineRows = await ctx.db.findMany("document_lines", {
     where: { document_id: id },
     orderBy: { position: "asc" },
@@ -161,10 +166,15 @@ export async function ensureDocumentPdf(
   // A credit note's reference to the invoice it reverses (number + issue date, and the reason) is
   // printed on the PDF; a re-render rebuilds it exactly as issue time did, from the original row.
   const creditRef = type === "credit_note" ? await creditNoteReference(ctx, doc, refs) : null
-  const legalMention = await documentLegalMention(ctx.db, classification.treatment, issuer.default_language, {
-    category: ((doc.operation_category as OperationCategory | null | undefined) ?? null),
-    issueDate: dateOnly(doc.issued_at),
-  })
+  const legalMention = await documentLegalMention(
+    ctx.db,
+    classification.treatment,
+    issuer.default_language,
+    {
+      category: (doc.operation_category as OperationCategory | null | undefined) ?? null,
+      issueDate: dateOnly(doc.issued_at),
+    },
+  )
   if (firstRender) {
     return renderFirstLegalOriginal(ctx, {
       // An on-demand first render (send) hands the file to the mail app in this same call: the
@@ -226,7 +236,9 @@ export async function ensureDocumentPdf(
       // that rides the sandbox timeout to a killed worker. Those callers persist pdf_file_id via
       // the in-tx ctx.db.update below instead; the cross-tx link only matters for the
       // send-to-customer same-tx visibility flow (BL-191), which never pre-updates the row.
-      ...(opts?.link === false ? {} : { link: { table: "documents", column: "pdf_file_id", row_id: id } }),
+      ...(opts?.link === false
+        ? {}
+        : { link: { table: "documents", column: "pdf_file_id", row_id: id } }),
     })) as { file_id: string } | { error: { code?: string; message?: string } }
   } catch (err) {
     await ctx.db.update("documents", id, { pdf_status: "failed" })
@@ -271,7 +283,10 @@ async function renderFirstLegalOriginal(
       tax_minor: bigint
     }>
     issuer: Record<string, unknown>
-    creditRef: { original_invoice_number: string | null; original_invoice_date: string | null } | null
+    creditRef: {
+      original_invoice_number: string | null
+      original_invoice_date: string | null
+    } | null
     legalMention: string
     templateData: unknown
   },
@@ -290,7 +305,10 @@ async function renderFirstLegalOriginal(
         lines: a.lines,
         issuer: a.issuer,
         original: a.creditRef
-          ? { number: a.creditRef.original_invoice_number, issue_date: a.creditRef.original_invoice_date }
+          ? {
+              number: a.creditRef.original_invoice_number,
+              issue_date: a.creditRef.original_invoice_date,
+            }
           : null,
         legalMention: a.legalMention,
       })
@@ -318,7 +336,13 @@ async function renderFirstLegalOriginal(
       entity: "einvoicing",
       action: "facturx_failed",
       entityId: a.id,
-      data: { document_id: a.id, number: a.doc.number, code: "resolved", reason: "", resolved: true },
+      data: {
+        document_id: a.id,
+        number: a.doc.number,
+        code: "resolved",
+        reason: "",
+        resolved: true,
+      },
     })
   }
   return { ok: true, pdf_file_id: r.file_id }
@@ -329,7 +353,8 @@ function refsOf(v: unknown): Record<string, unknown> {
   if (typeof v === "string") {
     try {
       const parsed = JSON.parse(v) as unknown
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+        return parsed as Record<string, unknown>
     } catch {
       // not JSON: no refs
     }
@@ -344,14 +369,22 @@ async function creditNoteReference(
   ctx: DocumentRenderCtx,
   doc: Record<string, unknown>,
   refs: Record<string, unknown>,
-): Promise<{ original_invoice_number: string | null; original_invoice_date: string | null; reason: string | null }> {
-  const linked = (doc.original_document_id as string | null) ?? (refs.original_document_id as string | undefined) ?? null
+): Promise<{
+  original_invoice_number: string | null
+  original_invoice_date: string | null
+  reason: string | null
+}> {
+  const linked =
+    (doc.original_document_id as string | null) ??
+    (refs.original_document_id as string | undefined) ??
+    null
   let original: Record<string, unknown> | undefined
   if (linked && isUuid(String(linked))) {
     const rows = await ctx.db.findMany("documents", { where: { id: String(linked) }, limit: 1 })
     original = rows[0] as Record<string, unknown> | undefined
   }
-  const storedNumber = typeof refs.original_document_number === "string" ? refs.original_document_number : null
+  const storedNumber =
+    typeof refs.original_document_number === "string" ? refs.original_document_number : null
   return {
     original_invoice_number: ((original?.number as string | null) ?? null) || storedNumber,
     original_invoice_date: original ? dateOnly(original.issued_at) : null,

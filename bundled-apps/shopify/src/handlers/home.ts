@@ -348,7 +348,9 @@ export async function home_load(
 
   const client = await getShopifyClient(ctx)
   const recentLimit =
-    typeof params.recentLimit === "number" ? Math.min(50, params.recentLimit) : RECENT_ORDERS_LIMIT()
+    typeof params.recentLimit === "number"
+      ? Math.min(50, params.recentLimit)
+      : RECENT_ORDERS_LIMIT()
   const slaHours = typeof params.slaHours === "number" ? params.slaHours : DEFAULT_SLA_HOURS
 
   // 2. Run all four GraphQL probes in parallel. Each catches its own error
@@ -364,11 +366,9 @@ export async function home_load(
         UNFULFILLED_PAST_SLA_QUERY,
         { first: ATTENTION_LIMIT, query: buildUnfulfilledQuery(slaHours) },
       ),
-      safeQuery<{ productVariants?: { edges?: LowInventoryEdge[] } }>(
-        client,
-        LOW_INVENTORY_QUERY,
-        { first: ATTENTION_LIMIT },
-      ),
+      safeQuery<{ productVariants?: { edges?: LowInventoryEdge[] } }>(client, LOW_INVENTORY_QUERY, {
+        first: ATTENTION_LIMIT,
+      }),
       safeQuery<{ returns?: { edges?: ReturnEdge[] } }>(client, PENDING_RETURNS_QUERY, {
         first: ATTENTION_LIMIT,
       }),

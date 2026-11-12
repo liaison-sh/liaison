@@ -31,19 +31,20 @@
 // Design language mirrors ShopifySidebar: small uppercase eyebrow, column
 // of section links with 2px accent rail on the active row, icons inline
 // (14px stroked SVGs, no lucide dep).
-import { tr } from "./i18n"
+
+import { app, currentPath, navigate } from "@liaison/host"
 import {
+  type Component,
   createEffect,
   createSignal,
+  type JSX,
   onCleanup,
   onMount,
   Show,
-  type Component,
-  type JSX,
 } from "solid-js"
-import { app, currentPath, navigate } from "@liaison/host"
-import { documentSearch, documentsSearchTarget, setDocumentSearch } from "./search-store"
 import { loadViewerAccess, NO_ACCESS, type ViewerAccess } from "./access"
+import { tr } from "./i18n"
+import { documentSearch, documentsSearchTarget, setDocumentSearch } from "./search-store"
 
 // ─────────────────────────────────────────────────────────────────────────
 // URL reactivity (same pattern as ShopifySidebar — bundled plugins cannot
@@ -95,7 +96,16 @@ const baseSvg = "h-3.5 w-3.5 shrink-0"
 
 function ChartIcon(p: IconProps) {
   return (
-    <svg class={`${baseSvg} ${p.class ?? ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <svg
+      class={`${baseSvg} ${p.class ?? ""}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
       <path d="M3 3v18h18" />
       <path d="M7 14l4-4 3 3 5-6" />
     </svg>
@@ -104,7 +114,16 @@ function ChartIcon(p: IconProps) {
 
 function FileIcon(p: IconProps) {
   return (
-    <svg class={`${baseSvg} ${p.class ?? ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <svg
+      class={`${baseSvg} ${p.class ?? ""}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <path d="M14 2v6h6" />
     </svg>
@@ -113,7 +132,16 @@ function FileIcon(p: IconProps) {
 
 function ClockIcon(p: IconProps) {
   return (
-    <svg class={`${baseSvg} ${p.class ?? ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <svg
+      class={`${baseSvg} ${p.class ?? ""}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
       <circle cx="12" cy="12" r="9" />
       <path d="M12 7v5l3 2" />
     </svg>
@@ -122,7 +150,16 @@ function ClockIcon(p: IconProps) {
 
 function AlertIcon(p: IconProps) {
   return (
-    <svg class={`${baseSvg} ${p.class ?? ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <svg
+      class={`${baseSvg} ${p.class ?? ""}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
       <path d="M12 9v4M12 17h.01M10.3 3.86l-8.05 14a2 2 0 0 0 1.74 3h16.08a2 2 0 0 0 1.74-3l-8.05-14a2 2 0 0 0-3.46 0z" />
     </svg>
   )
@@ -130,7 +167,16 @@ function AlertIcon(p: IconProps) {
 
 function GearIcon(p: IconProps) {
   return (
-    <svg class={`${baseSvg} ${p.class ?? ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <svg
+      class={`${baseSvg} ${p.class ?? ""}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01A1.65 1.65 0 0 0 9 3.09V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
@@ -407,33 +453,37 @@ export const InvoicingSidebar: Component = () => {
         </ul>
 
         <Show when={canDecide() || deferredCount() > 0}>
-        <SectionHeader label={tr("Queue")} icon={ClockIcon} />
-        <ul class="flex flex-col gap-0.5">
-          <Show when={canDecide()}>
-            <Row
-              href="/invoicing/pending-approval"
-              label={tr("Pending Approval")}
-              pathname={pathname()}
-              badge={pendingApproval()}
-            />
-          </Show>
-          {/* Deferred row is hidden when count is 0; sticky-visible when > 0
+          <SectionHeader label={tr("Queue")} icon={ClockIcon} />
+          <ul class="flex flex-col gap-0.5">
+            <Show when={canDecide()}>
+              <Row
+                href="/invoicing/pending-approval"
+                label={tr("Pending Approval")}
+                pathname={pathname()}
+                badge={pendingApproval()}
+              />
+            </Show>
+            {/* Deferred row is hidden when count is 0; sticky-visible when > 0
               per spec §"Visual Structure". */}
-          <Show when={deferredCount() > 0}>
-            <Row
-              href="/invoicing/deferred"
-              label={tr("Deferred")}
-              pathname={pathname()}
-              badge={deferredCount()}
-            />
-          </Show>
-        </ul>
+            <Show when={deferredCount() > 0}>
+              <Row
+                href="/invoicing/deferred"
+                label={tr("Deferred")}
+                pathname={pathname()}
+                badge={deferredCount()}
+              />
+            </Show>
+          </ul>
         </Show>
 
         <Show when={canWrite()}>
           <SectionHeader label={tr("Admin")} icon={AlertIcon} />
           <ul class="flex flex-col gap-0.5">
-            <Row href="/invoicing/readiness" label={tr("E-invoicing readiness")} pathname={pathname()} />
+            <Row
+              href="/invoicing/readiness"
+              label={tr("E-invoicing readiness")}
+              pathname={pathname()}
+            />
           </ul>
         </Show>
       </div>

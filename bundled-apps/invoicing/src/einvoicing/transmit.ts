@@ -16,8 +16,14 @@
 //            exactly one deposit and one transmission request.
 // Jobs and webhooks only ever CREATE send approval requests (`stageSendApproval`); nothing but
 // a person's approval or an approver's own click executes a send.
-import { type ContractEnvelope, mergeLifecycle, type LifecycleState, LIFECYCLE_CODE, isLifecycleState } from "@liaison/app-sdk/contracts"
-import { type EffectsBridge, EffectOutcomeUnknown, appEffectOnce } from "@liaison/app-sdk/effects"
+import {
+  type ContractEnvelope,
+  isLifecycleState,
+  LIFECYCLE_CODE,
+  type LifecycleState,
+  mergeLifecycle,
+} from "@liaison/app-sdk/contracts"
+import { appEffectOnce, EffectOutcomeUnknown, type EffectsBridge } from "@liaison/app-sdk/effects"
 import { base64, utf8Bytes } from "../legal-originals/bytes"
 import { base64ToBytes, sha256OfBase64 } from "./backfill-sha256"
 import { isValidSiren } from "./identity"
@@ -27,16 +33,31 @@ export const CONTRACT = "einvoicing-pa@1"
 type Row = Record<string, unknown>
 
 export interface EinvDb {
-  findMany(entity: string, opts?: { where?: Record<string, unknown>; orderBy?: Record<string, "asc" | "desc">; limit?: number; offset?: number }): Promise<unknown[]>
+  findMany(
+    entity: string,
+    opts?: {
+      where?: Record<string, unknown>
+      orderBy?: Record<string, "asc" | "desc">
+      limit?: number
+      offset?: number
+    },
+  ): Promise<unknown[]>
   insert(entity: string, data: Record<string, unknown>): Promise<unknown>
   update(entity: string, id: string, data: Record<string, unknown>): Promise<unknown>
-  updateMany?(entity: string, opts: { where: Record<string, unknown>; data: Record<string, unknown> }): Promise<{ count: number }>
+  updateMany?(
+    entity: string,
+    opts: { where: Record<string, unknown>; data: Record<string, unknown> },
+  ): Promise<{ count: number }>
 }
 
 export interface ApprovalInput {
   tool_name: string
   summary: string
-  summary_detail?: { subtitle?: string; lines?: string[]; links?: Array<{ label: string; app: string; entityType: string; entityId: string }> }
+  summary_detail?: {
+    subtitle?: string
+    lines?: string[]
+    links?: Array<{ label: string; app: string; entityType: string; entityId: string }>
+  }
   current_payload: unknown
   editable_fields?: string[]
   on_behalf_of?: string | null
@@ -60,10 +81,19 @@ export interface EinvCtx {
   approval?: { approvalRequestId: string; approvalDeciderId: string; toolName: string } | null
   /** `auto_approved: true`: the kernel granted the request inline (a person's own call holding
    *  the deciding scope; no approval row) or an org policy approved it. */
-  requestApproval?(input: ApprovalInput): Promise<{ approval_id: string; auto_approved?: undefined } | { approval_id: string | null; auto_approved: true }>
+  requestApproval?(
+    input: ApprovalInput,
+  ): Promise<
+    | { approval_id: string; auto_approved?: undefined }
+    | { approval_id: string | null; auto_approved: true }
+  >
   /** Where one of this app's own approval requests stands (status only). */
   approvals?: { statusOf(approvalRequestId: string): Promise<unknown> }
-  logger?: { info?(m: string, d?: unknown): void; warn?(m: string, d?: unknown): void; error?(m: string, d?: unknown): void }
+  logger?: {
+    info?(m: string, d?: unknown): void
+    warn?(m: string, d?: unknown): void
+    error?(m: string, d?: unknown): void
+  }
   /** The kernel's effect ledger (`ctx.effects`): the deposit is claimed before the provider call. */
   effects?: EffectsBridge
 }
@@ -75,7 +105,10 @@ function str(v: unknown): string | null {
 }
 
 export function fail(code: string, message: string, detail?: unknown) {
-  return { status: "error" as const, error: { code, message, ...(detail !== undefined ? { detail } : {}) } }
+  return {
+    status: "error" as const,
+    error: { code, message, ...(detail !== undefined ? { detail } : {}) },
+  }
 }
 
 export function sha256Text(s: string): string {
@@ -98,7 +131,11 @@ export function decodeUtf8(b64: string): string {
       cp = ((b & 0x0f) << 12) | ((bytes[i + 1]! & 0x3f) << 6) | (bytes[i + 2]! & 0x3f)
       i += 3
     } else {
-      cp = ((b & 0x07) << 18) | ((bytes[i + 1]! & 0x3f) << 12) | ((bytes[i + 2]! & 0x3f) << 6) | (bytes[i + 3]! & 0x3f)
+      cp =
+        ((b & 0x07) << 18) |
+        ((bytes[i + 1]! & 0x3f) << 12) |
+        ((bytes[i + 2]! & 0x3f) << 6) |
+        (bytes[i + 3]! & 0x3f)
       i += 4
     }
     out += String.fromCodePoint(cp)
@@ -118,8 +155,13 @@ export interface EinvoicingSettings {
   changed_by: string | null
 }
 
-export async function readEinvoicingSettings(db: Pick<EinvDb, "findMany">): Promise<EinvoicingSettings> {
-  const rows = (await db.findMany("einvoicing_settings", { orderBy: { createdAt: "asc" }, limit: 1 })) as Row[]
+export async function readEinvoicingSettings(
+  db: Pick<EinvDb, "findMany">,
+): Promise<EinvoicingSettings> {
+  const rows = (await db.findMany("einvoicing_settings", {
+    orderBy: { createdAt: "asc" },
+    limit: 1,
+  })) as Row[]
   const r = rows[0] ?? {}
   return {
     id: str(r.id),
@@ -146,7 +188,16 @@ function lastSunday(year: number, month: number): number {
  */
 export function parisCivilDate(at: unknown): string | null {
   if (typeof at === "string" && /^\d{4}-\d{2}-\d{2}$/.test(at)) return at
-  const ms = typeof at === "string" ? Date.parse(at.includes("T") || !at.includes(" ") ? at : at.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00")) : at instanceof Date ? at.getTime() : Number.NaN
+  const ms =
+    typeof at === "string"
+      ? Date.parse(
+          at.includes("T") || !at.includes(" ")
+            ? at
+            : at.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00"),
+        )
+      : at instanceof Date
+        ? at.getTime()
+        : Number.NaN
   if (!Number.isFinite(ms)) return null
   const y = new Date(ms).getUTCFullYear()
   const summerStart = Date.UTC(y, 2, lastSunday(y, 2), 1)
@@ -167,9 +218,15 @@ export function onOrAfterCutover(issuedAt: unknown, cutover: string | null): boo
  * request, the approved execution, and the job right before each provider call): sending must be
  * on, and the document issued on or after the cut-over. Null when it may go.
  */
-export function sendSwitchProblem(settings: EinvoicingSettings, doc: Row): ReturnType<typeof fail> | null {
+export function sendSwitchProblem(
+  settings: EinvoicingSettings,
+  doc: Row,
+): ReturnType<typeof fail> | null {
   if (!settings.send_enabled) {
-    return fail("einvoice_send_disabled", "Sending e-invoices through the platform is switched off in the e-invoicing settings; nothing is sent.")
+    return fail(
+      "einvoice_send_disabled",
+      "Sending e-invoices through the platform is switched off in the e-invoicing settings; nothing is sent.",
+    )
   }
   if (!onOrAfterCutover(doc.issued_at, settings.cutover_date)) {
     return fail(
@@ -205,33 +262,67 @@ export async function sendFacts(
   documentId: string,
   approved?: Partial<SendBinding> | null,
 ): Promise<{ ok: true; facts: SendFacts } | ReturnType<typeof fail>> {
-  const doc = ((await db.findMany("documents", { where: { id: documentId }, limit: 1 })) as Row[])[0]
+  const doc = (
+    (await db.findMany("documents", { where: { id: documentId }, limit: 1 })) as Row[]
+  )[0]
   if (!doc) return fail("row_not_found", `document ${documentId} not found`)
   const reasons: string[] = []
-  if (doc.type !== "invoice" && doc.type !== "credit_note") reasons.push(`a ${String(doc.type)} is not an invoice or credit note`)
-  if (UNSENDABLE_STATUS.has(String(doc.status))) reasons.push(`the document is ${String(doc.status)}`)
-  if (doc.regime !== "e_invoice") reasons.push(`its regime is ${String(doc.regime ?? "not recorded")}, not e_invoice (only a French business buyer with a SIREN is e-invoiced; this sale is reported instead)`)
-  if (doc.internal_cancellation === true) reasons.push("it is an internal cancellation (booked, never transmitted)")
-  if (doc.customer_kind !== "business") reasons.push(`the buyer is ${String(doc.customer_kind ?? "of unknown kind")}, not a business`)
+  if (doc.type !== "invoice" && doc.type !== "credit_note")
+    reasons.push(`a ${String(doc.type)} is not an invoice or credit note`)
+  if (UNSENDABLE_STATUS.has(String(doc.status)))
+    reasons.push(`the document is ${String(doc.status)}`)
+  if (doc.regime !== "e_invoice")
+    reasons.push(
+      `its regime is ${String(doc.regime ?? "not recorded")}, not e_invoice (only a French business buyer with a SIREN is e-invoiced; this sale is reported instead)`,
+    )
+  if (doc.internal_cancellation === true)
+    reasons.push("it is an internal cancellation (booked, never transmitted)")
+  if (doc.customer_kind !== "business")
+    reasons.push(`the buyer is ${String(doc.customer_kind ?? "of unknown kind")}, not a business`)
   const contactId = str(doc.counterparty_contact_id)
   const identity = contactId
-    ? (((await db.findMany("counterparty_identities", { where: { contact_id: contactId }, limit: 1 })) as Row[])[0] ?? null)
+    ? ((
+        (await db.findMany("counterparty_identities", {
+          where: { contact_id: contactId },
+          limit: 1,
+        })) as Row[]
+      )[0] ?? null)
     : null
   const territory = buyerTerritory({
     billingCountry: str(doc.billing_country_code) ?? str(doc.counterparty_country),
     billingPostcode: str(doc.billing_postcode),
     vatId: str(doc.counterparty_vat_id),
   })
-  const asFr = territory.territory === "FR" || (territory.territory === "needs_review" && identity?.territory_treatment === "as_fr")
-  if (!asFr) reasons.push(`the buyer is not established in France (${territory.country ?? "no billing country"})`)
+  const asFr =
+    territory.territory === "FR" ||
+    (territory.territory === "needs_review" && identity?.territory_treatment === "as_fr")
+  if (!asFr)
+    reasons.push(
+      `the buyer is not established in France (${territory.country ?? "no billing country"})`,
+    )
   const legalId = str(doc.legal_original_id)
-  const lo = legalId ? (((await db.findMany("legal_originals", { where: { id: legalId }, limit: 1 })) as Row[])[0] ?? null) : null
-  if (!lo || lo.kind !== "facturx" || !str(lo.file_id) || !str(lo.sha256)) reasons.push("it has no Factur-X legal original")
-  else if (str(doc.legal_original_sha256) && lo.sha256 !== doc.legal_original_sha256) reasons.push("its legal original fingerprint does not match the document")
-  const fx = ((await db.findMany("facturx_files", { where: { document_id: documentId }, orderBy: { generated_at: "desc" }, limit: 1 })) as Row[])[0]
+  const lo = legalId
+    ? (((await db.findMany("legal_originals", { where: { id: legalId }, limit: 1 })) as Row[])[0] ??
+      null)
+    : null
+  if (!lo || lo.kind !== "facturx" || !str(lo.file_id) || !str(lo.sha256))
+    reasons.push("it has no Factur-X legal original")
+  else if (str(doc.legal_original_sha256) && lo.sha256 !== doc.legal_original_sha256)
+    reasons.push("its legal original fingerprint does not match the document")
+  const fx = (
+    (await db.findMany("facturx_files", {
+      where: { document_id: documentId },
+      orderBy: { generated_at: "desc" },
+      limit: 1,
+    })) as Row[]
+  )[0]
   if (!fx || !str(fx.file_id)) reasons.push("its Factur-X XML is missing")
   if (reasons.length > 0) {
-    return fail("einvoice_not_eligible", `Document ${String(doc.number ?? documentId)} cannot be sent through the PA: ${reasons.join("; ")}.`, { reasons })
+    return fail(
+      "einvoice_not_eligible",
+      `Document ${String(doc.number ?? documentId)} cannot be sent through the PA: ${reasons.join("; ")}.`,
+      { reasons },
+    )
   }
   const buyerSiren = str(identity?.siren) ?? str(doc.buyer_siren) ?? ""
   const binding: SendBinding = {
@@ -241,8 +332,12 @@ export async function sendFacts(
     routing_address: str(identity?.routing_address) ?? str(doc.buyer_routing_address) ?? buyerSiren,
   }
   if (approved) {
-    const drift = (Object.keys(binding) as Array<keyof SendBinding>).filter((k) => approved[k] !== undefined && approved[k] !== binding[k])
-    const missing = (Object.keys(binding) as Array<keyof SendBinding>).filter((k) => approved[k] === undefined)
+    const drift = (Object.keys(binding) as Array<keyof SendBinding>).filter(
+      (k) => approved[k] !== undefined && approved[k] !== binding[k],
+    )
+    const missing = (Object.keys(binding) as Array<keyof SendBinding>).filter(
+      (k) => approved[k] === undefined,
+    )
     if (drift.length > 0 || missing.length > 0) {
       return fail(
         "einvoice_approval_stale",
@@ -253,11 +348,18 @@ export async function sendFacts(
   }
   const sirenReasons: string[] = []
   if (!isValidSiren(buyerSiren)) sirenReasons.push("the buyer SIREN is missing or invalid")
-  if (str(doc.buyer_siren) && buyerSiren !== doc.buyer_siren) sirenReasons.push("the buyer SIREN changed since the invoice was issued")
-  if (identity?.registry_status === "C") sirenReasons.push("the buyer's SIREN is ceased in the business registry")
-  if (!identity && !str(doc.buyer_siren_confirmed_via)) sirenReasons.push("the buyer SIREN was never confirmed")
+  if (str(doc.buyer_siren) && buyerSiren !== doc.buyer_siren)
+    sirenReasons.push("the buyer SIREN changed since the invoice was issued")
+  if (identity?.registry_status === "C")
+    sirenReasons.push("the buyer's SIREN is ceased in the business registry")
+  if (!identity && !str(doc.buyer_siren_confirmed_via))
+    sirenReasons.push("the buyer SIREN was never confirmed")
   if (sirenReasons.length > 0) {
-    return fail("einvoice_not_eligible", `Document ${String(doc.number ?? documentId)} cannot be sent: ${sirenReasons.join("; ")}.`, { reasons: sirenReasons })
+    return fail(
+      "einvoice_not_eligible",
+      `Document ${String(doc.number ?? documentId)} cannot be sent: ${sirenReasons.join("; ")}.`,
+      { reasons: sirenReasons },
+    )
   }
   return {
     ok: true,
@@ -265,19 +367,36 @@ export async function sendFacts(
       doc,
       identity,
       binding,
-      legalOriginal: { id: String(lo!.id), file_id: String(lo!.file_id), sha256: String(lo!.sha256) },
+      legalOriginal: {
+        id: String(lo!.id),
+        file_id: String(lo!.file_id),
+        sha256: String(lo!.sha256),
+      },
       facturx: { id: String(fx!.id), file_id: String(fx!.file_id) },
     },
   }
 }
 
 /** sha256(document | action | legal original fingerprint), plus `| attempt` from a retry on. */
-export function idempotencyKey(documentId: string, action: "send_einvoice" | "book_sale", legalSha: string, attempt = 1): string {
-  return sha256Text(attempt > 1 ? `${documentId}|${action}|${legalSha}|${attempt}` : `${documentId}|${action}|${legalSha}`)
+export function idempotencyKey(
+  documentId: string,
+  action: "send_einvoice" | "book_sale",
+  legalSha: string,
+  attempt = 1,
+): string {
+  return sha256Text(
+    attempt > 1
+      ? `${documentId}|${action}|${legalSha}|${attempt}`
+      : `${documentId}|${action}|${legalSha}`,
+  )
 }
 
 /** Send outcomes after which nothing more happens on that attempt; a person may retry. */
-export const TERMINAL_SEND_FAILURES: ReadonlySet<string> = new Set(["failed", "not_in_directory", "routing_mismatch"])
+export const TERMINAL_SEND_FAILURES: ReadonlySet<string> = new Set([
+  "failed",
+  "not_in_directory",
+  "routing_mismatch",
+])
 
 export function attemptOf(row: Row): number {
   const n = Number(row.attempt ?? 1)
@@ -285,8 +404,14 @@ export function attemptOf(row: Row): number {
 }
 
 /** The latest send attempt of a document (rows are append-only: a retry is a new row). */
-export async function latestSendRow(db: Pick<EinvDb, "findMany">, documentId: string): Promise<Row | null> {
-  const rows = (await db.findMany("einvoice_transmissions", { where: { document_id: documentId, action: "send_einvoice" }, limit: 100 })) as Row[]
+export async function latestSendRow(
+  db: Pick<EinvDb, "findMany">,
+  documentId: string,
+): Promise<Row | null> {
+  const rows = (await db.findMany("einvoice_transmissions", {
+    where: { document_id: documentId, action: "send_einvoice" },
+    limit: 100,
+  })) as Row[]
   let latest: Row | null = null
   for (const r of rows) if (!latest || attemptOf(r) > attemptOf(latest)) latest = r
   return latest
@@ -302,7 +427,8 @@ export async function mintDispatchGrant(
   ops: string[],
   subject: Record<string, string>,
 ): Promise<{ ok: true; grant: string } | ReturnType<typeof fail>> {
-  if (!ctx.contracts?.grant) return fail("contracts_unavailable", "Dispatch grants are not available in this context.")
+  if (!ctx.contracts?.grant)
+    return fail("contracts_unavailable", "Dispatch grants are not available in this context.")
   const raw = await ctx.contracts.grant(CONTRACT, ops, subject)
   let out: unknown = raw
   if (typeof raw === "string") {
@@ -312,9 +438,16 @@ export async function mintDispatchGrant(
       out = null
     }
   }
-  const o = (out ?? {}) as { grant?: unknown; status?: string; error?: { code?: string; message?: string } }
+  const o = (out ?? {}) as {
+    grant?: unknown
+    status?: string
+    error?: { code?: string; message?: string }
+  }
   if (typeof o.grant === "string" && o.grant !== "") return { ok: true, grant: o.grant }
-  return fail(o.error?.code ?? "contract_grant_refused", o.error?.message ?? "The dispatch grant was refused.")
+  return fail(
+    o.error?.code ?? "contract_grant_refused",
+    o.error?.message ?? "The dispatch grant was refused.",
+  )
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -325,7 +458,10 @@ const RESTAGE_AFTER_MS = 24 * 3600 * 1000
 function confirmationLines(f: SendFacts): string[] {
   const reg = str(f.identity?.registry_name)
   const contactName = str(f.doc.counterparty_name) ?? str(f.doc.buyer_legal_name)
-  const mismatch = reg && contactName && !reg.toUpperCase().includes(contactName.toUpperCase().split(/\s+/)[0] ?? "")
+  const mismatch =
+    reg &&
+    contactName &&
+    !reg.toUpperCase().includes(contactName.toUpperCase().split(/\s+/)[0] ?? "")
   return [
     `Registry name: ${reg ?? str(f.doc.buyer_legal_name) ?? "(not recorded)"}${mismatch ? `  (Liaison contact: ${contactName}; check it is the same company)` : ""}`,
     `SIREN: ${f.binding.buyer_siren}`,
@@ -355,7 +491,10 @@ export async function stageSendApproval(
   const f = r.facts
   const settings = await readEinvoicingSettings(ctx.db)
   if (!settings.provider_app) {
-    return fail("contract_provider_not_configured", "No PA provider is configured for e-invoicing (an administrator sets it in the e-invoicing settings).")
+    return fail(
+      "contract_provider_not_configured",
+      "No PA provider is configured for e-invoicing (an administrator sets it in the e-invoicing settings).",
+    )
   }
   const switched = sendSwitchProblem(settings, f.doc)
   if (switched) return switched
@@ -363,21 +502,32 @@ export async function stageSendApproval(
   // mismatch) a person may ask again: a NEW attempt, under a fresh approval, appended as a new row.
   const latest = await latestSendRow(ctx.db, documentId)
   if (latest && !TERMINAL_SEND_FAILURES.has(String(latest.state))) {
-    return fail("einvoice_already_sent", `Document ${String(f.doc.number)} already has a PA transmission (${String(latest.state)}).`)
+    return fail(
+      "einvoice_already_sent",
+      `Document ${String(f.doc.number)} already has a PA transmission (${String(latest.state)}).`,
+    )
   }
   const attempt = latest ? attemptOf(latest) + 1 : 1
   const prevId = str(f.doc.einvoice_send_approval_id)
   const prevAt = str(f.doc.einvoice_send_requested_at)
   const prevAttempt = Number(f.doc.einvoice_send_attempt ?? 1)
-  if (!opts.force && prevId && prevAt && prevAttempt === attempt && Date.now() - Date.parse(prevAt) < RESTAGE_AFTER_MS) {
+  if (
+    !opts.force &&
+    prevId &&
+    prevAt &&
+    prevAttempt === attempt &&
+    Date.now() - Date.parse(prevAt) < RESTAGE_AFTER_MS
+  ) {
     return { status: "staged", approval_id: prevId, deduped: true }
   }
-  if (!ctx.requestApproval) return fail("approval_unavailable", "Approval requests cannot be created from this context.")
+  if (!ctx.requestApproval)
+    return fail("approval_unavailable", "Approval requests cannot be created from this context.")
   const approval = await ctx.requestApproval({
     tool_name: "invoicing:einvoice_send",
     summary: `${attempt > 1 ? "Send again" : "Send"} e-invoice ${String(f.doc.number)}${f.doc.counterparty_name ? ` (${String(f.doc.counterparty_name)})` : ""} through ${platformName(settings.provider_app)}`,
     summary_detail: {
-      subtitle: "Transmits the Factur-X legal original to the buyer's platform. This cannot be undone.",
+      subtitle:
+        "Transmits the Factur-X legal original to the buyer's platform. This cannot be undone.",
       lines: [
         ...confirmationLines(f),
         ...(latest
@@ -386,7 +536,14 @@ export async function stageSendApproval(
             ]
           : []),
       ],
-      links: [{ label: `Open ${String(f.doc.number ?? "the document")}`, app: "invoicing", entityType: "detail", entityId: documentId }],
+      links: [
+        {
+          label: `Open ${String(f.doc.number ?? "the document")}`,
+          app: "invoicing",
+          entityType: "detail",
+          entityId: documentId,
+        },
+      ],
     },
     current_payload: { ...f.binding, ...(attempt > 1 ? { attempt } : {}) },
     editable_fields: [],
@@ -415,11 +572,17 @@ export async function stageSendApproval(
 
 /** After issue: stage the send approval when the document is an e_invoice issued on or after the
  *  cut-over and sending is on. Returns the approval id, or null when nothing was staged. */
-export async function stageSendAfterIssue(ctx: EinvCtx, documentId: string): Promise<string | null> {
+export async function stageSendAfterIssue(
+  ctx: EinvCtx,
+  documentId: string,
+): Promise<string | null> {
   const settings = await readEinvoicingSettings(ctx.db)
   if (!settings.provider_app || !settings.send_enabled) return null
-  const doc = ((await ctx.db.findMany("documents", { where: { id: documentId }, limit: 1 })) as Row[])[0]
-  if (!doc || doc.regime !== "e_invoice" || !onOrAfterCutover(doc.issued_at, settings.cutover_date)) return null
+  const doc = (
+    (await ctx.db.findMany("documents", { where: { id: documentId }, limit: 1 })) as Row[]
+  )[0]
+  if (!doc || doc.regime !== "e_invoice" || !onOrAfterCutover(doc.issued_at, settings.cutover_date))
+    return null
   const r = await stageSendApproval(ctx, documentId)
   if ("approval_id" in r) return r.approval_id
   // The issuer may send it themselves: nothing was staged and nothing is blocked.
@@ -440,11 +603,16 @@ export async function einvoiceSendRequest(ctx: EinvCtx, params: { document_id?: 
 // ---------------------------------------------------------------------------------------------
 // The gated send (runs only after a person approved it, or on an approver's own click).
 
-export async function einvoiceSend(ctx: EinvCtx, params: Partial<SendBinding> & { attempt?: number | null }) {
+export async function einvoiceSend(
+  ctx: EinvCtx,
+  params: Partial<SendBinding> & { attempt?: number | null },
+) {
   const id = str(params?.document_id)
   if (!id) return fail("invalid_input", "document_id is required")
-  const attempt = params?.attempt === undefined || params?.attempt === null ? 1 : Number(params.attempt)
-  if (!Number.isInteger(attempt) || attempt < 1 || attempt > 100) return fail("invalid_input", "attempt must be a positive integer")
+  const attempt =
+    params?.attempt === undefined || params?.attempt === null ? 1 : Number(params.attempt)
+  if (!Number.isInteger(attempt) || attempt < 1 || attempt > 100)
+    return fail("invalid_input", "attempt must be a positive integer")
   const r = await sendFacts(ctx.db, id, params)
   if (!("ok" in r)) return r
   const f = r.facts
@@ -455,16 +623,32 @@ export async function einvoiceSend(ctx: EinvCtx, params: Partial<SendBinding> & 
   const switched = sendSwitchProblem(settings, f.doc)
   if (switched) return switched
   const key = idempotencyKey(id, "send_einvoice", f.binding.legal_original_sha256, attempt)
-  const existing = ((await ctx.db.findMany("einvoice_transmissions", { where: { idempotency_key: key }, limit: 1 })) as Row[])[0]
+  const existing = (
+    (await ctx.db.findMany("einvoice_transmissions", {
+      where: { idempotency_key: key },
+      limit: 1,
+    })) as Row[]
+  )[0]
   if (existing) {
     // An approval replayed, or approved twice: the one prepared row stands.
-    return { status: "ok", transmission_id: String(existing.id), state: String(existing.state), replay: true }
+    return {
+      status: "ok",
+      transmission_id: String(existing.id),
+      state: String(existing.state),
+      replay: true,
+    }
   }
   // Attempt n only right after attempt n-1 ended in a terminal failure; never beside a live one.
   const latest = await latestSendRow(ctx.db, id)
-  if (latest ? !TERMINAL_SEND_FAILURES.has(String(latest.state)) || attemptOf(latest) !== attempt - 1 : attempt !== 1) {
+  if (
+    latest
+      ? !TERMINAL_SEND_FAILURES.has(String(latest.state)) || attemptOf(latest) !== attempt - 1
+      : attempt !== 1
+  ) {
     return fail(
-      latest && !TERMINAL_SEND_FAILURES.has(String(latest.state)) ? "einvoice_already_sent" : "einvoice_retry_not_allowed",
+      latest && !TERMINAL_SEND_FAILURES.has(String(latest.state))
+        ? "einvoice_already_sent"
+        : "einvoice_retry_not_allowed",
       latest
         ? `Document ${String(f.doc.number)} has attempt ${attemptOf(latest)} (${String(latest.state)}); this approval was for attempt ${attempt}. Request the send again.`
         : `Document ${String(f.doc.number)} has no failed attempt to retry; this approval was for attempt ${attempt}.`,
@@ -478,7 +662,8 @@ export async function einvoiceSend(ctx: EinvCtx, params: Partial<SendBinding> & 
     legal_original_sha256: f.binding.legal_original_sha256,
   })
   if (!("ok" in granted)) return granted
-  const approvedBy = ctx.approval?.approvalDeciderId ?? (ctx.getUserId ? await ctx.getUserId() : null)
+  const approvedBy =
+    ctx.approval?.approvalDeciderId ?? (ctx.getUserId ? await ctx.getUserId() : null)
   const inserted = (await ctx.db.insert("einvoice_transmissions", {
     document_id: id,
     action: "send_einvoice",
@@ -494,7 +679,10 @@ export async function einvoiceSend(ctx: EinvCtx, params: Partial<SendBinding> & 
     attempts: 0,
     lifecycle_log: [],
   })) as Row
-  await ctx.db.update("documents", id, { einvoice_state: "prepared", pa_provider: settings.provider_app })
+  await ctx.db.update("documents", id, {
+    einvoice_state: "prepared",
+    pa_provider: settings.provider_app,
+  })
   return { status: "ok", transmission_id: String(inserted.id), state: "prepared", replay: false }
 }
 
@@ -532,9 +720,18 @@ async function call(
   op: string,
   params: Record<string, unknown>,
   opts?: { grant?: string | null; provider?: string | null },
-): Promise<{ ok: true; result: Row; provider: string | null } | { ok: false; error: { code: string; message: string; retryable?: boolean; detail?: unknown } }> {
-  if (!ctx.contracts) return { ok: false, error: { code: "contracts_unavailable", message: "contract dispatch is not available here" } }
-  const env = opts ? await ctx.contracts.call(CONTRACT, op, params, opts) : await ctx.contracts.call(CONTRACT, op, params)
+): Promise<
+  | { ok: true; result: Row; provider: string | null }
+  | { ok: false; error: { code: string; message: string; retryable?: boolean; detail?: unknown } }
+> {
+  if (!ctx.contracts)
+    return {
+      ok: false,
+      error: { code: "contracts_unavailable", message: "contract dispatch is not available here" },
+    }
+  const env = opts
+    ? await ctx.contracts.call(CONTRACT, op, params, opts)
+    : await ctx.contracts.call(CONTRACT, op, params)
   if (env.status === "error") return { ok: false, error: env.error }
   const result = (env.result ?? {}) as Row
   if (result.status === "error" && result.error) return { ok: false, error: result.error as never }
@@ -555,7 +752,10 @@ class SubmitRefused extends Error {
  * non-retryable error), throttled the call, or does not emit yet. Any other failure (a timeout,
  * a server error, a lost connection: retryable) may have left the invoice deposited.
  */
-const DEFINITE_REFUSALS: ReadonlySet<string> = new Set(["provider_rate_limited", "pa_emission_not_activated"])
+const DEFINITE_REFUSALS: ReadonlySet<string> = new Set([
+  "provider_rate_limited",
+  "pa_emission_not_activated",
+])
 
 function isDefiniteRefusal(err: { code: string; retryable?: boolean }): boolean {
   return err.retryable !== true || DEFINITE_REFUSALS.has(err.code)
@@ -594,7 +794,11 @@ async function submitOnce(
           // The call may have reached the platform before it failed.
           throw new EffectOutcomeUnknown("the deposit call failed", {
             ok: false,
-            error: { code: "einvoice_outcome_unknown", message: `The deposit call failed: ${(err as Error)?.message ?? String(err)}`, retryable: true },
+            error: {
+              code: "einvoice_outcome_unknown",
+              message: `The deposit call failed: ${(err as Error)?.message ?? String(err)}`,
+              retryable: true,
+            },
           } satisfies CallResult)
         }
         if (res.ok) return res
@@ -604,12 +808,24 @@ async function submitOnce(
       },
       {
         onUnknown: async () => {
-          const found = await call(ctx, "find_einvoice", { invoice_number: number, issue_date: issueDate }, rowOpts(row))
+          const found = await call(
+            ctx,
+            "find_einvoice",
+            { invoice_number: number, issue_date: issueDate },
+            rowOpts(row),
+          )
           if (!found.ok) return { outcome: "skip" }
           if (found.result.found === true && str(found.result.provider_ref)) {
             return {
               outcome: "done",
-              result: { ok: true, result: { state: String(found.result.state), provider_ref: String(found.result.provider_ref) }, provider: found.provider },
+              result: {
+                ok: true,
+                result: {
+                  state: String(found.result.state),
+                  provider_ref: String(found.result.provider_ref),
+                },
+                provider: found.provider,
+              },
             }
           }
           return { outcome: "retry" }
@@ -627,14 +843,23 @@ async function submitOnce(
 
 /** The options of a call about one transmission row: through the provider it is pinned to. */
 function rowOpts(row: Row, withGrant = false): { grant?: string | null; provider?: string | null } {
-  return { provider: str(row.provider_app), ...(withGrant ? { grant: str(row.dispatch_grant) } : {}) }
+  return {
+    provider: str(row.provider_app),
+    ...(withGrant ? { grant: str(row.dispatch_grant) } : {}),
+  }
 }
 
-async function readXml(ctx: EinvCtx, facturx: { id: string; file_id: string }): Promise<string | null> {
+async function readXml(
+  ctx: EinvCtx,
+  facturx: { id: string; file_id: string },
+): Promise<string | null> {
   if (!ctx.files_getAttachmentBytes) return null
   const file = JSON.parse(
     await ctx.files_getAttachmentBytes(
-      JSON.stringify({ fileId: facturx.file_id, allowedParents: [{ app: "invoicing", entityType: "facturx_xml", entityId: facturx.id }] }),
+      JSON.stringify({
+        fileId: facturx.file_id,
+        allowedParents: [{ app: "invoicing", entityType: "facturx_xml", entityId: facturx.id }],
+      }),
     ),
   ) as { bytesBase64?: string }
   return file.bytesBase64 ? decodeUtf8(file.bytesBase64) : null
@@ -644,33 +869,57 @@ async function emitOnce(ctx: EinvCtx, action: string, entityId: string, data: Ro
   if (ctx.emit) await ctx.emit({ entity: "einvoicing", action, entityId, data })
 }
 
-async function recordFailure(ctx: EinvCtx, row: Row, err: { code: string; message: string; retryable?: boolean; detail?: unknown }, doc: Row | null): Promise<StepOutcome> {
+async function recordFailure(
+  ctx: EinvCtx,
+  row: Row,
+  err: { code: string; message: string; retryable?: boolean; detail?: unknown },
+  doc: Row | null,
+): Promise<StepOutcome> {
   const attempts = Number(row.attempts ?? 0) + 1
   const retryable = err.retryable === true || err.code === "pa_emission_not_activated"
-  const delayMs = err.code === "pa_emission_not_activated" ? 3600_000 : Math.min(60_000 * 2 ** Math.min(attempts, 6), 6 * 3600_000)
+  const delayMs =
+    err.code === "pa_emission_not_activated"
+      ? 3600_000
+      : Math.min(60_000 * 2 ** Math.min(attempts, 6), 6 * 3600_000)
   const update: Row = {
     attempts,
-    last_error: truncateError({ code: err.code, message: err.message, ...(err.detail !== undefined ? { detail: err.detail } : {}) }),
+    last_error: truncateError({
+      code: err.code,
+      message: err.message,
+      ...(err.detail !== undefined ? { detail: err.detail } : {}),
+    }),
     lease_until: null,
     next_attempt_at: retryable ? new Date(Date.now() + delayMs).toISOString() : null,
   }
   if (!retryable) update.state = "failed"
   await ctx.db.update("einvoice_transmissions", String(row.id), update)
   if (!retryable || (err.code === "pa_emission_not_activated" && attempts === 1)) {
-    if (doc && !retryable) await ctx.db.update("documents", String(row.document_id), { einvoice_state: "failed" })
-    await emitOnce(ctx, row.action === "book_sale" ? "booking_failed" : "transmission_failed", String(row.document_id), {
-      document_id: row.document_id,
-      number: doc?.number ?? null,
-      code: err.code,
-      reason: err.message,
-      resolved: false,
-    })
+    if (doc && !retryable)
+      await ctx.db.update("documents", String(row.document_id), { einvoice_state: "failed" })
+    await emitOnce(
+      ctx,
+      row.action === "book_sale" ? "booking_failed" : "transmission_failed",
+      String(row.document_id),
+      {
+        document_id: row.document_id,
+        number: doc?.number ?? null,
+        code: err.code,
+        reason: err.message,
+        resolved: false,
+      },
+    )
   }
   return { stop: err.code === "provider_rate_limited" }
 }
 
 async function setState(ctx: EinvCtx, row: Row, state: string, extra: Row = {}): Promise<void> {
-  await ctx.db.update("einvoice_transmissions", String(row.id), { state, lease_until: null, last_error: null, next_attempt_at: null, ...extra })
+  await ctx.db.update("einvoice_transmissions", String(row.id), {
+    state,
+    lease_until: null,
+    last_error: null,
+    next_attempt_at: null,
+    ...extra,
+  })
   await ctx.db.update("documents", String(row.document_id), { einvoice_state: state })
 }
 
@@ -679,8 +928,19 @@ async function stepSend(ctx: EinvCtx, row: Row): Promise<StepOutcome> {
   if (!("ok" in r)) return recordFailure(ctx, row, r.error, null)
   const f = r.facts
   const snapshot = (row.approval_snapshot ?? {}) as Partial<SendBinding>
-  if (snapshot.legal_original_sha256 && snapshot.legal_original_sha256 !== f.binding.legal_original_sha256) {
-    return recordFailure(ctx, row, { code: "einvoice_approval_stale", message: "The legal original changed after the approval." }, f.doc)
+  if (
+    snapshot.legal_original_sha256 &&
+    snapshot.legal_original_sha256 !== f.binding.legal_original_sha256
+  ) {
+    return recordFailure(
+      ctx,
+      row,
+      {
+        code: "einvoice_approval_stale",
+        message: "The legal original changed after the approval.",
+      },
+      f.doc,
+    )
   }
   // The switches, right before any provider call: sending switched off since the approval holds
   // the row (it resumes when switched back on); a document before the cut-over never goes.
@@ -701,18 +961,40 @@ async function stepSend(ctx: EinvCtx, row: Row): Promise<StepOutcome> {
   if (row.state === "prepared" && attemptOf(row) > 1) {
     // A retry: an earlier attempt may have reached the platform after all. Look it up by invoice
     // number first and adopt it; only a document the platform does not hold is deposited again.
-    const found = await call(ctx, "find_einvoice", { invoice_number: number, issue_date: issueDate }, rowOpts(row))
+    const found = await call(
+      ctx,
+      "find_einvoice",
+      { invoice_number: number, issue_date: issueDate },
+      rowOpts(row),
+    )
     if (!found.ok) return recordFailure(ctx, row, found.error, f.doc)
     if (found.result.found === true && str(found.result.provider_ref)) {
       const adopted = String(found.result.state)
-      await setState(ctx, row, adopted === "imported" ? "validation_pending" : adopted, { provider_ref: String(found.result.provider_ref) })
-      if (adopted === "sent") await refreshStatus(ctx, { ...row, state: "sent", provider_ref: String(found.result.provider_ref) }, "transmit")
+      await setState(ctx, row, adopted === "imported" ? "validation_pending" : adopted, {
+        provider_ref: String(found.result.provider_ref),
+      })
+      if (adopted === "sent")
+        await refreshStatus(
+          ctx,
+          { ...row, state: "sent", provider_ref: String(found.result.provider_ref) },
+          "transmit",
+        )
       return { stop: false }
     }
   }
   if (row.state === "prepared") {
     const xml = await readXml(ctx, f.facturx)
-    if (!xml) return recordFailure(ctx, row, { code: "facturx_unreadable", message: "The Factur-X XML could not be read.", retryable: true }, f.doc)
+    if (!xml)
+      return recordFailure(
+        ctx,
+        row,
+        {
+          code: "facturx_unreadable",
+          message: "The Factur-X XML could not be read.",
+          retryable: true,
+        },
+        f.doc,
+      )
     const submitParams = {
       document_ref: String(row.document_id),
       invoice_number: number,
@@ -722,7 +1004,11 @@ async function stepSend(ctx: EinvCtx, row: Row): Promise<StepOutcome> {
       cii_xml: xml,
       buyer: {
         contact_ref: str(f.doc.counterparty_contact_id),
-        legal_name: str(f.identity?.registry_name) ?? str(f.doc.buyer_legal_name) ?? str(f.doc.counterparty_name) ?? "",
+        legal_name:
+          str(f.identity?.registry_name) ??
+          str(f.doc.buyer_legal_name) ??
+          str(f.doc.counterparty_name) ??
+          "",
         siren: f.binding.buyer_siren,
         vat_id: str(f.doc.counterparty_vat_id),
         routing_address: f.binding.routing_address,
@@ -743,7 +1029,17 @@ async function stepSend(ctx: EinvCtx, row: Row): Promise<StepOutcome> {
       return { stop: false }
     }
     if (submitted === "unknown") {
-      return recordFailure(ctx, row, { code: "einvoice_outcome_unknown", message: "An earlier deposit may have reached the platform and it could not be checked; it is looked up again.", retryable: true }, f.doc)
+      return recordFailure(
+        ctx,
+        row,
+        {
+          code: "einvoice_outcome_unknown",
+          message:
+            "An earlier deposit may have reached the platform and it could not be checked; it is looked up again.",
+          retryable: true,
+        },
+        f.doc,
+      )
     }
     const res = submitted
     if (!res.ok) return recordFailure(ctx, row, res.error, f.doc)
@@ -759,7 +1055,9 @@ async function stepSend(ctx: EinvCtx, row: Row): Promise<StepOutcome> {
       })
       return { stop: false }
     }
-    await setState(ctx, row, state === "imported" ? "validation_pending" : state, { provider_ref: String(res.result.provider_ref) })
+    await setState(ctx, row, state === "imported" ? "validation_pending" : state, {
+      provider_ref: String(res.result.provider_ref),
+    })
     return { stop: false }
   }
   // imported / validation_pending / send_requested: one advance step.
@@ -802,10 +1100,19 @@ async function stepSend(ctx: EinvCtx, row: Row): Promise<StepOutcome> {
       state: "send_requested",
       attempts,
       lease_until: null,
-      last_error: truncateError({ code: "send_unconfirmed", message: "The platform has not confirmed the transmission yet; it is re-read.", detail }),
-      next_attempt_at: new Date(Date.now() + Math.min(60_000 * 2 ** Math.min(attempts, 6), 6 * 3600_000)).toISOString(),
+      last_error: truncateError({
+        code: "send_unconfirmed",
+        message: "The platform has not confirmed the transmission yet; it is re-read.",
+        detail,
+      }),
+      next_attempt_at: new Date(
+        Date.now() + Math.min(60_000 * 2 ** Math.min(attempts, 6), 6 * 3600_000),
+      ).toISOString(),
     })
-    if (row.state !== "send_requested") await ctx.db.update("documents", String(row.document_id), { einvoice_state: "send_requested" })
+    if (row.state !== "send_requested")
+      await ctx.db.update("documents", String(row.document_id), {
+        einvoice_state: "send_requested",
+      })
     return { stop: false }
   }
   if (state !== row.state) await setState(ctx, row, state)
@@ -816,13 +1123,24 @@ async function stepSend(ctx: EinvCtx, row: Row): Promise<StepOutcome> {
 // ---------------------------------------------------------------------------------------------
 // Lifecycle statuses.
 
-export async function refreshStatus(ctx: EinvCtx, row: Row, source: "webhook" | "catch_up" | "refresh" | "transmit"): Promise<Row | ReturnType<typeof fail>> {
+export async function refreshStatus(
+  ctx: EinvCtx,
+  row: Row,
+  source: "webhook" | "catch_up" | "refresh" | "transmit",
+): Promise<Row | ReturnType<typeof fail>> {
   // Read through the provider the row went through, even after the organisation switched PA.
-  const res = await call(ctx, "get_einvoice_status", { provider_ref: String(row.provider_ref) }, rowOpts(row))
+  const res = await call(
+    ctx,
+    "get_einvoice_status",
+    { provider_ref: String(row.provider_ref) },
+    rowOpts(row),
+  )
   if (!res.ok) return fail(res.error.code, res.error.message)
   const s = res.result
   const observed = isLifecycleState(s.mapped) ? (s.mapped as LifecycleState) : null
-  const current = isLifecycleState(row.lifecycle_state) ? (row.lifecycle_state as LifecycleState) : null
+  const current = isLifecycleState(row.lifecycle_state)
+    ? (row.lifecycle_state as LifecycleState)
+    : null
   const next = mergeLifecycle(current, observed)
   const log = Array.isArray(row.lifecycle_log) ? [...(row.lifecycle_log as Row[])] : []
   const last = log[log.length - 1]
@@ -848,9 +1166,17 @@ export async function refreshStatus(ctx: EinvCtx, row: Row, source: "webhook" | 
   }
   await ctx.db.update("einvoice_transmissions", String(row.id), update)
   if (next !== current && next) {
-    await ctx.db.update("documents", String(row.document_id), { einvoice_state: next, einvoice_state_raw: raw })
+    await ctx.db.update("documents", String(row.document_id), {
+      einvoice_state: next,
+      einvoice_state_raw: raw,
+    })
     if (next === "refused" || next === "rejected") {
-      const doc = ((await ctx.db.findMany("documents", { where: { id: String(row.document_id) }, limit: 1 })) as Row[])[0]
+      const doc = (
+        (await ctx.db.findMany("documents", {
+          where: { id: String(row.document_id) },
+          limit: 1,
+        })) as Row[]
+      )[0]
       await emitOnce(ctx, "transmission_refused", String(row.document_id), {
         document_id: row.document_id,
         number: doc?.number ?? null,
@@ -891,7 +1217,10 @@ export async function drainStatusChanges(
       ack = []
     }
     for (let round = 0; round < 5; round++) {
-      const res = await call(ctx, "list_status_changes", { cursor: ack.length > 0 ? ack.join(",") : null, kind })
+      const res = await call(ctx, "list_status_changes", {
+        cursor: ack.length > 0 ? ack.join(",") : null,
+        kind,
+      })
       ack = []
       if (!res.ok) return res.error.code === "provider_rate_limited"
       const items = (res.result.items ?? []) as Item[]
@@ -916,12 +1245,18 @@ export async function drainStatusChanges(
     // A ref only means something at the provider that issued it: match rows pinned to the
     // provider that answered, never a same-numbered deposit at another PA.
     const rows = (await ctx.db.findMany("einvoice_transmissions", {
-      where: { provider_ref: String(it.provider_ref), ...(provider ? { provider_app: provider } : {}) },
+      where: {
+        provider_ref: String(it.provider_ref),
+        ...(provider ? { provider_app: provider } : {}),
+      },
       limit: 1,
     })) as Row[]
     const row = rows[0]
     if (!row) {
-      const seen = (await ctx.db.findMany("einvoicing_orphan_events", { where: { provider_ref: String(it.provider_ref) }, limit: 1 })) as Row[]
+      const seen = (await ctx.db.findMany("einvoicing_orphan_events", {
+        where: { provider_ref: String(it.provider_ref) },
+        limit: 1,
+      })) as Row[]
       if (seen.length === 0) {
         await ctx.db.insert("einvoicing_orphan_events", {
           provider_ref: String(it.provider_ref),
@@ -929,7 +1264,11 @@ export async function drainStatusChanges(
           event_type: it.event_type ?? null,
           received_at: new Date().toISOString(),
         })
-        await emitOnce(ctx, "orphan_event", String(it.provider_ref), { provider_ref: it.provider_ref, event_type: it.event_type ?? null, resolved: false })
+        await emitOnce(ctx, "orphan_event", String(it.provider_ref), {
+          provider_ref: it.provider_ref,
+          event_type: it.event_type ?? null,
+          resolved: false,
+        })
       }
       orphans += 1
       return "handled"
@@ -937,7 +1276,9 @@ export async function drainStatusChanges(
     if (row.action !== "send_einvoice") return "handled"
     const out = await refreshStatus(ctx, row, "webhook")
     if ("status" in out && out.status === "error") {
-      return (out as { error: { code: string } }).error.code === "provider_rate_limited" ? "stop" : "kept"
+      return (out as { error: { code: string } }).error.code === "provider_rate_limited"
+        ? "stop"
+        : "kept"
     }
     refreshed += 1
     return "handled"
@@ -985,7 +1326,14 @@ export async function transmitTick(
   } = {},
 ): Promise<TransmitTickResult> {
   const settings = await readEinvoicingSettings(ctx.db)
-  if (!settings.provider_app) return { stepped: 0, staged: 0, refreshed: 0, stopped_for_rate_limit: false, skipped: "no_provider" }
+  if (!settings.provider_app)
+    return {
+      stepped: 0,
+      staged: 0,
+      refreshed: 0,
+      stopped_for_rate_limit: false,
+      skipped: "no_provider",
+    }
   let staged = 0
   // 1) Ask for the send approval of every e-invoice issued since the cut-over that was never
   //    asked for (issue normally stages it; this catches issues that ran where no approval could
@@ -993,9 +1341,17 @@ export async function transmitTick(
   if (settings.send_enabled && ctx.requestApproval) {
     // Newest first: everything older than the cut-over is never sent, so the walk stops there.
     const never = [
-      ...((await ctx.db.findMany("documents", { where: { regime: "e_invoice", pdf_status: "ready", einvoice_state: null }, orderBy: { issued_at: "desc" }, limit: 100 })) as Row[]),
+      ...((await ctx.db.findMany("documents", {
+        where: { regime: "e_invoice", pdf_status: "ready", einvoice_state: null },
+        orderBy: { issued_at: "desc" },
+        limit: 100,
+      })) as Row[]),
       // Blocked at issue (e.g. a SIREN still to confirm): retried until the data is fixed.
-      ...((await ctx.db.findMany("documents", { where: { regime: "e_invoice", einvoice_state: "send_blocked" }, orderBy: { issued_at: "desc" }, limit: 50 })) as Row[]),
+      ...((await ctx.db.findMany("documents", {
+        where: { regime: "e_invoice", einvoice_state: "send_blocked" },
+        orderBy: { issued_at: "desc" },
+        limit: 50,
+      })) as Row[]),
     ]
     // A request that expired or was declined is not re-asked automatically: the document panel
     // offers "request the send again" (calm by design: no daily nagging).
@@ -1006,7 +1362,11 @@ export async function transmitTick(
       if (prevAt && Date.now() - Date.parse(prevAt) < RESTAGE_AFTER_MS) continue
       const r = await stageSendApproval(ctx, String(d.id), { onBehalfOf: settings.changed_by })
       if ("approval_id" in r && !r.deduped) staged += 1
-      else if (!("approval_id" in r) && r.status !== "approver_may_send" && d.einvoice_state !== "send_blocked") {
+      else if (
+        !("approval_id" in r) &&
+        r.status !== "approver_may_send" &&
+        d.einvoice_state !== "send_blocked"
+      ) {
         await ctx.db.update("documents", String(d.id), { einvoice_state: "send_blocked" })
       }
       if (staged >= 20) break
@@ -1017,15 +1377,30 @@ export async function transmitTick(
   let stopped = false
   const pending: Row[] = []
   for (const state of STEP_STATES) {
-    pending.push(...((await ctx.db.findMany("einvoice_transmissions", { where: { state, action: "send_einvoice" }, orderBy: { createdAt: "asc" }, limit: MAX_ROWS_PER_TICK })) as Row[]))
+    pending.push(
+      ...((await ctx.db.findMany("einvoice_transmissions", {
+        where: { state, action: "send_einvoice" },
+        orderBy: { createdAt: "asc" },
+        limit: MAX_ROWS_PER_TICK,
+      })) as Row[]),
+    )
   }
   if (deps.stepBook) {
-    pending.push(...((await ctx.db.findMany("einvoice_transmissions", { where: { state: "prepared", action: "book_sale" }, orderBy: { createdAt: "asc" }, limit: MAX_ROWS_PER_TICK })) as Row[]))
+    pending.push(
+      ...((await ctx.db.findMany("einvoice_transmissions", {
+        where: { state: "prepared", action: "book_sale" },
+        orderBy: { createdAt: "asc" },
+        limit: MAX_ROWS_PER_TICK,
+      })) as Row[]),
+    )
   }
   for (const row of pending.slice(0, MAX_ROWS_PER_TICK * 2)) {
     if (!(await due(row))) continue
     if (!(await claim(ctx.db, row))) continue
-    const out = row.action === "book_sale" && deps.stepBook ? await deps.stepBook(ctx, row) : await stepSend(ctx, row)
+    const out =
+      row.action === "book_sale" && deps.stepBook
+        ? await deps.stepBook(ctx, row)
+        : await stepSend(ctx, row)
     stepped += 1
     if (out.stop) {
       stopped = true
@@ -1033,9 +1408,16 @@ export async function transmitTick(
     }
   }
   // 3) Statuses the provider told us about.
-  const drained = stopped ? { refreshed: 0, stop: true } : await drainStatusChanges(ctx, { onReceived: deps.onReceived })
+  const drained = stopped
+    ? { refreshed: 0, stop: true }
+    : await drainStatusChanges(ctx, { onReceived: deps.onReceived })
   if (deps.afterTick && !stopped) await deps.afterTick(ctx)
-  return { stepped, staged, refreshed: drained.refreshed, stopped_for_rate_limit: stopped || drained.stop }
+  return {
+    stepped,
+    staged,
+    refreshed: drained.refreshed,
+    stopped_for_rate_limit: stopped || drained.stop,
+  }
 }
 
 /** Catch-up (every 3 h): re-read every transmitted, non-terminal e-invoice. */
@@ -1044,13 +1426,22 @@ export async function statusCatchUp(ctx: EinvCtx): Promise<{ refreshed: number }
   if (!settings.provider_app) return { refreshed: 0 }
   let refreshed = 0
   for (const state of ["send_requested", "sent"]) {
-    const rows = (await ctx.db.findMany("einvoice_transmissions", { where: { state, action: "send_einvoice" }, limit: 200 })) as Row[]
+    const rows = (await ctx.db.findMany("einvoice_transmissions", {
+      where: { state, action: "send_einvoice" },
+      limit: 200,
+    })) as Row[]
     for (const row of rows) {
-      if (row.lifecycle_state === "refused" || row.lifecycle_state === "rejected" || row.lifecycle_state === "collected") continue
+      if (
+        row.lifecycle_state === "refused" ||
+        row.lifecycle_state === "rejected" ||
+        row.lifecycle_state === "collected"
+      )
+        continue
       if (!str(row.provider_ref)) continue
       const out = await refreshStatus(ctx, row, "catch_up")
       if ("status" in out && out.status === "error") {
-        if ((out as { error: { code: string } }).error.code === "provider_rate_limited") return { refreshed }
+        if ((out as { error: { code: string } }).error.code === "provider_rate_limited")
+          return { refreshed }
         continue
       }
       refreshed += 1
@@ -1065,7 +1456,13 @@ export async function einvoiceStatusRefresh(ctx: EinvCtx, params: { document_id?
   if (!id) return fail("invalid_input", "document_id is required")
   const row = await latestSendRow(ctx.db, id)
   if (!row) return fail("not_transmitted", "This document has no PA transmission yet.")
-  if (!str(row.provider_ref)) return { status: "ok", document_id: id, state: row.state, lifecycle_state: row.lifecycle_state ?? null }
+  if (!str(row.provider_ref))
+    return {
+      status: "ok",
+      document_id: id,
+      state: row.state,
+      lifecycle_state: row.lifecycle_state ?? null,
+    }
   const out = await refreshStatus(ctx, row, "refresh")
   if ("status" in out && out.status === "error") return out
   const r = out as Row

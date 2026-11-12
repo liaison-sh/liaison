@@ -9,6 +9,7 @@ import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import * as handlers from "./handlers"
+
 // NOTE: the UI barrel (src/ui/index.tsx) is NOT runtime-imported — SolidJS uses a
 // compile-time JSX transform (no React-style automatic jsx/jsxDEV runtime), so
 // importing a .tsx component into bun's generic test transpiler fails to resolve
@@ -25,7 +26,11 @@ const UI_BARREL_EXPORTS: ReadonlySet<string> = (() => {
     const group = m[1]
     if (!group) continue
     for (const part of group.split(",")) {
-      const id = part.trim().split(/\s+as\s+/).pop()?.trim()
+      const id = part
+        .trim()
+        .split(/\s+as\s+/)
+        .pop()
+        ?.trim()
       if (id) names.add(id)
     }
   }
@@ -45,7 +50,11 @@ const MANIFEST = JSON.parse(
     settings?: Array<{ component: string }>
     detail?: Record<string, { component: string }>
   }
-  slots?: Record<string, { panels?: Array<{ component: string }> } | Record<string, { tabs?: Array<{ component: string }> }>>
+  slots?: Record<
+    string,
+    | { panels?: Array<{ component: string }> }
+    | Record<string, { tabs?: Array<{ component: string }> }>
+  >
 }
 
 function collectHandlerExports(): Set<string> {
@@ -79,7 +88,9 @@ function collectUiComponents(): Set<string> {
   for (const slot of Object.values(MANIFEST.slots ?? {})) {
     const flat = (slot as { panels?: Array<{ component: string }> }).panels
     if (flat) for (const p of flat) out.add(p.component)
-    for (const inner of Object.values(slot as Record<string, { tabs?: Array<{ component: string }> }>)) {
+    for (const inner of Object.values(
+      slot as Record<string, { tabs?: Array<{ component: string }> }>,
+    )) {
       const tabs = inner?.tabs
       if (Array.isArray(tabs)) for (const t of tabs) out.add(t.component)
     }
@@ -97,7 +108,10 @@ describe("build round-trip — manifest exports resolve", () => {
 
   it("every manifest UI component is re-exported from src/ui/index", () => {
     for (const name of collectUiComponents()) {
-      expect(UI_BARREL_EXPORTS.has(name), `UI component "${name}" missing from ui/index barrel`).toBe(true)
+      expect(
+        UI_BARREL_EXPORTS.has(name),
+        `UI component "${name}" missing from ui/index barrel`,
+      ).toBe(true)
     }
   })
 })

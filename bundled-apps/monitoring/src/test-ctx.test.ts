@@ -17,7 +17,9 @@ describe("test double mirrors the bridge", () => {
       { id: "nulled", ref_number: null },
       { id: "numbered", ref_number: 4 },
     ])
-    const rows = (await ctx.db.findMany("incidents", { where: { ref_number: null } })) as StoredRow[]
+    const rows = (await ctx.db.findMany("incidents", {
+      where: { ref_number: null },
+    })) as StoredRow[]
     expect(rows.map((r) => r.id).sort()).toEqual(["missing", "nulled"])
   })
 
@@ -51,14 +53,16 @@ describe("test double mirrors the bridge", () => {
     const { ctx } = makeCtx()
     const first = await ctx.db.insert("incident_comments", { body: "one" })
     const second = await ctx.db.insert("incident_comments", { body: "two" })
-    const rows = (await ctx.db.findMany("incident_comments", { orderBy: { createdAt: "desc" } })) as StoredRow[]
+    const rows = (await ctx.db.findMany("incident_comments", {
+      orderBy: { createdAt: "desc" },
+    })) as StoredRow[]
     expect(rows.map((r) => r.id)).toEqual([second.id, first.id])
-    await expect(ctx.db.findMany("incident_comments", { orderBy: { created_at: "asc" } })).rejects.toThrow(
-      /Unknown orderBy field/,
-    )
-    await expect(ctx.db.findMany("incident_comments", { orderBy: { updated_at: "asc" } })).rejects.toThrow(
-      /Unknown orderBy field/,
-    )
+    await expect(
+      ctx.db.findMany("incident_comments", { orderBy: { created_at: "asc" } }),
+    ).rejects.toThrow(/Unknown orderBy field/)
+    await expect(
+      ctx.db.findMany("incident_comments", { orderBy: { updated_at: "asc" } }),
+    ).rejects.toThrow(/Unknown orderBy field/)
   })
 
   it("stamps strictly increasing created_at on insert, and an update moves updated_at only", async () => {
@@ -77,7 +81,9 @@ describe("test double mirrors the bridge", () => {
     expect(String(rowA.updated_at) > String(rowB.created_at)).toBe(true)
 
     const before = rowB.updated_at
-    expect(await ctx.db.updateMany("incident_comments", { where: { body: "b" }, data: { body: "b2" } })).toEqual({
+    expect(
+      await ctx.db.updateMany("incident_comments", { where: { body: "b" }, data: { body: "b2" } }),
+    ).toEqual({
       count: 1,
     })
     expect(String(rowB.updated_at) > String(before)).toBe(true)
@@ -85,19 +91,25 @@ describe("test double mirrors the bridge", () => {
 
   it("refuses undeclared where, orderBy and write fields, and where operators, like the bridge", async () => {
     const { ctx } = makeCtx()
-    await expect(ctx.db.findMany("incidents", { where: { nope: 1 } })).rejects.toThrow(/Unknown where field "nope"/)
-    await expect(ctx.db.findMany("incidents", { orderBy: { nope: "asc" } })).rejects.toThrow(/Unknown orderBy field/)
+    await expect(ctx.db.findMany("incidents", { where: { nope: 1 } })).rejects.toThrow(
+      /Unknown where field "nope"/,
+    )
+    await expect(ctx.db.findMany("incidents", { orderBy: { nope: "asc" } })).rejects.toThrow(
+      /Unknown orderBy field/,
+    )
     await expect(ctx.db.insert("incidents", { nope: 1 })).rejects.toThrow(/Unknown field "nope"/)
-    await expect(ctx.db.insert("incident_comments", { created_at: "2020-01-01T00:00:00.000Z" })).rejects.toThrow(
-      /Unknown field "created_at"/,
+    await expect(
+      ctx.db.insert("incident_comments", { created_at: "2020-01-01T00:00:00.000Z" }),
+    ).rejects.toThrow(/Unknown field "created_at"/)
+    await expect(ctx.db.update("incidents", "x", { nope: 1 })).rejects.toThrow(
+      /Unknown field "nope"/,
     )
-    await expect(ctx.db.update("incidents", "x", { nope: 1 })).rejects.toThrow(/Unknown field "nope"/)
-    await expect(ctx.db.updateMany("incidents", { where: { nope: 1 }, data: { title: "t" } })).rejects.toThrow(
-      /Unknown where field/,
-    )
-    await expect(ctx.db.findMany("incidents", { where: { status: { in: ["open"] } } })).rejects.toThrow(
-      /operators are not supported/,
-    )
+    await expect(
+      ctx.db.updateMany("incidents", { where: { nope: 1 }, data: { title: "t" } }),
+    ).rejects.toThrow(/Unknown where field/)
+    await expect(
+      ctx.db.findMany("incidents", { where: { status: { in: ["open"] } } }),
+    ).rejects.toThrow(/operators are not supported/)
     await expect(ctx.db.findMany("nope_table", {})).rejects.toThrow(/Unknown entity/)
   })
 
@@ -108,9 +120,13 @@ describe("test double mirrors the bridge", () => {
       { id: "none", ref_number: null },
       { id: "nine", ref_number: 9 },
     ])
-    const asc = (await ctx.db.findMany("incidents", { orderBy: { ref_number: "asc" } })) as StoredRow[]
+    const asc = (await ctx.db.findMany("incidents", {
+      orderBy: { ref_number: "asc" },
+    })) as StoredRow[]
     expect(asc.map((r) => r.id)).toEqual(["nine", "ten", "none"])
-    const desc = (await ctx.db.findMany("incidents", { orderBy: { ref_number: "desc" } })) as StoredRow[]
+    const desc = (await ctx.db.findMany("incidents", {
+      orderBy: { ref_number: "desc" },
+    })) as StoredRow[]
     expect(desc.map((r) => r.id)).toEqual(["none", "ten", "nine"])
   })
 
@@ -129,14 +145,16 @@ describe("test double mirrors the bridge", () => {
 
   it("rejects updateMany with where.id (non-empty data), like the bridge", async () => {
     const { ctx } = makeCtx()
-    await expect(ctx.db.updateMany("incidents", { where: { id: "x" }, data: { title: "x" } })).rejects.toThrow(
-      /where\.id is not allowed here/,
-    )
+    await expect(
+      ctx.db.updateMany("incidents", { where: { id: "x" }, data: { title: "x" } }),
+    ).rejects.toThrow(/where\.id is not allowed here/)
   })
 
   it("updateMany with empty data resolves { count: 0 } before validating where", async () => {
     const { ctx } = makeCtx()
-    expect(await ctx.db.updateMany("incidents", { where: { id: "x" }, data: {} })).toEqual({ count: 0 })
+    expect(await ctx.db.updateMany("incidents", { where: { id: "x" }, data: {} })).toEqual({
+      count: 0,
+    })
   })
 
   it("backstops UNIQUE (org_id, ref_number) on update", async () => {
@@ -145,7 +163,9 @@ describe("test double mirrors the bridge", () => {
       { id: "one", ref_number: 1 },
       { id: "two", ref_number: 2 },
     ])
-    await expect(ctx.db.update("incidents", "two", { ref_number: 1 })).rejects.toThrow(/UNIQUE constraint/)
+    await expect(ctx.db.update("incidents", "two", { ref_number: 1 })).rejects.toThrow(
+      /UNIQUE constraint/,
+    )
     expect(incidents(spy).find((r) => r.id === "two")?.ref_number).toBe(2)
   })
 
@@ -169,7 +189,9 @@ describe("test double mirrors the bridge", () => {
     expect(await ctx.sequences.allocate({ key: "monitoring:a" })).toEqual({ value: 2 })
     expect(await ctx.sequences.allocate({ key: "monitoring:b" })).toEqual({ value: 1 })
     spy.failNextAllocate = true
-    const failed = (await ctx.sequences.allocate({ key: "monitoring:a" })) as unknown as { error: { code: string } }
+    const failed = (await ctx.sequences.allocate({ key: "monitoring:a" })) as unknown as {
+      error: { code: string }
+    }
     expect(failed.error.code).toBe("test")
     expect(await ctx.sequences.allocate({ key: "monitoring:a" })).toEqual({ value: 3 })
   })
@@ -183,7 +205,9 @@ describe("test double mirrors the bridge", () => {
       allocateHooks++
       spy.failNextAllocate = true
     }
-    const first = (await ctx.sequences.allocate({ key: "monitoring:k" })) as unknown as { error?: unknown }
+    const first = (await ctx.sequences.allocate({ key: "monitoring:k" })) as unknown as {
+      error?: unknown
+    }
     // The hook ran before failNextAllocate was checked, so this call failed.
     expect(first.error).toBeDefined()
     expect(await ctx.sequences.allocate({ key: "monitoring:k" })).toEqual({ value: 1 })
@@ -204,7 +228,10 @@ describe("test double mirrors the bridge", () => {
       updateHooks++
       incidents(spy)[0]!.status = "resolved"
     }
-    const res = await ctx.db.updateMany("incidents", { where: { status: "open" }, data: { title: "t" } })
+    const res = await ctx.db.updateMany("incidents", {
+      where: { status: "open" },
+      data: { title: "t" },
+    })
     expect(res).toEqual({ count: 0 })
     await ctx.db.updateMany("incidents", { where: { status: "resolved" }, data: { title: "t2" } })
     expect(updateHooks).toBe(1)

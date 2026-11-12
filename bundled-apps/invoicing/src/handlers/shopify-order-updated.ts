@@ -177,10 +177,8 @@ async function findDocumentsByShopifyOrderId(
     id: String(r.id),
     type: String(r.type ?? "invoice"),
     number: (r.number as string | null) ?? null,
-    lifecycle_log:
-      (r.lifecycle_log as Array<Record<string, unknown>> | undefined) ?? [],
-    external_refs:
-      (r.external_refs as Record<string, unknown> | undefined) ?? {},
+    lifecycle_log: (r.lifecycle_log as Array<Record<string, unknown>> | undefined) ?? [],
+    external_refs: (r.external_refs as Record<string, unknown> | undefined) ?? {},
     shopify_order_number:
       typeof r.shopify_order_number === "string" && r.shopify_order_number.length > 0
         ? r.shopify_order_number
@@ -204,7 +202,9 @@ function orderLinesToReissueItems(
   return (lines ?? []).map((li) => ({
     description: li.title ?? li.variant?.sku ?? li.variant?.id ?? "Item",
     quantity: li.quantity ?? 1,
-    unit_price_minor: Number(majorDecimalToMinor(li.priceSet?.amount, li.priceSet?.currencyCode ?? currency)),
+    unit_price_minor: Number(
+      majorDecimalToMinor(li.priceSet?.amount, li.priceSet?.currencyCode ?? currency),
+    ),
     product_source: "shopify",
     external_id: li.variant?.id ?? null,
   }))

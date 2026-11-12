@@ -225,7 +225,12 @@ describe("alertWebhookHandler", () => {
 // never creates an incident. C8: a folded alert refreshes `url`, and
 // a non-http(s) url is refused at the door.
 describe("alertWebhookHandler: resolve envelope", () => {
-  const RESOLVE = { source: BASE.source, dedupKey: BASE.dedupKey, status: "resolved", ts: "2026-07-05T03:40:00Z" }
+  const RESOLVE = {
+    source: BASE.source,
+    dedupKey: BASE.dedupKey,
+    status: "resolved",
+    ts: "2026-07-05T03:40:00Z",
+  }
 
   it("resolves the open incident with the exact note, no resolver, and an auto incident:resolved event", async () => {
     const { ctx, spy } = makeCtx()
@@ -254,7 +259,7 @@ describe("alertWebhookHandler: resolve envelope", () => {
     expect(ev.metadata).toEqual({ source: "grafana-prod", severity: "critical" })
   })
 
-  it("accepts event:\"resolve\" and resolves an acknowledged incident", async () => {
+  it('accepts event:"resolve" and resolves an acknowledged incident', async () => {
     const { ctx, spy } = makeCtx()
     await alertWebhookHandler(BASE, ctx)
     const row = incidents(spy)[0]!
@@ -279,7 +284,11 @@ describe("alertWebhookHandler: resolve envelope", () => {
     const { ctx, spy } = makeCtx()
     await alertWebhookHandler(BASE, ctx)
     const row = incidents(spy)[0]!
-    Object.assign(row, { status: "resolved", resolved_by: "human", resolution_note: "fixed by hand" })
+    Object.assign(row, {
+      status: "resolved",
+      resolved_by: "human",
+      resolution_note: "fixed by hand",
+    })
     const res = await alertWebhookHandler(RESOLVE, ctx)
     expect(JSON.parse(res.body ?? "")).toEqual({ resolved: false })
     expect(row.resolved_by).toBe("human")
@@ -340,7 +349,10 @@ describe("alertWebhookHandler: resolve envelope", () => {
   it("a failed resolve emit does not clobber a fold that landed in between", async () => {
     const { ctx, spy } = makeCtx()
     await alertWebhookHandler(BASE, ctx)
-    Object.assign(incidents(spy)[0]!, { status: "acknowledged", acknowledged_at: "2026-07-05T03:20:00Z" })
+    Object.assign(incidents(spy)[0]!, {
+      status: "acknowledged",
+      acknowledged_at: "2026-07-05T03:20:00Z",
+    })
     // While the resolve's emit is in flight, the alert fires again: the fold sees the incident
     // resolved and reopens it as a fresh episode. Then the resolve's emit fails.
     spy.duringNextEmit = async () => {
@@ -362,7 +374,10 @@ describe("alertWebhookHandler: incident url", () => {
   it("refreshes url from a folded alert and keeps it when the repeat carries none", async () => {
     const { ctx, spy } = makeCtx()
     await alertWebhookHandler(BASE, ctx)
-    await alertWebhookHandler({ ...BASE, ts: "2026-07-05T03:13:00Z", url: "https://grafana.example.com/alert/43" }, ctx)
+    await alertWebhookHandler(
+      { ...BASE, ts: "2026-07-05T03:13:00Z", url: "https://grafana.example.com/alert/43" },
+      ctx,
+    )
     expect(incidents(spy)[0]!.url).toBe("https://grafana.example.com/alert/43")
     const { url: _u, ...noUrl } = BASE
     await alertWebhookHandler({ ...noUrl, ts: "2026-07-05T03:14:00Z" }, ctx)
@@ -373,13 +388,21 @@ describe("alertWebhookHandler: incident url", () => {
     const { ctx, spy } = makeCtx()
     await alertWebhookHandler(BASE, ctx)
     Object.assign(incidents(spy)[0]!, { status: "resolved" })
-    await alertWebhookHandler({ ...BASE, ts: "2026-07-05T05:00:00Z", url: "http://grafana.internal/alert/44" }, ctx)
+    await alertWebhookHandler(
+      { ...BASE, ts: "2026-07-05T05:00:00Z", url: "http://grafana.internal/alert/44" },
+      ctx,
+    )
     expect(incidents(spy)[0]!.url).toBe("http://grafana.internal/alert/44")
   })
 
   it("rejects a non-http(s) url with 400", async () => {
     const { ctx, spy } = makeCtx()
-    for (const url of ["javascript:alert(1)", "data:text/html,x", "ftp://x.example/y", "grafana.example.com/a"]) {
+    for (const url of [
+      "javascript:alert(1)",
+      "data:text/html,x",
+      "ftp://x.example/y",
+      "grafana.example.com/a",
+    ]) {
       expect((await alertWebhookHandler({ ...BASE, url }, ctx)).status).toBe(400)
     }
     expect(incidents(spy).length).toBe(0)
@@ -395,7 +418,13 @@ describe("alertWebhookHandler: incident url", () => {
     expect(incidents(spy).length).toBe(1)
     expect(incidents(spy)[0]!.url ?? null).toBeNull()
     const resolved = await alertWebhookHandler(
-      { source: BASE.source, dedupKey: BASE.dedupKey, ts: "2026-07-05T04:00:00Z", status: "resolved", url: "" },
+      {
+        source: BASE.source,
+        dedupKey: BASE.dedupKey,
+        ts: "2026-07-05T04:00:00Z",
+        status: "resolved",
+        url: "",
+      },
       ctx,
     )
     expect(resolved.status).toBe(200)
@@ -543,7 +572,9 @@ describe("alertWebhookHandler: incident refs on create", () => {
 
     // The job drains the rest, oldest first: the new incident comes last.
     expect(await assignRefsJobHandler({}, ctx)).toEqual({ assigned: 6, remaining: false })
-    expect(incidents(spy).find((r) => r.dedup_key === "api-p99")!.ref_number).toBe(CREATE_REF_BATCH + 6)
+    expect(incidents(spy).find((r) => r.dedup_key === "api-p99")!.ref_number).toBe(
+      CREATE_REF_BATCH + 6,
+    )
   })
 
   it("created path and rollback both failing: still 503, and the log carries both errors as one-line summaries", async () => {
@@ -581,7 +612,8 @@ describe("alertWebhookHandler: fold refresh and episodes", () => {
     Object.assign(stored, { status: "resolved", resolved_at: R0, resolution_note: "restarted" })
     return { ...made, stored }
   }
-  const episodes = (spy: ReturnType<typeof makeCtx>["spy"]) => spy.rows.get("incident_comments") ?? []
+  const episodes = (spy: ReturnType<typeof makeCtx>["spy"]) =>
+    spy.rows.get("incident_comments") ?? []
 
   it("a repeat refreshes the title and keeps the body when the repeat carries none", async () => {
     const { ctx, spy } = makeCtx()
@@ -606,7 +638,10 @@ describe("alertWebhookHandler: fold refresh and episodes", () => {
   it("an escalation refreshes the title", async () => {
     const { ctx, spy } = makeCtx()
     await alertWebhookHandler({ ...FIRST, severity: "warning" }, ctx)
-    await alertWebhookHandler({ ...FIRST, severity: "critical", title: T1, ts: "2026-07-05T03:20:00Z" }, ctx)
+    await alertWebhookHandler(
+      { ...FIRST, severity: "critical", title: T1, ts: "2026-07-05T03:20:00Z" },
+      ctx,
+    )
     expect(spy.emits.at(-1)!.action).toBe("escalated")
     expect(incidents(spy)[0]!.title).toBe(T1)
   })
@@ -629,7 +664,11 @@ describe("alertWebhookHandler: fold refresh and episodes", () => {
     const others = incidents(spy).filter((r) => r.id !== stored.id)
     expect(others.length).toBe(2)
     for (const r of others) {
-      Object.assign(r, { status: "resolved", resolved_at: R0, resolution_note: `closed ${r.title}` })
+      Object.assign(r, {
+        status: "resolved",
+        resolved_at: R0,
+        resolution_note: `closed ${r.title}`,
+      })
     }
     const before = others.map((r) => ({ ...r }))
 
@@ -768,7 +807,11 @@ describe("alertWebhookHandler: fold refresh and episodes", () => {
     const before = spy.emits.length
     const res = await alertWebhookHandler({ ...FIRST, ts: "2026-07-05T05:00:00Z" }, ctx)
     expect(res.status).toBe(503)
-    expect(spy.errors.some((e) => String((e.data as { err?: unknown })?.err).includes("reopen_conflict"))).toBe(true)
+    expect(
+      spy.errors.some((e) =>
+        String((e.data as { err?: unknown })?.err).includes("reopen_conflict"),
+      ),
+    ).toBe(true)
     expect(episodes(spy).length).toBe(0)
     expect(spy.emits.length).toBe(before)
   })
@@ -780,7 +823,11 @@ describe("alertWebhookHandler: fold refresh and episodes", () => {
     }
     const res = await alertWebhookHandler({ ...FIRST, ts: "2026-07-05T05:00:00Z" }, ctx)
     expect(res.status).toBe(503)
-    expect(spy.errors.some((e) => String((e.data as { err?: unknown })?.err).includes("incident_not_found"))).toBe(true)
+    expect(
+      spy.errors.some((e) =>
+        String((e.data as { err?: unknown })?.err).includes("incident_not_found"),
+      ),
+    ).toBe(true)
     expect(episodes(spy).length).toBe(0)
   })
 
@@ -799,9 +846,15 @@ describe("alertWebhookHandler: fold refresh and episodes", () => {
   it("strips U+0000 from the title and body of a delivery instead of failing it", async () => {
     const { ctx, spy } = makeCtx()
     await alertWebhookHandler(FIRST, ctx)
-    const res = await alertWebhookHandler({ ...FIRST, title: "Disk\u0000 full", body: "a\u0000b", ts: "2026-07-05T03:13:00Z" }, ctx)
+    const res = await alertWebhookHandler(
+      { ...FIRST, title: "Disk\u0000 full", body: "a\u0000b", ts: "2026-07-05T03:13:00Z" },
+      ctx,
+    )
     expect(res.status).toBe(200)
-    expect({ title: incidents(spy)[0]!.title, body: incidents(spy)[0]!.body }).toEqual({ title: "Disk full", body: "ab" })
+    expect({ title: incidents(spy)[0]!.title, body: incidents(spy)[0]!.body }).toEqual({
+      title: "Disk full",
+      body: "ab",
+    })
     // A title made only of NULs is empty once stripped: refused like an empty title.
     expect((await alertWebhookHandler({ ...FIRST, title: "\u0000" }, ctx)).status).toBe(400)
   })
@@ -811,7 +864,9 @@ describe("alertWebhookHandler: fold refresh and episodes", () => {
     const insert = ctx.db.insert.bind(ctx.db)
     ctx.db.insert = (async (entity: string, data: Record<string, unknown>) => {
       if (entity === "incident_comments") {
-        throw new Error(`Failed query: insert into "incident_comments" values ($1, $2)\nparams: ${String(data.body)} - pg: 22021`)
+        throw new Error(
+          `Failed query: insert into "incident_comments" values ($1, $2)\nparams: ${String(data.body)} - pg: 22021`,
+        )
       }
       return insert(entity, data)
     }) as typeof ctx.db.insert

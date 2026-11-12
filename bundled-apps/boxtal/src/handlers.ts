@@ -9,16 +9,60 @@
 // (no `any`): the manifest declares the param JSON-schema, so we type params to
 // the per-tool input shape and let the orchestrator functions do the work.
 
-import { type PrepSetAddressChoiceInput, prepSetAddressChoice, prepSetAddressChoicePreflight as prepSetAddressChoicePreflightImpl } from "./address-choice"
+import {
+  type PrepSetAddressChoiceInput,
+  prepSetAddressChoice,
+  prepSetAddressChoicePreflight as prepSetAddressChoicePreflightImpl,
+} from "./address-choice"
+import {
+  type AttentionRuleUpsertInput,
+  attentionRuleDelete,
+  attentionRulesList,
+  attentionRuleUpsert,
+} from "./attention-store"
 import {
   localProductUpsert,
   type PackUpsertInput,
+  type ProductProfileInput,
   packagesList,
   packDelete,
   packUpsert,
-  type ProductProfileInput,
   productProfileUpsert,
 } from "./catalog"
+import { type ClaimOpenInput, claimOpen, claimOpenPreflight } from "./claims"
+import type { BoxtalToolCtx } from "./ctx"
+import type { CustomsPatch } from "./customs"
+import { orderPrintRecordGet } from "./customs-documents"
+import { type ImportShipmentsInput, importShipments } from "./import"
+import type { CotationInput } from "./lib/boxtal-v1-client"
+import { type ReadySetPackedInput, readySetPacked } from "./packed"
+import {
+  type PrepAddShipmentInput,
+  type PrepDocumentPdfInput,
+  type PrepExcludeInput,
+  type PrepListInput,
+  type PrepOrderPrefillInput,
+  type PrepSelectOfferInput,
+  type PrepSetCategoryInput,
+  type PrepSetStatusInput,
+  type PrepSetValidatedInput,
+  type PrepSyncInput,
+  prepAddShipment,
+  prepDocumentPdf,
+  prepExclude,
+  prepList,
+  prepOrderPrefill,
+  prepRestore,
+  prepSelectOffer,
+  prepSetCategory,
+  prepSetStatus,
+  prepSetValidated,
+  prepSync,
+} from "./prep"
+import { type PrintPackInput, printPack } from "./print-pack"
+import { type PrintPackBatchInput, printPackBatch } from "./print-pack-batch"
+import { printRecordGet } from "./print-record"
+import { storedShortCode, syncAfterProfileWrite } from "./product-attributes"
 import {
   deleteProfile,
   type LinkInput,
@@ -29,96 +73,57 @@ import {
   type VariantRef,
 } from "./profiles"
 import {
-  cancelShipment,
-  cancelShipmentPreflight,
-  createShipment,
-  importLabelDocument,
-  pollCreateShipmentOutput,
-  createShipmentPreflight,
-  type CreateShipmentInput,
-  quote,
-  type SetPackageOverride,
-  shipmentDraftCreate,
-  shipmentDraftSetCustomsPersist,
-  shipmentDraftSetPackagePersist,
-} from "./shipment"
-import {
-  getDocuments,
-  getShipment,
-  listContentCategories,
-  track,
-} from "./reads"
-import { claimOpen, claimOpenPreflight, type ClaimOpenInput } from "./claims"
-import { printPack, type PrintPackInput } from "./print-pack"
-import { printRecordGet } from "./print-record"
-import { orderPrintRecordGet } from "./customs-documents"
-import { readySetPacked, type ReadySetPackedInput } from "./packed"
-import { printPackBatch, type PrintPackBatchInput } from "./print-pack-batch"
-import {
-  attentionRuleDelete,
-  attentionRulesList,
-  attentionRuleUpsert,
-  type AttentionRuleUpsertInput,
-} from "./attention-store"
-import {
-  prepExclude,
-  type PrepExcludeInput,
-  prepList,
-  type PrepListInput,
-  prepRestore,
-  prepSelectOffer,
-  type PrepSelectOfferInput,
-  prepSetCategory,
-  type PrepSetCategoryInput,
-  prepSync,
-  type PrepSyncInput,
-  prepAddShipment,
-  type PrepAddShipmentInput,
-  prepDocumentPdf,
-  type PrepDocumentPdfInput,
-  prepOrderPrefill,
-  type PrepOrderPrefillInput,
-  prepSetStatus,
-  type PrepSetStatusInput,
-  prepSetValidated,
-  type PrepSetValidatedInput,
-} from "./prep"
-import { importShipments, type ImportShipmentsInput } from "./import"
-import { prepSetNote, type PrepSetNoteInput } from "./staff-note"
-import { exceptionsList, queueCounts, readyList, returnsList, stuckList, toPrepareList } from "./queues"
-import { quoteBatch, type QuoteBatchInput } from "./quote-batch"
-import {
-  type CarrierAllowlistInput,
-  settingsCarrierAllowlistGet,
-  settingsCarrierAllowlistSet,
-  type SenderAddressInput,
-  settingsSenderAddressGet,
-  settingsSenderAddressSet,
-  settingsLabelFormatGet,
-  settingsLabelFormatSet,
-  settingsFormGet,
-  settingsFormSet,
-  settingsSenderFormGet,
-  type SettingsFormInput,
-  type ProductCodesInput,
-  settingsProductCodesGet,
-  settingsProductCodesSet,
-  type PackagingPolicyInput,
-  settingsPackagingPolicyGet,
-  settingsPackagingPolicySet,
-} from "./settings"
-import { storedShortCode, syncAfterProfileWrite } from "./product-attributes"
-import { unlinkedOrdersList } from "./unlinked"
-import type { BoxtalToolCtx } from "./ctx"
-import type { CotationInput } from "./lib/boxtal-v1-client"
-import type { CustomsPatch } from "./customs"
-
+  exceptionsList,
+  queueCounts,
+  readyList,
+  returnsList,
+  stuckList,
+  toPrepareList,
+} from "./queues"
+import { type QuoteBatchInput, quoteBatch } from "./quote-batch"
+import { getDocuments, getShipment, listContentCategories, track } from "./reads"
 /** Reads-only handlers take a narrower ctx; widen via the shared tool ctx. */
 import {
   type SettleOrphanInput,
   settleOrphanedCreate,
   settleOrphanedCreatePreflight,
 } from "./reconcile-tracking"
+import {
+  type CarrierAllowlistInput,
+  type PackagingPolicyInput,
+  type ProductCodesInput,
+  type SenderAddressInput,
+  type SettingsFormInput,
+  settingsCarrierAllowlistGet,
+  settingsCarrierAllowlistSet,
+  settingsFormGet,
+  settingsFormSet,
+  settingsLabelFormatGet,
+  settingsLabelFormatSet,
+  settingsPackagingPolicyGet,
+  settingsPackagingPolicySet,
+  settingsProductCodesGet,
+  settingsProductCodesSet,
+  settingsSenderAddressGet,
+  settingsSenderAddressSet,
+  settingsSenderFormGet,
+} from "./settings"
+import {
+  type CreateShipmentInput,
+  cancelShipment,
+  cancelShipmentPreflight,
+  createShipment,
+  createShipmentPreflight,
+  importLabelDocument,
+  pollCreateShipmentOutput,
+  quote,
+  type SetPackageOverride,
+  shipmentDraftCreate,
+  shipmentDraftSetCustomsPersist,
+  shipmentDraftSetPackagePersist,
+} from "./shipment"
+import { type PrepSetNoteInput, prepSetNote } from "./staff-note"
+import { unlinkedOrdersList } from "./unlinked"
 
 type Ctx = BoxtalToolCtx
 
@@ -137,10 +142,8 @@ export const productProfileUpsertHandler = async (params: ProductProfileInput, c
   const product_codes = await syncAfterProfileWrite(ctx, [res.id], changed ? "overwrite" : "fill")
   return { ...res, product_codes }
 }
-export const packUpsertHandler = (params: PackUpsertInput, ctx: Ctx) =>
-  packUpsert(ctx, params)
-export const packDeleteHandler = (params: { id: string }, ctx: Ctx) =>
-  packDelete(ctx, params)
+export const packUpsertHandler = (params: PackUpsertInput, ctx: Ctx) => packUpsert(ctx, params)
+export const packDeleteHandler = (params: { id: string }, ctx: Ctx) => packDelete(ctx, params)
 export const localProductUpsertHandler = (params: { sku: string; label: string }, ctx: Ctx) =>
   localProductUpsert(ctx, params)
 export const productProfileLinkHandler = async (params: LinkInput, ctx: Ctx) => {
@@ -148,7 +151,8 @@ export const productProfileLinkHandler = async (params: LinkInput, ctx: Ctx) => 
   if (!res.ok || res.preview) return res
   return { ...res, product_codes: await syncAfterProfileWrite(ctx, [res.profile_id], "fill") }
 }
-export const productProfileUnlinkHandler = (params: VariantRef, ctx: Ctx) => unlinkVariant(ctx, params)
+export const productProfileUnlinkHandler = (params: VariantRef, ctx: Ctx) =>
+  unlinkVariant(ctx, params)
 export const productProfileMergeHandler = async (params: MergeInput, ctx: Ctx) => {
   const res = await mergeProfiles(ctx, params)
   if (res.preview) return res
@@ -158,8 +162,8 @@ export const productProfileMergeHandler = async (params: MergeInput, ctx: Ctx) =
 }
 export const productProfileDeleteHandler = (params: { profile_id: string }, ctx: Ctx) =>
   deleteProfile(ctx, params)
-export { migrateShippingProfilesJobHandler } from "./profiles"
 export { syncProductCodesJobHandler } from "./product-attributes"
+export { migrateShippingProfilesJobHandler } from "./profiles"
 
 // — quote + draft tools —
 export const quoteHandler = (params: CotationInput, ctx: Ctx) => quote(ctx, params)
@@ -199,8 +203,7 @@ export const create_shipment = (params: CreateShipmentInput, ctx: Ctx) =>
 // fails at staging (agent self-corrects) instead of 422-ing after the human approves it.
 export const create_shipment_preflight = (params: CreateShipmentInput, ctx: Ctx) =>
   createShipmentPreflight(ctx, params)
-export const cancel_shipment = (params: { id: string }, ctx: Ctx) =>
-  cancelShipment(ctx, params)
+export const cancel_shipment = (params: { id: string }, ctx: Ctx) => cancelShipment(ctx, params)
 // STAGE-TIME preflight (manifest `preflight`) — a gated call must not be parked for a human when the
 // data it needs is missing: refuses at staging when Boxtal is not connected or the shipping order does
 // not exist. The already-dispatched check stays in the handler (a genuine staging-to-approval race).
@@ -337,16 +340,16 @@ export const prepDocumentPdfHandler = (params: PrepDocumentPdfInput, ctx: Ctx) =
 export const prepExcludeHandler = (params: PrepExcludeInput, ctx: Ctx) => prepExclude(ctx, params)
 export const prepRestoreHandler = (params: PrepExcludeInput, ctx: Ctx) => prepRestore(ctx, params)
 
+// — connection events —
+export { onConnectionDisconnected, onConnectionEstablished } from "./connection"
 // — webhooks —
 export { boxtalWebhookVerifier } from "./lib/hmac"
 export { documentCreatedHandler, trackingChangedHandler } from "./webhooks"
 
-// — connection events —
-export { onConnectionDisconnected, onConnectionEstablished } from "./connection"
-
 // — webhook repair (re-point subscriptions at the current kernel secret) —
 import { webhooksRepair } from "./connection"
-export const webhooksRepairHandler = (_params: Record<string, never>, ctx: Ctx) => webhooksRepair(ctx)
+export const webhooksRepairHandler = (_params: Record<string, never>, ctx: Ctx) =>
+  webhooksRepair(ctx)
 
 // — scheduled jobs —
 // The convergence guarantee under the webhook stream: webhooks are the fast path,
@@ -356,16 +359,17 @@ export { reconcileTrackingJobHandler } from "./reconcile-tracking"
 // A person settles an orphaned label purchase (stuck_list family create_orphan) after checking the
 // Boxtal dashboard: adopt the order found there, or release the reservation as never bought.
 // Gated for agents (handler name = tool name); a person holding boxtal:shipments:write runs it directly.
-export const settle_orphan_create = (params: SettleOrphanInput, ctx: Ctx) => settleOrphanedCreate(ctx, params)
+export const settle_orphan_create = (params: SettleOrphanInput, ctx: Ctx) =>
+  settleOrphanedCreate(ctx, params)
 export const settle_orphan_create_preflight = (params: SettleOrphanInput, ctx: Ctx) =>
   settleOrphanedCreatePreflight(ctx, params)
-export { backfillQueueFactsJobHandler } from "./queue-facts-backfill"
-// Tells the kernel when Boxtal last saw a parcel change status, so webhook silence
-// on a quiet week is not paged as a dead pipe. See probe-webhook-upstream.ts.
-export { probeWebhookUpstreamJob } from "./probe-webhook-upstream"
 
 // — import kinds (manifest `import.kinds`) —
 export { importLocalProducts, importPacks, importShippingProfiles } from "./import-kind"
+// Tells the kernel when Boxtal last saw a parcel change status, so webhook silence
+// on a quiet week is not paged as a dead pipe. See probe-webhook-upstream.ts.
+export { probeWebhookUpstreamJob } from "./probe-webhook-upstream"
+export { backfillQueueFactsJobHandler } from "./queue-facts-backfill"
 
 // — search —
 export { searchHandler } from "./search"

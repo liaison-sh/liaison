@@ -135,7 +135,11 @@ export interface DmSyncResult {
  *  social app inert on staging while its Response-shaped test mocks stayed green. */
 export type AdapterFetch = (
   url: string,
-  init?: { method?: string; headers?: Record<string, string>; body?: string | Record<string, unknown> },
+  init?: {
+    method?: string
+    headers?: Record<string, string>
+    body?: string | Record<string, unknown>
+  },
 ) => Promise<{
   status: number
   headers?: Record<string, string>
@@ -206,7 +210,11 @@ export interface PlatformAdapter {
   /** Discover new brand-relevant items since `cursor`. */
   discover(ctx: AdapterContext, cursor: string | null): Promise<DiscoverResult>
   /** Poll one watched object for new child activity (comments/replies). */
-  pollObject(ctx: AdapterContext, objectExternalId: string, cursor: string | null): Promise<DiscoverResult>
+  pollObject(
+    ctx: AdapterContext,
+    objectExternalId: string,
+    cursor: string | null,
+  ): Promise<DiscoverResult>
   /**
    * List the connected account's own most recent posts/media (newest first,
    * first page only, at most `limit` per Page/account). Used by the watch
@@ -274,7 +282,11 @@ export interface PlatformAdapter {
    * unknown (the post timed out on our side). Absent = this platform cannot
    * check, which reads as `unknown`.
    */
-  findOwnReply?(target: { externalId: string }, text: string, ctx: AdapterContext): Promise<OwnReplyLookup>
+  findOwnReply?(
+    target: { externalId: string },
+    text: string,
+    ctx: AdapterContext,
+  ): Promise<OwnReplyLookup>
   /** Parse a verified webhook body into normalized findings/messages. */
   parseWebhook?(body: unknown): { findings: NormalizedFinding[]; messages: NormalizedMessage[] }
   /** Verify a webhook signature (HMAC). */

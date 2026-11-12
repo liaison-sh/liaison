@@ -5,8 +5,8 @@
 // the imported numbers. Imports only create; no legal original is recorded
 // (the legacy-originals backfill does that once the import is checked).
 import { describe, expect, it } from "bun:test"
-import { checkDocuments, importDocuments } from "./import-kind"
 import { createMockDb as createSharedMockDb } from "@liaison/test-helpers/mock-db"
+import { checkDocuments, importDocuments } from "./import-kind"
 
 /** The bridge's `where` semantics (a `null` value is IS NULL), uuid ids like prod. */
 const mockDb = () => createSharedMockDb({}, { ids: "uuid", bridgeWhereOperators: true })
@@ -33,7 +33,13 @@ const doc = (over: Record<string, unknown> = {}) => ({
   currency: "EUR",
   counterparty: { name: "Contoso", country: "DE", vatId: "DE123456789" },
   lines: [
-    { description: "Controller", quantity: 2, unitPriceMinor: 50000, taxRateBp: 0, totalMinor: 100000 },
+    {
+      description: "Controller",
+      quantity: 2,
+      unitPriceMinor: 50000,
+      taxRateBp: 0,
+      totalMinor: 100000,
+    },
   ],
   taxTotalMinor: 0,
   grandTotalMinor: 100000,
@@ -46,7 +52,10 @@ const batch = (records: Array<Record<string, unknown>>, label = "erp") => ({
   runId: "run-1",
   kind: "invoicing.document",
   sourceLabel: label,
-  records: records.map((record) => ({ record, dedupValue: `${label}:${String(record.externalRef)}` })),
+  records: records.map((record) => ({
+    record,
+    dedupValue: `${label}:${String(record.externalRef)}`,
+  })),
 })
 
 describe("invoicing.document", () => {
@@ -63,7 +72,15 @@ describe("invoicing.document", () => {
           issueDate: "2025-03-04",
           grandTotalMinor: -100000,
           amountPaidMinor: undefined,
-          lines: [{ description: "Refund", quantity: "1", unitPriceMinor: -100000, taxRateBp: 0, totalMinor: -100000 }],
+          lines: [
+            {
+              description: "Refund",
+              quantity: "1",
+              unitPriceMinor: -100000,
+              taxRateBp: 0,
+              totalMinor: -100000,
+            },
+          ],
           originalExternalRef: "INV-1001",
         }),
       ]),
@@ -79,7 +96,13 @@ describe("invoicing.document", () => {
     const out = await importDocuments(
       batch([
         doc(),
-        doc({ externalRef: "INV-1002", number: "INV-1002", numberInt: 1002, amountPaidMinor: 0, dueDate: "2025-04-04" }),
+        doc({
+          externalRef: "INV-1002",
+          number: "INV-1002",
+          numberInt: 1002,
+          amountPaidMinor: 0,
+          dueDate: "2025-04-04",
+        }),
         doc({
           externalRef: "CN-7",
           type: "credit_note",
@@ -87,7 +110,15 @@ describe("invoicing.document", () => {
           numberInt: 7,
           grandTotalMinor: -100000,
           amountPaidMinor: undefined,
-          lines: [{ description: "Refund", quantity: "1", unitPriceMinor: -100000, taxRateBp: 0, totalMinor: -100000 }],
+          lines: [
+            {
+              description: "Refund",
+              quantity: "1",
+              unitPriceMinor: -100000,
+              taxRateBp: 0,
+              totalMinor: -100000,
+            },
+          ],
           originalExternalRef: "INV-1002",
         }),
       ]),
@@ -97,15 +128,20 @@ describe("invoicing.document", () => {
     const docs = db.__all("documents")
     const byRef = new Map(docs.map((d) => [d.external_ref, d]))
     const paid = byRef.get("erp:INV-1001")!
-    expect([paid.type, paid.status, paid.payment_status, paid.number, paid.number_int, paid.year_of_issue]).toEqual(
-      ["invoice", "paid", "paid", "INV-1001", 1001, 2025],
-    )
-    expect([paid.issuer_profile_id, paid.currency, String(paid.grand_total_minor), paid.pdf_status]).toEqual([
-      issuerIds[0],
-      "EUR",
-      "100000",
-      "ready",
-    ])
+    expect([
+      paid.type,
+      paid.status,
+      paid.payment_status,
+      paid.number,
+      paid.number_int,
+      paid.year_of_issue,
+    ]).toEqual(["invoice", "paid", "paid", "INV-1001", 1001, 2025])
+    expect([
+      paid.issuer_profile_id,
+      paid.currency,
+      String(paid.grand_total_minor),
+      paid.pdf_status,
+    ]).toEqual([issuerIds[0], "EUR", "100000", "ready"])
     const unpaid = byRef.get("erp:INV-1002")!
     expect([unpaid.status, unpaid.payment_status]).toEqual(["issued", "unpaid"])
     const credit = byRef.get("erp:CN-7")!
@@ -197,7 +233,13 @@ describe("invoicing.document", () => {
         doc({
           lines: [
             { description: "ok", quantity: 1, unitPriceMinor: 100, taxRateBp: 0, totalMinor: 100 },
-            { description: "bad", quantity: 1, unitPriceMinor: "12.50", taxRateBp: 0, totalMinor: 100 },
+            {
+              description: "bad",
+              quantity: 1,
+              unitPriceMinor: "12.50",
+              taxRateBp: 0,
+              totalMinor: 100,
+            },
           ],
         }),
       ]),
@@ -227,7 +269,10 @@ describe("invoicing.document", () => {
   it("needs the issuer named when the org has several", async () => {
     const { ctx, issuerIds } = await setup(2)
     const out = await importDocuments(
-      batch([doc(), doc({ externalRef: "INV-2", number: "INV-2", numberInt: 2, issuerProfileId: issuerIds[1] })]),
+      batch([
+        doc(),
+        doc({ externalRef: "INV-2", number: "INV-2", numberInt: 2, issuerProfileId: issuerIds[1] }),
+      ]),
       ctx,
     )
     expect(out.map((r) => r.status)).toEqual(["failed", "created"])
@@ -298,4 +343,3 @@ describe("invoicing.document check (the preview)", () => {
     expect(out[1]?.status).toBe("created")
   })
 })
-

@@ -4,16 +4,16 @@
 // parked (never as a bought label), paired with its row, described by its own card, and decided
 // through the boxtal-scoped feed only.
 
-import { readFileSync } from "node:fs"
 import { describe, expect, it } from "bun:test"
+import { readFileSync } from "node:fs"
 import {
   type ApprovalRow,
-  SHIP_APPROVALS_PATH,
   approvalCardText,
   decideBody,
   decidePath,
   decisionNote,
   pendingShipApprovalsByDraft,
+  SHIP_APPROVALS_PATH,
   shipApprovalForRow,
   shipOutcome,
 } from "./ship-approval"
@@ -23,7 +23,10 @@ const approval = (over: Partial<ApprovalRow> = {}): ApprovalRow => ({
   status: "pending",
   toolName: "boxtal:create_shipment",
   currentPayload: { draft_id: "doc-1", offer_code: "ups" },
-  summary: { title: "Buy label for order #3360 (INV-2026-0042), Alice Example, via ups", lines: ["Carrier: ups, 18.40 EUR TTC"] },
+  summary: {
+    title: "Buy label for order #3360 (INV-2026-0042), Alice Example, via ups",
+    lines: ["Carrier: ups, 18.40 EUR TTC"],
+  },
   requester: { name: "Logistics" },
   createdAt: "2026-10-05T08:00:00.000Z",
   ...over,
@@ -31,8 +34,19 @@ const approval = (over: Partial<ApprovalRow> = {}): ApprovalRow => ({
 
 describe("a Ship click's outcome", () => {
   it("a gated call's blocked envelope is a parked purchase, never a bought label", () => {
-    const res = { blocked: { reason: "gated", approvalRequestId: "req-9", requesterCanApprove: false, summary: {} } }
-    expect(shipOutcome(res)).toEqual({ kind: "pending", approvalRequestId: "req-9", requesterCanApprove: false })
+    const res = {
+      blocked: {
+        reason: "gated",
+        approvalRequestId: "req-9",
+        requesterCanApprove: false,
+        summary: {},
+      },
+    }
+    expect(shipOutcome(res)).toEqual({
+      kind: "pending",
+      approvalRequestId: "req-9",
+      requesterCanApprove: false,
+    })
   })
 
   it("a handler error is an error, and only a plain result is a bought label", () => {
@@ -55,7 +69,11 @@ describe("pending purchases on their rows", () => {
   it("pairs each pending create_shipment with the row whose document it ships", () => {
     const byDraft = pendingShipApprovalsByDraft([
       approval(),
-      approval({ id: "other-tool", toolName: "boxtal:cancel_shipment", currentPayload: { draft_id: "doc-2" } }),
+      approval({
+        id: "other-tool",
+        toolName: "boxtal:cancel_shipment",
+        currentPayload: { draft_id: "doc-2" },
+      }),
       approval({ id: "decided", status: "approved", currentPayload: { draft_id: "doc-3" } }),
     ])
     expect([...byDraft.keys()]).toEqual(["doc-1"])

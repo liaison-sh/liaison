@@ -84,7 +84,11 @@ export interface QueueFactsDraftView {
   recipient?: string | null
   recipient_country?: string | null
   category?: PrepCategory | null
-  lineSummaries?: Array<{ line_kind?: string | null; quantity?: number | null; external_id?: string | null }> | null
+  lineSummaries?: Array<{
+    line_kind?: string | null
+    quantity?: number | null
+    external_id?: string | null
+  }> | null
 }
 
 /** The order facts, as cached on `prep_meta`. */
@@ -115,14 +119,14 @@ export function buildQueueFacts(
     height: p.height,
     weight: p.weight,
   }))
-  const goods = (draft.lineSummaries ?? []).filter(
-    (l) => (l.line_kind ?? "goods") === "goods",
-  )
+  const goods = (draft.lineSummaries ?? []).filter((l) => (l.line_kind ?? "goods") === "goods")
   const items = goods.reduce((sum, l) => sum + (l.quantity ?? 0), 0)
   const weight = parcels.reduce((sum, p) => sum + (p.weight ?? 0), 0)
   const skus = [
     ...new Set(
-      goods.map((l) => (typeof l.external_id === "string" ? l.external_id.trim() : "")).filter((s) => s !== ""),
+      goods
+        .map((l) => (typeof l.external_id === "string" ? l.external_id.trim() : ""))
+        .filter((s) => s !== ""),
     ),
   ]
   return {
@@ -138,7 +142,10 @@ export function buildQueueFacts(
     // "sale" is the DEFAULT a row carries when nobody set a category, and on an inbound return
     // that default is simply wrong: the Returns queue showed "sale" against two repair returns.
     // We do not know the real category there, so say nothing — the Reason column already does.
-    category: opts.kind === "return" && (draft.category ?? "sale") === "sale" ? null : (draft.category ?? null),
+    category:
+      opts.kind === "return" && (draft.category ?? "sale") === "sale"
+        ? null
+        : (draft.category ?? null),
     order_name: order.order_name ?? null,
     order_created_at: order.order_created_at ?? null,
     staff_note: order.staff_note ?? null,
@@ -173,7 +180,8 @@ export function readQueueFacts(raw: unknown, productCodes?: ProductCodeConfig): 
           p != null && typeof p === "object" && typeof (p as QueueParcel).weight === "number",
       )
     : []
-  const num = (x: unknown): number | null => (typeof x === "number" && Number.isFinite(x) ? x : null)
+  const num = (x: unknown): number | null =>
+    typeof x === "number" && Number.isFinite(x) ? x : null
   const str = (x: unknown): string | null => (typeof x === "string" && x !== "" ? x : null)
   const products = str(v.products)
   return {

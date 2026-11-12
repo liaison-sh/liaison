@@ -25,9 +25,9 @@ export interface ConnectProbeResult {
 }
 
 /** Reuses the locked 3-way classifier semantics (scripts/chaos/pennylane-probe.ts). */
-export async function runConnectProbe(
-  client: { list(path: string, q?: { cursor?: string; limit?: number }): Promise<unknown> },
-): Promise<ConnectProbeResult> {
+export async function runConnectProbe(client: {
+  list(path: string, q?: { cursor?: string; limit?: number }): Promise<unknown>
+}): Promise<ConnectProbeResult> {
   try {
     await client.list("/supplier_invoices", { limit: 1 }) // MUST 200
   } catch (e) {
@@ -105,7 +105,8 @@ export async function onConnectionEstablished(
   if (event.data?.appName !== "pennylane") return
   // Remember the instance's public address: the e-invoicing webhook callback is built from it.
   const base = (event.data as ConnectionEventData).kernelPublicBaseUrl
-  if (typeof base === "string" && /^https?:\/\//.test(base)) await setAppConfig(ctx, BASE_URL_KEY, base.replace(/\/$/, ""))
+  if (typeof base === "string" && /^https?:\/\//.test(base))
+    await setAppConfig(ctx, BASE_URL_KEY, base.replace(/\/$/, ""))
   const { client } = await getClient(ctx)
   const probe = await runConnectProbe(client) // throws on supplier-403 → blocked finance class
   await persistConnectionScope(ctx, probe.scope, probe.cash_status)

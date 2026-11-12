@@ -5,7 +5,14 @@
 // opaque Boxtal 400 BAD_REQUEST after approval. validateParty now fails
 // precisely at stage time, and assembleAddress emits the state.
 import { describe, expect, it } from "bun:test"
-import { assembleAddress, boxtalText, normalizeRegion, postalCodeRequired, validateParty, validateRecipientPhone } from "./address"
+import {
+  assembleAddress,
+  boxtalText,
+  normalizeRegion,
+  postalCodeRequired,
+  validateParty,
+  validateRecipientPhone,
+} from "./address"
 
 const base = {
   name: "Stanley Fortson",
@@ -83,7 +90,14 @@ describe("validateRecipientPhone — North American rule for US/CA", () => {
 // characters outside Boxtal's set (accents, typographic quotes, non-Latin letters) were refused by
 // the carrier.
 describe("countries without postal codes", () => {
-  const ae = { ...base, countryIsoCode: "AE", city: "Dubai", postalCode: null, state: null, phone: "+971500000000" }
+  const ae = {
+    ...base,
+    countryIsoCode: "AE",
+    city: "Dubai",
+    postalCode: null,
+    state: null,
+    phone: "+971500000000",
+  }
   it("a UAE recipient without a postal code is complete", () => {
     expect(postalCodeRequired("AE")).toBe(false)
     expect(validateParty(ae)).toEqual([])
@@ -107,13 +121,21 @@ describe("Boxtal-safe text", () => {
     expect(boxtalText("Test  \u0645\u062d\u0645\u062f  Road\u200b\t")).toBe("Test Road")
   })
   it("the create address is sent in Boxtal's character set", () => {
-    const a = assembleAddress({ ...base, state: "TN", name: "Zoë O’Brien", street: "1 Rue de l’Église", city: "Montréal" })
+    const a = assembleAddress({
+      ...base,
+      state: "TN",
+      name: "Zoë O’Brien",
+      street: "1 Rue de l’Église",
+      city: "Montréal",
+    })
     expect(a.contact.firstName).toBe("Zoe")
     expect(a.contact.lastName).toBe("O'Brien")
     expect(a.location.street).toBe("1 Rue de l'Eglise")
     expect(a.location.city).toBe("Montreal")
   })
   it("a name with no Latin letters at all is reported missing, never sent blank", () => {
-    expect(validateParty({ ...base, state: "TN", name: "\u0645\u062d\u0645\u062f" })).toEqual(["name"])
+    expect(validateParty({ ...base, state: "TN", name: "\u0645\u062d\u0645\u062f" })).toEqual([
+      "name",
+    ])
   })
 })

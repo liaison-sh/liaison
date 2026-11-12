@@ -38,7 +38,13 @@ export interface InventoryValuation {
   valuedVariants: number
   variantsScanned: number
   variantsMissingPrice: number
-  topByValue: Array<{ sku: string; title: string; onHand: number; unitPrice: number; value: number }>
+  topByValue: Array<{
+    sku: string
+    title: string
+    onHand: number
+    unitPrice: number
+    value: number
+  }>
 }
 
 /** Pure valuation: sum inventoryQuantity × price across variants. Variants with no
@@ -89,7 +95,10 @@ interface ShopCurrency {
   shop?: { currencyCode?: string }
 }
 
-export async function inventory_value(_params: Record<string, unknown>, ctx: AppContext): Promise<unknown> {
+export async function inventory_value(
+  _params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
   const client = await getShopifyClient(ctx)
   const collected: VariantValuationInput[] = []
   let cursor: string | null = null

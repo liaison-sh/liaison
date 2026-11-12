@@ -7,7 +7,10 @@ describe("documentNumbersById", () => {
   it("resolves ids to numbers in one documents_search read by ids", async () => {
     const calls: Array<{ target: string; args: unknown }> = []
     const ctx = {
-      executeTool: async (target: string, args: string | Record<string, unknown>): Promise<CrossAppEnvelope> => {
+      executeTool: async (
+        target: string,
+        args: string | Record<string, unknown>,
+      ): Promise<CrossAppEnvelope> => {
         calls.push({ target, args })
         return {
           status: "completed",
@@ -19,7 +22,9 @@ describe("documentNumbersById", () => {
       },
     }
     const map = await documentNumbersById(ctx, ["a", "b", "a", null, ""])
-    expect(calls).toEqual([{ target: "invoicing:documents_search", args: { ids: ["a", "b"], limit: 2 } }])
+    expect(calls).toEqual([
+      { target: "invoicing:documents_search", args: { ids: ["a", "b"], limit: 2 } },
+    ])
     expect(map.get("a")).toBe("INV-2026-0022")
     expect(map.has("b")).toBe(false)
   })

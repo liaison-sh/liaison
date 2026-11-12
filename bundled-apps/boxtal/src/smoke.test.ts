@@ -9,7 +9,7 @@
 //   bun test src/smoke.test.ts`
 import { describe, expect, it } from "bun:test"
 import { BoxtalV1Client } from "./lib/boxtal-v1-client"
-import { BoxtalV3Client, type BoxtalFetch } from "./lib/boxtal-v3-client"
+import { type BoxtalFetch, BoxtalV3Client } from "./lib/boxtal-v3-client"
 
 const RUN = process.env.BOXTAL_SMOKE === "1" && !!process.env.BOXTAL_V3_KEY
 const maybe = RUN ? it : it.skip

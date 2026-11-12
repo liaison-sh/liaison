@@ -4,7 +4,7 @@
 // reason the approver needs to see for a gated pause. Mirrors lab/summarizers.test.ts.
 
 import { describe, expect, it } from "bun:test"
-import { summarizePause, summarizeGooglePause } from "./summarizers"
+import { summarizeGooglePause, summarizePause } from "./summarizers"
 
 describe("summarizePause", () => {
   it("single object: title counts 1, lines echo the id + reason + delivery note", () => {
@@ -36,7 +36,11 @@ describe("summarizePause", () => {
 
 describe("summarizeGooglePause", () => {
   it("echoes object_type + object_id + reason + delivery note", () => {
-    const card = summarizeGooglePause({ object_id: "111", object_type: "campaign", reason: "low-roas" })
+    const card = summarizeGooglePause({
+      object_id: "111",
+      object_type: "campaign",
+      reason: "low-roas",
+    })
     expect(card.kind).toBe("google_pause")
     expect(card.title).toBe("Pause 1 Google object(s)")
     expect(card.subtitle).toBe("campaign 111")

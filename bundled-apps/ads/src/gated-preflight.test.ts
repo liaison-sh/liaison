@@ -19,28 +19,27 @@
 import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-
-import * as handlers from "./handlers"
-import {
-  add_users_to_audience,
-  add_users_to_audience_preflight,
-  create_adset_preflight,
-  create_custom_audience,
-  create_custom_audience_preflight,
-  update_budget_preflight,
-  type CrossAppCtx,
-} from "./writes"
+import { google_pause, google_pause_preflight } from "./google-pause"
 import {
   google_add_negative_keywords_preflight,
   google_create_campaign,
   google_create_campaign_preflight,
   google_set_status_preflight,
 } from "./google-writes"
-import { google_pause, google_pause_preflight } from "./google-pause"
-import { pause_preflight } from "./pause"
+import * as handlers from "./handlers"
 import { dealer_profile_upsert_preflight } from "./lab/dealer-profiles"
-import { createMockDb } from "./test-db"
 import type { AppCtx } from "./lib/ctx-types"
+import { pause_preflight } from "./pause"
+import { createMockDb } from "./test-db"
+import {
+  add_users_to_audience,
+  add_users_to_audience_preflight,
+  type CrossAppCtx,
+  create_adset_preflight,
+  create_custom_audience,
+  create_custom_audience_preflight,
+  update_budget_preflight,
+} from "./writes"
 
 const MANIFEST_PATH = join(import.meta.dir, "..", "app.manifest.json")
 const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8")) as {
@@ -480,9 +479,11 @@ describe("google_pause stage-time refusal", () => {
   })
 
   it("params schema documents ad_group_id + ad_id, the pair the refusal asks for", () => {
-    const p = (manifest.tools.google_pause?.params as {
-      properties: Record<string, Record<string, unknown>>
-    }).properties
+    const p = (
+      manifest.tools.google_pause!.params as {
+        properties: Record<string, Record<string, unknown>>
+      }
+    ).properties
     expect(p.ad_group_id?.type).toBe("string")
     expect(p.ad_id?.type).toBe("string")
   })
@@ -523,7 +524,9 @@ describe("google_create_campaign stage-time refusal", () => {
       bidding_strategy: "manualCpc",
     })
     expect(errorOf(result).code).toBe("invalid_params")
-    expect(errorOf(result).message).toMatch(/must be an object with exactly one bidding strategy field/)
+    expect(errorOf(result).message).toMatch(
+      /must be an object with exactly one bidding strategy field/,
+    )
   })
 
   it("the refused create reaches NO Google call, so no orphan campaign budget is created", async () => {
@@ -558,7 +561,7 @@ describe("google_create_campaign stage-time refusal", () => {
 
 describe("ads params schemas enforce the plain presence and static range rules", () => {
   const props = (tool: string): Record<string, Record<string, unknown>> =>
-    (manifest.tools[tool]?.params as { properties: Record<string, Record<string, unknown>> })
+    (manifest.tools[tool]!.params as { properties: Record<string, Record<string, unknown>> })
       .properties
 
   it("google_create_ad pins the RSA minimums: 3 headlines, 2 descriptions, 1 final url", () => {

@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import manifest from "../../app.manifest.json"
+import type { DocumentLine, DocumentSummary } from "./DocumentDetail"
 import * as uiIndex from "./index"
 import {
   isNewDocumentEntityId,
@@ -21,7 +22,6 @@ import {
   mapDocumentToDraft,
   parseDocTypeFromEntityId,
 } from "./index"
-import type { DocumentLine, DocumentSummary } from "./DocumentDetail"
 
 const source = readFileSync(join(import.meta.dir, "index.tsx"), "utf-8")
 
@@ -150,7 +150,9 @@ describe("loadEditorDocument (real @liaison/host documents_get, no jsdom)", () =
     }
     // biome-ignore lint/suspicious/noExplicitAny: global host slot the @liaison/host shim reads.
     ;(globalThis as any).__liaisonHost = host
-    await expect(loadEditorDocument("doc-1")).rejects.toThrow("Document not found or access denied.")
+    await expect(loadEditorDocument("doc-1")).rejects.toThrow(
+      "Document not found or access denied.",
+    )
   })
 })
 
@@ -242,9 +244,13 @@ describe("e-invoicing tabs and fields", () => {
   })
 
   it("the identity and readiness tabs are declared once, as tabs, and exported", () => {
-    const tabTypes = (manifest as unknown as {
-      views: { tabTypes: Record<string, { component: string; urlPattern: string; singleton: boolean }> }
-    }).views.tabTypes
+    const tabTypes = (
+      manifest as unknown as {
+        views: {
+          tabTypes: Record<string, { component: string; urlPattern: string; singleton: boolean }>
+        }
+      }
+    ).views.tabTypes
     expect(tabTypes.identity).toMatchObject({
       component: "InvoicingIdentity",
       urlPattern: "/invoicing/identity/:contactId",

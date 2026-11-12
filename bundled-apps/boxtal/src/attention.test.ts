@@ -4,7 +4,14 @@
 // cast case below is expressed entirely as a rule row, with no branch anywhere in the code that
 // knows about aluminium, the USA, or the Tessera 2.
 import { describe, expect, it } from "bun:test"
-import { conditionMatches, evaluateAttention, mergeTemplateNeed, ruleMatches, type AttentionFacts, type AttentionRule } from "./attention"
+import {
+  type AttentionFacts,
+  type AttentionRule,
+  conditionMatches,
+  evaluateAttention,
+  mergeTemplateNeed,
+  ruleMatches,
+} from "./attention"
 
 const US_TESSERA2: AttentionFacts = {
   destination: "US",
@@ -25,7 +32,10 @@ const SMELT_AND_CAST: AttentionRule = {
     { field: "products", op: "contains", value: "ET2" },
   ],
   documents: [
-    { name: "Smelt and cast declaration", note: "Country of smelt and of cast for the aluminium body" },
+    {
+      name: "Smelt and cast declaration",
+      note: "Country of smelt and of cast for the aluminium body",
+    },
     { name: "Steel and aluminium derivative worksheet", note: "FedEx clearance form" },
   ],
   knowledge_ref: "kb:customs-us-aluminium",
@@ -90,10 +100,16 @@ describe("a rule that cannot be evaluated stays inert", () => {
       }),
     ).not.toThrow()
     expect(
-      ruleMatches(US_TESSERA2, { name: "bad", conditions: [{ field: "colour" as never, op: "eq", value: "red" }] }),
+      ruleMatches(US_TESSERA2, {
+        name: "bad",
+        conditions: [{ field: "colour" as never, op: "eq", value: "red" }],
+      }),
     ).toBe(false)
     expect(
-      ruleMatches(US_TESSERA2, { name: "bad", conditions: [{ field: "destination", op: "matches" as never, value: "US" }] }),
+      ruleMatches(US_TESSERA2, {
+        name: "bad",
+        conditions: [{ field: "destination", op: "matches" as never, value: "US" }],
+      }),
     ).toBe(false)
   })
 
@@ -107,22 +123,36 @@ describe("a rule that cannot be evaluated stays inert", () => {
   })
 
   it("does not match on a missing fact", () => {
-    expect(conditionMatches({ ...US_TESSERA2, weight: null }, { field: "weight", op: "gte", value: 1 })).toBe(false)
+    expect(
+      conditionMatches({ ...US_TESSERA2, weight: null }, { field: "weight", op: "gte", value: 1 }),
+    ).toBe(false)
   })
 })
 
 describe("the condition language", () => {
   it("compares strings case-insensitively and numbers numerically", () => {
-    expect(conditionMatches(US_TESSERA2, { field: "destination", op: "eq", value: "us" })).toBe(true)
-    expect(conditionMatches(US_TESSERA2, { field: "carrier", op: "starts_with", value: "fedx" })).toBe(true)
-    expect(conditionMatches(US_TESSERA2, { field: "declared_value", op: "gte", value: 899 })).toBe(true)
-    expect(conditionMatches(US_TESSERA2, { field: "declared_value", op: "lte", value: 898 })).toBe(false)
+    expect(conditionMatches(US_TESSERA2, { field: "destination", op: "eq", value: "us" })).toBe(
+      true,
+    )
+    expect(
+      conditionMatches(US_TESSERA2, { field: "carrier", op: "starts_with", value: "fedx" }),
+    ).toBe(true)
+    expect(conditionMatches(US_TESSERA2, { field: "declared_value", op: "gte", value: 899 })).toBe(
+      true,
+    )
+    expect(conditionMatches(US_TESSERA2, { field: "declared_value", op: "lte", value: 898 })).toBe(
+      false,
+    )
     expect(conditionMatches(US_TESSERA2, { field: "items", op: "gte", value: "2" })).toBe(true)
   })
 
   it("requires a list for `in`", () => {
-    expect(conditionMatches(US_TESSERA2, { field: "destination", op: "in", value: "US" })).toBe(false)
-    expect(conditionMatches(US_TESSERA2, { field: "destination", op: "in", value: ["FR", "US"] })).toBe(true)
+    expect(conditionMatches(US_TESSERA2, { field: "destination", op: "in", value: "US" })).toBe(
+      false,
+    )
+    expect(
+      conditionMatches(US_TESSERA2, { field: "destination", op: "in", value: ["FR", "US"] }),
+    ).toBe(true)
   })
 })
 
@@ -149,13 +179,16 @@ describe("mergeTemplateNeed", () => {
         { name: "TSCA certificate", note: null, template_id: "t-tsca" },
       ],
       knowledge_refs: ["kb-1"],
-      summary: "Needs: Smelt and cast declaration, TSCA certificate (Aluminium: smelt and cast; Plate to the US)",
+      summary:
+        "Needs: Smelt and cast declaration, TSCA certificate (Aluminium: smelt and cast; Plate to the US)",
     })
   })
 
   it("no need leaves the mark as it was; a need alone makes one", () => {
     expect(mergeTemplateNeed(mark, undefined)).toBe(mark)
     expect(mergeTemplateNeed(null, undefined)).toBeNull()
-    expect(mergeTemplateNeed(null, { rules: ["R"], templates: [{ id: "t", name: "Doc" }] })?.summary).toBe("Needs: Doc (R)")
+    expect(
+      mergeTemplateNeed(null, { rules: ["R"], templates: [{ id: "t", name: "Doc" }] })?.summary,
+    ).toBe("Needs: Doc (R)")
   })
 })

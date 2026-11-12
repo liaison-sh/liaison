@@ -3,16 +3,24 @@
 // Pure-function regressions: CSV cells, currency exponents, manifest gating.
 
 import { describe, expect, test } from "bun:test"
+import manifest from "../app.manifest.json"
 import { csvCell } from "./csv"
 import { currencyExponent, formatMoneyMinor, majorDecimalToMinor } from "./money"
-import manifest from "../app.manifest.json"
-import { toCsv, type DashboardColumn } from "./ui/dashboards/columns"
+import { type DashboardColumn, toCsv } from "./ui/dashboards/columns"
 
-type Tool = { gated?: boolean; params?: { additionalProperties?: unknown; properties?: Record<string, unknown> } }
+type Tool = {
+  gated?: boolean
+  params?: { additionalProperties?: unknown; properties?: Record<string, unknown> }
+}
 const tools = (manifest as unknown as { tools: Record<string, Tool> }).tools
 
 describe("gated configuration tools", () => {
-  for (const t of ["settings_issuer_profile_create", "settings_issuer_profile_update", "settings_issuer_profile_delete", "documents_update"]) {
+  for (const t of [
+    "settings_issuer_profile_create",
+    "settings_issuer_profile_update",
+    "settings_issuer_profile_delete",
+    "documents_update",
+  ]) {
     test(`${t} is gated`, () => expect(tools[t]?.gated).toBe(true))
   }
   test("issuer profile write params are an explicit allowlist", () => {
@@ -35,11 +43,17 @@ describe("issuer profile bank and control fields", () => {
   test("no manifest role carries it, so the auto-maintained Full Member tier never does", () => {
     // Full Member is extended at registration with the app's member (or lowest non-admin) role.
     for (const role of Object.values(m.roles ?? {})) {
-      expect(role.scopes.some((s) => s === "invoicing:issuer:admin" || s === "invoicing:issuer")).toBe(false)
+      expect(
+        role.scopes.some((s) => s === "invoicing:issuer:admin" || s === "invoicing:issuer"),
+      ).toBe(false)
     }
   })
   test("each issuer profile write tool checks it at stage time", () => {
-    for (const t of ["settings_issuer_profile_create", "settings_issuer_profile_update", "settings_issuer_profile_delete"]) {
+    for (const t of [
+      "settings_issuer_profile_create",
+      "settings_issuer_profile_update",
+      "settings_issuer_profile_delete",
+    ]) {
       expect(m.tools[t]?.preflight).toBeTruthy()
     }
   })

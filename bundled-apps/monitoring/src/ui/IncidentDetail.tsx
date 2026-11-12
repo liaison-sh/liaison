@@ -9,9 +9,9 @@
 // status; ack/resolve actions with an optional resolution note. The route id
 // is a UUID or an `INC-<n>` ref; once the row is fetched every call acts on
 // its UUID.
-import { tr } from "./i18n"
-import { type Component, createMemo, createResource, createSignal, For, Show } from "solid-js"
+
 import { app } from "@liaison/host"
+import { type Component, createMemo, createResource, createSignal, For, Show } from "solid-js"
 import type { CommentView } from "../comments"
 import {
   activityAuthorLabel,
@@ -22,6 +22,7 @@ import {
   severityMeta,
   statusMeta,
 } from "./format"
+import { tr } from "./i18n"
 import { Badge, Button, Card, cx, EmptyState, inputClass, PageHeader, SectionLabel } from "./kit"
 import { loadMemberNames } from "./members"
 import { RefTag } from "./ref-tag"
@@ -53,7 +54,9 @@ export interface IncidentFull {
 
 const Meta: Component<{ label: string; children: unknown }> = (props) => (
   <div class="flex flex-col gap-1">
-    <span class="text-[10.5px] font-medium uppercase tracking-wider text-text-tertiary">{props.label}</span>
+    <span class="text-[10.5px] font-medium uppercase tracking-wider text-text-tertiary">
+      {props.label}
+    </span>
     <span class="text-[12.5px] text-text">{props.children as never}</span>
   </div>
 )
@@ -62,13 +65,20 @@ const Meta: Component<{ label: string; children: unknown }> = (props) => (
 const EntryHeader: Component<{ label: unknown; at: string | null }> = (props) => (
   <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
     {props.label as never}
-    <span class="font-mono text-[11.5px] tabular-nums text-text-tertiary">{formatStamp(props.at)}</span>
+    <span class="font-mono text-[11.5px] tabular-nums text-text-tertiary">
+      {formatStamp(props.at)}
+    </span>
   </div>
 )
 
 /** A comment: author, time, text (rendered as a text node, never as HTML). */
-const CommentEntry: Component<{ entry: CommentView; names: Map<string, string> | undefined }> = (props) => (
-  <Card class="flex min-w-0 flex-col gap-1.5 px-4 py-3" testid={`monitoring-activity-comment-${props.entry.id}`}>
+const CommentEntry: Component<{ entry: CommentView; names: Map<string, string> | undefined }> = (
+  props,
+) => (
+  <Card
+    class="flex min-w-0 flex-col gap-1.5 px-4 py-3"
+    testid={`monitoring-activity-comment-${props.entry.id}`}
+  >
     <EntryHeader
       label={
         <span class="min-w-0 break-words text-[12px] font-medium text-text">
@@ -77,7 +87,9 @@ const CommentEntry: Component<{ entry: CommentView; names: Map<string, string> |
       }
       at={props.entry.createdAt}
     />
-    <div class="whitespace-pre-wrap break-words text-[12.5px] text-text-secondary">{props.entry.body}</div>
+    <div class="whitespace-pre-wrap break-words text-[12.5px] text-text-secondary">
+      {props.entry.body}
+    </div>
   </Card>
 )
 
@@ -98,7 +110,9 @@ const EpisodeEntry: Component<{ entry: CommentView }> = (props) => (
     <div class="break-words text-[12.5px] text-text">{props.entry.episodeTitle}</div>
     <Show when={props.entry.body}>
       <details open={!isLongText(props.entry.body)} class="min-w-0">
-        <summary class="cursor-pointer text-[11.5px] text-text-secondary">{tr("Alert detail")}</summary>
+        <summary class="cursor-pointer text-[11.5px] text-text-secondary">
+          {tr("Alert detail")}
+        </summary>
         <pre class="mt-1.5 max-h-72 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11.5px] leading-relaxed text-text-secondary">
           {props.entry.body}
         </pre>
@@ -106,13 +120,16 @@ const EpisodeEntry: Component<{ entry: CommentView }> = (props) => (
     </Show>
     <Show when={props.entry.episodeResolutionNote}>
       <div class="break-words text-[12px] text-text-secondary">
-        <span class="text-text-tertiary">{tr("Resolution note")}</span> {props.entry.episodeResolutionNote}
+        <span class="text-text-tertiary">{tr("Resolution note")}</span>{" "}
+        {props.entry.episodeResolutionNote}
       </div>
     </Show>
     <Show when={props.entry.episodeResolvedAt}>
       <div class="text-[12px] text-text-secondary">
         <span class="text-text-tertiary">{tr("Resolved")}</span>{" "}
-        <span class="font-mono text-[11.5px] tabular-nums">{formatStamp(props.entry.episodeResolvedAt)}</span>
+        <span class="font-mono text-[11.5px] tabular-nums">
+          {formatStamp(props.entry.episodeResolvedAt)}
+        </span>
       </div>
     </Show>
   </Card>
@@ -147,8 +164,9 @@ export const IncidentDetailPanel: Component<{ entityId?: string; id?: string }> 
   // Comment authors are user ids: load display names when there are any, and
   // again when a refetch brings an author the last load did not cover.
   const authorKey = () =>
-    [...new Set((incident()?.comments ?? []).flatMap((c) => (c.authorId ? [c.authorId] : [])))].sort().join(",") ||
-    null
+    [...new Set((incident()?.comments ?? []).flatMap((c) => (c.authorId ? [c.authorId] : [])))]
+      .sort()
+      .join(",") || null
   const [names] = createResource(authorKey, loadMemberNames)
 
   const triage = async (tool: "incidents_ack" | "incidents_resolve") => {
@@ -350,20 +368,27 @@ export const IncidentDetailPanel: Component<{ entityId?: string; id?: string }> 
                   <Show when={inc().resolutionNote}>
                     <section class="flex flex-col gap-2">
                       <SectionLabel>{tr("Resolution note")}</SectionLabel>
-                      <Card class="px-4 py-3 text-[12.5px] text-text-secondary">{inc().resolutionNote}</Card>
+                      <Card class="px-4 py-3 text-[12.5px] text-text-secondary">
+                        {inc().resolutionNote}
+                      </Card>
                     </section>
                   </Show>
 
                   <section class="flex flex-col gap-2" data-testid="monitoring-activity">
                     <SectionLabel>{tr("Activity")}</SectionLabel>
                     <Show when={inc().commentsTruncated}>
-                      <span class="text-[11.5px] text-text-tertiary" data-testid="monitoring-activity-truncated">
+                      <span
+                        class="text-[11.5px] text-text-tertiary"
+                        data-testid="monitoring-activity-truncated"
+                      >
                         {tr("Older activity not shown")}
                       </span>
                     </Show>
                     <Show
                       when={(inc().comments ?? []).length > 0}
-                      fallback={<span class="text-[12px] text-text-tertiary">{tr("No activity yet.")}</span>}
+                      fallback={
+                        <span class="text-[12px] text-text-tertiary">{tr("No activity yet.")}</span>
+                      }
                     >
                       <div class="flex flex-col gap-2">
                         <For each={inc().comments ?? []}>

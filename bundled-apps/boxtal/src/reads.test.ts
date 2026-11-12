@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { getDocuments, getShipment, latestEventTimestamp, listContentCategories, track } from "./reads"
+import {
+  getDocuments,
+  getShipment,
+  latestEventTimestamp,
+  listContentCategories,
+  track,
+} from "./reads"
 import { cancelShipment, cancelShipmentPreflight } from "./shipment"
 import { createMockDb } from "./test-db"
 
@@ -44,31 +50,86 @@ function makeCtx(opts?: {
   const fetch = async (url: string, o?: { method?: string }) => {
     calls.push({ url, method: o?.method ?? "GET" })
     if (url.includes("/iam/account-app/token")) {
-      return { status: 200, headers: {}, body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }) }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }),
+      }
     }
     if (url.includes("/content-category")) {
-      return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: opts?.categories ?? [{ id: "content:v1:10120", label: "Electronics" }] }) }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({
+          status: 200,
+          timestamp: "t",
+          content: opts?.categories ?? [{ id: "content:v1:10120", label: "Electronics" }],
+        }),
+      }
     }
     if (url.includes("/tracking")) {
-      if (opts?.trackError) return { status: opts.trackError.status, headers: {}, body: opts.trackError.body }
+      if (opts?.trackError)
+        return { status: opts.trackError.status, headers: {}, body: opts.trackError.body }
       const t = opts?.tracking ?? { status: "IN_TRANSIT", number: "TRK1" }
-      return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: [{ status: t.status, trackingNumber: t.number, trackingDateTime: "2026-06-02T00:00:00Z", ...(t.pickupDeadline ? { pickupDeadline: t.pickupDeadline } : {}), history: [] }] }) }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({
+          status: 200,
+          timestamp: "t",
+          content: [
+            {
+              status: t.status,
+              trackingNumber: t.number,
+              trackingDateTime: "2026-06-02T00:00:00Z",
+              ...(t.pickupDeadline ? { pickupDeadline: t.pickupDeadline } : {}),
+              history: [],
+            },
+          ],
+        }),
+      }
     }
     if (url.includes("/shipping-document")) {
-      if (opts?.docError) return { status: opts.docError.status, headers: {}, body: opts.docError.body }
-      return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: opts?.documents ?? [] }) }
+      if (opts?.docError)
+        return { status: opts.docError.status, headers: {}, body: opts.docError.body }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ status: 200, timestamp: "t", content: opts?.documents ?? [] }),
+      }
     }
     if (url.includes("/shipping-order")) {
-      if (opts?.orderError) return { status: opts.orderError.status, headers: {}, body: opts.orderError.body }
-      return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: { id: "ord-1", status: opts?.order?.status ?? "PENDING" } }) }
+      if (opts?.orderError)
+        return { status: opts.orderError.status, headers: {}, body: opts.orderError.body }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({
+          status: 200,
+          timestamp: "t",
+          content: { id: "ord-1", status: opts?.order?.status ?? "PENDING" },
+        }),
+      }
     }
-    return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: {} }) }
+    return {
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ status: 200, timestamp: "t", content: {} }),
+    }
   }
   const ctx = {
     orgId: "org-1",
     db,
     fetch,
-    connections: { boxtal: { getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }), getToken: async () => { throw new Error("no") }, getAccounts: async () => [] } },
+    connections: {
+      boxtal: {
+        getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }),
+        getToken: async () => {
+          throw new Error("no")
+        },
+        getAccounts: async () => [],
+      },
+    },
     config: { get: async () => "whsecret", has: async () => true },
     logger: { info() {}, warn() {}, error() {}, debug() {} },
   } as any
@@ -114,7 +175,11 @@ describe("free reads", () => {
     // authoritative carrier-reported collection deadline so the agent decides which relay
     // parcels are about to expire from THIS field, not a fabricated date.
     const { ctx } = makeCtx({
-      tracking: { status: "REACHED_DELIVERY_PICKUP_POINT", number: "MR-PU-1", pickupDeadline: "2026-06-25" },
+      tracking: {
+        status: "REACHED_DELIVERY_PICKUP_POINT",
+        number: "MR-PU-1",
+        pickupDeadline: "2026-06-25",
+      },
     })
     const res = await track(ctx, { id: "ord-1" })
     expect(res.tracking_status).toBe("REACHED_DELIVERY_PICKUP_POINT")
@@ -122,7 +187,10 @@ describe("free reads", () => {
   })
 
   it("get_shipment refreshes order + tracking and updates the link snapshot", async () => {
-    const { ctx, db } = makeCtx({ order: { status: "CONFIRMED" }, tracking: { status: "DELIVERED", number: "TRK9" } })
+    const { ctx, db } = makeCtx({
+      order: { status: "CONFIRMED" },
+      tracking: { status: "DELIVERED", number: "TRK9" },
+    })
     const res = await getShipment(ctx, { id: "ord-1" })
     expect(res.order_status).toBe("CONFIRMED")
     expect(res.tracking_status).toBe("DELIVERED")
@@ -173,7 +241,9 @@ describe("free reads", () => {
   })
 
   it("get_documents returns descriptors (never a stored URL) when present", async () => {
-    const { ctx } = makeCtx({ documents: [{ url: "https://signed/label.pdf", type: "LABEL", format: "PDF_A4" }] })
+    const { ctx } = makeCtx({
+      documents: [{ url: "https://signed/label.pdf", type: "LABEL", format: "PDF_A4" }],
+    })
     const res = await getDocuments(ctx, { id: "ord-1" })
     expect(res.documents).toHaveLength(1)
     // the live signed url IS returned for an immediate download, but is never persisted
@@ -182,7 +252,10 @@ describe("free reads", () => {
   })
 
   it("get_documents on an unknown id → empty + generating:false", async () => {
-    const { ctx } = makeCtx({ documents: [], seedShipment: { id: "s1", boxtal_order_id: "ord-1", order_status: "PENDING", documents: [] } })
+    const { ctx } = makeCtx({
+      documents: [],
+      seedShipment: { id: "s1", boxtal_order_id: "ord-1", order_status: "PENDING", documents: [] },
+    })
     const res = await getDocuments(ctx, { id: "ghost" })
     expect(res.documents).toHaveLength(0)
     expect(res.generating).toBe(false)
@@ -194,7 +267,9 @@ describe("free reads", () => {
   // was missed AND Boxtal was queried with the wrong id. It must resolve the local id to
   // the row's boxtal_order_id and fetch the real label.
   it("get_documents resolves the LOCAL row id (ready_list/UI id), not just the Boxtal order id", async () => {
-    const { ctx } = makeCtx({ documents: [{ url: "https://signed/label.pdf", type: "LABEL", format: "PDF_A4" }] })
+    const { ctx } = makeCtx({
+      documents: [{ url: "https://signed/label.pdf", type: "LABEL", format: "PDF_A4" }],
+    })
     const res = await getDocuments(ctx, { id: "s1" }) // s1 = local row id; ord-1 = boxtal order id
     expect(res.documents).toHaveLength(1)
     expect(res.documents[0]).toMatchObject({ type: "LABEL" })
@@ -228,7 +303,10 @@ describe("free reads", () => {
     const { ctx } = makeCtx({
       trackError: {
         status: 422,
-        body: JSON.stringify({ status: 422, errors: [{ code: "NoPackageTrackingFoundException" }] }),
+        body: JSON.stringify({
+          status: 422,
+          errors: [{ code: "NoPackageTrackingFoundException" }],
+        }),
       },
     })
     const res = await track(ctx, { id: "ord-1" })
@@ -244,7 +322,10 @@ describe("free reads", () => {
   })
 
   it("track and get_shipment still answer when the snapshot write-back fails (best effort, readOnly)", async () => {
-    const { ctx, db } = makeCtx({ order: { status: "SHIPPED" }, tracking: { status: "IN_TRANSIT", number: "TRK1" } })
+    const { ctx, db } = makeCtx({
+      order: { status: "SHIPPED" },
+      tracking: { status: "IN_TRANSIT", number: "TRK1" },
+    })
     // A run that may not write refuses every db write: the read must answer anyway.
     db.update = async () => {
       throw new Error("E_READ_ONLY_RUN_BLOCKED: ctx.db.update would write")
@@ -266,7 +347,10 @@ describe("free reads", () => {
 
 describe("cancel_shipment (gated)", () => {
   it("cancels a not-yet-dispatched shipment and flips the row to CANCELLED", async () => {
-    const { ctx, db, calls } = makeCtx({ order: { status: "PENDING" }, tracking: { status: "ANNOUNCED", number: "TRK1" } })
+    const { ctx, db, calls } = makeCtx({
+      order: { status: "PENDING" },
+      tracking: { status: "ANNOUNCED", number: "TRK1" },
+    })
     const res = await cancelShipment(ctx, { id: "ord-1" })
     expect(res.order_status).toBe("CANCELLED")
     expect(calls.some((c) => c.method === "DELETE" && c.url.includes("/shipping-order"))).toBe(true)
@@ -275,7 +359,10 @@ describe("cancel_shipment (gated)", () => {
   })
 
   it("refuses to cancel a dispatched/in-transit shipment", async () => {
-    const { ctx, calls } = makeCtx({ order: { status: "CONFIRMED" }, tracking: { status: "IN_TRANSIT", number: "TRK1" } })
+    const { ctx, calls } = makeCtx({
+      order: { status: "CONFIRMED" },
+      tracking: { status: "IN_TRANSIT", number: "TRK1" },
+    })
     const res = await cancelShipment(ctx, { id: "ord-1" })
     expect(res.error?.code).toBe("already_dispatched")
     expect(calls.some((c) => c.method === "DELETE")).toBe(false)
@@ -284,7 +371,13 @@ describe("cancel_shipment (gated)", () => {
   it("an already-CANCELLED shipment is an idempotent no-op success", async () => {
     const { ctx } = makeCtx({
       order: { status: "CANCELLED" },
-      seedShipment: { id: "s1", boxtal_order_id: "ord-1", order_status: "CANCELLED", tracking_status: null, documents: [] },
+      seedShipment: {
+        id: "s1",
+        boxtal_order_id: "ord-1",
+        order_status: "CANCELLED",
+        tracking_status: null,
+        documents: [],
+      },
     })
     const res = await cancelShipment(ctx, { id: "ord-1" })
     expect(res.order_status).toBe("CANCELLED")
@@ -299,14 +392,19 @@ describe("cancel_shipment (gated)", () => {
 // check deliberately stays in the handler: a carrier can dispatch between staging and approval.
 describe("cancel_shipment stage-time preflight", () => {
   it("refuses an id Boxtal does not know, without issuing a cancel", async () => {
-    const { ctx, calls } = makeCtx({ orderError: { status: 404, body: '{"status":404,"errors":[]}' } })
+    const { ctx, calls } = makeCtx({
+      orderError: { status: 404, body: '{"status":404,"errors":[]}' },
+    })
     const res = await cancelShipmentPreflight(ctx, { id: "ord-unknown" })
     expect(res).toMatchObject({ error: { code: "shipment_not_found" } })
     expect(calls.some((c) => c.method === "DELETE")).toBe(false)
   })
 
   it("lets a live, not-yet-dispatched shipment through to the gate and cancels nothing itself", async () => {
-    const { ctx, calls } = makeCtx({ order: { status: "PENDING" }, tracking: { status: "ANNOUNCED" } })
+    const { ctx, calls } = makeCtx({
+      order: { status: "PENDING" },
+      tracking: { status: "ANNOUNCED" },
+    })
     const res = await cancelShipmentPreflight(ctx, { id: "ord-1" })
     expect(res).toEqual({ ok: true })
     expect(calls.some((c) => c.method === "DELETE")).toBe(false)
@@ -340,7 +438,9 @@ describe("latestEventTimestamp", () => {
 
   it("orders zoned times by instant and skips undated events", () => {
     expect(
-      latestEventTimestamp(of([ev("A", "2026-07-24T10:00:00+02:00"), ev("B", null), ev("C", "2026-07-24T09:00:00Z")])),
+      latestEventTimestamp(
+        of([ev("A", "2026-07-24T10:00:00+02:00"), ev("B", null), ev("C", "2026-07-24T09:00:00Z")]),
+      ),
     ).toBe("2026-07-24T09:00:00Z")
     expect(latestEventTimestamp(of([ev("A", null)]))).toBeNull()
   })

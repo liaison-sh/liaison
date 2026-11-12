@@ -24,7 +24,10 @@ const MANIFEST = JSON.parse(
       readOnly?: boolean
       requiredScopes?: string[]
       writesToTable?: string
-      params?: { properties?: Record<string, { type?: string; description?: string }>; required?: string[] }
+      params?: {
+        properties?: Record<string, { type?: string; description?: string }>
+        required?: string[]
+      }
     }
   >
   agentInstructions?: string
@@ -93,7 +96,10 @@ describe("monitoring app.manifest.json", () => {
     expect(field).toMatchObject({ key: "monitoringUrl", type: "url", source: "config" })
     expect(m.configKeys.some((k) => k.key === "monitoringUrl" && k.type === "url")).toBe(true)
     expect(blocks.find((b) => b.block === "custom")?.component).toBe("MonitoringSources")
-    expect(blocks.find((b) => b.block === "connections")).toEqual({ block: "connections", names: ["alert-source"] })
+    expect(blocks.find((b) => b.block === "connections")).toEqual({
+      block: "connections",
+      names: ["alert-source"],
+    })
     const barrel = readFileSync(join(import.meta.dir, "ui", "index.tsx"), "utf8")
     expect(barrel).toContain("MonitoringSources")
     const sidebar = readFileSync(join(import.meta.dir, "ui", "sidebar.tsx"), "utf8")
@@ -104,7 +110,10 @@ describe("monitoring app.manifest.json", () => {
   // that gates on the incidents scopes (no monitoring scope grants monitoring:incident_comments:*).
   it("declares the sequences capability, the ref column with its unique, the comments table and the assign-refs job", () => {
     expect(MANIFEST.capabilities).toContain("sequences.allocate")
-    expect(MANIFEST.schema?.incidents?.fields?.ref_number).toEqual({ type: "integer", required: false })
+    expect(MANIFEST.schema?.incidents?.fields?.ref_number).toEqual({
+      type: "integer",
+      required: false,
+    })
     expect(MANIFEST.schema?.incidents?.constraints?.unique).toContainEqual(["ref_number"])
     expect(MANIFEST.schema?.incident_comments?.rlsScope).toBe("incidents")
     // No held transaction (no `atomic`): numberers take turns through the store lease (refs.ts).
@@ -120,8 +129,17 @@ describe("monitoring app.manifest.json", () => {
   // GDPR: an erased user's comments keep their text and lose the author (userRef + anonymize).
   it("declares the comment author as an erasable user ref, the kind enum and the incident index", () => {
     const fields = MANIFEST.schema?.incident_comments?.fields ?? {}
-    expect(fields.author_id).toEqual({ type: "uuid", required: false, userRef: true, onErase: "anonymize" })
-    expect(fields.kind).toEqual({ type: "string", default: "comment", enum: ["comment", "episode"] })
+    expect(fields.author_id).toEqual({
+      type: "uuid",
+      required: false,
+      userRef: true,
+      onErase: "anonymize",
+    })
+    expect(fields.kind).toEqual({
+      type: "string",
+      default: "comment",
+      enum: ["comment", "episode"],
+    })
     expect(fields.incident_id).toEqual({
       type: "uuid",
       references: { table: "incidents", column: "id", onDelete: "cascade" },
@@ -144,7 +162,12 @@ describe("monitoring app.manifest.json", () => {
   it("names refs in the tool descriptions and the agent guidance", () => {
     const t = MANIFEST.tools ?? {}
     expect(t.incidents_list?.description).toMatch(/\bref\b/)
-    for (const name of ["incidents_get", "incidents_ack", "incidents_resolve", "incidents_comment"]) {
+    for (const name of [
+      "incidents_get",
+      "incidents_ack",
+      "incidents_resolve",
+      "incidents_comment",
+    ]) {
       expect(t[name]?.description, name).toMatch(/INC-<n>|\bref\b/)
     }
     const guide = MANIFEST.agentInstructions ?? ""
@@ -179,7 +202,9 @@ describe("monitoring app.manifest.json", () => {
 
   it("declares incident:commented without an attention translation (comments never ping the feed)", () => {
     expect(MANIFEST.events?.emits).toContain("incident:commented")
-    expect((MANIFEST.attention?.translations ?? []).some((t) => t.event === "incident:commented")).toBe(false)
+    expect(
+      (MANIFEST.attention?.translations ?? []).some((t) => t.event === "incident:commented"),
+    ).toBe(false)
   })
 
   // the kernel marks a row urgent (it pushes outside work hours) from urgency
@@ -224,9 +249,11 @@ describe("monitoring app.manifest.json", () => {
   // A source tab is named after its source (profile label, else raw id), not
   // the generic "Source": the tab type resolves its label from the UI bundle.
   it("names a source tab through a resolveLabel the UI bundle exports", async () => {
-    const views = (MANIFEST as unknown as {
-      views: { tabTypes: Record<string, { resolveLabel?: string }> }
-    }).views
+    const views = (
+      MANIFEST as unknown as {
+        views: { tabTypes: Record<string, { resolveLabel?: string }> }
+      }
+    ).views
     expect(views.tabTypes.source?.resolveLabel).toBe("resolveSourceTabLabel")
     const ui = await import("./ui/tab-labels")
     expect(typeof ui.resolveSourceTabLabel).toBe("function")
@@ -235,9 +262,11 @@ describe("monitoring app.manifest.json", () => {
   // Settings > Apps labels each connection with its purpose and demotes the
   // optional ones (a bare "Connect" made a working app look uninstalled).
   it("declares what each connection connects, and which ones are optional", () => {
-    const c = (MANIFEST as unknown as {
-      connections: Record<string, { purpose?: string; optional?: boolean }>
-    }).connections
+    const c = (
+      MANIFEST as unknown as {
+        connections: Record<string, { purpose?: string; optional?: boolean }>
+      }
+    ).connections
     expect(c["alert-source"]?.purpose).toBe("Alert webhook")
     expect(c["alert-source"]?.optional === true).toBe(true)
   })

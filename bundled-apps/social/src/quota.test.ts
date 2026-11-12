@@ -69,18 +69,30 @@ describe("YouTube quota day (Pacific midnight, Google's reset clock)", () => {
   test("daylight time: the day turns at 07:00 UTC", () => {
     expect(youtubeQuotaDay(new Date("2026-10-20T06:59:59.000Z"))).toBe("2026-10-19")
     expect(youtubeQuotaDay(new Date("2026-10-20T07:00:00.000Z"))).toBe("2026-10-20")
-    expect(nextYoutubeQuotaReset(new Date("2026-10-20T14:11:00.000Z")).toISOString()).toBe("2026-10-21T07:00:00.000Z")
+    expect(nextYoutubeQuotaReset(new Date("2026-10-20T14:11:00.000Z")).toISOString()).toBe(
+      "2026-10-21T07:00:00.000Z",
+    )
   })
   test("standard time: the day turns at 08:00 UTC", () => {
     expect(youtubeQuotaDay(new Date("2026-12-01T07:59:59.000Z"))).toBe("2026-11-30")
     expect(youtubeQuotaDay(new Date("2026-12-01T08:00:00.000Z"))).toBe("2026-12-01")
-    expect(nextYoutubeQuotaReset(new Date("2026-12-01T12:00:00.000Z")).toISOString()).toBe("2026-12-02T08:00:00.000Z")
+    expect(nextYoutubeQuotaReset(new Date("2026-12-01T12:00:00.000Z")).toISOString()).toBe(
+      "2026-12-02T08:00:00.000Z",
+    )
   })
   test("switch days: the reset before each switch keeps the previous offset", () => {
     // 2026: DST starts Sunday March 8, ends Sunday November 1.
-    expect(nextYoutubeQuotaReset(new Date("2026-03-07T20:00:00.000Z")).toISOString()).toBe("2026-03-08T08:00:00.000Z")
-    expect(nextYoutubeQuotaReset(new Date("2026-03-08T20:00:00.000Z")).toISOString()).toBe("2026-03-09T07:00:00.000Z")
-    expect(nextYoutubeQuotaReset(new Date("2026-10-31T20:00:00.000Z")).toISOString()).toBe("2026-11-01T07:00:00.000Z")
-    expect(nextYoutubeQuotaReset(new Date("2026-11-01T20:00:00.000Z")).toISOString()).toBe("2026-11-02T08:00:00.000Z")
+    expect(nextYoutubeQuotaReset(new Date("2026-03-07T20:00:00.000Z")).toISOString()).toBe(
+      "2026-03-08T08:00:00.000Z",
+    )
+    expect(nextYoutubeQuotaReset(new Date("2026-03-08T20:00:00.000Z")).toISOString()).toBe(
+      "2026-03-09T07:00:00.000Z",
+    )
+    expect(nextYoutubeQuotaReset(new Date("2026-10-31T20:00:00.000Z")).toISOString()).toBe(
+      "2026-11-01T07:00:00.000Z",
+    )
+    expect(nextYoutubeQuotaReset(new Date("2026-11-01T20:00:00.000Z")).toISOString()).toBe(
+      "2026-11-02T08:00:00.000Z",
+    )
   })
 })

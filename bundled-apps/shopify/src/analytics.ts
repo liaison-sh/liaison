@@ -80,7 +80,9 @@ export async function analytics_query(
     // Any other upstream failure: return a structured error envelope (a RETURNED
     // error is deliberate app output and reaches the agent verbatim; a THROW from
     // an untrusted sandboxed app is redacted to "Tool execution failed" in prod).
-    return { error: { code: "shopify_error", message: `Shopify analytics_query failed: ${message}` } }
+    return {
+      error: { code: "shopify_error", message: `Shopify analytics_query failed: ${message}` },
+    }
   }
   const parseErrors = data.shopifyqlQuery?.parseErrors ?? []
   if (parseErrors.length > 0) {
@@ -200,6 +202,8 @@ async function degradeToBoundedTally(
       (reason ??
         "ShopifyQL is unavailable on this plan; this is a bounded in-context count over orders in the requested period, not an authoritative aggregate.") +
       " The tally is capped; totalCount is the server-side order count for the period." +
-      (params.timeGrain ? ` It is one figure for the whole period, not split by ${params.timeGrain}.` : ""),
+      (params.timeGrain
+        ? ` It is one figure for the whole period, not split by ${params.timeGrain}.`
+        : ""),
   }
 }

@@ -16,9 +16,11 @@ import type { AppContext } from "@liaison/app-sdk"
 import { readB2bMarketCatalogs } from "./lib/b2b-market-catalogs"
 import { getShopifyClient } from "./lib/get-client"
 
-const ADDRESS_FIELDS = "address1 address2 city zip province zoneCode countryCode companyName recipient phone"
+const ADDRESS_FIELDS =
+  "address1 address2 city zip province zoneCode countryCode companyName recipient phone"
 
-const CATALOGS_SELECTION = "catalogs(first: 25) { nodes { id title status priceList { id name currency } } }"
+const CATALOGS_SELECTION =
+  "catalogs(first: 25) { nodes { id title status priceList { id name currency } } }"
 
 const companySelection = (withCatalogs: boolean): string => `
   id name externalId note
@@ -86,7 +88,12 @@ export interface CompanyContactOut {
   id: string
   title: string | null
   isMainContact: boolean
-  customer: { id: string | null; email: string | null; firstName: string | null; lastName: string | null } | null
+  customer: {
+    id: string | null
+    email: string | null
+    firstName: string | null
+    lastName: string | null
+  } | null
   /** Where this contact may order: one entry per location it holds a role at. */
   roles: Array<{ locationId: string; locationName: string | null; role: string | null }>
 }
@@ -129,9 +136,7 @@ function normalizeCompany(node: Rec, withCatalogs: boolean): CompanyOut {
       taxRegistrationId: str(tax.taxRegistrationId),
       shippingAddress: address(l.shippingAddress),
       billingAddress: address(l.billingAddress),
-      catalogs: withCatalogs
-        ? nodesOf(l.catalogs).map(directCatalog)
-        : null,
+      catalogs: withCatalogs ? nodesOf(l.catalogs).map(directCatalog) : null,
     }
   })
   const contacts = nodesOf(node.contacts).map((c): CompanyContactOut => {
@@ -141,13 +146,24 @@ function normalizeCompany(node: Rec, withCatalogs: boolean): CompanyOut {
       title: str(c.title),
       isMainContact: c.isMainContact === true,
       customer: cust
-        ? { id: str(cust.id), email: str(cust.email), firstName: str(cust.firstName), lastName: str(cust.lastName) }
+        ? {
+            id: str(cust.id),
+            email: str(cust.email),
+            firstName: str(cust.firstName),
+            lastName: str(cust.lastName),
+          }
         : null,
       roles: nodesOf(c.roleAssignments).flatMap((r) => {
         const loc = isRec(r.companyLocation) ? r.companyLocation : null
         const locationId = str(loc?.id)
         if (!locationId) return []
-        return [{ locationId, locationName: str(loc?.name), role: isRec(r.role) ? str(r.role.name) : null }]
+        return [
+          {
+            locationId,
+            locationName: str(loc?.name),
+            role: isRec(r.role) ? str(r.role.name) : null,
+          },
+        ]
       }),
     }
   })
@@ -301,7 +317,11 @@ export async function companies_get(
   ctx: AppContext,
 ): Promise<CompanyOut & { catalogsReadable: boolean }> {
   const id = str(params.id)
-  if (!id) throw readError("BAD_PARAM", "id is required (a gid://shopify/Company/… id from companies_search)")
+  if (!id)
+    throw readError(
+      "BAD_PARAM",
+      "id is required (a gid://shopify/Company/… id from companies_search)",
+    )
   const client = await getShopifyClient(ctx)
   const { data, catalogsReadable } = await withCatalogFallback((withCatalogs) =>
     client.query<{ company?: Rec | null }>(getQuery(withCatalogs), { id }),

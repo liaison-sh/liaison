@@ -4,12 +4,12 @@
 // Real failure, order #3475 on 2026-09-29: the tick stamped packed_at, said nothing, and the
 // Shopify order stayed unfulfilled with no tracking for the customer.
 import { describe, expect, it } from "bun:test"
-import { readySetPacked } from "./packed"
-import { trackingChangedHandler } from "./webhooks"
-import { readyList, stuckList } from "./queues"
-import type { BoxtalToolCtx, CrossAppEnvelope } from "./ctx"
-import { createMockDb } from "./test-db"
 import { buildLabelPdf, FEDEX_INTL_LABEL_LINES, FEDEX_LABEL_LINES } from "./__fixtures__/label-pdf"
+import type { BoxtalToolCtx, CrossAppEnvelope } from "./ctx"
+import { readySetPacked } from "./packed"
+import { readyList, stuckList } from "./queues"
+import { createMockDb } from "./test-db"
+import { trackingChangedHandler } from "./webhooks"
 
 /** Shipment row ids are UUIDs: only a UUID-shaped ref is looked up by row id. */
 const S1 = "5a1e0000-0000-4000-8000-000000000001"
@@ -41,36 +41,60 @@ function makeCtx(opts: {
           ...opts.shipment,
         },
       ],
-      ...(opts.linked === false ? {} : { prep_meta: [{ id: "m1", document_ref: "doc-1", shopify_order_id: "3475" }] }),
+      ...(opts.linked === false
+        ? {}
+        : { prep_meta: [{ id: "m1", document_ref: "doc-1", shopify_order_id: "3475" }] }),
     },
   })
   const fetch = async (url: string) => {
     if (url.includes("/iam/account-app/token")) {
-      return { status: 200, headers: {}, body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }) }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }),
+      }
     }
     if (url.includes("/shipping-document")) {
       return {
         status: 200,
         headers: {},
-        body: JSON.stringify({ status: 200, timestamp: "t", content: [{ url: "https://signed/label.pdf", type: "LABEL", format: "PDF_A4" }] }),
+        body: JSON.stringify({
+          status: 200,
+          timestamp: "t",
+          content: [{ url: "https://signed/label.pdf", type: "LABEL", format: "PDF_A4" }],
+        }),
       }
     }
-    if (url === "https://signed/label.pdf") return { status: 200, headers: {}, body: opts.labelBody ?? "" }
+    if (url === "https://signed/label.pdf")
+      return { status: 200, headers: {}, body: opts.labelBody ?? "" }
     return { status: 404, headers: {}, body: "" }
   }
-  const executeTool = async (target: string, args: Record<string, unknown>): Promise<CrossAppEnvelope> => {
+  const executeTool = async (
+    target: string,
+    args: Record<string, unknown>,
+  ): Promise<CrossAppEnvelope> => {
     calls.push({ target, args })
     if (target === "shopify:orders_get") {
       return { status: "completed", result: { fulfillments: opts.orderFulfillments ?? [] } }
     }
     if (target === "shopify:fulfillments_create") {
-      return opts.create ?? { status: "completed", result: { fulfillment: { id: "gid://shopify/Fulfillment/9", status: "SUCCESS" } } }
+      return (
+        opts.create ?? {
+          status: "completed",
+          result: { fulfillment: { id: "gid://shopify/Fulfillment/9", status: "SUCCESS" } },
+        }
+      )
     }
     if (target === "kernel:approval_withdraw") {
       return opts.withdraw ?? { status: "completed", result: { status: "withdrawn" } }
     }
     if (target === "shopify:fulfillments_cancel") {
-      return opts.cancel ?? { status: "completed", result: { fulfillment: { id: args.id, status: "CANCELLED" } } }
+      return (
+        opts.cancel ?? {
+          status: "completed",
+          result: { fulfillment: { id: args.id, status: "CANCELLED" } },
+        }
+      )
     }
     return { status: "error", error: { code: "unmocked", message: target } }
   }
@@ -79,7 +103,15 @@ function makeCtx(opts: {
     db,
     fetch,
     executeTool,
-    connections: { boxtal: { getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }), getToken: async () => { throw new Error("no") }, getAccounts: async () => [] } },
+    connections: {
+      boxtal: {
+        getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }),
+        getToken: async () => {
+          throw new Error("no")
+        },
+        getAccounts: async () => [],
+      },
+    },
     config: { get: async () => null, has: async () => false },
     logger: { info() {}, warn() {}, error() {}, debug() {} },
   } as unknown as BoxtalToolCtx
@@ -92,14 +124,20 @@ describe("ready_set_packed: ticking fulfils the Shopify order", () => {
     const { ctx, calls } = makeCtx({ shipment: { offer_code: "MONR-CpourToi" } })
     await readySetPacked(ctx, { shipment_id: S1, packed: true })
     const create = calls.find((c) => c.target === "shopify:fulfillments_create")!
-    expect(create.args.fulfillment).toEqual({ trackingInfo: { number: "TRK1", company: "Mondial Relay" }, notifyCustomer: false })
+    expect(create.args.fulfillment).toEqual({
+      trackingInfo: { number: "TRK1", company: "Mondial Relay" },
+      notifyCustomer: false,
+    })
   })
 
   it("an unknown carrier sends the number alone (never a guessed company)", async () => {
     const { ctx, calls } = makeCtx({ shipment: { offer_code: "ZZZZ-Unknown" } })
     await readySetPacked(ctx, { shipment_id: S1, packed: true })
     const create = calls.find((c) => c.target === "shopify:fulfillments_create")!
-    expect(create.args.fulfillment).toEqual({ trackingInfo: { number: "TRK1" }, notifyCustomer: false })
+    expect(create.args.fulfillment).toEqual({
+      trackingInfo: { number: "TRK1" },
+      notifyCustomer: false,
+    })
   })
 
   it("ticking calls fulfillments_create with the tracking number and lands the tick", async () => {
@@ -108,7 +146,9 @@ describe("ready_set_packed: ticking fulfils the Shopify order", () => {
     expect(res.error).toBeUndefined()
     const create = calls.find((c) => c.target === "shopify:fulfillments_create")!
     expect(create.args.orderId).toBe("gid://shopify/Order/3475")
-    expect((create.args.fulfillment as { trackingInfo: { number: string } }).trackingInfo.number).toBe("TRK1")
+    expect(
+      (create.args.fulfillment as { trackingInfo: { number: string } }).trackingInfo.number,
+    ).toBe("TRK1")
     // Explicit false is this caller's default only; the shopify app's customerShippingEmail policy
     // decides the email for real (retail orders yes, B2B never, under retail_only).
     expect((create.args.fulfillment as { notifyCustomer?: unknown }).notifyCustomer).toBe(false)
@@ -124,7 +164,10 @@ describe("ready_set_packed: ticking fulfils the Shopify order", () => {
 
   it("a failed fulfillment refuses the tick and puts the reason on the row", async () => {
     const { ctx, row } = makeCtx({
-      create: { status: "error", error: { code: "NO_FULFILLABLE_ITEMS", message: "Order has no OPEN fulfillment orders" } },
+      create: {
+        status: "error",
+        error: { code: "NO_FULFILLABLE_ITEMS", message: "Order has no OPEN fulfillment orders" },
+      },
     })
     const res = await readySetPacked(ctx, { shipment_id: S1, packed: true })
     expect(res.error?.message).toContain("Order has no OPEN fulfillment orders")
@@ -168,7 +211,9 @@ describe("ready_set_packed: ticking fulfils the Shopify order", () => {
     "fulfillmentCreate: : Fulfillment order is closed",
   ]) {
     it(`a Shopify user error caused by the order's state (${message}) is shopify_refused`, async () => {
-      const { ctx } = makeCtx({ create: { status: "error", error: { code: "SHOPIFY_USER_ERROR", message } } })
+      const { ctx } = makeCtx({
+        create: { status: "error", error: { code: "SHOPIFY_USER_ERROR", message } },
+      })
       const res = await readySetPacked(ctx, { shipment_id: S1, packed: true })
       expect(res.error?.code).toBe("shopify_refused")
     })
@@ -183,11 +228,16 @@ describe("ready_set_packed: ticking fulfils the Shopify order", () => {
   })
 
   it("with no tracking number yet, the number printed on the label is used", async () => {
-    const { ctx, calls, row } = makeCtx({ shipment: { tracking_number: null }, labelBody: buildLabelPdf(FEDEX_LABEL_LINES) })
+    const { ctx, calls, row } = makeCtx({
+      shipment: { tracking_number: null },
+      labelBody: buildLabelPdf(FEDEX_LABEL_LINES),
+    })
     const res = await readySetPacked(ctx, { shipment_id: S1, packed: true })
     expect(res.error).toBeUndefined()
     const create = calls.find((c) => c.target === "shopify:fulfillments_create")!
-    expect((create.args.fulfillment as { trackingInfo: { number: string } }).trackingInfo.number).toBe("877740925574")
+    expect(
+      (create.args.fulfillment as { trackingInfo: { number: string } }).trackingInfo.number,
+    ).toBe("877740925574")
     expect(row().tracking_number).toBe("877740925574")
   })
 
@@ -210,28 +260,44 @@ describe("ready_set_packed: ticking fulfils the Shopify order", () => {
     expect(res.error).toBeUndefined()
     expect(res.packed).toBe(true)
     const create = calls.find((c) => c.target === "shopify:fulfillments_create")!
-    expect((create.args.fulfillment as { trackingInfo: { number: string } }).trackingInfo.number).toBe("877740925574")
+    expect(
+      (create.args.fulfillment as { trackingInfo: { number: string } }).trackingInfo.number,
+    ).toBe("877740925574")
     expect(row().tracking_number).toBe("877740925574")
   })
 
   it("an unreadable label is not a dead end: the number typed off the label fulfils the order", async () => {
-    const { ctx, calls, row } = makeCtx({ shipment: { tracking_number: null, offer_code: "FEDX-FedexRegionalEconomy" } })
+    const { ctx, calls, row } = makeCtx({
+      shipment: { tracking_number: null, offer_code: "FEDX-FedexRegionalEconomy" },
+    })
     const refused = await readySetPacked(ctx, { shipment_id: S1, packed: true })
     expect(refused.error?.code).toBe("no_tracking")
-    const res = await readySetPacked(ctx, { shipment_id: S1, packed: true, tracking_number: " 8777 4092 5574 " })
+    const res = await readySetPacked(ctx, {
+      shipment_id: S1,
+      packed: true,
+      tracking_number: " 8777 4092 5574 ",
+    })
     expect(res.error).toBeUndefined()
     expect(res.packed).toBe(true)
     expect(res.tracking_number).toBe("877740925574")
     const create = calls.find((c) => c.target === "shopify:fulfillments_create")!
-    expect((create.args.fulfillment as { trackingInfo: { number: string } }).trackingInfo.number).toBe("877740925574")
+    expect(
+      (create.args.fulfillment as { trackingInfo: { number: string } }).trackingInfo.number,
+    ).toBe("877740925574")
     // Not a carrier event: kept flagged so the carrier's own number replaces it when it comes.
     expect(row().tracking_from_label).toBe(true)
     expect(row().tracking_to_confirm).toBe(false)
   })
 
   it("a typed number that is not the carrier's format is refused, nothing fulfilled", async () => {
-    const { ctx, calls, row } = makeCtx({ shipment: { tracking_number: null, offer_code: "FEDX-FedexRegionalEconomy" } })
-    const res = await readySetPacked(ctx, { shipment_id: S1, packed: true, tracking_number: "1234" })
+    const { ctx, calls, row } = makeCtx({
+      shipment: { tracking_number: null, offer_code: "FEDX-FedexRegionalEconomy" },
+    })
+    const res = await readySetPacked(ctx, {
+      shipment_id: S1,
+      packed: true,
+      tracking_number: "1234",
+    })
     expect(res.error?.code).toBe("invalid_tracking_number")
     expect(res.packed).toBe(false)
     expect(row().tracking_number ?? null).toBeNull()
@@ -240,14 +306,24 @@ describe("ready_set_packed: ticking fulfils the Shopify order", () => {
 
   it("a typed number never replaces the one the row already has", async () => {
     const { ctx, calls } = makeCtx({})
-    const res = await readySetPacked(ctx, { shipment_id: S1, packed: true, tracking_number: "877740925574" })
+    const res = await readySetPacked(ctx, {
+      shipment_id: S1,
+      packed: true,
+      tracking_number: "877740925574",
+    })
     expect(res.error?.code).toBe("tracking_already_set")
     expect(calls.some((c) => c.target === "shopify:fulfillments_create")).toBe(false)
   })
 
   it("an order already fulfilled with this parcel's number is not fulfilled twice", async () => {
     const { ctx, calls, row } = makeCtx({
-      orderFulfillments: [{ id: "gid://shopify/Fulfillment/5", status: "SUCCESS", trackingInfo: [{ number: "TRK1" }] }],
+      orderFulfillments: [
+        {
+          id: "gid://shopify/Fulfillment/5",
+          status: "SUCCESS",
+          trackingInfo: [{ number: "TRK1" }],
+        },
+      ],
     })
     const res = await readySetPacked(ctx, { shipment_id: S1, packed: true })
     expect(res.packed).toBe(true)
@@ -276,7 +352,9 @@ describe("ready_set_packed: unticking a fulfilled row cancels the fulfillment", 
     const { ctx, calls, row } = makeCtx({ shipment: fulfilled })
     const res = await readySetPacked(ctx, { shipment_id: S1, packed: false })
     expect(res.error?.code).toBe("confirm_required")
-    expect(res.error?.message).toBe("Confirm unfulfilling order #3475? The Shopify fulfillment will be cancelled.")
+    expect(res.error?.message).toBe(
+      "Confirm unfulfilling order #3475? The Shopify fulfillment will be cancelled.",
+    )
     expect(res.packed).toBe(true)
     expect(row().packed_at).toBe(fulfilled.packed_at)
     expect(calls.some((c) => c.target === "shopify:fulfillments_cancel")).toBe(false)
@@ -284,9 +362,15 @@ describe("ready_set_packed: unticking a fulfilled row cancels the fulfillment", 
 
   it("once confirmed, cancels the Shopify fulfillment and unticks", async () => {
     const { ctx, calls, row } = makeCtx({ shipment: fulfilled })
-    const res = await readySetPacked(ctx, { shipment_id: S1, packed: false, confirm_unfulfill: true })
+    const res = await readySetPacked(ctx, {
+      shipment_id: S1,
+      packed: false,
+      confirm_unfulfill: true,
+    })
     expect(res.error).toBeUndefined()
-    expect(calls.find((c) => c.target === "shopify:fulfillments_cancel")!.args.id).toBe("gid://shopify/Fulfillment/9")
+    expect(calls.find((c) => c.target === "shopify:fulfillments_cancel")!.args.id).toBe(
+      "gid://shopify/Fulfillment/9",
+    )
     expect(res.packed).toBe(false)
     expect(row().packed_at).toBeNull()
     expect(row().fulfillment_state).toBe("cancelled")
@@ -296,9 +380,16 @@ describe("ready_set_packed: unticking a fulfilled row cancels the fulfillment", 
   it("a refused cancellation keeps the row ticked", async () => {
     const { ctx, row } = makeCtx({
       shipment: fulfilled,
-      cancel: { status: "error", error: { code: "BAD_PARAM", message: "fulfillment already cancelled" } },
+      cancel: {
+        status: "error",
+        error: { code: "BAD_PARAM", message: "fulfillment already cancelled" },
+      },
     })
-    const res = await readySetPacked(ctx, { shipment_id: S1, packed: false, confirm_unfulfill: true })
+    const res = await readySetPacked(ctx, {
+      shipment_id: S1,
+      packed: false,
+      confirm_unfulfill: true,
+    })
     expect(res.error?.message).toContain("fulfillment already cancelled")
     expect(res.packed).toBe(true)
     expect(row().packed_at).toBe(fulfilled.packed_at)
@@ -307,11 +398,23 @@ describe("ready_set_packed: unticking a fulfilled row cancels the fulfillment", 
   it("a row fulfilled before ids were stored finds its fulfillment by tracking number", async () => {
     const { ctx, calls } = makeCtx({
       shipment: { packed_at: "2026-10-01T10:00:00.000Z", fulfillment_synced: true },
-      orderFulfillments: [{ id: "gid://shopify/Fulfillment/7", status: "SUCCESS", trackingInfo: [{ number: "TRK1" }] }],
+      orderFulfillments: [
+        {
+          id: "gid://shopify/Fulfillment/7",
+          status: "SUCCESS",
+          trackingInfo: [{ number: "TRK1" }],
+        },
+      ],
     })
-    const res = await readySetPacked(ctx, { shipment_id: S1, packed: false, confirm_unfulfill: true })
+    const res = await readySetPacked(ctx, {
+      shipment_id: S1,
+      packed: false,
+      confirm_unfulfill: true,
+    })
     expect(res.error).toBeUndefined()
-    expect(calls.find((c) => c.target === "shopify:fulfillments_cancel")!.args.id).toBe("gid://shopify/Fulfillment/7")
+    expect(calls.find((c) => c.target === "shopify:fulfillments_cancel")!.args.id).toBe(
+      "gid://shopify/Fulfillment/7",
+    )
   })
 })
 
@@ -321,7 +424,8 @@ describe("ready_set_packed: unticking a fulfilled row cancels the fulfillment", 
 // untick left the parked request live.
 describe("one fulfillment request per parcel", () => {
   const parked = { status: "pending_approval", approval_id: "ap-1" } as CrossAppEnvelope
-  const creates = (calls: Array<{ target: string }>) => calls.filter((c) => c.target === "shopify:fulfillments_create").length
+  const creates = (calls: Array<{ target: string }>) =>
+    calls.filter((c) => c.target === "shopify:fulfillments_create").length
 
   it("a re-tick withdraws the parked request before staging the current one", async () => {
     const { ctx, calls, row } = makeCtx({ create: parked })
@@ -329,14 +433,21 @@ describe("one fulfillment request per parcel", () => {
     expect(row().fulfillment_approval_id).toBe("ap-1")
     await readySetPacked(ctx, { shipment_id: S1, packed: true })
     const order = calls.map((c) => c.target).filter((t) => t !== "shopify:orders_get")
-    expect(order).toEqual(["shopify:fulfillments_create", "kernel:approval_withdraw", "shopify:fulfillments_create"])
+    expect(order).toEqual([
+      "shopify:fulfillments_create",
+      "kernel:approval_withdraw",
+      "shopify:fulfillments_create",
+    ])
     expect(calls.find((c) => c.target === "kernel:approval_withdraw")!.args.requestId).toBe("ap-1")
   })
 
   it("when the parked request cannot be withdrawn, it is reused and nothing new is staged", async () => {
     const { ctx, calls } = makeCtx({
       create: parked,
-      withdraw: { status: "error", error: { code: "forbidden", message: "only the requester may withdraw" } },
+      withdraw: {
+        status: "error",
+        error: { code: "forbidden", message: "only the requester may withdraw" },
+      },
     })
     await readySetPacked(ctx, { shipment_id: S1, packed: true })
     const res = await readySetPacked(ctx, { shipment_id: S1, packed: true })
@@ -351,7 +462,13 @@ describe("one fulfillment request per parcel", () => {
     })
     await readySetPacked(ctx, { shipment_id: S1, packed: true })
     await trackingChangedHandler(
-      { eventType: "TRACKING_CHANGED", orderId: "ord-1", status: "IN_TRANSIT", trackingNumber: "TRK1", trackingDateTime: "2026-10-05T10:00:00Z" },
+      {
+        eventType: "TRACKING_CHANGED",
+        orderId: "ord-1",
+        status: "IN_TRANSIT",
+        trackingNumber: "TRK1",
+        trackingDateTime: "2026-10-05T10:00:00Z",
+      },
       ctx,
       { "x-bxt-delivery-id": "del-p1" },
     )
@@ -361,7 +478,13 @@ describe("one fulfillment request per parcel", () => {
   it("a parked request that was denied is replaced on the next tick", async () => {
     const { ctx, calls } = makeCtx({
       create: parked,
-      withdraw: { status: "error", error: { code: "stale_status", message: "this request is already denied and cannot be withdrawn" } },
+      withdraw: {
+        status: "error",
+        error: {
+          code: "stale_status",
+          message: "this request is already denied and cannot be withdrawn",
+        },
+      },
     })
     await readySetPacked(ctx, { shipment_id: S1, packed: true })
     await readySetPacked(ctx, { shipment_id: S1, packed: true })

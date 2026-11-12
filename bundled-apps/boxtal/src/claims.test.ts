@@ -13,7 +13,10 @@ function makeCtx(opts: {
   claimsApiAvailable?: boolean
 }): BoxtalToolCtx & { claimsApiAvailable?: boolean } {
   const db = createMockDb({ seed: opts.seed ?? {} })
-  const executeTool = async (): Promise<CrossAppEnvelope> => ({ status: "error", error: { code: "unmocked", message: "x" } })
+  const executeTool = async (): Promise<CrossAppEnvelope> => ({
+    status: "error",
+    error: { code: "unmocked", message: "x" },
+  })
   return {
     orgId: "org_1",
     db,
@@ -54,7 +57,12 @@ describe("boxtal claim_open (gated)", () => {
   it("rejects a claim against a shipment not in an exception state", async () => {
     const ctx = makeCtx({ seed: SEED, claimsApiAvailable: true })
     await expect(
-      claimOpen(ctx, { shipment_id: "S_DELIVERED", type: "lost", amount: 100, evidence_file_ids: [] }),
+      claimOpen(ctx, {
+        shipment_id: "S_DELIVERED",
+        type: "lost",
+        amount: 100,
+        evidence_file_ids: [],
+      }),
     ).rejects.toThrow(/exception|not eligible/i)
   })
 
@@ -72,7 +80,12 @@ describe("boxtal claim_open (gated)", () => {
 
   it("when claims API is unavailable but claim_open is invoked directly, it records locally and reports submitted_to_carrier:false", async () => {
     const ctx = makeCtx({ seed: SEED, claimsApiAvailable: false })
-    const r = await claimOpen(ctx, { shipment_id: "S2", type: "lost", amount: 800, evidence_file_ids: [] })
+    const r = await claimOpen(ctx, {
+      shipment_id: "S2",
+      type: "lost",
+      amount: 800,
+      evidence_file_ids: [],
+    })
     expect(r.submitted_to_carrier).toBe(false)
     expect(r.status).toBe("open")
   })

@@ -3,14 +3,15 @@
 // Awaiting-payment dashboard. Outstanding (status='issued' AND
 // payment_status != 'paid') sorted by age descending. Footer: total
 // outstanding per currency. Empty state: "All issued documents are paid. ✓".
+
+import { type Component, createResource, createSignal } from "solid-js"
+import { formatMoneyMinor } from "../../money"
 import { tr } from "../i18n"
-import { createResource, createSignal, type Component } from "solid-js"
 import { AWAITING_PAYMENT_COLUMNS, EMPTY_STATE, toCsv } from "./columns"
-import { DEFAULT_FILTER, applyFilter, type DashboardFilter, type DocumentRow } from "./types"
+import { DataTable } from "./DataTable"
 import { searchDocuments, searchParamsFromFilter } from "./loader"
 import { Toolbar } from "./Toolbar"
-import { DataTable } from "./DataTable"
-import { formatMoneyMinor } from "../../money"
+import { applyFilter, type DashboardFilter, DEFAULT_FILTER, type DocumentRow } from "./types"
 
 export function isOutstanding(r: DocumentRow): boolean {
   // Credit notes issue straight to 'issued' and are NEVER payable (no due date, no mark_paid) — they
@@ -28,12 +29,11 @@ function outstandingFooter(rows: DocumentRow[]): string {
   if (rows.length === 0) return ""
   const perCurrency = new Map<string, bigint>()
   for (const r of rows) {
-    const total = typeof r.grand_total_minor === "bigint" ? r.grand_total_minor : BigInt(r.grand_total_minor)
+    const total =
+      typeof r.grand_total_minor === "bigint" ? r.grand_total_minor : BigInt(r.grand_total_minor)
     perCurrency.set(r.currency, (perCurrency.get(r.currency) ?? 0n) + total)
   }
-  return [...perCurrency.entries()]
-    .map(([cur, sum]) => formatMoneyMinor(sum, cur))
-    .join(" + ")
+  return [...perCurrency.entries()].map(([cur, sum]) => formatMoneyMinor(sum, cur)).join(" + ")
 }
 
 export const AwaitingPayment: Component = () => {
@@ -45,7 +45,8 @@ export const AwaitingPayment: Component = () => {
 
   const exportCsv = () => {
     const rows = data() ?? []
-    const csv = toCsv(AWAITING_PAYMENT_COLUMNS, rows) + `Total outstanding: ${outstandingFooter(rows)}`
+    const csv =
+      toCsv(AWAITING_PAYMENT_COLUMNS, rows) + `Total outstanding: ${outstandingFooter(rows)}`
     const blob = new Blob([csv], { type: "text/csv" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
@@ -68,7 +69,9 @@ export const AwaitingPayment: Component = () => {
         rows={data() ?? []}
         emptyState={EMPTY_STATE.awaiting_payment /* "All issued documents are paid. ✓" */}
         testid="invoicing-awaiting-payment-table"
-        footer={() => tr("Total outstanding: {{amount}}", { amount: outstandingFooter(data() ?? []) })}
+        footer={() =>
+          tr("Total outstanding: {{amount}}", { amount: outstandingFooter(data() ?? []) })
+        }
         rowHref={(r) => `/invoicing/document/${r.id}`}
       />
     </div>

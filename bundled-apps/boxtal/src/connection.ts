@@ -16,13 +16,16 @@
 //
 // On disconnect: DELETE each persisted subscription and clear the rows + flag.
 
-import { getClient } from "./lib/get-client"
 import { BoxtalApiError } from "./lib/boxtal-v3-client"
+import { getClient } from "./lib/get-client"
 
 const WEBHOOK_SECRET_KEY = "boxtalWebhookSecret"
 
 /** Boxtal v3 eventType → kernel webhook endpoint slug (kebab). */
-const SUBSCRIPTIONS: ReadonlyArray<{ eventType: "TRACKING_CHANGED" | "DOCUMENT_CREATED"; endpoint: string }> = [
+const SUBSCRIPTIONS: ReadonlyArray<{
+  eventType: "TRACKING_CHANGED" | "DOCUMENT_CREATED"
+  endpoint: string
+}> = [
   { eventType: "TRACKING_CHANGED", endpoint: "tracking-changed" },
   { eventType: "DOCUMENT_CREATED", endpoint: "document-created" },
 ]
@@ -47,7 +50,10 @@ interface ConnectionEvent {
 interface ConnectionCtx {
   orgId: string
   db: {
-    findMany(entity: string, opts?: { where?: Record<string, unknown>; limit?: number }): Promise<unknown[]>
+    findMany(
+      entity: string,
+      opts?: { where?: Record<string, unknown>; limit?: number },
+    ): Promise<unknown[]>
     insert(entity: string, data: Record<string, unknown>): Promise<{ id: string }>
     update(entity: string, id: string, data: Record<string, unknown>): Promise<void>
     delete(entity: string, id: string): Promise<void>
@@ -62,12 +68,20 @@ interface ConnectionCtx {
   // are `... | undefined`), so the structural-superset ctx passed by the tool
   // handlers (e.g. webhooksRepairHandler) is assignable here. Every call site
   // already guards with optional chaining (`ctx.logger?.warn?.(...)`).
-  logger?: { info?(m: string, d?: unknown): void; warn?(m: string, d?: unknown): void; error?(m: string, d?: unknown): void; debug?(m: string, d?: unknown): void }
+  logger?: {
+    info?(m: string, d?: unknown): void
+    warn?(m: string, d?: unknown): void
+    error?(m: string, d?: unknown): void
+    debug?(m: string, d?: unknown): void
+  }
 }
 
 /** Upsert the single-row `webhook_status` flag in app_config. */
 async function setWebhookStatus(ctx: ConnectionCtx, status: "active" | "degraded"): Promise<void> {
-  const rows = (await ctx.db.findMany("app_config", { where: { key: "webhook_status" }, limit: 1 })) as Array<{ id: string }>
+  const rows = (await ctx.db.findMany("app_config", {
+    where: { key: "webhook_status" },
+    limit: 1,
+  })) as Array<{ id: string }>
   if (rows[0]) {
     await ctx.db.update("app_config", rows[0].id, { value: status })
   } else {
@@ -76,7 +90,10 @@ async function setWebhookStatus(ctx: ConnectionCtx, status: "active" | "degraded
 }
 
 async function clearWebhookStatus(ctx: ConnectionCtx): Promise<void> {
-  const rows = (await ctx.db.findMany("app_config", { where: { key: "webhook_status" }, limit: 1 })) as Array<{ id: string }>
+  const rows = (await ctx.db.findMany("app_config", {
+    where: { key: "webhook_status" },
+    limit: 1,
+  })) as Array<{ id: string }>
   if (rows[0]) await ctx.db.delete("app_config", rows[0].id)
 }
 
@@ -85,7 +102,10 @@ async function upsertSubscription(
   ctx: ConnectionCtx,
   row: { event_type: string; subscription_id: string; callback_url: string },
 ): Promise<void> {
-  const existing = (await ctx.db.findMany("subscription", { where: { event_type: row.event_type }, limit: 1 })) as Array<{ id: string }>
+  const existing = (await ctx.db.findMany("subscription", {
+    where: { event_type: row.event_type },
+    limit: 1,
+  })) as Array<{ id: string }>
   if (existing[0]) {
     await ctx.db.update("subscription", existing[0].id, {
       subscription_id: row.subscription_id,
@@ -100,7 +120,10 @@ async function upsertSubscription(
   }
 }
 
-export async function onConnectionEstablished(event: ConnectionEvent, ctx: ConnectionCtx): Promise<void> {
+export async function onConnectionEstablished(
+  event: ConnectionEvent,
+  ctx: ConnectionCtx,
+): Promise<void> {
   if (event.data?.appName !== "boxtal") return
   const data = event.data as ConnectionEventData
 
@@ -143,7 +166,11 @@ export async function onConnectionEstablished(event: ConnectionEvent, ctx: Conne
       // The inline webhookSecret above is IGNORED by the live API — only the
       // dedicated endpoint sets the signing key (see setSubscriptionWebhookSecret).
       await client.v3.setSubscriptionWebhookSecret(sub.id, WEBHOOK_SECRET_KEY)
-      await upsertSubscription(ctx, { event_type: eventType, subscription_id: sub.id, callback_url: callbackUrl })
+      await upsertSubscription(ctx, {
+        event_type: eventType,
+        subscription_id: sub.id,
+        callback_url: callbackUrl,
+      })
     } catch (err) {
       allOk = false
       ctx.logger?.warn?.("boxtal: createSubscription failed", { eventType, err: String(err) })
@@ -152,16 +179,25 @@ export async function onConnectionEstablished(event: ConnectionEvent, ctx: Conne
   await setWebhookStatus(ctx, allOk ? "active" : "degraded")
 }
 
-export async function onConnectionDisconnected(event: ConnectionEvent, ctx: ConnectionCtx): Promise<void> {
+export async function onConnectionDisconnected(
+  event: ConnectionEvent,
+  ctx: ConnectionCtx,
+): Promise<void> {
   if (event.data?.appName !== "boxtal") return
   const client = await getClient(ctx).catch(() => null)
-  const subs = (await ctx.db.findMany("subscription", { limit: 100 })) as Array<{ id: string; subscription_id: string }>
+  const subs = (await ctx.db.findMany("subscription", { limit: 100 })) as Array<{
+    id: string
+    subscription_id: string
+  }>
   for (const s of subs) {
     if (client) {
       try {
         await client.v3.deleteSubscription(s.subscription_id)
       } catch (err) {
-        ctx.logger?.warn?.("boxtal: deleteSubscription failed", { id: s.subscription_id, err: String(err) })
+        ctx.logger?.warn?.("boxtal: deleteSubscription failed", {
+          id: s.subscription_id,
+          err: String(err),
+        })
       }
     }
     await ctx.db.delete("subscription", s.id)

@@ -4,6 +4,7 @@
 // first write against a row created before the rework, and the re-keyed exclusion.
 
 import { describe, expect, it } from "bun:test"
+import type { BoxtalToolCtx, CrossAppEnvelope } from "./ctx"
 import {
   effectiveStatus,
   excludedOrderKeys,
@@ -17,7 +18,6 @@ import {
   upsertPrepOrderState,
 } from "./order-state"
 import { createMockDb } from "./test-db"
-import type { BoxtalToolCtx, CrossAppEnvelope } from "./ctx"
 
 /** The default cross-app answer is a SUCCESSFUL `invoicing:documents_get` that reports no linked
  *  order: that is what invoicing really answers for an order-less document, and it is the only
@@ -65,7 +65,11 @@ describe("order_key parsing", () => {
 describe("prep_set_status", () => {
   it("(a) creates the order-state row and stamps status_changed_at", async () => {
     const { ctx, db } = makeCtx()
-    const row = await prepSetStatus(ctx, { order_key: "so:5123", status: "on_hold", note: "waiting on stock" })
+    const row = await prepSetStatus(ctx, {
+      order_key: "so:5123",
+      status: "on_hold",
+      note: "waiting on stock",
+    })
     expect(row.status).toBe("on_hold")
     const stored = orderState(db, "so:5123")!
     expect(stored.status).toBe("on_hold")
@@ -136,7 +140,10 @@ describe("prep_set_status by document_ref", () => {
     })
     await expect(
       prepSetStatus(ctx, { order_key: "so:777", document_ref: "doc-1", status: "validated" }),
-    ).rejects.toMatchObject({ code: "order_key_mismatch", message: expect.stringContaining("so:5123") })
+    ).rejects.toMatchObject({
+      code: "order_key_mismatch",
+      message: expect.stringContaining("so:5123"),
+    })
     expect(db.__all("prep_order_state")).toHaveLength(0)
   })
 
@@ -173,9 +180,13 @@ describe("prep_set_status by document_ref", () => {
     ]
     for (const [key, code] of refused) {
       const { ctx, db } = makeCtx({}, async (target) => answers[target]!)
-      await expect(prepSetStatus(ctx, { order_key: key, status: "validated" })).rejects.toMatchObject({ code })
+      await expect(
+        prepSetStatus(ctx, { order_key: key, status: "validated" }),
+      ).rejects.toMatchObject({ code })
       await expect(prepExclude(ctx, { order_key: key })).rejects.toMatchObject({ code })
-      await expect(prepSetValidated(ctx, { order_key: key, validated: true })).rejects.toMatchObject({ code })
+      await expect(
+        prepSetValidated(ctx, { order_key: key, validated: true }),
+      ).rejects.toMatchObject({ code })
       expect(db.__all("prep_order_state")).toHaveLength(0)
     }
   })
@@ -185,7 +196,9 @@ describe("prep_set_status by document_ref", () => {
       status: "error",
       error: { code: "throttled", message: "429", retryable: true },
     }))
-    await expect(prepSetStatus(ctx, { order_key: "so:5123", status: "validated" })).rejects.toMatchObject({
+    await expect(
+      prepSetStatus(ctx, { order_key: "so:5123", status: "validated" }),
+    ).rejects.toMatchObject({
       code: "order_key_unresolved",
       retryable: true,
     })
@@ -194,10 +207,13 @@ describe("prep_set_status by document_ref", () => {
 
   it("a key that already has a row is its own proof: no read, so an old row can still be restored", async () => {
     let reads = 0
-    const { ctx, db } = makeCtx({ prep_order_state: [{ id: "s1", order_key: "pending:tok", status: "to_prepare" }] }, async () => {
-      reads++
-      return { status: "completed", result: null }
-    })
+    const { ctx, db } = makeCtx(
+      { prep_order_state: [{ id: "s1", order_key: "pending:tok", status: "to_prepare" }] },
+      async () => {
+        reads++
+        return { status: "completed", result: null }
+      },
+    )
     await prepRestore(ctx, { order_key: "pending:tok" })
     expect(reads).toBe(0)
     expect(orderState(db, "pending:tok")!.excluded).toBe(false)
@@ -285,17 +301,24 @@ describe("order_key resolution from a document_ref", () => {
 describe("legacy flag read-through and first-write seeding", () => {
   it("(c) reads the legacy validated flag when no order-state row exists", () => {
     expect(effectiveStatus(undefined, { document_ref: "doc-1", validated: true })).toBe("validated")
-    expect(effectiveStatus(undefined, { document_ref: "doc-1", validated: false })).toBe("to_prepare")
-    // Once an order-state row exists it is authoritative, legacy is ignored.
-    expect(effectiveStatus({ order_key: "so:1", status: "to_prepare" }, { document_ref: "doc-1", validated: true })).toBe(
+    expect(effectiveStatus(undefined, { document_ref: "doc-1", validated: false })).toBe(
       "to_prepare",
     )
+    // Once an order-state row exists it is authoritative, legacy is ignored.
+    expect(
+      effectiveStatus(
+        { order_key: "so:1", status: "to_prepare" },
+        { document_ref: "doc-1", validated: true },
+      ),
+    ).toBe("to_prepare")
   })
 
   it("(d) a FIRST write that is not about status keeps a legacy validated row validated", async () => {
     const { ctx, db } = makeCtx({
       prep_meta: [{ id: "m1", document_ref: "doc-1", shopify_order_id: "5123" }],
-      prep_state: [{ id: "s1", document_ref: "doc-1", validated: true, excluded: false, category: "gift" }],
+      prep_state: [
+        { id: "s1", document_ref: "doc-1", validated: true, excluded: false, category: "gift" },
+      ],
     })
     // The first write is a category change, nothing to do with validation.
     await upsertPrepOrderState(ctx, "so:5123", { category: "repair" })
@@ -333,8 +356,15 @@ describe("legacy flag read-through and first-write seeding", () => {
       if (entity === "prep_order_state" && first) {
         first = false
         // The concurrent writer committed its row a moment ago.
-        await realInsert(entity, { order_key: "so:9002", status: "to_prepare", category: "sale", excluded: false })
-        throw new Error('pg: duplicate key value violates unique constraint "prep_order_state_org_id_order_key_key" (23505)')
+        await realInsert(entity, {
+          order_key: "so:9002",
+          status: "to_prepare",
+          category: "sale",
+          excluded: false,
+        })
+        throw new Error(
+          'pg: duplicate key value violates unique constraint "prep_order_state_org_id_order_key_key" (23505)',
+        )
       }
       return realInsert(entity, data)
     }
@@ -346,7 +376,9 @@ describe("legacy flag read-through and first-write seeding", () => {
 
   it("isExcluded prefers the order-state row over the legacy flag", () => {
     expect(isExcluded(undefined, { document_ref: "d", excluded: true })).toBe(true)
-    expect(isExcluded({ order_key: "so:1", excluded: false }, { document_ref: "d", excluded: true })).toBe(false)
+    expect(
+      isExcluded({ order_key: "so:1", excluded: false }, { document_ref: "d", excluded: true }),
+    ).toBe(false)
   })
 })
 

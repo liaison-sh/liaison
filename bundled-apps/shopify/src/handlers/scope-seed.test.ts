@@ -13,13 +13,9 @@
 // mock simulates the kernel-side user-by-email lookup that scope-seed needs).
 import { describe, expect, it } from "bun:test"
 import type { AppContext } from "@liaison/app-sdk"
-import {
-  applySeedSuggestion,
-  capabilityDetectSeed,
-  scopeSeedJob,
-} from "./scope-seed"
-import { mapStaffPermissionsToScopes } from "../lib/staff-permissions-map"
 import manifest from "../../app.manifest.json"
+import { mapStaffPermissionsToScopes } from "../lib/staff-permissions-map"
+import { applySeedSuggestion, capabilityDetectSeed, scopeSeedJob } from "./scope-seed"
 
 interface FetchResponse {
   status?: number
@@ -38,7 +34,12 @@ interface DbRow extends Record<string, unknown> {
 function makeCtx(opts: {
   shopifyFetch?: FetchResponse | FetchResponse[]
   preload?: Record<string, DbRow[]>
-}): { ctx: AppContext; grants: { calls: GrantCall[] }; db: Map<string, DbRow[]>; events: Array<{ entity: string; action: string }> } {
+}): {
+  ctx: AppContext
+  grants: { calls: GrantCall[] }
+  db: Map<string, DbRow[]>
+  events: Array<{ entity: string; action: string }>
+} {
   const responses = Array.isArray(opts.shopifyFetch)
     ? [...opts.shopifyFetch]
     : opts.shopifyFetch !== undefined
@@ -49,7 +50,12 @@ function makeCtx(opts: {
   const tables = new Map<string, DbRow[]>()
   // Always pre-seed install_metadata so getClient() resolves.
   tables.set("install_metadata", [
-    { id: "i1", shopDomain: "demo.myshopify.com", connectionId: "ca1", apiVersion: "2026-04" } as DbRow,
+    {
+      id: "i1",
+      shopDomain: "demo.myshopify.com",
+      connectionId: "ca1",
+      apiVersion: "2026-04",
+    } as DbRow,
   ])
   if (opts.preload) {
     for (const [k, v] of Object.entries(opts.preload)) tables.set(k, [...v])
@@ -199,7 +205,10 @@ describe("mapStaffPermissionsToScopes", () => {
     ]) {
       const scopes = mapStaffPermissionsToScopes({ permissions: [perm] })
       for (const scope of scopes) {
-        expect(declared.has(scope), `scope "${scope}" (from "${perm}") not in manifest.scopes`).toBe(true)
+        expect(
+          declared.has(scope),
+          `scope "${scope}" (from "${perm}") not in manifest.scopes`,
+        ).toBe(true)
       }
     }
   })
@@ -325,16 +334,16 @@ describe("scopeSeedJob", () => {
           { id: MARIE_ID, email: "marie@x" } as DbRow,
           { id: BOB_ID, email: "bob@x" } as DbRow,
         ],
-        staff_overrides: [
-          { id: "so1", liaisonUserId: BOB_ID, shopifyStaffId: "s_marie" } as DbRow,
-        ],
+        staff_overrides: [{ id: "so1", liaisonUserId: BOB_ID, shopifyStaffId: "s_marie" } as DbRow],
       },
       shopifyFetch: [
         {
           body: {
             data: {
               staffMembers: {
-                edges: [{ node: { id: "s_marie", email: "marie@x", permissions: ["refund_orders"] } }],
+                edges: [
+                  { node: { id: "s_marie", email: "marie@x", permissions: ["refund_orders"] } },
+                ],
               },
             },
           },
@@ -442,7 +451,14 @@ describe("scopeSeedJob", () => {
               staffMembers: {
                 edges: [
                   { node: { id: "s-owner", email: "owner@x", permissions: [], isShopOwner: true } },
-                  { node: { id: "s-staff", email: "staff@x", permissions: ["read_orders"], isShopOwner: false } },
+                  {
+                    node: {
+                      id: "s-staff",
+                      email: "staff@x",
+                      permissions: ["read_orders"],
+                      isShopOwner: false,
+                    },
+                  },
                 ],
                 pageInfo: { hasNextPage: false, endCursor: null },
               },
@@ -508,10 +524,7 @@ describe("scopeSeedJob", () => {
 describe("applySeedSuggestion", () => {
   it("calls grants_setUserScopes for the named user", async () => {
     const { ctx, grants } = makeCtx({})
-    await applySeedSuggestion(
-      { liaisonUserId: MARIE_ID, scopes: ["shopify:refunds:create"] },
-      ctx,
-    )
+    await applySeedSuggestion({ liaisonUserId: MARIE_ID, scopes: ["shopify:refunds:create"] }, ctx)
     const call = grants.calls.find((c) => c.userId === MARIE_ID)
     expect(call).toBeDefined()
     expect(call!.scopes).toContain("shopify:refunds:create")

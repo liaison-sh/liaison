@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { describe, it, expect } from "bun:test"
-import { PennylaneApiError, PennylaneClient, PennylaneRateLimitError } from "./pennylane-client"
+import { describe, expect, it } from "bun:test"
 import type { PennylaneFetch } from "./pennylane-client"
+import { PennylaneApiError, PennylaneClient, PennylaneRateLimitError } from "./pennylane-client"
 
 /** A PennylaneFetch fake: matches a route by URL substring, returns {status,headers,body}. */
 function fakeFetch(routes: Record<string, { status: number; body: unknown }>) {
@@ -33,14 +33,15 @@ describe("PennylaneClient", () => {
     expect(page.next_cursor).toBe("c2")
     expect(page.has_more).toBe(true)
     expect(fetch.calls[0]!.opts?.headers?.Authorization).toBe("Bearer tok_abc")
-    expect(
-      fetch.calls[0]!.url.startsWith("https://app.pennylane.com/api/external/v2"),
-    ).toBe(true)
+    expect(fetch.calls[0]!.url.startsWith("https://app.pennylane.com/api/external/v2")).toBe(true)
   })
 
   it("encodes a filter array as a single filter=[{field,operator,value}] param", async () => {
     const fetch = fakeFetch({
-      "/supplier_invoices": { status: 200, body: { items: [], next_cursor: null, has_more: false } },
+      "/supplier_invoices": {
+        status: 200,
+        body: { items: [], next_cursor: null, has_more: false },
+      },
     })
     const c = new PennylaneClient({ fetch, apiToken: "tok" })
     await c.list("/supplier_invoices", {
@@ -53,7 +54,10 @@ describe("PennylaneClient", () => {
 
   it("clamps limit to <=100", async () => {
     const fetch = fakeFetch({
-      "/customer_invoices": { status: 200, body: { items: [], next_cursor: null, has_more: false } },
+      "/customer_invoices": {
+        status: 200,
+        body: { items: [], next_cursor: null, has_more: false },
+      },
     })
     const c = new PennylaneClient({ fetch, apiToken: "tok" })
     await c.list("/customer_invoices", { limit: 9999 })
@@ -62,7 +66,10 @@ describe("PennylaneClient", () => {
 
   it("defaults limit to 50 when unspecified", async () => {
     const fetch = fakeFetch({
-      "/customer_invoices": { status: 200, body: { items: [], next_cursor: null, has_more: false } },
+      "/customer_invoices": {
+        status: 200,
+        body: { items: [], next_cursor: null, has_more: false },
+      },
     })
     const c = new PennylaneClient({ fetch, apiToken: "tok" })
     await c.list("/customer_invoices")
@@ -89,7 +96,11 @@ describe("PennylaneClient", () => {
     let clock = 1_000_000
     const fn: PennylaneFetch = async () => {
       n++
-      return { status: 429, headers: { "retry-after": "3", "ratelimit-remaining": "0" }, body: '{"message":"rate"}' }
+      return {
+        status: 429,
+        headers: { "retry-after": "3", "ratelimit-remaining": "0" },
+        body: '{"message":"rate"}',
+      }
     }
     const c = new PennylaneClient({ fetch: fn, apiToken: "tok", now: () => clock })
     const err = await c.list("/transactions").catch((e: unknown) => e)
@@ -109,7 +120,11 @@ describe("PennylaneClient", () => {
     let clock = 1_792_049_810_000
     const fn: PennylaneFetch = async () => {
       n++
-      return { status: 200, headers: { "ratelimit-remaining": "0", "ratelimit-reset": "1792049815" }, body: "{}" }
+      return {
+        status: 200,
+        headers: { "ratelimit-remaining": "0", "ratelimit-reset": "1792049815" },
+        body: "{}",
+      }
     }
     const c = new PennylaneClient({ fetch: fn, apiToken: "tok", now: () => clock })
     await c.get("/me")
@@ -127,7 +142,12 @@ describe("PennylaneClient", () => {
       seen.push({ url, opts })
       if (url.endsWith("/send_to_pa")) return { status: 204, headers: {}, body: "" }
       if (url.endsWith("/imports"))
-        return { status: 201, headers: {}, body: '{"id":7}', upload: { size: 10, parts: [{ name: "file", size: 9, sha256: "ab" }] } }
+        return {
+          status: 201,
+          headers: {},
+          body: '{"id":7}',
+          upload: { size: 10, parts: [{ name: "file", size: 9, sha256: "ab" }] },
+        }
       return { status: 201, headers: {}, body: '{"id":1}' }
     }
     const c = new PennylaneClient({ fetch: fn, apiToken: "tok", companyId: "100001" })
@@ -140,17 +160,28 @@ describe("PennylaneClient", () => {
     ])
     expect(up.data).toEqual({ id: 7 })
     expect(up.upload?.parts[0]?.sha256).toBe("ab")
-    expect(seen[0]!.opts).toMatchObject({ method: "POST", body: '{"name":"x"}', headers: { "Content-Type": "application/json", "X-Company-Id": "100001" } })
+    expect(seen[0]!.opts).toMatchObject({
+      method: "POST",
+      body: '{"name":"x"}',
+      headers: { "Content-Type": "application/json", "X-Company-Id": "100001" },
+    })
     expect(seen[1]!.opts?.method).toBe("PUT")
     expect(seen[2]!.opts?.body).toBeUndefined()
-    expect(seen[3]!.opts?.body).toEqual({ multipart: [{ name: "file", fileId: "f", expectSha256: "ab" }, { name: "send_to_pa", value: "false" }] })
+    expect(seen[3]!.opts?.body).toEqual({
+      multipart: [
+        { name: "file", fileId: "f", expectSha256: "ab" },
+        { name: "send_to_pa", value: "false" },
+      ],
+    })
     expect(seen[3]!.opts?.timeoutMs).toBe(90_000)
     expect(seen[3]!.opts?.headers?.["Content-Type"]).toBeUndefined()
   })
 
   it("truncates a provider error body to 2 KB", async () => {
     const fn: PennylaneFetch = async () => ({ status: 422, headers: {}, body: "x".repeat(5000) })
-    const err = (await new PennylaneClient({ fetch: fn, apiToken: "t" }).post("/x", {}).catch((e: unknown) => e)) as PennylaneApiError
+    const err = (await new PennylaneClient({ fetch: fn, apiToken: "t" })
+      .post("/x", {})
+      .catch((e: unknown) => e)) as PennylaneApiError
     expect(err.status).toBe(422)
     expect(err.body.length).toBeLessThanOrEqual(2049)
   })
@@ -171,15 +202,24 @@ describe("PennylaneApiError message", () => {
     const fetch = fakeFetch({
       "/trial_balance": {
         status: 400,
-        body: { message: "period_start is missing", field: "period_start", code: "InvalidDateFormat" },
+        body: {
+          message: "period_start is missing",
+          field: "period_start",
+          code: "InvalidDateFormat",
+        },
       },
-      "/echo": { status: 422, body: { error: `bad token tok_secret_123 ${"x".repeat(1000)}`, status: 422 } },
+      "/echo": {
+        status: 422,
+        body: { error: `bad token tok_secret_123 ${"x".repeat(1000)}`, status: 422 },
+      },
     })
     const c = new PennylaneClient({ fetch, apiToken: "tok_secret_123" })
     const err = (await c.list("/trial_balance").catch((e: unknown) => e)) as PennylaneApiError
     expect(err).toBeInstanceOf(PennylaneApiError)
     expect(err.status).toBe(400)
-    expect(err.message).toBe("Pennylane 400: period_start is missing (field period_start, code InvalidDateFormat)")
+    expect(err.message).toBe(
+      "Pennylane 400: period_start is missing (field period_start, code InvalidDateFormat)",
+    )
     const err2 = (await c.get("/echo").catch((e: unknown) => e)) as PennylaneApiError
     expect(err2.message.startsWith("Pennylane 422: bad token [redacted] ")).toBe(true)
     expect(err2.message.length).toBeLessThanOrEqual(320)
@@ -188,9 +228,13 @@ describe("PennylaneApiError message", () => {
   })
 
   it("passes extra query params through list() (e.g. trial_balance's period window)", async () => {
-    const fetch = fakeFetch({ "/trial_balance": { status: 200, body: { items: [], next_cursor: null, has_more: false } } })
+    const fetch = fakeFetch({
+      "/trial_balance": { status: 200, body: { items: [], next_cursor: null, has_more: false } },
+    })
     const c = new PennylaneClient({ fetch, apiToken: "tok" })
-    await c.list("/trial_balance", { params: { period_start: "2026-01-01", period_end: "2026-10-25" } })
+    await c.list("/trial_balance", {
+      params: { period_start: "2026-01-01", period_end: "2026-10-25" },
+    })
     expect(fetch.calls[0]!.url).toContain("period_start=2026-01-01&period_end=2026-10-25")
   })
 })

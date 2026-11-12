@@ -23,7 +23,9 @@ describe("DataTable source wiring (list → detail navigation, over CardTable)",
   })
 
   it("renders through the shared CardTable so every dashboard gets the phone card story", () => {
-    expect(source).toContain('import { CardTable, type CardTableColumn } from "@liaison/app-ui/card-table"')
+    expect(source).toContain(
+      'import { CardTable, type CardTableColumn } from "@liaison/app-ui/card-table"',
+    )
     expect(source).toContain("<CardTable")
   })
 

@@ -6,10 +6,19 @@
 // CLOSED the compose box is REPLACED by an "Open in Instagram ↗" native-app
 // fallback notice (no API send is possible past 7d). Within the window the
 // compose is enabled and the send is tagged (none ≤24h / human_agent ≤7d).
-import { type Component, createMemo, createResource, createSignal, For, Show } from "solid-js"
+
 import { app } from "@liaison/host"
-import { Badge, type BadgeTone, Button, cx, EmptyState, PageHeader, stripExternalFence } from "./kit"
-import { dmWindowTag, type DmWindowTag } from "../dm-window"
+import { type Component, createMemo, createResource, createSignal, For, Show } from "solid-js"
+import { type DmWindowTag, dmWindowTag } from "../dm-window"
+import {
+  Badge,
+  type BadgeTone,
+  Button,
+  cx,
+  EmptyState,
+  PageHeader,
+  stripExternalFence,
+} from "./kit"
 
 /** Snippet honesty (B), thread-bubble side: Graph API omits `message` on
  *  attachment/sticker-only messages, landing as an EMPTY string body (not
@@ -18,7 +27,10 @@ import { dmWindowTag, type DmWindowTag } from "../dm-window"
  *  misleading "(no text)" wording (which read as a bug, not a platform
  *  fact). A genuinely absent body (null/undefined — shouldn't happen for a
  *  landed message, but defensive) keeps the neutral "(no text)" wording. */
-export function messageBubbleText(body: string | null | undefined): { text: string; muted: boolean } {
+export function messageBubbleText(body: string | null | undefined): {
+  text: string
+  muted: boolean
+} {
   if (body == null) return { text: "(no text)", muted: true }
   if (body.length === 0) return { text: "[attachment]", muted: true }
   return { text: body, muted: false }
@@ -59,11 +71,21 @@ export interface WindowPillState {
 
 /** Derive the reply-window pill + whether the compose box or the native-app
  *  fallback is shown, recomputed from the last inbound time at render. */
-export function windowPillState(lastInboundAt: string | null, now: Date = new Date()): WindowPillState {
+export function windowPillState(
+  lastInboundAt: string | null,
+  now: Date = new Date(),
+): WindowPillState {
   const tag = dmWindowTag(lastInboundAt, now)
-  if (tag === "none") return { tag, label: "Open (24h)", tone: "success", composeEnabled: true, showFallback: false }
+  if (tag === "none")
+    return { tag, label: "Open (24h)", tone: "success", composeEnabled: true, showFallback: false }
   if (tag === "human_agent")
-    return { tag, label: "Human-agent (7d)", tone: "warning", composeEnabled: true, showFallback: false }
+    return {
+      tag,
+      label: "Human-agent (7d)",
+      tone: "warning",
+      composeEnabled: true,
+      showFallback: false,
+    }
   return { tag, label: "Window closed", tone: "muted", composeEnabled: false, showFallback: true }
 }
 
@@ -99,24 +121,38 @@ async function loadConversationDetail(conversationId: string): Promise<DmGetResu
 // pill is derived from the fresh conversation row (dm_get's enrichment), not
 // the stale list row, so it doesn't lag behind messages that landed since the
 // list was last fetched.
-export const ConversationDetailPanel: Component<{ conversation: ConversationRow | null }> = (props) => {
+export const ConversationDetailPanel: Component<{ conversation: ConversationRow | null }> = (
+  props,
+) => {
   // The source function re-runs whenever `props.conversation?.id` changes,
   // which re-triggers the dm_get fetch — no extra effect needed.
   const [detail] = createResource(() => props.conversation?.id, loadConversationDetail)
 
-  const fresh = createMemo<ConversationRow | null>(() => detail()?.conversation ?? props.conversation ?? null)
+  const fresh = createMemo<ConversationRow | null>(
+    () => detail()?.conversation ?? props.conversation ?? null,
+  )
   const messages = createMemo<MessageRow[]>(() => detail()?.messages ?? [])
   const win = createMemo(() => windowPillState(fresh()?.last_inbound_at ?? null))
 
   return (
-    <Show when={props.conversation} fallback={<EmptyState title="No conversation selected">Pick a conversation.</EmptyState>}>
+    <Show
+      when={props.conversation}
+      fallback={<EmptyState title="No conversation selected">Pick a conversation.</EmptyState>}
+    >
       <div data-testid="social-conversation-detail" class="flex h-full min-h-0 flex-col gap-3 p-4">
         <div class="flex items-center gap-2">
-          <span class="text-[13px] font-medium text-text">{fresh()?.participant_handle ?? "Conversation"}</span>
-          <Badge tone={win().tone} testid="social-dm-window-pill">{win().label}</Badge>
+          <span class="text-[13px] font-medium text-text">
+            {fresh()?.participant_handle ?? "Conversation"}
+          </span>
+          <Badge tone={win().tone} testid="social-dm-window-pill">
+            {win().label}
+          </Badge>
         </div>
 
-        <div data-testid="social-dm-thread" class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
+        <div
+          data-testid="social-dm-thread"
+          class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto"
+        >
           <Show
             when={messages().length > 0}
             fallback={<p class="text-[12px] text-text-tertiary">No messages yet.</p>}
@@ -127,7 +163,10 @@ export const ConversationDetailPanel: Component<{ conversation: ConversationRow 
                 return (
                   <div
                     data-testid={`social-dm-message-${m.id}`}
-                    class={cx("flex flex-col gap-0.5", m.direction === "outbound" ? "items-end" : "items-start")}
+                    class={cx(
+                      "flex flex-col gap-0.5",
+                      m.direction === "outbound" ? "items-end" : "items-start",
+                    )}
                   >
                     <div
                       class={cx(
@@ -140,7 +179,9 @@ export const ConversationDetailPanel: Component<{ conversation: ConversationRow 
                     >
                       {bubble.muted ? bubble.text : stripExternalFence(bubble.text) || "(no text)"}
                     </div>
-                    <span class="text-[10.5px] text-text-tertiary">{messageTime(m.occurred_at)}</span>
+                    <span class="text-[10.5px] text-text-tertiary">
+                      {messageTime(m.occurred_at)}
+                    </span>
                   </div>
                 )
               }}
@@ -151,7 +192,10 @@ export const ConversationDetailPanel: Component<{ conversation: ConversationRow 
         <Show
           when={win().composeEnabled}
           fallback={
-            <div data-testid="social-dm-fallback" class="rounded-md border border-border-subtle bg-surface px-3 py-2 text-[12.5px] text-text-secondary">
+            <div
+              data-testid="social-dm-fallback"
+              class="rounded-md border border-border-subtle bg-surface px-3 py-2 text-[12.5px] text-text-secondary"
+            >
               The reply window has closed. Reply directly in the app:{" "}
               <a
                 href={`https://www.${fresh()?.platform === "instagram" ? "instagram" : "facebook"}.com/`}
@@ -165,13 +209,18 @@ export const ConversationDetailPanel: Component<{ conversation: ConversationRow 
             </div>
           }
         >
-          <div data-testid="social-dm-compose" class="flex flex-col gap-2 border-t border-border-subtle pt-3">
+          <div
+            data-testid="social-dm-compose"
+            class="flex flex-col gap-2 border-t border-border-subtle pt-3"
+          >
             <textarea
               data-testid="social-dm-compose-box"
               class="min-h-[64px] w-full rounded-md border border-border-subtle bg-surface px-2 py-1 text-[12.5px] text-text"
               placeholder="Write a reply…"
             />
-            <Button variant="primary" testid="social-dm-send">Send (approval required)</Button>
+            <Button variant="primary" testid="social-dm-send">
+              Send (approval required)
+            </Button>
           </div>
         </Show>
       </div>
@@ -207,8 +256,16 @@ export const Messages: Component = () => {
     <div class="flex h-full min-h-0 flex-col">
       <PageHeader title="Messages" subtitle="Direct messages across Facebook and Instagram" />
       <div class="flex min-h-0 flex-1">
-        <div class="w-80 shrink-0 overflow-y-auto border-r border-border-subtle" data-testid="social-messages-list">
-          <Show when={visible().length > 0} fallback={<EmptyState title="No conversations">DMs appear here once received.</EmptyState>}>
+        <div
+          class="w-80 shrink-0 overflow-y-auto border-r border-border-subtle"
+          data-testid="social-messages-list"
+        >
+          <Show
+            when={visible().length > 0}
+            fallback={
+              <EmptyState title="No conversations">DMs appear here once received.</EmptyState>
+            }
+          >
             <For each={visible()}>
               {(r) => {
                 const win = windowPillState(r.last_inbound_at ?? null)
@@ -222,7 +279,9 @@ export const Messages: Component = () => {
                       selectedId() === r.id ? "bg-surface-hover" : "hover:bg-surface-hover",
                     )}
                   >
-                    <span class="truncate text-[12.5px] text-text">{r.participant_handle ?? r.platform}</span>
+                    <span class="truncate text-[12.5px] text-text">
+                      {r.participant_handle ?? r.platform}
+                    </span>
                     <Badge tone={win.tone}>{win.label}</Badge>
                   </button>
                 )

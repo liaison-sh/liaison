@@ -77,16 +77,24 @@ describe("category on a return", () => {
   // "sale" against repair returns, because "sale" is what a row carries when nobody set a
   // category. Saying nothing is honest; the Reason column already explains the return.
   it("does not assert the default sale type on an inbound return", () => {
-    expect(buildQueueFacts({ ...DRAFT, category: "sale" }, {}, { kind: "return" }).category).toBeNull()
-    expect(buildQueueFacts({ ...DRAFT, category: undefined }, {}, { kind: "return" }).category).toBeNull()
+    expect(
+      buildQueueFacts({ ...DRAFT, category: "sale" }, {}, { kind: "return" }).category,
+    ).toBeNull()
+    expect(
+      buildQueueFacts({ ...DRAFT, category: undefined }, {}, { kind: "return" }).category,
+    ).toBeNull()
   })
 
   it("keeps a category someone actually chose, on a return as anywhere else", () => {
-    expect(buildQueueFacts({ ...DRAFT, category: "repair" }, {}, { kind: "return" }).category).toBe("repair")
+    expect(buildQueueFacts({ ...DRAFT, category: "repair" }, {}, { kind: "return" }).category).toBe(
+      "repair",
+    )
   })
 
   it("leaves outbound shipments alone", () => {
-    expect(buildQueueFacts({ ...DRAFT, category: "sale" }, {}, { kind: "outbound" }).category).toBe("sale")
+    expect(buildQueueFacts({ ...DRAFT, category: "sale" }, {}, { kind: "outbound" }).category).toBe(
+      "sale",
+    )
     expect(buildQueueFacts({ ...DRAFT, category: "sale" }).category).toBe("sale")
   })
 })
@@ -113,8 +121,10 @@ describe("readQueueFacts", () => {
   })
 
   it("drops parcel entries that are not parcels", () => {
-    expect(readQueueFacts({ parcels: [{ weight: 2, length: 1, width: 1, height: 1 }, "junk", null] }).parcels)
-      .toHaveLength(1)
+    expect(
+      readQueueFacts({ parcels: [{ weight: 2, length: 1, width: 1, height: 1 }, "junk", null] })
+        .parcels,
+    ).toHaveLength(1)
   })
 })
 
@@ -148,9 +158,17 @@ describe("buy-time SKUs and carrier family (document rules)", () => {
   })
 
   it("reads them back unchanged, and as null on a row written before they were kept", () => {
-    const stored = JSON.stringify({ items: 1, products: "1xA", skus: ["SKU-A"], carrier_family: "ups" })
+    const stored = JSON.stringify({
+      items: 1,
+      products: "1xA",
+      skus: ["SKU-A"],
+      carrier_family: "ups",
+    })
     expect(readQueueFacts(stored)).toMatchObject({ skus: ["SKU-A"], carrier_family: "ups" })
-    expect(readQueueFacts({ items: 1, products: "1xA" })).toMatchObject({ skus: null, carrier_family: null })
+    expect(readQueueFacts({ items: 1, products: "1xA" })).toMatchObject({
+      skus: null,
+      carrier_family: null,
+    })
     expect(EMPTY_QUEUE_FACTS.skus).toBeNull()
   })
 })

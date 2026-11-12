@@ -13,21 +13,22 @@
 // pixel-for-pixel. The pure status/document mappers are kept as named exports
 // (Shipments.tsx + the bun:test suite import them) and are now thin adapters
 // over the kit's single-source-of-truth meta helpers.
-import { type Component, createResource, createSignal, For, type JSX, Show } from "solid-js"
+
 import { app } from "@liaison/host"
+import { type Component, createResource, createSignal, For, type JSX, Show } from "solid-js"
 import { loadFileInto, openPreparingTab } from "./file-open"
 import {
   Badge,
+  type BadgeTone,
   Button,
   Card,
   EmptyState,
+  documentTypeLabel as kitDocumentTypeLabel,
   Money,
   OrderStatusBadge,
-  TrackingStatusBadge,
-  documentTypeLabel as kitDocumentTypeLabel,
   orderStatusMeta,
+  TrackingStatusBadge,
   trackingStatusMeta,
-  type BadgeTone,
 } from "./kit"
 
 export const DRAFT_CREATE_TOOL = "shipment_draft_create"
@@ -103,7 +104,9 @@ async function fetchLinked(documentRef: string): Promise<LinkedShipment | null> 
     const hit = res.results?.[0]
     if (!hit) return null
     const a = hit.attributes ?? {}
-    const docsRaw = Array.isArray(a.documents) ? (a.documents as Array<Record<string, unknown>>) : []
+    const docsRaw = Array.isArray(a.documents)
+      ? (a.documents as Array<Record<string, unknown>>)
+      : []
     return {
       boxtal_order_id: hit.id,
       recipient: (a.recipient as string | null) ?? hit.title ?? null,
@@ -126,7 +129,9 @@ async function fetchLinked(documentRef: string): Promise<LinkedShipment | null> 
 // ── A single labelled key/value row inside the linked card ───────────────────
 const DetailRow: Component<{ label: string; children: JSX.Element }> = (props) => (
   <div class="flex items-baseline justify-between gap-3 py-1.5">
-    <span class="text-[10.5px] font-medium uppercase tracking-wider text-text-tertiary">{props.label}</span>
+    <span class="text-[10.5px] font-medium uppercase tracking-wider text-text-tertiary">
+      {props.label}
+    </span>
     <span class="min-w-0 text-right text-[12.5px] text-text">{props.children}</span>
   </div>
 )
@@ -143,10 +148,10 @@ export const BoxtalShipmentTab: Component<TabProps> = (props) => {
     setOpening(true)
     setOpenError(null)
     try {
-      const res = await app.invokeTool<{ label_file_id?: string | null; error?: { message?: string } }>(
-        "import_label_document",
-        { id: boxtalOrderId },
-      )
+      const res = await app.invokeTool<{
+        label_file_id?: string | null
+        error?: { message?: string }
+      }>("import_label_document", { id: boxtalOrderId })
       if (!res.label_file_id) {
         win?.close()
         setOpenError(res.error?.message ?? "The label is not ready yet. Try again in a minute.")
@@ -172,10 +177,7 @@ export const BoxtalShipmentTab: Component<TabProps> = (props) => {
         <Show
           when={linked()}
           fallback={
-            <EmptyState
-              testid="boxtal-shipment-empty"
-              title="No shipment yet"
-            >
+            <EmptyState testid="boxtal-shipment-empty" title="No shipment yet">
               <span class="block">
                 Create a Boxtal shipment pre-filled from this invoice: recipient, parcels and
                 customs carry over with no re-entry.
@@ -198,11 +200,16 @@ export const BoxtalShipmentTab: Component<TabProps> = (props) => {
                     <div class="text-[10.5px] font-medium uppercase tracking-wider text-text-tertiary">
                       Recipient
                     </div>
-                    <div class="truncate text-[13px] font-medium text-text">{s().recipient ?? "-"}</div>
+                    <div class="truncate text-[13px] font-medium text-text">
+                      {s().recipient ?? "-"}
+                    </div>
                   </div>
                   <div class="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
                     <OrderStatusBadge status={s().order_status} testid="boxtal-tab-order-status" />
-                    <TrackingStatusBadge status={s().tracking_status} testid="boxtal-tab-tracking-status" />
+                    <TrackingStatusBadge
+                      status={s().tracking_status}
+                      testid="boxtal-tab-tracking-status"
+                    />
                   </div>
                 </div>
 
@@ -218,7 +225,10 @@ export const BoxtalShipmentTab: Component<TabProps> = (props) => {
                       when={s().tracking_number}
                       fallback={<span class="text-text-tertiary">-</span>}
                     >
-                      <span class="font-mono tabular-nums text-text" data-testid="boxtal-tab-tracking-number">
+                      <span
+                        class="font-mono tabular-nums text-text"
+                        data-testid="boxtal-tab-tracking-number"
+                      >
                         {s().tracking_number}
                       </span>
                     </Show>

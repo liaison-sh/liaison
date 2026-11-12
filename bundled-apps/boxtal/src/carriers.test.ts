@@ -95,7 +95,14 @@ describe("filterOffersByAllowlist", () => {
 
 describe("isPickupPointOffer", () => {
   // A fuller offer factory carrying the fields the pickup detector reads.
-  const pp = (o: Partial<{ needs_relay_point: boolean; service: string; service_code: string; offer_code: string }>) => ({
+  const pp = (
+    o: Partial<{
+      needs_relay_point: boolean
+      service: string
+      service_code: string
+      offer_code: string
+    }>,
+  ) => ({
     needs_relay_point: o.needs_relay_point ?? false,
     service: o.service ?? "",
     service_code: o.service_code ?? "",
@@ -103,36 +110,71 @@ describe("isPickupPointOffer", () => {
   })
 
   it("flags an offer Boxtal marks needs_relay_point (the authoritative delivery-type signal)", () => {
-    expect(isPickupPointOffer(pp({ needs_relay_point: true, service: "Mondial Relay Domicile" }))).toBe(true)
+    expect(
+      isPickupPointOffer(pp({ needs_relay_point: true, service: "Mondial Relay Domicile" })),
+    ).toBe(true)
   })
 
   it("flags an UPS Access Point service by its NAME when Boxtal leaves needs_relay_point false", () => {
     // Live shape: UPSE-EconomyAccessPoint / UPSE-StandardAP come back with a generic
     // delivery type but an access-point service label — the naming is the only tell.
-    expect(isPickupPointOffer(pp({ service: "UPS Standard Access Point", offer_code: "UPSE-StandardAP" }))).toBe(true)
-    expect(isPickupPointOffer(pp({ service: "UPS Economy Access Point", offer_code: "UPSE-EconomyAccessPoint" }))).toBe(true)
+    expect(
+      isPickupPointOffer(
+        pp({ service: "UPS Standard Access Point", offer_code: "UPSE-StandardAP" }),
+      ),
+    ).toBe(true)
+    expect(
+      isPickupPointOffer(
+        pp({ service: "UPS Economy Access Point", offer_code: "UPSE-EconomyAccessPoint" }),
+      ),
+    ).toBe(true)
   })
 
   it("flags a point-relais / pickup-point / drop-off service by name", () => {
     expect(isPickupPointOffer(pp({ service: "Point Relais", offer_code: "MRLY-Point" }))).toBe(true)
-    expect(isPickupPointOffer(pp({ service: "Chrono Relais Europe", offer_code: "CHRP-Relais" }))).toBe(true)
+    expect(
+      isPickupPointOffer(pp({ service: "Chrono Relais Europe", offer_code: "CHRP-Relais" })),
+    ).toBe(true)
     expect(isPickupPointOffer(pp({ service: "Colissimo Point Retrait" }))).toBe(true)
     expect(isPickupPointOffer(pp({ service: "DropOff Point delivery" }))).toBe(true)
   })
 
   it("does NOT flag an ordinary home / door-to-door service (even from a relay-oriented carrier)", () => {
     // The carrier name is Mondial Relay, but the SERVICE is home delivery — must survive.
-    expect(isPickupPointOffer(pp({ service: "Mondial Relay Domicile", offer_code: "MONR-Home" }))).toBe(false)
-    expect(isPickupPointOffer(pp({ service: "Chrono 18", offer_code: "CHRP-Chrono18" }))).toBe(false)
-    expect(isPickupPointOffer(pp({ service: "FedEx International Priority", offer_code: "FEDX-IP" }))).toBe(false)
-    expect(isPickupPointOffer(pp({ service: "UPS Express Saver", offer_code: "UPSE-ExpressSaver" }))).toBe(false)
+    expect(
+      isPickupPointOffer(pp({ service: "Mondial Relay Domicile", offer_code: "MONR-Home" })),
+    ).toBe(false)
+    expect(isPickupPointOffer(pp({ service: "Chrono 18", offer_code: "CHRP-Chrono18" }))).toBe(
+      false,
+    )
+    expect(
+      isPickupPointOffer(pp({ service: "FedEx International Priority", offer_code: "FEDX-IP" })),
+    ).toBe(false)
+    expect(
+      isPickupPointOffer(pp({ service: "UPS Express Saver", offer_code: "UPSE-ExpressSaver" })),
+    ).toBe(false)
   })
 })
 
 describe("filterOffersByPickupPoint", () => {
-  const homeOffer = { needs_relay_point: false, service: "FedEx International Priority", service_code: "IP", offer_code: "FEDX-IP" }
-  const relayFlagged = { needs_relay_point: true, service: "Mondial Relay", service_code: "Point", offer_code: "MONR-Point" }
-  const relayNamed = { needs_relay_point: false, service: "UPS Standard Access Point", service_code: "StandardAP", offer_code: "UPSE-StandardAP" }
+  const homeOffer = {
+    needs_relay_point: false,
+    service: "FedEx International Priority",
+    service_code: "IP",
+    offer_code: "FEDX-IP",
+  }
+  const relayFlagged = {
+    needs_relay_point: true,
+    service: "Mondial Relay",
+    service_code: "Point",
+    offer_code: "MONR-Point",
+  }
+  const relayNamed = {
+    needs_relay_point: false,
+    service: "UPS Standard Access Point",
+    service_code: "StandardAP",
+    offer_code: "UPSE-StandardAP",
+  }
   const OFFERS = [homeOffer, relayFlagged, relayNamed]
 
   it("passes every offer through when exclude is false (policy off)", () => {

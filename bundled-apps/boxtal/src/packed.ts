@@ -22,11 +22,11 @@
 
 import type { BoxtalToolCtx } from "./ctx"
 import {
+  type FulfillmentShipmentRow,
   fulfillShipment,
   retirePendingFulfillment,
   shopifyOrderIdForShipment,
   unfulfillShipment,
-  type FulfillmentShipmentRow,
 } from "./fulfillment"
 import { isValidCarrierTracking, labelCarrierOf } from "./label-tracking"
 import { readQueueFacts } from "./queue-facts"
@@ -101,14 +101,20 @@ function typedTrackingIsValid(offerCode: string | null | undefined, n: string): 
 }
 
 function isFulfilled(row: ShipmentRowView): boolean {
-  return row.fulfillment_state === "fulfilled" || (row.fulfillment_synced === true && row.fulfillment_state !== "cancelled")
+  return (
+    row.fulfillment_state === "fulfilled" ||
+    (row.fulfillment_synced === true && row.fulfillment_state !== "cancelled")
+  )
 }
 
 /**
  * Pack (and fulfil) or unpack (and unfulfil) one shipment row. Resolved by local `id` first, then
  * by `boxtal_order_id`, the way printPack resolves a ready_list row.
  */
-export async function readySetPacked(ctx: Ctx, input: ReadySetPackedInput): Promise<ReadySetPackedResult> {
+export async function readySetPacked(
+  ctx: Ctx,
+  input: ReadySetPackedInput,
+): Promise<ReadySetPackedResult> {
   const ref = String(input.shipment_id ?? "").trim()
   const empty: ReadySetPackedResult = {
     shipment_id: ref,
@@ -120,7 +126,10 @@ export async function readySetPacked(ctx: Ctx, input: ReadySetPackedInput): Prom
     order_name: null,
   }
   if (!ref) {
-    return { ...empty, error: { code: "invalid_params", message: "shipment_id is required (a ready_list row id)." } }
+    return {
+      ...empty,
+      error: { code: "invalid_params", message: "shipment_id is required (a ready_list row id)." },
+    }
   }
   const row = await loadRow(ctx, ref)
   if (!row) {
@@ -129,7 +138,8 @@ export async function readySetPacked(ctx: Ctx, input: ReadySetPackedInput): Prom
   const id = String(row.id)
 
   if (input.packed === true) {
-    const typed = typeof input.tracking_number === "string" ? normaliseTypedTracking(input.tracking_number) : ""
+    const typed =
+      typeof input.tracking_number === "string" ? normaliseTypedTracking(input.tracking_number) : ""
     if (typed) {
       if (row.tracking_number && row.tracking_number !== typed) {
         return view(row, {
@@ -150,7 +160,11 @@ export async function readySetPacked(ctx: Ctx, input: ReadySetPackedInput): Prom
       if (!row.tracking_number) {
         // Not a carrier event: flagged like a number read off the label, so the carrier's own number
         // replaces it at its first scan, and it never triggers the automatic fulfillment.
-        await ctx.db.update("shipment", id, { tracking_number: typed, tracking_from_label: true, tracking_to_confirm: false })
+        await ctx.db.update("shipment", id, {
+          tracking_number: typed,
+          tracking_from_label: true,
+          tracking_to_confirm: false,
+        })
         row.tracking_number = typed
         row.tracking_from_label = true
       }
@@ -169,7 +183,12 @@ export async function readySetPacked(ctx: Ctx, input: ReadySetPackedInput): Prom
     const fresh = (await loadRow(ctx, id)) ?? row
     if (outcome.status !== "fulfilled") {
       // The tick does not land: the row stays unpacked, with the reason on it.
-      return view(fresh, { error: { code: outcome.status === "pending_approval" ? "pending_approval" : outcome.code, message: outcome.message } })
+      return view(fresh, {
+        error: {
+          code: outcome.status === "pending_approval" ? "pending_approval" : outcome.code,
+          message: outcome.message,
+        },
+      })
     }
     const packedAt = new Date().toISOString()
     await ctx.db.update("shipment", id, { packed_at: packedAt })
@@ -180,11 +199,15 @@ export async function readySetPacked(ctx: Ctx, input: ReadySetPackedInput): Prom
   if (row.fulfillment_state === "pending_approval") {
     // Nothing reached Shopify yet, but a request to fulfil is parked: unticking withdraws it, so
     // nobody approves a fulfillment the operator took back.
-    if (row.fulfillment_approval_id && (await retirePendingFulfillment(ctx, row.fulfillment_approval_id)) === "kept") {
+    if (
+      row.fulfillment_approval_id &&
+      (await retirePendingFulfillment(ctx, row.fulfillment_approval_id)) === "kept"
+    ) {
       return view(row, {
         error: {
           code: "approval_not_withdrawn",
-          message: "The pending fulfillment request could not be withdrawn (only the person who raised it can). Deny it in the approvals instead.",
+          message:
+            "The pending fulfillment request could not be withdrawn (only the person who raised it can). Deny it in the approvals instead.",
         },
       })
     }
@@ -208,7 +231,10 @@ export async function readySetPacked(ctx: Ctx, input: ReadySetPackedInput): Prom
       // The untick does not land either: the order is still fulfilled, so the row stays packed.
       const fresh = (await loadRow(ctx, id)) ?? row
       return view(fresh, {
-        error: { code: outcome.status === "pending_approval" ? "pending_approval" : outcome.code, message: outcome.message },
+        error: {
+          code: outcome.status === "pending_approval" ? "pending_approval" : outcome.code,
+          message: outcome.message,
+        },
       })
     }
   }

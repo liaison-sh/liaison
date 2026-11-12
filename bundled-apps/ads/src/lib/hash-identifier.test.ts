@@ -114,9 +114,13 @@ describe("hash-identifier — purity check (build-time static, not runtime proof
     const importLines = source.split("\n").filter((l) => l.trim().startsWith("import "))
     for (const line of importLines) {
       // No import of node:crypto
-      expect(line, `forbidden import in hash-identifier.ts: ${line}`).not.toMatch(/from ['"]node:crypto['"]/)
+      expect(line, `forbidden import in hash-identifier.ts: ${line}`).not.toMatch(
+        /from ['"]node:crypto['"]/,
+      )
       // No import of bare 'crypto'
-      expect(line, `forbidden import in hash-identifier.ts: ${line}`).not.toMatch(/from ['"]crypto['"]/)
+      expect(line, `forbidden import in hash-identifier.ts: ${line}`).not.toMatch(
+        /from ['"]crypto['"]/,
+      )
       // Any import must be from @liaison/app-sdk only
       if (!line.includes("@liaison/app-sdk")) {
         throw new Error(

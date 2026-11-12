@@ -6,8 +6,8 @@
 
 import { describe, expect, test } from "bun:test"
 import type { Platform } from "./adapters/types"
-import type { SocialToolCtx } from "./ctx"
 import { onConnectionDisconnected, onConnectionEstablished, resolveAccessToken } from "./connection"
+import type { SocialToolCtx } from "./ctx"
 import { createMockDb, type MockDb } from "./test-db"
 
 type Job = { name: string; payload: unknown; opts?: { delay?: number; jobId?: string } }
@@ -17,7 +17,12 @@ function makeCtx(db: MockDb): SocialToolCtx & { __jobs: Job[] } {
   return {
     orgId: "org-1",
     db,
-    fetch: (async () => ({ status: 200, ok: true, json: async () => ({}), text: async () => "" })) as never,
+    fetch: (async () => ({
+      status: 200,
+      ok: true,
+      json: async () => ({}),
+      text: async () => "",
+    })) as never,
     connections: {},
     config: { get: async () => null },
     async emit() {},
@@ -44,7 +49,9 @@ describe("onConnectionEstablished (B10)", () => {
     await onConnectionEstablished(instagramConnect, ctx)
     // instagram × {discovery, watch, dm} = 3 rows
     expect(await db.count("sync_state")).toBe(3)
-    const discovery = (await db.findMany("sync_state", { where: { source_type: "discovery" } })) as Array<{
+    const discovery = (await db.findMany("sync_state", {
+      where: { source_type: "discovery" },
+    })) as Array<{
       active: boolean
     }>
     expect(discovery.length).toBe(1)
@@ -71,7 +78,10 @@ describe("onConnectionEstablished (B10)", () => {
     const db = createMockDb()
     const ctx = makeCtx(db)
     await onConnectionEstablished(
-      { ...instagramConnect, data: { ...instagramConnect.data, connectionName: "facebook", identifier: "PAGE_1" } },
+      {
+        ...instagramConnect,
+        data: { ...instagramConnect.data, connectionName: "facebook", identifier: "PAGE_1" },
+      },
       ctx,
     )
     expect(await db.count("sync_state")).toBe(3)
@@ -82,7 +92,10 @@ describe("onConnectionEstablished (B10)", () => {
   test("ignores events for other apps", async () => {
     const db = createMockDb()
     const ctx = makeCtx(db)
-    await onConnectionEstablished({ ...instagramConnect, data: { ...instagramConnect.data, appName: "boxtal" } }, ctx)
+    await onConnectionEstablished(
+      { ...instagramConnect, data: { ...instagramConnect.data, appName: "boxtal" } },
+      ctx,
+    )
     expect(await db.count("sync_state")).toBe(0)
   })
 
@@ -98,7 +111,10 @@ describe("onConnectionEstablished (B10)", () => {
     const db = createMockDb()
     const ctx = makeCtx(db)
     await onConnectionEstablished(
-      { ...instagramConnect, data: { ...instagramConnect.data, connectionName: "google", identifier: "CHAN_1" } },
+      {
+        ...instagramConnect,
+        data: { ...instagramConnect.data, connectionName: "google", identifier: "CHAN_1" },
+      },
       ctx,
     )
     expect(await db.count("sync_state")).toBe(2)
@@ -124,9 +140,7 @@ describe("resolveAccessToken — per-platform OAuth token resolution", () => {
     return { connections: { getToken: impl } } as unknown as SocialToolCtx
   }
   // RECORD SDK shape: connections[name].getToken(identifier).
-  function recordCtx(
-    map: Record<string, (identifier?: string) => Promise<string>>,
-  ): SocialToolCtx {
+  function recordCtx(map: Record<string, (identifier?: string) => Promise<string>>): SocialToolCtx {
     const conns: Record<string, { getToken: (id?: string) => Promise<string> }> = {}
     for (const [k, v] of Object.entries(map)) conns[k] = { getToken: v }
     return { connections: conns } as unknown as SocialToolCtx
@@ -186,7 +200,11 @@ describe("instagram_unified preview leaves the instagram path untouched", () => 
     await onConnectionEstablished(
       {
         ...instagramConnect,
-        data: { ...instagramConnect.data, connectionName: "instagram_unified", identifier: "17841400000000101" },
+        data: {
+          ...instagramConnect.data,
+          connectionName: "instagram_unified",
+          identifier: "17841400000000101",
+        },
       },
       ctx,
     )

@@ -15,8 +15,19 @@ import manifest from "../app.manifest.json"
 import { CARD_MAX_LINES } from "./approval-cards"
 import * as summarizers from "./summarizers"
 
-type Card = { kind: string; title: string; subtitle?: string; lines: string[]; links?: Array<{ label: string; entityId?: string }> }
-type Tool = { gated?: boolean; summarizer?: string; approvalCard?: unknown; summarizerContext?: { tool: string; params: Record<string, string> } }
+type Card = {
+  kind: string
+  title: string
+  subtitle?: string
+  lines: string[]
+  links?: Array<{ label: string; entityId?: string }>
+}
+type Tool = {
+  gated?: boolean
+  summarizer?: string
+  approvalCard?: unknown
+  summarizerContext?: { tool: string; params: Record<string, string> }
+}
 const TOOLS = (manifest as unknown as { tools: Record<string, Tool> }).tools
 
 /** The kernel's fallback card for a gated tool with no summarizer. */
@@ -24,27 +35,43 @@ function kernelFallback(toolName: string, params: Record<string, unknown>): Card
   const compact = (v: unknown): string => {
     if (v === null || v === undefined) return "(none)"
     if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return String(v)
-    if (Array.isArray(v)) return v.length === 0 ? "(empty list)" : `${v.length} item${v.length === 1 ? "" : "s"}`
+    if (Array.isArray(v))
+      return v.length === 0 ? "(empty list)" : `${v.length} item${v.length === 1 ? "" : "s"}`
     return JSON.stringify(v)
   }
   return {
     kind: toolName,
     title: `invoicing:${toolName}`,
     subtitle: "Pending approval",
-    lines: Object.entries(params).slice(0, 7).map(([k, v]) => `${k}: ${compact(v)}`.slice(0, 200)),
+    lines: Object.entries(params)
+      .slice(0, 7)
+      .map(([k, v]) => `${k}: ${compact(v)}`.slice(0, 200)),
   }
 }
 
-async function cardFor(toolName: string, params: Record<string, unknown>, context: unknown = null): Promise<Card> {
+async function cardFor(
+  toolName: string,
+  params: Record<string, unknown>,
+  context: unknown = null,
+): Promise<Card> {
   const tool = TOOLS[toolName]
   expect(tool).toBeDefined()
-  const fn = tool!.summarizer ? (summarizers as Record<string, unknown>)[tool!.summarizer] : undefined
+  const fn = tool!.summarizer
+    ? (summarizers as Record<string, unknown>)[tool!.summarizer]
+    : undefined
   if (typeof fn !== "function") return kernelFallback(toolName, params)
-  return (await (fn as (p: unknown, c: unknown, m: unknown) => Promise<Card>)(params, undefined, { context })) as Card
+  return (await (fn as (p: unknown, c: unknown, m: unknown) => Promise<Card>)(params, undefined, {
+    context,
+  })) as Card
 }
 
 function visible(card: Card): string {
-  return [card.title, card.subtitle ?? "", ...card.lines, ...(card.links ?? []).map((l) => l.label)].join("\n")
+  return [
+    card.title,
+    card.subtitle ?? "",
+    ...card.lines,
+    ...(card.links ?? []).map((l) => l.label),
+  ].join("\n")
 }
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
@@ -85,7 +112,15 @@ const proforma = {
   shopify_order_id: ORDER_GID,
   shopify_order_number: "#3446",
   due_at: "2026-11-01",
-  lines: [{ id: "a1b2c3d4-0000-4000-8000-000000000001", description: "Kestrel 6", quantity: "1", unit_price_minor: "0", discount_minor: "0" }],
+  lines: [
+    {
+      id: "a1b2c3d4-0000-4000-8000-000000000001",
+      description: "Kestrel 6",
+      quantity: "1",
+      unit_price_minor: "0",
+      discount_minor: "0",
+    },
+  ],
 }
 
 const invoice = {
@@ -105,7 +140,17 @@ const invoice = {
 
 const draft = { ...invoice, number: null, status: "draft", grand_total_minor: "41940" }
 
-const issuers = { items: [{ id: ISSUER_ID, legal_name: "Resonant Audio Labs", default_currency: "EUR", iban: "FR7600000000000000000000001", invoice_approval_threshold_minor: "100000" }] }
+const issuers = {
+  items: [
+    {
+      id: ISSUER_ID,
+      legal_name: "Resonant Audio Labs",
+      default_currency: "EUR",
+      iban: "FR7600000000000000000000001",
+      invoice_approval_threshold_minor: "100000",
+    },
+  ],
+}
 
 describe("invoicing approval cards: edits", () => {
   it("documents_update names the document, the customer and the total before -> after", async () => {
@@ -114,7 +159,9 @@ describe("invoicing approval cards: edits", () => {
       { id: DOC_ID, lines: [{ description: "Kestrel 6", quantity: 1, unit_price_minor: 100 }] },
       proforma,
     )
-    expect(card.title).toBe("Change proforma PRO-2026-0029 (Thomas Raz) total from 0.00 USD to 1.00 USD")
+    expect(card.title).toBe(
+      "Change proforma PRO-2026-0029 (Thomas Raz) total from 0.00 USD to 1.00 USD",
+    )
     expect(card.lines).toContain("Total: 0.00 USD -> 1.00 USD")
     expect(card.lines).toContain("Line 1: Kestrel 6 x 1 @ 0.00 USD -> Kestrel 6 x 1 @ 1.00 USD")
     expect(card.lines).toContain("Order: #3446")
@@ -126,7 +173,15 @@ describe("invoicing approval cards: edits", () => {
   it("documents_update shows each changed field by name, before -> after, and skips unchanged ones", async () => {
     const card = await cardFor(
       "documents_update",
-      { id: DOC_ID, counterparty_email: "billing@raz.example", due_at: "2026-12-01", counterparty_contact_id: ISSUER_ID, incoterm: undefined, notes: null, counterparty_name: "Thomas Raz" },
+      {
+        id: DOC_ID,
+        counterparty_email: "billing@raz.example",
+        due_at: "2026-12-01",
+        counterparty_contact_id: ISSUER_ID,
+        incoterm: undefined,
+        notes: null,
+        counterparty_name: "Thomas Raz",
+      },
       proforma,
     )
     expect(card.title).toContain("Edit proforma PRO-2026-0029 (Thomas Raz)")
@@ -138,13 +193,23 @@ describe("invoicing approval cards: edits", () => {
   })
 
   it("documents_update with tax names the subtotal, never a guessed total", async () => {
-    const card = await cardFor("documents_update", { id: DOC_ID, lines: [{ description: "Kestrel 6", quantity: 2, unit_price_minor: 34950 }] }, invoice)
-    expect(card.title).toBe("Change invoice INV-2026-3531 (Atelier Sonore) subtotal from 349.50 EUR to 699.00 EUR")
+    const card = await cardFor(
+      "documents_update",
+      { id: DOC_ID, lines: [{ description: "Kestrel 6", quantity: 2, unit_price_minor: 34950 }] },
+      invoice,
+    )
+    expect(card.title).toBe(
+      "Change invoice INV-2026-3531 (Atelier Sonore) subtotal from 349.50 EUR to 699.00 EUR",
+    )
     expectHuman(card, ["34950", "69900"])
   })
 
   it("documents_update still reads as words when the document could not be read", async () => {
-    const card = await cardFor("documents_update", { id: DOC_ID, po_number: "PO 77", lines: [{ description: "Kestrel 6", quantity: 1, unit_price_minor: 100 }] })
+    const card = await cardFor("documents_update", {
+      id: DOC_ID,
+      po_number: "PO 77",
+      lines: [{ description: "Kestrel 6", quantity: 1, unit_price_minor: 100 }],
+    })
     expect(card.lines).toContain("Customer PO number: set to PO 77")
     expectHuman(card, ["100"])
   })
@@ -152,7 +217,12 @@ describe("invoicing approval cards: edits", () => {
   it("settings_issuer_profile_update shows each setting by its name, money formatted", async () => {
     const card = await cardFor(
       "settings_issuer_profile_update",
-      { id: ISSUER_ID, iban: "FR7611111111111111111111111", invoice_approval_threshold_minor: 500000, require_two_eyes: true },
+      {
+        id: ISSUER_ID,
+        iban: "FR7611111111111111111111111",
+        invoice_approval_threshold_minor: 500000,
+        require_two_eyes: true,
+      },
       issuers,
     )
     expect(card.title).toBe("Change issuer profile Resonant Audio Labs")
@@ -174,7 +244,11 @@ describe("invoicing approval cards: issuing", () => {
     const card = await cardFor(
       "proforma_create_and_issue",
       {
-        counterparty: JSON.stringify({ legal_name: "Thomas Raz", country: "US", email: "thomas@raz.example" }),
+        counterparty: JSON.stringify({
+          legal_name: "Thomas Raz",
+          country: "US",
+          email: "thomas@raz.example",
+        }),
         items: [{ description: "Kestrel 6", quantity: 1, unit_price_minor: 100 }],
         reason: "Customs value for the replacement unit",
         declared_value_minor: 100,
@@ -195,18 +269,32 @@ describe("invoicing approval cards: issuing", () => {
   })
 
   it("invoice_create_and_issue names the customer and the lines total, many lines summarised", async () => {
-    const items = Array.from({ length: 9 }, (_, i) => ({ description: `Pad ${i + 1}`, quantity: 1, unit_price_minor: 1000 }))
-    const card = await cardFor("invoice_create_and_issue", { counterparty: { legal_name: "Atelier Sonore", country: "FR" }, items, currency: "EUR" }, issuers)
+    const items = Array.from({ length: 9 }, (_, i) => ({
+      description: `Pad ${i + 1}`,
+      quantity: 1,
+      unit_price_minor: 1000,
+    }))
+    const card = await cardFor(
+      "invoice_create_and_issue",
+      { counterparty: { legal_name: "Atelier Sonore", country: "FR" }, items, currency: "EUR" },
+      issuers,
+    )
     expect(card.title).toBe("Issue invoice for Atelier Sonore, 90.00 EUR")
     expect(card.lines.some((l) => /^and \d+ more lines$/.test(l))).toBe(true)
     expectHuman(card, ["1000", "9000"])
   })
 
-  for (const [tool, type] of [["invoice_issue", "invoice"], ["quote_issue", "quote"], ["proforma_issue", "proforma"]] as const) {
+  for (const [tool, type] of [
+    ["invoice_issue", "invoice"],
+    ["quote_issue", "quote"],
+    ["proforma_issue", "proforma"],
+  ] as const) {
     it(`${tool}: issues the saved draft for its customer, total and order, no draft id`, async () => {
       const card = await cardFor(tool, { draft_id: DOC_ID }, { ...draft, type })
       expect(card.title).toBe(`Issue ${type} for Atelier Sonore, 419.40 EUR, order #3502`)
-      expect(card.lines).toContain(`Document: new ${type} from a saved draft (number assigned on issue)`)
+      expect(card.lines).toContain(
+        `Document: new ${type} from a saved draft (number assigned on issue)`,
+      )
       expect(card.lines).toContain("Total: 419.40 EUR")
       expectHuman(card, ["41940"])
     })
@@ -215,23 +303,41 @@ describe("invoicing approval cards: issuing", () => {
 
 describe("invoicing approval cards: money on issued documents", () => {
   it("documents_record_refund: amount, document and customer", async () => {
-    const card = await cardFor("documents_record_refund", { document_id: DOC_ID, refund_amount_minor: 41940, refund_kind: "full" }, invoice)
-    expect(card.title).toBe("Record a full refund of 419.40 EUR on invoice INV-2026-3531 (Atelier Sonore)")
+    const card = await cardFor(
+      "documents_record_refund",
+      { document_id: DOC_ID, refund_amount_minor: 41940, refund_kind: "full" },
+      invoice,
+    )
+    expect(card.title).toBe(
+      "Record a full refund of 419.40 EUR on invoice INV-2026-3531 (Atelier Sonore)",
+    )
     expect(card.lines).toContain("Order: #3502")
     expectHuman(card, ["41940"])
   })
 
   it("documents_mark_paid: document, customer and total", async () => {
-    const card = await cardFor("documents_mark_paid", { document_id: DOC_ID, paid_date: "2026-10-15" }, invoice)
+    const card = await cardFor(
+      "documents_mark_paid",
+      { document_id: DOC_ID, paid_date: "2026-10-15" },
+      invoice,
+    )
     expect(card.title).toBe("Mark invoice INV-2026-3531 (Atelier Sonore) as paid, 419.40 EUR")
     expect(card.lines).toContain("Paid on: 2026-10-15")
     expectHuman(card, ["41940"])
   })
 
   it("documents_convert_to_invoice: the quote it converts, for whom and how much", async () => {
-    const card = await cardFor("documents_convert_to_invoice", { source_document_id: DOC_ID }, { ...invoice, type: "quote", number: "QUO-2026-0007", shopify_draft_order_name: "#D12" })
-    expect(card.title).toBe("Convert quote QUO-2026-0007 (Atelier Sonore) into an invoice, 419.40 EUR")
-    expect(card.lines).toContain("Shopify draft order #D12 is completed in Shopify with payment pending")
+    const card = await cardFor(
+      "documents_convert_to_invoice",
+      { source_document_id: DOC_ID },
+      { ...invoice, type: "quote", number: "QUO-2026-0007", shopify_draft_order_name: "#D12" },
+    )
+    expect(card.title).toBe(
+      "Convert quote QUO-2026-0007 (Atelier Sonore) into an invoice, 419.40 EUR",
+    )
+    expect(card.lines).toContain(
+      "Shopify draft order #D12 is completed in Shopify with payment pending",
+    )
     expectHuman(card, ["41940"])
   })
 
@@ -245,7 +351,15 @@ describe("invoicing approval cards: money on issued documents", () => {
   it("order_reissue_apply: the invoice it reverses and the order", async () => {
     const card = await cardFor(
       "order_reissue_apply",
-      { original_document_id: DOC_ID, shopify_order_id: ORDER_GID, shopify_order_number: "#3502", billing_signature: "abc", dedupe_key: "k", currency: "EUR", items: [{ description: "Kestrel 6", quantity: 1, unit_price_minor: 30000 }] },
+      {
+        original_document_id: DOC_ID,
+        shopify_order_id: ORDER_GID,
+        shopify_order_number: "#3502",
+        billing_signature: "abc",
+        dedupe_key: "k",
+        currency: "EUR",
+        items: [{ description: "Kestrel 6", quantity: 1, unit_price_minor: 30000 }],
+      },
       invoice,
     )
     expect(card.title).toBe("Reissue invoice INV-2026-3531 for the edited order #3502")
@@ -255,7 +369,16 @@ describe("invoicing approval cards: money on issued documents", () => {
 
 describe("invoicing approval cards: e-invoicing and customer settings", () => {
   it("einvoice_send names the invoice and its customer", async () => {
-    const card = await cardFor("einvoice_send", { document_id: DOC_ID, legal_original_sha256: "ab".repeat(32), buyer_siren: "552100554", routing_address: "552100554_ROUTE" }, invoice)
+    const card = await cardFor(
+      "einvoice_send",
+      {
+        document_id: DOC_ID,
+        legal_original_sha256: "ab".repeat(32),
+        buyer_siren: "552100554",
+        routing_address: "552100554_ROUTE",
+      },
+      invoice,
+    )
     expect(card.title).toBe("Send invoice INV-2026-3531 (Atelier Sonore) as an e-invoice")
     expect(card.lines).toContain("Buyer SIREN: 552100554")
     expectHuman(card)
@@ -265,7 +388,16 @@ describe("invoicing approval cards: e-invoicing and customer settings", () => {
     const card = await cardFor(
       "received_einvoice_set_status",
       { received_id: DOC_ID, action: "refuse", reason: "DOUBLON" },
-      { status: "ok", invoice: { supplier: { name: "Fournitures Martin" }, invoice_number: "FM-881", issue_date: "2026-10-02", currency: "EUR", totals: { total: "120.00" } } },
+      {
+        status: "ok",
+        invoice: {
+          supplier: { name: "Fournitures Martin" },
+          invoice_number: "FM-881",
+          issue_date: "2026-10-02",
+          currency: "EUR",
+          totals: { total: "120.00" },
+        },
+      },
     )
     expect(card.title).toBe("Refuse supplier invoice FM-881 from Fournitures Martin")
     expect(card.lines).toContain("Total: 120.00 EUR")
@@ -273,19 +405,34 @@ describe("invoicing approval cards: e-invoicing and customer settings", () => {
   })
 
   it("deferred_tax_override names the order and the tax source in words", async () => {
-    const card = await cardFor("deferred_tax_override", { deferred_id: "77", mode: "shopify_reported" }, { items: [{ id: "77", order_number: "#3510", reason: "shopify_tax_mismatch" }] })
-    expect(card.title).toBe("Issue the invoice for order #3510 with the tax Shopify reported on each line")
+    const card = await cardFor(
+      "deferred_tax_override",
+      { deferred_id: "77", mode: "shopify_reported" },
+      { items: [{ id: "77", order_number: "#3510", reason: "shopify_tax_mismatch" }] },
+    )
+    expect(card.title).toBe(
+      "Issue the invoice for order #3510 with the tax Shopify reported on each line",
+    )
     expectHuman(card)
   })
 
   it("counterparty_territory_set names the customer and the treatment in words", async () => {
-    const card = await cardFor("counterparty_territory_set", { contact_id: DOC_ID, treatment: "as_foreign", reason: "Ships to Geneva" }, { counterparty_name: "Atelier Sonore" })
+    const card = await cardFor(
+      "counterparty_territory_set",
+      { contact_id: DOC_ID, treatment: "as_foreign", reason: "Ships to Geneva" },
+      { counterparty_name: "Atelier Sonore" },
+    )
     expect(card.title).toBe("Treat Atelier Sonore as a foreign customer (export or EU rules)")
     expectHuman(card)
   })
 
   it("einvoicing settings and backfills read as settings, not field names", async () => {
-    const settings = await cardFor("einvoicing_settings_set", { gate_mode: "enforce", send_enabled: true, cutover_date: "2026-09-01", provider_app: "pennylane" })
+    const settings = await cardFor("einvoicing_settings_set", {
+      gate_mode: "enforce",
+      send_enabled: true,
+      cutover_date: "2026-09-01",
+      provider_app: "pennylane",
+    })
     expect(settings.lines).toContain("Send e-invoices: on")
     expect(settings.lines).toContain("E-invoicing platform: Pennylane")
     expectHuman(settings)
@@ -299,7 +446,11 @@ describe("invoicing approval cards: coverage", () => {
   it("every gated invoicing tool declares an exported summarizer (no kernel field dump)", () => {
     const missing = Object.entries(TOOLS)
       .filter(([, t]) => t.gated === true)
-      .filter(([, t]) => !t.summarizer || typeof (summarizers as Record<string, unknown>)[t.summarizer] !== "function")
+      .filter(
+        ([, t]) =>
+          !t.summarizer ||
+          typeof (summarizers as Record<string, unknown>)[t.summarizer] !== "function",
+      )
       .map(([n]) => n)
     expect(missing).toEqual([])
   })
@@ -308,7 +459,11 @@ describe("invoicing approval cards: coverage", () => {
     for (const [name, t] of Object.entries(TOOLS)) {
       if (!t.summarizerContext) continue
       const read = TOOLS[t.summarizerContext.tool]
-      expect({ name, read: !!read, gated: read?.gated === true }).toEqual({ name, read: true, gated: false })
+      expect({ name, read: !!read, gated: read?.gated === true }).toEqual({
+        name,
+        read: true,
+        gated: false,
+      })
     }
   })
 })
@@ -319,10 +474,21 @@ describe("invoicing approval cards: a quote staged before it is issued", () => {
       "quote_create_and_issue",
       {
         issuer_profile_id: ISSUER_ID,
-        counterparty: { legal_name: "Northwind Acoustics", country: "PT", email: "ines@northwind.example" },
+        counterparty: {
+          legal_name: "Northwind Acoustics",
+          country: "PT",
+          email: "ines@northwind.example",
+        },
         customer_reference: "CRM-1042",
         due_at: "2026-11-30",
-        items: [{ description: "Kestrel 6", quantity: 40, unit_price_minor: 89900, discount_minor: 1366480 }],
+        items: [
+          {
+            description: "Kestrel 6",
+            quantity: 40,
+            unit_price_minor: 89900,
+            discount_minor: 1366480,
+          },
+        ],
       },
       issuers,
     )
@@ -365,8 +531,17 @@ describe("invoicing approval cards: a draft parked for any reason but a consumer
   })
 
   it("drafts_update of a company draft: names the document and the change, and claims no consumer", async () => {
-    const context = { id: DOC_ID, type: "proforma", number: null, counterparty_name: "Werkton Distribution GmbH" }
-    const card = await cardFor("drafts_update", { draft_id: DOC_ID, patch: { notes: "Ship in one crate" } }, context)
+    const context = {
+      id: DOC_ID,
+      type: "proforma",
+      number: null,
+      counterparty_name: "Werkton Distribution GmbH",
+    }
+    const card = await cardFor(
+      "drafts_update",
+      { draft_id: DOC_ID, patch: { notes: "Ship in one crate" } },
+      context,
+    )
     expectHuman(card)
     expect(card.title).toBe("Update draft proforma (Werkton Distribution GmbH)")
     expect(visible(card)).toContain("Notes: set to Ship in one crate")
@@ -374,16 +549,25 @@ describe("invoicing approval cards: a draft parked for any reason but a consumer
   })
 
   it("drafts_update still says something true when the document cannot be read", async () => {
-    const card = await cardFor("drafts_update", { draft_id: DOC_ID, patch: { due_at: "2026-11-30" } })
+    const card = await cardFor("drafts_update", {
+      draft_id: DOC_ID,
+      patch: { due_at: "2026-11-30" },
+    })
     expectHuman(card)
     expect(card.title).toBe("Update a draft")
     expect(visible(card)).not.toMatch(CONSUMER)
   })
 
   it("drafts_update that declares or clears a consumer says so", async () => {
-    const declared = await cardFor("drafts_update", { draft_id: DOC_ID, patch: { buyer_is_consumer: true } })
+    const declared = await cardFor("drafts_update", {
+      draft_id: DOC_ID,
+      patch: { buyer_is_consumer: true },
+    })
     expect(declared.lines[0]).toContain("This call declares the buyer a private consumer")
-    const cleared = await cardFor("drafts_update", { draft_id: DOC_ID, patch: { buyer_is_consumer: false } })
+    const cleared = await cardFor("drafts_update", {
+      draft_id: DOC_ID,
+      patch: { buyer_is_consumer: false },
+    })
     expect(cleared.lines[0]).toContain("removes the declaration")
     expectHuman(declared)
     expectHuman(cleared)
@@ -398,8 +582,12 @@ describe("invoicing approval cards: a draft parked for any reason but a consumer
 })
 
 describe("credit note and purchase order cards", () => {
-  const { summarizeCreditNoteCreateAndIssue, summarizeCreditNoteIssue, summarizePoCreateAndIssue, summarizePoIssue } =
-    summarizers
+  const {
+    summarizeCreditNoteCreateAndIssue,
+    summarizeCreditNoteIssue,
+    summarizePoCreateAndIssue,
+    summarizePoIssue,
+  } = summarizers
 
   it("every issuing tool an approval can park declares a summarizer, not the template fallback", () => {
     const missing = Object.entries(TOOLS)
@@ -413,13 +601,26 @@ describe("credit note and purchase order cards", () => {
     { description: "USB C Cable", quantity: "1", unit_price_minor: -1900 },
   ]
   const counterparty = { legal_name: "Grace Whitfield", country: "US", email: "grace@example.com" }
-  const issuers = { items: [{ id: "issuer-1", country: "FR", legal_name: "Resonant SAS", default_currency: "EUR" }] }
+  const issuers = {
+    items: [{ id: "issuer-1", country: "FR", legal_name: "Resonant SAS", default_currency: "EUR" }],
+  }
 
   it("a credit note states the amount, every line, the date and the invoice it reverses", async () => {
     const card = await summarizeCreditNoteCreateAndIssue(
-      { counterparty, items, currency: "EUR", issued_at: "2026-11-03", original_document_id: "INV-2026-0017" },
+      {
+        counterparty,
+        items,
+        currency: "EUR",
+        issued_at: "2026-11-03",
+        original_document_id: "INV-2026-0017",
+      },
       undefined,
-      { context: { ...issuers, original: { number: "INV-2026-0017", issued_at: "2026-10-30T00:00:00.000Z" } } },
+      {
+        context: {
+          ...issuers,
+          original: { number: "INV-2026-0017", issued_at: "2026-10-30T00:00:00.000Z" },
+        },
+      },
     )
     expect(card.title).toBe("Credit 918.00 EUR on INV-2026-0017 for Grace Whitfield")
     expect(card.lines).toContain("Reverses invoice: INV-2026-0017 (2026-10-30)")
@@ -431,7 +632,11 @@ describe("credit note and purchase order cards", () => {
   })
 
   it("a credit note keeps its amount, date and invoice on the card with many lines and a long reason", async () => {
-    const many = Array.from({ length: 12 }, (_, i) => ({ description: `Line ${i}`, quantity: "1", unit_price_minor: -100 }))
+    const many = Array.from({ length: 12 }, (_, i) => ({
+      description: `Line ${i}`,
+      quantity: "1",
+      unit_price_minor: -100,
+    }))
     const card = await summarizeCreditNoteCreateAndIssue(
       { counterparty, items: many, reason: "Returned", original_document_id: "INV-2026-0017" },
       undefined,
@@ -477,7 +682,11 @@ describe("credit note and purchase order cards", () => {
 
   it("a positive credit note says it will be refused", async () => {
     const card = await summarizeCreditNoteCreateAndIssue(
-      { counterparty, items: [{ description: "Thing", quantity: "1", unit_price_minor: 500 }], original_document_id: "INV-1" },
+      {
+        counterparty,
+        items: [{ description: "Thing", quantity: "1", unit_price_minor: 500 }],
+        original_document_id: "INV-1",
+      },
       undefined,
       { context: { ...issuers, original: { number: "INV-1", grand_total_minor: "9000" } } },
     )
@@ -487,7 +696,11 @@ describe("credit note and purchase order cards", () => {
 
   it("a zero credit note on a zero-value invoice stays a plain card", async () => {
     const card = await summarizeCreditNoteCreateAndIssue(
-      { counterparty, items: [{ description: "Warranty", quantity: "1", unit_price_minor: 0 }], original_document_id: "INV-1" },
+      {
+        counterparty,
+        items: [{ description: "Warranty", quantity: "1", unit_price_minor: 0 }],
+        original_document_id: "INV-1",
+      },
       undefined,
       { context: { ...issuers, original: { number: "INV-1", grand_total_minor: "0" } } },
     )
@@ -514,7 +727,12 @@ describe("credit note and purchase order cards", () => {
   it("a purchase order states its total and lines, on both issuing tools", async () => {
     const lines = [{ description: "Enclosures", quantity: "2", unit_price_minor: 5000 }]
     const created = await summarizePoCreateAndIssue(
-      { counterparty: { legal_name: "Acme Parts", country: "DE" }, items: lines, currency: "EUR", issued_at: "2026-11-02" },
+      {
+        counterparty: { legal_name: "Acme Parts", country: "DE" },
+        items: lines,
+        currency: "EUR",
+        issued_at: "2026-11-02",
+      },
       undefined,
       { context: issuers },
     )
@@ -523,7 +741,14 @@ describe("credit note and purchase order cards", () => {
     expect(created.lines.join("\n")).toContain("Enclosures")
     expect(created.lines).toContain("Issue date: 2026-11-02")
     const fromDraft = await summarizePoIssue({ draft_id: "d2" }, undefined, {
-      context: { id: "d2", type: "purchase_order", currency: "EUR", grand_total_minor: "10000", counterparty_name: "Acme Parts", lines },
+      context: {
+        id: "d2",
+        type: "purchase_order",
+        currency: "EUR",
+        grand_total_minor: "10000",
+        counterparty_name: "Acme Parts",
+        lines,
+      },
     })
     expect(fromDraft.title).toContain("100.00 EUR")
     expect(fromDraft.lines.join("\n")).toContain("Enclosures")

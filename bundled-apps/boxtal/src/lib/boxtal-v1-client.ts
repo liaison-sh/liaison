@@ -7,11 +7,7 @@
 // runs in QuickJS), sorted ascending by tax-exclusive price, and DEV-mode rows
 // are filtered out.
 
-import {
-  type BoxtalEnvironment,
-  type BoxtalFetch,
-  BoxtalApiError,
-} from "./boxtal-v3-client"
+import { BoxtalApiError, type BoxtalEnvironment, type BoxtalFetch } from "./boxtal-v3-client"
 import { BOXTAL_HTTP_TIMEOUT_MS, timeoutHints } from "./http-budget"
 
 const V1_BASE: Record<BoxtalEnvironment, string> = {
@@ -260,9 +256,14 @@ function decodeXml(s: string): string {
  *  trimmed slice of the body so an unrecognised shape still says something concrete. */
 export function describeCotationError(body: string): string {
   if (!body || body.trim() === "") return ""
-  const tagged = body.match(/<(?:message|error|erreur)>\s*([\s\S]*?)\s*<\/(?:message|error|erreur)>/i)
+  const tagged = body.match(
+    /<(?:message|error|erreur)>\s*([\s\S]*?)\s*<\/(?:message|error|erreur)>/i,
+  )
   const raw = tagged?.[1] ?? body
-  const text = raw.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()
+  const text = raw
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
   if (text === "") return ""
   return `: ${text.length > 300 ? `${text.slice(0, 300)}...` : text}`
 }
@@ -278,7 +279,11 @@ export function parseCotationXml(xml: string): Offer[] {
   const opens = (xml.match(/<offer>/g) ?? []).length
   const closes = (xml.match(/<\/offer>/g) ?? []).length
   if (opens !== closes) {
-    throw new BoxtalApiError("Boxtal v1 cotation XML malformed: unbalanced <offer>", 200, xml.slice(0, 120))
+    throw new BoxtalApiError(
+      "Boxtal v1 cotation XML malformed: unbalanced <offer>",
+      200,
+      xml.slice(0, 120),
+    )
   }
 
   const offers: Offer[] = []
@@ -315,17 +320,19 @@ export function parseCotationXml(xml: string): Offer[] {
     // (unknown), never assert false: a false-negative here would silently drop a possibly-valid
     // on-premise-pickup offer from an agent's filter.
     const collectionTypeBlock = firstTag(collectionBlock, "type")
-    const collectionTypeCode = collectionTypeBlock != null ? firstTag(collectionTypeBlock, "code")?.trim() ?? null : null
+    const collectionTypeCode =
+      collectionTypeBlock != null ? (firstTag(collectionTypeBlock, "code")?.trim() ?? null) : null
     const collection_type = collectionTypeCode
     const AT_SENDER_CODES = ["PICKUP", "COMPANY", "HOME"]
     const DROPOFF_CODES = ["DROPOFF_POINT", "POST_OFFICE", "PICKUP_POINT", "CHRONOPOST_SITE"]
-    const pickup_at_sender = collection_type === null
-      ? null
-      : AT_SENDER_CODES.includes(collection_type)
-        ? true
-        : DROPOFF_CODES.includes(collection_type)
-          ? false
-          : null
+    const pickup_at_sender =
+      collection_type === null
+        ? null
+        : AT_SENDER_CODES.includes(collection_type)
+          ? true
+          : DROPOFF_CODES.includes(collection_type)
+            ? false
+            : null
 
     const insuranceRaw = firstTag(block, "insurance")
     const insurance_ht = insuranceRaw != null ? Number(insuranceRaw) : null

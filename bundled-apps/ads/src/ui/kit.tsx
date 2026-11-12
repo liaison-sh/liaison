@@ -11,15 +11,15 @@
 import {
   Badge,
   Button,
-  ConfirmDialog as SharedConfirmDialog,
   cx,
   Segmented,
+  ConfirmDialog as SharedConfirmDialog,
 } from "@liaison/app-ui/kit"
 import { type Component, type JSX, Show } from "solid-js"
-import { type BadgeTone, formatMoney, effectiveStatusTone, type MetaIssue } from "./ui-logic"
+import { type BadgeTone, effectiveStatusTone, formatMoney, type MetaIssue } from "./ui-logic"
 
-export { formatMoney, type BadgeTone }
 export { Badge, Button, Card, cx, EmptyState, PageHeader, SectionLabel } from "@liaison/app-ui/kit"
+export { type BadgeTone, formatMoney }
 
 // ── Money ─────────────────────────────────────────────────────────────────────
 export const Money: Component<{

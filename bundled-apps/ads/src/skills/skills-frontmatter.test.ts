@@ -40,7 +40,8 @@ function parseFrontmatter(raw: string): { frontmatter: Frontmatter; body: string
     if (rawValue.startsWith("[") && rawValue.endsWith("]")) {
       // e.g. ["ads:campaigns:read"]
       const inner = rawValue.slice(1, -1).trim()
-      fm[key] = inner.length === 0 ? [] : inner.split(",").map((s) => s.trim().replace(/^"(.*)"$/, "$1"))
+      fm[key] =
+        inner.length === 0 ? [] : inner.split(",").map((s) => s.trim().replace(/^"(.*)"$/, "$1"))
     } else {
       fm[key] = rawValue.replace(/^"(.*)"$/, "$1")
     }
@@ -88,9 +89,10 @@ describe("ads Tier-2 playbook frontmatter (src/skills/*.md)", () => {
       it("requiredScopes is a non-empty subset of the manifest scopes[] array", () => {
         expect(frontmatter.requiredScopes.length).toBeGreaterThan(0)
         for (const scope of frontmatter.requiredScopes) {
-          expect(manifestScopes, `scope '${scope}' in ${file} must be declared in manifest scopes[]`).toContain(
-            scope,
-          )
+          expect(
+            manifestScopes,
+            `scope '${scope}' in ${file} must be declared in manifest scopes[]`,
+          ).toContain(scope)
         }
       })
 

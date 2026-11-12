@@ -73,9 +73,11 @@ describe("calls app.manifest.json", () => {
   // Settings > Apps labels each connection with its purpose and demotes the
   // optional ones (a bare "Connect" made a working app look uninstalled).
   it("declares what each connection connects, and which ones are optional", () => {
-    const c = (MANIFEST as unknown as {
-      connections: Record<string, { purpose?: string; optional?: boolean }>
-    }).connections
+    const c = (
+      MANIFEST as unknown as {
+        connections: Record<string, { purpose?: string; optional?: boolean }>
+      }
+    ).connections
     expect(c["transcript-source"]?.purpose).toBe("Transcript webhook")
     expect(c["transcript-source"]?.optional === true).toBe(true)
   })

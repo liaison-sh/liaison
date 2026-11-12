@@ -83,7 +83,10 @@ function toVariantGid(id: string): string | null {
 
 /** The SKUs already known for these variants, without calling any store. Reads the cache by
  *  the variants asked for, never the whole table. */
-export async function knownVariantSkus(db: ProfileDb, refs: VariantRef[]): Promise<Map<string, string>> {
+export async function knownVariantSkus(
+  db: ProfileDb,
+  refs: VariantRef[],
+): Promise<Map<string, string>> {
   const out = new Map<string, string>()
   const idsBySource = new Map<string, Set<string>>()
   for (const r of refs) {
@@ -102,7 +105,8 @@ export async function knownVariantSkus(db: ProfileDb, refs: VariantRef[]): Promi
         limit: batch.length,
       })) as VariantSkuRow[]
       for (const row of rows) {
-        if (typeof row.sku === "string" && row.sku.trim() !== "") out.set(refKey(row), row.sku.trim())
+        if (typeof row.sku === "string" && row.sku.trim() !== "")
+          out.set(refKey(row), row.sku.trim())
       }
     }
   }
@@ -122,10 +126,16 @@ interface CodeSyncRow {
 }
 
 /** The markers of these SKUs, by SKU. */
-async function readMarkers(db: ProfileDb, skus: Iterable<string>): Promise<Map<string, CodeSyncRow>> {
+async function readMarkers(
+  db: ProfileDb,
+  skus: Iterable<string>,
+): Promise<Map<string, CodeSyncRow>> {
   const out = new Map<string, CodeSyncRow>()
   for (const batch of chunks([...new Set(skus)], LOOKUP_BATCH)) {
-    const rows = (await db.findMany(CODE_SYNC_TABLE, { where: { sku: { in: batch } }, limit: batch.length })) as CodeSyncRow[]
+    const rows = (await db.findMany(CODE_SYNC_TABLE, {
+      where: { sku: { in: batch } },
+      limit: batch.length,
+    })) as CodeSyncRow[]
     for (const row of rows) out.set(row.sku, row)
   }
   return out
@@ -158,7 +168,11 @@ async function setMarker(
   }
 }
 
-async function clearMarker(db: ProfileDb, markers: Map<string, CodeSyncRow>, sku: string): Promise<void> {
+async function clearMarker(
+  db: ProfileDb,
+  markers: Map<string, CodeSyncRow>,
+  sku: string,
+): Promise<void> {
   const row = markers.get(sku)
   if (!row) return
   await db.delete(CODE_SYNC_TABLE, row.id)
@@ -187,7 +201,11 @@ export async function codeSyncByProfile(
   const markers = await readMarkers(db, skus.values())
   if (markers.size === 0) return out
   for (const p of profiles) {
-    const rows = [...new Set(p.variants.map((v) => skus.get(refKey(v))).filter((s): s is string => s !== undefined))]
+    const rows = [
+      ...new Set(
+        p.variants.map((v) => skus.get(refKey(v))).filter((s): s is string => s !== undefined),
+      ),
+    ]
       .map((sku) => markers.get(sku))
       .filter((m): m is CodeSyncRow => m !== undefined)
     if (rows.length === 0) continue
@@ -229,7 +247,8 @@ export async function resolveVariantSkus(
       continue
     }
     if (env.status !== "completed") continue
-    const variants = (env.result as { variants?: Array<{ id?: unknown; sku?: unknown }> } | null)?.variants ?? []
+    const variants =
+      (env.result as { variants?: Array<{ id?: unknown; sku?: unknown }> } | null)?.variants ?? []
     for (const v of variants) {
       if (typeof v.id !== "string" || typeof v.sku !== "string" || v.sku.trim() === "") continue
       const ref = missing.get(v.id)
@@ -253,29 +272,44 @@ async function cacheVariantSku(db: ProfileDb, ref: VariantRef, sku: string): Pro
     return
   }
   try {
-    await db.insert(VARIANT_SKU_TABLE, { product_source: ref.product_source, product_id: ref.product_id, sku })
+    await db.insert(VARIANT_SKU_TABLE, {
+      product_source: ref.product_source,
+      product_id: ref.product_id,
+      sku,
+    })
   } catch {
     // A concurrent sync cached it first: the value is the same lookup's.
   }
 }
 
 /** The kernel's short codes for these SKUs (absent = no code there). Best effort: empty on error. */
-export async function readShortCodesBySku(ctx: ProductAttributeCtx, skus: string[]): Promise<Map<string, string>> {
+export async function readShortCodesBySku(
+  ctx: ProductAttributeCtx,
+  skus: string[],
+): Promise<Map<string, string>> {
   const out = new Map<string, string>()
   const unique = [...new Set(skus.filter((s) => s.trim() !== ""))]
   for (const batch of chunks(unique, ATTRIBUTE_BATCH)) {
     let env: CrossAppEnvelope
     try {
-      env = await ctx.executeTool("kernel:product_attributes_list", { skus: batch, keys: [SHORT_CODE_KEY] })
+      env = await ctx.executeTool("kernel:product_attributes_list", {
+        skus: batch,
+        keys: [SHORT_CODE_KEY],
+      })
     } catch (err) {
       ctx.logger?.warn?.("product codes: product_attributes_list failed", { err: String(err) })
       return out
     }
     if (env.status !== "completed") return out
     const attrs =
-      (env.result as { attributes?: Array<{ sku?: unknown; key?: unknown; value?: unknown }> } | null)?.attributes ?? []
+      (
+        env.result as {
+          attributes?: Array<{ sku?: unknown; key?: unknown; value?: unknown }>
+        } | null
+      )?.attributes ?? []
     for (const a of attrs) {
-      if (a.key !== SHORT_CODE_KEY || typeof a.sku !== "string" || typeof a.value !== "string") continue
+      if (a.key !== SHORT_CODE_KEY || typeof a.sku !== "string" || typeof a.value !== "string")
+        continue
       if (a.value.trim() !== "") out.set(a.sku, a.value.trim())
     }
   }
@@ -288,10 +322,9 @@ export async function readShortCodesBySku(ctx: ProductAttributeCtx, skus: string
  * profile's code (the kernel's value there is stale or disputed). Never calls the store (cached
  * SKUs only), and any failure leaves the profiles' own codes in place.
  */
-export async function withAttributeShortCodes<P extends VariantRef & { short_code?: string | null }>(
-  ctx: ProductAttributeCtx,
-  profiles: P[],
-): Promise<P[]> {
+export async function withAttributeShortCodes<
+  P extends VariantRef & { short_code?: string | null },
+>(ctx: ProductAttributeCtx, profiles: P[]): Promise<P[]> {
   if (profiles.length === 0) return profiles
   let skus: Map<string, string>
   let markers: Map<string, CodeSyncRow>
@@ -352,8 +385,11 @@ export async function syncProductShortCodes(
     conflicts: [],
   }
   const scope = opts.profileIds ? new Set(opts.profileIds) : null
-  const all = (await loadVariantProfiles(ctx.db)).filter((v: VariantProfile) => (v.short_code ?? "").trim() !== "")
-  const views = scope === null ? all : all.filter((v) => v.profile_id !== null && scope.has(v.profile_id))
+  const all = (await loadVariantProfiles(ctx.db)).filter(
+    (v: VariantProfile) => (v.short_code ?? "").trim() !== "",
+  )
+  const views =
+    scope === null ? all : all.filter((v) => v.profile_id !== null && scope.has(v.profile_id))
 
   // Every coded variant's SKU, not only the scoped ones: the conflict check needs each profile
   // linked to a SKU. A SKU not cached yet is read from the store once, then cached.
@@ -390,7 +426,11 @@ export async function syncProductShortCodes(
     if (codes.length > 1) {
       result.conflicts.push({ sku, codes })
       result.skipped++
-      await setMarker(ctx.db, markers, sku, { state: "conflict", code: null, detail: codes.join(", ") })
+      await setMarker(ctx.db, markers, sku, {
+        state: "conflict",
+        code: null,
+        detail: codes.join(", "),
+      })
       continue
     }
     const code = codes[0]
@@ -416,7 +456,10 @@ export async function syncProductShortCodes(
     try {
       env = await ctx.executeTool("kernel:product_attributes_upsert", { items: batch })
     } catch (err) {
-      env = { status: "error", error: { code: "failed", message: err instanceof Error ? err.message : String(err) } }
+      env = {
+        status: "error",
+        error: { code: "failed", message: err instanceof Error ? err.message : String(err) },
+      }
     }
     if (env.status === "completed") {
       const r = env.result as { written?: number; unchanged?: number } | null
@@ -434,7 +477,8 @@ export async function syncProductShortCodes(
       result.error = detail
     }
     result.not_synced += batch.length
-    for (const i of batch) await setMarker(ctx.db, markers, i.sku, { state: "pending", code: i.value, detail })
+    for (const i of batch)
+      await setMarker(ctx.db, markers, i.sku, { state: "pending", code: i.value, detail })
   }
   return result
 }
@@ -452,7 +496,10 @@ export async function storedShortCode(db: ProfileDb, ref: VariantRef): Promise<s
   })) as Array<{ profile_id: string }>
   const link = links[0]
   if (!link) return null
-  const rows = (await db.findMany(PROFILE_TABLE, { where: { id: link.profile_id }, limit: 1 })) as Array<{
+  const rows = (await db.findMany(PROFILE_TABLE, {
+    where: { id: link.profile_id },
+    limit: 1,
+  })) as Array<{
     short_code?: string | null
   }>
   return rows[0]?.short_code || null
@@ -479,7 +526,11 @@ export async function syncAfterProfileWrite(
   }
 }
 
-async function markProfilesNotSynced(db: ProfileDb, profileIds: string[], detail: string): Promise<void> {
+async function markProfilesNotSynced(
+  db: ProfileDb,
+  profileIds: string[],
+  detail: string,
+): Promise<void> {
   try {
     const ids = new Set(profileIds)
     const views = (await loadVariantProfiles(db)).filter(
@@ -490,7 +541,11 @@ async function markProfilesNotSynced(db: ProfileDb, profileIds: string[], detail
     for (const v of views) {
       const sku = skus.get(refKey(v))
       if (sku && markers.get(sku)?.state !== "conflict") {
-        await setMarker(db, markers, sku, { state: "pending", code: (v.short_code ?? "").trim(), detail })
+        await setMarker(db, markers, sku, {
+          state: "pending",
+          code: (v.short_code ?? "").trim(),
+          detail,
+        })
       }
     }
   } catch {

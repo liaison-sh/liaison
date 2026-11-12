@@ -12,9 +12,21 @@
 //   `received_einvoice_set_status` runs only when a person approved it: it re-reads the invoice
 //   from the platform, refuses if the action is no longer offered (paid meanwhile, already
 //   refused), sends it once, and records the outcome in the invoice's history.
-import type { ReceivedActionOffer, ReceivedInvoice, ReceivedReason } from "@liaison/app-sdk/contracts"
+import type {
+  ReceivedActionOffer,
+  ReceivedInvoice,
+  ReceivedReason,
+} from "@liaison/app-sdk/contracts"
 import { RECEIVED_ACTION_STATUS } from "@liaison/app-sdk/contracts"
-import { callProvider, fail, fileRows, ingestReceived, type ReceivedCtx, receivedCatchUp, rowFromProvider } from "./ingest"
+import {
+  callProvider,
+  fail,
+  fileRows,
+  ingestReceived,
+  type ReceivedCtx,
+  receivedCatchUp,
+  rowFromProvider,
+} from "./ingest"
 
 type Row = Record<string, unknown>
 type Action = "refuse" | "dispute" | "undispute"
@@ -34,12 +46,23 @@ export interface ReceivedToolCtx extends ReceivedCtx {
     editable_fields?: string[]
     /** `auto_approved: true`: granted inline (a person's own call holding the deciding scope; no
      *  approval row) or approved by an org policy, so the action runs now. */
-  }): Promise<{ approval_id: string; auto_approved?: undefined } | { approval_id: string | null; auto_approved: true }>
+  }): Promise<
+    | { approval_id: string; auto_approved?: undefined }
+    | { approval_id: string | null; auto_approved: true }
+  >
 }
 
 const ACTIONS: readonly Action[] = ["refuse", "dispute", "undispute"]
 const PENDING_TTL_MS = 24 * 3600 * 1000
-const STATUSES = ["received", "approved", "in_dispute", "refused", "rejected", "partially_collected", "collected"]
+const STATUSES = [
+  "received",
+  "approved",
+  "in_dispute",
+  "refused",
+  "rejected",
+  "partially_collected",
+  "collected",
+]
 
 function str(v: unknown): string | null {
   if (typeof v !== "string") return null
@@ -94,20 +117,31 @@ async function livePending(ctx: ReceivedToolCtx, row: Row): Promise<Row | null> 
   if (!id || !ctx.approvals?.statusOf) return p
   try {
     const raw = await ctx.approvals.statusOf(id)
-    const s = (typeof raw === "string" ? JSON.parse(raw) : raw) as { status?: unknown; expired?: unknown } | null
+    const s = (typeof raw === "string" ? JSON.parse(raw) : raw) as {
+      status?: unknown
+      expired?: unknown
+    } | null
     // `status: null`: no such approval of this app (never created, or gone); `expired`: past its
     // deadline before the sweep reached it.
     if (!s || s.status === null || s.expired === true) return null
     return typeof s.status === "string" && CLOSED_APPROVAL.has(s.status) ? null : p
   } catch (e) {
-    ctx.logger?.warn?.("approval state unreadable", { approval_id: id, err: e instanceof Error ? e.message : String(e) })
+    ctx.logger?.warn?.("approval state unreadable", {
+      approval_id: id,
+      err: e instanceof Error ? e.message : String(e),
+    })
     return p
   }
 }
 
 /** The action and reason, checked against what the platform offered at the last read. */
-function validate(row: Row, action: unknown, reason: unknown): { action: Action; reason: ReceivedReason | null } | ReturnType<typeof fail> {
-  if (!ACTIONS.includes(action as Action)) return fail("invalid_input", 'action is "refuse", "dispute" or "undispute"')
+function validate(
+  row: Row,
+  action: unknown,
+  reason: unknown,
+): { action: Action; reason: ReceivedReason | null } | ReturnType<typeof fail> {
+  if (!ACTIONS.includes(action as Action))
+    return fail("invalid_input", 'action is "refuse", "dispute" or "undispute"')
   const a = action as Action
   const offer = offers(row).find((o) => o.action === a)
   if (!offer) {
@@ -121,7 +155,11 @@ function validate(row: Row, action: unknown, reason: unknown): { action: Action;
   const r = offer.reasons.find((x) => x.reason === reason)
   if (!r) {
     return fail("received_reason_invalid", `Pick one of the platform's reasons to ${a}.`, {
-      reasons: offer.reasons.map((x) => ({ reason: x.reason, label: x.label_en, code: x.afnor_code })),
+      reasons: offer.reasons.map((x) => ({
+        reason: x.reason,
+        label: x.label_en,
+        code: x.afnor_code,
+      })),
     })
   }
   return { action: a, reason: r }
@@ -131,14 +169,22 @@ function money(v: unknown, currency: unknown): string {
   return v === null || v === undefined ? "-" : `${String(v)} ${String(currency ?? "")}`.trim()
 }
 
-const VERB: Record<Action, string> = { refuse: "Refuse", dispute: "Dispute", undispute: "Withdraw the dispute on" }
+const VERB: Record<Action, string> = {
+  refuse: "Refuse",
+  dispute: "Dispute",
+  undispute: "Withdraw the dispute on",
+}
 
 // ---------------------------------------------------------------------------------------------
 // Reads.
 
-export async function receivedList(ctx: ReceivedToolCtx, p: { status?: string; limit?: number; offset?: number } = {}) {
+export async function receivedList(
+  ctx: ReceivedToolCtx,
+  p: { status?: string; limit?: number; offset?: number } = {},
+) {
   const status = str(p?.status)
-  if (status && !STATUSES.includes(status)) return fail("invalid_input", `status is one of ${STATUSES.join(", ")}`)
+  if (status && !STATUSES.includes(status))
+    return fail("invalid_input", `status is one of ${STATUSES.join(", ")}`)
   const limit = Math.min(Math.max(Number(p?.limit) || 50, 1), 200)
   const offset = Math.max(Number(p?.offset) || 0, 0)
   const rows = (await ctx.db.findMany("received_einvoices", {
@@ -149,7 +195,9 @@ export async function receivedList(ctx: ReceivedToolCtx, p: { status?: string; l
   })) as Row[]
   const state = ((await ctx.db.findMany("received_sync_state", { limit: 1 })) as Row[])[0]
   const page = rows.slice(0, limit)
-  const awaiting = await Promise.all(page.map(async (r) => ((await livePending(ctx, r))?.action as string | undefined) ?? null))
+  const awaiting = await Promise.all(
+    page.map(async (r) => ((await livePending(ctx, r))?.action as string | undefined) ?? null),
+  )
   return {
     status: "ok",
     items: page.map((r, i) => ({
@@ -163,7 +211,8 @@ export async function receivedList(ctx: ReceivedToolCtx, p: { status?: string; l
       status: r.status,
       status_code: r.status_code ?? null,
       received_at: r.received_at ?? null,
-      totals_mismatch: Array.isArray(r.totals_mismatch) && (r.totals_mismatch as unknown[]).length > 0,
+      totals_mismatch:
+        Array.isArray(r.totals_mismatch) && (r.totals_mismatch as unknown[]).length > 0,
       awaiting_approval: awaiting[i] ?? null,
     })),
     has_more: rows.length > limit,
@@ -190,13 +239,28 @@ export async function receivedGet(ctx: ReceivedToolCtx, p: { received_id?: strin
     invoice: {
       id: row.id,
       provider_app: row.provider_app,
-      supplier: { name: row.supplier_name ?? null, siren: row.supplier_siren ?? null, vat_id: row.supplier_vat_id ?? null },
+      supplier: {
+        name: row.supplier_name ?? null,
+        siren: row.supplier_siren ?? null,
+        vat_id: row.supplier_vat_id ?? null,
+      },
       invoice_number: row.invoice_number ?? null,
       issue_date: row.issue_date ?? null,
       due_date: row.due_date ?? null,
       currency: row.currency ?? null,
-      totals: { before_tax: row.total_before_tax ?? null, tax: row.total_tax ?? null, total: row.total ?? null },
-      file_facts: row.parse_status === "parsed" && parsed ? { totals: parsed.totals ?? null, invoice_number: parsed.invoice_number ?? null, seller: parsed.seller ?? null } : null,
+      totals: {
+        before_tax: row.total_before_tax ?? null,
+        tax: row.total_tax ?? null,
+        total: row.total ?? null,
+      },
+      file_facts:
+        row.parse_status === "parsed" && parsed
+          ? {
+              totals: parsed.totals ?? null,
+              invoice_number: parsed.invoice_number ?? null,
+              seller: parsed.seller ?? null,
+            }
+          : null,
       totals_mismatch: Array.isArray(row.totals_mismatch) ? row.totals_mismatch : [],
       parse_status: row.parse_status ?? null,
       status: row.status,
@@ -208,7 +272,9 @@ export async function receivedGet(ctx: ReceivedToolCtx, p: { received_id?: strin
       files_pending: row.files_pending === true,
     },
     files,
-    history: (Array.isArray(row.lifecycle_log) ? (row.lifecycle_log as Row[]) : []).filter((e) => !e.ignored),
+    history: (Array.isArray(row.lifecycle_log) ? (row.lifecycle_log as Row[]) : []).filter(
+      (e) => !e.ignored,
+    ),
     actions: offers(row),
     pending_action: await livePending(ctx, row),
     can_act: await canAct(ctx),
@@ -226,14 +292,21 @@ export async function receivedRefresh(ctx: ReceivedCtx, p: { received_id?: strin
     return { status: "ok", refreshed: 1, files_pending: r.files_pending }
   }
   const out = await receivedCatchUp(ctx, { reread: 50 })
-  if (out.skipped) return fail(out.skipped, "No e-invoicing platform with reception is configured for this organisation.")
+  if (out.skipped)
+    return fail(
+      out.skipped,
+      "No e-invoicing platform with reception is configured for this organisation.",
+    )
   return { status: "ok", ...out }
 }
 
 // ---------------------------------------------------------------------------------------------
 // Actions.
 
-export async function receivedActionRequest(ctx: ReceivedToolCtx, p: { received_id?: string; action?: string; reason?: string | null; comment?: string | null }) {
+export async function receivedActionRequest(
+  ctx: ReceivedToolCtx,
+  p: { received_id?: string; action?: string; reason?: string | null; comment?: string | null },
+) {
   const row = await getRow(ctx, str(p?.received_id))
   if (!row) return fail("not_found", "No received invoice with this id.")
   const v = validate(row, p?.action, p?.reason)
@@ -247,11 +320,21 @@ export async function receivedActionRequest(ctx: ReceivedToolCtx, p: { received_
     if (pending.action === v.action && (pending.reason ?? null) === (v.reason?.reason ?? null)) {
       return { status: "staged", approval_id: pending.approval_id, deduped: true }
     }
-    return fail("received_action_pending", `A request to ${String(pending.action)} this invoice already awaits approval.`, { pending })
+    return fail(
+      "received_action_pending",
+      `A request to ${String(pending.action)} this invoice already awaits approval.`,
+      { pending },
+    )
   }
-  if (!ctx.requestApproval) return fail("approval_unavailable", "Approval requests cannot be created from this context.")
+  if (!ctx.requestApproval)
+    return fail("approval_unavailable", "Approval requests cannot be created from this context.")
   const comment = str(p?.comment)?.slice(0, 500) ?? null
-  const payload = { received_id: String(row.id), action: v.action, reason: v.reason?.reason ?? null, comment }
+  const payload = {
+    received_id: String(row.id),
+    action: v.action,
+    reason: v.reason?.reason ?? null,
+    comment,
+  }
   const number = String(row.invoice_number ?? "without a number")
   const supplier = String(row.supplier_name ?? "the supplier")
   const lines = [
@@ -268,7 +351,10 @@ export async function receivedActionRequest(ctx: ReceivedToolCtx, p: { received_
   const approval = await ctx.requestApproval({
     tool_name: "invoicing:received_einvoice_set_status",
     summary: `${VERB[v.action]} supplier invoice ${number} from ${supplier}`,
-    summary_detail: { subtitle: "Sent to the supplier's e-invoicing platform once approved.", lines },
+    summary_detail: {
+      subtitle: "Sent to the supplier's e-invoicing platform once approved.",
+      lines,
+    },
     current_payload: payload,
     editable_fields: [],
   })
@@ -278,13 +364,21 @@ export async function receivedActionRequest(ctx: ReceivedToolCtx, p: { received_
   const approval_id = approval.approval_id
   const by = ctx.getUserId ? await ctx.getUserId() : null
   await ctx.db.update("received_einvoices", String(row.id), {
-    pending_action: { ...payload, approval_id, requested_at: new Date().toISOString(), requested_by: by },
+    pending_action: {
+      ...payload,
+      approval_id,
+      requested_at: new Date().toISOString(),
+      requested_by: by,
+    },
   })
   return { status: "staged", approval_id, deduped: false }
 }
 
 /** Stage-time check of the gated tool (the platform is re-read at execution). */
-export async function receivedSetStatusPreflight(ctx: ReceivedCtx, p: { received_id?: string; action?: string; reason?: string | null }) {
+export async function receivedSetStatusPreflight(
+  ctx: ReceivedCtx,
+  p: { received_id?: string; action?: string; reason?: string | null },
+) {
   const row = await getRow(ctx, str(p?.received_id))
   if (!row) return fail("not_found", "No received invoice with this id.")
   const v = validate(row, p?.action, p?.reason)
@@ -292,7 +386,10 @@ export async function receivedSetStatusPreflight(ctx: ReceivedCtx, p: { received
 }
 
 /** The gated action: runs once a person approved it. */
-export async function receivedSetStatus(ctx: ReceivedToolCtx, p: { received_id?: string; action?: string; reason?: string | null; comment?: string | null }) {
+export async function receivedSetStatus(
+  ctx: ReceivedToolCtx,
+  p: { received_id?: string; action?: string; reason?: string | null; comment?: string | null },
+) {
   const row = await getRow(ctx, str(p?.received_id))
   if (!row) return fail("not_found", "No received invoice with this id.")
   // Re-read the platform first: a payment linked or a refusal since the request ends it here.
@@ -325,14 +422,27 @@ export async function receivedSetStatus(ctx: ReceivedToolCtx, p: { received_id?:
     approval_request_id: ctx.approval?.approvalRequestId ?? null,
     observed_at: new Date().toISOString(),
     outcome: res.ok ? "sent" : "refused_by_platform",
-    ...(res.ok ? {} : { error: { code: res.error.code, message: String(res.error.message).slice(0, 300) } }),
+    ...(res.ok
+      ? {}
+      : { error: { code: res.error.code, message: String(res.error.message).slice(0, 300) } }),
   }
   if (!res.ok) {
-    const log = Array.isArray(current.lifecycle_log) ? [...(current.lifecycle_log as Row[]), entry] : [entry]
-    await ctx.db.update("received_einvoices", String(row.id), { pending_action: null, lifecycle_log: log })
+    const log = Array.isArray(current.lifecycle_log)
+      ? [...(current.lifecycle_log as Row[]), entry]
+      : [entry]
+    await ctx.db.update("received_einvoices", String(row.id), {
+      pending_action: null,
+      lifecycle_log: log,
+    })
     return fail(res.error.code, res.error.message, res.error.detail)
   }
-  const withEntry = { ...current, lifecycle_log: [...(Array.isArray(current.lifecycle_log) ? (current.lifecycle_log as Row[]) : []), entry] }
+  const withEntry = {
+    ...current,
+    lifecycle_log: [
+      ...(Array.isArray(current.lifecycle_log) ? (current.lifecycle_log as Row[]) : []),
+      entry,
+    ],
+  }
   const after = rowFromProvider(res.result as unknown as ReceivedInvoice, withEntry, "action")
   await ctx.db.update("received_einvoices", String(row.id), { ...after, pending_action: null })
   return { status: "ok", received_id: String(row.id), state: after.status, code: after.status_code }

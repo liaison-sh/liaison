@@ -44,9 +44,7 @@ interface KernelContactReader {
 }
 
 function hasKernelContactReader(ctx: AppContext): ctx is AppContext & KernelContactReader {
-  return (
-    typeof (ctx as Partial<KernelContactReader>).listContactsByExternalId === "function"
-  )
+  return typeof (ctx as Partial<KernelContactReader>).listContactsByExternalId === "function"
 }
 
 /**
@@ -73,6 +71,8 @@ export async function listContactsByExternalId(
   // and `for (const c of page.contacts)` in reconcileCustomersJob crashed with
   // "Symbol.iterator of undefined". Parse defensively and default the shape so every caller gets
   // a real array. (The nested ctx.kernel.* alias IS parsed; this flat one is not.)
-  const page = (typeof raw === "string" ? JSON.parse(raw) : raw) as Partial<KernelContactPage> | null
+  const page = (
+    typeof raw === "string" ? JSON.parse(raw) : raw
+  ) as Partial<KernelContactPage> | null
   return { contacts: page?.contacts ?? [], nextCursor: page?.nextCursor ?? null }
 }

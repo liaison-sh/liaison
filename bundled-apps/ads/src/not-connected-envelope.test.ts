@@ -73,7 +73,9 @@ describe("ads tools with nothing connected", () => {
       const fn = (handlers as unknown as Record<string, Handler>)[name]!
       const result = await fn({ level: "account", date_preset: "last_7d" }, unconnectedCtx())
       expect(envelopeCode(result)).toBe("meta_not_connected")
-      expect(String((result as { error: { message: string } }).error.message)).toContain("not connected")
+      expect(String((result as { error: { message: string } }).error.message)).toContain(
+        "not connected",
+      )
     })
   }
 
@@ -93,7 +95,9 @@ describe("ads tools with nothing connected", () => {
       {},
       unconnectedCtx(),
     )
-    expect(["google_not_connected", "merchant_not_configured"]).toContain(String(envelopeCode(result)))
+    expect(["google_not_connected", "merchant_not_configured"]).toContain(
+      String(envelopeCode(result)),
+    )
   })
 })
 
@@ -129,9 +133,9 @@ describe("an envelope delivered as a resolved 200 reads as not connected", () =>
   })
 
   it("a genuine platform error on the meta arm is still an outage", () => {
-    expect(
-      metaArmStatus({ ok: true, value: { error: { code: "upstream_unavailable" } } }),
-    ).toBe("errored")
+    expect(metaArmStatus({ ok: true, value: { error: { code: "upstream_unavailable" } } })).toBe(
+      "errored",
+    )
   })
 })
 
@@ -180,7 +184,12 @@ describe("the dashboard data memos read an envelope as no data", () => {
     expect(toolRows(await h.campaigns_list!({}, ctx))).toEqual([])
     expect(toolRows(await h.audiences_list!({}, ctx))).toEqual([])
     expect(toolRows(await h.ads_list!({}, ctx))).toEqual([])
-    expect(toolRows(await h.google_insights_query!({ query: "SELECT campaign.id FROM campaign" }, ctx), "rows")).toEqual([])
+    expect(
+      toolRows(
+        await h.google_insights_query!({ query: "SELECT campaign.id FROM campaign" }, ctx),
+        "rows",
+      ),
+    ).toEqual([])
     expect(weeklySpendTotal(toolRows<Record<string, unknown>>(envelope), "spend")).toBeNull()
     // A field read off the envelope is a field read off an error object.
     expect(toolData(await h.account_info!({}, ctx))).toBeNull()
@@ -190,7 +199,10 @@ describe("the dashboard data memos read an envelope as no data", () => {
   it("a split insights payload and a real payload still read normally", () => {
     expect(insightRows({ data: [{ spend: "1.00" }] })).toEqual([{ spend: "1.00" }])
     expect(
-      insightRows({ _split: true, data: [{ data: [{ spend: "2.00" }] }, { data: [{ spend: "3.00" }] }] }),
+      insightRows({
+        _split: true,
+        data: [{ data: [{ spend: "2.00" }] }, { data: [{ spend: "3.00" }] }],
+      }),
     ).toEqual([{ spend: "2.00" }, { spend: "3.00" }])
     expect(isToolErrorEnvelope({ data: [] })).toBe(false)
   })
@@ -227,7 +239,10 @@ describe("no view file reads a tool answer directly", () => {
       if (!file.endsWith(".tsx") || file.includes(".test.")) continue
       const source = readFileSync(join(dir, file), "utf8")
       for (const [line, text] of source.split("\n").entries()) {
-        if (/\.data\b/.test(text) || /as\s+(?:InsightRow|CampaignRow|AdRow|AdSetRow)\[\]/.test(text)) {
+        if (
+          /\.data\b/.test(text) ||
+          /as\s+(?:InsightRow|CampaignRow|AdRow|AdSetRow)\[\]/.test(text)
+        ) {
           offenders.push(`${file}:${line + 1}: ${text.trim()}`)
         }
       }

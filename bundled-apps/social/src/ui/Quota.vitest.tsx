@@ -15,7 +15,9 @@ vi.mock("@liaison/host", () => ({
   app: {
     invokeTool: (name: string) => {
       toolCalls.push(name)
-      return answers.has(name) ? Promise.resolve(answers.get(name)) : Promise.reject(new Error(`no ${name}`))
+      return answers.has(name)
+        ? Promise.resolve(answers.get(name))
+        : Promise.reject(new Error(`no ${name}`))
     },
     createResource: (fetcher: () => unknown) => createResource(fetcher),
   },
@@ -26,7 +28,15 @@ beforeEach(() => {
   answers.clear()
   toolCalls.length = 0
   answers.set("quota_status", {
-    youtube: { day: "2026-10-20", resetsAt: null, cap: 9000, consumed: 1200, remaining: 7800, deferred: 0, exhaustedUntil: null },
+    youtube: {
+      day: "2026-10-20",
+      resetsAt: null,
+      cap: 9000,
+      consumed: 1200,
+      remaining: 7800,
+      deferred: 0,
+      exhaustedUntil: null,
+    },
     rateLimits: [],
   })
 })
@@ -35,12 +45,22 @@ afterEach(() => cleanup())
 describe("Social quota block", () => {
   it("shows YouTube quota as units today with a meter", async () => {
     answers.set("quota_status", {
-      youtube: { day: "2026-10-20", resetsAt: null, cap: 9000, consumed: 1499, remaining: 7501, deferred: 0, exhaustedUntil: null },
+      youtube: {
+        day: "2026-10-20",
+        resetsAt: null,
+        cap: 9000,
+        consumed: 1499,
+        remaining: 7501,
+        deferred: 0,
+        exhaustedUntil: null,
+      },
       rateLimits: [],
     })
     const { SocialQuota } = await import("./Quota")
     render(() => <SocialQuota />)
-    expect((await screen.findByTestId("social-quota-readout")).textContent).toBe("YouTube: 1,499 of 9,000 units today")
+    expect((await screen.findByTestId("social-quota-readout")).textContent).toBe(
+      "YouTube: 1,499 of 9,000 units today",
+    )
     const meter = screen.getByTestId("social-quota-meter")
     expect(meter.getAttribute("role")).toBe("meter")
     expect(meter.getAttribute("aria-valuenow")).toBe("1499")
@@ -50,19 +70,31 @@ describe("Social quota block", () => {
 
   it("says how many watch polls wait once the budget is spent", async () => {
     answers.set("quota_status", {
-      youtube: { day: "2026-10-20", resetsAt: null, cap: 9000, consumed: 9000, remaining: 0, deferred: 4, exhaustedUntil: "2026-10-21T07:00:00Z" },
+      youtube: {
+        day: "2026-10-20",
+        resetsAt: null,
+        cap: 9000,
+        consumed: 9000,
+        remaining: 0,
+        deferred: 4,
+        exhaustedUntil: "2026-10-21T07:00:00Z",
+      },
       rateLimits: [],
     })
     const { SocialQuota } = await import("./Quota")
     render(() => <SocialQuota />)
-    expect((await screen.findByTestId("social-quota-banner")).textContent).toContain("4 watch polls deferred")
+    expect((await screen.findByTestId("social-quota-banner")).textContent).toContain(
+      "4 watch polls deferred",
+    )
     expect(screen.getByTestId("social-quota-deferred").textContent).toBe("4 watch polls deferred")
   })
 
   it("renders rate limits as readable lines, never raw JSON", async () => {
     answers.set("quota_status", {
       youtube: null,
-      rateLimits: [{ platform: "facebook", rateLimit: { rate_limit: { call_count: 42, total_time: 10 } } }],
+      rateLimits: [
+        { platform: "facebook", rateLimit: { rate_limit: { call_count: 42, total_time: 10 } } },
+      ],
     })
     const { SocialQuota } = await import("./Quota")
     render(() => <SocialQuota />)

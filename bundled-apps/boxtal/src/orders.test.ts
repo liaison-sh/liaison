@@ -14,11 +14,11 @@ import type { BoxtalToolCtx, CrossAppEnvelope } from "./ctx"
 import {
   customerShippingFromHit,
   lookupOrderForPrefill,
-  openOrdersScan,
-  OPEN_ORDERS_QUERY,
   OPEN_ORDER_FULFILLMENT_VALUES,
-  pickGoodsInvoice,
+  OPEN_ORDERS_QUERY,
   type OrderDocumentLink,
+  openOrdersScan,
+  pickGoodsInvoice,
 } from "./orders"
 import { createMockDb } from "./test-db"
 
@@ -225,7 +225,10 @@ describe("the Shopify staff note rides on the row", () => {
     }
     for (const key of ["so:#1042", "so:gid://shopify/Order/5001"]) {
       const scan = await openOrdersScan(ctx, { order_keys: [key] })
-      expect(scan.candidates.map((c) => c.order_key), key).toEqual(["so:5001"])
+      expect(
+        scan.candidates.map((c) => c.order_key),
+        key,
+      ).toEqual(["so:5001"])
       expect(scan.candidates[0]!.anchor_ref, key).toBe("inv-1")
       expect(scan.key_aliases?.get(key)).toBe("so:5001")
     }
@@ -238,7 +241,10 @@ describe("the Shopify staff note rides on the row", () => {
     const base = ctx.executeTool
     ctx.executeTool = async (target, args) => {
       if (target === "shopify:orders_get") {
-        return { status: "completed", result: { id: "gid://shopify/Order/5001", name: "#5001", note: "Ship Friday" } }
+        return {
+          status: "completed",
+          result: { id: "gid://shopify/Order/5001", name: "#5001", note: "Ship Friday" },
+        }
       }
       return base(target, args)
     }
@@ -306,8 +312,20 @@ describe("fail soft: a Shopify read failure never empties the worklist", () => {
       ordersSearchError: "Shopify is unreachable",
       seed: {
         prep_meta: [
-          { id: "m1", document_ref: "inv-1", shopify_order_id: "5001", financial_status: "REFUNDED", fetched_at: new Date().toISOString() },
-          { id: "m2", document_ref: "inv-2", shopify_order_id: "5002", cancelled_at: "2026-08-02T00:00:00Z", fetched_at: new Date().toISOString() },
+          {
+            id: "m1",
+            document_ref: "inv-1",
+            shopify_order_id: "5001",
+            financial_status: "REFUNDED",
+            fetched_at: new Date().toISOString(),
+          },
+          {
+            id: "m2",
+            document_ref: "inv-2",
+            shopify_order_id: "5002",
+            cancelled_at: "2026-08-02T00:00:00Z",
+            fetched_at: new Date().toISOString(),
+          },
           { id: "m3", document_ref: "inv-3", shopify_order_id: "5003", fetched_at: old },
         ],
       },
@@ -468,9 +486,14 @@ describe("order-number prefill lookup", () => {
 describe("customerShippingFromHit: what the customer paid for shipping", () => {
   it("reads the order's shipping line in its own currency, exponent-aware", () => {
     expect(
-      customerShippingFromHit({ currency: "USD", attributes: { shippingAmount: "45.50", shippingCurrency: "USD" } }),
+      customerShippingFromHit({
+        currency: "USD",
+        attributes: { shippingAmount: "45.50", shippingCurrency: "USD" },
+      }),
     ).toEqual({ customer_shipping_minor: 4550, customer_shipping_currency: "USD" })
-    expect(customerShippingFromHit({ currency: "JPY", attributes: { shippingAmount: "1200" } })).toEqual({
+    expect(
+      customerShippingFromHit({ currency: "JPY", attributes: { shippingAmount: "1200" } }),
+    ).toEqual({
       customer_shipping_minor: 1200,
       customer_shipping_currency: "JPY",
     })
@@ -478,7 +501,9 @@ describe("customerShippingFromHit: what the customer paid for shipping", () => {
 
   it("an order with no shipping line, or no hit at all, is unknown, never free", () => {
     const unknown = { customer_shipping_minor: null, customer_shipping_currency: null }
-    expect(customerShippingFromHit({ currency: "EUR", attributes: { shippingAmount: null } })).toEqual(unknown)
+    expect(
+      customerShippingFromHit({ currency: "EUR", attributes: { shippingAmount: null } }),
+    ).toEqual(unknown)
     expect(customerShippingFromHit(undefined)).toEqual(unknown)
   })
 })

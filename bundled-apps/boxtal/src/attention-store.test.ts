@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { attentionRuleUpsert, attentionRulesList, loadAttentionRules } from "./attention-store"
+import { attentionRulesList, attentionRuleUpsert, loadAttentionRules } from "./attention-store"
 import type { BoxtalToolCtx } from "./ctx"
 import { createMockDb } from "./test-db"
 
@@ -31,29 +31,42 @@ describe("attentionRuleUpsert", () => {
   // Refused at WRITE time, because a malformed rule that is merely inert at evaluation time is
   // indistinguishable from a parcel that needs nothing: the operator would never learn it is broken.
   it("refuses a rule with no conditions", async () => {
-    await expect(attentionRuleUpsert(makeCtx(), { ...VALID, conditions: [] })).rejects.toThrow(/at least one condition/)
+    await expect(attentionRuleUpsert(makeCtx(), { ...VALID, conditions: [] })).rejects.toThrow(
+      /at least one condition/,
+    )
   })
 
   it("refuses an unknown field or operator, naming the vocabulary", async () => {
     await expect(
-      attentionRuleUpsert(makeCtx(), { ...VALID, conditions: [{ field: "colour", op: "eq", value: "red" }] }),
+      attentionRuleUpsert(makeCtx(), {
+        ...VALID,
+        conditions: [{ field: "colour", op: "eq", value: "red" }],
+      }),
     ).rejects.toThrow(/must be one of: destination/)
     await expect(
-      attentionRuleUpsert(makeCtx(), { ...VALID, conditions: [{ field: "destination", op: "matches", value: "US" }] }),
+      attentionRuleUpsert(makeCtx(), {
+        ...VALID,
+        conditions: [{ field: "destination", op: "matches", value: "US" }],
+      }),
     ).rejects.toThrow(/must be one of: eq/)
   })
 
   it("refuses `in` without a list, and a document with no name", async () => {
     await expect(
-      attentionRuleUpsert(makeCtx(), { ...VALID, conditions: [{ field: "destination", op: "in", value: "US" }] }),
+      attentionRuleUpsert(makeCtx(), {
+        ...VALID,
+        conditions: [{ field: "destination", op: "in", value: "US" }],
+      }),
     ).rejects.toThrow(/value must be a list/)
-    await expect(attentionRuleUpsert(makeCtx(), { ...VALID, documents: [{ note: "orphan" }] })).rejects.toThrow(
-      /name is required/,
-    )
+    await expect(
+      attentionRuleUpsert(makeCtx(), { ...VALID, documents: [{ note: "orphan" }] }),
+    ).rejects.toThrow(/name is required/)
   })
 
   it("refuses a rule with no name", async () => {
-    await expect(attentionRuleUpsert(makeCtx(), { ...VALID, name: "  " })).rejects.toThrow(/name is required/)
+    await expect(attentionRuleUpsert(makeCtx(), { ...VALID, name: "  " })).rejects.toThrow(
+      /name is required/,
+    )
   })
 })
 

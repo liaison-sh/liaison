@@ -30,7 +30,10 @@ const ROUTINES_DIR = import.meta.dir
 const MANIFEST_PATH = join(ROUTINES_DIR, "..", "..", "app.manifest.json")
 
 /** The set of routine keys this generator owns (the two new P6 long prompts). */
-export const GENERATED_ROUTINE_FILES = ["weekly-account-review.md", "monthly-deep-review.md"] as const
+export const GENERATED_ROUTINE_FILES = [
+  "weekly-account-review.md",
+  "monthly-deep-review.md",
+] as const
 
 export interface RoutineFrontmatter {
   description: string
@@ -66,9 +69,7 @@ export function parseRoutineMd(raw: string): { frontmatter: RoutineFrontmatter; 
     if (rawValue.startsWith("[") && rawValue.endsWith("]")) {
       const inner = rawValue.slice(1, -1).trim()
       fm[key] =
-        inner.length === 0
-          ? []
-          : inner.split(",").map((s) => s.trim().replace(/^"(.*)"$/, "$1"))
+        inner.length === 0 ? [] : inner.split(",").map((s) => s.trim().replace(/^"(.*)"$/, "$1"))
     } else if (rawValue === "true" || rawValue === "false") {
       fm[key] = rawValue === "true"
     } else {
@@ -116,7 +117,9 @@ export function computeGeneratedRoutines(): Record<string, ManifestRoutine> {
  * anything else) preserved untouched, plus the generated entries for the two
  * new P6 templates merged in (generated always wins for its own keys).
  */
-export function computeFullRoutinesBlock(existingRoutines: Record<string, unknown>): Record<string, unknown> {
+export function computeFullRoutinesBlock(
+  existingRoutines: Record<string, unknown>,
+): Record<string, unknown> {
   const generated = computeGeneratedRoutines()
   const preserved: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(existingRoutines)) {
@@ -155,7 +158,9 @@ function main(): void {
 
   if (checkOnly) {
     if (nextRaw !== currentRaw) {
-      process.stderr.write("gen-manifest-routines: manifest is out of date. Run without --check to apply.\n")
+      process.stderr.write(
+        "gen-manifest-routines: manifest is out of date. Run without --check to apply.\n",
+      )
       process.exit(1)
     }
     process.stdout.write("gen-manifest-routines: manifest routines block is up to date.\n")

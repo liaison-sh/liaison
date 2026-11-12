@@ -6,7 +6,12 @@
 
 import type { SocialToolCtx } from "./ctx"
 import { dmReplyWindow } from "./dm-window"
-import { derivedFindingStatus, type PendingFindingIndex, pendingFindingApprovals, withLiveApprovalState } from "./pending"
+import {
+  derivedFindingStatus,
+  type PendingFindingIndex,
+  pendingFindingApprovals,
+  withLiveApprovalState,
+} from "./pending"
 
 /** Attach the agent-readable reply-window descriptor to a conversation row so the
  *  send-time window state (standard ≤24h · human-agent ≤7d · closed) surfaces at
@@ -66,7 +71,11 @@ export async function findingsList(
   const present = (rows: unknown[]) => rows.map((r) => fenceField(overlay(r), "content_text"))
 
   if (!params.status || !pending) {
-    const rows = await ctx.db.findMany("finding", { where: filter, orderBy: { occurred_at: "desc" }, limit })
+    const rows = await ctx.db.findMany("finding", {
+      where: filter,
+      orderBy: { occurred_at: "desc" },
+      limit,
+    })
     // Sweep substrate: a server count over the SAME filter, not the (200-capped)
     // page — so a triage sweep ("handle every new finding") reads the true
     // remaining count and drives it to zero as each finding leaves the filter
@@ -85,7 +94,11 @@ export async function findingsList(
     const rows = targeted.filter((r) => derivedIs(r, status)).sort(byOccurredDesc)
     return { findings: present(rows.slice(0, limit)), totalCount: rows.length }
   }
-  const stored = await ctx.db.findMany("finding", { where: filter, orderBy: { occurred_at: "desc" }, limit })
+  const stored = await ctx.db.findMany("finding", {
+    where: filter,
+    orderBy: { occurred_at: "desc" },
+    limit,
+  })
   // A finding still stored as awaiting_approval with nothing pending reads as `new`.
   const stale =
     status === "new"
@@ -104,14 +117,18 @@ export async function findingsList(
 }
 
 /** The stored rows of the findings a pending approval targets (bounded by the pending set). */
-async function loadTargeted(ctx: SocialToolCtx, pending: PendingFindingIndex): Promise<Array<Record<string, unknown>>> {
+async function loadTargeted(
+  ctx: SocialToolCtx,
+  pending: PendingFindingIndex,
+): Promise<Array<Record<string, unknown>>> {
   if (!pending) return []
   const rows = await Promise.all([...pending.keys()].map((id) => ctx.db.findOne("finding", id)))
   return rows.filter((r): r is Record<string, unknown> => !!r && typeof r === "object")
 }
 
 function byOccurredDesc(a: unknown, b: unknown): number {
-  const t = (r: unknown) => Date.parse(String((r as { occurred_at?: unknown } | null)?.occurred_at ?? "")) || 0
+  const t = (r: unknown) =>
+    Date.parse(String((r as { occurred_at?: unknown } | null)?.occurred_at ?? "")) || 0
   return t(b) - t(a)
 }
 
@@ -233,11 +250,15 @@ export async function countsRead(
     pendingFindingApprovals(ctx),
   ])
   if (!pending) {
-    const awaiting_approval = await ctx.db.count("finding", { where: { status: "awaiting_approval" } })
+    const awaiting_approval = await ctx.db.count("finding", {
+      where: { status: "awaiting_approval" },
+    })
     return { findings_new: storedNew, awaiting_approval, open_dms }
   }
   const targeted = await loadTargeted(ctx, pending)
-  const awaiting_approval = targeted.filter((r) => derivedFindingStatus(r, pending) === "awaiting_approval").length
+  const awaiting_approval = targeted.filter(
+    (r) => derivedFindingStatus(r, pending) === "awaiting_approval",
+  ).length
   const newFromStale = (staleAwaiting as Array<{ id?: unknown; status?: unknown }>).filter(
     (r) => derivedFindingStatus(r, pending) === "new",
   ).length

@@ -13,7 +13,8 @@
 import type { HostFetch } from "@liaison/host"
 
 /** The decidable feed, narrowed to this app's gated tools. */
-export const SOCIAL_DECIDABLE_APPROVALS_PATH = "/api/approvals?status=pending&decidableByMe=true&app=social"
+export const SOCIAL_DECIDABLE_APPROVALS_PATH =
+  "/api/approvals?status=pending&decidableByMe=true&app=social"
 
 export function decidePath(approvalId: string): string {
   return `/api/approvals/${encodeURIComponent(approvalId)}/decide`

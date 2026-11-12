@@ -8,6 +8,7 @@ import { describe, expect, it } from "bun:test"
 import { appHue } from "@liaison/app-ui/hue"
 import { SOURCES_CONFIG_KEY } from "../lib/profiles"
 import type { SourceHealth } from "../lib/summarize"
+import { liveIncidentsLabel } from "./format"
 import {
   badgeKind,
   buildSourceViews,
@@ -19,17 +20,21 @@ import {
   monogram,
   moveRow,
   profilesFromDraft,
-  safeHttpUrl,
   SOURCES_KEY,
+  type SummaryForSources,
+  safeHttpUrl,
   sourceHue,
   sourcePath,
   sourceStats,
-  type SummaryForSources,
   urgentCallouts,
 } from "./sources"
-import { liveIncidentsLabel } from "./format"
 
-const health = (source: string, open: number, worst: SourceHealth["worstSeverity"], last = "2026-10-15T10:00:00.000Z"): SourceHealth => ({
+const health = (
+  source: string,
+  open: number,
+  worst: SourceHealth["worstSeverity"],
+  last = "2026-10-15T10:00:00.000Z",
+): SourceHealth => ({
   source,
   open,
   worstSeverity: worst,
@@ -37,7 +42,12 @@ const health = (source: string, open: number, worst: SourceHealth["worstSeverity
 })
 
 let n = 0
-const inc = (source: string, severity: string, status = "open", extra: Partial<IncidentLike> = {}): IncidentLike => ({
+const inc = (
+  source: string,
+  severity: string,
+  status = "open",
+  extra: Partial<IncidentLike> = {},
+): IncidentLike => ({
   id: `i${++n}`,
   source,
   severity,
@@ -49,7 +59,11 @@ const inc = (source: string, severity: string, status = "open", extra: Partial<I
 })
 
 const profiled: SummaryForSources = {
-  sources: [health("watchdog-prod", 2, "warning"), health("aws-security", 2, "critical"), health("backup-cron", 0, null)],
+  sources: [
+    health("watchdog-prod", 2, "warning"),
+    health("aws-security", 2, "critical"),
+    health("backup-cron", 0, null),
+  ],
   profiles: [
     { source: "aws-security", label: "AWS Security", rank: 1, urgent: true },
     { source: "watchdog-prod", label: "Watchdog prod", rank: 2 },
@@ -67,8 +81,18 @@ const unprofiled: SummaryForSources = {
 describe("buildSourceViews", () => {
   it("follows the server order, profiled first, and keeps sources never seen", () => {
     const views = buildSourceViews(profiled)
-    expect(views.map((v) => v.source)).toEqual(["aws-security", "watchdog-prod", "aws-cloudwatch", "backup-cron"])
-    expect(views.map((v) => v.label)).toEqual(["AWS Security", "Watchdog prod", "CloudWatch", "backup-cron"])
+    expect(views.map((v) => v.source)).toEqual([
+      "aws-security",
+      "watchdog-prod",
+      "aws-cloudwatch",
+      "backup-cron",
+    ])
+    expect(views.map((v) => v.label)).toEqual([
+      "AWS Security",
+      "Watchdog prod",
+      "CloudWatch",
+      "backup-cron",
+    ])
     expect(views.find((v) => v.source === "aws-cloudwatch")?.live).toBe(0)
   })
 
@@ -130,7 +154,11 @@ describe("groupBySource", () => {
 
   it("applies the severity filter to every lane", () => {
     const views = buildSourceViews(profiled)
-    const lanes = groupBySource(views, [inc("aws-security", "critical"), inc("watchdog-prod", "warning")], "critical")
+    const lanes = groupBySource(
+      views,
+      [inc("aws-security", "critical"), inc("watchdog-prod", "warning")],
+      "critical",
+    )
     expect(lanes.map((l) => l.incidents.length)).toEqual([1, 0, 0, 0])
     expect(lanes[1]?.collapsed).toBe(true)
   })
@@ -147,10 +175,16 @@ describe("groupBySource", () => {
 describe("urgentCallouts", () => {
   it("calls out an urgent source with live incidents, with its newest incident", () => {
     const views = buildSourceViews(profiled)
-    const older = inc("aws-security", "critical", "open", { lastSeenAt: "2026-10-15T08:00:00.000Z" })
-    const newer = inc("aws-security", "warning", "acknowledged", { lastSeenAt: "2026-10-15T09:00:00.000Z" })
+    const older = inc("aws-security", "critical", "open", {
+      lastSeenAt: "2026-10-15T08:00:00.000Z",
+    })
+    const newer = inc("aws-security", "warning", "acknowledged", {
+      lastSeenAt: "2026-10-15T09:00:00.000Z",
+    })
     const callouts = urgentCallouts(views, [older, newer, inc("watchdog-prod", "critical")])
-    expect(callouts.map((c) => [c.source.source, c.live, c.newest?.id])).toEqual([["aws-security", 2, newer.id]])
+    expect(callouts.map((c) => [c.source.source, c.live, c.newest?.id])).toEqual([
+      ["aws-security", 2, newer.id],
+    ])
     // The acknowledged one is someone's already: it is not counted as open.
     expect(callouts.map((c) => [c.open, c.acknowledged])).toEqual([[1, 1]])
   })
@@ -173,7 +207,9 @@ describe("urgentCallouts", () => {
       ...profiled,
       sources: [health("aws-security", 0, null), health("watchdog-prod", 3, "critical")],
     }
-    expect(urgentCallouts(buildSourceViews(summary), [inc("watchdog-prod", "critical")])).toEqual([])
+    expect(urgentCallouts(buildSourceViews(summary), [inc("watchdog-prod", "critical")])).toEqual(
+      [],
+    )
   })
 
   it("without urgent profiles, calls out any source with a live critical", () => {
@@ -186,11 +222,29 @@ describe("urgentCallouts", () => {
 
 describe("isAutoResolved", () => {
   it("is a resolve with no resolver whose note the source wrote", () => {
-    expect(isAutoResolved({ status: "resolved", resolvedBy: null, resolutionNote: "cleared by aws at 2026-10-15T09:12:00.000Z" })).toBe(true)
-    expect(isAutoResolved({ status: "resolved", resolvedBy: "u1", resolutionNote: "cleared by aws at x" })).toBe(false)
-    expect(isAutoResolved({ status: "resolved", resolvedBy: null, resolutionNote: "closed in sg-0a1" })).toBe(false)
-    expect(isAutoResolved({ status: "resolved", resolvedBy: null, resolutionNote: null })).toBe(false)
-    expect(isAutoResolved({ status: "open", resolvedBy: null, resolutionNote: "cleared by aws" })).toBe(false)
+    expect(
+      isAutoResolved({
+        status: "resolved",
+        resolvedBy: null,
+        resolutionNote: "cleared by aws at 2026-10-15T09:12:00.000Z",
+      }),
+    ).toBe(true)
+    expect(
+      isAutoResolved({
+        status: "resolved",
+        resolvedBy: "u1",
+        resolutionNote: "cleared by aws at x",
+      }),
+    ).toBe(false)
+    expect(
+      isAutoResolved({ status: "resolved", resolvedBy: null, resolutionNote: "closed in sg-0a1" }),
+    ).toBe(false)
+    expect(isAutoResolved({ status: "resolved", resolvedBy: null, resolutionNote: null })).toBe(
+      false,
+    )
+    expect(
+      isAutoResolved({ status: "open", resolvedBy: null, resolutionNote: "cleared by aws" }),
+    ).toBe(false)
   })
 })
 
@@ -225,9 +279,21 @@ describe("sourceStats", () => {
         inc("s", "critical"),
         inc("s", "warning"),
         inc("s", "critical", "acknowledged"),
-        inc("s", "warning", "resolved", { resolvedAt: "2026-10-15T09:00:00.000Z", resolvedBy: "u1", resolutionNote: "fixed" }),
-        inc("s", "warning", "resolved", { resolvedAt: "2026-10-12T09:00:00.000Z", resolvedBy: null, resolutionNote: "cleared by s at x" }),
-        inc("s", "warning", "resolved", { resolvedAt: "2026-10-01T09:00:00.000Z", resolvedBy: null, resolutionNote: "cleared by s at y" }),
+        inc("s", "warning", "resolved", {
+          resolvedAt: "2026-10-15T09:00:00.000Z",
+          resolvedBy: "u1",
+          resolutionNote: "fixed",
+        }),
+        inc("s", "warning", "resolved", {
+          resolvedAt: "2026-10-12T09:00:00.000Z",
+          resolvedBy: null,
+          resolutionNote: "cleared by s at x",
+        }),
+        inc("s", "warning", "resolved", {
+          resolvedAt: "2026-10-01T09:00:00.000Z",
+          resolvedBy: null,
+          resolutionNote: "cleared by s at y",
+        }),
       ],
       now,
     )
@@ -240,14 +306,25 @@ describe("Sources settings draft", () => {
     expect(SOURCES_KEY).toBe(SOURCES_CONFIG_KEY)
   })
 
-
   it("lists every seen and profiled source and saves the order as ranks", () => {
     const rows = draftFromSummary(profiled)
-    expect(rows.map((r) => r.source)).toEqual(["aws-security", "watchdog-prod", "aws-cloudwatch", "backup-cron"])
+    expect(rows.map((r) => r.source)).toEqual([
+      "aws-security",
+      "watchdog-prod",
+      "aws-cloudwatch",
+      "backup-cron",
+    ])
     const moved = moveRow(rows, 3, -1)
-    expect(moved.map((r) => r.source)).toEqual(["aws-security", "watchdog-prod", "backup-cron", "aws-cloudwatch"])
+    expect(moved.map((r) => r.source)).toEqual([
+      "aws-security",
+      "watchdog-prod",
+      "backup-cron",
+      "aws-cloudwatch",
+    ])
     expect(moveRow(rows, 0, -1)).toBe(rows)
-    const edited = moved.map((r) => (r.source === "backup-cron" ? { ...r, label: " Backups ", hue: 400 } : r))
+    const edited = moved.map((r) =>
+      r.source === "backup-cron" ? { ...r, label: " Backups ", hue: 400 } : r,
+    )
     expect(profilesFromDraft(edited)).toEqual([
       { source: "aws-security", rank: 1, label: "AWS Security", urgent: true },
       { source: "watchdog-prod", rank: 2, label: "Watchdog prod" },

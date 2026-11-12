@@ -77,9 +77,10 @@ function shortInput(overrides: Partial<DocumentRenderInput> = {}): DocumentRende
 // accurate measurement (it wraps to only ~13 lines by character); the
 // per-character break path is covered separately by the `wrapText` unit test.
 function longInput(): DocumentRenderInput {
-  const long = "Widget component premium industrial grade stainless steel assembly with corrosion resistant coating and extended warranty ".repeat(
-    30,
-  ).trim()
+  const long =
+    "Widget component premium industrial grade stainless steel assembly with corrosion resistant coating and extended warranty "
+      .repeat(30)
+      .trim()
   return shortInput({
     line_items: [
       {
@@ -99,7 +100,9 @@ function longInput(): DocumentRenderInput {
 function texts(cmds: DrawCommand[]): string[] {
   return cmds.filter((c) => c.op === "drawText").map((c) => (c as { text: string }).text)
 }
-function textCmds(cmds: DrawCommand[]): Array<{ text: string; x: number; y: number; size: number; page: number }> {
+function textCmds(
+  cmds: DrawCommand[],
+): Array<{ text: string; x: number; y: number; size: number; page: number }> {
   return cmds
     .filter((c) => c.op === "drawText")
     .map((c) => c as { text: string; x: number; y: number; size: number; page: number })
@@ -109,7 +112,9 @@ function lineCmds(
 ): Array<{ start: { x: number; y: number }; end: { x: number; y: number }; page: number }> {
   return cmds
     .filter((c) => c.op === "drawLine")
-    .map((c) => c as { start: { x: number; y: number }; end: { x: number; y: number }; page: number })
+    .map(
+      (c) => c as { start: { x: number; y: number }; end: { x: number; y: number }; page: number },
+    )
 }
 function pageCount(cmds: DrawCommand[]): number {
   return cmds.filter((c) => c.op === "addPage").length
@@ -223,14 +228,18 @@ describe("invoicing pdf templates — command shape", () => {
   })
 
   test("quote — the customer's PO number renders on the quote PDF", () => {
-    const t = texts(quoteTemplate(shortInput({ document: { ...shortInput().document, po_number: "PO-9001" } })))
+    const t = texts(
+      quoteTemplate(shortInput({ document: { ...shortInput().document, po_number: "PO-9001" } })),
+    )
     expect(t).toContain("PO number:")
     expect(t).toContain("PO-9001")
   })
 
   test("proforma — the customer's PO number renders on the proforma PDF", () => {
     const t = texts(
-      proformaTemplate(shortInput({ document: { ...shortInput().document, po_number: "PO-2200" } })),
+      proformaTemplate(
+        shortInput({ document: { ...shortInput().document, po_number: "PO-2200" } }),
+      ),
     )
     expect(t).toContain("PO number:")
     expect(t).toContain("PO-2200")
@@ -238,7 +247,9 @@ describe("invoicing pdf templates — command shape", () => {
 
   test("credit note — the customer's PO number renders on the credit note PDF", () => {
     const t = texts(
-      creditNoteTemplate(shortInput({ document: { ...shortInput().document, po_number: "PO-3300" } })),
+      creditNoteTemplate(
+        shortInput({ document: { ...shortInput().document, po_number: "PO-3300" } }),
+      ),
     )
     expect(t).toContain("PO number:")
     expect(t).toContain("PO-3300")
@@ -247,19 +258,29 @@ describe("invoicing pdf templates — command shape", () => {
   test("quote — the customer reference prints as a Customer ref line; blank prints nothing", () => {
     const t = texts(
       quoteTemplate(
-        shortInput({ document: { ...shortInput().document, po_number: "PO-9001", customer_reference: "crm-48213" } }),
+        shortInput({
+          document: {
+            ...shortInput().document,
+            po_number: "PO-9001",
+            customer_reference: "crm-48213",
+          },
+        }),
       ),
     )
     expect(t).toContain("Customer ref:")
     expect(t).toContain("crm-48213")
     const none = texts(
-      quoteTemplate(shortInput({ document: { ...shortInput().document, customer_reference: "  " } })),
+      quoteTemplate(
+        shortInput({ document: { ...shortInput().document, customer_reference: "  " } }),
+      ),
     )
     expect(none).not.toContain("Customer ref:")
   })
 
   test("purchase order — po_number is never printed (this document already IS a purchase order)", () => {
-    const t = texts(poTemplate(shortInput({ document: { ...shortInput().document, po_number: "PO-4471" } })))
+    const t = texts(
+      poTemplate(shortInput({ document: { ...shortInput().document, po_number: "PO-4471" } })),
+    )
     expect(t).not.toContain("PO number:")
   })
 
@@ -333,9 +354,7 @@ describe("invoicing pdf templates — command shape", () => {
   test("invoice — no notes, or a blank one, renders no Notes heading (never an empty label)", () => {
     expect(texts(invoiceTemplate(shortInput()))).not.toContain("Notes")
     expect(
-      texts(
-        invoiceTemplate(shortInput({ document: { ...shortInput().document, notes: "   " } })),
-      ),
+      texts(invoiceTemplate(shortInput({ document: { ...shortInput().document, notes: "   " } }))),
     ).not.toContain("Notes")
   })
 
@@ -747,15 +766,16 @@ describe("invoicing pdf templates — command shape", () => {
 describe("software-scope digital-delivery notice", () => {
   function textsOf(commands: DrawCommand[]): string[] {
     return commands
-      .filter((c): c is Extract<DrawCommand, { op: "drawText" }> => (c as { op?: string }).op === "drawText")
+      .filter(
+        (c): c is Extract<DrawCommand, { op: "drawText" }> =>
+          (c as { op?: string }).op === "drawText",
+      )
       .map((c) => String((c as { text?: unknown }).text ?? ""))
   }
 
   test("no scope renders a header notice — the split is data-level only, the invoice face stays clean", () => {
     for (const scope of ["software" as const, "goods" as const, null]) {
-      const cmds = invoiceTemplate(
-        shortInput({ document: { ...shortInput().document, scope } }),
-      )
+      const cmds = invoiceTemplate(shortInput({ document: { ...shortInput().document, scope } }))
       const texts = textsOf(cmds)
       expect(texts.some((t) => t.includes("No physical goods"))).toBe(false)
       expect(texts.some((t) => t.includes("Not a customs document"))).toBe(false)
@@ -934,7 +954,9 @@ describe("ship to party block", () => {
   })
 
   test("the ship to block is styled exactly like the other party blocks", () => {
-    const cmds = invoiceTemplate(shipInput({ shipping_address: SHIP, shipping_name: "Spedition Nord KG" }))
+    const cmds = invoiceTemplate(
+      shipInput({ shipping_address: SHIP, shipping_name: "Spedition Nord KG" }),
+    )
     const byText = (t: string) => textCmds(cmds).find((c) => c.text === t)
     expect(byText("SHIP TO")?.size).toBe(byText("BILL TO")?.size)
     expect(byText("Spedition Nord KG")?.size).toBe(byText("Müller Handel GmbH")?.size)
@@ -948,9 +970,7 @@ describe("ship to party block", () => {
     // The document's tax_treatment is computed upstream from counterparty_country; a ship to in
     // another country must not change a single byte of what the template prints beyond the block.
     const domestic = invoiceTemplate(shipInput())
-    const exported = invoiceTemplate(
-      shipInput({ shipping_address: "1 Export Road\nNew York\nUS" }),
-    )
+    const exported = invoiceTemplate(shipInput({ shipping_address: "1 Export Road\nNew York\nUS" }))
     const shipOnly = new Set(["SHIP TO", "1 Export Road", "New York", "US", "Müller Handel GmbH"])
     expect(texts(exported).filter((t) => !shipOnly.has(t))).toEqual(
       texts(domestic).filter((t) => !shipOnly.has(t)),
@@ -1031,7 +1051,9 @@ describe("S25 identity blocks and mentions", () => {
     const j = all(cmds)
     expect(j).toContain("SIREN 123456789")
     expect(j).toContain("SAS au capital de 10 000 €")
-    expect(texts(cmds)).toContain("Atelier Exemple · SAS au capital de 10 000 € · RCS Paris 123456789 · VAT FR40123456789")
+    expect(texts(cmds)).toContain(
+      "Atelier Exemple · SAS au capital de 10 000 € · RCS Paris 123456789 · VAT FR40123456789",
+    )
   })
 
   test("a long legal form and capital wrap inside the seller column, and the footer never reaches the page number", () => {
@@ -1071,7 +1093,12 @@ describe("S25 identity blocks and mentions", () => {
         expect(l.y).toBeGreaterThanOrEqual(20)
       }
       // Nothing is lost: the wrapped footer reads as the full line.
-      expect(left.sort((a, b) => b.y - a.y).map((c) => c.text).join(" ")).toBe(footerFull)
+      expect(
+        left
+          .sort((a, b) => b.y - a.y)
+          .map((c) => c.text)
+          .join(" "),
+      ).toBe(footerFull)
     }
   })
 
@@ -1083,7 +1110,15 @@ describe("S25 identity blocks and mentions", () => {
 
   test("buyer SIREN prints when set, and only then", () => {
     const withSiren = invoiceTemplate(
-      shortInput({ counterparty: { legal_name: "Acheteur SA", country: "FR", vat_id: null, address: "2 rue B, 69001 Lyon", siren: "987654321" } }),
+      shortInput({
+        counterparty: {
+          legal_name: "Acheteur SA",
+          country: "FR",
+          vat_id: null,
+          address: "2 rue B, 69001 Lyon",
+          siren: "987654321",
+        },
+      }),
     )
     expect(all(withSiren)).toContain("SIREN 987654321")
     expect(all(invoiceTemplate(shortInput()))).not.toContain("SIREN")
@@ -1100,15 +1135,30 @@ describe("S25 identity blocks and mentions", () => {
 
   test("VAT-on-debits literal prints under the mention only when set", () => {
     const on = invoiceTemplate(
-      shortInput({ legal_mention: "Exonération de TVA, article 262 ter I du CGI", document: { ...shortInput().document, vat_on_debits: true } }),
+      shortInput({
+        legal_mention: "Exonération de TVA, article 262 ter I du CGI",
+        document: { ...shortInput().document, vat_on_debits: true },
+      }),
     )
     const j = all(on)
     expect(j).toContain("Exonération de TVA, article 262 ter I du CGI")
     expect(j).toContain("Option pour le paiement de la taxe d'après les débits")
     expect(j.indexOf("Exonération")).toBeLessThan(j.indexOf("Option pour"))
     // also with no mention at all
-    expect(all(invoiceTemplate(shortInput({ document: { ...shortInput().document, vat_on_debits: true } })))).toContain("Option pour le paiement")
-    expect(all(invoiceTemplate(shortInput({ document: { ...shortInput().document, vat_on_debits: false } })))).not.toContain("Option pour")
+    expect(
+      all(
+        invoiceTemplate(
+          shortInput({ document: { ...shortInput().document, vat_on_debits: true } }),
+        ),
+      ),
+    ).toContain("Option pour le paiement")
+    expect(
+      all(
+        invoiceTemplate(
+          shortInput({ document: { ...shortInput().document, vat_on_debits: false } }),
+        ),
+      ),
+    ).not.toContain("Option pour")
     expect(all(invoiceTemplate(shortInput()))).not.toContain("Option pour")
   })
 

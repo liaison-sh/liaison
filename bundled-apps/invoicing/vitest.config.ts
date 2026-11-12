@@ -24,7 +24,10 @@ export default {
       { find: /^solid-js\/web$/, replacement: resolve(solidRoot, "web/dist/dev.js") },
       { find: /^solid-js\/store$/, replacement: resolve(solidRoot, "store/dist/dev.js") },
       { find: /^solid-js$/, replacement: resolve(solidRoot, "dist/dev.js") },
-      { find: "@solidjs/testing-library", replacement: resolve(toolchain, "@solidjs/testing-library/dist/index.js") },
+      {
+        find: "@solidjs/testing-library",
+        replacement: resolve(toolchain, "@solidjs/testing-library/dist/index.js"),
+      },
       // zod's ESM entry re-exports its own namespace import under an alias
       // (`import * as z from "./v4/classic/external.js"; export * from
       // "./v4/classic/external.js"; export { z, z as default }`). Under this

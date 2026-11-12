@@ -58,7 +58,9 @@ function fromCii(root: XmlElement): ReceivedFileFacts {
     invoice_number: text(doc, "ID"),
     type_code: text(doc, "TypeCode"),
     issue_date: isoDate(text(doc, "IssueDateTime", "DateTimeString")),
-    due_date: isoDate(text(settlement, "SpecifiedTradePaymentTerms", "DueDateDateTime", "DateTimeString")),
+    due_date: isoDate(
+      text(settlement, "SpecifiedTradePaymentTerms", "DueDateDateTime", "DateTimeString"),
+    ),
     currency,
     seller: {
       name: text(seller, "Name"),
@@ -115,8 +117,13 @@ export function extractReceivedFacts(xml: string, limits?: Partial<XmlLimits>): 
     return { ok: false, code, message: e instanceof Error ? e.message : String(e) }
   }
   if (root.name === "CrossIndustryInvoice") return { ok: true, facts: fromCii(root) }
-  if (root.name === "Invoice" || root.name === "CreditNote") return { ok: true, facts: fromUbl(root) }
-  return { ok: false, code: "xml_not_an_invoice", message: `root element ${root.name} is neither CII nor UBL` }
+  if (root.name === "Invoice" || root.name === "CreditNote")
+    return { ok: true, facts: fromUbl(root) }
+  return {
+    ok: false,
+    code: "xml_not_an_invoice",
+    message: `root element ${root.name} is neither CII nor UBL`,
+  }
 }
 
 /** Fields where the file and the provider disagree (amounts compared to the cent). */

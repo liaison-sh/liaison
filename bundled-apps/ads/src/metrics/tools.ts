@@ -10,8 +10,8 @@
 // table on every call, which nothing read; that write made them parse as
 // writes, so every scheduled review parked them for approval.
 
-import { METRIC_FORMULAS, getFormula } from "./registry"
 import { gatherAllInputs, type MetricsInputCtx, type Period } from "./inputs"
+import { getFormula, METRIC_FORMULAS } from "./registry"
 
 // ─── metrics_list ────────────────────────────────────────────────────────────
 

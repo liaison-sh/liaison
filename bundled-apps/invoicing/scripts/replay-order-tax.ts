@@ -15,15 +15,16 @@
 // The JSON is either the event envelope ({ entity, action, data, ... }) or its `data` object, as
 // stored in kernel.pending_events.payload, OR a Shopify Admin GraphQL `Order` node (detected by its
 // `legacyResourceId`), converted below to the shape the shopify app's orders/create webhook emits.
-import { testTime } from "../src/test-time"
+
 import { readFileSync } from "node:fs"
 import {
   adaptShopifyOrderCreatedEvent,
-  onShopifyOrderCreated,
   type OrderPaidCtx,
+  onShopifyOrderCreated,
   shopifyTaxMismatches,
 } from "../src/handlers/shopify-order-paid"
 import { createMockDb } from "../src/test-db"
+import { testTime } from "../src/test-time"
 
 const [, , file = "-", issuerCountry = "FR"] = process.argv
 const raw = file === "-" ? readFileSync(0, "utf8") : readFileSync(file, "utf8")
@@ -120,7 +121,28 @@ function address(a: Record<string, unknown> | null | undefined) {
   }
 }
 function taxIdKeys(): Set<string> {
-  return new Set(["vat", "vatid", "vatnumber", "vatno", "vatnr", "vatregistrationnumber", "vattaxid", "taxid", "taxnumber", "tva", "ntva", "numerotva", "numerodetva", "ustid", "ustidnr", "partitaiva", "piva", "nif", "cif", "nifcif"])
+  return new Set([
+    "vat",
+    "vatid",
+    "vatnumber",
+    "vatno",
+    "vatnr",
+    "vatregistrationnumber",
+    "vattaxid",
+    "taxid",
+    "taxnumber",
+    "tva",
+    "ntva",
+    "numerotva",
+    "numerodetva",
+    "ustid",
+    "ustidnr",
+    "partitaiva",
+    "piva",
+    "nif",
+    "cif",
+    "nifcif",
+  ])
 }
 function taxLines(tls: Array<Record<string, unknown>> | undefined, currency: string) {
   return (tls ?? []).map((t) => ({
@@ -133,9 +155,19 @@ function taxLines(tls: Array<Record<string, unknown>> | undefined, currency: str
 function eventFromAdminOrder(o: Record<string, any>): Record<string, unknown> {
   const currency = o.totalPriceSet?.presentmentMoney?.currencyCode ?? "USD"
   const country =
-    o.shippingAddress?.countryCodeV2 ?? o.customer?.defaultAddress?.countryCodeV2 ?? o.billingAddress?.countryCodeV2 ?? null
-  const attr = (o.customAttributes ?? []).find((a: { key?: string; value?: string }) =>
-    taxIdKeys().has(String(a.key ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "")) && String(a.value ?? "").trim() !== "",
+    o.shippingAddress?.countryCodeV2 ??
+    o.customer?.defaultAddress?.countryCodeV2 ??
+    o.billingAddress?.countryCodeV2 ??
+    null
+  const attr = (o.customAttributes ?? []).find(
+    (a: { key?: string; value?: string }) =>
+      taxIdKeys().has(
+        String(a.key ?? "")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, ""),
+      ) && String(a.value ?? "").trim() !== "",
   )
   return {
     orderId: String(o.legacyResourceId),
@@ -166,7 +198,9 @@ function eventFromAdminOrder(o: Record<string, any>): Record<string, unknown> {
       priceSet: money(li.originalUnitPriceSet, currency),
       requiresShipping: li.requiresShipping !== false,
       taxLines: taxLines(li.taxLines, currency),
-      discountAllocations: (li.discountAllocations ?? []).map((d: any) => money(d.allocatedAmountSet, currency)),
+      discountAllocations: (li.discountAllocations ?? []).map((d: any) =>
+        money(d.allocatedAmountSet, currency),
+      ),
       variant: { id: li.variant?.legacyResourceId ?? null },
     })),
     shippingLines: (o.shippingLines?.nodes ?? []).map((sl: any) => ({

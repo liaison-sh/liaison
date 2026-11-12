@@ -16,7 +16,7 @@ const REQUIRED_KEYS = ["accessToken", "adAccountId"] as const
 
 export interface MetaCredentials {
   accessToken: string
-  adAccountId: string       // always in act_<id> form
+  adAccountId: string // always in act_<id> form
   defaultPageId?: string
 }
 
@@ -55,14 +55,20 @@ export async function getMetaClient(ctx: MetaCtx): Promise<MetaCredentials> {
   if (!read.ok) {
     switch (read.reason) {
       case "not_connected":
-        throw new MetaConnectionError("Meta not connected: configure the Meta connection in app settings")
+        throw new MetaConnectionError(
+          "Meta not connected: configure the Meta connection in app settings",
+        )
       case "unreadable":
         // The inner exception text is not vetted for callers: keep it out.
-        throw new MetaConnectionError("Meta credentials could not be read: reconnect Meta in app settings")
+        throw new MetaConnectionError(
+          "Meta credentials could not be read: reconnect Meta in app settings",
+        )
       case "empty":
         throw new MetaConnectionError("Meta not connected: credentials are empty")
       case "incomplete":
-        throw new MetaConnectionError(`Meta credentials incomplete, missing: ${read.missing.join(", ")}`)
+        throw new MetaConnectionError(
+          `Meta credentials incomplete, missing: ${read.missing.join(", ")}`,
+        )
     }
   }
   const map = read.credentials
@@ -122,7 +128,10 @@ export const META_NEXT_STEP_MARKER = " Next step:"
 
 /** Meta's own reason, without the trace id and the trailing period. */
 function metaReason(err: MetaApiError): string {
-  return err.message.replace(/\s*\[fbtrace_id:[^\]]*\]\s*$/, "").trim().replace(/[.\s]+$/, "")
+  return err.message
+    .replace(/\s*\[fbtrace_id:[^\]]*\]\s*$/, "")
+    .trim()
+    .replace(/[.\s]+$/, "")
 }
 
 function traceSuffix(err: MetaApiError): string {

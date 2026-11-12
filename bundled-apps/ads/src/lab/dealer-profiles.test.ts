@@ -5,9 +5,9 @@
 import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import type { AppCtx } from "../lib/ctx-types"
 import { createMockDb } from "../test-db"
 import { dealer_profile_upsert, dealer_profiles_list } from "./dealer-profiles"
-import type { AppCtx } from "../lib/ctx-types"
 
 function makeCtx(db = createMockDb()): AppCtx {
   return { fetch: async () => ({}), connections: {}, db, actorId: "user_1" } as unknown as AppCtx
@@ -16,10 +16,10 @@ function makeCtx(db = createMockDb()): AppCtx {
 describe("dealer_profile_upsert", () => {
   it("inserts a new dealer profile when no dealer_id is provided", async () => {
     const ctx = makeCtx()
-    const result = await dealer_profile_upsert(
+    const result = (await dealer_profile_upsert(
       { dealer_name: "Acme Music", dealer_type: "boutique", coverage_area: "EU-West" },
       ctx,
-    ) as Record<string, unknown>
+    )) as Record<string, unknown>
     const row = result.row as Record<string, unknown>
     expect(row.dealer_name).toBe("Acme Music")
     expect(row.dealer_type).toBe("boutique")
@@ -28,15 +28,20 @@ describe("dealer_profile_upsert", () => {
 
   it("updates an existing profile when dealer_id is provided", async () => {
     const ctx = makeCtx()
-    const created = await dealer_profile_upsert(
+    const created = (await dealer_profile_upsert(
       { dealer_name: "Acme Music", dealer_type: "boutique" },
       ctx,
-    ) as Record<string, unknown>
+    )) as Record<string, unknown>
     const id = created.id as string
-    const updated = await dealer_profile_upsert(
-      { dealer_id: id, dealer_name: "Acme Music", dealer_type: "broadline", notes: "upgraded tier" },
+    const updated = (await dealer_profile_upsert(
+      {
+        dealer_id: id,
+        dealer_name: "Acme Music",
+        dealer_type: "broadline",
+        notes: "upgraded tier",
+      },
       ctx,
-    ) as Record<string, unknown>
+    )) as Record<string, unknown>
     expect(updated.id).toBe(id)
     const row = updated.row as Record<string, unknown>
     expect(row.dealer_type).toBe("broadline")
@@ -65,7 +70,7 @@ describe("dealer_profiles_list", () => {
     const ctx = makeCtx()
     await dealer_profile_upsert({ dealer_name: "Acme Music", dealer_type: "boutique" }, ctx)
     await dealer_profile_upsert({ dealer_name: "Broad Distro", dealer_type: "broadline" }, ctx)
-    const result = await dealer_profiles_list({}, ctx) as Record<string, unknown>
+    const result = (await dealer_profiles_list({}, ctx)) as Record<string, unknown>
     expect((result.dealers as unknown[]).length).toBe(2)
   })
 
@@ -73,7 +78,10 @@ describe("dealer_profiles_list", () => {
     const ctx = makeCtx()
     await dealer_profile_upsert({ dealer_name: "Acme Music", dealer_type: "boutique" }, ctx)
     await dealer_profile_upsert({ dealer_name: "Broad Distro", dealer_type: "broadline" }, ctx)
-    const result = await dealer_profiles_list({ dealer_name: "Acme Music" }, ctx) as Record<string, unknown>
+    const result = (await dealer_profiles_list({ dealer_name: "Acme Music" }, ctx)) as Record<
+      string,
+      unknown
+    >
     const dealers = result.dealers as Array<Record<string, unknown>>
     expect(dealers.length).toBe(1)
     expect(dealers[0]?.dealer_name).toBe("Acme Music")

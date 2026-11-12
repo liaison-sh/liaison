@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { createHmac, timingSafeEqual } from "node:crypto"
+
 import { describe, expect, test } from "bun:test"
+import { createHmac, timingSafeEqual } from "node:crypto"
 import { type SocialWebhookBridge, verifyMetaSignature } from "../lib/hmac"
 import { parseJsonCursor } from "./cursor"
 import { facebookAdapter, postExcerpt } from "./facebook"
@@ -115,7 +116,14 @@ describe("facebookAdapter (B4)", () => {
           ],
         },
         "/111_222/comments": {
-          data: [{ id: "222_333", message: "Hello?", from: { id: "9", name: "Jo" }, created_time: "2026-05-31T08:00:00+0000" }],
+          data: [
+            {
+              id: "222_333",
+              message: "Hello?",
+              from: { id: "9", name: "Jo" },
+              created_time: "2026-05-31T08:00:00+0000",
+            },
+          ],
         },
       })
       const { findings } = await facebookAdapter.discover(
@@ -152,7 +160,11 @@ describe("facebookAdapter (B4)", () => {
       const fetch = (async (url: string, init?: { method?: string; body?: unknown }) => {
         calls.push({ url, method: init?.method ?? "GET", body: init?.body })
         if (url.includes("/me/accounts")) {
-          return { status: 200, headers: {}, body: JSON.stringify({ data: [page("page-1", "page-1-token")] }) }
+          return {
+            status: 200,
+            headers: {},
+            body: JSON.stringify({ data: [page("page-1", "page-1-token")] }),
+          }
         }
         if (url.includes("/page-1/feed")) {
           return {
@@ -252,7 +264,11 @@ describe("facebookAdapter (B4)", () => {
         { accountExternalId: "user-1", fetch, accessToken: "user-token" },
         "PRIOR_CURSOR",
       )
-      expect(result).toMatchObject({ findings: [], nextCursor: "PRIOR_CURSOR", error: "CONNECTION_LOST" })
+      expect(result).toMatchObject({
+        findings: [],
+        nextCursor: "PRIOR_CURSOR",
+        error: "CONNECTION_LOST",
+      })
     })
 
     test("/me/accounts 429 → RATE_LIMITED, cursor unchanged", async () => {
@@ -261,7 +277,11 @@ describe("facebookAdapter (B4)", () => {
         { accountExternalId: "user-1", fetch, accessToken: "user-token" },
         "PRIOR_CURSOR",
       )
-      expect(result).toMatchObject({ findings: [], nextCursor: "PRIOR_CURSOR", error: "RATE_LIMITED" })
+      expect(result).toMatchObject({
+        findings: [],
+        nextCursor: "PRIOR_CURSOR",
+        error: "RATE_LIMITED",
+      })
     })
 
     test("a single page's /feed erroring fails the whole call, cursor unchanged (no partial advance)", async () => {
@@ -275,7 +295,11 @@ describe("facebookAdapter (B4)", () => {
       const failingFetch = (async (url: string, init?: { method?: string; body?: unknown }) => {
         calls.push({ url, method: init?.method ?? "GET", body: init?.body })
         if (url.includes("/me/accounts")) {
-          return { status: 200, headers: {}, body: JSON.stringify({ data: [page("page-a", "token-a")] }) }
+          return {
+            status: 200,
+            headers: {},
+            body: JSON.stringify({ data: [page("page-a", "token-a")] }),
+          }
         }
         return { status: 401, headers: {}, body: "{}" }
       }) as typeof fetch
@@ -283,7 +307,11 @@ describe("facebookAdapter (B4)", () => {
         { accountExternalId: "user-1", fetch: failingFetch, accessToken: "user-token" },
         "PRIOR_CURSOR",
       )
-      expect(result).toMatchObject({ findings: [], nextCursor: "PRIOR_CURSOR", error: "CONNECTION_LOST" })
+      expect(result).toMatchObject({
+        findings: [],
+        nextCursor: "PRIOR_CURSOR",
+        error: "CONNECTION_LOST",
+      })
     })
   })
 
@@ -311,7 +339,12 @@ describe("facebookAdapter (B4)", () => {
           data: [
             {
               id: "conv-1",
-              participants: { data: [{ id: "page-1", name: "Our Page" }, { id: "cust-1", name: "Jamie" }] },
+              participants: {
+                data: [
+                  { id: "page-1", name: "Our Page" },
+                  { id: "cust-1", name: "Jamie" },
+                ],
+              },
               updated_time: "2026-06-01T10:00:00+0000",
             },
           ],
@@ -319,8 +352,18 @@ describe("facebookAdapter (B4)", () => {
         },
         "/conv-1/messages": {
           data: [
-            { id: "m1", from: { id: "cust-1", name: "Jamie" }, message: "hi there", created_time: "2026-06-01T09:00:00+0000" },
-            { id: "m2", from: { id: "page-1", name: "Our Page" }, message: "hello!", created_time: "2026-06-01T09:05:00+0000" },
+            {
+              id: "m1",
+              from: { id: "cust-1", name: "Jamie" },
+              message: "hi there",
+              created_time: "2026-06-01T09:00:00+0000",
+            },
+            {
+              id: "m2",
+              from: { id: "page-1", name: "Our Page" },
+              message: "hello!",
+              created_time: "2026-06-01T09:05:00+0000",
+            },
           ],
         },
       })
@@ -348,8 +391,16 @@ describe("facebookAdapter (B4)", () => {
       ])
       expect(messages).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ externalId: "m1", direction: "inbound", conversationExternalId: "conv-1" }),
-          expect.objectContaining({ externalId: "m2", direction: "outbound", conversationExternalId: "conv-1" }),
+          expect.objectContaining({
+            externalId: "m1",
+            direction: "inbound",
+            conversationExternalId: "conv-1",
+          }),
+          expect.objectContaining({
+            externalId: "m2",
+            direction: "outbound",
+            conversationExternalId: "conv-1",
+          }),
         ]),
       )
       const decoded = parseJsonCursor(nextCursor) as { pages?: Record<string, unknown> }
@@ -380,7 +431,9 @@ describe("facebookAdapter (B4)", () => {
         null,
       )
       expect(result?.conversations.map((c) => c.externalId).sort()).toEqual(["conv-a1", "conv-b1"])
-      const decoded = parseJsonCursor(result?.nextCursor ?? null) as { pages?: Record<string, unknown> }
+      const decoded = parseJsonCursor(result?.nextCursor ?? null) as {
+        pages?: Record<string, unknown>
+      }
       expect(Object.keys(decoded.pages ?? {}).sort()).toEqual(["page-a", "page-b"])
     })
 
@@ -394,7 +447,9 @@ describe("facebookAdapter (B4)", () => {
         null,
       )
       expect(result).toMatchObject({ conversations: [], messages: [] })
-      expect(parseJsonCursor(result?.nextCursor ?? null)).toEqual({ pages: { "page-1": { hw: null, bf: null } } })
+      expect(parseJsonCursor(result?.nextCursor ?? null)).toEqual({
+        pages: { "page-1": { hw: null, bf: null } },
+      })
       expect(fetch.calls.some((c) => c.url.includes("/messages"))).toBe(false)
     })
 
@@ -440,7 +495,11 @@ describe("facebookAdapter (B4)", () => {
       const failingFetch = (async (url: string, init?: { method?: string; body?: unknown }) => {
         calls.push({ url, method: init?.method ?? "GET", body: init?.body })
         if (url.includes("/me/accounts")) {
-          return { status: 200, headers: {}, body: JSON.stringify({ data: [page("page-a", "token-a")] }) }
+          return {
+            status: 200,
+            headers: {},
+            body: JSON.stringify({ data: [page("page-a", "token-a")] }),
+          }
         }
         return { status: 429, headers: {}, body: "{}" }
       }) as Parameters<NonNullable<typeof facebookAdapter.syncDms>>[0]["fetch"]
@@ -464,15 +523,30 @@ describe("facebookAdapter (B4)", () => {
           data: [
             {
               id: "conv-1",
-              participants: { data: [{ id: "page-1", name: "Our Page" }, { id: "cust-1", name: "Facebook user" }] },
+              participants: {
+                data: [
+                  { id: "page-1", name: "Our Page" },
+                  { id: "cust-1", name: "Facebook user" },
+                ],
+              },
               updated_time: "2026-06-01T10:00:00+0000",
             },
           ],
         },
         "/conv-1/messages": {
           data: [
-            { id: "m2", from: { id: "cust-1", name: "Manage Al" }, message: "second", created_time: "2026-06-01T09:05:00+0000" },
-            { id: "m1", from: { id: "cust-1", name: "Manage Al" }, message: "first", created_time: "2026-06-01T09:00:00+0000" },
+            {
+              id: "m2",
+              from: { id: "cust-1", name: "Manage Al" },
+              message: "second",
+              created_time: "2026-06-01T09:05:00+0000",
+            },
+            {
+              id: "m1",
+              from: { id: "cust-1", name: "Manage Al" },
+              message: "first",
+              created_time: "2026-06-01T09:00:00+0000",
+            },
           ],
         },
       })
@@ -481,7 +555,10 @@ describe("facebookAdapter (B4)", () => {
         null,
       )
       expect(result?.conversations).toEqual([
-        expect.objectContaining({ participantHandle: "Manage Al", participantDisplayName: "Manage Al" }),
+        expect.objectContaining({
+          participantHandle: "Manage Al",
+          participantDisplayName: "Manage Al",
+        }),
       ])
     })
 
@@ -497,7 +574,14 @@ describe("facebookAdapter (B4)", () => {
           ],
         },
         "/conv-1/messages": {
-          data: [{ id: "m1", from: { id: "cust-1", name: "Some Other Name" }, message: "hi", created_time: "2026-06-01T09:00:00+0000" }],
+          data: [
+            {
+              id: "m1",
+              from: { id: "cust-1", name: "Some Other Name" },
+              message: "hi",
+              created_time: "2026-06-01T09:00:00+0000",
+            },
+          ],
         },
       })
       const result = await facebookAdapter.syncDms?.(
@@ -521,7 +605,14 @@ describe("facebookAdapter (B4)", () => {
           ],
         },
         "/conv-1/messages": {
-          data: [{ id: "m1", from: { id: "cust-1", name: "Facebook user" }, message: "hi", created_time: "2026-06-01T09:00:00+0000" }],
+          data: [
+            {
+              id: "m1",
+              from: { id: "cust-1", name: "Facebook user" },
+              message: "hi",
+              created_time: "2026-06-01T09:00:00+0000",
+            },
+          ],
         },
       })
       const result = await facebookAdapter.syncDms?.(
@@ -538,13 +629,21 @@ describe("facebookAdapter (B4)", () => {
       let pageCalls = 0
       const fetch = (async (url: string) => {
         if (url.includes("/me/accounts")) {
-          return { status: 200, headers: {}, body: JSON.stringify({ data: [page("page-1", "page-1-token")] }) }
+          return {
+            status: 200,
+            headers: {},
+            body: JSON.stringify({ data: [page("page-1", "page-1-token")] }),
+          }
         }
         if (url.includes("/page-1/conversations")) {
           return {
             status: 200,
             headers: {},
-            body: JSON.stringify({ data: [{ id: "conv-1", participants: { data: [{ id: "page-1" }, { id: "cust-1" }] } }] }),
+            body: JSON.stringify({
+              data: [
+                { id: "conv-1", participants: { data: [{ id: "page-1" }, { id: "cust-1" }] } },
+              ],
+            }),
           }
         }
         if (url.includes("/conv-1/messages")) {
@@ -555,7 +654,14 @@ describe("facebookAdapter (B4)", () => {
               status: 200,
               headers: {},
               body: JSON.stringify({
-                data: [{ id: "m1", from: { id: "cust-1" }, message: "one", created_time: "2026-06-01T09:00:00+0000" }],
+                data: [
+                  {
+                    id: "m1",
+                    from: { id: "cust-1" },
+                    message: "one",
+                    created_time: "2026-06-01T09:00:00+0000",
+                  },
+                ],
                 paging: { cursors: { after: "CURSOR_1" } },
               }),
             }
@@ -566,7 +672,14 @@ describe("facebookAdapter (B4)", () => {
               status: 200,
               headers: {},
               body: JSON.stringify({
-                data: [{ id: "m2", from: { id: "cust-1" }, message: "two", created_time: "2026-06-01T09:01:00+0000" }],
+                data: [
+                  {
+                    id: "m2",
+                    from: { id: "cust-1" },
+                    message: "two",
+                    created_time: "2026-06-01T09:01:00+0000",
+                  },
+                ],
                 // No further cursor — pagination stops here (2 pages).
               }),
             }
@@ -588,13 +701,21 @@ describe("facebookAdapter (B4)", () => {
       let pageCalls = 0
       const fetch = (async (url: string) => {
         if (url.includes("/me/accounts")) {
-          return { status: 200, headers: {}, body: JSON.stringify({ data: [page("page-1", "page-1-token")] }) }
+          return {
+            status: 200,
+            headers: {},
+            body: JSON.stringify({ data: [page("page-1", "page-1-token")] }),
+          }
         }
         if (url.includes("/page-1/conversations")) {
           return {
             status: 200,
             headers: {},
-            body: JSON.stringify({ data: [{ id: "conv-1", participants: { data: [{ id: "page-1" }, { id: "cust-1" }] } }] }),
+            body: JSON.stringify({
+              data: [
+                { id: "conv-1", participants: { data: [{ id: "page-1" }, { id: "cust-1" }] } },
+              ],
+            }),
           }
         }
         if (url.includes("/conv-1/messages")) {
@@ -603,7 +724,14 @@ describe("facebookAdapter (B4)", () => {
             status: 200,
             headers: {},
             body: JSON.stringify({
-              data: [{ id: `m${pageCalls}`, from: { id: "cust-1" }, message: `msg ${pageCalls}`, created_time: "2026-06-01T09:00:00+0000" }],
+              data: [
+                {
+                  id: `m${pageCalls}`,
+                  from: { id: "cust-1" },
+                  message: `msg ${pageCalls}`,
+                  created_time: "2026-06-01T09:00:00+0000",
+                },
+              ],
               paging: { cursors: { after: `CURSOR_${pageCalls}` } }, // ALWAYS offers a next page
             }),
           }
@@ -641,7 +769,9 @@ describe("facebookAdapter (B4)", () => {
       expect(fetch.calls.some((c) => c.url.includes("/messages"))).toBe(false)
       expect(result?.messages).toEqual([])
       // Conversation metadata still upserts (comes back in the result).
-      expect(result?.conversations).toEqual([expect.objectContaining({ externalId: "conv-unchanged" })])
+      expect(result?.conversations).toEqual([
+        expect.objectContaining({ externalId: "conv-unchanged" }),
+      ])
     })
 
     test("still fetches /messages when updated_time is strictly newer than the stored watermark", async () => {
@@ -675,7 +805,12 @@ describe("facebookAdapter (B4)", () => {
         "/conv-new/messages": { data: [] },
       })
       const result = await facebookAdapter.syncDms?.(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token", skipMessagesBefore: new Map() },
+        {
+          accountExternalId: "user-1",
+          fetch,
+          accessToken: "user-token",
+          skipMessagesBefore: new Map(),
+        },
         null,
       )
       expect(fetch.calls.some((c) => c.url.includes("/messages"))).toBe(true)
@@ -715,7 +850,13 @@ describe("facebookAdapter (B4)", () => {
         "/111_222/comments": {
           data: [
             { id: "222_333", message: "a", from: { id: "9" }, created_time: "t1" },
-            { id: "222_444", message: "b", from: { id: "9" }, created_time: "t2", permalink_url: "https://www.facebook.com/p/444" },
+            {
+              id: "222_444",
+              message: "b",
+              from: { id: "9" },
+              created_time: "t2",
+              permalink_url: "https://www.facebook.com/p/444",
+            },
           ],
         },
       })
@@ -754,7 +895,11 @@ describe("facebookAdapter (B4)", () => {
         "page-1_post-9",
         "PRIOR_CURSOR",
       )
-      expect(result).toMatchObject({ findings: [], nextCursor: "PRIOR_CURSOR", error: "CONNECTION_LOST" })
+      expect(result).toMatchObject({
+        findings: [],
+        nextCursor: "PRIOR_CURSOR",
+        error: "CONNECTION_LOST",
+      })
     })
   })
 

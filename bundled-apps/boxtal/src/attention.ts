@@ -193,7 +193,10 @@ export function evaluateAttention(
     rules: matched.map((r) => r.name),
     documents,
     knowledge_refs,
-    summary: summarize(matched.map((r) => r.name), documents),
+    summary: summarize(
+      matched.map((r) => r.name),
+      documents,
+    ),
   }
 }
 
@@ -217,7 +220,10 @@ export interface TemplateNeed {
  * the documents (carrying their template id, de-duplicated by name like the app's own rules),
  * the rule names join the rules, and the summary is re-worded the same way. Pure.
  */
-export function mergeTemplateNeed(mark: AttentionMark | null, need: TemplateNeed | undefined): AttentionMark | null {
+export function mergeTemplateNeed(
+  mark: AttentionMark | null,
+  need: TemplateNeed | undefined,
+): AttentionMark | null {
   if (!need || need.rules.length === 0) return mark
   const documents: AttentionDocument[] = [...(mark?.documents ?? [])]
   const seen = new Map(documents.map((d, i) => [d.name.toLowerCase(), i]))

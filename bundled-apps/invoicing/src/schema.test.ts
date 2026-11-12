@@ -14,7 +14,9 @@ interface SchemaTable {
 }
 
 function loadSchema(): Record<string, SchemaTable> {
-  const m = JSON.parse(readFileSync(MANIFEST_PATH, "utf8")) as { schema?: Record<string, SchemaTable> }
+  const m = JSON.parse(readFileSync(MANIFEST_PATH, "utf8")) as {
+    schema?: Record<string, SchemaTable>
+  }
   if (!m.schema) throw new Error("manifest has no `schema` block")
   return m.schema
 }
@@ -133,7 +135,10 @@ describe("Invoicing app schema (manifest.schema block)", () => {
           u.columns.includes("issuer_profile_id") &&
           u.columns.includes("number_int"),
       )
-      expect(partial, "documents must declare a partial-unique on the numbering invariant").toBeDefined()
+      expect(
+        partial,
+        "documents must declare a partial-unique on the numbering invariant",
+      ).toBeDefined()
       const where = (partial as { where: string }).where
       expect(where).toMatch(/number_int IS NOT NULL/)
     })
@@ -141,9 +146,7 @@ describe("Invoicing app schema (manifest.schema block)", () => {
     it("partial unique index on the top-level shopify_order_id column (Shopify dedup)", () => {
       const t = loadSchema().documents
       const uniques = t?.constraints?.unique ?? []
-      const shop = uniques.find(
-        (u) => !Array.isArray(u) && u.columns.includes("shopify_order_id"),
-      )
+      const shop = uniques.find((u) => !Array.isArray(u) && u.columns.includes("shopify_order_id"))
       expect(
         shop,
         "documents must declare a partial-unique on the shopify_order_id column",
@@ -309,73 +312,73 @@ describe("Invoicing app schema (manifest.schema block)", () => {
 
   describe("e-invoicing identity schema (P1)", () => {
     const BASELINE_DOCUMENTS = new Set([
-        "counterparty_address",
-        "counterparty_contact_id",
-        "counterparty_country",
-        "counterparty_email",
-        "counterparty_name",
-        "counterparty_shipping_address",
-        "counterparty_shipping_name",
-        "counterparty_vat_id",
-        "currency",
-        "due_at",
-        "external_refs",
-        "grand_total_minor",
-        "incoterm",
-        "issued_at",
-        "issuer_profile_id",
-        "lifecycle_log",
-        "notes",
-        "number",
-        "number_int",
-        "paid_at",
-        "payment_status",
-        "pdf_file_id",
-        "pdf_status",
-        "po_number",
-        "scope",
-        "shipment_ref",
-        "shopify_draft_order_id",
-        "shopify_draft_order_name",
-        "shopify_order_id",
-        "shopify_order_number",
-        "status",
-        "subtotal_minor",
-        "tax_total_minor",
-        "tax_treatment",
-        "type",
-        "voided_at",
-        "year_of_issue",
-      ])
+      "counterparty_address",
+      "counterparty_contact_id",
+      "counterparty_country",
+      "counterparty_email",
+      "counterparty_name",
+      "counterparty_shipping_address",
+      "counterparty_shipping_name",
+      "counterparty_vat_id",
+      "currency",
+      "due_at",
+      "external_refs",
+      "grand_total_minor",
+      "incoterm",
+      "issued_at",
+      "issuer_profile_id",
+      "lifecycle_log",
+      "notes",
+      "number",
+      "number_int",
+      "paid_at",
+      "payment_status",
+      "pdf_file_id",
+      "pdf_status",
+      "po_number",
+      "scope",
+      "shipment_ref",
+      "shopify_draft_order_id",
+      "shopify_draft_order_name",
+      "shopify_order_id",
+      "shopify_order_number",
+      "status",
+      "subtotal_minor",
+      "tax_total_minor",
+      "tax_treatment",
+      "type",
+      "voided_at",
+      "year_of_issue",
+    ])
     const BASELINE_ISSUER_PROFILES = new Set([
-        "address",
-        "archived_at",
-        "auto_email_enabled",
-        "bank_name",
-        "country",
-        "default_currency",
-        "default_language",
-        "default_payment_terms_days",
-        "email_templates",
-        "iban",
-        "invoice_approval_threshold_minor",
-        "legal_name",
-        "logo_file_id",
-        "mail_account_id",
-        "po_approval_threshold_minor",
-        "prefix_credit_note",
-        "prefix_invoice",
-        "prefix_po",
-        "prefix_proforma",
-        "prefix_quote",
-        "prices_include_tax",
-        "require_two_eyes",
-        "shopify_shop_id",
-        "swift_bic",
-        "tax_registration_id",
-        "timezone",
-        "vat_id",
-      ])
+      "address",
+      "archived_at",
+      "auto_email_enabled",
+      "bank_name",
+      "country",
+      "default_currency",
+      "default_language",
+      "default_payment_terms_days",
+      "email_templates",
+      "iban",
+      "invoice_approval_threshold_minor",
+      "legal_name",
+      "logo_file_id",
+      "mail_account_id",
+      "po_approval_threshold_minor",
+      "prefix_credit_note",
+      "prefix_invoice",
+      "prefix_po",
+      "prefix_proforma",
+      "prefix_quote",
+      "prices_include_tax",
+      "require_two_eyes",
+      "shopify_shop_id",
+      "swift_bic",
+      "tax_registration_id",
+      "timezone",
+      "vat_id",
+    ])
 
     function isNullable(def: unknown): boolean {
       if (typeof def === "string") return def.endsWith("?")
@@ -408,7 +411,10 @@ describe("Invoicing app schema (manifest.schema block)", () => {
       expect(s.legal_originals?.rlsScope).toBe("documents")
       expect(s.legal_originals?.constraints?.unique).toContainEqual(["document_id", "kind"])
       const m = JSON.parse(readFileSync(MANIFEST_PATH, "utf8")) as {
-        entities: Record<string, { tableName?: string; labelField?: string; fileParent?: Record<string, string> }>
+        entities: Record<
+          string,
+          { tableName?: string; labelField?: string; fileParent?: Record<string, string> }
+        >
       }
       expect(m.entities.legal_original?.tableName).toBe("legal_originals")
       expect(m.entities.legal_original?.fileParent?.joinOn).toBe("id")

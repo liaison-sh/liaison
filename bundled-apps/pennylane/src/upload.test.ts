@@ -12,13 +12,21 @@ import { minorAmountsRefusal, minorToDecimal, supplierInvoiceUpload, vatRateCode
 
 function setup() {
   const fake = new PennylaneFake()
-  fake.files.set("file-bill-1", { sha256: "b".repeat(64), invoice_number: null, date: null, buyer_siren: null, valid: true })
+  fake.files.set("file-bill-1", {
+    sha256: "b".repeat(64),
+    invoice_number: null,
+    date: null,
+    buyer_siren: null,
+    valid: true,
+  })
   const db = createMockDb({}, { bridgeWhereOperators: true, ids: "uuid", stampCreatedAt: true })
   const ctx = {
     orgId: "org",
     db,
     fetch: fake.sandboxFetch,
-    connections: { pennylane: { getCredentials: async () => ({ apiToken: "tok", scope: "company" }) } },
+    connections: {
+      pennylane: { getCredentials: async () => ({ apiToken: "tok", scope: "company" }) },
+    },
   } as unknown as PennylaneToolCtx
   return { fake, ctx, db }
 }
@@ -43,7 +51,12 @@ describe("supplier_invoice_upload", () => {
     fake.receive({ supplier: "Transporteur Exemple SAS" }) // a prefix sibling, not an exact match
     const sup = [...fake.suppliers.values()].find((s) => s.name === "Transporteur Exemple")!
     const r = (await supplierInvoiceUpload(ctx, INPUT)) as R
-    expect(r).toMatchObject({ disposition: "imported", posted_to_pennylane: true, adopted: false, supplier: { id: String(sup.id) } })
+    expect(r).toMatchObject({
+      disposition: "imported",
+      posted_to_pennylane: true,
+      adopted: false,
+      supplier: { id: String(sup.id) },
+    })
     const att = fake.calls.find((c) => c.path === "/file_attachments")!
     expect(att.parts?.find((p) => p.name === "file")?.sha256).toBe("b".repeat(64))
     const imp = fake.calls.find((c) => c.path === "/supplier_invoices/import")!.json as R
@@ -59,23 +72,43 @@ describe("supplier_invoice_upload", () => {
       external_reference: "liaison-file-bill-1",
     })
     expect(imp.invoice_lines).toEqual([
-      { currency_amount: "412.60", currency_tax: "68.77", label: "Invoice TR-2026-0042", vat_rate: "FR_200" },
+      {
+        currency_amount: "412.60",
+        currency_tax: "68.77",
+        label: "Invoice TR-2026-0042",
+        vat_rate: "FR_200",
+      },
     ])
     const rows = (await db.findMany("supplier_invoice_upload", {})) as R[]
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ status: "imported", provider_ref: r.provider_ref, source_file_id: "file-bill-1" })
+    expect(rows[0]).toMatchObject({
+      status: "imported",
+      provider_ref: r.provider_ref,
+      source_file_id: "file-bill-1",
+    })
   })
 
   it("a supplier e-invoice received through the platform is never uploaded again: an actionable refusal, nothing sent", async () => {
     const { fake, ctx, db } = setup()
     fake.receive({ supplier: "Transporteur Exemple" })
-    fake.files.set("file-received-1", { sha256: "c".repeat(64), invoice_number: null, date: null, buyer_siren: null, valid: true, parent: { app: "invoicing", entityType: "received_file" } })
+    fake.files.set("file-received-1", {
+      sha256: "c".repeat(64),
+      invoice_number: null,
+      date: null,
+      buyer_siren: null,
+      valid: true,
+      parent: { app: "invoicing", entityType: "received_file" },
+    })
     const r = (await supplierInvoiceUpload(ctx, { ...INPUT, file_id: "file-received-1" })) as R
     expect(r.status).toBe("error")
     expect(r.error.code).toBe("received_einvoice_in_pennylane")
     expect(r.error.message).toContain("already in Pennylane")
     expect(r.error.message).toContain("received_einvoices_get")
-    expect(fake.calls.some((c) => c.path === "/file_attachments" || c.path === "/supplier_invoices/import")).toBe(false)
+    expect(
+      fake.calls.some(
+        (c) => c.path === "/file_attachments" || c.path === "/supplier_invoices/import",
+      ),
+    ).toBe(false)
     expect(await db.findMany("supplier_invoice_upload", {})).toHaveLength(0)
   })
 
@@ -91,7 +124,10 @@ describe("supplier_invoice_upload", () => {
   it("a 409 on the attachment (crash window) adopts the id Pennylane names", async () => {
     const { fake, ctx } = setup()
     fake.receive({ supplier: "Transporteur Exemple" })
-    fake.fail((c) => c.path === "/supplier_invoices/import", "replace", { status: 409, body: { status: 409, error: "A document with ID 4242 already exists with such attachment." } })
+    fake.fail((c) => c.path === "/supplier_invoices/import", "replace", {
+      status: 409,
+      body: { status: 409, error: "A document with ID 4242 already exists with such attachment." },
+    })
     const r = (await supplierInvoiceUpload(ctx, INPUT)) as R
     expect(r).toMatchObject({ provider_ref: "4242", adopted: true })
   })
@@ -101,7 +137,9 @@ describe("supplier_invoice_upload", () => {
     fake.receive({ supplier: "Transporteur Exemple SAS" })
     const r = (await supplierInvoiceUpload(ctx, INPUT)) as R
     expect(r.error.code).toBe("supplier_not_found")
-    expect(r.error.detail.candidates).toEqual([expect.objectContaining({ name: "Transporteur Exemple SAS" })])
+    expect(r.error.detail.candidates).toEqual([
+      expect.objectContaining({ name: "Transporteur Exemple SAS" }),
+    ])
     expect(fake.calls.some((c) => c.method === "POST")).toBe(false)
   })
 
@@ -116,7 +154,11 @@ describe("supplier_invoice_upload", () => {
 
   it("refuses bad input before any call", async () => {
     const { fake, ctx } = setup()
-    for (const bad of [{ invoice_date: "30/06/2026" }, { currency: "euro" }, { due_date: "soon" }]) {
+    for (const bad of [
+      { invoice_date: "30/06/2026" },
+      { currency: "euro" },
+      { due_date: "soon" },
+    ]) {
       const r = (await supplierInvoiceUpload(ctx, { ...INPUT, ...bad })) as R
       expect(r.error.code).toBe("invalid_input")
     }

@@ -12,7 +12,13 @@
 
 export class XmlRefused extends Error {
   constructor(
-    public readonly code: "xml_dtd_refused" | "xml_entity_refused" | "xml_too_large" | "xml_too_complex" | "xml_timeout" | "xml_malformed",
+    public readonly code:
+      | "xml_dtd_refused"
+      | "xml_entity_refused"
+      | "xml_too_large"
+      | "xml_too_complex"
+      | "xml_timeout"
+      | "xml_malformed",
     message: string,
   ) {
     super(message)
@@ -49,16 +55,22 @@ function decodeEntities(s: string): string {
   if (/&(?!(?:#x[0-9a-fA-F]{1,6}|#[0-9]{1,7}|[A-Za-z][A-Za-z0-9._-]{0,31});)/.test(s)) {
     throw new XmlRefused("xml_malformed", "a bare & is not well-formed")
   }
-  return s.replace(/&(#x[0-9a-fA-F]{1,6}|#[0-9]{1,7}|[A-Za-z][A-Za-z0-9._-]{0,31});/g, (_m, name: string) => {
-    if (name.startsWith("#")) {
-      const cp = name[1] === "x" ? Number.parseInt(name.slice(2), 16) : Number.parseInt(name.slice(1), 10)
-      if (!Number.isFinite(cp) || cp < 1 || cp > 0x10ffff) throw new XmlRefused("xml_malformed", `bad character reference &${name};`)
-      return String.fromCodePoint(cp)
-    }
-    const v = PREDEFINED[name]
-    if (v === undefined) throw new XmlRefused("xml_entity_refused", `entity &${name}; is not allowed`)
-    return v
-  })
+  return s.replace(
+    /&(#x[0-9a-fA-F]{1,6}|#[0-9]{1,7}|[A-Za-z][A-Za-z0-9._-]{0,31});/g,
+    (_m, name: string) => {
+      if (name.startsWith("#")) {
+        const cp =
+          name[1] === "x" ? Number.parseInt(name.slice(2), 16) : Number.parseInt(name.slice(1), 10)
+        if (!Number.isFinite(cp) || cp < 1 || cp > 0x10ffff)
+          throw new XmlRefused("xml_malformed", `bad character reference &${name};`)
+        return String.fromCodePoint(cp)
+      }
+      const v = PREDEFINED[name]
+      if (v === undefined)
+        throw new XmlRefused("xml_entity_refused", `entity &${name}; is not allowed`)
+      return v
+    },
+  )
 }
 
 function local(qname: string): string {
@@ -69,12 +81,19 @@ function local(qname: string): string {
 const ATTR = /([^\s=/>]+)\s*=\s*("([^"]*)"|'([^']*)')/g
 
 /** Parse `xml` into an element tree, or throw `XmlRefused`. */
-export function parseXmlSafe(xml: string, limits: Partial<XmlLimits> = {}, now: () => number = Date.now): XmlElement {
+export function parseXmlSafe(
+  xml: string,
+  limits: Partial<XmlLimits> = {},
+  now: () => number = Date.now,
+): XmlElement {
   const L = { ...DEFAULT_XML_LIMITS, ...limits }
   // UTF-16 code units ≥ bytes / 3 for UTF-8 input: a cheap pre-check, the caller checks bytes.
-  if (xml.length > L.maxBytes) throw new XmlRefused("xml_too_large", `document over ${L.maxBytes} bytes`)
-  if (/<!DOCTYPE/i.test(xml)) throw new XmlRefused("xml_dtd_refused", "a document type declaration is not accepted")
-  if (/<!ENTITY/i.test(xml)) throw new XmlRefused("xml_entity_refused", "an entity declaration is not accepted")
+  if (xml.length > L.maxBytes)
+    throw new XmlRefused("xml_too_large", `document over ${L.maxBytes} bytes`)
+  if (/<!DOCTYPE/i.test(xml))
+    throw new XmlRefused("xml_dtd_refused", "a document type declaration is not accepted")
+  if (/<!ENTITY/i.test(xml))
+    throw new XmlRefused("xml_entity_refused", "an entity declaration is not accepted")
   const started = now()
   const root: XmlElement = { name: "#document", attrs: {}, children: [], text: "" }
   const stack: XmlElement[] = [root]
@@ -82,7 +101,8 @@ export function parseXmlSafe(xml: string, limits: Partial<XmlLimits> = {}, now: 
   let i = 0
   const n = xml.length
   while (i < n) {
-    if ((count & 0x3ff) === 0 && now() - started > L.timeoutMs) throw new XmlRefused("xml_timeout", `parse over ${L.timeoutMs} ms`)
+    if ((count & 0x3ff) === 0 && now() - started > L.timeoutMs)
+      throw new XmlRefused("xml_timeout", `parse over ${L.timeoutMs} ms`)
     const lt = xml.indexOf("<", i)
     if (lt === -1) {
       if (xml.slice(i).trim() !== "") stack[stack.length - 1]!.text += decodeEntities(xml.slice(i))
@@ -91,7 +111,8 @@ export function parseXmlSafe(xml: string, limits: Partial<XmlLimits> = {}, now: 
     if (lt > i) {
       const t = xml.slice(i, lt)
       if (stack.length > 1) stack[stack.length - 1]!.text += decodeEntities(t)
-      else if (t.trim() !== "") throw new XmlRefused("xml_malformed", "text outside the root element")
+      else if (t.trim() !== "")
+        throw new XmlRefused("xml_malformed", "text outside the root element")
     }
     if (xml.startsWith("<!--", lt)) {
       const end = xml.indexOf("-->", lt + 4)
@@ -112,14 +133,16 @@ export function parseXmlSafe(xml: string, limits: Partial<XmlLimits> = {}, now: 
       i = end + 2
       continue
     }
-    if (xml.startsWith("<!", lt)) throw new XmlRefused("xml_dtd_refused", "markup declarations are not accepted")
+    if (xml.startsWith("<!", lt))
+      throw new XmlRefused("xml_dtd_refused", "markup declarations are not accepted")
     const gt = xml.indexOf(">", lt + 1)
     if (gt === -1) throw new XmlRefused("xml_malformed", "unterminated tag")
     const raw = xml.slice(lt + 1, gt)
     if (raw.startsWith("/")) {
       const name = local(raw.slice(1).trim())
       const top = stack.pop()
-      if (!top || top === root || top.name !== name) throw new XmlRefused("xml_malformed", `unexpected </${name}>`)
+      if (!top || top === root || top.name !== name)
+        throw new XmlRefused("xml_malformed", `unexpected </${name}>`)
       i = gt + 1
       continue
     }
@@ -133,13 +156,16 @@ export function parseXmlSafe(xml: string, limits: Partial<XmlLimits> = {}, now: 
       el.attrs[local(a[1]!)] = decodeEntities(a[3] ?? a[4] ?? "")
     }
     count += 1
-    if (count > L.maxElements) throw new XmlRefused("xml_too_complex", `over ${L.maxElements} elements`)
+    if (count > L.maxElements)
+      throw new XmlRefused("xml_too_complex", `over ${L.maxElements} elements`)
     const parent = stack[stack.length - 1]!
-    if (parent === root && root.children.length > 0) throw new XmlRefused("xml_malformed", "more than one root element")
+    if (parent === root && root.children.length > 0)
+      throw new XmlRefused("xml_malformed", "more than one root element")
     parent.children.push(el)
     if (!selfClosing) {
       stack.push(el)
-      if (stack.length - 1 > L.maxDepth) throw new XmlRefused("xml_too_complex", `deeper than ${L.maxDepth}`)
+      if (stack.length - 1 > L.maxDepth)
+        throw new XmlRefused("xml_too_complex", `deeper than ${L.maxDepth}`)
     }
     i = gt + 1
   }

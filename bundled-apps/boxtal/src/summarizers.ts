@@ -155,7 +155,8 @@ export function addressProvenanceLine(check: unknown): string | null {
         VERIFICATION_SOURCE_LABEL[str(used?.verification_source) ?? ""] ?? "an unrecorded source"
       }`
     : "not verified"
-  const held = state === "differs" && !choice ? "; differs from the verified address, a person must pick" : ""
+  const held =
+    state === "differs" && !choice ? "; differs from the verified address, a person must pick" : ""
   return `Address: ${where}, ${proof}${held}`
 }
 
@@ -229,7 +230,9 @@ export function summarizeCreateShipment(
   }): string | null => {
     const who = [str(a.company), str(a.name)].filter(Boolean).join(" / ")
     const locality = [str(a.postalCode), str(a.city)].filter(Boolean).join(" ")
-    const parts = [who || null, str(a.street), locality || null, str(a.countryIsoCode)].filter(Boolean)
+    const parts = [who || null, str(a.street), locality || null, str(a.countryIsoCode)].filter(
+      Boolean,
+    )
     if (parts.length === 0) return null
     const phone = str(a.phone)
     return phone ? `${parts.join(", ")} (${phone})` : parts.join(", ")
@@ -242,7 +245,10 @@ export function summarizeCreateShipment(
   // the quote that returned offer_code); execution re-checks it against the
   // live price (>10% drift rejects). A missing price is rendered LOUDLY, never
   // silently omitted. Folded into the carrier line to fit the card's 8-line cap.
-  const price = typeof p.quoted_price_ttc === "number" ? p.quoted_price_ttc : Number(p.quoted_price_ttc ?? Number.NaN)
+  const price =
+    typeof p.quoted_price_ttc === "number"
+      ? p.quoted_price_ttc
+      : Number(p.quoted_price_ttc ?? Number.NaN)
   const currency = str(p.quoted_currency) ?? "EUR"
   if (Number.isFinite(price)) {
     lines.push(`Carrier: ${offerCode}, ${price.toFixed(2)} ${currency} TTC`)
@@ -285,14 +291,17 @@ export function summarizeCreateShipment(
     const missing = ["street", "city", "postalCode", "countryIsoCode"].filter(
       (f) => !str((merged as Record<string, unknown>)[f]),
     )
-    if (missing.length > 0) lines.push(`Address fields still needed before the label is bought: ${missing.join(", ")}`)
+    if (missing.length > 0)
+      lines.push(`Address fields still needed before the label is bought: ${missing.join(", ")}`)
     // Which address that is and whether a person verified it. Only once the customer has a
     // verified address; otherwise the card is exactly what it always was. A place typed in the
     // call wins field by field, so the resolved address's provenance describes the label only
     // when the typed address is that same place.
     const provenance = addressProvenanceLine(draft?.address_check)
     if (provenance) {
-      const typedPlace = ["street", "city", "postalCode", "countryIsoCode"].some((k) => str(call[k]) != null)
+      const typedPlace = ["street", "city", "postalCode", "countryIsoCode"].some(
+        (k) => str(call[k]) != null,
+      )
       const loc = (a: Record<string, unknown>) => ({
         street: str(a.street),
         city: str(a.city),
@@ -300,11 +309,15 @@ export function summarizeCreateShipment(
         countryIsoCode: str(a.countryIsoCode),
       })
       lines.push(
-        typedPlace && !sameLocation(loc(merged), loc(pre)) ? "Address: typed in the call, not verified" : provenance,
+        typedPlace && !sameLocation(loc(merged), loc(pre))
+          ? "Address: typed in the call, not verified"
+          : provenance,
       )
     }
   } else {
-    lines.push("Recipient address: taken from the source invoice (confirm on the approval card before buying)")
+    lines.push(
+      "Recipient address: taken from the source invoice (confirm on the approval card before buying)",
+    )
   }
 
   // CONTENTS — compact goods summary from the draft's line summaries ("1x ET2, 1x MP").
@@ -318,10 +331,16 @@ export function summarizeCreateShipment(
   // PACKAGE — count, dimensions and total weight, when the draft hydrated.
   if (draft && isArr(draft.parcels) && draft.parcels.length > 0) {
     const count = draft.parcels.length
-    const totalWeight = draft.parcels.reduce((sum, pk) => sum + (typeof pk.weight === "number" ? pk.weight : 0), 0)
+    const totalWeight = draft.parcels.reduce(
+      (sum, pk) => sum + (typeof pk.weight === "number" ? pk.weight : 0),
+      0,
+    )
     const first = draft.parcels[0]
     const dims =
-      first && typeof first.length === "number" && typeof first.width === "number" && typeof first.height === "number"
+      first &&
+      typeof first.length === "number" &&
+      typeof first.width === "number" &&
+      typeof first.height === "number"
         ? `${first.length}x${first.width}x${first.height} cm`
         : null
     const bits = [
@@ -335,7 +354,9 @@ export function summarizeCreateShipment(
         ? draft.parcels
             .map((pk) => {
               const d =
-                typeof pk.length === "number" && typeof pk.width === "number" && typeof pk.height === "number"
+                typeof pk.length === "number" &&
+                typeof pk.width === "number" &&
+                typeof pk.height === "number"
                   ? `${pk.length}x${pk.width}x${pk.height} cm`
                   : null
               const w = typeof pk.weight === "number" ? `${pk.weight} kg` : null
@@ -361,15 +382,20 @@ export function summarizeCreateShipment(
       const hsCodes: string[] = []
       for (const a of articles) {
         const qty = typeof a.quantity === "number" ? a.quantity : Number(a.quantity ?? 1)
-        const unit = isRec(a.unitValue) && typeof a.unitValue.value === "number" ? a.unitValue.value : 0
+        const unit =
+          isRec(a.unitValue) && typeof a.unitValue.value === "number" ? a.unitValue.value : 0
         declared += (Number.isFinite(qty) ? qty : 1) * unit
-        declaredCurrency = declaredCurrency ?? (isRec(a.unitValue) ? (str(a.unitValue.currency) ?? null) : null)
+        declaredCurrency =
+          declaredCurrency ?? (isRec(a.unitValue) ? (str(a.unitValue.currency) ?? null) : null)
         const hs = str(a.tariffNumber)
         if (hs && !hsCodes.includes(hs)) hsCodes.push(hs)
       }
-      const valuePart = declared > 0 ? `, declared ${declared.toFixed(2)} ${declaredCurrency ?? ""}`.trimEnd() : ""
+      const valuePart =
+        declared > 0 ? `, declared ${declared.toFixed(2)} ${declaredCurrency ?? ""}`.trimEnd() : ""
       const hsPart = hsCodes.length > 0 ? `, HS ${hsCodes.join(", ")}` : ""
-      lines.push(`Customs export: ${articles.length} article${articles.length === 1 ? "" : "s"}${valuePart}${hsPart}`)
+      lines.push(
+        `Customs export: ${articles.length} article${articles.length === 1 ? "" : "s"}${valuePart}${hsPart}`,
+      )
     } else {
       lines.push("Customs declaration required (export route)")
     }
@@ -392,7 +418,8 @@ export function summarizeCreateShipment(
   // UUID nobody can check against the shipping grid, so it is only the fallback.
   const orderName = str(draft?.order_name)
   const docNumber = str(draft?.document_number)
-  const recipientName = str(address?.name) ?? str(draft?.recipient_address?.name) ?? str(draft?.recipient)
+  const recipientName =
+    str(address?.name) ?? str(draft?.recipient_address?.name) ?? str(draft?.recipient)
   const what = orderName
     ? `order ${orderName}${docNumber ? ` (${docNumber})` : ""}`
     : docNumber
@@ -431,7 +458,11 @@ export function summarizeAddressChoice(
     if (!isRec(a)) return "(unknown)"
     const locality = [str(a.postalCode), str(a.city)].filter(Boolean).join(" ")
     const who = [str(a.company), str(a.name)].filter(Boolean).join(" / ")
-    return [who || null, str(a.street), locality || null, str(a.countryIsoCode)].filter(Boolean).join(", ") || "(empty)"
+    return (
+      [who || null, str(a.street), locality || null, str(a.countryIsoCode)]
+        .filter(Boolean)
+        .join(", ") || "(empty)"
+    )
   }
   // The addresses the execution is bound to (pinned by the preflight), never a later read of them.
   const shown = isRec(p.shown_addresses) ? p.shown_addresses : check
@@ -440,7 +471,8 @@ export function summarizeAddressChoice(
     `Verified address: ${line(shown?.verified_address)}`,
     `The label goes to the ${pick === "verified" ? "verified address" : "order's address"}`,
   ]
-  const what = str(draft?.order_name) ?? str(draft?.document_number) ?? str(p.document_ref) ?? "this row"
+  const what =
+    str(draft?.order_name) ?? str(draft?.document_number) ?? str(p.document_ref) ?? "this row"
   return Promise.resolve({
     kind: "address_choice",
     title: `Ship ${what} to the ${pick === "verified" ? "verified address" : "order's address"}`,
@@ -586,7 +618,11 @@ export function summarizeSenderAddressSet(
     const next = str(p[f]) ?? ""
     const prev = current ? (str(current[f]) ?? "") : null
     if (prev !== null && prev === next) continue
-    lines.push(prev !== null ? `${f}: ${prev || "(empty)"} -> ${next || "(empty)"}` : `${f}: ${next || "(empty)"}`)
+    lines.push(
+      prev !== null
+        ? `${f}: ${prev || "(empty)"} -> ${next || "(empty)"}`
+        : `${f}: ${next || "(empty)"}`,
+    )
   }
   return Promise.resolve({
     kind: "sender_address_set",

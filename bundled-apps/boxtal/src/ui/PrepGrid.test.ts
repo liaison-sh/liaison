@@ -4,42 +4,43 @@
 // ui-logic.test.tsx's discipline: pin the exported pure functions the grid
 // relies on for filtering, product-chip derivation, money formatting, and
 // offer/label rendering, without mounting the component.
-import { readFileSync } from "node:fs"
+
 import { describe, expect, it } from "bun:test"
+import { readFileSync } from "node:fs"
 import {
+  cartonLabel,
+  comparePrepRows,
   currencyExponent,
   effectiveOffer,
   formatMoneyMinor,
   formatOffer,
   formatOfferOption,
-  comparePrepRows,
   lastSyncLabel,
-  nextSort,
-  orderSortValue,
-  parseNumericInput,
-  sortPrepRows,
   matchesPrepFilter,
+  nextSort,
   noteChanged,
   noteFromInput,
-  packageCountLabel,
-  packageCountOptions,
-  packageDraftChanged,
-  packageDraftOf,
-  packageDraftValid,
-  packageDraftIsUniform,
-  reasonIsRecheckable,
-  packageOverridePayload,
-  setCarton,
-  setCartonCount,
-  cartonLabel,
-  packageSummaryLine,
-  packageDetailTitle,
-  productLabel,
+  orderSortValue,
   PREP_GRID_COLUMNS,
-  productsSummaryList,
-  staleQuoteRefs,
   type PrepOffer,
   type PrepRow,
+  packageCountLabel,
+  packageCountOptions,
+  packageDetailTitle,
+  packageDraftChanged,
+  packageDraftIsUniform,
+  packageDraftOf,
+  packageDraftValid,
+  packageOverridePayload,
+  packageSummaryLine,
+  parseNumericInput,
+  productLabel,
+  productsSummaryList,
+  reasonIsRecheckable,
+  setCarton,
+  setCartonCount,
+  sortPrepRows,
+  staleQuoteRefs,
 } from "./PrepGrid"
 
 function makeRow(overrides: Partial<PrepRow> = {}): PrepRow {
@@ -96,7 +97,13 @@ function makeRow(overrides: Partial<PrepRow> = {}): PrepRow {
     staff_note: null,
     excluded: false,
     validated: false,
-    invoice: { state: "issued", document_id: "doc-1", number: "INV-001", approval_id: null, kind: "invoice" },
+    invoice: {
+      state: "issued",
+      document_id: "doc-1",
+      number: "INV-001",
+      approval_id: null,
+      kind: "invoice",
+    },
     shipment: null,
     recipient: null,
     ...overrides,
@@ -130,7 +137,9 @@ describe("staff note lives in the Order cell", () => {
     expect(cell.indexOf("<NoteCell")).toBeLessThan(cell.indexOf("</td>"))
   })
   it("saves with a compare-and-set on the note the row showed", () => {
-    expect(src).toContain('"prep_set_note", { order_key: row.order_key, note, expected_note: row.staff_note }')
+    expect(src).toContain(
+      '"prep_set_note", { order_key: row.order_key, note, expected_note: row.staff_note }',
+    )
   })
 })
 
@@ -218,7 +227,12 @@ describe("matchesPrepFilter", () => {
     expect(matchesPrepFilter(row, { ...base, product: "ZZZ" })).toBe(false)
   })
   it("filters by free-text search across invoice/order/customer/destination", () => {
-    const row = makeRow({ invoice_ref: "INV-042", order_name: "#2002", customer: "Bob Builder", destination: "FR" })
+    const row = makeRow({
+      invoice_ref: "INV-042",
+      order_name: "#2002",
+      customer: "Bob Builder",
+      destination: "FR",
+    })
     expect(matchesPrepFilter(row, { ...base, search: "bob" })).toBe(true)
     expect(matchesPrepFilter(row, { ...base, search: "2002" })).toBe(true)
     expect(matchesPrepFilter(row, { ...base, search: "nomatch" })).toBe(false)
@@ -262,17 +276,28 @@ describe("formatOfferOption", () => {
     expect(formatOfferOption(OFFER_RELAY)).toBe("Mondial Relay Point Relais: 5.40 EUR, 3d, Relay")
   })
   it("omits the ETA clause when there is no computable ETA", () => {
-    expect(formatOfferOption({ ...OFFER_HOME, eta_business_days: null })).toBe("Chronopost Chrono 13: 12.40 EUR, Home")
+    expect(formatOfferOption({ ...OFFER_HOME, eta_business_days: null })).toBe(
+      "Chronopost Chrono 13: 12.40 EUR, Home",
+    )
   })
 })
 
 describe("effectiveOffer", () => {
   const base = { alternates: [], offers: [OFFER_HOME, OFFER_RELAY], quoted_at: null, stale: false }
   it("returns the operator's chosen offer when one is selected", () => {
-    expect(effectiveOffer({ ...base, cheapest: OFFER_HOME, selected_offer_code: "MRLY-Point", selected: OFFER_RELAY })).toBe(OFFER_RELAY)
+    expect(
+      effectiveOffer({
+        ...base,
+        cheapest: OFFER_HOME,
+        selected_offer_code: "MRLY-Point",
+        selected: OFFER_RELAY,
+      }),
+    ).toBe(OFFER_RELAY)
   })
   it("falls back to the cheapest when nothing is chosen", () => {
-    expect(effectiveOffer({ ...base, cheapest: OFFER_HOME, selected_offer_code: null, selected: null })).toBe(OFFER_HOME)
+    expect(
+      effectiveOffer({ ...base, cheapest: OFFER_HOME, selected_offer_code: null, selected: null }),
+    ).toBe(OFFER_HOME)
   })
 })
 
@@ -297,15 +322,36 @@ describe("staleQuoteRefs", () => {
     const rows = [
       makeRow({ document_ref: "fresh" }),
       makeRow({ document_ref: "stale-1", quote: { ...makeRow().quote, stale: true } }),
-      makeRow({ document_ref: "missing-1", state: "quote_missing", quote: { cheapest: null, alternates: [], offers: [], selected_offer_code: null, selected: null, quoted_at: null, stale: false } }),
+      makeRow({
+        document_ref: "missing-1",
+        state: "quote_missing",
+        quote: {
+          cheapest: null,
+          alternates: [],
+          offers: [],
+          selected_offer_code: null,
+          selected: null,
+          quoted_at: null,
+          stale: false,
+        },
+      }),
     ]
     expect(staleQuoteRefs(rows)).toEqual(["stale-1", "missing-1"])
   })
 
   it("skips excluded and needs_fix rows even when their quote is stale", () => {
     const rows = [
-      makeRow({ document_ref: "excluded", excluded: true, quote: { ...makeRow().quote, stale: true } }),
-      makeRow({ document_ref: "broken", state: "needs_fix", reason: "missing weight", quote: { ...makeRow().quote, stale: true } }),
+      makeRow({
+        document_ref: "excluded",
+        excluded: true,
+        quote: { ...makeRow().quote, stale: true },
+      }),
+      makeRow({
+        document_ref: "broken",
+        state: "needs_fix",
+        reason: "missing weight",
+        quote: { ...makeRow().quote, stale: true },
+      }),
     ]
     expect(staleQuoteRefs(rows)).toEqual([])
   })
@@ -327,7 +373,10 @@ describe("packageDraftOf / packageDraftChanged", () => {
     package_count: 1,
   })
   const C = (length: number, width: number, height: number, weight: number) => ({
-    length, width, height, weight,
+    length,
+    width,
+    height,
+    weight,
   })
 
   it("seeds one carton per resolved parcel", () => {
@@ -349,14 +398,19 @@ describe("packageDraftOf / packageDraftChanged", () => {
       package_count: 4,
     })
     expect(packageDraftOf(mixed).cartons).toEqual([
-      C(58, 38, 42, 20.5), C(46, 33, 4, 0.8), C(46, 33, 4, 0.8), C(46, 33, 4, 0.8),
+      C(58, 38, 42, 20.5),
+      C(46, 33, 4, 0.8),
+      C(46, 33, 4, 0.8),
+      C(46, 33, 4, 0.8),
     ])
   })
 
   it("expands a uniform row persisted as a quantity up to its stated count", () => {
     const multi = makeRow({ parcels: [C(40, 30, 20, 2.5)], package_count: 3 })
     expect(packageDraftOf(multi).cartons).toEqual([
-      C(40, 30, 20, 2.5), C(40, 30, 20, 2.5), C(40, 30, 20, 2.5),
+      C(40, 30, 20, 2.5),
+      C(40, 30, 20, 2.5),
+      C(40, 30, 20, 2.5),
     ])
   })
 
@@ -374,7 +428,9 @@ describe("packageDraftOf / packageDraftChanged", () => {
     const mixed = makeRow({ parcels: [C(58, 38, 42, 20.5), C(46, 33, 4, 0.8)], package_count: 2 })
     // An edit to the SECOND carton must register; the old single-carton model
     // could not even express this.
-    expect(packageDraftChanged(mixed, setCarton(packageDraftOf(mixed), 1, { weight: 0.9 }))).toBe(true)
+    expect(packageDraftChanged(mixed, setCarton(packageDraftOf(mixed), 1, { weight: 0.9 }))).toBe(
+      true,
+    )
   })
 
   it("goes dirty on a package-count change", () => {
@@ -390,7 +446,10 @@ describe("packageDraftOf / packageDraftChanged", () => {
 
 describe("setCarton / setCartonCount", () => {
   const C = (length: number, width: number, height: number, weight: number) => ({
-    length, width, height, weight,
+    length,
+    width,
+    height,
+    weight,
   })
   const mixed = { cartons: [C(58, 38, 42, 20.5), C(46, 33, 4, 0.8), C(46, 33, 4, 0.8)] }
 
@@ -412,7 +471,10 @@ describe("setCarton / setCartonCount", () => {
     // 0.8 kg boxes into four 20.5 kg cartons -- a wrong quote and a wrong label.
     const next = setCartonCount(mixed, 4)
     expect(next.cartons).toEqual([
-      C(58, 38, 42, 20.5), C(46, 33, 4, 0.8), C(46, 33, 4, 0.8), C(46, 33, 4, 0.8),
+      C(58, 38, 42, 20.5),
+      C(46, 33, 4, 0.8),
+      C(46, 33, 4, 0.8),
+      C(46, 33, 4, 0.8),
     ])
   })
 
@@ -454,7 +516,10 @@ describe("packageDraftValid", () => {
 
 describe("packageOverridePayload", () => {
   const C = (length: number, width: number, height: number, weight: number) => ({
-    length, width, height, weight,
+    length,
+    width,
+    height,
+    weight,
   })
 
   it("sends a single carton with no quantity key", () => {
@@ -464,15 +529,19 @@ describe("packageOverridePayload", () => {
   it("sends N identical cartons as a quantity, the shape set_package expands", () => {
     // Unchanged wire format for the uniform case: a row that shipped fine before
     // must send byte-identical params after this change.
-    expect(packageOverridePayload({ cartons: [C(40, 30, 20, 2.5), C(40, 30, 20, 2.5), C(40, 30, 20, 2.5)] }))
-      .toEqual({ ...C(40, 30, 20, 2.5), quantity: 3 })
+    expect(
+      packageOverridePayload({
+        cartons: [C(40, 30, 20, 2.5), C(40, 30, 20, 2.5), C(40, 30, 20, 2.5)],
+      }),
+    ).toEqual({ ...C(40, 30, 20, 2.5), quantity: 3 })
   })
 
   it("sends a MIXED set as an array, one entry per carton", () => {
     // shipment_draft_set_package has always accepted SetPackageOverrideItem[];
     // this is the shape the editor could not previously produce.
     expect(packageOverridePayload({ cartons: [C(58, 38, 42, 20.5), C(46, 33, 4, 0.8)] })).toEqual([
-      C(58, 38, 42, 20.5), C(46, 33, 4, 0.8),
+      C(58, 38, 42, 20.5),
+      C(46, 33, 4, 0.8),
     ])
   })
 
@@ -485,7 +554,10 @@ describe("packageOverridePayload", () => {
 
 describe("packageDraftIsUniform", () => {
   const C = (length: number, width: number, height: number, weight: number) => ({
-    length, width, height, weight,
+    length,
+    width,
+    height,
+    weight,
   })
   it("is true for one carton and for N identical cartons", () => {
     expect(packageDraftIsUniform({ cartons: [C(40, 30, 20, 2.5)] })).toBe(true)
@@ -498,13 +570,18 @@ describe("packageDraftIsUniform", () => {
 
 describe("cartonLabel", () => {
   it("reads as a compact box description", () => {
-    expect(cartonLabel({ length: 46, width: 33, height: 4, weight: 0.8 })).toBe("46x33x4 cm, 0.8 kg")
+    expect(cartonLabel({ length: 46, width: 33, height: 4, weight: 0.8 })).toBe(
+      "46x33x4 cm, 0.8 kg",
+    )
   })
 })
 
 describe("packageSummaryLine", () => {
   const C = (length: number, width: number, height: number, weight: number) => ({
-    length, width, height, weight,
+    length,
+    width,
+    height,
+    weight,
   })
 
   it("reads as dims + weight for a single carton", () => {
@@ -518,7 +595,9 @@ describe("packageSummaryLine", () => {
   })
 
   it("collapses a mixed set to a count, never to the first carton's figures", () => {
-    const line = packageSummaryLine({ cartons: [C(58, 38, 42, 20.5), C(46, 33, 4, 0.8), C(30, 20, 10, 0.5)] })
+    const line = packageSummaryLine({
+      cartons: [C(58, 38, 42, 20.5), C(46, 33, 4, 0.8), C(30, 20, 10, 0.5)],
+    })
     expect(line).toBe("mixed (3)")
     expect(line).not.toContain("58")
   })
@@ -530,7 +609,10 @@ describe("packageSummaryLine", () => {
 
 describe("packageDetailTitle", () => {
   const C = (length: number, width: number, height: number, weight: number) => ({
-    length, width, height, weight,
+    length,
+    width,
+    height,
+    weight,
   })
 
   it("names every carton, so the compact line's hover never hides one", () => {
@@ -570,7 +652,14 @@ describe("reasonIsRecheckable (the blocked-row dead end)", () => {
   it("does NOT offer one where a human must edit the catalog first", () => {
     // Promising a recheck that cannot possibly clear the block is worse than no
     // button: it sends the operator round a loop instead of to the fix.
-    for (const r of ["Missing weight", "Missing HS code", "Missing country of origin", "Bad address", "No shippable lines", "Unresolved pack"]) {
+    for (const r of [
+      "Missing weight",
+      "Missing HS code",
+      "Missing country of origin",
+      "Bad address",
+      "No shippable lines",
+      "Unresolved pack",
+    ]) {
       expect(reasonIsRecheckable(r)).toBe(false)
     }
   })
@@ -640,7 +729,10 @@ describe("parseNumericInput — what the operator typed survives", () => {
 // cheap tripwire that fails fast in CI if someone reaches for <For> again.
 describe("carton editor list keying", () => {
   const src = readFileSync(new URL("./PrepGrid.tsx", import.meta.url), "utf8")
-  const cartonList = src.slice(src.indexOf("each={cartons()}") - 200, src.indexOf("each={cartons()}") + 200)
+  const cartonList = src.slice(
+    src.indexOf("each={cartons()}") - 200,
+    src.indexOf("each={cartons()}") + 200,
+  )
 
   it("iterates the carton list with <Index>, never <For>", () => {
     expect(cartonList).toContain("<Index each={cartons()}>")
@@ -700,17 +792,29 @@ describe("prep grid sorting", () => {
   })
 
   it("sorts by client name", () => {
-    const out = sortPrepRows(
-      [row({ customer: "Zed" }), row({ customer: "Ada" })],
-      { key: "client", dir: "asc" },
-    )
+    const out = sortPrepRows([row({ customer: "Zed" }), row({ customer: "Ada" })], {
+      key: "client",
+      dir: "asc",
+    })
     expect(out.map((r) => r.customer)).toEqual(["Ada", "Zed"])
   })
 
   it("sorts by country, a row without one last in both directions", () => {
-    const rows = [row({ destination: "US", customer: "a" }), row({ destination: "", customer: "b" }), row({ destination: "DE", customer: "c" })]
-    expect(sortPrepRows(rows, { key: "country", dir: "asc" }).map((r) => r.customer)).toEqual(["c", "a", "b"])
-    expect(sortPrepRows(rows, { key: "country", dir: "desc" }).map((r) => r.customer)).toEqual(["a", "c", "b"])
+    const rows = [
+      row({ destination: "US", customer: "a" }),
+      row({ destination: "", customer: "b" }),
+      row({ destination: "DE", customer: "c" }),
+    ]
+    expect(sortPrepRows(rows, { key: "country", dir: "asc" }).map((r) => r.customer)).toEqual([
+      "c",
+      "a",
+      "b",
+    ])
+    expect(sortPrepRows(rows, { key: "country", dir: "desc" }).map((r) => r.customer)).toEqual([
+      "a",
+      "c",
+      "b",
+    ])
   })
 
   it("never mutates the array it was given", () => {
@@ -739,7 +843,8 @@ describe("prep grid sorting", () => {
   })
 
   it("compares equal rows as equal (stable input order survives)", () => {
-    const a = makeRow({ order_name: "#5" }), b = makeRow({ order_name: "#5" })
+    const a = makeRow({ order_name: "#5" }),
+      b = makeRow({ order_name: "#5" })
     expect(comparePrepRows(a, b, { key: "order", dir: "asc" })).toBe(0)
   })
 })
@@ -754,7 +859,10 @@ describe("prep grid sorting", () => {
 describe("carton rows render uniformly", () => {
   it("does not condition the default on whether the set is mixed", () => {
     const src = readFileSync(new URL("./PrepGrid.tsx", import.meta.url), "utf8")
-    const decl = src.slice(src.indexOf("const [expanded, setExpanded]") - 700, src.indexOf("const [expanded, setExpanded]") + 120)
+    const decl = src.slice(
+      src.indexOf("const [expanded, setExpanded]") - 700,
+      src.indexOf("const [expanded, setExpanded]") + 120,
+    )
     expect(decl).toContain("createSignal(false)")
     expect(decl).not.toContain("!packageDraftIsUniform(persisted())")
     expect(decl).not.toContain("packageDraftIsUniform(persisted())")
@@ -852,7 +960,10 @@ describe("poll loop honours the plan's own cadence and deadline, not a fixed tic
 // Solid closure this test file cannot mount.
 describe("patchRow fences stale reads behind a per-row ticket", () => {
   const src = readFileSync(new URL("./PrepGrid.tsx", import.meta.url), "utf8")
-  const fn = src.slice(src.indexOf("const patchRow = async"), src.indexOf("const patchRow = async") + 500)
+  const fn = src.slice(
+    src.indexOf("const patchRow = async"),
+    src.indexOf("const patchRow = async") + 500,
+  )
 
   it("bumps a per-key ticket before awaiting the read", () => {
     expect(fn).toContain("patchTickets.get(orderKey)")
@@ -903,7 +1014,9 @@ describe("setStatus / excludeRow / restoreRow apply optimistically before the ro
 describe("the truncation notice names the newest-first scan order, not its opposite", () => {
   it("says the 250 shown are the most recent, and that older ones are dropped", () => {
     const src = readFileSync(new URL("./PrepGrid.tsx", import.meta.url), "utf8")
-    expect(src).toContain("Showing the 250 most recently placed open orders. Older ones are not listed.")
+    expect(src).toContain(
+      "Showing the 250 most recently placed open orders. Older ones are not listed.",
+    )
     expect(src).not.toContain("oldest open orders")
   })
 })
@@ -946,13 +1059,19 @@ describe("the generating invoice state: a rendering PDF is a wait, not a failure
     // row would clear the spinner without ever delivering the PDF. pollTick (prep-row-logic.ts)
     // keeps invoice_pdf keys out of the batched label read entirely (dueInvoicePdfKeys, a
     // separate array from dueLabelKeys); the tick then resolves each one individually.
-    const poll = src.slice(src.indexOf("const pollTimer"), src.indexOf("onCleanup(() => clearInterval(pollTimer))"))
+    const poll = src.slice(
+      src.indexOf("const pollTimer"),
+      src.indexOf("onCleanup(() => clearInterval(pollTimer))"),
+    )
     expect(poll).toContain("for (const key of dueInvoicePdfKeys) void retryInvoicePdf(key)")
     expect(poll).toContain("patchRowsBatch(dueLabelKeys)")
   })
 
   it("gives up out loud when the plan's own deadline passes", () => {
-    const poll = src.slice(src.indexOf("const pollTimer"), src.indexOf("onCleanup(() => clearInterval(pollTimer))"))
+    const poll = src.slice(
+      src.indexOf("const pollTimer"),
+      src.indexOf("onCleanup(() => clearInterval(pollTimer))"),
+    )
     const timeout = poll.slice(poll.indexOf("timedOutKeys"))
     expect(timeout).toContain("finishPdf(key,")
     expect(timeout).toContain("taking longer than a minute")
@@ -1058,7 +1177,7 @@ describe("no standalone Packages column", () => {
   })
 
   it("caps the products cell, the only remaining content-driven width", () => {
-    const at = src.indexOf('data-testid={`boxtal-prep-products-')
+    const at = src.indexOf("data-testid={`boxtal-prep-products-")
     const cell = src.slice(at - 600, at + 200)
     // The cell's own class attribute, isolated from the comment above it: a source-text oracle
     // that trips on its own explanation is no oracle.
@@ -1090,14 +1209,16 @@ describe("no standalone Packages column", () => {
   // the raw summary is still the fallback for a string that is not a quantity list.
   it("renders the products cell through the resolver, never the raw summary", () => {
     const cell = src.slice(
-      src.indexOf('data-testid={`boxtal-prep-products-'),
-      src.indexOf('data-testid={`boxtal-prep-products-') + 900,
+      src.indexOf("data-testid={`boxtal-prep-products-"),
+      src.indexOf("data-testid={`boxtal-prep-products-") + 900,
     )
     expect(cell).toContain("productCodes()")
     expect(cell).toContain("productChipLabel(entry.code)")
     // "-" and "2 parcels" are not quantity lists: they print as they are.
     expect(cell).toContain("fallback={row.products}")
-    expect(src).toContain("const productCodes = createMemo(() => resolveProductCodes(row.products))")
+    expect(src).toContain(
+      "const productCodes = createMemo(() => resolveProductCodes(row.products))",
+    )
   })
 
   // The affordance the owner asked for on the collapsed offer selector: "need some kind of down

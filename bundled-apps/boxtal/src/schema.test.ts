@@ -12,7 +12,9 @@ interface SchemaTable {
 }
 
 function loadSchema(): Record<string, SchemaTable> {
-  const m = JSON.parse(readFileSync(MANIFEST_PATH, "utf8")) as { schema?: Record<string, SchemaTable> }
+  const m = JSON.parse(readFileSync(MANIFEST_PATH, "utf8")) as {
+    schema?: Record<string, SchemaTable>
+  }
   if (!m.schema) throw new Error("manifest has no `schema` block")
   return m.schema
 }
@@ -51,7 +53,11 @@ describe("Boxtal app schema (manifest.schema block)", () => {
     expect(profile.fields.unit_weight).toBe("number")
     expect(profile.fields.short_code).toBe("string?")
     const link = s.product_profile_link!
-    expect(link.fields).toEqual({ product_source: "string", product_id: "string", profile_id: "string" })
+    expect(link.fields).toEqual({
+      product_source: "string",
+      product_id: "string",
+      profile_id: "string",
+    })
     expect(link.constraints?.unique).toContainEqual(["product_source", "product_id"])
   })
 
@@ -80,7 +86,12 @@ describe("Boxtal app schema (manifest.schema block)", () => {
   it("shipment: link_state/order_status/tracking_status enums + partial-unique on document_ref", () => {
     const t = loadSchema().shipment!
     const link = t.fields.link_state as { enum?: string[] }
-    expect(link.enum).toEqual(["create_in_flight", "created", "create_uncertain", "create_abandoned"])
+    expect(link.enum).toEqual([
+      "create_in_flight",
+      "created",
+      "create_uncertain",
+      "create_abandoned",
+    ])
     const order = t.fields.order_status as { enum?: string[]; required?: boolean }
     expect(order.enum).toEqual(["PENDING", "REQUESTED", "CONFIRMED", "CANCELLED"])
     expect(order.required).toBe(false)

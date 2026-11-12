@@ -68,7 +68,8 @@ export function orderHitIsB2b(
   if (attrs.b2bCompany) return true
   const b2bTags = config.b2bOrderTags.map((t) => t.trim().toLowerCase()).filter((t) => t.length > 0)
   const tags = Array.isArray(attrs.tags) ? attrs.tags : []
-  if (tags.some((t) => typeof t === "string" && b2bTags.includes(t.trim().toLowerCase()))) return true
+  if (tags.some((t) => typeof t === "string" && b2bTags.includes(t.trim().toLowerCase())))
+    return true
   const suffix = config.b2bSuffix.trim().toLowerCase()
   if (!suffix) return false
   const lines = Array.isArray(attrs.lineItems) ? attrs.lineItems : []

@@ -8,11 +8,12 @@
 // already a `string` (the QuickJS bridge serializes bigint→string), so the edge
 // projection calls `String(...)`. Inbound raw amounts are coerced `BigInt(...)`.
 
+import type { PennylaneClientLike, PennylaneToolCtx } from "./ctx"
+import { PennylaneConnectionError } from "./lib/get-client"
 import { computePnlSummary, computeRunway, type TbLine } from "./pnl"
 import {
   listAll,
   normalizeTbLine,
-  resolvePeriodWindow,
   type PeriodWindow,
   type RawTrialBalanceLine,
   readAccountClassMap,
@@ -20,11 +21,9 @@ import {
   readConnectionScope,
   readPnlSnapshot,
   resolveClient,
+  resolvePeriodWindow,
 } from "./snapshot"
-import { PennylaneConnectionError } from "./lib/get-client"
-import type { PennylaneClientLike } from "./ctx"
 import type { Filter, PnlClass } from "./types"
-import type { PennylaneToolCtx } from "./ctx"
 
 type Ctx = PennylaneToolCtx
 
@@ -54,7 +53,8 @@ async function resolveClientOrEnvelope(
   try {
     return { client: await resolveClient(ctx) }
   } catch (err) {
-    if (isConnectionError(err)) return { error: { code: "pennylane_not_connected", message: err.message } }
+    if (isConnectionError(err))
+      return { error: { code: "pennylane_not_connected", message: err.message } }
     throw err
   }
 }
@@ -84,9 +84,7 @@ function minorToMajorString(v: bigint): string {
 }
 
 function isApiError403(err: unknown): boolean {
-  return (
-    typeof err === "object" && err !== null && (err as { status?: number }).status === 403
-  )
+  return typeof err === "object" && err !== null && (err as { status?: number }).status === 403
 }
 
 // — invoice header projection —
@@ -148,7 +146,9 @@ export async function supplierInvoiceGet(
 ): Promise<InvoiceHeaderView | NotConnectedEnvelope> {
   const resolved = await resolveClientOrEnvelope(ctx)
   if ("error" in resolved) return resolved
-  const raw = await resolved.client.get<RawInvoice>(`/supplier_invoices/${encodeURIComponent(input.id)}`)
+  const raw = await resolved.client.get<RawInvoice>(
+    `/supplier_invoices/${encodeURIComponent(input.id)}`,
+  )
   return projectInvoice(raw)
 }
 
@@ -296,7 +296,12 @@ interface RawBankAccount {
 }
 
 export interface CashPositionView {
-  accounts: { id: string; name: string; balance: { amount_minor: string; currency: string }; synced_at: string }[]
+  accounts: {
+    id: string
+    name: string
+    balance: { amount_minor: string; currency: string }
+    synced_at: string
+  }[]
   total_by_currency: Record<string, string>
   cash_status: "live" | "unavailable"
 }
@@ -384,7 +389,12 @@ export async function spendByCategory(
   const tb = await readTrialBalanceLines(ctx, input.period, mapping)
   if ("error" in tb) return tb
   const pnl = computePnlSummary(tb.lines, mapping)
-  const acc: Record<PnlClass, bigint> = { revenue: pnl.revenue, cogs: pnl.cogs, opex: pnl.opex, other: pnl.other }
+  const acc: Record<PnlClass, bigint> = {
+    revenue: pnl.revenue,
+    cogs: pnl.cogs,
+    opex: pnl.opex,
+    other: pnl.other,
+  }
   return {
     ...tb.window,
     categories: (Object.keys(acc) as PnlClass[]).map((cls) => ({
@@ -429,7 +439,9 @@ export async function runwayEstimate(
   // the cursor itself.
   const resolved = await resolveClientOrEnvelope(ctx)
   if ("error" in resolved) return resolved
-  const txItems = await listAll<RawTransaction>(resolved.client, "/transactions", { logger: ctx.logger })
+  const txItems = await listAll<RawTransaction>(resolved.client, "/transactions", {
+    logger: ctx.logger,
+  })
   // Net burn = negated sum of transaction amounts (outflows are negative
   // amounts) in the runway currency only — never cross-currency.
   let net = 0n

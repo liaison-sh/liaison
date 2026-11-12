@@ -76,7 +76,8 @@ export function parseSourceProfiles(value: unknown): ParsedProfiles {
       return { profiles: [], warnings: [`${SOURCES_CONFIG_KEY} is not valid JSON`] }
     }
   }
-  if (!Array.isArray(list)) return { profiles: [], warnings: [`${SOURCES_CONFIG_KEY} is not a list`] }
+  if (!Array.isArray(list))
+    return { profiles: [], warnings: [`${SOURCES_CONFIG_KEY} is not a list`] }
 
   const profiles: SourceProfile[] = []
   const warnings: string[] = []

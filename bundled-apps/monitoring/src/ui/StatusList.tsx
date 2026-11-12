@@ -10,8 +10,8 @@ import { app, navigate } from "@liaison/host"
 import { type Component, createMemo, createResource, createSignal, Show } from "solid-js"
 import type { IncidentsSummaryWithConfig } from "../lib/summarize"
 import { LiveLine, OverflowMenu } from "./Dashboard"
-import { tr } from "./i18n"
 import { formatAge, incidentPath, severityMeta } from "./format"
+import { tr } from "./i18n"
 import { incidentDetailLine, incidentTag, type TriageAction } from "./incident-row"
 import { Badge, Button, Card, cx, EmptyState } from "./kit"
 import { loadMemberNames } from "./members"
@@ -22,19 +22,28 @@ import { buildSourceViews, type IncidentLike, isAutoResolved, type SourceView } 
 type ListStatus = "acknowledged" | "resolved"
 
 export const MonitoringStatusList: Component<{ entityId?: string; id?: string }> = (props) => {
-  const status = (): ListStatus => ((props.entityId ?? props.id) === "resolved" ? "resolved" : "acknowledged")
+  const status = (): ListStatus =>
+    (props.entityId ?? props.id) === "resolved" ? "resolved" : "acknowledged"
   const [busyId, setBusyId] = createSignal<string | null>(null)
   const [triageError, setTriageError] = createSignal<string | null>(null)
   const nowMs = () => Date.now()
 
-  const [summary, { refetch: refetchSummary }] = createResource<IncidentsSummaryWithConfig | undefined>(async () => {
+  const [summary, { refetch: refetchSummary }] = createResource<
+    IncidentsSummaryWithConfig | undefined
+  >(async () => {
     const res = await app.invokeTool<{ data: IncidentsSummaryWithConfig }>("incidents_summary", {})
     return res?.data
   })
-  const [rows, { refetch: refetchRows }] = createResource(status, async (s): Promise<IncidentLike[]> => {
-    const res = await app.invokeTool<{ data: IncidentLike[] }>("incidents_list", { status: s, limit: 100 })
-    return res?.data ?? []
-  })
+  const [rows, { refetch: refetchRows }] = createResource(
+    status,
+    async (s): Promise<IncidentLike[]> => {
+      const res = await app.invokeTool<{ data: IncidentLike[] }>("incidents_list", {
+        status: s,
+        limit: 100,
+      })
+      return res?.data ?? []
+    },
+  )
   const needsNames = () => (rows.latest ?? []).some((i) => i.resolvedBy && !isAutoResolved(i))
   const [names] = createResource(() => (needsNames() ? true : null), loadMemberNames)
 
@@ -60,7 +69,12 @@ export const MonitoringStatusList: Component<{ entityId?: string; id?: string }>
   const sourceViews = createMemo(() => {
     const s = summary.latest
     const map = new Map<string, SourceView>()
-    if (s) for (const v of buildSourceViews(s, (rows.latest ?? []).map((i) => i.source))) map.set(v.source, v)
+    if (s)
+      for (const v of buildSourceViews(
+        s,
+        (rows.latest ?? []).map((i) => i.source),
+      ))
+        map.set(v.source, v)
     return map
   })
 
@@ -78,8 +92,12 @@ export const MonitoringStatusList: Component<{ entityId?: string; id?: string }>
             <OverflowMenu testid="monitoring-status" onRefresh={refetch} />
           </div>
           <Show when={rows.error || triageError()}>
-            <Card class="border-error-border bg-error-glow px-4 py-2.5 text-[12px] text-error" testid="monitoring-load-error">
-              {triageError() ?? (rows.error instanceof Error ? rows.error.message : String(rows.error))}
+            <Card
+              class="border-error-border bg-error-glow px-4 py-2.5 text-[12px] text-error"
+              testid="monitoring-load-error"
+            >
+              {triageError() ??
+                (rows.error instanceof Error ? rows.error.message : String(rows.error))}
             </Card>
           </Show>
           <Card class="overflow-hidden rounded-xl">
@@ -115,7 +133,10 @@ export const MonitoringStatusList: Component<{ entityId?: string; id?: string }>
                             </span>
                           </span>
                           <Show when={line}>
-                            <span class="truncate text-[11.5px] text-text-tertiary" title={line ?? undefined}>
+                            <span
+                              class="truncate text-[11.5px] text-text-tertiary"
+                              title={line ?? undefined}
+                            >
                               {line}
                             </span>
                           </Show>
@@ -156,14 +177,29 @@ export const MonitoringStatusList: Component<{ entityId?: string; id?: string }>
                     role: "meta",
                     cell: (inc) => {
                       const t = incidentTag(inc)
-                      return <span class={cx("whitespace-nowrap rounded-[5px] px-[7px] py-0.5 text-[11px] font-medium", t.cls)}>{t.label}</span>
+                      return (
+                        <span
+                          class={cx(
+                            "whitespace-nowrap rounded-[5px] px-[7px] py-0.5 text-[11px] font-medium",
+                            t.cls,
+                          )}
+                        >
+                          {t.label}
+                        </span>
+                      )
                     },
                   },
                   {
                     key: "age",
                     header: status() === "resolved" ? tr("Resolved") : tr("Last seen"),
                     role: "meta",
-                    cell: (inc) => formatAge(status() === "resolved" ? (inc.resolvedAt ?? inc.lastSeenAt) : inc.lastSeenAt, nowMs()),
+                    cell: (inc) =>
+                      formatAge(
+                        status() === "resolved"
+                          ? (inc.resolvedAt ?? inc.lastSeenAt)
+                          : inc.lastSeenAt,
+                        nowMs(),
+                      ),
                   },
                   {
                     key: "count",

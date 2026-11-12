@@ -20,7 +20,12 @@ function ctxWith(db: MockDb, opts: { token?: string | null } = {}): SocialToolCt
   return {
     orgId: "org-1",
     db,
-    fetch: (async () => ({ status: 200, ok: true, json: async () => ({}), text: async () => "" })) as never,
+    fetch: (async () => ({
+      status: 200,
+      ok: true,
+      json: async () => ({}),
+      text: async () => "",
+    })) as never,
     connections: {
       getToken: async (_name: string, _identifier?: string) => {
         if (!token) throw new Error("No access token stored")
@@ -73,7 +78,9 @@ describe("runDiscoverySync watermark crash-safety (B5)", () => {
     const adapter = fakeAdapter({
       async discover(_ctx: AdapterContext, _cursor: string | null): Promise<DiscoverResult> {
         return {
-          findings: [{ platform: "youtube", externalId: "v1", relation: "keyword_match", occurredAt: ISO }],
+          findings: [
+            { platform: "youtube", externalId: "v1", relation: "keyword_match", occurredAt: ISO },
+          ],
           nextCursor: "c1",
           unitsConsumed: 100,
         }
@@ -352,7 +359,9 @@ describe("runWatchPoller auto_hot comment relation-honesty (incident fix)", () =
     })
     await runWatchPoller(ctxWith(db), { adapters: { youtube: adapter }, now: new Date(ISO) })
     expect(await db.count("finding", { where: { external_id: "c-3" } })).toBe(1)
-    const [f] = (await db.findMany("finding", { where: { external_id: "c-3" } })) as Array<{ relation: string }>
+    const [f] = (await db.findMany("finding", { where: { external_id: "c-3" } })) as Array<{
+      relation: string
+    }>
     expect(f?.relation).toBe("comment_on_our_content")
   })
 })
@@ -468,7 +477,11 @@ describe("runWatchPoller YouTube quota enforcement (C1 / §9 #3)", () => {
     // is simply ignored (prior day) and left alone.
     const [ledger] = (await db.findMany("sync_state", {
       where: { platform: "youtube", source_type: "watch" },
-    })) as Array<{ units_consumed_today: number; units_window_date: string; account_external_id: string }>
+    })) as Array<{
+      units_consumed_today: number
+      units_window_date: string
+      account_external_id: string
+    }>
     // Narrowing, not decoration: `expect(...).toBeDefined()` does not narrow the
     // destructured row for tsc, and the bundled-app build runs `tsc --noEmit`.
     if (!ledger) throw new Error("sync.test: expected a watch ledger row to exist")
@@ -551,7 +564,13 @@ describe("runDiscoverySync auto-watch (C2 / §9 #6)", () => {
       async discover(): Promise<DiscoverResult> {
         return {
           findings: [
-            { platform: "youtube", externalId: "vid-1", relation: "keyword_match", commentCount: 42, occurredAt: ISO },
+            {
+              platform: "youtube",
+              externalId: "vid-1",
+              relation: "keyword_match",
+              commentCount: 42,
+              occurredAt: ISO,
+            },
           ],
           nextCursor: "c1",
           unitsConsumed: 100,
@@ -559,7 +578,9 @@ describe("runDiscoverySync auto-watch (C2 / §9 #6)", () => {
       },
     })
     await runDiscoverySync(ctxWith(db), { adapter, accountExternalId: "chan-1" })
-    expect(await db.count("watched_object", { where: { platform: "youtube", external_id: "vid-1" } })).toBe(1)
+    expect(
+      await db.count("watched_object", { where: { platform: "youtube", external_id: "vid-1" } }),
+    ).toBe(1)
     const w = (await db.findMany("watched_object", { where: { external_id: "vid-1" } }))[0] as {
       reason: string
       object_type: string
@@ -590,7 +611,9 @@ describe("runDiscoverySync auto-watch (C2 / §9 #6)", () => {
       },
     })
     await runDiscoverySync(ctxWith(db), { adapter, accountExternalId: "chan-1" })
-    const w = (await db.findMany("watched_object", { where: { external_id: "vid-titled" } }))[0] as {
+    const w = (
+      await db.findMany("watched_object", { where: { external_id: "vid-titled" } })
+    )[0] as {
       title: string | null
     }
     expect(w.title).toBe("Fabrikam TESSERA Touch review")
@@ -603,7 +626,13 @@ describe("runDiscoverySync auto-watch (C2 / §9 #6)", () => {
       async discover(): Promise<DiscoverResult> {
         return {
           findings: [
-            { platform: "youtube", externalId: "vid-2", relation: "keyword_match", commentCount: 3, occurredAt: ISO },
+            {
+              platform: "youtube",
+              externalId: "vid-2",
+              relation: "keyword_match",
+              commentCount: 3,
+              occurredAt: ISO,
+            },
           ],
           nextCursor: "c1",
           unitsConsumed: 100,
@@ -636,7 +665,11 @@ describe("runDiscoverySync auto-watch (C2 / §9 #6)", () => {
     })
     // Same day as the seeded window_date, so the 100-unit search.list cost
     // accumulates onto the prior 100.
-    await runDiscoverySync(ctxWith(db), { adapter, accountExternalId: "chan-1", now: new Date(ISO) })
+    await runDiscoverySync(ctxWith(db), {
+      adapter,
+      accountExternalId: "chan-1",
+      now: new Date(ISO),
+    })
     const ss = (await db.findMany("sync_state", { where: { id: "yt-disc" } }))[0] as {
       units_consumed_today: number
     }
@@ -678,7 +711,9 @@ describe("runDiscoverySync auth token threading", () => {
     expect(seenToken).toBe("tok-live")
     expect((seenToken ?? "").length).toBeGreaterThan(0)
     // The watermark advanced (the authenticated page succeeded).
-    const ss = (await db.findMany("sync_state", { where: { id: "yt-disc" } }))[0] as { cursor: string }
+    const ss = (await db.findMany("sync_state", { where: { id: "yt-disc" } }))[0] as {
+      cursor: string
+    }
     expect(ss.cursor).toBe("c1")
   })
 
@@ -703,7 +738,9 @@ describe("runDiscoverySync auth token threading", () => {
     expect(called).toBe(false) // never made an unauthenticated call
     expect(res).toEqual({ ingested: 0, unitsConsumed: 0 })
     // Watermark untouched: nothing was read.
-    const ss = (await db.findMany("sync_state", { where: { id: "yt-disc" } }))[0] as { cursor: string }
+    const ss = (await db.findMany("sync_state", { where: { id: "yt-disc" } }))[0] as {
+      cursor: string
+    }
     expect(ss.cursor).toBe("c0")
   })
 
@@ -821,7 +858,10 @@ describe("YouTube quota budget across discovery and watch polls", () => {
   const QUOTA_DAY = "2026-10-19"
   const RESET = "2026-10-20T07:00:00.000Z"
 
-  async function seed(db: MockDb, opts: { discoveryUnits?: number; watchUnits?: number; lastSyncedAt?: string | null } = {}) {
+  async function seed(
+    db: MockDb,
+    opts: { discoveryUnits?: number; watchUnits?: number; lastSyncedAt?: string | null } = {},
+  ) {
     await db.insert("sync_state", {
       id: "yt-disc",
       platform: "youtube",
@@ -844,8 +884,20 @@ describe("YouTube quota budget across discovery and watch polls", () => {
       units_consumed_today: opts.watchUnits ?? 0,
       units_window_date: QUOTA_DAY,
     })
-    await db.insert("monitor_term", { id: "t1", kind: "keyword", value: "kestrel", platform: null, enabled: true })
-    await db.insert("monitor_term", { id: "t2", kind: "keyword", value: "resonant", platform: null, enabled: true })
+    await db.insert("monitor_term", {
+      id: "t1",
+      kind: "keyword",
+      value: "kestrel",
+      platform: null,
+      enabled: true,
+    })
+    await db.insert("monitor_term", {
+      id: "t2",
+      kind: "keyword",
+      value: "resonant",
+      platform: null,
+      enabled: true,
+    })
   }
   async function addWatch(db: MockDb, id: string, priority = 50) {
     await db.insert("watched_object", {
@@ -859,7 +911,9 @@ describe("YouTube quota budget across discovery and watch polls", () => {
       next_poll_at: "2020-01-01T00:00:00.000Z",
     })
   }
-  function countingAdapter(over: { discover?: () => DiscoverResult; poll?: () => DiscoverResult } = {}) {
+  function countingAdapter(
+    over: { discover?: () => DiscoverResult; poll?: () => DiscoverResult } = {},
+  ) {
     const calls = { discover: 0, poll: 0 }
     const adapter = fakeAdapter({
       async discover(): Promise<DiscoverResult> {
@@ -889,7 +943,10 @@ describe("YouTube quota budget across discovery and watch polls", () => {
     const ctx = ctxWith(db)
     await runDiscoverySync(ctx, { adapter, accountExternalId: "chan-1", now: NOW })
     expect(calls.discover).toBe(0)
-    expect(((await row(db, "yt-disc")).metadata.youtube_quota as { discovery_skipped: string }).discovery_skipped).toBe("budget")
+    expect(
+      ((await row(db, "yt-disc")).metadata.youtube_quota as { discovery_skipped: string })
+        .discovery_skipped,
+    ).toBe("budget")
     // Other metadata keys survive the quota write.
     expect((await row(db, "yt-disc")).metadata.kernel_public_base_url).toBe("https://x.example")
     const res = await runWatchPoller(ctx, { adapters: { youtube: adapter }, now: NOW })
@@ -922,7 +979,12 @@ describe("YouTube quota budget across discovery and watch polls", () => {
     await seed(db)
     await addWatch(db, "w-1")
     const { adapter, calls } = countingAdapter({
-      discover: () => ({ findings: [], nextCursor: "c-partial", unitsConsumed: 100, quotaExhausted: true }),
+      discover: () => ({
+        findings: [],
+        nextCursor: "c-partial",
+        unitsConsumed: 100,
+        quotaExhausted: true,
+      }),
     })
     const ctx = ctxWith(db)
     await runDiscoverySync(ctx, { adapter, accountExternalId: "chan-1", now: NOW })
@@ -934,7 +996,9 @@ describe("YouTube quota budget across discovery and watch polls", () => {
     const res = await runWatchPoller(ctx, { adapters: { youtube: adapter }, now: NOW })
     expect(calls.poll).toBe(0)
     expect(res.deferred).toBe(1)
-    const w = (await db.findMany("watched_object", { where: { id: "w-1" } }))[0] as { last_polled_at?: string | null }
+    const w = (await db.findMany("watched_object", { where: { id: "w-1" } }))[0] as {
+      last_polled_at?: string | null
+    }
     expect(w.last_polled_at ?? null).toBeNull()
     // Discovery past its cadence but before the reset: still blocked.
     const beforeReset = new Date(Date.parse(RESET) - 60_000)
@@ -946,7 +1010,12 @@ describe("YouTube quota budget across discovery and watch polls", () => {
     // After the reset: a new quota day, counters at 0, everything runs again.
     const afterReset = new Date(Date.parse(RESET) + 60_000)
     const fresh = await readYoutubeQuotaStatus(ctx, afterReset)
-    expect(fresh).toMatchObject({ day: "2026-10-20", consumed: 0, remaining: 9000, exhaustedUntil: null })
+    expect(fresh).toMatchObject({
+      day: "2026-10-20",
+      consumed: 0,
+      remaining: 9000,
+      exhaustedUntil: null,
+    })
     const polled = await runWatchPoller(ctx, { adapters: { youtube: adapter }, now: afterReset })
     expect(polled.polled).toBe(1)
   })
@@ -965,12 +1034,17 @@ describe("YouTube quota budget across discovery and watch polls", () => {
     expect(res.polled).toBe(0)
     expect(res.deferred).toBe(2)
     for (const id of ["w-1", "w-2"]) {
-      const w = (await db.findMany("watched_object", { where: { id } }))[0] as { cadence_seconds: number; last_polled_at?: string | null }
+      const w = (await db.findMany("watched_object", { where: { id } }))[0] as {
+        cadence_seconds: number
+        last_polled_at?: string | null
+      }
       expect(w.cadence_seconds).toBe(3600)
       expect(w.last_polled_at ?? null).toBeNull()
     }
     const ledger = await row(db, "yt-watch")
-    expect((ledger.metadata.youtube_quota as { exhausted_until: string }).exhausted_until).toBe(RESET)
+    expect((ledger.metadata.youtube_quota as { exhausted_until: string }).exhausted_until).toBe(
+      RESET,
+    )
     // Discovery sees the poller's exhaustion and spends nothing.
     await runDiscoverySync(ctx, { adapter, accountExternalId: "chan-1", now: NOW })
     expect(calls.discover).toBe(0)
@@ -981,18 +1055,30 @@ describe("YouTube quota budget across discovery and watch polls", () => {
     await seed(db)
     await addWatch(db, "w-1")
     const same: DiscoverResult = {
-      findings: [{ platform: "youtube", externalId: "c-old", relation: "comment_on_our_content", parentExternalId: "w-1", occurredAt: ISO }],
+      findings: [
+        {
+          platform: "youtube",
+          externalId: "c-old",
+          relation: "comment_on_our_content",
+          parentExternalId: "w-1",
+          occurredAt: ISO,
+        },
+      ],
       nextCursor: null,
       unitsConsumed: 1,
     }
     const { adapter } = countingAdapter({ poll: () => same })
     const ctx = ctxWith(db)
     await runWatchPoller(ctx, { adapters: { youtube: adapter }, now: NOW })
-    const first = (await db.findMany("watched_object", { where: { id: "w-1" } }))[0] as { cadence_seconds: number }
+    const first = (await db.findMany("watched_object", { where: { id: "w-1" } }))[0] as {
+      cadence_seconds: number
+    }
     expect(first.cadence_seconds).toBe(300) // new comment -> hot
     await db.update("watched_object", "w-1", { next_poll_at: "2020-01-01T00:00:00.000Z" })
     await runWatchPoller(ctx, { adapters: { youtube: adapter }, now: NOW })
-    const second = (await db.findMany("watched_object", { where: { id: "w-1" } }))[0] as { cadence_seconds: number }
+    const second = (await db.findMany("watched_object", { where: { id: "w-1" } }))[0] as {
+      cadence_seconds: number
+    }
     expect(second.cadence_seconds).toBe(3600) // nothing new -> warm
   })
 

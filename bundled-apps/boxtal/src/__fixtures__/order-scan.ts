@@ -56,7 +56,12 @@ export interface OrderScanStubOptions {
     cancelledAt?: string | null
     tags?: string[]
     createdAt?: string
-    lineItems?: Array<{ sku?: string | null; title?: string | null; quantity?: number; variant_id?: string | null }>
+    lineItems?: Array<{
+      sku?: string | null
+      title?: string | null
+      quantity?: number
+      variant_id?: string | null
+    }>
     shippingAddress?: Record<string, string | null>
   }>
   /** Per-invoice document overrides, keyed by invoice id (e.g. `{ "inv-2": { scope: "software" } }`). */
@@ -91,7 +96,13 @@ export interface OrderScanStubOptions {
  *  matches (shopify.dev, Admin GraphQL `orders` query). */
 const FULFILLMENT_TERMS: Record<string, Set<string>> = {
   unfulfilled: new Set(["UNFULFILLED"]),
-  unshipped: new Set(["UNFULFILLED", "PARTIALLY_FULFILLED", "IN_PROGRESS", "PENDING_FULFILLMENT", "OPEN"]),
+  unshipped: new Set([
+    "UNFULFILLED",
+    "PARTIALLY_FULFILLED",
+    "IN_PROGRESS",
+    "PENDING_FULFILLMENT",
+    "OPEN",
+  ]),
   partial: new Set(["PARTIALLY_FULFILLED"]),
   on_hold: new Set(["ON_HOLD"]),
   scheduled: new Set(["SCHEDULED"]),
@@ -119,55 +130,55 @@ export function synthesizeOrders(
   const out: SyntheticOrder[] = invoices
     .filter((inv) => inv.channel === undefined || inv.channel === null || inv.channel === "shopify")
     .map((inv, n) => {
-    const orderId = numericId(inv.shopify_order_id, `90000${n}`)
-    const over = opts.orderOverrides?.[inv.id] ?? {}
-    const name = over.name ?? `#${1000 + n}`
-    return {
-      id: inv.id,
-      order_id: orderId,
-      name,
-      hit: {
-        id: `gid://shopify/Order/${orderId}`,
-        entity: "order",
-        title: name,
+      const orderId = numericId(inv.shopify_order_id, `90000${n}`)
+      const over = opts.orderOverrides?.[inv.id] ?? {}
+      const name = over.name ?? `#${1000 + n}`
+      return {
+        id: inv.id,
+        order_id: orderId,
         name,
-        currency: "EUR",
-        attributes: {
-          tags: over.tags ?? [],
-          financialStatus: over.financialStatus === undefined ? "PAID" : over.financialStatus,
-          fulfillmentStatus: over.fulfillmentStatus ?? "UNFULFILLED",
-          cancelledAt: over.cancelledAt ?? null,
-          createdAt: over.createdAt ?? `2026-07-0${(n % 9) + 1}T10:00:00.000Z`,
-          shippingCountryCode: inv.counterparty_country ?? "FR",
-          ...(opts.withoutShipTo
-            ? {}
-            : {
-                shippingAddress1: DEFAULT_SHIP_TO.street,
-                shippingCity: DEFAULT_SHIP_TO.city,
-                shippingZip: DEFAULT_SHIP_TO.zip,
-              }),
-          customer: {
-            displayName: inv.counterparty_name ?? `Customer ${inv.id}`,
-            ...(opts.withoutShipTo ? {} : { email: `order-${orderId}@example.com` }),
+        hit: {
+          id: `gid://shopify/Order/${orderId}`,
+          entity: "order",
+          title: name,
+          name,
+          currency: "EUR",
+          attributes: {
+            tags: over.tags ?? [],
+            financialStatus: over.financialStatus === undefined ? "PAID" : over.financialStatus,
+            fulfillmentStatus: over.fulfillmentStatus ?? "UNFULFILLED",
+            cancelledAt: over.cancelledAt ?? null,
+            createdAt: over.createdAt ?? `2026-07-0${(n % 9) + 1}T10:00:00.000Z`,
+            shippingCountryCode: inv.counterparty_country ?? "FR",
+            ...(opts.withoutShipTo
+              ? {}
+              : {
+                  shippingAddress1: DEFAULT_SHIP_TO.street,
+                  shippingCity: DEFAULT_SHIP_TO.city,
+                  shippingZip: DEFAULT_SHIP_TO.zip,
+                }),
+            customer: {
+              displayName: inv.counterparty_name ?? `Customer ${inv.id}`,
+              ...(opts.withoutShipTo ? {} : { email: `order-${orderId}@example.com` }),
+            },
+            lineItems: over.lineItems ?? [],
           },
-          lineItems: over.lineItems ?? [],
+          ...(over.shippingAddress ? { shippingAddress: over.shippingAddress } : {}),
         },
-        ...(over.shippingAddress ? { shippingAddress: over.shippingAddress } : {}),
-      },
-      links: [
-        {
-          shopify_order_id: orderId,
-          id: inv.id,
-          number: inv.number ?? inv.id,
-          type: inv.type ?? "invoice",
-          scope: inv.scope ?? "goods",
-          status: inv.status ?? "issued",
-          payment_status: "paid",
-          ...(opts.documentOverrides?.[inv.id] ?? {}),
-        },
-      ],
-    }
-  })
+        links: [
+          {
+            shopify_order_id: orderId,
+            id: inv.id,
+            number: inv.number ?? inv.id,
+            type: inv.type ?? "invoice",
+            scope: inv.scope ?? "goods",
+            status: inv.status ?? "issued",
+            payment_status: "paid",
+            ...(opts.documentOverrides?.[inv.id] ?? {}),
+          },
+        ],
+      }
+    })
   for (const extra of opts.extraOrders ?? []) {
     out.push({
       id: `order-only-${extra.order_id}`,
@@ -197,7 +208,11 @@ export function synthesizeOrders(
             displayName: extra.customer ?? "Customer",
             ...(opts.withoutShipTo ? {} : { email: `order-${extra.order_id}@example.com` }),
           },
-          lineItems: (extra.lineItems ?? []).map((l) => ({ sku: l.sku ?? null, title: l.title ?? null, quantity: l.quantity ?? 1 })),
+          lineItems: (extra.lineItems ?? []).map((l) => ({
+            sku: l.sku ?? null,
+            title: l.title ?? null,
+            quantity: l.quantity ?? 1,
+          })),
         },
         ...(extra.shippingAddress ? { shippingAddress: extra.shippingAddress } : {}),
         // `orders_get` carries the line items with their VARIANT (the search hit does not), which is
@@ -243,27 +258,44 @@ export function makeOrderScanStub(
       const wanted = [...query.matchAll(/fulfillment_status:([a-z_]+)/g)].map((m) => m[1]!)
       const visible = orders.filter((o) => {
         const a = (o.hit as { attributes?: Record<string, unknown> }).attributes ?? {}
-        if (wanted.length > 0 && !wanted.some((v) => FULFILLMENT_TERMS[v]?.has(String(a.fulfillmentStatus ?? "UNFULFILLED"))))
+        if (
+          wanted.length > 0 &&
+          !wanted.some((v) =>
+            FULFILLMENT_TERMS[v]?.has(String(a.fulfillmentStatus ?? "UNFULFILLED")),
+          )
+        )
           return false
         if (query.includes("status:open") && a.cancelledAt) return false
         return true
       })
       return {
         status: "completed",
-        result: { results: visible.map((o) => o.hit), nextCursor: null, totalCount: visible.length },
+        result: {
+          results: visible.map((o) => o.hit),
+          nextCursor: null,
+          totalCount: visible.length,
+        },
       }
     }
     if (target === "shopify:orders_get") {
       const id = numericId(args?.id, "")
       const found = byOrderId.get(id)
       // The real orders_get always carries both address keys (null when the order has none).
-      return { status: "completed", result: found ? { shippingAddress: null, customerAddress: null, ...found.hit } : null }
+      return {
+        status: "completed",
+        result: found ? { shippingAddress: null, customerAddress: null, ...found.hit } : null,
+      }
     }
     if (target === "invoicing:documents_for_orders") {
       if (opts.documentsForOrdersFails) {
-        return { status: "error", error: { code: "not_installed", message: "invoicing is not installed" } }
+        return {
+          status: "error",
+          error: { code: "not_installed", message: "invoicing is not installed" },
+        }
       }
-      const ids = Array.isArray(args?.shopify_order_ids) ? (args!.shopify_order_ids as string[]) : []
+      const ids = Array.isArray(args?.shopify_order_ids)
+        ? (args!.shopify_order_ids as string[])
+        : []
       const links = ids.flatMap((id) => byOrderId.get(numericId(id, String(id)))?.links ?? [])
       return { status: "completed", result: { links } }
     }

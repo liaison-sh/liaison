@@ -44,15 +44,31 @@ const DRAFT = {
 }
 
 const CUSTOMER = {
-  contact: { firstName: "Ada", lastName: "Example", email: "ada@example.com", phone: "+15550100", company: "" },
-  location: { street: "1 Main St", postalCode: "10001", city: "New York", state: "NY", countryIsoCode: "us" },
+  contact: {
+    firstName: "Ada",
+    lastName: "Example",
+    email: "ada@example.com",
+    phone: "+15550100",
+    company: "",
+  },
+  location: {
+    street: "1 Main St",
+    postalCode: "10001",
+    city: "New York",
+    state: "NY",
+    countryIsoCode: "us",
+  },
 }
 
-function ctxWith(rows: Array<Record<string, unknown>>, attributes: Array<Record<string, unknown>> = []) {
+function ctxWith(
+  rows: Array<Record<string, unknown>>,
+  attributes: Array<Record<string, unknown>> = [],
+) {
   const calls: string[] = []
   const executeTool = async (target: string): Promise<CrossAppEnvelope> => {
     calls.push(target)
-    if (target === "kernel:product_attributes_list") return { status: "completed", result: { attributes } }
+    if (target === "kernel:product_attributes_list")
+      return { status: "completed", result: { attributes } }
     return { status: "error", error: { code: "unmocked", message: target } }
   }
   const ctx: BoxtalToolCtx = {
@@ -79,7 +95,11 @@ describe("carrier family and tracking label", () => {
 
 describe("buildPrintSnapshot", () => {
   it("keeps the goods lines as they shipped, the declared HS code, and the label's customer", () => {
-    const snap = buildPrintSnapshot(DRAFT, { offerCode: "FEDX-InternationalEconomy", carrierName: "FedEx", customer: CUSTOMER })
+    const snap = buildPrintSnapshot(DRAFT, {
+      offerCode: "FEDX-InternationalEconomy",
+      carrierName: "FedEx",
+      customer: CUSTOMER,
+    })
     expect(snap).toEqual({
       invoice: { number: "INV-2026-0042", date: "2026-10-30" },
       order: {
@@ -88,7 +108,13 @@ describe("buildPrintSnapshot", () => {
         company: null,
         email: "ada@example.com",
         phone: "+15550100",
-        address: { street: "1 Main St", postal_code: "10001", city: "New York", state: "NY", country_iso2: "US" },
+        address: {
+          street: "1 Main St",
+          postal_code: "10001",
+          city: "New York",
+          state: "NY",
+          country_iso2: "US",
+        },
       },
       carrier_name: "FedEx",
       carrier_family: "fedex",
@@ -113,16 +139,31 @@ describe("buildPrintSnapshot", () => {
     expect(snap.order.customer).toBeNull()
     expect(snap.carrier_family).toBeNull()
     expect(snap.carrier_name).toBeNull()
-    expect(snap.lines[0]).toMatchObject({ sku: null, hts: null, origin: null, value: null, currency: null })
+    expect(snap.lines[0]).toMatchObject({
+      sku: null,
+      hts: null,
+      origin: null,
+      value: null,
+      currency: null,
+    })
   })
 })
 
 describe("printRecordGet", () => {
-  const snapshot = buildPrintSnapshot(DRAFT, { offerCode: "FEDX-InternationalEconomy", carrierName: "FedEx", customer: CUSTOMER })
+  const snapshot = buildPrintSnapshot(DRAFT, {
+    offerCode: "FEDX-InternationalEconomy",
+    carrierName: "FedEx",
+    customer: CUSTOMER,
+  })
 
   it("a row with no tracking number yet reads tracking_number null (not empty), labelled AWB for FedEx", async () => {
     const { ctx } = ctxWith([
-      { id: "s1", offer_code: "FEDX-InternationalEconomy", tracking_number: null, queue_facts: { print: snapshot } },
+      {
+        id: "s1",
+        offer_code: "FEDX-InternationalEconomy",
+        tracking_number: null,
+        queue_facts: { print: snapshot },
+      },
     ])
     const rec = await printRecordGet(ctx, { shipment_id: "s1" })
     if ("error" in rec) throw new Error(rec.error.message)
@@ -133,7 +174,14 @@ describe("printRecordGet", () => {
 
   it("reads the snapshot taken at buy, the row's current tracking number and the product attributes", async () => {
     const { ctx, calls } = ctxWith(
-      [{ id: "s2", offer_code: "UPSE-StandardAP", tracking_number: "1Z999", queue_facts: JSON.stringify({ print: snapshot }) }],
+      [
+        {
+          id: "s2",
+          offer_code: "UPSE-StandardAP",
+          tracking_number: "1Z999",
+          queue_facts: JSON.stringify({ print: snapshot }),
+        },
+      ],
       [{ sku: "SKU-PLATE", key: "material", value: "steel" }],
     )
     const rec = await printRecordGet(ctx, { shipment_id: "s2" })
@@ -150,10 +198,18 @@ describe("printRecordGet", () => {
   })
 
   it("the record holds only the documented keys: nothing a source does not have", async () => {
-    const { ctx } = ctxWith([{ id: "s3", offer_code: "UPSE-StandardAP", queue_facts: { print: snapshot, extra: "x" } }])
+    const { ctx } = ctxWith([
+      { id: "s3", offer_code: "UPSE-StandardAP", queue_facts: { print: snapshot, extra: "x" } },
+    ])
     const rec = await printRecordGet(ctx, { shipment_id: "s3" })
     if ("error" in rec) throw new Error(rec.error.message)
-    expect(Object.keys(rec).sort()).toEqual(["destination", "invoice", "lines", "order", "shipment"])
+    expect(Object.keys(rec).sort()).toEqual([
+      "destination",
+      "invoice",
+      "lines",
+      "order",
+      "shipment",
+    ])
     expect(Object.keys(rec.shipment).sort()).toEqual([
       "carrier_family",
       "carrier_name",
@@ -175,13 +231,24 @@ describe("printRecordGet", () => {
   })
 
   it("a row bought before the snapshot reads as blanks (and no product read), never as guesses", async () => {
-    const { ctx, calls } = ctxWith([{ id: "s4", offer_code: "UPSE-StandardAP", tracking_number: null, queue_facts: { destination: "FR" } }])
+    const { ctx, calls } = ctxWith([
+      {
+        id: "s4",
+        offer_code: "UPSE-StandardAP",
+        tracking_number: null,
+        queue_facts: { destination: "FR" },
+      },
+    ])
     const rec = await printRecordGet(ctx, { shipment_id: "s4" })
     if ("error" in rec) throw new Error(rec.error.message)
     expect(rec.invoice).toEqual({ number: null, date: null })
     expect(rec.order.customer).toBeNull()
     expect(rec.lines).toEqual([])
-    expect(rec.shipment).toMatchObject({ carrier_family: "ups", carrier_name: "UPS", tracking_number: null })
+    expect(rec.shipment).toMatchObject({
+      carrier_family: "ups",
+      carrier_name: "UPS",
+      tracking_number: null,
+    })
     expect(calls).toEqual([])
   })
 

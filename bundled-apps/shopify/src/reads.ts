@@ -13,28 +13,28 @@
 // shape; no live Shopify call.
 import type { AppContext } from "@liaison/app-sdk"
 import {
+  type B2bRecognition,
+  type B2bVerdict,
+  b2bVerdict,
+  b2bVerdictFor,
+  ORDER_B2B_SIGNALS_SELECTION,
+  type OrderB2bSignals,
+  readB2bRecognition,
+  readShippingEmailPolicy,
+  SHIPPING_EMAIL_POLICY_CONFIG_KEY,
+  type ShippingEmailPolicy,
+} from "./lib/b2b"
+import {
+  type NormalizedDraftOrder,
+  type NormalizedPurchasingCompany,
   normalizeDraftOrderNode,
   normalizePurchasingCompany,
   PURCHASING_COMPANY_SELECTION,
-  type NormalizedPurchasingCompany,
-  type ShopifyPurchasingCompanyGraphQL,
   resolveOrderPoNumber,
-  toPoNumber,
-  type NormalizedDraftOrder,
   type ShopifyDraftOrderGraphQLNode,
+  type ShopifyPurchasingCompanyGraphQL,
+  toPoNumber,
 } from "./lib/draft-order"
-import {
-  type B2bRecognition,
-  type B2bVerdict,
-  ORDER_B2B_SIGNALS_SELECTION,
-  type OrderB2bSignals,
-  SHIPPING_EMAIL_POLICY_CONFIG_KEY,
-  type ShippingEmailPolicy,
-  b2bVerdict,
-  b2bVerdictFor,
-  readB2bRecognition,
-  readShippingEmailPolicy,
-} from "./lib/b2b"
 import { getShopifyClient, resolveInstallMetadata } from "./lib/get-client"
 import { buyerTaxIdFromNoteAttributes } from "./webhooks"
 
@@ -197,7 +197,9 @@ interface ShopifyAddress {
 }
 
 /** Project a raw Shopify address node to the normalized address shape (null when absent). */
-function normalizeAddress(a: ShopifyAddress | null | undefined): Record<string, string | null> | null {
+function normalizeAddress(
+  a: ShopifyAddress | null | undefined,
+): Record<string, string | null> | null {
   if (!a) return null
   return {
     name: a.name ?? null,
@@ -221,8 +223,33 @@ function normalizeAddress(a: ShopifyAddress | null | undefined): Record<string, 
 // determination the weak model gets wrong out of its head and onto the tool result) makes the EU filter a
 // fact the tick reads, not geography it guesses. (GB is post-Brexit NON-EU; CH/NO/IS are non-EU EEA/EFTA.)
 const EU_MEMBER_COUNTRY_CODES: ReadonlySet<string> = new Set([
-  "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT",
-  "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE",
+  "AT",
+  "BE",
+  "BG",
+  "HR",
+  "CY",
+  "CZ",
+  "DK",
+  "EE",
+  "FI",
+  "FR",
+  "DE",
+  "GR",
+  "HU",
+  "IE",
+  "IT",
+  "LV",
+  "LT",
+  "LU",
+  "MT",
+  "NL",
+  "PL",
+  "PT",
+  "RO",
+  "SK",
+  "SI",
+  "ES",
+  "SE",
 ])
 
 /**
@@ -245,12 +272,18 @@ function normalizeB2bCompany(
  * when the org's B2B settings could not be read and the order is not a company order). The hit
  * carries the order's first 10 line items, which is enough for the legacy sku-suffix signal.
  */
-function withB2bOrder(hit: NormalizedHit, node: OrderNode, recognition: B2bRecognition | null): NormalizedHit {
+function withB2bOrder(
+  hit: NormalizedHit,
+  node: OrderNode,
+  recognition: B2bRecognition | null,
+): NormalizedHit {
   const verdict = b2bVerdictFor(
     {
       tags: node.tags ?? [],
       purchasingEntity: node.purchasingEntity,
-      lineItems: { nodes: (node.lineItems?.edges ?? []).map((e) => ({ sku: e.node.variant?.sku ?? null })) },
+      lineItems: {
+        nodes: (node.lineItems?.edges ?? []).map((e) => ({ sku: e.node.variant?.sku ?? null })),
+      },
     },
     recognition,
   )
@@ -317,13 +350,16 @@ function normalizeOrder(node: OrderNode): NormalizedHit {
       // the buyer-facing currency), so a shipping worklist can set it beside a carrier quote from the
       // search hit alone. Null when the order has no shipping line.
       shippingAmount: node.shippingLine?.discountedPriceSet?.presentmentMoney?.amount ?? null,
-      shippingCurrency: node.shippingLine?.discountedPriceSet?.presentmentMoney?.currencyCode ?? null,
+      shippingCurrency:
+        node.shippingLine?.discountedPriceSet?.presentmentMoney?.currencyCode ?? null,
       // SERVER-COMPUTED EU-customs-union membership of the ship-to country — so a fulfillment/customs
       // routine tick filters "the EU orders" on a FACT, not in-context geography it gets wrong (a
       // flash-lite tick mis-classified Germany/DE as non-EU and skipped all the DE orders). True iff the
       // ship-to countryCode is one of the 27 EU member states; false for GB (post-Brexit), CH/NO (EEA/
       // EFTA), US, etc.; null when no ship-to country is visible on the hit (then the tick must orders_get).
-      euDestination: shipCountryCode ? EU_MEMBER_COUNTRY_CODES.has(shipCountryCode.toUpperCase()) : null,
+      euDestination: shipCountryCode
+        ? EU_MEMBER_COUNTRY_CODES.has(shipCountryCode.toUpperCase())
+        : null,
       // The ship-to STREET address (address1 + city + zip) on the search hit so an address-reuse / fraud
       // triage ("are any recent orders shipping to the SAME address under different names?") can cluster
       // orders by destination from ONE orders_search — WITHOUT an N-query orders_get drill-down per order
@@ -359,16 +395,20 @@ function normalizeOrder(node: OrderNode): NormalizedHit {
       requiresShipping: typeof node.requiresShipping === "boolean" ? node.requiresShipping : null,
       lineItemsMore: node.lineItems?.pageInfo?.hasNextPage === true,
       itemsQuantity:
-        typeof node.currentSubtotalLineItemsQuantity === "number" ? node.currentSubtotalLineItemsQuantity : null,
+        typeof node.currentSubtotalLineItemsQuantity === "number"
+          ? node.currentSubtotalLineItemsQuantity
+          : null,
       lineItems: (node.lineItems?.edges ?? []).map((li) => ({
         sku: li.node.variant?.sku ?? null,
         title: li.node.title ?? null,
         quantity: li.node.quantity ?? 0,
         // What is still on the order (removed or refunded-and-removed items excluded).
-        currentQuantity: typeof li.node.currentQuantity === "number" ? li.node.currentQuantity : null,
+        currentQuantity:
+          typeof li.node.currentQuantity === "number" ? li.node.currentQuantity : null,
         // false = a digital good (software, gift card): the orders list's
         // "Has items to ship" filter hides an order whose every line is false.
-        requiresShipping: typeof li.node.requiresShipping === "boolean" ? li.node.requiresShipping : null,
+        requiresShipping:
+          typeof li.node.requiresShipping === "boolean" ? li.node.requiresShipping : null,
       })),
     },
   }
@@ -460,7 +500,9 @@ interface OrderDetailNode extends OrderNode {
     note?: string | null
     totalRefundedSet?: { presentmentMoney?: { amount: string; currencyCode: string } }
   }>
-  returns?: { edges?: Array<{ node: { id: string; status?: string | null; name?: string | null } }> }
+  returns?: {
+    edges?: Array<{ node: { id: string; status?: string | null; name?: string | null } }>
+  }
 }
 
 /** The enriched order-detail shape `orders_get` returns. Additive over the
@@ -540,7 +582,8 @@ const DATE_QUERY_TERM_RE = /\b(created_at|updated_at|processed_at)\s*:/i
  *  status filter. For these the result IS the intended scoped set, so the no-date-filter notice would be
  *  noise. Used to suppress the standing notice ONLY when the caller clearly scoped by something other
  *  than recency/date. */
-const NARROWING_QUERY_RE = /(email:|name:|tag:|financial_status:|fulfillment_status:|return_status:|@)/i
+const NARROWING_QUERY_RE =
+  /(email:|name:|tag:|financial_status:|fulfillment_status:|return_status:|@)/i
 
 /** Parse a caller-supplied date-window bound (`created_at_min` / `created_at_max`). Accepts an ISO-8601
  *  date or date-time (e.g. "2026-06-15" or "2026-06-15T00:00:00Z") and normalises it to a Shopify-search-
@@ -551,7 +594,10 @@ const NARROWING_QUERY_RE = /(email:|name:|tag:|financial_status:|fulfillment_sta
 function parseDateBound(input: unknown, paramName: string, endOfDay = false): string | null {
   if (input === undefined || input === null || input === "") return null
   if (typeof input !== "string") {
-    throw makeReadError("BAD_PARAM", `${paramName} must be an ISO-8601 date string (e.g. "2026-06-15")`)
+    throw makeReadError(
+      "BAD_PARAM",
+      `${paramName} must be an ISO-8601 date string (e.g. "2026-06-15")`,
+    )
   }
   const trimmed = input.trim()
   // A bare calendar date covers the whole day: a start bound anchors to its UTC midnight, an end
@@ -574,7 +620,12 @@ function parseDateBound(input: unknown, paramName: string, endOfDay = false): st
  *  absent bound and THROWS BAD_PARAM for anything else, so an amount filter is never silently dropped. */
 function parseAmountBound(input: unknown, paramName: string): number | null {
   if (input === undefined || input === null || input === "") return null
-  const n = typeof input === "number" ? input : typeof input === "string" ? Number(input.trim()) : Number.NaN
+  const n =
+    typeof input === "number"
+      ? input
+      : typeof input === "string"
+        ? Number(input.trim())
+        : Number.NaN
   if (!Number.isFinite(n) || n < 0) {
     throw makeReadError(
       "BAD_PARAM",
@@ -598,7 +649,10 @@ export function orderFilterTerms(params: Record<string, unknown>): {
   const totalMin = parseAmountBound(params.total_min, "total_min")
   const totalMax = parseAmountBound(params.total_max, "total_max")
   if (totalMin !== null && totalMax !== null && totalMin > totalMax) {
-    throw makeReadError("BAD_PARAM", `total_min (${totalMin}) is greater than total_max (${totalMax})`)
+    throw makeReadError(
+      "BAD_PARAM",
+      `total_min (${totalMin}) is greater than total_max (${totalMax})`,
+    )
   }
   const dateTerms: string[] = []
   if (createdAtMin) dateTerms.push(`processed_at:>='${createdAtMin}'`)
@@ -629,7 +683,8 @@ export async function orders_search(
 }> {
   const limit = clampLimit(params.limit)
   const client = await getShopifyClient(ctx, clientDeadline(params.timeout_ms))
-  const rawQuery = typeof params.query === "string" && params.query.trim().length > 0 ? params.query : null
+  const rawQuery =
+    typeof params.query === "string" && params.query.trim().length > 0 ? params.query : null
 
   // DATE-RANGE FILTER (BL — Modular-Expo-week segmentation). Shopify's `orders(query:)` natively supports
   // `processed_at:` range operators, so "orders PLACED during week X" IS server-side queryable. We bound on
@@ -642,7 +697,8 @@ export async function orders_search(
   const { dateTerms, amountTerms, createdAtMin } = orderFilterTerms(params)
   const hasDateRange = dateTerms.length > 0
   const extraTerms = [...dateTerms, ...amountTerms]
-  const effectiveQuery = extraTerms.length > 0 ? [rawQuery, ...extraTerms].filter(Boolean).join(" ") : rawQuery
+  const effectiveQuery =
+    extraTerms.length > 0 ? [rawQuery, ...extraTerms].filter(Boolean).join(" ") : rawQuery
 
   const data = await client.query<{
     ordersCount?: { count?: number | null }
@@ -651,7 +707,8 @@ export async function orders_search(
   const edges = data.orders?.edges ?? []
   // Each hit says whether the order is B2B (`attributes.b2bOrder`), judged by the order itself:
   // one read of the org's B2B tag and suffix settings serves the whole page.
-  const recognition = edges.length > 0 ? await readB2bRecognition((key) => ctx.config.get(key)) : null
+  const recognition =
+    edges.length > 0 ? await readB2bRecognition((key) => ctx.config.get(key)) : null
   // Surface the no-date-filter bound whenever the caller is taking a RECENCY/DATE-shaped slice — i.e. they
   // passed a date term, OR they passed NO query / a non-narrowing query (the "give me yesterday's orders"
   // pattern where the agent just pulls the recent page with limit/cursor and no facet). The notice is the
@@ -735,16 +792,18 @@ async function orderIdByNumber(
   client: Awaited<ReturnType<typeof getShopifyClient>>,
   digits: string,
 ): Promise<string | null> {
-  const data = await client.query<{ orders?: { edges?: Array<{ node: { id: string; name: string } }> } }>(
-    ORDER_BY_NAME_QUERY,
-    { query: `name:${digits}` },
-  )
+  const data = await client.query<{
+    orders?: { edges?: Array<{ node: { id: string; name: string } }> }
+  }>(ORDER_BY_NAME_QUERY, { query: `name:${digits}` })
   // The search prefix-matches, so only an exact number (behind the name's non-digit prefix) counts.
   const hit = (data.orders?.edges ?? []).find((e) => e.node.name.replace(/^\D+/, "") === digits)
   return hit?.node.id ?? null
 }
 
-export async function orders_get(params: Record<string, unknown>, ctx: AppContext): Promise<OrderDetail> {
+export async function orders_get(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<OrderDetail> {
   const id = params.id
   if (typeof id !== "string" || id.trim().length === 0) {
     throw makeReadError("BAD_PARAM", "id is required")
@@ -752,7 +811,8 @@ export async function orders_get(params: Record<string, unknown>, ctx: AppContex
   const client = await getShopifyClient(ctx)
   const ref = orderReference(id)
   let data: { order?: OrderDetailNode | null } = {}
-  if (ref.gid) data = await client.query<{ order?: OrderDetailNode }>(ORDERS_GET_QUERY, { id: ref.gid })
+  if (ref.gid)
+    data = await client.query<{ order?: OrderDetailNode }>(ORDERS_GET_QUERY, { id: ref.gid })
   if (!data.order && ref.number) {
     const byName = await orderIdByNumber(client, ref.number)
     if (byName && byName !== ref.gid) {
@@ -776,9 +836,7 @@ export async function orders_get(params: Record<string, unknown>, ctx: AppContex
         ? { id: n.variant.id ?? null, title: n.variant.title ?? null, sku: n.variant.sku ?? null }
         : null,
       priceSet: m ? { amount: m.amount, currencyCode: m.currencyCode } : undefined,
-      discountedUnitPriceSet: dm
-        ? { amount: dm.amount, currencyCode: dm.currencyCode }
-        : undefined,
+      discountedUnitPriceSet: dm ? { amount: dm.amount, currencyCode: dm.currencyCode } : undefined,
     }
   })
   const shipMoney = order.shippingLine?.discountedPriceSet?.presentmentMoney
@@ -793,11 +851,15 @@ export async function orders_get(params: Record<string, unknown>, ctx: AppContex
     {
       tags: order.tags ?? [],
       purchasingEntity: order.purchasingEntity,
-      lineItems: { nodes: (order.lineItems?.edges ?? []).map((e) => ({ sku: e.node.sku ?? null })) },
+      lineItems: {
+        nodes: (order.lineItems?.edges ?? []).map((e) => ({ sku: e.node.sku ?? null })),
+      },
     },
     (key) => ctx.config.get(key),
   )
-  const shippingEmailPolicy = await readShippingEmailPolicy(() => ctx.config.get(SHIPPING_EMAIL_POLICY_CONFIG_KEY))
+  const shippingEmailPolicy = await readShippingEmailPolicy(() =>
+    ctx.config.get(SHIPPING_EMAIL_POLICY_CONFIG_KEY),
+  )
   // Enrich ADDITIVELY: keep the normalized hit (entity/title/market/currency/
   // attributes) AND expose the top-level fields the OrderDetail contract lists
   // (name/fulfillmentStatus/financialStatus/customer{snake}/totalPrice/fulfillments/
@@ -825,7 +887,10 @@ export async function orders_get(params: Record<string, unknown>, ctx: AppContex
       ? { ...normalizeAddress(order.billingAddress), company: order.billingAddress.company ?? null }
       : null,
     buyerTaxId: buyerTaxIdFromNoteAttributes(
-      (order.customAttributes ?? []).map((a) => ({ name: a?.key ?? null, value: a?.value ?? null })),
+      (order.customAttributes ?? []).map((a) => ({
+        name: a?.key ?? null,
+        value: a?.value ?? null,
+      })),
     ),
     ...(typeof order.taxesIncluded === "boolean" ? { taxesIncluded: order.taxesIncluded } : {}),
     purchasingCompany: normalizePurchasingCompany(order.purchasingEntity),
@@ -974,18 +1039,28 @@ export async function products_short_codes(
 ): Promise<{ codes: Record<string, string> }> {
   const raw = Array.isArray(params.skus) ? params.skus : []
   const skus = Array.from(
-    new Set(raw.filter((v): v is string => typeof v === "string").map((v) => v.trim()).filter((v) => v !== "")),
+    new Set(
+      raw
+        .filter((v): v is string => typeof v === "string")
+        .map((v) => v.trim())
+        .filter((v) => v !== ""),
+    ),
   ).slice(0, SHORT_CODES_MAX_SKUS)
   if (skus.length === 0) return { codes: {} }
   const crossCtx = ctx as ShopifyCrossAppCtx
   let env: CrossAppEnvelope
   try {
-    env = await crossCtx.executeTool("kernel:product_attributes_list", { skus, keys: ["short_code"] })
+    env = await crossCtx.executeTool("kernel:product_attributes_list", {
+      skus,
+      keys: ["short_code"],
+    })
   } catch {
     return { codes: {} }
   }
   if (env.status !== "completed") return { codes: {} }
-  const result = env.result as { attributes?: Array<{ sku?: unknown; key?: unknown; value?: unknown }> } | null
+  const result = env.result as {
+    attributes?: Array<{ sku?: unknown; key?: unknown; value?: unknown }>
+  } | null
   const codes: Record<string, string> = {}
   for (const a of result?.attributes ?? []) {
     if (a.key !== "short_code" || typeof a.sku !== "string" || typeof a.value !== "string") continue
@@ -1100,8 +1175,15 @@ export async function draft_orders_list(
   const limit = clampLimit(params.limit)
   const client = await getShopifyClient(ctx)
   const data = await client.query<{
-    draftOrders?: { edges?: Array<{ node: DraftOrderNode }>; pageInfo?: { endCursor?: string | null } }
-  }>(DRAFT_ORDERS_LIST_QUERY, { query: params.query ?? null, first: limit, after: params.cursor ?? null })
+    draftOrders?: {
+      edges?: Array<{ node: DraftOrderNode }>
+      pageInfo?: { endCursor?: string | null }
+    }
+  }>(DRAFT_ORDERS_LIST_QUERY, {
+    query: params.query ?? null,
+    first: limit,
+    after: params.cursor ?? null,
+  })
   const edges = data.draftOrders?.edges ?? []
   return {
     results: edges.map((e) => normalizeDraftOrder(e.node)),
@@ -1152,13 +1234,16 @@ export async function draft_orders_get(
     ...normalizeDraftOrder(data.draftOrder),
     ...(po_number !== undefined ? { po_number } : {}),
     lineItems,
-    draftOrder: normalizeDraftOrderNode(data.draftOrder as ShopifyDraftOrderGraphQLNode, meta?.shopDomain ?? null),
+    draftOrder: normalizeDraftOrderNode(
+      data.draftOrder as ShopifyDraftOrderGraphQLNode,
+      meta?.shopDomain ?? null,
+    ),
     // Order custom attributes, e.g. a price exception's reason or a buyer VAT number.
     customAttributes: data.draftOrder.customAttributes ?? [],
   }
 }
 
-export { companies_search, companies_get } from "./companies"
+export { companies_get, companies_search } from "./companies"
 
 // — Locations (read) —
 
@@ -1240,7 +1325,11 @@ interface CustomerNode {
   } | null
   amountSpent?: { amount: string; currencyCode: string }
   numberOfOrders?: string
-  orders?: { edges: { node: { name: string; lineItems: { edges: { node: { title: string; quantity: number } }[] } } }[] }
+  orders?: {
+    edges: {
+      node: { name: string; lineItems: { edges: { node: { title: string; quantity: number } }[] } }
+    }[]
+  }
 }
 
 function normalizeCustomer(node: CustomerNode): NormalizedHit {
@@ -1250,7 +1339,10 @@ function normalizeCustomer(node: CustomerNode): NormalizedHit {
   // (e.g. "his Kestrel 6 order") without a separate orders drill-down it often skips (BL-117).
   const recentOrders = (node.orders?.edges ?? []).map((e) => ({
     name: e.node.name,
-    items: e.node.lineItems.edges.map((li) => ({ title: li.node.title, quantity: li.node.quantity })),
+    items: e.node.lineItems.edges.map((li) => ({
+      title: li.node.title,
+      quantity: li.node.quantity,
+    })),
   }))
   return {
     id: node.id,
@@ -1352,7 +1444,11 @@ export async function customers_search(
   const data = await client.query<{
     customersCount?: { count?: number | null }
     customers?: { edges?: Array<{ node: CustomerNode }>; pageInfo?: { endCursor?: string | null } }
-  }>(CUSTOMERS_SEARCH_QUERY, { query: params.query ?? null, first: limit, after: params.cursor ?? null })
+  }>(CUSTOMERS_SEARCH_QUERY, {
+    query: params.query ?? null,
+    first: limit,
+    after: params.cursor ?? null,
+  })
   const edges = data.customers?.edges ?? []
   return {
     results: edges.map((e) => normalizeCustomer(e.node)),
@@ -1485,7 +1581,9 @@ export async function customers_segment_search(
   const minSpend =
     typeof minSpendRaw === "number"
       ? minSpendRaw
-      : typeof minSpendRaw === "string" && minSpendRaw.trim() !== "" && Number.isFinite(Number(minSpendRaw))
+      : typeof minSpendRaw === "string" &&
+          minSpendRaw.trim() !== "" &&
+          Number.isFinite(Number(minSpendRaw))
         ? Number(minSpendRaw)
         : NaN
   if (!Number.isFinite(minSpend) || minSpend < 0) {
@@ -1631,7 +1729,11 @@ export async function products_search(
   const client = await getShopifyClient(ctx)
   const data = await client.query<{
     products?: { edges?: Array<{ node: ProductNode }>; pageInfo?: { endCursor?: string | null } }
-  }>(PRODUCTS_SEARCH_QUERY, { query: params.query ?? null, first: limit, after: params.cursor ?? null })
+  }>(PRODUCTS_SEARCH_QUERY, {
+    query: params.query ?? null,
+    first: limit,
+    after: params.cursor ?? null,
+  })
   const edges = data.products?.edges ?? []
   return {
     results: edges.map((e) => normalizeProduct(e.node)),
@@ -1825,13 +1927,16 @@ const PRODUCT_STATUSES = ["ACTIVE", "ARCHIVED", "DRAFT", "UNLISTED"] as const
  *  Exported for tests. */
 export function variantsSearchQuery(params: Record<string, unknown>): string | null {
   const terms: string[] = []
-  if (typeof params.query === "string" && params.query.trim().length > 0) terms.push(params.query.trim())
+  if (typeof params.query === "string" && params.query.trim().length > 0)
+    terms.push(params.query.trim())
   const rawStatus = params.product_status
   if (rawStatus !== undefined && rawStatus !== null) {
     const list = (Array.isArray(rawStatus) ? rawStatus : [rawStatus]).map((v) =>
       typeof v === "string" ? v.trim().toUpperCase() : v,
     )
-    const bad = list.filter((v) => !PRODUCT_STATUSES.includes(v as (typeof PRODUCT_STATUSES)[number]))
+    const bad = list.filter(
+      (v) => !PRODUCT_STATUSES.includes(v as (typeof PRODUCT_STATUSES)[number]),
+    )
     if (list.length === 0 || bad.length > 0) {
       throw makeReadError(
         "BAD_PARAM",
@@ -1842,9 +1947,17 @@ export function variantsSearchQuery(params: Record<string, unknown>): string | n
   }
   const rawMin = params.min_quantity
   if (rawMin !== undefined && rawMin !== null && rawMin !== "") {
-    const n = typeof rawMin === "number" ? rawMin : typeof rawMin === "string" ? Number(rawMin.trim()) : Number.NaN
+    const n =
+      typeof rawMin === "number"
+        ? rawMin
+        : typeof rawMin === "string"
+          ? Number(rawMin.trim())
+          : Number.NaN
     if (!Number.isInteger(n)) {
-      throw makeReadError("BAD_PARAM", `min_quantity must be a whole number, got ${JSON.stringify(rawMin)}`)
+      throw makeReadError(
+        "BAD_PARAM",
+        `min_quantity must be a whole number, got ${JSON.stringify(rawMin)}`,
+      )
     }
     terms.push(`inventory_quantity:>=${n}`)
   }
@@ -1859,7 +1972,10 @@ export async function variants_search(
   const query = variantsSearchQuery(params)
   const client = await getShopifyClient(ctx)
   const data = await client.query<{
-    productVariants?: { edges?: Array<{ node: VariantNode }>; pageInfo?: { endCursor?: string | null } }
+    productVariants?: {
+      edges?: Array<{ node: VariantNode }>
+      pageInfo?: { endCursor?: string | null }
+    }
   }>(VARIANTS_SEARCH_QUERY, { query, first: limit, after: params.cursor ?? null })
   const edges = data.productVariants?.edges ?? []
   return {
@@ -1881,7 +1997,9 @@ export async function variants_get(
   // opaque "invalid value" error, so normalize it — same as customers_get.
   const id = raw.startsWith("gid://") ? raw : `gid://shopify/ProductVariant/${raw}`
   const client = await getShopifyClient(ctx)
-  const data = await client.query<{ productVariant?: VariantNode | null }>(VARIANTS_GET_QUERY, { id })
+  const data = await client.query<{ productVariant?: VariantNode | null }>(VARIANTS_GET_QUERY, {
+    id,
+  })
   if (!data.productVariant) throw makeReadError("NOT_FOUND", `variant ${id} not found`)
   return normalizeVariant(data.productVariant)
 }
@@ -1899,8 +2017,19 @@ export async function variants_brief(
   params: Record<string, unknown>,
   ctx: AppContext,
 ): Promise<{
-  variants: Array<{ id: string; title: string; sku: string | null; price: string | null; requiresShipping: boolean | null }>
-  company?: { id: string; name: string | null; locationId: string | null; locationName: string | null } | null
+  variants: Array<{
+    id: string
+    title: string
+    sku: string | null
+    price: string | null
+    requiresShipping: boolean | null
+  }>
+  company?: {
+    id: string
+    name: string | null
+    locationId: string | null
+    locationName: string | null
+  } | null
 }> {
   const company = await briefCompany(params.purchasingCompany, ctx)
   const withCompany = <T extends object>(out: T): T => (company ? { ...out, company } : out)
@@ -1911,7 +2040,9 @@ export async function variants_brief(
       [
         ...fromIds.filter((v): v is string => typeof v === "string"),
         ...fromLines.map((li) =>
-          li && typeof li === "object" && typeof (li as Record<string, unknown>).variantId === "string"
+          li &&
+          typeof li === "object" &&
+          typeof (li as Record<string, unknown>).variantId === "string"
             ? ((li as Record<string, unknown>).variantId as string)
             : null,
         ),
@@ -1942,10 +2073,14 @@ export async function variants_brief(
       const variantTitle = n.title && n.title !== "Default Title" ? n.title : null
       return {
         id: n.id as string,
-        title: [productTitle, variantTitle].filter(Boolean).join(" - ") || (n.sku ?? (n.id as string)),
+        title:
+          [productTitle, variantTitle].filter(Boolean).join(" - ") || (n.sku ?? (n.id as string)),
         sku: n.sku ?? null,
         price: n.price ?? null,
-        requiresShipping: typeof n.inventoryItem?.requiresShipping === "boolean" ? n.inventoryItem.requiresShipping : null,
+        requiresShipping:
+          typeof n.inventoryItem?.requiresShipping === "boolean"
+            ? n.inventoryItem.requiresShipping
+            : null,
       }
     })
   return withCompany({ variants })
@@ -1958,7 +2093,12 @@ export async function variants_brief(
 async function briefCompany(
   pc: unknown,
   ctx: AppContext,
-): Promise<{ id: string; name: string | null; locationId: string | null; locationName: string | null } | null> {
+): Promise<{
+  id: string
+  name: string | null
+  locationId: string | null
+  locationName: string | null
+} | null> {
   if (!pc || typeof pc !== "object") return null
   const p = pc as Record<string, unknown>
   const companyId = typeof p.companyId === "string" ? p.companyId : null
@@ -2087,7 +2227,7 @@ export async function variants_market_price(
   if (!country) {
     throw makeReadError(
       "BAD_PARAM",
-      "country is required (ISO 3166-1 alpha-2, e.g. \"US\"); a market handle is not a country code",
+      'country is required (ISO 3166-1 alpha-2, e.g. "US"); a market handle is not a country code',
     )
   }
   const marketHandle =
@@ -2119,7 +2259,10 @@ interface InventoryLevelNode {
   quantities?: InventoryLevelQuantity[]
 }
 
-function quantityByName(quantities: InventoryLevelQuantity[] | undefined, name: string): number | null {
+function quantityByName(
+  quantities: InventoryLevelQuantity[] | undefined,
+  name: string,
+): number | null {
   const q = (quantities ?? []).find((x) => x.name === name)
   return q ? q.quantity : null
 }
@@ -2178,7 +2321,10 @@ export async function inventory_levels_list(
     inventoryItem?: {
       id: string
       sku?: string | null
-      inventoryLevels?: { edges?: Array<{ node: InventoryLevelNode }>; pageInfo?: { endCursor?: string | null } }
+      inventoryLevels?: {
+        edges?: Array<{ node: InventoryLevelNode }>
+        pageInfo?: { endCursor?: string | null }
+      }
     } | null
   }>(INVENTORY_LEVELS_QUERY, { id: itemId, first: limit, after: params.cursor ?? null })
   if (!data.inventoryItem) throw makeReadError("NOT_FOUND", `inventoryItem ${itemId} not found`)
@@ -2239,7 +2385,10 @@ export async function fulfillments_get(
     throw makeReadError("BAD_PARAM", "id is required")
   }
   const client = await getShopifyClient(ctx)
-  const data = await client.query<{ fulfillment?: FulfillmentNode | null }>(FULFILLMENTS_GET_QUERY, { id })
+  const data = await client.query<{ fulfillment?: FulfillmentNode | null }>(
+    FULFILLMENTS_GET_QUERY,
+    { id },
+  )
   if (!data.fulfillment) throw makeReadError("NOT_FOUND", `fulfillment ${id} not found`)
   // The order's B2B signals feed one verdict (the tracking-update card reads it, with the org's
   // shipping email policy) and stay out of
@@ -2250,9 +2399,13 @@ export async function fulfillments_get(
   if (fullOrder) {
     const { purchasingEntity, lineItems, ...rest } = fullOrder
     order = rest
-    b2bOrder = await b2bVerdict({ tags: rest.tags, purchasingEntity, lineItems }, (key) => ctx.config.get(key))
+    b2bOrder = await b2bVerdict({ tags: rest.tags, purchasingEntity, lineItems }, (key) =>
+      ctx.config.get(key),
+    )
   }
-  const shippingEmailPolicy = await readShippingEmailPolicy(() => ctx.config.get(SHIPPING_EMAIL_POLICY_CONFIG_KEY))
+  const shippingEmailPolicy = await readShippingEmailPolicy(() =>
+    ctx.config.get(SHIPPING_EMAIL_POLICY_CONFIG_KEY),
+  )
   const hit = normalizeFulfillment({ ...data.fulfillment, order })
   return {
     ...hit,
@@ -2329,7 +2482,11 @@ export async function fulfillment_orders_get(
   }
   const client = await getShopifyClient(ctx)
   const data = await client.query<{
-    order?: { id: string; name?: string | null; fulfillmentOrders?: { nodes?: FulfillmentOrderNode[] } } | null
+    order?: {
+      id: string
+      name?: string | null
+      fulfillmentOrders?: { nodes?: FulfillmentOrderNode[] }
+    } | null
   }>(FULFILLMENT_ORDERS_GET_QUERY, { id: orderId })
   if (!data.order) throw makeReadError("NOT_FOUND", `order ${orderId} not found`)
   return {
@@ -2410,7 +2567,9 @@ interface OrderWithReturns {
   id: string
   name: string
   tags?: string[]
-  returns?: { edges?: Array<{ node: { id: string; name: string; status?: string; totalQuantity?: number } }> }
+  returns?: {
+    edges?: Array<{ node: { id: string; name: string; status?: string; totalQuantity?: number } }>
+  }
 }
 function flattenOrderReturns(order: OrderWithReturns): NormalizedHit[] {
   const orderCtx = { id: order.id, name: order.name, tags: order.tags ?? [] }
@@ -2423,15 +2582,20 @@ export async function returns_search(
 ): Promise<{ results: NormalizedHit[]; nextCursor: string | null }> {
   const client = await getShopifyClient(ctx)
   // Order-scoped fast path: list one order's returns.
-  const orderId = typeof params.orderId === "string" && params.orderId.length > 0 ? params.orderId : null
+  const orderId =
+    typeof params.orderId === "string" && params.orderId.length > 0 ? params.orderId : null
   if (orderId) {
-    const data = await client.query<{ order?: OrderWithReturns | null }>(RETURNS_BY_ORDER_ID_QUERY, { id: orderId })
+    const data = await client.query<{ order?: OrderWithReturns | null }>(
+      RETURNS_BY_ORDER_ID_QUERY,
+      { id: orderId },
+    )
     if (!data.order) throw makeReadError("NOT_FOUND", `order ${orderId} not found`)
     return { results: flattenOrderReturns(data.order), nextCursor: null }
   }
   // Otherwise find orders with returns (AND-combined with any caller query) and flatten.
   const limit = clampLimit(params.limit)
-  const userQuery = typeof params.query === "string" && params.query.trim().length > 0 ? params.query.trim() : null
+  const userQuery =
+    typeof params.query === "string" && params.query.trim().length > 0 ? params.query.trim() : null
   const query = userQuery ? `${RETURN_STATUS_FILTER} AND (${userQuery})` : RETURN_STATUS_FILTER
   const data = await client.query<{
     orders?: { edges?: Array<{ node: OrderWithReturns }>; pageInfo?: { endCursor?: string | null } }
@@ -2558,9 +2722,13 @@ export async function discounts_search(
 ): Promise<{ results: NormalizedHit[]; nextCursor: string | null; keywordMatchNotice?: string }> {
   const limit = clampLimit(params.limit)
   const client = await getShopifyClient(ctx)
-  const rawQuery = typeof params.query === "string" && params.query.trim().length > 0 ? params.query : null
+  const rawQuery =
+    typeof params.query === "string" && params.query.trim().length > 0 ? params.query : null
   const data = await client.query<{
-    codeDiscountNodes?: { edges?: Array<{ node: DiscountCodeNodeShape }>; pageInfo?: { endCursor?: string | null } }
+    codeDiscountNodes?: {
+      edges?: Array<{ node: DiscountCodeNodeShape }>
+      pageInfo?: { endCursor?: string | null }
+    }
   }>(DISCOUNTS_SEARCH_QUERY, { query: rawQuery, first: limit, after: params.cursor ?? null })
   const edges = data.codeDiscountNodes?.edges ?? []
   // KEYWORD-MATCH NON-EXHAUSTIVENESS (deactivate-expired-synth-summit-press-discount-codes). discounts_search
@@ -2630,7 +2798,10 @@ export async function metafields_list(
     throw makeReadError("BAD_PARAM", "ownerId is required")
   }
   if (typeof ownerType !== "string" || !(ownerType in METAFIELD_OWNER_ROOT)) {
-    throw makeReadError("BAD_PARAM", `ownerType must be one of ${Object.keys(METAFIELD_OWNER_ROOT).join(", ")}`)
+    throw makeReadError(
+      "BAD_PARAM",
+      `ownerType must be one of ${Object.keys(METAFIELD_OWNER_ROOT).join(", ")}`,
+    )
   }
   const rootField = METAFIELD_OWNER_ROOT[ownerType]
   if (!rootField) {
@@ -2650,9 +2821,17 @@ export async function metafields_list(
     }
   `
   const client = await getShopifyClient(ctx)
-  const data = await client.query<Record<string, {
-    metafields?: { edges?: Array<{ node: MetafieldNode }>; pageInfo?: { endCursor?: string | null } }
-  } | null>>(query, { id: ownerId, first: limit, after: params.cursor ?? null })
+  const data = await client.query<
+    Record<
+      string,
+      {
+        metafields?: {
+          edges?: Array<{ node: MetafieldNode }>
+          pageInfo?: { endCursor?: string | null }
+        }
+      } | null
+    >
+  >(query, { id: ownerId, first: limit, after: params.cursor ?? null })
   const owner = data[rootField]
   if (!owner) throw makeReadError("NOT_FOUND", `${ownerType} ${ownerId} not found`)
   const edges = owner.metafields?.edges ?? []

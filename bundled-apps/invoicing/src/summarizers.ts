@@ -25,6 +25,7 @@
 
 import {
   type ApprovalCard,
+  type CardLineItem,
   capitalize,
   consumerOverrideCardLines,
   day,
@@ -34,15 +35,14 @@ import {
   finishCard,
   isOpaqueId,
   issueCard,
+  linesTotal,
   lineText,
   lineTexts,
-  linesTotal,
   money,
   orderName,
   shown,
   text,
   toMinor,
-  type CardLineItem,
 } from "./approval-cards"
 
 import type { BuyerVatFacts } from "./buyer-vat"
@@ -84,7 +84,8 @@ function docOf(meta: SummarizerMeta | undefined): DocumentGetContext | null {
   return c && typeof c === "object" && !Array.isArray(c) ? (c as DocumentGetContext) : null
 }
 
-const done = (card: ApprovalCard): Promise<ApprovalSummaryShape> => Promise.resolve(finishCard(card))
+const done = (card: ApprovalCard): Promise<ApprovalSummaryShape> =>
+  Promise.resolve(finishCard(card))
 
 /** "proforma PRO-2026-0029 (Thomas Raz)" or, unhydrated, "the document". */
 function docWithCustomer(doc: DocumentGetContext | null, fallback = "the document"): string {
@@ -208,7 +209,12 @@ const ISSUER_FIELD_LABEL: Record<string, string> = {
 
 /** "some_field_name" -> "Some field name", for a setting the label table does not know. */
 function humanKey(key: string): string {
-  return capitalize(key.replace(/_minor$/, "").replace(/_id$/, "").replace(/_/g, " "))
+  return capitalize(
+    key
+      .replace(/_minor$/, "")
+      .replace(/_id$/, "")
+      .replace(/_/g, " "),
+  )
 }
 
 function cardValue(key: string, v: unknown, currency: string): string {
@@ -277,7 +283,9 @@ export function summarizeIssuerProfileChange(
   const lines = [
     ...sensitive,
     ...other.slice(0, other.length > budget ? Math.max(0, budget - 1) : budget),
-    ...(other.length > budget ? [`and ${other.length - Math.max(0, budget - 1)} other settings`] : []),
+    ...(other.length > budget
+      ? [`and ${other.length - Math.max(0, budget - 1)} other settings`]
+      : []),
   ]
   const isDelete = Object.keys(params).filter((k) => k !== "id").length === 0
   return done({
@@ -355,7 +363,13 @@ const TAX_TREATMENT_LABEL: Record<string, string> = {
 }
 
 /** Treatments that carry no tax: the lines total IS the document total. */
-const ZERO_TAX_TREATMENTS = new Set(["eu_reverse_charge", "eu_export_non_eu", "uk_export_eu", "uk_export_non_eu", "us_export"])
+const ZERO_TAX_TREATMENTS = new Set([
+  "eu_reverse_charge",
+  "eu_export_non_eu",
+  "uk_export_eu",
+  "uk_export_non_eu",
+  "us_export",
+])
 
 function docFieldValue(key: string, v: unknown): string {
   if (key === "issued_at" || key === "due_at") return day(v) ?? shown(v)
@@ -388,7 +402,9 @@ export function summarizeDocumentUpdate(
     if (doc) {
       if (compareValue(doc[key]) === compareValue(next)) continue
       changedLabels.push(fieldLabel.toLowerCase())
-      fieldLines.push(`${fieldLabel}: ${docFieldValue(key, doc[key])} -> ${docFieldValue(key, next)}`)
+      fieldLines.push(
+        `${fieldLabel}: ${docFieldValue(key, doc[key])} -> ${docFieldValue(key, next)}`,
+      )
     } else {
       changedLabels.push(fieldLabel.toLowerCase())
       fieldLines.push(`${fieldLabel}: set to ${docFieldValue(key, next)}`)
@@ -407,25 +423,36 @@ export function summarizeDocumentUpdate(
         const before = oldLines[i]
         const after = newLines[i]
         if (before && after) {
-          if (!sameLine(before, after)) lineLines.push(`Line ${i + 1}: ${lineText(before, currency)} -> ${lineText(after, currency)}`)
+          if (!sameLine(before, after))
+            lineLines.push(
+              `Line ${i + 1}: ${lineText(before, currency)} -> ${lineText(after, currency)}`,
+            )
         } else if (after) lineLines.push(`Line ${i + 1} added: ${lineText(after, currency)}`)
         else if (before) lineLines.push(`Line ${i + 1} removed: ${lineText(before, currency)}`)
       }
       if (lineLines.length === 0) lineLines.push("Lines: replaced with the same lines (no change)")
     } else {
-      lineLines.push(...lineTexts(newLines, currency, 3).map((l) => l.replace(/^Line:/, "New line:")))
+      lineLines.push(
+        ...lineTexts(newLines, currency, 3).map((l) => l.replace(/^Line:/, "New line:")),
+      )
     }
     const newSub = linesTotal(newLines)
-    const treatment = typeof params.tax_treatment === "string" ? params.tax_treatment : doc?.tax_treatment
+    const treatment =
+      typeof params.tax_treatment === "string" ? params.tax_treatment : doc?.tax_treatment
     const oldTax = toMinor(doc?.tax_total_minor) ?? 0n
     const oldSub = toMinor(doc?.subtotal_minor) ?? 0n
     // The new tax is computed on save; the card can name the total only when no tax applies.
-    const noTax = (!!treatment && ZERO_TAX_TREATMENTS.has(treatment)) || (oldTax === 0n && oldSub > 0n)
+    const noTax =
+      (!!treatment && ZERO_TAX_TREATMENTS.has(treatment)) || (oldTax === 0n && oldSub > 0n)
     const after = money(newSub, currency) ?? ""
     if (doc) {
       const before = money(noTax ? doc.grand_total_minor : doc.subtotal_minor, currency) ?? ""
-      totalLine = noTax ? `Total: ${before} -> ${after}` : `Subtotal before tax: ${before} -> ${after} (tax recomputed on save)`
-      titleTotal = noTax ? `total from ${before} to ${after}` : `subtotal from ${before} to ${after}`
+      totalLine = noTax
+        ? `Total: ${before} -> ${after}`
+        : `Subtotal before tax: ${before} -> ${after} (tax recomputed on save)`
+      titleTotal = noTax
+        ? `total from ${before} to ${after}`
+        : `subtotal from ${before} to ${after}`
     } else {
       totalLine = `New lines total: ${after} (before tax)`
     }
@@ -446,26 +473,48 @@ export function summarizeDocumentUpdate(
   const facts = doc
     ? [
         `Document: ${capitalize(docName(doc))}${issued ? " (already issued, the PDF is re-rendered)" : ""}`,
-        ...(text(doc.counterparty_name, 80) ? [`Customer: ${text(doc.counterparty_name, 80)}`] : []),
-        ...(orderName(doc.shopify_order_number) ? [`Order: ${orderName(doc.shopify_order_number)}`] : []),
+        ...(text(doc.counterparty_name, 80)
+          ? [`Customer: ${text(doc.counterparty_name, 80)}`]
+          : []),
+        ...(orderName(doc.shopify_order_number)
+          ? [`Order: ${orderName(doc.shopify_order_number)}`]
+          : []),
       ]
     : ["Document details could not be read; check the document before approving"]
   // A buyer the agent declares a private consumer against business evidence: the evidence comes
   // first (documents_update_preview, buyer-vat.ts), as on the create cards.
-  const preview = (meta?.context ?? null) as { buyer_preview?: Partial<BuyerVatFacts> | null; buyer_refusal?: unknown } | null
+  const preview = (meta?.context ?? null) as {
+    buyer_preview?: Partial<BuyerVatFacts> | null
+    buyer_refusal?: unknown
+  } | null
   const override = consumerOverrideCardLines(preview?.buyer_preview)
   const refusal =
     typeof preview?.buyer_refusal === "string" && preview.buyer_refusal
       ? ["WARNING: this will be REFUSED, the buyer looks like a business but has no VAT number"]
       : []
   // Totals and field changes first: they are the decision. Line detail fills the rest.
-  const lines = [...refusal, ...override, ...facts, ...(totalLine ? [totalLine] : []), ...fieldLines]
+  const lines = [
+    ...refusal,
+    ...override,
+    ...facts,
+    ...(totalLine ? [totalLine] : []),
+    ...fieldLines,
+  ]
   const room = Math.max(0, 8 - lines.length)
-  const shownLineDetail = lineLines.length > room ? [...lineLines.slice(0, Math.max(0, room - 1)), `and ${lineLines.length - Math.max(0, room - 1)} more line changes`] : lineLines
+  const shownLineDetail =
+    lineLines.length > room
+      ? [
+          ...lineLines.slice(0, Math.max(0, room - 1)),
+          `and ${lineLines.length - Math.max(0, room - 1)} more line changes`,
+        ]
+      : lineLines
   return done({
     kind: "document_update",
     title,
-    subtitle: newLines && doc ? "Replaces every line; totals are recomputed exactly like issuing" : undefined,
+    subtitle:
+      newLines && doc
+        ? "Replaces every line; totals are recomputed exactly like issuing"
+        : undefined,
     lines: [...lines, ...shownLineDetail],
     links: openLink(params.id, doc),
   })
@@ -474,7 +523,6 @@ export function summarizeDocumentUpdate(
 // ─────────────────────────────────────────────────────────────────────────
 // Issue a saved draft (invoice_issue, quote_issue, proforma_issue): context = the draft.
 // ─────────────────────────────────────────────────────────────────────────
-
 
 /** A card line stating what the call itself declares: the kernel's card reads params, not the org's data. */
 const DECLARED_CONSUMER_LINE =
@@ -486,7 +534,9 @@ const DECLARED_CONSUMER_LINE =
  * parkConsumerDeclaration), so what lands here is every other park, a tainted turn above all. The
  * card therefore says what the call does, and names a private consumer only when the call declares one.
  */
-export function summarizeDraftCreate(params: Record<string, unknown>): Promise<ApprovalSummaryShape> {
+export function summarizeDraftCreate(
+  params: Record<string, unknown>,
+): Promise<ApprovalSummaryShape> {
   const type = docTypeLabel(params.type)
   const customer = text(params.counterparty_name, 80)
   const currency = text(params.currency, 3) ?? "EUR"
@@ -510,7 +560,10 @@ export function summarizeDraftUpdate(
   meta?: SummarizerMeta,
 ): Promise<ApprovalSummaryShape> {
   const doc = docOf(meta)
-  const patch = params.patch && typeof params.patch === "object" ? (params.patch as Record<string, unknown>) : {}
+  const patch =
+    params.patch && typeof params.patch === "object"
+      ? (params.patch as Record<string, unknown>)
+      : {}
   const changes: string[] = []
   for (const [key, next] of Object.entries(patch)) {
     if (key === "buyer_is_consumer" || next === undefined) continue
@@ -526,7 +579,9 @@ export function summarizeDraftUpdate(
     title: `Update ${docWithCustomer(doc, "a draft")}`,
     lines: [
       ...(patch.buyer_is_consumer === true ? [DECLARED_CONSUMER_LINE] : []),
-      ...(patch.buyer_is_consumer === false ? ["This call removes the declaration that the buyer is a private consumer."] : []),
+      ...(patch.buyer_is_consumer === false
+        ? ["This call removes the declaration that the buyer is a private consumer."]
+        : []),
       ...docFacts(doc, { total: false }),
       ...changes,
     ],
@@ -534,7 +589,11 @@ export function summarizeDraftUpdate(
   })
 }
 function draftIssueSummarizer(type: string, kind: string) {
-  return (params: { draft_id?: string; due_at?: string }, _ctx?: unknown, meta?: SummarizerMeta): Promise<ApprovalSummaryShape> => {
+  return (
+    params: { draft_id?: string; due_at?: string },
+    _ctx?: unknown,
+    meta?: SummarizerMeta,
+  ): Promise<ApprovalSummaryShape> => {
     const draft = docOf(meta)
     const lines = (draft?.lines ?? []) as CardLineItem[]
     const grand = toMinor(draft?.grand_total_minor)
@@ -546,7 +605,10 @@ function draftIssueSummarizer(type: string, kind: string) {
       : []
     return Promise.resolve(
       issueCard({
-        buyer: refs?.buyer_is_consumer === true ? { buyer_is_consumer: true, consumer_override_evidence: evidence } : null,
+        buyer:
+          refs?.buyer_is_consumer === true
+            ? { buyer_is_consumer: true, consumer_override_evidence: evidence }
+            : null,
         kind,
         type: draft?.type ?? type,
         fromDraft: true,
@@ -556,10 +618,12 @@ function draftIssueSummarizer(type: string, kind: string) {
         lines,
         // What issuing it would write, read by the code that writes it (draft_issue_preview). A
         // draft's own totals carry no tax; they stand in only where the read did not run.
-        totalMinor: toMinor(draft?.issue_total_minor) ?? (grand !== null && grand !== 0n ? grand : null),
+        totalMinor:
+          toMinor(draft?.issue_total_minor) ?? (grand !== null && grand !== 0n ? grand : null),
         orderNumber: draft?.shopify_order_number ?? null,
         draftOrderName: draft?.shopify_draft_order_name ?? null,
-        originalNumber: typeof refs?.original_document_number === "string" ? refs.original_document_number : null,
+        originalNumber:
+          typeof refs?.original_document_number === "string" ? refs.original_document_number : null,
         dueAt: params.due_at ?? draft?.due_at ?? null,
         draftId: params.draft_id ?? null,
       }),
@@ -593,11 +657,15 @@ interface CreateAndIssueParams {
   declared_value_minor?: unknown
 }
 
-function issuerOf(params: { issuer_profile_id?: string | null }, meta?: SummarizerMeta): Record<string, unknown> | null {
-  const items = ((meta?.context as { items?: Array<Record<string, unknown>> } | null)?.items ?? []).filter(
-    (r) => !r.archived_at,
-  )
-  if (params.issuer_profile_id) return items.find((r) => String(r.id) === params.issuer_profile_id) ?? null
+function issuerOf(
+  params: { issuer_profile_id?: string | null },
+  meta?: SummarizerMeta,
+): Record<string, unknown> | null {
+  const items = (
+    (meta?.context as { items?: Array<Record<string, unknown>> } | null)?.items ?? []
+  ).filter((r) => !r.archived_at)
+  if (params.issuer_profile_id)
+    return items.find((r) => String(r.id) === params.issuer_profile_id) ?? null
   return items.length === 1 ? items[0]! : null
 }
 
@@ -623,12 +691,19 @@ function counterpartyOf(v: unknown): CounterpartyParam {
 }
 
 function createAndIssueSummarizer(type: string, kind: string) {
-  return (params: CreateAndIssueParams, _ctx?: unknown, meta?: SummarizerMeta): Promise<ApprovalSummaryShape> => {
+  return (
+    params: CreateAndIssueParams,
+    _ctx?: unknown,
+    meta?: SummarizerMeta,
+  ): Promise<ApprovalSummaryShape> => {
     const issuer = issuerOf(params, meta)
     const cp = counterpartyOf(params.counterparty)
     // The buyer's VAT status the preview read resolved (VIES, a number filled in from an earlier
     // document); absent, the params alone.
-    const preview = meta?.context as { buyer?: Partial<BuyerVatFacts> | null; refusal?: unknown } | null
+    const preview = meta?.context as {
+      buyer?: Partial<BuyerVatFacts> | null
+      refusal?: unknown
+    } | null
     const buyerCtx = preview?.buyer ?? null
     const refusal = typeof preview?.refusal === "string" && preview.refusal ? preview.refusal : null
     const buyer: Partial<BuyerVatFacts> = buyerCtx ?? {
@@ -636,7 +711,8 @@ function createAndIssueSummarizer(type: string, kind: string) {
       vat_id_source: cp.vat_id ? "caller" : null,
       buyer_is_consumer: params.buyer_is_consumer === true,
     }
-    const taxCountry = (typeof cp.tax_country === "string" && cp.tax_country.trim()) || cp.country || null
+    const taxCountry =
+      (typeof cp.tax_country === "string" && cp.tax_country.trim()) || cp.country || null
     const items = Array.isArray(params.items) ? params.items : []
     // The plan is computed when the issuer's country is known: the total any document issues at,
     // a purchase order's included (issuing classifies it like the others).
@@ -651,26 +727,26 @@ function createAndIssueSummarizer(type: string, kind: string) {
           })
         : null
     const card = issueCard({
-        kind,
-        type,
-        fromDraft: false,
-        customer: cp.legal_name ?? null,
-        country: cp.country ?? null,
-        tax,
-        taxCountry,
-        buyer,
-        currency: params.currency ?? (issuer?.default_currency as string | undefined) ?? "EUR",
-        lines: Array.isArray(params.items) ? params.items : [],
-        orderNumber: params.shopify_order_number ?? null,
-        draftOrderName: params.shopify_draft_order_name ?? null,
-        poNumber: params.po_number ?? null,
-        customerReference: params.customer_reference ?? null,
-        issuedAt: params.issued_at ?? null,
-        dueAt: params.due_at ?? null,
-        reason: params.reason ?? null,
-        declaredValueMinor: params.declared_value_minor,
-        issuerName: (issuer?.legal_name as string | undefined) ?? null,
-      })
+      kind,
+      type,
+      fromDraft: false,
+      customer: cp.legal_name ?? null,
+      country: cp.country ?? null,
+      tax,
+      taxCountry,
+      buyer,
+      currency: params.currency ?? (issuer?.default_currency as string | undefined) ?? "EUR",
+      lines: Array.isArray(params.items) ? params.items : [],
+      orderNumber: params.shopify_order_number ?? null,
+      draftOrderName: params.shopify_draft_order_name ?? null,
+      poNumber: params.po_number ?? null,
+      customerReference: params.customer_reference ?? null,
+      issuedAt: params.issued_at ?? null,
+      dueAt: params.due_at ?? null,
+      reason: params.reason ?? null,
+      declaredValueMinor: params.declared_value_minor,
+      issuerName: (issuer?.legal_name as string | undefined) ?? null,
+    })
     // A call that skipped the stage-time check (chained to an earlier step) still shows, first,
     // that executing it will be refused: the buyer looks like a business and has no VAT number.
     if (refusal) {
@@ -686,13 +762,25 @@ function createAndIssueSummarizer(type: string, kind: string) {
   }
 }
 
-export const summarizeInvoiceCreateAndIssue = createAndIssueSummarizer("invoice", "invoice_create_and_issue")
+export const summarizeInvoiceCreateAndIssue = createAndIssueSummarizer(
+  "invoice",
+  "invoice_create_and_issue",
+)
 // A quote staged as a step of a sequence (a CRM record, then this quote, then the reply that
 // attaches it) is gated before its handler runs: the card states the customer, every line with
 // its quantity, price and discount, the total, the validity and the customer reference.
-export const summarizeQuoteCreateAndIssue = createAndIssueSummarizer("quote", "quote_create_and_issue")
-export const summarizeProformaCreateAndIssue = createAndIssueSummarizer("proforma", "proforma_create_and_issue")
-export const summarizePoCreateAndIssue = createAndIssueSummarizer("purchase_order", "po_create_and_issue")
+export const summarizeQuoteCreateAndIssue = createAndIssueSummarizer(
+  "quote",
+  "quote_create_and_issue",
+)
+export const summarizeProformaCreateAndIssue = createAndIssueSummarizer(
+  "proforma",
+  "proforma_create_and_issue",
+)
+export const summarizePoCreateAndIssue = createAndIssueSummarizer(
+  "purchase_order",
+  "po_create_and_issue",
+)
 
 interface CreditNoteCreateAndIssueParams extends CreateAndIssueParams {
   original_document_id?: string | null
@@ -710,9 +798,14 @@ export function summarizeCreditNoteCreateAndIssue(
 ): Promise<ApprovalSummaryShape> {
   const issuer = issuerOf(params, meta)
   const cp = counterpartyOf(params.counterparty)
-  const original = (meta?.context as { original?: { number?: unknown; issued_at?: unknown; grand_total_minor?: unknown } | null } | null)?.original
+  const original = (
+    meta?.context as {
+      original?: { number?: unknown; issued_at?: unknown; grand_total_minor?: unknown } | null
+    } | null
+  )?.original
   const stated = params.original_document_id
-  const taxCountry = (typeof cp.tax_country === "string" && cp.tax_country.trim()) || cp.country || null
+  const taxCountry =
+    (typeof cp.tax_country === "string" && cp.tax_country.trim()) || cp.country || null
   const items = Array.isArray(params.items) ? params.items : []
   const tax =
     issuer && typeof issuer.country === "string" && issuer.country
@@ -734,13 +827,17 @@ export function summarizeCreditNoteCreateAndIssue(
       country: cp.country ?? null,
       tax,
       taxCountry,
-      buyer: { vat_id: typeof cp.vat_id === "string" && cp.vat_id.trim() ? cp.vat_id.trim() : null },
+      buyer: {
+        vat_id: typeof cp.vat_id === "string" && cp.vat_id.trim() ? cp.vat_id.trim() : null,
+      },
       currency: params.currency ?? "EUR",
       lines: items,
       reason: params.reason ?? null,
       issuedAt: params.issued_at ?? null,
       // The read gives the number and date; unread, a number the caller passed still names it.
-      originalNumber: text(original?.number, 40) ?? (stated && !isOpaqueId(stated) ? stated : stated ? "the invoice referenced" : null),
+      originalNumber:
+        text(original?.number, 40) ??
+        (stated && !isOpaqueId(stated) ? stated : stated ? "the invoice referenced" : null),
       originalDate: day(original?.issued_at),
       originalTotalMinor: original?.grand_total_minor,
       issuerName: (issuer?.legal_name as string | undefined) ?? null,
@@ -785,7 +882,8 @@ export function summarizeRecordRefund(
   return done({
     kind: "document_record_refund",
     title: `Record a ${kind} refund of ${amount} on ${docWithCustomer(doc)}`,
-    subtitle: "Records the refund on the document; it does not send money back (refund the payment itself where it was taken)",
+    subtitle:
+      "Records the refund on the document; it does not send money back (refund the payment itself where it was taken)",
     lines: [
       ...docFacts(doc),
       `Refund: ${amount} (${kind === "full" ? "full refund, the document is marked refunded" : "partial refund"})`,
@@ -823,7 +921,12 @@ export function summarizeConvertToInvoice(
 // ─────────────────────────────────────────────────────────────────────────
 
 export function summarizeEinvoiceSend(
-  params: { document_id?: string; buyer_siren?: string; routing_address?: string; attempt?: number | null },
+  params: {
+    document_id?: string
+    buyer_siren?: string
+    routing_address?: string
+    attempt?: number | null
+  },
   _ctx?: unknown,
   meta?: SummarizerMeta,
 ): Promise<ApprovalSummaryShape> {
@@ -833,7 +936,8 @@ export function summarizeEinvoiceSend(
   return done({
     kind: "einvoice_send",
     title: `${params.attempt && params.attempt > 1 ? "Send again" : "Send"} ${docWithCustomer(doc)} as an e-invoice`,
-    subtitle: "Transmits the legal original to the buyer's e-invoicing platform. This cannot be undone.",
+    subtitle:
+      "Transmits the legal original to the buyer's e-invoicing platform. This cannot be undone.",
     lines: [
       ...docFacts(doc),
       ...(siren ? [`Buyer SIREN: ${siren}`] : []),
@@ -852,15 +956,21 @@ export function summarizeEinvoiceBookBatch(): Promise<ApprovalSummaryShape> {
   })
 }
 
-const RECEIVED_VERB: Record<string, string> = { refuse: "Refuse", dispute: "Dispute", undispute: "Withdraw the dispute on" }
+const RECEIVED_VERB: Record<string, string> = {
+  refuse: "Refuse",
+  dispute: "Dispute",
+  undispute: "Withdraw the dispute on",
+}
 
 export function summarizeReceivedSetStatus(
   params: { action?: string; reason?: string | null; comment?: string | null },
   _ctx?: unknown,
   meta?: SummarizerMeta,
 ): Promise<ApprovalSummaryShape> {
-  const inv = ((meta?.context as { invoice?: Record<string, unknown> } | null)?.invoice ?? null) as Record<string, unknown> | null
-  const supplier = text((inv?.supplier as { name?: unknown } | undefined)?.name, 80) ?? "the supplier"
+  const inv = ((meta?.context as { invoice?: Record<string, unknown> } | null)?.invoice ??
+    null) as Record<string, unknown> | null
+  const supplier =
+    text((inv?.supplier as { name?: unknown } | undefined)?.name, 80) ?? "the supplier"
   const number = text(inv?.invoice_number, 40)
   // A received invoice's totals are the decimal amounts its file states, not minor units.
   const statedTotal = text((inv?.totals as { total?: unknown } | undefined)?.total, 40)
@@ -873,9 +983,13 @@ export function summarizeReceivedSetStatus(
     subtitle: "Sent to the supplier's e-invoicing platform once approved.",
     lines: [
       `Supplier: ${supplier}`,
-      ...(number ? [`Invoice: ${number}${day(inv?.issue_date) ? ` of ${day(inv?.issue_date)}` : ""}`] : []),
+      ...(number
+        ? [`Invoice: ${number}${day(inv?.issue_date) ? ` of ${day(inv?.issue_date)}` : ""}`]
+        : []),
       ...(total ? [`Total: ${total}`] : []),
-      ...(text(params.reason, 80) ? [`Reason: ${text(params.reason, 80)!.replace(/_/g, " ").toLowerCase()}`] : []),
+      ...(text(params.reason, 80)
+        ? [`Reason: ${text(params.reason, 80)!.replace(/_/g, " ").toLowerCase()}`]
+        : []),
       ...(comment ? [`Comment kept in Liaison: ${comment}`] : []),
       params.action === "refuse"
         ? "A refusal is final: the supplier's platform is told and the invoice is closed."
@@ -891,7 +1005,9 @@ const GATE_MODE_LABEL: Record<string, string> = {
   enforce: "enforce (refuse to issue an incomplete e-invoice)",
 }
 
-export function summarizeEinvoicingSettingsSet(params: Record<string, unknown>): Promise<ApprovalSummaryShape> {
+export function summarizeEinvoicingSettingsSet(
+  params: Record<string, unknown>,
+): Promise<ApprovalSummaryShape> {
   const label: Record<string, string> = {
     gate_mode: "Checks before issuing",
     cibs_switch_date: "Switch date",
@@ -924,7 +1040,10 @@ export function summarizeEinvoicingSettingsSet(params: Record<string, unknown>):
   })
 }
 
-export function summarizeBackfillIdentities(params: { dry_run?: boolean | null; limit?: number | null }): Promise<ApprovalSummaryShape> {
+export function summarizeBackfillIdentities(params: {
+  dry_run?: boolean | null
+  limit?: number | null
+}): Promise<ApprovalSummaryShape> {
   const dry = params.dry_run !== false
   return done({
     kind: "einvoicing_backfill_identities",
@@ -938,7 +1057,11 @@ export function summarizeBackfillIdentities(params: { dry_run?: boolean | null; 
   })
 }
 
-export function summarizeBackfillLegacyOriginals(params: { dry_run?: boolean | null; limit?: number | null; retry_failed?: boolean | null }): Promise<ApprovalSummaryShape> {
+export function summarizeBackfillLegacyOriginals(params: {
+  dry_run?: boolean | null
+  limit?: number | null
+  retry_failed?: boolean | null
+}): Promise<ApprovalSummaryShape> {
   const dry = params.dry_run !== false
   return done({
     kind: "einvoicing_backfill_legacy_originals",
@@ -963,13 +1086,19 @@ export function summarizeTerritorySet(
   _ctx?: unknown,
   meta?: SummarizerMeta,
 ): Promise<ApprovalSummaryShape> {
-  const name = text((meta?.context as { counterparty_name?: unknown } | null)?.counterparty_name, 80) ?? "this customer"
+  const name =
+    text((meta?.context as { counterparty_name?: unknown } | null)?.counterparty_name, 80) ??
+    "this customer"
   const treatment = TERRITORY_LABEL[String(params.treatment)] ?? shown(params.treatment)
   return done({
     kind: "counterparty_territory_set",
     title: `Treat ${name} ${treatment}`,
-    subtitle: "Applies to the next documents issued to this customer; issued ones keep their treatment",
-    lines: [`Customer: ${name}`, ...(text(params.reason, 160) ? [`Reason: ${text(params.reason, 160)}`] : [])],
+    subtitle:
+      "Applies to the next documents issued to this customer; issued ones keep their treatment",
+    lines: [
+      `Customer: ${name}`,
+      ...(text(params.reason, 160) ? [`Reason: ${text(params.reason, 160)}`] : []),
+    ],
   })
 }
 
@@ -983,7 +1112,8 @@ export function summarizeDeferredTaxOverride(
   _ctx?: unknown,
   meta?: SummarizerMeta,
 ): Promise<ApprovalSummaryShape> {
-  const items = ((meta?.context as { items?: Array<Record<string, unknown>> } | null)?.items ?? []) as Array<Record<string, unknown>>
+  const items = ((meta?.context as { items?: Array<Record<string, unknown>> } | null)?.items ??
+    []) as Array<Record<string, unknown>>
   const row = items.find((r) => String(r.id) === String(params.deferred_id)) ?? null
   const order = orderName(row?.order_number)
   const mode = TAX_MODE_LABEL[String(params.mode)] ?? shown(params.mode)
@@ -994,7 +1124,9 @@ export function summarizeDeferredTaxOverride(
     lines: [
       ...(order ? [`Order: ${order}`] : []),
       `Tax used: ${mode}`,
-      ...(text(row?.reason, 120) ? [`Parked because: ${text(row?.reason, 120)!.replace(/_/g, " ")}`] : []),
+      ...(text(row?.reason, 120)
+        ? [`Parked because: ${text(row?.reason, 120)!.replace(/_/g, " ")}`]
+        : []),
     ],
   })
 }

@@ -15,7 +15,10 @@ describe("dev-store catalog", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "dev-store-catalog-"))
     try {
       const file = path.join(dir, "catalog.ts")
-      const own = { ...FICTION_CATALOG, secondaryLocation: { ...FICTION_CATALOG.secondaryLocation, name: "Depot" } }
+      const own = {
+        ...FICTION_CATALOG,
+        secondaryLocation: { ...FICTION_CATALOG.secondaryLocation, name: "Depot" },
+      }
       writeFileSync(file, `export const catalog = ${JSON.stringify(own)}\n`)
       const loaded = await loadDevStoreCatalog({ LIAISON_SHOPIFY_DEV_STORE_CATALOG: file })
       expect(loaded.secondaryLocation.name).toBe("Depot")
@@ -25,9 +28,9 @@ describe("dev-store catalog", () => {
   })
 
   it("fails loudly on a missing file or a dangling reference", async () => {
-    await expect(loadDevStoreCatalog({ LIAISON_SHOPIFY_DEV_STORE_CATALOG: "/nonexistent/catalog.ts" })).rejects.toThrow(
-      /no such file/,
-    )
+    await expect(
+      loadDevStoreCatalog({ LIAISON_SHOPIFY_DEV_STORE_CATALOG: "/nonexistent/catalog.ts" }),
+    ).rejects.toThrow(/no such file/)
     const dangling = {
       ...FICTION_CATALOG,
       fulfilledOrders: [{ ...FICTION_CATALOG.fulfilledOrders[0]!, productExternalId: "missing" }],

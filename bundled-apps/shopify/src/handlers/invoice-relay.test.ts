@@ -50,9 +50,9 @@ describe("onInvoicingDocumentChanged", () => {
     }
     expect(events.emits).toContain("order:invoice_changed")
     // A cross-app subscription without a declared dependency is skipped at registration.
-    expect((manifest as { dependencies?: { optional?: string[] } }).dependencies?.optional).toContain(
-      "invoicing",
-    )
+    expect(
+      (manifest as { dependencies?: { optional?: string[] } }).dependencies?.optional,
+    ).toContain("invoicing")
     expect(bundle.onInvoicingDocumentChanged).toBe(onInvoicingDocumentChanged)
   })
 })

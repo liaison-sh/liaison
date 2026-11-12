@@ -8,28 +8,28 @@
 // order id under `external_refs.shopify_order_id`. Deferred rows go to
 // `deferred_events`.
 
-import { testTime } from "../test-time"
 import { describe, expect, setSystemTime, test } from "bun:test"
 import type { CrossAppEnvelope } from "../cross-app"
+import { bt23 } from "../einvoicing/classify-operation"
+import { FR_SELLER_IDENTITY, seedConfirmedIdentity } from "../einvoicing/test-fixtures"
+import { onShopifyOrderUpdated } from "../handlers"
 import { creditNoteCreateAndIssue, documentsSendToCustomer, type MutationsCtx } from "../mutations"
-import { deferredRetryJobHandler } from "./deferred-dispatch"
-import {
-  adaptShopifyOrderCreatedEvent,
-  mergeCustomer,
-  onShopifyOrderCreated,
-  onShopifyOrderPaid,
-  type IssuerProfileRow,
-  type OrderPaidCtx,
-  type OrderPaidPayload,
-  shopifyTaxMismatches,
-} from "./shopify-order-paid"
-import { deferredTaxOverride, deferredTaxOverridePreflight } from "./tax-override"
 import { deferredList } from "../reads"
 import { createMockDb, type MockDb } from "../test-db"
 import { LedgerDouble } from "../test-effects"
-import { onShopifyOrderUpdated } from "../handlers"
-import { bt23 } from "../einvoicing/classify-operation"
-import { FR_SELLER_IDENTITY, seedConfirmedIdentity } from "../einvoicing/test-fixtures"
+import { testTime } from "../test-time"
+import { deferredRetryJobHandler } from "./deferred-dispatch"
+import {
+  adaptShopifyOrderCreatedEvent,
+  type IssuerProfileRow,
+  mergeCustomer,
+  type OrderPaidCtx,
+  type OrderPaidPayload,
+  onShopifyOrderCreated,
+  onShopifyOrderPaid,
+  shopifyTaxMismatches,
+} from "./shopify-order-paid"
+import { deferredTaxOverride, deferredTaxOverridePreflight } from "./tax-override"
 
 interface MockExtras {
   threadPosts: Array<{
@@ -149,11 +149,10 @@ function makeCtx(opts?: {
     executeToolCalls: [],
     resolveContactCalls: [],
   }
-  const defaultExecuteToolResult: CrossAppEnvelope =
-    opts?.executeToolResult ?? {
-      status: "completed",
-      result: { message_id: "mail-1" },
-    }
+  const defaultExecuteToolResult: CrossAppEnvelope = opts?.executeToolResult ?? {
+    status: "completed",
+    result: { message_id: "mail-1" },
+  }
 
   const ctx: OrderPaidCtx = {
     getUserId: async () => "user-1",
@@ -473,10 +472,7 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
     const { ctx, db, extras } = makeCtx({
       issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
     })
-    const result = await onShopifyOrderPaid(
-      basePayload({ financial_status: "paid" }),
-      ctx,
-    )
+    const result = await onShopifyOrderPaid(basePayload({ financial_status: "paid" }), ctx)
     expect(result.status).toBe("ok")
     const docs = db.__all("documents")
     expect(docs).toHaveLength(1)
@@ -495,7 +491,8 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
     // payment_status="paid" — the PDF reads "Amount paid" with no stale "Total due" pass. This is
     // the crux of the field report: a paid Shopify invoice must not render as owed.
     expect(extras.renderCalls).toHaveLength(1)
-    const renderDoc = (extras.renderCalls[0]!.data as { document: Record<string, unknown> }).document
+    const renderDoc = (extras.renderCalls[0]!.data as { document: Record<string, unknown> })
+      .document
     expect(renderDoc.payment_status).toBe("paid")
     expect(renderDoc.paid_at).toBe("2026-05-15")
   })
@@ -504,10 +501,7 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
     const { ctx, db } = makeCtx({
       issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
     })
-    const result = await onShopifyOrderPaid(
-      basePayload({ financial_status: "pending" }),
-      ctx,
-    )
+    const result = await onShopifyOrderPaid(basePayload({ financial_status: "pending" }), ctx)
     expect(result.status).toBe("ok")
     const doc = db.__all("documents")[0]!
     expect(doc.payment_status ?? "unpaid").toBe("unpaid")
@@ -525,7 +519,12 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
       totalPrice: { amount: "120.00", currencyCode: "EUR" },
       customer: { id: "c1", email: "b@example.com" },
       lineItems: [
-        { id: "l1", title: "Widget", quantity: 1, priceSet: { amount: "120.00", currencyCode: "EUR" } },
+        {
+          id: "l1",
+          title: "Widget",
+          quantity: 1,
+          priceSet: { amount: "120.00", currencyCode: "EUR" },
+        },
       ],
     })
     expect(payload.financial_status).toBe("paid")
@@ -538,7 +537,11 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
       executeToolByName: {
         "shopify:variants_get": {
           status: "error",
-          error: { code: "RATE_LIMIT", message: "Shopify 429 (rate limit) after 3 retries", retryable: true },
+          error: {
+            code: "RATE_LIMIT",
+            message: "Shopify 429 (rate limit) after 3 retries",
+            retryable: true,
+          },
         },
       },
     })
@@ -546,10 +549,7 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
     // retryable throttle on the live customs fetch must NOT yield a
     // customs-incomplete export invoice — it defers for retry instead.
     const base = basePayload()
-    const result = await onShopifyOrderPaid(
-      basePayload({ customer: usBuyer() }),
-      ctx,
-    )
+    const result = await onShopifyOrderPaid(basePayload({ customer: usBuyer() }), ctx)
     expect(result.status).toBe("deferred")
     if (result.status !== "deferred") throw new Error("unreachable")
     expect(result.reason).toBe("awaiting_dependency")
@@ -629,10 +629,7 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
     const { ctx, db } = makeCtx({
       issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
     })
-    const result = await onShopifyOrderPaid(
-      basePayload({ total_price_minor: 0n }),
-      ctx,
-    )
+    const result = await onShopifyOrderPaid(basePayload({ total_price_minor: 0n }), ctx)
     expect(result.status).toBe("skipped")
     if (result.status !== "skipped") throw new Error("unreachable")
     expect(result.reason).toBe("zero_total")
@@ -654,13 +651,13 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
     expect(result.approval_id).toMatch(/^approval-/)
     expect(db.__all("documents")).toHaveLength(0)
     expect(extras.approvalsFiled).toHaveLength(1)
-    expect(extras.approvalsFiled[0]!.tool_name).toBe(
-      "invoicing:onShopifyOrderPaid",
-    )
+    expect(extras.approvalsFiled[0]!.tool_name).toBe("invoicing:onShopifyOrderPaid")
     // The effect in one sentence; the order's API id is never shown (it has no store name here).
     expect(extras.approvalsFiled[0]!.summary).toBe("Issue invoice for Acme France SAS, 120.00 EUR")
     const detail = extras.approvalsFiled[0]!.summary_detail!
-    expect([extras.approvalsFiled[0]!.summary, ...(detail.lines ?? [])].join("\n")).not.toContain("shopify-order-1")
+    expect([extras.approvalsFiled[0]!.summary, ...(detail.lines ?? [])].join("\n")).not.toContain(
+      "shopify-order-1",
+    )
     expect(detail.subtitle).toContain("Acme France SAS")
     expect(detail.lines).toContain("Customer: Acme France SAS")
     expect(detail.lines).toContain("Line: Widget A x 1 @ 100.00 EUR")
@@ -784,9 +781,7 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
     const docs = db.__all("documents")
     expect(docs).toHaveLength(1)
     expect(docs[0]!.pdf_status).toBe("failed")
-    expect(
-      db.__all("deferred_events").find((d) => d.status === "render_failed"),
-    ).toBeDefined()
+    expect(db.__all("deferred_events").find((d) => d.status === "render_failed")).toBeDefined()
   })
 
   test("step 12: thread post failure → document persists; lifecycle log records failure; no inline retry", async () => {
@@ -801,9 +796,7 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
     expect(extras.threadPosts).toHaveLength(0)
     const log = docs[0]!.lifecycle_log as Array<Record<string, unknown>>
     expect(log).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ event: "thread_post_failed" }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ event: "thread_post_failed" })]),
     )
   })
 
@@ -820,9 +813,7 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
     const composeForAppCalls = extras.executeToolCalls.filter(
       (c) => c.name === "mail:composeForApp",
     )
-    const composeCalls = extras.executeToolCalls.filter(
-      (c) => c.name === "mail:compose",
-    )
+    const composeCalls = extras.executeToolCalls.filter((c) => c.name === "mail:compose")
     expect(composeForAppCalls).toHaveLength(1)
     expect(composeCalls).toHaveLength(0)
     // Phase 17 fix Q2 — handler passes plain objects to executeTool now.
@@ -835,12 +826,15 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
 
   test("step 13: the auto email attaches each invoice's LEGAL ORIGINAL (its recorded file)", async () => {
     const issuerEmailOn: IssuerProfileRow = { ...issuerFR, auto_email_enabled: true }
-    const { ctx, db, extras } = makeCtx({ issuerProfiles: [{ profile: issuerEmailOn, shopify_shop_id: "shop-1" }] })
+    const { ctx, db, extras } = makeCtx({
+      issuerProfiles: [{ profile: issuerEmailOn, shopify_shop_id: "shop-1" }],
+    })
     await onShopifyOrderPaid(basePayload(), ctx)
     const legal = db.__all("legal_originals") as Array<Record<string, unknown>>
     expect(legal).toHaveLength(1)
     expect(legal[0]?.kind).toBe("facturx")
-    const args = extras.executeToolCalls.find((c) => c.name === "mail:composeForApp")!.args as Record<string, unknown>
+    const args = extras.executeToolCalls.find((c) => c.name === "mail:composeForApp")!
+      .args as Record<string, unknown>
     expect(args.attachments).toEqual([legal[0]!.file_id])
   })
 
@@ -851,9 +845,7 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
     await onShopifyOrderPaid(basePayload(), ctx)
     // Phase 17 fix C8 — cross-app shopify:orders_get fetch may fire; mail calls
     // must NOT.
-    const mailCalls = extras.executeToolCalls.filter((c) =>
-      c.name.startsWith("mail:"),
-    )
+    const mailCalls = extras.executeToolCalls.filter((c) => c.name.startsWith("mail:"))
     expect(mailCalls).toHaveLength(0)
   })
 
@@ -874,9 +866,7 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
     const result = await onShopifyOrderPaid(basePayload(), ctx)
     expect(result.status).toBe("ok") // document still persists
     expect(db.__all("documents")).toHaveLength(1)
-    const def = db
-      .__all("deferred_events")
-      .find((d) => d.reason === "awaiting_email_dependency")
+    const def = db.__all("deferred_events").find((d) => d.reason === "awaiting_email_dependency")
     expect(def).toBeDefined()
     expect(def!.status).toBe("awaiting_dependency")
   })
@@ -896,7 +886,9 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
           const data = op.data as Record<string, unknown> | undefined
           if (op.insert === "documents" && data?.external_ref) {
             if (db.__all("documents").some((d) => d.external_ref === data.external_ref)) {
-              throw new Error('duplicate key value violates unique constraint "documents_external_ref" (23505)')
+              throw new Error(
+                'duplicate key value violates unique constraint "documents_external_ref" (23505)',
+              )
             }
           }
         }
@@ -1028,10 +1020,7 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
       lifecycle_log: [],
       created_at: "2026-05-01T00:00:00Z",
     })
-    const result = await onShopifyOrderPaid(
-      basePayload({ po_number: "PO-order-own" }),
-      ctx,
-    )
+    const result = await onShopifyOrderPaid(basePayload({ po_number: "PO-order-own" }), ctx)
     expect(result.status).toBe("ok")
     if (result.status !== "ok") throw new Error("unreachable")
     const doc = db.__all("documents").find((d) => d.type !== "quote")!
@@ -1194,7 +1183,9 @@ describe("adaptShopifyOrderCreatedEvent (cross-app contract)", () => {
           vat_id: "DE123456789",
           address: "Hauptstrasse 5, 10115 Berlin",
         },
-        line_items: [{ id: "prod-1", description: "Software", quantity: "1", unit_price_minor: 10000n }],
+        line_items: [
+          { id: "prod-1", description: "Software", quantity: "1", unit_price_minor: 10000n },
+        ],
       }),
       {
         ...ctx,
@@ -1329,7 +1320,10 @@ describe("deferred-retry dispatch (cron re-drive)", () => {
 
   test("the deferred email retry sends the LEGAL ORIGINAL, not a later management copy", async () => {
     const byName: Record<string, CrossAppEnvelope> = {
-      "mail:composeForApp": { status: "error", error: { code: "send_failed", message: "smtp down" } } as CrossAppEnvelope,
+      "mail:composeForApp": {
+        status: "error",
+        error: { code: "send_failed", message: "smtp down" },
+      } as CrossAppEnvelope,
     }
     const issuerEmailOn: IssuerProfileRow = { ...issuerFR, auto_email_enabled: true }
     const { ctx, db, extras } = makeCtx({
@@ -1347,10 +1341,15 @@ describe("deferred-retry dispatch (cron re-drive)", () => {
     await db.update("documents", String(doc.id), { pdf_file_id: "management-copy" })
     delete byName["mail:composeForApp"]
     extras.executeToolCalls.length = 0
-    const cronCtx = { ...ctx, db, emit: async () => {}, decideApproval: async () => ({ status: "ok" as const }) }
+    const cronCtx = {
+      ...ctx,
+      db,
+      emit: async () => {},
+      decideApproval: async () => ({ status: "ok" as const }),
+    }
     await deferredRetryJobHandler(undefined, cronCtx, { now: new Date("2030-01-01T00:00:00Z") })
     const sent = extras.executeToolCalls.find((c) => c.name === "mail:composeForApp")
-    expect((sent?.args as Record<string, unknown>).attachments).toEqual([legal.file_id])
+    expect((sent!.args as Record<string, unknown>).attachments).toEqual([legal.file_id])
   })
 
   // S11: the automatic mail is claimed in the kernel's effect ledger (`ctx.effects`) before it
@@ -1359,7 +1358,10 @@ describe("deferred-retry dispatch (cron re-drive)", () => {
   describe("the deferred email retry sends once through ctx.effects", () => {
     async function parkedEmail(ledger: LedgerDouble) {
       const byName: Record<string, CrossAppEnvelope> = {
-        "mail:composeForApp": { status: "error", error: { code: "send_failed", message: "smtp down" } } as CrossAppEnvelope,
+        "mail:composeForApp": {
+          status: "error",
+          error: { code: "send_failed", message: "smtp down" },
+        } as CrossAppEnvelope,
       }
       const issuerEmailOn: IssuerProfileRow = { ...issuerFR, auto_email_enabled: true }
       const { ctx, db, extras } = makeCtx({
@@ -1380,9 +1382,12 @@ describe("deferred-retry dispatch (cron re-drive)", () => {
         emit: async () => {},
         decideApproval: async () => ({ status: "ok" as const }),
       }
-      const sends = () => extras.executeToolCalls.filter((c) => c.name === "mail:composeForApp").length
+      const sends = () =>
+        extras.executeToolCalls.filter((c) => c.name === "mail:composeForApp").length
       const parkRow = () =>
-        (db.__all("deferred_events") as Array<Record<string, unknown>>).find((r) => r.id === park.id)!
+        (db.__all("deferred_events") as Array<Record<string, unknown>>).find(
+          (r) => r.id === park.id,
+        )!
       /** The sweep's bookkeeping never committed: the park is open again, as before the sweep. */
       const reopen = () =>
         db.update("deferred_events", String(park.id), {
@@ -1399,7 +1404,9 @@ describe("deferred-retry dispatch (cron re-drive)", () => {
       await deferredRetryJobHandler(undefined, t.cronCtx, { now: new Date("2030-01-01T00:00:00Z") })
       expect(t.sends()).toBe(1)
       await t.reopen()
-      const again = await deferredRetryJobHandler(undefined, t.cronCtx, { now: new Date("2030-01-01T00:10:00Z") })
+      const again = await deferredRetryJobHandler(undefined, t.cronCtx, {
+        now: new Date("2030-01-01T00:10:00Z"),
+      })
       expect(t.sends()).toBe(1)
       expect(again.succeeded).toBe(1)
       expect(t.parkRow().status).toBe("resolved")
@@ -1409,12 +1416,16 @@ describe("deferred-retry dispatch (cron re-drive)", () => {
       const ledger = new LedgerDouble()
       const t = await parkedEmail(ledger)
       ledger.crashBeforeComplete = true
-      await deferredRetryJobHandler(undefined, t.cronCtx, { now: new Date("2030-01-01T00:00:00Z") }).catch(() => {})
+      await deferredRetryJobHandler(undefined, t.cronCtx, {
+        now: new Date("2030-01-01T00:00:00Z"),
+      }).catch(() => {})
       expect(t.sends()).toBe(1)
       ledger.crashBeforeComplete = false
       ledger.die()
       await t.reopen()
-      const again = await deferredRetryJobHandler(undefined, t.cronCtx, { now: new Date("2030-01-01T00:10:00Z") })
+      const again = await deferredRetryJobHandler(undefined, t.cronCtx, {
+        now: new Date("2030-01-01T00:10:00Z"),
+      })
       expect(t.sends()).toBe(1)
       expect(again.succeeded).toBe(0)
       expect(t.parkRow().status).not.toBe("resolved")
@@ -1425,7 +1436,9 @@ describe("deferred-retry dispatch (cron re-drive)", () => {
       const ledger = new LedgerDouble()
       const t = await parkedEmail(ledger)
       ledger.crashBeforeComplete = true
-      await deferredRetryJobHandler(undefined, t.cronCtx, { now: new Date("2030-01-01T00:00:00Z") }).catch(() => {})
+      await deferredRetryJobHandler(undefined, t.cronCtx, {
+        now: new Date("2030-01-01T00:00:00Z"),
+      }).catch(() => {})
       ledger.crashBeforeComplete = false
       ledger.die()
       await t.reopen()
@@ -1449,13 +1462,20 @@ describe("deferred-retry dispatch (cron re-drive)", () => {
     test("a refused send releases its claim: the next sweep sends it", async () => {
       const ledger = new LedgerDouble()
       const t = await parkedEmail(ledger)
-      t.byName["mail:composeForApp"] = { status: "error", error: { code: "send_failed", message: "smtp down" } } as CrossAppEnvelope
-      const first = await deferredRetryJobHandler(undefined, t.cronCtx, { now: new Date("2030-01-01T00:00:00Z") })
+      t.byName["mail:composeForApp"] = {
+        status: "error",
+        error: { code: "send_failed", message: "smtp down" },
+      } as CrossAppEnvelope
+      const first = await deferredRetryJobHandler(undefined, t.cronCtx, {
+        now: new Date("2030-01-01T00:00:00Z"),
+      })
       expect(first.succeeded).toBe(0)
       expect(t.parkRow().reason).toBe("send_failed")
       expect(ledger.rows.size).toBe(0)
       delete t.byName["mail:composeForApp"]
-      const second = await deferredRetryJobHandler(undefined, t.cronCtx, { now: new Date("2030-01-02T00:00:00Z") })
+      const second = await deferredRetryJobHandler(undefined, t.cronCtx, {
+        now: new Date("2030-01-02T00:00:00Z"),
+      })
       expect(second.succeeded).toBe(1)
       expect(t.sends()).toBe(2)
       expect(t.parkRow().status).toBe("resolved")
@@ -1499,7 +1519,9 @@ describe("deferred-retry dispatch (cron re-drive)", () => {
     expect(result.succeeded).toBe(0)
     expect(result.failed).toBe(1)
     expect(db.__all("documents")).toHaveLength(0)
-    expect((db.__all("deferred_events")[0] as Record<string, unknown>).status).toBe("awaiting_dependency")
+    expect((db.__all("deferred_events")[0] as Record<string, unknown>).status).toBe(
+      "awaiting_dependency",
+    )
   })
 })
 
@@ -1540,14 +1562,58 @@ describe("order split + tax-inclusive pricing", () => {
       country: "FR",
     },
     lineItems: [
-      { id: "li-1", title: "Black Silicone Skin", quantity: 1, priceSet: { amount: "155.00", currencyCode: "EUR" }, requiresShipping: true, taxLines: [{ rate: 0.2, amount: "25.83" }], variant: { id: "53337545703755" } },
-      { id: "li-2", title: "Mounting plate", quantity: 1, priceSet: { amount: "107.00", currencyCode: "EUR" }, requiresShipping: true, taxLines: [{ rate: 0.2, amount: "17.83" }], variant: { id: "50464471744843" } },
-      { id: "li-3", title: "USB-C Cable", quantity: 1, priceSet: { amount: "17.00", currencyCode: "EUR" }, requiresShipping: true, taxLines: [{ rate: 0.2, amount: "2.83" }], variant: { id: "50778599915851" } },
-      { id: "li-4", title: "Tessera Sound", quantity: 1, priceSet: { amount: "79.00", currencyCode: "EUR" }, requiresShipping: false, taxLines: [{ rate: 0.2, amount: "13.17" }], variant: { id: "57467363623243" } },
-      { id: "li-5", title: "Tessera 2", quantity: 1, priceSet: { amount: "949.00", currencyCode: "EUR" }, requiresShipping: true, taxLines: [{ rate: 0.2, amount: "158.17" }], variant: { id: "47748313416011" } },
+      {
+        id: "li-1",
+        title: "Black Silicone Skin",
+        quantity: 1,
+        priceSet: { amount: "155.00", currencyCode: "EUR" },
+        requiresShipping: true,
+        taxLines: [{ rate: 0.2, amount: "25.83" }],
+        variant: { id: "53337545703755" },
+      },
+      {
+        id: "li-2",
+        title: "Mounting plate",
+        quantity: 1,
+        priceSet: { amount: "107.00", currencyCode: "EUR" },
+        requiresShipping: true,
+        taxLines: [{ rate: 0.2, amount: "17.83" }],
+        variant: { id: "50464471744843" },
+      },
+      {
+        id: "li-3",
+        title: "USB-C Cable",
+        quantity: 1,
+        priceSet: { amount: "17.00", currencyCode: "EUR" },
+        requiresShipping: true,
+        taxLines: [{ rate: 0.2, amount: "2.83" }],
+        variant: { id: "50778599915851" },
+      },
+      {
+        id: "li-4",
+        title: "Tessera Sound",
+        quantity: 1,
+        priceSet: { amount: "79.00", currencyCode: "EUR" },
+        requiresShipping: false,
+        taxLines: [{ rate: 0.2, amount: "13.17" }],
+        variant: { id: "57467363623243" },
+      },
+      {
+        id: "li-5",
+        title: "Tessera 2",
+        quantity: 1,
+        priceSet: { amount: "949.00", currencyCode: "EUR" },
+        requiresShipping: true,
+        taxLines: [{ rate: 0.2, amount: "158.17" }],
+        variant: { id: "47748313416011" },
+      },
     ],
     shippingLines: [
-      { title: "DHL Express", priceSet: { amount: "29.99", currencyCode: "EUR" }, taxLines: [{ rate: 0.2, amount: "5.00" }] },
+      {
+        title: "DHL Express",
+        priceSet: { amount: "29.99", currencyCode: "EUR" },
+        taxLines: [{ rate: 0.2, amount: "5.00" }],
+      },
     ],
   }
 
@@ -1604,7 +1670,8 @@ describe("order split + tax-inclusive pricing", () => {
     expect(String(software.grand_total_minor)).toBe("10899")
 
     // The two documents together reproduce the Shopify payment to the cent.
-    const combined = BigInt(String(goods.grand_total_minor)) + BigInt(String(software.grand_total_minor))
+    const combined =
+      BigInt(String(goods.grand_total_minor)) + BigInt(String(software.grand_total_minor))
     expect(combined).toBe(133699n) // 1336.99 EUR
 
     // Counterparty snapshot complete on BOTH documents.
@@ -1692,7 +1759,9 @@ describe("order split + tax-inclusive pricing", () => {
     if (second.status !== "ok") throw new Error("unreachable")
     expect(second.documents).toHaveLength(1)
     expect(second.documents[0]!.scope).toBe("software")
-    expect((db.__all("documents") as Array<Record<string, unknown>>).filter((d) => d.scope === "goods")).toHaveLength(1)
+    expect(
+      (db.__all("documents") as Array<Record<string, unknown>>).filter((d) => d.scope === "goods"),
+    ).toHaveLength(1)
   })
 
   test("a deferred split half is still issued after the other half is credit noted", async () => {
@@ -1731,7 +1800,11 @@ describe("order split + tax-inclusive pricing", () => {
         ...ctx,
         // No invoice threshold is set, and credit notes then always park an approval: run as the
         // post-approval re-entry.
-        approval: { approvalRequestId: "appr-1", approvalDeciderId: "u-2", toolName: "invoicing:test" },
+        approval: {
+          approvalRequestId: "appr-1",
+          approvalDeciderId: "u-2",
+          toolName: "invoicing:test",
+        },
         emit: async () => {},
       } as unknown as MutationsCtx,
       {
@@ -1797,7 +1870,15 @@ describe("order split + tax-inclusive pricing", () => {
       ...fullEvent,
       taxesIncluded: false,
       lineItems: [
-        { id: "li-1", title: "Widget", quantity: 2, priceSet: { amount: "100.00", currencyCode: "EUR" }, requiresShipping: true, taxLines: [{ rate: 0.0875, amount: "17.50" }], variant: { id: "1" } },
+        {
+          id: "li-1",
+          title: "Widget",
+          quantity: 2,
+          priceSet: { amount: "100.00", currencyCode: "EUR" },
+          requiresShipping: true,
+          taxLines: [{ rate: 0.0875, amount: "17.50" }],
+          variant: { id: "1" },
+        },
       ],
     })
     expect(String(payload.line_items[0]!.unit_price_minor)).toBe("10000")
@@ -1810,7 +1891,15 @@ describe("order split + tax-inclusive pricing", () => {
       shopDomain: "shop-1",
       totalPrice: { amount: "120.00", currencyCode: "EUR" },
       customer: { id: "c1", email: "x@example.com" },
-      lineItems: [{ id: "li-1", title: "Widget", quantity: 1, priceSet: { amount: "100.00", currencyCode: "EUR" }, variant: { id: "1" } }],
+      lineItems: [
+        {
+          id: "li-1",
+          title: "Widget",
+          quantity: 1,
+          priceSet: { amount: "100.00", currencyCode: "EUR" },
+          variant: { id: "1" },
+        },
+      ],
     })
     expect(String(payload.line_items[0]!.unit_price_minor)).toBe("10000")
     expect(payload.line_items[0]!.tax_rate_bp).toBeUndefined()
@@ -1886,7 +1975,13 @@ describe("order paid auto flow stores document_lines NET of tax (own taxesInclud
     shopDomain: "shop-1",
     createdAt: "2026-07-03T13:38:00Z",
     totalPrice: { amount: "100.00", currencyCode: "EUR" },
-    customer: { id: "cust-net-1", email: "net@example.com", first_name: "Net", last_name: "Payer", country: "FR" },
+    customer: {
+      id: "cust-net-1",
+      email: "net@example.com",
+      first_name: "Net",
+      last_name: "Payer",
+      country: "FR",
+    },
     billingAddress: {
       address1: "1 rue Net",
       zip: "75001",
@@ -1965,10 +2060,29 @@ describe("software lines are never customs goods", () => {
         shopDomain: "shop-1",
         totalPrice: { amount: "79.00", currencyCode: "EUR" },
         taxesIncluded: false,
-        customer: { id: "c-us", email: "us@example.com", first_name: "Sam", last_name: "Buyer", country: "US" },
-        billingAddress: { address1: "1 Main St", zip: "10001", city: "New York", country_code: "US" },
+        customer: {
+          id: "c-us",
+          email: "us@example.com",
+          first_name: "Sam",
+          last_name: "Buyer",
+          country: "US",
+        },
+        billingAddress: {
+          address1: "1 Main St",
+          zip: "10001",
+          city: "New York",
+          country_code: "US",
+        },
         lineItems: [
-          { id: "li-sw", title: "Tessera Sound", quantity: 1, priceSet: { amount: "79.00", currencyCode: "EUR" }, requiresShipping: false, taxLines: [], variant: { id: "57467363623243" } },
+          {
+            id: "li-sw",
+            title: "Tessera Sound",
+            quantity: 1,
+            priceSet: { amount: "79.00", currencyCode: "EUR" },
+            requiresShipping: false,
+            taxLines: [],
+            variant: { id: "57467363623243" },
+          },
         ],
       },
       ctx,
@@ -2001,13 +2115,31 @@ describe("shipping never rides on the goods invoice", () => {
         shopDomain: "shop-1",
         totalPrice: { amount: "978.99", currencyCode: "EUR" },
         taxesIncluded: true,
-        customer: { id: "c-hw", email: "hw@example.com", first_name: "Ha", last_name: "Buyer", country: "FR" },
+        customer: {
+          id: "c-hw",
+          email: "hw@example.com",
+          first_name: "Ha",
+          last_name: "Buyer",
+          country: "FR",
+        },
         billingAddress: { address1: "2 rue Test", zip: "75001", city: "Paris", country_code: "FR" },
         lineItems: [
-          { id: "li-hw", title: "Tessera 2", quantity: 1, priceSet: { amount: "949.00", currencyCode: "EUR" }, requiresShipping: true, taxLines: [{ rate: 0.2, amount: "158.17" }], variant: { id: "47748313416011" } },
+          {
+            id: "li-hw",
+            title: "Tessera 2",
+            quantity: 1,
+            priceSet: { amount: "949.00", currencyCode: "EUR" },
+            requiresShipping: true,
+            taxLines: [{ rate: 0.2, amount: "158.17" }],
+            variant: { id: "47748313416011" },
+          },
         ],
         shippingLines: [
-          { title: "Colissimo", priceSet: { amount: "29.99", currencyCode: "EUR" }, taxLines: [{ rate: 0.2, amount: "5.00" }] },
+          {
+            title: "Colissimo",
+            priceSet: { amount: "29.99", currencyCode: "EUR" },
+            taxLines: [{ rate: 0.2, amount: "5.00" }],
+          },
         ],
       },
       ctx,
@@ -2041,8 +2173,19 @@ describe("explicit line discounts", () => {
         shopDomain: "shop-1",
         totalPrice: { amount: "344.50", currencyCode: "EUR" },
         taxesIncluded: true,
-        customer: { id: "c-d", email: "d@example.com", first_name: "Deal", last_name: "Buyer", country: "FR" },
-        billingAddress: { address1: "3 rue Promo", zip: "75002", city: "Paris", country_code: "FR" },
+        customer: {
+          id: "c-d",
+          email: "d@example.com",
+          first_name: "Deal",
+          last_name: "Buyer",
+          country: "FR",
+        },
+        billingAddress: {
+          address1: "3 rue Promo",
+          zip: "75002",
+          city: "Paris",
+          country_code: "FR",
+        },
         lineItems: [
           {
             id: "li-d",
@@ -2200,7 +2343,6 @@ describe("fully credit noted scope-null document does not suppress a webhook rei
   })
 })
 
-
 // ── Parks: idempotency, cancelled orders, order number ─────────────────
 describe("order parks (customer email missing)", () => {
   const noEmail = () =>
@@ -2215,8 +2357,12 @@ describe("order parks (customer email missing)", () => {
     const c = await onShopifyOrderPaid(noEmail(), ctx)
     expect(a.status).toBe("deferred")
     expect(db.__all("deferred_events")).toHaveLength(1)
-    expect((b as { deferred_id: string }).deferred_id).toBe((a as { deferred_id: string }).deferred_id)
-    expect((c as { deferred_id: string }).deferred_id).toBe((a as { deferred_id: string }).deferred_id)
+    expect((b as { deferred_id: string }).deferred_id).toBe(
+      (a as { deferred_id: string }).deferred_id,
+    )
+    expect((c as { deferred_id: string }).deferred_id).toBe(
+      (a as { deferred_id: string }).deferred_id,
+    )
   })
 
   test("the retry sweep re-driving a still-blocked park does not spawn a new row", async () => {
@@ -2299,7 +2445,11 @@ describe("order parks (customer email missing)", () => {
   test("the retry sweep heals a backlog: duplicates collapse, the cancelled order resolves", async () => {
     const cancelledOrder: CrossAppEnvelope = {
       status: "completed",
-      result: { name: "#3280", customer: { email: null }, attributes: { cancelledAt: "2026-07-11T12:03:30Z" } },
+      result: {
+        name: "#3280",
+        customer: { email: null },
+        attributes: { cancelledAt: "2026-07-11T12:03:30Z" },
+      },
     }
     const { ctx, db } = makeCtx({
       issuerProfiles: [{ profile: issuerFR, shopify_shop_id: "shop-1" }],
@@ -2365,7 +2515,13 @@ describe("tax read from Shopify, not replayed", () => {
       province: "CA",
       country_code: "US",
     },
-    customer: { id: "c-3386", email: "buyer3386@example.com", first_name: "Luca", last_name: "Ciatto", country: "US" },
+    customer: {
+      id: "c-3386",
+      email: "buyer3386@example.com",
+      first_name: "Luca",
+      last_name: "Ciatto",
+      country: "US",
+    },
     lineItems: [
       {
         id: "li-tessera",
@@ -2457,7 +2613,13 @@ describe("tax read from Shopify, not replayed", () => {
         totalPrice: { amount: "121.00", currencyCode: "EUR" },
         taxesIncluded: false,
         billingAddress: { address1: "1 rue Test", zip: "75001", city: "Paris", country_code: "FR" },
-        customer: { id: "c-m", email: "m@example.com", first_name: "M", last_name: "B", country: "FR" },
+        customer: {
+          id: "c-m",
+          email: "m@example.com",
+          first_name: "M",
+          last_name: "B",
+          country: "FR",
+        },
         lineItems: [
           {
             id: "li-m",
@@ -2478,7 +2640,11 @@ describe("tax read from Shopify, not replayed", () => {
     const park = db.__all("deferred_events")[0] as Record<string, unknown>
     expect(park.reason).toBe("shopify_tax_mismatch")
     const lines = (park.blocked_on as { lines: Array<Record<string, unknown>> }).lines
-    expect(lines[0]).toMatchObject({ description: "Widget", computed_minor: "2000", shopify_minor: "2100" })
+    expect(lines[0]).toMatchObject({
+      description: "Widget",
+      computed_minor: "2000",
+      shopify_minor: "2100",
+    })
   })
 
   test("the per line check accepts a one minor unit rounding difference", () => {
@@ -2558,7 +2724,12 @@ describe("tax read from Shopify, not replayed", () => {
     })
     const p = basePayload({
       id: "order-oss-rated",
-      customer: { ...basePayload().customer!, country: "DE", vat_id: null, address: "Hauptstrasse 5" },
+      customer: {
+        ...basePayload().customer!,
+        country: "DE",
+        vat_id: null,
+        address: "Hauptstrasse 5",
+      },
     })
     p.line_items = p.line_items.map((l) => ({ ...l, tax_rate_bp: 1900 }))
     const result = await onShopifyOrderPaid(p, ctx)
@@ -2587,8 +2758,20 @@ describe("tax read from Shopify, not replayed", () => {
         buyerTaxId: "FR60902000009",
         totalPrice: { amount: "120.00", currencyCode: "EUR" },
         taxesIncluded: true,
-        billingAddress: { company: "Acme SAS", address1: "1 rue Test", zip: "75001", city: "Paris", country_code: "FR" },
-        customer: { id: "c-v", email: "v@example.com", first_name: "V", last_name: "B", country: "FR" },
+        billingAddress: {
+          company: "Acme SAS",
+          address1: "1 rue Test",
+          zip: "75001",
+          city: "Paris",
+          country_code: "FR",
+        },
+        customer: {
+          id: "c-v",
+          email: "v@example.com",
+          first_name: "V",
+          last_name: "B",
+          country: "FR",
+        },
         lineItems: [
           {
             id: "li-v",
@@ -2647,7 +2830,11 @@ describe("tax review parks: attention once, resolved by an explicit override", (
     await onShopifyOrderCreated(mismatchEvent, ctx)
     const reviews = emits.filter((e) => e.entity === "deferred" && e.action === "tax_review")
     expect(reviews).toHaveLength(1)
-    expect(reviews[0]!.data).toMatchObject({ order_label: "#4001", reason: "shopify_tax_mismatch", resolved: false })
+    expect(reviews[0]!.data).toMatchObject({
+      order_label: "#4001",
+      reason: "shopify_tax_mismatch",
+      resolved: false,
+    })
   })
 
   // red: drop the tax_override handling in onShopifyOrderPaid -> the override re-parks.
@@ -2661,7 +2848,14 @@ describe("tax review parks: attention once, resolved by an explicit override", (
       "as_computed",
     ])
     const res = await deferredTaxOverride(
-      { ...ctx, approval: { approvalRequestId: "a1", approvalDeciderId: "u1", toolName: "invoicing:deferred_tax_override" } },
+      {
+        ...ctx,
+        approval: {
+          approvalRequestId: "a1",
+          approvalDeciderId: "u1",
+          toolName: "invoicing:deferred_tax_override",
+        },
+      },
       { deferred_id: deferredId, mode: "shopify_reported" },
     )
     expect(res.status).toBe("completed")
@@ -2673,7 +2867,11 @@ describe("tax review parks: attention once, resolved by an explicit override", (
     })
     const park = (await db.findOne("deferred_events", deferredId)) as Record<string, unknown>
     expect(park).toMatchObject({ status: "resolved", reason: "tax_override_shopify_reported" })
-    expect(emits.at(-1)).toMatchObject({ entity: "deferred", action: "tax_review", data: { resolved: true } })
+    expect(emits.at(-1)).toMatchObject({
+      entity: "deferred",
+      action: "tax_review",
+      data: { resolved: true },
+    })
   })
 
   test("as_computed issues an export with no tax when Shopify charged some", async () => {
@@ -2682,14 +2880,23 @@ describe("tax review parks: attention once, resolved by an explicit override", (
       {
         ...mismatchEvent,
         orderId: "order-exempt",
-        billingAddress: { address1: "1 Main St", zip: "10001", city: "New York", country_code: "US" },
+        billingAddress: {
+          address1: "1 Main St",
+          zip: "10001",
+          city: "New York",
+          country_code: "US",
+        },
         customer: { ...mismatchEvent.customer, country: "US" },
-        lineItems: [{ ...mismatchEvent.lineItems[0]!, taxLines: [{ rate: 0.0725, amount: "7.25" }] }],
+        lineItems: [
+          { ...mismatchEvent.lineItems[0]!, taxLines: [{ rate: 0.0725, amount: "7.25" }] },
+        ],
       },
       ctx,
     )
     const deferredId = (parked as { deferred_id: string }).deferred_id
-    expect((await db.findOne("deferred_events", deferredId)) as Record<string, unknown>).toMatchObject({
+    expect(
+      (await db.findOne("deferred_events", deferredId)) as Record<string, unknown>,
+    ).toMatchObject({
       reason: "tax_on_exempt_treatment",
     })
     const res = await deferredTaxOverride(ctx, { deferred_id: deferredId, mode: "as_computed" })
@@ -2707,9 +2914,16 @@ describe("tax review parks: attention once, resolved by an explicit override", (
       {
         ...mismatchEvent,
         orderId: "order-exempt-keep",
-        billingAddress: { address1: "1 Main St", zip: "10001", city: "New York", country_code: "US" },
+        billingAddress: {
+          address1: "1 Main St",
+          zip: "10001",
+          city: "New York",
+          country_code: "US",
+        },
         customer: { ...mismatchEvent.customer, country: "US" },
-        lineItems: [{ ...mismatchEvent.lineItems[0]!, taxLines: [{ rate: 0.0725, amount: "7.25" }] }],
+        lineItems: [
+          { ...mismatchEvent.lineItems[0]!, taxLines: [{ rate: 0.0725, amount: "7.25" }] },
+        ],
       },
       ctx,
     )
@@ -2718,18 +2932,26 @@ describe("tax review parks: attention once, resolved by an explicit override", (
       mode: "shopify_reported",
     })
     expect(res.status).toBe("completed")
-    expect(String((db.__all("documents")[0] as Record<string, unknown>).tax_total_minor)).toBe("725")
+    expect(String((db.__all("documents")[0] as Record<string, unknown>).tax_total_minor)).toBe(
+      "725",
+    )
   })
 
   test("a park that is not a tax review is refused, it retries on its own", async () => {
     const { ctx, db } = withEmits()
-    const p = basePayload({ id: "order-noemail", customer: { ...basePayload().customer!, email: null } })
+    const p = basePayload({
+      id: "order-noemail",
+      customer: { ...basePayload().customer!, email: null },
+    })
     const parked = await onShopifyOrderPaid(p, ctx)
     const res = await deferredTaxOverride(ctx, {
       deferred_id: (parked as { deferred_id: string }).deferred_id,
       mode: "as_computed",
     })
-    expect(res).toMatchObject({ status: "error", error: { code: "not_a_tax_review", refusal: true } })
+    expect(res).toMatchObject({
+      status: "error",
+      error: { code: "not_a_tax_review", refusal: true },
+    })
     expect(db.__all("documents")).toHaveLength(0)
   })
 
@@ -2741,36 +2963,52 @@ describe("tax review parks: attention once, resolved by an explicit override", (
     const review = await onShopifyOrderCreated(mismatchEvent, ctx)
     const reviewId = (review as { deferred_id: string }).deferred_id
     const noEmail = await onShopifyOrderPaid(
-      basePayload({ id: "order-noemail-pre", customer: { ...basePayload().customer!, email: null } }),
+      basePayload({
+        id: "order-noemail-pre",
+        customer: { ...basePayload().customer!, email: null },
+      }),
       ctx,
     )
     const noEmailId = (noEmail as { deferred_id: string }).deferred_id
     const parksBefore = db.__all("deferred_events").length
-    const noEmailStatus = ((await db.findOne("deferred_events", noEmailId)) as Record<string, unknown>).status
+    const noEmailStatus = (
+      (await db.findOne("deferred_events", noEmailId)) as Record<string, unknown>
+    ).status
 
-    expect(await deferredTaxOverridePreflight(ctx, { deferred_id: reviewId, mode: "as_computed" })).toEqual({ ok: true })
-    expect(await deferredTaxOverridePreflight(ctx, { deferred_id: reviewId, mode: "bogus" })).toMatchObject({
+    expect(
+      await deferredTaxOverridePreflight(ctx, { deferred_id: reviewId, mode: "as_computed" }),
+    ).toEqual({ ok: true })
+    expect(
+      await deferredTaxOverridePreflight(ctx, { deferred_id: reviewId, mode: "bogus" }),
+    ).toMatchObject({
       error: { code: "invalid_params" },
     })
     expect(await deferredTaxOverridePreflight(ctx, { mode: "as_computed" })).toMatchObject({
       error: { code: "invalid_params" },
     })
-    expect(await deferredTaxOverridePreflight(ctx, { deferred_id: "nope", mode: "as_computed" })).toMatchObject({
+    expect(
+      await deferredTaxOverridePreflight(ctx, { deferred_id: "nope", mode: "as_computed" }),
+    ).toMatchObject({
       error: { code: "not_found" },
     })
-    expect(await deferredTaxOverridePreflight(ctx, { deferred_id: noEmailId, mode: "as_computed" })).toMatchObject({
+    expect(
+      await deferredTaxOverridePreflight(ctx, { deferred_id: noEmailId, mode: "as_computed" }),
+    ).toMatchObject({
       error: { code: "not_a_tax_review" },
     })
     await db.update("deferred_events", reviewId, { status: "resolved" })
-    expect(await deferredTaxOverridePreflight(ctx, { deferred_id: reviewId, mode: "as_computed" })).toMatchObject({
+    expect(
+      await deferredTaxOverridePreflight(ctx, { deferred_id: reviewId, mode: "as_computed" }),
+    ).toMatchObject({
       error: { code: "already_resolved" },
     })
     expect(db.__all("documents")).toHaveLength(0)
     expect(db.__all("deferred_events")).toHaveLength(parksBefore)
-    expect(((await db.findOne("deferred_events", noEmailId)) as Record<string, unknown>).status).toBe(noEmailStatus)
+    expect(
+      ((await db.findOne("deferred_events", noEmailId)) as Record<string, unknown>).status,
+    ).toBe(noEmailStatus)
   })
 })
-
 
 // An order to a buyer in another member state, tax exempt in Shopify (every line at 0%), parked
 // first on a missing email. Its VAT number and company reach the order only afterwards.
@@ -2798,7 +3036,13 @@ describe("intra-EU order without VAT charged: late VAT number, or a review park"
         },
       },
       line_items: [
-        { id: "prod-it", description: "Instrument", quantity: "1", unit_price_minor: 36000n, tax_rate_bp: 0 },
+        {
+          id: "prod-it",
+          description: "Instrument",
+          quantity: "1",
+          unit_price_minor: 36000n,
+          tax_rate_bp: 0,
+        },
       ],
     })
   function setup(order: Record<string, unknown>) {
@@ -2838,14 +3082,18 @@ describe("intra-EU order without VAT charged: late VAT number, or a review park"
     const { ctx, db, byName, cronCtx } = setup({ name: "#3001", customer: { email: null } })
     const first = await onShopifyOrderPaid(italianBuyer(), ctx)
     expect(first).toMatchObject({ status: "deferred", reason: "awaiting_data" })
-    expect((db.__all("deferred_events")[0] as Record<string, unknown>).reason).toBe("customer_email_missing")
+    expect((db.__all("deferred_events")[0] as Record<string, unknown>).reason).toBe(
+      "customer_email_missing",
+    )
 
     // The operator adds the email and the "VAT number" custom attribute on the Shopify order.
     byName["shopify:orders_get"] = {
       status: "completed",
       result: liveOrder({ buyerTaxId: "IT01234567890" }),
     }
-    const swept = await deferredRetryJobHandler(undefined, cronCtx, { now: new Date("2030-01-01T00:00:00Z") })
+    const swept = await deferredRetryJobHandler(undefined, cronCtx, {
+      now: new Date("2030-01-01T00:00:00Z"),
+    })
     expect(swept.succeeded).toBe(1)
     const docs = db.__all("documents") as Array<Record<string, unknown>>
     expect(docs).toHaveLength(1)
@@ -2865,7 +3113,11 @@ describe("intra-EU order without VAT charged: late VAT number, or a review park"
     const park = db.__all("deferred_events")[0] as Record<string, unknown>
     expect(park.reason).toBe("buyer_vat_missing")
     const blockedOn = park.blocked_on as Record<string, unknown>
-    expect(blockedOn).toMatchObject({ kind: "tax_rate", treatment: "eu_b2c_oss", counterparty_country: "IT" })
+    expect(blockedOn).toMatchObject({
+      kind: "tax_rate",
+      treatment: "eu_b2c_oss",
+      counterparty_country: "IT",
+    })
     expect(String(blockedOn.detail)).toContain("VAT number")
     const listed = await deferredList({ db } as never, {})
     expect(listed.items[0]?.resolution_options).toEqual(["shopify_reported", "as_computed"])
@@ -2874,7 +3126,10 @@ describe("intra-EU order without VAT charged: late VAT number, or a review park"
   test("once the VAT number is on the order, the override issues the reverse charge", async () => {
     const { ctx, db, byName } = setup(liveOrder({ buyerTaxId: null }))
     const parked = await onShopifyOrderPaid(italianBuyer(), ctx)
-    byName["shopify:orders_get"] = { status: "completed", result: liveOrder({ buyerTaxId: "IT01234567890" }) }
+    byName["shopify:orders_get"] = {
+      status: "completed",
+      result: liveOrder({ buyerTaxId: "IT01234567890" }),
+    }
     const res = await deferredTaxOverride(ctx, {
       deferred_id: (parked as { deferred_id: string }).deferred_id,
       mode: "shopify_reported",
@@ -2892,7 +3147,14 @@ describe("intra-EU order without VAT charged: late VAT number, or a review park"
     p.customer = { ...p.customer!, email: "gina@example.com" }
     p.line_items = [
       { ...p.line_items[0]!, tax_rate_bp: 2200 },
-      { id: "", description: "Shipping", quantity: "1", unit_price_minor: 1000n, tax_rate_bp: 0, line_kind: "shipping" },
+      {
+        id: "",
+        description: "Shipping",
+        quantity: "1",
+        unit_price_minor: 1000n,
+        tax_rate_bp: 0,
+        line_kind: "shipping",
+      },
     ]
     const result = await onShopifyOrderPaid(p, ctx)
     expect(result.status).toBe("ok")
@@ -2922,7 +3184,13 @@ describe("order-paid e-invoicing gate", () => {
       totalPrice: { amount: "120.00", currencyCode: "EUR" },
       taxesIncluded: true,
       billingAddress: BILLING,
-      customer: { id: "c-ei", email: "forge@example.com", first_name: "Alex", last_name: "Exemple", country: "FR" },
+      customer: {
+        id: "c-ei",
+        email: "forge@example.com",
+        first_name: "Alex",
+        last_name: "Exemple",
+        country: "FR",
+      },
       lineItems: [
         {
           id: "li-ei",
@@ -2966,22 +3234,39 @@ describe("order-paid e-invoicing gate", () => {
       event_id: "order-ei-1",
       status: "awaiting_data",
       reason: "einvoice_data_missing",
-      blocked_on: { kind: "einvoice_identity", contact_id: "contact-ei", code: "einvoice_data_missing" },
+      blocked_on: {
+        kind: "einvoice_identity",
+        contact_id: "contact-ei",
+        code: "einvoice_data_missing",
+      },
     })
     expect(identityEmits(emits)).toHaveLength(1)
     expect(identityEmits(emits)[0]).toMatchObject({
       entityId: "contact-ei",
-      data: { contact_id: "contact-ei", code: "einvoice_data_missing", order_id: "order-ei-1", resolved: false },
+      data: {
+        contact_id: "contact-ei",
+        code: "einvoice_data_missing",
+        order_id: "order-ei-1",
+        resolved: false,
+      },
     })
     // The derived identity is recorded: a company on the billing address makes a business.
     const ids = db.__all("counterparty_identities")
     expect(ids).toHaveLength(1)
-    expect(ids[0]).toMatchObject({ contact_id: "contact-ei", customer_kind: "business", source: "derived", siren: null })
+    expect(ids[0]).toMatchObject({
+      contact_id: "contact-ei",
+      customer_kind: "business",
+      source: "derived",
+      siren: null,
+    })
 
     // Redelivery of the same order refreshes its park, emits nothing.
     await onShopifyOrderCreated(fireEvent(), ctx)
     // A second order for the same contact parks too, still one attention item for the contact.
-    const second = await onShopifyOrderCreated(fireEvent({ orderId: "order-ei-2", name: "#5002" }), ctx)
+    const second = await onShopifyOrderCreated(
+      fireEvent({ orderId: "order-ei-2", name: "#5002" }),
+      ctx,
+    )
     expect(second).toMatchObject({ status: "deferred" })
     expect(db.__all("deferred_events")).toHaveLength(2)
     expect(identityEmits(emits)).toHaveLength(1)
@@ -2996,10 +3281,19 @@ describe("order-paid e-invoicing gate", () => {
     expect(db.__all("documents")).toHaveLength(0)
     const ids = db.__all("counterparty_identities")
     expect(ids).toHaveLength(1)
-    expect(ids[0]).toMatchObject({ customer_kind: "business", siren: "900000001", source: "derived", confirmed_via: null })
+    expect(ids[0]).toMatchObject({
+      customer_kind: "business",
+      siren: "900000001",
+      source: "derived",
+      confirmed_via: null,
+    })
     expect(db.__all("deferred_events")[0]).toMatchObject({
       reason: "registry_unconfirmed",
-      blocked_on: { kind: "einvoice_identity", contact_id: "contact-ei", code: "registry_unconfirmed" },
+      blocked_on: {
+        kind: "einvoice_identity",
+        contact_id: "contact-ei",
+        code: "registry_unconfirmed",
+      },
     })
     expect(identityEmits(emits)).toHaveLength(1)
   })
@@ -3015,8 +3309,14 @@ describe("order-paid e-invoicing gate", () => {
       city: "Lyon",
     })
     // No ctx.fetch and no cached rate: the ECB is unreachable at issue.
-    const usd = fireEvent({ buyerTaxId: "FR68900000001", totalPrice: { amount: "120.00", currencyCode: "USD" } })
-    usd.lineItems = usd.lineItems.map((li) => ({ ...li, priceSet: { amount: "120.00", currencyCode: "USD" } }))
+    const usd = fireEvent({
+      buyerTaxId: "FR68900000001",
+      totalPrice: { amount: "120.00", currencyCode: "USD" },
+    })
+    usd.lineItems = usd.lineItems.map((li) => ({
+      ...li,
+      priceSet: { amount: "120.00", currencyCode: "USD" },
+    }))
     const r = await onShopifyOrderCreated(usd, ctx)
     expect(r.status).toBe("deferred")
     expect(db.__all("documents")).toHaveLength(0)
@@ -3122,7 +3422,10 @@ describe("order-paid e-invoicing gate", () => {
   test("an order above the approval threshold parks on the identity before any approval is requested", async () => {
     const made = makeCtx({
       issuerProfiles: [
-        { profile: { ...issuerFR, invoice_approval_threshold_minor: 5000n }, shopify_shop_id: "shop-1" },
+        {
+          profile: { ...issuerFR, invoice_approval_threshold_minor: 5000n },
+          shopify_shop_id: "shop-1",
+        },
       ],
       resolveContactId: "contact-ei",
       noDefaultIdentity: true,
@@ -3136,9 +3439,16 @@ describe("order-paid e-invoicing gate", () => {
     expect(made.db.__all("documents")).toHaveLength(0)
     expect(made.db.__all("deferred_events")[0]).toMatchObject({
       reason: "registry_unconfirmed",
-      blocked_on: { kind: "einvoice_identity", contact_id: "contact-ei", code: "registry_unconfirmed" },
+      blocked_on: {
+        kind: "einvoice_identity",
+        contact_id: "contact-ei",
+        code: "registry_unconfirmed",
+      },
     })
-    expect(made.db.__all("counterparty_identities")[0]).toMatchObject({ siren: "900000001", confirmed_via: null })
+    expect(made.db.__all("counterparty_identities")[0]).toMatchObject({
+      siren: "900000001",
+      confirmed_via: null,
+    })
     expect(identityEmits(emits)).toHaveLength(1)
   })
 
@@ -3150,8 +3460,12 @@ describe("order-paid e-invoicing gate", () => {
     expect(r.status).toBe("ok")
     const doc = db.__all("documents")[0] as Record<string, unknown>
     const log = doc.lifecycle_log as Array<Record<string, unknown>>
-    expect(log.find((e) => e.event === "einvoice_gate_warning")).toMatchObject({ code: "einvoice_data_missing" })
-    expect((doc.regime_reasons as Array<Record<string, unknown>>).some((x) => x.code === "gate_warning")).toBe(true)
+    expect(log.find((e) => e.event === "einvoice_gate_warning")).toMatchObject({
+      code: "einvoice_data_missing",
+    })
+    expect(
+      (doc.regime_reasons as Array<Record<string, unknown>>).some((x) => x.code === "gate_warning"),
+    ).toBe(true)
     expect(db.__all("deferred_events")).toHaveLength(0)
     expect(identityEmits(emits)).toHaveLength(0)
   })
@@ -3188,7 +3502,12 @@ describe("an order placed for a B2B company", () => {
 
   test("no order address: the counterparty comes from the company and its location", () => {
     const merged = mergeCustomer(
-      { id: "c1", email: null, contact_id: null, legal_name: "Pat Contact" } as OrderPaidPayload["customer"],
+      {
+        id: "c1",
+        email: null,
+        contact_id: null,
+        legal_name: "Pat Contact",
+      } as OrderPaidPayload["customer"],
       { name: "#1001", purchasingCompany: location },
     )
     expect(merged?.legal_name).toBe("Buyer Industries SAS")
@@ -3196,13 +3515,23 @@ describe("an order placed for a B2B company", () => {
     expect(merged?.country).toBe("FR")
     expect(merged?.email).toBe("buyer@buyer-industries.example")
     expect(merged?.address).toBe("5 rue Exemple\n69002 Lyon")
-    expect(merged?.billing).toMatchObject({ company: "Buyer Industries SAS", line1: "5 rue Exemple", country_code: "FR" })
+    expect(merged?.billing).toMatchObject({
+      company: "Buyer Industries SAS",
+      line1: "5 rue Exemple",
+      country_code: "FR",
+    })
     expect(merged?.shipping_address).toContain("9 quai Exemple")
   })
 
   test("a consumer order is merged exactly as before", () => {
     const merged = mergeCustomer(
-      { id: "c1", email: "a@b.example", contact_id: null, legal_name: "Pat Buyer", country: "FR" } as OrderPaidPayload["customer"],
+      {
+        id: "c1",
+        email: "a@b.example",
+        contact_id: null,
+        legal_name: "Pat Buyer",
+        country: "FR",
+      } as OrderPaidPayload["customer"],
       { name: "#1002", purchasingCompany: null },
     )
     expect(merged?.legal_name).toBe("Pat Buyer")
@@ -3226,7 +3555,12 @@ describe("an order placed for a B2B company", () => {
         },
       ],
     })
-    expect(net.line_items[0]).toMatchObject({ unit_price_minor: "62900", discount_minor: "0", tax_rate_bp: 2000, shopify_tax_minor: "12580" })
+    expect(net.line_items[0]).toMatchObject({
+      unit_price_minor: "62900",
+      discount_minor: "0",
+      tax_rate_bp: 2000,
+      shopify_tax_minor: "12580",
+    })
 
     const exempt = adaptShopifyOrderCreatedEvent({
       orderId: "9002",
@@ -3234,10 +3568,21 @@ describe("an order placed for a B2B company", () => {
       taxesIncluded: false,
       totalPrice: { amount: "629.00", currencyCode: "EUR" },
       lineItems: [
-        { id: "li-1", title: "Catalog item", quantity: 1, priceSet: { amount: "629.00", currencyCode: "EUR" }, taxLines: [], variant: { id: "11" } },
+        {
+          id: "li-1",
+          title: "Catalog item",
+          quantity: 1,
+          priceSet: { amount: "629.00", currencyCode: "EUR" },
+          taxLines: [],
+          variant: { id: "11" },
+        },
       ],
     })
-    expect(exempt.line_items[0]).toMatchObject({ unit_price_minor: "62900", discount_minor: "0", tax_rate_bp: 0 })
+    expect(exempt.line_items[0]).toMatchObject({
+      unit_price_minor: "62900",
+      discount_minor: "0",
+      tax_rate_bp: 0,
+    })
 
     const retail = adaptShopifyOrderCreatedEvent({
       orderId: "9003",
@@ -3255,6 +3600,10 @@ describe("an order placed for a B2B company", () => {
         },
       ],
     })
-    expect(retail.line_items[0]).toMatchObject({ unit_price_minor: "10000", discount_minor: "0", tax_rate_bp: 2000 })
+    expect(retail.line_items[0]).toMatchObject({
+      unit_price_minor: "10000",
+      discount_minor: "0",
+      tax_rate_bp: 2000,
+    })
   })
 })

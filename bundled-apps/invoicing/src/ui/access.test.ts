@@ -37,7 +37,11 @@ describe("viewer access", () => {
       },
     }
     expect(await loadViewerAccess()).toEqual(NO_ACCESS)
-    expect(await loadViewerAccess()).toEqual({ documents_write: true, settings_read: true, approve: false })
+    expect(await loadViewerAccess()).toEqual({
+      documents_write: true,
+      settings_read: true,
+      approve: false,
+    })
     expect(calls).toBe(2)
   })
 
@@ -45,7 +49,9 @@ describe("viewer access", () => {
     const sidebar = readFileSync(join(import.meta.dir, "sidebar.tsx"), "utf-8")
     expect(sidebar).toContain("loadViewerAccess")
     expect(sidebar).toMatch(/<Show when=\{canWrite\(\)\}>\s*<NewDocCta \/>/)
-    expect(sidebar).toMatch(/<Show when=\{canDecide\(\)\}>\s*<Row\s+href="\/invoicing\/pending-approval"/)
+    expect(sidebar).toMatch(
+      /<Show when=\{canDecide\(\)\}>\s*<Row\s+href="\/invoicing\/pending-approval"/,
+    )
     expect(sidebar).toMatch(/<Show when=\{canWrite\(\)\}>\s*<SectionHeader label=\{tr\("Admin"\)\}/)
   })
 })

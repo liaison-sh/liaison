@@ -3,14 +3,10 @@
 // `e_invoice` (or `needs_review`) document; gate-mode resolution; the error / preflight /
 // warning envelopes; and the regime snapshot written onto an issued document.
 // No guessing: a fact the caller does not have stays null.
-import {
-  type Regime,
-  type RegimeReason,
-  type CustomerKind,
-  classifyRegime,
-} from "./classify"
-import { type OperationCategory, type PaymentState, operationCategory } from "./classify-operation"
+
 import { currencyExponent } from "../money"
+import { type CustomerKind, classifyRegime, type Regime, type RegimeReason } from "./classify"
+import { type OperationCategory, operationCategory, type PaymentState } from "./classify-operation"
 import { eurMinor } from "./fx"
 import { isSirenConfirmed, isValidSiren } from "./identity"
 
@@ -187,7 +183,10 @@ export async function resolveBuyerFacts(
   const snap = fromSnapshot(input.snapshot, "snapshot")
   const contactId = input.contact_id ?? input.original?.counterparty_contact_id ?? null
   if (!contactId) return snap
-  const rows = (await db.findMany("counterparty_identities", { where: { contact_id: contactId }, limit: 1 })) as Row[]
+  const rows = (await db.findMany("counterparty_identities", {
+    where: { contact_id: contactId },
+    limit: 1,
+  })) as Row[]
   const idn = rows[0]
   if (!idn) return snap
   const idSiren = str(idn.siren)
@@ -200,7 +199,9 @@ export async function resolveBuyerFacts(
     vatId: str(idn.vat_id) ?? snap.vatId,
     sirenStatus: oneOf(idn.registry_status, ["A", "C"] as const),
     territoryTreatment: oneOf(idn.territory_treatment, ["as_fr", "as_foreign"] as const),
-    sirenConfirmed: idSiren ? isSirenConfirmed(idn as { confirmed_via?: string | null }) : snap.sirenConfirmed,
+    sirenConfirmed: idSiren
+      ? isSirenConfirmed(idn as { confirmed_via?: string | null })
+      : snap.sirenConfirmed,
     confirmedVia: idSiren ? oneOf(idn.confirmed_via, VIA) : snap.confirmedVia,
     billing: snap.billing,
   }
@@ -263,7 +264,8 @@ const MISSING = {
     field: "customer_kind",
     why: "A French buyer must be recorded as a business, an individual, a public entity or a non-registered entity.",
     fix_tool: "counterparty_identity_set",
-    fix_hint: "Record customer_kind on the buyer's identity, or pass customer_kind on the issuing call.",
+    fix_hint:
+      "Record customer_kind on the buyer's identity, or pass customer_kind on the issuing call.",
   },
   siren_missing: {
     field: "buyer_siren",
@@ -275,7 +277,8 @@ const MISSING = {
     field: "buyer_siren",
     why: "The buyer's SIREN fails the checksum.",
     fix_tool: "counterparty_identity_lookup",
-    fix_hint: "Look the buyer up in the business registry to replace the SIREN with the registered one.",
+    fix_hint:
+      "Look the buyer up in the business registry to replace the SIREN with the registered one.",
   },
   siren_inactive: {
     field: "buyer_siren",
@@ -309,7 +312,8 @@ const MISSING = {
     field: "territory_treatment",
     why: "The buyer's territory is not decided automatically.",
     fix_tool: "counterparty_territory_set",
-    fix_hint: "An administrator records the treatment (as_fr or as_foreign) with counterparty_territory_set.",
+    fix_hint:
+      "An administrator records the treatment (as_fr or as_foreign) with counterparty_territory_set.",
   },
   operation_category: {
     field: "operation_category",
@@ -334,9 +338,17 @@ const MISSING_CODE: Record<keyof typeof MISSING, GateCode> = {
 }
 
 /** Every (code, field, fix tool) the gate can return: the actions the readiness list offers. */
-export const GATE_BLOCKER_TOOLS: ReadonlyArray<{ key: string; code: GateCode; field: string; fix_tool: string }> = (
-  Object.keys(MISSING) as Array<keyof typeof MISSING>
-).map((k) => ({ key: k, code: MISSING_CODE[k], field: MISSING[k].field, fix_tool: MISSING[k].fix_tool }))
+export const GATE_BLOCKER_TOOLS: ReadonlyArray<{
+  key: string
+  code: GateCode
+  field: string
+  fix_tool: string
+}> = (Object.keys(MISSING) as Array<keyof typeof MISSING>).map((k) => ({
+  key: k,
+  code: MISSING_CODE[k],
+  field: MISSING[k].field,
+  fix_tool: MISSING[k].fix_tool,
+}))
 
 const CODE_ORDER: readonly GateCode[] = [
   "customer_kind_missing",
@@ -354,7 +366,8 @@ function buildMessage(code: GateCode, missing: MissingItem[]): string {
     customer_kind_missing: "The customer kind of this French buyer is not recorded.",
     siren_invalid: "The buyer's SIREN is not valid.",
     siren_inactive: "The buyer's SIREN is ceased.",
-    einvoice_needs_review: "The buyer's territory needs a decision before this document can be issued.",
+    einvoice_needs_review:
+      "The buyer's territory needs a decision before this document can be issued.",
     operation_category_missing: "The operation category (goods, services, mixed) must be stated.",
     registry_unconfirmed: "The buyer's SIREN is not confirmed against the business registry.",
     imported_original_missing: "The imported original of this document is missing.",
@@ -372,7 +385,9 @@ function buildMessage(code: GateCode, missing: MissingItem[]): string {
 
 /** The missing-SIREN item, naming the tool that can actually supply it for this buyer. */
 function sirenMissingItem(b: BuyerFacts): MissingItem {
-  return b.source === "original" && !b.contactId ? MISSING.siren_missing_contactless_original : MISSING.siren_missing
+  return b.source === "original" && !b.contactId
+    ? MISSING.siren_missing_contactless_original
+    : MISSING.siren_missing
 }
 
 /** Classify, then run the mandatory-data pass. Returns the full evaluation. */
@@ -389,18 +404,23 @@ export function evaluateEinvoiceGate(input: GateInput): GateEvaluation {
     buyerSiren: b.siren,
     sirenStatus: b.sirenStatus,
     territoryTreatment: b.territoryTreatment,
-    original: input.original ? { regime: input.original.regime, transmissionStatus: input.original.transmissionStatus } : null,
+    original: input.original
+      ? { regime: input.original.regime, transmissionStatus: input.original.transmissionStatus }
+      : null,
   })
 
   // Operation category: explicit wins; otherwise derived from the lines.
   let category: OperationCategory | null = input.operationCategory
   let opSource: OperationSource | null = category ? (input.operationSource ?? "explicit") : null
   if (!category) {
-    const derived = operationCategory(input.lines, { authoritative: input.operationSource === "lines_authoritative" })
+    const derived = operationCategory(input.lines, {
+      authoritative: input.operationSource === "lines_authoritative",
+    })
     category = derived.category
     opSource = derived.category ? derived.source : null
   }
-  const categoryStated = !!category && (opSource === "explicit" || opSource === "lines_authoritative")
+  const categoryStated =
+    !!category && (opSource === "explicit" || opSource === "lines_authoritative")
 
   const found = new Map<GateCode, MissingItem[]>()
   const add = (code: GateCode, item: MissingItem) => {
@@ -434,8 +454,7 @@ export function evaluateEinvoiceGate(input: GateInput): GateEvaluation {
       // original), and registry confirmation unless it is the original's recorded SIREN.
       if (!b.siren) {
         add("einvoice_data_missing", sirenMissingItem(b))
-      }
-      else if (!isValidSiren(b.siren)) add("siren_invalid", MISSING.siren_invalid)
+      } else if (!isValidSiren(b.siren)) add("siren_invalid", MISSING.siren_invalid)
       else if (!b.sirenConfirmed) add("registry_unconfirmed", MISSING.registry_unconfirmed)
     }
     if (!b.billing.postcode || !b.billing.city || !b.billing.countryCode) {
@@ -445,7 +464,9 @@ export function evaluateEinvoiceGate(input: GateInput): GateEvaluation {
   }
 
   let refusal: GateResult | null = null
-  const blockers = CODE_ORDER.flatMap((c) => (found.get(c) ?? []).map((item) => ({ code: c, item })))
+  const blockers = CODE_ORDER.flatMap((c) =>
+    (found.get(c) ?? []).map((item) => ({ code: c, item })),
+  )
   const code = CODE_ORDER.find((c) => found.has(c))
   if (code) {
     const missing = CODE_ORDER.flatMap((c) => found.get(c) ?? [])
@@ -490,7 +511,12 @@ function errorPayload(r: GateResult) {
     message: r.message,
     retryable: true as const,
     status: r.status,
-    body: { missing: r.missing, regime: r.regime, reasons: r.reasons, gate_mode: r.mode } satisfies GateErrorBody,
+    body: {
+      missing: r.missing,
+      regime: r.regime,
+      reasons: r.reasons,
+      gate_mode: r.mode,
+    } satisfies GateErrorBody,
   }
 }
 
@@ -517,7 +543,10 @@ export function importedOriginalMissing(): GateResult {
 }
 
 /** Handler error envelope (kernel tool-error shape, A30). */
-export function gateErrorEnvelope(r: GateResult): { status: "error"; error: ReturnType<typeof errorPayload> } {
+export function gateErrorEnvelope(r: GateResult): {
+  status: "error"
+  error: ReturnType<typeof errorPayload>
+} {
   return { status: "error", error: errorPayload(r) }
 }
 
@@ -527,7 +556,11 @@ export function gatePreflight(r: GateResult): { error: ReturnType<typeof errorPa
 }
 
 /** Warn mode: the calm warning returned in the tool result as `einvoicing_warning`. */
-export function gateWarning(r: GateResult): { code: GateCode; message: string; missing: MissingItem[] } {
+export function gateWarning(r: GateResult): {
+  code: GateCode
+  message: string
+  missing: MissingItem[]
+} {
   return { code: r.code, message: r.message, missing: r.missing }
 }
 
@@ -546,13 +579,24 @@ interface SettingsDb extends FindManyDb {
 }
 
 /** Statuses only an issued invoice / credit note reaches (drafts, quotes and approvals excluded). */
-const ISSUED_STATUSES = ["issued", "paid", "overdue", "refunded", "voided", "cancelled", "fulfilled"] as const
+const ISSUED_STATUSES = [
+  "issued",
+  "paid",
+  "overdue",
+  "refunded",
+  "voided",
+  "cancelled",
+  "fulfilled",
+] as const
 
 /** True iff the org already holds a numbered document issued before the regime existed.
  *  One bounded equality lookup per issued status (no paging, no scan over drafts). */
 async function hasPreRegimeIssuedDocument(db: FindManyDb): Promise<boolean> {
   for (const status of ISSUED_STATUSES) {
-    const rows = (await db.findMany("documents", { where: { status, regime: null }, limit: 5 })) as Row[]
+    const rows = (await db.findMany("documents", {
+      where: { status, regime: null },
+      limit: 5,
+    })) as Row[]
     if (rows.some((r) => str(r.number) !== null)) return true
   }
   return false
@@ -563,7 +607,10 @@ async function hasPreRegimeIssuedDocument(db: FindManyDb): Promise<boolean> {
  * default is `warn` when a pre-regime issued document exists, else `enforce`; with
  * `materialise`, that default is written (first write path), never on a read path.
  */
-export async function resolveGateMode(db: SettingsDb, opts: { materialise: boolean }): Promise<GateMode> {
+export async function resolveGateMode(
+  db: SettingsDb,
+  opts: { materialise: boolean },
+): Promise<GateMode> {
   const rows = (await db.findMany("einvoicing_settings", { limit: 1 })) as Row[]
   const existing = oneOf(rows[0]?.gate_mode, ["warn", "enforce"] as const)
   if (existing) return existing
@@ -693,11 +740,16 @@ export function regimeSnapshot(args: {
     internal_cancellation: input.docType === "credit_note" ? ev.internalCancellation : null,
   }
   if (args.fx && args.taxTotalMinor !== undefined) {
-    if (!args.currency) throw new Error("regimeSnapshot: an fx snapshot needs the document currency")
+    if (!args.currency)
+      throw new Error("regimeSnapshot: an fx snapshot needs the document currency")
     out.fx_rate = args.fx.rate
     out.fx_rate_date = args.fx.rate_date
     out.fx_source = "ECB"
-    out.tax_total_eur_minor = eurMinor(args.taxTotalMinor, args.fx.rate, currencyExponent(args.currency)).toString()
+    out.tax_total_eur_minor = eurMinor(
+      args.taxTotalMinor,
+      args.fx.rate,
+      currencyExponent(args.currency),
+    ).toString()
   }
   const d = args.delivery
   if (d && !sameAddress(d, b.billing)) {
@@ -727,13 +779,18 @@ interface AttentionCtx {
  */
 /** True when an open identity park other than `parkId` waits on `contactId`. Filtered by the
  *  park's `contact_id` column and status, never a bounded scan of every open park. */
-async function otherOpenIdentityPark(db: FindManyDb, contactId: string, parkId: string): Promise<boolean> {
+async function otherOpenIdentityPark(
+  db: FindManyDb,
+  contactId: string,
+  parkId: string,
+): Promise<boolean> {
   const open = (await db.findMany("deferred_events", {
     where: { contact_id: contactId, status: "awaiting_data" },
     limit: 50,
   })) as Row[]
   return open.some(
-    (r) => String(r.id) !== parkId && ((r.blocked_on ?? {}) as Row).kind === EINVOICE_IDENTITY_PARK_KIND,
+    (r) =>
+      String(r.id) !== parkId && ((r.blocked_on ?? {}) as Row).kind === EINVOICE_IDENTITY_PARK_KIND,
   )
 }
 
@@ -747,7 +804,8 @@ export async function resolveIdentityAttention(
   input: { parkId: string; contact_id: string | null },
 ): Promise<boolean> {
   if (!ctx.emit) return false
-  if (input.contact_id && (await otherOpenIdentityPark(ctx.db, input.contact_id, input.parkId))) return false
+  if (input.contact_id && (await otherOpenIdentityPark(ctx.db, input.contact_id, input.parkId)))
+    return false
   await ctx.emit({
     entity: "einvoicing",
     action: "identity_missing",
@@ -767,7 +825,8 @@ export async function raiseIdentityAttention(
   },
 ): Promise<boolean> {
   if (!input.park.created || !ctx.emit) return false
-  if (input.contact_id && (await otherOpenIdentityPark(ctx.db, input.contact_id, input.park.id))) return false
+  if (input.contact_id && (await otherOpenIdentityPark(ctx.db, input.contact_id, input.park.id)))
+    return false
   await ctx.emit({
     entity: "einvoicing",
     action: "identity_missing",

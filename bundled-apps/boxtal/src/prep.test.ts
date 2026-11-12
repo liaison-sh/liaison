@@ -8,16 +8,36 @@
 //   • The category -> customs-basis mapping, including the dealer master pack of 5 cover case.
 
 import { describe, expect, it } from "bun:test"
-import { backfillContactShippingAddress, computePrepInputHash, fetchShopifyOrderMeta, isRecipientComplete, matchesFilters, missingRecipientFields, prepAddShipment, prepExclude, prepList, prepRestore, prepSelectOffer, prepSetCategory, prepSetStatus, prepSetValidated, prepSync } from "./prep"
-import { pickSelectedOffer, resolveStageOffer } from "./prep-selection"
-import { settingsProductCodesSet } from "./settings"
-import { shipDisabledReason } from "./ui/prep-row-logic"
+import {
+  makeOrderScanStub,
+  type OrderScanStubOptions,
+  orderKeysFor,
+} from "./__fixtures__/order-scan"
 import { HOUSE_PACKAGING_POLICY } from "./__fixtures__/packaging-policy"
-import { createMockDb } from "./test-db"
-import { makeOrderScanStub, orderKeysFor, type OrderScanStubOptions } from "./__fixtures__/order-scan"
-import { OPEN_ORDERS_QUERY, ORDER_SCAN_LIMIT, shippabilityFactsFromHit } from "./orders"
-import { queueCounts, toPrepareList } from "./queues"
 import type { BoxtalToolCtx, CrossAppEnvelope } from "./ctx"
+import { OPEN_ORDERS_QUERY, ORDER_SCAN_LIMIT, shippabilityFactsFromHit } from "./orders"
+import {
+  backfillContactShippingAddress,
+  computePrepInputHash,
+  fetchShopifyOrderMeta,
+  isRecipientComplete,
+  matchesFilters,
+  missingRecipientFields,
+  prepAddShipment,
+  prepExclude,
+  prepList,
+  prepRestore,
+  prepSelectOffer,
+  prepSetCategory,
+  prepSetStatus,
+  prepSetValidated,
+  prepSync,
+} from "./prep"
+import { pickSelectedOffer, resolveStageOffer } from "./prep-selection"
+import { queueCounts, toPrepareList } from "./queues"
+import { settingsProductCodesSet } from "./settings"
+import { createMockDb } from "./test-db"
+import { shipDisabledReason } from "./ui/prep-row-logic"
 
 const CREDS = { v1Key: "k1", v1Secret: "s1", v3Key: "k3", v3Secret: "s3", environment: "sandbox" }
 
@@ -97,7 +117,11 @@ interface CtxOpts {
   scan?: OrderScanStubOptions
 }
 
-function makeCtx(opts: CtxOpts): { ctx: BoxtalToolCtx; db: ReturnType<typeof createMockDb>; keys: string[] } {
+function makeCtx(opts: CtxOpts): {
+  ctx: BoxtalToolCtx
+  db: ReturnType<typeof createMockDb>
+  keys: string[]
+} {
   const byId = new Map<string, ReturnType<typeof singleLineInvoice>>(
     opts.invoices.map((d) => [d.id, d] as const),
   )
@@ -123,7 +147,13 @@ function makeCtx(opts: CtxOpts): { ctx: BoxtalToolCtx; db: ReturnType<typeof cre
         // world is an org that configured it.
         { id: "cfg-packaging", key: "packaging_policy", value: HOUSE_PACKAGING_POLICY },
         ...(typeof opts.excludePickupPoint === "boolean"
-          ? [{ id: "cfg-pickup", key: "exclude_pickup_point_services", value: opts.excludePickupPoint }]
+          ? [
+              {
+                id: "cfg-pickup",
+                key: "exclude_pickup_point_services",
+                value: opts.excludePickupPoint,
+              },
+            ]
           : []),
       ],
       ...opts.seed,
@@ -131,12 +161,24 @@ function makeCtx(opts: CtxOpts): { ctx: BoxtalToolCtx; db: ReturnType<typeof cre
   })
   const fetch = async (url: string) => {
     if (url.includes("/iam/account-app/token")) {
-      return { status: 200, headers: {}, body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }) }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }),
+      }
     }
     if (url.includes("/cotation")) {
-      return { status: opts.cotationStatus ?? 200, headers: {}, body: opts.cotationXml ?? DOMESTIC_XML }
+      return {
+        status: opts.cotationStatus ?? 200,
+        headers: {},
+        body: opts.cotationXml ?? DOMESTIC_XML,
+      }
     }
-    return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: {} }) }
+    return {
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ status: 200, timestamp: "t", content: {} }),
+    }
   }
   // The row's order name/tags now come from the LIVE order (the scan), not from prep_meta, so a
   // test that stubs `shopifyOrder` gets those facts onto its synthetic order too.
@@ -155,7 +197,9 @@ function makeCtx(opts: CtxOpts): { ctx: BoxtalToolCtx; db: ReturnType<typeof cre
     if (scanned) return scanned
     if (target === "invoicing:documents_get") {
       const ref =
-        typeof args === "string" ? args : ((args as { id?: string }).id ?? (args as { document_ref?: string }).document_ref)
+        typeof args === "string"
+          ? args
+          : ((args as { id?: string }).id ?? (args as { document_ref?: string }).document_ref)
       return { status: "completed", result: (ref && byId.get(ref)) ?? null }
     }
     if (target === "shopify:orders_get") {
@@ -173,7 +217,10 @@ function makeCtx(opts: CtxOpts): { ctx: BoxtalToolCtx; db: ReturnType<typeof cre
         return { status: "pending_approval", approval_id: "appr-proforma-1" }
       }
       if (opts.proformaMode === "forbidden") {
-        return { status: "error", error: { code: "forbidden", message: "missing invoicing:documents:write" } }
+        return {
+          status: "error",
+          error: { code: "forbidden", message: "missing invoicing:documents:write" },
+        }
       }
       const p = args as {
         counterparty?: { legal_name?: string; country?: string }
@@ -209,7 +256,10 @@ function makeCtx(opts: CtxOpts): { ctx: BoxtalToolCtx; db: ReturnType<typeof cre
         })),
       } as never)
       issuedProformas.push({ id, params: p as Record<string, unknown> })
-      return { status: "completed", result: { status: "completed", document_id: id, number: `PF-${proformaSeq}` } }
+      return {
+        status: "completed",
+        result: { status: "completed", document_id: id, number: `PF-${proformaSeq}` },
+      }
     }
     if (target === "invoicing:documents_search") {
       const type = (args as { type?: string }).type
@@ -223,7 +273,10 @@ function makeCtx(opts: CtxOpts): { ctx: BoxtalToolCtx; db: ReturnType<typeof cre
           })),
         }
       }
-      return { status: "completed", result: opts.invoices.map((d) => ({ channel: "shopify", ...d })) }
+      return {
+        status: "completed",
+        result: opts.invoices.map((d) => ({ channel: "shopify", ...d })),
+      }
     }
     if (target === "kernel:contacts_read") {
       const contactId = (args as { contactId?: string }).contactId ?? ""
@@ -240,7 +293,15 @@ function makeCtx(opts: CtxOpts): { ctx: BoxtalToolCtx; db: ReturnType<typeof cre
       db,
       fetch,
       executeTool,
-      connections: { boxtal: { getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }), getToken: async () => { throw new Error("no") }, getAccounts: async () => [] } },
+      connections: {
+        boxtal: {
+          getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }),
+          getToken: async () => {
+            throw new Error("no")
+          },
+          getAccounts: async () => [],
+        },
+      },
       config: { get: async () => null, has: async () => false },
       logger: { info() {}, warn() {}, error() {}, debug() {} },
     } as never,
@@ -274,7 +335,10 @@ describe("computePrepInputHash", () => {
     expect(a).toBe(b)
   })
   it("changes when the category changes (same route/parcels)", () => {
-    const base = { destination_country: "US", parcels: [{ length: 31, width: 26, height: 9, weight: 2.5 }] }
+    const base = {
+      destination_country: "US",
+      parcels: [{ length: 31, width: 26, height: 9, weight: 2.5 }],
+    }
     const sale = computePrepInputHash({ ...base, category: "sale" })
     const gift = computePrepInputHash({ ...base, category: "gift" })
     expect(sale).not.toBe(gift)
@@ -294,7 +358,9 @@ describe("prepList", () => {
   // read must now resolve ZERO drafts: no per-candidate documents_get, and no live Boxtal call.
   it("resolves NO shipment drafts and makes no live Boxtal call (the whole-page-refresh cost oracle)", async () => {
     const calls: string[] = []
-    const { ctx, keys } = makeCtx({ invoices: [singleLineInvoice("doc-1"), singleLineInvoice("doc-2")] })
+    const { ctx, keys } = makeCtx({
+      invoices: [singleLineInvoice("doc-1"), singleLineInvoice("doc-2")],
+    })
     void keys
     const tracked = {
       ...ctx,
@@ -346,7 +412,13 @@ describe("prepList", () => {
   // understated the row by the whole VAT (net 83 + tax 17 = 100 displayed as 83).
   it("reports the document's tax-inclusive grand total for a taxed row, not the net line sum", async () => {
     const { ctx, keys } = makeCtx({
-      invoices: [singleLineInvoice("doc-taxed", { country: "FR", unitPriceMinor: "83", grandTotalMinor: "100" })],
+      invoices: [
+        singleLineInvoice("doc-taxed", {
+          country: "FR",
+          unitPriceMinor: "83",
+          grandTotalMinor: "100",
+        }),
+      ],
     })
     const { rows } = await prepList(ctx, { order_keys: keys })
     expect(rows[0]!.grand_total_minor).toBe(100)
@@ -357,7 +429,13 @@ describe("prepList", () => {
   // looked right. It must still read the document total once, never doubled.
   it("reports the document total unchanged for a zero-rated export row (no double count)", async () => {
     const { ctx, keys } = makeCtx({
-      invoices: [singleLineInvoice("doc-export", { country: "NO", unitPriceMinor: "100", grandTotalMinor: "100" })],
+      invoices: [
+        singleLineInvoice("doc-export", {
+          country: "NO",
+          unitPriceMinor: "100",
+          grandTotalMinor: "100",
+        }),
+      ],
     })
     const { rows } = await prepList(ctx, { order_keys: keys })
     expect(rows[0]!.grand_total_minor).toBe(100)
@@ -376,18 +454,55 @@ describe("prepList", () => {
   it("joins cached prep_meta (Shopify order name/tags) and prep_quote (top-3 offers) onto the row", async () => {
     const { ctx, keys } = makeCtx({
       invoices: [singleLineInvoice("doc-1")],
-      scan: { orderOverrides: { "doc-1": { name: "#1042", tags: ["wholesale", "priority"], createdAt: "2026-07-01" } } },
+      scan: {
+        orderOverrides: {
+          "doc-1": { name: "#1042", tags: ["wholesale", "priority"], createdAt: "2026-07-01" },
+        },
+      },
       seed: {
-        prep_meta: [{ id: "m1", document_ref: "doc-1", order_name: "#1042", order_tags: ["wholesale", "priority"], order_created_at: "2026-07-01" }],
+        prep_meta: [
+          {
+            id: "m1",
+            document_ref: "doc-1",
+            order_name: "#1042",
+            order_tags: ["wholesale", "priority"],
+            order_created_at: "2026-07-01",
+          },
+        ],
         prep_quote: [
           {
             id: "q1",
             document_ref: "doc-1",
-            input_hash: computePrepInputHash({ destination_country: "FR", parcels: [{ length: 30, width: 25, height: 8, weight: 2.5 }], category: "sale" }),
+            input_hash: computePrepInputHash({
+              destination_country: "FR",
+              parcels: [{ length: 30, width: 25, height: 8, weight: 2.5 }],
+              category: "sale",
+            }),
             offers: [
-              { carrier: "Mondial Relay", offer_code: "MRLY-Point", price_ht_minor: 540, currency: "EUR", delivery_date: "2026-06-03", eta_business_days: 2 },
-              { carrier: "Chronopost", offer_code: "CHRP-Chrono13", price_ht_minor: 980, currency: "EUR", delivery_date: "2026-06-02", eta_business_days: 1 },
-              { carrier: "UPS", offer_code: "UPSE-Express", price_ht_minor: 1800, currency: "EUR", delivery_date: "2026-06-02", eta_business_days: 1 },
+              {
+                carrier: "Mondial Relay",
+                offer_code: "MRLY-Point",
+                price_ht_minor: 540,
+                currency: "EUR",
+                delivery_date: "2026-06-03",
+                eta_business_days: 2,
+              },
+              {
+                carrier: "Chronopost",
+                offer_code: "CHRP-Chrono13",
+                price_ht_minor: 980,
+                currency: "EUR",
+                delivery_date: "2026-06-02",
+                eta_business_days: 1,
+              },
+              {
+                carrier: "UPS",
+                offer_code: "UPSE-Express",
+                price_ht_minor: 1800,
+                currency: "EUR",
+                delivery_date: "2026-06-02",
+                eta_business_days: 1,
+              },
             ],
             quoted_at: new Date().toISOString(),
           },
@@ -414,8 +529,21 @@ describe("prepList", () => {
             id: "q1",
             document_ref: "doc-1",
             // Hashed under the OLD category ("sale") — now stale vs the row's current "gift".
-            input_hash: computePrepInputHash({ destination_country: "FR", parcels: [{ length: 30, width: 25, height: 8, weight: 2.5 }], category: "sale" }),
-            offers: [{ carrier: "Chronopost", offer_code: "CHRP-Chrono13", price_ht_minor: 980, currency: "EUR", delivery_date: "2026-06-02", eta_business_days: 1 }],
+            input_hash: computePrepInputHash({
+              destination_country: "FR",
+              parcels: [{ length: 30, width: 25, height: 8, weight: 2.5 }],
+              category: "sale",
+            }),
+            offers: [
+              {
+                carrier: "Chronopost",
+                offer_code: "CHRP-Chrono13",
+                price_ht_minor: 980,
+                currency: "EUR",
+                delivery_date: "2026-06-02",
+                eta_business_days: 1,
+              },
+            ],
             quoted_at: new Date().toISOString(),
           },
         ],
@@ -439,7 +567,10 @@ describe("prepList", () => {
 
   it("filters by country, search, and product substring", async () => {
     const { ctx, keys } = makeCtx({
-      invoices: [singleLineInvoice("doc-us", { country: "US" }), singleLineInvoice("doc-fr", { country: "FR" })],
+      invoices: [
+        singleLineInvoice("doc-us", { country: "US" }),
+        singleLineInvoice("doc-fr", { country: "FR" }),
+      ],
     })
     const { rows: us } = await prepList(ctx, { order_keys: keys, country: "US" })
     expect(us.map((r) => r.document_ref)).toEqual(["doc-us"])
@@ -447,14 +578,19 @@ describe("prepList", () => {
     expect(bySearch.map((r) => r.document_ref)).toEqual(["doc-fr"])
     const { rows: byProduct } = await prepList(ctx, { order_keys: keys, product: "K6" })
     expect(byProduct).toHaveLength(2)
-    const { rows: byMissingProduct } = await prepList(ctx, { order_keys: keys, product: "ZZZ-NOPE" })
+    const { rows: byMissingProduct } = await prepList(ctx, {
+      order_keys: keys,
+      product: "ZZZ-NOPE",
+    })
     expect(byMissingProduct).toHaveLength(0)
   })
 
   it("surfaces last_sync_at from the app_config marker prep_sync writes", async () => {
     const { ctx, keys } = makeCtx({
       invoices: [singleLineInvoice("doc-1")],
-      seed: { app_config: [{ id: "cfg-sync", key: "prep_last_sync_at", value: "2026-07-10T08:00:00Z" }] },
+      seed: {
+        app_config: [{ id: "cfg-sync", key: "prep_last_sync_at", value: "2026-07-10T08:00:00Z" }],
+      },
     })
     const { last_sync_at } = await prepList(ctx, { order_keys: keys })
     expect(last_sync_at).toBe("2026-07-10T08:00:00Z")
@@ -469,7 +605,10 @@ describe("prepList", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Wraps a ctx so every cross-app target it calls is recorded, in order. */
-function trackCalls(ctx: BoxtalToolCtx): { ctx: BoxtalToolCtx; calls: Array<{ target: string; args: unknown }> } {
+function trackCalls(ctx: BoxtalToolCtx): {
+  ctx: BoxtalToolCtx
+  calls: Array<{ target: string; args: unknown }>
+} {
   const calls: Array<{ target: string; args: unknown }> = []
   return {
     calls,
@@ -523,7 +662,9 @@ describe("order-driven worklist scan", () => {
     }
     const bare = makeCtx({ invoices: [], scan: { extraOrders: [order] } })
     const { rows: before } = await prepList(bare.ctx, {})
-    expect(before[0]!.products).toBe("2xACME-K1-BLACK-B2B, 1xACME-K1-HARDCOVER-B2B, 1xACME-K1-MYSTERY-B2B")
+    expect(before[0]!.products).toBe(
+      "2xACME-K1-BLACK-B2B, 1xACME-K1-HARDCOVER-B2B, 1xACME-K1-MYSTERY-B2B",
+    )
 
     const mapped = makeCtx({ invoices: [], scan: { extraOrders: [order] } })
     await settingsProductCodesSet(mapped.ctx, {
@@ -552,7 +693,11 @@ describe("order-driven worklist scan", () => {
     }
     const { ctx } = makeCtx({ invoices: [], scan: { extraOrders: [order] } })
     await settingsProductCodesSet(ctx, {
-      ranks: [{ code: "K6", rank: 1 }, { code: "MP", rank: 2 }, { code: "SOUND", rank: 1000 }],
+      ranks: [
+        { code: "K6", rank: 1 },
+        { code: "MP", rank: 2 },
+        { code: "SOUND", rank: 1000 },
+      ],
     })
     const { rows } = await prepList(ctx, {})
     expect(rows[0]!.products).toBe("1xK6, 1xMP, 1xBSkin, 1xSOUND")
@@ -587,9 +732,11 @@ describe("order-driven worklist scan", () => {
         attributes: { financialStatus: "PAID", cancelledAt: "2026-08-01T00:00:00Z" },
       }),
     ).toMatchObject({ financial_status: "PAID", cancelled_at: "2026-08-01T00:00:00Z" })
-    expect(shippabilityFactsFromHit({ attributes: { financialStatus: "REFUNDED" } })).toMatchObject({
-      financial_status: "REFUNDED",
-    })
+    expect(shippabilityFactsFromHit({ attributes: { financialStatus: "REFUNDED" } })).toMatchObject(
+      {
+        financial_status: "REFUNDED",
+      },
+    )
   })
 
   it("(5f) a row-scoped read never scans: one orders_get, one document join, one draft resolved", async () => {
@@ -708,7 +855,12 @@ describe("order-driven worklist scan", () => {
     const hits = Array.from({ length: ORDER_SCAN_LIMIT }, (_, i) => ({
       id: `gid://shopify/Order/${8000 + i}`,
       name: `#${8000 + i}`,
-      attributes: { financialStatus: "PAID", fulfillmentStatus: "UNFULFILLED", cancelledAt: null, tags: [] },
+      attributes: {
+        financialStatus: "PAID",
+        fulfillmentStatus: "UNFULFILLED",
+        cancelledAt: null,
+        tags: [],
+      },
     }))
     const truncating = {
       ...ctx,
@@ -731,7 +883,12 @@ describe("order-driven worklist scan", () => {
       invoices: [singleLineInvoice("doc-1"), singleLineInvoice("doc-excluded")],
       scan: { extraOrders: [{ order_id: "701", name: "#7010" }] },
     })
-    const excludedKey = [...orderKeysFor([singleLineInvoice("doc-1"), singleLineInvoice("doc-excluded")] as never).values()][1]!
+    const excludedKey = [
+      ...orderKeysFor([
+        singleLineInvoice("doc-1"),
+        singleLineInvoice("doc-excluded"),
+      ] as never).values(),
+    ][1]!
     await prepExclude(ctx, { order_key: excludedKey })
     const { rows } = await prepList(ctx, {})
     const counts = await queueCounts(ctx)
@@ -800,7 +957,10 @@ describe("order-driven worklist scan", () => {
     const withProforma = {
       ...ctx,
       executeTool: async (target: string, args: unknown) => {
-        if (target === "invoicing:documents_search" && (args as { type?: string }).type === "proforma") {
+        if (
+          target === "invoicing:documents_search" &&
+          (args as { type?: string }).type === "proforma"
+        ) {
           return {
             status: "completed",
             result: [{ id: "prof-77", number: "PF-77", shipment_ref: "prep:pending:tok-1" }],
@@ -854,8 +1014,13 @@ async function docLines(
 ): Promise<Array<{ description: string; quantity: number; unit_price_minor: string }>> {
   const env = await ctx.executeTool("invoicing:documents_get", { id })
   if (env.status !== "completed") return []
-  return ((env.result as { lines?: Array<{ description: string; quantity: number; unit_price_minor: string }> })
-    ?.lines ?? [])
+  return (
+    (
+      env.result as {
+        lines?: Array<{ description: string; quantity: number; unit_price_minor: string }>
+      }
+    )?.lines ?? []
+  )
 }
 
 describe("prep_add_shipment: a row for a parcel with no Shopify order behind it", () => {
@@ -883,7 +1048,12 @@ describe("prep_add_shipment: a row for a parcel with no Shopify order behind it"
             name: "#9110",
             customer: "Repair Owner",
             lineItems: [
-              { sku: "RAL-44", title: "Kestrel 6", quantity: 1, variant_id: "gid://shopify/ProductVariant/77" },
+              {
+                sku: "RAL-44",
+                title: "Kestrel 6",
+                quantity: 1,
+                variant_id: "gid://shopify/ProductVariant/77",
+              },
             ],
             shippingAddress: {
               name: "Repair Owner",
@@ -985,7 +1155,8 @@ describe("prep_add_shipment: a row for a parcel with no Shopify order behind it"
     })
     expect(res.row!.invoice.state).toBe("issued")
     expect(res.row!.anchor_kind).toBe("proforma")
-    const lines = (res.row!.document_ref ?? "").length > 0 ? await docLines(ctx, res.row!.document_ref!) : []
+    const lines =
+      (res.row!.document_ref ?? "").length > 0 ? await docLines(ctx, res.row!.document_ref!) : []
     expect(lines.map((l) => l.description)).toEqual([
       "1x Tessera 2: SAMPLE - NO COMMERCIAL VALUE",
       "2x Cable: SAMPLE - NO COMMERCIAL VALUE",
@@ -1059,13 +1230,22 @@ describe("prepSync: a failed quote says why", () => {
   function withWarnings(ctx: BoxtalToolCtx): Array<{ msg: string; meta: Record<string, unknown> }> {
     const warnings: Array<{ msg: string; meta: Record<string, unknown> }> = []
     Object.assign(ctx, {
-      logger: { info() {}, error() {}, debug() {}, warn: (msg: string, meta: Record<string, unknown>) => warnings.push({ msg, meta }) },
+      logger: {
+        info() {},
+        error() {},
+        debug() {},
+        warn: (msg: string, meta: Record<string, unknown>) => warnings.push({ msg, meta }),
+      },
     })
     return warnings
   }
 
   it("a refused quote is logged with the order key, stored on the row, shown by prep_list and summarised", async () => {
-    const { ctx, db, keys } = makeCtx({ invoices: [singleLineInvoice("doc-1")], cotationXml: REFUSED_XML, cotationStatus: 400 })
+    const { ctx, db, keys } = makeCtx({
+      invoices: [singleLineInvoice("doc-1")],
+      cotationXml: REFUSED_XML,
+      cotationStatus: 400,
+    })
     const warnings = withWarnings(ctx)
     const result = await prepSync(ctx, {})
     const row = result.rows.find((r) => r.document_ref === "doc-1")!
@@ -1099,7 +1279,10 @@ describe("prepSync: a failed quote says why", () => {
     const result = await prepSync(ctx, {})
     expect(result.rows[0]!.error).toBe("no offers returned")
     expect(warnings.some((w) => w.meta.error === "no offers returned")).toBe(true)
-    expect(result.errors).toEqual({ count: 1, first: [{ order_key: keys[0]!, error: "no offers returned" }] })
+    expect(result.errors).toEqual({
+      count: 1,
+      first: [{ order_key: keys[0]!, error: "no offers returned" }],
+    })
     const listed = (await prepList(ctx, { order_keys: [keys[0]!] })).rows[0]!
     expect(listed.state).toBe("quote_missing")
     expect(listed.reason).toBe("Quote failed: no offers returned")
@@ -1133,7 +1316,10 @@ describe("prepSync", () => {
   it("quotes and caches the offers, cheapest first", async () => {
     // excludePickupPoint:false keeps DOMESTIC_XML's Mondial Relay Point Relais offer (a relay
     // service the default-on policy would drop) so this test can assert cheapest-first ordering.
-    const { ctx, db, keys } = makeCtx({ invoices: [singleLineInvoice("doc-1")], excludePickupPoint: false })
+    const { ctx, db, keys } = makeCtx({
+      invoices: [singleLineInvoice("doc-1")],
+      excludePickupPoint: false,
+    })
     const result = await prepSync(ctx, {})
     const row = result.rows.find((r) => r.document_ref === "doc-1")!
     expect(row.requoted).toBe(true)
@@ -1156,10 +1342,18 @@ describe("prepSync", () => {
   })
 
   it("caches each offer's service name + relay flag for the row dropdown/badge", async () => {
-    const { ctx, db, keys } = makeCtx({ invoices: [singleLineInvoice("doc-1")], excludePickupPoint: false })
+    const { ctx, db, keys } = makeCtx({
+      invoices: [singleLineInvoice("doc-1")],
+      excludePickupPoint: false,
+    })
     await prepSync(ctx, {})
     const cached = db.__all("prep_quote").find((q) => q.document_ref === "doc-1")!
-    const offers = cached.offers as Array<{ carrier: string; service: string; is_pickup_point: boolean; price_ttc_minor: number }>
+    const offers = cached.offers as Array<{
+      carrier: string
+      service: string
+      is_pickup_point: boolean
+      price_ttc_minor: number
+    }>
     const relay = offers.find((o) => o.carrier === "Mondial Relay")!
     expect(relay.service).toBe("Point Relais")
     expect(relay.is_pickup_point).toBe(true) // badged as relay in the dropdown
@@ -1172,12 +1366,19 @@ describe("prepSync", () => {
     const JPY_XML = `<?xml version="1.0"?><cotation><shipment>
       <offer><mode>COM</mode><operator><code>YMTO</code><label>Yamato</label></operator><service><code>TA-Q-BIN</code><label>TA-Q-BIN</label></service><price><currency>JPY</currency><tax-exclusive>980</tax-exclusive><tax-inclusive>1078</tax-inclusive></price><collection><date>2026-06-01</date></collection><delivery><date>2026-06-02</date><type><code>DELIVERY</code></type></delivery></offer>
     </shipment></cotation>`
-    const { ctx, db, keys } = makeCtx({ invoices: [singleLineInvoice("doc-1", { country: "JP" })], cotationXml: JPY_XML })
+    const { ctx, db, keys } = makeCtx({
+      invoices: [singleLineInvoice("doc-1", { country: "JP" })],
+      cotationXml: JPY_XML,
+    })
     const result = await prepSync(ctx, {})
     const row = result.rows.find((r) => r.document_ref === "doc-1")!
     expect(row.requoted).toBe(true)
     const cached = db.__all("prep_quote").find((q) => q.document_ref === "doc-1")!
-    const offers = cached.offers as Array<{ carrier: string; price_ht_minor: number; currency: string }>
+    const offers = cached.offers as Array<{
+      carrier: string
+      price_ht_minor: number
+      currency: string
+    }>
     expect(offers).toHaveLength(1)
     // JPY is zero-decimal: 980 JPY minor units IS 980, never Math.round(980 * 100) = 98000.
     expect(offers[0]!.currency).toBe("JPY")
@@ -1193,8 +1394,21 @@ describe("prepSync", () => {
           {
             id: "q1",
             document_ref: "doc-1",
-            input_hash: computePrepInputHash({ destination_country: "FR", parcels: [{ length: 30, width: 25, height: 8, weight: 2.5 }], category: "sale" }),
-            offers: [{ carrier: "Chronopost", offer_code: "CHRP-Chrono13", price_ht_minor: 980, currency: "EUR", delivery_date: "2026-06-02", eta_business_days: 1 }],
+            input_hash: computePrepInputHash({
+              destination_country: "FR",
+              parcels: [{ length: 30, width: 25, height: 8, weight: 2.5 }],
+              category: "sale",
+            }),
+            offers: [
+              {
+                carrier: "Chronopost",
+                offer_code: "CHRP-Chrono13",
+                price_ht_minor: 980,
+                currency: "EUR",
+                delivery_date: "2026-06-02",
+                eta_business_days: 1,
+              },
+            ],
             quoted_at: now,
           },
         ],
@@ -1209,38 +1423,84 @@ describe("prepSync", () => {
 
   it("re-quotes a row whose cached quote is past the 12h TTL even with an unchanged hash", async () => {
     const stale = new Date(Date.now() - 13 * 60 * 60 * 1000).toISOString()
-    const hash = computePrepInputHash({ destination_country: "FR", parcels: [{ length: 30, width: 25, height: 8, weight: 2.5 }], category: "sale" })
+    const hash = computePrepInputHash({
+      destination_country: "FR",
+      parcels: [{ length: 30, width: 25, height: 8, weight: 2.5 }],
+      category: "sale",
+    })
     const { ctx, db, keys } = makeCtx({
       invoices: [singleLineInvoice("doc-1")],
       seed: {
         prep_quote: [
-          { id: "q1", document_ref: "doc-1", input_hash: hash, offers: [{ carrier: "Old", offer_code: "OLD", price_ht_minor: 1, currency: "EUR", delivery_date: null, eta_business_days: null }], quoted_at: stale },
+          {
+            id: "q1",
+            document_ref: "doc-1",
+            input_hash: hash,
+            offers: [
+              {
+                carrier: "Old",
+                offer_code: "OLD",
+                price_ht_minor: 1,
+                currency: "EUR",
+                delivery_date: null,
+                eta_business_days: null,
+              },
+            ],
+            quoted_at: stale,
+          },
         ],
       },
     })
     const result = await prepSync(ctx, {})
     expect(result.rows.find((r) => r.document_ref === "doc-1")!.requoted).toBe(true)
     const cached = db.__all("prep_quote").find((q) => q.document_ref === "doc-1")!
-    expect((cached.offers as Array<{ offer_code: string }>).some((o) => o.offer_code === "OLD")).toBe(false)
+    expect(
+      (cached.offers as Array<{ offer_code: string }>).some((o) => o.offer_code === "OLD"),
+    ).toBe(false)
   })
 
   it("re-quotes when the category changed since the cached quote's hash (edit invalidation)", async () => {
-    const hash = computePrepInputHash({ destination_country: "FR", parcels: [{ length: 30, width: 25, height: 8, weight: 2.5 }], category: "sale" })
+    const hash = computePrepInputHash({
+      destination_country: "FR",
+      parcels: [{ length: 30, width: 25, height: 8, weight: 2.5 }],
+      category: "sale",
+    })
     const { ctx, db, keys } = makeCtx({
       invoices: [singleLineInvoice("doc-1")],
       seed: {
         prep_state: [{ id: "s1", document_ref: "doc-1", category: "gift", excluded: false }],
-        prep_quote: [{ id: "q1", document_ref: "doc-1", input_hash: hash, offers: [{ carrier: "Old", offer_code: "OLD", price_ht_minor: 1, currency: "EUR", delivery_date: null, eta_business_days: null }], quoted_at: new Date().toISOString() }],
+        prep_quote: [
+          {
+            id: "q1",
+            document_ref: "doc-1",
+            input_hash: hash,
+            offers: [
+              {
+                carrier: "Old",
+                offer_code: "OLD",
+                price_ht_minor: 1,
+                currency: "EUR",
+                delivery_date: null,
+                eta_business_days: null,
+              },
+            ],
+            quoted_at: new Date().toISOString(),
+          },
+        ],
       },
     })
     const result = await prepSync(ctx, {})
     expect(result.rows.find((r) => r.document_ref === "doc-1")!.requoted).toBe(true)
     const cached = db.__all("prep_quote").find((q) => q.document_ref === "doc-1")!
-    expect((cached.offers as Array<{ offer_code: string }>).some((o) => o.offer_code === "OLD")).toBe(false)
+    expect(
+      (cached.offers as Array<{ offer_code: string }>).some((o) => o.offer_code === "OLD"),
+    ).toBe(false)
   })
 
   it("honors document_refs to scope a targeted re-quote to one row", async () => {
-    const { ctx, db, keys } = makeCtx({ invoices: [singleLineInvoice("doc-1"), singleLineInvoice("doc-2")] })
+    const { ctx, db, keys } = makeCtx({
+      invoices: [singleLineInvoice("doc-1"), singleLineInvoice("doc-2")],
+    })
     const result = await prepSync(ctx, { document_refs: ["doc-1"] })
     expect(result.covered_count).toBe(1)
     expect(result.total_count).toBe(1)
@@ -1281,11 +1541,17 @@ describe("prepSync", () => {
     const base = makeCtx({ invoices })
     const tracked = trackCalls(base.ctx)
     await prepSync(tracked.ctx, { document_refs: ["doc-1"] })
-    expect(tracked.calls.filter((c) => c.target === "shopify:orders_search").length).toBeGreaterThan(0)
+    expect(
+      tracked.calls.filter((c) => c.target === "shopify:orders_search").length,
+    ).toBeGreaterThan(0)
   })
 
   it("bounds the sync by limit and reports covered/total honestly", async () => {
-    const invoices = [singleLineInvoice("doc-1"), singleLineInvoice("doc-2"), singleLineInvoice("doc-3")]
+    const invoices = [
+      singleLineInvoice("doc-1"),
+      singleLineInvoice("doc-2"),
+      singleLineInvoice("doc-3"),
+    ]
     const { ctx, keys } = makeCtx({ invoices })
     const result = await prepSync(ctx, { limit: 2 })
     expect(result.covered_count).toBe(2)
@@ -1306,7 +1572,11 @@ describe("prepSync", () => {
   // what the scan read, which is also why it can never go stale relative to the grid.
   it("writes prep_meta from the scan, without a per-row shopify:orders_get or invoicing:documents_get", async () => {
     const calls: { target: string }[] = []
-    const { ctx: rawCtx, db, keys } = makeCtx({
+    const {
+      ctx: rawCtx,
+      db,
+      keys,
+    } = makeCtx({
       invoices: [singleLineInvoice("doc-1")],
       shopifyOrder: () => ({ name: "#2001", tags: ["b2b"], createdAt: "2026-07-02T00:00:00Z" }),
     })
@@ -1329,7 +1599,11 @@ describe("prepSync", () => {
 
   it("reports covered/total honestly when more rows are in scope than the limit allows", async () => {
     const { ctx } = makeCtx({
-      invoices: [singleLineInvoice("doc-1"), singleLineInvoice("doc-2"), singleLineInvoice("doc-3")],
+      invoices: [
+        singleLineInvoice("doc-1"),
+        singleLineInvoice("doc-2"),
+        singleLineInvoice("doc-3"),
+      ],
     })
     const result = await prepSync(ctx, { limit: 2 })
     expect(result.total_count).toBe(3)
@@ -1352,13 +1626,17 @@ describe("prep_set_category: the category decides the shipping DOCUMENT", () => 
     expect(res.row!.anchor_kind).toBe("proforma")
     const stored = db.__all("prep_order_state").find((r) => r.order_key === res.row!.order_key)!
     expect(stored.proforma_document_ref).toBe("prof-1")
-    for (const fragment of REPAIR_ITEMS) expect(res.row!.products.length + fragment.length).toBeGreaterThan(0)
+    for (const fragment of REPAIR_ITEMS)
+      expect(res.row!.products.length + fragment.length).toBeGreaterThan(0)
   })
 
   it("(3c) a second repair set reuses the stored proforma instead of issuing another", async () => {
     const { ctx } = makeCtx({ invoices: [singleLineInvoice("doc-1")] })
     const first = await prepSetCategory(ctx, { document_ref: "doc-1", category: "repair" })
-    const second = await prepSetCategory(ctx, { order_key: first.row!.order_key, category: "repair" })
+    const second = await prepSetCategory(ctx, {
+      order_key: first.row!.order_key,
+      category: "repair",
+    })
     expect(second.order_state.proforma_document_ref).toBe("prof-1")
     expect(second.row!.document_ref).toBe("prof-1")
   })
@@ -1366,7 +1644,10 @@ describe("prep_set_category: the category decides the shipping DOCUMENT", () => 
   it("(3b) switching back to sale re-anchors on the invoice and issues nothing", async () => {
     const { ctx } = makeCtx({ invoices: [singleLineInvoice("doc-1")] })
     const repaired = await prepSetCategory(ctx, { document_ref: "doc-1", category: "repair" })
-    const back = await prepSetCategory(ctx, { order_key: repaired.row!.order_key, category: "sale" })
+    const back = await prepSetCategory(ctx, {
+      order_key: repaired.row!.order_key,
+      category: "sale",
+    })
     expect(back.row!.document_ref).toBe("doc-1")
     expect(back.row!.anchor_kind).toBe("invoice")
     // The proforma is NOT deleted; it simply stops anchoring the row.
@@ -1471,8 +1752,26 @@ describe("dealer master pack of 5 (category-aware end-to-end)", () => {
     const { ctx, keys } = makeCtx({
       invoices: [singleLineInvoice("doc-dealer", { quantity: 5 })],
       seed: {
-        pack: [{ id: "pack-dealer5", name: "DEALER-MASTER-5", length: 80, width: 60, height: 50, gross_weight: 15, content_category: null }],
-        pack_component: [{ id: "pc-1", pack_id: "pack-dealer5", product_source: "shopify", product_id: "RAL-44", quantity: 5 }],
+        pack: [
+          {
+            id: "pack-dealer5",
+            name: "DEALER-MASTER-5",
+            length: 80,
+            width: 60,
+            height: 50,
+            gross_weight: 15,
+            content_category: null,
+          },
+        ],
+        pack_component: [
+          {
+            id: "pc-1",
+            pack_id: "pack-dealer5",
+            product_source: "shopify",
+            product_id: "RAL-44",
+            quantity: 5,
+          },
+        ],
       },
     })
     const { rows } = await prepList(ctx, { order_keys: keys })
@@ -1488,8 +1787,26 @@ describe("dealer master pack of 5 (category-aware end-to-end)", () => {
     const { ctx, keys } = makeCtx({
       invoices: [singleLineInvoice("doc-dealer", { quantity: 5 })],
       seed: {
-        pack: [{ id: "pack-dealer5", name: "DEALER-MASTER-5", length: 80, width: 60, height: 50, gross_weight: 15, content_category: null }],
-        pack_component: [{ id: "pc-1", pack_id: "pack-dealer5", product_source: "shopify", product_id: "RAL-44", quantity: 5 }],
+        pack: [
+          {
+            id: "pack-dealer5",
+            name: "DEALER-MASTER-5",
+            length: 80,
+            width: 60,
+            height: 50,
+            gross_weight: 15,
+            content_category: null,
+          },
+        ],
+        pack_component: [
+          {
+            id: "pc-1",
+            pack_id: "pack-dealer5",
+            product_source: "shopify",
+            product_id: "RAL-44",
+            quantity: 5,
+          },
+        ],
       },
     })
     await prepSetCategory(ctx, { document_ref: "doc-dealer", category: "gift" })
@@ -1549,35 +1866,74 @@ describe("prepSelectOffer + resolveStageOffer", () => {
   function selCtx(quoteOffers?: Array<Record<string, unknown>>) {
     const seed: Record<string, Array<Record<string, unknown>>> = {}
     if (quoteOffers) {
-      seed.prep_quote = [{ id: "q1", document_ref: "doc-1", input_hash: "h1", offers: quoteOffers, quoted_at: "2026-07-10T08:00:00Z" }]
+      seed.prep_quote = [
+        {
+          id: "q1",
+          document_ref: "doc-1",
+          input_hash: "h1",
+          offers: quoteOffers,
+          quoted_at: "2026-07-10T08:00:00Z",
+        },
+      ]
     }
     const db = createMockDb({ seed })
     return { ctx: { db } as unknown as import("./ctx").BoxtalToolCtx, db }
   }
   const CACHED = [
-    { carrier: "Chronopost", service: "Chrono 13", offer_code: "CHRP-Chrono13", price_ht_minor: 980, price_ttc_minor: 1176, currency: "EUR", delivery_date: "2026-06-02", eta_business_days: 1, is_pickup_point: false },
-    { carrier: "UPS", service: "UPS Express", offer_code: "UPSE-Express", price_ht_minor: 1800, price_ttc_minor: 2160, currency: "EUR", delivery_date: "2026-06-02", eta_business_days: 1, is_pickup_point: false },
+    {
+      carrier: "Chronopost",
+      service: "Chrono 13",
+      offer_code: "CHRP-Chrono13",
+      price_ht_minor: 980,
+      price_ttc_minor: 1176,
+      currency: "EUR",
+      delivery_date: "2026-06-02",
+      eta_business_days: 1,
+      is_pickup_point: false,
+    },
+    {
+      carrier: "UPS",
+      service: "UPS Express",
+      offer_code: "UPSE-Express",
+      price_ht_minor: 1800,
+      price_ttc_minor: 2160,
+      currency: "EUR",
+      delivery_date: "2026-06-02",
+      eta_business_days: 1,
+      is_pickup_point: false,
+    },
   ]
 
   it("persists a valid selection and rejects an offer not in the cached quote", async () => {
     const { ctx, db } = selCtx(CACHED)
     await prepSelectOffer(ctx, { document_ref: "doc-1", offer_code: "UPSE-Express" })
-    expect(db.__all("prep_state").find((s) => s.document_ref === "doc-1")?.selected_offer_code).toBe("UPSE-Express")
-    await expect(prepSelectOffer(ctx, { document_ref: "doc-1", offer_code: "NOPE-x" })).rejects.toThrow(/not among/)
+    expect(
+      db.__all("prep_state").find((s) => s.document_ref === "doc-1")?.selected_offer_code,
+    ).toBe("UPSE-Express")
+    await expect(
+      prepSelectOffer(ctx, { document_ref: "doc-1", offer_code: "NOPE-x" }),
+    ).rejects.toThrow(/not among/)
   })
 
   it("clears the selection when offer_code is null", async () => {
     const { ctx, db } = selCtx(CACHED)
     await prepSelectOffer(ctx, { document_ref: "doc-1", offer_code: "UPSE-Express" })
     await prepSelectOffer(ctx, { document_ref: "doc-1", offer_code: null })
-    expect(db.__all("prep_state").find((s) => s.document_ref === "doc-1")?.selected_offer_code).toBeNull()
+    expect(
+      db.__all("prep_state").find((s) => s.document_ref === "doc-1")?.selected_offer_code,
+    ).toBeNull()
   })
 
   it("resolveStageOffer returns the chosen offer (source=selected), not the cheapest", async () => {
     const { ctx } = selCtx(CACHED)
     await prepSelectOffer(ctx, { document_ref: "doc-1", offer_code: "UPSE-Express" })
     const resolved = await resolveStageOffer(ctx, "doc-1")
-    expect(resolved).toMatchObject({ offer_code: "UPSE-Express", source: "selected", price_ttc_minor: 2160, is_pickup_point: false })
+    expect(resolved).toMatchObject({
+      offer_code: "UPSE-Express",
+      source: "selected",
+      price_ttc_minor: 2160,
+      is_pickup_point: false,
+    })
   })
 
   it("resolveStageOffer falls back to the cheapest (offers[0]) when nothing is chosen", async () => {
@@ -1592,11 +1948,18 @@ describe("prepSelectOffer + resolveStageOffer", () => {
   })
 
   it("surfaces the selected offer on the prep_list row, and invalidates it when the quote goes stale", async () => {
-    const { ctx, keys } = makeCtx({ invoices: [singleLineInvoice("doc-1")], excludePickupPoint: false })
+    const { ctx, keys } = makeCtx({
+      invoices: [singleLineInvoice("doc-1")],
+      excludePickupPoint: false,
+    })
     await prepSync(ctx, {})
     // Pick the (more expensive) UPS offer over the cheapest Mondial Relay.
-    const cached = (ctx as unknown as { db: ReturnType<typeof createMockDb> }).db.__all("prep_quote")[0]!
-    const upsCode = (cached.offers as Array<{ carrier: string; offer_code: string }>).find((o) => o.carrier === "UPS")!.offer_code
+    const cached = (ctx as unknown as { db: ReturnType<typeof createMockDb> }).db.__all(
+      "prep_quote",
+    )[0]!
+    const upsCode = (cached.offers as Array<{ carrier: string; offer_code: string }>).find(
+      (o) => o.carrier === "UPS",
+    )!.offer_code
     await prepSelectOffer(ctx, { document_ref: "doc-1", offer_code: upsCode })
 
     const { rows } = await prepList(ctx, { order_keys: keys })
@@ -1707,8 +2070,26 @@ describe("prep validation mark (now an alias onto the status enum)", () => {
   })
 
   it("filters rows by validated:true / validated:false / omitted", () => {
-    const yes = { validated: true, excluded: false, destination: "FR", order_tags: [], products: "", invoice_ref: "A", order_name: null, customer: "c" } as never
-    const no = { validated: false, excluded: false, destination: "FR", order_tags: [], products: "", invoice_ref: "B", order_name: null, customer: "c" } as never
+    const yes = {
+      validated: true,
+      excluded: false,
+      destination: "FR",
+      order_tags: [],
+      products: "",
+      invoice_ref: "A",
+      order_name: null,
+      customer: "c",
+    } as never
+    const no = {
+      validated: false,
+      excluded: false,
+      destination: "FR",
+      order_tags: [],
+      products: "",
+      invoice_ref: "B",
+      order_name: null,
+      customer: "c",
+    } as never
     expect(matchesFilters(yes, { validated: true })).toBe(true)
     expect(matchesFilters(no, { validated: true })).toBe(false)
     expect(matchesFilters(no, { validated: false })).toBe(true)
@@ -1733,7 +2114,9 @@ describe("backfillContactShippingAddress", () => {
     const writes: Array<{ contactId: string; metadata: Record<string, unknown> }> = []
     const executeTool = async (target: string, args: unknown): Promise<CrossAppEnvelope> => {
       if (target === "kernel:contacts_read") {
-        return contact ? { status: "completed", result: { contact } } : { status: "completed", result: null }
+        return contact
+          ? { status: "completed", result: { contact } }
+          : { status: "completed", result: null }
       }
       if (target === "kernel:contacts_write") {
         const a = args as { contactId: string; metadata: Record<string, unknown> }
@@ -1771,18 +2154,21 @@ describe("backfillContactShippingAddress", () => {
     // Neither shippingAddress nor customerAddress carries an email (shopify's normalizeAddress
     // strips it), so this exercises the REAL prepSync path (fetchShopifyOrderMeta stitching the
     // order's own email onto the address) rather than a hand-built getAddress fixture.
-    const { ctx, writes } = makeContactCtx({ metadata: {} }, {
-      name: "#2001",
-      attributes: { email: "jane@example.com" },
-      shippingAddress: {
-        name: "Jane Doe",
-        address1: "11418 Richmond Hill",
-        city: "New York",
-        zip: "10001",
-        countryCode: "US",
-        provinceCode: "NY",
+    const { ctx, writes } = makeContactCtx(
+      { metadata: {} },
+      {
+        name: "#2001",
+        attributes: { email: "jane@example.com" },
+        shippingAddress: {
+          name: "Jane Doe",
+          address1: "11418 Richmond Hill",
+          city: "New York",
+          zip: "10001",
+          countryCode: "US",
+          provinceCode: "NY",
+        },
       },
-    })
+    )
     const ok = await backfillContactShippingAddress(ctx, "contact-1", async () => {
       const meta = await fetchShopifyOrderMeta(ctx, "1")
       return meta?.address ?? null
@@ -1797,26 +2183,29 @@ describe("backfillContactShippingAddress", () => {
     // A real order (#3423) carried a shipping address with no phone while the customer
     // record held one, and the row sat blocked as incomplete for a value we already had.
     // The fallback is per field: the shipping address still wins for everything else.
-    const { ctx, writes } = makeContactCtx({ metadata: {} }, {
-      name: "#3423",
-      attributes: { email: "buyer@example.com" },
-      shippingAddress: {
-        name: "Eirik Syrdalen",
-        address1: "Industriveien 4",
-        city: "Grimstad",
-        zip: "4879",
-        countryCode: "NO",
-        phone: null,
+    const { ctx, writes } = makeContactCtx(
+      { metadata: {} },
+      {
+        name: "#3423",
+        attributes: { email: "buyer@example.com" },
+        shippingAddress: {
+          name: "Eirik Syrdalen",
+          address1: "Industriveien 4",
+          city: "Grimstad",
+          zip: "4879",
+          countryCode: "NO",
+          phone: null,
+        },
+        customerAddress: {
+          name: "Eirik Syrdalen",
+          address1: "Somewhere else entirely",
+          city: "Oslo",
+          zip: "0001",
+          countryCode: "NO",
+          phone: "+47 37 40 36 19",
+        },
       },
-      customerAddress: {
-        name: "Eirik Syrdalen",
-        address1: "Somewhere else entirely",
-        city: "Oslo",
-        zip: "0001",
-        countryCode: "NO",
-        phone: "+47 37 40 36 19",
-      },
-    })
+    )
     const ok = await backfillContactShippingAddress(ctx, "contact-1", async () => {
       const meta = await fetchShopifyOrderMeta(ctx, "1")
       return meta?.address ?? null
@@ -2067,11 +2456,16 @@ describe("missingRecipientFields", () => {
     // incomplete" without naming which field, leaving the operator to guess.
     expect(missingRecipientFields({ ...FULL, email: null })).toEqual(["email"])
     expect(missingRecipientFields({ ...FULL, phone: null })).toEqual(["phone"])
-    expect(missingRecipientFields({ ...FULL, email: null, phone: null })).toEqual(["email", "phone"])
+    expect(missingRecipientFields({ ...FULL, email: null, phone: null })).toEqual([
+      "email",
+      "phone",
+    ])
   })
 
   it("a UAE recipient needs no postal code (the country has none)", () => {
-    expect(missingRecipientFields({ ...FULL, countryIsoCode: "AE", city: "Dubai", postalCode: null })).toEqual([])
+    expect(
+      missingRecipientFields({ ...FULL, countryIsoCode: "AE", city: "Dubai", postalCode: null }),
+    ).toEqual([])
     expect(missingRecipientFields({ ...FULL, postalCode: null })).toEqual(["postal code"])
   })
 
@@ -2126,7 +2520,11 @@ describe("an order-less row created from an existing order", () => {
         withoutShipTo: true,
         extraOrders: [
           { order_id: "3423", name: "#3423", customer: "Eirik Syrdalen", country: "NO" },
-          ...(opts.extraOrderIds ?? []).map((id) => ({ order_id: id, name: `#${id}`, customer: "Other Customer" })),
+          ...(opts.extraOrderIds ?? []).map((id) => ({
+            order_id: id,
+            name: `#${id}`,
+            customer: "Other Customer",
+          })),
         ],
       },
       seed: {
@@ -2173,7 +2571,10 @@ describe("an order-less row created from an existing order", () => {
   // address, so the street landed in the city field and the row was reported un-shippable for
   // fields the row itself was storing correctly.
   it("uses the structured address the row stores, not the comma-split document address", async () => {
-    const { ctx } = repairCtx({ stateRecipient: STORED_RECIPIENT, cachedRecipient: MANGLED_RECIPIENT })
+    const { ctx } = repairCtx({
+      stateRecipient: STORED_RECIPIENT,
+      cachedRecipient: MANGLED_RECIPIENT,
+    })
     const { rows } = await prepList(ctx, {})
     const row = rows.find((r) => r.order_key === "doc:prof-repair")!
     expect(row.recipient).toMatchObject({
@@ -2194,7 +2595,12 @@ describe("an order-less row created from an existing order", () => {
   it("merges the recipient per field across the row, the sync cache and the document", async () => {
     const { ctx } = repairCtx({
       stateRecipient: { phone: NORWAY_PHONE, street: "Industriveien 4" },
-      cachedRecipient: { ...MANGLED_RECIPIENT, city: "Grimstad", postalCode: "4879", email: "post@evenstadmusikk.no" },
+      cachedRecipient: {
+        ...MANGLED_RECIPIENT,
+        city: "Grimstad",
+        postalCode: "4879",
+        email: "post@evenstadmusikk.no",
+      },
     })
     const { rows } = await prepList(ctx, {})
     const row = rows.find((r) => r.order_key === "doc:prof-repair")!

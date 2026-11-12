@@ -5,12 +5,11 @@
 // Each test stubs `ctx.fetch` with a captured Shopify GraphQL response
 // fixture and asserts the normalized hit shape. No live Shopify call.
 import { describe, expect, it } from "bun:test"
-import type { AppContext } from "@liaison/app-sdk"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import type { AppContext } from "@liaison/app-sdk"
 import { home_load } from "./handlers/home"
 import {
-  ReadsTestAccess,
   customers_get,
   customers_get_by_external_id,
   customers_search,
@@ -23,19 +22,20 @@ import {
   locations_list,
   markets_list,
   metafields_list,
+  orderFilterTerms,
   orders_get,
   orders_invoice_links,
   orders_search,
   products_get,
-  products_short_codes,
   products_search,
+  products_short_codes,
+  ReadsTestAccess,
   refunds_get,
   returns_search,
   variants_get,
   variants_market_price,
   variants_search,
   variantsSearchQuery,
-  orderFilterTerms,
 } from "./reads"
 
 const FIXTURE_DIR = join(import.meta.dir, "__fixtures__", "shopify")
@@ -160,7 +160,9 @@ describe("orders_search", () => {
                     displayFulfillmentStatus: "UNFULFILLED",
                     cancelledAt: "2026-06-02T10:00:00Z",
                     cancelReason: "CUSTOMER",
-                    currentTotalPriceSet: { presentmentMoney: { amount: "50.00", currencyCode: "EUR" } },
+                    currentTotalPriceSet: {
+                      presentmentMoney: { amount: "50.00", currencyCode: "EUR" },
+                    },
                   },
                 },
               ],
@@ -225,7 +227,9 @@ describe("orders_search", () => {
                     displayFinancialStatus: "PAID",
                     displayFulfillmentStatus: "UNFULFILLED",
                     note: "Ship with the spare pedal",
-                    currentTotalPriceSet: { presentmentMoney: { amount: "50.00", currencyCode: "EUR" } },
+                    currentTotalPriceSet: {
+                      presentmentMoney: { amount: "50.00", currencyCode: "EUR" },
+                    },
                   },
                 },
               ],
@@ -297,7 +301,10 @@ describe("orders_search", () => {
     ]) {
       const { ctx } = makeCtx({ fetchResponses: [fixture] })
       const out = await orders_search({ query: q }, ctx)
-      expect(out.dateFilterNotice, `narrowing query '${q}' must NOT emit the notice`).toBeUndefined()
+      expect(
+        out.dateFilterNotice,
+        `narrowing query '${q}' must NOT emit the notice`,
+      ).toBeUndefined()
     }
   })
 
@@ -343,12 +350,17 @@ describe("orders_search", () => {
   it("says which date a window filters on, and that it never proves two orders adjacent", async () => {
     const fixture = loadFixture("orders-search.json")
     const { ctx } = makeCtx({ fetchResponses: [fixture] })
-    const out = await orders_search({ created_at_min: "2026-06-01", created_at_max: "2026-06-30" }, ctx)
+    const out = await orders_search(
+      { created_at_min: "2026-06-01", created_at_max: "2026-06-30" },
+      ctx,
+    )
     expect(out.dateWindowNotice ?? "").toContain("processedAt")
     expect(out.dateWindowNotice ?? "").toContain("NOT on createdAt")
     expect(out.dateWindowNotice ?? "").toContain("immediately before")
     const { ctx: ctx2 } = makeCtx({ fetchResponses: [fixture] })
-    expect((await orders_search({ query: "email:a@b.example" }, ctx2)).dateWindowNotice).toBeUndefined()
+    expect(
+      (await orders_search({ query: "email:a@b.example" }, ctx2)).dateWindowNotice,
+    ).toBeUndefined()
   })
 
   it("COMPOSES the date window with a facet query (SKU/status + week in one call)", async () => {
@@ -386,21 +398,34 @@ describe("orders_search", () => {
     const fixture = loadFixture("orders-search.json")
     const { ctx, calls } = makeCtx({ fetchResponses: [fixture] })
     await orders_search(
-      { query: "financial_status:paid", total_min: 100, total_max: 499.9, created_at_min: "2026-06-15" },
+      {
+        query: "financial_status:paid",
+        total_min: 100,
+        total_max: 499.9,
+        created_at_min: "2026-06-15",
+      },
       ctx,
     )
     const body = JSON.parse(calls[0]!.body) as { variables?: { query?: string } }
     expect(body.variables?.query).toBe(
       "financial_status:paid processed_at:>='2026-06-15T00:00:00.000Z' current_total_price:>=100 current_total_price:<=499.9",
     )
-    expect(orderFilterTerms({ total_min: "250" }).amountTerms).toEqual(["current_total_price:>=250"])
+    expect(orderFilterTerms({ total_min: "250" }).amountTerms).toEqual([
+      "current_total_price:>=250",
+    ])
     expect(orderFilterTerms({}).amountTerms).toEqual([])
   })
 
   it("FAILS LOUD (BAD_PARAM) on an invalid order-total bound", async () => {
-    expect(() => orderFilterTerms({ total_min: "a lot" })).toThrow(/total_min must be a non-negative amount/)
-    expect(() => orderFilterTerms({ total_max: -5 })).toThrow(/total_max must be a non-negative amount/)
-    expect(() => orderFilterTerms({ total_min: 500, total_max: 100 })).toThrow(/greater than total_max/)
+    expect(() => orderFilterTerms({ total_min: "a lot" })).toThrow(
+      /total_min must be a non-negative amount/,
+    )
+    expect(() => orderFilterTerms({ total_max: -5 })).toThrow(
+      /total_max must be a non-negative amount/,
+    )
+    expect(() => orderFilterTerms({ total_min: 500, total_max: 100 })).toThrow(
+      /greater than total_max/,
+    )
   })
 
   it("FAILS LOUD (BAD_PARAM) on an unparseable date bound (never silently drops the filter)", async () => {
@@ -475,8 +500,17 @@ describe("orders_search", () => {
                       presentmentMoney: { amount: "699", currencyCode: "EUR" },
                       shopMoney: { amount: "699", currencyCode: "EUR" },
                     },
-                    shippingAddress: { address1: "1 Rue de Rivoli", city: "Paris", zip: "75001", country: "France", countryCode: "FR" },
-                    customer: { id: "gid://shopify/Customer/1", email: "claudine.moreau@example.com" },
+                    shippingAddress: {
+                      address1: "1 Rue de Rivoli",
+                      city: "Paris",
+                      zip: "75001",
+                      country: "France",
+                      countryCode: "FR",
+                    },
+                    customer: {
+                      id: "gid://shopify/Customer/1",
+                      email: "claudine.moreau@example.com",
+                    },
                   },
                 },
                 {
@@ -497,7 +531,13 @@ describe("orders_search", () => {
                     customer: {
                       id: "gid://shopify/Customer/2",
                       email: "lukas.becker@example.de",
-                      defaultAddress: { address1: "Oranienstraße 12", city: "Berlin", zip: "10999", country: "Germany", countryCode: "DE" },
+                      defaultAddress: {
+                        address1: "Oranienstraße 12",
+                        city: "Berlin",
+                        zip: "10999",
+                        country: "Germany",
+                        countryCode: "DE",
+                      },
                     },
                   },
                 },
@@ -540,11 +580,24 @@ describe("orders_search", () => {
                     id: "gid://shopify/Order/2001",
                     name: "#2001",
                     tags: [],
-                    currentTotalPriceSet: { presentmentMoney: { amount: "120.00", currencyCode: "USD" } },
-                    shippingLine: { discountedPriceSet: { presentmentMoney: { amount: "45.50", currencyCode: "USD" } } },
+                    currentTotalPriceSet: {
+                      presentmentMoney: { amount: "120.00", currencyCode: "USD" },
+                    },
+                    shippingLine: {
+                      discountedPriceSet: {
+                        presentmentMoney: { amount: "45.50", currencyCode: "USD" },
+                      },
+                    },
                   },
                 },
-                { node: { id: "gid://shopify/Order/2002", name: "#2002", tags: [], shippingLine: null } },
+                {
+                  node: {
+                    id: "gid://shopify/Order/2002",
+                    name: "#2002",
+                    tags: [],
+                    shippingLine: null,
+                  },
+                },
               ],
               pageInfo: { endCursor: null, hasNextPage: false },
             },
@@ -557,7 +610,9 @@ describe("orders_search", () => {
     expect(out.results[0]!.attributes.shippingCurrency).toBe("USD")
     expect(out.results[1]!.attributes.shippingAmount).toBeNull()
     const sentQuery = JSON.parse(calls[0]!.body) as { query: string }
-    expect(sentQuery.query).toContain("shippingLine { discountedPriceSet { presentmentMoney { amount currencyCode } } }")
+    expect(sentQuery.query).toContain(
+      "shippingLine { discountedPriceSet { presentmentMoney { amount currencyCode } } }",
+    )
   })
 
   it("euDestination is FALSE for a non-EU ship-to (GB post-Brexit) and null when no country is visible", async () => {
@@ -624,8 +679,19 @@ describe("orders_search", () => {
                       presentmentMoney: { amount: "699", currencyCode: "USD" },
                       shopMoney: { amount: "699", currencyCode: "USD" },
                     },
-                    shippingAddress: { address1: "8420 NW 25th St Ste 140", city: "Doral", zip: "33122", country: "United States", countryCode: "US" },
-                    customer: { id: "gid://shopify/Customer/2001", email: "dorian.vance@example.com", firstName: "Dorian", lastName: "Vance" },
+                    shippingAddress: {
+                      address1: "8420 NW 25th St Ste 140",
+                      city: "Doral",
+                      zip: "33122",
+                      country: "United States",
+                      countryCode: "US",
+                    },
+                    customer: {
+                      id: "gid://shopify/Customer/2001",
+                      email: "dorian.vance@example.com",
+                      firstName: "Dorian",
+                      lastName: "Vance",
+                    },
                   },
                 },
                 {
@@ -641,8 +707,19 @@ describe("orders_search", () => {
                       presentmentMoney: { amount: "699", currencyCode: "USD" },
                       shopMoney: { amount: "699", currencyCode: "USD" },
                     },
-                    shippingAddress: { address1: "8420 NW 25th St Ste 140", city: "Doral", zip: "33122", country: "United States", countryCode: "US" },
-                    customer: { id: "gid://shopify/Customer/2002", email: "priscilla.holt@example.com", firstName: "Priscilla", lastName: "Holt" },
+                    shippingAddress: {
+                      address1: "8420 NW 25th St Ste 140",
+                      city: "Doral",
+                      zip: "33122",
+                      country: "United States",
+                      countryCode: "US",
+                    },
+                    customer: {
+                      id: "gid://shopify/Customer/2002",
+                      email: "priscilla.holt@example.com",
+                      firstName: "Priscilla",
+                      lastName: "Holt",
+                    },
                   },
                 },
                 // A genuine distractor with a DISTINCT address (falls back to defaultAddress, no order ship-to).
@@ -665,7 +742,13 @@ describe("orders_search", () => {
                       email: "maren.eklund@example.com",
                       firstName: "Maren",
                       lastName: "Eklund",
-                      defaultAddress: { address1: "12 Birch Lane", city: "Portland", zip: "97205", country: "United States", countryCode: "US" },
+                      defaultAddress: {
+                        address1: "12 Birch Lane",
+                        city: "Portland",
+                        zip: "97205",
+                        country: "United States",
+                        countryCode: "US",
+                      },
                     },
                   },
                 },
@@ -687,8 +770,12 @@ describe("orders_search", () => {
     expect(out.results[2]!.attributes.shippingAddress1).toBe("12 Birch Lane")
     expect(out.results[2]!.attributes.shippingCity).toBe("Portland")
     // The two cluster streets MATCH and differ from the distractor — the in-context cluster signal.
-    expect(out.results[0]!.attributes.shippingAddress1).toBe(out.results[1]!.attributes.shippingAddress1)
-    expect(out.results[0]!.attributes.shippingAddress1).not.toBe(out.results[2]!.attributes.shippingAddress1)
+    expect(out.results[0]!.attributes.shippingAddress1).toBe(
+      out.results[1]!.attributes.shippingAddress1,
+    )
+    expect(out.results[0]!.attributes.shippingAddress1).not.toBe(
+      out.results[2]!.attributes.shippingAddress1,
+    )
   })
 
   // Regression (morning-cross-app-triage-standup, axis-b): "unshipped weekend orders BY SKU" must be
@@ -716,11 +803,26 @@ describe("orders_search", () => {
                       presentmentMoney: { amount: "799", currencyCode: "EUR" },
                       shopMoney: { amount: "799", currencyCode: "EUR" },
                     },
-                    customer: { id: "gid://shopify/Customer/1", email: "claudine.moreau@example.com" },
+                    customer: {
+                      id: "gid://shopify/Customer/1",
+                      email: "claudine.moreau@example.com",
+                    },
                     lineItems: {
                       edges: [
-                        { node: { title: "Black Friday Studio Bundle", quantity: 1, variant: { sku: "RAL-BNDL" } } },
-                        { node: { title: "Windscreen Pack", quantity: 2, variant: { sku: "RAL-WND" } } },
+                        {
+                          node: {
+                            title: "Black Friday Studio Bundle",
+                            quantity: 1,
+                            variant: { sku: "RAL-BNDL" },
+                          },
+                        },
+                        {
+                          node: {
+                            title: "Windscreen Pack",
+                            quantity: 2,
+                            variant: { sku: "RAL-WND" },
+                          },
+                        },
                       ],
                     },
                   },
@@ -734,8 +836,20 @@ describe("orders_search", () => {
     })
     const out = await orders_search({ query: "fulfillment_status:unfulfilled" }, ctx)
     expect(out.results[0]!.attributes.lineItems).toEqual([
-      { sku: "RAL-BNDL", title: "Black Friday Studio Bundle", quantity: 1, currentQuantity: null, requiresShipping: null },
-      { sku: "RAL-WND", title: "Windscreen Pack", quantity: 2, currentQuantity: null, requiresShipping: null },
+      {
+        sku: "RAL-BNDL",
+        title: "Black Friday Studio Bundle",
+        quantity: 1,
+        currentQuantity: null,
+        requiresShipping: null,
+      },
+      {
+        sku: "RAL-WND",
+        title: "Windscreen Pack",
+        quantity: 2,
+        currentQuantity: null,
+        requiresShipping: null,
+      },
     ])
     // The query MUST request line items + their variant SKU (else the row can never carry them).
     const sentQuery = JSON.parse(calls[0]!.body) as { query: string }
@@ -764,7 +878,9 @@ describe("orders_search", () => {
                     email: "a@example.com",
                     displayFinancialStatus: "PAID",
                     displayFulfillmentStatus: "UNFULFILLED",
-                    currentTotalPriceSet: { presentmentMoney: { amount: "699", currencyCode: "EUR" } },
+                    currentTotalPriceSet: {
+                      presentmentMoney: { amount: "699", currencyCode: "EUR" },
+                    },
                   },
                 },
               ],
@@ -801,7 +917,9 @@ describe("orders_search", () => {
                     email: "c@example.com",
                     displayFinancialStatus: "PAID",
                     displayFulfillmentStatus: "UNFULFILLED",
-                    currentTotalPriceSet: { presentmentMoney: { amount: "699", currencyCode: "EUR" } },
+                    currentTotalPriceSet: {
+                      presentmentMoney: { amount: "699", currencyCode: "EUR" },
+                    },
                   },
                 },
               ],
@@ -849,7 +967,10 @@ describe("B2B and tax signals on order reads", () => {
     const attrs = out.results[0]?.attributes as Attrs
     expect(attrs.totalTax).toBe("20.00")
     expect(attrs.taxExempt).toBe(true)
-    expect(attrs.b2bCompany).toEqual({ name: "Example Trading Ltd", taxRegistrationId: "XX000000000" })
+    expect(attrs.b2bCompany).toEqual({
+      name: "Example Trading Ltd",
+      taxRegistrationId: "XX000000000",
+    })
     expect(attrs.customerTaxExempt).toBe(true)
     const sent = (JSON.parse(calls[0]?.body ?? "{}") as { query?: string }).query ?? ""
     expect(sent).toContain("totalTaxSet { presentmentMoney { amount } }")
@@ -869,8 +990,14 @@ describe("B2B and tax signals on order reads", () => {
   })
 
   it("orders_search hits carry the order's B2B verdict: company, tag, legacy suffix, retail", async () => {
-    const plainLine = { lineItems: { edges: [{ node: { title: "Kit", quantity: 1, variant: { sku: "KIT-01" } } }] } }
-    const suffixLine = { lineItems: { edges: [{ node: { title: "Kit", quantity: 1, variant: { sku: "KIT-01-B2B" } } }] } }
+    const plainLine = {
+      lineItems: { edges: [{ node: { title: "Kit", quantity: 1, variant: { sku: "KIT-01" } } }] },
+    }
+    const suffixLine = {
+      lineItems: {
+        edges: [{ node: { title: "Kit", quantity: 1, variant: { sku: "KIT-01-B2B" } } }],
+      },
+    }
     const nodes = [
       { ...b2bOrder, ...plainLine, tags: [] },
       { ...baseOrder, ...plainLine, id: "gid://shopify/Order/3002", tags: ["B2B", "Distribution"] },
@@ -878,10 +1005,14 @@ describe("B2B and tax signals on order reads", () => {
       { ...baseOrder, ...plainLine, id: "gid://shopify/Order/3004", tags: ["vip"] },
     ]
     const { ctx } = makeCtx({
-      fetchResponses: [{ data: { orders: { edges: nodes.map((node) => ({ node })), pageInfo: {} } } }],
+      fetchResponses: [
+        { data: { orders: { edges: nodes.map((node) => ({ node })), pageInfo: {} } } },
+      ],
       config: { b2bSkuSuffixes: "-B2B" },
     })
-    const verdicts = (await orders_search({}, ctx)).results.map((r) => (r.attributes as Attrs).b2bOrder)
+    const verdicts = (await orders_search({}, ctx)).results.map(
+      (r) => (r.attributes as Attrs).b2bOrder,
+    )
     expect(verdicts).toEqual([
       { b2b: true, reason: "b2b_company_buyer" },
       { b2b: true, reason: "b2b_order_tag" },
@@ -941,7 +1072,10 @@ describe("B2B and tax signals on order reads", () => {
     const attrs = (out as unknown as { attributes: Attrs }).attributes
     expect(attrs.totalTax).toBe("20.00")
     expect(attrs.taxExempt).toBe(true)
-    expect(attrs.b2bCompany).toEqual({ name: "Example Trading Ltd", taxRegistrationId: "XX000000000" })
+    expect(attrs.b2bCompany).toEqual({
+      name: "Example Trading Ltd",
+      taxRegistrationId: "XX000000000",
+    })
     expect(attrs.customerTaxExempt).toBe(true)
     const sent = (JSON.parse(calls[0]?.body ?? "{}") as { query?: string }).query ?? ""
     expect(sent).toContain("purchasingEntity { ... on PurchasingCompany")
@@ -1020,7 +1154,11 @@ describe("orders_get", () => {
       const { ctx } = makeCtx({
         fetchResponses: [
           { data: { order: null } },
-          { data: { orders: { edges: [{ node: { id: "gid://shopify/Order/6110970", name: "#10970" } }] } } },
+          {
+            data: {
+              orders: { edges: [{ node: { id: "gid://shopify/Order/6110970", name: "#10970" } }] },
+            },
+          },
         ],
       })
       await expect(orders_get({ id: "#1097" }, ctx)).rejects.toThrow(/order #1097 not found/)
@@ -1100,7 +1238,9 @@ describe("orders_get", () => {
     const withNote = await orders_get({ id: "gid://shopify/Order/2002" }, ctx)
     expect(withNote.note).toBe("Ship with the spare pedal")
 
-    const { ctx: ctx2 } = makeCtx({ fetchResponses: [{ data: { order: { ...base, note: null } } }] })
+    const { ctx: ctx2 } = makeCtx({
+      fetchResponses: [{ data: { order: { ...base, note: null } } }],
+    })
     const withoutNote = await orders_get({ id: "gid://shopify/Order/2002" }, ctx2)
     expect(withoutNote.note).toBeNull()
 
@@ -1220,7 +1360,9 @@ describe("orders_get", () => {
                   title: "Chaos widget",
                   quantity: 1,
                   variant: { id: "v1", title: "Default", sku: "CW-1" },
-                  originalUnitPriceSet: { presentmentMoney: { amount: "10.00", currencyCode: "EUR" } },
+                  originalUnitPriceSet: {
+                    presentmentMoney: { amount: "10.00", currencyCode: "EUR" },
+                  },
                 },
               },
             ],
@@ -1247,7 +1389,11 @@ describe("orders_get", () => {
     expect(out.name).toBe("#1001")
     expect(out.fulfillmentStatus).toBe("FULFILLED")
     expect(out.financialStatus).toBe("REFUNDED")
-    expect(out.customer).toEqual({ email: "chaos@liaison.sh", first_name: "Chaos", last_name: "Widget" })
+    expect(out.customer).toEqual({
+      email: "chaos@liaison.sh",
+      first_name: "Chaos",
+      last_name: "Widget",
+    })
     expect(out.totalPrice).toEqual({ amount: "10.00", currencyCode: "EUR" })
     // line item reshape (id+quantity preserved for refundRunOrder; priceSet + variant.title added)
     expect(out.lineItems[0]).toMatchObject({
@@ -1258,7 +1404,10 @@ describe("orders_get", () => {
     })
     // fulfillments + refunds now present so the panel can render them
     expect(out.fulfillments).toHaveLength(1)
-    expect(out.fulfillments[0]).toMatchObject({ id: "gid://shopify/Fulfillment/7", status: "SUCCESS" })
+    expect(out.fulfillments[0]).toMatchObject({
+      id: "gid://shopify/Fulfillment/7",
+      status: "SUCCESS",
+    })
     expect(out.refunds).toHaveLength(1)
     expect(out.refunds[0]).toMatchObject({ id: "gid://shopify/Refund/3" })
     expect(Array.isArray(out.returns)).toBe(true)
@@ -1293,7 +1442,12 @@ describe("orders_get", () => {
               displayFinancialStatus: "PAID",
               displayFulfillmentStatus: "FULFILLED",
               currentTotalPriceSet: { presentmentMoney: { amount: "299.00", currencyCode: "EUR" } },
-              customer: { id: "c2200", email: "liam.warranty@example.com", firstName: "Out", lastName: "OfWarranty" },
+              customer: {
+                id: "c2200",
+                email: "liam.warranty@example.com",
+                firstName: "Out",
+                lastName: "OfWarranty",
+              },
             },
           },
         },
@@ -1336,7 +1490,10 @@ describe("orders_get", () => {
 // silent gap on the boxtal side.
 describe("order note contract fixture matches the real handler output shapes", () => {
   const contract = JSON.parse(
-    readFileSync(join(import.meta.dir, "__fixtures__", "contract", "order-note-contract.json"), "utf8"),
+    readFileSync(
+      join(import.meta.dir, "__fixtures__", "contract", "order-note-contract.json"),
+      "utf8",
+    ),
   ) as {
     orders_search_hit: { id: string; name: string; attributes: { note: string } }
     orders_get: { name: string; note: string }
@@ -1354,7 +1511,9 @@ describe("order note contract fixture matches the real handler output shapes", (
                     id: contract.orders_search_hit.id,
                     name: contract.orders_search_hit.name,
                     note: contract.orders_search_hit.attributes.note,
-                    currentTotalPriceSet: { presentmentMoney: { amount: "10.00", currencyCode: "USD" } },
+                    currentTotalPriceSet: {
+                      presentmentMoney: { amount: "10.00", currencyCode: "USD" },
+                    },
                   },
                 },
               ],
@@ -1403,7 +1562,9 @@ describe("order note contract fixture matches the real handler output shapes", (
                     id: contract.orders_search_hit.id,
                     name: contract.orders_search_hit.name,
                     note: contract.orders_search_hit.attributes.note,
-                    currentTotalPriceSet: { presentmentMoney: { amount: "10.00", currencyCode: "USD" } },
+                    currentTotalPriceSet: {
+                      presentmentMoney: { amount: "10.00", currencyCode: "USD" },
+                    },
                   },
                 },
               ],
@@ -1416,7 +1577,9 @@ describe("order note contract fixture matches the real handler output shapes", (
     })
     const out = await orders_search({}, ctx)
     expect(out.results[0]!.attributes.note).toBe(contract.orders_search_hit.attributes.note)
-    expect((out.results[0]!.attributes.note as string).length).toBe(contract.orders_search_hit.attributes.note.length)
+    expect((out.results[0]!.attributes.note as string).length).toBe(
+      contract.orders_search_hit.attributes.note.length,
+    )
   })
 
   it("orders_get carries the long multi line non ASCII note through byte for byte with no truncation", async () => {
@@ -1573,7 +1736,9 @@ describe("orders_search line items for the orders list", () => {
                     id: "gid://shopify/Order/4400",
                     name: "#4400",
                     tags: ["wholesale"],
-                    currentTotalPriceSet: { presentmentMoney: { amount: "10.00", currencyCode: "EUR" } },
+                    currentTotalPriceSet: {
+                      presentmentMoney: { amount: "10.00", currencyCode: "EUR" },
+                    },
                     requiresShipping: true,
                     currentSubtotalLineItemsQuantity: 14,
                     lineItems: {
@@ -1588,7 +1753,14 @@ describe("orders_search line items for the orders list", () => {
                             variant: { sku: "DEV-2" },
                           },
                         },
-                        { node: { title: "Licence", quantity: 1, requiresShipping: false, variant: { sku: "LIC" } } },
+                        {
+                          node: {
+                            title: "Licence",
+                            quantity: 1,
+                            requiresShipping: false,
+                            variant: { sku: "LIC" },
+                          },
+                        },
                         { node: { title: "Old line", quantity: 2, variant: null } },
                       ],
                     },
@@ -1608,7 +1780,11 @@ describe("orders_search line items for the orders list", () => {
     expect(calls[0]!.body).toContain("currentQuantity")
     expect(calls[0]!.body).toContain("currentSubtotalLineItemsQuantity")
     expect(calls[0]!.body).toMatch(/lineItems\(first: 10\) \{ pageInfo \{ hasNextPage \}/)
-    expect(out.results[0]!.attributes).toMatchObject({ requiresShipping: true, lineItemsMore: true, itemsQuantity: 14 })
+    expect(out.results[0]!.attributes).toMatchObject({
+      requiresShipping: true,
+      lineItemsMore: true,
+      itemsQuantity: 14,
+    })
     expect(out.results[0]!.attributes.lineItems).toEqual([
       { sku: "DEV-2", title: "Device 2", quantity: 2, currentQuantity: 1, requiresShipping: true },
       { sku: "LIC", title: "Licence", quantity: 1, currentQuantity: null, requiresShipping: false },
@@ -1637,7 +1813,10 @@ describe("products_short_codes", () => {
         }
       },
     })
-    const out = await products_short_codes({ skus: ["DEV-2", "STAND", "DEV-2", " ", "UNKNOWN"] }, ctx)
+    const out = await products_short_codes(
+      { skus: ["DEV-2", "STAND", "DEV-2", " ", "UNKNOWN"] },
+      ctx,
+    )
     expect(calls).toEqual([
       {
         target: "kernel:product_attributes_list",
@@ -1686,7 +1865,9 @@ describe("customers_search", () => {
       expect(tags.some((t) => t === "liaison-seed" || t.startsWith("liaison-seed-"))).toBe(false)
     }
     // The market: tag (a real merchant convention) still survives somewhere in the set.
-    const allTags = out.results.flatMap((h) => (h.attributes as Record<string, unknown>).tags as string[])
+    const allTags = out.results.flatMap(
+      (h) => (h.attributes as Record<string, unknown>).tags as string[],
+    )
     expect(allTags.some((t) => t.startsWith("market:"))).toBe(true)
   })
 
@@ -1762,7 +1943,15 @@ describe("customers_segment_search (server-side spend segment)", () => {
   // so coverage is complete + bounded in one call, never page-and-extrapolate.
   function segmentResponse(opts: {
     totalCount: number
-    members: Array<{ id: string; email: string; first: string; last: string; amount: string; currency: string; orders: string }>
+    members: Array<{
+      id: string
+      email: string
+      first: string
+      last: string
+      amount: string
+      currency: string
+      orders: string
+    }>
     hasNextPage?: boolean
     endCursor?: string | null
   }) {
@@ -1794,7 +1983,15 @@ describe("customers_segment_search (server-side spend segment)", () => {
         segmentResponse({
           totalCount: 5,
           members: [
-            { id: "gid://shopify/CustomerSegmentMember/1", email: "marie@example.com", first: "Marie", last: "Dupont", amount: "1495.0", currency: "USD", orders: "2" },
+            {
+              id: "gid://shopify/CustomerSegmentMember/1",
+              email: "marie@example.com",
+              first: "Marie",
+              last: "Dupont",
+              amount: "1495.0",
+              currency: "USD",
+              orders: "2",
+            },
           ],
         }),
       ],
@@ -1817,8 +2014,24 @@ describe("customers_segment_search (server-side spend segment)", () => {
         segmentResponse({
           totalCount: 2,
           members: [
-            { id: "gid://shopify/CustomerSegmentMember/1", email: "a@example.com", first: "A", last: "Aa", amount: "1495.0", currency: "USD", orders: "2" },
-            { id: "gid://shopify/CustomerSegmentMember/2", email: "b@example.com", first: "B", last: "Bb", amount: "4473.6", currency: "USD", orders: "1" },
+            {
+              id: "gid://shopify/CustomerSegmentMember/1",
+              email: "a@example.com",
+              first: "A",
+              last: "Aa",
+              amount: "1495.0",
+              currency: "USD",
+              orders: "2",
+            },
+            {
+              id: "gid://shopify/CustomerSegmentMember/2",
+              email: "b@example.com",
+              first: "B",
+              last: "Bb",
+              amount: "4473.6",
+              currency: "USD",
+              orders: "1",
+            },
           ],
         }),
       ],
@@ -1826,7 +2039,10 @@ describe("customers_segment_search (server-side spend segment)", () => {
     const out = await customers_segment_search({ minSpend: 1000 }, ctx)
     expect(out.results).toHaveLength(2)
     for (const hit of out.results) {
-      const spend = (hit.attributes as Record<string, unknown>).amountSpent as { amount: string; currencyCode: string }
+      const spend = (hit.attributes as Record<string, unknown>).amountSpent as {
+        amount: string
+        currencyCode: string
+      }
       expect(spend.currencyCode).toBe("USD")
       expect(hit.currency).toBe("USD")
     }
@@ -2013,7 +2229,16 @@ describe("customers_get", () => {
               tags: [],
               numberOfOrders: "1",
               amountSpent: { amount: "699", currencyCode: "EUR" },
-              orders: { edges: [{ node: { name: "#1057", lineItems: { edges: [{ node: { title: "Kestrel 6", quantity: 1 } }] } } }] },
+              orders: {
+                edges: [
+                  {
+                    node: {
+                      name: "#1057",
+                      lineItems: { edges: [{ node: { title: "Kestrel 6", quantity: 1 } }] },
+                    },
+                  },
+                ],
+              },
             },
           },
         },
@@ -2036,7 +2261,9 @@ describe("products_search", () => {
     const { ctx } = makeCtx({ fetchResponses: [fixture] })
     const out = await products_search({}, ctx)
     expect(out.results[0]!.entity).toBe("product")
-    expect((out.results[0]!.attributes as Record<string, unknown>).variantCount).toBeGreaterThanOrEqual(1)
+    expect(
+      (out.results[0]!.attributes as Record<string, unknown>).variantCount,
+    ).toBeGreaterThanOrEqual(1)
   })
 })
 
@@ -2054,7 +2281,15 @@ describe("products_get", () => {
               totalInventory: 10,
               variants: {
                 edges: [
-                  { node: { id: "v1", sku: "W-1", price: "9.99", inventoryQuantity: 5, title: "Default" } },
+                  {
+                    node: {
+                      id: "v1",
+                      sku: "W-1",
+                      price: "9.99",
+                      inventoryQuantity: 5,
+                      title: "Default",
+                    },
+                  },
                 ],
               },
             },
@@ -2099,7 +2334,11 @@ describe("products_get", () => {
     const out = await products_get({ id: "gid://shopify/Product/2" }, ctx)
     const attrs = out.attributes as {
       customs_description?: string
-      variants?: Array<{ hs_code?: string; country_of_origin?: string; customs_description?: string }>
+      variants?: Array<{
+        hs_code?: string
+        country_of_origin?: string
+        customs_description?: string
+      }>
     }
     expect(attrs.customs_description).toBe("Electronic pad controller")
     const v = attrs.variants?.[0]
@@ -2187,7 +2426,10 @@ describe("variants_search filters", () => {
 
   it("composes product_status and min_quantity into the server-side query", async () => {
     const { ctx, calls } = makeCtx({ fetchResponses: [variantsPage] })
-    await variants_search({ query: "sku:W-*", product_status: ["ACTIVE", "draft"], min_quantity: 1 }, ctx)
+    await variants_search(
+      { query: "sku:W-*", product_status: ["ACTIVE", "draft"], min_quantity: 1 },
+      ctx,
+    )
     const body = JSON.parse(calls[0]!.body) as { variables?: { query?: string } }
     expect(body.variables?.query).toBe("sku:W-* product_status:active,draft inventory_quantity:>=1")
     expect(variantsSearchQuery({})).toBeNull()
@@ -2203,9 +2445,13 @@ describe("variants_search filters", () => {
   })
 
   it("FAILS LOUD (BAD_PARAM) on an unknown status or a fractional quantity", () => {
-    expect(() => variantsSearchQuery({ product_status: ["ACTIVE", "SOLD_OUT"] })).toThrow(/product_status must list/)
+    expect(() => variantsSearchQuery({ product_status: ["ACTIVE", "SOLD_OUT"] })).toThrow(
+      /product_status must list/,
+    )
     expect(() => variantsSearchQuery({ product_status: [] })).toThrow(/product_status must list/)
-    expect(() => variantsSearchQuery({ min_quantity: 1.5 })).toThrow(/min_quantity must be a whole number/)
+    expect(() => variantsSearchQuery({ min_quantity: 1.5 })).toThrow(
+      /min_quantity must be a whole number/,
+    )
   })
 })
 
@@ -2235,7 +2481,9 @@ describe("variants_get", () => {
 
   it("throws NOT_FOUND when variant is null", async () => {
     const { ctx } = makeCtx({ fetchResponses: [{ data: { productVariant: null } }] })
-    await expect(variants_get({ id: "gid://shopify/ProductVariant/0" }, ctx)).rejects.toThrow(/not found/)
+    await expect(variants_get({ id: "gid://shopify/ProductVariant/0" }, ctx)).rejects.toThrow(
+      /not found/,
+    )
   })
 })
 
@@ -2389,7 +2637,10 @@ describe("inventory_levels_list", () => {
         },
       ],
     })
-    const out = await inventory_levels_list({ inventoryItemId: "gid://shopify/InventoryItem/1" }, ctx)
+    const out = await inventory_levels_list(
+      { inventoryItemId: "gid://shopify/InventoryItem/1" },
+      ctx,
+    )
     expect(out.results.length).toBe(2)
     expect(out.results[0]!.entity).toBe("inventory_level")
     // Reads from the 2024-04+ `quantities(names: […])` projection (the scalar `available` was
@@ -2451,7 +2702,10 @@ describe("inventory_levels_list", () => {
         },
       ],
     })
-    const out = await inventory_levels_list({ inventoryItemId: "gid://shopify/InventoryItem/1" }, ctx)
+    const out = await inventory_levels_list(
+      { inventoryItemId: "gid://shopify/InventoryItem/1" },
+      ctx,
+    )
     expect(out.results.length).toBe(2)
     const shop = out.results[0]!.attributes as Record<string, unknown>
     const tls = out.results[1]!.attributes as Record<string, unknown>
@@ -2494,7 +2748,9 @@ describe("fulfillments_get", () => {
 
   it("throws NOT_FOUND when fulfillment is null", async () => {
     const { ctx } = makeCtx({ fetchResponses: [{ data: { fulfillment: null } }] })
-    await expect(fulfillments_get({ id: "gid://shopify/Fulfillment/0" }, ctx)).rejects.toThrow(/not found/)
+    await expect(fulfillments_get({ id: "gid://shopify/Fulfillment/0" }, ctx)).rejects.toThrow(
+      /not found/,
+    )
   })
 })
 
@@ -2511,7 +2767,18 @@ describe("returns_search (order-scoped — top-level `returns` removed in API 20
                     id: "gid://shopify/Order/100",
                     name: "#1100",
                     tags: [],
-                    returns: { edges: [{ node: { id: "gid://shopify/Return/1", name: "#R1", status: "OPEN", totalQuantity: 2 } }] },
+                    returns: {
+                      edges: [
+                        {
+                          node: {
+                            id: "gid://shopify/Return/1",
+                            name: "#R1",
+                            status: "OPEN",
+                            totalQuantity: 2,
+                          },
+                        },
+                      ],
+                    },
                   },
                 },
               ],
@@ -2529,7 +2796,9 @@ describe("returns_search (order-scoped — top-level `returns` removed in API 20
     expect(out.results[0]!.entity).toBe("return")
     expect(out.results[0]!.title).toBe("#R1")
     expect((out.results[0]!.attributes as Record<string, unknown>).status).toBe("OPEN")
-    expect(((out.results[0]!.attributes as Record<string, unknown>).order as { name: string }).name).toBe("#1100")
+    expect(
+      ((out.results[0]!.attributes as Record<string, unknown>).order as { name: string }).name,
+    ).toBe("#1100")
   })
 
   it("lists a single order's returns when orderId is given", async () => {
@@ -2541,7 +2810,18 @@ describe("returns_search (order-scoped — top-level `returns` removed in API 20
               id: "gid://shopify/Order/100",
               name: "#1100",
               tags: [],
-              returns: { edges: [{ node: { id: "gid://shopify/Return/9", name: "#R9", status: "REQUESTED", totalQuantity: 1 } }] },
+              returns: {
+                edges: [
+                  {
+                    node: {
+                      id: "gid://shopify/Return/9",
+                      name: "#R9",
+                      status: "REQUESTED",
+                      totalQuantity: 1,
+                    },
+                  },
+                ],
+              },
             },
           },
         },
@@ -2627,7 +2907,11 @@ describe("discounts_search", () => {
     // that caveat (+ the leave-unrelated-codes rule) so the agent discloses it and never claims "deactivated all".
     const { ctx } = makeCtx({
       fetchResponses: [
-        { data: { codeDiscountNodes: { edges: [], pageInfo: { endCursor: null, hasNextPage: false } } } },
+        {
+          data: {
+            codeDiscountNodes: { edges: [], pageInfo: { endCursor: null, hasNextPage: false } },
+          },
+        },
       ],
     })
     const out = await discounts_search({ query: "Synth Summit" }, ctx)
@@ -2638,13 +2922,19 @@ describe("discounts_search", () => {
     expect(out.keywordMatchNotice).toMatch(/UNDER-INCLUSION/i)
     expect(out.keywordMatchNotice).toMatch(/SILENTLY MISSED|may be INCOMPLETE|might have missed/i)
     expect(out.keywordMatchNotice).toMatch(/OVER-INCLUSION|EXCLUSION STATEMENT|LEAVING UNTOUCHED/i)
-    expect(out.keywordMatchNotice).toMatch(/never.*'deactivated all'|WRONG framing|NOT a reassurance/i)
+    expect(out.keywordMatchNotice).toMatch(
+      /never.*'deactivated all'|WRONG framing|NOT a reassurance/i,
+    )
   })
 
   it("omits the keywordMatchNotice when no query keyword was passed (unscoped list)", async () => {
     const { ctx } = makeCtx({
       fetchResponses: [
-        { data: { codeDiscountNodes: { edges: [], pageInfo: { endCursor: null, hasNextPage: false } } } },
+        {
+          data: {
+            codeDiscountNodes: { edges: [], pageInfo: { endCursor: null, hasNextPage: false } },
+          },
+        },
       ],
     })
     const out = await discounts_search({}, ctx)
@@ -2667,7 +2957,7 @@ describe("metafields_list", () => {
                       id: "gid://shopify/Metafield/1",
                       namespace: "custom",
                       key: "size_chart",
-                      value: "{ \"s\":1 }",
+                      value: '{ "s":1 }',
                       type: "json",
                     },
                   },
@@ -2713,15 +3003,22 @@ describe("market context per read tool (§1.10 / criterion #10)", () => {
       ReadsTestAccess.normalizeRefund({ id: "r", order: { id: "o", name: "#1", tags } }).market,
     ).toBe("us")
     expect(
-      ReadsTestAccess.normalizeReturn({ id: "rt", name: "#R", order: { id: "o", name: "#1", tags } }).market,
+      ReadsTestAccess.normalizeReturn({
+        id: "rt",
+        name: "#R",
+        order: { id: "o", name: "#1", tags },
+      }).market,
     ).toBe("us")
     expect(
-      ReadsTestAccess.normalizeFulfillment({ id: "f", order: { id: "o", name: "#1", tags } }).market,
+      ReadsTestAccess.normalizeFulfillment({ id: "f", order: { id: "o", name: "#1", tags } })
+        .market,
     ).toBe("us")
   })
 
   it("draft orders inherit market from their own tags", () => {
-    expect(ReadsTestAccess.normalizeDraftOrder({ id: "d", name: "#D1", tags: ["market:eu"] }).market).toBe("eu")
+    expect(
+      ReadsTestAccess.normalizeDraftOrder({ id: "d", name: "#D1", tags: ["market:eu"] }).market,
+    ).toBe("eu")
   })
 
   it("genuinely non-market-scoped entities document a null market", () => {
@@ -2731,7 +3028,11 @@ describe("market context per read tool (§1.10 / criterion #10)", () => {
     // Inventory levels: location-scoped, not market-scoped.
     expect(
       ReadsTestAccess.normalizeInventoryLevel(
-        { id: "il", location: { id: "l", name: "Main" }, quantities: [{ name: "on_hand", quantity: 1 }] },
+        {
+          id: "il",
+          location: { id: "l", name: "Main" },
+          quantities: [{ name: "on_hand", quantity: 1 }],
+        },
         null,
       ).market,
     ).toBeNull()
@@ -2740,7 +3041,13 @@ describe("market context per read tool (§1.10 / criterion #10)", () => {
       ReadsTestAccess.normalizeDiscount({ id: "dc", codeDiscount: { title: "X" } }).market,
     ).toBeNull()
     expect(
-      ReadsTestAccess.normalizeMetafield({ id: "mf", namespace: "custom", key: "k", value: "v", type: "single_line_text_field" }).market,
+      ReadsTestAccess.normalizeMetafield({
+        id: "mf",
+        namespace: "custom",
+        key: "k",
+        value: "v",
+        type: "single_line_text_field",
+      }).market,
     ).toBeNull()
     // Locations: physical sites, not market-scoped.
     expect(ReadsTestAccess.normalizeLocation({ id: "loc", name: "Main" }).market).toBeNull()
@@ -2808,7 +3115,13 @@ describe("draft_orders_get", () => {
 
   it("names the connected shop when install_metadata is missing (lost connect event), as the client does", async () => {
     const { ctx } = makeCtx({
-      fetchResponses: [{ data: { draftOrder: { id: "gid://shopify/DraftOrder/3", name: "#D3", status: "OPEN", tags: [] } } }],
+      fetchResponses: [
+        {
+          data: {
+            draftOrder: { id: "gid://shopify/DraftOrder/3", name: "#D3", status: "OPEN", tags: [] },
+          },
+        },
+      ],
       shopDomain: null,
     })
     const out = await draft_orders_get({ id: "gid://shopify/DraftOrder/3" }, ctx)
@@ -2817,7 +3130,9 @@ describe("draft_orders_get", () => {
 
   it("throws NOT_FOUND when draft order is null", async () => {
     const { ctx } = makeCtx({ fetchResponses: [{ data: { draftOrder: null } }] })
-    await expect(draft_orders_get({ id: "gid://shopify/DraftOrder/0" }, ctx)).rejects.toThrow(/not found/)
+    await expect(draft_orders_get({ id: "gid://shopify/DraftOrder/0" }, ctx)).rejects.toThrow(
+      /not found/,
+    )
   })
 
   it("nested draftOrder.poNumber (the shape invoicing's draft-order sync actually reads via shopify:draft_orders_get -> result.draftOrder) is camelCase and always present", async () => {
@@ -2987,7 +3302,9 @@ describe("customers_get_by_external_id", () => {
 
   it("throws NOT_FOUND when no customer matches", async () => {
     const { ctx } = makeCtx({ fetchResponses: [{ data: { customer: null } }] })
-    await expect(customers_get_by_external_id({ externalId: "0" }, ctx)).rejects.toThrow(/not found/)
+    await expect(customers_get_by_external_id({ externalId: "0" }, ctx)).rejects.toThrow(
+      /not found/,
+    )
   })
 })
 
@@ -3008,7 +3325,9 @@ describe("home_load recentOrders line-item SKU summary", () => {
                 name: "#1062",
                 createdAt: "2026-06-14T10:00:00Z",
                 displayFulfillmentStatus: "UNFULFILLED",
-                currentTotalPriceSet: { presentmentMoney: { amount: "789.00", currencyCode: "EUR" } },
+                currentTotalPriceSet: {
+                  presentmentMoney: { amount: "789.00", currencyCode: "EUR" },
+                },
                 customer: { displayName: "Lukas Becker", email: "lukas.becker@example.com" },
                 lineItems: {
                   edges: [
@@ -3025,7 +3344,12 @@ describe("home_load recentOrders line-item SKU summary", () => {
     const empty = { data: {} }
     const { ctx } = makeCtx({ fetchResponses: [recentOrders, empty, empty, empty] })
     const out = (await home_load({}, ctx)) as {
-      recentOrders: { orders: Array<{ name: string; lineItems: Array<{ sku: string | null; title: string | null; quantity: number }> }> }
+      recentOrders: {
+        orders: Array<{
+          name: string
+          lineItems: Array<{ sku: string | null; title: string | null; quantity: number }>
+        }>
+      }
     }
     expect(out.recentOrders.orders).toHaveLength(1)
     expect(out.recentOrders.orders[0]!.lineItems).toEqual([
@@ -3051,12 +3375,52 @@ describe("home_load attention.lowInventory de-noise", () => {
         productVariants: {
           edges: [
             // demo/sample noise — no SKU → dropped
-            { node: { id: "gid://shopify/ProductVariant/1", sku: null, title: null, inventoryQuantity: 0, product: { id: "p1", title: "Gift Card", productType: "giftcard" } } },
-            { node: { id: "gid://shopify/ProductVariant/2", sku: null, title: null, inventoryQuantity: -6, product: { id: "p2", title: "Kestrel Pocket Recorder", productType: "" } } },
-            { node: { id: "gid://shopify/ProductVariant/3", sku: "  ", title: null, inventoryQuantity: -6, product: { id: "p3", title: "Foam Windscreen", productType: "" } } },
+            {
+              node: {
+                id: "gid://shopify/ProductVariant/1",
+                sku: null,
+                title: null,
+                inventoryQuantity: 0,
+                product: { id: "p1", title: "Gift Card", productType: "giftcard" },
+              },
+            },
+            {
+              node: {
+                id: "gid://shopify/ProductVariant/2",
+                sku: null,
+                title: null,
+                inventoryQuantity: -6,
+                product: { id: "p2", title: "Kestrel Pocket Recorder", productType: "" },
+              },
+            },
+            {
+              node: {
+                id: "gid://shopify/ProductVariant/3",
+                sku: "  ",
+                title: null,
+                inventoryQuantity: -6,
+                product: { id: "p3", title: "Foam Windscreen", productType: "" },
+              },
+            },
             // real catalogued low-stock — has SKU → kept
-            { node: { id: "gid://shopify/ProductVariant/4", sku: "RAL-CASE", title: "Default", inventoryQuantity: 4, product: { id: "p4", title: "Travel Case", productType: "" } } },
-            { node: { id: "gid://shopify/ProductVariant/5", sku: "RAL-TC", title: "Default", inventoryQuantity: 9, product: { id: "p5", title: "Timecode Module", productType: "" } } },
+            {
+              node: {
+                id: "gid://shopify/ProductVariant/4",
+                sku: "RAL-CASE",
+                title: "Default",
+                inventoryQuantity: 4,
+                product: { id: "p4", title: "Travel Case", productType: "" },
+              },
+            },
+            {
+              node: {
+                id: "gid://shopify/ProductVariant/5",
+                sku: "RAL-TC",
+                title: "Default",
+                inventoryQuantity: 9,
+                product: { id: "p5", title: "Timecode Module", productType: "" },
+              },
+            },
           ],
         },
       },
@@ -3066,7 +3430,10 @@ describe("home_load attention.lowInventory de-noise", () => {
       attention: { lowInventory: Array<{ sku: string | null; productTitle: string }> }
     }
     expect(out.attention.lowInventory.map((r) => r.sku)).toEqual(["RAL-CASE", "RAL-TC"])
-    expect(out.attention.lowInventory.map((r) => r.productTitle)).toEqual(["Travel Case", "Timecode Module"])
+    expect(out.attention.lowInventory.map((r) => r.productTitle)).toEqual([
+      "Travel Case",
+      "Timecode Module",
+    ])
     // The low-inventory query also drops gift cards at the query layer (they have no physical stock).
     const lowInvCall = calls.find((c) => c.body.includes("LowInventory"))
     expect(lowInvCall).toBeDefined()
@@ -3077,49 +3444,108 @@ describe("home_load attention.lowInventory de-noise", () => {
 
 describe("orders_get / fulfillments_get carry the B2B verdict the fulfilment card reads", () => {
   const order = (extra: Record<string, unknown>) => ({
-    data: { order: { id: "gid://shopify/Order/3001", name: "#3001", lineItems: { edges: [] }, ...extra } },
+    data: {
+      order: { id: "gid://shopify/Order/3001", name: "#3001", lineItems: { edges: [] }, ...extra },
+    },
   })
-  const skuLines = { lineItems: { edges: [{ node: { id: "gid://shopify/LineItem/1", title: "Kestrel", quantity: 1, sku: "KS6-44-B2B", variant: { sku: "KS6-44-B2B" } } }] } }
+  const skuLines = {
+    lineItems: {
+      edges: [
+        {
+          node: {
+            id: "gid://shopify/LineItem/1",
+            title: "Kestrel",
+            quantity: 1,
+            sku: "KS6-44-B2B",
+            variant: { sku: "KS6-44-B2B" },
+          },
+        },
+      ],
+    },
+  }
 
   it("a company buyer is B2B", async () => {
-    const { ctx } = makeCtx({ fetchResponses: [order({ purchasingEntity: { company: { name: "Example Trading Ltd" } } })] })
-    const out = (await orders_get({ id: "gid://shopify/Order/3001" }, ctx)) as unknown as Record<string, unknown>
+    const { ctx } = makeCtx({
+      fetchResponses: [order({ purchasingEntity: { company: { name: "Example Trading Ltd" } } })],
+    })
+    const out = (await orders_get({ id: "gid://shopify/Order/3001" }, ctx)) as unknown as Record<
+      string,
+      unknown
+    >
     expect(out.b2bOrder).toEqual({ b2b: true, reason: "b2b_company_buyer" })
   })
 
   it("a line sku with a configured suffix is B2B; without the setting it is retail", async () => {
-    const marked = makeCtx({ fetchResponses: [order(skuLines)], config: { b2bSkuSuffixes: "-b2b" } })
-    const a = (await orders_get({ id: "gid://shopify/Order/3001" }, marked.ctx)) as unknown as Record<string, unknown>
+    const marked = makeCtx({
+      fetchResponses: [order(skuLines)],
+      config: { b2bSkuSuffixes: "-b2b" },
+    })
+    const a = (await orders_get(
+      { id: "gid://shopify/Order/3001" },
+      marked.ctx,
+    )) as unknown as Record<string, unknown>
     expect(a.b2bOrder).toEqual({ b2b: true, reason: "b2b_sku_suffix" })
     const plain = makeCtx({ fetchResponses: [order(skuLines)], config: {} })
-    const b = (await orders_get({ id: "gid://shopify/Order/3001" }, plain.ctx)) as unknown as Record<string, unknown>
+    const b = (await orders_get(
+      { id: "gid://shopify/Order/3001" },
+      plain.ctx,
+    )) as unknown as Record<string, unknown>
     expect(b.b2bOrder).toEqual({ b2b: false, reason: null })
   })
 
   it("reads the ORDER LINE's sku, as the fulfilment handler does (not the variant's current sku)", async () => {
     const lines = {
       lineItems: {
-        edges: [{ node: { id: "gid://shopify/LineItem/1", title: "Kestrel", quantity: 1, sku: "KS6-44-B2B", variant: { sku: "KS6-44" } } }],
+        edges: [
+          {
+            node: {
+              id: "gid://shopify/LineItem/1",
+              title: "Kestrel",
+              quantity: 1,
+              sku: "KS6-44-B2B",
+              variant: { sku: "KS6-44" },
+            },
+          },
+        ],
       },
     }
-    const { ctx, calls } = makeCtx({ fetchResponses: [order(lines)], config: { b2bSkuSuffixes: "-b2b" } })
-    const out = (await orders_get({ id: "gid://shopify/Order/3001" }, ctx)) as { b2bOrder?: unknown }
+    const { ctx, calls } = makeCtx({
+      fetchResponses: [order(lines)],
+      config: { b2bSkuSuffixes: "-b2b" },
+    })
+    const out = (await orders_get({ id: "gid://shopify/Order/3001" }, ctx)) as {
+      b2bOrder?: unknown
+    }
     expect(out.b2bOrder).toEqual({ b2b: true, reason: "b2b_sku_suffix" })
-    expect((JSON.parse(calls[0]!.body) as { query: string }).query).toMatch(/node \{ id title quantity sku /)
+    expect((JSON.parse(calls[0]!.body) as { query: string }).query).toMatch(
+      /node \{ id title quantity sku /,
+    )
   })
 
   it("carries the org's shipping email policy (unset reads as caller)", async () => {
-    const set = makeCtx({ fetchResponses: [order({})], config: { customerShippingEmail: "retail_only" } })
-    const a = (await orders_get({ id: "gid://shopify/Order/3001" }, set.ctx)) as unknown as Record<string, unknown>
+    const set = makeCtx({
+      fetchResponses: [order({})],
+      config: { customerShippingEmail: "retail_only" },
+    })
+    const a = (await orders_get({ id: "gid://shopify/Order/3001" }, set.ctx)) as unknown as Record<
+      string,
+      unknown
+    >
     expect(a.shippingEmailPolicy).toBe("retail_only")
     const unset = makeCtx({ fetchResponses: [order({})], config: {} })
-    const b = (await orders_get({ id: "gid://shopify/Order/3001" }, unset.ctx)) as unknown as Record<string, unknown>
+    const b = (await orders_get(
+      { id: "gid://shopify/Order/3001" },
+      unset.ctx,
+    )) as unknown as Record<string, unknown>
     expect(b.shippingEmailPolicy).toBe("caller")
   })
 
   it("the settings unreadable: no verdict and no policy (the card then promises nothing)", async () => {
     const { ctx } = makeCtx({ fetchResponses: [order(skuLines)] })
-    const out = (await orders_get({ id: "gid://shopify/Order/3001" }, ctx)) as unknown as Record<string, unknown>
+    const out = (await orders_get({ id: "gid://shopify/Order/3001" }, ctx)) as unknown as Record<
+      string,
+      unknown
+    >
     expect(out.b2bOrder).toBeUndefined()
     expect(out.shippingEmailPolicy).toBeUndefined()
   })
@@ -3131,7 +3557,11 @@ describe("orders_get / fulfillments_get carry the B2B verdict the fulfilment car
           data: {
             fulfillment: {
               id: "gid://shopify/Fulfillment/7",
-              order: { id: "gid://shopify/Order/3001", name: "#3001", purchasingEntity: { company: { name: "Example Trading Ltd" } } },
+              order: {
+                id: "gid://shopify/Order/3001",
+                name: "#3001",
+                purchasingEntity: { company: { name: "Example Trading Ltd" } },
+              },
             },
           },
         },
@@ -3139,7 +3569,10 @@ describe("orders_get / fulfillments_get carry the B2B verdict the fulfilment car
       config: {},
     })
     const out = await fulfillments_get({ id: "gid://shopify/Fulfillment/7" }, ctx)
-    expect((out.attributes as Record<string, unknown>).b2bOrder).toEqual({ b2b: true, reason: "b2b_company_buyer" })
+    expect((out.attributes as Record<string, unknown>).b2bOrder).toEqual({
+      b2b: true,
+      reason: "b2b_company_buyer",
+    })
     expect((out.attributes as Record<string, unknown>).shippingEmailPolicy).toBe("caller")
     expect((JSON.parse(calls[0]!.body) as { query: string }).query).toContain("PurchasingCompany")
   })

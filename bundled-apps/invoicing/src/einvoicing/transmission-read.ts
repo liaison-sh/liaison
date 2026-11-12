@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // `einvoice_transmission_get` (read only): what the document panel and the agent show about one
 // document's e-invoicing transmission or booking.
-import { attemptOf, type EinvCtx, fail, readEinvoicingSettings, sendFacts, TERMINAL_SEND_FAILURES } from "./transmit"
+import {
+  attemptOf,
+  type EinvCtx,
+  fail,
+  readEinvoicingSettings,
+  sendFacts,
+  TERMINAL_SEND_FAILURES,
+} from "./transmit"
 
 type Row = Record<string, unknown>
 
@@ -10,9 +17,15 @@ export async function einvoiceTransmissionGet(ctx: EinvCtx, params: { document_i
   if (!id) return fail("invalid_input", "document_id is required")
   const doc = ((await ctx.db.findMany("documents", { where: { id }, limit: 1 })) as Row[])[0]
   if (!doc) return fail("row_not_found", `document ${id} not found`)
-  const rows = (await ctx.db.findMany("einvoice_transmissions", { where: { document_id: id }, orderBy: { createdAt: "asc" }, limit: 20 })) as Row[]
+  const rows = (await ctx.db.findMany("einvoice_transmissions", {
+    where: { document_id: id },
+    orderBy: { createdAt: "asc" },
+    limit: 20,
+  })) as Row[]
   // Attempts are appended: the latest send attempt is the one that stands.
-  const sends = rows.filter((r) => r.action === "send_einvoice").sort((a, b) => attemptOf(a) - attemptOf(b))
+  const sends = rows
+    .filter((r) => r.action === "send_einvoice")
+    .sort((a, b) => attemptOf(a) - attemptOf(b))
   const latestSend = sends[sends.length - 1] ?? null
   const retry = latestSend !== null && TERMINAL_SEND_FAILURES.has(String(latestSend.state))
   const settings = await readEinvoicingSettings(ctx.db)
@@ -27,11 +40,21 @@ export async function einvoiceTransmissionGet(ctx: EinvCtx, params: { document_i
       const reg = (f.facts.identity?.registry_name as string | null | undefined) ?? null
       const contact = (doc.counterparty_name as string | null) ?? null
       send_preview = {
-        binding: { ...f.facts.binding, ...(latestSend ? { attempt: attemptOf(latestSend) + 1 } : {}) },
+        binding: {
+          ...f.facts.binding,
+          ...(latestSend ? { attempt: attemptOf(latestSend) + 1 } : {}),
+        },
         registry_name: reg ?? doc.buyer_legal_name ?? null,
-        registry_city: (f.facts.identity?.registry_city as string | null | undefined) ?? doc.billing_city ?? null,
+        registry_city:
+          (f.facts.identity?.registry_city as string | null | undefined) ??
+          doc.billing_city ??
+          null,
         contact_name: contact,
-        name_mismatch: Boolean(reg && contact && !reg.toUpperCase().includes(contact.toUpperCase().split(/\s+/)[0] ?? "")),
+        name_mismatch: Boolean(
+          reg &&
+            contact &&
+            !reg.toUpperCase().includes(contact.toUpperCase().split(/\s+/)[0] ?? ""),
+        ),
       }
     } else {
       send_blocked = f.error.message
@@ -71,7 +94,9 @@ export async function einvoiceTransmissionGet(ctx: EinvCtx, params: { document_i
 
 /** `einvoicing_settings_get` (read only): the e-invoicing settings, the installed providers of the
  *  contract, and the bound provider's registration (emission activated, webhook). */
-export async function einvoicingSettingsGet(ctx: EinvCtx & { contracts?: EinvCtx["contracts"] & { providers?(c: string): Promise<unknown> } }) {
+export async function einvoicingSettingsGet(
+  ctx: EinvCtx & { contracts?: EinvCtx["contracts"] & { providers?(c: string): Promise<unknown> } },
+) {
   const settings = await readEinvoicingSettings(ctx.db)
   let providers: string[] = []
   if (ctx.contracts?.providers) {
@@ -81,7 +106,8 @@ export async function einvoicingSettingsGet(ctx: EinvCtx & { contracts?: EinvCtx
   let registration: Row | null = null
   if (settings.provider_app && ctx.contracts) {
     const env = await ctx.contracts.call("einvoicing-pa@1", "registration_status", {})
-    registration = env.status === "completed" ? (env.result as Row) : { status: "error", error: env.error }
+    registration =
+      env.status === "completed" ? (env.result as Row) : { status: "error", error: env.error }
   }
   return { status: "ok", settings, providers, registration }
 }

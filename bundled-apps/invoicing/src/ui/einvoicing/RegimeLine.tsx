@@ -45,14 +45,21 @@ function reasonText(r: RegimeReason): string | null {
 export function regimeLineView(v: ClassifyVerdict, ctx: BlockerContext): RegimeLineView {
   const reasons = v.reasons ?? []
   const warning = reasons.find((r) => r.code === "gate_warning")
-  const main = reasons.find((r) => r.code !== "gate_warning" && r.code !== "buyer_siren_from_identity")
+  const main = reasons.find(
+    (r) => r.code !== "gate_warning" && r.code !== "buyer_siren_from_identity",
+  )
   let missing: MissingItem[] = []
   let note: string | null = null
   if (warning) {
     // Issued in warn mode: the issued document is never rewritten, so its gaps are fixed on the
     // customer's identity, which every later document reads.
-    missing = (warning.missing ?? []).map((field) => ({ field, fix_tool: "counterparty_identity_set" }))
-    note = tr("Issued with e-invoicing data to complete: {{fields}}.", { fields: missingSummary(missing) })
+    missing = (warning.missing ?? []).map((field) => ({
+      field,
+      fix_tool: "counterparty_identity_set",
+    }))
+    note = tr("Issued with e-invoicing data to complete: {{fields}}.", {
+      fields: missingSummary(missing),
+    })
   } else if (v.would_refuse && v.would_refuse.missing.length > 0) {
     missing = v.would_refuse.missing
     note = tr("Before issuing, complete: {{fields}}.", { fields: missingSummary(missing) })
@@ -73,7 +80,9 @@ export function regimeLineView(v: ClassifyVerdict, ctx: BlockerContext): RegimeL
 
 async function loadVerdict(documentId: string): Promise<ClassifyVerdict | null> {
   try {
-    const r = await app.invokeTool<ClassifyVerdict>("einvoicing_classify", { document_id: documentId })
+    const r = await app.invokeTool<ClassifyVerdict>("einvoicing_classify", {
+      document_id: documentId,
+    })
     return r && r.status !== "error" ? r : null
   } catch {
     return null
@@ -112,7 +121,10 @@ export const RegimeLine: Component<{
             </Show>
           </div>
           <Show when={lv().note}>
-            <div data-testid="document-detail-regime-note" class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <div
+              data-testid="document-detail-regime-note"
+              class="flex flex-wrap items-baseline gap-x-3 gap-y-1"
+            >
               <span class="text-text-secondary">{lv().note}</span>
               <For each={lv().actions}>
                 {(a) => (

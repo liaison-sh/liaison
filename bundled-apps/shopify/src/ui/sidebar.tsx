@@ -17,7 +17,7 @@
 // `history.pushState` / `replaceState` once at mount so the sidebar can
 // react to programmatic navigation as well as browser back/forward.
 import { currentPath } from "@liaison/host"
-import { createSignal, onCleanup, onMount, type Component, type JSX } from "solid-js"
+import { type Component, createSignal, type JSX, onCleanup, onMount } from "solid-js"
 import { onOutsideLinkClick } from "./external-link"
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -178,7 +178,11 @@ const LINKS: NavLink[] = [
     href: "/shopify/orders",
     label: "Orders",
     icon: ReceiptIcon,
-    alsoActiveOn: ["/detail/shopify/draftOrder", "/detail/shopify/return", "/detail/shopify/refund"],
+    alsoActiveOn: [
+      "/detail/shopify/draftOrder",
+      "/detail/shopify/return",
+      "/detail/shopify/refund",
+    ],
   },
   {
     href: "/shopify/customers",

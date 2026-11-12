@@ -146,7 +146,9 @@ export async function linkShipments(
       attributes?: Record<string, unknown>
     }>
     const shipments: LinkedShipment[] = hits
-      .filter((h) => h.attributes?.document_ref === id && h.attributes?.order_status !== "CANCELLED")
+      .filter(
+        (h) => h.attributes?.document_ref === id && h.attributes?.order_status !== "CANCELLED",
+      )
       .map((h) => ({
         shipment_id: String(h.id),
         tracking_number: nonBlank(h.attributes?.tracking_number),

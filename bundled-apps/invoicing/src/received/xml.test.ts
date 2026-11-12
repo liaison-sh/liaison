@@ -64,12 +64,20 @@ describe("safe XML reader: refusals", () => {
   })
 
   it("enforces the size, element, depth and time budgets", () => {
-    expect(refusedCode(() => parseXmlSafe(`<a>${"x".repeat(2000)}</a>`, { maxBytes: 1000 }))).toBe("xml_too_large")
-    expect(refusedCode(() => parseXmlSafe(`<a>${"<b/>".repeat(5000)}</a>`, { maxElements: 1000 }))).toBe("xml_too_complex")
-    expect(refusedCode(() => parseXmlSafe(`${"<a>".repeat(300)}${"</a>".repeat(300)}`))).toBe("xml_too_complex")
+    expect(refusedCode(() => parseXmlSafe(`<a>${"x".repeat(2000)}</a>`, { maxBytes: 1000 }))).toBe(
+      "xml_too_large",
+    )
+    expect(
+      refusedCode(() => parseXmlSafe(`<a>${"<b/>".repeat(5000)}</a>`, { maxElements: 1000 })),
+    ).toBe("xml_too_complex")
+    expect(refusedCode(() => parseXmlSafe(`${"<a>".repeat(300)}${"</a>".repeat(300)}`))).toBe(
+      "xml_too_complex",
+    )
     let t = 0
     const clock = () => (t += 10)
-    expect(refusedCode(() => parseXmlSafe(`<a>${"<b/>".repeat(3000)}</a>`, { timeoutMs: 5 }, clock))).toBe("xml_timeout")
+    expect(
+      refusedCode(() => parseXmlSafe(`<a>${"<b/>".repeat(3000)}</a>`, { timeoutMs: 5 }, clock)),
+    ).toBe("xml_timeout")
   })
 
   it("decodes only the predefined entities and character references", () => {
@@ -112,11 +120,24 @@ describe("received facts", () => {
   it("a hostile file is an outcome, not a crash; something else than an invoice is named", () => {
     const r = extractReceivedFacts(`<!DOCTYPE x [<!ENTITY a "b">]><x/>`)
     expect(r).toMatchObject({ ok: false, code: "xml_dtd_refused" })
-    expect(extractReceivedFacts("<Order/>")).toMatchObject({ ok: false, code: "xml_not_an_invoice" })
+    expect(extractReceivedFacts("<Order/>")).toMatchObject({
+      ok: false,
+      code: "xml_not_an_invoice",
+    })
   })
 
   it("compares totals to the cent", () => {
-    expect(totalsDiffer({ before_tax: "100.0", tax: "20.0", total: "120.0" }, { before_tax: "100.00", tax: "20.00", total: "120.00" })).toEqual([])
-    expect(totalsDiffer({ before_tax: "100.0", tax: "20.0", total: "121.0" }, { before_tax: "100.00", tax: "20.00", total: "120.00" })).toEqual(["total"])
+    expect(
+      totalsDiffer(
+        { before_tax: "100.0", tax: "20.0", total: "120.0" },
+        { before_tax: "100.00", tax: "20.00", total: "120.00" },
+      ),
+    ).toEqual([])
+    expect(
+      totalsDiffer(
+        { before_tax: "100.0", tax: "20.0", total: "121.0" },
+        { before_tax: "100.00", tax: "20.00", total: "120.00" },
+      ),
+    ).toEqual(["total"])
   })
 })

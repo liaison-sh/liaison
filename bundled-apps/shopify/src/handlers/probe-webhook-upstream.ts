@@ -39,7 +39,7 @@ export async function probeWebhookUpstreamJob(
   if (!row?.shopDomain || row.connectionStatus === "disconnected") {
     return { upstreamActivityAt: null }
   }
-  let client
+  let client: Awaited<ReturnType<typeof getShopifyClient>>
   try {
     client = await getShopifyClient(ctx)
   } catch (err) {

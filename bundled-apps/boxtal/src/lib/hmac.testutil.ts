@@ -3,7 +3,12 @@
 // Unit-test HMAC helper, bound to the boxtal secret key. Pure node:crypto path
 // (@liaison/test-helpers/webhook-hmac) imported only from tests, so the
 // `node:crypto` import never reaches the sandbox bundle.
-import { type HmacTestBridge, hmacBase64, hmacHex, makeHmacTestBridge } from "@liaison/test-helpers/webhook-hmac"
+import {
+  type HmacTestBridge,
+  hmacBase64,
+  hmacHex,
+  makeHmacTestBridge,
+} from "@liaison/test-helpers/webhook-hmac"
 
 export { hmacBase64, hmacHex }
 

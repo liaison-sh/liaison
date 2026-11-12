@@ -7,8 +7,7 @@
 import { formatMoney } from "./columns"
 import type { DocumentRow } from "./types"
 
-const big = (v: bigint | number | undefined): bigint =>
-  typeof v === "bigint" ? v : BigInt(v ?? 0)
+const big = (v: bigint | number | undefined): bigint => (typeof v === "bigint" ? v : BigInt(v ?? 0))
 
 export interface CustomerRollup extends DocumentRow {
   group_count: number
@@ -64,7 +63,8 @@ export function perCurrencyRollup(
   if (rows.length === 0) return ""
   // One row reads "1 invoice", any other count "2 invoices" (the caller passes both forms,
   // already in the reader's language).
-  const noun = typeof nounForms === "string" ? nounForms : rows.length === 1 ? nounForms.one : nounForms.other
+  const noun =
+    typeof nounForms === "string" ? nounForms : rows.length === 1 ? nounForms.one : nounForms.other
   // A sum is only meaningful over documents of one kind: invoices, quotes, proformas,
   // purchase orders (payables) and credit notes added together are no figure anyone
   // can use, so a mixed list shows its count alone.

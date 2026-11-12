@@ -8,36 +8,76 @@ const CREDS = { v1Key: "k1", v1Secret: "s1", v3Key: "k3", v3Secret: "s3", enviro
 // Per-order-id canned responses; ids not present 422 like live Boxtal
 // (ShippingOrderNotFoundException).
 function makeCtx(opts?: {
-  orders?: Record<string, { status: string; tracking?: { status: string; number: string }; documents?: Array<{ url: string; type: string; format: string }> }>
+  orders?: Record<
+    string,
+    {
+      status: string
+      tracking?: { status: string; number: string }
+      documents?: Array<{ url: string; type: string; format: string }>
+    }
+  >
   seedShipment?: Array<Record<string, unknown>>
 }) {
   const db = createMockDb({ seed: { shipment: opts?.seedShipment ?? [] } })
   const orders = opts?.orders ?? {}
   const fetch = async (url: string) => {
     if (url.includes("/iam/account-app/token")) {
-      return { status: 200, headers: {}, body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }) }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ accessToken: "tok", expiresIn: 3600 }),
+      }
     }
     const m = url.match(/\/shipping-order\/([^/?]+)(\/(tracking|shipping-document))?/)
     const id = m ? decodeURIComponent(m[1] ?? "") : ""
     const order = orders[id]
     if (!order) {
-      return { status: 422, headers: {}, body: JSON.stringify({ status: 422, errors: [{ code: "ShippingOrderNotFoundException" }] }) }
+      return {
+        status: 422,
+        headers: {},
+        body: JSON.stringify({ status: 422, errors: [{ code: "ShippingOrderNotFoundException" }] }),
+      }
     }
     if (url.includes("/tracking")) {
       const t = order.tracking
-      const content = t ? [{ status: t.status, trackingNumber: t.number, trackingDateTime: "2026-06-02T00:00:00Z", history: [] }] : []
-      return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content }) }
+      const content = t
+        ? [
+            {
+              status: t.status,
+              trackingNumber: t.number,
+              trackingDateTime: "2026-06-02T00:00:00Z",
+              history: [],
+            },
+          ]
+        : []
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ status: 200, timestamp: "t", content }),
+      }
     }
     if (url.includes("/shipping-document")) {
-      return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: order.documents ?? [] }) }
+      return {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ status: 200, timestamp: "t", content: order.documents ?? [] }),
+      }
     }
-    return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: { id, status: order.status } }) }
+    return {
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ status: 200, timestamp: "t", content: { id, status: order.status } }),
+    }
   }
   const ctx = {
     orgId: "org-1",
     db,
     fetch,
-    connections: { boxtal: { getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }) } },
+    connections: {
+      boxtal: {
+        getSettings: async () => ({ values: { environment: CREDS.environment }, missing: [] }),
+      },
+    },
     config: { get: async () => null, has: async () => false },
     // biome-ignore lint/suspicious/noExplicitAny: test ctx (same idiom as reads.test.ts)
   } as any
@@ -58,7 +98,12 @@ describe("importShipments", () => {
     const res = await importShipments(ctx, { ids: ["ord-a"] })
     expect(res.imported).toBe(1)
     expect(res.failed).toBe(0)
-    expect(res.rows[0]).toMatchObject({ id: "ord-a", outcome: "imported", order_status: "CONFIRMED", tracking_status: "IN_TRANSIT" })
+    expect(res.rows[0]).toMatchObject({
+      id: "ord-a",
+      outcome: "imported",
+      order_status: "CONFIRMED",
+      tracking_status: "IN_TRANSIT",
+    })
     const rows = (await ctx.db.findMany("shipment", {})) as Array<Record<string, unknown>>
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({
@@ -76,8 +121,18 @@ describe("importShipments", () => {
 
   it("updates the existing row instead of duplicating when the order is already linked", async () => {
     const { ctx } = makeCtx({
-      orders: { "ord-a": { status: "CONFIRMED", tracking: { status: "DELIVERED", number: "TRK-A" } } },
-      seedShipment: [{ id: "s1", boxtal_order_id: "ord-a", link_state: "created", order_status: "PENDING", documents: [] }],
+      orders: {
+        "ord-a": { status: "CONFIRMED", tracking: { status: "DELIVERED", number: "TRK-A" } },
+      },
+      seedShipment: [
+        {
+          id: "s1",
+          boxtal_order_id: "ord-a",
+          link_state: "created",
+          order_status: "PENDING",
+          documents: [],
+        },
+      ],
     })
     const res = await importShipments(ctx, { ids: ["ord-a"] })
     expect(res.updated).toBe(1)

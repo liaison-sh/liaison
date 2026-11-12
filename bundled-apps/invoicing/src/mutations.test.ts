@@ -10,28 +10,51 @@
 // (`db.__all('documents')`, etc.) so what passes here must also pass at
 // runtime against the real bridge.
 
-import { testTime } from "./test-time"
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test"
-import type { CrossAppEnvelope, CrossAppExecuteTool } from "./cross-app"
-import type { Counterparty, DraftLine, IssuerProfile } from "./issue"
 import {
+  BUYER_VIES_TIMEOUT_MS,
+  compatibleNames,
+  documentsIssuePreview,
+  hasCompanyLegalForm,
+  sameAddress,
+  sameFullAddress,
+} from "./buyer-vat"
+import type { CrossAppEnvelope, CrossAppExecuteTool } from "./cross-app"
+import { FICTIONAL_SIRENS, FR_SELLER_IDENTITY } from "./einvoicing/test-fixtures"
+import {
+  draftsCreatePreflightHandler,
+  draftsUpdatePreflightHandler,
+  invoiceCreateAndIssueHandler,
+  quoteCreateAndIssueHandler,
+} from "./handlers"
+import type { Counterparty, DraftLine, IssuerProfile } from "./issue"
+import { formatMoneyMinor } from "./money"
+import {
+  type ContactRelationshipRow,
   contactRelationshipsSet,
   creditNoteCreateAndIssue,
+  creditNoteCreateAndIssuePreflight,
   creditNoteIssue,
+  creditNoteIssuePreflight,
   documentsConvertToInvoice,
+  documentsConvertToInvoicePreflight,
   documentsMarkPaid,
+  documentsMarkPaidPreflight,
   documentsRecordRefund,
+  documentsRecordRefundPreflight,
   documentsRetryPdf,
   documentsSendToCustomer,
   documentsSendToCustomerPreflight,
-  documentsConvertToInvoicePreflight,
-  documentsMarkPaidPreflight,
-  documentsRecordRefundPreflight,
   documentsUpdate,
+  documentsUpdatePreflight,
+  documentsUpdatePreview,
   draftIssuePreview,
   draftsCreate,
+  draftsCreatePreflight,
+  draftsCreateTool,
   draftsDiscard,
   draftsUpdate,
+  draftsUpdatePreflight,
   hsCodesAssign,
   hsCodesLibraryDelete,
   hsCodesLibraryUpsert,
@@ -41,11 +64,13 @@ import {
   invoiceCreateAndIssuePreflight,
   invoiceIssue,
   invoiceIssuePreflight,
-  orderReissueApply,
-  orderReissueApplyPreflight,
   liftMisplacedCountry,
   liftMisplacedCountryOnLine,
   liftMisplacedHsCode,
+  type MutationsCtx,
+  orderReissueApply,
+  orderReissueApplyPreflight,
+  type ProductCustomsOverlayRow,
   poCreateAndIssue,
   poIssue,
   proformaCreateAndIssue,
@@ -54,45 +79,26 @@ import {
   proformaIssuePreflight,
   quoteCreateAndIssue,
   quoteCreateAndIssuePreflight,
-  splitPostalAddress,
   quoteIssue,
+  quoteIssuePreflight,
   sendErrorFromEnvelope,
   settingsIssuerProfileCreate,
   settingsIssuerProfileDelete,
   settingsIssuerProfileUpdate,
   settingsIssuerProfileWritePreflight,
-  type ContactRelationshipRow,
-  type MutationsCtx,
-  type ProductCustomsOverlayRow,
+  splitPostalAddress,
 } from "./mutations"
+import type { ReadsFetch } from "./reads"
+import { documentsGet, type ReadsCtx } from "./reads"
+import * as summarizers from "./summarizers"
 import {
   summarizeDocumentSend,
+  summarizeDocumentUpdate,
   summarizeIssuerProfileChange,
   summarizeProformaCreateAndIssue,
 } from "./summarizers"
-import { BUYER_VIES_TIMEOUT_MS, compatibleNames, documentsIssuePreview, hasCompanyLegalForm, sameAddress, sameFullAddress } from "./buyer-vat"
-import {
-  draftsCreatePreflight,
-  draftsCreateTool,
-  draftsUpdatePreflight,
-  documentsUpdatePreflight,
-  documentsUpdatePreview,
-  quoteIssuePreflight,
-} from "./mutations"
-import { summarizeDocumentUpdate } from "./summarizers"
-import type { ReadsFetch } from "./reads"
 import { createMockDb, type MockDb } from "./test-db"
-import { documentsGet, type ReadsCtx } from "./reads"
-import { FICTIONAL_SIRENS, FR_SELLER_IDENTITY } from "./einvoicing/test-fixtures"
-import { creditNoteCreateAndIssuePreflight, creditNoteIssuePreflight } from "./mutations"
-import {
-  draftsCreatePreflightHandler,
-  draftsUpdatePreflightHandler,
-  invoiceCreateAndIssueHandler,
-  quoteCreateAndIssueHandler,
-} from "./handlers"
-import { formatMoneyMinor } from "./money"
-import * as summarizers from "./summarizers"
+import { testTime } from "./test-time"
 
 interface MockExtras {
   threadPosts: Array<{
@@ -212,22 +218,31 @@ function seedIssuer(
     prefix_credit_note: issuer.prefix_credit_note,
     invoice_approval_threshold_minor:
       thresholds.invoice != null ? thresholds.invoice.toString() : null,
-    po_approval_threshold_minor:
-      thresholds.po != null ? thresholds.po.toString() : null,
+    po_approval_threshold_minor: thresholds.po != null ? thresholds.po.toString() : null,
     require_two_eyes: !!thresholds.require_two_eyes,
     // The org's configured send-from mail account — present by default so send_to_customer tests
     // exercise the real account-resolution path; pass `mailAccountId: null` to test the guard.
-    mail_account_id: thresholds.mailAccountId === undefined ? "acct-mail-1" : thresholds.mailAccountId,
+    mail_account_id:
+      thresholds.mailAccountId === undefined ? "acct-mail-1" : thresholds.mailAccountId,
   }
 }
 
 const NO_GATE_MINOR = 10n ** 15n
 // A standalone credit note (no original invoice) is always approved; tests that only exercise issuing
 // run as the post-approval re-entry.
-const PRE_APPROVED = { approvalRequestId: "appr-pre", approvalDeciderId: "user-2", toolName: "invoicing:test" }
+const PRE_APPROVED = {
+  approvalRequestId: "appr-pre",
+  approvalDeciderId: "user-2",
+  toolName: "invoicing:test",
+}
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
-const usdRateToday = () => ({ currency: "USD", rate_date: todayIso(), rate: "1.1225", fetched_at: new Date() })
+const usdRateToday = () => ({
+  currency: "USD",
+  rate_date: todayIso(),
+  rate: "1.1225",
+  fetched_at: new Date(),
+})
 
 function makeCtx(opts?: {
   actorUserId?: string
@@ -253,7 +268,8 @@ function makeCtx(opts?: {
         seedIssuer(issuer, {
           // Unset (undefined) = a threshold nothing reaches; an explicit null = NO threshold, which
           // credit notes and purchase orders treat as "always approve" (security pass).
-          invoice: opts?.issuerThresholdMinor === undefined ? NO_GATE_MINOR : opts.issuerThresholdMinor,
+          invoice:
+            opts?.issuerThresholdMinor === undefined ? NO_GATE_MINOR : opts.issuerThresholdMinor,
           po: opts?.poThresholdMinor === undefined ? NO_GATE_MINOR : opts.poThresholdMinor,
           require_two_eyes: opts?.requireTwoEyes,
           mailAccountId: opts?.mailAccountId,
@@ -412,13 +428,22 @@ describe("drafts preflight (stage-time, conditionalGate)", () => {
   test("drafts_update: a missing draft and over-long notes are refused at staging; the draft is unchanged", async () => {
     const { ctx, db } = makeCtx()
     const { draft_id } = await draftsCreate(ctx, base)
-    expect(await draftsUpdatePreflight(ctx, { draft_id: "00000000-0000-4000-8000-000000000000", patch: {} })).toMatchObject({
+    expect(
+      await draftsUpdatePreflight(ctx, {
+        draft_id: "00000000-0000-4000-8000-000000000000",
+        patch: {},
+      }),
+    ).toMatchObject({
       error: { code: "not_found" },
     })
-    expect(await draftsUpdatePreflight(ctx, { draft_id, patch: { notes: "x".repeat(5000) } })).toMatchObject({
+    expect(
+      await draftsUpdatePreflight(ctx, { draft_id, patch: { notes: "x".repeat(5000) } }),
+    ).toMatchObject({
       error: { code: expect.any(String) },
     })
-    expect(await draftsUpdatePreflight(ctx, { draft_id, patch: { notes: "Contract 42" } })).toEqual({ ok: true })
+    expect(await draftsUpdatePreflight(ctx, { draft_id, patch: { notes: "Contract 42" } })).toEqual(
+      { ok: true },
+    )
     expect(draftDocs(db).find((d) => d.id === draft_id)?.notes ?? null).toBeNull()
   })
 })
@@ -439,9 +464,7 @@ describe("drafts.create", () => {
     expect(drafts).toHaveLength(1)
     expect(drafts[0]!.type).toBe("invoice")
     expect(drafts[0]!.status).toBe("draft")
-    const lines = db.__all("document_lines").filter(
-      (l) => l.document_id === drafts[0]!.id,
-    )
+    const lines = db.__all("document_lines").filter((l) => l.document_id === drafts[0]!.id)
     expect(lines).toHaveLength(1)
   })
 
@@ -1116,7 +1139,13 @@ describe("drafts.update", () => {
       issuer_profile_id: "iss-1",
       currency: "EUR",
       items: [
-        { description: "Kestrel 6", quantity: "1", unit_price_minor: 41940n, product_source: null, external_id: null },
+        {
+          description: "Kestrel 6",
+          quantity: "1",
+          unit_price_minor: 41940n,
+          product_source: null,
+          external_id: null,
+        },
       ],
     })
     const updated = await draftsUpdate(ctx, {
@@ -1148,9 +1177,9 @@ describe("drafts.update", () => {
 
   test("missing draft surfaces not_found", async () => {
     const { ctx } = makeCtx()
-    await expect(
-      draftsUpdate(ctx, { draft_id: "draft-missing", patch: {} }),
-    ).rejects.toThrow(/not_found/)
+    await expect(draftsUpdate(ctx, { draft_id: "draft-missing", patch: {} })).rejects.toThrow(
+      /not_found/,
+    )
   })
 })
 
@@ -1192,9 +1221,7 @@ describe("draft round-trip — VAT not dropped when no per-line rate", () => {
     })
 
     // The persisted draft line stores NULL (no override) — not an explicit 0.
-    const draftLine = db
-      .__all("document_lines")
-      .find((l) => l.document_id === draft_id)
+    const draftLine = db.__all("document_lines").find((l) => l.document_id === draft_id)
     expect(draftLine?.tax_rate_bp).toBeNull()
 
     const r = await invoiceIssue(ctx, { draft_id })
@@ -1265,7 +1292,11 @@ describe("draft round-trip — VAT not dropped when no per-line rate", () => {
   // red: a fractional value was read as major units (x100) and "899.00" as 899 cents, so one field
   // meant two things and a credit note issued at 100 times its amount under a card that said 0.00.
   test("drafts_create refuses a decimal price, naming what to send, and stores nothing", async () => {
-    for (const [bad, send] of [["419.40", "41940"], ["899.00", "89900"], ["-1260.50", "-126050"]] as const) {
+    for (const [bad, send] of [
+      ["419.40", "41940"],
+      ["899.00", "89900"],
+      ["-1260.50", "-126050"],
+    ] as const) {
       const { ctx, db } = makeCtx()
       await expect(
         draftsCreate(ctx, {
@@ -1275,10 +1306,21 @@ describe("draft round-trip — VAT not dropped when no per-line rate", () => {
           issuer_profile_id: "iss-1",
           currency: "EUR",
           items: [
-            { position: 1, description: "Kestrel 6", quantity: "25", unit_price_minor: bad, product_source: null, external_id: null },
+            {
+              position: 1,
+              description: "Kestrel 6",
+              quantity: "25",
+              unit_price_minor: bad,
+              product_source: null,
+              external_id: null,
+            },
           ],
         } as unknown as Parameters<typeof draftsCreate>[1]),
-      ).rejects.toThrow(new RegExp(`invalid_amount: items\\[0\\]\\.unit_price_minor is "${bad.replace(".", "\\.")}".*send ${send}`))
+      ).rejects.toThrow(
+        new RegExp(
+          `invalid_amount: items\\[0\\]\\.unit_price_minor is "${bad.replace(".", "\\.")}".*send ${send}`,
+        ),
+      )
       expect(db.__all("document_lines")).toHaveLength(0)
     }
   })
@@ -1294,7 +1336,14 @@ describe("draft round-trip — VAT not dropped when no per-line rate", () => {
         currency: "USD",
         reason: "sample",
         items: [
-          { position: 1, description: "Kestrel 6", quantity: "1", unit_price_minor: bad, product_source: null, external_id: null },
+          {
+            position: 1,
+            description: "Kestrel 6",
+            quantity: "1",
+            unit_price_minor: bad,
+            product_source: null,
+            external_id: null,
+          },
         ],
       } as unknown as Parameters<typeof proformaCreateAndIssue>[1])
       expect(res.status).toBe("error")
@@ -1312,7 +1361,14 @@ describe("draft round-trip — VAT not dropped when no per-line rate", () => {
         currency: "USD",
         reason: "sample",
         items: [
-          { position: 1, description: "Kestrel 6", quantity: "1", unit_price_minor: bad, product_source: null, external_id: null },
+          {
+            position: 1,
+            description: "Kestrel 6",
+            quantity: "1",
+            unit_price_minor: bad,
+            product_source: null,
+            external_id: null,
+          },
         ],
       } as unknown as Parameters<typeof proformaCreateAndIssuePreflight>[1])
       if (!("error" in pre)) throw new Error("preflight let an unparsable price through")
@@ -1328,7 +1384,15 @@ describe("draft round-trip — VAT not dropped when no per-line rate", () => {
       currency: "USD",
       reason: "sample",
       items: [
-        { position: 1, description: "Kestrel 6", quantity: "1", unit_price_minor: "100", discount_minor: "$5", product_source: null, external_id: null },
+        {
+          position: 1,
+          description: "Kestrel 6",
+          quantity: "1",
+          unit_price_minor: "100",
+          discount_minor: "$5",
+          product_source: null,
+          external_id: null,
+        },
       ],
     } as unknown as Parameters<typeof proformaCreateAndIssue>[1])
     expect(res.status).toBe("error")
@@ -1341,8 +1405,23 @@ describe("draft round-trip — VAT not dropped when no per-line rate", () => {
       currency: "USD",
       reason: "sample",
       items: [
-        { position: 1, description: "Kestrel 6", quantity: "1", unit_price_minor: " 100 ", product_source: null, external_id: null },
-        { position: 2, description: "Cable", quantity: "1", unit_price_minor: 250, discount_minor: null, product_source: null, external_id: null },
+        {
+          position: 1,
+          description: "Kestrel 6",
+          quantity: "1",
+          unit_price_minor: " 100 ",
+          product_source: null,
+          external_id: null,
+        },
+        {
+          position: 2,
+          description: "Cable",
+          quantity: "1",
+          unit_price_minor: 250,
+          discount_minor: null,
+          product_source: null,
+          external_id: null,
+        },
       ],
     } as unknown as Parameters<typeof proformaCreateAndIssue>[1])
     expect(ok.status).toBe("pending_approval")
@@ -1358,7 +1437,14 @@ describe("draft round-trip — VAT not dropped when no per-line rate", () => {
         issuer_profile_id: "iss-1",
         currency: "USD",
         items: [
-          { position: 1, description: "Kestrel 6", quantity: "1", unit_price_minor: "$1", product_source: null, external_id: null },
+          {
+            position: 1,
+            description: "Kestrel 6",
+            quantity: "1",
+            unit_price_minor: "$1",
+            product_source: null,
+            external_id: null,
+          },
         ],
       } as unknown as Parameters<typeof draftsCreate>[1]),
     ).rejects.toThrow(/invalid_amount: items\[0\]\.unit_price_minor is "\$1".*whole number/)
@@ -1378,8 +1464,20 @@ describe("draft round-trip — VAT not dropped when no per-line rate", () => {
       issuer_profile_id: "iss-1",
       currency: "EUR",
       items: [
-        { description: "Kestrel 6", quantity: "2", unit_price_minor: 41940n, product_source: null, external_id: null },
-        { description: "Case", quantity: "1", unit_price_minor: 5000n, product_source: null, external_id: null },
+        {
+          description: "Kestrel 6",
+          quantity: "2",
+          unit_price_minor: 41940n,
+          product_source: null,
+          external_id: null,
+        },
+        {
+          description: "Case",
+          quantity: "1",
+          unit_price_minor: 5000n,
+          product_source: null,
+          external_id: null,
+        },
       ],
     })
     const lines = db
@@ -1404,11 +1502,29 @@ describe("draft round-trip — VAT not dropped when no per-line rate", () => {
       counterparty_contact_id: "contact-1",
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      items: [{ description: "Kestrel 6", quantity: "1", unit_price_minor: 41940n, product_source: null, external_id: null }],
+      items: [
+        {
+          description: "Kestrel 6",
+          quantity: "1",
+          unit_price_minor: 41940n,
+          product_source: null,
+          external_id: null,
+        },
+      ],
     })
     const updated = await draftsUpdate(ctx, {
       draft_id,
-      patch: { lines: [{ description: "Kestrel 6", quantity: "3", unit_price_minor: 41940n, product_source: null, external_id: null }] },
+      patch: {
+        lines: [
+          {
+            description: "Kestrel 6",
+            quantity: "3",
+            unit_price_minor: 41940n,
+            product_source: null,
+            external_id: null,
+          },
+        ],
+      },
     })
     expect(updated.lines).toHaveLength(1)
     // unit_price_minor must be a STRING (JSON-safe), not a bigint.
@@ -1572,7 +1688,11 @@ describe("invoice.issue — threshold gating", () => {
     expect(detail.lines).toContain("Total: 120.00 EUR")
     // The effect in one sentence, and the draft named by what it is, never by its id.
     expect(extras.approvalsRequested[0]!.summary).toBe("Issue invoice for Buyer SARL, 120.00 EUR")
-    expect([extras.approvalsRequested[0]!.summary, detail.subtitle ?? "", ...(detail.lines ?? [])].join("\n")).not.toContain(draft_id)
+    expect(
+      [extras.approvalsRequested[0]!.summary, detail.subtitle ?? "", ...(detail.lines ?? [])].join(
+        "\n",
+      ),
+    ).not.toContain(draft_id)
   })
 
   test("re-entry with ctx.approval populated skips threshold check", async () => {
@@ -1811,7 +1931,10 @@ describe("invoice.create_and_issue", () => {
     // full-counterparty convenience path (the one that carries the customer's
     // real legal_name) — so an order-import batch can link every invoice to
     // its order without double-billing on retry. A USD e-invoice needs a cached ECB rate.
-    const { ctx, db } = makeCtx({ issuerThresholdMinor: null, seed: { fx_rates: [usdRateToday()] } })
+    const { ctx, db } = makeCtx({
+      issuerThresholdMinor: null,
+      seed: { fx_rates: [usdRateToday()] },
+    })
     const first = await invoiceCreateAndIssue(ctx, {
       operation_category: "goods",
       counterparty: defaultCounterparty,
@@ -1868,10 +1991,9 @@ describe("invoice.create_and_issue", () => {
       expect(second.status).toBe("completed")
       expect(calls).toHaveLength(1)
       const docs = issuedDocs(db).filter((d) => String(d.shopify_order_id).startsWith("#fx-"))
-      expect(docs.map((d) => (d.einvoice as { fx_rate?: string } | undefined)?.fx_rate ?? d.fx_rate)).toEqual([
-        "1.1225",
-        "1.1225",
-      ])
+      expect(
+        docs.map((d) => (d.einvoice as { fx_rate?: string } | undefined)?.fx_rate ?? d.fx_rate),
+      ).toEqual(["1.1225", "1.1225"])
     })
 
     test("ECB unreachable: a USD e-invoice is refused, retryable, and no number is used", async () => {
@@ -2045,9 +2167,7 @@ describe("documents.convert_to_invoice", () => {
       pdf_file_id: "pdf-existing",
       pdf_status: "ready",
       external_refs: {},
-      lifecycle_log: [
-        { event: "issued", actor: "user-1", ts: "2026-05-28T00:00:00Z" },
-      ],
+      lifecycle_log: [{ event: "issued", actor: "user-1", ts: "2026-05-28T00:00:00Z" }],
     })
 
     const r = await documentsConvertToInvoice(ctx, {
@@ -2105,7 +2225,10 @@ describe("documents.convert_to_invoice", () => {
       external_refs: {},
       lifecycle_log: [],
     })
-    const r = await documentsConvertToInvoice(ctx, { operation_category: "goods", source_document_id: "00000000-0000-4000-8000-00000000010a" })
+    const r = await documentsConvertToInvoice(ctx, {
+      operation_category: "goods",
+      source_document_id: "00000000-0000-4000-8000-00000000010a",
+    })
     expect(r.status).toBe("completed")
     if (r.status !== "completed") throw new Error("unreachable")
     const invoice = db.__all("documents").find((d) => d.id === r.document_id)!
@@ -2116,10 +2239,7 @@ describe("documents.convert_to_invoice", () => {
   // B11 — convert MUST honour the same approval threshold as invoice_issue. The convert path used to
   // skip gating entirely, so an agent/low-trust user could issue an arbitrarily large invoice via
   // convert that the direct issue path would have stopped for human approval.
-  async function seedAcceptedQuote(
-    db: MockDb,
-    overrides?: Record<string, unknown>,
-  ): Promise<void> {
+  async function seedAcceptedQuote(db: MockDb, overrides?: Record<string, unknown>): Promise<void> {
     await db.insert("documents", {
       id: "00000000-0000-4000-8000-00000000010b",
       type: "quote",
@@ -2177,13 +2297,18 @@ describe("documents.convert_to_invoice", () => {
     // grand = 12_000 (10_000 + 20% FR VAT); threshold 5_000 -> above, and still converts.
     const { ctx, db, extras } = makeCtx({ issuerThresholdMinor: 5_000n })
     await seedAcceptedQuote(db)
-    const r = await documentsConvertToInvoice(ctx, { operation_category: "goods", source_document_id: "00000000-0000-4000-8000-00000000010b" })
+    const r = await documentsConvertToInvoice(ctx, {
+      operation_category: "goods",
+      source_document_id: "00000000-0000-4000-8000-00000000010b",
+    })
     expect(r.status).toBe("completed")
     if (r.status !== "completed") throw new Error("unreachable")
     expect(r.mode).toBe("local")
     expect(extras.approvalsRequested).toHaveLength(0)
     expect(db.__all("documents").filter((d) => d.type === "invoice")).toHaveLength(1)
-    expect(db.__all("documents").find((d) => d.id === "00000000-0000-4000-8000-00000000010b")!.status).toBe("invoiced")
+    expect(
+      db.__all("documents").find((d) => d.id === "00000000-0000-4000-8000-00000000010b")!.status,
+    ).toBe("invoiced")
   })
 
   test("two-eyes issuer no longer blocks a self-approved convert (the click IS the approval)", async () => {
@@ -2198,7 +2323,10 @@ describe("documents.convert_to_invoice", () => {
       },
     })
     await seedAcceptedQuote(db)
-    const r = await documentsConvertToInvoice(ctx, { operation_category: "goods", source_document_id: "00000000-0000-4000-8000-00000000010b" })
+    const r = await documentsConvertToInvoice(ctx, {
+      operation_category: "goods",
+      source_document_id: "00000000-0000-4000-8000-00000000010b",
+    })
     expect(r.status).toBe("completed")
     expect(db.__all("documents").filter((d) => d.type === "invoice")).toHaveLength(1)
   })
@@ -2208,9 +2336,14 @@ describe("documents.convert_to_invoice", () => {
   test("converts a quote straight from sent", async () => {
     const { ctx, db } = makeCtx()
     await seedAcceptedQuote(db, { status: "sent" })
-    const r = await documentsConvertToInvoice(ctx, { operation_category: "goods", source_document_id: "00000000-0000-4000-8000-00000000010b" })
+    const r = await documentsConvertToInvoice(ctx, {
+      operation_category: "goods",
+      source_document_id: "00000000-0000-4000-8000-00000000010b",
+    })
     expect(r.status).toBe("completed")
-    expect(db.__all("documents").find((d) => d.id === "00000000-0000-4000-8000-00000000010b")!.status).toBe("invoiced")
+    expect(
+      db.__all("documents").find((d) => d.id === "00000000-0000-4000-8000-00000000010b")!.status,
+    ).toBe("invoiced")
   })
 
   // ── Shopify-linked quote: converting COMPLETES the draft order ──────────────
@@ -2229,7 +2362,10 @@ describe("documents.convert_to_invoice", () => {
     const { ctx, db, extras } = makeCtx({
       executeToolImpl: async (name) => {
         if (name === "shopify:draft_orders_complete")
-          return { status: "completed", result: { draftOrder: { id: "gid://shopify/DraftOrder/55" } } }
+          return {
+            status: "completed",
+            result: { draftOrder: { id: "gid://shopify/DraftOrder/55" } },
+          }
         if (name === "shopify:draft_orders_get")
           return {
             status: "completed",
@@ -2245,7 +2381,10 @@ describe("documents.convert_to_invoice", () => {
       },
     })
     await seedShopifyLinkedQuote(db)
-    const r = await documentsConvertToInvoice(ctx, { operation_category: "goods", source_document_id: "00000000-0000-4000-8000-00000000010b" })
+    const r = await documentsConvertToInvoice(ctx, {
+      operation_category: "goods",
+      source_document_id: "00000000-0000-4000-8000-00000000010b",
+    })
     expect(r.status).toBe("completed")
     if (r.status !== "completed") throw new Error("unreachable")
     expect(r.mode).toBe("shopify_order_created")
@@ -2257,7 +2396,9 @@ describe("documents.convert_to_invoice", () => {
     expect(complete).toBeDefined()
     expect((complete!.args as Record<string, unknown>).id).toBe("gid://shopify/DraftOrder/55")
     expect((complete!.args as Record<string, unknown>).paymentPending).toBe(true)
-    const quote = db.__all("documents").find((d) => d.id === "00000000-0000-4000-8000-00000000010b")!
+    const quote = db
+      .__all("documents")
+      .find((d) => d.id === "00000000-0000-4000-8000-00000000010b")!
     expect(quote.status).toBe("invoiced")
     expect(quote.shopify_order_id).toBe("900")
     expect(quote.shopify_order_number).toBe("#1149")
@@ -2275,11 +2416,16 @@ describe("documents.convert_to_invoice", () => {
           : { status: "completed", result: {} },
     })
     await seedShopifyLinkedQuote(db)
-    const r = await documentsConvertToInvoice(ctx, { operation_category: "goods", source_document_id: "00000000-0000-4000-8000-00000000010b" })
+    const r = await documentsConvertToInvoice(ctx, {
+      operation_category: "goods",
+      source_document_id: "00000000-0000-4000-8000-00000000010b",
+    })
     expect(r.status).toBe("pending_approval")
     if (r.status !== "pending_approval") throw new Error("unreachable")
     expect(r.approval_id).toBe("shopify-appr-1")
-    const quote = db.__all("documents").find((d) => d.id === "00000000-0000-4000-8000-00000000010b")!
+    const quote = db
+      .__all("documents")
+      .find((d) => d.id === "00000000-0000-4000-8000-00000000010b")!
     expect(quote.status).toBe("sent")
     expect(db.__all("documents").filter((d) => d.type === "invoice")).toHaveLength(0)
   })
@@ -2292,11 +2438,16 @@ describe("documents.convert_to_invoice", () => {
           : { status: "completed", result: {} },
     })
     await seedShopifyLinkedQuote(db)
-    const r = await documentsConvertToInvoice(ctx, { operation_category: "goods", source_document_id: "00000000-0000-4000-8000-00000000010b" })
+    const r = await documentsConvertToInvoice(ctx, {
+      operation_category: "goods",
+      source_document_id: "00000000-0000-4000-8000-00000000010b",
+    })
     expect(r.status).toBe("error")
     if (r.status !== "error") throw new Error("unreachable")
     expect(r.error.code).toBe("draft_order_locked")
-    expect(db.__all("documents").find((d) => d.id === "00000000-0000-4000-8000-00000000010b")!.status).toBe("sent")
+    expect(
+      db.__all("documents").find((d) => d.id === "00000000-0000-4000-8000-00000000010b")!.status,
+    ).toBe("sent")
   })
 })
 
@@ -2333,7 +2484,9 @@ describe("documents.mark_paid", () => {
       payment_note: "wire transfer",
     })
     expect(r.status).toBe("completed")
-    const updated = db.__all("documents").find((d) => d.id === "00000000-0000-4000-8000-000000000100")!
+    const updated = db
+      .__all("documents")
+      .find((d) => d.id === "00000000-0000-4000-8000-000000000100")!
     expect(updated.status).toBe("paid")
     expect(updated.payment_status).toBe("paid")
     // The PDF is re-rendered so it stops saying "Total due"/showing the banking box. The re-render
@@ -2495,7 +2648,11 @@ describe("imported legacy documents keep their PDF", () => {
     const r = await documentsRetryPdf(ctx, { id: IMPORTED_ID })
     expect(r.status).toBe("error")
     if (r.status !== "error") throw new Error("unreachable")
-    expect(r.error).toMatchObject({ code: "imported_original_missing", status: 409, retryable: true })
+    expect(r.error).toMatchObject({
+      code: "imported_original_missing",
+      status: 409,
+      retryable: true,
+    })
     expect(r.error.message).toContain("einvoicing_backfill_legacy_originals")
     expect(extras.renderCalls).toHaveLength(0)
     const doc = db.__all("documents").find((d) => d.id === IMPORTED_ID)!
@@ -2546,7 +2703,9 @@ describe("documents.record_refund", () => {
       refund_kind: "full",
     })
     expect(r.status).toBe("completed")
-    const updated = db.__all("documents").find((d) => d.id === "00000000-0000-4000-8000-000000000100")!
+    const updated = db
+      .__all("documents")
+      .find((d) => d.id === "00000000-0000-4000-8000-000000000100")!
     expect(updated.status).toBe("refunded")
     expect(updated.payment_status).toBe("refunded")
   })
@@ -2581,7 +2740,9 @@ describe("documents.record_refund", () => {
       refund_kind: "partial",
     })
     expect(r.status).toBe("completed")
-    const updated = db.__all("documents").find((d) => d.id === "00000000-0000-4000-8000-000000000100")!
+    const updated = db
+      .__all("documents")
+      .find((d) => d.id === "00000000-0000-4000-8000-000000000100")!
     expect(updated.status).toBe("paid")
     expect(updated.payment_status).toBe("partial")
     const log = updated.lifecycle_log as Array<Record<string, unknown>>
@@ -2622,10 +2783,15 @@ describe("documents.record_refund", () => {
       refund_kind: "partial",
     })
     expect(r.status).toBe("completed")
-    const updated = db.__all("documents").find((d) => d.id === "00000000-0000-4000-8000-000000000100")!
+    const updated = db
+      .__all("documents")
+      .find((d) => d.id === "00000000-0000-4000-8000-000000000100")!
     expect(updated.payment_status).toBe("partial")
     const log = updated.lifecycle_log as Array<Record<string, unknown>>
-    expect(log.at(-1)).toMatchObject({ event: "partial_refund_recorded", refund_amount_minor: "3000" })
+    expect(log.at(-1)).toMatchObject({
+      event: "partial_refund_recorded",
+      refund_amount_minor: "3000",
+    })
     const pre = await documentsRecordRefundPreflight(ctx, {
       document_id: "00000000-0000-4000-8000-000000000100",
       refund_amount_minor: 20000 as unknown as bigint,
@@ -2685,7 +2851,9 @@ describe("documents.record_refund", () => {
       refund_kind: "partial",
     })
     expect(r1.status).toBe("completed")
-    const afterFirst = db.__all("documents").find((d) => d.id === "00000000-0000-4000-8000-000000000100")!
+    const afterFirst = db
+      .__all("documents")
+      .find((d) => d.id === "00000000-0000-4000-8000-000000000100")!
     expect(afterFirst.payment_status).toBe("partial")
     // Second partial: 5000 — alone it is <= 12000, but cumulative 13000 > 12000.
     const r2 = await documentsRecordRefund(ctx, {
@@ -2697,7 +2865,9 @@ describe("documents.record_refund", () => {
     if (r2.status !== "error") throw new Error("unreachable")
     expect(r2.error.code).toBe("invalid_amount")
     // The rejected refund left no new lifecycle entry: still exactly one.
-    const afterSecond = db.__all("documents").find((d) => d.id === "00000000-0000-4000-8000-000000000100")!
+    const afterSecond = db
+      .__all("documents")
+      .find((d) => d.id === "00000000-0000-4000-8000-000000000100")!
     const log = afterSecond.lifecycle_log as Array<Record<string, unknown>>
     expect(log).toHaveLength(1)
     expect(log[0]).toMatchObject({
@@ -2722,7 +2892,9 @@ describe("documents.record_refund", () => {
       refund_kind: "partial",
     })
     expect(r2.status).toBe("completed")
-    const updated = db.__all("documents").find((d) => d.id === "00000000-0000-4000-8000-000000000100")!
+    const updated = db
+      .__all("documents")
+      .find((d) => d.id === "00000000-0000-4000-8000-000000000100")!
     expect(updated.payment_status).toBe("refunded")
     expect(updated.status).toBe("refunded")
     const log = updated.lifecycle_log as Array<Record<string, unknown>>
@@ -2737,7 +2909,10 @@ describe("documents.record_refund", () => {
 describe("documents.send_to_customer", () => {
   test("sends the LEGAL ORIGINAL, never the management copy a later re-render left on pdf_file_id", async () => {
     const { ctx, db, extras } = makeCtx({
-      executeToolImpl: async () => ({ status: "completed", result: { messageId: "<legal-original-1>" } }),
+      executeToolImpl: async () => ({
+        status: "completed",
+        result: { messageId: "<legal-original-1>" },
+      }),
     })
     await db.insert("legal_originals", {
       id: "00000000-0000-4000-8000-0000000001a0",
@@ -2772,10 +2947,13 @@ describe("documents.send_to_customer", () => {
       external_refs: {},
       lifecycle_log: [],
     })
-    const r = await documentsSendToCustomer(ctx, { document_id: "00000000-0000-4000-8000-0000000001a1", to: "buyer@example.com" })
+    const r = await documentsSendToCustomer(ctx, {
+      document_id: "00000000-0000-4000-8000-0000000001a1",
+      to: "buyer@example.com",
+    })
     expect(r.status).toBe("completed")
     const call = extras.executeToolCalls.find((c) => c.name === "mail:composeForApp")
-    expect((call?.args as { attachments?: unknown[] }).attachments).toEqual(["legal-original-file"])
+    expect((call!.args as { attachments?: unknown[] }).attachments).toEqual(["legal-original-file"])
   })
 
   test("dispatches via mail:composeForApp (internal cross-app, NOT the gated mail:compose) — BL-186", async () => {
@@ -2841,7 +3019,10 @@ describe("documents.send_to_customer", () => {
 
   test("missing PDF is rendered ON-DEMAND then sent (self-heal, not pdf_not_ready)", async () => {
     const { ctx, db, extras } = makeCtx({
-      executeToolImpl: async () => ({ status: "completed", result: { messageId: "<chaos-gmail-2>" } }),
+      executeToolImpl: async () => ({
+        status: "completed",
+        result: { messageId: "<chaos-gmail-2>" },
+      }),
     })
     await db.insert("documents", {
       id: "00000000-0000-4000-8000-000000000101",
@@ -2875,7 +3056,12 @@ describe("documents.send_to_customer", () => {
     expect(r.status).toBe("completed")
     expect(extras.renderCalls).toHaveLength(1) // rendered exactly once, on-demand
     // The freshly rendered PDF was persisted on the doc (pdf_status flips to ready).
-    const after = (await db.findMany("documents", { where: { id: "00000000-0000-4000-8000-000000000101" }, limit: 1 }))[0] as Record<string, unknown>
+    const after = (
+      await db.findMany("documents", {
+        where: { id: "00000000-0000-4000-8000-000000000101" },
+        limit: 1,
+      })
+    )[0] as Record<string, unknown>
     expect(after.pdf_status).toBe("ready")
     expect(after.pdf_file_id).toBeTruthy()
     // BL-191 — this first render IS the invoice's legal original, filed under its own
@@ -2885,12 +3071,23 @@ describe("documents.send_to_customer", () => {
     expect(extras.renderCalls).toHaveLength(1)
     const call = extras.renderCalls[0] as unknown as {
       pdfa?: string
-      parent?: { entityType: string; entityId?: string; commitRow?: { values: Record<string, unknown>; fileIdColumn?: string; sha256Column?: string } }
+      parent?: {
+        entityType: string
+        entityId?: string
+        commitRow?: {
+          values: Record<string, unknown>
+          fileIdColumn?: string
+          sha256Column?: string
+        }
+      }
     }
     expect(call.pdfa).toBe("3b")
     expect(call.parent?.entityType).toBe("legal_original")
     expect(call.parent?.entityId).toBeUndefined()
-    expect(call.parent?.commitRow?.values).toMatchObject({ document_id: "00000000-0000-4000-8000-000000000101", kind: "issued_pdf" })
+    expect(call.parent?.commitRow?.values).toMatchObject({
+      document_id: "00000000-0000-4000-8000-000000000101",
+      kind: "issued_pdf",
+    })
     expect(call.parent?.commitRow?.fileIdColumn).toBe("file_id")
     expect(call.parent?.commitRow?.sha256Column).toBe("sha256")
     expect(after.legal_original_id).toBeTruthy()
@@ -2932,7 +3129,12 @@ describe("documents.send_to_customer", () => {
     expect(r.status).toBe("error")
     if (r.status !== "error") throw new Error("unreachable")
     expect(r.error.code).toBe("render_failed") // the real cause, surfaced — not a generic pdf_not_ready
-    const after = (await db.findMany("documents", { where: { id: "00000000-0000-4000-8000-000000000102" }, limit: 1 }))[0] as Record<string, unknown>
+    const after = (
+      await db.findMany("documents", {
+        where: { id: "00000000-0000-4000-8000-000000000102" },
+        limit: 1,
+      })
+    )[0] as Record<string, unknown>
     expect(after.pdf_status).toBe("failed")
   })
 
@@ -2960,7 +3162,10 @@ describe("documents.send_to_customer", () => {
       external_refs: {},
       lifecycle_log: [],
     })
-    const r = await documentsSendToCustomer(ctx, { document_id: "00000000-0000-4000-8000-000000000103", to: "buyer@example.com" })
+    const r = await documentsSendToCustomer(ctx, {
+      document_id: "00000000-0000-4000-8000-000000000103",
+      to: "buyer@example.com",
+    })
     expect(r.status).toBe("error")
     if (r.status !== "error") throw new Error("unreachable")
     expect(r.error.code).toBe("no_mail_account")
@@ -3039,7 +3244,9 @@ describe("documents.send_to_customer", () => {
       external_refs: {},
       lifecycle_log: [],
     })
-    const r = await documentsSendToCustomer(ctx, { document_id: "00000000-0000-4000-8000-000000000104" })
+    const r = await documentsSendToCustomer(ctx, {
+      document_id: "00000000-0000-4000-8000-000000000104",
+    })
     expect(r.status).toBe("error")
     if (r.status !== "error") throw new Error("unreachable")
     expect(r.error.code).toBe("no_recipient")
@@ -3076,7 +3283,9 @@ describe("documents.send_to_customer", () => {
       external_refs: {},
       lifecycle_log: [],
     })
-    const r = await documentsSendToCustomer(ctx, { document_id: "00000000-0000-4000-8000-000000000105" }) // NO `to` — must auto-resolve
+    const r = await documentsSendToCustomer(ctx, {
+      document_id: "00000000-0000-4000-8000-000000000105",
+    }) // NO `to` — must auto-resolve
     expect(r.status).toBe("completed")
     // It read the contact to resolve the recipient…
     expect(extras.executeToolCalls.some((c) => c.name === "kernel:contacts_read")).toBe(true)
@@ -3107,7 +3316,11 @@ describe("documents.send_to_customer", () => {
             result: {
               items: [
                 { id: "c-dup", name: "Tonwerk Audio", primaryEmail: null }, // the email-less duplicate
-                { id: "c-seed", name: "Tonwerk Audio", primaryEmail: "buying@tonwerk-audio.example.de" },
+                {
+                  id: "c-seed",
+                  name: "Tonwerk Audio",
+                  primaryEmail: "buying@tonwerk-audio.example.de",
+                },
               ],
             },
           }
@@ -3138,7 +3351,9 @@ describe("documents.send_to_customer", () => {
       external_refs: {},
       lifecycle_log: [],
     })
-    const r = await documentsSendToCustomer(ctx, { document_id: "00000000-0000-4000-8000-000000000106" }) // NO `to` — must fall back to search
+    const r = await documentsSendToCustomer(ctx, {
+      document_id: "00000000-0000-4000-8000-000000000106",
+    }) // NO `to` — must fall back to search
     expect(r.status).toBe("completed")
     // It tried the linked contact first, then fell back to contacts_search…
     expect(extras.executeToolCalls.some((c) => c.name === "kernel:contacts_read")).toBe(true)
@@ -3192,7 +3407,9 @@ describe("documents.send_to_customer", () => {
       external_refs: {},
       lifecycle_log: [],
     })
-    const r = await documentsSendToCustomer(ctx, { document_id: "00000000-0000-4000-8000-000000000108" }) // NO `to` — resolves via contacts_read
+    const r = await documentsSendToCustomer(ctx, {
+      document_id: "00000000-0000-4000-8000-000000000108",
+    }) // NO `to` — resolves via contacts_read
     expect(r.status).toBe("completed")
     // The linked contact's email resolved directly (path 1), so no fallback search was needed…
     expect(extras.executeToolCalls.some((c) => c.name === "kernel:contacts_read")).toBe(true)
@@ -3231,7 +3448,15 @@ describe("documents.send_to_customer", () => {
         if (name === "kernel:contacts_search") {
           return {
             status: "completed",
-            result: { items: [{ id: "c-seed", name: "Tonwerk Audio", primaryEmail: "buying@tonwerk-audio.example.de" }] },
+            result: {
+              items: [
+                {
+                  id: "c-seed",
+                  name: "Tonwerk Audio",
+                  primaryEmail: "buying@tonwerk-audio.example.de",
+                },
+              ],
+            },
           }
         }
         return { status: "completed", result: { messageId: "<chaos-gmail-8>" } } // mail:composeForApp
@@ -3260,7 +3485,9 @@ describe("documents.send_to_customer", () => {
       external_refs: {},
       lifecycle_log: [],
     })
-    const r = await documentsSendToCustomer(ctx, { document_id: "00000000-0000-4000-8000-000000000107" })
+    const r = await documentsSendToCustomer(ctx, {
+      document_id: "00000000-0000-4000-8000-000000000107",
+    })
     expect(r.status).toBe("completed")
     // No contact link → it must NOT call contacts_read, but MUST search by name.
     expect(extras.executeToolCalls.some((c) => c.name === "kernel:contacts_read")).toBe(false)
@@ -3291,10 +3518,16 @@ describe("quote.issue + quote.create_and_issue", () => {
     expect(r.status).toBe("pending_approval")
     expect(extras.approvalsRequested[0]!.tool_name).toBe("invoicing:quote_issue")
     const detail = extras.approvalsRequested[0]!.summary_detail!
-    expect(detail.lines).toContain("Document: new quote from a saved draft (number assigned on issue)")
+    expect(detail.lines).toContain(
+      "Document: new quote from a saved draft (number assigned on issue)",
+    )
     // The card names the draft by what it is, never by its id.
     const req = extras.approvalsRequested[0]!
-    expect([req.summary, req.summary_detail!.subtitle ?? "", ...(req.summary_detail!.lines ?? [])].join("\n")).not.toContain(draft_id)
+    expect(
+      [req.summary, req.summary_detail!.subtitle ?? "", ...(req.summary_detail!.lines ?? [])].join(
+        "\n",
+      ),
+    ).not.toContain(draft_id)
     expect(req.summary).toBe("Issue quote for Buyer SARL, 120.00 EUR")
     expect(detail.lines).toContain("Line: Widget x 2 @ 50.00 EUR")
     expect(detail.lines).toContain("Total: 120.00 EUR")
@@ -3369,12 +3602,14 @@ describe("quote.issue + quote.create_and_issue", () => {
 
 describe("splitPostalAddress", () => {
   test("street, extra, zip city, country splits into Shopify fields", () => {
-    expect(splitPostalAddress("24 Avenue Marceau, Bureau 108A, 75008 Paris, France", "FR")).toEqual({
-      address1: "24 Avenue Marceau",
-      address2: "Bureau 108A",
-      zip: "75008",
-      city: "Paris",
-    })
+    expect(splitPostalAddress("24 Avenue Marceau, Bureau 108A, 75008 Paris, France", "FR")).toEqual(
+      {
+        address1: "24 Avenue Marceau",
+        address2: "Bureau 108A",
+        zip: "75008",
+        city: "Paris",
+      },
+    )
   })
   test("newline separated with the country code as the last line", () => {
     expect(splitPostalAddress("Grimmstr. 9\n70771 Leinfelden-Echterdingen\nDE", "DE")).toEqual({
@@ -3391,7 +3626,9 @@ describe("splitPostalAddress", () => {
       zip: "10024",
       city: "New York",
     })
-    expect(splitPostalAddress("20 Buccleuch Place, EH8 9LN Edinburgh, United Kingdom", "GB")).toEqual({
+    expect(
+      splitPostalAddress("20 Buccleuch Place, EH8 9LN Edinburgh, United Kingdom", "GB"),
+    ).toEqual({
       address1: "20 Buccleuch Place",
       address2: null,
       zip: "EH8 9LN",
@@ -3407,7 +3644,12 @@ describe("splitPostalAddress", () => {
     })
   })
   test("a single segment has no city", () => {
-    expect(splitPostalAddress("Somewhere", "FR")).toEqual({ address1: "Somewhere", address2: null, zip: null, city: null })
+    expect(splitPostalAddress("Somewhere", "FR")).toEqual({
+      address1: "Somewhere",
+      address2: null,
+      zip: null,
+      city: null,
+    })
   })
 })
 
@@ -3493,7 +3735,9 @@ describe("quote.create_and_issue via Shopify draft order", () => {
         if (name === "kernel:contacts_read")
           return {
             status: "completed",
-            result: { contact: { id: defaultCounterparty.contact_id, externalIds: { shopify: "42" } } },
+            result: {
+              contact: { id: defaultCounterparty.contact_id, externalIds: { shopify: "42" } },
+            },
           }
         return { status: "completed", result: {} }
       },
@@ -3555,9 +3799,11 @@ describe("quote.create_and_issue via Shopify draft order", () => {
       currency: "EUR",
       items: [item],
     })
-    const b2bInput = (b2b.extras.executeToolCalls.find((c) => c.name === "shopify:draft_orders_create")!.args as {
-      input: Record<string, unknown>
-    }).input
+    const b2bInput = (
+      b2b.extras.executeToolCalls.find((c) => c.name === "shopify:draft_orders_create")!.args as {
+        input: Record<string, unknown>
+      }
+    ).input
     expect(b2bInput.customAttributes).toEqual([{ key: "VAT number", value: "IT01234567890" }])
     const b2c = shopifyCtx()
     await quoteCreateAndIssue(b2c.ctx, {
@@ -3566,9 +3812,11 @@ describe("quote.create_and_issue via Shopify draft order", () => {
       currency: "EUR",
       items: [item],
     })
-    const b2cInput = (b2c.extras.executeToolCalls.find((c) => c.name === "shopify:draft_orders_create")!.args as {
-      input: Record<string, unknown>
-    }).input
+    const b2cInput = (
+      b2c.extras.executeToolCalls.find((c) => c.name === "shopify:draft_orders_create")!.args as {
+        input: Record<string, unknown>
+      }
+    ).input
     expect(b2cInput.customAttributes).toBeUndefined()
   })
 
@@ -3644,9 +3892,7 @@ describe("proforma.issue + proforma.create_and_issue", () => {
     })
     const r = await proformaIssue(ctx, { draft_id })
     expect(r.status).toBe("pending_approval")
-    expect(extras.approvalsRequested[0]!.tool_name).toBe(
-      "invoicing:proforma_issue",
-    )
+    expect(extras.approvalsRequested[0]!.tool_name).toBe("invoicing:proforma_issue")
     const detail = extras.approvalsRequested[0]!.summary_detail!
     expect(detail.lines).toContain("Line: Widget x 2 @ 50.00 EUR")
   })
@@ -3672,9 +3918,7 @@ describe("proforma.issue + proforma.create_and_issue", () => {
       declared_value_minor: 5_000n,
     })
     expect(r1.status).toBe("pending_approval")
-    expect(extras1.approvalsRequested[0]!.tool_name).toBe(
-      "invoicing:proforma_create_and_issue",
-    )
+    expect(extras1.approvalsRequested[0]!.tool_name).toBe("invoicing:proforma_create_and_issue")
     // The title states the effect; the reason is its own labelled line (asserted below).
     expect(extras1.approvalsRequested[0]!.summary).toBe("Issue proforma for Buyer SARL, 60.00 EUR")
     const detail1 = extras1.approvalsRequested[0]!.summary_detail!
@@ -3683,7 +3927,11 @@ describe("proforma.issue + proforma.create_and_issue", () => {
     expect(detail1.lines).toContain("Reason: return")
 
     // Second entry: kernel re-invokes with ctx.approval populated → numbered PDF
-    const { ctx: ctx2, db: db2, extras: extras2 } = makeCtx({
+    const {
+      ctx: ctx2,
+      db: db2,
+      extras: extras2,
+    } = makeCtx({
       approval: {
         approvalRequestId: "appr-pf-1",
         approvalDeciderId: "user-2",
@@ -3789,12 +4037,23 @@ describe("credit notes and purchase orders: an auto-approve policy approves them
     issuer_profile_id: "iss-1",
     currency: "EUR",
     operation_category: "goods" as const,
-    items: [{ position: 1, description: "x", quantity: "1", unit_price_minor: -100n, product_source: null, external_id: null }],
+    items: [
+      {
+        position: 1,
+        description: "x",
+        quantity: "1",
+        unit_price_minor: -100n,
+        product_source: null,
+        external_id: null,
+      },
+    ],
   }
 
   test("a standalone credit note is issued when the policy approves it, and its card keeps the warning", async () => {
     const parked = makeCtx()
-    expect((await creditNoteCreateAndIssue(parked.ctx, standaloneCn)).status).toBe("pending_approval")
+    expect((await creditNoteCreateAndIssue(parked.ctx, standaloneCn)).status).toBe(
+      "pending_approval",
+    )
     expect(parked.extras.approvalsRequested[0]!.summary_detail!.lines).toContain(
       "WARNING: no original invoice referenced (standalone credit note)",
     )
@@ -3848,7 +4107,16 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
       issuer_profile_id: "iss-1",
       currency: "EUR",
       operation_category: "goods" as const,
-      items: [{ position: 1, description: "x", quantity: "1", unit_price_minor: -100n, product_source: null, external_id: null }],
+      items: [
+        {
+          position: 1,
+          description: "x",
+          quantity: "1",
+          unit_price_minor: -100n,
+          product_source: null,
+          external_id: null,
+        },
+      ],
     }
     expect((await creditNoteCreateAndIssue(none.ctx, input)).status).toBe("pending_approval")
     const huge = makeCtx()
@@ -3917,7 +4185,16 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
       counterparty: defaultCounterparty,
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      items: [{ position: 1, description: "x", quantity: "1", unit_price_minor: -1000n, product_source: null, external_id: null }],
+      items: [
+        {
+          position: 1,
+          description: "x",
+          quantity: "1",
+          unit_price_minor: -1000n,
+          product_source: null,
+          external_id: null,
+        },
+      ],
     })
     expect(cn.status).toBe("completed")
     if (cn.status !== "completed") throw new Error("unreachable")
@@ -3983,7 +4260,16 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
       counterparty: defaultCounterparty,
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      items: [{ position: 1, description: "x", quantity: "1", unit_price_minor: -5000n, product_source: null, external_id: null }],
+      items: [
+        {
+          position: 1,
+          description: "x",
+          quantity: "1",
+          unit_price_minor: -5000n,
+          product_source: null,
+          external_id: null,
+        },
+      ],
       original_document_id: inv.document_id,
       reason: "return",
     })
@@ -4019,7 +4305,16 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
       counterparty: defaultCounterparty,
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      items: [{ position: 1, description: "x", quantity: "1", unit_price_minor: -5000n, product_source: null, external_id: null }],
+      items: [
+        {
+          position: 1,
+          description: "x",
+          quantity: "1",
+          unit_price_minor: -5000n,
+          product_source: null,
+          external_id: null,
+        },
+      ],
       original_document_id: inv.document_id,
       reason: "return",
     })
@@ -4053,7 +4348,16 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
       counterparty: defaultCounterparty,
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      items: [{ position: 1, description: "x", quantity: "1", unit_price_minor: -5000n, product_source: null, external_id: null }],
+      items: [
+        {
+          position: 1,
+          description: "x",
+          quantity: "1",
+          unit_price_minor: -5000n,
+          product_source: null,
+          external_id: null,
+        },
+      ],
     })
     expect(r.status).toBe("pending_approval")
     expect(extras.approvalsRequested[0]!.tool_name).toBe("invoicing:credit_note_create_and_issue")
@@ -4069,7 +4373,16 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
       counterparty: defaultCounterparty,
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      items: [{ position: 1, description: "x", quantity: "1", unit_price_minor: -5000n, product_source: null, external_id: null }],
+      items: [
+        {
+          position: 1,
+          description: "x",
+          quantity: "1",
+          unit_price_minor: -5000n,
+          product_source: null,
+          external_id: null,
+        },
+      ],
     })
     expect(r.status).toBe("completed")
     expect(issuedDocs(db).filter((d) => d.type === "credit_note")).toHaveLength(1)
@@ -4087,7 +4400,16 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
       counterparty_country: "FR",
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      items: [{ position: 1, description: "x", quantity: "1", unit_price_minor: -2000n, product_source: null, external_id: null }],
+      items: [
+        {
+          position: 1,
+          description: "x",
+          quantity: "1",
+          unit_price_minor: -2000n,
+          product_source: null,
+          external_id: null,
+        },
+      ],
     })
     const r = await creditNoteIssue(ctx, { draft_id })
     expect(r.status).toBe("completed")
@@ -4126,7 +4448,16 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
       counterparty_country: "FR",
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      items: [{ position: 1, description: "x", quantity: "1", unit_price_minor: -5000n, product_source: null, external_id: null }],
+      items: [
+        {
+          position: 1,
+          description: "x",
+          quantity: "1",
+          unit_price_minor: -5000n,
+          product_source: null,
+          external_id: null,
+        },
+      ],
     })
     const r = await creditNoteIssue(ctx, { draft_id })
     expect(r.status).toBe("pending_approval")
@@ -4157,7 +4488,16 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
       counterparty: defaultCounterparty,
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      items: [{ position: 1, description: "partial return", quantity: "1", unit_price_minor: -4000n, product_source: null, external_id: null }],
+      items: [
+        {
+          position: 1,
+          description: "partial return",
+          quantity: "1",
+          unit_price_minor: -4000n,
+          product_source: null,
+          external_id: null,
+        },
+      ],
       original_document_id: inv.document_id,
     })
     expect(first.status).toBe("completed")
@@ -4169,7 +4509,16 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
       counterparty: defaultCounterparty,
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      items: [{ position: 1, description: "second return", quantity: "1", unit_price_minor: -7000n, product_source: null, external_id: null }],
+      items: [
+        {
+          position: 1,
+          description: "second return",
+          quantity: "1",
+          unit_price_minor: -7000n,
+          product_source: null,
+          external_id: null,
+        },
+      ],
       original_document_id: inv.document_id,
     })
     expect(second.status).toBe("error")
@@ -4203,7 +4552,16 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
       counterparty: defaultCounterparty,
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      items: [{ position: 1, description: "full return", quantity: "1", unit_price_minor: -10000n, product_source: null, external_id: null }],
+      items: [
+        {
+          position: 1,
+          description: "full return",
+          quantity: "1",
+          unit_price_minor: -10000n,
+          product_source: null,
+          external_id: null,
+        },
+      ],
       original_document_id: inv.document_id,
     })
     expect(cn.status).toBe("completed")
@@ -4213,7 +4571,14 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
 
   describe("original link column and regime inheritance", () => {
     const cnItems = [
-      { position: 1, description: "return", quantity: "1", unit_price_minor: -1000n, product_source: null, external_id: null },
+      {
+        position: 1,
+        description: "return",
+        quantity: "1",
+        unit_price_minor: -1000n,
+        product_source: null,
+        external_id: null,
+      },
     ]
     async function issueOriginal(ctx: ReturnType<typeof makeCtx>["ctx"]) {
       const inv = await invoiceCreateAndIssue(ctx, {
@@ -4241,7 +4606,9 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
       if (cn.status !== "completed") throw new Error("unreachable")
       const doc = db.__all("documents").find((d) => d.id === cn.document_id)!
       expect(doc.original_document_id).toBe(inv.document_id)
-      expect((doc.external_refs as Record<string, unknown>).original_document_id).toBe(inv.document_id)
+      expect((doc.external_refs as Record<string, unknown>).original_document_id).toBe(
+        inv.document_id,
+      )
     })
 
     test("credit_note_issue (draft path) persists the column too", async () => {
@@ -4260,7 +4627,9 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
         items: cnItems,
       })
       // The editor stores the back-link on the draft's external_refs.
-      await db.update("documents", draft_id, { external_refs: { original_document_id: inv.document_id } })
+      await db.update("documents", draft_id, {
+        external_refs: { original_document_id: inv.document_id },
+      })
       const r = await creditNoteIssue(ctx, { draft_id })
       if (r.status !== "completed") throw new Error("unreachable")
       const doc = db.__all("documents").find((d) => d.id === r.document_id)!
@@ -4315,7 +4684,12 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
       const { ctx, db } = makeCtx()
       const inv = await issueOriginal(ctx)
       // An original issued before regimes were recorded: no regime, no snapshot.
-      await db.update("documents", inv.document_id, { regime: null, regime_reasons: null, customer_kind: null, buyer_siren: null })
+      await db.update("documents", inv.document_id, {
+        regime: null,
+        regime_reasons: null,
+        customer_kind: null,
+        buyer_siren: null,
+      })
       const cn = await creditNoteCreateAndIssue(ctx, {
         operation_category: "goods",
         counterparty: defaultCounterparty,
@@ -4374,7 +4748,8 @@ describe("credit_note.create_and_issue + credit_note.issue", () => {
       const r = await documentsRetryPdf(ctx, { id: cn.document_id })
       expect(r.status).toBe("completed")
       expect(extras.renderCalls).toHaveLength(1)
-      const renderDoc = (extras.renderCalls[0]!.data as { document: Record<string, unknown> }).document
+      const renderDoc = (extras.renderCalls[0]!.data as { document: Record<string, unknown> })
+        .document
       expect(renderDoc.original_invoice_number).toBe(original.number)
       expect(renderDoc.original_invoice_date).toBe(String(original.issued_at).slice(0, 10))
       expect(renderDoc.original_invoice_number).toBe(issueDoc.original_invoice_number)
@@ -4399,14 +4774,23 @@ describe("orderReissueApply", () => {
       items: sampleDraftItems,
     })
     if (original.status !== "completed") throw new Error("unreachable")
-    db.__all("documents").find((d) => d.id === original.document_id)!.issued_at = "2099-01-01T00:00:00.000Z"
+    db.__all("documents").find((d) => d.id === original.document_id)!.issued_at =
+      "2099-01-01T00:00:00.000Z"
     const result = await orderReissueApply(ctx, {
       original_document_id: original.document_id,
       shopify_order_id: "shop-order-10",
       shopify_order_number: "#1010",
       billing_signature: "sig-d",
       dedupe_key: "shop-order-10:sig-d",
-      items: [{ description: "Widget", quantity: "1", unit_price_minor: 5_000, product_source: null, external_id: null }],
+      items: [
+        {
+          description: "Widget",
+          quantity: "1",
+          unit_price_minor: 5_000,
+          product_source: null,
+          external_id: null,
+        },
+      ],
     })
     expect(result.status).toBe("completed")
   })
@@ -4432,7 +4816,15 @@ describe("orderReissueApply", () => {
       shopify_order_number: "#1009",
       billing_signature: "sig-r",
       dedupe_key: "shop-order-9:sig-r",
-      items: [{ description: "Widget", quantity: "1", unit_price_minor: 5_000, product_source: null, external_id: null }],
+      items: [
+        {
+          description: "Widget",
+          quantity: "1",
+          unit_price_minor: 5_000,
+          product_source: null,
+          external_id: null,
+        },
+      ],
     })
     if (result.status !== "completed") throw new Error("unreachable")
     const cn = db.__all("documents").find((d) => d.id === result.credit_note_document_id)!
@@ -4585,7 +4977,11 @@ describe("orderReissueApply", () => {
     extras.approvalsRequested.length = 0
     const ctxApproved: MutationsCtx = {
       ...ctx,
-      approval: { approvalRequestId: "appr-seed", approvalDeciderId: "user-2", toolName: "invoicing:invoice_create_and_issue" },
+      approval: {
+        approvalRequestId: "appr-seed",
+        approvalDeciderId: "user-2",
+        toolName: "invoicing:invoice_create_and_issue",
+      },
     }
     const seeded = await invoiceCreateAndIssue(ctxApproved, {
       operation_category: "goods",
@@ -4778,7 +5174,9 @@ describe("orderReissueApply", () => {
     expect(result.status).toBe("error")
     if (result.status !== "error") throw new Error("unreachable")
     expect(result.error.code).toBe("stale_reissue_approval")
-    expect(result.error.message).toMatch(/newer edit to this order exists and a fresh approval is needed/)
+    expect(result.error.message).toMatch(
+      /newer edit to this order exists and a fresh approval is needed/,
+    )
 
     // Nothing new was issued: no credit note, no replacement invoice.
     expect(db.__all("documents")).toHaveLength(beforeCount)
@@ -4901,7 +5299,12 @@ describe("hs_codes.assign", () => {
     const { ctx, db } = makeCtx({
       seed: {
         hs_code_library: [
-          { id: "lib-legacy-1", code: "9207.90", description: "Pianos (legacy)", last_used_at: null },
+          {
+            id: "lib-legacy-1",
+            code: "9207.90",
+            description: "Pianos (legacy)",
+            last_used_at: null,
+          },
         ],
       },
     })
@@ -5044,18 +5447,14 @@ describe("hs_codes.unassign", () => {
 describe("contact_relationships.set", () => {
   test("writes manual row, overwriting any existing inferred", async () => {
     const { ctx, db } = makeE8Ctx({
-      seedRelationships: [
-        { contact_id: "c-1", relationship: "customer", source: "inferred" },
-      ],
+      seedRelationships: [{ contact_id: "c-1", relationship: "customer", source: "inferred" }],
     })
     const r = await contactRelationshipsSet(ctx, {
       contact_id: "c-1",
       relationship: "vendor",
     })
     expect(r.status).toBe("completed")
-    const row = db.__all("contact_relationships").find(
-      (rr) => rr.contact_id === "c-1",
-    )
+    const row = db.__all("contact_relationships").find((rr) => rr.contact_id === "c-1")
     expect(row?.relationship).toBe("vendor")
     expect(row?.source).toBe("manual")
   })
@@ -5103,9 +5502,7 @@ describe("inferContactRelationshipOnIssue — precedence rules", () => {
 
   test("inferred (customer) + PO → upgraded to (both, inferred)", async () => {
     const { ctx, db } = makeE8Ctx({
-      seedRelationships: [
-        { contact_id: "c-1", relationship: "customer", source: "inferred" },
-      ],
+      seedRelationships: [{ contact_id: "c-1", relationship: "customer", source: "inferred" }],
     })
     const r = await inferContactRelationshipOnIssue(ctx, {
       contact_id: "c-1",
@@ -5120,9 +5517,7 @@ describe("inferContactRelationshipOnIssue — precedence rules", () => {
 
   test("manual (customer) + PO → NOT overwritten, attention emitted", async () => {
     const { ctx, db, extras } = makeE8Ctx({
-      seedRelationships: [
-        { contact_id: "c-1", relationship: "customer", source: "manual" },
-      ],
+      seedRelationships: [{ contact_id: "c-1", relationship: "customer", source: "manual" }],
     })
     const r = await inferContactRelationshipOnIssue(ctx, {
       contact_id: "c-1",
@@ -5134,16 +5529,12 @@ describe("inferContactRelationshipOnIssue — precedence rules", () => {
     const row = db.__all("contact_relationships").find((rr) => rr.contact_id === "c-1")
     expect(row?.relationship).toBe("customer")
     expect(row?.source).toBe("manual")
-    expect(
-      extras.emittedAttention.find((a) => a.action === "contact_conflict"),
-    ).toBeDefined()
+    expect(extras.emittedAttention.find((a) => a.action === "contact_conflict")).toBeDefined()
   })
 
   test("manual (both) + PO → noop (manual both already covers PO side)", async () => {
     const { ctx, db } = makeE8Ctx({
-      seedRelationships: [
-        { contact_id: "c-1", relationship: "both", source: "manual" },
-      ],
+      seedRelationships: [{ contact_id: "c-1", relationship: "both", source: "manual" }],
     })
     const r = await inferContactRelationshipOnIssue(ctx, {
       contact_id: "c-1",
@@ -5158,9 +5549,7 @@ describe("inferContactRelationshipOnIssue — precedence rules", () => {
 
   test("inferred (both) + invoice → noop (no upgrade beyond both)", async () => {
     const { ctx } = makeE8Ctx({
-      seedRelationships: [
-        { contact_id: "c-1", relationship: "both", source: "inferred" },
-      ],
+      seedRelationships: [{ contact_id: "c-1", relationship: "both", source: "inferred" }],
     })
     const r = await inferContactRelationshipOnIssue(ctx, {
       contact_id: "c-1",
@@ -5299,7 +5688,9 @@ describe("liftMisplacedHsCode — forgiving HS-code field normalization (BL-39)"
   })
 
   test("lifts an HS code embedded in real goods-description text, leaving the text intact", () => {
-    const out = liftMisplacedHsCode(line({ customs_description: "Electronic musical instrument 9207.90" }))
+    const out = liftMisplacedHsCode(
+      line({ customs_description: "Electronic musical instrument 9207.90" }),
+    )
     expect(out.hs_code).toBe("9207.90")
     expect(out.customs_description).toBe("Electronic musical instrument 9207.90") // source never destroyed
   })
@@ -5309,7 +5700,9 @@ describe("liftMisplacedHsCode — forgiving HS-code field normalization (BL-39)"
   })
 
   test("supports the dotted 8-digit national subdivision form (NNNN.NN.NN)", () => {
-    expect(liftMisplacedHsCode(line({ customs_description: "9207.90.00" })).hs_code).toBe("9207.90.00")
+    expect(liftMisplacedHsCode(line({ customs_description: "9207.90.00" })).hs_code).toBe(
+      "9207.90.00",
+    )
   })
 
   test("an explicit hs_code always wins — the inline path is untouched", () => {
@@ -5320,14 +5713,17 @@ describe("liftMisplacedHsCode — forgiving HS-code field normalization (BL-39)"
 
   test("does NOT lift a bare integer — could be a SKU / serial / price / quantity", () => {
     expect(
-      liftMisplacedHsCode(line({ description: "RAL-44 unit 920790", customs_description: "serial 12345678" }))
-        .hs_code,
+      liftMisplacedHsCode(
+        line({ description: "RAL-44 unit 920790", customs_description: "serial 12345678" }),
+      ).hs_code,
     ).toBeNull()
   })
 
   test("leaves hs_code null when no HS token is present", () => {
     expect(
-      liftMisplacedHsCode(line({ description: "Kestrel 6", customs_description: "Studio synthesizer" })).hs_code,
+      liftMisplacedHsCode(
+        line({ description: "Kestrel 6", customs_description: "Studio synthesizer" }),
+      ).hs_code,
     ).toBeNull()
   })
 
@@ -5433,7 +5829,13 @@ describe("liftMisplacedCountry — forgiving country field normalization (BL-44)
       currency: "EUR",
       tax_treatment: "US", // agent put the destination COUNTRY in the informational treatment field
       items: [
-        { description: "Kestrel 6", quantity: "1", unit_price_minor: 90000n, product_source: null, external_id: null },
+        {
+          description: "Kestrel 6",
+          quantity: "1",
+          unit_price_minor: 90000n,
+          product_source: null,
+          external_id: null,
+        },
       ],
     })
     const doc = db.__all("documents").find((d) => d.id === result.draft_id)
@@ -5451,7 +5853,13 @@ describe("liftMisplacedCountry — forgiving country field normalization (BL-44)
       issuer_profile_id: "iss-1",
       currency: "EUR",
       items: [
-        { description: "Kestrel 6", quantity: "1", unit_price_minor: 90000n, product_source: null, external_id: null },
+        {
+          description: "Kestrel 6",
+          quantity: "1",
+          unit_price_minor: 90000n,
+          product_source: null,
+          external_id: null,
+        },
       ],
     })
     await draftsUpdate(ctx, { draft_id, patch: { tax_treatment: "JP" } })
@@ -5539,7 +5947,11 @@ describe("counterparty snapshot — persisted at issue time", () => {
     // so the handler executes the issue instead of filing a new approval.
     const { ctx, db } = makeCtx({
       issuerThresholdMinor: null,
-      approval: { approvalRequestId: "appr-1", approvalDeciderId: "user-2", toolName: "invoicing:proforma_create_and_issue" },
+      approval: {
+        approvalRequestId: "appr-1",
+        approvalDeciderId: "user-2",
+        toolName: "invoicing:proforma_create_and_issue",
+      },
     })
     const r = await proformaCreateAndIssue(ctx, {
       counterparty: richCounterparty,
@@ -5571,7 +5983,12 @@ describe("counterparty snapshot — persisted at issue time", () => {
     expect(retry.status).toBe("completed")
     expect(extras.renderCalls).toHaveLength(1)
     const data = extras.renderCalls[0]!.data as {
-      counterparty: { legal_name: string; address: string | null; vat_id: string | null; email: string | null }
+      counterparty: {
+        legal_name: string
+        address: string | null
+        vat_id: string | null
+        email: string | null
+      }
     }
     expect(data.counterparty.address).toBe("Hauptstrasse 1, 10115 Berlin, Germany")
     expect(data.counterparty.vat_id).toBe("DE123456789")
@@ -5706,14 +6123,19 @@ describe("documents_update: an issued document's date and its number", () => {
   async function series(overrides: Record<string, unknown> = {}) {
     setSystemTime(new Date("2026-06-15T10:00:00Z"))
     const m = makeCtx({ issuerThresholdMinor: null })
-    const rows = [row(1, "2026-03-01", overrides), row(2, "2026-03-10", overrides), row(3, "2026-03-20", overrides)]
+    const rows = [
+      row(1, "2026-03-01", overrides),
+      row(2, "2026-03-10", overrides),
+      row(3, "2026-03-20", overrides),
+    ]
     for (const r of rows) await m.db.insert("documents", r)
     const [first, middle, last] = rows.map((r) => r.id) as [string, string, string]
     const stored = (id: string) => m.db.__all("documents").find((d) => d.id === id)?.issued_at
     return { m, first, middle, last, stored }
   }
 
-  const code = (res: { status: string; error?: { code?: string } }) => (res.status === "error" ? res.error?.code : "completed")
+  const code = (res: { status: string; error?: { code?: string } }) =>
+    res.status === "error" ? res.error?.code : "completed"
 
   test("a date in another year is refused and steers to a credit note; nothing changes", async () => {
     const { m, middle, stored } = await series()
@@ -5737,7 +6159,9 @@ describe("documents_update: an issued document's date and its number", () => {
   test("re-sending the same date is not a change: the editor's save carries every field", async () => {
     const { m, middle } = await series()
     for (const date of ["2026-03-10", "2026-03-10T00:00:00.000Z"]) {
-      expect(code(await documentsUpdate(m.ctx, { id: middle, issued_at: date, notes: "Merci" }))).toBe("completed")
+      expect(
+        code(await documentsUpdate(m.ctx, { id: middle, issued_at: date, notes: "Merci" })),
+      ).toBe("completed")
     }
   })
 
@@ -5748,8 +6172,12 @@ describe("documents_update: an issued document's date and its number", () => {
       expect(stored(middle)).toBe(date)
     }
     await documentsUpdate(m.ctx, { id: middle, issued_at: "2026-03-10" })
-    expect(code(await documentsUpdate(m.ctx, { id: first, issued_at: "2026-01-02" }))).toBe("completed")
-    expect(code(await documentsUpdate(m.ctx, { id: last, issued_at: "2026-06-15" }))).toBe("completed")
+    expect(code(await documentsUpdate(m.ctx, { id: first, issued_at: "2026-01-02" }))).toBe(
+      "completed",
+    )
+    expect(code(await documentsUpdate(m.ctx, { id: last, issued_at: "2026-06-15" }))).toBe(
+      "completed",
+    )
   })
 
   test("a date before the previous number or after the next one is refused, naming it", async () => {
@@ -5765,7 +6193,9 @@ describe("documents_update: an issued document's date and its number", () => {
 
   test("a date after today is refused: no number issued today could follow it", async () => {
     const { m, last, stored } = await series()
-    expect(code(await documentsUpdate(m.ctx, { id: last, issued_at: "2026-06-16" }))).toBe("issue_date_in_future")
+    expect(code(await documentsUpdate(m.ctx, { id: last, issued_at: "2026-06-16" }))).toBe(
+      "issue_date_in_future",
+    )
     expect(stored(last)).toBe("2026-03-20")
   })
 
@@ -5774,8 +6204,12 @@ describe("documents_update: an issued document's date and its number", () => {
     const note = row(1, "2026-04-01", { type: "credit_note", number: "CN-2026-0001" })
     await m.db.insert("documents", note)
     // Nothing in the credit note series constrains the invoice, and the reverse.
-    expect(code(await documentsUpdate(m.ctx, { id: middle, issued_at: "2026-03-15" }))).toBe("completed")
-    expect(code(await documentsUpdate(m.ctx, { id: note.id, issued_at: "2026-02-01" }))).toBe("completed")
+    expect(code(await documentsUpdate(m.ctx, { id: middle, issued_at: "2026-03-15" }))).toBe(
+      "completed",
+    )
+    expect(code(await documentsUpdate(m.ctx, { id: note.id, issued_at: "2026-02-01" }))).toBe(
+      "completed",
+    )
     const crossing = await documentsUpdate(m.ctx, { id: note.id, issued_at: "2025-12-31" })
     expect(code(crossing)).toBe("issue_date_crosses_number_year")
     if (crossing.status === "error") expect(crossing.error.message).toContain("credit note")
@@ -5788,13 +6222,17 @@ describe("documents_update: an issued document's date and its number", () => {
     const live = row(2, "2026-03-10")
     await m.db.insert("documents", voided)
     await m.db.insert("documents", live)
-    expect(code(await documentsUpdate(m.ctx, { id: live.id, issued_at: "2026-02-28" }))).toBe("issue_date_breaks_number_order")
+    expect(code(await documentsUpdate(m.ctx, { id: live.id, issued_at: "2026-02-28" }))).toBe(
+      "issue_date_breaks_number_order",
+    )
   })
 
   test("an issued document cannot lose its date, or take something that is no date", async () => {
     const { m, middle, stored } = await series()
     for (const date of [null, "", "someday", "2026-02-31"]) {
-      expect(code(await documentsUpdate(m.ctx, { id: middle, issued_at: date as string | null }))).toBe("issued_at_invalid")
+      expect(
+        code(await documentsUpdate(m.ctx, { id: middle, issued_at: date as string | null })),
+      ).toBe("issued_at_invalid")
     }
     expect(stored(middle)).toBe("2026-03-10")
   })
@@ -5807,16 +6245,25 @@ describe("documents_update: an issued document's date and its number", () => {
       expect(crossing.error.message).toContain("new quote")
       expect(crossing.error.message).not.toContain("credit note")
     }
-    expect(code(await documentsUpdate(m.ctx, { id: middle, issued_at: "2026-11-30" }))).toBe("completed")
+    expect(code(await documentsUpdate(m.ctx, { id: middle, issued_at: "2026-11-30" }))).toBe(
+      "completed",
+    )
     expect(stored(middle)).toBe("2026-11-30")
   })
 
   test("a draft has no number yet: its date is free", async () => {
     setSystemTime(new Date("2026-06-15T10:00:00Z"))
     const m = makeCtx({ issuerThresholdMinor: null })
-    const draft = row(0, null, { status: "draft", number: null, number_int: null, year_of_issue: null })
+    const draft = row(0, null, {
+      status: "draft",
+      number: null,
+      number_int: null,
+      year_of_issue: null,
+    })
     await m.db.insert("documents", draft)
-    expect(code(await documentsUpdate(m.ctx, { id: draft.id, issued_at: "2027-01-03" }))).toBe("completed")
+    expect(code(await documentsUpdate(m.ctx, { id: draft.id, issued_at: "2027-01-03" }))).toBe(
+      "completed",
+    )
   })
 
   test("an imported document with no place in a sequence keeps its year but no neighbour binds it", async () => {
@@ -5830,8 +6277,12 @@ describe("documents_update: an issued document's date and its number", () => {
     })
     await m.db.insert("documents", row(5, "2026-03-20"))
     await m.db.insert("documents", imported)
-    expect(code(await documentsUpdate(m.ctx, { id: imported.id, issued_at: "2026-03-25" }))).toBe("completed")
-    expect(code(await documentsUpdate(m.ctx, { id: imported.id, issued_at: "2027-01-03" }))).toBe("issue_date_crosses_number_year")
+    expect(code(await documentsUpdate(m.ctx, { id: imported.id, issued_at: "2026-03-25" }))).toBe(
+      "completed",
+    )
+    expect(code(await documentsUpdate(m.ctx, { id: imported.id, issued_at: "2027-01-03" }))).toBe(
+      "issue_date_crosses_number_year",
+    )
   })
 
   test("a date already in the wrong year can be brought back to the number's year", async () => {
@@ -5839,14 +6290,14 @@ describe("documents_update: an issued document's date and its number", () => {
     const m = makeCtx({ issuerThresholdMinor: null })
     const wrong = row(1, "2027-01-03")
     await m.db.insert("documents", wrong)
-    expect(code(await documentsUpdate(m.ctx, { id: wrong.id, issued_at: "2026-12-30" }))).toBe("completed")
+    expect(code(await documentsUpdate(m.ctx, { id: wrong.id, issued_at: "2026-12-30" }))).toBe(
+      "completed",
+    )
   })
 })
 
 describe("documents.update", () => {
-  async function issueSampleInvoice(
-    ctxDb: ReturnType<typeof makeCtx>,
-  ): Promise<string> {
+  async function issueSampleInvoice(ctxDb: ReturnType<typeof makeCtx>): Promise<string> {
     const r = await invoiceCreateAndIssue(ctxDb.ctx, {
       operation_category: "goods",
       counterparty: {
@@ -5881,9 +6332,7 @@ describe("documents.update", () => {
   // A still-DRAFT invoice: documents_update's line/financial-substance mechanics
   // (recompute, 1-based numbering, tax overrides) are exercised on a draft, since
   // those fields are FROZEN once the document is issued (see immutability tests).
-  async function draftSampleInvoice(
-    ctxDb: ReturnType<typeof makeCtx>,
-  ): Promise<string> {
+  async function draftSampleInvoice(ctxDb: ReturnType<typeof makeCtx>): Promise<string> {
     const r = await draftsCreate(ctxDb.ctx, {
       type: "invoice",
       ...BUYER_DRAFT_EINVOICE,
@@ -6086,8 +6535,20 @@ describe("documents.update", () => {
     const res = await documentsUpdate(m.ctx, {
       id,
       lines: [
-        { description: "Widget A", quantity: "3", unit_price_minor: 10_000n, product_source: null, external_id: null },
-        { description: "Widget B", quantity: "2", unit_price_minor: 2_500n, product_source: null, external_id: null },
+        {
+          description: "Widget A",
+          quantity: "3",
+          unit_price_minor: 10_000n,
+          product_source: null,
+          external_id: null,
+        },
+        {
+          description: "Widget B",
+          quantity: "2",
+          unit_price_minor: 2_500n,
+          product_source: null,
+          external_id: null,
+        },
       ],
     })
     expect(res.status).toBe("completed")
@@ -6108,7 +6569,7 @@ describe("documents.update", () => {
     expect(b.total_minor).toBe("6000")
     const log = doc.lifecycle_log as Array<Record<string, unknown>>
     const edited = log.find((e) => e.event === "edited")!
-    expect((edited.fields as string[])).toContain("lines")
+    expect(edited.fields as string[]).toContain("lines")
   })
 
   test("respects a per-line tax_rate_bp_override when replacing lines on a DRAFT", async () => {
@@ -6156,7 +6617,10 @@ describe("documents.update", () => {
 
   test("nonexistent document id returns not_found", async () => {
     const m = makeCtx({ issuerThresholdMinor: null })
-    const res = await documentsUpdate(m.ctx, { id: "00000000-0000-4000-8000-00000000010c", counterparty_name: "X" })
+    const res = await documentsUpdate(m.ctx, {
+      id: "00000000-0000-4000-8000-00000000010c",
+      counterparty_name: "X",
+    })
     expect(res.status).toBe("error")
     if (res.status === "error") expect(res.error.code).toBe("not_found")
   })
@@ -6176,8 +6640,20 @@ describe("documents.update", () => {
     const res = await documentsUpdate(m.ctx, {
       id,
       lines: [
-        { description: "First", quantity: "1", unit_price_minor: "1000", product_source: null, external_id: null },
-        { description: "Second", quantity: "1", unit_price_minor: "2000", product_source: null, external_id: null },
+        {
+          description: "First",
+          quantity: "1",
+          unit_price_minor: "1000",
+          product_source: null,
+          external_id: null,
+        },
+        {
+          description: "Second",
+          quantity: "1",
+          unit_price_minor: "2000",
+          product_source: null,
+          external_id: null,
+        },
       ],
     })
     expect(res.status).toBe("completed")
@@ -6269,7 +6745,13 @@ describe("documents.update", () => {
     const res = await documentsUpdate(m.ctx, {
       id,
       lines: [
-        { description: "Sneaky rewrite", quantity: "1", unit_price_minor: 1n, product_source: null, external_id: null },
+        {
+          description: "Sneaky rewrite",
+          quantity: "1",
+          unit_price_minor: 1n,
+          product_source: null,
+          external_id: null,
+        },
       ],
     })
     expect(res.status).toBe("error")
@@ -6334,7 +6816,10 @@ describe("documents.update", () => {
   test("rejects a counterparty_name / counterparty_vat_id edit on an ISSUED invoice (legal identity is frozen)", async () => {
     const m = makeCtx({ issuerThresholdMinor: null })
     const id = await issueSampleInvoice(m)
-    const nameRes = await documentsUpdate(m.ctx, { id, counterparty_name: "Different Legal Entity SARL" })
+    const nameRes = await documentsUpdate(m.ctx, {
+      id,
+      counterparty_name: "Different Legal Entity SARL",
+    })
     expect(nameRes.status).toBe("error")
     if (nameRes.status === "error") expect(nameRes.error.code).toBe("issued_document_immutable")
     const vatRes = await documentsUpdate(m.ctx, { id, counterparty_vat_id: "FR99999999999" })
@@ -6366,7 +6851,13 @@ describe("documents.update", () => {
       id,
       counterparty_name: "Draft Rename SARL",
       lines: [
-        { description: "Draft line", quantity: "1", unit_price_minor: 4_000n, product_source: null, external_id: null },
+        {
+          description: "Draft line",
+          quantity: "1",
+          unit_price_minor: 4_000n,
+          product_source: null,
+          external_id: null,
+        },
       ],
     })
     expect(res.status).toBe("completed")
@@ -6379,7 +6870,14 @@ describe("documents.update", () => {
   // for invoices and credit notes only. An issued proforma at 0 that must declare 1.00 used to be
   // uncorrectable (issued_document_immutable here, and the create tool converged onto it).
   const zeroLine = [
-    { position: 1, description: "Return for repair: no commercial value", quantity: "1", unit_price_minor: 0n, product_source: null, external_id: null },
+    {
+      position: 1,
+      description: "Return for repair: no commercial value",
+      quantity: "1",
+      unit_price_minor: 0n,
+      product_source: null,
+      external_id: null,
+    },
   ]
   test("an ISSUED proforma accepts a lines replacement: totals recompute, the edit is logged, the PDF re-renders", async () => {
     const m = makeCtx({ approval: PRE_APPROVED })
@@ -6451,12 +6949,30 @@ describe("documents.update", () => {
       issuer_profile_id: "iss-1",
       currency: "EUR",
       original_document_id: inv.document_id,
-      items: [{ position: 1, description: "Widget", quantity: "1", unit_price_minor: -5_000n, product_source: null, external_id: null }],
+      items: [
+        {
+          position: 1,
+          description: "Widget",
+          quantity: "1",
+          unit_price_minor: -5_000n,
+          product_source: null,
+          external_id: null,
+        },
+      ],
     })
     if (cn.status !== "completed") throw new Error(`credit note failed: ${JSON.stringify(cn)}`)
     const res = await documentsUpdate(m.ctx, {
       id: cn.document_id,
-      lines: [{ position: 1, description: "Widget", quantity: "2", unit_price_minor: -5_000n, product_source: null, external_id: null }],
+      lines: [
+        {
+          position: 1,
+          description: "Widget",
+          quantity: "2",
+          unit_price_minor: -5_000n,
+          product_source: null,
+          external_id: null,
+        },
+      ],
     })
     expect(res.status).toBe("error")
     if (res.status === "error") expect(res.error.code).toBe("issued_document_immutable")
@@ -6564,7 +7080,12 @@ describe("per-shipment proformas (shipment_ref)", () => {
     const r1 = await proformaCreateAndIssue(seeded.ctx, pricedInput(0n))
     expect(r1.status).toBe("completed")
     // A fresh, un-approved context over the same data: the gated tool's preflight runs first.
-    const staged = makeCtx({ seed: { documents: seeded.db.__all("documents"), document_lines: seeded.db.__all("document_lines") } })
+    const staged = makeCtx({
+      seed: {
+        documents: seeded.db.__all("documents"),
+        document_lines: seeded.db.__all("document_lines"),
+      },
+    })
     const pre = await proformaCreateAndIssuePreflight(staged.ctx, pricedInput(100n))
     expect("error" in pre && pre.error.code).toBe("already_exists_different_content")
     // And a true replay still passes the preflight (it converges at execution).
@@ -6574,9 +7095,14 @@ describe("per-shipment proformas (shipment_ref)", () => {
   })
 
   test("a true replay under prices_include_tax (same GROSS figures) still converges", async () => {
-    const inclusive = [{ ...seedIssuer(defaultIssuer, { invoice: null, po: null }), prices_include_tax: true }]
+    const inclusive = [
+      { ...seedIssuer(defaultIssuer, { invoice: null, po: null }), prices_include_tax: true },
+    ]
     const m = makeCtx({ ...approvalOpts, seed: { issuer_profiles: inclusive } })
-    const input = { ...baseInput(), items: [{ ...sampleDraftItems[0]!, unit_price_minor: 12_000n }] }
+    const input = {
+      ...baseInput(),
+      items: [{ ...sampleDraftItems[0]!, unit_price_minor: 12_000n }],
+    }
     const r1 = await proformaCreateAndIssue(m.ctx, input)
     if (r1.status !== "completed") throw new Error(`issue failed: ${JSON.stringify(r1)}`)
     const stored = m.db.__all("document_lines").find((l) => l.document_id === r1.document_id)!
@@ -6845,7 +7371,10 @@ describe("document_lines always stores NET (every write path, inclusive issuer)"
   })
 
   test("d: documents_convert_to_invoice mirrors an already-NET source line, never dividing it again", async () => {
-    const { ctx, db } = makeCtx({ seed: { issuer_profiles: inclusiveIssuerSeed }, issuerThresholdMinor: null })
+    const { ctx, db } = makeCtx({
+      seed: { issuer_profiles: inclusiveIssuerSeed },
+      issuerThresholdMinor: null,
+    })
     await db.insert("documents", {
       id: "00000000-0000-4000-8000-0000000001f0",
       type: "quote",
@@ -6897,14 +7426,23 @@ describe("document_lines always stores NET (every write path, inclusive issuer)"
   })
 
   test("f: credit_note_create_and_issue never divides tax out of reversal amounts", async () => {
-    const { ctx, db } = makeCtx({ approval: PRE_APPROVED, seed: { issuer_profiles: inclusiveIssuerSeed } })
+    const { ctx, db } = makeCtx({
+      approval: PRE_APPROVED,
+      seed: { issuer_profiles: inclusiveIssuerSeed },
+    })
     const cn = await creditNoteCreateAndIssue(ctx, {
       operation_category: "goods",
       counterparty: defaultCounterparty,
       issuer_profile_id: "iss-1",
       currency: "EUR",
       items: [
-        { description: "Refund", quantity: "1", unit_price_minor: -10_000n, product_source: null, external_id: null },
+        {
+          description: "Refund",
+          quantity: "1",
+          unit_price_minor: -10_000n,
+          product_source: null,
+          external_id: null,
+        },
       ],
     })
     expect(cn.status).toBe("completed")
@@ -6918,7 +7456,10 @@ describe("document_lines always stores NET (every write path, inclusive issuer)"
   // divided its reversal amount out under an inclusive issuer — disagreeing with the direct
   // credit_note_create_and_issue tool on the identical conceptual input.
   test("f (draft): a credit_note draft + credit_note_issue also never divides tax out", async () => {
-    const { ctx, db } = makeCtx({ approval: PRE_APPROVED, seed: { issuer_profiles: inclusiveIssuerSeed } })
+    const { ctx, db } = makeCtx({
+      approval: PRE_APPROVED,
+      seed: { issuer_profiles: inclusiveIssuerSeed },
+    })
     const { draft_id } = await draftsCreate(ctx, {
       type: "credit_note",
       ...BUYER_DRAFT_EINVOICE,
@@ -6930,7 +7471,13 @@ describe("document_lines always stores NET (every write path, inclusive issuer)"
       issuer_profile_id: "iss-1",
       currency: "EUR",
       items: [
-        { description: "Refund", quantity: "1", unit_price_minor: -10_000n, product_source: null, external_id: null },
+        {
+          description: "Refund",
+          quantity: "1",
+          unit_price_minor: -10_000n,
+          product_source: null,
+          external_id: null,
+        },
       ],
     })
     const res = await creditNoteIssue(ctx, { draft_id })
@@ -6941,7 +7488,10 @@ describe("document_lines always stores NET (every write path, inclusive issuer)"
   })
 
   test("g: order_reissue_apply's replacement invoice half stores NET", async () => {
-    const { ctx, db } = makeCtx({ approval: PRE_APPROVED, seed: { issuer_profiles: inclusiveIssuerSeed } })
+    const { ctx, db } = makeCtx({
+      approval: PRE_APPROVED,
+      seed: { issuer_profiles: inclusiveIssuerSeed },
+    })
     const original = await invoiceCreateAndIssue(ctx, {
       operation_category: "goods",
       counterparty: defaultCounterparty,
@@ -6970,7 +7520,10 @@ describe("document_lines always stores NET (every write path, inclusive issuer)"
   })
 
   test("h: po_create_and_issue stores NET (shares createAndIssueGenerically with quote/proforma)", async () => {
-    const { ctx, db } = makeCtx({ approval: PRE_APPROVED, seed: { issuer_profiles: inclusiveIssuerSeed } })
+    const { ctx, db } = makeCtx({
+      approval: PRE_APPROVED,
+      seed: { issuer_profiles: inclusiveIssuerSeed },
+    })
     const res = await poCreateAndIssue(ctx, {
       counterparty: defaultCounterparty,
       issuer_profile_id: "iss-1",
@@ -7040,7 +7593,14 @@ describe("write-side netting contract (mutations.ts, unchanged by this fix)", ()
       issuer_profile_id: "iss-1",
       currency: "EUR",
       items: [
-        { position: 1, description: "Widget", quantity: "1", unit_price_minor: 1_000n, product_source: null, external_id: null },
+        {
+          position: 1,
+          description: "Widget",
+          quantity: "1",
+          unit_price_minor: 1_000n,
+          product_source: null,
+          external_id: null,
+        },
       ],
     })
     // The operator types a NEW gross price on the existing draft (not a read-back echo).
@@ -7272,13 +7832,27 @@ describe("documents_update: Shopify draft-order sync is excluded from netting, C
       issuer_profile_id: "iss-1",
       currency: "EUR",
       items: [
-        { position: 1, description: "Placeholder", quantity: "1", unit_price_minor: 1_000n, product_source: null, external_id: null },
+        {
+          position: 1,
+          description: "Placeholder",
+          quantity: "1",
+          unit_price_minor: 1_000n,
+          product_source: null,
+          external_id: null,
+        },
       ],
     })
     const res = await documentsUpdate(ctx, {
       id: draft_id,
       lines: [
-        { position: 1, description: "Widget", quantity: "1", unit_price_minor: 29_900n, product_source: null, external_id: null },
+        {
+          position: 1,
+          description: "Widget",
+          quantity: "1",
+          unit_price_minor: 29_900n,
+          product_source: null,
+          external_id: null,
+        },
       ],
     })
     expect(res.status).toBe("completed")
@@ -7326,7 +7900,10 @@ describe("document notes (free text, editable at any status)", () => {
     const m = makeCtx({ issuerThresholdMinor: null })
     const id = await issuedInvoice(m)
     m.extras.renderCalls.length = 0
-    const res = await documentsUpdate(m.ctx, { id, notes: "Contract FR-2026-118, delivery in 2 batches" })
+    const res = await documentsUpdate(m.ctx, {
+      id,
+      notes: "Contract FR-2026-118, delivery in 2 batches",
+    })
     expect(res.status).toBe("completed")
     const doc = m.db.__all("documents").find((d) => d.id === id)!
     expect(doc.status).toBe("issued")
@@ -7609,7 +8186,10 @@ describe("gated-tool stage-time preflights", () => {
 
   test("documents_send_to_customer: a counterparty with no email anywhere refuses at staging", async () => {
     const { ctx, db, extras } = makeCtx()
-    await db.insert("documents", issuedInvoiceRow({ counterparty_name: null, counterparty_email: null }))
+    await db.insert(
+      "documents",
+      issuedInvoiceRow({ counterparty_name: null, counterparty_email: null }),
+    )
     const r = await documentsSendToCustomerPreflight(ctx, {
       document_id: "00000000-0000-4000-8000-0000000009a1",
     })
@@ -7678,9 +8258,7 @@ describe("gated-tool stage-time preflights", () => {
       issuedInvoiceRow({
         status: "paid",
         payment_status: "partial",
-        lifecycle_log: [
-          { event: "partial_refund_recorded", refund_amount_minor: "10000" },
-        ],
+        lifecycle_log: [{ event: "partial_refund_recorded", refund_amount_minor: "10000" }],
       }),
     )
     const r = await documentsRecordRefundPreflight(ctx, {
@@ -7830,7 +8408,12 @@ describe("e-invoicing gate at the manual issue sites", () => {
   test("non-FR counterparty with no signal issues with no manual step", async () => {
     const { ctx, db } = makeCtx()
     const r = await invoiceCreateAndIssue(ctx, {
-      counterparty: { ...frPerson, legal_name: "Alex Example", country: "DE", address: "Musterstr. 1, 10115 Berlin" },
+      counterparty: {
+        ...frPerson,
+        legal_name: "Alex Example",
+        country: "DE",
+        address: "Musterstr. 1, 10115 Berlin",
+      },
       issuer_profile_id: "iss-1",
       currency: "EUR",
       items: sampleDraftItems,
@@ -7875,7 +8458,11 @@ describe("e-invoicing gate at the manual issue sites", () => {
     const { ctx, extras } = makeCtx()
     const r = await invoiceCreateAndIssue(ctx, {
       operation_category: "goods",
-      counterparty: { ...frPerson, contact_id: "contact-legal-form", legal_name: "Exemple Atelier SARL" },
+      counterparty: {
+        ...frPerson,
+        contact_id: "contact-legal-form",
+        legal_name: "Exemple Atelier SARL",
+      },
       issuer_profile_id: "iss-1",
       currency: "EUR",
       items: sampleDraftItems,
@@ -7910,11 +8497,16 @@ describe("e-invoicing gate at the manual issue sites", () => {
     expect(r.status).toBe("error")
     if (r.status !== "error") throw new Error("unreachable")
     expect(r.error.code).toBe("einvoice_data_missing")
-    const body = r.error.body as { missing: Array<{ field: string; fix_tool: string }>; regime: string | null }
+    const body = r.error.body as {
+      missing: Array<{ field: string; fix_tool: string }>
+      regime: string | null
+    }
     expect(body.missing.map((m) => m.field)).toContain("buyer_siren")
     expect(r.error.message).toContain("counterparty_identity_lookup")
     // Preflight path: nothing written (the derived identity is recorded only when issuing).
-    expect(db.__all("counterparty_identities").some((i) => i.contact_id === "contact-company")).toBe(false)
+    expect(
+      db.__all("counterparty_identities").some((i) => i.contact_id === "contact-company"),
+    ).toBe(false)
   })
 
   test("a call's non-business kind never takes a contact recorded with a company out of e-invoicing", async () => {
@@ -8011,7 +8603,11 @@ describe("e-invoicing gate at the manual issue sites", () => {
   test("quote/proforma/PO snapshot out_of_scope, never blocked", async () => {
     // Approved re-entry: the human gate on quotes / proformas is not what this test is about.
     const { ctx, db } = makeCtx({
-      approval: { approvalRequestId: "appr-q", approvalDeciderId: "user-2", toolName: "invoicing:quote_create_and_issue" },
+      approval: {
+        approvalRequestId: "appr-q",
+        approvalDeciderId: "user-2",
+        toolName: "invoicing:quote_create_and_issue",
+      },
     })
     const quote = await quoteCreateAndIssue(ctx, {
       counterparty: frPerson,
@@ -8086,7 +8682,9 @@ describe("e-invoicing gate at the manual issue sites", () => {
     expect(refused.status).toBe("error")
     if (refused.status !== "error") throw new Error("unreachable")
     expect(refused.error.code).toBe("einvoice_data_missing")
-    const fixTools = (refused.error.body as { missing: Array<{ fix_tool: string }> }).missing.map((m) => m.fix_tool)
+    const fixTools = (refused.error.body as { missing: Array<{ fix_tool: string }> }).missing.map(
+      (m) => m.fix_tool,
+    )
     expect(fixTools).toContain("drafts_update")
 
     await draftsUpdate(ctx, {
@@ -8183,7 +8781,9 @@ describe("e-invoicing gate at the manual issue sites", () => {
   })
 
   test("warn mode issues, records the warning on the document and returns it", async () => {
-    const { ctx, db } = makeCtx({ seed: { einvoicing_settings: [{ gate_mode: "warn", gate_mode_source: "upgrade_default" }] } })
+    const { ctx, db } = makeCtx({
+      seed: { einvoicing_settings: [{ gate_mode: "warn", gate_mode_source: "upgrade_default" }] },
+    })
     const r = await invoiceCreateAndIssue(ctx, {
       counterparty: defaultCounterparty,
       issuer_profile_id: "iss-1",
@@ -8194,8 +8794,14 @@ describe("e-invoicing gate at the manual issue sites", () => {
     if (r.status !== "completed") throw new Error("unreachable")
     expect(r.einvoicing_warning?.code).toBe("operation_category_missing")
     const doc = db.__all("documents").find((d) => d.id === r.document_id)!
-    expect((doc.regime_reasons as Array<{ code: string }>).map((x) => x.code)).toContain("gate_warning")
-    expect((doc.lifecycle_log as Array<{ event: string }>).some((e) => e.event === "einvoice_gate_warning")).toBe(true)
+    expect((doc.regime_reasons as Array<{ code: string }>).map((x) => x.code)).toContain(
+      "gate_warning",
+    )
+    expect(
+      (doc.lifecycle_log as Array<{ event: string }>).some(
+        (e) => e.event === "einvoice_gate_warning",
+      ),
+    ).toBe(true)
   })
 })
 
@@ -8222,10 +8828,7 @@ describe("e-invoicing gate: convert, reissue and caller-asserted confirmations",
     billing_city: "Paris",
   }
 
-  async function seedSource(
-    db: MockDb,
-    over: Record<string, unknown> = {},
-  ): Promise<string> {
+  async function seedSource(db: MockDb, over: Record<string, unknown> = {}): Promise<string> {
     const id = "00000000-0000-4000-8000-0000000003a1"
     await db.insert("documents", {
       id,
@@ -8274,7 +8877,12 @@ describe("e-invoicing gate: convert, reissue and caller-asserted confirmations",
   test("a quote issued with a caller-asserted SIREN confirmation records none, and its convert is refused registry_unconfirmed", async () => {
     const { ctx, db } = makeCtx({ approval: APPROVED })
     const quote = await quoteCreateAndIssueHandler(
-      { counterparty: claimedBuyer as never, issuer_profile_id: "iss-1", currency: "EUR", items: sampleDraftItems },
+      {
+        counterparty: claimedBuyer as never,
+        issuer_profile_id: "iss-1",
+        currency: "EUR",
+        items: sampleDraftItems,
+      },
       ctx,
     )
     expect(quote.status).toBe("completed")
@@ -8283,7 +8891,10 @@ describe("e-invoicing gate: convert, reissue and caller-asserted confirmations",
     expect(qdoc.buyer_siren).toBe(FICTIONAL_SIRENS[1])
     expect(qdoc.buyer_siren_confirmed_via ?? null).toBeNull()
 
-    const conv = await documentsConvertToInvoice(ctx, { source_document_id: quote.document_id, operation_category: "goods" })
+    const conv = await documentsConvertToInvoice(ctx, {
+      source_document_id: quote.document_id,
+      operation_category: "goods",
+    })
     expect(conv.status).toBe("error")
     if (conv.status !== "error") throw new Error("unreachable")
     expect(conv.error.code).toBe("registry_unconfirmed")
@@ -8299,7 +8910,10 @@ describe("e-invoicing gate: convert, reissue and caller-asserted confirmations",
       items: sampleDraftItems,
     })
     if (quote.status !== "completed") throw new Error("unreachable")
-    expect(db.__all("documents").find((d) => d.id === quote.document_id)!.buyer_siren_confirmed_via ?? null).toBeNull()
+    expect(
+      db.__all("documents").find((d) => d.id === quote.document_id)!.buyer_siren_confirmed_via ??
+        null,
+    ).toBeNull()
   })
 
   test("documents_convert_to_invoice: a French business source without a SIREN is refused before anything changes", async () => {
@@ -8350,7 +8964,15 @@ describe("e-invoicing gate: convert, reissue and caller-asserted confirmations",
       shopify_order_id: "order-3001",
       billing_signature: "sig-1",
       dedupe_key: "order-3001:sig-1",
-      items: [{ description: "Widget", quantity: "3", unit_price_minor: 5000, product_source: null, external_id: null }],
+      items: [
+        {
+          description: "Widget",
+          quantity: "3",
+          unit_price_minor: 5000,
+          product_source: null,
+          external_id: null,
+        },
+      ],
     }
     const pre = await orderReissueApplyPreflight(ctx, input)
     expect("error" in pre && pre.error.code).toBe("einvoice_data_missing")
@@ -8366,18 +8988,36 @@ describe("e-invoicing gate: convert, reissue and caller-asserted confirmations",
 describe("issuer profile changes, full refund bound, send recipient", () => {
   test("updating the IBAN is written to the audit timeline with old and new values", async () => {
     const { ctx, extras } = makeCtx({ scopes: ["invoicing:issuer:admin"] })
-    const before = String(((await ctx.db.findOne("issuer_profiles", "iss-1")) as { iban?: string }).iban ?? "")
-    const r = await settingsIssuerProfileUpdate(ctx, { id: "iss-1", iban: "FR7630006000011234567890189", reason_unknown: "x" })
+    const before = String(
+      ((await ctx.db.findOne("issuer_profiles", "iss-1")) as { iban?: string }).iban ?? "",
+    )
+    const r = await settingsIssuerProfileUpdate(ctx, {
+      id: "iss-1",
+      iban: "FR7630006000011234567890189",
+      reason_unknown: "x",
+    })
     expect(r.status).toBe("completed")
-    const ev = extras.emittedAttention.find((e) => e.entity === "issuer_profile" && e.action === "updated")!
-    const data = ev.data as { sensitive_fields: string[]; changes: Record<string, { from: unknown; to: unknown }> }
+    const ev = extras.emittedAttention.find(
+      (e) => e.entity === "issuer_profile" && e.action === "updated",
+    )!
+    const data = ev.data as {
+      sensitive_fields: string[]
+      changes: Record<string, { from: unknown; to: unknown }>
+    }
     expect(data.sensitive_fields).toContain("iban")
-    expect(data.changes.iban).toEqual({ from: before === "" ? null : before, to: "FR7630006000011234567890189" })
+    expect(data.changes.iban).toEqual({
+      from: before === "" ? null : before,
+      to: "FR7630006000011234567890189",
+    })
     expect(data.changes.reason_unknown).toBeUndefined()
   })
 
   test("bank and control fields need invoicing:issuer:admin; settings:write alone is refused", async () => {
-    const member = ["invoicing:settings:write", "invoicing:settings:read", "invoicing:documents:write"]
+    const member = [
+      "invoicing:settings:write",
+      "invoicing:settings:read",
+      "invoicing:documents:write",
+    ]
     for (const change of [
       { iban: "FR7630006000011234567890189" },
       { swift_bic: "BNPAFRPP" },
@@ -8398,12 +9038,17 @@ describe("issuer profile changes, full refund bound, send recipient", () => {
       }
       expect(db.__all("issuer_profiles").find((r) => r.id === "iss-1")).toEqual(before)
       // The stage-time preflight refuses the same call before an approval card exists.
-      const pf = await settingsIssuerProfileWritePreflight(ctx, "update", { id: "iss-1", ...change })
+      const pf = await settingsIssuerProfileWritePreflight(ctx, "update", {
+        id: "iss-1",
+        ...change,
+      })
       expect("error" in pf && pf.error.code).toBe("forbidden")
     }
     // No scope check available on the context: refused, never assumed.
     const { ctx: bare } = makeCtx()
-    expect((await settingsIssuerProfileUpdate(bare, { id: "iss-1", iban: "X" })).status).toBe("error")
+    expect((await settingsIssuerProfileUpdate(bare, { id: "iss-1", iban: "X" })).status).toBe(
+      "error",
+    )
   })
 
   test("a member edits the other fields, resending the unchanged bank details the form carries", async () => {
@@ -8420,23 +9065,39 @@ describe("issuer profile changes, full refund bound, send recipient", () => {
       mail_account_id: row.mail_account_id,
     })
     expect(r.status).toBe("completed")
-    expect(db.__all("issuer_profiles").find((r) => r.id === "iss-1")?.address).toBe("2 rue Neuve, 75001 Paris")
+    expect(db.__all("issuer_profiles").find((r) => r.id === "iss-1")?.address).toBe(
+      "2 rue Neuve, 75001 Paris",
+    )
   })
 
   test("the issuer admin scope, or the admin wildcard, may change them", async () => {
     for (const scopes of [["invoicing:issuer:admin"], ["*"], ["invoicing"]]) {
       const { ctx, db } = makeCtx({ scopes })
-      const r = await settingsIssuerProfileUpdate(ctx, { id: "iss-1", iban: "DE89370400440532013000" })
+      const r = await settingsIssuerProfileUpdate(ctx, {
+        id: "iss-1",
+        iban: "DE89370400440532013000",
+      })
       expect(r.status).toBe("completed")
-      expect(db.__all("issuer_profiles").find((r) => r.id === "iss-1")?.iban).toBe("DE89370400440532013000")
+      expect(db.__all("issuer_profiles").find((r) => r.id === "iss-1")?.iban).toBe(
+        "DE89370400440532013000",
+      )
     }
   })
 
   test("creating a profile with bank or control values, or deleting one, needs the issuer admin scope", async () => {
     const member = makeCtx({ scopes: ["invoicing:settings:write"] }).ctx
-    const plain = { legal_name: "New Co", country: "FR", require_two_eyes: false, auto_email_enabled: false, iban: "" }
+    const plain = {
+      legal_name: "New Co",
+      country: "FR",
+      require_two_eyes: false,
+      auto_email_enabled: false,
+      iban: "",
+    }
     expect((await settingsIssuerProfileCreate(member, plain)).status).toBe("completed")
-    const withBank = await settingsIssuerProfileCreate(member, { ...plain, iban: "FR7630006000011234567890189" })
+    const withBank = await settingsIssuerProfileCreate(member, {
+      ...plain,
+      iban: "FR7630006000011234567890189",
+    })
     expect(withBank.status === "error" && withBank.error.code).toBe("forbidden")
     const del = await settingsIssuerProfileDelete(member, { id: "iss-1" })
     expect(del.status === "error" && del.error.code).toBe("forbidden")
@@ -8444,13 +9105,25 @@ describe("issuer profile changes, full refund bound, send recipient", () => {
     expect("error" in pf && pf.error.code).toBe("forbidden")
 
     const admin = makeCtx({ scopes: ["invoicing:issuer:admin"] })
-    expect((await settingsIssuerProfileCreate(admin.ctx, { ...plain, iban: "FR7630006000011234567890189" })).status).toBe("completed")
+    expect(
+      (
+        await settingsIssuerProfileCreate(admin.ctx, {
+          ...plain,
+          iban: "FR7630006000011234567890189",
+        })
+      ).status,
+    ).toBe("completed")
     expect((await settingsIssuerProfileDelete(admin.ctx, { id: "iss-1" })).status).toBe("completed")
   })
 
   test("a profile that issued documents is refused, typed, before the database would refuse it", async () => {
     const admin = makeCtx({ scopes: ["invoicing:issuer:admin"] })
-    await admin.db.insert("documents", { type: "invoice", status: "issued", issuer_profile_id: "iss-1", number: "INV-2026-0001" })
+    await admin.db.insert("documents", {
+      type: "invoice",
+      status: "issued",
+      issuer_profile_id: "iss-1",
+      number: "INV-2026-0001",
+    })
     const pf = await settingsIssuerProfileWritePreflight(admin.ctx, "delete", { id: "iss-1" })
     expect("error" in pf && pf.error.code).toBe("issuer_in_use")
     const del = await settingsIssuerProfileDelete(admin.ctx, { id: "iss-1" })
@@ -8462,7 +9135,9 @@ describe("issuer profile changes, full refund bound, send recipient", () => {
     const s = await summarizeIssuerProfileChange(
       { id: "iss-1", iban: "NEW-IBAN", country: "FR" },
       undefined,
-      { context: { items: [{ id: "iss-1", legal_name: "Acme", iban: "OLD-IBAN", country: "FR" }] } },
+      {
+        context: { items: [{ id: "iss-1", legal_name: "Acme", iban: "OLD-IBAN", country: "FR" }] },
+      },
     )
     expect(s.lines).toEqual(["IBAN: OLD-IBAN -> NEW-IBAN"])
     expect(s.title).toContain("Acme")
@@ -8471,11 +9146,24 @@ describe("issuer profile changes, full refund bound, send recipient", () => {
   test("the approval card always lists bank and control changes, however many other fields change", async () => {
     const params: Record<string, unknown> = { id: "iss-1", iban: "NEW-IBAN" }
     const current: Record<string, unknown> = { id: "iss-1", legal_name: "Acme", iban: "OLD-IBAN" }
-    for (const k of ["address", "timezone", "prefix_invoice", "prefix_quote", "prefix_proforma", "prefix_po", "default_currency", "country", "tax_registration_id", "default_language"]) {
+    for (const k of [
+      "address",
+      "timezone",
+      "prefix_invoice",
+      "prefix_quote",
+      "prefix_proforma",
+      "prefix_po",
+      "default_currency",
+      "country",
+      "tax_registration_id",
+      "default_language",
+    ]) {
       params[k] = `new-${k}`
       current[k] = `old-${k}`
     }
-    const s = await summarizeIssuerProfileChange(params, undefined, { context: { items: [current] } })
+    const s = await summarizeIssuerProfileChange(params, undefined, {
+      context: { items: [current] },
+    })
     expect(s.lines[0]).toBe("IBAN: OLD-IBAN -> NEW-IBAN")
     expect(s.lines.at(-1)).toMatch(/other settings/)
     // A change past the displayed prefix still counts as a change.
@@ -8490,7 +9178,16 @@ describe("issuer profile changes, full refund bound, send recipient", () => {
     // The ordinary settings come first, so a card that kept only the first
     // few lines would drop the identity fields after them.
     const params: Record<string, unknown> = { legal_name: "Northwind Audio SAS" }
-    for (const k of ["timezone", "prefix_invoice", "prefix_quote", "prefix_proforma", "prefix_po", "default_currency", "default_language", "default_payment_terms_days"]) {
+    for (const k of [
+      "timezone",
+      "prefix_invoice",
+      "prefix_quote",
+      "prefix_proforma",
+      "prefix_po",
+      "default_currency",
+      "default_language",
+      "default_payment_terms_days",
+    ]) {
       params[k] = `v-${k}`
     }
     Object.assign(params, {
@@ -8543,15 +9240,21 @@ describe("issuer profile changes, full refund bound, send recipient", () => {
   })
 
   test("the send approval card names the recipient address", async () => {
-    const s = await summarizeDocumentSend(
-      { document_id: "d1" },
-      undefined,
-      { context: { number: "INV-1", counterparty_name: "Buyer", counterparty_email: "ap@buyer.example" } },
-    )
-    expect(s.title).toContain("ap@buyer.example")
-    const withOverride = await summarizeDocumentSend({ document_id: "d1", to: "x@y.example" }, undefined, {
-      context: { counterparty_email: "ap@buyer.example" },
+    const s = await summarizeDocumentSend({ document_id: "d1" }, undefined, {
+      context: {
+        number: "INV-1",
+        counterparty_name: "Buyer",
+        counterparty_email: "ap@buyer.example",
+      },
     })
+    expect(s.title).toContain("ap@buyer.example")
+    const withOverride = await summarizeDocumentSend(
+      { document_id: "d1", to: "x@y.example" },
+      undefined,
+      {
+        context: { counterparty_email: "ap@buyer.example" },
+      },
+    )
     expect(withOverride.title).toContain("x@y.example")
   })
 
@@ -8584,7 +9287,9 @@ describe("issuer profile changes, full refund bound, send recipient", () => {
       external_refs: {},
       lifecycle_log: [],
     })
-    const r = await documentsSendToCustomerPreflight(ctx, { document_id: "00000000-0000-4000-8000-0000000009b1" })
+    const r = await documentsSendToCustomerPreflight(ctx, {
+      document_id: "00000000-0000-4000-8000-0000000009b1",
+    })
     expect("error" in r && r.error.code).toBe("no_recipient")
   })
 })
@@ -8649,13 +9354,17 @@ describe("quote_create_and_issue: outputs, customer_reference, discount_minor an
     if (r.status !== "completed") throw new Error(`expected completed, got ${r.status}`)
     const row = db.__all("documents").find((d) => d.id === r.document_id)!
     expect((row.external_refs as Record<string, unknown>).customer_reference).toBe("crm-48213")
-    const issueData = extras.renderCalls.at(-1)!.data as { document: { customer_reference: string | null } }
+    const issueData = extras.renderCalls.at(-1)!.data as {
+      document: { customer_reference: string | null }
+    }
     expect(issueData.document.customer_reference).toBe("crm-48213")
     // A re-render reads it back off the stored row.
     extras.renderCalls.length = 0
     const retry = await documentsRetryPdf(ctx, { id: r.document_id })
     expect(retry.status).toBe("completed")
-    const reData = extras.renderCalls[0]!.data as { document: { customer_reference: string | null } }
+    const reData = extras.renderCalls[0]!.data as {
+      document: { customer_reference: string | null }
+    }
     expect(reData.document.customer_reference).toBe("crm-48213")
     const got = await documentsGet({ db } as unknown as ReadsCtx, { id: r.document_id })
     expect(got?.customer_reference).toBe("crm-48213")
@@ -8696,12 +9405,22 @@ describe("quote_create_and_issue: outputs, customer_reference, discount_minor an
       po_number: "PO-1",
     })
     if (r.status !== "completed") throw new Error("expected completed")
-    await documentsUpdate(ctx, { id: r.document_id, customer_reference: "crm-9", po_number: "PO-2" })
-    let refs = db.__all("documents").find((d) => d.id === r.document_id)!.external_refs as Record<string, unknown>
+    await documentsUpdate(ctx, {
+      id: r.document_id,
+      customer_reference: "crm-9",
+      po_number: "PO-2",
+    })
+    let refs = db.__all("documents").find((d) => d.id === r.document_id)!.external_refs as Record<
+      string,
+      unknown
+    >
     expect(refs.customer_reference).toBe("crm-9")
     expect(refs.po_number).toBe("PO-2")
     await documentsUpdate(ctx, { id: r.document_id, customer_reference: null })
-    refs = db.__all("documents").find((d) => d.id === r.document_id)!.external_refs as Record<string, unknown>
+    refs = db.__all("documents").find((d) => d.id === r.document_id)!.external_refs as Record<
+      string,
+      unknown
+    >
     expect("customer_reference" in refs).toBe(false)
     expect(refs.po_number).toBe("PO-2")
   })
@@ -8709,23 +9428,26 @@ describe("quote_create_and_issue: outputs, customer_reference, discount_minor an
   test.each([
     ["-500", "cannot be negative"],
     ["3596001", "more than the line itself"],
-  ])("discount_minor %s is refused naming the field, the line, the range and an example", async (bad, why) => {
-    const { ctx, db } = makeCtx()
-    const r = await quoteCreateAndIssue(ctx, {
-      counterparty: defaultCounterparty,
-      issuer_profile_id: "iss-1",
-      currency: "EUR",
-      items: [sampleDraftItems[0]!, { ...discountedLine, discount_minor: bad }],
-    })
-    if (r.status !== "error") throw new Error("expected error")
-    expect(r.error.code).toBe("invalid_discount")
-    expect(r.error.message).toContain("items[1].discount_minor")
-    expect(r.error.message).toContain(why)
-    expect(r.error.message).toContain("between 0 and 3596000")
-    expect(r.error.message).toContain("discount_minor 1366480")
-    expect(r.error.message).toContain("not per unit")
-    expect(db.__all("documents").filter((d) => d.type === "quote")).toHaveLength(0)
-  })
+  ])(
+    "discount_minor %s is refused naming the field, the line, the range and an example",
+    async (bad, why) => {
+      const { ctx, db } = makeCtx()
+      const r = await quoteCreateAndIssue(ctx, {
+        counterparty: defaultCounterparty,
+        issuer_profile_id: "iss-1",
+        currency: "EUR",
+        items: [sampleDraftItems[0]!, { ...discountedLine, discount_minor: bad }],
+      })
+      if (r.status !== "error") throw new Error("expected error")
+      expect(r.error.code).toBe("invalid_discount")
+      expect(r.error.message).toContain("items[1].discount_minor")
+      expect(r.error.message).toContain(why)
+      expect(r.error.message).toContain("between 0 and 3596000")
+      expect(r.error.message).toContain("discount_minor 1366480")
+      expect(r.error.message).toContain("not per unit")
+      expect(db.__all("documents").filter((d) => d.type === "quote")).toHaveLength(0)
+    },
+  )
 
   test("a discount given as a percentage is refused as invalid_amount with the line-total meaning", async () => {
     const { ctx } = makeCtx()
@@ -8748,7 +9470,15 @@ describe("quote_create_and_issue: outputs, customer_reference, discount_minor an
       counterparty: defaultCounterparty,
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      items: [{ description: "Controller", quantity: "1", unit_price_minor: "€899", product_source: null, external_id: null }],
+      items: [
+        {
+          description: "Controller",
+          quantity: "1",
+          unit_price_minor: "€899",
+          product_source: null,
+          external_id: null,
+        },
+      ],
     })
     if (r.status !== "error") throw new Error("expected error")
     expect(r.error.code).toBe("invalid_amount")
@@ -8775,7 +9505,10 @@ describe("quote_create_and_issue: outputs, customer_reference, discount_minor an
     const { ctx } = makeCtx({
       seed: {
         issuer_profiles: [
-          { ...seedIssuer({ ...defaultIssuer, id: "iss-1", legal_name: "Acme SAS" }, {}), shopify_shop_id: "acme.myshopify.com" },
+          {
+            ...seedIssuer({ ...defaultIssuer, id: "iss-1", legal_name: "Acme SAS" }, {}),
+            shopify_shop_id: "acme.myshopify.com",
+          },
           seedIssuer({ ...defaultIssuer, id: "iss-2", legal_name: "Acme Services" }, {}),
         ],
       },
@@ -8824,7 +9557,10 @@ describe("quote_create_and_issue: outputs, customer_reference, discount_minor an
 
   describe("issuer linked to a shop", () => {
     const seed = [
-      { ...seedIssuer(defaultIssuer, { invoice: null, po: null }), shopify_shop_id: "acme.myshopify.com" },
+      {
+        ...seedIssuer(defaultIssuer, { invoice: null, po: null }),
+        shopify_shop_id: "acme.myshopify.com",
+      },
       seedIssuer({ ...defaultIssuer, id: "iss-plain", legal_name: "Acme Direct" }, {}),
     ]
     const draft = {
@@ -8837,10 +9573,23 @@ describe("quote_create_and_issue: outputs, customer_reference, discount_minor an
       taxesIncluded: false,
       email: "ap@buyersarl.example",
       billingAddress: {
-        name: "Buyer SARL", company: "Buyer SARL", address1: "1 rue Buyer", zip: "75002", city: "Paris", countryCode: "FR",
+        name: "Buyer SARL",
+        company: "Buyer SARL",
+        address1: "1 rue Buyer",
+        zip: "75002",
+        city: "Paris",
+        countryCode: "FR",
       },
       lineItems: [
-        { id: "l1", title: "Widget", quantity: 2, unitPrice: "50.00", discountedTotal: "100.00", appliedDiscount: null, custom: true },
+        {
+          id: "l1",
+          title: "Widget",
+          quantity: 2,
+          unitPrice: "50.00",
+          discountedTotal: "100.00",
+          appliedDiscount: null,
+          custom: true,
+        },
       ],
     }
 
@@ -8849,7 +9598,10 @@ describe("quote_create_and_issue: outputs, customer_reference, discount_minor an
         seed: { issuer_profiles: seed },
         executeToolImpl: async (name) =>
           name === "shopify:draft_orders_create"
-            ? { status: "error", error: { code: "shopify_user_error", message: "Email is invalid" } }
+            ? {
+                status: "error",
+                error: { code: "shopify_user_error", message: "Email is invalid" },
+              }
             : { status: "completed", result: {} },
       })
       const r = await quoteCreateAndIssue(ctx, {
@@ -8872,8 +9624,12 @@ describe("quote_create_and_issue: outputs, customer_reference, discount_minor an
         seed: { issuer_profiles: seed },
         executeToolImpl: async (name) => {
           if (name === "shopify:draft_orders_create")
-            return { status: "completed", result: { draftOrder: { id: draft.draftOrderId, name: draft.name } } }
-          if (name === "shopify:draft_orders_get") return { status: "completed", result: { draftOrder: draft } }
+            return {
+              status: "completed",
+              result: { draftOrder: { id: draft.draftOrderId, name: draft.name } },
+            }
+          if (name === "shopify:draft_orders_get")
+            return { status: "completed", result: { draftOrder: draft } }
           return { status: "completed", result: {} }
         },
       })
@@ -8890,10 +9646,16 @@ describe("quote_create_and_issue: outputs, customer_reference, discount_minor an
       expect(r.grand_total_minor).toBe("12000")
       expect(r.currency).toBe("EUR")
       expect(r.shopify_draft_order_id).toBe(draft.draftOrderId)
-      const input = (extras.executeToolCalls.find((c) => c.name === "shopify:draft_orders_create")!.args as {
-        input: { lineItems: Array<Record<string, unknown>>; poNumber?: string }
-      }).input
-      expect(input.lineItems[0]!.appliedDiscount).toEqual({ value: 38, valueType: "PERCENTAGE", title: "Discount" })
+      const input = (
+        extras.executeToolCalls.find((c) => c.name === "shopify:draft_orders_create")!.args as {
+          input: { lineItems: Array<Record<string, unknown>>; poNumber?: string }
+        }
+      ).input
+      expect(input.lineItems[0]!.appliedDiscount).toEqual({
+        value: 38,
+        valueType: "PERCENTAGE",
+        title: "Discount",
+      })
       expect(input.poNumber).toBe("PO-77")
       const row = db.__all("documents").find((d) => d.id === r.document_id)!
       expect((row.external_refs as Record<string, unknown>).customer_reference).toBe("crm-48213")
@@ -8953,12 +9715,24 @@ describe("intra-EU business buyer guard", () => {
   }
   const VALID_VAT = "IT01234567890"
 
-  function itCtx(opts: { prior?: Array<Record<string, unknown>>; orders?: unknown[]; vies?: "valid" | "invalid" | "down"; approved?: boolean } = {}) {
+  function itCtx(
+    opts: {
+      prior?: Array<Record<string, unknown>>
+      orders?: unknown[]
+      vies?: "valid" | "invalid" | "down"
+      approved?: boolean
+    } = {},
+  ) {
     const m = makeCtx({
       approval: opts.approved ? PRE_APPROVED : null,
       seed: {
         // The issuer's typed prices include VAT, as in the incident.
-        issuer_profiles: [{ ...seedIssuer(defaultIssuer, { invoice: NO_GATE_MINOR, po: NO_GATE_MINOR }), prices_include_tax: true }],
+        issuer_profiles: [
+          {
+            ...seedIssuer(defaultIssuer, { invoice: NO_GATE_MINOR, po: NO_GATE_MINOR }),
+            prices_include_tax: true,
+          },
+        ],
         documents: opts.prior ?? [],
       },
       executeToolImpl: async (name) =>
@@ -8991,14 +9765,23 @@ describe("intra-EU business buyer guard", () => {
     issuer_profile_id: "iss-1",
     currency: "EUR",
     reason: "Shop order",
-    items: [{ description: "Kestrel 6", quantity: "1", unit_price_minor: "36000", product_source: null, external_id: null }],
+    items: [
+      {
+        description: "Kestrel 6",
+        quantity: "1",
+        unit_price_minor: "36000",
+        product_source: null,
+        external_id: null,
+      },
+    ],
     ...extra,
   })
 
   test("the incident: an IT shop with a prior VAT-free invoice and a B2B order is REFUSED, naming the evidence", async () => {
     const m = itCtx({ prior: [priorInvoice], orders: [b2bOrder] })
     const pre = await proformaCreateAndIssuePreflight(m.ctx, proforma(itBuyer))
-    if (!("error" in pre)) throw new Error("preflight staged a consumer proforma for a business buyer")
+    if (!("error" in pre))
+      throw new Error("preflight staged a consumer proforma for a business buyer")
     expect(pre.error.code).toBe("buyer_vat_id_required")
     expect(pre.error.message).toContain("INV-2025-0100")
     expect(pre.error.message).toContain("Esempio Strumenti SRL")
@@ -9025,7 +9808,11 @@ describe("intra-EU business buyer guard", () => {
     expect(String(doc.subtotal_minor)).toBe("36000")
     expect(String(doc.tax_total_minor)).toBe("0")
     expect(String(doc.grand_total_minor)).toBe("36000")
-    expect(m.viesCalls.some((u) => u.endsWith("/ms/IT/vat/IT01234567890") || u.endsWith("/ms/IT/vat/01234567890"))).toBe(true)
+    expect(
+      m.viesCalls.some(
+        (u) => u.endsWith("/ms/IT/vat/IT01234567890") || u.endsWith("/ms/IT/vat/01234567890"),
+      ),
+    ).toBe(true)
   })
 
   test("the card for that call states the treatment, the VIES check, the price basis and the exact totals", async () => {
@@ -9046,7 +9833,10 @@ describe("intra-EU business buyer guard", () => {
     const m = itCtx({ prior: [priorInvoice], orders: [b2bOrder], approved: true })
     const params = proforma(itBuyer, { buyer_is_consumer: true })
     // Declared against evidence: staged, but only a person may decide it.
-    expect(await proformaCreateAndIssuePreflight(m.ctx, params)).toEqual({ ok: true, noAutoApprove: true })
+    expect(await proformaCreateAndIssuePreflight(m.ctx, params)).toEqual({
+      ok: true,
+      noAutoApprove: true,
+    })
     const res = await proformaCreateAndIssue(m.ctx, params)
     expect(res.status).toBe("completed")
     const doc = m.db.__all("documents").find((d) => d.type === "proforma")!
@@ -9059,7 +9849,9 @@ describe("intra-EU business buyer guard", () => {
     expect(Number(line.tax_rate_bp)).toBe(2200)
     expect((doc.external_refs as Record<string, unknown>).buyer_is_consumer).toBe(true)
 
-    const card = await summarizeProformaCreateAndIssue(params, undefined, { context: await documentsIssuePreview(m.ctx, params) })
+    const card = await summarizeProformaCreateAndIssue(params, undefined, {
+      context: await documentsIssuePreview(m.ctx, params),
+    })
     const t = card.lines.join("\n")
     expect(t).toContain("EU consumer sale (OSS), IT VAT 22%")
     // Declared against the evidence: the card says the AGENT declared it, and lists the evidence.
@@ -9067,24 +9859,36 @@ describe("intra-EU business buyer guard", () => {
     expect(t).toContain("INV-2025-0100")
     expect(t).toContain('tagged "B2B"')
     expect(t).toContain("Total: 360.00 EUR (295.08 EUR net + 64.92 EUR VAT)")
-    expect(t).toContain("Prices: typed VAT included (issuer setting), 360.00 EUR incl. VAT is 295.08 EUR net")
+    expect(t).toContain(
+      "Prices: typed VAT included (issuer setting), 360.00 EUR incl. VAT is 295.08 EUR net",
+    )
   })
 
   test("an invalid VAT number is refused; a VIES outage lets it through, said on the card", async () => {
     const bad = itCtx({ vies: "invalid" })
-    const pre = await proformaCreateAndIssuePreflight(bad.ctx, proforma({ ...itBuyer, vat_id: VALID_VAT }))
+    const pre = await proformaCreateAndIssuePreflight(
+      bad.ctx,
+      proforma({ ...itBuyer, vat_id: VALID_VAT }),
+    )
     if (!("error" in pre)) throw new Error("an invalid VAT number was accepted")
     expect(pre.error.code).toBe("vat_id_invalid")
 
     const down = itCtx({ vies: "down" })
     const params = proforma({ ...itBuyer, vat_id: VALID_VAT })
     expect(await proformaCreateAndIssuePreflight(down.ctx, params)).toEqual({ ok: true })
-    const card = await summarizeProformaCreateAndIssue(params, undefined, { context: await documentsIssuePreview(down.ctx, params) })
+    const card = await summarizeProformaCreateAndIssue(params, undefined, {
+      context: await documentsIssuePreview(down.ctx, params),
+    })
     expect(card.lines.join("\n")).toContain("NOT verified (VIES unavailable)")
   })
 
   test("a VAT number on an earlier document for the same CONTACT is filled in, and the card says where from", async () => {
-    const prior = { ...priorInvoice, counterparty_vat_id: VALID_VAT, counterparty_contact_id: "contact-it-1", counterparty_address: "Altro indirizzo 1" }
+    const prior = {
+      ...priorInvoice,
+      counterparty_vat_id: VALID_VAT,
+      counterparty_contact_id: "contact-it-1",
+      counterparty_address: "Altro indirizzo 1",
+    }
     const m = itCtx({ prior: [prior], approved: true })
     const itBuyer2 = { ...itBuyer, contact_id: "contact-it-1" }
     const res = await proformaCreateAndIssue(m.ctx, proforma(itBuyer2))
@@ -9093,14 +9897,33 @@ describe("intra-EU business buyer guard", () => {
     expect(doc.counterparty_vat_id).toBe(VALID_VAT)
     expect(doc.tax_treatment).toBe("eu_reverse_charge")
     const params = proforma(itBuyer2)
-    const card = await summarizeProformaCreateAndIssue(params, undefined, { context: await documentsIssuePreview(itCtx({ prior: [prior] }).ctx, params) })
-    expect(card.lines.join("\n")).toContain(`buyer VAT number ${VALID_VAT}, filled in from INV-2025-0100`)
+    const card = await summarizeProformaCreateAndIssue(params, undefined, {
+      context: await documentsIssuePreview(itCtx({ prior: [prior] }).ctx, params),
+    })
+    expect(card.lines.join("\n")).toContain(
+      `buyer VAT number ${VALID_VAT}, filled in from INV-2025-0100`,
+    )
   })
 
   test("an email-only or street-only match never fills in a VAT number: it is a candidate in the refusal", async () => {
     const OTHER_VAT = "IT09876543210"
-    const byEmail = { ...priorInvoice, id: "doc-e", number: "INV-2025-0200", counterparty_vat_id: OTHER_VAT, counterparty_email: IT_EMAIL, counterparty_address: "Altro indirizzo 1", counterparty_name: "Altra Ditta SRL" }
-    const byStreet = { ...priorInvoice, id: "doc-s", number: "INV-2025-0300", counterparty_vat_id: OTHER_VAT, counterparty_address: "Via dell'Esempio 12, 00100 Roma", counterparty_name: "Terza Ditta SRL" }
+    const byEmail = {
+      ...priorInvoice,
+      id: "doc-e",
+      number: "INV-2025-0200",
+      counterparty_vat_id: OTHER_VAT,
+      counterparty_email: IT_EMAIL,
+      counterparty_address: "Altro indirizzo 1",
+      counterparty_name: "Altra Ditta SRL",
+    }
+    const byStreet = {
+      ...priorInvoice,
+      id: "doc-s",
+      number: "INV-2025-0300",
+      counterparty_vat_id: OTHER_VAT,
+      counterparty_address: "Via dell'Esempio 12, 00100 Roma",
+      counterparty_name: "Terza Ditta SRL",
+    }
     for (const prior of [byEmail, byStreet]) {
       const m = itCtx({ prior: [prior], approved: true })
       const res = await proformaCreateAndIssue(m.ctx, proforma(itBuyer))
@@ -9114,26 +9937,48 @@ describe("intra-EU business buyer guard", () => {
       expect(m.db.__all("documents").filter((d) => d.type === "proforma")).toHaveLength(0)
     }
     // The same full address with a compatible name is a strong match: filled in.
-    const sameBuyer = { ...priorInvoice, counterparty_vat_id: VALID_VAT, counterparty_email: "x@other.example", counterparty_name: "Negozio Esempio SRL" }
+    const sameBuyer = {
+      ...priorInvoice,
+      counterparty_vat_id: VALID_VAT,
+      counterparty_email: "x@other.example",
+      counterparty_name: "Negozio Esempio SRL",
+    }
     const m = itCtx({ prior: [sameBuyer], approved: true })
     const res = await proformaCreateAndIssue(m.ctx, proforma(itBuyer))
     expect(res.status).toBe("completed")
-    expect(m.db.__all("documents").find((d) => d.type === "proforma")!.counterparty_vat_id).toBe(VALID_VAT)
+    expect(m.db.__all("documents").find((d) => d.type === "proforma")!.counterparty_vat_id).toBe(
+      VALID_VAT,
+    )
   })
 
   test("buyer_is_consumer is REFUSED when a VAT number is on record for the buyer, naming the document and the number", async () => {
-    const prior = { ...priorInvoice, counterparty_vat_id: VALID_VAT, counterparty_contact_id: "contact-it-1" }
+    const prior = {
+      ...priorInvoice,
+      counterparty_vat_id: VALID_VAT,
+      counterparty_contact_id: "contact-it-1",
+    }
     const m = itCtx({ prior: [prior] })
     const params = proforma({ ...itBuyer, contact_id: "contact-it-1" }, { buyer_is_consumer: true })
     const pre = await proformaCreateAndIssuePreflight(m.ctx, params)
-    if (!("error" in pre)) throw new Error("a consumer declaration was accepted against a VAT number on record")
+    if (!("error" in pre))
+      throw new Error("a consumer declaration was accepted against a VAT number on record")
     expect(pre.error.code).toBe("buyer_is_consumer_refused")
     expect(pre.error.message).toContain(VALID_VAT)
     expect(pre.error.message).toContain("INV-2025-0100")
     // A Shopify company tax registration id of the same customer refuses it too.
-    const order = { ...b2bOrder, attributes: { ...b2bOrder.attributes, b2bCompany: { name: "Negozio Esempio SRL", taxRegistrationId: VALID_VAT } } }
-    const q = await quoteCreateAndIssuePreflight(itCtx({ orders: [order] }).ctx, proforma(itBuyer, { buyer_is_consumer: true }))
-    if (!("error" in q)) throw new Error("a consumer declaration was accepted against a Shopify tax id")
+    const order = {
+      ...b2bOrder,
+      attributes: {
+        ...b2bOrder.attributes,
+        b2bCompany: { name: "Negozio Esempio SRL", taxRegistrationId: VALID_VAT },
+      },
+    }
+    const q = await quoteCreateAndIssuePreflight(
+      itCtx({ orders: [order] }).ctx,
+      proforma(itBuyer, { buyer_is_consumer: true }),
+    )
+    if (!("error" in q))
+      throw new Error("a consumer declaration was accepted against a Shopify tax id")
     expect(q.error.code).toBe("buyer_is_consumer_refused")
     expect(q.error.message).toContain("Shopify order #1001")
   })
@@ -9164,25 +10009,32 @@ describe("intra-EU business buyer guard", () => {
     expect(m.extras.approvalsRequested[1]!.tool_name).toBe("invoicing:drafts_create")
     // Its own card, with the evidence: the manifest's summarizer is for the other parks.
     expect(m.extras.approvalsRequested[1]!.summary).toContain("as a PRIVATE CONSUMER")
-    expect((m.extras.approvalsRequested[1]!.summary_detail?.lines ?? []).join("\n")).toContain('tagged "B2B"')
+    expect((m.extras.approvalsRequested[1]!.summary_detail?.lines ?? []).join("\n")).toContain(
+      'tagged "B2B"',
+    )
     expect(m.db.__all("documents").filter((x) => x.type === "quote")).toHaveLength(0)
 
     // Approved by the person: the draft is written and keeps the evidence for the issue card.
-    const ok = await draftsCreateTool({ ...m.ctx, approval: PRE_APPROVED }, {
-      type: "quote",
-      counterparty_contact_id: null,
-      counterparty_name: itBuyer.legal_name,
-      counterparty_country: "IT",
-      counterparty_email: IT_EMAIL,
-      counterparty_address: itBuyer.address,
-      issuer_profile_id: "iss-1",
-      items: [],
-      buyer_is_consumer: true,
-    })
+    const ok = await draftsCreateTool(
+      { ...m.ctx, approval: PRE_APPROVED },
+      {
+        type: "quote",
+        counterparty_contact_id: null,
+        counterparty_name: itBuyer.legal_name,
+        counterparty_country: "IT",
+        counterparty_email: IT_EMAIL,
+        counterparty_address: itBuyer.address,
+        issuer_profile_id: "iss-1",
+        items: [],
+        buyer_is_consumer: true,
+      },
+    )
     if ("status" in ok) throw new Error("the approved draft was parked again")
     const refs = ok.external_refs as Record<string, unknown>
     expect(refs.buyer_is_consumer).toBe(true)
-    expect(Array.isArray(refs.buyer_is_consumer_evidence) && refs.buyer_is_consumer_evidence.length > 0).toBe(true)
+    expect(
+      Array.isArray(refs.buyer_is_consumer_evidence) && refs.buyer_is_consumer_evidence.length > 0,
+    ).toBe(true)
   })
 
   test("the refusal tells the agent where to find the VAT number and does not steer it to the override", async () => {
@@ -9207,7 +10059,17 @@ describe("intra-EU business buyer guard", () => {
     m.ctx.fetch = async (url, opts) => {
       timeouts.push(opts?.timeoutMs)
       const r = await fetchBefore(url, opts)
-      return typeof r === "string" ? r : { ...r, body: JSON.stringify({ isValid: true, userError: "VALID", name: "UNRELATED HOLDING SPA", address: "X" }) }
+      return typeof r === "string"
+        ? r
+        : {
+            ...r,
+            body: JSON.stringify({
+              isValid: true,
+              userError: "VALID",
+              name: "UNRELATED HOLDING SPA",
+              address: "X",
+            }),
+          }
     }
     const params = proforma({ ...itBuyer, vat_id: VALID_VAT, contact_id: "contact-it-1" })
     const context = await documentsIssuePreview(m.ctx, params)
@@ -9226,13 +10088,32 @@ describe("intra-EU business buyer guard", () => {
   test("a consumer declared against evidence is for a PERSON: every preflight says noAutoApprove", async () => {
     const m = itCtx({ prior: [priorInvoice], orders: [b2bOrder] })
     const consumer = proforma(itBuyer, { buyer_is_consumer: true })
-    expect(await invoiceCreateAndIssuePreflight(m.ctx, consumer)).toEqual({ ok: true, noAutoApprove: true })
-    expect(await proformaCreateAndIssuePreflight(m.ctx, consumer)).toEqual({ ok: true, noAutoApprove: true })
-    expect(await quoteCreateAndIssuePreflight(m.ctx, consumer)).toEqual({ ok: true, noAutoApprove: true })
+    expect(await invoiceCreateAndIssuePreflight(m.ctx, consumer)).toEqual({
+      ok: true,
+      noAutoApprove: true,
+    })
+    expect(await proformaCreateAndIssuePreflight(m.ctx, consumer)).toEqual({
+      ok: true,
+      noAutoApprove: true,
+    })
+    expect(await quoteCreateAndIssuePreflight(m.ctx, consumer)).toEqual({
+      ok: true,
+      noAutoApprove: true,
+    })
     // A declaration with no evidence against it, and a business with its VAT number, stay ordinary.
     const plain = itCtx()
-    expect(await invoiceCreateAndIssuePreflight(plain.ctx, proforma({ ...itBuyer, legal_name: "Giulia Bianchi", address: "Via Lontana 3, 00100 Roma" }, { buyer_is_consumer: true }))).toEqual({ ok: true })
-    expect(await invoiceCreateAndIssuePreflight(m.ctx, proforma({ ...itBuyer, vat_id: VALID_VAT }))).toEqual({ ok: true })
+    expect(
+      await invoiceCreateAndIssuePreflight(
+        plain.ctx,
+        proforma(
+          { ...itBuyer, legal_name: "Giulia Bianchi", address: "Via Lontana 3, 00100 Roma" },
+          { buyer_is_consumer: true },
+        ),
+      ),
+    ).toEqual({ ok: true })
+    expect(
+      await invoiceCreateAndIssuePreflight(m.ctx, proforma({ ...itBuyer, vat_id: VALID_VAT })),
+    ).toEqual({ ok: true })
     // Issuing a saved draft that carries the declaration: the same.
     const approved = { ...m.ctx, approval: PRE_APPROVED }
     for (const type of ["invoice", "quote"] as const) {
@@ -9244,11 +10125,22 @@ describe("intra-EU business buyer guard", () => {
         counterparty_email: IT_EMAIL,
         counterparty_address: itBuyer.address,
         issuer_profile_id: "iss-1",
-        items: [{ description: "Kestrel 6", quantity: "1", unit_price_minor: "36000", product_source: null, external_id: null }],
+        items: [
+          {
+            description: "Kestrel 6",
+            quantity: "1",
+            unit_price_minor: "36000",
+            product_source: null,
+            external_id: null,
+          },
+        ],
         buyer_is_consumer: true,
       })
       if ("status" in d) throw new Error("setup failed")
-      const pre = type === "invoice" ? await invoiceIssuePreflight(m.ctx, { draft_id: d.draft_id }) : await quoteIssuePreflight(m.ctx, { draft_id: d.draft_id })
+      const pre =
+        type === "invoice"
+          ? await invoiceIssuePreflight(m.ctx, { draft_id: d.draft_id })
+          : await quoteIssuePreflight(m.ctx, { draft_id: d.draft_id })
       expect(pre).toEqual({ ok: true, noAutoApprove: true })
     }
   })
@@ -9259,7 +10151,10 @@ describe("intra-EU business buyer guard", () => {
     if (res.status !== "completed") throw new Error("setup failed")
     const params = { id: res.document_id, counterparty_vat_id: null, buyer_is_consumer: true }
     expect(await documentsUpdatePreflight(m.ctx, params)).toEqual({ ok: true, noAutoApprove: true })
-    const context = await documentsUpdatePreview({ ...m.ctx, kernel: { listApprovals: async () => [] } }, params)
+    const context = await documentsUpdatePreview(
+      { ...m.ctx, kernel: { listApprovals: async () => [] } },
+      params,
+    )
     const card = await summarizeDocumentUpdate(params, undefined, { context })
     const t = card.lines.join("\n")
     expect(t).toContain("the agent declared this buyer a private consumer")
@@ -9272,15 +10167,25 @@ describe("intra-EU business buyer guard", () => {
     const m = itCtx({ prior: [priorInvoice], orders: [b2bOrder], approved: true })
     const res = await proformaCreateAndIssue(m.ctx, proforma({ ...itBuyer, vat_id: VALID_VAT }))
     if (res.status !== "completed") throw new Error("setup failed")
-    const pre = await documentsUpdatePreflight(m.ctx, { id: res.document_id, counterparty_vat_id: null })
-    if (!("error" in pre)) throw new Error("documents_update staged a VAT-number removal for a business buyer")
+    const pre = await documentsUpdatePreflight(m.ctx, {
+      id: res.document_id,
+      counterparty_vat_id: null,
+    })
+    if (!("error" in pre))
+      throw new Error("documents_update staged a VAT-number removal for a business buyer")
     expect(pre.error.code).toBe("buyer_vat_id_required")
-    expect(await documentsUpdatePreflight(m.ctx, { id: res.document_id, notes: "Thanks" })).toEqual({ ok: true })
+    expect(await documentsUpdatePreflight(m.ctx, { id: res.document_id, notes: "Thanks" })).toEqual(
+      { ok: true },
+    )
   })
 
   test("a consumer with no business evidence still gets an OSS document at the destination rate", async () => {
     const m = itCtx({ approved: true })
-    const consumer = { ...itBuyer, legal_name: "Giulia Bianchi", address: "Via Lontana 3, 00100 Roma" }
+    const consumer = {
+      ...itBuyer,
+      legal_name: "Giulia Bianchi",
+      address: "Via Lontana 3, 00100 Roma",
+    }
     const res = await proformaCreateAndIssue(m.ctx, proforma(consumer))
     expect(res.status).toBe("completed")
     const doc = m.db.__all("documents").find((d) => d.type === "proforma")!
@@ -9323,8 +10228,15 @@ describe("intra-EU business buyer guard", () => {
 
   test("domestic and non-EU buyers are untouched", async () => {
     const m = itCtx()
-    expect(await proformaCreateAndIssuePreflight(m.ctx, proforma(defaultCounterparty))).toEqual({ ok: true })
-    expect(await proformaCreateAndIssuePreflight(m.ctx, proforma({ ...itBuyer, legal_name: "Acme Ltd", country: "US" }))).toEqual({ ok: true })
+    expect(await proformaCreateAndIssuePreflight(m.ctx, proforma(defaultCounterparty))).toEqual({
+      ok: true,
+    })
+    expect(
+      await proformaCreateAndIssuePreflight(
+        m.ctx,
+        proforma({ ...itBuyer, legal_name: "Acme Ltd", country: "US" }),
+      ),
+    ).toEqual({ ok: true })
     expect(m.viesCalls).toHaveLength(0)
   })
 
@@ -9334,10 +10246,19 @@ describe("intra-EU business buyer guard", () => {
     expect(hasCompanyLegalForm("Studio Rosso S.p.A.")).toBe(true)
     expect(hasCompanyLegalForm("Giulia Bianchi")).toBe(false)
     expect(hasCompanyLegalForm("Sasha Ivanova")).toBe(false)
-    expect(sameAddress("Via dell'Esempio 12, 20121 Milano", "VIA DELL ESEMPIO 12 - 20121 MILANO (MI)")).toBe(true)
+    expect(
+      sameAddress("Via dell'Esempio 12, 20121 Milano", "VIA DELL ESEMPIO 12 - 20121 MILANO (MI)"),
+    ).toBe(true)
     expect(sameAddress("Via Roma 1, Milano", "Via Roma 10, Milano")).toBe(false)
-    expect(sameFullAddress("Via dell'Esempio 12, 20121 Milano", "VIA DELL ESEMPIO 12, 20121 MILANO (MI), Italia")).toBe(true)
-    expect(sameFullAddress("Via dell'Esempio 12, 20121 Milano", "Via dell'Esempio 12, 00100 Roma")).toBe(false)
+    expect(
+      sameFullAddress(
+        "Via dell'Esempio 12, 20121 Milano",
+        "VIA DELL ESEMPIO 12, 20121 MILANO (MI), Italia",
+      ),
+    ).toBe(true)
+    expect(
+      sameFullAddress("Via dell'Esempio 12, 20121 Milano", "Via dell'Esempio 12, 00100 Roma"),
+    ).toBe(false)
     expect(compatibleNames("Negozio Esempio", "ESEMPIO STRUMENTI SRL")).toBe(true)
     expect(compatibleNames("Negozio Esempio", "Altra Ditta SRL")).toBe(false)
   })
@@ -9393,7 +10314,13 @@ describe("intra-EU business buyer guard: evidence without a shared email or name
       shippingZip: "10100",
       shippingCity: "Torino",
       b2bCompany: null,
-      customer: { id: SHOP_CUSTOMER_GID, email: null, firstName: "Marco", lastName: "Lucia Ferro", defaultAddress: null },
+      customer: {
+        id: SHOP_CUSTOMER_GID,
+        email: null,
+        firstName: "Marco",
+        lastName: "Lucia Ferro",
+        defaultAddress: null,
+      },
     },
   }
   const shopCustomer = {
@@ -9406,43 +10333,80 @@ describe("intra-EU business buyer guard: evidence without a shared email or name
       tags: [],
       taxExempt: false,
       companies: [],
-      defaultAddress: { address1: "Via Esempio Nuova 8", city: "Torino", zip: "10100", countryCode: "IT" },
+      defaultAddress: {
+        address1: "Via Esempio Nuova 8",
+        city: "Torino",
+        zip: "10100",
+        countryCode: "IT",
+      },
       recentOrders: [{ name: "#5512", items: [] }],
     },
   }
   const VALID_VAT = "IT01234567890"
 
   type ShopMode = "found" | "absent" | "down" | "empty"
-  function ctxFor(opts: { prior?: Array<Record<string, unknown>>; shop?: ShopMode; approved?: boolean } = {}) {
+  function ctxFor(
+    opts: { prior?: Array<Record<string, unknown>>; shop?: ShopMode; approved?: boolean } = {},
+  ) {
     const shop = opts.shop ?? "found"
     const calls: Array<{ name: string; args: Record<string, unknown> }> = []
     const m = makeCtx({
       approval: opts.approved ? PRE_APPROVED : null,
       seed: {
-        issuer_profiles: [{ ...seedIssuer(defaultIssuer, { invoice: NO_GATE_MINOR, po: NO_GATE_MINOR }), prices_include_tax: true }],
+        issuer_profiles: [
+          {
+            ...seedIssuer(defaultIssuer, { invoice: NO_GATE_MINOR, po: NO_GATE_MINOR }),
+            prices_include_tax: true,
+          },
+        ],
         documents: opts.prior ?? [],
       },
       executeToolImpl: async (name, rawArgs) => {
-        const args = (typeof rawArgs === "string" ? JSON.parse(rawArgs) : rawArgs) as Record<string, unknown>
-        if (!name.startsWith("shopify:")) return { status: "completed", result: { dispatched: true } }
+        const args = (typeof rawArgs === "string" ? JSON.parse(rawArgs) : rawArgs) as Record<
+          string,
+          unknown
+        >
+        if (!name.startsWith("shopify:"))
+          return { status: "completed", result: { dispatched: true } }
         calls.push({ name, args })
-        if (shop === "absent") return { status: "error", error: { code: "tool_not_found", message: `tool ${name} not registered`, retryable: false } }
-        if (shop === "down") return { status: "error", error: { code: "timeout", message: "Shopify did not answer in time", retryable: true } }
+        if (shop === "absent")
+          return {
+            status: "error",
+            error: {
+              code: "tool_not_found",
+              message: `tool ${name} not registered`,
+              retryable: false,
+            },
+          }
+        if (shop === "down")
+          return {
+            status: "error",
+            error: { code: "timeout", message: "Shopify did not answer in time", retryable: true },
+          }
         if (shop === "empty") return { status: "completed", result: { results: [] } }
         const q = String(args.query ?? "")
         // Shopify keys nothing by an email this customer never gave: an email query finds nothing.
         if (q.startsWith("email:")) return { status: "completed", result: { results: [] } }
         if (name === "shopify:customers_search") {
-          return { status: "completed", result: { results: /lucia ferro/i.test(q) ? [shopCustomer] : [] } }
+          return {
+            status: "completed",
+            result: { results: /lucia ferro/i.test(q) ? [shopCustomer] : [] },
+          }
         }
-        const hit = /5512/.test(q) || /lucia ferro/i.test(q) || /10100/.test(q) || q.includes("9001")
+        const hit =
+          /5512/.test(q) || /lucia ferro/i.test(q) || /10100/.test(q) || q.includes("9001")
         return { status: "completed", result: { results: hit ? [shopOrder] : [] } }
       },
     })
     m.ctx.fetch = (async () => ({
       status: 200,
       headers: {},
-      body: JSON.stringify({ isValid: true, userError: "VALID", name: "BOTTEGA NOTTURNA SAS", address: "VIA ESEMPIO NUOVA 8, 10100 TORINO" }),
+      body: JSON.stringify({
+        isValid: true,
+        userError: "VALID",
+        name: "BOTTEGA NOTTURNA SAS",
+        address: "VIA ESEMPIO NUOVA 8, 10100 TORINO",
+      }),
     })) as ReadsFetch
     return { ...m, calls }
   }
@@ -9452,14 +10416,23 @@ describe("intra-EU business buyer guard: evidence without a shared email or name
     issuer_profile_id: "iss-1",
     currency: "EUR",
     reason: "Shop order",
-    items: [{ description: "Kestrel 6", quantity: "1", unit_price_minor: "36000", product_source: null, external_id: null }],
+    items: [
+      {
+        description: "Kestrel 6",
+        quantity: "1",
+        unit_price_minor: "36000",
+        product_source: null,
+        external_id: null,
+      },
+    ],
     ...extra,
   })
 
   test("the production case is REFUSED, naming the prior invoice, its company and the Shopify order", async () => {
     const m = ctxFor({ prior: [importedInvoice] })
     const pre = await proformaCreateAndIssuePreflight(m.ctx, params(buyer))
-    if (!("error" in pre)) throw new Error("preflight staged a consumer (OSS) proforma for a business buyer")
+    if (!("error" in pre))
+      throw new Error("preflight staged a consumer (OSS) proforma for a business buyer")
     expect(pre.error.code).toBe("buyer_vat_id_required")
     const msg = pre.error.message
     expect(msg).toContain("invoice 5512")
@@ -9476,7 +10449,15 @@ describe("intra-EU business buyer guard: evidence without a shared email or name
       "Next step: call invoicing__vat_lookup with legal_name 'Bottega Notturna SAS', country 'IT', city 'Torino', postcode '10100'.",
     )
     expect(pre.error.body).toMatchObject({
-      next_call: { tool: "invoicing__vat_lookup", params: { legal_name: "Bottega Notturna SAS", country: "IT", city: "Torino", postcode: "10100" } },
+      next_call: {
+        tool: "invoicing__vat_lookup",
+        params: {
+          legal_name: "Bottega Notturna SAS",
+          country: "IT",
+          city: "Torino",
+          postcode: "10100",
+        },
+      },
     })
     expect(msg).toContain("invoicing__vat_validate")
     expect(msg).toContain("company register")
@@ -9494,7 +10475,8 @@ describe("intra-EU business buyer guard: evidence without a shared email or name
   test("the prior invoice alone is enough (Shopify not installed): the address matches across name, newlines and country", async () => {
     const m = ctxFor({ prior: [importedInvoice], shop: "absent" })
     const pre = await proformaCreateAndIssuePreflight(m.ctx, params(buyer))
-    if (!("error" in pre)) throw new Error("the prior VAT-free invoice to the same address was not seen")
+    if (!("error" in pre))
+      throw new Error("the prior VAT-free invoice to the same address was not seen")
     expect(pre.error.code).toBe("buyer_vat_id_required")
     expect(pre.error.message).toContain("invoice 5512")
   })
@@ -9502,7 +10484,8 @@ describe("intra-EU business buyer guard: evidence without a shared email or name
   test("the Shopify order alone is enough: found by the customer's name and address, not by email", async () => {
     const m = ctxFor({ prior: [] })
     const pre = await proformaCreateAndIssuePreflight(m.ctx, params(buyer))
-    if (!("error" in pre)) throw new Error("the B2B, tax-exempt Shopify order without an email was not seen")
+    if (!("error" in pre))
+      throw new Error("the B2B, tax-exempt Shopify order without an email was not seen")
     expect(pre.error.code).toBe("buyer_vat_id_required")
     expect(pre.error.message).toContain("Shopify order #5512")
     expect(pre.error.message).toContain('tagged "B2B"')
@@ -9517,7 +10500,11 @@ describe("intra-EU business buyer guard: evidence without a shared email or name
   test("the company on the earlier invoice of the matched Shopify order is named in next_call, never a placeholder", async () => {
     // The earlier invoice is NOT found by contact, email or address (another address, no email):
     // only the Shopify order found by the customer's name leads to it, through its order number.
-    const noAddress: Counterparty = { ...buyer, address: "Corso Diverso 3\n10100 Torino", contact_id: null }
+    const noAddress: Counterparty = {
+      ...buyer,
+      address: "Corso Diverso 3\n10100 Torino",
+      contact_id: null,
+    }
     const elsewhere = { ...importedInvoice, counterparty_country: "FR" }
     const m = ctxFor({ prior: [elsewhere] })
     const pre = await proformaCreateAndIssuePreflight(m.ctx, params(noAddress))
@@ -9525,9 +10512,13 @@ describe("intra-EU business buyer guard: evidence without a shared email or name
     expect(pre.error.code).toBe("buyer_vat_id_required")
     expect(pre.error.message).toContain("invoice 5512")
     expect(pre.error.message).toContain('likely the company "Bottega Notturna SAS"')
-    expect(pre.error.message).toContain("call invoicing__vat_lookup with legal_name 'Bottega Notturna SAS'")
+    expect(pre.error.message).toContain(
+      "call invoicing__vat_lookup with legal_name 'Bottega Notturna SAS'",
+    )
     expect(pre.error.message).not.toContain("<the company")
-    expect(pre.error.body).toMatchObject({ next_call: { params: { legal_name: "Bottega Notturna SAS" } } })
+    expect(pre.error.body).toMatchObject({
+      next_call: { params: { legal_name: "Bottega Notturna SAS" } },
+    })
   })
 
   test("no company on record: the refusal says to ask for the company's name, never a placeholder or the person's name", async () => {
@@ -9541,7 +10532,11 @@ describe("intra-EU business buyer guard: evidence without a shared email or name
   })
 
   test("a street-only match (another postcode) still counts as evidence: a candidate is evidence", async () => {
-    const elsewhere = { ...importedInvoice, counterparty_address: "Via Esempio Nuova 8, 20100 Milano", counterparty_name: "Bottega Notturna SAS" }
+    const elsewhere = {
+      ...importedInvoice,
+      counterparty_address: "Via Esempio Nuova 8, 20100 Milano",
+      counterparty_name: "Bottega Notturna SAS",
+    }
     const m = ctxFor({ prior: [elsewhere], shop: "absent" })
     const pre = await proformaCreateAndIssuePreflight(m.ctx, params(buyer))
     if (!("error" in pre)) throw new Error("a same-street VAT-free invoice was ignored")
@@ -9564,8 +10559,13 @@ describe("intra-EU business buyer guard: evidence without a shared email or name
   test("buyer_is_consumer against this evidence is for a person, and the card shows the evidence", async () => {
     const m = ctxFor({ prior: [importedInvoice] })
     const p = params(buyer, { buyer_is_consumer: true })
-    expect(await proformaCreateAndIssuePreflight(m.ctx, p)).toEqual({ ok: true, noAutoApprove: true })
-    const card = await summarizeProformaCreateAndIssue(p, undefined, { context: await documentsIssuePreview(m.ctx, p) })
+    expect(await proformaCreateAndIssuePreflight(m.ctx, p)).toEqual({
+      ok: true,
+      noAutoApprove: true,
+    })
+    const card = await summarizeProformaCreateAndIssue(p, undefined, {
+      context: await documentsIssuePreview(m.ctx, p),
+    })
     const t = card.lines.join("\n")
     expect(t).toContain("the agent declared this buyer a private consumer")
     expect(t).toContain("invoice 5512")
@@ -9574,8 +10574,13 @@ describe("intra-EU business buyer guard: evidence without a shared email or name
 
   test("Shopify down and nothing else conclusive: a person decides, and the card says business status NOT verified", async () => {
     const m = ctxFor({ prior: [], shop: "down" })
-    expect(await proformaCreateAndIssuePreflight(m.ctx, params(buyer))).toEqual({ ok: true, noAutoApprove: true })
-    const card = await summarizeProformaCreateAndIssue(params(buyer), undefined, { context: await documentsIssuePreview(m.ctx, params(buyer)) })
+    expect(await proformaCreateAndIssuePreflight(m.ctx, params(buyer))).toEqual({
+      ok: true,
+      noAutoApprove: true,
+    })
+    const card = await summarizeProformaCreateAndIssue(params(buyer), undefined, {
+      context: await documentsIssuePreview(m.ctx, params(buyer)),
+    })
     expect(card.lines.join("\n")).toContain("business status NOT verified")
     // Shopify answering "nothing found" is a check that ran: no forced person.
     const ok = ctxFor({ prior: [], shop: "empty" })
@@ -9603,7 +10608,12 @@ describe("intra-EU business buyer guard: evidence without a shared email or name
     expect(sameAddress(agent, "Via Esempio Nuova, 18, 10100 Torino")).toBe(false)
     expect(sameAddress(agent, "Corso Diverso 8, 10100 Torino")).toBe(false)
     expect(sameFullAddress(agent, "Via Esempio Nuova 8, 20100 Milano")).toBe(false)
-    expect(sameAddress("8 rue de l'Exemple, 75002 Paris, France", "Atelier Nord, 8 Rue de l Exemple, 75002 PARIS")).toBe(true)
+    expect(
+      sameAddress(
+        "8 rue de l'Exemple, 75002 Paris, France",
+        "Atelier Nord, 8 Rue de l Exemple, 75002 PARIS",
+      ),
+    ).toBe(true)
   })
 })
 
@@ -9615,11 +10625,24 @@ describe("the approval card states the total that issues", () => {
   const PRICES = [1, 7, 99, 101, 333, 1261, 1999, 41940, 12345, 100005]
   const COUNTRIES = ["FR", "DE", "US", "GB", "IT"]
   const TOOLS = [
-    { run: invoiceCreateAndIssue, card: summarizers.summarizeInvoiceCreateAndIssue, extra: { operation_category: "goods" } },
+    {
+      run: invoiceCreateAndIssue,
+      card: summarizers.summarizeInvoiceCreateAndIssue,
+      extra: { operation_category: "goods" },
+    },
     { run: quoteCreateAndIssue, card: summarizers.summarizeQuoteCreateAndIssue, extra: {} },
-    { run: proformaCreateAndIssue, card: summarizers.summarizeProformaCreateAndIssue, extra: { reason: "sample" } },
+    {
+      run: proformaCreateAndIssue,
+      card: summarizers.summarizeProformaCreateAndIssue,
+      extra: { reason: "sample" },
+    },
     { run: poCreateAndIssue, card: summarizers.summarizePoCreateAndIssue, extra: {} },
-    { run: creditNoteCreateAndIssue, card: summarizers.summarizeCreditNoteCreateAndIssue, extra: { operation_category: "goods" }, credit: true },
+    {
+      run: creditNoteCreateAndIssue,
+      card: summarizers.summarizeCreditNoteCreateAndIssue,
+      extra: { operation_category: "goods" },
+      credit: true,
+    },
   ] as const
 
   function totalOnCard(lines: string[]): string {
@@ -9667,7 +10690,13 @@ describe("the approval card states the total that issues", () => {
         if (!credit && next(3) === 0 && unit >= 1000) line.discount_minor = next(2) === 0 ? 3 : "7"
         return line
       })
-      const params = { counterparty, issuer_profile_id: "iss-1", currency: "EUR", items, ...tool.extra } as never
+      const params = {
+        counterparty,
+        issuer_profile_id: "iss-1",
+        currency: "EUR",
+        items,
+        ...tool.extra,
+      } as never
       const label = `#${i} ${JSON.stringify({ country, pricesIncludeTax, items })}`
 
       const issuerRow = (invoice: bigint, po: bigint) => [
@@ -9677,8 +10706,13 @@ describe("the approval card states the total that issues", () => {
         approval: PRE_APPROVED,
         seed: { issuer_profiles: issuerRow(NO_GATE_MINOR, NO_GATE_MINOR) },
       })
-      const issued = (await tool.run(issuing.ctx, params)) as { status: string; document_id?: string; error?: unknown }
-      if (issued.status !== "completed") throw new Error(`#${i} ${tool.run.name} ${JSON.stringify(issued).slice(0, 400)}`)
+      const issued = (await tool.run(issuing.ctx, params)) as {
+        status: string
+        document_id?: string
+        error?: unknown
+      }
+      if (issued.status !== "completed")
+        throw new Error(`#${i} ${tool.run.name} ${JSON.stringify(issued).slice(0, 400)}`)
       const doc = issuing.db.__all("documents").find((d) => d.id === issued.document_id)!
       const total = formatMoneyMinor(BigInt(String(doc.grand_total_minor)), "EUR")
       issuedSeen.add(total)
@@ -9692,8 +10726,12 @@ describe("the approval card states the total that issues", () => {
       const parking = makeCtx({ seed: { issuer_profiles: issuerRow(0n, 0n) } })
       const parked = (await tool.run(parking.ctx, params)) as { status: string }
       if (parked.status === "pending_approval") {
-        const asked = parking.extras.approvalsRequested.at(-1) as unknown as { summary_detail: { lines: string[] } }
-        expect(`${label} handler ${totalOnCard(asked.summary_detail.lines)}`).toBe(`${label} handler ${total}`)
+        const asked = parking.extras.approvalsRequested.at(-1) as unknown as {
+          summary_detail: { lines: string[] }
+        }
+        expect(`${label} handler ${totalOnCard(asked.summary_detail.lines)}`).toBe(
+          `${label} handler ${total}`,
+        )
       }
     }
     // The grid really varied.
@@ -9736,8 +10774,12 @@ describe("a credit note's total is negative", () => {
     expect(res.error.code).toBe("credit_note_not_negative")
 
     const zero = makeCtx({ approval: PRE_APPROVED })
-    const invoice = await invoiceCreateAndIssue(zero.ctx, { ...base, items: [line(0, "Warranty replacement")] } as never)
-    if (invoice.status !== "completed") throw new Error(`no zero-value invoice: ${JSON.stringify(invoice)}`)
+    const invoice = await invoiceCreateAndIssue(zero.ctx, {
+      ...base,
+      items: [line(0, "Warranty replacement")],
+    } as never)
+    if (invoice.status !== "completed")
+      throw new Error(`no zero-value invoice: ${JSON.stringify(invoice)}`)
     const credit = await creditNoteCreateAndIssue(zero.ctx, {
       ...base,
       original_document_id: invoice.document_id,
@@ -9790,7 +10832,15 @@ describe("a saved draft", () => {
       issuer_profile_id: "iss-1",
       currency: "EUR",
       items: [
-        { position: 1, description: "Kestrel 6", quantity: "2", unit_price_minor: 10000, discount_minor: 500, product_source: null, external_id: null },
+        {
+          position: 1,
+          description: "Kestrel 6",
+          quantity: "2",
+          unit_price_minor: 10000,
+          discount_minor: 500,
+          product_source: null,
+          external_id: null,
+        },
       ],
     } as never)
     const stored = m.db.__all("document_lines").find((l) => l.document_id === draft_id)!
@@ -9798,7 +10848,9 @@ describe("a saved draft", () => {
     expect(String(stored.subtotal_minor)).toBe("19500")
 
     const preview = await draftIssuePreview(m.ctx as never, { draft_id })
-    const card = await summarizers.summarizeInvoiceIssue({ draft_id }, undefined, { context: preview } as never)
+    const card = await summarizers.summarizeInvoiceIssue({ draft_id }, undefined, {
+      context: preview,
+    } as never)
 
     const issued = await invoiceIssue(m.ctx, { draft_id })
     if (issued.status !== "completed") throw new Error(`not issued: ${JSON.stringify(issued)}`)
@@ -9850,9 +10902,16 @@ describe("the other minor-unit fields read as issuing reads them", () => {
     expect(await draftsCreatePreflightHandler({ ...input, items: bad }, ctx)).toMatchObject({
       error: { code: "invalid_amount" },
     })
-    expect(await draftsUpdatePreflightHandler({ draft_id: "d", patch: { lines: bad } }, ctx)).toMatchObject({
-      error: { code: "invalid_amount", message: expect.stringContaining("patch.lines[0].unit_price_minor") },
+    expect(
+      await draftsUpdatePreflightHandler({ draft_id: "d", patch: { lines: bad } }, ctx),
+    ).toMatchObject({
+      error: {
+        code: "invalid_amount",
+        message: expect.stringContaining("patch.lines[0].unit_price_minor"),
+      },
     })
-    expect(await draftsCreatePreflightHandler({ ...input, items: sampleDraftItems }, ctx)).toEqual({ ok: true })
+    expect(await draftsCreatePreflightHandler({ ...input, items: sampleDraftItems }, ctx)).toEqual({
+      ok: true,
+    })
   })
 })

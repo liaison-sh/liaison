@@ -11,16 +11,16 @@
 // `failed` so the next Boxtal retry re-applies.
 
 import type { WebhookResult } from "@liaison/app-sdk"
-import { getClient } from "./lib/get-client"
-import { applyDocumentCreated, applyTrackingChanged } from "./link-store"
+import type { BoxtalToolCtx } from "./ctx"
 import {
+  type FulfillmentShipmentRow,
   fulfillShipment,
   shopifyOrderIdForShipment,
-  type FulfillmentShipmentRow,
 } from "./fulfillment"
-import { sourceTrackingFromLabel } from "./label-tracking"
 import { checkMissingLabels } from "./label-missing"
-import type { BoxtalToolCtx } from "./ctx"
+import { sourceTrackingFromLabel } from "./label-tracking"
+import { getClient } from "./lib/get-client"
+import { applyDocumentCreated, applyTrackingChanged } from "./link-store"
 
 type WebhookCtx = BoxtalToolCtx
 
@@ -108,7 +108,11 @@ type Claim = { kind: "run"; rowId: string } | { kind: "done" } | { kind: "held" 
  * `failed` row or a `processing` row whose claim expired (a killed run) is taken over with a
  * compare-and-set on its claim attempt counter, so two redeliveries never both proceed.
  */
-async function claimDelivery(ctx: WebhookCtx, deliveryId: string, eventType: string): Promise<Claim> {
+async function claimDelivery(
+  ctx: WebhookCtx,
+  deliveryId: string,
+  eventType: string,
+): Promise<Claim> {
   const now = Date.now()
   const existing = (await ctx.db.findMany("webhook_delivery", {
     where: { delivery_id: deliveryId },
@@ -117,7 +121,8 @@ async function claimDelivery(ctx: WebhookCtx, deliveryId: string, eventType: str
   if (existing.length > 0) {
     const row = existing[0]!
     if (row.status === "processed") return { kind: "done" }
-    const takeOver = row.status === "failed" || (row.status === "processing" && claimExpired(row, now))
+    const takeOver =
+      row.status === "failed" || (row.status === "processing" && claimExpired(row, now))
     if (!takeOver) return { kind: "held" }
     const res = (await ctx.db.updateMany("webhook_delivery", {
       where: { delivery_id: deliveryId, status: row.status, claim_attempt: row.claim_attempt ?? 0 },
@@ -156,7 +161,10 @@ async function markProcessed(ctx: WebhookCtx, rowId: string): Promise<void> {
 }
 
 async function markFailed(ctx: WebhookCtx, rowId: string): Promise<void> {
-  const rows = (await ctx.db.findMany("webhook_delivery", { where: { id: rowId }, limit: 1 })) as Array<{ failure_count?: number }>
+  const rows = (await ctx.db.findMany("webhook_delivery", {
+    where: { id: rowId },
+    limit: 1,
+  })) as Array<{ failure_count?: number }>
   const failure_count = (rows[0]?.failure_count ?? 0) + 1
   await ctx.db.update("webhook_delivery", rowId, { status: "failed", failure_count })
 }
@@ -182,7 +190,11 @@ async function runDelivery(
     await markProcessed(ctx, claim.rowId)
     return OK
   } catch (err) {
-    ctx.logger?.error?.("boxtal webhook handler failed", { eventType, deliveryId, err: String(err) })
+    ctx.logger?.error?.("boxtal webhook handler failed", {
+      eventType,
+      deliveryId,
+      err: String(err),
+    })
     await markFailed(ctx, claim.rowId)
     // 503 so Boxtal retries (its retry schedule re-delivers).
     return { status: 503, body: "handler failed" }
@@ -330,13 +342,18 @@ export async function documentCreatedHandler(
     }
     // The label now exists, and it prints the carrier's number even when the carrier has not
     // scanned the parcel yet (FedEx Regional Economy, Domestic Express): store it before fulfilling.
-    const rows = (await ctx.db.findMany("shipment", { where: { boxtal_order_id: orderId }, limit: 1 })) as FulfillmentShipmentRow[]
+    const rows = (await ctx.db.findMany("shipment", {
+      where: { boxtal_order_id: orderId },
+      limit: 1,
+    })) as FulfillmentShipmentRow[]
     if (rows[0] && !rows[0].tracking_number) {
       const labelUrl = descriptors.find((d) => d.type === "LABEL" && d.url)?.url ?? null
       await sourceTrackingFromLabel(ctx, rows[0], { labelUrl })
     }
     // This label was one the shipping team had been told is missing: clear that item now.
-    if ((rows[0] as { label_missing_alerted?: boolean | null } | undefined)?.label_missing_alerted) {
+    if (
+      (rows[0] as { label_missing_alerted?: boolean | null } | undefined)?.label_missing_alerted
+    ) {
       try {
         await checkMissingLabels(ctx, { heal: false })
       } catch (err) {

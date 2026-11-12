@@ -14,9 +14,9 @@
 // to inactive so `runDiscoverySync`/`runWatchPoller` skip them. This is distinct
 // from the per-APP uninstall pause (kernel `pauseAppRoutinesForOrg`, Task A12).
 
-import { clearMetaPageIds } from "./meta-pages"
 import type { Platform } from "./adapters/types"
 import type { SocialToolCtx } from "./ctx"
+import { clearMetaPageIds } from "./meta-pages"
 
 interface ConnectionEventData {
   id: string
@@ -33,7 +33,9 @@ interface ConnectionEvent {
   entity: "connected_account"
   action: "create" | "disconnect"
   orgId: string
-  data: ConnectionEventData | { id: string; appName: string; connectionName?: string; identifier?: string }
+  data:
+    | ConnectionEventData
+    | { id: string; appName: string; connectionName?: string; identifier?: string }
 }
 
 /** Connection name → the platforms + source types its sync_state covers. */
@@ -41,7 +43,10 @@ interface ConnectionEvent {
 const DISCOVERY_KICK_JOB_ID = "discovery-sync-on-connect"
 const DISCOVERY_KICK_DELAY_MS = 5_000
 
-const CONNECTION_SYNC_PLAN: Record<string, Array<{ platform: Platform; sourceTypes: Array<"discovery" | "watch" | "dm"> }>> = {
+const CONNECTION_SYNC_PLAN: Record<
+  string,
+  Array<{ platform: Platform; sourceTypes: Array<"discovery" | "watch" | "dm"> }>
+> = {
   // Instagram Business Login backs the Instagram platform (comments + DMs).
   instagram: [{ platform: "instagram", sourceTypes: ["discovery", "watch", "dm"] }],
   // Facebook Login backs the Facebook Page platform (comments + Messenger DMs).
@@ -131,7 +136,11 @@ export async function resolveAccessToken(
 
 async function upsertSyncState(
   ctx: SocialToolCtx,
-  row: { platform: Platform; account_external_id: string; source_type: "discovery" | "watch" | "dm" },
+  row: {
+    platform: Platform
+    account_external_id: string
+    source_type: "discovery" | "watch" | "dm"
+  },
   extraMetadata: Record<string, unknown> = {},
 ): Promise<void> {
   const existing = (await ctx.db.findMany("sync_state", {
@@ -159,7 +168,10 @@ async function upsertSyncState(
   }
 }
 
-export async function onConnectionEstablished(event: ConnectionEvent, ctx: SocialToolCtx): Promise<void> {
+export async function onConnectionEstablished(
+  event: ConnectionEvent,
+  ctx: SocialToolCtx,
+): Promise<void> {
   if (event.data?.appName !== "social") return
   const data = event.data as ConnectionEventData
   const connectionName = data.connectionName ?? ""
@@ -175,16 +187,27 @@ export async function onConnectionEstablished(event: ConnectionEvent, ctx: Socia
   const extra = base ? { [BASE_URL_METADATA_KEY]: base } : {}
   for (const { platform, sourceTypes } of plan) {
     for (const sourceType of sourceTypes) {
-      await upsertSyncState(ctx, { platform, account_external_id: accountExternalId, source_type: sourceType }, extra)
+      await upsertSyncState(
+        ctx,
+        { platform, account_external_id: accountExternalId, source_type: sourceType },
+        extra,
+      )
     }
   }
   // One discovery cycle soon, so findings appear without waiting for the next
   // scheduled tick. The job syncs every active row, so connects close together
   // share one deduplicated run, a few seconds out so their rows are all written.
-  await ctx.enqueueJob?.("discovery-sync", {}, { delay: DISCOVERY_KICK_DELAY_MS, jobId: DISCOVERY_KICK_JOB_ID })
+  await ctx.enqueueJob?.(
+    "discovery-sync",
+    {},
+    { delay: DISCOVERY_KICK_DELAY_MS, jobId: DISCOVERY_KICK_JOB_ID },
+  )
 }
 
-export async function onConnectionDisconnected(event: ConnectionEvent, ctx: SocialToolCtx): Promise<void> {
+export async function onConnectionDisconnected(
+  event: ConnectionEvent,
+  ctx: SocialToolCtx,
+): Promise<void> {
   if (event.data?.appName !== "social") return
   const data = event.data as ConnectionEventData
   const connectionName = data.connectionName ?? ""

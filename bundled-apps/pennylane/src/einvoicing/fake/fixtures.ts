@@ -12,10 +12,23 @@ export const BUYER: EinvoiceBuyer = {
   siren: BUYER_SIREN,
   vat_id: "FR83900000001",
   routing_address: BUYER_SIREN,
-  address: { line1: "2 avenue du Test", line2: null, postcode: "69002", city: "Lyon", country_code: "FR" },
+  address: {
+    line1: "2 avenue du Test",
+    line2: null,
+    postcode: "69002",
+    city: "Lyon",
+    country_code: "FR",
+  },
 }
 
-export function ciiXml(o: { number: string; date: string; bar?: string; buyerSiren?: string; buyerCountry?: string; typeCode?: string }): string {
+export function ciiXml(o: {
+  number: string
+  date: string
+  bar?: string
+  buyerSiren?: string
+  buyerCountry?: string
+  typeCode?: string
+}): string {
   const d = o.date.replaceAll("-", "")
   return (
     `<?xml version="1.0" encoding="UTF-8"?><rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100">` +
@@ -30,7 +43,14 @@ export function ciiXml(o: { number: string; date: string; bar?: string; buyerSir
   )
 }
 
-export function bookingData(o: { number: string; currency?: string; fx_rate?: string | null; treatment?: string; rate_bp?: number; kind?: BookingData["customer"]["kind"] }): BookingData {
+export function bookingData(o: {
+  number: string
+  currency?: string
+  fx_rate?: string | null
+  treatment?: string
+  rate_bp?: number
+  kind?: BookingData["customer"]["kind"]
+}): BookingData {
   const rate = o.rate_bp ?? 2000
   const sub = 10000
   const tax = Math.round((sub * rate) / 10000)
@@ -52,7 +72,13 @@ export function bookingData(o: { number: string; currency?: string; fx_rate?: st
       last_name: null,
       vat_id: null,
       country_code: "FR",
-      address: { line1: "3 rue Test", line2: null, postcode: "75011", city: "Paris", country_code: "FR" },
+      address: {
+        line1: "3 rue Test",
+        line2: null,
+        postcode: "75011",
+        city: "Paris",
+        country_code: "FR",
+      },
     },
     lines: [
       {

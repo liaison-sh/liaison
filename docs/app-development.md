@@ -232,6 +232,7 @@ export async function items_create(
 | `ctx.timers.wakeIn` | Run a job in N seconds instead of waiting inside a run |
 | `ctx.steps.run` | Long work in bounded chunks across runs, the cursor saved for you ([Sandboxing](app-sandbox.md#long-work-come-back-later-ctxsteps-ctxtimers-ctxjobs)) |
 | `ctx.connections` | Per-connection OAuth/credential tokens |
+| `ctx.api` | Call an HTTP API the platform holds the connection to (a credentials connection with an `api` block: each account an adapter document): list operations, read, write (gated), test, and manage the adapters; the platform checks the caller against the block's read, write and admin scopes and never hands back a credential ([Sandboxing](app-sandbox.md)) |
 | `ctx.sql` | Query a database the platform holds the connection to: named reads (listed with each catalog domain's access tier) or a read-only `SELECT`, rows only, never the credentials ([Sandboxing](app-sandbox.md#query-a-database-ctxsql)) |
 | `ctx.accounts` | Your app's own connected accounts and their metadata ([Sandboxing](app-sandbox.md#read-your-own-accounts-ctxaccounts)) |
 | `ctx.kernel` | Directory reads of the caller's organization: a user or contact by id, who the run acts for and which scopes they hold (`caller`), the roles, people by email, for access rules of your own ([Sandboxing](app-sandbox.md#read-your-own-accounts-ctxaccounts)) |
@@ -379,6 +380,10 @@ frame. Write it so that it works there too:
   record or the approvals queue. Each one also works in the page. Ask in your own
   dialog (the `ConfirmDialog` of `@liaison/app-ui`), never `window.confirm`. The
   limits are in [Sandboxing](app-sandbox.md#host-calls-a-framed-screen-makes).
+- Ask for one account's credentials with `app.openConnectDialog({ connectionName,
+  identifier, fields })` from `@liaison/host`: the host's own dialog, for that
+  account of a multiInstance credentials connection and only those declared
+  fields, so what the person types never passes through the app.
 - Read the page's path with `currentPath()` from `@liaison/host`, never
   `window.location` (a frame's location is its own document's), and read it
   again on `popstate`, which the host fires on every route change. A sidebar

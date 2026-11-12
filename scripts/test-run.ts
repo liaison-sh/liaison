@@ -1738,6 +1738,21 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
     ],
     cwd: path.join(ROOT, "bundled-apps/gitlab"),
   },
+  // API connector bundled-app oracles: the tools, the settings screen and card
+  // tools, provisioning and verify over a fake ctx.api, the manifest, and the
+  // params form. No Postgres needed: ctx.api is the platform's (connections/api).
+  "bundled-api-connector": {
+    cmd: [
+      "bun",
+      "test",
+      ...bailBun,
+      ...bunTestFlags,
+      ...(fileFilter
+        ? fileArg
+        : ["src/handlers.test.ts", "src/manifest.test.ts", "src/ui/params-form.test.ts"]),
+    ],
+    cwd: path.join(ROOT, "bundled-apps/api-connector"),
+  },
   // Monitoring bundled-app oracles -- same orphan class. Fully mock-driven
   // (test-ctx in-memory AppContext + the pure-node hmac testutil bridge): the
   // alert-webhook lifecycle (create/fold/reopen/escalate), the ack/resolve
@@ -2176,6 +2191,7 @@ if (suite === "full") {
     "bundled-monitoring",
     "bundled-database",
     "bundled-gitlab",
+    "bundled-api-connector",
     "bundled-pennylane",
     "bundled-calls",
     "bundled-social",

@@ -8,7 +8,6 @@ import crypto from "node:crypto"
 import { validateAdapter } from "@liaison/api-connector-core"
 import { knowledgeCreateDocumentSchema } from "@liaison/shared"
 import { and, eq, sql } from "drizzle-orm"
-import { API_CONNECTOR_CONNECTION, upsertAdapterRow } from "~/apps/api-connector/store"
 import { createKnowledgeDocument, knowledgeActorFromContext } from "~/apps/knowledge/service"
 import { createByokProvisioner } from "~/cli/provisioners/byok"
 import { buildProvisionContext } from "~/cli/provisioners/types"
@@ -24,6 +23,7 @@ import {
   connectionConfigRegistry,
   oauthClientResolverRegistry,
 } from "~/modules/apps/app-registries"
+import { API_CONNECTOR_CONNECTION, upsertAdapterRow } from "~/modules/apps/connections/api/store"
 import { ConnectionTurnedOffError } from "~/modules/apps/connections/oauth-client-config"
 import { upsertConnectionOAuthClient } from "~/modules/apps/connections/oauth-client-provisioning"
 import { enableApp } from "~/modules/apps/enabled-apps"

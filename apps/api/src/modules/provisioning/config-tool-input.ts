@@ -53,7 +53,6 @@ export const CONFIG_TOOL_SECTIONS = [
   "mail",
   "tickets",
   "apps",
-  "apiConnectors",
   "knowledge",
   "agents",
   "invoicing",
@@ -124,16 +123,6 @@ export function findRefusals(section: ConfigToolSection, raw: unknown): string[]
         }
         if (isRecord(a.connection) && has(a.connection.oauthClient, "clientSecret")) {
           out.push(secretMessage(`apps[${i}].connection.oauthClient.clientSecret`))
-        }
-      }
-      break
-    case "apiConnectors":
-      for (const [i, c] of entries(raw)) {
-        if (c.credentials !== undefined) out.push(secretMessage(`apiConnectors[${i}].credentials`))
-        if (typeof c.adapter === "string") {
-          out.push(
-            `apiConnectors[${i}].adapter reads the server's disk: pass the adapter document inline`,
-          )
         }
       }
       break
@@ -253,15 +242,6 @@ const toolUserSchema = z
   })
   .strict()
 
-const toolApiConnectorSchema = z
-  .object({
-    identifier: z
-      .string()
-      .regex(/^[a-z0-9][a-z0-9-]{0,39}$/, "a lowercase slug of at most 40 characters"),
-    adapter: z.record(z.string(), z.unknown()),
-  })
-  .strict()
-
 const toolIssuerProfileSchema = issuerProfileSchema.omit({ logoPath: true }).strict()
 
 const SECTION_SCHEMAS = {
@@ -294,7 +274,6 @@ const SECTION_SCHEMAS = {
     })
     .strict(),
   apps: z.array(toolAppSchema),
-  apiConnectors: z.array(toolApiConnectorSchema),
   knowledge: z
     .object({
       collections: z.array(kbCollectionSchema.strict()).optional(),
@@ -376,19 +355,6 @@ export const SECTION_EXAMPLES: Record<ConfigToolSection, unknown> = {
     ],
   },
   apps: [{ name: "tickets", enable: true }],
-  apiConnectors: [
-    {
-      identifier: "crm",
-      adapter: {
-        id: "crm",
-        name: "CRM",
-        version: "1.0.0",
-        baseUrl: "https://crm.acme.example",
-        auth: { type: "bearer" },
-        operations: [],
-      },
-    },
-  ],
   knowledge: {
     collections: [{ name: "Handbook" }],
     documents: [{ title: "Refund policy", collection: "Handbook", content: "# Refunds\n..." }],
@@ -506,12 +472,6 @@ export function parseSectionInput(
     case "apps": {
       const r = SECTION_SCHEMAS.apps.safeParse(raw)
       return r.success ? { ok: true, config: { ...base, apps: r.data } } : fail(section, r.error)
-    }
-    case "apiConnectors": {
-      const r = SECTION_SCHEMAS.apiConnectors.safeParse(raw)
-      return r.success
-        ? { ok: true, config: { ...base, apiConnectors: r.data } }
-        : fail(section, r.error)
     }
     case "knowledge": {
       const r = SECTION_SCHEMAS.knowledge.safeParse(raw)

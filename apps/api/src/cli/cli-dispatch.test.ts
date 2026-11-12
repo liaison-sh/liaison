@@ -454,21 +454,38 @@ describe("CLI dispatch: api-connector validate | test", () => {
     expect(report.issues.map((i: { path: string }) => i.path)).toContain("baseUrl")
   })
 
-  test("test: a write operation is refused (exit 1, write_not_testable), after config apply", () => {
+  test("config apply refuses the removed apiConnectors section, naming where it moved", () => {
     cfgDir = cfgDir || mkdtempSync(join(tmpdir(), "cli-dispatch-"))
-    const slug = `d-apiconn-${Date.now()}`
     writeConfig("crm.adapter.json", ADAPTER)
-    const cfg = writeConfig("apiconn.json", {
-      ...minimalConfig(slug),
+    const cfg = writeConfig("apiconn-old.json", {
+      ...minimalConfig(`d-apiconn-old-${Date.now()}`),
       apiConnectors: [
         { identifier: "crm", adapter: "crm.adapter.json", credentials: { token: "tok" } },
       ],
     })
     const applied = runCli(["config", "apply", "--config", cfg])
+    expect(applied.status).toBe(2)
+    expect(applied.stderr).toContain(
+      "apiConnectors moved into the api-connector app's provisioning",
+    )
+  })
+
+  test("test: a write operation is refused (exit 1, write_not_testable)", async () => {
+    cfgDir = cfgDir || mkdtempSync(join(tmpdir(), "cli-dispatch-"))
+    const slug = `d-apiconn-${Date.now()}`
+    const cfg = writeConfig("apiconn.json", minimalConfig(slug))
+    const applied = runCli(["config", "apply", "--config", cfg])
     expect(applied.status, `stderr: ${applied.stderr}`).toBe(0)
-    const again = runCli(["config", "apply", "--config", cfg])
-    expect(again.status, `stderr: ${again.stderr}`).toBe(0)
-    expect(JSON.parse(again.stdout).changed ?? []).not.toContain("apiConnectors.crm.adapter")
+    const { sql } = await import("~/db/connection")
+    const [org] = await sql<Array<{ id: string }>>`
+      SELECT id FROM kernel.organizations WHERE slug = ${slug}`
+    const { upsertAdapterRow } = await import("~/modules/apps/connections/api/store")
+    const { validateAdapterDocument } = await import(
+      "~/modules/apps/connections/api/adapter-policy"
+    )
+    const parsed = validateAdapterDocument(ADAPTER)
+    if (!parsed.ok) throw new Error("fixture adapter invalid")
+    await upsertAdapterRow(org?.id ?? "", "crm", parsed.adapter, null)
     const res = runCli([
       "api-connector",
       "test",

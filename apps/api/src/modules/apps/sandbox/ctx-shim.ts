@@ -85,6 +85,7 @@ export const SHIM_RULES: ShimRules = {
     "timers",
     "steps",
     "sql",
+    "api",
     "accounts",
   ],
   hiddenNames: ["_approvalContext_get", "_steps_begin", "_steps_save"],

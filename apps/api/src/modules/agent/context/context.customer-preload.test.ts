@@ -11,8 +11,6 @@ import { randomUUID } from "node:crypto"
 import * as dnsPromises from "node:dns/promises"
 import { validateAdapter } from "@liaison/api-connector-core"
 import { sql as drizzleSql } from "drizzle-orm"
-import { invalidateConnectionCaches } from "~/apps/api-connector/cache"
-import { upsertAdapterRow } from "~/apps/api-connector/store"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -20,6 +18,9 @@ import type { UserContext } from "~/db/rls"
 import { OutboundFetchTestAccess } from "~/lib/outbound-fetch"
 import { assembleContext } from "~/modules/agent/context/context"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
+import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
+import { invalidateConnectionCaches } from "~/modules/apps/connections/api/cache"
+import { upsertAdapterRow } from "~/modules/apps/connections/api/store"
 import { createCredentialConnection } from "~/modules/apps/connections/service"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -108,6 +109,7 @@ beforeAll(async () => {
   )
   USER = u?.id ?? ""
   await ensureAppsForOrg(ORG)
+  await registerApiConnectorApp(ORG)
   const [t] = extractRows<{ id: string }>(
     await db.execute(drizzleSql`
       INSERT INTO app_tickets.tickets (

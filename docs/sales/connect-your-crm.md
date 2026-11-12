@@ -130,7 +130,7 @@ The scopes cover every connection of the organization. They are not set per conn
 
 ## Set it up from a config file
 
-`liaison config apply` loads connections from the `apiConnectors` section: each entry has an `identifier`, the `adapter` (a path or inline) and `credentials`, which can use `${VAR}` references. `liaison config verify` probes each connection with a read. See [`apiConnectors` in the config reference](../reference/config.md#apiconnectors) and [Provision an org from the CLI](../provisioning-cli.md).
+`liaison config apply` loads connections through the `api-connector` app's entry: its `provision.connectors` lists each connection's `identifier` and `adapter` (inline, or `{ $file: <path> }` next to the config file), and its `connections` list holds each connection's `credentials`, which can use `${VAR}` references. `liaison config verify` probes each connection with a read. See [API connections in Provision an org from the CLI](../provisioning-cli.md#api-connections-appsprovision-of-api-connector).
 
 ## Related pages
 

@@ -566,16 +566,11 @@ describe("frontend manifest app registration at startup", () => {
     expect(typeof trustedAppExports.contacts).toBe("function")
   })
 
-  // The api-connector manifest names its card mounts and settings block by
-  // export name; a name missing here aborts the whole app's registration.
-  it("trustedAppExports resolves every component the api-connector manifest names", async () => {
+  // The api-connector app ships its own UI bundle (card mounts and settings
+  // block, run in the app frame): the shell carries no in-page copy of it.
+  it("trustedAppExports carries no api-connector entry (its UI is the app's own bundle)", async () => {
     const { trustedAppExports } = await import("~/framework/bootstrap")
-    const load = trustedAppExports["api-connector"]
-    expect(typeof load).toBe("function")
-    const exports = await load!()
-    for (const name of ["TicketCustomerCard", "MailCustomerCard", "ApiConnectorAdapters"]) {
-      expect(exports[name], name).toBeTruthy()
-    }
+    expect(trustedAppExports["api-connector"]).toBeUndefined()
   })
 
   it("B1: two manifest entries whose imports resolve out of order both register", async () => {

@@ -12,6 +12,7 @@ import {
 import { UNDECLARED_WRITE_TARGET } from "~/modules/agent/scopes/scope-taint"
 import { attachRunLogSink } from "~/modules/app-builder/logs"
 import { guardAtomicJobEgress } from "~/modules/apps/atomic-egress"
+import { createApiConnectionMethods } from "~/modules/apps/connections/api/bridge"
 import { isCustomAppName } from "~/modules/apps/custom-app-name"
 import { createAccountsMethods } from "~/modules/apps/sandbox/bridge/accounts"
 import { createAgentMethods } from "~/modules/apps/sandbox/bridge/agent"
@@ -119,6 +120,7 @@ export function createRpcBridge(
     createStepsMethods(ctx),
     createPagesMethods(ctx),
     createSqlMethods(ctx),
+    createApiConnectionMethods(ctx),
     createAccountsMethods(ctx),
   )
 
@@ -257,6 +259,12 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   "effects_release",
   "effects_settleUnknown",
   "effects_markUnknown",
+  // Platform-held API connections (connections/api/bridge.ts): an approved write
+  // to the external system, and the adapter writes.
+  "api_write",
+  "api_adapterPut",
+  "api_adapterRestore",
+  "api_adapterDelete",
   // The app data store's writes (bridge/store.ts)
   "store_set",
   "store_update",
@@ -398,6 +406,9 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
 // for, which can take seconds: their credential lookup and audit line take short
 // transactions of their own (`withShortTx`), never the call's.
 // `limiter_*` (connection-limiter.ts) touch Redis only.
+// `api_*` (connections/api/bridge.ts) call an HTTP API the platform holds the
+// connection to (seconds): they read, write and audit through the privileged
+// pool, scoped to the org, and never touch txDb.
 const SESSION_TXLESS_METHOD_PREFIXES = [
   "imap_",
   "smtp_",
@@ -406,26 +417,13 @@ const SESSION_TXLESS_METHOD_PREFIXES = [
   "_steps_",
   "limiter_",
   "sql_",
+  "api_",
 ]
 // Exact-name tx-less methods. `fetch` is the workhorse external-HTTP surface
 // (domain-allowlist + pinned-host fetch, zero txDb use) — wrapping it would
 // pin a connection for every outbound HTTP roundtrip. connections_* are NOT
 // tx-less: they read connection rows via txDb.
-// The api-connector's `connector_*` methods are external HTTP too (an adapter
-// call can take seconds): they read and audit through the privileged pool and
-// never touch txDb.
-const SESSION_TXLESS_METHOD_NAMES = new Set([
-  "fetch",
-  "connector_list_operations",
-  "connector_read",
-  "connector_write",
-  "connector_write_validate",
-  // Adapter authoring reads: the privileged pool and, for the test call, the vendor.
-  "connector_adapter_get",
-  "connector_adapter_versions",
-  "connector_adapter_reference",
-  "connector_adapter_test",
-])
+const SESSION_TXLESS_METHOD_NAMES = new Set(["fetch"])
 
 function isTxlessSessionMethod(name: string): boolean {
   return (

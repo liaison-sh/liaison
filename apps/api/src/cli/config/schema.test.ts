@@ -650,3 +650,40 @@ describe("IMAP mailboxes in config (one personal box per person, several for the
     ).toBe(false)
   })
 })
+
+describe("the API connections moved into the api-connector app's provisioning", () => {
+  test("a top-level apiConnectors section is refused with where it moved", () => {
+    const res = validateConfig({
+      org: { slug: "fabrikam", name: "Fabrikam" },
+      apiConnectors: [{ identifier: "crm", adapter: "crm.adapter.yaml" }],
+    })
+    expect(res.ok).toBe(false)
+    if (res.ok) return
+    expect(res.code).toBe(2)
+    expect(res.message).toContain("apiConnectors moved into the api-connector app's provisioning")
+    expect(res.message).toContain("provision: { connectors:")
+  })
+
+  test("the new shape: the app's provision block and its accounts", () => {
+    const res = validateConfig({
+      org: { slug: "fabrikam", name: "Fabrikam" },
+      apps: [
+        {
+          name: "api-connector",
+          enable: true,
+          provision: { connectors: [{ identifier: "crm", adapter: { $file: "crm.yaml" } }] },
+          connections: [{ name: "api", identifier: "crm", credentials: { apiKey: "${KEY}" } }],
+        },
+      ],
+    })
+    expect(res.ok).toBe(true)
+  })
+
+  test("an account of connections names its identifier", () => {
+    const res = validateConfig({
+      org: { slug: "fabrikam", name: "Fabrikam" },
+      apps: [{ name: "api-connector", enable: true, connections: [{ name: "api" }] }],
+    })
+    expect(res.ok).toBe(false)
+  })
+})

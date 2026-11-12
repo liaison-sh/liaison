@@ -48,7 +48,6 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `computer_session_settings` | Change the model, the level, the reasoning effort or the autonomy of one of the person's sessions on their computer, as its controls do, when the person asks for it. |  | `kernel:threads:write` |
 | `computer_session_stop` | Stop one of the person's sessions on their computer, as their Stop button does: when the person says "stop it" about a session. |  | `kernel:threads:write` |
 | `config_agents` | Change role agents: the agents section of liaison config apply. | yes | `kernel:agents:admin` |
-| `config_apiConnectors` | Change API connections as a liaison config apply section. | yes | `api-connector:admin` |
 | `config_apps` | Change apps, their config, settings and connections: the apps section of liaison config apply. | yes | `kernel:apps:admin` |
 | `config_email` | Change the email sender identity: the email section of liaison config apply. | yes | `kernel:org:admin` |
 | `config_export` | Read the org's current configuration in the liaison config apply format (roles, email, users, apps, agents, API connections, knowledge collections, invoicing issuers, Liaison team opt-ins). |  | `kernel:org:admin` |
@@ -291,6 +290,12 @@ Connect an ERP, CRM or any HTTP API from an adapter document, with agent tools a
 | `connector_list_operations` | List the org's API connections to its own business systems (CRM, ERP, invoicing, stock) and the named operations each offers: kind (read or write), role, description, params schema and returned fields. |  | `api-connector:read` |
 | `connector_read` | Run one READ operation of an API connection to the org's CRM, ERP or other business system: look up a customer, list a customer's orders, invoices or deals, check stock. |  | `api-connector:read` |
 | `connector_write` | Run one WRITE operation of an API connection: writes to the EXTERNAL system, a record in the org's CRM, ERP or other business system (add a note to a company, contact or deal there, create or update a record). | yes | `api-connector:write` |
+| `customer_lookup` | Who the participant of a ticket or mail conversation (or an email, phone or company domain) is in the org's own systems: the customer card. |  | `api-connector:read` |
+| `settings_adapter_delete` | Remove an API connection: its adapter, kept versions and credentials. |  | `api-connector:admin` |
+| `settings_adapter_restore` | Restore a kept version of an API connection's adapter from the settings screen. |  | `api-connector:admin` |
+| `settings_adapter_save` | Save an API connection's adapter document from the settings screen (JSON or YAML text). |  | `api-connector:admin` |
+| `settings_adapter_test` | Run one page of a READ operation with the stored credentials (the settings screen's Test panel). |  | `api-connector:admin` |
+| `settings_connections` | The org's API connections with their auth shape, operations and credential status (the settings screen). |  | `api-connector:read` |
 
 ## boxtal
 

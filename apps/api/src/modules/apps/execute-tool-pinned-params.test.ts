@@ -15,6 +15,7 @@ import * as eventBusModule from "~/infra/events/event-bus"
 import { updatePayload } from "~/modules/approvals/edit"
 import { approvalEditableFieldsRegistry, toolRegistry } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
+import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
 import { createHandlerApprovalRequest, executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { pinnedOverlap } from "~/modules/apps/pinned-params"
@@ -35,6 +36,7 @@ beforeAll(async () => {
   admin = a.actor
   threadId = await minimal.thread(orgId, a.userId)
   await ensureAppsForOrg(orgId)
+  await registerApiConnectorApp(orgId)
   const register = (name: string, pin: boolean) => {
     toolRegistry.set([orgId, "kernel", name], {
       appName: "kernel",

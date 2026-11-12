@@ -404,7 +404,9 @@ export function buildJobBridge(
             name: job.name,
             payload: payload as Record<string, unknown>,
             timeoutMs: job.timeoutMs,
-            atomic: !payload._session,
+            // Atomic only when the run holds one transaction for its whole run (`_tx`): a run
+            // handed neither handle (a job enqueued with no org) opens one per bridge call.
+            atomic: payload._tx !== undefined,
           },
         }
       : {}),

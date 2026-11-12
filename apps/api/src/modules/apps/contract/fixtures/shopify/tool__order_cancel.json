@@ -1,7 +1,7 @@
 {
   "entry": "tool:order_cancel",
   "params": {
-    "orderId": "gid://shopify/Order/19010985230502",
+    "orderId": "gid://shopify/Order/19011511746726",
     "reason": "OTHER",
     "refund": false,
     "restock": true,
@@ -11,21 +11,32 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": ["install_metadata", "{\"limit\":1}"],
-      "reply": "[{\"id\":\"3b94fcd6-1bcf-453a-b16b-dd41fa2b4ba5\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:17:35.003397+00\",\"updated_at\":\"2026-11-12 08:17:35.003397+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 08:17:35.003397+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
+      "args": [
+        "install_metadata",
+        "{\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"6da8884d-301d-4d31-874e-dba6a3801c2e\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:10:56.953685+00\",\"updated_at\":\"2026-11-12 14:10:56.953685+00\",\"shop_domain\":\"contract-shop.myshopify.com\",\"installed_at\":\"2026-11-12 14:10:56.956+00\",\"granted_o_auth_scopes\":[\"read_all_orders\",\"read_customers\",\"read_discounts\",\"read_draft_orders\",\"read_fulfillments\",\"read_inventory\",\"read_locations\",\"read_markets\",\"read_merchant_managed_fulfillment_orders\",\"read_orders\",\"read_products\",\"read_publications\",\"read_reports\",\"read_returns\",\"write_customers\",\"write_discounts\",\"write_draft_orders\",\"write_fulfillments\",\"write_inventory\",\"write_merchant_managed_fulfillment_orders\",\"write_orders\",\"write_products\",\"write_publications\",\"write_returns\"],\"connection_id\":\"f49d0f11-76eb-489d-98c1-f8dd31943791\",\"api_version\":\"2026-04\",\"api_base_url\":null,\"connection_status\":\"connected\",\"inventory_location_allowlist\":null,\"unfulfilled_threshold_hours\":24,\"consecutive_scope_mirror_failures\":0}]"
     },
     {
       "method": "connections_getAccounts",
-      "args": ["shop"],
-      "reply": "[{\"id\":\"f0d27712-e466-4bfb-9050-7b0a744ddd9f\",\"identifier\":\"contract-shop.myshopify.com\",\"displayName\":\"contract-shop.myshopify.com\",\"status\":\"active\"}]"
+      "args": [
+        "shop"
+      ],
+      "reply": "[{\"id\":\"f49d0f11-76eb-489d-98c1-f8dd31943791\",\"identifier\":\"contract-shop.myshopify.com\",\"displayName\":\"contract-shop.myshopify.com\",\"status\":\"active\"}]"
     },
     {
       "method": "fetch",
       "args": [
         "https://contract-shop.myshopify.com/admin/api/2026-04/graphql.json",
-        "{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":\"{\\\"query\\\":\\\"\\\\n  mutation OrderCancel($orderId: ID!, $reason: OrderCancelReason!, $refund: Boolean!, $restock: Boolean!, $notifyCustomer: Boolean) {\\\\n    orderCancel(orderId: $orderId, reason: $reason, refund: $refund, restock: $restock, notifyCustomer: $notifyCustomer) {\\\\n      job { id }\\\\n      userErrors { field message }\\\\n    }\\\\n  }\\\\n\\\",\\\"variables\\\":{\\\"orderId\\\":\\\"gid://shopify/Order/19010985230502\\\",\\\"reason\\\":\\\"OTHER\\\",\\\"refund\\\":false,\\\"restock\\\":true,\\\"notifyCustomer\\\":false}}\",\"auth\":{\"connection\":\"shop\",\"identifier\":\"contract-shop.myshopify.com\",\"scheme\":\"header:X-Shopify-Access-Token\"}}"
+        "{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":\"{\\\"query\\\":\\\"\\\\n  mutation OrderCancel($orderId: ID!, $reason: OrderCancelReason!, $refund: Boolean!, $restock: Boolean!, $notifyCustomer: Boolean) {\\\\n    orderCancel(orderId: $orderId, reason: $reason, refund: $refund, restock: $restock, notifyCustomer: $notifyCustomer) {\\\\n      job { id }\\\\n      userErrors { field message }\\\\n    }\\\\n  }\\\\n\\\",\\\"variables\\\":{\\\"orderId\\\":\\\"gid://shopify/Order/19011511746726\\\",\\\"reason\\\":\\\"OTHER\\\",\\\"refund\\\":false,\\\"restock\\\":true,\\\"notifyCustomer\\\":false}}\",\"auth\":{\"connection\":\"shop\",\"identifier\":\"contract-shop.myshopify.com\",\"scheme\":\"header:X-Shopify-Access-Token\"}}"
       ],
-      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"data\\\":{\\\"orderCancel\\\":{\\\"job\\\":null,\\\"userErrors\\\":[{\\\"field\\\":[\\\"orderId\\\"],\\\"message\\\":\\\"Cannot cancel an order that has returns\\\"}]}},\\\"extensions\\\":{\\\"cost\\\":{\\\"requestedQueryCost\\\":10,\\\"actualQueryCost\\\":10,\\\"throttleStatus\\\":{\\\"maximumAvailable\\\":20000,\\\"currentlyAvailable\\\":19990,\\\"restoreRate\\\":1000}}}}\"}"
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"data\\\":{\\\"orderCancel\\\":{\\\"job\\\":{\\\"id\\\":\\\"gid://shopify/Job/899861b2-0cdd-41d7-ae44-e0744b013197\\\"},\\\"userErrors\\\":[]}},\\\"extensions\\\":{\\\"cost\\\":{\\\"requestedQueryCost\\\":10,\\\"actualQueryCost\\\":10,\\\"throttleStatus\\\":{\\\"maximumAvailable\\\":20000,\\\"currentlyAvailable\\\":19990,\\\"restoreRate\\\":1000}}}}\"}"
+    },
+    {
+      "method": "emit",
+      "args": [
+        "{\"entity\":\"order\",\"action\":\"cancel_requested\",\"entityId\":\"gid://shopify/Order/19011511746726\",\"data\":{\"job\":{\"id\":\"gid://shopify/Job/899861b2-0cdd-41d7-ae44-e0744b013197\"},\"userErrors\":[]}}"
+      ]
     }
   ]
 }

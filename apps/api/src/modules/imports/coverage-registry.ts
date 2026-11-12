@@ -197,6 +197,54 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
     exempt: "deferred",
     reason: "no import kind maps task labels yet; set by hand or by the agent",
   },
+  "app_projects.time_settings": {
+    exempt: "config",
+    reason: "time settings: hours in a day and the days-off calendar, set per org in the app",
+  },
+  "app_projects.person_capacity": {
+    exempt: "config",
+    reason: "days per week per person, set in the app",
+  },
+  "app_projects.project_time_plan": {
+    exempt: "config",
+    reason: "a project's time plan, set in the app",
+  },
+  "app_projects.project_billing_terms": {
+    exempt: "config",
+    reason: "a project's billing terms, set in the app",
+  },
+  "app_projects.project_timeboxes": {
+    exempt: "config",
+    reason: "a project's timebox per period, set in the app or derived from a retainer",
+  },
+  "app_projects.task_time": {
+    exempt: "system",
+    reason: "a person's own time, private to them: only they enter it, so no import writes it",
+  },
+  "app_projects.cost_rates": {
+    exempt: "config",
+    reason: "cost rates, set in the app by those who may",
+  },
+  "app_projects.days_off": {
+    exempt: "config",
+    reason: "company days off, set in the app or read from the shared calendar",
+  },
+  "app_projects.reconciliations": {
+    exempt: "derived",
+    reason: "proposed by the agent from a project's tasks and traces, never imported",
+  },
+  "app_projects.reconciliation_lines": {
+    exempt: "derived",
+    reason: "lines of a reconciliation, never imported",
+  },
+  "app_projects.reconciliation_proofs": {
+    exempt: "derived",
+    reason: "proofs of a reconciliation line, never imported",
+  },
+  "app_projects.billing_claims": {
+    exempt: "system",
+    reason: "billing reservations written when an invoice is made, never imported",
+  },
   "app_shopify.backfill_progress": { exempt: "sync", reason: "shop mirror and install state" },
   "app_shopify.install_metadata": { exempt: "sync", reason: "shop mirror and install state" },
   "app_shopify.staff_mirror": { exempt: "sync", reason: "shop mirror and install state" },

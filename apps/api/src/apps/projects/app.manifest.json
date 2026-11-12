@@ -122,7 +122,7 @@
       }
     ]
   },
-  "version": "1.14.0",
+  "version": "1.15.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -174,7 +174,14 @@
           "type": "string",
           "required": false,
           "description": "Sidebar group heading (free text, shared by the org: projects with the same text sit under one heading). Trimmed, at most 60 characters; null = ungrouped. Column added by migration 0250."
-        }
+        },
+        "timeBudgetsOn": {
+          "type": "boolean",
+          "default": false,
+          "description": "Time and budgets on this project (migration 0312). Off by default; a pipeline never holds it."
+        },
+        "timeBudgetsChangedBy": "uuid?",
+        "timeBudgetsChangedAt": "date?"
       },
       "indexes": []
     },
@@ -353,6 +360,16 @@
           "type": "string",
           "required": false,
           "description": "Free-text release (1..40 chars). Filtering uses the effective release: the task's own, else the nearest ancestor's."
+        },
+        "timeboxMinutes": {
+          "type": "integer",
+          "required": false,
+          "description": "The task's timebox in minutes, above 0 (migration 0312)."
+        },
+        "isMilestone": {
+          "type": "boolean",
+          "default": false,
+          "description": "The task is a milestone (migration 0312)."
         },
         "externalRef": {
           "type": "string",

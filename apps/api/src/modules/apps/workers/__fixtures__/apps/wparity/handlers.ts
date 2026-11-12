@@ -269,7 +269,8 @@ export async function pages(p: { total: number; tag: string }, ctx: Ctx) {
 }
 
 // A knowledge source kind (manifest `knowledgeSources.notes`): one note per
-// page, the cursor is the next page; page 2 deletes the first note.
+// page, the cursor is the next page, filed in a folder by parity; page 2
+// deletes the first note.
 export async function syncNotes(
   input: { sourceId: string; cursor: number | null; config: { total: number; tag: string } },
   ctx: Ctx,
@@ -280,7 +281,13 @@ export async function syncNotes(
   return {
     documents: {
       upsert: [
-        { externalId: `${tag}-${page}`, title: `${tag} note ${page}`, body: `page ${page}` },
+        {
+          externalId: `${tag}-${page}`,
+          title: `${tag} note ${page}`,
+          body: `page ${page}`,
+          // Notes are filed by parity of page: folders "notes/even" and "notes/odd".
+          folderPath: `notes/${page % 2 === 0 ? "even" : "odd"}`,
+        },
       ],
       delete: page === 2 ? [`${tag}-0`] : [],
     },

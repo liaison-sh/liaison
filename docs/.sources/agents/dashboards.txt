@@ -226,3 +226,7 @@ Blended sources join on the same date bucket only -> apps/api/src/modules/dashbo
 Blended figures from the sources' totals (units per session) -> apps/api/src/modules/dashboards/spec.ts:348
 One source failing shows its reason, the others still draw -> apps/api/src/modules/dashboards/transform.ts:1184
 Records behind a blended chart read one source at a time -> apps/api/src/modules/dashboards/service.ts:1752
+An edit written against an older version applies on top unless a version saved since changed what it names -> apps/api/src/modules/dashboards/service.ts:996 ; apps/api/src/modules/dashboards/rebase.ts:220
+Its result says which versions it was applied on top of -> apps/api/src/modules/dashboards/tools.ts:1028
+A conflict names the change and the version that changed the same thing -> apps/api/src/modules/dashboards/rebase.ts:257
+A revert or a whole rebuild applies only to the version it was written against -> apps/api/src/modules/dashboards/rebase.ts:228 ; apps/api/src/modules/dashboards/service.ts:853

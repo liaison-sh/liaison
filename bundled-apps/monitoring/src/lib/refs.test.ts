@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// Incident reference tests: `INC-<n>` parsing and formatting, the lock-first numbering
+// Incident reference tests: `INC-<n>` parsing and formatting, the leased numbering
 // protocol, the `assign-refs` job and the UUID-or-ref resolver.
 import { describe, expect, it } from "bun:test"
 import { assignRefsJobHandler, JOB_REF_BATCH } from "../jobs"
@@ -114,6 +114,50 @@ describe("assignMissingRefs", () => {
     expect(incidents(spy).find((r) => r.id === "p")?.ref_number).toBe(7)
     expect(incidents(spy).find((r) => r.id === "q")?.ref_number).toBe(1)
     expect(spy.sequences.get(KEY)).toBe(1)
+  })
+
+  it("numbers nothing while another numberer holds the lease, and leaves the rows for the next run", async () => {
+    const { ctx, spy } = makeCtx()
+    spy.rows.set("incidents", [{ id: "x", first_seen_at: ts(1) }])
+    spy.store.set("leases/incident-refs", { data: { until: Date.now() + 30_000 }, version: 3 })
+    expect(await assignMissingRefs(ctx, ALL)).toEqual({ assigned: 0, remaining: true })
+    expect(incidents(spy)[0]?.ref_number ?? null).toBeNull()
+    expect(spy.sequences.has(KEY)).toBe(false)
+    expect(spy.store.get("leases/incident-refs")?.version).toBe(3)
+  })
+
+  it("takes over a lease a killed run left behind once it expired, and releases its own", async () => {
+    const { ctx, spy } = makeCtx()
+    spy.rows.set("incidents", [{ id: "x", first_seen_at: ts(1) }])
+    spy.store.set("leases/incident-refs", { data: { until: Date.now() - 1 }, version: 5 })
+    expect(await assignMissingRefs(ctx, ALL)).toEqual({ assigned: 1, remaining: false })
+    expect(incidents(spy)[0]?.ref_number).toBe(1)
+    expect(spy.store.has("leases/incident-refs")).toBe(false)
+  })
+
+  it("two overlapping numberers never number the same row twice: the second finds the lease held", async () => {
+    const { ctx, spy } = makeCtx()
+    spy.rows.set("incidents", [
+      { id: "p", first_seen_at: ts(1) },
+      { id: "q", first_seen_at: ts(2) },
+    ])
+    let second: { assigned: number; remaining: boolean } | undefined
+    spy.duringNextAllocate = async () => {
+      second = await assignMissingRefs(ctx, ALL)
+    }
+    expect(await assignMissingRefs(ctx, ALL)).toEqual({ assigned: 2, remaining: false })
+    expect(second).toEqual({ assigned: 0, remaining: true })
+    const refs = Object.fromEntries(incidents(spy).map((r) => [r.id, r.ref_number]))
+    expect(refs).toEqual({ p: 1, q: 2 })
+    expect(spy.sequences.get(KEY)).toBe(2)
+  })
+
+  it("releases the lease when numbering throws", async () => {
+    const { ctx, spy } = makeCtx()
+    spy.rows.set("incidents", [{ id: "x", first_seen_at: ts(1) }])
+    spy.failNextAllocate = true
+    await expect(assignMissingRefs(ctx, ALL)).rejects.toThrow(/ref_allocation_failed/)
+    expect(spy.store.has("leases/incident-refs")).toBe(false)
   })
 
   it("surfaces an allocation error envelope as ref_allocation_failed and writes nothing", async () => {

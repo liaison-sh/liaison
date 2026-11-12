@@ -96,3 +96,7 @@ google_search_terms taintSource outside text -> bundled-apps/ads/app.manifest.js
 metrics split DTC/B2B by the order-level rule (company, tag, legacy suffix) -> bundled-apps/ads/src/metrics/sku-classing.ts:61
 blended_mer_dtc excludes B2B orders -> bundled-apps/ads/src/metrics/registry.ts:66
 cpa_by_sku_class classes a B2B order b2b as a whole -> bundled-apps/ads/src/metrics/registry.ts:255
+large insights read = daily series below account level or no date range -> bundled-apps/ads/src/reads.ts:104
+first call answers not ready and starts the report -> bundled-apps/ads/src/reads.ts:153
+same question resumes the stored report run, rows once finished -> bundled-apps/ads/src/insights-report.ts:142
+report older than an hour dropped and started again -> bundled-apps/ads/src/insights-report.ts:30

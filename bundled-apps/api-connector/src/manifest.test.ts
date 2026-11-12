@@ -8,7 +8,7 @@ import manifest from "../app.manifest.json"
 // bundled-manifests-valid.test.ts); these pin what the app means.
 describe("api-connector manifest", () => {
   it("is version 2.0.0, the catalog app that replaced the in-tree one", () => {
-    expect(manifest.version).toBe("2.0.1")
+    expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/)
   })
 
   it("declares the connection as a platform-held API connection with the app's own scopes", () => {

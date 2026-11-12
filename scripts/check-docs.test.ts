@@ -173,6 +173,17 @@ describe("diff rule", () => {
     expect(r.problems.join("\n")).toContain("docs/reference/env.md")
   })
 
+  it("counts a generated page whose fresh render differs from the base's copy", () => {
+    const root = fixtureRepo()
+    commit(root, { "apps/api/src/lib/env.ts": "export const x = 1\n" })
+    const moved = new Map([["docs/reference/env.md", "# Env\n\nX\n"]])
+    const r = checkDiff({ root, base: "main", prBody: "", cfg: CFG, generated: moved })
+    expect(r.problems).toEqual([])
+    const same = new Map([["docs/reference/env.md", "# Env\n"]])
+    const s = checkDiff({ root, base: "main", prBody: "", cfg: CFG, generated: same })
+    expect(s.ok).toBe(false)
+  })
+
   it("counts a generated page that changed in the range", () => {
     const root = fixtureRepo()
     commit(root, {
@@ -303,6 +314,30 @@ describe("nav integrity", () => {
     expect(r.problems.join("\n")).toContain("gone.md")
   })
 
+  it("accepts a sidecar directory of per-section files", async () => {
+    const root = navFixture()
+    rmSync(join(root, "docs/.sources/apps/tickets.txt"))
+    write(
+      root,
+      "docs/.sources/apps/tickets/replies.txt",
+      "Reply -> apps/api/src/apps/tickets/index.ts\n",
+    )
+    const r = await checkNav({ root, nav: { landing: LANDING, sections: NAV }, cfg: NAV_CFG })
+    expect(r.problems).toEqual([])
+  })
+
+  it("reads a page override in place of the committed file", async () => {
+    const root = navFixture()
+    write(root, "docs/apps/tickets.md", PAGE("Run tickets", "See [gone](gone.md).\n"))
+    const r = await checkNav({
+      root,
+      nav: { landing: LANDING, sections: NAV },
+      cfg: NAV_CFG,
+      pageOverrides: new Map([["apps/tickets.md", PAGE("Run tickets")]]),
+    })
+    expect(r.problems).toEqual([])
+  })
+
   it("fails an authored page without its sources sidecar", async () => {
     const root = navFixture()
     rmSync(join(root, "docs/.sources/apps/tickets.txt"))
@@ -414,7 +449,7 @@ describe("coverage", () => {
 })
 
 describe("freshness", () => {
-  it("fails a stale generated page, naming it and the fix", () => {
+  it("reports a committed copy behind the source without failing", () => {
     const root = tempDir()
     write(root, "docs/reference/env.md", "old\n")
     write(root, "docs/reference/cli.md", "same\n")
@@ -424,11 +459,21 @@ describe("freshness", () => {
         ["docs/reference/cli.md", "same\n"],
       ])
     const r = checkFreshness(root, gen)
-    expect(r.ok).toBe(false)
-    const out = r.problems.join("\n")
+    expect(r.ok).toBe(true)
+    expect(r.problems).toEqual([])
+    const out = r.notes.join("\n")
     expect(out).toContain("docs/reference/env.md")
     expect(out).not.toContain("docs/reference/cli.md")
     expect(out).toContain("bun run docs:gen")
+  })
+
+  it("fails when a generator throws", () => {
+    const root = tempDir()
+    expect(() =>
+      checkFreshness(root, () => {
+        throw new Error("broken extractor")
+      }),
+    ).toThrow("broken extractor")
   })
 
   it("passes when every generated page matches", () => {

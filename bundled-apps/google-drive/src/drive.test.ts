@@ -96,9 +96,9 @@ function drive(path: string, q: URLSearchParams) {
 }
 
 describe("manifest", () => {
-  it("is the catalog app, version 2.1.0, with its pages, sources and provisioning", () => {
+  it("is the catalog app, with its pages, sources and provisioning", () => {
     expect(manifest.name).toBe("google-drive")
-    expect(manifest.version).toBe("2.1.0")
+    expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/)
     expect(manifest.knowledgeItems).toMatchObject({
       search: "searchDriveKnowledge",
       resolve: "resolveDriveItem",

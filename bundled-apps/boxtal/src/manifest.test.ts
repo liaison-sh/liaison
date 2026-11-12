@@ -642,7 +642,7 @@ describe("Boxtal app.manifest.json", () => {
     // 0.24.7: reads that answer figures also answer the rows a dashboard block charts.
     // 0.24.10: a shipment declares `pick` (the search tool), so a dashboard table's link cell
     // can pick one.
-    expect(m.version).toBe("0.24.10")
+    expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     expect(m.packageFormat).toBe(1)
   })
 

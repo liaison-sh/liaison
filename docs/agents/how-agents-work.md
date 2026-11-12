@@ -24,7 +24,7 @@ To see them all, open **Agents**. Your own agent is marked **Your agent** in the
 1. Open **Agents** and pick an agent.
 2. Click **Message** to open a direct conversation with it.
 
-Some tool calls draw a card under the agent's message that you act on, such as a Connect card or, for a Drive that sees only picked files, **Choose files for Liaison**, or, on a server that sends bug reports only to the Liaison team, the bug report the agent prepared with **Send to the Liaison team** (only you see it, and nothing is sent until you click). A tool that opens one of an app's own pages (a file picker, a form) draws an **Open** button: it opens the page in a new window, once, for you only; an expired link says to ask again.
+Some tool calls draw a card under the agent's message that you act on, such as a Connect card, or, on a server that sends bug reports only to the Liaison team, the bug report the agent prepared with **Send to the Liaison team** (only you see it, and nothing is sent until you click). A tool that opens one of an app's own pages (a file picker, a form) draws an **Open** button: it opens the page in a new window, once, for you only; an expired link says to ask again.
 
 The agent knows the page you send from. When a record is open there, whether the page is its own or a pane, a drawer or an expanded row of a list, "this" means that record, even if the conversation was about another one before. A record is open once you opened it: the first row a list shows by itself does not count until you click it.
 

@@ -37,6 +37,7 @@ const EXCLUDED: Record<string, { fields: number; reason: string }> = {
   "projects/Checklist.tsx": { fields: 4, reason: "checklist item fields, not listed" },
   "bug-report/BugReportDialog.tsx": { fields: 1, reason: "bug report, not listed" },
   "projects/ProjectEditForm.tsx": { fields: 1, reason: "project description, not listed" },
+  "dashboards/DashboardView.tsx": { fields: 1, reason: "dashboard description, not listed" },
   "contacts/ContactAddresses.tsx": { fields: 1, reason: "a postal address's note (contact data)" },
   "settings/documents/RichTextEditor.tsx": {
     fields: 1,

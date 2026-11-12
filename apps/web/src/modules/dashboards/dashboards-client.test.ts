@@ -326,6 +326,7 @@ describe("the time range on the wire", () => {
         window: { mode: "dashboard", preset: "mtd", from: "2026-11-01", to: "2026-11-11" },
         compareWindow: { mode: "lastYear", from: "2025-11-01", to: "2025-11-11" },
         skippedRows: 2,
+        sourceRows: 9,
         previousError: { error: "source_error", message: "boom" },
       },
     })

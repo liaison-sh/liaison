@@ -17,7 +17,26 @@
 //
 // Picking a figure (a bar, a slice, a stage, a table row, a metric) opens the
 // rows behind it in a panel on the right, beside the grid (over it on a phone).
-import { RefreshCw } from "lucide-solid"
+//
+// Someone who may change the dashboard (the record's `canEdit`) gets an Edit toggle: in edit mode
+// the title and description are fields, and each block can be renamed, moved (drag, or the arrow
+// buttons), resized, duplicated or deleted. Each change is saved at once as one operation
+// (`POST /:id/edit` with the version shown); Undo walks the changes back one at a time (a revert
+// to the version before). A save that meets a newer version reloads the dashboard and says so.
+// The toolbar also exports (PDF, and each block's CSV from its menu), opens the version history
+// in a right-side panel (Restore), makes a personal copy, and says how to get the dashboard
+// sent regularly (a routine the agent sets up).
+import {
+  CalendarClock,
+  Copy,
+  Download,
+  History,
+  MoreHorizontal,
+  Pencil,
+  RefreshCw,
+  Undo2,
+  X,
+} from "lucide-solid"
 import {
   type Component,
   createEffect,
@@ -36,30 +55,44 @@ import { cn } from "~/lib/cn"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { tabStore, updateTabRoutePath } from "~/modules/shell/tab-store"
+import { addToast } from "~/modules/shell/toast-store"
 import { Button } from "~/ui/Button"
+import { PopupMenu } from "~/ui/PopupMenu"
 import { Skeleton } from "~/ui/Skeleton"
 import { BlockDrillPanel, openRecordLink } from "./BlockDrillPanel"
 import { BlockCard } from "./blocks/BlockCard"
 import {
   type BlockReadInfo,
+  blockCsvPath,
   clearViewerRange,
   type Dashboard,
   type DashboardBlockSpec,
   type DrillTarget,
+  dashboardPdfPath,
+  downloadExport,
+  duplicateDashboard,
+  type EditOperation,
+  editDashboard,
   type FilterValues,
   getBlockData,
   getBlockRows,
   getDashboard,
   getFilterOptions,
+  getVersion,
+  isVersionConflict,
+  listVersions,
   saveViewerFilters,
   saveViewerRange,
 } from "./dashboards-client"
 import {
   DASHBOARD_TAB_TYPE,
   dashboardRevision,
+  loadDashboards,
+  openDashboard,
   reloadDashboard,
   rememberDashboard,
 } from "./dashboards-store"
+import { dropTarget, gridColumns, type MoveDirection, moveTarget, UNDO_DEPTH } from "./edit-mode"
 import { FilterBar } from "./FilterBar"
 import {
   defaultOf,
@@ -89,6 +122,7 @@ import {
   withChoiceInPath,
   withoutChoiceInPath,
 } from "./time-range"
+import { VersionHistoryPanel } from "./VersionHistoryPanel"
 
 /** "Updated N min ago" moves on this often. */
 const CLOCK_TICK_MS = 30_000
@@ -126,6 +160,22 @@ export function blockSpanClass(width: DashboardBlockSpec["width"]): string {
   return ""
 }
 
+/** What the grid keys a block by: a change to what it reads remounts it, a move or a rename does not. */
+export function blockReadKey(b: DashboardBlockSpec): string {
+  return `${b.id}\u0000${JSON.stringify([b.type, b.source, b.dataset, b.map, b.text, b.refreshSec, b.timeRange])}`
+}
+
+/** A file name from a title: letters, digits and dashes only. */
+export function fileSlug(title: string): string {
+  const slug = title
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase()
+  return slug || "dashboard"
+}
+
 export const DashboardView: Component<{ entityId: string }> = (props) => {
   const i18n = useI18n()
   const api = useApi()
@@ -157,6 +207,7 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
       const active = document.activeElement
       drillOpener = active instanceof HTMLElement && active !== document.body ? active : null
     }
+    setHistoryOpen(false)
     setDrill({ block, target })
   }
   const closeDrill = () => {
@@ -200,7 +251,7 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
 
   // Keyed on the read revision too: an agent's open after a change, or Refresh all, reads the
   // spec again, and blocks added, removed or remapped show at once.
-  const [dashboard] = createResource(
+  const [dashboard, { mutate }] = createResource(
     () => [props.entityId, dashboardRevision(props.entityId)] as const,
     async ([id]) => {
       try {
@@ -228,6 +279,186 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
     const r = dashboard()
     return r?.ok ? r.dashboard : null
   }
+
+  /** A dashboard the server answered (an edit, a restore): shown at once, before its event. */
+  const show = (d: Dashboard) => {
+    rememberDashboard(d)
+    if (shown?.id !== d.id || shown.version !== d.version) shown = d
+    mutate({ ok: true as const, dashboard: shown })
+  }
+
+  // ── edit mode ──────────────────────────────────────────────────────────────
+  const [editing, setEditing] = createSignal(false)
+  const [saving, setSaving] = createSignal(false)
+  /** The versions before each change made here, newest last: Undo reverts to them. */
+  const [undoStack, setUndoStack] = createSignal<number[]>([])
+  const [historyOpen, setHistoryOpen] = createSignal(false)
+  const [scheduleHint, setScheduleHint] = createSignal(false)
+  const [menuOpen, setMenuOpen] = createSignal(false)
+  const [exportOpen, setExportOpen] = createSignal(false)
+  let dragged: string | null = null
+  let grid: HTMLDivElement | undefined
+  const canEdit = () => loaded()?.canEdit === true
+  // Someone who can no longer edit (the dashboard moved, a scope went) leaves edit mode.
+  createEffect(() => {
+    if (editing() && loaded() && !canEdit()) setEditing(false)
+  })
+
+  /** Changes waiting for the one being saved: each is sent on the version the last produced. */
+  let queue: Promise<boolean> = Promise.resolve(true)
+  let pendingEdits = 0
+  /** Bumped by a conflict: the changes queued before it are dropped. */
+  let editGeneration = 0
+
+  /**
+   * Saves `operations` on the version shown, after any change still being saved. A newer
+   * version saved meanwhile: the dashboard reloads and the person is told to make the change
+   * again (Undo starts over, and the changes queued behind it are dropped).
+   */
+  function applyEdit(operations: EditOperation[], opts: { undo?: boolean } = {}) {
+    pendingEdits++
+    setSaving(true)
+    const generation = editGeneration
+    const run = async (): Promise<boolean> => {
+      const d = loaded()
+      if (!d || generation !== editGeneration) return false
+      try {
+        const next = await editDashboard(api, d.id, d.version, operations)
+        if (opts.undo) setUndoStack((s) => s.slice(0, -1))
+        else setUndoStack((s) => [...s, d.version].slice(-UNDO_DEPTH))
+        show(next)
+        void loadDashboards(api)
+        return true
+      } catch (err) {
+        if (isVersionConflict(err)) {
+          editGeneration++
+          setUndoStack([])
+          reloadDashboard(d.id)
+          addToast({ type: "info", message: i18n.t("kernel.dashboards.editConflict") })
+        } else {
+          addToast({
+            type: "error",
+            message:
+              err instanceof ApiError && err.message
+                ? i18n.t("kernel.dashboards.editFailedWhy", { reason: err.message })
+                : i18n.t("kernel.dashboards.editFailed"),
+          })
+        }
+        return false
+      }
+    }
+    queue = queue.then(run).finally(() => {
+      pendingEdits--
+      if (pendingEdits === 0) setSaving(false)
+    })
+    return queue
+  }
+  const undo = () => {
+    const to = undoStack().at(-1)
+    if (to !== undefined) void applyEdit([{ op: "revert", toVersion: to }], { undo: true })
+  }
+  const restore = async (version: number) => {
+    if (await applyEdit([{ op: "revert", toVersion: version }])) {
+      addToast({
+        type: "success",
+        message: i18n.t("kernel.dashboards.historyRestored", { version }),
+      })
+    }
+  }
+  const moveBlock = (blockId: string, direction: MoveDirection) => {
+    const d = loaded()
+    if (!d) return
+    const to = moveTarget(d.spec.blocks, blockId, direction, gridColumns(grid))
+    if (to !== null) void applyEdit([{ op: "moveBlock", blockId, position: to }])
+  }
+  const dropOn = (targetId: string) => {
+    const d = loaded()
+    const from = dragged
+    dragged = null
+    if (!d || !from) return
+    const to = dropTarget(d.spec.blocks, from, targetId)
+    if (to !== null) void applyEdit([{ op: "moveBlock", blockId: from, position: to }])
+  }
+  const commitTitle = (el: HTMLInputElement) => {
+    const d = loaded()
+    const v = el.value.trim()
+    if (!d) return
+    if (!v) {
+      el.value = d.title
+      return
+    }
+    if (v !== d.title) void applyEdit([{ op: "setTitle", title: v }])
+  }
+  const commitDescription = (el: HTMLTextAreaElement) => {
+    const d = loaded()
+    if (!d) return
+    const v = el.value.trim()
+    if (v === (d.spec.description ?? "")) return
+    void applyEdit([{ op: "setDescription", description: v === "" ? null : v }])
+  }
+  const duplicate = async () => {
+    const d = loaded()
+    if (!d) return
+    try {
+      const copy = await duplicateDashboard(api, d.id)
+      rememberDashboard(copy)
+      void loadDashboards(api)
+      openDashboard(copy)
+    } catch (err) {
+      addToast({
+        type: "error",
+        message:
+          err instanceof ApiError && err.message
+            ? i18n.t("kernel.dashboards.duplicateFailedWhy", { reason: err.message })
+            : i18n.t("kernel.dashboards.duplicateFailed"),
+      })
+    }
+  }
+
+  // ── exports ────────────────────────────────────────────────────────────────
+  /** The range and filters the view shows: an export carries them. */
+  const exportContext = () => ({
+    ...(usesRange() ? { range: choice() } : {}),
+    ...(wireFilters() ? { filters: wireFilters() } : {}),
+  })
+  const download = async (path: string, name: string) => {
+    try {
+      await downloadExport(api, path, name)
+    } catch (err) {
+      addToast({
+        type: "error",
+        message:
+          err instanceof ApiError && err.message
+            ? i18n.t("kernel.dashboards.exportFailedWhy", { reason: err.message })
+            : i18n.t("kernel.dashboards.exportFailed"),
+      })
+    }
+  }
+  const exportPdf = () => {
+    const d = loaded()
+    if (d) void download(dashboardPdfPath(d.id, exportContext()), `${fileSlug(d.title)}.pdf`)
+  }
+  const exportBlock = (block: DashboardBlockSpec, kind: "data" | "rows") => {
+    const d = loaded()
+    if (!d) return
+    // A block keeping its own window ignores the dashboard's range.
+    const ctx = follows(d, block.id) ? exportContext() : { filters: wireFilters() }
+    void download(
+      blockCsvPath(d.id, block.id, kind, ctx),
+      `${fileSlug(block.title)}${kind === "rows" ? "-rows" : ""}.csv`,
+    )
+  }
+
+  /** The blocks by id, as the spec holds them now. */
+  const blocksById = createMemo(() => {
+    const out = new Map<string, DashboardBlockSpec>()
+    for (const b of loaded()?.spec.blocks ?? []) out.set(b.id, b)
+    return out
+  })
+  /** The grid's keys: a block stays mounted while what it reads stays the same. */
+  const blockKeys = createMemo(() => (loaded()?.spec.blocks ?? []).map(blockReadKey), undefined, {
+    equals: (a, b) => a.length === b.length && a.every((k, i) => k === b[i]),
+  })
 
   // This dashboard's tab: its URL carries the range.
   const tab = () =>
@@ -257,7 +488,8 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
     if (d?.range && server && sameChoice(server, c)) {
       return { key, window: d.range.window, compareWindow: d.range.compareWindow }
     }
-    const window = resolveTimeRange(c.timeRange, localToday(new Date(now())))
+    // Today as the org's calendar has it (the server's), never the browser's date.
+    const window = resolveTimeRange(c.timeRange, d?.today ?? localToday(new Date(now())))
     return { key, window, compareWindow: compareWindowOf(c.timeRange.preset, window, c.compare) }
   })
   const rangeLabel = () => {
@@ -356,14 +588,40 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
     <section data-testid="dashboard-view" class="flex h-full min-h-0 min-w-0 flex-col">
       <header
         data-testid="dashboard-toolbar"
+        data-editing={editing() ? "true" : undefined}
         class="flex flex-wrap items-center gap-2 border-b border-border-subtle px-4 py-2.5"
       >
-        <h1
-          data-testid="dashboard-title"
-          class="min-w-0 flex-1 basis-40 truncate text-[14px] font-semibold text-text"
+        <Show
+          when={editing() && loaded()}
+          fallback={
+            <h1
+              data-testid="dashboard-title"
+              class="min-w-0 flex-1 basis-40 truncate text-[14px] font-semibold text-text"
+            >
+              {loaded()?.title ?? ""}
+            </h1>
+          }
         >
-          {loaded()?.title ?? ""}
-        </h1>
+          {(d) => (
+            <input
+              data-testid="dashboard-title-input"
+              aria-label={i18n.t("kernel.dashboards.titleLabel")}
+              value={d().title}
+              maxLength={200}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  commitTitle(e.currentTarget)
+                } else if (e.key === "Escape") {
+                  e.currentTarget.value = d().title
+                  e.currentTarget.blur()
+                }
+              }}
+              onBlur={(e) => commitTitle(e.currentTarget)}
+              class="h-8 min-w-0 flex-1 basis-40 rounded-md border border-border-subtle bg-bg px-2 text-[14px] font-semibold text-text outline-none focus:border-accent"
+            />
+          )}
+        </Show>
         <Switch>
           <Match when={loaded()}>
             {(d) => (
@@ -407,11 +665,153 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
                   <RefreshCw size={13} />
                   {i18n.t("kernel.dashboards.refreshAll")}
                 </Button>
+                <PopupMenu open={exportOpen()} onOpenChange={setExportOpen}>
+                  <PopupMenu.Trigger
+                    data-testid="dashboard-export"
+                    aria-label={i18n.t("kernel.dashboards.exportMenu")}
+                    title={i18n.t("kernel.dashboards.exportMenu")}
+                    class="flex h-7 items-center gap-1.5 rounded-sm border border-border px-2.5 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text"
+                  >
+                    <Download size={13} />
+                    {i18n.t("kernel.dashboards.exportMenu")}
+                  </PopupMenu.Trigger>
+                  <PopupMenu.Content data-testid="dashboard-export-menu">
+                    <PopupMenu.Item data-testid="dashboard-export-pdf" onSelect={exportPdf}>
+                      {i18n.t("kernel.dashboards.exportPdf")}
+                    </PopupMenu.Item>
+                  </PopupMenu.Content>
+                </PopupMenu>
+                <Show when={canEdit()}>
+                  <Button
+                    variant={editing() ? "primary" : "outline"}
+                    size="sm"
+                    data-testid="dashboard-edit-toggle"
+                    aria-pressed={editing()}
+                    onClick={() => {
+                      setEditing((e) => !e)
+                      if (editing()) closeDrill()
+                    }}
+                  >
+                    <Pencil size={13} />
+                    {editing()
+                      ? i18n.t("kernel.dashboards.editDone")
+                      : i18n.t("kernel.dashboards.editStart")}
+                  </Button>
+                </Show>
+                <Show when={editing()}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    data-testid="dashboard-undo"
+                    disabled={saving() || undoStack().length === 0}
+                    onClick={undo}
+                  >
+                    <Undo2 size={13} />
+                    {i18n.t("kernel.dashboards.undo")}
+                  </Button>
+                </Show>
+                <PopupMenu open={menuOpen()} onOpenChange={setMenuOpen}>
+                  <PopupMenu.Trigger
+                    data-testid="dashboard-menu"
+                    aria-label={i18n.t("kernel.dashboards.moreMenu")}
+                    title={i18n.t("kernel.dashboards.moreMenu")}
+                    class="flex h-7 w-7 items-center justify-center rounded-sm border border-border text-text-secondary transition-colors hover:bg-surface-hover hover:text-text"
+                  >
+                    <MoreHorizontal size={14} />
+                  </PopupMenu.Trigger>
+                  <PopupMenu.Content data-testid="dashboard-menu-content">
+                    <PopupMenu.Item
+                      data-testid="dashboard-history"
+                      onSelect={() => {
+                        setDrill(null)
+                        setHistoryOpen(true)
+                      }}
+                    >
+                      <History size={13} aria-hidden="true" />
+                      {i18n.t("kernel.dashboards.historyMenu")}
+                    </PopupMenu.Item>
+                    <PopupMenu.Item data-testid="dashboard-duplicate" onSelect={duplicate}>
+                      <Copy size={13} aria-hidden="true" />
+                      {i18n.t("kernel.dashboards.duplicateDashboard")}
+                    </PopupMenu.Item>
+                    <PopupMenu.Item
+                      data-testid="dashboard-send-regularly"
+                      onSelect={() => setScheduleHint(true)}
+                    >
+                      <CalendarClock size={13} aria-hidden="true" />
+                      {i18n.t("kernel.dashboards.sendRegularly")}
+                    </PopupMenu.Item>
+                  </PopupMenu.Content>
+                </PopupMenu>
               </>
             )}
           </Match>
         </Switch>
       </header>
+      <Show when={loaded()}>
+        {(d) => (
+          <Show
+            when={editing()}
+            fallback={
+              <Show when={d().spec.description}>
+                <p
+                  data-testid="dashboard-description"
+                  class="whitespace-pre-line border-b border-border-subtle px-4 py-2 text-[12.5px] text-text-secondary"
+                >
+                  {d().spec.description}
+                </p>
+              </Show>
+            }
+          >
+            <div class="border-b border-border-subtle px-4 py-2">
+              <textarea
+                data-testid="dashboard-description-input"
+                aria-label={i18n.t("kernel.dashboards.descriptionLabel")}
+                placeholder={i18n.t("kernel.dashboards.descriptionPlaceholder")}
+                value={d().spec.description ?? ""}
+                maxLength={500}
+                rows={2}
+                onBlur={(e) => commitDescription(e.currentTarget)}
+                class="w-full resize-y rounded-md border border-border-subtle bg-bg px-2 py-1.5 text-[12.5px] text-text outline-none placeholder:text-text-tertiary focus:border-accent"
+              />
+              <p class="mt-1 text-[11.5px] text-text-tertiary">
+                {i18n.t("kernel.dashboards.editHint")}
+              </p>
+            </div>
+          </Show>
+        )}
+      </Show>
+      <Show when={scheduleHint() && loaded()}>
+        {(d) => (
+          <div
+            data-testid="dashboard-schedule-hint"
+            role="status"
+            class="flex items-start gap-2 border-b border-border-subtle bg-surface px-4 py-2 text-[12.5px] text-text-secondary"
+          >
+            <CalendarClock
+              size={14}
+              aria-hidden="true"
+              class="mt-0.5 shrink-0 text-text-tertiary"
+            />
+            <p class="min-w-0 flex-1">
+              {i18n.t("kernel.dashboards.sendRegularlyHint")}{" "}
+              <span data-testid="dashboard-schedule-example" class="text-text">
+                {i18n.t("kernel.dashboards.sendRegularlyExample", { title: d().title })}
+              </span>
+            </p>
+            <button
+              type="button"
+              data-testid="dashboard-schedule-hint-close"
+              aria-label={i18n.t("kernel.dashboards.drillClose")}
+              title={i18n.t("kernel.dashboards.drillClose")}
+              onClick={() => setScheduleHint(false)}
+              class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-secondary"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        )}
+      </Show>
       <Show when={loaded() && filterDefs().length > 0}>
         <FilterBar
           filters={filterDefs()}
@@ -419,12 +819,13 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
           onChange={pickFilter}
           canReset={filtersChanged()}
           onReset={resetFilters}
-          loadOptions={(filterId) => {
+          loadOptions={(filterId, q) => {
             const { [filterId]: _own, ...others } = filterValues()
             return getFilterOptions(api, props.entityId, filterId, {
               ...(usesRange() ? { range: choice() } : {}),
               filters: others,
               signal: reads.signal,
+              ...(q ? { q } : {}),
             })
           }}
         />
@@ -461,35 +862,73 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
             <Match when={loaded()}>
               {(d) => (
                 <div
+                  ref={grid}
                   data-testid="dashboard-grid"
                   class="grid grid-cols-1 gap-3 @2xl:grid-cols-2 @5xl:grid-cols-3"
                 >
-                  <For each={d().spec.blocks}>
-                    {(block) => (
-                      <BlockCard
-                        block={block}
-                        class={cn(blockSpanClass(block.width))}
-                        refreshTick={tick()}
-                        rangeKey={follows(d(), block.id) ? rangeKey() : undefined}
-                        filtersKey={filterKey()}
-                        onDrill={(target) => openDrill(block, target)}
-                        showOwnWindow={usesRange() && !follows(d(), block.id)}
-                        now={now()}
-                        visible={onScreen()}
-                        onRead={(info) => {
-                          const w = windowsFromInfo(info)
-                          if (w) setReported(w)
-                        }}
-                        load={(refresh) =>
-                          getBlockData(api, d().id, block.id, {
-                            refresh,
-                            signal: reads.signal,
-                            ...(usesRange() && follows(d(), block.id) ? { range: choice() } : {}),
-                            ...(wireFilters() ? { filters: wireFilters() } : {}),
-                          })
-                        }
-                      />
-                    )}
+                  <For each={blockKeys()}>
+                    {(key) => {
+                      const id = key.slice(0, key.indexOf("\u0000"))
+                      const block = () => blocksById().get(id)!
+                      return (
+                        <Show when={blocksById().get(id)}>
+                          <BlockCard
+                            block={block()}
+                            class={cn(blockSpanClass(block().width))}
+                            today={d().today}
+                            timeZone={d().timeZone}
+                            onExport={(kind) => exportBlock(block(), kind)}
+                            edit={
+                              editing()
+                                ? {
+                                    busy: saving(),
+                                    rename: (title) =>
+                                      void applyEdit([
+                                        { op: "updateBlock", blockId: id, changes: { title } },
+                                      ]),
+                                    canMove: (dir) =>
+                                      moveTarget(d().spec.blocks, id, dir, gridColumns(grid)) !==
+                                      null,
+                                    move: (dir) => moveBlock(id, dir),
+                                    resize: (size) =>
+                                      void applyEdit([{ op: "resizeBlock", blockId: id, ...size }]),
+                                    duplicate: () =>
+                                      void applyEdit([{ op: "duplicateBlock", blockId: id }]),
+                                    remove: () =>
+                                      void applyEdit([{ op: "removeBlock", blockId: id }]),
+                                    onDragStart: () => {
+                                      dragged = id
+                                    },
+                                    onDragEnd: () => {
+                                      dragged = null
+                                    },
+                                    onDrop: () => dropOn(id),
+                                  }
+                                : undefined
+                            }
+                            refreshTick={tick()}
+                            rangeKey={follows(d(), id) ? rangeKey() : undefined}
+                            filtersKey={filterKey()}
+                            onDrill={(target) => openDrill(block(), target)}
+                            showOwnWindow={usesRange() && !follows(d(), id)}
+                            now={now()}
+                            visible={onScreen()}
+                            onRead={(info) => {
+                              const w = windowsFromInfo(info)
+                              if (w) setReported(w)
+                            }}
+                            load={(refresh) =>
+                              getBlockData(api, d().id, id, {
+                                refresh,
+                                signal: reads.signal,
+                                ...(usesRange() && follows(d(), id) ? { range: choice() } : {}),
+                                ...(wireFilters() ? { filters: wireFilters() } : {}),
+                              })
+                            }
+                          />
+                        </Show>
+                      )
+                    }}
                   </For>
                 </div>
               )}
@@ -531,6 +970,18 @@ export const DashboardView: Component<{ entityId: string }> = (props) => {
               }}
               open={(link) => openRecordLink(api, link)}
               onClose={closeDrill}
+            />
+          )}
+        </Show>
+        <Show when={historyOpen() && loaded()}>
+          {(d) => (
+            <VersionHistoryPanel
+              revision={d().version}
+              loadVersions={() => listVersions(api, d().id)}
+              loadVersion={(v) => getVersion(api, d().id, v)}
+              onRestore={canEdit() ? (v) => void restore(v) : undefined}
+              busy={saving()}
+              onClose={() => setHistoryOpen(false)}
             />
           )}
         </Show>

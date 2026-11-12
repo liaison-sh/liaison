@@ -52,6 +52,7 @@ Send the same signed envelope with `"status": "resolved"` (or `"event": "resolve
 - An alert for a resolved incident reopens it. The previous episode (title, body, resolution note, resolved time) is kept in the incident's **Activity**.
 - A repeat or reopen refreshes the incident's title, and its body when the alert sends one.
 - An alert with no `dedupKey` always opens a new incident.
+- A new incident always reaches the feed. If the delivery that opened it was cut off before the feed heard of it, the sender's retry is asked to wait while that delivery could still be running, then announces the incident as new instead of counting a repeat.
 
 Critical and warning incidents reach everyone holding `monitoring:incidents:read` on the home attention feed.
 

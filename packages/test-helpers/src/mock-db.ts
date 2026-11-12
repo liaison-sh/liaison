@@ -128,6 +128,7 @@ export interface MockBatchResult {
 
 /** The writes and the sequence a batch runs on, plus a snapshot to undo them. */
 export interface MockBatchTarget {
+  findOne(entity: string, id: string): Promise<unknown | null>
   insert(entity: string, data: Record<string, unknown>): Promise<{ id: string }>
   update(entity: string, id: string, data: Record<string, unknown>): Promise<void>
   delete(entity: string, id: string): Promise<void>
@@ -201,11 +202,25 @@ export async function applyMockBatch(
         )) as Record<string, unknown> & { id: string }
         if (typeof op.as === "string") out.rows[op.as] = row
       } else if (typeof op.update === "string") {
-        await target.update(
-          op.update,
-          String(resolve(op.id)),
-          resolve(op.data) as Record<string, unknown>,
-        )
+        const id = String(resolve(op.id))
+        const patch = { ...((resolve(op.data) as Record<string, unknown> | undefined) ?? {}) }
+        const append = (resolve(op.append) as Record<string, unknown[]> | undefined) ?? {}
+        const merge =
+          (resolve(op.merge) as Record<string, Record<string, unknown>> | undefined) ?? {}
+        if (Object.keys(append).length + Object.keys(merge).length > 0) {
+          const row = ((await target.findOne(op.update, id)) ?? {}) as Record<string, unknown>
+          const base = { ...row, ...patch }
+          for (const [k, items] of Object.entries(append)) {
+            patch[k] = [...((base[k] as unknown[] | null | undefined) ?? []), ...items]
+          }
+          for (const [k, keys] of Object.entries(merge)) {
+            patch[k] = {
+              ...((base[k] as Record<string, unknown> | null | undefined) ?? {}),
+              ...keys,
+            }
+          }
+        }
+        await target.update(op.update, id, patch)
       } else if (typeof op.delete === "string") {
         await target.delete(op.delete, String(resolve(op.id)))
       } else if (typeof op.updateMany === "string") {
@@ -346,6 +361,7 @@ export function createMockDb(opts: MockDbOptions = {}, behavior: MockDbBehavior 
     async batch(spec) {
       return applyMockBatch(
         {
+          findOne: (e, id) => db.findOne(e, id),
           insert: (e, d) => db.insert(e, d),
           update: (e, id, d) => db.update(e, id, d),
           delete: (e, id) => db.delete(e, id),

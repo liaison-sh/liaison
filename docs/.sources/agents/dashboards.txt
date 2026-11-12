@@ -229,3 +229,4 @@ Badge Shared with some people -> apps/web/src/modules/dashboards/DashboardView.t
 Live updates reach only the people it is shared with -> apps/api/src/infra/websocket.ts:1572
 Scheduled send leaves out people it is not shared with -> apps/api/src/modules/dashboards/export.ts:426
 People icon when shared with anyone -> apps/web/src/modules/dashboards/DashboardsSidebar.tsx:146
+In a shared conversation, dashboard reads use the conversation's narrower access -> apps/api/src/modules/dashboards/tools.ts:126 ; apps/api/src/modules/agent/scopes/effective-scope.ts:45

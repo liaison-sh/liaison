@@ -23,13 +23,21 @@
  *   `{ "$seq": "formatted" }`  `format.prefix` + the value zero-padded to `format.pad`
  *   `{ "$ref": "<as>" }`       the id of the row an earlier insert named `as`
  *
+ * An `update` may also `append` items to json array fields and `merge` keys into
+ * json object fields of the row AS IT IS when the batch commits (`field || value`,
+ * in the database): a log entry or a key added this way is never lost to a
+ * writer that changed the row between the app's read and this write.
+ *
  * Every op goes through the same checks as its single-call twin (`ctx.db.insert`,
  * `update`, `delete`, `updateMany`): the app's own declared tables and fields,
  * the bridge's org, the run's RLS actor, refused on a read-only run.
  */
+import { sql as drizzleSql } from "drizzle-orm"
 import type { RlsClient } from "~/db"
 import { withReleasedSavepoint } from "~/db/savepoint"
+import { quoteIdent } from "~/lib/sql-utils"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
+import { snakeCase, withPgCause } from "~/modules/apps/sandbox/bridge/shared"
 
 /** The most ops one batch may carry. */
 export const MAX_BATCH_OPS = 500
@@ -40,7 +48,13 @@ type Row = Record<string, unknown>
 
 export type BatchOp =
   | { insert: string; data: Row; as?: string }
-  | { update: string; id: unknown; data: Row }
+  | {
+      update: string
+      id: unknown
+      data?: Row
+      append?: Record<string, unknown[]>
+      merge?: Record<string, Row>
+    }
   | { delete: string; id: unknown }
   | { updateMany: string; where: Row; data: Row }
 
@@ -187,12 +201,29 @@ export function createBatchMethods(
               out.rows[op.as] = row
             }
           } else if (typeof op.update === "string") {
-            if (!isObject(op.data)) throw new BatchSpecError(`${where}.data is required`)
-            await db.db_update(
-              op.update,
-              idOf(op.id, where),
-              JSON.stringify(resolve(op.data, where)),
-            )
+            const append = op.append === undefined ? {} : op.append
+            const merge = op.merge === undefined ? {} : op.merge
+            if (
+              (op.data !== undefined && !isObject(op.data)) ||
+              !isObject(append) ||
+              !isObject(merge) ||
+              Object.values(append).some((v) => !Array.isArray(v)) ||
+              Object.values(merge).some((v) => !isObject(v))
+            ) {
+              throw new BatchSpecError(`${where}: data and merge take objects, append takes arrays`)
+            }
+            const id = idOf(op.id, where)
+            const data = isObject(op.data) ? op.data : {}
+            const changes =
+              Object.keys(data).length + Object.keys(append).length + Object.keys(merge).length
+            if (changes === 0) throw new BatchSpecError(`${where} changes nothing`)
+            if (Object.keys(data).length > 0) {
+              await db.db_update(op.update, id, JSON.stringify(resolve(data, where)))
+            }
+            await appendAndMerge(ctx, tx, op.update, id, {
+              append: resolve(append, where) as Record<string, unknown[]>,
+              merge: resolve(merge, where) as Record<string, Row>,
+            })
           } else if (typeof op.delete === "string") {
             await db.db_delete(op.delete, idOf(op.id, where))
           } else if (typeof op.updateMany === "string") {
@@ -246,4 +277,36 @@ async function allocate(
     value = await next()
   }
   return value
+}
+
+/** `field = field || value` for json fields, on the row as it is now (see the header). */
+async function appendAndMerge(
+  ctx: BridgeContext,
+  tx: RlsClient,
+  entity: string,
+  id: string,
+  ops: { append: Record<string, unknown[]>; merge: Record<string, Row> },
+): Promise<void> {
+  const sets = [
+    ...Object.entries(ops.append).map(([field, value]) => ({ field, value, empty: "[]" })),
+    ...Object.entries(ops.merge).map(([field, value]) => ({ field, value, empty: "{}" })),
+  ]
+  if (sets.length === 0) return
+  // Declared fields only, as every write checks.
+  ctx.validateFields(entity, Object.fromEntries(sets.map((x) => [x.field, x.value])))
+  const table = drizzleSql.raw(`${quoteIdent(ctx.schemaName)}.${quoteIdent(entity)}`)
+  const setChunk = drizzleSql.join(
+    sets.map((x) => {
+      const col = drizzleSql.raw(quoteIdent(snakeCase(x.field)))
+      return drizzleSql`${col} = COALESCE(${col}, ${x.empty}::jsonb) || ${JSON.stringify(x.value)}::jsonb`
+    }),
+    drizzleSql.raw(", "),
+  )
+  try {
+    await tx.execute(
+      drizzleSql`UPDATE ${table} SET ${setChunk}, updated_at = now() WHERE id = ${id} AND org_id = ${ctx.orgId}`,
+    )
+  } catch (err) {
+    throw withPgCause(err, "ctx.db.batch append/merge failed")
+  }
 }

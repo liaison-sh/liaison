@@ -308,7 +308,6 @@ export function createMailboxAgentRuntime(deps: MailboxAgentRuntimeDeps): Mailbo
       session.reset()
       responder.reset()
       otherAppResponder.reset()
-      deps.mcpResponder?.reset()
     },
   }
   return runtime

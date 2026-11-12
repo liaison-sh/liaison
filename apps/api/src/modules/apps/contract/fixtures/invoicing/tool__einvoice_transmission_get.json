@@ -1,0 +1,30 @@
+{
+  "entry": "tool:einvoice_transmission_get",
+  "params": {
+    "document_id": "078402f4-6ee8-43f6-b7be-bc9615536870"
+  },
+  "recordedFrom": "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "documents",
+        "{\"where\":{\"id\":\"078402f4-6ee8-43f6-b7be-bc9615536870\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"078402f4-6ee8-43f6-b7be-bc9615536870\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:09:21.663932+00\",\"updated_at\":\"2026-11-12 09:09:21.945904+00\",\"einvoice_send_approval_id\":null,\"einvoice_send_requested_at\":null,\"einvoice_send_attempt\":null,\"type\":\"invoice\",\"scope\":null,\"status\":\"issued\",\"payment_status\":\"unpaid\",\"number\":\"FAC-2026-0001\",\"number_int\":1,\"year_of_issue\":2026,\"issuer_profile_id\":\"99444731-e2a2-460c-ab40-a9348f2a7121\",\"counterparty_contact_id\":null,\"counterparty_name\":\"Atelier Lumen SAS\",\"counterparty_address\":\"12 rue des Lilas, 69003 Lyon, France\",\"counterparty_shipping_address\":null,\"counterparty_shipping_name\":null,\"counterparty_vat_id\":\"FR40900000001\",\"counterparty_email\":\"person1@example.com\",\"counterparty_country\":\"FR\",\"currency\":\"EUR\",\"subtotal_minor\":\"98880\",\"tax_total_minor\":\"19776\",\"grand_total_minor\":\"118656\",\"tax_treatment\":\"eu_domestic\",\"incoterm\":\"DAP\",\"issued_at\":\"2026-11-12 00:00:00+00\",\"due_at\":\"2026-02-15 00:00:00+00\",\"paid_at\":null,\"voided_at\":null,\"pdf_file_id\":\"3b0930d9-d1fa-451b-a06d-72d8a302141a\",\"pdf_status\":\"ready\",\"external_refs\":{},\"shopify_order_id\":null,\"shopify_order_number\":null,\"shipment_ref\":null,\"shopify_draft_order_id\":null,\"shopify_draft_order_name\":null,\"po_number\":null,\"notes\":\"Delivery by appointment\",\"lifecycle_log\":[{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"issued\"},{\"ts\":\"2026-01-01T00:00:00.000Z\",\"code\":\"einvoice_data_missing\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"einvoice_gate_warning\",\"missing\":[\"buyer_siren\"]}],\"regime\":\"needs_review\",\"regime_reasons\":[{\"en\":\"A French business buyer needs a SIREN.\",\"fr\":\"Un acheteur professionnel français doit avoir un SIREN.\",\"code\":\"einvoice_data_missing\"},{\"en\":\"Issued in warn mode with e-invoicing data missing (einvoice_data_missing).\",\"fr\":\"Émis en mode avertissement avec des données de facturation électronique manquantes (einvoice_data_missing).\",\"code\":\"gate_warning\",\"missing\":[\"buyer_siren\"]}],\"operation_category\":\"goods\",\"operation_category_source\":\"explicit\",\"payment_state\":\"due\",\"vat_on_debits\":null,\"customer_kind\":\"business\",\"buyer_siren\":null,\"buyer_siret\":null,\"buyer_routing_address\":null,\"buyer_legal_name\":\"Atelier Lumen SAS\",\"billing_line1\":\"12 rue des Lilas\",\"billing_line2\":null,\"billing_postcode\":\"69003\",\"billing_city\":\"Lyon\",\"billing_country_code\":\"FR\",\"delivery_name\":null,\"delivery_line1\":null,\"delivery_line2\":null,\"delivery_postcode\":null,\"delivery_city\":null,\"delivery_country_code\":null,\"fx_rate\":null,\"fx_rate_date\":null,\"fx_source\":null,\"legal_original_sha256\":\"ec35f0f6c5ccbf0510b10a3ba2944a9d585d9e264537b2c49d16f3b449942035\",\"einvoice_state\":null,\"einvoice_state_raw\":null,\"pa_provider\":null,\"tax_point_date\":\"2026-11-12 00:00:00+00\",\"tax_total_eur_minor\":null,\"original_document_id\":null,\"legal_original_id\":\"c870f824-beb6-40a3-8cfd-aec3834e4ab8\",\"internal_cancellation\":null,\"buyer_siren_confirmed_via\":null,\"external_ref\":null}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "einvoice_transmissions",
+        "{\"where\":{\"document_id\":\"078402f4-6ee8-43f6-b7be-bc9615536870\"},\"orderBy\":{\"createdAt\":\"asc\"},\"limit\":20}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["einvoicing_settings", "{\"orderBy\":{\"createdAt\":\"asc\"},\"limit\":1}"],
+      "reply": "[{\"id\":\"93b8a2d3-78ab-41e6-8209-039bc86406b0\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:09:21.361897+00\",\"updated_at\":\"2026-11-12 09:09:21.361897+00\",\"gate_mode\":\"warn\",\"gate_mode_source\":\"tool\",\"cibs_switch_date\":null,\"changed_by\":\"00000000-0000-4000-8000-00000000c0df\",\"provider_app\":null,\"cutover_date\":\"2026-09-01\",\"send_enabled\":false,\"book_enabled\":null}]"
+    }
+  ]
+}

@@ -1499,9 +1499,6 @@ describe("db import enforcement", () => {
     // a reset deletes the owner's mailbox across tables under one lock.
     "modules/mailbox-keys/attention.ts",
     "modules/mailbox-keys/reset.ts",
-    // The MCP connection's label for the plaintext consent prompt
-    // (kernel.mcp_connections is privileged-access), bound to org and id.
-    "modules/mcp/mcp-mailbox-plaintext.ts",
     // Admin merge of an import placeholder: both ids are proven to be this
     // org's first, then every table that references a user is rewritten,
     // many of which carry no org_id to bind.

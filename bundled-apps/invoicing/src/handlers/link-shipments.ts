@@ -20,6 +20,8 @@
 // lookup failing, never fails the run.
 
 /** Days after issue during which an unlinked invoice is still looked up. */
+import type { IssueDb } from "../issue"
+
 const DEFAULT_WINDOW_DAYS = 60
 /** Documents asked about per run: each costs one boxtal:search call. */
 const DEFAULT_BATCH = 25
@@ -38,6 +40,7 @@ export interface LinkShipmentsDb {
   ): Promise<unknown[]>
   findOne(entity: string, id: string): Promise<unknown | null>
   update(entity: string, id: string, data: Record<string, unknown>): Promise<void>
+  batch: IssueDb["batch"]
 }
 
 export interface LinkShipmentsCtx {
@@ -156,12 +159,12 @@ export async function linkShipments(
 }
 
 /**
- * Write the link as a MERGE onto the document as it is NOW, never onto the snapshot the scan read
- * before its boxtal calls: a refund, a payment or a send recorded on the same invoice in between
- * lives in the very lifecycle_log (and external_refs) this writes, and lifecycle_log feeds the
- * cumulative refund total. The row is locked first with a no-op `update` of its immutable number (the
- * job runs atomic, so the lock holds until commit and a concurrent writer waits behind it), then
- * re-read, then patched: our entry appended to the current log, `shipments` set on the current refs.
+ * Write the link as a MERGE onto the document as it is when the write commits, never onto the
+ * snapshot the scan read before its boxtal calls: a refund, a payment or a send recorded on the same
+ * invoice in between lives in the very lifecycle_log (and external_refs) this writes, and
+ * lifecycle_log feeds the cumulative refund total. The job holds no transaction, so the write is one
+ * `ctx.db.batch` update that `merge`s `shipments` into external_refs and `append`s our entry to
+ * lifecycle_log in the database (`field || value`): nothing another writer added is lost.
  * Returns false when the document vanished or another run linked it meanwhile.
  */
 export async function mergeShipmentLink(
@@ -170,28 +173,25 @@ export async function mergeShipmentLink(
   shipments: LinkedShipment[],
   now: Date,
 ): Promise<boolean> {
-  const before = (await db.findOne("documents", id)) as Record<string, unknown> | null
-  if (!before) return false
-  if (typeof before.number === "string" && before.number !== "") {
-    // By id through `update`: the bridge refuses `where.id` on updateMany, which made this lock
-    // throw on every prod run. The number of an issued document never changes, so writing it
-    // back is a true no-op that still takes the row lock.
-    await db.update("documents", id, { number: before.number })
-  }
   const fresh = (await db.findOne("documents", id)) as Record<string, unknown> | null
   if (!fresh) return false
   if (linkedShipments(fresh.external_refs).length > 0) return false
-  const refs = (fresh.external_refs as Record<string, unknown> | null) ?? {}
-  const log = (fresh.lifecycle_log as Array<Record<string, unknown>> | undefined) ?? []
-  await db.update("documents", id, {
-    external_refs: { ...refs, shipments },
-    lifecycle_log: [
-      ...log,
+  await db.batch({
+    ops: [
       {
-        event: "shipment_linked",
-        actor: "system",
-        ts: now.toISOString(),
-        shipment_ids: shipments.map((s) => s.shipment_id),
+        update: "documents",
+        id,
+        merge: { external_refs: { shipments } },
+        append: {
+          lifecycle_log: [
+            {
+              event: "shipment_linked",
+              actor: "system",
+              ts: now.toISOString(),
+              shipment_ids: shipments.map((s) => s.shipment_id),
+            },
+          ],
+        },
       },
     ],
   })

@@ -3978,17 +3978,6 @@
     "failed": "Your account could not be deleted, and nothing was changed. Try again later.",
     "signedOutNotice": "Your account was deleted."
   },
-  "mailboxMcpAccess": {
-    "title": "Allow a connected app to read your mail?",
-    "readBody": "{{client}} asks to read messages from an encrypted conversation ({{count}} in all).",
-    "searchBody": "{{client}} asks to search your encrypted mailbox for \"{{query}}\".",
-    "note": "Liaison decrypts them in this window and passes them to that app for this one request. Nothing is stored.",
-    "deny": "Deny",
-    "allowWindow": "Allow for 15 minutes",
-    "allowOnce": "Allow once",
-    "identity": "Connection created on {{date}} (reference {{ref}}). The name above is the one the app gave itself when you connected it; if you do not recognise this connection, deny and remove it in your settings.",
-    "unknownDate": "an unknown date"
-  },
   "mailboxAlarmClear": {
     "open": "Clear this warning",
     "title": "Clear the mailbox warning on this device",

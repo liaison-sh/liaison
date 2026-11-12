@@ -42,6 +42,7 @@ import {
   type ManifestHandlerRef,
   toolRegistry,
 } from "~/modules/apps/app-registries"
+import { guardAtomicToolEgress } from "~/modules/apps/atomic-egress"
 import type { BulkToolMeta } from "~/modules/apps/bulk-agent-tools"
 import {
   CONNECTION_CREDENTIALS_MISSING,
@@ -3189,25 +3190,24 @@ export async function executeToolHandler(
     }
     if (session) {
       // `atomic: true` tool: legacy whole-run ambient transaction, materialized
-      // from the session (its failure paths rely on whole-run rollback).
-      return session.run((liveTx) =>
-        runManifest(
-          inlinePgCauseOnBridge(
-            createSandboxRpcBridge(
-              tool.appName,
-              userId,
-              orgId,
-              liveTx,
-              manifest,
-              actorScopes,
-              bridgeActorType,
-              approvalContext,
-              handlerBridgeOptions,
-            ),
-          ),
-          true,
-        ),
-      )
+      // from the session (its failure paths rely on whole-run rollback). It
+      // holds that transaction for its whole run, so every bridge method that
+      // reaches outside the database is refused (atomic-egress.ts).
+      return session.run((liveTx) => {
+        const atomicBridge = createSandboxRpcBridge(
+          tool.appName,
+          userId,
+          orgId,
+          liveTx,
+          manifest,
+          actorScopes,
+          bridgeActorType,
+          approvalContext,
+          handlerBridgeOptions,
+        )
+        guardAtomicToolEgress(atomicBridge as Record<string, unknown>, tool.appName, tool.name)
+        return runManifest(inlinePgCauseOnBridge(atomicBridge), true)
+      })
     }
     return runManifest(
       inlinePgCauseOnBridge(

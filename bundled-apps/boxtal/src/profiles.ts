@@ -34,6 +34,7 @@
 // What linking does NOT do: it never re-resolves a draft that was already resolved. A cached draft
 // keeps what it said until the row is synced again (prep_sync or the row-scoped read).
 
+import type { DbBatchOp, DbBatchResult, DbBatchSpec } from "@liaison/app-sdk"
 import { isUniqueViolation } from "./db-errors"
 import type { CatalogProfile } from "./resolver"
 
@@ -45,6 +46,8 @@ export interface ProfileDb {
   insert(entity: string, data: Record<string, unknown>): Promise<{ id: string }>
   update(entity: string, id: string, data: Record<string, unknown>): Promise<void>
   delete(entity: string, id: string): Promise<void>
+  /** `ctx.db.batch`: the writes of one tool call, committed together or not at all. */
+  batch(spec: DbBatchSpec): Promise<DbBatchResult>
 }
 
 export type ProfileReader = Pick<ProfileDb, "findMany">
@@ -257,19 +260,43 @@ async function writeLegacy(db: ProfileDb, ref: VariantRef, profile: ProfileRow):
   }
 }
 
-/** Mirror a profile onto the old row of every variant linked to it. */
-async function mirrorProfile(db: ProfileDb, profileId: string): Promise<void> {
-  const profile = await findProfile(db, profileId)
-  if (!profile) return
-  for (const l of await all<LinkRow>(db, LINK_TABLE, { profile_id: profileId })) {
-    await writeLegacy(db, l, profile)
+/** The writes that mirror `profile` (its fields, stamped with `profileId`) onto each variant's old
+ *  row: an update of the row it has, an insert for one it lacks. Run in the tool's batch. */
+async function legacyMirrorOps(
+  db: ProfileReader,
+  refs: VariantRef[],
+  profile: object,
+  profileId: string | { $ref: string },
+): Promise<DbBatchOp[]> {
+  const data = { ...profileFields(profile), migrated_profile_id: profileId }
+  const ops: DbBatchOp[] = []
+  for (const ref of refs) {
+    const row = await findLegacy(db, ref)
+    ops.push(
+      row
+        ? { update: LEGACY_TABLE, id: row.id, data }
+        : { insert: LEGACY_TABLE, data: { product_source: ref.product_source, product_id: ref.product_id, ...data } },
+    )
   }
+  return ops
 }
 
-/** Remove a variant's old row: the previous release then reads it as having no profile. */
-async function dropLegacy(db: ProfileDb, ref: VariantRef): Promise<void> {
-  const row = await findLegacy(db, ref)
-  if (row) await db.delete(LEGACY_TABLE, row.id)
+/**
+ * Commit one tool call's writes (`build` reads, then lists them) in ONE batch: the profile, its
+ * links and their old-table mirror land together or not at all, with no transaction held across
+ * the run. When the previous release inserted a variant's old row between the read and the batch
+ * (a unique violation), the batch wrote nothing: `build` re-reads and it is tried once more.
+ */
+async function commitProfileWrites(
+  db: ProfileDb,
+  build: () => Promise<DbBatchOp[]>,
+): Promise<DbBatchResult> {
+  try {
+    return await db.batch({ ops: await build() })
+  } catch (err) {
+    if (!isUniqueViolation(err)) throw err
+    return db.batch({ ops: await build() })
+  }
 }
 
 /**
@@ -415,18 +442,26 @@ export async function upsertVariantProfile(
         `Variant ${refOf(input)} uses shipping profile ${link.profile_id}, shared with ${shared.length} other variant(s): ${shared.map(refOf).join(", ")}. This edit would change it for all of them: pass apply_to_shared: true to do that, or unlink this variant (product_profile_unlink) and give it a profile of its own.`,
       )
     }
-    await ctx.db.update(PROFILE_TABLE, link.profile_id, data)
-    await mirrorProfile(ctx.db, link.profile_id)
-    return { id: link.profile_id, shared_with: shared }
+    const profileId = link.profile_id
+    await commitProfileWrites(ctx.db, async () => {
+      const current = await findProfile(ctx.db, profileId)
+      const linked = await all<LinkRow>(ctx.db, LINK_TABLE, { profile_id: profileId })
+      return [
+        { update: PROFILE_TABLE, id: profileId, data },
+        ...(await legacyMirrorOps(ctx.db, linked, { ...(current ?? {}), ...data }, profileId)),
+      ]
+    })
+    return { id: profileId, shared_with: shared }
   }
-  const { id } = await ctx.db.insert(PROFILE_TABLE, data)
-  await ctx.db.insert(LINK_TABLE, {
-    product_source: input.product_source,
-    product_id: input.product_id,
-    profile_id: id,
-  })
-  await mirrorProfile(ctx.db, id)
-  return { id, shared_with: [] }
+  const committed = await commitProfileWrites(ctx.db, async () => [
+    { insert: PROFILE_TABLE, as: "profile", data },
+    {
+      insert: LINK_TABLE,
+      data: { product_source: input.product_source, product_id: input.product_id, profile_id: { $ref: "profile" } },
+    },
+    ...(await legacyMirrorOps(ctx.db, [input], data, { $ref: "profile" })),
+  ])
+  return { id: String(committed.rows.profile?.id), shared_with: [] }
 }
 
 // — link / unlink —
@@ -480,16 +515,19 @@ export async function linkVariant(ctx: ProfileCtx, input: LinkInput): Promise<Li
     if (input.confirm !== true) {
       return { ok: false, preview: true, ...base, differences, note: `${note} Call again with confirm: true to apply.` }
     }
-    await ctx.db.update(LINK_TABLE, link.id, { profile_id: input.profile_id })
-    await writeLegacy(ctx.db, input, profile)
+    await commitProfileWrites(ctx.db, async () => [
+      { update: LINK_TABLE, id: link.id, data: { profile_id: input.profile_id } },
+      ...(await legacyMirrorOps(ctx.db, [input], profile, input.profile_id)),
+    ])
     return { ok: true, preview: false, ...base, differences, note }
   }
-  await ctx.db.insert(LINK_TABLE, {
-    product_source: input.product_source,
-    product_id: input.product_id,
-    profile_id: input.profile_id,
-  })
-  await writeLegacy(ctx.db, input, profile)
+  await commitProfileWrites(ctx.db, async () => [
+    {
+      insert: LINK_TABLE,
+      data: { product_source: input.product_source, product_id: input.product_id, profile_id: input.profile_id },
+    },
+    ...(await legacyMirrorOps(ctx.db, [input], profile, input.profile_id)),
+  ])
   return { ok: true, preview: false, ...base, differences: [] }
 }
 
@@ -503,8 +541,10 @@ export async function unlinkVariant(
   await migrateLegacyProfiles(ctx)
   const link = await findLink(ctx.db, input)
   if (!link) throw new Error(`Variant ${refOf(input)} is not linked to any shipping profile.`)
-  await ctx.db.delete(LINK_TABLE, link.id)
-  await dropLegacy(ctx.db, input)
+  const legacy = await findLegacy(ctx.db, input)
+  await ctx.db.batch({
+    ops: [{ delete: LINK_TABLE, id: link.id }, ...(legacy ? [{ delete: LEGACY_TABLE, id: legacy.id }] : [])],
+  })
   const rest = await all<LinkRow>(ctx.db, LINK_TABLE, { profile_id: link.profile_id })
   return { ok: true, profile_id: link.profile_id, remaining_variants: rest.length }
 }
@@ -606,16 +646,29 @@ export async function mergeProfiles(ctx: ProfileCtx, input: MergeInput): Promise
       `The profiles differ on ${differences.map((d) => d.field).join(", ")}. Pass fields_from (the profile whose fields the merged profile keeps) to merge them anyway.`,
     )
   }
-  if (input.fields_from !== undefined && input.fields_from !== input.target_profile_id) {
-    const winner = rows.find((r) => String(r.id) === input.fields_from)!
-    await ctx.db.update(PROFILE_TABLE, input.target_profile_id, {
-      ...profileFields(winner),
-      ...(winner.label != null ? { label: winner.label } : {}),
-    })
-  }
-  for (const l of movingLinks) await ctx.db.update(LINK_TABLE, l.id, { profile_id: input.target_profile_id })
-  for (const id of sources) await ctx.db.delete(PROFILE_TABLE, id)
-  await mirrorProfile(ctx.db, input.target_profile_id)
+  const winner =
+    input.fields_from !== undefined && input.fields_from !== input.target_profile_id
+      ? rows.find((r) => String(r.id) === input.fields_from)!
+      : null
+  const targetData = winner
+    ? { ...profileFields(winner), ...(winner.label != null ? { label: winner.label } : {}) }
+    : null
+  // The target's new fields, the moved links, the deleted sources and every mirrored old row of
+  // the merged profile commit together: a merge never leaves variants half moved.
+  await commitProfileWrites(ctx.db, async () => {
+    const targetLinks = await all<LinkRow>(ctx.db, LINK_TABLE, { profile_id: input.target_profile_id })
+    return [
+      ...(targetData ? [{ update: PROFILE_TABLE, id: input.target_profile_id, data: targetData }] : []),
+      ...movingLinks.map((l) => ({ update: LINK_TABLE, id: l.id, data: { profile_id: input.target_profile_id } })),
+      ...sources.map((id) => ({ delete: PROFILE_TABLE, id })),
+      ...(await legacyMirrorOps(
+        ctx.db,
+        [...targetLinks, ...movingLinks],
+        { ...target, ...(targetData ?? {}) },
+        input.target_profile_id,
+      )),
+    ]
+  })
   return result
 }
 

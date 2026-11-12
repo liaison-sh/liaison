@@ -18,6 +18,11 @@
 // (atomic-egress.guard.test.ts pins it under a frozen baseline): an app whose
 // job is split removes its row.
 //
+// A sandboxed TOOL declared `atomic: true` gets the same refusal, with no
+// allowlist: a tool that needs several writes to land together uses one
+// `ctx.db.batch` call and does its outside calls before or after it. No
+// bundled app declares an atomic tool (atomic-egress.guard.test.ts).
+//
 // Core apps are not concerned: their jobs declare no `atomic`.
 import allowlist from "./contract/atomic-egress.allowlist.json"
 
@@ -138,11 +143,11 @@ export function atomicEgressAllowed(app: string, job: string): boolean {
   return ALLOWED.has(`${app}\u0000${job}`)
 }
 
-function refused(method: string, app: string, job: string): Error {
+function refused(method: string, app: string, job: string, kind = "job"): Error {
   const err = new Error(
-    `ctx.${method} is refused in the atomic job "${app}:${job}": an atomic run holds one ` +
+    `ctx.${method} is refused in the atomic ${kind} "${app}:${job}": an atomic run holds one ` +
       "database transaction for its whole run, so it may not call outside. Drop `atomic`, or " +
-      "split the job into steps (read, call, then write in one bridge call).",
+      `split the ${kind} into steps (read, call, then write in one bridge call).`,
   ) as Error & { status: number; code: string }
   err.status = 409
   err.code = "atomic_run_egress_refused"
@@ -159,10 +164,31 @@ export function guardAtomicJobEgress(
   job: string,
 ): void {
   if (atomicEgressAllowed(app, job)) return
-  for (const name of Object.keys(bridge)) {
-    if (typeof bridge[name] !== "function" || isAtomicLocalMethod(name)) continue
-    bridge[name] = async () => {
-      throw refused(name, app, job)
+  refuseEgress(bridge, app, job, "job")
+}
+
+/**
+ * Refuse every non-local method of an atomic TOOL's bridge (mutated in place).
+ * No allowlist: no tool may call outside while it holds its run's transaction.
+ */
+export function guardAtomicToolEgress(
+  bridge: Record<string, unknown>,
+  app: string,
+  tool: string,
+): void {
+  refuseEgress(bridge, app, tool, "tool")
+}
+
+function refuseEgress(
+  bridge: Record<string, unknown>,
+  app: string,
+  name: string,
+  kind: "job" | "tool",
+): void {
+  for (const method of Object.keys(bridge)) {
+    if (typeof bridge[method] !== "function" || isAtomicLocalMethod(method)) continue
+    bridge[method] = async () => {
+      throw refused(method, app, name, kind)
     }
   }
 }

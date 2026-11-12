@@ -4,9 +4,10 @@
 
 import { type Counterparty, type DraftLine, type DraftLineInput, storedTaxCountry } from "../issue"
 import { ISSUED_INVOICE_STATUSES } from "./credit-coverage"
-import { creditNoteCreateAndIssue } from "./credit-notes"
+import { prepareCreditNoteCreateAndIssue } from "./credit-notes"
 import { findDocumentSummary, findIssuerProfile, loadDraftLines } from "./db-helpers"
-import { invoiceCreateAndIssue } from "./invoice-issue"
+import { issueTogetherWithFxRate } from "./fx-issue"
+import { prepareInvoiceCreateAndIssue } from "./invoice-issue"
 import { normaliseDraftLines } from "./lines"
 import type { Regime } from "../einvoicing/classify"
 import { checkEinvoiceGate, counterpartyEinvoiceFields } from "../einvoicing/issue-gate"
@@ -31,11 +32,15 @@ import {
 // gated for the system/webhook caller that reaches it — see
 // `handlers/shopify-order-updated.ts`), so the KERNEL parks the pending
 // approval and calls this handler only once a human approves (`ctx.approval`
-// populated). At that point it reuses the SAME issuance paths every other
-// credit note / invoice goes through — `creditNoteCreateAndIssue` and
-// `invoiceCreateAndIssue` — passing them THIS call's own `ctx`, so their
+// populated). At that point it reuses the SAME checks every other credit note /
+// invoice goes through — `prepareCreditNoteCreateAndIssue` and
+// `prepareInvoiceCreateAndIssue` — passing them THIS call's own `ctx`, so their
 // internal `!ctx.approval` threshold-gate checks see the outer approval and
-// skip straight to issuing (no nested approval, no new issuance logic).
+// skip straight to issuing (no nested approval, no new issuance logic). Both
+// documents are then issued in ONE commit (`issueTogether`): either the credit
+// note and its replacement both exist and are numbered, or neither does. No
+// transaction is held across the run: everything is read, checked and fetched
+// first, the two documents land in one `ctx.db.batch`, the PDFs render after.
 export interface OrderReissueApplyInput {
   /** The invoice a downstream Shopify order edit diverged from. */
   original_document_id: string
@@ -256,18 +261,17 @@ export async function orderReissueApply(
       : null
 
   // Mirror the original's FULL line set, negated, so the credit note fully
-  // reverses it. This is what `assertNoLiveInvoiceForOrder` (below, inside
-  // invoiceCreateAndIssue) requires before it will let a replacement invoice
-  // link the SAME shopify_order_id: "once its issued credit notes cover the
-  // full total, the order is free for a replacement invoice" — this tool IS
-  // that documented modify flow, run as one atomic step.
+  // reverses it: "once its issued credit notes cover the full total, the order
+  // is free for a replacement invoice" (`assertNoLiveInvoiceForOrder`). This
+  // tool IS that documented modify flow, and the two documents commit
+  // together, so the replacement's check skips the original it reverses.
   const creditItems: DraftLineInput[] = originalLines.map((l) => ({
     ...l,
     unit_price_minor: -l.unit_price_minor,
     discount_minor: l.discount_minor != null ? -l.discount_minor : undefined,
   }))
 
-  const creditResult = await creditNoteCreateAndIssue(ctx, {
+  const credit = await prepareCreditNoteCreateAndIssue(ctx, {
     issuer_profile_id: original.issuer_profile_id,
     counterparty,
     currency,
@@ -276,70 +280,62 @@ export async function orderReissueApply(
     reason:
       input.reason ??
       "Order edited after invoice issued: reissuing with the updated items/amounts",
-    // Explicit notes win on both documents; otherwise creditNoteCreateAndIssue inherits the
-    // original invoice's own notes (it reads them from original_document_id itself).
+    // Explicit notes win on both documents; otherwise the credit note inherits the original
+    // invoice's own notes (it reads them from original_document_id itself).
     notes: notes.value,
   })
-  if (creditResult.status !== "completed") {
-    // `ctx.approval` is populated on this post-approval re-entry, so
-    // creditNoteCreateAndIssue's own `!ctx.approval` threshold gate cannot
-    // fire (see its definition above) — this branch is only a real DB/typed
-    // error, propagated as-is with nothing yet persisted for the invoice half.
-    return creditResult
-  }
+  // `ctx.approval` is populated on this post-approval re-entry, so the credit note's own
+  // `!ctx.approval` threshold gate cannot fire: this branch is a typed refusal, nothing written.
+  if (!credit.ok) return credit.result
 
-  const invoiceResult = await invoiceCreateAndIssue(ctx, {
-    issuer_profile_id: original.issuer_profile_id,
-    counterparty,
-    currency,
-    shopify_order_id: input.shopify_order_id,
-    shopify_order_number: input.shopify_order_number ?? original.shopify_order_number,
-    // Carry the PO number forward to the replacement invoice, same as the order number above —
-    // the reissue reflects the same customer order, so it keeps the same reference.
-    po_number: original.po_number,
-    // Same rule as po_number: carried onto the replacement unless the caller said otherwise.
-    notes: notes.value === undefined ? original.notes : notes.value,
-    // The replacement bills the same operation as the original: its stated category carries.
-    operation_category: statedCategory,
-    items: input.items,
-  })
-  if (invoiceResult.status !== "completed") {
-    // The credit note above already ran inside THIS call's ambient
-    // transaction (manifest `atomic: true` on order_reissue_apply — see
-    // execute-tool.ts's whole-run ambient-transaction branch). A plain
-    // `return` here would still COMMIT that credit note despite the overall
-    // failure (atomic rollback triggers only on a THROWN error, never on an
-    // error-status return), leaving the order half-reissued: credited but
-    // with no replacement. Throwing aborts the whole transaction so NEITHER
-    // document persists.
-    const detail =
-      invoiceResult.status === "error"
-        ? `${invoiceResult.error.code}: ${invoiceResult.error.message}`
-        : "unexpectedly parked a second approval"
-    throw new Error(
-      `order_reissue_apply: replacement invoice failed after crediting ${
-        original.number ?? original.id
-      } (credit note ${creditResult.number}): ${detail}`,
-    )
-  }
-
-  // Link the replacement to the credited original the same way a credit note
-  // already links to the document it reverses.
-  const replacementDoc = await findDocumentSummary(ctx.db, invoiceResult.document_id)
-  await ctx.db.update("documents", invoiceResult.document_id, {
-    external_refs: {
-      ...(replacementDoc?.external_refs ?? {}),
-      original_document_id: original.id,
-      original_document_number: original.number,
-      // Belt and suspenders alongside the po_number passed into invoiceCreateAndIssue
-      // above: this explicit copy is what a customer service dispute would actually read,
-      // so it is asserted here rather than assumed to have survived the call above.
-      ...(original.po_number ? { po_number: original.po_number } : {}),
+  const invoice = await prepareInvoiceCreateAndIssue(
+    ctx,
+    {
+      issuer_profile_id: original.issuer_profile_id,
+      counterparty,
+      currency,
+      shopify_order_id: input.shopify_order_id,
+      shopify_order_number: input.shopify_order_number ?? original.shopify_order_number,
+      // Carry the PO number forward to the replacement invoice, same as the order number above —
+      // the reissue reflects the same customer order, so it keeps the same reference.
+      po_number: original.po_number,
+      // Same rule as po_number: carried onto the replacement unless the caller said otherwise.
+      notes: notes.value === undefined ? original.notes : notes.value,
+      // The replacement bills the same operation as the original: its stated category carries.
+      operation_category: statedCategory,
+      items: input.items,
     },
-    // Mirror onto the first-class column too, matching the pattern everywhere else in this
-    // file (the column is the canonical, searchable, rendered read path).
+    // The original is fully reversed by the credit note committed with the replacement.
+    { replacesInvoiceId: original.id },
+  )
+  if (!invoice.ok) {
+    if (invoice.result.status === "error") return invoice.result
+    // A second approval cannot be parked under the one a person already gave for both.
+    return {
+      status: "error",
+      error: {
+        code: "reissue_needs_second_approval",
+        message: `order_reissue_apply: the replacement invoice for ${original.number ?? original.id} asked for an approval of its own; nothing was issued.`,
+      },
+    }
+  }
+  // Link the replacement to the credited original the same way a credit note links to the
+  // document it reverses, written with the replacement itself.
+  invoice.issueInput.draft.external_refs = {
+    ...invoice.issueInput.draft.external_refs,
+    original_document_id: original.id,
+    original_document_number: original.number,
     ...(original.po_number ? { po_number: original.po_number } : {}),
-  })
+  }
+
+  const issued = await issueTogetherWithFxRate(ctx, [
+    ["credit", credit.credit.issueInput],
+    ["replacement", invoice.issueInput],
+  ] as const)
+  if (!issued.ok) return issued.error
+  const creditResult = issued.results.credit
+  const invoiceResult = issued.results.replacement
+  await credit.credit.after(creditResult)
 
   return {
     status: "completed",

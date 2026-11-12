@@ -9,6 +9,7 @@ import {
   type DraftLine,
   type DraftLineInput,
   type IssueInput,
+  type IssueResult,
   counterpartyCompletenessError,
   taxCountryOf,
 } from "../issue"
@@ -421,13 +422,52 @@ export async function creditNoteCreateAndIssuePreflight(
   return toPreflightResult(pre.ok ? { ok: true } : pre)
 }
 
+type CreditNoteResult = MutationResult<{
+  document_id: string
+  number: string
+  einvoicing_warning?: EinvoicingWarning
+}>
+
+/** A credit note ready to issue: its issuance input, and what runs once it is issued. */
+export interface PreparedCreditNote {
+  issueInput: IssueInput
+  after(result: IssueResult): Promise<void>
+}
+
 export async function creditNoteCreateAndIssue(
   ctx: MutationsCtx,
   rawInputIn: CreditNoteCreateAndIssueInput,
   opts: CreditNoteIssueOptions = {},
-): Promise<MutationResult<{ document_id: string; number: string; einvoicing_warning?: EinvoicingWarning }>> {
+): Promise<CreditNoteResult> {
+  const prepared = await prepareCreditNoteCreateAndIssue(ctx, rawInputIn, opts)
+  if (!prepared.ok) return prepared.result
+  const issued = await issueWithFxRate(ctx, prepared.credit.issueInput)
+  if (!issued.ok) return issued.error
+  const result = issued.result
+  await prepared.credit.after(result)
+  return {
+    status: "completed",
+    document_id: result.document_id,
+    number: result.number,
+    ...(result.einvoicing_warning ? { einvoicing_warning: result.einvoicing_warning } : {}),
+  }
+}
+
+/**
+ * Everything `credit_note_create_and_issue` does before issuing (the checks, the approval gate,
+ * the issuance input) and after it (the original's audit event), with nothing written: the caller
+ * issues it, alone or in one commit with another document (order_reissue_apply).
+ */
+export async function prepareCreditNoteCreateAndIssue(
+  ctx: MutationsCtx,
+  rawInputIn: CreditNoteCreateAndIssueInput,
+  opts: CreditNoteIssueOptions = {},
+): Promise<
+  | { ok: true; credit: PreparedCreditNote }
+  | { ok: false; result: Exclude<CreditNoteResult, { status: "completed" }> }
+> {
   const pre = await preflightCreditNoteCreateAndIssueParams(ctx, rawInputIn, opts)
-  if (!pre.ok) return pre.error
+  if (!pre.ok) return { ok: false, result: pre.error }
   const { rawInput, input, notes, issuer, currency, total, absTotal, when } = pre.prepared
   const originalNumber = pre.prepared.original.number
   const originalIssuedAt = pre.prepared.original.issuedAt
@@ -470,7 +510,7 @@ export async function creditNoteCreateAndIssue(
       auto_approvable: true,
     })
     if (!approval.auto_approved) {
-      return { status: "pending_approval", approval_id: approval.approval_id }
+      return { ok: false, result: { status: "pending_approval", approval_id: approval.approval_id } }
     }
   }
 
@@ -523,37 +563,26 @@ export async function creditNoteCreateAndIssue(
     ...(opts.external_ref ? { external_ref: opts.external_ref } : {}),
     commit_with: original ? [await creditedOnOriginal(ctx, original)] : [],
   }
-  const issued = await issueWithFxRate(ctx, issueInput)
-  if (!issued.ok) return issued.error
-  const result = issued.result
-
-  if (originalDocumentUuid) {
-    if (original) {
-      // Kernel audit trail — mirrors the credit_note_issued lifecycle_log entry committed with the note.
-      await ctx.emit({
-        entity: "document",
-        action: "credited",
-        entityId: originalDocumentUuid,
-        data: {
-          document_id: originalDocumentUuid,
-          type: original.type,
-          number: original.number,
-          status: original.status,
-          currency: original.currency,
-          grand_total_minor: original.grand_total_minor.toString(),
-          credit_note_id: result.document_id,
-          original_document_id: originalDocumentUuid,
-        },
-      })
-    }
+  const after = async (result: IssueResult): Promise<void> => {
+    if (!original || !originalDocumentUuid) return
+    // Kernel audit trail — mirrors the credit_note_issued lifecycle_log entry committed with the note.
+    await ctx.emit({
+      entity: "document",
+      action: "credited",
+      entityId: originalDocumentUuid,
+      data: {
+        document_id: originalDocumentUuid,
+        type: original.type,
+        number: original.number,
+        status: original.status,
+        currency: original.currency,
+        grand_total_minor: original.grand_total_minor.toString(),
+        credit_note_id: result.document_id,
+        original_document_id: originalDocumentUuid,
+      },
+    })
   }
-
-  return {
-    status: "completed",
-    document_id: result.document_id,
-    number: result.number,
-    ...(result.einvoicing_warning ? { einvoicing_warning: result.einvoicing_warning } : {}),
-  }
+  return { ok: true, credit: { issueInput, after } }
 }
 
 /**
@@ -826,14 +855,15 @@ export async function creditNoteIssue(
  *  note it names (`$ref` / `$seq`: the note's id and number, known only inside that commit). */
 async function creditedOnOriginal(
   ctx: MutationsCtx,
-  original: { id: string; lifecycle_log: Array<Record<string, unknown>> },
-): Promise<{ update: string; id: string; data: Record<string, unknown> }> {
+  original: { id: string },
+): Promise<{ update: string; id: string; append: Record<string, unknown[]> }> {
+  // Appended to the log as it is at commit: no transaction is held across the run, so an entry
+  // another writer added since this run read the original is kept.
   return {
     update: "documents",
     id: original.id,
-    data: {
+    append: {
       lifecycle_log: [
-        ...original.lifecycle_log,
         {
           event: "credit_note_issued",
           actor: await ctx.getUserId(),

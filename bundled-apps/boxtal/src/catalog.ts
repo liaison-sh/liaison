@@ -6,6 +6,7 @@
 // edits are local config, not external side effects. These rows feed the
 // package resolver (Task 7) and customs assembly (Task 9).
 
+import type { DbBatchOp, DbBatchResult, DbBatchSpec } from "@liaison/app-sdk"
 import { codeSyncByProfile, type ProfileCodeSync } from "./product-attributes"
 import { listSharedProfiles, loadVariantProfiles, type SharedProfileView, upsertVariantProfile, type VariantProfile, type VariantRef } from "./profiles"
 
@@ -17,6 +18,8 @@ export interface CatalogDb {
   insert(entity: string, data: Record<string, unknown>): Promise<{ id: string }>
   update(entity: string, id: string, data: Record<string, unknown>): Promise<void>
   delete(entity: string, id: string): Promise<void>
+  /** `ctx.db.batch`: writes committed together or not at all. */
+  batch(spec: DbBatchSpec): Promise<DbBatchResult>
 }
 
 export interface CatalogCtx {
@@ -99,29 +102,30 @@ export async function packUpsert(
     content_category: input.content_category ?? null,
     carton_tare: input.carton_tare ?? null,
   }
-  let packId: string
+  // The pack and its whole component set land in one commit: a failed save never leaves a pack
+  // with half its bill of materials (no transaction is held across the run).
+  const components = input.components ?? []
+  const ops: DbBatchOp[] = []
+  const packRef = input.id ?? { $ref: "pack" }
   if (input.id) {
-    await ctx.db.update("pack", input.id, packData)
-    packId = input.id
+    ops.push({ update: "pack", id: input.id, data: packData })
     // Replace the component set.
     const old = (await ctx.db.findMany("pack_component", {
-      where: { pack_id: packId },
+      where: { pack_id: input.id },
       limit: MAX,
     })) as Array<{ id: string }>
-    for (const c of old) await ctx.db.delete("pack_component", c.id)
+    for (const c of old) ops.push({ delete: "pack_component", id: c.id })
   } else {
-    const inserted = await ctx.db.insert("pack", packData)
-    packId = inserted.id
+    ops.push({ insert: "pack", as: "pack", data: packData })
   }
-  const components = input.components ?? []
   for (const c of components) {
-    await ctx.db.insert("pack_component", {
-      pack_id: packId,
-      product_source: c.product_source,
-      product_id: c.product_id,
-      quantity: c.quantity,
+    ops.push({
+      insert: "pack_component",
+      data: { pack_id: packRef, product_source: c.product_source, product_id: c.product_id, quantity: c.quantity },
     })
   }
+  const committed = await ctx.db.batch({ ops })
+  const packId = input.id ?? String(committed.rows.pack?.id)
   // AFFORDANCE HINT (not a fallback): echo the component count and, when the BOM is EMPTY, a warning so
   // the model knows a bundle/kit pack was created WITHOUT its bill of materials and is incomplete. A weak
   // model otherwise silently omits `components` (the BOM is the last, easily-skipped param) and reports
@@ -143,8 +147,9 @@ export async function packDelete(ctx: CatalogCtx, input: { id: string }): Promis
     where: { pack_id: input.id },
     limit: MAX,
   })) as Array<{ id: string }>
-  for (const c of comps) await ctx.db.delete("pack_component", c.id)
-  await ctx.db.delete("pack", input.id)
+  await ctx.db.batch({
+    ops: [...comps.map((c) => ({ delete: "pack_component", id: c.id })), { delete: "pack", id: input.id }],
+  })
   return { ok: true }
 }
 

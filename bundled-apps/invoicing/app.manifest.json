@@ -224,7 +224,7 @@
       }
     ]
   },
-  "version": "0.21.1",
+  "version": "0.21.2",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -4041,7 +4041,6 @@
       "timeoutMs": 60000,
       "gated": true,
       "approvalImpact": "external",
-      "atomic": true,
       "trustBoundary": "user",
       "params": {
         "type": "object",
@@ -4084,7 +4083,6 @@
       "description": "Create a credit note, a legal document, and issue it in one call. A credit note is a first-class legal document — its own gap-free CN-{YYYY}- number series, issued straight to 'issued' status (never a payable document — no due date, no mark_paid). Lines carry NEGATIVE unit_price_minor mirroring what is reversed on the original invoice, and the total must come out negative. To reverse/correct an ISSUED invoice, pass `original_document_id` set to that invoice's id — it MUST reference an existing invoice (validated before issuance) and, on success, the original invoice's lifecycle_log records a `credit_note_issued` entry naming this credit note. Handler-conditional gating against issuer.invoice_approval_threshold_minor (unset means always approve, threshold 0; a credit note with no original_document_id is ALWAYS approved), compared against the ABSOLUTE VALUE of the credit note's grand total (a -6,744€ correction gates exactly like a +6,744€ invoice would). For a legally clean reversal, ALSO call documents_record_refund on the original invoice to record the payment-side event — the credit note is the legal document, record_refund is the payment status change; do BOTH, never just one. ALWAYS pass original_document_id when you reverse an invoice: without it the over_credit cap (a credit note can never push an invoice's cumulative credited total past its own grand total) cannot apply. A Shopify refund or cancellation already issues its credit note automatically, and a cancellation of a partly credited invoice reverses only the REMAINDER, so check documents_for_orders before issuing one by hand rather than crediting twice. A hand built partial credit note carries its OWN tax: mirror the original's per line rates, because only the automatic refund path allocates the VAT for you. On a split order, credit the document that actually carries the refunded line, not whichever invoice you saw first.",
       "searchKeywords": ["avoir", "crédit", "annulation", "remboursement", "rectificative", "émettre", "émission", "nouveau"],
       "requiredScopes": ["invoicing:documents:write"],
-      "atomic": true,
       "handler": "creditNoteCreateAndIssueHandler",
       "timeoutMs": 60000,
       "preflight": "creditNoteCreateAndIssuePreflightHandler",
@@ -4340,7 +4338,6 @@
       "description": "Issue a credit note from a draft (drafts_create with type='credit_note'). Handler-conditional gating against issuer.invoice_approval_threshold_minor (unset means always approve, threshold 0; a credit note with no original_document_id is ALWAYS approved), compared against the ABSOLUTE VALUE of the credit note's grand total. When the draft's external_refs.original_document_id references an invoice, that invoice's lifecycle_log gets a `credit_note_issued` entry on success.",
       "searchKeywords": ["avoir", "émettre", "valider"],
       "requiredScopes": ["invoicing:documents:write"],
-      "atomic": true,
       "handler": "creditNoteIssueHandler",
       "timeoutMs": 60000,
       "preflight": "creditNoteIssuePreflightHandler",
@@ -4367,7 +4364,6 @@
     "order_reissue_apply": {
       "description": "Reissue an invoice after a Shopify order edit changed the LINE SET or the AMOUNTS (an order edit that only touches address, notes, tags, or fulfilment does NOT call this). ALWAYS GATED, one human approval covers BOTH documents together: a credit note that fully reverses the original invoice, and a replacement invoice carrying the order's current items and amounts, issued only once the human signs off. Do NOT call credit_note_create_and_issue and invoice_create_and_issue separately for an order-edit reissue: this tool exists precisely so the operator sees and approves both documents as ONE decision. PAYMENT: any payment already recorded stays on the ORIGINAL invoice; the credit note reverses that invoice as a legal document, and the REPLACEMENT invoice is issued UNPAID (nothing is auto-transferred or auto-marked paid, so re-applying the payment or refunding the difference is a separate, deliberate step). This is invoked by the invoicing app's own onShopifyOrderUpdated handler when the order's billing signature diverges from what was last invoiced; it is not meant to be called ad hoc with an unrelated items list. Do NOT documents_mark_paid the replacement to simulate transferring the payment: re-applying it or refunding the difference is a deliberate, separate decision. The original's po_number is carried onto BOTH the credit note and the replacement.",
       "requiredScopes": ["invoicing:documents:write"],
-      "atomic": true,
       "handler": "orderReissueApplyHandler",
       "timeoutMs": 60000,
       "preflight": "orderReissueApplyPreflightHandler",

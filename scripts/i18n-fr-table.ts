@@ -6,6 +6,10 @@
  * genuine French copy (not English placeholders). `{{params}}` and
  * code-ish tokens (hex colours, dates, header names) are preserved verbatim
  * by the generator and intentionally absent here.
+ *
+ * Add no new entries here: new French goes in a file of its own,
+ * `scripts/i18n-fr/<feature>.json` (format in scripts/i18n-gen-fr.ts), so two
+ * pull requests never add lines next to each other in this table.
  */
 export const FR: Record<string, string> = {
   "Send a new code in {{seconds}} s": "Envoyer un nouveau code dans {{seconds}} s",

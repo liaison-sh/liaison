@@ -24,6 +24,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import { dirname, join, posix, resolve } from "node:path"
 import { Marked, type Token, type Tokens } from "marked"
 import { LANDING, NAV, type NavPage, type NavSection } from "../../docs/nav"
+import { generateAll, generatedPageOverrides } from "./gen-reference"
 import { escapeAttr, escapeHtml, renderLayout, type TemplatePage } from "./template"
 
 export const SITE = "https://liaison.sh"
@@ -42,6 +43,11 @@ export interface BuildOptions {
   allowMissing?: boolean
   /** Smoke renders only: print broken links instead of failing. */
   warnBroken?: boolean
+  /**
+   * Page contents by file (relative to the docs dir, e.g. `reference/env.md`) read in place of
+   * the file on disk: the generated reference pages, rendered fresh from the source.
+   */
+  pageOverrides?: ReadonlyMap<string, string>
 }
 
 export interface BrokenLink {
@@ -212,7 +218,8 @@ export async function buildDocs(opts: BuildOptions): Promise<{ pages: number }> 
     seenUrls.add(nav.url)
     const file = `${nav.id}.md`
     const path = join(docsDir, file)
-    if (!existsSync(path)) {
+    const override = opts.pageOverrides?.get(file)
+    if (override === undefined && !existsSync(path)) {
       if (!opts.allowMissing) {
         missing.push(`docs/${file}`)
         continue
@@ -220,7 +227,7 @@ export async function buildDocs(opts: BuildOptions): Promise<{ pages: number }> 
       pages.push(stubPage(nav, section, file))
       continue
     }
-    const source = readFileSync(path, "utf8")
+    const source = override ?? readFileSync(path, "utf8")
     let parsed: ReturnType<typeof parseFrontmatter>
     try {
       parsed = parseFrontmatter(source)
@@ -508,6 +515,9 @@ if (import.meta.main) {
       nav: { landing: LANDING, sections: NAV },
       allowMissing: args.includes("--allow-missing"),
       warnBroken: args.includes("--warn-broken"),
+      // The site always carries the reference pages as the source is now, whatever the
+      // committed copies say (they are refreshed apart, docs/README.md).
+      pageOverrides: generatedPageOverrides(generateAll(repoRoot)),
     })
     console.log(`docs: ${pages} pages written to ${out}`)
   } catch (err) {

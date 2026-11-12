@@ -9,3 +9,8 @@
 # The updater gate fixtures are byte exact: their sha256 and signature files
 # pin the bytes as committed, so no line ending rule may touch them.
 apps/desktop/ci/fixtures/** -text
+# Docs sources sidecars are lists of "claim -> path" lines whose order and
+# duplicates carry no meaning: a merge keeps both sides' lines instead of
+# stopping on two pull requests that each appended a claim (git's built-in
+# union driver, for local merges and rebases of main into a branch).
+docs/.sources/**/*.txt merge=union

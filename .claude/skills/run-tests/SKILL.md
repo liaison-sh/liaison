@@ -282,8 +282,9 @@ the headroom the budget just handed to the suite.
 ## Test data: the seed engine
 
 Data comes from `apps/api/src/seed/` (`docs/testing.md`, Test data), never a
-raw `INSERT INTO` in a test (`bun run check:raw-insert` ratchets the count;
-`--write` lowers the baseline after a removal).
+raw `INSERT INTO` in a test (`bun run check:raw-insert` ratchets the list of
+files that still have one, `scripts/raw-insert-baseline.json`; after a removal,
+`--write` drops their lines).
 
 - Unit and integration: `createTestOrg`, then `import * as minimal from
   "~/seed/tiers/minimal"` (`person`, `session`, `thread`, `contact`,

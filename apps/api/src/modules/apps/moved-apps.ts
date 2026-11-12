@@ -232,9 +232,7 @@ export async function adoptMovedApps(db: PrivilegedDb): Promise<AdoptionResult[]
   for (const app of movedApps()) {
     if (app.steps.length === 0) continue
     const active = extractRows(
-      await db.execute(
-        drizzleSql`SELECT 1 FROM ${K}.apps_active_version WHERE name = ${app.name}`,
-      ),
+      await db.execute(drizzleSql`SELECT 1 FROM ${K}.apps_active_version WHERE name = ${app.name}`),
     )
     if (active.length === 0) continue
     const done = await completedSteps(db, app.name)

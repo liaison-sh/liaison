@@ -1602,3 +1602,35 @@ export function resetAppRegistries(): void {
   // next org would register the previous test's apps.
   bumpCatalogGeneration()
 }
+
+/**
+ * What an app declares in its manifest's `knowledgeItems`: the export Knowledge's
+ * federated search wakes, the export that resolves one item by reference (a
+ * source link), the scope a person must hold for Knowledge to reach the app's
+ * items for them, and whether federated search includes the app by default.
+ */
+export interface KnowledgeItemsDecl {
+  search?: string
+  resolve?: string
+  readScope?: string
+  searchByDefault: boolean
+  timeoutMs?: number
+}
+
+/**
+ * The `knowledgeItems` an app declares, keyed by `[orgId, appName]`, with the
+ * function that wakes one of its exports in the app's sandbox (built at
+ * registration, like the external search handler). `userId` is the person
+ * Knowledge acts for: the run reaches the provider through their account.
+ */
+export const knowledgeItemsRegistry = createTypedRegistry<
+  [orgId: string, appName: string],
+  {
+    decl: KnowledgeItemsDecl
+    dispatch: (
+      entry: "search" | "resolve",
+      input: Record<string, unknown>,
+      tenant: { orgId: string; userId: string },
+    ) => Promise<unknown>
+  }
+>()

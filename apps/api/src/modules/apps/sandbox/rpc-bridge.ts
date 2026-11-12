@@ -425,7 +425,16 @@ const SESSION_TXLESS_METHOD_PREFIXES = [
 // (domain-allowlist + pinned-host fetch, zero txDb use) — wrapping it would
 // pin a connection for every outbound HTTP roundtrip. connections_* are NOT
 // tx-less: they read connection rows via txDb.
-const SESSION_TXLESS_METHOD_NAMES = new Set(["fetch"])
+// The Knowledge reads and link checks that reach a remote source wake that
+// source's app (knowledgeItems, apps/knowledge/source-registry.ts): they take
+// short transactions of their own (`withShortTx`) around their DB steps.
+const SESSION_TXLESS_METHOD_NAMES = new Set([
+  "fetch",
+  "knowledge_search",
+  "knowledge_get",
+  "knowledge_verify",
+  "knowledge_source_link_create",
+])
 
 function isTxlessSessionMethod(name: string): boolean {
   return (

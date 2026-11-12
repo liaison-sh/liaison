@@ -1,0 +1,50 @@
+{
+  "entry": "knowledge-items:resolve",
+  "params": {
+    "ref": "note0001",
+    "content": true
+  },
+  "recordedFrom": "a contract org's Drive accounts against a fake Google Drive v3 reached through the live bridge transport, scripts/contract/record-google-drive.ts",
+  "calls": [
+    {
+      "method": "accounts_list",
+      "args": [
+        "drive",
+        null
+      ],
+      "reply": "[{\"id\":\"00000000-0000-4000-8000-00000000d001\",\"identifier\":\"ana@example.com\",\"ownerType\":\"user\",\"ownerId\":\"00000000-0000-4000-8000-00000000c0df\",\"displayName\":null,\"status\":\"active\",\"metadata\":{\"grantedOAuthScopes\":[\"https://www.googleapis.com/auth/drive.readonly\"]},\"createdAt\":\"2026-11-12T20:18:11.745Z\",\"updatedAt\":\"2026-11-12T20:18:11.745Z\",\"canManage\":true},{\"id\":\"00000000-0000-4000-8000-00000000d002\",\"identifier\":\"team@example.com\",\"ownerType\":\"org\",\"ownerId\":null,\"displayName\":null,\"status\":\"active\",\"metadata\":{},\"createdAt\":\"2026-11-12T20:18:11.761Z\",\"updatedAt\":\"2026-11-12T20:18:11.761Z\",\"canManage\":true}]"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://www.googleapis.com/drive/v3/files/note0001?fields=id%2Cname%2CmimeType%2CwebViewLink%2CmodifiedTime%2Ccapabilities%2CshortcutDetails%2CresourceKey%2Ctrashed%2CdriveId%2Cparents%2Csize&supportsAllDrives=true",
+        "{\"auth\":{\"connection\":\"drive\",\"account\":\"00000000-0000-4000-8000-00000000d001\",\"scheme\":\"bearer\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json;charset=utf-8\"},\"body\":\"{\\\"id\\\":\\\"note0001\\\",\\\"name\\\":\\\"notes.md\\\",\\\"mimeType\\\":\\\"text/markdown\\\",\\\"modifiedTime\\\":\\\"2026-11-01T09:00:00.000Z\\\",\\\"webViewLink\\\":\\\"https://drive.google.com/file/d/note0001/view\\\",\\\"capabilities\\\":{\\\"canDownload\\\":true}}\"}"
+    },
+    {
+      "method": "accounts_list",
+      "args": [
+        "drive",
+        null
+      ],
+      "reply": "[{\"id\":\"00000000-0000-4000-8000-00000000d001\",\"identifier\":\"ana@example.com\",\"ownerType\":\"user\",\"ownerId\":\"00000000-0000-4000-8000-00000000c0df\",\"displayName\":null,\"status\":\"active\",\"metadata\":{\"grantedOAuthScopes\":[\"https://www.googleapis.com/auth/drive.readonly\"]},\"createdAt\":\"2026-11-12T20:18:11.745Z\",\"updatedAt\":\"2026-11-12T20:18:11.745Z\",\"canManage\":true},{\"id\":\"00000000-0000-4000-8000-00000000d002\",\"identifier\":\"team@example.com\",\"ownerType\":\"org\",\"ownerId\":null,\"displayName\":null,\"status\":\"active\",\"metadata\":{},\"createdAt\":\"2026-11-12T20:18:11.761Z\",\"updatedAt\":\"2026-11-12T20:18:11.761Z\",\"canManage\":true}]"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://www.googleapis.com/drive/v3/files/note0001?fields=id%2Cname%2CmimeType%2CwebViewLink%2CmodifiedTime%2Ccapabilities%2CshortcutDetails%2CresourceKey%2Ctrashed%2CdriveId%2Cparents%2Csize&supportsAllDrives=true",
+        "{\"auth\":{\"connection\":\"drive\",\"account\":\"00000000-0000-4000-8000-00000000d001\",\"scheme\":\"bearer\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json;charset=utf-8\"},\"body\":\"{\\\"id\\\":\\\"note0001\\\",\\\"name\\\":\\\"notes.md\\\",\\\"mimeType\\\":\\\"text/markdown\\\",\\\"modifiedTime\\\":\\\"2026-11-01T09:00:00.000Z\\\",\\\"webViewLink\\\":\\\"https://drive.google.com/file/d/note0001/view\\\",\\\"capabilities\\\":{\\\"canDownload\\\":true}}\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://www.googleapis.com/drive/v3/files/note0001?alt=media&supportsAllDrives=true",
+        "{\"headers\":{},\"auth\":{\"connection\":\"drive\",\"account\":\"00000000-0000-4000-8000-00000000d001\",\"scheme\":\"bearer\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"text/markdown\"},\"body\":\"# Notes\\nShip on Friday.\"}"
+    }
+  ]
+}

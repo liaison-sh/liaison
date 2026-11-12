@@ -1,0 +1,26 @@
+{
+  "entry": "knowledge-items:search",
+  "params": {
+    "query": "Continuous Integration",
+    "limit": 5,
+    "cursor": null
+  },
+  "recordedFrom": "public gitlab.com projects (gitlab-examples, gitlab-org/cli) read with a recording token, record-gitlab.recorder.ts",
+  "calls": [
+    {
+      "method": "connections_getSettings",
+      "args": [
+        "gitlab"
+      ],
+      "reply": "{\"values\":{\"group\":\"gitlab-examples\"},\"missing\":[]}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://gitlab.com/api/v4/groups/gitlab-examples/search?scope=blobs&search=Continuous%20Integration&per_page=5",
+        "{\"method\":\"GET\",\"headers\":{\"accept\":\"application/json\"},\"auth\":{\"connection\":\"gitlab\",\"scheme\":\"bearer\",\"fields\":[\"token\"]}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\",\"link\":\"<https://gitlab.com/api/v4/groups/gitlab-examples/search?id=gitlab-examples&include_archived=false&page=2&per_page=5&scope=blobs&search=Continuous+Integration>; rel=\\\"next\\\", <https://gitlab.com/api/v4/groups/gitlab-examples/search?id=gitlab-examples&include_archived=false&page=1&per_page=5&scope=blobs&search=Continuous+Integration>; rel=\\\"first\\\", <https://gitlab.com/api/v4/groups/gitlab-examples/search?id=gitlab-examples&include_archived=false&page=50&per_page=5&scope=blobs&search=Continuous+Integration>; rel=\\\"last\\\"\",\"x-next-page\":\"2\"},\"body\":\"[{\\\"basename\\\":\\\"./README\\\",\\\"data\\\":\\\"# Continuous Fuzzing for Swift Example\\\\n\\\\n\\\",\\\"path\\\":\\\"README.md\\\",\\\"filename\\\":\\\"README.md\\\",\\\"id\\\":null,\\\"ref\\\":\\\"master\\\",\\\"startline\\\":1,\\\"project_id\\\":34230244},{\\\"basename\\\":\\\"./README\\\",\\\"data\\\":\\\"\\\\nThis is an example of how to integrate [libFuzzer](https://github.com/apple/swift/blob/master/docs/libFuzzerIntegration.rst)\\\\ntargets into GitLab CI/CD.\\\\n\\\",\\\"path\\\":\\\"README.md\\\",\\\"filename\\\":\\\"README.md\\\",\\\"id\\\":null,\\\"ref\\\":\\\"master\\\",\\\"startline\\\":2,\\\"project_id\\\":34230244},{\\\"basename\\\":\\\"./README\\\",\\\"data\\\":\\\"This tutorial focuses less on how to build libFuzzer targets and more on how to integrate the targets with GitLab.\\\\nA lot of great information is available at the [libFuzzer Tutorial](https://llvm.org/docs/LibFuzzer.html) and [Swift libFuzzer](https://github.com/apple/swift/blob/master/docs/libFuzzerIntegration.rst).\\\\n\\\\n\\\",\\\"path\\\":\\\"README.md\\\",\\\"filename\\\":\\\"README.md\\\",\\\"id\\\":null,\\\"ref\\\":\\\"master\\\",\\\"startline\\\":19,\\\"project_id\\\":34230244},{\\\"basename\\\":\\\"./README\\\",\\\"data\\\":\\\"Result:\\\\n* The libFuzzer targets will run continuously on the master branch .\\\\n* The libFuzzer targets will run regression tests on every pull-request (and every other branch)\\\\n\\\",\\\"path\\\":\\\"README.md\\\",\\\"filename\\\":\\\"README.md\\\",\\\"id\\\":null,\\\"ref\\\":\\\"master\\\",\\\"startline\\\":12,\\\"project_id\\\":34230244},{\\\"basename\\\":\\\"./README\\\",\\\"data\\\":\\\"\\\\n## Continuous Integration Builds\\\\n\\\\n\\\",\\\"path\\\":\\\"README.md\\\",\\\"filename\\\":\\\"README.md\\\",\\\"id\\\":null,\\\"ref\\\":\\\"master\\\",\\\"startline\\\":27,\\\"project_id\\\":26348471}]\"}"
+    }
+  ]
+}

@@ -63,6 +63,10 @@ In picked mode, a Drive search always lists the files you picked, whatever words
 
 The picker needs an API key of the Drive client's Google Cloud project with the Google Picker API on, and that project's number: the server settings `GOOGLE_PICKER_API_KEY` and `GOOGLE_CLOUD_PROJECT_NUMBER` (see [Environment variables](../reference/env.md)), or, for one organization, the app's config keys `pickerApiKey` and `pickerAppId` (`apps[].config` with `liaison config apply`, which win over the server settings). Without them the section says so instead of showing **Choose files**.
 
+## Link a Drive file in Knowledge
+
+Your agent can link one Drive file into Knowledge so it always shows the current version, instead of copying it. Knowledge search includes Drive only once an admin turns it on. See [Search and link files without syncing them](knowledge.md#search-and-link-files-without-syncing-them).
+
 ## What Liaison can and cannot change in Drive
 
 - It reads your existing files and never changes or deletes them.

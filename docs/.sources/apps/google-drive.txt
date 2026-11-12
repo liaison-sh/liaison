@@ -22,3 +22,4 @@ Disconnect deletes the content synced through the account -> bundled-apps/google
 Role member and admin scopes -> bundled-apps/google-drive/app.manifest.json:1
 google-drive:approve -> docs/reference/scopes.md:161
 search, read, import, upload, shared_drives, choose_shared_drives, drive_picker -> bundled-apps/google-drive/app.manifest.json:1
+Link a Drive file in Knowledge; Drive search off until enabled -> bundled-apps/google-drive/src/items.ts (resolveDriveItem, searchDriveKnowledge) ; bundled-apps/google-drive/app.manifest.json (knowledgeItems.searchByDefault)

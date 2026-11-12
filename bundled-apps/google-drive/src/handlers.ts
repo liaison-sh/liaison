@@ -4,6 +4,7 @@
 // approval summarizer, the page route, the knowledge sources, the disconnect
 // subscriber, provisioning, the export slot).
 import { onAccountDisconnected } from "./disconnect"
+import { resolveDriveItem, searchDriveKnowledge } from "./items"
 import { syncDriveFolder, syncPickedFiles } from "./knowledge"
 import { drivePicker, pickerRemove, pickerState, savePicks } from "./picker"
 import { provisionDrive } from "./provision"
@@ -29,7 +30,9 @@ export {
   pickerRemove,
   pickerState,
   provisionDrive,
+  resolveDriveItem,
   savePicks,
+  searchDriveKnowledge,
   summarizeChooseSharedDrives,
   syncDriveFolder,
   syncPickedFiles,

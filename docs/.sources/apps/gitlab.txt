@@ -39,3 +39,4 @@ gitlab_list_tags -> bundled-apps/gitlab/app.manifest.json:401
 gitlab_read_file -> bundled-apps/gitlab/app.manifest.json:423
 gitlab_list_tree -> bundled-apps/gitlab/app.manifest.json:467
 gitlab_search -> bundled-apps/gitlab/app.manifest.json:500
+GitLab files searchable and linkable in Knowledge, reference <project>:<branch>:<file path> -> bundled-apps/gitlab/src/items.ts (searchGitlabKnowledge, resolveGitlabItem)

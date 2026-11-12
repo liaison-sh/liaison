@@ -12,7 +12,9 @@
 //   - batches running at the same time never share a number and, with some of
 //     them failing, still leave no gap: the committed numbers are exactly 1..n;
 //   - `append` / `merge` add to json fields of the row as it is at commit, so a
-//     write made between the app's read and the batch is kept.
+//     write made between the app's read and the batch is kept;
+//   - named `sequences` number two rows of two series in one commit, and a
+//     failing op consumes neither number.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import type { RlsClient } from "~/db"
 import { sql } from "~/db/connection"
@@ -199,6 +201,66 @@ describe("ctx.db.batch", () => {
       `SELECT count(*)::int AS n FROM "${SCHEMA}".docs WHERE series = 'E'`,
     )
     expect(all[0]?.n).toBe(0)
+  })
+
+  it("named sequences number two series in one commit; a failing op consumes neither", async () => {
+    const twoSeries = (fail: boolean) =>
+      JSON.stringify({
+        sequences: {
+          credit: { key: `${APP}:G`, format: { prefix: "G-", pad: 3 } },
+          invoice: { key: `${APP}:H`, format: { prefix: "H-", pad: 3 } },
+        },
+        ops: [
+          {
+            insert: "docs",
+            as: "credit",
+            data: {
+              series: "G",
+              number: { $seq: "credit.formatted" },
+              number_int: { $seq: "credit.value" },
+            },
+          },
+          {
+            insert: "docs",
+            as: "invoice",
+            data: {
+              series: "H",
+              number: { $seq: "invoice.formatted" },
+              number_int: { $seq: "invoice.value" },
+            },
+          },
+          {
+            insert: "doc_lines",
+            data: fail
+              ? { doc_id: { $ref: "invoice" }, label: "x", undeclared_field: 1 }
+              : { doc_id: { $ref: "invoice" }, label: "x" },
+          },
+        ],
+      })
+    const first = JSON.parse(await bridge().db_batch(twoSeries(false))) as {
+      sequences: Record<string, { value: number; formatted: string }>
+      rows: Record<string, { number: string }>
+    }
+    expect(first.sequences).toEqual({
+      credit: { value: 1, formatted: "G-001" },
+      invoice: { value: 1, formatted: "H-001" },
+    })
+    expect([first.rows.credit?.number, first.rows.invoice?.number]).toEqual(["G-001", "H-001"])
+    await expect(bridge().db_batch(twoSeries(true))).rejects.toThrow()
+    const third = JSON.parse(await bridge().db_batch(twoSeries(false))) as {
+      sequences: Record<string, { value: number }>
+    }
+    expect([third.sequences.credit?.value, third.sequences.invoice?.value]).toEqual([2, 2])
+    expect(await numbers("G")).toEqual([1, 2])
+    expect(await numbers("H")).toEqual([1, 2])
+    await expect(
+      bridge().db_batch(
+        JSON.stringify({
+          sequences: { a: { key: `${APP}:I` } },
+          ops: [{ insert: "docs", data: { series: "I", number_int: { $seq: "b.value" } } }],
+        }),
+      ),
+    ).rejects.toThrow('names no sequence "b"')
   })
 
   it("append and merge keep what another writer added between the read and the batch", async () => {

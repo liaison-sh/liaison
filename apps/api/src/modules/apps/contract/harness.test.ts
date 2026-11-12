@@ -2,7 +2,8 @@
 //
 // The contract harness turns red on each mutation it exists for: a module
 // level cache that changes a result, an in-run 10 s sleep, a loop past its
-// budget, a bridge call nobody recorded; and stays green on a well-behaved
+// budget, a bridge call nobody recorded, a recorded run that ends in an error
+// without being marked a negative case; and stays green on a well-behaved
 // entry, on QuickJS and on the Workers-shaped executor (worker-core).
 import { afterAll, describe, expect, it } from "bun:test"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
@@ -86,11 +87,36 @@ describe("app contract harness on QuickJS (one reused isolate)", () => {
     expect(v.answersError).toMatchObject({ reasons: [], trivial: true })
     expect(v.pure?.trivial).toBeUndefined()
     expect(v.fetches?.trivial).toBeUndefined()
-    // With a recorded fixture the same rejection is a judged pass.
-    const withFixture = await verdicts(["needsId"], {
+  })
+
+  // A recorded run that ends in an error pinned a failure, not the entry's working path: red,
+  // unless the fixture marks it a deliberate negative case with its reason.
+  it("is red on a recorded replay that ends in an error, unless marked expectError with a reason", async () => {
+    const plain = await verdicts(["needsId", "answersError"], {
       "tool:needsId": { entry: "tool:needsId", calls: [] },
+      "tool:answersError": { entry: "tool:answersError", calls: [] },
     })
-    expect(withFixture.needsId?.trivial).toBeUndefined()
+    expect(plain.needsId).toMatchObject({ reasons: ["error-outcome"] })
+    expect(plain.needsId?.detail).toContain("id is required")
+    expect(plain.answersError).toMatchObject({ reasons: ["error-outcome"] })
+    expect(plain.needsId?.trivial).toBeUndefined()
+
+    const marked = await verdicts(["needsId", "pure", "answersError"], {
+      "tool:needsId": {
+        entry: "tool:needsId",
+        calls: [],
+        expectError: { reason: "the id is required: a call without one must be refused" },
+      },
+      // Marked, but the replay succeeds: the mark is stale.
+      "tool:pure": { entry: "tool:pure", calls: [], expectError: { reason: "stale" } },
+      // Marked without a reason.
+      "tool:answersError": { entry: "tool:answersError", calls: [], expectError: { reason: " " } },
+    })
+    expect(marked.needsId?.reasons).toEqual([])
+    expect(marked.pure).toMatchObject({ reasons: ["error-outcome"] })
+    expect(marked.pure?.detail).toContain("marked expectError but the replay succeeds")
+    expect(marked.answersError).toMatchObject({ reasons: ["error-outcome"] })
+    expect(marked.answersError?.detail).toContain("without a reason")
   })
 
   it("is red on a module-level cache that changes a result", async () => {

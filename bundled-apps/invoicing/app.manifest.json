@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.21.3",
+  "version": "0.21.4",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1796,8 +1796,8 @@
     "recurring_run_issue": {"summarizer": "summarizeRecurringRunIssue", "description": "Stage a month-end run's card when it has none: approving records each row and takes no number; the invoices issue on the issue day from 08:00. A card already waiting is decided by a person on it.", "searchKeywords": ["mensuel", "approuver", "récurrent", "month-end"], "requiredScopes": ["invoicing:documents:write"], "handler": "recurringRunIssueHandler", "preflight": "recurringRunIssuePreflightHandler", "timeoutMs": 30000, "gated": true, "noAutoApprove": true, "approvalImpact": "external", "approvalDedupeKeyParam": "run_id", "editableFields": [], "editWith": ["drafts_update", "drafts_create", "drafts_discard"], "writesToTable": "app_invoicing.recurring_runs", "params": {"type": "object", "properties": {"run_id": {"type": "string"}, "items": {"type": "array", "items": {"type": "object", "properties": {"item_id": {"type": "string"}, "document_id": {"type": "string"}, "content_hash": {"type": "string"}, "total_minor": {"type": "string"}, "customer": {"type": "string"}, "currency": {"type": "string"}}, "required": ["item_id", "document_id", "content_hash", "total_minor"]}}, "period": {"type": "string"}}, "required": ["run_id"]}, "approvalCard": {"summary": "Issue the month-end run {{params.run_id}}"}},
     "recurring_run_unapprove": {"summarizer": "summarizeRecurringRunUnapprove", "description": "Undo a month-end run's approval before its first number: the run returns to drafted, edits are kept, and a new card asks again.", "searchKeywords": ["annuler", "mensuel", "récurrent", "undo"], "requiredScopes": ["invoicing:documents:write"], "handler": "recurringRunUnapproveHandler", "preflight": "recurringRunUnapprovePreflightHandler", "timeoutMs": 30000, "conditionalGate": true, "externalEffect": true, "approvalImpact": "external", "writesToTable": "app_invoicing.recurring_runs", "params": {"type": "object", "properties": {"run_id": {"type": "string"}}, "required": ["run_id"]}, "approvalCard": {"summary": "Undo the approval of month-end run {{params.run_id}}"}},
     "approval_route_read": {"description": "Who a month-end run's card is for: its account manager when every row has the same one. Read by the kernel when the card is staged.", "readOnly": true, "agentVisible": false, "timeoutMs": 5000, "requiredScopes": ["invoicing:documents:read"], "handler": "approvalRouteReadHandler", "params": {"type": "object", "properties": {"entityType": {"type": "string"}, "entityId": {"type": "string"}}, "required": ["entityType", "entityId"]}},
-    "recurring_draft_write": {"description": "Write one month-end run draft and its lines in one transaction. Called by the run's draft job only.", "requiredScopes": ["invoicing:documents:write"], "handler": "recurringDraftWriteHandler", "agentVisible": false, "trustBoundary": "internal", "atomic": true, "timeoutMs": 20000, "writesToTable": "app_invoicing.documents", "params": {"type": "object", "properties": {"document": {"type": "object"}, "lines": {"type": "array", "maxItems": 500, "items": {"type": "object"}}}, "required": ["document", "lines"], "additionalProperties": false}},
-    "recurring_item_issue": {"summarizer": "summarizeRecurringItemIssue", "description": "Issue one approved row of a month-end run. Called by the run's issue job only.", "requiredScopes": ["invoicing:documents:write"], "handler": "recurringItemIssueHandler", "agentVisible": false, "trustBoundary": "internal", "atomic": true, "timeoutMs": 20000, "writesToTable": "app_invoicing.documents", "params": {"type": "object", "properties": {"item_id": {"type": "string"}}, "required": ["item_id"], "additionalProperties": false}},
+    "recurring_draft_write": {"description": "Write one month-end run draft and its lines in one commit. Called by the run's draft job only.", "requiredScopes": ["invoicing:documents:write"], "handler": "recurringDraftWriteHandler", "agentVisible": false, "trustBoundary": "internal", "timeoutMs": 20000, "writesToTable": "app_invoicing.documents", "params": {"type": "object", "properties": {"document": {"type": "object"}, "lines": {"type": "array", "maxItems": 500, "items": {"type": "object"}}}, "required": ["document", "lines"], "additionalProperties": false}},
+    "recurring_item_issue": {"summarizer": "summarizeRecurringItemIssue", "description": "Issue one approved row of a month-end run. Called by the run's issue job only.", "requiredScopes": ["invoicing:documents:write"], "handler": "recurringItemIssueHandler", "agentVisible": false, "trustBoundary": "internal", "timeoutMs": 20000, "writesToTable": "app_invoicing.documents", "params": {"type": "object", "properties": {"item_id": {"type": "string"}}, "required": ["item_id"], "additionalProperties": false}},
     "activity_read": {"description": "A company's or a contact's documents issued, paid and credited, and the recurring schedules that bill them, newest first, for their timeline. Never drafts. Read by the kernel.", "readOnly": true, "agentVisible": false, "timeoutMs": 2000, "requiredScopes": ["invoicing:documents:read"], "handler": "activityReadHandler", "params": {"type": "object", "properties": {"contactIds": {"type": "array", "items": {"type": "string"}}, "companyId": {"type": ["string", "null"]}, "dealIds": {"type": "array", "items": {"type": "string"}}, "before": {"type": ["object", "null"]}, "limit": {"type": "integer"}, "prefix": {"type": "string"}}}},
     "einvoicing_settings_values": {
       "description": "The settings page's own read of the four e-invoicing fields (platform, cut-over date, send and booking switches), in the shape einvoicing_settings_set takes back. Not for agents (einvoicing_settings_get is).",
@@ -4733,7 +4733,6 @@
       "timeoutMs": 60000,
       "gated": true,
       "approvalImpact": "external",
-      "atomic": false,
       "trustBoundary": "user",
       "params": {
         "type": "object",
@@ -4772,13 +4771,12 @@
         "summary": "Convert document {{params.source_document_id}} to invoice"
       }
     },
-    "documents_convert_local": {"description": "Convert a quote or proforma with no Shopify draft order into an invoice, in one transaction. Called by documents_convert_to_invoice only.", "requiredScopes": ["invoicing:documents:write"], "handler": "documentsConvertLocalHandler", "agentVisible": false, "trustBoundary": "internal", "atomic": true, "timeoutMs": 60000, "writesToTable": "app_invoicing.documents", "params": {"type": "object", "properties": {"source_document_id": {"type": "string"}, "operation_category": {"type": ["string", "null"], "enum": ["goods", "services", "mixed", null]}, "notes": {"type": ["string", "null"]}}, "required": ["source_document_id"], "additionalProperties": false}},
+    "documents_convert_local": {"description": "Convert a quote or proforma with no Shopify draft order into an invoice, in one commit. Called by documents_convert_to_invoice only.", "requiredScopes": ["invoicing:documents:write"], "handler": "documentsConvertLocalHandler", "agentVisible": false, "trustBoundary": "internal", "timeoutMs": 60000, "writesToTable": "app_invoicing.documents", "params": {"type": "object", "properties": {"source_document_id": {"type": "string"}, "operation_category": {"type": ["string", "null"], "enum": ["goods", "services", "mixed", null]}, "notes": {"type": ["string", "null"]}}, "required": ["source_document_id"], "additionalProperties": false}},
     "credit_note_create_and_issue": {
       "focusCore": true,
       "description": "Create a credit note, a legal document, and issue it in one call. A credit note is a first-class legal document — its own gap-free CN-{YYYY}- number series, issued straight to 'issued' status (never a payable document — no due date, no mark_paid). Lines carry NEGATIVE unit_price_minor mirroring what is reversed on the original invoice, and the total must come out negative.",
       "searchKeywords": ["avoir", "crédit", "annulation", "remboursement", "rectificative", "émettre", "émission", "nouveau"],
       "requiredScopes": ["invoicing:documents:write"],
-      "atomic": true,
       "handler": "creditNoteCreateAndIssueHandler",
       "timeoutMs": 60000,
       "preflight": "creditNoteCreateAndIssuePreflightHandler",
@@ -5033,7 +5031,6 @@
       "description": "Issue a credit note from a draft (drafts_create with type='credit_note'). Handler-conditional gating against issuer.invoice_approval_threshold_minor (unset means always approve, threshold 0; a credit note with no original_document_id is ALWAYS approved), compared against the ABSOLUTE VALUE of the credit note's grand total. When the draft's external_refs.original_document_id references an invoice, that invoice's lifecycle_log gets a `credit_note_issued` entry on success.",
       "searchKeywords": ["avoir", "émettre"],
       "requiredScopes": ["invoicing:documents:write"],
-      "atomic": true,
       "handler": "creditNoteIssueHandler",
       "timeoutMs": 60000,
       "preflight": "creditNoteIssuePreflightHandler",
@@ -5061,7 +5058,6 @@
       "description": "Reissue an invoice after a Shopify order edit changed the LINE SET or the AMOUNTS (an order edit that only touches address, notes, tags, or fulfilment does NOT call this). ALWAYS GATED, one human approval covers BOTH documents together: a credit note that fully reverses the original invoice, and a replacement invoice carrying the order's current items and amounts, issued only once the human signs off. Do NOT call credit_note_create_and_issue and invoice_create_and_issue separately for an order-edit reissue: this tool exists precisely so the operator sees and approves both documents as ONE decision. PAYMENT: any payment already recorded stays on the ORIGINAL invoice; the credit note reverses that invoice as a legal document, and the REPLACEMENT invoice is issued UNPAID (nothing is auto-transferred or auto-marked paid, so re-applying the payment or refunding the difference is a separate, deliberate step). This is invoked by the invoicing app's own onShopifyOrderUpdated handler when the order's billing signature diverges from what was last invoiced; it is not meant to be called ad hoc with an unrelated items list. Do NOT documents_mark_paid the replacement to simulate transferring the payment: re-applying it or refunding the difference is a deliberate, separate decision. The original's po_number is carried onto BOTH the credit note and the replacement.",
       "searchKeywords": ["réémettre", "commande", "commandes"],
       "requiredScopes": ["invoicing:documents:write"],
-      "atomic": true,
       "handler": "orderReissueApplyHandler",
       "timeoutMs": 60000,
       "preflight": "orderReissueApplyPreflightHandler",

@@ -65,6 +65,13 @@ interface PlanState extends RecordingState {
 
 type Rec = Record<string, unknown>
 const params = (p: Rec) => ({ params: p })
+/** A deliberate negative case: the entry must surface this refusal, for the reason given (the
+ *  harness fails a recorded refusal that is not marked so). */
+const refused = (p: Rec, reason: string) => ({ params: p, expectError: { reason } })
+const NOT_RECEIVED =
+  "the sandbox company has no supplier invoice that arrived through the e-invoicing network (the plan's supplier invoice is uploaded, not received), so the platform refuses it as not a received e-invoice: pins that refusal; the received path needs a sandbox invoice received through the network"
+const EMISSION_OFF =
+  "e-invoice emission is not activated on the sandbox company, so the platform refuses the submission: pins that refusal; the emission path needs a sandbox with emission activated"
 
 /** A file of the contract org in the object store, as the invoicing app keeps its legal originals. */
 async function storeFile(
@@ -234,28 +241,31 @@ const STEPS: RecordingStep<PlanState>[] = [
   {
     entry: "tool:einvoicing_submit",
     input: (s) =>
-      params({
-        document_ref: `doc-${s.run}`,
-        invoice_number: s.number,
-        issue_date: ISSUE_DATE,
-        facturx_file_id: s.facturx.fileId,
-        legal_original_sha256: s.facturx.sha,
-        cii_xml: s.facturx.cii,
-        buyer: {
-          contact_ref: null,
-          legal_name: FX_BUYER.legal_name,
-          siren: FX_BUYER.siren,
-          vat_id: null,
-          routing_address: FX_BUYER.siren,
-          address: {
-            line1: "2 avenue du Test",
-            postcode: "69002",
-            city: "Lyon",
-            country_code: "FR",
+      refused(
+        {
+          document_ref: `doc-${s.run}`,
+          invoice_number: s.number,
+          issue_date: ISSUE_DATE,
+          facturx_file_id: s.facturx.fileId,
+          legal_original_sha256: s.facturx.sha,
+          cii_xml: s.facturx.cii,
+          buyer: {
+            contact_ref: null,
+            legal_name: FX_BUYER.legal_name,
+            siren: FX_BUYER.siren,
+            vat_id: null,
+            routing_address: FX_BUYER.siren,
+            address: {
+              line1: "2 avenue du Test",
+              postcode: "69002",
+              city: "Lyon",
+              country_code: "FR",
+            },
           },
+          idempotency_key: `key-${s.run}`,
         },
-        idempotency_key: `key-${s.run}`,
-      }),
+        EMISSION_OFF,
+      ),
     bridgeOptions: (s) => ({ contractFileGrant: [s.facturx.fileId] }),
     after: (a, s) => {
       const ref = (a as Rec | null)?.provider_ref
@@ -307,26 +317,33 @@ const STEPS: RecordingStep<PlanState>[] = [
   },
   {
     entry: "tool:einvoicing_received_get",
-    input: (s) => params({ provider_ref: s.receivedRef ?? s.supplierInvoiceId ?? "" }),
+    input: (s) =>
+      refused({ provider_ref: s.receivedRef ?? s.supplierInvoiceId ?? "" }, NOT_RECEIVED),
   },
   {
     entry: "tool:einvoicing_received_file",
     input: (s) =>
-      params({
-        provider_ref: s.receivedRef ?? s.supplierInvoiceId ?? "",
-        file: "original",
-        target: { app: "invoicing", entity_type: "received_file", entity_id: randomUUID() },
-      }),
+      refused(
+        {
+          provider_ref: s.receivedRef ?? s.supplierInvoiceId ?? "",
+          file: "original",
+          target: { app: "invoicing", entity_type: "received_file", entity_id: randomUUID() },
+        },
+        NOT_RECEIVED,
+      ),
   },
   {
     entry: "tool:einvoicing_received_set_status",
     input: (s) =>
-      params({
-        provider_ref: s.receivedRef ?? s.supplierInvoiceId ?? "",
-        status: "in_dispute",
-        reason: null,
-        comment: "Quantities differ from the delivery note.",
-      }),
+      refused(
+        {
+          provider_ref: s.receivedRef ?? s.supplierInvoiceId ?? "",
+          status: "in_dispute",
+          reason: null,
+          comment: "Quantities differ from the delivery note.",
+        },
+        NOT_RECEIVED,
+      ),
   },
   {
     entry: "tool:supplier_invoice_upload",

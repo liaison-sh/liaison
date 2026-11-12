@@ -3,16 +3,19 @@
 // The issue job of a month-end run, and the one-item issue it calls.
 //
 // From 08:00 in the issuer's time zone on the run's issue day, and until its last issue day, the
-// job issues the approved items in order, each through `recurring_item_issue`, its own atomic
-// tool call: a failed item rolls back alone (its number is never taken) and the others keep
-// theirs. A run past its last issue day issues nothing: it is late, and a person decides.
+// job issues the approved items in order, each through `recurring_item_issue`, its own tool call
+// whose writes land in one commit: a failed item writes nothing (its number is never taken) and
+// the others keep theirs. A run past its last issue day issues nothing: it is late, and a person
+// decides.
 //
 // The issued document is a new row (issuing a draft writes a document and deletes the draft), so
-// the item follows it: the item is claimed inside the item's transaction (a conditional update
-// that only one transaction can win), the draft's `external_ref` moves to the issued document with
-// its change log, and the item points at the issued document.
+// the item follows it. In the one commit that numbers the invoice, the draft's `external_ref`
+// (unique) moves to the issued document with its change log, the draft goes, the item turns
+// issued and points at the document, and its schedule names it. A second call for the same item
+// fails on that unique key, so a period is billed once whoever calls.
 import { prepareItemSend } from "../einvoicing/run-send"
 import type { EinvCtx } from "../einvoicing/transmit"
+import type { IssueBatchOp } from "../issue"
 import { issueRunDraft } from "../mutations/invoice-issue"
 import type { ErrorEnvelope } from "../mutations/shared"
 import { BILLED_BY_STRIPE } from "../issuer-guard"
@@ -33,14 +36,11 @@ export const ISSUE_HOUR = 8
 
 const fail = (code: string, message: string): ErrorEnvelope => ({ status: "error", error: { code, message } })
 
-/** Issue one approved item of a run. The kernel runs it in one transaction (`atomic: true`). */
+/** Issue one approved item of a run: every check first, then one commit (see the file header). */
 export async function recurringItemIssue(
   ctx: RunCtx,
   input: { item_id: string },
 ): Promise<{ status: "completed"; item_id: string; document_id: string; number: string; message: string } | ErrorEnvelope> {
-  // The claim: the item row is locked first (a write that changes nothing, held until this
-  // transaction ends), then read again. A second transaction waits on that lock, then reads the
-  // item issued and stops here, before any number is taken.
   const before = (await ctx.db.findOne("recurring_run_items", input.item_id)) as Row | null
   if (!before) return fail("item_not_found", `No month-end run item ${input.item_id}.`)
   // Numbers are taken only inside the run's issue window: from 08:00 on its issue day, until its
@@ -75,8 +75,7 @@ export async function recurringItemIssue(
       return fail(code, message)
     }
   }
-  await ctx.db.update("recurring_run_items", input.item_id, { run_id: before.run_id })
-  const item = (await ctx.db.findOne("recurring_run_items", input.item_id)) as Row
+  const item = before
   if (item.state !== "approved") {
     return fail(
       item.state === "issued" ? "already_issued" : "item_not_approved",
@@ -85,14 +84,15 @@ export async function recurringItemIssue(
         : `Item ${input.item_id} is ${String(item.state)}, not approved, so nothing was issued and no number was used.`,
     )
   }
-  await ctx.db.update("recurring_run_items", input.item_id, { state: "issued" })
   const run = (await ctx.db.findOne("recurring_runs", String(item.run_id))) as Row | null
   if (!run || (run.status !== "issuing" && run.status !== "approved")) {
-    throw new Error(`run_not_issuing: the run of item ${input.item_id} is not issuing; nothing was issued`)
+    return fail("run_not_issuing", `The run of item ${input.item_id} is not issuing; nothing was issued and no number was used.`)
   }
   const draftId = String(item.document_id)
   const draft = (await ctx.db.findOne("documents", draftId)) as Row | null
-  if (!draft || draft.status !== "draft") throw new Error(`draft_missing: draft ${draftId} of item ${input.item_id} is gone; nothing was issued`)
+  if (!draft || draft.status !== "draft") {
+    return fail("draft_missing", `Draft ${draftId} of item ${input.item_id} is gone; nothing was issued and no number was used.`)
+  }
   // The backstop: a draft, or its issuer's legal or bank details, changed since its approval: it
   // stays a draft and asks again.
   const hash = await currentItemHash(ctx, { ...item, state: "approved" }, draft)
@@ -104,22 +104,37 @@ export async function recurringItemIssue(
     )
   }
   const externalRef = String(draft.external_ref ?? "")
-  // The issued document takes the period's key; the draft gives it up first (the key is unique).
-  await ctx.db.update("documents", draftId, { external_ref: null })
+  if (!externalRef) {
+    return fail("draft_without_key", `Draft ${draftId} of item ${input.item_id} has no period key; nothing was issued and no number was used.`)
+  }
   const carried = jsonOf<Array<Record<string, unknown>>>(draft.lifecycle_log, [])
   // A row a person approved carries its send grant: its e-invoice is prepared under it below. A
   // run that issued by itself had no person: its e-invoices wait for the daily send card.
   const held = typeof item.send_grant === "string" && item.send_grant !== ""
   const send = held ? ("held" as const) : run.auto === true ? ("batch" as const) : undefined
-  const issued = await issueRunDraft(ctx, { draft_id: draftId, external_ref: externalRef, lifecycle_log: carried, ...(send ? { einvoice_send: send } : {}) })
+  // The item and its schedule follow the invoice in the same commit (the claim is that commit).
+  const followers: IssueBatchOp[] = [
+    {
+      update: "recurring_run_items",
+      id: input.item_id,
+      data: { state: "issued", document_id: { $ref: "document" }, issued_number: { $seq: "formatted" }, failure: null },
+    },
+    ...(item.schedule_id
+      ? [{ update: "recurring_schedules", id: String(item.schedule_id), data: { last_document_id: { $ref: "document" } } }]
+      : []),
+  ]
+  const issued = await issueRunDraft(ctx, {
+    draft_id: draftId,
+    external_ref: externalRef,
+    lifecycle_log: carried,
+    ...(send ? { einvoice_send: send } : {}),
+    commit_with: followers,
+  })
   if (issued.status !== "completed") {
-    // Thrown, so the transaction rolls back whole: the claim, the cleared key, any number.
-    const why = issued.status === "error" ? `${issued.error.code}: ${issued.error.message}` : "not_issued: the issue asked for an approval"
-    throw new Error(why)
+    if (issued.status === "error") return issued
+    return fail("not_issued", `Item ${input.item_id} was not issued: the issue asked for an approval.`)
   }
-  await ctx.db.update("recurring_run_items", input.item_id, { document_id: issued.document_id, issued_number: issued.number, failure: null })
   if (held) await prepareItemSend(ctx as unknown as EinvCtx, input.item_id)
-  if (item.schedule_id) await ctx.db.update("recurring_schedules", String(item.schedule_id), { last_document_id: issued.document_id })
   return {
     status: "completed",
     item_id: input.item_id,

@@ -27,6 +27,7 @@ import {
 } from "~/modules/apps/sandbox/bridge/fetch-auth"
 import { readAppConfigValue } from "~/modules/apps/sandbox/bridge/identity"
 import { buildMultipartBody, type MultipartUpload } from "~/modules/apps/sandbox/bridge/multipart"
+import { typedError } from "~/modules/apps/sandbox/bridge/secret-free"
 import {
   matchesDomain,
   SANDBOX_FETCH_MAX_REDIRECTS,
@@ -182,6 +183,69 @@ async function fileSentCopy(
   }
 }
 
+/**
+ * The credential lookups `ctx.fetch` auth uses (fetch-auth.ts), for every bridge
+ * method that sends a request with `auth`. `send` runs a bearer exchange's token call.
+ */
+export function createFetchAuthDeps(
+  ctx: BridgeContext,
+  send: (url: string, optsJson: string) => Promise<string>,
+): FetchAuthDeps {
+  const { actorType, appName, manifest, orgId, resolveCredentials, txDb, userId } = ctx
+  /** Remember the connection the handler is about to call with (upstream-trace.ts). */
+  const noteConnection = (name: string, identifier?: string): void => {
+    const trace = ctx.bridgeOptions?.upstreamTrace
+    if (trace) trace.connection = identifier ? { name, identifier } : { name }
+  }
+  /** A db read from a tx-less method (fetch) takes its own short transaction on a session bridge. */
+  const shortDb = <T>(fn: (db: typeof txDb) => Promise<T>): Promise<T> =>
+    ctx.bridgeOptions?.withShortTx ? ctx.bridgeOptions.withShortTx(fn) : fn(txDb)
+  return {
+    manifest,
+    orgId,
+    userId,
+    appName,
+    readToken: async (connectionName, identifier, accountId) => {
+      noteConnection(connectionName, identifier)
+      const { resolveConnectionAccount } = await import("~/modules/apps/connections/service")
+      if (accountId) {
+        // Exactly one account: the org's, or the acting person's own (what
+        // ctx.accounts.list shows this run), never another member's.
+        const { accountVisibleToRun } = await import("~/modules/apps/sandbox/bridge/accounts")
+        const account = await shortDb((db) =>
+          resolveConnectionAccount(db, orgId, userId, appName, connectionName, undefined, {
+            actorType: "system",
+            accountId,
+          }).catch(() => null),
+        )
+        if (!account || !accountVisibleToRun(account, { actorType, userId })) {
+          throw typedError(
+            404,
+            "unknown_account",
+            `ctx.fetch: no active account ${accountId} of connection "${connectionName}" for this run`,
+          )
+        }
+        return { token: account.token, identifier: account.identifier }
+      }
+      const account = await shortDb((db) =>
+        resolveConnectionAccount(db, orgId, userId, appName, connectionName, identifier, {
+          actorType: actorType === "user" ? "user" : "system",
+        }),
+      )
+      return { token: account.token, identifier: account.identifier }
+    },
+    readCredentials: (connectionName, identifier) => {
+      noteConnection(connectionName, identifier)
+      return resolveCredentials(connectionName, identifier ?? "")
+    },
+    readConfigSecret: async (key) => {
+      const value = await shortDb((db) => readAppConfigValue(ctx, key, db))
+      return typeof value === "string" && value.length > 0 ? value : null
+    },
+    send,
+  }
+}
+
 export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
   const {
     actorType,
@@ -199,34 +263,9 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
     const trace = ctx.bridgeOptions?.upstreamTrace
     if (trace) trace.connection = identifier ? { name, identifier } : { name }
   }
-  /** A db read from a tx-less method (fetch) takes its own short transaction on a session bridge. */
-  const shortDb = <T>(fn: (db: typeof txDb) => Promise<T>): Promise<T> =>
-    ctx.bridgeOptions?.withShortTx ? ctx.bridgeOptions.withShortTx(fn) : fn(txDb)
-  const authDeps: FetchAuthDeps = {
-    manifest,
-    orgId,
-    userId,
-    appName,
-    readToken: async (connectionName, identifier) => {
-      noteConnection(connectionName, identifier)
-      const { resolveConnectionAccount } = await import("~/modules/apps/connections/service")
-      const account = await shortDb((db) =>
-        resolveConnectionAccount(db, orgId, userId, appName, connectionName, identifier, {
-          actorType: actorType === "user" ? "user" : "system",
-        }),
-      )
-      return { token: account.token, identifier: account.identifier }
-    },
-    readCredentials: (connectionName, identifier) => {
-      noteConnection(connectionName, identifier)
-      return resolveCredentials(connectionName, identifier ?? "")
-    },
-    readConfigSecret: async (key) => {
-      const value = await shortDb((db) => readAppConfigValue(ctx, key, db))
-      return typeof value === "string" && value.length > 0 ? value : null
-    },
-    send: (url, optsJson) => methods.fetch(url, optsJson),
-  }
+  const authDeps: FetchAuthDeps = createFetchAuthDeps(ctx, (url, optsJson) =>
+    methods.fetch(url, optsJson),
+  )
   const methods: Record<string, any> = {
     // --- Network fetch ---
     // `opts.auth` / `opts.configSecrets` put a credential or a config secret into the request

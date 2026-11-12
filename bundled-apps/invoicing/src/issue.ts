@@ -346,6 +346,9 @@ export interface IssueInput {
    *  note credits): appended to the issuing batch. `{ $ref: "document" }` is the new document's
    *  id, `{ $seq: "formatted" }` its number. */
   commit_with?: IssueBatchOp[]
+  /** Writes that must commit with the document but land before it in the batch (a draft giving
+   *  up the unique key the new document takes). */
+  commit_before?: IssueBatchOp[]
   /** A dedup key for the document (`documents.external_ref`, unique): the automatic credit note
    *  of one Shopify or Stripe refund, or a month-end run's period key (the draft hands its own
    *  over, after clearing it on the draft, so the period stays billed once). */
@@ -387,6 +390,7 @@ export interface IssueDb {
   /** `ctx.db.batch`: writes (and the number) that commit together. */
   batch(spec: IssueBatchSpec): Promise<{
     sequence?: { value: number; formatted?: string }
+    sequences?: Record<string, { value: number; formatted?: string }>
     rows: Record<string, Record<string, unknown>>
   }>
 }
@@ -403,13 +407,30 @@ export type IssueBatchOp =
     }
   | { delete: string; id: string | { $ref: string } }
 
+export interface IssueBatchSequence {
+  key: string
+  format?: { prefix: string; pad?: number }
+  unique?: { entity: string; field: string; where?: Record<string, unknown> }
+}
+
 export interface IssueBatchSpec {
-  sequence?: {
-    key: string
-    format?: { prefix: string; pad?: number }
-    unique?: { entity: string; field: string; where?: Record<string, unknown> }
-  }
+  sequence?: IssueBatchSequence
+  /** Several named sequences in one commit (`{ $seq: "<name>.formatted" }`). */
+  sequences?: Record<string, IssueBatchSequence>
   ops: IssueBatchOp[]
+}
+
+/**
+ * An issuance up to its commit: everything read, checked and fetched, nothing written. `ops`
+ * write the document (named `document`), its lines and the caller's `commit_with` writes, numbered
+ * by `sequence` through `{ $seq: ... }` placeholders. `finish` runs everything after the commit
+ * (audit events, the PDF, the thread post, the e-invoicing send request) once the batch that
+ * carried `ops` committed, given the number it allocated and the new document's id.
+ */
+export interface PreparedIssue {
+  sequence: IssueBatchSequence
+  ops: IssueBatchOp[]
+  finish(committed: { value: number; formatted: string; documentId: string }): Promise<IssueResult>
 }
 
 // Minimal ctx surface — the helper consumes only the bridges it needs.
@@ -1027,6 +1048,75 @@ export async function issueDocument(
   ctx: IssueCtx,
   input: IssueInput,
 ): Promise<IssueResult> {
+  const prepared = await prepareIssue(ctx, input)
+  // 6) Number, document, lines and the caller's own writes commit in ONE batch: a sandboxed run
+  //    holds no transaction across its calls, so a run that fails or is killed after this point
+  //    leaves an issued, numbered document (whose PDF a retry renders), and one that fails before
+  //    it leaves nothing and consumes no number.
+  const committed = await ctx.db.batch({ sequence: prepared.sequence, ops: prepared.ops })
+  const allocated = committed.sequence
+  if (!allocated || typeof allocated.value !== "number" || typeof allocated.formatted !== "string") {
+    throw new Error(`numbering failed for "${prepared.sequence.key}": ${JSON.stringify(committed)}`)
+  }
+  return prepared.finish({
+    value: allocated.value,
+    formatted: allocated.formatted,
+    documentId: String(committed.rows.document?.id),
+  })
+}
+
+/**
+ * Issue several documents in ONE commit: each is prepared (steps 0-5, nothing written), then every
+ * document, its lines and its `commit_with` writes land in one `ctx.db.batch` that allocates each
+ * document's number from its own named sequence, then each is finished in order (PDF, thread
+ * post, ...). Either all of them are issued and numbered, or none is and no number is used: two
+ * documents one decision covers (a credit note and the invoice that replaces the one it reverses)
+ * never land half. Returns the results by the names given.
+ */
+export async function issueTogether<N extends string>(
+  ctx: IssueCtx,
+  inputs: ReadonlyArray<readonly [N, IssueInput]>,
+): Promise<Record<N, IssueResult>> {
+  const prepared: Array<[N, PreparedIssue]> = []
+  for (const [name, input] of inputs) prepared.push([name, await prepareIssue(ctx, input)])
+  const committed = await ctx.db.batch({
+    sequences: Object.fromEntries(prepared.map(([name, p]) => [name, p.sequence])),
+    ops: prepared.flatMap(([name, p]) => p.ops.map((op) => namespacedOp(op, name))),
+  })
+  const results = {} as Record<N, IssueResult>
+  for (const [name, p] of prepared) {
+    const allocated = committed.sequences?.[name]
+    if (!allocated || typeof allocated.value !== "number" || typeof allocated.formatted !== "string") {
+      throw new Error(`numbering failed for "${p.sequence.key}": ${JSON.stringify(committed)}`)
+    }
+    results[name] = await p.finish({
+      value: allocated.value,
+      formatted: allocated.formatted,
+      documentId: String(committed.rows[`${name}.document`]?.id),
+    })
+  }
+  return results
+}
+
+/** One prepared write renamed into a shared batch: its rows (`as`, `$ref`) and its number
+ *  (`$seq`) become `<name>.…`, so two documents' placeholders never meet. */
+function namespacedOp(op: IssueBatchOp, name: string): IssueBatchOp {
+  const rename = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(rename)
+    if (v === null || typeof v !== "object") return v
+    const o = v as Record<string, unknown>
+    const keys = Object.keys(o)
+    if (keys.length === 1 && keys[0] === "$seq") return { $seq: `${name}.${String(o.$seq)}` }
+    if (keys.length === 1 && keys[0] === "$ref") return { $ref: `${name}.${String(o.$ref)}` }
+    return Object.fromEntries(keys.map((k) => [k, rename(o[k])]))
+  }
+  const out = rename(op) as Record<string, unknown>
+  if ("insert" in op && typeof op.as === "string") out.as = `${name}.${op.as}`
+  return out as IssueBatchOp
+}
+
+/** Steps 0-5 of an issuance (see the file header), and its post-commit steps as `finish`. */
+export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<PreparedIssue> {
   const { type, issuer, counterparty, draft } = input
 
   // 0) Recipient completeness. Runs BEFORE number allocation and any persistence, so a refused
@@ -1269,59 +1359,42 @@ export async function issueDocument(
         : []),
     ],
   }
-  // 6) Number, document, lines and the caller's own writes commit in ONE batch: a sandboxed run
-  //    holds no transaction across its calls, so a run that fails or is killed after this point
-  //    leaves an issued, numbered document (whose PDF a retry renders), and one that fails before
-  //    it leaves nothing and consumes no number.
-  const committed = await ctx.db.batch({
-    sequence,
-    ops: [
-      {
-        insert: "documents",
-        as: "document",
-        data: {
-          ...serialiseDocumentInsert(documentInsert),
-          number: { $seq: "formatted" },
-          number_int: { $seq: "value" },
-        },
-      },
-      ...snapshotLines.map((l) => ({
-        insert: "document_lines",
-        data: { ...serialiseLineInsert({ ...l, document_id: "" }), document_id: { $ref: "document" } },
-      })),
-      ...(input.commit_with ?? []),
-    ],
-  })
-  const allocated = committed.sequence
-  if (!allocated || typeof allocated.value !== "number" || typeof allocated.formatted !== "string") {
-    throw new Error(`numbering failed for "${sequence.key}": ${JSON.stringify(committed)}`)
-  }
-  const numberResult = { value: allocated.value, formatted: allocated.formatted }
-  documentInsert.number = numberResult.formatted
-  documentInsert.number_int = numberResult.value
-  const documentId = String(committed.rows.document?.id)
-
-  // Kernel audit trail — mirrors the lifecycle_log entries just written into
-  // documentInsert.lifecycle_log above (issued / marked_paid / po_number_changed).
-  // Optional: absent on the pure unit-test ctxs that don't care about the audit trail.
-  if (ctx.emit) {
-    await ctx.emit({
-      entity: "document",
-      action: "issued",
-      entityId: documentId,
+  // The writes of step 6 (see issueDocument): the document, its lines, the caller's own.
+  const ops: IssueBatchOp[] = [
+    ...(input.commit_before ?? []),
+    {
+      insert: "documents",
+      as: "document",
       data: {
-        document_id: documentId,
-        type,
-        number: numberResult.formatted,
-        status: documentInsert.status,
-        currency: draft.currency,
-        grand_total_minor: rollup.grand_total_minor.toString(),
+        ...serialiseDocumentInsert(documentInsert),
+        number: { $seq: "formatted" },
+        number_int: { $seq: "value" },
       },
-    })
-    if (input.settlement) {
+    },
+    ...snapshotLines.map((l) => ({
+      insert: "document_lines",
+      data: { ...serialiseLineInsert({ ...l, document_id: "" }), document_id: { $ref: "document" } },
+    })),
+    ...(input.commit_with ?? []),
+  ]
+
+  const finish = async (committed: {
+    value: number
+    formatted: string
+    documentId: string
+  }): Promise<IssueResult> => {
+    const numberResult = { value: committed.value, formatted: committed.formatted }
+    documentInsert.number = numberResult.formatted
+    documentInsert.number_int = numberResult.value
+    const documentId = committed.documentId
+
+    // Kernel audit trail — mirrors the lifecycle_log entries just written into
+    // documentInsert.lifecycle_log above (issued / marked_paid / po_number_changed).
+    // Optional: absent on the pure unit-test ctxs that don't care about the audit trail.
+    if (ctx.emit) {
       await ctx.emit({
         entity: "document",
-        action: "paid",
+        action: "issued",
         entityId: documentId,
         data: {
           document_id: documentId,
@@ -1330,212 +1403,230 @@ export async function issueDocument(
           status: documentInsert.status,
           currency: draft.currency,
           grand_total_minor: rollup.grand_total_minor.toString(),
-          paid_at: input.settlement.paid_at,
-          payment_status: "paid",
         },
       })
-    }
-    if (askTimezone) {
-      // One Home line to the holders of the settings scope; a zone set on the profile resolves it.
-      await ctx.emit({
-        entity: "issuer_profile",
-        action: "timezone_unset",
-        entityId: issuer.id,
-        data: { issuer_profile_id: issuer.id, legal_name: issuer.legal_name, document_id: documentId },
-      })
-    }
-    const issuedPoNumber = readRefString(draft.external_refs, "po_number")
-    if (issuedPoNumber) {
-      await ctx.emit({
-        entity: "document",
-        action: "po_number_changed",
-        entityId: documentId,
-        data: {
-          document_id: documentId,
-          type,
-          number: numberResult.formatted,
-          status: documentInsert.status,
-          from: null,
-          to: issuedPoNumber,
-        },
-      })
-    }
-  }
-
-  // 7) Render PDF via ctx.pdf. Failures are captured: the document persists.
-  //    An invoice or credit note's first render is its LEGAL ORIGINAL (PDF/A-3B; the Factur-X
-  //    for an e_invoice document), fixed here in its own immutable row and file parent.
-  let pdfFileId: string | null = null
-  let pdfStatus: "ready" | "failed" | "facturx_failed" = "ready"
-  let renderError: unknown = null
-  const legalMention = await documentLegalMention(ctx.db, classification.treatment, issuer.default_language, {
-    category: (documentInsert.einvoice?.operation_category as OperationCategory | null | undefined) ?? null,
-    issueDate: draft.issued_at,
-  })
-  const templateData = buildTemplateData({
-    type,
-    document: { ...documentInsert, id: documentId },
-    issuer,
-    counterparty,
-    lines: snapshotLines,
-    requires_hs_code: classification.requires_hs_code,
-    legal_mention: legalMention,
-    original_invoice_number: input.original_invoice_number ?? null,
-    original_invoice_date: input.original_invoice_date ?? null,
-    reason: reasonFromRefs,
-  })
-  if (hasLegalOriginal(type)) {
-    const docForFacturx = { ...documentInsert, id: documentId } as unknown as Record<string, unknown>
-    let facturx: FacturxInput | null = null
-    let buildError: FacturxBuildError | null = null
-    if (facturxEligible(type, docForFacturx)) {
-      try {
-        facturx = facturxInputFrom({
-          type: type as "invoice" | "credit_note",
-          doc: docForFacturx,
-          lines: snapshotLines,
-          issuer: issuer as unknown as Record<string, unknown>,
-          original: { number: input.original_invoice_number ?? null, issue_date: input.original_invoice_date ?? null },
-          legalMention,
-        })
-      } catch (err) {
-        if (!(err instanceof FacturxBuildError)) throw err
-        buildError = err
-      }
-    }
-    const recorded = buildError
-      ? ({ ok: false, code: buildError.code, message: buildError.message, facturx: true } as const)
-      : await recordLegalOriginal(ctx, {
-          documentId,
-          type,
-          number: documentInsert.number ?? documentId,
-          templateData,
-          facturx,
-        })
-    if (recorded.ok) {
-      pdfFileId = recorded.file_id
-    } else {
-      renderError = { code: recorded.code, message: recorded.message }
-      pdfStatus = recorded.facturx ? "facturx_failed" : "failed"
-      if (recorded.facturx && ctx.emit) {
+      if (input.settlement) {
         await ctx.emit({
-          entity: "einvoicing",
-          action: "facturx_failed",
+          entity: "document",
+          action: "paid",
           entityId: documentId,
           data: {
             document_id: documentId,
-            number: documentInsert.number,
-            code: recorded.code,
-            reason: recorded.message,
-            resolved: false,
+            type,
+            number: numberResult.formatted,
+            status: documentInsert.status,
+            currency: draft.currency,
+            grand_total_minor: rollup.grand_total_minor.toString(),
+            paid_at: input.settlement.paid_at,
+            payment_status: "paid",
+          },
+        })
+      }
+      if (askTimezone) {
+        // One Home line to the holders of the settings scope; a zone set on the profile resolves it.
+        await ctx.emit({
+          entity: "issuer_profile",
+          action: "timezone_unset",
+          entityId: issuer.id,
+          data: { issuer_profile_id: issuer.id, legal_name: issuer.legal_name, document_id: documentId },
+        })
+      }
+      const issuedPoNumber = readRefString(draft.external_refs, "po_number")
+      if (issuedPoNumber) {
+        await ctx.emit({
+          entity: "document",
+          action: "po_number_changed",
+          entityId: documentId,
+          data: {
+            document_id: documentId,
+            type,
+            number: numberResult.formatted,
+            status: documentInsert.status,
+            from: null,
+            to: issuedPoNumber,
           },
         })
       }
     }
-  } else {
-    try {
-      const rendered = (await ctx.pdf.render({
-        template_kind: `invoicing:${type}_v1`,
-        // Name the file after the document (e.g. `invoice-EMB-2026-8201.pdf`) so a
-        // downloaded/emailed PDF is identifiable, not the generic template-kind name.
-        filename: `${type}-${documentInsert.number}.pdf`,
-        data: templateData,
-      })) as
-        | { file_id: string; byte_size: number; page_count: number }
-        | { error: { code?: string; message?: string; retryable?: boolean } }
-      // The bridge wraps thrown PDF errors into an envelope rather than
-      // propagating them. Detect that shape and treat it as a render failure.
-      if ("error" in rendered) {
-        renderError = rendered.error
-        pdfStatus = "failed"
-      } else {
-        pdfFileId = rendered.file_id
+
+    // 7) Render PDF via ctx.pdf. Failures are captured: the document persists.
+    //    An invoice or credit note's first render is its LEGAL ORIGINAL (PDF/A-3B; the Factur-X
+    //    for an e_invoice document), fixed here in its own immutable row and file parent.
+    let pdfFileId: string | null = null
+    let pdfStatus: "ready" | "failed" | "facturx_failed" = "ready"
+    let renderError: unknown = null
+    const legalMention = await documentLegalMention(ctx.db, classification.treatment, issuer.default_language, {
+      category: (documentInsert.einvoice?.operation_category as OperationCategory | null | undefined) ?? null,
+      issueDate: draft.issued_at,
+    })
+    const templateData = buildTemplateData({
+      type,
+      document: { ...documentInsert, id: documentId },
+      issuer,
+      counterparty,
+      lines: snapshotLines,
+      requires_hs_code: classification.requires_hs_code,
+      legal_mention: legalMention,
+      original_invoice_number: input.original_invoice_number ?? null,
+      original_invoice_date: input.original_invoice_date ?? null,
+      reason: reasonFromRefs,
+    })
+    if (hasLegalOriginal(type)) {
+      const docForFacturx = { ...documentInsert, id: documentId } as unknown as Record<string, unknown>
+      let facturx: FacturxInput | null = null
+      let buildError: FacturxBuildError | null = null
+      if (facturxEligible(type, docForFacturx)) {
+        try {
+          facturx = facturxInputFrom({
+            type: type as "invoice" | "credit_note",
+            doc: docForFacturx,
+            lines: snapshotLines,
+            issuer: issuer as unknown as Record<string, unknown>,
+            original: { number: input.original_invoice_number ?? null, issue_date: input.original_invoice_date ?? null },
+            legalMention,
+          })
+        } catch (err) {
+          if (!(err instanceof FacturxBuildError)) throw err
+          buildError = err
+        }
       }
-    } catch (err) {
-      renderError = err
-      pdfStatus = "failed"
+      const recorded = buildError
+        ? ({ ok: false, code: buildError.code, message: buildError.message, facturx: true } as const)
+        : await recordLegalOriginal(ctx, {
+            documentId,
+            type,
+            number: documentInsert.number ?? documentId,
+            templateData,
+            facturx,
+          })
+      if (recorded.ok) {
+        pdfFileId = recorded.file_id
+      } else {
+        renderError = { code: recorded.code, message: recorded.message }
+        pdfStatus = recorded.facturx ? "facturx_failed" : "failed"
+        if (recorded.facturx && ctx.emit) {
+          await ctx.emit({
+            entity: "einvoicing",
+            action: "facturx_failed",
+            entityId: documentId,
+            data: {
+              document_id: documentId,
+              number: documentInsert.number,
+              code: recorded.code,
+              reason: recorded.message,
+              resolved: false,
+            },
+          })
+        }
+      }
+    } else {
+      try {
+        const rendered = (await ctx.pdf.render({
+          template_kind: `invoicing:${type}_v1`,
+          // Name the file after the document (e.g. `invoice-EMB-2026-8201.pdf`) so a
+          // downloaded/emailed PDF is identifiable, not the generic template-kind name.
+          filename: `${type}-${documentInsert.number}.pdf`,
+          data: templateData,
+        })) as
+          | { file_id: string; byte_size: number; page_count: number }
+          | { error: { code?: string; message?: string; retryable?: boolean } }
+        // The bridge wraps thrown PDF errors into an envelope rather than
+        // propagating them. Detect that shape and treat it as a render failure.
+        if ("error" in rendered) {
+          renderError = rendered.error
+          pdfStatus = "failed"
+        } else {
+          pdfFileId = rendered.file_id
+        }
+      } catch (err) {
+        renderError = err
+        pdfStatus = "failed"
+      }
     }
-  }
 
-  // 8) Persist PDF status + lifecycle log update.
-  const newLog: Array<Record<string, unknown>> = [...documentInsert.lifecycle_log]
-  if (renderError) {
-    newLog.push({
-      event: "pdf_render_failed",
-      actor: userId,
-      ts: new Date().toISOString(),
-      error: (renderError as { code?: string }).code ?? "render_failed",
-      ...(pdfStatus === "facturx_failed" ? { facturx: true, detail: (renderError as { message?: string }).message ?? null } : {}),
-    })
-  }
-  // Surface any live customs-fetch failures (Shopify throttle / bad id /
-  // transport) so the invoice carries a discoverable trace of WHY a line is
-  // missing customs — a rate-limit is flagged explicitly via `throttled`.
-  for (const f of customsFetchFailures) {
-    newLog.push({
-      event: "customs_fetch_failed",
-      actor: userId,
-      ts: new Date().toISOString(),
-      external_id: f.external_id,
-      error: f.code,
-      throttled: f.throttled,
-      retryable: f.retryable,
-      detail: f.detail,
-    })
-  }
-  await ctx.db.update("documents", documentId, {
-    pdf_file_id: pdfFileId,
-    pdf_status: pdfStatus,
-    lifecycle_log: newLog,
-  })
-
-  // 9) Post into the contact thread (best-effort; failure recorded but not
-  // rethrown — caller treats absent thread post as an attention-feed item).
-  if (pdfFileId && counterparty.contact_id) {
-    try {
-      await ctx.messages.post({
-        contact_id: counterparty.contact_id,
-        body: `${titleFor(type)} ${numberResult.formatted}`,
-        attachment_file_ids: [pdfFileId],
-      })
-    } catch (err) {
+    // 8) Persist PDF status + lifecycle log update.
+    const newLog: Array<Record<string, unknown>> = [...documentInsert.lifecycle_log]
+    if (renderError) {
       newLog.push({
-        event: "thread_post_failed",
+        event: "pdf_render_failed",
         actor: userId,
         ts: new Date().toISOString(),
-        error: (err as { code?: string }).code ?? "thread_post_failed",
-        detail: (err as { message?: string }).message ?? String(err),
+        error: (renderError as { code?: string }).code ?? "render_failed",
+        ...(pdfStatus === "facturx_failed" ? { facturx: true, detail: (renderError as { message?: string }).message ?? null } : {}),
       })
-      await ctx.db.update("documents", documentId, { lifecycle_log: newLog })
     }
-  }
-
-  // 10) E-invoicing: an e_invoice issued on or after the cut-over, with sending switched on, gets
-  //     ONE send approval request (never a send: a person approves it). Best effort: a context
-  //     that cannot create approvals (or any failure) leaves it to the e-invoicing job.
-  let einvoiceSend: { approval_id: string } | null = null
-  if (pdfStatus === "ready" && pdfFileId && ctx.requestApproval) {
-    try {
-      const staged = await stageSendAfterIssue(ctx as unknown as EinvCtx, documentId, { send: input.einvoice_send ?? "stage" })
-      if (staged) einvoiceSend = { approval_id: staged }
-    } catch (err) {
+    // Surface any live customs-fetch failures (Shopify throttle / bad id /
+    // transport) so the invoice carries a discoverable trace of WHY a line is
+    // missing customs — a rate-limit is flagged explicitly via `throttled`.
+    for (const f of customsFetchFailures) {
       newLog.push({
-        event: "einvoice_send_request_deferred",
+        event: "customs_fetch_failed",
         actor: userId,
         ts: new Date().toISOString(),
-        detail: (err as { message?: string }).message ?? String(err),
+        external_id: f.external_id,
+        error: f.code,
+        throttled: f.throttled,
+        retryable: f.retryable,
+        detail: f.detail,
       })
-      await ctx.db.update("documents", documentId, { lifecycle_log: newLog })
+    }
+    await ctx.db.update("documents", documentId, {
+      pdf_file_id: pdfFileId,
+      pdf_status: pdfStatus,
+      lifecycle_log: newLog,
+    })
+
+    // 9) Post into the contact thread (best-effort; failure recorded but not
+    // rethrown — caller treats absent thread post as an attention-feed item).
+    if (pdfFileId && counterparty.contact_id) {
+      try {
+        await ctx.messages.post({
+          contact_id: counterparty.contact_id,
+          body: `${titleFor(type)} ${numberResult.formatted}`,
+          attachment_file_ids: [pdfFileId],
+        })
+      } catch (err) {
+        newLog.push({
+          event: "thread_post_failed",
+          actor: userId,
+          ts: new Date().toISOString(),
+          error: (err as { code?: string }).code ?? "thread_post_failed",
+          detail: (err as { message?: string }).message ?? String(err),
+        })
+        await ctx.db.update("documents", documentId, { lifecycle_log: newLog })
+      }
+    }
+
+    // 10) E-invoicing: an e_invoice issued on or after the cut-over, with sending switched on, gets
+    //     ONE send approval request (never a send: a person approves it). Best effort: a context
+    //     that cannot create approvals (or any failure) leaves it to the e-invoicing job.
+    let einvoiceSend: { approval_id: string } | null = null
+    if (pdfStatus === "ready" && pdfFileId && ctx.requestApproval) {
+      try {
+        const staged = await stageSendAfterIssue(ctx as unknown as EinvCtx, documentId, {
+          send: input.einvoice_send ?? "stage",
+        })
+        if (staged) einvoiceSend = { approval_id: staged }
+      } catch (err) {
+        newLog.push({
+          event: "einvoice_send_request_deferred",
+          actor: userId,
+          ts: new Date().toISOString(),
+          detail: (err as { message?: string }).message ?? String(err),
+        })
+        await ctx.db.update("documents", documentId, { lifecycle_log: newLog })
+      }
+    }
+
+    return {
+      document_id: documentId,
+      number: numberResult.formatted,
+      pdf_file_id: pdfFileId,
+      ...(einvoicingWarning ? { einvoicing_warning: einvoicingWarning } : {}),
+      ...(einvoiceSend ? { einvoice_send_approval_id: einvoiceSend.approval_id } : {}),
     }
   }
-
-  return {
-    document_id: documentId,
-    number: numberResult.formatted,
-    pdf_file_id: pdfFileId,
-    ...(einvoicingWarning ? { einvoicing_warning: einvoicingWarning } : {}),
-    ...(einvoiceSend ? { einvoice_send_approval_id: einvoiceSend.approval_id } : {}),
-  }
+  return { sequence, ops, finish }
 }
 
 /** The country the classifier must read for this counterparty: its tax destination when one was

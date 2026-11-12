@@ -62,6 +62,21 @@ function iso(value: unknown): string {
   return value instanceof Date ? value.toISOString() : String(value ?? "")
 }
 
+/** The person whose own accounts a run sees beside the org's: a person's run only. */
+export function runPerson(run: { actorType?: string; userId: string }): string | null {
+  return run.actorType === "user" && isUuid(run.userId) ? run.userId : null
+}
+
+/** Whether a run may use an account: the org's, or its person's own (as `accounts_list`). */
+export function accountVisibleToRun(
+  account: { ownerType: string; ownerId: string | null },
+  run: { actorType?: string; userId: string },
+): boolean {
+  if (account.ownerType === "org") return true
+  const person = runPerson(run)
+  return person !== null && account.ownerType === "user" && account.ownerId === person
+}
+
 export function createAccountsMethods(
   ctx: Pick<
     BridgeContext,
@@ -72,7 +87,7 @@ export function createAccountsMethods(
   accounts_setMetadata: (accountId: string, patchJson: unknown) => Promise<string>
 } {
   const { appName, orgId, userId, actorType, manifest } = ctx
-  const person = actorType === "user" && isUuid(userId) ? userId : null
+  const person = runPerson({ actorType, userId })
 
   function assertDeclared(connection: unknown): string {
     if (typeof connection !== "string" || !manifest.connections?.[connection]) {

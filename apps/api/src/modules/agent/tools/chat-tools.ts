@@ -36,6 +36,7 @@ import {
 import { expandWildcardStamp } from "~/modules/agent/scopes/taint-read-scopes"
 import { openContactDiscussion } from "~/modules/contacts/discussion"
 import { attachFilesToParent, FileServiceError } from "~/modules/files/attach"
+import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import {
   enrolInEntityDiscussion,
   isDiscussionEntity,
@@ -77,7 +78,16 @@ interface ApprovedPostDisclosure {
   audience: string[]
   /** The post was a person's own external-client request, with that connection's scopes: the
    *  dispatch recorded it when it parked, since the re-entry runs without the client's frame. */
-  externalClientScopes: string[] | null
+  externalClient: ExternalClientPoster | null
+}
+
+/** Who a person's external-client post wakes agents as: that person, never widened. */
+interface ExternalClientPoster {
+  /** The connection's scopes, as recorded when the post parked. */
+  scopes: string[]
+  /** The requester's own dimension grants. The re-entry's are the requester's widened by the
+   *  decider's (delegated authority to run the handler), which no woken turn may inherit. */
+  dimensionGrants: Record<string, string[]>
 }
 
 /**
@@ -105,12 +115,23 @@ async function approvedPostDisclosure(
   const row = rows[0]
   if (row?.disclosed !== true || !Array.isArray(row.audience)) return null
   const external = row.external_client as { scopes?: unknown } | null | undefined
+  const scopes =
+    external && Array.isArray(external.scopes)
+      ? external.scopes.filter((s): s is string => typeof s === "string")
+      : null
   return {
     audience: row.audience.filter((u): u is string => typeof u === "string"),
-    externalClientScopes:
-      external && Array.isArray(external.scopes)
-        ? external.scopes.filter((s): s is string => typeof s === "string")
-        : null,
+    externalClient:
+      scopes === null
+        ? null
+        : {
+            scopes,
+            dimensionGrants: (
+              await withPrivilegedDb(ctx.orgId, "agent-post-disclosure-requester", (tx) =>
+                loadEffectivePermissions(tx, ctx.userId, ctx.orgId),
+              )
+            ).dimensionGrants,
+          },
   }
 }
 
@@ -184,8 +205,8 @@ type PostVisibility =
   | {
       disclosureList: string[] | null
       metadata?: Record<string, unknown>
-      /** An approved post a person's external client requested: that connection's scopes. */
-      externalClientScopes?: string[]
+      /** An approved post a person's external client requested: who it wakes agents as. */
+      externalClient?: ExternalClientPoster
     }
   | { error: { code: string; message: string } }
 
@@ -230,9 +251,7 @@ async function resolvePostVisibility(
       ...(ctx.approvalRequestId
         ? { metadata: { [TAINT_DISCLOSURE_APPROVAL_KEY]: ctx.approvalRequestId } }
         : {}),
-      ...(approved.externalClientScopes !== null
-        ? { externalClientScopes: approved.externalClientScopes }
-        : {}),
+      ...(approved.externalClient !== null ? { externalClient: approved.externalClient } : {}),
     }
   }
   const decision = await decidePostDisclosure({
@@ -1043,13 +1062,14 @@ async function postThreadReply(
   const disclosedTo = visibility.disclosureList
   // A person's external client: live, or, on an approved re-entry (whose frame is the
   // approval's), as the dispatch recorded it on the approval when the post parked. Then the
-  // connection's own scopes, never the re-entry's (the requester's widened by the decider's).
-  const clientScopes = isHumanActor(ctx)
-    ? (ctx.scopes ?? [])
-    : "externalClientScopes" in visibility
-      ? (visibility.externalClientScopes ?? null)
+  // connection's own scopes and the requester's own dimension grants, never the re-entry's (the
+  // requester's widened by the decider's).
+  const client: ExternalClientPoster | null = isHumanActor(ctx)
+    ? { scopes: ctx.scopes ?? [], dimensionGrants: ctx.dimensionGrants ?? {} }
+    : "externalClient" in visibility
+      ? (visibility.externalClient ?? null)
       : null
-  const human = clientScopes !== null
+  const human = client !== null
   const agentAuthorLabel = await resolveAgentAuthorLabel(ctx)
   // A18: a reply-thread post names a live root of this thread that is not a
   // reply; anything else is refused here rather than posted to the channel.
@@ -1143,7 +1163,7 @@ async function postThreadReply(
   // mentioned agents, and in a 1:1 agent chat with no mention the agent seated
   // there. An agent's own post keeps starting nothing, which is why agents_ask
   // exists rather than "just reply with a mention".
-  if (clientScopes !== null) {
+  if (client !== null) {
     try {
       await dispatchForPostedMessage(
         (fn) =>
@@ -1152,8 +1172,8 @@ async function postThreadReply(
               actorType: "user",
               userId: ctx.userId,
               orgId: ctx.orgId,
-              scopes: clientScopes,
-              dimensionGrants: ctx.dimensionGrants ?? {},
+              scopes: client.scopes,
+              dimensionGrants: client.dimensionGrants,
             },
             fn,
           ),
@@ -1171,12 +1191,12 @@ async function postThreadReply(
             authorAgentId: null,
             parentMessageId: result.parentMessageId ?? result.id,
           },
-          callerEffectiveScope: clientScopes,
+          callerEffectiveScope: client.scopes,
           actor: {
             userId: ctx.userId,
             orgId: ctx.orgId,
-            scopes: clientScopes,
-            dimensionGrants: ctx.dimensionGrants ?? {},
+            scopes: client.scopes,
+            dimensionGrants: client.dimensionGrants,
           },
         },
       )

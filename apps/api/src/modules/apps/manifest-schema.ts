@@ -1995,6 +1995,12 @@ export const appManifestJsonSchema = {
             maxItems: 20,
             items: { type: "string", pattern: "^[a-zA-Z][a-zA-Z0-9_-]{0,63}$" },
           },
+          connectionToken: {
+            type: "object",
+            properties: { connection: { type: "string", minLength: 1, maxLength: 64 } },
+            required: ["connection"],
+            additionalProperties: false,
+          },
           hosts: {
             type: "object",
             properties: {

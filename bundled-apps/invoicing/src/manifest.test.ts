@@ -1576,7 +1576,12 @@ describe("invoicing manifest", () => {
     // 0.21.2 (main): an order's invoice carries a per-order, per-scope dedup key, so the same order
     //   event run twice at once issues one invoice.
     // 0.21.3: both of the above, merged.
-    expect(m.version).toBe("0.21.3")
+    // 0.21.3 (main): no tool holds a transaction across its run: credit notes and convert-to-invoice
+    //   commit their writes with the document, and order_reissue_apply issues the credit note and
+    //   its replacement in one commit (both or neither).
+    // 0.21.4: both 0.21.3, merged: the convert's local half and the month-end run's draft write and
+    //   item issue hold no transaction either, each commits its writes in one batch.
+    expect(m.version).toBe("0.21.4")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs["overdue-scan"]
     expect(overdue?.runsFor).toEqual({
       rows: { entity: "documents", where: { status: "issued", type: "invoice", due_at: { not: null } } },
@@ -1785,12 +1790,11 @@ describe("issuing tool budgets", () => {
 
 describe("tools that hold a transaction", () => {
   const tools = (manifest as unknown as { tools: Record<string, { atomic?: boolean; trustBoundary?: string; agentVisible?: boolean }> }).tools
-  it("the convert holds no transaction across its Shopify calls; its local half and the run steps are internal and atomic", () => {
-    expect(tools.documents_convert_to_invoice?.atomic).toBe(false)
+  it("no tool holds one; the convert's local half and the run steps are internal", () => {
+    expect(Object.entries(tools).filter(([, t]) => t.atomic === true).map(([n]) => n)).toEqual([])
     for (const name of ["documents_convert_local", "recurring_draft_write", "recurring_item_issue"]) {
-      expect({ name, atomic: tools[name]?.atomic, boundary: tools[name]?.trustBoundary, agent: tools[name]?.agentVisible }).toEqual({
+      expect({ name, boundary: tools[name]?.trustBoundary, agent: tools[name]?.agentVisible }).toEqual({
         name,
-        atomic: true,
         boundary: "internal",
         agent: false,
       })

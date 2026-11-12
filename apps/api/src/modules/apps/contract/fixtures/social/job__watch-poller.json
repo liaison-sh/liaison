@@ -6,7 +6,7 @@
     {
       "method": "db_findMany",
       "args": ["sync_state", "{\"where\":{\"platform\":\"facebook\",\"active\":true},\"limit\":1}"],
-      "reply": "[{\"id\":\"00fa983f-325f-4386-bb33-41fdaa63d3dc\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:28.969432+00\",\"updated_at\":\"2026-11-12 10:10:29.256905+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"discovery\",\"cursor\":\"eyJwYWdlcyI6eyIxMDQ4NTc2MDAwMDAwMDEiOnsiaHciOiIyMDI1LTEyLTMxVDE0OjAwOjAwLjAwMFoiLCJiZiI6bnVsbH19fQ==\",\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":\"2026-01-01 00:00:00+00\",\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
+      "reply": "[{\"id\":\"fafec84c-f441-4488-831a-c65932a62bd4\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:08:53.492473+00\",\"updated_at\":\"2026-11-12 14:08:53.65317+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"discovery\",\"cursor\":\"eyJwYWdlcyI6eyIxMDQ4NTc2MDAwMDAwMDEiOnsiaHciOiIyMDI1LTEyLTMxVDE0OjAwOjAwLjAwMFoiLCJiZiI6bnVsbH19fQ==\",\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":\"2026-01-01 00:00:00+00\",\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
     },
     {
       "method": "connections_getToken",
@@ -46,14 +46,6 @@
       "reply": "[]"
     },
     {
-      "method": "db_insert",
-      "args": [
-        "watched_object",
-        "{\"platform\":\"facebook\",\"external_id\":\"104857600000001_123450000000001\",\"object_type\":\"facebook_post\",\"reason\":\"auto_own\",\"status\":\"active\",\"priority\":50,\"title\":\"Our new broadband bass traps are here: 30 % less boom in small rooms.\",\"permalink\":\"https://www.facebook.com/104857600000001/posts/123450000000001\",\"metadata\":{\"postedAt\":\"2025-12-31T14:00:00+0000\"},\"cadence_seconds\":900}"
-      ],
-      "reply": "{\"id\":\"2e8d8a9c-5a79-44b3-941c-a9563f47336f\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.435571+00\",\"updated_at\":\"2026-11-12 10:10:29.435571+00\",\"platform\":\"facebook\",\"object_type\":\"facebook_post\",\"external_id\":\"104857600000001_123450000000001\",\"title\":\"Our new broadband bass traps are here: 30 % less boom in small rooms.\",\"permalink\":\"https://www.facebook.com/104857600000001/posts/123450000000001\",\"reason\":\"auto_own\",\"status\":\"active\",\"cadence_seconds\":900,\"priority\":50,\"comment_cursor\":null,\"last_polled_at\":null,\"last_activity_at\":null,\"next_poll_at\":null,\"watched_by\":null,\"new_findings_count\":0,\"metadata\":{\"postedAt\":\"2025-12-31T14:00:00+0000\"}}"
-    },
-    {
       "method": "db_findMany",
       "args": [
         "finding",
@@ -62,12 +54,11 @@
       "reply": "[]"
     },
     {
-      "method": "db_update",
+      "method": "db_batch",
       "args": [
-        "watched_object",
-        "2e8d8a9c-5a79-44b3-941c-a9563f47336f",
-        "{\"new_findings_count\":0}"
-      ]
+        "{\"ops\":[{\"insert\":\"watched_object\",\"as\":\"watched\",\"data\":{\"platform\":\"facebook\",\"external_id\":\"104857600000001_123450000000001\",\"object_type\":\"facebook_post\",\"reason\":\"auto_own\",\"status\":\"active\",\"priority\":50,\"title\":\"Our new broadband bass traps are here: 30 % less boom in small rooms.\",\"permalink\":\"https://www.facebook.com/104857600000001/posts/123450000000001\",\"metadata\":{\"postedAt\":\"2025-12-31T14:00:00+0000\"},\"cadence_seconds\":900,\"new_findings_count\":0}}]}"
+      ],
+      "reply": "{\"rows\":{\"watched\":{\"id\":\"4d0fc023-b795-4f37-bf16-1c4f4dcf8212\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:08:53.79212+00\",\"updated_at\":\"2026-11-12 14:08:53.79212+00\",\"platform\":\"facebook\",\"object_type\":\"facebook_post\",\"external_id\":\"104857600000001_123450000000001\",\"title\":\"Our new broadband bass traps are here: 30 % less boom in small rooms.\",\"permalink\":\"https://www.facebook.com/104857600000001/posts/123450000000001\",\"reason\":\"auto_own\",\"status\":\"active\",\"cadence_seconds\":900,\"priority\":50,\"comment_cursor\":null,\"last_polled_at\":null,\"last_activity_at\":null,\"next_poll_at\":null,\"watched_by\":null,\"new_findings_count\":0,\"metadata\":{\"postedAt\":\"2025-12-31T14:00:00+0000\"}}}}"
     },
     {
       "method": "db_findMany",
@@ -75,7 +66,7 @@
         "watched_object",
         "{\"where\":{\"platform\":\"facebook\",\"external_id\":\"104857600000001_123450000000002\"},\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"878d05ba-8869-47a3-b93d-5cc3f0f89479\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.380352+00\",\"updated_at\":\"2026-11-12 10:10:29.394515+00\",\"platform\":\"facebook\",\"object_type\":\"facebook_post\",\"external_id\":\"104857600000001_123450000000002\",\"title\":null,\"permalink\":null,\"reason\":\"manual\",\"status\":\"active\",\"cadence_seconds\":3600,\"priority\":80,\"comment_cursor\":null,\"last_polled_at\":null,\"last_activity_at\":null,\"next_poll_at\":null,\"watched_by\":null,\"new_findings_count\":0,\"metadata\":{}}]"
+      "reply": "[{\"id\":\"6707ae88-88f6-466c-bb60-45d83c18629f\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:08:53.745295+00\",\"updated_at\":\"2026-11-12 14:08:53.745295+00\",\"platform\":\"facebook\",\"object_type\":\"facebook_post\",\"external_id\":\"104857600000001_123450000000002\",\"title\":null,\"permalink\":null,\"reason\":\"manual\",\"status\":\"active\",\"cadence_seconds\":3600,\"priority\":80,\"comment_cursor\":null,\"last_polled_at\":null,\"last_activity_at\":null,\"next_poll_at\":null,\"watched_by\":null,\"new_findings_count\":0,\"metadata\":{}}]"
     },
     {
       "method": "db_findMany",
@@ -83,7 +74,7 @@
         "watched_object",
         "{\"where\":{\"platform\":\"facebook\",\"reason\":\"auto_own\",\"status\":\"active\"}}"
       ],
-      "reply": "[{\"id\":\"2e8d8a9c-5a79-44b3-941c-a9563f47336f\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.435571+00\",\"updated_at\":\"2026-11-12 10:10:29.4515+00\",\"platform\":\"facebook\",\"object_type\":\"facebook_post\",\"external_id\":\"104857600000001_123450000000001\",\"title\":\"Our new broadband bass traps are here: 30 % less boom in small rooms.\",\"permalink\":\"https://www.facebook.com/104857600000001/posts/123450000000001\",\"reason\":\"auto_own\",\"status\":\"active\",\"cadence_seconds\":900,\"priority\":50,\"comment_cursor\":null,\"last_polled_at\":null,\"last_activity_at\":null,\"next_poll_at\":null,\"watched_by\":null,\"new_findings_count\":0,\"metadata\":{\"postedAt\":\"2025-12-31T14:00:00+0000\"}}]"
+      "reply": "[{\"id\":\"4d0fc023-b795-4f37-bf16-1c4f4dcf8212\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:08:53.79212+00\",\"updated_at\":\"2026-11-12 14:08:53.79212+00\",\"platform\":\"facebook\",\"object_type\":\"facebook_post\",\"external_id\":\"104857600000001_123450000000001\",\"title\":\"Our new broadband bass traps are here: 30 % less boom in small rooms.\",\"permalink\":\"https://www.facebook.com/104857600000001/posts/123450000000001\",\"reason\":\"auto_own\",\"status\":\"active\",\"cadence_seconds\":900,\"priority\":50,\"comment_cursor\":null,\"last_polled_at\":null,\"last_activity_at\":null,\"next_poll_at\":null,\"watched_by\":null,\"new_findings_count\":0,\"metadata\":{\"postedAt\":\"2025-12-31T14:00:00+0000\"}}]"
     },
     {
       "method": "db_findMany",
@@ -96,7 +87,7 @@
     {
       "method": "db_findMany",
       "args": ["watched_object", "{\"where\":{\"status\":\"active\"}}"],
-      "reply": "[{\"id\":\"878d05ba-8869-47a3-b93d-5cc3f0f89479\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.380352+00\",\"updated_at\":\"2026-11-12 10:10:29.394515+00\",\"platform\":\"facebook\",\"object_type\":\"facebook_post\",\"external_id\":\"104857600000001_123450000000002\",\"title\":null,\"permalink\":null,\"reason\":\"manual\",\"status\":\"active\",\"cadence_seconds\":3600,\"priority\":80,\"comment_cursor\":null,\"last_polled_at\":null,\"last_activity_at\":null,\"next_poll_at\":null,\"watched_by\":null,\"new_findings_count\":0,\"metadata\":{}},{\"id\":\"2e8d8a9c-5a79-44b3-941c-a9563f47336f\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.435571+00\",\"updated_at\":\"2026-11-12 10:10:29.4515+00\",\"platform\":\"facebook\",\"object_type\":\"facebook_post\",\"external_id\":\"104857600000001_123450000000001\",\"title\":\"Our new broadband bass traps are here: 30 % less boom in small rooms.\",\"permalink\":\"https://www.facebook.com/104857600000001/posts/123450000000001\",\"reason\":\"auto_own\",\"status\":\"active\",\"cadence_seconds\":900,\"priority\":50,\"comment_cursor\":null,\"last_polled_at\":null,\"last_activity_at\":null,\"next_poll_at\":null,\"watched_by\":null,\"new_findings_count\":0,\"metadata\":{\"postedAt\":\"2025-12-31T14:00:00+0000\"}}]"
+      "reply": "[{\"id\":\"6707ae88-88f6-466c-bb60-45d83c18629f\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:08:53.745295+00\",\"updated_at\":\"2026-11-12 14:08:53.745295+00\",\"platform\":\"facebook\",\"object_type\":\"facebook_post\",\"external_id\":\"104857600000001_123450000000002\",\"title\":null,\"permalink\":null,\"reason\":\"manual\",\"status\":\"active\",\"cadence_seconds\":3600,\"priority\":80,\"comment_cursor\":null,\"last_polled_at\":null,\"last_activity_at\":null,\"next_poll_at\":null,\"watched_by\":null,\"new_findings_count\":0,\"metadata\":{}},{\"id\":\"4d0fc023-b795-4f37-bf16-1c4f4dcf8212\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:08:53.79212+00\",\"updated_at\":\"2026-11-12 14:08:53.79212+00\",\"platform\":\"facebook\",\"object_type\":\"facebook_post\",\"external_id\":\"104857600000001_123450000000001\",\"title\":\"Our new broadband bass traps are here: 30 % less boom in small rooms.\",\"permalink\":\"https://www.facebook.com/104857600000001/posts/123450000000001\",\"reason\":\"auto_own\",\"status\":\"active\",\"cadence_seconds\":900,\"priority\":50,\"comment_cursor\":null,\"last_polled_at\":null,\"last_activity_at\":null,\"next_poll_at\":null,\"watched_by\":null,\"new_findings_count\":0,\"metadata\":{\"postedAt\":\"2025-12-31T14:00:00+0000\"}}]"
     },
     {
       "method": "db_findMany",
@@ -104,7 +95,7 @@
         "sync_state",
         "{\"where\":{\"platform\":\"youtube\",\"source_type\":\"discovery\"},\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"92b7c978-cb4b-4a48-8fb5-f8285baf538c\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.087587+00\",\"updated_at\":\"2026-11-12 10:10:29.345429+00\",\"platform\":\"youtube\",\"account_external_id\":\"UCxContractChannel0000001\",\"source_type\":\"discovery\",\"cursor\":\"eyJ2IjoyLCJ0ZXJtcyI6eyI2Zjg4YWQwMC0xMTcxLTQyMDctOGU0OS0yNjNhNmJjYjVjZDAiOnsiYWZ0ZXIiOiIyMDI1LTEyLTMxVDEyOjAwOjAwLjAwMFoifX19\",\"active\":true,\"units_consumed_today\":102,\"units_window_date\":\"2025-12-31\",\"last_synced_at\":\"2026-01-01 00:00:00+00\",\"metadata\":{\"youtube_quota\":{\"exhausted_until\":null,\"discovery_skipped\":null},\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
+      "reply": "[{\"id\":\"dd7dbde9-75d9-4d20-b098-ef0dbcb7aebd\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:08:53.556404+00\",\"updated_at\":\"2026-11-12 14:08:53.723905+00\",\"platform\":\"youtube\",\"account_external_id\":\"UCxContractChannel0000001\",\"source_type\":\"discovery\",\"cursor\":\"eyJ2IjoyLCJ0ZXJtcyI6eyJlMjVhNzZlZC1iOGNlLTRjNWItYjg0MS00NzBmNDZmYjdmYzAiOnsiYWZ0ZXIiOiIyMDI1LTEyLTMxVDEyOjAwOjAwLjAwMFoifX19\",\"active\":true,\"units_consumed_today\":102,\"units_window_date\":\"2025-12-31\",\"last_synced_at\":\"2026-01-01 00:00:00+00\",\"metadata\":{\"youtube_quota\":{\"exhausted_until\":null,\"discovery_skipped\":null},\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
     },
     {
       "method": "db_findMany",
@@ -112,7 +103,7 @@
         "sync_state",
         "{\"where\":{\"platform\":\"youtube\",\"source_type\":\"watch\",\"account_external_id\":\"UCxContractChannel0000001\"},\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"cd879ddd-e5bd-4218-aaf3-cccd723b26dd\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.107216+00\",\"updated_at\":\"2026-11-12 10:10:29.107216+00\",\"platform\":\"youtube\",\"account_external_id\":\"UCxContractChannel0000001\",\"source_type\":\"watch\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
+      "reply": "[{\"id\":\"a04f32f7-e5b7-4fe7-a86d-72ffea13a60a\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:08:53.569587+00\",\"updated_at\":\"2026-11-12 14:08:53.569587+00\",\"platform\":\"youtube\",\"account_external_id\":\"UCxContractChannel0000001\",\"source_type\":\"watch\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
     },
     {
       "method": "fetch",
@@ -134,7 +125,7 @@
       "method": "db_update",
       "args": [
         "watched_object",
-        "878d05ba-8869-47a3-b93d-5cc3f0f89479",
+        "6707ae88-88f6-466c-bb60-45d83c18629f",
         "{\"status\":\"decayed\",\"cadence_seconds\":86400,\"last_polled_at\":\"2026-01-01T00:00:00.000Z\",\"last_activity_at\":null,\"next_poll_at\":\"2026-01-02T00:00:00.000Z\"}"
       ]
     },
@@ -157,7 +148,7 @@
     {
       "method": "db_findMany",
       "args": ["sync_state", "{\"where\":{\"platform\":\"facebook\"}}"],
-      "reply": "[{\"id\":\"00fa983f-325f-4386-bb33-41fdaa63d3dc\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:28.969432+00\",\"updated_at\":\"2026-11-12 10:10:29.256905+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"discovery\",\"cursor\":\"eyJwYWdlcyI6eyIxMDQ4NTc2MDAwMDAwMDEiOnsiaHciOiIyMDI1LTEyLTMxVDE0OjAwOjAwLjAwMFoiLCJiZiI6bnVsbH19fQ==\",\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":\"2026-01-01 00:00:00+00\",\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}},{\"id\":\"cb438f92-847d-4403-a26c-e0635974e46d\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.004222+00\",\"updated_at\":\"2026-11-12 10:10:29.004222+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"dm\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}},{\"id\":\"9d187e4e-5767-45e8-a37a-0c27c0498570\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:28.991427+00\",\"updated_at\":\"2026-11-12 10:10:28.991427+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"watch\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
+      "reply": "[{\"id\":\"fafec84c-f441-4488-831a-c65932a62bd4\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:08:53.492473+00\",\"updated_at\":\"2026-11-12 14:08:53.65317+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"discovery\",\"cursor\":\"eyJwYWdlcyI6eyIxMDQ4NTc2MDAwMDAwMDEiOnsiaHciOiIyMDI1LTEyLTMxVDE0OjAwOjAwLjAwMFoiLCJiZiI6bnVsbH19fQ==\",\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":\"2026-01-01 00:00:00+00\",\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}},{\"id\":\"6f501c35-83c0-4db0-83ca-dc7c08ab9c9c\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:08:53.521162+00\",\"updated_at\":\"2026-11-12 14:08:53.521162+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"dm\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}},{\"id\":\"f15a3ff8-1550-4e2d-8130-01b7caaed25a\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:08:53.510101+00\",\"updated_at\":\"2026-11-12 14:08:53.510101+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"watch\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
     },
     {
       "method": "db_findMany",
@@ -176,14 +167,14 @@
       "method": "db_insert",
       "args": [
         "finding",
-        "{\"platform\":\"facebook\",\"external_id\":\"123450000000001_998800000000001\",\"relation\":\"comment_on_our_content\",\"parent_external_id\":\"104857600000001_123450000000001\",\"author_handle\":\"Camille Martin\",\"author_external_id\":\"6000000000000001\",\"content_text\":\"Do the new bass traps ship to Belgium? I could not find it in the checkout.\",\"permalink\":\"https://www.facebook.com/104857600000001/posts/123450000000001?comment_id=998800000000001\",\"occurred_at\":\"2025-12-31T23:18:00+0000\",\"comment_count\":0,\"brand_relevant\":false,\"watched_object_id\":\"2e8d8a9c-5a79-44b3-941c-a9563f47336f\",\"metadata\":{\"siblingsAccessible\":true,\"pageId\":\"104857600000001\"},\"contact_id\":null,\"status\":\"new\"}"
+        "{\"platform\":\"facebook\",\"external_id\":\"123450000000001_998800000000001\",\"relation\":\"comment_on_our_content\",\"parent_external_id\":\"104857600000001_123450000000001\",\"author_handle\":\"Camille Martin\",\"author_external_id\":\"6000000000000001\",\"content_text\":\"Do the new bass traps ship to Belgium? I could not find it in the checkout.\",\"permalink\":\"https://www.facebook.com/104857600000001/posts/123450000000001?comment_id=998800000000001\",\"occurred_at\":\"2025-12-31T23:18:00+0000\",\"comment_count\":0,\"brand_relevant\":false,\"watched_object_id\":\"4d0fc023-b795-4f37-bf16-1c4f4dcf8212\",\"metadata\":{\"siblingsAccessible\":true,\"pageId\":\"104857600000001\"},\"contact_id\":null,\"status\":\"new\"}"
       ],
-      "reply": "{\"id\":\"9dd8a3db-b5f8-4ded-a875-1a3e216664a4\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.536395+00\",\"updated_at\":\"2026-11-12 10:10:29.536395+00\",\"platform\":\"facebook\",\"external_id\":\"123450000000001_998800000000001\",\"relation\":\"comment_on_our_content\",\"parent_external_id\":\"104857600000001_123450000000001\",\"watched_object_id\":\"2e8d8a9c-5a79-44b3-941c-a9563f47336f\",\"contact_id\":null,\"author_handle\":\"Camille Martin\",\"author_external_id\":\"6000000000000001\",\"content_text\":\"Do the new bass traps ship to Belgium? I could not find it in the checkout.\",\"media_url\":null,\"permalink\":\"https://www.facebook.com/104857600000001/posts/123450000000001?comment_id=998800000000001\",\"occurred_at\":\"2025-12-31 23:18:00+00\",\"comment_count\":0,\"brand_relevant\":false,\"edited_after_reply\":false,\"triage_category\":null,\"sentiment\":null,\"urgency\":null,\"should_reply\":null,\"needs_human\":null,\"triage_reason\":null,\"suggested_reply\":null,\"approval_request_id\":null,\"status\":\"new\",\"metadata\":{\"pageId\":\"104857600000001\",\"siblingsAccessible\":true}}"
+      "reply": "{\"id\":\"19073aec-13fd-4cac-b76e-12b7585e5f30\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:08:53.862605+00\",\"updated_at\":\"2026-11-12 14:08:53.862605+00\",\"platform\":\"facebook\",\"external_id\":\"123450000000001_998800000000001\",\"relation\":\"comment_on_our_content\",\"parent_external_id\":\"104857600000001_123450000000001\",\"watched_object_id\":\"4d0fc023-b795-4f37-bf16-1c4f4dcf8212\",\"contact_id\":null,\"author_handle\":\"Camille Martin\",\"author_external_id\":\"6000000000000001\",\"content_text\":\"Do the new bass traps ship to Belgium? I could not find it in the checkout.\",\"media_url\":null,\"permalink\":\"https://www.facebook.com/104857600000001/posts/123450000000001?comment_id=998800000000001\",\"occurred_at\":\"2025-12-31 23:18:00+00\",\"comment_count\":0,\"brand_relevant\":false,\"edited_after_reply\":false,\"triage_category\":null,\"sentiment\":null,\"urgency\":null,\"should_reply\":null,\"needs_human\":null,\"triage_reason\":null,\"suggested_reply\":null,\"approval_request_id\":null,\"status\":\"new\",\"metadata\":{\"pageId\":\"104857600000001\",\"siblingsAccessible\":true}}"
     },
     {
       "method": "emit",
       "args": [
-        "{\"entity\":\"finding\",\"action\":\"created\",\"entityId\":\"9dd8a3db-b5f8-4ded-a875-1a3e216664a4\"}"
+        "{\"entity\":\"finding\",\"action\":\"created\",\"entityId\":\"19073aec-13fd-4cac-b76e-12b7585e5f30\"}"
       ]
     },
     {
@@ -203,21 +194,21 @@
       "method": "db_insert",
       "args": [
         "finding",
-        "{\"platform\":\"facebook\",\"external_id\":\"123450000000001_998800000000002\",\"relation\":\"comment_on_our_content\",\"parent_external_id\":\"104857600000001_123450000000001\",\"author_handle\":\"Jonas Weber\",\"author_external_id\":\"6000000000000002\",\"content_text\":\"Mine arrived with a cracked corner, who do I write to for a replacement?\",\"permalink\":\"https://www.facebook.com/104857600000001/posts/123450000000001?comment_id=998800000000002\",\"occurred_at\":\"2025-12-31T23:35:00+0000\",\"comment_count\":0,\"brand_relevant\":false,\"watched_object_id\":\"2e8d8a9c-5a79-44b3-941c-a9563f47336f\",\"metadata\":{\"siblingsAccessible\":true,\"pageId\":\"104857600000001\"},\"contact_id\":null,\"status\":\"new\"}"
+        "{\"platform\":\"facebook\",\"external_id\":\"123450000000001_998800000000002\",\"relation\":\"comment_on_our_content\",\"parent_external_id\":\"104857600000001_123450000000001\",\"author_handle\":\"Jonas Weber\",\"author_external_id\":\"6000000000000002\",\"content_text\":\"Mine arrived with a cracked corner, who do I write to for a replacement?\",\"permalink\":\"https://www.facebook.com/104857600000001/posts/123450000000001?comment_id=998800000000002\",\"occurred_at\":\"2025-12-31T23:35:00+0000\",\"comment_count\":0,\"brand_relevant\":false,\"watched_object_id\":\"4d0fc023-b795-4f37-bf16-1c4f4dcf8212\",\"metadata\":{\"siblingsAccessible\":true,\"pageId\":\"104857600000001\"},\"contact_id\":null,\"status\":\"new\"}"
       ],
-      "reply": "{\"id\":\"fc1f6206-563b-4036-b9f3-ef5342f90dac\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.570819+00\",\"updated_at\":\"2026-11-12 10:10:29.570819+00\",\"platform\":\"facebook\",\"external_id\":\"123450000000001_998800000000002\",\"relation\":\"comment_on_our_content\",\"parent_external_id\":\"104857600000001_123450000000001\",\"watched_object_id\":\"2e8d8a9c-5a79-44b3-941c-a9563f47336f\",\"contact_id\":null,\"author_handle\":\"Jonas Weber\",\"author_external_id\":\"6000000000000002\",\"content_text\":\"Mine arrived with a cracked corner, who do I write to for a replacement?\",\"media_url\":null,\"permalink\":\"https://www.facebook.com/104857600000001/posts/123450000000001?comment_id=998800000000002\",\"occurred_at\":\"2025-12-31 23:35:00+00\",\"comment_count\":0,\"brand_relevant\":false,\"edited_after_reply\":false,\"triage_category\":null,\"sentiment\":null,\"urgency\":null,\"should_reply\":null,\"needs_human\":null,\"triage_reason\":null,\"suggested_reply\":null,\"approval_request_id\":null,\"status\":\"new\",\"metadata\":{\"pageId\":\"104857600000001\",\"siblingsAccessible\":true}}"
+      "reply": "{\"id\":\"5a843ec7-ecab-4636-928b-079a70ab68f8\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:08:53.883162+00\",\"updated_at\":\"2026-11-12 14:08:53.883162+00\",\"platform\":\"facebook\",\"external_id\":\"123450000000001_998800000000002\",\"relation\":\"comment_on_our_content\",\"parent_external_id\":\"104857600000001_123450000000001\",\"watched_object_id\":\"4d0fc023-b795-4f37-bf16-1c4f4dcf8212\",\"contact_id\":null,\"author_handle\":\"Jonas Weber\",\"author_external_id\":\"6000000000000002\",\"content_text\":\"Mine arrived with a cracked corner, who do I write to for a replacement?\",\"media_url\":null,\"permalink\":\"https://www.facebook.com/104857600000001/posts/123450000000001?comment_id=998800000000002\",\"occurred_at\":\"2025-12-31 23:35:00+00\",\"comment_count\":0,\"brand_relevant\":false,\"edited_after_reply\":false,\"triage_category\":null,\"sentiment\":null,\"urgency\":null,\"should_reply\":null,\"needs_human\":null,\"triage_reason\":null,\"suggested_reply\":null,\"approval_request_id\":null,\"status\":\"new\",\"metadata\":{\"pageId\":\"104857600000001\",\"siblingsAccessible\":true}}"
     },
     {
       "method": "emit",
       "args": [
-        "{\"entity\":\"finding\",\"action\":\"created\",\"entityId\":\"fc1f6206-563b-4036-b9f3-ef5342f90dac\"}"
+        "{\"entity\":\"finding\",\"action\":\"created\",\"entityId\":\"5a843ec7-ecab-4636-928b-079a70ab68f8\"}"
       ]
     },
     {
       "method": "db_update",
       "args": [
         "watched_object",
-        "2e8d8a9c-5a79-44b3-941c-a9563f47336f",
+        "4d0fc023-b795-4f37-bf16-1c4f4dcf8212",
         "{\"status\":\"active\",\"cadence_seconds\":900,\"last_polled_at\":\"2026-01-01T00:00:00.000Z\",\"last_activity_at\":\"2026-01-01T00:00:00.000Z\",\"next_poll_at\":\"2026-01-01T00:15:00.000Z\"}"
       ]
     },
@@ -225,7 +216,7 @@
       "method": "db_update",
       "args": [
         "sync_state",
-        "cd879ddd-e5bd-4218-aaf3-cccd723b26dd",
+        "a04f32f7-e5b7-4fe7-a86d-72ffea13a60a",
         "{\"units_consumed_today\":0,\"units_window_date\":\"2025-12-31\",\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\",\"youtube_quota\":{\"deferred\":0,\"exhausted_until\":null}}}"
       ]
     }

@@ -9,6 +9,7 @@
 // fact override (§4.5) with no status guard. watch_object backfill-links the
 // existing findings on the same parent (§8).
 
+import type { DbBatchOp } from "@liaison/app-sdk"
 import type { Platform } from "./adapters/types"
 import type { SocialToolCtx } from "./ctx"
 
@@ -130,38 +131,44 @@ export async function watchObject(
     where: { platform: params.platform, external_id: params.external_id },
     limit: 1,
   })) as WatchedRow[]
-  let watchedId: string
-  if (!existing[0]) {
-    const inserted = await ctx.db.insert("watched_object", {
-      platform: params.platform,
-      external_id: params.external_id,
-      object_type: params.object_type ?? DEFAULT_OBJECT_TYPE[params.platform],
-      reason: params.reason ?? "manual",
-      status: "active",
-      priority: params.priority ?? 50,
-      title: params.title ?? null,
-      ...(params.permalink ? { permalink: params.permalink } : {}),
-      ...(params.metadata ? { metadata: params.metadata } : {}),
-      ...(params.cadence_seconds !== undefined ? { cadence_seconds: params.cadence_seconds } : {}),
-    })
-    watchedId = inserted.id
-  } else {
-    // Re-watching resumes a stopped/decayed watch.
-    watchedId = existing[0].id
-    await ctx.db.update("watched_object", existing[0].id, { status: "active" })
-  }
-  // Backfill-link the existing sibling findings to this watched object.
   const siblings = (await ctx.db.findMany("finding", {
     where: { platform: params.platform, parent_external_id: params.external_id },
   })) as Array<{ id: string; watched_object_id?: string | null }>
+  // The watch and its backfilled links commit together (no transaction is held across the run):
+  // a failed call never leaves a watch whose existing findings are half linked.
+  const watchedId = existing[0]?.id
+  const watchedRef: string | { $ref: string } = watchedId ?? { $ref: "watched" }
+  const ops: DbBatchOp[] = watchedId
+    ? // Re-watching resumes a stopped/decayed watch.
+      [{ update: "watched_object", id: watchedId, data: { status: "active", new_findings_count: siblings.length } }]
+    : [
+        {
+          insert: "watched_object",
+          as: "watched",
+          data: {
+            platform: params.platform,
+            external_id: params.external_id,
+            object_type: params.object_type ?? DEFAULT_OBJECT_TYPE[params.platform],
+            reason: params.reason ?? "manual",
+            status: "active",
+            priority: params.priority ?? 50,
+            title: params.title ?? null,
+            ...(params.permalink ? { permalink: params.permalink } : {}),
+            ...(params.metadata ? { metadata: params.metadata } : {}),
+            ...(params.cadence_seconds !== undefined ? { cadence_seconds: params.cadence_seconds } : {}),
+            // Keep the watch's new_findings_count in sync with its linked findings (§4.6).
+            new_findings_count: siblings.length,
+          },
+        },
+      ]
+  // Backfill-link the existing sibling findings to this watched object.
   let backfilled = 0
   for (const s of siblings) {
-    if (s.watched_object_id === watchedId) continue
-    await ctx.db.update("finding", s.id, { watched_object_id: watchedId })
+    if (watchedId && s.watched_object_id === watchedId) continue
+    ops.push({ update: "finding", id: s.id, data: { watched_object_id: watchedRef } })
     backfilled += 1
   }
-  // Keep the watch's new_findings_count in sync with its linked findings (§4.6).
-  await ctx.db.update("watched_object", watchedId, { new_findings_count: siblings.length })
+  await ctx.db.batch({ ops })
   return { status: "watching", backfilled }
 }
 

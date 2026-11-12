@@ -5,8 +5,9 @@
 // rates and terms, with `{period}` filled. No model is asked anything. Each draft joins the run of
 // its issuer and issue day, as one item, and the run gets one card.
 //
-// The draft and its lines are written by one call of `recurring_draft_write`, an atomic tool only
-// the app's own jobs reach: a job that dies between the document and its lines leaves neither. A
+// The draft and its lines are written by one call of `recurring_draft_write`, a tool only the
+// app's own jobs reach, in one commit: a job that dies between the document and its lines leaves
+// neither. A
 // draft found already written (a run that stopped before this rule, or a person's edit) is checked
 // line by line against its schedule, and a draft that differs needs a fix before it can be ready.
 //
@@ -115,9 +116,9 @@ export interface DraftWriteInput {
 const fail = (code: string, message: string): ErrorEnvelope => ({ status: "error", error: { code, message } })
 
 /**
- * Write one run draft and its lines. The kernel runs it in one transaction (`atomic: true`), so a
- * failure on any line leaves no draft. A draft already written under the same key is returned as
- * it is, with nothing added.
+ * Write one run draft and its lines in one commit (`ctx.db.batch`), so a failure on any line
+ * leaves no draft. A draft already written under the same key is returned as it is, with nothing
+ * added.
  */
 export async function recurringDraftWrite(
   ctx: RunCtx,
@@ -128,12 +129,26 @@ export async function recurringDraftWrite(
     return fail("not_a_run_draft", "The draft has no recurring key (external_ref recurring:<schedule>:<period>), so nothing was written.")
   }
   const data: Row = { ...input.document, type: "invoice", status: "draft", number: null, number_int: null, year_of_issue: null, issued_at: null }
-  const draft = await insertOnce(ctx, "documents", { external_ref: ref }, data)
-  const id = String(draft.row.id)
-  if (!draft.created) {
-    return { status: "completed", document_id: id, created: false, message: `Draft ${id} for ${ref} already existed; nothing was written.` }
+  const existing = await findOneWhere(ctx, "documents", { external_ref: ref })
+  const already = (row: Row) =>
+    ({ status: "completed", document_id: String(row.id), created: false, message: `Draft ${String(row.id)} for ${ref} already existed; nothing was written.` }) as const
+  if (existing) return already(existing)
+  let id: string
+  try {
+    const committed = await ctx.db.batch({
+      ops: [
+        { insert: "documents", as: "draft", data },
+        ...input.lines.map((line) => ({ insert: "document_lines", data: { ...line, document_id: { $ref: "draft" } } })),
+      ],
+    })
+    id = String(committed.rows.draft?.id)
+  } catch (err) {
+    // Another run wrote the same period's draft first: the key is unique, so return that one.
+    if (!isUniqueViolation(err)) throw err
+    const again = await findOneWhere(ctx, "documents", { external_ref: ref })
+    if (!again) throw err
+    return already(again)
   }
-  for (const line of input.lines) await ctx.db.insert("document_lines", { ...line, document_id: id })
   return { status: "completed", document_id: id, created: true, message: `Wrote draft ${id} for ${ref} with ${input.lines.length} line(s).` }
 }
 

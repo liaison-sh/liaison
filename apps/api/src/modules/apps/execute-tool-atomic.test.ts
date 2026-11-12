@@ -61,6 +61,15 @@ async function twoWrites(params, ctx) {
   await ctx.db_insert("items", JSON.stringify({ title: "atomic-w2", status: "open" }));
   return { ok: true };
 }
+async function writeThenCallOutside(params, ctx) {
+  await ctx.db_insert("items", JSON.stringify({ title: "atomic-w1", status: "open" }));
+  try {
+    await ctx.fetch("https://example.test/x", "{}");
+    return { called: true };
+  } catch (err) {
+    return { refused: err && err.code ? err.code : String(err && err.message) };
+  }
+}
 `
 
 const BUNDLE_PATH = "/tmp/test-execute-tool-atomic-bundle.js"
@@ -219,5 +228,28 @@ describe("executeToolHandler — atomic: true keeps the legacy whole-run ambient
 
     expect(result.data).toEqual({ ok: true })
     expect(await titlesPresent()).toEqual(["atomic-w1", "atomic-w2"])
+  })
+
+  it("atomic: true — a call outside the database is refused while the run holds its transaction", async () => {
+    toolRegistry.set([ORG_A, APP_NAME, "writeThenCallOutside"], {
+      appName: APP_NAME,
+      name: "writeThenCallOutside",
+      description: "a write, then an outside call",
+      requiredScopes: [`${APP_NAME}:items:write`],
+      handler: { bundlePath: BUNDLE_PATH, exportName: "writeThenCallOutside", trusted: true },
+      _manifest: MANIFEST,
+      atomic: true,
+    } as any)
+
+    const result = await executeTool({
+      toolName: `${APP_NAME}:writeThenCallOutside`,
+      orgId: ORG_A,
+      actor: ACTOR_A,
+      params: {},
+    })
+
+    expect(JSON.stringify(result.data)).toContain("atomic_run_egress_refused")
+    // The local write still commits with the run.
+    expect(await titlesPresent()).toEqual(["atomic-w1"])
   })
 })

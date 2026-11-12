@@ -108,6 +108,44 @@ describe("recordEntry + verifyFixture", () => {
       isolate.dispose()
     }
   })
+
+  // A recording of a failure (the provider refused, the org lacked a setting) is not the entry
+  // working: it is written only as a deliberate negative case that says why.
+  it("refuses a recording that ends in an error unless the input marks it expectError", async () => {
+    const isolate = await quickJsContractExecutor.open(
+      { script: SCRIPT },
+      { memoryBytes: 64 * 1024 * 1024 },
+    )
+    try {
+      const real: AppBridge = {
+        fetch: async () => {
+          throw new Error("provider said 422")
+        },
+        log_info: () => undefined,
+      }
+      const record = async (expectError?: { reason: string }) => {
+        const { fixture, outcome } = await recordEntry({
+          isolate,
+          entry: ENTRY,
+          input: {
+            params: { host: "shop.test", id: "42" },
+            ...(expectError ? { expectError } : {}),
+          },
+          real,
+          surface: SURFACE,
+          limits: limits(),
+          recordedFrom: "a test bridge",
+        })
+        expect(outcome.ok).toBe(false)
+        return verifyFixture({ isolate, entry: ENTRY, fixture, surface: SURFACE, limits: limits() })
+      }
+      expect(await record()).toContain("the replay ends in an error")
+      const reason = "an unknown item must surface the provider's refusal"
+      expect(await record({ reason })).toBeNull()
+    } finally {
+      isolate.dispose()
+    }
+  })
 })
 
 describe("scrubValue", () => {

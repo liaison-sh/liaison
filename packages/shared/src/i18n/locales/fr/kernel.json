@@ -379,6 +379,12 @@
   "app": {
     "name": "Liaison"
   },
+  "appPage": {
+    "open": "Ouvrir",
+    "opened": "Ouvert dans une nouvelle fenêtre.",
+    "popupBlocked": "Votre navigateur a bloqué la fenêtre. Autorisez les fenêtres pour Liaison et réessayez.",
+    "failed": "Ce lien a expiré ou a déjà servi. Redemandez-en un."
+  },
   "appLockFailed": "Le déverrouillage a échoué. Réessayez.",
   "appLockTitle": "Liaison est verrouillé",
   "appLockUnlock": "Déverrouiller",

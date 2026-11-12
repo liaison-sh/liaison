@@ -179,3 +179,4 @@ The agent's turn shows as soon as the server takes it on -> apps/api/src/modules
 A newer request while the agent still answers shows both turns -> apps/web/src/modules/threads/message-store.ts:2758
 An agent reads card numbers and keys masked -> apps/api/src/modules/threads/message.ts:506, apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:765
 Web links carrying a card number are refused -> apps/api/src/modules/agent/tools/web-read-guardrails.ts:132
+Open button for a tool answer that is an app page handle -> apps/web/src/modules/app-pages/PageHandleCard.tsx:14 ; apps/web/src/modules/app-pages/open-page.ts:30

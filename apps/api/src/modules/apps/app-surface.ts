@@ -29,6 +29,14 @@ export interface AppPageDecl {
   /** The routes (manifest `pageRoutes`) the page may call. */
   routes?: string[]
   hosts?: AppPageHosts
+  /**
+   * The page receives the access token of one oauth2 account of this
+   * connection (`liaisonPage.connectionToken`), for a provider widget that
+   * runs in the person's browser with their own grant (a file picker). The
+   * account is the link's `params.account`: the person's own, or the
+   * organization's when they hold the connection's admin scope.
+   */
+  connectionToken?: { connection: string }
 }
 
 export interface AppRouteDecl {
@@ -113,6 +121,10 @@ export function appSurfaceErrors(manifest: {
     }
     if (!page.scope.startsWith(`${name}:`)) {
       errors.push(`pages.${pageName}.scope: must be one of the app's own scopes (${name}:...)`)
+    }
+    const tokenConn = page.connectionToken?.connection
+    if (tokenConn !== undefined && manifest.connections?.[tokenConn]?.type !== "oauth2") {
+      errors.push(`pages.${pageName}.connectionToken: "${tokenConn}" is not an oauth2 connection`)
     }
     for (const route of page.routes ?? []) {
       if (!routes[route])

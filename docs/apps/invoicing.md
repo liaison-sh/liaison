@@ -298,7 +298,7 @@ When **Subscriptions paid by card** is issued by **Liaison**, each Stripe invoic
 | `recurring_run_issue` | Stage a month-end run's card when it has none (a waiting card is decided by a person on it); numbers are taken on the issue day | Always, never auto-approved |
 | `recurring_run_unapprove` | Undo a run's approval before its first number | No, unless the turn read outside text |
 | `documents_retry_pdf` | Re-render a failed PDF | No |
-| `order_reissue_apply` | Reissue an invoice after a Shopify order edit changed lines or amounts | Always |
+| `order_reissue_apply` | Reissue an invoice after a Shopify order edit changed lines or amounts: the credit note and the replacement invoice are issued together or not at all | Always |
 | `deferred_tax_override` | Issue a parked order with a chosen tax decision | Always |
 | `drafts_create`, `drafts_update`, `drafts_discard` | Unissued drafts; a month-end run's draft issues only through its run's card | No |
 | `einvoicing_classify`, `einvoicing_readiness`, `einvoicing_settings_get` | Explain e-invoicing status and blockers | No |

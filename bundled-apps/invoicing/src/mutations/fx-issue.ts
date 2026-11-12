@@ -10,7 +10,7 @@ import {
   fxRateUnavailableEnvelope,
   warmFxRate,
 } from "../einvoicing/fx"
-import { issueDocument } from "../issue"
+import { issueDocument, issueTogether } from "../issue"
 import type { ErrorEnvelope, MutationsCtx } from "./shared"
 
 type IssueInput = Parameters<typeof issueDocument>[1]
@@ -28,6 +28,25 @@ export async function issueWithFxRate(
   await warmFxRate(ctx as MutationsCtx & FxFetchCtx, input.draft.currency, fxIssueDate(input.draft.issued_at))
   try {
     return { ok: true, result: await issueDocument(ctx, input) }
+  } catch (err) {
+    if (err instanceof FxRateUnavailableError) return { ok: false, error: fxRateUnavailableEnvelope(err) }
+    throw err
+  }
+}
+
+/**
+ * Warm each document's rate, then issue them all in one commit (`issueTogether`): a rate the ECB
+ * could not price refuses them all, with nothing persisted and no number used.
+ */
+export async function issueTogetherWithFxRate<N extends string>(
+  ctx: MutationsCtx,
+  inputs: ReadonlyArray<readonly [N, IssueInput]>,
+): Promise<{ ok: true; results: Record<N, IssueResult> } | { ok: false; error: ErrorEnvelope }> {
+  for (const [, input] of inputs) {
+    await warmFxRate(ctx as MutationsCtx & FxFetchCtx, input.draft.currency, fxIssueDate(input.draft.issued_at))
+  }
+  try {
+    return { ok: true, results: await issueTogether(ctx, inputs) }
   } catch (err) {
     if (err instanceof FxRateUnavailableError) return { ok: false, error: fxRateUnavailableEnvelope(err) }
     throw err

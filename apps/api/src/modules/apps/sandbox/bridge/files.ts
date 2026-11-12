@@ -414,6 +414,12 @@ export function createFilesMethods(ctx: BridgeContext): Record<string, any> {
         pdfStripRotation?: boolean
         /** Request headers for the upstream, `IMPORT_HEADER_ALLOWLIST` only. */
         headers?: Record<string, string>
+        /**
+         * A connection credential the host adds, as `ctx.fetch`'s `auth`
+         * (fetch-auth.ts): the app never holds the token. Only to a host of that
+         * connection's own domains; never with an `authorization` header.
+         */
+        auth?: unknown
         /** The response is JSON carrying the file as base64/base64url in this field. */
         jsonBase64Field?: string
         disposition?: "inline" | "attachment"
@@ -490,6 +496,22 @@ export function createFilesMethods(ctx: BridgeContext): Record<string, any> {
           throw new Error(`invalid_header: ${name}`)
         }
         headers[name] = value
+      }
+      if (p.auth !== undefined && p.auth !== null) {
+        if (Object.keys(headers).some((h) => h.toLowerCase() === "authorization")) {
+          throw new Error("invalid_header: authorization is set by auth")
+        }
+        const [{ parseFetchAuth, injectFetchAuth }, { createFetchAuthDeps }] = await Promise.all([
+          import("~/modules/apps/sandbox/bridge/fetch-auth"),
+          import("~/modules/apps/sandbox/bridge/egress"),
+        ])
+        const auth = parseFetchAuth(p.auth)
+        if (auth?.exchange) throw new Error("invalid_auth: a download takes no token exchange")
+        const { manifest: granted } = await ctx.egress()
+        const deps = createFetchAuthDeps(ctx, async () => {
+          throw new Error("invalid_auth: a download takes no token exchange")
+        })
+        if (auth) await injectFetchAuth(p.url, headers, auth, { ...deps, manifest: granted })
       }
       const credentialed = Object.keys(headers).some((h) => h.toLowerCase() === "authorization")
       const timeoutMs = Math.min(Math.max(Number(p.timeoutMs) || 60_000, 1_000), 120_000)

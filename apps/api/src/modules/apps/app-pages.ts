@@ -375,11 +375,56 @@ export async function appPagePolicy(
   return directives.join("; ")
 }
 
+/**
+ * The token a page with `connectionToken` receives: the account its link names
+ * (`params.account`), the person's own, or the organization's when they hold
+ * the connection's admin scope. Never another member's.
+ */
+async function pageConnectionToken(
+  binding: AppPageBinding,
+  decl: AppPageDecl,
+  actor: ActorContext,
+): Promise<{ token: string; identifier: string; account: string } | null> {
+  const connection = decl.connectionToken?.connection
+  if (!connection) return null
+  const accountId = binding.params.account
+  if (typeof accountId !== "string" || !UUID_RE.test(accountId)) {
+    throw new AppPageError(400, "page_account_missing", "This page needs the account it opens for")
+  }
+  const [{ resolveConnectionAccount }, { connectionAdminScope }] = await Promise.all([
+    import("~/modules/apps/connections/service"),
+    import("~/modules/apps/connections/admin-scope"),
+  ])
+  const account = await withPrivilegedDb(binding.orgId, "app-page-connection-token", (tx) =>
+    resolveConnectionAccount(
+      tx,
+      binding.orgId,
+      binding.userId,
+      binding.app,
+      connection,
+      undefined,
+      { actorType: "system", accountId },
+    ).catch(() => null),
+  )
+  const mayUse =
+    account &&
+    (account.ownerType === "user"
+      ? account.ownerId === binding.userId
+      : hasScope(connectionAdminScope(binding.orgId, binding.app, connection), actor.scopes ?? []))
+  if (!account || !mayUse) {
+    throw new AppPageError(403, "page_account_forbidden", "This page's account is not yours")
+  }
+  return { token: account.token, identifier: account.identifier, account: account.id }
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 function bootstrapScript(
   base: string,
   session: string,
   key: string,
   params: Record<string, unknown>,
+  connectionToken: { token: string; identifier: string; account: string } | null = null,
 ): string {
   // JSON in a script: `<` escaped so a param can never close the tag.
   const json = (v: unknown) => JSON.stringify(v).replace(/</g, "\\u003c")
@@ -392,6 +437,7 @@ function bootstrapScript(
     "var f=window.fetch.bind(window),s=JSON.stringify,e=encodeURIComponent;" +
     `var u=${json(`${base}/s/${session}/routes/`)},k=${json(key)},h=${json(PAGE_KEY_HEADER)};` +
     `window.liaisonPage=Object.freeze({params:Object.freeze(${json(params)}),` +
+    (connectionToken ? `connectionToken:Object.freeze(${json(connectionToken)}),` : "") +
     "call:function(route,body){var o={'content-type':'text/plain'};o[h]=k;" +
     "return f(u+e(route),{method:'POST',headers:o,body:s(body===undefined?null:body)})" +
     ".then(function(r){return r.json().then(function(j){if(!r.ok)" +
@@ -426,6 +472,7 @@ export async function renderAppPage(
   if (!hasScope(decl.scope, actor.scopes ?? [])) {
     throw new AppPageError(403, "forbidden", `This page needs ${decl.scope}`)
   }
+  const connectionToken = await pageConnectionToken(binding, decl, actor)
   const session = newId()
   const key = newId()
   const record: AppPageBinding = { ...binding, keyHash: keyHashOf(key) }
@@ -440,7 +487,7 @@ export async function renderAppPage(
     `<!doctype html><html><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width,initial-scale=1">` +
     `<meta name="referrer" content="no-referrer"><title>${title}</title>` +
-    `<script nonce="${nonce}">${bootstrapScript(base, session, key, binding.params)}</script>` +
+    `<script nonce="${nonce}">${bootstrapScript(base, session, key, binding.params, connectionToken)}</script>` +
     `<script nonce="${nonce}" src="${escapeHtml(`${base}/s/${session}/page.js`)}"></script>` +
     `</head><body><div id="root"></div></body></html>`
   return { html, policy: await appPagePolicy(binding.app, decl, nonce, origin, framed) }

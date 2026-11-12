@@ -184,12 +184,12 @@ export async function documentsConvertToInvoicePreflight(
 }
 
 /**
- * `documents_convert_to_invoice`. The tool holds no transaction of its own (`atomic: false`), so
+ * `documents_convert_to_invoice`. The tool holds no transaction of its own, so
  * the two Shopify calls of a Shopify-linked quote keep no database connection or transaction open
  * while Shopify answers; the quote is stamped in one write once Shopify has completed the draft
- * order. A local convert (the quote marked, the invoice numbered and written) runs as one
- * transaction through the app's internal `documents_convert_local` tool, so a failure leaves the
- * quote as it was and uses no number.
+ * order. A local convert (the quote marked, the invoice numbered and written) lands in one commit
+ * through the app's internal `documents_convert_local` tool, so a failure leaves the quote as it
+ * was and uses no number.
  */
 export async function documentsConvertToInvoice(
   ctx: MutationsCtx,
@@ -221,9 +221,9 @@ export async function documentsConvertToInvoice(
 }
 
 /**
- * `documents_convert_local`, internal: the local half of a convert, in one transaction
- * (`atomic: true`). A Shopify-linked source is refused here, so Shopify is never called while the
- * transaction is open.
+ * `documents_convert_local`, internal: the local half of a convert. The source's new status
+ * commits with the invoice in one batch. A Shopify-linked source is refused here: it converts
+ * through Shopify instead.
  */
 export async function documentsConvertLocal(
   ctx: MutationsCtx,
@@ -258,19 +258,9 @@ export async function documentsConvertLocal(
   const when = await issueDateParts(ctx, issuer)
   if (!when.ok) return when.error
 
-  await ctx.db.update("documents", source.id, {
-    status: trans.next,
-    lifecycle_log: [
-      ...source.lifecycle_log,
-      {
-        event: "converted_to_invoice",
-        actor: await ctx.getUserId(),
-        ts: new Date().toISOString(),
-      },
-    ],
-  })
-
-  // Issue a new invoice referencing the source. UI/agent flow seeds lines.
+  // Issue a new invoice referencing the source. UI/agent flow seeds lines. The source's new
+  // status commits with the invoice (`commit_with`): a refused or failed issue leaves the source
+  // as it was, and an issued invoice never leaves its source unconverted.
   const cat = convertCategory(input, source)
   const issueInput = {
     type: "invoice" as const,
@@ -295,6 +285,18 @@ export async function documentsConvertLocal(
       notes: (notes.value === undefined ? source.notes : notes.value) ?? null,
       lines: sourceLines,
     },
+    commit_with: [
+      {
+        update: "documents",
+        id: source.id,
+        data: { status: trans.next },
+        append: {
+          lifecycle_log: [
+            { event: "converted_to_invoice", actor: await ctx.getUserId(), ts: new Date().toISOString() },
+          ],
+        },
+      },
+    ],
   }
   const issued = await issueWithFxRate(ctx, issueInput)
   if (!issued.ok) return issued.error

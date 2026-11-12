@@ -519,6 +519,42 @@ function uniqueDb(db: MockDb): MockDb {
 }
 
 describe("rolling deploy: writes are mirrored onto the old per-variant table", () => {
+  it("a new profile, its link and its old-table mirror commit together: a failing mirror leaves nothing", async () => {
+    const db = createMockDb()
+    const insert = db.insert.bind(db)
+    db.insert = async (entity, data) => {
+      if (entity === LEGACY_TABLE) throw new Error("mirror refused")
+      return insert(entity, data)
+    }
+    await expect(
+      productProfileUpsert(ctxOf(db), { product_source: "shopify", product_id: "V5", unit_weight: 1 }),
+    ).rejects.toThrow("mirror refused")
+    expect(db.__all(PROFILE_TABLE)).toEqual([])
+    expect(db.__all(LINK_TABLE)).toEqual([])
+  })
+
+  it("an old row the previous release inserted meanwhile is adopted: the write retries once on the unique clash", async () => {
+    const db = uniqueDb(createMockDb())
+    const findMany = db.findMany.bind(db)
+    let raced = false
+    db.findMany = async (entity, opts) => {
+      const rows = await findMany(entity, opts)
+      // Right after this call read the variant's (missing) old row, the previous release writes it.
+      if (entity === LEGACY_TABLE && !raced && (opts?.where as { product_id?: string } | undefined)?.product_id === "V6") {
+        raced = true
+        await db.insert(LEGACY_TABLE, { product_source: "shopify", product_id: "V6", unit_weight: 9 })
+      }
+      return rows
+    }
+    const res = await productProfileUpsert(ctxOf(db), { product_source: "shopify", product_id: "V6", unit_weight: 1.5 })
+    expect(raced).toBe(true)
+    expect(db.__all(PROFILE_TABLE).map((p) => p.id)).toEqual([res.id])
+    expect(db.__all(LINK_TABLE)).toHaveLength(1)
+    expect(db.__all(LEGACY_TABLE)).toHaveLength(1)
+    expect(oldReader(db).V6).toMatchObject({ unit_weight: 1.5 })
+    expect(db.__all(LEGACY_TABLE)[0]!.migrated_profile_id).toBe(res.id)
+  })
+
   it("an edit to a shared profile is visible to an old-shape reader for every linked variant", async () => {
     const { db, ctx, p1, p2 } = await seeded()
     await mergeProfiles(ctx, { target_profile_id: p1, source_profile_ids: [p2], confirm: true })

@@ -145,6 +145,7 @@ kernel.agent_turns.thread_id
 kernel.agent_turns.user_message_id
 kernel.agents.owner_user_id
 kernel.app_activation_events.actor_id
+kernel.app_adoptions.step_id
 kernel.app_attention_items.user_id
 kernel.app_scope_grant_audit.target_user_id
 kernel.app_sequences.app_id

@@ -101,7 +101,7 @@ const CASES: Case[] = [
   // read lists ticket subjects, a raw query any allow-listed column of a customer's database.
   {
     app: "database",
-    dir: API_APPS,
+    dir: BUNDLED,
     tool: "db_read",
     row: {
       rows: [{ id: "t1", handle: "T-1", subject: INJECTED, status: "open" }],
@@ -110,7 +110,7 @@ const CASES: Case[] = [
   },
   {
     app: "database",
-    dir: API_APPS,
+    dir: BUNDLED,
     tool: "db_query",
     row: { rows: [{ id: 1, note: INJECTED }], truncated: false },
   },

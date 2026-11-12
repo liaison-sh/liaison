@@ -22,6 +22,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { createHmac } from "node:crypto"
 import { readFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { sql } from "~/db/connection"
 import { type UserContext, withRlsContext } from "~/db/rls"
@@ -370,7 +371,7 @@ describe("record Shopify contract fixtures", () => {
       if (problem) {
         if (process.env.CONTRACT_RECORD_DEBUG) {
           // The rejected fixture, for a look at what the replay asked for (outside the repo).
-          writeFixture(join(process.env.TMPDIR ?? "/tmp", "contract-rejected"), APP, scrubbed)
+          writeFixture(join(tmpdir(), "contract-rejected"), APP, scrubbed)
         }
         report.push(`FAIL ${step.entry}: ${problem} | ${summary}`)
         continue

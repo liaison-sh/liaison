@@ -5143,7 +5143,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   // plain words, because approving it is the disclosure. Kept inside the 8-line cap. The place
   // is named as people know it when the tool can (a dashboard table by its name).
   const taintSurface = taintDisclosedToReaders
-    ? ((await tool.taintSurfaceLabel?.(validatedParams, { orgId: opts.orgId }).catch(() => null)) ??
+    ? ((await tool.taintCardPlace?.(validatedParams, { orgId: opts.orgId }).catch(() => null)) ??
       taintSurfaceLabelForTool(opts.orgId, opts.toolName, tool.writesToTable))
     : ""
   const withTaintDisclosure = (s: ApprovalSummary): ApprovalSummary =>

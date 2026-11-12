@@ -590,7 +590,7 @@ export function registerTableTools(orgId: string): void {
       })) as Handler,
     writesToTable: ROWS_SINK,
     sinkReadersResource: { type: TABLE_RESOURCE, idParam: "tableId" },
-    taintSurfaceLabel: async (params: unknown, { orgId: o }: { orgId: string }) => {
+    taintCardPlace: async (params: unknown, { orgId: o }: { orgId: string }) => {
       const t = await storedTable(o, (params as { tableId?: unknown } | null)?.tableId)
       return t ? `the table "${t.name}"`.slice(0, 120) : null
     },

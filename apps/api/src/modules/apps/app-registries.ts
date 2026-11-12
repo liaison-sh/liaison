@@ -267,7 +267,7 @@ export const toolRegistry = createTypedRegistry<
      *  "Arrivages""), when the write target's table name would mean nothing to a person (a
      *  dashboard table's rows live in the data store). Null or absent: the generic label
      *  (scope-taint.ts, taintSurfaceLabelForTool). Host-only. */
-    taintSurfaceLabel?: (params: unknown, ctx: { orgId: string }) => Promise<string | null>
+    taintCardPlace?: (params: unknown, ctx: { orgId: string }) => Promise<string | null>
     /** An AGENT POST into a kernel thread (threads_reply, threads_create's first message):
      *  who will read it. On a tainted turn a post some of those people could not read parks
      *  for the requester's approval, which discloses it to them, instead of landing hidden

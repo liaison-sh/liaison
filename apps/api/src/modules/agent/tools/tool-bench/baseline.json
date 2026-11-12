@@ -1265,8 +1265,8 @@
       "schema": 9
     },
     "kernel__dashboards_edit": {
-      "desc": 750,
-      "schema": 253
+      "desc": 1043,
+      "schema": 281
     },
     "kernel__dashboards_get": {
       "desc": 139,
@@ -1286,7 +1286,7 @@
     },
     "kernel__dashboards_preview_block": {
       "desc": 272,
-      "schema": 255
+      "schema": 317
     },
     "kernel__dashboards_snapshot": {
       "desc": 647,
@@ -1297,7 +1297,7 @@
       "schema": 13
     },
     "kernel__dashboards_update": {
-      "desc": 410,
+      "desc": 472,
       "schema": 60
     },
     "kernel__data_collections_list": {
@@ -1671,6 +1671,14 @@
     "kernel__shopify_setup": {
       "desc": 207,
       "schema": 3
+    },
+    "kernel__sidebar_apps_get": {
+      "desc": 368,
+      "schema": 5
+    },
+    "kernel__sidebar_apps_set": {
+      "desc": 576,
+      "schema": 5
     },
     "kernel__skill_read": {
       "desc": 202,

@@ -212,4 +212,6 @@ With `timeGrain` set to `day`, `week` or `month`, `analytics_query` returns one 
 
 `products_publish` with only a product publishes it on every sales channel it is not on yet, and `products_unpublish` takes it off the channels it is on. The approval card names each channel. Both need the store's sales channel permission: a connection approved before the app asked for it shows **Permissions update required**, and the tools refuse to stage a request until you click **Reconnect**.
 
+`products_merge` moves the duplicate's variants and stock onto the product you keep, redirects the duplicate's storefront address to it, then deletes the duplicate. The redirect needs the store's navigation permission (`write_online_store_navigation`): without it the tool refuses before changing anything. A connection approved before the app asked for it shows **Permissions update required**: add the scope to the Shopify app's released scopes if your app lists them itself, then click **Reconnect**.
+
 Related: [Invoicing](invoicing.md), [Boxtal](boxtal.md), [Approve what agents do](../agents/approvals.md), [Agent tools](../reference/agent-tools.md), [App settings](../reference/app-settings.md).

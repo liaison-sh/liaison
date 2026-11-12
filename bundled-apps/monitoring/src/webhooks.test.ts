@@ -14,7 +14,7 @@
 import { describe, expect, it } from "bun:test"
 import { assignRefsJobHandler } from "./jobs"
 import { incidents, makeCtx } from "./test-ctx"
-import { alertWebhookHandler, CREATE_REF_BATCH } from "./webhooks"
+import { alertWebhookHandler, CREATE_REF_BATCH, CREATED_LEASE_MS } from "./webhooks"
 
 const BASE = {
   source: "grafana-prod",
@@ -150,6 +150,60 @@ describe("alertWebhookHandler", () => {
     expect(retry.status).toBe(200)
     expect(incidents(spy).length).toBe(1)
     expect(spy.emits.filter((e) => e.action === "created").length).toBe(1)
+  })
+
+  it("a run killed after its insert: the redelivery answers 503 within the lease, then pages incident:created exactly once", async () => {
+    const { ctx, spy } = makeCtx()
+    // The first run inserts and numbers the incident, then dies inside its emit: it never
+    // returns, never deletes the row, never clears created_pending.
+    const emit = ctx.emit.bind(ctx)
+    let killFirst = true
+    ctx.emit = (async (event: Parameters<typeof emit>[0]) => {
+      if (killFirst) {
+        killFirst = false
+        return new Promise(() => {})
+      }
+      return emit(event)
+    }) as typeof ctx.emit
+    void alertWebhookHandler(BASE, ctx)
+    await new Promise((r) => setTimeout(r, 10))
+    expect(incidents(spy).length).toBe(1)
+    expect(incidents(spy)[0]!.created_pending).toBe(true)
+    expect(spy.emits.length).toBe(0)
+
+    // The kernel's replay a few seconds later: that run may still be sending, so no fold yet.
+    const early = await alertWebhookHandler(BASE, ctx)
+    expect(early.status).toBe(503)
+    expect(spy.emits.length).toBe(0)
+    expect(incidents(spy)[0]!.count).toBe(1)
+
+    // Past the lease the run is dead: the replay pages the incident it created.
+    const realNow = Date.now
+    Date.now = () => realNow() + CREATED_LEASE_MS + 1_000
+    try {
+      const late = await alertWebhookHandler(BASE, ctx)
+      expect(late.status).toBe(200)
+      // A later repeat folds as a plain repeat: the page went out once.
+      const again = await alertWebhookHandler({ ...BASE, ts: "2026-07-05T03:13:00Z" }, ctx)
+      expect(again.status).toBe(200)
+    } finally {
+      Date.now = realNow
+    }
+    expect(spy.emits.map((e) => e.action)).toEqual(["created", "repeated"])
+    const created = spy.emits[0]!
+    expect(created.entityId).toBe(String(incidents(spy)[0]!.id))
+    expect((created.data as Record<string, unknown>).severity).toBe("critical")
+    expect(incidents(spy).length).toBe(1)
+    expect(incidents(spy)[0]!.created_pending ?? null).toBeNull()
+  })
+
+  it("a created incident is not pending: its repeat folds at once", async () => {
+    const { ctx, spy } = makeCtx()
+    await alertWebhookHandler(BASE, ctx)
+    expect(incidents(spy)[0]!.created_pending ?? null).toBeNull()
+    const res = await alertWebhookHandler({ ...BASE, ts: "2026-07-05T03:13:00Z" }, ctx)
+    expect(res.status).toBe(200)
+    expect(spy.emits.map((e) => e.action)).toEqual(["created", "repeated"])
   })
 
   it("survives an insert race on (source, dedupKey) by folding into the winner's incident", async () => {

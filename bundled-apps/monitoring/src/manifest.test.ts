@@ -80,7 +80,9 @@ describe("monitoring app.manifest.json", () => {
     // 0.4.18: the source repository link names the repository where the code now lives.
     // 0.4.16 (main): refs numbered under an expiring store lease, no held transaction.
     // 0.4.19: both of the above, merged.
-    expect(MANIFEST.version).toBe("0.4.19")
+    // 0.4.17 (main): an alert is always paged, a redelivered one included.
+    // 0.4.20: both of the above, merged.
+    expect(MANIFEST.version).toBe("0.4.20")
   })
 
   // The declarative settings page (/settings/apps/monitoring): the detailed

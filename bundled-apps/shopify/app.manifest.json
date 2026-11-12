@@ -282,7 +282,7 @@
       }
     ]
   },
-  "version": "0.4.23",
+  "version": "0.4.24",
   "network": {
     "imageHosts": ["cdn.shopify.com"],
     "linkHosts": ["admin.shopify.com"]
@@ -362,7 +362,8 @@
         "write_discounts",
         "read_reports",
         "read_publications",
-        "write_publications"
+        "write_publications",
+        "write_online_store_navigation"
       ],
       "optionalScopes": [
         "read_users"

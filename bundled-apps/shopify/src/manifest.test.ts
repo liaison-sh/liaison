@@ -951,7 +951,10 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.22 on main: analytics_query adds metrics sessions and conversion_rate (sessions dataset),
     // groupBy product, and an optional timeGrain (day, week, month) whose rows carry `date`.
     // 0.4.23: the branch's 0.4.22 and main's 0.4.22 (analytics sessions and time grains), merged.
-    expect(m.version).toBe("0.4.23")
+    // 0.4.23 on main: the OAuth request adds write_online_store_navigation, which products_merge's
+    // redirect needs; a merge whose connection lacks it is refused before its first write.
+    // 0.4.24: both of the above, merged.
+    expect(m.version).toBe("0.4.24")
   })
 
   it("orders_search and variants_search declare their filters and close their params", () => {
@@ -1003,6 +1006,8 @@ describe("Shopify app.manifest.json", () => {
     }
     expect(m.connections.shop.scopes).toContain("read_publications")
     expect(m.connections.shop.scopes).toContain("write_publications")
+    // products_merge redirects the removed listing's URL (urlRedirectCreate).
+    expect(m.connections.shop.scopes).toContain("write_online_store_navigation")
     for (const name of ["products_publish", "products_unpublish"]) {
       // The card is hydrated with the resolved channels, from an UNGATED read of this app.
       expect(m.tools[name]!.summarizerContext).toEqual({

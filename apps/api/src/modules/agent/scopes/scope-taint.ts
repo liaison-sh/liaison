@@ -130,6 +130,9 @@
 //      i. (Superseded 2026-10-29 by rule 9: a web read is never judged here, whatever the turn
 //         read.)
 //      Unknown taint stays held by nobody; every judgement is point in time.
+//      j. a write whose readers are those of one shared resource (`sinkReadersResource`:
+//         tables_rows_write, whose rows follow the dashboard table's sharing) is judged by them:
+//         its owner, everyone when the whole org sees it, the people and role members granted.
 //   7. The refusal names the missing scope(s) and HOW MANY of the people who would see the
 //      write lack them, never who. It names the only remedies (a person holding the scopes
 //      acts in the app, or an admin adjusts scopes) and says a new conversation is not
@@ -418,6 +421,38 @@
 // tool registry entry type (modules/apps/app-registries.ts), must annotate every tool with
 // exactly this form: an enforcing-sink tool with one of the three strings above, character for
 // character, and every other write tool with its own `schema.table`.
+//
+// A RESTRICTED RESOURCE'S READ NARROWS THE TURN (2026-11-12). A dashboard table follows its own
+// sharing, below any scope: everyone holds `kernel:dashboards:read`, few may read the payroll
+// table. Judged on scopes alone, copying its rows into an org-wide table ran at once.
+//
+//  15. a. A read of a shared resource declares the resource TYPE as its `readsFromTable` (a
+//         SHAREABLE_RESOURCES key, `kernel.dashboard_table` for tables_query) and its id as the
+//         row: the read files it as an origin, like A46b, and never authorizes a write (no tool
+//         writes to a resource type).
+//      b. Every write of that turn (execute-tool.ts, after rules 6 to 14, whatever the scope taint
+//         holds: `kernel:dashboards:read` is every member's, so it classifies nothing) has readers: the
+//         target resource's (`sinkReadersResource`), the acting user (`sinkReadersSelf`), the
+//         conversation's (`sinkReadersConversation`), a post's thread (`taintPostAudience`), else
+//         unbounded. It runs at once only when every reader also reads every restricted resource
+//         the turn read (resourceReadsGap); a resource the whole org sees narrows nothing.
+//      c. Otherwise it parks for the REQUESTER alone (the approval is owner-routed to them, who
+//         read the resource): never inline, never refused silently, never notified to the org's
+//         deciders, who may not read the resource. A call no person asked for is refused.
+//      d. The record is per turn (the live origin store, forwarded across a hop like A46b): the
+//         reply stamp carries the scopes only, so a later turn is judged by its own reads.
+//      e. THE ROOM FLOOR REACHES IT. The agent's own answer is the turn's widest write: it lands in
+//         the conversation, and the reply stamp says `kernel:dashboards:read`, which everyone
+//         holds. So the room floor (effective-scope.ts) is applied to the resource's readers: in a
+//         turn whose room counts people (`roomPeople` on the frame: a conversation's people, the
+//         requester alone in a DM with the agent), a read of a restricted resource some of them
+//         may not read is withheld by the room, the same as a scope the floor took away
+//         (execute-tool.ts, `roomWithheldResourceRead`). The call returns "not read here", the
+//         resource's scope joins the turn's `withheld`, and the requester's card offers "Continue
+//         in a DM" and "Share anyway": the rerun bypasses the floor (no `roomPeople`) and writes
+//         the answer with the room's people on its disclosure list, audited. A routine tick has
+//         no floor. Later turns: the read never happened in that room, and a turn floored by
+//         another room replays only that room's history.
 //
 // SAME-RESOURCE ALLOWANCE (A46). The taint also records WHERE it came from: per table, the row
 // ids the turn's scoped reads RETURNED (A46b: filed after the read succeeded, never from its
@@ -903,6 +938,9 @@ export type ToolTaintDeclaration = {
   /** The requester and the conversation's participants are the write's only readers (rule 6e):
    *  judged at the dispatch by their grants instead of refused here. */
   sinkReadersConversation?: boolean
+  /** The readers of one shared resource are the write's readers (rule 6j): judged at the
+   *  dispatch by their grants instead of refused here. */
+  sinkReadersResource?: { type: string; idParam: string }
   /** The table this READ tool reads its rows from, schema-qualified like `writesToTable`. It is
    *  what makes the read an origin for the same-resource allowance; it never authorizes a write
    *  (a tool declaring it and no `writesToTable` is still judged by `readOnly`). */

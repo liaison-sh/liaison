@@ -537,7 +537,11 @@ export async function listCollections(
     .where(
       and(
         eq(appDocumentUsage.orgId, filter.orgId),
-        filter.app !== undefined ? eq(appDocumentUsage.app, filter.app) : undefined,
+        // A dashboard table's rows (app `dashboards`, modules/dashboards/tables) follow the
+        // table's own sharing: their collections are not listed with the org's store.
+        filter.app !== undefined
+          ? eq(appDocumentUsage.app, filter.app)
+          : sql`${appDocumentUsage.app} <> 'dashboards'`,
         sql`${appDocumentUsage.docs} > 0`,
       ),
     )
@@ -734,12 +738,26 @@ export async function withStatementTimeout<T>(
   }
 }
 
+/** A host text search over named fields (queryDocuments' `host.contains`). */
+export interface ContainsQuery {
+  text: string
+  fields: string[]
+  links?: { fields: string[]; apps: string[] | "all" }
+}
+
 /** One page of the collection's documents matching `query`. */
 export async function queryDocuments(
   tx: RlsClient,
   caller: StoreCaller,
   collection: string,
   query: StoreQuery = {},
+  /**
+   * Host-only narrowing, never taken from a tool's query: documents holding `text` in one of the
+   * named top-level `fields`, or in the `label` of a link object at one of `links.fields` whose
+   * `app` is among `links.apps` ("all": any app). Only the named fields are searched, so a caller
+   * keeps hidden values (a retired field, a label the reader may not see) out of the match.
+   */
+  host: { contains?: ContainsQuery } = {},
 ): Promise<StoreQueryResult> {
   assertCaller(caller)
   assertCollection(collection)
@@ -785,6 +803,27 @@ export async function queryDocuments(
     eq(appDocuments.collection, collection),
     ...compiled.conditions,
   ]
+  const text = host.contains?.text.trim()
+  if (host.contains && text) {
+    const pattern = `%${text.slice(0, 100).replace(/[\\%_]/g, (c) => `\\${c}`)}%`
+    const matches: SQL[] = host.contains.fields.map(
+      (f) => sql`(${dataField(f)})::text ILIKE ${pattern}`,
+    )
+    const links = host.contains.links
+    for (const f of links?.fields ?? []) {
+      const label = sql`(${dataField(f)} ->> 'label') ILIKE ${pattern}`
+      if (links!.apps === "all") matches.push(label)
+      else if (links!.apps.length > 0) {
+        matches.push(
+          sql`(${label} AND (${dataField(f)} ->> 'app') IN (${sql.join(
+            links!.apps.map((a) => sql`${a}`),
+            sql`, `,
+          )}))`,
+        )
+      }
+    }
+    conditions.push(matches.length ? sql`(${sql.join(matches, sql` OR `)})` : sql`false`)
+  }
   if (query.cursor !== undefined) {
     const c = decodeCursor(query.cursor, order)
     if (orderField === DOC_ID_FIELD) {
@@ -811,7 +850,7 @@ export async function queryDocuments(
       .orderBy(...(sortKey ? [sortDir(sortKey)] : []), sortDir(appDocuments.docId))
       .limit(limit + 1)
 
-  const unindexed = compiled.unindexed || orderField !== UPDATED_AT_FIELD
+  const unindexed = compiled.unindexed || orderField !== UPDATED_AT_FIELD || Boolean(text)
   const rows = unindexed
     ? await withStatementTimeout(tx, UNINDEXED_STATEMENT_TIMEOUT, run)
     : await run(tx)

@@ -61,20 +61,31 @@ export interface DashboardShareDialogProps {
   onOpenChange: (open: boolean) => void
   /** Called after a successful save, e.g. to reload the dashboard and the list. */
   onSaved?: () => void
+  /**
+   * Another shareable of the dashboards module (a table, `kernel.dashboard_table`): its sharing
+   * routes, the dialog's title and its test ids. Same options, same rules.
+   */
+  sharingPath?: string
+  title?: string
+  testIdPrefix?: string
 }
 
 export const DashboardShareDialog: Component<DashboardShareDialogProps> = (props) => {
   const i18n = useI18n()
   const api = useApi()
-  const path = () => `/dashboards/${encodeURIComponent(props.dashboardId)}/sharing`
+  const path = () =>
+    props.sharingPath ?? `/dashboards/${encodeURIComponent(props.dashboardId)}/sharing`
+  const prefix = () => props.testIdPrefix ?? "dashboard-share"
 
   return (
     <ShareDialog
       open={props.open}
       onOpenChange={props.onOpenChange}
-      title={i18n.t("kernel.dashboards.sharing.title", { name: props.dashboardTitle })}
-      testIdPrefix="dashboard-share"
-      testId="dashboard-share-dialog"
+      title={
+        props.title ?? i18n.t("kernel.dashboards.sharing.title", { name: props.dashboardTitle })
+      }
+      testIdPrefix={prefix()}
+      testId={`${prefix()}-dialog`}
       options={GENERAL_ACCESS_OPTIONS}
       load={async () => {
         const s = unwrap(await api.get<DashboardSharingResponse>(path()))

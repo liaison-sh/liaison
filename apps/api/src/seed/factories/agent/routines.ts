@@ -43,11 +43,13 @@ export interface RoutineSeed {
   timezone?: string
   /** Set for `event`: a full `app:entity:action` string the org declares. */
   event?: string
-  eventFilter?: { fromContactIds: string[] } | null
+  /** A sender filter, or the row filter of a dashboard table routine. */
+  eventFilter?: (typeof routines.$inferInsert)["eventFilter"]
   /** The conversation the routine reports its result to. */
   reportThreadId?: string | null
   ownerUserId: string
-  ownerAgentId: string
+  /** The agent it runs as; none runs it as the owner's own agent. */
+  ownerAgentId?: string | null
   /** Requested ceiling, clamped to what the owner holds before it is written. */
   scopes: string[]
   prompt: string
@@ -78,7 +80,7 @@ export async function seedRoutine(
   const { granted } = grantableScopes(spec.scopes, input.ownerScopes)
   const recurring = spec.kind === "recurring"
   const definition = {
-    ownerAgentId: spec.ownerAgentId,
+    ownerAgentId: spec.ownerAgentId ?? null,
     description: spec.description,
     kind: spec.kind,
     cron: recurring ? (spec.cron ?? null) : null,

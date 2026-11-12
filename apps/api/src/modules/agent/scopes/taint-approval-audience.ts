@@ -16,15 +16,19 @@
 // "who is in this conversation" has one answer. A thread the resolver cannot place (missing,
 // a hidden sub-run thread) fails CLOSED: the write is refused as before.
 
-import { and, eq, inArray, isNotNull } from "drizzle-orm"
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm"
+import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
-import { threadParticipants, users } from "~/db/schema/kernel"
+import { resourceGrants, threadParticipants, userRoles, users } from "~/db/schema/kernel"
+import { schemaRef } from "~/db/schema-ref"
+import { quoteIdent } from "~/lib/sql-utils"
 import { currentRunContext } from "~/modules/agent/runtime/run-context"
 import { resolveRoomFloor } from "~/modules/agent/scopes/room-floor"
 import { UNKNOWN_TURN_TAINT } from "~/modules/agent/scopes/scope-taint"
 import { readerScopesOf } from "~/modules/agent/scopes/taint-read-scopes"
 import { appScopeAliasProviders } from "~/modules/apps/runtime-helpers"
 import { hasScope, loadEffectivePermissions } from "~/modules/permissions/permissions"
+import { SHAREABLE_RESOURCES } from "~/modules/sharing/service"
 
 /** True when `grants` cover every scope in `taintScopes` (hierarchical `hasScope` matching). */
 export function holdsEveryScope(
@@ -241,6 +245,175 @@ export async function conversationReadersTaintGap(opts: {
   } catch {
     return UNCOUNTED_GAP
   }
+}
+
+/**
+ * The gap when a write's readers are those of one shared resource (scope-taint.ts, rule 6j: a
+ * dashboard table's rows, which follow the table's sharing): its owner, everyone when its
+ * org_access is viewer or editor, the people granted and the members of the roles granted. Null
+ * when they all hold every taint scope. A dimension grant (readers not enumerable here), an
+ * unknown taint, a missing resource or a failed lookup is held by nobody.
+ */
+export async function resourceReadersTaintGap(opts: {
+  orgId: string
+  resourceType: string
+  resourceId: unknown
+  taintScopes: readonly string[]
+}): Promise<TaintAudienceGap | null> {
+  if (opts.taintScopes.some((s) => UNKNOWN_TURN_TAINT.includes(s))) return UNCOUNTED_GAP
+  try {
+    const readers = await resourceReaders(opts.orgId, opts.resourceType, opts.resourceId)
+    if (readers === null) return UNCOUNTED_GAP
+    const members =
+      readers === "everyone"
+        ? await loadOrgMemberGrants(opts.orgId)
+        : await loadOrgMemberGrants(opts.orgId, { userIds: readers })
+    const collector = gapCollector()
+    for (const member of members) collector.add(member.scopes, opts.taintScopes)
+    return collector.gap()
+  } catch {
+    return UNCOUNTED_GAP
+  }
+}
+
+/**
+ * Who reads one shared resource (a SHAREABLE_RESOURCES type): "everyone" when the whole org
+ * sees it, else its owner, the people granted and the members of the roles granted. Null when
+ * they cannot be enumerated (a dimension grant) or the resource is missing: fail closed.
+ */
+export async function resourceReaders(
+  orgId: string,
+  resourceType: string,
+  resourceId: unknown,
+): Promise<"everyone" | string[] | null> {
+  const resource = SHAREABLE_RESOURCES[resourceType]
+  const id = typeof resourceId === "string" ? resourceId : ""
+  if (!resource || !/^[0-9a-f-]{36}$/i.test(id)) return null
+  return withPrivilegedDb(orgId, "scope-taint-resource-readers", async (db) => {
+    const table = sql.raw(`${quoteIdent(schemaRef(resource.schema))}.${quoteIdent(resource.table)}`)
+    const [row] = extractRows<{ org_access: string | null; owner_user_id: string | null }>(
+      await db.execute(sql`
+        SELECT org_access, owner_user_id::text AS owner_user_id FROM ${table}
+         WHERE id = ${id}::uuid AND org_id = ${orgId}::uuid LIMIT 1`),
+    )
+    if (!row) return null
+    if (row.org_access && row.org_access !== "none") return "everyone" as const
+    const grants = await db
+      .select({ kind: resourceGrants.granteeKind, grantee: resourceGrants.grantee })
+      .from(resourceGrants)
+      .where(
+        and(
+          eq(resourceGrants.orgId, orgId),
+          eq(resourceGrants.resourceType, resourceType),
+          eq(resourceGrants.resourceId, id),
+        ),
+      )
+    if (grants.some((g) => g.kind === "dimension")) return null
+    const roleIds = grants.filter((g) => g.kind === "role").map((g) => g.grantee)
+    const members = roleIds.length
+      ? await db
+          .select({ userId: userRoles.userId })
+          .from(userRoles)
+          .where(and(eq(userRoles.orgId, orgId), inArray(userRoles.roleId, roleIds)))
+      : []
+    return [
+      ...new Set([
+        ...(row.owner_user_id ? [row.owner_user_id] : []),
+        ...grants.filter((g) => g.kind === "user").map((g) => g.grantee),
+        ...members.map((m) => m.userId),
+      ]),
+    ]
+  })
+}
+
+/**
+ * RESOURCE TAINT (scope-taint.ts, rule 15). A read of a shared resource that only some people
+ * see (a dashboard table restricted to its owner and some people or roles) narrows what the turn
+ * read below its scope: holding `kernel:dashboards:read` says nothing about who may read THAT
+ * table. The read files the resource as a taint origin (its `readsFromTable` is the shareable
+ * type, its row the resource id), and every judged write of the turn is checked here: null when
+ * everyone who will read the write (`writeReaders`: user ids, or "everyone" / null when unbounded
+ * or unknown) reads every restricted resource the turn read, else how many do not (null:
+ * uncounted, fail closed). A resource the whole org sees narrows nothing.
+ */
+/** The scope a resource's readers need besides its sharing: what a parked write's approval
+ *  demands of its decider (the requester holds it, having read the resource). */
+const RESOURCE_READ_SCOPE: Record<string, string> = {
+  "kernel.dashboard_table": "kernel:dashboards:read",
+  "kernel.dashboard": "kernel:dashboards:read",
+}
+
+export async function resourceReadsGap(opts: {
+  orgId: string
+  originRows: Readonly<Record<string, readonly string[]>> | undefined
+  writeReaders: "everyone" | readonly string[] | null
+}): Promise<{ lacking: number | null; resources: string[]; readScopes: string[] } | null> {
+  const reads: Array<[string, string]> = []
+  for (const [type, ids] of Object.entries(opts.originRows ?? {})) {
+    if (!SHAREABLE_RESOURCES[type]) continue
+    for (const id of ids) reads.push([type, id])
+  }
+  if (reads.length === 0) return null
+  const outside = new Set<string>()
+  const narrowed: string[] = []
+  let uncounted = false
+  for (const [type, id] of reads) {
+    let readers: "everyone" | string[] | null
+    try {
+      readers = await resourceReaders(opts.orgId, type, id)
+    } catch {
+      readers = null
+    }
+    if (readers === "everyone") continue
+    narrowed.push(`${type}:${id}`)
+    if (readers === null || opts.writeReaders === null || opts.writeReaders === "everyone") {
+      uncounted = true
+      continue
+    }
+    const allowed = new Set(readers)
+    for (const u of opts.writeReaders) if (!allowed.has(u)) outside.add(u)
+  }
+  if (narrowed.length === 0) return null
+  const readScopes = [
+    ...new Set(
+      narrowed.flatMap((r) => {
+        const scope = RESOURCE_READ_SCOPE[r.slice(0, r.lastIndexOf(":"))]
+        return scope ? [scope] : []
+      }),
+    ),
+  ]
+  if (uncounted) return { lacking: null, resources: narrowed, readScopes }
+  return outside.size === 0 ? null : { lacking: outside.size, resources: narrowed, readScopes }
+}
+
+/**
+ * THE ROOM FLOOR REACHES A SHARED RESOURCE (scope-taint.ts, rule 15e). A read of a resource only
+ * some people see, in a turn whose room counts `roomPeople`: null when every one of them reads
+ * every resource the call names (or the whole org sees it), else the scope to report as withheld
+ * by the room (the requester's card offers "Continue in a DM" and "Share anyway", as for a scope
+ * the floor took away). Fails closed: readers that cannot be enumerated withhold the read.
+ */
+export async function roomWithheldResourceRead(opts: {
+  orgId: string
+  resourceType: string
+  resourceIds: readonly string[]
+  roomPeople: readonly string[]
+}): Promise<string | null> {
+  if (!SHAREABLE_RESOURCES[opts.resourceType]) return null
+  const scope = RESOURCE_READ_SCOPE[opts.resourceType] ?? opts.resourceType
+  for (const id of opts.resourceIds) {
+    let readers: "everyone" | string[] | null
+    try {
+      readers = await resourceReaders(opts.orgId, opts.resourceType, id)
+    } catch {
+      readers = null
+    }
+    if (readers === "everyone") continue
+    if (readers === null) return scope
+    const allowed = new Set(readers)
+    if (opts.roomPeople.some((u) => !allowed.has(u))) return scope
+  }
+  return null
 }
 
 /** The people (user participants) of `threadId`, deduplicated: a parked post's audience. */

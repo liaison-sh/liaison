@@ -26,10 +26,10 @@
 // and the block (or the dataset, or the filter whose options it lists).
 
 import { APP_DISABLED_CODE } from "@liaison/shared"
-import { eq } from "drizzle-orm"
+import { and, eq, inArray } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
-import { organizations } from "~/db/schema/kernel"
+import { organizations, users } from "~/db/schema/kernel"
 import { rootLogger } from "~/lib/logger"
 import { READ_ONLY_RUN_BLOCKED_CODE } from "~/modules/agent/runtime/read-only-run"
 import {
@@ -49,6 +49,7 @@ import {
 } from "~/modules/dashboards/relative-dates"
 import {
   checkStoreSource,
+  checkTableSource,
   checkToolSource,
   type SourceRefusalCode,
 } from "~/modules/dashboards/sources"
@@ -62,9 +63,12 @@ import {
   MAX_SOURCE_ROWS,
   type StoreSource,
   sourceValue,
+  type TableSource,
   type ToolSource,
   type WhereClause,
+  withSourceValue,
 } from "~/modules/dashboards/spec"
+import { loadTable, readAllRows, rowsOf, TableError } from "~/modules/dashboards/tables/service"
 import {
   type BlockData,
   extractRows,
@@ -73,7 +77,7 @@ import {
   transformBlock,
   unfenceSourceResult,
 } from "~/modules/dashboards/transform"
-import { DataStoreError, queryDocuments } from "~/modules/data-store/service"
+import { DataStoreError, queryDocuments, type Where } from "~/modules/data-store/service"
 import { isValidTimezone } from "~/modules/notifications/quiet-window"
 
 const log = rootLogger.child({ module: "dashboards-execute" })
@@ -230,11 +234,77 @@ async function readStoreSource(source: StoreSource, ctx: BlockRunContext) {
   return { result: rows }
 }
 
+/**
+ * A dashboard table's rows as a source (A11): at most MAX_SOURCE_ROWS, read under the viewer's
+ * RLS, `totalRows` past the cut when more matched (the block says it is truncated). Each row is
+ * its visible cells plus `id`, `updated_at` and `updated_by` (who changed it last); a link cell
+ * reads as its label, a person as their name and a multi choice as its choices joined, so a chart
+ * groups and shows them as people read them.
+ */
+async function readTableSource(source: TableSource, ctx: BlockRunContext) {
+  const viewer = ctx.viewer
+  const check = await checkTableSource(viewer.orgId, source.table, viewer)
+  if (!check.ok) return { outcome: fail(check.code, check.message) }
+  try {
+    return await withRlsContext(viewer, async (tx) => {
+      const loaded = await loadTable(tx, viewer, source.table)
+      const where = Object.keys(source.where ?? {}).length ? (source.where as Where) : undefined
+      const { docs, truncated } = await readAllRows(tx, viewer, loaded, {
+        ...(where ? { where } : {}),
+        max: MAX_SOURCE_ROWS,
+      })
+      const rows = await rowsOf(tx, viewer, loaded, docs)
+      const people = new Set<string>()
+      for (const col of loaded.columns) {
+        if (col.type !== "person") continue
+        for (const r of rows)
+          if (typeof r.cells[col.key] === "string") people.add(r.cells[col.key] as string)
+      }
+      const names = people.size
+        ? new Map(
+            (
+              await tx
+                .select({ id: users.id, name: users.name })
+                .from(users)
+                .where(and(eq(users.orgId, viewer.orgId), inArray(users.id, [...people])))
+            ).map((u) => [u.id, u.name]),
+          )
+        : new Map<string, string>()
+      const flat = rows.map((r) => {
+        const out: Record<string, unknown> = {}
+        for (const col of loaded.columns) {
+          const v = r.cells[col.key]
+          if (v === undefined) continue
+          if (col.type === "link" && v && typeof v === "object") {
+            out[col.key] = (v as { label?: unknown }).label ?? null
+          } else if (col.type === "person" && typeof v === "string") {
+            out[col.key] = names.get(v) ?? v
+          } else if (col.type === "choices" && Array.isArray(v)) {
+            out[col.key] = v.join(", ")
+          } else out[col.key] = v
+        }
+        return { ...out, id: r.id, updated_at: r.updatedAt, updated_by: r.updatedBy.label }
+      })
+      return { result: flat, totalRows: truncated ? MAX_SOURCE_ROWS + 1 : flat.length }
+    })
+  } catch (err) {
+    if (err instanceof TableError) {
+      return {
+        outcome: fail(err.code === "not_found" ? "no_access" : "source_failed", err.message),
+      }
+    }
+    throw err
+  }
+}
+
 /** What a source run is for, as its audit row names it. */
 export type RunTarget = { blockId: string } | { datasetId: string } | { filterId: string }
 
 function sourceLabel(source: BlockSource): string {
-  return source.kind === "tool" ? source.tool : `store:${source.app}/${source.collection}`
+  if (source.kind === "tool") return source.tool
+  return source.kind === "store"
+    ? `store:${source.app}/${source.collection}`
+    : `table:${source.table}`
 }
 
 async function auditRun(
@@ -306,7 +376,7 @@ export async function resolveSourceDates<S extends BlockSource>(
     now,
     range,
   })
-  return source.kind === "tool" ? { ...source, params: resolved } : { ...source, query: resolved }
+  return withSourceValue(source, resolved)
 }
 
 /** A source's rows as read: at most MAX_SOURCE_ROWS, or the one object it answered. */
@@ -348,7 +418,9 @@ export async function runSource(
     const read =
       source.kind === "tool"
         ? await readToolSource(source, ctx, runId)
-        : await readStoreSource(source, ctx)
+        : source.kind === "store"
+          ? await readStoreSource(source, ctx)
+          : await readTableSource(source, ctx)
     if ("outcome" in read && read.outcome) {
       outcome = read.outcome as SourceOutcome
     } else {
@@ -358,7 +430,14 @@ export async function runSource(
       outcome = {
         ok: true,
         read: rows
-          ? { rows: rows.slice(0, MAX_SOURCE_ROWS), object: null, totalRows: rows.length }
+          ? {
+              rows: rows.slice(0, MAX_SOURCE_ROWS),
+              object: null,
+              totalRows:
+                "totalRows" in read && typeof read.totalRows === "number"
+                  ? read.totalRows
+                  : rows.length,
+            }
           : { rows: null, object, totalRows: 0 },
       }
     }
@@ -381,7 +460,8 @@ export async function runSource(
 /** The app a source's records belong to (an entity link's default). */
 export function sourceApp(source: BlockSource | null): string | undefined {
   if (!source) return undefined
-  return source.kind === "tool" ? source.tool.slice(0, source.tool.indexOf(":")) : source.app
+  if (source.kind === "tool") return source.tool.slice(0, source.tool.indexOf(":"))
+  return source.kind === "store" ? source.app : "dashboards"
 }
 
 /** Maps a read source into what one block draws. */

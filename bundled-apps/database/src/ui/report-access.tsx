@@ -247,7 +247,7 @@ export const DatabaseReportAccess: Component = () => {
               <div class="flex items-center gap-3">
                 <button
                   type="button"
-                  class="rounded-sm bg-accent px-3 py-1 text-[13px] text-white disabled:opacity-50"
+                  class="rounded-sm bg-accent px-3 py-1 text-[13px] text-accent-foreground disabled:opacity-50"
                   disabled={!dirty() || saving()}
                   onClick={() => void save()}
                   data-testid="database-report-access-save"

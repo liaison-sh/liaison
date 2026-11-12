@@ -163,7 +163,7 @@ function requireSourcesManage(actor: KnowledgeActor): void {
  * mount a personal synced source — `withPrivilegedDb` bypasses the RLS policy
  * entirely.
  */
-function requireKnowledgeReader(actor: KnowledgeActor): void {
+export function requireKnowledgeReader(actor: KnowledgeActor): void {
   if (
     !hasScope("knowledge:documents:read", actor.scopes) &&
     !hasScope("knowledge:documents:admin", actor.scopes)

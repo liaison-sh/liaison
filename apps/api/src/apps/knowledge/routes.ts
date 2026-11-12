@@ -68,6 +68,7 @@ import {
   createSyncedSource,
   listSyncedSources,
   loadSyncedSource,
+  requireKnowledgeReader,
   updateSyncedSource,
 } from "~/apps/knowledge/synced-sources"
 import { listKnowledgeTags, upsertKnowledgeTag } from "~/apps/knowledge/tags"
@@ -924,10 +925,12 @@ knowledgeRoutes.get("/synced-sources", async (c) => {
   }
 })
 
-// The knowledge source kinds installed apps declare that the caller may add.
+// The knowledge source kinds installed apps declare that the caller may add. Adding any
+// source takes at least the knowledge reader floor, so a caller below it gets no list.
 knowledgeRoutes.get("/synced-sources/kinds", async (c) => {
   try {
     const actor = getActor(c)
+    requireKnowledgeReader(actor)
     const { listAppSourceKinds } = await import("~/apps/knowledge/app-sources")
     return success(c, listAppSourceKinds(actor))
   } catch (err) {

@@ -14,7 +14,7 @@ import { eq } from "drizzle-orm"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { withRlsContext } from "~/db/rls"
-import { messages, threadParticipants } from "~/db/schema/kernel"
+import { agentMemory, messages, threadParticipants } from "~/db/schema/kernel"
 import { initEventBus, resetEventBus } from "~/infra/events/event-bus"
 import { registerEventSubscribers } from "~/infra/events/event-subscribers"
 import { handleThreadsCreate, handleThreadsReply } from "~/modules/agent/tools/chat-tools"
@@ -830,6 +830,100 @@ describe("rule 14: posts from a connection bound to no agent", () => {
       const res = await create(conn, [w.holder, ivo], "group everyone may read")
       expect((res.structuredContent as { gated?: boolean }).gated).not.toBe(true)
       expect(await visibleTo(w, ivo, group)).toEqual(["group everyone may read"])
+    }, 30_000)
+  })
+
+  // Rule 14f (2026-11-12, owner ruling): a person's own client is judged on its kernel-thread posts
+  // only. Judging every write parked the person's own dashboard edits; its other writes run as the
+  // person's, as before rule 14, while its window is still recorded so its posts are judged.
+  describe("rule 14f: every write other than a post runs as the person's own", () => {
+    async function memoryRows(orgId: string, path: string) {
+      const found = await sql<{ path: string; required_scopes: string[] }[]>`
+        SELECT path, required_scopes FROM kernel.agent_memory
+        WHERE org_id = ${orgId} AND path = ${path}`
+      return [...found]
+    }
+
+    it("after a scoped read, an ungated write runs inline with no approval, and memory is stamped as a UI write", async () => {
+      const w = await world()
+      await grantScope(w.orgId, w.ownerId, "kernel:agent:memory")
+      grants.set(w.ownerId, [...w.ownerScopes, "kernel:agent:memory"])
+      const conn = await connection(w)
+      await read(conn)
+
+      // An undeclared-readers write: parked by rule 8b for this client between #269 and 14f.
+      const created = await handleToolCall(conn(), "test__createItem", {
+        title: "from my own client",
+        team: "alpha",
+      })
+      expect(created.isError).toBeFalsy()
+      expect((created.structuredContent as { gated?: boolean }).gated).not.toBe(true)
+
+      // A scope-tagged sink: the empty stamp, never the window, so it is hidden from nobody.
+      const path = `user/rule14f-${crypto.randomUUID().slice(0, 8)}.md`
+      const remembered = await handleToolCall(conn(), "kernel__memory_create", {
+        path,
+        body: "Prefers short answers",
+      })
+      expect(remembered.isError).toBeFalsy()
+      expect((remembered.structuredContent as { gated?: boolean }).gated).not.toBe(true)
+      expect((await memoryRows(w.orgId, path)).map((r) => r.required_scopes)).toEqual([[]])
+      expect(await approvalCount(w.orgId)).toBe(0)
+
+      // The window was still recorded: a group post some member cannot read parks (rule 14).
+      const group = await thread(w, [w.ownerId, w.bob, w.carol])
+      parkedId(await reply(conn, group, "after the item write"))
+      // The org cleanup deletes users, which this memory row references.
+      await withPrivilegedDb(w.orgId, "test-rule14f-memory-cleanup", (tx) =>
+        tx.delete(agentMemory).where(eq(agentMemory.orgId, w.orgId)),
+      )
+    }, 60_000)
+
+    it("a gated tool keeps its own gate: it parks with its deciding scope and no taint narrowing", async () => {
+      const w = await world()
+      const conn = await connection(w)
+      await read(conn)
+      const res = await handleToolCall(conn(), "test__gatedEcho", { message: "mine to decide" })
+      expect((res.structuredContent as { gated?: boolean }).gated).toBe(true)
+      const found = await sql<
+        {
+          approve_scope: string | null
+          metadata: Record<string, unknown> | null
+          proposing_turn_scopes: string[] | null
+        }[]
+      >`SELECT approve_scope, metadata, proposing_turn_scopes FROM kernel.approval_requests
+        WHERE org_id = ${w.orgId} AND tool_name = 'test:gatedEcho'`
+      expect(found.length).toBe(1)
+      expect(found[0]?.approve_scope).toBe("test:approve")
+      expect(found[0]?.metadata?.taintAudienceMustHold).toBeUndefined()
+      expect(found[0]?.proposing_turn_scopes).toEqual([])
+    }, 30_000)
+
+    it("an agent-bound connection's write after the same read is still judged", async () => {
+      const w = await world()
+      const agent = await seedAgentForOrg(w.orgId)
+      const conn = await seedMcpConnection({
+        orgId: w.orgId,
+        userId: w.ownerId,
+        clientId: "claude-code",
+        label: "Claude Code",
+        agentId: agent.agentId,
+      })
+      const ctx = (): ToolCallCtx => ({
+        orgId: w.orgId,
+        actor: userContextFor(w.orgId, w.ownerId, w.ownerScopes),
+        connectionId: conn.id,
+        ownerUserId: w.ownerId,
+        agentId: agent.agentId,
+        connectionThreadId: null,
+        discovered: new Set(),
+      })
+      expect((await handleToolCall(ctx(), "test__listItems", {})).isError).toBeFalsy()
+      const write = await handleToolCall(ctx(), "test__createItem", {
+        title: "from an agent connection",
+        team: "alpha",
+      })
+      expect((write.structuredContent as { gated?: boolean }).gated).toBe(true)
     }, 30_000)
   })
 })

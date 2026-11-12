@@ -19,6 +19,7 @@ import {
   captureSpawnParentFrame,
   currentRunContext,
   currentToolCallScopesBefore,
+  isPersonClientFrame,
   type SpawnParentFrame,
 } from "~/modules/agent/runtime/run-context"
 import { projectTaintScopes } from "~/modules/agent/scopes/taint-read-scopes"
@@ -63,10 +64,13 @@ export function scopeUnknownError(what: string): Error & { code: string } {
  * data read), then the accumulator, then the turn's effective scope, then the
  * caller's scopes (a direct call with no frame at all acts with those; every
  * MCP gateway call, agentless included, has a frame since rule 14). `null`
- * means nothing knew: fail closed.
+ * means nothing knew: fail closed. A person's own external client's frame
+ * stamps `[]`, as a UI write (rule 14f): only its posts carry its window.
  */
 export function currentTurnWriteScopes(fallbackScopes?: string[]): string[] | null {
   const frame = currentRunContext()
+  // Rule 14f: a person's own external client writes as the person, with the empty stamp.
+  if (isPersonClientFrame(frame)) return []
   const known =
     currentToolCallScopesBefore() ??
     frame?.turnScopeAccumulator?.snapshot() ??
@@ -84,8 +88,12 @@ export function currentTurnWriteScopes(fallbackScopes?: string[]): string[] | nu
 export function capturedFrameWriteScopes(
   frame: SpawnParentFrame | null,
   callerScopes?: string[],
+  opts?: { keepPersonClientTaint?: boolean },
 ): string[] | null {
   if (frame === null) return []
+  // Rule 14f: a person's own client stamps its writes `[]`. Only the value forwarded to the
+  // dispatch keeps the window (`keepPersonClientTaint`), which judges its posts with it.
+  if (frame.personClient === true && opts?.keepPersonClientTaint !== true) return []
   const known = frame.taintScopes ?? frame.effectiveScope ?? callerScopes
   return known === undefined ? null : projectTaintScopes(known)
 }
@@ -103,16 +111,20 @@ export function capturedFrameWriteScopes(
  * readers who may read but not write.
  *
  * Three answers, all meaningful:
- *   `[]`   no frame at all, so no turn proposed this (a human, a job). The MCP
- *          gateway always has one (rule 14). The re-entry writes untagged, which is what the call would
+ *   `[]`   no frame at all, so no turn proposed this (a human, a job), or a
+ *          person's own external client's frame proposing anything but a post
+ *          (rule 14f). The re-entry writes untagged, which is what the call would
  *          have done inline.
  *   scopes the turn's accumulated scopes, seeded back on re-entry.
  *   `null` a turn whose taint is not knowable. Stored as SQL NULL so the
  *          re-entry fails closed instead of asserting the empty set.
  */
-export function proposingTurnWriteScopes(): string[] | null {
+export function proposingTurnWriteScopes(opts?: { personClientPost?: boolean }): string[] | null {
   const frame = captureSpawnParentFrame()
   if (frame === null) return []
+  // Rule 14f: a person's own client's approval carries `[]` (no narrowing, an untagged
+  // re-entry), except a kernel-thread post's, whose re-entry is stamped with the window.
+  if (frame.personClient === true && opts?.personClientPost !== true) return []
   const known = frame.taintScopes ?? frame.effectiveScope
   return known === undefined ? null : projectTaintScopes(known)
 }

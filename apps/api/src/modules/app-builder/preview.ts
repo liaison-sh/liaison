@@ -456,7 +456,8 @@ async function runPreview(args: {
     runId,
     actorUserId: actor.userId,
     scopeTags:
-      frame === null
+      // A person's own external client tags as no frame did (scope-taint.ts, rule 14f).
+      frame === null || frame.personClient === true
         ? projectTaintScopes(callerScopes)
         : (capturedFrameWriteScopes(frame, callerScopes) ?? UNKNOWN_TAINT_TAGS),
   })

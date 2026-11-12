@@ -17,7 +17,7 @@ import {
 import * as workerPool from "~/modules/apps/sandbox/worker-pool"
 import * as workersExecutor from "~/modules/apps/workers/executor"
 import { WorkersRunError, type WorkersRunInfo } from "~/modules/apps/workers/executor"
-import { WorkersFallbackTestAccess } from "~/modules/apps/workers/fallback"
+import { loaderBreaker, WorkersFallbackTestAccess } from "~/modules/apps/workers/fallback"
 import { NETWORK_FAULT } from "~/modules/apps/workers/faults"
 import { onRunSettled, type RunSettledInfo } from "~/modules/apps/workers/run-settled"
 import { isWorkersRunBridge } from "./bridge/secret-free"
@@ -152,6 +152,7 @@ describe("runApp: a loader fault before any bridge call", () => {
     "LIAISON_APP_LOADER_URL",
     "LIAISON_APP_LOADER_CELL_ID",
     "LIAISON_APP_LOADER_KEY",
+    "LIAISON_APP_FALLBACK_LOADER_URL",
   ] as const
   type Mutable = Record<string, string | undefined>
   const saved = Object.fromEntries(KEYS.map((k) => [k, (env as unknown as Mutable)[k]]))
@@ -250,6 +251,79 @@ describe("runApp: a loader fault before any bridge call", () => {
     expect(execute).not.toHaveBeenCalled()
     expect(settled.at(-1)).toMatchObject({ executor: "workers", ok: false, faultClass: "loader" })
     expect(settled.at(-1)?.fallback).toBeUndefined()
+  })
+
+  /** The loader fails (network, before any bridge call); the sandbox service answers. */
+  function loaderDownServiceUp() {
+    const calls: Array<{ loaderUrl: string; opts: Record<string, unknown> }> = []
+    spyOn(workersExecutor, "executeOnWorkers").mockImplementation(async (opts, onInfo) => {
+      calls.push({ loaderUrl: opts.config.loaderUrl, opts: opts as never })
+      if (opts.config.loaderUrl === "http://sandbox.invalid") {
+        onInfo?.({ runId: "r-sb", attempts: 1, bridgeCalls: 0 })
+        return "from-workerd"
+      }
+      onInfo?.({ runId: "r-ld", attempts: 2, bridgeCalls: 0, fault: NETWORK_FAULT })
+      throw new WorkersRunError("App loader unreachable: connection refused", NETWORK_FAULT)
+    })
+    return calls
+  }
+
+  it("with the sandbox service configured: runs once more there, secret-free, labelled workerd", async () => {
+    workersOn()
+    ;(env as unknown as Mutable).LIAISON_APP_FALLBACK_LOADER_URL = "http://sandbox.invalid/"
+    const { execute } = spyBoundaries()
+    const calls = loaderDownServiceUp()
+    const bridge = quickjsBridge()
+    expect(await run(bridge)).toBe("from-workerd")
+    expect(execute).not.toHaveBeenCalled()
+    expect(calls.map((c) => c.loaderUrl)).toEqual([
+      "http://loader.invalid",
+      "http://sandbox.invalid",
+    ])
+    const service = calls[1]?.opts as {
+      bridge: Record<string, unknown>
+      config: { cellId: string }
+    }
+    // Same cell identity, a secret-free bridge, never the QuickJS one.
+    expect(service.config.cellId).toBe("cell-lf")
+    expect(service.bridge).not.toBe(bridge)
+    expect(isWorkersRunBridge(service.bridge)).toBe(true)
+    // Its own breaker and no app fallbacks: the loader's state is not its to change.
+    expect(calls[1]?.opts.breaker).toBeDefined()
+    expect(calls[1]?.opts.breaker).not.toBe(loaderBreaker)
+    expect(settled.at(-1)).toMatchObject({
+      executor: "workerd",
+      ok: true,
+      fallback: "loader_fault",
+      runId: "r-sb",
+      attempts: 2,
+      faultClass: "loader",
+      errorKind: "network",
+    })
+  })
+
+  it("with the sandbox service configured: an open breaker sends the run there, labelled breaker", async () => {
+    workersOn()
+    ;(env as unknown as Mutable).LIAISON_APP_FALLBACK_LOADER_URL = "http://sandbox.invalid"
+    const { execute } = spyBoundaries()
+    for (let i = 0; i < 5; i++) loaderBreaker.record("loader_fault")
+    expect(loaderBreaker.state()).toBe("open")
+    const calls = loaderDownServiceUp()
+    expect(await run(quickjsBridge())).toBe("from-workerd")
+    expect(execute).not.toHaveBeenCalled()
+    expect(calls.map((c) => c.loaderUrl)).toEqual(["http://sandbox.invalid"])
+    expect(settled.at(-1)).toMatchObject({ executor: "workerd", ok: true, fallback: "breaker" })
+  })
+
+  it("without it: an open breaker sends the run to QuickJS, labelled breaker", async () => {
+    workersOn()
+    const { execute } = spyBoundaries()
+    for (let i = 0; i < 5; i++) loaderBreaker.record("loader_fault")
+    const calls = loaderDownServiceUp()
+    expect(await run(quickjsBridge())).toBe("from-pool")
+    expect(execute).toHaveBeenCalledTimes(1)
+    expect(calls).toHaveLength(0)
+    expect(settled.at(-1)).toMatchObject({ executor: "quickjs", ok: true, fallback: "breaker" })
   })
 
   it("an app-level or final fault is the run's error (no fallback for that run)", async () => {

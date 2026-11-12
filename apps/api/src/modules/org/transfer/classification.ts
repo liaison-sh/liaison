@@ -26,6 +26,8 @@ export const GLOBAL_TABLES: Record<string, string> = {
     "idempotency of in-flight control-plane requests; none is in flight after the drain, and its seal context is the instance's",
   "kernel.demo_spend": "demo visitors' model spend; a demo org is never moved",
   "kernel.app_activation_events": "the instance's record of catalog app version switches",
+  "kernel.app_adoptions":
+    "the instance's record of the data steps it ran when an in-tree app moved to the catalog",
 }
 
 /**

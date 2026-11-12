@@ -486,7 +486,30 @@ async function reconcileCatalogAppsUnbatched(opts: {
   fallbackInstalledBy: string
 }): Promise<ReconcileCatalogAppsResult> {
   const entries = listCatalog()
-  if (entries.length === 0) return { repaired: [], ok: [], failed: [], ahead: [] }
+  // An app that moved from the source tree to the catalog (moved-apps.ts) and
+  // that this instance used: installed even though no org lists it, and a
+  // failure when this image's catalog does not carry it (the strict setup step
+  // then stops the deploy rather than roll out an image that lost the app).
+  const { usedMovedApps } = await import("~/modules/apps/moved-apps")
+  const { discoverInTreeApps } = await import("~/modules/apps/discover-apps")
+  const inTreeNames = new Set((await discoverInTreeApps()).map((a) => a.name))
+  const usedMoved = await withSystemDb("reconcile-catalog-moved", (db) =>
+    usedMovedApps(db, inTreeNames),
+  )
+  const missingMoved = usedMoved
+    .filter((name) => !entries.some((e) => e.name === name))
+    .map((name) => {
+      log.error(
+        { app: name },
+        "Catalog reconcile: an app moved from the source tree to the catalog is missing from this image's catalog",
+      )
+      return {
+        name,
+        version: "",
+        error: `the app "${name}" no longer ships in the source tree and this image's catalog does not carry it`,
+      }
+    })
+  if (entries.length === 0) return { repaired: [], ok: [], failed: missingMoved, ahead: [] }
   const catalogDir = getCatalogDir()
 
   const orgs = await withSystemDb("reconcile-catalog-orgs", (db) =>
@@ -530,13 +553,14 @@ async function reconcileCatalogAppsUnbatched(opts: {
   for (const row of activeRows) {
     if (entries.some((e) => e.name === row.name)) reconcileTargets.add(row.name)
   }
+  for (const name of usedMoved) reconcileTargets.add(name)
   const installedRows = await withSystemDb("reconcile-catalog-installed", (db) =>
     db.select().from(appsInstalled),
   )
 
   const repaired: string[] = []
   const ok: string[] = []
-  const failed: ReconcileCatalogAppsResult["failed"] = []
+  const failed: ReconcileCatalogAppsResult["failed"] = [...missingMoved]
   const ahead: ReconcileCatalogAppsResult["ahead"] = []
   // Every install lands first, the registration runs once after the last. A
   // registration validates EVERY installed app against this image's contract,
@@ -637,6 +661,20 @@ async function reconcileCatalogAppsUnbatched(opts: {
       await reloadInstalledApps(orgId)
     } catch (err) {
       log.error({ err, orgId, apps }, "Catalog reconcile: registering the reconciled apps failed")
+    }
+  }
+
+  // The moved apps' data steps, once their catalog install exists.
+  const { adoptMovedApps } = await import("~/modules/apps/moved-apps")
+  const adoptions = await withSystemDb("reconcile-catalog-adopt", (db) => adoptMovedApps(db))
+  for (const adoption of adoptions) {
+    for (const step of adoption.steps) {
+      if (step.state !== "failed") continue
+      failed.push({
+        name: adoption.app,
+        version: "",
+        error: `data step ${step.id} failed: ${step.error}`,
+      })
     }
   }
 

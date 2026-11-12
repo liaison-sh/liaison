@@ -117,7 +117,11 @@ const VERIFIED_MAX = 16
 
 /** Module evaluation / entrypoint failures (the bundle itself is broken), not handler errors. */
 const LOAD_RE =
-  /^SyntaxError|script startup|failed to (load|start)|no such module|does not provide an export|entrypoint .*(not found|does not exist)|\.run is not a function/i
+  /script startup|failed to (load|start)|no such module|does not provide an export|entrypoint .*(not found|does not exist)|\.run is not a function/i
+
+function isLoadError(message: string): boolean {
+  return /^SyntaxError/i.test(message) || LOAD_RE.test(message)
+}
 const LIMIT_RE =
   /exceeded (its )?(cpu|memory)|cpu time limit|too many subrequests|subrequest limit|exceeded.*limit/i
 
@@ -352,7 +356,7 @@ export function createAppLoader(platform: LoaderPlatform): AppLoader {
       const message = errorMessage(e)
       let kind: ErrorKind = LIMIT_RE.test(message)
         ? "limit"
-        : LOAD_RE.test(message)
+        : isLoadError(message)
           ? "load"
           : "handler"
       // The product's module never rejects run (it answers a verdict), so a

@@ -99,7 +99,7 @@ describe("manifest", () => {
     expect(manifest.name).toBe("google-drive")
     expect(manifest.version).toBe("2.0.1")
     // The platform's Picker widget: no page script, a drive.file token only.
-    expect(manifest.pages.picker.source).toBeUndefined()
+    expect("source" in manifest.pages.picker).toBe(false)
     expect(manifest.pages.picker.widget).toEqual({
       kind: "google-picker",
       connection: "drive",

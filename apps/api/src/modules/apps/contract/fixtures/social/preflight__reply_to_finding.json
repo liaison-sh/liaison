@@ -4,7 +4,7 @@
     "finding_id": "f72f438a-f543-44a7-8327-bffccb3cc7d6",
     "reply_text": "Yes, we ship to Belgium. Pick Benelux at checkout, delivery takes 3 to 5 days."
   },
-  "recordedFrom": "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.test.ts",
+  "recordedFrom": "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.ts",
   "calls": [
     {
       "method": "db_findMany",

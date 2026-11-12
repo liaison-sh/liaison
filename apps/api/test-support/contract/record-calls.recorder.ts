@@ -10,7 +10,7 @@
 //
 //   (cd apps/api && set -a && source ../../.env.test && set +a && CONTRACT_RECORD=1 \
 //     bun run ../../scripts/with-test-lock.ts -- \
-//     bun test ./src/modules/apps/contract/record-calls.recorder.test.ts)
+//     bun test ./test-support/contract/record-calls.recorder.ts)
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { createHmac } from "node:crypto"
 import { join } from "node:path"
@@ -23,8 +23,8 @@ import {
   type RecordingStep,
   runRecordingPlan,
   uninstallAfterRecording,
-} from "./recording-run.test-helpers"
-import { CONTRACT_ORG_ID } from "./replay-bridge"
+} from "./recording-run"
+import { CONTRACT_ORG_ID } from "~/modules/apps/contract/replay-bridge"
 
 const APP = "calls"
 const SECRET = "contract-calls-secret-not-real"
@@ -130,8 +130,8 @@ describe.skipIf(process.env.CONTRACT_RECORD !== "1")("record calls contract fixt
       state: { values: {} } satisfies RecordingState,
       replacements: [{ from: SECRET, to: "calls-webhook-secret-stand-in" }],
       secrets: [SECRET],
-      recordedFrom: "the contract org on a local stack, record-calls.recorder.test.ts",
-      fixturesDir: join(import.meta.dir, "fixtures"),
+      recordedFrom: "the contract org on a local stack, record-calls.recorder.ts",
+      fixturesDir: join(import.meta.dir, "../../src/modules/apps/contract/fixtures"),
       appConfig: CONFIG,
     })
     console.log(`\n${report.join("\n")}\n`)

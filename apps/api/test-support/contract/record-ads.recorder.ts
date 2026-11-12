@@ -3,7 +3,7 @@
 // Records the ads app's contract fixtures (fixtures/ads/*.json). The Meta
 // Marketing API, the Google Ads API and the Merchant API offer no sandbox
 // account a recorder can use, so the provider side is the documented response
-// shapes of the endpoints the app calls (fake-providers.test-helpers.ts), with
+// shapes of the endpoints the app calls (fake-providers.ts), with
 // a fictional ad account, campaigns and Merchant Center. The shopify and
 // database apps the ads app reads across apps are not installed in the
 // recording org: their answers are stand-ins in those apps' documented result
@@ -14,7 +14,7 @@
 //
 //   (cd apps/api && set -a && source ../../.env.test && set +a && CONTRACT_RECORD=1 \
 //     bun run ../../scripts/with-test-lock.ts -- \
-//     bun test ./src/modules/apps/contract/record-ads.recorder.test.ts)
+//     bun test ./test-support/contract/record-ads.recorder.ts)
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { join } from "node:path"
 import { sql } from "~/db/connection"
@@ -23,14 +23,14 @@ import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { env } from "~/lib/env"
 import type { AppBridge } from "~/modules/apps/sandbox/run-app"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
-import type { ContractEntry } from "./entries"
+import type { ContractEntry } from "~/modules/apps/contract/entries"
 import {
   type FakeProviders,
   type FakeRoute,
   graphPage,
   installFakeProviders,
   on,
-} from "./fake-providers.test-helpers"
+} from "./fake-providers"
 import {
   connectCredentials,
   installForRecording,
@@ -38,8 +38,8 @@ import {
   type RecordingStep,
   runRecordingPlan,
   uninstallAfterRecording,
-} from "./recording-run.test-helpers"
-import { CONTRACT_ORG_ID, CONTRACT_USER_ID } from "./replay-bridge"
+} from "./recording-run"
+import { CONTRACT_ORG_ID, CONTRACT_USER_ID } from "~/modules/apps/contract/replay-bridge"
 
 const APP = "ads"
 const META_TOKEN = "contract-meta-system-user-token-not-real"
@@ -1191,8 +1191,8 @@ describe.skipIf(process.env.CONTRACT_RECORD !== "1")("record ads contract fixtur
       replacements: secrets.map((s, i) => ({ from: s, to: `ads-token-stand-in-${i + 1}` })),
       secrets,
       recordedFrom:
-        "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.test.ts",
-      fixturesDir: join(import.meta.dir, "fixtures"),
+        "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
+      fixturesDir: join(import.meta.dir, "../../src/modules/apps/contract/fixtures"),
       appConfig: {},
       wrapBridge: withStandIns,
     })

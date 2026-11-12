@@ -1,7 +1,7 @@
 {
   "entry": "tool:webhook_info",
   "params": {},
-  "recordedFrom": "the contract org on a local stack, record-calls.recorder.test.ts",
+  "recordedFrom": "the contract org on a local stack, record-calls.recorder.ts",
   "calls": [
     {
       "method": "config_get",

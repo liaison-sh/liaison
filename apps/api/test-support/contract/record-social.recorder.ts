@@ -3,7 +3,7 @@
 // Records the social app's contract fixtures (fixtures/social/*.json). Meta and
 // YouTube offer no sandbox account a recorder can use, so the provider side is
 // the documented response shapes of the endpoints the app calls
-// (fake-providers.test-helpers.ts), with a fictional Page, Instagram account,
+// (fake-providers.ts), with a fictional Page, Instagram account,
 // app and people; everything else (the database, approvals, the kernel) is the
 // real bridge. The plan connects a Facebook Page, lets the jobs sync it, then
 // drives every tool on what they found. Not part of any suite run (it skips
@@ -12,7 +12,7 @@
 //
 //   (cd apps/api && set -a && source ../../.env.test && set +a && CONTRACT_RECORD=1 \
 //     bun run ../../scripts/with-test-lock.ts -- \
-//     bun test ./src/modules/apps/contract/record-social.recorder.test.ts)
+//     bun test ./test-support/contract/record-social.recorder.ts)
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { createHmac } from "node:crypto"
 import { join } from "node:path"
@@ -26,15 +26,15 @@ import {
   graphPage,
   installFakeProviders,
   on,
-} from "./fake-providers.test-helpers"
+} from "./fake-providers"
 import {
   installForRecording,
   type RecordingState,
   type RecordingStep,
   runRecordingPlan,
   uninstallAfterRecording,
-} from "./recording-run.test-helpers"
-import { CONTRACT_ORG_ID, CONTRACT_USER_ID } from "./replay-bridge"
+} from "./recording-run"
+import { CONTRACT_ORG_ID, CONTRACT_USER_ID } from "~/modules/apps/contract/replay-bridge"
 
 const APP = "social"
 const APP_SECRET = "contract-meta-app-secret-not-real"
@@ -639,8 +639,8 @@ describe.skipIf(process.env.CONTRACT_RECORD !== "1")("record social contract fix
       replacements: secrets.map((s, i) => ({ from: s, to: `social-secret-stand-in-${i + 1}` })),
       secrets,
       recordedFrom:
-        "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.test.ts",
-      fixturesDir: join(import.meta.dir, "fixtures"),
+        "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.ts",
+      fixturesDir: join(import.meta.dir, "../../src/modules/apps/contract/fixtures"),
       appConfig: CONFIG,
       wrapBridge: withStandInTokens,
     })

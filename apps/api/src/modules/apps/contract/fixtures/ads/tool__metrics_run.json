@@ -5,7 +5,7 @@
     "period_start": "2025-12-01",
     "period_end": "2025-12-31"
   },
-  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.test.ts",
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
   "calls": [
     {
       "method": "executeTool",

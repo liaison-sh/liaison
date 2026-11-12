@@ -7,7 +7,7 @@
     "should_reply": true,
     "triage_reason": "The customer says the order failed at checkout"
   },
-  "recordedFrom": "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.test.ts",
+  "recordedFrom": "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.ts",
   "calls": [
     {
       "method": "db_findMany",

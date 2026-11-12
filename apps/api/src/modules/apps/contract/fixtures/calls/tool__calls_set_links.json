@@ -5,7 +5,7 @@
     "contactId": "6f1c2a4e-8b0d-4c3e-9a51-2d7e0b9c4f10",
     "dealTaskId": "3b9e7d21-54a0-4f6c-8e12-90c4d5a6b7e8"
   },
-  "recordedFrom": "the contract org on a local stack, record-calls.recorder.test.ts",
+  "recordedFrom": "the contract org on a local stack, record-calls.recorder.ts",
   "calls": [
     {
       "method": "executeTool",

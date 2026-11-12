@@ -3,7 +3,7 @@
   "params": {
     "managed_meta_audience_ids": ["120210000000000501"]
   },
-  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.test.ts",
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
   "calls": [
     {
       "method": "executeTool",

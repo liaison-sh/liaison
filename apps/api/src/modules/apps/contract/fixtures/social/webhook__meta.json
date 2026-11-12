@@ -38,7 +38,7 @@
       "x-hub-signature-256": "sha256=f2954283b6a367d75caac331664fd5aa0ff7e165c563ecb5f04f3b5aa4911814"
     }
   ],
-  "recordedFrom": "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.test.ts",
+  "recordedFrom": "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.ts",
   "calls": [
     {
       "method": "enqueueJob",

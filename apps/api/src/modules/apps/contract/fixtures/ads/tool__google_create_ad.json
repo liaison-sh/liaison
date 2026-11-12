@@ -6,7 +6,7 @@
     "descriptions": ["Tame the boom in small rooms.", "Measured before it leaves the workshop."],
     "final_urls": ["https://shop.example.com/bass-traps"]
   },
-  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.test.ts",
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
   "calls": [
     {
       "method": "connections_getToken",

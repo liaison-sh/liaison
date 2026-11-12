@@ -3,7 +3,7 @@
   "params": {
     "report": "1d13b4a159663dab3b427dedc2d1f3a7f4b997716e54ebeaee7253cc1f8063d3"
   },
-  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.test.ts",
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
   "calls": [
     {
       "method": "store_get",

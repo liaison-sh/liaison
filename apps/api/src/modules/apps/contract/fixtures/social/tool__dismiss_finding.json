@@ -3,7 +3,7 @@
   "params": {
     "finding_id": "fc1f6206-563b-4036-b9f3-ef5342f90dac"
   },
-  "recordedFrom": "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.test.ts",
+  "recordedFrom": "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.ts",
   "calls": [
     {
       "method": "db_findMany",

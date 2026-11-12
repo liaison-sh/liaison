@@ -15,7 +15,7 @@
       "x-calls-delivery-id": "delivery-0002"
     }
   ],
-  "recordedFrom": "the contract org on a local stack, record-calls.recorder.test.ts",
+  "recordedFrom": "the contract org on a local stack, record-calls.recorder.ts",
   "calls": [
     {
       "method": "executeTool",

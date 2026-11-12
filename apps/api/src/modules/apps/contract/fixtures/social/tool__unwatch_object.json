@@ -4,7 +4,7 @@
     "platform": "facebook",
     "external_id": "104857600000001_123450000000002"
   },
-  "recordedFrom": "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.test.ts",
+  "recordedFrom": "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.ts",
   "calls": [
     {
       "method": "db_findMany",

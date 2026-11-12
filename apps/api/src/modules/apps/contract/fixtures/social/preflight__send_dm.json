@@ -4,7 +4,7 @@
     "conversation_id": "21b85180-70f0-40da-a459-2ae43147100b",
     "body": "Of course Camille, one 120 cm panel is set aside in your name until Friday."
   },
-  "recordedFrom": "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.test.ts",
+  "recordedFrom": "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.ts",
   "calls": [
     {
       "method": "db_findMany",

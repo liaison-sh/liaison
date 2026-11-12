@@ -1,0 +1,29 @@
+{
+  "entry": "preflight:webhooks_setup",
+  "params": {
+    "callback_base_url": "https://liaison.example.com"
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.test.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["sync_state", "{\"where\":{\"platform\":\"facebook\",\"active\":true}}"],
+      "reply": "[{\"id\":\"00fa983f-325f-4386-bb33-41fdaa63d3dc\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:28.969432+00\",\"updated_at\":\"2026-11-12 10:10:29.256905+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"discovery\",\"cursor\":\"eyJwYWdlcyI6eyIxMDQ4NTc2MDAwMDAwMDEiOnsiaHciOiIyMDI1LTEyLTMxVDE0OjAwOjAwLjAwMFoiLCJiZiI6bnVsbH19fQ==\",\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":\"2026-01-01 00:00:00+00\",\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}},{\"id\":\"cb438f92-847d-4403-a26c-e0635974e46d\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.004222+00\",\"updated_at\":\"2026-11-12 10:10:29.85735+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"dm\",\"cursor\":\"eyJwYWdlcyI6eyIxMDQ4NTc2MDAwMDAwMDEiOnsiaHciOiIyMDI1LTEyLTMxVDIzOjUwOjAwLjAwMFoiLCJiZiI6bnVsbH19fQ==\",\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":\"2026-01-01 00:00:00+00\",\"metadata\":{\"dmStateRepair\":{\"done\":true,\"offset\":0,\"version\":1},\"kernel_public_base_url\":\"https://liaison.example.com\"}},{\"id\":\"9d187e4e-5767-45e8-a37a-0c27c0498570\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:28.991427+00\",\"updated_at\":\"2026-11-12 10:10:28.991427+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"watch\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
+    },
+    {
+      "method": "config_get",
+      "args": ["socialMetaAppSecret"],
+      "reply": "social-secret-stand-in-1"
+    },
+    {
+      "method": "config_get",
+      "args": ["cellMetaCallbackUrl"],
+      "reply": null
+    },
+    {
+      "method": "config_get",
+      "args": ["cellMetaVerifyToken"],
+      "reply": null
+    }
+  ]
+}

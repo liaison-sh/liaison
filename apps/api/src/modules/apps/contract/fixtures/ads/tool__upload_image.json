@@ -1,0 +1,23 @@
+{
+  "entry": "tool:upload_image",
+  "params": {
+    "filename": "bass-trap-square.png",
+    "image_bytes": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.test.ts",
+  "calls": [
+    {
+      "method": "connections_getCredentials",
+      "args": ["meta"],
+      "reply": "{\"accessToken\":\"ads-token-stand-in-1\",\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://graph.facebook.com/v25.0/act_1234567890123456/adimages",
+        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\",\"Content-Type\":\"application/x-www-form-urlencoded\"},\"body\":\"bytes=iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg%3D%3D&name=bass-trap-square.png\"}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"images\\\":{\\\"bass-trap-square.png\\\":{\\\"hash\\\":\\\"7c3e4f5a6b7c8d9e0f1a2b3c4d5e6f70\\\",\\\"url\\\":\\\"https://scontent.example.com/bass-trap-square.png\\\"}}}\"}"
+    }
+  ]
+}

@@ -56,6 +56,20 @@ describe("filterByBuyerConsent", () => {
     expect(result.droppedNoConsentSource).toBe(1)
   })
 
+  it("reads the database app's { rows, truncated } envelope, the shape db_read and db_query answer", async () => {
+    const executeTool = makeExecuteTool({
+      purchase_attribution_by_email: {
+        "granted@example.com": { status: "completed", result: { rows: [{ ad_consent: "granted" }], truncated: false } },
+        "denied@example.com": { status: "completed", result: { rows: [{ ad_consent: "denied" }], truncated: false } },
+        "nosource@example.com": { status: "completed", result: { rows: [], truncated: false } },
+      },
+    })
+    const result = await filterByBuyerConsent(CUSTOMERS, { executeTool })
+    expect(result.allowed.map((c) => c.email)).toEqual(["granted@example.com"])
+    expect(result.droppedNoConsent).toBe(1)
+    expect(result.droppedNoConsentSource).toBe(1)
+  })
+
   it("fails the suite if the handler swapped readName (e.g. dispatched the newsletter read for a buyer join)", async () => {
     // Only the newsletter name is mocked with a granted result -- if
     // filterByBuyerConsent ever dispatched "subscribers_marketing_consent"

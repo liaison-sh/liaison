@@ -1,0 +1,11 @@
+{
+  "entry": "preflight:update_budget",
+  "params": {
+    "level": "campaign",
+    "object_id": "120210000000000101",
+    "daily_budget": "45.00",
+    "currency": "EUR"
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.test.ts",
+  "calls": []
+}

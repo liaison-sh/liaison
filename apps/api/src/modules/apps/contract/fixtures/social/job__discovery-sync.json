@@ -1,0 +1,160 @@
+{
+  "entry": "job:discovery-sync",
+  "params": {},
+  "recordedFrom": "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.test.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["sync_state", "{\"where\":{\"source_type\":\"discovery\",\"active\":true}}"],
+      "reply": "[{\"id\":\"00fa983f-325f-4386-bb33-41fdaa63d3dc\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:28.969432+00\",\"updated_at\":\"2026-11-12 10:10:28.969432+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"discovery\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}},{\"id\":\"92b7c978-cb4b-4a48-8fb5-f8285baf538c\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.087587+00\",\"updated_at\":\"2026-11-12 10:10:29.087587+00\",\"platform\":\"youtube\",\"account_external_id\":\"UCxContractChannel0000001\",\"source_type\":\"discovery\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "sync_state",
+        "{\"where\":{\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"discovery\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"00fa983f-325f-4386-bb33-41fdaa63d3dc\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:28.969432+00\",\"updated_at\":\"2026-11-12 10:10:28.969432+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"discovery\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
+    },
+    {
+      "method": "connections_getToken",
+      "args": ["facebook", "104857600000001"],
+      "reply": "social-secret-stand-in-2"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "sync_state",
+        "{\"where\":{\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\"}}"
+      ],
+      "reply": "[{\"id\":\"00fa983f-325f-4386-bb33-41fdaa63d3dc\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:28.969432+00\",\"updated_at\":\"2026-11-12 10:10:28.969432+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"discovery\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}},{\"id\":\"cb438f92-847d-4403-a26c-e0635974e46d\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.004222+00\",\"updated_at\":\"2026-11-12 10:10:29.004222+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"dm\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}},{\"id\":\"9d187e4e-5767-45e8-a37a-0c27c0498570\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:28.991427+00\",\"updated_at\":\"2026-11-12 10:10:28.991427+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"watch\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["monitor_term", "{\"where\":{\"enabled\":true}}"],
+      "reply": "[{\"id\":\"6f88ad00-1171-4207-8e49-263a6bcb5cd0\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.14882+00\",\"updated_at\":\"2026-11-12 10:10:29.14882+00\",\"kind\":\"keyword\",\"value\":\"Resonant Audio Labs\",\"platform\":\"youtube\",\"enabled\":true,\"notes\":\"Brand name as people write it\",\"metadata\":{}}]"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://graph.facebook.com/v26.0/me/accounts?fields=id,name,access_token",
+        "{\"headers\":{\"Authorization\":\"Bearer social-secret-stand-in-2\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"data\\\":[{\\\"id\\\":\\\"104857600000001\\\",\\\"name\\\":\\\"Resonant Audio Labs\\\",\\\"access_token\\\":\\\"redacted\\\"}],\\\"paging\\\":{\\\"cursors\\\":{\\\"before\\\":\\\"QVFIUmFiZA\\\",\\\"after\\\":\\\"QVFIUnpiZA\\\"}}}\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://graph.facebook.com/v26.0/104857600000001/feed?fields=id,message,permalink_url,created_time,comments.summary(true).limit(0)&limit=25",
+        "{\"headers\":{\"Authorization\":\"Bearer redacted\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"data\\\":[{\\\"id\\\":\\\"104857600000001_123450000000001\\\",\\\"message\\\":\\\"Our new broadband bass traps are here: 30 % less boom in small rooms.\\\",\\\"permalink_url\\\":\\\"https://www.facebook.com/104857600000001/posts/123450000000001\\\",\\\"created_time\\\":\\\"2025-12-31T14:00:00+0000\\\",\\\"comments\\\":{\\\"data\\\":[{\\\"from\\\":{\\\"id\\\":\\\"6000000000000001\\\",\\\"name\\\":\\\"Camille Martin\\\"},\\\"created_time\\\":\\\"2025-12-31T23:18:00+0000\\\"},{\\\"from\\\":{\\\"id\\\":\\\"6000000000000002\\\",\\\"name\\\":\\\"Jonas Weber\\\"},\\\"created_time\\\":\\\"2025-12-31T23:35:00+0000\\\"}]}},{\\\"id\\\":\\\"104857600000001_123450000000002\\\",\\\"message\\\":\\\"Studio tour: how we measure every panel before it leaves the workshop.\\\",\\\"permalink_url\\\":\\\"https://www.facebook.com/104857600000001/posts/123450000000002\\\",\\\"created_time\\\":\\\"2025-12-30T14:40:00+0000\\\",\\\"comments\\\":{\\\"data\\\":[]}}],\\\"paging\\\":{\\\"cursors\\\":{\\\"before\\\":\\\"QVFIUmFiZA\\\",\\\"after\\\":\\\"QVFIUnpiZA\\\"}}}\"}"
+    },
+    {
+      "method": "db_update",
+      "args": [
+        "sync_state",
+        "00fa983f-325f-4386-bb33-41fdaa63d3dc",
+        "{\"cursor\":\"eyJwYWdlcyI6eyIxMDQ4NTc2MDAwMDAwMDEiOnsiaHciOiIyMDI1LTEyLTMxVDE0OjAwOjAwLjAwMFoiLCJiZiI6bnVsbH19fQ==\",\"last_synced_at\":\"2026-01-01T00:00:00.000Z\"}"
+      ]
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "sync_state",
+        "{\"where\":{\"platform\":\"youtube\",\"account_external_id\":\"UCxContractChannel0000001\",\"source_type\":\"discovery\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"92b7c978-cb4b-4a48-8fb5-f8285baf538c\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.087587+00\",\"updated_at\":\"2026-11-12 10:10:29.087587+00\",\"platform\":\"youtube\",\"account_external_id\":\"UCxContractChannel0000001\",\"source_type\":\"discovery\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
+    },
+    {
+      "method": "connections_getToken",
+      "args": ["google", "UCxContractChannel0000001"],
+      "reply": "social-secret-stand-in-5"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["monitor_term", "{\"where\":{\"enabled\":true}}"],
+      "reply": "[{\"id\":\"6f88ad00-1171-4207-8e49-263a6bcb5cd0\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.14882+00\",\"updated_at\":\"2026-11-12 10:10:29.14882+00\",\"kind\":\"keyword\",\"value\":\"Resonant Audio Labs\",\"platform\":\"youtube\",\"enabled\":true,\"notes\":\"Brand name as people write it\",\"metadata\":{}}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "sync_state",
+        "{\"where\":{\"platform\":\"youtube\",\"source_type\":\"discovery\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"92b7c978-cb4b-4a48-8fb5-f8285baf538c\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.087587+00\",\"updated_at\":\"2026-11-12 10:10:29.087587+00\",\"platform\":\"youtube\",\"account_external_id\":\"UCxContractChannel0000001\",\"source_type\":\"discovery\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "sync_state",
+        "{\"where\":{\"platform\":\"youtube\",\"source_type\":\"watch\",\"account_external_id\":\"UCxContractChannel0000001\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"cd879ddd-e5bd-4218-aaf3-cccd723b26dd\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.107216+00\",\"updated_at\":\"2026-11-12 10:10:29.107216+00\",\"platform\":\"youtube\",\"account_external_id\":\"UCxContractChannel0000001\",\"source_type\":\"watch\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&order=date&maxResults=50&q=Resonant%20Audio%20Labs",
+        "{\"headers\":{\"Authorization\":\"Bearer social-secret-stand-in-5\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"kind\\\":\\\"youtube#searchListResponse\\\",\\\"pageInfo\\\":{\\\"totalResults\\\":1,\\\"resultsPerPage\\\":25},\\\"items\\\":[{\\\"kind\\\":\\\"youtube#searchResult\\\",\\\"id\\\":{\\\"kind\\\":\\\"youtube#video\\\",\\\"videoId\\\":\\\"dQw4w9WgXc0\\\"},\\\"snippet\\\":{\\\"title\\\":\\\"Treating a small home studio: before and after measurements\\\",\\\"description\\\":\\\"We tried Resonant Audio Labs bass traps in a 12 m² room. Here is the waterfall plot.\\\",\\\"channelTitle\\\":\\\"Mix Room Notes\\\",\\\"channelId\\\":\\\"UCxMixRoomNotes0000000001\\\",\\\"publishedAt\\\":\\\"2025-12-30T18:00:00Z\\\"}}]}\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://www.googleapis.com/youtube/v3/videos?part=statistics&id=dQw4w9WgXc0",
+        "{\"headers\":{\"Authorization\":\"Bearer social-secret-stand-in-5\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"kind\\\":\\\"youtube#videoListResponse\\\",\\\"items\\\":[{\\\"id\\\":\\\"dQw4w9WgXc0\\\",\\\"snippet\\\":{\\\"title\\\":\\\"Treating a small home studio: before and after measurements\\\",\\\"description\\\":\\\"We tried Resonant Audio Labs bass traps in a 12 m² room. Here is the waterfall plot.\\\",\\\"channelTitle\\\":\\\"Mix Room Notes\\\",\\\"channelId\\\":\\\"UCxMixRoomNotes0000000001\\\",\\\"publishedAt\\\":\\\"2025-12-30T18:00:00Z\\\"}}]}\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://www.googleapis.com/youtube/v3/channels?part=contentDetails&mine=true",
+        "{\"headers\":{\"Authorization\":\"Bearer social-secret-stand-in-5\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"kind\\\":\\\"youtube#channelListResponse\\\",\\\"items\\\":[{\\\"id\\\":\\\"UCxContractChannel0000001\\\",\\\"snippet\\\":{\\\"title\\\":\\\"Resonant Audio Labs\\\"}}]}\"}"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["sync_state", "{\"where\":{\"platform\":\"youtube\"}}"],
+      "reply": "[{\"id\":\"92b7c978-cb4b-4a48-8fb5-f8285baf538c\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.087587+00\",\"updated_at\":\"2026-11-12 10:10:29.087587+00\",\"platform\":\"youtube\",\"account_external_id\":\"UCxContractChannel0000001\",\"source_type\":\"discovery\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}},{\"id\":\"cd879ddd-e5bd-4218-aaf3-cccd723b26dd\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.107216+00\",\"updated_at\":\"2026-11-12 10:10:29.107216+00\",\"platform\":\"youtube\",\"account_external_id\":\"UCxContractChannel0000001\",\"source_type\":\"watch\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "finding",
+        "{\"where\":{\"platform\":\"youtube\",\"external_id\":\"dQw4w9WgXc0\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "resolveContact",
+      "args": ["{\"externalId\":\"UCxMixRoomNotes0000000001\",\"name\":\"Mix Room Notes\"}"],
+      "reply": "null"
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "finding",
+        "{\"platform\":\"youtube\",\"external_id\":\"dQw4w9WgXc0\",\"relation\":\"keyword_match\",\"parent_external_id\":null,\"author_handle\":\"Mix Room Notes\",\"author_external_id\":\"UCxMixRoomNotes0000000001\",\"content_text\":\"Treating a small home studio: before and after measurements\",\"permalink\":\"https://www.youtube.com/watch?v=dQw4w9WgXc0\",\"occurred_at\":\"2025-12-30T18:00:00Z\",\"comment_count\":0,\"brand_relevant\":false,\"watched_object_id\":null,\"metadata\":{\"matchedTerms\":[\"6f88ad00-1171-4207-8e49-263a6bcb5cd0\"],\"siblingsAccessible\":true},\"contact_id\":null,\"status\":\"new\"}"
+      ],
+      "reply": "{\"id\":\"7db70872-01a7-4a63-a48b-6a8eb97de2b5\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.325724+00\",\"updated_at\":\"2026-11-12 10:10:29.325724+00\",\"platform\":\"youtube\",\"external_id\":\"dQw4w9WgXc0\",\"relation\":\"keyword_match\",\"parent_external_id\":null,\"watched_object_id\":null,\"contact_id\":null,\"author_handle\":\"Mix Room Notes\",\"author_external_id\":\"UCxMixRoomNotes0000000001\",\"content_text\":\"Treating a small home studio: before and after measurements\",\"media_url\":null,\"permalink\":\"https://www.youtube.com/watch?v=dQw4w9WgXc0\",\"occurred_at\":\"2025-12-30 18:00:00+00\",\"comment_count\":0,\"brand_relevant\":false,\"edited_after_reply\":false,\"triage_category\":null,\"sentiment\":null,\"urgency\":null,\"should_reply\":null,\"needs_human\":null,\"triage_reason\":null,\"suggested_reply\":null,\"approval_request_id\":null,\"status\":\"new\",\"metadata\":{\"matchedTerms\":[\"6f88ad00-1171-4207-8e49-263a6bcb5cd0\"],\"siblingsAccessible\":true}}"
+    },
+    {
+      "method": "emit",
+      "args": [
+        "{\"entity\":\"finding\",\"action\":\"created\",\"entityId\":\"7db70872-01a7-4a63-a48b-6a8eb97de2b5\"}"
+      ]
+    },
+    {
+      "method": "db_update",
+      "args": [
+        "sync_state",
+        "92b7c978-cb4b-4a48-8fb5-f8285baf538c",
+        "{\"cursor\":\"eyJ2IjoyLCJ0ZXJtcyI6eyI2Zjg4YWQwMC0xMTcxLTQyMDctOGU0OS0yNjNhNmJjYjVjZDAiOnsiYWZ0ZXIiOiIyMDI1LTEyLTMxVDEyOjAwOjAwLjAwMFoifX19\",\"last_synced_at\":\"2026-01-01T00:00:00.000Z\",\"units_consumed_today\":102,\"units_window_date\":\"2025-12-31\",\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\",\"youtube_quota\":{\"exhausted_until\":null,\"discovery_skipped\":null}}}"
+      ]
+    }
+  ]
+}

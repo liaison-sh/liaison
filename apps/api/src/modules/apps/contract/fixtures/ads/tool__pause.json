@@ -1,0 +1,47 @@
+{
+  "entry": "tool:pause",
+  "params": {
+    "object_ids": ["120210000000000102"],
+    "reason": "ROAS under 1.5 for 7 days"
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.test.ts",
+  "calls": [
+    {
+      "method": "connections_getCredentials",
+      "args": ["meta"],
+      "reply": "{\"accessToken\":\"ads-token-stand-in-1\",\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://graph.facebook.com/v25.0/120210000000000102?fields=id%2Cname%2Cstatus%2Ceffective_status",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"id\\\":\\\"120210000000000102\\\",\\\"name\\\":\\\"Retargeting – cart abandoners\\\",\\\"status\\\":\\\"ACTIVE\\\",\\\"effective_status\\\":\\\"CAMPAIGN_PAUSED\\\",\\\"objective\\\":\\\"OUTCOME_SALES\\\",\\\"daily_budget\\\":\\\"1500\\\"}\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://graph.facebook.com/v25.0/120210000000000102",
+        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\",\"Content-Type\":\"application/x-www-form-urlencoded\"},\"body\":\"status=PAUSED\"}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"success\\\":true}\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://graph.facebook.com/v25.0/120210000000000102?fields=id%2Cstatus%2Ceffective_status",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"id\\\":\\\"120210000000000102\\\",\\\"name\\\":\\\"Retargeting – cart abandoners\\\",\\\"status\\\":\\\"ACTIVE\\\",\\\"effective_status\\\":\\\"CAMPAIGN_PAUSED\\\",\\\"objective\\\":\\\"OUTCOME_SALES\\\",\\\"daily_budget\\\":\\\"1500\\\"}\"}"
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "pause_ledger",
+        "{\"meta_object_id\":\"120210000000000102\",\"prior_status\":\"ACTIVE\",\"paused_by_us\":true,\"reason\":\"ROAS under 1.5 for 7 days\",\"resolved_at\":null}"
+      ],
+      "reply": "{\"id\":\"175638bc-f334-4a00-81e7-2722841e0d47\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:16:45.610372+00\",\"updated_at\":\"2026-11-12 10:16:45.610372+00\",\"meta_object_id\":\"120210000000000102\",\"prior_status\":\"ACTIVE\",\"paused_by_us\":true,\"reason\":\"ROAS under 1.5 for 7 days\",\"resolved_at\":null,\"object_type\":null}"
+    }
+  ]
+}

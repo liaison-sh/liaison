@@ -1,0 +1,33 @@
+{
+  "entry": "tool:create_creative",
+  "params": {
+    "page_id": "104857600000001",
+    "object_story_spec": {
+      "page_id": "104857600000001",
+      "link_data": {
+        "link": "https://shop.example.com/bass-traps",
+        "message": "Now shipping to Belgium.",
+        "image_hash": "7c3e4f5a6b7c8d9e0f1a2b3c4d5e6f70",
+        "call_to_action": {
+          "type": "SHOP_NOW"
+        }
+      }
+    }
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.test.ts",
+  "calls": [
+    {
+      "method": "connections_getCredentials",
+      "args": ["meta"],
+      "reply": "{\"accessToken\":\"ads-token-stand-in-1\",\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://graph.facebook.com/v25.0/act_1234567890123456/adcreatives",
+        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\",\"Content-Type\":\"application/x-www-form-urlencoded\"},\"body\":\"object_story_spec=%7B%22page_id%22%3A%22104857600000001%22%2C%22link_data%22%3A%7B%22link%22%3A%22https%3A%2F%2Fshop.example.com%2Fbass-traps%22%2C%22message%22%3A%22Now%20shipping%20to%20Belgium.%22%2C%22image_hash%22%3A%227c3e4f5a6b7c8d9e0f1a2b3c4d5e6f70%22%2C%22call_to_action%22%3A%7B%22type%22%3A%22SHOP_NOW%22%7D%7D%7D&page_id=104857600000001\"}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"id\\\":\\\"120210000000000402\\\"}\"}"
+    }
+  ]
+}

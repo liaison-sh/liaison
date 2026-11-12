@@ -1,0 +1,15 @@
+{
+  "entry": "preflight:create_custom_audience",
+  "params": {
+    "name": "Buyers – newsletter consent",
+    "subtype": "CUSTOMER_LIST",
+    "customer_file_source": "USER_PROVIDED_ONLY",
+    "audience_purpose": "buyer",
+    "shopify_customer_query": {
+      "query": "orders_count:>0 AND accepts_marketing:true",
+      "limit": 250
+    }
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.test.ts",
+  "calls": []
+}

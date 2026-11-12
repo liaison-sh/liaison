@@ -1,0 +1,30 @@
+{
+  "entry": "tool:creative_get",
+  "params": {
+    "ad_id": "120210000000000301"
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.test.ts",
+  "calls": [
+    {
+      "method": "connections_getCredentials",
+      "args": ["meta"],
+      "reply": "{\"accessToken\":\"ads-token-stand-in-1\",\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://graph.facebook.com/v25.0/120210000000000301?fields=creative",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"id\\\":\\\"120210000000000301\\\",\\\"name\\\":\\\"Bass trap carousel\\\",\\\"status\\\":\\\"ACTIVE\\\",\\\"effective_status\\\":\\\"ACTIVE\\\",\\\"adset_id\\\":\\\"120210000000000201\\\",\\\"campaign_id\\\":\\\"120210000000000101\\\",\\\"creative\\\":{\\\"id\\\":\\\"120210000000000401\\\"}}\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://graph.facebook.com/v25.0/120210000000000401?fields=object_story_spec%2Casset_feed_spec%2Ctitle%2Cbody%2Cimage_hash%2Cvideo_id%2Cthumbnail_url",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"id\\\":\\\"120210000000000401\\\",\\\"name\\\":\\\"Bass trap carousel creative\\\",\\\"object_story_spec\\\":{\\\"page_id\\\":\\\"104857600000001\\\",\\\"link_data\\\":{\\\"link\\\":\\\"https://shop.example.com/bass-traps\\\",\\\"message\\\":\\\"30 % less boom in small rooms.\\\"}},\\\"thumbnail_url\\\":\\\"https://scontent.example.com/creative-thumb.jpg\\\"}\"}"
+    }
+  ]
+}

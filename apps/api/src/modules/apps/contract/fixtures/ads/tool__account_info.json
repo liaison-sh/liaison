@@ -1,0 +1,20 @@
+{
+  "entry": "tool:account_info",
+  "params": {},
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.test.ts",
+  "calls": [
+    {
+      "method": "connections_getCredentials",
+      "args": ["meta"],
+      "reply": "{\"accessToken\":\"ads-token-stand-in-1\",\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://graph.facebook.com/v25.0/act_1234567890123456?fields=id%2Cname%2Ccurrency%2Ctimezone_name%2Cspend_cap%2Caccount_status%2Cadspixels%7Bid%2Cname%7D",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"id\\\":\\\"act_1234567890123456\\\",\\\"account_id\\\":\\\"1234567890123456\\\",\\\"name\\\":\\\"Resonant Audio Labs\\\",\\\"currency\\\":\\\"EUR\\\",\\\"timezone_name\\\":\\\"Europe/Paris\\\",\\\"account_status\\\":1,\\\"amount_spent\\\":\\\"184520\\\",\\\"spend_cap\\\":\\\"0\\\"}\"}"
+    }
+  ]
+}

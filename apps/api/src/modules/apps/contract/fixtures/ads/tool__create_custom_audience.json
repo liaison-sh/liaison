@@ -1,0 +1,69 @@
+{
+  "entry": "tool:create_custom_audience",
+  "params": {
+    "name": "Buyers – newsletter consent",
+    "subtype": "CUSTOMER_LIST",
+    "customer_file_source": "USER_PROVIDED_ONLY",
+    "audience_purpose": "buyer",
+    "shopify_customer_query": {
+      "query": "orders_count:>0 AND accepts_marketing:true",
+      "limit": 250
+    }
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.test.ts",
+  "calls": [
+    {
+      "method": "connections_getCredentials",
+      "args": ["meta"],
+      "reply": "{\"accessToken\":\"ads-token-stand-in-1\",\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://graph.facebook.com/v25.0/act_1234567890123456/customaudiences",
+        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\",\"Content-Type\":\"application/x-www-form-urlencoded\"},\"body\":\"name=Buyers%20%E2%80%93%20newsletter%20consent&subtype=CUSTOMER_LIST&customer_file_source=USER_PROVIDED_ONLY\"}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"id\\\":\\\"120210000000000501\\\"}\"}"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "shopify:customers_search",
+        "{\"query\":\"orders_count:>0 AND accepts_marketing:true\",\"limit\":250}"
+      ],
+      "reply": "{\"status\":\"completed\",\"result\":{\"customers\":[{\"id\":\"gid://shopify/Customer/7100000000001\",\"email\":\"camille.martin@example.com\",\"phone\":\"+15550100000\",\"emailMarketingConsent\":{\"marketingState\":\"SUBSCRIBED\"}},{\"id\":\"gid://shopify/Customer/7100000000002\",\"email\":\"jonas.weber@example.com\",\"phone\":null,\"emailMarketingConsent\":{\"marketingState\":\"SUBSCRIBED\"}},{\"id\":\"gid://shopify/Customer/7100000000003\",\"email\":\"lena.okafor@example.com\",\"phone\":\"+15550100000\",\"emailMarketingConsent\":{\"marketingState\":\"SUBSCRIBED\"}}]}}"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "database:db_read",
+        "{\"name\":\"purchase_attribution_by_email\",\"params\":{\"email\":\"camille.martin@example.com\"}}"
+      ],
+      "reply": "{\"status\":\"completed\",\"result\":{\"rows\":[{\"email\":\"camille.martin@example.com\",\"ad_consent\":\"granted\",\"marketing_consent\":true}],\"rowCount\":1}}"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "database:db_read",
+        "{\"name\":\"purchase_attribution_by_email\",\"params\":{\"email\":\"jonas.weber@example.com\"}}"
+      ],
+      "reply": "{\"status\":\"completed\",\"result\":{\"rows\":[{\"email\":\"camille.martin@example.com\",\"ad_consent\":\"granted\",\"marketing_consent\":true}],\"rowCount\":1}}"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "database:db_read",
+        "{\"name\":\"purchase_attribution_by_email\",\"params\":{\"email\":\"lena.okafor@example.com\"}}"
+      ],
+      "reply": "{\"status\":\"completed\",\"result\":{\"rows\":[{\"email\":\"camille.martin@example.com\",\"ad_consent\":\"granted\",\"marketing_consent\":true}],\"rowCount\":1}}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://graph.facebook.com/v25.0/120210000000000501/users",
+        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\",\"Content-Type\":\"application/x-www-form-urlencoded\"},\"body\":\"payload=%7B%22schema%22%3A%5B%22EMAIL_SHA256%22%2C%22PHONE_SHA256%22%5D%2C%22data%22%3A%5B%5B%2230f6bfe4911ff4d980aabc847441bbf812c8f8597962ba88051c6ccff7bf741a%22%2C%22875183d38a44284718401cc7de026a3cbc480bdbd2b2b31ac9508bb792957d6e%22%5D%2C%5B%220874a506e975e942d1f2555f3a6693e46e3da4c9ee73c704f43ffd493a6bc25a%22%2Cnull%5D%2C%5B%22a375a69ca8ebfafb39503c944a3cc9374140b314eedcc29e1ae7cf30a7427cb2%22%2C%22875183d38a44284718401cc7de026a3cbc480bdbd2b2b31ac9508bb792957d6e%22%5D%5D%7D\"}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"audience_id\\\":\\\"120210000000000501\\\",\\\"session_id\\\":\\\"4100000000000001\\\",\\\"num_received\\\":3,\\\"num_invalid_entries\\\":0,\\\"invalid_entry_samples\\\":{}}\"}"
+    }
+  ]
+}

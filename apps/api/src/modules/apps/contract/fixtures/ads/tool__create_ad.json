@@ -1,0 +1,25 @@
+{
+  "entry": "tool:create_ad",
+  "params": {
+    "adset_id": "120210000000000201",
+    "name": "Bass trap – BE launch",
+    "creative_id": "120210000000000401",
+    "status": "PAUSED"
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.test.ts",
+  "calls": [
+    {
+      "method": "connections_getCredentials",
+      "args": ["meta"],
+      "reply": "{\"accessToken\":\"ads-token-stand-in-1\",\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://graph.facebook.com/v25.0/act_1234567890123456/ads",
+        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\",\"Content-Type\":\"application/x-www-form-urlencoded\"},\"body\":\"adset_id=120210000000000201&name=Bass%20trap%20%E2%80%93%20BE%20launch&creative=%7B%22creative_id%22%3A%22120210000000000401%22%7D&status=PAUSED\"}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"id\\\":\\\"120210000000000303\\\"}\"}"
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "entry": "event:kernel/connected_account:create",
+  "params": {
+    "app": "kernel",
+    "entity": "connected_account",
+    "action": "create",
+    "orgId": "00000000-0000-4000-8000-00000000c0de",
+    "entityId": "00000000-0000-4000-8000-0000000000a1",
+    "data": {
+      "id": "00000000-0000-4000-8000-0000000000a1",
+      "appName": "social",
+      "connectionName": "facebook",
+      "identifier": "104857600000001",
+      "kernelPublicBaseUrl": "https://liaison.example.com"
+    }
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.test.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "sync_state",
+        "{\"where\":{\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"discovery\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "sync_state",
+        "{\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"discovery\",\"active\":true,\"cursor\":null,\"units_consumed_today\":0,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}"
+      ],
+      "reply": "{\"id\":\"00fa983f-325f-4386-bb33-41fdaa63d3dc\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:28.969432+00\",\"updated_at\":\"2026-11-12 10:10:28.969432+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"discovery\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "sync_state",
+        "{\"where\":{\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"watch\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "sync_state",
+        "{\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"watch\",\"active\":true,\"cursor\":null,\"units_consumed_today\":0,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}"
+      ],
+      "reply": "{\"id\":\"9d187e4e-5767-45e8-a37a-0c27c0498570\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:28.991427+00\",\"updated_at\":\"2026-11-12 10:10:28.991427+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"watch\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "sync_state",
+        "{\"where\":{\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"dm\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "sync_state",
+        "{\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"dm\",\"active\":true,\"cursor\":null,\"units_consumed_today\":0,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}"
+      ],
+      "reply": "{\"id\":\"cb438f92-847d-4403-a26c-e0635974e46d\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.004222+00\",\"updated_at\":\"2026-11-12 10:10:29.004222+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"dm\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}"
+    },
+    {
+      "method": "enqueueJob",
+      "args": [
+        "discovery-sync",
+        "{\"platform\":\"facebook\",\"accountExternalId\":\"104857600000001\"}"
+      ]
+    }
+  ]
+}

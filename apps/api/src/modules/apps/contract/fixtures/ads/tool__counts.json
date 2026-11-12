@@ -1,0 +1,25 @@
+{
+  "entry": "tool:counts",
+  "params": {},
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.test.ts",
+  "calls": [
+    {
+      "method": "connections_getCredentials",
+      "args": ["meta"],
+      "reply": "{\"accessToken\":\"ads-token-stand-in-1\",\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"}"
+    },
+    {
+      "method": "connections_getCredentials",
+      "args": ["meta"],
+      "reply": "{\"accessToken\":\"ads-token-stand-in-1\",\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"}"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://graph.facebook.com/v25.0/act_1234567890123456/campaigns?fields=id%2Cname%2Cstatus%2Ceffective_status%2Cobjective%2Cdaily_budget%2Clifetime_budget",
+        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"data\\\":[{\\\"id\\\":\\\"120210000000000101\\\",\\\"name\\\":\\\"Bass traps – prospecting FR\\\",\\\"status\\\":\\\"ACTIVE\\\",\\\"effective_status\\\":\\\"ACTIVE\\\",\\\"objective\\\":\\\"OUTCOME_SALES\\\",\\\"daily_budget\\\":\\\"3500\\\"},{\\\"id\\\":\\\"120210000000000102\\\",\\\"name\\\":\\\"Retargeting – cart abandoners\\\",\\\"status\\\":\\\"ACTIVE\\\",\\\"effective_status\\\":\\\"CAMPAIGN_PAUSED\\\",\\\"objective\\\":\\\"OUTCOME_SALES\\\",\\\"daily_budget\\\":\\\"1500\\\"}],\\\"paging\\\":{\\\"cursors\\\":{\\\"before\\\":\\\"QVFIUmFiZA\\\",\\\"after\\\":\\\"QVFIUnpiZA\\\"}}}\"}"
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "entry": "tool:metrics_run",
+  "params": {
+    "formula_id": "blended_mer_total",
+    "period_start": "2025-12-01",
+    "period_end": "2025-12-31"
+  },
+  "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.test.ts",
+  "calls": [
+    {
+      "method": "executeTool",
+      "args": [
+        "shopify:orders_search",
+        "{\"created_at_min\":\"2025-12-01\",\"created_at_max\":\"2025-12-31\",\"limit\":50}"
+      ],
+      "reply": "{\"status\":\"completed\",\"result\":{\"results\":[{\"id\":\"gid://shopify/Order/5800000000001\",\"currency\":\"EUR\",\"attributes\":{\"totalAmount\":\"378.00\",\"totalAmountShop\":\"378.00\",\"shopCurrency\":\"EUR\",\"tags\":[],\"b2bOrder\":{\"b2b\":false},\"lineItems\":[{\"sku\":\"BT-120-ANT\",\"quantity\":2}]}},{\"id\":\"gid://shopify/Order/5800000000002\",\"currency\":\"EUR\",\"attributes\":{\"totalAmount\":\"1240.00\",\"totalAmountShop\":\"1240.00\",\"shopCurrency\":\"EUR\",\"tags\":[\"b2b\"],\"b2bOrder\":{\"b2b\":true},\"lineItems\":[{\"sku\":\"BT-120-ANT-B2B\",\"quantity\":8}]}}],\"nextCursor\":null,\"totalCount\":2}}"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "database:db_read",
+        "{\"name\":\"purchase_attribution_for_period\",\"params\":{\"period_start\":\"2025-12-01\",\"period_end\":\"2025-12-31T23:59:59.999Z\"}}"
+      ],
+      "reply": "{\"status\":\"completed\",\"result\":{\"rows\":[{\"shopify_order_id\":\"5800000000001\",\"ad_consent\":\"granted\",\"utm_source_first\":\"facebook\",\"utm_source_last\":\"facebook\",\"fbclid\":\"IwAR0contract\",\"gclid\":null,\"conversion_value_minor\":37800,\"conversion_currency\":\"EUR\",\"sku_class_breakdown\":{\"dtc\":37800},\"created_at\":\"2025-12-14T10:22:00Z\"},{\"shopify_order_id\":\"5800000000002\",\"ad_consent\":\"denied\",\"utm_source_first\":\"google\",\"utm_source_last\":\"direct\",\"fbclid\":null,\"gclid\":\"Cj0contract\",\"conversion_value_minor\":124000,\"conversion_currency\":\"EUR\",\"sku_class_breakdown\":{\"b2b\":124000},\"created_at\":\"2025-12-20T16:05:00Z\"}],\"rowCount\":2}}"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["manual_spend", "{}"],
+      "reply": "[{\"id\":\"40412677-1515-4d32-9a46-4f2783e3f03b\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:16:46.213559+00\",\"updated_at\":\"2026-11-12 10:16:46.213559+00\",\"channel\":\"print\",\"site\":\"Studio magazine\",\"period_start\":\"2025-12-01 00:00:00+00\",\"period_end\":\"2025-12-31 00:00:00+00\",\"amount\":450,\"currency\":\"EUR\",\"notes\":\"Half-page ad, January issue\",\"created_by\":\"agent\"}]"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "ads:insights_query",
+        "{\"level\":\"account\",\"time_range\":{\"since\":\"2025-12-01\",\"until\":\"2025-12-31\"}}"
+      ],
+      "reply": "{\"status\":\"completed\",\"result\":{\"data\":[{\"date_start\":\"2025-12-01\",\"date_stop\":\"2025-12-31\",\"spend\":1432.65,\"impressions\":\"18234\",\"clicks\":\"412\",\"cpm\":6.71,\"ctr\":\"2.26\",\"account_currency\":\"EUR\",\"campaign_id\":\"120210000000000101\",\"campaign_name\":\"Bass traps – prospecting FR\"}],\"_split\":false,\"currency\":null}}"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "ads:google_insights_query",
+        "{\"query\":\"SELECT metrics.cost_micros FROM campaign WHERE segments.date BETWEEN '2025-12-01' AND '2025-12-31'\"}"
+      ],
+      "reply": "{\"status\":\"error\",\"error\":{\"code\":\"google_not_connected\",\"message\":\"Google not connected: connect the Google account (adwords + content scopes) in app settings\",\"retryable\":false}}"
+    }
+  ]
+}

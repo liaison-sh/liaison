@@ -185,6 +185,31 @@ export async function invokeAppProvider(
 }
 
 /**
+ * Collapse items that target the same entity into one row. Providers emit one
+ * item per matching rule, so a single ticket can surface as awaiting_agent AND
+ * unassigned AND sla_risk: three feed rows for one thing to do. The input is
+ * already sorted, so the first occurrence is the highest-urgency one; the
+ * merged-away kinds land in `alsoKinds` for the UI to badge.
+ */
+export function dedupeByEntity(sorted: AttentionItem[]): AttentionItem[] {
+  const byEntity = new Map<string, AttentionItem>()
+  const out: AttentionItem[] = []
+  for (const item of sorted) {
+    const key = `${item.app}\u0000${item.entity}\u0000${item.entityId}`
+    const existing = byEntity.get(key)
+    if (!existing) {
+      byEntity.set(key, item)
+      out.push(item)
+      continue
+    }
+    if (item.kind !== existing.kind && !existing.alsoKinds?.includes(item.kind)) {
+      existing.alsoKinds = [...(existing.alsoKinds ?? []), item.kind]
+    }
+  }
+  return out
+}
+
+/**
  * The provider's answer as stored: well-formed items only (a malformed one is
  * dropped and reported, never allowed to crash the feed UI), sorted, capped.
  */
@@ -210,20 +235,26 @@ export function normalizeProviderItems(raw: unknown): {
       i.action &&
       typeof (i.action as { type?: unknown }).type === "string",
   )
-  const sorted = [...wellFormed].sort(compareAttentionItems)
-  const items = sorted.length > PROVIDER_ITEM_CAP ? sorted.slice(0, PROVIDER_ITEM_CAP) : sorted
-  let error: Omit<AttentionProviderError, "app"> | null = null
-  if (wellFormed.length < raw.length) {
-    error = {
-      reason: "error",
-      message: `Dropped ${raw.length - wellFormed.length} malformed attention item(s)`,
-    }
-  } else if (items.length < wellFormed.length) {
-    error = {
-      reason: "error",
-      message: `Provider returned ${wellFormed.length} items; truncated to ${PROVIDER_ITEM_CAP}`,
-    }
+  // Several rules about one record are one thing to do: merged before the cap, so the cap
+  // counts distinct records and a long queue keeps its most urgent ones.
+  const distinct = dedupeByEntity([...wellFormed].sort(compareAttentionItems))
+  const items =
+    distinct.length > PROVIDER_ITEM_CAP ? distinct.slice(0, PROVIDER_ITEM_CAP) : distinct
+  // A queue longer than the cap is an answer, not a failure: the feed shows its most urgent
+  // items. Reporting it as an error told the reader the app "did not answer".
+  if (items.length < distinct.length) {
+    log.info(
+      { returned: distinct.length, kept: PROVIDER_ITEM_CAP },
+      "Attention provider list capped to its most urgent items",
+    )
   }
+  const error: Omit<AttentionProviderError, "app"> | null =
+    wellFormed.length < raw.length
+      ? {
+          reason: "error",
+          message: `Dropped ${raw.length - wellFormed.length} malformed attention item(s)`,
+        }
+      : null
   return { items, error }
 }
 

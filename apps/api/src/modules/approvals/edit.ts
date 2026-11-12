@@ -14,7 +14,12 @@ import { withRlsContext } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
 import { isUnsafePathSegment } from "~/lib/safe-path"
-import { taintDisclosureLine, taintSurfaceLabelForTool } from "~/modules/agent/scopes/scope-taint"
+import { decidePostDisclosure } from "~/modules/agent/scopes/post-disclosure"
+import {
+  taintDisclosureLine,
+  taintPostDisclosureLine,
+  taintSurfaceLabelForTool,
+} from "~/modules/agent/scopes/scope-taint"
 import { readersTaintGap } from "~/modules/agent/scopes/taint-approval-audience"
 import { authorityFacts, decidingScope } from "~/modules/approvals/authority"
 import { validateEditedParams } from "~/modules/approvals/edit-validation"
@@ -156,7 +161,12 @@ interface ApprovalEditRow {
   notify_user_ids: string[]
   resource_owner_id: string | null
   status: string
-  metadata: { taintAudienceMustHold?: unknown; taintDisclosedToReaders?: unknown } | null
+  metadata: {
+    taintAudienceMustHold?: unknown
+    taintDisclosedToReaders?: unknown
+    /** A post parked by rule 11: the people of its conversation when it parked. */
+    taintDisclosureAudience?: unknown
+  } | null
 }
 
 export async function updatePayload(args: UpdatePayloadArgs): Promise<UpdatePayloadResult> {
@@ -618,10 +628,17 @@ export async function updatePayload(args: UpdatePayloadArgs): Promise<UpdatePayl
     // Rule 8e: the rebuilt card keeps saying why it waits, now over the union.
     const disclosureLine =
       disclosedToReaders && mustHold.length > 0
-        ? taintDisclosureLine(
-            mustHold,
-            taintSurfaceLabelForTool(args.orgId, row.tool_name, tool?.writesToTable),
-          )
+        ? Array.isArray(row.metadata?.taintDisclosureAudience)
+          ? await parkedPostDisclosureLine(
+              args.orgId,
+              row.requested_by,
+              mustHold,
+              row.metadata.taintDisclosureAudience,
+            )
+          : taintDisclosureLine(
+              mustHold,
+              taintSurfaceLabelForTool(args.orgId, row.tool_name, tool?.writesToTable),
+            )
         : null
     await refreshSummaryAfterEdit(
       args,
@@ -632,6 +649,35 @@ export async function updatePayload(args: UpdatePayloadArgs): Promise<UpdatePayl
     )
   }
   return publicResult
+}
+
+/**
+ * The card line of a post parked by rule 11, rebuilt after an edit exactly as the park wrote it:
+ * it names only the apps of what the people the approval discloses to lack, judged by the same
+ * decision the park took (post-disclosure.ts), over the people recorded when it parked. A gap that
+ * can no longer be counted keeps the whole demand and an uncounted reader.
+ */
+async function parkedPostDisclosureLine(
+  orgId: string,
+  requesterUserId: string,
+  mustHold: readonly string[],
+  audience: readonly unknown[],
+): Promise<string> {
+  const decision = await decidePostDisclosure({
+    orgId,
+    requesterUserId,
+    stamp: mustHold,
+    // The recorded people, judged as they are: no direct-message or standing shortcut applies
+    // to a post that already waits for its approval.
+    target: {
+      participantIds: audience.filter((u): u is string => typeof u === "string"),
+      newThread: true,
+      noShortcut: true,
+    },
+  })
+  return decision.kind === "gap" && decision.lacking !== null && decision.lacking > 0
+    ? taintPostDisclosureLine(decision.missingScopes, decision.lacking)
+    : taintPostDisclosureLine(mustHold, null)
 }
 
 /**

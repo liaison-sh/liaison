@@ -14,6 +14,7 @@ import { googleDriveAppManifest } from "~/apps/google-drive/manifest-descriptor"
 import type { RlsClient } from "~/db"
 import type { BridgeExtensionFactory } from "~/modules/apps/sandbox/bridge-extensions"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { buildVerifyBridge } from "~/modules/webhooks/verify-bridge"
 import { contractEntries } from "./entries"
 import {
   type AppUnderContract,
@@ -75,6 +76,14 @@ export function bridgeSurfaceOf(app: string, extension?: BridgeExtensionFactory)
   return [...surface.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
 }
 
+/** The methods a webhook verifier's bridge has (all async), as production builds it. */
+export function verifySurface(): BridgeSurface {
+  const bridge = buildVerifyBridge({ readConfig: async () => null, secretConfigKeys: [] })
+  return Object.keys(bridge)
+    .sort()
+    .map((name) => [name, "async"] as const)
+}
+
 function fixturesOf(app: string): Record<string, EgressFixture> {
   const dir = join(FIXTURES_DIR, app)
   if (!existsSync(dir)) return {}
@@ -110,6 +119,7 @@ export async function loadAppUnderContract(app: string): Promise<AppUnderContrac
       entries: contractEntries(manifest),
       source: await inTreeAppScript(inTree._bundlePath),
       surface: bridgeSurfaceOf(app, inTree._bridgeExtension),
+      verifySurface: verifySurface(),
       fixtures: fixturesOf(app),
     }
   }
@@ -123,6 +133,7 @@ export async function loadAppUnderContract(app: string): Promise<AppUnderContrac
     source: scripts.source,
     templateSource: scripts.templateSource,
     surface: bridgeSurfaceOf(app),
+    verifySurface: verifySurface(),
     fixtures: fixturesOf(app),
   }
 }

@@ -1,0 +1,44 @@
+{
+  "entry": "job:assign-refs",
+  "params": {},
+  "recordedFrom": "the contract org on a local stack, record-monitoring.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["incidents", "{\"where\":{\"ref_number\":null},\"limit\":1}"],
+      "reply": "[{\"id\":\"0a042743-6b58-45b3-8b49-89f7086558d9\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 02:14:14.810543+00\",\"updated_at\":\"2026-11-12 02:14:14.810543+00\",\"source\":\"watchdog\",\"severity\":\"warning\",\"title\":\"Queue latency above 30 s\",\"body\":null,\"dedup_key\":\"queue-latency\",\"url\":null,\"status\":\"open\",\"count\":1,\"first_seen_at\":\"2026-01-01 00:00:00+00\",\"last_seen_at\":\"2026-01-01 00:00:00+00\",\"alert_ts\":null,\"acknowledged_at\":null,\"acknowledged_by\":null,\"resolved_at\":null,\"resolved_by\":null,\"reopened_at\":null,\"resolution_note\":null,\"ref_number\":null}]"
+    },
+    {
+      "method": "store_get",
+      "args": ["leases", "incident-refs"],
+      "reply": "null"
+    },
+    {
+      "method": "store_set",
+      "args": ["leases", "incident-refs", "{\"until\":1767225660000}", "{\"ifVersion\":0}"],
+      "reply": "{\"id\":\"incident-refs\",\"data\":{\"until\":1767225660000},\"version\":1,\"updatedAt\":\"2026-11-12T02:14:14.837Z\"}"
+    },
+    {
+      "method": "sequences_allocate",
+      "args": ["{\"key\":\"monitoring:incident_ref\"}"],
+      "reply": "{\"value\":2}"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "incidents",
+        "{\"where\":{\"ref_number\":null},\"orderBy\":{\"first_seen_at\":\"asc\",\"id\":\"asc\"},\"limit\":50}"
+      ],
+      "reply": "[{\"id\":\"0a042743-6b58-45b3-8b49-89f7086558d9\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 02:14:14.810543+00\",\"updated_at\":\"2026-11-12 02:14:14.810543+00\",\"source\":\"watchdog\",\"severity\":\"warning\",\"title\":\"Queue latency above 30 s\",\"body\":null,\"dedup_key\":\"queue-latency\",\"url\":null,\"status\":\"open\",\"count\":1,\"first_seen_at\":\"2026-01-01 00:00:00+00\",\"last_seen_at\":\"2026-01-01 00:00:00+00\",\"alert_ts\":null,\"acknowledged_at\":null,\"acknowledged_by\":null,\"resolved_at\":null,\"resolved_by\":null,\"reopened_at\":null,\"resolution_note\":null,\"ref_number\":null}]"
+    },
+    {
+      "method": "db_update",
+      "args": ["incidents", "0a042743-6b58-45b3-8b49-89f7086558d9", "{\"ref_number\":2}"]
+    },
+    {
+      "method": "store_delete",
+      "args": ["leases", "incident-refs", "{\"ifVersion\":1}"],
+      "reply": "{\"deleted\":true}"
+    }
+  ]
+}

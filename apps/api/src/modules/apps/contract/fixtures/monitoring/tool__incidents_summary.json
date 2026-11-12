@@ -1,0 +1,53 @@
+{
+  "entry": "tool:incidents_summary",
+  "params": {},
+  "recordedFrom": "the contract org on a local stack, record-monitoring.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "incidents",
+        "{\"where\":{\"status\":\"open\"},\"orderBy\":{\"last_seen_at\":\"desc\"},\"limit\":500}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "hasScope",
+      "args": ["kernel:apps:admin"],
+      "reply": true
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "incidents",
+        "{\"where\":{\"status\":\"acknowledged\"},\"orderBy\":{\"last_seen_at\":\"desc\"},\"limit\":500}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "config_get",
+      "args": ["monitoringUrl"],
+      "reply": "https://status.example.com"
+    },
+    {
+      "method": "config_get",
+      "args": ["monitoringSources"],
+      "reply": [
+        {
+          "rank": 1,
+          "label": "Watchdog",
+          "source": "watchdog",
+          "urgent": true
+        }
+      ]
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "incidents",
+        "{\"where\":{\"status\":\"resolved\"},\"orderBy\":{\"resolved_at\":\"desc\"},\"limit\":200}"
+      ],
+      "reply": "[{\"id\":\"5561bf71-f8b7-4be0-a023-09e838354b72\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 02:14:14.400322+00\",\"updated_at\":\"2026-11-12 02:14:14.711529+00\",\"source\":\"watchdog\",\"severity\":\"critical\",\"title\":\"API health check failing on node a\",\"body\":\"GET /healthz answered 503 three times in a row\",\"dedup_key\":\"api-health-node-a\",\"url\":\"https://status.example.com/checks/api-health\",\"status\":\"resolved\",\"count\":1,\"first_seen_at\":\"2026-01-01 00:00:00+00\",\"last_seen_at\":\"2026-01-01 00:00:00+00\",\"alert_ts\":\"2026-01-01 00:00:00+00\",\"acknowledged_at\":\"2026-01-01 00:00:00+00\",\"acknowledged_by\":\"00000000-0000-4000-8000-00000000c0df\",\"resolved_at\":\"2026-01-01 00:00:00+00\",\"resolved_by\":\"00000000-0000-4000-8000-00000000c0df\",\"reopened_at\":null,\"resolution_note\":\"Disk full on node a; logs rotated.\",\"ref_number\":1}]"
+    }
+  ]
+}

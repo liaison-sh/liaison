@@ -56,10 +56,12 @@ const READS = [
 interface ScriptCall {
   tool: RegExp
   args: () => Record<string, unknown>
+  /** Called through kernel__call_tool even once the tool is offered, as a model may. */
+  viaEntry?: boolean
 }
 
 /** Seeded ids the script reads with (set once the world is seeded). */
-const ids = { company: "" }
+const ids = { company: "", contact: "" }
 
 const SEARCH = (query: string): ScriptCall => ({
   tool: /^kernel__tool_search$/,
@@ -103,14 +105,82 @@ const READ_CALLS: Record<(typeof READS)[number], ScriptCall> = {
 }
 const ANSWER_TEXT = "Here is what it means for the business."
 
-/** What the scripted model does this turn: its searches, then the reads it calls. */
-const script: { searches: ScriptCall[]; reads: readonly (typeof READS)[number][] } = {
-  searches: SEARCHES,
-  reads: READS,
+/**
+ * The visitor's next question, as the walk asked it: the follow-up a sales
+ * agent staged for the prospect waits on the visitor, and should it go?
+ */
+const FOLLOW_UP_QUESTION =
+  "Sales Desk drafted a follow-up to Noor at Lumen pushing the proposal again. Should it go out as written, and can you change it?"
+const NEXT_READS = [
+  "kernel__approvals_list",
+  "kernel__companies_read",
+  "projects__deals_search",
+  "kernel__contacts_search",
+  "kernel__contacts_read",
+  "kernel__company_timeline",
+  "kernel__threads_search",
+  "kernel__list_routines",
+  "kernel__users_search",
+  "kernel__memory_search",
+] as const
+/**
+ * The change the walk's agent tried: rewriting another agent's staged mail,
+ * named by the handle the approval card prints rather than its id.
+ */
+const NEXT_WRITES = ["kernel__approval_update_payload"] as const
+const NEXT_SEARCHES: ScriptCall[] = [
+  SEARCH("approvals waiting on me"),
+  SEARCH("edit a pending approval"),
+  SEARCH("deals of a company"),
+  SEARCH("contact person details and timeline"),
+  SEARCH("which agent or routine drafted this"),
+  SEARCH("search conversations and memory"),
+]
+const NEXT_CALLS: Record<(typeof NEXT_READS)[number] | (typeof NEXT_WRITES)[number], ScriptCall> = {
+  kernel__approvals_list: READ_CALLS.kernel__approvals_list,
+  kernel__companies_read: READ_CALLS.kernel__companies_read,
+  projects__deals_search: READ_CALLS.projects__deals_search,
+  kernel__contacts_search: { tool: /^kernel__contacts_search$/, args: () => ({ query: "Noor" }) },
+  kernel__contacts_read: {
+    tool: /^kernel__contacts_read$/,
+    args: () => ({ contactId: ids.contact, includeTimeline: true }),
+  },
+  kernel__company_timeline: {
+    tool: /^kernel__company_timeline$/,
+    args: () => ({ companyId: ids.company }),
+  },
+  kernel__threads_search: { tool: /^kernel__threads_search$/, args: () => ({ query: "Lumen" }) },
+  kernel__list_routines: { tool: /^kernel__list_routines$/, args: () => ({}) },
+  kernel__users_search: { tool: /^kernel__users_search$/, args: () => ({ query: "Sales Desk" }) },
+  kernel__memory_search: { tool: /^kernel__memory_search$/, args: () => ({ query: "Lumen" }) },
+  kernel__approval_update_payload: {
+    tool: /^kernel__approval_update_payload$/,
+    viaEntry: true,
+    args: () => ({
+      requestId: "demo-lumen-followup",
+      fields: { textBody: "Hello Noor, before I close the proposal: what made you decide?" },
+    }),
+  },
 }
 
-/** A call's result said the tool was only loaded, not run. */
-const notRun = (result: string) => result.includes("did not run")
+type Turn = {
+  searches: ScriptCall[]
+  /** Called until each has run. */
+  reads: readonly string[]
+  /** Called until each has run, whatever it answers. */
+  writes: readonly string[]
+  calls: Record<string, ScriptCall>
+}
+/** What the scripted model does this turn: its searches, then the reads it calls. */
+let script: Turn = {
+  searches: SEARCHES,
+  reads: READS,
+  writes: [],
+  calls: READ_CALLS,
+}
+
+/** A call's result said the tool was only loaded, not run (the tool-calling entry's note). */
+const notRun = (result: string) => result.includes('"ran":false')
 
 let world: SeedDemoWorldResult
 let stub: ReturnType<typeof Bun.serve>
@@ -133,6 +203,8 @@ const called: Array<{ id: string; name: string; via: "direct" | "entry" }> = []
 const skipped: string[] = []
 const results = new Map<string, string>()
 let cursor = 0
+/** Where this turn's calls start in `called`. */
+let turnStart = 0
 
 function sse(chunks: unknown[]): Response {
   const body = `${chunks.map((c) => `data: ${JSON.stringify(c)}\n\n`).join("")}data: [DONE]\n\n`
@@ -168,15 +240,18 @@ function answer(body: {
     : []
   const callable = [...offered, ...viaEntry]
   cursor += 1
+  const thisTurn = called.slice(turnStart)
   const ran = new Set(
-    called.filter((c) => results.has(c.id) && !notRun(results.get(c.id) ?? "")).map((c) => c.name),
+    thisTurn
+      .filter((c) => results.has(c.id) && !notRun(results.get(c.id) ?? ""))
+      .map((c) => c.name),
   )
-  const pending = script.reads.filter((r) => !ran.has(r))
+  const pending = [...script.reads, ...script.writes].filter((r) => !ran.has(r))
   const step: ScriptCall[] | null =
     cursor === 1
       ? script.searches
       : pending.length > 0 && cursor < VISITOR_STEPS
-        ? pending.map((r) => READ_CALLS[r])
+        ? pending.map((r) => script.calls[r] as ScriptCall)
         : null
   const base = { id: "stub", object: "chat.completion.chunk", created: 0, model: "stub" }
   const usage = { prompt_tokens: 1000, completion_tokens: 60, total_tokens: 1060 }
@@ -197,7 +272,8 @@ function answer(body: {
   }
   const toolCalls = calls.map((c, index) => {
     const target = callable.find((n) => c.tool.test(n)) ?? ""
-    const direct = offered.includes(target)
+    const direct =
+      offered.includes(target) && !(c.viaEntry && offered.includes("kernel__call_tool"))
     const args = c.args()
     const id = `call_${cursor}_${index}`
     called.push({ id, name: target, via: direct ? "direct" : "entry" })
@@ -284,6 +360,44 @@ afterAll(async () => {
   if (appsRoot) rmSync(appsRoot, { recursive: true, force: true })
 })
 
+/** One stored call of the agent's reply, as the trace reads it. */
+interface StoredCall {
+  toolName?: string
+  name?: string
+  args?: Record<string, unknown>
+  readOnly?: boolean
+  appLabel?: string
+  status?: string
+  result?: unknown
+}
+
+/** The trace's own test of a failed call (web ToolCard.tsx `toolCallFailed`). */
+const callFailed = (c: StoredCall) =>
+  c.status === "error" ||
+  (c.result !== null &&
+    typeof c.result === "object" &&
+    (c.result as { error?: unknown }).error != null)
+
+/** The tool a stored call ran: the one `kernel__call_tool` named, else its own. */
+const ranTool = (c: StoredCall) => {
+  const own = c.toolName ?? c.name ?? ""
+  return own === "kernel__call_tool" && typeof c.args?.name === "string" ? c.args.name : own
+}
+
+/** The calls stored on the agent's replies to one posted message. */
+async function storedCallsAfter(orgId: string, threadId: string, messageId: string) {
+  const stored = await rows(
+    orgId,
+    sql`SELECT metadata->'toolCalls' AS calls FROM kernel.messages
+        WHERE org_id = ${orgId} AND thread_id = ${threadId}::uuid AND author_type <> 'user'
+          AND created_at >= (SELECT created_at FROM kernel.messages WHERE id = ${messageId}::uuid)`,
+  )
+  return stored.flatMap((r) => (Array.isArray(r.calls) ? r.calls : [])).map((c) => c as StoredCall)
+}
+
+/** The visitor's conversation with the personal agent, kept across turns. */
+const convo = { threadId: "", ownerId: "" }
+
 describe("a visitor's first turn, with a scripted model", () => {
   it("every read of a first question about a prospect answers, none fails, the one with no Stripe customer included", async () => {
     expect(world.failures).toEqual([])
@@ -303,6 +417,8 @@ describe("a visitor's first turn, with a scripted model", () => {
       return createOrGetAgentDm(tx as never, { orgId, userId: ownerId, agentId })
     })
     if (!dm) throw new Error("no conversation with the personal agent")
+    convo.threadId = dm.id
+    convo.ownerId = ownerId
     const posted = await asUser(actor, (tx) =>
       sendMessage(
         tx as never,
@@ -360,5 +476,67 @@ describe("a visitor's first turn, with a scripted model", () => {
       (c) => c.name === "stripe__customers_get" && !notRun(results.get(c.id) ?? ""),
     )
     expect(results.get(get?.id ?? "") ?? "").toContain("No Stripe customer is linked")
+  }, 600_000)
+  it("the next question, about a sales agent's staged follow-up, reads without a failed read, and a refused change is its own row, not a read that did not answer", async () => {
+    const orgId = world.orgId
+    expect(convo.threadId).not.toBe("")
+    const [contact] = await rows(
+      orgId,
+      sql`SELECT id::text AS id FROM kernel.contacts WHERE org_id = ${orgId} AND name LIKE 'Noor%'`,
+    )
+    ids.contact = String(contact?.id ?? "")
+    expect(ids.contact).not.toBe("")
+
+    script = { searches: NEXT_SEARCHES, reads: NEXT_READS, writes: NEXT_WRITES, calls: NEXT_CALLS }
+    cursor = 0
+    turnStart = called.length
+    skipped.length = 0
+
+    const actor = await actorFor(seedContext({ orgId, now: BOARD_DATE }), convo.ownerId)
+    const posted = await asUser(actor, (tx) =>
+      sendMessage(
+        tx as never,
+        {
+          orgId,
+          userId: convo.ownerId,
+          threadId: convo.threadId,
+          content: FOLLOW_UP_QUESTION,
+          authorType: "user",
+          requiredScopes: [],
+        } as never,
+      ),
+    )
+    if (!posted) throw new Error("the visitor's next question was not posted")
+    const outcome = await invokeAgentForThread(convo.threadId, posted.id, actor, orgId)
+
+    const turn = called.slice(turnStart)
+    console.log(
+      `CALLED ${turn.map((c) => `${c.name}(${c.via})`).join(", ")}\nSKIPPED ${skipped.join(", ")}`,
+    )
+    for (const c of turn)
+      console.log(`RESULT ${c.name}: ${(results.get(c.id) ?? "").slice(0, 600)}`)
+    expect(skipped).toEqual([])
+    expect(outcome.finishReason).toBe("stop")
+
+    const calls = await storedCallsAfter(orgId, convo.threadId, posted.id)
+    // The trace rolls reads up and names each read that failed as an app that
+    // "did not answer": no read of this turn may be one.
+    const failedReads = calls
+      .filter((c) => c.readOnly === true && callFailed(c))
+      .map((c) => `${ranTool(c)}: ${JSON.stringify(c.result).slice(0, 300)}`)
+    expect(failedReads).toEqual([])
+    // Every read ran.
+    const ran = new Set(
+      turn.filter((c) => results.has(c.id) && !notRun(results.get(c.id) ?? "")).map((c) => c.name),
+    )
+    expect([...NEXT_READS].filter((r) => !ran.has(r))).toEqual([])
+    // The change was refused by the tool-calling entry (an approval named by its
+    // handle, not its id). The refusal stays on the trace, in its own row with
+    // its reason: it is not a read, so it never reads as an app that did not answer.
+    const change = calls.find((c) => ranTool(c) === "kernel__approval_update_payload")
+    expect(change?.toolName).toBe("kernel__call_tool")
+    expect(callFailed(change as StoredCall)).toBe(true)
+    expect(JSON.stringify(change?.result)).toContain("Invalid arguments")
+    expect(change?.readOnly).toBe(false)
   }, 600_000)
 })

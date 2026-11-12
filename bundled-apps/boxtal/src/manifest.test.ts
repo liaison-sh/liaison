@@ -642,7 +642,8 @@ describe("Boxtal app.manifest.json", () => {
     // 0.24.3: 0.23.28 above merged with 0.24.2.
     // 0.24.4: the order print record is a taint source (customer-entered names, addresses).
     // 0.24.5: the source repository link names the repository where the code now lives.
-    expect(m.version).toBe("0.24.5")
+    // 0.24.6: 0.24.5 above merged with main's 0.24.4 (webhook claims as expiring leases).
+    expect(m.version).toBe("0.24.6")
     expect(m.packageFormat).toBe(1)
   })
 

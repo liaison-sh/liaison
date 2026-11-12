@@ -1,0 +1,30 @@
+{
+  "entry": "tool:track",
+  "params": {
+    "id": "2611121002CHRP5CXMFR"
+  },
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "connections_getSettings",
+      "args": ["boxtal"],
+      "reply": "{\"values\":{\"environment\":\"sandbox\"},\"missing\":[]}"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "shipment",
+        "{\"where\":{\"boxtal_order_id\":\"2611121002CHRP5CXMFR\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"6a3d4b53-22bc-4d3b-93ec-68c63e3ba229\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:02:33.455924+00\",\"updated_at\":\"2026-11-12 09:02:34.608366+00\",\"boxtal_order_id\":\"2611121002CHRP5CXMFR\",\"external_id\":null,\"document_ref\":\"28231ac4-2f7e-4710-a173-79c054a42d07\",\"contact_ref\":\"9f38917b-3696-4afe-a3b5-1b447304eccb\",\"offer_code\":\"CHRP-Chrono2ShopDirectRetour\",\"tracking_number\":null,\"boxtal_shipment_ref\":null,\"queue_facts\":{\"skus\":[\"gid://shopify/ProductVariant/8200009\",\"gid://shopify/ProductVariant/8200002\"],\"items\":3,\"print\":{\"lines\":[{\"hts\":null,\"sku\":\"gid://shopify/ProductVariant/8200009\",\"value\":78,\"origin\":null,\"currency\":\"EUR\",\"quantity\":2,\"unit_value\":39,\"description\":\"Kestrel Windshield Pack\"},{\"hts\":null,\"sku\":\"gid://shopify/ProductVariant/8200002\",\"value\":29,\"origin\":null,\"currency\":\"EUR\",\"quantity\":1,\"unit_value\":29,\"description\":\"Kestrel XLR Cable Set\"}],\"order\":{\"name\":null,\"email\":\"customer@example.com\",\"phone\":\"+15550100000\",\"address\":{\"city\":\"Lyon\",\"state\":null,\"street\":\"3 rue Test\",\"postal_code\":\"69002\",\"country_iso2\":\"FR\"},\"company\":null,\"customer\":\"Pierre Caron\"},\"invoice\":{\"date\":\"2026-09-04 21:00:00+00\",\"number\":\"INV-2026-0018\"},\"carrier_name\":\"Chronopost\",\"carrier_family\":\"chronopost\"},\"weight\":2.5,\"parcels\":[{\"width\":30,\"height\":20,\"length\":40,\"weight\":2.5}],\"category\":\"sale\",\"customer\":\"Pierre Caron\",\"products\":\"2xWIND, 1xCBL\",\"order_name\":null,\"staff_note\":null,\"to_country\":\"FR\",\"destination\":\"FR\",\"to_postcode\":\"69002\",\"package_count\":1,\"carrier_family\":\"chronopost\",\"order_created_at\":null},\"link_state\":\"created\",\"order_status\":\"PENDING\",\"tracking_status\":null,\"status_fetched_at\":null,\"polled_at\":null,\"documents\":[],\"declared_total\":0,\"label_cost_ttc\":5.27,\"currency\":\"EUR\",\"recipient_summary\":\"Pierre Caron\",\"route_summary\":\"FR\",\"kind\":\"outbound\",\"return_reason\":null,\"created_by\":null,\"fulfillment_synced\":false,\"batch_seq\":1,\"line_quantities\":null,\"packed_at\":null,\"fulfillment_state\":null,\"fulfillment_error\":null,\"fulfillment_approval_id\":null,\"tracking_from_label\":false,\"tracking_to_confirm\":false,\"label_missing_alerted\":false,\"label_missing_checked_at\":null,\"tracking_label_attempts\":0,\"shopify_fulfillment_id\":null,\"fulfilled_at\":null,\"orphan_reported_at\":null,\"orphan_settled_at\":null,\"orphan_settle_note\":null}]"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://api.boxtal.build/shipping/v3.1/shipping-order/2611121002CHRP5CXMFR/tracking",
+        "{\"method\":\"GET\",\"headers\":{},\"auth\":{\"connection\":\"boxtal\",\"scheme\":\"bearer\",\"exchange\":{\"url\":\"https://api.boxtal.build/iam/account-app/token\",\"fields\":[\"v3Key\",\"v3Secret\"]}},\"timeoutMs\":5000}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"timestamp\\\":\\\"2026-11-12T10:02:35.369465+01:00\\\",\\\"status\\\":200,\\\"content\\\":[]}\"}"
+    }
+  ]
+}

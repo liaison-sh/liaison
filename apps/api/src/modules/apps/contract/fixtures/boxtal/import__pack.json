@@ -1,0 +1,56 @@
+{
+  "entry": "import:pack",
+  "params": {
+    "runId": "contract-import",
+    "kind": "pack",
+    "sourceLabel": "packs.csv",
+    "records": [
+      {
+        "record": {
+          "externalRef": "PK-7",
+          "name": "Spare knob box",
+          "length": 12,
+          "width": 10,
+          "height": 6,
+          "grossWeight": 0.3,
+          "components": [
+            {
+              "sku": "CT-PART-7",
+              "quantity": 4
+            }
+          ]
+        },
+        "dedupValue": "PK-7"
+      }
+    ]
+  },
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["pack", "{\"where\":{\"external_ref\":\"PK-7\"},\"limit\":1}"],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["local_product", "{\"where\":{\"sku\":\"CT-PART-7\"},\"limit\":1}"],
+      "reply": "[{\"id\":\"a8d8af5c-f75c-4b11-937b-4e66812a4bf4\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:02:44.642439+00\",\"updated_at\":\"2026-11-12 09:02:44.642439+00\",\"sku\":\"CT-PART-7\",\"label\":\"Spare knob\"}]"
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "pack",
+        "{\"name\":\"Spare knob box\",\"length\":12,\"width\":10,\"height\":6,\"gross_weight\":0.3,\"content_category\":null,\"carton_tare\":null,\"external_ref\":\"PK-7\"}"
+      ],
+      "reply": "{\"id\":\"8eacf2d3-1959-4a93-adc3-5f06f6edf9e8\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:02:44.655808+00\",\"updated_at\":\"2026-11-12 09:02:44.655808+00\",\"name\":\"Spare knob box\",\"length\":12,\"width\":10,\"height\":6,\"gross_weight\":0.3,\"content_category\":null,\"carton_tare\":null,\"external_ref\":\"PK-7\"}"
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "pack_component",
+        "{\"pack_id\":\"8eacf2d3-1959-4a93-adc3-5f06f6edf9e8\",\"product_source\":\"local\",\"product_id\":\"CT-PART-7\",\"quantity\":4}"
+      ],
+      "reply": "{\"id\":\"574e90b9-e91c-4f84-b466-c7099b57fb43\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:02:44.659137+00\",\"updated_at\":\"2026-11-12 09:02:44.659137+00\",\"pack_id\":\"8eacf2d3-1959-4a93-adc3-5f06f6edf9e8\",\"product_source\":\"local\",\"product_id\":\"CT-PART-7\",\"quantity\":4}"
+    }
+  ]
+}

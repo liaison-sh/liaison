@@ -3,7 +3,7 @@ import { index, text, timestamp, unique, uuid } from "drizzle-orm/pg-core"
 import { kernel, organizations } from "./organizations"
 
 /**
- * kernel.suppressions (migration 0294): addresses the org must not send
+ * kernel.suppressions (migration 0303): addresses the org must not send
  * commercial mail to, by fingerprint only:
  * `emailHash = sha256(orgId + ":" + lower(trim(email)))`, hex. No column can
  * hold the address. Read with mail:suppressions:read, added by anyone who
@@ -28,7 +28,7 @@ export const suppressions = kernel.table(
 )
 
 /**
- * kernel.suppression_links (migration 0294): opt-out link tokens, hashed. No
+ * kernel.suppression_links (migration 0303): opt-out link tokens, hashed. No
  * policy for the request role: only the privileged send path and the public
  * opt-out route read or write them.
  */

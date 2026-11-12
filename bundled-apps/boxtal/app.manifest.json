@@ -222,7 +222,7 @@
       }
     ]
   },
-  "version": "0.24.5",
+  "version": "0.24.6",
   "iconName": "box",
   "description": "Boxtal shipping integration: carrier quotes, tracking, shipments, customs documents",
   "listing": {
@@ -1203,7 +1203,12 @@
           "default": 0
         },
         "received_at": "date",
-        "processed_at": "date?"
+        "processed_at": "date?",
+        "claim_attempt": {
+          "type": "integer",
+          "default": 0
+        },
+        "claimed_at": "date?"
       },
       "constraints": {
         "unique": [

@@ -1,0 +1,20 @@
+{
+  "entry": "tool:local_product_upsert",
+  "params": {
+    "sku": "CT-CABLE-1",
+    "label": "Patch cable set"
+  },
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["local_product", "{\"where\":{\"sku\":\"CT-CABLE-1\"},\"limit\":1}"],
+      "reply": "[]"
+    },
+    {
+      "method": "db_insert",
+      "args": ["local_product", "{\"sku\":\"CT-CABLE-1\",\"label\":\"Patch cable set\"}"],
+      "reply": "{\"id\":\"57043f29-343d-48d0-875a-ae812162addc\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:02:23.374767+00\",\"updated_at\":\"2026-11-12 09:02:23.374767+00\",\"sku\":\"CT-CABLE-1\",\"label\":\"Patch cable set\"}"
+    }
+  ]
+}

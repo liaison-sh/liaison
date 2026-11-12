@@ -1,0 +1,13 @@
+{
+  "entry": "tool:attention_rule_delete",
+  "params": {
+    "id": "e2adde9f-ee8c-4414-a87a-c6bb2f6e80c6"
+  },
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "db_delete",
+      "args": ["attention_rule", "e2adde9f-ee8c-4414-a87a-c6bb2f6e80c6"]
+    }
+  ]
+}

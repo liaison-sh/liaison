@@ -428,43 +428,21 @@ describe("BoxtalV3Client business methods", () => {
 // fetch cap, so a degraded Boxtal could hold a sandbox worker for tens of
 // seconds (print_pack was measured at 37 to 39s) inside a 60s tool budget.
 describe("BoxtalV3Client - request timeout and call budget", () => {
-  it("aborts a hung request on ITS OWN timeout instead of running to the sandbox limit", async () => {
-    const seen: Array<{ timeoutMs?: number; hasSignal: boolean }> = []
+  it("hands the fetch its per-request deadline as a plain timeoutMs, nothing that cannot cross the bridge", async () => {
+    // ctx.fetch is a bridge call: its options are JSON. An AbortSignal would arrive as `{}` on one
+    // executor and not at all on another, so the same request would differ between them.
+    const seen: unknown[] = []
     const fetch: BoxtalFetch = async (_url, opts) => {
-      const o = opts as { timeoutMs?: number; signal?: AbortSignal } | undefined
-      seen.push({ timeoutMs: o?.timeoutMs, hasSignal: Boolean(o?.signal) })
-      const signal = o?.signal
-      if (signal) {
-        // A genuinely hung upstream: the ONLY way out is the client's own abort.
-        await new Promise<never>((_resolve, reject) => {
-          signal.addEventListener("abort", () => {
-            const err = new Error("The operation was aborted")
-            err.name = "AbortError"
-            reject(err)
-          })
-        })
-      }
-      // No abort hint reached the fetch layer: the request would run on to the
-      // sandbox-wide cap. Return a success so the assertions below fail loudly.
+      seen.push(JSON.parse(JSON.stringify(opts ?? {})))
       return { status: 200, headers: {}, body: JSON.stringify({ status: 200, timestamp: "t", content: {} }) }
     }
-    const client = new BoxtalV3Client({
-      fetch,
-      environment: "sandbox",
-      requestTimeoutMs: 25,
-    })
-    const started = Date.now()
-    let caught: unknown
-    try {
-      await client.getShippingOrder("ord-hung")
-    } catch (err) {
-      caught = err
+    const client = new BoxtalV3Client({ fetch, environment: "sandbox", requestTimeoutMs: 25 })
+    await client.getShippingOrder("ord-1")
+    expect(seen.length).toBeGreaterThan(0)
+    for (const o of seen) {
+      expect((o as { timeoutMs?: number }).timeoutMs).toBe(25)
+      expect(o).not.toHaveProperty("signal")
     }
-    expect(caught).toBeInstanceOf(Error)
-    expect((caught as Error).name).toBe("AbortError")
-    // Aborted at OUR deadline (25ms), nowhere near the 10s sandbox cap.
-    expect(Date.now() - started).toBeLessThan(2_000)
-    expect(seen[0]).toEqual({ timeoutMs: 25, hasSignal: true })
   })
 
   it("refuses to start a request once the logical call budget is spent (504, nothing sent)", async () => {

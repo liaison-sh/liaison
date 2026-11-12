@@ -43,6 +43,7 @@ import type { ResolvedWhere } from "~/modules/dashboards/filters"
 import {
   DateTokenError,
   type DayWindow,
+  dayIn,
   hasDateTokens,
   resolveDateTokens,
 } from "~/modules/dashboards/relative-dates"
@@ -57,14 +58,17 @@ import {
   calcDatasets,
   type DashboardBlock,
   type DashboardSpec,
+  layerBlocks,
   MAX_SOURCE_ROWS,
   type StoreSource,
   sourceValue,
   type ToolSource,
+  type WhereClause,
 } from "~/modules/dashboards/spec"
 import {
   type BlockData,
   extractRows,
+  mergeLayers,
   TransformError,
   transformBlock,
   unfenceSourceResult,
@@ -385,6 +389,8 @@ export function mapBlock(
     linkApp?: string
     timeZone?: string
     datasetRows?: Record<string, Record<string, unknown>[] | null>
+    /** Today in the org's zone: a date chart's bucket holding it is in progress. */
+    today?: string
   },
 ): BlockOutcome {
   try {
@@ -397,6 +403,7 @@ export function mapBlock(
         ...(opts.linkApp ? { linkApp: opts.linkApp } : {}),
         ...(opts.timeZone ? { timeZone: opts.timeZone } : {}),
         ...(opts.datasetRows ? { datasetRows: opts.datasetRows } : {}),
+        ...(opts.today ? { today: opts.today } : {}),
         ...(block.text !== undefined ? { text: block.text } : {}),
       }),
     }
@@ -417,10 +424,40 @@ export async function computeBlock(
     where?: ResolvedWhere[]
     /** A dataset with this request's filter values in (a preview resolves its filter tokens). */
     resolveDataset?: (source: BlockSource) => BlockSource
+    /** A layer's map.where with this request's filter values in. */
+    resolveWhere?: (where: WhereClause[] | undefined) => ResolvedWhere[]
   },
 ): Promise<BlockOutcome> {
   if (block.type === "text") {
     return mapBlock(block, { rows: [], object: null, totalRows: 0 }, {})
+  }
+  if (block.layers) {
+    // Each layer runs as a block of its own, then they join on their date buckets.
+    const layers = block.layers
+    const outs = await Promise.all(
+      layerBlocks(block).map((lb) =>
+        computeBlock(
+          lb.source && ctx.resolveDataset ? { ...lb, source: ctx.resolveDataset(lb.source) } : lb,
+          { ...ctx, where: ctx.resolveWhere ? ctx.resolveWhere(lb.map.where) : [] },
+        ),
+      ),
+    )
+    if (!outs.some((o) => o.ok)) {
+      const first = outs[0] as Extract<BlockOutcome, { ok: false }>
+      return fail(first.error, `layer '${layers[0]!.id}': ${first.message}`)
+    }
+    return {
+      ok: true,
+      data: mergeLayers(
+        layers.map((layer, i) => {
+          const o = outs[i]!
+          return o.ok
+            ? { layer, data: o.data }
+            : { layer, error: { error: o.error, message: o.message } }
+        }),
+        block.map,
+      ),
+    }
   }
   const saved = blockSourceOf(block, ctx.datasets)
   if (!saved) return fail("invalid_map", `no dataset '${block.dataset ?? ""}' for this block`)
@@ -453,10 +490,12 @@ export async function computeBlock(
     if (!read.ok) return read
     datasetRows[id] = read.read.rows
   }
+  const timeZone = await dashboardTimezone(ctx.viewer.orgId)
   return mapBlock(block, outcome.read, {
     ...(Object.keys(datasetRows).length ? { datasetRows } : {}),
     window: ctx.range ?? null,
-    timeZone: await dashboardTimezone(ctx.viewer.orgId),
+    timeZone,
+    today: dayIn(timeZone, new Date()),
     ...(ctx.where ? { where: ctx.where } : {}),
     ...(sourceApp(source) ? { linkApp: sourceApp(source)! } : {}),
   })

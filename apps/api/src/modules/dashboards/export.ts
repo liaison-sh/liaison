@@ -424,7 +424,7 @@ async function recipientRefusal(ctx: UserContext, dashboardId: string): Promise<
     const [r] = await t.select().from(dashboards).where(eq(dashboards.id, dashboardId)).limit(1)
     return r
   })
-  if (!row) return "cannot see this dashboard (it is personal)"
+  if (!row) return "cannot see this dashboard (it is not shared with them)"
   const spec = row.spec as unknown as {
     blocks?: DashboardBlock[]
     datasets?: Record<string, BlockSource>

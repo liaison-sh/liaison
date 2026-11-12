@@ -1486,12 +1486,12 @@ export const FR: Record<string, string> = {
     "Lire les documents du stockage de données des apps avec les outils de données de l'agent",
   "Write documents in the agent's own data store namespace":
     "Écrire des documents dans l'espace de stockage de données propre à l'agent",
-  "Create and edit your own personal dashboards":
-    "Créer et modifier vos propres tableaux de bord personnels",
-  "Create and edit dashboards shared with the org":
-    "Créer et modifier des tableaux de bord partagés avec l'organisation",
-  "Manage every dashboard shared with the org":
-    "Gérer tous les tableaux de bord partagés avec l'organisation",
+  "Create and edit your own dashboards, and those shared with you to edit":
+    "Créer et modifier vos propres tableaux de bord, et ceux partagés avec vous en modification",
+  "Choose who sees a dashboard you can edit, and create dashboards for the org":
+    "Choisir qui voit un tableau de bord que vous pouvez modifier, et créer des tableaux de bord pour l'organisation",
+  "Manage every dashboard the whole org sees (never a restricted one not shared with you)":
+    "Gérer tous les tableaux de bord que toute l'organisation voit (jamais un tableau restreint qui ne vous est pas partagé)",
   "Create and edit drafts of the organization's own apps in the app builder":
     "Créer et modifier les brouillons des apps propres à l'organisation dans le créateur d'apps",
   "Read the logs of the organization's own apps":
@@ -7715,6 +7715,16 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.dashboards.filterNoMatch": "Aucune valeur ne correspond.",
   "kernel.dashboards.visibilityPersonal": "Personnel",
   "kernel.dashboards.visibilityOrg": "Organisation",
+  "kernel.dashboards.visibilityRestricted": "Partagé avec certaines personnes",
+  "kernel.dashboards.share": "Partager",
+  "kernel.dashboards.sharing.title": "Partager {{name}}",
+  "kernel.dashboards.sharing.restricted": "Restreint",
+  "kernel.dashboards.sharing.restrictedHint":
+    "Seuls son propriétaire et les personnes et rôles ajoutés ci-dessus. Les administrateurs aussi doivent être ajoutés.",
+  "kernel.dashboards.sharing.orgView": "Tout le monde dans l'organisation peut voir",
+  "kernel.dashboards.sharing.orgViewHint": "Tout le monde le voit dans Partagés avec l'équipe",
+  "kernel.dashboards.sharing.orgEdit": "Tout le monde dans l'organisation peut modifier",
+  "kernel.dashboards.sharing.orgEditHint": "Tout le monde le voit et peut le modifier",
   // The Dashboards sidebar and the page's cards.
   "kernel.dashboards.allDashboards": "Tous les tableaux de bord",
   "kernel.dashboards.filterLabel": "Filtrer les tableaux de bord",

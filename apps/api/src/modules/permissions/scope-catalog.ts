@@ -185,17 +185,18 @@ export const KERNEL_SCOPES: ScopeCatalogEntry[] = [
   {
     scope: "kernel:dashboards:write",
     app: "kernel",
-    description: "Create and edit your own personal dashboards",
+    description: "Create and edit your own dashboards, and those shared with you to edit",
   },
   {
     scope: "kernel:dashboards:share",
     app: "kernel",
-    description: "Create and edit dashboards shared with the org",
+    description: "Choose who sees a dashboard you can edit, and create dashboards for the org",
   },
   {
     scope: "kernel:dashboards:admin",
     app: "kernel",
-    description: "Manage every dashboard shared with the org",
+    description:
+      "Manage every dashboard the whole org sees (never a restricted one not shared with you)",
   },
   {
     // Operator-level: runtime app install/upgrade/uninstall is instance-wide.

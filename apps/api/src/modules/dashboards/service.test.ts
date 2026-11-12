@@ -321,14 +321,25 @@ describe("live updates", () => {
 
     const events = await dashboardEvents(d.id)
     expect(events.map((e) => e.action)).toEqual(["created", "updated", "updated", "deleted"])
+    // Not org-wide: the frame names who may hear it (the owner); org-wide: everyone reading.
+    const only = [owner]
     expect(events.map((e) => e.data)).toEqual([
-      { dashboardId: d.id, visibility: "personal", ownerUserId: owner, version: 1 },
+      {
+        dashboardId: d.id,
+        visibility: "personal",
+        ownerUserId: owner,
+        version: 1,
+        orgWide: false,
+        userIds: only,
+      },
       {
         dashboardId: d.id,
         visibility: "org",
         previousVisibility: "personal",
         ownerUserId: owner,
         version: 2,
+        orgWide: true,
+        userIds: only,
       },
       {
         dashboardId: d.id,
@@ -336,8 +347,18 @@ describe("live updates", () => {
         previousVisibility: "org",
         ownerUserId: owner,
         version: 3,
+        orgWide: false,
+        wasOrgWide: true,
+        userIds: only,
       },
-      { dashboardId: d.id, visibility: "personal", ownerUserId: owner, version: 3 },
+      {
+        dashboardId: d.id,
+        visibility: "personal",
+        ownerUserId: owner,
+        version: 3,
+        orgWide: false,
+        userIds: only,
+      },
     ])
     expect(JSON.stringify(events)).not.toContain("Secret plans")
   })

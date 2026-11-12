@@ -147,6 +147,7 @@ The agent builds dashboards from read tools and data store collections, and prev
 | `dashboards_create` | Save a new dashboard. | `kernel:dashboards:write` | For an org dashboard (decided by `kernel:dashboards:admin`) |
 | `dashboards_update` | Change a dashboard's title, blocks or visibility. | `kernel:dashboards:write` | For an org dashboard, or to make one org-visible |
 | `dashboards_edit` | Change a dashboard by a list of operations (add, change, move, resize, duplicate or remove a block; title, description, default time range, visibility; add, change or remove a shared dataset or a filter; go back to a saved version), all applied or none. | `kernel:dashboards:write` | For an org dashboard, or to make one org-visible: one approval for the whole list |
+| `dashboards_share` | Change who sees a dashboard: what everyone in the organization gets (`none`, `viewer`, `editor`), and people or roles added, changed or removed. | `kernel:dashboards:write` (plus editor access and `kernel:dashboards:share`) | Always: decided by the owner of a restricted dashboard, else by `kernel:dashboards:admin` |
 | `dashboards_history` | List a dashboard's saved versions (the last 20). | `kernel:dashboards:read` (every member) | No |
 | `dashboards_snapshot` | Read every block of a dashboard for a period and filters: each figure with its change; with `recipients`, who may receive it. | `kernel:dashboards:read` (every member) | No |
 | `dashboards_pdf` | Print a dashboard as a PDF, staged as a file only you can read. | `kernel:dashboards:read` (every member) | No |

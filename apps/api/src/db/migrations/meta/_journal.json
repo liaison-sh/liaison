@@ -2073,6 +2073,13 @@
       "when": 1900003387000,
       "tag": "0294_app_adoptions",
       "breakpoints": true
+    },
+    {
+      "idx": 296,
+      "version": "7",
+      "when": 1900003388000,
+      "tag": "0295_dashboard_sharing",
+      "breakpoints": true
     }
   ]
 }

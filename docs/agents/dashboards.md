@@ -13,14 +13,14 @@ The **Dashboards** sidebar stays beside the page and beside every open dashboard
 
 - **Filter dashboards** narrows the list by title.
 - **All dashboards** opens the page.
-- **Yours** lists your own dashboards. The ones you shared with the team carry a people icon.
-- **Shared with the team** lists the dashboards others shared, each with its owner's first name.
+- **Yours** lists your own dashboards. The ones you shared with anyone carry a people icon.
+- **Shared with the team** lists the dashboards others shared with you, or with everyone, each with its owner's first name.
 - The dashboard you have open is highlighted.
 
 - Click a dashboard to open it in its own tab. The tab's address is `/dashboard/<id>`, and the tab is named after the dashboard.
 - Your agent can also open a dashboard for you when it has made or changed one. A tab already open then shows the dashboard as it is now, and so does **Refresh all**.
 
-The lists stay up to date without reloading the page. When someone, or an agent working for them, creates, renames, shares or deletes a dashboard you can see, the **Dashboards** page and sidebar show it at once. An open dashboard tab shows the new version, or says "This dashboard no longer exists, or it is not shared with you." once it was deleted or made personal by its owner. Nobody is told about your personal dashboards.
+The lists stay up to date without reloading the page. When someone, or an agent working for them, creates, renames, shares or deletes a dashboard you can see, the **Dashboards** page and sidebar show it at once. An open dashboard tab shows the new version, or says "This dashboard no longer exists, or it is not shared with you." once it was deleted or is no longer shared with you. Nobody is told about your personal dashboards, and only the people a restricted dashboard is shared with hear about it.
 
 To get a dashboard, ask your agent, for example: "Build me a dashboard of last month's orders, with revenue by day and the ten most recent orders."
 
@@ -52,9 +52,9 @@ A block that cannot draw says why, and the rest of the dashboard still shows:
 
 | Scope | What it allows |
 | --- | --- |
-| `kernel:dashboards:write` | Make, change and delete your own personal dashboards. |
-| `kernel:dashboards:share` | Also share your own dashboard with the org, and change or delete your own org dashboards. |
-| `kernel:dashboards:admin` | Change or delete any org dashboard, and decide the agent's requests about org dashboards. |
+| `kernel:dashboards:write` | Make, change and delete your own dashboards, and change the ones shared with you as an editor. |
+| `kernel:dashboards:share` | Also choose who sees a dashboard you can change ([Share a dashboard](#share-a-dashboard)), and make a new dashboard for the whole organization. |
+| `kernel:dashboards:admin` | Change or delete any dashboard the whole organization sees, and decide the agent's requests about them. It gives no access to a restricted dashboard that is not shared with you. |
 
 Every member can make dashboards: the **member** role and the **Full Member** role both hold `kernel:dashboards:write` and `kernel:dashboards:share` ([Set up roles](../admin/roles.md)). Only administrators hold `kernel:dashboards:admin` by default; give it to another role to let its people decide the agent's org dashboards.
 
@@ -64,7 +64,21 @@ Your personal agent builds dashboards with your access. A named agent, such as a
 
 In a shared conversation the agent works with only the access every person there holds. A dashboard it reads, previews, sums up or prints as a PDF there is computed with that narrower access too: a block whose data someone in the conversation may not see shows "You don't have access to the data behind this block." instead of its figures.
 
-Nobody else sees a personal dashboard, administrators included. Your own changes are never held for approval: your scopes decide. When the **agent** creates an org dashboard, makes one org-visible, or changes or deletes an org dashboard, the change waits for a person who holds `kernel:dashboards:admin`. The approval card of a new dashboard lists it the way the card of a change does (next section): each shared dataset, filter and block, one numbered line each, with the tool or collection it reads, its settings and the rolling dates it uses with the date each one stands for today. The card of a change lists every change, one line each. A personal dashboard the agent makes for you saves at once.
+Nobody else sees a personal dashboard, administrators included. Your own changes are never held for approval: your scopes decide. When the **agent** creates an org dashboard, makes one org-visible, or changes or deletes an org dashboard, the change waits for a person who holds `kernel:dashboards:admin`. When the agent changes, shares or deletes a restricted dashboard (shared with some people or roles only), the change waits for its owner instead, so nobody who cannot see the dashboard reads its card. The approval card of a new dashboard lists it the way the card of a change does (next section): each shared dataset, filter and block, one numbered line each, with the tool or collection it reads, its settings and the rolling dates it uses with the date each one stands for today. The card of a change lists every change, one line each. A personal dashboard the agent makes for you saves at once.
+
+## Share a dashboard
+
+Dashboards are shared the way knowledge documents are. Click **Share** at the top of a dashboard:
+
+- **General access** is what everyone in the organization gets: **Restricted** (only its owner and the people and roles listed), **Anyone in the organisation can view**, or **Anyone in the organisation can edit**.
+- **Add people** and **Add roles** give one person, or everyone holding a role, **Can view** or **Can edit**.
+- **Save** applies it at once.
+
+A restricted dashboard is invisible to everyone it is not shared with, administrators included: it is not in their list or sidebar, and they cannot open it, read its blocks, the records behind a figure, its filters, its exports, its versions, or a snapshot of it, and a scheduled send leaves them out. Its badge reads **Shared with some people**. Anyone who sees a dashboard can open **Share** to see who else does; only its owner and its editors who hold `kernel:dashboards:share` change it. An administrator who restricts a dashboard keeps it only by adding themselves first.
+
+A personal dashboard is a restricted one shared with nobody; an org dashboard is one everyone can view. Changing **Personal** to **Org** in the agent's words, or with `visibility`, sets the general access only and keeps the people and roles listed.
+
+Ask your agent, for example "Share the board dashboard with the C-Level role only": it uses `dashboards_share`, which waits for one approval. Its card says plainly who gains access and who loses it (each person by name, each role, and the organization), and that administrators see a restricted dashboard only when it is shared with them.
 
 ## Ask your agent to change a dashboard
 
@@ -274,6 +288,8 @@ Signed-in requests, with the person's own access:
 | `GET /api/dashboards/:id/blocks/:blockId/rows.csv` | The rows behind it as CSV (as for the rows, every row). |
 | `GET /api/dashboards/:id/export.pdf` | The dashboard as a PDF (range, compare and filters as for the data). |
 | `DELETE /api/dashboards/:id` | Delete it. |
+| `GET /api/dashboards/:id/sharing` | Who sees it: `orgAccess` (`none`, `viewer` or `editor`), `ownerUserId`, `ownerName`, `canManage`, `users` and `roles` (each with `role` `viewer` or `editor` and its `name`). Anyone who sees it may read it. |
+| `PUT /api/dashboards/:id/sharing` | Change it: any of `{ orgAccess, users: [{ userId, role }], roles: [{ roleId, role }] }`; each list given replaces that list. 403 without editor access and `kernel:dashboards:share`; 400 for a person or role outside the organization. |
 | `GET /api/dashboards/:id/blocks/:blockId/data` | One block's data, run as you. `?refresh=1` reads it again. `?range=<preset>` (`last7d`, `last30d`, `last90d`, `mtd`, `lastMonth`, `qtd`, `lastQuarter`, `ytd`, `lastYear`), or `?from=YYYY-MM-DD&to=YYYY-MM-DD`, and `?compare=lastYear\|previousPeriod\|none` set the range; without them, the dashboard's default. `?f.<filterId>=<value>` (repeated for several values) sets a filter; an absent filter takes its default, an empty one means all. |
 | `GET /api/dashboards/:id/blocks/:blockId/rows` | The rows behind a figure, read-only: `?category=<label>` (and `?series=<name>`) for a chart, `?row=<index>` for a table row, nothing for a metric; `?offset=` and `?limit=` (at most 200) page them. Range and filters as for the data. Answers `columns`, `rows`, `links` (where each row leads), `total`, `nextOffset` and `fields` (the names of the fields the source's rows hold). A blended chart takes `?layer=<id>`. |
 | `GET /api/dashboards/:id/filters/:filterId/options` | A filter's choices: its list, or the values found in its data (at most 200, `?q=` narrows them). |

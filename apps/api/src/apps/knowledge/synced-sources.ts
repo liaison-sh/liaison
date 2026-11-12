@@ -312,23 +312,6 @@ export async function reactivateSyncedSource(orgId: string, id: string): Promise
  * Accepts either branded handle: routes pass the RLS-scoped tx; background
  * workers and integration-test setup paths pass the privileged tx.
  */
-/**
- * The Drive account a new folder syncs from: the creator's newest active Drive
- * connection (the one the sync's token lookup resolves), recorded so that
- * disconnecting that account deletes this folder's content and no other's.
- * Other sources record nothing.
- */
-function sourceAccountSql(appName: string, orgId: string, userId: string) {
-  if (appName !== "google-drive") return drizzleSql`NULL`
-  return drizzleSql`(
-    SELECT identifier FROM ${drizzleSql.raw(schemaRef("kernel"))}.connected_accounts
-    WHERE org_id = ${orgId}::uuid AND app_name = 'google-drive' AND status = 'active'
-      AND ((owner_type = 'user' AND owner_id = ${userId}::uuid) OR owner_type = 'org')
-    ORDER BY (owner_type = 'user') DESC, updated_at DESC, created_at DESC
-    LIMIT 1
-  )`
-}
-
 export async function createSyncedSource(
   _tx: RlsClient | PrivilegedDb,
   input: CreateSyncedSourceInput,
@@ -450,7 +433,7 @@ async function doCreateSyncedSource(
         ${input.defaultSensitivity ?? null},
         ${input.syncIntervalSeconds},
         ${actor.userId}::uuid,
-        ${sourceAccountSql(input.appName, actor.orgId, actor.userId)},
+        NULL,
         ${input.sourceKind ?? null},
         ${input.sourceKind ? JSON.stringify(input.sourceConfig ?? {}) : null}::jsonb
       )

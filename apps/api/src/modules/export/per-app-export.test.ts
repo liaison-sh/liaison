@@ -13,7 +13,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import crypto from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
 import contactsManifest from "~/apps/contacts/app.manifest.json"
-import driveManifest from "~/apps/google-drive/app.manifest.json"
+import driveManifest from "../../../../../bundled-apps/google-drive/app.manifest.json"
 import knowledgeManifest from "~/apps/knowledge/app.manifest.json"
 import mailManifest from "~/apps/mail/app.manifest.json"
 import projectsManifest from "~/apps/projects/app.manifest.json"

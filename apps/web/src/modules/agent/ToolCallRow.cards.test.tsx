@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The card a kernel tool call draws under its row, through the real
-// ToolCallRow and the real card, with only the HTTP client faked. Live walk
-// 2026-10-30: the agent called kernel__drive_picker (result `card: "shown"`)
-// and said "pick your CV on the card above", but no card rendered: the card
-// fetched "/api/api/google-drive/picker" (a double /api prefix), got a 404 and
-// drew nothing. The card tests faked the client and never saw the path.
+// The card a tool call draws under its row, through the real ToolCallRow and
+// the real card, with only the HTTP client faked: the client's paths are the
+// ones asserted (a double /api prefix once drew no card at all).
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -18,25 +15,10 @@ vi.mock("~/modules/shell/ApiContext", () => ({
 import type { ToolCallState } from "~/modules/threads/message-store"
 import ToolCallRow from "./ToolCallRow"
 
-const DRIVE_STATE = {
-  pickerConfigured: true,
-  accounts: [
-    {
-      id: "drive-1",
-      identifier: "ana@gmail.com",
-      ownerType: "user",
-      mode: "picked",
-      picked: [],
-      sync: null,
-    },
-  ],
-}
-
 beforeEach(() => {
   apiMocks.get.mockReset()
   apiMocks.post.mockReset()
   apiMocks.get.mockImplementation(async (path: string) => {
-    if (path === "/google-drive/picker") return DRIVE_STATE
     throw new Error(`404 ${path}`)
   })
 })
@@ -46,32 +28,33 @@ function call(toolName: string, result: unknown): ToolCallState {
   return { toolCallId: "t1", toolName, args: {}, result, status: "completed" } as ToolCallState
 }
 
-describe("cards drawn under a kernel tool call", () => {
-  it("kernel__drive_picker with card shown: the picker card, with a Choose files button that opens the picker", async () => {
-    apiMocks.post.mockResolvedValue({ url: "https://liaison.example/picker/x" })
-    const open = vi.spyOn(window, "open").mockReturnValue({
-      opener: null,
-      location: { href: "" },
-      close: vi.fn(),
-    } as unknown as Window)
+describe("cards drawn under a tool call", () => {
+  it("an app tool that answered a page handle: an Open button that opens the page through the person's session", async () => {
+    const handle = `lpg_${"b".repeat(43)}`
+    apiMocks.post.mockResolvedValue({ url: "https://liaison.example/api/app-pages/t" })
+    const popup = { opener: {}, location: { href: "" }, close: vi.fn() }
+    vi.spyOn(window, "open").mockReturnValue(popup as unknown as Window)
     render(() => (
-      <ToolCallRow toolCall={call("kernel__drive_picker", { card: "shown", accounts: [] })} />
+      <ToolCallRow
+        toolCall={call("google-drive__drive_picker", {
+          accounts: [],
+          page: { handle, app: "google-drive", page: "picker", expiresInSeconds: 300 },
+        })}
+      />
     ))
-    await waitFor(() => expect(screen.getByTestId("drive-picker-card")).toBeTruthy())
-    expect(apiMocks.get).toHaveBeenCalledWith("/google-drive/picker")
-    fireEvent.click(screen.getByTestId("drive-picker-choose"))
+    fireEvent.click(await screen.findByTestId("page-handle-open"))
     await waitFor(() =>
-      expect(apiMocks.post).toHaveBeenCalledWith("/google-drive/picker/ticket", {
-        accountId: "drive-1",
-      }),
+      expect(apiMocks.post).toHaveBeenCalledWith("/apps/google-drive/pages/open", { handle }),
     )
-    expect(open).toHaveBeenCalled()
+    await waitFor(() => expect(popup.location.href).toBe("https://liaison.example/api/app-pages/t"))
   })
 
-  it("kernel__drive_picker with no card: nothing drawn", async () => {
-    render(() => <ToolCallRow toolCall={call("kernel__drive_picker", { card: "none" })} />)
+  it("a tool answer without a page handle: no Open button", async () => {
+    render(() => (
+      <ToolCallRow toolCall={call("google-drive__drive_picker", { accounts: [], message: "full" })} />
+    ))
     await Promise.resolve()
-    expect(screen.queryByTestId("drive-picker-card")).toBeNull()
+    expect(screen.queryByTestId("page-handle-card")).toBeNull()
   })
 
   it("kernel__report_bug awaiting confirmation: the reporter's Send card with the exact payload", async () => {

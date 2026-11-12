@@ -15,7 +15,6 @@ import { rebuildFilesSelectPolicy } from "~/infra/boot-phase10"
 import { env } from "~/lib/env"
 import { registerKernelAgentTools } from "~/modules/agent/tools/kernel-tools"
 import {
-  handleDrivePicker,
   handleGoogleSetup,
   handleShopifyAppToml,
   handleShopifySetup,
@@ -50,7 +49,7 @@ const mailManifest = JSON.parse(
 ) as { connections: { gmail: Record<string, unknown> } }
 
 const driveManifest = JSON.parse(
-  readFileSync(path.join(REPO, "apps/api/src/apps/google-drive/app.manifest.json"), "utf8"),
+  readFileSync(path.join(REPO, "bundled-apps/google-drive/app.manifest.json"), "utf8"),
 ) as { connections: { drive: Record<string, unknown> } }
 
 const calendarManifest = JSON.parse(
@@ -146,7 +145,7 @@ afterAll(async () => {
 
 describe("registration", () => {
   test("both tools are deferred with short descriptions; the skills are deferred playbooks", () => {
-    for (const name of ["google_setup", "drive_picker", "shopify_setup", "shopify_app_toml"]) {
+    for (const name of ["google_setup", "shopify_setup", "shopify_app_toml"]) {
       const def = toolRegistry.get([orgId, "kernel", name])
       expect(def).toBeDefined()
       expect(isDeferredTool("kernel", def as { deferLoading?: boolean })).toBe(true)
@@ -155,9 +154,8 @@ describe("registration", () => {
     const google = toolRegistry.get([orgId, "kernel", "google_setup"])
     expect(google?.readOnly).toBe(true)
     expect(google?.requiredScopes).toEqual(["kernel:threads:read"])
-    const picker = toolRegistry.get([orgId, "kernel", "drive_picker"])
-    expect(picker?.readOnly).toBe(true)
-    expect(picker?.requiredScopes).toEqual(["kernel:threads:read"])
+    // The Drive picker is the google-drive app's own tool now (google-drive__drive_picker).
+    expect(toolRegistry.get([orgId, "kernel", "drive_picker"])).toBeUndefined()
     const shopifySetup = toolRegistry.get([orgId, "kernel", "shopify_setup"])
     expect(shopifySetup?.readOnly).toBe(true)
     expect(shopifySetup?.requiredScopes).toEqual(["kernel:threads:read"])
@@ -201,7 +199,14 @@ describe("kernel__google_setup", () => {
       ...mailManifest.connections.gmail,
       allowedDomains: [],
     } as never)
-    const r = await handleGoogleSetup({}, { orgId, userId: admin.userId })
+    // Google Drive (a catalog app) is on.
+    connectionConfigRegistry.set(
+      [orgId, "google-drive", "drive"],
+      driveManifest.connections.drive as never,
+    )
+    const r = await handleGoogleSetup({}, { orgId, userId: admin.userId }).finally(() =>
+      connectionConfigRegistry.deleteByPrefix([orgId, "google-drive"]),
+    )
     expect(mailSource(r.values)).toBe("none")
     expect(r.values.instanceClientOnly).toBe(false)
     expect(r.guide?.steps.map((s) => s.id)).toEqual([
@@ -223,9 +228,13 @@ describe("kernel__google_setup", () => {
       ...mailManifest.connections.gmail,
       allowedDomains: [],
     } as never)
+    connectionConfigRegistry.set(
+      [orgId, "google-drive", "drive"],
+      driveManifest.connections.drive as never,
+    )
     const r = await withInstance(GOOGLE_INSTANCE, () =>
       handleGoogleSetup({}, { orgId, userId: admin.userId }),
-    )
+    ).finally(() => connectionConfigRegistry.deleteByPrefix([orgId, "google-drive"]))
     expect(new Set(r.values.connections.map((c) => c.clientSource))).toEqual(new Set(["instance"]))
     expect(r.values.instanceClientOnly).toBe(true)
     // Google Drive is on: its org connection shares only the picked shared drives.
@@ -354,7 +363,7 @@ describe("kernel__google_setup", () => {
     const calendarBefore = connectionConfigRegistry.get([orgId, "calendar", "google-calendar"])
     const driveBefore = connectionConfigRegistry.get([orgId, "google-drive", "drive"])
     const driveManifest = JSON.parse(
-      readFileSync(path.join(REPO, "apps/api/src/apps/google-drive/app.manifest.json"), "utf8"),
+      readFileSync(path.join(REPO, "bundled-apps/google-drive/app.manifest.json"), "utf8"),
     ) as { connections: { drive: Record<string, unknown> } }
     connectionConfigRegistry.set([orgId, "google-drive", "drive"], {
       ...driveManifest.connections.drive,
@@ -526,7 +535,7 @@ describe("kernel__google_setup with an address: the connect path", () => {
         handleGoogleSetup({ email: "ana@gmail.com" }, ctx(), { resolver: noDns }),
       )
       expect(consumer.drive?.mode).toBe("picked")
-      expect(consumer.drive?.nextStep).toContain("kernel__drive_picker")
+      expect(consumer.drive?.nextStep).toContain("google-drive__drive_picker")
       // Never with the mailbox card, and the picker only once Drive is connected.
       expect(consumer.drive?.nextStep).toContain("Not in the same message as a mailbox card")
       expect(consumer.drive?.nextStep).toContain("Only once it says connected, in a later message")
@@ -537,7 +546,7 @@ describe("kernel__google_setup with an address: the connect path", () => {
         handleGoogleSetup({ email: "ana@acme.example" }, ctx(), { resolver: googleMx }),
       )
       expect(workspace.drive?.mode).toBe("full")
-      expect(workspace.drive?.nextStep).not.toContain("kernel__drive_picker")
+      expect(workspace.drive?.nextStep).not.toContain("drive_picker")
       const verifiedConsumer = await withInstance(GOOGLE_INSTANCE, () =>
         verified(() => handleGoogleSetup({ email: "ana@gmail.com" }, ctx(), { resolver: noDns })),
       )
@@ -545,13 +554,6 @@ describe("kernel__google_setup with an address: the connect path", () => {
     } finally {
       connectionConfigRegistry.deleteByPrefix([orgId, "google-drive"])
     }
-  })
-
-  test("kernel__drive_picker: no Drive account says how to connect, and shows no card", async () => {
-    const r = await handleDrivePicker({}, { ...ctx(), scopes: [] })
-    expect(r.accounts).toEqual([])
-    expect(r.card).toBe("none")
-    expect(r.nextStep).toContain("kernel__google_setup")
   })
 
   test("personal Gmail, verified instance client: straight to consent", async () => {

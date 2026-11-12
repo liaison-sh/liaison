@@ -13,13 +13,11 @@ Tools: `search`, `get`, `find_by_title`, `create`, `update`, `archive`,
 declares no `connections` block, so nothing appears under Settings → connections
 for this app.
 
-One nuance worth knowing: `add_folder_source` federates an **external folder**
-(e.g. a Google Drive folder) into knowledge search. That federation reuses the
-*other* app's connection — the Google Drive account is connected on the
-**google-drive** app, not here (see
-[`apps/api/src/apps/google-drive/README.md`](../google-drive/README.md) and its
-`adapter.ts` federated-search source). Knowledge holds no external credential of
-its own.
+One nuance worth knowing: `add_folder_source` syncs an **external folder**
+(e.g. a Google Drive folder) into Knowledge. The sync runs in the *other* app,
+through its own connection and its manifest's `knowledgeSources` (Google Drive:
+`bundled-apps/google-drive/src/knowledge.ts`); Knowledge holds no external
+credential of its own.
 
 For the shared connection machinery behind those federated sources, see
 [`docs/connecting-apps.md`](../../../../../docs/connecting-apps.md).

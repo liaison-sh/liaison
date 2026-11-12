@@ -57,6 +57,14 @@ export interface SyncedSourcesToKindStep {
   id: string
   kind: "synced-sources-to-kind"
   sourceKind: string
+  /** Only the sources with exactly this `folder_ref` (default: every one with no kind yet). */
+  folderRef?: string
+  /**
+   * Config keys filled from the source's own columns (`folder_ref`,
+   * `source_account`), for a kind whose handler reads the folder or the account
+   * from its config. A column with no value adds no key.
+   */
+  configFromColumns?: Readonly<Record<string, "folder_ref" | "source_account">>
 }
 
 export type AdoptionStep = OrgSettingToStoreStep | SyncedSourcesToKindStep
@@ -64,6 +72,11 @@ export type AdoptionStep = OrgSettingToStoreStep | SyncedSourcesToKindStep
 export interface MovedApp {
   name: string
   steps: readonly AdoptionStep[]
+  /**
+   * Server environment variables the in-tree app read and the catalog app does
+   * not: a boot that still sees one logs where its value goes now.
+   */
+  movedEnv?: Readonly<Record<string, string>>
 }
 
 /** Every app that moved from the source tree to the catalog, oldest first. */
@@ -83,6 +96,33 @@ export const MOVED_APPS: readonly MovedApp[] = [
       },
       { id: "knowledge-sources-to-catalog", kind: "synced-sources-to-kind", sourceKind: "catalog" },
     ],
+  },
+  {
+    // The Drive folders and the picked files that in-tree kernel code synced go
+    // to the app's `folder` and `picked` source kinds (bundled-apps/google-drive/
+    // src/knowledge.ts), with the folder and the account they synced through in
+    // their config. Picked items and chosen shared drives stay where they are,
+    // on the connected accounts' metadata; imported files stay kernel files.
+    name: "google-drive",
+    steps: [
+      {
+        id: "picked-sources-to-kind",
+        kind: "synced-sources-to-kind",
+        sourceKind: "picked",
+        folderRef: "liaison-picked-items",
+        configFromColumns: { ref: "folder_ref", account: "source_account" },
+      },
+      {
+        id: "folder-sources-to-kind",
+        kind: "synced-sources-to-kind",
+        sourceKind: "folder",
+        configFromColumns: { ref: "folder_ref", account: "source_account" },
+      },
+    ],
+    movedEnv: {
+      GOOGLE_PICKER_API_KEY: "the google-drive app's config key pickerApiKey (apps[].config with liaison config apply)",
+      GOOGLE_CLOUD_PROJECT_NUMBER: "the google-drive app's config key pickerAppId (apps[].config with liaison config apply)",
+    },
   },
 ]
 
@@ -217,13 +257,25 @@ async function runSyncedSourcesToKind(
   if (!(await columnExists(db, schemaRef("app_knowledge"), "synced_sources", "source_kind"))) {
     return { state: "deferred", reason: "app_knowledge.synced_sources.source_kind is missing" }
   }
+  const fromColumns = Object.entries(step.configFromColumns ?? {})
+  const config =
+    fromColumns.length === 0
+      ? drizzleSql`'{}'::jsonb`
+      : drizzleSql`jsonb_strip_nulls(jsonb_build_object(${drizzleSql.join(
+          fromColumns.map(
+            ([key, column]) =>
+              drizzleSql`${key}::text, ${column === "folder_ref" ? drizzleSql`folder_ref` : drizzleSql`source_account`}`,
+          ),
+          drizzleSql`, `,
+        )}))`
   const rows = extractRows<{ id: string }>(
     await db.execute(drizzleSql`
       UPDATE ${KNOWLEDGE}.synced_sources
       SET source_kind = ${step.sourceKind},
-          source_config = COALESCE(source_config, '{}'::jsonb),
+          source_config = COALESCE(source_config, '{}'::jsonb) || ${config},
           updated_at = now()
       WHERE app_name = ${app} AND source_kind IS NULL
+        ${step.folderRef !== undefined ? drizzleSql`AND folder_ref = ${step.folderRef}` : drizzleSql``}
       RETURNING id
     `),
   )
@@ -247,6 +299,14 @@ async function runStep(db: PrivilegedDb, app: string, step: AdoptionStep): Promi
 export async function adoptMovedApps(db: PrivilegedDb): Promise<AdoptionResult[]> {
   const out: AdoptionResult[] = []
   for (const app of movedApps()) {
+    for (const [name, movedTo] of Object.entries(app.movedEnv ?? {})) {
+      if (process.env[name]) {
+        log.warn(
+          { app: app.name, env: name },
+          `${name} is no longer read since ${app.name} ships as a catalog app: set ${movedTo}`,
+        )
+      }
+    }
     if (app.steps.length === 0) continue
     const active = extractRows(
       await db.execute(drizzleSql`SELECT 1 FROM ${K}.apps_active_version WHERE name = ${app.name}`),

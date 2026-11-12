@@ -48,7 +48,6 @@ import {
   planConnection,
   provisionConnection,
 } from "~/cli/provisioners/connector"
-import { applyDriveSharedDrives } from "~/cli/provisioners/drive-shared-drives"
 import {
   applyMailProviders,
   type MailProviderResult,
@@ -260,11 +259,6 @@ async function planAppsAgainstStore(
       actions.push(
         `app '${app.name}' connection '${app.connection.name}': connected once its credentials or consent are given`,
       )
-      if (app.connection.sharedDrives) {
-        actions.push(
-          `app '${app.name}' connection '${app.connection.name}': share shared drives ${app.connection.sharedDrives.join(", ") || "(none)"}`,
-        )
-      }
     }
     actions.push(...(lines.length > 0 ? lines : [`app '${app.name}' unchanged`]))
   }
@@ -422,13 +416,6 @@ async function applyApps(
     if (result.changed) changed.push(...result.changed)
     if (result.unchanged) unchanged.push(...result.unchanged)
     if (result.pending) pending.push(result.pending)
-    // google-drive: the shared drives the organization's connection shares.
-    if (app.connection.sharedDrives) {
-      const r = await applyDriveSharedDrives(ctx, app.connection.sharedDrives)
-      changed.push(...r.changed)
-      unchanged.push(...r.unchanged)
-      pending.push(...r.pending)
-    }
     // The app's own setup runs once its connection is in place (it may use it).
     if (app.provision) {
       const r = await applyAppProvision(ctx, app.name, app.provision)

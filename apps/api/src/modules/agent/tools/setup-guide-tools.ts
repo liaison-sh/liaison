@@ -23,15 +23,10 @@ import {
 } from "@liaison/shared"
 import { eq } from "drizzle-orm"
 import { z } from "zod"
-import { type DriveMode, pickerConfigured } from "~/apps/google-drive/drive-mode"
-import { DRIVE_APP, DRIVE_CONNECTION, drivePickerState } from "~/apps/google-drive/picker"
-import { createPickOrigin } from "~/apps/google-drive/picker-announce"
 import type { RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { organizations, users } from "~/db/schema/kernel"
-import { env } from "~/lib/env"
 import { oauthRedirectBaseUrl, orgPublicBaseUrl } from "~/lib/org-public-url"
-import { captureActingAgentId } from "~/modules/agent/runtime/run-context"
 import { SINK_KERNEL_MESSAGES } from "~/modules/agent/scopes/scope-taint"
 import { resolveAgentAuthorLabel } from "~/modules/agent/tools/chat-tools"
 import { handleFilesUploadUrl } from "~/modules/agent/tools/file-tools"
@@ -195,15 +190,11 @@ export async function handleGoogleSetup(
       ]
     : [pathStep(plan), ...switchedOff]
   const driveOn = values.connections.some(
-    (c) => c.app === DRIVE_APP && c.connection === DRIVE_CONNECTION,
+    (c) => c.app === "google-drive" && c.connection === "drive",
   )
   const drive =
     driveOn && plan.driveMode
-      ? {
-          mode: plan.driveMode,
-          pickerConfigured: pickerConfigured(env),
-          nextStep: driveSetupStep(plan.driveMode, pickerConfigured(env), plan.email),
-        }
+      ? { mode: plan.driveMode, nextStep: driveSetupStep(plan.driveMode, plan.email) }
       : undefined
   return {
     // First, in words a weak model cannot skip: what the person still does in
@@ -224,82 +215,14 @@ export async function handleGoogleSetup(
 }
 
 /** What the agent does to connect Google Drive for an address, by mode. */
-export function driveSetupStep(mode: DriveMode, configured: boolean, email?: string): string {
+export function driveSetupStep(mode: "full" | "picked", email?: string): string {
   // The card carries the address: it decides the scopes asked and which Google
   // account the consent opens on, so the mode said here is the mode connected.
   const card = `the Drive Connect card (kernel__request_secret kind oauth_connect, app google-drive, connection drive${email ? `, identifier ${email}` : ""})`
   if (mode === "full") {
     return `Google Drive: mode full, Liaison reads the whole Drive once connected (${card}, alone in its message, after any mailbox card is connected). Never talk about picking files.`
   }
-  const connect = `Not in the same message as a mailbox card: Drive comes after the mailbox is connected. Say first, in one plain sentence: with an account that is not on Google Workspace, the person chooses which Drive files Liaison can see; a Google Workspace account can share the whole Drive. Then ${card}, alone in its message. Only once it says connected, in a later message, call kernel__drive_picker: it shows the card where they pick files and folders.`
-  return configured
-    ? `Google Drive: mode picked. ${connect}`
-    : `Google Drive: mode picked, but the Google Picker is not set up on this server, so the person cannot choose files yet. Tell them an admin sets GOOGLE_PICKER_API_KEY and GOOGLE_CLOUD_PROJECT_NUMBER on the server; until then Liaison sees only files it creates. ${connect}`
-}
-
-type DrivePickerParams = Record<string, never>
-
-/** The person's Drive accounts as the agent sees them (no token). */
-export async function handleDrivePicker(
-  _params: DrivePickerParams,
-  ctx: Pick<SetupGuideCtx, "orgId" | "userId" | "scopes" | "agentExecutionThreadId">,
-) {
-  const state = await drivePickerState({
-    orgId: ctx.orgId,
-    userId: ctx.userId,
-    scopes: ctx.scopes ?? [],
-  })
-  const accounts = state.accounts.map((a) => ({
-    accountId: a.id,
-    account: a.identifier,
-    owner: a.ownerType,
-    mode: a.mode,
-    pickedCount: a.picked.length,
-    // Name and Drive id: google-drive__read takes the id, no search needed.
-    picked: a.picked.slice(0, 20).map((p) => ({ name: p.name, driveFileId: p.id })),
-    inKnowledge: a.sync?.documents ?? 0,
-    syncStatus: a.sync?.status ?? null,
-    // Picked files Knowledge does not import (no text form), by name and type.
-    notInKnowledge: a.notImported.slice(0, 20).map((n) => `${n.name} (${n.type})`),
-    ...(a.sync?.lastError ? { syncNote: a.sync.lastError } : {}),
-  }))
-  const picked = accounts.filter((a) => a.mode === "picked")
-  let nextStep: string
-  let card: "shown" | "none" = "none"
-  if (accounts.length === 0) {
-    nextStep =
-      "No Google Drive is connected for this person. To connect one, call kernel__google_setup with their address and follow its drive.nextStep."
-  } else if (picked.length === 0) {
-    nextStep =
-      "Drive is connected in full mode: Liaison sees the whole Drive, there is nothing to pick. When a file is not found, search again with other words or ask for its exact name."
-  } else if (!state.pickerConfigured) {
-    nextStep =
-      "Drive is connected in picked mode, but the Google Picker is not set up on this server: say an admin sets GOOGLE_PICKER_API_KEY and GOOGLE_CLOUD_PROJECT_NUMBER. Until then Liaison sees only the files already picked and the files it created."
-  } else {
-    card = "shown"
-    nextStep =
-      "The picker card is shown under this call. When the file the person means is already in picked, read it with google-drive__read and its driveFileId instead. Otherwise, in one sentence, ask them to choose the files or folders there (Choose files), and end your turn: when they pick, a line in this conversation names the files and you carry on from it. Liaison sees only what they pick: a file added to Drive later is picked too, from this card or Settings. A file you cannot find may simply not be picked yet: say so and point to this card, never that it does not exist. Files in notInKnowledge are readable through Drive but not imported into Knowledge (no text form): say so when the person expects them there."
-  }
-  // A card in a conversation announces its picks there (picker-announce.ts),
-  // and lists them as "picked here" by its origin and conversation.
-  const origin =
-    card === "shown" && ctx.agentExecutionThreadId
-      ? await createPickOrigin({
-          orgId: ctx.orgId,
-          userId: ctx.userId,
-          threadId: ctx.agentExecutionThreadId,
-          agentId: captureActingAgentId(),
-        })
-      : undefined
-  return {
-    pickerConfigured: state.pickerConfigured,
-    accounts,
-    card,
-    ...(origin && ctx.agentExecutionThreadId
-      ? { origin, threadId: ctx.agentExecutionThreadId }
-      : {}),
-    nextStep,
-  }
+  return `Google Drive: mode picked. Not in the same message as a mailbox card: Drive comes after the mailbox is connected. Say first, in one plain sentence: with an account that is not on Google Workspace, the person chooses which Drive files Liaison can see; a Google Workspace account can share the whole Drive. Then ${card}, alone in its message. Only once it says connected, in a later message, call google-drive__drive_picker: it shows the button where they pick files and folders (it says so when the Google Picker is not set up on this server).`
 }
 
 /**
@@ -598,19 +521,6 @@ export function registerSetupGuideTools(orgId: string): void {
     }),
     // The registry parsed params against `params` before the handler runs.
     handler: (params, ctx: SetupGuideCtx) => handleGoogleSetup(params as GoogleSetupParams, ctx),
-  })
-
-  toolRegistry.set([orgId, "kernel", "drive_picker"], {
-    appName: "kernel",
-    name: "drive_picker",
-    deferLoading: true,
-    description:
-      "Show the card where the person picks the Google Drive files Liaison can see (Drive in picked mode), with their Drive mode and what is picked. Use when a file they name cannot be found.",
-    // The caller's own Drive accounts (and the org's, for its admins): no other record.
-    requiredScopes: ["kernel:threads:read"],
-    readOnly: true,
-    params: z.object({}),
-    handler: (params, ctx: SetupGuideCtx) => handleDrivePicker(params as DrivePickerParams, ctx),
   })
 
   toolRegistry.set([orgId, "kernel", "mailbox_setup"], {

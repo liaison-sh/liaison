@@ -684,7 +684,7 @@ knowledgeRoutes.post("/source-links/:id/archive", zValidator("param", idParamSch
  * source names — `/knowledge/sources/<anything>` would otherwise return a
  * polite zero-cache shape and leak the existence of the endpoint to anyone.
  */
-const REGISTERED_SOURCES = new Set(["knowledge", "google-drive"])
+const REGISTERED_SOURCES = new Set(["knowledge"])
 
 knowledgeRoutes.get("/sources/:source", async (c) => {
   const source = c.req.param("source")

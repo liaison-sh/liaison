@@ -198,7 +198,7 @@ export function createAppSourceMethods(ctx: BridgeContext): Record<string, any> 
     }
   }
   return {
-    knowledge_appSource: (paramsJson: string) => run(paramsJson, false),
-    knowledge_appSourceWrite: (paramsJson: string) => run(paramsJson, true),
+    knowledge_appSource: async (paramsJson: string) => run(paramsJson, false),
+    knowledge_appSourceWrite: async (paramsJson: string) => run(paramsJson, true),
   }
 }

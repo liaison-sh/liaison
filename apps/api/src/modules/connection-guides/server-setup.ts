@@ -33,7 +33,6 @@ export const SERVER_SURFACE_IDS = [
   "backups",
   "signInGoogle",
   "instanceClients",
-  "drivePicker",
   "webPush",
   "phonePush",
   "objectStorage",
@@ -315,41 +314,6 @@ export function serverSetup(e: ServerEnv): ServerSurface[] {
         },
       ],
       verify: "`liaison setup state` shows those connections with client `instance`.",
-    },
-    {
-      id: "drivePicker",
-      title: "Google Picker (choose Drive files one by one)",
-      optional: true,
-      env: ["GOOGLE_PICKER_API_KEY", "GOOGLE_CLOUD_PROJECT_NUMBER"],
-      done: allSet(e, ["GOOGLE_PICKER_API_KEY", "GOOGLE_CLOUD_PROJECT_NUMBER"]),
-      detail:
-        "Needed only when Drive connects with drive.file (a personal Google account, or an unverified client): `liaison guide google --email <address>` says so.",
-      steps: [
-        {
-          who: "human",
-          minutes: 1,
-          text: "In the Google Cloud project of the Drive client, open the Google Picker API page and click Enable.",
-          url: "https://console.cloud.google.com/apis/library/picker.googleapis.com",
-        },
-        {
-          who: "human",
-          minutes: 3,
-          text: "Open Credentials, click Create credentials, API key. Edit the key: under Application restrictions choose Websites and add the value below; under API restrictions choose Restrict key and select Google Picker API. Save and copy the key.",
-          url: "https://console.cloud.google.com/apis/credentials",
-          values: [`${host}/*`],
-        },
-        {
-          who: "human",
-          minutes: 1,
-          text: "Copy the Project number (a number, not the project ID) from the project's Dashboard, Project info card.",
-          url: "https://console.cloud.google.com/home/dashboard",
-        },
-        {
-          who: "agent",
-          text: `Set GOOGLE_PICKER_API_KEY and GOOGLE_CLOUD_PROJECT_NUMBER in deploy/.env. ${RESTART}`,
-        },
-      ],
-      verify: "`liaison guide google --json` reports drivePicker.configured true.",
     },
     {
       id: "webPush",

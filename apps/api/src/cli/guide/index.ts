@@ -38,7 +38,6 @@ import {
   type ShippedLocale,
 } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
-import { pickerConfigured } from "~/apps/google-drive/drive-mode"
 import { kernelRel } from "~/apps/tickets/schema-refs"
 import { resolveOrgId } from "~/cli/lib/resolve-org-id"
 import { extractRows } from "~/db"
@@ -184,11 +183,9 @@ export async function buildGuide(
         "Google Drive: picked (drive.file). With an account that is not on Google Workspace the person chooses which Drive files Liaison can see; a Google Workspace account can share the whole Drive.",
         `The Google Picker runs in Liaison, not here: after connecting, choose the files at ${drivePickerUrl} (or on the agent's picker card).`,
       )
-      if (!pickerConfigured(env)) {
-        text.push(
-          "The Google Picker is not set up on this server: set GOOGLE_PICKER_API_KEY and GOOGLE_CLOUD_PROJECT_NUMBER.",
-        )
-      }
+      text.push(
+        "The Google Picker needs its API key and project number in the google-drive app's config: `apps: [{ name: google-drive, config: { pickerApiKey, pickerAppId } }]` with `liaison config apply`.",
+      )
     }
     return {
       ok: true,
@@ -197,7 +194,7 @@ export async function buildGuide(
           provider,
           ...plan,
           ...(plan.driveMode === "picked"
-            ? { drivePicker: { url: drivePickerUrl, configured: pickerConfigured(env) } }
+            ? { drivePicker: { url: drivePickerUrl, configKeys: ["pickerApiKey", "pickerAppId"] } }
             : {}),
           values,
         },

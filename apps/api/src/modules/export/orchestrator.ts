@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { strToU8, zipSync } from "fflate"
 import contactsManifest from "~/apps/contacts/app.manifest.json"
-import driveManifest from "~/apps/google-drive/app.manifest.json"
 import knowledgeManifest from "~/apps/knowledge/app.manifest.json"
 import mailManifest from "~/apps/mail/app.manifest.json"
 import projectsManifest from "~/apps/projects/app.manifest.json"
@@ -16,7 +15,23 @@ const APP_VERSIONS: Record<string, string> = {
   knowledge: (knowledgeManifest as { version: string }).version,
   mail: (mailManifest as { version: string }).version,
   contacts: (contactsManifest as { version: string }).version,
-  "google-drive": (driveManifest as { version: string }).version,
+}
+
+/** An installed (catalog) app's version: the one active on this instance. */
+async function installedVersion(app: string): Promise<string | null> {
+  const [{ withSystemDb }, { appsActiveVersion }, { eq }] = await Promise.all([
+    import("~/db/privileged"),
+    import("~/db/schema/kernel"),
+    import("drizzle-orm"),
+  ])
+  const [row] = await withSystemDb("export-app-version", (db) =>
+    db
+      .select({ version: appsActiveVersion.version })
+      .from(appsActiveVersion)
+      .where(eq(appsActiveVersion.name, app))
+      .limit(1),
+  )
+  return row?.version ?? null
 }
 
 export interface ExportManifest {
@@ -78,7 +93,7 @@ export async function exportAppsWithManifest(
       const content = typeof result === "string" ? result : JSON.stringify(result ?? [], null, 2)
       files[fileName] = strToU8(content)
       manifest.apps.push(app)
-      manifest.schemaVersions[app] = APP_VERSIONS[app] ?? "unknown"
+      manifest.schemaVersions[app] = APP_VERSIONS[app] ?? (await installedVersion(app)) ?? "unknown"
       manifest.files[app] = fileName
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err)

@@ -16,7 +16,7 @@ const GUIDED: Array<{ path: string; connection: string }> = [
   { path: "apps/api/src/apps/mail/app.manifest.json", connection: "imap" },
   { path: "apps/api/src/apps/tickets/app.manifest.json", connection: "gmail" },
   { path: "apps/api/src/apps/tickets/app.manifest.json", connection: "imap" },
-  { path: "apps/api/src/apps/google-drive/app.manifest.json", connection: "drive" },
+  { path: "bundled-apps/google-drive/app.manifest.json", connection: "drive" },
   { path: "bundled-apps/boxtal/app.manifest.json", connection: "boxtal" },
   { path: "bundled-apps/shopify/app.manifest.json", connection: "shop" },
   { path: "bundled-apps/pennylane/app.manifest.json", connection: "pennylane" },

@@ -1207,6 +1207,10 @@ export interface KernelToolSearchFields {
   routineOnly: boolean
   /** Characters of the `params` expression's source, a stand-in for its schema size. */
   paramsChars: number
+  /** Declared `readOnly: true` (a literal); the dashboard source guard reads it. */
+  readOnly: boolean
+  /** Where the registration is, `file:line` from the repo root. */
+  registeredAt: string
 }
 
 export interface KernelTools {
@@ -1491,6 +1495,8 @@ export function collectKernelTools(root: string = ROOT): KernelTools {
           ...(deferLoading !== undefined ? { deferLoading } : {}),
           agentVisible: flag("agentVisible") !== false && prev?.agentVisible !== false,
           routineOnly: flag("routineOnly") === true || prev?.routineOnly === true,
+          readOnly: flag("readOnly") === true || prev?.readOnly === true,
+          registeredAt: prev?.registeredAt ?? where(n),
           paramsChars: paramsExpr ? paramsExpr.getText(sf).length : (prev?.paramsChars ?? 0),
           ...((availability ?? prev?.availability)
             ? { availability: availability ?? prev?.availability }

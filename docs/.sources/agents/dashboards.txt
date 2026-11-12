@@ -35,8 +35,8 @@ Personal dashboards are their owner's alone (RLS) -> apps/api/src/db/migrations/
 Agent writes touching an org dashboard are gated with kernel:dashboards:admin -> apps/api/src/modules/dashboards/tools.ts:310
 Approval card lists title and each block's source -> apps/api/src/modules/dashboards/tools.ts:117
 Kernel sources allowlist -> apps/api/src/modules/dashboards/sources.ts:33
-An org's own custom app is a source under the same rules, another org's is unknown -> apps/api/src/modules/dashboards/sources.ts:89 ; apps/api/src/modules/dashboards/sources.ts:205
-Store sources: declared, agent-readable, read scope -> apps/api/src/modules/dashboards/sources.ts:198
+An org's own custom app is a source under the same rules, another org's is unknown -> apps/api/src/modules/dashboards/sources.ts:94 ; apps/api/src/modules/dashboards/sources.ts:210
+Store sources: declared, agent-readable, read scope -> apps/api/src/modules/dashboards/sources.ts:203
 Source checked at save as the author -> apps/api/src/modules/dashboards/service.ts:135
 Source checked again at every view as the viewer -> apps/api/src/modules/dashboards/service.ts:330
 A gated tool on a dashboard is refused, never parked -> apps/api/src/modules/apps/execute-tool.ts:5037

@@ -36,6 +36,11 @@ export const KERNEL_DASHBOARD_SOURCES: ReadonlySet<string> = new Set([
   "list_routines",
   "approvals_list",
   "audit_search",
+  "companies_search",
+  "companies_read",
+  "company_timeline",
+  "companies_find_duplicates",
+  "companies_propose_from_contacts",
 ])
 
 export type SourceRefusalCode = "unknown_tool" | "not_allowed" | "no_access"

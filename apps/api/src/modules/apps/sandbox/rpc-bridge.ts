@@ -33,6 +33,7 @@ import { createIdentityMethods } from "~/modules/apps/sandbox/bridge/identity"
 import { createKnowledgeMethods } from "~/modules/apps/sandbox/bridge/knowledge"
 import { createKnowledgeCurationMethods } from "~/modules/apps/sandbox/bridge/knowledge-curation"
 import { createMailMethods } from "~/modules/apps/sandbox/bridge/mail"
+import { createPagesMethods } from "~/modules/apps/sandbox/bridge/pages"
 import { createPlatformMethods } from "~/modules/apps/sandbox/bridge/platform"
 import { createProjectsMethods } from "~/modules/apps/sandbox/bridge/projects"
 import {
@@ -112,6 +113,7 @@ export function createRpcBridge(
     createEffectsMethods(ctx),
     createStoreMethods(ctx),
     createStepsMethods(ctx),
+    createPagesMethods(ctx),
     createSqlMethods(ctx),
     createAccountsMethods(ctx),
   )
@@ -235,6 +237,8 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   "_steps_begin",
   "_steps_save",
   "steps_reset",
+  // A page link (bridge/pages.ts) mints a ticket a person then uses.
+  "pages_link",
   "realtime_publish",
   "grants_setUserScopes",
   "agent_run",

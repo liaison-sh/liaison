@@ -6,6 +6,8 @@ import type { DashboardColumn, TableData } from "../dashboards-client"
 import { formatValue } from "./format"
 
 export interface TableBlockProps {
+  /** The org's time zone: timestamps read in it. */
+  timeZone?: string
   data: TableData
   currency?: string
   locale?: string
@@ -76,7 +78,12 @@ export const TableBlock: Component<TableBlockProps> = (props) => {
     tableColumns(
       props.data.columns,
       (value, c) =>
-        formatValue(value, { format: c.format, currency: props.currency, locale: locale() }),
+        formatValue(value, {
+          format: c.format,
+          currency: props.currency,
+          locale: locale(),
+          timeZone: props.timeZone,
+        }),
       props.onPickRow
         ? {
             onPick: props.onPickRow,

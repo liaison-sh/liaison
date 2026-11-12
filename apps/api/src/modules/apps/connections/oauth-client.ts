@@ -11,7 +11,13 @@
  *   connections that share it (Gmail in Mail and Tickets, Google Calendar);
  *   for every other connection, its own `oauth_providers` row `<app>:<connection>`.
  * - Instance client: the environment pair the table below names for the
- *   connection. A connection the table does not name has no instance client.
+ *   connection; a key the table does not name reads the convention pair
+ *   `LIAISON_OAUTH_<KEY>_CLIENT_ID` / `_CLIENT_SECRET` (`instanceClientEnvNames`).
+ *
+ * The key is `<app>:<connection>`, or the key the connection's manifest names
+ * (`connections.<name>.oauthClient.key`, always in the app's own namespace) so
+ * two connections of one app share one client (`oauthClientKey`). An installed
+ * app gets its client this way: it carries no resolver code.
  *   The Facebook connections' pair (META_APP_ID + META_APP_SECRET) is the
  *   managed cell's shared Meta app and applies in the managed edition only.
  *
@@ -29,6 +35,7 @@ import { CryptoContext, decryptSecret } from "~/lib/crypto"
 import { isManagedEdition } from "~/lib/edition"
 import { encryptionKey, env } from "~/lib/env"
 import { getOrgKernelSettings } from "~/lib/settings"
+import { connectionConfigRegistry } from "~/modules/apps/app-registries"
 
 export type { OAuthClientSource } from "@liaison/shared"
 
@@ -49,6 +56,22 @@ export function oauthConnectionKey(appName: string, connectionName: string): str
   return `${appName}:${connectionName}`
 }
 
+/**
+ * The key a connection's client is stored and resolved under: the one its
+ * manifest declares (`oauthClient.key`), else `<app>:<connection>`. Reads the
+ * org's registered manifest; an unregistered app gets the default.
+ */
+export function oauthClientKey(orgId: string, appName: string, connectionName: string): string {
+  const declared = (
+    connectionConfigRegistry.get([orgId, appName, connectionName]) as
+      | { oauthClient?: { key?: unknown } }
+      | undefined
+  )?.oauthClient?.key
+  // The manifest validator keeps it in the app's own namespace; re-checked here.
+  if (typeof declared === "string" && declared.startsWith(`${appName}:`)) return declared
+  return oauthConnectionKey(appName, connectionName)
+}
+
 /** The connections that share the workspace's Google client (Settings, Google). */
 export const GOOGLE_WORKSPACE_CLIENT_CONNECTIONS: ReadonlySet<string> = new Set([
   "mail:gmail",
@@ -56,7 +79,8 @@ export const GOOGLE_WORKSPACE_CLIENT_CONNECTIONS: ReadonlySet<string> = new Set(
   "calendar:google-calendar",
 ])
 
-/** The environment variables an instance client is read from. */
+/** The environment variables an instance client is read from (plus, for a key the
+ *  table does not name, its convention pair: `instanceClientEnvNames`). */
 export interface InstanceClientEnv {
   GMAIL_OAUTH_CLIENT_ID?: string
   GMAIL_OAUTH_CLIENT_SECRET?: string
@@ -109,16 +133,34 @@ const INSTANCE_CLIENT_ENV: Readonly<Record<string, EnvPair>> = {
 /** The connections an instance can provide a client for (docs, tests). */
 export const INSTANCE_CLIENT_CONNECTIONS: readonly string[] = Object.keys(INSTANCE_CLIENT_ENV)
 
+/**
+ * The convention pair of a key the table does not name: `LIAISON_OAUTH_<KEY>_CLIENT_ID`
+ * and `_CLIENT_SECRET`, the key upper-cased with every other character as `_`
+ * (`acme:crm` -> `LIAISON_OAUTH_ACME_CRM_CLIENT_ID`).
+ */
+export function instanceClientEnvNames(connectionKey: string): { id: string; secret: string } {
+  const norm = connectionKey.toUpperCase().replace(/[^A-Z0-9]/g, "_")
+  return { id: `LIAISON_OAUTH_${norm}_CLIENT_ID`, secret: `LIAISON_OAUTH_${norm}_CLIENT_SECRET` }
+}
+
 /** The instance's client for a connection, or null when it provides none. */
 export function instanceOAuthClient(
   connectionKey: string,
-  source: InstanceClientEnv = env,
+  source?: InstanceClientEnv,
 ): { clientId: string; clientSecret: string } | null {
   const pair = INSTANCE_CLIENT_ENV[connectionKey]
-  if (!pair || (pair.managedOnly && !isManagedEdition())) return null
-  const clientId = source[pair.id]
-  const clientSecret = source[pair.secret]
-  return clientId && clientSecret ? { clientId, clientSecret } : null
+  if (pair?.managedOnly && !isManagedEdition()) return null
+  const names = pair ?? instanceClientEnvNames(connectionKey)
+  // The table's pairs are parsed env (lib/env.ts); a convention pair is read raw.
+  const from = (source ?? (pair ? env : process.env)) as Record<string, unknown>
+  const clientId = from[names.id]
+  const clientSecret = from[names.secret]
+  return typeof clientId === "string" &&
+    clientId &&
+    typeof clientSecret === "string" &&
+    clientSecret
+    ? { clientId, clientSecret }
+    : null
 }
 
 /** The workspace's Google client as stored (secret still encrypted), or null. */
@@ -308,7 +350,7 @@ export async function resolveMintingClient(
   account: MintingClientRecord,
   auditAction = "oauth-minting-client",
 ): Promise<Credentials | null> {
-  const key = oauthConnectionKey(account.appName, account.connectionName)
+  const key = oauthClientKey(account.orgId, account.appName, account.connectionName)
   const source = account.oauthClientSource ?? "legacy"
   let client: Credentials | null
   if (source === "instance") client = instanceOAuthClient(key)
@@ -375,7 +417,7 @@ export async function connectionClientSecretForConfigKey(
   if (!connectionName) return null
   const credentials = await resolveOAuthClientCredentials(
     orgId,
-    oauthConnectionKey(appName, connectionName),
+    oauthClientKey(orgId, appName, connectionName),
     { auditAction: "webhook-client-secret" },
   )
   return credentials?.clientSecret ?? null

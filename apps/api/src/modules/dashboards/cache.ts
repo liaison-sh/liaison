@@ -156,20 +156,55 @@ export function sourceCacheKey(
   return `dash:src:${viewer.orgId}:${entry.dashboardId}:${entry.version}:${entry.sourceKey}:${sourceHash(entry.resolvedSource)}:${range}:${viewer.userId}:${permissionHash(viewer)}`
 }
 
-const inFlight = new Map<string, Promise<unknown>>()
+interface SharedRun {
+  promise: Promise<unknown>
+  /** Stops the shared run: only once every caller waiting on it has left. */
+  controller: AbortController
+  waiters: number
+}
+
+const inFlight = new Map<string, SharedRun>()
+
+/** One caller joins `run`: its signal, when it aborts, leaves; the last to leave stops the run. */
+function join(run: SharedRun, signal: AbortSignal | undefined): void {
+  run.waiters++
+  if (!signal) return
+  const leave = () => {
+    run.waiters--
+    if (run.waiters <= 0) run.controller.abort(signal.reason)
+  }
+  if (signal.aborted) leave()
+  else signal.addEventListener("abort", leave, { once: true })
+}
 
 /**
  * Runs `fn` once for concurrent callers of the same `key` in this process: blocks that share
  * a dataset load together, and the second waits on the first's run instead of starting its own.
+ * The run has its own signal (passed to `fn`), stopped only when every caller that asked for it
+ * has gone (each caller's `signal`): one viewer closing a tab never cancels another's read.
+ * A caller without a signal never leaves.
  */
-export async function singleFlight<T>(key: string, fn: () => Promise<T>): Promise<T> {
+export async function singleFlight<T>(
+  key: string,
+  fn: (signal: AbortSignal) => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
   const running = inFlight.get(key)
-  if (running) return running as Promise<T>
-  const p = fn().finally(() => {
-    inFlight.delete(key)
+  if (running) {
+    join(running, signal)
+    return running.promise as Promise<T>
+  }
+  const run: SharedRun = {
+    promise: Promise.resolve(),
+    controller: new AbortController(),
+    waiters: 0,
+  }
+  join(run, signal)
+  run.promise = fn(run.controller.signal).finally(() => {
+    if (inFlight.get(key) === run) inFlight.delete(key)
   })
-  inFlight.set(key, p)
-  return p
+  inFlight.set(key, run)
+  return run.promise as Promise<T>
 }
 
 /**

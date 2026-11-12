@@ -333,6 +333,9 @@ const appSchema = z
     // email, resolved to ids at apply. Replaces the stored map when present;
     // omitted, the stored map is left as it is.
     domainAccess: z.record(databaseDomainNameSchema, domainAccessRuleConfigSchema).optional(),
+    // The app's own setup as data (manifest `provisioning`): validated against the
+    // schema the app declares and applied by the app's provisioning handler.
+    provision: z.record(z.string().min(1), z.unknown()).optional(),
   })
   .refine((a) => a.providers === undefined || a.name === "mail", {
     message: "providers is only supported on the 'mail' app",
@@ -353,6 +356,10 @@ const appSchema = z
   .refine((a) => a.settings === undefined || a.enable, {
     message: "settings requires enable: true (a disabled app entry is skipped)",
     path: ["settings"],
+  })
+  .refine((a) => a.provision === undefined || a.enable, {
+    message: "provision requires enable: true (a disabled app entry is skipped)",
+    path: ["provision"],
   })
   .refine((a) => a.domainAccess === undefined || a.name === "database", {
     message: "domainAccess is only supported on the 'database' app",

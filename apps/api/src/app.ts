@@ -67,6 +67,7 @@ import { APPROVAL_DECIDE_BODY_MAX_BYTES } from "~/modules/approvals/mailbox-fulf
 import { approvals } from "~/modules/approvals/routes"
 import { initAppActivationSync } from "~/modules/apps/activation"
 import { serveAppFrameHost } from "~/modules/apps/app-frame-host-route"
+import { appPageLinkRoutes, appPageRoutes } from "~/modules/apps/app-pages"
 import { attentionRoutes } from "~/modules/apps/attention-routes"
 import { bulkRoutes } from "~/modules/apps/bulk-routes"
 import { connectionRoutes } from "~/modules/apps/connections/routes"
@@ -1075,6 +1076,8 @@ app.route("/api/apps/mcp-manager", mcpManagerOAuthRoutes)
 app.route("/api/apps/mcp-manager", mcpManagerAuditRoutes)
 // Declarative settings: GET|PATCH /api/apps/:app/settings/{org,user}.
 app.route("/api/apps", appSettingsRoutes)
+// POST /api/apps/:app/pages/:page/link: a one-time link to an app page (app-pages.ts).
+app.route("/api/apps", appPageLinkRoutes)
 app.route("/api/apps", appRoutes)
 
 // Aggregated attention feed (authenticated — providers self-authorize per-row)
@@ -1280,6 +1283,10 @@ app.get("/api/connections/oauth-done", async (c) => {
 app.use("/api/connections", authMw, orgLimiter)
 app.use("/api/connections/*", authMw, orgLimiter)
 app.route("/api/connections", connectionRoutes)
+// App pages (modules/apps/app-pages.ts): public, the one-time ticket or the page
+// session in the path is the credential; the app's handler runs as the person
+// the link was minted for.
+app.route("/api/app-pages", appPageRoutes)
 // The Google Picker page (google-drive/picker-page.ts): public, its one-time
 // ticket in the path is the only credential; it renders once per ticket.
 app.get("/api/drive-picker/:ticket", async (c) => {

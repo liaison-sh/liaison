@@ -157,6 +157,51 @@ const REASONS = {
 // scope twice, or repeats in a file, is listed once per read.
 const SCOPE_READ_ALLOWLIST: ReadonlyArray<readonly [file: string, line: string, reason: string]> = [
   [
+    "apps/api/src/modules/apps/app-surface.ts",
+    `if (!page.scope.startsWith(\`\${name}:\`)) {`,
+    "an app page or page route's own declared scope (manifest pages / pageRoutes), not a tool definition",
+  ],
+  [
+    "apps/api/src/modules/apps/app-surface.ts",
+    `if (route.scope && !route.scope.startsWith(\`\${name}:\`)) {`,
+    "an app page or page route's own declared scope (manifest pages / pageRoutes), not a tool definition",
+  ],
+  [
+    "apps/api/src/modules/apps/app-pages.ts",
+    "if (!hasScope(decl.scope, actor.scopes ?? [])) {",
+    "an app page or page route's own declared scope (manifest pages / pageRoutes), not a tool definition",
+  ],
+  [
+    "apps/api/src/modules/apps/app-pages.ts",
+    'throw new AppPageError(403, "forbidden", `This page needs ${decl.scope}`)',
+    "an app page or page route's own declared scope (manifest pages / pageRoutes), not a tool definition",
+  ],
+  [
+    "apps/api/src/modules/apps/app-pages.ts",
+    "for (const scope of [decl.scope, routeDecl.scope]) {",
+    "an app page or page route's own declared scope (manifest pages / pageRoutes), not a tool definition",
+  ],
+  [
+    "apps/api/src/modules/apps/app-surface.ts",
+    `if (route.scope && !route.scope.startsWith(\`\${name}:\`)) {`,
+    "an app page or page route's own declared scope (manifest pages / pageRoutes), not a tool definition (the same line read a second time)",
+  ],
+  [
+    "apps/api/src/modules/apps/app-pages.ts",
+    "if (!hasScope(decl.scope, actor.scopes ?? [])) {",
+    "an app page or page route's own declared scope (manifest pages / pageRoutes), not a tool definition (the same line read a second time)",
+  ],
+  [
+    "apps/api/src/modules/apps/app-pages.ts",
+    'throw new AppPageError(403, "forbidden", `This page needs ${decl.scope}`)',
+    "an app page or page route's own declared scope (manifest pages / pageRoutes), not a tool definition (the same line read a second time)",
+  ],
+  [
+    "apps/api/src/modules/apps/app-pages.ts",
+    "for (const scope of [decl.scope, routeDecl.scope]) {",
+    "an app page or page route's own declared scope (manifest pages / pageRoutes), not a tool definition (the same line read a second time)",
+  ],
+  [
     "apps/api/src/modules/apps/connections/sql/service.ts",
     "return declaration.rawQuery?.scope ?? null",
     REASONS.SQL_RAW,

@@ -3,7 +3,7 @@ import { HTTPException } from "hono/http-exception"
 import { type OAuthClientConfig, oauthClientResolverRegistry } from "~/modules/apps/app-registries"
 import {
   type MintingClientRecord,
-  oauthConnectionKey,
+  oauthClientKey,
   resolveMintingClient,
   resolveOAuthClientCredentials,
 } from "~/modules/apps/connections/oauth-client"
@@ -80,7 +80,7 @@ export async function resolveOAuthClientConfig(params: {
 
   const credentials = await resolveOAuthClientCredentials(
     params.orgId,
-    oauthConnectionKey(params.appName, params.connectionName),
+    oauthClientKey(params.orgId, params.appName, params.connectionName),
     { auditAction: params.auditAction },
   )
   if (!credentials) return null

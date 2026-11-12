@@ -23,6 +23,7 @@ import { makeGitlabFetchers } from "~/apps/gitlab/gitlab-rest"
 import { createGoogleDriveAdapter } from "~/apps/google-drive/adapter"
 import { makeDriveFetchers } from "~/apps/google-drive/drive-rest"
 import { loadPickedItems } from "~/apps/google-drive/picker"
+import { runAppSourceSyncJob } from "~/apps/knowledge/app-sources"
 import { knowledgeRel } from "~/apps/knowledge/schema-refs"
 import type { KnowledgeSourceAdapter } from "~/apps/knowledge/source-protocol"
 import { KNOWLEDGE_SOURCE_READ_SCOPE } from "~/apps/knowledge/source-registry"
@@ -45,7 +46,8 @@ import { isDemoOrgId } from "~/modules/demo/demo-org"
 import { sweepSkippingMoving, writeUnlessMoving } from "~/modules/org/transfer-state/skip-moving"
 import { movingOrgIds } from "~/modules/org/transfer-state/state"
 
-export type SyncJobTrigger = "schedule" | "force-on-open"
+/** `continue`: the next pages of an app source's open pass (app-sources.ts). */
+export type SyncJobTrigger = "schedule" | "force-on-open" | "continue"
 
 export interface SyncJobPayload {
   sourceId: string
@@ -260,6 +262,30 @@ export interface RunSyncWorkerDeps {
     source: ReturnType<typeof rowToSyncedSource>,
     adapter: KnowledgeSourceAdapter,
   ) => Promise<unknown>
+  /**
+   * An app source's sync (a source with a `sourceKind`). Tests pass the
+   * dispatch, store, org setup or limits; production uses the registered
+   * dispatch of the app and enqueues continuations on this queue.
+   */
+  appSource?: Partial<Parameters<typeof runAppSourceSyncJob>[1]>
+}
+
+/**
+ * Enqueue the next pages of an app source's open pass. The id names the
+ * generation the continuation starts from: two runs that reached the same
+ * point enqueue one job, and it never collides with the `sync:<id>` of a
+ * running tick.
+ */
+export async function enqueueAppSourceContinuation(
+  sourceId: string,
+  generation: number,
+): Promise<void> {
+  await enqueueAppJob(
+    "knowledge",
+    "sync-source",
+    { sourceId, trigger: "continue" } satisfies SyncJobPayload,
+    { jobId: `sync:${sourceId}:g${generation}` },
+  )
 }
 
 /**
@@ -313,6 +339,28 @@ export async function runSyncWorker(
       "force-on-open by non-owner of personal source — refusing",
     )
     throw new Error("FORBIDDEN: personal synced source forced by non-owner")
+  }
+  // A source of an app-declared kind syncs through the app's handler, page by
+  // page with a persisted cursor (app-sources.ts); the folder adapters below
+  // are the in-tree apps' path.
+  if (source.sourceKind) {
+    try {
+      await runAppSourceSyncJob(source, {
+        enqueueContinuation: enqueueAppSourceContinuation,
+        ...deps.appSource,
+      })
+    } catch (err) {
+      // Stamped on the source already (as the reconciler does).
+      if (isTransientUpstreamSyncError(err)) {
+        log.warn(
+          { err, sourceId: source.id, appName: source.appName },
+          "sync-source: app source upstream unavailable; recorded on the source",
+        )
+        return
+      }
+      throw err
+    }
+    return
   }
   // A Drive folder that syncs through an ORGANIZATION connection stays within
   // the shared drives an admin chose: with none chosen its content is hidden,

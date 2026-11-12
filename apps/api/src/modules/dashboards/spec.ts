@@ -12,7 +12,7 @@
 // question, asked at save and at every run.
 
 import { z } from "zod"
-import { EXPR_NAME, exprProblems, MAX_EXPR_LENGTH } from "~/modules/dashboards/expr"
+import { EXPR_NAME, exprNames, exprProblems, MAX_EXPR_LENGTH } from "~/modules/dashboards/expr"
 import {
   COMPARE_MODES,
   type CompareMode,
@@ -342,6 +342,44 @@ export type ToolSource = z.infer<typeof toolSourceSchema>
 export type StoreSource = z.infer<typeof storeSourceSchema>
 export type BlockMap = z.infer<typeof blockMapSchema>
 
+/**
+ * Computed measures that read each other in a loop (or read themselves): refused, since no
+ * order computes them. Any other order is fine: they are computed in dependency order.
+ */
+function measureCycleProblems(
+  measures: { label: string; name?: string; expr?: string }[],
+): string[] {
+  const reads = new Map<string, string[]>()
+  for (const m of measures) {
+    if (!m.name || !m.expr) continue
+    try {
+      reads.set(m.name, exprNames(m.expr))
+    } catch {
+      reads.set(m.name, [])
+    }
+  }
+  const state = new Map<string, "visiting" | "done">()
+  const looped = new Set<string>()
+  const visit = (name: string, path: string[]): void => {
+    if (state.get(name) === "done") return
+    if (state.get(name) === "visiting") {
+      for (const n of path.slice(path.indexOf(name))) looped.add(n)
+      return
+    }
+    state.set(name, "visiting")
+    for (const n of reads.get(name) ?? []) if (reads.has(n)) visit(n, [...path, name])
+    state.set(name, "done")
+  }
+  for (const name of reads.keys()) visit(name, [])
+  return measures
+    .filter((m) => m.name && looped.has(m.name))
+    .map((m) =>
+      (reads.get(m.name!) ?? []).includes(m.name!)
+        ? `measure "${m.label}" expr reads itself ('${m.name}'): a measure cannot use its own value`
+        : `measure "${m.label}" expr is part of a cycle (${[...looped].join(" → ")}): measures cannot read each other in a loop`,
+    )
+}
+
 /** What each chart type needs from its map, as a list of plain-words problems. */
 export function mapProblems(type: BlockType, map: BlockMap): string[] {
   const out: string[] = []
@@ -443,6 +481,7 @@ export function mapProblems(type: BlockType, map: BlockMap): string[] {
       if (!m.expr) continue
       for (const p of exprProblems(m.expr, names)) out.push(`measure "${m.label}" expr: ${p}`)
     }
+    out.push(...measureCycleProblems(map.measures))
   }
   if (map.scale !== undefined && type === "table") out.push("map.scale is for a metric or a chart")
   if (

@@ -109,11 +109,12 @@ A metric can carry `map.target` (a number, the goal: "objective 40" belongs here
 
 ### Send a dashboard on a schedule
 
-"Send me / the team this dashboard every Monday at 8" is a routine, never a new mechanism: `kernel__create_routine` with `kind: "recurring"`, a `cron` (`0 8 * * 1`), and a prompt such as: "Call kernel__dashboards_snapshot for dashboard <id> with timeRange {preset: "last7d"} and recipients [<ids>]; post the key figures, each with its change, to this thread; call kernel__dashboards_pdf with the same period and attach the file." Its scopes: `kernel:dashboards:read`, plus what the delivery needs (`kernel:threads:write` to post in a shared thread, the mail tool's scope to email). Follow author-routine for the scopes and the approval.
+"Send me / the team this dashboard every Monday at 8" is a routine, never a new mechanism: `kernel__create_routine` with `kind: "recurring"`, a `cron` (`0 8 * * 1`), and a prompt such as: "Call kernel__dashboards_snapshot for dashboard <id> with timeRange {preset: "last7d"} and recipients [<ids>]; post the key figures, each with its change, to this thread; call kernel__dashboards_pdf with the same period and recipients and attach the file." Its scopes: `kernel:dashboards:read`, plus what the delivery needs (`kernel:threads:write` to post in a shared thread, the mail tool's scope to email). Follow author-routine for the scopes and the approval.
 
 Who receives it only ever gets what they could see themselves:
 - The routine computes the figures with its OWNER's access. For one person, the simplest is a routine that person owns: its result posts to their own routine thread.
-- For a shared thread or an email to several people, the prompt passes them as `recipients` and sends only to those with `mayReceive: true`, saying who was left out and why (no access to the dashboard or to one of its sources). Never send it to someone listed `mayReceive: false`.
+- For a shared thread or an email to several people, the prompt passes them as `recipients` to BOTH tools and sends only to the people in `sendTo`, saying who is in `leftOut` and why (no access to the dashboard or to one of its sources, or they see fewer rows than the owner: narrower dimension grants or roles). Never send it to anyone in `leftOut`, nor to anyone not checked. When the tool refuses (`no_recipient_may_receive`), send nothing.
+- Someone left out for seeing fewer rows gets their own routine, owned by them (one routine per person): it reads with their own access.
 
 ### Rolling dates
 

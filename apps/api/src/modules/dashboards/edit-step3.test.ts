@@ -129,21 +129,47 @@ describe("revert", () => {
     )
   })
 
-  it("names the targets and describes what the revert changes", () => {
+  it("names the targets and lists what the revert changes, op by op, as an edit card does", () => {
     expect(
       revertTargets([
         { op: "revert", toVersion: 3 },
         { op: "setTitle", title: "x" },
       ]),
     ).toEqual([3])
-    const [line] = describeOperations(dashboard(), [{ op: "revert", toVersion: 3 }], {
+    const old: SavedVersion = {
+      ...v3,
+      spec: {
+        v: 1,
+        layout: "grid",
+        description: "Weekly view",
+        blocks: [
+          block("a", { width: 2, map: { agg: "sum", value: "total" } }),
+          block("old", {
+            source: { kind: "tool", tool: "shop:orders_search", params: { status: "closed" } },
+          }),
+        ],
+      },
+    }
+    const lines = describeOperations(dashboard(), [{ op: "revert", toVersion: 3 }], {
       ...ctx,
-      versions,
+      versions: new Map([[3, old]]),
     })
-    expect(line).toContain("1. Revert to version 3 (saved 2026-11-09 by Ana)")
-    expect(line).toContain('removes "Block b"')
-    expect(line).toContain('adds back "Block old"')
-    expect(line).toContain('the title becomes "Sales (old)"')
+    expect(lines[0]).toMatch(
+      /^1\. Revert to version 3 \(saved 2026-11-09 by Ana\): \d+ changes, listed below\.$/,
+    )
+    const rest = lines.slice(1)
+    // Every restored change on its own indented line, as the edit card says it.
+    expect(rest.every((l) => /^ {3}1\.\d+\. /.test(l))).toBe(true)
+    const find = (re: RegExp) => rest.find((l) => re.test(l))
+    expect(find(/Rename the dashboard "Sales" → "Sales \(old\)"/)).toBeTruthy()
+    expect(find(/Add the description "Weekly view"/)).toBeTruthy()
+    expect(find(/Remove the metric block "Block b"/)).toContain("shop:orders_search")
+    const added = find(/Add a metric block "Block old"/)
+    expect(added).toContain("shop:orders_search")
+    expect(added).toContain('"status":"closed"')
+    const changed = find(/Change the block "Block a"/)
+    expect(changed).toContain("width 1 → 2")
+    expect(changed).toMatch(/sum of total/)
     const [missing] = describeOperations(dashboard(), [{ op: "revert", toVersion: 9 }], ctx)
     expect(missing).toContain("not kept any more")
   })

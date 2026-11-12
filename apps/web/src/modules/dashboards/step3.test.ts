@@ -35,18 +35,40 @@ describe("moveTarget", () => {
   it("up and down move one row of the grid as drawn", () => {
     expect(moveTarget(blocks, "e", "up", 3)).toBe(1)
     expect(moveTarget(blocks, "a", "down", 3)).toBe(3)
-    expect(moveTarget(blocks, "c", "down", 3)).toBeNull()
+    // Nothing under c on the shorter last row: it goes to the nearest block there.
+    expect(moveTarget(blocks, "c", "down", 3)).toBe(4)
+    expect(moveTarget(blocks, "d", "down", 3)).toBeNull()
     expect(moveTarget(blocks, "b", "up", 3)).toBeNull()
     // One column (a phone): up and down are one place.
     expect(moveTarget(blocks, "c", "up", 1)).toBe(1)
     expect(moveTarget(blocks, "zz", "up", 1)).toBeNull()
   })
+  it("up and down follow the rows the widths draw, to the block over the same column", () => {
+    // Three columns: row 0 is a (col 0) and b (cols 1-2); row 1 is c, d, e (cols 0, 1, 2).
+    const sized = [
+      { id: "a", width: 1 as const },
+      { id: "b", width: 2 as const },
+      { id: "c", width: 1 as const },
+      { id: "d", width: 1 as const },
+      { id: "e", width: 1 as const },
+    ]
+    expect(moveTarget(sized, "b", "down", 3)).toBe(3)
+    expect(moveTarget(sized, "a", "down", 3)).toBe(2)
+    expect(moveTarget(sized, "e", "up", 3)).toBe(1)
+    expect(moveTarget(sized, "c", "up", 3)).toBe(0)
+    expect(moveTarget(sized, "b", "up", 3)).toBeNull()
+    expect(moveTarget(sized, "d", "down", 3)).toBeNull()
+    // A full-width block (capped at two columns) takes a row of its own.
+    const wide = [{ id: "a" }, { id: "w", width: 3 as const }, { id: "c" }]
+    expect(moveTarget(wide, "a", "down", 2)).toBe(1)
+    expect(moveTarget(wide, "c", "up", 2)).toBe(1)
+  })
 })
 
 describe("dropTarget", () => {
-  it("a block dropped on another takes its place", () => {
-    expect(dropTarget(blocks, "a", "d")).toBe(3)
-    expect(dropTarget(blocks, "e", "b")).toBe(1)
+  it("a block dropped on another lands after it (moving down) or before it (moving up)", () => {
+    expect(dropTarget(blocks, "a", "d")).toEqual({ after: "d" })
+    expect(dropTarget(blocks, "e", "b")).toEqual({ before: "b" })
     expect(dropTarget(blocks, "a", "a")).toBeNull()
     expect(dropTarget(blocks, "a", "zz")).toBeNull()
   })

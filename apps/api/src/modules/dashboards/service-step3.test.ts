@@ -123,6 +123,30 @@ describe("a person's edits and the version history", () => {
     })
   })
 
+  it("versions saved while personal stay the owner's once the dashboard is shared", async () => {
+    const me = as(owner, [WRITE, SHARE])
+    const d = await createDashboard(me, {
+      title: "Draft",
+      visibility: "personal",
+      spec: spec(note("a", "private draft")),
+    })
+    const v2 = await updateDashboard(me, d.id, { title: "Draft 2", ifVersion: 1 })
+    const shared = await updateDashboard(me, d.id, { visibility: "org", ifVersion: v2.version })
+    const mine = await listVersions(me, d.id)
+    expect(mine.map((v) => v.version)).toEqual([shared.version, 2, 1])
+    const admin = as(other, [ADMIN])
+    const theirs = await listVersions(admin, d.id)
+    expect(theirs.map((v) => v.version)).toEqual([shared.version])
+    await expect(getVersion(admin, d.id, 1)).rejects.toMatchObject({ code: "NOT_FOUND" })
+    expect((await getVersion(me, d.id, 1)).title).toBe("Draft")
+    await expect(
+      editDashboard(admin, d.id, {
+        ifVersion: shared.version,
+        operations: [{ op: "revert", toVersion: 1 }],
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_SPEC" })
+  })
+
   it("duplicates a dashboard as the caller's own personal one", async () => {
     const d = await createDashboard(as(owner, [WRITE, SHARE]), {
       title: "Team",

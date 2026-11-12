@@ -2101,6 +2101,13 @@
       "when": 1900003391000,
       "tag": "0298_dashboard_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 300,
+      "version": "7",
+      "when": 1900003392000,
+      "tag": "0299_dashboard_table_actor_label",
+      "breakpoints": true
     }
   ]
 }

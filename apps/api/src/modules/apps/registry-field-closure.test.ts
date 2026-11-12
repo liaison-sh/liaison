@@ -65,6 +65,8 @@ const HOST_ONLY_FIELDS: Record<string, string> = {
   sinkReadersConversation: SECRET_TOOLS,
   // tables_rows_write: its rows are read by the dashboard table's readers (its sharing).
   sinkReadersResource: TABLE_TOOLS,
+  // tables_rows_write: its card names the table, not the data store its rows live in.
+  taintSurfaceLabel: TABLE_TOOLS,
   taintEditsPendingApproval: KERNEL_TOOLS,
   requiresHumanTurn: KERNEL_TOOLS,
   refuseBeforeGate: KERNEL_TOOLS,

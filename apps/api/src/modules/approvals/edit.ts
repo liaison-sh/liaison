@@ -637,7 +637,10 @@ export async function updatePayload(args: UpdatePayloadArgs): Promise<UpdatePayl
             )
           : taintDisclosureLine(
               mustHold,
-              taintSurfaceLabelForTool(args.orgId, row.tool_name, tool?.writesToTable),
+              (await tool
+                ?.taintSurfaceLabel?.(publicResult.currentPayload, { orgId: args.orgId })
+                .catch(() => null)) ??
+                taintSurfaceLabelForTool(args.orgId, row.tool_name, tool?.writesToTable),
             )
         : null
     await refreshSummaryAfterEdit(

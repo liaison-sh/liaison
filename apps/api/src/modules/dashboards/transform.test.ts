@@ -412,3 +412,19 @@ describe("metric extras and the comparison", () => {
     expect(attachPrevious(t, t)).toEqual(t)
   })
 })
+
+describe("a chart over a dashboard table", () => {
+  test("names its series by the column's label, not its key", () => {
+    const out = transformBlock(
+      "bar",
+      { y: "qty_ordered", groupBy: { field: "status" } },
+      [
+        { status: "planned", qty_ordered: 150 },
+        { status: "arrived", qty_ordered: 20 },
+      ],
+      { fieldLabels: { qty_ordered: "Qty ordered", status: "Status" } },
+    )
+    if (out.kind !== "bar") throw new Error("expected a bar")
+    expect(out.series.map((s) => s.name)).toEqual(["Qty ordered"])
+  })
+})

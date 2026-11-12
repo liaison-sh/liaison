@@ -75,8 +75,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/web/src/modules/knowledge/**", pages: ["apps/knowledge"] },
   { glob: "apps/api/src/modules/sharing/**", pages: ["apps/knowledge"] },
   { glob: "apps/web/src/modules/sharing/**", pages: ["apps/knowledge"] },
-  { glob: "apps/api/src/apps/google-drive/**", pages: ["apps/google-drive"] },
-  { glob: "apps/web/src/modules/drive-picker/**", pages: ["apps/google-drive"] },
+  { glob: "bundled-apps/google-drive/**", pages: ["apps/google-drive"] },
   { glob: "apps/api/src/apps/gitlab/**", pages: ["apps/gitlab"] },
   { glob: "apps/api/src/apps/contacts/**", pages: ["apps/contacts", "sales/contacts"] },
   { glob: "apps/api/src/modules/contacts/**", pages: ["apps/contacts", "sales/contacts", "sales/duplicates"] },
@@ -223,6 +222,14 @@ export const DOCS_EXEMPT: { glob: string; reason: string }[] = [
   {
     glob: "apps/web/src/modules/database/**",
     reason: "former web module of the database app (now its own ui.tsx); bundled-apps/database is mapped",
+  },
+  {
+    glob: "apps/api/src/apps/google-drive/**",
+    reason: "former path of the google-drive app (moved to bundled-apps/google-drive, which is mapped)",
+  },
+  {
+    glob: "apps/web/src/modules/drive-picker/**",
+    reason: "former web module of the google-drive app (now its own ui.tsx and page); bundled-apps/google-drive is mapped",
   },
   { glob: "**/__snapshots__/**", reason: "test snapshots" },
   { glob: "**/fixtures/**", reason: "test fixtures" },

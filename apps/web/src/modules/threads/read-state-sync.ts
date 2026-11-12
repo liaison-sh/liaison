@@ -34,6 +34,8 @@ export interface ReadStateSyncDeps {
   reloadAttention: () => void
   /** Apply the holder's relayed assistant-mail switch (it verifies an "on" itself). */
   applyAgentMailAccess?: (data: Record<string, unknown>) => void
+  /** Apply the person's sidebar list changed elsewhere (another device, an admin, their agent). */
+  applySidebarVisibility?: (data: Record<string, unknown>) => void
 }
 
 export function handleReadStateEvent(action: string, data: any, deps: ReadStateSyncDeps): void {
@@ -82,6 +84,10 @@ export function handleReadStateEvent(action: string, data: any, deps: ReadStateS
     }
     case "agent_mail_access": {
       deps.applyAgentMailAccess?.(data)
+      return
+    }
+    case "hidden_sidebar_apps": {
+      deps.applySidebarVisibility?.(data)
       return
     }
   }

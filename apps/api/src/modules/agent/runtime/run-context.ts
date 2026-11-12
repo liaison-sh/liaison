@@ -307,6 +307,14 @@ export interface RunContext {
    */
   withheld?: string[]
   /**
+   * The people this turn's room floor counts, the requester included (a DM: the requester alone).
+   * A shared resource (a dashboard table shared with some people only) is read in this turn only
+   * when every one of them reads it; otherwise the read is withheld by the room like a scope the
+   * floor took away (scope-taint.ts, rule 15e). Absent when no floor applies: a routine tick, a
+   * turn no agent acts in, and the Share anyway rerun, which bypasses the floor on purpose.
+   */
+  roomPeople?: string[]
+  /**
    * True when this run may READ but not WRITE. Set by the Share anyway rerun
    * (spec-security.md D4), which re-answers a withheld turn and must not repeat
    * the side effects the original turn already had. Undefined ⇒ an ordinary

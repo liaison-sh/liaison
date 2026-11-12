@@ -45,6 +45,7 @@ const CONTRACT = join(import.meta.dir, "contract.ts")
 const SKILL_TOOLS = join(SRC, "modules", "agent", "tools", "skills-routines-tools.ts")
 const KERNEL_TOOLS = join(SRC, "modules", "agent", "tools", "kernel-tools.ts")
 const SECRET_TOOLS = join(SRC, "modules", "agent", "tools", "secret-request-tools.ts")
+const TABLE_TOOLS = join(SRC, "modules", "dashboards", "tables", "tools.ts")
 const MCP_PROJECTOR = join(SRC, "modules", "mcp-client", "projector.ts")
 const REPORT_BUG_TOOL = join(SRC, "modules", "bug-reports", "tool.ts")
 const APP_BUILDER_TOOLS = join(SRC, "modules", "app-builder", "tools.ts")
@@ -62,6 +63,8 @@ const HOST_ONLY_FIELDS: Record<string, string> = {
   sinkReadersSelf: SKILL_TOOLS,
   // request_secret: its row is read by the requester and the conversation's participants alone.
   sinkReadersConversation: SECRET_TOOLS,
+  // tables_rows_write: its rows are read by the dashboard table's readers (its sharing).
+  sinkReadersResource: TABLE_TOOLS,
   taintEditsPendingApproval: KERNEL_TOOLS,
   requiresHumanTurn: KERNEL_TOOLS,
   refuseBeforeGate: KERNEL_TOOLS,

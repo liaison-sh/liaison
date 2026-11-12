@@ -729,7 +729,7 @@ function rangeModeWords(
   const s = isObject(block.source) ? block.source : isObject(shared) ? shared : {}
   const follows =
     block.timeRange === "dashboard" ||
-    (block.timeRange !== "fixed" && hasRangeTokens(s.kind === "store" ? s.query : s.params))
+    (block.timeRange !== "fixed" && hasRangeTokens(rawSourceValue(s)))
   return follows ? "follows the dashboard range" : "keeps its own dates"
 }
 
@@ -759,8 +759,18 @@ function tokenMeanings(value: unknown, window: DayWindow, ctx: DescribeContext):
   return out.length ? `; ${out.join(", ")}` : ""
 }
 
+/** A saved source's params, query or where, as written (it may not be valid yet). */
+function rawSourceValue(s: Record<string, unknown>): unknown {
+  return s.kind === "store" ? s.query : s.kind === "table" ? s.where : s.params
+}
+
 function sourceWords(source: unknown, window: DayWindow, ctx: DescribeContext): string {
   const s = isObject(source) ? source : {}
+  if (s.kind === "table") {
+    const where =
+      isObject(s.where) && Object.keys(s.where).length ? ` where ${compact(s.where)}` : ""
+    return `the dashboard table ${String(s.table)}${where}${tokenMeanings(s.where, window, ctx)}`
+  }
   if (s.kind === "store") {
     const query =
       isObject(s.query) && Object.keys(s.query).length ? ` query ${compact(s.query)}` : ""
@@ -782,6 +792,7 @@ const noDatasetRef: DatasetRef = () => undefined
 
 /** A shared source, short: its tool or collection only (its full line is not on this card). */
 function sourceName(source: Record<string, unknown>): string {
+  if (source.kind === "table") return `the dashboard table ${String(source.table)}`
   return source.kind === "store"
     ? `the ${String(source.app)} collection "${String(source.collection)}"`
     : String(source.tool ?? "no source")
@@ -852,9 +863,11 @@ function filterWords(f: Record<string, unknown>, spec: Record<string, unknown>):
   else if (isObject(o) && isObject(o.fromSource)) {
     const src = o.fromSource
     const how =
-      src.kind === "store"
-        ? `the ${String(src.app)} collection "${String(src.collection)}"${isObject(src.query) && Object.keys(src.query).length ? ` query ${compact(src.query, 200)}` : ""}`
-        : `${String(src.tool ?? "a source")}${isObject(src.params) && Object.keys(src.params).length ? ` with ${compact(src.params, 200)}` : " with no params"}`
+      src.kind === "table"
+        ? `the dashboard table ${String(src.table)}`
+        : src.kind === "store"
+          ? `the ${String(src.app)} collection "${String(src.collection)}"${isObject(src.query) && Object.keys(src.query).length ? ` query ${compact(src.query, 200)}` : ""}`
+          : `${String(src.tool ?? "a source")}${isObject(src.params) && Object.keys(src.params).length ? ` with ${compact(src.params, 200)}` : " with no params"}`
     options = `, options: the values of ${String(o.field)} read from ${how}`
   }
   const def =
@@ -863,8 +876,7 @@ function filterWords(f: Record<string, unknown>, spec: Record<string, unknown>):
       : `, default ${compact(f.default, 60)}`
   const datasets = isObject(spec.datasets) ? spec.datasets : {}
   const reads = (source: unknown) =>
-    isObject(source) &&
-    filterTokensIn(source.kind === "store" ? source.query : source.params).includes(String(f.id))
+    isObject(source) && filterTokensIn(rawSourceValue(source)).includes(String(f.id))
   const blocks = ((spec.blocks ?? []) as Record<string, unknown>[]).filter((b) => {
     const map = isObject(b.map) ? b.map : {}
     const where = Array.isArray(map.where) ? map.where : []

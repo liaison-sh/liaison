@@ -6,6 +6,7 @@ import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import {
   approvalRequests,
   attentionEvents,
+  dashboardTableChanges,
   deviceFlowRequests,
   messages,
   routines,
@@ -408,6 +409,37 @@ export async function routineTickCreditGate(
   if (result.allowed && result.demo) await result.demo.finish()
   if (result.allowed) return null
   return { reason: result.reason || "Credit pre-check denied", pause: result.code === undefined }
+}
+
+/** A dashboard table's row history is kept this long (modules/dashboards/tables, 0298). */
+export const DASHBOARD_TABLE_CHANGES_RETENTION_DAYS = 400
+
+/** Drops dashboard table row changes past their retention, in batches, every org at once. */
+export async function runDashboardTableChangesRetention(): Promise<{ deleted: number }> {
+  let totalDeleted = 0
+  for (;;) {
+    const result = await sweepSkippingMoving((notMoving) =>
+      withSystemDb("dashboard-table-changes-retention", (db) =>
+        db.execute(sql`
+        WITH doomed AS (
+          SELECT id FROM ${dashboardTableChanges}
+          WHERE ${notMoving(sql`org_id`)}
+            AND at < NOW() - MAKE_INTERVAL(days => ${DASHBOARD_TABLE_CHANGES_RETENTION_DAYS})
+          LIMIT ${ATTENTION_EVENTS_RETENTION_BATCH_SIZE}
+        )
+        DELETE FROM ${dashboardTableChanges} c
+        USING doomed
+        WHERE c.id = doomed.id
+        RETURNING c.id
+      `),
+      ),
+    )
+    const rows = extractRows(result)
+    totalDeleted += rows.length
+    if (rows.length < ATTENTION_EVENTS_RETENTION_BATCH_SIZE) break
+  }
+  if (totalDeleted > 0) log.info({ count: totalDeleted }, "Dashboard table changes retention")
+  return { deleted: totalDeleted }
 }
 
 export const ATTENTION_EVENTS_RETENTION_DAYS = 90
@@ -838,6 +870,16 @@ export async function registerKernelJobs(): Promise<void> {
     const { purgeExpiredAuditLog } = await import("~/modules/org/audit-retention")
     await purgeExpiredAuditLog()
   })
+
+  // Dashboard table row history past 400 days, daily at 4:45 AM.
+  await registerScheduledJob(
+    "kernel",
+    "dashboard-table-changes-retention",
+    "45 4 * * *",
+    async () => {
+      await runDashboardTableChangesRetention()
+    },
+  )
 
   // Agent side thread reaper — hourly. An all agent thread that has been quiet
   // for a day leaves the thread list (it is hidden, never deleted). Nothing

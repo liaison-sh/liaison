@@ -1,22 +1,14 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Calendar app handler bundle — TypeScript source, transpiled at load time for QuickJS.
-// Each export is an async function that receives (params/event, ctx).
-// No imports allowed — bridge methods are injected via ctx at runtime.
-//
-// Calendar is `trusted: true` but handlers.ts stays a thin sandboxed delegator (see
-// Amendment 1 in the spec-plan): all host-side sync logic lives in plain host `.ts`
-// modules (google-client.ts, sync.ts, tools.ts) exposed as app-id-gated `calendar_*`
-// methods hand-added to the shared apps/api/src/modules/apps/sandbox/rpc-bridge.ts.
-// biome-ignore-all lint/correctness/noUnusedVariables: handlers resolved by manifest export name
+// Calendar handlers: a core app's server module (modules/apps/core/registry.ts).
+// Every handler the manifest names is a named export `(params, ctx, ...extra)`,
+// imported and called in the API process with a typed host ctx
+// (modules/apps/core/ctx.ts): the run's bridge methods, called directly. The
+// host-side sync logic lives in the sibling modules (sync.ts, tools.ts) behind
+// the `calendar_*` methods.
 
-// Type-only import forces TypeScript to treat this file as a module so its top-level function
-// names don't collide with another app's handlers in the shared global type scope (mail's
-// handlers.ts also declares onAccountConnected/onAccountDisconnected at top level). Bun strips
-// it at bundle time; the QuickJS runtime still sees script-mode source where the declarations
-// auto-promote to global. Mirrors google-drive/handlers.ts.
-import type {} from "node:buffer"
+import type { CoreCtx } from "~/modules/apps/core/ctx"
 
-interface CalendarCtx {
+export interface CalendarMethods {
   getUserId(): string
   getOrgId(): string
   db_findMany(entity: string, optsJson: string): Promise<string>
@@ -97,6 +89,8 @@ interface CalendarCtx {
   calendar_markCalendarPolled: (calendarId: string) => Promise<void>
 }
 
+type CalendarCtx = CoreCtx<CalendarMethods>
+
 interface KernelConnectionEvent {
   orgId: string
   actorId: string
@@ -117,12 +111,15 @@ interface KernelDisconnectEvent {
 
 // --- Event handlers ---
 
-async function onAccountConnected(event: KernelConnectionEvent, ctx: CalendarCtx): Promise<void> {
+export async function onAccountConnected(
+  event: KernelConnectionEvent,
+  ctx: CalendarCtx,
+): Promise<void> {
   if (event.data?.appName !== "calendar") return
   await ctx.calendar_onAccountConnected(JSON.stringify(event))
 }
 
-async function onAccountDisconnected(
+export async function onAccountDisconnected(
   event: KernelDisconnectEvent,
   ctx: CalendarCtx,
 ): Promise<void> {
@@ -133,7 +130,10 @@ async function onAccountDisconnected(
 /** kernel/user:registered — a user who joins AFTER an org calendar was connected must still
  * receive the calendar:calaccess grants for org-owned accounts (import-time fan-out only
  * covers users active at import). */
-async function onUserRegistered(event: { entityId?: string }, ctx: CalendarCtx): Promise<void> {
+export async function onUserRegistered(
+  event: { entityId?: string },
+  ctx: CalendarCtx,
+): Promise<void> {
   const userId = event?.entityId
   if (!userId) return
   await ctx.calendar_grantOrgAccess(userId)
@@ -150,14 +150,13 @@ interface FetchResult {
 }
 
 /**
- * calendarImport — the `calendar-import` job. Runs in the sandbox because only the sandbox
- * can resolve the OAuth token (ctx.connections_getToken) and issue HTTP (ctx.fetch). Lists
+ * calendarImport — the `calendar-import` job. Resolves the OAuth token
+ * (ctx.connections_getToken) and issues HTTP through ctx.fetch. Lists
  * calendarList.list, then hands the raw entries to the host `calendar_importCalendars` bridge
  * method, which does the DB persistence, membership-dimension grant, and per-calendar
  * initial-sync job enqueue (host-side logic in sync.ts's runCalendarImport).
  */
-/** QuickJS has no URLSearchParams — build query strings with encodeURIComponent (the
- * mail bundle follows the same rule). Skips null/undefined values. */
+/** A query string from `params`, built with encodeURIComponent. Skips null/undefined values. */
 function buildQueryString(params: Record<string, string | null | undefined>): string {
   const parts: string[] = []
   for (const key of Object.keys(params)) {
@@ -168,7 +167,7 @@ function buildQueryString(params: Record<string, string | null | undefined>): st
   return parts.join("&")
 }
 
-async function calendarImport(payload: unknown, ctx: CalendarCtx): Promise<void> {
+export async function calendarImport(payload: unknown, ctx: CalendarCtx): Promise<void> {
   const { accountId } = (payload ?? {}) as { accountId?: string }
   if (!accountId) return
   const accountJson = await ctx.calendar_getAccount(accountId)
@@ -250,9 +249,8 @@ async function fetchEventsListPages(
   syncToken: string | null,
   onPage: (page: EventsListPage) => Promise<void>,
 ): Promise<{ gone: boolean }> {
-  // Pages are streamed to the host one at a time via onPage — accumulating a large
-  // calendar's full page set in QuickJS exhausts the sandbox memory cap (staging
-  // 2026-07-03: "out of memory" on a multi-thousand-event calendar).
+  // Pages are handed on one at a time via onPage, so a multi-thousand-event calendar's
+  // full page set is never held in memory at once.
   let pageToken: string | undefined
   for (;;) {
     const qs = buildEventsListQuery({ syncToken: syncToken ?? undefined, pageToken })
@@ -276,7 +274,7 @@ async function fetchEventsListPages(
   return { gone: false }
 }
 
-async function calendarInitialSync(payload: unknown, ctx: CalendarCtx): Promise<void> {
+export async function calendarInitialSync(payload: unknown, ctx: CalendarCtx): Promise<void> {
   const { calendarId } = (payload ?? {}) as { calendarId?: string }
   if (!calendarId) return
   const calendarJson = await ctx.calendar_getCalendar(calendarId)
@@ -309,13 +307,8 @@ async function registerWatchChannel(
     ctx.log_warn("calendar: skipping watch registration — calendarPushSecret not configured")
     return
   }
-  // QuickJS has no crypto.randomUUID. The channel id only needs uniqueness (auth lives in
-  // the `token` secret), so a Math.random-based v4 UUID is sufficient here.
-  const channelId = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0
-    const v = c === "x" ? r : (r & 0x3) | 0x8
-    return v.toString(16)
-  })
+  // The channel id only needs uniqueness (auth lives in the `token` secret).
+  const channelId = crypto.randomUUID()
   const webhookUrl = await ctx.config_get("calendarWebhookUrl")
   const raw = await ctx.fetch(
     `${GOOGLE_CALENDAR_API_BASE}/calendars/${encodeURIComponent(googleCalendarId)}/events/watch`,
@@ -353,7 +346,7 @@ async function registerWatchChannel(
   )
 }
 
-async function calendarIncrementalSync(payload: unknown, ctx: CalendarCtx): Promise<void> {
+export async function calendarIncrementalSync(payload: unknown, ctx: CalendarCtx): Promise<void> {
   const { calendarId } = (payload ?? {}) as { calendarId?: string }
   if (!calendarId) return
   const calendarJson = await ctx.calendar_getCalendar(calendarId)
@@ -480,7 +473,7 @@ function buildGoogleEventBody(
  * Google resource -> events.update (preserving unmodelled fields like colorId/conferenceData).
  * `sendUpdates: 'none'` on every write (attendees never emailed by sync/tool writes).
  */
-async function calendarPush(payload: unknown, ctx: CalendarCtx): Promise<void> {
+export async function calendarPush(payload: unknown, ctx: CalendarCtx): Promise<void> {
   const params = (payload ?? {}) as {
     eventId?: string
     deleted?: boolean
@@ -577,7 +570,7 @@ function googleIdForLocalEvent(eventId: string): string {
  * the change marked refused (push_error) and no longer pushed. Counted on the row, so neither
  * the sweep nor a re-queue resets it; a new edit does. */
 const PUSH_GIVE_UP_AFTER_MS = 24 * 60 * 60 * 1000
-/** Re-queue delays beyond this are left to the 30-minute sweep (the sandbox caps job delays). */
+/** Re-queue delays beyond this are left to the 30-minute sweep (enqueueJob caps job delays). */
 const PUSH_RETRY_MAX_DELAY_MS = 15 * 60 * 1000
 
 /** Google 403 reasons that mean "this account may not make this change": the edit will never be
@@ -1113,7 +1106,7 @@ interface RenewalCalendarShape {
 
 /** calendarWatchRenewal — Task 6.1 renewal cron: for every calendar whose channel expires within
  * 12h, create a NEW channel first, then stop the OLD one (overlap — no gap in coverage). */
-async function calendarWatchRenewal(_payload: unknown, ctx: CalendarCtx): Promise<void> {
+export async function calendarWatchRenewal(_payload: unknown, ctx: CalendarCtx): Promise<void> {
   const rowsJson = await ctx.calendar_findCalendarsForWatchRenewal(12)
   const rows = JSON.parse(rowsJson) as RenewalCalendarShape[]
   for (const calendar of rows) {
@@ -1135,7 +1128,7 @@ interface PollCalendarShape {
 
 /** calendarPollFallback — Task 6.1 poll cron: enqueues incremental sync for any selected
  * calendar whose lastPolledAt is older than 30 min, and marks it polled. */
-async function calendarPollFallback(_payload: unknown, ctx: CalendarCtx): Promise<void> {
+export async function calendarPollFallback(_payload: unknown, ctx: CalendarCtx): Promise<void> {
   const rowsJson = await ctx.calendar_findCalendarsForPollFallback(30)
   const rows = JSON.parse(rowsJson) as PollCalendarShape[]
   for (const calendar of rows) {
@@ -1167,12 +1160,12 @@ async function calendarPollFallback(_payload: unknown, ctx: CalendarCtx): Promis
 
 /** UI-callable: toggle a calendar's `selected` flag (deselect purges local events + stops the
  * watch channel; select re-enqueues initial sync). Exposed via calendar_setSelected bridge. */
-async function calendarSetSelected(params: unknown, ctx: CalendarCtx): Promise<void> {
+export async function calendarSetSelected(params: unknown, ctx: CalendarCtx): Promise<void> {
   await ctx.calendar_setSelected(JSON.stringify(params ?? {}))
 }
 
 /** retry_import tool: re-runs the `calendar-import` job for one account (Settings "Retry"). */
-async function calendarRetryImport(params: unknown, ctx: CalendarCtx): Promise<unknown> {
+export async function calendarRetryImport(params: unknown, ctx: CalendarCtx): Promise<unknown> {
   await ctx.calendar_retryImport(JSON.stringify(params ?? {}))
   return { queued: true }
 }
@@ -1192,14 +1185,14 @@ interface WebhookRequestData {
 }
 
 /**
- * `verify` runs in a DB-less sandbox seam: reads the org-wide webhook secret via
+ * `verify` runs on a DB-less bridge: reads the org-wide webhook secret via
  * `config_get`, constant-time-compares it against the X-Goog-Channel-Token header
  * (Google Calendar sends the channel token as a HEADER, not a query param).
  * Returns a replayKey ("channelId:messageNumber") for the route-level Redis replay
  * claim, so we do NOT hash the (empty) notification body.
  * Ignores the `X-Goog-Resource-State: sync` handshake (still valid, just a no-op ping).
  */
-async function verifyGooglePush(
+export async function verifyGooglePush(
   requestData: WebhookRequestData,
   ctx: WebhookVerifyCtx,
 ): Promise<unknown> {
@@ -1226,7 +1219,7 @@ async function verifyGooglePush(
 }
 
 /** Post-verify handler (has DB): binds the notification to a calendar by channel id. */
-async function onGooglePush(
+export async function onGooglePush(
   _payload: unknown,
   ctx: CalendarCtx,
   headers: Record<string, string>,
@@ -1236,23 +1229,23 @@ async function onGooglePush(
 
 // --- Tool handlers ---
 
-async function calendarListCalendars(_params: unknown, ctx: CalendarCtx): Promise<unknown> {
+export async function calendarListCalendars(_params: unknown, ctx: CalendarCtx): Promise<unknown> {
   return JSON.parse(await ctx.calendar_listCalendars())
 }
 
-async function calendarListAccounts(_params: unknown, ctx: CalendarCtx): Promise<unknown> {
+export async function calendarListAccounts(_params: unknown, ctx: CalendarCtx): Promise<unknown> {
   return JSON.parse(await ctx.calendar_listAccounts())
 }
 
-async function calendarListEvents(params: unknown, ctx: CalendarCtx): Promise<unknown> {
+export async function calendarListEvents(params: unknown, ctx: CalendarCtx): Promise<unknown> {
   return JSON.parse(await ctx.calendar_listEvents(JSON.stringify(params ?? {})))
 }
 
-async function calendarSearchEvents(params: unknown, ctx: CalendarCtx): Promise<unknown> {
+export async function calendarSearchEvents(params: unknown, ctx: CalendarCtx): Promise<unknown> {
   return JSON.parse(await ctx.calendar_searchEvents(JSON.stringify(params ?? {})))
 }
 
-async function calendarCreateEvent(params: unknown, ctx: CalendarCtx): Promise<unknown> {
+export async function calendarCreateEvent(params: unknown, ctx: CalendarCtx): Promise<unknown> {
   const result = JSON.parse(await ctx.calendar_createEvent(JSON.stringify(params ?? {}))) as {
     eventId: string
     conference?: string | null
@@ -1260,7 +1253,7 @@ async function calendarCreateEvent(params: unknown, ctx: CalendarCtx): Promise<u
   return withConferenceOutcome(result, ctx)
 }
 
-async function calendarUpdateEvent(params: unknown, ctx: CalendarCtx): Promise<unknown> {
+export async function calendarUpdateEvent(params: unknown, ctx: CalendarCtx): Promise<unknown> {
   const result = JSON.parse(await ctx.calendar_updateEvent(JSON.stringify(params ?? {}))) as {
     eventId: string
     conference?: string | null
@@ -1324,12 +1317,12 @@ async function withConferenceOutcome(
   }
 }
 
-async function calendarDeleteEvent(params: unknown, ctx: CalendarCtx): Promise<unknown> {
+export async function calendarDeleteEvent(params: unknown, ctx: CalendarCtx): Promise<unknown> {
   return JSON.parse(await ctx.calendar_deleteEvent(JSON.stringify(params ?? {})))
 }
 
 /** Manifest `export` slot — export the connected Calendar accounts. */
-async function exportCalendar(params: unknown, ctx: CalendarCtx): Promise<unknown> {
+export async function exportCalendar(params: unknown, ctx: CalendarCtx): Promise<unknown> {
   const raw = await ctx.db_findMany("accounts", JSON.stringify(params ?? {}))
   const rows = JSON.parse(raw) as Array<Record<string, unknown>>
   return rows.map((r) => ({

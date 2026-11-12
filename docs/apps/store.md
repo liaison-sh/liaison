@@ -168,6 +168,10 @@ An order read shows the tax it charged, whether it was tax exempt, the B2B compa
 | `shopify:approve` | Decide Shopify approvals |
 | `shopify:internal` | Used by the app itself |
 
+## Link store records in a table
+
+A dashboard table's link cell can point at a Shopify order, customer, product or return: the picker searches the store with your access ([Keep data in tables](../agents/dashboard-tables.md)).
+
 ## What agents can do
 
 Read tools never wait. Every tool marked "Always" files an approval and changes nothing until a person approves it.

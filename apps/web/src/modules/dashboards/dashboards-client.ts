@@ -61,6 +61,10 @@ export interface DashboardBlockMap {
   percentOfTotal?: boolean
   /** A metric computed from named values (the server evaluates it). */
   expr?: string
+  /** A table block on a table source: people with edit access change its rows in place. */
+  editable?: boolean
+  /** An editable table: rows not changed for this many days show a "to confirm" marker. */
+  staleAfterDays?: number
   [key: string]: unknown
 }
 
@@ -1221,4 +1225,410 @@ export function saveBlob(blob: Blob, name: string): void {
   a.click()
   a.remove()
   setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
+// ---------------------------------------------------------------------------
+// TABLES: org data people and agents write (the dashboards module's own rows).
+//
+//   GET|POST /dashboards/tables                      the tables the caller sees; create one
+//   GET|PATCH|DELETE /dashboards/tables/:id          one table: its columns, settings, deletion
+//   GET /dashboards/tables/:id/rows                  a page of rows (`limit`, `cursor`, `sort`, `dir`, `q`)
+//   POST /dashboards/tables/:id/rows                 add, update or delete rows, all or none
+//   GET /dashboards/tables/:id/changes               the change history (`rowId` narrows it)
+//   POST /dashboards/tables/:id/changes/:id/undo     undoes one change
+//   GET|PUT /dashboards/tables/:id/sharing           who sees and edits it (as a dashboard's)
+//
+// Every read and write runs as the caller (row-level security): a table they cannot see answers
+// as if it did not exist.
+
+export type TableColumnType =
+  | "text"
+  | "number"
+  | "amount"
+  | "date"
+  | "choice"
+  | "choices"
+  | "checkbox"
+  | "person"
+  | "link"
+
+export const TABLE_COLUMN_TYPES: TableColumnType[] = [
+  "text",
+  "number",
+  "amount",
+  "date",
+  "choice",
+  "choices",
+  "checkbox",
+  "person",
+  "link",
+]
+
+export interface TableColumn {
+  /** Immutable once the column exists; `^[a-z][a-z0-9_]{0,39}$`. */
+  key: string
+  label: string
+  type: TableColumnType
+  required?: boolean
+  /** A choice or choices column's values, in order. */
+  choices?: string[]
+  /** An amount column's currency (ISO 4217). */
+  currency?: string
+  /** A link column may point only at this app (and entity type). */
+  linkTo?: { app: string; entityType?: string }
+}
+
+export interface LinkCell {
+  app: string
+  entityType: string
+  id: string
+  label: string
+}
+
+/** Who made a change, as it reads: "Nico", "@support", "Routine Inbound follow-up". */
+export interface TableActor {
+  type: "user" | "agent" | "system"
+  id: string | null
+  label: string
+}
+
+export type TableRole = "viewer" | "editor" | "owner"
+
+export interface TableInfo {
+  id: string
+  name: string
+  description?: string
+  columns: TableColumn[]
+  agentWritesNeedApproval: boolean
+  orgAccess: "none" | "viewer" | "editor"
+  myRole: TableRole
+  rowCount: number
+  version: number
+  updatedAt: string
+  /** Keys of dropped columns: retired, never re-added. */
+  droppedKeys: string[]
+}
+
+/** Keys the row itself uses: no column may take them. */
+export const RESERVED_COLUMN_KEYS: ReadonlySet<string> = new Set([
+  "id",
+  "updated_at",
+  "updated_by",
+  "created_at",
+])
+
+export type TableCells = Record<string, unknown>
+
+export interface TableRow {
+  id: string
+  cells: TableCells
+  version: number
+  updatedAt: string
+  updatedBy: TableActor
+}
+
+export interface TableChange {
+  id: string
+  rowId: string
+  op: "create" | "update" | "delete" | "undo"
+  before: TableCells | null
+  after: TableCells | null
+  actor: TableActor
+  at: string
+  undoable: boolean
+}
+
+export type TableRowOp =
+  | { op: "add"; cells: TableCells }
+  | { op: "update"; id: string; ifVersion: number; cells: TableCells }
+  | { op: "delete"; id: string; ifVersion: number }
+
+export type TableRowResult = TableRow | { id: string; deleted: true }
+
+/** Column changes of one PATCH, applied together. */
+export interface TableColumnOps {
+  add?: TableColumn[]
+  rename?: Array<{ key: string; label: string }>
+  setChoices?: Array<{ key: string; choices: string[] }>
+  drop?: string[]
+}
+
+export interface TablePatch {
+  name?: string
+  description?: string
+  agentWritesNeedApproval?: boolean
+  columns?: TableColumnOps
+}
+
+export type TableErrorCode =
+  | "invalid_cell"
+  | "invalid_request"
+  | "version_conflict"
+  /** A table of that name exists already (409). */
+  | "conflict"
+  | "not_found"
+  | "forbidden"
+  | "limit"
+  | "unknown"
+
+/** A refused table read or write, as the screens show it. */
+export interface TableError {
+  code: TableErrorCode
+  message?: string
+  column?: string
+  rowId?: string
+  /** A version conflict's row as it is now. */
+  current?: TableRow
+}
+
+export interface TablesApi {
+  get: DashboardsApi["get"]
+  post: <T = unknown>(
+    path: string,
+    body?: unknown,
+    init?: { suppressGlobalError?: boolean },
+  ) => Promise<T>
+  patch: <T = unknown>(
+    path: string,
+    body?: unknown,
+    init?: { suppressGlobalError?: boolean },
+  ) => Promise<T>
+  delete: <T = unknown>(
+    path: string,
+    body?: unknown,
+    init?: { suppressGlobalError?: boolean },
+  ) => Promise<T>
+}
+
+export const TABLE_PAGE_SIZE = 50
+const QUIET = { suppressGlobalError: true }
+
+function tablesPath(id?: string): string {
+  return id ? `/dashboards/tables/${encodeURIComponent(id)}` : "/dashboards/tables"
+}
+
+// The API answers in the `{data}` envelope; the api client hands back its payload.
+
+const TABLE_ERROR_CODES: ReadonlySet<string> = new Set([
+  "invalid_cell",
+  "invalid_request",
+  "version_conflict",
+  "conflict",
+  "not_found",
+  "forbidden",
+  "limit",
+])
+
+function rowFrom(v: unknown): TableRow | undefined {
+  if (!isRecord(v) || typeof v.id !== "string" || !isRecord(v.cells)) return undefined
+  return v as unknown as TableRow
+}
+
+/**
+ * A thrown table call, as its code and the column, row or current row it names. The fields are
+ * read from the error's `details` (where the API client keeps the structured part of a refusal),
+ * so a conflict carries the row as it is now when the server sends it.
+ */
+export function tableErrorFrom(err: unknown): TableError {
+  if (!(err instanceof ApiError)) return { code: "unknown" }
+  const d = err.details ?? {}
+  const raw = typeof err.code === "string" ? err.code.toLowerCase() : ""
+  const code: TableErrorCode = TABLE_ERROR_CODES.has(raw)
+    ? (raw as TableErrorCode)
+    : err.status === 409
+      ? "version_conflict"
+      : err.status === 404
+        ? "not_found"
+        : err.status === 403
+          ? "forbidden"
+          : "unknown"
+  const current = rowFrom(d.current)
+  return {
+    code,
+    ...(err.message ? { message: err.message } : {}),
+    ...(typeof d.column === "string" ? { column: d.column } : {}),
+    ...(typeof d.rowId === "string" ? { rowId: d.rowId } : {}),
+    ...(current ? { current } : {}),
+  }
+}
+
+/** The tables the caller can see. */
+export async function listTables(api: Pick<TablesApi, "get">): Promise<TableInfo[]> {
+  const body = await api.get<unknown>(tablesPath(), QUIET)
+  const rows = isRecord(body) && Array.isArray(body.tables) ? body.tables : []
+  return rows.filter(
+    (t): t is TableInfo => isRecord(t) && typeof t.id === "string" && typeof t.name === "string",
+  )
+}
+
+/** A new table (the caller owns it). A name already taken answers `conflict`. */
+export async function createTable(
+  api: Pick<TablesApi, "post">,
+  input: { name: string; description?: string; columns?: TableColumn[] },
+): Promise<TableInfo> {
+  return (await api.post<unknown>(tablesPath(), { columns: [], ...input }, QUIET)) as TableInfo
+}
+
+export async function getTable(api: Pick<TablesApi, "get">, id: string): Promise<TableInfo> {
+  return (await api.get<unknown>(tablesPath(id), QUIET)) as TableInfo
+}
+
+/** Changes the table at `ifVersion` (settings and column operations together). */
+export async function patchTable(
+  api: Pick<TablesApi, "patch">,
+  id: string,
+  ifVersion: number,
+  patch: TablePatch,
+): Promise<TableInfo> {
+  return (await api.patch<unknown>(tablesPath(id), { ifVersion, ...patch }, QUIET)) as TableInfo
+}
+
+export interface TableRowsQuery {
+  cursor?: string | null
+  sort?: string
+  dir?: "asc" | "desc"
+  q?: string
+  limit?: number
+}
+
+export interface TableRowsPage {
+  rows: TableRow[]
+  nextCursor: string | null
+}
+
+export function tableRowsQuery(opts: TableRowsQuery = {}): string {
+  const q = new URLSearchParams({ limit: String(opts.limit ?? TABLE_PAGE_SIZE) })
+  if (opts.cursor) q.set("cursor", opts.cursor)
+  if (opts.sort) {
+    q.set("sort", opts.sort)
+    q.set("dir", opts.dir ?? "asc")
+  }
+  if (opts.q?.trim()) q.set("q", opts.q.trim())
+  return q.toString()
+}
+
+export async function getTableRows(
+  api: Pick<TablesApi, "get">,
+  id: string,
+  opts: TableRowsQuery = {},
+): Promise<TableRowsPage> {
+  const body = await api.get<unknown>(`${tablesPath(id)}/rows?${tableRowsQuery(opts)}`, QUIET)
+  const rows = isRecord(body) && Array.isArray(body.rows) ? body.rows : []
+  return {
+    rows: rows.map(rowFrom).filter((r): r is TableRow => !!r),
+    nextCursor: isRecord(body) && typeof body.nextCursor === "string" ? body.nextCursor : null,
+  }
+}
+
+/** Applies the operations all or none; answers each row as it is now (or that it is gone). */
+export async function writeTableRows(
+  api: Pick<TablesApi, "post">,
+  id: string,
+  ops: TableRowOp[],
+): Promise<TableRowResult[]> {
+  const body = await api.post<unknown>(`${tablesPath(id)}/rows`, { ops }, QUIET)
+  return isRecord(body) && Array.isArray(body.rows) ? (body.rows as TableRowResult[]) : []
+}
+
+export function isDeletedRow(r: TableRowResult): r is { id: string; deleted: true } {
+  return (r as { deleted?: boolean }).deleted === true
+}
+
+export interface TableChangesPage {
+  changes: TableChange[]
+  nextCursor: string | null
+}
+
+export async function getTableChanges(
+  api: Pick<TablesApi, "get">,
+  id: string,
+  opts: { rowId?: string; limit?: number; cursor?: string | null } = {},
+): Promise<TableChangesPage> {
+  const q = new URLSearchParams({ limit: String(opts.limit ?? TABLE_PAGE_SIZE) })
+  if (opts.rowId) q.set("rowId", opts.rowId)
+  if (opts.cursor) q.set("cursor", opts.cursor)
+  const body = await api.get<unknown>(`${tablesPath(id)}/changes?${q}`, QUIET)
+  const changes = isRecord(body) && Array.isArray(body.changes) ? body.changes : []
+  return {
+    changes: changes.filter(
+      (c): c is TableChange => isRecord(c) && typeof c.id === "string" && isRecord(c.actor),
+    ),
+    nextCursor: isRecord(body) && typeof body.nextCursor === "string" ? body.nextCursor : null,
+  }
+}
+
+/** Writes a change's before cells back (a new change). Rejects on a conflict. */
+export async function undoTableChange(
+  api: Pick<TablesApi, "post">,
+  id: string,
+  changeId: string,
+): Promise<TableRow | null> {
+  const body = await api.post<unknown>(
+    `${tablesPath(id)}/changes/${encodeURIComponent(changeId)}/undo`,
+    {},
+    QUIET,
+  )
+  return rowFrom(body) ?? null
+}
+
+/** One record a link column may point at, from `GET /dashboards/tables/link-search`. */
+export interface LinkPickItem {
+  id: string
+  label: string
+  app: string
+  entityType: string
+}
+
+/**
+ * Records of `app` (and `entityType`) matching `q`, read as the caller: the search index for a
+ * searchable entity, else the app's own pick tool (the server chooses).
+ */
+export async function searchTableLinks(
+  api: Pick<TablesApi, "get">,
+  opts: { app?: string; entityType?: string; q: string },
+): Promise<LinkPickItem[]> {
+  const q = new URLSearchParams({ q: opts.q })
+  if (opts.app) q.set("app", opts.app)
+  if (opts.entityType) q.set("entityType", opts.entityType)
+  const body = await api.get<unknown>(`${tablesPath()}/link-search?${q}`, QUIET)
+  const items = isRecord(body) && Array.isArray(body.items) ? body.items : []
+  return items.filter(
+    (i): i is LinkPickItem =>
+      isRecord(i) &&
+      typeof i.id === "string" &&
+      typeof i.label === "string" &&
+      typeof i.app === "string" &&
+      typeof i.entityType === "string",
+  )
+}
+
+/** The sharing routes of a table (same shape as a dashboard's). */
+export function tableSharingPath(id: string): string {
+  return `${tablesPath(id)}/sharing`
+}
+
+/** An editable table block: a `table` block on a table source with `map.editable`. */
+export function editableTableOf(
+  block: Pick<DashboardBlockSpec, "type" | "source" | "map">,
+): { tableId: string; columns?: string[]; staleAfterDays?: number } | null {
+  const src = block.source
+  if (block.type !== "table" || !src || src.kind !== "table" || typeof src.table !== "string") {
+    return null
+  }
+  if (block.map?.editable !== true) return null
+  // `map.columns` names the column keys to show, in order (a dashboard table's map may still
+  // carry `{field}` objects: their fields count the same).
+  const cols = Array.isArray(block.map.columns)
+    ? (block.map.columns as unknown[])
+        .map((c) =>
+          typeof c === "string" ? c : isRecord(c) && typeof c.field === "string" ? c.field : null,
+        )
+        .filter((c): c is string => !!c)
+    : undefined
+  const stale = block.map.staleAfterDays
+  return {
+    tableId: src.table,
+    ...(cols && cols.length > 0 ? { columns: cols } : {}),
+    ...(typeof stale === "number" && stale > 0 ? { staleAfterDays: stale } : {}),
+  }
 }

@@ -955,6 +955,9 @@ describe("Shopify app.manifest.json", () => {
     // groupBy product, and an optional timeGrain (day, week, month) whose rows carry `date`.
     // 0.4.23: the OAuth request adds write_online_store_navigation, which products_merge's redirect
     // needs; a merge whose connection lacks it is refused before its first write.
+    // 0.4.24: reads that answer figures also answer the rows a dashboard block charts.
+    // 0.4.27: product, order, customer and return declare `pick` (their search tool), so a
+    // dashboard table's link cell can pick one.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
   })
 

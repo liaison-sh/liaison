@@ -1558,6 +1558,12 @@ export class WebSocketManager {
    * follows `visibility` as before. A frame naming nobody reaches no one (fail closed).
    */
   private hasDashboardVisibilityAccess(client: { userId: string }, payload: EventPayload): boolean {
+    if (
+      payload.app === "kernel" &&
+      (payload.entity === "dashboard_table" || payload.entity === "dashboard_table_row")
+    ) {
+      return hasDashboardTableAudience(client.userId, payload.data)
+    }
     if (payload.app !== "kernel" || payload.entity !== "dashboard") return true
     const data = payload.data as
       | {
@@ -2135,4 +2141,17 @@ export function setWsManager(manager: WebSocketManager): void {
 
 export function getWsManager(): WebSocketManager | null {
   return _wsManager
+}
+
+/**
+ * A `kernel:dashboard_table` / `kernel:dashboard_table_row` frame (modules/dashboards/tables)
+ * follows the table's SELECT policy: `audience.orgWide` reaches every reader, else only the people
+ * in `audience.userIds`. Fail closed: a frame without an audience reaches no one.
+ */
+export function hasDashboardTableAudience(userId: string, data: unknown): boolean {
+  const audience = (data as { audience?: { orgWide?: unknown; userIds?: unknown } } | undefined)
+    ?.audience
+  if (!audience || typeof audience !== "object") return false
+  if (audience.orgWide === true) return true
+  return Array.isArray(audience.userIds) && audience.userIds.includes(userId)
 }

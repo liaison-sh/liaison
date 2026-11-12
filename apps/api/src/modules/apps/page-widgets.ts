@@ -171,7 +171,13 @@ export function widgetParams(
 /** The inline script that runs the widget; `cfg` lives only in its closure. */
 export function widgetScript(decl: PageWidgetDecl, cfg: PageWidgetConfig): string {
   const json = JSON.stringify(cfg).replace(/</g, "\\u003c")
-  return `(function(cfg,page){${KINDS[decl.kind].script}})(${json},window.liaisonPage)`
+  // The script sits in the document's head: it runs once the body (and its
+  // root element) exists.
+  return (
+    `(function(cfg,page){function run(){${KINDS[decl.kind].script}}` +
+    `if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",run);else run();` +
+    `})(${json},window.liaisonPage)`
+  )
 }
 
 /** Manifest checks of a page's widget against its connection (app-surface.ts). */

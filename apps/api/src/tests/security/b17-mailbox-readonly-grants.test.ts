@@ -18,7 +18,7 @@ import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 
 const REPO_ROOT = resolve(import.meta.dir, "../../../../..")
-const GRANTS_PATH = resolve(REPO_ROOT, "apps/api/src/apps/database/generated/readonly-grants.sql")
+const GRANTS_PATH = resolve(REPO_ROOT, "apps/api/src/modules/apps/connections/sql/generated/readonly-grants.sql")
 
 const grantsSql = readFileSync(GRANTS_PATH, "utf8")
 

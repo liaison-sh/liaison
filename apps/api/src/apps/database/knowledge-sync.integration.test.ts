@@ -39,7 +39,7 @@ import { withRlsContext } from "~/db/rls"
 import { env } from "~/lib/env"
 import { PostgresDirect } from "~/modules/apps/connections/sql/transports/postgres-direct"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
-import { kbSyncCatalog } from "./adapters/__fixtures__/kb-sync"
+import { kbSyncCatalog } from "~/modules/apps/connections/sql/adapters/__fixtures__/kb-sync"
 import { createDatabaseKnowledgeAdapter } from "./knowledge-adapter"
 
 const SOURCES_MANAGE = "knowledge:sources:manage"

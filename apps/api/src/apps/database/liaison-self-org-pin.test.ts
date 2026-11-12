@@ -9,7 +9,7 @@ import { env } from "~/lib/env"
 import { SqlPoolTestAccess } from "~/modules/apps/connections/sql/pool"
 import type { DbTransport, ProbeReport } from "~/modules/apps/connections/sql/transport"
 import { resetOperatorOrgCache } from "~/modules/apps/operator-org"
-import { liaisonSelfCatalog } from "./adapters/liaison-self"
+import { liaisonSelfCatalog } from "~/modules/apps/connections/sql/adapters/liaison-self"
 import { buildDatabaseBridgeMethods, type DatabaseBridgeDeps } from "./bridge"
 
 const CALLER_ORG = "00000000-0000-4000-8000-0000000d8001"

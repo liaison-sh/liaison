@@ -10,7 +10,7 @@
 import { afterAll, beforeAll, describe, expect, it, mock } from "bun:test"
 import { registerAdapter } from "@liaison/db-core"
 import { sql } from "drizzle-orm"
-import { kbSyncCatalog } from "~/apps/database/adapters/__fixtures__/kb-sync"
+import { kbSyncCatalog } from "~/modules/apps/connections/sql/adapters/__fixtures__/kb-sync"
 import {
   loadSyncedSourceForOrgSystem,
   loadSyncedSourceForWorker,

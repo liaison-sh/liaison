@@ -1713,7 +1713,8 @@ describe("invoicing manifest", () => {
     // 0.21.5: both of the above, merged (main's 0.21.4: every package carries its Worker module).
     // 0.21.6: above main's 0.21.5, merged.
     // 0.21.7: approving a month-end run ends its alerts; the panel asks no name for a non-person id.
-    expect(m.version).toBe("0.21.7")
+    // 0.21.8: the month-end card summary is written with the restage; grouped money format.
+    expect(m.version).toBe("0.21.8")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"
     ]

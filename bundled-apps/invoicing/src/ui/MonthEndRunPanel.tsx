@@ -451,10 +451,9 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
         <For each={showFolded() ? [...fold().shown, ...fold().folded] : fold().shown}>
           {(row) => {
             const amounts = () => typed().get(row.item_id) ?? null
+            // A name when it is known; a manager whose name cannot be read, or none, shows no line.
             const manager = () =>
-              row.account_manager
-                ? (names().get(row.account_manager) ?? tr("a teammate"))
-                : tr("None")
+              row.account_manager ? (names().get(row.account_manager) ?? null) : null
             const isOpen = () => openId() === row.item_id
             const shown = () =>
               amounts() ?? {
@@ -479,12 +478,16 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
                   <span class="min-w-0 flex-1 basis-40 break-words font-medium text-text">
                     {row.customer ?? tr("Customer")}
                   </span>
-                  <span
-                    data-testid={`month-end-row-manager-${row.item_id}`}
-                    class="text-text-secondary"
-                  >
-                    {tr("Account manager")}: {manager()}
-                  </span>
+                  <Show when={manager()}>
+                    {(name) => (
+                      <span
+                        data-testid={`month-end-row-manager-${row.item_id}`}
+                        class="text-text-secondary"
+                      >
+                        {tr("Account manager")}: {name()}
+                      </span>
+                    )}
+                  </Show>
                   <span data-testid={`month-end-row-total-${row.item_id}`} class="tabular-nums">
                     {money(shown().net, row.currency)} {tr("excl.")} ·{" "}
                     {money(shown().vat, row.currency)} {tr("VAT")} ·{" "}
@@ -496,26 +499,37 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
                   >
                     {numberCell(row, run()?.run.issue_on ?? null)}
                   </span>
+                  <span
+                    data-testid={`month-end-row-notes-${row.item_id}`}
+                    class="flex min-w-0 basis-full flex-wrap gap-x-3 text-text-secondary"
+                  >
+                    <For each={row.flags}>
+                      {(f, i) => (
+                        <>
+                          {i() > 0 ? " " : ""}
+                          {isAmountCheck(f) ? (
+                            <span
+                              data-testid={`month-end-row-amount-check-${row.item_id}`}
+                              class="font-medium text-text"
+                            >
+                              {f}
+                            </span>
+                          ) : (
+                            <span>{f}</span>
+                          )}
+                        </>
+                      )}
+                    </For>
+                    <Show when={changedBy(row.latest_change, names())}>
+                      {(w) => (
+                        <>
+                          {row.flags.length > 0 ? " " : ""}
+                          <span>{w()}</span>
+                        </>
+                      )}
+                    </Show>
+                  </span>
                 </button>
-                <div class="text-text-secondary">
-                  <For each={row.flags}>
-                    {(f) =>
-                      isAmountCheck(f) ? (
-                        <span
-                          data-testid={`month-end-row-amount-check-${row.item_id}`}
-                          class="mr-2 font-medium text-text"
-                        >
-                          {f}
-                        </span>
-                      ) : (
-                        <span class="mr-2">{f}</span>
-                      )
-                    }
-                  </For>
-                  <Show when={changedBy(row.latest_change, names())}>
-                    {(w) => <span>{w()}</span>}
-                  </Show>
-                </div>
                 <Show when={lacksAddress(row) && row.draft_id}>
                   <RowAddressFix
                     row={row}

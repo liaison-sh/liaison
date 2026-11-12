@@ -971,6 +971,11 @@ export interface AppContext {
       approvalId: string,
       fields: Record<string, unknown>,
       note?: string,
+      /**
+       * What the card reads after the change (headline, subtitle, lines), written with the
+       * payload so the card follows in the same update instead of after a summary rebuild.
+       */
+      summary?: { title?: string; subtitle?: string; lines?: string[] },
     ): Promise<RestagePayloadResult>
   }
   /**

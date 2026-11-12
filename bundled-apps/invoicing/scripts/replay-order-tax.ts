@@ -58,8 +58,7 @@ const ctx: OrderPaidCtx = {
   approval: null,
   db,
   time: testTime(),
-  sequences: { allocate: async () => ({ value: ++seq }) },
-  pdf: { render: async () => ({ file_id: `replay-pdf-${seq}`, byte_size: 0, page_count: 1 }) },
+  pdf: { render: async () => ({ file_id: `replay-pdf-${++seq}`, byte_size: 0, page_count: 1 }) },
   messages: { post: async () => ({ message_id: "replay" }) },
   // Offline: no enrichment, no customs fetch, no mail.
   executeTool: async (name) =>

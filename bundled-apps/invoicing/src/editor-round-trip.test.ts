@@ -106,16 +106,6 @@ function makeCtx(): { ctx: MutationsCtx; readsCtx: ReadsCtx; db: MockDb } {
     approval: null,
     db,
     time: testTime(),
-    sequences: {
-      async allocate(p) {
-        const existing = await db.findMany("__sequences", { where: { key: p.key }, limit: 1 })
-        const current = existing[0] as { id?: string; value?: number } | undefined
-        const next = (current?.value ?? 0) + 1
-        if (current) await db.update("__sequences", String(current.id), { value: next })
-        else await db.insert("__sequences", { key: p.key, value: next })
-        return { value: next }
-      },
-    },
     pdf: { async render() { return { file_id: "pdf-1", byte_size: 1024, page_count: 1, sha256: "0".repeat(64), parent_entity_id: crypto.randomUUID() } } },
     messages: { async post() { return { message_id: "msg-1" } } },
     requestApproval: async () => ({ approval_id: "appr-1" }),

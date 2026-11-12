@@ -68,7 +68,6 @@ export interface OrderCancelledCtx {
   // note(s). Typed against MutationsCtx's fields so creditNoteCreateAndIssue can
   // run with this ctx.
   pdf?: MutationsCtx["pdf"]
-  sequences?: MutationsCtx["sequences"]
   requestApproval?: MutationsCtx["requestApproval"]
   executeTool?: MutationsCtx["executeTool"]
   messages?: MutationsCtx["messages"]
@@ -85,7 +84,7 @@ export type OrderCancelledResult =
 
 /** True when the runtime ctx carries the issue pipeline (so a credit note can be issued). */
 function hasIssuePipeline(ctx: OrderCancelledCtx): boolean {
-  return typeof ctx.pdf?.render === "function" && typeof ctx.sequences?.allocate === "function"
+  return typeof ctx.pdf?.render === "function" && typeof (ctx.db as { batch?: unknown }).batch === "function"
 }
 
 async function findDocumentsByShopifyOrderId(
@@ -266,6 +265,12 @@ export async function onShopifyOrderCancelled(
   const actor = await ctx.getUserId()
   let anyAttention = false
   for (const doc of docs) {
+    // A re-run (the event's retry after a run that died part way: nothing is held across the
+    // run) records the cancellation once, not once per run.
+    const recorded = doc.lifecycle_log.some(
+      (e) => e.event === "shopify_order_cancelled" && e.shopify_order_id === orderId,
+    )
+    if (recorded) continue
     const log = [
       ...doc.lifecycle_log,
       {

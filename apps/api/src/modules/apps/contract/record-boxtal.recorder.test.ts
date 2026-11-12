@@ -47,6 +47,11 @@ const BASE_TIME = new Date("2026-09-16T12:00:00.000Z")
 
 type Rec = Record<string, unknown>
 const params = (p: Rec) => ({ params: p })
+/** A deliberate negative case: the entry must refuse this input, for the reason given (the
+ *  harness fails a recorded refusal that is not marked so). */
+const refused = (p: Rec, reason: string) => ({ params: p, expectError: { reason } })
+const NOTHING_TO_PICK =
+  "a row whose order address and verified address agree has nothing to pick: the seeded demo rows all agree, so this pins that refusal; the pick path needs a row whose addresses differ"
 const B = sql(schemaRef("app_boxtal"))
 
 interface PlanState extends RecordingState {
@@ -378,7 +383,11 @@ const STEPS: RecordingStep<PlanState>[] = [
   {
     entry: "tool:prep_set_note",
     // A Shopify order row (`so:<order id>`): the note is written on the order through the Shopify app.
-    input: () => params({ order_key: "so:5123456789", note: "Fragile: double box." }),
+    input: () =>
+      refused(
+        { order_key: "so:5123456789", note: "Fragile: double box." },
+        "the note is written back to the order through the Shopify app, which this recording org does not have: pins the refusal an operator sees when that write fails; the write path is still to record with a store connected",
+      ),
   },
   {
     entry: "tool:prep_exclude",
@@ -394,11 +403,13 @@ const STEPS: RecordingStep<PlanState>[] = [
   },
   {
     entry: "preflight:prep_set_address_choice",
-    input: async (s) => params({ document_ref: (await prepRow(s)).document_ref, choice: "order" }),
+    input: async (s) =>
+      refused({ document_ref: (await prepRow(s)).document_ref, choice: "order" }, NOTHING_TO_PICK),
   },
   {
     entry: "tool:prep_set_address_choice",
-    input: async (s) => params({ document_ref: (await prepRow(s)).document_ref, choice: "order" }),
+    input: async (s) =>
+      refused({ document_ref: (await prepRow(s)).document_ref, choice: "order" }, NOTHING_TO_PICK),
   },
   {
     entry: "tool:prep_document_pdf",
@@ -409,7 +420,14 @@ const STEPS: RecordingStep<PlanState>[] = [
     input: async (s) =>
       params({ document_ref: (await shipmentWhere(s, "delivered")).document_ref }),
   },
-  { entry: "tool:prep_order_prefill", input: () => params({ order_number: "#1042" }) },
+  {
+    entry: "tool:prep_order_prefill",
+    input: () =>
+      refused(
+        { order_number: "#1042" },
+        "an order number the store does not know is refused (order_not_found); the prefill path reads the order through the Shopify app, which this recording org does not have",
+      ),
+  },
   {
     entry: "tool:prep_add_shipment",
     input: () =>
@@ -564,9 +582,9 @@ const STEPS: RecordingStep<PlanState>[] = [
     entry: "tool:ready_set_packed",
     input: async (s) =>
       params({
+        // The ready shipment already carries its label's tracking number: packing it is the path.
         shipment_id: String((await shipmentWhere(s, "ready")).id),
         packed: true,
-        tracking_number: "1Z999AA10123456784",
       }),
   },
   // — webhooks (signed with the stand-in secret) —

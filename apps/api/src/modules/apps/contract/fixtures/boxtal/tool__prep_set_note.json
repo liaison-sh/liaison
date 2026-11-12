@@ -5,6 +5,9 @@
     "note": "Fragile: double box."
   },
   "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "expectError": {
+    "reason": "the note is written back to the order through the Shopify app, which this recording org does not have: pins the refusal an operator sees when that write fails; the write path is still to record with a store connected"
+  },
   "calls": [
     {
       "method": "executeTool",

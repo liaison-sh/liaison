@@ -8,6 +8,8 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import type { RecordInput } from "~/modules/apps/contract/recorder"
+import { CONTRACT_USER_ID } from "~/modules/apps/contract/replay-bridge"
+import { adaptShopifyOrderCreatedEvent } from "../../../../bundled-apps/invoicing/src/handlers/shopify-order-paid"
 
 export interface InvoicingPlanState {
   /** The development store's `<shop>.myshopify.com`. */
@@ -34,6 +36,20 @@ type Rec = Record<string, unknown>
 const obj = (v: unknown): Rec => (v && typeof v === "object" ? (v as Rec) : {})
 const arr = (v: unknown): Rec[] => (Array.isArray(v) ? (v as Rec[]) : [])
 const params = (p: Rec): RecordInput => ({ params: p })
+/** A deliberate negative case: the entry must refuse this input, for the reason given (the
+ *  harness fails a recorded refusal that is not marked so). */
+const refused = (p: Rec, reason: string): RecordInput => ({ params: p, expectError: { reason } })
+/** The approval a gated tool's run re-enters with once a person approved it. */
+const approved = (toolName: string, idTail: string): Rec => ({
+  approvalRequestId: `00000000-0000-4000-8000-${idTail}`,
+  approvalDeciderId: CONTRACT_USER_ID,
+  toolName,
+})
+/** The PA (e-invoicing platform) paths need a platform account the recording org has none of. */
+const NO_MAILBOX =
+  "the issuer profile has no send-from mailbox, which an org must set before a document is emailed: this pins that refusal; the send path needs a connected mailbox the recording org has none of"
+const NO_PA =
+  "the recording org has no e-invoicing platform (PA) account, so this pins the refusal an org gets before one is set up; the platform path is still to record against a PA sandbox"
 const keep = (key: string) => (a: unknown, s: InvoicingPlanState) => {
   s.values[key] = a
 }
@@ -179,6 +195,24 @@ function renderedData(fixture: string): Rec {
 
 const doc = (key: string) => (s: InvoicingPlanState) =>
   str(s, key, "document_id") || str(s, key, "id")
+
+/** The invoice the order:created event issued for the development store's order. */
+const orderInvoiceId = (s: InvoicingPlanState): string =>
+  str(s, "orderInvoice", "documents.0.document_id") ||
+  str(s, "orderInvoice", "documents.0.id") ||
+  str(s, "orderInvoice", "document_id")
+
+/** The order's first line, once, as the edited order's replacement items. */
+const reissueItems = (s: InvoicingPlanState): Rec[] => {
+  const line = obj(arr(obj(s.values.order).line_items)[0])
+  return [
+    {
+      description: String(line.title ?? "Studio monitor"),
+      quantity: 1,
+      unit_price_minor: Math.round(Number(line.price ?? 0) * 100),
+    },
+  ]
+}
 
 export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
   // ── Settings ────────────────────────────────────────────────────────────────
@@ -568,11 +602,12 @@ export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
   },
   {
     entry: "preflight:documents_send_to_customer",
-    input: (s) => params({ document_id: doc("invoiceUS")(s) }),
+    input: (s) => refused({ document_id: doc("invoiceUS")(s) }, NO_MAILBOX),
   },
   {
     entry: "tool:documents_send_to_customer",
-    input: (s) => params({ document_id: doc("invoiceUS")(s), subject: "Your invoice" }),
+    input: (s) =>
+      refused({ document_id: doc("invoiceUS")(s), subject: "Your invoice" }, NO_MAILBOX),
   },
   {
     entry: "preflight:credit_note_create_and_issue",
@@ -588,15 +623,18 @@ export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
   },
   {
     entry: "tool:credit_note_create_and_issue",
-    input: (s) =>
-      params({
+    // A credit note against an invoice is always approved first: the run re-enters approved.
+    input: (s) => ({
+      params: {
         issuer_profile_id: s.values.issuerId,
         counterparty: BUYER_US,
         currency: "EUR",
         original_document_id: doc("invoiceUS")(s),
         reason: "Installation not performed",
         items: [{ description: "Installation", quantity: 1, unit_price_minor: -15000 }],
-      }),
+      },
+      approval: approved("invoicing:credit_note_create_and_issue", "0000000a0002"),
+    }),
   },
   {
     entry: "tool:drafts_create",
@@ -624,7 +662,10 @@ export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
   },
   {
     entry: "tool:credit_note_issue",
-    input: (s) => params({ draft_id: str(s, "cnDraft", "draft_id") }),
+    input: (s) => ({
+      params: { draft_id: str(s, "cnDraft", "draft_id") },
+      approval: approved("invoicing:credit_note_issue", "0000000a0003"),
+    }),
   },
 
   // ── Customs and contacts ──────────────────────────────────────────────────────
@@ -697,57 +738,92 @@ export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
     entry: "tool:einvoice_transmission_get",
     input: (s) => params({ document_id: doc("invoice")(s) }),
   },
-  { entry: "tool:einvoice_send_request", input: (s) => params({ document_id: doc("invoice")(s) }) },
+  {
+    entry: "tool:einvoice_send_request",
+    input: (s) =>
+      refused(
+        { document_id: doc("invoice")(s) },
+        "a document whose regime is still needs_review (its buyer's identity is unconfirmed) is not sent through a PA; " +
+          NO_PA,
+      ),
+  },
   {
     entry: "tool:einvoice_status_refresh",
-    input: (s) => params({ document_id: doc("invoice")(s) }),
+    input: (s) =>
+      refused(
+        { document_id: doc("invoice")(s) },
+        `a document never transmitted has no status to refresh; ${NO_PA}`,
+      ),
   },
   {
     entry: "tool:einvoice_send",
     input: (s) =>
-      params({
-        document_id: doc("invoice")(s),
-        legal_original_sha256: "0".repeat(64),
-        buyer_siren: "900000001",
-        routing_address: "900000001",
-      }),
+      refused(
+        {
+          document_id: doc("invoice")(s),
+          legal_original_sha256: "0".repeat(64),
+          buyer_siren: "900000001",
+          routing_address: "900000001",
+        },
+        `a document whose regime is needs_review is not sent; ${NO_PA}`,
+      ),
   },
   {
     entry: "tool:einvoice_book_batch",
-    input: () => params({ batch_id: "00000000-0000-4000-8000-0000000b0001" }),
+    input: () =>
+      refused(
+        { batch_id: "00000000-0000-4000-8000-0000000b0001" },
+        `an unknown booking batch is refused; ${NO_PA}`,
+      ),
   },
   { entry: "tool:received_einvoices_list", input: () => params({ limit: 20 }) },
-  { entry: "tool:received_einvoices_refresh", input: () => params({}) },
+  {
+    entry: "tool:received_einvoices_refresh",
+    input: () => refused({}, `an org without a reception platform is refused; ${NO_PA}`),
+  },
   {
     entry: "tool:received_einvoices_get",
-    input: () => params({ received_id: "00000000-0000-4000-8000-0000000e0001" }),
+    input: () =>
+      refused(
+        { received_id: "00000000-0000-4000-8000-0000000e0001" },
+        `an unknown received invoice is refused; ${NO_PA} (no invoice was ever received)`,
+      ),
   },
   {
     entry: "tool:received_einvoice_action_request",
     input: () =>
-      params({
-        received_id: "00000000-0000-4000-8000-0000000e0001",
-        action: "dispute",
-        reason: "Quantity differs from delivery note",
-      }),
+      refused(
+        {
+          received_id: "00000000-0000-4000-8000-0000000e0001",
+          action: "dispute",
+          reason: "Quantity differs from delivery note",
+        },
+        `an unknown received invoice is refused; ${NO_PA} (no invoice was ever received)`,
+      ),
   },
   {
     entry: "preflight:received_einvoice_set_status",
     input: () =>
-      params({
-        received_id: "00000000-0000-4000-8000-0000000e0001",
-        action: "dispute",
-        reason: "Quantity differs",
-      }),
+      refused(
+        {
+          received_id: "00000000-0000-4000-8000-0000000e0001",
+          action: "dispute",
+          reason: "Quantity differs",
+        },
+        `an unknown received invoice is refused; ${NO_PA} (no invoice was ever received)`,
+      ),
   },
   {
     entry: "tool:received_einvoice_set_status",
     input: () =>
-      params({
-        received_id: "00000000-0000-4000-8000-0000000e0001",
-        action: "dispute",
-        reason: "Quantity differs",
-      }),
+      refused(
+        {
+          received_id: "00000000-0000-4000-8000-0000000e0001",
+          action: "dispute",
+          reason: "Quantity differs",
+        },
+        `an unknown received invoice is refused; ${NO_PA} (no invoice was ever received)`,
+      ),
   },
   {
     entry: "tool:einvoicing_backfill_identities",
@@ -783,6 +859,43 @@ export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
       return params({ ...e, action: "updated", changedFields: ["note"] })
     },
   },
+  // The order was edited after its invoice: the approved reissue credits that invoice and issues
+  // its replacement in one commit (the run re-enters with the approval a person gave).
+  {
+    entry: "preflight:order_reissue_apply",
+    before: async (s) => {
+      // The approval names the order edit it was raised for: the signature the order:updated flow
+      // stamped on the invoice.
+      const [row] = await s.sql(
+        `SELECT external_refs->>'downstream_order_sig' AS sig FROM app_invoicing.documents WHERE id = $1`,
+        [orderInvoiceId(s)],
+      )
+      s.values.reissueSig = String(row?.sig ?? "sig-contract-1")
+    },
+    input: (s) =>
+      params({
+        original_document_id: orderInvoiceId(s),
+        shopify_order_id: String(obj(s.values.order).id),
+        billing_signature: String(s.values.reissueSig),
+        dedupe_key: "reissue-contract-1",
+        items: reissueItems(s),
+      }),
+  },
+  {
+    entry: "tool:order_reissue_apply",
+    input: (s) => ({
+      params: {
+        original_document_id: orderInvoiceId(s),
+        shopify_order_id: String(obj(s.values.order).id),
+        billing_signature: String(s.values.reissueSig),
+        dedupe_key: "reissue-contract-1",
+        currency: String(obj(s.values.order).currency ?? "EUR"),
+        reason: "Order edited",
+        items: reissueItems(s),
+      },
+      approval: approved("invoicing:order_reissue_apply", "0000000a0001"),
+    }),
+  },
   {
     entry: "event:shopify/refund:created",
     input: (s) => {
@@ -814,44 +927,39 @@ export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
 
   // ── Deferred work and the tax decision ────────────────────────────────────────
   {
-    entry: "tool:deferred_tax_override",
+    entry: "preflight:deferred_tax_override",
     before: async (s) => {
-      const [d] = await s.sql(
-        `SELECT id FROM app_invoicing.deferred_events WHERE org_id = '00000000-0000-4000-8000-00000000c0de' ORDER BY created_at DESC LIMIT 1`,
+      // A tax review the order:paid flow parks when it cannot decide the tax itself (an untaxed
+      // order to another member state without a VAT number): the same row, for the dev order.
+      const event = orderEvent(obj(s.values.order), s.shop)
+      const payload = adaptShopifyOrderCreatedEvent(obj(event.data) as never)
+      // The contact the order:created flow resolved for this customer (it links it before parking).
+      const [contact] = await s.sql(
+        `SELECT counterparty_contact_id AS id FROM app_invoicing.documents WHERE id = $1`,
+        [orderInvoiceId(s)],
       )
-      s.values.deferredId = String(d?.id ?? "00000000-0000-4000-8000-0000000d0001")
+      if (payload.customer && contact?.id) payload.customer.contact_id = String(contact.id)
+      const [d] = await s.sql(
+        `INSERT INTO app_invoicing.deferred_events (org_id, event_id, event_payload_json, status, reason, blocked_on)
+         VALUES ('00000000-0000-4000-8000-00000000c0de', $1, $2::jsonb, 'awaiting_data', 'tax review', $3::jsonb)
+         RETURNING id`,
+        [
+          `contract-tax-review-${String(obj(s.values.order).id)}`,
+          JSON.stringify(payload),
+          JSON.stringify({
+            kind: "tax_check",
+            detail: "untaxed intra-EU order without a VAT number",
+          }),
+        ],
+      )
+      s.values.deferredId = String(d?.id ?? "")
     },
     input: (s) => params({ deferred_id: s.values.deferredId, mode: "as_computed" }),
   },
   {
-    entry: "preflight:deferred_tax_override",
+    entry: "tool:deferred_tax_override",
     input: (s) => params({ deferred_id: s.values.deferredId, mode: "as_computed" }),
   },
-  {
-    entry: "tool:order_reissue_apply",
-    input: (s) =>
-      params({
-        original_document_id: doc("invoice")(s),
-        shopify_order_id: String(obj(s.values.order).id),
-        billing_signature: "sig-contract-1",
-        dedupe_key: "reissue-contract-1",
-        currency: "EUR",
-        reason: "Order edited",
-        items: [{ description: "Studio monitor, pair", quantity: 1, unit_price_minor: 41940 }],
-      }),
-  },
-  {
-    entry: "preflight:order_reissue_apply",
-    input: (s) =>
-      params({
-        original_document_id: doc("invoice")(s),
-        shopify_order_id: String(obj(s.values.order).id),
-        billing_signature: "sig-contract-1",
-        dedupe_key: "reissue-contract-1",
-        items: [{ description: "Studio monitor, pair", quantity: 1, unit_price_minor: 41940 }],
-      }),
-  },
-
   // ── Scheduled jobs ────────────────────────────────────────────────────────────
   { entry: "job:deferred-retry", input: () => params({}) },
   { entry: "job:overdue-scan", input: () => params({}) },
@@ -939,10 +1047,33 @@ export const INVOICING_RECORDING_PLAN: InvoicingPlanStep[] = [
     }),
   },
 
-  // ── Issuer deletion last (it refuses while documents exist, which is the case recorded) ──
+  // ── Issuer deletion last: a spare profile no document uses ─────────────────────
+  {
+    entry: "tool:settings_issuer_profile_create",
+    record: false,
+    input: () =>
+      params({
+        legal_name: "Spare Studio SARL",
+        country: "FR",
+        vat_id: "FR40900000001",
+        address: "8 rue de Test, 69003 Lyon, France",
+        iban: "FR7630006000011234567890189",
+        swift_bic: "AGRIFRPP",
+        default_currency: "EUR",
+        prefix_invoice: "SPR-{YYYY}-",
+        timezone: "Europe/Paris",
+      }),
+    after: (a, s) => {
+      s.values.spareIssuerId =
+        str({ ...s, values: { a } }, "a", "id") || str({ ...s, values: { a } }, "a", "profile.id")
+    },
+  },
   {
     entry: "preflight:settings_issuer_profile_delete",
-    input: (s) => params({ id: s.values.issuerId }),
+    input: (s) => params({ id: s.values.spareIssuerId }),
   },
-  { entry: "tool:settings_issuer_profile_delete", input: (s) => params({ id: s.values.issuerId }) },
+  {
+    entry: "tool:settings_issuer_profile_delete",
+    input: (s) => params({ id: s.values.spareIssuerId }),
+  },
 ]

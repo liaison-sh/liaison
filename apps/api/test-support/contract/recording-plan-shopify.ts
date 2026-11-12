@@ -99,6 +99,8 @@ const setOnHand = (s: PlanState) =>
   })
 const publish = (s: PlanState) =>
   params({ id: PRODUCT(s), input: [{ publicationId: ONLINE_STORE(s) }] })
+const MERGE_SCOPE =
+  "the store's connection lacks write_online_store_navigation, which the merge's URL redirect needs, so it is refused before any write; the merge path is still to record once the development app's released scopes include it"
 const merge = (s: PlanState) =>
   params({
     survivorId: PRODUCT(s),
@@ -211,8 +213,16 @@ const PRODUCT_STEPS: PlanStep[] = [
       }),
     after: keep("dupProduct"),
   },
-  { entry: "preflight:products_merge", input: merge },
-  { entry: "tool:products_merge", input: merge },
+  // The development store's app has not been granted write_online_store_navigation (its released
+  // configuration predates the scope), so the merge is refused before any write: pinned as such.
+  {
+    entry: "preflight:products_merge",
+    input: (s) => ({ ...merge(s), expectError: { reason: MERGE_SCOPE } }),
+  },
+  {
+    entry: "tool:products_merge",
+    input: (s) => ({ ...merge(s), expectError: { reason: MERGE_SCOPE } }),
+  },
   { entry: "preflight:products_delete", input: (s) => params({ id: PRODUCT(s) }) },
   { entry: "tool:products_delete", input: (s) => params({ id: PRODUCT(s) }) },
 ]
@@ -356,9 +366,12 @@ const RETURN = (s: PlanState) => at(s, "returnA", "return.id")
 const refund = (s: PlanState) =>
   params({ orderId: ORDER(s), amount: "10.00", note: "Goodwill refund", notify: false })
 const ORDER_B = (s: PlanState) => at(s, "completedB", "draftOrder.order.id")
+/** A third order, never fulfilled or returned: the one cancelled (Shopify refuses to cancel an
+ *  order that has returns). */
+const ORDER_C = (s: PlanState) => at(s, "completedC", "draftOrder.order.id")
 const orderCancel = (s: PlanState) =>
   params({
-    orderId: ORDER_B(s),
+    orderId: ORDER_C(s),
     reason: "OTHER",
     refund: false,
     restock: true,
@@ -511,7 +524,7 @@ const ORDER_STEPS: PlanStep[] = [
   { entry: "preflight:refunds_create", input: refund },
   { entry: "tool:refunds_create", input: refund, after: keep("refundA") },
   { entry: "tool:refunds_get", input: (s) => params({ id: at(s, "refundA", "refund.id") }) },
-  // A second order: fulfilled, its fulfillment cancelled, a return declined, then the order cancelled.
+  // A second order: fulfilled, its fulfillment cancelled, a return declined.
   {
     entry: "tool:draft_orders_create",
     record: false,
@@ -578,6 +591,18 @@ const ORDER_STEPS: PlanStep[] = [
     entry: "tool:fulfillments_cancel",
     input: (s) => params({ id: at(s, "fulfillmentB", "fulfillment.id") }),
   },
+  {
+    entry: "tool:draft_orders_create",
+    record: false,
+    input: (s) => params({ input: draftInput(s, 1) }),
+    after: keep("draftC"),
+  },
+  {
+    entry: "tool:draft_orders_complete",
+    record: false,
+    input: (s) => params({ id: at(s, "draftC", "draftOrder.id"), paymentPending: false }),
+    after: keep("completedC"),
+  },
   { entry: "preflight:order_cancel", input: orderCancel },
   { entry: "tool:order_cancel", input: orderCancel },
 ]
@@ -614,7 +639,16 @@ const numericId = (gid: string) => gid.split("/").pop() ?? ""
 
 /** The background jobs (one run each: the backfill's first run starts its bulk operation) and the invoicing events. */
 const JOB_AND_EVENT_STEPS: PlanStep[] = [
-  { entry: "job:backfill-customers", input: () => params({}) },
+  {
+    entry: "job:backfill-customers",
+    input: () => ({
+      params: {},
+      expectError: {
+        reason:
+          "the development store's token cannot run bulk operations (Shopify answers access denied for bulkOperationRunQuery to it), so this pins the job surfacing that refusal; the bulk path is still to record against a store whose token can run them",
+      },
+    }),
+  },
   { entry: "job:scope-seed", input: () => params({}) },
   { entry: "job:reconcile-customers", input: () => params({}) },
   { entry: "job:scan-unfulfilled-orders", input: () => params({}) },

@@ -1,15 +1,18 @@
 {
   "entry": "preflight:deferred_tax_override",
   "params": {
-    "deferred_id": "00000000-0000-4000-8000-0000000d0001",
+    "deferred_id": "8422efd8-8010-4105-9086-2c6a161d98ef",
     "mode": "as_computed"
   },
   "recordedFrom": "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts",
   "calls": [
     {
       "method": "db_findOne",
-      "args": ["deferred_events", "00000000-0000-4000-8000-0000000d0001"],
-      "reply": "null"
+      "args": [
+        "deferred_events",
+        "8422efd8-8010-4105-9086-2c6a161d98ef"
+      ],
+      "reply": "{\"id\":\"8422efd8-8010-4105-9086-2c6a161d98ef\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:58.238645+00\",\"updated_at\":\"2026-11-12 14:05:58.238645+00\",\"event_id\":\"contract-tax-review-12992208404646\",\"event_payload_json\":{\"id\":\"12992208404646\",\"shop_id\":\"contract-shop.myshopify.com\",\"currency\":\"USD\",\"customer\":{\"id\":\"24929659846822\",\"email\":\"marie@example.com\",\"vat_id\":null,\"address\":\"12 Rue de Rivoli\\n75004 Paris\",\"billing\":{\"city\":\"Paris\",\"line1\":\"12 Rue de Rivoli\",\"line2\":null,\"company\":null,\"postcode\":\"75004\",\"country_code\":null},\"country\":\"FR\",\"delivery\":{\"city\":\"Paris\",\"name\":null,\"line1\":\"12 Rue de Rivoli\",\"line2\":null,\"postcode\":\"75004\",\"country_code\":null},\"contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\",\"legal_name\":\"Marie Dupont\",\"tax_country\":\"FR\",\"shipping_name\":null,\"shipping_address\":\"12 Rue de Rivoli\\n75004 Paris\"},\"po_number\":null,\"line_items\":[{\"id\":\"gid://shopify/ProductVariant/56534760784038\",\"quantity\":\"1\",\"line_kind\":\"goods\",\"description\":\"The Minimal Snowboard\",\"tax_rate_bp\":0,\"discount_minor\":\"0\",\"unit_price_minor\":\"88595\",\"shopify_tax_minor\":\"0\",\"shopify_tax_line_count\":0}],\"order_number\":\"#2745\",\"financial_status\":\"paid\",\"total_price_minor\":\"88595\"},\"status\":\"awaiting_data\",\"reason\":\"tax review\",\"blocked_on\":{\"kind\":\"tax_check\",\"detail\":\"untaxed intra-EU order without a VAT number\"},\"retry_count\":0,\"retried_at\":null,\"contact_id\":null}"
     }
   ]
 }

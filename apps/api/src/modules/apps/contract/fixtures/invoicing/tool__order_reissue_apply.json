@@ -1,89 +1,453 @@
 {
   "entry": "tool:order_reissue_apply",
   "params": {
-    "original_document_id": "078402f4-6ee8-43f6-b7be-bc9615536870",
+    "original_document_id": "5f845a0e-fd0a-4222-bb2f-d1e98f1f3e34",
     "shopify_order_id": "12992208404646",
-    "billing_signature": "sig-contract-1",
+    "billing_signature": "USD:885.95||56534760784038#1@USD:885.95||",
     "dedupe_key": "reissue-contract-1",
-    "currency": "EUR",
+    "currency": "USD",
     "reason": "Order edited",
     "items": [
       {
-        "description": "Studio monitor, pair",
+        "description": "The Minimal Snowboard",
         "quantity": 1,
-        "unit_price_minor": 41940
+        "unit_price_minor": 88595
       }
     ]
   },
   "recordedFrom": "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts",
+  "approval": {
+    "approvalRequestId": "00000000-0000-4000-8000-0000000a0001",
+    "approvalDeciderId": "00000000-0000-4000-8000-00000000c0df",
+    "toolName": "invoicing:order_reissue_apply"
+  },
   "calls": [
     {
       "method": "db_findMany",
       "args": [
         "documents",
-        "{\"where\":{\"id\":\"078402f4-6ee8-43f6-b7be-bc9615536870\"},\"limit\":1}"
+        "{\"where\":{\"id\":\"5f845a0e-fd0a-4222-bb2f-d1e98f1f3e34\"},\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"078402f4-6ee8-43f6-b7be-bc9615536870\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:09:21.663932+00\",\"updated_at\":\"2026-11-12 09:09:21.945904+00\",\"einvoice_send_approval_id\":null,\"einvoice_send_requested_at\":null,\"einvoice_send_attempt\":null,\"type\":\"invoice\",\"scope\":null,\"status\":\"issued\",\"payment_status\":\"unpaid\",\"number\":\"FAC-2026-0001\",\"number_int\":1,\"year_of_issue\":2026,\"issuer_profile_id\":\"99444731-e2a2-460c-ab40-a9348f2a7121\",\"counterparty_contact_id\":null,\"counterparty_name\":\"Atelier Lumen SAS\",\"counterparty_address\":\"12 rue des Lilas, 69003 Lyon, France\",\"counterparty_shipping_address\":null,\"counterparty_shipping_name\":null,\"counterparty_vat_id\":\"FR40900000001\",\"counterparty_email\":\"person1@example.com\",\"counterparty_country\":\"FR\",\"currency\":\"EUR\",\"subtotal_minor\":\"98880\",\"tax_total_minor\":\"19776\",\"grand_total_minor\":\"118656\",\"tax_treatment\":\"eu_domestic\",\"incoterm\":\"DAP\",\"issued_at\":\"2026-11-12 00:00:00+00\",\"due_at\":\"2026-02-15 00:00:00+00\",\"paid_at\":null,\"voided_at\":null,\"pdf_file_id\":\"3b0930d9-d1fa-451b-a06d-72d8a302141a\",\"pdf_status\":\"ready\",\"external_refs\":{},\"shopify_order_id\":null,\"shopify_order_number\":null,\"shipment_ref\":null,\"shopify_draft_order_id\":null,\"shopify_draft_order_name\":null,\"po_number\":null,\"notes\":\"Delivery by appointment\",\"lifecycle_log\":[{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"issued\"},{\"ts\":\"2026-01-01T00:00:00.000Z\",\"code\":\"einvoice_data_missing\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"einvoice_gate_warning\",\"missing\":[\"buyer_siren\"]}],\"regime\":\"needs_review\",\"regime_reasons\":[{\"en\":\"A French business buyer needs a SIREN.\",\"fr\":\"Un acheteur professionnel français doit avoir un SIREN.\",\"code\":\"einvoice_data_missing\"},{\"en\":\"Issued in warn mode with e-invoicing data missing (einvoice_data_missing).\",\"fr\":\"Émis en mode avertissement avec des données de facturation électronique manquantes (einvoice_data_missing).\",\"code\":\"gate_warning\",\"missing\":[\"buyer_siren\"]}],\"operation_category\":\"goods\",\"operation_category_source\":\"explicit\",\"payment_state\":\"due\",\"vat_on_debits\":null,\"customer_kind\":\"business\",\"buyer_siren\":null,\"buyer_siret\":null,\"buyer_routing_address\":null,\"buyer_legal_name\":\"Atelier Lumen SAS\",\"billing_line1\":\"12 rue des Lilas\",\"billing_line2\":null,\"billing_postcode\":\"69003\",\"billing_city\":\"Lyon\",\"billing_country_code\":\"FR\",\"delivery_name\":null,\"delivery_line1\":null,\"delivery_line2\":null,\"delivery_postcode\":null,\"delivery_city\":null,\"delivery_country_code\":null,\"fx_rate\":null,\"fx_rate_date\":null,\"fx_source\":null,\"legal_original_sha256\":\"ec35f0f6c5ccbf0510b10a3ba2944a9d585d9e264537b2c49d16f3b449942035\",\"einvoice_state\":null,\"einvoice_state_raw\":null,\"pa_provider\":null,\"tax_point_date\":\"2026-11-12 00:00:00+00\",\"tax_total_eur_minor\":null,\"original_document_id\":null,\"legal_original_id\":\"c870f824-beb6-40a3-8cfd-aec3834e4ab8\",\"internal_cancellation\":null,\"buyer_siren_confirmed_via\":null,\"external_ref\":null}]"
+      "reply": "[{\"id\":\"5f845a0e-fd0a-4222-bb2f-d1e98f1f3e34\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:57.232604+00\",\"updated_at\":\"2026-11-12 14:05:57.405161+00\",\"einvoice_send_approval_id\":null,\"einvoice_send_requested_at\":null,\"einvoice_send_attempt\":null,\"type\":\"invoice\",\"scope\":\"goods\",\"status\":\"issued\",\"payment_status\":\"paid\",\"number\":\"FAC-2026-0004\",\"number_int\":4,\"year_of_issue\":2026,\"issuer_profile_id\":\"7f406609-f025-48c2-8a2c-f793e7b76449\",\"counterparty_contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\",\"counterparty_name\":\"Marie Dupont\",\"counterparty_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"counterparty_shipping_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"counterparty_shipping_name\":\"Marie Dupont\",\"counterparty_vat_id\":null,\"counterparty_email\":\"marie@example.com\",\"counterparty_country\":\"FR\",\"currency\":\"USD\",\"subtotal_minor\":\"88595\",\"tax_total_minor\":\"0\",\"grand_total_minor\":\"88595\",\"tax_treatment\":\"eu_domestic\",\"incoterm\":\"DAP\",\"issued_at\":\"2026-11-12 00:00:00+00\",\"due_at\":null,\"paid_at\":\"2026-11-12 00:00:00+00\",\"voided_at\":null,\"pdf_file_id\":\"18a4b53e-2908-46c6-9d2b-95379d61d0ec\",\"pdf_status\":\"ready\",\"external_refs\":{\"scope\":\"goods\",\"shopify_order_id\":\"12992208404646\",\"shopify_shop_domain\":\"contract-shop.myshopify.com\",\"downstream_order_sig\":\"USD:885.95||56534760784038#1@USD:885.95||\",\"shopify_order_number\":\"#2745\"},\"shopify_order_id\":\"12992208404646\",\"shopify_order_number\":\"#2745\",\"shipment_ref\":null,\"shopify_draft_order_id\":null,\"shopify_draft_order_name\":null,\"po_number\":null,\"notes\":null,\"lifecycle_log\":[{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"issued\"},{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"marked_paid\",\"source\":\"shopify_order_paid\"},{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"downstream_change_observed\",\"changed_fields\":[],\"shopify_order_id\":\"12992208404646\"}],\"regime\":\"e_reporting\",\"regime_reasons\":[{\"en\":\"The buyer is a consumer or a non-registered entity: e-reporting.\",\"fr\":\"L'acheteur est un particulier ou une entité non assujettie : e-reporting.\",\"code\":\"buyer_not_business\"}],\"operation_category\":\"goods\",\"operation_category_source\":\"lines_authoritative\",\"payment_state\":\"paid\",\"vat_on_debits\":null,\"customer_kind\":\"individual\",\"buyer_siren\":null,\"buyer_siret\":null,\"buyer_routing_address\":null,\"buyer_legal_name\":\"Marie Dupont\",\"billing_line1\":\"12 Rue de Rivoli\",\"billing_line2\":null,\"billing_postcode\":\"75004\",\"billing_city\":\"Paris\",\"billing_country_code\":\"FR\",\"delivery_name\":null,\"delivery_line1\":\"12 Rue de Rivoli\",\"delivery_line2\":null,\"delivery_postcode\":\"75004\",\"delivery_city\":\"Paris\",\"delivery_country_code\":null,\"fx_rate\":\"1.1127\",\"fx_rate_date\":\"2026-11-11\",\"fx_source\":\"ECB\",\"legal_original_sha256\":\"71080207d7c75a376fd7ccaf21ec2cc0263b3f80efdb3527a06d9db22ce26565\",\"einvoice_state\":null,\"einvoice_state_raw\":null,\"pa_provider\":null,\"tax_point_date\":\"2026-11-12 00:00:00+00\",\"tax_total_eur_minor\":\"0\",\"original_document_id\":null,\"legal_original_id\":\"3f77c4bf-553a-4b97-833c-314e76765f3b\",\"internal_cancellation\":null,\"buyer_siren_confirmed_via\":null,\"external_ref\":null}]"
     },
     {
       "method": "db_findMany",
       "args": [
         "document_lines",
-        "{\"where\":{\"document_id\":\"078402f4-6ee8-43f6-b7be-bc9615536870\"},\"orderBy\":{\"position\":\"asc\"},\"limit\":1000}"
+        "{\"where\":{\"document_id\":\"5f845a0e-fd0a-4222-bb2f-d1e98f1f3e34\"},\"orderBy\":{\"position\":\"asc\"},\"limit\":1000}"
       ],
-      "reply": "[{\"id\":\"f2bc1eb1-7030-4c90-be4d-2dbe8fa5adaa\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:09:21.663932+00\",\"updated_at\":\"2026-11-12 09:09:21.663932+00\",\"document_id\":\"078402f4-6ee8-43f6-b7be-bc9615536870\",\"position\":1,\"description\":\"Studio monitor, pair\",\"quantity\":\"2.000\",\"unit_price_minor\":\"41940\",\"discount_minor\":\"0\",\"line_kind\":\"goods\",\"tax_rate_bp\":2000,\"subtotal_minor\":\"83880\",\"tax_minor\":\"16776\",\"total_minor\":\"100656\",\"hs_code\":\"851822\",\"country_of_origin\":\"FR\",\"customs_description\":\"Loudspeakers\",\"product_source\":null,\"external_id\":null},{\"id\":\"e169fb5f-2a03-4211-9686-c5cc2b344109\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:09:21.663932+00\",\"updated_at\":\"2026-11-12 09:09:21.663932+00\",\"document_id\":\"078402f4-6ee8-43f6-b7be-bc9615536870\",\"position\":2,\"description\":\"Installation\",\"quantity\":\"1.000\",\"unit_price_minor\":\"15000\",\"discount_minor\":\"0\",\"line_kind\":\"goods\",\"tax_rate_bp\":2000,\"subtotal_minor\":\"15000\",\"tax_minor\":\"3000\",\"total_minor\":\"18000\",\"hs_code\":null,\"country_of_origin\":null,\"customs_description\":null,\"product_source\":null,\"external_id\":null}]"
+      "reply": "[{\"id\":\"0a4731f8-7dc5-453f-9f32-90e11269e67c\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:57.232604+00\",\"updated_at\":\"2026-11-12 14:05:57.232604+00\",\"document_id\":\"5f845a0e-fd0a-4222-bb2f-d1e98f1f3e34\",\"position\":1,\"description\":\"The Minimal Snowboard\",\"quantity\":\"1.000\",\"unit_price_minor\":\"88595\",\"discount_minor\":\"0\",\"line_kind\":\"goods\",\"tax_rate_bp\":0,\"subtotal_minor\":\"88595\",\"tax_minor\":\"0\",\"total_minor\":\"88595\",\"hs_code\":null,\"country_of_origin\":null,\"customs_description\":null,\"product_source\":\"shopify\",\"external_id\":\"gid://shopify/ProductVariant/56534760784038\"}]"
     },
     {
       "method": "db_findMany",
       "args": [
         "issuer_profiles",
-        "{\"where\":{\"id\":\"99444731-e2a2-460c-ab40-a9348f2a7121\"},\"limit\":1}"
+        "{\"where\":{\"id\":\"7f406609-f025-48c2-8a2c-f793e7b76449\"},\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"99444731-e2a2-460c-ab40-a9348f2a7121\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:09:21.008996+00\",\"updated_at\":\"2026-11-12 09:09:21.108678+00\",\"legal_name\":\"Resonance Atelier SARL\",\"country\":\"FR\",\"vat_id\":\"FR86902000009\",\"tax_registration_id\":null,\"address\":\"1 rue de Test, 75001 Paris, France\",\"iban\":\"FR7630006000011234567890189\",\"swift_bic\":\"AGRIFRPP\",\"bank_name\":\"Banque Exemple Paris\",\"logo_file_id\":null,\"default_currency\":\"EUR\",\"default_language\":\"fr\",\"default_payment_terms_days\":30,\"prefix_invoice\":\"FAC-{YYYY}-\",\"prefix_quote\":\"DEV-{YYYY}-\",\"prefix_proforma\":\"PRO-{YYYY}-\",\"prefix_po\":\"BC-{YYYY}-\",\"prefix_credit_note\":\"AV-{YYYY}-\",\"invoice_approval_threshold_minor\":null,\"po_approval_threshold_minor\":null,\"require_two_eyes\":false,\"auto_email_enabled\":false,\"prices_include_tax\":false,\"mail_account_id\":null,\"timezone\":\"Europe/Paris\",\"email_templates\":{},\"shopify_shop_id\":\"contract-shop.myshopify.com\",\"archived_at\":null,\"siren\":\"902000009\",\"siret\":null,\"legal_form\":null,\"share_capital\":null,\"rcs_city\":null,\"routing_address\":\"902000009\",\"address_line1\":\"1 rue de Test\",\"address_line2\":null,\"postcode\":\"75001\",\"city\":\"Paris\",\"country_code\":\"FR\",\"vat_on_debits_default\":null}]"
+      "reply": "[{\"id\":\"7f406609-f025-48c2-8a2c-f793e7b76449\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:52.288172+00\",\"updated_at\":\"2026-11-12 14:05:52.359833+00\",\"legal_name\":\"Resonance Atelier SARL\",\"country\":\"FR\",\"vat_id\":\"FR86902000009\",\"tax_registration_id\":null,\"address\":\"1 rue de Test, 75001 Paris, France\",\"iban\":\"FR7630006000011234567890189\",\"swift_bic\":\"AGRIFRPP\",\"bank_name\":\"Banque Exemple Paris\",\"logo_file_id\":null,\"default_currency\":\"EUR\",\"default_language\":\"fr\",\"default_payment_terms_days\":30,\"prefix_invoice\":\"FAC-{YYYY}-\",\"prefix_quote\":\"DEV-{YYYY}-\",\"prefix_proforma\":\"PRO-{YYYY}-\",\"prefix_po\":\"BC-{YYYY}-\",\"prefix_credit_note\":\"AV-{YYYY}-\",\"invoice_approval_threshold_minor\":null,\"po_approval_threshold_minor\":null,\"require_two_eyes\":false,\"auto_email_enabled\":false,\"prices_include_tax\":false,\"mail_account_id\":null,\"timezone\":\"Europe/Paris\",\"email_templates\":{},\"shopify_shop_id\":\"contract-shop.myshopify.com\",\"archived_at\":null,\"siren\":\"902000009\",\"siret\":null,\"legal_form\":null,\"share_capital\":null,\"rcs_city\":null,\"routing_address\":\"902000009\",\"address_line1\":\"1 rue de Test\",\"address_line2\":null,\"postcode\":\"75001\",\"city\":\"Paris\",\"country_code\":\"FR\",\"vat_on_debits_default\":null}]"
     },
     {
       "method": "db_findMany",
-      "args": ["einvoicing_settings", "{\"limit\":1}"],
-      "reply": "[{\"id\":\"93b8a2d3-78ab-41e6-8209-039bc86406b0\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:09:21.361897+00\",\"updated_at\":\"2026-11-12 09:09:21.361897+00\",\"gate_mode\":\"warn\",\"gate_mode_source\":\"tool\",\"cibs_switch_date\":null,\"changed_by\":\"00000000-0000-4000-8000-00000000c0df\",\"provider_app\":null,\"cutover_date\":\"2026-09-01\",\"send_enabled\":false,\"book_enabled\":null}]"
+      "args": [
+        "einvoicing_settings",
+        "{\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"fcde6dbf-010c-4c27-bccd-fd49797b59ff\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:52.539997+00\",\"updated_at\":\"2026-11-12 14:05:52.539997+00\",\"gate_mode\":\"warn\",\"gate_mode_source\":\"tool\",\"cibs_switch_date\":null,\"changed_by\":\"00000000-0000-4000-8000-00000000c0df\",\"provider_app\":null,\"cutover_date\":\"2026-09-01\",\"send_enabled\":false,\"book_enabled\":null}]"
     },
     {
       "method": "db_findMany",
-      "args": ["einvoicing_settings", "{\"limit\":1}"],
-      "reply": "[{\"id\":\"93b8a2d3-78ab-41e6-8209-039bc86406b0\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:09:21.361897+00\",\"updated_at\":\"2026-11-12 09:09:21.361897+00\",\"gate_mode\":\"warn\",\"gate_mode_source\":\"tool\",\"cibs_switch_date\":null,\"changed_by\":\"00000000-0000-4000-8000-00000000c0df\",\"provider_app\":null,\"cutover_date\":\"2026-09-01\",\"send_enabled\":false,\"book_enabled\":null}]"
+      "args": [
+        "counterparty_identities",
+        "{\"where\":{\"contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"1819d423-dcd6-45da-9d3f-4d57830ad786\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:57.108697+00\",\"updated_at\":\"2026-11-12 14:05:57.108697+00\",\"contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\",\"customer_kind\":\"individual\",\"siren\":null,\"siret\":null,\"establishment_country\":null,\"territory_reason\":null,\"vat_id\":null,\"routing_address\":null,\"registry_name\":null,\"registry_nature_juridique\":null,\"registry_line1\":null,\"registry_postcode\":null,\"registry_city\":null,\"registry_country_code\":null,\"source_url\":null,\"approval_request_id\":null,\"verified_by\":null,\"notes\":null,\"territory_treatment\":null,\"routing_scheme\":\"0225\",\"registry_status\":null,\"registry_checked_at\":null,\"source\":\"derived\",\"confirmed_via\":null,\"changed_at\":\"2026-01-01 00:00:00+00\"}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "einvoicing_settings",
+        "{\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"fcde6dbf-010c-4c27-bccd-fd49797b59ff\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:52.539997+00\",\"updated_at\":\"2026-11-12 14:05:52.539997+00\",\"gate_mode\":\"warn\",\"gate_mode_source\":\"tool\",\"cibs_switch_date\":null,\"changed_by\":\"00000000-0000-4000-8000-00000000c0df\",\"provider_app\":null,\"cutover_date\":\"2026-09-01\",\"send_enabled\":false,\"book_enabled\":null}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "counterparty_identities",
+        "{\"where\":{\"contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"1819d423-dcd6-45da-9d3f-4d57830ad786\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:57.108697+00\",\"updated_at\":\"2026-11-12 14:05:57.108697+00\",\"contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\",\"customer_kind\":\"individual\",\"siren\":null,\"siret\":null,\"establishment_country\":null,\"territory_reason\":null,\"vat_id\":null,\"routing_address\":null,\"registry_name\":null,\"registry_nature_juridique\":null,\"registry_line1\":null,\"registry_postcode\":null,\"registry_city\":null,\"registry_country_code\":null,\"source_url\":null,\"approval_request_id\":null,\"verified_by\":null,\"notes\":null,\"territory_treatment\":null,\"routing_scheme\":\"0225\",\"registry_status\":null,\"registry_checked_at\":null,\"source\":\"derived\",\"confirmed_via\":null,\"changed_at\":\"2026-01-01 00:00:00+00\"}]"
     },
     {
       "method": "db_findMany",
       "args": [
         "issuer_profiles",
-        "{\"where\":{\"id\":\"99444731-e2a2-460c-ab40-a9348f2a7121\"},\"limit\":1}"
+        "{\"where\":{\"id\":\"7f406609-f025-48c2-8a2c-f793e7b76449\"},\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"99444731-e2a2-460c-ab40-a9348f2a7121\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:09:21.008996+00\",\"updated_at\":\"2026-11-12 09:09:21.108678+00\",\"legal_name\":\"Resonance Atelier SARL\",\"country\":\"FR\",\"vat_id\":\"FR86902000009\",\"tax_registration_id\":null,\"address\":\"1 rue de Test, 75001 Paris, France\",\"iban\":\"FR7630006000011234567890189\",\"swift_bic\":\"AGRIFRPP\",\"bank_name\":\"Banque Exemple Paris\",\"logo_file_id\":null,\"default_currency\":\"EUR\",\"default_language\":\"fr\",\"default_payment_terms_days\":30,\"prefix_invoice\":\"FAC-{YYYY}-\",\"prefix_quote\":\"DEV-{YYYY}-\",\"prefix_proforma\":\"PRO-{YYYY}-\",\"prefix_po\":\"BC-{YYYY}-\",\"prefix_credit_note\":\"AV-{YYYY}-\",\"invoice_approval_threshold_minor\":null,\"po_approval_threshold_minor\":null,\"require_two_eyes\":false,\"auto_email_enabled\":false,\"prices_include_tax\":false,\"mail_account_id\":null,\"timezone\":\"Europe/Paris\",\"email_templates\":{},\"shopify_shop_id\":\"contract-shop.myshopify.com\",\"archived_at\":null,\"siren\":\"902000009\",\"siret\":null,\"legal_form\":null,\"share_capital\":null,\"rcs_city\":null,\"routing_address\":\"902000009\",\"address_line1\":\"1 rue de Test\",\"address_line2\":null,\"postcode\":\"75001\",\"city\":\"Paris\",\"country_code\":\"FR\",\"vat_on_debits_default\":null}]"
+      "reply": "[{\"id\":\"7f406609-f025-48c2-8a2c-f793e7b76449\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:52.288172+00\",\"updated_at\":\"2026-11-12 14:05:52.359833+00\",\"legal_name\":\"Resonance Atelier SARL\",\"country\":\"FR\",\"vat_id\":\"FR86902000009\",\"tax_registration_id\":null,\"address\":\"1 rue de Test, 75001 Paris, France\",\"iban\":\"FR7630006000011234567890189\",\"swift_bic\":\"AGRIFRPP\",\"bank_name\":\"Banque Exemple Paris\",\"logo_file_id\":null,\"default_currency\":\"EUR\",\"default_language\":\"fr\",\"default_payment_terms_days\":30,\"prefix_invoice\":\"FAC-{YYYY}-\",\"prefix_quote\":\"DEV-{YYYY}-\",\"prefix_proforma\":\"PRO-{YYYY}-\",\"prefix_po\":\"BC-{YYYY}-\",\"prefix_credit_note\":\"AV-{YYYY}-\",\"invoice_approval_threshold_minor\":null,\"po_approval_threshold_minor\":null,\"require_two_eyes\":false,\"auto_email_enabled\":false,\"prices_include_tax\":false,\"mail_account_id\":null,\"timezone\":\"Europe/Paris\",\"email_templates\":{},\"shopify_shop_id\":\"contract-shop.myshopify.com\",\"archived_at\":null,\"siren\":\"902000009\",\"siret\":null,\"legal_form\":null,\"share_capital\":null,\"rcs_city\":null,\"routing_address\":\"902000009\",\"address_line1\":\"1 rue de Test\",\"address_line2\":null,\"postcode\":\"75001\",\"city\":\"Paris\",\"country_code\":\"FR\",\"vat_on_debits_default\":null}]"
     },
     {
       "method": "db_findMany",
       "args": [
         "documents",
-        "{\"where\":{\"id\":\"078402f4-6ee8-43f6-b7be-bc9615536870\"},\"limit\":1}"
+        "{\"where\":{\"id\":\"5f845a0e-fd0a-4222-bb2f-d1e98f1f3e34\"},\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"078402f4-6ee8-43f6-b7be-bc9615536870\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:09:21.663932+00\",\"updated_at\":\"2026-11-12 09:09:21.945904+00\",\"einvoice_send_approval_id\":null,\"einvoice_send_requested_at\":null,\"einvoice_send_attempt\":null,\"type\":\"invoice\",\"scope\":null,\"status\":\"issued\",\"payment_status\":\"unpaid\",\"number\":\"FAC-2026-0001\",\"number_int\":1,\"year_of_issue\":2026,\"issuer_profile_id\":\"99444731-e2a2-460c-ab40-a9348f2a7121\",\"counterparty_contact_id\":null,\"counterparty_name\":\"Atelier Lumen SAS\",\"counterparty_address\":\"12 rue des Lilas, 69003 Lyon, France\",\"counterparty_shipping_address\":null,\"counterparty_shipping_name\":null,\"counterparty_vat_id\":\"FR40900000001\",\"counterparty_email\":\"person1@example.com\",\"counterparty_country\":\"FR\",\"currency\":\"EUR\",\"subtotal_minor\":\"98880\",\"tax_total_minor\":\"19776\",\"grand_total_minor\":\"118656\",\"tax_treatment\":\"eu_domestic\",\"incoterm\":\"DAP\",\"issued_at\":\"2026-11-12 00:00:00+00\",\"due_at\":\"2026-02-15 00:00:00+00\",\"paid_at\":null,\"voided_at\":null,\"pdf_file_id\":\"3b0930d9-d1fa-451b-a06d-72d8a302141a\",\"pdf_status\":\"ready\",\"external_refs\":{},\"shopify_order_id\":null,\"shopify_order_number\":null,\"shipment_ref\":null,\"shopify_draft_order_id\":null,\"shopify_draft_order_name\":null,\"po_number\":null,\"notes\":\"Delivery by appointment\",\"lifecycle_log\":[{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"issued\"},{\"ts\":\"2026-01-01T00:00:00.000Z\",\"code\":\"einvoice_data_missing\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"einvoice_gate_warning\",\"missing\":[\"buyer_siren\"]}],\"regime\":\"needs_review\",\"regime_reasons\":[{\"en\":\"A French business buyer needs a SIREN.\",\"fr\":\"Un acheteur professionnel français doit avoir un SIREN.\",\"code\":\"einvoice_data_missing\"},{\"en\":\"Issued in warn mode with e-invoicing data missing (einvoice_data_missing).\",\"fr\":\"Émis en mode avertissement avec des données de facturation électronique manquantes (einvoice_data_missing).\",\"code\":\"gate_warning\",\"missing\":[\"buyer_siren\"]}],\"operation_category\":\"goods\",\"operation_category_source\":\"explicit\",\"payment_state\":\"due\",\"vat_on_debits\":null,\"customer_kind\":\"business\",\"buyer_siren\":null,\"buyer_siret\":null,\"buyer_routing_address\":null,\"buyer_legal_name\":\"Atelier Lumen SAS\",\"billing_line1\":\"12 rue des Lilas\",\"billing_line2\":null,\"billing_postcode\":\"69003\",\"billing_city\":\"Lyon\",\"billing_country_code\":\"FR\",\"delivery_name\":null,\"delivery_line1\":null,\"delivery_line2\":null,\"delivery_postcode\":null,\"delivery_city\":null,\"delivery_country_code\":null,\"fx_rate\":null,\"fx_rate_date\":null,\"fx_source\":null,\"legal_original_sha256\":\"ec35f0f6c5ccbf0510b10a3ba2944a9d585d9e264537b2c49d16f3b449942035\",\"einvoice_state\":null,\"einvoice_state_raw\":null,\"pa_provider\":null,\"tax_point_date\":\"2026-11-12 00:00:00+00\",\"tax_total_eur_minor\":null,\"original_document_id\":null,\"legal_original_id\":\"c870f824-beb6-40a3-8cfd-aec3834e4ab8\",\"internal_cancellation\":null,\"buyer_siren_confirmed_via\":null,\"external_ref\":null}]"
+      "reply": "[{\"id\":\"5f845a0e-fd0a-4222-bb2f-d1e98f1f3e34\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:57.232604+00\",\"updated_at\":\"2026-11-12 14:05:57.405161+00\",\"einvoice_send_approval_id\":null,\"einvoice_send_requested_at\":null,\"einvoice_send_attempt\":null,\"type\":\"invoice\",\"scope\":\"goods\",\"status\":\"issued\",\"payment_status\":\"paid\",\"number\":\"FAC-2026-0004\",\"number_int\":4,\"year_of_issue\":2026,\"issuer_profile_id\":\"7f406609-f025-48c2-8a2c-f793e7b76449\",\"counterparty_contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\",\"counterparty_name\":\"Marie Dupont\",\"counterparty_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"counterparty_shipping_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"counterparty_shipping_name\":\"Marie Dupont\",\"counterparty_vat_id\":null,\"counterparty_email\":\"marie@example.com\",\"counterparty_country\":\"FR\",\"currency\":\"USD\",\"subtotal_minor\":\"88595\",\"tax_total_minor\":\"0\",\"grand_total_minor\":\"88595\",\"tax_treatment\":\"eu_domestic\",\"incoterm\":\"DAP\",\"issued_at\":\"2026-11-12 00:00:00+00\",\"due_at\":null,\"paid_at\":\"2026-11-12 00:00:00+00\",\"voided_at\":null,\"pdf_file_id\":\"18a4b53e-2908-46c6-9d2b-95379d61d0ec\",\"pdf_status\":\"ready\",\"external_refs\":{\"scope\":\"goods\",\"shopify_order_id\":\"12992208404646\",\"shopify_shop_domain\":\"contract-shop.myshopify.com\",\"downstream_order_sig\":\"USD:885.95||56534760784038#1@USD:885.95||\",\"shopify_order_number\":\"#2745\"},\"shopify_order_id\":\"12992208404646\",\"shopify_order_number\":\"#2745\",\"shipment_ref\":null,\"shopify_draft_order_id\":null,\"shopify_draft_order_name\":null,\"po_number\":null,\"notes\":null,\"lifecycle_log\":[{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"issued\"},{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"marked_paid\",\"source\":\"shopify_order_paid\"},{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"downstream_change_observed\",\"changed_fields\":[],\"shopify_order_id\":\"12992208404646\"}],\"regime\":\"e_reporting\",\"regime_reasons\":[{\"en\":\"The buyer is a consumer or a non-registered entity: e-reporting.\",\"fr\":\"L'acheteur est un particulier ou une entité non assujettie : e-reporting.\",\"code\":\"buyer_not_business\"}],\"operation_category\":\"goods\",\"operation_category_source\":\"lines_authoritative\",\"payment_state\":\"paid\",\"vat_on_debits\":null,\"customer_kind\":\"individual\",\"buyer_siren\":null,\"buyer_siret\":null,\"buyer_routing_address\":null,\"buyer_legal_name\":\"Marie Dupont\",\"billing_line1\":\"12 Rue de Rivoli\",\"billing_line2\":null,\"billing_postcode\":\"75004\",\"billing_city\":\"Paris\",\"billing_country_code\":\"FR\",\"delivery_name\":null,\"delivery_line1\":\"12 Rue de Rivoli\",\"delivery_line2\":null,\"delivery_postcode\":\"75004\",\"delivery_city\":\"Paris\",\"delivery_country_code\":null,\"fx_rate\":\"1.1127\",\"fx_rate_date\":\"2026-11-11\",\"fx_source\":\"ECB\",\"legal_original_sha256\":\"71080207d7c75a376fd7ccaf21ec2cc0263b3f80efdb3527a06d9db22ce26565\",\"einvoice_state\":null,\"einvoice_state_raw\":null,\"pa_provider\":null,\"tax_point_date\":\"2026-11-12 00:00:00+00\",\"tax_total_eur_minor\":\"0\",\"original_document_id\":null,\"legal_original_id\":\"3f77c4bf-553a-4b97-833c-314e76765f3b\",\"internal_cancellation\":null,\"buyer_siren_confirmed_via\":null,\"external_ref\":null}]"
     },
     {
       "method": "db_findMany",
       "args": [
         "documents",
-        "{\"where\":{\"id\":\"078402f4-6ee8-43f6-b7be-bc9615536870\"},\"limit\":1}"
+        "{\"where\":{\"id\":\"5f845a0e-fd0a-4222-bb2f-d1e98f1f3e34\"},\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"078402f4-6ee8-43f6-b7be-bc9615536870\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:09:21.663932+00\",\"updated_at\":\"2026-11-12 09:09:21.945904+00\",\"einvoice_send_approval_id\":null,\"einvoice_send_requested_at\":null,\"einvoice_send_attempt\":null,\"type\":\"invoice\",\"scope\":null,\"status\":\"issued\",\"payment_status\":\"unpaid\",\"number\":\"FAC-2026-0001\",\"number_int\":1,\"year_of_issue\":2026,\"issuer_profile_id\":\"99444731-e2a2-460c-ab40-a9348f2a7121\",\"counterparty_contact_id\":null,\"counterparty_name\":\"Atelier Lumen SAS\",\"counterparty_address\":\"12 rue des Lilas, 69003 Lyon, France\",\"counterparty_shipping_address\":null,\"counterparty_shipping_name\":null,\"counterparty_vat_id\":\"FR40900000001\",\"counterparty_email\":\"person1@example.com\",\"counterparty_country\":\"FR\",\"currency\":\"EUR\",\"subtotal_minor\":\"98880\",\"tax_total_minor\":\"19776\",\"grand_total_minor\":\"118656\",\"tax_treatment\":\"eu_domestic\",\"incoterm\":\"DAP\",\"issued_at\":\"2026-11-12 00:00:00+00\",\"due_at\":\"2026-02-15 00:00:00+00\",\"paid_at\":null,\"voided_at\":null,\"pdf_file_id\":\"3b0930d9-d1fa-451b-a06d-72d8a302141a\",\"pdf_status\":\"ready\",\"external_refs\":{},\"shopify_order_id\":null,\"shopify_order_number\":null,\"shipment_ref\":null,\"shopify_draft_order_id\":null,\"shopify_draft_order_name\":null,\"po_number\":null,\"notes\":\"Delivery by appointment\",\"lifecycle_log\":[{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"issued\"},{\"ts\":\"2026-01-01T00:00:00.000Z\",\"code\":\"einvoice_data_missing\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"einvoice_gate_warning\",\"missing\":[\"buyer_siren\"]}],\"regime\":\"needs_review\",\"regime_reasons\":[{\"en\":\"A French business buyer needs a SIREN.\",\"fr\":\"Un acheteur professionnel français doit avoir un SIREN.\",\"code\":\"einvoice_data_missing\"},{\"en\":\"Issued in warn mode with e-invoicing data missing (einvoice_data_missing).\",\"fr\":\"Émis en mode avertissement avec des données de facturation électronique manquantes (einvoice_data_missing).\",\"code\":\"gate_warning\",\"missing\":[\"buyer_siren\"]}],\"operation_category\":\"goods\",\"operation_category_source\":\"explicit\",\"payment_state\":\"due\",\"vat_on_debits\":null,\"customer_kind\":\"business\",\"buyer_siren\":null,\"buyer_siret\":null,\"buyer_routing_address\":null,\"buyer_legal_name\":\"Atelier Lumen SAS\",\"billing_line1\":\"12 rue des Lilas\",\"billing_line2\":null,\"billing_postcode\":\"69003\",\"billing_city\":\"Lyon\",\"billing_country_code\":\"FR\",\"delivery_name\":null,\"delivery_line1\":null,\"delivery_line2\":null,\"delivery_postcode\":null,\"delivery_city\":null,\"delivery_country_code\":null,\"fx_rate\":null,\"fx_rate_date\":null,\"fx_source\":null,\"legal_original_sha256\":\"ec35f0f6c5ccbf0510b10a3ba2944a9d585d9e264537b2c49d16f3b449942035\",\"einvoice_state\":null,\"einvoice_state_raw\":null,\"pa_provider\":null,\"tax_point_date\":\"2026-11-12 00:00:00+00\",\"tax_total_eur_minor\":null,\"original_document_id\":null,\"legal_original_id\":\"c870f824-beb6-40a3-8cfd-aec3834e4ab8\",\"internal_cancellation\":null,\"buyer_siren_confirmed_via\":null,\"external_ref\":null}]"
+      "reply": "[{\"id\":\"5f845a0e-fd0a-4222-bb2f-d1e98f1f3e34\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:57.232604+00\",\"updated_at\":\"2026-11-12 14:05:57.405161+00\",\"einvoice_send_approval_id\":null,\"einvoice_send_requested_at\":null,\"einvoice_send_attempt\":null,\"type\":\"invoice\",\"scope\":\"goods\",\"status\":\"issued\",\"payment_status\":\"paid\",\"number\":\"FAC-2026-0004\",\"number_int\":4,\"year_of_issue\":2026,\"issuer_profile_id\":\"7f406609-f025-48c2-8a2c-f793e7b76449\",\"counterparty_contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\",\"counterparty_name\":\"Marie Dupont\",\"counterparty_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"counterparty_shipping_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"counterparty_shipping_name\":\"Marie Dupont\",\"counterparty_vat_id\":null,\"counterparty_email\":\"marie@example.com\",\"counterparty_country\":\"FR\",\"currency\":\"USD\",\"subtotal_minor\":\"88595\",\"tax_total_minor\":\"0\",\"grand_total_minor\":\"88595\",\"tax_treatment\":\"eu_domestic\",\"incoterm\":\"DAP\",\"issued_at\":\"2026-11-12 00:00:00+00\",\"due_at\":null,\"paid_at\":\"2026-11-12 00:00:00+00\",\"voided_at\":null,\"pdf_file_id\":\"18a4b53e-2908-46c6-9d2b-95379d61d0ec\",\"pdf_status\":\"ready\",\"external_refs\":{\"scope\":\"goods\",\"shopify_order_id\":\"12992208404646\",\"shopify_shop_domain\":\"contract-shop.myshopify.com\",\"downstream_order_sig\":\"USD:885.95||56534760784038#1@USD:885.95||\",\"shopify_order_number\":\"#2745\"},\"shopify_order_id\":\"12992208404646\",\"shopify_order_number\":\"#2745\",\"shipment_ref\":null,\"shopify_draft_order_id\":null,\"shopify_draft_order_name\":null,\"po_number\":null,\"notes\":null,\"lifecycle_log\":[{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"issued\"},{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"marked_paid\",\"source\":\"shopify_order_paid\"},{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"downstream_change_observed\",\"changed_fields\":[],\"shopify_order_id\":\"12992208404646\"}],\"regime\":\"e_reporting\",\"regime_reasons\":[{\"en\":\"The buyer is a consumer or a non-registered entity: e-reporting.\",\"fr\":\"L'acheteur est un particulier ou une entité non assujettie : e-reporting.\",\"code\":\"buyer_not_business\"}],\"operation_category\":\"goods\",\"operation_category_source\":\"lines_authoritative\",\"payment_state\":\"paid\",\"vat_on_debits\":null,\"customer_kind\":\"individual\",\"buyer_siren\":null,\"buyer_siret\":null,\"buyer_routing_address\":null,\"buyer_legal_name\":\"Marie Dupont\",\"billing_line1\":\"12 Rue de Rivoli\",\"billing_line2\":null,\"billing_postcode\":\"75004\",\"billing_city\":\"Paris\",\"billing_country_code\":\"FR\",\"delivery_name\":null,\"delivery_line1\":\"12 Rue de Rivoli\",\"delivery_line2\":null,\"delivery_postcode\":\"75004\",\"delivery_city\":\"Paris\",\"delivery_country_code\":null,\"fx_rate\":\"1.1127\",\"fx_rate_date\":\"2026-11-11\",\"fx_source\":\"ECB\",\"legal_original_sha256\":\"71080207d7c75a376fd7ccaf21ec2cc0263b3f80efdb3527a06d9db22ce26565\",\"einvoice_state\":null,\"einvoice_state_raw\":null,\"pa_provider\":null,\"tax_point_date\":\"2026-11-12 00:00:00+00\",\"tax_total_eur_minor\":\"0\",\"original_document_id\":null,\"legal_original_id\":\"3f77c4bf-553a-4b97-833c-314e76765f3b\",\"internal_cancellation\":null,\"buyer_siren_confirmed_via\":null,\"external_ref\":null}]"
     },
     {
       "method": "db_findMany",
-      "args": ["einvoicing_settings", "{\"limit\":1}"],
-      "reply": "[{\"id\":\"93b8a2d3-78ab-41e6-8209-039bc86406b0\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:09:21.361897+00\",\"updated_at\":\"2026-11-12 09:09:21.361897+00\",\"gate_mode\":\"warn\",\"gate_mode_source\":\"tool\",\"cibs_switch_date\":null,\"changed_by\":\"00000000-0000-4000-8000-00000000c0df\",\"provider_app\":null,\"cutover_date\":\"2026-09-01\",\"send_enabled\":false,\"book_enabled\":null}]"
+      "args": [
+        "documents",
+        "{\"where\":{\"shopify_order_id\":\"12992208404646\"},\"limit\":20}"
+      ],
+      "reply": "[{\"id\":\"5f845a0e-fd0a-4222-bb2f-d1e98f1f3e34\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:57.232604+00\",\"updated_at\":\"2026-11-12 14:05:57.405161+00\",\"einvoice_send_approval_id\":null,\"einvoice_send_requested_at\":null,\"einvoice_send_attempt\":null,\"type\":\"invoice\",\"scope\":\"goods\",\"status\":\"issued\",\"payment_status\":\"paid\",\"number\":\"FAC-2026-0004\",\"number_int\":4,\"year_of_issue\":2026,\"issuer_profile_id\":\"7f406609-f025-48c2-8a2c-f793e7b76449\",\"counterparty_contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\",\"counterparty_name\":\"Marie Dupont\",\"counterparty_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"counterparty_shipping_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"counterparty_shipping_name\":\"Marie Dupont\",\"counterparty_vat_id\":null,\"counterparty_email\":\"marie@example.com\",\"counterparty_country\":\"FR\",\"currency\":\"USD\",\"subtotal_minor\":\"88595\",\"tax_total_minor\":\"0\",\"grand_total_minor\":\"88595\",\"tax_treatment\":\"eu_domestic\",\"incoterm\":\"DAP\",\"issued_at\":\"2026-11-12 00:00:00+00\",\"due_at\":null,\"paid_at\":\"2026-11-12 00:00:00+00\",\"voided_at\":null,\"pdf_file_id\":\"18a4b53e-2908-46c6-9d2b-95379d61d0ec\",\"pdf_status\":\"ready\",\"external_refs\":{\"scope\":\"goods\",\"shopify_order_id\":\"12992208404646\",\"shopify_shop_domain\":\"contract-shop.myshopify.com\",\"downstream_order_sig\":\"USD:885.95||56534760784038#1@USD:885.95||\",\"shopify_order_number\":\"#2745\"},\"shopify_order_id\":\"12992208404646\",\"shopify_order_number\":\"#2745\",\"shipment_ref\":null,\"shopify_draft_order_id\":null,\"shopify_draft_order_name\":null,\"po_number\":null,\"notes\":null,\"lifecycle_log\":[{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"issued\"},{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"marked_paid\",\"source\":\"shopify_order_paid\"},{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"downstream_change_observed\",\"changed_fields\":[],\"shopify_order_id\":\"12992208404646\"}],\"regime\":\"e_reporting\",\"regime_reasons\":[{\"en\":\"The buyer is a consumer or a non-registered entity: e-reporting.\",\"fr\":\"L'acheteur est un particulier ou une entité non assujettie : e-reporting.\",\"code\":\"buyer_not_business\"}],\"operation_category\":\"goods\",\"operation_category_source\":\"lines_authoritative\",\"payment_state\":\"paid\",\"vat_on_debits\":null,\"customer_kind\":\"individual\",\"buyer_siren\":null,\"buyer_siret\":null,\"buyer_routing_address\":null,\"buyer_legal_name\":\"Marie Dupont\",\"billing_line1\":\"12 Rue de Rivoli\",\"billing_line2\":null,\"billing_postcode\":\"75004\",\"billing_city\":\"Paris\",\"billing_country_code\":\"FR\",\"delivery_name\":null,\"delivery_line1\":\"12 Rue de Rivoli\",\"delivery_line2\":null,\"delivery_postcode\":\"75004\",\"delivery_city\":\"Paris\",\"delivery_country_code\":null,\"fx_rate\":\"1.1127\",\"fx_rate_date\":\"2026-11-11\",\"fx_source\":\"ECB\",\"legal_original_sha256\":\"71080207d7c75a376fd7ccaf21ec2cc0263b3f80efdb3527a06d9db22ce26565\",\"einvoice_state\":null,\"einvoice_state_raw\":null,\"pa_provider\":null,\"tax_point_date\":\"2026-11-12 00:00:00+00\",\"tax_total_eur_minor\":\"0\",\"original_document_id\":null,\"legal_original_id\":\"3f77c4bf-553a-4b97-833c-314e76765f3b\",\"internal_cancellation\":null,\"buyer_siren_confirmed_via\":null,\"external_ref\":null}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "einvoicing_settings",
+        "{\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"fcde6dbf-010c-4c27-bccd-fd49797b59ff\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:52.539997+00\",\"updated_at\":\"2026-11-12 14:05:52.539997+00\",\"gate_mode\":\"warn\",\"gate_mode_source\":\"tool\",\"cibs_switch_date\":null,\"changed_by\":\"00000000-0000-4000-8000-00000000c0df\",\"provider_app\":null,\"cutover_date\":\"2026-09-01\",\"send_enabled\":false,\"book_enabled\":null}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "counterparty_identities",
+        "{\"where\":{\"contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"1819d423-dcd6-45da-9d3f-4d57830ad786\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:57.108697+00\",\"updated_at\":\"2026-11-12 14:05:57.108697+00\",\"contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\",\"customer_kind\":\"individual\",\"siren\":null,\"siret\":null,\"establishment_country\":null,\"territory_reason\":null,\"vat_id\":null,\"routing_address\":null,\"registry_name\":null,\"registry_nature_juridique\":null,\"registry_line1\":null,\"registry_postcode\":null,\"registry_city\":null,\"registry_country_code\":null,\"source_url\":null,\"approval_request_id\":null,\"verified_by\":null,\"notes\":null,\"territory_treatment\":null,\"routing_scheme\":\"0225\",\"registry_status\":null,\"registry_checked_at\":null,\"source\":\"derived\",\"confirmed_via\":null,\"changed_at\":\"2026-01-01 00:00:00+00\"}]"
     },
     {
       "method": "time_civil",
-      "args": ["{\"timezone\":\"Europe/Paris\"}"],
-      "reply": "{\"date\":\"2026-11-12\",\"year\":2026,\"month\":11,\"day\":12,\"hour\":10,\"minute\":9,\"weekday\":4,\"zone\":\"Europe/Paris\"}"
+      "args": [
+        "{\"timezone\":\"Europe/Paris\"}"
+      ],
+      "reply": "{\"date\":\"2026-11-12\",\"year\":2026,\"month\":11,\"day\":12,\"hour\":15,\"minute\":5,\"weekday\":4,\"zone\":\"Europe/Paris\"}"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "documents",
+        "{\"where\":{\"id\":\"5f845a0e-fd0a-4222-bb2f-d1e98f1f3e34\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"5f845a0e-fd0a-4222-bb2f-d1e98f1f3e34\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:57.232604+00\",\"updated_at\":\"2026-11-12 14:05:57.405161+00\",\"einvoice_send_approval_id\":null,\"einvoice_send_requested_at\":null,\"einvoice_send_attempt\":null,\"type\":\"invoice\",\"scope\":\"goods\",\"status\":\"issued\",\"payment_status\":\"paid\",\"number\":\"FAC-2026-0004\",\"number_int\":4,\"year_of_issue\":2026,\"issuer_profile_id\":\"7f406609-f025-48c2-8a2c-f793e7b76449\",\"counterparty_contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\",\"counterparty_name\":\"Marie Dupont\",\"counterparty_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"counterparty_shipping_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"counterparty_shipping_name\":\"Marie Dupont\",\"counterparty_vat_id\":null,\"counterparty_email\":\"marie@example.com\",\"counterparty_country\":\"FR\",\"currency\":\"USD\",\"subtotal_minor\":\"88595\",\"tax_total_minor\":\"0\",\"grand_total_minor\":\"88595\",\"tax_treatment\":\"eu_domestic\",\"incoterm\":\"DAP\",\"issued_at\":\"2026-11-12 00:00:00+00\",\"due_at\":null,\"paid_at\":\"2026-11-12 00:00:00+00\",\"voided_at\":null,\"pdf_file_id\":\"18a4b53e-2908-46c6-9d2b-95379d61d0ec\",\"pdf_status\":\"ready\",\"external_refs\":{\"scope\":\"goods\",\"shopify_order_id\":\"12992208404646\",\"shopify_shop_domain\":\"contract-shop.myshopify.com\",\"downstream_order_sig\":\"USD:885.95||56534760784038#1@USD:885.95||\",\"shopify_order_number\":\"#2745\"},\"shopify_order_id\":\"12992208404646\",\"shopify_order_number\":\"#2745\",\"shipment_ref\":null,\"shopify_draft_order_id\":null,\"shopify_draft_order_name\":null,\"po_number\":null,\"notes\":null,\"lifecycle_log\":[{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"issued\"},{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"marked_paid\",\"source\":\"shopify_order_paid\"},{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"downstream_change_observed\",\"changed_fields\":[],\"shopify_order_id\":\"12992208404646\"}],\"regime\":\"e_reporting\",\"regime_reasons\":[{\"en\":\"The buyer is a consumer or a non-registered entity: e-reporting.\",\"fr\":\"L'acheteur est un particulier ou une entité non assujettie : e-reporting.\",\"code\":\"buyer_not_business\"}],\"operation_category\":\"goods\",\"operation_category_source\":\"lines_authoritative\",\"payment_state\":\"paid\",\"vat_on_debits\":null,\"customer_kind\":\"individual\",\"buyer_siren\":null,\"buyer_siret\":null,\"buyer_routing_address\":null,\"buyer_legal_name\":\"Marie Dupont\",\"billing_line1\":\"12 Rue de Rivoli\",\"billing_line2\":null,\"billing_postcode\":\"75004\",\"billing_city\":\"Paris\",\"billing_country_code\":\"FR\",\"delivery_name\":null,\"delivery_line1\":\"12 Rue de Rivoli\",\"delivery_line2\":null,\"delivery_postcode\":\"75004\",\"delivery_city\":\"Paris\",\"delivery_country_code\":null,\"fx_rate\":\"1.1127\",\"fx_rate_date\":\"2026-11-11\",\"fx_source\":\"ECB\",\"legal_original_sha256\":\"71080207d7c75a376fd7ccaf21ec2cc0263b3f80efdb3527a06d9db22ce26565\",\"einvoice_state\":null,\"einvoice_state_raw\":null,\"pa_provider\":null,\"tax_point_date\":\"2026-11-12 00:00:00+00\",\"tax_total_eur_minor\":\"0\",\"original_document_id\":null,\"legal_original_id\":\"3f77c4bf-553a-4b97-833c-314e76765f3b\",\"internal_cancellation\":null,\"buyer_siren_confirmed_via\":null,\"external_ref\":null}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "documents",
+        "{\"where\":{\"shopify_order_id\":\"12992208404646\"},\"limit\":20}"
+      ],
+      "reply": "[{\"id\":\"5f845a0e-fd0a-4222-bb2f-d1e98f1f3e34\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:57.232604+00\",\"updated_at\":\"2026-11-12 14:05:57.405161+00\",\"einvoice_send_approval_id\":null,\"einvoice_send_requested_at\":null,\"einvoice_send_attempt\":null,\"type\":\"invoice\",\"scope\":\"goods\",\"status\":\"issued\",\"payment_status\":\"paid\",\"number\":\"FAC-2026-0004\",\"number_int\":4,\"year_of_issue\":2026,\"issuer_profile_id\":\"7f406609-f025-48c2-8a2c-f793e7b76449\",\"counterparty_contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\",\"counterparty_name\":\"Marie Dupont\",\"counterparty_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"counterparty_shipping_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"counterparty_shipping_name\":\"Marie Dupont\",\"counterparty_vat_id\":null,\"counterparty_email\":\"marie@example.com\",\"counterparty_country\":\"FR\",\"currency\":\"USD\",\"subtotal_minor\":\"88595\",\"tax_total_minor\":\"0\",\"grand_total_minor\":\"88595\",\"tax_treatment\":\"eu_domestic\",\"incoterm\":\"DAP\",\"issued_at\":\"2026-11-12 00:00:00+00\",\"due_at\":null,\"paid_at\":\"2026-11-12 00:00:00+00\",\"voided_at\":null,\"pdf_file_id\":\"18a4b53e-2908-46c6-9d2b-95379d61d0ec\",\"pdf_status\":\"ready\",\"external_refs\":{\"scope\":\"goods\",\"shopify_order_id\":\"12992208404646\",\"shopify_shop_domain\":\"contract-shop.myshopify.com\",\"downstream_order_sig\":\"USD:885.95||56534760784038#1@USD:885.95||\",\"shopify_order_number\":\"#2745\"},\"shopify_order_id\":\"12992208404646\",\"shopify_order_number\":\"#2745\",\"shipment_ref\":null,\"shopify_draft_order_id\":null,\"shopify_draft_order_name\":null,\"po_number\":null,\"notes\":null,\"lifecycle_log\":[{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"issued\"},{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"marked_paid\",\"source\":\"shopify_order_paid\"},{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"downstream_change_observed\",\"changed_fields\":[],\"shopify_order_id\":\"12992208404646\"}],\"regime\":\"e_reporting\",\"regime_reasons\":[{\"en\":\"The buyer is a consumer or a non-registered entity: e-reporting.\",\"fr\":\"L'acheteur est un particulier ou une entité non assujettie : e-reporting.\",\"code\":\"buyer_not_business\"}],\"operation_category\":\"goods\",\"operation_category_source\":\"lines_authoritative\",\"payment_state\":\"paid\",\"vat_on_debits\":null,\"customer_kind\":\"individual\",\"buyer_siren\":null,\"buyer_siret\":null,\"buyer_routing_address\":null,\"buyer_legal_name\":\"Marie Dupont\",\"billing_line1\":\"12 Rue de Rivoli\",\"billing_line2\":null,\"billing_postcode\":\"75004\",\"billing_city\":\"Paris\",\"billing_country_code\":\"FR\",\"delivery_name\":null,\"delivery_line1\":\"12 Rue de Rivoli\",\"delivery_line2\":null,\"delivery_postcode\":\"75004\",\"delivery_city\":\"Paris\",\"delivery_country_code\":null,\"fx_rate\":\"1.1127\",\"fx_rate_date\":\"2026-11-11\",\"fx_source\":\"ECB\",\"legal_original_sha256\":\"71080207d7c75a376fd7ccaf21ec2cc0263b3f80efdb3527a06d9db22ce26565\",\"einvoice_state\":null,\"einvoice_state_raw\":null,\"pa_provider\":null,\"tax_point_date\":\"2026-11-12 00:00:00+00\",\"tax_total_eur_minor\":\"0\",\"original_document_id\":null,\"legal_original_id\":\"3f77c4bf-553a-4b97-833c-314e76765f3b\",\"internal_cancellation\":null,\"buyer_siren_confirmed_via\":null,\"external_ref\":null}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "issuer_profiles",
+        "{\"where\":{\"id\":\"7f406609-f025-48c2-8a2c-f793e7b76449\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"7f406609-f025-48c2-8a2c-f793e7b76449\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:52.288172+00\",\"updated_at\":\"2026-11-12 14:05:52.359833+00\",\"legal_name\":\"Resonance Atelier SARL\",\"country\":\"FR\",\"vat_id\":\"FR86902000009\",\"tax_registration_id\":null,\"address\":\"1 rue de Test, 75001 Paris, France\",\"iban\":\"FR7630006000011234567890189\",\"swift_bic\":\"AGRIFRPP\",\"bank_name\":\"Banque Exemple Paris\",\"logo_file_id\":null,\"default_currency\":\"EUR\",\"default_language\":\"fr\",\"default_payment_terms_days\":30,\"prefix_invoice\":\"FAC-{YYYY}-\",\"prefix_quote\":\"DEV-{YYYY}-\",\"prefix_proforma\":\"PRO-{YYYY}-\",\"prefix_po\":\"BC-{YYYY}-\",\"prefix_credit_note\":\"AV-{YYYY}-\",\"invoice_approval_threshold_minor\":null,\"po_approval_threshold_minor\":null,\"require_two_eyes\":false,\"auto_email_enabled\":false,\"prices_include_tax\":false,\"mail_account_id\":null,\"timezone\":\"Europe/Paris\",\"email_templates\":{},\"shopify_shop_id\":\"contract-shop.myshopify.com\",\"archived_at\":null,\"siren\":\"902000009\",\"siret\":null,\"legal_form\":null,\"share_capital\":null,\"rcs_city\":null,\"routing_address\":\"902000009\",\"address_line1\":\"1 rue de Test\",\"address_line2\":null,\"postcode\":\"75001\",\"city\":\"Paris\",\"country_code\":\"FR\",\"vat_on_debits_default\":null}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "einvoicing_settings",
+        "{\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"fcde6dbf-010c-4c27-bccd-fd49797b59ff\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:52.539997+00\",\"updated_at\":\"2026-11-12 14:05:52.539997+00\",\"gate_mode\":\"warn\",\"gate_mode_source\":\"tool\",\"cibs_switch_date\":null,\"changed_by\":\"00000000-0000-4000-8000-00000000c0df\",\"provider_app\":null,\"cutover_date\":\"2026-09-01\",\"send_enabled\":false,\"book_enabled\":null}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "counterparty_identities",
+        "{\"where\":{\"contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"1819d423-dcd6-45da-9d3f-4d57830ad786\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:57.108697+00\",\"updated_at\":\"2026-11-12 14:05:57.108697+00\",\"contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\",\"customer_kind\":\"individual\",\"siren\":null,\"siret\":null,\"establishment_country\":null,\"territory_reason\":null,\"vat_id\":null,\"routing_address\":null,\"registry_name\":null,\"registry_nature_juridique\":null,\"registry_line1\":null,\"registry_postcode\":null,\"registry_city\":null,\"registry_country_code\":null,\"source_url\":null,\"approval_request_id\":null,\"verified_by\":null,\"notes\":null,\"territory_treatment\":null,\"routing_scheme\":\"0225\",\"registry_status\":null,\"registry_checked_at\":null,\"source\":\"derived\",\"confirmed_via\":null,\"changed_at\":\"2026-01-01 00:00:00+00\"}]"
+    },
+    {
+      "method": "time_civil",
+      "args": [
+        "{\"timezone\":\"Europe/Paris\"}"
+      ],
+      "reply": "{\"date\":\"2026-11-12\",\"year\":2026,\"month\":11,\"day\":12,\"hour\":15,\"minute\":5,\"weekday\":4,\"zone\":\"Europe/Paris\"}"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "fx_rates",
+        "{\"where\":{\"currency\":\"USD\"},\"orderBy\":{\"rate_date\":\"desc\"},\"limit\":20,\"offset\":0}"
+      ],
+      "reply": "[{\"id\":\"7703c116-0af1-4688-9717-937ba45409c1\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:09.695411+00\",\"updated_at\":\"2026-11-12 14:05:09.695411+00\",\"currency\":\"USD\",\"rate_date\":\"2026-11-11\",\"rate\":\"1.1127\",\"fetched_at\":\"2026-01-01 00:00:00+00\"}]"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?endPeriod=2026-11-12&lastNObservations=1&format=csvdata",
+        "{\"method\":\"GET\",\"headers\":{\"User-Agent\":\"Liaison invoicing (fx rates)\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"text/csv\"},\"body\":\"KEY,FREQ,CURRENCY,CURRENCY_DENOM,EXR_TYPE,EXR_SUFFIX,TIME_PERIOD,OBS_VALUE,OBS_STATUS,OBS_CONF,OBS_PRE_BREAK,OBS_COM,TIME_FORMAT,BREAKS,COLLECTION,COMPILING_ORG,DISS_ORG,DOM_SER_IDS,PUBL_ECB,PUBL_MU,PUBL_PUBLIC,UNIT_INDEX_BASE,COMPILATION,COVERAGE,DECIMALS,NAT_TITLE,SOURCE_AGENCY,SOURCE_PUB,TITLE,TITLE_COMPL,UNIT,UNIT_MULT\\r\\nEXR.D.USD.EUR.SP00.A,D,USD,EUR,SP00,A,2026-11-11,1.1127,A,F,,,P1D,,A,,,,,,,99Q1=100,,,4,,4F0,,US dollar/Euro ECB reference exchange rate,\\\"ECB reference exchange rate, US dollar/Euro, 2.15 pm (C.E.T.)\\\",USD,0\\r\\n\"}"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "fx_rates",
+        "{\"where\":{\"currency\":\"USD\",\"rate_date\":\"2026-11-11\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"7703c116-0af1-4688-9717-937ba45409c1\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:09.695411+00\",\"updated_at\":\"2026-11-12 14:05:09.695411+00\",\"currency\":\"USD\",\"rate_date\":\"2026-11-11\",\"rate\":\"1.1127\",\"fetched_at\":\"2026-01-01 00:00:00+00\"}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "fx_rates",
+        "{\"where\":{\"currency\":\"USD\"},\"orderBy\":{\"rate_date\":\"desc\"},\"limit\":20,\"offset\":0}"
+      ],
+      "reply": "[{\"id\":\"7703c116-0af1-4688-9717-937ba45409c1\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:09.695411+00\",\"updated_at\":\"2026-11-12 14:05:09.695411+00\",\"currency\":\"USD\",\"rate_date\":\"2026-11-11\",\"rate\":\"1.1127\",\"fetched_at\":\"2026-01-01 00:00:00+00\"}]"
+    },
+    {
+      "method": "fetch",
+      "args": [
+        "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?endPeriod=2026-11-12&lastNObservations=1&format=csvdata",
+        "{\"method\":\"GET\",\"headers\":{\"User-Agent\":\"Liaison invoicing (fx rates)\"}}"
+      ],
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"text/csv\"},\"body\":\"KEY,FREQ,CURRENCY,CURRENCY_DENOM,EXR_TYPE,EXR_SUFFIX,TIME_PERIOD,OBS_VALUE,OBS_STATUS,OBS_CONF,OBS_PRE_BREAK,OBS_COM,TIME_FORMAT,BREAKS,COLLECTION,COMPILING_ORG,DISS_ORG,DOM_SER_IDS,PUBL_ECB,PUBL_MU,PUBL_PUBLIC,UNIT_INDEX_BASE,COMPILATION,COVERAGE,DECIMALS,NAT_TITLE,SOURCE_AGENCY,SOURCE_PUB,TITLE,TITLE_COMPL,UNIT,UNIT_MULT\\r\\nEXR.D.USD.EUR.SP00.A,D,USD,EUR,SP00,A,2026-11-11,1.1127,A,F,,,P1D,,A,,,,,,,99Q1=100,,,4,,4F0,,US dollar/Euro ECB reference exchange rate,\\\"ECB reference exchange rate, US dollar/Euro, 2.15 pm (C.E.T.)\\\",USD,0\\r\\n\"}"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "fx_rates",
+        "{\"where\":{\"currency\":\"USD\",\"rate_date\":\"2026-11-11\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"7703c116-0af1-4688-9717-937ba45409c1\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:09.695411+00\",\"updated_at\":\"2026-11-12 14:05:09.695411+00\",\"currency\":\"USD\",\"rate_date\":\"2026-11-11\",\"rate\":\"1.1127\",\"fetched_at\":\"2026-01-01 00:00:00+00\"}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "einvoicing_settings",
+        "{\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"fcde6dbf-010c-4c27-bccd-fd49797b59ff\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:52.539997+00\",\"updated_at\":\"2026-11-12 14:05:52.539997+00\",\"gate_mode\":\"warn\",\"gate_mode_source\":\"tool\",\"cibs_switch_date\":null,\"changed_by\":\"00000000-0000-4000-8000-00000000c0df\",\"provider_app\":null,\"cutover_date\":\"2026-09-01\",\"send_enabled\":false,\"book_enabled\":null}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "counterparty_identities",
+        "{\"where\":{\"contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"1819d423-dcd6-45da-9d3f-4d57830ad786\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:57.108697+00\",\"updated_at\":\"2026-11-12 14:05:57.108697+00\",\"contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\",\"customer_kind\":\"individual\",\"siren\":null,\"siret\":null,\"establishment_country\":null,\"territory_reason\":null,\"vat_id\":null,\"routing_address\":null,\"registry_name\":null,\"registry_nature_juridique\":null,\"registry_line1\":null,\"registry_postcode\":null,\"registry_city\":null,\"registry_country_code\":null,\"source_url\":null,\"approval_request_id\":null,\"verified_by\":null,\"notes\":null,\"territory_treatment\":null,\"routing_scheme\":\"0225\",\"registry_status\":null,\"registry_checked_at\":null,\"source\":\"derived\",\"confirmed_via\":null,\"changed_at\":\"2026-01-01 00:00:00+00\"}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "product_customs_overlay",
+        "{\"where\":{\"source\":\"shopify\",\"external_id\":\"gid://shopify/ProductVariant/56534760784038\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "fx_rates",
+        "{\"where\":{\"currency\":\"USD\"},\"orderBy\":{\"rate_date\":\"desc\"},\"limit\":20,\"offset\":0}"
+      ],
+      "reply": "[{\"id\":\"7703c116-0af1-4688-9717-937ba45409c1\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:09.695411+00\",\"updated_at\":\"2026-11-12 14:05:09.695411+00\",\"currency\":\"USD\",\"rate_date\":\"2026-11-11\",\"rate\":\"1.1127\",\"fetched_at\":\"2026-01-01 00:00:00+00\"}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "einvoicing_settings",
+        "{\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"fcde6dbf-010c-4c27-bccd-fd49797b59ff\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:52.539997+00\",\"updated_at\":\"2026-11-12 14:05:52.539997+00\",\"gate_mode\":\"warn\",\"gate_mode_source\":\"tool\",\"cibs_switch_date\":null,\"changed_by\":\"00000000-0000-4000-8000-00000000c0df\",\"provider_app\":null,\"cutover_date\":\"2026-09-01\",\"send_enabled\":false,\"book_enabled\":null}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "counterparty_identities",
+        "{\"where\":{\"contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"1819d423-dcd6-45da-9d3f-4d57830ad786\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:57.108697+00\",\"updated_at\":\"2026-11-12 14:05:57.108697+00\",\"contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\",\"customer_kind\":\"individual\",\"siren\":null,\"siret\":null,\"establishment_country\":null,\"territory_reason\":null,\"vat_id\":null,\"routing_address\":null,\"registry_name\":null,\"registry_nature_juridique\":null,\"registry_line1\":null,\"registry_postcode\":null,\"registry_city\":null,\"registry_country_code\":null,\"source_url\":null,\"approval_request_id\":null,\"verified_by\":null,\"notes\":null,\"territory_treatment\":null,\"routing_scheme\":\"0225\",\"registry_status\":null,\"registry_checked_at\":null,\"source\":\"derived\",\"confirmed_via\":null,\"changed_at\":\"2026-01-01 00:00:00+00\"}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "fx_rates",
+        "{\"where\":{\"currency\":\"USD\"},\"orderBy\":{\"rate_date\":\"desc\"},\"limit\":20,\"offset\":0}"
+      ],
+      "reply": "[{\"id\":\"7703c116-0af1-4688-9717-937ba45409c1\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:09.695411+00\",\"updated_at\":\"2026-11-12 14:05:09.695411+00\",\"currency\":\"USD\",\"rate_date\":\"2026-11-11\",\"rate\":\"1.1127\",\"fetched_at\":\"2026-01-01 00:00:00+00\"}]"
+    },
+    {
+      "method": "db_batch",
+      "args": [
+        "{\"sequences\":{\"credit\":{\"key\":\"invoicing:doc_number:7f406609-f025-48c2-8a2c-f793e7b76449:credit_note:2026\",\"format\":{\"prefix\":\"AV-2026-\",\"pad\":4},\"unique\":{\"entity\":\"documents\",\"field\":\"number_int\",\"where\":{\"issuer_profile_id\":\"7f406609-f025-48c2-8a2c-f793e7b76449\",\"type\":\"credit_note\",\"year_of_issue\":2026}}},\"replacement\":{\"key\":\"invoicing:doc_number:7f406609-f025-48c2-8a2c-f793e7b76449:invoice:2026\",\"format\":{\"prefix\":\"FAC-2026-\",\"pad\":4},\"unique\":{\"entity\":\"documents\",\"field\":\"number_int\",\"where\":{\"issuer_profile_id\":\"7f406609-f025-48c2-8a2c-f793e7b76449\",\"type\":\"invoice\",\"year_of_issue\":2026}}}},\"ops\":[{\"insert\":\"documents\",\"as\":\"credit.document\",\"data\":{\"type\":\"credit_note\",\"scope\":null,\"status\":\"issued\",\"number\":{\"$seq\":\"credit.formatted\"},\"number_int\":{\"$seq\":\"credit.value\"},\"year_of_issue\":2026,\"issuer_profile_id\":\"7f406609-f025-48c2-8a2c-f793e7b76449\",\"counterparty_contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\",\"counterparty_name\":\"Marie Dupont\",\"counterparty_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"counterparty_shipping_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"counterparty_shipping_name\":\"Marie Dupont\",\"counterparty_vat_id\":null,\"counterparty_email\":\"marie@example.com\",\"counterparty_country\":\"FR\",\"currency\":\"USD\",\"subtotal_minor\":\"-88595\",\"tax_total_minor\":\"0\",\"grand_total_minor\":\"-88595\",\"tax_treatment\":\"eu_domestic\",\"incoterm\":\"DAP\",\"issued_at\":\"2026-11-12\",\"due_at\":null,\"pdf_file_id\":null,\"pdf_status\":\"pending\",\"external_refs\":{\"original_document_id\":\"5f845a0e-fd0a-4222-bb2f-d1e98f1f3e34\",\"original_document_number\":\"FAC-2026-0004\",\"reason\":\"Order edited\",\"shopify_order_id\":\"12992208404646\",\"shopify_order_number\":\"#2745\"},\"shopify_order_id\":\"12992208404646\",\"shopify_order_number\":\"#2745\",\"shipment_ref\":null,\"shopify_draft_order_id\":null,\"shopify_draft_order_name\":null,\"po_number\":null,\"notes\":null,\"regime\":\"e_reporting\",\"regime_reasons\":[{\"code\":\"credit_note_follows_original\",\"en\":\"A credit note follows the regime of its original invoice.\",\"fr\":\"Un avoir suit le régime de sa facture d'origine.\"}],\"operation_category\":\"goods\",\"operation_category_source\":\"lines_authoritative\",\"payment_state\":null,\"vat_on_debits\":null,\"customer_kind\":\"individual\",\"buyer_siren\":null,\"buyer_siret\":null,\"buyer_routing_address\":null,\"buyer_legal_name\":\"Marie Dupont\",\"buyer_siren_confirmed_via\":null,\"billing_line1\":\"12 Rue de Rivoli\",\"billing_line2\":null,\"billing_postcode\":\"75004\",\"billing_city\":\"Paris\",\"billing_country_code\":\"FR\",\"tax_point_date\":\"2026-11-12\",\"original_document_id\":\"5f845a0e-fd0a-4222-bb2f-d1e98f1f3e34\",\"internal_cancellation\":false,\"fx_rate\":\"1.1127\",\"fx_rate_date\":\"2026-11-11\",\"fx_source\":\"ECB\",\"tax_total_eur_minor\":\"0\",\"lifecycle_log\":[{\"event\":\"issued\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"ts\":\"2026-01-01T00:00:00.000Z\"}]}},{\"insert\":\"document_lines\",\"data\":{\"document_id\":{\"$ref\":\"credit.document\"},\"position\":1,\"description\":\"The Minimal Snowboard\",\"quantity\":\"1.000\",\"unit_price_minor\":\"-88595\",\"discount_minor\":\"0\",\"line_kind\":\"goods\",\"tax_rate_bp\":0,\"subtotal_minor\":\"-88595\",\"tax_minor\":\"0\",\"total_minor\":\"-88595\",\"hs_code\":null,\"country_of_origin\":null,\"customs_description\":null,\"product_source\":\"shopify\",\"external_id\":\"gid://shopify/ProductVariant/56534760784038\"}},{\"update\":\"documents\",\"id\":\"5f845a0e-fd0a-4222-bb2f-d1e98f1f3e34\",\"append\":{\"lifecycle_log\":[{\"event\":\"credit_note_issued\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"ts\":\"2026-01-01T00:00:00.000Z\",\"credit_note_id\":{\"$ref\":\"credit.document\"},\"number\":{\"$seq\":\"credit.formatted\"}}]}},{\"insert\":\"documents\",\"as\":\"replacement.document\",\"data\":{\"type\":\"invoice\",\"scope\":null,\"status\":\"issued\",\"number\":{\"$seq\":\"replacement.formatted\"},\"number_int\":{\"$seq\":\"replacement.value\"},\"year_of_issue\":2026,\"issuer_profile_id\":\"7f406609-f025-48c2-8a2c-f793e7b76449\",\"counterparty_contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\",\"counterparty_name\":\"Marie Dupont\",\"counterparty_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"counterparty_shipping_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"counterparty_shipping_name\":\"Marie Dupont\",\"counterparty_vat_id\":null,\"counterparty_email\":\"marie@example.com\",\"counterparty_country\":\"FR\",\"currency\":\"USD\",\"subtotal_minor\":\"88595\",\"tax_total_minor\":\"17719\",\"grand_total_minor\":\"106314\",\"tax_treatment\":\"eu_domestic\",\"incoterm\":\"DAP\",\"issued_at\":\"2026-11-12\",\"due_at\":null,\"pdf_file_id\":null,\"pdf_status\":\"pending\",\"external_refs\":{\"shopify_order_id\":\"12992208404646\",\"shopify_order_number\":\"#2745\",\"original_document_id\":\"5f845a0e-fd0a-4222-bb2f-d1e98f1f3e34\",\"original_document_number\":\"FAC-2026-0004\"},\"shopify_order_id\":\"12992208404646\",\"shopify_order_number\":\"#2745\",\"shipment_ref\":null,\"shopify_draft_order_id\":null,\"shopify_draft_order_name\":null,\"po_number\":null,\"notes\":null,\"regime\":\"e_reporting\",\"regime_reasons\":[{\"code\":\"buyer_not_business\",\"en\":\"The buyer is a consumer or a non-registered entity: e-reporting.\",\"fr\":\"L'acheteur est un particulier ou une entité non assujettie : e-reporting.\"}],\"operation_category\":\"goods\",\"operation_category_source\":\"explicit\",\"payment_state\":\"due\",\"vat_on_debits\":null,\"customer_kind\":\"individual\",\"buyer_siren\":null,\"buyer_siret\":null,\"buyer_routing_address\":null,\"buyer_legal_name\":\"Marie Dupont\",\"buyer_siren_confirmed_via\":null,\"billing_line1\":\"12 Rue de Rivoli\",\"billing_line2\":null,\"billing_postcode\":\"75004\",\"billing_city\":\"Paris\",\"billing_country_code\":\"FR\",\"tax_point_date\":\"2026-11-12\",\"original_document_id\":null,\"internal_cancellation\":null,\"fx_rate\":\"1.1127\",\"fx_rate_date\":\"2026-11-11\",\"fx_source\":\"ECB\",\"tax_total_eur_minor\":\"15924\",\"lifecycle_log\":[{\"event\":\"issued\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"ts\":\"2026-01-01T00:00:00.000Z\"}]}},{\"insert\":\"document_lines\",\"data\":{\"document_id\":{\"$ref\":\"replacement.document\"},\"position\":0,\"description\":\"The Minimal Snowboard\",\"quantity\":\"1\",\"unit_price_minor\":\"88595\",\"discount_minor\":\"0\",\"line_kind\":\"goods\",\"tax_rate_bp\":2000,\"subtotal_minor\":\"88595\",\"tax_minor\":\"17719\",\"total_minor\":\"106314\",\"hs_code\":null,\"country_of_origin\":null,\"customs_description\":null}}]}"
+      ],
+      "reply": "{\"rows\":{\"credit.document\":{\"id\":\"dc1fcee5-9cad-4b55-ba66-689296d94d08\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:57.653177+00\",\"updated_at\":\"2026-11-12 14:05:57.653177+00\",\"einvoice_send_approval_id\":null,\"einvoice_send_requested_at\":null,\"einvoice_send_attempt\":null,\"type\":\"credit_note\",\"scope\":null,\"status\":\"issued\",\"payment_status\":\"unpaid\",\"number\":\"AV-2026-0003\",\"number_int\":3,\"year_of_issue\":2026,\"issuer_profile_id\":\"7f406609-f025-48c2-8a2c-f793e7b76449\",\"counterparty_contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\",\"counterparty_name\":\"Marie Dupont\",\"counterparty_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"counterparty_shipping_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"counterparty_shipping_name\":\"Marie Dupont\",\"counterparty_vat_id\":null,\"counterparty_email\":\"marie@example.com\",\"counterparty_country\":\"FR\",\"currency\":\"USD\",\"subtotal_minor\":\"-88595\",\"tax_total_minor\":\"0\",\"grand_total_minor\":\"-88595\",\"tax_treatment\":\"eu_domestic\",\"incoterm\":\"DAP\",\"issued_at\":\"2026-11-12 00:00:00+00\",\"due_at\":null,\"paid_at\":null,\"voided_at\":null,\"pdf_file_id\":null,\"pdf_status\":\"pending\",\"external_refs\":{\"reason\":\"Order edited\",\"shopify_order_id\":\"12992208404646\",\"original_document_id\":\"5f845a0e-fd0a-4222-bb2f-d1e98f1f3e34\",\"shopify_order_number\":\"#2745\",\"original_document_number\":\"FAC-2026-0004\"},\"shopify_order_id\":\"12992208404646\",\"shopify_order_number\":\"#2745\",\"shipment_ref\":null,\"shopify_draft_order_id\":null,\"shopify_draft_order_name\":null,\"po_number\":null,\"notes\":null,\"lifecycle_log\":[{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"issued\"}],\"regime\":\"e_reporting\",\"regime_reasons\":[{\"en\":\"A credit note follows the regime of its original invoice.\",\"fr\":\"Un avoir suit le régime de sa facture d'origine.\",\"code\":\"credit_note_follows_original\"}],\"operation_category\":\"goods\",\"operation_category_source\":\"lines_authoritative\",\"payment_state\":null,\"vat_on_debits\":null,\"customer_kind\":\"individual\",\"buyer_siren\":null,\"buyer_siret\":null,\"buyer_routing_address\":null,\"buyer_legal_name\":\"Marie Dupont\",\"billing_line1\":\"12 Rue de Rivoli\",\"billing_line2\":null,\"billing_postcode\":\"75004\",\"billing_city\":\"Paris\",\"billing_country_code\":\"FR\",\"delivery_name\":null,\"delivery_line1\":null,\"delivery_line2\":null,\"delivery_postcode\":null,\"delivery_city\":null,\"delivery_country_code\":null,\"fx_rate\":\"1.1127\",\"fx_rate_date\":\"2026-11-11\",\"fx_source\":\"ECB\",\"legal_original_sha256\":null,\"einvoice_state\":null,\"einvoice_state_raw\":null,\"pa_provider\":null,\"tax_point_date\":\"2026-11-12 00:00:00+00\",\"tax_total_eur_minor\":\"0\",\"original_document_id\":\"5f845a0e-fd0a-4222-bb2f-d1e98f1f3e34\",\"legal_original_id\":null,\"internal_cancellation\":false,\"buyer_siren_confirmed_via\":null,\"external_ref\":null},\"replacement.document\":{\"id\":\"9364a25b-dd11-4d21-8970-91433f3f5ab8\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:57.653177+00\",\"updated_at\":\"2026-11-12 14:05:57.653177+00\",\"einvoice_send_approval_id\":null,\"einvoice_send_requested_at\":null,\"einvoice_send_attempt\":null,\"type\":\"invoice\",\"scope\":null,\"status\":\"issued\",\"payment_status\":\"unpaid\",\"number\":\"FAC-2026-0005\",\"number_int\":5,\"year_of_issue\":2026,\"issuer_profile_id\":\"7f406609-f025-48c2-8a2c-f793e7b76449\",\"counterparty_contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\",\"counterparty_name\":\"Marie Dupont\",\"counterparty_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"counterparty_shipping_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"counterparty_shipping_name\":\"Marie Dupont\",\"counterparty_vat_id\":null,\"counterparty_email\":\"marie@example.com\",\"counterparty_country\":\"FR\",\"currency\":\"USD\",\"subtotal_minor\":\"88595\",\"tax_total_minor\":\"17719\",\"grand_total_minor\":\"106314\",\"tax_treatment\":\"eu_domestic\",\"incoterm\":\"DAP\",\"issued_at\":\"2026-11-12 00:00:00+00\",\"due_at\":null,\"paid_at\":null,\"voided_at\":null,\"pdf_file_id\":null,\"pdf_status\":\"pending\",\"external_refs\":{\"shopify_order_id\":\"12992208404646\",\"original_document_id\":\"5f845a0e-fd0a-4222-bb2f-d1e98f1f3e34\",\"shopify_order_number\":\"#2745\",\"original_document_number\":\"FAC-2026-0004\"},\"shopify_order_id\":\"12992208404646\",\"shopify_order_number\":\"#2745\",\"shipment_ref\":null,\"shopify_draft_order_id\":null,\"shopify_draft_order_name\":null,\"po_number\":null,\"notes\":null,\"lifecycle_log\":[{\"ts\":\"2026-01-01T00:00:00.000Z\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"event\":\"issued\"}],\"regime\":\"e_reporting\",\"regime_reasons\":[{\"en\":\"The buyer is a consumer or a non-registered entity: e-reporting.\",\"fr\":\"L'acheteur est un particulier ou une entité non assujettie : e-reporting.\",\"code\":\"buyer_not_business\"}],\"operation_category\":\"goods\",\"operation_category_source\":\"explicit\",\"payment_state\":\"due\",\"vat_on_debits\":null,\"customer_kind\":\"individual\",\"buyer_siren\":null,\"buyer_siret\":null,\"buyer_routing_address\":null,\"buyer_legal_name\":\"Marie Dupont\",\"billing_line1\":\"12 Rue de Rivoli\",\"billing_line2\":null,\"billing_postcode\":\"75004\",\"billing_city\":\"Paris\",\"billing_country_code\":\"FR\",\"delivery_name\":null,\"delivery_line1\":null,\"delivery_line2\":null,\"delivery_postcode\":null,\"delivery_city\":null,\"delivery_country_code\":null,\"fx_rate\":\"1.1127\",\"fx_rate_date\":\"2026-11-11\",\"fx_source\":\"ECB\",\"legal_original_sha256\":null,\"einvoice_state\":null,\"einvoice_state_raw\":null,\"pa_provider\":null,\"tax_point_date\":\"2026-11-12 00:00:00+00\",\"tax_total_eur_minor\":\"15924\",\"original_document_id\":null,\"legal_original_id\":null,\"internal_cancellation\":null,\"buyer_siren_confirmed_via\":null,\"external_ref\":null}},\"sequences\":{\"credit\":{\"value\":3,\"formatted\":\"AV-2026-0003\"},\"replacement\":{\"value\":5,\"formatted\":\"FAC-2026-0005\"}}}"
+    },
+    {
+      "method": "emit",
+      "args": [
+        "{\"entity\":\"document\",\"action\":\"issued\",\"entityId\":\"dc1fcee5-9cad-4b55-ba66-689296d94d08\",\"data\":{\"document_id\":\"dc1fcee5-9cad-4b55-ba66-689296d94d08\",\"type\":\"credit_note\",\"number\":\"AV-2026-0003\",\"status\":\"issued\",\"currency\":\"USD\",\"grand_total_minor\":\"-88595\"}}"
+      ]
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "einvoicing_settings",
+        "{\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"fcde6dbf-010c-4c27-bccd-fd49797b59ff\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:52.539997+00\",\"updated_at\":\"2026-11-12 14:05:52.539997+00\",\"gate_mode\":\"warn\",\"gate_mode_source\":\"tool\",\"cibs_switch_date\":null,\"changed_by\":\"00000000-0000-4000-8000-00000000c0df\",\"provider_app\":null,\"cutover_date\":\"2026-09-01\",\"send_enabled\":false,\"book_enabled\":null}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "legal_originals",
+        "{\"where\":{\"document_id\":\"dc1fcee5-9cad-4b55-ba66-689296d94d08\",\"kind\":\"issued_pdf\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "legal_originals",
+        "{\"document_id\":\"dc1fcee5-9cad-4b55-ba66-689296d94d08\",\"kind\":\"issued_pdf\",\"file_id\":null,\"sha256\":null,\"byte_size\":null,\"recorded_at\":\"2026-01-01T00:00:00.000Z\",\"recorded_by\":\"00000000-0000-4000-8000-00000000c0df\"}"
+      ],
+      "reply": "{\"id\":\"f5ddf6eb-a1a4-415e-b2d8-2df06e7431cf\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:57.676173+00\",\"updated_at\":\"2026-11-12 14:05:57.676173+00\",\"document_id\":\"dc1fcee5-9cad-4b55-ba66-689296d94d08\",\"received_id\":null,\"kind\":\"issued_pdf\",\"file_id\":null,\"sha256\":null,\"byte_size\":null,\"recorded_at\":\"2026-01-01 00:00:00+00\",\"recorded_by\":\"00000000-0000-4000-8000-00000000c0df\"}"
+    },
+    {
+      "method": "pdf_render",
+      "args": [
+        "{\"template_kind\":\"invoicing:credit_note_v1\",\"filename\":\"credit_note-AV-2026-0003.pdf\",\"data\":{\"document\":{\"type\":\"credit_note\",\"scope\":null,\"number\":\"AV-2026-0003\",\"issued_at\":\"2026-11-12\",\"due_at\":null,\"currency\":\"USD\",\"subtotal_minor\":\"-88595\",\"tax_total_minor\":\"0\",\"grand_total_minor\":\"-88595\",\"tax_treatment\":\"eu_domestic\",\"incoterm\":\"DAP\",\"payment_status\":null,\"paid_at\":null,\"original_invoice_number\":\"FAC-2026-0004\",\"original_invoice_date\":\"2026-11-12\",\"reason\":\"Order edited\",\"operation_label\":\"Livraison de biens\",\"vat_on_debits\":false,\"shopify_order_number\":\"#2745\",\"po_number\":null,\"customer_reference\":null,\"notes\":null},\"issuer\":{\"legal_name\":\"Resonance Atelier SARL\",\"country\":\"FR\",\"vat_id\":\"FR86902000009\",\"address\":\"1 rue de Test, 75001 Paris, France\",\"iban\":\"FR7630006000011234567890189\",\"swift_bic\":\"AGRIFRPP\",\"bank_name\":\"Banque Exemple Paris\",\"default_language\":\"fr\",\"logo_file_id\":null,\"siren\":\"902000009\",\"legal_form\":null,\"share_capital\":null,\"rcs_city\":null},\"counterparty\":{\"legal_name\":\"Marie Dupont\",\"country\":\"FR\",\"vat_id\":null,\"address\":\"12 Rue de Rivoli\\n75004 Paris\",\"shipping_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"shipping_name\":\"Marie Dupont\",\"email\":\"marie@example.com\",\"siren\":null},\"line_items\":[{\"position\":1,\"description\":\"The Minimal Snowboard\",\"quantity\":\"1.000\",\"unit_price_minor\":\"-88595\",\"discount_minor\":\"0\",\"line_kind\":\"goods\",\"tax_rate_bp\":0,\"subtotal_minor\":\"-88595\",\"tax_minor\":\"0\",\"total_minor\":\"-88595\",\"hs_code\":null,\"country_of_origin\":null,\"customs_description\":null}],\"legal_mention\":\"\",\"requires_hs_code\":false},\"pdfa\":\"3b\",\"parent\":{\"entityType\":\"legal_original\",\"entityId\":\"f5ddf6eb-a1a4-415e-b2d8-2df06e7431cf\"}}"
+      ],
+      "reply": "{\"file_id\":\"e9eccc7b-d017-4a58-b73a-6fdf4348e848\",\"byte_size\":35519,\"page_count\":1,\"pdf_a3_normalized\":true,\"filename\":\"credit_note-AV-2026-0003.pdf\",\"sha256\":\"1be5aad2c1e7c8546d5f98e61f0270013418c8b6a68691bfafc2a8eab291361a\",\"pdfa\":\"3b\",\"parent_entity_type\":\"legal_original\",\"parent_entity_id\":\"f5ddf6eb-a1a4-415e-b2d8-2df06e7431cf\"}"
+    },
+    {
+      "method": "db_update",
+      "args": [
+        "legal_originals",
+        "f5ddf6eb-a1a4-415e-b2d8-2df06e7431cf",
+        "{\"file_id\":\"e9eccc7b-d017-4a58-b73a-6fdf4348e848\",\"sha256\":\"1be5aad2c1e7c8546d5f98e61f0270013418c8b6a68691bfafc2a8eab291361a\",\"byte_size\":35519}"
+      ]
+    },
+    {
+      "method": "db_update",
+      "args": [
+        "documents",
+        "dc1fcee5-9cad-4b55-ba66-689296d94d08",
+        "{\"legal_original_id\":\"f5ddf6eb-a1a4-415e-b2d8-2df06e7431cf\",\"legal_original_sha256\":\"1be5aad2c1e7c8546d5f98e61f0270013418c8b6a68691bfafc2a8eab291361a\",\"pdf_file_id\":\"e9eccc7b-d017-4a58-b73a-6fdf4348e848\",\"pdf_status\":\"ready\"}"
+      ]
+    },
+    {
+      "method": "db_update",
+      "args": [
+        "documents",
+        "dc1fcee5-9cad-4b55-ba66-689296d94d08",
+        "{\"pdf_file_id\":\"e9eccc7b-d017-4a58-b73a-6fdf4348e848\",\"pdf_status\":\"ready\",\"lifecycle_log\":[{\"event\":\"issued\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"ts\":\"2026-01-01T00:00:00.000Z\"}]}"
+      ]
+    },
+    {
+      "method": "messages_post",
+      "args": [
+        "{\"contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\",\"body\":\"Credit Note AV-2026-0003\",\"attachment_file_ids\":[\"e9eccc7b-d017-4a58-b73a-6fdf4348e848\"]}"
+      ],
+      "reply": "{\"error\":{\"code\":\"attachment_unreadable\",\"message\":\"file e9eccc7b-d017-4a58-b73a-6fdf4348e848 not readable by invoicing\",\"retryable\":false}}"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "einvoicing_settings",
+        "{\"orderBy\":{\"createdAt\":\"asc\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"fcde6dbf-010c-4c27-bccd-fd49797b59ff\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:52.539997+00\",\"updated_at\":\"2026-11-12 14:05:52.539997+00\",\"gate_mode\":\"warn\",\"gate_mode_source\":\"tool\",\"cibs_switch_date\":null,\"changed_by\":\"00000000-0000-4000-8000-00000000c0df\",\"provider_app\":null,\"cutover_date\":\"2026-09-01\",\"send_enabled\":false,\"book_enabled\":null}]"
+    },
+    {
+      "method": "emit",
+      "args": [
+        "{\"entity\":\"document\",\"action\":\"issued\",\"entityId\":\"9364a25b-dd11-4d21-8970-91433f3f5ab8\",\"data\":{\"document_id\":\"9364a25b-dd11-4d21-8970-91433f3f5ab8\",\"type\":\"invoice\",\"number\":\"FAC-2026-0005\",\"status\":\"issued\",\"currency\":\"USD\",\"grand_total_minor\":\"106314\"}}"
+      ]
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "einvoicing_settings",
+        "{\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"fcde6dbf-010c-4c27-bccd-fd49797b59ff\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:52.539997+00\",\"updated_at\":\"2026-11-12 14:05:52.539997+00\",\"gate_mode\":\"warn\",\"gate_mode_source\":\"tool\",\"cibs_switch_date\":null,\"changed_by\":\"00000000-0000-4000-8000-00000000c0df\",\"provider_app\":null,\"cutover_date\":\"2026-09-01\",\"send_enabled\":false,\"book_enabled\":null}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "legal_originals",
+        "{\"where\":{\"document_id\":\"9364a25b-dd11-4d21-8970-91433f3f5ab8\",\"kind\":\"issued_pdf\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "legal_originals",
+        "{\"document_id\":\"9364a25b-dd11-4d21-8970-91433f3f5ab8\",\"kind\":\"issued_pdf\",\"file_id\":null,\"sha256\":null,\"byte_size\":null,\"recorded_at\":\"2026-01-01T00:00:00.000Z\",\"recorded_by\":\"00000000-0000-4000-8000-00000000c0df\"}"
+      ],
+      "reply": "{\"id\":\"b2dc8f20-7a4f-4e15-b59f-e033f813e481\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:57.794035+00\",\"updated_at\":\"2026-11-12 14:05:57.794035+00\",\"document_id\":\"9364a25b-dd11-4d21-8970-91433f3f5ab8\",\"received_id\":null,\"kind\":\"issued_pdf\",\"file_id\":null,\"sha256\":null,\"byte_size\":null,\"recorded_at\":\"2026-01-01 00:00:00+00\",\"recorded_by\":\"00000000-0000-4000-8000-00000000c0df\"}"
+    },
+    {
+      "method": "pdf_render",
+      "args": [
+        "{\"template_kind\":\"invoicing:invoice_v1\",\"filename\":\"invoice-FAC-2026-0005.pdf\",\"data\":{\"document\":{\"type\":\"invoice\",\"scope\":null,\"number\":\"FAC-2026-0005\",\"issued_at\":\"2026-11-12\",\"due_at\":null,\"currency\":\"USD\",\"subtotal_minor\":\"88595\",\"tax_total_minor\":\"17719\",\"grand_total_minor\":\"106314\",\"tax_treatment\":\"eu_domestic\",\"incoterm\":\"DAP\",\"payment_status\":null,\"paid_at\":null,\"original_invoice_number\":null,\"original_invoice_date\":null,\"reason\":null,\"operation_label\":\"Livraison de biens\",\"vat_on_debits\":false,\"shopify_order_number\":\"#2745\",\"po_number\":null,\"customer_reference\":null,\"notes\":null},\"issuer\":{\"legal_name\":\"Resonance Atelier SARL\",\"country\":\"FR\",\"vat_id\":\"FR86902000009\",\"address\":\"1 rue de Test, 75001 Paris, France\",\"iban\":\"FR7630006000011234567890189\",\"swift_bic\":\"AGRIFRPP\",\"bank_name\":\"Banque Exemple Paris\",\"default_language\":\"fr\",\"logo_file_id\":null,\"siren\":\"902000009\",\"legal_form\":null,\"share_capital\":null,\"rcs_city\":null},\"counterparty\":{\"legal_name\":\"Marie Dupont\",\"country\":\"FR\",\"vat_id\":null,\"address\":\"12 Rue de Rivoli\\n75004 Paris\",\"shipping_address\":\"12 Rue de Rivoli\\n75004 Paris\",\"shipping_name\":\"Marie Dupont\",\"email\":\"marie@example.com\",\"siren\":null},\"line_items\":[{\"position\":0,\"description\":\"The Minimal Snowboard\",\"quantity\":\"1\",\"unit_price_minor\":\"88595\",\"discount_minor\":\"0\",\"line_kind\":\"goods\",\"tax_rate_bp\":2000,\"subtotal_minor\":\"88595\",\"tax_minor\":\"17719\",\"total_minor\":\"106314\",\"hs_code\":null,\"country_of_origin\":null,\"customs_description\":null}],\"legal_mention\":\"\",\"requires_hs_code\":false},\"pdfa\":\"3b\",\"parent\":{\"entityType\":\"legal_original\",\"entityId\":\"b2dc8f20-7a4f-4e15-b59f-e033f813e481\"}}"
+      ],
+      "reply": "{\"file_id\":\"9f2a5ef5-34d1-4353-934e-61a43335d372\",\"byte_size\":36263,\"page_count\":1,\"pdf_a3_normalized\":true,\"filename\":\"invoice-FAC-2026-0005.pdf\",\"sha256\":\"39f2ce75c1f8a7886fac6ce1543a627f04f0c45586505fd39e41a05540357a7b\",\"pdfa\":\"3b\",\"parent_entity_type\":\"legal_original\",\"parent_entity_id\":\"b2dc8f20-7a4f-4e15-b59f-e033f813e481\"}"
+    },
+    {
+      "method": "db_update",
+      "args": [
+        "legal_originals",
+        "b2dc8f20-7a4f-4e15-b59f-e033f813e481",
+        "{\"file_id\":\"9f2a5ef5-34d1-4353-934e-61a43335d372\",\"sha256\":\"39f2ce75c1f8a7886fac6ce1543a627f04f0c45586505fd39e41a05540357a7b\",\"byte_size\":36263}"
+      ]
+    },
+    {
+      "method": "db_update",
+      "args": [
+        "documents",
+        "9364a25b-dd11-4d21-8970-91433f3f5ab8",
+        "{\"legal_original_id\":\"b2dc8f20-7a4f-4e15-b59f-e033f813e481\",\"legal_original_sha256\":\"39f2ce75c1f8a7886fac6ce1543a627f04f0c45586505fd39e41a05540357a7b\",\"pdf_file_id\":\"9f2a5ef5-34d1-4353-934e-61a43335d372\",\"pdf_status\":\"ready\"}"
+      ]
+    },
+    {
+      "method": "db_update",
+      "args": [
+        "documents",
+        "9364a25b-dd11-4d21-8970-91433f3f5ab8",
+        "{\"pdf_file_id\":\"9f2a5ef5-34d1-4353-934e-61a43335d372\",\"pdf_status\":\"ready\",\"lifecycle_log\":[{\"event\":\"issued\",\"actor\":\"00000000-0000-4000-8000-00000000c0df\",\"ts\":\"2026-01-01T00:00:00.000Z\"}]}"
+      ]
+    },
+    {
+      "method": "messages_post",
+      "args": [
+        "{\"contact_id\":\"b3d4845a-7901-49ef-9a8b-7eb956e0b691\",\"body\":\"Invoice FAC-2026-0005\",\"attachment_file_ids\":[\"9f2a5ef5-34d1-4353-934e-61a43335d372\"]}"
+      ],
+      "reply": "{\"error\":{\"code\":\"attachment_unreadable\",\"message\":\"file 9f2a5ef5-34d1-4353-934e-61a43335d372 not readable by invoicing\",\"retryable\":false}}"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "einvoicing_settings",
+        "{\"orderBy\":{\"createdAt\":\"asc\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"fcde6dbf-010c-4c27-bccd-fd49797b59ff\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:05:52.539997+00\",\"updated_at\":\"2026-11-12 14:05:52.539997+00\",\"gate_mode\":\"warn\",\"gate_mode_source\":\"tool\",\"cibs_switch_date\":null,\"changed_by\":\"00000000-0000-4000-8000-00000000c0df\",\"provider_app\":null,\"cutover_date\":\"2026-09-01\",\"send_enabled\":false,\"book_enabled\":null}]"
+    },
+    {
+      "method": "emit",
+      "args": [
+        "{\"entity\":\"document\",\"action\":\"credited\",\"entityId\":\"5f845a0e-fd0a-4222-bb2f-d1e98f1f3e34\",\"data\":{\"document_id\":\"5f845a0e-fd0a-4222-bb2f-d1e98f1f3e34\",\"type\":\"invoice\",\"number\":\"FAC-2026-0004\",\"status\":\"issued\",\"currency\":\"USD\",\"grand_total_minor\":\"88595\",\"credit_note_id\":\"dc1fcee5-9cad-4b55-ba66-689296d94d08\",\"original_document_id\":\"5f845a0e-fd0a-4222-bb2f-d1e98f1f3e34\"}}"
+      ]
     }
   ]
 }

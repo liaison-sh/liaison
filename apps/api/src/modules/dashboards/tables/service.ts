@@ -85,8 +85,7 @@ export const MAX_OPS_PER_WRITE = 50
 export const DEFAULT_ROWS_PAGE = 50
 /** Changes kept per row (older ones are pruned on write). */
 export const KEPT_CHANGES_PER_ROW = 200
-/** Days a change is kept. */
-export const CHANGE_RETENTION_DAYS = 400
+/** Days a change is kept: infra/jobs/kernel-jobs.ts runDashboardTableChangesRetention. */
 /** What a person sees for a linked record they cannot open. */
 export const HIDDEN_LINK_LABEL = "Linked record"
 
@@ -980,25 +979,6 @@ async function pruneChanges(t: RlsClient, orgId: string, tableId: string, ops: R
             WHERE k.org_id = c.org_id AND k.table_id = c.table_id AND k.row_id = c.row_id
             ORDER BY k.at DESC, k.id DESC LIMIT ${KEPT_CHANGES_PER_ROW})`),
   )
-}
-
-/** Drops changes past the retention (a privileged daily sweep may call it for every org). */
-export async function pruneExpiredChanges(orgId: string): Promise<number> {
-  return withPrivilegedDb(orgId, "dashboard-table-changes-retention", async (tx) => {
-    const gone = await tx
-      .delete(dashboardTableChanges)
-      .where(
-        and(
-          eq(dashboardTableChanges.orgId, orgId),
-          lt(
-            dashboardTableChanges.at,
-            sql`now() - make_interval(days => ${CHANGE_RETENTION_DAYS})`,
-          ),
-        ),
-      )
-      .returning({ id: dashboardTableChanges.id })
-    return gone.length
-  })
 }
 
 // ---------------------------------------------------------------------------

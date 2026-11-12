@@ -256,7 +256,7 @@ export async function runRecordingPlan<S extends RecordingState>(opts: {
         if (process.env.CONTRACT_RECORD_DEBUG) {
           const { writeFileSync } = await import("node:fs")
           writeFileSync(
-            `${process.env.TMPDIR ?? "/tmp"}/failed-${step.entry.replace(/[:/]/g, "_")}.json`,
+            `${(await import("node:os")).tmpdir()}/failed-${step.entry.replace(/[:/]/g, "_")}.json`,
             JSON.stringify(scrubbed, null, 1),
           )
         }

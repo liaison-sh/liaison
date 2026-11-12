@@ -1045,15 +1045,29 @@ export function appIconErrors(manifest: { iconSvg?: unknown; iconName?: unknown 
 }
 
 /**
- * Tool keys that narrow a scope-taint refusal (scope-taint.ts, rules 6d and 6f):
- * `sinkReadersSelf` says the acting user alone reads what the tool writes, and
- * `contentParams` names the only parameters through which a call carries the turn.
- * Both are claims about what the handler does, so only an app the platform vouches
- * for may make them: an in-tree app or the image's own catalog artifact
- * (`hasPrivilegedBridge` in runtime.ts). A third-party manifest declaring either is
- * refused at registration, signed by a trusted publisher or not.
+ * Tool keys only an app the platform vouches for may declare: an in-tree app or the
+ * image's own catalog artifact (`hasPrivilegedBridge` in runtime.ts). A third-party
+ * manifest declaring one is refused at registration, signed by a trusted publisher or not.
+ * - `sinkReadersSelf` says the acting user alone reads what the tool writes, and
+ *   `contentParams` names the only parameters through which a call carries the turn
+ *   (scope-taint.ts, rules 6d and 6f): claims about what the handler does that narrow a
+ *   scope-taint refusal.
+ * - `humanTurnOnly` and `dmOnly` say where a call may run (execute-tool.ts): product rules
+ *   of Liaison's own apps, not a contract a third-party app is offered.
  */
-export const FIRST_PARTY_ONLY_TOOL_KEYS = ["sinkReadersSelf", "contentParams"] as const
+export const FIRST_PARTY_ONLY_TOOL_KEYS = [
+  "sinkReadersSelf",
+  "contentParams",
+  "humanTurnOnly",
+  "dmOnly",
+] as const
+
+const FIRST_PARTY_ONLY_REASON: Record<(typeof FIRST_PARTY_ONLY_TOOL_KEYS)[number], string> = {
+  sinkReadersSelf: "it narrows a scope-taint refusal",
+  contentParams: "it narrows a scope-taint refusal",
+  humanTurnOnly: "it is a rule of Liaison's own apps",
+  dmOnly: "it is a rule of Liaison's own apps",
+}
 
 /** The registration errors for a manifest nobody vouched for that declares a key above. */
 export function firstPartyOnlyToolKeyErrors(manifest: any): string[] {
@@ -1062,7 +1076,7 @@ export function firstPartyOnlyToolKeyErrors(manifest: any): string[] {
     for (const key of FIRST_PARTY_ONLY_TOOL_KEYS) {
       if (tool?.[key] !== undefined) {
         errors.push(
-          `tools.${toolName}.${key}: only a first-party app may declare it, because it narrows a scope-taint refusal; remove it from the manifest`,
+          `tools.${toolName}.${key}: only a first-party app may declare it, because ${FIRST_PARTY_ONLY_REASON[key]}; remove it from the manifest`,
         )
       }
     }

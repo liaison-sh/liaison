@@ -104,6 +104,16 @@ const EXCLUDED: ReadonlyArray<{ tool: string; reason: Reason; why: string }> = [
     reason: "human turn",
     why: "the connector authoring guide, one section of reference text the adapter's author reads in their own turn; a guide, not records",
   },
+  {
+    tool: "example:items_count_on_turn",
+    reason: "human turn",
+    why: "the sample app's tool that runs only on a person's own turn; a dashboard is no one's turn",
+  },
+  {
+    tool: "example:items_count_in_dm",
+    reason: "DM only",
+    why: "the sample app's tool an agent runs only in its DM with the person",
+  },
   // ── Kernel reads ──
   {
     tool: "kernel:contacts_identity",

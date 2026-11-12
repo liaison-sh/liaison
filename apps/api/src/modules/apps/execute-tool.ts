@@ -186,6 +186,7 @@ import {
   type SpawnParentFrame,
 } from "~/modules/agent/runtime/run-context"
 import { hostRequiresApproval } from "~/modules/agent/scopes/host-approval-gates"
+import { resolveRoomFloor } from "~/modules/agent/scopes/room-floor"
 import {
   decidePostDisclosure,
   TAINT_DISCLOSURE_EXTERNAL_CLIENT_KEY,
@@ -3619,6 +3620,68 @@ export function isNotConnectedToolErrorCode(code: string): boolean {
   return code === "not_connected" || code.endsWith("_not_connected")
 }
 
+export const HUMAN_TURN_ONLY_CODE = "human_turn_only"
+export const DM_ONLY_CODE = "dm_only"
+
+/**
+ * May a `humanTurnOnly` tool run from this call's place? Only on a person's own turn: never in a
+ * routine tick or a sub-run (`routineId`, `background` on the frame, whatever the origin), never
+ * an agent's ask of another agent (`coordinated`), never a job or anything else with no run frame
+ * at all. A person in the app (`human-ui`, which has no frame) and an MCP client (the person's
+ * own, or one bound to an agent, which works for that person) pass. Approvals are not judged
+ * here: a refused call never parks.
+ */
+export function humanTurnOnlyAllows(
+  origin: ToolOrigin,
+  frame: { routineId?: string; background?: boolean; coordinated?: boolean } | undefined,
+): boolean {
+  if (frame?.routineId) return false
+  if (frame?.background === true) return false
+  if (origin === "human-ui" || origin === "mcp") return true
+  if (origin !== "in-app-agent" || frame === undefined) return false
+  return frame.coordinated !== true
+}
+
+/** A `humanTurnOnly` refusal: what did not run, and who can ask for it instead. */
+function humanTurnOnlyRefusal(tool: { appName: string; name: string }) {
+  return {
+    code: HUMAN_TURN_ONLY_CODE,
+    message: `${tool.appName}__${tool.name} did not run and nothing changed: it runs only on a person's own turn, never from a routine, a sub-run or a job.`,
+    retryable: false,
+    status: 409,
+    body: {
+      next: "Tell the person: they ask for it themselves, in their chat with the agent, in the app or from their own coding agent.",
+    },
+  }
+}
+
+/** A `dmOnly` refusal: what did not run, and where to ask instead. */
+function dmOnlyRefusal(tool: { appName: string; name: string }) {
+  return {
+    code: DM_ONLY_CODE,
+    message: `${tool.appName}__${tool.name} did not run and nothing changed: it runs only in a DM with the agent, not in a shared thread.`,
+    retryable: false,
+    status: 409,
+    body: { next: "Continue in a DM: the person asks the same in their DM with the agent." },
+  }
+}
+
+/**
+ * Is the in-app agent's thread its DM with the person? Read with `resolveRoomFloor`, the same
+ * case analysis the room's effective scope uses. A thread it cannot place (gone, a sub-run's
+ * hidden thread, a type with no case) is not a DM: fail closed.
+ */
+async function isAgentDm(orgId: string, threadId: string, requesterUserId: string) {
+  try {
+    const floor = await withPrivilegedDb(orgId, "dm-only-room", (tx) =>
+      resolveRoomFloor(tx, orgId, threadId, requesterUserId),
+    )
+    return floor.kind === "dm"
+  } catch {
+    return false
+  }
+}
+
 export function statusForToolError(code: string): number {
   switch (code) {
     case "invalid_params":
@@ -3673,6 +3736,10 @@ export function statusForToolError(code: string): number {
     // workspace's state, not a fault and not a missing permission.
     case APP_DISABLED_CODE:
     case FEATURE_OFF_CODE:
+    // A tool called from the wrong place (manifest `humanTurnOnly` / `dmOnly`): the call is
+    // fine, where it came from is not; the answer says where to ask instead.
+    case HUMAN_TURN_ONLY_CODE:
+    case DM_ONLY_CODE:
       return 409
     case APP_STATE_UNAVAILABLE_CODE:
       return 503
@@ -3762,7 +3829,8 @@ export function dashboardSourceRefusal(
   if (tool.contractOnly) return "it is reached only through a provider contract"
   // Hidden from agents (`agentVisible: false`) is a catalog choice, not a reason: a settings
   // page's own read runs as the viewer, under its scopes, like any other read.
-  if (tool.requiresHumanTurn) return "it runs only on a person's own turn"
+  if (tool.requiresHumanTurn || tool.humanTurnOnly) return "it runs only on a person's own turn"
+  if (tool.dmOnly) return "it runs only in a DM with the agent"
   // A "user" boundary is a read people and agents both call (taint-checked inside a
   // thread): a view may show it like any other read. Internal and agent-only tools
   // are not a viewer's to call.
@@ -4614,6 +4682,26 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   if (isFeatureOffForTool(opts.orgId, tool)) {
     const { code, message, feature, next, retryable } = featureOffAnswer(opts.orgId, tool)
     return { error: { code, message, retryable, status: 409, body: { feature, next } } }
+  }
+
+  // WHERE THE CALL COMES FROM (manifest `humanTurnOnly`, `dmOnly`, first-party apps only): a tool
+  // called from the wrong place is refused with where to ask instead, before anything can park
+  // an approval for it. An approved outer action's nested call carries a person's decision.
+  if (tool.humanTurnOnly === true && !approvalExecutingNestedCall) {
+    if (!humanTurnOnlyAllows(opts.origin, currentRunContext())) {
+      return { error: markRefusedBeforeRun(humanTurnOnlyRefusal(tool), opts.toolName) }
+    }
+  }
+  if (
+    tool.dmOnly === true &&
+    !approvalExecutingNestedCall &&
+    opts.origin === "in-app-agent" &&
+    opts.threadId
+  ) {
+    const requester = (opts.actor as { userId?: string }).userId ?? ""
+    if (!(await isAgentDm(opts.orgId, opts.threadId, requester))) {
+      return { error: markRefusedBeforeRun(dmOnlyRefusal(tool), opts.toolName) }
+    }
   }
 
   // A near-miss reference (`{{step1.record_id}}`, `@ref:<approval1>:id`, `$ref`, a token

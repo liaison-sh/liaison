@@ -440,6 +440,14 @@ export const toolRegistry = createTypedRegistry<
     /** The tool has an external side effect or an exfiltration channel. An ungated call after
      *  the turn read untrusted text parks as an approval (taint_escalation). */
     externalEffect?: boolean
+    /** Manifest `humanTurnOnly` (first-party apps only): the tool runs only on a person's own turn,
+     *  a chat turn they typed, the app, or their own MCP client. From a routine tick, a sub-run or a
+     *  job it is refused `human_turn_only` before any gate, never parked (execute-tool.ts). */
+    humanTurnOnly?: boolean
+    /** Manifest `dmOnly` (first-party apps only): an in-app agent runs it only in its DM with the
+     *  person (`resolveRoomFloor` kind `dm`); in a shared or approval thread it is refused `dm_only`
+     *  before any gate. A person in the app and an MCP client are not in a room and pass. */
+    dmOnly?: boolean
     /** Host-only. The param holding the URL an outward fetch goes to. A call whose URL there is
      *  exactly one this same turn's own `web_search` returned, while the turn has read nothing
      *  new since that search, once per URL and at most three per search (turn-scope-accumulator

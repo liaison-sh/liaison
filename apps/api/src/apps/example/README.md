@@ -12,6 +12,8 @@ It is a real in-tree app — auto-discovered at startup, packageable with
 | Handler | SDK surface | What to copy from it |
 |---|---|---|
 | `item_notes_count` | manifest `feature` | A tool that exists only where its feature is on: top-level `features` declares it, `kernel.org_app_features` switches it per org |
+| `items_count_on_turn` | manifest `humanTurnOnly` | First-party apps only: runs on a person's own turn (chat, the app, their own MCP client); a routine, a sub-run or a job is refused `human_turn_only` |
+| `items_count_in_dm` | manifest `dmOnly` | First-party apps only: an agent runs it only in its DM with the person; a shared thread is refused `dm_only` |
 | `item_context` | manifest `contextProviders` | A read-only tool that gives the agent a few lines about the item in view: it returns `{lines, source}` or null, and the host fences the lines, keeps them under 2 KB and records the scope |
 | `items_list` | `ctx.db.findMany` | Reading your app's entity rows, scoped to the org |
 | `items_create` | `ctx.db.insert` + `ctx.emit` | Persisting a row and emitting a domain event |

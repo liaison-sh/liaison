@@ -243,6 +243,29 @@ describe("InstallAppDialog", () => {
     )
   })
 
+  it("discloses a page that puts an account's token in the person's browser", async () => {
+    const fetchManifest = vi.fn().mockResolvedValue({
+      name: "acme",
+      version: "1.0.0",
+      scopes: [],
+      pages: {
+        picker: {
+          title: "Choose files",
+          widget: { kind: "google-picker", connection: "drive", tokenScopes: ["drive.file"] },
+        },
+        plain: { title: "Plain page" },
+      },
+    })
+    render(() => <InstallAppDialog onClose={() => {}} fetchManifest={fetchManifest} />)
+    fireEvent.input(screen.getByTestId("install-app-url"), { target: { value: "x" } })
+    fireEvent.click(screen.getByTestId("install-app-preflight"))
+    const row = await screen.findByTestId("install-app-browser-credential-picker")
+    expect(row.textContent).toContain("Choose files")
+    expect(row.textContent).toContain("drive")
+    expect(row.textContent).toContain("drive.file")
+    expect(screen.queryByTestId("install-app-browser-credential-plain")).toBeNull()
+  })
+
   it("an upgrade consents to its new outbound hosts only", async () => {
     const onInstall = vi.fn().mockResolvedValue({ ok: true })
     render(() => (

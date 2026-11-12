@@ -50,6 +50,8 @@ import {
 } from "~/modules/apps/connections/credentials-missing"
 import { NoConnectedAccountError } from "~/modules/apps/connections/no-connected-account"
 import { createAppContext } from "~/modules/apps/context"
+import { CORE_OPEN_TRANSACTION, type OpenTransaction } from "~/modules/apps/core/ctx"
+import { coreModuleFor } from "~/modules/apps/core/registry"
 import { validateParamsForTool } from "~/modules/apps/execute-tool-params"
 import { mintExecutionToken } from "~/modules/apps/execution-token"
 import {
@@ -3207,20 +3209,41 @@ export async function executeToolHandler(
     if (session && (tool as any).atomic !== true) {
       // Bridge-owned transactions: NO ambient transaction is open while the
       // sandbox runs; each bridge method call acquires its own short RLS tx.
-      return runManifest(
-        createSessionRpcBridge(
-          tool.appName,
-          userId,
-          orgId,
-          session,
-          manifest,
-          actorScopes,
-          bridgeActorType,
-          approvalContext,
-          handlerBridgeOptions,
-        ),
-        false,
+      const sessionBridge = createSessionRpcBridge(
+        tool.appName,
+        userId,
+        orgId,
+        session,
+        manifest,
+        actorScopes,
+        bridgeActorType,
+        approvalContext,
+        handlerBridgeOptions,
       )
+      if (coreModuleFor(tool.appName, handlerRef.bundlePath)) {
+        // A core handler's `ctx.transaction` (core/ctx.ts): one RLS transaction under
+        // the run's actor, its bridge bound to it, committed or rolled back as a whole.
+        const openTransaction: OpenTransaction = (fn) =>
+          session.run((liveTx) =>
+            fn(
+              inlinePgCauseOnBridge(
+                createSandboxRpcBridge(
+                  tool.appName,
+                  userId,
+                  orgId,
+                  liveTx,
+                  manifest,
+                  actorScopes,
+                  bridgeActorType,
+                  approvalContext,
+                  handlerBridgeOptions,
+                ),
+              ),
+            ),
+          )
+        Object.defineProperty(sessionBridge, CORE_OPEN_TRANSACTION, { value: openTransaction })
+      }
+      return runManifest(sessionBridge, false)
     }
     if (session) {
       // `atomic: true` tool: legacy whole-run ambient transaction, materialized

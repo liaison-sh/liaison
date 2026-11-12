@@ -47,7 +47,6 @@ describe("csv cell escaper", () => {
 
   const copies: Array<[string, (v: unknown) => string]> = [
     ["bundled invoicing", invoicingCsvCell],
-    ["tickets handlers", extract("apps/tickets/handlers.ts", "csvCell")],
     ["mail handlers", extract("apps/mail/handlers.ts", "mailCsvCell")],
     ["knowledge handlers", extract("apps/knowledge/handlers.ts", "knowledgeCsvCell")],
     ["projects handlers", extract("apps/projects/handlers.ts", "projectsCsvCell")],

@@ -1,31 +1,19 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+/**
+ * The contacts app's export (manifest `export.handler: exportContacts`): server
+ * code over `kernel.contacts`, which the app owns as a kernel table (it has no
+ * app schema and no handler bundle). It runs on the caller's RLS-bound client
+ * (ctx.db, a whole-run transaction), so the export never escalates.
+ */
 import { csvCell } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
 import type { AppContext } from "~/modules/apps/context"
 
-/**
- * Built-in, in-process export handlers for manifest apps that own NO app
- * schema/handler bundle but still hold exportable data in kernel tables:
- *
- * - `contacts` — kernel-owned UI surface over `kernel.contacts`.
- *
- * These run on the in-process `(ctx, format)` registry path (ctx.db is the
- * caller's RLS-bound client), so the export never escalates. The runtime
- * resolves these by app name when a manifest app declares `export` but has no
- * `_bundlePath`. Apps that DO own a handler bundle (e.g. `google-drive`) own
- * their export handler in that bundle instead.
- */
 interface ExportFilters {
   dateRange?: { from?: string; to?: string }
 }
-
-type BuiltinExportHandler = (
-  ctx: AppContext,
-  format: string,
-  filters?: ExportFilters,
-) => Promise<unknown>
 
 // Optional `created_at BETWEEN` clause. Range narrows within the RLS-bound
 // client (ctx.db) — it never escalates visibility.
@@ -69,19 +57,21 @@ const CONTACTS_COLUMNS: Array<[string, string]> = [
   ["createdAt", "created_at"],
 ]
 
-export const BUILTIN_EXPORT_HANDLERS: Record<string, BuiltinExportHandler> = {
-  contacts: async (ctx, format, filters) => {
-    const K = drizzleSql.raw(schemaRef("kernel"))
-    // No LIMIT — a data-sovereignty export must return the full RLS-visible
-    // set (E3 row-count equivalence), not a silently truncated 1000.
-    const rows = extractRows<Record<string, unknown>>(
-      await ctx.db.execute(
-        drizzleSql`SELECT id, handle, name, email, phone, company, created_at
+export async function exportContacts(
+  ctx: AppContext,
+  format: string,
+  filters?: ExportFilters,
+): Promise<unknown> {
+  const K = drizzleSql.raw(schemaRef("kernel"))
+  // No LIMIT — a data-sovereignty export must return the full RLS-visible
+  // set (E3 row-count equivalence), not a silently truncated 1000.
+  const rows = extractRows<Record<string, unknown>>(
+    await ctx.db.execute(
+      drizzleSql`SELECT id, handle, name, email, phone, company, created_at
                    FROM ${K}.contacts
                    WHERE TRUE${createdAtClause(filters)}
                    ORDER BY created_at ASC`,
-      ),
-    )
-    return serialize(rows, CONTACTS_COLUMNS, format)
-  },
+    ),
+  )
+  return serialize(rows, CONTACTS_COLUMNS, format)
 }

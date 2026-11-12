@@ -394,6 +394,14 @@ Each app can declare:
 
 Each app gets its own Postgres schema (`app_<name>`) and its tool/export handlers run within an RLS context.
 
+### Core apps (server code)
+
+A core app's handlers are server code, not a sandboxed bundle. Its `apps/<name>/handlers.ts` is an ordinary module: every handler its manifest names (tools, preflights, jobs, event handlers, webhooks and their verifiers, the export, the attention provider) is a named export `(params, ctx, ...extra)`. The app is listed in `CORE_APP_MODULES` (`apps/api/src/modules/apps/core/registry.ts`) under its name and the module path its descriptor declares as `_bundlePath`; `runApp` then imports the module and calls the export in the API process (`core/run-core.ts`). No sandbox, ctx shim or bundle transform is involved, whatever the call site.
+
+`ctx` is a `CoreCtx<Methods>` (`core/ctx.ts`): the run's bridge, called directly, so a core handler and a sandboxed app share one implementation of every host method, with the same actor, scopes and transaction. `ctx.approval` is the approval a re-entry runs under. Work that must land together runs in `ctx.transaction(fn)`: one database transaction, committed or rolled back as a whole (a run that already holds one runs `fn` on it). Core apps declare no `atomic` flag; that flag is for sandboxed runs only.
+
+Moving another core app means: turn its `handlers.ts` into a module with named exports and a typed `CoreCtx` interface of the methods it uses, add its row to `CORE_APP_MODULES`, and replace any `atomic` tool with `ctx.transaction`. The registry test (`core/run-core.test.ts`) checks that every handler the manifest names is an export.
+
 ### Sandbox Execution (Manifest Apps)
 
 Manifest app handlers run inside **QuickJS** compiled to WebAssembly (`quickjs-emscripten`). Each handler is routed to one of two execution paths based on its trust level:

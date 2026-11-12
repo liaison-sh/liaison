@@ -11,6 +11,7 @@
  * outside the sandbox deadline.
  */
 import { resolveTransformCallBudgetMs } from "~/modules/apps/run-limits"
+import { runApp } from "~/modules/apps/sandbox/run-app"
 import type { SandboxWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import type { TransformBatch } from "./batch"
 import {
@@ -90,7 +91,13 @@ function noFinish(value: unknown): boolean {
   return typeof value === "object" && value !== null && NO_FINISH in value
 }
 
-/** One sandboxed call of the transform's entry function. */
+/**
+ * The app name an import transform's runs are recorded under (run timing,
+ * usage): it is an org's code, not an app's.
+ */
+export const TRANSFORM_RUN_APP = "import-transform"
+
+/** One sandboxed call of the transform's entry function, through the one door (run-app.ts). */
 export async function runTransformCall(input: TransformCallInput): Promise<TransformCallResult> {
   const optional = input.entry === "finish"
   validateTransformSource(input.source, input.entry === "finish" ? "transform" : input.entry)
@@ -99,19 +106,29 @@ export async function runTransformCall(input: TransformCallInput): Promise<Trans
   const timeoutMs = resolveTransformCallBudgetMs(input.budgetMs, input.env)
   let heapBytes: number | null = null
   const started = Date.now()
-  const value = await pool.execute({
+  const value = await runApp({
+    trusted: false,
+    appName: TRANSFORM_RUN_APP,
+    orgId: input.host.orgId,
+    // No installed version: the source runs as given, on the transform pool.
+    installed: null,
     bundleSource: optional
       ? `${wrapTransformSource(input.source)}\n${FINISH_DISPATCH}`
       : wrapTransformSource(input.source),
     exportName: optional ? FINISH_EXPORT : input.entry,
+    entry: `import-transform:${input.entry}`,
     params: input.params,
     bridge: bridge.methods,
     timeoutMs,
-    memoryLimitBytes: TRANSFORM_MEMORY_LIMIT_BYTES,
     priority: "background",
     toolName: `import-transform:${input.entry}`,
-    onHeapReport: (r) => {
-      heapBytes = r.heapBytes
+    holdsTx: false,
+    quickjs: {
+      workerPool: pool,
+      memoryLimitBytes: TRANSFORM_MEMORY_LIMIT_BYTES,
+      onHeapReport: (r) => {
+        heapBytes = r.heapBytes
+      },
     },
     ...(input.signal ? { signal: input.signal } : {}),
   })

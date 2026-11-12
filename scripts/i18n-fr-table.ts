@@ -4525,6 +4525,10 @@ export const FR: Record<string, string> = {
     "Cette demande a été modifiée après son ouverture. Relisez la version actuelle, puis décidez à nouveau.",
   "Platform capabilities this app can use (granted by installing)":
     "Capacités de la plateforme que cette application peut utiliser (accordées par l'installation)",
+  "Pages that put a connected account's access in your browser (run by Liaison; the app receives only what you choose)":
+    "Pages qui placent l'accès d'un compte connecté dans votre navigateur (exécutées par Liaison ; l'application ne reçoit que ce que vous choisissez)",
+  "{{page}}: a provider widget with your {{connection}} account, limited to {{scopes}}":
+    "{{page}} : un module du fournisseur avec votre compte {{connection}}, limité à {{scopes}}",
   "Tools of other apps this app can call without its own scopes (granted by installing)":
     "Outils d'autres applications que celle-ci peut appeler sans détenir elle-même les droits correspondants (accordés par l'installation)",
   "This app's interface runs inside Liaison with full access to your session. Only approve it if you trust its publisher.":

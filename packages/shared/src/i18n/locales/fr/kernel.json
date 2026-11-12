@@ -2829,6 +2829,8 @@
     "attentionDisabled": "Alertes {{app}} désactivées",
     "requestedCapabilities": "Capacités de la plateforme que cette application peut utiliser (accordées par l'installation)",
     "requestedCrossAppCalls": "Outils d'autres applications que celle-ci peut appeler sans détenir elle-même les droits correspondants (accordés par l'installation)",
+    "pageBrowserCredentials": "Pages qui placent l'accès d'un compte connecté dans votre navigateur (exécutées par Liaison ; l'application ne reçoit que ce que vous choisissez)",
+    "pageBrowserCredential": "{{page}} : un module du fournisseur avec votre compte {{connection}}, limité à {{scopes}}",
     "approveUiFullAccess": "L'interface de cette application s'exécute dans Liaison avec un accès complet à votre session. Ne l'approuvez que si vous faites confiance à son éditeur.",
     "uiFullAccessApproved": "Interface approuvée par un administrateur (accès complet à votre session)",
     "uiTrusted": "Interface de confiance (fournie avec Liaison ou signée par un éditeur de confiance)",

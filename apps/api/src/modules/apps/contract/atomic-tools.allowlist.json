@@ -3,35 +3,5 @@
     "app": "example",
     "tool": "items_create",
     "why": "the in-tree example app shows the atomic flag; its handler makes no outside call"
-  },
-  {
-    "app": "tickets",
-    "tool": "assign",
-    "why": "in-tree app; its bridge setters (tickets_assign, tickets_admin) run on the run's transaction"
-  },
-  {
-    "app": "tickets",
-    "tool": "convertToMail",
-    "why": "in-tree app; creates the mail thread through ctx.executeTool inside the run's transaction"
-  },
-  {
-    "app": "tickets",
-    "tool": "setAudience",
-    "why": "in-tree app; its bridge setters run on the run's transaction"
-  },
-  {
-    "app": "tickets",
-    "tool": "setCategory",
-    "why": "in-tree app; its bridge setters run on the run's transaction"
-  },
-  {
-    "app": "tickets",
-    "tool": "setLanguage",
-    "why": "in-tree app; its bridge setters run on the run's transaction"
-  },
-  {
-    "app": "tickets",
-    "tool": "setTeam",
-    "why": "in-tree app; its bridge setters run on the run's transaction"
   }
 ]

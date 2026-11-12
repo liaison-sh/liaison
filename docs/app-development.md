@@ -968,12 +968,19 @@ it as a page, with the routes it calls:
   against what the person may read or change: the route acts as them. The page may
   call only the routes it lists, at most 60 calls a minute; bodies and answers are
   capped at 1 MiB. A page session lasts 20 minutes, and each call is audited.
-- A page that runs a provider widget in the person's browser with their own grant
-  (a file picker) declares `"connectionToken": { "connection": "<oauth2 connection>" }`.
-  Mint its link with `ctx.pages.link(page, { account: "<account id>" })`: the page
-  then reads `window.liaisonPage.connectionToken` (`{ token, identifier, account }`).
+- A page that needs a provider widget in the person's browser with their own grant
+  (Google's file picker) ships no script: it declares
+  `"widget": { "kind": "google-picker", "connection": "<oauth2 connection>", "route": "<its route>", "tokenScopes": [...] }`
+  and Liaison serves the page itself. Mint its link with
+  `ctx.pages.link(page, { account: "<account id>", apiKey, appId })`. Your code never
+  receives the account's token: Liaison's own script runs the widget and your route
+  receives only what the person chose (`{ add: [{ id, name, mimeType }] }`).
   The account must be the person's own, or the organization's when they hold the
-  connection's admin scope; any other is refused (403) and the page does not open.
+  connection's admin scope; its granted scopes must all be in `tokenScopes` (plus
+  sign-in scopes), else the page answers 403 and does not open. `tokenScopes` must be
+  scopes of the connection and none of its restricted ones. The page opens only on the
+  workspace's own address, each opening is audited, and the install screen lists it
+  under the pages that put a connected account's access in your browser.
 - A route call carries the page session's key, which only the page's bootstrap
   holds (it is never in `liaisonPage` or the document), so a session id copied out of
   the page calls nothing.

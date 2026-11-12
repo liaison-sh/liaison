@@ -39,6 +39,11 @@ export interface AppManifestPreview {
   license?: string
   /** The hosts its code may reach (network + connections); installing consents to them. */
   outboundDomains?: string[]
+  /** Pages; one with a `widget` puts an account's access token in the person's browser. */
+  pages?: Record<
+    string,
+    { title?: string; widget?: { kind: string; connection: string; tokenScopes: string[] } }
+  >
 }
 
 export interface UpgradePreview {
@@ -99,6 +104,13 @@ export const InstallAppDialog: Component<InstallAppDialogProps> = (props) => {
   // install, the new ones on an upgrade (the running version's grant carries over).
   const consentDomains = createMemo(() =>
     isUpgrade() ? (props.preview?.newDomains ?? []) : (manifest()?.outboundDomains ?? []),
+  )
+  // Pages where the platform runs a provider widget with a person's account
+  // token in their browser (the app's own code never receives it).
+  const browserCredentials = createMemo(() =>
+    Object.entries(manifest()?.pages ?? {}).flatMap(([name, page]) =>
+      page.widget ? [{ name, title: page.title ?? name, ...page.widget }] : [],
+    ),
   )
   const [approveUi, setApproveUi] = createSignal(false)
   // The interface of an unsigned package runs in this page with the admin's session.
@@ -302,6 +314,28 @@ export const InstallAppDialog: Component<InstallAppDialogProps> = (props) => {
                       data-testid={`install-app-outbound-domain-${domain}`}
                     >
                       {domain}
+                    </div>
+                  )}
+                </For>
+              </div>
+            </Show>
+
+            <Show when={browserCredentials().length > 0}>
+              <div class="flex flex-col gap-1" data-testid="install-app-browser-credentials">
+                <p class="text-xs font-medium text-text-secondary">
+                  {i18n.t("kernel.settingsUi.pageBrowserCredentials")}
+                </p>
+                <For each={browserCredentials()}>
+                  {(w) => (
+                    <div
+                      class="text-sm text-text"
+                      data-testid={`install-app-browser-credential-${w.name}`}
+                    >
+                      {i18n.t("kernel.settingsUi.pageBrowserCredential", {
+                        page: w.title,
+                        connection: w.connection,
+                        scopes: w.tokenScopes.join(", "),
+                      })}
                     </div>
                   )}
                 </For>

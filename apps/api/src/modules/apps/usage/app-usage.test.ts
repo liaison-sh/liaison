@@ -36,13 +36,7 @@ import {
   assertAppRunRoom,
   holdAppJobIfCapped,
 } from "./app-day-cap"
-import {
-  AppUsageTestAccess,
-  crossed,
-  flushAppUsage,
-  recordSettledRun,
-  usageExecutorOf,
-} from "./app-usage"
+import { AppUsageTestAccess, crossed, flushAppUsage, recordSettledRun } from "./app-usage"
 import { fetchLoaderUsage, LoaderUsageTestAccess, storeLoaderUsage } from "./loader-usage"
 
 const ORG = randomUUID()
@@ -340,11 +334,14 @@ describe("the daily apps.usage report", () => {
   })
 })
 
-describe("usageExecutorOf", () => {
-  it("counts a run on the instance's own sandbox service with the local sandbox", () => {
-    expect(usageExecutorOf("workerd")).toBe("quickjs")
-    expect(usageExecutorOf("workers")).toBe("workers")
-    expect(usageExecutorOf("quickjs")).toBe("quickjs")
-    expect(usageExecutorOf("inprocess")).toBe("inprocess")
+describe("a run on the instance's sandbox service", () => {
+  it("has its own row, executor workerd, no CPU", async () => {
+    recordSettledRun(settled({ executor: "workerd", ms: 7, bridgeCalls: 3 }))
+    await flushAppUsage()
+    const rows = await rowsOf(ORG)
+    const workerd = rows.find((r) => r.executor === "workerd")
+    expect(workerd).toMatchObject({ app: "shopify", runs: 1, bridgeCalls: 3, wallMs: 7 })
+    expect(workerd?.cpuMs).toBeNull()
+    await sql`DELETE FROM kernel.app_usage_daily WHERE org_id = ${ORG}`
   })
 })

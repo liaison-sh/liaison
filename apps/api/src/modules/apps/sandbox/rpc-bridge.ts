@@ -12,6 +12,7 @@ import {
 import { UNDECLARED_WRITE_TARGET } from "~/modules/agent/scopes/scope-taint"
 import { attachRunLogSink } from "~/modules/app-builder/logs"
 import { guardAtomicJobEgress } from "~/modules/apps/atomic-egress"
+import { createApiConnectionMethods } from "~/modules/apps/connections/api/bridge"
 import { isCustomAppName } from "~/modules/apps/custom-app-name"
 import { createAccountsMethods } from "~/modules/apps/sandbox/bridge/accounts"
 import { createAgentMethods } from "~/modules/apps/sandbox/bridge/agent"
@@ -46,7 +47,6 @@ import {
 } from "~/modules/apps/sandbox/bridge/secret-free"
 import { type AppManifestForBridge, withPgCause } from "~/modules/apps/sandbox/bridge/shared"
 import { createSqlMethods } from "~/modules/apps/sandbox/bridge/sql"
-import { createApiConnectionMethods } from "~/modules/apps/connections/api/bridge"
 import { createStepsMethods } from "~/modules/apps/sandbox/bridge/steps"
 import { createStoreMethods } from "~/modules/apps/sandbox/bridge/store"
 import { createTicketsMethods } from "~/modules/apps/sandbox/bridge/tickets"
@@ -420,9 +420,7 @@ const SESSION_TXLESS_METHOD_PREFIXES = [
 // (domain-allowlist + pinned-host fetch, zero txDb use) — wrapping it would
 // pin a connection for every outbound HTTP roundtrip. connections_* are NOT
 // tx-less: they read connection rows via txDb.
-const SESSION_TXLESS_METHOD_NAMES = new Set([
-  "fetch",
-])
+const SESSION_TXLESS_METHOD_NAMES = new Set(["fetch"])
 
 function isTxlessSessionMethod(name: string): boolean {
   return (

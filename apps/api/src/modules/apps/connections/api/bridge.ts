@@ -40,7 +40,12 @@ import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import { isDemoEgressRestricted } from "~/modules/demo/demo-egress"
 import { hasScope } from "~/modules/permissions/permissions"
 import { parseAdapterDocument, validateAdapterDocument } from "./adapter-policy"
-import { describeTarget, listVersionsWithTargets, readReference, readStoredAdapter } from "./authoring"
+import {
+  describeTarget,
+  listVersionsWithTargets,
+  readReference,
+  readStoredAdapter,
+} from "./authoring"
 import { invalidateConnectionCaches } from "./cache"
 import { resolveCustomer } from "./customer"
 import { demoChangeRefusal } from "./registrations"
@@ -195,7 +200,6 @@ export function writeRecordId(items: readonly unknown[]): {
   }
 }
 
-
 /**
  * The operation `config verify` probes a connection with: a READ operation
  * that takes no required params and is not a role answering "at least one
@@ -310,7 +314,11 @@ export function createApiConnectionMethods(
   const lacks = (scope: string): string | null =>
     hasScope(scope, scopes())
       ? null
-      : refusalJson("forbidden", `This needs the ${scope} scope, which the caller does not hold.`, 403)
+      : refusalJson(
+          "forbidden",
+          `This needs the ${scope} scope, which the caller does not hold.`,
+          403,
+        )
 
   async function call(paramsJson: unknown, mode: Exclude<ConnectorCallMode, "test">) {
     const denied = lacks(mode === "write" ? decl!.writeScope : decl!.readScope)
@@ -573,7 +581,10 @@ export function createApiConnectionMethods(
     api_verify: async (): Promise<string> => {
       const denied = lacks(decl.adminScope)
       if (denied) return denied
-      const [rows, statuses] = await Promise.all([listAdapterRows(orgId), credentialStatuses(orgId)])
+      const [rows, statuses] = await Promise.all([
+        listAdapterRows(orgId),
+        credentialStatuses(orgId),
+      ])
       const results: Array<Record<string, unknown>> = []
       for (const row of rows) {
         const id = row.identifier

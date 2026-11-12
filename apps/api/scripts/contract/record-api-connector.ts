@@ -173,10 +173,7 @@ describe("record api-connector contract fixtures", () => {
     const versions = await live("api_adapterVersions", { identifier: "crm" })
     const versionId = (versions.versions as Array<{ id: string }> | undefined)?.[0]?.id
     if (!versionId) throw new Error(`no kept version: ${JSON.stringify(versions)}`)
-    const document = fixtureCrmAdapterText().replace(
-      /^baseUrl: .*$/m,
-      `baseUrl: ${crm.baseUrl}`,
-    )
+    const document = fixtureCrmAdapterText().replace(/^baseUrl: .*$/m, `baseUrl: ${crm.baseUrl}`)
 
     /** Each entry with the input a production run of it gets, in the order they can run. */
     const plan: Array<{ entry: string; params?: unknown }> = [

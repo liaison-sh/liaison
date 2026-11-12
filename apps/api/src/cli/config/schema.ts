@@ -597,7 +597,6 @@ export const agentSchema = z
   })
   .strict()
 
-
 /** Where the removed top-level `apiConnectors` section went. */
 export const API_CONNECTORS_MOVED =
   "apiConnectors moved into the api-connector app's provisioning: write each connection as " +

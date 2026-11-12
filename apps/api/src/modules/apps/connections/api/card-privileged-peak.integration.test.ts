@@ -12,9 +12,6 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn
 import * as dnsPromises from "node:dns/promises"
 import { type Adapter, validateAdapter } from "@liaison/api-connector-core"
 import { app } from "~/app"
-import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
-import { invalidateConnectionCaches } from "~/modules/apps/connections/api/cache"
-import { upsertAdapterRow } from "~/modules/apps/connections/api/store"
 import { createPool } from "~/db/connection"
 import { nestedPrivilegedAcquisitions } from "~/db/pool-diag"
 import { API_PRIVILEGED_FLOOR } from "~/db/pool-plan"
@@ -25,6 +22,9 @@ import {
 } from "~/db/privileged"
 import { env } from "~/lib/env"
 import { OutboundFetchTestAccess } from "~/lib/outbound-fetch"
+import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
+import { invalidateConnectionCaches } from "~/modules/apps/connections/api/cache"
+import { upsertAdapterRow } from "~/modules/apps/connections/api/store"
 import { createCredentialConnection } from "~/modules/apps/connections/service"
 import {
   DEMO_API_CONNECTOR_IDENTIFIER,

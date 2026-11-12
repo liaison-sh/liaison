@@ -137,8 +137,7 @@ export const ConnectAppDialog: Component<ConnectAppDialogProps> = (props) => {
       })
   })
 
-  const requiredFields = () =>
-    shownFields().filter((f) => f.required !== false)
+  const requiredFields = () => shownFields().filter((f) => f.required !== false)
 
   async function submitCredentials(): Promise<void> {
     setError(null)
@@ -157,9 +156,7 @@ export const ConnectAppDialog: Component<ConnectAppDialogProps> = (props) => {
         mode: props.identifier !== undefined ? "org" : mode(),
         displayName: displayName().trim() || undefined,
         credentials:
-          props.identifier !== undefined
-            ? { identifier: props.identifier, ...fields() }
-            : fields(),
+          props.identifier !== undefined ? { identifier: props.identifier, ...fields() } : fields(),
       })
       props.onSuccess?.()
       props.onClose()

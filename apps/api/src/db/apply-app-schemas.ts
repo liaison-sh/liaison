@@ -18,9 +18,9 @@
 
 import { sql } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
-import apiConnectionsManifest from "../../../../bundled-apps/api-connector/app.manifest.json"
 import { getDefaultApps } from "~/modules/apps/init"
 import { registerApps } from "~/modules/apps/runtime"
+import apiConnectionsManifest from "../../../../bundled-apps/api-connector/app.manifest.json"
 
 /**
  * The api-connector catalog app as a descriptor registered from its source

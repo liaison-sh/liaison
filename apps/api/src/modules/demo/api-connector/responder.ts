@@ -16,11 +16,12 @@
 // anything leaves the box, and lets a normal org's request through unchanged.
 // A normal org is therefore never answered from the fixture, whatever URL its
 // adapter carries.
+
+import { boundedBy } from "~/lib/bounded"
+import { redis } from "~/lib/redis"
 import type { FixtureCrmHandler } from "~/modules/apps/connections/api/__fixtures__/fixture-crm/handler"
 import { forgetCustomerLookups } from "~/modules/apps/connections/api/cache"
 import type { DemoApiConnectorRequest } from "~/modules/apps/connections/api/transport"
-import { boundedBy } from "~/lib/bounded"
-import { redis } from "~/lib/redis"
 import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
 import { loadDemoOrg } from "~/modules/demo/demo-org"
 import {

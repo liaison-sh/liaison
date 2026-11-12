@@ -14,6 +14,10 @@
  */
 import { afterAll, beforeAll, expect } from "bun:test"
 import { app } from "~/app"
+import { sql } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
+import { env } from "~/lib/env"
+import { resetAppRegistries } from "~/modules/apps/app-registries"
 import { loadFixtureCrmAdapter } from "~/modules/apps/connections/api/__fixtures__/fixture-crm/adapter"
 import {
   type FixtureCrm,
@@ -21,10 +25,6 @@ import {
 } from "~/modules/apps/connections/api/__fixtures__/fixture-crm/server"
 import { invalidateConnectionCaches } from "~/modules/apps/connections/api/cache"
 import { upsertAdapterRow } from "~/modules/apps/connections/api/store"
-import { sql } from "~/db"
-import { withPrivilegedDb } from "~/db/privileged"
-import { env } from "~/lib/env"
-import { resetAppRegistries } from "~/modules/apps/app-registries"
 import { createCredentialConnection } from "~/modules/apps/connections/service"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { initSandboxPool } from "~/modules/apps/sandbox/pool"

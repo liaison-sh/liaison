@@ -14,6 +14,9 @@
 // Both rows are org-owned and written on the privileged handle, as the
 // connection service does for its org-owned callers.
 import { and, eq } from "drizzle-orm"
+import { withPrivilegedDb } from "~/db/privileged"
+import { connectedAccounts } from "~/db/schema/kernel"
+import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { loadFixtureCrmAdapter } from "~/modules/apps/connections/api/__fixtures__/fixture-crm/adapter"
 import { invalidateConnectionCaches } from "~/modules/apps/connections/api/cache"
 import {
@@ -21,9 +24,6 @@ import {
   API_CONNECTOR_CONNECTION,
   upsertAdapterRow,
 } from "~/modules/apps/connections/api/store"
-import { withPrivilegedDb } from "~/db/privileged"
-import { connectedAccounts } from "~/db/schema/kernel"
-import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import {
   DEMO_API_CONNECTOR_BASE_URL,
   DEMO_API_CONNECTOR_IDENTIFIER,

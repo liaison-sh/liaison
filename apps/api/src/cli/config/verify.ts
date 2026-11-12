@@ -259,11 +259,7 @@ export async function runConfigVerify(
     log(`config verify: app '${opts.appFilter}' has no connection or config declared in config`)
     return { exitCode: 2, report: { ok: false, results: [] } }
   }
-  if (
-    connectorApps.length === 0 &&
-    configApps.length === 0 &&
-    provisionApps.length === 0
-  ) {
+  if (connectorApps.length === 0 && configApps.length === 0 && provisionApps.length === 0) {
     log("config verify: no connector apps with a connection declared in config")
     return { exitCode: 0, report: { ok: true, results: [] } }
   }
@@ -312,7 +308,6 @@ export async function runConfigVerify(
       })
     }
   }
-
 
   const config =
     configApps.length > 0 ? await verifyAppConfig(orgId, configApps, readConfig, log) : undefined

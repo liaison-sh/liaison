@@ -61,8 +61,10 @@ export function resolveProvisionFiles(
     if (typeof path !== "string" || path === "") {
       throw new ConfigError(`${where}: $file names a file path`)
     }
-    if (!configDir) throw new ConfigError(`${where}: $file needs a config file; pass the content inline`)
-    if (isAbsolute(path)) throw new ConfigError(`${where}: '${path}' must be relative to the config file directory`)
+    if (!configDir)
+      throw new ConfigError(`${where}: $file needs a config file; pass the content inline`)
+    if (isAbsolute(path))
+      throw new ConfigError(`${where}: '${path}' must be relative to the config file directory`)
     const base = resolve(configDir)
     const target = resolve(base, path)
     const rel = relative(base, target)

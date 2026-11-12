@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
-import { registerAdapterAuthoringTools } from "~/modules/apps/connections/api/authoring-tools"
-import { apiDeclarationOf } from "~/modules/apps/connections/api/bridge"
-import type { AppManifestForBridge } from "~/modules/apps/sandbox/bridge/shared"
 import { createHash, randomUUID } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -91,6 +88,8 @@ import {
 } from "~/modules/apps/approval-summarizers"
 import { projectBulkToolSchemas } from "~/modules/apps/bulk-field-schemas"
 import { manifestFileParentOf } from "~/modules/apps/catalog-derivations"
+import { registerAdapterAuthoringTools } from "~/modules/apps/connections/api/authoring-tools"
+import { apiDeclarationOf } from "~/modules/apps/connections/api/bridge"
 import { validateAppDescriptor, validateAppManifest } from "~/modules/apps/contract"
 // --- DDL helpers ---
 import {
@@ -124,6 +123,7 @@ import {
 import { APP_REGISTRATION_CODE_FILES } from "~/modules/apps/registration-code-files"
 import { runLimits } from "~/modules/apps/run-limits"
 import { handlerRunHoldsTx } from "~/modules/apps/run-wide-tx"
+import type { AppManifestForBridge } from "~/modules/apps/sandbox/bridge/shared"
 import {
   buildManifestSettingsEntry,
   materialiseSections,

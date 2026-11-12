@@ -12,6 +12,8 @@
  */
 
 import { MAX_PAGES_PER_CALL, type Operation } from "@liaison/api-connector-core"
+import type { CliRunResult } from "~/cli/api-connector/validate"
+import { resolveOrgId } from "~/cli/lib/resolve-org-id"
 import { runConnectorOperation } from "~/modules/apps/connections/api/service"
 import { getAdapterRow } from "~/modules/apps/connections/api/store"
 import {
@@ -20,8 +22,6 @@ import {
   ApiConnectorError,
   describeRequest,
 } from "~/modules/apps/connections/api/transport"
-import type { CliRunResult } from "~/cli/api-connector/validate"
-import { resolveOrgId } from "~/cli/lib/resolve-org-id"
 
 /** Parse repeated `--param name=value` flags, typed by the operation's params schema. */
 export function parseParamFlags(

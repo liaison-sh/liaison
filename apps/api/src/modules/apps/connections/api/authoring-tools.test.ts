@@ -19,9 +19,9 @@ import {
   resetAppRegistries,
   toolRegistry,
 } from "~/modules/apps/app-registries"
+import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
 import { createCredentialConnection } from "~/modules/apps/connections/service"
 import { executeTool } from "~/modules/apps/execute-tool"
-import { registerApiConnectorApp } from "~/modules/apps/connections/api/app.test-helpers"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { initSandboxPool } from "~/modules/apps/sandbox/pool"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"

@@ -35,8 +35,6 @@ import { type Adapter, promptSafeName, type RoleName } from "@liaison/api-connec
 import { isStrictEmail } from "@liaison/api-connector-core/contract"
 import { firstExternalInboundSender } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
-import { resolveCustomer } from "~/modules/apps/connections/api/customer"
-import { listAdapterRows } from "~/modules/apps/connections/api/store"
 import { loadTicketParticipantEmail } from "~/apps/tickets/participants"
 import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -47,6 +45,8 @@ import { wrapExternalContent } from "~/lib/external-content"
 import { rootLogger } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
 import type { TurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
+import { resolveCustomer } from "~/modules/apps/connections/api/customer"
+import { listAdapterRows } from "~/modules/apps/connections/api/store"
 import { hasScope } from "~/modules/permissions/permissions"
 
 const log = rootLogger.child({ module: "customer-context" })

@@ -138,7 +138,9 @@ async function exportApiConnectors(
   orgId: string,
   secrets: ConfigExport["secrets"],
 ): Promise<Record<string, unknown>> {
-  const { listAdapterRows, API_CONNECTOR_APP } = await import("~/modules/apps/connections/api/store")
+  const { listAdapterRows, API_CONNECTOR_APP } = await import(
+    "~/modules/apps/connections/api/store"
+  )
   let rows: Awaited<ReturnType<typeof listAdapterRows>>
   try {
     rows = await listAdapterRows(orgId)

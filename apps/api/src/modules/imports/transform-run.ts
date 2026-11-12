@@ -809,7 +809,9 @@ export async function apiConnectionFacts(
   userId: string,
   identifier: string,
 ): Promise<{ adapter: string | null; adapterSavedAt: string | null; credentials: string | null }> {
-  const { getAdapterRow, resolveConnectionCredentials } = await import("~/modules/apps/connections/api/store")
+  const { getAdapterRow, resolveConnectionCredentials } = await import(
+    "~/modules/apps/connections/api/store"
+  )
   const row = await getAdapterRow(orgId, identifier)
   const creds = row ? await resolveConnectionCredentials(orgId, userId, identifier) : null
   return {

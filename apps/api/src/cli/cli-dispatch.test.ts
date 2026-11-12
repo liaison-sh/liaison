@@ -465,7 +465,9 @@ describe("CLI dispatch: api-connector validate | test", () => {
     })
     const applied = runCli(["config", "apply", "--config", cfg])
     expect(applied.status).toBe(2)
-    expect(applied.stderr).toContain("apiConnectors moved into the api-connector app's provisioning")
+    expect(applied.stderr).toContain(
+      "apiConnectors moved into the api-connector app's provisioning",
+    )
   })
 
   test("test: a write operation is refused (exit 1, write_not_testable)", async () => {
@@ -478,7 +480,9 @@ describe("CLI dispatch: api-connector validate | test", () => {
     const [org] = await sql<Array<{ id: string }>>`
       SELECT id FROM kernel.organizations WHERE slug = ${slug}`
     const { upsertAdapterRow } = await import("~/modules/apps/connections/api/store")
-    const { validateAdapterDocument } = await import("~/modules/apps/connections/api/adapter-policy")
+    const { validateAdapterDocument } = await import(
+      "~/modules/apps/connections/api/adapter-policy"
+    )
     const parsed = validateAdapterDocument(ADAPTER)
     if (!parsed.ok) throw new Error("fixture adapter invalid")
     await upsertAdapterRow(org?.id ?? "", "crm", parsed.adapter, null)

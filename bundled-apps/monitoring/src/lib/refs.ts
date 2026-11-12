@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // Incident references: the short, immutable, per-org `INC-<n>` name. Format/parse helpers,
-// the lock-first numbering protocol over `ctx.sequences.allocate`, and the UUID-or-ref
+// the leased numbering protocol over `ctx.sequences.allocate`, and the UUID-or-ref
 // resolver every triage tool shares. `ref_number` is nullable: NULL means "not numbered yet"
 // and every consumer renders that as "no ref".
 import type { AppContext } from "@liaison/app-sdk"
+import { withLease } from "./lease"
 
 const SEQUENCE_KEY = "monitoring:incident_ref"
 
-type RefsCtx = Pick<AppContext, "db" | "sequences">
+type RefsCtx = Pick<AppContext, "db" | "sequences" | "store">
 
 /** An incident row as the bridge returns it (snake_case columns). */
 export type IncidentRecord = { id: string } & Record<string, unknown>
@@ -45,23 +46,22 @@ export async function allocateRef(ctx: RefsCtx): Promise<number> {
   return r.value
 }
 
+/** How long one numberer may hold the numbering lease: past every run's wall clock. */
+export const REF_LEASE_TTL_MS = 60_000
+const REF_LEASE = "incident-refs"
+
 /**
  * Number the oldest un-numbered incidents (`first_seen_at`, then id), at most `limit` per call.
- * Every caller passes its own bound: the lock is held until the caller's transaction ends, so
- * the batch decides how long other numberers (a creating webhook, the job) wait behind it.
  *
- * Lock-first protocol, in this exact order: (1) an unlocked probe, so a fully numbered org
- * allocates nothing; (2) the first allocation, which takes the org advisory lock until the
- * surrounding transaction ends; (3) the list is read only NOW, under the lock, so it can no
- * longer contain a row another numberer committed meanwhile; (4) the rows are written by id.
- * No compare-and-set is needed (and the bridge refuses `where.id` on `updateMany` anyway).
- * When the list under the lock is empty, another numberer drained it first and the value
- * allocated in step 2 is burned (refs stay unique and immutable; gaps are accepted).
- *
- * HARD RULE: call it only inside ONE ambient transaction (a webhook delivery or an
- * `atomic: true` job), because the lock must cover steps 2 to 4 until commit. Never from a
- * tool or a non-atomic job: there each bridge call is its own short transaction and the lock
- * is released right after the allocation.
+ * No run holds a transaction across its bridge calls, so numberers (a creating webhook, the
+ * job) take turns through an expiring lease in the app store (`withLease`): (1) an unleased
+ * probe, so a fully numbered org takes no lease and allocates nothing; (2) the lease, or
+ * nothing when another numberer holds it (the rows stay for the next run, `remaining: true`);
+ * (3) the first allocation; (4) the list, read only NOW, so it cannot contain a row another
+ * numberer wrote before this one took the lease; (5) the rows written by id. When the list is
+ * empty, another numberer drained it first and the value allocated in step 3 is burned (refs
+ * stay unique, `(org_id, ref_number)` is a unique index, and immutable; gaps are accepted).
+ * A run killed while holding the lease leaves it behind for `REF_LEASE_TTL_MS` at most.
  */
 export async function assignMissingRefs(
   ctx: RefsCtx,
@@ -70,20 +70,23 @@ export async function assignMissingRefs(
   const probe = await ctx.db.findMany("incidents", { where: { ref_number: null }, limit: 1 })
   if (probe.length === 0) return { assigned: 0, remaining: false }
 
-  const first = await allocateRef(ctx)
+  const run = await withLease(ctx, REF_LEASE, REF_LEASE_TTL_MS, async () => {
+    const first = await allocateRef(ctx)
 
-  const rows = (await ctx.db.findMany("incidents", {
-    where: { ref_number: null },
-    orderBy: { first_seen_at: "asc", id: "asc" },
-    limit,
-  })) as Array<{ id: string }>
-  if (rows.length === 0) return { assigned: 0, remaining: false }
+    const rows = (await ctx.db.findMany("incidents", {
+      where: { ref_number: null },
+      orderBy: { first_seen_at: "asc", id: "asc" },
+      limit,
+    })) as Array<{ id: string }>
+    if (rows.length === 0) return { assigned: 0, remaining: false }
 
-  for (let i = 0; i < rows.length; i++) {
-    const refNumber = i === 0 ? first : await allocateRef(ctx)
-    await ctx.db.update("incidents", rows[i]!.id, { ref_number: refNumber })
-  }
-  return { assigned: rows.length, remaining: rows.length === limit }
+    for (let i = 0; i < rows.length; i++) {
+      const refNumber = i === 0 ? first : await allocateRef(ctx)
+      await ctx.db.update("incidents", rows[i]!.id, { ref_number: refNumber })
+    }
+    return { assigned: rows.length, remaining: rows.length === limit }
+  })
+  return run.held ? run.value : { assigned: 0, remaining: true }
 }
 
 /**

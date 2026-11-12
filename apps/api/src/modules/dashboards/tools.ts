@@ -17,12 +17,12 @@
 // at once or not at all; on an org dashboard the whole list is ONE approval whose card
 // numbers the operations, one plain line each (describeOperations).
 
-import { and, eq } from "drizzle-orm"
+import { and, desc, eq, inArray } from "drizzle-orm"
 import { z } from "zod"
 import type { RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
-import type { UserContext } from "~/db/rls"
-import { dashboards, userRoles } from "~/db/schema/kernel"
+import { type UserContext, withRlsContext } from "~/db/rls"
+import { approvalRequests, dashboards, userRoles } from "~/db/schema/kernel"
 import { currentRunContext } from "~/modules/agent/runtime/run-context"
 import { turnToolScopes } from "~/modules/agent/scopes/effective-scope"
 import { type ApprovalSummarizer, toolRegistry } from "~/modules/apps/app-registries"
@@ -54,6 +54,7 @@ import {
   resolveFilterTokens,
   resolveWhere,
 } from "~/modules/dashboards/filters"
+import { stableJson } from "~/modules/dashboards/rebase"
 import {
   DateTokenError,
   type DayWindow,
@@ -146,6 +147,7 @@ function asToolError(err: unknown) {
       message: err.problems.length ? `${err.message}: ${err.problems.join("; ")}` : err.message,
       retryable: err.code === "INVALID_SPEC" || err.code === "VERSION_CONFLICT",
       status: STATUS[err.code],
+      ...(err.body ? { body: err.body } : {}),
     },
   }
 }
@@ -192,6 +194,82 @@ async function storedVisibility(orgId: string, id: unknown): Promise<"personal" 
       .limit(1),
   )
   return row?.visibility ?? null
+}
+
+/** The dashboard tools whose approval changes a saved dashboard. */
+const DASHBOARD_CHANGE_TOOLS = [
+  "kernel:dashboards_edit",
+  "kernel:dashboards_update",
+  "kernel:dashboards_delete",
+] as const
+
+const sameJson = (a: unknown, b: unknown) => stableJson(a) === stableJson(b)
+
+/**
+ * What a gated change of a saved dashboard tells the proposing agent beside its pending
+ * approval (`gatedAgentNotes`): that it applies only once approved and how to follow it,
+ * and, when other requests for the same dashboard are still pending, their handles and how
+ * they chain. Read with the caller's own access: only requests they may see are named.
+ */
+async function pendingDashboardNotes(
+  tool: "dashboards_edit" | "dashboards_update" | "dashboards_delete",
+  params: unknown,
+  ctx: { orgId: string; userId: string; scopes: readonly string[] },
+): Promise<Record<string, unknown> | null> {
+  const p = (params ?? {}) as { dashboardId?: unknown; id?: unknown }
+  const dashboardId = tool === "dashboards_edit" ? p.dashboardId : p.id
+  if (typeof dashboardId !== "string") return null
+  const viewer = await viewerOf({ ...ctx, scopes: [...ctx.scopes] })
+  const rows = await withRlsContext(viewer, (tx) =>
+    tx
+      .select({
+        id: approvalRequests.id,
+        handle: approvalRequests.handle,
+        toolName: approvalRequests.toolName,
+        payload: approvalRequests.currentPayload,
+        requestedBy: approvalRequests.requestedBy,
+      })
+      .from(approvalRequests)
+      .where(
+        and(
+          eq(approvalRequests.orgId, ctx.orgId),
+          inArray(approvalRequests.status, ["pending", "deferred"]),
+          inArray(approvalRequests.toolName, [...DASHBOARD_CHANGE_TOOLS]),
+        ),
+      )
+      .orderBy(desc(approvalRequests.createdAt))
+      .limit(50),
+  )
+  const forThis = rows.filter((r) => {
+    const payload = (r.payload ?? {}) as { dashboardId?: unknown; id?: unknown }
+    return (payload.dashboardId ?? payload.id) === dashboardId
+  })
+  // The request this very call just staged is the newest of the caller's with these params.
+  const own =
+    forThis.find((r) => r.requestedBy === ctx.userId && sameJson(r.payload, params)) ??
+    forThis.find((r) => r.requestedBy === ctx.userId)
+  const others = forThis.filter((r) => r !== own)
+  const onApproval =
+    tool === "dashboards_delete"
+      ? "This deletion happens only once a person approves it."
+      : `This change applies only once a person approves it, and saves a new version then. Follow it with liaison_approval_status (over MCP) or the approval result: once applied it returns the new version, the ifVersion your next change of this dashboard passes.${
+          tool === "dashboards_edit"
+            ? " If the dashboard changed in the meantime, it still applies on top of the newer version as long as no version saved since changed the same blocks, datasets, filters, title, range or visibility; otherwise its execution is refused naming the conflict."
+            : " A whole-spec replace applies only to the version it was written against: any save before its approval makes it fail."
+        }`
+  if (others.length === 0) return { onApproval }
+  const handles = others.map((r) => r.handle)
+  return {
+    onApproval,
+    pendingForThisDashboard: {
+      requests: others.map((r) => ({
+        approvalRequestId: r.id,
+        handle: r.handle,
+        tool: r.toolName.replace(/^kernel:/, "kernel__"),
+      })),
+      relay: `Other requests for this dashboard are still waiting for approval (${handles.join(", ")}). Each one applies when it is approved, on top of whatever was approved before it, as long as they do not change the same blocks, datasets, filters, title, range or visibility (a revert or a whole-spec replace never applies on top). Do not file the same change again. To change what a pending request does, withdraw it (kernel__approval_withdraw) and file the corrected change as one new request.`,
+    },
+  }
 }
 
 const visibilityParam = z
@@ -830,7 +908,7 @@ export function registerDashboardTools(orgId: string): void {
     name: "dashboards_update",
     deferLoading: true,
     description:
-      "Replace a dashboard's whole spec (and its title or visibility): for a wholesale rebuild only. To change some blocks, the title, the range or the visibility, use kernel__dashboards_edit. Your personal dashboard saves at once; an org dashboard, or switching one to org, waits for a person's approval whose card lists every change. Pass ifVersion (from kernel__dashboards_get) so you never overwrite a newer save.",
+      "Replace a dashboard's whole spec (and its title or visibility): for a wholesale rebuild only. To change some blocks, the title, the range or the visibility, use kernel__dashboards_edit. Your personal dashboard saves at once; an org dashboard, or switching one to org, waits for a person's approval whose card lists every change. Pass ifVersion (from kernel__dashboards_get) so you never overwrite a newer save: a whole-spec replace never applies on top of a newer version.",
     searchKeywords: ["dashboard", "modifier"],
     requiredScopes: [WRITE],
     params: z.object({
@@ -856,6 +934,8 @@ export function registerDashboardTools(orgId: string): void {
     writesToTable: SINK,
     approveScope: ADMIN,
     approvalImpact: "internal",
+    gatedAgentNotes: (params: unknown, c: { orgId: string; userId: string; scopes: string[] }) =>
+      pendingDashboardNotes("dashboards_update", params, c),
     gatedWhen: async (params: unknown, { orgId: o }: { orgId: string }) => {
       const p = (params ?? {}) as { id?: unknown; visibility?: unknown }
       if (p.visibility === "org") return true
@@ -906,7 +986,7 @@ export function registerDashboardTools(orgId: string): void {
     name: "dashboards_edit",
     deferLoading: true,
     description:
-      "Change a dashboard by a list of operations, applied in order and together (all or none): addBlock, updateBlock (partial; a rename is changes {title}), removeBlock, moveBlock, resizeBlock (width 1-3, height 1-2), duplicateBlock, setTitle, setDescription, setTimeRange (the default range and comparison), setVisibility, setDataset / removeDataset (a source shared by several blocks), setFilter / removeFilter (a dashboard filter), revert (back to a saved version, kernel__dashboards_history). Put EVERY change the person asked for in ONE call: on an org dashboard the whole list waits for ONE approval; a personal one saves at once. Pass ifVersion from kernel__dashboards_get. Preview a new or changed block with kernel__dashboards_preview_block first.",
+      "Change a dashboard by a list of operations, applied in order and together (all or none): addBlock, updateBlock (partial; a rename is changes {title}), removeBlock, moveBlock, resizeBlock (width 1-3, height 1-2), duplicateBlock, setTitle, setDescription, setTimeRange (the default range and comparison), setVisibility, setDataset / removeDataset (a source shared by several blocks), setFilter / removeFilter (a dashboard filter), revert (back to a saved version, kernel__dashboards_history). Put EVERY change the person asked for in ONE call: on an org dashboard the whole list waits for ONE approval; a personal one saves at once. Pass ifVersion from kernel__dashboards_get, or the version the previous edit returned. An edit that waits applies when approved, on top of whatever was approved before it, unless a version saved since changed the same blocks, datasets, filters, title, range or visibility (then it is refused naming them; a revert never applies on top). Preview a new or changed block with kernel__dashboards_preview_block first.",
     searchKeywords: ["dashboard", "modifier", "edit", "block", "bloc", "période"],
     requiredScopes: [WRITE],
     params: z.object({
@@ -915,7 +995,9 @@ export function registerDashboardTools(orgId: string): void {
         .number()
         .int()
         .min(1)
-        .describe("The version kernel__dashboards_get returned: a newer save refuses the edit."),
+        .describe(
+          "The version kernel__dashboards_get or the previous edit returned. If newer versions were saved since, the edit applies on top of them unless one changed what it names.",
+        ),
       operations: z
         .array(editOperationSchema)
         .min(1)
@@ -933,18 +1015,27 @@ export function registerDashboardTools(orgId: string): void {
           { ifVersion: p.ifVersion, operations: p.operations },
           ctx.db,
         )
+        const r = row.rebased
         return {
           id: row.id,
           title: row.title,
           visibility: row.visibility,
           version: row.version,
           blocks: row.spec.blocks.map((b) => b.id),
+          ...(r ? { rebased: r } : {}),
+          note: `${
+            r
+              ? `Applied on top of version ${r.appliedOnTopOf}: version${r.between.length > 1 ? "s" : ""} ${r.between.map((v) => v.version).join(", ")} ${r.between.length > 1 ? "were" : "was"} saved after version ${r.writtenAgainst}, the one this edit was written against, and changed other things. `
+              : ""
+          }Saved as version ${row.version}: the next edit of this dashboard passes ifVersion ${row.version}.`,
         }
       })
     }) as (params: unknown, ctx: any) => Promise<unknown>,
     writesToTable: SINK,
     approveScope: ADMIN,
     approvalImpact: "internal",
+    gatedAgentNotes: (params: unknown, c: { orgId: string; userId: string; scopes: string[] }) =>
+      pendingDashboardNotes("dashboards_edit", params, c),
     gatedWhen: async (params: unknown, { orgId: o }: { orgId: string }) => {
       const p = (params ?? {}) as { dashboardId?: unknown; operations?: unknown }
       const ops = Array.isArray(p.operations) ? p.operations : []
@@ -991,6 +1082,8 @@ export function registerDashboardTools(orgId: string): void {
     writesToTable: SINK,
     approveScope: ADMIN,
     approvalImpact: "internal",
+    gatedAgentNotes: (params: unknown, c: { orgId: string; userId: string; scopes: string[] }) =>
+      pendingDashboardNotes("dashboards_delete", params, c),
     gatedWhen: async (params: unknown, { orgId: o }: { orgId: string }) =>
       (await storedVisibility(o, (params as { id?: unknown } | null)?.id)) === "org",
   })

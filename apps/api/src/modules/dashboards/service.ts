@@ -16,7 +16,7 @@
 // source the author cannot read is refused at save. The same check runs again
 // on every view, as the viewer.
 
-import { and, desc, eq, inArray, isNull, lte, ne, or, type SQL } from "drizzle-orm"
+import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, or, type SQL } from "drizzle-orm"
 import type { RlsClient } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import {
@@ -70,6 +70,7 @@ import {
   resolveWhere,
   sanitizeSavedFilterValues,
 } from "~/modules/dashboards/filters"
+import { type RebaseVersion, rebaseConflict } from "~/modules/dashboards/rebase"
 import {
   type CompareMode,
   compareWindow,
@@ -134,6 +135,8 @@ export class DashboardError extends Error {
     readonly code: DashboardErrorCode,
     message: string,
     readonly problems: string[] = [],
+    /** What a caller acts on besides the message (a conflict's current version). */
+    readonly body?: Record<string, unknown>,
   ) {
     super(message)
   }
@@ -847,7 +850,9 @@ export async function updateDashboard(
   if (input.ifVersion !== undefined && input.ifVersion !== current.version) {
     throw new DashboardError(
       "VERSION_CONFLICT",
-      `the dashboard is at version ${current.version}, not ${input.ifVersion}`,
+      `the dashboard is at version ${current.version}, not ${input.ifVersion}: a whole-spec replace applies only to the version it was written against. Read it again (kernel__dashboards_get) and send it against version ${current.version}`,
+      [],
+      { currentVersion: current.version },
     )
   }
   const spec = input.spec === undefined ? undefined : await validateSpec(viewer, input.spec)
@@ -881,34 +886,51 @@ export async function updateDashboard(
 }
 
 export interface EditDashboardInput {
-  /** The version the operations were written against: a newer save refuses with VERSION_CONFLICT. */
+  /**
+   * The version the operations were written against. When the dashboard moved on since, they
+   * apply on top of the current version unless a version saved in between changed something
+   * they name (rebase.ts); then VERSION_CONFLICT names the operation and that version.
+   */
   ifVersion: number
   operations: EditOperation[]
+}
+
+/** How an edit written against an older version was applied on top of the current one. */
+export interface EditRebase {
+  /** The version the edit was written against. */
+  writtenAgainst: number
+  /** The version it was applied on top of. */
+  appliedOnTopOf: number
+  /** The versions saved in between, oldest first. */
+  between: Array<{ version: number; savedByName: string | null }>
 }
 
 /**
  * Applies `operations` in order to the saved dashboard and saves the result as one new
  * version, or nothing: the resulting spec is validated whole (spec.ts, and every block's
- * source for `viewer`), and an operation that cannot apply refuses the whole edit.
+ * source for `viewer`), and an operation that cannot apply refuses the whole edit. An edit
+ * written against an older version applies on top of the current one when it safely can
+ * (`rebased` says so).
  */
 export async function editDashboard(
   viewer: DashboardViewer,
   id: string,
   input: EditDashboardInput,
   tx?: RlsClient,
-): Promise<DashboardRecord> {
-  const { current, next } = await planEdit(viewer, id, input, tx)
-  return updateDashboard(
+): Promise<DashboardRecord & { rebased?: EditRebase }> {
+  const { current, next, rebased } = await planEdit(viewer, id, input, tx)
+  const saved = await updateDashboard(
     viewer,
     id,
     {
-      ifVersion: input.ifVersion,
+      ifVersion: current.version,
       spec: next.spec,
       ...(next.title !== current.title ? { title: next.title } : {}),
       ...(next.visibility !== current.visibility ? { visibility: next.visibility } : {}),
     },
     tx,
   )
+  return rebased ? { ...saved, rebased } : saved
 }
 
 /**
@@ -938,6 +960,79 @@ export async function checkEdit(
   return { cardLines }
 }
 
+/** The kept versions `from`..`to` of a dashboard, oldest first, as the rebase compares them. */
+async function readRebaseVersions(
+  t: Pick<RlsClient, "select">,
+  dashboardId: string,
+  from: number,
+  to: number,
+): Promise<RebaseVersion[]> {
+  const rows = await t
+    .select({ v: dashboardVersions, savedByName: users.name })
+    .from(dashboardVersions)
+    .leftJoin(users, eq(users.id, dashboardVersions.savedBy))
+    .where(
+      and(
+        eq(dashboardVersions.dashboardId, dashboardId),
+        gte(dashboardVersions.version, from),
+        lte(dashboardVersions.version, to),
+      ),
+    )
+    .orderBy(asc(dashboardVersions.version))
+  return rows.map(({ v, savedByName }) => ({
+    version: v.version,
+    title: v.title,
+    visibility: v.visibility ?? null,
+    spec: v.spec,
+    savedByName: savedByName ?? null,
+  }))
+}
+
+/**
+ * Where an edit written against `ifVersion` applies: the current version itself, or on top
+ * of it when no version saved since changed what the edit names. Throws VERSION_CONFLICT
+ * naming the operation and the version otherwise.
+ */
+async function rebaseOnto(
+  viewer: DashboardViewer,
+  current: DashboardRow,
+  input: EditDashboardInput,
+  tx?: RlsClient,
+): Promise<EditRebase | null> {
+  if (input.ifVersion === current.version) return null
+  const reread = `read it again (kernel__dashboards_get) and send the change against version ${current.version}`
+  if (input.ifVersion > current.version) {
+    throw new DashboardError(
+      "VERSION_CONFLICT",
+      `the dashboard is at version ${current.version}, not ${input.ifVersion}: ${reread}`,
+      [],
+      { currentVersion: current.version },
+    )
+  }
+  const chain = await inTx(viewer, tx, (t) =>
+    readRebaseVersions(t, current.id, input.ifVersion, current.version),
+  )
+  const complete =
+    chain[0]?.version === input.ifVersion && chain.at(-1)?.version === current.version
+  const conflict = complete
+    ? rebaseConflict(input.operations, chain)
+    : {
+        message: `version ${input.ifVersion} or a version saved after it is no longer kept, so what changed since is unknown. The dashboard is now at version ${current.version}: ${reread}.`,
+      }
+  if (conflict) {
+    throw new DashboardError("VERSION_CONFLICT", conflict.message, [], {
+      currentVersion: current.version,
+      writtenAgainst: input.ifVersion,
+      ...("version" in conflict ? { changedBy: conflict.version } : {}),
+    })
+  }
+  return {
+    writtenAgainst: input.ifVersion,
+    appliedOnTopOf: current.version,
+    between: chain.slice(1).map((v) => ({ version: v.version, savedByName: v.savedByName })),
+  }
+}
+
 async function planEdit(
   viewer: DashboardViewer,
   id: string,
@@ -947,14 +1042,10 @@ async function planEdit(
   current: DashboardRow
   next: ReturnType<typeof applyOperations>
   versions: VersionLookup
+  rebased: EditRebase | null
 }> {
   const current = await loadRow(viewer, id, tx)
-  if (input.ifVersion !== current.version) {
-    throw new DashboardError(
-      "VERSION_CONFLICT",
-      `the dashboard is at version ${current.version}, not ${input.ifVersion}: read it again`,
-    )
-  }
+  const rebased = await rebaseOnto(viewer, current, input, tx)
   const targets = revertTargets(input.operations)
   const versions: VersionLookup = targets.length
     ? await inTx(viewer, tx, (t) =>
@@ -978,7 +1069,7 @@ async function planEdit(
     }
     throw err
   }
-  return { current, next, versions }
+  return { current, next, versions, rebased }
 }
 
 export async function deleteDashboard(

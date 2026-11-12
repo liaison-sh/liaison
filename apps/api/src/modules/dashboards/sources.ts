@@ -100,7 +100,10 @@ export const KERNEL_DASHBOARD_SOURCES: ReadonlySet<string> = new Set([
   "notifications_get",
   "sidebar_apps_get",
   "setup_state",
-  // A dashboard table's rows (modules/dashboards/tables), under the viewer's RLS.
+  // Dashboard tables (modules/dashboards/tables), under the viewer's RLS: the tables, one
+  // table's columns and counts, its rows.
+  "tables_list",
+  "tables_get",
   "tables_query",
 ])
 

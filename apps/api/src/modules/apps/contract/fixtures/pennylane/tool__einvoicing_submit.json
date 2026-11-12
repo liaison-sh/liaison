@@ -23,6 +23,9 @@
     "idempotency_key": "key-mwdanmvb"
   },
   "recordedFrom": "a Pennylane sandbox company, record-pennylane.recorder.ts",
+  "expectError": {
+    "reason": "e-invoice emission is not activated on the sandbox company, so the platform refuses the submission: pins that refusal; the emission path needs a sandbox with emission activated"
+  },
   "calls": [
     {
       "method": "connections_getCredentials",

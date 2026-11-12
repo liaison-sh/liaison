@@ -587,7 +587,7 @@ For access rules of your own (who may see which of your reports or records), thr
 
 ### Commit an intent row before an outside call (`ctx.db.insertNow`)
 
-Some runs share one transaction from start to end: an approved gated call (the approval claim, the handler and the "approved" mark), and a tool declared `atomic: true`. If the sandbox stops such a handler ("App execution timed out"), every write it made rolls back. A row written with `ctx.db.insert` just before a call you cannot undo (buying a label, charging a card) is lost with it, and the outside effect has no local record.
+Some runs share one transaction from start to end: an approved gated call (the approval claim, the handler and the "approved" mark), and a tool declared `atomic: true` (which may not call outside the database at all: every outside call fails with `atomic_run_egress_refused`). If the sandbox stops such a handler ("App execution timed out"), every write it made rolls back. A row written with `ctx.db.insert` just before a call you cannot undo (buying a label, charging a card) is lost with it, and the outside effect has no local record.
 
 `ctx.db.insertNow(entity, data)` and `ctx.db.updateNow(entity, id, data)` make the same write as `insert` and `update`, in a new transaction of their own that commits before they return:
 
@@ -627,6 +627,7 @@ const done = await ctx.db.batch({
 - Ops are `insert` (with an optional `as` name), `update`, `delete` and `updateMany`, each with the checks of its single-call twin: the app's own declared tables and fields, the run's organization and RLS actor, refused on a read-only run. At most 500 ops.
 - `sequence` allocates the next value of one of the app's sequences inside the same commit (the `sequences.allocate` capability): a batch that fails consumes no value, and batches running at the same time never get the same one, so a numbering built on it has no gap and no duplicate. `unique` names a column that may already hold values written another way (an import): the allocator steps past them.
 - Placeholders anywhere in an op's `data`, or as its `id`: `{ $seq: "value" }`, `{ $seq: "formatted" }` (the prefix and the value padded to `pad`) and `{ $ref: "<as>" }` (the id of an earlier insert).
+- `sequences` (instead of `sequence`) allocates several named sequences in the same commit, for two numbered records that must land together (a credit note and the invoice that replaces the one it reverses): `sequences: { credit: {...}, invoice: {...} }`, referenced as `{ $seq: "credit.formatted" }` or `{ $seq: "invoice.value" }`, and answered in `done.sequences`. Either every record is numbered and written, or none is and no value is used.
 - An `update` may also `append` items to json array fields and `merge` keys into json object fields: they apply to the row as it is when the batch commits, so a log entry or a reference another writer added between your read and the batch is kept (`{ update: "invoices", id, append: { log: [entry] }, merge: { refs: { shipment: id } } }`).
 - What comes after the batch (a render, a mail) is a separate step: make it safe to run again, since a run that dies after the batch leaves the batch's rows committed. The invoicing app numbers its legal documents this way (`bundled-apps/invoicing/src/issue.ts`).
 

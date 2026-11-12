@@ -314,6 +314,9 @@ function SingleToolCallRow(props: ToolCallRowProps) {
       <Show when={pageHandleOf(props.toolCall)}>
         {(handle) => <PageHandleCard handle={handle()} />}
       </Show>
+      <Show when={pageHandleOf(props.toolCall)}>
+        {(handle) => <PageHandleCard handle={handle()} />}
+      </Show>
       <Show when={mailboxSetupCardRef(props.toolCall)}>
         {(ref) => <MailboxSetupCard email={ref().email} makePrivate={ref().makePrivate} />}
       </Show>

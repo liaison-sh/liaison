@@ -20,9 +20,11 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { sql } from "~/db/connection"
 import { type UserContext, withRlsContext } from "~/db/rls"
+import { rebuildFilesSelectPolicy } from "~/infra/boot-phase10"
 import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { env } from "~/lib/env"
 import { initializedOrgRuntimes, toolRegistry } from "~/modules/apps/app-registries"
+import { CatalogDerivationsTestAccess } from "~/modules/apps/catalog-derivations"
 import { BUNDLED_APPS_DIR, bridgeSurfaceOf } from "~/modules/apps/contract/apps.test-helpers"
 import { contractEntries } from "~/modules/apps/contract/entries"
 import { bundledAppScripts, productionLimits } from "~/modules/apps/contract/harness"
@@ -145,6 +147,9 @@ describe("record invoicing contract fixtures", () => {
       toolRegistry.get([CONTRACT_ORG_ID, APP, "documents_get"]) as { _manifest?: unknown }
     )?._manifest
     if (!bridgeManifest) throw new Error("invoicing did not register")
+    // Boot builds the files read policy from every registered file parent (legal originals
+    // included): without it, a legal original's bytes read back as forbidden.
+    await rebuildFilesSelectPolicy({ parents: CatalogDerivationsTestAccess.registryFileParents() })
     registerPdfTemplates()
     // The Shopify app, connected to the development store, answers invoicing's cross-app reads.
     await sql`UPDATE kernel.connected_accounts SET status = 'disconnected'
@@ -202,12 +207,17 @@ describe("record invoicing contract fixtures", () => {
     isolate?.dispose()
     await teardownAppRegistrations(CONTRACT_ORG_ID, APP)
     await teardownAppRegistrations(CONTRACT_ORG_ID, "shopify")
+    await rebuildFilesSelectPolicy()
     toolRegistry.deleteByPrefix([CONTRACT_ORG_ID])
     initializedOrgRuntimes.delete(CONTRACT_ORG_ID)
     await releaseTestLock()
   })
 
-  function liveBridge(entryKind: string, job?: { name: string; payload: unknown }): AppBridge {
+  function liveBridge(
+    entryKind: string,
+    job?: { name: string; payload: unknown },
+    approval?: Record<string, unknown>,
+  ): AppBridge {
     return createSessionRpcBridge(
       APP,
       CONTRACT_USER_ID,
@@ -216,7 +226,8 @@ describe("record invoicing contract fixtures", () => {
       bridgeManifest as never,
       ["*"],
       "user",
-      undefined,
+      // A gated tool's real path: the run re-entered after a person approved it.
+      approval as never,
       {
         actor,
         // A tool's handler may park itself on an approval, as its production run can.
@@ -300,7 +311,7 @@ describe("record invoicing contract fixtures", () => {
         isolate: entryIsolate,
         entry,
         input,
-        real: liveBridge(entry.kind, job),
+        real: liveBridge(entry.kind, job, input.approval),
         surface,
         limits: productionLimits(entry),
         recordedFrom:

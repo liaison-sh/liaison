@@ -194,7 +194,7 @@
       }
     ]
   },
-  "version": "0.24.5",
+  "version": "0.24.6",
   "iconName": "box",
   "description": "Boxtal shipping integration: carrier quotes, tracking, shipments, customs documents",
   "listing": {
@@ -1465,7 +1465,6 @@
       "description": "Create or update the shipping profile a product variant uses (weight + solo carton dims). Only the fields you send change: an absent solo dim, category, code or accessory flag keeps its value (null clears a dim or the category). A variant LINKED to a profile other variants share is REFUSED with the list of those variants unless apply_to_shared:true, because the edit changes the profile for all of them (shared_with lists them); to change only this variant, product_profile_unlink it first. An unlinked variant gets a new profile of its own. For a new variant of an item that already has a profile, use product_profile_link instead.",
       "searchKeywords": ["fiche", "poids", "weight", "produit"],
       "requiredScopes": ["boxtal:catalog:write"],
-      "atomic": true,
       "handler": "productProfileUpsertHandler",
       "writesToTable": "app_boxtal.product_profile",
       "params": {
@@ -1523,7 +1522,6 @@
     "product_profile_link": {
       "description": "Link a product variant to an EXISTING shared shipping profile. Use it for a variant with no profile that is the same physical item as one already profiled. A variant that already uses ANOTHER profile is only previewed (ok:false, preview:true, differences between the two profiles, and a note that it enters the new profile's packs) unless confirm:true; show the user the differences before confirming. Rows already resolved are not re-resolved; they use the profile from their next sync.",
       "requiredScopes": ["boxtal:catalog:write"],
-      "atomic": true,
       "handler": "productProfileLinkHandler",
       "writesToTable": "app_boxtal.product_profile_link",
       "params": {
@@ -1540,7 +1538,6 @@
     "product_profile_unlink": {
       "description": "Detach a product variant from its shared shipping profile. The profile stays for its other variants; this variant has no profile until it is linked again.",
       "requiredScopes": ["boxtal:catalog:write"],
-      "atomic": true,
       "handler": "productProfileUnlinkHandler",
       "writesToTable": "app_boxtal.product_profile_link",
       "params": {
@@ -1555,7 +1552,6 @@
     "product_profile_merge": {
       "description": "Merge duplicate shipping profiles into one: every variant of the source profiles moves to the target, then the sources are deleted. Without confirm it only PREVIEWS (moves, differences, profiles to delete) and writes nothing. With confirm:true it refuses when any field differs unless fields_from names the profile (target or a source) whose fields the merged profile keeps.",
       "requiredScopes": ["boxtal:catalog:write"],
-      "atomic": true,
       "handler": "productProfileMergeHandler",
       "writesToTable": "app_boxtal.product_profile",
       "params": {
@@ -1572,7 +1568,6 @@
     "product_profile_delete": {
       "description": "Delete a shipping profile no variant uses. Refused while any variant links to it: unlink those variants or merge the profile into another first.",
       "requiredScopes": ["boxtal:catalog:write"],
-      "atomic": true,
       "handler": "productProfileDeleteHandler",
       "writesToTable": "app_boxtal.product_profile",
       "params": {
@@ -1587,7 +1582,6 @@
       "description": "Create or update ONE named pack (carton) with its box dimensions, gross weight, AND its component bill of materials (the `components` array — the list of SKUs the carton holds). For a BUNDLE/kit pack (a carton that contains several distinct products), the `components` BOM is REQUIRED, not optional: a bundle pack with an empty `components` list is INCOMPLETE. Resolve each component name → its SKU first (use `packages_list`, whose `local_products` gives label↔sku, or a product read) and pass every SKU in `components` — never omit the BOM just because it is the last param. Example for a 4-item Studio Bundle carton: components: [ {product_source:\"local\", product_id:\"RAL-44\", quantity:1}, {product_source:\"local\", product_id:\"RAL-WND\", quantity:1}, {product_source:\"local\", product_id:\"RAL-CASE\", quantity:1}, {product_source:\"local\", product_id:\"RAL-CBL\", quantity:1} ]. This is a single pack per call. There is NO bulk/batch pack creation and NO CSV/spreadsheet pack-ingest primitive anywhere in Boxtal: you cannot import a whole list of carton SKUs as packs in one operation. So when handed many carton rows (e.g. a 3PL's rate-sheet CSV of dozens of cartons), do NOT claim you imported them all and do NOT loop pack_upsert until the per-turn step budget kills the turn mid-import (a half-done mess) — instead read the source for the real dimensions, create a HANDFUL of packs to demonstrate the unit path (each from real parsed dims, never invented), then HONESTLY state that the rest must be created one-per-call and propose offloading them to a spawn_agent fan-out or a routine that chips through the remainder.",
       "searchKeywords": ["emballage", "carton", "box", "packaging"],
       "requiredScopes": ["boxtal:catalog:write"],
-      "atomic": true,
       "handler": "packUpsertHandler",
       "writesToTable": "app_boxtal.pack",
       "params": {
@@ -1657,7 +1651,6 @@
     "pack_delete": {
       "description": "Delete a pack and its components.",
       "requiredScopes": ["boxtal:catalog:write"],
-      "atomic": true,
       "handler": "packDeleteHandler",
       "writesToTable": "app_boxtal.pack",
       "params": {

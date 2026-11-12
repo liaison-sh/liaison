@@ -112,7 +112,9 @@ handlers teaches exactly one thing.
   end, so it may not call outside: `ctx.fetch`, `ctx.executeTool`, a contract
   call, an agent run and the other outside calls fail with
   `atomic_run_egress_refused`. Read, call the provider, then write in one
-  `ctx` call (or use `ctx.steps.run`) instead.
+  `ctx` call (or use `ctx.steps.run`) instead. A tool marked `atomic: true`
+  gets the same refusal; the bundled apps declare no atomic tool, and a tool
+  whose writes must land together commits them in one `ctx.db.batch`.
   A job marked `atomic: true`, an event-subscription handler and an import
   batch hold one database connection for their whole run, so each waits for
   a free slot before it starts, first come first served (the slots come from
@@ -556,6 +558,15 @@ identity (product titles, SKUs, vendors, handles, customer and company names,
 street addresses), each replaced by a stable stand-in derived from its hash,
 so a re-recording neither publishes a real catalogue nor churns the fixture.
 Read what a recording wrote before you commit it.
+
+A fixture records the entry working. A run that ends in an error or a refusal
+(it threw, or answered with an `error`) is not written, and its replay fails
+the contract, unless the plan marks it a deliberate negative case:
+`expectError: { reason: "..." }` on the step's input, saying why that refusal
+is the path worth pinning. A marked fixture whose replay succeeds fails too.
+A gated tool is recorded on its approved path: the step's input carries the
+`approval` the run re-enters with, and the replay answers `ctx.approval` from
+it.
 
 ---
 

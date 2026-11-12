@@ -17,7 +17,13 @@
 //   no-fixture    a run made a bridge call no fixture answers: the entry cannot
 //                 be judged until its egress is recorded;
 //   missing-export / load  the manifest names an export the bundle lacks, or
-//                 the bundle does not evaluate.
+//                 the bundle does not evaluate;
+//   error-outcome a run with a recorded fixture ENDS in an error or a refusal
+//                 (it threw, or answered a top-level `error`) while the
+//                 fixture is not marked `expectError` with a reason: the
+//                 recording pinned a failure, not the entry's working path.
+//                 Also red: a fixture marked `expectError` whose replay
+//                 succeeds, or whose mark gives no reason.
 //
 // A passing entry is TRIVIAL when it has no recorded fixture and every run
 // rejected its (empty) input: it threw or answered `{ error }` before reaching
@@ -51,6 +57,7 @@ export type ContractReason =
   | "no-fixture"
   | "missing-export"
   | "load"
+  | "error-outcome"
 
 export interface EntryVerdict {
   entry: string
@@ -107,6 +114,31 @@ function rejected(r: ContractRunOutcome): boolean {
   if (!r.ok) return true
   const res = r.result
   return typeof res === "object" && res !== null && !Array.isArray(res) && "error" in res
+}
+
+/**
+ * Why a recorded entry's outcome does not match its fixture, or null: a replay that ends in an
+ * error or a refusal must be a marked negative case (`expectError` with a reason), and a marked
+ * one must still end in one. Shared with the recorders (recorder.ts `verifyFixture`), so a
+ * recorder never writes what the harness would refuse.
+ */
+export function outcomeProblem(
+  fixture: Pick<EgressFixture, "expectError">,
+  runs: ReadonlyArray<{ outcome: ContractRunOutcome }>,
+): string | null {
+  const mark = fixture.expectError
+  if (mark !== undefined && !(typeof mark?.reason === "string" && mark.reason.trim().length > 0)) {
+    return "the fixture is marked expectError without a reason"
+  }
+  const failed = runs.find((r) => rejected(r.outcome))
+  if (failed && !mark) {
+    return (
+      `the replay ends in an error (${answerOf(failed.outcome).slice(0, 200)}): record the entry's ` +
+      "working path, or mark a deliberate negative case expectError with its reason"
+    )
+  }
+  if (!failed && mark) return "the fixture is marked expectError but the replay succeeds"
+  return null
 }
 
 function answerOf(r: ContractRunOutcome): string {
@@ -180,6 +212,13 @@ export async function runAppContract(
         // A run stopped by a limit may leave the isolate unusable: judge, then start a new one.
         const second = first.outcome.overrun ? null : await runOnce()
         const verdict = judge(entry, limits, first, second)
+        if (fixture && verdict.reasons.length === 0) {
+          const problem = outcomeProblem(fixture, second ? [first, second] : [first])
+          if (problem) {
+            verdict.reasons.push("error-outcome")
+            verdict.detail = problem
+          }
+        }
         if (
           verdict.reasons.length === 0 &&
           !fixture &&

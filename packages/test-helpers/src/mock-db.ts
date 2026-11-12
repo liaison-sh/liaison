@@ -112,17 +112,21 @@ export interface MockDb {
 // -- ctx.db.batch, in memory ----------------------------------------------------
 
 /** The bridge's `ctx.db.batch` spec (apps/api sandbox/bridge/batch.ts). */
+export interface MockBatchSequence {
+  key: string
+  format?: { prefix: string; pad?: number }
+  unique?: { entity: string; field: string; where?: Record<string, unknown> }
+}
+
 export interface MockBatchSpec {
-  sequence?: {
-    key: string
-    format?: { prefix: string; pad?: number }
-    unique?: { entity: string; field: string; where?: Record<string, unknown> }
-  }
+  sequence?: MockBatchSequence
+  sequences?: Record<string, MockBatchSequence>
   ops: Array<Record<string, unknown>>
 }
 
 export interface MockBatchResult {
   sequence?: { value: number; formatted?: string }
+  sequences?: Record<string, { value: number; formatted?: string }>
   rows: Record<string, Record<string, unknown> & { id: string }>
 }
 
@@ -157,11 +161,11 @@ export async function applyMockBatch(
   const undo = target.snapshot()
   try {
     const out: MockBatchResult = { rows: {} }
-    let value: number | null = null
-    let formatted: string | undefined
-    if (spec.sequence) {
-      const seq = spec.sequence
-      value = await target.allocate(seq.key)
+    if (spec.sequence && spec.sequences) {
+      throw new Error("ctx.db.batch: sequence and sequences do not go together")
+    }
+    const allocateOne = async (seq: MockBatchSequence) => {
+      let value = await target.allocate(seq.key)
       if (seq.unique) {
         const u = seq.unique
         while (
@@ -170,9 +174,24 @@ export async function applyMockBatch(
           value = await target.allocate(seq.key)
         }
       }
-      if (seq.format)
-        formatted = seq.format.prefix + String(value).padStart(seq.format.pad ?? 0, "0")
-      out.sequence = { value, ...(formatted !== undefined ? { formatted } : {}) }
+      const formatted = seq.format
+        ? seq.format.prefix + String(value).padStart(seq.format.pad ?? 0, "0")
+        : undefined
+      return { value, ...(formatted !== undefined ? { formatted } : {}) }
+    }
+    // "" is the unnamed `sequence`; named ones are allocated in name order, as the bridge does.
+    const allocated = new Map<string, { value: number; formatted?: string }>()
+    if (spec.sequence) {
+      out.sequence = await allocateOne(spec.sequence)
+      allocated.set("", out.sequence)
+    }
+    if (spec.sequences) {
+      out.sequences = {}
+      for (const name of Object.keys(spec.sequences).sort()) {
+        const got = await allocateOne(spec.sequences[name] as MockBatchSequence)
+        out.sequences[name] = got
+        allocated.set(name, got)
+      }
     }
     const resolve = (v: unknown): unknown => {
       if (Array.isArray(v)) return v.map(resolve)
@@ -180,12 +199,20 @@ export async function applyMockBatch(
       const o = v as Record<string, unknown>
       const keys = Object.keys(o)
       if (keys.length === 1 && keys[0] === "$seq") {
-        if (value === null) throw new Error("ctx.db.batch: $seq without a sequence")
-        if (o.$seq === "formatted") {
-          if (formatted === undefined) throw new Error("ctx.db.batch: $seq formatted needs format")
-          return formatted
+        const ref = String(o.$seq)
+        const dot = ref.lastIndexOf(".")
+        const name = dot === -1 ? "" : ref.slice(0, dot)
+        const part = dot === -1 ? ref : ref.slice(dot + 1)
+        const got = allocated.get(name)
+        if (!got) throw new Error(`ctx.db.batch: $seq "${ref}" names no allocated sequence`)
+        if (part === "formatted") {
+          if (got.formatted === undefined)
+            throw new Error("ctx.db.batch: $seq formatted needs format")
+          return got.formatted
         }
-        return value
+        if (part !== "value")
+          throw new Error(`ctx.db.batch: $seq "${ref}" is not value or formatted`)
+        return got.value
       }
       if (keys.length === 1 && keys[0] === "$ref") {
         const row = out.rows[String(o.$ref)]

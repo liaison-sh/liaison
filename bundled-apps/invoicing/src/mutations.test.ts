@@ -4647,7 +4647,7 @@ describe("orderReissueApply", () => {
     expect(replacement.payment_status).not.toBe("paid")
   })
 
-  test("throws rather than returning a partial result when the replacement invoice step fails after the credit note issued", async () => {
+  test("a replacement the order cannot take refuses the reissue before anything is written", async () => {
     const { ctx, db } = makeCtx()
     const original = await invoiceCreateAndIssue(ctx, {
       operation_category: "goods",
@@ -4660,9 +4660,8 @@ describe("orderReissueApply", () => {
     expect(original.status).toBe("completed")
     if (original.status !== "completed") throw new Error("unreachable")
 
-    // A decoy SECOND live invoice for the SAME Shopify order, not credited --
-    // this makes invoiceCreateAndIssue's assertNoLiveInvoiceForOrder guard
-    // refuse the replacement AFTER the credit note above has already issued.
+    // A decoy SECOND live invoice for the SAME Shopify order, not credited: the replacement's
+    // one-invoice-per-order guard refuses it.
     await db.insert("documents", {
       type: "invoice",
       status: "issued",
@@ -4675,24 +4674,69 @@ describe("orderReissueApply", () => {
       counterparty_name: "Buyer SARL",
       counterparty_country: "FR",
     })
+    const before = db.__all("documents").length
+    const originalLog = structuredClone(
+      db.__all("documents").find((d) => d.id === original.document_id)!.lifecycle_log,
+    )
+
+    const result = await orderReissueApply(ctx, {
+      original_document_id: original.document_id,
+      shopify_order_id: "shop-order-4",
+      billing_signature: "sig-5",
+      dedupe_key: "shop-order-4:sig-5",
+      items: sampleDraftItems,
+    })
+
+    // Both documents are checked before either is written, and they commit together: no credit
+    // note without its replacement, and the original keeps its log.
+    expect(result.status).toBe("error")
+    if (result.status !== "error") throw new Error("unreachable")
+    expect(result.error.code).toBe("already_invoiced")
+    expect(db.__all("documents")).toHaveLength(before)
+    expect(db.__all("documents").filter((d) => d.type === "credit_note")).toHaveLength(0)
+    expect(db.__all("documents").find((d) => d.id === original.document_id)!.lifecycle_log).toEqual(
+      originalLog,
+    )
+  })
+
+  test("a write that fails in the shared commit leaves neither document and uses no number", async () => {
+    const { ctx, db } = makeCtx()
+    const original = await invoiceCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: defaultCounterparty,
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      shopify_order_id: "shop-order-8",
+      items: sampleDraftItems,
+    })
+    expect(original.status).toBe("completed")
+    if (original.status !== "completed") throw new Error("unreachable")
+    const before = db.__all("documents").length
+    const sequencesBefore = new Map(db.__sequences)
+
+    // The replacement's lines fail to insert: the batch carrying both documents undoes itself.
+    const insert = db.insert.bind(db)
+    let failed = false
+    db.insert = (async (entity: string, data: Record<string, unknown>) => {
+      if (entity === "document_lines" && !failed && db.__all("documents").length > before + 1) {
+        failed = true
+        throw new Error("line insert failed")
+      }
+      return insert(entity, data)
+    }) as typeof db.insert
 
     await expect(
       orderReissueApply(ctx, {
         original_document_id: original.document_id,
-        shopify_order_id: "shop-order-4",
-        billing_signature: "sig-5",
-        dedupe_key: "shop-order-4:sig-5",
+        shopify_order_id: "shop-order-8",
+        billing_signature: "sig-8",
+        dedupe_key: "shop-order-8:sig-8",
         items: sampleDraftItems,
       }),
-    ).rejects.toThrow(/replacement invoice failed/)
-
-    // The function detects the failure and THROWS instead of returning an
-    // error/completed envelope -- a plain return here would let the manifest
-    // `atomic: true` ambient transaction commit the credit note anyway,
-    // leaving the order half-reissued. This mock has no real transactions
-    // (see test-db.ts), so the credit note row above is still visible here;
-    // in production the throw is what makes the whole call roll back.
-    expect(db.__all("documents").filter((d) => d.type === "credit_note")).toHaveLength(1)
+    ).rejects.toThrow(/line insert failed/)
+    expect(failed).toBe(true)
+    expect(db.__all("documents")).toHaveLength(before)
+    expect(db.__sequences).toEqual(sequencesBefore)
   })
 
   test("a reissue approved after a newer order edit refuses and issues nothing", async () => {

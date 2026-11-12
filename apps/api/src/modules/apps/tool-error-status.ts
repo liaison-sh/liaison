@@ -166,6 +166,7 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   already_invoiced: 409,
   hs_code_in_use: 409,
   stale_reissue_approval: 409,
+  reissue_needs_second_approval: 409,
   two_eyes_required: 409,
   issuer_profile_ambiguous: 409,
   unique_violation: 409,

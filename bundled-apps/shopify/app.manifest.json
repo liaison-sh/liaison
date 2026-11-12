@@ -7,7 +7,7 @@
         "tools": [
           "analytics_query"
         ],
-        "text": "Analytics is read-only: for any PERIOD TOTAL / AOV / units-by-SKU / revenue-by-market question call analytics_query (metric + period + groupBy): pass `period` as an OBJECT {since, until} of YYYY-MM-DD dates (e.g. analytics_query({metric:'revenue', groupBy:'sku', period:{since:'2026-11-28', until:'2026-12-01'}})), NEVER as a plain string, and to COMPARE two windows (Black-Friday weekend vs a normal week, this month vs last) call analytics_query once per window with each window's own period and diff the results in-context. To isolate ONE product's sales, use groupBy=sku and read THAT product's ROW from the grouped table (e.g. the RAL-44 / Kestrel 6 row), do NOT use groupBy=none/market and present the STORE-WIDE total as if it were the product: a single product's AOV cannot exceed its unit price, so a store-wide AOV far above one product's price (e.g. an AOV near 2000 for a ~700 product) is a tell that you read the whole-store aggregate, not the SKU; report the product's own row, not the store total. The groupBy=sku result returns MULTIPLE rows: the requested product's SKU row PLUS other SKU rows and often a null/untagged-SKU row; report ONLY the requested SKU's OWN row as that product's figure, and NEVER SUM the rows together (summing them just rebuilds the store-wide total: e.g. the RAL-44 row 38,445 + a null-SKU row 1,210 = 39,655 store-wide, which is NOT Kestrel 6's revenue; Kestrel 6 is 38,445, the RAL-44 row alone)."
+        "text": "Analytics is read-only: for any PERIOD TOTAL / AOV / units-by-SKU / revenue-by-market / store-sessions question call analytics_query (metric + period + groupBy, plus timeGrain day|week|month for a per-day/week/month series): pass `period` as an OBJECT {since, until} of YYYY-MM-DD dates (e.g. analytics_query({metric:'revenue', groupBy:'sku', period:{since:'2026-11-28', until:'2026-12-01'}})), NEVER as a plain string, and to COMPARE two windows (Black-Friday weekend vs a normal week, this month vs last) call analytics_query once per window with each window's own period and diff the results in-context. To isolate ONE product's sales, use groupBy=sku and read THAT product's ROW from the grouped table (e.g. the RAL-44 / Kestrel 6 row), do NOT use groupBy=none/market and present the STORE-WIDE total as if it were the product: a single product's AOV cannot exceed its unit price, so a store-wide AOV far above one product's price (e.g. an AOV near 2000 for a ~700 product) is a tell that you read the whole-store aggregate, not the SKU; report the product's own row, not the store total. The groupBy=sku result returns MULTIPLE rows: the requested product's SKU row PLUS other SKU rows and often a null/untagged-SKU row; report ONLY the requested SKU's OWN row as that product's figure, and NEVER SUM the rows together (summing them just rebuilds the store-wide total: e.g. the RAL-44 row 38,445 + a null-SKU row 1,210 = 39,655 store-wide, which is NOT Kestrel 6's revenue; Kestrel 6 is 38,445, the RAL-44 row alone)."
       },
       {
         "tools": [
@@ -274,7 +274,7 @@
       }
     ]
   },
-  "version": "0.4.21",
+  "version": "0.4.22",
   "network": {
     "imageHosts": ["cdn.shopify.com"],
     "linkHosts": ["admin.shopify.com"]
@@ -1191,7 +1191,7 @@
       "readOnly": true
     },
     "analytics_query": {
-      "description": "Aggregate sales analytics over a period, optionally grouped by SKU or market. Metric semantics (Shopify sales dataset, state them when reporting): net_sales = product revenue AFTER discounts and returns, EXCLUDING taxes (VAT) and shipping — use this for product revenue and as the ASP numerator; revenue = Shopify total_sales, which ADDS taxes and shipping on top of net sales (matches the admin's Total sales figure) — never use it for per-unit price math; units = net_items_sold (returns deducted; zero-priced warranty/replacement units still count); aov = average order value; orders = order count. All figures are converted to the store's base currency and cover EVERY market and sales channel for the period. Use this for any period total / AOV / units-by-SKU / by-market question; NEVER page orders_search and tally by hand. Returns ShopifyQL results when available, else a bounded in-context count (partial:true, boundedTo:N) — report that partial honestly.",
+      "description": "Aggregate store analytics over a period, optionally grouped by SKU, product or market, and optionally split into a time series with timeGrain (day, week or month: rows come back oldest first, each with `date` = the bucket start as YYYY-MM-DD; grouped by sku a series row also carries product_title). Metric semantics (Shopify sales dataset, state them when reporting): net_sales = product revenue AFTER discounts and returns, EXCLUDING taxes (VAT) and shipping — use this for product revenue and as the ASP numerator; revenue = Shopify total_sales, which ADDS taxes and shipping on top of net sales (matches the admin's Total sales figure) — never use it for per-unit price math; units = net_items_sold (returns deducted; zero-priced warranty/replacement units still count); aov = average order value; orders = order count; sessions = online store visits and conversion_rate = percent of sessions that ordered (Shopify sessions dataset: groupBy none only, with or without timeGrain, and no bounded fallback). All figures are converted to the store's base currency and cover EVERY market and sales channel for the period. Use this for any period total / AOV / units-by-SKU / by-market / per-day trend question; NEVER page orders_search and tally by hand. Returns ShopifyQL results when available, else a bounded in-context count (partial:true, boundedTo:N) — report that partial honestly.",
       "searchKeywords": ["ventes", "chiffre", "affaires", "statistiques", "stats", "revenue", "sales", "rapport", "report"],
       "requiredScopes": ["shopify:analytics:read"],
       "handler": "analytics_query",
@@ -1210,7 +1210,9 @@
               "net_sales",
               "aov",
               "units",
-              "orders"
+              "orders",
+              "sessions",
+              "conversion_rate"
             ]
           },
           "period": {
@@ -1233,8 +1235,18 @@
             "enum": [
               "none",
               "sku",
+              "product",
               "market"
             ]
+          },
+          "timeGrain": {
+            "type": "string",
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ],
+            "description": "Optional. Split the result into one row per day, week or month (per group when grouped)."
           }
         }
       },

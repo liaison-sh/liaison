@@ -66,7 +66,7 @@ Any other MCP client that supports Streamable HTTP and OAuth works the same way:
 
 Everything goes through the same approvals as in Liaison. A gated tool, such as a reply or a send, creates a pending approval and does nothing until a person approves it. See [Approve what agents do](../agents/approvals.md).
 
-A mail tool that reads your own transparent mailbox gets the messages at once. A private mailbox is read only through your open, unlocked Liaison window, which asks you first. See [Mail](../apps/mail.md#choose-how-your-mailbox-is-encrypted). With several windows open, a locked window's refusal waits a few seconds for an unlocked one to answer, so the read goes to the window that can serve it. The content your window sends back for such a read is added by Liaison itself: tool schemas leave out those `__mailbox` parameters, and Liaison drops them from any call that sets them.
+A mail tool that reads your own transparent mailbox gets the messages at once. A private mailbox is read only through your open, unlocked Liaison window, which answers on its own: you are not asked each time. Turning off **Let the assistant read this mailbox** in the mailbox security settings stops these reads too. See [Mail](../apps/mail.md#choose-how-your-mailbox-is-encrypted). With several windows open, a locked window's refusal waits a few seconds for an unlocked one to answer, so the read goes to the window that can serve it. The content your window sends back for such a read is added by Liaison itself: tool schemas leave out those `__mailbox` parameters, and Liaison drops them from any call that sets them.
 
 Tools from outside MCP servers connected to Liaison are offered to the client too, unless the server's **Expose via outbound MCP gateway** switch is off.
 

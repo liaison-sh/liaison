@@ -1,0 +1,12 @@
+{
+  "entry": "tool:settings_packaging_policy_get",
+  "params": {},
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": ["app_config", "{\"where\":{\"key\":\"packaging_policy\"},\"limit\":1}"],
+      "reply": "[{\"id\":\"b9a38aa0-df7b-4689-8772-7febae885865\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:56:09.155028+00\",\"updated_at\":\"2026-11-12 09:01:25.206694+00\",\"key\":\"packaging_policy\",\"value\":{\"cartons\":[],\"master_cartons\":[],\"raw_stack_max_height\":40,\"merge_leftovers_into_packs\":true,\"pack_merge_height_allowance\":0,\"nominal_proforma_value_minor\":1000}}]"
+    }
+  ]
+}

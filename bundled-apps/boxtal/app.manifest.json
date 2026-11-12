@@ -1175,7 +1175,10 @@
         },
         "received_at": "date",
         "processed_at": "date?",
-        "claim_token": "string?",
+        "claim_attempt": {
+          "type": "integer",
+          "default": 0
+        },
         "claimed_at": "date?"
       },
       "constraints": {

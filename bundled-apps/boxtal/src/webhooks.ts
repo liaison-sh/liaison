@@ -71,7 +71,7 @@ function stableHash(s: string): string {
 type DedupRow = {
   id: string
   status: string
-  claim_token?: string | null
+  claim_attempt?: number | null
   claimed_at?: string | null
   received_at?: string | null
 }
@@ -81,10 +81,6 @@ type DedupRow = {
  * claim older than this belongs to a run that was killed before it marked the row.
  */
 export const CLAIM_TTL_MS = 2 * 60_000
-
-function newClaimToken(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-}
 
 function claimExpired(row: DedupRow, now: number): boolean {
   const at = Date.parse(String(row.claimed_at ?? row.received_at ?? ""))
@@ -97,7 +93,7 @@ function claimExpired(row: DedupRow, now: number): boolean {
  * No run holds a transaction across its bridge calls, so the claim is an expiring lease on the
  * ledger row: a new delivery inserts its row (the unique `delivery_id` decides a race), and a
  * `failed` row or a `processing` row whose claim expired (a killed run) is taken over with a
- * compare-and-set on its claim token, so two redeliveries never both proceed.
+ * compare-and-set on its claim attempt counter, so two redeliveries never both proceed.
  */
 async function claimDelivery(
   ctx: WebhookCtx,
@@ -114,8 +110,12 @@ async function claimDelivery(
     const takeOver = row.status === "failed" || (row.status === "processing" && claimExpired(row, now))
     if (!takeOver) return { proceed: false }
     const res = (await ctx.db.updateMany("webhook_delivery", {
-      where: { delivery_id: deliveryId, status: row.status, claim_token: row.claim_token ?? null },
-      data: { status: "processing", claim_token: newClaimToken(), claimed_at: new Date(now).toISOString() },
+      where: { delivery_id: deliveryId, status: row.status, claim_attempt: row.claim_attempt ?? 0 },
+      data: {
+        status: "processing",
+        claim_attempt: (row.claim_attempt ?? 0) + 1,
+        claimed_at: new Date(now).toISOString(),
+      },
     })) as { count?: number }
     return res.count === 1 ? { proceed: true, rowId: row.id } : { proceed: false }
   }
@@ -127,7 +127,7 @@ async function claimDelivery(
       status: "processing",
       failure_count: 0,
       received_at: at,
-      claim_token: newClaimToken(),
+      claim_attempt: 1,
       claimed_at: at,
     })
     return { proceed: true, rowId: ins.id }

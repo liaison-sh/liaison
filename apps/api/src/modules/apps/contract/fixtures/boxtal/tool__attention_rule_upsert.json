@@ -1,0 +1,31 @@
+{
+  "entry": "tool:attention_rule_upsert",
+  "params": {
+    "name": "Battery inside: carrier declaration",
+    "enabled": true,
+    "conditions": [
+      {
+        "field": "destination",
+        "op": "in",
+        "value": ["US", "CA"]
+      }
+    ],
+    "documents": [
+      {
+        "name": "Lithium battery declaration",
+        "note": "Print and sign before pickup."
+      }
+    ]
+  },
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "db_insert",
+      "args": [
+        "attention_rule",
+        "{\"name\":\"Battery inside: carrier declaration\",\"enabled\":true,\"conditions\":[{\"field\":\"destination\",\"op\":\"in\",\"value\":[\"US\",\"CA\"]}],\"documents\":[{\"name\":\"Lithium battery declaration\",\"note\":\"Print and sign before pickup.\"}],\"knowledge_ref\":null}"
+      ],
+      "reply": "{\"id\":\"e2adde9f-ee8c-4414-a87a-c6bb2f6e80c6\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 09:02:23.434928+00\",\"updated_at\":\"2026-11-12 09:02:23.434928+00\",\"name\":\"Battery inside: carrier declaration\",\"enabled\":true,\"conditions\":[{\"op\":\"in\",\"field\":\"destination\",\"value\":[\"US\",\"CA\"]}],\"documents\":[{\"name\":\"Lithium battery declaration\",\"note\":\"Print and sign before pickup.\"}],\"knowledge_ref\":null}"
+    }
+  ]
+}

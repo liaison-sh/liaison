@@ -1,0 +1,19 @@
+{
+  "entry": "tool:ready_set_packed",
+  "params": {
+    "shipment_id": "3df36d87-f6a8-4c50-a5d3-6792ba565c9c",
+    "packed": true,
+    "tracking_number": "1Z999AA10123456784"
+  },
+  "recordedFrom": "the Boxtal sandbox, in a seeded demo org, record-boxtal.recorder.test.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "shipment",
+        "{\"where\":{\"id\":\"3df36d87-f6a8-4c50-a5d3-6792ba565c9c\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"3df36d87-f6a8-4c50-a5d3-6792ba565c9c\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-09-12 22:00:00+00\",\"updated_at\":\"2026-09-12 22:00:00+00\",\"boxtal_order_id\":\"DEMO-ORD-ship-cust-helena\",\"external_id\":\"INV-2026-0021\",\"document_ref\":\"9a22ed79-3788-4fd5-a0e5-763fd2ae3dc5\",\"contact_ref\":null,\"offer_code\":\"DHLE-Europlus\",\"tracking_number\":\"DEMO000000411\",\"boxtal_shipment_ref\":\"DEMO-SHP-ship-cust-helena\",\"queue_facts\":{\"items\":2,\"weight\":5.3,\"parcels\":[{\"width\":50,\"height\":22,\"length\":96,\"weight\":5.3}],\"category\":\"sale\",\"customer\":\"Helena Ritter\",\"products\":\"1xLXL, 1xSTAND\",\"order_name\":\"INV-2026-0021\",\"staff_note\":null,\"destination\":\"DE\",\"package_count\":1,\"order_created_at\":\"2026-09-11T21:00:00.000Z\"},\"link_state\":\"created\",\"order_status\":\"PENDING\",\"tracking_status\":\"ANNOUNCED\",\"status_fetched_at\":\"2026-09-16 09:00:00+00\",\"polled_at\":\"2026-09-16 09:00:00+00\",\"documents\":[{\"type\":\"LABEL\",\"format\":\"PDF\"}],\"declared_total\":1711,\"label_cost_ttc\":21.4,\"currency\":\"EUR\",\"recipient_summary\":\"Helena Ritter, Leipzig, DE\",\"route_summary\":\"FR to DE\",\"kind\":\"outbound\",\"return_reason\":null,\"created_by\":\"agent\",\"fulfillment_synced\":false,\"batch_seq\":1,\"line_quantities\":null,\"packed_at\":null,\"fulfillment_state\":null,\"fulfillment_error\":null,\"fulfillment_approval_id\":null,\"tracking_from_label\":false,\"tracking_to_confirm\":false,\"label_missing_alerted\":false,\"label_missing_checked_at\":null,\"tracking_label_attempts\":0,\"shopify_fulfillment_id\":null,\"fulfilled_at\":null,\"orphan_reported_at\":null,\"orphan_settled_at\":null,\"orphan_settle_note\":null}]"
+    }
+  ]
+}

@@ -129,18 +129,18 @@ describe("trackingChangedHandler", () => {
 
 // No run holds a transaction across its bridge calls: a delivery's claim is an expiring lease.
 // A run killed between claiming and marking leaves a `processing` row; a redelivery after
-// CLAIM_TTL_MS takes it over (compare-and-set on the claim token), a fresh one stays in flight.
+// CLAIM_TTL_MS takes it over (compare-and-set on its claim attempt), a fresh one stays in flight.
 describe("delivery claim lease", () => {
   const ago = (ms: number) => new Date(Date.now() - ms).toISOString()
-  function seedClaim(db: ReturnType<typeof makeCtx>["db"], claimedAt: string, token: string | null = "dead-run") {
+  function seedClaim(db: ReturnType<typeof makeCtx>["db"], claimedAt: string, attempt: number | null = 1) {
     return db.insert("webhook_delivery", {
       delivery_id: "del-9",
       event_type: "TRACKING_CHANGED",
       status: "processing",
       failure_count: 0,
       received_at: claimedAt,
-      claimed_at: token ? claimedAt : null,
-      claim_token: token,
+      claimed_at: attempt ? claimedAt : null,
+      claim_attempt: attempt ?? 0,
     })
   }
   const status = (db: ReturnType<typeof makeCtx>["db"]) =>
@@ -155,7 +155,7 @@ describe("delivery claim lease", () => {
     expect(db.__all("webhook_delivery").find((d) => d.delivery_id === "del-9")?.status).toBe("processed")
   })
 
-  it("a claim from before the lease (no claim token) expires on its received time", async () => {
+  it("a claim from before the lease (no claim time) expires on its received time", async () => {
     const { ctx, db } = makeCtx()
     await seedClaim(db, ago(CLAIM_TTL_MS + 1_000), null)
     await trackingChangedHandler(trackingPayload(), ctx, { "x-bxt-delivery-id": "del-9" })
@@ -181,7 +181,7 @@ describe("delivery claim lease", () => {
       if (entity === "webhook_delivery" && !raced) {
         raced = true
         const row = db.__all("webhook_delivery").find((d) => d.delivery_id === "del-9")!
-        await db.update("webhook_delivery", row.id as string, { claim_token: "other-run", claimed_at: ago(0) })
+        await db.update("webhook_delivery", row.id as string, { claim_attempt: 2, claimed_at: ago(0) })
       }
       return rows
     }

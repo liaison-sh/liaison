@@ -63,7 +63,10 @@ export interface RecordingOrg {
   userId: string
 }
 
-export const CONTRACT_RECORDING_ORG: RecordingOrg = { orgId: CONTRACT_ORG_ID, userId: CONTRACT_USER_ID }
+export const CONTRACT_RECORDING_ORG: RecordingOrg = {
+  orgId: CONTRACT_ORG_ID,
+  userId: CONTRACT_USER_ID,
+}
 
 function recordingActor(org: RecordingOrg): UserContext {
   return { ...RECORDING_ACTOR, orgId: org.orgId, userId: org.userId }
@@ -90,15 +93,19 @@ export function readBundledManifest(app: string): Manifest {
 export async function installForRecording(
   app: string,
   config: Record<string, unknown>,
+  /** A seeded org that already exists; by default the contract's own, created here. */
+  org: RecordingOrg = CONTRACT_RECORDING_ORG,
 ): Promise<{ manifest: Manifest; bridgeManifest: unknown }> {
   const manifest = readBundledManifest(app)
   process.env.LIAISON_BUNDLED_APPS_FROM_SOURCE = "1"
-  await sql`INSERT INTO ${K}.organizations (id, name, slug)
-    VALUES (${CONTRACT_ORG_ID}, 'Contract recording', 'contract-recording') ON CONFLICT DO NOTHING`
-  await sql`INSERT INTO ${K}.users (id, org_id, email, name, password_hash)
-    VALUES (${CONTRACT_USER_ID}, ${CONTRACT_ORG_ID}, 'recorder@example.com', 'Contract Recorder', 'x')
-    ON CONFLICT DO NOTHING`
-  await ensureAppsForOrg(CONTRACT_ORG_ID)
+  if (org.orgId === CONTRACT_ORG_ID) {
+    await sql`INSERT INTO ${K}.organizations (id, name, slug)
+      VALUES (${CONTRACT_ORG_ID}, 'Contract recording', 'contract-recording') ON CONFLICT DO NOTHING`
+    await sql`INSERT INTO ${K}.users (id, org_id, email, name, password_hash)
+      VALUES (${CONTRACT_USER_ID}, ${CONTRACT_ORG_ID}, 'recorder@example.com', 'Contract Recorder', 'x')
+      ON CONFLICT DO NOTHING`
+  }
+  await ensureAppsForOrg(org.orgId)
   await registerApps(
     [
       {
@@ -109,16 +116,16 @@ export async function installForRecording(
         _bundlePath: join(BUNDLED_APPS_DIR, app, manifest.version, "bundle.js"),
       },
     ] as never,
-    CONTRACT_ORG_ID,
+    org.orgId,
   )
   const tools = Object.keys((manifest.tools as Record<string, unknown>) ?? {})
   const bridgeManifest = (
-    toolRegistry.get([CONTRACT_ORG_ID, app, tools[0] ?? ""]) as { _manifest?: unknown } | undefined
+    toolRegistry.get([org.orgId, app, tools[0] ?? ""]) as { _manifest?: unknown } | undefined
   )?._manifest
   if (!bridgeManifest) throw new Error(`${app} did not register`)
   await sql`INSERT INTO ${K}.apps (org_id, name, version, config)
-    VALUES (${CONTRACT_ORG_ID}, ${app}, ${manifest.version}, ${JSON.stringify(config)}::jsonb)
-    ON CONFLICT (org_id, name) DO UPDATE SET config = EXCLUDED.config`
+    VALUES (${org.orgId}, ${app}, ${manifest.version}, ${JSON.stringify(config)}::jsonb)
+    ON CONFLICT (org_id, name) DO UPDATE SET config = EXCLUDED.config, version = EXCLUDED.version`
   return { manifest, bridgeManifest }
 }
 
@@ -142,10 +149,13 @@ export async function connectCredentials(
   return row!.id
 }
 
-export async function uninstallAfterRecording(app: string): Promise<void> {
-  await teardownAppRegistrations(CONTRACT_ORG_ID, app)
-  toolRegistry.deleteByPrefix([CONTRACT_ORG_ID])
-  initializedOrgRuntimes.delete(CONTRACT_ORG_ID)
+export async function uninstallAfterRecording(
+  app: string,
+  org: RecordingOrg = CONTRACT_RECORDING_ORG,
+): Promise<void> {
+  await teardownAppRegistrations(org.orgId, app)
+  toolRegistry.deleteByPrefix([org.orgId])
+  initializedOrgRuntimes.delete(org.orgId)
 }
 
 /** Run `plan` on the live bridge, writing one scrubbed, replay-checked fixture per recorded step. */
@@ -217,8 +227,14 @@ export async function runRecordingPlan<S extends RecordingState>(opts: {
       const entry = entries.get(step.entry)
       if (!entry)
         throw new Error(`the plan names ${step.entry}, which the manifest does not declare`)
-      await step.before?.(opts.state)
-      const input = await step.input(opts.state)
+      let input: RecordInput
+      try {
+        await step.before?.(opts.state)
+        input = await step.input(opts.state)
+      } catch (err) {
+        report.push(`FAIL ${step.entry}: building its input failed: ${String(err)}`)
+        continue
+      }
       const params = input.params as Record<string, unknown> | undefined
       const job =
         entry.kind === "job" ? { name: entry.entry.slice(4), payload: params ?? {} } : undefined
@@ -272,7 +288,12 @@ export async function runRecordingPlan<S extends RecordingState>(opts: {
         const token = (JSON.parse(c.reply) as { token?: unknown } | null)?.token
         return typeof token === "string" ? [{ from: token, to: "redacted" }] : []
       })
-      const scrubbed = scrubFixture(fixture, [...opts.replacements, ...orgIds, ...stored, ...claims])
+      const scrubbed = scrubFixture(fixture, [
+        ...opts.replacements,
+        ...orgIds,
+        ...stored,
+        ...claims,
+      ])
       const problem = await verifyFixture({
         isolate,
         entry,

@@ -62,7 +62,7 @@ Each invocation gets a **fresh context** — no state leaks between calls. The h
 
 ### Run limits and the app contract
 
-One table sets what a run of app code may spend, per kind of entry point (tool, preflight, webhook, webhook verifier, job, event, poll, reconcile, search, export, attention, import, before-disconnect hook, builder preview, import transform, PDF template, summarizer): its wall clock, CPU time, heap, outbound calls and bridge calls (`apps/api/src/modules/apps/run-limits.ts`). Both executors read it. In production a tool, webhook or export gets 5 s unless its manifest declares more (up to 120 s), a job 60 s unless it declares its own, an event handler 30 s, a poll or reconcile 60 s, a search 5 s, a summarizer 5 s, a PDF template 30 s, a before-disconnect hook 20 s; every run gets 30 s of CPU on Workers, 32 MB of heap, and at most 10,000 outbound and bridge calls. A single `ctx.fetch` waits 10 s for a read (`LIAISON_SANDBOX_FETCH_TIMEOUT_MS`, up to 120 s) and up to 30 s for a write.
+One table sets what a run of app code may spend, per kind of entry point (tool, preflight, webhook, webhook verifier, job, event, poll, reconcile, search, export, attention, import, before-disconnect hook, builder preview, import transform, PDF template, summarizer, knowledge source sync page): its wall clock, CPU time, heap, outbound calls and bridge calls (`apps/api/src/modules/apps/run-limits.ts`). Both executors read it. In production a tool, webhook or export gets 5 s unless its manifest declares more (up to 120 s), a job 60 s unless it declares its own, an event handler 30 s, a poll or reconcile 60 s, a search 5 s, a summarizer 5 s, a PDF template 30 s, a before-disconnect hook 20 s, a knowledge source sync page 60 s unless its kind declares its own (up to 120 s); every run gets 30 s of CPU on Workers, 32 MB of heap, and at most 10,000 outbound and bridge calls. A single `ctx.fetch` waits 10 s for a read (`LIAISON_SANDBOX_FETCH_TIMEOUT_MS`, up to 120 s) and up to 30 s for a write.
 
 Every bundled app is checked against the wake-up contract (`apps/api/src/modules/apps/contract/`): each entry point its manifest declares runs twice in one reused isolate, on recorded provider answers, under its production limits. It fails when the second run answers differently from the first (state kept in the module between runs), when a run waits in its own timers for more than 2 s, or when a run goes past its limits. A scan of the app's sources also flags every timer, sleep or poll loop that may wait past 2 s inside a run: wait for something later with a job instead. Known failures are listed in `contract/expected-failures.json`, which may only shrink. An entry with no recorded answers that only rejects the empty input it is given passes without being checked: it is counted per app in `contract/trivial-passes.json`, a count that may only shrink too, and an app keeps the contract only once both its list and its count are empty.
 
@@ -98,7 +98,7 @@ The bridge surface is large and grows as apps need new host capabilities. Core c
 | Category | Methods |
 |----------|---------|
 | Identity | `getUserId()`, `getOrgId()` |
-| Database | `db_findMany` (equality `where`, plus `{ col: { in: [...] } }` for a set lookup, up to 1000 values), `db_findOne`, `db_insert`, `db_update`, `db_updateMany`, `db_delete`, `db_count`, and `db_insertNow` / `db_updateNow` (committed at once, see "Commit an intent row before an outside call") |
+| Database | `db_findMany` (equality `where`, plus `{ col: { in: [...] } }` for a set lookup, up to 1000 values), `db_findOne`, `db_insert`, `db_update`, `db_updateMany`, `db_delete`, `db_count`, `db_insertNow` / `db_updateNow` (committed at once, see "Commit an intent row before an outside call"), and `db_batch` (writes that commit together, see "Commit several writes together") |
 | Events | `emit(event)` — declared emits only |
 | Jobs | `jobs_enqueue(name, payload, opts)` (`ctx.jobs.enqueue`; `enqueueJob` is its flat name), `timers_wakeIn(seconds, name, payload, opts)` (`ctx.timers.wakeIn`), `steps_get`, `steps_reset` and the hidden `_steps_begin` / `_steps_save` behind `ctx.steps.run` |
 | Contacts | `resolveContact(params)` (not the mail app: its host page write `mail_writePage` resolves senders under the mailbox's ownership, see `modules/mail/page-write.ts` and `sender-contacts.ts`; on a read-only run it only looks a contact up, returning it unchanged or null, and `clear` is refused) |
@@ -421,7 +421,7 @@ export const { listItems, createItem } = defineHandlers({
 |----------|------|-------------|
 | `userId` | `string` | Current actor |
 | `orgId` | `string` | Current organization |
-| `db` | `DbClient` | `findMany`, `findOne`, `insert`, `update`, `updateMany`, `delete`, `count`, `insertNow`, `updateNow` |
+| `db` | `DbClient` | `findMany`, `findOne`, `insert`, `update`, `updateMany`, `delete`, `count`, `insertNow`, `updateNow`, `batch` |
 | `emit(event)` | `Promise<void>` | Emit declared event |
 | `enqueueJob(name, payload, opts?)` | `Promise<void>` | Same call as `jobs.enqueue` |
 | `jobs.enqueue(name, payload?, { delay?, jobId? })` | `Promise<void>` | Run a declared job now, or after `delay` ms (at most 15 min) |
@@ -474,6 +474,30 @@ To let anything else read a collection (the agent's data tools, dashboard blocks
 ```
 
 `readScope` must be one of the app's own scopes (in `scopes` or a tool's `requiredScopes`); a reader needs it. `agentReadable` defaults to `false`. A collection that is not declared stays reachable by its own app only.
+
+### Hash, sign and draw random values (`crypto`)
+
+Use WebCrypto, the global `crypto`, for hashes, HMACs and random values. Workers have it natively. The local sandbox (in-process and the worker pool) gives the same calls, computed by the server:
+
+| Call | What |
+|---|---|
+| `crypto.subtle.digest(alg, data)` | SHA-1, SHA-256, SHA-384 or SHA-512 |
+| `crypto.subtle.importKey("raw", keyData, { name: "HMAC", hash }, extractable, usages)` | An HMAC key (`usages`: `"sign"`, `"verify"`) |
+| `crypto.subtle.sign("HMAC", key, data)` / `crypto.subtle.verify("HMAC", key, signature, data)` | HMAC with that key's hash |
+| `crypto.subtle.exportKey("raw", key)` | The bytes of a key imported with `extractable: true` |
+| `crypto.getRandomValues(array)` / `crypto.randomUUID()` | Random bytes (at most 65,536 per call) and a random v4 UUID |
+
+The local sandbox has no typed arrays (`Uint8Array`, `ArrayBuffer` and the rest are removed: they would allocate outside the run's heap limit). There, bytes are plain arrays of numbers from 0 to 255: `crypto.subtle` takes them where WebCrypto takes a `Uint8Array` and answers them where it answers an `ArrayBuffer`. To write one piece of code for every executor, convert through `@liaison/app-sdk/bytes`:
+
+```ts
+import { bytesToHex, digestHex, utf8Bytes } from "@liaison/app-sdk/bytes"
+
+const hash = await digestHex("SHA-256", "someone@example.com") // lower-case hex
+const key = await crypto.subtle.importKey("raw", utf8Bytes(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"])
+const signature = bytesToHex(await crypto.subtle.sign("HMAC", key, utf8Bytes(body)))
+```
+
+Other algorithms and other `crypto.subtle` methods (`encrypt`, `deriveKey`, `generateKey` and the rest) reject with `NotSupportedError` on the local sandbox. To sign or verify with a secret held in the app's configuration, keep using `ctx.crypto_hmacSha256Base64ForConfig` and `ctx.crypto_verifyHmacForConfig`: the secret never reaches the app.
 
 ### Long work: come back later (`ctx.steps`, `ctx.timers`, `ctx.jobs`)
 
@@ -573,6 +597,31 @@ await ctx.db.updateNow("purchases", intent.id, { state: "done", provider_id: bou
 - The run's own transaction sees the committed row and can keep updating it. Do not commit-now a row the run already changed with a plain write: the second transaction waits for the run's lock, and gives up after 5 seconds with a lock timeout error.
 - Give the intent row a state that says the outside call has started, and a sweep that finds rows still in that state after a while and settles them: ask the provider what happened, or show them to a person with what to check. Boxtal's label reservation works this way (`bundled-apps/boxtal/src/link-store.ts`, `reconcile-tracking.ts`).
 - The effect ledger (`ctx.effects`, `@liaison/app-sdk/effects`) also commits its claim at once, and is the tool for "do this outside call once". An intent row is for a record the app itself has to list and act on later.
+
+### Commit several writes together (`ctx.db.batch`)
+
+A sandboxed event handler, webhook delivery, job or ordinary tool call holds no transaction across its run: each bridge call commits on its own. Writes that must land as one go in a single `ctx.db.batch` call, which runs them in order and commits all of them or none:
+
+```typescript
+const done = await ctx.db.batch({
+  sequence: {
+    key: `myapp:invoice:${year}`,
+    format: { prefix: `INV-${year}-`, pad: 4 },
+    unique: { entity: "invoices", field: "number_int", where: { year } },
+  },
+  ops: [
+    { insert: "invoices", as: "invoice", data: { year, number: { $seq: "formatted" }, number_int: { $seq: "value" } } },
+    { insert: "invoice_lines", data: { invoice_id: { $ref: "invoice" }, label: "Service" } },
+    { delete: "drafts", id: draftId },
+  ],
+})
+// done.sequence = { value: 1, formatted: "INV-2026-0001" }, done.rows.invoice = the inserted row
+```
+
+- Ops are `insert` (with an optional `as` name), `update`, `delete` and `updateMany`, each with the checks of its single-call twin: the app's own declared tables and fields, the run's organization and RLS actor, refused on a read-only run. At most 500 ops.
+- `sequence` allocates the next value of one of the app's sequences inside the same commit (the `sequences.allocate` capability): a batch that fails consumes no value, and batches running at the same time never get the same one, so a numbering built on it has no gap and no duplicate. `unique` names a column that may already hold values written another way (an import): the allocator steps past them.
+- Placeholders anywhere in an op's `data`, or as its `id`: `{ $seq: "value" }`, `{ $seq: "formatted" }` (the prefix and the value padded to `pad`) and `{ $ref: "<as>" }` (the id of an earlier insert).
+- What comes after the batch (a render, a mail) is a separate step: make it safe to run again, since a run that dies after the batch leaves the batch's rows committed. The invoicing app numbers its legal documents this way (`bundled-apps/invoicing/src/issue.ts`).
 
 ---
 

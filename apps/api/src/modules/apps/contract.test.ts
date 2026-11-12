@@ -1025,3 +1025,55 @@ describe("dimension references name a declared dimension", () => {
     expect(result.error).toContain("declared: none")
   })
 })
+
+describe("knowledgeSources contract", () => {
+  const manifest = (kinds: unknown) => ({
+    name: "notes-app",
+    version: "1.0.0",
+    knowledgeSources: kinds,
+  })
+  const errorOf = (m: Record<string, unknown>) => {
+    const r = validateAppManifest(m)
+    expect(r.success).toBe(false)
+    return r.error ?? ""
+  }
+
+  it("accepts a kind with its handler, own read scope, config schema and timeout", () => {
+    const r = validateAppManifest(
+      manifest({
+        notes: {
+          title: "Notes",
+          handler: "syncNotes",
+          readScope: "notes_app:notes:read",
+          configSchema: { type: "object", properties: { folder: { type: "string" } } },
+          timeoutMs: 30_000,
+        },
+      }),
+    )
+    expect(r.error ?? null).toBeNull()
+  })
+
+  it("rejects a kind without a handler, a bad name, an unknown key or a timeout past 120 s", () => {
+    expect(errorOf(manifest({ notes: { title: "Notes" } }))).toContain("handler")
+    expect(errorOf(manifest({ Notes: { title: "Notes", handler: "h" } }))).toContain(
+      "knowledgeSources",
+    )
+    expect(errorOf(manifest({ notes: { title: "N", handler: "h", cursor: 1 } }))).toContain(
+      "cursor",
+    )
+    expect(
+      errorOf(manifest({ notes: { title: "N", handler: "h", timeoutMs: 600_000 } })),
+    ).toContain("timeoutMs")
+  })
+
+  it("rejects a read scope outside the app and a config schema that does not compile", () => {
+    expect(
+      errorOf(
+        manifest({ notes: { title: "N", handler: "h", readScope: "knowledge:documents:read" } }),
+      ),
+    ).toContain('knowledgeSources.notes.readScope: must start with "notes_app:"')
+    expect(
+      errorOf(manifest({ notes: { title: "N", handler: "h", configSchema: { type: "nope" } } })),
+    ).toContain("knowledgeSources.notes.configSchema: not a valid JSON Schema")
+  })
+})

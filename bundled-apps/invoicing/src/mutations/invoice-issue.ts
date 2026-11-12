@@ -25,7 +25,6 @@ import {
   getDraft,
   findIssuerProfile,
   updateDraftRow,
-  deleteDraftRow,
   rejectDraftOrderId,
   resolveIssuerProfileOrError,
 } from "./db-helpers"
@@ -231,13 +230,15 @@ export async function invoiceIssue(
   }
   const when = await issueDateParts(ctx, issuer)
   if (!when.ok) return when.error
-  const issueInput = buildIssueInputFromDraft(draft, issuer, counterparty, when)
+  // The draft is discarded in the same commit as the invoice that replaces it, so a
+  // re-invocation refuses with not_found rather than re-issuing.
+  const issueInput = {
+    ...buildIssueInputFromDraft(draft, issuer, counterparty, when),
+    commit_with: [{ delete: "documents", id: input.draft_id }],
+  }
   const issued = await issueWithFxRate(ctx, issueInput)
   if (!issued.ok) return issued.error
   const result = issued.result
-  // After successful issue, the draft is no longer a draft; we discard it
-  // so a re-invocation refuses with not_found rather than re-issuing.
-  await deleteDraftRow(ctx.db, input.draft_id)
   return {
     status: "completed",
     document_id: result.document_id,

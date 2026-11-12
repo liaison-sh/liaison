@@ -32,6 +32,39 @@ export interface DbClient {
   ): Promise<{ count: number }>
   delete(entity: string, id: string): Promise<void>
   count(entity: string, opts?: { where?: Record<string, unknown> }): Promise<number>
+  /**
+   * Several writes to the app's own tables that commit together or not at all, in one call.
+   * A sandboxed run holds no transaction across its run, so writes that must land as one (a
+   * numbered document with its lines) go here. With `sequence`, the next value of one of the
+   * app's sequences is allocated inside the same commit (needs `sequences.allocate`): a failed
+   * batch consumes no value, concurrent batches never share one. `sequence.unique` steps past
+   * values a row matching `where` already holds in `field`. Placeholders anywhere in an op's
+   * `data`, or as its `id`: `{ $seq: "value" }`, `{ $seq: "formatted" }` (`format.prefix` +
+   * the value padded to `format.pad`), `{ $ref: "<as>" }` (the id of an earlier insert). At
+   * most 500 ops.
+   */
+  batch(spec: DbBatchSpec): Promise<DbBatchResult>
+}
+
+export type DbBatchOp =
+  | { insert: string; data: Record<string, unknown>; as?: string }
+  | { update: string; id: string | { $ref: string }; data: Record<string, unknown> }
+  | { delete: string; id: string | { $ref: string } }
+  | { updateMany: string; where: Record<string, unknown>; data: Record<string, unknown> }
+
+export interface DbBatchSpec {
+  sequence?: {
+    key: string
+    format?: { prefix: string; pad?: number }
+    unique?: { entity: string; field: string; where?: Record<string, unknown> }
+  }
+  ops: DbBatchOp[]
+}
+
+export interface DbBatchResult {
+  sequence?: { value: number; formatted?: string }
+  /** The rows inserted by ops that named themselves with `as`. */
+  rows: Record<string, Record<string, unknown> & { id: string }>
 }
 
 export type StoreScalar = string | number | boolean | null
@@ -823,4 +856,47 @@ export type UpstreamProbeResult =
 export interface WebhookResult {
   status: number
   body?: string
+}
+
+/**
+ * What a knowledge source kind's sync handler receives (manifest
+ * `knowledgeSources.<kind>.handler`): the source, its kind and config, and the
+ * cursor the previous page returned (null at the start of a first pass).
+ */
+export interface KnowledgeSyncInput<Cursor = unknown> {
+  sourceId: string
+  kind: string
+  config: Record<string, unknown>
+  cursor: Cursor | null
+}
+
+/** One document of a knowledge source page. */
+export interface KnowledgeSyncDocument {
+  /** The provider's stable id: the document's identity across syncs. */
+  externalId: string
+  title: string
+  /** The text (markdown or plain), at most 1,000,000 characters. */
+  body: string
+  url?: string
+  mimeType?: string
+  /** ISO date of the provider's last change. */
+  modifiedAt?: string
+  /** The provider's revision (etag, commit, version). */
+  rev?: string
+  /** A path to show; the title when absent. */
+  path?: string
+}
+
+/**
+ * One page a sync handler returns. The platform writes the page and
+ * `nextCursor` together, then wakes the handler again with that cursor until
+ * `done`. At most 200 upserts and 1000 deletes per page; the cursor must be
+ * JSON of at most 16 KB. `prune: true` on the final page archives the source's
+ * documents this pass did not upsert (the pass listed everything).
+ */
+export interface KnowledgeSyncResult<Cursor = unknown> {
+  documents?: { upsert?: KnowledgeSyncDocument[]; delete?: string[] }
+  nextCursor?: Cursor | null
+  done: boolean
+  prune?: boolean
 }

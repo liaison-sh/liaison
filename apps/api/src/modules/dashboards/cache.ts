@@ -3,11 +3,14 @@
 // A dashboard source's rows, cached per VIEWER (a block's own source, a shared dataset, a
 // filter's option source): blocks are mapped from them on every request (transform is cheap),
 // so blocks sharing a dataset share one entry and one run. The key carries the org, the
-// dashboard and its version, the source (block, dataset or filter id), a hash of the source as
+// dashboard, the source (block, dataset or filter id), a hash of the source as
 // run (filter and date tokens resolved, so a rolling range is a new key the day its dates move,
-// and a filter value a param reads is a new key), the range, the viewer
+// and a filter value a param reads is a new key), the fields its blocks keep from each row,
+// the range, the viewer
 // and a hash of the viewer's scopes and dimension grants, so a revoked scope or
-// grant is a new key and never serves what the viewer could read before. TTL: the block's refreshSec
+// grant is a new key and never serves what the viewer could read before. Never the dashboard's
+// version: a layout, title or note edit leaves every source's key as it was, so it runs nothing
+// again; only a change to what a source reads or keeps does. TTL: the block's refreshSec
 // (spec.blockTtlSec, at most 900 s for any source).
 //
 // Bounds, per viewer: at most MAX_IN_FLIGHT block runs at once (the rest wait
@@ -145,15 +148,17 @@ export function sourceCacheKey(
   viewer: CacheViewer,
   entry: {
     dashboardId: string
-    version: number
     sourceKey: SourceKey
     resolvedSource: unknown
+    /** The fields kept from each row (the cached rows hold only these); null: whole rows. */
+    fields: ReadonlySet<string> | null
     /** The dashboard range the run read (a source that follows it), else null. */
     range?: { from: string; to: string } | null
   },
 ): string {
   const range = entry.range ? `${entry.range.from}..${entry.range.to}` : "fixed"
-  return `dash:src:${viewer.orgId}:${entry.dashboardId}:${entry.version}:${entry.sourceKey}:${sourceHash(entry.resolvedSource)}:${range}:${viewer.userId}:${permissionHash(viewer)}`
+  const fields = entry.fields ? sourceHash([...entry.fields].sort()) : "all"
+  return `dash:src:${viewer.orgId}:${entry.dashboardId}:${entry.sourceKey}:${sourceHash(entry.resolvedSource)}:${fields}:${range}:${viewer.userId}:${permissionHash(viewer)}`
 }
 
 interface SharedRun {
@@ -190,7 +195,9 @@ export async function singleFlight<T>(
   signal?: AbortSignal,
 ): Promise<T> {
   const running = inFlight.get(key)
-  if (running) {
+  // A run every caller left is stopping: a new caller never joins it (it would get the
+  // cancellation), it starts its own. The stopping run removes only its own entry when it settles.
+  if (running && !running.controller.signal.aborted) {
     join(running, signal)
     return running.promise as Promise<T>
   }

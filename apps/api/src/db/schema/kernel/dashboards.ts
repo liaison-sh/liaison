@@ -108,6 +108,8 @@ export const dashboardVersions = kernel.table(
     version: integer("version").notNull(),
     title: text("title").notNull(),
     spec: jsonb("spec").$type<Record<string, unknown>>().notNull(),
+    /** The dashboard's visibility when this was saved (null: saved before it was recorded). */
+    visibility: text("visibility").$type<DashboardVisibility>(),
     savedBy: uuid("saved_by").references(() => users.id, { onDelete: "set null" }),
     savedAt: timestamp("saved_at", { withTimezone: true }).notNull().defaultNow(),
   },

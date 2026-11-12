@@ -25,6 +25,7 @@ import { newQuickJSAsyncWASMModule } from "quickjs-emscripten"
 import { exitWhenOrphaned } from "../../../lib/orphan-exit"
 import { applyTypedFailure, newBridgeRejection, type TypedBridgeFailure } from "./bridge-rejection"
 import { buildCtxShimSource } from "./ctx-shim"
+import { installWebCrypto } from "./webcrypto-shim"
 
 // A sandbox worker whose host API server is gone can never be handed another
 // execution over IPC, so an orphan here is always garbage: unconditional, no env
@@ -157,6 +158,8 @@ function hardenContext(ctx: QuickJSAsyncContext): void {
   const r = ctx.evalCode(HARDEN_SCRIPT, "sandbox-harden.js")
   if (r.error) r.error.dispose()
   else r.value.dispose()
+  // WebCrypto (webcrypto-shim.ts): the crypto primitive apps share with Workers.
+  installWebCrypto(ctx)
 }
 
 // -- Execution ---------------------------------------------------------------

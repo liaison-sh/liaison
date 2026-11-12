@@ -17,7 +17,7 @@ import { type UserContext, withRlsContext } from "~/db/rls"
 import { dashboards, users } from "~/db/schema/kernel"
 import { files } from "~/db/schema/kernel/files"
 import { schemaRef } from "~/db/schema-ref"
-import { putObject } from "~/infra/storage/object-storage"
+import { deleteObject, putObject } from "~/infra/storage/object-storage"
 import { runBounded } from "~/modules/dashboards/cache"
 import {
   type BlockDataOptions,
@@ -47,7 +47,11 @@ type Scalar = string | number | boolean | null
 function cell(v: unknown): string {
   if (v === null || v === undefined) return ""
   let s = typeof v === "string" ? v : typeof v === "object" ? JSON.stringify(v) : String(v)
-  if (typeof v === "string" && /^[=+\-@\t\r]/.test(s)) s = `'${s}`
+  // A number sent as text (a pg numeric "-12.50") stays a number; any other text a spreadsheet
+  // would run as a formula gets a quote.
+  if (typeof v === "string" && /^[=+\-@\t\r]/.test(s) && !/^[-+]?\d+(\.\d+)?$/.test(s)) {
+    s = `'${s}`
+  }
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
@@ -331,17 +335,44 @@ export interface RecipientCheck {
   reason?: string
 }
 
+/** The access that decides which rows a person's reads return: dimension grants and roles. */
+export interface RowAccess {
+  dimensionGrants: Record<string, string[]>
+  roles?: readonly string[] | undefined
+}
+
 /**
- * Whether each recipient could see this snapshot themselves: an active member of the org who
- * can open the dashboard (its row policies, as them) and read every source behind it (each
- * block's, each dataset's, with their own permissions). Figures are the caller's: a person
- * whose row access (dimensions) differs may still see other numbers in the dashboard.
+ * Whether `recipient` sees at least every row `caller` sees: each of the caller's dimension
+ * values is granted to the recipient too (a value, that dimension's "*", or the global "*"),
+ * and the recipient holds every role the caller holds (rows shared with a role). Anything
+ * narrower and the caller's figures would show the recipient rows their own view never shows.
+ */
+export function rowAccessCovers(recipient: RowAccess, caller: RowAccess): boolean {
+  const r = recipient.dimensionGrants
+  if (!(r["*"] ?? []).includes("*")) {
+    for (const [key, values] of Object.entries(caller.dimensionGrants)) {
+      const granted = r[key] ?? []
+      if (granted.includes("*")) continue
+      if (!values.every((v) => granted.includes(v))) return false
+    }
+  }
+  const roles = new Set(recipient.roles ?? [])
+  return (caller.roles ?? []).every((role) => roles.has(role))
+}
+
+/**
+ * Whether each recipient may receive figures computed as `caller`: an active member of the org
+ * who can open the dashboard (its row policies, as them), read every source behind it (each
+ * block's, each dataset's, with their own permissions), and whose row access is not narrower
+ * than the caller's (rowAccessCovers). Enforced by the tools: a refused person is left out of
+ * what is sent; to give someone narrower figures, a routine they own computes them as them.
  */
 export async function checkRecipients(
-  orgId: string,
+  caller: UserContext,
   dashboardId: string,
   userIds: string[],
 ): Promise<RecipientCheck[]> {
+  const orgId = caller.orgId
   const out: RecipientCheck[] = []
   for (const userId of [...new Set(userIds)]) {
     const found = await withPrivilegedDb(orgId, "dashboard-snapshot-recipient", async (tx) => {
@@ -376,7 +407,11 @@ export async function checkRecipients(
       dimensionGrants: perms.dimensionGrants,
       roles: perms.roles,
     }
-    const reason = await recipientRefusal(ctx, dashboardId)
+    const reason =
+      (await recipientRefusal(ctx, dashboardId)) ??
+      (userId !== caller.userId && !rowAccessCovers(ctx, caller)
+        ? "sees fewer rows than the figures were computed with (narrower dimension grants or roles): give them a routine of their own"
+        : null)
     out.push({ userId, name: u.name, mayReceive: reason === null, ...(reason ? { reason } : {}) })
   }
   return out
@@ -589,6 +624,16 @@ export async function stagePdfForViewer(
   bytes: Uint8Array,
   filename: string,
 ): Promise<{ fileId: string; byteSize: number; filename: string }> {
+  // The quota first: a full org stages nothing (no empty upload session left behind).
+  const full = await withPrivilegedDb(viewer.orgId, "dashboard-pdf-quota", async (tx) =>
+    wouldExceedOrgQuota(
+      tx,
+      viewer.orgId,
+      await loadOrgSettings(tx, viewer.orgId),
+      bytes.byteLength,
+    ),
+  )
+  if (full) throw new StorageFullError()
   const K = sql.raw(schemaRef("kernel"))
   const sessionId = await withRlsContext(viewer, async (t) => {
     const rows = (await t.execute<{ id: string }>(
@@ -599,15 +644,6 @@ export async function stagePdfForViewer(
     return rows[0]?.id
   })
   if (!sessionId) throw new Error("could not stage the dashboard PDF")
-  const full = await withPrivilegedDb(viewer.orgId, "dashboard-pdf-quota", async (tx) =>
-    wouldExceedOrgQuota(
-      tx,
-      viewer.orgId,
-      await loadOrgSettings(tx, viewer.orgId),
-      bytes.byteLength,
-    ),
-  )
-  if (full) throw new StorageFullError()
   const fileId = randomUUID()
   const storageKey = buildStorageKey({
     orgId: viewer.orgId,
@@ -617,6 +653,7 @@ export async function stagePdfForViewer(
     filename,
   })
   await putObject({ key: storageKey, body: bytes, contentType: "application/pdf" })
+  // A failed insert leaves no object nothing refers to.
   await withPrivilegedDb(viewer.orgId, "dashboard-pdf-insert", async (tx) => {
     await tx.insert(files).values({
       id: fileId,
@@ -631,6 +668,9 @@ export async function stagePdfForViewer(
       uploadedBy: viewer.userId,
       disposition: "attachment",
     })
+  }).catch(async (err: unknown) => {
+    await deleteObject(storageKey).catch(() => {})
+    throw err
   })
   return { fileId, byteSize: bytes.byteLength, filename }
 }

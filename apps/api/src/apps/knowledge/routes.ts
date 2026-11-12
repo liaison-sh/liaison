@@ -883,17 +883,31 @@ knowledgeRoutes.get("/home", async (c) => {
 // triple then URL-encodes each segment via `encodeURIComponent`. The added chars
 // ('.', '/', ':') do not open a query-injection hole for either consumer.
 const FOLDER_REF_RE = /^[A-Za-z0-9_:./-]{8,512}$/
-const syncedSourceCreateSchema = z.object({
-  appName: z.string().min(1).max(64),
-  folderRef: z.string().regex(FOLDER_REF_RE, "folderRef must be 8–512 chars [A-Za-z0-9_:./-]"),
-  displayName: z.string().min(1).max(200),
-  syncIntervalSeconds: z.number().int().min(60),
-  scope: z.enum(["personal", "organization"]),
-  defaultSensitivity: z
-    .enum(["public", "internal", "confidential", "restricted"])
-    .nullable()
-    .optional(),
-})
+const syncedSourceCreateSchema = z
+  .object({
+    appName: z.string().min(1).max(64),
+    folderRef: z
+      .string()
+      .regex(FOLDER_REF_RE, "folderRef must be 8–512 chars [A-Za-z0-9_:./-]")
+      .optional(),
+    /** An app-declared knowledge source kind (app-sources.ts) instead of a folder. */
+    sourceKind: z
+      .string()
+      .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/)
+      .max(64)
+      .optional(),
+    sourceConfig: z.record(z.string(), z.unknown()).optional(),
+    displayName: z.string().min(1).max(200),
+    syncIntervalSeconds: z.number().int().min(60),
+    scope: z.enum(["personal", "organization"]),
+    defaultSensitivity: z
+      .enum(["public", "internal", "confidential", "restricted"])
+      .nullable()
+      .optional(),
+  })
+  .refine((v) => Boolean(v.sourceKind) !== Boolean(v.folderRef), {
+    message: "give either folderRef (a folder source) or sourceKind (an app source)",
+  })
 
 const syncedSourcePatchSchema = z.object({
   displayName: z.string().min(1).optional(),
@@ -910,10 +924,39 @@ knowledgeRoutes.get("/synced-sources", async (c) => {
   }
 })
 
+// The knowledge source kinds installed apps declare that the caller may add.
+knowledgeRoutes.get("/synced-sources/kinds", async (c) => {
+  try {
+    const actor = getActor(c)
+    const { listAppSourceKinds } = await import("~/apps/knowledge/app-sources")
+    return success(c, listAppSourceKinds(actor))
+  } catch (err) {
+    return knowledgeErrorResponse(c, err)
+  }
+})
+
 knowledgeRoutes.post("/synced-sources", zValidator("json", syncedSourceCreateSchema), async (c) => {
   try {
     const actor = getActor(c)
     const input = c.req.valid("json")
+    if (input.sourceKind) {
+      // An app source: the kind's own checks replace the folder precheck.
+      const sourceKind = input.sourceKind
+      const row = await withRequestRls(c, (tx) =>
+        createSyncedSource(
+          tx,
+          {
+            ...input,
+            sourceKind,
+            sourceConfig: input.sourceConfig ?? {},
+            folderRef: `app-source:${sourceKind}`,
+          },
+          actor,
+        ),
+      )
+      return success(c, row, undefined, 201)
+    }
+    const folderRef = input.folderRef ?? ""
     const row = await withRequestRls(c, async (tx) => {
       const registry = registerDefaultKnowledgeSources({
         tx,
@@ -931,7 +974,7 @@ knowledgeRoutes.post("/synced-sources", zValidator("json", syncedSourceCreateSch
           `No connection enabled for ${input.appName}; connect the app first`,
         )
       }
-      return createSyncedSource(tx, input, actor, { adapter })
+      return createSyncedSource(tx, { ...input, folderRef }, actor, { adapter })
     })
     return success(c, row, undefined, 201)
   } catch (err) {

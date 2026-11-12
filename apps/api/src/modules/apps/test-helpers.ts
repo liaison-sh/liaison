@@ -16,6 +16,7 @@ import type {
   StoreClient,
   StoreDocument,
 } from "@liaison/app-sdk"
+import { applyMockBatch } from "@liaison/test-helpers/mock-db"
 
 export interface MockAppContext extends AppContext {
   emit: Mock<(event: Parameters<AppContext["emit"]>[0]) => Promise<void>>
@@ -46,6 +47,7 @@ export interface MockAppContextOpts {
 
 export function mockAppContext(opts: MockAppContextOpts): MockAppContext {
   const tables: Record<string, Array<Record<string, unknown>>> = {}
+  const sequences = new Map<string, number>()
   const inserts: Array<{ entity: string; data: Record<string, unknown> }> = []
   const jobs: MockAppContext["_jobs"] = []
   const effects = new Map<string, { done: boolean; result: unknown }>()
@@ -85,6 +87,32 @@ export function mockAppContext(opts: MockAppContextOpts): MockAppContext {
     },
     count: async (entity, queryOpts) =>
       (tables[entity] ?? []).filter((r) => matches(r, queryOpts?.where)).length,
+    batch: async (spec) =>
+      (await applyMockBatch(
+        {
+          insert: (e, d) => db.insert(e, d),
+          update: (e, id, d) => db.update(e, id, d),
+          delete: (e, id) => db.delete(e, id),
+          updateMany: (e, o) => db.updateMany(e, o),
+          count: (e, o) => db.count(e, o),
+          allocate: async (key) => {
+            const next = (sequences.get(key) ?? 0) + 1
+            sequences.set(key, next)
+            return next
+          },
+          snapshot: () => {
+            const saved = structuredClone(tables)
+            const seqs = new Map(sequences)
+            return () => {
+              for (const k of Object.keys(tables)) delete tables[k]
+              Object.assign(tables, saved)
+              sequences.clear()
+              for (const [k, v] of seqs) sequences.set(k, v)
+            }
+          },
+        },
+        spec,
+      )) as Awaited<ReturnType<DbClient["batch"]>>,
   }
 
   // Complete each partial connection with a default `getAccounts` so the value

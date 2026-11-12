@@ -16,7 +16,6 @@ import type { ClassifyInput } from "../tax"
 import {
   type IssuerProfileRow,
   findIssuerProfile,
-  deleteDraftRow,
   getDraft,
   resolveIssuerProfileOrError,
 } from "./db-helpers"
@@ -200,9 +199,13 @@ async function issueFromDraftWithGating(
   }
   const when = await issueDateParts(ctx, issuer)
   if (!when.ok) return when.error
-  const issueInput = buildIssueInputFromDraft(draft, issuer, counterparty, when)
+  // The draft goes in the same commit as the document that replaces it: a re-run finds no
+  // draft (not_found) instead of issuing it twice.
+  const issueInput = {
+    ...buildIssueInputFromDraft(draft, issuer, counterparty, when),
+    commit_with: [{ delete: "documents", id: draft.id }],
+  }
   const result = await issueDocument(ctx, issueInput)
-  await deleteDraftRow(ctx.db, draft.id)
   return {
     status: "completed",
     document_id: result.document_id,

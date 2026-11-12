@@ -52,6 +52,8 @@ describe("run limit table", () => {
     expect(wall("pdf-template")).toBe(30_000)
     expect(wall("summarizer")).toBe(5_000)
     expect(wall("import-transform")).toBe(30_000)
+    expect(wall("knowledge-sync")).toBe(60_000)
+    expect(wall("knowledge-sync", 90_000)).toBe(90_000)
     expect(runLimits("tool", { env: DEV }).wallMs).toBe(60_000)
   })
 
@@ -102,6 +104,7 @@ describe("run limit table", () => {
     })
     expect(entryKindOf("job:sync")).toBe("job")
     expect(entryKindOf("webhook-verify:orders")).toBe("webhook-verify")
+    expect(entryKindOf("knowledge-sync:notes")).toBe("knowledge-sync")
     expect(entryKindOf("handler:foo")).toBeNull()
     expect(entryKindOf("tool")).toBeNull()
   })

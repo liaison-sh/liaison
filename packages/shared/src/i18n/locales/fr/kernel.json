@@ -6553,6 +6553,7 @@
     "deleteBlockTitle": "Supprimer ce bloc ?",
     "deleteBlockBody": "« {{title}} » quitte le tableau de bord. Annuler ou l'historique des versions le ramène.",
     "editConflict": "Quelqu'un d'autre a modifié ce tableau de bord. Il est rechargé : refaites votre modification.",
+    "undoOverridden": "Quelqu'un d'autre a modifié ce tableau de bord depuis votre dernière modification : Annuler effacerait sa modification. Utilisez plutôt l'historique des versions pour revenir en arrière.",
     "editFailed": "La modification n'a pas pu être enregistrée.",
     "editFailedWhy": "La modification n'a pas pu être enregistrée : {{reason}}",
     "exportMenu": "Exporter",

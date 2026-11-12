@@ -6556,6 +6556,7 @@
     "deleteBlockTitle": "Delete this block?",
     "deleteBlockBody": "\"{{title}}\" leaves the dashboard. Undo or the version history brings it back.",
     "editConflict": "Someone else changed this dashboard. It is reloaded: make your change again.",
+    "undoOverridden": "Someone else changed this dashboard since your last change, so Undo would erase their change. Use the version history to go back instead.",
     "editFailed": "The change could not be saved.",
     "editFailedWhy": "The change could not be saved: {{reason}}",
     "exportMenu": "Export",

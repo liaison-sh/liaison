@@ -18,32 +18,35 @@ grants, transaction mode, and validators — never by policy or trust. See
 ```
 agent ──tool call──▶ execute-tool.ts (trust boundary → scope → AJV → …)
                         │
-                  handlers.ts  (QuickJS sandbox, thin delegator — never
-                        │       sees credentials or touches the DB)
-                  bridge.ts    (HOST-SIDE: credential decrypt, audit,
-                        │       orchestration — apps/api/src/apps/database/)
-                  adapter      (read CATALOG: name → SQL template, params
-                        │       schema, column allow-list; transport-agnostic
-                        │       — packages/db-core + apps/api/.../adapters/)
-                  transport    (DbTransport seam — apps/api/.../transport.ts)
+                  the database app  (bundled-apps/database, sandboxed: which
+                        │            connection, Report access, answers the
+                        │            agent can act on; never sees credentials)
+                  ctx.sql           (HOST-SIDE platform SQL connections:
+                        │            credentials, pool, audit, read-only run —
+                        │            apps/api/src/modules/apps/connections/sql/)
+                  adapter           (read CATALOG: name → SQL template, params
+                        │            schema, column allow-list; transport-agnostic
+                        │            — packages/db-core + connections/sql/adapters/)
+                  transport         (DbTransport seam — connections/sql/transport.ts)
                    ├─ PostgresDirect  (DSN → postgres.js; same-machine/
                    │                   private-network/hardened-public DSN)
                    └─ HttpGate        (URL+token → liaison-db-gate sidecar,
                                         apps/db-gate/)
 ```
 
-- **The app** (`apps/api/src/apps/database/`) is an in-tree, `trusted:false`
-  app in the gitlab/google-drive shape: sandboxed `handlers.ts` delegators +
-  a host-side `bridge.ts` factory wired via `manifest-descriptor.ts`'s
-  `_bridgeExtension`. Headless — no frontend panel; connect/settings come
-  free from the generic connections surface.
+- **The app** (`bundled-apps/database/`) is a catalog app like any other: its
+  manifest declares the `database` and `warehouse` connections with an `sql`
+  block, and its tools call `ctx.sql` (named reads, a read-only `SELECT`, the
+  schema, the probe). The platform holds the credentials and the pool; the app
+  only names the connection. Report access lives in the app's own store and is
+  set in its settings page or through its `provision` block.
 - **`packages/db-core`** is the shared, transport-agnostic package: the
   catalog zod schema + validator (`catalog.ts`), the SELECT-only SQL guard
   (`sql-guard.ts`), the READ ONLY/timeout/row-cap/column-projection/pool-
   concurrency execution wrapper (`execution-wrapper.ts`), the secret-column
   belt (`secret-columns.ts`), and the readonly-role grants renderer
-  (`grants-renderer.ts`). Both the in-tree app and the standalone
-  `apps/db-gate` sidecar import this package — one implementation, no
+  (`grants-renderer.ts`). Both the platform's SQL connections and the
+  standalone `apps/db-gate` sidecar import this package — one implementation, no
   copy-paste.
 - **Typing params.** A read's `:name` params reach Postgres untyped. Where
   Postgres cannot infer a type from the context (`:after IS NULL`,
@@ -342,18 +345,18 @@ independently-tested defense in depth, not a substitute for it.
 | 1 | Scope check `database:reads:read` / `database:query:read` | `execute-tool.ts` (existing kernel middleware) |
 | 2 | AJV params validation per tool | `execute-tool.ts` (existing) |
 | 3 | Curated reads: parameterized SQL only, column allow-list applied to result rows | adapter/bridge |
-| 4 | Raw query: opt-in flag + single-statement SELECT-only validator + dangerous-function-name denylist (`pg_sleep`, `dblink*`, `lo_import`, `lo_export`, `pg_read_file`, `pg_read_server_files`, `pg_ls_dir`, `pg_terminate_backend`, `copy`, `setval`, `nextval`) | `bridge.ts` + gate (`sql-guard.ts`) |
+| 4 | Raw query: opt-in flag + single-statement SELECT-only validator + dangerous-function-name denylist (`pg_sleep`, `dblink*`, `lo_import`, `lo_export`, `pg_read_file`, `pg_read_server_files`, `pg_ls_dir`, `pg_terminate_backend`, `copy`, `setval`, `nextval`) | `connections/sql/service.ts` + gate (`sql-guard.ts`) |
 | 5 | `BEGIN READ ONLY` + `statement_timeout` + row cap on every query | both transports + gate (`execution-wrapper.ts`) |
 | 6a | Read-only DB role, explicit allow-list grants — never `ALL TABLES` | `scripts/db-readonly-role.ts` / `deploy/postgres-init/20-readonly-role.sh` |
 | 6b | Function-execution lockdown: `REVOKE EXECUTE ... FROM PUBLIC` + per-schema revoke + `ALTER DEFAULT PRIVILEGES` | same provisioning path |
 | 6c | Pool-level concurrency bound, independent of `statement_timeout` | both transports + gate |
 | 7 | TLS required for any DSN resolving to a non-loopback/non-RFC1918 IP | `PostgresDirect` (`classifyDsnHost` in `execution-wrapper.ts`) |
-| 8 | Connect probe: write-grant/EXECUTE-grant check + catalog drift (gate mode) | `bridge.ts` (`db_probe`, run automatically at connect) |
+| 8 | Connect probe: write-grant/EXECUTE-grant check + catalog drift (gate mode) | `connections/sql/service.ts` (`db_probe`, run automatically at connect) |
 | 9 | Error redaction — DSN/credentials never surfaced | `redactDbError` (`execution-wrapper.ts`) |
-| 10 | Audit: every call → `kernel.audit_log`, written in `finally`, `outcome: success\|error\|blocked`, `sqlHash` never raw SQL | `bridge.ts` |
-| 11 | `db_describe` scoped to catalog tables only, secret-column-filtered | `bridge.ts` |
+| 10 | Audit: every call → `kernel.audit_log`, written in `finally`, `outcome: success\|error\|blocked`, `sqlHash` never raw SQL | `connections/sql/service.ts` |
+| 11 | `db_describe` scoped to catalog tables only, secret-column-filtered | `connections/sql/service.ts` |
 | 12 | Privileged-role pre-flight: before caller SQL on any direct connection (re-asked every minute), the session user must not be a superuser nor able to `SET ROLE` to a superuser or BYPASSRLS role (membership checked with `pg_has_role`); otherwise the connection is refused with a `config` error. Fails closed. A login that itself holds BYPASSRLS (the `liaison_readonly` shape) is accepted. Opt-out only for a single-tenant database you own: `LIAISON_DB_ALLOW_PRIVILEGED_SESSION=true` (never applies to the demo warehouse). Redshift has no such roles and skips it. | `PostgresDirect` (`db/role-reach.ts`) |
-| 13 | Host policy: link-local and cloud-metadata addresses are always refused; the instance's own redis, search and object-storage endpoints are refused, compared by resolved address and port (so another spelling of the same endpoint is refused too); a host that does not resolve is refused; `LIAISON_DATABASE_ALLOWED_HOSTS` (comma-separated `host` or `*.suffix`, empty = any) restricts the DSN host. Connection failures (refused, timed out, unresolvable, reset) all answer "Could not connect to the database", with the detail only in the server log. | `PostgresDirect`, `bridge.ts` |
+| 13 | Host policy: link-local and cloud-metadata addresses are always refused; the instance's own redis, search and object-storage endpoints are refused, compared by resolved address and port (so another spelling of the same endpoint is refused too); a host that does not resolve is refused; `LIAISON_DATABASE_ALLOWED_HOSTS` (comma-separated `host` or `*.suffix`, empty = any) restricts the DSN host. Connection failures (refused, timed out, unresolvable, reset) all answer "Could not connect to the database", with the detail only in the server log. | `PostgresDirect`, `connections/sql/service.ts` |
 
 ---
 
@@ -555,9 +558,6 @@ catalog read:
 
 - `apps/db-gate/README.md` — db-gate env vars + routes quick reference.
 - `.claude/skills/database-adapter-authoring/SKILL.md` — the authoring flow.
-- `docs/app-development.md` — general app-building guide (this connector
-  follows the same in-tree bridge-extension pattern as `gitlab`).
-- `docs/sdk-gaps.md` — raw-DB connections as a potential first-class
-  connection type (this connector exists precisely because that gap isn't
-  closed yet — see the entry there for why bundled-app packaging was
-  rejected).
+- `docs/app-development.md` — general app-building guide; `docs/app-sandbox.md`
+  "Query a database" for `ctx.sql`, the platform-held SQL connection this
+  connector is built on.

@@ -5,7 +5,6 @@
 // several candidates.
 import { describe, expect, test } from "bun:test"
 import {
-  RATE_LIMIT_DEFAULT_WAIT_MS,
   candidateMatchesName,
   registrySearch,
 } from "./lookup"
@@ -78,28 +77,11 @@ describe("registrySearch", () => {
     })
   })
 
-  test("429 without Retry-After, then 200 -> ok after one retry and the default wait", async () => {
-    const waits: number[] = []
+  test("429 -> rate_limited at once: no wait and no second call inside the run", async () => {
     const { fetch, calls } = fakeFetch([REGISTRY_RATE_LIMITED, ok(REGISTRY_SEARCH_HIT)])
-    const r = await registrySearch({ fetch }, { q: "exemple" }, { sleep: async (ms) => void waits.push(ms) })
-    expect(r.status).toBe("ok")
-    expect(calls).toHaveLength(2)
-    expect(waits).toEqual([RATE_LIMIT_DEFAULT_WAIT_MS])
-  })
-
-  test("an announced Retry-After is honoured, capped at 2 s", async () => {
-    const waits: number[] = []
-    const limited = { ...REGISTRY_RATE_LIMITED, headers: { ...REGISTRY_RATE_LIMITED.headers, "Retry-After": "30" } }
-    const { fetch } = fakeFetch([limited, ok(REGISTRY_SEARCH_HIT)])
-    await registrySearch({ fetch }, { q: "exemple" }, { sleep: async (ms) => void waits.push(ms) })
-    expect(waits).toEqual([2_000])
-  })
-
-  test("429 twice -> rate_limited, no third call", async () => {
-    const { fetch, calls } = fakeFetch([REGISTRY_RATE_LIMITED, REGISTRY_RATE_LIMITED, ok(REGISTRY_SEARCH_HIT)])
-    const r = await registrySearch({ fetch }, { q: "exemple" }, { sleep: async () => {} })
+    const r = await registrySearch({ fetch }, { q: "exemple" })
     expect(r).toEqual({ status: "registry_unconfirmed", reason: "rate_limited" })
-    expect(calls).toHaveLength(2)
+    expect(calls).toHaveLength(1)
   })
 
   test("network error -> unreachable", async () => {

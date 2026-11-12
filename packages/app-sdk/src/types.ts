@@ -40,15 +40,24 @@ export interface DbClient {
    * batch consumes no value, concurrent batches never share one. `sequence.unique` steps past
    * values a row matching `where` already holds in `field`. Placeholders anywhere in an op's
    * `data`, or as its `id`: `{ $seq: "value" }`, `{ $seq: "formatted" }` (`format.prefix` +
-   * the value padded to `format.pad`), `{ $ref: "<as>" }` (the id of an earlier insert). At
-   * most 500 ops.
+   * the value padded to `format.pad`), `{ $ref: "<as>" }` (the id of an earlier insert). An
+   * `update` may `append` to json arrays and `merge` into json objects on the row as it is when
+   * the batch commits, so an entry is never lost to a concurrent writer. At most 500 ops.
    */
   batch(spec: DbBatchSpec): Promise<DbBatchResult>
 }
 
 export type DbBatchOp =
   | { insert: string; data: Record<string, unknown>; as?: string }
-  | { update: string; id: string | { $ref: string }; data: Record<string, unknown> }
+  | {
+      update: string
+      id: string | { $ref: string }
+      data?: Record<string, unknown>
+      /** Items added to json array fields of the row as it is at commit (`field || items`). */
+      append?: Record<string, unknown[]>
+      /** Keys merged into json object fields of the row as it is at commit (`field || keys`). */
+      merge?: Record<string, Record<string, unknown>>
+    }
   | { delete: string; id: string | { $ref: string } }
   | { updateMany: string; where: Record<string, unknown>; data: Record<string, unknown> }
 

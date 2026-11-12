@@ -140,6 +140,10 @@ describe("db import enforcement", () => {
     // org-owned accounts are invisible to RLS; every read and write pins org,
     // app and connection in its predicate, and the caller's own personal rows.
     "modules/apps/sandbox/bridge/accounts.ts",
+    // ctx.kernel.caller: the caller's own roles and grants in the run's org
+    // (loadEffectivePermissions, the same read the domain checks used); answers
+    // only whether each asked scope is held, never the person's other grants.
+    "modules/apps/sandbox/bridge/directory.ts",
     // App config write path (PUT /api/apps/:app/config/:key, config apply):
     // instance `kernel.apps.config` rows, written after the route's
     // kernel:apps:admin check and the manifest configKeys allowlist.

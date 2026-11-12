@@ -181,7 +181,7 @@ LIAISON_SANDBOX_URL sends loader fallbacks to the server's sandbox service, same
 Without a loader LIAISON_SANDBOX_URL runs every app with a Worker module there; installed: null and no module stay on QuickJS -> apps/api/src/modules/apps/sandbox/run-app.ts resolveWorkersTarget, planWorkersRun
 LIAISON_APP_RUNTIME=quickjs forces QuickJS -> apps/api/src/modules/apps/workers/config.ts quickjsForced ; apps/api/src/modules/apps/sandbox/run-app.ts selectExecutor
 One door for every entry point -> apps/api/src/modules/apps/sandbox/one-door.test.ts
-workerd usage rows have no CPU -> apps/api/src/modules/apps/usage/app-usage.ts recordSettledRun ; packages/control-plane-contract/src/money.ts apps.usage
+workerd usage rows carry the sandbox service's per-run CPU -> packages/sandbox-supervisor/src/supervisor.ts CPU_HEADER ; apps/api/src/modules/apps/workers/executor.ts SANDBOX_CPU_HEADER ; apps/api/src/modules/apps/usage/app-usage.ts recordSettledRun
 The fallback run gets a secret-free bridge and is labelled executor workerd beside its fallback reason -> apps/api/src/modules/apps/sandbox/run-app.ts:275 ; apps/api/src/modules/apps/sandbox/run-app.ts:377-387 ; apps/api/src/modules/apps/workers/run-settled.ts:37-41
 A run on the sandbox service never falls back further nor changes the loader's breaker or app fallbacks -> apps/api/src/modules/apps/workers/fallback.ts:173 ; apps/api/src/modules/apps/sandbox/run-app.ts:424
 The loader code every host runs is packages/app-loader -> packages/app-loader/src/loader.ts:1-24

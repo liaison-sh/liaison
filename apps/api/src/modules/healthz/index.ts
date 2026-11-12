@@ -10,6 +10,7 @@ import { getStorageClient } from "~/infra/storage/object-storage"
 import { env } from "~/lib/env"
 import { monitorLogger } from "~/lib/logger"
 import { redis } from "~/lib/redis"
+import { probeSandbox, type SandboxProbe } from "~/modules/apps/workers/sandbox-release"
 
 export const BASELINE_TAG = "v0.1.0"
 // Probe budget per dependency. The SAME 200ms that was raised to 2s for /diag in
@@ -208,6 +209,12 @@ export interface HealthzDetail {
     redis: DepStatus
     meilisearch: DepStatus
     objectStorage: DepStatus
+    /**
+     * The instance's sandbox service, when one is configured
+     * (LIAISON_SANDBOX_URL): `release_mismatch` when it runs another release
+     * than this process (recreate it with the app, docs/self-hosting/sandbox.md).
+     */
+    sandbox?: SandboxProbe
   }
 }
 
@@ -227,7 +234,7 @@ export function resetHealthzCache(): void {
 }
 
 async function computeDetail(): Promise<HealthzDetail> {
-  const [dbR, redisR, meiliR, storageR, migrationHead] = await Promise.all([
+  const [dbR, redisR, meiliR, storageR, migrationHead, sandboxR] = await Promise.all([
     withTimeout(probeDb, TIMEOUT_MS),
     withTimeout(probeRedis, TIMEOUT_MS),
     withTimeout(probeMeili, TIMEOUT_MS),
@@ -236,13 +243,20 @@ async function computeDetail(): Promise<HealthzDetail> {
       computeMigrationHead(),
       new Promise<string>((resolve) => setTimeout(() => resolve("unknown"), TIMEOUT_MS)),
     ]),
+    probeSandbox({ timeoutMs: TIMEOUT_MS }),
   ])
   return {
     status: "ok",
     version: env.LIAISON_VERSION,
     migrationHead,
     schemaBaseline: BASELINE_TAG,
-    dependencies: { db: dbR, redis: redisR, meilisearch: meiliR, objectStorage: storageR },
+    dependencies: {
+      db: dbR,
+      redis: redisR,
+      meilisearch: meiliR,
+      objectStorage: storageR,
+      ...(sandboxR ? { sandbox: sandboxR.status } : {}),
+    },
   }
 }
 

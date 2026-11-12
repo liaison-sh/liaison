@@ -25,12 +25,13 @@ const server = Bun.serve({
   port: cfg.port,
   idleTimeout: 0,
   maxRequestBodySize: 16 * 1024 * 1024,
-  fetch: (req) => sup.fetch(req),
+  fetch: (req, srv) => sup.fetch(req, srv),
 })
 console.log(
   JSON.stringify({
     msg: "sandbox service up",
     workerd: pinnedWorkerdVersion(),
+    release: sup.release,
     listen: `${server.hostname}:${server.port}`,
     bridgeOrigin: cfg.bridgeOrigin,
     poolSize: cfg.poolSize,

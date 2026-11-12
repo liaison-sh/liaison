@@ -4,7 +4,12 @@ Nested runs: reserved processes, depth cap 4 -> packages/sandbox-supervisor/src/
 Per-run token, no key in the service -> packages/sandbox-supervisor/src/config.ts header ; apps/api/src/modules/apps/workers/bridge-route.ts
 runtime: runsc, opt-out LIAISON_SANDBOX_RUNTIME + LIAISON_SANDBOX_ALLOW_NO_GVISOR -> deploy/docker-compose.yml sandbox ; packages/sandbox-supervisor/src/runtime-check.ts
 COMPOSE_PROFILES=sandbox, LIAISON_SANDBOX_URL -> deploy/docker-compose.yml ; deploy/.env.example ; apps/api/src/modules/apps/workers/config.ts readSandboxConfig
-Bridge-only listener on 3100, app-bridge alias -> apps/api/src/modules/apps/workers/bridge-listener.ts ; apps/api/src/index.ts ; deploy/docker-compose.yml app networks
+Bridge-only listener on 3100; every app process (app, api, worker) on the sandbox network -> apps/api/src/modules/apps/workers/bridge-listener.ts ; apps/api/src/index.ts ; deploy/docker-compose.yml app/api/worker networks
+Bridge calls back to the process that sent the run (relay, caller address) -> packages/sandbox-supervisor/src/supervisor.ts createSupervisor relay ; packages/sandbox-supervisor/test/relay-release.test.ts
+Per-run CPU in usage rows -> packages/sandbox-supervisor/src/supervisor.ts CPU_HEADER ; apps/api/src/modules/apps/workers/executor.ts SANDBOX_CPU_HEADER ; apps/api/src/modules/apps/usage/app-usage.ts
+/healthz sandbox dependency (ok, release_mismatch, bridge_unreachable) -> apps/api/src/modules/healthz/index.ts computeDetail ; apps/api/src/modules/apps/workers/sandbox-release.ts probeSandbox
+Release handshake: 409 sandbox_release_mismatch, health 503 -> packages/sandbox-supervisor/src/release.ts ; packages/sandbox-supervisor/src/supervisor.ts releaseCheck health
+Upgrades: app depends_on sandbox (required: false); rolling deploy recreates it -> deploy/docker-compose.yml app depends_on ; deploy/rolling-deploy.sh step 4b
 Worker module needed; executor workerd in timing and usage -> apps/api/src/modules/apps/sandbox/run-app.ts resolveWorkersTarget ; apps/api/src/modules/apps/usage/app-usage.ts
 LIAISON_APP_RUNTIME=quickjs -> apps/api/src/modules/apps/workers/config.ts quickjsForced
 Same image, entrypoint `sandbox` -> apps/api/scripts/entrypoint.sh ; deploy/docker-compose.yml sandbox

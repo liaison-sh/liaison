@@ -49,6 +49,7 @@ import {
 } from "./faults"
 import { ensureRunOwnerReachable } from "./run-owner"
 import { type RunBridge, type RunRegistry, runRegistry } from "./run-registry"
+import { SANDBOX_RELEASE_HEADER } from "./sandbox-release"
 import { signCellRequestV2 } from "./sign"
 import type { LoaderTimings } from "./timings"
 import { parseWorkerLogs, type WorkerLogLine } from "./worker-logs"
@@ -95,6 +96,12 @@ export interface WorkersRunOptions {
    * pushing them (`PUT <loaderUrl>/modules/<sha256>`) and asking once more.
    */
   pushModule?: () => Promise<Uint8Array | null>
+  /**
+   * The app's release, for a target that is the instance's sandbox service
+   * (sandbox-release.ts): sent with every request, which the service refuses
+   * when it runs another release.
+   */
+  sandboxRelease?: string
   /** Seams for tests. */
   fetchImpl?: (url: string, init: RequestInit) => Promise<Response>
   admission?: WorkersAdmission
@@ -122,7 +129,16 @@ export interface WorkersRunInfo {
   logs?: WorkerLogLine[]
   /** Lines the isolate dropped past its per-run cap. */
   logsDropped?: number
+  /**
+   * CPU milliseconds of the last attempt as the sandbox service measured them
+   * (its process's CPU time over the run). The Workers loader reports none per
+   * run: its CPU is pulled hourly (usage/loader-usage.ts).
+   */
+  cpuMs?: number
 }
+
+/** The sandbox service's measure of a run's CPU time (@liaison/sandbox-supervisor). */
+export const SANDBOX_CPU_HEADER = "x-liaison-sandbox-cpu-ms"
 
 interface LoaderError {
   message?: unknown
@@ -354,6 +370,7 @@ async function attemptOnWorkers(
     delete info.loader
     delete info.logs
     delete info.logsDropped
+    delete info.cpuMs
     // The loader's wire body (@liaison/app-loader protocol.ts), typed so a
     // field the loader requires cannot go missing here.
     const runBody: RunBody = {
@@ -391,6 +408,9 @@ async function attemptOnWorkers(
     if (opts.runDepth && opts.runDepth > 0) {
       ;(headers as Record<string, string>)[RUN_DEPTH_HEADER] = String(opts.runDepth)
     }
+    if (opts.sandboxRelease) {
+      ;(headers as Record<string, string>)[SANDBOX_RELEASE_HEADER] = opts.sandboxRelease
+    }
 
     let res: Response
     let text: string
@@ -402,7 +422,10 @@ async function attemptOnWorkers(
         if (bytes) {
           const put = await fetchImpl(`${opts.config.loaderUrl}/modules/${opts.bundleSha256}`, {
             method: "PUT",
-            headers: { "content-type": "application/javascript" },
+            headers: {
+              "content-type": "application/javascript",
+              ...(opts.sandboxRelease ? { [SANDBOX_RELEASE_HEADER]: opts.sandboxRelease } : {}),
+            },
             body: bytes,
             signal,
           })
@@ -447,6 +470,8 @@ async function attemptOnWorkers(
     } catch {
       answer = null
     }
+    const cpu = Number(res.headers.get(SANDBOX_CPU_HEADER) ?? Number.NaN)
+    if (Number.isFinite(cpu) && cpu >= 0) info.cpuMs = Math.round(cpu)
     const t = answer?.timings
     const lt = loaderTimings(t)
     if (lt) info.loader = lt

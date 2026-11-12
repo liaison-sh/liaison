@@ -330,6 +330,7 @@
       "requiredScopes": [
         "api-connector:admin"
       ],
+      "writesToTable": "app_api_connector.adapters",
       "handler": "settingsAdapterSave",
       "timeoutMs": 60000,
       "params": {
@@ -361,6 +362,7 @@
       "requiredScopes": [
         "api-connector:admin"
       ],
+      "writesToTable": "app_api_connector.adapters",
       "handler": "settingsAdapterRestore",
       "timeoutMs": 60000,
       "params": {
@@ -389,6 +391,7 @@
       "requiredScopes": [
         "api-connector:admin"
       ],
+      "writesToTable": "app_api_connector.adapters",
       "handler": "settingsAdapterDelete",
       "timeoutMs": 60000,
       "params": {

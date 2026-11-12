@@ -33,7 +33,7 @@ vi.mock("~/modules/shell/ApiContext", () => ({
 
 import { createSignal } from "solid-js"
 import { registerEntityOpener, resetRegistry } from "~/framework/app-registry"
-import { keepHolding } from "~/modules/approvals/held-kept"
+import { HeldKeptTestAccess, keepHolding } from "~/modules/approvals/held-kept"
 import { attentionStore } from "~/modules/shell/attention-store"
 import { resetHomeCardLayout } from "~/modules/shell/home-card-layout"
 import { setHomeFilter } from "~/modules/shell/home-filter"
@@ -642,6 +642,10 @@ describe("home decisions", () => {
   beforeEach(async () => {
     const { DecisionQueueTestAccess } = await import("~/modules/approvals/decision-queue")
     DecisionQueueTestAccess.reset()
+    // "Keep holding" lives in storage and in a module signal: forget both, or a draft one test
+    // kept stays folded away in the next.
+    localStorage.removeItem("liaison:heldKept.v1")
+    HeldKeptTestAccess.reload()
   })
   const approval = (id: string, metadata: Record<string, unknown> = {}): AttentionItem => ({
     id: `kernel:approval_pending:${id}`,
@@ -791,7 +795,6 @@ describe("home decisions", () => {
     keepHolding("ap-held", "2026-11-17T08:00:00.000Z")
     render(() => <Home entityId="home" />)
     expect(screen.queryByTestId(row(held))).toBeNull()
-    localStorage.removeItem("liaison:heldKept.v1")
   })
 
   it("the approvals count is the length of its list: a held draft sits in its own group with its own count", () => {

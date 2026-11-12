@@ -12,6 +12,7 @@
 // existing `shopifyStaffId` + `reason` (admin moved Marie from one staff
 // identity to another).
 import type { AppContext } from "@liaison/app-sdk"
+import { runUserId } from "../lib/run-identity"
 
 interface OverrideError extends Error {
   code: string
@@ -108,7 +109,7 @@ export async function staff_overrides_upsert(
     liaisonUserId,
     shopifyStaffId,
     reason,
-    createdBy: ctx.userId,
+    createdBy: await runUserId(ctx),
   })
   return { id: ins.id }
 }

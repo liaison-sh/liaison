@@ -13,7 +13,7 @@ import { handlerRunHoldsTx, type RunWideTxAllowance } from "~/modules/apps/run-w
 
 const ALLOWLIST_PATH = join(import.meta.dir, "run-wide-tx.allowlist.json")
 const BASELINE_PATH = join(import.meta.dir, "run-wide-tx.baseline.json")
-const BASELINE_SHA256 = "57b497a1c0408db045e9f88cfac8382fd5a5f84809dc06f9f3e03c6230ed5cc5"
+const BASELINE_SHA256 = "12e97eb80533e6e7e969e3674907d336d1674333630fd9134c27ec3c0b646df0"
 const BUNDLED = join(import.meta.dir, "../../../../../../bundled-apps")
 const IN_TREE = join(import.meta.dir, "../../../apps")
 

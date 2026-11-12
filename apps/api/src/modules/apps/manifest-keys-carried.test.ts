@@ -81,7 +81,12 @@ const CASES: KeyCase[] = [
     registry: "contentParams",
     expected: ["note"],
   },
-  { key: "humanTurnOnly", tool: { humanTurnOnly: true }, registry: "humanTurnOnly", expected: true },
+  {
+    key: "humanTurnOnly",
+    tool: { humanTurnOnly: true },
+    registry: "humanTurnOnly",
+    expected: true,
+  },
   { key: "dmOnly", tool: { dmOnly: true }, registry: "dmOnly", expected: true },
   { key: "feature", tool: { feature: "budgets" }, registry: "feature", expected: "budgets" },
   { key: "focusCore", tool: { focusCore: true }, registry: "focusCore", expected: true },

@@ -9,7 +9,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import crypto from "node:crypto"
 import { app } from "~/app"
-import { exampleAppManifest } from "../../../test-support/apps/example/manifest-descriptor"
 import type { UserContext } from "~/db/rls"
 import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-context"
 import { toolRegistry } from "~/modules/apps/app-registries"
@@ -26,6 +25,7 @@ import { handleToolCall } from "~/modules/mcp/tool-call"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { exampleAppManifest } from "../../../test-support/apps/example/manifest-descriptor"
 
 const TOOL = "example:items_count_on_turn"
 

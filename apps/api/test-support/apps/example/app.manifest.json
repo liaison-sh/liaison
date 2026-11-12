@@ -50,7 +50,11 @@
   },
   "views": {
     "tabTypes": {
-      "items": { "label": "Example item", "icon": "Square", "urlPattern": "/example/items/:entityId" }
+      "items": {
+        "label": "Example item",
+        "icon": "Square",
+        "urlPattern": "/example/items/:entityId"
+      }
     }
   },
   "slots": {
@@ -122,7 +126,12 @@
     }
   },
   "contextProviders": [
-    { "on": ["example:items"], "tool": "item_context", "scope": "example:items:read", "loadTools": ["items_list"] }
+    {
+      "on": ["example:items"],
+      "tool": "item_context",
+      "scope": "example:items:read",
+      "loadTools": ["items_list"]
+    }
   ],
   "tools": {
     "item_context": {

@@ -186,12 +186,12 @@ import {
   type SpawnParentFrame,
 } from "~/modules/agent/runtime/run-context"
 import { hostRequiresApproval } from "~/modules/agent/scopes/host-approval-gates"
-import { resolveRoomFloor } from "~/modules/agent/scopes/room-floor"
 import {
   decidePostDisclosure,
   TAINT_DISCLOSURE_EXTERNAL_CLIENT_KEY,
 } from "~/modules/agent/scopes/post-disclosure"
 import { checkToolScopes, resolveRequiredScopes } from "~/modules/agent/scopes/required-scopes"
+import { resolveRoomFloor } from "~/modules/agent/scopes/room-floor"
 import {
   carriesNoTurnContent,
   contentParamsRetryHint,

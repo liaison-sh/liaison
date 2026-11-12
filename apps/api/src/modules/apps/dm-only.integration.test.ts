@@ -8,7 +8,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import crypto from "node:crypto"
 import { app } from "~/app"
-import { exampleAppManifest } from "../../../test-support/apps/example/manifest-descriptor"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { threadParticipants, threads } from "~/db/schema/kernel"
@@ -23,6 +22,7 @@ import { handleToolCall } from "~/modules/mcp/tool-call"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { exampleAppManifest } from "../../../test-support/apps/example/manifest-descriptor"
 
 const TOOL = "example:items_count_in_dm"
 

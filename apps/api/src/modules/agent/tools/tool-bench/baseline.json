@@ -1265,20 +1265,32 @@
       "schema": 9
     },
     "kernel__dashboards_edit": {
-      "desc": 590,
-      "schema": 207
+      "desc": 750,
+      "schema": 253
     },
     "kernel__dashboards_get": {
       "desc": 139,
+      "schema": 9
+    },
+    "kernel__dashboards_history": {
+      "desc": 178,
       "schema": 9
     },
     "kernel__dashboards_list": {
       "desc": 93,
       "schema": 3
     },
+    "kernel__dashboards_pdf": {
+      "desc": 254,
+      "schema": 6
+    },
     "kernel__dashboards_preview_block": {
       "desc": 272,
       "schema": 255
+    },
+    "kernel__dashboards_snapshot": {
+      "desc": 555,
+      "schema": 52
     },
     "kernel__dashboards_sources": {
       "desc": 257,

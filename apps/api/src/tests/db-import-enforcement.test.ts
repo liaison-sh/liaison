@@ -46,6 +46,9 @@ describe("db import enforcement", () => {
     "tests/relations/recurring-world.ts",
     "tests/relations/routine-world.ts",
     "tests/relations/thread-world.ts",
+    // The app contract fixture recorders' shared helper, run by hand against a provider's sandbox and never by a
+    // production build or a suite: they install the app for the contract org with raw SQL.
+    "modules/apps/contract/recording-run.test-helpers.ts",
   ])
 
   // Allowlist: only these files may import from ~/db/privileged

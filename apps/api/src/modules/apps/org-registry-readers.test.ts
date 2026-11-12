@@ -78,6 +78,9 @@ const READERS: Record<string, string> = {
   "modules/apps/bulk-dispatch.ts": JOB,
   "modules/apps/catalog-derivations.ts": ALL_ORGS,
   "modules/apps/contract.ts": SETUP,
+  // The contract fixture recorders' helper (run by hand): registers the app for the org it
+  // records in, then reads its registration back.
+  "modules/apps/contract/recording-run.test-helpers.ts": SETUP,
   "modules/apps/execute-tool.ts": AGENT,
   // Names the registry only as a type (the tool definition it validates params against).
   "modules/apps/execute-tool-params.ts": "type only: reads no registry at run time",

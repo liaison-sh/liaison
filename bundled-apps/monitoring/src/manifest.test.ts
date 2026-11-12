@@ -78,7 +78,9 @@ describe("monitoring app.manifest.json", () => {
     // 0.4.13 (main): above both lines of work, which each changed it under the number before; no change of its own.
     // 0.4.17: both of the above, merged.
     // 0.4.18: the source repository link names the repository where the code now lives.
-    expect(MANIFEST.version).toBe("0.4.18")
+    // 0.4.16 (main): refs numbered under an expiring store lease, no held transaction.
+    // 0.4.19: both of the above, merged.
+    expect(MANIFEST.version).toBe("0.4.19")
   })
 
   // The declarative settings page (/settings/apps/monitoring): the detailed
@@ -111,13 +113,12 @@ describe("monitoring app.manifest.json", () => {
     expect(MANIFEST.schema?.incidents?.fields?.ref_number).toEqual({ type: "integer", required: false })
     expect(MANIFEST.schema?.incidents?.constraints?.unique).toContainEqual(["ref_number"])
     expect(MANIFEST.schema?.incident_comments?.rlsScope).toBe("incidents")
-    // A short run budget: the job holds the org's ref lock until it commits (see jobs.ts).
+    // No held transaction (no `atomic`): numberers take turns through the store lease (refs.ts).
     expect(MANIFEST.jobs?.["assign-refs"]).toEqual({
       handler: "assignRefsJobHandler",
       // Only for orgs with an incident still waiting for its ref (manifest runsFor).
       runsFor: { rows: { entity: "incidents", where: { ref_number: null } } },
       schedule: "*/5 * * * *",
-      atomic: true,
       timeoutMs: 20000,
     })
   })

@@ -97,7 +97,9 @@ describe("ads app.manifest.json", () => {
     // 0.1.63: above main's 0.1.62 (B2B orders recognised by the order itself), merged.
     // 0.1.63 (main): its bundle hashes audience identifiers with the sandbox's WebCrypto.
     // 0.1.64: both of the above, merged.
-    expect(m.version).toBe("0.1.64")
+    // 0.1.64 (main): its insights reports run as resumable jobs.
+    // 0.1.65: both of the above, merged.
+    expect(m.version).toBe("0.1.65")
     for (const name of ["insights_query", "metrics_list", "metrics_run"]) {
       expect(m.tools[name]?.readOnly).toBe(true)
       expect(m.tools[name]?.writesToTable).toBeUndefined()

@@ -3,8 +3,9 @@
 // Ungated read tools for the ads app. All handlers authored natively
 // as (params, ctx) — the kernel convention.
 
-import { metaFetch, metaFetchPage, metaFetchPaged, runInsightsAsync, isInsightsPending, fromAccountCurrency } from "./lib/meta-client"
+import { metaFetch, metaFetchPage, metaFetchPaged, isInsightsPending, fromAccountCurrency, type InsightsPending } from "./lib/meta-client"
 import { getMetaClient } from "./lib/get-client"
+import { fetchInsightsReport, type InsightsReportCtx } from "./insights-report"
 
 // ─── Shared ctx type for reads ────────────────────────────────────────────────
 
@@ -12,6 +13,9 @@ interface ReadCtx {
   fetch: (url: string, opts?: Record<string, unknown>) => Promise<unknown>
   connections: unknown
 }
+
+/** insights_query also keeps async report runs across calls (insights-report.ts). */
+type InsightsCtx = ReadCtx & Pick<InsightsReportCtx, "store" | "timers">
 
 // ─── Incompatible breakdown combinations ─────────────────────────────────────
 // Meta restricts which breakdown dimensions can be combined in one call.
@@ -63,7 +67,7 @@ interface InsightsQueryParams {
   currency?: string
 }
 
-export async function insights_query(params: InsightsQueryParams, ctx: ReadCtx): Promise<unknown> {
+export async function insights_query(params: InsightsQueryParams, ctx: InsightsCtx): Promise<unknown> {
   const { accessToken, adAccountId } = await getMetaClient(ctx)
 
   const breakdowns = params.breakdowns ?? []
@@ -82,6 +86,7 @@ export async function insights_query(params: InsightsQueryParams, ctx: ReadCtx):
 
   // Proactively split incompatible breakdown combinations
   const results: unknown[] = []
+  let pending: InsightsPending | null = null
   for (const group of breakdownGroups) {
     const callParams: Record<string, unknown> = { ...baseParams }
     if (group.length > 0) callParams.breakdowns = group.join(",")
@@ -90,14 +95,10 @@ export async function insights_query(params: InsightsQueryParams, ctx: ReadCtx):
     // a daily time_increment series, or an unbounded query (neither a preset
     // nor an explicit time_range). A plain time_range aggregate (e.g.
     // account-level spend for a week, what metrics_run sends) is one row per
-    // breakdown group; the async report job's create+poll cycle can take 30s+
-    // and blows the sandbox tool timeout for no benefit.
+    // breakdown group, read synchronously.
     //
     // An account-level daily series over a bounded window is one row per day
-    // (the dashboard's 30 day chart is 30 rows): it goes synchronous too. Sent
-    // async it cost a create, up to 20 back-to-back status polls and the
-    // result pages on every dashboard load, which is what tripped Meta's
-    // insights call-load throttle in bursts.
+    // (the dashboard's 30 day chart is 30 rows): it goes synchronous too.
     const daily = params.time_increment === 1 || params.time_increment === "1"
     const bounded = Boolean(params.date_preset || params.time_range)
     const isLargePull =
@@ -105,22 +106,16 @@ export async function insights_query(params: InsightsQueryParams, ctx: ReadCtx):
 
     let data: unknown[]
     if (isLargePull) {
-      const asyncResult = await runInsightsAsync(ctx.fetch, {
+      // Started (or resumed) as a report run kept across calls; every group
+      // starts its run now, so a later call finds them all under way.
+      const asyncResult = await fetchInsightsReport(ctx, {
         path: `/${adAccountId}/insights`,
         params: callParams,
         accessToken,
       })
-      // A transient Meta async race (report job not finished within the poll
-      // budget) returns a structured pending marker, not rows. Surface it as a
-      // "data not ready yet" result the UI renders inline — never a thrown 500.
       if (isInsightsPending(asyncResult)) {
-        return {
-          data: [],
-          _split: false,
-          _pending: true,
-          _pending_reason: asyncResult.reason,
-          currency: params.currency ?? null,
-        }
+        pending ??= asyncResult
+        continue
       }
       data = asyncResult
     } else {
@@ -151,6 +146,19 @@ export async function insights_query(params: InsightsQueryParams, ctx: ReadCtx):
       results.push({ breakdowns: group, data })
     } else {
       results.push(...data)
+    }
+  }
+
+  // A report not extractable yet: a structured "data not ready yet" result the
+  // UI renders inline, never a thrown 500. Calling again resumes the same run.
+  if (pending) {
+    return {
+      data: [],
+      _split: false,
+      _pending: true,
+      _pending_reason: pending.reason,
+      report_run_id: pending.report_run_id,
+      currency: params.currency ?? null,
     }
   }
 
@@ -620,25 +628,11 @@ interface CountsResult {
   total: number
 }
 
-// Module-level cache: keyed by adAccountId, TTL = 30s
-const countsCache = new Map<string, { at: number; value: CountsResult }>()
-const COUNTS_TTL_MS = 30_000
-
-/** Test helper — clears the counts cache between describe blocks so tests don't bleed. */
-export function __resetCountsCache(): void {
-  countsCache.clear()
-}
-
 const PAUSED_STATUSES = new Set(["CAMPAIGN_PAUSED", "PAUSED", "ADSET_PAUSED", "AD_PAUSED"])
 
 export async function counts(_params: Record<string, never>, ctx: ReadCtx): Promise<CountsResult> {
-  const { adAccountId } = await getMetaClient(ctx)
-
-  const cached = countsCache.get(adAccountId)
-  if (cached && Date.now() - cached.at < COUNTS_TTL_MS) {
-    return cached.value
-  }
-
+  // Recomputed on every call: a run keeps nothing in module state.
+  await getMetaClient(ctx)
   // campaigns_list returns { data: Campaign[] }
   const { data } = (await campaigns_list({}, ctx)) as { data: Array<{ effective_status: string }> }
 
@@ -649,9 +643,7 @@ export async function counts(_params: Record<string, never>, ctx: ReadCtx): Prom
     else if (PAUSED_STATUSES.has(row.effective_status)) paused++
   }
 
-  const value: CountsResult = { active, paused, total: data.length }
-  countsCache.set(adAccountId, { at: Date.now(), value })
-  return value
+  return { active, paused, total: data.length }
 }
 
 // ─── pending_approvals_list ────────────────────────────────────────────────────

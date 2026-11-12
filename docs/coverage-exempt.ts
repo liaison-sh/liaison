@@ -40,6 +40,7 @@ export const ENV_EXEMPT: Record<string, string> = {
 export const ENV_EXEMPT_PREFIXES: Record<string, string> = {
   E2E_: "End-to-end test harness switches.",
   CHAOS_: "Chaos simulator harness switches.",
+  CONTRACT_RECORD_: "App contract fixture recorder switches (apps/api/src/modules/apps/contract/*.recorder.test.ts), run by hand.",
   PLAYWRIGHT_: "Playwright browser test harness.",
   LIAISON_TEST_: "Test-run plumbing (namespaces, slots, ports).",
   LIAISON_E2E_: "End-to-end test harness switches.",

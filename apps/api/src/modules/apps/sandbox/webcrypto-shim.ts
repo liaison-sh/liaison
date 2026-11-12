@@ -276,9 +276,10 @@ export const WEBCRYPTO_SHIM_SOURCE = `(function (host) {
 export function installWebCrypto(ctx: QuickJSAsyncContext): void {
   const handles: QuickJSHandle[] = []
   try {
-    const host = ctx.newFunction("__webcrypto_host", (...argHandles) =>
-      ctx.newString(webcryptoHostCall(...argHandles.map((h) => ctx.dump(h)))),
-    )
+    const host = ctx.newFunction("__webcrypto_host", (...argHandles) => {
+      const [op, ...args] = argHandles.map((h) => ctx.dump(h))
+      return ctx.newString(webcryptoHostCall(op, ...args))
+    })
     handles.push(host)
     const shim = ctx.evalCode(WEBCRYPTO_SHIM_SOURCE, "webcrypto-shim.js")
     if (shim.error) {

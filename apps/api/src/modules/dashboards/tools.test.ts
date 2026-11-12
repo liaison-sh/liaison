@@ -633,4 +633,162 @@ describe("dashboards_edit", () => {
       }),
     ).rejects.toMatchObject({ code: "version_conflict" })
   })
+
+  describe("chaining", () => {
+    const AUTHOR_SCOPES = [WRITE, SHARE, READ]
+    async function setup(title: string) {
+      const approver = (await minimal.person(orgId)).id
+      await minimal.grantScope(approver, ADMIN)
+      const author = (await minimal.person(orgId)).id
+      for (const scope of AUTHOR_SCOPES) await minimal.grantScope(author, scope)
+      const shared = await createDashboard(as(author, AUTHOR_SCOPES), {
+        title,
+        visibility: "org",
+        spec: { v: 1, blocks: [metric("a"), metric("b")] },
+      })
+      const file = async (operations: unknown[]) => {
+        const res = await call(author, AUTHOR_SCOPES, "dashboards_edit", {
+          dashboardId: shared.id,
+          ifVersion: 1,
+          operations,
+        })
+        const id = res.blocked?.approvalRequestId
+        if (!id) throw new Error("the edit did not park an approval")
+        return { id, res }
+      }
+      const result = async (requestId: string) => {
+        const [row] =
+          await sql`SELECT status, result, error FROM kernel.approved_handler_executions
+            WHERE approval_request_id = ${requestId}`
+        return row as { status: string; result: unknown; error: unknown }
+      }
+      return { approver, author, shared, file, result }
+    }
+
+    for (const order of ["first", "second"] as const) {
+      it(`two pending edits of different blocks both apply, approved ${order} one first`, async () => {
+        const { approver, author, shared, file, result } = await setup(`Chained ${order}`)
+        const one = await file([{ op: "updateBlock", blockId: "a", changes: { title: "Sales" } }])
+        const two = await file([
+          { op: "updateBlock", blockId: "b", changes: { title: "Orders" } },
+          { op: "addBlock", block: metric("c") },
+        ])
+        // The second request names the first one, pending, and how they chain.
+        const notes = two.res.blocked?.agentNotes as Record<string, any> | undefined
+        expect(notes?.pendingForThisDashboard?.requests).toEqual([
+          expect.objectContaining({ approvalRequestId: one.id, tool: "kernel__dashboards_edit" }),
+        ])
+        expect(notes?.pendingForThisDashboard?.relay).toContain("kernel__approval_withdraw")
+        expect(notes?.onApproval).toContain("liaison_approval_status")
+        expect(one.res.blocked?.agentNotes).not.toHaveProperty("pendingForThisDashboard")
+
+        const [firstId, secondId] = order === "first" ? [one.id, two.id] : [two.id, one.id]
+        expect((await approve(firstId, approver)).status).toBe("approved")
+        const second = await approve(secondId, approver)
+        expect(second.status).toBe("approved")
+        const after = await getDashboard(as(author, [WRITE]), shared.id)
+        expect(after.version).toBe(3)
+        expect(after.spec.blocks.map((b) => [b.id, b.title])).toEqual([
+          ["a", "Sales"],
+          ["b", "Orders"],
+          ["c", "Tile c"],
+        ])
+        const executed = JSON.stringify((await result(secondId)).result)
+        expect(executed).toContain("Applied on top of version 2")
+        expect(executed).toContain("ifVersion 3")
+      })
+    }
+
+    it("a second pending edit of the same block is refused when approved, naming the conflict", async () => {
+      const { approver, author, shared, file, result } = await setup("Overlap")
+      const one = await file([{ op: "updateBlock", blockId: "a", changes: { title: "Sales" } }])
+      const two = await file([{ op: "removeBlock", blockId: "a" }])
+      expect((await approve(one.id, approver)).status).toBe("approved")
+      await approve(two.id, approver).catch((e: unknown) => e)
+      const failed = await result(two.id)
+      expect(failed.status).not.toBe("succeeded")
+      expect(JSON.stringify(failed.error)).toContain(
+        "operation 1 (removeBlock 'a') changes the block 'a', which version 2",
+      )
+      const after = await getDashboard(as(author, [WRITE]), shared.id)
+      expect(after.version).toBe(2)
+      expect(after.spec.blocks.map((b) => b.id)).toEqual(["a", "b"])
+    })
+
+    it("a personal dashboard chains edits with the version each returns, and a stale one rebases", async () => {
+      const mine = await createDashboard(as(owner, [WRITE, READ]), {
+        title: "Fast agent",
+        visibility: "personal",
+        spec: { v: 1, blocks: [metric("a"), metric("b")] },
+      })
+      const edit = (ifVersion: number, operations: unknown[]) =>
+        call(owner, [WRITE, READ], "dashboards_edit", {
+          dashboardId: mine.id,
+          ifVersion,
+          operations,
+        })
+      const first = (await edit(1, [{ op: "setTitle", title: "Fast" }])).data as {
+        version: number
+        note: string
+      }
+      expect(first.version).toBe(2)
+      expect(first.note).toContain("ifVersion 2")
+      const second = (await edit(first.version, [{ op: "resizeBlock", blockId: "a", width: 2 }]))
+        .data as { version: number; rebased?: unknown }
+      expect(second.version).toBe(3)
+      expect(second.rebased).toBeUndefined()
+      // Written against version 1 again, on a block nobody changed since: applies on top.
+      const stale = (await edit(1, [{ op: "updateBlock", blockId: "b", changes: { title: "B" } }]))
+        .data as { version: number; rebased: unknown; note: string }
+      expect(stale.version).toBe(4)
+      expect(stale.rebased).toEqual({
+        writtenAgainst: 1,
+        appliedOnTopOf: 3,
+        between: [
+          { version: 2, savedByName: expect.anything() },
+          { version: 3, savedByName: expect.anything() },
+        ],
+      })
+      expect(stale.note).toContain("Applied on top of version 3: versions 2, 3 were saved")
+      // Stale and on a block version 3 changed: refused with the current version, retryable.
+      const err = await edit(1, [{ op: "resizeBlock", blockId: "a", width: 3 }]).catch(
+        (e: unknown) => e,
+      )
+      expect(err).toMatchObject({
+        code: "version_conflict",
+        body: { currentVersion: 4, writtenAgainst: 1, changedBy: 3 },
+        details: { retryable: true },
+      })
+      expect((err as Error).message).toContain("which version 3")
+    })
+
+    it("a revert is never applied on top of a newer version", async () => {
+      const mine = await createDashboard(as(owner, [WRITE, READ]), {
+        title: "Revert strict",
+        visibility: "personal",
+        spec: { v: 1, blocks: [metric("a")] },
+      })
+      await call(owner, [WRITE, READ], "dashboards_edit", {
+        dashboardId: mine.id,
+        ifVersion: 1,
+        operations: [{ op: "addBlock", block: metric("b") }],
+      })
+      await call(owner, [WRITE, READ], "dashboards_edit", {
+        dashboardId: mine.id,
+        ifVersion: 2,
+        operations: [{ op: "addBlock", block: metric("c") }],
+      })
+      await expect(
+        call(owner, [WRITE, READ], "dashboards_edit", {
+          dashboardId: mine.id,
+          ifVersion: 2,
+          operations: [{ op: "revert", toVersion: 1 }],
+        }),
+      ).rejects.toMatchObject({
+        code: "version_conflict",
+        message: expect.stringContaining("applies only to the version it was written against (2)"),
+      })
+      expect((await getDashboard(as(owner, [WRITE]), mine.id)).version).toBe(3)
+    })
+  })
 })

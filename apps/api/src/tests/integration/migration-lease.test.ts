@@ -4,7 +4,7 @@
 // freshly created empty database, dropped afterwards: replicas that start
 // together on a new instance must not both run `0000`, which creates `kernel`
 // without IF NOT EXISTS, and the lease itself must not need `kernel`.
-import { afterAll, describe, expect, test } from "bun:test"
+import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { spawn } from "node:child_process"
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -17,6 +17,7 @@ import {
   runMigrations,
   withMigrationLease,
 } from "~/db/migrate"
+import { keepClusterRoleMemberships } from "../../../test-support/role-memberships"
 
 const ADMIN_URL =
   process.env.E2E_DATABASE_URL ?? "postgres://postgres:postgres@localhost:5432/liaison_test"
@@ -29,6 +30,12 @@ const JOURNAL_ENTRIES = (
 
 const admin = postgres(ADMIN_URL, { max: 1, onnotice: () => {} })
 const created: string[] = []
+// Each replay's role statements reach the whole cluster: memberships it takes back are restored.
+let restoreRoleMemberships: (() => Promise<unknown>) | null = null
+
+beforeAll(async () => {
+  restoreRoleMemberships = await keepClusterRoleMemberships(admin)
+})
 
 async function emptyDatabase(): Promise<string> {
   const name = `migration_lease_${Math.random().toString(36).slice(2, 10)}`
@@ -41,6 +48,7 @@ async function emptyDatabase(): Promise<string> {
 
 afterAll(async () => {
   for (const name of created) await admin.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`)
+  await restoreRoleMemberships?.()
   await admin.end()
 })
 

@@ -21,6 +21,7 @@ import { join } from "node:path"
 import postgres from "postgres"
 import { runMigrations } from "~/db/migrate"
 import { insertSql, type RowValue } from "~/seed/factories/org/test-rows"
+import { keepClusterRoleMemberships } from "../../../test-support/role-memberships"
 
 const MIGRATIONS = import.meta.dir
 const FIRST_LOGIN_TAG = "0254_product_attributes"
@@ -72,9 +73,12 @@ let fresh: postgres.Sql
 let asLogin: postgres.Sql
 const folders: string[] = []
 let versionBefore = 0
+// The replay's role statements reach the whole cluster: memberships it takes back are restored.
+let restoreRoleMemberships: (() => Promise<unknown>) | null = null
 
 beforeAll(async () => {
   admin = postgres(adminUrl.toString(), { max: 1, onnotice: () => {} })
+  restoreRoleMemberships = await keepClusterRoleMemberships(admin)
   await admin.unsafe(`CREATE DATABASE "${dbName}"`)
   const before = folderUpTo(FIRST_LOGIN_TAG, -1)
   folders.push(before)
@@ -212,6 +216,7 @@ afterAll(async () => {
       await admin.unsafe(`REVOKE "${m.role}" FROM "${m.member}" GRANTED BY "${m.grantor}" CASCADE`)
     }
     await admin.unsafe(`DROP ROLE IF EXISTS "${login}"`)
+    await restoreRoleMemberships?.()
     await admin.end()
   }
   for (const dir of folders) rmSync(dir, { recursive: true, force: true })
